@@ -130,7 +130,7 @@ def propose_patches(src: Path, log_text: str, line: int | None, col: int | None)
     return proposals
 
 
-def validate_patch(src: Path, proposal: Proposal, compiler: str = 'bin/vittec0') -> tuple[bool, str]:
+def validate_patch(src: Path, proposal: Proposal, compiler: str = 'bin/vitte') -> tuple[bool, str]:
     with tempfile.TemporaryDirectory(prefix='vitte-brain-') as td:
         tmp = Path(td) / src.name
         tmp.write_text(src.read_text(encoding='utf-8', errors='ignore'), encoding='utf-8')
@@ -232,9 +232,9 @@ def main() -> int:
     print('suggestions_prioritized:')
     suggestions = [
         '1) Fix the first root cause above before all others (anti-cascade).',
-        '2) Re-run strict parser: bin/vittec0 parse "<file>".',
-        '3) Re-run strict check: bin/vittec0 check --strict "<file>".',
-        '4) Trace pipeline: bin/vittec0 --trace-pipeline check --strict "<file>".',
+        '2) Re-run strict parser: bin/vitte parse "<file>".',
+        '3) Re-run strict check: bin/vitte check --strict "<file>".',
+        '4) Trace pipeline: bin/vitte --trace-pipeline check --strict "<file>".',
         '5) Validate module imports/aliases and canonical paths.',
         '6) Run cli diagnostics snapshots: make cli-diagnostics-snapshots.',
         '7) Run explain snapshots: make explain-snapshots.',
