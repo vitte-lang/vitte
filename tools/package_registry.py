@@ -285,6 +285,128 @@ def check_outputs(outputs: dict[Path, bytes]) -> list[str]:
     return errors
 
 
+def read_existing_outputs() -> dict[Path, bytes]:
+    outputs: dict[Path, bytes] = {}
+    for path in (CHECKSUMS_PATH, LOCKFILE_PATH, REGISTRY_PATH):
+        try:
+            outputs[path] = path.read_bytes()
+        except OSError as exc:
+            raise RegistryError(f"cannot read {path.relative_to(ROOT)}: {exc}") from exc
+    return outputs
+
+
+def parse_checksums(data: bytes) -> dict[str, str]:
+    checksums: dict[str, str] = {}
+    for index, raw_line in enumerate(data.decode("ascii").splitlines(), start=1):
+        line = raw_line.strip()
+        if not line:
+            continue
+        parts = line.split()
+        if len(parts) != 2:
+            raise RegistryError(f"checksums.sha256:{index}: expected '<sha256>  <label>'")
+        digest, label = parts
+        if not re.fullmatch(r"[0-9a-f]{64}", digest):
+            raise RegistryError(f"checksums.sha256:{index}: invalid sha256")
+        if label in checksums:
+            raise RegistryError(f"checksums.sha256:{index}: duplicate label {label}")
+        checksums[label] = digest
+    return checksums
+
+
+def validate_existing_registry(outputs: dict[Path, bytes]) -> None:
+    try:
+        registry = json.loads(outputs[REGISTRY_PATH])
+        lockfile = json.loads(outputs[LOCKFILE_PATH])
+    except json.JSONDecodeError as exc:
+        raise RegistryError(f"cannot parse existing package registry: {exc}") from exc
+
+    if registry.get("schema") != REGISTRY_SCHEMA:
+        raise RegistryError(f"registry schema must be {REGISTRY_SCHEMA}")
+    if registry.get("mode") != "offline":
+        raise RegistryError("registry mode must be offline")
+    policy = registry.get("network_policy")
+    if not isinstance(policy, dict):
+        raise RegistryError("registry network_policy must be an object")
+    if policy.get("build_network_access") != "forbidden":
+        raise RegistryError("registry must forbid build network access")
+    if policy.get("implicit_downloads") is not False:
+        raise RegistryError("registry must forbid implicit downloads")
+    if policy.get("missing_package_action") != "error":
+        raise RegistryError("registry must error on missing packages")
+
+    packages = registry.get("packages")
+    if not isinstance(packages, list):
+        raise RegistryError("registry packages must be an array")
+    if registry.get("package_count") != len(packages):
+        raise RegistryError("registry package_count does not match packages array")
+
+    seen: set[str] = set()
+    package_labels: dict[str, str] = {}
+    for package in packages:
+        if not isinstance(package, dict):
+            raise RegistryError("registry package entry must be an object")
+        for key in ("abi", "checksum", "exports", "exports_sha256", "name", "version"):
+            if key not in package:
+                raise RegistryError(f"registry package missing required field {key}")
+        if package["abi"] != ABI:
+            raise RegistryError(f"{package['name']}: unsupported package ABI {package['abi']}")
+        validate_entry(
+            {
+                "distribution": package.get("distribution", package["name"]),
+                "exports": package["exports"],
+                "module": package.get("module", package["name"]),
+                "module_file": package.get("module_file", package["name"]),
+                "name": package["name"],
+                "version": package["version"],
+            },
+            seen,
+        )
+        checksum = package["checksum"]
+        if not isinstance(checksum, dict) or checksum.get("algorithm") != "sha256":
+            raise RegistryError(f"{package['name']}: checksum must use sha256")
+        value = checksum.get("value")
+        if not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value):
+            raise RegistryError(f"{package['name']}: invalid checksum value")
+        exports = package["exports"]
+        if package["exports_sha256"] != sha256_bytes(canonical_bytes(exports)):
+            raise RegistryError(f"{package['name']}: exports checksum does not match exports")
+        package_labels[f"package:{package['name']}@{package['version']}"] = value
+
+    if lockfile.get("schema") != LOCKFILE_SCHEMA:
+        raise RegistryError(f"lockfile schema must be {LOCKFILE_SCHEMA}")
+    if lockfile.get("network_access") != "forbidden":
+        raise RegistryError("lockfile must forbid network access")
+    entries = lockfile.get("entries")
+    if not isinstance(entries, list):
+        raise RegistryError("lockfile entries must be an array")
+    if lockfile.get("entry_count") != len(entries):
+        raise RegistryError("lockfile entry_count does not match entries array")
+    lockfile_base = dict(lockfile)
+    content_sha256 = lockfile_base.pop("content_sha256", None)
+    if content_sha256 != sha256_bytes(canonical_bytes(lockfile_base)):
+        raise RegistryError("lockfile content_sha256 does not match canonical content")
+
+    lock_labels: dict[str, str] = {}
+    for entry in entries:
+        if not isinstance(entry, dict):
+            raise RegistryError("lockfile entry must be an object")
+        name = entry.get("name")
+        version = entry.get("version")
+        checksum = entry.get("checksum")
+        if not isinstance(name, str) or not isinstance(version, str) or not isinstance(checksum, str):
+            raise RegistryError("lockfile entry must include name, version, checksum")
+        lock_labels[f"package:{name}@{version}"] = checksum
+    if lock_labels != package_labels:
+        raise RegistryError("lockfile entries do not match registry packages")
+
+    checksums = parse_checksums(outputs[CHECKSUMS_PATH])
+    expected_checksums = dict(package_labels)
+    expected_checksums["registry.json"] = sha256_bytes(outputs[REGISTRY_PATH])
+    expected_checksums["lockfile.vitte.lock"] = sha256_bytes(outputs[LOCKFILE_PATH])
+    if checksums != expected_checksums:
+        raise RegistryError("checksums.sha256 does not match registry and lockfile content")
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate and verify the offline Vitte package registry")
     mode = parser.add_mutually_exclusive_group()
@@ -297,15 +419,26 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 def main(argv: list[str]) -> int:
     args = parse_args(argv)
     try:
-        first = build_outputs()
+        if SOURCE_INDEX.is_file():
+            first = build_outputs()
+        elif args.write:
+            raise RegistryError(f"cannot write registry without {SOURCE_INDEX.relative_to(ROOT)}")
+        else:
+            first = read_existing_outputs()
+            validate_existing_registry(first)
+
         if args.determinism_test:
-            second = build_outputs()
+            if SOURCE_INDEX.is_file():
+                second = build_outputs()
+            else:
+                second = read_existing_outputs()
+                validate_existing_registry(second)
             if first != second:
                 raise RegistryError("same input produced different registry bytes")
         if args.write:
             write_outputs(first)
         else:
-            errors = check_outputs(first)
+            errors = [] if not SOURCE_INDEX.is_file() else check_outputs(first)
             if errors:
                 for error in errors:
                     print(f"[package-registry][error] {error}", file=sys.stderr)
