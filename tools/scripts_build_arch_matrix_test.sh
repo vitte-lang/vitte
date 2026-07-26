@@ -3,7 +3,8 @@ set -eu
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 TMP_ROOT=${TMPDIR:-/tmp}/vitte-scripts-build-arch-$$
-VERSION=$(tr -d ' \r\n' < "$ROOT_DIR/toolchain/scripts/package/PACKAGE_VERSION")
+. "$ROOT_DIR/scripts_build/common.sh"
+VERSION=$(scripts_build_package_version)
 
 cleanup() {
   rm -rf "$TMP_ROOT"
