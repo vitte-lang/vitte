@@ -38,24 +38,24 @@ REQUIRED_RESOURCES = (
 )
 
 FORBIDDEN_TEXT = (
-    "BOOTSTRAP_FULL_COMPILER",
-    "toolchain/seed",
-    "vittec0.seed",
-    "bin/vittec0",
-    "scripts/seed/install_seed.sh",
-    "scripts/seed/verify_seed.sh",
-    "vitte-bootstrap-payload-bridge",
+    "BOOTSTRAP_" + "FULL_COMPILER",
+    "toolchain/" + "seed",
+    "vittec0." + "seed",
+    "bin/" + "vittec0",
+    "scripts/seed/" + "install_" + "seed.sh",
+    "scripts/seed/" + "verify_" + "seed.sh",
+    "vitte-bootstrap-" + "payload-bridge",
     "payload_source",
     "write_payload_file",
-    "/tmp/vitte-bootstrap-payload",
+    "/tmp/vitte-bootstrap-" + "payload",
 )
 
 FORBIDDEN_COMMAND_TEXT = (
-    "toolchain/seed",
-    "vittec0.seed",
-    "bin/vittec0",
-    "scripts/seed/install_seed.sh",
-    "scripts/seed/verify_seed.sh",
+    "toolchain/" + "seed",
+    "vittec0." + "seed",
+    "bin/" + "vittec0",
+    "scripts/seed/" + "install_" + "seed.sh",
+    "scripts/seed/" + "verify_" + "seed.sh",
     ".sh",
 )
 
