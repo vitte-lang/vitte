@@ -308,7 +308,7 @@ class Lexer:
         buf = []
         while True:
             ch = self.peek()
-            if ch.isdigit() or ch in "._xobabcdefABCDEF+-":
+            if ch and (ch.isdigit() or ch in "._xobabcdefABCDEF+-"):
                 buf.append(self.bump())
             else:
                 break
