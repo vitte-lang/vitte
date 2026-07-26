@@ -1,0 +1,36 @@
+space vitte/stdlib/ffi/callback
+
+export *
+
+use src/vitte/stdlib/ffi/types as ffi_types
+
+form FfiCallback {
+    id: usize
+    signature: ffi_types.FfiSignature
+    trampoline: usize
+    active: bool
+}
+
+form FfiCallbackProfile {
+    id: usize
+    active: bool
+    trampoline: usize
+    valid: bool
+}
+
+proc ffi_callback_create(signature: ffi_types.FfiSignature) -> FfiCallback {
+    let trampoline: usize = compiler_ffi_callback_trampoline(signature.name);
+    give FfiCallback { id: compiler_ffi_next_callback_id(), signature: signature, trampoline: trampoline, active: trampoline != 0 };
+}
+
+proc ffi_callback_disable(value: ref mut FfiCallback) {
+    set (*value).active = false;
+}
+
+proc ffi_callback_is_valid(value: FfiCallback) -> bool {
+    give value.id > 0 and ffi_types.ffi_signature_is_valid(value.signature) and (not value.active or value.trampoline != 0);
+}
+
+proc ffi_callback_profile(value: FfiCallback) -> FfiCallbackProfile {
+    give FfiCallbackProfile { id: value.id, active: value.active, trampoline: value.trampoline, valid: ffi_callback_is_valid(value) };
+}

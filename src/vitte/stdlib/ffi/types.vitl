@@ -1,0 +1,68 @@
+space vitte/stdlib/ffi/types
+
+export *
+
+use src/vitte/stdlib/ffi/abi as ffi_abi
+
+pick FfiPrimitiveKind {
+    Void
+    Bool
+    Int
+    UInt
+    Float
+    Pointer
+    Struct
+    Opaque
+}
+
+form FfiType {
+    name: string
+    kind: FfiPrimitiveKind
+    size: int
+    align: int
+    nullable: bool
+}
+
+form FfiSignature {
+    name: string
+    args: [FfiType]
+    result: FfiType
+    variadic: bool
+}
+
+form FfiTypeProfile {
+    name: string
+    size: int
+    align: int
+    abi_safe: bool
+}
+
+proc ffi_type(name: string, kind: FfiPrimitiveKind, nullable: bool) -> FfiType {
+    give FfiType { name: name, kind: kind, size: ffi_abi.type_size(name), align: ffi_abi.type_alignment(name), nullable: nullable };
+}
+
+proc ffi_void_type() -> FfiType { give ffi_type("void", FfiPrimitiveKind.Void, false); }
+proc ffi_i32_type() -> FfiType { give ffi_type("i32", FfiPrimitiveKind.Int, false); }
+proc ffi_i64_type() -> FfiType { give ffi_type("i64", FfiPrimitiveKind.Int, false); }
+proc ffi_f64_type() -> FfiType { give ffi_type("f64", FfiPrimitiveKind.Float, false); }
+proc ffi_pointer_type(name: string) -> FfiType { give ffi_type(name, FfiPrimitiveKind.Pointer, true); }
+
+proc ffi_type_is_known(value: FfiType) -> bool {
+    give value.size >= 0 and value.align >= 0 and value.name != "";
+}
+
+proc ffi_type_is_pointer(value: FfiType) -> bool {
+    give value.kind == FfiPrimitiveKind.Pointer;
+}
+
+proc ffi_type_profile(value: FfiType) -> FfiTypeProfile {
+    give FfiTypeProfile { name: value.name, size: value.size, align: value.align, abi_safe: ffi_type_is_known(value) };
+}
+
+proc ffi_signature(name: string, args: [FfiType], result: FfiType, variadic: bool) -> FfiSignature {
+    give FfiSignature { name: name, args: args, result: result, variadic: variadic };
+}
+
+proc ffi_signature_is_valid(value: FfiSignature) -> bool {
+    give value.name != "" and ffi_type_is_known(value.result);
+}

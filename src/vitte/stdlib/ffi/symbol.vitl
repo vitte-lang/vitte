@@ -1,0 +1,41 @@
+space vitte/stdlib/ffi/symbol
+
+export *
+
+use src/vitte/stdlib/ffi/library as ffi_library
+use src/vitte/stdlib/ffi/types as ffi_types
+use src/vitte/stdlib/core/option as core_option
+
+form FfiSymbol {
+    name: string
+    address: usize
+    signature: ffi_types.FfiSignature
+    resolved: bool
+}
+
+form FfiSymbolProfile {
+    name: string
+    address: usize
+    resolved: bool
+    valid: bool
+}
+
+proc ffi_symbol_resolve(lib: ffi_library.FfiLibraryHandle, signature: ffi_types.FfiSignature) -> FfiSymbol {
+    let address: usize = 0;
+    if lib.loaded and ffi_types.ffi_signature_is_valid(signature) {
+        set address = compiler_ffi_resolve_symbol(lib.handle, signature.name);
+    }
+    give FfiSymbol { name: signature.name, address: address, signature: signature, resolved: address != 0 };
+}
+
+proc ffi_symbol_unresolved(signature: ffi_types.FfiSignature) -> FfiSymbol {
+    give FfiSymbol { name: signature.name, address: 0, signature: signature, resolved: false };
+}
+
+proc ffi_symbol_is_valid(value: FfiSymbol) -> bool {
+    give value.name != "" and ffi_types.ffi_signature_is_valid(value.signature) and (not value.resolved or value.address != 0);
+}
+
+proc ffi_symbol_profile(value: FfiSymbol) -> FfiSymbolProfile {
+    give FfiSymbolProfile { name: value.name, address: value.address, resolved: value.resolved, valid: ffi_symbol_is_valid(value) };
+}

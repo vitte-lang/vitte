@@ -1,0 +1,40 @@
+space vitte/stdlib/ffi/safety
+
+export *
+
+use src/vitte/stdlib/ffi/pointer as ffi_pointer
+use src/vitte/stdlib/ffi/types as ffi_types
+
+form FfiSafetyPolicy {
+    allow_null: bool
+    allow_variadic: bool
+    require_resolved_symbol: bool
+    require_abi_safe_types: bool
+}
+
+form FfiSafetyReport {
+    accepted: bool
+    reason: string
+}
+
+proc ffi_safety_default() -> FfiSafetyPolicy {
+    give FfiSafetyPolicy { allow_null: false, allow_variadic: false, require_resolved_symbol: true, require_abi_safe_types: true };
+}
+
+proc ffi_safety_permissive() -> FfiSafetyPolicy {
+    give FfiSafetyPolicy { allow_null: true, allow_variadic: true, require_resolved_symbol: false, require_abi_safe_types: false };
+}
+
+proc ffi_safety_check_pointer<T>(policy: FfiSafetyPolicy, pointer: ffi_pointer.FfiPointer<T>) -> FfiSafetyReport {
+    if not policy.allow_null and ffi_pointer.ffi_pointer_is_null<T>(pointer) {
+        give FfiSafetyReport { accepted: false, reason: "null pointer rejected" };
+    }
+    give FfiSafetyReport { accepted: ffi_pointer.ffi_pointer_is_valid<T>(pointer), reason: "pointer checked" };
+}
+
+proc ffi_safety_check_signature(policy: FfiSafetyPolicy, signature: ffi_types.FfiSignature) -> FfiSafetyReport {
+    if not policy.allow_variadic and signature.variadic {
+        give FfiSafetyReport { accepted: false, reason: "variadic rejected" };
+    }
+    give FfiSafetyReport { accepted: ffi_types.ffi_signature_is_valid(signature), reason: "signature checked" };
+}

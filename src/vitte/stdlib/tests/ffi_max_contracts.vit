@@ -1,0 +1,109 @@
+space vitte/stdlib/tests/ffi_max_contracts
+
+use src/vitte/stdlib/ffi/abi as ffi_abi
+use src/vitte/stdlib/ffi/bindgen as ffi_bindgen
+use src/vitte/stdlib/ffi/call as ffi_call
+use src/vitte/stdlib/ffi/callback as ffi_callback
+use src/vitte/stdlib/ffi/error as ffi_error
+use src/vitte/stdlib/ffi/ffi as ffi_core
+use src/vitte/stdlib/ffi/library as ffi_library
+use src/vitte/stdlib/ffi/memory as ffi_memory
+use src/vitte/stdlib/ffi/pointer as ffi_pointer
+use src/vitte/stdlib/ffi/registry as ffi_registry
+use src/vitte/stdlib/ffi/safety as ffi_safety
+use src/vitte/stdlib/ffi/symbol as ffi_symbol
+use src/vitte/stdlib/ffi/types as ffi_types
+
+proc ffi_abi_contract() -> bool {
+    let profile: ffi_abi.ABIProfile = ffi_abi.abi_profile_linux_x86_64();
+    give ffi_abi.abi_profile_valid(profile)
+        and ffi_abi.type_size("i64") == 8
+        and ffi_abi.vitte_to_c_type("bool") == "_Bool";
+}
+
+proc ffi_types_contract() -> bool {
+    let result: ffi_types.FfiType = ffi_types.ffi_i32_type();
+    let signature: ffi_types.FfiSignature = ffi_types.ffi_signature("puts", [ffi_types.ffi_pointer_type("char")], result, false);
+    give ffi_types.ffi_type_is_known(result)
+        and ffi_types.ffi_signature_is_valid(signature)
+        and ffi_types.ffi_type_profile(result).abi_safe;
+}
+
+proc ffi_pointer_contract() -> bool {
+    let pointer: ffi_pointer.FfiPointer<int> = ffi_pointer.ffi_pointer<int>(8, "i32", ffi_pointer.FfiPointerOwnership.Borrowed, false);
+    give ffi_pointer.ffi_pointer_is_valid<int>(pointer)
+        and not ffi_pointer.ffi_pointer_is_null<int>(pointer)
+        and ffi_pointer.ffi_pointer_profile<int>(pointer).valid;
+}
+
+proc ffi_library_symbol_contract() -> bool {
+    let spec: ffi_library.FfiLibrarySpec = ffi_library.ffi_library_spec("c", "libc.so.6", ffi_library.FfiLibraryKind.System, true);
+    let lib: ffi_library.FfiLibraryHandle = ffi_library.ffi_library_open(spec);
+    let signature: ffi_types.FfiSignature = ffi_types.ffi_signature("puts", [ffi_types.ffi_pointer_type("char")], ffi_types.ffi_i32_type(), false);
+    let symbol: ffi_symbol.FfiSymbol = ffi_symbol.ffi_symbol_resolve(lib, signature);
+    give ffi_library.ffi_library_is_valid(lib)
+        and ffi_symbol.ffi_symbol_is_valid(symbol);
+}
+
+proc ffi_call_contract() -> bool {
+    let signature: ffi_types.FfiSignature = ffi_types.ffi_signature("missing", [], ffi_types.ffi_i64_type(), false);
+    let symbol: ffi_symbol.FfiSymbol = ffi_symbol.ffi_symbol_unresolved(signature);
+    let frame: ffi_call.FfiCallFrame = ffi_call.ffi_call_frame(symbol, 0 as usize);
+    give ffi_call.ffi_call_frame_is_valid(frame)
+        and not ffi_call.ffi_call_validate(frame);
+}
+
+proc ffi_callback_contract() -> bool {
+    let signature: ffi_types.FfiSignature = ffi_types.ffi_signature("callback", [ffi_types.ffi_i32_type()], ffi_types.ffi_i32_type(), false);
+    let callback: ffi_callback.FfiCallback = ffi_callback.ffi_callback_create(signature);
+    give ffi_callback.ffi_callback_is_valid(callback)
+        and ffi_callback.ffi_callback_profile(callback).valid;
+}
+
+proc ffi_memory_safety_contract() -> bool {
+    let buffer: ffi_memory.FfiBuffer = ffi_memory.ffi_buffer_alloc(64);
+    let pointer: ffi_pointer.FfiPointer<u8> = ffi_memory.ffi_buffer_as_pointer(buffer);
+    let report: ffi_safety.FfiSafetyReport = ffi_safety.ffi_safety_check_pointer<u8>(ffi_safety.ffi_safety_default(), pointer);
+    give ffi_memory.ffi_buffer_is_valid(buffer)
+        and report.accepted;
+}
+
+proc ffi_registry_bindgen_contract() -> bool {
+    let registry: ffi_registry.FfiRegistry = ffi_registry.ffi_registry_new();
+    let signature: ffi_types.FfiSignature = ffi_types.ffi_signature("puts", [ffi_types.ffi_pointer_type("char")], ffi_types.ffi_i32_type(), false);
+    let binding: ffi_bindgen.FfiBinding = ffi_bindgen.ffi_binding("c", "puts", signature);
+    give ffi_registry.ffi_registry_is_valid(registry)
+        and ffi_bindgen.ffi_binding_is_valid(binding)
+        and ffi_bindgen.ffi_binding_profile(binding).valid;
+}
+
+proc ffi_error_contract() -> bool {
+    let error: ffi_error.FfiError = ffi_error.ffi_error(ffi_error.FfiErrorKind.SymbolNotFound, "puts", "missing", true);
+    give ffi_error.ffi_error_is_recoverable(error)
+        and not ffi_error.ffi_error_is_fatal(error)
+        and ffi_error.ffi_error_profile(error).code != "";
+}
+
+proc ffi_core_contract() -> bool {
+    let lib: ffi_core.ForeignLibrary = ffi_core.ffi_get_stdlib("c");
+    let func: ffi_core.ForeignFunction = ffi_core.ffi_register_function(lib, "puts", ["string"], "i32");
+    give lib.loaded
+        and func.name == "puts";
+}
+
+proc ffi_max_surface_count() -> usize {
+    give 13 as usize;
+}
+
+proc ffi_max_contracts_run() -> bool {
+    give ffi_abi_contract()
+        and ffi_types_contract()
+        and ffi_pointer_contract()
+        and ffi_library_symbol_contract()
+        and ffi_call_contract()
+        and ffi_callback_contract()
+        and ffi_memory_safety_contract()
+        and ffi_registry_bindgen_contract()
+        and ffi_error_contract()
+        and ffi_core_contract();
+}

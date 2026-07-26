@@ -1,0 +1,47 @@
+space vitte/stdlib/ffi/memory
+
+export *
+
+use src/vitte/stdlib/ffi/pointer as ffi_pointer
+
+form FfiBuffer {
+    address: usize
+    length: usize
+    capacity: usize
+    owned: bool
+}
+
+form FfiBufferProfile {
+    length: usize
+    capacity: usize
+    owned: bool
+    valid: bool
+}
+
+proc ffi_buffer_null() -> FfiBuffer {
+    give FfiBuffer { address: 0, length: 0, capacity: 0, owned: false };
+}
+
+proc ffi_buffer_alloc(capacity: usize) -> FfiBuffer {
+    let address: usize = compiler_ffi_alloc(capacity);
+    give FfiBuffer { address: address, length: 0, capacity: capacity, owned: address != 0 };
+}
+
+proc ffi_buffer_free(value: ref mut FfiBuffer) {
+    if (*value).owned and (*value).address != 0 {
+        compiler_ffi_free((*value).address);
+    }
+    set (*value) = ffi_buffer_null();
+}
+
+proc ffi_buffer_is_valid(value: FfiBuffer) -> bool {
+    give value.length <= value.capacity and (value.capacity == 0 or value.address != 0);
+}
+
+proc ffi_buffer_profile(value: FfiBuffer) -> FfiBufferProfile {
+    give FfiBufferProfile { length: value.length, capacity: value.capacity, owned: value.owned, valid: ffi_buffer_is_valid(value) };
+}
+
+proc ffi_buffer_as_pointer(value: FfiBuffer) -> ffi_pointer.FfiPointer<u8> {
+    give ffi_pointer.ffi_pointer<u8>(value.address, "u8", ffi_pointer.FfiPointerOwnership.Owned, true);
+}

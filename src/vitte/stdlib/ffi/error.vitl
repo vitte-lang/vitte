@@ -1,0 +1,53 @@
+space vitte/stdlib/ffi/error
+
+export *
+
+pick FfiErrorKind {
+    LibraryNotFound
+    SymbolNotFound
+    AbiMismatch
+    InvalidSignature
+    UnsafeCall
+    NullPointer
+    OwnershipViolation
+}
+
+form FfiError {
+    kind: FfiErrorKind
+    target: string
+    detail: string
+    recoverable: bool
+}
+
+form FfiErrorProfile {
+    code: string
+    target: string
+    recoverable: bool
+    fatal: bool
+}
+
+proc ffi_error_kind_name(kind: FfiErrorKind) -> string {
+    if kind == FfiErrorKind.LibraryNotFound { give "library_not_found"; }
+    if kind == FfiErrorKind.SymbolNotFound { give "symbol_not_found"; }
+    if kind == FfiErrorKind.AbiMismatch { give "abi_mismatch"; }
+    if kind == FfiErrorKind.InvalidSignature { give "invalid_signature"; }
+    if kind == FfiErrorKind.UnsafeCall { give "unsafe_call"; }
+    if kind == FfiErrorKind.NullPointer { give "null_pointer"; }
+    give "ownership_violation";
+}
+
+proc ffi_error(kind: FfiErrorKind, target: string, detail: string, recoverable: bool) -> FfiError {
+    give FfiError { kind: kind, target: target, detail: detail, recoverable: recoverable };
+}
+
+proc ffi_error_profile(value: FfiError) -> FfiErrorProfile {
+    give FfiErrorProfile {
+        code: ffi_error_kind_name(value.kind),
+        target: value.target,
+        recoverable: value.recoverable,
+        fatal: not value.recoverable
+    };
+}
+
+proc ffi_error_is_fatal(value: FfiError) -> bool { give not value.recoverable; }
+proc ffi_error_is_recoverable(value: FfiError) -> bool { give value.recoverable; }

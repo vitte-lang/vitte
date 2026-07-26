@@ -1,0 +1,31 @@
+space vitte/stdlib/ffi/bindgen
+
+export *
+
+use src/vitte/stdlib/ffi/types as ffi_types
+
+form FfiBinding {
+    module_name: string
+    symbol_name: string
+    signature: ffi_types.FfiSignature
+    generated_name: string
+}
+
+form FfiBindingProfile {
+    module_name: string
+    symbol_name: string
+    generated_name: string
+    valid: bool
+}
+
+proc ffi_binding(module_name: string, symbol_name: string, signature: ffi_types.FfiSignature) -> FfiBinding {
+    give FfiBinding { module_name: module_name, symbol_name: symbol_name, signature: signature, generated_name: compiler_ffi_binding_name(module_name, symbol_name) };
+}
+
+proc ffi_binding_is_valid(value: FfiBinding) -> bool {
+    give value.module_name != "" and value.symbol_name != "" and value.generated_name != "" and ffi_types.ffi_signature_is_valid(value.signature);
+}
+
+proc ffi_binding_profile(value: FfiBinding) -> FfiBindingProfile {
+    give FfiBindingProfile { module_name: value.module_name, symbol_name: value.symbol_name, generated_name: value.generated_name, valid: ffi_binding_is_valid(value) };
+}

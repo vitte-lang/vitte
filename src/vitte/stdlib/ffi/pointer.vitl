@@ -1,0 +1,54 @@
+space vitte/stdlib/ffi/pointer
+
+export *
+
+use src/vitte/stdlib/ffi/types as ffi_types
+
+pick FfiPointerOwnership {
+    Borrowed
+    Owned
+    Shared
+    Opaque
+}
+
+form FfiPointer<T> {
+    address: usize
+    type_name: string
+    ownership: FfiPointerOwnership
+    mutable: bool
+    nullable: bool
+}
+
+form FfiPointerProfile {
+    address: usize
+    type_name: string
+    null: bool
+    mutable: bool
+    valid: bool
+}
+
+proc ffi_pointer_null<T>(type_name: string) -> FfiPointer<T> {
+    give FfiPointer<T> { address: 0, type_name: type_name, ownership: FfiPointerOwnership.Borrowed, mutable: false, nullable: true };
+}
+
+proc ffi_pointer<T>(address: usize, type_name: string, ownership: FfiPointerOwnership, mutable: bool) -> FfiPointer<T> {
+    give FfiPointer<T> { address: address, type_name: type_name, ownership: ownership, mutable: mutable, nullable: false };
+}
+
+proc ffi_pointer_is_null<T>(value: FfiPointer<T>) -> bool { give value.address == 0; }
+
+proc ffi_pointer_is_valid<T>(value: FfiPointer<T>) -> bool {
+    give value.type_name != "" and (value.nullable or value.address != 0);
+}
+
+proc ffi_pointer_profile<T>(value: FfiPointer<T>) -> FfiPointerProfile {
+    give FfiPointerProfile { address: value.address, type_name: value.type_name, null: ffi_pointer_is_null<T>(value), mutable: value.mutable, valid: ffi_pointer_is_valid<T>(value) };
+}
+
+proc ffi_pointer_type<T>(value: FfiPointer<T>) -> ffi_types.FfiType {
+    give ffi_types.ffi_pointer_type(value.type_name);
+}
+
+proc ffi_pointer_cast<T, U>(value: FfiPointer<T>, type_name: string) -> FfiPointer<U> {
+    give FfiPointer<U> { address: value.address, type_name: type_name, ownership: value.ownership, mutable: value.mutable, nullable: value.nullable };
+}

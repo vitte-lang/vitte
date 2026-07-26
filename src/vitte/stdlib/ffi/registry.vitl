@@ -1,0 +1,42 @@
+space vitte/stdlib/ffi/registry
+
+export *
+
+use src/vitte/stdlib/alloc/vec as alloc_vec
+use src/vitte/stdlib/ffi/library as ffi_library
+use src/vitte/stdlib/ffi/symbol as ffi_symbol
+
+form FfiRegistry {
+    libraries: Vec<ffi_library.FfiLibraryHandle>
+    symbols: Vec<ffi_symbol.FfiSymbol>
+}
+
+form FfiRegistryProfile {
+    libraries: usize
+    symbols: usize
+    valid: bool
+}
+
+proc ffi_registry_new() -> FfiRegistry {
+    give FfiRegistry { libraries: vec_new<ffi_library.FfiLibraryHandle>(), symbols: vec_new<ffi_symbol.FfiSymbol>() };
+}
+
+proc ffi_registry_add_library(value: ref mut FfiRegistry, lib: ffi_library.FfiLibraryHandle) {
+    vec_push<ffi_library.FfiLibraryHandle>(&mut ((*value).libraries), lib);
+}
+
+proc ffi_registry_add_symbol(value: ref mut FfiRegistry, symbol: ffi_symbol.FfiSymbol) {
+    vec_push<ffi_symbol.FfiSymbol>(&mut ((*value).symbols), symbol);
+}
+
+proc ffi_registry_profile(value: FfiRegistry) -> FfiRegistryProfile {
+    give FfiRegistryProfile {
+        libraries: vec_len<ffi_library.FfiLibraryHandle>(value.libraries),
+        symbols: vec_len<ffi_symbol.FfiSymbol>(value.symbols),
+        valid: true
+    };
+}
+
+proc ffi_registry_is_valid(value: FfiRegistry) -> bool {
+    give ffi_registry_profile(value).valid;
+}

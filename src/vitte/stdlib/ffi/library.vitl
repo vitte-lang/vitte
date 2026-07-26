@@ -1,0 +1,57 @@
+space vitte/stdlib/ffi/library
+
+export *
+
+use src/vitte/stdlib/core/option as core_option
+
+pick FfiLibraryKind {
+    System
+    User
+    Framework
+    Static
+}
+
+form FfiLibrarySpec {
+    name: string
+    path: string
+    kind: FfiLibraryKind
+    required: bool
+}
+
+form FfiLibraryHandle {
+    spec: FfiLibrarySpec
+    handle: usize
+    loaded: bool
+}
+
+form FfiLibraryProfile {
+    name: string
+    path: string
+    loaded: bool
+    valid: bool
+}
+
+proc ffi_library_spec(name: string, path: string, kind: FfiLibraryKind, required: bool) -> FfiLibrarySpec {
+    give FfiLibrarySpec { name: name, path: path, kind: kind, required: required };
+}
+
+proc ffi_library_open(spec: FfiLibrarySpec) -> FfiLibraryHandle {
+    let handle: usize = compiler_ffi_open_library(spec.path);
+    give FfiLibraryHandle { spec: spec, handle: handle, loaded: handle != 0 };
+}
+
+proc ffi_library_close(value: ref mut FfiLibraryHandle) {
+    if (*value).loaded {
+        compiler_ffi_close_library((*value).handle);
+    }
+    set (*value).loaded = false;
+    set (*value).handle = 0;
+}
+
+proc ffi_library_is_valid(value: FfiLibraryHandle) -> bool {
+    give value.spec.name != "" and value.spec.path != "" and (not value.loaded or value.handle != 0);
+}
+
+proc ffi_library_profile(value: FfiLibraryHandle) -> FfiLibraryProfile {
+    give FfiLibraryProfile { name: value.spec.name, path: value.spec.path, loaded: value.loaded, valid: ffi_library_is_valid(value) };
+}

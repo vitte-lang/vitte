@@ -1,0 +1,48 @@
+space vitte/stdlib/ffi/call
+
+export *
+
+use src/vitte/stdlib/ffi/symbol as ffi_symbol
+use src/vitte/stdlib/ffi/types as ffi_types
+use src/vitte/stdlib/ffi/error as ffi_error
+
+pick FfiCallState {
+    Ready
+    Blocked
+    Failed
+}
+
+form FfiCallFrame {
+    symbol: ffi_symbol.FfiSymbol
+    arg_count: usize
+    state: FfiCallState
+}
+
+form FfiCallResult {
+    ok: bool
+    value_i64: i64
+    error: ffi_error.FfiError
+}
+
+proc ffi_call_frame(symbol: ffi_symbol.FfiSymbol, arg_count: usize) -> FfiCallFrame {
+    let state: FfiCallState = FfiCallState.Ready;
+    if not symbol.resolved {
+        set state = FfiCallState.Blocked;
+    }
+    give FfiCallFrame { symbol: symbol, arg_count: arg_count, state: state };
+}
+
+proc ffi_call_frame_is_valid(value: FfiCallFrame) -> bool {
+    give ffi_symbol.ffi_symbol_is_valid(value.symbol);
+}
+
+proc ffi_call_validate(value: FfiCallFrame) -> bool {
+    give ffi_call_frame_is_valid(value) and value.state == FfiCallState.Ready;
+}
+
+proc ffi_call_i64(value: FfiCallFrame, args: [i64]) -> FfiCallResult {
+    if not ffi_call_validate(value) {
+        give FfiCallResult { ok: false, value_i64: 0, error: ffi_error.ffi_error(ffi_error.FfiErrorKind.UnsafeCall, value.symbol.name, "call not ready", true) };
+    }
+    give FfiCallResult { ok: true, value_i64: compiler_ffi_call_i64(value.symbol.address, args), error: ffi_error.ffi_error(ffi_error.FfiErrorKind.UnsafeCall, "", "", true) };
+}

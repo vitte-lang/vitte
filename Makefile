@@ -2747,6 +2747,12 @@ stdlib-alloc-gate:
 	@test -f target/reports/stdlib_alloc_gate.json
 	@test -f target/reports/stdlib_alloc_gate.md
 
+.PHONY: stdlib-ffi-gate
+stdlib-ffi-gate:
+	@python3 tools/stdlib_ffi_gate.py
+	@test -f target/reports/stdlib_ffi_gate.json
+	@test -f target/reports/stdlib_ffi_gate.md
+
 
 .PHONY: mir-opt-gate
 mir-opt-gate:
