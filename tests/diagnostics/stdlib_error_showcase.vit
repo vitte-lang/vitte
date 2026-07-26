@@ -1,0 +1,124 @@
+space diagnostics.stdlib_error_showcase
+
+use vitte/stdlib/core/index.{ core_version, missing_core_export }
+use vitte/stdlib/json/index.{ json_parse, json_stringify }
+use vitte/stdlib/alloc/index.{ vec_new, missing_alloc_export }
+use vitte/stdlib/path/index.{ path_join }
+use vitte/stdlib/collections/index.{ HashMap }
+use vitte/stdlib/does_not_exist/index.{ ghost_symbol }
+
+const EXPECTED_VERSION: i32 = "0.1.0";
+const DUPLICATE_NAME: i32 = 1;
+const DUPLICATE_NAME: string = "again";
+
+form UserRecord {
+  id: i32
+  name: string
+  active: bool
+}
+
+form BrokenRecord {
+  id: i32
+  id: string
+  payload: MissingType
+}
+
+proc takes_int(value: i32) -> i32 {
+  give value;
+}
+
+proc takes_string(value: string) -> string {
+  give value;
+}
+
+proc returns_bool() -> bool {
+  give "not a bool";
+}
+
+proc missing_return(flag: bool) -> i32 {
+  if flag {
+    give 1;
+  }
+}
+
+proc stdlib_calls() -> i32 {
+  let version_number: i32 = core_version();
+  let parsed: i32 = json_parse("{ bad json");
+  let encoded: i32 = json_stringify(42);
+  let joined: i32 = path_join("/tmp", 123);
+  let vector: i32 = vec_new();
+  let map: HashMap = HashMap { missing: 1 };
+  give version_number + parsed + encoded + joined + vector;
+}
+
+proc name_and_type_errors() -> i32 {
+  let count: i32 = "seven";
+  let label: string = 99;
+  let unknown_value: i32 = not_declared_here;
+  let call_result: i32 = takes_int("text");
+  let wrong_result: string = takes_string(123);
+  set immutable_value = 5;
+  give count + label + unknown_value + call_result + wrong_result;
+}
+
+proc control_flow_errors(limit: i32) -> i32 {
+  let total: i32 = 0;
+  while "not bool" {
+    set total = total + 1;
+  }
+  for item in 42 {
+    set total = total + item;
+  }
+  if limit {
+    give "limit";
+  } else {
+    give total;
+  }
+}
+
+proc ownership_errors() -> i32 {
+  let text: string = "owned";
+  let moved: string = text;
+  let again: string = text;
+  give takes_int(moved);
+}
+
+proc block_errors(flag: bool) -> i32 {
+  if flag {
+    let branch_text: string = 1;
+    give branch_text;
+  } else {
+    let branch_number: i32 = "two";
+    give branch_number;
+  }
+}
+
+proc field_errors() -> i32 {
+  let user: UserRecord = UserRecord {
+    id: "bad id",
+    name: 7,
+    missing: true
+  };
+  set user.active = "yes";
+  give user.age;
+}
+
+proc generic_errors() -> i32 {
+  let xs: list[i32] = ["a", "b", "c"];
+  let ys: list[string] = [1, 2, 3];
+  let first: i32 = xs["zero"];
+  give first + ys;
+}
+
+proc main(args: list[string]) -> int {
+  let a: i32 = stdlib_calls();
+  let b: i32 = name_and_type_errors();
+  let c: i32 = control_flow_errors("10");
+  let d: i32 = ownership_errors();
+  let e: i32 = block_errors(123);
+  let f: i32 = field_errors();
+  let g: i32 = generic_errors();
+  give a + b + c + d + e + f + g;
+}
+
+export *
