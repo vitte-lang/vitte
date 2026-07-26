@@ -12,7 +12,7 @@ trap cleanup EXIT HUP INT TERM
 
 mkdir -p "$TMP_ROOT/bin" "$TMP_ROOT/out"
 
-for command in vitte vittec vittec0; do
+for command in vitte vittec; do
   printf '#!/bin/sh\nexit 0\n' > "$TMP_ROOT/bin/$command"
   chmod 0755 "$TMP_ROOT/bin/$command"
 done
@@ -26,11 +26,9 @@ stage_unix() {
     VERSION=$VERSION \
     VITTE_BIN_AMD64="$TMP_ROOT/bin/vitte" \
     VITTE_VITTEC_AMD64="$TMP_ROOT/bin/vittec" \
-    VITTE_VITTEC0_AMD64="$TMP_ROOT/bin/vittec0" \
-    VITTE_BIN_ARM64="$TMP_ROOT/bin/vitte" \
+        VITTE_BIN_ARM64="$TMP_ROOT/bin/vitte" \
     VITTE_VITTEC_ARM64="$TMP_ROOT/bin/vittec" \
-    VITTE_VITTEC0_ARM64="$TMP_ROOT/bin/vittec0" \
-    "$ROOT_DIR/scripts_build/stage-installer-payload.sh" "$dest" "$platform" "$arch" unix
+        "$ROOT_DIR/scripts_build/stage-installer-payload.sh" "$dest" "$platform" "$arch" unix
 
   test -x "$dest/usr/local/bin/vitte"
   test -x "$dest/usr/local/bin/vitte-installer-doctor"
@@ -57,7 +55,7 @@ print(oct(stat.S_IMODE(Path(sys.argv[1]).stat().st_mode)))
 PY
 )" = "0o644"
   grep -F "/usr/local/libexec/vitte/vitte" "$dest/usr/local/bin/vitte" >/dev/null
-  for command in vitte vittec vittec0; do
+  for command in vitte vittec; do
     grep -F 'export VITTE_ROOT=${VITTE_ROOT:-/usr/local/share/vitte}' "$dest/usr/local/bin/$command" >/dev/null
     grep -F "/usr/local/libexec/vitte/$command" "$dest/usr/local/bin/$command" >/dev/null
   done
@@ -75,7 +73,7 @@ stage_windows() {
   test -d "$dest/share/vitte/locales"
   test -d "$dest/share/vitte/completions"
   test -d "$dest/share/vitte/editors"
-  for command in vitte vittec vittec0; do
+  for command in vitte vittec; do
     test -s "$dest/bin/$command.cmd"
     test -s "$dest/bin/$command.ps1"
     grep -F 'set "VITTE_ROOT=%~dp0..\share\vitte"' "$dest/bin/$command.cmd" >/dev/null
