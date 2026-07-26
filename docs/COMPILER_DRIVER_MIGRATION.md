@@ -154,4 +154,4 @@ Additional strictness landed on the same date:
   - compares hashes across repeated bootstrap/selfhost runs
   - exposed via `make bootstrap-selfhost-repro`
 - The retired numbered-stage scripts and their controlled fallback have been
-  removed. `toolchain/seed/vittec0.seed` is now the only bootstrap trust root.
+  removed. `REMOVED-SEED/REMOVED-SEED` is now the only bootstrap trust root.
