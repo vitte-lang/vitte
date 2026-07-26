@@ -115,7 +115,7 @@ RAW_REQUIREMENTS: tuple[tuple[str, str], ...] = (
     ("diagnostics", "Ordre stable"),
     ("diagnostics", "Root-cause cascade"),
     ("fuzz", "Fuzz type system"),
-    ("fuzz", "Differential test vittec0 / vittec / vitte"),
+    ("fuzz", "Differential test vitte / vittec / vitte"),
     ("fuzz", "Corpus multi-fichiers"),
     ("fuzz", "Corpus generiques/traits/lifetimes"),
     ("fuzz", "Gate bloquante make type-system-advanced-gate"),
