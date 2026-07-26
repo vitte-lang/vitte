@@ -4,6 +4,7 @@ set -eu
 ROOT_DIR="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
 OUT_DIR="$ROOT_DIR/target/stage1"
 OUT_BIN="$OUT_DIR/vitte"
+STAGE0="${VITTE_STAGE0:-$ROOT_DIR/target/release/vitte}"
 REPORT_DIR="$ROOT_DIR/target/reports"
 REPORT_TXT="$REPORT_DIR/stage1_compiler_gate.txt"
 REPORT_JSON="$REPORT_DIR/stage1_compiler_gate.json"
@@ -37,12 +38,20 @@ EOF
 mkdir -p "$OUT_DIR" "$REPORT_DIR"
 cd "$ROOT_DIR"
 
-[ -x "bin/vitte" ] || fail "missing current compiler: bin/vitte"
+[ -x "$STAGE0" ] || fail "missing Vitte stage0 compiler: $STAGE0"
 [ -f "$SRC" ] || fail "missing compiler entrypoint: $SRC"
+case "$STAGE0" in
+    */bin/vittec0|*/toolchain/seed/*|*/vittec0.seed)
+        fail "stage0 must be a Vitte compiler, not seed/bootstrap: $STAGE0"
+        ;;
+esac
+if [ "$(LC_ALL=C head -c 2 "$STAGE0" 2>/dev/null || true)" = "#!" ]; then
+    fail "stage0 must be a native Vitte compiler artifact, not a script: $STAGE0"
+fi
 
-if ! VITTE_ROOT="$ROOT_DIR" bin/vitte build "$SRC" -o "$OUT_BIN" > "$BUILD_LOG" 2>&1; then
+if ! VITTE_ROOT="$ROOT_DIR" VITTE_COMPILER="$STAGE0" "$STAGE0" build "$SRC" -o "$OUT_BIN" > "$BUILD_LOG" 2>&1; then
     cat "$BUILD_LOG" >&2
-    fail "bin/vitte build src/vitte/compiler/main.vit -o target/stage1/vitte failed"
+    fail "$STAGE0 build src/vitte/compiler/main.vit -o target/stage1/vitte failed"
 fi
 
 [ -f "$OUT_BIN" ] || fail "stage1 binary was not created"
@@ -71,6 +80,7 @@ cat > "$REPORT_JSON" <<EOF
 {
   "schema": "vitte.stage1.compiler.gate.v1",
   "status": "pass",
+  "stage0": "$STAGE0",
   "entrypoint": "$SRC",
   "output": "target/stage1/vitte",
   "version": "$version_text",
