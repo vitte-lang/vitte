@@ -5,7 +5,7 @@ ROOT_DIR=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 SCRIPT_NAME=build-bsd-installers
 . "$ROOT_DIR/scripts_build/common.sh"
 scripts_build_parse_common_flags "$@"
-VERSION=${VERSION:-$(tr -d ' \r\n' < "$ROOT_DIR/toolchain/scripts/package/PACKAGE_VERSION")}
+VERSION=${VERSION:-$(scripts_build_package_version)}
 OUT_DIR=${OUT_DIR:-$ROOT_DIR/pkgout}
 case "$OUT_DIR" in /*) ;; *) OUT_DIR=$ROOT_DIR/$OUT_DIR ;; esac
 ARCH=${ARCH:-all}
@@ -383,9 +383,6 @@ normalize_family() {
       ;;
   esac
 }
-
-[ -f "$ROOT_DIR/toolchain/scripts/package/PACKAGE_VERSION" ] ||
-  die "PACKAGE_VERSION not found"
 
 [ -x "$ROOT_DIR/scripts_build/stage-installer-payload.sh" ] ||
   die "payload staging script is missing or not executable"
