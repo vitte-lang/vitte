@@ -2741,6 +2741,12 @@ stdlib-max-gate:
 	@test -f target/reports/stdlib_max_gate.json
 	@test -f target/reports/stdlib_max_gate.md
 
+.PHONY: stdlib-alloc-gate
+stdlib-alloc-gate:
+	@python3 tools/stdlib_alloc_gate.py
+	@test -f target/reports/stdlib_alloc_gate.json
+	@test -f target/reports/stdlib_alloc_gate.md
+
 
 .PHONY: mir-opt-gate
 mir-opt-gate:

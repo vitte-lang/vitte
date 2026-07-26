@@ -1,0 +1,51 @@
+space vitte/stdlib/tests/alloc_stress_contracts
+
+use src/vitte/stdlib/alloc/allocator as alloc_allocator
+use src/vitte/stdlib/alloc/bitvec as alloc_bitvec
+use src/vitte/stdlib/alloc/cache as alloc_cache
+use src/vitte/stdlib/alloc/quota as alloc_quota
+use src/vitte/stdlib/alloc/ring_buffer as alloc_ring_buffer
+use src/vitte/stdlib/alloc/tracker as alloc_tracker
+
+proc alloc_stress_bitvec_contract() -> bool {
+    let bits: alloc_bitvec.BitVec = alloc_bitvec.bitvec_with_len(128, false);
+    let ok: bool = alloc_bitvec.bitvec_set_range(&mut bits, alloc_bitvec.bit_range(16, 48), true);
+    give ok
+        and alloc_bitvec.bitvec_is_valid(bits)
+        and alloc_bitvec.bitvec_count_ones(bits) == 32;
+}
+
+proc alloc_stress_ring_buffer_contract() -> bool {
+    let buffer: alloc_ring_buffer.RingBuffer<int> = alloc_ring_buffer.ring_buffer_new<int>(4);
+    let a: bool = alloc_ring_buffer.ring_buffer_push_back<int>(&mut buffer, 1);
+    let b: bool = alloc_ring_buffer.ring_buffer_push_back<int>(&mut buffer, 2);
+    let c = alloc_ring_buffer.ring_buffer_pop_front<int>(&mut buffer);
+    give a and b
+        and is_some<int>(c)
+        and unwrap<int>(c) == 1
+        and alloc_ring_buffer.ring_buffer_len<int>(buffer) == 1;
+}
+
+proc alloc_stress_quota_tracker_contract() -> bool {
+    let quota: alloc_quota.MemoryQuota = alloc_quota.memory_quota("compiler", 64);
+    let tracker: alloc_tracker.AllocationTracker = alloc_tracker.allocation_tracker_new();
+    let layout_value: alloc_allocator.AllocationLayout = alloc_allocator.layout(32, 8);
+    let reserved: bool = alloc_quota.memory_quota_reserve(&mut quota, layout_value);
+    alloc_tracker.allocation_tracker_fail(&mut tracker, layout_value, "stress");
+    give reserved
+        and alloc_quota.memory_quota_is_valid(quota)
+        and alloc_tracker.allocation_tracker_is_valid(tracker)
+        and alloc_tracker.allocation_tracker_profile(tracker).failure_count == 1;
+}
+
+proc alloc_stress_cache_contract<K, V>(cache: alloc_cache.Cache<K, V>) -> bool {
+    let profile: alloc_cache.CacheProfile = alloc_cache.cache_profile<K, V>(cache);
+    give alloc_cache.cache_is_valid<K, V>(cache)
+        and profile.length <= profile.limit;
+}
+
+proc alloc_stress_contracts_run() -> bool {
+    give alloc_stress_bitvec_contract()
+        and alloc_stress_ring_buffer_contract()
+        and alloc_stress_quota_tracker_contract();
+}

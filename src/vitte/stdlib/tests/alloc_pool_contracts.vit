@@ -1,0 +1,38 @@
+space vitte/stdlib/tests/alloc_pool_contracts
+
+use src/vitte/stdlib/alloc/pool as alloc_pool
+use src/vitte/stdlib/alloc/slab as alloc_slab
+use src/vitte/stdlib/alloc/region as alloc_region
+
+proc alloc_pool_reuse_contract() -> bool {
+    let pool: alloc_pool.Pool<int> = alloc_pool.pool_with_capacity<int>(4);
+    let first: alloc_pool.PoolKey = alloc_pool.pool_insert<int>(&mut pool, 10);
+    let second: alloc_pool.PoolKey = alloc_pool.pool_insert<int>(&mut pool, 20);
+    let removed = alloc_pool.pool_remove<int>(&mut pool, first);
+    give alloc_pool.pool_is_valid<int>(pool)
+        and alloc_pool.pool_contains<int>(pool, second)
+        and is_some<int>(removed)
+        and alloc_pool.pool_len<int>(pool) == 1;
+}
+
+proc alloc_slab_key_contract() -> bool {
+    let slab: alloc_slab.Slab<int> = alloc_slab.slab_with_capacity<int>(8);
+    let key: alloc_slab.SlabKey = alloc_slab.slab_insert<int>(&mut slab, 7);
+    give alloc_slab.slab_is_valid<int>(slab)
+        and alloc_slab.slab_contains<int>(&slab, key)
+        and alloc_slab.slab_key_matches(key, alloc_slab.slab_key_index(key), alloc_slab.slab_key_generation(key));
+}
+
+proc alloc_region_set_contract() -> bool {
+    let regions: alloc_region.RegionSet = alloc_region.region_set_new();
+    let id: alloc_region.RegionId = alloc_region.region_set_create(&mut regions, "parser", 4096);
+    give id.value == 1
+        and alloc_region.region_set_len(regions) == 1
+        and not alloc_region.region_set_is_empty(regions);
+}
+
+proc alloc_pool_contracts_run() -> bool {
+    give alloc_pool_reuse_contract()
+        and alloc_slab_key_contract()
+        and alloc_region_set_contract();
+}

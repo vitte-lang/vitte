@@ -1,0 +1,39 @@
+space vitte/stdlib/tests/alloc_intern_contracts
+
+use src/vitte/stdlib/alloc/intern as alloc_intern
+use src/vitte/stdlib/alloc/rope as alloc_rope
+use src/vitte/stdlib/alloc/string as alloc_string
+
+proc alloc_intern_stable_id_contract() -> bool {
+    let interner: alloc_intern.Interner = alloc_intern.interner_new();
+    let first: alloc_intern.InternId = alloc_intern.interner_intern(&mut interner, "alpha");
+    let second: alloc_intern.InternId = alloc_intern.interner_intern(&mut interner, "alpha");
+    let profile: alloc_intern.InternerProfile = alloc_intern.interner_profile(interner);
+    give first.value == second.value
+        and alloc_intern.interner_is_valid(interner)
+        and profile.length == 1;
+}
+
+proc alloc_intern_lookup_contract() -> bool {
+    let interner: alloc_intern.Interner = alloc_intern.interner_new();
+    let id: alloc_intern.InternId = alloc_intern.interner_intern(&mut interner, "beta");
+    let found = alloc_intern.interner_find(interner, "beta");
+    give is_some<alloc_intern.InternId>(found)
+        and unwrap<alloc_intern.InternId>(found).value == id.value
+        and alloc_intern.interner_contains(interner, "beta");
+}
+
+proc alloc_rope_text_contract() -> bool {
+    let left: alloc_string.String = alloc_string.string_from_utf8(compiler_test_string("left"));
+    let right: alloc_string.String = alloc_string.string_from_utf8(compiler_test_string("right"));
+    let rope: alloc_rope.Rope = alloc_rope.rope_concat(alloc_rope.rope_from_string(left), alloc_rope.rope_from_string(right));
+    give alloc_rope.rope_is_valid(rope)
+        and alloc_rope.rope_chunk_count(rope) == 2
+        and alloc_rope.rope_len(rope) == 9;
+}
+
+proc alloc_intern_contracts_run() -> bool {
+    give alloc_intern_stable_id_contract()
+        and alloc_intern_lookup_contract()
+        and alloc_rope_text_contract();
+}

@@ -1,0 +1,41 @@
+space vitte/stdlib/tests/alloc_layout_contracts
+
+use src/vitte/stdlib/alloc/allocator as alloc_allocator
+use src/vitte/stdlib/alloc/layout as alloc_layout
+use src/vitte/stdlib/alloc/page as alloc_page
+
+proc alloc_layout_array_contract() -> bool {
+    let element: alloc_allocator.AllocationLayout = alloc_allocator.layout(24, 8);
+    let array_layout = alloc_layout.layout_array(element, 4);
+    give is_some<alloc_allocator.AllocationLayout>(array_layout)
+        and unwrap<alloc_allocator.AllocationLayout>(array_layout).size == 96
+        and unwrap<alloc_allocator.AllocationLayout>(array_layout).align == 8;
+}
+
+proc alloc_layout_struct_contract() -> bool {
+    let base: alloc_layout.StructLayout = alloc_layout.struct_layout_empty();
+    let header: alloc_layout.LayoutField = alloc_layout.layout_field("header", 4, 4);
+    let payload: alloc_layout.LayoutField = alloc_layout.layout_field("payload", 16, 8);
+    let placed: alloc_layout.StructLayout = alloc_layout.struct_layout_finish(alloc_layout.struct_layout_push(alloc_layout.struct_layout_push(base, header), payload));
+    give placed.valid
+        and placed.size >= 20
+        and placed.align == 8
+        and placed.field_count == 2;
+}
+
+proc alloc_layout_page_contract() -> bool {
+    let size: alloc_page.PageSize = alloc_page.page_size_default();
+    let count = alloc_page.page_count_for(8192, size);
+    let aligned = alloc_page.page_align_up(4097, size);
+    give alloc_page.page_size_is_valid(size)
+        and is_some<usize>(count)
+        and unwrap<usize>(count) == 2
+        and is_some<usize>(aligned)
+        and unwrap<usize>(aligned) == 8192;
+}
+
+proc alloc_layout_contracts_run() -> bool {
+    give alloc_layout_array_contract()
+        and alloc_layout_struct_contract()
+        and alloc_layout_page_contract();
+}
