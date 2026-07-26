@@ -24,6 +24,7 @@ STDLIB_MANIFEST = ROOT / "src/vitte/stdlib/modules.vitte.json"
 REPORT_DIR = ROOT / "target/reports"
 REPORT_JSON = REPORT_DIR / "release_package_stdlib_gate.json"
 REPORT_MD = REPORT_DIR / "release_package_stdlib_gate.md"
+CANONICAL_STDLIB_FAMILIES = ("core", "alloc", "ffi", "json")
 
 
 def load_module(path: Path, name: str) -> Any:
@@ -85,8 +86,8 @@ def parse_payload(result: dict[str, Any], failures: list[str]) -> dict[str, Any]
     return payload
 
 
-def json_sources() -> list[str]:
-    root = ROOT / "src/vitte/stdlib/json"
+def family_sources(family: str) -> list[str]:
+    root = ROOT / "src/vitte/stdlib" / family
     sources = sorted(path.relative_to(ROOT).as_posix() for path in root.glob("*.vitl"))
     index = root / "index.vit"
     if index.is_file():
@@ -94,8 +95,15 @@ def json_sources() -> list[str]:
     return sorted(sources)
 
 
-def validate_json_modules(results: list[dict[str, Any]], failures: list[str]) -> None:
-    for source in json_sources():
+def canonical_stdlib_sources() -> list[str]:
+    sources = ["src/vitte/stdlib/index.vit"]
+    for family in CANONICAL_STDLIB_FAMILIES:
+        sources.extend(family_sources(family))
+    return sorted(set(sources))
+
+
+def validate_canonical_stdlib_modules(results: list[dict[str, Any]], failures: list[str]) -> None:
+    for source in canonical_stdlib_sources():
         require_ok([str(RELEASE), "check", source], results, failures)
 
 
@@ -111,6 +119,26 @@ def validate_stdlib_manifest_strict(failures: list[str]) -> None:
     failures.extend(src_gate.validate_manifest(STDLIB_MANIFEST))
     failures.extend(error for error in src_gate.validate_imports() if "src/vitte/stdlib/" in error)
     failures.extend(error for error in src_gate.validate_exports() if "src/vitte/stdlib/" in error)
+    manifest_paths = {
+        entry.get("path")
+        for entry in current.get("modules", [])
+        if isinstance(entry, dict) and entry.get("kind") == "module"
+    }
+    discovered_paths = {
+        path.relative_to(ROOT).as_posix()
+        for path in (ROOT / "src/vitte/stdlib").rglob("*")
+        if path.is_file() and path.suffix in {".vit", ".vitl"} and "/tests/diagnostics/" not in f"/{path.relative_to(ROOT).as_posix()}"
+    }
+    missing = sorted(discovered_paths - manifest_paths)
+    stale = sorted(manifest_paths - discovered_paths)
+    if missing:
+        failures.append("stdlib manifest is missing live modules: " + ", ".join(missing[:20]))
+    if stale:
+        failures.append("stdlib manifest contains dead modules: " + ", ".join(stale[:20]))
+    for family in CANONICAL_STDLIB_FAMILIES:
+        index = f"src/vitte/stdlib/{family}/index.vit"
+        if index not in manifest_paths:
+            failures.append(f"canonical stdlib family missing strict index manifest entry: {index}")
 
 
 def validate_package_commands(results: list[dict[str, Any]], failures: list[str]) -> None:
@@ -198,7 +226,8 @@ def write_reports(status: str, results: list[dict[str, Any]], failures: list[str
         "schema": "vitte.release.package.stdlib.gate.v1",
         "status": status,
         "release": "target/release/vitte",
-        "json_checks": json_sources(),
+        "canonical_families": CANONICAL_STDLIB_FAMILIES,
+        "canonical_checks": canonical_stdlib_sources(),
         "workspace": str(WORKSPACE.relative_to(ROOT)),
         "package": str(PACKAGE.relative_to(ROOT)),
         "commands": results,
@@ -209,7 +238,7 @@ def write_reports(status: str, results: list[dict[str, Any]], failures: list[str
         "# release package stdlib gate",
         "",
         f"- status: {status}",
-        f"- json checks: {len(json_sources())}",
+        f"- canonical stdlib checks: {len(canonical_stdlib_sources())}",
         f"- commands: {len(results)}",
     ]
     if failures:
@@ -225,7 +254,7 @@ def main() -> int:
     if not RELEASE.is_file():
         failures.append("missing target/release/vitte")
     else:
-        validate_json_modules(results, failures)
+        validate_canonical_stdlib_modules(results, failures)
         validate_stdlib_manifest_strict(failures)
         validate_package_commands(results, failures)
         validate_lockfile_deterministic(results, failures)
@@ -237,7 +266,7 @@ def main() -> int:
         for failure in failures:
             print(f" - {failure}", file=sys.stderr)
         return 1
-    print(f"[release-package-stdlib-gate] ok json={len(json_sources())} commands={len(results)}")
+    print(f"[release-package-stdlib-gate] ok canonical={len(canonical_stdlib_sources())} commands={len(results)}")
     return 0
 
 
