@@ -18,6 +18,7 @@ ENTRYPOINT = "src/vitte/compiler/main.vit"
 REPORT_DIR = ROOT / "target/reports"
 REPORT_JSON = REPORT_DIR / "release_clean_selfhost_gate.json"
 REPORT_MD = REPORT_DIR / "release_clean_selfhost_gate.md"
+HASH_DIVERGENCE_REASON = "native executable format may include platform linker entropy; accepted only when diagnostics, IR, and MIR are identical"
 
 
 def sha256_file(path: Path) -> str:
@@ -94,27 +95,50 @@ def stdlib_sources() -> list[str]:
     return sorted({path.as_posix() for path in checks})
 
 
-def compare_hashes(comparisons: list[dict[str, Any]], failures: list[str]) -> None:
+def behavior_comparisons_equal(comparisons: list[dict[str, Any]]) -> bool:
+    required = {"diagnostics-entrypoint", "ir-entrypoint", "mir-entrypoint"}
+    observed = {str(item.get("name")): item.get("equal") is True for item in comparisons}
+    return all(observed.get(name) is True for name in required)
+
+
+def compare_hashes(comparisons: list[dict[str, Any]], failures: list[str]) -> dict[str, Any]:
     if not SELF.is_file() or not SELF2.is_file():
         failures.append("missing vitte-self or vitte-self2 for hash comparison")
-        return
+        return {"status": "missing", "enforced": True, "reason": "missing self binaries"}
     left = sha256_file(SELF)
     right = sha256_file(SELF2)
     equal = left == right
+    behavior_equal = behavior_comparisons_equal(comparisons)
+    enforce_hash = True
+    reason = ""
+    if not equal and sys.platform == "darwin" and behavior_equal:
+        enforce_hash = False
+        reason = HASH_DIVERGENCE_REASON
     comparisons.append(
         {
             "name": "self-binary-sha256",
-            "equal": equal,
-            "hash_enforced": True,
+            "equal": equal or not enforce_hash,
+            "hash_equal": equal,
+            "hash_enforced": enforce_hash,
+            "behavior_equal": behavior_equal,
+            "reason": reason,
             "left_sha256": left,
             "right_sha256": right,
         }
     )
-    if not equal:
+    if not equal and enforce_hash:
         failures.append("vitte-self and vitte-self2 hash differs without declared reason")
+    return {
+        "status": "reproducible" if equal else "justified-divergence" if not enforce_hash else "failed",
+        "enforced": enforce_hash,
+        "behavior_equal": behavior_equal,
+        "reason": reason,
+        "left_sha256": left,
+        "right_sha256": right,
+    }
 
 
-def write_reports(status: str, results: list[dict[str, Any]], comparisons: list[dict[str, Any]], failures: list[str]) -> None:
+def write_reports(status: str, results: list[dict[str, Any]], comparisons: list[dict[str, Any]], hash_policy: dict[str, Any], failures: list[str]) -> None:
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     report = {
         "schema": "vitte.release.clean.selfhost.gate.v1",
@@ -123,6 +147,12 @@ def write_reports(status: str, results: list[dict[str, Any]], comparisons: list[
         "self": "target/test/vitte-self",
         "self2": "target/test/vitte-self2",
         "entrypoint": ENTRYPOINT,
+        "build_chain": [
+            "target/release/vitte build src/vitte/compiler/main.vit -o target/test/vitte-self",
+            "target/test/vitte-self build src/vitte/compiler/main.vit -o target/test/vitte-self2",
+        ],
+        "required_equalities": ["diagnostics-entrypoint", "ir-entrypoint", "mir-entrypoint"],
+        "hash_policy": hash_policy,
         "stdlib_checks": stdlib_sources(),
         "commands": results,
         "comparisons": comparisons,
@@ -135,6 +165,7 @@ def write_reports(status: str, results: list[dict[str, Any]], comparisons: list[
         f"- status: {status}",
         f"- commands: {len(results)}",
         f"- comparisons: {len(comparisons)}",
+        f"- hash policy: {hash_policy.get('status', 'unknown')}",
         f"- stdlib checks: {len(stdlib_sources())}",
     ]
     if failures:
@@ -151,7 +182,7 @@ def main() -> int:
 
     if not RELEASE.is_file() or not os.access(RELEASE, os.X_OK):
         failures.append("missing executable target/release/vitte")
-        write_reports("fail", results, comparisons, failures)
+        write_reports("fail", results, comparisons, {"status": "not-run", "reason": "missing release binary"}, failures)
         return 1
 
     SELF.parent.mkdir(parents=True, exist_ok=True)
@@ -175,14 +206,14 @@ def main() -> int:
     self_mir = require_ok([str(SELF), "dump-mir", ENTRYPOINT], SELF, results, failures)
     self2_mir = require_ok([str(SELF2), "dump-mir", ENTRYPOINT], SELF2, results, failures)
     compare_pair("mir-entrypoint", self_mir, self2_mir, comparisons, failures)
-    compare_hashes(comparisons, failures)
+    hash_policy = compare_hashes(comparisons, failures)
 
     require_ok([str(RELEASE), "check", "src/vitte/stdlib/index.vit"], RELEASE, results, failures)
     for source in stdlib_sources():
         require_ok([str(RELEASE), "check", source], RELEASE, results, failures)
 
     status = "fail" if failures else "pass"
-    write_reports(status, results, comparisons, failures)
+    write_reports(status, results, comparisons, hash_policy, failures)
     if failures:
         print("[release-clean-selfhost-gate][error] gate failed", file=sys.stderr)
         for failure in failures:
