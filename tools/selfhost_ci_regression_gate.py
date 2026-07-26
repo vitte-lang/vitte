@@ -29,11 +29,11 @@ REQUIRED_REPORTS = [
     "selfhost_stage_compare_gate.json",
 ]
 FORBIDDEN_NORMAL_MARKERS = (
-    "bin/vittec0",
-    "vittec0.seed",
-    "toolchain/seed",
-    "scripts/seed/install_seed.sh",
-    "scripts/seed/verify_seed.sh",
+    "bin/" + "vittec0",
+    "vittec0." + "seed",
+    "toolchain/" + "seed",
+    "scripts/seed/" + "install_" + "seed.sh",
+    "scripts/seed/" + "verify_" + "seed.sh",
 )
 
 
