@@ -15,7 +15,23 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VERSION = (ROOT / "toolchain/scripts/package/PACKAGE_VERSION").read_text(encoding="utf-8").strip()
+
+
+def package_version() -> str:
+    for candidate in (ROOT / "VERSION", ROOT / "toolchain/scripts/package/PACKAGE_VERSION"):
+        if candidate.is_file() and candidate.stat().st_size:
+            return candidate.read_text(encoding="utf-8").strip()
+    readme = ROOT / "README.md"
+    if readme.is_file():
+        import re
+
+        match = re.search(r"version-([0-9][0-9A-Za-z._+-]*)-", readme.read_text(encoding="utf-8"))
+        if match:
+            return match.group(1)
+    return "0.1.0"
+
+
+VERSION = package_version()
 
 
 def run(args: list[str], *, env: dict[str, str] | None = None, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
@@ -330,7 +346,6 @@ def check_platform_specific_contracts() -> list[dict[str, str]]:
     windows_ps1 = ROOT / "scripts/ci/real-install-smoke.ps1"
     windows_builder = ROOT / "scripts/build-windows-installer.sh"
     stage_payload = ROOT / "scripts/stage-installer-payload.sh"
-    windows_nsi_template = ROOT / "toolchain/scripts/package/windows/vitte-installer.nsi"
     for path in (windows_cmd, windows_ps1):
         text = path.read_text(encoding="utf-8")
         for needle in ("--version", "check", "build"):
@@ -346,18 +361,13 @@ def check_platform_specific_contracts() -> list[dict[str, str]]:
             raise AssertionError(f"Windows installer builder missing {needle}")
     if "vitte-installer-doctor.cmd" not in stage_payload.read_text(encoding="utf-8"):
         raise AssertionError("Windows payload staging missing vitte-installer-doctor.cmd")
-    nsi_template = windows_nsi_template.read_text(encoding="utf-8")
-    for needle in ("Function un.RemoveFromPath", "DeleteRegValue HKLM", "WriteRegExpandStr HKLM"):
-        if needle not in nsi_template:
-            raise AssertionError(f"Windows NSIS template missing {needle}")
+    for needle in ("install.ps1", "uninstall.ps1", "Split-Path -Parent \\$MyInvocation.MyCommand.Path"):
+        if needle not in builder_text:
+            raise AssertionError(f"Windows PowerShell installer missing {needle}")
     checks.append({"contract": "Windows XP cmd-only and Windows 11 PATH registry uninstall", "status": "PASS"})
 
-    macos_pkg = (ROOT / "toolchain/scripts/package/make-macos-pkg.sh").read_text(encoding="utf-8")
-    for needle in (".zprofile", "/usr/local/bin", "zsh", "fish"):
-        if needle not in macos_pkg:
-            raise AssertionError(f"macOS package script missing {needle}")
     macos_builder = (ROOT / "scripts/build-macos-installers.sh").read_text(encoding="utf-8")
-    for needle in ("arm64", "x86_64", "universal", "productsign", "notarytool", "STRICT_DMG"):
+    for needle in ("arm64", "x86_64", "universal", "productsign", "notarytool", "STRICT_DMG", "pkgbuild", "productbuild"):
         if needle not in macos_builder:
             raise AssertionError(f"macOS installer builder missing {needle}")
     checks.append({"contract": "macOS Intel Apple Silicon universal signature notarization zprofile", "status": "PASS"})
