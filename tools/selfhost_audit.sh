@@ -33,7 +33,7 @@ compiler_dirs="src/vitte/compiler src/vitte/packages/compiler/driver"
 expected_compiler_root="src/vitte/compiler"
 expected_compiler_entry="src/vitte/compiler/main.vit"
 seed_manifest="toolchain/seed/manifest.txt"
-seed_artifact="toolchain/seed/vittec0.seed"
+seed_artifact="bin/vitte"
 audit_errors=0
 runtime_bridge_dir="$ROOT_DIR/src/vitte/compiler/backends/runtime_c"
 
@@ -96,7 +96,7 @@ printf '  compiler_entry=%s\n' "$expected_compiler_entry"
 if [ ! -f "$seed_manifest" ]; then
   printf '    [error] missing seed manifest: %s\n' "$seed_manifest"
   audit_errors=1
-elif ! grep -F 'seed_file=toolchain/seed/vittec0.seed' "$seed_manifest" >/dev/null; then
+elif ! grep -F 'seed_file=bin/vitte' "$seed_manifest" >/dev/null; then
   printf '    [error] seed manifest does not point at %s\n' "$seed_artifact"
   audit_errors=1
 fi
