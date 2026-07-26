@@ -2444,6 +2444,7 @@ help:
 	@echo "  make compiler-entrypoint-gate verify canonical compiler entrypoint, compiler manifest reachability, and no bootstrap imports"
 	@echo "  make stdlib-gate run complete stdlib coverage and artifact gate"
 	@echo "  make stdlib-max-gate enforce max stdlib module/symbol coverage"
+	@echo "  make stdlib-total-gate verify canonical stdlib entrypoint and compiler-required stdlib families"
 	@echo "  make ci-std-fast std-focused CI (stdlib + snapshots + wrappers)"
 	@echo "  make ci-bridge-compat alias of ci-mod-fast for vitte liaison compatibility"
 	@echo "  make modules-tests run module graph/doctor fixtures"
@@ -2769,6 +2770,12 @@ stdlib-json-gate:
 	@python3 tools/stdlib_json_gate.py
 	@test -f target/reports/stdlib_json_gate.json
 	@test -f target/reports/stdlib_json_gate.md
+
+.PHONY: stdlib-total-gate
+stdlib-total-gate: stdlib-alloc-gate stdlib-ffi-gate stdlib-json-gate
+	@python3 tools/check_stdlib_entrypoint.py
+	@test -f target/reports/stdlib_total_gate.json
+	@test -f target/reports/stdlib_total_gate.md
 
 
 .PHONY: mir-opt-gate

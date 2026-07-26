@@ -100,7 +100,10 @@ proc map_or_else<T, U, E>(result: Result<T, E>, fallback: proc(E) -> U, f: proc(
 
 proc and<T, U, E>(result: Result<T, E>, next: Result<U, E>) -> Result<U, E> {
     if is_ok(result) {
-        give next;
+        if is_ok(next) {
+            give ok<U, E>(next.value);
+        }
+        give err<U, E>(next.error);
     }
     give err<U, E>(result.error);
 }
@@ -116,7 +119,10 @@ proc or<T, E, F>(result: Result<T, E>, fallback: Result<T, F>) -> Result<T, F> {
     if is_ok(result) {
         give ok<T, F>(result.value);
     }
-    give fallback;
+    if is_ok(fallback) {
+        give ok<T, F>(fallback.value);
+    }
+    give err<T, F>(fallback.error);
 }
 
 proc or_else<T, E, F>(result: Result<T, E>, fallback: proc(E) -> Result<T, F>) -> Result<T, F> {
@@ -156,7 +162,10 @@ proc as_mut<T, E>(result: ref mut Result<T, E>) -> Result<ref mut T, ref mut E> 
 
 proc flatten<T, E>(result: Result<Result<T, E>, E>) -> Result<T, E> {
     if is_ok(result) {
-        give result.value;
+        if is_ok(result.value) {
+            give ok<T, E>(result.value.value);
+        }
+        give err<T, E>(result.value.error);
     }
     give err<T, E>(result.error);
 }
