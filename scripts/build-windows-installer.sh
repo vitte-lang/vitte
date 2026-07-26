@@ -5,7 +5,7 @@ ROOT_DIR=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 SCRIPT_NAME=build-windows-installer
 . "$ROOT_DIR/scripts_build/common.sh"
 scripts_build_parse_common_flags "$@"
-VERSION=${VERSION:-$(tr -d ' \r\n' < "$ROOT_DIR/toolchain/scripts/package/PACKAGE_VERSION")}
+VERSION=${VERSION:-$(scripts_build_package_version)}
 OUT_DIR=${OUT_DIR:-$ROOT_DIR/pkgout}
 case "$OUT_DIR" in /*) ;; *) OUT_DIR=$ROOT_DIR/$OUT_DIR ;; esac
 ARCH=${ARCH:-all}
@@ -108,15 +108,82 @@ exit /b %ERRORLEVEL%
 EOF
     cat > "$payload/bin/$command.ps1" <<EOF
 \$ErrorActionPreference = "Stop"
-\$env:VITTE_ROOT = Join-Path \$PSScriptRoot "..\\share\\vitte"
-\$command = Join-Path \$PSScriptRoot "$command.exe"
+\$ScriptDir = Split-Path -Parent \$MyInvocation.MyCommand.Path
+\$env:VITTE_ROOT = Join-Path \$ScriptDir "..\\share\\vitte"
+\$command = Join-Path \$ScriptDir "$command.exe"
 if (-not (Test-Path \$command)) {
-  \$command = Join-Path \$PSScriptRoot "vitte.exe"
+  \$command = Join-Path \$ScriptDir "vitte.exe"
 }
 & \$command @args
 exit \$LASTEXITCODE
 EOF
   done
+}
+
+write_powershell_installers() {
+  stage=$1
+  cat > "$stage/install.ps1" <<'EOF'
+$ErrorActionPreference = "Stop"
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$DefaultPrefix = Join-Path $env:ProgramFiles "Vitte"
+if ([string]::IsNullOrEmpty($DefaultPrefix)) {
+  $DefaultPrefix = "C:\Vitte"
+}
+$Prefix = $DefaultPrefix
+if ($args.Count -ge 1 -and -not [string]::IsNullOrEmpty($args[0])) {
+  $Prefix = $args[0]
+}
+$Payload = Join-Path $ScriptDir "payload"
+if (-not (Test-Path $Payload)) {
+  throw "missing payload directory: $Payload"
+}
+if (-not (Test-Path $Prefix)) {
+  New-Item -ItemType Directory -Force -Path $Prefix | Out-Null
+}
+Copy-Item -Path (Join-Path $Payload "*") -Destination $Prefix -Recurse -Force
+$BinDir = Join-Path $Prefix "bin"
+$ShareDir = Join-Path $Prefix "share\vitte"
+[Environment]::SetEnvironmentVariable("VITTE_ROOT", $ShareDir, "Machine")
+$MachinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
+if ($MachinePath -eq $null) { $MachinePath = "" }
+if ((";" + $MachinePath + ";").IndexOf(";" + $BinDir + ";", [StringComparison]::OrdinalIgnoreCase) -lt 0) {
+  if ($MachinePath.Length -eq 0) {
+    [Environment]::SetEnvironmentVariable("Path", $BinDir, "Machine")
+  } else {
+    [Environment]::SetEnvironmentVariable("Path", $BinDir + ";" + $MachinePath, "Machine")
+  }
+}
+Write-Host "Vitte installed to $Prefix"
+Write-Host "Supported Windows: XP, Vista, 7, 8, 8.1, 10, 11"
+EOF
+
+  cat > "$stage/uninstall.ps1" <<'EOF'
+$ErrorActionPreference = "Stop"
+$DefaultPrefix = Join-Path $env:ProgramFiles "Vitte"
+if ([string]::IsNullOrEmpty($DefaultPrefix)) {
+  $DefaultPrefix = "C:\Vitte"
+}
+$Prefix = $DefaultPrefix
+if ($args.Count -ge 1 -and -not [string]::IsNullOrEmpty($args[0])) {
+  $Prefix = $args[0]
+}
+$BinDir = Join-Path $Prefix "bin"
+$MachinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
+if ($MachinePath -ne $null) {
+  $parts = @()
+  foreach ($part in $MachinePath.Split(";")) {
+    if ($part.Length -gt 0 -and [String]::Compare($part, $BinDir, $true) -ne 0) {
+      $parts += $part
+    }
+  }
+  [Environment]::SetEnvironmentVariable("Path", [String]::Join(";", $parts), "Machine")
+}
+[Environment]::SetEnvironmentVariable("VITTE_ROOT", $null, "Machine")
+if (Test-Path $Prefix) {
+  Remove-Item -Recurse -Force $Prefix
+}
+Write-Host "Vitte removed from $Prefix"
+EOF
 }
 
 write_nsi() {
@@ -261,6 +328,7 @@ build_one() {
   fi
 
   write_cmd_shims "$payload"
+  write_powershell_installers "$stage"
   write_nsi "$stage" "$arch"
 
   cat > "$stage/BUILD.txt" <<EOF
@@ -280,7 +348,7 @@ The canonical generator validates the PE header before invoking NSIS:
 EOF
 
   rm -f "$kit_file" "$kit_file.sha256"
-  scripts_build_tar_gz "$kit_file" "$stage" installer.nsi BUILD.txt LICENSE README.md logo.png payload
+  scripts_build_tar_gz "$kit_file" "$stage" installer.nsi install.ps1 uninstall.ps1 BUILD.txt LICENSE README.md logo.png payload
   scripts_build_sha256_write "$kit_file" "$kit_file.sha256"
   printf '[build-windows-installer] wrote build kit %s (%s bytes)\n' "$kit_file" "$(wc -c < "$kit_file" | tr -d ' ')"
 
