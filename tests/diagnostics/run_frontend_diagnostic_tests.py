@@ -63,7 +63,7 @@ def main() -> int:
     leaked = [value for value in analyze(valid_multiline, "valid-multiline.vit") if value["code"] in invalid_codes]
     if leaked:
         raise SystemExit(f"valid multi-line procedure signature rejected: {leaked}")
-    driver = ROOT / "bin/vittec0"
+    driver = ROOT / "bin/vitte"
     environment = {**os.environ, "VITTE_ROOT": str(ROOT), "NO_COLOR": "1"}
     shell_result = subprocess.run(
         [str(driver), "check", "--lang", "en", str(ROOT / "tests/diagnostics/frontend/parser/missing-parameter-colon.vit")],
