@@ -11,7 +11,7 @@ ACTIVE = ROOT / "tools/compiler_effective_gate/ACTIVE_FILES.txt"
 CONTRACTS = ROOT / "tools/compiler_effective_gate/VERSIONED_CONTRACTS.txt"
 TEST_OWNERS = ROOT / "tools/compiler_effective_gate/TEST_OWNERS.txt"
 ENTRY = ROOT / "src/vitte/compiler/main.vit"
-SEED = ROOT / "toolchain/seed/vittec0.seed"
+SEED = ROOT / "bin/vitte"
 WORKFLOW = ROOT / ".github/workflows/compiler-effective-gate.yml"
 USE_RE = re.compile(r"^\s*use\s+(vitte/compiler/[A-Za-z0-9_/-]+)", re.MULTILINE)
 
