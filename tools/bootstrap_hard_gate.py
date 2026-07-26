@@ -45,7 +45,7 @@ def main() -> int:
     payload: dict[str, object] = {
         "schema": "vitte.bootstrap.hard_gate",
         "schema_version": "2.0.0",
-        "trust_root": "toolchain/seed/vittec0.seed",
+        "trust_root": "bin/vitte",
         "platform": {
             "system": platform.system(),
             "machine": platform.machine(),
