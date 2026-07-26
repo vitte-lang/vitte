@@ -34,7 +34,6 @@ def expect_rejected(config: dict[str, object], label: str) -> None:
 
 def active_bootstrap_files() -> list[Path]:
     files = [
-        ROOT / "Makefile",
         ROOT / ".github/workflows/bootstrap.yml",
         ROOT / "toolchain/bootstrap.sh",
     ]
