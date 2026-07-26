@@ -32,6 +32,15 @@ DEF_RE = re.compile(
     re.MULTILINE,
 )
 STDLIB_MANIFEST = ROOT / "src/vitte/stdlib/modules.vitte.json"
+STDLIB_REQUIRED_FAMILIES = [
+    "core",
+    "alloc",
+    "platform",
+    "experimental",
+    "tests",
+    "examples",
+    "benchmarks",
+]
 
 
 def rel(path: Path) -> str:
@@ -160,6 +169,43 @@ def dependency_modules(path: Path) -> list[str]:
     return sorted(modules)
 
 
+def stdlib_family_for_path(path: Path) -> str:
+    stdlib_root = ROOT / "src/vitte/stdlib"
+    relative = path.relative_to(stdlib_root)
+    if len(relative.parts) == 1:
+        return "root"
+    return relative.parts[0]
+
+
+def stdlib_family_manifest(root: Path, extensions: tuple[str, ...]) -> list[dict[str, object]]:
+    source_counts: dict[str, int] = {}
+    module_counts: dict[str, int] = {}
+    for path in sorted(path for path in root.rglob("*") if path.is_file() and path.suffix in extensions):
+        family = stdlib_family_for_path(path)
+        source_counts[family] = source_counts.get(family, 0) + 1
+        if not is_negative_fixture(path):
+            module_counts[family] = module_counts.get(family, 0) + 1
+
+    families: list[dict[str, object]] = []
+    for family in sorted(source_counts):
+        if family == "root":
+            path = "src/vitte/stdlib"
+            required = False
+        else:
+            path = f"src/vitte/stdlib/{family}"
+            required = family in STDLIB_REQUIRED_FAMILIES
+        families.append(
+            {
+                "name": family,
+                "path": path,
+                "required": required,
+                "source_count": source_counts[family],
+                "module_count": module_counts.get(family, 0),
+            }
+        )
+    return families
+
+
 def discover_modules(root: Path, extensions: tuple[str, ...], public_contract: bool) -> list[dict[str, object]]:
     entries: list[dict[str, object]] = []
     paths = sorted(path for path in root.rglob("*") if path.is_file() and path.suffix in extensions)
@@ -175,6 +221,7 @@ def discover_modules(root: Path, extensions: tuple[str, ...], public_contract: b
         if public_contract:
             entry["dependencies"] = dependency_modules(path)
             entry["exports"] = public_exports(path)
+            entry["family"] = stdlib_family_for_path(path)
             entry["official"] = kind == "module"
         entries.append(entry)
     return entries
@@ -194,9 +241,15 @@ def manifest_for(root: str, extensions: tuple[str, ...], public_contract: bool) 
         "modules": discover_modules(root_path, extensions, public_contract),
     }
     if public_contract:
+        manifest["families"] = stdlib_family_manifest(root_path, extensions)
+        manifest["family_policy"] = {
+            "required": STDLIB_REQUIRED_FAMILIES,
+            "additional_families": "allowed_only_with_real_source_content",
+        }
         manifest["source_extensions"] = list(extensions)
         manifest["public_contract"] = {
             "exports": "checked",
+            "families": "checked",
             "dependencies": "checked",
             "imports": "checked",
             "spaces": "checked",
@@ -234,7 +287,59 @@ def load_manifest(path: Path) -> dict[str, object]:
         raise AssertionError(f"{rel(path)} has invalid source_extensions")
     if not isinstance(data.get("modules"), list):
         raise AssertionError(f"{rel(path)} has invalid modules list")
+    if path == STDLIB_MANIFEST:
+        if not isinstance(data.get("families"), list):
+            raise AssertionError(f"{rel(path)} has invalid families list")
+        policy = data.get("family_policy")
+        if not isinstance(policy, dict):
+            raise AssertionError(f"{rel(path)} has invalid family_policy")
+        if policy.get("required") != STDLIB_REQUIRED_FAMILIES:
+            raise AssertionError(f"{rel(path)} has invalid required family policy")
+        if policy.get("additional_families") != "allowed_only_with_real_source_content":
+            raise AssertionError(f"{rel(path)} has invalid additional family policy")
     return data
+
+
+def validate_stdlib_families(data: dict[str, object]) -> list[str]:
+    errors: list[str] = []
+    families = data.get("families")
+    if not isinstance(families, list):
+        return ["src/vitte/stdlib/modules.vitte.json missing families list"]
+
+    seen: set[str] = set()
+    for family in families:
+        if not isinstance(family, dict):
+            errors.append("stdlib family entry is not an object")
+            continue
+        name = family.get("name")
+        path = family.get("path")
+        required = family.get("required")
+        source_count = family.get("source_count")
+        module_count = family.get("module_count")
+        if not isinstance(name, str) or not name:
+            errors.append(f"stdlib family has invalid name: {name!r}")
+            continue
+        if name in seen:
+            errors.append(f"stdlib family duplicated: {name}")
+        seen.add(name)
+        if not isinstance(path, str) or not path.startswith("src/vitte/stdlib"):
+            errors.append(f"stdlib family {name} has invalid path: {path!r}")
+            continue
+        family_path = ROOT / path
+        if name != "root" and not family_path.is_dir():
+            errors.append(f"stdlib family {name} path does not exist: {path}")
+        if not isinstance(required, bool):
+            errors.append(f"stdlib family {name} has invalid required flag")
+        if not isinstance(source_count, int) or source_count <= 0:
+            errors.append(f"stdlib family {name} has no real source content")
+        if not isinstance(module_count, int) or module_count < 0:
+            errors.append(f"stdlib family {name} has invalid module count")
+
+    for required in STDLIB_REQUIRED_FAMILIES:
+        if required not in seen:
+            errors.append(f"stdlib required family is missing: {required}")
+
+    return errors
 
 
 def validate_manifest(path: Path) -> list[str]:
@@ -252,6 +357,8 @@ def validate_manifest(path: Path) -> list[str]:
     declared_entries = data["modules"]
     declared = {entry.get("path") for entry in declared_entries if isinstance(entry, dict)}
     require_public_contract = path == STDLIB_MANIFEST
+    if require_public_contract:
+        errors.extend(validate_stdlib_families(data))
 
     for missing in sorted(discovered - declared):
         errors.append(f"{rel(path)} missing source entry for {missing}")
@@ -281,10 +388,16 @@ def validate_manifest(path: Path) -> list[str]:
         if require_public_contract:
             official = entry.get("official")
             exports = entry.get("exports")
+            family = entry.get("family")
             dependencies = entry.get("dependencies")
             if not isinstance(official, bool):
                 errors.append(f"{source} has invalid official flag")
                 continue
+            if not isinstance(family, str) or not family:
+                errors.append(f"{source} has invalid family")
+                continue
+            if family != stdlib_family_for_path(ROOT / source):
+                errors.append(f"{source} has family {family!r}, expected {stdlib_family_for_path(ROOT / source)!r}")
             if not isinstance(exports, list) or not all(isinstance(export, str) for export in exports):
                 errors.append(f"{source} has invalid exports list")
                 continue
