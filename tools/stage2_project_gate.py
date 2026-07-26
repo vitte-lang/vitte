@@ -118,10 +118,15 @@ def external_seed_dependency_failures() -> list[str]:
         "toolchain/seed/vittec0.seed",
         "scripts/seed/install_seed.sh",
         "scripts/seed/verify_seed.sh",
+        "BOOTSTRAP_FULL_COMPILER",
+        "vitte-bootstrap-payload-bridge",
+        "payload_source",
+        "write_payload_file",
+        "/tmp/vitte-bootstrap-payload",
     ]
     for marker in forbidden:
         if marker in strings:
-            failures.append(f"stage2 contains external seed dependency marker: {marker}")
+            failures.append(f"stage2 contains forbidden bootstrap/payload marker: {marker}")
     return failures
 
 

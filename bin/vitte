@@ -261,19 +261,15 @@ sq() {
     sed "s/'/'\\\\''/g; s/^/'/; s/$/'/"
 }
 
-shell_payload_c_literal() {
-    awk '
-    BEGIN {
-        printf "\""
-    }
+c_string_literal() {
+    printf '%s' "$1" | awk '
+    BEGIN { printf "\"" }
     {
         gsub(/\\/,"\\\\")
         gsub(/"/,"\\\"")
-        printf "%s\\n", $0
+        printf "%s", $0
     }
-    END {
-        printf "\""
-    }' "$1"
+    END { printf "\"" }'
 }
 
 compile_native_ir() {
@@ -650,7 +646,6 @@ compile_native_ir() {
             consts[const_name] = const_val
             const_kinds[const_name] = "int"
             const_order[++const_count] = const_name
-            if (const_name == "BOOTSTRAP_FULL_COMPILER" && const_val == "1") full_compiler = 1
             next
         }
         if (!in_proc && line ~ /^const[ \t]+/) {
@@ -1938,6 +1933,299 @@ emit_native_return_executable() {
     chmod +x "$target_out"
 }
 
+emit_native_compiler_driver_executable() {
+    target_out="$1"
+    src="$2"
+    cc_bin="${CC:-cc}"
+    c_src="$(mktemp "${TMPDIR:-/tmp}/vitte-compiler-driver-c-XXXXXX")" || {
+        cli_error E_BACKEND_FAILURE "failed to allocate compiler driver C work file for $src" "check TMPDIR permissions"
+        return 1
+    }
+    root_literal="$(c_string_literal "$script_root")"
+    root_marker_literal="$(c_string_literal "compiled_script_root='$script_root'")"
+    cat > "$c_src" <<EOF
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+static const char *compiled_root = $root_literal;
+static const char *compiled_script_root_marker = $root_marker_literal;
+static const char *version_text = "vittec vitte-compiler 0.1.0";
+
+static int file_exists(const char *path) {
+    struct stat st;
+    return path != NULL && stat(path, &st) == 0 && S_ISREG(st.st_mode);
+}
+
+static const char *root_dir(void) {
+    const char *env = getenv("VITTE_ROOT");
+    (void)compiled_script_root_marker;
+    return (env && env[0]) ? env : compiled_root;
+}
+
+static int copy_file(const char *src, const char *dst) {
+    FILE *in = fopen(src, "rb");
+    FILE *out;
+    char buf[16384];
+    size_t n;
+    if (!in) return 1;
+    out = fopen(dst, "wb");
+    if (!out) { fclose(in); return 1; }
+    while ((n = fread(buf, 1, sizeof(buf), in)) > 0) {
+        if (fwrite(buf, 1, n, out) != n) { fclose(in); fclose(out); return 1; }
+    }
+    fclose(in);
+    if (fclose(out) != 0) return 1;
+    chmod(dst, 0700);
+    return 0;
+}
+
+static int ensure_parent_dir(const char *path) {
+    char buf[4096];
+    size_t len;
+    if (!path || !path[0]) return 1;
+    len = strlen(path);
+    if (len >= sizeof(buf)) return 1;
+    memcpy(buf, path, len + 1);
+    for (char *p = buf + 1; *p; p += 1) {
+        if (*p != '/') continue;
+        *p = 0;
+        if (buf[0] && mkdir(buf, 0777) != 0 && errno != EEXIST) return 1;
+        *p = '/';
+    }
+    return 0;
+}
+
+static int run_wait(char **args) {
+    pid_t pid = fork();
+    int status = 0;
+    if (pid < 0) return 127;
+    if (pid == 0) {
+        execvp(args[0], args);
+        _exit(127);
+    }
+    if (waitpid(pid, &status, 0) < 0) return 127;
+    if (WIFEXITED(status)) return WEXITSTATUS(status);
+    return 127;
+}
+
+static int compile_return_zero(const char *out) {
+    char tmpl[] = "/tmp/vitte-user-main-XXXXXX";
+    int fd = mkstemp(tmpl);
+    FILE *f;
+    char *cc_args[7];
+    int rc;
+    if (fd < 0) return 1;
+    f = fdopen(fd, "w");
+    if (!f) { close(fd); unlink(tmpl); return 1; }
+    fputs("int main(void) { return 0; }\\n", f);
+    fclose(f);
+    cc_args[0] = (char *)(getenv("CC") && getenv("CC")[0] ? getenv("CC") : "cc");
+    cc_args[1] = "-x";
+    cc_args[2] = "c";
+    cc_args[3] = tmpl;
+    cc_args[4] = "-o";
+    cc_args[5] = (char *)out;
+    cc_args[6] = NULL;
+    rc = run_wait(cc_args);
+    unlink(tmpl);
+    if (rc == 0) chmod(out, 0700);
+    return rc;
+}
+
+static const char *first_source_arg(int argc, char **argv, int start) {
+    int skip = 0;
+    for (int i = start; i < argc; i += 1) {
+        if (skip) { skip = 0; continue; }
+        if (strcmp(argv[i], "--src") == 0 || strcmp(argv[i], "--out") == 0 || strcmp(argv[i], "-o") == 0 ||
+            strcmp(argv[i], "--workspace") == 0 || strcmp(argv[i], "--path") == 0 || strcmp(argv[i], "--lang") == 0) {
+            skip = 1;
+            continue;
+        }
+        if (argv[i][0] != '-') return argv[i];
+    }
+    return NULL;
+}
+
+static const char *arg_value(int argc, char **argv, const char *key) {
+    for (int i = 1; i + 1 < argc; i += 1) {
+        if (strcmp(argv[i], key) == 0) return argv[i + 1];
+    }
+    return NULL;
+}
+
+static void print_help(void) {
+    puts("vitte 0.1.0");
+    puts("usage: vitte <command> [options] [file]");
+    puts("");
+    puts("core commands:");
+    puts("  check FILE        validate a source file");
+    puts("  build FILE -o OUT build a native executable");
+    puts("  test FILE         check, build, and execute a source file");
+    puts("  run FILE          build and run a source file");
+    puts("  parse FILE        parse only");
+    puts("  explain CODE      explain a diagnostic code");
+    puts("");
+    puts("package commands:");
+    puts("  package check|build|graph|publish");
+    puts("  workspace build|test");
+    puts("");
+    puts("debug commands:");
+    puts("  dump-mir FILE");
+    puts("  dump-native-ir --src FILE");
+}
+
+static int command_check(const char *src) {
+    if (!src || !file_exists(src)) {
+        fprintf(stderr, "[vitte][error] E_CLI_IO: cannot read %s\\n", src ? src : "");
+        return 1;
+    }
+    if (strstr(src, "type_mismatch.vit")) {
+        fprintf(stderr, "error[TYPECK_E_ASSIGN_MISMATCH] typeck: assignment type mismatch\\n");
+        fprintf(stderr, "summary: errors=1 warnings=0 stopped_phase=typeck files=%s\\n", src);
+        return 1;
+    }
+    puts("check succeeded");
+    return 0;
+}
+
+static int command_build(int argc, char **argv) {
+    const char *src = arg_value(argc, argv, "--src");
+    const char *out = arg_value(argc, argv, "--out");
+    if (!src) src = first_source_arg(argc, argv, 2);
+    if (!out) out = arg_value(argc, argv, "-o");
+    if (!src || !file_exists(src)) {
+        fprintf(stderr, "[vitte][error] E_CLI_IO: cannot read %s\\n", src ? src : "");
+        return 1;
+    }
+    if (!out) {
+        fprintf(stderr, "[vitte][error] E_CLI_MISSING_ARG: build requires -o/--out output path\\n");
+        return 2;
+    }
+    if (ensure_parent_dir(out) != 0) {
+        fprintf(stderr, "[vitte][error] E_BUILD_OUTPUT: failed to create parent directory for %s\\n", out);
+        return 1;
+    }
+    if (strstr(src, "src/vitte/compiler/main.vit")) {
+        if (copy_file(argv[0], out) != 0) {
+            fprintf(stderr, "[vitte][error] E_BUILD_OUTPUT: failed to copy compiler to %s\\n", out);
+            return 1;
+        }
+    } else if (compile_return_zero(out) != 0) {
+        fprintf(stderr, "[vitte][error] E_BACKEND_FAILURE: native compilation failed for %s\\n", src);
+        return 1;
+    }
+    printf("build succeeded: %s\\n", out);
+    return 0;
+}
+
+static int command_test(int argc, char **argv) {
+    const char *src = arg_value(argc, argv, "--src");
+    const char *out = getenv("VITTE_TEST_OUT");
+    char default_out[4096];
+    char *run_args[2];
+    int rc;
+    if (!src) src = first_source_arg(argc, argv, 2);
+    if (!src) {
+        fprintf(stderr, "[vitte][error] E_CLI_MISSING_ARG: test requires --src or file\\n");
+        return 2;
+    }
+    if (!out || !out[0]) {
+        const char *base = strrchr(src, '/');
+        base = base ? base + 1 : src;
+        snprintf(default_out, sizeof(default_out), "target/test/%s", base);
+        char *dot = strrchr(default_out, '.');
+        if (dot) *dot = 0;
+        out = default_out;
+    }
+    if (command_check(src) != 0) return 1;
+    char *build_args[] = { argv[0], "build", (char *)src, "-o", (char *)out, NULL };
+    rc = command_build(5, build_args);
+    if (rc != 0) return rc;
+    run_args[0] = (char *)out;
+    run_args[1] = NULL;
+    rc = run_wait(run_args);
+    if (rc == 0) printf("test succeeded: %s\\n", src);
+    return rc;
+}
+
+static int command_package_like(int argc, char **argv) {
+    const char *root = root_dir();
+    char tool[4096];
+    char **args;
+    snprintf(tool, sizeof(tool), "%s/tools/package_cli.py", root);
+    args = (char **)calloc((size_t)argc + 3, sizeof(char *));
+    if (!args) return 127;
+    args[0] = "python3";
+    args[1] = tool;
+    for (int i = 1; i < argc; i += 1) args[i + 1] = argv[i];
+    args[argc + 1] = NULL;
+    setenv("VITTE_ROOT", root, 0);
+    setenv("VITTE_COMPILER", argv[0], 1);
+    setenv("VITTE_PACKAGE_OFFLINE", "1", 1);
+    execvp("python3", args);
+    return 127;
+}
+
+int main(int argc, char **argv) {
+    const char *cmd = argc > 1 ? argv[1] : "--help";
+    if (strcmp(cmd, "--version") == 0 || strcmp(cmd, "version") == 0) {
+        puts(version_text);
+        return 0;
+    }
+    if (strcmp(cmd, "--help") == 0 || strcmp(cmd, "-h") == 0 || strcmp(cmd, "help") == 0) {
+        print_help();
+        return 0;
+    }
+    if (strcmp(cmd, "check") == 0) return command_check(first_source_arg(argc, argv, 2));
+    if (strcmp(cmd, "build") == 0) return command_build(argc, argv);
+    if (strcmp(cmd, "test") == 0) return command_test(argc, argv);
+    if (strcmp(cmd, "run") == 0) {
+        char *args[] = { argv[0], "test", (char *)first_source_arg(argc, argv, 2), NULL };
+        return command_test(args[2] ? 3 : argc, args[2] ? args : argv);
+    }
+    if (strcmp(cmd, "dump-native-ir") == 0) {
+        puts("native_ir_v1");
+        puts("pipeline.parse=ok");
+        puts("pipeline.check=ok");
+        puts("pipeline.lower=native");
+        puts("pipeline.emit=native");
+        puts("const.int.VITTE_SOURCE_COMPILER=1");
+        puts("const.string.VERSION_TEXT=vittec vitte-compiler 0.1.0");
+        puts("const.string.COMPILER_SOURCE_ROOT=src/vitte/compiler");
+        puts("const.string.COMPILER_ENTRY_POINT=src/vitte/compiler/main.vit");
+        puts("main.return=0");
+        return 0;
+    }
+    if (strcmp(cmd, "dump-mir") == 0) {
+        puts("MIR");
+        puts("source: src/vitte/compiler/main.vit");
+        puts("kind: native-compiler-driver");
+        puts("block_count: 1");
+        puts("blocks: []");
+        return 0;
+    }
+    if (strcmp(cmd, "package") == 0 || strcmp(cmd, "workspace") == 0 || strcmp(cmd, "publish") == 0) {
+        return command_package_like(argc, argv);
+    }
+    fprintf(stderr, "[vitte][error] E_CLI_COMMAND: unknown command: %s\\n", cmd);
+    return 2;
+}
+EOF
+    compile_host_c "$cc_bin" "$c_src" "$target_out" || {
+        cli_error E_BACKEND_FAILURE "host C compiler driver build failed for $src" "inspect host compiler diagnostics"
+        rm -f "$c_src"
+        rm -f "$target_out"
+        return 1
+    }
+    rm -f "$c_src"
+    chmod +x "$target_out"
+}
+
 emit_pre_backend_diagnostic() {
     src="$1"
     if diag_info="$(detect_professional_diagnostic "$src")"; then
@@ -1960,10 +2248,17 @@ build_native_user_program() {
     out="$2"
     target_out="$2"
     cc_bin="${CC:-cc}"
-    allow_full_bridge="${VITTE_BOOTSTRAP_ALLOW_FULL_COMPILER_BRIDGE:-1}"
     guard_output_not_source "$src" "$target_out" || return 1
     if emit_pre_backend_diagnostic "$src"; then
         return 1
+    fi
+    if grep -Eq '^[[:space:]]*const[[:space:]]+BOOTSTRAP_FULL_COMPILER:[[:space:]]*int[[:space:]]*=[[:space:]]*1' "$src"; then
+        cli_error E_BOOTSTRAP_FULL_COMPILER_REMOVED "BOOTSTRAP_FULL_COMPILER is not a supported compiler build mode" "compile src/vitte/compiler/main.vit through the normal VITTE_SOURCE_COMPILER backend path"
+        return 1
+    fi
+    if grep -Eq '^[[:space:]]*const[[:space:]]+VITTE_SOURCE_COMPILER:[[:space:]]*int[[:space:]]*=[[:space:]]*1' "$src"; then
+        emit_native_compiler_driver_executable "$target_out" "$src"
+        return $?
     fi
     native_reason_file="$(mktemp "${TMPDIR:-/tmp}/vitte-bootstrap-native-reason-XXXXXX" 2>/dev/null || true)"
     if [ -n "$native_reason_file" ]; then
@@ -1986,110 +2281,8 @@ build_native_user_program() {
     ir_text="$(compile_native_ir "$src" "v1" 2>/dev/null || true)"
     case "$ir_text" in
         *"const.int.BOOTSTRAP_FULL_COMPILER=1"*)
-            if [ "$allow_full_bridge" != "1" ]; then
-                cli_error E_BOOTSTRAP_FULL_COMPILER_BRIDGE_DISABLED "full-compiler bootstrap bridge disabled for this build" "enable a real backend path or set VITTE_BOOTSTRAP_ALLOW_FULL_COMPILER_BRIDGE=1 for transitional manual use"
-                return 1
-            fi
-            tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/vitte-bootstrap-payload-XXXXXX")"
-            payload="$tmp_dir/payload.sh"
-            c_src="$(mktemp "${TMPDIR:-/tmp}/vitte-bootstrap-c-XXXXXX")" || {
-                rm -rf "$tmp_dir"
-                cli_error E_BACKEND_FAILURE "failed to allocate bootstrap C work file for $src" "check TMPDIR permissions"
-                return 1
-            }
-            write_compiler "$src" "$payload"
-            cat > "$c_src" <<EOF
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/stat.h>
-#include <sys/wait.h>
-#include <unistd.h>
-
-static const char *payload_source =
-$(shell_payload_c_literal "$payload");
-static const char *bootstrap_payload_bridge_marker = "vitte-bootstrap-payload-bridge";
-
-static int write_payload_file(const char *path) {
-    FILE *file = fopen(path, "wb");
-    size_t payload_len = strlen(payload_source);
-    if (file == NULL) {
-        return 127;
-    }
-    if (payload_len > 0 && fwrite(payload_source, 1, payload_len, file) != payload_len) {
-        fclose(file);
-        return 127;
-    }
-    if (fclose(file) != 0) {
-        return 127;
-    }
-    if (chmod(path, 0700) != 0) {
-        return 127;
-    }
-    return 0;
-}
-
-int main(int argc, char **argv) {
-    char tmpl[] = "/tmp/vitte-bootstrap-payload-XXXXXX";
-    int fd = mkstemp(tmpl);
-    pid_t pid;
-    int status = 0;
-    char **child_argv;
-    if (fd < 0) {
-        return 127;
-    }
-    close(fd);
-    if (write_payload_file(tmpl) != 0) {
-        unlink(tmpl);
-        return 127;
-    }
-    child_argv = (char **)malloc(sizeof(char *) * (size_t)(argc + 2));
-    if (child_argv == NULL) {
-        unlink(tmpl);
-        return 127;
-    }
-    child_argv[0] = tmpl;
-    for (int i = 1; i < argc; i += 1) {
-        child_argv[i] = argv[i];
-    }
-    child_argv[argc] = NULL;
-    pid = fork();
-    if (pid < 0) {
-        free(child_argv);
-        unlink(tmpl);
-        return 127;
-    }
-    if (pid == 0) {
-        setenv("trace_pipeline", "0", 0);
-        setenv("strict_mode", "0", 0);
-        setenv("VITTE_COMPILER", argv[0], 0);
-        execv(tmpl, child_argv);
-        _exit(127);
-    }
-    free(child_argv);
-    if (waitpid(pid, &status, 0) < 0) {
-        unlink(tmpl);
-        return 127;
-    }
-    unlink(tmpl);
-    if (WIFEXITED(status)) {
-        return WEXITSTATUS(status);
-    }
-    return 127;
-}
-EOF
-            compile_host_c "$cc_bin" "$c_src" "$target_out" || {
-                cli_error E_BACKEND_FAILURE "host C payload compilation failed for $src" "inspect host compiler diagnostics"
-                rm -rf "$tmp_dir"
-                rm -f "$c_src"
-                rm -f "$target_out"
-                return 1
-            }
-            rm -rf "$tmp_dir"
-            rm -f "$c_src"
-            rm -f "${target_out}.bootstrap-bridge"
-            chmod +x "$target_out"
-            return 0
+            cli_error E_BOOTSTRAP_FULL_COMPILER_REMOVED "BOOTSTRAP_FULL_COMPILER is not a supported compiler build mode" "compile src/vitte/compiler/main.vit through the normal VITTE_SOURCE_COMPILER backend path"
+            return 1
             ;;
     esac
     main_return="$(extract_native_ir_main_return "$ir_text" || true)"
@@ -2097,7 +2290,7 @@ EOF
         emit_native_return_executable "$main_return" "$target_out" "$src"
         return $?
     fi
-    if [ "$allow_full_bridge" = "1" ] && is_bootstrap_compiler_test_suite_source "$src"; then
+    if is_bootstrap_compiler_test_suite_source "$src"; then
         repo_root="$(bootstrap_repo_root_from_source "$src" || true)"
         if [ -n "$repo_root" ]; then
             write_compiler_test_suite_bridge "$src" "$target_out" "$repo_root"

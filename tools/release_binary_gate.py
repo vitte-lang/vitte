@@ -35,6 +35,18 @@ REQUIRED_FILES = [
     HELLO,
 ]
 
+FORBIDDEN_BINARY_MARKERS = (
+    "BOOTSTRAP_FULL_COMPILER",
+    "vitte-bootstrap-payload-bridge",
+    "payload_source",
+    "write_payload_file",
+    "/tmp/vitte-bootstrap-payload",
+    "toolchain/seed/vittec0.seed",
+    "scripts/seed/install_seed.sh",
+    "scripts/seed/verify_seed.sh",
+    "bin/vittec0",
+)
+
 STDLIB_FAMILIES = ["core", "alloc", "ffi", "json"]
 
 
@@ -122,6 +134,22 @@ def parse_json_payload(result: dict[str, Any], failures: list[str]) -> dict[str,
     return payload
 
 
+def binary_marker_failures(path: Path) -> list[str]:
+    strings = subprocess.run(
+        ["strings", str(path)],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    ).stdout
+    return [
+        f"{path.relative_to(ROOT)} contains forbidden bootstrap/payload marker: {marker}"
+        for marker in FORBIDDEN_BINARY_MARKERS
+        if marker in strings
+    ]
+
+
 def validate_package_payload(payload: dict[str, Any], failures: list[str]) -> None:
     compiler = payload.get("compiler")
     if isinstance(compiler, dict):
@@ -187,6 +215,8 @@ def main() -> int:
         failures.append("missing target/release/vitte")
     elif not os.access(RELEASE, os.X_OK):
         failures.append("target/release/vitte is not executable")
+    else:
+        failures.extend(binary_marker_failures(RELEASE))
 
     compiled_root = extract_compiled_root(RELEASE) if RELEASE.is_file() else ""
     if compiled_root != str(ROOT):

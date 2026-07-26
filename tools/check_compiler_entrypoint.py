@@ -31,6 +31,7 @@ FORBIDDEN_IMPORT_PREFIXES = (
     "vitte/seed",
 )
 FORBIDDEN_ARTIFACT_TEXT = (
+    "BOOTSTRAP_FULL_COMPILER",
     "vittec0.seed",
     "scripts/seed/",
     "install_seed.sh",

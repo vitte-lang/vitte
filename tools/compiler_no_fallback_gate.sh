@@ -4,7 +4,8 @@ set -eu
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 SEED=$ROOT_DIR/bin/vittec0
 SEED_SOURCE=$ROOT_DIR/toolchain/seed/vittec0.seed
-COMPILER_SOURCE=$ROOT_DIR/src/vitte/compiler/main.vit
+DRIVER=$ROOT_DIR/bin/vitte
+LEGACY_FULL_COMPILER_SOURCE=$ROOT_DIR/target/compiler-no-fallback-gate/legacy-full-compiler.vit
 UNSUPPORTED_SOURCE=$ROOT_DIR/tests/bootstrap_native/native_user_helper_call.vit
 OUT_DIR=$ROOT_DIR/target/compiler-no-fallback-gate
 CONTROL_FILES="
@@ -20,6 +21,16 @@ die() {
 
 mkdir -p "$OUT_DIR"
 rm -f "$OUT_DIR/compiler" "$OUT_DIR/unsupported"
+cat > "$LEGACY_FULL_COMPILER_SOURCE" <<'EOF'
+space tests/no_fallback/legacy_full_compiler
+
+const BOOTSTRAP_FULL_COMPILER: int = 1
+export *
+
+proc main(args: list[string]) -> int {
+  give 0
+}
+EOF
 
 for marker in \
   VITTE_BOOTSTRAP_ALLOW_FULL_COMPILER_BRIDGE \
@@ -48,11 +59,10 @@ grep -F 'VITTE_BOOTSTRAP ?= $(BIN_DIR)/vittec0' "$ROOT_DIR/Makefile" >/dev/null 
 grep -F 'DRIVER_BOOTSTRAP_RUNNER ?= $(VITTE_BOOTSTRAP)' "$ROOT_DIR/Makefile" >/dev/null ||
   die "Makefile driver bootstrap runner can bypass the seed root"
 
-if VITTE_BOOTSTRAP_ALLOW_FULL_COMPILER_BRIDGE=1 \
-  "$SEED" build-native --src "$COMPILER_SOURCE" --out "$OUT_DIR/compiler" >"$OUT_DIR/compiler.out" 2>"$OUT_DIR/compiler.err"; then
+if "$DRIVER" build "$LEGACY_FULL_COMPILER_SOURCE" -o "$OUT_DIR/compiler" >"$OUT_DIR/compiler.out" 2>"$OUT_DIR/compiler.err"; then
   die "legacy bridge variable restored full compiler output"
 fi
-grep -F E_BOOTSTRAP_FULL_COMPILER_BRIDGE_DISABLED "$OUT_DIR/compiler.err" >/dev/null ||
+grep -F E_BOOTSTRAP_FULL_COMPILER_REMOVED "$OUT_DIR/compiler.err" >/dev/null ||
   die "full compiler rejection diagnostic missing"
 [ ! -e "$OUT_DIR/compiler" ] || die "failed full compiler build left an artifact"
 
