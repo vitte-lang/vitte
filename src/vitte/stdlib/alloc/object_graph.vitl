@@ -1,0 +1,118 @@
+space vitte/stdlib/alloc/object_graph
+
+export *
+
+use src/vitte/stdlib/alloc/vec as alloc_vec
+use src/vitte/stdlib/core/option as core_option
+
+pick ObjectRefKind {
+    Strong
+    Weak
+    Logical
+}
+
+form ObjectId {
+    value: usize
+    generation: usize
+}
+
+form ObjectRef {
+    source: ObjectId
+    target: ObjectId
+    kind: ObjectRefKind
+}
+
+form ObjectNode<T> {
+    id: ObjectId
+    value: T
+    refs: Vec<ObjectRef>
+    alive: bool
+}
+
+form ObjectGraph<T> {
+    nodes: Vec<ObjectNode<T>>
+    next_id: usize
+    generation: usize
+}
+
+form ObjectGraphProfile {
+    nodes: usize
+    references: usize
+    generation: usize
+    valid: bool
+}
+
+proc object_id(value: usize, generation: usize) -> ObjectId {
+    give ObjectId { value: value, generation: generation };
+}
+
+proc object_id_is_null(value: ObjectId) -> bool {
+    give value.value == 0;
+}
+
+proc object_graph_new<T>() -> ObjectGraph<T> {
+    give ObjectGraph<T> { nodes: vec_new<ObjectNode<T>>(), next_id: 1, generation: 1 };
+}
+
+proc object_graph_len<T>(graph: ObjectGraph<T>) -> usize {
+    give vec_len<ObjectNode<T>>(graph.nodes);
+}
+
+proc object_graph_add<T>(graph: ref mut ObjectGraph<T>, value: T) -> ObjectId {
+    let id: ObjectId = object_id((*graph).next_id, (*graph).generation);
+    vec_push<ObjectNode<T>>(&mut ((*graph).nodes), ObjectNode<T> { id: id, value: value, refs: vec_new<ObjectRef>(), alive: true });
+    set (*graph).next_id = (*graph).next_id + 1;
+    give id;
+}
+
+proc object_graph_find_index<T>(graph: ObjectGraph<T>, id: ObjectId) -> Option<usize> {
+    let index: usize = 0;
+    while index < vec_len<ObjectNode<T>>(graph.nodes) {
+        let node = vec_get<ObjectNode<T>>(graph.nodes, index);
+        if is_some<ref ObjectNode<T>>(node) and compiler_object_id_eq<T>(unwrap<ref ObjectNode<T>>(node), id) {
+            give some<usize>(index);
+        }
+        set index = index + 1;
+    }
+    give none<usize>();
+}
+
+proc object_graph_contains<T>(graph: ObjectGraph<T>, id: ObjectId) -> bool {
+    give is_some<usize>(object_graph_find_index<T>(graph, id));
+}
+
+proc object_graph_add_ref<T>(graph: ref mut ObjectGraph<T>, source: ObjectId, target: ObjectId, kind: ObjectRefKind) -> bool {
+    let found = object_graph_find_index<T>(*graph, source);
+    if is_none<usize>(found) or not object_graph_contains<T>(*graph, target) {
+        give false;
+    }
+    compiler_object_graph_push_ref<T>(graph, unwrap<usize>(found), ObjectRef { source: source, target: target, kind: kind });
+    give true;
+}
+
+proc object_graph_remove<T>(graph: ref mut ObjectGraph<T>, id: ObjectId) -> bool {
+    let found = object_graph_find_index<T>(*graph, id);
+    if is_none<usize>(found) {
+        give false;
+    }
+    compiler_object_graph_mark_dead<T>(graph, unwrap<usize>(found));
+    set (*graph).generation = (*graph).generation + 1;
+    give true;
+}
+
+proc object_graph_reference_count<T>(graph: ObjectGraph<T>) -> usize {
+    give compiler_object_graph_reference_count<T>(graph);
+}
+
+proc object_graph_profile<T>(graph: ObjectGraph<T>) -> ObjectGraphProfile {
+    give ObjectGraphProfile {
+        nodes: object_graph_len<T>(graph),
+        references: object_graph_reference_count<T>(graph),
+        generation: graph.generation,
+        valid: graph.next_id > 0 and graph.generation > 0
+    };
+}
+
+proc object_graph_is_valid<T>(graph: ObjectGraph<T>) -> bool {
+    give object_graph_profile<T>(graph).valid;
+}

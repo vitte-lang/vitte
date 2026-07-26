@@ -1,0 +1,101 @@
+space vitte/stdlib/alloc/snapshot
+
+export *
+
+use src/vitte/stdlib/alloc/diagnostics as alloc_diagnostics
+use src/vitte/stdlib/alloc/quota as alloc_quota
+use src/vitte/stdlib/alloc/tracker as alloc_tracker
+
+form AllocSnapshot {
+    name: string
+    tick: usize
+    live_bytes: usize
+    peak_bytes: usize
+    reserved_bytes: usize
+    allocation_count: usize
+    free_count: usize
+    failure_count: usize
+}
+
+form AllocSnapshotDiff {
+    before: string
+    after: string
+    live_delta: isize
+    peak_delta: isize
+    failure_delta: isize
+    clean: bool
+}
+
+form AllocSnapshotProfile {
+    name: string
+    live_bytes: usize
+    peak_bytes: usize
+    failures: usize
+    clean: bool
+    valid: bool
+}
+
+proc alloc_snapshot_from_tracker(name: string, tracker: alloc_tracker.AllocationTracker) -> AllocSnapshot {
+    give AllocSnapshot {
+        name: name,
+        tick: tracker.tick,
+        live_bytes: tracker.live_bytes,
+        peak_bytes: tracker.peak_bytes,
+        reserved_bytes: tracker.peak_bytes,
+        allocation_count: tracker.allocation_count,
+        free_count: tracker.free_count,
+        failure_count: tracker.failure_count
+    };
+}
+
+proc alloc_snapshot_from_report(name: string, report: alloc_diagnostics.MemoryReport) -> AllocSnapshot {
+    give AllocSnapshot {
+        name: name,
+        tick: 0,
+        live_bytes: report.stats.live_bytes,
+        peak_bytes: report.stats.live_bytes,
+        reserved_bytes: report.stats.reserved_bytes,
+        allocation_count: report.stats.allocation_count,
+        free_count: 0,
+        failure_count: report.stats.failure_count
+    };
+}
+
+proc alloc_snapshot_from_quota(name: string, quota: alloc_quota.MemoryQuota) -> AllocSnapshot {
+    give AllocSnapshot {
+        name: name,
+        tick: 0,
+        live_bytes: quota.used_bytes,
+        peak_bytes: quota.used_bytes,
+        reserved_bytes: quota.limit_bytes,
+        allocation_count: 0,
+        free_count: 0,
+        failure_count: quota.rejected_count
+    };
+}
+
+proc alloc_snapshot_profile(value: AllocSnapshot) -> AllocSnapshotProfile {
+    give AllocSnapshotProfile {
+        name: value.name,
+        live_bytes: value.live_bytes,
+        peak_bytes: value.peak_bytes,
+        failures: value.failure_count,
+        clean: value.live_bytes == 0 and value.failure_count == 0,
+        valid: value.name != "" and value.peak_bytes >= value.live_bytes
+    };
+}
+
+proc alloc_snapshot_is_valid(value: AllocSnapshot) -> bool {
+    give alloc_snapshot_profile(value).valid;
+}
+
+proc alloc_snapshot_diff(before: AllocSnapshot, after: AllocSnapshot) -> AllocSnapshotDiff {
+    give AllocSnapshotDiff {
+        before: before.name,
+        after: after.name,
+        live_delta: (after.live_bytes as isize) - (before.live_bytes as isize),
+        peak_delta: (after.peak_bytes as isize) - (before.peak_bytes as isize),
+        failure_delta: (after.failure_count as isize) - (before.failure_count as isize),
+        clean: after.live_bytes <= before.live_bytes and after.failure_count <= before.failure_count
+    };
+}

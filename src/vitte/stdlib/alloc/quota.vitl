@@ -1,0 +1,93 @@
+space vitte/stdlib/alloc/quota
+
+export *
+
+use src/vitte/stdlib/alloc/allocator as alloc_allocator
+use src/vitte/stdlib/core/option as core_option
+
+pick QuotaDecision {
+    Allow
+    Reject
+}
+
+form MemoryQuota {
+    component: string
+    limit_bytes: usize
+    used_bytes: usize
+    rejected_count: usize
+}
+
+form QuotaGrant {
+    decision: QuotaDecision
+    component: string
+    requested: usize
+    available: usize
+}
+
+form QuotaProfile {
+    component: string
+    limit_bytes: usize
+    used_bytes: usize
+    available_bytes: usize
+    rejected_count: usize
+    saturated: bool
+    valid: bool
+}
+
+proc memory_quota(component: string, limit_bytes: usize) -> MemoryQuota {
+    give MemoryQuota { component: component, limit_bytes: limit_bytes, used_bytes: 0, rejected_count: 0 };
+}
+
+proc memory_quota_available(value: MemoryQuota) -> usize {
+    if value.used_bytes >= value.limit_bytes {
+        give 0 as usize;
+    }
+    give value.limit_bytes - value.used_bytes;
+}
+
+proc memory_quota_profile(value: MemoryQuota) -> QuotaProfile {
+    give QuotaProfile {
+        component: value.component,
+        limit_bytes: value.limit_bytes,
+        used_bytes: value.used_bytes,
+        available_bytes: memory_quota_available(value),
+        rejected_count: value.rejected_count,
+        saturated: value.used_bytes >= value.limit_bytes,
+        valid: value.component != "" and value.used_bytes <= value.limit_bytes
+    };
+}
+
+proc memory_quota_is_valid(value: MemoryQuota) -> bool {
+    give memory_quota_profile(value).valid;
+}
+
+proc memory_quota_check(value: MemoryQuota, layout_value: alloc_allocator.AllocationLayout) -> QuotaGrant {
+    let available: usize = memory_quota_available(value);
+    if layout_value.size > available {
+        give QuotaGrant { decision: QuotaDecision.Reject, component: value.component, requested: layout_value.size, available: available };
+    }
+    give QuotaGrant { decision: QuotaDecision.Allow, component: value.component, requested: layout_value.size, available: available };
+}
+
+proc memory_quota_reserve(value: ref mut MemoryQuota, layout_value: alloc_allocator.AllocationLayout) -> bool {
+    let grant: QuotaGrant = memory_quota_check(*value, layout_value);
+    if grant.decision == QuotaDecision.Reject {
+        set (*value).rejected_count = (*value).rejected_count + 1;
+        give false;
+    }
+    set (*value).used_bytes = (*value).used_bytes + layout_value.size;
+    give true;
+}
+
+proc memory_quota_release(value: ref mut MemoryQuota, bytes: usize) {
+    if bytes > (*value).used_bytes {
+        set (*value).used_bytes = 0;
+    } else {
+        set (*value).used_bytes = (*value).used_bytes - bytes;
+    }
+}
+
+proc memory_quota_reset(value: ref mut MemoryQuota) {
+    set (*value).used_bytes = 0;
+    set (*value).rejected_count = 0;
+}

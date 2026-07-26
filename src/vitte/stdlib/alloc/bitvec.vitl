@@ -1,0 +1,135 @@
+space vitte/stdlib/alloc/bitvec
+
+export *
+
+use src/vitte/stdlib/alloc/vec as alloc_vec
+use src/vitte/stdlib/core/option as core_option
+
+form BitVec {
+    words: Vec<usize>
+    bit_len: usize
+}
+
+form BitRange {
+    start: usize
+    end: usize
+}
+
+form BitVecProfile {
+    bits: usize
+    words: usize
+    capacity_bits: usize
+    empty: bool
+    valid: bool
+}
+
+proc bitvec_word_bits() -> usize {
+    give compiler_usize_bits();
+}
+
+proc bitvec_words_for(bits: usize) -> usize {
+    let width: usize = bitvec_word_bits();
+    if bits == 0 {
+        give 0 as usize;
+    }
+    give (bits + width - 1) / width;
+}
+
+proc bit_range(start: usize, end: usize) -> BitRange {
+    give BitRange { start: start, end: end };
+}
+
+proc bit_range_is_valid(range: BitRange, limit: usize) -> bool {
+    give range.start <= range.end and range.end <= limit;
+}
+
+proc bitvec_new() -> BitVec {
+    give BitVec { words: vec_new<usize>(), bit_len: 0 };
+}
+
+proc bitvec_with_len(bits: usize, value: bool) -> BitVec {
+    let out: BitVec = BitVec { words: vec_with_capacity<usize>(bitvec_words_for(bits)), bit_len: bits };
+    let index: usize = 0;
+    while index < bitvec_words_for(bits) {
+        if value {
+            vec_push<usize>(&mut (out.words), compiler_usize_max());
+        } else {
+            vec_push<usize>(&mut (out.words), 0 as usize);
+        }
+        set index = index + 1;
+    }
+    give out;
+}
+
+proc bitvec_len(value: BitVec) -> usize { give value.bit_len; }
+proc bitvec_word_len(value: BitVec) -> usize { give vec_len<usize>(value.words); }
+proc bitvec_is_empty(value: BitVec) -> bool { give value.bit_len == 0; }
+proc bitvec_capacity_bits(value: BitVec) -> usize { give vec_capacity<usize>(value.words) * bitvec_word_bits(); }
+
+proc bitvec_is_valid(value: BitVec) -> bool {
+    give bitvec_words_for(value.bit_len) <= bitvec_word_len(value);
+}
+
+proc bitvec_profile(value: BitVec) -> BitVecProfile {
+    give BitVecProfile {
+        bits: value.bit_len,
+        words: bitvec_word_len(value),
+        capacity_bits: bitvec_capacity_bits(value),
+        empty: bitvec_is_empty(value),
+        valid: bitvec_is_valid(value)
+    };
+}
+
+proc bitvec_reserve(value: ref mut BitVec, bits: usize) {
+    let required_words: usize = bitvec_words_for(bits);
+    if required_words > vec_capacity<usize>((*value).words) {
+        vec_reserve_exact<usize>(&mut ((*value).words), required_words - vec_len<usize>((*value).words));
+    }
+}
+
+proc bitvec_resize(value: ref mut BitVec, bits: usize, fill: bool) {
+    let old_bits: usize = (*value).bit_len;
+    bitvec_reserve(value, bits);
+    while vec_len<usize>((*value).words) < bitvec_words_for(bits) {
+        vec_push<usize>(&mut ((*value).words), 0 as usize);
+    }
+    set (*value).bit_len = bits;
+    if fill and bits > old_bits {
+        bitvec_set_range(value, bit_range(old_bits, bits), true);
+    }
+}
+
+proc bitvec_test(value: BitVec, index: usize) -> bool {
+    if index >= value.bit_len {
+        give false;
+    }
+    give compiler_bitvec_test(value.words, index);
+}
+
+proc bitvec_set(value: ref mut BitVec, index: usize, bit: bool) -> bool {
+    if index >= (*value).bit_len {
+        give false;
+    }
+    compiler_bitvec_set(&mut ((*value).words), index, bit);
+    give true;
+}
+
+proc bitvec_set_range(value: ref mut BitVec, range: BitRange, bit: bool) -> bool {
+    if not bit_range_is_valid(range, (*value).bit_len) {
+        give false;
+    }
+    let index: usize = range.start;
+    while index < range.end {
+        let _ = bitvec_set(value, index, bit);
+        set index = index + 1;
+    }
+    give true;
+}
+
+proc bitvec_count_ones(value: BitVec) -> usize {
+    give compiler_bitvec_count_ones(value.words, value.bit_len);
+}
+
+proc bitvec_count_zeros(value: BitVec) -> usize {
+    give value.bit_len - bitvec_count_ones(value);
+}

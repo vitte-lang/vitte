@@ -1,0 +1,88 @@
+space vitte/stdlib/alloc/ownership
+
+export *
+
+pick OwnershipKind {
+    Owned
+    Borrowed
+    Shared
+    Pinned
+}
+
+pick DropPolicy {
+    NoDrop
+    DropOnce
+    DropRecursive
+}
+
+pick ClonePolicy {
+    NoClone
+    ShallowClone
+    DeepClone
+    CopyBits
+}
+
+form OwnershipPolicy {
+    kind: OwnershipKind
+    drop: DropPolicy
+    clone: ClonePolicy
+    movable: bool
+}
+
+form OwnershipProfile {
+    kind: OwnershipKind
+    drop: DropPolicy
+    clone: ClonePolicy
+    movable: bool
+    copyable: bool
+    needs_drop: bool
+    valid: bool
+}
+
+proc ownership_owned() -> OwnershipPolicy {
+    give OwnershipPolicy { kind: OwnershipKind.Owned, drop: DropPolicy.DropOnce, clone: ClonePolicy.NoClone, movable: true };
+}
+
+proc ownership_borrowed() -> OwnershipPolicy {
+    give OwnershipPolicy { kind: OwnershipKind.Borrowed, drop: DropPolicy.NoDrop, clone: ClonePolicy.ShallowClone, movable: false };
+}
+
+proc ownership_shared() -> OwnershipPolicy {
+    give OwnershipPolicy { kind: OwnershipKind.Shared, drop: DropPolicy.NoDrop, clone: ClonePolicy.ShallowClone, movable: true };
+}
+
+proc ownership_pinned() -> OwnershipPolicy {
+    give OwnershipPolicy { kind: OwnershipKind.Pinned, drop: DropPolicy.DropOnce, clone: ClonePolicy.NoClone, movable: false };
+}
+
+proc ownership_can_move(value: OwnershipPolicy) -> bool {
+    give value.movable and value.kind != OwnershipKind.Pinned;
+}
+
+proc ownership_can_clone(value: OwnershipPolicy) -> bool {
+    give value.clone != ClonePolicy.NoClone;
+}
+
+proc ownership_is_copy<T>(value: OwnershipPolicy) -> bool {
+    give value.clone == ClonePolicy.CopyBits or compiler_type_is_copy<T>();
+}
+
+proc ownership_needs_drop(value: OwnershipPolicy) -> bool {
+    give value.drop != DropPolicy.NoDrop;
+}
+
+proc ownership_profile<T>(value: OwnershipPolicy) -> OwnershipProfile {
+    give OwnershipProfile {
+        kind: value.kind,
+        drop: value.drop,
+        clone: value.clone,
+        movable: ownership_can_move(value),
+        copyable: ownership_is_copy<T>(value),
+        needs_drop: ownership_needs_drop(value),
+        valid: not (value.kind == OwnershipKind.Pinned and value.movable)
+    };
+}
+
+proc ownership_is_valid<T>(value: OwnershipPolicy) -> bool {
+    give ownership_profile<T>(value).valid;
+}

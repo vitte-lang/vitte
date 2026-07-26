@@ -1,0 +1,108 @@
+space vitte/stdlib/alloc/tracker
+
+export *
+
+use src/vitte/stdlib/alloc/allocator as alloc_allocator
+use src/vitte/stdlib/alloc/vec as alloc_vec
+
+pick AllocationEventKind {
+    Alloc
+    Free
+    Resize
+    Fail
+}
+
+form AllocationEvent {
+    kind: AllocationEventKind
+    address: usize
+    bytes: usize
+    callsite: string
+    tick: usize
+}
+
+form AllocationTracker {
+    events: Vec<AllocationEvent>
+    live_bytes: usize
+    peak_bytes: usize
+    allocation_count: usize
+    free_count: usize
+    failure_count: usize
+    tick: usize
+}
+
+form AllocationTrackerProfile {
+    events: usize
+    live_bytes: usize
+    peak_bytes: usize
+    allocation_count: usize
+    free_count: usize
+    failure_count: usize
+    balanced: bool
+    valid: bool
+}
+
+proc allocation_tracker_new() -> AllocationTracker {
+    give AllocationTracker {
+        events: vec_new<AllocationEvent>(),
+        live_bytes: 0,
+        peak_bytes: 0,
+        allocation_count: 0,
+        free_count: 0,
+        failure_count: 0,
+        tick: 1
+    };
+}
+
+proc allocation_event(kind: AllocationEventKind, address: usize, bytes: usize, callsite: string, tick: usize) -> AllocationEvent {
+    give AllocationEvent { kind: kind, address: address, bytes: bytes, callsite: callsite, tick: tick };
+}
+
+proc allocation_tracker_record(value: ref mut AllocationTracker, event: AllocationEvent) {
+    vec_push<AllocationEvent>(&mut ((*value).events), event);
+    set (*value).tick = (*value).tick + 1;
+}
+
+proc allocation_tracker_alloc(value: ref mut AllocationTracker, allocation: alloc_allocator.Allocation, callsite: string) {
+    set (*value).live_bytes = (*value).live_bytes + allocation.layout.size;
+    if (*value).live_bytes > (*value).peak_bytes {
+        set (*value).peak_bytes = (*value).live_bytes;
+    }
+    set (*value).allocation_count = (*value).allocation_count + 1;
+    allocation_tracker_record(value, allocation_event(AllocationEventKind.Alloc, allocation.address, allocation.layout.size, callsite, (*value).tick));
+}
+
+proc allocation_tracker_free(value: ref mut AllocationTracker, allocation: alloc_allocator.Allocation, callsite: string) {
+    if allocation.layout.size > (*value).live_bytes {
+        set (*value).live_bytes = 0;
+    } else {
+        set (*value).live_bytes = (*value).live_bytes - allocation.layout.size;
+    }
+    set (*value).free_count = (*value).free_count + 1;
+    allocation_tracker_record(value, allocation_event(AllocationEventKind.Free, allocation.address, allocation.layout.size, callsite, (*value).tick));
+}
+
+proc allocation_tracker_fail(value: ref mut AllocationTracker, layout_value: alloc_allocator.AllocationLayout, callsite: string) {
+    set (*value).failure_count = (*value).failure_count + 1;
+    allocation_tracker_record(value, allocation_event(AllocationEventKind.Fail, 0 as usize, layout_value.size, callsite, (*value).tick));
+}
+
+proc allocation_tracker_profile(value: AllocationTracker) -> AllocationTrackerProfile {
+    give AllocationTrackerProfile {
+        events: vec_len<AllocationEvent>(value.events),
+        live_bytes: value.live_bytes,
+        peak_bytes: value.peak_bytes,
+        allocation_count: value.allocation_count,
+        free_count: value.free_count,
+        failure_count: value.failure_count,
+        balanced: value.live_bytes == 0,
+        valid: value.peak_bytes >= value.live_bytes
+    };
+}
+
+proc allocation_tracker_is_valid(value: AllocationTracker) -> bool {
+    give allocation_tracker_profile(value).valid;
+}
+
+proc allocation_tracker_clear(value: ref mut AllocationTracker) {
+    set (*value) = allocation_tracker_new();
+}

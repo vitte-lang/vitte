@@ -1,0 +1,89 @@
+space vitte/stdlib/alloc/diagnostics
+
+export *
+
+use src/vitte/stdlib/alloc/allocator as alloc_allocator
+
+pick MemorySeverity {
+    Info
+    Warning
+    Critical
+}
+
+form AllocationStatsReport {
+    live_bytes: usize
+    reserved_bytes: usize
+    allocation_count: usize
+    failure_count: usize
+}
+
+form LeakSuspect {
+    component: string
+    live_bytes: usize
+    age_ticks: usize
+    severity: MemorySeverity
+}
+
+form FragmentationReport {
+    reserved_bytes: usize
+    live_bytes: usize
+    wasted_bytes: usize
+    percent: usize
+    severe: bool
+}
+
+form MemoryReport {
+    component: string
+    stats: AllocationStatsReport
+    fragmentation: FragmentationReport
+    leak: LeakSuspect
+    healthy: bool
+}
+
+proc allocation_stats_report(value: alloc_allocator.Allocator) -> AllocationStatsReport {
+    give AllocationStatsReport {
+        live_bytes: alloc_allocator.allocator_live_bytes(value),
+        reserved_bytes: alloc_allocator.allocator_reserved_bytes(value),
+        allocation_count: alloc_allocator.allocator_allocation_count(value),
+        failure_count: alloc_allocator.allocator_failure_count(value)
+    };
+}
+
+proc fragmentation_report(reserved_bytes: usize, live_bytes: usize) -> FragmentationReport {
+    let wasted: usize = 0;
+    if reserved_bytes > live_bytes {
+        set wasted = reserved_bytes - live_bytes;
+    }
+    let percent: usize = 0;
+    if reserved_bytes > 0 {
+        set percent = (wasted * 100) / reserved_bytes;
+    }
+    give FragmentationReport { reserved_bytes: reserved_bytes, live_bytes: live_bytes, wasted_bytes: wasted, percent: percent, severe: percent >= 50 };
+}
+
+proc leak_suspect(component: string, live_bytes: usize, age_ticks: usize) -> LeakSuspect {
+    let severity: MemorySeverity = MemorySeverity.Info;
+    if live_bytes > 1048576 and age_ticks > 1000 {
+        set severity = MemorySeverity.Critical;
+    } else if live_bytes > 0 and age_ticks > 100 {
+        set severity = MemorySeverity.Warning;
+    }
+    give LeakSuspect { component: component, live_bytes: live_bytes, age_ticks: age_ticks, severity: severity };
+}
+
+proc memory_report(component: string, allocator: alloc_allocator.Allocator, age_ticks: usize) -> MemoryReport {
+    let stats: AllocationStatsReport = allocation_stats_report(allocator);
+    let fragmentation: FragmentationReport = fragmentation_report(stats.reserved_bytes, stats.live_bytes);
+    let leak: LeakSuspect = leak_suspect(component, stats.live_bytes, age_ticks);
+    give MemoryReport {
+        component: component,
+        stats: stats,
+        fragmentation: fragmentation,
+        leak: leak,
+        healthy: stats.failure_count == 0 and not fragmentation.severe and leak.severity != MemorySeverity.Critical
+    };
+}
+
+proc memory_report_is_healthy(value: MemoryReport) -> bool {
+    give value.healthy;
+}

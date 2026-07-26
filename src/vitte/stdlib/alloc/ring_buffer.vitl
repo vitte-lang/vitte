@@ -1,0 +1,106 @@
+space vitte/stdlib/alloc/ring_buffer
+
+export *
+
+use src/vitte/stdlib/alloc/vec as alloc_vec
+use src/vitte/stdlib/core/option as core_option
+
+form RingBuffer<T> {
+    storage: Vec<T>
+    head: usize
+    length: usize
+    capacity: usize
+}
+
+form RingBufferProfile {
+    length: usize
+    capacity: usize
+    head: usize
+    full: bool
+    empty: bool
+    valid: bool
+}
+
+proc ring_buffer_new<T>(capacity: usize) -> RingBuffer<T> {
+    give RingBuffer<T> { storage: vec_with_capacity<T>(capacity), head: 0, length: 0, capacity: capacity };
+}
+
+proc ring_buffer_len<T>(value: RingBuffer<T>) -> usize { give value.length; }
+proc ring_buffer_capacity<T>(value: RingBuffer<T>) -> usize { give value.capacity; }
+proc ring_buffer_is_empty<T>(value: RingBuffer<T>) -> bool { give value.length == 0; }
+proc ring_buffer_is_full<T>(value: RingBuffer<T>) -> bool { give value.capacity > 0 and value.length >= value.capacity; }
+
+proc ring_buffer_tail_index<T>(value: RingBuffer<T>) -> usize {
+    if value.capacity == 0 {
+        give 0 as usize;
+    }
+    give (value.head + value.length) % value.capacity;
+}
+
+proc ring_buffer_physical_index<T>(value: RingBuffer<T>, logical: usize) -> Option<usize> {
+    if logical >= value.length or value.capacity == 0 {
+        give none<usize>();
+    }
+    give some<usize>((value.head + logical) % value.capacity);
+}
+
+proc ring_buffer_profile<T>(value: RingBuffer<T>) -> RingBufferProfile {
+    give RingBufferProfile {
+        length: value.length,
+        capacity: value.capacity,
+        head: value.head,
+        full: ring_buffer_is_full<T>(value),
+        empty: ring_buffer_is_empty<T>(value),
+        valid: value.length <= value.capacity and (value.capacity == 0 or value.head < value.capacity)
+    };
+}
+
+proc ring_buffer_is_valid<T>(value: RingBuffer<T>) -> bool {
+    give ring_buffer_profile<T>(value).valid;
+}
+
+proc ring_buffer_push_back<T>(value: ref mut RingBuffer<T>, item: T) -> bool {
+    if ring_buffer_is_full<T>(*value) {
+        give false;
+    }
+    let index: usize = ring_buffer_tail_index<T>(*value);
+    compiler_ring_buffer_write<T>(&mut ((*value).storage), index, item);
+    set (*value).length = (*value).length + 1;
+    give true;
+}
+
+proc ring_buffer_push_overwrite<T>(value: ref mut RingBuffer<T>, item: T) {
+    if (*value).capacity == 0 {
+        give;
+    }
+    if ring_buffer_is_full<T>(*value) {
+        compiler_ring_buffer_write<T>(&mut ((*value).storage), (*value).head, item);
+        set (*value).head = ((*value).head + 1) % (*value).capacity;
+        give;
+    }
+    let _ = ring_buffer_push_back<T>(value, item);
+}
+
+proc ring_buffer_pop_front<T>(value: ref mut RingBuffer<T>) -> Option<T> {
+    if ring_buffer_is_empty<T>(*value) {
+        give none<T>();
+    }
+    let out = compiler_ring_buffer_read<T>(&mut ((*value).storage), (*value).head);
+    set (*value).head = ((*value).head + 1) % (*value).capacity;
+    set (*value).length = (*value).length - 1;
+    give out;
+}
+
+proc ring_buffer_get<T>(value: RingBuffer<T>, logical: usize) -> Option<ref T> {
+    let physical = ring_buffer_physical_index<T>(value, logical);
+    if is_none<usize>(physical) {
+        give none<ref T>();
+    }
+    give vec_get<T>(value.storage, unwrap<usize>(physical));
+}
+
+proc ring_buffer_clear<T>(value: ref mut RingBuffer<T>) {
+    vec_clear<T>(&mut ((*value).storage));
+    set (*value).head = 0;
+    set (*value).length = 0;
+}

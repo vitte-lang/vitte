@@ -3,6 +3,7 @@ space vitte/stdlib/tests/alloc_max_contracts
 use src/vitte/stdlib/alloc/allocator as alloc_allocator
 use src/vitte/stdlib/alloc/arc as alloc_arc
 use src/vitte/stdlib/alloc/arena as alloc_arena
+use src/vitte/stdlib/alloc/bitvec as alloc_bitvec
 use src/vitte/stdlib/alloc/box as alloc_box
 use src/vitte/stdlib/alloc/btree as alloc_btree
 use src/vitte/stdlib/alloc/bump as alloc_bump
@@ -10,19 +11,27 @@ use src/vitte/stdlib/alloc/byte_buffer as alloc_byte_buffer
 use src/vitte/stdlib/alloc/cache as alloc_cache
 use src/vitte/stdlib/alloc/collections as alloc_collections
 use src/vitte/stdlib/alloc/deque as alloc_deque
+use src/vitte/stdlib/alloc/diagnostics as alloc_diagnostics
 use src/vitte/stdlib/alloc/error as alloc_error
+use src/vitte/stdlib/alloc/fallback as alloc_fallback
 use src/vitte/stdlib/alloc/intern as alloc_intern
 use src/vitte/stdlib/alloc/layout as alloc_layout
+use src/vitte/stdlib/alloc/object_graph as alloc_object_graph
 use src/vitte/stdlib/alloc/page as alloc_page
 use src/vitte/stdlib/alloc/pool as alloc_pool
+use src/vitte/stdlib/alloc/ownership as alloc_ownership
+use src/vitte/stdlib/alloc/quota as alloc_quota
 use src/vitte/stdlib/alloc/raw as alloc_raw
 use src/vitte/stdlib/alloc/rc as alloc_rc
 use src/vitte/stdlib/alloc/region as alloc_region
+use src/vitte/stdlib/alloc/ring_buffer as alloc_ring_buffer
 use src/vitte/stdlib/alloc/rope as alloc_rope
 use src/vitte/stdlib/alloc/slab as alloc_slab
 use src/vitte/stdlib/alloc/scratch as alloc_scratch
+use src/vitte/stdlib/alloc/snapshot as alloc_snapshot
 use src/vitte/stdlib/alloc/smallvec as alloc_smallvec
 use src/vitte/stdlib/alloc/string as alloc_string
+use src/vitte/stdlib/alloc/tracker as alloc_tracker
 use src/vitte/stdlib/alloc/vec as alloc_vec
 
 proc alloc_max_allocator_contract() -> bool {
@@ -69,6 +78,14 @@ proc alloc_max_raw_contract() -> bool {
         and alloc_raw.raw_slice_contains<int>(slice_value, 0)
         and alloc_raw.raw_slice_byte_len<int>(slice_value) == 4 * compiler_size_of<int>()
         and not profile.owned;
+}
+
+proc alloc_max_bitvec_contract(value: alloc_bitvec.BitVec) -> bool {
+    let profile: alloc_bitvec.BitVecProfile = alloc_bitvec.bitvec_profile(value);
+    let range: alloc_bitvec.BitRange = alloc_bitvec.bit_range(0 as usize, alloc_bitvec.bitvec_len(value));
+    give profile.valid
+        and alloc_bitvec.bitvec_is_valid(value)
+        and alloc_bitvec.bit_range_is_valid(range, alloc_bitvec.bitvec_len(value));
 }
 
 proc alloc_max_pool_contract<T>(value: alloc_pool.Pool<T>) -> bool {
@@ -120,6 +137,13 @@ proc alloc_max_cache_contract<K, V>(value: alloc_cache.Cache<K, V>) -> bool {
         and profile.length <= profile.limit;
 }
 
+proc alloc_max_ring_buffer_contract<T>(value: alloc_ring_buffer.RingBuffer<T>) -> bool {
+    let profile: alloc_ring_buffer.RingBufferProfile = alloc_ring_buffer.ring_buffer_profile<T>(value);
+    give profile.valid
+        and alloc_ring_buffer.ring_buffer_is_valid<T>(value)
+        and profile.length <= profile.capacity;
+}
+
 proc alloc_max_intern_contract(value: alloc_intern.Interner) -> bool {
     let profile: alloc_intern.InternerProfile = alloc_intern.interner_profile(value);
     give profile.valid
@@ -127,11 +151,60 @@ proc alloc_max_intern_contract(value: alloc_intern.Interner) -> bool {
         and profile.next_id > 0;
 }
 
+proc alloc_max_object_graph_contract<T>(value: alloc_object_graph.ObjectGraph<T>) -> bool {
+    let profile: alloc_object_graph.ObjectGraphProfile = alloc_object_graph.object_graph_profile<T>(value);
+    give profile.valid
+        and alloc_object_graph.object_graph_is_valid<T>(value)
+        and profile.nodes == alloc_object_graph.object_graph_len<T>(value);
+}
+
 proc alloc_max_rope_contract(value: alloc_rope.Rope) -> bool {
     let profile: alloc_rope.RopeProfile = alloc_rope.rope_profile(value);
     give profile.valid
         and alloc_rope.rope_is_valid(value)
         and profile.bytes == alloc_rope.rope_len(value);
+}
+
+proc alloc_max_diagnostics_contract(value: alloc_allocator.Allocator) -> bool {
+    let report: alloc_diagnostics.MemoryReport = alloc_diagnostics.memory_report("alloc-max", value, 0 as usize);
+    let stats: alloc_diagnostics.AllocationStatsReport = alloc_diagnostics.allocation_stats_report(value);
+    give report.component != ""
+        and stats.live_bytes == report.stats.live_bytes
+        and alloc_diagnostics.memory_report_is_healthy(report) == report.healthy;
+}
+
+proc alloc_max_tracker_contract(value: alloc_tracker.AllocationTracker) -> bool {
+    let profile: alloc_tracker.AllocationTrackerProfile = alloc_tracker.allocation_tracker_profile(value);
+    give profile.valid
+        and alloc_tracker.allocation_tracker_is_valid(value)
+        and profile.peak_bytes >= profile.live_bytes;
+}
+
+proc alloc_max_quota_contract(value: alloc_quota.MemoryQuota) -> bool {
+    let profile: alloc_quota.QuotaProfile = alloc_quota.memory_quota_profile(value);
+    give profile.valid
+        and alloc_quota.memory_quota_is_valid(value)
+        and profile.used_bytes <= profile.limit_bytes;
+}
+
+proc alloc_max_fallback_contract(value: alloc_fallback.FallbackAllocator) -> bool {
+    let profile: alloc_fallback.FallbackProfile = alloc_fallback.fallback_profile(value);
+    give profile.valid
+        and alloc_fallback.fallback_is_valid(value);
+}
+
+proc alloc_max_ownership_contract<T>(value: alloc_ownership.OwnershipPolicy) -> bool {
+    let profile: alloc_ownership.OwnershipProfile = alloc_ownership.ownership_profile<T>(value);
+    give profile.valid
+        and alloc_ownership.ownership_is_valid<T>(value)
+        and profile.needs_drop == alloc_ownership.ownership_needs_drop(value);
+}
+
+proc alloc_max_snapshot_contract(value: alloc_snapshot.AllocSnapshot) -> bool {
+    let profile: alloc_snapshot.AllocSnapshotProfile = alloc_snapshot.alloc_snapshot_profile(value);
+    give profile.valid
+        and alloc_snapshot.alloc_snapshot_is_valid(value)
+        and profile.peak_bytes >= profile.live_bytes;
 }
 
 proc alloc_max_vec_contract<T>(value: alloc_vec.Vec<T>) -> bool {
@@ -234,5 +307,5 @@ proc alloc_max_collections_contract<K, V, T>(
 }
 
 proc alloc_max_surface_count() -> usize {
-    give 24 as usize;
+    give 33 as usize;
 }

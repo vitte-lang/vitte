@@ -1,0 +1,78 @@
+space vitte/stdlib/alloc/fallback
+
+export *
+
+use src/vitte/stdlib/alloc/allocator as alloc_allocator
+use src/vitte/stdlib/alloc/arena as alloc_arena
+use src/vitte/stdlib/core/option as core_option
+
+pick FallbackStrategy {
+    PrimaryThenSecondary
+    PrimaryThenArena
+    SecondaryOnly
+}
+
+form FallbackAllocator {
+    primary: alloc_allocator.Allocator
+    secondary: alloc_allocator.Allocator
+    arena: alloc_arena.Arena
+    strategy: FallbackStrategy
+}
+
+form FallbackResult {
+    allocation: alloc_allocator.Allocation
+    used_fallback: bool
+    source: string
+    success: bool
+}
+
+form FallbackProfile {
+    primary_failures: usize
+    secondary_failures: usize
+    arena_allocated: usize
+    strategy: FallbackStrategy
+    valid: bool
+}
+
+proc fallback_allocator(primary: alloc_allocator.Allocator, secondary: alloc_allocator.Allocator, arena: alloc_arena.Arena, strategy: FallbackStrategy) -> FallbackAllocator {
+    give FallbackAllocator { primary: primary, secondary: secondary, arena: arena, strategy: strategy };
+}
+
+proc fallback_result_none(source: string) -> FallbackResult {
+    give FallbackResult { allocation: alloc_allocator.allocation_null(), used_fallback: true, source: source, success: false };
+}
+
+proc fallback_allocate(value: ref mut FallbackAllocator, layout_value: alloc_allocator.AllocationLayout) -> FallbackResult {
+    if (*value).strategy != FallbackStrategy.SecondaryOnly {
+        let primary = alloc_allocator.try_allocate(&mut ((*value).primary), layout_value);
+        if is_some<alloc_allocator.Allocation>(primary) {
+            give FallbackResult { allocation: unwrap<alloc_allocator.Allocation>(primary), used_fallback: false, source: "primary", success: true };
+        }
+    }
+    if (*value).strategy == FallbackStrategy.PrimaryThenArena {
+        let arena_alloc = alloc_arena.arena_alloc_layout(&mut ((*value).arena), layout_value);
+        if is_some<alloc_allocator.Allocation>(arena_alloc) {
+            give FallbackResult { allocation: unwrap<alloc_allocator.Allocation>(arena_alloc), used_fallback: true, source: "arena", success: true };
+        }
+        give fallback_result_none("arena");
+    }
+    let secondary = alloc_allocator.try_allocate(&mut ((*value).secondary), layout_value);
+    if is_some<alloc_allocator.Allocation>(secondary) {
+        give FallbackResult { allocation: unwrap<alloc_allocator.Allocation>(secondary), used_fallback: true, source: "secondary", success: true };
+    }
+    give fallback_result_none("secondary");
+}
+
+proc fallback_profile(value: FallbackAllocator) -> FallbackProfile {
+    give FallbackProfile {
+        primary_failures: alloc_allocator.allocator_failure_count(value.primary),
+        secondary_failures: alloc_allocator.allocator_failure_count(value.secondary),
+        arena_allocated: alloc_arena.arena_allocated(value.arena),
+        strategy: value.strategy,
+        valid: alloc_allocator.allocator_contract(value.primary).valid and alloc_allocator.allocator_contract(value.secondary).valid and alloc_arena.arena_is_valid(value.arena)
+    };
+}
+
+proc fallback_is_valid(value: FallbackAllocator) -> bool {
+    give fallback_profile(value).valid;
+}
