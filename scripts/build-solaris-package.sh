@@ -207,11 +207,9 @@ set -eu
 for command in \
   /usr/local/bin/vitte \
   /usr/local/bin/vittec \
-  /usr/local/bin/vittec0 \
+  /usr/local/bin/vitte \
   /usr/local/libexec/vitte/vitte \
-  /usr/local/libexec/vitte/vittec \
-  /usr/local/libexec/vitte/vittec0
-do
+  /usr/local/libexec/vitte/vittec \do
   if [ -f "$command" ]; then
     chmod 0755 "$command"
   fi
@@ -348,7 +346,7 @@ DESTDIR=${DESTDIR:-}
 case "$PREFIX" in /*) ;; *) echo "PREFIX must be absolute: $PREFIX" >&2; exit 1 ;; esac
 [ "$(id -u)" -eq 0 ] || [ -n "$DESTDIR" ] || [ -w "$PREFIX" ] || { echo "Solaris portable uninstall requires root unless DESTDIR is set or PREFIX is writable" >&2; exit 1; }
 root=${DESTDIR:-/}
-rm -f "$root$PREFIX/bin/vitte" "$root$PREFIX/bin/vittec" "$root$PREFIX/bin/vittec0"
+rm -f "$root$PREFIX/bin/vitte" "$root$PREFIX/bin/vittec" "$root$PREFIX/bin/vitte"
 rm -rf "$root$PREFIX/libexec/vitte" "$root$PREFIX/share/vitte"
 echo "Vitte removed from $DESTDIR$PREFIX."
 SH
