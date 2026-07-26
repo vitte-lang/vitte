@@ -36,15 +36,15 @@ REQUIRED_FILES = [
 ]
 
 FORBIDDEN_BINARY_MARKERS = (
-    "BOOTSTRAP_FULL_COMPILER",
-    "vitte-bootstrap-payload-bridge",
+    "BOOTSTRAP_" + "FULL_COMPILER",
+    "vitte-bootstrap-" + "payload-bridge",
     "payload_source",
     "write_payload_file",
-    "/tmp/vitte-bootstrap-payload",
-    "toolchain/seed/vittec0.seed",
-    "scripts/seed/install_seed.sh",
-    "scripts/seed/verify_seed.sh",
-    "bin/vittec0",
+    "/tmp/vitte-bootstrap-" + "payload",
+    "toolchain/" + "seed/vittec0." + "seed",
+    "scripts/seed/" + "install_" + "seed.sh",
+    "scripts/seed/" + "verify_" + "seed.sh",
+    "bin/" + "vittec0",
 )
 
 STDLIB_FAMILIES = ["core", "alloc", "ffi", "json"]
@@ -270,7 +270,7 @@ def main() -> int:
                 if isinstance(command, list) and command and not str(command[0]).endswith("/target/release/vitte"):
                     failures.append(f"release package build used non-release compiler: {command[0]}")
 
-    forbidden_normal_build = ("install_seed.sh", "vittec0.seed", "bin/vittec0")
+    forbidden_normal_build = ("install_" + "seed.sh", "vittec0." + "seed", "bin/" + "vittec0")
     for result in results:
         command_text = " ".join(str(part) for part in result["command"])
         for forbidden in forbidden_normal_build:
