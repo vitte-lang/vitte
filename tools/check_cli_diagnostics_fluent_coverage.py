@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SEED = ROOT / "toolchain" / "seed" / "vittec0.seed"
+CLI_SURFACE = ROOT / "bin" / "vitte"
 EN_FTL = ROOT / "locales" / "en" / "diagnostics.ftl"
 
 CODE_RE = re.compile(r"\b(?:[A-Z][A-Z0-9]*_)+(?:E|W|F|I)_[A-Z0-9_]+\b|\bE[0-9]{4}\b|\bP[0-9A-Z_]+\b")
@@ -35,9 +35,9 @@ def looks_like_diagnostic(code: str) -> bool:
     )
 
 
-def emitted_cli_codes(seed_text: str) -> set[str]:
-    codes = {match.group(1) for match in CALL_RE.finditer(seed_text)}
-    codes.update(code for code in CODE_RE.findall(seed_text) if looks_like_diagnostic(code))
+def emitted_cli_codes(cli_text: str) -> set[str]:
+    codes = {match.group(1) for match in CALL_RE.finditer(cli_text)}
+    codes.update(code for code in CODE_RE.findall(cli_text) if looks_like_diagnostic(code))
     return codes
 
 
@@ -46,9 +46,9 @@ def ftl_codes(ftl_text: str) -> set[str]:
 
 
 def main() -> int:
-    seed_text = SEED.read_text(encoding="utf-8", errors="ignore")
+    cli_text = CLI_SURFACE.read_text(encoding="utf-8", errors="ignore")
     ftl_text = EN_FTL.read_text(encoding="utf-8")
-    emitted = emitted_cli_codes(seed_text)
+    emitted = emitted_cli_codes(cli_text)
     catalog = ftl_codes(ftl_text)
     missing = sorted(emitted - catalog)
     if missing:
