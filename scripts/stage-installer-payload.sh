@@ -271,7 +271,6 @@ case "$LAYOUT" in
 esac
 
 copy_tree "$ROOT_DIR/src/vitte" "$share_dir/src/vitte"
-copy_tree "$ROOT_DIR/toolchain/seed" "$share_dir/toolchain/seed"
 for directory in assets completions docs editors examples locales; do
   copy_tree "$ROOT_DIR/$directory" "$share_dir/$directory"
 done

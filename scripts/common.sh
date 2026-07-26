@@ -68,19 +68,7 @@ install_vitte_if_missing() {
     return 0
   fi
 
-  root_dir=${ROOT_DIR:-$(CDPATH= cd -- "$(dirname "$0")/.." 2>/dev/null && pwd || pwd)}
-  if [ -x "$root_dir/scripts/seed/install_seed.sh" ]; then
-    "$root_dir/scripts/seed/install_seed.sh" >/dev/null
-    detected=$(detect_vitte 2>/dev/null || true)
-    if [ -n "$detected" ]; then
-      VITTE_ABSOLUTE=$detected
-      export VITTE_ABSOLUTE
-      printf '%s\n' "$detected"
-      return 0
-    fi
-  fi
-
-  scripts_build_die "cannot find or install Vitte; checked VITTE_BIN, ./bin/vitte, ROOT_DIR/bin/vitte, VITTE_ROOT/bin/vitte, VITTE_ROOT prefix bin, and /usr/local/bin/vitte"
+  scripts_build_die "cannot find Vitte; checked VITTE_BIN, ./bin/vitte, ROOT_DIR/bin/vitte, VITTE_ROOT/bin/vitte, VITTE_ROOT prefix bin, and /usr/local/bin/vitte"
 }
 
 verify_vitte() {
