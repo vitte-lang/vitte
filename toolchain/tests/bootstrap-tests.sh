@@ -25,11 +25,10 @@ fi
 python3 tools/check_bootstrap_seed_root.py --artifacts
 
 if [ "$MODE" = "advanced" ]; then
-  for source in toolchain/src/*.vit; do
-    bin/vittec check "$source"
+  for source in src/vitte/compiler/main.vit src/vitte/compiler/driver/compiler.vit src/vitte/compiler/frontend/pipeline.vit; do
+    target/release/vitte check "$source"
   done
-  make --no-print-directory bootstrap-native-snapshots
-  python3 tools/selfhost_completion_audit.py
+  make --no-print-directory seed-free-release-gate
 fi
 
-printf '[bootstrap-tests] ok: seed trust root and generated compiler contract\n'
+printf '[bootstrap-tests] ok: canonical Vitte compiler source contract\n'
