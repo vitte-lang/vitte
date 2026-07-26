@@ -463,6 +463,10 @@ bootstrap-seed:
 seed-verify:
 	@scripts/seed/verify_seed.sh
 
+.PHONY: seed-frozen-gate
+seed-frozen-gate:
+	@python3 tools/check_seed_frozen.py
+
 .PHONY: seed-manifest-update
 seed-manifest-update:
 	@scripts/seed/update_manifest.sh
@@ -2388,6 +2392,7 @@ help:
 	@echo "  make bootstrap-posix-smoke run POSIX shell syntax and env smoke checks for bootstrap artifacts"
 	@echo "  make bootstrap-parity report the retired legacy parity gate and its replacements"
 	@echo "  make bootstrap-verify verify bootstrap versions, smoke, AST/IR checks"
+	@echo "  make seed-frozen-gate verify vittec0.seed is historical frozen fallback only"
 	@echo "  make seed-manifest-update regenerate toolchain/seed/manifest.txt from the audited seed artifact"
 	@echo "  make seed-rotation-report print seed manifest/hash/version rotation status"
 	@echo "  make seed-syntax-test run non-regression syntax checks for vittec0"

@@ -11,6 +11,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+      - name: Check frozen historical seed
+        env:
+          SEED_FROZEN_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: make seed-frozen-gate
       - name: Check seed manifest hash drift
         run: make seed-verify
       - name: Report seed rotation status

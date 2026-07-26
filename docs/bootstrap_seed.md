@@ -1,53 +1,52 @@
 # Bootstrap Seed Contract
 
-The bootstrap seed is the trusted stage0 entry point for rebuilding the Vitte
-toolchain without repo-hosted host-language sources.
+The bootstrap seed is a historical stage0 artifact. It is kept only as an
+offline bootstrap fallback for reconstructing an initial compiler in an empty
+environment. It is not the active source for compiler development.
 
 ## Files
 
 - Canonical readable source: `toolchain/seed/src/main.vit`
 - Audited executable artifact: `toolchain/seed/vittec0.seed`
 - Pinning manifest: `toolchain/seed/manifest.txt`
+- Frozen policy: `toolchain/seed/frozen.json`
 
 `toolchain/seed/manifest.txt` records the seed source path, artifact path,
-artifact SHA-256, and expected `--version` output. `make seed-verify` checks the
-manifest hash against the artifact and validates the version string.
+artifact SHA-256, expected `--version` output, and frozen status. `make
+seed-verify` checks the manifest hash against the artifact and validates the
+version string.
 
-The readable source is the canonical intent for review. The executable artifact
-is the stage0 trust root actually run by bootstrap scripts. `make seed-verify`
-keeps the two tied at the identity boundary by checking that source
-`VERSION_TEXT`, manifest `version=...`, and `vittec0.seed --version` match.
+`toolchain/seed/frozen.json` pins the current seed hashes and marks the seed as
+`historical-frozen` with `bootstrap-fallback-only` usage. `make
+seed-frozen-gate` enforces that policy.
 
 ## Change Rule
 
-Any intentional seed rotation must update these contracts together:
+Normal development must not modify:
 
-- `toolchain/seed/src/main.vit` when the readable seed behavior changes.
-- `toolchain/seed/vittec0.seed` when the executable seed artifact changes.
-- `toolchain/seed/manifest.txt` when the artifact bytes or version change.
-- `tests/bootstrap_native/*` snapshots when generated native output changes.
-- CI must pass, including `make seed-verify` and
-  `make bootstrap-native-snapshots`.
+- `toolchain/seed/vittec0.seed`
+- `toolchain/seed/src/main.vit`
+- `toolchain/seed/manifest.txt`
+- `toolchain/seed/frozen.json`
 
-The seed artifact must not change on its own. A change to
-`toolchain/seed/vittec0.seed` without a matching `toolchain/seed/manifest.txt`
-change is treated as seed drift and fails `make seed-contract-check`.
+Any change to those paths fails `make seed-frozen-gate` in CI after the frozen
+policy exists on the target branch. An intentional seed rotation is outside the
+normal CI path and requires an explicit bootstrap plan plus
+`SEED_FROZEN_OVERRIDE=1`.
 
-## Rotation Checklist
+## Fallback Use
 
-1. Modify `toolchain/seed/src/main.vit`.
-2. Regenerate or edit `toolchain/seed/vittec0.seed`.
-3. Run `make seed-rotation-report` to inspect the current artifact hash and
-   version.
-4. Run `make seed-manifest-update` to rewrite `toolchain/seed/manifest.txt`
-   from the audited artifact and source `VERSION_TEXT`.
-5. Run `make bootstrap-native-snapshots`.
-6. Run `make bootstrap-verify`.
-7. Run `make seed-contract-check`.
+The normal compiler path is `src/vitte/compiler` plus `src/vitte/stdlib`.
+`vittec0.seed` may be used only to reconstruct a fallback stage0 when no
+compiled Vitte compiler is available.
+
+`make seed-rotation-report` now reports frozen status and hash identity. It does
+not authorize rotation.
 
 ## Local Checks
 
 ```sh
+make seed-frozen-gate
 make seed-verify
 make seed-rotation-report
 make posix-seed-shell-check
