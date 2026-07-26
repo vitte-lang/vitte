@@ -12,7 +12,7 @@ trap cleanup EXIT HUP INT TERM
 
 mkdir -p "$TMP_ROOT/bin" "$TMP_ROOT/out"
 
-for command in vitte vittec vittec0; do
+for command in vitte vittec; do
   printf '#!/bin/sh\ncase "$1" in --help) echo Vitte help; exit 0;; esac\nexit 0\n' > "$TMP_ROOT/bin/$command"
   chmod 0755 "$TMP_ROOT/bin/$command"
 done
@@ -47,8 +47,7 @@ env \
   VERSION=$VERSION \
   VITTE_BIN_AMD64="$TMP_ROOT/bin/vitte" \
   VITTE_VITTEC_AMD64="$TMP_ROOT/bin/vittec" \
-  VITTE_VITTEC0_AMD64="$TMP_ROOT/bin/vittec0" \
-  OUT_DIR="$TMP_ROOT/out" \
+    OUT_DIR="$TMP_ROOT/out" \
   BSD_FAMILY=freebsd \
   BSD_RELEASE=14 \
   ARCH=amd64 \
@@ -69,8 +68,7 @@ env \
   VERSION=$VERSION \
   VITTE_BIN_AMD64="$TMP_ROOT/bin/vitte" \
   VITTE_VITTEC_AMD64="$TMP_ROOT/bin/vittec" \
-  VITTE_VITTEC0_AMD64="$TMP_ROOT/bin/vittec0" \
-  "$ROOT_DIR/scripts_build/stage-installer-payload.sh" "$space_root/out/linux payload" linux amd64 unix >/dev/null
+    "$ROOT_DIR/scripts_build/stage-installer-payload.sh" "$space_root/out/linux payload" linux amd64 unix >/dev/null
 test -s "$space_root/out/linux payload/usr/local/share/vitte/INSTALLATION.json"
 
 case_dir="$TMP_ROOT/case-check"
