@@ -34,7 +34,7 @@ scripts_build_copy_tree "$BUILD_DIR/stage/root/usr/local/bin" "$portable_root/bi
 scripts_build_copy_tree "$BUILD_DIR/stage/root/usr/local/libexec" "$portable_root/libexec"
 scripts_build_copy_tree "$BUILD_DIR/stage/root/usr/local/share" "$portable_root/share"
 
-for command in vitte vittec vittec0; do
+for command in vitte vittec; do
   cat > "$portable_root/bin/$command" <<EOF
 #!/bin/sh
 set -eu
