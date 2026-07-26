@@ -64,14 +64,22 @@ VAGUE_FRONTEND_TERMS = (
 )
 
 
-def run(command: tuple[str, ...], expect_success: bool = True) -> subprocess.CompletedProcess[str]:
+def run(command: tuple[str, ...], expect_success: bool = True, verbose: bool = True) -> subprocess.CompletedProcess[str]:
+    if verbose:
+        print(f"[syntax-parser-max] run {' '.join(command)}", flush=True)
     proc = subprocess.run(command, cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120)
+    if verbose and proc.stdout:
+        print(proc.stdout, end="", flush=True)
+    if verbose and proc.stderr:
+        print(proc.stderr, end="", flush=True)
     if expect_success and proc.returncode != 0:
         raise SystemExit(
-            f"[syntax-parser-max][error] command failed: {' '.join(command)}\n{proc.stdout}{proc.stderr}"
+            f"[syntax-parser-max][error] command failed: {' '.join(command)}"
         )
     if not expect_success and proc.returncode == 0:
         raise SystemExit(f"[syntax-parser-max][error] command unexpectedly passed: {' '.join(command)}")
+    if verbose:
+        print(f"[syntax-parser-max] done {' '.join(command)}", flush=True)
     return proc
 
 
@@ -163,7 +171,7 @@ def validate_catalog_rows(codes: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 def frontend_syntax_json(paths: tuple[Path, ...]) -> list[dict[str, Any]]:
     command = ("python3", "tools/frontend_syntax_check.py", "--json", *(path.as_posix() for path in paths))
-    proc = run(command)
+    proc = run(command, verbose=False)
     return json.loads(proc.stdout)
 
 
@@ -178,7 +186,7 @@ def validate_frontend_corpus() -> dict[str, Any]:
         if value < minimum:
             raise SystemExit(f"[syntax-parser-max][error] {metric}={value} below minimum {minimum}")
 
-    bad = run(("python3", "tools/frontend_syntax_check.py", "--json", INVALID_FIXTURE.as_posix()), expect_success=False)
+    bad = run(("python3", "tools/frontend_syntax_check.py", "--json", INVALID_FIXTURE.as_posix()), expect_success=False, verbose=False)
     invalid_results = json.loads(bad.stdout)
     diagnostics = invalid_results[0].get("diagnostics", []) if invalid_results else []
     if not isinstance(diagnostics, list) or len(diagnostics) < 4:
