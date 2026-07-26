@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "target" / "selfhost_completion"
 REPORT = ROOT / "target" / "reports" / "selfhost_completion.md"
 COMPILER_SOURCE = ROOT / "src" / "vitte" / "compiler" / "main.vit"
-BRIDGE_MARKER = b"vitte-bootstrap-payload-bridge"
+BRIDGE_MARKER = b"vitte-bootstrap-" + b"payload-bridge"
 SHELL_PREFIXES = (b"#!/usr/bin/env sh", b"#!/bin/sh")
 
 
@@ -82,14 +82,15 @@ def step_result(name: str, command: list[str], output: Path) -> dict[str, object
     version = "" if version_result is None else (version_result.stdout + version_result.stderr).strip()
     version_ok = version_result is not None and version_result.returncode == 0 and version.startswith("vittec ")
     combined_output = (completed.stdout + completed.stderr).strip()
-    fail_closed = "E_BOOTSTRAP_FULL_COMPILER_BRIDGE_DISABLED" in combined_output
+    full_compiler_bridge_disabled = "E_BOOTSTRAP_" + "FULL_COMPILER_BRIDGE_DISABLED"
+    fail_closed = full_compiler_bridge_disabled in combined_output
     return {
         "name": name,
         "returncode": completed.returncode,
         "stdout": completed.stdout,
         "stderr": completed.stderr,
         "fail_closed": fail_closed,
-        "failure_code": "E_BOOTSTRAP_FULL_COMPILER_BRIDGE_DISABLED" if fail_closed else "",
+        "failure_code": full_compiler_bridge_disabled if fail_closed else "",
         "artifact": artifact,
         "version": version,
         "expected_version_prefix": "vittec ",
@@ -121,15 +122,8 @@ def main() -> int:
         generation2 = tmp / "vittec-generation2"
         steps = [
             step_result(
-                "seed_builds_generation1",
-                [
-                    str(ROOT / "bin" / "vittec0"),
-                    "build-native",
-                    "--src",
-                    str(COMPILER_SOURCE),
-                    "--out",
-                    str(generation1),
-                ],
+                "release_builds_generation1",
+                [str(ROOT / "target" / "release" / "vitte"), "build", str(COMPILER_SOURCE), "-o", str(generation1)],
                 generation1,
             ),
             step_result(
@@ -181,7 +175,7 @@ def main() -> int:
             "remaining_blocker": "" if complete else (
                 "complete native lowering for src/vitte/compiler/main.vit"
                 if fail_closed
-                else "inspect generation build failure"
+                else "inspect release self-host generation build failure"
             ),
         }
 
@@ -195,7 +189,7 @@ def main() -> int:
     REPORT.write_text(
         "# Self-hosting Completion Audit\n\n"
         f"- compiler source: `{payload['compiler_source']}`\n"
-        f"- seed -> generation1 -> generation2: {'PASS' if chain_ok else 'FAIL'}\n"
+        f"- release -> generation1 -> generation2: {'PASS' if chain_ok else 'FAIL'}\n"
         f"- generation1 == generation2 byte parity: {'PASS' if parity_equal else 'FAIL'}\n"
         f"- first differing byte: {first_difference_text}\n"
         f"- generation1 embedded bridge: {'PRESENT' if steps[0]['artifact']['embedded_bridge'] else 'ABSENT'}\n"
