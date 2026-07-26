@@ -4,7 +4,7 @@ set -eu
 ROOT_DIR=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 SCRIPT_NAME=verify-installers
 . "$ROOT_DIR/scripts_build/common.sh"
-VERSION=${VERSION:-$(tr -d ' \r\n' < "$ROOT_DIR/toolchain/scripts/package/PACKAGE_VERSION")}
+VERSION=${VERSION:-$(scripts_build_package_version)}
 OUT_DIR=${OUT_DIR:-$ROOT_DIR/pkgout}
 case "$OUT_DIR" in /*) ;; *) OUT_DIR=$ROOT_DIR/$OUT_DIR ;; esac
 STRICT_NATIVE=${STRICT_NATIVE:-0}
@@ -218,10 +218,13 @@ fi
       die "invalid Windows processor manifest"
     tar -tzf "$windows_kit" | grep -Fx 'payload/share/vitte/assets/logo.png' >/dev/null ||
       die "missing Windows installer logo"
-    for required in installer.nsi BUILD.txt payload/share/vitte/INSTALLATION.json payload/share/vitte/VERSION; do
+    for required in installer.nsi install.ps1 uninstall.ps1 BUILD.txt payload/share/vitte/INSTALLATION.json payload/share/vitte/VERSION; do
       tar -tzf "$windows_kit" | grep -Fx "$required" >/dev/null ||
         die "Windows kit missing $required: $windows_kit"
     done
+    if tar -tzf "$windows_kit" | grep -Fx 'install.sh' >/dev/null; then
+      die "Windows kit must not contain POSIX install.sh: $windows_kit"
+    fi
     tar -xOzf "$windows_kit" installer.nsi | grep -F '!include "LogicLib.nsh"' >/dev/null ||
       die "Windows NSIS script missing LogicLib include: $windows_kit"
     tar -xOzf "$windows_kit" installer.nsi | grep -F '!include "StrFunc.nsh"' >/dev/null ||
@@ -239,7 +242,7 @@ fi
         die "Windows kit missing PowerShell shim for $command: $windows_kit"
       tar -xOzf "$windows_kit" "payload/bin/$command.cmd" | grep -F 'set "VITTE_ROOT=%~dp0..\share\vitte"' >/dev/null ||
         die "Windows cmd shim missing VITTE_ROOT for $command: $windows_kit"
-      tar -xOzf "$windows_kit" "payload/bin/$command.ps1" | grep -F '$env:VITTE_ROOT = Join-Path $PSScriptRoot "..\share\vitte"' >/dev/null ||
+      tar -xOzf "$windows_kit" "payload/bin/$command.ps1" | grep -F '$env:VITTE_ROOT = Join-Path $ScriptDir "..\share\vitte"' >/dev/null ||
         die "Windows PowerShell shim missing VITTE_ROOT for $command: $windows_kit"
     done
     tar -tzf "$windows_kit" | grep -Fx 'payload/bin/vitte-installer-doctor.cmd' >/dev/null ||
