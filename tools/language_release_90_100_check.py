@@ -22,7 +22,7 @@ REQS = [
     (97, "release_policy", ["docs/compiler/release_engineering.md", "docs/release/one_zero_policy.md", "tools/release_doctor.py"], ["release", "checksums"]),
     (98, "language_stdlib_semver", ["docs/release/version_contract.json", "docs/release/compatibility_matrix.md", "tools/version_compatibility_gate.py"], ["language_semver", "stdlib_semver"]),
     (99, "contribution_governance", ["docs/CONTRIBUTING.html", "docs/governance/platform_governance_complete.md"], ["contributing", "RFC"]),
-    (100, "one_zero_green_gate_policy", ["docs/release/one_zero_policy.md", ".github/workflows/ci.yml", ".github/workflows/bootstrap.yml"], ["selfhost-hard-strict", "diagnostic-quality", "stdlib-gate", "backend-gate", "1.0"]),
+    (100, "one_zero_green_gate_policy", ["docs/release/one_zero_policy.md", ".github/workflows/ci.yml", ".github/workflows/compiler-vitte-chain.yml"], ["seed-free-release-gate", "diagnostic-quality", "stdlib-gate", "backend-gate", "1.0"]),
 ]
 
 
