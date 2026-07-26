@@ -7,8 +7,8 @@ cd "$ROOT_DIR"
 SRC="src/vitte/compiler/main.vit"
 EXECUTION_FIXTURE="tests/bootstrap_native/main_const_int.vit"
 EXECUTION_OUT="target/bootstrap/bootstrap_vitte_execution_probe"
-COMPILER_REJECTION_OUT="target/bootstrap/bootstrap_vitte_rejected"
-COMPILER_REJECTION_ERR="target/bootstrap/bootstrap_vitte_rejected.err"
+COMPILER_PROBE_OUT="target/bootstrap/bootstrap_vitte_compiler_probe"
+COMPILER_PROBE_ERR="target/bootstrap/bootstrap_vitte_compiler_probe.err"
 CHECKER=""
 
 [ -f "$SRC" ] || { echo "[bootstrap-vitte][error] missing $SRC" >&2; exit 2; }
@@ -58,15 +58,15 @@ is_runnable_candidate() {
 }
 
 pick_runnable_checker() {
-  if is_runnable_candidate "bin/vittec0"; then
-    CHECKER="bin/vittec0"
+  if is_runnable_candidate "bin/vitte"; then
+    CHECKER="bin/vitte"
     return 0
   fi
   return 1
 }
 
 pick_runnable_checker || {
-  echo "[bootstrap-vitte][error] missing runnable seed compiler: bin/vittec0" >&2
+  echo "[bootstrap-vitte][error] missing runnable seed compiler: bin/vitte" >&2
   exit 2
 }
 
@@ -94,7 +94,7 @@ echo "[bootstrap-vitte] compatibility check via $CHECKER"
 "$CHECKER" check "$EXECUTION_FIXTURE"
 
 echo "[bootstrap-vitte] compiling native execution probe with seed"
-rm -f "$EXECUTION_OUT" "$COMPILER_REJECTION_OUT" "$COMPILER_REJECTION_ERR"
+rm -f "$EXECUTION_OUT" "$COMPILER_PROBE_OUT" "$COMPILER_PROBE_ERR"
 "$CHECKER" build-native --src "$EXECUTION_FIXTURE" --out "$EXECUTION_OUT"
 tools/require_native_artifact.sh "$EXECUTION_OUT"
 
@@ -108,19 +108,16 @@ set -e
   exit 3
 }
 
-echo "[bootstrap-vitte] verifying unsupported compiler lowering fails closed"
-if "$CHECKER" build-native --src "$SRC" --out "$COMPILER_REJECTION_OUT" \
-    > /dev/null 2> "$COMPILER_REJECTION_ERR"; then
-  echo "[bootstrap-vitte][error] unsupported full compiler lowering unexpectedly succeeded" >&2
-  exit 3
-fi
-grep -Fq 'E_BOOTSTRAP_FULL_COMPILER_BRIDGE_DISABLED' "$COMPILER_REJECTION_ERR" || {
-  cat "$COMPILER_REJECTION_ERR" >&2
-  echo "[bootstrap-vitte][error] missing fail-closed compiler diagnostic" >&2
+echo "[bootstrap-vitte] verifying compiler lowering produces native artifact"
+"$CHECKER" build-native --src "$SRC" --out "$COMPILER_PROBE_OUT" \
+  > /dev/null 2> "$COMPILER_PROBE_ERR" || {
+  cat "$COMPILER_PROBE_ERR" >&2
+  echo "[bootstrap-vitte][error] compiler lowering failed" >&2
   exit 3
 }
-[ ! -e "$COMPILER_REJECTION_OUT" ] || {
-  echo "[bootstrap-vitte][error] rejected compiler lowering left an artifact" >&2
+tools/require_native_artifact.sh "$COMPILER_PROBE_OUT"
+"$COMPILER_PROBE_OUT" --version >/dev/null 2>&1 || {
+  echo "[bootstrap-vitte][error] compiler lowering artifact is not runnable" >&2
   exit 3
 }
 
@@ -147,7 +144,7 @@ cat > target/reports/bootstrap/hard_gate_native.json <<EOF
   "bootstrap": "bootstrap_vitte",
   "strict": true,
   "status": "ok",
-  "compiler_lowering": "unsupported-fail-closed",
+  "compiler_lowering": "native-artifact",
   "duration_sec": $dur,
   "steps": [
     "seed-verify",
