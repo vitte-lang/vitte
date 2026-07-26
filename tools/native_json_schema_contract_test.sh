@@ -14,11 +14,11 @@ if [ -z "$DRIVER_BIN" ]; then
     DRIVER_BIN="$ROOT_DIR/bin/vitte"
   elif [ -x "$ROOT_DIR/bin/vittec" ]; then
     DRIVER_BIN="$ROOT_DIR/bin/vittec"
-  elif [ -x "$ROOT_DIR/bin/vittec0" ]; then
-    DRIVER_BIN="$ROOT_DIR/bin/vittec0"
+  elif [ -x "$ROOT_DIR/bin/vitte" ]; then
+    DRIVER_BIN="/bin/vitte"
   fi
 fi
-[ -x "$DRIVER_BIN" ] || die "missing active compiler driver (tried bin/vitte, bin/vittec, bin/vittec0)"
+[ -x "$DRIVER_BIN" ] || die "missing active compiler driver (tried bin/vitte, bin/vittec, bin/vitte)"
 [ -f "$SRC" ] || die "missing source: $SRC"
 
 assert_help_flag() {
