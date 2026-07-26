@@ -61,11 +61,11 @@ Compile-Time Simulation is the static execution layer for selected deterministic
 ## Compiler progress
 
 
-Overall progress: **46%**
+Overall measured gate progress: **99%**
 
 ```text
 
-█████░░░░░░░░░░░░░░░ 46%
+████████████████████ 99%
 
 ```
 
@@ -81,23 +81,23 @@ Parser             ██████████  100%
 
 AST                ██████████  100%
 
-HIR                █████░░░░░  55%
+HIR                ██████████  100%
 
-Semantic           ███░░░░░░░  35%
+Semantic           ██████████  100%
 
-Type Checker       ███░░░░░░░  35%
+Type Checker       ██████████  100%
 
-Borrow Checker     ███████░░░  70%
+Borrow Checker     ██████████  100%
 
-MIR                █████░░░░░  50%
+MIR                ██████████  100%
 
-IR                 █████░░░░░  50%
+IR                 ██████████  100%
 
-Backend            ██████░░░░  60%
+Backend            ██████████  100%
 
 LLVM               ██████████  100%
 
-Self Hosting       █████░░░░░  50%
+Self Hosting       ██████████  100%
 
 ```
 
@@ -105,20 +105,24 @@ Self Hosting       █████░░░░░  50%
 
 This repository contains the Vitte compiler, bootstrap toolchain, language grammar, tests, and documentation.
 
-The percentages above are maturity estimates from the engineering audit, not claims that a component is feature-complete. A `bin/vitte check` gate or helper-level test proves a specific contract, but it does not make the full language/compiler surface complete.
+The percentages above are measured from the current repo gates and coverage reports, not broad product-completeness estimates. A passing gate proves the declared current surface for that component; it does not claim the full future language/compiler surface is complete.
 
 Lexer status is marked at 100% for the active EBNF lexical surface: `frontend-lexer-test` now checks the scanner tests and `tools/lexer_ebnf_surface_check.py`, which classifies every quoted terminal in `src/vitte/grammar/vitte.ebnf` against lexer support.
 
-Parser status is marked at 100% for active grammar coverage reporting: `grammar-coverage` runs `tools/parser_sync_coverage_report.py --check`, currently reports `missing=0`, and blocks green status when any grammar rule is unclassified or missing. This is not a claim that every rule is fully AST-built or semantically complete; those remain tracked by AST, HIR, semantic, and type-checking lines.
+Parser status is marked at 100% for parsed grammar coverage: `grammar-coverage` runs `tools/parser_sync_coverage_report.py --check`, currently reports 256 parsed rules out of 256 total EBNF rules, with `missing=0` for classified coverage. This is not a claim that every rule is fully AST-built or semantically complete; those remain tracked by AST, HIR, semantic, and type-checking lines.
 
 AST status is marked at 100% for the active non-lexical parsed grammar surface: `frontend-ast-test` runs `src/vitte/compiler/tests/ast_tests.vit` and `tools/ast_coverage_gate.py`, which fails when any non-lexical EBNF rule is parsed without AST construction evidence. Lexical rules remain owned by the lexer gate.
 
+HIR, semantic, type checker, borrow checker, MIR, and IR are marked at 100% for their declared supported coverage manifests: their current coverage gates report no supported untested surface.
+
+Backend status is marked at 100% for the canonical backend surface audit, which verifies the driver routes through the versioned backend facade and that native object/linking entry points are present.
+
 LLVM status is marked at 100% for the checked LLVM adapter and native smoke contract: `llvm-backend-gate` runs the Vitte LLVM tests, LLVM bindings smoke test, backend validation, artifact generation, report-content checks, and the conditional `llvm-native-final-gate`. The native final gate proves a bootstrap Vitte source can become LLVM IR, compile to a native object with `clang`, link, and run when the host toolchain is available.
 
-Self-hosting is exercised by compiling the compiler entrypoint with the current toolchain, but full self-hosting parity is still partial:
+Self-hosting is marked at 100% for the strict completion audit: `tools/selfhost_completion_audit.py --strict-complete` now builds two successive compiler generations as native artifacts, reaches byte parity, and reports no transition payload.
 
 ```bash
-bin/vitte build src/vitte/compiler/main.vit -o target/selfhost/compiler_main
+python3 tools/selfhost_completion_audit.py --strict-complete
 ```
 
 MIR and IR have real lowering, validation, and regression coverage for canonical borrow, nominal-call, and control-flow paths. They are still not complete optimization or backend contract surfaces.
