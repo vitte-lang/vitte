@@ -11,6 +11,30 @@ scripts_build_require() {
     scripts_build_die "missing required tool: $1"
 }
 
+scripts_build_package_version() {
+  root_dir=${ROOT_DIR:-$(CDPATH= cd -- "$(dirname "$0")/.." 2>/dev/null && pwd || pwd)}
+
+  for candidate in \
+    "$root_dir/VERSION" \
+    "$root_dir/toolchain/scripts/package/PACKAGE_VERSION"
+  do
+    if [ -f "$candidate" ] && [ -s "$candidate" ]; then
+      tr -d ' \r\n' < "$candidate"
+      return 0
+    fi
+  done
+
+  if [ -f "$root_dir/README.md" ]; then
+    version=$(sed -n 's/.*version-\([0-9][0-9A-Za-z._+-]*\)-.*/\1/p' "$root_dir/README.md" | sed -n '1p')
+    if [ -n "$version" ]; then
+      printf '%s\n' "$version"
+      return 0
+    fi
+  fi
+
+  printf '%s\n' 0.1.0
+}
+
 scripts_build_absolute_path() {
   path=$1
   case "$path" in
