@@ -12,7 +12,7 @@ trap cleanup EXIT HUP INT TERM
 
 mkdir -p "$TMP_ROOT/bin" "$TMP_ROOT/a" "$TMP_ROOT/b"
 
-for command in vitte vittec vittec0; do
+for command in vitte vittec; do
   printf '#!/bin/sh\nexit 0\n' > "$TMP_ROOT/bin/$command"
   chmod 0755 "$TMP_ROOT/bin/$command"
 done
@@ -24,8 +24,7 @@ stage_once() {
     SOURCE_DATE_EPOCH=1700000000 \
     VITTE_BIN_AMD64="$TMP_ROOT/bin/vitte" \
     VITTE_VITTEC_AMD64="$TMP_ROOT/bin/vittec" \
-    VITTE_VITTEC0_AMD64="$TMP_ROOT/bin/vittec0" \
-    "$ROOT_DIR/scripts_build/stage-installer-payload.sh" "$dest" linux amd64 unix >/dev/null
+        "$ROOT_DIR/scripts_build/stage-installer-payload.sh" "$dest" linux amd64 unix >/dev/null
 }
 
 hash_tree() {
