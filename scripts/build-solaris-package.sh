@@ -5,7 +5,7 @@ ROOT_DIR=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 SCRIPT_NAME=build-solaris-package
 . "$ROOT_DIR/scripts_build/common.sh"
 scripts_build_parse_common_flags "$@"
-VERSION=${VERSION:-$(tr -d ' \r\n' < "$ROOT_DIR/toolchain/scripts/package/PACKAGE_VERSION")}
+VERSION=${VERSION:-$(scripts_build_package_version)}
 OUT_DIR=${OUT_DIR:-$ROOT_DIR/pkgout}
 case "$OUT_DIR" in /*) ;; *) OUT_DIR=$ROOT_DIR/$OUT_DIR ;; esac
 ARCH=${ARCH:-all}
@@ -17,7 +17,6 @@ COMPLETIONS_DIR=$ROOT_DIR/completions
 LICENSE_FILE=$ROOT_DIR/LICENSE
 LOGO_FILE=$ROOT_DIR/assets/logo.png
 PAYLOAD_SCRIPT=$ROOT_DIR/scripts_build/stage-installer-payload.sh
-PACKAGE_VERSION_FILE=$ROOT_DIR/toolchain/scripts/package/PACKAGE_VERSION
 scripts_build_maybe_help "usage: build-solaris-package.sh [--dry-run]"
 scripts_build_maybe_dry_run "would build Solaris SVR4 packages version=$VERSION arch=$ARCH out=$OUT_DIR"
 
@@ -526,9 +525,6 @@ build_one() {
   printf '[build-solaris-package] completed Solaris %s\n' \
     "$architecture"
 }
-
-[ -f "$PACKAGE_VERSION_FILE" ] ||
-  die "PACKAGE_VERSION not found: $PACKAGE_VERSION_FILE"
 
 [ -x "$PAYLOAD_SCRIPT" ] ||
   die "payload staging script is missing or not executable: $PAYLOAD_SCRIPT"
