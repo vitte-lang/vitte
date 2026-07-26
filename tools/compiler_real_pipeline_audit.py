@@ -79,7 +79,7 @@ def check_required_steps() -> list[dict[str, str]]:
 def detect_cli_entry() -> dict[str, str]:
     compiler = read("src/vitte/compiler/main.vit")
     config = read("toolchain/bootstrap-config.json")
-    seed_root_ok = '"compiler": "toolchain/seed/vittec0.seed"' in config
+    seed_root_ok = '"compiler": "bin/vitte"' in config
     entry_ok = 'const COMPILER_ENTRY_POINT: string = "src/vitte/compiler/main.vit"' in compiler
     main_placeholder = re.search(
         r"proc\s+main\s*\(\s*args:\s*list\[string\]\s*\)\s*->\s*int\s*\{\s*give\s+0\s*;?\s*\}",
@@ -87,7 +87,7 @@ def detect_cli_entry() -> dict[str, str]:
         re.S,
     ) is not None
     return {
-        "trust_root": "toolchain/seed/vittec0.seed" if seed_root_ok else "unknown",
+        "trust_root": "bin/vitte" if seed_root_ok else "unknown",
         "compiler_entry_point": "src/vitte/compiler/main.vit" if entry_ok else "unknown",
         "source_entry_declared": "vitte/compiler/main",
         "runtime_cli_dispatch": "placeholder" if main_placeholder else "wired",
@@ -119,7 +119,7 @@ def detect_forbidden_surfaces() -> list[dict[str, str]]:
 
 
 def detect_informational_markers() -> list[dict[str, str]]:
-    seed = read("toolchain/seed/vittec0.seed")
+    seed = read("bin/vitte")
     notes = [
         (
             "build-native output remains the v1-compatible shell artifact",
@@ -134,7 +134,7 @@ def detect_informational_markers() -> list[dict[str, str]]:
     found: list[dict[str, str]] = []
     for pattern, reason in notes:
         if pattern in seed:
-            found.append({"file": "toolchain/seed/vittec0.seed", "pattern": pattern, "reason": reason})
+            found.append({"file": "bin/vitte", "pattern": pattern, "reason": reason})
     return found
 
 
