@@ -40,8 +40,8 @@ VIM_DIR      ?= $(USER_HOME)/.vim
 EMACS_DIR    ?= $(USER_HOME)/.emacs.d
 NANO_DIR     ?= $(USER_HOME)/.config/nano
 LEGACY_ALLOWLIST_BUDGET ?= 5
-PKG_VERSION_FILE ?= toolchain/scripts/package/PACKAGE_VERSION
-PKG_VERSION ?= $(shell tr -d ' \r\n' < $(PKG_VERSION_FILE) 2>/dev/null || echo 0.1.0)
+PKG_VERSION_FILE ?= VERSION
+PKG_VERSION ?= $(shell if [ -s "$(PKG_VERSION_FILE)" ]; then tr -d ' \r\n' < "$(PKG_VERSION_FILE)"; elif [ -s toolchain/scripts/package/PACKAGE_VERSION ]; then tr -d ' \r\n' < toolchain/scripts/package/PACKAGE_VERSION; else v=$$(sed -n 's/.*version-\([0-9][0-9A-Za-z._+-]*\)-.*/\1/p' README.md | sed -n '1p'); printf '%s\n' "$${v:-0.1.0}"; fi)
 
 FORMAT_TOOL  ?= true
 
@@ -2078,15 +2078,15 @@ vitteos-ci-min: vitteos-scripts-check-soft vitteos-issues-check vitteos-domain-c
 
 .PHONY: pkg-debian
 pkg-debian:
-	@VERSION=$(PKG_VERSION) PACKAGE_PROFILE=full toolchain/scripts/package/make-debian-deb.sh
+	@VERSION=$(PKG_VERSION) PACKAGE_PROFILE=full scripts_build/build-linux-debs.sh
 
 .PHONY: pkg-debian-min
 pkg-debian-min:
-	@VERSION=$(PKG_VERSION) PACKAGE_PROFILE=minimal toolchain/scripts/package/make-debian-deb.sh
+	@VERSION=$(PKG_VERSION) PACKAGE_PROFILE=minimal scripts_build/build-linux-debs.sh
 
 .PHONY: pkg-debian-audit
 pkg-debian-audit: pkg-debian
-	@toolchain/scripts/package/audit-debian-deb.sh pkgout/vitte_$(PKG_VERSION)_$$(dpkg --print-architecture).deb
+	@scripts_build/verify-installers.sh
 
 .PHONY: pkg-debian-install
 pkg-debian-install: pkg-debian
@@ -2095,9 +2095,10 @@ pkg-debian-install: pkg-debian
 .PHONY: pkg-macos
 pkg-macos: macos-pkg-bin
 	@VERSION=$(PKG_VERSION) \
-		VITTE_BIN_OVERRIDE="$(CURDIR)/$(MACOS_PKG_DIR)/vitte" \
-		CHECKSUM_TARGET_BIN="$(CURDIR)/$(MACOS_PKG_DIR)/vitte" \
-		toolchain/scripts/package/make-macos-pkg.sh
+		ARCH=arm64 \
+		VITTE_BIN_ARM64="$(CURDIR)/$(MACOS_PKG_DIR)/vitte" \
+		VITTE_VITTEC_ARM64="$(CURDIR)/$(MACOS_PKG_DIR)/vittec" \
+		scripts_build/build-macos-installers.sh
 
 .PHONY: macos-pkg-entry
 macos-pkg-entry:
@@ -2138,14 +2139,14 @@ macos-universal-bin: macos-pkg-entry
 .PHONY: pkg-macos-universal
 pkg-macos-universal: macos-universal-bin
 	@VERSION=$(PKG_VERSION) \
-		VITTE_BIN_OVERRIDE="$(CURDIR)/$(MACOS_UNIVERSAL_DIR)/vitte" \
-		CHECKSUM_TARGET_BIN="$(CURDIR)/$(MACOS_UNIVERSAL_DIR)/vitte" \
-		OUT_FILE_NAME="vitte-$(PKG_VERSION)-universal.pkg" \
-		toolchain/scripts/package/make-macos-pkg.sh
+		ARCH=universal \
+		VITTE_BIN_UNIVERSAL="$(CURDIR)/$(MACOS_UNIVERSAL_DIR)/vitte" \
+		VITTE_VITTEC_UNIVERSAL="$(CURDIR)/$(MACOS_UNIVERSAL_DIR)/vitte" \
+		scripts_build/build-macos-installers.sh
 
 .PHONY: pkg-macos-uninstall
 pkg-macos-uninstall:
-	@VERSION=$(PKG_VERSION) toolchain/scripts/package/make-macos-uninstall-pkg.sh
+	@echo "[pkg-macos-uninstall] retired: generated macOS product packages include uninstall receipts"
 
 .PHONY: release-check
 release-check: core-release-gate ci-fast package-layout-lint-strict legacy-import-allowlist-empty ci-completions pkg-macos release-gate-90-119 vitte-max-construction-gate release-installer-gate vitte-total-integration-gate selfhost-stage0-gate selfhost-full-gate selfhost-ci-regression-gate release-clean-selfhost-gate release-package-stdlib-gate compiler-snapshot-gate compiler-backend-surface-gate compiler-link-abi-gate
