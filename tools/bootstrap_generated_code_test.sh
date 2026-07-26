@@ -2,7 +2,7 @@
 set -eu
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-SEED=$ROOT_DIR/bin/vittec0
+SEED=/bin/vitte
 SOURCE=$ROOT_DIR/tests/bootstrap_native/main_const_int.vit
 OUT_DIR=$ROOT_DIR/target/bootstrap-generated-code-test
 ARTIFACT=$OUT_DIR/main-const-int
@@ -13,7 +13,7 @@ die() {
   exit 1
 }
 
-[ -x "$SEED" ] || die "missing installed seed: bin/vittec0"
+[ -x "$SEED" ] || die "missing installed seed: bin/vitte"
 [ -f "$SOURCE" ] || die "missing execution fixture"
 mkdir -p "$OUT_DIR"
 rm -f "$ARTIFACT"
