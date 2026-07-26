@@ -18,7 +18,7 @@ STAGES = {
 }
 ENTRYPOINT = "src/vitte/compiler/main.vit"
 NEGATIVE = "tests/negative/type_mismatch.vit"
-NATIVE_FIXTURE = "tests/bootstrap_native/main_const_int.vit"
+NATIVE_FIXTURE = "tests/check/main.vit"
 OUT = ROOT / "target/selfhost-stage0"
 REPORT_DIR = ROOT / "target/reports"
 REPORT_JSON = REPORT_DIR / "selfhost_stage0_gate.json"
