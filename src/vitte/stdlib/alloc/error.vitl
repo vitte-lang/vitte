@@ -1,0 +1,162 @@
+space vitte/stdlib/alloc/error
+
+export *
+
+pick AllocErrorKind {
+    OutOfMemory
+    InvalidLayout
+    CapacityOverflow
+    UnsupportedAlignment
+    NullAllocation
+    InvalidPointer
+    UseAfterFree
+    QuotaExceeded
+}
+
+form AllocError {
+    kind: AllocErrorKind
+    message: string
+    requested_size: usize
+    requested_align: usize
+    recoverable: bool
+}
+
+form ReserveError {
+    requested: usize
+    current_capacity: usize
+    max_capacity: usize
+    overflow: bool
+    error: AllocError
+}
+
+form LayoutError {
+    size: usize
+    align: usize
+    reason: string
+    error: AllocError
+}
+
+form CapacityError {
+    length: usize
+    additional: usize
+    capacity: usize
+    overflow: bool
+    error: AllocError
+}
+
+form AllocErrorProfile {
+    kind: AllocErrorKind
+    fatal: bool
+    recoverable: bool
+    code: string
+}
+
+proc alloc_error_kind_name(kind: AllocErrorKind) -> string {
+    if kind == AllocErrorKind.OutOfMemory {
+        give "out-of-memory";
+    }
+    if kind == AllocErrorKind.InvalidLayout {
+        give "invalid-layout";
+    }
+    if kind == AllocErrorKind.CapacityOverflow {
+        give "capacity-overflow";
+    }
+    if kind == AllocErrorKind.UnsupportedAlignment {
+        give "unsupported-alignment";
+    }
+    if kind == AllocErrorKind.NullAllocation {
+        give "null-allocation";
+    }
+    if kind == AllocErrorKind.InvalidPointer {
+        give "invalid-pointer";
+    }
+    if kind == AllocErrorKind.UseAfterFree {
+        give "use-after-free";
+    }
+    give "quota-exceeded";
+}
+
+proc alloc_error_code(kind: AllocErrorKind) -> string {
+    if kind == AllocErrorKind.OutOfMemory {
+        give "ALLOC_OUT_OF_MEMORY";
+    }
+    if kind == AllocErrorKind.InvalidLayout {
+        give "ALLOC_INVALID_LAYOUT";
+    }
+    if kind == AllocErrorKind.CapacityOverflow {
+        give "ALLOC_CAPACITY_OVERFLOW";
+    }
+    if kind == AllocErrorKind.UnsupportedAlignment {
+        give "ALLOC_UNSUPPORTED_ALIGNMENT";
+    }
+    if kind == AllocErrorKind.NullAllocation {
+        give "ALLOC_NULL_ALLOCATION";
+    }
+    if kind == AllocErrorKind.InvalidPointer {
+        give "ALLOC_INVALID_POINTER";
+    }
+    if kind == AllocErrorKind.UseAfterFree {
+        give "ALLOC_USE_AFTER_FREE";
+    }
+    give "ALLOC_QUOTA_EXCEEDED";
+}
+
+proc alloc_error(kind: AllocErrorKind, message: string, requested_size: usize, requested_align: usize, recoverable: bool) -> AllocError {
+    give AllocError {
+        kind: kind,
+        message: message,
+        requested_size: requested_size,
+        requested_align: requested_align,
+        recoverable: recoverable
+    };
+}
+
+proc reserve_error(requested: usize, current_capacity: usize, max_capacity: usize) -> ReserveError {
+    let overflow: bool = requested < current_capacity or requested > max_capacity;
+    give ReserveError {
+        requested: requested,
+        current_capacity: current_capacity,
+        max_capacity: max_capacity,
+        overflow: overflow,
+        error: alloc_error(AllocErrorKind.CapacityOverflow, "reserve request exceeds capacity policy", requested, 1, not overflow)
+    };
+}
+
+proc layout_error(size: usize, align: usize, reason: string) -> LayoutError {
+    give LayoutError {
+        size: size,
+        align: align,
+        reason: reason,
+        error: alloc_error(AllocErrorKind.InvalidLayout, reason, size, align, true)
+    };
+}
+
+proc capacity_error(length: usize, additional: usize, capacity: usize) -> CapacityError {
+    let overflow: bool = additional > compiler_usize_max() - length;
+    give CapacityError {
+        length: length,
+        additional: additional,
+        capacity: capacity,
+        overflow: overflow,
+        error: alloc_error(AllocErrorKind.CapacityOverflow, "length plus additional capacity overflows", length + additional, 1, false)
+    };
+}
+
+proc alloc_error_is_fatal(error: AllocError) -> bool {
+    give error.kind == AllocErrorKind.UseAfterFree
+        or error.kind == AllocErrorKind.InvalidPointer
+        or error.kind == AllocErrorKind.CapacityOverflow;
+}
+
+proc alloc_error_profile(error: AllocError) -> AllocErrorProfile {
+    give AllocErrorProfile {
+        kind: error.kind,
+        fatal: alloc_error_is_fatal(error),
+        recoverable: error.recoverable,
+        code: alloc_error_code(error.kind)
+    };
+}
+
+proc alloc_error_is_recoverable(error: AllocError) -> bool {
+    give alloc_error_profile(error).recoverable and not alloc_error_profile(error).fatal;
+}

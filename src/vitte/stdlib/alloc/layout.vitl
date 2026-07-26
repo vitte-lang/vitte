@@ -1,0 +1,136 @@
+space vitte/stdlib/alloc/layout
+
+export *
+
+use src/vitte/stdlib/alloc/allocator as alloc_allocator
+use src/vitte/stdlib/alloc/error as alloc_error
+
+form LayoutField {
+    name: string
+    offset: usize
+    size: usize
+    align: usize
+}
+
+form StructLayout {
+    size: usize
+    align: usize
+    fields: [LayoutField]
+    valid: bool
+}
+
+form LayoutStride {
+    element: alloc_allocator.AllocationLayout
+    stride: usize
+    valid: bool
+}
+
+form LayoutPlan {
+    requested: alloc_allocator.AllocationLayout
+    padded: alloc_allocator.AllocationLayout
+    stride: usize
+    error: alloc_error.LayoutError
+    valid: bool
+}
+
+proc layout_align_up(value: usize, align: usize) -> Option<usize> {
+    if not alloc_allocator.layout_is_power_of_two(align) {
+        give none<usize>();
+    }
+    let mask: usize = align - 1;
+    if value > compiler_usize_max() - mask {
+        give none<usize>();
+    }
+    give some<usize>((value + mask) & (0 - align));
+}
+
+proc layout_padding_needed(value: usize, align: usize) -> Option<usize> {
+    let aligned = layout_align_up(value, align);
+    if is_none<usize>(aligned) {
+        give none<usize>();
+    }
+    give some<usize>(unwrap<usize>(aligned) - value);
+}
+
+proc layout_stride(layout_value: alloc_allocator.AllocationLayout) -> LayoutStride {
+    if not alloc_allocator.layout_is_valid(layout_value) {
+        give LayoutStride { element: layout_value, stride: 0, valid: false };
+    }
+    let padded: alloc_allocator.AllocationLayout = alloc_allocator.layout_pad_to_align(layout_value);
+    give LayoutStride { element: layout_value, stride: padded.size, valid: true };
+}
+
+proc layout_array(layout_value: alloc_allocator.AllocationLayout, count: usize) -> Option<alloc_allocator.AllocationLayout> {
+    let stride: LayoutStride = layout_stride(layout_value);
+    if not stride.valid {
+        give none<alloc_allocator.AllocationLayout>();
+    }
+    if count != 0 and stride.stride > compiler_usize_max() / count {
+        give none<alloc_allocator.AllocationLayout>();
+    }
+    give some<alloc_allocator.AllocationLayout>(alloc_allocator.layout(stride.stride * count, layout_value.align));
+}
+
+proc layout_field(name: string, size: usize, align: usize) -> LayoutField {
+    give LayoutField { name: name, offset: 0, size: size, align: align };
+}
+
+proc struct_layout_empty() -> StructLayout {
+    give StructLayout { size: 0, align: 1, fields: [], valid: true };
+}
+
+proc struct_layout_push(layout_value: StructLayout, field: LayoutField) -> StructLayout {
+    if not layout_value.valid or not alloc_allocator.layout_is_power_of_two(field.align) {
+        give StructLayout { size: layout_value.size, align: layout_value.align, fields: layout_value.fields, valid: false };
+    }
+    let offset_value = layout_align_up(layout_value.size, field.align);
+    if is_none<usize>(offset_value) {
+        give StructLayout { size: layout_value.size, align: layout_value.align, fields: layout_value.fields, valid: false };
+    }
+    let offset: usize = unwrap<usize>(offset_value);
+    if field.size > compiler_usize_max() - offset {
+        give StructLayout { size: layout_value.size, align: layout_value.align, fields: layout_value.fields, valid: false };
+    }
+    let out_align: usize = layout_value.align;
+    if field.align > out_align {
+        set out_align = field.align;
+    }
+    let placed: LayoutField = LayoutField { name: field.name, offset: offset, size: field.size, align: field.align };
+    give StructLayout {
+        size: offset + field.size,
+        align: out_align,
+        fields: layout_value.fields + [placed],
+        valid: true
+    };
+}
+
+proc struct_layout_finish(layout_value: StructLayout) -> StructLayout {
+    if not layout_value.valid {
+        give layout_value;
+    }
+    let aligned = layout_align_up(layout_value.size, layout_value.align);
+    if is_none<usize>(aligned) {
+        give StructLayout { size: layout_value.size, align: layout_value.align, fields: layout_value.fields, valid: false };
+    }
+    give StructLayout { size: unwrap<usize>(aligned), align: layout_value.align, fields: layout_value.fields, valid: true };
+}
+
+proc layout_plan(layout_value: alloc_allocator.AllocationLayout) -> LayoutPlan {
+    if not alloc_allocator.layout_is_valid(layout_value) {
+        give LayoutPlan {
+            requested: layout_value,
+            padded: layout_value,
+            stride: 0,
+            error: alloc_error.layout_error(layout_value.size, layout_value.align, "invalid layout alignment"),
+            valid: false
+        };
+    }
+    let padded: alloc_allocator.AllocationLayout = alloc_allocator.layout_pad_to_align(layout_value);
+    give LayoutPlan {
+        requested: layout_value,
+        padded: padded,
+        stride: padded.size,
+        error: alloc_error.layout_error(0, 1, ""),
+        valid: true
+    };
+}

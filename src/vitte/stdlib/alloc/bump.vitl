@@ -1,0 +1,143 @@
+space vitte/stdlib/alloc/bump
+
+export *
+
+use src/vitte/stdlib/alloc/allocator as alloc_allocator
+use src/vitte/stdlib/alloc/layout as alloc_layout
+use src/vitte/stdlib/alloc/vec as alloc_vec
+
+form BumpBlock {
+    allocation: alloc_allocator.Allocation
+    cursor: usize
+    capacity: usize
+}
+
+form BumpMark {
+    block_index: usize
+    cursor: usize
+    allocated: usize
+    phase: usize
+}
+
+form BumpAllocator {
+    allocator: alloc_allocator.Allocator
+    block_size: usize
+    blocks: Vec<BumpBlock>
+    allocated: usize
+    phase: usize
+}
+
+form BumpProfile {
+    block_size: usize
+    block_count: usize
+    allocated: usize
+    phase: usize
+    empty: bool
+    valid: bool
+}
+
+proc bump_block(allocation: alloc_allocator.Allocation) -> BumpBlock {
+    give BumpBlock { allocation: allocation, cursor: 0, capacity: allocation.layout.size };
+}
+
+proc bump_new(name: string, block_size: usize) -> BumpAllocator {
+    give BumpAllocator {
+        allocator: alloc_allocator.allocator(name, alloc_allocator.GrowthPolicy.Page),
+        block_size: block_size,
+        blocks: vec_new<BumpBlock>(),
+        allocated: 0,
+        phase: 1
+    };
+}
+
+proc bump_default(name: string) -> BumpAllocator {
+    give bump_new(name, 4096);
+}
+
+proc bump_allocated(value: BumpAllocator) -> usize { give value.allocated; }
+proc bump_block_count(value: BumpAllocator) -> usize { give vec_len<BumpBlock>(value.blocks); }
+proc bump_is_empty(value: BumpAllocator) -> bool { give value.allocated == 0; }
+
+proc bump_mark(value: BumpAllocator) -> BumpMark {
+    give BumpMark {
+        block_index: bump_block_count(value),
+        cursor: compiler_bump_cursor(value),
+        allocated: value.allocated,
+        phase: value.phase
+    };
+}
+
+proc bump_mark_is_valid(value: BumpAllocator, mark: BumpMark) -> bool {
+    give mark.block_index <= bump_block_count(value) and mark.allocated <= value.allocated and mark.phase <= value.phase;
+}
+
+proc bump_profile(value: BumpAllocator) -> BumpProfile {
+    give BumpProfile {
+        block_size: value.block_size,
+        block_count: bump_block_count(value),
+        allocated: value.allocated,
+        phase: value.phase,
+        empty: bump_is_empty(value),
+        valid: value.block_size > 0 and alloc_allocator.allocator_contract(value.allocator).valid
+    };
+}
+
+proc bump_is_valid(value: BumpAllocator) -> bool {
+    give bump_profile(value).valid;
+}
+
+proc bump_next_block_size(value: BumpAllocator, required: usize) -> usize {
+    let out: usize = value.block_size;
+    if required > out {
+        set out = required;
+    }
+    give out;
+}
+
+proc bump_alloc_layout(value: ref mut BumpAllocator, layout_value: alloc_allocator.AllocationLayout) -> Option<alloc_allocator.Allocation> {
+    let plan: alloc_layout.LayoutPlan = alloc_layout.layout_plan(layout_value);
+    if not plan.valid {
+        alloc_allocator.allocator_record_failure(&mut ((*value).allocator));
+        give none<alloc_allocator.Allocation>();
+    }
+    let allocation = compiler_bump_allocate(value, plan.padded.size, plan.padded.align);
+    if is_none<alloc_allocator.Allocation>(allocation) {
+        alloc_allocator.allocator_record_failure(&mut ((*value).allocator));
+        give none<alloc_allocator.Allocation>();
+    }
+    let out: alloc_allocator.Allocation = unwrap<alloc_allocator.Allocation>(allocation);
+    set (*value).allocated = (*value).allocated + plan.padded.size;
+    alloc_allocator.allocator_record_success(&mut ((*value).allocator), plan.padded);
+    give some<alloc_allocator.Allocation>(out);
+}
+
+proc bump_alloc<T>(value: ref mut BumpAllocator) -> Option<alloc_allocator.Allocation> {
+    give bump_alloc_layout(value, alloc_allocator.layout_for<T>());
+}
+
+proc bump_alloc_array<T>(value: ref mut BumpAllocator, count: usize) -> Option<alloc_allocator.Allocation> {
+    let array_layout = alloc_layout.layout_array(alloc_allocator.layout_for<T>(), count);
+    if is_none<alloc_allocator.AllocationLayout>(array_layout) {
+        alloc_allocator.allocator_record_failure(&mut ((*value).allocator));
+        give none<alloc_allocator.Allocation>();
+    }
+    give bump_alloc_layout(value, unwrap<alloc_allocator.AllocationLayout>(array_layout));
+}
+
+proc bump_rewind(value: ref mut BumpAllocator, mark: BumpMark) -> bool {
+    if not bump_mark_is_valid(*value, mark) {
+        give false;
+    }
+    compiler_bump_rewind(value, mark.block_index, mark.cursor, mark.allocated);
+    set (*value).allocated = mark.allocated;
+    set (*value).phase = mark.phase + 1;
+    give true;
+}
+
+proc bump_reset(value: ref mut BumpAllocator) {
+    compiler_bump_reset(value);
+    set (*value).blocks = vec_new<BumpBlock>();
+    set (*value).allocated = 0;
+    set (*value).phase = (*value).phase + 1;
+    set (*value).allocator.stats.live_bytes = 0;
+}

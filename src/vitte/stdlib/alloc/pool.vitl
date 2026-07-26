@@ -1,0 +1,142 @@
+space vitte/stdlib/alloc/pool
+
+export *
+
+use src/vitte/stdlib/alloc/vec as alloc_vec
+use src/vitte/stdlib/core/option as core_option
+
+form PoolKey {
+    index: usize
+    generation: usize
+}
+
+form PoolSlot<T> {
+    occupied: bool
+    generation: usize
+    value: T
+}
+
+form PoolStats {
+    live: usize
+    capacity: usize
+    free: usize
+    generation: usize
+    reuse_count: usize
+}
+
+form Pool<T> {
+    slots: Vec<PoolSlot<T>>
+    free: Vec<usize>
+    stats: PoolStats
+}
+
+form PoolProfile {
+    live: usize
+    capacity: usize
+    free: usize
+    saturated: bool
+    valid: bool
+}
+
+proc pool_key(index: usize, generation: usize) -> PoolKey {
+    give PoolKey { index: index, generation: generation };
+}
+
+proc pool_null_key() -> PoolKey {
+    give PoolKey { index: compiler_usize_max(), generation: 0 };
+}
+
+proc pool_key_is_null(key: PoolKey) -> bool {
+    give key.index == compiler_usize_max();
+}
+
+proc pool_stats_empty(capacity: usize) -> PoolStats {
+    give PoolStats { live: 0, capacity: capacity, free: 0, generation: 1, reuse_count: 0 };
+}
+
+proc pool_new<T>() -> Pool<T> {
+    give Pool<T> { slots: vec_new<PoolSlot<T>>(), free: vec_new<usize>(), stats: pool_stats_empty(0) };
+}
+
+proc pool_with_capacity<T>(capacity: usize) -> Pool<T> {
+    give Pool<T> { slots: vec_with_capacity<PoolSlot<T>>(capacity), free: vec_with_capacity<usize>(capacity), stats: pool_stats_empty(capacity) };
+}
+
+proc pool_len<T>(pool: Pool<T>) -> usize { give pool.stats.live; }
+proc pool_capacity<T>(pool: Pool<T>) -> usize { give vec_capacity<PoolSlot<T>>(pool.slots); }
+proc pool_free_len<T>(pool: Pool<T>) -> usize { give vec_len<usize>(pool.free); }
+proc pool_is_empty<T>(pool: Pool<T>) -> bool { give pool_len<T>(pool) == 0; }
+
+proc pool_profile<T>(pool: Pool<T>) -> PoolProfile {
+    give PoolProfile {
+        live: pool_len<T>(pool),
+        capacity: pool_capacity<T>(pool),
+        free: pool_free_len<T>(pool),
+        saturated: pool_len<T>(pool) == pool_capacity<T>(pool),
+        valid: pool_len<T>(pool) <= vec_len<PoolSlot<T>>(pool.slots)
+    };
+}
+
+proc pool_is_valid<T>(pool: Pool<T>) -> bool {
+    give pool_profile<T>(pool).valid;
+}
+
+proc pool_reserve<T>(pool: ref mut Pool<T>, additional: usize) {
+    vec_reserve<PoolSlot<T>>(&mut ((*pool).slots), additional);
+    vec_reserve<usize>(&mut ((*pool).free), additional);
+    set (*pool).stats.capacity = pool_capacity<T>(*pool);
+}
+
+proc pool_insert<T>(pool: ref mut Pool<T>, value: T) -> PoolKey {
+    let key: PoolKey = compiler_pool_insert<T>(pool, value);
+    set (*pool).stats.live = (*pool).stats.live + 1;
+    set (*pool).stats.generation = (*pool).stats.generation + 1;
+    set (*pool).stats.capacity = pool_capacity<T>(*pool);
+    give key;
+}
+
+proc pool_contains<T>(pool: ref Pool<T>, key: PoolKey) -> bool {
+    if pool_key_is_null(key) or key.index >= vec_len<PoolSlot<T>>((*pool).slots) {
+        give false;
+    }
+    give compiler_pool_contains<T>(pool, key.index, key.generation);
+}
+
+proc pool_get<T>(pool: ref Pool<T>, key: PoolKey) -> Option<ref T> {
+    if not pool_contains<T>(pool, key) {
+        give none<ref T>();
+    }
+    give some<ref T>(compiler_pool_value_ref<T>(pool, key.index));
+}
+
+proc pool_get_mut<T>(pool: ref mut Pool<T>, key: PoolKey) -> Option<ref mut T> {
+    if not pool_contains<T>(&(*pool), key) {
+        give none<ref mut T>();
+    }
+    give some<ref mut T>(compiler_pool_value_mut<T>(pool, key.index));
+}
+
+proc pool_remove<T>(pool: ref mut Pool<T>, key: PoolKey) -> Option<T> {
+    if not pool_contains<T>(&(*pool), key) {
+        give none<T>();
+    }
+    let removed: T = compiler_pool_remove<T>(pool, key.index);
+    vec_push<usize>(&mut ((*pool).free), key.index);
+    set (*pool).stats.live = (*pool).stats.live - 1;
+    set (*pool).stats.free = pool_free_len<T>(*pool);
+    set (*pool).stats.reuse_count = (*pool).stats.reuse_count + 1;
+    give some<T>(removed);
+}
+
+proc pool_clear<T>(pool: ref mut Pool<T>) {
+    set (*pool).slots = vec_new<PoolSlot<T>>();
+    set (*pool).free = vec_new<usize>();
+    set (*pool).stats = pool_stats_empty(0);
+}
+
+proc pool_reset_keep_capacity<T>(pool: ref mut Pool<T>) {
+    let capacity: usize = pool_capacity<T>(*pool);
+    set (*pool).slots = vec_with_capacity<PoolSlot<T>>(capacity);
+    set (*pool).free = vec_with_capacity<usize>(capacity);
+    set (*pool).stats = pool_stats_empty(capacity);
+}

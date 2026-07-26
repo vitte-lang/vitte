@@ -5,9 +5,14 @@ use src/vitte/stdlib/alloc/arc as alloc_arc
 use src/vitte/stdlib/alloc/arena as alloc_arena
 use src/vitte/stdlib/alloc/box as alloc_box
 use src/vitte/stdlib/alloc/btree as alloc_btree
+use src/vitte/stdlib/alloc/bump as alloc_bump
 use src/vitte/stdlib/alloc/byte_buffer as alloc_byte_buffer
 use src/vitte/stdlib/alloc/collections as alloc_collections
 use src/vitte/stdlib/alloc/deque as alloc_deque
+use src/vitte/stdlib/alloc/error as alloc_error
+use src/vitte/stdlib/alloc/layout as alloc_layout
+use src/vitte/stdlib/alloc/pool as alloc_pool
+use src/vitte/stdlib/alloc/raw as alloc_raw
 use src/vitte/stdlib/alloc/rc as alloc_rc
 use src/vitte/stdlib/alloc/slab as alloc_slab
 use src/vitte/stdlib/alloc/smallvec as alloc_smallvec
@@ -24,6 +29,55 @@ proc alloc_max_allocator_contract() -> bool {
         and plan.valid
         and contract.valid
         and alloc_allocator.growth_policy_name(allocator.policy) != "";
+}
+
+proc alloc_max_error_contract() -> bool {
+    let error: alloc_error.AllocError = alloc_error.alloc_error(alloc_error.AllocErrorKind.OutOfMemory, "oom", 64, 8, true);
+    let profile: alloc_error.AllocErrorProfile = alloc_error.alloc_error_profile(error);
+    let reserve: alloc_error.ReserveError = alloc_error.reserve_error(32, 8, 1024);
+    give profile.code != ""
+        and alloc_error.alloc_error_kind_name(error.kind) != ""
+        and alloc_error.alloc_error_is_recoverable(error)
+        and not reserve.overflow;
+}
+
+proc alloc_max_layout_contract() -> bool {
+    let element: alloc_allocator.AllocationLayout = alloc_allocator.layout(3, 4);
+    let stride: alloc_layout.LayoutStride = alloc_layout.layout_stride(element);
+    let plan: alloc_layout.LayoutPlan = alloc_layout.layout_plan(element);
+    let base: alloc_layout.StructLayout = alloc_layout.struct_layout_empty();
+    let field: alloc_layout.LayoutField = alloc_layout.layout_field("value", 3, 4);
+    let placed: alloc_layout.StructLayout = alloc_layout.struct_layout_finish(alloc_layout.struct_layout_push(base, field));
+    give stride.valid
+        and plan.valid
+        and placed.valid
+        and is_some<alloc_allocator.AllocationLayout>(alloc_layout.layout_array(element, 4));
+}
+
+proc alloc_max_raw_contract() -> bool {
+    let pointer: alloc_raw.RawPointer<int> = alloc_raw.raw_pointer<int>(8, true, alloc_raw.RawOwnership.Owned);
+    let slice_value: alloc_raw.RawSlice<int> = alloc_raw.raw_slice<int>(pointer, 4);
+    let block: alloc_raw.RawBlock = alloc_raw.raw_block_null();
+    let profile: alloc_raw.RawBlockProfile = alloc_raw.raw_block_profile(block);
+    give alloc_raw.raw_pointer_is_valid<int>(pointer)
+        and alloc_raw.raw_slice_contains<int>(slice_value, 0)
+        and alloc_raw.raw_slice_byte_len<int>(slice_value) == 4 * compiler_size_of<int>()
+        and not profile.owned;
+}
+
+proc alloc_max_pool_contract<T>(value: alloc_pool.Pool<T>) -> bool {
+    let profile: alloc_pool.PoolProfile = alloc_pool.pool_profile<T>(value);
+    give profile.valid
+        and alloc_pool.pool_is_valid<T>(value)
+        and alloc_pool.pool_free_len<T>(value) <= alloc_pool.pool_capacity<T>(value);
+}
+
+proc alloc_max_bump_contract(value: alloc_bump.BumpAllocator) -> bool {
+    let profile: alloc_bump.BumpProfile = alloc_bump.bump_profile(value);
+    let mark: alloc_bump.BumpMark = alloc_bump.bump_mark(value);
+    give profile.valid
+        and alloc_bump.bump_is_valid(value)
+        and alloc_bump.bump_mark_is_valid(value, mark);
 }
 
 proc alloc_max_vec_contract<T>(value: alloc_vec.Vec<T>) -> bool {
@@ -126,5 +180,5 @@ proc alloc_max_collections_contract<K, V, T>(
 }
 
 proc alloc_max_surface_count() -> usize {
-    give 13 as usize;
+    give 18 as usize;
 }

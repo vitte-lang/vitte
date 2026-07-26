@@ -1,0 +1,124 @@
+space vitte/stdlib/alloc/raw
+
+export *
+
+use src/vitte/stdlib/alloc/allocator as alloc_allocator
+use src/vitte/stdlib/alloc/error as alloc_error
+
+pick RawOwnership {
+    Borrowed
+    Owned
+    Freed
+}
+
+form RawPointer<T> {
+    address: usize
+    mutable: bool
+    ownership: RawOwnership
+}
+
+form RawBlock {
+    allocation: alloc_allocator.Allocation
+    initialized: usize
+    ownership: RawOwnership
+}
+
+form RawSlice<T> {
+    pointer: RawPointer<T>
+    length: usize
+    stride: usize
+}
+
+form RawBlockProfile {
+    address: usize
+    size: usize
+    initialized: usize
+    owned: bool
+    valid: bool
+}
+
+proc raw_pointer_null<T>() -> RawPointer<T> {
+    give RawPointer<T> { address: 0, mutable: false, ownership: RawOwnership.Borrowed };
+}
+
+proc raw_pointer<T>(address: usize, mutable: bool, ownership: RawOwnership) -> RawPointer<T> {
+    give RawPointer<T> { address: address, mutable: mutable, ownership: ownership };
+}
+
+proc raw_pointer_is_null<T>(pointer: RawPointer<T>) -> bool {
+    give pointer.address == 0;
+}
+
+proc raw_pointer_is_owned<T>(pointer: RawPointer<T>) -> bool {
+    give pointer.ownership == RawOwnership.Owned;
+}
+
+proc raw_pointer_is_valid<T>(pointer: RawPointer<T>) -> bool {
+    give pointer.address != 0 and pointer.ownership != RawOwnership.Freed;
+}
+
+proc raw_block_null() -> RawBlock {
+    give RawBlock { allocation: alloc_allocator.allocation_null(), initialized: 0, ownership: RawOwnership.Borrowed };
+}
+
+proc raw_alloc(allocator: ref mut alloc_allocator.Allocator, layout_value: alloc_allocator.AllocationLayout) -> Option<RawBlock> {
+    let allocation = alloc_allocator.try_allocate(allocator, layout_value);
+    if is_none<alloc_allocator.Allocation>(allocation) {
+        give none<RawBlock>();
+    }
+    give some<RawBlock>(RawBlock { allocation: unwrap<alloc_allocator.Allocation>(allocation), initialized: 0, ownership: RawOwnership.Owned });
+}
+
+proc raw_dealloc(allocator: ref mut alloc_allocator.Allocator, block: ref mut RawBlock) {
+    if (*block).ownership != RawOwnership.Owned {
+        give;
+    }
+    alloc_allocator.deallocate(allocator, (*block).allocation);
+    set (*block).ownership = RawOwnership.Freed;
+    set (*block).initialized = 0;
+}
+
+proc raw_block_profile(block: RawBlock) -> RawBlockProfile {
+    give RawBlockProfile {
+        address: block.allocation.address,
+        size: block.allocation.layout.size,
+        initialized: block.initialized,
+        owned: block.ownership == RawOwnership.Owned,
+        valid: block.ownership != RawOwnership.Freed and alloc_allocator.allocation_range_is_valid(block.allocation)
+    };
+}
+
+proc raw_block_is_valid(block: RawBlock) -> bool {
+    give raw_block_profile(block).valid;
+}
+
+proc raw_block_contains(block: RawBlock, address: usize) -> bool {
+    give raw_block_is_valid(block) and alloc_allocator.allocation_contains(block.allocation, address);
+}
+
+proc raw_slice<T>(pointer: RawPointer<T>, length: usize) -> RawSlice<T> {
+    give RawSlice<T> { pointer: pointer, length: length, stride: compiler_size_of<T>() };
+}
+
+proc raw_slice_byte_len<T>(slice_value: RawSlice<T>) -> usize {
+    give slice_value.length * slice_value.stride;
+}
+
+proc raw_slice_contains<T>(slice_value: RawSlice<T>, index: usize) -> bool {
+    give raw_pointer_is_valid<T>(slice_value.pointer) and index < slice_value.length;
+}
+
+proc raw_read<T>(pointer: RawPointer<T>) -> Option<T> {
+    if not raw_pointer_is_valid<T>(pointer) {
+        give none<T>();
+    }
+    give some<T>(compiler_raw_read<T>(pointer.address));
+}
+
+proc raw_write<T>(pointer: RawPointer<T>, value: T) -> Option<alloc_error.AllocError> {
+    if not raw_pointer_is_valid<T>(pointer) or not pointer.mutable {
+        give some<alloc_error.AllocError>(alloc_error.alloc_error(alloc_error.AllocErrorKind.InvalidPointer, "raw pointer is not writable", compiler_size_of<T>(), compiler_align_of<T>(), false));
+    }
+    compiler_raw_write<T>(pointer.address, value);
+    give none<alloc_error.AllocError>();
+}
