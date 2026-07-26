@@ -8,7 +8,7 @@ OUT_LOG="$OUT_DIR/build.log"
 PROBE_SRC="$ROOT_DIR/tests/bootstrap_native/native_user_helper_call.vit"
 PROBE_BIN="$OUT_DIR/helper-call"
 
-DRIVER_BIN="$ROOT_DIR/bin/vittec0"
+DRIVER_BIN="/bin/vitte"
 [ -x "$DRIVER_BIN" ] || {
     printf "[compiler-real-native-gate][error] missing seed compiler: %s\n" "$DRIVER_BIN" >&2
     exit 1
