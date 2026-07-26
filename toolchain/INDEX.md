@@ -1,40 +1,17 @@
-# Toolchain Index
+# Vitte Toolchain
 
-## Trust Root
+The toolchain is Vitte-in-Vitte only.
 
-- `seed/vittec0.seed`: sole executable bootstrap trust root.
-- `seed/manifest.txt`: pinned hash, source path, and version.
-- `seed/src/main.vit`: reviewed source identity.
-- `bootstrap-config.json`: machine-readable one-seed contract.
+- Canonical compiler source: `src/vitte/compiler/main.vit`
+- Stage 0 compiler: `target/release/vitte`
+- Stage 1 compiler: `target/stage1/vitte`
+- Stage 2 compiler: `target/stage2/vitte`
+- Release compiler: `target/release/vitte`
 
-## Orchestration
+Removed source roots and artifacts are blocked by `make vitte-in-vitte-gate`.
 
-- `bootstrap.sh`: normal, quick, strict, dry-run, and prerequisite modes.
-- `src/build.vit`: seed-rooted build-state model.
-- `src/bootstrap_vitte/`: Vitte bootstrap hard-gate sources.
-- `scripts/bootstrap/verify.sh`: deterministic seed output verification.
-- `test_bootstrap_reproducibility.sh`: repeated seed installation audit.
+Blocking gates:
 
-## Validation
-
-- `make seed-verify`
-- `make bootstrap-source-of-truth`
-- `make bootstrap-seed-root-check`
-- `make bootstrap-native-snapshots`
-- `make bootstrap-clean-checkout-gate`
-- `make bootstrap-offline-gate`
-- `make bootstrap-vitte-hard-gate`
-- `make selfhost-completion-audit`
-
-## Compiler Boundary
-
-The canonical compiler entry is `src/vitte/compiler/main.vit`. Compiler
-subsystems live below `src/vitte/compiler/{frontend,analysis,middle,ir,backend,
-backends,driver,diagnostics,infrastructure}`. Bootstrap code must not introduce
-another compiler entry constant or source root.
-
-## Installation And Packaging
-
-Install, package, CI, test, and platform helpers live under `scripts/` and
-`toolchain/scripts/`. They consume the installed seed or active compiler
-surfaces; they do not own bootstrap trust.
+- `make seed-free-release-gate`
+- `make vitte-in-vitte-gate`
+- `make build`
