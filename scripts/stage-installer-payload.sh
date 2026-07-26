@@ -18,7 +18,7 @@ DEST=${1:?usage: stage-installer-payload.sh DEST PLATFORM ARCH [unix|windows]}
 PLATFORM=${2:?missing platform}
 ARCH=${3:?missing architecture}
 LAYOUT=${4:-unix}
-VERSION=${VERSION:-$(tr -d ' \r\n' < "$ROOT_DIR/toolchain/scripts/package/PACKAGE_VERSION")}
+VERSION=${VERSION:-$(scripts_build_package_version)}
 STRICT_PROCESSOR=${STRICT_PROCESSOR:-0}
 VITTE_ABSOLUTE=$(install_vitte_if_missing)
 verify_vitte "$VITTE_ABSOLUTE" >/dev/null
@@ -146,10 +146,11 @@ exit /b %ERRORLEVEL%
 EOF
     cat > "$bin_dir/$command.ps1" <<EOF
 \$ErrorActionPreference = "Stop"
-\$env:VITTE_ROOT = Join-Path \$PSScriptRoot "..\\share\\vitte"
-\$command = Join-Path \$PSScriptRoot "$command.exe"
+\$ScriptDir = Split-Path -Parent \$MyInvocation.MyCommand.Path
+\$env:VITTE_ROOT = Join-Path \$ScriptDir "..\\share\\vitte"
+\$command = Join-Path \$ScriptDir "$command.exe"
 if (-not (Test-Path \$command)) {
-  \$command = Join-Path \$PSScriptRoot "vitte.exe"
+  \$command = Join-Path \$ScriptDir "vitte.exe"
 }
 & \$command @args
 exit \$LASTEXITCODE
