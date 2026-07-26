@@ -5,14 +5,14 @@
 ```sh
 make seed-verify
 make bootstrap-seed
-bin/vittec0 --version
+bin/vitte --version
 ```
 
 ## Check And Build A Program
 
 ```sh
-bin/vittec0 check tests/golden/frontend/fixtures/hello_min.vit
-bin/vittec0 build tests/golden/frontend/fixtures/hello_min.vit -o target/hello
+bin/vitte check tests/golden/frontend/fixtures/hello_min.vit
+bin/vitte build tests/golden/frontend/fixtures/hello_min.vit -o target/hello
 target/hello
 ```
 
