@@ -49,7 +49,7 @@ def rel(path: Path) -> str:
 
 
 def is_normal_target(name: str) -> bool:
-    return name.startswith(NORMAL_TARGET_PREFIXES) and not name.startswith(ALLOWED_TARGET_PREFIXES)
+    return (name == "build" or name.startswith(NORMAL_TARGET_PREFIXES)) and not name.startswith(ALLOWED_TARGET_PREFIXES)
 
 
 def parse_makefile() -> list[dict[str, Any]]:
