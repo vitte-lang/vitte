@@ -5,9 +5,9 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 OUT_FILE="/tmp/vitte-compiler-test-suite-check.out"
 ERR_FILE="/tmp/vitte-compiler-test-suite-check.err"
 
-DRIVER_BIN="$ROOT_DIR/bin/vittec0"
+DRIVER_BIN="$ROOT_DIR/bin/vitte"
 [ -x "$DRIVER_BIN" ] || {
-    printf "[compiler-test-suite-check-gate][error] missing seed compiler: %s\n" "$DRIVER_BIN" >&2
+    printf "[compiler-test-suite-check-gate][error] missing Vitte compiler: %s\n" "$DRIVER_BIN" >&2
     exit 1
 }
 
