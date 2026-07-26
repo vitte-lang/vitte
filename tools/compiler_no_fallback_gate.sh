@@ -2,17 +2,7 @@
 set -eu
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-SEED=$ROOT_DIR/bin/vittec0
-SEED_SOURCE=$ROOT_DIR/toolchain/seed/vittec0.seed
-DRIVER=$ROOT_DIR/bin/vitte
-LEGACY_FULL_COMPILER_SOURCE=$ROOT_DIR/target/compiler-no-fallback-gate/legacy-full-compiler.vit
-UNSUPPORTED_SOURCE=$ROOT_DIR/tests/bootstrap_native/native_user_helper_call.vit
 OUT_DIR=$ROOT_DIR/target/compiler-no-fallback-gate
-CONTROL_FILES="
-$ROOT_DIR/tools/compiler_real_native_gate.sh
-$ROOT_DIR/tools/compiler_test_suite_check_gate.sh
-$ROOT_DIR/tools/driver_native_json_surface_gate.sh
-"
 
 die() {
   printf '[compiler-no-fallback-gate][error] %s\n' "$1" >&2
@@ -20,58 +10,38 @@ die() {
 }
 
 mkdir -p "$OUT_DIR"
-rm -f "$OUT_DIR/compiler" "$OUT_DIR/unsupported"
-cat > "$LEGACY_FULL_COMPILER_SOURCE" <<'EOF'
-space tests/no_fallback/legacy_full_compiler
 
-const BOOTSTRAP_FULL_COMPILER: int = 1
-export *
+for path in \
+  "$ROOT_DIR/bin/vittec0" \
+  "$ROOT_DIR/toolchain/seed" \
+  "$ROOT_DIR/toolchain/src" \
+  "$ROOT_DIR/scripts/seed"; do
+  [ ! -e "$path" ] || die "removed bootstrap path exists: ${path#$ROOT_DIR/}"
+done
 
-proc main(args: list[string]) -> int {
-  give 0
-}
-EOF
+for compiler in "$ROOT_DIR/bin/vitte" "$ROOT_DIR/bin/vittec" "$ROOT_DIR/target/release/vitte"; do
+  [ -x "$compiler" ] || die "missing compiler artifact: ${compiler#$ROOT_DIR/}"
+  case "$(head -c 2 "$compiler" 2>/dev/null || true)" in
+    '#!') die "compiler artifact is a script: ${compiler#$ROOT_DIR/}" ;;
+  esac
+done
 
 for marker in \
   VITTE_BOOTSTRAP_ALLOW_FULL_COMPILER_BRIDGE \
   VITTE_BOOTSTRAP_COMPILER \
+  /tmp/vitte-bootstrap-payload \
+  payload_source \
+  write_payload_file \
   bootstrap_payload_bridge_marker \
   write_compiler_test_suite_bridge \
   resolve_generic_backend_compiler \
   delegate_generic_backend_build \
   delegate_generic_backend_run; do
-  if LC_ALL=C grep -a -F "$marker" "$SEED_SOURCE" >/dev/null 2>&1; then
-    die "seed retains forbidden fallback symbol: $marker"
-  fi
+  for compiler in "$ROOT_DIR/bin/vitte" "$ROOT_DIR/bin/vittec" "$ROOT_DIR/target/release/vitte"; do
+    if LC_ALL=C grep -a -F "$marker" "$compiler" >/dev/null 2>&1; then
+      die "published compiler retains forbidden fallback symbol: ${compiler#$ROOT_DIR/}: $marker"
+    fi
+  done
 done
 
-printf '%s\n' "$CONTROL_FILES" | while IFS= read -r control_file; do
-  [ -n "$control_file" ] || continue
-  grep -F 'DRIVER_BIN="$ROOT_DIR/bin/vittec0"' "$control_file" >/dev/null ||
-    die "bootstrap control does not use the seed directly: $control_file"
-  if grep -E 'DRIVER_BIN=.*bin/(vitte|vittec)"' "$control_file" >/dev/null 2>&1; then
-    die "bootstrap control retains alternate compiler selection: $control_file"
-  fi
-done
-
-grep -F 'VITTE_BOOTSTRAP ?= $(BIN_DIR)/vittec0' "$ROOT_DIR/Makefile" >/dev/null ||
-  die "Makefile bootstrap root is not bin/vittec0"
-grep -F 'DRIVER_BOOTSTRAP_RUNNER ?= $(VITTE_BOOTSTRAP)' "$ROOT_DIR/Makefile" >/dev/null ||
-  die "Makefile driver bootstrap runner can bypass the seed root"
-
-if "$DRIVER" build "$LEGACY_FULL_COMPILER_SOURCE" -o "$OUT_DIR/compiler" >"$OUT_DIR/compiler.out" 2>"$OUT_DIR/compiler.err"; then
-  die "legacy bridge variable restored full compiler output"
-fi
-grep -F E_BOOTSTRAP_FULL_COMPILER_REMOVED "$OUT_DIR/compiler.err" >/dev/null ||
-  die "full compiler rejection diagnostic missing"
-[ ! -e "$OUT_DIR/compiler" ] || die "failed full compiler build left an artifact"
-
-if VITTE_BOOTSTRAP_COMPILER=/bin/true \
-  "$SEED" build "$UNSUPPORTED_SOURCE" -o "$OUT_DIR/unsupported" >"$OUT_DIR/unsupported.out" 2>"$OUT_DIR/unsupported.err"; then
-  die "legacy compiler variable restored backend delegation"
-fi
-grep -F E_BACKEND_FAILURE "$OUT_DIR/unsupported.err" >/dev/null ||
-  die "unsupported source rejection diagnostic missing"
-[ ! -e "$OUT_DIR/unsupported" ] || die "failed unsupported build left an artifact"
-
-printf '[compiler-no-fallback-gate] OK bridge=absent delegation=absent\n'
+printf '[compiler-no-fallback-gate] OK seed=absent fallback=absent\n'
