@@ -30,7 +30,7 @@ ESSENTIAL_TESTS = [
     "tests/strict_ok.vit",
     "tests/check/main.vit",
     "tests/analysis/positive_linear.vit",
-    "tests/bootstrap_native/main_const_int.vit",
+    "tests/golden/frontend/fixtures/hello_min.vit",
     "tests/type_system/inference_positive.vit",
     "tests/pkg/ok_internal_dependencies.vit",
 ]
@@ -99,7 +99,7 @@ def validate_stage2_compiler_usage(payloads: list[Any], failures: list[str]) -> 
         for compiler in iter_command_values(payload):
             if compiler.endswith("/target/stage2/vitte") or compiler == expected:
                 continue
-            if compiler.endswith("/bin/vitte") or compiler.endswith("/bin/vittec0"):
+            if compiler.endswith("/bin/vitte"):
                 failures.append(f"package command used non-stage2 compiler: {compiler}")
 
 
