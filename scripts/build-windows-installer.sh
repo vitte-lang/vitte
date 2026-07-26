@@ -94,7 +94,7 @@ find_windows_exe() {
 
 write_cmd_shims() {
   payload=$1
-  for command in vitte vittec vittec0; do
+  for command in vitte vittec; do
     cat > "$payload/bin/$command.cmd" <<EOF
 @echo off
 setlocal
