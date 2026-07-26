@@ -4,6 +4,8 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -16,6 +18,7 @@ except ModuleNotFoundError:  # pragma: no cover - supported Python provides toml
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CONFIG = ROOT / "toolchain" / "vitte-bootstrap.toml"
+PACKAGE_VERSION_FILE = ROOT / "toolchain" / "scripts" / "package" / "PACKAGE_VERSION"
 SCHEMA = "vitte.bootstrap.config.v1"
 FORMAT_VERSION = "1"
 
@@ -109,6 +112,7 @@ EXISTING_FILES = {
 
 EXISTING_DIRS = {
     "compiler.root",
+    "stdlib.root",
 }
 
 
@@ -249,12 +253,121 @@ def normalize_paths(data: dict[str, Any]) -> dict[str, Any]:
     return normalized
 
 
+def parse_seed_manifest(path: Path) -> dict[str, str]:
+    rows: dict[str, str] = {}
+    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        if not line:
+            continue
+        if "=" not in line:
+            fail("BOOTSTRAP_CONFIG_E_SEED_MANIFEST", f"malformed seed manifest line {line_number}")
+        key, value = line.split("=", 1)
+        if not key or key in rows:
+            fail("BOOTSTRAP_CONFIG_E_SEED_MANIFEST", f"invalid seed manifest key at line {line_number}")
+        rows[key] = value
+    for key in ("source_file", "seed_file", "sha256", "version"):
+        if not rows.get(key):
+            fail("BOOTSTRAP_CONFIG_E_SEED_MANIFEST", f"seed manifest missing {key}")
+    return rows
+
+
 def validate_seed_checksum(data: dict[str, Any]) -> None:
     artifact = ROOT / data["seed"]["artifact"]
     actual = hashlib.sha256(artifact.read_bytes()).hexdigest()
     expected = data["seed"]["sha256"]
     if actual != expected:
         fail("BOOTSTRAP_CONFIG_E_SEED_CHECKSUM", f"seed.sha256 mismatch: expected {expected}, got {actual}")
+
+
+def command_output(command: list[str], code: str) -> str:
+    process = subprocess.run(
+        command,
+        cwd=ROOT,
+        env={
+            "HOME": os.environ.get("HOME", ""),
+            "LC_ALL": "C",
+            "PATH": "/usr/bin:/bin",
+            "TERM": "dumb",
+            "VITTE_BOOTSTRAP_OFFLINE": "1",
+        },
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if process.returncode != 0:
+        detail = process.stderr.strip() or process.stdout.strip() or f"exit {process.returncode}"
+        fail(code, f"command failed: {' '.join(command)}: {detail}")
+    return process.stdout.strip()
+
+
+def validate_seed_version_and_manifest(data: dict[str, Any]) -> None:
+    manifest = parse_seed_manifest(ROOT / data["seed"]["manifest"])
+    if manifest["source_file"] != data["seed"]["source"]:
+        fail("BOOTSTRAP_CONFIG_E_SEED_MANIFEST", "seed manifest source_file does not match seed.source")
+    if manifest["seed_file"] != data["seed"]["artifact"]:
+        fail("BOOTSTRAP_CONFIG_E_SEED_MANIFEST", "seed manifest seed_file does not match seed.artifact")
+    if manifest["sha256"] != data["seed"]["sha256"]:
+        fail("BOOTSTRAP_CONFIG_E_SEED_MANIFEST", "seed manifest sha256 does not match seed.sha256")
+
+    seed_version = command_output([str(ROOT / data["seed"]["artifact"]), "--version"], "BOOTSTRAP_CONFIG_E_SEED_VERSION")
+    if seed_version != manifest["version"]:
+        fail("BOOTSTRAP_CONFIG_E_SEED_VERSION", f"seed --version differs from manifest: {seed_version!r}")
+
+    package_version = PACKAGE_VERSION_FILE.read_text(encoding="utf-8").strip()
+    if not package_version:
+        fail("BOOTSTRAP_CONFIG_E_PACKAGE_VERSION", "package version is empty")
+    if not seed_version.endswith(f" {package_version}"):
+        fail(
+            "BOOTSTRAP_CONFIG_E_PACKAGE_VERSION",
+            f"seed version {seed_version!r} does not end with package version {package_version!r}",
+        )
+    data["seed"]["version"] = seed_version
+    data["package_version"] = package_version
+
+
+def validate_stdlib(data: dict[str, Any]) -> None:
+    stdlib = data["stdlib"]
+    root = ROOT / stdlib["root"]
+    for key in ("core", "alloc", "std"):
+        path = ROOT / stdlib[key]
+        if not path.is_file():
+            fail("BOOTSTRAP_CONFIG_E_STDLIB_ENTRYPOINT", f"stdlib.{key} does not exist: {stdlib[key]}")
+        try:
+            path.relative_to(root)
+        except ValueError:
+            fail("BOOTSTRAP_CONFIG_E_STDLIB_ENTRYPOINT", f"stdlib.{key} is outside stdlib.root: {stdlib[key]}")
+
+    modules = stdlib["modules"]
+    required = stdlib["required_entrypoints"]
+    if modules != sorted(modules):
+        fail("BOOTSTRAP_CONFIG_E_STDLIB_MODULES", "stdlib.modules must be sorted")
+    module_set = set(modules)
+    for item in modules:
+        path = ROOT / item
+        if not path.is_file():
+            fail("BOOTSTRAP_CONFIG_E_STDLIB_MODULES", f"stdlib module does not exist: {item}")
+        try:
+            path.relative_to(root)
+        except ValueError:
+            fail("BOOTSTRAP_CONFIG_E_STDLIB_MODULES", f"stdlib module is outside stdlib.root: {item}")
+    for item in required:
+        if item not in module_set:
+            fail("BOOTSTRAP_CONFIG_E_STDLIB_REQUIRED", f"required entrypoint is not listed in stdlib.modules: {item}")
+        if not (ROOT / item).is_file():
+            fail("BOOTSTRAP_CONFIG_E_STDLIB_REQUIRED", f"required entrypoint does not exist: {item}")
+
+
+def validate_offline_policy(data: dict[str, Any]) -> None:
+    bootstrap = data["bootstrap"]
+    if bootstrap["offline"] is not True:
+        fail("BOOTSTRAP_CONFIG_E_OFFLINE", "bootstrap.offline must be true")
+    if bootstrap["reproducible"] is not True:
+        fail("BOOTSTRAP_CONFIG_E_REPRODUCIBLE", "bootstrap.reproducible must be true")
+    data["network"] = {
+        "implicit_downloads": False,
+        "mode": "offline",
+        "network_access": "forbidden",
+    }
 
 
 def validate_config(path: Path) -> dict[str, Any]:
@@ -267,6 +380,9 @@ def validate_config(path: Path) -> dict[str, Any]:
         fail("BOOTSTRAP_CONFIG_E_FORMAT_VERSION", f"unsupported config format: {data['config_format_version']}")
     normalized = normalize_paths(data)
     validate_seed_checksum(normalized)
+    validate_seed_version_and_manifest(normalized)
+    validate_stdlib(normalized)
+    validate_offline_policy(normalized)
     return normalized
 
 

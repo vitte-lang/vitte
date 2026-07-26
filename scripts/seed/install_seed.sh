@@ -2,9 +2,14 @@
 set -eu
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
-SEED="$ROOT_DIR/toolchain/seed/vittec0.seed"
-OUT_DIR="$ROOT_DIR/bin"
-OUT="$OUT_DIR/vittec0"
+CONFIG="$ROOT_DIR/toolchain/vitte-bootstrap.toml"
+
+CONFIG_JSON=$(cd "$ROOT_DIR" && python3 tools/bootstrap_config.py --json "$CONFIG")
+SEED_REL=$(printf '%s\n' "$CONFIG_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["seed"]["artifact"])')
+OUT_REL=$(printf '%s\n' "$CONFIG_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin)["compiler"]["stage0"])')
+SEED="$ROOT_DIR/$SEED_REL"
+OUT="$ROOT_DIR/$OUT_REL"
+OUT_DIR=${OUT%/*}
 
 if [ ! -f "$SEED" ]; then
     printf '[bootstrap-seed][error] missing seed artifact: %s\n' "$SEED" >&2
