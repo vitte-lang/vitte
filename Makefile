@@ -213,7 +213,7 @@ vitte-lint:
 # Static analysis
 # ------------------------------------------------------------
 
-.PHONY: tidy vitte-source-audit vitte-legacy-text-audit src-compiler-stdlib-gate compiler-entrypoint-gate stage1-compiler-gate stage2-project-gate selfhost-stage-compare-gate selfhost-stage0-gate selfhost-stage1-gate selfhost-stage2-gate selfhost-release-gate selfhost-full-gate release-clean-selfhost-gate release-package-stdlib-gate compiler-snapshot-gate release-binary-gate vitte-bootstrap-check bootstrap-native-snapshots compiler-real-native-gate compiler-test-suite-check-gate compiler-no-fallback-gate driver-native-json-surface-gate
+.PHONY: tidy vitte-source-audit vitte-legacy-text-audit src-compiler-stdlib-gate compiler-entrypoint-gate stage1-compiler-gate stage2-project-gate selfhost-stage-compare-gate selfhost-stage0-gate selfhost-stage1-gate selfhost-stage2-gate selfhost-release-gate selfhost-full-gate release-clean-selfhost-gate release-package-stdlib-gate compiler-snapshot-gate compiler-backend-surface-gate release-binary-gate vitte-bootstrap-check bootstrap-native-snapshots compiler-real-native-gate compiler-test-suite-check-gate compiler-no-fallback-gate driver-native-json-surface-gate
 tidy: vitte-source-audit vitte-legacy-text-audit
 
 vitte-source-audit:
@@ -310,6 +310,11 @@ compiler-snapshot-gate: release-binary-gate
 	@python3 tools/compiler_snapshot_gate.py
 	@test -f target/reports/compiler_snapshot_gate.json
 	@test -f target/reports/compiler_snapshot_gate.md
+
+compiler-backend-surface-gate: release-binary-gate
+	@python3 tools/compiler_backend_surface_gate.py
+	@test -f target/reports/compiler_backend_surface_gate.json
+	@test -f target/reports/compiler_backend_surface_gate.md
 
 release-binary-gate: stage2-project-gate
 	@python3 tools/release_binary_gate.py
@@ -2245,7 +2250,7 @@ pkg-macos-uninstall:
 	@VERSION=$(PKG_VERSION) toolchain/scripts/package/make-macos-uninstall-pkg.sh
 
 .PHONY: release-check
-release-check: build core-release-gate ci-fast package-layout-lint-strict legacy-import-allowlist-empty ci-completions pkg-macos release-gate-90-119 vitte-max-construction-gate release-installer-gate vitte-total-integration-gate selfhost-stage0-gate selfhost-full-gate release-clean-selfhost-gate release-package-stdlib-gate compiler-snapshot-gate
+release-check: build core-release-gate ci-fast package-layout-lint-strict legacy-import-allowlist-empty ci-completions pkg-macos release-gate-90-119 vitte-max-construction-gate release-installer-gate vitte-total-integration-gate selfhost-stage0-gate selfhost-full-gate release-clean-selfhost-gate release-package-stdlib-gate compiler-snapshot-gate compiler-backend-surface-gate
 
 .PHONY: release-doctor
 release-doctor:
@@ -2473,6 +2478,7 @@ help:
 	@echo "  make release-clean-selfhost-gate verify release binary in clean shell, self rebuild, diagnostics, IR/MIR, and stdlib core/alloc/ffi"
 	@echo "  make release-package-stdlib-gate verify release packages, offline registry/lockfile, strict stdlib manifest, and json modules"
 	@echo "  make compiler-snapshot-gate verify compiler fixtures, diagnostics text/JSON/LSP, IR/MIR, object snapshots, order, dedup, recovery, unicode"
+	@echo "  make compiler-backend-surface-gate verify backend top-level, generics, control-flow, data, strings, Result, modules/imports"
 	@echo "  make release-binary-gate build target/release/vitte and verify compiler, stdlib, registry, diagnostics, and packages"
 	@echo "  make explicit-generics-snapshots validate explicit generic-call IR snapshots"
 	@echo "  make diagnostics-locales-lint validate locale files against centralized diagnostics"

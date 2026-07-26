@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import random
 import subprocess
 import sys
 from pathlib import Path
@@ -57,6 +58,11 @@ def sha256_file(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def write_generated_fixture(path: Path, data: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
 
 
 def snapshot(name: str) -> str:
@@ -174,6 +180,55 @@ def validate_ir_mir_object(failures: list[str], results: list[dict[str, Any]], c
     require(snapshot("object.snap").startswith("{"), failures, "object snapshot missing")
 
 
+def validate_encoded_fixtures(failures: list[str], results: list[dict[str, Any]]) -> None:
+    generated = OUT / "generated"
+    crlf = generated / "crlf_fixture.vit"
+    tabs = generated / "tabs_fixture.vit"
+    long_line = generated / "long_line_fixture.vit"
+
+    write_generated_fixture(
+        crlf,
+        b"space compiler.snapshot.crlf;\r\n\r\nproc main() -> i32 {\r\n  give 0\r\n}\r\n",
+    )
+    write_generated_fixture(
+        tabs,
+        b"space compiler.snapshot.tabs;\n\nproc main() -> i32 {\n\tlet value: i32 = 0\n\tgive value\n}\n",
+    )
+    write_generated_fixture(
+        long_line,
+        ("space compiler.snapshot.longline;\n// " + ("x" * 8192) + "\nproc main() -> i32 {\n  give 0\n}\n").encode("utf-8"),
+    )
+
+    require(b"\r\n" in crlf.read_bytes(), failures, "CRLF fixture was not written with CRLF bytes")
+    require(b"\t" in tabs.read_bytes(), failures, "tabs fixture was not written with tab bytes")
+    require(any(len(line) > 4096 for line in long_line.read_text(encoding="utf-8").splitlines()), failures, "long-line fixture is too short")
+
+    for path in (crlf, tabs, long_line):
+        source = rel(path)
+        result = run(["check", source])
+        results.append(result)
+        require(result["exit_code"] == 0, failures, f"encoding fixture failed: {source}")
+
+
+def validate_minimal_fuzz(failures: list[str], results: list[dict[str, Any]]) -> None:
+    rng = random.Random(0)
+    fuzz_dir = OUT / "fuzz"
+    templates = [
+        "space compiler.snapshot.fuzz{n};\n\nconst VALUE_{n}: i32 = {v}\n\nproc main() -> i32 {{\n  give VALUE_{n}\n}}\n",
+        "space compiler.snapshot.fuzz{n};\n\nform Node{n} {{\n  value: i32\n}}\n\nproc main() -> i32 {{\n  let item: Node{n} = Node{n} {{ value: {v} }}\n  give item.value\n}}\n",
+        "space compiler.snapshot.fuzz{n};\n\npick Choice{n} {{\n  A\n  B\n}}\n\nproc main() -> i32 {{\n  give {v}\n}}\n",
+        "space compiler.snapshot.fuzz{n};\n\nexport *\n\nproc id{n}(value: i32) -> i32 {{\n  give value\n}}\n\nproc main() -> i32 {{\n  give id{n}({v})\n}}\n",
+    ]
+    for index in range(12):
+        value = rng.randint(0, 127)
+        source_text = templates[index % len(templates)].format(n=index, v=value)
+        path = fuzz_dir / f"fuzz_{index:02d}.vit"
+        write_generated_fixture(path, source_text.encode("utf-8"))
+        result = run(["check", rel(path)])
+        results.append(result)
+        require(result["exit_code"] == 0, failures, f"minimal compiler fuzz fixture failed: {rel(path)}")
+
+
 def write_reports(failures: list[str], results: list[dict[str, Any]], comparisons: list[dict[str, Any]]) -> None:
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     status = "fail" if failures else "pass"
@@ -211,6 +266,8 @@ def main() -> int:
         validate_positive(failures, results)
         validate_multifile(failures, results)
         validate_negative(failures, results)
+        validate_encoded_fixtures(failures, results)
+        validate_minimal_fuzz(failures, results)
         validate_ir_mir_object(failures, results, comparisons)
     write_reports(failures, results, comparisons)
     if failures:
