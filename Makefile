@@ -213,7 +213,7 @@ vitte-lint:
 # Static analysis
 # ------------------------------------------------------------
 
-.PHONY: tidy vitte-source-audit vitte-legacy-text-audit src-compiler-stdlib-gate vitte-bootstrap-check bootstrap-native-snapshots compiler-real-native-gate compiler-test-suite-check-gate compiler-no-fallback-gate driver-native-json-surface-gate
+.PHONY: tidy vitte-source-audit vitte-legacy-text-audit src-compiler-stdlib-gate compiler-entrypoint-gate vitte-bootstrap-check bootstrap-native-snapshots compiler-real-native-gate compiler-test-suite-check-gate compiler-no-fallback-gate driver-native-json-surface-gate
 tidy: vitte-source-audit vitte-legacy-text-audit
 
 vitte-source-audit:
@@ -248,6 +248,11 @@ vitte-legacy-text-audit:
 
 src-compiler-stdlib-gate:
 	@python3 tools/src_compiler_stdlib_gate.py
+
+compiler-entrypoint-gate:
+	@python3 tools/check_compiler_entrypoint.py
+	@test -f target/reports/compiler_entrypoint_gate.json
+	@test -f target/reports/compiler_entrypoint_gate.md
 
 vitte-bootstrap-check:
 	@test -x "$(VITTE_BOOTSTRAP)" || (echo "[vitte-bootstrap-check][error] missing executable $(VITTE_BOOTSTRAP)" >&2; exit 2)
@@ -2436,6 +2441,7 @@ help:
 	@echo "  make stdlib-profile-snapshots check stdlib profile allow/deny matrix"
 	@echo "  make stdlib-abi-compat block ABI removals from v1 to v2"
 	@echo "  make src-compiler-stdlib-gate verify compiler/stdlib manifests, spaces, imports, exports, and stdlib indexes"
+	@echo "  make compiler-entrypoint-gate verify canonical compiler entrypoint, compiler manifest reachability, and no bootstrap imports"
 	@echo "  make stdlib-gate run complete stdlib coverage and artifact gate"
 	@echo "  make stdlib-max-gate enforce max stdlib module/symbol coverage"
 	@echo "  make ci-std-fast std-focused CI (stdlib + snapshots + wrappers)"
