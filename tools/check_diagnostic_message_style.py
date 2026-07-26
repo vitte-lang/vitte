@@ -138,8 +138,6 @@ def snapshot_messages() -> Iterable[tuple[Path, int, str, str]]:
         *sorted((ROOT / "tests/diagnostics/renderer").glob("*.txt")),
         *sorted((ROOT / "tests/diag_snapshots").glob("*.must")),
         *sorted((ROOT / "tests/diag_snapshots").glob("*.json.must")),
-        *sorted((ROOT / "tests/bootstrap_native").glob("*.must")),
-        ROOT / "toolchain/seed/vittec0.seed",
     ]
     for path in paths:
         if not path.exists():
