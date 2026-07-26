@@ -932,6 +932,8 @@ render_native_shell_from_ir() {
     printf 'error_prefix=%s\n' "$(printf '[%s][error]' "$out_tool_name" | sq)"
     printf 'compiler_source_root=%s\n' "$(printf '%s\n' "$out_compiler_source_root" | sq)"
     printf 'compiler_entry_point=%s\n' "$(printf '%s\n' "$out_compiler_entry_point" | sq)"
+    printf 'compiled_script_root=%s\n' "$(printf '%s\n' "$script_root" | sq)"
+    printf 'script_root="${VITTE_ROOT:-$compiled_script_root}"\n'
     printf '\n'
     printf 'trace_pipeline=0\n'
     printf 'strict_mode=0\n'
@@ -2059,6 +2061,7 @@ int main(int argc, char **argv) {
     if (pid == 0) {
         setenv("trace_pipeline", "0", 0);
         setenv("strict_mode", "0", 0);
+        setenv("VITTE_COMPILER", argv[0], 0);
         execv(tmpl, child_argv);
         _exit(127);
     }

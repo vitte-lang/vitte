@@ -213,7 +213,7 @@ vitte-lint:
 # Static analysis
 # ------------------------------------------------------------
 
-.PHONY: tidy vitte-source-audit vitte-legacy-text-audit src-compiler-stdlib-gate compiler-entrypoint-gate stage1-compiler-gate vitte-bootstrap-check bootstrap-native-snapshots compiler-real-native-gate compiler-test-suite-check-gate compiler-no-fallback-gate driver-native-json-surface-gate
+.PHONY: tidy vitte-source-audit vitte-legacy-text-audit src-compiler-stdlib-gate compiler-entrypoint-gate stage1-compiler-gate stage2-project-gate vitte-bootstrap-check bootstrap-native-snapshots compiler-real-native-gate compiler-test-suite-check-gate compiler-no-fallback-gate driver-native-json-surface-gate
 tidy: vitte-source-audit vitte-legacy-text-audit
 
 vitte-source-audit:
@@ -259,6 +259,12 @@ stage1-compiler-gate: compiler-entrypoint-gate
 	@test -x target/stage1/vitte
 	@test -f target/reports/stage1_compiler_gate.json
 	@test -f target/reports/stage1_compiler_gate.txt
+
+stage2-project-gate: stage1-compiler-gate
+	@python3 tools/stage2_project_gate.py
+	@test -x target/stage2/vitte
+	@test -f target/reports/stage2_project_gate.json
+	@test -f target/reports/stage2_project_gate.md
 
 vitte-bootstrap-check:
 	@test -x "$(VITTE_BOOTSTRAP)" || (echo "[vitte-bootstrap-check][error] missing executable $(VITTE_BOOTSTRAP)" >&2; exit 2)
@@ -2409,6 +2415,7 @@ help:
 	@echo "  make seed-syntax-test run non-regression syntax checks for vittec0"
 	@echo "  make seed-compat-report generate seed compatibility pass/fail report"
 	@echo "  make stage1-compiler-gate build target/stage1/vitte and verify version/help/check"
+	@echo "  make stage2-project-gate build target/stage2/vitte with stage1 and verify compiler/stdlib/packages/tests"
 	@echo "  make explicit-generics-snapshots validate explicit generic-call IR snapshots"
 	@echo "  make diagnostics-locales-lint validate locale files against centralized diagnostics"
 	@echo "  make update-diagnostics-ftl synchronize diagnostics locales from the central table"

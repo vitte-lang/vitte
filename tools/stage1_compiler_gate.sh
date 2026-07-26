@@ -40,7 +40,7 @@ cd "$ROOT_DIR"
 [ -x "bin/vitte" ] || fail "missing current compiler: bin/vitte"
 [ -f "$SRC" ] || fail "missing compiler entrypoint: $SRC"
 
-if ! bin/vitte build "$SRC" -o "$OUT_BIN" > "$BUILD_LOG" 2>&1; then
+if ! VITTE_ROOT="$ROOT_DIR" bin/vitte build "$SRC" -o "$OUT_BIN" > "$BUILD_LOG" 2>&1; then
     cat "$BUILD_LOG" >&2
     fail "bin/vitte build src/vitte/compiler/main.vit -o target/stage1/vitte failed"
 fi

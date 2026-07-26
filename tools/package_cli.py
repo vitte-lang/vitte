@@ -15,7 +15,7 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
-VITTE = ROOT / "bin" / "vitte"
+VITTE = Path(os.environ.get("VITTE_COMPILER", ROOT / "bin" / "vitte")).expanduser()
 REGISTRY_ROOT = ROOT / "src" / "vitte" / "packages" / "registry"
 REGISTRY_PATH = REGISTRY_ROOT / "registry.json"
 REGISTRY_LOCK = REGISTRY_ROOT / "lockfile.vitte.lock"
