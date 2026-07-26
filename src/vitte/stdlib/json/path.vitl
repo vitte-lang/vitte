@@ -1,0 +1,45 @@
+space vitte/stdlib/json/path
+
+export *
+
+use src/vitte/stdlib/alloc/vec as alloc_vec
+
+pick JsonPathSegmentKind {
+    Key
+    Index
+    Wildcard
+}
+
+form JsonPathSegment {
+    kind: JsonPathSegmentKind
+    key: string
+    index: usize
+}
+
+form JsonPath {
+    segments: Vec<JsonPathSegment>
+}
+
+form JsonPathProfile {
+    length: usize
+    root: bool
+    valid: bool
+}
+
+proc json_path_root() -> JsonPath { give JsonPath { segments: vec_new<JsonPathSegment>() }; }
+proc json_path_key(key: string) -> JsonPathSegment { give JsonPathSegment { kind: JsonPathSegmentKind.Key, key: key, index: 0 }; }
+proc json_path_index(index: usize) -> JsonPathSegment { give JsonPathSegment { kind: JsonPathSegmentKind.Index, key: "", index: index }; }
+proc json_path_wildcard() -> JsonPathSegment { give JsonPathSegment { kind: JsonPathSegmentKind.Wildcard, key: "*", index: 0 }; }
+
+proc json_path_push(value: ref mut JsonPath, segment: JsonPathSegment) {
+    vec_push<JsonPathSegment>(&mut ((*value).segments), segment);
+}
+
+proc json_path_len(value: JsonPath) -> usize { give vec_len<JsonPathSegment>(value.segments); }
+proc json_path_is_root(value: JsonPath) -> bool { give json_path_len(value) == 0; }
+
+proc json_path_profile(value: JsonPath) -> JsonPathProfile {
+    give JsonPathProfile { length: json_path_len(value), root: json_path_is_root(value), valid: true };
+}
+
+proc json_path_is_valid(value: JsonPath) -> bool { give json_path_profile(value).valid; }

@@ -1,0 +1,80 @@
+space vitte/stdlib/json/lexer
+
+export *
+
+use src/vitte/stdlib/json/token as json_token
+
+form JsonLexer {
+    source: string
+    offset: usize
+    line: usize
+    column: usize
+}
+
+form JsonLexerProfile {
+    offset: usize
+    line: usize
+    column: usize
+    at_end: bool
+    valid: bool
+}
+
+proc json_lexer_new(source: string) -> JsonLexer {
+    give JsonLexer { source: source, offset: 0, line: 1, column: 1 };
+}
+
+proc json_lexer_is_at_end(value: JsonLexer) -> bool {
+    give value.offset >= compiler_string_len(value.source);
+}
+
+proc json_lexer_profile(value: JsonLexer) -> JsonLexerProfile {
+    give JsonLexerProfile { offset: value.offset, line: value.line, column: value.column, at_end: json_lexer_is_at_end(value), valid: value.line > 0 and value.column > 0 };
+}
+
+proc json_lexer_is_valid(value: JsonLexer) -> bool { give json_lexer_profile(value).valid; }
+
+proc json_lexer_peek(value: JsonLexer) -> int {
+    if json_lexer_is_at_end(value) { give -1; }
+    give compiler_string_byte_at(value.source, value.offset);
+}
+
+proc json_lexer_advance(value: ref mut JsonLexer) -> int {
+    if json_lexer_is_at_end(*value) { give -1; }
+    let ch: int = compiler_string_byte_at((*value).source, (*value).offset);
+    set (*value).offset = (*value).offset + 1;
+    if ch == 10 {
+        set (*value).line = (*value).line + 1;
+        set (*value).column = 1;
+    } else {
+        set (*value).column = (*value).column + 1;
+    }
+    give ch;
+}
+
+proc json_lexer_skip_whitespace(value: ref mut JsonLexer) {
+    while not json_lexer_is_at_end(*value) {
+        let ch: int = json_lexer_peek(*value);
+        if ch != 32 and ch != 9 and ch != 10 and ch != 13 { give; }
+        let _ = json_lexer_advance(value);
+    }
+}
+
+proc json_lexer_next(value: ref mut JsonLexer) -> json_token.JsonToken {
+    json_lexer_skip_whitespace(value);
+    let span: json_token.JsonSpan = json_token.json_span((*value).offset, (*value).offset + 1, (*value).line, (*value).column);
+    if json_lexer_is_at_end(*value) {
+        give json_token.json_token(json_token.JsonTokenKind.End, "", span);
+    }
+    let ch: int = json_lexer_advance(value);
+    if ch == 123 { give json_token.json_token(json_token.JsonTokenKind.LeftBrace, "{", span); }
+    if ch == 125 { give json_token.json_token(json_token.JsonTokenKind.RightBrace, "}", span); }
+    if ch == 91 { give json_token.json_token(json_token.JsonTokenKind.LeftBracket, "[", span); }
+    if ch == 93 { give json_token.json_token(json_token.JsonTokenKind.RightBracket, "]", span); }
+    if ch == 58 { give json_token.json_token(json_token.JsonTokenKind.Colon, ":", span); }
+    if ch == 44 { give json_token.json_token(json_token.JsonTokenKind.Comma, ",", span); }
+    if ch == 34 { give json_token.json_token(json_token.JsonTokenKind.String, compiler_json_scan_string(value), span); }
+    if compiler_json_is_number_start(ch) {
+        give json_token.json_token(json_token.JsonTokenKind.Number, compiler_json_scan_number(value, ch), span);
+    }
+    give json_token.json_token(json_token.JsonTokenKind.Error, compiler_char_to_string(ch), span);
+}

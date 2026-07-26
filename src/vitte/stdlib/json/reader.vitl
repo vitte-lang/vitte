@@ -1,0 +1,44 @@
+space vitte/stdlib/json/reader
+
+export *
+
+use src/vitte/stdlib/json/lexer as json_lexer
+use src/vitte/stdlib/json/result as json_result
+use src/vitte/stdlib/json/types as json_types
+
+form JsonReaderOptions {
+    max_depth: usize
+    allow_comments: bool
+    allow_trailing_commas: bool
+}
+
+form JsonReader {
+    lexer: json_lexer.JsonLexer
+    options: JsonReaderOptions
+    depth: usize
+}
+
+form JsonReaderProfile {
+    depth: usize
+    max_depth: usize
+    valid: bool
+}
+
+proc json_reader_options_default() -> JsonReaderOptions {
+    give JsonReaderOptions { max_depth: 256, allow_comments: false, allow_trailing_commas: false };
+}
+
+proc json_reader_new(source: string, options: JsonReaderOptions) -> JsonReader {
+    give JsonReader { lexer: json_lexer.json_lexer_new(source), options: options, depth: 0 };
+}
+
+proc json_reader_profile(value: JsonReader) -> JsonReaderProfile {
+    give JsonReaderProfile { depth: value.depth, max_depth: value.options.max_depth, valid: value.depth <= value.options.max_depth and json_lexer.json_lexer_is_valid(value.lexer) };
+}
+
+proc json_reader_is_valid(value: JsonReader) -> bool { give json_reader_profile(value).valid; }
+
+proc json_reader_read(value: ref mut JsonReader) -> json_result.JsonResult {
+    let parsed: json_types.JSONValue = compiler_json_read_value(value);
+    give json_result.json_result_ok(parsed);
+}

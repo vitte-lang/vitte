@@ -1,0 +1,47 @@
+space vitte/stdlib/json/stream
+
+export *
+
+use src/vitte/stdlib/json/token as json_token
+
+pick JsonStreamState {
+    Open
+    Closed
+    Error
+}
+
+form JsonStream {
+    state: JsonStreamState
+    emitted: usize
+    depth: usize
+}
+
+form JsonStreamProfile {
+    emitted: usize
+    depth: usize
+    open: bool
+    valid: bool
+}
+
+proc json_stream_new() -> JsonStream {
+    give JsonStream { state: JsonStreamState.Open, emitted: 0, depth: 0 };
+}
+
+proc json_stream_emit(value: ref mut JsonStream, token: json_token.JsonToken) -> bool {
+    if (*value).state != JsonStreamState.Open or not json_token.json_token_is_valid(token) {
+        set (*value).state = JsonStreamState.Error;
+        give false;
+    }
+    set (*value).emitted = (*value).emitted + 1;
+    give true;
+}
+
+proc json_stream_close(value: ref mut JsonStream) {
+    set (*value).state = JsonStreamState.Closed;
+}
+
+proc json_stream_profile(value: JsonStream) -> JsonStreamProfile {
+    give JsonStreamProfile { emitted: value.emitted, depth: value.depth, open: value.state == JsonStreamState.Open, valid: value.state != JsonStreamState.Error };
+}
+
+proc json_stream_is_valid(value: JsonStream) -> bool { give json_stream_profile(value).valid; }

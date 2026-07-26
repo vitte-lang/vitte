@@ -1,0 +1,80 @@
+space vitte/stdlib/json/token
+
+export *
+
+pick JsonTokenKind {
+    LeftBrace
+    RightBrace
+    LeftBracket
+    RightBracket
+    Colon
+    Comma
+    String
+    Number
+    True
+    False
+    Null
+    End
+    Error
+}
+
+form JsonSpan {
+    start: usize
+    end: usize
+    line: usize
+    column: usize
+}
+
+form JsonToken {
+    kind: JsonTokenKind
+    lexeme: string
+    span: JsonSpan
+}
+
+form JsonTokenProfile {
+    kind: string
+    length: usize
+    valid: bool
+}
+
+proc json_span(start: usize, end: usize, line: usize, column: usize) -> JsonSpan {
+    give JsonSpan { start: start, end: end, line: line, column: column };
+}
+
+proc json_span_is_valid(value: JsonSpan) -> bool { give value.start <= value.end and value.line > 0 and value.column > 0; }
+
+proc json_token_kind_name(kind: JsonTokenKind) -> string {
+    if kind == JsonTokenKind.LeftBrace { give "left_brace"; }
+    if kind == JsonTokenKind.RightBrace { give "right_brace"; }
+    if kind == JsonTokenKind.LeftBracket { give "left_bracket"; }
+    if kind == JsonTokenKind.RightBracket { give "right_bracket"; }
+    if kind == JsonTokenKind.Colon { give "colon"; }
+    if kind == JsonTokenKind.Comma { give "comma"; }
+    if kind == JsonTokenKind.String { give "string"; }
+    if kind == JsonTokenKind.Number { give "number"; }
+    if kind == JsonTokenKind.True { give "true"; }
+    if kind == JsonTokenKind.False { give "false"; }
+    if kind == JsonTokenKind.Null { give "null"; }
+    if kind == JsonTokenKind.End { give "end"; }
+    give "error";
+}
+
+proc json_token(kind: JsonTokenKind, lexeme: string, span: JsonSpan) -> JsonToken {
+    give JsonToken { kind: kind, lexeme: lexeme, span: span };
+}
+
+proc json_token_is_value(value: JsonToken) -> bool {
+    give value.kind == JsonTokenKind.String
+        or value.kind == JsonTokenKind.Number
+        or value.kind == JsonTokenKind.True
+        or value.kind == JsonTokenKind.False
+        or value.kind == JsonTokenKind.Null
+        or value.kind == JsonTokenKind.LeftBrace
+        or value.kind == JsonTokenKind.LeftBracket;
+}
+
+proc json_token_profile(value: JsonToken) -> JsonTokenProfile {
+    give JsonTokenProfile { kind: json_token_kind_name(value.kind), length: compiler_string_len(value.lexeme), valid: json_span_is_valid(value.span) };
+}
+
+proc json_token_is_valid(value: JsonToken) -> bool { give json_token_profile(value).valid; }

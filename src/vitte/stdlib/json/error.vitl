@@ -1,0 +1,55 @@
+space vitte/stdlib/json/error
+
+export *
+
+pick JsonErrorKind {
+    UnexpectedToken
+    UnexpectedEnd
+    InvalidNumber
+    InvalidString
+    InvalidEscape
+    DuplicateKey
+    DepthLimit
+    SchemaMismatch
+    PathMissing
+}
+
+form JsonError {
+    kind: JsonErrorKind
+    message: string
+    offset: usize
+    line: usize
+    column: usize
+    recoverable: bool
+}
+
+form JsonErrorProfile {
+    code: string
+    line: usize
+    column: usize
+    recoverable: bool
+    valid: bool
+}
+
+proc json_error_kind_name(kind: JsonErrorKind) -> string {
+    if kind == JsonErrorKind.UnexpectedToken { give "unexpected_token"; }
+    if kind == JsonErrorKind.UnexpectedEnd { give "unexpected_end"; }
+    if kind == JsonErrorKind.InvalidNumber { give "invalid_number"; }
+    if kind == JsonErrorKind.InvalidString { give "invalid_string"; }
+    if kind == JsonErrorKind.InvalidEscape { give "invalid_escape"; }
+    if kind == JsonErrorKind.DuplicateKey { give "duplicate_key"; }
+    if kind == JsonErrorKind.DepthLimit { give "depth_limit"; }
+    if kind == JsonErrorKind.SchemaMismatch { give "schema_mismatch"; }
+    give "path_missing";
+}
+
+proc json_error(kind: JsonErrorKind, message: string, offset: usize, line: usize, column: usize, recoverable: bool) -> JsonError {
+    give JsonError { kind: kind, message: message, offset: offset, line: line, column: column, recoverable: recoverable };
+}
+
+proc json_error_profile(value: JsonError) -> JsonErrorProfile {
+    give JsonErrorProfile { code: json_error_kind_name(value.kind), line: value.line, column: value.column, recoverable: value.recoverable, valid: value.message != "" };
+}
+
+proc json_error_is_valid(value: JsonError) -> bool { give json_error_profile(value).valid; }
+proc json_error_is_fatal(value: JsonError) -> bool { give not value.recoverable; }

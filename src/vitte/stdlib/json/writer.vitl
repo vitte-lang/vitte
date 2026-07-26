@@ -1,0 +1,54 @@
+space vitte/stdlib/json/writer
+
+export *
+
+use src/vitte/stdlib/json/types as json_types
+
+form JsonWriterOptions {
+    pretty: bool
+    indent: usize
+    sort_keys: bool
+    escape_unicode: bool
+}
+
+form JsonWriter {
+    output: string
+    options: JsonWriterOptions
+    depth: usize
+}
+
+form JsonWriterProfile {
+    bytes: usize
+    depth: usize
+    pretty: bool
+    valid: bool
+}
+
+proc json_writer_options_compact() -> JsonWriterOptions {
+    give JsonWriterOptions { pretty: false, indent: 0, sort_keys: false, escape_unicode: false };
+}
+
+proc json_writer_options_pretty(indent: usize) -> JsonWriterOptions {
+    give JsonWriterOptions { pretty: true, indent: indent, sort_keys: false, escape_unicode: false };
+}
+
+proc json_writer_new(options: JsonWriterOptions) -> JsonWriter {
+    give JsonWriter { output: "", options: options, depth: 0 };
+}
+
+proc json_writer_write(value: ref mut JsonWriter, json: json_types.JSONValue) {
+    set (*value).output = (*value).output + compiler_json_write_value(json, (*value).options.pretty, (*value).options.indent);
+}
+
+proc json_writer_to_string(value: JsonWriter) -> string { give value.output; }
+
+proc json_writer_clear(value: ref mut JsonWriter) {
+    set (*value).output = "";
+    set (*value).depth = 0;
+}
+
+proc json_writer_profile(value: JsonWriter) -> JsonWriterProfile {
+    give JsonWriterProfile { bytes: compiler_string_len(value.output), depth: value.depth, pretty: value.options.pretty, valid: value.depth < 1024 };
+}
+
+proc json_writer_is_valid(value: JsonWriter) -> bool { give json_writer_profile(value).valid; }

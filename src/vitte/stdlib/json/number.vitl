@@ -1,0 +1,39 @@
+space vitte/stdlib/json/number
+
+export *
+
+pick JsonNumberKind {
+    Integer
+    Fraction
+    Exponent
+    Invalid
+}
+
+form JsonNumber {
+    raw: string
+    value: f64
+    kind: JsonNumberKind
+}
+
+form JsonNumberProfile {
+    raw: string
+    kind: JsonNumberKind
+    valid: bool
+}
+
+proc json_number(raw: string) -> JsonNumber {
+    give JsonNumber { raw: raw, value: compiler_json_parse_f64(raw), kind: json_number_classify(raw) };
+}
+
+proc json_number_classify(raw: string) -> JsonNumberKind {
+    if raw == "" { give JsonNumberKind.Invalid; }
+    if compiler_string_contains(raw, ".") { give JsonNumberKind.Fraction; }
+    if compiler_string_contains(raw, "e") or compiler_string_contains(raw, "E") { give JsonNumberKind.Exponent; }
+    give JsonNumberKind.Integer;
+}
+
+proc json_number_is_valid(value: JsonNumber) -> bool { give value.kind != JsonNumberKind.Invalid; }
+
+proc json_number_profile(value: JsonNumber) -> JsonNumberProfile {
+    give JsonNumberProfile { raw: value.raw, kind: value.kind, valid: json_number_is_valid(value) };
+}

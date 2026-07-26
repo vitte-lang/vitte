@@ -1,0 +1,44 @@
+space vitte/stdlib/json/result
+
+export *
+
+use src/vitte/stdlib/json/error as json_error
+use src/vitte/stdlib/json/types as json_types
+
+pick JsonResultState {
+    Ok
+    Err
+}
+
+form JsonResult {
+    state: JsonResultState
+    value: json_types.JSONValue
+    error: json_error.JsonError
+}
+
+form JsonResultProfile {
+    ok: bool
+    error_code: string
+    valid: bool
+}
+
+proc json_result_ok(value: json_types.JSONValue) -> JsonResult {
+    give JsonResult { state: JsonResultState.Ok, value: value, error: json_error.json_error(json_error.JsonErrorKind.UnexpectedEnd, "", 0, 1, 1, true) };
+}
+
+proc json_result_err(error: json_error.JsonError) -> JsonResult {
+    give JsonResult { state: JsonResultState.Err, value: json_types.JSONValue.JsonNull, error: error };
+}
+
+proc json_result_is_ok(value: JsonResult) -> bool { give value.state == JsonResultState.Ok; }
+proc json_result_is_err(value: JsonResult) -> bool { give value.state == JsonResultState.Err; }
+
+proc json_result_profile(value: JsonResult) -> JsonResultProfile {
+    let code: string = "";
+    if json_result_is_err(value) {
+        set code = json_error.json_error_kind_name(value.error.kind);
+    }
+    give JsonResultProfile { ok: json_result_is_ok(value), error_code: code, valid: json_result_is_ok(value) or json_error.json_error_is_valid(value.error) };
+}
+
+proc json_result_is_valid(value: JsonResult) -> bool { give json_result_profile(value).valid; }

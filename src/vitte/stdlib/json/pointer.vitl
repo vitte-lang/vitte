@@ -1,0 +1,36 @@
+space vitte/stdlib/json/pointer
+
+export *
+
+use src/vitte/stdlib/json/path as json_path
+
+form JsonPointer {
+    text: string
+}
+
+form JsonPointerProfile {
+    text: string
+    root: bool
+    valid: bool
+}
+
+proc json_pointer_root() -> JsonPointer { give JsonPointer { text: "" }; }
+proc json_pointer(value: string) -> JsonPointer { give JsonPointer { text: value }; }
+
+proc json_pointer_is_root(value: JsonPointer) -> bool { give value.text == ""; }
+
+proc json_pointer_is_valid(value: JsonPointer) -> bool {
+    give value.text == "" or compiler_string_byte_at(value.text, 0) == 47;
+}
+
+proc json_pointer_append_key(value: JsonPointer, key: string) -> JsonPointer {
+    give JsonPointer { text: value.text + "/" + compiler_json_pointer_escape(key) };
+}
+
+proc json_pointer_to_path(value: JsonPointer) -> json_path.JsonPath {
+    give compiler_json_pointer_to_path(value.text);
+}
+
+proc json_pointer_profile(value: JsonPointer) -> JsonPointerProfile {
+    give JsonPointerProfile { text: value.text, root: json_pointer_is_root(value), valid: json_pointer_is_valid(value) };
+}

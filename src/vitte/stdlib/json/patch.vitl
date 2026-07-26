@@ -1,0 +1,54 @@
+space vitte/stdlib/json/patch
+
+export *
+
+use src/vitte/stdlib/alloc/vec as alloc_vec
+use src/vitte/stdlib/json/pointer as json_pointer
+use src/vitte/stdlib/json/types as json_types
+
+pick JsonPatchOpKind {
+    Add
+    Remove
+    Replace
+    Move
+    Copy
+    Test
+}
+
+form JsonPatchOp {
+    kind: JsonPatchOpKind
+    path: json_pointer.JsonPointer
+    from: json_pointer.JsonPointer
+    value: json_types.JSONValue
+}
+
+form JsonPatch {
+    operations: Vec<JsonPatchOp>
+}
+
+form JsonPatchProfile {
+    operations: usize
+    valid: bool
+}
+
+proc json_patch_new() -> JsonPatch { give JsonPatch { operations: vec_new<JsonPatchOp>() }; }
+
+proc json_patch_add(path: json_pointer.JsonPointer, value: json_types.JSONValue) -> JsonPatchOp {
+    give JsonPatchOp { kind: JsonPatchOpKind.Add, path: path, from: json_pointer.json_pointer_root(), value: value };
+}
+
+proc json_patch_push(value: ref mut JsonPatch, op: JsonPatchOp) {
+    vec_push<JsonPatchOp>(&mut ((*value).operations), op);
+}
+
+proc json_patch_len(value: JsonPatch) -> usize { give vec_len<JsonPatchOp>(value.operations); }
+
+proc json_patch_op_is_valid(value: JsonPatchOp) -> bool {
+    give json_pointer.json_pointer_is_valid(value.path);
+}
+
+proc json_patch_profile(value: JsonPatch) -> JsonPatchProfile {
+    give JsonPatchProfile { operations: json_patch_len(value), valid: true };
+}
+
+proc json_patch_is_valid(value: JsonPatch) -> bool { give json_patch_profile(value).valid; }

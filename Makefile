@@ -2753,6 +2753,12 @@ stdlib-ffi-gate:
 	@test -f target/reports/stdlib_ffi_gate.json
 	@test -f target/reports/stdlib_ffi_gate.md
 
+.PHONY: stdlib-json-gate
+stdlib-json-gate:
+	@python3 tools/stdlib_json_gate.py
+	@test -f target/reports/stdlib_json_gate.json
+	@test -f target/reports/stdlib_json_gate.md
+
 
 .PHONY: mir-opt-gate
 mir-opt-gate:

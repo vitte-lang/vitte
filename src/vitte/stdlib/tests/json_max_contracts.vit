@@ -1,0 +1,84 @@
+space vitte/stdlib/tests/json_max_contracts
+
+use src/vitte/stdlib/json/builder as json_builder
+use src/vitte/stdlib/json/error as json_error
+use src/vitte/stdlib/json/escape as json_escape
+use src/vitte/stdlib/json/lexer as json_lexer
+use src/vitte/stdlib/json/number as json_number
+use src/vitte/stdlib/json/patch as json_patch
+use src/vitte/stdlib/json/path as json_path
+use src/vitte/stdlib/json/pointer as json_pointer
+use src/vitte/stdlib/json/reader as json_reader
+use src/vitte/stdlib/json/result as json_result
+use src/vitte/stdlib/json/schema as json_schema
+use src/vitte/stdlib/json/stream as json_stream
+use src/vitte/stdlib/json/token as json_token
+use src/vitte/stdlib/json/types as json_types
+use src/vitte/stdlib/json/writer as json_writer
+
+proc json_error_contract() -> bool {
+    let error: json_error.JsonError = json_error.json_error(json_error.JsonErrorKind.InvalidString, "bad string", 4 as usize, 1 as usize, 5 as usize, true);
+    give json_error.json_error_is_valid(error)
+        and json_error.json_error_is_recoverable(error)
+        and json_error.json_error_profile(error).code == "invalid_string";
+}
+
+proc json_token_lexer_contract() -> bool {
+    let lexer: json_lexer.JsonLexer = json_lexer.json_lexer_new("{}");
+    let token: json_token.JsonToken = json_token.json_token(json_token.JsonTokenKind.LeftBrace, "{", json_token.json_span(0 as usize, 1 as usize, 1 as usize, 1 as usize));
+    give json_lexer.json_lexer_is_valid(lexer)
+        and json_token.json_token_is_valid(token)
+        and json_token.json_token_profile(token).kind == "left_brace";
+}
+
+proc json_number_escape_contract() -> bool {
+    let number: json_number.JsonNumber = json_number.json_number("42");
+    let escaped: string = json_escape.json_escape_string("alpha");
+    give json_number.json_number_is_valid(number)
+        and json_number.json_number_profile(number).valid
+        and json_escape.json_escape_profile("alpha", escaped).valid;
+}
+
+proc json_path_pointer_patch_contract() -> bool {
+    let path: json_path.JsonPath = json_path.json_path_root();
+    json_path.json_path_push(&mut path, json_path.json_path_key("name"));
+    let pointer: json_pointer.JsonPointer = json_pointer.json_pointer_append_key(json_pointer.json_pointer_root(), "name");
+    let patch: json_patch.JsonPatch = json_patch.json_patch_new();
+    json_patch.json_patch_push(&mut patch, json_patch.json_patch_add(pointer, json_types.JSONValue.JsonNull));
+    give json_path.json_path_is_valid(path)
+        and json_pointer.json_pointer_is_valid(pointer)
+        and json_patch.json_patch_is_valid(patch)
+        and json_patch.json_patch_len(patch) == 1;
+}
+
+proc json_reader_writer_result_contract() -> bool {
+    let reader: json_reader.JsonReader = json_reader.json_reader_new("null", json_reader.json_reader_options_default());
+    let writer: json_writer.JsonWriter = json_writer.json_writer_new(json_writer.json_writer_options_compact());
+    let result: json_result.JsonResult = json_result.json_result_ok(json_types.JSONValue.JsonNull);
+    give json_reader.json_reader_is_valid(reader)
+        and json_writer.json_writer_is_valid(writer)
+        and json_result.json_result_is_ok(result);
+}
+
+proc json_schema_stream_builder_contract() -> bool {
+    let schema: json_schema.JsonSchema = json_schema.generate_schema_from_json("{}");
+    let stream: json_stream.JsonStream = json_stream.json_stream_new();
+    let builder: json_builder.JSONBuilder = json_builder.json_builder_new();
+    give json_schema.validate_against_schema("{}", schema)
+        and json_stream.json_stream_is_valid(stream)
+        and json_builder.json_builder_selftest()
+        and builder.depth == 0;
+}
+
+proc json_max_surface_count() -> usize {
+    give 19 as usize;
+}
+
+proc json_max_contracts_run() -> bool {
+    give json_error_contract()
+        and json_token_lexer_contract()
+        and json_number_escape_contract()
+        and json_path_pointer_patch_contract()
+        and json_reader_writer_result_contract()
+        and json_schema_stream_builder_contract();
+}
