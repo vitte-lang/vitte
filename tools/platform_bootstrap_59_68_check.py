@@ -12,10 +12,10 @@ REPORT = ROOT / "target" / "reports" / "platform_bootstrap_59_68.json"
 
 REQS = [
     (59, "solaris_amd64_i386", ["scripts/build-solaris-package.sh", "scripts/package-matrix.sh", "scripts/verify-installers.sh"], ["solaris", "amd64", "i386"]),
-    (60, "real_platform_ci", [".github/workflows/ci.yml", ".github/workflows/bootstrap.yml", "tools/scripts_build_arch_matrix_test.sh"], ["runs-on", "installer arch matrix", "bootstrap-native-contract"]),
-    (61, "progressive_self_hosting_stage0_stage1_stage2", ["Makefile", "src/vitte/compiler/tests/compiler_contract_manifest.json", "tools/bootstrap_selfhost_repro.sh", "tools/bootstrap_vitte_hard_gate.sh"], ["stage0", "stage1", "stage2"]),
-    (62, "stage_bytecode_ir_comparison", ["Makefile", "tools/same_output_hash_test.sh", "tools/check_bootstrap_native_drift.sh", "tools/ir_coverage_check.py"], ["same-output-hash", "IR", "hash"]),
-    (63, "reproducible_bootstrap", ["tools/bootstrap_selfhost_repro.sh", "toolchain/test_bootstrap_reproducibility.sh", "tools/bootstrap_clean_checkout.py", "tools/bootstrap_offline.py"], ["repro", "sha256", "bootstrap"]),
+    (60, "real_platform_ci", [".github/workflows/ci.yml", ".github/workflows/compiler-vitte-chain.yml", "tools/scripts_build_arch_matrix_test.sh"], ["runs-on", "installer arch matrix", "seed-free-release-gate"]),
+    (61, "progressive_self_hosting_stage0_stage1_stage2", ["Makefile", "src/vitte/compiler/tests/compiler_contract_manifest.json", "tools/selfhost_stage_gates.py", "tools/stage1_compiler_gate.sh", "tools/stage2_project_gate.py"], ["stage0", "stage1", "stage2"]),
+    (62, "stage_bytecode_ir_comparison", ["Makefile", "tools/selfhost_stage_compare_gate.py", "tools/same_output_hash_test.sh", "tools/ir_coverage_check.py"], ["same-output-hash", "IR", "hash"]),
+    (63, "reproducible_bootstrap", ["tools/selfhost_stage_compare_gate.py", "tools/selfhost_ci_regression_gate.py", "tools/bootstrap_clean_checkout.py", "tools/bootstrap_offline.py"], ["repro", "sha256", "bootstrap"]),
     (64, "complete_determinism_tests", ["tools/determinism_smoke.sh", "tools/native_object_determinism_test.py", "tools/same_output_hash_test.sh"], ["deterministic", "hash"]),
     (65, "memory_security_audit", ["tools/security_gates_report.sh", "tools/security_input_limits_smoke.sh", "tools/sanitizers_maximal.sh", "tools/memory_model/run_checks.py"], ["security", "memory"]),
     (66, "compiler_fuzzing", ["tools/parser_lexer_fuzz_smoke.py", "tools/typeck_fuzz_test.py", "tools/compiler_stress_maximal.py"], ["fuzz", "crash"]),
