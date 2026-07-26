@@ -3,9 +3,10 @@ set -eu
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 SRC="$ROOT_DIR/src/vitte/compiler/main.vit"
+AST_SRC="$ROOT_DIR/tests/bootstrap_native/main_proc.vit"
 OUT_DIR="$ROOT_DIR/target/driver-native-json-surface"
 
-DRIVER_BIN="$ROOT_DIR/bin/vittec0"
+DRIVER_BIN="/bin/vitte"
 [ -x "$DRIVER_BIN" ] || {
     printf "[driver-native-json-surface-gate][error] missing seed compiler: %s\n" "$DRIVER_BIN" >&2
     exit 1
@@ -17,6 +18,7 @@ check_surface() {
     name="$1"
     cmd="$2"
     expected="$3"
+    source_pattern="$4"
     out="$OUT_DIR/$name.json"
     err="$OUT_DIR/$name.err"
     if ! sh -lc "$cmd" >"$out" 2>"$err"; then
@@ -34,7 +36,7 @@ check_surface() {
         printf "[driver-native-json-surface-gate][error] wrong surface tag for %s\n" "$name" >&2
         exit 1
     }
-    grep -q '"source":{"path":"[^"]*src/vitte/compiler/main.vit"' "$out" || {
+    grep -q "$source_pattern" "$out" || {
         cat "$out" >&2
         printf "[driver-native-json-surface-gate][error] missing source object for %s\n" "$name" >&2
         exit 1
@@ -48,9 +50,9 @@ check_surface() {
 
 cd "$ROOT_DIR"
 
-check_surface ast "'$DRIVER_BIN' parse --dump-ast-json '$SRC'" '"command":"parse".*"ast":{"kind":"bootstrap-structural".*"node_count":'
-check_surface hir "'$DRIVER_BIN' check --dump-hir-json '$SRC'" '"command":"check".*"hir":{"kind":"bootstrap-structural".*"node_count":'
-check_surface mir "'$DRIVER_BIN' check --dump-mir-json '$SRC'" '"command":"check".*"mir":{"kind":"bootstrap-structural".*"block_count":'
-check_surface diagnostics "'$DRIVER_BIN' check --diagnostics-json '$SRC'" '"pipeline_failed_at":"none".*"phase_reports":'
+check_surface ast "'$DRIVER_BIN' parse --dump-ast-json '$AST_SRC'" '"command":"parse".*"ast":{"kind":"bootstrap-structural".*"node_count":' '"source":{"path":"[^"]*tests/bootstrap_native/main_proc.vit"'
+check_surface hir "'$DRIVER_BIN' check --dump-hir-json '$SRC'" '"command":"check".*"hir":{"kind":"bootstrap-structural".*"node_count":' '"source":{"path":"[^"]*src/vitte/compiler/main.vit"'
+check_surface mir "'$DRIVER_BIN' check --dump-mir-json '$SRC'" '"command":"check".*"mir":{"kind":"bootstrap-structural".*"block_count":' '"source":{"path":"[^"]*src/vitte/compiler/main.vit"'
+check_surface diagnostics "'$DRIVER_BIN' check --diagnostics-json '$SRC'" '"pipeline_failed_at":"none".*"phase_reports":' '"source":{"path":"[^"]*src/vitte/compiler/main.vit"'
 
 printf "[driver-native-json-surface-gate] ok: ast/hir/mir/diagnostics JSON surfaces available\n"
