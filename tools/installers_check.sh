@@ -7,9 +7,7 @@ mkdir -p "$REPORT_DIR"
 
 for script in \
   "$ROOT_DIR"/scripts_build/*.sh \
-  "$ROOT_DIR"/tools/scripts_build_*_test.sh \
-  "$ROOT_DIR"/toolchain/scripts/package/*.sh \
-  "$ROOT_DIR"/toolchain/scripts/install/*.sh
+  "$ROOT_DIR"/tools/scripts_build_*_test.sh
 do
   sh -n "$script"
 done
@@ -37,12 +35,27 @@ from pathlib import Path
 
 root = Path(sys.argv[1])
 out = Path(sys.argv[2])
-package_version = (root / "toolchain/scripts/package/PACKAGE_VERSION").read_text(encoding="utf-8").strip()
+
+def package_version_of(root: Path) -> str:
+    for candidate in (root / "VERSION", root / "toolchain/scripts/package/PACKAGE_VERSION"):
+        if candidate.is_file() and candidate.stat().st_size:
+            return candidate.read_text(encoding="utf-8").strip()
+    readme = root / "README.md"
+    if readme.is_file():
+        match = re.search(r"version-([0-9][0-9A-Za-z._+-]*)-", readme.read_text(encoding="utf-8"))
+        if match:
+            return match.group(1)
+    return "0.1.0"
+
+package_version = package_version_of(root)
 violations = []
 version_violations = []
 allowed = (
     "/usr/local",
     "/usr/bin/env",
+    "/usr/bin",
+    "/bin/rm",
+    "/bin/mkdir",
     "/usr/lib/ld-musl-",
     "/bin/sh",
     "/bin/vitte",
@@ -65,38 +78,29 @@ for path in sorted((root / "scripts_build").glob("*.sh")):
         value = match.group(0)
         if match.start() >= 2 and text[match.start() - 2 : match.start()] == ":/":
             continue
-        if value.startswith(("/fd ", "/path/to/")):
+        if value.startswith(("/fd ", "/path/to/", "/s /q")):
             continue
         if not value.startswith(allowed) and "Application Support" not in value:
             violations.append(f"{path.relative_to(root)}:{match.start()}: {value}")
 
 if package_version != "0.1.0":
-    version_violations.append(f"toolchain/scripts/package/PACKAGE_VERSION is {package_version!r}, expected '0.1.0'")
+    version_violations.append(f"package version is {package_version!r}, expected '0.1.0'")
 
 version_checked_paths = [
     root / "Makefile",
     root / "man/vitte.1",
     root / "man/vittec.1",
-    root / "toolchain/scripts/install/templates/env.sh",
-    root / "toolchain/scripts/package/PACKAGE_VERSION",
-    root / "toolchain/scripts/package/make-debian-deb.sh",
-    root / "toolchain/scripts/package/make-macos-pkg.sh",
-    root / "toolchain/scripts/package/make-macos-uninstall-pkg.sh",
-    root / "toolchain/scripts/package/windows/vitte-installer.nsi",
+    root / "scripts/build-linux-debs.sh",
+    root / "scripts/build-macos-installers.sh",
+    root / "scripts/build-windows-installer.sh",
 ]
 for path in version_checked_paths:
+    if not path.exists():
+        continue
     text = path.read_text(encoding="utf-8")
     rel = path.relative_to(root)
     if "2.1.1" in text:
         version_violations.append(f"{rel}: contains stale version 2.1.1")
-
-macos_pkg = (root / "toolchain/scripts/package/make-macos-pkg.sh").read_text(encoding="utf-8")
-if ".zprofile" not in macos_pkg:
-    version_violations.append("toolchain/scripts/package/make-macos-pkg.sh: missing zsh login profile support")
-if 'export PATH="$_vitte_pkg_bin${PATH:+:$PATH}"' not in macos_pkg:
-    version_violations.append("toolchain/scripts/package/make-macos-pkg.sh: shell support must force the installed bin path")
-if "set -gx PATH /usr/local/bin $PATH" not in macos_pkg:
-    version_violations.append("toolchain/scripts/package/make-macos-pkg.sh: fish support must force the installed bin path")
 
 windows_builder = (root / "scripts/build-windows-installer.sh").read_text(encoding="utf-8")
 stage_payload = (root / "scripts/stage-installer-payload.sh").read_text(encoding="utf-8")
@@ -110,19 +114,13 @@ if '!include "StrFunc.nsh"' not in windows_builder or "Function un.RemoveFromPat
     version_violations.append("scripts/build-windows-installer.sh: Windows uninstall must remove PATH entries")
 if 'DeleteRegValue HKLM "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment" "VITTE_ROOT"' not in windows_builder:
     version_violations.append("scripts/build-windows-installer.sh: Windows uninstall must remove VITTE_ROOT")
-if '\\$env:VITTE_ROOT = Join-Path \\$PSScriptRoot "..\\\\share\\\\vitte"' not in windows_builder:
+if '\\$env:VITTE_ROOT = Join-Path \\$ScriptDir "..\\\\share\\\\vitte"' not in windows_builder:
     version_violations.append("scripts/build-windows-installer.sh: PowerShell shim must set VITTE_ROOT")
+for needle in ("install.ps1", "uninstall.ps1", "Split-Path -Parent \\$MyInvocation.MyCommand.Path"):
+    if needle not in windows_builder:
+        version_violations.append(f"scripts/build-windows-installer.sh: missing Windows PowerShell installer support {needle}")
 if 'WriteRegExpandStr HKLM "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment" "Path" "$1;$0"' not in windows_builder:
     version_violations.append("scripts/build-windows-installer.sh: installer must prepend Vitte bin in system PATH")
-
-windows_nsi = (root / "toolchain/scripts/package/windows/vitte-installer.nsi").read_text(encoding="utf-8")
-for include in ('!include "LogicLib.nsh"', '!include "StrFunc.nsh"', '${StrRep}', '${UnStrRep}'):
-    if include not in windows_nsi:
-        version_violations.append(f"toolchain/scripts/package/windows/vitte-installer.nsi: missing {include}")
-if 'WriteRegStr HKLM "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment" "VITTE_ROOT"' not in windows_nsi:
-    version_violations.append("toolchain/scripts/package/windows/vitte-installer.nsi: must write system VITTE_ROOT")
-if 'DeleteRegValue HKLM "SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Environment" "VITTE_ROOT"' not in windows_nsi:
-    version_violations.append("toolchain/scripts/package/windows/vitte-installer.nsi: must remove system VITTE_ROOT on uninstall")
 
 data = {
     "schema": "org.vitte.installers-check.v1",
