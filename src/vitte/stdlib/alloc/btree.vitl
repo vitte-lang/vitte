@@ -17,6 +17,20 @@ form BTreeSet<T> {
     inner: alloc_collections.BTreeSet<T>
 }
 
+form BTreeMapProfile {
+    length: usize
+    empty: bool
+    ordered: bool
+    valid: bool
+}
+
+form BTreeSetProfile {
+    length: usize
+    empty: bool
+    ordered: bool
+    valid: bool
+}
+
 proc btree_map_new<K, V>() -> BTreeMap<K, V> { give BTreeMap<K, V> { inner: alloc_collections.btreemap_new<K, V>() }; }
 proc btree_map_insert<K, V>(map: ref mut BTreeMap<K, V>, key: K, value: V) -> Option<V> { give alloc_collections.btreemap_insert<K, V>(&mut ((*map).inner), key, value); }
 proc btree_map_get<K, V>(map: ref BTreeMap<K, V>, key: K) -> Option<ref V> { give alloc_collections.btreemap_get<K, V>(&((*map).inner), key); }
@@ -76,4 +90,57 @@ proc btree_set_remove_many<T>(set: ref mut BTreeSet<T>, values: [T]) {
         let _ = btree_set_remove<T>(set, values[index]);
         set index = index + 1;
     }
+}
+
+proc btree_map_profile<K, V>(map: BTreeMap<K, V>) -> BTreeMapProfile {
+    give BTreeMapProfile {
+        length: btree_map_len<K, V>(map),
+        empty: btree_map_is_empty<K, V>(map),
+        ordered: compiler_btreemap_is_ordered<K, V>(map.inner),
+        valid: compiler_btreemap_is_ordered<K, V>(map.inner)
+    };
+}
+
+proc btree_map_is_valid<K, V>(map: BTreeMap<K, V>) -> bool {
+    give btree_map_profile<K, V>(map).valid;
+}
+
+proc btree_map_insert_if_absent<K, V>(map: ref mut BTreeMap<K, V>, key: K, value: V) -> bool {
+    if btree_map_contains_key<K, V>(&(*map), key) {
+        give false;
+    }
+    let _ = btree_map_insert<K, V>(map, key, value);
+    give true;
+}
+
+proc btree_map_replace<K, V>(map: ref mut BTreeMap<K, V>, key: K, value: V) -> Option<V> {
+    give btree_map_insert<K, V>(map, key, value);
+}
+
+proc btree_map_remove_existing<K, V>(map: ref mut BTreeMap<K, V>, key: K) -> bool {
+    give is_some<V>(btree_map_remove<K, V>(map, key));
+}
+
+proc btree_set_profile<T>(set: BTreeSet<T>) -> BTreeSetProfile {
+    give BTreeSetProfile {
+        length: btree_set_len<T>(set),
+        empty: btree_set_is_empty<T>(set),
+        ordered: compiler_btreeset_is_ordered<T>(set.inner),
+        valid: compiler_btreeset_is_ordered<T>(set.inner)
+    };
+}
+
+proc btree_set_is_valid<T>(set: BTreeSet<T>) -> bool {
+    give btree_set_profile<T>(set).valid;
+}
+
+proc btree_set_insert_if_absent<T>(set: ref mut BTreeSet<T>, value: T) -> bool {
+    if btree_set_contains<T>(&(*set), value) {
+        give false;
+    }
+    give btree_set_insert<T>(set, value);
+}
+
+proc btree_set_remove_existing<T>(set: ref mut BTreeSet<T>, value: T) -> bool {
+    give btree_set_remove<T>(set, value);
 }

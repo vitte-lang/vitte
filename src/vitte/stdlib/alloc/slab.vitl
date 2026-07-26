@@ -24,6 +24,15 @@ form Slab<T> {
     next_generation: usize
 }
 
+form SlabProfile {
+    length: usize
+    capacity: usize
+    free: usize
+    next_generation: usize
+    empty: bool
+    valid: bool
+}
+
 proc slab_key(index: usize, generation: usize) -> SlabKey {
     give SlabKey { index: index, generation: generation };
 }
@@ -120,4 +129,45 @@ proc slab_iter<T>(value: Slab<T>) -> Iterator<T> {
 
 proc slab_keys<T>(value: Slab<T>) -> Iterator<SlabKey> {
     give compiler_slab_keys<T>(value);
+}
+
+proc slab_profile<T>(value: Slab<T>) -> SlabProfile {
+    give SlabProfile {
+        length: slab_len<T>(value),
+        capacity: slab_capacity<T>(value),
+        free: slab_free_len<T>(value),
+        next_generation: value.next_generation,
+        empty: slab_is_empty<T>(value),
+        valid: value.length <= vec_len<SlabEntry<T>>(value.entries) and value.next_generation > 0
+    };
+}
+
+proc slab_is_valid<T>(value: Slab<T>) -> bool {
+    give slab_profile<T>(value).valid;
+}
+
+proc slab_key_matches<T>(value: ref Slab<T>, key: SlabKey) -> bool {
+    give not slab_key_is_null(key) and slab_contains<T>(value, key);
+}
+
+proc slab_insert_many<T>(value: ref mut Slab<T>, items: [T]) -> Vec<SlabKey> {
+    let keys: Vec<SlabKey> = vec_with_capacity<SlabKey>(items.len);
+    let index: usize = 0;
+    while index < items.len {
+        vec_push<SlabKey>(&mut keys, slab_insert<T>(value, items[index]));
+        set index = index + 1;
+    }
+    give keys;
+}
+
+proc slab_remove_many<T>(value: ref mut Slab<T>, keys: [SlabKey]) -> usize {
+    let removed: usize = 0;
+    let index: usize = 0;
+    while index < keys.len {
+        if is_some<T>(slab_remove<T>(value, keys[index])) {
+            set removed = removed + 1;
+        }
+        set index = index + 1;
+    }
+    give removed;
 }

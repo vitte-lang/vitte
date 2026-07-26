@@ -45,6 +45,24 @@ form Allocator {
     policy: GrowthPolicy
 }
 
+form AllocatorContract {
+    name: string
+    policy: GrowthPolicy
+    live_bytes: usize
+    reserved_bytes: usize
+    remaining_bytes: usize
+    allocation_count: usize
+    failure_count: usize
+    valid: bool
+}
+
+form AllocationPlan {
+    requested: AllocationLayout
+    padded: AllocationLayout
+    next_capacity: usize
+    valid: bool
+}
+
 proc layout(size: usize, align: usize) -> AllocationLayout {
     give AllocationLayout { size: size, align: align };
 }
@@ -213,4 +231,114 @@ proc deallocate(value: ref mut Allocator, allocation: Allocation) {
         let empty: usize = 0;
         set (*value).stats.live_bytes = empty;
     }
+}
+
+proc alloc_error_kind_name(kind: AllocErrorKind) -> string {
+    if kind == AllocErrorKind.OutOfMemory {
+        give "out-of-memory";
+    }
+    if kind == AllocErrorKind.InvalidLayout {
+        give "invalid-layout";
+    }
+    if kind == AllocErrorKind.CapacityOverflow {
+        give "capacity-overflow";
+    }
+    give "unsupported-alignment";
+}
+
+proc growth_policy_name(policy: GrowthPolicy) -> string {
+    if policy == GrowthPolicy.Exact {
+        give "exact";
+    }
+    if policy == GrowthPolicy.Page {
+        give "page";
+    }
+    give "geometric";
+}
+
+proc layout_for<T>() -> AllocationLayout {
+    give layout(compiler_size_of<T>(), compiler_align_of<T>());
+}
+
+proc layout_is_empty(value: AllocationLayout) -> bool {
+    give value.size == 0;
+}
+
+proc layout_has_supported_alignment(value: AllocationLayout) -> bool {
+    give layout_is_power_of_two(value.align);
+}
+
+proc layout_checked(size: usize, align: usize) -> Option<AllocationLayout> {
+    let out: AllocationLayout = layout(size, align);
+    if not layout_is_valid(out) {
+        give none<AllocationLayout>();
+    }
+    give some<AllocationLayout>(out);
+}
+
+proc layout_array_for<T>(count: usize) -> Option<AllocationLayout> {
+    give layout_array(layout_for<T>(), count);
+}
+
+proc allocation_size(value: Allocation) -> usize {
+    give value.layout.size;
+}
+
+proc allocation_align(value: Allocation) -> usize {
+    give value.layout.align;
+}
+
+proc allocation_range_is_valid(value: Allocation) -> bool {
+    if allocation_is_null(value) {
+        give value.layout.size == 0;
+    }
+    give allocation_end(value) >= value.address and layout_is_valid(value.layout);
+}
+
+proc allocation_overlaps(left: Allocation, right: Allocation) -> bool {
+    if allocation_is_null(left) or allocation_is_null(right) {
+        give false;
+    }
+    give left.address < allocation_end(right) and right.address < allocation_end(left);
+}
+
+proc allocator_contract(value: Allocator) -> AllocatorContract {
+    give AllocatorContract {
+        name: value.name,
+        policy: value.policy,
+        live_bytes: value.stats.live_bytes,
+        reserved_bytes: value.stats.reserved_bytes,
+        remaining_bytes: allocator_remaining(value),
+        allocation_count: value.stats.allocation_count,
+        failure_count: value.stats.failure_count,
+        valid: value.name != "" and value.stats.reserved_bytes >= value.stats.live_bytes
+    };
+}
+
+proc allocator_is_healthy(value: Allocator) -> bool {
+    give allocator_contract(value).valid and value.stats.failure_count == 0;
+}
+
+proc allocator_has_failures(value: Allocator) -> bool {
+    give value.stats.failure_count > 0;
+}
+
+proc allocator_reset_failures(value: ref mut Allocator) {
+    set (*value).stats.failure_count = 0;
+}
+
+proc allocator_plan(value: Allocator, request: AllocationLayout) -> AllocationPlan {
+    if not layout_is_valid(request) {
+        give AllocationPlan { requested: request, padded: request, next_capacity: 0, valid: false };
+    }
+    let padded: AllocationLayout = layout_pad_to_align(request);
+    let next = next_capacity(value.stats.reserved_bytes, value.stats.live_bytes + padded.size, value.policy);
+    if is_none<usize>(next) {
+        give AllocationPlan { requested: request, padded: padded, next_capacity: 0, valid: false };
+    }
+    give AllocationPlan { requested: request, padded: padded, next_capacity: unwrap<usize>(next), valid: true };
+}
+
+proc allocator_can_allocate(value: Allocator, request: AllocationLayout) -> bool {
+    give allocator_plan(value, request).valid;
 }

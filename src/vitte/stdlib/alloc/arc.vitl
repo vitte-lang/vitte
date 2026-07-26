@@ -7,6 +7,21 @@ use src/vitte/stdlib/core/option as core_option
 form Arc<T> { ptr: ref T }
 form ArcWeak<T> { ptr: ref T }
 
+form ArcProfile {
+    strong: usize
+    weak: usize
+    unique: bool
+    shared: bool
+    valid: bool
+}
+
+form ArcWeakProfile {
+    strong: usize
+    weak: usize
+    expired: bool
+    valid: bool
+}
+
 proc arc_new<T>(value: T) -> Arc<T> { give compiler_arc_new<T>(value); }
 proc arc_try_new<T>(value: T) -> Option<Arc<T>> { give compiler_arc_try_new<T>(value); }
 proc arc_clone<T>(value: Arc<T>) -> Arc<T> { give compiler_arc_clone<T>(value); }
@@ -44,4 +59,44 @@ proc arc_clone_many<T>(value: Arc<T>, count: usize) -> Arc<T> {
         set index = index + 1;
     }
     give out;
+}
+
+proc arc_profile<T>(value: Arc<T>) -> ArcProfile {
+    let strong: usize = arc_strong_count<T>(value);
+    let weak: usize = arc_weak_count<T>(value);
+    give ArcProfile {
+        strong: strong,
+        weak: weak,
+        unique: strong == 1,
+        shared: strong > 1,
+        valid: strong > 0
+    };
+}
+
+proc arc_weak_profile<T>(value: ArcWeak<T>) -> ArcWeakProfile {
+    let strong: usize = arc_weak_strong_count<T>(value);
+    let weak: usize = arc_weak_weak_count<T>(value);
+    give ArcWeakProfile {
+        strong: strong,
+        weak: weak,
+        expired: strong == 0,
+        valid: weak > 0 or strong > 0
+    };
+}
+
+proc arc_can_get_mut<T>(value: Arc<T>) -> bool {
+    give arc_profile<T>(value).unique;
+}
+
+proc arc_is_shared<T>(value: Arc<T>) -> bool {
+    give arc_profile<T>(value).shared;
+}
+
+proc arc_invariant_holds<T>(value: Arc<T>) -> bool {
+    let profile: ArcProfile = arc_profile<T>(value);
+    give profile.valid and profile.strong >= 1;
+}
+
+proc arc_weak_can_upgrade<T>(value: ArcWeak<T>) -> bool {
+    give not arc_weak_profile<T>(value).expired;
 }

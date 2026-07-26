@@ -7,6 +7,21 @@ use src/vitte/stdlib/core/option as core_option
 form Rc<T> { ptr: ref T }
 form Weak<T> { ptr: ref T }
 
+form RcProfile {
+    strong: usize
+    weak: usize
+    unique: bool
+    shared: bool
+    valid: bool
+}
+
+form WeakProfile {
+    strong: usize
+    weak: usize
+    expired: bool
+    valid: bool
+}
+
 proc rc_new<T>(value: T) -> Rc<T> { give compiler_rc_new<T>(value); }
 proc rc_try_new<T>(value: T) -> Option<Rc<T>> { give compiler_rc_try_new<T>(value); }
 proc rc_clone<T>(value: Rc<T>) -> Rc<T> { give compiler_rc_clone<T>(value); }
@@ -44,4 +59,44 @@ proc rc_clone_many<T>(value: Rc<T>, count: usize) -> Rc<T> {
         set index = index + 1;
     }
     give out;
+}
+
+proc rc_profile<T>(value: Rc<T>) -> RcProfile {
+    let strong: usize = rc_strong_count<T>(value);
+    let weak: usize = rc_weak_count<T>(value);
+    give RcProfile {
+        strong: strong,
+        weak: weak,
+        unique: strong == 1,
+        shared: strong > 1,
+        valid: strong > 0
+    };
+}
+
+proc weak_profile<T>(value: Weak<T>) -> WeakProfile {
+    let strong: usize = weak_strong_count<T>(value);
+    let weak: usize = weak_weak_count<T>(value);
+    give WeakProfile {
+        strong: strong,
+        weak: weak,
+        expired: strong == 0,
+        valid: weak > 0 or strong > 0
+    };
+}
+
+proc rc_can_get_mut<T>(value: Rc<T>) -> bool {
+    give rc_profile<T>(value).unique;
+}
+
+proc rc_is_shared<T>(value: Rc<T>) -> bool {
+    give rc_profile<T>(value).shared;
+}
+
+proc rc_invariant_holds<T>(value: Rc<T>) -> bool {
+    let profile: RcProfile = rc_profile<T>(value);
+    give profile.valid and profile.strong >= 1;
+}
+
+proc weak_can_upgrade<T>(value: Weak<T>) -> bool {
+    give not weak_profile<T>(value).expired;
 }

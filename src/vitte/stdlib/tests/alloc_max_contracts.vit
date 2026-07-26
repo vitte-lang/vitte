@@ -1,0 +1,130 @@
+space vitte/stdlib/tests/alloc_max_contracts
+
+use src/vitte/stdlib/alloc/allocator as alloc_allocator
+use src/vitte/stdlib/alloc/arc as alloc_arc
+use src/vitte/stdlib/alloc/arena as alloc_arena
+use src/vitte/stdlib/alloc/box as alloc_box
+use src/vitte/stdlib/alloc/btree as alloc_btree
+use src/vitte/stdlib/alloc/byte_buffer as alloc_byte_buffer
+use src/vitte/stdlib/alloc/collections as alloc_collections
+use src/vitte/stdlib/alloc/deque as alloc_deque
+use src/vitte/stdlib/alloc/rc as alloc_rc
+use src/vitte/stdlib/alloc/slab as alloc_slab
+use src/vitte/stdlib/alloc/smallvec as alloc_smallvec
+use src/vitte/stdlib/alloc/string as alloc_string
+use src/vitte/stdlib/alloc/vec as alloc_vec
+
+proc alloc_max_allocator_contract() -> bool {
+    let allocator: alloc_allocator.Allocator = alloc_allocator.allocator("alloc-max", alloc_allocator.GrowthPolicy.Geometric);
+    let layout_value: alloc_allocator.AllocationLayout = alloc_allocator.layout(32, 8);
+    let plan: alloc_allocator.AllocationPlan = alloc_allocator.allocator_plan(allocator, layout_value);
+    let contract: alloc_allocator.AllocatorContract = alloc_allocator.allocator_contract(allocator);
+    give alloc_allocator.layout_is_valid(layout_value)
+        and alloc_allocator.layout_has_supported_alignment(layout_value)
+        and plan.valid
+        and contract.valid
+        and alloc_allocator.growth_policy_name(allocator.policy) != "";
+}
+
+proc alloc_max_vec_contract<T>(value: alloc_vec.Vec<T>) -> bool {
+    let profile: alloc_vec.VecProfile = alloc_vec.vec_profile<T>(value);
+    let reserve: alloc_vec.VecReservePlan = alloc_vec.vec_reserve_plan<T>(value, 1);
+    give profile.valid
+        and reserve.valid
+        and alloc_vec.vec_range_check<T>(value, 0 as usize, alloc_vec.vec_len<T>(value));
+}
+
+proc alloc_max_string_contract(value: ref alloc_string.String) -> bool {
+    let profile: alloc_string.StringProfile = alloc_string.string_profile(value);
+    give profile.valid_utf8
+        and alloc_string.string_is_valid(value)
+        and alloc_string.string_can_slice(value, 0 as usize, alloc_string.string_len(*value));
+}
+
+proc alloc_max_box_contract<T>(value: ref alloc_box.Box<T>) -> bool {
+    let profile: alloc_box.BoxProfile = alloc_box.box_profile<T>(value);
+    give profile.valid
+        and alloc_box.box_is_valid<T>(value)
+        and alloc_box.box_state_name(profile.state) != "";
+}
+
+proc alloc_max_rc_contract<T>(value: alloc_rc.Rc<T>) -> bool {
+    let profile: alloc_rc.RcProfile = alloc_rc.rc_profile<T>(value);
+    give profile.valid
+        and alloc_rc.rc_invariant_holds<T>(value)
+        and profile.strong >= 1;
+}
+
+proc alloc_max_arc_contract<T>(value: alloc_arc.Arc<T>) -> bool {
+    let profile: alloc_arc.ArcProfile = alloc_arc.arc_profile<T>(value);
+    give profile.valid
+        and alloc_arc.arc_invariant_holds<T>(value)
+        and profile.strong >= 1;
+}
+
+proc alloc_max_arena_contract(value: alloc_arena.Arena) -> bool {
+    let profile: alloc_arena.ArenaProfile = alloc_arena.arena_profile(value);
+    let mark: alloc_arena.ArenaMark = alloc_arena.arena_mark(value);
+    give profile.valid
+        and alloc_arena.arena_mark_is_valid(value, mark)
+        and alloc_arena.arena_bytes_until_mark(value, mark) == 0;
+}
+
+proc alloc_max_byte_buffer_contract(value: alloc_byte_buffer.ByteBuffer) -> bool {
+    let profile: alloc_byte_buffer.ByteBufferProfile = alloc_byte_buffer.byte_buffer_profile(value);
+    give profile.valid
+        and alloc_byte_buffer.byte_buffer_is_valid(value)
+        and alloc_byte_buffer.byte_buffer_can_read(value, alloc_byte_buffer.byte_buffer_len(value));
+}
+
+proc alloc_max_slab_contract<T>(value: alloc_slab.Slab<T>) -> bool {
+    let profile: alloc_slab.SlabProfile = alloc_slab.slab_profile<T>(value);
+    give profile.valid
+        and alloc_slab.slab_is_valid<T>(value)
+        and profile.length == alloc_slab.slab_len<T>(value);
+}
+
+proc alloc_max_btree_map_contract<K, V>(value: alloc_btree.BTreeMap<K, V>) -> bool {
+    let profile: alloc_btree.BTreeMapProfile = alloc_btree.btree_map_profile<K, V>(value);
+    give profile.valid
+        and alloc_btree.btree_map_is_valid<K, V>(value)
+        and profile.length == alloc_btree.btree_map_len<K, V>(value);
+}
+
+proc alloc_max_btree_set_contract<T>(value: alloc_btree.BTreeSet<T>) -> bool {
+    let profile: alloc_btree.BTreeSetProfile = alloc_btree.btree_set_profile<T>(value);
+    give profile.valid
+        and alloc_btree.btree_set_is_valid<T>(value)
+        and profile.length == alloc_btree.btree_set_len<T>(value);
+}
+
+proc alloc_max_deque_contract<T>(value: alloc_deque.Deque<T>) -> bool {
+    let profile: alloc_deque.DequeProfile = alloc_deque.deque_profile<T>(value);
+    give profile.valid
+        and alloc_deque.deque_is_valid<T>(value)
+        and profile.length == alloc_deque.deque_len<T>(value);
+}
+
+proc alloc_max_smallvec_contract<T, N>(value: alloc_smallvec.SmallVec<T, N>) -> bool {
+    let profile: alloc_smallvec.SmallVecProfile = alloc_smallvec.smallvec_profile<T, N>(value);
+    give profile.valid
+        and alloc_smallvec.smallvec_is_valid<T, N>(value)
+        and profile.length == alloc_smallvec.smallvec_len<T, N>(value);
+}
+
+proc alloc_max_collections_contract<K, V, T>(
+    map: alloc_collections.HashMap<K, V>,
+    set: alloc_collections.HashSet<T>,
+    tree: alloc_collections.BTreeMap<K, V>
+) -> bool {
+    let map_profile: alloc_collections.HashMapProfile = alloc_collections.hashmap_profile<K, V>(map);
+    let set_profile: alloc_collections.HashSetProfile = alloc_collections.hashset_profile<T>(set);
+    let tree_profile: alloc_collections.BTreeProfile = alloc_collections.btreemap_profile<K, V>(tree);
+    give map_profile.valid
+        and set_profile.valid
+        and tree_profile.valid;
+}
+
+proc alloc_max_surface_count() -> usize {
+    give 13 as usize;
+}

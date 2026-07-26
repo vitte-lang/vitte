@@ -24,6 +24,16 @@ form Arena {
     allocated: usize
 }
 
+form ArenaProfile {
+    block_size: usize
+    block_count: usize
+    allocated: usize
+    allocator_live: usize
+    allocator_reserved: usize
+    empty: bool
+    valid: bool
+}
+
 proc arena_block(allocation: alloc_allocator.Allocation) -> ArenaBlock {
     give ArenaBlock { allocation: allocation, used: 0, capacity: allocation.layout.size };
 }
@@ -124,4 +134,39 @@ proc arena_drop(value: ref mut Arena) {
     arena_reset(value);
     set (*value).allocator.stats.reserved_bytes = 0;
     set (*value).allocator.stats.allocation_count = 0;
+}
+
+proc arena_profile(value: Arena) -> ArenaProfile {
+    give ArenaProfile {
+        block_size: value.block_size,
+        block_count: arena_block_count(value),
+        allocated: value.allocated,
+        allocator_live: alloc_allocator.allocator_live_bytes(value.allocator),
+        allocator_reserved: alloc_allocator.allocator_reserved_bytes(value.allocator),
+        empty: arena_is_empty(value),
+        valid: value.block_size > 0 and alloc_allocator.allocator_contract(value.allocator).valid
+    };
+}
+
+proc arena_is_valid(value: Arena) -> bool {
+    give arena_profile(value).valid;
+}
+
+proc arena_mark_is_valid(value: Arena, mark: ArenaMark) -> bool {
+    give mark.block_count <= arena_block_count(value) and mark.allocated <= value.allocated;
+}
+
+proc arena_bytes_until_mark(value: Arena, mark: ArenaMark) -> usize {
+    if not arena_mark_is_valid(value, mark) {
+        give 0 as usize;
+    }
+    give value.allocated - mark.allocated;
+}
+
+proc arena_would_allocate(value: Arena, layout_value: alloc_allocator.AllocationLayout) -> bool {
+    give alloc_allocator.layout_is_valid(layout_value) and arena_next_block_size(value, layout_value.size) >= layout_value.size;
+}
+
+proc arena_alloc_many<T>(value: ref mut Arena, count: usize) -> Option<alloc_allocator.Allocation> {
+    give arena_alloc_array<T>(value, count);
 }

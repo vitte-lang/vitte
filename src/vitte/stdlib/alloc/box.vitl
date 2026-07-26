@@ -8,6 +8,20 @@ form Box<T> {
     ptr: ref mut T
 }
 
+pick BoxState {
+    Owned
+    Leaked
+    Pinned
+    Invalid
+}
+
+form BoxProfile {
+    address: usize
+    state: BoxState
+    non_null: bool
+    valid: bool
+}
+
 proc box_new<T>(value: T) -> Box<T> { give compiler_box_new<T>(value); }
 proc box_default<T>() -> Box<T> { give compiler_box_default<T>(); }
 proc box_into_inner<T>(boxed: Box<T>) -> T { give compiler_box_into_inner<T>(boxed); }
@@ -35,4 +49,40 @@ proc box_is_non_null<T>(boxed: ref Box<T>) -> bool {
 
 proc box_ptr_eq<T>(left: ref Box<T>, right: ref Box<T>) -> bool {
     give compiler_box_address<T>(left) == compiler_box_address<T>(right);
+}
+
+proc box_address<T>(boxed: ref Box<T>) -> usize {
+    give compiler_box_address<T>(boxed);
+}
+
+proc box_profile<T>(boxed: ref Box<T>) -> BoxProfile {
+    let address: usize = box_address<T>(boxed);
+    give BoxProfile {
+        address: address,
+        state: if address == 0 { BoxState.Invalid } else { BoxState.Owned },
+        non_null: address != 0,
+        valid: address != 0
+    };
+}
+
+proc box_is_valid<T>(boxed: ref Box<T>) -> bool {
+    give box_profile<T>(boxed).valid;
+}
+
+proc box_state_name(state: BoxState) -> string {
+    if state == BoxState.Owned {
+        give "owned";
+    }
+    if state == BoxState.Leaked {
+        give "leaked";
+    }
+    if state == BoxState.Pinned {
+        give "pinned";
+    }
+    give "invalid";
+}
+
+proc box_swap<T>(left: ref mut Box<T>, right: ref mut Box<T>) {
+    let old_left: T = box_replace<T>(left, box_replace<T>(right, compiler_box_default_value<T>()));
+    let _ = box_replace<T>(right, old_left);
 }

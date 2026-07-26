@@ -11,6 +11,16 @@ form ByteBuffer {
     write_index: usize
 }
 
+form ByteBufferProfile {
+    length: usize
+    capacity: usize
+    remaining_capacity: usize
+    read_index: usize
+    write_index: usize
+    compactable: bool
+    valid: bool
+}
+
 proc byte_buffer_new() -> ByteBuffer {
     give ByteBuffer { data: vec_new<byte>(), read_index: 0, write_index: 0 };
 }
@@ -104,4 +114,43 @@ proc byte_buffer_split_to(value: ref mut ByteBuffer, count: usize) -> ByteBuffer
         set copied = copied + 1;
     }
     give out;
+}
+
+proc byte_buffer_profile(value: ByteBuffer) -> ByteBufferProfile {
+    give ByteBufferProfile {
+        length: byte_buffer_len(value),
+        capacity: byte_buffer_capacity(value),
+        remaining_capacity: byte_buffer_remaining_capacity(value),
+        read_index: value.read_index,
+        write_index: value.write_index,
+        compactable: value.read_index > 0,
+        valid: value.read_index <= value.write_index and value.write_index <= vec_len<byte>(value.data)
+    };
+}
+
+proc byte_buffer_is_valid(value: ByteBuffer) -> bool {
+    give byte_buffer_profile(value).valid;
+}
+
+proc byte_buffer_can_read(value: ByteBuffer, count: usize) -> bool {
+    give byte_buffer_len(value) >= count;
+}
+
+proc byte_buffer_can_write(value: ByteBuffer, count: usize) -> bool {
+    give byte_buffer_remaining_capacity(value) >= count;
+}
+
+proc byte_buffer_read_exact(value: ref mut ByteBuffer, count: usize) -> Option<ByteBuffer> {
+    if not byte_buffer_can_read(*value, count) {
+        give none<ByteBuffer>();
+    }
+    give some<ByteBuffer>(byte_buffer_split_to(value, count));
+}
+
+proc byte_buffer_rewind(value: ref mut ByteBuffer) {
+    set (*value).read_index = 0;
+}
+
+proc byte_buffer_written_slice(value: ByteBuffer) -> [byte] {
+    give compiler_byte_buffer_slice(value, 0, value.write_index);
 }

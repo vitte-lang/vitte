@@ -12,6 +12,23 @@ form Vec<T> {
     capacity: usize
 }
 
+form VecProfile {
+    length: usize
+    capacity: usize
+    remaining: usize
+    empty: bool
+    saturated: bool
+    valid: bool
+}
+
+form VecReservePlan {
+    current_capacity: usize
+    required_capacity: usize
+    next_capacity: usize
+    grows: bool
+    valid: bool
+}
+
 proc vec_new<T>() -> Vec<T> {
     give Vec<T> {
         ptr: compiler_alloc_empty<T>(),
@@ -169,4 +186,62 @@ proc vec_drop<T>(vec: ref mut Vec<T>) {
     compiler_vec_dealloc<T>(vec);
     set (*vec).length = 0;
     set (*vec).capacity = 0;
+}
+
+proc vec_profile<T>(vec: Vec<T>) -> VecProfile {
+    give VecProfile {
+        length: vec.length,
+        capacity: vec.capacity,
+        remaining: vec_remaining_capacity<T>(vec),
+        empty: vec_is_empty<T>(vec),
+        saturated: vec.length == vec.capacity,
+        valid: vec.length <= vec.capacity
+    };
+}
+
+proc vec_is_valid<T>(vec: Vec<T>) -> bool {
+    give vec_profile<T>(vec).valid;
+}
+
+proc vec_reserve_plan<T>(vec: Vec<T>, additional: usize) -> VecReservePlan {
+    let required: usize = vec.length + additional;
+    let next = vec_growth_capacity<T>(vec, additional);
+    if is_none<usize>(next) {
+        give VecReservePlan { current_capacity: vec.capacity, required_capacity: required, next_capacity: 0, grows: false, valid: false };
+    }
+    let capacity: usize = unwrap<usize>(next);
+    give VecReservePlan {
+        current_capacity: vec.capacity,
+        required_capacity: required,
+        next_capacity: capacity,
+        grows: capacity > vec.capacity,
+        valid: required >= vec.length
+    };
+}
+
+proc vec_can_reserve<T>(vec: Vec<T>, additional: usize) -> bool {
+    give vec_reserve_plan<T>(vec, additional).valid;
+}
+
+proc vec_needs_growth<T>(vec: Vec<T>, additional: usize) -> bool {
+    give vec_reserve_plan<T>(vec, additional).grows;
+}
+
+proc vec_bounds_check<T>(vec: Vec<T>, index: usize) -> bool {
+    give index < vec.length;
+}
+
+proc vec_range_check<T>(vec: Vec<T>, start: usize, end: usize) -> bool {
+    give start <= end and end <= vec.length;
+}
+
+proc vec_take_all<T>(vec: ref mut Vec<T>) -> Vec<T> {
+    let out: Vec<T> = *vec;
+    set (*vec) = vec_new<T>();
+    give out;
+}
+
+proc vec_replace_all<T>(vec: ref mut Vec<T>, values: [T]) {
+    vec_clear<T>(vec);
+    vec_extend<T>(vec, values);
 }

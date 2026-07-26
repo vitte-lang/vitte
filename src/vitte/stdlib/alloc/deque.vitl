@@ -11,6 +11,15 @@ form Deque<T> {
     inner: alloc_collections.Deque<T>
 }
 
+form DequeProfile {
+    length: usize
+    capacity: usize
+    remaining: usize
+    empty: bool
+    contiguous: bool
+    valid: bool
+}
+
 proc deque_new<T>() -> Deque<T> { give Deque<T> { inner: alloc_collections.deque_new<T>() }; }
 proc deque_push_back<T>(deque: ref mut Deque<T>, value: T) { alloc_collections.deque_push_back<T>(&mut ((*deque).inner), value); }
 proc deque_push_front<T>(deque: ref mut Deque<T>, value: T) { alloc_collections.deque_push_front<T>(&mut ((*deque).inner), value); }
@@ -57,4 +66,38 @@ proc deque_truncate_back<T>(deque: ref mut Deque<T>, count: usize) {
         let _ = deque_pop_back<T>(deque);
         set removed = removed + 1;
     }
+}
+
+proc deque_remaining_capacity<T>(deque: Deque<T>) -> usize {
+    if deque_capacity<T>(deque) < deque_len<T>(deque) {
+        give 0 as usize;
+    }
+    give deque_capacity<T>(deque) - deque_len<T>(deque);
+}
+
+proc deque_profile<T>(deque: Deque<T>) -> DequeProfile {
+    give DequeProfile {
+        length: deque_len<T>(deque),
+        capacity: deque_capacity<T>(deque),
+        remaining: deque_remaining_capacity<T>(deque),
+        empty: deque_is_empty<T>(deque),
+        contiguous: compiler_deque_is_contiguous<T>(deque.inner),
+        valid: deque_len<T>(deque) <= deque_capacity<T>(deque)
+    };
+}
+
+proc deque_is_valid<T>(deque: Deque<T>) -> bool {
+    give deque_profile<T>(deque).valid;
+}
+
+proc deque_can_pop<T>(deque: Deque<T>) -> bool {
+    give not deque_is_empty<T>(deque);
+}
+
+proc deque_can_reserve<T>(deque: Deque<T>, additional: usize) -> bool {
+    give deque_len<T>(deque) + additional >= deque_len<T>(deque);
+}
+
+proc deque_drain_front<T>(deque: ref mut Deque<T>) -> [T] {
+    give deque_make_contiguous<T>(deque);
 }

@@ -35,6 +35,44 @@ form SmallVec<T, N> {
     spilled: Vec<T>
 }
 
+form HashMapProfile {
+    length: usize
+    capacity: usize
+    load_percent: usize
+    empty: bool
+    valid: bool
+}
+
+form HashSetProfile {
+    length: usize
+    capacity: usize
+    empty: bool
+    valid: bool
+}
+
+form BTreeProfile {
+    length: usize
+    empty: bool
+    ordered: bool
+    valid: bool
+}
+
+form DequeStorageProfile {
+    head: usize
+    length: usize
+    capacity: usize
+    valid: bool
+}
+
+form SmallVecStorageProfile {
+    inline_len: usize
+    spilled_len: usize
+    inline_capacity: usize
+    total_len: usize
+    spilled: bool
+    valid: bool
+}
+
 proc hashmap_new<K, V>() -> HashMap<K, V> {
     give HashMap<K, V> {
         buckets: vec_new<(K, V)>(),
@@ -240,3 +278,112 @@ proc smallvec_clear<T, N>(value: ref mut SmallVec<T, N>) {
     set (*value).inline_len = 0;
 }
 proc smallvec_iter<T, N>(value: SmallVec<T, N>) -> Iterator<T> { give vec_iter<T>(value.spilled); }
+
+proc hashmap_load_percent<K, V>(map: HashMap<K, V>) -> usize {
+    let capacity: usize = hashmap_capacity<K, V>(map);
+    if capacity == 0 {
+        give 0 as usize;
+    }
+    give (hashmap_len<K, V>(map) * 100) / capacity;
+}
+
+proc hashmap_profile<K, V>(map: HashMap<K, V>) -> HashMapProfile {
+    give HashMapProfile {
+        length: hashmap_len<K, V>(map),
+        capacity: hashmap_capacity<K, V>(map),
+        load_percent: hashmap_load_percent<K, V>(map),
+        empty: hashmap_is_empty<K, V>(map),
+        valid: hashmap_len<K, V>(map) <= vec_len<(K, V)>(map.buckets)
+    };
+}
+
+proc hashmap_is_valid<K, V>(map: HashMap<K, V>) -> bool {
+    give hashmap_profile<K, V>(map).valid;
+}
+
+proc hashmap_should_grow<K, V>(map: HashMap<K, V>) -> bool {
+    give hashmap_load_percent<K, V>(map) >= 75;
+}
+
+proc hashmap_insert_if_absent<K, V>(map: ref mut HashMap<K, V>, key: K, value: V) -> bool {
+    if hashmap_contains_key<K, V>(&(*map), key) {
+        give false;
+    }
+    let _ = hashmap_insert<K, V>(map, key, value);
+    give true;
+}
+
+proc hashset_profile<T>(set: HashSet<T>) -> HashSetProfile {
+    give HashSetProfile {
+        length: hashset_len<T>(set),
+        capacity: hashmap_capacity<T, bool>(set.map),
+        empty: hashset_is_empty<T>(set),
+        valid: hashmap_is_valid<T, bool>(set.map)
+    };
+}
+
+proc hashset_is_valid<T>(set: HashSet<T>) -> bool {
+    give hashset_profile<T>(set).valid;
+}
+
+proc hashset_insert_many<T>(set: ref mut HashSet<T>, values: [T]) -> usize {
+    let added: usize = 0;
+    let index: usize = 0;
+    while index < values.len {
+        if hashset_insert<T>(set, values[index]) {
+            set added = added + 1;
+        }
+        set index = index + 1;
+    }
+    give added;
+}
+
+proc hashset_remove_many<T>(set: ref mut HashSet<T>, values: [T]) -> usize {
+    let removed: usize = 0;
+    let index: usize = 0;
+    while index < values.len {
+        if hashset_remove<T>(set, values[index]) {
+            set removed = removed + 1;
+        }
+        set index = index + 1;
+    }
+    give removed;
+}
+
+proc btreemap_profile<K, V>(map: BTreeMap<K, V>) -> BTreeProfile {
+    give BTreeProfile {
+        length: btreemap_len<K, V>(map),
+        empty: btreemap_is_empty<K, V>(map),
+        ordered: compiler_btreemap_is_ordered<K, V>(map),
+        valid: compiler_btreemap_is_ordered<K, V>(map)
+    };
+}
+
+proc btreeset_profile<T>(set: BTreeSet<T>) -> BTreeProfile {
+    give BTreeProfile {
+        length: btreeset_len<T>(set),
+        empty: btreeset_is_empty<T>(set),
+        ordered: compiler_btreeset_is_ordered<T>(set),
+        valid: compiler_btreeset_is_ordered<T>(set)
+    };
+}
+
+proc deque_storage_profile<T>(deque: Deque<T>) -> DequeStorageProfile {
+    give DequeStorageProfile {
+        head: deque.head,
+        length: deque.length,
+        capacity: deque_capacity<T>(deque),
+        valid: deque.length <= vec_len<T>(deque.data)
+    };
+}
+
+proc smallvec_storage_profile<T, N>(value: SmallVec<T, N>) -> SmallVecStorageProfile {
+    give SmallVecStorageProfile {
+        inline_len: value.inline_len,
+        spilled_len: vec_len<T>(value.spilled),
+        inline_capacity: smallvec_inline_capacity<T, N>(),
+        total_len: smallvec_len<T, N>(value),
+        spilled: smallvec_spilled<T, N>(value),
+        valid: value.inline_len <= smallvec_inline_capacity<T, N>()
+    };
+}

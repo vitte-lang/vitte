@@ -11,6 +11,15 @@ form SmallVec<T, N> {
     inner: alloc_collections.SmallVec<T, N>
 }
 
+form SmallVecProfile {
+    length: usize
+    capacity: usize
+    inline_capacity: usize
+    spilled: bool
+    inline_remaining: usize
+    valid: bool
+}
+
 proc smallvec_new<T, N>() -> SmallVec<T, N> { give SmallVec<T, N> { inner: alloc_collections.smallvec_new<T, N>() }; }
 proc smallvec_len<T, N>(value: SmallVec<T, N>) -> usize { give alloc_collections.smallvec_len<T, N>(value.inner); }
 proc smallvec_capacity<T, N>(value: SmallVec<T, N>) -> usize { give alloc_collections.smallvec_capacity<T, N>(value.inner); }
@@ -50,4 +59,39 @@ proc smallvec_truncate<T, N>(value: ref mut SmallVec<T, N>, len: usize) {
 
 proc smallvec_fits_inline<T, N>(additional: usize) -> bool {
     give additional <= smallvec_inline_capacity<T, N>();
+}
+
+proc smallvec_inline_remaining<T, N>(value: SmallVec<T, N>) -> usize {
+    let inline_capacity: usize = smallvec_inline_capacity<T, N>();
+    if smallvec_len<T, N>(value) >= inline_capacity {
+        give 0 as usize;
+    }
+    give inline_capacity - smallvec_len<T, N>(value);
+}
+
+proc smallvec_profile<T, N>(value: SmallVec<T, N>) -> SmallVecProfile {
+    give SmallVecProfile {
+        length: smallvec_len<T, N>(value),
+        capacity: smallvec_capacity<T, N>(value),
+        inline_capacity: smallvec_inline_capacity<T, N>(),
+        spilled: smallvec_spilled<T, N>(value),
+        inline_remaining: smallvec_inline_remaining<T, N>(value),
+        valid: smallvec_len<T, N>(value) <= smallvec_capacity<T, N>(value)
+    };
+}
+
+proc smallvec_is_valid<T, N>(value: SmallVec<T, N>) -> bool {
+    give smallvec_profile<T, N>(value).valid;
+}
+
+proc smallvec_should_spill<T, N>(value: SmallVec<T, N>, additional: usize) -> bool {
+    give smallvec_len<T, N>(value) + additional > smallvec_inline_capacity<T, N>();
+}
+
+proc smallvec_extend_until<T, N>(value: ref mut SmallVec<T, N>, items: [T], limit: usize) {
+    let index: usize = 0;
+    while index < items.len and smallvec_len<T, N>(*value) < limit {
+        smallvec_push<T, N>(value, items[index]);
+        set index = index + 1;
+    }
 }

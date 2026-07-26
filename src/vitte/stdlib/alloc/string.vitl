@@ -16,6 +16,15 @@ form StringSlice {
     end: usize
 }
 
+form StringProfile {
+    bytes: usize
+    chars: usize
+    capacity: usize
+    remaining: usize
+    empty: bool
+    valid_utf8: bool
+}
+
 proc string_new() -> String {
     give String { bytes: vec_new<byte>() };
 }
@@ -154,3 +163,46 @@ proc string_drain(value: ref mut String, start: usize, end: usize) -> Option<Str
 }
 proc string_as_utf8_view(value: ref String) -> Utf8View { give compiler_owned_string_as_utf8_view(value); }
 proc string_as_bytes(value: ref String) -> [byte] { give compiler_string_bytes_view(value); }
+
+proc string_remaining_capacity(value: String) -> usize {
+    if string_capacity(value) < string_len(value) {
+        give 0 as usize;
+    }
+    give string_capacity(value) - string_len(value);
+}
+
+proc string_profile(value: ref String) -> StringProfile {
+    let bytes: [byte] = string_as_bytes(value);
+    give StringProfile {
+        bytes: bytes.len,
+        chars: string_char_len(value),
+        capacity: string_capacity(*value),
+        remaining: string_remaining_capacity(*value),
+        empty: string_is_empty(*value),
+        valid_utf8: validate_utf8(bytes)
+    };
+}
+
+proc string_is_valid(value: ref String) -> bool {
+    give string_profile(value).valid_utf8;
+}
+
+proc string_can_insert(value: ref String, index: usize) -> bool {
+    give is_char_boundary(string_as_utf8_view(value), index);
+}
+
+proc string_can_slice(value: ref String, start: usize, end: usize) -> bool {
+    give start <= end and is_char_boundary(string_as_utf8_view(value), start) and is_char_boundary(string_as_utf8_view(value), end);
+}
+
+proc string_push_many(value: ref mut String, parts: [string]) {
+    let index: usize = 0;
+    while index < parts.len {
+        string_push_str(value, parts[index]);
+        set index = index + 1;
+    }
+}
+
+proc string_reset(value: ref mut String) {
+    string_clear(value);
+}
