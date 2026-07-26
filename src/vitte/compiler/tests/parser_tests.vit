@@ -5,7 +5,7 @@ use vitte/compiler/frontend/lexer/scanner.{ ScanResult, scan_tokens }
 use vitte/compiler/frontend/ast/item.{ AstItemKind, AstNominalMemberKind }
 use vitte/compiler/frontend/parse/recovery.{ recover_decl_index, recover_stmt_index }
 use vitte/compiler/frontend/grammar_alignment_checker.{ GrammarAlignmentReport, grammar_alignment_report, grammar_alignment_summary }
-use vitte/compiler/tests/frontend_fixtures/valid/parser.{ bits_surface_source, grammar_surface_source }
+use vitte/compiler/tests/frontend_fixtures/valid/parser.{ bits_surface_source, grammar_surface_source, parser_total_surface_source }
 use vitte/compiler/tests/frontend_fixtures/invalid/parser.{ recover_decl_source, recover_stmt_source, standalone_attribute_source }
 use vitte/compiler/tests/frontend_fixtures/invalid/lexer.{ invalid_char_source }
 
@@ -80,6 +80,19 @@ proc test_frontend_accepts_bits_decl_surface() -> bool {
     and len(fe.ast_root.items[0].stmts) == 1
     and fe.ast_root.items[0].stmts[0].pattern.name == "read"
     and fe.ast_root.items[0].stmts[0].message != "";
+}
+
+proc test_frontend_accepts_parser_total_surface() -> bool {
+  let fe: FrontendOutput = frontend_run("parser_total_surface.vit", parser_total_surface_source());
+  give fe.valid
+    and not fe.recovery_used
+    and len(fe.ast_root.items) >= 4
+    and fe.ast_root.items[0].kind == AstItemKind.Flags
+    and fe.ast_root.items[1].kind == AstItemKind.Form
+    and fe.ast_root.items[2].kind == AstItemKind.Proc
+    and len(fe.ast_root.items[2].attributes) == 1
+    and len(fe.ast_root.items[2].signature.params) >= 2
+    and fe.expr_count >= 8;
 }
 
 proc test_frontend_accepts_intrinsic_toplevel_decl() -> bool {
@@ -201,6 +214,9 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_frontend_accepts_bits_decl_surface() {
+    set failures = failures + 1;
+  }
+  if not test_frontend_accepts_parser_total_surface() {
     set failures = failures + 1;
   }
   if not test_frontend_accepts_intrinsic_toplevel_decl() {
