@@ -73,7 +73,7 @@ esac
 printf '%s\\n' 'Vitte command'
 exit 0
 """
-    for command in ("vitte", "vittec", "vittec0"):
+    for command in ("vitte", "vittec", "vitte"):
         write_executable(bin_dir / command, stub)
     return bin_dir
 
@@ -91,7 +91,7 @@ def build_bsd_installer(tmp: Path, stub_bin: Path, label: str) -> Path:
             "ARCH": "amd64",
             "VITTE_BIN_AMD64": str(stub_bin / "vitte"),
             "VITTE_VITTEC_AMD64": str(stub_bin / "vittec"),
-            "VITTE_VITTEC0_AMD64": str(stub_bin / "vittec0"),
+            "VITTE_VITTEC0_AMD64": str(stub_bin / "vitte"),
         }
     )
     run([str(ROOT / "scripts_build/build-bsd-installers.sh")], env=env)
@@ -134,7 +134,7 @@ def stage_system_root(tmp: Path, stub_bin: Path) -> Path:
             "VERSION": VERSION,
             "VITTE_BIN_AMD64": str(stub_bin / "vitte"),
             "VITTE_VITTEC_AMD64": str(stub_bin / "vittec"),
-            "VITTE_VITTEC0_AMD64": str(stub_bin / "vittec0"),
+            "VITTE_VITTEC0_AMD64": str(stub_bin / "vitte"),
         }
     )
     run(
@@ -275,7 +275,7 @@ def check_installer_permissions_uninstall_and_destdir(tmp: Path, stub_bin: Path)
     for required in (
         custom_prefix / "bin/vitte",
         custom_prefix / "bin/vittec",
-        custom_prefix / "bin/vittec0",
+        custom_prefix / "bin/vitte",
         custom_prefix / "bin/vitte-installer-doctor",
         custom_prefix / "libexec/vitte/vitte",
     ):
@@ -312,7 +312,7 @@ def check_installer_permissions_uninstall_and_destdir(tmp: Path, stub_bin: Path)
     for removed in (
         custom_prefix / "bin/vitte",
         custom_prefix / "bin/vittec",
-        custom_prefix / "bin/vittec0",
+        custom_prefix / "bin/vitte",
         custom_prefix / "libexec/vitte",
         custom_prefix / "share/vitte",
     ):
@@ -413,7 +413,7 @@ def check_portable_tarball(tmp: Path, stub_bin: Path) -> dict[str, str]:
             "ARCH": "amd64",
             "VITTE_BIN_AMD64": str(stub_bin / "vitte"),
             "VITTE_VITTEC_AMD64": str(stub_bin / "vittec"),
-            "VITTE_VITTEC0_AMD64": str(stub_bin / "vittec0"),
+            "VITTE_VITTEC0_AMD64": str(stub_bin / "vitte"),
         }
     )
     run([str(ROOT / "scripts_build/build-portable-tarball.sh")], env=env)
