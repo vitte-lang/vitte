@@ -5,7 +5,7 @@ ROOT_DIR=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 SCRIPT_NAME=build-linux-debs
 . "$ROOT_DIR/scripts_build/common.sh"
 scripts_build_parse_common_flags "$@"
-VERSION=${VERSION:-$(tr -d ' \r\n' < "$ROOT_DIR/toolchain/scripts/package/PACKAGE_VERSION")}
+VERSION=${VERSION:-$(scripts_build_package_version)}
 OUT_DIR=${OUT_DIR:-$ROOT_DIR/pkgout}
 case "$OUT_DIR" in /*) ;; *) OUT_DIR=$ROOT_DIR/$OUT_DIR ;; esac
 ARCH=${ARCH:-all}
@@ -17,7 +17,6 @@ COMPLETIONS_DIR=$ROOT_DIR/completions
 LICENSE_FILE=$ROOT_DIR/LICENSE
 LOGO_FILE=$ROOT_DIR/assets/logo.png
 
-PACKAGE_VERSION_FILE=$ROOT_DIR/toolchain/scripts/package/PACKAGE_VERSION
 PAYLOAD_SCRIPT=$ROOT_DIR/scripts_build/stage-installer-payload.sh
 scripts_build_maybe_help "usage: build-linux-debs.sh [--dry-run]"
 scripts_build_maybe_dry_run "would build Linux deb packages version=$VERSION arch=$ARCH out=$OUT_DIR"
@@ -313,9 +312,19 @@ add_license_and_logo() {
     "$LICENSE_FILE" \
     "$license_destination/LICENSE"
 
-  install -m 0644 \
-    "$LICENSE_FILE" \
-    "$debian_license_destination/copyright"
+  {
+    printf '%s\n' 'Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/'
+    printf '%s\n' 'Upstream-Name: Vitte'
+    printf '%s\n' 'Source: https://github.com/vitte-lang/vitte'
+    printf '%s\n' ''
+    printf '%s\n' 'Files: *'
+    printf '%s\n' 'Copyright: Vitte contributors'
+    printf '%s\n' 'License: GPL-3.0-or-later'
+    printf '%s\n' ''
+    printf '%s\n' 'License: GPL-3.0-or-later'
+    sed 's/^/ /' "$LICENSE_FILE"
+  } > "$debian_license_destination/copyright"
+  chmod 0644 "$debian_license_destination/copyright"
 
   install -m 0644 \
     "$LOGO_FILE" \
@@ -456,6 +465,7 @@ Installed-Size: $installed_size
 Homepage: https://vitte-lang.org/
 Vcs-Browser: https://github.com/vitte-lang/vitte
 X-Vitte-Processor: $arch
+License: GPL-3.0-or-later
 Description: Complete Vitte systems language toolchain
  Compiler, runtime, standard library, sources, documentation, examples,
  shell completions, GNU GPLv3 license and syntax highlighting for Vim,
@@ -498,10 +508,9 @@ ensure_nano_include() {
 
 ensure_executable /usr/local/bin/vitte
 ensure_executable /usr/local/bin/vittec
-ensure_executable /usr/local/bin/vitte
 ensure_executable /usr/local/libexec/vitte/vitte
 ensure_executable /usr/local/libexec/vitte/vittec
-ensure_executableensure_nano_include \
+ensure_nano_include \
   /etc/nanorc \
   /usr/share/nano/vitte.nanorc
 
@@ -787,10 +796,15 @@ build_one() {
       data.tar.gz
   )
 
+  [ -s "$package_file" ] ||
+    die "Debian package is empty: $package_file"
+
   verify_debian_package "$package_file"
   write_checksum "$package_file"
 
   package_size=$(wc -c < "$package_file" | tr -d ' ')
+  [ "$package_size" -gt 1024 ] ||
+    die "Debian package is too small to contain the Vitte toolchain: $package_file ($package_size bytes)"
 
   printf '[build-linux-debs] wrote %s (%s bytes)\n' \
     "$package_file" \
@@ -799,8 +813,6 @@ build_one() {
   printf '[build-linux-debs] wrote %s\n' \
     "$checksum_file"
 }
-
-require_file "$PACKAGE_VERSION_FILE" "PACKAGE_VERSION"
 
 [ -x "$PAYLOAD_SCRIPT" ] ||
   die "payload staging script is missing or not executable: $PAYLOAD_SCRIPT"
