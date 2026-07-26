@@ -98,7 +98,33 @@ RULE_ALIASES = {
     "type_qualifier": ['"const"', '"volatile"', '"atomic"', '"mut"', '"owned"', '"borrow"'],
     "field_init_list": ["parse_struct_field_exprs", "AstExprKind.Struct", "PSTRUCT001"],
     "bitfield_list": ["parse_surface_bitfield_list", "parse_surface_bitfield_stmt", "AstItemKind.Bits", "bits_surface_source", '"  read: 0 .. 1,\\n"'],
-    "docstring": ['r"main entry"', '"""multi', "validate_raw_string_lexeme"],
+    "docstring": ['r"main entry"', '"""multi', "validate_raw_string_lexeme", "parse_attrs"],
+    "field_list": ["parse_surface_field_stmt", "AstNominalMemberKind.Field", "parser_total_surface_source"],
+    "flag_list": ["parse_surface_bits_or_flags_stmt", "AstItemKind.Flags", "parser_total_surface_source"],
+    "flag_item": ["parse_surface_bits_or_flags_stmt", "AstNominalMemberKind.Variant", '"  read,\\n"'],
+    "param_list": ["parse_param_list", "parse_ast_param_list", "parser_total_surface_source"],
+    "param": ["parse_ast_param_from_tokens", "AstParam", "parser_total_surface_source"],
+    "capability_list": ['effects(io, alloc)', "parse_proc_suffixes", "requires(debug)"],
+    "capability": ["parse_text_parts", "effects_index", "requires_index"],
+    "module_path": ["parse_module_path", "parse_path", '"use .demo.parser'],
+    "package_path": ["parse_module_path", '"demo/parser/total"', "parse_path"],
+    "relative": ['"use .demo.parser', "parse_module_path"],
+    "ident_list": ['"{ alpha, beta as gamma, * }"', "import_items", "parse_path"],
+    "meta_arg_list": ["parse_item_meta_args", "parse_meta_decl", "answer = 42"],
+    "meta_arg": ["parse_item_meta_args", "answer = 42", 'name = "vitte"'],
+    "doc_comment": ["parse_attrs", "standalone_attribute_source", "PATTR003"],
+    "attr_path": ["parse_attrs", "demo.attr", "attr_prefix"],
+    "attr_arg_list": ["parse_attrs", "answer = 42", 'name = "vitte"'],
+    "rel_expr": ['left < right', "rel_expr", "precedence_from_operator"],
+    "arg_list": ["parse_arg_list", "parse_call_generic_arguments", "named: right"],
+    "arg": ["parse_arg_list", "named: right", "AstExprKind.Call"],
+    "tuple_lit": ["AstTypeKind.Tuple", "parse_ast_type_list", "parser_lparen"],
+    "lambda_expr": ['"|item: int| item + 1"', "parse_param_list", "AstExprKind.Lambda"],
+    "pattern_bind": ["parse_ast_pattern_from_tokens", "AstPatternKind.Binding", "pattern_bind"],
+    "pattern_tuple": ["parse_ast_pattern_list", "AstPatternKind.Tuple", '"(a, b)"'],
+    "lifetime": ["'a", "lifetime", "parse_type_expr"],
+    "exponent": ["TokenKind.Float", "parse_ast_expr_from_tokens", "AstExprKind.Float"],
+    "ident": ["expect_ident", "TokenKind.Identifier", "is_identifier_continue"],
 }
 
 PARSER_PATTERNS = [
@@ -139,6 +165,8 @@ class Corpus:
     name: str
     files: dict[str, str]
     merged: str
+    merged_identifiers: set[str]
+    file_identifiers: dict[str, set[str]]
 
 
 def load_rules(grammar_text: str) -> list[Rule]:
@@ -211,21 +239,29 @@ def candidate_terms(rule: Rule) -> list[str]:
 
 def build_corpus(repo: Path, name: str, patterns: list[str]) -> Corpus:
     files: dict[str, str] = {}
+    file_identifiers: dict[str, set[str]] = {}
     for path in read_existing_files(repo, patterns):
         try:
-            files[str(path.relative_to(repo))] = path.read_text(encoding="utf-8")
+            rel = str(path.relative_to(repo))
+            text = path.read_text(encoding="utf-8")
+            files[rel] = text
+            file_identifiers[rel] = set(IDENT_FULL_RE.findall(text))
         except UnicodeDecodeError:
             continue
     merged = "\n".join(files.values())
-    return Corpus(name=name, files=files, merged=merged)
+    merged_identifiers: set[str] = set()
+    for identifiers in file_identifiers.values():
+        merged_identifiers.update(identifiers)
+    return Corpus(name=name, files=files, merged=merged, merged_identifiers=merged_identifiers, file_identifiers=file_identifiers)
 
 
-def term_present(text: str, term: str) -> bool:
+def term_present(text: str, term: str, identifiers: set[str] | None = None) -> bool:
     if not term:
         return False
     if IDENT_FULL_RE.fullmatch(term):
-        pattern = rf"\b{re.escape(term)}\b"
-        return re.search(pattern, text) is not None
+        if identifiers is not None:
+            return term in identifiers
+        return term in set(IDENT_FULL_RE.findall(text))
     return term in text
 
 
@@ -233,7 +269,7 @@ def search_evidence(corpus: Corpus, terms: list[str]) -> dict[str, object]:
     total_hits = 0
     matched_terms: list[str] = []
     for term in terms:
-        if term_present(corpus.merged, term):
+        if term_present(corpus.merged, term, corpus.merged_identifiers):
             total_hits += 1
             matched_terms.append(term)
 
@@ -243,7 +279,7 @@ def search_evidence(corpus: Corpus, terms: list[str]) -> dict[str, object]:
             if len(refs) >= 8:
                 break
             for term in matched_terms:
-                if term_present(text, term):
+                if term_present(text, term, corpus.file_identifiers.get(rel)):
                     refs.append(rel)
                     break
 
@@ -427,7 +463,7 @@ def main(argv: list[str] | None = None) -> int:
     summary = report["summary"]
     print(
         "[grammar-coverage] "
-        f"rules={summary['total_rules']} "
+        f"total={summary['total_rules']} "
         f"classified={summary['classified_rules']} "
         f"parsed={summary['parsed_rules']} "
         f"ast={summary['ast_built_rules']} "
@@ -447,6 +483,9 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         if summary["classified_rules"] != summary["total_rules"]:
             print("[grammar-coverage][error] not every grammar rule received a coverage classification")
+            return 1
+        if summary["parsed_rules"] != summary["total_rules"]:
+            print("[grammar-coverage][error] parser coverage is not complete")
             return 1
         if report["overall_status"] == "green" and summary["missing_rules"] != 0:
             print("[grammar-coverage][error] green status is forbidden while rules are still missing")
