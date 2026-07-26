@@ -132,7 +132,7 @@ EOF
 install_windows_shims() {
   bin_dir=$1
 
-  for command in vitte vittec vittec0; do
+  for command in vitte vittec; do
     cat > "$bin_dir/$command.cmd" <<EOF
 @echo off
 setlocal
@@ -165,7 +165,7 @@ set "STATUS=0"
 echo Vitte installer doctor
 echo prefix: %PREFIX%
 echo VITTE_ROOT: %VITTE_ROOT%
-for %%C in (vitte vittec vittec0) do (
+for %%C in (vitte vittec) do (
   if exist "%~dp0%%C.cmd" (
     echo OK   wrapper exists: %~dp0%%C.cmd
   ) else (
@@ -246,7 +246,7 @@ case "$LAYOUT" in
     libexec_dir=$prefix/libexec/vitte
     share_dir=$prefix/share/vitte
     mkdir -p "$bin_dir" "$libexec_dir" "$share_dir"
-    for command in vitte vittec vittec0; do
+    for command in vitte vittec; do
       install_unix_command "$command" "$libexec_dir" "$bin_dir"
     done
     install -m 0755 "$ROOT_DIR/scripts/installer-doctor.sh" "$bin_dir/vitte-installer-doctor"
