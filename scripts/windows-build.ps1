@@ -18,7 +18,8 @@ $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $RootDir = Resolve-Path (Join-Path $ScriptDir "..")
 $Builder = Join-Path $ScriptDir "build-windows.ps1"
-$PackageVersionFile = Join-Path $RootDir "toolchain/scripts/package/PACKAGE_VERSION"
+$PackageVersionFile = Join-Path $RootDir "VERSION"
+$LegacyPackageVersionFile = Join-Path $RootDir "toolchain/scripts/package/PACKAGE_VERSION"
 
 if (-not (Test-Path $Builder)) {
   throw "Required professional Windows builder is missing: $Builder"
@@ -27,8 +28,10 @@ if (-not (Test-Path $Builder)) {
 if ([string]::IsNullOrWhiteSpace($Version)) {
   if (Test-Path $PackageVersionFile) {
     $Version = (Get-Content -Raw $PackageVersionFile).Trim()
+  } elseif (Test-Path $LegacyPackageVersionFile) {
+    $Version = (Get-Content -Raw $LegacyPackageVersionFile).Trim()
   } else {
-    $Version = "0.0.0"
+    $Version = "0.1.0"
   }
 }
 
