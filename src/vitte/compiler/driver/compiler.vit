@@ -1116,10 +1116,10 @@ proc print_analysis_diagnostics_list(diagnostics0: [AnalysisDiagnostic]) {
     }
 }
 
-proc print_result_diagnostics(result0: CompilerResult) {
+proc print_result_diagnostics(result0: CompilerResult, lang: string) {
     let i: u64 = 0;
     while i < list.len(result0.diagnostics) {
-        let msg: string = report.render_text(result0.diagnostics[i]) + "\n";
+        let msg: string = report.render_text_lang(result0.diagnostics[i], lang) + "\n";
         print(msg);
         set i = i + 1;
     }
@@ -1345,7 +1345,7 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
             print(msg);
         }
         if r0.status != driver.DriverExitStatus::Ok {
-            print_result_diagnostics(r0);
+            print_result_diagnostics(r0, request.lang);
             if list.len(r0.diagnostics) == 0 and r0.message != "" {
                 let msg: string = r0.message + "\n";
                 print(msg);
@@ -1381,7 +1381,7 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
                 let msg: string = "\n";
                 print(msg);
             }
-            print_result_diagnostics(validation_result);
+            print_result_diagnostics(validation_result, request.lang);
             if list.len(validation_result.diagnostics) == 0 and validation_result.message != "" {
                 let msg: string = validation_result.message + "\n";
                 print(msg);
@@ -1431,7 +1431,7 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
             print(msg);
         }
         if r0.status != driver.DriverExitStatus::Ok {
-            print_result_diagnostics(r0);
+            print_result_diagnostics(r0, request.lang);
             if list.len(r0.diagnostics) == 0 and r0.message != "" {
                 let msg: string = r0.message + "\n";
                 print(msg);
@@ -1484,7 +1484,7 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
             print(msg);
         }
         if r0.status != driver.DriverExitStatus::Ok {
-            print_result_diagnostics(r0);
+            print_result_diagnostics(r0, request.lang);
             if list.len(r0.diagnostics) == 0 and r0.message != "" {
                 let msg: string = r0.message + "\n";
                 print(msg);
@@ -1530,7 +1530,7 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
         if result.status != driver.DriverExitStatus::Ok {
             let compiler0: Compiler = compiler_from_input(source_path, source_text, virtual_source, cli_compiler_options(request, CompilerMode::Check, request.output_path));
             let r0: CompilerResult = run_compiler(compiler0);
-            print_result_diagnostics(r0);
+            print_result_diagnostics(r0, request.lang);
             if list.len(r0.diagnostics) == 0 and r0.message != "" {
                 let msg: string = r0.message + "\n";
                 print(msg);
@@ -1547,7 +1547,7 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
         if result.status != driver.DriverExitStatus::Ok {
             let compiler0: Compiler = compiler_from_input(source_path, source_text, virtual_source, cli_compiler_options(request, CompilerMode::Check, request.output_path));
             let r0: CompilerResult = run_compiler(compiler0);
-            print_result_diagnostics(r0);
+            print_result_diagnostics(r0, request.lang);
             if list.len(r0.diagnostics) == 0 and r0.message != "" {
                 let msg: string = r0.message + "\n";
                 print(msg);

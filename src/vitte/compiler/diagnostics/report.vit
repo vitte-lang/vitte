@@ -1,5 +1,7 @@
 space vitte/compiler/diagnostics/report
 
+use vitte/compiler/infrastructure/diagnostics/fluent_catalog.{ fluent_catalog_lookup, fluent_catalog_normalize_locale }
+
 form TextDiagnostic {
     severity: string
     code: string
@@ -96,6 +98,13 @@ proc render_text(diagnostic0: TextDiagnostic) -> string {
     let column_text: string = diagnostic0.column as string;
     let span_text: string = diagnostic0.file + ":" + line_text + ":" + column_text;
     give "severity" + report_eq() + severity_text + " code" + report_eq() + diagnostic0.code + " span" + report_eq() + span_text + " message" + report_eq() + diagnostic0.message;
+}
+
+proc render_text_lang(diagnostic0: TextDiagnostic, lang: string) -> string {
+    let locale: string = fluent_catalog_normalize_locale(lang);
+    let localized: string = fluent_catalog_lookup(locale, diagnostic0.code);
+    let message: string = if localized != "" { localized } else { diagnostic0.message };
+    give render_text(text_diagnostic(diagnostic0.severity, diagnostic0.code, diagnostic0.file, diagnostic0.line, diagnostic0.column, message));
 }
 
 export *
