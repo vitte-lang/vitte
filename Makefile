@@ -2876,7 +2876,7 @@ optimization-phase2-gate:
 	@test -f data/optimization_phase2/reports/jit_async_loops.md
 
 
-.PHONY: diagnostic-catalog-check diagnostic-audit diagnostic-catalog-snapshots diagnostics-full-coverage diagnostics-surfaces-by-code diagnostics-cli-blocking stdlib-diagnostics diagnostic-contracts suggestion-quality compiler-contracts
+.PHONY: diagnostic-catalog-check diagnostic-audit diagnostic-catalog-snapshots diagnostics-full-coverage diagnostics-surfaces-by-code diagnostics-cli-blocking diagnostics-blocking-gate stdlib-diagnostics diagnostic-contracts suggestion-quality compiler-contracts
 diagnostic-catalog-check:
 	@python3 tools/check_diagnostic_catalog.py
 
@@ -2906,6 +2906,9 @@ diagnostics-surfaces-by-code:
 
 diagnostics-cli-blocking:
 	@python3 tools/diagnostics_cli_blocking_gate.py
+
+diagnostics-blocking-gate: diagnostics-surfaces-by-code diagnostic-catalog-check suggestion-quality
+	@python3 tools/check_diagnostic_blocking_gate.py
 
 stdlib-diagnostics: release-binary-gate
 	@python3 tools/check_stdlib_diagnostic_contract.py
@@ -2952,7 +2955,7 @@ diagnostic-fuzz:
 
 
 .PHONY: diagnostic-quality
-diagnostic-quality: diagnostic-contracts diagnostic-snapshots diagnostic-fuzz diagnostics-full-coverage diagnostics-cli-blocking counterfactual-diagnostics diagnostic-attribution suggestion-quality
+diagnostic-quality: diagnostic-contracts diagnostic-snapshots diagnostic-fuzz diagnostics-full-coverage diagnostics-cli-blocking diagnostics-blocking-gate counterfactual-diagnostics diagnostic-attribution suggestion-quality
 
 
 .PHONY: platform-bootstrap-59-68

@@ -19,6 +19,7 @@ REQUIRED_ASSERTS = (
     "suggestions",
     "no_parasitic_diagnostics",
     "stable_order",
+    "deduplication",
     "recovery",
 )
 
@@ -42,6 +43,7 @@ def render_case(phase: str, case: dict[str, Any]) -> str:
         "suggestions: catalog diagnostic carries correction guidance",
         "no_parasitic_diagnostics: true",
         "stable_order: true",
+        "deduplication: true",
         "recovery: true",
         "asserts: " + ", ".join(asserts),
         f"status: {status}",

@@ -18,7 +18,7 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
-FIXTURE = ROOT / "tests" / "diagnostics" / "cli_invalid_calc_like.vit"
+FIXTURE = ROOT / "tests" / "negative" / "type_mismatch.vit"
 REPORT_DIR = ROOT / "target" / "reports" / "diagnostics_cli_blocking"
 JSON_REPORT = REPORT_DIR / "diagnostics_cli_blocking.json"
 MD_REPORT = REPORT_DIR / "diagnostics_cli_blocking.md"
@@ -32,7 +32,7 @@ DIAGNOSTIC_MARKERS = (
     "parser",
     "syntax",
 )
-LOCATION_RE = re.compile(r"(^|\s|[\"'`])[^:\s]+\.vit:\d+:\d+(\s|:|[\"'`]|$)")
+LOCATION_RE = re.compile(r"(^|\s|[\"'`])[^:\s]+\.vit:\d+:\d+(\s|:|-|[\"'`]|$)")
 
 
 def compiler_path() -> Path:

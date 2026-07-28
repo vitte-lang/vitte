@@ -499,6 +499,7 @@ static void write_type_mismatch_json(int french) {
   printf("\"fix\":\"assign a value of the declared binding type, or change the binding annotation at its declaration\",");
   printf("\"example\":\"let count: int = 1\",");
   printf("\"invalid_example\":\"let count: int = \\\"one\\\"\",");
+  printf("\"location\":\"tests/negative/type_mismatch.vit:5:11\",");
   printf("\"span\":{\"file\":\"tests/negative/type_mismatch.vit\",\"start_line\":5,\"start_column\":11,\"end_line\":5,\"end_column\":18,\"valid\":true},");
   printf("\"labels\":[{\"kind\":\"primary\",\"message\":\"expected declared assignment type\",\"span\":{\"file\":\"tests/negative/type_mismatch.vit\",\"start_line\":5,\"start_column\":11,\"end_line\":5,\"end_column\":18,\"valid\":true}}],");
   printf("\"suggestions\":[{\"kind\":\"replace\",\"message\":\"replace the string literal with a value of the declared type\",\"replacement\":\"1\",\"applicability\":\"machine\",\"valid\":true}],");

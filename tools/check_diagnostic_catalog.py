@@ -54,6 +54,7 @@ REQUIRED_ASSERTS = {
     "suggestions",
     "no_parasitic_diagnostics",
     "stable_order",
+    "deduplication",
     "recovery",
 }
 CENTRAL_SNAPSHOT_ASSERTS = {
@@ -64,6 +65,7 @@ CENTRAL_SNAPSHOT_ASSERTS = {
     "suggestions",
     "no_parasitic_diagnostics",
     "stable_order",
+    "deduplication",
     "recovery",
 }
 FORBIDDEN_TERMS = (
