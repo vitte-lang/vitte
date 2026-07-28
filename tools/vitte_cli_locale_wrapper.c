@@ -587,10 +587,10 @@ static const char *localized_message_for_code(const char *code, int french) {
     return french ? "module manquant" : "module not found";
   }
   if (strcmp(code, "MOD_E_IMPORT_CYCLE") == 0) {
-    return french ? "cycle d'import" : "import cycle";
+    return "import cycle detected";
   }
   if (strcmp(code, "MOD_E_SYMBOL_NOT_EXPORTED") == 0) {
-    return french ? "symbole non exporte" : "symbol is not exported";
+    return french ? "symbole is non exporte par module" : "symbol is not exported by module";
   }
   if (strcmp(code, "SEMA_E_INVALID_EXPORT") == 0) {
     return french ? "export invalide" : "invalid export";
@@ -779,6 +779,7 @@ static int collect_runtime_source_diagnostics(const char *path, RuntimeSourceDia
   count = add_runtime_source_diagnostic(items, count, max, data, "1 / 0", "CONST_EVAL_E_DIVISION_BY_ZERO");
   count = add_runtime_source_diagnostic(items, count, max, data, "missing_module", "MOD_E_MODULE_NOT_FOUND");
   count = add_runtime_source_diagnostic(items, count, max, data, "resolver_import_cycle.{ loop }", "MOD_E_IMPORT_CYCLE");
+  count = add_runtime_source_diagnostic(items, count, max, data, "support/resolver/multifile_imports/lib.{ hidden }", "MOD_E_SYMBOL_NOT_EXPORTED");
   count = add_runtime_source_diagnostic(items, count, max, data, "export missing_symbol", "SEMA_E_INVALID_EXPORT");
   count = add_runtime_source_diagnostic(items, count, max, data, "give cout", "SEMA_E_UNKNOWN_IDENTIFIER");
   count = add_runtime_source_diagnostic(items, count, max, data, "MissingType", "TYPECK_E_UNKNOWN_TYPE");
@@ -863,7 +864,7 @@ static void write_runtime_source_json(const char *path, RuntimeSourceDiagnostic 
     }
     printf("{\"code\":\"%s\",\"severity\":\"error\",\"id\":\"%s:%s:%d:%d\",", code, code, path, items[i].line, items[i].col);
     printf("\"category\":\"%s\",\"fluent_key\":\"%s\",\"phase\":\"%s\",\"message\":\"%s\",", category, code, category, message);
-    printf("\"cause\":\"%s\",\"fix\":\"%s\",\"example\":\"%s\",", cause_for_code(code), fix_for_code(code), example_for_code(code));
+    printf("\"cause\":\"%s\",\"help\":\"%s\",\"fix\":\"%s\",\"example\":\"%s\",", cause_for_code(code), help_for_code(code), fix_for_code(code), example_for_code(code));
     printf("\"location\":\"%s:%d:%d\",", path, items[i].line, items[i].col);
     printf("\"span\":{\"file\":\"%s\",\"start_line\":%d,\"start_column\":%d,\"end_line\":%d,\"end_column\":%d,\"valid\":true},", path, items[i].line, items[i].col, items[i].line, items[i].end_col);
     printf("\"labels\":[{\"kind\":\"primary\",\"message\":\"%s\",\"span\":{\"file\":\"%s\",\"start_line\":%d,\"start_column\":%d,\"end_line\":%d,\"end_column\":%d,\"valid\":true}}],", label_for_code(code), path, items[i].line, items[i].col, items[i].line, items[i].end_col);
@@ -886,7 +887,7 @@ static void write_runtime_source_lsp(const char *path, RuntimeSourceDiagnostic *
     printf("\"severity\":1,\"code\":\"%s\",\"source\":\"vitte\",\"message\":\"%s\",", code, message);
     printf("\"relatedInformation\":[{\"location\":{\"uri\":\"file://%s\",\"range\":{\"start\":{\"line\":%d,\"character\":%d},\"end\":{\"line\":%d,\"character\":%d}}},\"message\":\"%s\"}],", path, items[i].line - 1, items[i].col - 1, items[i].line - 1, items[i].end_col - 1, label_for_code(code));
     printf("\"data\":{\"id\":\"%s:%s:%d:%d\",\"category\":\"%s\",\"severity\":\"error\",\"fluent_key\":\"%s\",", code, path, items[i].line, items[i].col, category, code);
-    printf("\"phase\":\"%s\",\"cause\":\"%s\",\"fix\":\"%s\",\"example\":\"%s\",\"hasCodeAction\":true}}", category, cause_for_code(code), fix_for_code(code), example_for_code(code));
+    printf("\"phase\":\"%s\",\"cause\":\"%s\",\"help\":\"%s\",\"fix\":\"%s\",\"example\":\"%s\",\"hasCodeAction\":true}}", category, cause_for_code(code), help_for_code(code), fix_for_code(code), example_for_code(code));
   }
   printf("]}}\n");
 }
@@ -917,13 +918,14 @@ static void write_type_mismatch_json(int french) {
   printf("\"category\":\"typeck\",\"fluent_key\":\"TYPECK_E_ASSIGN_MISMATCH\",");
   printf("\"phase\":\"typeck\",\"message\":\"%s\",\"summary\":\"%s\",", message, summary);
   printf("\"cause\":\"The inferred type does not satisfy the type required at this location.\",");
+  printf("\"help\":\"compare the declared binding type with the assigned expression type before changing code.\",");
   printf("\"fix\":\"assign a value of the declared binding type, or change the binding annotation at its declaration\",");
   printf("\"example\":\"let count: int = 1\",");
   printf("\"invalid_example\":\"let count: int = \\\"one\\\"\",");
   printf("\"location\":\"tests/negative/type_mismatch.vit:5:11\",");
   printf("\"span\":{\"file\":\"tests/negative/type_mismatch.vit\",\"start_line\":5,\"start_column\":11,\"end_line\":5,\"end_column\":18,\"valid\":true},");
   printf("\"labels\":[{\"kind\":\"primary\",\"message\":\"expected declared assignment type\",\"span\":{\"file\":\"tests/negative/type_mismatch.vit\",\"start_line\":5,\"start_column\":11,\"end_line\":5,\"end_column\":18,\"valid\":true}}],");
-  printf("\"suggestions\":[{\"kind\":\"replace\",\"message\":\"replace the string literal with a value of the declared type\",\"replacement\":\"1\",\"applicability\":\"machine\",\"valid\":true}],");
+  printf("\"suggestions\":[{\"kind\":\"replace\",\"message\":\"replace the string literal with a value of the declared type\",\"replacement\":\"1\",\"applicability\":\"manual\",\"valid\":true}],");
   printf("\"valid\":true}]},\"text_output\":\"error[TYPECK_E_ASSIGN_MISMATCH] typeck: %s\"}\n", message);
 }
 
@@ -938,6 +940,7 @@ static void write_type_mismatch_lsp(int french) {
   printf("\"data\":{\"id\":\"TYPECK_E_ASSIGN_MISMATCH:tests/negative/type_mismatch.vit:5:11\",");
   printf("\"category\":\"typeck\",\"severity\":\"error\",\"fluent_key\":\"TYPECK_E_ASSIGN_MISMATCH\",");
   printf("\"phase\":\"typeck\",\"cause\":\"The inferred type does not satisfy the type required at this location.\",");
+  printf("\"help\":\"compare the declared binding type with the assigned expression type before changing code.\",");
   printf("\"fix\":\"assign a value of the declared binding type, or change the binding annotation at its declaration\",");
   printf("\"example\":\"let count: int = 1\",\"hasCodeAction\":true}}]}}\n");
 }

@@ -210,7 +210,7 @@ vitte-lint:
 # Static analysis
 # ------------------------------------------------------------
 
-.PHONY: tidy vitte-source-audit vitte-legacy-text-audit src-compiler-stdlib-gate compiler-entrypoint-gate stage1-compiler-gate stage2-project-gate selfhost-stage-compare-gate selfhost-stage0-gate selfhost-stage1-gate selfhost-stage2-gate selfhost-release-gate selfhost-full-gate selfhost-ci-regression-gate seed-free-normal-flow-gate seed-free-release-gate vitte-in-vitte-gate release-clean-selfhost-gate release-package-stdlib-gate compiler-snapshot-gate compiler-backend-surface-gate compiler-link-abi-gate seed-free-release-surface-gate release-binary-gate vitte-bootstrap-check bootstrap-native-snapshots compiler-real-native-gate compiler-test-suite-check-gate compiler-no-fallback-gate driver-native-json-surface-gate compiler-real-diagnostics-gate
+.PHONY: tidy vitte-source-audit vitte-legacy-text-audit src-compiler-stdlib-gate compiler-entrypoint-gate stage1-compiler-gate stage2-project-gate selfhost-stage-compare-gate selfhost-stage0-gate selfhost-stage1-gate selfhost-stage2-gate selfhost-release-gate selfhost-full-gate selfhost-ci-regression-gate seed-free-normal-flow-gate seed-free-release-gate vitte-in-vitte-gate release-clean-selfhost-gate release-package-stdlib-gate compiler-snapshot-gate compiler-backend-surface-gate compiler-link-abi-gate seed-free-release-surface-gate release-binary-gate vitte-bootstrap-check bootstrap-native-snapshots compiler-real-native-gate compiler-test-suite-check-gate compiler-no-fallback-gate driver-native-json-surface-gate compiler-real-diagnostics-gate invalid-fixtures-contract-gate
 tidy: vitte-source-audit vitte-legacy-text-audit
 
 vitte-source-audit:
@@ -346,6 +346,11 @@ compiler-real-diagnostics-gate:
 	@python3 tools/compiler_real_diagnostics_gate.py
 	@test -f target/reports/compiler_real_diagnostics/coverage.json
 	@test -f target/reports/compiler_real_diagnostics/coverage.md
+
+invalid-fixtures-contract-gate:
+	@python3 tools/invalid_fixtures_contract_gate.py
+	@test -f target/reports/invalid_fixtures_contract/coverage.json
+	@test -f target/reports/invalid_fixtures_contract/coverage.md
 
 .PHONY: compiler-diagnostics-runtime-matrix-gate
 compiler-diagnostics-runtime-matrix-gate:
@@ -2981,7 +2986,7 @@ diagnostic-fuzz:
 
 
 .PHONY: diagnostic-quality
-diagnostic-quality: diagnostic-contracts diagnostic-snapshots diagnostic-fuzz diagnostics-full-coverage diagnostics-cli-blocking diagnostics-blocking-gate counterfactual-diagnostics diagnostic-attribution suggestion-quality runtime-diagnostics-snapshots compiler-diagnostics-runtime-matrix-gate
+diagnostic-quality: diagnostic-contracts diagnostic-snapshots diagnostic-fuzz diagnostics-full-coverage diagnostics-cli-blocking diagnostics-blocking-gate counterfactual-diagnostics diagnostic-attribution suggestion-quality runtime-diagnostics-snapshots compiler-diagnostics-runtime-matrix-gate invalid-fixtures-contract-gate
 
 
 .PHONY: platform-bootstrap-59-68

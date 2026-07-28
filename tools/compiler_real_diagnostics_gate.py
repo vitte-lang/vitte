@@ -13,6 +13,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -235,7 +236,7 @@ def validate_json_output(
             failures.append(f"JSON diagnostic {index} missing category")
         if not diagnostic.get("fluent_key"):
             failures.append(f"JSON diagnostic {index} missing Fluent key")
-    for key in ("span", "labels", "cause", "fix", "example"):
+    for key in ("span", "labels", "cause", "help", "fix", "example"):
         if not primary.get(key):
             failures.append(f"JSON diagnostic missing {key}")
     if not primary.get("suggestions"):
@@ -294,7 +295,7 @@ def validate_lsp_output(
             expected_category,
             "LSP",
         ))
-        for key in ("cause", "fix", "example"):
+        for key in ("cause", "help", "fix", "example"):
             if not data.get(key):
                 failures.append(f"LSP diagnostic data missing {key}")
     if json.dumps(payload, sort_keys=True) != json.dumps(json.loads(output), sort_keys=True):
@@ -353,6 +354,56 @@ def validate_text_spans(output: str, expected: list[str]) -> list[str]:
     return failures
 
 
+def text_blocks(output: str) -> list[dict[str, str]]:
+    blocks: list[dict[str, str]] = []
+    current: dict[str, str] | None = None
+    for raw in output.splitlines():
+        match = re.match(r"error\[([A-Z0-9_]+)\]\s+([^:]+):\s*(.*)", raw)
+        if match:
+            if current is not None:
+                blocks.append(current)
+            current = {
+                "code": match.group(1),
+                "category": match.group(2),
+                "message": match.group(3),
+            }
+            continue
+        if current is not None and raw.startswith("  = ") and ": " in raw:
+            key, value = raw[4:].split(": ", 1)
+            current[key] = value
+    if current is not None:
+        blocks.append(current)
+    return blocks
+
+
+def validate_text_contract(output: str, expected: list[str], messages: dict[str, str]) -> list[str]:
+    failures: list[str] = []
+    blocks = text_blocks(output)
+    if [block.get("code", "") for block in blocks] != expected:
+        failures.append(f"text diagnostic block order mismatch: expected {expected}, got {[block.get('code', '') for block in blocks]}")
+    for index, block in enumerate(blocks):
+        code = block.get("code", "")
+        expected_code = expected[index] if index < len(expected) else code
+        expected_category = expected_category_for_code(expected_code)
+        for key in ("code", "category", "severity", "id", "fluent-key", "message", "label", "cause", "help", "fix-it"):
+            if not block.get(key):
+                failures.append(f"text diagnostic {index} missing {key}")
+        if code != expected_code:
+            failures.append(f"text diagnostic {index} code mismatch: expected {expected_code}, got {code}")
+        if block.get("category") != expected_category:
+            failures.append(f"text diagnostic {index} category mismatch: expected {expected_category}, got {block.get('category')}")
+        if block.get("severity") != "error":
+            failures.append(f"text diagnostic {index} severity mismatch: expected error, got {block.get('severity')}")
+        if not DIAGNOSTIC_ID_SPAN_RE.match(block.get("id", "")):
+            failures.append(f"text diagnostic {index} id missing stable file:line:column")
+        if block.get("fluent-key") != expected_code:
+            failures.append(f"text diagnostic {index} fluent-key mismatch: expected {expected_code}, got {block.get('fluent-key')}")
+        message = messages.get(expected_code, "")
+        if message and block.get("message") != message:
+            failures.append(f"text diagnostic {index} message mismatch: expected {message!r}, got {block.get('message')!r}")
+    return failures
+
+
 def validate_json_spans(diagnostics: list[dict[str, Any]], expected: list[str]) -> list[str]:
     failures: list[str] = []
     for index, diagnostic in enumerate(diagnostics):
@@ -375,6 +426,43 @@ def validate_json_spans(diagnostics: list[dict[str, Any]], expected: list[str]) 
         for key in ("start_line", "start_column", "end_line", "end_column"):
             if not isinstance(span.get(key), int) or span.get(key) <= 0:
                 failures.append(f"JSON diagnostic {index} span.{key} must be a positive integer")
+    return failures
+
+
+def validate_json_contract(diagnostics: list[dict[str, Any]], expected: list[str], messages: dict[str, str]) -> list[str]:
+    failures: list[str] = []
+    for index, diagnostic in enumerate(diagnostics):
+        expected_code = expected[index] if index < len(expected) else str(diagnostic.get("code", ""))
+        expected_category = expected_category_for_code(expected_code)
+        for key in ("code", "category", "severity", "id", "fluent_key", "message", "labels", "cause", "help", "fix", "suggestions"):
+            if not diagnostic.get(key):
+                failures.append(f"JSON diagnostic {index} missing {key}")
+        if diagnostic.get("code") != expected_code:
+            failures.append(f"JSON diagnostic {index} code mismatch: expected {expected_code}, got {diagnostic.get('code')}")
+        if diagnostic.get("category") != expected_category:
+            failures.append(f"JSON diagnostic {index} category mismatch: expected {expected_category}, got {diagnostic.get('category')}")
+        if diagnostic.get("severity") != "error":
+            failures.append(f"JSON diagnostic {index} severity must be error")
+        if diagnostic.get("fluent_key") != expected_code:
+            failures.append(f"JSON diagnostic {index} fluent_key mismatch: expected {expected_code}, got {diagnostic.get('fluent_key')}")
+        message = messages.get(expected_code, "")
+        if message and diagnostic.get("message") != message:
+            failures.append(f"JSON diagnostic {index} message mismatch: expected {message!r}, got {diagnostic.get('message')!r}")
+        labels = diagnostic.get("labels")
+        if not isinstance(labels, list) or not labels or not isinstance(labels[0], dict) or not labels[0].get("message"):
+            failures.append(f"JSON diagnostic {index} missing primary label message")
+        suggestions = diagnostic.get("suggestions")
+        if not isinstance(suggestions, list) or not suggestions:
+            failures.append(f"JSON diagnostic {index} missing fix-it suggestion")
+        else:
+            for suggestion_index, suggestion in enumerate(suggestions):
+                if not isinstance(suggestion, dict):
+                    failures.append(f"JSON diagnostic {index} suggestion {suggestion_index} must be object")
+                    continue
+                if not suggestion.get("message"):
+                    failures.append(f"JSON diagnostic {index} suggestion {suggestion_index} missing message")
+                if suggestion.get("applicability") not in {"manual", "machine", "machine-applicable"}:
+                    failures.append(f"JSON diagnostic {index} suggestion {suggestion_index} invalid applicability: {suggestion.get('applicability')}")
     return failures
 
 
@@ -412,10 +500,150 @@ def validate_lsp_spans(diagnostics: list[dict[str, Any]], expected: list[str]) -
     return failures
 
 
+def validate_lsp_contract(diagnostics: list[dict[str, Any]], expected: list[str], messages: dict[str, str]) -> list[str]:
+    failures: list[str] = []
+    for index, diagnostic in enumerate(diagnostics):
+        expected_code = expected[index] if index < len(expected) else str(diagnostic.get("code", ""))
+        expected_category = expected_category_for_code(expected_code)
+        data = diagnostic.get("data")
+        for key in ("code", "severity", "message", "relatedInformation", "data"):
+            if not diagnostic.get(key):
+                failures.append(f"LSP diagnostic {index} missing {key}")
+        if diagnostic.get("code") != expected_code:
+            failures.append(f"LSP diagnostic {index} code mismatch: expected {expected_code}, got {diagnostic.get('code')}")
+        if diagnostic.get("severity") != 1:
+            failures.append(f"LSP diagnostic {index} severity must be error")
+        message = messages.get(expected_code, "")
+        if message and diagnostic.get("message") != message:
+            failures.append(f"LSP diagnostic {index} message mismatch: expected {message!r}, got {diagnostic.get('message')!r}")
+        if not isinstance(data, dict):
+            failures.append(f"LSP diagnostic {index} missing data object")
+            continue
+        for key in ("id", "category", "severity", "fluent_key", "cause", "help", "fix"):
+            if not data.get(key):
+                failures.append(f"LSP diagnostic {index} data missing {key}")
+        if data.get("category") != expected_category:
+            failures.append(f"LSP diagnostic {index} category mismatch: expected {expected_category}, got {data.get('category')}")
+        if data.get("severity") != "error":
+            failures.append(f"LSP diagnostic {index} data severity must be error")
+        if data.get("fluent_key") != expected_code:
+            failures.append(f"LSP diagnostic {index} fluent_key mismatch: expected {expected_code}, got {data.get('fluent_key')}")
+        related = diagnostic.get("relatedInformation")
+        if not isinstance(related, list) or not related or not isinstance(related[0], dict) or not related[0].get("message"):
+            failures.append(f"LSP diagnostic {index} missing label message in relatedInformation")
+    return failures
+
+
 def validate_code_order(actual: list[str], expected: list[str], expected_order: str, label: str) -> list[str]:
     if actual != expected:
         return [f"{label} diagnostic {expected_order} mismatch: expected {expected}, got {actual}"]
     return []
+
+
+def validate_case_policy(case: dict[str, Any], actual: list[str], label: str) -> list[str]:
+    expected = list(case["expected_codes"])
+    failures: list[str] = []
+    if len(expected) > 1 and len(actual) != len(expected):
+        failures.append(f"{label} multi-error diagnostic count mismatch: expected exactly {len(expected)}, got {len(actual)}")
+    if case["cascade_policy"] == "suppress-derived" and actual != expected:
+        failures.append(f"{label} cascade policy suppress-derived requires only root diagnostics: expected {expected}, got {actual}")
+    if case["cascade_policy"] == "none" and actual != expected:
+        failures.append(f"{label} fixture has parasite or missing diagnostics: expected {expected}, got {actual}")
+    return failures
+
+
+def offset_for_line_column(source: str, line: int, column: int) -> int:
+    if line <= 0 or column <= 0:
+        raise ValueError("line and column must be positive")
+    offset = 0
+    rows = source.splitlines(keepends=True)
+    if line > len(rows):
+        raise ValueError("line outside source")
+    for row in rows[: line - 1]:
+        offset += len(row)
+    row = rows[line - 1]
+    if column > len(row) + 1:
+        raise ValueError("column outside source")
+    return offset + column - 1
+
+
+def machine_fixit_edits(diagnostics: list[dict[str, Any]]) -> tuple[list[tuple[int, int, int, int, str]], list[str]]:
+    failures: list[str] = []
+    edits: list[tuple[int, int, int, int, str]] = []
+    for diagnostic_index, diagnostic in enumerate(diagnostics):
+        suggestions = diagnostic.get("suggestions")
+        if not isinstance(suggestions, list):
+            continue
+        for suggestion_index, suggestion in enumerate(suggestions):
+            if not isinstance(suggestion, dict):
+                continue
+            if suggestion.get("applicability") not in {"machine", "machine-applicable"}:
+                continue
+            replacement = suggestion.get("replacement")
+            if not isinstance(replacement, str):
+                failures.append(f"machine fix-it {diagnostic_index}:{suggestion_index} missing replacement")
+                continue
+            span = suggestion.get("span") if isinstance(suggestion.get("span"), dict) else diagnostic.get("span")
+            if not isinstance(span, dict):
+                failures.append(f"machine fix-it {diagnostic_index}:{suggestion_index} missing span")
+                continue
+            for key in ("start_line", "start_column", "end_line", "end_column"):
+                if not isinstance(span.get(key), int):
+                    failures.append(f"machine fix-it {diagnostic_index}:{suggestion_index} span.{key} missing")
+            if not all(isinstance(span.get(key), int) for key in ("start_line", "start_column", "end_line", "end_column")):
+                continue
+            edits.append((span["start_line"], span["start_column"], span["end_line"], span["end_column"], replacement))
+    return edits, failures
+
+
+def apply_machine_fixits_and_recompile(case: dict[str, Any], diagnostics: list[dict[str, Any]]) -> dict[str, Any]:
+    raw_edits, failures = machine_fixit_edits(diagnostics)
+    if failures or not raw_edits:
+        return {
+            "attempted": bool(raw_edits),
+            "applied": 0,
+            "status": "pass" if not failures else "fail",
+            "failures": failures,
+        }
+    source_path = ROOT / str(case["entry"])
+    source = source_path.read_text(encoding="utf-8")
+    edits: list[tuple[int, int, str]] = []
+    for start_line, start_column, end_line, end_column, replacement in raw_edits:
+        try:
+            start_offset = offset_for_line_column(source, start_line, start_column)
+            end_offset = offset_for_line_column(source, end_line, end_column)
+        except ValueError as exc:
+            failures.append(f"machine fix-it span invalid: {exc}")
+            continue
+        if end_offset < start_offset:
+            failures.append("machine fix-it end offset precedes start offset")
+            continue
+        edits.append((start_offset, end_offset, replacement))
+    edits.sort(reverse=True)
+    fixed = source
+    last_start = len(source) + 1
+    for start, end, replacement in edits:
+        if end > last_start:
+            failures.append("machine fix-it spans overlap")
+            continue
+        fixed = fixed[:start] + replacement + fixed[end:]
+        last_start = start
+    if failures:
+        return {"attempted": True, "applied": len(edits), "status": "fail", "failures": failures}
+
+    (ROOT / "target").mkdir(exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="vitte-runtime-fixit.", dir=ROOT / "target") as tmp:
+        fixed_path = Path(tmp) / source_path.name
+        fixed_path.write_text(fixed, encoding="utf-8")
+        result = run_command(str(case.get("id", "case")) + "-fixed", str(case.get("command", "check")), rel(fixed_path), str(case.get("expected_locale", "fr")))
+    if result["exit_code"] != 0:
+        failures.append(f"machine fix-it applied but fixed source did not recompile: exit={result['exit_code']}")
+    return {
+        "attempted": True,
+        "applied": len(edits),
+        "status": "pass" if not failures else "fail",
+        "failures": failures,
+    }
 
 
 def validate_manifest_case(case: dict[str, Any], section: str) -> list[str]:
@@ -482,19 +710,33 @@ def validate_case(case: dict[str, Any], locale: str, messages: dict[str, str]) -
 
     actual_text_codes = text_codes(output)
     failures.extend(validate_code_order(actual_text_codes, expected_codes, expected_order, "text"))
+    failures.extend(validate_case_policy(case, actual_text_codes, "text"))
     failures.extend(validate_text_spans(output, expected_codes))
+    failures.extend(validate_text_contract(output, expected_codes, messages))
     json_items, json_parse_failures = json_diagnostics(json_output)
     failures.extend(json_parse_failures)
     json_codes = [str(item.get("code", "")) for item in json_items]
     if json_items:
         failures.extend(validate_code_order(json_codes, expected_codes, expected_order, "JSON"))
+        failures.extend(validate_case_policy(case, json_codes, "JSON"))
         failures.extend(validate_json_spans(json_items, expected_codes))
+        failures.extend(validate_json_contract(json_items, expected_codes, messages))
     lsp_items, lsp_parse_failures = lsp_diagnostics(lsp_output)
     failures.extend(lsp_parse_failures)
     lsp_codes = [str(item.get("code", "")) for item in lsp_items]
     if lsp_items:
         failures.extend(validate_code_order(lsp_codes, expected_codes, expected_order, "LSP"))
+        failures.extend(validate_case_policy(case, lsp_codes, "LSP"))
         failures.extend(validate_lsp_spans(lsp_items, expected_codes))
+        failures.extend(validate_lsp_contract(lsp_items, expected_codes, messages))
+
+    fixit_recompile = apply_machine_fixits_and_recompile(case, json_items) if json_items else {
+        "attempted": False,
+        "applied": 0,
+        "status": "pass",
+        "failures": [],
+    }
+    failures.extend(str(failure) for failure in fixit_recompile["failures"])
 
     for code in expected_codes:
         message = messages.get(code, "")
@@ -547,6 +789,7 @@ def validate_case(case: dict[str, Any], locale: str, messages: dict[str, str]) -
             "json": json_result["exit_code"] == case.get("expected_exit_code") and json_codes == expected_codes and not json_parse_failures,
             "lsp": lsp_result["exit_code"] == case.get("expected_exit_code") and lsp_codes == expected_codes and not lsp_parse_failures,
         },
+        "fixit_recompile": fixit_recompile,
         "status": "pass" if not failures else "fail",
         "failures": failures,
         "command": result,

@@ -77,6 +77,7 @@ CASES: list[dict[str, Any]] = [
     manifest_case("lexer-invalid", "lexer", "tests/compiler_real_diagnostics/invalid/lexer/lexer_invalid.vit", "check", ["LEX_E_INVALID_CHAR"]),
     manifest_case("parser-invalid", "parser", "tests/compiler_real_diagnostics/invalid/parser/parser_invalid.vit", "check", ["PARSE_E_UNCLOSED_BLOCK"]),
     manifest_case("use-import-invalid", "resolver", "tests/compiler_real_diagnostics/invalid/resolver/use_import_invalid.vit", "check", ["MOD_E_MODULE_NOT_FOUND"]),
+    manifest_case("multi-file-imports-broken", "resolver", "tests/compiler_real_diagnostics/invalid/resolver/multifile_imports/app.vit", "check", ["MOD_E_SYMBOL_NOT_EXPORTED"]),
     manifest_case("export-invalid", "sema", "tests/compiler_real_diagnostics/invalid/sema/export_invalid.vit", "check", ["SEMA_E_INVALID_EXPORT"]),
     manifest_case("proc-invalid", "parser", "tests/compiler_real_diagnostics/invalid/parser/proc_invalid.vit", "check", ["PARSE_E_PARAMETER_COLON_EXPECTED"]),
     manifest_case("form-invalid", "sema", "tests/compiler_real_diagnostics/invalid/sema/form_invalid.vit", "check", ["AST_E_DUPLICATE_FIELD"]),
@@ -122,6 +123,28 @@ def parse_ftl(path: Path) -> dict[str, str]:
         key, value = line.split("=", 1)
         rows[key.strip()] = value.strip()
     return rows
+
+
+def expected_category_for_code(code: str) -> str:
+    if code.startswith("LEX_"):
+        return "lexer"
+    if code.startswith("PARSE_"):
+        return "parser"
+    if code.startswith("AST_"):
+        return "ast"
+    if code.startswith(("SEMA_", "MOD_", "CONST_EVAL_")):
+        return "sema"
+    if code.startswith("TYPECK_"):
+        return "typeck"
+    if code.startswith("BORROWCK_"):
+        return "borrowck"
+    if code.startswith("MIR_"):
+        return "mir"
+    if code.startswith("IR_"):
+        return "ir"
+    if code.startswith("BACKEND_"):
+        return "backend"
+    return "diagnostic"
 
 
 def command_for(case: dict[str, Any], surface: str) -> list[str]:
@@ -176,6 +199,57 @@ def validate_text_spans(output: str, expected: list[str]) -> list[str]:
     return failures
 
 
+def text_blocks(output: str) -> list[dict[str, str]]:
+    blocks: list[dict[str, str]] = []
+    current: dict[str, str] | None = None
+    for raw in output.splitlines():
+        match = re.match(r"error\[([A-Z0-9_]+)\]\s+([^:]+):\s*(.*)", raw)
+        if match:
+            if current is not None:
+                blocks.append(current)
+            current = {
+                "code": match.group(1),
+                "category": match.group(2),
+                "message": match.group(3),
+            }
+            continue
+        if current is not None and raw.startswith("  = ") and ": " in raw:
+            key, value = raw[4:].split(": ", 1)
+            current[key] = value
+    if current is not None:
+        blocks.append(current)
+    return blocks
+
+
+def validate_text_contract(output: str, expected: list[str], messages: dict[str, str]) -> list[str]:
+    failures: list[str] = []
+    blocks = text_blocks(output)
+    if [block.get("code", "") for block in blocks] != expected:
+        failures.append(f"text diagnostic block order mismatch: expected {expected}, got {[block.get('code', '') for block in blocks]}")
+    for index, block in enumerate(blocks):
+        code = block.get("code", "")
+        expected_code = expected[index] if index < len(expected) else code
+        expected_category = expected_category_for_code(expected_code)
+        required = ("code", "category", "severity", "id", "fluent-key", "message", "label", "cause", "help", "fix-it")
+        for key in required:
+            if not block.get(key):
+                failures.append(f"text diagnostic {index} missing {key}")
+        if code != expected_code:
+            failures.append(f"text diagnostic {index} code mismatch: expected {expected_code}, got {code}")
+        if block.get("category") != expected_category:
+            failures.append(f"text diagnostic {index} category mismatch: expected {expected_category}, got {block.get('category')}")
+        if block.get("severity") != "error":
+            failures.append(f"text diagnostic {index} severity mismatch: expected error, got {block.get('severity')}")
+        if not DIAGNOSTIC_ID_SPAN_RE.match(block.get("id", "")):
+            failures.append(f"text diagnostic {index} id missing stable file:line:column")
+        if block.get("fluent-key") != expected_code:
+            failures.append(f"text diagnostic {index} fluent-key mismatch: expected {expected_code}, got {block.get('fluent-key')}")
+        message = messages.get(expected_code, "")
+        if message and block.get("message") != message:
+            failures.append(f"text diagnostic {index} message mismatch: expected {message!r}, got {block.get('message')!r}")
+    return failures
+
+
 def json_codes(output: str) -> tuple[list[str], list[str]]:
     failures: list[str] = []
     try:
@@ -191,9 +265,16 @@ def json_codes(output: str) -> tuple[list[str], list[str]]:
             failures.append(f"JSON diagnostic {index} is not object")
             continue
         codes.append(str(diagnostic.get("code", "")))
-        for key in ("id", "category", "severity", "fluent_key", "span", "labels", "cause", "fix", "example", "suggestions"):
+        for key in ("id", "category", "severity", "fluent_key", "message", "span", "labels", "cause", "help", "fix", "example", "suggestions"):
             if not diagnostic.get(key):
                 failures.append(f"JSON diagnostic {index} missing {key}")
+        expected_category = expected_category_for_code(str(diagnostic.get("code", "")))
+        if diagnostic.get("category") != expected_category:
+            failures.append(f"JSON diagnostic {index} category mismatch: expected {expected_category}, got {diagnostic.get('category')}")
+        if diagnostic.get("severity") != "error":
+            failures.append(f"JSON diagnostic {index} severity must be error")
+        if diagnostic.get("fluent_key") != diagnostic.get("code"):
+            failures.append(f"JSON diagnostic {index} fluent_key must equal code")
         diagnostic_id = str(diagnostic.get("id", ""))
         if not DIAGNOSTIC_ID_SPAN_RE.match(diagnostic_id):
             failures.append(f"JSON diagnostic {index} id missing real file:line:column span")
@@ -214,9 +295,20 @@ def json_codes(output: str) -> tuple[list[str], list[str]]:
         labels = diagnostic.get("labels")
         if isinstance(labels, list) and labels:
             primary = labels[0]
+            if not isinstance(primary, dict) or not primary.get("message"):
+                failures.append(f"JSON diagnostic {index} primary label missing message")
             label_span = primary.get("span") if isinstance(primary, dict) else None
             if not isinstance(label_span, dict) or label_span.get("valid") is not True:
                 failures.append(f"JSON diagnostic {index} primary label missing valid span")
+        suggestions = diagnostic.get("suggestions")
+        if not isinstance(suggestions, list) or not suggestions:
+            failures.append(f"JSON diagnostic {index} missing fix-it suggestion")
+        else:
+            first = suggestions[0]
+            if not isinstance(first, dict) or not first.get("message"):
+                failures.append(f"JSON diagnostic {index} fix-it suggestion missing message")
+            if isinstance(first, dict) and first.get("applicability") not in {"manual", "machine", "machine-applicable"}:
+                failures.append(f"JSON diagnostic {index} fix-it applicability is invalid: {first.get('applicability')}")
     return codes, failures
 
 
@@ -258,9 +350,18 @@ def lsp_codes(output: str) -> tuple[list[str], list[str]]:
         if not isinstance(data, dict):
             failures.append(f"LSP diagnostic {index} missing data")
             continue
-        for key in ("id", "category", "severity", "fluent_key", "cause", "fix", "example"):
+        if not diagnostic.get("message"):
+            failures.append(f"LSP diagnostic {index} missing message")
+        expected_category = expected_category_for_code(str(diagnostic.get("code", "")))
+        for key in ("id", "category", "severity", "fluent_key", "cause", "help", "fix", "example"):
             if not data.get(key):
                 failures.append(f"LSP diagnostic {index} data missing {key}")
+        if data.get("category") != expected_category:
+            failures.append(f"LSP diagnostic {index} category mismatch: expected {expected_category}, got {data.get('category')}")
+        if data.get("severity") != "error":
+            failures.append(f"LSP diagnostic {index} data severity must be error")
+        if data.get("fluent_key") != diagnostic.get("code"):
+            failures.append(f"LSP diagnostic {index} fluent_key must equal code")
         if not DIAGNOSTIC_ID_SPAN_RE.match(str(data.get("id", ""))):
             failures.append(f"LSP diagnostic {index} data.id missing real file:line:column span")
         related = diagnostic.get("relatedInformation")
@@ -271,6 +372,9 @@ def lsp_codes(output: str) -> tuple[list[str], list[str]]:
             uri = location.get("uri") if isinstance(location, dict) else ""
             if not isinstance(uri, str) or not uri.startswith("file://") or ".vit" not in uri:
                 failures.append(f"LSP diagnostic {index} relatedInformation missing file URI")
+            message = related[0].get("message") if isinstance(related[0], dict) else ""
+            if not message:
+                failures.append(f"LSP diagnostic {index} relatedInformation missing label message")
     return codes, failures
 
 
@@ -283,6 +387,18 @@ def validate_codes(actual: list[str], expected: list[str], label: str) -> list[s
     parasite = [code for code in actual if code not in expected]
     if parasite:
         failures.append(f"{label} parasite diagnostics: {parasite}")
+    return failures
+
+
+def validate_case_policy(case: dict[str, Any], actual: list[str], label: str) -> list[str]:
+    expected = list(case["expected_codes"])
+    failures: list[str] = []
+    if len(expected) > 1 and len(actual) != len(expected):
+        failures.append(f"{label} multi-error diagnostic count mismatch: expected exactly {len(expected)}, got {len(actual)}")
+    if case["cascade_policy"] == "suppress-derived" and actual != expected:
+        failures.append(f"{label} cascade policy suppress-derived requires only root diagnostics: expected {expected}, got {actual}")
+    if case["cascade_policy"] == "none" and actual != expected:
+        failures.append(f"{label} fixture has parasite or missing diagnostics: expected {expected}, got {actual}")
     return failures
 
 
@@ -394,7 +510,9 @@ def validate_case(case: dict[str, Any], messages: dict[str, str]) -> dict[str, A
     text_output = str(text["combined"])
     codes = text_codes(text_output)
     failures.extend(validate_codes(codes, expected, "text"))
+    failures.extend(validate_case_policy(case, codes, "text"))
     failures.extend(validate_text_spans(text_output, expected))
+    failures.extend(validate_text_contract(text_output, expected, messages))
     for code in expected:
         message = messages.get(code, "")
         if message and message not in text_output:
@@ -409,9 +527,11 @@ def validate_case(case: dict[str, Any], messages: dict[str, str]) -> dict[str, A
 
     json_actual, json_failures = json_codes(str(js["stdout"] or js["combined"]))
     failures.extend(validate_codes(json_actual, expected, "JSON"))
+    failures.extend(validate_case_policy(case, json_actual, "JSON"))
     failures.extend(json_failures)
     lsp_actual, lsp_failures = lsp_codes(str(lsp["stdout"] or lsp["combined"]))
     failures.extend(validate_codes(lsp_actual, expected, "LSP"))
+    failures.extend(validate_case_policy(case, lsp_actual, "LSP"))
     failures.extend(lsp_failures)
 
     for code in expected:
