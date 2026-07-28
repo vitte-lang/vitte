@@ -29,8 +29,9 @@ RICH_TEXT_MARKERS = (
     "label:",
     "cause:",
     "help:",
-    "fix",
+    "corrected example:",
 )
+FIX_MARKERS = ("fix-it:", "fix:")
 LOCATION_RE = re.compile(r"[^:\s]+\.vit:\d+:\d+")
 
 
@@ -53,9 +54,13 @@ def parse_ftl(path: Path) -> dict[str, str]:
     return entries
 
 
-def run_check(entry: str, locale: str) -> dict[str, Any]:
+def run_check(entry: str, locale: str, diagnostics_json: bool = False) -> dict[str, Any]:
+    args = [str(BIN), "check"]
+    if diagnostics_json:
+        args.append("--diagnostics-json")
+    args.extend([entry, "--lang", locale])
     proc = subprocess.run(
-        [str(BIN), "check", entry, "--lang", locale],
+        args,
         cwd=ROOT,
         env={**os.environ, "VITTE_LANG": locale},
         text=True,
@@ -65,7 +70,7 @@ def run_check(entry: str, locale: str) -> dict[str, Any]:
     )
     combined = proc.stdout + proc.stderr
     return {
-        "argv": ["bin/vitte", "check", entry, "--lang", locale],
+        "argv": ["bin/vitte", "check", *(["--diagnostics-json"] if diagnostics_json else []), entry, "--lang", locale],
         "exit_code": proc.returncode,
         "stdout": proc.stdout,
         "stderr": proc.stderr,
@@ -74,12 +79,40 @@ def run_check(entry: str, locale: str) -> dict[str, Any]:
     }
 
 
+def validate_json_output(output: str, expected_code: str, expected_message: str) -> list[str]:
+    failures: list[str] = []
+    try:
+        payload = json.loads(output)
+    except json.JSONDecodeError as exc:
+        return [f"JSON output is not stable parseable JSON: {exc}"]
+    diagnostics = payload.get("primary_report", {}).get("diagnostics", [])
+    if not isinstance(diagnostics, list) or not diagnostics:
+        return ["JSON output missing primary_report.diagnostics"]
+    primary = diagnostics[0]
+    if not isinstance(primary, dict):
+        return ["JSON primary diagnostic must be an object"]
+    if primary.get("code") != expected_code:
+        failures.append(f"JSON diagnostic code mismatch: {primary.get('code')!r}")
+    if expected_message and primary.get("message") != expected_message:
+        failures.append(f"JSON diagnostic message mismatch: {primary.get('message')!r}")
+    for key in ("span", "labels", "cause", "fix", "example"):
+        if not primary.get(key):
+            failures.append(f"JSON diagnostic missing {key}")
+    if not primary.get("suggestions"):
+        failures.append("JSON diagnostic missing suggestions/fix-it")
+    if json.dumps(payload, sort_keys=True) != json.dumps(json.loads(output), sort_keys=True):
+        failures.append("JSON output is not deterministic under sorted-key normalization")
+    return failures
+
+
 def validate_case(case: dict[str, Any], locale: str, messages: dict[str, str]) -> dict[str, Any]:
     entry = str(case.get("entry", ""))
     expected_code = str(case.get("expected_code", ""))
     min_count = int(case.get("min_diagnostic_count", 1))
     result = run_check(entry, locale)
+    json_result = run_check(entry, locale, diagnostics_json=True)
     output = str(result["combined"])
+    json_output = str(json_result["stdout"] or json_result["combined"])
     failures: list[str] = []
     expected_message = messages.get(expected_code, "")
 
@@ -87,10 +120,16 @@ def validate_case(case: dict[str, Any], locale: str, messages: dict[str, str]) -
         failures.append(f"fixture missing: {entry}")
     if result["exit_code"] == 0:
         failures.append("compiler accepted invalid source")
+    if json_result["exit_code"] == 0:
+        failures.append("compiler accepted invalid source in diagnostics JSON mode")
     if expected_code not in output:
         failures.append(f"missing expected diagnostic code {expected_code}")
+    if expected_code not in json_output:
+        failures.append(f"JSON output missing expected diagnostic code {expected_code}")
     if expected_message and expected_message not in output:
         failures.append(f"missing Fluent {locale} message for {expected_code}: {expected_message}")
+    if expected_message and expected_message not in json_output:
+        failures.append(f"JSON output missing Fluent {locale} message for {expected_code}: {expected_message}")
     if result["diagnostic_count"] < min_count:
         failures.append(
             f"expected at least {min_count} diagnostic(s), got {result['diagnostic_count']}"
@@ -100,6 +139,10 @@ def validate_case(case: dict[str, Any], locale: str, messages: dict[str, str]) -
     for marker in RICH_TEXT_MARKERS:
         if marker not in output:
             failures.append(f"missing rich diagnostic marker {marker!r}")
+    if not any(marker in output for marker in FIX_MARKERS):
+        failures.append("missing fix-it/fix marker")
+    if json_result["exit_code"] != 0 and expected_code in json_output:
+        failures.extend(validate_json_output(json_output, expected_code, expected_message))
 
     return {
         "id": case.get("id"),
@@ -110,6 +153,7 @@ def validate_case(case: dict[str, Any], locale: str, messages: dict[str, str]) -
         "status": "pass" if not failures else "fail",
         "failures": failures,
         "command": result,
+        "json_command": json_result,
     }
 
 
