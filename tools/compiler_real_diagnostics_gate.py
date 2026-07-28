@@ -23,6 +23,17 @@ BIN = ROOT / "bin" / "vitte"
 REPORT_DIR = ROOT / "target" / "reports" / "compiler_real_diagnostics"
 REPORT_JSON = REPORT_DIR / "coverage.json"
 REPORT_MD = REPORT_DIR / "coverage.md"
+REQUIRED_PHASES = (
+    "lexer",
+    "parser",
+    "resolver",
+    "sema",
+    "typeck",
+    "borrowck",
+    "mir",
+    "ir",
+    "backend",
+)
 
 RICH_TEXT_MARKERS = (
     "id:",
@@ -70,6 +81,14 @@ def expected_category_for_code(code: str) -> str:
         return "sema"
     if code.startswith("TYPECK_"):
         return "typeck"
+    if code.startswith(("BORROWCK_", "BORROW_")):
+        return "borrowck"
+    if code.startswith("MIR_"):
+        return "mir"
+    if code.startswith("IR_"):
+        return "ir"
+    if code.startswith(("BACKEND_", "LINK_")):
+        return "backend"
     return "diagnostic"
 
 
@@ -243,7 +262,7 @@ def validate_lsp_output(
 def validate_case(case: dict[str, Any], locale: str, messages: dict[str, str]) -> dict[str, Any]:
     entry = str(case.get("entry", ""))
     expected_code = str(case.get("expected_code", ""))
-    expected_category = expected_category_for_code(expected_code)
+    expected_category = str(case.get("expected_category") or expected_category_for_code(expected_code))
     min_count = int(case.get("min_diagnostic_count", 1))
     result = run_check(entry, locale)
     json_result = run_check(entry, locale, diagnostics_json=True)
@@ -345,6 +364,14 @@ def main() -> int:
         for case in results
         for failure in case["failures"]
     ]
+    passed_phases = {
+        str(case.get("expected_category", ""))
+        for case in results
+        if case["status"] == "pass"
+    }
+    for phase in REQUIRED_PHASES:
+        if phase not in passed_phases:
+            failures.append(f"missing passing real Fluent diagnostic phase: {phase}")
     passed = sum(1 for case in results if case["status"] == "pass")
     report = {
         "schema": "vitte.compiler.real_diagnostics.gate.v1",
