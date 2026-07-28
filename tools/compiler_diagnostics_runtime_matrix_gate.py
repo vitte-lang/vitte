@@ -18,26 +18,40 @@ REPORT_MD = REPORT_DIR / "coverage.md"
 LOCALE = "fr"
 FTL = ROOT / "locales" / LOCALE / "diagnostics.ftl"
 ERROR_CODE_RE = re.compile(r"error\[([A-Z0-9_]+)\]")
+INVALID_ROOT = ROOT / "tests" / "compiler_real_diagnostics" / "invalid"
+INVALID_ROOT_REL = Path("tests/compiler_real_diagnostics/invalid")
+PHASE_DIRS = {
+    "lexer",
+    "parser",
+    "resolver",
+    "sema",
+    "typeck",
+    "borrowck",
+    "mir",
+    "ir",
+    "backend",
+}
 
 
 CASES: list[dict[str, Any]] = [
-    {"id": "lexer-invalid", "kind": "check", "entry": "tests/compiler_real_diagnostics/invalid/lexer_invalid.vit", "codes": ["LEX_E_INVALID_CHAR"]},
-    {"id": "parser-invalid", "kind": "check", "entry": "tests/compiler_real_diagnostics/invalid/parser_invalid.vit", "codes": ["PARSE_E_UNCLOSED_BLOCK"]},
-    {"id": "use-import-invalid", "kind": "check", "entry": "tests/compiler_real_diagnostics/invalid/use_import_invalid.vit", "codes": ["MOD_E_MODULE_NOT_FOUND"]},
-    {"id": "export-invalid", "kind": "check", "entry": "tests/compiler_real_diagnostics/invalid/export_invalid.vit", "codes": ["SEMA_E_INVALID_EXPORT"]},
-    {"id": "proc-invalid", "kind": "check", "entry": "tests/compiler_real_diagnostics/invalid/proc_invalid.vit", "codes": ["PARSE_E_PARAMETER_COLON_EXPECTED"]},
-    {"id": "form-invalid", "kind": "check", "entry": "tests/compiler_real_diagnostics/invalid/form_invalid.vit", "codes": ["AST_E_DUPLICATE_FIELD"]},
-    {"id": "pick-invalid", "kind": "check", "entry": "tests/compiler_real_diagnostics/invalid/pick_invalid.vit", "codes": ["SEMA_E_DUPLICATE_PICK_BRANCH"]},
-    {"id": "const-invalid", "kind": "check", "entry": "tests/compiler_real_diagnostics/invalid/const_invalid.vit", "codes": ["CONST_EVAL_E_DIVISION_BY_ZERO"]},
-    {"id": "symbol-unknown", "kind": "check", "entry": "tests/compiler_real_diagnostics/invalid/unknown_symbol.vit", "codes": ["SEMA_E_UNKNOWN_IDENTIFIER"]},
+    {"id": "lexer-invalid", "kind": "check", "entry": "tests/compiler_real_diagnostics/invalid/lexer/lexer_invalid.vit", "codes": ["LEX_E_INVALID_CHAR"]},
+    {"id": "parser-invalid", "kind": "check", "entry": "tests/compiler_real_diagnostics/invalid/parser/parser_invalid.vit", "codes": ["PARSE_E_UNCLOSED_BLOCK"]},
+    {"id": "use-import-invalid", "kind": "check", "entry": "tests/compiler_real_diagnostics/invalid/resolver/use_import_invalid.vit", "codes": ["MOD_E_MODULE_NOT_FOUND"]},
+    {"id": "export-invalid", "kind": "check", "entry": "tests/compiler_real_diagnostics/invalid/sema/export_invalid.vit", "codes": ["SEMA_E_INVALID_EXPORT"]},
+    {"id": "proc-invalid", "kind": "check", "entry": "tests/compiler_real_diagnostics/invalid/parser/proc_invalid.vit", "codes": ["PARSE_E_PARAMETER_COLON_EXPECTED"]},
+    {"id": "form-invalid", "kind": "check", "entry": "tests/compiler_real_diagnostics/invalid/sema/form_invalid.vit", "codes": ["AST_E_DUPLICATE_FIELD"]},
+    {"id": "pick-invalid", "kind": "check", "entry": "tests/compiler_real_diagnostics/invalid/sema/pick_invalid.vit", "codes": ["SEMA_E_DUPLICATE_PICK_BRANCH"]},
+    {"id": "const-invalid", "kind": "check", "entry": "tests/compiler_real_diagnostics/invalid/sema/const_invalid.vit", "codes": ["CONST_EVAL_E_DIVISION_BY_ZERO"]},
+    {"id": "symbol-unknown", "kind": "check", "entry": "tests/compiler_real_diagnostics/invalid/sema/unknown_symbol.vit", "codes": ["SEMA_E_UNKNOWN_IDENTIFIER"]},
     {"id": "type-unknown", "kind": "check", "entry": "tests/diagnostics/runtime/fixtures/cascade_controlled.vit", "codes": ["TYPECK_E_UNKNOWN_TYPE"]},
-    {"id": "type-incompatible", "kind": "check", "entry": "tests/compiler_real_diagnostics/invalid/types_incompatible.vit", "codes": ["TYPECK_E_ASSIGN_MISMATCH"]},
-    {"id": "call-invalid", "kind": "check", "entry": "tests/compiler_real_diagnostics/invalid/call_invalid.vit", "codes": ["TYPECK_E_CALL_ARITY"]},
-    {"id": "return-invalid", "kind": "check", "entry": "tests/compiler_real_diagnostics/invalid/return_invalid.vit", "codes": ["TYPECK_E_RETURN_MISMATCH"]},
-    {"id": "borrow-move-invalid", "kind": "check", "entry": "tests/compiler_real_diagnostics/invalid/borrowck_use_after_move.vit", "codes": ["BORROWCK_E_USE_AFTER_MOVE"]},
-    {"id": "mir-validation-invalid", "kind": "check", "entry": "tests/compiler_real_diagnostics/invalid/mir_validation_invalid.vit", "codes": ["MIR_E_VERIFICATION_FAILED"]},
-    {"id": "backend-unsupported", "kind": "build", "entry": "tests/compiler_real_diagnostics/invalid/backend_unsupported_target.vit", "codes": ["BACKEND_E_UNSUPPORTED_TARGET"]},
-    {"id": "multi-errors-one-file", "kind": "check", "entry": "tests/compiler_real_diagnostics/invalid/multi_errors_one_file.vit", "codes": ["TYPECK_E_ASSIGN_MISMATCH", "SEMA_E_UNKNOWN_IDENTIFIER", "TYPECK_E_CALL_ARITY"]},
+    {"id": "type-incompatible", "kind": "check", "entry": "tests/compiler_real_diagnostics/invalid/typeck/types_incompatible.vit", "codes": ["TYPECK_E_ASSIGN_MISMATCH"]},
+    {"id": "call-invalid", "kind": "check", "entry": "tests/compiler_real_diagnostics/invalid/typeck/call_invalid.vit", "codes": ["TYPECK_E_CALL_ARITY"]},
+    {"id": "return-invalid", "kind": "check", "entry": "tests/compiler_real_diagnostics/invalid/typeck/return_invalid.vit", "codes": ["TYPECK_E_RETURN_MISMATCH"]},
+    {"id": "borrow-move-invalid", "kind": "check", "entry": "tests/compiler_real_diagnostics/invalid/borrowck/borrowck_use_after_move.vit", "codes": ["BORROWCK_E_USE_AFTER_MOVE"]},
+    {"id": "mir-validation-invalid", "kind": "check", "entry": "tests/compiler_real_diagnostics/invalid/mir/mir_validation_invalid.vit", "codes": ["MIR_E_VERIFICATION_FAILED"]},
+    {"id": "ir-validation-invalid", "kind": "check", "entry": "tests/compiler_real_diagnostics/invalid/ir/ir_validation_invalid.vit", "codes": ["IR_E_VERIFY_FAILED"]},
+    {"id": "backend-unsupported", "kind": "build", "entry": "tests/compiler_real_diagnostics/invalid/backend/backend_unsupported_target.vit", "codes": ["BACKEND_E_UNSUPPORTED_TARGET"]},
+    {"id": "multi-errors-one-file", "kind": "check", "entry": "tests/compiler_real_diagnostics/invalid/typeck/multi_errors_one_file.vit", "codes": ["TYPECK_E_ASSIGN_MISMATCH", "SEMA_E_UNKNOWN_IDENTIFIER", "TYPECK_E_CALL_ARITY"]},
 ]
 
 
@@ -172,6 +186,51 @@ def validate_codes(actual: list[str], expected: list[str], label: str) -> list[s
     return failures
 
 
+def invalid_fixture_phase(path: Path) -> str | None:
+    try:
+        relative = path.relative_to(INVALID_ROOT)
+    except ValueError:
+        return None
+    if len(relative.parts) < 2:
+        return None
+    phase = relative.parts[0]
+    if phase not in PHASE_DIRS:
+        return None
+    return phase
+
+
+def validate_invalid_fixture_layout() -> list[str]:
+    failures: list[str] = []
+    if not INVALID_ROOT.is_dir():
+        return [f"missing invalid fixture root: {rel(INVALID_ROOT)}"]
+
+    for phase in sorted(PHASE_DIRS):
+        if not (INVALID_ROOT / phase).is_dir():
+            failures.append(f"missing invalid fixture phase directory: {rel(INVALID_ROOT / phase)}")
+
+    for path in sorted(INVALID_ROOT.rglob("*.vit")):
+        if invalid_fixture_phase(path) is None:
+            failures.append(f"invalid fixture outside phase directory: {rel(path)}")
+
+    covered_phases: set[str] = set()
+    for case in CASES:
+        entry = Path(str(case["entry"]))
+        try:
+            relative = entry.relative_to(INVALID_ROOT_REL)
+        except ValueError:
+            continue
+        if len(relative.parts) < 2 or relative.parts[0] not in PHASE_DIRS:
+            failures.append(f"case {case['id']} entry is not phase-scoped: {case['entry']}")
+            continue
+        covered_phases.add(relative.parts[0])
+
+    missing_coverage = sorted(PHASE_DIRS - covered_phases)
+    if missing_coverage:
+        failures.append(f"phase directories without runtime matrix case: {missing_coverage}")
+
+    return failures
+
+
 def validate_case(case: dict[str, Any], messages: dict[str, str]) -> dict[str, Any]:
     expected = list(case["codes"])
     failures: list[str] = []
@@ -263,8 +322,9 @@ def main() -> int:
         print(f"[compiler-diagnostics-runtime-matrix][error] missing {rel(BIN)}", file=sys.stderr)
         return 1
     messages = parse_ftl(FTL)
+    layout_failures = validate_invalid_fixture_layout()
     results = [validate_case(case, messages) for case in CASES]
-    failures = [f"{result['id']}: {failure}" for result in results for failure in result["failures"]]
+    failures = [*layout_failures, *[f"{result['id']}: {failure}" for result in results for failure in result["failures"]]]
     write_reports(results, failures)
     if failures:
         for failure in failures[:80]:
