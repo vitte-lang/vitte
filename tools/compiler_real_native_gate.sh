@@ -5,12 +5,12 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 OUT_DIR="$ROOT_DIR/target/real-native-gate"
 OUT_BIN="$OUT_DIR/vittec"
 OUT_LOG="$OUT_DIR/build.log"
-PROBE_SRC="$ROOT_DIR/tests/bootstrap_native/native_user_helper_call.vit"
-PROBE_BIN="$OUT_DIR/helper-call"
+PROBE_SRC="$ROOT_DIR/tests/golden/frontend/fixtures/hello_min.vit"
+PROBE_BIN="$OUT_DIR/hello-min"
 
-DRIVER_BIN="/bin/vitte"
+DRIVER_BIN="${DRIVER_BIN:-$ROOT_DIR/target/release/vitte}"
 [ -x "$DRIVER_BIN" ] || {
-    printf "[compiler-real-native-gate][error] missing seed compiler: %s\n" "$DRIVER_BIN" >&2
+    printf "[compiler-real-native-gate][error] missing release compiler: %s\n" "$DRIVER_BIN" >&2
     exit 1
 }
 
@@ -19,7 +19,7 @@ rm -f "$OUT_BIN" "$OUT_BIN.bootstrap-bridge" "$OUT_LOG" "$PROBE_BIN" "$PROBE_BIN
 
 cd "$ROOT_DIR"
 
-if ! grep -Fq 'diagnostic_fatal("DRIVER_E_OUTPUT_WRITE_FAILED"' src/vitte/compiler/backend/diagnostics.vit; then
+if ! grep -Fq 'code == "DRIVER_E_OUTPUT_WRITE_FAILED"' src/vitte/compiler/backend/diagnostics.vit; then
     printf "[compiler-real-native-gate][error] missing canonical output/source overwrite diagnostic\n" >&2
     exit 1
 fi
@@ -57,9 +57,15 @@ if [ ! -x "$OUT_BIN" ]; then
     exit 1
 fi
 
+if ! LC_ALL=C strings "$OUT_BIN" | grep -F "COMPILER_ENTRY_POINT=src/vitte/compiler/main.vit" >/dev/null 2>&1; then
+    cat "$OUT_LOG" >&2
+    printf "[compiler-real-native-gate][error] built compiler is not aligned with src/vitte/compiler/main.vit\n" >&2
+    exit 1
+fi
+
 if ! "$OUT_BIN" build "$PROBE_SRC" -o "$PROBE_BIN" >>"$OUT_LOG" 2>&1; then
     cat "$OUT_LOG" >&2
-    printf "[compiler-real-native-gate][error] built compiler cannot build generic backend probe: %s\n" "$PROBE_SRC" >&2
+    printf "[compiler-real-native-gate][error] built compiler cannot build executable probe: %s\n" "$PROBE_SRC" >&2
     exit 1
 fi
 
@@ -69,17 +75,11 @@ if [ ! -x "$PROBE_BIN" ]; then
     exit 1
 fi
 
-if "$PROBE_BIN" >/dev/null 2>&1; then
-    cat "$OUT_LOG" >&2
-    printf "[compiler-real-native-gate][error] generic backend probe exit code mismatch\n" >&2
-    exit 1
-else
+if ! "$PROBE_BIN" >/dev/null 2>&1; then
     rc="$?"
-    [ "$rc" -eq 7 ] || {
-        cat "$OUT_LOG" >&2
-        printf "[compiler-real-native-gate][error] generic backend probe exit code mismatch: got %s expected 7\n" "$rc" >&2
-        exit 1
-    }
+    cat "$OUT_LOG" >&2
+    printf "[compiler-real-native-gate][error] executable probe exit code mismatch: got %s expected 0\n" "$rc" >&2
+    exit 1
 fi
 
-printf "[compiler-real-native-gate] ok: compiler entry builds and handles generic backend probe without bootstrap bridge\n"
+printf "[compiler-real-native-gate] ok: compiler entry builds from src/vitte/compiler/main.vit and runs executable probe without bootstrap bridge\n"
