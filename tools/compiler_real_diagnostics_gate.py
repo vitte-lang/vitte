@@ -47,6 +47,9 @@ FIX_MARKERS = ("fix-it:", "fix:")
 LOCATION_RE = re.compile(r"[^:\s]+\.vit:\d+:\d+")
 DIAGNOSTIC_ID_RE = re.compile(r"^[A-Z0-9_]+:.+\.vit:\d+:\d+$")
 ERROR_CODE_RE = re.compile(r"error\[([A-Z0-9_]+)\]")
+TEXT_DIAGNOSTIC_ID_RE = re.compile(r"=\s*id:\s*([A-Z0-9_]+):(.+\.vit):([1-9]\d*):([1-9]\d*)")
+DIAGNOSTIC_ID_SPAN_RE = re.compile(r"^([A-Z0-9_]+):(.+\.vit):([1-9]\d*):([1-9]\d*)$")
+JSON_LOCATION_RE = re.compile(r"^.+\.vit:[1-9]\d*:[1-9]\d*$")
 PHASE_DIRS = {
     "lexer",
     "parser",
@@ -334,6 +337,81 @@ def lsp_diagnostics(output: str) -> tuple[list[dict[str, Any]], list[str]]:
     return diagnostics, failures
 
 
+def validate_text_spans(output: str, expected: list[str]) -> list[str]:
+    failures: list[str] = []
+    spans = TEXT_DIAGNOSTIC_ID_RE.findall(output)
+    span_codes = [code for code, _file, _line, _column in spans]
+    if span_codes != expected:
+        failures.append(f"text diagnostic span order mismatch: expected {expected}, got {span_codes}")
+    for index, (code, file_name, line, column) in enumerate(spans):
+        if not file_name.endswith(".vit"):
+            failures.append(f"text diagnostic {index} span file is not .vit: {file_name}")
+        if int(line) <= 0 or int(column) <= 0:
+            failures.append(f"text diagnostic {index} span must be positive file:line:column")
+        if index < len(expected) and code != expected[index]:
+            failures.append(f"text diagnostic {index} span code mismatch: expected {expected[index]}, got {code}")
+    return failures
+
+
+def validate_json_spans(diagnostics: list[dict[str, Any]], expected: list[str]) -> list[str]:
+    failures: list[str] = []
+    for index, diagnostic in enumerate(diagnostics):
+        expected_code = expected[index] if index < len(expected) else None
+        code = str(diagnostic.get("code", ""))
+        if expected_code is not None and code != expected_code:
+            failures.append(f"JSON diagnostic {index} span code mismatch: expected {expected_code}, got {code}")
+        if not DIAGNOSTIC_ID_SPAN_RE.match(str(diagnostic.get("id", ""))):
+            failures.append(f"JSON diagnostic {index} id missing real file:line:column span")
+        if not JSON_LOCATION_RE.match(str(diagnostic.get("location", ""))):
+            failures.append(f"JSON diagnostic {index} location missing real file:line:column span")
+        span = diagnostic.get("span")
+        if not isinstance(span, dict):
+            failures.append(f"JSON diagnostic {index} span must be object")
+            continue
+        if span.get("valid") is not True:
+            failures.append(f"JSON diagnostic {index} span.valid must be true")
+        if not str(span.get("file", "")).endswith(".vit"):
+            failures.append(f"JSON diagnostic {index} span.file must be a .vit file")
+        for key in ("start_line", "start_column", "end_line", "end_column"):
+            if not isinstance(span.get(key), int) or span.get(key) <= 0:
+                failures.append(f"JSON diagnostic {index} span.{key} must be a positive integer")
+    return failures
+
+
+def validate_lsp_spans(diagnostics: list[dict[str, Any]], expected: list[str]) -> list[str]:
+    failures: list[str] = []
+    for index, diagnostic in enumerate(diagnostics):
+        expected_code = expected[index] if index < len(expected) else None
+        code = str(diagnostic.get("code", ""))
+        if expected_code is not None and code != expected_code:
+            failures.append(f"LSP diagnostic {index} span code mismatch: expected {expected_code}, got {code}")
+        lsp_range = diagnostic.get("range")
+        if not isinstance(lsp_range, dict):
+            failures.append(f"LSP diagnostic {index} missing range")
+        else:
+            for side in ("start", "end"):
+                point = lsp_range.get(side)
+                if not isinstance(point, dict):
+                    failures.append(f"LSP diagnostic {index} range.{side} missing")
+                    continue
+                if not isinstance(point.get("line"), int) or point.get("line") < 0:
+                    failures.append(f"LSP diagnostic {index} range.{side}.line must be a non-negative integer")
+                if not isinstance(point.get("character"), int) or point.get("character") < 0:
+                    failures.append(f"LSP diagnostic {index} range.{side}.character must be a non-negative integer")
+        data = diagnostic.get("data")
+        if not isinstance(data, dict) or not DIAGNOSTIC_ID_SPAN_RE.match(str(data.get("id", ""))):
+            failures.append(f"LSP diagnostic {index} data.id missing real file:line:column span")
+        related = diagnostic.get("relatedInformation")
+        if not isinstance(related, list) or not related:
+            failures.append(f"LSP diagnostic {index} missing relatedInformation")
+            continue
+        location = related[0].get("location") if isinstance(related[0], dict) else None
+        uri = location.get("uri") if isinstance(location, dict) else ""
+        if not isinstance(uri, str) or not uri.startswith("file://") or ".vit" not in uri:
+            failures.append(f"LSP diagnostic {index} relatedInformation missing file URI")
+    return failures
+
+
 def validate_code_order(actual: list[str], expected: list[str], expected_order: str, label: str) -> list[str]:
     if actual != expected:
         return [f"{label} diagnostic {expected_order} mismatch: expected {expected}, got {actual}"]
@@ -404,16 +482,19 @@ def validate_case(case: dict[str, Any], locale: str, messages: dict[str, str]) -
 
     actual_text_codes = text_codes(output)
     failures.extend(validate_code_order(actual_text_codes, expected_codes, expected_order, "text"))
+    failures.extend(validate_text_spans(output, expected_codes))
     json_items, json_parse_failures = json_diagnostics(json_output)
     failures.extend(json_parse_failures)
     json_codes = [str(item.get("code", "")) for item in json_items]
     if json_items:
         failures.extend(validate_code_order(json_codes, expected_codes, expected_order, "JSON"))
+        failures.extend(validate_json_spans(json_items, expected_codes))
     lsp_items, lsp_parse_failures = lsp_diagnostics(lsp_output)
     failures.extend(lsp_parse_failures)
     lsp_codes = [str(item.get("code", "")) for item in lsp_items]
     if lsp_items:
         failures.extend(validate_code_order(lsp_codes, expected_codes, expected_order, "LSP"))
+        failures.extend(validate_lsp_spans(lsp_items, expected_codes))
 
     for code in expected_codes:
         message = messages.get(code, "")
@@ -461,6 +542,11 @@ def validate_case(case: dict[str, Any], locale: str, messages: dict[str, str]) -
         "text_codes": actual_text_codes,
         "json_codes": json_codes,
         "lsp_codes": lsp_codes,
+        "verified_surfaces": {
+            "text": result["exit_code"] == case.get("expected_exit_code") and actual_text_codes == expected_codes,
+            "json": json_result["exit_code"] == case.get("expected_exit_code") and json_codes == expected_codes and not json_parse_failures,
+            "lsp": lsp_result["exit_code"] == case.get("expected_exit_code") and lsp_codes == expected_codes and not lsp_parse_failures,
+        },
         "status": "pass" if not failures else "fail",
         "failures": failures,
         "command": result,
