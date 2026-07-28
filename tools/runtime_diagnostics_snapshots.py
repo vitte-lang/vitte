@@ -18,7 +18,6 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 BIN = ROOT / "bin" / "vitte"
-WRAPPER = ROOT / "tools" / "vitte_cli_locale_wrapper.c"
 REPORT = ROOT / "target" / "reports" / "runtime_diagnostics" / "coverage.json"
 STRICT_REPORT = ROOT / "target" / "reports" / "runtime_diagnostics" / "strict_open_tests.json"
 
@@ -74,10 +73,11 @@ def write_or_check(path: Path, content: str, write: bool, failures: list[str]) -
 
 
 def assert_no_surface_only(failures: list[str]) -> None:
-    text = WRAPPER.read_text(encoding="utf-8")
-    for marker in FORBIDDEN_SURFACE_ONLY_MARKERS:
-        if marker in text:
-            failures.append(f"surface-only diagnostic marker still present: {rel(WRAPPER)}:{marker}")
+    for path in (ROOT / "src" / "vitte" / "compiler").rglob("*.vit"):
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for marker in FORBIDDEN_SURFACE_ONLY_MARKERS:
+            if marker in text:
+                failures.append(f"surface-only diagnostic marker still present: {rel(path)}:{marker}")
 
 
 def validate_type_mismatch_surfaces(failures: list[str]) -> dict[str, Any]:

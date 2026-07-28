@@ -220,25 +220,15 @@ vitte-source-audit:
 		-path './build' -prune -o \
 		-path './.pkgstage' -prune -o \
 		-path './target' -prune -o \
-		-path './src/vitte/compiler/backends/runtime_c' -prune -o \
-		-path './editors/tree-sitter/bindings/c/tree-sitter-vitte.h' -prune -o \
-		-path './editors/tree-sitter/bindings/node/binding.cc' -prune -o \
-		-path './editors/tree-sitter/bindings/python/tree_sitter_vitte/binding.c' -prune -o \
-		-path './editors/tree-sitter/bindings/swift/TreeSitterVitte/vitte.h' -prune -o \
-		-path './editors/tree-sitter/src/parser.c' -prune -o \
-		-path './editors/tree-sitter/src/tree_sitter/alloc.h' -prune -o \
-		-path './editors/tree-sitter/src/tree_sitter/array.h' -prune -o \
-		-path './editors/tree-sitter/src/tree_sitter/parser.h' -prune -o \
 		-path './vscode/VitteLangVsCode-main/.vscode-test' -prune -o \
 		-path './vscode/VitteLangVsCode-main/node_modules' -prune -o \
-		-path './vscode/VitteLangVsCode-main/vitte_out.cpp' -prune -o \
 		-type f \( -name '*.'c -o -name '*.'cc -o -name '*.'c'pp' -o -name '*.'cxx -o -name '*.'h -o -name '*.'h'pp' -o -name '*.'hxx \) -print | sort)"; \
 	if [ -n "$$bad" ]; then \
 		echo "[vitte-source-audit][error] non-Vitte source files remain in workspace:"; \
 		printf '%s\n' "$$bad"; \
 		exit 1; \
 	fi; \
-	echo "[vitte-source-audit] ok: workspace source is Vitte-only outside approved native/runtime staging paths"
+	echo "[vitte-source-audit] ok: workspace source is Vitte-only"
 
 vitte-legacy-text-audit:
 	@tools/ci_surface_legacy_audit.sh

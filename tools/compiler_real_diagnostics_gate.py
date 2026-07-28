@@ -24,7 +24,6 @@ BIN = ROOT / "bin" / "vitte"
 REPORT_DIR = ROOT / "target" / "reports" / "compiler_real_diagnostics"
 REPORT_JSON = REPORT_DIR / "coverage.json"
 REPORT_MD = REPORT_DIR / "coverage.md"
-WRAPPER = ROOT / "tools" / "vitte_cli_locale_wrapper.c"
 FORBIDDEN_SURFACE_ONLY_MARKERS = (
     "REAL_DIAGNOSTIC_CASES",
     "emit_real_diagnostic_case",
@@ -166,13 +165,12 @@ def run_command(
 
 
 def audit_no_surface_only_diagnostics() -> list[str]:
-    if not WRAPPER.exists():
-        return [f"missing wrapper source: {rel(WRAPPER)}"]
-    text = WRAPPER.read_text(encoding="utf-8")
     failures: list[str] = []
-    for marker in FORBIDDEN_SURFACE_ONLY_MARKERS:
-        if marker in text:
-            failures.append(f"surface-only diagnostic marker still present in {rel(WRAPPER)}: {marker}")
+    for path in (ROOT / "src" / "vitte" / "compiler").rglob("*.vit"):
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for marker in FORBIDDEN_SURFACE_ONLY_MARKERS:
+            if marker in text:
+                failures.append(f"surface-only diagnostic marker still present in {rel(path)}: {marker}")
     return failures
 
 

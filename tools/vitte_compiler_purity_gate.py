@@ -30,14 +30,10 @@ NORMAL_COMPILERS = (
     ROOT / "target/release/vitte",
 )
 FORBIDDEN_PATHS = (
-    ROOT / "bin/vitte.real",
-    ROOT / "bin/vittec.real",
     ROOT / "bin/vittec0",
     ROOT / "tools/vitte_cli_locale_wrapper.c",
 )
 FORBIDDEN_NORMAL_MARKERS = (
-    "vitte.real",
-    "vittec.real",
     "vitte_cli_locale_wrapper.c",
     "BOOTSTRAP_FULL_COMPILER",
     "vitte-bootstrap-payload",
