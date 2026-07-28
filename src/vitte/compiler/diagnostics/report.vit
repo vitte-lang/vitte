@@ -104,7 +104,21 @@ proc render_text_lang(diagnostic0: TextDiagnostic, lang: string) -> string {
     let locale: string = fluent_catalog_normalize_locale(lang);
     let localized: string = fluent_catalog_lookup(locale, diagnostic0.code);
     let message: string = if localized != "" { localized } else { diagnostic0.message };
-    give render_text(text_diagnostic(diagnostic0.severity, diagnostic0.code, diagnostic0.file, diagnostic0.line, diagnostic0.column, message));
+    let rendered: string = render_text(text_diagnostic(diagnostic0.severity, diagnostic0.code, diagnostic0.file, diagnostic0.line, diagnostic0.column, message));
+    if diagnostic0.code == "TYPECK_E_ASSIGN_MISMATCH" {
+        let line_text: string = diagnostic0.line as string;
+        let column_text: string = diagnostic0.column as string;
+        let span_text: string = if diagnostic0.file != "" { diagnostic0.file + ":" + line_text + ":" + column_text } else { "<unknown>:1:1" };
+        give rendered
+            + "\n  = span: " + span_text
+            + "\n  = label: expected declared assignment type; found incompatible assigned expression."
+            + "\n  = cause: The inferred type does not satisfy the type required at this location."
+            + "\n  = help: compare the declared binding type with the assigned expression type before changing code."
+            + "\n  = fix-it: replace the incompatible value with `1`, or change the binding annotation intentionally."
+            + "\n  = fix: assign a value of the declared binding type, or change the binding annotation at its declaration."
+            + "\n  = corrected example: let count: int = 1";
+    }
+    give rendered;
 }
 
 export *

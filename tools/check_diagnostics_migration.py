@@ -17,6 +17,9 @@ SCAN_ROOTS = (
     ROOT / "src" / "vitte" / "compiler",
     ROOT / "src" / "vitte" / "packages" / "compiler",
 )
+GENERATED_SKIP = {
+    "src/vitte/compiler/infrastructure/diagnostics/fluent_catalog.vit",
+}
 
 LEGACY_CALL_RE = re.compile(
     r"\b(?:"
@@ -79,6 +82,7 @@ def compiler_sources() -> list[Path]:
             if path.suffix in {".vit", ".c", ".h"}
             and "/tests/" not in path.as_posix()
             and not path.as_posix().endswith("/tests.vit")
+            and rel(path) not in GENERATED_SKIP
         )
     return sorted(sources)
 

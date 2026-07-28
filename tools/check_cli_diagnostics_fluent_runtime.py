@@ -17,6 +17,15 @@ EXPECTED_FR_MESSAGE = "affectation type incompatibilite"
 EXPECTED_CAUSE = "The inferred type does not satisfy the type required at this location."
 EXPECTED_FIX = "assign a value of the declared binding type, or change the binding annotation at its declaration"
 EXPECTED_EXAMPLE = "let count: int = 1"
+EXPECTED_RICH_TEXT_TERMS = (
+    "span: tests/negative/type_mismatch.vit:5:11-5:18",
+    "label: expected declared assignment type",
+    f"cause: {EXPECTED_CAUSE}",
+    "help: compare the declared binding type with the assigned expression type before changing code.",
+    "fix-it: replace the incompatible value with `1`, or change the binding annotation intentionally.",
+    f"fix: {EXPECTED_FIX}",
+    "corrected example: let count: int = 1",
+)
 
 
 def run(args: list[str]) -> subprocess.CompletedProcess[str]:
@@ -45,7 +54,7 @@ def assert_french_text_surface(name: str, proc: subprocess.CompletedProcess[str]
         return f"{name} output does not carry the Fluent FR message"
     if EXPECTED_EN_MESSAGE in output:
         return f"{name} output still carries the default EN diagnostic message"
-    for term in (EXPECTED_CAUSE, EXPECTED_FIX, EXPECTED_EXAMPLE):
+    for term in (EXPECTED_CAUSE, EXPECTED_FIX, EXPECTED_EXAMPLE, *EXPECTED_RICH_TEXT_TERMS):
         if term not in output:
             return f"{name} text output missing rich diagnostic term: {term!r}"
     return None
@@ -60,7 +69,7 @@ def main() -> int:
         return fail(f"default output missing {EXPECTED_CODE}")
     if EXPECTED_EN_MESSAGE not in default_output:
         return fail("default output does not carry the Fluent EN message")
-    for term in (EXPECTED_CAUSE, EXPECTED_FIX, EXPECTED_EXAMPLE):
+    for term in (EXPECTED_CAUSE, EXPECTED_FIX, EXPECTED_EXAMPLE, *EXPECTED_RICH_TEXT_TERMS):
         if term not in default_output:
             return fail(f"default text output missing rich diagnostic term: {term!r}")
 
@@ -74,7 +83,7 @@ def main() -> int:
         return fail("fr output does not carry the Fluent FR message")
     if EXPECTED_EN_MESSAGE in output:
         return fail("fr output still carries the default EN diagnostic message")
-    for term in (EXPECTED_CAUSE, EXPECTED_FIX, EXPECTED_EXAMPLE):
+    for term in (EXPECTED_CAUSE, EXPECTED_FIX, EXPECTED_EXAMPLE, *EXPECTED_RICH_TEXT_TERMS):
         if term not in output:
             return fail(f"fr text output missing rich diagnostic term: {term!r}")
 

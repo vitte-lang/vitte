@@ -2876,7 +2876,7 @@ optimization-phase2-gate:
 	@test -f data/optimization_phase2/reports/jit_async_loops.md
 
 
-.PHONY: diagnostic-catalog-check diagnostic-audit diagnostic-catalog-snapshots diagnostics-full-coverage diagnostics-cli-blocking stdlib-diagnostics diagnostic-contracts suggestion-quality compiler-contracts
+.PHONY: diagnostic-catalog-check diagnostic-audit diagnostic-catalog-snapshots diagnostics-full-coverage diagnostics-surfaces-by-code diagnostics-cli-blocking stdlib-diagnostics diagnostic-contracts suggestion-quality compiler-contracts
 diagnostic-catalog-check:
 	@python3 tools/check_diagnostic_catalog.py
 
@@ -2901,6 +2901,9 @@ compiler-contracts:
 diagnostics-full-coverage:
 	@python3 tools/check_diagnostics_full_coverage.py
 
+diagnostics-surfaces-by-code:
+	@python3 tools/check_diagnostics_surfaces_by_code.py
+
 diagnostics-cli-blocking:
 	@python3 tools/diagnostics_cli_blocking_gate.py
 
@@ -2911,6 +2914,7 @@ stdlib-diagnostics: release-binary-gate
 diagnostic-contracts:
 	@python3 tools/check_diagnostic_schema.py
 	@$(MAKE) --no-print-directory diagnostic-catalog-check
+	@$(MAKE) --no-print-directory diagnostics-surfaces-by-code
 	@$(MAKE) --no-print-directory diagnostics-migration-gate
 	@python3 tools/check_compiler_diagnostic_contract.py
 	@python3 tools/check_stdlib_diagnostic_contract.py

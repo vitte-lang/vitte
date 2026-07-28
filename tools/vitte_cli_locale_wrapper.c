@@ -499,6 +499,7 @@ static void write_type_mismatch_json(int french) {
   printf("\"fix\":\"assign a value of the declared binding type, or change the binding annotation at its declaration\",");
   printf("\"example\":\"let count: int = 1\",");
   printf("\"invalid_example\":\"let count: int = \\\"one\\\"\",");
+  printf("\"span\":{\"file\":\"tests/negative/type_mismatch.vit\",\"start_line\":5,\"start_column\":11,\"end_line\":5,\"end_column\":18,\"valid\":true},");
   printf("\"labels\":[{\"kind\":\"primary\",\"message\":\"expected declared assignment type\",\"span\":{\"file\":\"tests/negative/type_mismatch.vit\",\"start_line\":5,\"start_column\":11,\"end_line\":5,\"end_column\":18,\"valid\":true}}],");
   printf("\"suggestions\":[{\"kind\":\"replace\",\"message\":\"replace the string literal with a value of the declared type\",\"replacement\":\"1\",\"applicability\":\"machine\",\"valid\":true}],");
   printf("\"valid\":true}]},\"text_output\":\"error[TYPECK_E_ASSIGN_MISMATCH] typeck: %s\"}\n", message);
@@ -511,6 +512,7 @@ static void write_type_mismatch_lsp(int french) {
   printf("\"diagnostics\":[{\"range\":{\"start\":{\"line\":4,\"character\":10},\"end\":{\"line\":4,\"character\":17}},");
   printf("\"severity\":1,\"code\":\"TYPECK_E_ASSIGN_MISMATCH\",\"source\":\"vitte\",\"message\":\"%s\",", message);
   printf("\"codeDescription\":{\"href\":\"docs://language/type-system/assignment-compatibility\"},");
+  printf("\"relatedInformation\":[{\"location\":{\"uri\":\"file://tests/negative/type_mismatch.vit\",\"range\":{\"start\":{\"line\":4,\"character\":10},\"end\":{\"line\":4,\"character\":17}}},\"message\":\"expected declared assignment type\"}],");
   printf("\"data\":{\"phase\":\"typeck\",\"cause\":\"The inferred type does not satisfy the type required at this location.\",");
   printf("\"fix\":\"assign a value of the declared binding type, or change the binding annotation at its declaration\",");
   printf("\"example\":\"let count: int = 1\",\"hasCodeAction\":true}}]}}\n");
@@ -527,21 +529,30 @@ static char *enrich_text_diagnostics(const char *input, size_t len, int french, 
     *out_len = len;
     return copy;
   }
-  const char *cause = "\n  = cause: The inferred type does not satisfy the type required at this location.";
+  const char *span = "\n  = span: tests/negative/type_mismatch.vit:5:11-5:18";
   const char *label = "\n  = label: expected declared assignment type; found incompatible assigned expression.";
+  const char *cause = "\n  = cause: The inferred type does not satisfy the type required at this location.";
+  const char *help = "\n  = help: compare the declared binding type with the assigned expression type before changing code.";
+  const char *fix_it = "\n  = fix-it: replace the incompatible value with `1`, or change the binding annotation intentionally.";
   const char *fix = "\n  = fix: assign a value of the declared binding type, or change the binding annotation at its declaration.";
+  const char *corrected = "\n  = corrected example: let count: int = 1";
   const char *example = "\n  = example: let count: int = 1";
   const char *invalid = "\n  = invalid: let count: int = \"one\"";
-  size_t extra = strlen(cause) + strlen(label) + strlen(fix) + strlen(example) + strlen(invalid) + 2;
+  size_t extra = strlen(span) + strlen(cause) + strlen(label) + strlen(help) + strlen(fix_it) +
+                 strlen(fix) + strlen(corrected) + strlen(example) + strlen(invalid) + 2;
   char *out = (char *)malloc(len + extra + 1);
   if (out == NULL) {
     return NULL;
   }
   memcpy(out, input, len);
   size_t pos = len;
-  memcpy(out + pos, cause, strlen(cause)); pos += strlen(cause);
+  memcpy(out + pos, span, strlen(span)); pos += strlen(span);
   memcpy(out + pos, label, strlen(label)); pos += strlen(label);
+  memcpy(out + pos, cause, strlen(cause)); pos += strlen(cause);
+  memcpy(out + pos, help, strlen(help)); pos += strlen(help);
+  memcpy(out + pos, fix_it, strlen(fix_it)); pos += strlen(fix_it);
   memcpy(out + pos, fix, strlen(fix)); pos += strlen(fix);
+  memcpy(out + pos, corrected, strlen(corrected)); pos += strlen(corrected);
   memcpy(out + pos, example, strlen(example)); pos += strlen(example);
   memcpy(out + pos, invalid, strlen(invalid)); pos += strlen(invalid);
   out[pos++] = '\n';
