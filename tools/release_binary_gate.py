@@ -160,6 +160,30 @@ def validate_package_payload(payload: dict[str, Any], failures: list[str]) -> No
                 failures.append(f"package manager did not use release compiler: {compiler_path}")
 
 
+def iter_compiler_commands(value: Any) -> list[list[Any]]:
+    commands: list[list[Any]] = []
+    if isinstance(value, dict):
+        command = value.get("command")
+        if isinstance(command, list) and command:
+            commands.append(command)
+        for child in value.values():
+            commands.extend(iter_compiler_commands(child))
+    elif isinstance(value, list):
+        for child in value:
+            commands.extend(iter_compiler_commands(child))
+    return commands
+
+
+def validate_release_compiler_payload(payload: dict[str, Any], failures: list[str], command_name: str) -> None:
+    for command in iter_compiler_commands(payload):
+        executable = str(command[0])
+        basename = Path(executable).name
+        if basename not in {"vitte", "vittec"}:
+            continue
+        if not executable.endswith("/target/release/vitte"):
+            failures.append(f"{command_name} used non-release compiler: {executable}")
+
+
 def write_reports(status: str, failures: list[str], results: list[dict[str, Any]], compiled_root: str) -> None:
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     report = {
@@ -269,6 +293,22 @@ def main() -> int:
                 command = compiler.get("command")
                 if isinstance(command, list) and command and not str(command[0]).endswith("/target/release/vitte"):
                     failures.append(f"release package build used non-release compiler: {command[0]}")
+
+        workspace_build = require_ok(
+            results,
+            failures,
+            [str(RELEASE), "workspace", "build", "--workspace", WORKSPACE],
+        )
+        if workspace_build["exit_code"] == 0:
+            validate_release_compiler_payload(parse_json_payload(workspace_build, failures), failures, "release workspace build")
+
+        workspace_test = require_ok(
+            results,
+            failures,
+            [str(RELEASE), "workspace", "test", "--all", "--workspace", WORKSPACE],
+        )
+        if workspace_test["exit_code"] == 0:
+            validate_release_compiler_payload(parse_json_payload(workspace_test, failures), failures, "release workspace test")
 
     forbidden_normal_build = ("install_" + "seed.sh", "vittec0." + "seed", "bin/" + "vittec0")
     for result in results:
