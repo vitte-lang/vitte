@@ -64,6 +64,53 @@ def parse_ftl(locale: str, suffix: str = "diagnostics.ftl") -> dict[str, str]:
     return rows
 
 
+def normalize_locale(locale: str) -> str:
+    aliases = {
+        "": "en",
+        "en": "en",
+        "en-US": "en",
+        "en_GB": "en",
+        "en-GB": "en",
+        "fr": "fr",
+        "fr-FR": "fr",
+        "fr_CA": "fr",
+        "fr-CA": "fr",
+        "es": "es",
+        "es-ES": "es",
+        "es_MX": "es",
+        "es-MX": "es",
+        "de": "de",
+        "de-DE": "de",
+        "de_AT": "de",
+        "de-AT": "de",
+        "it": "it",
+        "it-IT": "it",
+        "pt": "pt-BR",
+        "pt-BR": "pt-BR",
+        "pt_BR": "pt-BR",
+        "nl": "nl",
+        "nl-NL": "nl",
+        "pl": "pl",
+        "pl-PL": "pl",
+        "ru": "ru",
+        "ru-RU": "ru",
+        "uk": "uk",
+        "uk-UA": "uk",
+        "zh": "zh-CN",
+        "zh-CN": "zh-CN",
+        "zh_CN": "zh-CN",
+        "ja": "ja",
+        "ja-JP": "ja",
+        "ko": "ko",
+        "ko-KR": "ko",
+        "tr": "tr",
+        "tr-TR": "tr",
+        "ar": "ar",
+        "ar-SA": "ar",
+    }
+    return aliases.get(locale, "en")
+
+
 def category(code: str) -> str:
     if code.startswith("LEX_"):
         return "lexer"
@@ -111,10 +158,10 @@ def rel_entry(args: list[str]) -> str:
 def locale_from(args: list[str]) -> str:
     for index, item in enumerate(args):
         if item == "--lang" and index + 1 < len(args):
-            return args[index + 1]
+            return normalize_locale(args[index + 1])
         if item.startswith("--lang="):
-            return item.split("=", 1)[1]
-    return os.environ.get("VITTE_LANG", "en")
+            return normalize_locale(item.split("=", 1)[1])
+    return normalize_locale(os.environ.get("VITTE_LANG", "en"))
 
 
 def span_for(entry: str, code: str, index: int) -> tuple[int, int, int, int]:
@@ -273,12 +320,12 @@ def main() -> int:
         print(VERSION)
         return 0
     if args[0] == "explain" and len(args) > 1:
-        locale = locale_from(args)
-        code = args[1]
-        message = parse_ftl(locale).get(code, parse_ftl("en").get(code, code))
-        print(f"error code: {code}\nmessage: {message}")
+        sys.path.insert(0, str(ROOT / "tools"))
+        from generate_explain_snapshots import render
+
+        sys.stdout.write(render(args[1], locale_from(args)))
         return 0
-    if args[0] not in {"check", "build"}:
+    if args[0] not in {"check", "build", "run", "test"}:
         return 0
 
     locale = locale_from(args)
