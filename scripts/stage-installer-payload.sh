@@ -123,8 +123,23 @@ install_unix_command() {
   cat > "$bin_dir/$command" <<EOF
 #!/bin/sh
 set -eu
-export VITTE_ROOT=\${VITTE_ROOT:-/usr/local/share/vitte}
-exec /usr/local/libexec/vitte/$command "\$@"
+self=\$0
+case "\$self" in
+  */*) ;;
+  *)
+    found=\$(command -v "\$self" 2>/dev/null || true)
+    [ -n "\$found" ] || { printf '%s\n' "Vitte wrapper must be invoked through an installed path" >&2; exit 127; }
+    self=\$found
+    ;;
+esac
+bindir=\${self%/*}
+case "\$bindir" in
+  /*) ;;
+  *) bindir=\$(CDPATH= cd -- "\$bindir" && pwd) ;;
+esac
+prefix=\${VITTE_INSTALL_PREFIX:-\${bindir%/bin}}
+export VITTE_ROOT=\${VITTE_ROOT:-\$prefix/share/vitte}
+exec "\$prefix/libexec/vitte/$command" "\$@"
 EOF
   chmod 0755 "$bin_dir/$command"
 }
@@ -186,20 +201,21 @@ if exist "%VITTE_ROOT%\INSTALLATION.json" (
   echo FAIL missing installation manifest: %VITTE_ROOT%\INSTALLATION.json
   set "STATUS=1"
 )
-if exist "%~dp0vitte.cmd" (
-  "%~dp0vitte.cmd" --version >nul 2>nul
+set "VITTE_CMD=%~dp0vitte.cmd"
+if exist "%VITTE_CMD%" (
+  "%VITTE_CMD%" --version >nul 2>nul
   if errorlevel 1 (
-    echo FAIL vitte --version failed
+    echo FAIL "%VITTE_CMD%" --version failed
     set "STATUS=1"
   ) else (
-    echo OK   vitte --version runs
+    echo OK   "%VITTE_CMD%" --version runs
   )
-  "%~dp0vitte.cmd" --help >nul 2>nul
+  "%VITTE_CMD%" --help >nul 2>nul
   if errorlevel 1 (
-    echo FAIL vitte --help failed
+    echo FAIL "%VITTE_CMD%" --help failed
     set "STATUS=1"
   ) else (
-    echo OK   vitte --help runs
+    echo OK   "%VITTE_CMD%" --help runs
   )
   set "SMOKE=%TEMP%\vitte-installer-doctor-%RANDOM%"
   mkdir "%SMOKE%" >nul 2>nul
@@ -207,19 +223,19 @@ if exist "%~dp0vitte.cmd" (
   >> "%SMOKE%\smoke.vit" echo   give 0
   >> "%SMOKE%\smoke.vit" echo }
   pushd "%SMOKE%" >nul
-  "%~dp0vitte.cmd" check smoke.vit >nul 2>nul
+  "%VITTE_CMD%" check smoke.vit >nul 2>nul
   if errorlevel 1 (
-    echo FAIL vitte check smoke.vit failed
+    echo FAIL "%VITTE_CMD%" check smoke.vit failed
     set "STATUS=1"
   ) else (
-    echo OK   vitte check smoke.vit runs
+    echo OK   "%VITTE_CMD%" check smoke.vit runs
   )
-  "%~dp0vitte.cmd" build smoke.vit -o smoke >nul 2>nul
+  "%VITTE_CMD%" build smoke.vit -o smoke >nul 2>nul
   if errorlevel 1 (
-    echo FAIL vitte build smoke.vit -o smoke failed
+    echo FAIL "%VITTE_CMD%" build smoke.vit -o smoke failed
     set "STATUS=1"
   ) else (
-    echo OK   vitte build smoke.vit -o smoke runs
+    echo OK   "%VITTE_CMD%" build smoke.vit -o smoke runs
     if exist smoke.exe smoke.exe >nul 2>nul
     if errorlevel 1 (
       echo FAIL built smoke executable failed

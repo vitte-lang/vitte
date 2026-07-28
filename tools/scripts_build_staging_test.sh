@@ -55,10 +55,10 @@ from pathlib import Path
 print(oct(stat.S_IMODE(Path(sys.argv[1]).stat().st_mode)))
 PY
 )" = "0o644"
-  grep -F "/usr/local/libexec/vitte/vitte" "$dest/usr/local/bin/vitte" >/dev/null
   for command in vitte vittec; do
-    grep -F 'export VITTE_ROOT=${VITTE_ROOT:-/usr/local/share/vitte}' "$dest/usr/local/bin/$command" >/dev/null
-    grep -F "/usr/local/libexec/vitte/$command" "$dest/usr/local/bin/$command" >/dev/null
+    grep -F 'prefix=${VITTE_INSTALL_PREFIX:-${bindir%/bin}}' "$dest/usr/local/bin/$command" >/dev/null
+    grep -F 'export VITTE_ROOT=${VITTE_ROOT:-$prefix/share/vitte}' "$dest/usr/local/bin/$command" >/dev/null
+    grep -F "exec \"\$prefix/libexec/vitte/$command\" \"\$@\"" "$dest/usr/local/bin/$command" >/dev/null
   done
   "$dest/usr/local/bin/vitte-installer-doctor" >/dev/null || true
 }
@@ -85,6 +85,8 @@ stage_windows() {
   done
   test -s "$dest/bin/vitte-installer-doctor.cmd"
   grep -F 'Vitte installer doctor' "$dest/bin/vitte-installer-doctor.cmd" >/dev/null
+  grep -F 'set "VITTE_CMD=%~dp0vitte.cmd"' "$dest/bin/vitte-installer-doctor.cmd" >/dev/null
+  grep -F '"%VITTE_CMD%" build smoke.vit -o smoke' "$dest/bin/vitte-installer-doctor.cmd" >/dev/null
 }
 
 "$ROOT_DIR/scripts_build/package-matrix.sh" list >/dev/null

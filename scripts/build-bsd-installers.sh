@@ -209,8 +209,8 @@ Installed in:
 
 After installation, run:
 
-    vitte --help
-    vitte doctor
+    /usr/local/bin/vitte --help
+    /usr/local/bin/vitte-installer-doctor
 EOF
 }
 

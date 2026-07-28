@@ -120,7 +120,7 @@ fi
 
 path_vitte=$(command -v vitte 2>/dev/null || true)
 if [ -n "$path_vitte" ] && [ "$path_vitte" != "$bindir/vitte" ]; then
-  fail "PATH resolves vitte to a different installation: $path_vitte"
+  line "WARN PATH resolves vitte to a different installation: $path_vitte"
   line "hint: put $bindir before older Vitte entries in PATH"
 fi
 

@@ -33,6 +33,18 @@ verify_optional_sum() {
   [ ! -e "$file" ] || verify_sum "$file"
 }
 
+verify_relocatable_wrapper() {
+  label=$1
+  command=$2
+  wrapper_text=$3
+  printf '%s\n' "$wrapper_text" | grep -F 'prefix=${VITTE_INSTALL_PREFIX:-${bindir%/bin}}' >/dev/null ||
+    die "$label wrapper does not derive prefix for $command"
+  printf '%s\n' "$wrapper_text" | grep -F 'export VITTE_ROOT=${VITTE_ROOT:-$prefix/share/vitte}' >/dev/null ||
+    die "$label wrapper does not derive VITTE_ROOT from prefix for $command"
+  printf '%s\n' "$wrapper_text" | grep -F "exec \"\$prefix/libexec/vitte/$command\" \"\$@\"" >/dev/null ||
+    die "$label wrapper does not exec relocatable libexec $command"
+}
+
 verify_deb() {
   arch=$1
   file=$OUT_DIR/vitte_${VERSION}_${arch}.deb
@@ -50,8 +62,8 @@ verify_deb() {
   bsdtar -tf "$tmp/control.tar.gz" | grep -Eq '^(\./)?prerm$' || die "Debian package missing prerm: $file"
   bsdtar -tf "$tmp/data.tar.gz" | grep -Eq '^(\./)?usr/local/share/vitte/INSTALLATION.json$' || die "Debian package missing INSTALLATION.json: $file"
   for command in vitte vittec; do
-    bsdtar -xOf "$tmp/data.tar.gz" "./usr/local/bin/$command" 2>/dev/null | grep -F "/usr/local/libexec/vitte/$command" >/dev/null ||
-      die "Debian wrapper does not exec libexec $command: $file"
+    wrapper_text=$(bsdtar -xOf "$tmp/data.tar.gz" "./usr/local/bin/$command" 2>/dev/null || true)
+    verify_relocatable_wrapper "Debian" "$command" "$wrapper_text"
   done
   bsdtar -tf "$tmp/data.tar.gz" | grep -Eq '^(\./)?usr/local/bin/vitte-installer-doctor$' ||
     die "Debian package missing installer doctor: $file"
@@ -109,8 +121,8 @@ for bsd_kit in "$OUT_DIR"/vitte-"$VERSION"-*-*-installer.tar.xz; do
       die "BSD installer missing payload component $component: $bsd_kit"
   done
   for command in vitte vittec; do
-    tar -xOf "$bsd_kit" "root/usr/local/bin/$command" 2>/dev/null | grep -F "/usr/local/libexec/vitte/$command" >/dev/null ||
-      die "BSD wrapper does not exec libexec $command: $bsd_kit"
+    wrapper_text=$(tar -xOf "$bsd_kit" "root/usr/local/bin/$command" 2>/dev/null || true)
+    verify_relocatable_wrapper "BSD" "$command" "$wrapper_text"
   done
   scripts_build_tar_list_xz "$bsd_kit" | grep -Fx 'root/usr/local/bin/vitte-installer-doctor' >/dev/null ||
     die "BSD installer missing installer doctor: $bsd_kit"

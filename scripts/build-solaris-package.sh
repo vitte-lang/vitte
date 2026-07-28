@@ -208,7 +208,8 @@ for command in \
   /usr/local/bin/vittec \
   /usr/local/bin/vitte \
   /usr/local/libexec/vitte/vitte \
-  /usr/local/libexec/vitte/vittec \do
+  /usr/local/libexec/vitte/vittec
+do
   if [ -f "$command" ]; then
     chmod 0755 "$command"
   fi
