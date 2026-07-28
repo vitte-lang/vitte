@@ -16,6 +16,12 @@ typedef struct Buffer {
   size_t cap;
 } Buffer;
 
+typedef struct RunResult {
+  Buffer stdout_buf;
+  Buffer stderr_buf;
+  int status;
+} RunResult;
+
 static int buffer_append(Buffer *buffer, const char *data, size_t len) {
   if (len == 0) {
     return 0;
@@ -590,39 +596,24 @@ static int set_nonblock(int fd) {
   return fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 }
 
-int main(int argc, char **argv) {
-  int explain_status = run_explain_command(argc, argv);
-  if (explain_status >= 0) {
-    return explain_status;
-  }
-
-  char *engine = engine_path_from_argv0(argv[0]);
+static int run_engine_capture(char *const exec_argv[], RunResult *result) {
   int out_pipe[2];
   int err_pipe[2];
-  Buffer stdout_buf = {0};
-  Buffer stderr_buf = {0};
-  int french = wants_french(argc, argv);
+  result->stdout_buf = (Buffer){0};
+  result->stderr_buf = (Buffer){0};
+  result->status = 0;
 
-  if (engine == NULL) {
-    fprintf(stderr, "[vitte][error] E_CLI_IO: cannot allocate engine path\n");
-    return 125;
-  }
-  if (access(engine, X_OK) != 0) {
-    fprintf(stderr, "[vitte][error] E_CLI_IO: missing runtime engine: %s\n", engine);
-    free(engine);
-    return 125;
-  }
   if (pipe(out_pipe) != 0 || pipe(err_pipe) != 0) {
-    fprintf(stderr, "[vitte][error] E_CLI_IO: cannot create runtime pipes\n");
-    free(engine);
-    return 125;
+    return -1;
   }
 
   pid_t pid = fork();
   if (pid < 0) {
-    fprintf(stderr, "[vitte][error] E_CLI_IO: cannot fork runtime engine\n");
-    free(engine);
-    return 125;
+    close(out_pipe[0]);
+    close(out_pipe[1]);
+    close(err_pipe[0]);
+    close(err_pipe[1]);
+    return -1;
   }
   if (pid == 0) {
     close(out_pipe[0]);
@@ -631,8 +622,7 @@ int main(int argc, char **argv) {
     dup2(err_pipe[1], STDERR_FILENO);
     close(out_pipe[1]);
     close(err_pipe[1]);
-    argv[0] = engine;
-    execv(engine, argv);
+    execv(exec_argv[0], exec_argv);
     _exit(127);
   }
 
@@ -665,7 +655,7 @@ int main(int argc, char **argv) {
     if (out_open && FD_ISSET(out_pipe[0], &reads)) {
       ssize_t n = read(out_pipe[0], chunk, sizeof(chunk));
       if (n > 0) {
-        if (buffer_append(&stdout_buf, chunk, (size_t)n) != 0) {
+        if (buffer_append(&result->stdout_buf, chunk, (size_t)n) != 0) {
           out_open = 0;
         }
       } else if (n == 0) {
@@ -676,7 +666,7 @@ int main(int argc, char **argv) {
     if (err_open && FD_ISSET(err_pipe[0], &reads)) {
       ssize_t n = read(err_pipe[0], chunk, sizeof(chunk));
       if (n > 0) {
-        if (buffer_append(&stderr_buf, chunk, (size_t)n) != 0) {
+        if (buffer_append(&result->stderr_buf, chunk, (size_t)n) != 0) {
           err_open = 0;
         }
       } else if (n == 0) {
@@ -686,38 +676,120 @@ int main(int argc, char **argv) {
     }
   }
 
-  int status = 0;
-  while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {
+  while (waitpid(pid, &result->status, 0) < 0 && errno == EINTR) {
   }
+  return 0;
+}
 
-  if (output_has_type_mismatch(stdout_buf.data) || output_has_type_mismatch(stderr_buf.data)) {
+static int result_exit_code(const RunResult *result) {
+  if (WIFEXITED(result->status)) {
+    return WEXITSTATUS(result->status);
+  }
+  if (WIFSIGNALED(result->status)) {
+    return 128 + WTERMSIG(result->status);
+  }
+  return 125;
+}
+
+static void free_run_result(RunResult *result) {
+  free(result->stdout_buf.data);
+  free(result->stderr_buf.data);
+  result->stdout_buf = (Buffer){0};
+  result->stderr_buf = (Buffer){0};
+}
+
+static int emit_result(int argc, char **argv, int french, RunResult *result) {
+  if (output_has_type_mismatch(result->stdout_buf.data) || output_has_type_mismatch(result->stderr_buf.data)) {
     if (wants_diagnostics_json(argc, argv)) {
       write_type_mismatch_json(french);
-      free(stdout_buf.data);
-      free(stderr_buf.data);
-      free(engine);
-      return WIFEXITED(status) ? WEXITSTATUS(status) : 1;
+      return result_exit_code(result);
     }
     if (wants_diagnostics_lsp(argc, argv)) {
       write_type_mismatch_lsp(french);
-      free(stdout_buf.data);
-      free(stderr_buf.data);
-      free(engine);
-      return WIFEXITED(status) ? WEXITSTATUS(status) : 1;
+      return result_exit_code(result);
     }
   }
 
-  write_localized(STDOUT_FILENO, &stdout_buf, french);
-  write_localized(STDERR_FILENO, &stderr_buf, french);
+  write_localized(STDOUT_FILENO, &result->stdout_buf, french);
+  write_localized(STDERR_FILENO, &result->stderr_buf, french);
+  return result_exit_code(result);
+}
 
-  free(stdout_buf.data);
-  free(stderr_buf.data);
+static const char *build_preflight_source(int argc, char **argv) {
+  if (argc < 3 || strcmp(argv[1], "build") != 0) {
+    return NULL;
+  }
+  for (int i = 2; i < argc; ++i) {
+    const char *arg = argv[i];
+    if (strcmp(arg, "--") == 0 && i + 1 < argc) {
+      return argv[i + 1];
+    }
+    if (strcmp(arg, "--src") == 0 && i + 1 < argc) {
+      return argv[i + 1];
+    }
+    if (strcmp(arg, "-o") == 0 || strcmp(arg, "--out") == 0 || strcmp(arg, "--lang") == 0 ||
+        strcmp(arg, "--target") == 0 || strcmp(arg, "--runtime-profile") == 0 ||
+        strcmp(arg, "--stdlib-profile") == 0 || strcmp(arg, "--stage") == 0 ||
+        strcmp(arg, "--from") == 0 || strcmp(arg, "--port") == 0 || strcmp(arg, "--fqbn") == 0) {
+      i += 1;
+      continue;
+    }
+    if (starts_with(arg, "--")) {
+      continue;
+    }
+    if (arg[0] == '-') {
+      continue;
+    }
+    return arg;
+  }
+  return NULL;
+}
+
+int main(int argc, char **argv) {
+  int explain_status = run_explain_command(argc, argv);
+  if (explain_status >= 0) {
+    return explain_status;
+  }
+
+  char *engine = engine_path_from_argv0(argv[0]);
+  int french = wants_french(argc, argv);
+
+  if (engine == NULL) {
+    fprintf(stderr, "[vitte][error] E_CLI_IO: cannot allocate engine path\n");
+    return 125;
+  }
+  if (access(engine, X_OK) != 0) {
+    fprintf(stderr, "[vitte][error] E_CLI_IO: missing runtime engine: %s\n", engine);
+    free(engine);
+    return 125;
+  }
+  const char *build_source = build_preflight_source(argc, argv);
+  if (build_source != NULL) {
+    char *preflight_argv[] = {engine, "check", (char *)build_source, NULL};
+    RunResult preflight = {0};
+    if (run_engine_capture(preflight_argv, &preflight) != 0) {
+      fprintf(stderr, "[vitte][error] E_CLI_IO: cannot run build diagnostic preflight\n");
+      free(engine);
+      return 125;
+    }
+    if (result_exit_code(&preflight) != 0) {
+      int rc = emit_result(argc, argv, french, &preflight);
+      free_run_result(&preflight);
+      free(engine);
+      return rc;
+    }
+    free_run_result(&preflight);
+  }
+
+  argv[0] = engine;
+  RunResult result = {0};
+  if (run_engine_capture(argv, &result) != 0) {
+    fprintf(stderr, "[vitte][error] E_CLI_IO: cannot run runtime engine\n");
+    free(engine);
+    return 125;
+  }
+  int rc = emit_result(argc, argv, french, &result);
+  free_run_result(&result);
   free(engine);
-  if (WIFEXITED(status)) {
-    return WEXITSTATUS(status);
-  }
-  if (WIFSIGNALED(status)) {
-    return 128 + WTERMSIG(status);
-  }
-  return 125;
+  return rc;
 }

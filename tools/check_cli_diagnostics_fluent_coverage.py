@@ -19,6 +19,8 @@ CALL_RE = re.compile(
 
 IGNORED_TOKENS = {
     "PARSE_",
+    "P1",
+    "P3",
     "PATH",
     "PL",
     "PT",

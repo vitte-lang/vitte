@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -32,6 +33,22 @@ def run(args: list[str]) -> subprocess.CompletedProcess[str]:
 def fail(message: str) -> int:
     print(f"[cli-diagnostics-fluent-runtime][error] {message}", file=sys.stderr)
     return 1
+
+
+def assert_french_text_surface(name: str, proc: subprocess.CompletedProcess[str]) -> str | None:
+    output = proc.stdout + proc.stderr
+    if proc.returncode == 0:
+        return f"{name} diagnostic fixture unexpectedly passed"
+    if EXPECTED_CODE not in output:
+        return f"{name} output missing {EXPECTED_CODE}"
+    if EXPECTED_FR_MESSAGE not in output:
+        return f"{name} output does not carry the Fluent FR message"
+    if EXPECTED_EN_MESSAGE in output:
+        return f"{name} output still carries the default EN diagnostic message"
+    for term in (EXPECTED_CAUSE, EXPECTED_FIX, EXPECTED_EXAMPLE):
+        if term not in output:
+            return f"{name} text output missing rich diagnostic term: {term!r}"
+    return None
 
 
 def main() -> int:
@@ -67,6 +84,21 @@ def main() -> int:
         return fail("diagnostic fixture unexpectedly passed with fr-FR alias")
     if EXPECTED_FR_MESSAGE not in alias_output:
         return fail("fr-FR alias output does not carry the Fluent FR message")
+
+    build_output = ROOT / "target" / "check" / f"fluent-runtime-build-{os.getpid()}"
+    build_output.parent.mkdir(parents=True, exist_ok=True)
+    command_surfaces = (
+        ("check", [str(BIN), "check", str(FIXTURE), "--lang", "fr"]),
+        ("build", [str(BIN), "build", str(FIXTURE), "-o", str(build_output), "--lang", "fr"]),
+        ("run", [str(BIN), "run", str(FIXTURE), "--lang", "fr"]),
+        ("test", [str(BIN), "test", str(FIXTURE), "--lang", "fr"]),
+    )
+    for name, command in command_surfaces:
+        failure = assert_french_text_surface(name, run(command))
+        if failure is not None:
+            return fail(failure)
+    if build_output.exists():
+        return fail("build created an output artifact after localized diagnostic preflight failed")
 
     json_check = run([str(BIN), "check", "--diagnostics-json", str(FIXTURE), "--lang", "fr"])
     if json_check.returncode == 0:
