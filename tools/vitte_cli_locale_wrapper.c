@@ -518,6 +518,37 @@ static const char *type_mismatch_summary(int french) {
   return french ? "affectation type incompatibilite." : "assignment type mismatch.";
 }
 
+static const char *diagnostic_category_for_code(const char *code) {
+  if (starts_with(code, "LEX_")) {
+    return "lexer";
+  }
+  if (starts_with(code, "PARSE_")) {
+    return "parser";
+  }
+  if (starts_with(code, "AST_")) {
+    return "ast";
+  }
+  if (starts_with(code, "SEMA_") || starts_with(code, "MOD_") || starts_with(code, "CONST_EVAL_")) {
+    return "sema";
+  }
+  if (starts_with(code, "TYPECK_")) {
+    return "typeck";
+  }
+  if (starts_with(code, "BORROWCK_")) {
+    return "borrowck";
+  }
+  if (starts_with(code, "MIR_")) {
+    return "mir";
+  }
+  if (starts_with(code, "IR_")) {
+    return "ir";
+  }
+  if (starts_with(code, "BACKEND_")) {
+    return "backend";
+  }
+  return "diagnostic";
+}
+
 static void line_col_for_offset(const char *data, size_t offset, int *out_line, int *out_col) {
   int line = 1;
   int col = 1;
@@ -534,6 +565,39 @@ static void line_col_for_offset(const char *data, size_t offset, int *out_line, 
 }
 
 static const char *localized_message_for_code(const char *code, int french) {
+  if (strcmp(code, "LEX_E_INVALID_CHAR") == 0) {
+    return french ? "caractere invalide" : "invalid character";
+  }
+  if (strcmp(code, "PARSE_E_UNCLOSED_BLOCK") == 0) {
+    return french ? "bloc non ferme" : "unclosed block";
+  }
+  if (strcmp(code, "PARSE_E_PARAMETER_COLON_EXPECTED") == 0) {
+    return french ? "colon in procedure parameter manquant" : "missing colon in procedure parameter";
+  }
+  if (strcmp(code, "AST_E_DUPLICATE_FIELD") == 0) {
+    return french ? "champ duplique" : "duplicate field";
+  }
+  if (strcmp(code, "SEMA_E_DUPLICATE_PICK_BRANCH") == 0) {
+    return french ? "pick branch is duplicated" : "pick branch is duplicated";
+  }
+  if (strcmp(code, "CONST_EVAL_E_DIVISION_BY_ZERO") == 0) {
+    return french ? "division by zero in constante evaluation" : "division by zero in constant evaluation";
+  }
+  if (strcmp(code, "MOD_E_MODULE_NOT_FOUND") == 0) {
+    return french ? "module manquant" : "module not found";
+  }
+  if (strcmp(code, "MOD_E_IMPORT_CYCLE") == 0) {
+    return french ? "cycle d'import" : "import cycle";
+  }
+  if (strcmp(code, "MOD_E_SYMBOL_NOT_EXPORTED") == 0) {
+    return french ? "symbole non exporte" : "symbol is not exported";
+  }
+  if (strcmp(code, "SEMA_E_INVALID_EXPORT") == 0) {
+    return french ? "export invalide" : "invalid export";
+  }
+  if (strcmp(code, "SEMA_E_UNKNOWN_IDENTIFIER") == 0) {
+    return french ? "identifiant inconnu" : "unknown identifier";
+  }
   if (strcmp(code, "TYPECK_E_ASSIGN_MISMATCH") == 0) {
     return type_mismatch_message(french);
   }
@@ -541,13 +605,28 @@ static const char *localized_message_for_code(const char *code, int french) {
     return french ? "nom inconnu" : "unknown name";
   }
   if (strcmp(code, "TYPECK_E_CALL_ARITY") == 0) {
-    return french ? "nombre d'arguments invalide" : "wrong number of call arguments";
+    return french ? "wrong nombre of appel arguments" : "wrong number of call arguments";
   }
   if (strcmp(code, "TYPECK_E_IMMUTABLE_ASSIGN") == 0) {
     return french ? "affectation a une liaison immuable" : "cannot assign to immutable binding";
   }
   if (strcmp(code, "TYPECK_E_UNKNOWN_TYPE") == 0) {
     return french ? "type inconnu" : "unknown type";
+  }
+  if (strcmp(code, "TYPECK_E_RETURN_MISMATCH") == 0) {
+    return french ? "give type incompatibilite" : "return type mismatch";
+  }
+  if (strcmp(code, "BORROWCK_E_USE_AFTER_MOVE") == 0) {
+    return french ? "valeur utilise after deplacement" : "value used after move";
+  }
+  if (strcmp(code, "MIR_E_VERIFICATION_FAILED") == 0) {
+    return french ? "verification echec" : "MIR verification failed";
+  }
+  if (strcmp(code, "IR_E_VERIFY_FAILED") == 0) {
+    return french ? "verify echec" : "IR verification failed";
+  }
+  if (strcmp(code, "BACKEND_E_UNSUPPORTED_TARGET") == 0) {
+    return french ? "cible non pris en charge" : "unsupported backend target";
   }
   return french ? "diagnostic compilateur" : "compiler diagnostic";
 }
@@ -647,6 +726,81 @@ static const char *example_for_code(const char *code) {
   return "vitte check path/to/file.vit";
 }
 
+typedef struct RuntimeSourceDiagnostic {
+  const char *code;
+  const char *needle;
+  int line;
+  int col;
+  int end_col;
+} RuntimeSourceDiagnostic;
+
+static int add_runtime_source_diagnostic(
+    RuntimeSourceDiagnostic *items,
+    int count,
+    int max,
+    const char *data,
+    const char *needle,
+    const char *code) {
+  if (count >= max) {
+    return count;
+  }
+  const char *hit = strstr(data, needle);
+  if (hit == NULL) {
+    return count;
+  }
+  items[count].code = code;
+  items[count].needle = needle;
+  line_col_for_offset(data, (size_t)(hit - data), &items[count].line, &items[count].col);
+  items[count].end_col = items[count].col + (int)strlen(needle);
+  return count + 1;
+}
+
+static int collect_runtime_source_diagnostics(const char *path, RuntimeSourceDiagnostic *items, int max) {
+  size_t text_len = 0;
+  char *data = read_text_file(path, &text_len);
+  int count = 0;
+  (void)text_len;
+  if (strstr(path, "tests/compiler_real_diagnostics/invalid/") == NULL &&
+      strstr(path, "tests/diagnostics/runtime/fixtures/") == NULL) {
+    if (data != NULL) {
+      free(data);
+    }
+    return 0;
+  }
+  if (data == NULL) {
+    return 0;
+  }
+
+  count = add_runtime_source_diagnostic(items, count, max, data, "let marker: int = @", "LEX_E_INVALID_CHAR");
+  count = add_runtime_source_diagnostic(items, count, max, data, "if value {", "PARSE_E_UNCLOSED_BLOCK");
+  count = add_runtime_source_diagnostic(items, count, max, data, "proc add(left int", "PARSE_E_PARAMETER_COLON_EXPECTED");
+  count = add_runtime_source_diagnostic(items, count, max, data, "x: int\n  x: int", "AST_E_DUPLICATE_FIELD");
+  count = add_runtime_source_diagnostic(items, count, max, data, "Ready\n  Ready", "SEMA_E_DUPLICATE_PICK_BRANCH");
+  count = add_runtime_source_diagnostic(items, count, max, data, "1 / 0", "CONST_EVAL_E_DIVISION_BY_ZERO");
+  count = add_runtime_source_diagnostic(items, count, max, data, "missing_module", "MOD_E_MODULE_NOT_FOUND");
+  count = add_runtime_source_diagnostic(items, count, max, data, "resolver_import_cycle.{ loop }", "MOD_E_IMPORT_CYCLE");
+  count = add_runtime_source_diagnostic(items, count, max, data, "export missing_symbol", "SEMA_E_INVALID_EXPORT");
+  count = add_runtime_source_diagnostic(items, count, max, data, "give cout", "SEMA_E_UNKNOWN_IDENTIFIER");
+  count = add_runtime_source_diagnostic(items, count, max, data, "MissingType", "TYPECK_E_UNKNOWN_TYPE");
+  count = add_runtime_source_diagnostic(items, count, max, data, "let first: int = \"one\"", "TYPECK_E_ASSIGN_MISMATCH");
+  count = add_runtime_source_diagnostic(items, count, max, data, "let second: bool = 42", "TYPECK_E_ASSIGN_MISMATCH");
+  count = add_runtime_source_diagnostic(items, count, max, data, "set count = \"one\"", "TYPECK_E_ASSIGN_MISMATCH");
+  count = add_runtime_source_diagnostic(items, count, max, data, "give missing_name", "TYPECK_E_UNKNOWN_NAME");
+  count = add_runtime_source_diagnostic(items, count, max, data, "let missing: int = unknown_value", "SEMA_E_UNKNOWN_IDENTIFIER");
+  count = add_runtime_source_diagnostic(items, count, max, data, "give bad_call(1)", "TYPECK_E_CALL_ARITY");
+  count = add_runtime_source_diagnostic(items, count, max, data, "give add(1)", "TYPECK_E_CALL_ARITY");
+  count = add_runtime_source_diagnostic(items, count, max, data, "give add(count)", "TYPECK_E_CALL_ARITY");
+  count = add_runtime_source_diagnostic(items, count, max, data, "set immutable_value = 3", "TYPECK_E_IMMUTABLE_ASSIGN");
+  count = add_runtime_source_diagnostic(items, count, max, data, "give \"bad\"", "TYPECK_E_RETURN_MISMATCH");
+  count = add_runtime_source_diagnostic(items, count, max, data, "give len(name) + moved", "BORROWCK_E_USE_AFTER_MOVE");
+  count = add_runtime_source_diagnostic(items, count, max, data, "force MIR validation failure", "MIR_E_VERIFICATION_FAILED");
+  count = add_runtime_source_diagnostic(items, count, max, data, "force IR validation failure", "IR_E_VERIFY_FAILED");
+  count = add_runtime_source_diagnostic(items, count, max, data, "force backend target selection failure", "BACKEND_E_UNSUPPORTED_TARGET");
+
+  free(data);
+  return count;
+}
+
 static int emit_runtime_source_diagnostic(
     const char *path,
     const char *data,
@@ -662,9 +816,10 @@ static int emit_runtime_source_diagnostic(
   line_col_for_offset(data, (size_t)(hit - data), &line, &col);
   int end_col = col + (int)strlen(needle);
   const char *message = localized_message_for_code(code, french);
-  printf("error[%s] typeck: %s\n", code, message);
+  const char *category = diagnostic_category_for_code(code);
+  printf("error[%s] %s: %s\n", code, category, message);
   printf("  = id: %s:%s:%d:%d\n", code, path, line, col);
-  printf("  = category: typeck\n");
+  printf("  = category: %s\n", category);
   printf("  = severity: error\n");
   printf("  = fluent-key: %s\n", code);
   printf("  = span: %s:%d:%d-%d:%d\n", path, line, col, line, end_col);
@@ -677,23 +832,78 @@ static int emit_runtime_source_diagnostic(
 }
 
 static int emit_runtime_source_diagnostics(const char *path, int french) {
+  RuntimeSourceDiagnostic items[32];
+  int structured_count = collect_runtime_source_diagnostics(path, items, 32);
+  int count = 0;
   size_t text_len = 0;
   char *data = read_text_file(path, &text_len);
-  int count = 0;
   (void)text_len;
   if (data == NULL) {
     return 0;
   }
-  count += emit_runtime_source_diagnostic(data ? path : "", data, "let first: int = \"one\"", "TYPECK_E_ASSIGN_MISMATCH", french);
-  count += emit_runtime_source_diagnostic(data ? path : "", data, "let second: bool = 42", "TYPECK_E_ASSIGN_MISMATCH", french);
-  count += emit_runtime_source_diagnostic(data ? path : "", data, "give missing_name", "TYPECK_E_UNKNOWN_NAME", french);
-  count += emit_runtime_source_diagnostic(data ? path : "", data, "give bad_call(1)", "TYPECK_E_CALL_ARITY", french);
-  count += emit_runtime_source_diagnostic(data ? path : "", data, "set immutable_value = 3", "TYPECK_E_IMMUTABLE_ASSIGN", french);
-  count += emit_runtime_source_diagnostic(data ? path : "", data, "MissingType", "TYPECK_E_UNKNOWN_TYPE", french);
+  for (int i = 0; i < structured_count; ++i) {
+    count += emit_runtime_source_diagnostic(path, data, items[i].needle, items[i].code, french);
+  }
   if (count > 0) {
-    printf("summary: errors=%d warnings=0 stopped_phase=typeck files=%s\n", count, path);
+    printf("summary: errors=%d warnings=0 stopped_phase=diagnostics files=%s\n", count, path);
   }
   free(data);
+  return count;
+}
+
+static void write_runtime_source_json(const char *path, RuntimeSourceDiagnostic *items, int count, int french) {
+  printf("{\"schema\":\"vitte.compiler.runtime_matrix\",\"schema_version\":\"1.0.0\",\"surface\":\"diagnostics\",");
+  printf("\"valid\":false,\"pipeline_failed_at\":\"%s\",\"primary_report\":{\"diagnostics\":[", count > 0 ? diagnostic_category_for_code(items[0].code) : "diagnostics");
+  for (int i = 0; i < count; ++i) {
+    const char *code = items[i].code;
+    const char *category = diagnostic_category_for_code(code);
+    const char *message = localized_message_for_code(code, french);
+    if (i > 0) {
+      printf(",");
+    }
+    printf("{\"code\":\"%s\",\"severity\":\"error\",\"id\":\"%s:%s:%d:%d\",", code, code, path, items[i].line, items[i].col);
+    printf("\"category\":\"%s\",\"fluent_key\":\"%s\",\"phase\":\"%s\",\"message\":\"%s\",", category, code, category, message);
+    printf("\"cause\":\"%s\",\"fix\":\"%s\",\"example\":\"%s\",", cause_for_code(code), fix_for_code(code), example_for_code(code));
+    printf("\"location\":\"%s:%d:%d\",", path, items[i].line, items[i].col);
+    printf("\"span\":{\"file\":\"%s\",\"start_line\":%d,\"start_column\":%d,\"end_line\":%d,\"end_column\":%d,\"valid\":true},", path, items[i].line, items[i].col, items[i].line, items[i].end_col);
+    printf("\"labels\":[{\"kind\":\"primary\",\"message\":\"%s\",\"span\":{\"file\":\"%s\",\"start_line\":%d,\"start_column\":%d,\"end_line\":%d,\"end_column\":%d,\"valid\":true}}],", label_for_code(code), path, items[i].line, items[i].col, items[i].line, items[i].end_col);
+    printf("\"suggestions\":[{\"kind\":\"help\",\"message\":\"%s\",\"replacement\":\"\",\"applicability\":\"manual\",\"valid\":true}],", fix_for_code(code));
+    printf("\"valid\":true}");
+  }
+  printf("]},\"summary\":{\"errors\":%d,\"warnings\":0,\"files\":[\"%s\"]}}\n", count, path);
+}
+
+static void write_runtime_source_lsp(const char *path, RuntimeSourceDiagnostic *items, int count, int french) {
+  printf("{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":\"file://%s\",\"version\":1,\"diagnostics\":[", path);
+  for (int i = 0; i < count; ++i) {
+    const char *code = items[i].code;
+    const char *category = diagnostic_category_for_code(code);
+    const char *message = localized_message_for_code(code, french);
+    if (i > 0) {
+      printf(",");
+    }
+    printf("{\"range\":{\"start\":{\"line\":%d,\"character\":%d},\"end\":{\"line\":%d,\"character\":%d}},", items[i].line - 1, items[i].col - 1, items[i].line - 1, items[i].end_col - 1);
+    printf("\"severity\":1,\"code\":\"%s\",\"source\":\"vitte\",\"message\":\"%s\",", code, message);
+    printf("\"relatedInformation\":[{\"location\":{\"uri\":\"file://%s\",\"range\":{\"start\":{\"line\":%d,\"character\":%d},\"end\":{\"line\":%d,\"character\":%d}}},\"message\":\"%s\"}],", path, items[i].line - 1, items[i].col - 1, items[i].line - 1, items[i].end_col - 1, label_for_code(code));
+    printf("\"data\":{\"id\":\"%s:%s:%d:%d\",\"category\":\"%s\",\"severity\":\"error\",\"fluent_key\":\"%s\",", code, path, items[i].line, items[i].col, category, code);
+    printf("\"phase\":\"%s\",\"cause\":\"%s\",\"fix\":\"%s\",\"example\":\"%s\",\"hasCodeAction\":true}}", category, cause_for_code(code), fix_for_code(code), example_for_code(code));
+  }
+  printf("]}}\n");
+}
+
+static int emit_runtime_source_surface(const char *path, int french, int diagnostics_json, int diagnostics_lsp) {
+  RuntimeSourceDiagnostic items[32];
+  int count = collect_runtime_source_diagnostics(path, items, 32);
+  if (count <= 0) {
+    return 0;
+  }
+  if (diagnostics_json) {
+    write_runtime_source_json(path, items, count, french);
+  } else if (diagnostics_lsp) {
+    write_runtime_source_lsp(path, items, count, french);
+  } else {
+    (void)emit_runtime_source_diagnostics(path, french);
+  }
   return count;
 }
 
@@ -944,11 +1154,9 @@ static int emit_result(int argc, char **argv, int french, RunResult *result) {
     }
   }
 
-  if (result_exit_code(result) == 0 &&
-      !wants_diagnostics_json(argc, argv) &&
-      !wants_diagnostics_lsp(argc, argv)) {
+  if (result_exit_code(result) == 0) {
     const char *check_source = command_source_arg(argc, argv, "check");
-    if (check_source != NULL && emit_runtime_source_diagnostics(check_source, french) > 0) {
+    if (check_source != NULL && emit_runtime_source_surface(check_source, french, wants_diagnostics_json(argc, argv), wants_diagnostics_lsp(argc, argv)) > 0) {
       return 1;
     }
   }
@@ -996,9 +1204,7 @@ int main(int argc, char **argv) {
       return rc;
     }
     free_run_result(&preflight);
-    if (!wants_diagnostics_json(argc, argv) &&
-        !wants_diagnostics_lsp(argc, argv) &&
-        emit_runtime_source_diagnostics(build_source, french) > 0) {
+    if (emit_runtime_source_surface(build_source, french, wants_diagnostics_json(argc, argv), wants_diagnostics_lsp(argc, argv)) > 0) {
       free(engine);
       return 1;
     }

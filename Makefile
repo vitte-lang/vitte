@@ -347,6 +347,12 @@ compiler-real-diagnostics-gate:
 	@test -f target/reports/compiler_real_diagnostics/coverage.json
 	@test -f target/reports/compiler_real_diagnostics/coverage.md
 
+.PHONY: compiler-diagnostics-runtime-matrix-gate
+compiler-diagnostics-runtime-matrix-gate:
+	@python3 tools/compiler_diagnostics_runtime_matrix_gate.py
+	@test -f target/reports/compiler_diagnostics_runtime_matrix/coverage.json
+	@test -f target/reports/compiler_diagnostics_runtime_matrix/coverage.md
+
 .PHONY: runtime-diagnostics-snapshots runtime-diagnostics-update runtime-diagnostics-strict-open-tests
 runtime-diagnostics-snapshots:
 	@python3 tools/runtime_diagnostics_snapshots.py
@@ -2975,7 +2981,7 @@ diagnostic-fuzz:
 
 
 .PHONY: diagnostic-quality
-diagnostic-quality: diagnostic-contracts diagnostic-snapshots diagnostic-fuzz diagnostics-full-coverage diagnostics-cli-blocking diagnostics-blocking-gate counterfactual-diagnostics diagnostic-attribution suggestion-quality runtime-diagnostics-snapshots
+diagnostic-quality: diagnostic-contracts diagnostic-snapshots diagnostic-fuzz diagnostics-full-coverage diagnostics-cli-blocking diagnostics-blocking-gate counterfactual-diagnostics diagnostic-attribution suggestion-quality runtime-diagnostics-snapshots compiler-diagnostics-runtime-matrix-gate
 
 
 .PHONY: platform-bootstrap-59-68

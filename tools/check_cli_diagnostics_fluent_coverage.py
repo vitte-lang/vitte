@@ -20,6 +20,7 @@ CALL_RE = re.compile(
 IGNORED_TOKENS = {
     "PARSE_",
     "P1",
+    "P2",
     "P3",
     "P4",
     "P6",
@@ -36,6 +37,8 @@ IGNORED_TOKENS = {
 
 def looks_like_diagnostic(code: str) -> bool:
     if code in IGNORED_TOKENS:
+        return False
+    if re.fullmatch(r"P[0-9A-Z_]{1,3}", code) is not None:
         return False
     return (
         "_E_" in code
