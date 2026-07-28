@@ -2,19 +2,18 @@ space vitte/compiler/driver
 
 use vitte/compiler/frontend/pipeline.{ FrontendDiagnostic, FrontendOutput, frontend_run }
 use vitte/compiler/analysis/pipeline.{ AnalysisOutput, analysis_run_prechecked }
-use vitte/compiler/analysis/report.{ AnalysisDiagnostic, analysis_diagnostic_with_span, ast_span_length }
+use vitte/compiler/analysis/report.{ AnalysisDiagnostic, analysis_diagnostic_with_span, analysis_diagnostics_as_report, ast_span_length }
 use vitte/compiler/analysis/borrowck.{ BorrowCheckResult, borrow_check_hir_mir }
 use vitte/compiler/analysis/sema.{ SemaModuleImport, SemaModuleSummary, SemaResult, imported_symbols_from_summary, module_import_from_use, run_sema_hir, run_sema_hir_with_imports, summarize_module_hir }
 use vitte/compiler/analysis/sema/errors.{ sema_nearby_symbol }
 use vitte/compiler/analysis/sema/scopes.{ SemaSymbol, SemaSymbolKind, SemaSymbolState, SemaVisibility, sema_symbol_full }
 use vitte/compiler/analysis/typeck/api.{ run_production_typeck_hir }
 use vitte/compiler/analysis/typeck/errors.{ TypeckResult }
-use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, DiagnosticPhase, DiagnosticReport, DiagnosticRenderConfig, DiagnosticStyle, SourceSpan, default_render_config, diagnostic_from_surface, diagnostic_report, diagnostic_report_empty, phase_name, render_report, span_range }
+use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, DiagnosticPhase, DiagnosticReport, DiagnosticRenderConfig, DiagnosticSeverity, DiagnosticStyle, SourceSpan, default_render_config, diagnostic_from_surface, diagnostic_report, diagnostic_report_empty, diagnostic_report_merge, phase_name, render_report, span_range }
 use vitte/compiler/diagnostics/json.{ json_report, json_report_envelope, json_report_envelope_with_canonical_context }
 use vitte/compiler/infrastructure/incremental.{ IncrementalGraph, build_analysis_graph }
 use vitte/compiler/middle/hir.{ HirExpr, HirItem, HirItemKind, HirStmt, HirUnit, hir_module_empty }
 use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
-use vitte/compiler/middle/pipeline.{ MiddleOutput, middle_run_frontend_for_target }
 use vitte/compiler/middle/lower/hir_to_mir.{ lower_hir_to_mir }
 use vitte/compiler/middle/lower/mir_to_ir.{ lower_mir_as_ir_module }
 use vitte/compiler/middle/mir.{ MirUnit, mir_module_empty }
@@ -371,6 +370,57 @@ proc driver_diagnostic(level: DriverDiagnosticLevel, stage: string, code: string
     };
 }
 
+proc driver_level_from_diagnostic_severity(severity: DiagnosticSeverity) -> DriverDiagnosticLevel {
+    if severity == DiagnosticSeverity.Help or severity == DiagnosticSeverity.Note {
+        give DriverDiagnosticLevel.Note;
+    }
+    if severity == DiagnosticSeverity.Warning {
+        give DriverDiagnosticLevel.Warning;
+    }
+    give DriverDiagnosticLevel.Error;
+}
+
+proc driver_diagnostic_from_canonical(diagnostic0: Diagnostic) -> DriverDiagnostic {
+    let message0: string = diagnostic0.message;
+    if message0 == "" {
+        set message0 = diagnostic0.title;
+    }
+    if message0 == "" {
+        set message0 = diagnostic0.code;
+    }
+    give driver_diagnostic(
+        driver_level_from_diagnostic_severity(diagnostic0.severity),
+        phase_name(diagnostic0.phase),
+        diagnostic0.code,
+        message0
+    );
+}
+
+proc driver_diagnostics_from_report(report: DiagnosticReport) -> [DriverDiagnostic] {
+    let out: [DriverDiagnostic] = [];
+    let i: u64 = 0;
+    while i < len(report.diagnostics) {
+        let diagnostic0: Diagnostic = report.diagnostics[i];
+        if diagnostic0.valid and diagnostic0.code != "" {
+            set out = out + [driver_diagnostic_from_canonical(diagnostic0)];
+        }
+        set i = i + 1;
+    }
+    give out;
+}
+
+proc filter_diagnostic_phase_report(diags: [Diagnostic], phase: DiagnosticPhase) -> DiagnosticReport {
+    let out: [Diagnostic] = [];
+    let i: u64 = 0;
+    while i < len(diags) {
+        if diags[i].phase == phase {
+            set out = out + [diags[i]];
+        }
+        set i = i + 1;
+    }
+    give diagnostic_report(out);
+}
+
 proc config_diagnostics(config: DriverCompileConfig) -> [DriverDiagnostic] {
     let diagnostics: [DriverDiagnostic] = [];
     if config.emit_debug_sections and not config.debug_enabled {
@@ -646,6 +696,37 @@ proc frontend_compile_result(status: DriverExitStatus, message: string, ir_valid
     };
 }
 
+proc frontend_compile_result_with_diagnostics(status: DriverExitStatus, message: string, ir_valid: bool, fe: FrontendOutput, config: DriverCompileConfig, diagnostics: [DriverDiagnostic]) -> DriverCompileResult {
+    let base: DriverCompileResult = frontend_compile_result(status, message, ir_valid, fe, config);
+    give DriverCompileResult {
+        status: base.status,
+        message: base.message,
+        ir_valid: base.ir_valid,
+        backend_name: base.backend_name,
+        target_name: base.target_name,
+        profile_name: base.profile_name,
+        opt_level: base.opt_level,
+        packaging: base.packaging,
+        deterministic: base.deterministic,
+        debug_enabled: base.debug_enabled,
+        emit_debug_sections: base.emit_debug_sections,
+        lto_enabled: base.lto_enabled,
+        pgo_mode: base.pgo_mode,
+        prefer_native_toolchain: base.prefer_native_toolchain,
+        llvm_toolchain_summary: base.llvm_toolchain_summary,
+        codegen_object_format: base.codegen_object_format,
+        codegen_section_count: base.codegen_section_count,
+        diagnostics: diagnostics,
+        grammar_version: base.grammar_version,
+        token_count: base.token_count,
+        toplevel_count: base.toplevel_count,
+        stmt_count: base.stmt_count,
+        expr_count: base.expr_count,
+        type_count: base.type_count,
+        pattern_count: base.pattern_count
+    };
+}
+
 form DriverAnalysisArtifacts {
     frontend: FrontendOutput
     hir: HirUnit
@@ -682,6 +763,40 @@ form DriverDiagnosticPhaseReports {
     linker: DiagnosticReport
     runtime_execution: DiagnosticReport
     valid: bool
+}
+
+proc driver_diagnostics_from_phase_reports(reports: DriverDiagnosticPhaseReports) -> [DriverDiagnostic] {
+    let diagnostics: [DriverDiagnostic] = [];
+    set diagnostics = diagnostics + driver_diagnostics_from_report(reports.lexer);
+    set diagnostics = diagnostics + driver_diagnostics_from_report(reports.parser);
+    set diagnostics = diagnostics + driver_diagnostics_from_report(reports.ast_validation);
+    set diagnostics = diagnostics + driver_diagnostics_from_report(reports.module_resolution);
+    set diagnostics = diagnostics + driver_diagnostics_from_report(reports.symbol_resolution);
+    set diagnostics = diagnostics + driver_diagnostics_from_report(reports.sema);
+    set diagnostics = diagnostics + driver_diagnostics_from_report(reports.typeck);
+    set diagnostics = diagnostics + driver_diagnostics_from_report(reports.borrowck);
+    set diagnostics = diagnostics + driver_diagnostics_from_report(reports.mir_lowering);
+    set diagnostics = diagnostics + driver_diagnostics_from_report(reports.mir_verification);
+    set diagnostics = diagnostics + driver_diagnostics_from_report(reports.backend);
+    set diagnostics = diagnostics + driver_diagnostics_from_report(reports.linker);
+    set diagnostics = diagnostics + driver_diagnostics_from_report(reports.runtime_execution);
+    give diagnostics;
+}
+
+proc driver_phase_reports_have_errors(reports: DriverDiagnosticPhaseReports) -> bool {
+    give not reports.lexer.valid
+        or not reports.parser.valid
+        or not reports.ast_validation.valid
+        or not reports.module_resolution.valid
+        or not reports.symbol_resolution.valid
+        or not reports.sema.valid
+        or not reports.typeck.valid
+        or not reports.borrowck.valid
+        or not reports.mir_lowering.valid
+        or not reports.mir_verification.valid
+        or not reports.backend.valid
+        or not reports.linker.valid
+        or not reports.runtime_execution.valid;
 }
 
 form DriverDiagnosticSurface {
@@ -1761,27 +1876,40 @@ proc driver_primary_diagnostic_report_from_artifacts(source_path: string, artifa
 
 proc driver_diagnostic_phase_reports_from_artifacts(source_path: string, artifacts: DriverAnalysisArtifacts) -> DriverDiagnosticPhaseReports {
     let fe: FrontendOutput = artifacts.frontend;
+    let analysis_report0: DiagnosticReport = analysis_diagnostics_as_report(artifacts.analysis.diagnostics);
     let lexer_report0: DiagnosticReport = filter_frontend_phase_report(fe.diagnostics, DiagnosticPhase.Lexer);
     let parser_report0: DiagnosticReport = filter_frontend_phase_report(fe.diagnostics, DiagnosticPhase.Parser);
     let ast_validation_report0: DiagnosticReport = filter_frontend_phase_report(fe.diagnostics, DiagnosticPhase.AstValidation);
-    let module_resolution_report0: DiagnosticReport = diagnostic_report_empty();
-    let symbol_resolution_report0: DiagnosticReport = diagnostic_report_empty();
-    let sema_report0: DiagnosticReport = diagnostic_report_empty();
+    let module_resolution_report0: DiagnosticReport = filter_diagnostic_phase_report(analysis_report0.diagnostics, DiagnosticPhase.ModuleResolution);
+    let symbol_resolution_report0: DiagnosticReport = filter_diagnostic_phase_report(analysis_report0.diagnostics, DiagnosticPhase.SymbolResolution);
+    let sema_report0: DiagnosticReport = diagnostic_report_merge(
+        filter_diagnostic_phase_report(analysis_report0.diagnostics, DiagnosticPhase.Sema),
+        filter_diagnostic_phase_report(analysis_report0.diagnostics, DiagnosticPhase.Hir)
+    );
     let typeck_report0: DiagnosticReport = if artifacts.frontend.valid and artifacts.resolved_hir.valid {
-        run_production_typeck_hir(artifacts.resolved_hir).report
+        diagnostic_report_merge(
+            filter_diagnostic_phase_report(analysis_report0.diagnostics, DiagnosticPhase.Typeck),
+            run_production_typeck_hir(artifacts.resolved_hir).report
+        )
     } else {
-        diagnostic_report_empty()
+        filter_diagnostic_phase_report(analysis_report0.diagnostics, DiagnosticPhase.Typeck)
     };
     let borrow_report0: DiagnosticReport = if artifacts.frontend.valid and artifacts.typed_hir.valid and artifacts.mir.valid {
-        diagnostic_report(borrow_check_hir_mir(source_path, artifacts.typed_hir, artifacts.mir).diagnostics)
+        diagnostic_report_merge(
+            filter_diagnostic_phase_report(analysis_report0.diagnostics, DiagnosticPhase.Borrowck),
+            diagnostic_report(borrow_check_hir_mir(source_path, artifacts.typed_hir, artifacts.mir).diagnostics)
+        )
     } else {
-        diagnostic_report_empty()
+        filter_diagnostic_phase_report(analysis_report0.diagnostics, DiagnosticPhase.Borrowck)
     };
-    let mir_lowering_report0: DiagnosticReport = diagnostic_report_empty();
-    let mir_verification_report0: DiagnosticReport = diagnostic_report_empty();
-    let backend_report0: DiagnosticReport = diagnostic_report_empty();
-    let linker_report0: DiagnosticReport = diagnostic_report_empty();
-    let runtime_execution_report0: DiagnosticReport = diagnostic_report_empty();
+    let mir_lowering_report0: DiagnosticReport = filter_diagnostic_phase_report(analysis_report0.diagnostics, DiagnosticPhase.MirLowering);
+    let mir_verification_report0: DiagnosticReport = diagnostic_report_merge(
+        filter_diagnostic_phase_report(analysis_report0.diagnostics, DiagnosticPhase.Mir),
+        filter_diagnostic_phase_report(analysis_report0.diagnostics, DiagnosticPhase.MirVerification)
+    );
+    let backend_report0: DiagnosticReport = filter_diagnostic_phase_report(analysis_report0.diagnostics, DiagnosticPhase.Backend);
+    let linker_report0: DiagnosticReport = filter_diagnostic_phase_report(analysis_report0.diagnostics, DiagnosticPhase.Linker);
+    let runtime_execution_report0: DiagnosticReport = filter_diagnostic_phase_report(analysis_report0.diagnostics, DiagnosticPhase.RuntimeExecution);
     give DriverDiagnosticPhaseReports {
         lexer: lexer_report0,
         parser: parser_report0,
@@ -1821,44 +1949,21 @@ proc dump_diagnostics_json(source_path: string, source_text: string) -> string {
     let canonical_context0: DriverCanonicalContext = driver_canonical_context_from_artifacts(source_path, artifacts);
     let fe: FrontendOutput = artifacts.frontend;
     let analysis: AnalysisOutput = artifacts.analysis;
-    let lexer_report0: DiagnosticReport = filter_frontend_phase_report(fe.diagnostics, DiagnosticPhase.Lexer);
-    let parser_report0: DiagnosticReport = filter_frontend_phase_report(fe.diagnostics, DiagnosticPhase.Parser);
-    let ast_validation_report0: DiagnosticReport = filter_frontend_phase_report(fe.diagnostics, DiagnosticPhase.AstValidation);
-    let module_resolution_report0: DiagnosticReport = diagnostic_report_empty();
-    let symbol_resolution_report0: DiagnosticReport = diagnostic_report_empty();
-    let sema_report0: DiagnosticReport = diagnostic_report_empty();
-    let typeck_report0: DiagnosticReport = if artifacts.frontend.valid and artifacts.resolved_hir.valid {
-        run_production_typeck_hir(artifacts.resolved_hir).report
-    } else {
-        diagnostic_report_empty()
-    };
-    let borrow_report0: DiagnosticReport = if artifacts.frontend.valid and artifacts.typed_hir.valid and artifacts.mir.valid {
-        diagnostic_report(borrow_check_hir_mir(source_path, artifacts.typed_hir, artifacts.mir).diagnostics)
-    } else {
-        diagnostic_report_empty()
-    };
-    let mir_lowering_report0: DiagnosticReport = diagnostic_report_empty();
-    let mir_verification_report0: DiagnosticReport = diagnostic_report_empty();
-    let backend_report0: DiagnosticReport = diagnostic_report_empty();
-    let linker_report0: DiagnosticReport = diagnostic_report_empty();
-    let runtime_execution_report0: DiagnosticReport = diagnostic_report_empty();
-    let primary_report0: DiagnosticReport = if len(lexer_report0.diagnostics) > 0 {
-        lexer_report0
-    } else {
-        if len(parser_report0.diagnostics) > 0 {
-            parser_report0
-        } else {
-            if len(ast_validation_report0.diagnostics) > 0 {
-                ast_validation_report0
-            } else {
-                if len(typeck_report0.diagnostics) > 0 {
-                    typeck_report0
-                } else {
-                    borrow_report0
-                }
-            }
-        }
-    };
+    let phase_reports0: DriverDiagnosticPhaseReports = driver_diagnostic_phase_reports_from_artifacts(source_path, artifacts);
+    let lexer_report0: DiagnosticReport = phase_reports0.lexer;
+    let parser_report0: DiagnosticReport = phase_reports0.parser;
+    let ast_validation_report0: DiagnosticReport = phase_reports0.ast_validation;
+    let module_resolution_report0: DiagnosticReport = phase_reports0.module_resolution;
+    let symbol_resolution_report0: DiagnosticReport = phase_reports0.symbol_resolution;
+    let sema_report0: DiagnosticReport = phase_reports0.sema;
+    let typeck_report0: DiagnosticReport = phase_reports0.typeck;
+    let borrow_report0: DiagnosticReport = phase_reports0.borrowck;
+    let mir_lowering_report0: DiagnosticReport = phase_reports0.mir_lowering;
+    let mir_verification_report0: DiagnosticReport = phase_reports0.mir_verification;
+    let backend_report0: DiagnosticReport = phase_reports0.backend;
+    let linker_report0: DiagnosticReport = phase_reports0.linker;
+    let runtime_execution_report0: DiagnosticReport = phase_reports0.runtime_execution;
+    let primary_report0: DiagnosticReport = driver_primary_diagnostic_report_from_artifacts(source_path, artifacts);
     let pipeline_failed_at0: string = canonical_context0.pipeline_failed_at;
     let pipeline_failure_reason0: string = canonical_context0.pipeline_failure_reason;
     let text_config0: DiagnosticRenderConfig = DiagnosticRenderConfig {
@@ -1994,23 +2099,64 @@ proc check_source_with_config(source_path: string, source_text: string, config: 
         give unsupported_config_result(config, support_error);
     }
 
-    let fe: FrontendOutput = frontend_run(source_path, source_text);
-    if not fe.valid {
-        give frontend_compile_result(DriverExitStatus.FrontendFailure, "frontend failed", false, fe, config);
-    }
+    let artifacts: DriverAnalysisArtifacts = analyze_source(source_path, source_text);
+    let fe: FrontendOutput = artifacts.frontend;
+    let phase_reports0: DriverDiagnosticPhaseReports = driver_diagnostic_phase_reports_from_artifacts(source_path, artifacts);
+    let diagnostics0: [DriverDiagnostic] = config_diagnostics(config) + driver_diagnostics_from_phase_reports(phase_reports0);
+
     if fe.token_count > LIMIT_DIAGNOSTICS_MAX {
-        give frontend_compile_result(DriverExitStatus.InvalidInput, "error[LIMIT_DIAGNOSTICS_MAX]: diagnostic budget exceeded during frontend", false, fe, config);
+        give frontend_compile_result_with_diagnostics(
+            DriverExitStatus.InvalidInput,
+            "error[LIMIT_DIAGNOSTICS_MAX]: diagnostic budget exceeded during frontend",
+            false,
+            fe,
+            config,
+            diagnostics0
+        );
+    }
+    if not fe.valid {
+        give frontend_compile_result_with_diagnostics(
+            DriverExitStatus.FrontendFailure,
+            "frontend failed",
+            false,
+            fe,
+            config,
+            diagnostics0
+        );
+    }
+    if artifacts.hir.symbol_count > LIMIT_SYMBOL_COUNT_MAX {
+        give frontend_compile_result_with_diagnostics(
+            DriverExitStatus.InvalidInput,
+            "error[LIMIT_SYMBOL_COUNT_MAX]: symbol budget exceeded",
+            false,
+            fe,
+            config,
+            diagnostics0
+        );
+    }
+    if driver_phase_reports_have_errors(phase_reports0) or not artifacts.valid {
+        let diagnostics1: [DriverDiagnostic] = diagnostics0;
+        if len(diagnostics1) == len(config_diagnostics(config)) {
+            set diagnostics1 = diagnostics1 + [driver_diagnostic(DriverDiagnosticLevel.Error, "analysis", "ANALYSIS_E_FAILED", "analysis failed without a phase diagnostic")];
+        }
+        give frontend_compile_result_with_diagnostics(
+            DriverExitStatus.AnalysisFailure,
+            "analysis failed",
+            false,
+            fe,
+            config,
+            diagnostics1
+        );
     }
 
-    let middle: MiddleOutput = middle_run_frontend_for_target(fe, target_from_name(config.target_name));
-    if not middle.analysis.valid or not middle.hir.valid or not middle.mir.valid {
-        give frontend_compile_result(DriverExitStatus.AnalysisFailure, "analysis failed", false, fe, config);
-    }
-    if middle.hir.symbol_count > LIMIT_SYMBOL_COUNT_MAX {
-        give frontend_compile_result(DriverExitStatus.InvalidInput, "error[LIMIT_SYMBOL_COUNT_MAX]: symbol budget exceeded", false, fe, config);
-    }
-
-    give frontend_compile_result(DriverExitStatus.Ok, "check pipeline completed", false, fe, config);
+    give frontend_compile_result_with_diagnostics(
+        DriverExitStatus.Ok,
+        "check pipeline completed",
+        false,
+        fe,
+        config,
+        diagnostics0
+    );
 }
 
 proc compile_source(source_path: string, source_text: string) -> DriverCompileResult {
