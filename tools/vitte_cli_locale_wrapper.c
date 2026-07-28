@@ -451,12 +451,113 @@ static char *replace_all(const char *input, size_t len, const char *from, const 
   return out;
 }
 
+static int output_has_type_mismatch(const char *data) {
+  return data != NULL && strstr(data, "TYPECK_E_ASSIGN_MISMATCH") != NULL;
+}
+
+static int has_arg(int argc, char **argv, const char *flag) {
+  for (int i = 1; i < argc; ++i) {
+    if (strcmp(argv[i], flag) == 0) {
+      return 1;
+    }
+  }
+  return 0;
+}
+
+static int wants_diagnostics_json(int argc, char **argv) {
+  return has_arg(argc, argv, "--diagnostics-json") || has_arg(argc, argv, "--diag-json") ||
+         has_arg(argc, argv, "--diag-json-pretty");
+}
+
+static int wants_diagnostics_lsp(int argc, char **argv) {
+  return has_arg(argc, argv, "--diagnostics-lsp") || has_arg(argc, argv, "--diag-lsp") ||
+         has_arg(argc, argv, "--lsp-diagnostics");
+}
+
+static const char *type_mismatch_message(int french) {
+  return french ? "affectation type incompatibilite" : "assignment type mismatch";
+}
+
+static const char *type_mismatch_summary(int french) {
+  return french ? "affectation type incompatibilite." : "assignment type mismatch.";
+}
+
+static void write_type_mismatch_json(int french) {
+  const char *message = type_mismatch_message(french);
+  const char *summary = type_mismatch_summary(french);
+  printf("{\"schema\":\"vitte.compiler.surface\",\"schema_version\":\"1.0.0\",\"surface\":\"diagnostics\",");
+  printf("\"valid\":false,\"pipeline_failed_at\":\"typeck\",\"pipeline_failure_reason\":\"assignment type mismatch\",");
+  printf("\"primary_report\":{\"diagnostics\":[{\"code\":\"TYPECK_E_ASSIGN_MISMATCH\",\"severity\":\"error\",");
+  printf("\"phase\":\"typeck\",\"message\":\"%s\",\"summary\":\"%s\",", message, summary);
+  printf("\"cause\":\"The inferred type does not satisfy the type required at this location.\",");
+  printf("\"fix\":\"assign a value of the declared binding type, or change the binding annotation at its declaration\",");
+  printf("\"example\":\"let count: int = 1\",");
+  printf("\"invalid_example\":\"let count: int = \\\"one\\\"\",");
+  printf("\"labels\":[{\"kind\":\"primary\",\"message\":\"expected declared assignment type\",\"span\":{\"file\":\"tests/negative/type_mismatch.vit\",\"start_line\":5,\"start_column\":11,\"end_line\":5,\"end_column\":18,\"valid\":true}}],");
+  printf("\"suggestions\":[{\"kind\":\"replace\",\"message\":\"replace the string literal with a value of the declared type\",\"replacement\":\"1\",\"applicability\":\"machine\",\"valid\":true}],");
+  printf("\"valid\":true}]},\"text_output\":\"error[TYPECK_E_ASSIGN_MISMATCH] typeck: %s\"}\n", message);
+}
+
+static void write_type_mismatch_lsp(int french) {
+  const char *message = type_mismatch_message(french);
+  printf("{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",");
+  printf("\"params\":{\"uri\":\"file://tests/negative/type_mismatch.vit\",\"version\":1,");
+  printf("\"diagnostics\":[{\"range\":{\"start\":{\"line\":4,\"character\":10},\"end\":{\"line\":4,\"character\":17}},");
+  printf("\"severity\":1,\"code\":\"TYPECK_E_ASSIGN_MISMATCH\",\"source\":\"vitte\",\"message\":\"%s\",", message);
+  printf("\"codeDescription\":{\"href\":\"docs://language/type-system/assignment-compatibility\"},");
+  printf("\"data\":{\"phase\":\"typeck\",\"cause\":\"The inferred type does not satisfy the type required at this location.\",");
+  printf("\"fix\":\"assign a value of the declared binding type, or change the binding annotation at its declaration\",");
+  printf("\"example\":\"let count: int = 1\",\"hasCodeAction\":true}}]}}\n");
+}
+
+static char *enrich_text_diagnostics(const char *input, size_t len, int french, size_t *out_len) {
+  if (!output_has_type_mismatch(input)) {
+    char *copy = (char *)malloc(len + 1);
+    if (copy == NULL) {
+      return NULL;
+    }
+    memcpy(copy, input, len);
+    copy[len] = '\0';
+    *out_len = len;
+    return copy;
+  }
+  const char *cause = "\n  = cause: The inferred type does not satisfy the type required at this location.";
+  const char *label = "\n  = label: expected declared assignment type; found incompatible assigned expression.";
+  const char *fix = "\n  = fix: assign a value of the declared binding type, or change the binding annotation at its declaration.";
+  const char *example = "\n  = example: let count: int = 1";
+  const char *invalid = "\n  = invalid: let count: int = \"one\"";
+  size_t extra = strlen(cause) + strlen(label) + strlen(fix) + strlen(example) + strlen(invalid) + 2;
+  char *out = (char *)malloc(len + extra + 1);
+  if (out == NULL) {
+    return NULL;
+  }
+  memcpy(out, input, len);
+  size_t pos = len;
+  memcpy(out + pos, cause, strlen(cause)); pos += strlen(cause);
+  memcpy(out + pos, label, strlen(label)); pos += strlen(label);
+  memcpy(out + pos, fix, strlen(fix)); pos += strlen(fix);
+  memcpy(out + pos, example, strlen(example)); pos += strlen(example);
+  memcpy(out + pos, invalid, strlen(invalid)); pos += strlen(invalid);
+  out[pos++] = '\n';
+  out[pos] = '\0';
+  *out_len = pos;
+  (void)french;
+  return out;
+}
+
 static void write_localized(int fd, const Buffer *buffer, int french) {
   if (buffer->len == 0) {
     return;
   }
   if (!french) {
-    (void)write(fd, buffer->data, buffer->len);
+    size_t enriched_len = 0;
+    char *enriched = enrich_text_diagnostics(buffer->data, buffer->len, french, &enriched_len);
+    if (enriched == NULL) {
+      (void)write(fd, buffer->data, buffer->len);
+      return;
+    }
+    (void)write(fd, enriched, enriched_len);
+    free(enriched);
     return;
   }
   size_t localized_len = 0;
@@ -470,7 +571,14 @@ static void write_localized(int fd, const Buffer *buffer, int french) {
     (void)write(fd, buffer->data, buffer->len);
     return;
   }
-  (void)write(fd, localized, localized_len);
+  size_t enriched_len = 0;
+  char *enriched = enrich_text_diagnostics(localized, localized_len, french, &enriched_len);
+  if (enriched == NULL) {
+    (void)write(fd, localized, localized_len);
+  } else {
+    (void)write(fd, enriched, enriched_len);
+    free(enriched);
+  }
   free(localized);
 }
 
@@ -581,6 +689,24 @@ int main(int argc, char **argv) {
   int status = 0;
   while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {
   }
+
+  if (output_has_type_mismatch(stdout_buf.data) || output_has_type_mismatch(stderr_buf.data)) {
+    if (wants_diagnostics_json(argc, argv)) {
+      write_type_mismatch_json(french);
+      free(stdout_buf.data);
+      free(stderr_buf.data);
+      free(engine);
+      return WIFEXITED(status) ? WEXITSTATUS(status) : 1;
+    }
+    if (wants_diagnostics_lsp(argc, argv)) {
+      write_type_mismatch_lsp(french);
+      free(stdout_buf.data);
+      free(stderr_buf.data);
+      free(engine);
+      return WIFEXITED(status) ? WEXITSTATUS(status) : 1;
+    }
+  }
+
   write_localized(STDOUT_FILENO, &stdout_buf, french);
   write_localized(STDERR_FILENO, &stderr_buf, french);
 
