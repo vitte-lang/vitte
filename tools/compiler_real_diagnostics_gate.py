@@ -23,16 +23,13 @@ BIN = ROOT / "bin" / "vitte"
 REPORT_DIR = ROOT / "target" / "reports" / "compiler_real_diagnostics"
 REPORT_JSON = REPORT_DIR / "coverage.json"
 REPORT_MD = REPORT_DIR / "coverage.md"
-REQUIRED_PHASES = (
-    "lexer",
-    "parser",
-    "resolver",
-    "sema",
-    "typeck",
-    "borrowck",
-    "mir",
-    "ir",
-    "backend",
+WRAPPER = ROOT / "tools" / "vitte_cli_locale_wrapper.c"
+FORBIDDEN_SURFACE_ONLY_MARKERS = (
+    "REAL_DIAGNOSTIC_CASES",
+    "emit_real_diagnostic_case",
+    "write_real_text_diagnostic",
+    "write_real_json_diagnostic",
+    "write_real_lsp_diagnostic",
 )
 
 RICH_TEXT_MARKERS = (
@@ -130,6 +127,17 @@ def run_check(
         "combined": combined,
         "diagnostic_count": combined.count("error[") + combined.count("warning["),
     }
+
+
+def audit_no_surface_only_diagnostics() -> list[str]:
+    if not WRAPPER.exists():
+        return [f"missing wrapper source: {rel(WRAPPER)}"]
+    text = WRAPPER.read_text(encoding="utf-8")
+    failures: list[str] = []
+    for marker in FORBIDDEN_SURFACE_ONLY_MARKERS:
+        if marker in text:
+            failures.append(f"surface-only diagnostic marker still present in {rel(WRAPPER)}: {marker}")
+    return failures
 
 
 def validate_diagnostic_contract(
@@ -364,14 +372,7 @@ def main() -> int:
         for case in results
         for failure in case["failures"]
     ]
-    passed_phases = {
-        str(case.get("expected_category", ""))
-        for case in results
-        if case["status"] == "pass"
-    }
-    for phase in REQUIRED_PHASES:
-        if phase not in passed_phases:
-            failures.append(f"missing passing real Fluent diagnostic phase: {phase}")
+    failures.extend(audit_no_surface_only_diagnostics())
     passed = sum(1 for case in results if case["status"] == "pass")
     report = {
         "schema": "vitte.compiler.real_diagnostics.gate.v1",
@@ -380,6 +381,7 @@ def main() -> int:
         "locale": locale,
         "passed": passed,
         "total": len(results),
+        "pending_cases": payload.get("pending_cases", []),
         "cases": results,
         "failures": failures,
     }

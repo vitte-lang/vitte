@@ -347,6 +347,21 @@ compiler-real-diagnostics-gate:
 	@test -f target/reports/compiler_real_diagnostics/coverage.json
 	@test -f target/reports/compiler_real_diagnostics/coverage.md
 
+.PHONY: runtime-diagnostics-snapshots runtime-diagnostics-update runtime-diagnostics-strict-open-tests
+runtime-diagnostics-snapshots:
+	@python3 tools/runtime_diagnostics_snapshots.py
+	@test -f target/reports/runtime_diagnostics/coverage.json
+
+runtime-diagnostics-update:
+	@python3 tools/runtime_diagnostics_snapshots.py --write
+	@test -f tests/diagnostics/runtime/text/type_mismatch.check.snap
+	@test -f tests/diagnostics/runtime/text/type_mismatch.build.snap
+	@test -f tests/diagnostics/runtime/json/type_mismatch.check.snap
+	@test -f tests/diagnostics/runtime/lsp/type_mismatch.check.snap
+
+runtime-diagnostics-strict-open-tests:
+	@python3 tools/runtime_diagnostics_snapshots.py --strict-open-tests
+
 compiler-backend-surface-gate: release-binary-gate
 	@python3 tools/compiler_backend_surface_gate.py
 	@test -f target/reports/compiler_backend_surface_gate.json
@@ -2960,7 +2975,7 @@ diagnostic-fuzz:
 
 
 .PHONY: diagnostic-quality
-diagnostic-quality: diagnostic-contracts diagnostic-snapshots diagnostic-fuzz diagnostics-full-coverage diagnostics-cli-blocking diagnostics-blocking-gate counterfactual-diagnostics diagnostic-attribution suggestion-quality
+diagnostic-quality: diagnostic-contracts diagnostic-snapshots diagnostic-fuzz diagnostics-full-coverage diagnostics-cli-blocking diagnostics-blocking-gate counterfactual-diagnostics diagnostic-attribution suggestion-quality runtime-diagnostics-snapshots
 
 
 .PHONY: platform-bootstrap-59-68
