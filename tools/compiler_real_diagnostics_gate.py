@@ -46,6 +46,32 @@ RICH_TEXT_MARKERS = (
 FIX_MARKERS = ("fix-it:", "fix:")
 LOCATION_RE = re.compile(r"[^:\s]+\.vit:\d+:\d+")
 DIAGNOSTIC_ID_RE = re.compile(r"^[A-Z0-9_]+:.+\.vit:\d+:\d+$")
+ERROR_CODE_RE = re.compile(r"error\[([A-Z0-9_]+)\]")
+PHASE_DIRS = {
+    "lexer",
+    "parser",
+    "resolver",
+    "sema",
+    "typeck",
+    "borrowck",
+    "mir",
+    "ir",
+    "backend",
+}
+REQUIRED_MANIFEST_FIELDS = {
+    "id",
+    "phase",
+    "entry",
+    "command",
+    "expected_codes",
+    "expected_order",
+    "expected_locale",
+    "expected_exit_code",
+    "cascade_policy",
+}
+VALID_COMMANDS = {"check", "build"}
+VALID_EXPECTED_ORDERS = {"source-order", "root-cause-order"}
+VALID_CASCADE_POLICIES = {"none", "suppress-derived", "mark-derived"}
 
 
 def rel(path: Path) -> str:
@@ -89,18 +115,23 @@ def expected_category_for_code(code: str) -> str:
     return "diagnostic"
 
 
-def run_check(
+def run_command(
+    case_id: str,
+    command_name: str,
     entry: str,
     locale: str,
     diagnostics_json: bool = False,
     diagnostics_lsp: bool = False,
 ) -> dict[str, Any]:
-    args = [str(BIN), "check"]
+    args = [str(BIN), command_name]
     if diagnostics_json:
         args.append("--diagnostics-json")
     if diagnostics_lsp:
         args.append("--diagnostics-lsp")
-    args.extend([entry, "--lang", locale])
+    args.append(entry)
+    if command_name == "build":
+        args.extend(["-o", f"target/compiler-real-diagnostics/{case_id}"])
+    args.extend(["--lang", locale])
     proc = subprocess.run(
         args,
         cwd=ROOT,
@@ -114,10 +145,11 @@ def run_check(
     return {
         "argv": [
             "bin/vitte",
-            "check",
+            command_name,
             *(["--diagnostics-json"] if diagnostics_json else []),
             *(["--diagnostics-lsp"] if diagnostics_lsp else []),
             entry,
+            *(["-o", f"target/compiler-real-diagnostics/{case_id}"] if command_name == "build" else []),
             "--lang",
             locale,
         ],
@@ -267,40 +299,136 @@ def validate_lsp_output(
     return failures
 
 
+def text_codes(output: str) -> list[str]:
+    return ERROR_CODE_RE.findall(output)
+
+
+def json_diagnostics(output: str) -> tuple[list[dict[str, Any]], list[str]]:
+    try:
+        payload = json.loads(output)
+    except json.JSONDecodeError as exc:
+        return [], [f"JSON output is not stable parseable JSON: {exc}"]
+    diagnostics = payload.get("primary_report", {}).get("diagnostics", [])
+    if not isinstance(diagnostics, list) or not diagnostics:
+        return [], ["JSON output missing primary_report.diagnostics"]
+    if not all(isinstance(item, dict) for item in diagnostics):
+        return [], ["JSON diagnostics must be objects"]
+    return diagnostics, []
+
+
+def lsp_diagnostics(output: str) -> tuple[list[dict[str, Any]], list[str]]:
+    try:
+        payload = json.loads(output)
+    except json.JSONDecodeError as exc:
+        return [], [f"LSP output is not stable parseable JSON: {exc}"]
+    failures: list[str] = []
+    if payload.get("jsonrpc") != "2.0":
+        failures.append(f"LSP jsonrpc mismatch: {payload.get('jsonrpc')!r}")
+    if payload.get("method") != "textDocument/publishDiagnostics":
+        failures.append(f"LSP method mismatch: {payload.get('method')!r}")
+    diagnostics = payload.get("params", {}).get("diagnostics", [])
+    if not isinstance(diagnostics, list) or not diagnostics:
+        return [], [*failures, "LSP output missing params.diagnostics"]
+    if not all(isinstance(item, dict) for item in diagnostics):
+        return [], [*failures, "LSP diagnostics must be objects"]
+    return diagnostics, failures
+
+
+def validate_code_order(actual: list[str], expected: list[str], expected_order: str, label: str) -> list[str]:
+    if actual != expected:
+        return [f"{label} diagnostic {expected_order} mismatch: expected {expected}, got {actual}"]
+    return []
+
+
+def validate_manifest_case(case: dict[str, Any], section: str) -> list[str]:
+    failures: list[str] = []
+    missing = sorted(REQUIRED_MANIFEST_FIELDS - set(case))
+    if missing:
+        failures.append(f"{section} case {case.get('id', '<missing-id>')} missing required fields: {missing}")
+        return failures
+    if not isinstance(case["id"], str) or not case["id"]:
+        failures.append(f"{section} case id must be a non-empty string")
+    if case["phase"] not in PHASE_DIRS:
+        failures.append(f"{section} case {case['id']} phase must be one of {sorted(PHASE_DIRS)}")
+    if not isinstance(case["entry"], str) or not case["entry"]:
+        failures.append(f"{section} case {case['id']} entry must be a non-empty string")
+    elif case["entry"].startswith("tests/compiler_real_diagnostics/invalid/"):
+        parts = Path(case["entry"]).parts
+        try:
+            phase = parts[parts.index("invalid") + 1]
+        except (ValueError, IndexError):
+            phase = ""
+        if phase != case["phase"]:
+            failures.append(f"{section} case {case['id']} phase {case['phase']!r} does not match entry phase {phase!r}")
+    if case["command"] not in VALID_COMMANDS:
+        failures.append(f"{section} case {case['id']} command must be one of {sorted(VALID_COMMANDS)}")
+    if not isinstance(case["expected_codes"], list) or not case["expected_codes"]:
+        failures.append(f"{section} case {case['id']} expected_codes must be a non-empty ordered list")
+    elif not all(isinstance(code, str) and code for code in case["expected_codes"]):
+        failures.append(f"{section} case {case['id']} expected_codes must contain only non-empty strings")
+    if case["expected_order"] not in VALID_EXPECTED_ORDERS:
+        failures.append(f"{section} case {case['id']} expected_order must be one of {sorted(VALID_EXPECTED_ORDERS)}")
+    if not isinstance(case["expected_locale"], str) or not case["expected_locale"]:
+        failures.append(f"{section} case {case['id']} expected_locale must be a non-empty string")
+    if not isinstance(case["expected_exit_code"], int) or case["expected_exit_code"] == 0:
+        failures.append(f"{section} case {case['id']} expected_exit_code must be a non-zero integer")
+    if case["cascade_policy"] not in VALID_CASCADE_POLICIES:
+        failures.append(f"{section} case {case['id']} cascade_policy must be one of {sorted(VALID_CASCADE_POLICIES)}")
+    return failures
+
+
 def validate_case(case: dict[str, Any], locale: str, messages: dict[str, str]) -> dict[str, Any]:
     entry = str(case.get("entry", ""))
-    expected_code = str(case.get("expected_code", ""))
+    command_name = str(case.get("command", "check"))
+    expected_codes = list(case.get("expected_codes", []))
+    expected_code = expected_codes[0] if expected_codes else ""
     expected_category = str(case.get("expected_category") or expected_category_for_code(expected_code))
+    expected_order = str(case.get("expected_order", "source-order"))
     min_count = int(case.get("min_diagnostic_count", 1))
-    result = run_check(entry, locale)
-    json_result = run_check(entry, locale, diagnostics_json=True)
-    lsp_result = run_check(entry, locale, diagnostics_lsp=True)
+    result = run_command(str(case.get("id", "case")), command_name, entry, locale)
+    json_result = run_command(str(case.get("id", "case")), command_name, entry, locale, diagnostics_json=True)
+    lsp_result = run_command(str(case.get("id", "case")), command_name, entry, locale, diagnostics_lsp=True)
     output = str(result["combined"])
     json_output = str(json_result["stdout"] or json_result["combined"])
     lsp_output = str(lsp_result["stdout"] or lsp_result["combined"])
-    failures: list[str] = []
+    failures: list[str] = validate_manifest_case(case, "cases")
     expected_message = messages.get(expected_code, "")
 
     if not (ROOT / entry).is_file():
         failures.append(f"fixture missing: {entry}")
-    if result["exit_code"] == 0:
-        failures.append("compiler accepted invalid source")
-    if json_result["exit_code"] == 0:
-        failures.append("compiler accepted invalid source in diagnostics JSON mode")
-    if lsp_result["exit_code"] == 0:
-        failures.append("compiler accepted invalid source in diagnostics LSP mode")
-    if expected_code not in output:
-        failures.append(f"missing expected diagnostic code {expected_code}")
-    if expected_code not in json_output:
-        failures.append(f"JSON output missing expected diagnostic code {expected_code}")
-    if expected_code not in lsp_output:
-        failures.append(f"LSP output missing expected diagnostic code {expected_code}")
-    if expected_message and expected_message not in output:
-        failures.append(f"missing Fluent {locale} message for {expected_code}: {expected_message}")
-    if expected_message and expected_message not in json_output:
-        failures.append(f"JSON output missing Fluent {locale} message for {expected_code}: {expected_message}")
-    if expected_message and expected_message not in lsp_output:
-        failures.append(f"LSP output missing Fluent {locale} message for {expected_code}: {expected_message}")
+    for surface_name, command_result in (("text", result), ("JSON", json_result), ("LSP", lsp_result)):
+        if command_result["exit_code"] != case.get("expected_exit_code"):
+            failures.append(
+                f"{surface_name} exit code mismatch: expected {case.get('expected_exit_code')}, got {command_result['exit_code']}"
+            )
+
+    actual_text_codes = text_codes(output)
+    failures.extend(validate_code_order(actual_text_codes, expected_codes, expected_order, "text"))
+    json_items, json_parse_failures = json_diagnostics(json_output)
+    failures.extend(json_parse_failures)
+    json_codes = [str(item.get("code", "")) for item in json_items]
+    if json_items:
+        failures.extend(validate_code_order(json_codes, expected_codes, expected_order, "JSON"))
+    lsp_items, lsp_parse_failures = lsp_diagnostics(lsp_output)
+    failures.extend(lsp_parse_failures)
+    lsp_codes = [str(item.get("code", "")) for item in lsp_items]
+    if lsp_items:
+        failures.extend(validate_code_order(lsp_codes, expected_codes, expected_order, "LSP"))
+
+    for code in expected_codes:
+        message = messages.get(code, "")
+        if code not in output:
+            failures.append(f"missing expected diagnostic code {code}")
+        if code not in json_output:
+            failures.append(f"JSON output missing expected diagnostic code {code}")
+        if code not in lsp_output:
+            failures.append(f"LSP output missing expected diagnostic code {code}")
+        if message and message not in output:
+            failures.append(f"missing Fluent {locale} message for {code}: {message}")
+        if message and message not in json_output:
+            failures.append(f"JSON output missing Fluent {locale} message for {code}: {message}")
+        if message and message not in lsp_output:
+            failures.append(f"LSP output missing Fluent {locale} message for {code}: {message}")
     if result["diagnostic_count"] < min_count:
         failures.append(
             f"expected at least {min_count} diagnostic(s), got {result['diagnostic_count']}"
@@ -319,11 +447,20 @@ def validate_case(case: dict[str, Any], locale: str, messages: dict[str, str]) -
 
     return {
         "id": case.get("id"),
+        "phase": case.get("phase"),
         "category": case.get("category"),
+        "command_name": command_name,
         "entry": entry,
-        "expected_code": expected_code,
+        "expected_codes": expected_codes,
+        "expected_order": expected_order,
+        "expected_locale": case.get("expected_locale"),
+        "expected_exit_code": case.get("expected_exit_code"),
+        "cascade_policy": case.get("cascade_policy"),
         "expected_category": expected_category,
         "expected_message": expected_message,
+        "text_codes": actual_text_codes,
+        "json_codes": json_codes,
+        "lsp_codes": lsp_codes,
         "status": "pass" if not failures else "fail",
         "failures": failures,
         "command": result,
@@ -340,12 +477,12 @@ def render_markdown(report: dict[str, Any]) -> str:
         f"- locale: `{report['locale']}`",
         f"- passed: `{report['passed']}/{report['total']}`",
         "",
-        "| case | category | status | expected code |",
-        "| --- | --- | --- | --- |",
+        "| case | phase | command | status | expected codes |",
+        "| --- | --- | --- | --- | --- |",
     ]
     for case in report["cases"]:
         lines.append(
-            f"| `{case['id']}` | {case['category']} | `{case['status']}` | `{case['expected_code']}` |"
+            f"| `{case['id']}` | `{case['phase']}` | `{case['command_name']}` | `{case['status']}` | `{', '.join(case['expected_codes'])}` |"
         )
     if report["failures"]:
         lines.extend(["", "## Failures"])
@@ -366,12 +503,29 @@ def main() -> int:
         print(f"[compiler-real-diagnostics][error] {rel(CORPUS)} must contain cases", file=sys.stderr)
         return 1
 
+    manifest_failures: list[str] = []
+    for section_name in ("cases", "pending_cases"):
+        section = payload.get(section_name, [])
+        if not isinstance(section, list):
+            manifest_failures.append(f"{section_name} must be a list")
+            continue
+        for index, case in enumerate(section):
+            if not isinstance(case, dict):
+                manifest_failures.append(f"{section_name}[{index}] must be an object")
+                continue
+            manifest_failures.extend(validate_manifest_case(case, section_name))
+            if case.get("expected_locale") != locale:
+                manifest_failures.append(
+                    f"{section_name} case {case.get('id', '<missing-id>')} expected_locale must match corpus locale {locale!r}"
+                )
+
     results = [validate_case(case, locale, locale_messages) for case in cases if isinstance(case, dict)]
     failures = [
         f"{case['id']}: {failure}"
         for case in results
         for failure in case["failures"]
     ]
+    failures = [*manifest_failures, *failures]
     failures.extend(audit_no_surface_only_diagnostics())
     passed = sum(1 for case in results if case["status"] == "pass")
     report = {
