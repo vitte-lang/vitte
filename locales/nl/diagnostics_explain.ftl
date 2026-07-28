@@ -787,10 +787,10 @@ TYPECK_E_IMPOSSIBLE_PATTERN.step1 = Compare the matched expression type with the
 TYPECK_E_IMPOSSIBLE_PATTERN.fix = replace the branch pattern with one that belongs to the matched `pick` or value type
 TYPECK_E_IMPOSSIBLE_PATTERN.example = match status { case Ready { give 0 } }
 
-SEMA_E_UNKNOWN_FUNCTION.summary = unknown procedure.
+SEMA_E_UNKNOWN_FUNCTION.summary = procedure does not exist.
 SEMA_E_UNKNOWN_FUNCTION.cause = Name resolution could not find a visible `proc` with the highlighted name.
 SEMA_E_UNKNOWN_FUNCTION.step1 = Check the active `use` declarations and the procedure name at the call site.
-SEMA_E_UNKNOWN_FUNCTION.fix = declare proc missing_call, import the module that exports it, or rename the call
+SEMA_E_UNKNOWN_FUNCTION.fix = import or declare the missing `proc`, or rename the call to a visible procedure
 SEMA_E_UNKNOWN_FUNCTION.example = proc add(left: int, right: int) -> int { give left + right }
 
 SEMA_E_UNKNOWN_SYMBOL.summary = symbool onbekend.
@@ -1784,6 +1784,54 @@ DRIVER_E_MISSING_INPUT.step1 = Re-run the command with --help and verify paths a
 DRIVER_E_MISSING_INPUT.fix = provide an existing input, writable output path, and supported target/profile
 DRIVER_E_MISSING_INPUT.example = vitte check src/main.vit --lang en
 
+DRIVER_E_MISSING_COMMAND.summary = compiler command ontbreekt.
+DRIVER_E_MISSING_COMMAND.cause = The driver could not use the provided input, option, cache, output, or profile.
+DRIVER_E_MISSING_COMMAND.step1 = Re-run the command with --help and verify paths and option values.
+DRIVER_E_MISSING_COMMAND.fix = provide an existing input, writable output path, and supported target/profile
+DRIVER_E_MISSING_COMMAND.example = vitte check src/main.vit --lang en
+
+DRIVER_E_MISSING_OPTION_VALUE.summary = compiler option waarde ontbreekt.
+DRIVER_E_MISSING_OPTION_VALUE.cause = The driver could not use the provided input, option, cache, output, or profile.
+DRIVER_E_MISSING_OPTION_VALUE.step1 = Re-run the command with --help and verify paths and option values.
+DRIVER_E_MISSING_OPTION_VALUE.fix = provide an existing input, writable output path, and supported target/profile
+DRIVER_E_MISSING_OPTION_VALUE.example = vitte check src/main.vit --lang en
+
+DRIVER_E_SOURCE_UNREADABLE.summary = or unreadable invoer bron ontbreekt.
+DRIVER_E_SOURCE_UNREADABLE.cause = The driver could not use the provided input, option, cache, output, or profile.
+DRIVER_E_SOURCE_UNREADABLE.step1 = Re-run the command with --help and verify paths and option values.
+DRIVER_E_SOURCE_UNREADABLE.fix = provide an existing input, writable output path, and supported target/profile
+DRIVER_E_SOURCE_UNREADABLE.example = vitte check src/main.vit --lang en
+
+DRIVER_E_INVALID_CONFIGURATION.summary = compiler configuration ongeldig.
+DRIVER_E_INVALID_CONFIGURATION.cause = The driver could not use the provided input, option, cache, output, or profile.
+DRIVER_E_INVALID_CONFIGURATION.step1 = Re-run the command with --help and verify paths and option values.
+DRIVER_E_INVALID_CONFIGURATION.fix = provide an existing input, writable output path, and supported target/profile
+DRIVER_E_INVALID_CONFIGURATION.example = vitte check src/main.vit --lang en
+
+DRIVER_E_MISSING_TARGET.summary = compiler doel ontbreekt.
+DRIVER_E_MISSING_TARGET.cause = The driver could not use the provided input, option, cache, output, or profile.
+DRIVER_E_MISSING_TARGET.step1 = Re-run the command with --help and verify paths and option values.
+DRIVER_E_MISSING_TARGET.fix = provide an existing input, writable output path, and supported target/profile
+DRIVER_E_MISSING_TARGET.example = vitte check src/main.vit --lang en
+
+DRIVER_E_MISSING_OUTPUT_DIR.summary = compiler uitvoer directory ontbreekt.
+DRIVER_E_MISSING_OUTPUT_DIR.cause = The driver could not use the provided input, option, cache, output, or profile.
+DRIVER_E_MISSING_OUTPUT_DIR.step1 = Re-run the command with --help and verify paths and option values.
+DRIVER_E_MISSING_OUTPUT_DIR.fix = provide an existing input, writable output path, and supported target/profile
+DRIVER_E_MISSING_OUTPUT_DIR.example = vitte check src/main.vit --lang en
+
+DRIVER_E_MISSING_OUTPUT_PATH.summary = compiler uitvoer pad ontbreekt.
+DRIVER_E_MISSING_OUTPUT_PATH.cause = The driver could not use the provided input, option, cache, output, or profile.
+DRIVER_E_MISSING_OUTPUT_PATH.step1 = Re-run the command with --help and verify paths and option values.
+DRIVER_E_MISSING_OUTPUT_PATH.fix = provide an existing input, writable output path, and supported target/profile
+DRIVER_E_MISSING_OUTPUT_PATH.example = vitte check src/main.vit --lang en
+
+DRIVER_E_INVALID_LINK_TARGET.summary = compiler link doel ongeldig.
+DRIVER_E_INVALID_LINK_TARGET.cause = The driver could not use the provided input, option, cache, output, or profile.
+DRIVER_E_INVALID_LINK_TARGET.step1 = Re-run the command with --help and verify paths and option values.
+DRIVER_E_INVALID_LINK_TARGET.fix = provide an existing input, writable output path, and supported target/profile
+DRIVER_E_INVALID_LINK_TARGET.example = vitte check src/main.vit --lang en
+
 DRIVER_E_INPUT_NOT_FOUND.summary = invoer ontbrekend.
 DRIVER_E_INPUT_NOT_FOUND.cause = The driver could not use the provided input, option, cache, output, or profile.
 DRIVER_E_INPUT_NOT_FOUND.step1 = Re-run the command with --help and verify paths and option values.
@@ -1939,6 +1987,72 @@ E_BOOTSTRAP_VERSION.cause = The bootstrap compiler rejected a trust-root, stage 
 E_BOOTSTRAP_VERSION.step1 = Inspect the bootstrap artifact and the stage named by the diagnostic code.
 E_BOOTSTRAP_VERSION.fix = repair the seed-rooted bootstrap artifact before using it as compiler input
 E_BOOTSTRAP_VERSION.example = make bootstrap-seed-root-test
+
+INSTALL_E_VITTE_HELP_FAILED.summary = installed vitte help command mislukt.
+INSTALL_E_VITTE_HELP_FAILED.cause = The general phase found code that violates this diagnostic rule.
+INSTALL_E_VITTE_HELP_FAILED.step1 = Fix the first span reported for this diagnostic, then run the command again.
+INSTALL_E_VITTE_HELP_FAILED.fix = repair the highlighted compiler contract before checking later diagnostics
+INSTALL_E_VITTE_HELP_FAILED.example = vitte check path/to/file.vit
+
+INSTALL_E_VITTEC_HELP_FAILED.summary = installed vittec help command mislukt.
+INSTALL_E_VITTEC_HELP_FAILED.cause = The general phase found code that violates this diagnostic rule.
+INSTALL_E_VITTEC_HELP_FAILED.step1 = Fix the first span reported for this diagnostic, then run the command again.
+INSTALL_E_VITTEC_HELP_FAILED.fix = repair the highlighted compiler contract before checking later diagnostics
+INSTALL_E_VITTEC_HELP_FAILED.example = vitte check path/to/file.vit
+
+INSTALL_E_PACKAGE_IMPORT_TEST_FAILED.summary = installed package import test mislukt.
+INSTALL_E_PACKAGE_IMPORT_TEST_FAILED.cause = The general phase found code that violates this diagnostic rule.
+INSTALL_E_PACKAGE_IMPORT_TEST_FAILED.step1 = Fix the first span reported for this diagnostic, then run the command again.
+INSTALL_E_PACKAGE_IMPORT_TEST_FAILED.fix = repair the highlighted compiler contract before checking later diagnostics
+INSTALL_E_PACKAGE_IMPORT_TEST_FAILED.example = vitte check path/to/file.vit
+
+INSTALL_E_COMPLETION_MISSING.summary = installed shell completion is ontbrekend.
+INSTALL_E_COMPLETION_MISSING.cause = The general phase found code that violates this diagnostic rule.
+INSTALL_E_COMPLETION_MISSING.step1 = Fix the first span reported for this diagnostic, then run the command again.
+INSTALL_E_COMPLETION_MISSING.fix = repair the highlighted compiler contract before checking later diagnostics
+INSTALL_E_COMPLETION_MISSING.example = vitte check path/to/file.vit
+
+INSTALL_E_CC_MISSING.summary = macOS package build requires cc.
+INSTALL_E_CC_MISSING.cause = The general phase found code that violates this diagnostic rule.
+INSTALL_E_CC_MISSING.step1 = Fix the first span reported for this diagnostic, then run the command again.
+INSTALL_E_CC_MISSING.fix = repair the highlighted compiler contract before checking later diagnostics
+INSTALL_E_CC_MISSING.example = vitte check path/to/file.vit
+
+INSTALL_E_LIPO_MISSING.summary = universal macOS package build requires lipo.
+INSTALL_E_LIPO_MISSING.cause = The general phase found code that violates this diagnostic rule.
+INSTALL_E_LIPO_MISSING.step1 = Fix the first span reported for this diagnostic, then run the command again.
+INSTALL_E_LIPO_MISSING.fix = repair the highlighted compiler contract before checking later diagnostics
+INSTALL_E_LIPO_MISSING.example = vitte check path/to/file.vit
+
+INSTALL_E_MACOS_REQUIRED.summary = macOS package build requires macOS.
+INSTALL_E_MACOS_REQUIRED.cause = The general phase found code that violates this diagnostic rule.
+INSTALL_E_MACOS_REQUIRED.step1 = Fix the first span reported for this diagnostic, then run the command again.
+INSTALL_E_MACOS_REQUIRED.fix = repair the highlighted compiler contract before checking later diagnostics
+INSTALL_E_MACOS_REQUIRED.example = vitte check path/to/file.vit
+
+INSTALL_E_PACKAGE_SOURCE_MISSING.summary = package bron bestand is ontbrekend.
+INSTALL_E_PACKAGE_SOURCE_MISSING.cause = The general phase found code that violates this diagnostic rule.
+INSTALL_E_PACKAGE_SOURCE_MISSING.step1 = Fix the first span reported for this diagnostic, then run the command again.
+INSTALL_E_PACKAGE_SOURCE_MISSING.fix = repair the highlighted compiler contract before checking later diagnostics
+INSTALL_E_PACKAGE_SOURCE_MISSING.example = vitte check path/to/file.vit
+
+INSTALL_E_POSTINSTALL_HELP_FAILED.summary = postinstall vitte help check mislukt.
+INSTALL_E_POSTINSTALL_HELP_FAILED.cause = The general phase found code that violates this diagnostic rule.
+INSTALL_E_POSTINSTALL_HELP_FAILED.step1 = Fix the first span reported for this diagnostic, then run the command again.
+INSTALL_E_POSTINSTALL_HELP_FAILED.fix = repair the highlighted compiler contract before checking later diagnostics
+INSTALL_E_POSTINSTALL_HELP_FAILED.example = vitte check path/to/file.vit
+
+INSTALL_E_POSTINSTALL_IMPORT_TEST_FAILED.summary = postinstall package import check mislukt.
+INSTALL_E_POSTINSTALL_IMPORT_TEST_FAILED.cause = The general phase found code that violates this diagnostic rule.
+INSTALL_E_POSTINSTALL_IMPORT_TEST_FAILED.step1 = Fix the first span reported for this diagnostic, then run the command again.
+INSTALL_E_POSTINSTALL_IMPORT_TEST_FAILED.fix = repair the highlighted compiler contract before checking later diagnostics
+INSTALL_E_POSTINSTALL_IMPORT_TEST_FAILED.example = vitte check path/to/file.vit
+
+INSTALL_E_POSTINSTALL_COMPLETION_MISSING.summary = postinstall shell completion check mislukt.
+INSTALL_E_POSTINSTALL_COMPLETION_MISSING.cause = The general phase found code that violates this diagnostic rule.
+INSTALL_E_POSTINSTALL_COMPLETION_MISSING.step1 = Fix the first span reported for this diagnostic, then run the command again.
+INSTALL_E_POSTINSTALL_COMPLETION_MISSING.fix = repair the highlighted compiler contract before checking later diagnostics
+INSTALL_E_POSTINSTALL_COMPLETION_MISSING.example = vitte check path/to/file.vit
 
 LIMIT_FILE_SIZE_MAX.summary = bestand size max.
 LIMIT_FILE_SIZE_MAX.cause = The input exceeded a configured compiler safety limit.
