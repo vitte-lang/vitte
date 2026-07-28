@@ -29,6 +29,12 @@ def assert_contains(name: str, output: str, needles: tuple[str, ...]) -> None:
             raise SystemExit(f"[explain-cli][error] {name}: missing {needle!r}\n{output}")
 
 
+def assert_not_contains(name: str, output: str, needles: tuple[str, ...]) -> None:
+    for needle in needles:
+        if needle in output:
+            raise SystemExit(f"[explain-cli][error] {name}: unexpected {needle!r}\n{output}")
+
+
 def check_command() -> None:
     proc = subprocess.run(
         [str(BIN), "check", "tests/check/main.vit"],
@@ -69,6 +75,24 @@ def main() -> int:
 
     alias = run_explain("E0001", "--lang", "fr-FR")
     assert_contains("fr-FR alias", alias, ("error code: E0001", "lang: fr", "phase: parser"))
+
+    assign_fr = run_explain("TYPECK_E_ASSIGN_MISMATCH", "--lang", "fr")
+    assert_contains(
+        "TYPECK_E_ASSIGN_MISMATCH fr",
+        assign_fr,
+        (
+            "error code: TYPECK_E_ASSIGN_MISMATCH",
+            "lang: fr",
+            "phase: typeck",
+            "message: affectation type incompatibilite",
+            "summary: affectation type incompatibilite.",
+            "cause:",
+            "fix:",
+            "invalid example:",
+            "valid example:",
+        ),
+    )
+    assert_not_contains("TYPECK_E_ASSIGN_MISMATCH fr", assign_fr, ("message: assignment type mismatch",))
 
     unknown = run_explain("NO_SUCH_CODE", "--lang=en")
     assert_contains(
