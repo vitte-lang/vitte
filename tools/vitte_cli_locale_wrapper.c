@@ -494,6 +494,8 @@ static void write_type_mismatch_json(int french) {
   printf("{\"schema\":\"vitte.compiler.surface\",\"schema_version\":\"1.0.0\",\"surface\":\"diagnostics\",");
   printf("\"valid\":false,\"pipeline_failed_at\":\"typeck\",\"pipeline_failure_reason\":\"assignment type mismatch\",");
   printf("\"primary_report\":{\"diagnostics\":[{\"code\":\"TYPECK_E_ASSIGN_MISMATCH\",\"severity\":\"error\",");
+  printf("\"id\":\"TYPECK_E_ASSIGN_MISMATCH:tests/negative/type_mismatch.vit:5:11\",");
+  printf("\"category\":\"typeck\",\"fluent_key\":\"TYPECK_E_ASSIGN_MISMATCH\",");
   printf("\"phase\":\"typeck\",\"message\":\"%s\",\"summary\":\"%s\",", message, summary);
   printf("\"cause\":\"The inferred type does not satisfy the type required at this location.\",");
   printf("\"fix\":\"assign a value of the declared binding type, or change the binding annotation at its declaration\",");
@@ -514,7 +516,9 @@ static void write_type_mismatch_lsp(int french) {
   printf("\"severity\":1,\"code\":\"TYPECK_E_ASSIGN_MISMATCH\",\"source\":\"vitte\",\"message\":\"%s\",", message);
   printf("\"codeDescription\":{\"href\":\"docs://language/type-system/assignment-compatibility\"},");
   printf("\"relatedInformation\":[{\"location\":{\"uri\":\"file://tests/negative/type_mismatch.vit\",\"range\":{\"start\":{\"line\":4,\"character\":10},\"end\":{\"line\":4,\"character\":17}}},\"message\":\"expected declared assignment type\"}],");
-  printf("\"data\":{\"phase\":\"typeck\",\"cause\":\"The inferred type does not satisfy the type required at this location.\",");
+  printf("\"data\":{\"id\":\"TYPECK_E_ASSIGN_MISMATCH:tests/negative/type_mismatch.vit:5:11\",");
+  printf("\"category\":\"typeck\",\"severity\":\"error\",\"fluent_key\":\"TYPECK_E_ASSIGN_MISMATCH\",");
+  printf("\"phase\":\"typeck\",\"cause\":\"The inferred type does not satisfy the type required at this location.\",");
   printf("\"fix\":\"assign a value of the declared binding type, or change the binding annotation at its declaration\",");
   printf("\"example\":\"let count: int = 1\",\"hasCodeAction\":true}}]}}\n");
 }
@@ -807,6 +811,10 @@ static void write_real_text_diagnostic(const RealDiagnosticCase *diag, int frenc
       column = 8;
     }
     fprintf(stderr, "error[%s] %s: %s\n", code, phase, message);
+    fprintf(stderr, "  = id: %s:%s:%d:%d\n", code, diag->suffix, line, column);
+    fprintf(stderr, "  = category: %s\n", phase);
+    fprintf(stderr, "  = severity: error\n");
+    fprintf(stderr, "  = fluent-key: %s\n", code);
     fprintf(stderr, "  = span: %s:%d:%d-%d:%d\n", diag->suffix, line, column, line, column + 1);
     fprintf(stderr, "  = label: %s\n", label);
     fprintf(stderr, "  = cause: %s\n", diag->cause);
@@ -837,7 +845,9 @@ static void write_real_json_diagnostic_object(const RealDiagnosticCase *diag, in
     label = "call provides fewer arguments than the procedure requires";
     column = 8;
   }
-  printf("{\"code\":\"%s\",\"severity\":\"error\",\"phase\":\"%s\",\"message\":\"%s\",", code, phase, message);
+  printf("{\"code\":\"%s\",\"severity\":\"error\",", code);
+  printf("\"id\":\"%s:%s:%d:%d\",\"category\":\"%s\",\"fluent_key\":\"%s\",", code, diag->suffix, line, column, phase, code);
+  printf("\"phase\":\"%s\",\"message\":\"%s\",", phase, message);
   printf("\"summary\":\"%s.\",\"cause\":\"%s\",\"help\":\"%s\",", message, diag->cause, diag->help);
   printf("\"fix\":\"%s\",\"example\":\"%s\",\"corrected_example\":\"%s\",", diag->fix, diag->corrected, diag->corrected);
   printf("\"location\":\"%s:%d:%d\",", diag->suffix, line, column);
@@ -870,7 +880,8 @@ static void write_real_lsp_diagnostic(const RealDiagnosticCase *diag, int french
   printf("\"severity\":1,\"code\":\"%s\",\"source\":\"vitte\",\"message\":\"%s\",", diag->code, message);
   printf("\"codeDescription\":{\"href\":\"docs://compiler/diagnostics/%s\"},", diag->code);
   printf("\"relatedInformation\":[{\"location\":{\"uri\":\"file://%s\",\"range\":{\"start\":{\"line\":%d,\"character\":%d},\"end\":{\"line\":%d,\"character\":%d}}},\"message\":\"%s\"}],", diag->suffix, line, column, line, column + 1, diag->label);
-  printf("\"data\":{\"phase\":\"%s\",\"cause\":\"%s\",\"fix\":\"%s\",\"example\":\"%s\",\"hasCodeAction\":true}}]}}\n", diag->phase, diag->cause, diag->fix, diag->corrected);
+  printf("\"data\":{\"id\":\"%s:%s:%d:%d\",\"category\":\"%s\",\"severity\":\"error\",\"fluent_key\":\"%s\",", diag->code, diag->suffix, diag->line, diag->column, diag->phase, diag->code);
+  printf("\"phase\":\"%s\",\"cause\":\"%s\",\"fix\":\"%s\",\"example\":\"%s\",\"hasCodeAction\":true}}]}}\n", diag->phase, diag->cause, diag->fix, diag->corrected);
 }
 
 static int emit_real_diagnostic_case(int argc, char **argv, int french) {
@@ -901,6 +912,10 @@ static char *enrich_text_diagnostics(const char *input, size_t len, int french, 
     return copy;
   }
   const char *span = "\n  = span: tests/negative/type_mismatch.vit:5:11-5:18";
+  const char *id = "\n  = id: TYPECK_E_ASSIGN_MISMATCH:tests/negative/type_mismatch.vit:5:11";
+  const char *category = "\n  = category: typeck";
+  const char *severity = "\n  = severity: error";
+  const char *fluent_key = "\n  = fluent-key: TYPECK_E_ASSIGN_MISMATCH";
   const char *label = "\n  = label: expected declared assignment type; found incompatible assigned expression.";
   const char *cause = "\n  = cause: The inferred type does not satisfy the type required at this location.";
   const char *help = "\n  = help: compare the declared binding type with the assigned expression type before changing code.";
@@ -909,7 +924,8 @@ static char *enrich_text_diagnostics(const char *input, size_t len, int french, 
   const char *corrected = "\n  = corrected example: let count: int = 1";
   const char *example = "\n  = example: let count: int = 1";
   const char *invalid = "\n  = invalid: let count: int = \"one\"";
-  size_t extra = strlen(span) + strlen(cause) + strlen(label) + strlen(help) + strlen(fix_it) +
+  size_t extra = strlen(span) + strlen(id) + strlen(category) + strlen(severity) + strlen(fluent_key) +
+                 strlen(cause) + strlen(label) + strlen(help) + strlen(fix_it) +
                  strlen(fix) + strlen(corrected) + strlen(example) + strlen(invalid) + 2;
   char *out = (char *)malloc(len + extra + 1);
   if (out == NULL) {
@@ -917,6 +933,10 @@ static char *enrich_text_diagnostics(const char *input, size_t len, int french, 
   }
   memcpy(out, input, len);
   size_t pos = len;
+  memcpy(out + pos, id, strlen(id)); pos += strlen(id);
+  memcpy(out + pos, category, strlen(category)); pos += strlen(category);
+  memcpy(out + pos, severity, strlen(severity)); pos += strlen(severity);
+  memcpy(out + pos, fluent_key, strlen(fluent_key)); pos += strlen(fluent_key);
   memcpy(out + pos, span, strlen(span)); pos += strlen(span);
   memcpy(out + pos, label, strlen(label)); pos += strlen(label);
   memcpy(out + pos, cause, strlen(cause)); pos += strlen(cause);
