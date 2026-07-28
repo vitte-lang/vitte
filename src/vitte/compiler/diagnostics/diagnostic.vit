@@ -30,6 +30,8 @@ pick DiagnosticSeverity {
 }
 
 pick DiagnosticPhase {
+    Cli
+    Io
     Lexer
     Parser
     Ast
@@ -469,6 +471,14 @@ proc diagnostic_public_severity_level(severity: DiagnosticSeverity) -> string {
 }
 
 proc phase_name(phase: DiagnosticPhase) -> string {
+    if phase == DiagnosticPhase.Cli {
+        give "cli";
+    }
+
+    if phase == DiagnosticPhase.Io {
+        give "io";
+    }
+
     if phase == DiagnosticPhase.Lexer {
         give "lexer";
     }
@@ -730,11 +740,18 @@ proc diagnostic_phase_list_names(phases: [DiagnosticPhase]) -> string {
 
 proc diagnostic_default_verified_phases() -> [DiagnosticPhase] {
     give [
+        DiagnosticPhase.Cli,
+        DiagnosticPhase.Io,
         DiagnosticPhase.Lexer,
         DiagnosticPhase.Parser,
         DiagnosticPhase.SymbolResolution,
+        DiagnosticPhase.Sema,
         DiagnosticPhase.Typeck,
-        DiagnosticPhase.Borrowck
+        DiagnosticPhase.Borrowck,
+        DiagnosticPhase.Mir,
+        DiagnosticPhase.Ir,
+        DiagnosticPhase.Backend,
+        DiagnosticPhase.Linker
     ];
 }
 

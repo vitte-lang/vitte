@@ -933,6 +933,8 @@ proc test_text_diagnostic_format_is_stable() -> bool {
 
 proc test_single_diagnostic_architecture_covers_compiler_pipeline() -> bool {
   let span0 = span_create("architecture.vit", 1, 1, 1);
+  let cli: Diagnostic = compiler_diagnostic_error(CompilerDiagnosticStage.Cli, "CLI_E_ARCH", "cli contract", span0);
+  let io: Diagnostic = compiler_diagnostic_error(CompilerDiagnosticStage.Io, "IO_E_ARCH", "io contract", span0);
   let lexer: Diagnostic = compiler_diagnostic_error(CompilerDiagnosticStage.Lexer, "LEX_E_ARCH", "lexer contract", span0);
   let parser: Diagnostic = compiler_diagnostic_error(CompilerDiagnosticStage.Parser, "PARSE_E_ARCH", "parser contract", span0);
   let resolver: Diagnostic = compiler_diagnostic_error(CompilerDiagnosticStage.Resolver, "SEMA_E_UNKNOWN_SYMBOL", "resolver contract", span0);
@@ -940,12 +942,15 @@ proc test_single_diagnostic_architecture_covers_compiler_pipeline() -> bool {
   let typeck: Diagnostic = compiler_diagnostic_error(CompilerDiagnosticStage.TypeChecker, "TYPECK_E_ARCH", "type contract", span0);
   let borrowck: Diagnostic = compiler_diagnostic_error(CompilerDiagnosticStage.BorrowChecker, "BORROWCK_E_ARCH", "borrow contract", span0);
   let mir: Diagnostic = compiler_diagnostic_error(CompilerDiagnosticStage.Mir, "MIR_E_ARCH", "mir contract", span0);
+  let ir: Diagnostic = compiler_diagnostic_error(CompilerDiagnosticStage.Ir, "IR_E_ARCH", "ir contract", span0);
   let backend: Diagnostic = compiler_diagnostic_error(CompilerDiagnosticStage.Backend, "BACKEND_E_ARCH", "backend contract", span0);
   let linker: Diagnostic = compiler_diagnostic_error(CompilerDiagnosticStage.Linker, "LINK_E_ARCH", "linker contract", span0);
-  let report: DiagnosticReport = compiler_diagnostic_report([lexer, parser, resolver, sema, typeck, borrowck, mir, backend, linker]);
+  let report: DiagnosticReport = compiler_diagnostic_report([cli, io, lexer, parser, resolver, sema, typeck, borrowck, mir, ir, backend, linker]);
   give diagnostic_architecture_covers_required_stages()
-    and canonical_diagnostic_stage_count() == 9
-    and len(report.diagnostics) == 9
+    and canonical_diagnostic_stage_count() == 12
+    and len(report.diagnostics) == 12
+    and cli.phase == DiagnosticPhase.Cli
+    and io.phase == DiagnosticPhase.Io
     and lexer.phase == DiagnosticPhase.Lexer
     and parser.phase == DiagnosticPhase.Parser
     and resolver.phase == DiagnosticPhase.SymbolResolution
@@ -953,9 +958,12 @@ proc test_single_diagnostic_architecture_covers_compiler_pipeline() -> bool {
     and typeck.phase == DiagnosticPhase.Typeck
     and borrowck.phase == DiagnosticPhase.Borrowck
     and mir.phase == DiagnosticPhase.Mir
+    and ir.phase == DiagnosticPhase.Ir
     and backend.phase == DiagnosticPhase.Backend
     and linker.phase == DiagnosticPhase.Linker
     and stage_phase(CompilerDiagnosticStage.TypeChecker) == DiagnosticPhase.Typeck
+    and stage_component(CompilerDiagnosticStage.Cli) == "driver.cli"
+    and stage_component(CompilerDiagnosticStage.Io) == "driver.io"
     and stage_component(CompilerDiagnosticStage.Linker) == "backend.linker"
     and find(linker.pipeline_context[6], "stage=linker") >= 0
     and find(typeck.probable_fix, "type contract") >= 0;

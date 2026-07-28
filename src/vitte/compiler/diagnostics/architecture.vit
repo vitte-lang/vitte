@@ -16,6 +16,8 @@ use vitte/compiler/diagnostics/diagnostic.{
 }
 
 pick CompilerDiagnosticStage {
+  Cli
+  Io
   Lexer
   Parser
   Resolver
@@ -23,6 +25,7 @@ pick CompilerDiagnosticStage {
   TypeChecker
   BorrowChecker
   Mir
+  Ir
   Backend
   Linker
 }
@@ -36,10 +39,16 @@ form CompilerDiagnosticOrigin {
 }
 
 proc canonical_diagnostic_stage_count() -> u64 {
-  give 9 as u64;
+  give 12 as u64;
 }
 
 proc stage_name(stage: CompilerDiagnosticStage) -> string {
+  if stage == CompilerDiagnosticStage.Cli {
+    give "cli";
+  }
+  if stage == CompilerDiagnosticStage.Io {
+    give "io";
+  }
   if stage == CompilerDiagnosticStage.Lexer {
     give "lexer";
   }
@@ -61,6 +70,9 @@ proc stage_name(stage: CompilerDiagnosticStage) -> string {
   if stage == CompilerDiagnosticStage.Mir {
     give "mir";
   }
+  if stage == CompilerDiagnosticStage.Ir {
+    give "ir";
+  }
   if stage == CompilerDiagnosticStage.Backend {
     give "backend";
   }
@@ -68,6 +80,12 @@ proc stage_name(stage: CompilerDiagnosticStage) -> string {
 }
 
 proc stage_phase(stage: CompilerDiagnosticStage) -> DiagnosticPhase {
+  if stage == CompilerDiagnosticStage.Cli {
+    give DiagnosticPhase.Cli;
+  }
+  if stage == CompilerDiagnosticStage.Io {
+    give DiagnosticPhase.Io;
+  }
   if stage == CompilerDiagnosticStage.Lexer {
     give DiagnosticPhase.Lexer;
   }
@@ -89,6 +107,9 @@ proc stage_phase(stage: CompilerDiagnosticStage) -> DiagnosticPhase {
   if stage == CompilerDiagnosticStage.Mir {
     give DiagnosticPhase.Mir;
   }
+  if stage == CompilerDiagnosticStage.Ir {
+    give DiagnosticPhase.Ir;
+  }
   if stage == CompilerDiagnosticStage.Backend {
     give DiagnosticPhase.Backend;
   }
@@ -96,6 +117,12 @@ proc stage_phase(stage: CompilerDiagnosticStage) -> DiagnosticPhase {
 }
 
 proc stage_component(stage: CompilerDiagnosticStage) -> string {
+  if stage == CompilerDiagnosticStage.Cli {
+    give "driver.cli";
+  }
+  if stage == CompilerDiagnosticStage.Io {
+    give "driver.io";
+  }
   if stage == CompilerDiagnosticStage.Lexer {
     give "frontend.lexer";
   }
@@ -117,6 +144,9 @@ proc stage_component(stage: CompilerDiagnosticStage) -> string {
   if stage == CompilerDiagnosticStage.Mir {
     give "middle.mir";
   }
+  if stage == CompilerDiagnosticStage.Ir {
+    give "backend.ir";
+  }
   if stage == CompilerDiagnosticStage.Backend {
     give "backend.codegen";
   }
@@ -124,6 +154,12 @@ proc stage_component(stage: CompilerDiagnosticStage) -> string {
 }
 
 proc stage_rule(stage: CompilerDiagnosticStage) -> string {
+  if stage == CompilerDiagnosticStage.Cli {
+    give "command line contract";
+  }
+  if stage == CompilerDiagnosticStage.Io {
+    give "input output contract";
+  }
   if stage == CompilerDiagnosticStage.Lexer {
     give "token stream";
   }
@@ -145,6 +181,9 @@ proc stage_rule(stage: CompilerDiagnosticStage) -> string {
   if stage == CompilerDiagnosticStage.Mir {
     give "middle ir contract";
   }
+  if stage == CompilerDiagnosticStage.Ir {
+    give "backend ir contract";
+  }
   if stage == CompilerDiagnosticStage.Backend {
     give "code generation contract";
   }
@@ -156,6 +195,12 @@ proc stage_root_cause(stage: CompilerDiagnosticStage) -> string {
 }
 
 proc stage_probable_fix(stage: CompilerDiagnosticStage) -> string {
+  if stage == CompilerDiagnosticStage.Cli {
+    give "repair the command arguments before invoking the compiler pipeline";
+  }
+  if stage == CompilerDiagnosticStage.Io {
+    give "repair the input path, permissions, or output destination before compilation";
+  }
   if stage == CompilerDiagnosticStage.Lexer {
     give "repair the highlighted token before parser recovery";
   }
@@ -176,6 +221,9 @@ proc stage_probable_fix(stage: CompilerDiagnosticStage) -> string {
   }
   if stage == CompilerDiagnosticStage.Mir {
     give "repair the MIR invariant before backend lowering";
+  }
+  if stage == CompilerDiagnosticStage.Ir {
+    give "repair the IR invariant before object emission";
   }
   if stage == CompilerDiagnosticStage.Backend {
     give "repair backend inputs before object emission";
@@ -215,7 +263,9 @@ proc compiler_diagnostic_report(diagnostics: [Diagnostic]) -> DiagnosticReport {
 }
 
 proc diagnostic_architecture_covers_required_stages() -> bool {
-  give canonical_diagnostic_stage_count() == 9
+  give canonical_diagnostic_stage_count() == 12
+    and stage_phase(CompilerDiagnosticStage.Cli) == DiagnosticPhase.Cli
+    and stage_phase(CompilerDiagnosticStage.Io) == DiagnosticPhase.Io
     and stage_phase(CompilerDiagnosticStage.Lexer) == DiagnosticPhase.Lexer
     and stage_phase(CompilerDiagnosticStage.Parser) == DiagnosticPhase.Parser
     and stage_phase(CompilerDiagnosticStage.Resolver) == DiagnosticPhase.SymbolResolution
@@ -223,6 +273,7 @@ proc diagnostic_architecture_covers_required_stages() -> bool {
     and stage_phase(CompilerDiagnosticStage.TypeChecker) == DiagnosticPhase.Typeck
     and stage_phase(CompilerDiagnosticStage.BorrowChecker) == DiagnosticPhase.Borrowck
     and stage_phase(CompilerDiagnosticStage.Mir) == DiagnosticPhase.Mir
+    and stage_phase(CompilerDiagnosticStage.Ir) == DiagnosticPhase.Ir
     and stage_phase(CompilerDiagnosticStage.Backend) == DiagnosticPhase.Backend
     and stage_phase(CompilerDiagnosticStage.Linker) == DiagnosticPhase.Linker;
 }
