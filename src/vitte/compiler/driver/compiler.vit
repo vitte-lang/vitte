@@ -31,7 +31,7 @@ proc main(args: list[string]) -> int {
 }
 
 use vitte/compiler/driver
-use vitte/compiler/driver/compile.{ DriverBackendModuleSetResult, DriverCompileConfig, DriverCompileResult, DriverNativeBackendResult, check_source_with_config, compile_source_set_with_config, compile_source_with_config, default_compile_config, diagnostics_quality_score, dump_ast_json, dump_diagnostics_json, dump_hir_json, dump_mir_json, emit_native_backend_object_with_config, link_native_backend_executable_with_config }
+use vitte/compiler/driver/compile.{ DriverBackendModuleSetResult, DriverCompileConfig, DriverCompileResult, DriverNativeBackendResult, check_source_with_config, compile_source_set_with_config, compile_source_with_config, default_compile_config, diagnostics_quality_score, dump_ast_json, dump_diagnostics_json, dump_diagnostics_lsp, dump_hir_json, dump_mir_json, emit_native_backend_object_with_config, link_native_backend_executable_with_config }
 use vitte/compiler/driver/metrics.{ CompilerMetricsReport, compile_metrics_report, compile_metrics_report_from_module_set, metrics_report_json }
 use vitte/compiler/driver/health_dashboard.{ HealthDashboard, health_dashboard_from_metrics, health_dashboard_json }
 use vitte/compiler/driver/pipeline_modular.{ CompilerPhase, PhaseResultKind, PhaseTiming, PipelineExecution, default_pipeline_phases, render_timings, render_trace_line, run }
@@ -494,6 +494,10 @@ proc cli_is_known_flag(text: string) -> bool {
         or text == "--lang"
         or text == "--format"
         or text == "--error-format"
+        or text == "--diagnostics-json"
+        or text == "--diagnostics-lsp"
+        or text == "--diag-json"
+        or text == "--diag-lsp"
         or text == "--color"
         or text == "--native"
         or text == "--no-native"
@@ -869,6 +873,9 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
                 if request.error_format == "json" {
                     set request.format = "json";
                 }
+                if request.error_format == "lsp" {
+                    set request.format = "lsp";
+                }
                 set i = i + 2;
             } elif arg == "--error-format" {
                 if i + 1 >= len(args) {
@@ -885,7 +892,18 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
                 if request.error_format == "json" {
                     set request.format = "json";
                 }
+                if request.error_format == "lsp" {
+                    set request.format = "lsp";
+                }
                 set i = i + 2;
+            } elif arg == "--diagnostics-json" or arg == "--diag-json" {
+                set request.format = "json";
+                set request.error_format = "json";
+                set i = i + 1;
+            } elif arg == "--diagnostics-lsp" or arg == "--diag-lsp" {
+                set request.format = "lsp";
+                set request.error_format = "lsp";
+                set i = i + 1;
             } elif arg == "--color" {
                 if i + 1 >= len(args) {
                     set request.status = driver.DriverExitStatus::InvalidArguments;
@@ -1331,6 +1349,11 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
             print(msg);
             give cli_exit_code(driver.DriverExitStatus::PipelineFailure);
         }
+        if request.format == "lsp" {
+            let report_lsp: string = dump_diagnostics_lsp(source_path, source_text) + "\n";
+            print(report_lsp);
+            give r0.code as int;
+        }
         if request.format == "json" {
             let report_json: string = compiler_result_json("check", r0) + "\n";
             print(report_json);
@@ -1368,6 +1391,11 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
             give cli_exit_code(driver.DriverExitStatus::PipelineFailure);
         }
         if validation_result.status != driver.DriverExitStatus::Ok {
+            if request.format == "lsp" {
+                let report_lsp: string = dump_diagnostics_lsp(source_path, source_text) + "\n";
+                print(report_lsp);
+                give validation_result.code as int;
+            }
             if request.format == "json" {
                 let report_json: string = compiler_result_json("build", validation_result) + "\n";
                 print(report_json);
@@ -1388,7 +1416,7 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
             }
             give validation_result.code as int;
         }
-        if request.format != "json" {
+        if request.format != "json" and request.format != "lsp" {
             let msg: string = build_validation_banner();
             print(msg);
         }
@@ -1396,6 +1424,11 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
         let opts: CompilerOptions = cli_compiler_options(request, CompilerMode::Build, request.output_path);
         let compiler0: Compiler = compiler_from_input(source_path, source_text, virtual_source, opts);
         let r0: CompilerResult = run_compiler(compiler0);
+        if request.format == "lsp" {
+            let report_lsp: string = dump_diagnostics_lsp(source_path, source_text) + "\n";
+            print(report_lsp);
+            give r0.code as int;
+        }
         if request.format == "json" {
             if r0.status == driver.DriverExitStatus::Ok and !is_file(request.output_path) {
                 let failed: CompilerResult = CompilerResult {
@@ -2314,7 +2347,7 @@ proc source_column_for_offset(text: string, offset: u64) -> u64 {
     let i: u64 = 0;
     while i < offset and i < len(text) {
         if slice(text, i, i + 1) == "\n" {
-            set column0 = 1;
+            set column0 = 1 as u64;
         } else {
             set column0 = column0 + 1;
         }

@@ -849,6 +849,7 @@ proc test_runtime_surface_dispatch_prefers_pipeline_json() -> bool {
   let hir_report: CliReportResult = main_driver_surface_report_json("check", "--dump-hir-json", "pipeline_dispatch_hir.vit", source_text);
   let mir_report: CliReportResult = main_driver_surface_report_json("check", "--dump-mir-json", "pipeline_dispatch_mir.vit", source_text);
   let diag_report: CliReportResult = main_driver_surface_report_json("check", "--diagnostics-json", "pipeline_dispatch_diag.vit", source_text);
+  let lsp_report: CliReportResult = main_driver_surface_report_json("check", "--diagnostics-lsp", "pipeline_dispatch_lsp.vit", source_text);
   let unsupported_report: CliReportResult = main_driver_surface_report_json("check", "--unknown-flag", "pipeline_dispatch_fallback.vit", source_text);
   give find(ast_report.report_json, "\"schema\":\"vitte.compiler.surface\"") >= 0
     and find(ast_report.report_json, "\"schema_version\":\"1.0.0\"") >= 0
@@ -864,6 +865,10 @@ proc test_runtime_surface_dispatch_prefers_pipeline_json() -> bool {
     and find(diag_report.report_json, "\"schema\":\"vitte.diagnostics\"") >= 0
     and find(diag_report.report_json, "\"legacy\":") >= 0
     and find(diag_report.report_json, "\"source\":{\"path\":\"pipeline_dispatch_diag.vit\",\"bytes\":") >= 0
+    and lsp_report.code == 0
+    and find(lsp_report.report_json, "\"jsonrpc\": \"2.0\"") >= 0
+    and find(lsp_report.report_json, "\"method\": \"textDocument/publishDiagnostics\"") >= 0
+    and find(lsp_report.report_json, "\"diagnostics\": []") >= 0
     and unsupported_report.code == 1
     and find(unsupported_report.report_json, "\"code\":\"E_DRIVER_SURFACE_UNAVAILABLE\"") >= 0;
 }
@@ -882,12 +887,15 @@ proc test_runtime_surface_dispatch_from_args() -> bool {
   let source_text: string = "proc main() -> int { give 0; }\n";
   let ast_args_report: CliReportResult = main_driver_surface_report_json_from_args("parse", ["parse", "--dump-ast-json", "--deterministic"], "pipeline_args_ast.vit", source_text);
   let hir_args_report: CliReportResult = main_driver_surface_report_json_from_args("check", ["check", "--dump-hir-json"], "pipeline_args_hir.vit", source_text);
+  let lsp_args_report: CliReportResult = main_driver_surface_report_json_from_args("check", ["check", "--diagnostics-lsp"], "pipeline_args_lsp.vit", source_text);
   let fallback_args_report: CliReportResult = main_driver_surface_report_json_from_args("check", ["check", "--strict"], "pipeline_args_fallback.vit", source_text);
   give find(ast_args_report.report_json, "\"surface\":\"ast\"") >= 0
     and find(ast_args_report.report_json, "\"command\":\"parse\"") >= 0
     and find(hir_args_report.report_json, "\"surface\":\"hir\"") >= 0
     and find(hir_args_report.report_json, "\"command\":\"check\"") >= 0
     and find(hir_args_report.report_json, "\"first_item_name\":\"main\"") >= 0
+    and lsp_args_report.code == 0
+    and find(lsp_args_report.report_json, "\"method\": \"textDocument/publishDiagnostics\"") >= 0
     and fallback_args_report.code == 1
     and find(fallback_args_report.report_json, "\"code\":\"E_DRIVER_SURFACE_UNAVAILABLE\"") >= 0;
 }

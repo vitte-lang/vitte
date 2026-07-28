@@ -10,7 +10,7 @@ use vitte/compiler/analysis/sema/scopes.{ SemaSymbol, SemaSymbolKind, SemaSymbol
 use vitte/compiler/analysis/typeck/api.{ run_production_typeck_hir }
 use vitte/compiler/analysis/typeck/errors.{ TypeckResult }
 use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, DiagnosticPhase, DiagnosticReport, DiagnosticRenderConfig, DiagnosticSeverity, DiagnosticStyle, SourceSpan, default_render_config, diagnostic_from_surface, diagnostic_report, diagnostic_report_empty, diagnostic_report_merge, phase_name, render_report, span_range }
-use vitte/compiler/diagnostics/json.{ json_report, json_report_envelope, json_report_envelope_with_canonical_context }
+use vitte/compiler/diagnostics/json.{ json_array, json_escape, json_key_value, json_object, json_quote, json_report, json_report_envelope, json_report_envelope_with_canonical_context }
 use vitte/compiler/infrastructure/incremental.{ IncrementalGraph, build_analysis_graph }
 use vitte/compiler/middle/hir.{ HirExpr, HirItem, HirItemKind, HirStmt, HirUnit, hir_module_empty }
 use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
@@ -1944,6 +1944,141 @@ proc driver_diagnostic_surface_from_source(source_path: string, source_text: str
     give driver_diagnostic_surface_from_artifacts(source_path, analyze_source(source_path, source_text));
 }
 
+proc lsp_zero_based(value: u64) -> u64 {
+    if value == 0 {
+        give 0 as u64;
+    }
+    give value - 1;
+}
+
+proc lsp_uri_for_file(file: string) -> string {
+    if file == "" {
+        give "file://unknown.vit";
+    }
+    give "file://" + file;
+}
+
+proc lsp_diagnostic_id(diagnostic0: Diagnostic) -> string {
+    let file0: string = if diagnostic0.span.file != "" { diagnostic0.span.file } else { "unknown.vit" };
+    let line0: u64 = if diagnostic0.span.start_line > 0 { diagnostic0.span.start_line } else { 1 as u64 };
+    let column0: u64 = if diagnostic0.span.start_column > 0 { diagnostic0.span.start_column } else { 1 as u64 };
+    give diagnostic0.code + ":" + file0 + ":" + to_string(line0) + ":" + to_string(column0);
+}
+
+proc lsp_diagnostic_help(diagnostic0: Diagnostic) -> string {
+    if len(diagnostic0.helps) > 0 {
+        give diagnostic0.helps[0].message;
+    }
+    if diagnostic0.probable_fix != "" {
+        give diagnostic0.probable_fix;
+    }
+    give "inspect the diagnostic span and fix the construct reported by the compiler";
+}
+
+proc lsp_diagnostic_fix(diagnostic0: Diagnostic) -> string {
+    if len(diagnostic0.suggestions) > 0 {
+        give diagnostic0.suggestions[0].message;
+    }
+    if diagnostic0.probable_fix != "" {
+        give diagnostic0.probable_fix;
+    }
+    give lsp_diagnostic_help(diagnostic0);
+}
+
+proc lsp_diagnostic_example(diagnostic0: Diagnostic) -> string {
+    if diagnostic0.valid_example != "" {
+        give diagnostic0.valid_example;
+    }
+    give "correct the source at the reported span and re-run vitte check";
+}
+
+proc lsp_related_message(diagnostic0: Diagnostic) -> string {
+    if len(diagnostic0.labels) > 0 {
+        give diagnostic0.labels[0].message;
+    }
+    if diagnostic0.message != "" {
+        give diagnostic0.message;
+    }
+    give diagnostic0.code;
+}
+
+proc lsp_range_json(span0: SourceSpan) -> string {
+    let start_line0: u64 = lsp_zero_based(span0.start_line);
+    let start_column0: u64 = lsp_zero_based(span0.start_column);
+    let end_line0: u64 = lsp_zero_based(if span0.end_line > 0 { span0.end_line } else { span0.start_line });
+    let end_column_source: u64 = if span0.end_column > 0 { span0.end_column } else { span0.start_column + span0.length };
+    let end_column0: u64 = lsp_zero_based(end_column_source);
+    give json_object([
+        json_key_value("start", json_object([
+            json_key_value("line", to_string(start_line0)),
+            json_key_value("character", to_string(start_column0))
+        ])),
+        json_key_value("end", json_object([
+            json_key_value("line", to_string(end_line0)),
+            json_key_value("character", to_string(end_column0))
+        ]))
+    ]);
+}
+
+proc lsp_diagnostic_json(diagnostic0: Diagnostic) -> string {
+    let category0: string = phase_name(diagnostic0.phase);
+    let cause0: string = if diagnostic0.root_cause != "" { diagnostic0.root_cause } else { diagnostic0.explanation };
+    let help0: string = lsp_diagnostic_help(diagnostic0);
+    let fix0: string = lsp_diagnostic_fix(diagnostic0);
+    let example0: string = lsp_diagnostic_example(diagnostic0);
+    let span0: SourceSpan = diagnostic0.span;
+    let related0: string = json_object([
+        json_key_value("location", json_object([
+            json_key_value("uri", json_quote(lsp_uri_for_file(span0.file))),
+            json_key_value("range", lsp_range_json(span0))
+        ])),
+        json_key_value("message", json_quote(lsp_related_message(diagnostic0)))
+    ]);
+    let data0: string = json_object([
+        json_key_value("id", json_quote(lsp_diagnostic_id(diagnostic0))),
+        json_key_value("category", json_quote(category0)),
+        json_key_value("severity", json_quote("error")),
+        json_key_value("fluent_key", json_quote(diagnostic0.code)),
+        json_key_value("cause", json_quote(cause0)),
+        json_key_value("help", json_quote(help0)),
+        json_key_value("fix", json_quote(fix0)),
+        json_key_value("example", json_quote(example0))
+    ]);
+    give json_object([
+        json_key_value("range", lsp_range_json(span0)),
+        json_key_value("severity", "1"),
+        json_key_value("code", json_quote(diagnostic0.code)),
+        json_key_value("source", json_quote("vitte")),
+        json_key_value("message", json_quote(diagnostic0.message)),
+        json_key_value("relatedInformation", json_array([related0])),
+        json_key_value("data", data0)
+    ]);
+}
+
+proc lsp_diagnostics_json(report0: DiagnosticReport) -> string {
+    let encoded: [string] = [];
+    let i: u64 = 0;
+    while i < len(report0.diagnostics) {
+        set encoded = encoded + [lsp_diagnostic_json(report0.diagnostics[i])];
+        set i = i + 1;
+    }
+    give json_array(encoded);
+}
+
+proc dump_diagnostics_lsp(source_path: string, source_text: string) -> string {
+    let surface0: DriverDiagnosticSurface = driver_diagnostic_surface_from_source(source_path, source_text);
+    let uri0: string = lsp_uri_for_file(source_path);
+    give json_object([
+        json_key_value("jsonrpc", json_quote("2.0")),
+        json_key_value("method", json_quote("textDocument/publishDiagnostics")),
+        json_key_value("params", json_object([
+            json_key_value("uri", json_quote(uri0)),
+            json_key_value("version", "1"),
+            json_key_value("diagnostics", lsp_diagnostics_json(surface0.primary_report))
+        ]))
+    ]);
+}
+
 proc dump_diagnostics_json(source_path: string, source_text: string) -> string {
     let artifacts: DriverAnalysisArtifacts = analyze_source(source_path, source_text);
     let canonical_context0: DriverCanonicalContext = driver_canonical_context_from_artifacts(source_path, artifacts);
@@ -2402,6 +2537,7 @@ share link_native_backend_executable_with_config
 share driver_module_input
 share dump_ast_json
 share dump_diagnostics_json
+share dump_diagnostics_lsp
 share diagnostics_quality_score
 share quality_score_with_canonical_context
 share dump_hir_json

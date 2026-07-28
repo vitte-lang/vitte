@@ -1,7 +1,7 @@
 space vitte/compiler/driver
 
 use vitte/compiler/driver/commands.{ DriverCommand, command_from_text }
-use vitte/compiler/driver/compile.{ DriverAnalysisArtifacts, DriverBackendModuleSetResult, DriverCompileConfig, DriverCompileResult, DriverDiagnostic, DriverDiagnosticLevel, DriverModuleInput, DriverModuleSetArtifacts, analyze_source, check_source_with_config, compile_source_set_with_config, compile_source_with_config, default_compile_config, dump_ast_json, dump_diagnostics_json, dump_hir_json, dump_mir_json }
+use vitte/compiler/driver/compile.{ DriverAnalysisArtifacts, DriverBackendModuleSetResult, DriverCompileConfig, DriverCompileResult, DriverDiagnostic, DriverDiagnosticLevel, DriverModuleInput, DriverModuleSetArtifacts, analyze_source, check_source_with_config, compile_source_set_with_config, compile_source_with_config, default_compile_config, dump_ast_json, dump_diagnostics_json, dump_diagnostics_lsp, dump_hir_json, dump_mir_json }
 use vitte/compiler/backend/ir.{ ir_validation_reason, unit_is_valid }
 use vitte/compiler/middle/mir/validate.{ mir_validation_reason }
 use vitte/compiler/driver/exit_status.{ exit_code }
@@ -503,6 +503,18 @@ proc main_driver_surface_report_json_with_config(command_name: string, dump_flag
             report_json: report_json
         };
     }
+    let diagnostics_lsp_dump: bool = dump_flag == "--diagnostics-lsp" or dump_flag == "--diag-lsp";
+    if command_name == "check" and diagnostics_lsp_dump {
+        let report_json: string = dump_diagnostics_lsp(source_path, source_text);
+        if find(report_json, "\"method\": \"textDocument/publishDiagnostics\"") < 0 and find(report_json, "\"method\":\"textDocument/publishDiagnostics\"") < 0 {
+            give unsupported_surface_result(command_name, dump_flag, "native LSP diagnostics payload is unavailable or invalid");
+        }
+        give CliReportResult {
+            code: exit_code(status.status),
+            message: status.message,
+            report_json: report_json
+        };
+    }
     give unsupported_surface_result(command_name, dump_flag, "unsupported command/flag combination");
 }
 
@@ -524,6 +536,9 @@ proc detect_dump_surface_flag(args: [string]) -> string {
         }
         if arg0 == "--diagnostics-json" or arg0 == "--diag-json" or arg0 == "--diag-json-pretty" {
             give "--diagnostics-json";
+        }
+        if arg0 == "--diagnostics-lsp" or arg0 == "--diag-lsp" {
+            give "--diagnostics-lsp";
         }
         if arg0 == "--fix-preview" or arg0 == "--fix-why" {
             give "--diagnostics-json";
