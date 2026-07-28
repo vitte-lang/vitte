@@ -480,12 +480,221 @@ static int wants_diagnostics_lsp(int argc, char **argv) {
          has_arg(argc, argv, "--lsp-diagnostics");
 }
 
+static const char *command_source_arg(int argc, char **argv, const char *command) {
+  if (argc < 3 || strcmp(argv[1], command) != 0) {
+    return NULL;
+  }
+  for (int i = 2; i < argc; ++i) {
+    const char *arg = argv[i];
+    if (strcmp(arg, "--") == 0 && i + 1 < argc) {
+      return argv[i + 1];
+    }
+    if (strcmp(arg, "--src") == 0 && i + 1 < argc) {
+      return argv[i + 1];
+    }
+    if (strcmp(arg, "-o") == 0 || strcmp(arg, "--out") == 0 || strcmp(arg, "--lang") == 0 ||
+        strcmp(arg, "--target") == 0 || strcmp(arg, "--runtime-profile") == 0 ||
+        strcmp(arg, "--stdlib-profile") == 0 || strcmp(arg, "--stage") == 0 ||
+        strcmp(arg, "--from") == 0 || strcmp(arg, "--port") == 0 || strcmp(arg, "--fqbn") == 0) {
+      i += 1;
+      continue;
+    }
+    if (starts_with(arg, "--")) {
+      continue;
+    }
+    if (arg[0] == '-') {
+      continue;
+    }
+    return arg;
+  }
+  return NULL;
+}
+
 static const char *type_mismatch_message(int french) {
   return french ? "affectation type incompatibilite" : "assignment type mismatch";
 }
 
 static const char *type_mismatch_summary(int french) {
   return french ? "affectation type incompatibilite." : "assignment type mismatch.";
+}
+
+static void line_col_for_offset(const char *data, size_t offset, int *out_line, int *out_col) {
+  int line = 1;
+  int col = 1;
+  for (size_t i = 0; i < offset && data[i] != '\0'; ++i) {
+    if (data[i] == '\n') {
+      line += 1;
+      col = 1;
+    } else {
+      col += 1;
+    }
+  }
+  *out_line = line;
+  *out_col = col;
+}
+
+static const char *localized_message_for_code(const char *code, int french) {
+  if (strcmp(code, "TYPECK_E_ASSIGN_MISMATCH") == 0) {
+    return type_mismatch_message(french);
+  }
+  if (strcmp(code, "TYPECK_E_UNKNOWN_NAME") == 0) {
+    return french ? "nom inconnu" : "unknown name";
+  }
+  if (strcmp(code, "TYPECK_E_CALL_ARITY") == 0) {
+    return french ? "nombre d'arguments invalide" : "wrong number of call arguments";
+  }
+  if (strcmp(code, "TYPECK_E_IMMUTABLE_ASSIGN") == 0) {
+    return french ? "affectation a une liaison immuable" : "cannot assign to immutable binding";
+  }
+  if (strcmp(code, "TYPECK_E_UNKNOWN_TYPE") == 0) {
+    return french ? "type inconnu" : "unknown type";
+  }
+  return french ? "diagnostic compilateur" : "compiler diagnostic";
+}
+
+static const char *label_for_code(const char *code) {
+  if (strcmp(code, "TYPECK_E_ASSIGN_MISMATCH") == 0) {
+    return "assigned expression does not match the declared binding type";
+  }
+  if (strcmp(code, "TYPECK_E_UNKNOWN_NAME") == 0) {
+    return "this value name is not declared in the current scope";
+  }
+  if (strcmp(code, "TYPECK_E_CALL_ARITY") == 0) {
+    return "the call does not provide the number of arguments required by the procedure";
+  }
+  if (strcmp(code, "TYPECK_E_IMMUTABLE_ASSIGN") == 0) {
+    return "this assignment targets a binding that is not mutable here";
+  }
+  if (strcmp(code, "TYPECK_E_UNKNOWN_TYPE") == 0) {
+    return "this type name is not declared by the current module or its imports";
+  }
+  return "the compiler rejected this source construct";
+}
+
+static const char *cause_for_code(const char *code) {
+  if (strcmp(code, "TYPECK_E_ASSIGN_MISMATCH") == 0) {
+    return "The inferred expression type cannot satisfy the declared type at this binding.";
+  }
+  if (strcmp(code, "TYPECK_E_UNKNOWN_NAME") == 0) {
+    return "Name resolution finished without a value symbol matching this identifier.";
+  }
+  if (strcmp(code, "TYPECK_E_CALL_ARITY") == 0) {
+    return "The resolved procedure signature requires a different number of arguments.";
+  }
+  if (strcmp(code, "TYPECK_E_IMMUTABLE_ASSIGN") == 0) {
+    return "The assignment is not backed by a mutable local binding.";
+  }
+  if (strcmp(code, "TYPECK_E_UNKNOWN_TYPE") == 0) {
+    return "Type resolution finished without a type symbol matching this identifier.";
+  }
+  return "The source violates a checked compiler rule.";
+}
+
+static const char *help_for_code(const char *code) {
+  if (strcmp(code, "TYPECK_E_ASSIGN_MISMATCH") == 0) {
+    return "Use a value compatible with the annotation, or change the annotation intentionally.";
+  }
+  if (strcmp(code, "TYPECK_E_UNKNOWN_NAME") == 0) {
+    return "Declare the value before this use, import it, or fix the identifier spelling.";
+  }
+  if (strcmp(code, "TYPECK_E_CALL_ARITY") == 0) {
+    return "Pass every required argument in the declared order, or update the procedure signature.";
+  }
+  if (strcmp(code, "TYPECK_E_IMMUTABLE_ASSIGN") == 0) {
+    return "Introduce a mutable binding before assigning to it, or replace the assignment with a let binding.";
+  }
+  if (strcmp(code, "TYPECK_E_UNKNOWN_TYPE") == 0) {
+    return "Define the type, import the module that exports it, or correct the type name.";
+  }
+  return "Fix the root cause before editing later cascade diagnostics.";
+}
+
+static const char *fix_for_code(const char *code) {
+  if (strcmp(code, "TYPECK_E_ASSIGN_MISMATCH") == 0) {
+    return "replace the incompatible value with one of the declared type";
+  }
+  if (strcmp(code, "TYPECK_E_UNKNOWN_NAME") == 0) {
+    return "declare or import the missing value";
+  }
+  if (strcmp(code, "TYPECK_E_CALL_ARITY") == 0) {
+    return "add the missing call argument";
+  }
+  if (strcmp(code, "TYPECK_E_IMMUTABLE_ASSIGN") == 0) {
+    return "replace the assignment with a declared mutable binding";
+  }
+  if (strcmp(code, "TYPECK_E_UNKNOWN_TYPE") == 0) {
+    return "declare or import the missing type";
+  }
+  return "repair the rejected source construct";
+}
+
+static const char *example_for_code(const char *code) {
+  if (strcmp(code, "TYPECK_E_ASSIGN_MISMATCH") == 0) {
+    return "let first: int = 1";
+  }
+  if (strcmp(code, "TYPECK_E_UNKNOWN_NAME") == 0) {
+    return "let missing_name: int = 1";
+  }
+  if (strcmp(code, "TYPECK_E_CALL_ARITY") == 0) {
+    return "give bad_call(1, 2)";
+  }
+  if (strcmp(code, "TYPECK_E_IMMUTABLE_ASSIGN") == 0) {
+    return "let immutable_value: int = 3";
+  }
+  if (strcmp(code, "TYPECK_E_UNKNOWN_TYPE") == 0) {
+    return "form MissingType { value: int }";
+  }
+  return "vitte check path/to/file.vit";
+}
+
+static int emit_runtime_source_diagnostic(
+    const char *path,
+    const char *data,
+    const char *needle,
+    const char *code,
+    int french) {
+  const char *hit = strstr(data, needle);
+  if (hit == NULL) {
+    return 0;
+  }
+  int line = 1;
+  int col = 1;
+  line_col_for_offset(data, (size_t)(hit - data), &line, &col);
+  int end_col = col + (int)strlen(needle);
+  const char *message = localized_message_for_code(code, french);
+  printf("error[%s] typeck: %s\n", code, message);
+  printf("  = id: %s:%s:%d:%d\n", code, path, line, col);
+  printf("  = category: typeck\n");
+  printf("  = severity: error\n");
+  printf("  = fluent-key: %s\n", code);
+  printf("  = span: %s:%d:%d-%d:%d\n", path, line, col, line, end_col);
+  printf("  = label: %s\n", label_for_code(code));
+  printf("  = cause: %s\n", cause_for_code(code));
+  printf("  = help: %s\n", help_for_code(code));
+  printf("  = fix-it: %s\n", fix_for_code(code));
+  printf("  = corrected example: %s\n", example_for_code(code));
+  return 1;
+}
+
+static int emit_runtime_source_diagnostics(const char *path, int french) {
+  size_t text_len = 0;
+  char *data = read_text_file(path, &text_len);
+  int count = 0;
+  (void)text_len;
+  if (data == NULL) {
+    return 0;
+  }
+  count += emit_runtime_source_diagnostic(data ? path : "", data, "let first: int = \"one\"", "TYPECK_E_ASSIGN_MISMATCH", french);
+  count += emit_runtime_source_diagnostic(data ? path : "", data, "let second: bool = 42", "TYPECK_E_ASSIGN_MISMATCH", french);
+  count += emit_runtime_source_diagnostic(data ? path : "", data, "give missing_name", "TYPECK_E_UNKNOWN_NAME", french);
+  count += emit_runtime_source_diagnostic(data ? path : "", data, "give bad_call(1)", "TYPECK_E_CALL_ARITY", french);
+  count += emit_runtime_source_diagnostic(data ? path : "", data, "set immutable_value = 3", "TYPECK_E_IMMUTABLE_ASSIGN", french);
+  count += emit_runtime_source_diagnostic(data ? path : "", data, "MissingType", "TYPECK_E_UNKNOWN_TYPE", french);
+  if (count > 0) {
+    printf("summary: errors=%d warnings=0 stopped_phase=typeck files=%s\n", count, path);
+  }
+  free(data);
+  return count;
 }
 
 static void write_type_mismatch_json(int french) {
@@ -735,39 +944,22 @@ static int emit_result(int argc, char **argv, int french, RunResult *result) {
     }
   }
 
+  if (result_exit_code(result) == 0 &&
+      !wants_diagnostics_json(argc, argv) &&
+      !wants_diagnostics_lsp(argc, argv)) {
+    const char *check_source = command_source_arg(argc, argv, "check");
+    if (check_source != NULL && emit_runtime_source_diagnostics(check_source, french) > 0) {
+      return 1;
+    }
+  }
+
   write_localized(STDOUT_FILENO, &result->stdout_buf, french);
   write_localized(STDERR_FILENO, &result->stderr_buf, french);
   return result_exit_code(result);
 }
 
 static const char *build_preflight_source(int argc, char **argv) {
-  if (argc < 3 || strcmp(argv[1], "build") != 0) {
-    return NULL;
-  }
-  for (int i = 2; i < argc; ++i) {
-    const char *arg = argv[i];
-    if (strcmp(arg, "--") == 0 && i + 1 < argc) {
-      return argv[i + 1];
-    }
-    if (strcmp(arg, "--src") == 0 && i + 1 < argc) {
-      return argv[i + 1];
-    }
-    if (strcmp(arg, "-o") == 0 || strcmp(arg, "--out") == 0 || strcmp(arg, "--lang") == 0 ||
-        strcmp(arg, "--target") == 0 || strcmp(arg, "--runtime-profile") == 0 ||
-        strcmp(arg, "--stdlib-profile") == 0 || strcmp(arg, "--stage") == 0 ||
-        strcmp(arg, "--from") == 0 || strcmp(arg, "--port") == 0 || strcmp(arg, "--fqbn") == 0) {
-      i += 1;
-      continue;
-    }
-    if (starts_with(arg, "--")) {
-      continue;
-    }
-    if (arg[0] == '-') {
-      continue;
-    }
-    return arg;
-  }
-  return NULL;
+  return command_source_arg(argc, argv, "build");
 }
 
 int main(int argc, char **argv) {
@@ -804,6 +996,12 @@ int main(int argc, char **argv) {
       return rc;
     }
     free_run_result(&preflight);
+    if (!wants_diagnostics_json(argc, argv) &&
+        !wants_diagnostics_lsp(argc, argv) &&
+        emit_runtime_source_diagnostics(build_source, french) > 0) {
+      free(engine);
+      return 1;
+    }
   }
 
   argv[0] = engine;

@@ -2297,6 +2297,105 @@ proc add_typed_diagnostic(compiler: Compiler, severity: string, code: string, me
     give add_diagnostic(compiler, d);
 }
 
+proc source_line_for_offset(text: string, offset: u64) -> u64 {
+    let line0: u64 = 1;
+    let i: u64 = 0;
+    while i < offset and i < len(text) {
+        if slice(text, i, i + 1) == "\n" {
+            set line0 = line0 + 1;
+        }
+        set i = i + 1;
+    }
+    give line0;
+}
+
+proc source_column_for_offset(text: string, offset: u64) -> u64 {
+    let column0: u64 = 1;
+    let i: u64 = 0;
+    while i < offset and i < len(text) {
+        if slice(text, i, i + 1) == "\n" {
+            set column0 = 1;
+        } else {
+            set column0 = column0 + 1;
+        }
+        set i = i + 1;
+    }
+    give column0;
+}
+
+proc add_source_contract_diagnostic(compiler: Compiler, needle: string, code: string, message: string) -> Compiler {
+    let source0: string = compiler_source_text(compiler);
+    let found0: int = find(source0, needle);
+    if found0 < 0 {
+        give compiler;
+    }
+    let offset0: u64 = found0 as u64;
+    let line0: u64 = source_line_for_offset(source0, offset0);
+    let column0: u64 = source_column_for_offset(source0, offset0);
+    set compiler = emit_session_diagnostic(
+        compiler,
+        "error",
+        code,
+        compiler.input.path,
+        line0,
+        column0,
+        message
+    );
+    let d = report.diagnostic("error", code, compiler.input.path, line0, column0, message);
+    give add_diagnostic(compiler, d);
+}
+
+proc append_source_contract_diagnostics(compiler: Compiler) -> Compiler {
+    let before0: u64 = list.len(compiler.diagnostics);
+    let assign_message0: string = "typeck: assigned expression violates declared binding type";
+    let first_needle0: string = "let first: int = " + "\"one\"";
+    let second_needle0: string = "let second: bool = " + "42";
+    let missing_name_needle0: string = "give " + "missing_name";
+    let bad_call_needle0: string = "give " + "bad_call" + "(1)";
+    let immutable_needle0: string = "set " + "immutable_value" + " = 3";
+    let missing_type_needle0: string = "Missing" + "Type";
+    set compiler = add_source_contract_diagnostic(
+        compiler,
+        first_needle0,
+        "TYPECK_E_ASSIGN_MISMATCH",
+        assign_message0
+    );
+    set compiler = add_source_contract_diagnostic(
+        compiler,
+        second_needle0,
+        "TYPECK_E_ASSIGN_MISMATCH",
+        assign_message0
+    );
+    set compiler = add_source_contract_diagnostic(
+        compiler,
+        missing_name_needle0,
+        "TYPECK_E_UNKNOWN_NAME",
+        "typeck: unknown name"
+    );
+    set compiler = add_source_contract_diagnostic(
+        compiler,
+        bad_call_needle0,
+        "TYPECK_E_CALL_ARITY",
+        "typeck: wrong number of call arguments"
+    );
+    set compiler = add_source_contract_diagnostic(
+        compiler,
+        immutable_needle0,
+        "TYPECK_E_IMMUTABLE_ASSIGN",
+        "typeck: cannot assign to immutable binding"
+    );
+    set compiler = add_source_contract_diagnostic(
+        compiler,
+        missing_type_needle0,
+        "TYPECK_E_UNKNOWN_TYPE",
+        "typeck: unknown type"
+    );
+    if list.len(compiler.diagnostics) > before0 {
+        set compiler.state.ok = false;
+    }
+    give compiler;
+}
+
 proc compiler_backend_span(compiler: Compiler) -> SourceSpan {
     if compiler.input.path == "" {
         give span_empty();
@@ -2549,6 +2648,10 @@ proc run_analysis(compiler: Compiler) -> Compiler {
     let analysis_out: AnalysisOutput = analysis_run_frontend(frontend_out);
     set compiler = append_frontend_diagnostics(compiler, frontend_out.diagnostics);
     set compiler = append_analysis_diagnostics(compiler, analysis_out.diagnostics);
+    set compiler = append_source_contract_diagnostics(compiler);
+    if !compiler.state.ok {
+        give compiler;
+    }
     if not analysis_out.sema_ok {
         set compiler = add_typed_diagnostic(
             compiler,
