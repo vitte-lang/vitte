@@ -210,7 +210,7 @@ vitte-lint:
 # Static analysis
 # ------------------------------------------------------------
 
-.PHONY: tidy vitte-source-audit vitte-legacy-text-audit src-compiler-stdlib-gate compiler-entrypoint-gate stage1-compiler-gate stage2-project-gate selfhost-stage-compare-gate selfhost-stage0-gate selfhost-stage1-gate selfhost-stage2-gate selfhost-release-gate selfhost-full-gate selfhost-ci-regression-gate seed-free-normal-flow-gate seed-free-release-gate vitte-in-vitte-gate release-clean-selfhost-gate release-package-stdlib-gate compiler-snapshot-gate compiler-backend-surface-gate compiler-link-abi-gate seed-free-release-surface-gate release-binary-gate vitte-bootstrap-check bootstrap-native-snapshots compiler-real-native-gate compiler-test-suite-check-gate compiler-no-fallback-gate driver-native-json-surface-gate compiler-real-diagnostics-gate invalid-fixtures-contract-gate
+.PHONY: tidy vitte-source-audit vitte-legacy-text-audit vitte-compiler-purity-gate src-compiler-stdlib-gate compiler-entrypoint-gate stage1-compiler-gate stage2-project-gate selfhost-stage-compare-gate selfhost-stage0-gate selfhost-stage1-gate selfhost-stage2-gate selfhost-release-gate selfhost-full-gate selfhost-ci-regression-gate seed-free-normal-flow-gate seed-free-release-gate vitte-in-vitte-gate release-clean-selfhost-gate release-package-stdlib-gate compiler-snapshot-gate compiler-backend-surface-gate compiler-link-abi-gate seed-free-release-surface-gate release-binary-gate vitte-bootstrap-check bootstrap-native-snapshots compiler-real-native-gate compiler-test-suite-check-gate compiler-no-fallback-gate driver-native-json-surface-gate compiler-real-diagnostics-gate invalid-fixtures-contract-gate
 tidy: vitte-source-audit vitte-legacy-text-audit
 
 vitte-source-audit:
@@ -242,6 +242,11 @@ vitte-source-audit:
 
 vitte-legacy-text-audit:
 	@tools/ci_surface_legacy_audit.sh
+
+vitte-compiler-purity-gate:
+	@python3 tools/vitte_compiler_purity_gate.py
+	@test -f target/reports/vitte_compiler_purity_gate.json
+	@test -f target/reports/vitte_compiler_purity_gate.md
 
 src-compiler-stdlib-gate:
 	@python3 tools/src_compiler_stdlib_gate.py
