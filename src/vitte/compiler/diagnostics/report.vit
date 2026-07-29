@@ -1,124 +1,43 @@
 space vitte/compiler/diagnostics/report
 
-use vitte/compiler/infrastructure/diagnostics/fluent_catalog.{ fluent_catalog_lookup, fluent_catalog_normalize_locale }
+use vitte/compiler/diagnostics/architecture.{ compiler_diagnostic_error, compiler_diagnostic_stage_from_code, compiler_single_diagnostic_render }
+use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, DiagnosticSeverity, SourceSpan, span_create }
 
-form TextDiagnostic {
-    severity: string
-    code: string
-    file: string
-    line: u64
-    column: u64
-    message: string
-    valid: bool
-}
+proc diagnostic(severity: string, code: string, file: string, line: u64, column: u64, message: string) -> Diagnostic {
+    let source_file: string = if file != "" { file } else { "<cli>" };
+    let source_line: u64 = if line > 0 { line } else { 1 as u64 };
+    let source_column: u64 = if column > 0 { column } else { 1 as u64 };
+    let span0: SourceSpan = span_create(source_file, source_line, source_column, 1 as u64);
+    let diagnostic0: Diagnostic = compiler_diagnostic_error(compiler_diagnostic_stage_from_code(code), code, message, span0);
 
-proc text_diagnostic(severity: string, code: string, file: string, line: u64, column: u64, message: string) -> TextDiagnostic {
-    let sev: string = severity;
-    let ln: u64 = line;
-    let col: u64 = column;
-
-    if sev == "" {
-        set sev = "error";
-    }
-    if ln == 0 {
-        set ln = 1 as u64;
-    }
-    if col == 0 {
-        set col = 1 as u64;
+    if severity == "fatal" {
+        set diagnostic0.severity = DiagnosticSeverity.Fatal;
+        set diagnostic0.fatal = true;
+    } elif severity == "warning" {
+        set diagnostic0.severity = DiagnosticSeverity.Warning;
+    } elif severity == "note" {
+        set diagnostic0.severity = DiagnosticSeverity.Note;
+    } elif severity == "help" {
+        set diagnostic0.severity = DiagnosticSeverity.Help;
     }
 
-    give TextDiagnostic {
-        severity: sev,
-        code: code,
-        file: file,
-        line: ln,
-        column: col,
-        message: message,
-        valid: code != "" and message != ""
-    };
+    give diagnostic0;
 }
 
-proc error_text(message: string) -> TextDiagnostic {
-    give text_diagnostic("error", "DRIVER_E_TEXT", "", 1 as u64, 1 as u64, message);
+proc error_text(message: string) -> Diagnostic {
+    give diagnostic("error", "DRIVER_E_TEXT", "<cli>", 1 as u64, 1 as u64, message);
 }
 
-proc ansi_reset() -> string {
-    give "\u001b[0m";
+proc render_text(diagnostic0: Diagnostic) -> string {
+    give compiler_single_diagnostic_render(diagnostic0, "terminal", "en", "check", diagnostic0.span.file);
 }
 
-proc ansi_bold() -> string {
-    give "\u001b[1m";
+proc render_text_lang(diagnostic0: Diagnostic, lang: string) -> string {
+    give compiler_single_diagnostic_render(diagnostic0, "terminal", lang, "check", diagnostic0.span.file);
 }
 
-proc ansi_bright_red() -> string {
-    give "\u001b[91m";
-}
-
-proc ansi_yellow() -> string {
-    give "\u001b[33m";
-}
-
-proc ansi_blue() -> string {
-    give "\u001b[34m";
-}
-
-proc ansi_cyan() -> string {
-    give "\u001b[36m";
-}
-
-proc report_eq() -> string {
-    give slice("a=b", 1, 2);
-}
-
-proc colorize_severity(severity: string) -> string {
-    let text: string = severity;
-
-    if severity == "fatal" or severity == "error" {
-        give ansi_bold() + ansi_bright_red() + text + ansi_reset();
-    }
-
-    if severity == "warning" {
-        give ansi_bold() + ansi_yellow() + text + ansi_reset();
-    }
-
-    if severity == "note" {
-        give ansi_blue() + text + ansi_reset();
-    }
-
-    if severity == "help" {
-        give ansi_cyan() + text + ansi_reset();
-    }
-
-    give text;
-}
-
-proc render_text(diagnostic0: TextDiagnostic) -> string {
-    let severity_text: string = colorize_severity(diagnostic0.severity);
-    let line_text: string = diagnostic0.line as string;
-    let column_text: string = diagnostic0.column as string;
-    let span_text: string = diagnostic0.file + ":" + line_text + ":" + column_text;
-    give "severity" + report_eq() + severity_text + " code" + report_eq() + diagnostic0.code + " span" + report_eq() + span_text + " message" + report_eq() + diagnostic0.message;
-}
-
-proc render_text_lang(diagnostic0: TextDiagnostic, lang: string) -> string {
-    let locale: string = fluent_catalog_normalize_locale(lang);
-    let localized: string = fluent_catalog_lookup(locale, diagnostic0.code);
-    let message: string = if localized != "" { localized } else { diagnostic0.message };
-    let rendered: string = render_text(text_diagnostic(diagnostic0.severity, diagnostic0.code, diagnostic0.file, diagnostic0.line, diagnostic0.column, message));
-    if diagnostic0.code == "TYPECK_E_ASSIGN_MISMATCH" {
-        let line_text: string = diagnostic0.line as string;
-        let column_text: string = diagnostic0.column as string;
-        let span_text: string = if diagnostic0.file != "" { diagnostic0.file + ":" + line_text + ":" + column_text } else { "<unknown>:1:1" };
-        give rendered
-            + "\n  = span: " + span_text
-            + "\n  = label: expected declared assignment type; found incompatible assigned expression."
-            + "\n  = cause: The inferred type does not satisfy the type required at this location."
-            + "\n  = help: compare the declared binding type with the assigned expression type before changing code."
-            + "\n  = fix-it: replace the incompatible value with `1`, or change the binding annotation intentionally."
-            + "\n  = fix: assign a value of the declared binding type, or change the binding annotation at its declaration."
-            + "\n  = corrected example: let count: int = 1";
-    }
-    give rendered;
-}
-
-export *
+share Diagnostic
+share diagnostic
+share error_text
+share render_text
+share render_text_lang

@@ -9,7 +9,7 @@
 space vitte/compiler/diagnostics/diagnostic
 
 use vitte/stdlib/io/fileops.{ is_file, read_file }
-use vitte/compiler/infrastructure/diagnostics/fluent_catalog.{ fluent_catalog_lookup, fluent_catalog_normalize_locale }
+use vitte/compiler/infrastructure/diagnostics/fluent_catalog.{ FluentDiagnosticFields, fluent_catalog_fields_or, fluent_catalog_lookup, fluent_catalog_normalize_locale }
 
 const DIAGNOSTIC_SCHEMA_VERSION: string = "1.0.0"
 const DIAGNOSTIC_PUBLIC_API_STATUS: string = "migration-freeze-pending"
@@ -2610,6 +2610,61 @@ proc diagnostic_create(code: string, phase: DiagnosticPhase, severity: Diagnosti
     };
 }
 
+proc diagnostic_public_id(diagnostic: Diagnostic) -> string {
+    let file: string = if diagnostic.span.file != "" { diagnostic.span.file } else { "<cli>" };
+    let line: u64 = if diagnostic.span.start_line > 0 { diagnostic.span.start_line } else { 1 as u64 };
+    let column: u64 = if diagnostic.span.start_column > 0 { diagnostic.span.start_column } else { 1 as u64 };
+    give diagnostic.code + ":" + file + ":" + (line as string) + ":" + (column as string);
+}
+
+proc diagnostic_localized(diagnostic: Diagnostic, lang: string) -> Diagnostic {
+    let locale: string = fluent_catalog_normalize_locale(lang);
+    let fields: FluentDiagnosticFields = fluent_catalog_fields_or(locale, diagnostic.code, diagnostic.message);
+    let localized: Diagnostic = diagnostic;
+
+    set localized.title = fields.message;
+    set localized.message = fields.message;
+    set localized.explanation = fields.primary_label;
+    set localized.root_cause = fields.cause;
+    set localized.internal_cause = fields.cause;
+    set localized.probable_fix = fields.fix_it;
+    set localized.valid_example = fields.corrected_example;
+
+    if len(localized.labels) > 0 {
+        set localized.labels[0].message = fields.primary_label;
+    } else {
+        set localized.labels = [primary_label(fields.primary_label, localized.span)];
+    }
+
+    if fields.secondary_label != "" and fields.secondary_label != fields.primary_label {
+        set localized.labels = localized.labels + [secondary_label(fields.secondary_label, localized.span)];
+        set localized.secondary_spans = localized.secondary_spans + [localized.span];
+    }
+
+    if len(localized.notes) > 0 {
+        set localized.notes[0].message = fields.note;
+    } elif fields.note != "" {
+        set localized.notes = [diagnostic_note(fields.note)];
+    }
+
+    if len(localized.helps) > 0 {
+        set localized.helps[0].message = fields.help;
+    } elif fields.help != "" {
+        set localized.helps = [diagnostic_help(fields.help)];
+    }
+
+    if len(localized.suggestions) > 0 {
+        set localized.suggestions[0].message = fields.lsp_code_action_title;
+        set localized.suggestions[0].reason = fields.fix_it;
+    } elif fields.fix_it != "" {
+        set localized.suggestions = [diagnostic_suggestion(DiagnosticSuggestionKind.Help, fields.lsp_code_action_title, "", localized.span, false)];
+    }
+
+    set localized.pipeline_context = localized.pipeline_context + ["locale=" + locale, "fluent_key=" + localized.code];
+    set localized.valid = localized.code != "" and localized.message != "" and localized.span.valid and fields.valid;
+    give localized;
+}
+
 proc diagnostic_with_rule(diagnostic: Diagnostic, rule: string) -> Diagnostic {
     if rule == "" {
         give diagnostic;
@@ -4679,6 +4734,14 @@ proc diagnostic_from_surface(code: string, message: string, span: SourceSpan, fa
 }
 
 proc phase_from_code(code: string) -> DiagnosticPhase {
+    if starts_with(code, "E_CLI_") {
+        give DiagnosticPhase.Cli;
+    }
+
+    if starts_with(code, "E_IO_") {
+        give DiagnosticPhase.Io;
+    }
+
     if starts_with(code, "LEX") {
         give DiagnosticPhase.Lexer;
     }
@@ -5488,6 +5551,8 @@ share diagnostic_suggestion_replacement_is_valid_vitte
 share diagnostic_suggestions_produce_valid_vitte
 
 share diagnostic_create
+share diagnostic_public_id
+share diagnostic_localized
 share diagnostic_error
 share diagnostic_warning
 share diagnostic_fatal

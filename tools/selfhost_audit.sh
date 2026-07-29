@@ -29,11 +29,22 @@ count_lines() {
   printf '%s\n' "$files" | xargs wc -l | tail -n 1 | awk '{print $1}'
 }
 
+existing_dirs() {
+  for dir in "$@"; do
+    if [ -d "$dir" ]; then
+      printf '%s\n' "$dir"
+    fi
+  done
+}
+
 compiler_dirs="src/vitte/compiler src/vitte/packages/compiler/driver"
+compiler_existing_dirs=$(existing_dirs src/vitte/compiler src/vitte/packages/compiler/driver | tr '\n' ' ')
 expected_compiler_root="src/vitte/compiler"
 expected_compiler_entry="src/vitte/compiler/main.vit"
 seed_manifest="toolchain/seed/manifest.txt"
-seed_artifact="bin/vitte"
+release_artifact="target/release/vitte"
+stage1_artifact="target/stage1/vitte"
+stage2_artifact="target/stage2/vitte"
 audit_errors=0
 runtime_bridge_dir="$ROOT_DIR/src/vitte/compiler/backends/runtime_c"
 
@@ -58,8 +69,9 @@ legacy_non_runtime_files=$(printf '%s\n' "$legacy_source_files" | awk -v dir="$r
 runtime_bridge_count=$(printf '%s\n' "$runtime_bridge_files" | sed '/^$/d' | wc -l | tr -d ' ')
 legacy_non_runtime_count=$(printf '%s\n' "$legacy_non_runtime_files" | sed '/^$/d' | wc -l | tr -d ' ')
 legacy_source_count=$(printf '%s\n' "$legacy_source_files" | sed '/^$/d' | wc -l | tr -d ' ')
-compiler_vitte_files=$(count_files '*.vit' $compiler_dirs)
-compiler_vitl_files=$(count_files '*.vitl' $compiler_dirs)
+compiler_vitte_files=$(count_files '*.vit' $compiler_existing_dirs)
+compiler_vitl_files=$(count_files '*.vitl' $compiler_existing_dirs)
+compiler_vitl_list=$(rg --files $compiler_existing_dirs -g '*.vitl' | sort || true)
 
 printf 'Self-hosting audit\n'
 printf '==================\n'
@@ -89,15 +101,33 @@ fi
 
 printf 'Vitte compiler surface: %s .vit / %s .vitl\n' \
   "$compiler_vitte_files" "$compiler_vitl_files"
+if [ "$compiler_vitl_files" -ne 0 ]; then
+  printf '%s\n' "$compiler_vitl_list" | sed 's/^/  library: /'
+fi
 
 printf '\nCompiler source contract:\n'
-printf '  trust_root=%s\n' "$seed_artifact"
+printf '  release_artifact=%s\n' "$release_artifact"
+printf '  stage1_artifact=%s\n' "$stage1_artifact"
+printf '  stage2_artifact=%s\n' "$stage2_artifact"
 printf '  compiler_entry=%s\n' "$expected_compiler_entry"
-if [ ! -f "$seed_manifest" ]; then
-  printf '    [error] missing seed manifest: %s\n' "$seed_manifest"
+
+if [ -e "$seed_manifest" ]; then
+  printf '    [error] retired seed manifest still exists: %s\n' "$seed_manifest"
   audit_errors=1
-elif ! grep -F 'seed_file=bin/vitte' "$seed_manifest" >/dev/null; then
-  printf '    [error] seed manifest does not point at %s\n' "$seed_artifact"
+fi
+
+if [ -e toolchain/seed ]; then
+  printf '    [error] retired seed root still exists: toolchain/seed\n'
+  audit_errors=1
+fi
+
+if [ -e scripts/seed ]; then
+  printf '    [error] retired seed scripts still exist: scripts/seed\n'
+  audit_errors=1
+fi
+
+if [ -e bin/vittec0 ]; then
+  printf '    [error] retired stage0 seed artifact still exists: bin/vittec0\n'
   audit_errors=1
 fi
 
@@ -111,8 +141,23 @@ if [ ! -f "$expected_compiler_entry" ]; then
   audit_errors=1
 fi
 
+if [ "$compiler_vitl_files" -eq 0 ]; then
+  printf '\n[error] compiler library surface has no .vitl files under: %s\n' "$compiler_dirs"
+  audit_errors=1
+fi
+
+if ! grep -F '"library_file": "src/<space>.vitl"' src/vitte/compiler/modules.vitte.json >/dev/null; then
+  printf '\n[error] compiler module manifest no longer records the .vitl library-file contract\n'
+  audit_errors=1
+fi
+
+if ! python3 tools/runtime_driver_provenance_gate.py; then
+  printf '\n[error] runtime compiler does not execute the current Vitte driver entry\n'
+  audit_errors=1
+fi
+
 if [ "$audit_errors" -ne 0 ]; then
   exit 1
 fi
 
-printf '\nSeed trust root is anchored to %s; compiler entry is %s.\n' "$seed_artifact" "$expected_compiler_entry"
+printf '\nSeed roots are retired and runtime provenance confirms compiler entry %s.\n' "$expected_compiler_entry"

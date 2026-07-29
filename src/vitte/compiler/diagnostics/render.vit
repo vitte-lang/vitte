@@ -601,9 +601,80 @@ proc render_causality_lines(ctx: RenderContext, diagnostic: Diagnostic) -> strin
     give out;
 }
 
+proc render_first_help_text(diagnostic: Diagnostic) -> string {
+    if len(diagnostic.helps) > 0 {
+        give diagnostic.helps[0].message;
+    }
+    give diagnostic.probable_fix;
+}
+
+proc render_first_fix_text(diagnostic: Diagnostic) -> string {
+    if len(diagnostic.suggestions) > 0 {
+        give diagnostic.suggestions[0].message;
+    }
+    give diagnostic.probable_fix;
+}
+
+proc render_contract_span_text(span: SourceSpan) -> string {
+    let start: string = span_location_text(span);
+    if not span.valid or span.end_line == 0 or span.end_column == 0 {
+        give start;
+    }
+    if span.end_line == span.start_line and span.end_column == span.start_column {
+        give start;
+    }
+    give start + "-" + (span.end_line as string) + ":" + (span.end_column as string);
+}
+
+proc render_fluent_contract_fields(ctx: RenderContext, diagnostic: Diagnostic) -> string {
+    let span_text: string = render_contract_span_text(diagnostic.span);
+    let id: string = diagnostic.code + ":" + diagnostic.span.file + ":" + (diagnostic.span.start_line as string) + ":" + (diagnostic.span.start_column as string);
+    let out: string = "  = code: " + diagnostic.code;
+    set out = append_line(out, "  = id: " + id);
+    set out = append_line(out, "  = category: " + phase_name(diagnostic.phase));
+    set out = append_line(out, "  = severity: " + severity_name(diagnostic.severity));
+    set out = append_line(out, "  = fluent-key: " + diagnostic.code);
+    set out = append_line(out, "  = span: " + span_text);
+
+    if len(diagnostic.labels) > 0 {
+        set out = append_line(out, "  = label: " + diagnostic.labels[0].message);
+    }
+
+    let label_index: u64 = 1;
+    while label_index < len(diagnostic.labels) {
+        set out = append_line(out, "  = secondary-label: " + diagnostic.labels[label_index].message);
+        set label_index = label_index + 1;
+    }
+
+    if diagnostic.root_cause != "" {
+        set out = append_line(out, "  = cause: " + diagnostic.root_cause);
+    }
+
+    let help: string = render_first_help_text(diagnostic);
+    if help != "" {
+        set out = append_line(out, "  = help: " + help);
+    }
+
+    let fix: string = render_first_fix_text(diagnostic);
+    if fix != "" {
+        set out = append_line(out, "  = fix-it: " + fix);
+    }
+
+    if diagnostic.valid_example != "" {
+        set out = append_line(out, "  = corrected example: " + diagnostic.valid_example);
+    }
+
+    if len(diagnostic.notes) > 0 {
+        set out = append_line(out, "  = note: " + diagnostic.notes[0].message);
+    }
+
+    give color_wrap(ctx, ansi_dim(), out);
+}
+
 proc render_diagnostic_text(ctx: RenderContext, diagnostic: Diagnostic) -> string {
     let out: string = render_header(ctx, diagnostic);
     set out = append_line(out, render_location(ctx, diagnostic.span));
+    set out = append_line(out, render_fluent_contract_fields(ctx, diagnostic));
     let labels: string = render_labels(ctx, diagnostic);
 
     if labels != "" {

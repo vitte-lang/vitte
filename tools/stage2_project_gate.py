@@ -173,6 +173,7 @@ def main() -> int:
         failures.append("missing stage1 compiler: target/stage1/vitte")
     else:
         STAGE2.parent.mkdir(parents=True, exist_ok=True)
+        STAGE2.unlink(missing_ok=True)
         build_env = env_for_stage2()
         build_env["VITTE_COMPILER"] = str(STAGE1)
         require_ok(results, [str(STAGE1), "build", ENTRYPOINT, "-o", str(STAGE2.relative_to(ROOT))], env=build_env)

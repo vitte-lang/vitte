@@ -522,12 +522,65 @@ proc json_fixes(plans: [DiagnosticFixPlan]) -> string {
     give json_array(encoded);
 }
 
+proc json_diagnostic_id(diagnostic: Diagnostic) -> string {
+    give diagnostic.code + ":" + diagnostic.span.file + ":" + (diagnostic.span.start_line as string) + ":" + (diagnostic.span.start_column as string);
+}
+
+proc json_diagnostic_location(diagnostic: Diagnostic) -> string {
+    give diagnostic.span.file + ":" + (diagnostic.span.start_line as string) + ":" + (diagnostic.span.start_column as string);
+}
+
+proc json_diagnostic_help_text(diagnostic: Diagnostic) -> string {
+    if len(diagnostic.helps) > 0 {
+        give diagnostic.helps[0].message;
+    }
+    give diagnostic.probable_fix;
+}
+
+proc json_diagnostic_fix_text(diagnostic: Diagnostic) -> string {
+    if diagnostic.probable_fix != "" {
+        give diagnostic.probable_fix;
+    }
+    if len(diagnostic.suggestions) > 0 {
+        give diagnostic.suggestions[0].message;
+    }
+    give json_diagnostic_help_text(diagnostic);
+}
+
 proc json_diagnostic(diagnostic: Diagnostic) -> string {
     give json_object([
         json_key_value(
             "code",
             json_quote(
                 diagnostic.code
+            )
+        ),
+
+        json_key_value(
+            "id",
+            json_quote(
+                json_diagnostic_id(diagnostic)
+            )
+        ),
+
+        json_key_value(
+            "category",
+            json_quote(
+                phase_name(diagnostic.phase)
+            )
+        ),
+
+        json_key_value(
+            "fluent_key",
+            json_quote(
+                diagnostic.code
+            )
+        ),
+
+        json_key_value(
+            "location",
+            json_quote(
+                json_diagnostic_location(diagnostic)
             )
         ),
 
@@ -726,6 +779,34 @@ proc json_diagnostic(diagnostic: Diagnostic) -> string {
             "root_cause",
             json_optional_string(
                 diagnostic.root_cause
+            )
+        ),
+
+        json_key_value(
+            "cause",
+            json_optional_string(
+                diagnostic.root_cause
+            )
+        ),
+
+        json_key_value(
+            "help",
+            json_optional_string(
+                json_diagnostic_help_text(diagnostic)
+            )
+        ),
+
+        json_key_value(
+            "fix",
+            json_optional_string(
+                json_diagnostic_fix_text(diagnostic)
+            )
+        ),
+
+        json_key_value(
+            "example",
+            json_optional_string(
+                diagnostic.valid_example
             )
         ),
 

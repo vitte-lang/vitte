@@ -458,6 +458,84 @@ P000_UNBALANCED.step1 = Look at the highlighted token and complete or remove the
 P000_UNBALANCED.fix = complete the syntax shape named by the parser label at the highlighted token
 P000_UNBALANCED.example = proc main() -> int { give 0 }
 
+E_CLI_IO.summary = The compiler cannot read the requested 入力 ファイル.
+E_CLI_IO.cause = The requested file does not exist, is not a regular file, or is not readable.
+E_CLI_IO.step1 = Verify the path passed to `vitte build` and the file permissions.
+E_CLI_IO.fix = use an existing readable source path
+E_CLI_IO.example = vitte build src/main.vit -o build/main
+
+E_CLI_MISSING_ARG.summary = command 引数が欠落しています.
+E_CLI_MISSING_ARG.cause = The driver could not use the provided input, option, cache, output, or profile.
+E_CLI_MISSING_ARG.step1 = Re-run the command with --help and verify paths and option values.
+E_CLI_MISSING_ARG.fix = provide an existing input, writable output path, and supported target/profile
+E_CLI_MISSING_ARG.example = vitte check src/main.vit --lang en
+
+E_CLI_UNKNOWN_COMMAND.summary = 不明なcompiler command.
+E_CLI_UNKNOWN_COMMAND.cause = The driver could not use the provided input, option, cache, output, or profile.
+E_CLI_UNKNOWN_COMMAND.step1 = Re-run the command with --help and verify paths and option values.
+E_CLI_UNKNOWN_COMMAND.fix = provide an existing input, writable output path, and supported target/profile
+E_CLI_UNKNOWN_COMMAND.example = vitte check src/main.vit --lang en
+
+E_CLI_UNKNOWN_OPTION.summary = 不明なcompiler option.
+E_CLI_UNKNOWN_OPTION.cause = The driver could not use the provided input, option, cache, output, or profile.
+E_CLI_UNKNOWN_OPTION.step1 = Re-run the command with --help and verify paths and option values.
+E_CLI_UNKNOWN_OPTION.fix = provide an existing input, writable output path, and supported target/profile
+E_CLI_UNKNOWN_OPTION.example = vitte check src/main.vit --lang en
+
+E_CLI_INVALID_ARGUMENT.summary = compiler 引数が無効です.
+E_CLI_INVALID_ARGUMENT.cause = The driver could not use the provided input, option, cache, output, or profile.
+E_CLI_INVALID_ARGUMENT.step1 = Re-run the command with --help and verify paths and option values.
+E_CLI_INVALID_ARGUMENT.fix = provide an existing input, writable output path, and supported target/profile
+E_CLI_INVALID_ARGUMENT.example = vitte check src/main.vit --lang en
+
+E_IO_FILE_NOT_FOUND.summary = 入力 ファイル欠落.
+E_IO_FILE_NOT_FOUND.cause = The compiler could not read an input resource or create the requested output resource.
+E_IO_FILE_NOT_FOUND.step1 = Verify that the path exists, is accessible, and that its parent directory is writable.
+E_IO_FILE_NOT_FOUND.fix = use an existing readable input path and a writable output destination
+E_IO_FILE_NOT_FOUND.example = vitte build src/main.vit -o build/main
+
+E_IO_FILE_UNREADABLE.summary = 入力 ファイル is not readable.
+E_IO_FILE_UNREADABLE.cause = The compiler could not read an input resource or create the requested output resource.
+E_IO_FILE_UNREADABLE.step1 = Verify that the path exists, is accessible, and that its parent directory is writable.
+E_IO_FILE_UNREADABLE.fix = use an existing readable input path and a writable output destination
+E_IO_FILE_UNREADABLE.example = vitte build src/main.vit -o build/main
+
+E_IO_OUTPUT_UNWRITABLE.summary = cannot 書き込み 出力 ファイル.
+E_IO_OUTPUT_UNWRITABLE.cause = The compiler could not read an input resource or create the requested output resource.
+E_IO_OUTPUT_UNWRITABLE.step1 = Verify that the path exists, is accessible, and that its parent directory is writable.
+E_IO_OUTPUT_UNWRITABLE.fix = use an existing readable input path and a writable output destination
+E_IO_OUTPUT_UNWRITABLE.example = vitte build src/main.vit -o build/main
+
+E_IO_PERMISSION_DENIED.summary = permission denied.
+E_IO_PERMISSION_DENIED.cause = The compiler could not read an input resource or create the requested output resource.
+E_IO_PERMISSION_DENIED.step1 = Verify that the path exists, is accessible, and that its parent directory is writable.
+E_IO_PERMISSION_DENIED.fix = use an existing readable input path and a writable output destination
+E_IO_PERMISSION_DENIED.example = vitte build src/main.vit -o build/main
+
+E_IO_DIRECTORY_NOT_FOUND.summary = 出力 directory欠落.
+E_IO_DIRECTORY_NOT_FOUND.cause = The compiler could not read an input resource or create the requested output resource.
+E_IO_DIRECTORY_NOT_FOUND.step1 = Verify that the path exists, is accessible, and that its parent directory is writable.
+E_IO_DIRECTORY_NOT_FOUND.fix = use an existing readable input path and a writable output destination
+E_IO_DIRECTORY_NOT_FOUND.example = vitte build src/main.vit -o build/main
+
+E_IO_OVERWRITE_FORBIDDEN.summary = refusing to overwrite existing 出力.
+E_IO_OVERWRITE_FORBIDDEN.cause = The compiler could not read an input resource or create the requested output resource.
+E_IO_OVERWRITE_FORBIDDEN.step1 = Verify that the path exists, is accessible, and that its parent directory is writable.
+E_IO_OVERWRITE_FORBIDDEN.fix = use an existing readable input path and a writable output destination
+E_IO_OVERWRITE_FORBIDDEN.example = vitte build src/main.vit -o build/main
+
+DRIVER_E_PIPELINE_FAILURE.summary = compiler pipeline失敗.
+DRIVER_E_PIPELINE_FAILURE.cause = The driver could not use the provided input, option, cache, output, or profile.
+DRIVER_E_PIPELINE_FAILURE.step1 = Re-run the command with --help and verify paths and option values.
+DRIVER_E_PIPELINE_FAILURE.fix = provide an existing input, writable output path, and supported target/profile
+DRIVER_E_PIPELINE_FAILURE.example = vitte check src/main.vit --lang en
+
+LINK_E_OUTPUT_NOT_MATERIALIZED.summary = linker did not create the requested executable.
+LINK_E_OUTPUT_NOT_MATERIALIZED.cause = The selected target, linker, ABI, object file, or native toolchain failed.
+LINK_E_OUTPUT_NOT_MATERIALIZED.step1 = Check the target triple and the first backend or linker note.
+LINK_E_OUTPUT_NOT_MATERIALIZED.fix = install the missing native tool, change target, or fix undefined symbols
+LINK_E_OUTPUT_NOT_MATERIALIZED.example = vitte build app.vit -o app
+
 LEX_E_INVALID_FLOAT.summary = 浮動小数が無効です.
 LEX_E_INVALID_FLOAT.cause = The parser or lexer could not form the next valid source construct.
 LEX_E_INVALID_FLOAT.step1 = Look at the highlighted token and complete or remove the construct around it.

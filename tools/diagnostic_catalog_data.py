@@ -6,6 +6,19 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 PUBLIC_EXTRA_CODES: tuple[str, ...] = (
+    "E_CLI_IO",
+    "E_CLI_MISSING_ARG",
+    "E_CLI_UNKNOWN_COMMAND",
+    "E_CLI_UNKNOWN_OPTION",
+    "E_CLI_INVALID_ARGUMENT",
+    "E_IO_FILE_NOT_FOUND",
+    "E_IO_FILE_UNREADABLE",
+    "E_IO_OUTPUT_UNWRITABLE",
+    "E_IO_PERMISSION_DENIED",
+    "E_IO_DIRECTORY_NOT_FOUND",
+    "E_IO_OVERWRITE_FORBIDDEN",
+    "DRIVER_E_PIPELINE_FAILURE",
+    "LINK_E_OUTPUT_NOT_MATERIALIZED",
     "LEX_E_INVALID_FLOAT",
     "LEX_E_INVALID_BINARY",
     "LEX_E_INVALID_OCTAL",
@@ -379,6 +392,19 @@ PUBLIC_MATRIX_CODES: tuple[str, ...] = tuple(
 
 
 MESSAGE_OVERRIDES: dict[str, str] = {
+    "E_CLI_IO": "cannot read input file",
+    "E_CLI_MISSING_ARG": "missing command argument",
+    "E_CLI_UNKNOWN_COMMAND": "unknown compiler command",
+    "E_CLI_UNKNOWN_OPTION": "unknown compiler option",
+    "E_CLI_INVALID_ARGUMENT": "invalid compiler argument",
+    "E_IO_FILE_NOT_FOUND": "input file not found",
+    "E_IO_FILE_UNREADABLE": "input file is not readable",
+    "E_IO_OUTPUT_UNWRITABLE": "cannot write output file",
+    "E_IO_PERMISSION_DENIED": "permission denied",
+    "E_IO_DIRECTORY_NOT_FOUND": "output directory not found",
+    "E_IO_OVERWRITE_FORBIDDEN": "refusing to overwrite existing output",
+    "DRIVER_E_PIPELINE_FAILURE": "compiler pipeline failed",
+    "LINK_E_OUTPUT_NOT_MATERIALIZED": "linker did not create the requested executable",
     "TYPECK_E_ASSIGN_MISMATCH": "assignment type mismatch",
     "E0013": "procedure may exit without give",
     "TYPECK_E_RETURN_MISMATCH": "give type mismatch",
@@ -553,6 +579,10 @@ def readable_from_code(code: str) -> str:
 
 
 def diagnostic_family(code: str) -> str:
+    if code.startswith("E_CLI_"):
+        return "command line"
+    if code.startswith("E_IO_"):
+        return "input and output"
     if code.startswith(("E0", "LEX_", "P", "PARSE_", "FLEX", "FAST", "SYNTAX_")):
         return "syntax"
     if code.startswith("E1"):
@@ -643,6 +673,11 @@ def explanation_fields(code: str, message: str | None = None) -> dict[str, str]:
         fields["step1"] = "Re-run the command with --help and verify paths and option values."
         fields["fix"] = "provide an existing input, writable output path, and supported target/profile"
         fields["example"] = "vitte check src/main.vit --lang en"
+    elif family == "input and output":
+        fields["cause"] = "The compiler could not read an input resource or create the requested output resource."
+        fields["step1"] = "Verify that the path exists, is accessible, and that its parent directory is writable."
+        fields["fix"] = "use an existing readable input path and a writable output destination"
+        fields["example"] = "vitte build src/main.vit -o build/main"
     elif family == "macro expansion":
         fields["cause"] = "A macro invocation, argument, recursion limit, or expansion contract could not produce valid user-facing code."
         fields["step1"] = "Inspect the macro invocation and the expansion note attached to the primary diagnostic."
@@ -663,6 +698,12 @@ def explanation_fields(code: str, message: str | None = None) -> dict[str, str]:
         fields["step1"] = "Inspect the highlighted parameter in the multi-line procedure signature."
         fields["fix"] = "insert `:` between the parameter name and its type, for example `right: f64`"
         fields["example"] = "proc calculate(right: f64) -> f64 { give right }"
+    elif code == "E_CLI_IO":
+        fields["summary"] = "The compiler cannot read the requested input file."
+        fields["cause"] = "The requested file does not exist, is not a regular file, or is not readable."
+        fields["step1"] = "Verify the path passed to `vitte build` and the file permissions."
+        fields["fix"] = "use an existing readable source path"
+        fields["example"] = "vitte build src/main.vit -o build/main"
     elif code == "LEX_E_UNTERMINATED_STRING":
         fields["cause"] = "A string starts with a double quote but reaches the end of the line without a matching double quote."
         fields["step1"] = "Check that the opening and closing string delimiters are both double quotes."

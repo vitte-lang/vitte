@@ -2175,7 +2175,7 @@ pkg-macos-uninstall:
 	@echo "[pkg-macos-uninstall] retired: generated macOS product packages include uninstall receipts"
 
 .PHONY: release-check
-release-check: core-release-gate ci-fast package-layout-lint-strict legacy-import-allowlist-empty ci-completions pkg-macos release-gate-90-119 vitte-max-construction-gate release-installer-gate vitte-total-integration-gate selfhost-stage0-gate selfhost-full-gate selfhost-ci-regression-gate release-clean-selfhost-gate release-package-stdlib-gate compiler-snapshot-gate compiler-backend-surface-gate compiler-link-abi-gate
+release-check: core-release-gate ci-fast package-layout-lint-strict legacy-import-allowlist-empty ci-completions pkg-macos release-gate-90-119 vitte-max-construction-gate release-installer-gate vitte-total-integration-gate selfhost-stage0-gate selfhost-full-gate selfhost-ci-regression-gate release-clean-selfhost-gate release-package-stdlib-gate compiler-snapshot-gate compiler-backend-surface-gate compiler-link-abi-gate build-fluent-diagnostics-gate
 
 .PHONY: release-doctor
 release-doctor:
@@ -2980,8 +2980,17 @@ diagnostic-fuzz:
 	@tools/update_diagnostics_ftl.py --check
 
 
-.PHONY: diagnostic-quality
-diagnostic-quality: diagnostic-contracts diagnostic-snapshots diagnostic-fuzz diagnostics-full-coverage diagnostics-cli-blocking diagnostics-blocking-gate counterfactual-diagnostics diagnostic-attribution suggestion-quality runtime-diagnostics-snapshots compiler-diagnostics-runtime-matrix-gate invalid-fixtures-contract-gate
+.PHONY: diagnostic-quality build-fluent-minimal-gate build-fluent-diagnostics-gate
+build-fluent-minimal-gate:
+	@python3 tools/check_no_direct_user_errors.py
+	@python3 tools/build_fluent_minimal_gate.py
+
+build-fluent-diagnostics-gate: build-fluent-minimal-gate
+	@python3 tools/check_no_direct_user_errors.py
+	@python3 tools/build_fluent_diagnostics_gate.py
+	@python3 tools/check_no_direct_user_errors.py --runtime
+
+diagnostic-quality: diagnostic-contracts diagnostic-snapshots diagnostic-fuzz diagnostics-full-coverage diagnostics-cli-blocking diagnostics-blocking-gate counterfactual-diagnostics diagnostic-attribution suggestion-quality runtime-diagnostics-snapshots compiler-diagnostics-runtime-matrix-gate invalid-fixtures-contract-gate build-fluent-diagnostics-gate
 
 
 .PHONY: platform-bootstrap-59-68

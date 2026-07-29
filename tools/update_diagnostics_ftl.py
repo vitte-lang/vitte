@@ -33,6 +33,96 @@ LOCALE_HEADERS: dict[str, tuple[str, str]] = {
 }
 
 
+MESSAGE_TRANSLATION_OVERRIDES: dict[str, dict[str, str]] = {
+    "fr": {
+        "E_CLI_IO": "impossible de lire le fichier source",
+        "E_CLI_MISSING_ARG": "argument de commande manquant",
+        "E_CLI_UNKNOWN_COMMAND": "commande du compilateur inconnue",
+        "E_CLI_UNKNOWN_OPTION": "option du compilateur inconnue",
+        "E_CLI_INVALID_ARGUMENT": "argument du compilateur invalide",
+        "E_IO_FILE_NOT_FOUND": "fichier source introuvable",
+        "E_IO_FILE_UNREADABLE": "fichier source illisible",
+        "E_IO_OUTPUT_UNWRITABLE": "impossible d'ecrire le fichier de sortie",
+        "E_IO_PERMISSION_DENIED": "permission refusee",
+        "E_IO_DIRECTORY_NOT_FOUND": "dossier de sortie introuvable",
+        "E_IO_OVERWRITE_FORBIDDEN": "ecrasement du fichier de sortie refuse",
+        "DRIVER_E_PIPELINE_FAILURE": "echec du pipeline du compilateur",
+        "LINK_E_OUTPUT_NOT_MATERIALIZED": "le linker n'a pas cree l'executable demande",
+    },
+}
+
+
+EXPLANATION_TRANSLATION_OVERRIDES: dict[str, dict[str, str]] = {
+    "fr": {
+        "E_CLI_IO.summary": "Le compilateur ne peut pas lire le fichier source demande.",
+        "E_CLI_IO.cause": "Le fichier demande n'existe pas, n'est pas un fichier regulier ou n'est pas lisible.",
+        "E_CLI_IO.step1": "Verifie le chemin passe a `vitte build` et les permissions du fichier.",
+        "E_CLI_IO.fix": "utiliser un chemin source existant et lisible",
+        "E_CLI_IO.example": "vitte build src/main.vit -o build/main",
+        "E_CLI_MISSING_ARG.summary": "Un argument obligatoire manque dans la commande.",
+        "E_CLI_MISSING_ARG.cause": "Une option ou une commande attend une valeur qui n'a pas ete fournie.",
+        "E_CLI_MISSING_ARG.step1": "Relis la commande et fournis la valeur juste apres l'option concernee.",
+        "E_CLI_MISSING_ARG.fix": "ajouter l'argument obligatoire a la commande",
+        "E_CLI_MISSING_ARG.example": "vitte build src/main.vit -o build/main",
+        "E_CLI_UNKNOWN_COMMAND.summary": "La commande demandee n'existe pas.",
+        "E_CLI_UNKNOWN_COMMAND.cause": "Le premier argument ne correspond a aucune commande Vitte disponible.",
+        "E_CLI_UNKNOWN_COMMAND.step1": "Consulte `vitte --help` et verifie l'orthographe de la commande.",
+        "E_CLI_UNKNOWN_COMMAND.fix": "utiliser une commande affichee par `vitte --help`",
+        "E_CLI_UNKNOWN_COMMAND.example": "vitte check src/main.vit",
+        "E_CLI_UNKNOWN_OPTION.summary": "La commande contient une option inconnue.",
+        "E_CLI_UNKNOWN_OPTION.cause": "L'option fournie n'est pas acceptee par cette version du compilateur.",
+        "E_CLI_UNKNOWN_OPTION.step1": "Consulte `vitte --help` et retire ou corrige l'option signalee.",
+        "E_CLI_UNKNOWN_OPTION.fix": "remplacer l'option par une option prise en charge",
+        "E_CLI_UNKNOWN_OPTION.example": "vitte build src/main.vit -o build/main",
+        "E_CLI_INVALID_ARGUMENT.summary": "La valeur d'un argument est invalide.",
+        "E_CLI_INVALID_ARGUMENT.cause": "L'argument est present mais ne respecte pas le format ou les valeurs autorisees.",
+        "E_CLI_INVALID_ARGUMENT.step1": "Verifie la valeur signalee et les choix documentes dans `vitte --help`.",
+        "E_CLI_INVALID_ARGUMENT.fix": "fournir une valeur valide pour l'argument signale",
+        "E_CLI_INVALID_ARGUMENT.example": "vitte check src/main.vit --lang fr",
+        "E_IO_FILE_NOT_FOUND.summary": "Le fichier source demande est introuvable.",
+        "E_IO_FILE_NOT_FOUND.cause": "Le chemin ne designe aucun fichier existant.",
+        "E_IO_FILE_NOT_FOUND.step1": "Verifie le chemin et le repertoire courant avant de relancer la commande.",
+        "E_IO_FILE_NOT_FOUND.fix": "utiliser le chemin d'un fichier source existant",
+        "E_IO_FILE_NOT_FOUND.example": "vitte build src/main.vit -o build/main",
+        "E_IO_FILE_UNREADABLE.summary": "Le fichier source existe mais ne peut pas etre lu.",
+        "E_IO_FILE_UNREADABLE.cause": "Les permissions ou l'etat du fichier interdisent sa lecture.",
+        "E_IO_FILE_UNREADABLE.step1": "Verifie les permissions de lecture et que le chemin designe un fichier regulier.",
+        "E_IO_FILE_UNREADABLE.fix": "rendre le fichier lisible ou utiliser une autre source",
+        "E_IO_FILE_UNREADABLE.example": "vitte build src/main.vit -o build/main",
+        "E_IO_OUTPUT_UNWRITABLE.summary": "Le fichier de sortie ne peut pas etre ecrit.",
+        "E_IO_OUTPUT_UNWRITABLE.cause": "La destination n'est pas accessible en ecriture ou n'est pas un fichier valide.",
+        "E_IO_OUTPUT_UNWRITABLE.step1": "Verifie le chemin de sortie, son parent et les permissions d'ecriture.",
+        "E_IO_OUTPUT_UNWRITABLE.fix": "choisir une destination accessible en ecriture",
+        "E_IO_OUTPUT_UNWRITABLE.example": "vitte build src/main.vit -o build/main",
+        "E_IO_PERMISSION_DENIED.summary": "Le systeme refuse l'operation demandee.",
+        "E_IO_PERMISSION_DENIED.cause": "Le processus Vitte ne possede pas les permissions requises sur le chemin.",
+        "E_IO_PERMISSION_DENIED.step1": "Verifie les droits du fichier et du dossier parent sans modifier inutilement leur proprietaire.",
+        "E_IO_PERMISSION_DENIED.fix": "utiliser un chemin autorise pour l'utilisateur courant",
+        "E_IO_PERMISSION_DENIED.example": "vitte build src/main.vit -o build/main",
+        "E_IO_DIRECTORY_NOT_FOUND.summary": "Le dossier parent de la sortie est introuvable.",
+        "E_IO_DIRECTORY_NOT_FOUND.cause": "Le chemin passe avec `-o` utilise un dossier absent ou un parent qui n'est pas un dossier.",
+        "E_IO_DIRECTORY_NOT_FOUND.step1": "Cree le dossier parent ou choisis un dossier de sortie existant.",
+        "E_IO_DIRECTORY_NOT_FOUND.fix": "utiliser un dossier de sortie existant",
+        "E_IO_DIRECTORY_NOT_FOUND.example": "vitte build src/main.vit -o build/main",
+        "E_IO_OVERWRITE_FORBIDDEN.summary": "La sortie ne peut pas ecraser le fichier source.",
+        "E_IO_OVERWRITE_FORBIDDEN.cause": "Le chemin passe avec `-o` est identique au chemin du fichier compile.",
+        "E_IO_OVERWRITE_FORBIDDEN.step1": "Choisis un chemin de sortie distinct du fichier source.",
+        "E_IO_OVERWRITE_FORBIDDEN.fix": "changer la valeur de `-o`",
+        "E_IO_OVERWRITE_FORBIDDEN.example": "vitte build src/main.vit -o build/main",
+        "DRIVER_E_PIPELINE_FAILURE.summary": "Le pipeline du compilateur s'est arrete sans diagnostic de phase.",
+        "DRIVER_E_PIPELINE_FAILURE.cause": "Une phase a echoue sans fournir le diagnostic structure attendu.",
+        "DRIVER_E_PIPELINE_FAILURE.step1": "Relance avec `--trace-pipeline` et conserve le premier contexte de phase signale.",
+        "DRIVER_E_PIPELINE_FAILURE.fix": "corriger la phase qui n'a pas produit son diagnostic",
+        "DRIVER_E_PIPELINE_FAILURE.example": "vitte check src/main.vit --trace-pipeline",
+        "LINK_E_OUTPUT_NOT_MATERIALIZED.summary": "Le linker n'a pas cree l'executable demande.",
+        "LINK_E_OUTPUT_NOT_MATERIALIZED.cause": "Le linking s'est termine sans produire de fichier executable a la destination attendue.",
+        "LINK_E_OUTPUT_NOT_MATERIALIZED.step1": "Verifie les diagnostics du linker, la destination et les permissions du dossier parent.",
+        "LINK_E_OUTPUT_NOT_MATERIALIZED.fix": "corriger le linking ou choisir une destination accessible",
+        "LINK_E_OUTPUT_NOT_MATERIALIZED.example": "vitte build src/main.vit -o build/main",
+    },
+}
+
+
 TERMS: dict[str, dict[str, str]] = {
     "fr": {
         "assignment": "affectation", "argument": "argument", "arguments": "arguments", "assert": "assertion",
@@ -906,6 +996,9 @@ def translate_message(locale: str, message: str) -> str:
 
 
 def translated_value(locale: str, code: str, fallback: dict[str, str]) -> str:
+    override = MESSAGE_TRANSLATION_OVERRIDES.get(locale, {}).get(code)
+    if override is not None:
+        return override
     message = fallback.get(code, readable_from_code(code))
     return translate_message(locale, message)
 
@@ -1011,6 +1104,9 @@ def render_explain_locale(locale: str, codes: list[str], messages: dict[str, str
                 value = fields[suffix]
             if locale != "en" and suffix == "summary":
                 value = translate_message(locale, value.removesuffix(".")) + "."
+            localized_override = EXPLANATION_TRANSLATION_OVERRIDES.get(locale, {}).get(key)
+            if localized_override is not None:
+                value = localized_override
             lines.append(f"{key} = {value}")
         lines.append("")
     return "\n".join(lines)

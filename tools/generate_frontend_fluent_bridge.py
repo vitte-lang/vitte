@@ -44,6 +44,10 @@ def render() -> str:
         locale: parse_ftl(ROOT / "locales" / locale / "diagnostics.ftl")
         for locale in supported_locale_codes()
     }
+    explain_maps = {
+        locale: parse_ftl(ROOT / "locales" / locale / "diagnostics_explain.ftl")
+        for locale in supported_locale_codes()
+    }
     codes = core_codes()
     missing = [
         f"{locale}:{code}"
@@ -55,6 +59,17 @@ def render() -> str:
         preview = ", ".join(missing[:20])
         more = "" if len(missing) <= 20 else f" ... (+{len(missing) - 20} more)"
         raise RuntimeError(f"missing Fluent diagnostic keys: {preview}{more}")
+    missing_explain = [
+        f"{locale}:{code}.{field}"
+        for locale, data in explain_maps.items()
+        for code in codes
+        for field in ("summary", "cause", "step1", "fix", "example")
+        if f"{code}.{field}" not in data
+    ]
+    if missing_explain:
+        preview = ", ".join(missing_explain[:20])
+        more = "" if len(missing_explain) <= 20 else f" ... (+{len(missing_explain) - 20} more)"
+        raise RuntimeError(f"missing Fluent diagnostic explanation keys: {preview}{more}")
     lines = [
         "space vitte/compiler/infrastructure/diagnostics/fluent_catalog",
         "",
@@ -70,6 +85,19 @@ def render() -> str:
         "    locale_count: u64",
         "    diagnostic_count: u64",
         "    generated: bool",
+        "}",
+        "",
+        "form FluentDiagnosticFields {",
+        "    message: string",
+        "    primary_label: string",
+        "    secondary_label: string",
+        "    cause: string",
+        "    help: string",
+        "    fix_it: string",
+        "    corrected_example: string",
+        "    note: string",
+        "    lsp_code_action_title: string",
+        "    valid: bool",
         "}",
         "",
         'const FLUENT_CATALOG_GENERATOR: string = "tools/generate_frontend_fluent_bridge.py";',
@@ -89,6 +117,25 @@ def render() -> str:
         "        diagnostic_count: diagnostic_count,",
         "        generated: generated",
         "    };",
+        "}",
+        "",
+        "proc fluent_diagnostic_fields(message: string, primary_label: string, secondary_label: string, cause: string, help: string, fix_it: string, corrected_example: string, note: string, lsp_code_action_title: string) -> FluentDiagnosticFields {",
+        "    give FluentDiagnosticFields {",
+        "        message: message,",
+        "        primary_label: primary_label,",
+        "        secondary_label: secondary_label,",
+        "        cause: cause,",
+        "        help: help,",
+        "        fix_it: fix_it,",
+        "        corrected_example: corrected_example,",
+        "        note: note,",
+        "        lsp_code_action_title: lsp_code_action_title,",
+        "        valid: message != \"\" and primary_label != \"\" and cause != \"\" and help != \"\"",
+        "    };",
+        "}",
+        "",
+        "proc fluent_diagnostic_fields_empty() -> FluentDiagnosticFields {",
+        "    give fluent_diagnostic_fields(\"\", \"\", \"\", \"\", \"\", \"\", \"\", \"\", \"\");",
         "}",
         "",
         "proc fluent_catalog_generator() -> string {",
@@ -134,30 +181,52 @@ def render() -> str:
     ])
     for locale in supported_locale_codes():
         fn_suffix = symbol_for_locale(locale)
-        lines.append(f"proc fluent_catalog_lookup_{fn_suffix}(code: string) -> string {{")
+        lines.append(f"proc fluent_catalog_fields_{fn_suffix}(code: string) -> FluentDiagnosticFields {{")
         for code in codes:
-            value = locale_maps[locale].get(code, "")
+            message = locale_maps[locale].get(code, "")
+            explain = explain_maps[locale]
+            summary = explain.get(f"{code}.summary", "")
+            cause = explain.get(f"{code}.cause", "")
+            help_text = explain.get(f"{code}.step1", "")
+            fix = explain.get(f"{code}.fix", "")
+            example = explain.get(f"{code}.example", "")
             lines.append(f'    if code == "{code}" {{')
-            lines.append(f'        give "{vitte_escape(value)}";')
+            lines.append(
+                '        give fluent_diagnostic_fields('
+                f'"{vitte_escape(message)}", '
+                f'"{vitte_escape(summary)}", '
+                f'"{vitte_escape(cause)}", '
+                f'"{vitte_escape(cause)}", '
+                f'"{vitte_escape(help_text)}", '
+                f'"{vitte_escape(fix)}", '
+                f'"{vitte_escape(example)}", '
+                f'"{vitte_escape(summary)}", '
+                f'"{vitte_escape(fix)}"'
+                ');'
+            )
             lines.append("    }")
             lines.append("")
-        lines.append('    give "";')
+        lines.append("    give fluent_diagnostic_fields_empty();")
         lines.append("}")
         lines.append("")
     lines.extend([
-        "proc fluent_catalog_lookup(locale: string, code: string) -> string {",
+        "proc fluent_catalog_fields(locale: string, code: string) -> FluentDiagnosticFields {",
         "    let normalized: string = fluent_catalog_normalize_locale(locale);",
         "",
     ])
     for locale in supported_locale_codes():
         lines.extend([
             f'    if normalized == "{locale}" {{',
-            f"        give fluent_catalog_lookup_{symbol_for_locale(locale)}(code);",
+            f"        give fluent_catalog_fields_{symbol_for_locale(locale)}(code);",
             "    }",
             "",
         ])
     lines.extend([
-        '    give "";',
+        "    give fluent_diagnostic_fields_empty();",
+        "}",
+        "",
+        "proc fluent_catalog_lookup(locale: string, code: string) -> string {",
+        "    give fluent_catalog_fields(locale, code).message;",
         "}",
         "",
         "proc fluent_catalog_has(locale: string, code: string) -> bool {",
@@ -175,6 +244,24 @@ def render() -> str:
         "        give fallback;",
         "    }",
         "    give message;",
+        "}",
+        "",
+        "proc fluent_catalog_fields_or(locale: string, code: string, fallback: string) -> FluentDiagnosticFields {",
+        "    let fields: FluentDiagnosticFields = fluent_catalog_fields(locale, code);",
+        "    if fields.valid {",
+        "        give fields;",
+        "    }",
+        "    give fluent_diagnostic_fields(",
+        "        fallback,",
+        "        fallback,",
+        "        fallback,",
+        "        \"the compiler rejected this operation\",",
+        "        \"inspect the reported span and command arguments\",",
+        "        \"repair the reported compiler contract\",",
+        "        \"vitte check src/main.vit\",",
+        "        fallback,",
+        "        \"repair the reported compiler contract\"",
+        "    );",
         "}",
         "",
         "proc fluent_catalog_stats_default() -> FluentCatalogStats {",

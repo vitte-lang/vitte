@@ -8,12 +8,17 @@ use vitte/compiler/diagnostics/diagnostic.{
   SourceSpan,
   diagnostic_add_pipeline_context,
   diagnostic_create,
+  diagnostic_localized,
   diagnostic_report,
   diagnostic_with_probable_fix,
   diagnostic_with_root_cause,
   diagnostic_with_rule,
   phase_name
 }
+use vitte/compiler/diagnostics/json.{ json_key_value, json_object, json_quote, json_report }
+use vitte/compiler/diagnostics/lsp.{ lsp_publish_diagnostics_json_rpc, span_uri }
+use vitte/compiler/diagnostics/render.{ RenderColorMode, render_terminal_report }
+use vitte/compiler/infrastructure/diagnostics/fluent_catalog.{ fluent_catalog_message_or }
 
 pick CompilerDiagnosticStage {
   Cli
@@ -35,6 +40,17 @@ form CompilerDiagnosticOrigin {
   phase: DiagnosticPhase
   component: string
   rule: string
+  valid: bool
+}
+
+form CompilerDiagnosticSurface {
+  report: DiagnosticReport
+  text: string
+  json: string
+  lsp: string
+  locale: string
+  command: string
+  source: string
   valid: bool
 }
 
@@ -231,6 +247,46 @@ proc stage_probable_fix(stage: CompilerDiagnosticStage) -> string {
   give "repair object symbols and libraries before final link";
 }
 
+proc compiler_diagnostic_stage_from_code(code: string) -> CompilerDiagnosticStage {
+  if starts_with(code, "E_CLI_") or starts_with(code, "DRIVER_") {
+    give CompilerDiagnosticStage.Cli;
+  }
+  if starts_with(code, "E_IO_") {
+    give CompilerDiagnosticStage.Io;
+  }
+  if starts_with(code, "LEX") or starts_with(code, "FLEX") {
+    give CompilerDiagnosticStage.Lexer;
+  }
+  if starts_with(code, "PARSE_") or starts_with(code, "P") or starts_with(code, "E00") {
+    give CompilerDiagnosticStage.Parser;
+  }
+  if starts_with(code, "MOD_") or starts_with(code, "MODULE_") or starts_with(code, "RESOLVE_") {
+    give CompilerDiagnosticStage.Resolver;
+  }
+  if starts_with(code, "SEMA_") {
+    give CompilerDiagnosticStage.Sema;
+  }
+  if starts_with(code, "TYPECK_") or starts_with(code, "TYPE_") {
+    give CompilerDiagnosticStage.TypeChecker;
+  }
+  if starts_with(code, "BORROWCK_") or starts_with(code, "OWNERSHIP_") or starts_with(code, "LIFETIME_") {
+    give CompilerDiagnosticStage.BorrowChecker;
+  }
+  if starts_with(code, "MIR_") {
+    give CompilerDiagnosticStage.Mir;
+  }
+  if starts_with(code, "IR_") {
+    give CompilerDiagnosticStage.Ir;
+  }
+  if starts_with(code, "BACKEND_") {
+    give CompilerDiagnosticStage.Backend;
+  }
+  if starts_with(code, "LINK_") or starts_with(code, "LINKER_") {
+    give CompilerDiagnosticStage.Linker;
+  }
+  give CompilerDiagnosticStage.Sema;
+}
+
 proc compiler_diagnostic_origin(stage: CompilerDiagnosticStage) -> CompilerDiagnosticOrigin {
   let phase: DiagnosticPhase = stage_phase(stage);
   give CompilerDiagnosticOrigin {
@@ -254,12 +310,85 @@ proc compiler_diagnostic(stage: CompilerDiagnosticStage, code: string, severity:
   give diagnostic_add_pipeline_context(diag6, "canonical_phase=" + phase_name(origin.phase));
 }
 
-proc compiler_diagnostic_error(stage: CompilerDiagnosticStage, code: string, message: string, span: SourceSpan) -> Diagnostic {
-  give compiler_diagnostic(stage, code, DiagnosticSeverity.Error, message, span);
+proc compiler_diagnostic_error(stage: CompilerDiagnosticStage, code: string, message_key: string, span: SourceSpan) -> Diagnostic {
+  let code_message: string = fluent_catalog_message_or("en", code, message_key);
+  let message: string = fluent_catalog_message_or("en", message_key, code_message);
+  let diagnostic0: Diagnostic = compiler_diagnostic(stage, code, DiagnosticSeverity.Error, message, span);
+  give diagnostic_add_pipeline_context(diagnostic0, "message_key=" + message_key);
+}
+
+proc compiler_diagnostic_cli_error(code: string, message_key: string, span: SourceSpan) -> Diagnostic {
+  give compiler_diagnostic_error(CompilerDiagnosticStage.Cli, code, message_key, span);
+}
+
+proc compiler_diagnostic_io_error(code: string, message_key: string, span: SourceSpan) -> Diagnostic {
+  give compiler_diagnostic_error(CompilerDiagnosticStage.Io, code, message_key, span);
+}
+
+proc compiler_diagnostic_backend_error(code: string, message_key: string, span: SourceSpan) -> Diagnostic {
+  give compiler_diagnostic_error(CompilerDiagnosticStage.Backend, code, message_key, span);
+}
+
+proc compiler_diagnostic_linker_error(code: string, message_key: string, span: SourceSpan) -> Diagnostic {
+  give compiler_diagnostic_error(CompilerDiagnosticStage.Linker, code, message_key, span);
 }
 
 proc compiler_diagnostic_report(diagnostics: [Diagnostic]) -> DiagnosticReport {
   give diagnostic_report(diagnostics);
+}
+
+proc compiler_diagnostic_localized_report(report: DiagnosticReport, lang: string) -> DiagnosticReport {
+  let localized: [Diagnostic] = [];
+  let i: u64 = 0;
+  while i < len(report.diagnostics) {
+    set localized = localized + [diagnostic_localized(report.diagnostics[i], lang)];
+    set i = i + 1;
+  }
+  give diagnostic_report(localized);
+}
+
+proc compiler_diagnostic_json(command: string, source: string, report: DiagnosticReport) -> string {
+  give json_object([
+    json_key_value("schema", json_quote("vitte.compiler.diagnostics")),
+    json_key_value("schema_version", json_quote("1.0.0")),
+    json_key_value("command", json_quote(command)),
+    json_key_value("source", json_quote(source)),
+    json_key_value("status", json_quote(if report.valid { "ok" } else { "error" })),
+    json_key_value("primary_report", json_report(report))
+  ]);
+}
+
+proc compiler_diagnostic_surface(report: DiagnosticReport, lang: string, command: string, source: string) -> CompilerDiagnosticSurface {
+  let localized: DiagnosticReport = compiler_diagnostic_localized_report(report, lang);
+  let uri: string = if len(localized.diagnostics) > 0 { span_uri(localized.diagnostics[0].span) } elif source != "" { "file:///" + source } else { "file:///<cli>" };
+  let text: string = render_terminal_report(localized, RenderColorMode.Never, 100 as u64);
+  let json: string = compiler_diagnostic_json(command, source, localized);
+  let lsp: string = lsp_publish_diagnostics_json_rpc(uri, localized);
+  give CompilerDiagnosticSurface {
+    report: localized,
+    text: text,
+    json: json,
+    lsp: lsp,
+    locale: lang,
+    command: command,
+    source: source,
+    valid: len(localized.diagnostics) > 0 and text != "" and json != "" and lsp != ""
+  };
+}
+
+proc compiler_diagnostic_render(report: DiagnosticReport, format: string, lang: string, command: string, source: string) -> string {
+  let surface: CompilerDiagnosticSurface = compiler_diagnostic_surface(report, lang, command, source);
+  if format == "json" {
+    give surface.json;
+  }
+  if format == "lsp" {
+    give surface.lsp;
+  }
+  give surface.text;
+}
+
+proc compiler_single_diagnostic_render(diagnostic: Diagnostic, format: string, lang: string, command: string, source: string) -> string {
+  give compiler_diagnostic_render(diagnostic_report([diagnostic]), format, lang, command, source);
 }
 
 proc diagnostic_architecture_covers_required_stages() -> bool {
@@ -280,6 +409,7 @@ proc diagnostic_architecture_covers_required_stages() -> bool {
 
 share CompilerDiagnosticStage
 share CompilerDiagnosticOrigin
+share CompilerDiagnosticSurface
 share canonical_diagnostic_stage_count
 share stage_name
 share stage_phase
@@ -287,8 +417,18 @@ share stage_component
 share stage_rule
 share stage_root_cause
 share stage_probable_fix
+share compiler_diagnostic_stage_from_code
 share compiler_diagnostic_origin
 share compiler_diagnostic
 share compiler_diagnostic_error
+share compiler_diagnostic_cli_error
+share compiler_diagnostic_io_error
+share compiler_diagnostic_backend_error
+share compiler_diagnostic_linker_error
 share compiler_diagnostic_report
+share compiler_diagnostic_localized_report
+share compiler_diagnostic_json
+share compiler_diagnostic_surface
+share compiler_diagnostic_render
+share compiler_single_diagnostic_render
 share diagnostic_architecture_covers_required_stages

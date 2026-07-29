@@ -14,7 +14,7 @@ set -euo pipefail
 # ----------------------------
 # Configuration
 # ----------------------------
-DIE_PREFIX="${DIE_PREFIX:-[vitte][error]}"
+DIE_PREFIX="${DIE_PREFIX:-error[E_TOOLCHAIN] toolchain:}"
 DIE_SHOW_CTX="${DIE_SHOW_CTX:-0}"   # 1 to show call context
 DIE_EXIT_CODE="${DIE_EXIT_CODE:-1}"
 

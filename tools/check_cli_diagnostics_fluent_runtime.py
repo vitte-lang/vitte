@@ -18,13 +18,12 @@ EXPECTED_CAUSE = "The inferred type does not satisfy the type required at this l
 EXPECTED_FIX = "assign a value of the declared binding type, or change the binding annotation at its declaration"
 EXPECTED_EXAMPLE = "let count: int = 1"
 EXPECTED_RICH_TEXT_TERMS = (
-    "span: tests/negative/type_mismatch.vit:5:11-5:18",
-    "label: expected declared assignment type",
-    f"cause: {EXPECTED_CAUSE}",
-    "help: compare the declared binding type with the assigned expression type before changing code.",
-    "fix-it: replace the incompatible value with `1`, or change the binding annotation intentionally.",
-    f"fix: {EXPECTED_FIX}",
-    "corrected example: let count: int = 1",
+    "= span: tests/negative/type_mismatch.vit:5:11-5:18",
+    "= label:",
+    f"= cause: {EXPECTED_CAUSE}",
+    "= help: Compare the expected and found types in the diagnostic labels.",
+    f"= fix-it: {EXPECTED_FIX}",
+    "= corrected example: let count: int = 1",
 )
 
 

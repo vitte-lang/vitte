@@ -34,15 +34,12 @@ REQUIRED_CODES: dict[str, str] = {
 
 SURFACE_NEEDLES: dict[Path, tuple[str, ...]] = {
     ROOT / "src/vitte/compiler/driver/compiler.vit": (
-        "missing compiler command",
-        "missing value after ",
-        "missing input file or --source text",
-        "missing or unreadable input source",
-        "invalid compiler configuration",
-        "missing compiler target",
-        "missing compiler output directory",
-        "missing compiler output path",
-        "invalid compiler link: target is empty",
+        "compiler_diagnostic_cli_error(",
+        'compiler_diagnostic_io_error("E_CLI_IO"',
+        "compiler_diagnostic_linker_error(",
+        "compiler_diagnostic_render(",
+        "request.error_format",
+        "request.lang",
     ),
     ROOT / "toolchain/scripts/package/make-macos-pkg.sh": (
         "vitte --help failed",
@@ -83,7 +80,7 @@ def main() -> int:
         actual = en.get(code)
         if actual != expected:
             failures.append(f"{EN_FTL.relative_to(ROOT)} missing {code} = {expected!r}")
-        if re.search(rf'code == "{re.escape(code)}"\s*\{{\s*give "', catalog) is None:
+        if re.search(rf'if code == "{re.escape(code)}"\s*\{{\s*give fluent_diagnostic_fields\(', catalog) is None:
             failures.append(f"{CATALOG.relative_to(ROOT)} missing generated lookup for {code}")
 
     for path, needles in SURFACE_NEEDLES.items():

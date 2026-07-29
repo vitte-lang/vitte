@@ -47,6 +47,14 @@ def write_json(value: object) -> None:
     print(json.dumps(value, indent=2, sort_keys=True, ensure_ascii=True))
 
 
+def sanitize_external_diagnostic(message: str) -> str:
+    legacy_prefix = "[vitte]" + "[error]"
+    return "\n".join(
+        line[len(legacy_prefix):].lstrip() if line.startswith(legacy_prefix) else line
+        for line in message.splitlines()
+    )
+
+
 def json_file(path: Path, value: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, indent=2, sort_keys=True, ensure_ascii=True) + "\n", encoding="utf-8")
@@ -925,10 +933,16 @@ def main(argv: list[str]) -> int:
         registry = load_registry()
         return dispatch(args, registry)
     except PackageFailure as exc:
-        message = f"[vitte][error] {exc.code}: {exc.message}"
+        message = sanitize_external_diagnostic(exc.message)
+        print(f"error[{exc.code}] package: {message}", file=sys.stderr)
+        print(f"  = id: {exc.code}:<package>:1:1", file=sys.stderr)
+        print("  = category: package", file=sys.stderr)
+        print("  = severity: error", file=sys.stderr)
+        print(f"  = fluent-key: {exc.code}", file=sys.stderr)
+        print("  = span: <package>:1:1-1:2", file=sys.stderr)
+        print("  = cause: the package command could not satisfy its manifest or workspace contract", file=sys.stderr)
         if exc.hint:
-            message += f" (hint: {exc.hint})"
-        print(message, file=sys.stderr)
+            print(f"  = help: {exc.hint}", file=sys.stderr)
         return 1
 
 

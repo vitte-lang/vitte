@@ -143,11 +143,24 @@ def binary_marker_failures(path: Path) -> list[str]:
         stderr=subprocess.DEVNULL,
         check=False,
     ).stdout
-    return [
+    failures = [
         f"{path.relative_to(ROOT)} contains forbidden bootstrap/payload marker: {marker}"
         for marker in FORBIDDEN_BINARY_MARKERS
         if marker in strings
     ]
+    symbols = subprocess.run(
+        ["nm", str(path)],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    ).stdout
+    if "_command_build" in symbols and "_copy_file" in symbols:
+        failures.append(
+            f"{path.relative_to(ROOT)} build path still materializes the compiler through self-copy symbols"
+        )
+    return failures
 
 
 def validate_package_payload(payload: dict[str, Any], failures: list[str]) -> None:
@@ -227,6 +240,7 @@ def main() -> int:
         failures.append("target/stage2/vitte is not executable")
     else:
         RELEASE.parent.mkdir(parents=True, exist_ok=True)
+        RELEASE.unlink(missing_ok=True)
         build_env = dict(os.environ)
         build_env["VITTE_ROOT"] = str(ROOT)
         build_env["VITTE_COMPILER"] = str(STAGE2)

@@ -26,6 +26,7 @@ use vitte/compiler/diagnostics/diagnostic.{
     has_new_error_outcome,
     suggestion_strategy_name
 }
+use vitte/compiler/diagnostics/json.{ json_array, json_key_value, json_object, json_quote }
 
 const USER_DIAGNOSTIC_COLUMNS: string = "one_based_visual_columns"
 const LSP_DIAGNOSTIC_COLUMNS: string = "zero_based_utf16_positions"
@@ -545,6 +546,127 @@ proc lsp_publish_summary(params: LspPublishDiagnosticsParams) -> string {
     give summary;
 }
 
+proc lsp_severity_number(severity: DiagnosticSeverity) -> string {
+    if severity == DiagnosticSeverity.Error or severity == DiagnosticSeverity.Fatal {
+        give "1";
+    }
+    if severity == DiagnosticSeverity.Warning {
+        give "2";
+    }
+    if severity == DiagnosticSeverity.Note {
+        give "3";
+    }
+    give "4";
+}
+
+proc lsp_position_json(position: LspPosition) -> string {
+    give json_object([
+        json_key_value("line", position.line as string),
+        json_key_value("character", position.character as string)
+    ]);
+}
+
+proc lsp_range_json_value(range: LspRange) -> string {
+    give json_object([
+        json_key_value("start", lsp_position_json(range.start)),
+        json_key_value("end", lsp_position_json(range.end))
+    ]);
+}
+
+proc lsp_related_information_json_value(info: LspDiagnosticRelatedInformation) -> string {
+    give json_object([
+        json_key_value("location", json_object([
+            json_key_value("uri", json_quote(info.location_uri)),
+            json_key_value("range", lsp_range_json_value(info.location_range))
+        ])),
+        json_key_value("message", json_quote(info.message))
+    ]);
+}
+
+proc lsp_related_information_json(values: [LspDiagnosticRelatedInformation]) -> string {
+    let encoded: [string] = [];
+    let i: u64 = 0;
+    while i < len(values) {
+        set encoded = encoded + [lsp_related_information_json_value(values[i])];
+        set i = i + 1;
+    }
+    give json_array(encoded);
+}
+
+proc lsp_first_help(diagnostic: Diagnostic) -> string {
+    if len(diagnostic.helps) > 0 {
+        give diagnostic.helps[0].message;
+    }
+    give diagnostic.probable_fix;
+}
+
+proc lsp_first_fix(diagnostic: Diagnostic) -> string {
+    if diagnostic.probable_fix != "" {
+        give diagnostic.probable_fix;
+    }
+    if len(diagnostic.suggestions) > 0 {
+        give diagnostic.suggestions[0].message;
+    }
+    give lsp_first_help(diagnostic);
+}
+
+proc lsp_code_action_title(diagnostic: Diagnostic) -> string {
+    if len(diagnostic.suggestions) > 0 {
+        give diagnostic.suggestions[0].message;
+    }
+    give lsp_first_fix(diagnostic);
+}
+
+proc lsp_diagnostic_data_json(diagnostic: Diagnostic) -> string {
+    give json_object([
+        json_key_value("code", json_quote(diagnostic.code)),
+        json_key_value("id", json_quote(diagnostic.code + ":" + diagnostic.span.file + ":" + (diagnostic.span.start_line as string) + ":" + (diagnostic.span.start_column as string))),
+        json_key_value("category", json_quote(phase_name(diagnostic.phase))),
+        json_key_value("severity", json_quote(severity_name(diagnostic.severity))),
+        json_key_value("fluent_key", json_quote(diagnostic.code)),
+        json_key_value("cause", json_quote(diagnostic.root_cause)),
+        json_key_value("help", json_quote(lsp_first_help(diagnostic))),
+        json_key_value("fix", json_quote(lsp_first_fix(diagnostic))),
+        json_key_value("example", json_quote(diagnostic.valid_example)),
+        json_key_value("code_action_title", json_quote(lsp_code_action_title(diagnostic)))
+    ]);
+}
+
+proc lsp_diagnostic_json_value(diagnostic: Diagnostic) -> string {
+    let value: LspDiagnostic = lsp_diagnostic(diagnostic);
+    give json_object([
+        json_key_value("range", lsp_range_json_value(value.range)),
+        json_key_value("severity", lsp_severity_number(diagnostic.severity)),
+        json_key_value("code", json_quote(diagnostic.code)),
+        json_key_value("source", json_quote("vitte")),
+        json_key_value("message", json_quote(diagnostic.message)),
+        json_key_value("relatedInformation", lsp_related_information_json(value.related_information)),
+        json_key_value("data", lsp_diagnostic_data_json(diagnostic))
+    ]);
+}
+
+proc lsp_diagnostics_json_values(diagnostics: [Diagnostic]) -> string {
+    let encoded: [string] = [];
+    let i: u64 = 0;
+    while i < len(diagnostics) {
+        set encoded = encoded + [lsp_diagnostic_json_value(diagnostics[i])];
+        set i = i + 1;
+    }
+    give json_array(encoded);
+}
+
+proc lsp_publish_diagnostics_json_rpc(uri: string, report: DiagnosticReport) -> string {
+    give json_object([
+        json_key_value("jsonrpc", json_quote("2.0")),
+        json_key_value("method", json_quote("textDocument/publishDiagnostics")),
+        json_key_value("params", json_object([
+            json_key_value("uri", json_quote(uri)),
+            json_key_value("version", "1"),
+            json_key_value("diagnostics", lsp_diagnostics_json_values(report.diagnostics))
+        ]))
+    ]);
+}
+
 share LspDiagnosticSeverity
 share LspMessageType
 share LspPosition
@@ -601,3 +723,15 @@ share lsp_message_type_name
 
 share lsp_diagnostic_summary
 share lsp_publish_summary
+share lsp_severity_number
+share lsp_position_json
+share lsp_range_json_value
+share lsp_related_information_json_value
+share lsp_related_information_json
+share lsp_first_help
+share lsp_first_fix
+share lsp_code_action_title
+share lsp_diagnostic_data_json
+share lsp_diagnostic_json_value
+share lsp_diagnostics_json_values
+share lsp_publish_diagnostics_json_rpc

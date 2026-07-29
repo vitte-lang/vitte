@@ -27,6 +27,17 @@ def write_message(message: dict[str, Any]) -> None:
     sys.stdout.buffer.flush()
 
 
+def write_cli_diagnostic(code: str, message: str, help_text: str) -> None:
+    print(f"error[{code}] cli: {message}", file=sys.stderr)
+    print(f"  = id: {code}:<cli>:1:1", file=sys.stderr)
+    print("  = category: cli", file=sys.stderr)
+    print("  = severity: error", file=sys.stderr)
+    print(f"  = fluent-key: {code}", file=sys.stderr)
+    print("  = span: <cli>:1:1-1:2", file=sys.stderr)
+    print("  = cause: the LSP transport was started without its required standard-I/O mode", file=sys.stderr)
+    print(f"  = help: {help_text}", file=sys.stderr)
+
+
 def result_for(method: str, params: dict[str, Any]) -> Any:
     if method == "initialize":
         return {
@@ -78,7 +89,7 @@ def main(argv: list[str]) -> int:
         print("usage: vitte lsp --stdio [--once]")
         return 0
     if "--stdio" not in argv:
-        print("[vitte][error] lsp requires --stdio", file=sys.stderr)
+        write_cli_diagnostic("E_CLI_MISSING_ARG", "lsp requires --stdio", "run `vitte lsp --stdio`")
         return 2
     message = read_message()
     if message is None:

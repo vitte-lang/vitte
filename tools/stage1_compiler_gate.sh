@@ -49,6 +49,8 @@ if [ "$(LC_ALL=C head -c 2 "$STAGE0" 2>/dev/null || true)" = "#!" ]; then
     fail "stage0 must be a native Vitte compiler artifact, not a script: $STAGE0"
 fi
 
+rm -f "$OUT_BIN"
+
 if ! VITTE_ROOT="$ROOT_DIR" VITTE_COMPILER="$STAGE0" "$STAGE0" build "$SRC" -o "$OUT_BIN" > "$BUILD_LOG" 2>&1; then
     cat "$BUILD_LOG" >&2
     fail "$STAGE0 build src/vitte/compiler/main.vit -o target/stage1/vitte failed"
