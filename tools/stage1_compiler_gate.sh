@@ -4,7 +4,7 @@ set -eu
 ROOT_DIR="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
 OUT_DIR="$ROOT_DIR/target/stage1"
 OUT_BIN="$OUT_DIR/vitte"
-STAGE0="${VITTE_STAGE0:-$ROOT_DIR/target/bootstrap-real/vitte}"
+STAGE0="${VITTE_STAGE0:-$ROOT_DIR/target/release/vitte}"
 REPORT_DIR="$ROOT_DIR/target/reports"
 REPORT_TXT="$REPORT_DIR/stage1_compiler_gate.txt"
 REPORT_JSON="$REPORT_DIR/stage1_compiler_gate.json"
