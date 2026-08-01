@@ -22,6 +22,9 @@ python3 tools/bootstrap_real/bootstrap_real.py --stage0 target/bootstrap-real/st
 
 That command compiles `src/vitte/compiler/main.vit` to
 `target/bootstrap-real/vitte`, then verifies the produced compiler.
+Before compiling, stale `target/bootstrap-real/vitte` and
+`target/bootstrap-real/vitte.bootstrap-bridge` artifacts are removed so a failed
+stage0 build cannot be mistaken for a fresh compiler.
 
 Expected outputs:
 

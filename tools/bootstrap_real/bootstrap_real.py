@@ -122,6 +122,14 @@ def validate_output_path(path: Path) -> list[str]:
     return errors
 
 
+def clear_bootstrap_output(path: Path) -> None:
+    if path.exists():
+        path.unlink()
+    sidecar = Path(str(path) + ".bootstrap-bridge")
+    if sidecar.exists():
+        sidecar.unlink()
+
+
 def binary_artifact(path: Path) -> dict[str, object] | None:
     if not path.exists() or not path.is_file():
         return None
@@ -331,6 +339,8 @@ def run(args: argparse.Namespace) -> int:
                 errors.append(f"stage0 install failed: {exc}")
     elif args.stage0:
         errors.extend(validate_output_path(args.out))
+        if not errors:
+            clear_bootstrap_output(args.out)
         stage0_errors, stage0_commands = validate_stage0(args.stage0)
         errors.extend(stage0_errors)
         if not stage0_errors:

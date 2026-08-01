@@ -129,6 +129,18 @@ def test_stage0_build_outputs_are_canonical() -> None:
     )
 
 
+def test_stage0_build_clears_stale_output_and_bridge_sidecar() -> None:
+    work = ROOT / "target/bootstrap-real/test-work"
+    stale = work / "stale-vitte"
+    sidecar = Path(str(stale) + ".bootstrap-bridge")
+    stale.parent.mkdir(parents=True, exist_ok=True)
+    stale.write_bytes(b"stale")
+    sidecar.write_bytes(b"bridge")
+    bootstrap_real.clear_bootstrap_output(stale)
+    assert_true(not stale.exists(), "stage0 build should remove stale output before compiling")
+    assert_true(not sidecar.exists(), "stage0 build should remove stale bridge sidecar before compiling")
+
+
 def test_script_self_copy_bridge_and_private_tmp_are_rejected() -> None:
     work = ROOT / "target/bootstrap-real/test-work"
     work.mkdir(parents=True, exist_ok=True)
@@ -331,6 +343,7 @@ def main() -> int:
     test_stage0_smoke_commands_are_exact()
     test_bootstrap_build_command_is_exact()
     test_stage0_build_outputs_are_canonical()
+    test_stage0_build_clears_stale_output_and_bridge_sidecar()
     test_script_self_copy_bridge_and_private_tmp_are_rejected()
     test_stage0_must_be_single_trusted_path()
     test_canonical_stage0_path_is_the_only_path_gate()
