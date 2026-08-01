@@ -1,6 +1,6 @@
 space vitte/compiler/frontend/parse/parser
 
-use vitte/compiler/frontend/lexer/token.{ Token, TokenKind, token }
+use vitte/compiler/frontend/lexer/token.{ Token, TokenKind }
 use vitte/compiler/frontend/parse/errors.{ ParseDiagnostic, parse_error_with_span }
 use vitte/compiler/frontend/parse/recovery.{ RecoveryControl, default_recovery_control, recover_decl_index, recover_expr_index, recover_pattern_index, recover_stmt_index, recover_type_index, recovery_allowed }
 use vitte/compiler/frontend/ast/node.{ Span, ast_span, ast_span_empty, ast_span_offsets }
@@ -86,7 +86,7 @@ proc token_diag_width(tok: Token) -> u64 {
 
 proc last_token(tokens: [Token]) -> Token {
   if len(tokens) == 0 {
-    give token(TokenKind.Eof, "", 1, 1);
+    give Token { kind: TokenKind.Eof, lexeme: "", line: 1, column: 1, offset: 0, span: ast_span_empty() };
   }
   give tokens[len(tokens) - 1];
 }

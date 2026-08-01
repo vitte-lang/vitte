@@ -177,15 +177,15 @@ proc machine_prologue_x86_64_with_stack(stack_size: u64) -> [string] {
     let stack_text: string = aligned_stack_size as string;
 
     if config.emit_frame_pointer {
-        set lines = list.push(lines, config.indent + "push %rbp");
-        set lines = list.push(lines, config.indent + ".cfi_def_cfa_offset 16");
-        set lines = list.push(lines, config.indent + ".cfi_offset %rbp, -16");
-        set lines = list.push(lines, config.indent + "mov %rsp, %rbp");
-        set lines = list.push(lines, config.indent + ".cfi_def_cfa_register %rbp");
+        set lines = lines.push(config.indent + "push %rbp");
+        set lines = lines.push(config.indent + ".cfi_def_cfa_offset 16");
+        set lines = lines.push(config.indent + ".cfi_offset %rbp, -16");
+        set lines = lines.push(config.indent + "mov %rsp, %rbp");
+        set lines = lines.push(config.indent + ".cfi_def_cfa_register %rbp");
     }
 
     if aligned_stack_size > 0 {
-        set lines = list.push(lines, config.indent + "sub $" + stack_text + ", %rsp");
+        set lines = lines.push(config.indent + "sub $" + stack_text + ", %rsp");
     }
 
     give lines;
@@ -213,15 +213,15 @@ proc machine_epilogue_x86_64_with_stack(stack_size: u64) -> [string] {
     let stack_text: string = aligned_stack_size as string;
 
     if aligned_stack_size > 0 {
-        set lines = list.push(lines, config.indent + "add $" + stack_text + ", %rsp");
+        set lines = lines.push(config.indent + "add $" + stack_text + ", %rsp");
     }
 
     if config.emit_frame_pointer {
-        set lines = list.push(lines, config.indent + "pop %rbp");
-        set lines = list.push(lines, config.indent + ".cfi_def_cfa %rsp, 8");
+        set lines = lines.push(config.indent + "pop %rbp");
+        set lines = lines.push(config.indent + ".cfi_def_cfa %rsp, 8");
     }
 
-    set lines = list.push(lines, config.indent + "ret");
+    set lines = lines.push(config.indent + "ret");
 
     give lines;
 }

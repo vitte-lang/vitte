@@ -1,5 +1,8 @@
 space vitte/compiler/backends/llvm_emit
 
+use vitte/compiler/ir/mir_extended as mir_extended
+use vitte/compiler/backends/backend_infrastructure as backend_infrastructure
+
 // Legacy experimental LLVM emitter.
 // The canonical production LLVM path routes through:
 // src/vitte/compiler/backend/* -> src/vitte/compiler/backends/llvm_bindings/*
@@ -235,6 +238,11 @@ proc get_llvm_optimization_flags(opt_level: int) -> LLVMOptimizationFlags {
       }
     }
   }
+  give LLVMOptimizationFlags {
+    opt_level: 3,
+    passes: ["instcombine", "dce", "cse", "gvn", "licm", "inline", "loop-unroll", "vectorize"],
+    flags: ["-O3"]
+  }
 }
 
 // ============================================================================
@@ -314,9 +322,5 @@ proc generate_machine_code_from_llvm(llvm_ir: string, target: backend_infrastruc
   
   give machine_code
 }
-
-// Forward references
-form mir_extended { }
-form backend_infrastructure { }
 
 export *

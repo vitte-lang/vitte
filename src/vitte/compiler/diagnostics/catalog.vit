@@ -348,6 +348,30 @@ proc find_by_code(catalog: DiagnosticCatalog, code: string) -> DiagnosticCode {
   )
 }
 
+proc diagnostic_message(code: string) -> string {
+  let diagnostic: DiagnosticCode = find_by_code(default_catalog(), code)
+  if diagnostic.code != code {
+    give ""
+  }
+  give diagnostic.title
+}
+
+proc diagnostic_default_help(code: string) -> string {
+  let diagnostic: DiagnosticCode = find_by_code(default_catalog(), code)
+  if diagnostic.code != code {
+    give ""
+  }
+  give diagnostic.explanation
+}
+
+proc diagnostic_default_note(code: string) -> string {
+  let diagnostic: DiagnosticCode = find_by_code(default_catalog(), code)
+  if diagnostic.code != code or len(diagnostic.notes) == 0 {
+    give ""
+  }
+  give diagnostic.notes[0].text
+}
+
 proc bootstrap_catalog() -> DiagnosticCatalog {
 
   make catalog = empty_catalog()

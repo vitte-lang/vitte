@@ -614,8 +614,6 @@ proc annotate_stmt(module_symbols: [SemaSymbol], local_symbols: [SemaSymbol], st
 
   let all_diagnostics: [SemaDiagnostic] = diagnostics + then_walk.diagnostics + else_walk.diagnostics;
   let all_valid: bool = not sema_has_fatal(all_diagnostics);
-  let all_diagnostics: [SemaDiagnostic] = expr_walk.diagnostics + body_walk.diagnostics;
-  let all_valid: bool = not sema_has_fatal(all_diagnostics);
   give SemaStmtWalk {
     stmt: HirStmt {
       id: stmt.id,
@@ -839,6 +837,8 @@ proc annotate_item(module_symbols: [SemaSymbol], item: HirItem, next_symbol_id: 
   let expr_walk: SemaExprWalk = annotate_expr(item.expr, module_symbols, 0, next_symbol_id);
   let body_walk: SemaStmtListWalk = annotate_stmt_list(module_symbols, [], item.stmts, expr_walk.next_symbol_id);
   let resolved: SemaSymbol = resolve_symbol(module_symbols, item.name, 0);
+  let all_diagnostics: [SemaDiagnostic] = expr_walk.diagnostics + body_walk.diagnostics;
+  let all_valid: bool = resolved.valid and not sema_has_fatal(all_diagnostics);
 
   give SemaStmtWalk {
     stmt: HirStmt {

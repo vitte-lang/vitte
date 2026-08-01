@@ -35,6 +35,13 @@ proc is_region_comment_start(cursor: Cursor) -> bool {
   give cursor_starts_with(cursor, "<<<");
 }
 
+proc is_comment_start(cursor: Cursor) -> bool {
+  give is_hash_line_comment_start(cursor)
+    or is_block_comment_start(cursor)
+    or is_region_comment_start(cursor)
+    or cursor_starts_with(cursor, "//");
+}
+
 proc skip_line_comment(cursor: Cursor) -> Cursor {
   let current: Cursor = cursor;
   while not cursor_eof(current) and cursor_current(current) != "\n" {
@@ -69,4 +76,17 @@ proc skip_region_comment(cursor: Cursor) -> CommentSkipResult {
     };
   }
   give CommentSkipResult { cursor: current, terminated: false };
+}
+
+proc skip_comment(cursor: Cursor) -> CommentSkipResult {
+  if is_block_comment_start(cursor) {
+    give skip_block_comment(cursor);
+  }
+  if is_region_comment_start(cursor) {
+    give skip_region_comment(cursor);
+  }
+  if is_hash_line_comment_start(cursor) or cursor_starts_with(cursor, "//") {
+    give CommentSkipResult { cursor: skip_line_comment(cursor), terminated: true };
+  }
+  give CommentSkipResult { cursor: cursor, terminated: true };
 }
