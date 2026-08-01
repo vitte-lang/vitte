@@ -19,6 +19,7 @@ DEFAULT_OUT = OUT_DIR / "vitte"
 REPORT_JSON = ROOT / "target/reports/bootstrap_real_gate.json"
 REPORT_MD = ROOT / "target/reports/bootstrap_real_gate.md"
 
+TRUSTED_STAGE0 = OUT_DIR / "stage0/vitte"
 REQUIRED_ENTRY_MARKERS = (
     "run_cli_main_with_ice_boundary",
     "COMPILER_ENTRY_POINT=src/vitte/compiler/main.vit",
@@ -121,6 +122,17 @@ def validate_output_path(path: Path) -> list[str]:
     return errors
 
 
+def binary_artifact(path: Path) -> dict[str, object] | None:
+    if not path.exists() or not path.is_file():
+        return None
+    return {
+        "path": rel(path),
+        "sha256": sha256(path),
+        "size": path.stat().st_size,
+        "format": binary_format(path),
+    }
+
+
 def build_from_stage0(stage0: Path, out: Path) -> list[dict[str, object]]:
     out.parent.mkdir(parents=True, exist_ok=True)
     env = os.environ.copy()
@@ -143,68 +155,80 @@ def build_from_stage0(stage0: Path, out: Path) -> list[dict[str, object]]:
     ]
 
 
-def validate_candidate(candidate: Path) -> tuple[list[str], list[dict[str, object]]]:
+def validate_vitte_binary(binary: Path, label: str) -> tuple[list[str], list[dict[str, object]]]:
     errors: list[str] = []
     commands: list[dict[str, object]] = []
-    if not candidate.exists():
-        return [f"missing bootstrap-real candidate: {rel(candidate)}"], commands
-    if not candidate.is_file():
-        errors.append(f"candidate is not a file: {rel(candidate)}")
+    if not binary.exists():
+        return [f"missing {label}: {rel(binary)}"], commands
+    if not binary.is_file():
+        errors.append(f"{label} is not a file: {rel(binary)}")
         return errors, commands
-    if not os.access(candidate, os.X_OK):
-        errors.append(f"candidate is not executable: {rel(candidate)}")
+    if not os.access(binary, os.X_OK):
+        errors.append(f"{label} is not executable: {rel(binary)}")
 
-    fmt = binary_format(candidate)
+    fmt = binary_format(binary)
     if fmt == "script":
-        errors.append(f"candidate must be a native binary, got script: {rel(candidate)}")
+        errors.append(f"{label} must be a native binary, got script: {rel(binary)}")
     elif fmt == "unknown":
-        errors.append(f"candidate format is unknown: {rel(candidate)}")
+        errors.append(f"{label} format is unknown: {rel(binary)}")
 
-    text = binary_text(candidate)
+    text = binary_text(binary)
     for marker in REQUIRED_ENTRY_MARKERS:
         if marker not in text:
-            errors.append(f"candidate is missing required marker: {marker}")
+            errors.append(f"{label} is missing required marker: {marker}")
     for marker in FORBIDDEN_BINARY_MARKERS:
         if marker in text:
-            errors.append(f"candidate contains forbidden bootstrap marker: {marker}")
+            errors.append(f"{label} contains forbidden bootstrap marker: {marker}")
 
     for command in (
-        [str(candidate), "--version"],
-        [str(candidate), "--help"],
-        [str(candidate), "check", rel(ENTRYPOINT)],
+        [str(binary), "--version"],
+        [str(binary), "--help"],
+        [str(binary), "check", rel(ENTRYPOINT)],
     ):
         result = command_output(command)
         commands.append(result)
         if result["exit_code"] != 0:
-            errors.append(f"candidate command failed: {' '.join(command)}")
+            errors.append(f"{label} command failed: {' '.join(command)}")
 
+    return errors, commands
+
+
+def validate_candidate(candidate: Path) -> tuple[list[str], list[dict[str, object]]]:
+    return validate_vitte_binary(candidate, "candidate")
+
+
+def validate_stage0(stage0: Path) -> tuple[list[str], list[dict[str, object]]]:
+    errors: list[str] = []
+    if stage0.resolve() != TRUSTED_STAGE0.resolve():
+        errors.append(f"stage0 must be the single trusted Vitte compiler: {rel(TRUSTED_STAGE0)}")
+    stage0_errors, commands = validate_vitte_binary(stage0, "stage0")
+    errors.extend(stage0_errors)
     return errors, commands
 
 
 def write_reports(
     status: str,
     candidate: Path,
+    stage0: Path | None,
     errors: list[str],
     build_commands: list[dict[str, object]],
+    stage0_commands: list[dict[str, object]],
     smoke_commands: list[dict[str, object]],
 ) -> None:
     REPORT_JSON.parent.mkdir(parents=True, exist_ok=True)
-    artifact = None
-    if candidate.exists() and candidate.is_file():
-        artifact = {
-            "path": rel(candidate),
-            "sha256": sha256(candidate),
-            "size": candidate.stat().st_size,
-            "format": binary_format(candidate),
-        }
+    artifact = binary_artifact(candidate)
+    stage0_artifact = binary_artifact(stage0) if stage0 is not None else None
     report = {
         "schema": "vitte.bootstrap_real.report.v1",
         "status": status,
         "source_of_truth": rel(ENTRYPOINT),
         "artifact_root": rel(OUT_DIR),
+        "trusted_stage0": rel(TRUSTED_STAGE0),
+        "stage0": stage0_artifact,
         "artifact": artifact,
         "required_entry_markers": list(REQUIRED_ENTRY_MARKERS),
         "forbidden_binary_markers": list(FORBIDDEN_BINARY_MARKERS),
+        "stage0_commands": stage0_commands,
         "build_commands": build_commands,
         "smoke_commands": smoke_commands,
         "created_at_unix": int(time.time()),
@@ -218,8 +242,11 @@ def write_reports(
         f"- status: {status}",
         f"- source_of_truth: {rel(ENTRYPOINT)}",
         f"- artifact_root: {rel(OUT_DIR)}",
+        f"- trusted_stage0: {rel(TRUSTED_STAGE0)}",
         f"- candidate: {rel(candidate)}",
     ]
+    if stage0 is not None:
+        lines.append(f"- stage0: {rel(stage0)}")
     if artifact:
         lines.extend(
             [
@@ -239,14 +266,13 @@ def run(args: argparse.Namespace) -> int:
     candidate = args.candidate or args.out
     errors = validate_output_path(args.out)
     build_commands: list[dict[str, object]] = []
+    stage0_commands: list[dict[str, object]] = []
     smoke_commands: list[dict[str, object]] = []
 
     if args.stage0:
-        if not args.stage0.is_file():
-            errors.append(f"missing stage0 compiler: {rel(args.stage0)}")
-        elif not os.access(args.stage0, os.X_OK):
-            errors.append(f"stage0 compiler is not executable: {rel(args.stage0)}")
-        else:
+        stage0_errors, stage0_commands = validate_stage0(args.stage0)
+        errors.extend(stage0_errors)
+        if not stage0_errors:
             build_commands = build_from_stage0(args.stage0, args.out)
             if build_commands and build_commands[0]["exit_code"] != 0:
                 errors.append(f"stage0 failed to build {rel(ENTRYPOINT)}")
@@ -259,7 +285,7 @@ def run(args: argparse.Namespace) -> int:
         errors.extend(candidate_errors)
 
     status = "fail" if errors else "ok"
-    write_reports(status, candidate, errors, build_commands, smoke_commands)
+    write_reports(status, candidate, args.stage0, errors, build_commands, stage0_commands, smoke_commands)
     if errors:
         print("[bootstrap-real][error] real bootstrap candidate rejected", file=sys.stderr)
         for error in errors:

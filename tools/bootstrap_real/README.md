@@ -8,10 +8,10 @@ Nothing in this path requires `/private/tmp`.
 
 ## Commands
 
-Build from a known stage0 compiler and verify the result:
+Build from the single trusted stage0 compiler and verify the result:
 
 ```sh
-python3 tools/bootstrap_real/bootstrap_real.py --stage0 target/obj/vittecompiler.o
+python3 tools/bootstrap_real/bootstrap_real.py --stage0 target/bootstrap-real/stage0/vitte
 ```
 
 Verify an already-built candidate:
@@ -32,6 +32,10 @@ The gate accepts only a native candidate aligned with
 `src/vitte/compiler/main.vit`. It requires the compiler entry marker
 `run_cli_main_with_ice_boundary` and the canonical entrypoint marker
 `COMPILER_ENTRY_POINT=src/vitte/compiler/main.vit`.
+
+The only accepted stage0 path is `target/bootstrap-real/stage0/vitte`. That
+binary must itself pass the same native Vitte checks before it is allowed to
+compile `src/vitte/compiler/main.vit`.
 
 The gate rejects binaries that still contain self-copy or bootstrap bridge
 markers such as `BOOTSTRAP_FULL_COMPILER`,

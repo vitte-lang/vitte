@@ -46,6 +46,23 @@ def test_forbidden_bridge_marker_is_rejected() -> None:
     )
 
 
+def test_stage0_must_be_single_trusted_path() -> None:
+    work = ROOT / "target/bootstrap-real/test-work"
+    work.mkdir(parents=True, exist_ok=True)
+    stage0 = work / "stage0"
+    stage0.write_bytes(
+        b"\xca\xfe\xba\xbe"
+        b"run_cli_main_with_ice_boundary\0"
+        b"COMPILER_ENTRY_POINT=src/vitte/compiler/main.vit\0"
+    )
+    stage0.chmod(stage0.stat().st_mode | stat.S_IXUSR)
+    errors, _commands = bootstrap_real.validate_stage0(stage0)
+    assert_true(
+        any("single trusted Vitte compiler" in error for error in errors),
+        "stage0 outside target/bootstrap-real/stage0/vitte should be rejected",
+    )
+
+
 def test_report_writer_records_failure() -> None:
     work = ROOT / "target/bootstrap-real/test-work"
     reports = work / "reports"
@@ -56,7 +73,7 @@ def test_report_writer_records_failure() -> None:
         bootstrap_real.REPORT_JSON = reports / "bootstrap_real_gate.json"
         bootstrap_real.REPORT_MD = reports / "bootstrap_real_gate.md"
         candidate = work / "missing-vitte"
-        bootstrap_real.write_reports("fail", candidate, ["example failure"], [], [])
+        bootstrap_real.write_reports("fail", candidate, None, ["example failure"], [], [], [])
         assert_true(bootstrap_real.REPORT_JSON.is_file(), "json report should be written")
         assert_true(bootstrap_real.REPORT_MD.is_file(), "markdown report should be written")
         assert_true("example failure" in bootstrap_real.REPORT_MD.read_text(encoding="utf-8"), "markdown should list errors")
@@ -71,6 +88,7 @@ def main() -> int:
         shutil.rmtree(work)
     test_output_path_must_stay_under_artifact_root()
     test_forbidden_bridge_marker_is_rejected()
+    test_stage0_must_be_single_trusted_path()
     test_report_writer_records_failure()
     if work.exists():
         shutil.rmtree(work)
