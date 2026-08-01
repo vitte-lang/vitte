@@ -110,6 +110,16 @@ python3 tools/bootstrap_real/bootstrap_real.py --candidate target/stage2/vitte
 python3 tools/bootstrap_real/bootstrap_real.py --candidate target/release/vitte
 ```
 
+Final make gate:
+
+```sh
+python3 tools/bootstrap_real/final_make_gate.py
+make
+```
+
+`make` must remain the final command. The final gate refuses to pass until
+Stage1, Stage2, and Release have been rebuilt and accepted by `--verify-chain`.
+
 Smoke-test the installed stage0 directly:
 
 ```sh
