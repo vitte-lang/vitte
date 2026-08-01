@@ -10,6 +10,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 MODULE_PATH = ROOT / "tools/bootstrap_real/bootstrap_real.py"
 FINAL_GATE = ROOT / "tools/bootstrap_real/final_make_gate.py"
+FREEZE_GATE = ROOT / "tools/bootstrap_real/freeze_010_gate.py"
 
 spec = importlib.util.spec_from_file_location("bootstrap_real", MODULE_PATH)
 assert spec is not None and spec.loader is not None
@@ -224,6 +225,13 @@ def test_final_make_gate_exists_and_mentions_make_last() -> None:
     text = FINAL_GATE.read_text(encoding="utf-8")
     assert_true("--verify-chain" in text, "final make gate should depend on verify-chain")
     assert_true("make must remain last" in text, "final make gate should enforce make-last wording")
+
+
+def test_freeze_gate_allows_only_bootstrap_real_scope() -> None:
+    text = FREEZE_GATE.read_text(encoding="utf-8")
+    assert_true("tools/bootstrap_real/" in text, "freeze gate should allow bootstrap-real work")
+    assert_true("feature freeze active" in text, "freeze gate should report feature freeze violations")
+    assert_true("git\", \"status\", \"--short" in text, "freeze gate should inspect git status")
 
 
 def test_stage1_build_quarantines_stale_output_before_dependency_check() -> None:
@@ -525,6 +533,7 @@ def main() -> int:
     test_release_output_path_is_canonical()
     test_chain_candidate_paths_are_exact()
     test_final_make_gate_exists_and_mentions_make_last()
+    test_freeze_gate_allows_only_bootstrap_real_scope()
     test_stage1_build_quarantines_stale_output_before_dependency_check()
     test_stage2_build_quarantines_stale_output_before_dependency_check()
     test_release_build_quarantines_stale_output_before_dependency_check()

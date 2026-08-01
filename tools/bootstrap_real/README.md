@@ -137,6 +137,17 @@ Run the local tests:
 python3 tools/bootstrap_real/test_bootstrap_real.py
 ```
 
+0.1.0 feature freeze gate:
+
+```sh
+python3 tools/bootstrap_real/freeze_010_gate.py
+```
+
+During the 0.1.0 finish, this gate reports any dirty worktree changes outside
+`tools/bootstrap_real/`, `target/bootstrap-real/`, and the bootstrap-real
+reports. Do not touch Sema, Typeck, diagnostics, locales, Makefile, or other
+areas unless the change directly fixes the bootstrap chain.
+
 ## Gate Contract
 
 The gate accepts only a native candidate aligned with
