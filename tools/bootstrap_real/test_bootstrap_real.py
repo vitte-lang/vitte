@@ -200,6 +200,18 @@ def test_release_output_path_is_canonical() -> None:
     )
 
 
+def test_chain_candidate_paths_are_exact() -> None:
+    assert_true(
+        bootstrap_real.chain_candidate_paths()
+        == [
+            ROOT / "target/stage1/vitte",
+            ROOT / "target/stage2/vitte",
+            ROOT / "target/release/vitte",
+        ],
+        "verify-chain should check stage1, stage2, then release",
+    )
+
+
 def test_stage1_build_quarantines_stale_output_before_dependency_check() -> None:
     work = ROOT / "target/bootstrap-real/test-work"
     stage1 = work / "stage1/vitte"
@@ -496,6 +508,7 @@ def main() -> int:
     test_stage1_output_path_is_canonical()
     test_stage2_output_path_is_canonical()
     test_release_output_path_is_canonical()
+    test_chain_candidate_paths_are_exact()
     test_stage1_build_quarantines_stale_output_before_dependency_check()
     test_stage2_build_quarantines_stale_output_before_dependency_check()
     test_release_build_quarantines_stale_output_before_dependency_check()

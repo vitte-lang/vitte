@@ -96,6 +96,20 @@ Expected Release output:
 target/release/vitte
 ```
 
+Verify all produced compiler binaries:
+
+```sh
+python3 tools/bootstrap_real/bootstrap_real.py --verify-chain
+```
+
+That mode verifies the same candidates as:
+
+```sh
+python3 tools/bootstrap_real/bootstrap_real.py --candidate target/stage1/vitte
+python3 tools/bootstrap_real/bootstrap_real.py --candidate target/stage2/vitte
+python3 tools/bootstrap_real/bootstrap_real.py --candidate target/release/vitte
+```
+
 Smoke-test the installed stage0 directly:
 
 ```sh

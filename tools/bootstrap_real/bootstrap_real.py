@@ -303,6 +303,10 @@ def validate_candidate(candidate: Path) -> tuple[list[str], list[dict[str, objec
     return validate_vitte_binary(candidate, "candidate")
 
 
+def chain_candidate_paths() -> list[Path]:
+    return [STAGE1_OUT, STAGE2_OUT, RELEASE_OUT]
+
+
 def validate_stage0(stage0: Path) -> tuple[list[str], list[dict[str, object]]]:
     errors: list[str] = []
     if stage0.resolve() != TRUSTED_STAGE0.resolve():
@@ -452,6 +456,14 @@ def run(args: argparse.Namespace) -> int:
             if build_commands and build_commands[0]["exit_code"] != 0:
                 errors.append(f"stage2 failed to build release from {rel(ENTRYPOINT)}")
             candidate = args.out
+    elif args.verify_chain:
+        all_commands: list[dict[str, object]] = []
+        for path in chain_candidate_paths():
+            candidate_errors, candidate_commands = validate_vitte_binary(path, rel(path))
+            errors.extend(candidate_errors)
+            all_commands.extend(candidate_commands)
+        smoke_commands = all_commands
+        candidate = RELEASE_OUT
     elif args.candidate is None and not args.out.exists():
         errors.extend(validate_output_path(args.out))
         errors.append(f"no candidate present; provide --stage0 or --candidate, or create {rel(args.out)}")
@@ -493,6 +505,7 @@ def main(argv: list[str]) -> int:
     mode.add_argument("--stage1", action="store_true", help="build and verify target/stage1/vitte from target/bootstrap-real/vitte")
     mode.add_argument("--stage2", action="store_true", help="build and verify target/stage2/vitte from target/stage1/vitte")
     mode.add_argument("--release", action="store_true", help="build and verify target/release/vitte from target/stage2/vitte")
+    mode.add_argument("--verify-chain", action="store_true", help="verify target/stage1/vitte, target/stage2/vitte, and target/release/vitte")
     mode.add_argument("--candidate", type=Path, help="existing candidate binary to verify")
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT, help="output path under target/bootstrap-real")
     args = parser.parse_args(argv)
