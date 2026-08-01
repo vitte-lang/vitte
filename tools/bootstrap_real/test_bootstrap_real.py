@@ -134,7 +134,7 @@ def test_report_writer_records_failure() -> None:
         bootstrap_real.REPORT_JSON = reports / "bootstrap_real_gate.json"
         bootstrap_real.REPORT_MD = reports / "bootstrap_real_gate.md"
         candidate = work / "missing-vitte"
-        bootstrap_real.write_reports("fail", candidate, None, ["example failure"], [], [], [])
+        bootstrap_real.write_reports("fail", candidate, None, None, ["example failure"], [], [], [])
         assert_true(bootstrap_real.REPORT_JSON.is_file(), "json report should be written")
         assert_true(bootstrap_real.REPORT_MD.is_file(), "markdown report should be written")
         assert_true("example failure" in bootstrap_real.REPORT_MD.read_text(encoding="utf-8"), "markdown should list errors")
@@ -182,6 +182,61 @@ def test_invalid_install_does_not_replace_existing_stage0() -> None:
         bootstrap_real.TRUSTED_STAGE0 = original_trusted
 
 
+def test_install_failure_removes_partial_temp_file() -> None:
+    work = ROOT / "target/bootstrap-real/test-work"
+    trusted = work / "failing/vitte"
+    source = work / "failing-source"
+    trusted.parent.mkdir(parents=True, exist_ok=True)
+    source.write_bytes(b"candidate")
+    original_trusted = bootstrap_real.TRUSTED_STAGE0
+    original_copy2 = bootstrap_real.shutil.copy2
+    try:
+        bootstrap_real.TRUSTED_STAGE0 = trusted
+
+        def fail_after_write(_source: Path, destination: Path) -> None:
+            destination.write_bytes(b"partial")
+            raise OSError("simulated copy failure")
+
+        bootstrap_real.shutil.copy2 = fail_after_write
+        try:
+            bootstrap_real.install_stage0(source)
+        except OSError:
+            pass
+        else:
+            raise AssertionError("install_stage0 should propagate copy failures")
+        assert_true(not trusted.exists(), "failed install should not create trusted stage0")
+        assert_true(not trusted.with_name("vitte.installing").exists(), "failed install should remove temporary file")
+    finally:
+        bootstrap_real.shutil.copy2 = original_copy2
+        bootstrap_real.TRUSTED_STAGE0 = original_trusted
+
+
+def test_install_report_records_source_and_installed_artifact() -> None:
+    work = ROOT / "target/bootstrap-real/test-work"
+    reports = work / "install-reports"
+    source = work / "install-report-source"
+    trusted = work / "install-report/vitte"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_bytes(b"\xca\xfe\xba\xbevalidated-stage0")
+    source.chmod(source.stat().st_mode | stat.S_IXUSR)
+    original_json = bootstrap_real.REPORT_JSON
+    original_md = bootstrap_real.REPORT_MD
+    original_trusted = bootstrap_real.TRUSTED_STAGE0
+    try:
+        bootstrap_real.REPORT_JSON = reports / "bootstrap_real_gate.json"
+        bootstrap_real.REPORT_MD = reports / "bootstrap_real_gate.md"
+        bootstrap_real.TRUSTED_STAGE0 = trusted
+        bootstrap_real.install_stage0(source)
+        bootstrap_real.write_reports("ok", trusted, None, source, [], [], [], [])
+        text = bootstrap_real.REPORT_JSON.read_text(encoding="utf-8")
+        assert_true('"install_source"' in text, "install report should record source artifact")
+        assert_true('"artifact"' in text, "install report should record installed artifact")
+    finally:
+        bootstrap_real.REPORT_JSON = original_json
+        bootstrap_real.REPORT_MD = original_md
+        bootstrap_real.TRUSTED_STAGE0 = original_trusted
+
+
 def main() -> int:
     work = ROOT / "target/bootstrap-real/test-work"
     if work.exists():
@@ -194,6 +249,8 @@ def main() -> int:
     test_report_writer_records_failure()
     test_install_stage0_copies_only_after_validation_path()
     test_invalid_install_does_not_replace_existing_stage0()
+    test_install_failure_removes_partial_temp_file()
+    test_install_report_records_source_and_installed_artifact()
     if work.exists():
         shutil.rmtree(work)
     print("[bootstrap-real-test] ok")

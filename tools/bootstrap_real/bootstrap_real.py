@@ -158,9 +158,14 @@ def build_from_stage0(stage0: Path, out: Path) -> list[dict[str, object]]:
 def install_stage0(source: Path) -> None:
     TRUSTED_STAGE0.parent.mkdir(parents=True, exist_ok=True)
     tmp = TRUSTED_STAGE0.with_name(TRUSTED_STAGE0.name + ".installing")
-    shutil.copy2(source, tmp)
-    tmp.chmod(tmp.stat().st_mode | 0o755)
-    tmp.replace(TRUSTED_STAGE0)
+    try:
+        shutil.copy2(source, tmp)
+        tmp.chmod(tmp.stat().st_mode | 0o755)
+        tmp.replace(TRUSTED_STAGE0)
+    except Exception:
+        if tmp.exists():
+            tmp.unlink()
+        raise
 
 
 def validate_vitte_binary(binary: Path, label: str) -> tuple[list[str], list[dict[str, object]]]:
@@ -227,6 +232,7 @@ def write_reports(
     status: str,
     candidate: Path,
     stage0: Path | None,
+    install_source: Path | None,
     errors: list[str],
     build_commands: list[dict[str, object]],
     stage0_commands: list[dict[str, object]],
@@ -235,6 +241,7 @@ def write_reports(
     REPORT_JSON.parent.mkdir(parents=True, exist_ok=True)
     artifact = binary_artifact(candidate)
     stage0_artifact = binary_artifact(stage0) if stage0 is not None else None
+    install_source_artifact = binary_artifact(install_source) if install_source is not None else None
     report = {
         "schema": "vitte.bootstrap_real.report.v1",
         "status": status,
@@ -242,6 +249,7 @@ def write_reports(
         "artifact_root": rel(OUT_DIR),
         "trusted_stage0": rel(TRUSTED_STAGE0),
         "stage0": stage0_artifact,
+        "install_source": install_source_artifact,
         "artifact": artifact,
         "required_entry_markers": list(REQUIRED_ENTRY_MARKERS),
         "forbidden_binary_markers": list(FORBIDDEN_BINARY_MARKERS),
@@ -264,6 +272,8 @@ def write_reports(
     ]
     if stage0 is not None:
         lines.append(f"- stage0: {rel(stage0)}")
+    if install_source is not None:
+        lines.append(f"- install_source: {rel(install_source)}")
     if artifact:
         lines.extend(
             [
@@ -281,19 +291,25 @@ def write_reports(
 
 def run(args: argparse.Namespace) -> int:
     candidate = args.candidate or args.out
-    errors = validate_output_path(args.out)
+    errors: list[str] = []
     build_commands: list[dict[str, object]] = []
     stage0_commands: list[dict[str, object]] = []
     smoke_commands: list[dict[str, object]] = []
+    install_source: Path | None = None
 
     if args.install_stage0:
+        install_source = args.install_stage0
         install_errors, stage0_commands = validate_stage0_install_source(args.install_stage0)
         errors.extend(install_errors)
         if not install_errors:
-            install_stage0(args.install_stage0)
-            candidate = TRUSTED_STAGE0
-            smoke_commands = stage0_commands
+            try:
+                install_stage0(args.install_stage0)
+                candidate = TRUSTED_STAGE0
+                smoke_commands = stage0_commands
+            except OSError as exc:
+                errors.append(f"stage0 install failed: {exc}")
     elif args.stage0:
+        errors.extend(validate_output_path(args.out))
         stage0_errors, stage0_commands = validate_stage0(args.stage0)
         errors.extend(stage0_errors)
         if not stage0_errors:
@@ -302,14 +318,17 @@ def run(args: argparse.Namespace) -> int:
                 errors.append(f"stage0 failed to build {rel(ENTRYPOINT)}")
             candidate = args.out
     elif args.candidate is None and not args.out.exists():
+        errors.extend(validate_output_path(args.out))
         errors.append(f"no candidate present; provide --stage0 or --candidate, or create {rel(args.out)}")
+    else:
+        errors.extend(validate_output_path(args.out))
 
     if not errors:
         candidate_errors, smoke_commands = validate_candidate(candidate)
         errors.extend(candidate_errors)
 
     status = "fail" if errors else "ok"
-    write_reports(status, candidate, args.stage0, errors, build_commands, stage0_commands, smoke_commands)
+    write_reports(status, candidate, args.stage0, install_source, errors, build_commands, stage0_commands, smoke_commands)
     if errors:
         print("[bootstrap-real][error] real bootstrap candidate rejected", file=sys.stderr)
         for error in errors:

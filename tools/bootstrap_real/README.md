@@ -45,6 +45,9 @@ before copying it there. The copy is staged under `target/bootstrap-real/stage0/
 and atomically replaces the trusted stage0 only after validation. The installed
 stage0 must itself pass the same native Vitte checks before it is allowed to
 compile `src/vitte/compiler/main.vit`.
+Failed installs leave neither a replacement stage0 nor a `.installing` artifact,
+and reports include both the install source and the installed artifact when an
+install succeeds.
 
 The gate rejects binaries that still contain self-copy or bootstrap bridge
 markers such as `BOOTSTRAP_FULL_COMPILER`,
