@@ -63,6 +63,28 @@ def test_stage0_must_be_single_trusted_path() -> None:
     )
 
 
+def test_canonical_stage0_path_is_the_only_path_gate() -> None:
+    work = ROOT / "target/bootstrap-real/test-work"
+    canonical = work / "canonical-stage0/vitte"
+    canonical.parent.mkdir(parents=True, exist_ok=True)
+    canonical.write_bytes(
+        b"\xca\xfe\xba\xbe"
+        b"run_cli_main_with_ice_boundary\0"
+        b"COMPILER_ENTRY_POINT=src/vitte/compiler/main.vit\0"
+    )
+    canonical.chmod(canonical.stat().st_mode | stat.S_IXUSR)
+    original_trusted = bootstrap_real.TRUSTED_STAGE0
+    try:
+        bootstrap_real.TRUSTED_STAGE0 = canonical
+        errors, _commands = bootstrap_real.validate_stage0(canonical)
+        assert_true(
+            not any("single trusted Vitte compiler" in error for error in errors),
+            "canonical target/bootstrap-real/stage0/vitte should pass the path gate",
+        )
+    finally:
+        bootstrap_real.TRUSTED_STAGE0 = original_trusted
+
+
 def test_report_writer_records_failure() -> None:
     work = ROOT / "target/bootstrap-real/test-work"
     reports = work / "reports"
@@ -89,6 +111,7 @@ def main() -> int:
     test_output_path_must_stay_under_artifact_root()
     test_forbidden_bridge_marker_is_rejected()
     test_stage0_must_be_single_trusted_path()
+    test_canonical_stage0_path_is_the_only_path_gate()
     test_report_writer_records_failure()
     if work.exists():
         shutil.rmtree(work)
