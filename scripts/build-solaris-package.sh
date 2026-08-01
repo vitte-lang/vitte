@@ -11,6 +11,7 @@ case "$OUT_DIR" in /*) ;; *) OUT_DIR=$ROOT_DIR/$OUT_DIR ;; esac
 ARCH=${ARCH:-all}
 PACKAGE_NAME=${PACKAGE_NAME:-vitte}
 SVR4_PACKAGE=${SVR4_PACKAGE:-VITTE}
+REQUIRE_NATIVE=${STRICT_NATIVE:-${RELEASE_INSTALLER_GATE:-0}}
 
 EDITORS_DIR=$ROOT_DIR/editors
 COMPLETIONS_DIR=$ROOT_DIR/completions
@@ -518,6 +519,8 @@ build_one() {
       "$stage" \
       "$package_file"
   else
+    [ "$REQUIRE_NATIVE" -eq 0 ] ||
+      die "release requires native Solaris pkgmk and pkgtrans for $architecture"
     printf '%s\n' \
       '[build-solaris-package] pkgmk/pkgtrans unavailable; portable SVR4 kit generated, native .pkg deferred' \
       >&2

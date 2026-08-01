@@ -51,7 +51,9 @@ jobs:
       - name: Stage real binary attestation
         run: |
           VITTE_REAL_BINARY=${VITTE_REAL_BINARY:-$(command -v vitte)}
-          make stage-real-binary OS=${{ matrix.os }} ARCH=${{ matrix.arch }} BIN="$VITTE_REAL_BINARY"
+          VITTE_REAL_SIGNATURE=${VITTE_REAL_SIGNATURE:-$VITTE_REAL_BINARY.sig}
+          : "${VITTE_RELEASE_PUBLIC_KEY:?VITTE_RELEASE_PUBLIC_KEY must name the release PEM public key}"
+          make stage-real-binary OS=${{ matrix.os }} ARCH=${{ matrix.arch }} BIN="$VITTE_REAL_BINARY" SIGNATURE="$VITTE_REAL_SIGNATURE" PUBLIC_KEY="$VITTE_RELEASE_PUBLIC_KEY"
       - uses: actions/upload-artifact@v4
         with:
           name: real-binary-${{ matrix.label }}
@@ -84,7 +86,9 @@ jobs:
       - name: Stage real binary attestation
         run: |
           VITTE_REAL_BINARY=${VITTE_REAL_BINARY:-$(command -v vitte)}
-          make stage-real-binary OS=linux ARCH=${{ matrix.arch }} BIN="$VITTE_REAL_BINARY"
+          VITTE_REAL_SIGNATURE=${VITTE_REAL_SIGNATURE:-$VITTE_REAL_BINARY.sig}
+          : "${VITTE_RELEASE_PUBLIC_KEY:?VITTE_RELEASE_PUBLIC_KEY must name the release PEM public key}"
+          make stage-real-binary OS=linux ARCH=${{ matrix.arch }} BIN="$VITTE_REAL_BINARY" SIGNATURE="$VITTE_REAL_SIGNATURE" PUBLIC_KEY="$VITTE_RELEASE_PUBLIC_KEY"
       - uses: actions/upload-artifact@v4
         with:
           name: real-binary-${{ matrix.label }}
@@ -126,7 +130,9 @@ jobs:
       - name: Stage real binary attestation
         run: |
           VITTE_REAL_BINARY=${VITTE_REAL_BINARY:-$(command -v vitte)}
-          make stage-real-binary OS=${{ matrix.os }} ARCH=${{ matrix.arch }} BIN="$VITTE_REAL_BINARY"
+          VITTE_REAL_SIGNATURE=${VITTE_REAL_SIGNATURE:-$VITTE_REAL_BINARY.sig}
+          : "${VITTE_RELEASE_PUBLIC_KEY:?VITTE_RELEASE_PUBLIC_KEY must name the release PEM public key}"
+          make stage-real-binary OS=${{ matrix.os }} ARCH=${{ matrix.arch }} BIN="$VITTE_REAL_BINARY" SIGNATURE="$VITTE_REAL_SIGNATURE" PUBLIC_KEY="$VITTE_RELEASE_PUBLIC_KEY"
       - uses: actions/upload-artifact@v4
         with:
           name: real-binary-${{ matrix.label }}
@@ -167,7 +173,12 @@ jobs:
             echo VITTE_REAL_BINARY must point to the real vitte.exe for this runner
             exit /b 1
           )
-          python tools\stage_real_binary.py --os ${{ matrix.os }} --arch ${{ matrix.arch }} --binary "%VITTE_REAL_BINARY%"
+          if "%VITTE_REAL_SIGNATURE%"=="" set "VITTE_REAL_SIGNATURE=%VITTE_REAL_BINARY%.sig"
+          if "%VITTE_RELEASE_PUBLIC_KEY%"=="" (
+            echo VITTE_RELEASE_PUBLIC_KEY must point to the release PEM public key
+            exit /b 1
+          )
+          python tools\stage_real_binary.py --os ${{ matrix.os }} --arch ${{ matrix.arch }} --binary "%VITTE_REAL_BINARY%" --signature "%VITTE_REAL_SIGNATURE%" --public-key "%VITTE_RELEASE_PUBLIC_KEY%"
       - uses: actions/upload-artifact@v4
         with:
           name: real-binary-${{ matrix.label }}

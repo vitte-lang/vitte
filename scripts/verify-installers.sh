@@ -37,6 +37,8 @@ verify_relocatable_wrapper() {
   label=$1
   command=$2
   wrapper_text=$3
+  printf '%s\n' "$wrapper_text" | grep -F 'readlink -f -- "$self"' >/dev/null ||
+    die "$label wrapper does not resolve installed symlinks for $command"
   printf '%s\n' "$wrapper_text" | grep -F 'prefix=${VITTE_INSTALL_PREFIX:-${bindir%/bin}}' >/dev/null ||
     die "$label wrapper does not derive prefix for $command"
   printf '%s\n' "$wrapper_text" | grep -F 'export VITTE_ROOT=${VITTE_ROOT:-$prefix/share/vitte}' >/dev/null ||
@@ -198,7 +200,7 @@ release = sys.argv[2] == "1"
 installers = json.loads((out / "INSTALLERS.json").read_text(encoding="utf-8"))
 signatures = json.loads((out / "SIGNATURES.json").read_text(encoding="utf-8"))
 signature_names = {item["name"] for item in signatures.get("artifacts", [])}
-metadata = {"INSTALLERS.json", "CHECKSUMS.txt", "SIGNATURES.json", "SBOM.spdx.json", "SBOM.cyclonedx.json"}
+metadata = {"INSTALLERS.json", "CHECKSUMS.txt", "SIGNATURES.json", "SBOM.spdx.json", "SBOM.cyclonedx.json", "ATTESTATION.json"}
 for artifact in installers.get("artifacts", []):
     name = artifact["name"]
     if name in metadata or name.endswith(".sha256") or name.endswith(".MANIFEST.json"):
@@ -213,11 +215,11 @@ for artifact in installers.get("artifacts", []):
     if name not in signature_names:
         raise SystemExit(f"SIGNATURES.json missing {name}")
 if release:
-    for sbom in ("SBOM.spdx.json", "SBOM.cyclonedx.json"):
+    for sbom in ("SBOM.spdx.json", "SBOM.cyclonedx.json", "ATTESTATION.json"):
         if not (out / sbom).is_file():
             raise SystemExit(f"release metadata missing {sbom}")
-    if not signatures.get("sign_requested"):
-        raise SystemExit("release metadata requires sign_requested=true")
+    if not signatures.get("all_verified"):
+        raise SystemExit("release metadata requires cryptographically verified signatures")
 PY
 fi
 

@@ -119,9 +119,15 @@ def check_real_binary(
         failures.append(f"wrong binary format {path.relative_to(ROOT)}: expected {expected}, got {actual}")
 
     attestation_path = path.parent / "ATTESTATION.json"
+    provenance_path = path.parent / "PROVENANCE.json"
+    signature_path = path.with_name(path.name + ".sig")
     if not attestation_path.exists():
         failures.append(f"missing real binary attestation {attestation_path.relative_to(ROOT)}")
         return row
+    if not provenance_path.is_file():
+        failures.append(f"missing real binary provenance {provenance_path.relative_to(ROOT)}")
+    if not signature_path.is_file():
+        failures.append(f"missing real binary signature {signature_path.relative_to(ROOT)}")
     try:
         attestation = json.loads(attestation_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
@@ -138,6 +144,9 @@ def check_real_binary(
         failures.append(f"attestation checksum mismatch {attestation_path.relative_to(ROOT)}")
     if int(attestation.get("size", -1)) != path.stat().st_size:
         failures.append(f"attestation size mismatch {attestation_path.relative_to(ROOT)}")
+    signature = attestation.get("signature", {})
+    if not isinstance(signature, dict) or signature.get("verified") is not True:
+        failures.append(f"attestation has no verified signature {attestation_path.relative_to(ROOT)}")
 
     commands = attestation.get("smoke_commands", [])
     if not isinstance(commands, list) or not commands:

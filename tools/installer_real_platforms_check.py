@@ -150,6 +150,8 @@ def main() -> int:
         expected_format = data.get("real_binary_formats", {}).get(target["os"], "ELF")
         actual_format = binary_format(path) if present else ""
         attestation = path.parent / "ATTESTATION.json"
+        provenance = path.parent / "PROVENANCE.json"
+        signature = path.with_name(path.name + ".sig")
         attested = attestation.exists()
         strict_rows.append({
             "target": target,
@@ -158,6 +160,8 @@ def main() -> int:
             "expected_format": expected_format,
             "actual_format": actual_format,
             "attested": attested,
+            "provenance": provenance.exists(),
+            "signature": signature.exists(),
         })
         if strict and not present:
             failures.append(f"missing strict real binary artifact {path.relative_to(ROOT)}")
@@ -165,6 +169,10 @@ def main() -> int:
             failures.append(f"invalid real binary format {path.relative_to(ROOT)}: expected {expected_format}, got {actual_format}")
         elif strict and not attested:
             failures.append(f"missing real binary attestation {attestation.relative_to(ROOT)}")
+        elif strict and not provenance.is_file():
+            failures.append(f"missing real binary provenance {provenance.relative_to(ROOT)}")
+        elif strict and not signature.is_file():
+            failures.append(f"missing real binary signature {signature.relative_to(ROOT)}")
         elif strict and attested:
             try:
                 attestation_data = json.loads(attestation.read_text(encoding="utf-8"))
@@ -177,6 +185,9 @@ def main() -> int:
                     failures.append(f"attestation target mismatch {attestation.relative_to(ROOT)}")
                 if not attestation_data.get("smoke_commands"):
                     failures.append(f"attestation missing smoke commands {attestation.relative_to(ROOT)}")
+                signature_data = attestation_data.get("signature", {})
+                if not isinstance(signature_data, dict) or signature_data.get("verified") is not True:
+                    failures.append(f"attestation has no verified signature {attestation.relative_to(ROOT)}")
         elif not present:
             warnings.append(f"pending strict artifact {path.relative_to(ROOT)}")
 

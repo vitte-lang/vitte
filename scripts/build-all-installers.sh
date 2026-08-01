@@ -99,7 +99,7 @@ case "$FAMILY" in
 esac
 
 case "$FAMILY" in
-  all | linux | portable | freebsd | bsd | macos | solaris | windows) ;;
+  all | linux | portable | freebsd | bsd | macos | solaris | windows | metadata) ;;
   *) scripts_build_die "unsupported FAMILY=$FAMILY" ;;
 esac
 
@@ -281,6 +281,15 @@ if sys.argv[4] == "1":
     (out / "SBOM.spdx.json").write_text(json.dumps(spdx, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     (out / "SBOM.cyclonedx.json").write_text(json.dumps(cyclonedx, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 PY
+
+set -- --out "$OUT_DIR" --version "$VERSION" --source-date-epoch "$SOURCE_DATE_EPOCH"
+[ "$SBOM" -eq 0 ] || set -- "$@" --sbom
+[ "$SIGN" -eq 0 ] || set -- "$@" --require-signatures
+[ -z "${VITTE_RELEASE_PUBLIC_KEY:-}" ] || set -- "$@" --public-key "$VITTE_RELEASE_PUBLIC_KEY"
+# The dedicated generator overwrites the legacy summaries above.  In particular,
+# SIGN=1 is proof-checked and can no longer turn an unsigned artifact into a
+# signed=true metadata claim.
+python3 "$ROOT_DIR/tools/release_installer_metadata.py" "$@"
 
 VERSION=$VERSION OUT_DIR=$OUT_DIR VERIFY_METADATA=1 "$ROOT_DIR/scripts_build/verify-installers.sh"
 

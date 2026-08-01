@@ -66,6 +66,10 @@ def main() -> int:
         failures.append(f"artifact metadata policy missing {sorted(REQUIRED_METADATA - metadata)}")
     if "ATTESTATION.json" not in metadata:
         failures.append("artifact metadata policy missing real binary attestation")
+    real_binary_metadata = set(matrix.get("real_binary_metadata_required", []))
+    for required in ("ATTESTATION.json", "PROVENANCE.json", "*.sig"):
+        if required not in real_binary_metadata:
+            failures.append(f"real binary metadata policy missing {required}")
     if "real_binary_formats" not in matrix:
         failures.append("installer real platforms contract missing real_binary_formats")
 
@@ -132,7 +136,7 @@ def main() -> int:
             failures.append(f"release workflow missing `{term}`")
 
     stage_real = ROOT / "tools" / "stage_real_binary.py"
-    fail_if_missing_terms(stage_real, {"binary_format", "ATTESTATION.json", "smoke_commands", "ELF", "Mach-O", "PE"}, failures)
+    fail_if_missing_terms(stage_real, {"binary_format", "ATTESTATION.json", "PROVENANCE.json", "--signature", "--public-key", "smoke_commands", "ELF", "Mach-O", "PE"}, failures)
     fail_if_missing_terms(ROOT / "tools" / "real_release_gate.py", {"native compiler entrypoint builds", "strict installer artifacts", "post-install `check + build + run` evidence"}, failures)
     fail_if_missing_terms(ROOT / "docs" / "release" / "real_binary_collection.md", {"make stage-real-binary", "STRICT_REAL_INSTALLERS=1", "ATTESTATION.json"}, failures)
 

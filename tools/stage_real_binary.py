@@ -56,6 +56,22 @@ def command_output(args: list[str]) -> tuple[int, str]:
     return completed.returncode, completed.stdout.strip()
 
 
+def verify_detached_signature(binary: Path, signature: Path, public_key: Path) -> dict[str, object]:
+    completed = subprocess.run(
+        ["openssl", "dgst", "-sha256", "-verify", str(public_key), "-signature", str(signature), str(binary)],
+        cwd=ROOT, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+    )
+    if completed.returncode != 0:
+        raise SystemExit(f"detached signature verification failed for {binary}: {completed.stdout.strip()}")
+    return {
+        "algorithm": "RSA-SHA256",
+        "verified": True,
+        "signature_sha256": sha256(signature),
+        "public_key_sha256": sha256(public_key),
+        "verification_output": completed.stdout.strip(),
+    }
+
+
 def run_smoke(binary: Path, target_dir: Path, windows: bool) -> list[dict[str, object]]:
     commands: list[list[str]] = [
         [str(binary), "--version"],
@@ -90,6 +106,8 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--binary", required=True, type=Path, help="path to the real vitte executable")
     parser.add_argument("--root", type=Path, default=DEFAULT_ROOT, help="real binary artifact root")
     parser.add_argument("--skip-smoke", action="store_true", help="skip executing smoke commands on this runner")
+    parser.add_argument("--signature", required=True, type=Path, help="detached RSA-SHA256 signature")
+    parser.add_argument("--public-key", required=True, type=Path, help="PEM public key used to verify the signature")
     args = parser.parse_args(argv)
 
     source = args.binary.resolve()
@@ -98,17 +116,27 @@ def main(argv: list[str]) -> int:
     if not source.stat().st_mode & 0o111:
         raise SystemExit(f"binary is not executable: {source}")
 
+    signature_source = args.signature.resolve()
+    public_key = args.public_key.resolve()
+    if not signature_source.is_file() or not public_key.is_file():
+        raise SystemExit("signature and public key must both be existing files")
+    signature_evidence = verify_detached_signature(source, signature_source, public_key)
+
     actual = binary_format(source)
     expected = expected_format(args.os)
     if actual != expected:
         raise SystemExit(f"wrong binary format for {args.os}-{args.arch}: expected {expected}, got {actual}")
 
-    target_dir = args.root / f"{args.os}-{args.arch}"
+    target_dir = args.root.resolve() / f"{args.os}-{args.arch}"
     target_dir.mkdir(parents=True, exist_ok=True)
     target_name = "vitte.exe" if args.os.startswith("windows") else "vitte"
     target = target_dir / target_name
-    shutil.copy2(source, target)
-    target.chmod(target.stat().st_mode | 0o755)
+    # copy2 attempts to reproduce immutable/system flags from binaries such as
+    # /bin/echo on macOS and fails on an ordinary artifact directory.
+    shutil.copyfile(source, target)
+    target.chmod(source.stat().st_mode | 0o755)
+    signature_target = target_dir / f"{target_name}.sig"
+    shutil.copyfile(signature_source, signature_target)
 
     smoke_results: list[dict[str, object]] = []
     if not args.skip_smoke:
@@ -128,8 +156,22 @@ def main(argv: list[str]) -> int:
         },
         "created_at_unix": int(time.time()),
         "smoke_commands": smoke_results,
+        "signature": {**signature_evidence, "path": str(signature_target.relative_to(ROOT))},
     }
     (target_dir / "ATTESTATION.json").write_text(json.dumps(attestation, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    provenance = {
+        "_type": "https://in-toto.io/Statement/v1",
+        "subject": [{"name": target_name, "digest": {"sha256": attestation["sha256"]}}],
+        "predicateType": "https://slsa.dev/provenance/v1",
+        "predicate": {
+            "buildDefinition": {
+                "buildType": "https://vitte-lang.org/buildtypes/native-compiler/v1",
+                "externalParameters": {"target": attestation["target"]},
+            },
+            "runDetails": {"builder": {"id": "tools/stage_real_binary.py"}, "metadata": attestation["runner"]},
+        },
+    }
+    (target_dir / "PROVENANCE.json").write_text(json.dumps(provenance, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(f"[stage-real-binary] staged {target.relative_to(ROOT)} format={actual}")
     return 0
 

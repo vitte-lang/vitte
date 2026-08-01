@@ -11,6 +11,7 @@ case "$OUT_DIR" in /*) ;; *) OUT_DIR=$ROOT_DIR/$OUT_DIR ;; esac
 ARCH=${ARCH:-all}
 PACKAGE_NAME=${PACKAGE_NAME:-vitte}
 SIGN=${SIGN:-0}
+REQUIRE_NATIVE=${STRICT_NATIVE:-${RELEASE_INSTALLER_GATE:-0}}
 WINDOWS_SIGNTOOL=${WINDOWS_SIGNTOOL:-signtool}
 WINDOWS_SIGN_CERT=${WINDOWS_SIGN_CERT:-}
 WINDOWS_VITTE_EXE=${WINDOWS_VITTE_EXE:-}
@@ -360,8 +361,12 @@ EOF
     scripts_build_sha256_write "$package_file" "$package_file.sha256"
     printf '[build-windows-installer] wrote %s (%s bytes)\n' "$package_file" "$(wc -c < "$package_file" | tr -d ' ')"
   elif [ "$has_pe" -eq 0 ]; then
+    [ "$REQUIRE_NATIVE" -eq 0 ] ||
+      die "release requires a real Windows $arch PE payload; set WINDOWS_VITTE_EXE or the architecture-specific VITTE_BIN override"
     printf '[build-windows-installer] Windows %s PE payload unavailable; NSIS kit generated, native .exe deferred\n' "$arch" >&2
   else
+    [ "$REQUIRE_NATIVE" -eq 0 ] ||
+      die "release requires makensis to produce the Windows $arch installer"
     printf '[build-windows-installer] makensis unavailable; NSIS kit generated, native .exe deferred\n' >&2
   fi
 }

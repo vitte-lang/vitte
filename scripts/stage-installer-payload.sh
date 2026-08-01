@@ -132,6 +132,12 @@ case "\$self" in
     self=\$found
     ;;
 esac
+# Debian alternatives and administrator-created symlinks must resolve to the
+# package that owns libexec, rather than deriving a prefix from the link site.
+if command -v readlink >/dev/null 2>&1; then
+  resolved=\$(readlink -f -- "\$self" 2>/dev/null || true)
+  [ -z "\$resolved" ] || self=\$resolved
+fi
 bindir=\${self%/*}
 case "\$bindir" in
   /*) ;;
