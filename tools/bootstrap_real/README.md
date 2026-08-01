@@ -20,6 +20,9 @@ Build from the single trusted stage0 compiler and verify the result:
 python3 tools/bootstrap_real/bootstrap_real.py --stage0 target/bootstrap-real/stage0/vitte
 ```
 
+That command compiles `src/vitte/compiler/main.vit` to
+`target/bootstrap-real/vitte`, then verifies the produced compiler.
+
 Verify an already-built candidate:
 
 ```sh

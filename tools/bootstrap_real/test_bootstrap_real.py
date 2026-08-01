@@ -97,6 +97,22 @@ def test_stage0_smoke_commands_are_exact() -> None:
     )
 
 
+def test_bootstrap_build_command_is_exact() -> None:
+    stage0 = ROOT / "target/bootstrap-real/stage0/vitte"
+    out = ROOT / "target/bootstrap-real/vitte"
+    command = bootstrap_real.bootstrap_build_command(stage0, out)
+    assert_true(
+        command == [
+            str(stage0),
+            "build",
+            "src/vitte/compiler/main.vit",
+            "-o",
+            str(out),
+        ],
+        "bootstrap build should compile main.vit into target/bootstrap-real/vitte",
+    )
+
+
 def test_script_self_copy_bridge_and_private_tmp_are_rejected() -> None:
     work = ROOT / "target/bootstrap-real/test-work"
     work.mkdir(parents=True, exist_ok=True)
@@ -297,6 +313,7 @@ def main() -> int:
     test_forbidden_markers_are_checked_individually()
     test_required_markers_are_checked_individually()
     test_stage0_smoke_commands_are_exact()
+    test_bootstrap_build_command_is_exact()
     test_script_self_copy_bridge_and_private_tmp_are_rejected()
     test_stage0_must_be_single_trusted_path()
     test_canonical_stage0_path_is_the_only_path_gate()

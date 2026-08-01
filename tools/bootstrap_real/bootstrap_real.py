@@ -138,8 +138,9 @@ def build_from_stage0(stage0: Path, out: Path) -> list[dict[str, object]]:
     env = os.environ.copy()
     env.pop("BOOTSTRAP_FULL_COMPILER", None)
     env.pop("VITTE_BOOTSTRAP_ALLOW_FULL_COMPILER_BRIDGE", None)
+    command = bootstrap_build_command(stage0, out)
     completed = subprocess.run(
-        [str(stage0), "build", rel(ENTRYPOINT), "-o", str(out)],
+        command,
         cwd=ROOT,
         env=env,
         text=True,
@@ -148,11 +149,15 @@ def build_from_stage0(stage0: Path, out: Path) -> list[dict[str, object]]:
     )
     return [
         {
-            "command": [str(stage0), "build", rel(ENTRYPOINT), "-o", rel(out)],
+            "command": [command[0], *command[1:-1], rel(out)],
             "exit_code": completed.returncode,
             "output": completed.stdout[-6000:],
         }
     ]
+
+
+def bootstrap_build_command(stage0: Path, out: Path) -> list[str]:
+    return [str(stage0), "build", rel(ENTRYPOINT), "-o", str(out)]
 
 
 def install_stage0(source: Path) -> None:
