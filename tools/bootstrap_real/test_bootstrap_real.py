@@ -129,6 +129,22 @@ def test_stage1_build_command_is_exact() -> None:
     )
 
 
+def test_stage2_build_command_is_exact() -> None:
+    stage1 = ROOT / "target/stage1/vitte"
+    out = ROOT / "target/stage2/vitte"
+    command = bootstrap_real.stage2_build_command(stage1, out)
+    assert_true(
+        command == [
+            str(stage1),
+            "build",
+            "src/vitte/compiler/main.vit",
+            "-o",
+            str(out),
+        ],
+        "stage2 build should compile main.vit into target/stage2/vitte",
+    )
+
+
 def test_stage1_output_path_is_canonical() -> None:
     errors = bootstrap_real.validate_stage_output_path(
         ROOT / "target/not-stage1/vitte",
@@ -139,6 +155,19 @@ def test_stage1_output_path_is_canonical() -> None:
     assert_true(
         bootstrap_real.validate_stage_output_path(bootstrap_real.STAGE1_OUT, "stage1", bootstrap_real.STAGE1_OUT) == [],
         "canonical stage1 output should pass",
+    )
+
+
+def test_stage2_output_path_is_canonical() -> None:
+    errors = bootstrap_real.validate_stage_output_path(
+        ROOT / "target/not-stage2/vitte",
+        "stage2",
+        bootstrap_real.STAGE2_OUT,
+    )
+    assert_true(any("target/stage2/vitte" in error for error in errors), "stage2 output must be canonical")
+    assert_true(
+        bootstrap_real.validate_stage_output_path(bootstrap_real.STAGE2_OUT, "stage2", bootstrap_real.STAGE2_OUT) == [],
+        "canonical stage2 output should pass",
     )
 
 
@@ -158,6 +187,24 @@ def test_stage1_build_quarantines_stale_output_before_dependency_check() -> None
     assert_true(not stage1.exists(), "stage1 build should remove stale stage1 before dependency checks")
     assert_true(not sidecar.exists(), "stage1 build should remove stale stage1 bridge sidecar")
     assert_true(len(moved) == 2, "stage1 stale output and sidecar should be quarantined")
+
+
+def test_stage2_build_quarantines_stale_output_before_dependency_check() -> None:
+    work = ROOT / "target/bootstrap-real/test-work"
+    stage2 = work / "stage2/vitte"
+    sidecar = Path(str(stage2) + ".bootstrap-bridge")
+    stage2.parent.mkdir(parents=True, exist_ok=True)
+    stage2.write_bytes(b"stale-stage2")
+    sidecar.write_bytes(b"stale-stage2-bridge")
+    original_quarantine = bootstrap_real.QUARANTINE_DIR
+    try:
+        bootstrap_real.QUARANTINE_DIR = work / "quarantine"
+        moved = bootstrap_real.quarantine_bootstrap_output(stage2)
+    finally:
+        bootstrap_real.QUARANTINE_DIR = original_quarantine
+    assert_true(not stage2.exists(), "stage2 build should remove stale stage2 before dependency checks")
+    assert_true(not sidecar.exists(), "stage2 build should remove stale stage2 bridge sidecar")
+    assert_true(len(moved) == 2, "stage2 stale output and sidecar should be quarantined")
 
 
 def test_stage0_build_outputs_are_canonical() -> None:
@@ -397,8 +444,11 @@ def main() -> int:
     test_stage0_smoke_commands_are_exact()
     test_bootstrap_build_command_is_exact()
     test_stage1_build_command_is_exact()
+    test_stage2_build_command_is_exact()
     test_stage1_output_path_is_canonical()
+    test_stage2_output_path_is_canonical()
     test_stage1_build_quarantines_stale_output_before_dependency_check()
+    test_stage2_build_quarantines_stale_output_before_dependency_check()
     test_stage0_build_outputs_are_canonical()
     test_stage0_build_clears_stale_output_and_bridge_sidecar()
     test_script_self_copy_bridge_and_private_tmp_are_rejected()

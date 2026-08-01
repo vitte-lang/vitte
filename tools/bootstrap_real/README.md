@@ -60,6 +60,24 @@ Expected Stage1 output:
 target/stage1/vitte
 ```
 
+Build Stage2 from Stage1:
+
+```sh
+python3 tools/bootstrap_real/bootstrap_real.py --stage2
+```
+
+That command runs:
+
+```sh
+target/stage1/vitte build src/vitte/compiler/main.vit -o target/stage2/vitte
+```
+
+Expected Stage2 output:
+
+```text
+target/stage2/vitte
+```
+
 Smoke-test the installed stage0 directly:
 
 ```sh

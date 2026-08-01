@@ -18,6 +18,7 @@ OUT_DIR = ROOT / "target/bootstrap-real"
 DEFAULT_OUT = OUT_DIR / "vitte"
 QUARANTINE_DIR = OUT_DIR / "quarantine"
 STAGE1_OUT = ROOT / "target/stage1/vitte"
+STAGE2_OUT = ROOT / "target/stage2/vitte"
 REPORT_JSON = ROOT / "target/reports/bootstrap_real_gate.json"
 REPORT_MD = ROOT / "target/reports/bootstrap_real_gate.md"
 
@@ -222,6 +223,10 @@ def stage1_build_command(bootstrap_compiler: Path, out: Path) -> list[str]:
     return [str(bootstrap_compiler), "build", rel(ENTRYPOINT), "-o", str(out)]
 
 
+def stage2_build_command(stage1: Path, out: Path) -> list[str]:
+    return [str(stage1), "build", rel(ENTRYPOINT), "-o", str(out)]
+
+
 def install_stage0(source: Path) -> None:
     TRUSTED_STAGE0.parent.mkdir(parents=True, exist_ok=True)
     tmp = TRUSTED_STAGE0.with_name(TRUSTED_STAGE0.name + ".installing")
@@ -420,6 +425,17 @@ def run(args: argparse.Namespace) -> int:
             if build_commands and build_commands[0]["exit_code"] != 0:
                 errors.append(f"bootstrap compiler failed to build stage1 from {rel(ENTRYPOINT)}")
             candidate = args.out
+    elif args.stage2:
+        errors.extend(validate_stage_output_path(args.out, "stage2", STAGE2_OUT))
+        if not errors:
+            quarantined_artifacts = quarantine_bootstrap_output(args.out)
+        stage1_errors, stage0_commands = validate_vitte_binary(STAGE1_OUT, "stage1")
+        errors.extend(stage1_errors)
+        if not errors:
+            build_commands = build_with_command(args.out, stage2_build_command(STAGE1_OUT, args.out))
+            if build_commands and build_commands[0]["exit_code"] != 0:
+                errors.append(f"stage1 failed to build stage2 from {rel(ENTRYPOINT)}")
+            candidate = args.out
     elif args.candidate is None and not args.out.exists():
         errors.extend(validate_output_path(args.out))
         errors.append(f"no candidate present; provide --stage0 or --candidate, or create {rel(args.out)}")
@@ -459,6 +475,7 @@ def main(argv: list[str]) -> int:
     mode.add_argument("--install-stage0", type=Path, help="validate and install a real Vitte compiler as the trusted stage0")
     mode.add_argument("--stage0", type=Path, help="existing compiler used to build src/vitte/compiler/main.vit")
     mode.add_argument("--stage1", action="store_true", help="build and verify target/stage1/vitte from target/bootstrap-real/vitte")
+    mode.add_argument("--stage2", action="store_true", help="build and verify target/stage2/vitte from target/stage1/vitte")
     mode.add_argument("--candidate", type=Path, help="existing candidate binary to verify")
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT, help="output path under target/bootstrap-real")
     args = parser.parse_args(argv)
@@ -471,6 +488,8 @@ def main(argv: list[str]) -> int:
         args.stage0 = args.stage0 if args.stage0.is_absolute() else ROOT / args.stage0
     if args.stage1 and args.out == DEFAULT_OUT:
         args.out = STAGE1_OUT
+    if args.stage2 and args.out == DEFAULT_OUT:
+        args.out = STAGE2_OUT
     return run(args)
 
 
