@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]
 ENTRYPOINT = ROOT / "src/vitte/compiler/main.vit"
 OUT_DIR = ROOT / "target/bootstrap-real"
 DEFAULT_OUT = OUT_DIR / "vitte"
+QUARANTINE_DIR = OUT_DIR / "quarantine"
 REPORT_JSON = ROOT / "target/reports/bootstrap_real_gate.json"
 REPORT_MD = ROOT / "target/reports/bootstrap_real_gate.md"
 
@@ -122,12 +123,29 @@ def validate_output_path(path: Path) -> list[str]:
     return errors
 
 
-def clear_bootstrap_output(path: Path) -> None:
-    if path.exists():
-        path.unlink()
-    sidecar = Path(str(path) + ".bootstrap-bridge")
-    if sidecar.exists():
-        sidecar.unlink()
+def quarantine_path(path: Path) -> Path:
+    stamp = int(time.time())
+    digest = sha256(path)[:12] if path.is_file() else "nonfile"
+    return QUARANTINE_DIR / f"{path.name}.{stamp}.{digest}"
+
+
+def quarantine_bootstrap_output(path: Path) -> list[dict[str, object]]:
+    moved: list[dict[str, object]] = []
+    QUARANTINE_DIR.mkdir(parents=True, exist_ok=True)
+    for source in (path, Path(str(path) + ".bootstrap-bridge")):
+        if not source.exists():
+            continue
+        target = quarantine_path(source)
+        source.replace(target)
+        moved.append(
+            {
+                "from": rel(source),
+                "to": rel(target),
+                "sha256": sha256(target) if target.is_file() else None,
+                "size": target.stat().st_size if target.is_file() else None,
+            }
+        )
+    return moved
 
 
 def binary_artifact(path: Path) -> dict[str, object] | None:
@@ -266,6 +284,7 @@ def write_reports(
     build_commands: list[dict[str, object]],
     stage0_commands: list[dict[str, object]],
     smoke_commands: list[dict[str, object]],
+    quarantined_artifacts: list[dict[str, object]],
 ) -> None:
     REPORT_JSON.parent.mkdir(parents=True, exist_ok=True)
     artifact = binary_artifact(candidate)
@@ -285,6 +304,7 @@ def write_reports(
         "stage0_commands": stage0_commands,
         "build_commands": build_commands,
         "smoke_commands": smoke_commands,
+        "quarantined_artifacts": quarantined_artifacts,
         "created_at_unix": int(time.time()),
         "errors": errors,
     }
@@ -311,6 +331,10 @@ def write_reports(
                 f"- size: {artifact['size']}",
             ]
         )
+    if quarantined_artifacts:
+        lines.append("")
+        lines.append("## Quarantined Artifacts")
+        lines.extend(f"- {item['from']} -> {item['to']}" for item in quarantined_artifacts)
     if errors:
         lines.append("")
         lines.append("## Errors")
@@ -324,6 +348,7 @@ def run(args: argparse.Namespace) -> int:
     build_commands: list[dict[str, object]] = []
     stage0_commands: list[dict[str, object]] = []
     smoke_commands: list[dict[str, object]] = []
+    quarantined_artifacts: list[dict[str, object]] = []
     install_source: Path | None = None
 
     if args.install_stage0:
@@ -340,7 +365,7 @@ def run(args: argparse.Namespace) -> int:
     elif args.stage0:
         errors.extend(validate_output_path(args.out))
         if not errors:
-            clear_bootstrap_output(args.out)
+            quarantined_artifacts = quarantine_bootstrap_output(args.out)
         stage0_errors, stage0_commands = validate_stage0(args.stage0)
         errors.extend(stage0_errors)
         if not stage0_errors:
@@ -359,7 +384,17 @@ def run(args: argparse.Namespace) -> int:
         errors.extend(candidate_errors)
 
     status = "fail" if errors else "ok"
-    write_reports(status, candidate, args.stage0, install_source, errors, build_commands, stage0_commands, smoke_commands)
+    write_reports(
+        status,
+        candidate,
+        args.stage0,
+        install_source,
+        errors,
+        build_commands,
+        stage0_commands,
+        smoke_commands,
+        quarantined_artifacts,
+    )
     if errors:
         print("[bootstrap-real][error] real bootstrap candidate rejected", file=sys.stderr)
         for error in errors:

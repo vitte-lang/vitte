@@ -136,9 +136,16 @@ def test_stage0_build_clears_stale_output_and_bridge_sidecar() -> None:
     stale.parent.mkdir(parents=True, exist_ok=True)
     stale.write_bytes(b"stale")
     sidecar.write_bytes(b"bridge")
-    bootstrap_real.clear_bootstrap_output(stale)
+    original_quarantine = bootstrap_real.QUARANTINE_DIR
+    try:
+        bootstrap_real.QUARANTINE_DIR = work / "quarantine"
+        moved = bootstrap_real.quarantine_bootstrap_output(stale)
+    finally:
+        bootstrap_real.QUARANTINE_DIR = original_quarantine
     assert_true(not stale.exists(), "stage0 build should remove stale output before compiling")
     assert_true(not sidecar.exists(), "stage0 build should remove stale bridge sidecar before compiling")
+    assert_true(len(moved) == 2, "stale output and bridge sidecar should both be quarantined")
+    assert_true(all(Path(str(item["to"])).is_file() for item in moved), "quarantined artifacts should be preserved")
 
 
 def test_script_self_copy_bridge_and_private_tmp_are_rejected() -> None:
@@ -229,7 +236,7 @@ def test_report_writer_records_failure() -> None:
         bootstrap_real.REPORT_JSON = reports / "bootstrap_real_gate.json"
         bootstrap_real.REPORT_MD = reports / "bootstrap_real_gate.md"
         candidate = work / "missing-vitte"
-        bootstrap_real.write_reports("fail", candidate, None, None, ["example failure"], [], [], [])
+        bootstrap_real.write_reports("fail", candidate, None, None, ["example failure"], [], [], [], [])
         assert_true(bootstrap_real.REPORT_JSON.is_file(), "json report should be written")
         assert_true(bootstrap_real.REPORT_MD.is_file(), "markdown report should be written")
         assert_true("example failure" in bootstrap_real.REPORT_MD.read_text(encoding="utf-8"), "markdown should list errors")
@@ -322,7 +329,7 @@ def test_install_report_records_source_and_installed_artifact() -> None:
         bootstrap_real.REPORT_MD = reports / "bootstrap_real_gate.md"
         bootstrap_real.TRUSTED_STAGE0 = trusted
         bootstrap_real.install_stage0(source)
-        bootstrap_real.write_reports("ok", trusted, None, source, [], [], [], [])
+        bootstrap_real.write_reports("ok", trusted, None, source, [], [], [], [], [])
         text = bootstrap_real.REPORT_JSON.read_text(encoding="utf-8")
         assert_true('"install_source"' in text, "install report should record source artifact")
         assert_true('"artifact"' in text, "install report should record installed artifact")
