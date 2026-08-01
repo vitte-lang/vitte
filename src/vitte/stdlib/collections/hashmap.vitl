@@ -1,0 +1,202 @@
+space vitte/stdlib/collections/hashmap
+
+export *
+
+const EMPTY: int = 0
+const FILLED: int = 1
+const DELETED: int = 2
+const DEFAULT_CAPACITY: int = 8
+const LOAD_NUM: int = 7
+const LOAD_DEN: int = 10
+
+form HashEntry {
+    key: string
+    value: i64
+    state: int
+}
+
+form HashMap {
+    entries: [HashEntry]
+    length: int
+    tombstones: int
+    capacity: int
+}
+
+proc _empty_entry() -> HashEntry {
+    give HashEntry { key: "", value: 0, state: EMPTY };
+}
+
+proc _empty_entries(capacity: int) -> [HashEntry] {
+    let entries: [HashEntry] = [];
+    let index: int = 0;
+    while index < capacity {
+        set entries = entries + [_empty_entry()];
+        set index = index + 1;
+    }
+    give entries;
+}
+
+proc hashmap_with_capacity(requested: int) -> HashMap {
+    let capacity: int = if requested < DEFAULT_CAPACITY { DEFAULT_CAPACITY } else { requested };
+    give HashMap {
+        entries: _empty_entries(capacity),
+        length: 0,
+        tombstones: 0,
+        capacity: capacity
+    };
+}
+
+proc hashmap_new() -> HashMap {
+    give hashmap_with_capacity(DEFAULT_CAPACITY);
+}
+
+proc _hash_string(key: string) -> int {
+    // FNV-1a, reduced after each byte to stay deterministic on every target.
+    let hash: int = 2166136261;
+    let index: int = 0;
+    while index < key.len {
+        set hash = ((hash ^ (key[index] as int)) * 16777619) % 2147483647;
+        set index = index + 1;
+    }
+    if hash < 0 { give -hash; }
+    give hash;
+}
+
+proc _index(map: HashMap, key: string) -> int {
+    if map.capacity <= 0 { give 0; }
+    give _hash_string(key) % map.capacity;
+}
+
+proc _find_existing(map: HashMap, key: string) -> int {
+    if map.capacity <= 0 { give -1; }
+    let slot: int = _index(map, key);
+    let probes: int = 0;
+    while probes < map.capacity {
+        let state: int = map.entries[slot].state;
+        if state == EMPTY { give -1; }
+        if state == FILLED and map.entries[slot].key == key { give slot; }
+        set slot = (slot + 1) % map.capacity;
+        set probes = probes + 1;
+    }
+    give -1;
+}
+
+proc _find_insert_slot(map: HashMap, key: string) -> int {
+    if map.capacity <= 0 { give -1; }
+    let slot: int = _index(map, key);
+    let first_deleted: int = -1;
+    let probes: int = 0;
+    while probes < map.capacity {
+        let state: int = map.entries[slot].state;
+        if state == FILLED and map.entries[slot].key == key { give slot; }
+        if state == DELETED and first_deleted < 0 { set first_deleted = slot; }
+        if state == EMPTY {
+            if first_deleted >= 0 { give first_deleted; }
+            give slot;
+        }
+        set slot = (slot + 1) % map.capacity;
+        set probes = probes + 1;
+    }
+    give first_deleted;
+}
+
+proc _should_resize(map: HashMap) -> bool {
+    give (map.length + map.tombstones + 1) * LOAD_DEN >= map.capacity * LOAD_NUM;
+}
+
+proc _insert_without_resize(map: HashMap, key: string, value: i64) -> bool {
+    let slot: int = _find_insert_slot(map, key);
+    if slot < 0 { give false; }
+    let previous_state: int = map.entries[slot].state;
+    if previous_state != FILLED {
+        set map.length = map.length + 1;
+        if previous_state == DELETED { set map.tombstones = map.tombstones - 1; }
+    }
+    set map.entries[slot] = HashEntry { key: key, value: value, state: FILLED };
+    give true;
+}
+
+proc _resize(map: HashMap, requested: int) -> bool {
+    let capacity: int = if requested < DEFAULT_CAPACITY { DEFAULT_CAPACITY } else { requested };
+    let old_entries: [HashEntry] = map.entries;
+    set map.entries = _empty_entries(capacity);
+    set map.length = 0;
+    set map.tombstones = 0;
+    set map.capacity = capacity;
+    let index: int = 0;
+    while index < old_entries.len {
+        if old_entries[index].state == FILLED {
+            if not _insert_without_resize(map, old_entries[index].key, old_entries[index].value) {
+                give false;
+            }
+        }
+        set index = index + 1;
+    }
+    give true;
+}
+
+proc hashmap_insert(map: HashMap, key: string, value: i64) -> bool {
+    if _should_resize(map) and not _resize(map, map.capacity * 2) { give false; }
+    give _insert_without_resize(map, key, value);
+}
+
+proc hashmap_get(map: HashMap, key: string) -> i64 {
+    let slot: int = _find_existing(map, key);
+    if slot < 0 { give 0; }
+    give map.entries[slot].value;
+}
+
+proc hashmap_contains(map: HashMap, key: string) -> bool {
+    give _find_existing(map, key) >= 0;
+}
+
+proc hashmap_remove(map: HashMap, key: string) -> bool {
+    let slot: int = _find_existing(map, key);
+    if slot < 0 { give false; }
+    set map.entries[slot] = HashEntry { key: "", value: 0, state: DELETED };
+    set map.length = map.length - 1;
+    set map.tombstones = map.tombstones + 1;
+    give true;
+}
+
+proc hashmap_keys(map: HashMap) -> [string] {
+    let keys: [string] = [];
+    let index: int = 0;
+    while index < map.capacity {
+        if map.entries[index].state == FILLED { set keys = keys + [map.entries[index].key]; }
+        set index = index + 1;
+    }
+    give keys;
+}
+
+proc hashmap_values(map: HashMap) -> [i64] {
+    let values: [i64] = [];
+    let index: int = 0;
+    while index < map.capacity {
+        if map.entries[index].state == FILLED { set values = values + [map.entries[index].value]; }
+        set index = index + 1;
+    }
+    give values;
+}
+
+proc hashmap_size(map: HashMap) -> int { give map.length; }
+proc hashmap_is_empty(map: HashMap) -> bool { give map.length == 0; }
+
+proc hashmap_clear(map: HashMap) {
+    set map.entries = _empty_entries(map.capacity);
+    set map.length = 0;
+    set map.tombstones = 0;
+}
+
+proc hashmap_is_valid(map: HashMap) -> bool {
+    if map.capacity < DEFAULT_CAPACITY or map.entries.len != map.capacity { give false; }
+    let occupied: int = 0;
+    let deleted: int = 0;
+    let index: int = 0;
+    while index < map.capacity {
+        if map.entries[index].state == FILLED { set occupied = occupied + 1; }
+        if map.entries[index].state == DELETED { set deleted = deleted + 1; }
+        set index = index + 1;
+    }
+    give occupied == map.length and deleted == map.tombstones;
+}

@@ -1,0 +1,39 @@
+space vitte/stdlib/tests/hashmap_contracts
+
+use src/vitte/stdlib/collections/hashmap as hashmap
+
+proc hashmap_insert_update_remove_contract() -> bool {
+    let map: hashmap.HashMap = hashmap.hashmap_new();
+    let inserted_alpha: bool = hashmap.hashmap_insert(map, "alpha", 11);
+    let inserted_beta: bool = hashmap.hashmap_insert(map, "beta", 22);
+    let updated_alpha: bool = hashmap.hashmap_insert(map, "alpha", 33);
+    let removed_beta: bool = hashmap.hashmap_remove(map, "beta");
+    give inserted_alpha
+        and inserted_beta
+        and updated_alpha
+        and removed_beta
+        and hashmap.hashmap_size(map) == 1
+        and hashmap.hashmap_contains(map, "alpha")
+        and not hashmap.hashmap_contains(map, "beta")
+        and hashmap.hashmap_get(map, "alpha") == 33
+        and hashmap.hashmap_is_valid(map);
+}
+
+proc hashmap_resize_contract() -> bool {
+    let map: hashmap.HashMap = hashmap.hashmap_new();
+    let index: int = 0;
+    while index < 64 {
+        let key: string = "key-" + (index as string);
+        if not hashmap.hashmap_insert(map, key, index as i64) { give false; }
+        set index = index + 1;
+    }
+    give hashmap.hashmap_size(map) == 64
+        and hashmap.hashmap_get(map, "key-0") == 0
+        and hashmap.hashmap_get(map, "key-63") == 63
+        and hashmap.hashmap_is_valid(map);
+}
+
+proc main() -> int {
+    if hashmap_insert_update_remove_contract() and hashmap_resize_contract() { give 0; }
+    give 1;
+}
