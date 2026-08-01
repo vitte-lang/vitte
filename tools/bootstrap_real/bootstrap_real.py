@@ -155,6 +155,12 @@ def build_from_stage0(stage0: Path, out: Path) -> list[dict[str, object]]:
     ]
 
 
+def install_stage0(source: Path) -> None:
+    TRUSTED_STAGE0.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, TRUSTED_STAGE0)
+    TRUSTED_STAGE0.chmod(TRUSTED_STAGE0.stat().st_mode | 0o755)
+
+
 def validate_vitte_binary(binary: Path, label: str) -> tuple[list[str], list[dict[str, object]]]:
     errors: list[str] = []
     commands: list[dict[str, object]] = []
@@ -269,7 +275,14 @@ def run(args: argparse.Namespace) -> int:
     stage0_commands: list[dict[str, object]] = []
     smoke_commands: list[dict[str, object]] = []
 
-    if args.stage0:
+    if args.install_stage0:
+        install_errors, stage0_commands = validate_vitte_binary(args.install_stage0, "stage0 source")
+        errors.extend(install_errors)
+        if not install_errors:
+            install_stage0(args.install_stage0)
+            candidate = TRUSTED_STAGE0
+            smoke_commands = stage0_commands
+    elif args.stage0:
         stage0_errors, stage0_commands = validate_stage0(args.stage0)
         errors.extend(stage0_errors)
         if not stage0_errors:
@@ -299,11 +312,15 @@ def run(args: argparse.Namespace) -> int:
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description="Build or verify the durable real Vitte bootstrap compiler")
-    parser.add_argument("--stage0", type=Path, help="existing compiler used to build src/vitte/compiler/main.vit")
-    parser.add_argument("--candidate", type=Path, help="existing candidate binary to verify")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--install-stage0", type=Path, help="validate and install a real Vitte compiler as the trusted stage0")
+    mode.add_argument("--stage0", type=Path, help="existing compiler used to build src/vitte/compiler/main.vit")
+    mode.add_argument("--candidate", type=Path, help="existing candidate binary to verify")
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT, help="output path under target/bootstrap-real")
     args = parser.parse_args(argv)
     args.out = args.out if args.out.is_absolute() else ROOT / args.out
+    if args.install_stage0:
+        args.install_stage0 = args.install_stage0 if args.install_stage0.is_absolute() else ROOT / args.install_stage0
     if args.candidate:
         args.candidate = args.candidate if args.candidate.is_absolute() else ROOT / args.candidate
     if args.stage0:

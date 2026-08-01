@@ -8,6 +8,12 @@ Nothing in this path requires `/private/tmp`.
 
 ## Commands
 
+Install the single trusted stage0 compiler:
+
+```sh
+python3 tools/bootstrap_real/bootstrap_real.py --install-stage0 <real-vitte-binary>
+```
+
 Build from the single trusted stage0 compiler and verify the result:
 
 ```sh
@@ -33,9 +39,10 @@ The gate accepts only a native candidate aligned with
 `run_cli_main_with_ice_boundary` and the canonical entrypoint marker
 `COMPILER_ENTRY_POINT=src/vitte/compiler/main.vit`.
 
-The only accepted stage0 path is `target/bootstrap-real/stage0/vitte`. That
-binary must itself pass the same native Vitte checks before it is allowed to
-compile `src/vitte/compiler/main.vit`.
+The only accepted stage0 path is `target/bootstrap-real/stage0/vitte`.
+`--install-stage0` validates a source binary as a real native Vitte compiler
+before copying it there. The installed stage0 must itself pass the same native
+Vitte checks before it is allowed to compile `src/vitte/compiler/main.vit`.
 
 The gate rejects binaries that still contain self-copy or bootstrap bridge
 markers such as `BOOTSTRAP_FULL_COMPILER`,

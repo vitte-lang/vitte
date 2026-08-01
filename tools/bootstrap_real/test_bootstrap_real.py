@@ -104,6 +104,24 @@ def test_report_writer_records_failure() -> None:
         bootstrap_real.REPORT_MD = original_md
 
 
+def test_install_stage0_copies_only_after_validation_path() -> None:
+    work = ROOT / "target/bootstrap-real/test-work"
+    source = work / "install-source"
+    trusted = work / "installed/vitte"
+    source.parent.mkdir(parents=True, exist_ok=True)
+    source.write_bytes(b"\xca\xfe\xba\xbevalidated-stage0")
+    source.chmod(source.stat().st_mode | stat.S_IXUSR)
+    original_trusted = bootstrap_real.TRUSTED_STAGE0
+    try:
+        bootstrap_real.TRUSTED_STAGE0 = trusted
+        bootstrap_real.install_stage0(source)
+        assert_true(trusted.is_file(), "stage0 install should copy to the trusted path")
+        assert_true(trusted.read_bytes() == source.read_bytes(), "stage0 install should preserve the source binary")
+        assert_true(trusted.stat().st_mode & stat.S_IXUSR != 0, "installed stage0 should be executable")
+    finally:
+        bootstrap_real.TRUSTED_STAGE0 = original_trusted
+
+
 def main() -> int:
     work = ROOT / "target/bootstrap-real/test-work"
     if work.exists():
@@ -113,6 +131,7 @@ def main() -> int:
     test_stage0_must_be_single_trusted_path()
     test_canonical_stage0_path_is_the_only_path_gate()
     test_report_writer_records_failure()
+    test_install_stage0_copies_only_after_validation_path()
     if work.exists():
         shutil.rmtree(work)
     print("[bootstrap-real-test] ok")
