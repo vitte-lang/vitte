@@ -82,6 +82,13 @@ proc typeck_proc_has_result(annotation_text: string) -> bool {
   give result != "" and result != "unit" and result != "void" and result != "()";
 }
 
+proc annotated_empty_list_type(annotation_text: string, expr: HirExpr, inferred_ty: string) -> string {
+  if expr.kind == HirExprKind.Array and len(expr.children) == 0 and annotation_text != "" and (inferred_ty == "" or inferred_ty == "unknown" or inferred_ty == "array") {
+    give annotation_text;
+  }
+  give inferred_ty;
+}
+
 proc nominal_variant_names(item: HirItem) -> [string] {
   let variants: [string] = [];
   let i: u64 = 0;
@@ -817,14 +824,15 @@ proc check_stmt_tree(diagnostics: [Diagnostic], env: [TypeBinding], stmts: [HirS
     set out = out + then_checked.diagnostics + else_checked.diagnostics;
 
     if stmt.kind == HirStmtKind.Let {
-      if not type_is_known(result.ty) {
+      let effective_ty: string = annotated_empty_list_type(stmt.annotation_text, stmt.expr, result.ty);
+      if not type_is_known(effective_ty) {
         set out = add_unique_diag(out, typeck_let_inference_failed(stmt.name, stmt.span));
       }
-      if stmt.annotation_text != "" and type_is_known(result.ty) and not expression_types_compatible(stmt.annotation_text, result.ty, stmt.expr) {
-        set out = add_unique_diag(out, typeck_assignment_mismatch(stmt.name, stmt.annotation_text, result.ty, stmt.span));
+      if stmt.annotation_text != "" and type_is_known(effective_ty) and not expression_types_compatible(stmt.annotation_text, effective_ty, stmt.expr) {
+        set out = add_unique_diag(out, typeck_assignment_mismatch(stmt.name, stmt.annotation_text, effective_ty, stmt.span));
       }
       if stmt.name != "" {
-        let binding_type: string = if stmt.annotation_text != "" { stmt.annotation_text } else { result.ty };
+        let binding_type: string = if stmt.annotation_text != "" { stmt.annotation_text } else { effective_ty };
         set current_env = env_set(current_env, stmt.name, binding_type);
       }
     } elif stmt.kind == HirStmtKind.Set {

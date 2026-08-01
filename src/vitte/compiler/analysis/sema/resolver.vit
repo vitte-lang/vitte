@@ -11,11 +11,14 @@ use vitte/compiler/analysis/sema/errors.{
   sema_span_empty
 }
 use vitte/compiler/analysis/sema/names.{ place_root_name, sema_builtin_name }
-use vitte/compiler/analysis/sema.modules.{ SemaModuleImport }
+use vitte/compiler/analysis/sema.modules.{ SemaModuleImport, module_import_from_use }
 use vitte/compiler/analysis/sema/scopes.{
   SemaSymbol,
   SemaSymbolKind,
+  SemaSymbolState,
+  SemaVisibility,
   sema_symbol,
+  sema_symbol_full,
   symbol_find_qualified,
   symbol_find_visible,
   symbol_index,
@@ -777,6 +780,26 @@ proc collect_module_symbols_with_imports(hir: HirUnit, imported_symbols: [SemaSy
       ));
     }
     let collectable_item: bool = item.kind != HirItemKind.Space and item.kind != HirItemKind.Use and item.kind != HirItemKind.Export;
+    if item.kind == HirItemKind.Use {
+      let imported: SemaModuleImport = module_import_from_use(item.name);
+      if imported.valid and imported.alias != "" and symbol_index(symbols, imported.alias) < 0 {
+        set symbols = symbols + [sema_symbol_full(
+          next_symbol_id,
+          imported.alias,
+          imported.module_path,
+          SemaSymbolKind.Module,
+          SemaSymbolState.Imported,
+          0,
+          false,
+          SemaVisibility.Public,
+          imported.module_path,
+          "",
+          item.span.start_line,
+          item.span.start_column
+        )];
+        set next_symbol_id = next_symbol_id + 1;
+      }
+    }
     if item.name != "" and collectable_item {
       if symbol_index(symbols, item.name) >= 0 {
         set diagnostics = sema_add_diag(diagnostics, sema_diagnostic(

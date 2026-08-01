@@ -1307,6 +1307,47 @@ proc infer_struct_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
     give expr_result(struct_ty, diagnostics, valid);
 }
 
+proc infer_array_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
+    let diagnostics: [Diagnostic] = [];
+    let valid: bool = true;
+
+    if len(expr.children) == 0 {
+        give expr_result("unknown", diagnostics, valid);
+    }
+
+    let first: ExprTypeResult = infer_expr_type(env, expr.children[0]);
+    let element_ty: string = first.ty;
+    set diagnostics = merge_diagnostics(diagnostics, first.diagnostics);
+    set valid = valid and first.valid;
+
+    let i: u64 = 1;
+    while i < len(expr.children) {
+        let child: ExprTypeResult = infer_expr_type(env, expr.children[i]);
+        set diagnostics = merge_diagnostics(diagnostics, child.diagnostics);
+        set valid = valid and child.valid;
+        let next_ty: string = unify_types(element_ty, child.ty);
+        if next_ty == "unknown" and element_ty != "opaque" and child.ty != "opaque" {
+            set diagnostics = add_unique_diag(diagnostics, typeck_argument_mismatch(
+                "array literal",
+                i,
+                element_ty,
+                child.ty,
+                expr.children[i].span
+            ));
+            set valid = false;
+        } else {
+            set element_ty = next_ty;
+        }
+        set i = i + 1;
+    }
+
+    if element_ty == "" or element_ty == "unknown" {
+        give expr_result("unknown", diagnostics, valid);
+    }
+
+    give expr_result("[" + element_ty + "]", diagnostics, valid);
+}
+
 proc infer_expr_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
     if !expr.valid {
         give expr_result("unknown", [typeck_diag(
@@ -1317,6 +1358,10 @@ proc infer_expr_type(env: [TypeBinding], expr: HirExpr) -> ExprTypeResult {
             expr.span,
             true
         )], false);
+    }
+
+    if expr.kind == HirExprKind.Array {
+        give infer_array_type(env, expr);
     }
 
     if expr.inferred_type != "" and expr.inferred_type != "unknown" {

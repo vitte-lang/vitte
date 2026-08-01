@@ -2,8 +2,10 @@ space vitte/compiler/analysis/sema
 
 use vitte/compiler/diagnostics/diagnostic.{
     Diagnostic,
+    Diagnostic as SemaDiagnostic,
     DiagnosticReport,
     DiagnosticSeverity,
+    DiagnosticSeverity as SemaSeverity,
     DiagnosticPhase,
     DiagnosticApplicability,
     DiagnosticSuggestionKind,
@@ -181,6 +183,22 @@ proc sema_kind_name(kind: SemaDiagnosticKind) -> string {
         give "internal";
     }
     give "unknown";
+}
+
+proc sema_severity_name(severity: SemaSeverity) -> string {
+    if severity == SemaSeverity.Help {
+        give "help";
+    }
+    if severity == SemaSeverity.Note {
+        give "note";
+    }
+    if severity == SemaSeverity.Warning {
+        give "warning";
+    }
+    if severity == SemaSeverity.Fatal {
+        give "fatal";
+    }
+    give "error";
 }
 
 proc sema_resolution_failure_name(kind: SemaResolutionFailureKind) -> string {
@@ -1009,12 +1027,15 @@ share SemaPhase
 share SemaDiagnosticKind
 share SemaResolutionFailureKind
 share SemaContext
+share SemaDiagnostic
+share SemaSeverity
 
 share sema_span_empty
 share ast_span_to_source_span
 
 share sema_phase_name
 share sema_kind_name
+share sema_severity_name
 share sema_resolution_failure_name
 share sema_resolution_code
 share sema_resolution_phase

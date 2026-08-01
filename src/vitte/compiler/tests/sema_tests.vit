@@ -326,6 +326,21 @@ proc test_sema_module_helpers_cover_alias_and_export_summary() -> bool {
     and symbols[0].module_path == "demo/app";
 }
 
+proc test_sema_local_use_alias_resolves_as_module_symbol() -> bool {
+  let source: string =
+    "space demo/app;\n" +
+    "use demo/math as math;\n" +
+    "proc main() -> int { give math.sum(); }\n";
+  let fe: FrontendOutput = frontend_run("sema_local_alias.vit", source);
+  let hir = lower_ast_to_hir(fe);
+  let checked: SemaResult = run_sema_hir(hir);
+  let call_base = checked.hir.module.items[2].stmts[0].expr.children[0].children[0];
+  give fe.valid
+    and checked.valid
+    and call_base.name == "math"
+    and call_base.resolved_kind == "module";
+}
+
 proc test_sema_error_helpers_cover_context_and_summary() -> bool {
   let diag = sema_invalid_import("demo/bad", ast_span_empty());
   let ctx = sema_context_error(
