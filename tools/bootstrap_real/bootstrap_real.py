@@ -17,6 +17,7 @@ ENTRYPOINT = ROOT / "src/vitte/compiler/main.vit"
 OUT_DIR = ROOT / "target/bootstrap-real"
 DEFAULT_OUT = OUT_DIR / "vitte"
 QUARANTINE_DIR = OUT_DIR / "quarantine"
+STAGE1_OUT = ROOT / "target/stage1/vitte"
 REPORT_JSON = ROOT / "target/reports/bootstrap_real_gate.json"
 REPORT_MD = ROOT / "target/reports/bootstrap_real_gate.md"
 
@@ -123,6 +124,15 @@ def validate_output_path(path: Path) -> list[str]:
     return errors
 
 
+def validate_stage_output_path(path: Path, stage_name: str, expected: Path) -> list[str]:
+    errors: list[str] = []
+    if path.resolve() != expected.resolve():
+        errors.append(f"{stage_name} output must be {rel(expected)}: {rel(path)}")
+    if path.resolve() == ENTRYPOINT.resolve():
+        errors.append(f"{stage_name} output must not overwrite {rel(ENTRYPOINT)}")
+    return errors
+
+
 def quarantine_path(path: Path) -> Path:
     stamp = int(time.time())
     digest = sha256(path)[:12] if path.is_file() else "nonfile"
@@ -182,8 +192,34 @@ def build_from_stage0(stage0: Path, out: Path) -> list[dict[str, object]]:
     ]
 
 
+def build_with_command(out: Path, command: list[str]) -> list[dict[str, object]]:
+    out.parent.mkdir(parents=True, exist_ok=True)
+    env = os.environ.copy()
+    env.pop("BOOTSTRAP_FULL_COMPILER", None)
+    env.pop("VITTE_BOOTSTRAP_ALLOW_FULL_COMPILER_BRIDGE", None)
+    completed = subprocess.run(
+        command,
+        cwd=ROOT,
+        env=env,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
+    return [
+        {
+            "command": [command[0], *command[1:-1], rel(out)],
+            "exit_code": completed.returncode,
+            "output": completed.stdout[-6000:],
+        }
+    ]
+
+
 def bootstrap_build_command(stage0: Path, out: Path) -> list[str]:
     return [str(stage0), "build", rel(ENTRYPOINT), "-o", str(out)]
+
+
+def stage1_build_command(bootstrap_compiler: Path, out: Path) -> list[str]:
+    return [str(bootstrap_compiler), "build", rel(ENTRYPOINT), "-o", str(out)]
 
 
 def install_stage0(source: Path) -> None:
@@ -373,6 +409,17 @@ def run(args: argparse.Namespace) -> int:
             if build_commands and build_commands[0]["exit_code"] != 0:
                 errors.append(f"stage0 failed to build {rel(ENTRYPOINT)}")
             candidate = args.out
+    elif args.stage1:
+        errors.extend(validate_stage_output_path(args.out, "stage1", STAGE1_OUT))
+        if not errors:
+            quarantined_artifacts = quarantine_bootstrap_output(args.out)
+        bootstrap_errors, stage0_commands = validate_candidate(DEFAULT_OUT)
+        errors.extend(bootstrap_errors)
+        if not errors:
+            build_commands = build_with_command(args.out, stage1_build_command(DEFAULT_OUT, args.out))
+            if build_commands and build_commands[0]["exit_code"] != 0:
+                errors.append(f"bootstrap compiler failed to build stage1 from {rel(ENTRYPOINT)}")
+            candidate = args.out
     elif args.candidate is None and not args.out.exists():
         errors.extend(validate_output_path(args.out))
         errors.append(f"no candidate present; provide --stage0 or --candidate, or create {rel(args.out)}")
@@ -411,6 +458,7 @@ def main(argv: list[str]) -> int:
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--install-stage0", type=Path, help="validate and install a real Vitte compiler as the trusted stage0")
     mode.add_argument("--stage0", type=Path, help="existing compiler used to build src/vitte/compiler/main.vit")
+    mode.add_argument("--stage1", action="store_true", help="build and verify target/stage1/vitte from target/bootstrap-real/vitte")
     mode.add_argument("--candidate", type=Path, help="existing candidate binary to verify")
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT, help="output path under target/bootstrap-real")
     args = parser.parse_args(argv)
@@ -421,6 +469,8 @@ def main(argv: list[str]) -> int:
         args.candidate = args.candidate if args.candidate.is_absolute() else ROOT / args.candidate
     if args.stage0:
         args.stage0 = args.stage0 if args.stage0.is_absolute() else ROOT / args.stage0
+    if args.stage1 and args.out == DEFAULT_OUT:
+        args.out = STAGE1_OUT
     return run(args)
 
 

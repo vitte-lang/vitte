@@ -42,6 +42,24 @@ Verify an already-built candidate:
 python3 tools/bootstrap_real/bootstrap_real.py --candidate target/bootstrap-real/vitte
 ```
 
+Build Stage1 from the verified bootstrap compiler:
+
+```sh
+python3 tools/bootstrap_real/bootstrap_real.py --stage1
+```
+
+That command runs:
+
+```sh
+target/bootstrap-real/vitte build src/vitte/compiler/main.vit -o target/stage1/vitte
+```
+
+Expected Stage1 output:
+
+```text
+target/stage1/vitte
+```
+
 Smoke-test the installed stage0 directly:
 
 ```sh

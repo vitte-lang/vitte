@@ -113,6 +113,53 @@ def test_bootstrap_build_command_is_exact() -> None:
     )
 
 
+def test_stage1_build_command_is_exact() -> None:
+    bootstrap_compiler = ROOT / "target/bootstrap-real/vitte"
+    out = ROOT / "target/stage1/vitte"
+    command = bootstrap_real.stage1_build_command(bootstrap_compiler, out)
+    assert_true(
+        command == [
+            str(bootstrap_compiler),
+            "build",
+            "src/vitte/compiler/main.vit",
+            "-o",
+            str(out),
+        ],
+        "stage1 build should compile main.vit into target/stage1/vitte",
+    )
+
+
+def test_stage1_output_path_is_canonical() -> None:
+    errors = bootstrap_real.validate_stage_output_path(
+        ROOT / "target/not-stage1/vitte",
+        "stage1",
+        bootstrap_real.STAGE1_OUT,
+    )
+    assert_true(any("target/stage1/vitte" in error for error in errors), "stage1 output must be canonical")
+    assert_true(
+        bootstrap_real.validate_stage_output_path(bootstrap_real.STAGE1_OUT, "stage1", bootstrap_real.STAGE1_OUT) == [],
+        "canonical stage1 output should pass",
+    )
+
+
+def test_stage1_build_quarantines_stale_output_before_dependency_check() -> None:
+    work = ROOT / "target/bootstrap-real/test-work"
+    stage1 = work / "stage1/vitte"
+    sidecar = Path(str(stage1) + ".bootstrap-bridge")
+    stage1.parent.mkdir(parents=True, exist_ok=True)
+    stage1.write_bytes(b"stale-stage1")
+    sidecar.write_bytes(b"stale-stage1-bridge")
+    original_quarantine = bootstrap_real.QUARANTINE_DIR
+    try:
+        bootstrap_real.QUARANTINE_DIR = work / "quarantine"
+        moved = bootstrap_real.quarantine_bootstrap_output(stage1)
+    finally:
+        bootstrap_real.QUARANTINE_DIR = original_quarantine
+    assert_true(not stage1.exists(), "stage1 build should remove stale stage1 before dependency checks")
+    assert_true(not sidecar.exists(), "stage1 build should remove stale stage1 bridge sidecar")
+    assert_true(len(moved) == 2, "stage1 stale output and sidecar should be quarantined")
+
+
 def test_stage0_build_outputs_are_canonical() -> None:
     out = bootstrap_real.DEFAULT_OUT
     assert_true(
@@ -349,6 +396,9 @@ def main() -> int:
     test_required_markers_are_checked_individually()
     test_stage0_smoke_commands_are_exact()
     test_bootstrap_build_command_is_exact()
+    test_stage1_build_command_is_exact()
+    test_stage1_output_path_is_canonical()
+    test_stage1_build_quarantines_stale_output_before_dependency_check()
     test_stage0_build_outputs_are_canonical()
     test_stage0_build_clears_stale_output_and_bridge_sidecar()
     test_script_self_copy_bridge_and_private_tmp_are_rejected()
