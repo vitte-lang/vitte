@@ -128,6 +128,9 @@ target/bootstrap-real/stage0/vitte --help
 target/bootstrap-real/stage0/vitte check src/vitte/compiler/main.vit
 ```
 
+Smoke commands are bounded to 10 seconds per command so a bad candidate cannot
+hang bootstrap validation.
+
 Run the local tests:
 
 ```sh

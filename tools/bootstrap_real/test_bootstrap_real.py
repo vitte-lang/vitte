@@ -98,6 +98,13 @@ def test_stage0_smoke_commands_are_exact() -> None:
     )
 
 
+def test_smoke_timeout_is_bounded() -> None:
+    assert_true(
+        bootstrap_real.SMOKE_TIMEOUT_SECONDS == 10,
+        "smoke commands should be bounded to avoid hanging candidate audits",
+    )
+
+
 def test_bootstrap_build_command_is_exact() -> None:
     stage0 = ROOT / "target/bootstrap-real/stage0/vitte"
     out = ROOT / "target/bootstrap-real/vitte"
@@ -508,6 +515,7 @@ def main() -> int:
     test_forbidden_markers_are_checked_individually()
     test_required_markers_are_checked_individually()
     test_stage0_smoke_commands_are_exact()
+    test_smoke_timeout_is_bounded()
     test_bootstrap_build_command_is_exact()
     test_stage1_build_command_is_exact()
     test_stage2_build_command_is_exact()

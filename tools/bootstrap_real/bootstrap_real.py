@@ -38,6 +38,7 @@ FORBIDDEN_BINARY_MARKERS = (
     "_command_build",
     "_copy_file",
 )
+SMOKE_TIMEOUT_SECONDS = 10
 
 
 def rel(path: Path) -> str:
@@ -87,7 +88,17 @@ def command_output(command: list[str]) -> dict[str, object]:
             text=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
+            timeout=SMOKE_TIMEOUT_SECONDS,
         )
+    except subprocess.TimeoutExpired as exc:
+        output = exc.stdout or ""
+        if isinstance(output, bytes):
+            output = output.decode("utf-8", errors="replace")
+        return {
+            "command": command,
+            "exit_code": 124,
+            "output": output[-6000:] + f"\n[bootstrap-real][timeout] command exceeded {SMOKE_TIMEOUT_SECONDS}s",
+        }
     except OSError as exc:
         return {
             "command": command,
