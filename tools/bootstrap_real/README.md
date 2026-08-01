@@ -55,6 +55,8 @@ The gate rejects binaries that still contain self-copy or bootstrap bridge
 markers such as `BOOTSTRAP_FULL_COMPILER`,
 `VITTE_BOOTSTRAP_ALLOW_FULL_COMPILER_BRIDGE`, `vitte-bootstrap-payload`,
 `_command_build`, or `_copy_file`.
+Each forbidden marker is checked independently for stage0 sources, installed
+stage0 binaries, and bootstrap candidates.
 Stage0 installation also rejects scripts and sources copied from `/private/tmp`.
 
 This path is intentionally 100% Vitte: the only build mode is a Vitte compiler

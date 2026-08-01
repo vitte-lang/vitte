@@ -46,6 +46,20 @@ def test_forbidden_bridge_marker_is_rejected() -> None:
     )
 
 
+def test_forbidden_markers_are_checked_individually() -> None:
+    for marker in bootstrap_real.FORBIDDEN_BINARY_MARKERS:
+        errors = bootstrap_real.validate_forbidden_markers(marker, "candidate")
+        assert_true(
+            any(marker in error for error in errors),
+            f"forbidden marker should be reported: {marker}",
+        )
+    clean = "\n".join(bootstrap_real.REQUIRED_ENTRY_MARKERS)
+    assert_true(
+        bootstrap_real.validate_forbidden_markers(clean, "candidate") == [],
+        "clean marker text should not report forbidden markers",
+    )
+
+
 def test_required_markers_are_checked_individually() -> None:
     all_markers = "\n".join(bootstrap_real.REQUIRED_ENTRY_MARKERS)
     assert_true(
@@ -267,6 +281,7 @@ def main() -> int:
         shutil.rmtree(work)
     test_output_path_must_stay_under_artifact_root()
     test_forbidden_bridge_marker_is_rejected()
+    test_forbidden_markers_are_checked_individually()
     test_required_markers_are_checked_individually()
     test_script_self_copy_bridge_and_private_tmp_are_rejected()
     test_stage0_must_be_single_trusted_path()
