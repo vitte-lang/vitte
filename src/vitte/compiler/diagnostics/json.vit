@@ -37,6 +37,37 @@ use vitte/compiler/diagnostics/diagnostic.{
     diagnostic_kind_name
 }
 
+proc json_control_escape(ch: string) -> string {
+    if ch == "\u0000" { give "\\u0000"; }
+    if ch == "\u0001" { give "\\u0001"; }
+    if ch == "\u0002" { give "\\u0002"; }
+    if ch == "\u0003" { give "\\u0003"; }
+    if ch == "\u0004" { give "\\u0004"; }
+    if ch == "\u0005" { give "\\u0005"; }
+    if ch == "\u0006" { give "\\u0006"; }
+    if ch == "\u0007" { give "\\u0007"; }
+    if ch == "\u000b" { give "\\u000b"; }
+    if ch == "\u000e" { give "\\u000e"; }
+    if ch == "\u000f" { give "\\u000f"; }
+    if ch == "\u0010" { give "\\u0010"; }
+    if ch == "\u0011" { give "\\u0011"; }
+    if ch == "\u0012" { give "\\u0012"; }
+    if ch == "\u0013" { give "\\u0013"; }
+    if ch == "\u0014" { give "\\u0014"; }
+    if ch == "\u0015" { give "\\u0015"; }
+    if ch == "\u0016" { give "\\u0016"; }
+    if ch == "\u0017" { give "\\u0017"; }
+    if ch == "\u0018" { give "\\u0018"; }
+    if ch == "\u0019" { give "\\u0019"; }
+    if ch == "\u001a" { give "\\u001a"; }
+    if ch == "\u001b" { give "\\u001b"; }
+    if ch == "\u001c" { give "\\u001c"; }
+    if ch == "\u001d" { give "\\u001d"; }
+    if ch == "\u001e" { give "\\u001e"; }
+    if ch == "\u001f" { give "\\u001f"; }
+    give "";
+}
+
 proc json_escape(text: string) -> string {
     let out: string = "";
     let i: u64 = 0;
@@ -54,8 +85,13 @@ proc json_escape(text: string) -> string {
             set out = out + "\\r";
         } elif ch == "\t" {
             set out = out + "\\t";
+        } elif ch == "\u0008" {
+            set out = out + "\\b";
+        } elif ch == "\u000c" {
+            set out = out + "\\f";
         } else {
-            set out = out + ch;
+            let control: string = json_control_escape(ch);
+            set out = out + if control != "" { control } else { ch };
         }
 
         set i = i + 1;

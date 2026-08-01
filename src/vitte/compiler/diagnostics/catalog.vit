@@ -27,6 +27,7 @@ pick DiagnosticCategory {
   Bootstrap
   Internal
   Unknown
+  Io
 }
 
 form DiagnosticLabel {
@@ -443,6 +444,8 @@ proc bootstrap_catalog() -> DiagnosticCatalog {
 
   set catalog = register(catalog, diagnostic_code("BACKEND_E_NATIVE_TOOL_MISSING", DiagnosticCategory.Backend, DiagnosticSeverity.Fatal, "native tool missing", "required native C compiler is not available"))
 
+  set catalog = register(catalog, diagnostic_code("BACKEND_E_MISSING_C_COMPILER", DiagnosticCategory.Backend, DiagnosticSeverity.Fatal, "required C compiler was not found", "native object generation requires an available C compiler"))
+
   set catalog = register(catalog, diagnostic_code("BACKEND_E_CODEGEN_FAILED", DiagnosticCategory.Backend, DiagnosticSeverity.Fatal, "native generation failed", "native compiler did not generate the requested object"))
 
   set catalog = register(catalog, diagnostic_code("BACKEND_E_OBJECT_WRITE_FAILED", DiagnosticCategory.Backend, DiagnosticSeverity.Fatal, "object write failed", "backend cannot write the requested output path"))
@@ -467,6 +470,10 @@ proc bootstrap_catalog() -> DiagnosticCatalog {
 
   set catalog = register(catalog, diagnostic_code("LINK_E_SYSTEM_LINKER_FAILED", DiagnosticCategory.Linker, DiagnosticSeverity.Fatal, "system linker failed", "system linker command returned a failure status"))
 
+  set catalog = register(catalog, diagnostic_code("LINK_E_COMMAND_FAILED", DiagnosticCategory.Linker, DiagnosticSeverity.Fatal, "linker command failed", "the native linker returned a failure status"))
+
+  set catalog = register(catalog, diagnostic_code("LINK_E_OUTPUT_NOT_MATERIALIZED", DiagnosticCategory.Linker, DiagnosticSeverity.Fatal, "linker output was not materialized", "the linker reported success without creating the requested output"))
+
   <<< ===================================================== >>>
   <<< Runtime diagnostics                                   >>>
   <<< ===================================================== >>>
@@ -480,6 +487,30 @@ proc bootstrap_catalog() -> DiagnosticCatalog {
   set catalog = register(catalog, diagnostic_code("DRIVER_E_INVALID_ARGUMENT", DiagnosticCategory.Driver, DiagnosticSeverity.Error, "invalid command line argument", "driver received unsupported argument"))
 
   set catalog = register(catalog, diagnostic_code("DRIVER_E_OUTPUT_WRITE_FAILED", DiagnosticCategory.Driver, DiagnosticSeverity.Fatal, "output write failed", "driver refused or failed to write the configured output"))
+
+  set catalog = register(catalog, diagnostic_code("E_CLI_MISSING_ARG", DiagnosticCategory.Driver, DiagnosticSeverity.Error, "missing command line argument", "the selected command or option requires another argument"))
+
+  set catalog = register(catalog, diagnostic_code("E_CLI_UNKNOWN_OPTION", DiagnosticCategory.Driver, DiagnosticSeverity.Error, "unknown command line option", "the driver does not recognize the selected option"))
+
+  set catalog = register(catalog, diagnostic_code("E_CLI_UNKNOWN_COMMAND", DiagnosticCategory.Driver, DiagnosticSeverity.Error, "unknown command", "the driver does not recognize the selected command"))
+
+  set catalog = register(catalog, diagnostic_code("E_CLI_INVALID_ARGUMENT", DiagnosticCategory.Driver, DiagnosticSeverity.Error, "invalid command line argument", "the argument value violates the command line contract"))
+
+  <<< ===================================================== >>>
+  <<< Input/output diagnostics                              >>>
+  <<< ===================================================== >>>
+
+  set catalog = register(catalog, diagnostic_code("E_IO_FILE_NOT_FOUND", DiagnosticCategory.Io, DiagnosticSeverity.Error, "input file not found", "the requested source path does not exist"))
+
+  set catalog = register(catalog, diagnostic_code("E_IO_FILE_UNREADABLE", DiagnosticCategory.Io, DiagnosticSeverity.Error, "input file is not readable", "the requested source cannot be read as a regular file"))
+
+  set catalog = register(catalog, diagnostic_code("E_IO_PERMISSION_DENIED", DiagnosticCategory.Io, DiagnosticSeverity.Error, "permission denied", "filesystem permissions reject the requested operation"))
+
+  set catalog = register(catalog, diagnostic_code("E_IO_DIRECTORY_NOT_FOUND", DiagnosticCategory.Io, DiagnosticSeverity.Error, "output directory not found", "the parent of the requested output is not a directory"))
+
+  set catalog = register(catalog, diagnostic_code("E_IO_OUTPUT_UNWRITABLE", DiagnosticCategory.Io, DiagnosticSeverity.Error, "output is not writable", "the requested output cannot be created or replaced"))
+
+  set catalog = register(catalog, diagnostic_code("E_IO_OVERWRITE_FORBIDDEN", DiagnosticCategory.Io, DiagnosticSeverity.Error, "source overwrite is forbidden", "the requested output refers to the source input"))
 
   <<< ===================================================== >>>
   <<< Bootstrap diagnostics                                 >>>

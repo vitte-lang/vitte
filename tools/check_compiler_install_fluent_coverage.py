@@ -35,7 +35,8 @@ REQUIRED_CODES: dict[str, str] = {
 SURFACE_NEEDLES: dict[Path, tuple[str, ...]] = {
     ROOT / "src/vitte/compiler/driver/compiler.vit": (
         "compiler_diagnostic_cli_error(",
-        'compiler_diagnostic_io_error("E_CLI_IO"',
+        'compiler_diagnostic_io_error("E_IO_FILE_NOT_FOUND"',
+        'compiler_diagnostic_io_error("E_IO_FILE_UNREADABLE"',
         "compiler_diagnostic_linker_error(",
         "compiler_diagnostic_render(",
         "request.error_format",

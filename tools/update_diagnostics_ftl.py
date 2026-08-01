@@ -48,6 +48,8 @@ MESSAGE_TRANSLATION_OVERRIDES: dict[str, dict[str, str]] = {
         "E_IO_OVERWRITE_FORBIDDEN": "ecrasement du fichier de sortie refuse",
         "DRIVER_E_PIPELINE_FAILURE": "echec du pipeline du compilateur",
         "LINK_E_OUTPUT_NOT_MATERIALIZED": "le linker n'a pas cree l'executable demande",
+        "BACKEND_E_MISSING_C_COMPILER": "compilateur C requis introuvable",
+        "LINK_E_COMMAND_FAILED": "echec de la commande du linker",
     },
 }
 
@@ -119,6 +121,16 @@ EXPLANATION_TRANSLATION_OVERRIDES: dict[str, dict[str, str]] = {
         "LINK_E_OUTPUT_NOT_MATERIALIZED.step1": "Verifie les diagnostics du linker, la destination et les permissions du dossier parent.",
         "LINK_E_OUTPUT_NOT_MATERIALIZED.fix": "corriger le linking ou choisir une destination accessible",
         "LINK_E_OUTPUT_NOT_MATERIALIZED.example": "vitte build src/main.vit -o build/main",
+        "BACKEND_E_MISSING_C_COMPILER.summary": "Le compilateur C requis est introuvable.",
+        "BACKEND_E_MISSING_C_COMPILER.cause": "Le backend natif ne peut pas resoudre l'executable du compilateur C configure.",
+        "BACKEND_E_MISSING_C_COMPILER.step1": "Installe le compilateur C requis ou configure explicitement son chemin.",
+        "BACKEND_E_MISSING_C_COMPILER.fix": "installer ou configurer un compilateur C disponible",
+        "BACKEND_E_MISSING_C_COMPILER.example": "vitte build src/main.vit -o build/main",
+        "LINK_E_COMMAND_FAILED.summary": "La commande du linker a echoue.",
+        "LINK_E_COMMAND_FAILED.cause": "Le linker a termine avec un code non nul sans diagnostic plus specifique.",
+        "LINK_E_COMMAND_FAILED.step1": "Corrige le premier detail du linker et verifie la cible et les objets lies.",
+        "LINK_E_COMMAND_FAILED.fix": "corriger la commande de linking ou ses entrees",
+        "LINK_E_COMMAND_FAILED.example": "vitte build src/main.vit -o build/main",
     },
 }
 

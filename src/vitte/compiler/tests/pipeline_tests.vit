@@ -14,6 +14,7 @@ use vitte/compiler/backends/backend_infrastructure
 use vitte/compiler/backends/llvm_bindings.{ default_llvm_toolchain_paths }
 use vitte/compiler/backend/verified_pipeline.{ BackendVerificationReport, verify_backend_pipeline }
 use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, DiagnosticReport, DiagnosticRenderConfig, DiagnosticStyle, default_render_config, diagnostic_report, render_report }
+use vitte/compiler/diagnostics/json.{ json_escape }
 use vitte/compiler/diagnostics/report as diag_report
 use vitte/compiler/tests/frontend_fixtures/invalid/lexer.{ invalid_escape_source }
 use vitte/compiler/analysis/report.{ AnalysisDiagnostic, AnalysisSeverity, DiagnosticPolicy, analysis_diagnostic_with_span, apply_diagnostic_policy, diagnostic_group, diagnostic_policy_default, diagnostic_policy_disable_code, diagnostic_policy_disable_group, diagnostic_policy_warnings_as_errors, severity_from_text, severity_text, sort_analysis_diagnostics }
@@ -186,6 +187,44 @@ proc test_parse_cli_request_defaults_project_root_for_source_commands() -> bool 
 proc test_parse_cli_request_accepts_json_flag() -> bool {
   let request: CompilerCliRequest = parse_cli_request(["build", "--json", "--source", "proc main() -> int { give 0; }"]);
   give request.valid and request.format == "json";
+}
+
+proc test_parse_cli_request_preserves_json_on_invalid_format() -> bool {
+  let request: CompilerCliRequest = parse_cli_request(["build", "--diagnostics-json", "--format", "yaml"]);
+  give not request.valid
+    and request.diagnostic_code == "E_CLI_INVALID_ARGUMENT"
+    and request.format == "json"
+    and request.error_format == "json";
+}
+
+proc test_parse_cli_request_prescans_lsp_after_invalid_format() -> bool {
+  let request: CompilerCliRequest = parse_cli_request(["build", "--format", "yaml", "--diagnostics-lsp"]);
+  give not request.valid
+    and request.diagnostic_code == "E_CLI_INVALID_ARGUMENT"
+    and request.format == "lsp"
+    and request.error_format == "lsp";
+}
+
+proc test_parse_cli_request_last_language_wins() -> bool {
+  let request: CompilerCliRequest = parse_cli_request(["build", "--lang", "en", "--lang", "fr", "--source", "proc main() -> int { give 0; }"]);
+  give request.valid and request.lang == "fr";
+}
+
+proc test_parse_cli_request_option_terminator_accepts_dash_path() -> bool {
+  let request: CompilerCliRequest = parse_cli_request(["check", "--", "--dash-prefixed.vit"]);
+  give request.valid and request.input_path == "--dash-prefixed.vit";
+}
+
+proc test_diagnostic_json_escape_is_strict() -> bool {
+  give json_escape("\"") == "\\\""
+    and json_escape("\\") == "\\\\"
+    and json_escape("\n") == "\\n"
+    and json_escape("\u0008") == "\\b"
+    and json_escape("\u000c") == "\\f"
+    and json_escape("\u0000") == "\\u0000"
+    and json_escape("\u000b") == "\\u000b"
+    and json_escape("\u001f") == "\\u001f"
+    and json_escape("\u00e9") == "\u00e9";
 }
 
 proc test_compiler_main_resolves_project_root_input_path() -> bool {
@@ -1259,6 +1298,21 @@ proc run_all_tests() -> int {
     set failures = failures + 1;
   }
   if not test_parse_cli_request_accepts_json_flag() {
+    set failures = failures + 1;
+  }
+  if not test_parse_cli_request_preserves_json_on_invalid_format() {
+    set failures = failures + 1;
+  }
+  if not test_parse_cli_request_prescans_lsp_after_invalid_format() {
+    set failures = failures + 1;
+  }
+  if not test_parse_cli_request_last_language_wins() {
+    set failures = failures + 1;
+  }
+  if not test_parse_cli_request_option_terminator_accepts_dash_path() {
+    set failures = failures + 1;
+  }
+  if not test_diagnostic_json_escape_is_strict() {
     set failures = failures + 1;
   }
   if not test_compiler_main_resolves_project_root_input_path() {

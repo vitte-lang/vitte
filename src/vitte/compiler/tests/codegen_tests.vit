@@ -1024,6 +1024,33 @@ proc test_backend_diagnostics_cover_diag_0077_to_0084() -> bool {
     and catalog_link.phase == DiagnosticPhase.Linker;
 }
 
+proc test_public_cli_io_backend_linker_codes_are_in_typed_catalog() -> bool {
+  let catalog = bootstrap_catalog();
+  let codes: [string] = [
+    "E_CLI_MISSING_ARG",
+    "E_CLI_UNKNOWN_OPTION",
+    "E_CLI_UNKNOWN_COMMAND",
+    "E_CLI_INVALID_ARGUMENT",
+    "E_IO_FILE_NOT_FOUND",
+    "E_IO_FILE_UNREADABLE",
+    "E_IO_PERMISSION_DENIED",
+    "E_IO_DIRECTORY_NOT_FOUND",
+    "E_IO_OUTPUT_UNWRITABLE",
+    "E_IO_OVERWRITE_FORBIDDEN",
+    "BACKEND_E_MISSING_C_COMPILER",
+    "LINK_E_COMMAND_FAILED",
+    "LINK_E_OUTPUT_NOT_MATERIALIZED"
+  ];
+  let i: u64 = 0;
+  while i < len(codes) {
+    if find_by_code(catalog, codes[i]).code != codes[i] {
+      give false;
+    }
+    set i = i + 1;
+  }
+  give true;
+}
+
 proc test_driver_reports_unsupported_backend_feature() -> bool {
   let config = driver_compile_config_full(
     "llvm",
@@ -1125,6 +1152,7 @@ proc run_all_tests() -> int {
   if not test_compile_set_manifest_report_cli_parses_enterprise_directives() { set failures = failures + 1; }
   if not test_compile_set_with_unsupported_backend_target_rejected() { set failures = failures + 1; }
   if not test_backend_diagnostics_cover_diag_0077_to_0084() { set failures = failures + 1; }
+  if not test_public_cli_io_backend_linker_codes_are_in_typed_catalog() { set failures = failures + 1; }
   if not test_driver_reports_unsupported_backend_feature() { set failures = failures + 1; }
   if not test_native_output_refuses_to_overwrite_source() { set failures = failures + 1; }
   if not test_llvm_bindings_emit_ir_from_canonical_ir() { set failures = failures + 1; }

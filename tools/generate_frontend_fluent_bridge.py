@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 import sys
 
@@ -289,7 +290,20 @@ def render() -> str:
 
 
 def main() -> int:
-    OUT.write_text(render(), encoding="utf-8")
+    parser = argparse.ArgumentParser(description="Generate the Vitte Fluent diagnostic catalog")
+    parser.add_argument("--check", action="store_true", help="fail when the generated catalog is stale")
+    args = parser.parse_args()
+    generated = render()
+    if args.check:
+        if not OUT.is_file() or OUT.read_text(encoding="utf-8") != generated:
+            print(
+                f"[frontend-fluent][error] stale generated catalog: {OUT.relative_to(ROOT)}",
+                file=sys.stderr,
+            )
+            return 1
+        print(f"[frontend-fluent] check ok {OUT.relative_to(ROOT)}")
+        return 0
+    OUT.write_text(generated, encoding="utf-8")
     print(f"[frontend-fluent] wrote {OUT.relative_to(ROOT)}")
     return 0
 

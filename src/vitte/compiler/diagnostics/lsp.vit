@@ -26,7 +26,7 @@ use vitte/compiler/diagnostics/diagnostic.{
     has_new_error_outcome,
     suggestion_strategy_name
 }
-use vitte/compiler/diagnostics/json.{ json_array, json_key_value, json_object, json_quote }
+use vitte/compiler/diagnostics/json.{ json_array, json_key_value, json_labels, json_object, json_quote, json_source_span, json_suggestions }
 
 const USER_DIAGNOSTIC_COLUMNS: string = "one_based_visual_columns"
 const LSP_DIAGNOSTIC_COLUMNS: string = "zero_based_utf16_positions"
@@ -624,12 +624,26 @@ proc lsp_diagnostic_data_json(diagnostic: Diagnostic) -> string {
         json_key_value("category", json_quote(phase_name(diagnostic.phase))),
         json_key_value("severity", json_quote(severity_name(diagnostic.severity))),
         json_key_value("fluent_key", json_quote(diagnostic.code)),
+        json_key_value("message", json_quote(diagnostic.message)),
+        json_key_value("span", json_source_span(diagnostic.span)),
+        json_key_value("labels", json_labels(diagnostic.labels)),
         json_key_value("cause", json_quote(diagnostic.root_cause)),
         json_key_value("help", json_quote(lsp_first_help(diagnostic))),
         json_key_value("fix", json_quote(lsp_first_fix(diagnostic))),
         json_key_value("example", json_quote(diagnostic.valid_example)),
+        json_key_value("suggestions", json_suggestions(diagnostic.suggestions)),
         json_key_value("code_action_title", json_quote(lsp_code_action_title(diagnostic)))
     ]);
+}
+
+proc lsp_tags_json(values: [LspDiagnosticTag]) -> string {
+    let encoded: [string] = [];
+    let i: u64 = 0;
+    while i < len(values) {
+        set encoded = encoded + [values[i].value as string];
+        set i = i + 1;
+    }
+    give json_array(encoded);
 }
 
 proc lsp_diagnostic_json_value(diagnostic: Diagnostic) -> string {
@@ -638,8 +652,12 @@ proc lsp_diagnostic_json_value(diagnostic: Diagnostic) -> string {
         json_key_value("range", lsp_range_json_value(value.range)),
         json_key_value("severity", lsp_severity_number(diagnostic.severity)),
         json_key_value("code", json_quote(diagnostic.code)),
+        json_key_value("codeDescription", json_object([
+            json_key_value("href", json_quote(value.code_description.href))
+        ])),
         json_key_value("source", json_quote("vitte")),
         json_key_value("message", json_quote(diagnostic.message)),
+        json_key_value("tags", lsp_tags_json(value.tags)),
         json_key_value("relatedInformation", lsp_related_information_json(value.related_information)),
         json_key_value("data", lsp_diagnostic_data_json(diagnostic))
     ]);
@@ -732,6 +750,7 @@ share lsp_first_help
 share lsp_first_fix
 share lsp_code_action_title
 share lsp_diagnostic_data_json
+share lsp_tags_json
 share lsp_diagnostic_json_value
 share lsp_diagnostics_json_values
 share lsp_publish_diagnostics_json_rpc

@@ -18,6 +18,10 @@ EXPECTED_CAUSE = "The inferred type does not satisfy the type required at this l
 EXPECTED_FIX = "assign a value of the declared binding type, or change the binding annotation at its declaration"
 EXPECTED_EXAMPLE = "let count: int = 1"
 EXPECTED_RICH_TEXT_TERMS = (
+    "= id:",
+    "= category: typeck",
+    "= severity: error",
+    f"= fluent-key: {EXPECTED_CODE}",
     "= span: tests/negative/type_mismatch.vit:5:11-5:18",
     "= label:",
     f"= cause: {EXPECTED_CAUSE}",
@@ -31,6 +35,7 @@ def run(args: list[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         args,
         cwd=ROOT,
+        env={**os.environ, "VITTE_LANG": "en"},
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -53,6 +58,8 @@ def assert_french_text_surface(name: str, proc: subprocess.CompletedProcess[str]
         return f"{name} output does not carry the Fluent FR message"
     if EXPECTED_EN_MESSAGE in output:
         return f"{name} output still carries the default EN diagnostic message"
+    if "[vitte][error]" in output or "E_CLI_IO: cannot read" in output:
+        return f"{name} output contains a legacy raw diagnostic"
     for term in (EXPECTED_CAUSE, EXPECTED_FIX, EXPECTED_EXAMPLE, *EXPECTED_RICH_TEXT_TERMS):
         if term not in output:
             return f"{name} text output missing rich diagnostic term: {term!r}"
@@ -111,6 +118,8 @@ def main() -> int:
     json_check = run([str(BIN), "check", "--diagnostics-json", str(FIXTURE), "--lang", "fr"])
     if json_check.returncode == 0:
         return fail("diagnostics-json fixture unexpectedly passed")
+    if json_check.stderr:
+        return fail("diagnostics-json wrote to stderr")
     try:
         payload = json.loads(json_check.stdout)
     except json.JSONDecodeError as exc:
@@ -131,15 +140,22 @@ def main() -> int:
         return fail("diagnostics-json missing stable example")
     if not primary.get("labels") or not primary.get("suggestions"):
         return fail("diagnostics-json missing labels or suggestions")
+    for key in ("id", "category", "severity", "fluent_key", "message", "span", "cause", "help"):
+        if primary.get(key) in (None, "", []):
+            return fail(f"diagnostics-json missing {key}")
 
     lsp_check = run([str(BIN), "check", "--diagnostics-lsp", str(FIXTURE), "--lang", "fr"])
     if lsp_check.returncode == 0:
         return fail("diagnostics-lsp fixture unexpectedly passed")
+    if lsp_check.stderr:
+        return fail("diagnostics-lsp wrote to stderr")
     try:
         lsp_payload = json.loads(lsp_check.stdout)
     except json.JSONDecodeError as exc:
         return fail(f"diagnostics-lsp output is invalid JSON: {exc}")
     lsp_diagnostics = lsp_payload.get("params", {}).get("diagnostics", [])
+    if lsp_payload.get("jsonrpc") != "2.0" or lsp_payload.get("method") != "textDocument/publishDiagnostics":
+        return fail("diagnostics-lsp is not a publishDiagnostics JSON-RPC notification")
     if len(lsp_diagnostics) != 1:
         return fail("diagnostics-lsp must contain one published diagnostic")
     lsp_primary = lsp_diagnostics[0]
@@ -147,9 +163,15 @@ def main() -> int:
         return fail(f"diagnostics-lsp code mismatch: {lsp_primary.get('code')!r}")
     if lsp_primary.get("message") != EXPECTED_FR_MESSAGE:
         return fail(f"diagnostics-lsp message mismatch: {lsp_primary.get('message')!r}")
+    for key in ("range", "severity", "codeDescription", "source", "relatedInformation", "data"):
+        if lsp_primary.get(key) in (None, "", []):
+            return fail(f"diagnostics-lsp missing {key}")
     data = lsp_primary.get("data", {})
     if data.get("cause") != EXPECTED_CAUSE or data.get("fix") != EXPECTED_FIX or data.get("example") != EXPECTED_EXAMPLE:
         return fail("diagnostics-lsp missing cause/fix/example data")
+    for key in ("code", "id", "category", "severity", "fluent_key", "message", "span", "labels", "suggestions", "code_action_title"):
+        if data.get(key) in (None, "", []):
+            return fail(f"diagnostics-lsp data missing {key}")
 
     print("[cli-diagnostics-fluent-runtime] status=ok")
     return 0

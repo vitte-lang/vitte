@@ -22,6 +22,10 @@ ALLOWED_PRINT_PROCS = {
 
 ALLOWED_DIAGNOSTIC_OUTPUT_PROCS = {
     "emit_diagnostic_output",
+    "emit_cli_help",
+    "emit_cli_success",
+    "emit_serialized_output",
+    "emit_internal_log",
     "print_frontend_diagnostics_list",
     "print_analysis_diagnostics_list",
     "print_user_diagnostic",
@@ -62,7 +66,10 @@ def strip_vitte_strings_and_comments(line: str) -> str:
 
 def source_findings() -> list[str]:
     findings: list[str] = []
-    for path in sorted(COMPILER_ROOT.rglob("*.vit")):
+    source_paths = sorted(
+        [*COMPILER_ROOT.rglob("*.vit"), *COMPILER_ROOT.rglob("*.vitl")]
+    )
+    for path in source_paths:
         current_proc = ""
         for line_number, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
             code = strip_vitte_strings_and_comments(raw)
@@ -89,6 +96,14 @@ def source_findings() -> list[str]:
             if "[vitte][error]" in raw:
                 findings.append(
                     f"{path.relative_to(ROOT)}:{line_number}: raw [vitte][error] marker is forbidden"
+                )
+            if "E_CLI_IO: cannot read" in raw:
+                findings.append(
+                    f"{path.relative_to(ROOT)}:{line_number}: raw E_CLI_IO message is forbidden"
+                )
+            if "build requires -o/--out output path" in raw:
+                findings.append(
+                    f"{path.relative_to(ROOT)}:{line_number}: legacy build output message is forbidden"
                 )
 
     architecture = ARCHITECTURE.read_text(encoding="utf-8")
@@ -131,7 +146,8 @@ def source_findings() -> list[str]:
         if term in driver:
             findings.append(f"{DRIVER.relative_to(ROOT)}: forbidden legacy diagnostic path {term}")
     for required in (
-        'compiler_diagnostic_io_error("E_CLI_IO"',
+        'compiler_diagnostic_io_error("E_IO_FILE_NOT_FOUND"',
+        'compiler_diagnostic_io_error("E_IO_FILE_UNREADABLE"',
         "print_user_diagnostic(request, diagnostic0)",
         "compiler_diagnostic_render(",
         'env_get("VITTE_LANG")',

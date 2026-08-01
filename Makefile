@@ -2980,12 +2980,16 @@ diagnostic-fuzz:
 	@tools/update_diagnostics_ftl.py --check
 
 
-.PHONY: diagnostic-quality build-fluent-minimal-gate build-fluent-diagnostics-gate
+.PHONY: diagnostic-quality build-fluent-minimal-gate cli-early-diagnostics-gate build-fluent-diagnostics-gate
 build-fluent-minimal-gate:
 	@python3 tools/check_no_direct_user_errors.py
+	@python3 tools/generate_frontend_fluent_bridge.py --check
 	@python3 tools/build_fluent_minimal_gate.py
 
-build-fluent-diagnostics-gate: build-fluent-minimal-gate
+cli-early-diagnostics-gate:
+	@python3 tools/check_cli_early_diagnostics.py
+
+build-fluent-diagnostics-gate: build-fluent-minimal-gate cli-early-diagnostics-gate
 	@python3 tools/check_no_direct_user_errors.py
 	@python3 tools/build_fluent_diagnostics_gate.py
 	@python3 tools/check_no_direct_user_errors.py --runtime

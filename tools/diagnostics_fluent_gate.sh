@@ -11,12 +11,6 @@ python3 tools/check_compiler_install_fluent_coverage.py
 python3 tools/check_cli_diagnostics_fluent_runtime.py
 python3 tools/generate_explain_snapshots.py --check
 tools/explain_snapshots.sh
-tmp_fluent="$(mktemp)"
-cp src/vitte/compiler/infrastructure/diagnostics/fluent_catalog.vit "$tmp_fluent"
-trap 'rm -f "$tmp_fluent"' EXIT
-python3 tools/generate_frontend_fluent_bridge.py
-cmp "$tmp_fluent" src/vitte/compiler/infrastructure/diagnostics/fluent_catalog.vit >/dev/null
-rm -f "$tmp_fluent"
-trap - EXIT
+python3 tools/generate_frontend_fluent_bridge.py --check
 
 printf "[diagnostics-fluent-gate] OK\n"

@@ -536,6 +536,18 @@ LINK_E_OUTPUT_NOT_MATERIALIZED.step1 = Check the target triple and the first bac
 LINK_E_OUTPUT_NOT_MATERIALIZED.fix = install the missing native tool, change target, or fix undefined symbols
 LINK_E_OUTPUT_NOT_MATERIALIZED.example = vitte build app.vit -o app
 
+BACKEND_E_MISSING_C_COMPILER.summary = required C compiler was eksik.
+BACKEND_E_MISSING_C_COMPILER.cause = The selected target, linker, ABI, object file, or native toolchain failed.
+BACKEND_E_MISSING_C_COMPILER.step1 = Check the target triple and the first backend or linker note.
+BACKEND_E_MISSING_C_COMPILER.fix = install the missing native tool, change target, or fix undefined symbols
+BACKEND_E_MISSING_C_COMPILER.example = vitte build app.vit -o app
+
+LINK_E_COMMAND_FAILED.summary = linker command basarisiz.
+LINK_E_COMMAND_FAILED.cause = The selected target, linker, ABI, object file, or native toolchain failed.
+LINK_E_COMMAND_FAILED.step1 = Check the target triple and the first backend or linker note.
+LINK_E_COMMAND_FAILED.fix = install the missing native tool, change target, or fix undefined symbols
+LINK_E_COMMAND_FAILED.example = vitte build app.vit -o app
+
 LEX_E_INVALID_FLOAT.summary = gecersiz ondalik.
 LEX_E_INVALID_FLOAT.cause = The parser or lexer could not form the next valid source construct.
 LEX_E_INVALID_FLOAT.step1 = Look at the highlighted token and complete or remove the construct around it.

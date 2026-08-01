@@ -341,7 +341,12 @@ proc compiler_diagnostic_localized_report(report: DiagnosticReport, lang: string
   let localized: [Diagnostic] = [];
   let i: u64 = 0;
   while i < len(report.diagnostics) {
-    set localized = localized + [diagnostic_localized(report.diagnostics[i], lang)];
+    let diagnostic0: Diagnostic = diagnostic_localized(report.diagnostics[i], lang);
+    if diagnostic0.severity == DiagnosticSeverity.Fatal {
+      set diagnostic0.severity = DiagnosticSeverity.Error;
+      set diagnostic0.fatal = false;
+    }
+    set localized = localized + [diagnostic0];
     set i = i + 1;
   }
   give diagnostic_report(localized);
@@ -372,7 +377,7 @@ proc compiler_diagnostic_surface(report: DiagnosticReport, lang: string, command
     locale: lang,
     command: command,
     source: source,
-    valid: len(localized.diagnostics) > 0 and text != "" and json != "" and lsp != ""
+    valid: text != "" and json != "" and lsp != ""
   };
 }
 
