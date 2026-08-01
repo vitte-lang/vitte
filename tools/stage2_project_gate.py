@@ -13,6 +13,8 @@ ROOT = Path(__file__).resolve().parents[1]
 STAGE1 = ROOT / "target/stage1/vitte"
 STAGE2 = ROOT / "target/stage2/vitte"
 ENTRYPOINT = "src/vitte/compiler/main.vit"
+USER_PROGRAM_SOURCE = "tests/pipeline/hello_world.vit"
+USER_PROGRAM = ROOT / "target/stage2/hello-world"
 WORKSPACE = "examples/package-workspace/vitte-workspace.json"
 REPORT_DIR = ROOT / "target/reports"
 REPORT_JSON = REPORT_DIR / "stage2_project_gate.json"
@@ -127,6 +129,29 @@ def external_seed_dependency_failures() -> list[str]:
     for marker in forbidden:
         if marker in strings:
             failures.append(f"stage2 contains forbidden bootstrap/payload marker: {marker}")
+    for marker in ("[vitte][error]", "E_CLI_IO: cannot read"):
+        if marker in strings:
+            failures.append(f"stage2 contains obsolete runtime diagnostic marker: {marker}")
+    return failures
+
+
+def compiler_provenance_failures() -> list[str]:
+    failures: list[str] = []
+    symbols = subprocess.run(
+        ["nm", str(STAGE2)],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    ).stdout
+    if "_command_build" in symbols and "_copy_file" in symbols:
+        if STAGE1.is_file() and STAGE1.read_bytes() == STAGE2.read_bytes():
+            failures.append("stage2 is a byte-for-byte stage1 copy and still contains the self-copy dispatcher")
+        else:
+            failures.append("stage2 build path still contains the self-copy dispatcher")
+    if "run_cli_main_with_ice_boundary" not in symbols:
+        failures.append("stage2 binary does not contain run_cli_main_with_ice_boundary")
     return failures
 
 
@@ -138,6 +163,8 @@ def write_reports(status: str, failures: list[str], results: list[dict[str, Any]
         "stage1": "target/stage1/vitte",
         "stage2": "target/stage2/vitte",
         "entrypoint": ENTRYPOINT,
+        "user_program_source": USER_PROGRAM_SOURCE,
+        "user_program_output": str(USER_PROGRAM.relative_to(ROOT)),
         "workspace": WORKSPACE,
         "stdlib_checks": STDLIB_CHECKS,
         "essential_tests": ESSENTIAL_TESTS,
@@ -185,6 +212,7 @@ def main() -> int:
 
     if STAGE2.is_file():
         failures.extend(external_seed_dependency_failures())
+        failures.extend(compiler_provenance_failures())
         require_ok(results, [str(STAGE2), "--version"])
         require_ok(results, [str(STAGE2), "--help"])
         require_ok(results, [str(STAGE2), "check", ENTRYPOINT])
@@ -212,6 +240,21 @@ def main() -> int:
 
         for source in ESSENTIAL_TESTS:
             require_ok(results, [str(STAGE2), "check", source])
+
+        USER_PROGRAM.unlink(missing_ok=True)
+        user_build = require_ok(
+            results,
+            [str(STAGE2), "build", USER_PROGRAM_SOURCE, "-o", str(USER_PROGRAM.relative_to(ROOT))],
+        )
+        if user_build["exit_code"] == 0:
+            if not USER_PROGRAM.is_file():
+                failures.append("stage2 reported success without materializing the user program")
+            elif USER_PROGRAM.read_bytes() == STAGE2.read_bytes():
+                failures.append("stage2 built the user program by copying its own executable")
+            elif not os.access(USER_PROGRAM, os.X_OK):
+                failures.append("stage2 user program is not executable")
+            else:
+                require_ok(results, [str(USER_PROGRAM)])
 
     for result in results:
         if result["exit_code"] != 0:

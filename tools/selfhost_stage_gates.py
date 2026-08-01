@@ -59,6 +59,11 @@ FORBIDDEN_COMMAND_TEXT = (
     ".sh",
 )
 
+FORBIDDEN_RUNTIME_TEXT = (
+    "[vitte][error]",
+    "E_CLI_IO: cannot read",
+)
+
 IMPORT_RE = re.compile(r"^\s*(?:use|import)\s+(.+)")
 SPACE_RE = re.compile(r"^\s*space\s+([^\s;]+)", re.MULTILINE)
 
@@ -242,6 +247,8 @@ def validate_stage_build(stage_name: str, failures: list[str], commands: list[di
         failures.append(f"{stage_name} cannot build {ENTRYPOINT}: {result['stderr'] or result['stdout']}")
     if not out.is_file():
         failures.append(f"{stage_name} did not produce compiler output: {rel(out)}")
+    else:
+        scan_binary_path(out, failures, compiler_input=stage)
 
 
 def validate_release_resources(failures: list[str], commands: list[dict[str, Any]]) -> None:
@@ -259,12 +266,11 @@ def validate_release_resources(failures: list[str], commands: list[dict[str, Any
             failures.append(f"required release resource is missing: {required}")
 
 
-def scan_binary(stage_name: str, failures: list[str]) -> None:
-    stage = STAGES[stage_name]
-    if not stage.is_file():
+def scan_binary_path(path: Path, failures: list[str], *, compiler_input: Path | None = None) -> None:
+    if not path.is_file():
         return
     proc = subprocess.run(
-        ["strings", str(stage)],
+        ["strings", str(path)],
         cwd=ROOT,
         text=True,
         stdout=subprocess.PIPE,
@@ -273,7 +279,31 @@ def scan_binary(stage_name: str, failures: list[str]) -> None:
     )
     for forbidden in FORBIDDEN_TEXT:
         if forbidden in proc.stdout:
-            failures.append(f"{rel(stage)} contains forbidden bootstrap/seed marker: {forbidden}")
+            failures.append(f"{rel(path)} contains forbidden bootstrap/seed marker: {forbidden}")
+    for forbidden in FORBIDDEN_RUNTIME_TEXT:
+        if forbidden in proc.stdout:
+            failures.append(f"{rel(path)} contains obsolete runtime diagnostic marker: {forbidden}")
+
+    symbols = subprocess.run(
+        ["nm", str(path)],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    ).stdout
+    has_copy_dispatcher = "_command_build" in symbols and "_copy_file" in symbols
+    if has_copy_dispatcher:
+        if compiler_input is not None and compiler_input.is_file() and compiler_input.read_bytes() == path.read_bytes():
+            failures.append(f"{rel(path)} is a byte-for-byte compiler copy produced by the self-copy dispatcher")
+        else:
+            failures.append(f"{rel(path)} still contains the self-copy dispatcher")
+    if "run_cli_main_with_ice_boundary" not in symbols:
+        failures.append(f"{rel(path)} does not contain run_cli_main_with_ice_boundary")
+
+
+def scan_binary(stage_name: str, failures: list[str]) -> None:
+    scan_binary_path(STAGES[stage_name], failures)
 
 
 def validate_normal_flow_commands(commands: list[dict[str, Any]], failures: list[str]) -> None:

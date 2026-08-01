@@ -10,7 +10,10 @@ REPORT = ROOT / "target" / "reports" / "compiler_real_pipeline" / "audit.json"
 
 
 def read(rel: str) -> str:
-    return (ROOT / rel).read_text(encoding="utf-8", errors="replace")
+    try:
+        return (ROOT / rel).read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
 
 
 def has(text: str, needle: str) -> bool:
@@ -78,20 +81,21 @@ def check_required_steps() -> list[dict[str, str]]:
 
 def detect_cli_entry() -> dict[str, str]:
     compiler = read("src/vitte/compiler/main.vit")
-    config = read("toolchain/bootstrap-config.json")
-    seed_root_ok = '"compiler": "bin/vitte"' in config
     entry_ok = 'const COMPILER_ENTRY_POINT: string = "src/vitte/compiler/main.vit"' in compiler
+    imports_driver = "use vitte/compiler/driver/compiler.{ run_cli_main_with_ice_boundary }" in compiler
+    calls_driver = "let code: int = run_cli_main_with_ice_boundary(args);" in compiler
     main_placeholder = re.search(
         r"proc\s+main\s*\(\s*args:\s*list\[string\]\s*\)\s*->\s*int\s*\{\s*give\s+0\s*;?\s*\}",
         compiler,
         re.S,
     ) is not None
+    runtime_wired = entry_ok and imports_driver and calls_driver and not main_placeholder
     return {
-        "trust_root": "bin/vitte" if seed_root_ok else "unknown",
+        "trust_root": "target/release/vitte -> target/stage1/vitte -> target/stage2/vitte",
         "compiler_entry_point": "src/vitte/compiler/main.vit" if entry_ok else "unknown",
         "source_entry_declared": "vitte/compiler/main",
-        "runtime_cli_dispatch": "placeholder" if main_placeholder else "wired",
-        "status": "real-entry-with-placeholder-main" if seed_root_ok and entry_ok and main_placeholder else "ok",
+        "runtime_cli_dispatch": "wired" if runtime_wired else ("placeholder" if main_placeholder else "missing"),
+        "status": "ok" if runtime_wired else "invalid",
     }
 
 
@@ -217,8 +221,8 @@ def main() -> int:
     failures: list[str] = []
     if missing_steps:
         failures.append("pipeline step missing from source")
-    if cli_entry["runtime_cli_dispatch"] == "placeholder":
-        failures.append("CLI source entry has placeholder main(args) and is not the real command dispatcher")
+    if cli_entry["status"] != "ok":
+        failures.append("CLI source entry does not route to run_cli_main_with_ice_boundary")
     if forbidden:
         failures.append("non-real backend/link/compiler surface detected")
     if bypasses:

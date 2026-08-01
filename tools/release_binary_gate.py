@@ -47,6 +47,11 @@ FORBIDDEN_BINARY_MARKERS = (
     "bin/" + "vittec0",
 )
 
+FORBIDDEN_RUNTIME_MARKERS = (
+    "[vitte][error]",
+    "E_CLI_IO: cannot read",
+)
+
 STDLIB_FAMILIES = ["core", "alloc", "ffi", "json"]
 
 
@@ -148,6 +153,11 @@ def binary_marker_failures(path: Path) -> list[str]:
         for marker in FORBIDDEN_BINARY_MARKERS
         if marker in strings
     ]
+    failures.extend(
+        f"{path.relative_to(ROOT)} contains obsolete runtime diagnostic marker: {marker}"
+        for marker in FORBIDDEN_RUNTIME_MARKERS
+        if marker in strings
+    )
     symbols = subprocess.run(
         ["nm", str(path)],
         cwd=ROOT,
@@ -160,6 +170,8 @@ def binary_marker_failures(path: Path) -> list[str]:
         failures.append(
             f"{path.relative_to(ROOT)} build path still materializes the compiler through self-copy symbols"
         )
+    if "run_cli_main_with_ice_boundary" not in symbols:
+        failures.append(f"{path.relative_to(ROOT)} does not contain run_cli_main_with_ice_boundary")
     return failures
 
 

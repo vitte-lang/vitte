@@ -22,7 +22,7 @@ if "$ROOT_DIR/bin/vitte" build "$missing" -o "$TMP_DIR/calc" >"$TMP_DIR/missing.
   exit 1
 fi
 cat "$TMP_DIR/missing.out" "$TMP_DIR/missing.err" >"$TMP_DIR/missing.combined"
-grep -F "error[E_CLI_IO]" "$TMP_DIR/missing.combined" >/dev/null &&
+grep -F "error[E_IO_FILE_NOT_FOUND]" "$TMP_DIR/missing.combined" >/dev/null &&
   grep -F "= span: $missing:1:1" "$TMP_DIR/missing.combined" >/dev/null &&
   grep -F "= cause:" "$TMP_DIR/missing.combined" >/dev/null ||
   {

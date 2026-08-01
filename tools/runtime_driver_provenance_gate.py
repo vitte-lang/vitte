@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -20,6 +21,7 @@ ALTERNATIVE_DRIVER_PATHS = (
     ROOT / "src/vitte/compiler/driver/compile.vit",
 )
 REPORT = ROOT / "target/reports/runtime_driver_provenance.json"
+FORBIDDEN_RUNTIME_MARKERS = (b"[vitte][error]", b"E_CLI_IO: cannot read")
 
 
 def sha256(path: Path) -> str:
@@ -76,12 +78,20 @@ def main() -> int:
     if not BIN.is_file():
         failures.append("bin/vitte is missing")
     else:
+        binary_data = BIN.read_bytes()
+        embedded_markers = [marker.decode("ascii") for marker in FORBIDDEN_RUNTIME_MARKERS if marker in binary_data]
+        evidence["embedded_obsolete_diagnostic_markers"] = embedded_markers
+        for marker in embedded_markers:
+            failures.append(f"binary contains obsolete runtime diagnostic marker: {marker}")
+
         symbols = run(["nm", str(BIN)])
         symbol_text = symbols["stdout"] + symbols["stderr"]
         copy_symbols = [name for name in ("_command_build", "_copy_file") if name in symbol_text]
         run_cli_symbols = [line for line in symbol_text.splitlines() if "run_cli_main" in line]
+        ice_boundary_symbols = [line for line in run_cli_symbols if "run_cli_main_with_ice_boundary" in line]
         evidence["copy_symbols"] = copy_symbols
         evidence["run_cli_main_symbols"] = run_cli_symbols
+        evidence["run_cli_main_with_ice_boundary_symbols"] = ice_boundary_symbols
         evidence["binary_dispatch_symbols"] = [
             name for name in ("_main", "_command_check", "_command_build", "_command_test", "_command_package_like")
             if name in symbol_text
@@ -90,6 +100,8 @@ def main() -> int:
             failures.append(
                 "binary exposes its native command dispatcher but contains no run_cli_main runtime symbol"
             )
+        if not ice_boundary_symbols:
+            failures.append("binary contains no run_cli_main_with_ice_boundary runtime symbol")
         if copy_symbols:
             failures.append(
                 "runtime build path contains self-copy implementation symbols: " + ", ".join(copy_symbols)
@@ -113,6 +125,40 @@ def main() -> int:
                     failures.append(
                         "building src/vitte/compiler/main.vit reproduces bin/vitte byte-for-byte through the self-copy path"
                     )
+
+            probe_root = Path(directory) / "src/vitte/compiler"
+            shutil.copytree(ROOT / "src/vitte/compiler", probe_root)
+            probe_entry = probe_root / "main.vit"
+            probe_driver = probe_root / "driver/compiler.vit"
+            probe_output = Path(directory) / "compiler-provenance"
+            baseline_build = run([str(BIN), "build", str(probe_entry), "-o", str(probe_output)])
+            evidence["source_sensitivity_baseline_build"] = baseline_build
+            baseline_hash = sha256(probe_output) if baseline_build["exit_code"] == 0 and probe_output.is_file() else ""
+            driver_text = probe_driver.read_text(encoding="utf-8")
+            perturbed_text = driver_text.replace(
+                'const VERSION_TEXT: string = "vittec vitte-compiler 0.1.0"',
+                'const VERSION_TEXT: string = "vittec vitte-compiler provenance-probe"',
+                1,
+            )
+            if perturbed_text == driver_text:
+                failures.append("compiler source sensitivity probe could not locate VERSION_TEXT")
+            else:
+                probe_driver.write_text(perturbed_text, encoding="utf-8")
+                probe_output.unlink(missing_ok=True)
+                perturbed_build = run([str(BIN), "build", str(probe_entry), "-o", str(probe_output)])
+                evidence["source_sensitivity_perturbed_build"] = perturbed_build
+                perturbed_hash = sha256(probe_output) if perturbed_build["exit_code"] == 0 and probe_output.is_file() else ""
+                evidence["source_sensitivity"] = {
+                    "baseline_sha256": baseline_hash,
+                    "perturbed_sha256": perturbed_hash,
+                    "output_changed": bool(baseline_hash and perturbed_hash and baseline_hash != perturbed_hash),
+                }
+                if not baseline_hash:
+                    failures.append("compiler source sensitivity baseline did not materialize an artifact")
+                if not perturbed_hash:
+                    failures.append("modified compiler source did not materialize an artifact")
+                if baseline_hash and perturbed_hash and baseline_hash == perturbed_hash:
+                    failures.append("modifying compiler.vit does not change the rebuilt artifact")
 
     report = {
         "schema": "vitte.runtime-driver-provenance.v1",

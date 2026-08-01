@@ -12,6 +12,8 @@ BUILD_LOG="$OUT_DIR/build.log"
 VERSION_LOG="$OUT_DIR/version.log"
 HELP_LOG="$OUT_DIR/help.log"
 CHECK_LOG="$OUT_DIR/check.log"
+SYMBOL_LOG="$OUT_DIR/symbols.log"
+STRINGS_LOG="$OUT_DIR/strings.log"
 SRC="src/vitte/compiler/main.vit"
 
 fail() {
@@ -58,6 +60,28 @@ fi
 
 [ -f "$OUT_BIN" ] || fail "stage1 binary was not created"
 [ -x "$OUT_BIN" ] || fail "stage1 binary is not executable"
+
+if ! nm "$OUT_BIN" > "$SYMBOL_LOG" 2>/dev/null; then
+    fail "unable to inspect stage1 runtime symbols"
+fi
+if grep -Fq '_command_build' "$SYMBOL_LOG" && grep -Fq '_copy_file' "$SYMBOL_LOG"; then
+    if cmp -s "$STAGE0" "$OUT_BIN"; then
+        fail "stage1 is a byte-for-byte stage0 copy and still contains the self-copy dispatcher"
+    fi
+    fail "stage1 build path still contains the self-copy dispatcher"
+fi
+if ! grep -Fq 'run_cli_main_with_ice_boundary' "$SYMBOL_LOG"; then
+    fail "stage1 binary does not contain run_cli_main_with_ice_boundary"
+fi
+if ! strings "$OUT_BIN" > "$STRINGS_LOG" 2>/dev/null; then
+    fail "unable to inspect stage1 runtime strings"
+fi
+if grep -Fq '[vitte][error]' "$STRINGS_LOG"; then
+    fail "stage1 binary contains obsolete [vitte][error] output"
+fi
+if grep -Fq 'E_CLI_IO: cannot read' "$STRINGS_LOG"; then
+    fail "stage1 binary contains obsolete E_CLI_IO output"
+fi
 
 if ! "$OUT_BIN" --version > "$VERSION_LOG" 2>&1; then
     cat "$VERSION_LOG" >&2

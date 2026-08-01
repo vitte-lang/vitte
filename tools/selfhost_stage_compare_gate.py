@@ -20,6 +20,7 @@ OUT = ROOT / "target/selfhost-stage-compare"
 REPORT_DIR = ROOT / "target/reports"
 REPORT_JSON = REPORT_DIR / "selfhost_stage_compare_gate.json"
 REPORT_MD = REPORT_DIR / "selfhost_stage_compare_gate.md"
+FORBIDDEN_RUNTIME_MARKERS = ("[vitte][error]", "E_CLI_IO: cannot read")
 
 
 def sha256_file(path: Path) -> str:
@@ -104,6 +105,35 @@ def compare_command(
     return left, right
 
 
+def validate_compiler_provenance(path: Path, failures: list[str], *, compiler_input: Path | None = None) -> None:
+    strings = subprocess.run(
+        ["strings", str(path)],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    ).stdout
+    for marker in FORBIDDEN_RUNTIME_MARKERS:
+        if marker in strings:
+            failures.append(f"{path.relative_to(ROOT)} contains obsolete runtime marker: {marker}")
+    symbols = subprocess.run(
+        ["nm", str(path)],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    ).stdout
+    if "_command_build" in symbols and "_copy_file" in symbols:
+        if compiler_input is not None and compiler_input.is_file() and sha256_file(path) == sha256_file(compiler_input):
+            failures.append(f"{path.relative_to(ROOT)} is a byte-for-byte compiler copy produced by the self-copy dispatcher")
+        else:
+            failures.append(f"{path.relative_to(ROOT)} still contains the self-copy dispatcher")
+    if "run_cli_main_with_ice_boundary" not in symbols:
+        failures.append(f"{path.relative_to(ROOT)} does not contain run_cli_main_with_ice_boundary")
+
+
 def ensure_stage_binaries(failures: list[str], comparisons: list[dict[str, Any]]) -> None:
     if not STAGE1.is_file():
         failures.append("missing target/stage1/vitte")
@@ -111,6 +141,7 @@ def ensure_stage_binaries(failures: list[str], comparisons: list[dict[str, Any]]
     if not os.access(STAGE1, os.X_OK):
         failures.append("target/stage1/vitte is not executable")
         return
+    validate_compiler_provenance(STAGE1, failures)
     OUT.mkdir(parents=True, exist_ok=True)
     build = run(STAGE1, ["build", ENTRYPOINT, "-o", str(STAGE2.relative_to(ROOT))])
     comparisons.append(
@@ -131,6 +162,8 @@ def ensure_stage_binaries(failures: list[str], comparisons: list[dict[str, Any]]
         failures.append("missing target/stage2/vitte")
     elif not os.access(STAGE2, os.X_OK):
         failures.append("target/stage2/vitte is not executable")
+    else:
+        validate_compiler_provenance(STAGE2, failures, compiler_input=STAGE1)
 
 
 def compare_reproducible_build_hashes(failures: list[str], comparisons: list[dict[str, Any]]) -> None:

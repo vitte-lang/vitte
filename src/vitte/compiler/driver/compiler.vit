@@ -35,19 +35,19 @@ proc emit_diagnostic_output(text: string) {
 }
 
 proc emit_cli_help(text: string) {
-    print(text);
+    emit_diagnostic_output(text);
 }
 
 proc emit_cli_success(text: string) {
-    print(text);
+    emit_diagnostic_output(text);
 }
 
 proc emit_serialized_output(text: string) {
-    print(text);
+    emit_diagnostic_output(text);
 }
 
 proc emit_internal_log(text: string) {
-    print(text);
+    emit_diagnostic_output(text);
 }
 
 use vitte/compiler/driver
@@ -55,43 +55,43 @@ use vitte/compiler/driver/compile.{ DriverBackendModuleSetResult, DriverCompileC
 use vitte/compiler/driver/metrics.{ CompilerMetricsReport, compile_metrics_report, compile_metrics_report_from_module_set, metrics_report_json }
 use vitte/compiler/driver/health_dashboard.{ HealthDashboard, health_dashboard_from_metrics, health_dashboard_json }
 use vitte/compiler/driver/pipeline_modular.{ CompilerPhase, PhaseResultKind, PhaseTiming, PipelineExecution, default_pipeline_phases, render_timings, render_trace_line, run }
-use vitte/compiler/driver/pipeline
 use vitte/compiler/diagnostics/mod
-use vitte/compiler/diagnostics/architecture.{ CompilerDiagnosticStage, compiler_diagnostic_cli_error, compiler_diagnostic_error, compiler_diagnostic_io_error, compiler_diagnostic_linker_error, compiler_diagnostic_render, compiler_diagnostic_stage_from_code, compiler_single_diagnostic_render }
-use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, DiagnosticReport, DiagnosticSeverity, SourceSpan, diagnostic_explain_text_lang, diagnostic_report, span_create, span_empty }
+use vitte/compiler/driver/pipeline
+use vitte/compiler/diagnostics/architecture.{ CompilerDiagnosticStage, compiler_diagnostic_cli_error, compiler_diagnostic_error, compiler_diagnostic_io_error, compiler_diagnostic_linker_error, compiler_diagnostic_render, compiler_diagnostic_stage_from_code, compiler_single_diagnostic_render, stage_phase }
+use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, DiagnosticReport, DiagnosticSeverity, SourceSpan, diagnostic_explain_text_lang, diagnostic_public_id, diagnostic_report, span_create, span_empty }
 use vitte/compiler/frontend/mod
 use vitte/compiler/frontend/pipeline.{ FrontendDiagnostic, FrontendOutput, frontend_run }
-use vitte/compiler/frontend/parse/mod
 use vitte/compiler/frontend/lexer/mod
+use vitte/compiler/frontend/parse/mod
 use vitte/compiler/frontend/lexer/token.{ Token, TokenKind }
 use vitte/compiler/frontend/lexer/scanner.{ ScanResult, scan_tokens_from_file }
-use vitte/compiler/frontend/ast/mod
 use vitte/compiler/analysis/mod
+use vitte/compiler/frontend/ast/mod
 use vitte/compiler/analysis/pipeline.{ AnalysisOutput, analysis_run_frontend }
 use vitte/compiler/analysis/report.{ AnalysisDiagnostic }
-use vitte/compiler/analysis/sema/mod
-use vitte/compiler/analysis/typeck/mod
 use vitte/compiler/analysis/borrowck/mod
-use vitte/compiler/analysis/lint/mod
 use vitte/compiler/analysis/lint/engine
+use vitte/compiler/analysis/lint/mod
 use vitte/compiler/analysis/lint/report
 use vitte/compiler/analysis/lint/rules
+use vitte/compiler/analysis/sema/mod
+use vitte/compiler/analysis/typeck/mod
 use vitte/compiler/middle/mod
 use vitte/compiler/middle/pipeline.{ MiddleOutput, middle_run_frontend }
 use vitte/compiler/middle/mir/validate.{ mir_validation_reason }
-use vitte/compiler/middle/hir/mod
-use vitte/compiler/middle/mir/mod
-use vitte/compiler/middle/borrow/mod
+use vitte/compiler/backend/mod
 use vitte/compiler/middle/borrow/checks
-use vitte/compiler/middle/dataflow/mod
+use vitte/compiler/middle/borrow/mod
 use vitte/compiler/middle/dataflow/cfg
+use vitte/compiler/middle/dataflow/mod
+use vitte/compiler/middle/hir/mod
 use vitte/compiler/middle/infer/mod
 use vitte/compiler/middle/infer/solver
 use vitte/compiler/middle/lower/mod
-use vitte/compiler/middle/typecheck/mod
+use vitte/compiler/middle/mir/mod
 use vitte/compiler/middle/typecheck/diagnostics
+use vitte/compiler/middle/typecheck/mod
 use vitte/compiler/middle/typecheck/rules
-use vitte/compiler/backend/mod
 use vitte/compiler/backend/api.{ backend_runtime_defines_native_symbol }
 use vitte/compiler/backend/diagnostics.{ backend_diagnostic_severity_text, backend_diagnostic_text, backend_missing_c_compiler, backend_native_generation_failed, backend_output_overwrites_source, backend_output_permission_denied, backend_unsupported_feature, backend_unsupported_target, linker_command_failed, linker_native_symbol_not_found }
 use vitte/compiler/backend/pipeline.{ BackendPipelineResult }
@@ -116,14 +116,14 @@ use vitte/compiler/infrastructure/session/logger
 use vitte/compiler/infrastructure/session/options
 use vitte/compiler/backend/target/config.{ TargetConfig, target_config_from_name }
 use vitte/compiler/infrastructure/session/stdlib.{ resolve_stdlib, verify_stdlib_versions }
-use vitte/compiler/driver/mod
 use vitte/compiler/driver/cli
-use vitte/stdlib/io/fileops.{ is_directory, is_file, list_directory, read_file }
+use vitte/compiler/driver/mod
+use vitte/stdlib/io/fileops.{ file_exists, is_directory, is_file, list_directory, read_file }
 use vitte/stdlib/core.{ env_get, option_unwrap_or }
+use vitte/compiler/frontend/macros/errors
+use vitte/compiler/frontend/macros/mod
 use vitte/compiler/optimizations/mir/mod
 use vitte/compiler/version
-use vitte/compiler/frontend/macros/mod
-use vitte/compiler/frontend/macros/errors
 
 pick CompilerMode {
     Check,
@@ -453,6 +453,10 @@ proc cli_is_input_flag(text: string) -> bool {
     give text == "--src" or text == "--input";
 }
 
+proc cli_has_option_value(args: list[string], index: u64) -> bool {
+    give index + 1 < len(args) and args[index + 1] != "" and not starts_with_text(args[index + 1], "-");
+}
+
 proc cli_normalize_error_format(text: string) -> string {
     if text == "json" {
         give "json";
@@ -550,6 +554,59 @@ proc cli_is_known_flag(text: string) -> bool {
         or text == "--native"
         or text == "--no-native"
         or text == "--json";
+}
+
+proc cli_prescan_diagnostic_context(args: list[string], request: CompilerCliRequest) -> CompilerCliRequest {
+    let i: u64 = 0;
+    while i < len(args) {
+        let arg: string = args[i];
+        if arg == "--" {
+            break;
+        } elif arg == "--diagnostics-json" or arg == "--diag-json" or arg == "--json" {
+            set request.format = "json";
+            set request.error_format = "json";
+        } elif arg == "--diagnostics-lsp" or arg == "--diag-lsp" {
+            set request.format = "lsp";
+            set request.error_format = "lsp";
+        } elif arg == "--format" or arg == "--error-format" {
+            if i + 1 < len(args) {
+                let normalized: string = cli_normalize_error_format(args[i + 1]);
+                if normalized != "" {
+                    set request.error_format = normalized;
+                    if normalized == "json" or normalized == "lsp" {
+                        set request.format = normalized;
+                    }
+                }
+            }
+        } elif starts_with_text(arg, "--format=") {
+            let normalized: string = cli_normalize_error_format(slice(arg, len("--format="), len(arg)));
+            if normalized != "" {
+                set request.error_format = normalized;
+                if normalized == "json" or normalized == "lsp" {
+                    set request.format = normalized;
+                }
+            }
+        } elif starts_with_text(arg, "--error-format=") {
+            let normalized: string = cli_normalize_error_format(slice(arg, len("--error-format="), len(arg)));
+            if normalized != "" {
+                set request.error_format = normalized;
+                if normalized == "json" or normalized == "lsp" {
+                    set request.format = normalized;
+                }
+            }
+        } elif arg == "--lang" {
+            if i + 1 < len(args) and not starts_with_text(args[i + 1], "-") {
+                set request.lang = args[i + 1];
+            }
+        } elif starts_with_text(arg, "--lang=") {
+            let language: string = slice(arg, len("--lang="), len(arg));
+            if language != "" {
+                set request.lang = language;
+            }
+        }
+        set i = i + 1;
+    }
+    give request;
 }
 
 proc metrics_manifest_text(source_path: string, source_text: string) -> string {
@@ -700,7 +757,7 @@ proc auto_project_manifest_text(project_path: string) -> string {
 }
 
 proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
-    let request: CompilerCliRequest = empty_cli_request();
+    let request: CompilerCliRequest = cli_prescan_diagnostic_context(args, empty_cli_request());
 
     if len(args) == 0 {
         set request.command = "help";
@@ -724,24 +781,41 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
     }
 
     let i: u64 = 1;
+    let options_ended: bool = false;
+    let native_requested: bool = false;
+    let no_native_requested: bool = false;
     while i < len(args) {
         let arg: string = args[i];
 
-        if cli_is_output_flag(arg) {
-            if i + 1 >= len(args) {
+        if not options_ended and arg == "--" {
+            set options_ended = true;
+            set i = i + 1;
+        } elif options_ended {
+            if request.command == "metrics" and request.subcommand == "" {
+                set request.subcommand = arg;
+            } elif request.command == "pkg" and request.subcommand == "" {
+                set request.subcommand = arg;
+            } elif request.input_path == "" {
+                set request.input_path = arg;
+            } else {
+                give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_INVALID_ARGUMENT", "unexpected positional argument: " + arg);
+            }
+            set i = i + 1;
+        } elif cli_is_output_flag(arg) {
+            if not cli_has_option_value(args, i) {
                 give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
             }
             set request.output_path = args[i + 1];
             set request.output_explicit = true;
             set i = i + 2;
         } elif cli_is_source_flag(arg) {
-            if i + 1 >= len(args) {
+            if not cli_has_option_value(args, i) {
                 give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
             }
             set request.source_text = args[i + 1];
             set i = i + 2;
         } elif cli_is_input_flag(arg) {
-            if i + 1 >= len(args) {
+            if not cli_has_option_value(args, i) {
                 give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
             }
             set request.input_path = args[i + 1];
@@ -750,15 +824,45 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
             set request.fix_plan_format = slice(arg, len("--fix-plan="), len(arg));
             set i = i + 1;
         } elif starts_with_text(arg, "--counterfactual-level=") {
-            set request.counterfactual_level = cli_normalize_counterfactual_level(slice(arg, len("--counterfactual-level="), len(arg)));
+            let counterfactual_value: string = slice(arg, len("--counterfactual-level="), len(arg));
+            if counterfactual_value == "" {
+                give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after --counterfactual-level");
+            }
+            set request.counterfactual_level = cli_normalize_counterfactual_level(counterfactual_value);
             if request.counterfactual_level == "" {
-                give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_INVALID_ARGUMENT", "unsupported --counterfactual-level value");
+                give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_INVALID_ARGUMENT", "unsupported --counterfactual-level value: " + counterfactual_value);
             }
             set i = i + 1;
         } elif starts_with_text(arg, "--lang=") {
             set request.lang = slice(arg, len("--lang="), len(arg));
             if request.lang == "" {
                 give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after --lang");
+            }
+            set i = i + 1;
+        } elif starts_with_text(arg, "--format=") {
+            let format_value: string = slice(arg, len("--format="), len(arg));
+            if format_value == "" {
+                give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after --format");
+            }
+            let normalized_format: string = cli_normalize_error_format(format_value);
+            if normalized_format == "" {
+                give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_INVALID_ARGUMENT", "unsupported --format value: " + format_value);
+            }
+            set request.error_format = normalized_format;
+            set request.format = normalized_format;
+            set i = i + 1;
+        } elif starts_with_text(arg, "--error-format=") {
+            let format_value: string = slice(arg, len("--error-format="), len(arg));
+            if format_value == "" {
+                give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after --error-format");
+            }
+            let normalized_format: string = cli_normalize_error_format(format_value);
+            if normalized_format == "" {
+                give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_INVALID_ARGUMENT", "unsupported --error-format value: " + format_value);
+            }
+            set request.error_format = normalized_format;
+            if normalized_format == "json" or normalized_format == "lsp" {
+                set request.format = normalized_format;
             }
             set i = i + 1;
         } elif starts_with_text(arg, "--target=") {
@@ -771,6 +875,16 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
             set request.profile = slice(arg, len("--profile="), len(arg));
             if request.profile == "" {
                 give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after --profile");
+            }
+            set i = i + 1;
+        } elif starts_with_text(arg, "--color=") {
+            let color_value: string = slice(arg, len("--color="), len(arg));
+            if color_value == "" {
+                give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after --color");
+            }
+            set request.color = cli_normalize_color(color_value);
+            if request.color == "" {
+                give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_INVALID_ARGUMENT", "unsupported --color value: " + color_value);
             }
             set i = i + 1;
         } elif cli_is_known_flag(arg) {
@@ -811,19 +925,19 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
                 set request.fix_why = true;
                 set i = i + 1;
             } elif arg == "--fix-plan" {
-                if i + 1 >= len(args) {
+                if not cli_has_option_value(args, i) {
                     give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
                 }
                 set request.fix_plan_format = args[i + 1];
                 set i = i + 2;
             } elif arg == "--max-fix-hypotheses" {
-                if i + 1 >= len(args) {
+                if not cli_has_option_value(args, i) {
                     give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
                 }
                 set request.max_fix_hypotheses = args[i + 1] as u64;
                 set i = i + 2;
             } elif arg == "--counterfactual-level" {
-                if i + 1 >= len(args) {
+                if not cli_has_option_value(args, i) {
                     give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
                 }
                 set request.counterfactual_level = cli_normalize_counterfactual_level(args[i + 1]);
@@ -832,19 +946,19 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
                 }
                 set i = i + 2;
             } elif arg == "--allow" {
-                if i + 1 >= len(args) {
+                if not cli_has_option_value(args, i) {
                     give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
                 }
                 set request.allow_codes = request.allow_codes + [args[i + 1]];
                 set i = i + 2;
             } elif arg == "--warn" {
-                if i + 1 >= len(args) {
+                if not cli_has_option_value(args, i) {
                     give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
                 }
                 set request.warn_codes = request.warn_codes + [args[i + 1]];
                 set i = i + 2;
             } elif arg == "--deny" {
-                if i + 1 >= len(args) {
+                if not cli_has_option_value(args, i) {
                     give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
                 }
                 set request.deny_codes = request.deny_codes + [args[i + 1]];
@@ -853,82 +967,75 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
                 set request.deny_warnings = true;
                 set i = i + 1;
             } elif arg == "--fail-under" {
-                if i + 1 >= len(args) {
+                if not cli_has_option_value(args, i) {
                     give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
                 }
                 set request.fail_under = args[i + 1] as u64;
                 set i = i + 2;
             } elif arg == "--max-errors" {
-                if i + 1 >= len(args) {
+                if not cli_has_option_value(args, i) {
                     give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
                 }
                 set request.max_errors = args[i + 1] as u64;
                 set i = i + 2;
             } elif arg == "--diagnostic-width" {
-                if i + 1 >= len(args) {
+                if not cli_has_option_value(args, i) {
                     give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
                 }
                 set request.diagnostic_width = args[i + 1] as u64;
                 set i = i + 2;
             } elif arg == "--stdlib-path" {
-                if i + 1 >= len(args) {
+                if not cli_has_option_value(args, i) {
                     give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
                 }
                 set request.stdlib_path = args[i + 1];
                 set i = i + 2;
             } elif arg == "--stdlib-version" {
-                if i + 1 >= len(args) {
+                if not cli_has_option_value(args, i) {
                     give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
                 }
                 set request.stdlib_version = args[i + 1];
                 set i = i + 2;
             } elif arg == "--target" {
-                if i + 1 >= len(args) {
+                if not cli_has_option_value(args, i) {
                     give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
                 }
                 set request.target = args[i + 1];
                 set i = i + 2;
             } elif arg == "--profile" {
-                if i + 1 >= len(args) {
+                if not cli_has_option_value(args, i) {
                     give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
                 }
                 set request.profile = args[i + 1];
                 set i = i + 2;
             } elif arg == "--lang" {
-                if i + 1 >= len(args) {
+                if not cli_has_option_value(args, i) {
                     give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
                 }
                 set request.lang = args[i + 1];
                 set i = i + 2;
             } elif arg == "--format" {
-                if i + 1 >= len(args) {
+                if not cli_has_option_value(args, i) {
                     give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
                 }
-                set request.format = args[i + 1];
-                set request.error_format = cli_normalize_error_format(args[i + 1]);
-                if request.error_format == "" {
+                let normalized_format: string = cli_normalize_error_format(args[i + 1]);
+                if normalized_format == "" {
                     give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_INVALID_ARGUMENT", "unsupported --format value: " + args[i + 1]);
                 }
-                if request.error_format == "json" {
-                    set request.format = "json";
-                }
-                if request.error_format == "lsp" {
-                    set request.format = "lsp";
-                }
+                set request.error_format = normalized_format;
+                set request.format = normalized_format;
                 set i = i + 2;
             } elif arg == "--error-format" {
-                if i + 1 >= len(args) {
+                if not cli_has_option_value(args, i) {
                     give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
                 }
-                set request.error_format = cli_normalize_error_format(args[i + 1]);
-                if request.error_format == "" {
+                let normalized_format: string = cli_normalize_error_format(args[i + 1]);
+                if normalized_format == "" {
                     give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_INVALID_ARGUMENT", "unsupported --error-format value: " + args[i + 1]);
                 }
-                if request.error_format == "json" {
-                    set request.format = "json";
-                }
-                if request.error_format == "lsp" {
-                    set request.format = "lsp";
+                set request.error_format = normalized_format;
+                if normalized_format == "json" or normalized_format == "lsp" {
+                    set request.format = normalized_format;
                 }
                 set i = i + 2;
             } elif arg == "--diagnostics-json" or arg == "--diag-json" {
@@ -940,13 +1047,21 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
                 set request.error_format = "lsp";
                 set i = i + 1;
             } elif arg == "--no-native" {
+                if native_requested {
+                    give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_INVALID_ARGUMENT", "--native and --no-native cannot be used together");
+                }
+                set no_native_requested = true;
                 set request.no_native = true;
                 set i = i + 1;
             } elif arg == "--native" {
+                if no_native_requested {
+                    give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_INVALID_ARGUMENT", "--native and --no-native cannot be used together");
+                }
+                set native_requested = true;
                 set request.no_native = false;
                 set i = i + 1;
             } elif arg == "--color" {
-                if i + 1 >= len(args) {
+                if not cli_has_option_value(args, i) {
                     give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
                 }
                 set request.color = cli_normalize_color(args[i + 1]);
@@ -970,6 +1085,8 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
                 set request.subcommand = arg;
             } elif request.input_path == "" {
                 set request.input_path = arg;
+            } else {
+                give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_INVALID_ARGUMENT", "unexpected positional argument: " + arg);
             }
             set i = i + 1;
         }
@@ -1211,6 +1328,10 @@ proc print_result_diagnostics(result0: CompilerResult, request: CompilerCliReque
     emit_diagnostic_output(rendered);
 }
 
+proc cli_uses_serialized_diagnostics(request: CompilerCliRequest) -> bool {
+    give request.error_format == "json" or request.error_format == "lsp" or request.format == "json" or request.format == "lsp";
+}
+
 proc cli_output_dir(path: string) -> string {
     if path == "" {
         give "build";
@@ -1339,7 +1460,7 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
             give cli_exit_code(driver.DriverExitStatus::Ok);
         }
         let cli_span: SourceSpan = span_create("<cli>", 1 as u64, 1 as u64, 1 as u64);
-        let diagnostic0: Diagnostic = compiler_diagnostic_cli_error("E_CLI_INVALID_ARGUMENT", "pkg subcommand not available: " + request.subcommand, cli_span);
+        let diagnostic0: Diagnostic = compiler_diagnostic_cli_error("E_CLI_UNKNOWN_COMMAND", "unknown pkg subcommand: " + request.subcommand, cli_span);
         print_user_diagnostic(request, diagnostic0);
         give cli_exit_code(driver.DriverExitStatus::UnsupportedFeature);
     }
@@ -1351,14 +1472,20 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
     }
 
     let source_path: string = cli_request_source_path(request);
-    let source_text: string = cli_request_source_text(request);
     let virtual_source: bool = cli_request_is_virtual_source(request);
-    if request.command != "metrics" and request.command != "health" and not virtual_source and not is_file(source_path) {
+    if request.command != "metrics" and request.command != "health" and not virtual_source and not file_exists(source_path) {
         let io_span: SourceSpan = span_create(source_path, 1 as u64, 1 as u64, 1 as u64);
-        let diagnostic0: Diagnostic = compiler_diagnostic_io_error("E_CLI_IO", "E_CLI_IO", io_span);
+        let diagnostic0: Diagnostic = compiler_diagnostic_io_error("E_IO_FILE_NOT_FOUND", "E_IO_FILE_NOT_FOUND", io_span);
         print_user_diagnostic(request, diagnostic0);
         give cli_exit_code(driver.DriverExitStatus::IoFailure);
     }
+    if request.command != "metrics" and request.command != "health" and not virtual_source and not is_file(source_path) {
+        let io_span: SourceSpan = span_create(source_path, 1 as u64, 1 as u64, 1 as u64);
+        let diagnostic0: Diagnostic = compiler_diagnostic_io_error("E_IO_FILE_UNREADABLE", "E_IO_FILE_UNREADABLE", io_span);
+        print_user_diagnostic(request, diagnostic0);
+        give cli_exit_code(driver.DriverExitStatus::IoFailure);
+    }
+    let source_text: string = cli_request_source_text(request);
 
     if request.command == "fix" {
         let report_json: string = dump_diagnostics_json(source_path, source_text);
@@ -1420,10 +1547,10 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
             print_user_diagnostic(request, diagnostic0);
             give cli_exit_code(driver.DriverExitStatus::PipelineFailure);
         }
-        if request.trace_pipeline {
+        if request.trace_pipeline and not cli_uses_serialized_diagnostics(request) {
             print_phase_results(r0, "check");
         }
-        if request.timings {
+        if request.timings and not cli_uses_serialized_diagnostics(request) {
             emit_internal_log(build_pipeline_timings_text("check", r0.status));
             let msg: string = "\n";
             emit_internal_log(msg);
@@ -1450,6 +1577,12 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
             print_user_diagnostic(request, diagnostic0);
             give cli_exit_code(driver.DriverExitStatus::InvalidArguments);
         }
+        if is_directory(request.output_path) {
+            let output_span: SourceSpan = span_create(request.output_path, 1 as u64, 1 as u64, 1 as u64);
+            let diagnostic0: Diagnostic = compiler_diagnostic_io_error("E_IO_OUTPUT_UNWRITABLE", "E_IO_OUTPUT_UNWRITABLE", output_span);
+            print_user_diagnostic(request, diagnostic0);
+            give cli_exit_code(driver.DriverExitStatus::FilesystemFailure);
+        }
         let output_dir: string = cli_output_dir(request.output_path);
         if not is_directory(output_dir) {
             let output_span: SourceSpan = span_create(request.output_path, 1 as u64, 1 as u64, 1 as u64);
@@ -1458,6 +1591,12 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
             give cli_exit_code(driver.DriverExitStatus::FilesystemFailure);
         }
         if source_path != "" and files.normalize_path(source_path) == files.normalize_path(request.output_path) {
+            let output_span: SourceSpan = span_create(request.output_path, 1 as u64, 1 as u64, 1 as u64);
+            let diagnostic0: Diagnostic = compiler_diagnostic_io_error("E_IO_OVERWRITE_FORBIDDEN", "E_IO_OVERWRITE_FORBIDDEN", output_span);
+            print_user_diagnostic(request, diagnostic0);
+            give cli_exit_code(driver.DriverExitStatus::FilesystemFailure);
+        }
+        if source_path != "" and is_file(request.output_path) and read_file(request.output_path) == source_text {
             let output_span: SourceSpan = span_create(request.output_path, 1 as u64, 1 as u64, 1 as u64);
             let diagnostic0: Diagnostic = compiler_diagnostic_io_error("E_IO_OVERWRITE_FORBIDDEN", "E_IO_OVERWRITE_FORBIDDEN", output_span);
             print_user_diagnostic(request, diagnostic0);
@@ -1474,10 +1613,10 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
             give cli_exit_code(driver.DriverExitStatus::PipelineFailure);
         }
         if validation_result.status != driver.DriverExitStatus::Ok {
-            if request.trace_pipeline {
+            if request.trace_pipeline and not cli_uses_serialized_diagnostics(request) {
                 print_phase_results(validation_result, "check");
             }
-            if request.timings {
+            if request.timings and not cli_uses_serialized_diagnostics(request) {
                 emit_internal_log(build_pipeline_timings_text("check", validation_result.status));
                 let msg: string = "\n";
                 emit_internal_log(msg);
@@ -1504,7 +1643,7 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
         let opts: CompilerOptions = cli_compiler_options(request, CompilerMode::Build, request.output_path);
         let compiler0: Compiler = compiler_from_input(source_path, source_text, virtual_source, opts);
         let r0: CompilerResult = run_compiler(compiler0);
-        if request.trace_pipeline {
+        if request.trace_pipeline and not cli_uses_serialized_diagnostics(request) {
             print_phase_results(r0, "build");
             if r0.status == driver.DriverExitStatus::Ok {
                 let msg: string = "Build OK.\n";
@@ -1514,7 +1653,7 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
                 emit_internal_log(msg);
             }
         }
-        if request.timings {
+        if request.timings and not cli_uses_serialized_diagnostics(request) {
             emit_internal_log(build_pipeline_timings_text("build", r0.status));
             let msg: string = "\n";
             emit_internal_log(msg);
@@ -1524,7 +1663,7 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
             give r0.code as int;
         }
         if not is_file(request.output_path) {
-            let output_span: SourceSpan = span_create(source_path, 1 as u64, 1 as u64, 1 as u64);
+            let output_span: SourceSpan = span_create(request.output_path, 1 as u64, 1 as u64, 1 as u64);
             let diagnostic0: Diagnostic = compiler_diagnostic_linker_error("LINK_E_OUTPUT_NOT_MATERIALIZED", "linker did not materialize executable: " + request.output_path, output_span);
             print_user_diagnostic(request, diagnostic0);
             give cli_exit_code(driver.DriverExitStatus::FilesystemFailure);
@@ -1545,10 +1684,10 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
         let opts: CompilerOptions = cli_compiler_options(request, CompilerMode::Run, temp_output);
         let compiler0: Compiler = compiler_from_input(source_path, source_text, virtual_source, opts);
         let r0: CompilerResult = run_compiler(compiler0);
-        if request.trace_pipeline {
+        if request.trace_pipeline and not cli_uses_serialized_diagnostics(request) {
             print_phase_results(r0, "run");
         }
-        if request.timings {
+        if request.timings and not cli_uses_serialized_diagnostics(request) {
             emit_internal_log(build_pipeline_timings_text("build", r0.status));
             let msg: string = "\n";
             emit_internal_log(msg);
@@ -1558,7 +1697,7 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
             give r0.code as int;
         }
         if not is_file(temp_output) {
-            let output_span: SourceSpan = span_create(source_path, 1 as u64, 1 as u64, 1 as u64);
+            let output_span: SourceSpan = span_create(temp_output, 1 as u64, 1 as u64, 1 as u64);
             let diagnostic0: Diagnostic = compiler_diagnostic_linker_error("LINK_E_OUTPUT_NOT_MATERIALIZED", "run failed: temporary executable was not materialized: " + temp_output, output_span);
             print_user_diagnostic(request, diagnostic0);
             give cli_exit_code(driver.DriverExitStatus::FilesystemFailure);
@@ -1629,7 +1768,7 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
             let project_manifest: string = if manifest_text != "" { manifest_text } else { auto_project_manifest_text(request.input_path) };
             if project_manifest == "" {
                 let metrics_span: SourceSpan = span_create(request.input_path, 1 as u64, 1 as u64, 1 as u64);
-                let diagnostic0: Diagnostic = compiler_diagnostic_io_error("E_CLI_IO", "project metrics found no readable Vitte source files", metrics_span);
+                let diagnostic0: Diagnostic = compiler_diagnostic_io_error("E_IO_FILE_UNREADABLE", "E_IO_FILE_UNREADABLE", metrics_span);
                 print_user_diagnostic(request, diagnostic0);
                 give cli_exit_code(driver.DriverExitStatus::UnsupportedFeature);
             }
@@ -2065,7 +2204,7 @@ proc configure_compiler(compiler: Compiler) -> Compiler {
             backend_output_overwrites_source(
                 compiler.input.path,
                 compiler.options.output_path,
-                compiler_backend_span(compiler)
+                compiler_output_span(compiler, compiler.options.output_path)
             )
         );
         set compiler.state.ok = false;
@@ -2292,17 +2431,67 @@ proc compiler_backend_span(compiler: Compiler) -> SourceSpan {
     give span_create(compiler.input.path, 1, 1, 1);
 }
 
+proc compiler_output_span(compiler: Compiler, path: string) -> SourceSpan {
+    let output_path: string = if path != "" { path } else { compiler.options.output_path };
+    if output_path == "" {
+        give compiler_backend_span(compiler);
+    }
+    give span_create(output_path, 1, 1, 1);
+}
+
+proc compiler_public_backend_code(code: string) -> string {
+    if code == "GEN0050" or code == "BACKEND_E_NATIVE_TOOL_MISSING" {
+        give "BACKEND_E_MISSING_C_COMPILER";
+    }
+    if code == "GEN0052" or code == "BACKEND_E_OBJECT_WRITE_FAILED" {
+        give "E_IO_OUTPUT_UNWRITABLE";
+    }
+    if code == "LNK0072" or code == "LINK_E_PERMISSION_DENIED" {
+        give "E_IO_PERMISSION_DENIED";
+    }
+    if code == "GEN0065" {
+        give "BACKEND_E_UNSUPPORTED_TARGET";
+    }
+    if code == "LNK0058" {
+        give "LINK_E_UNDEFINED_SYMBOL";
+    }
+    if code == "LNK0054" or code == "LINK_E_SYSTEM_LINKER_FAILED" {
+        give "LINK_E_COMMAND_FAILED";
+    }
+    if code == "GEN0122" or code == "DRIVER_E_OUTPUT_WRITE_FAILED" {
+        give "E_IO_OVERWRITE_FORBIDDEN";
+    }
+    give code;
+}
+
+proc compiler_public_backend_diagnostic(diagnostic0: Diagnostic) -> Diagnostic {
+    let public0: Diagnostic = diagnostic0;
+    let internal_code: string = public0.code;
+    set public0.code = compiler_public_backend_code(internal_code);
+    set public0.phase = stage_phase(compiler_diagnostic_stage_from_code(public0.code));
+    set public0.primary_error_key = diagnostic_public_id(public0);
+    if internal_code != public0.code {
+        set public0.pipeline_context = public0.pipeline_context + ["internal_code=" + internal_code];
+    }
+    give public0;
+}
+
 proc add_backend_canonical_diagnostic(compiler: Compiler, diagnostic0: Diagnostic) -> Compiler {
-    give add_typed_diagnostic(
+    let public0: Diagnostic = compiler_public_backend_diagnostic(diagnostic0);
+    set compiler = emit_session_diagnostic(
         compiler,
-        backend_diagnostic_severity_text(diagnostic0),
-        diagnostic0.code,
-        backend_diagnostic_text(diagnostic0)
+        backend_diagnostic_severity_text(public0),
+        public0.code,
+        public0.span.file,
+        public0.span.start_line,
+        public0.span.start_column,
+        backend_diagnostic_text(public0)
     );
+    give add_diagnostic(compiler, public0);
 }
 
 proc native_object_failure_diagnostic(compiler: Compiler, result: NativeBridgeResult, backend_name: string, target_name: string) -> Diagnostic {
-    let span0: SourceSpan = compiler_backend_span(compiler);
+    let span0: SourceSpan = compiler_output_span(compiler, result.object_path);
     if result.diagnostic_code == "BACKEND_E_NATIVE_TOOL_MISSING" {
         give backend_missing_c_compiler(result.tool, result.command_text, target_name, span0);
     }
@@ -2313,7 +2502,7 @@ proc native_object_failure_diagnostic(compiler: Compiler, result: NativeBridgeRe
 }
 
 proc native_link_failure_diagnostic(compiler: Compiler, result: NativeBridgeResult, backend_name: string, target_name: string) -> Diagnostic {
-    let span0: SourceSpan = compiler_backend_span(compiler);
+    let span0: SourceSpan = compiler_output_span(compiler, result.executable_path);
     if result.diagnostic_code == "BACKEND_E_NATIVE_TOOL_MISSING" {
         give backend_missing_c_compiler(result.tool, result.command_text, target_name, span0);
     }
@@ -2794,7 +2983,7 @@ proc run_codegen(compiler: Compiler) -> Compiler {
                     "clang",
                     "clang -c <llvm-ir> -o " + native_out.object_result.object_path,
                     native_config.target_name,
-                    compiler_backend_span(compiler)
+                    compiler_output_span(compiler, native_out.object_result.object_path)
                 )
             );
         } else {
@@ -2807,7 +2996,7 @@ proc run_codegen(compiler: Compiler) -> Compiler {
                     -1,
                     backend_out.message,
                     native_out.object_result.object_path,
-                    compiler_backend_span(compiler)
+                    compiler_output_span(compiler, native_out.object_result.object_path)
                 )
             );
         }
@@ -2890,7 +3079,7 @@ proc run_linker(compiler: Compiler) -> Compiler {
                 "link_ir_unit_with_kind(<ir>, " + compiler.options.output_path + ", executable)",
                 -1,
                 "unresolved relocation in canonical link artifact",
-                compiler_backend_span(compiler)
+                compiler_output_span(compiler, compiler.options.output_path)
             )
         );
         set compiler.state.ok = false;
@@ -2907,7 +3096,7 @@ proc run_linker(compiler: Compiler) -> Compiler {
                 -1,
                 backend_out.message,
                 compiler.options.output_path,
-                compiler_backend_span(compiler)
+                compiler_output_span(compiler, compiler.options.output_path)
             )
         );
         set compiler.state.ok = false;
@@ -2923,7 +3112,7 @@ proc run_linker(compiler: Compiler) -> Compiler {
                 -1,
                 "artifact output list is empty",
                 compiler.options.output_path,
-                compiler_backend_span(compiler)
+                compiler_output_span(compiler, compiler.options.output_path)
             )
         );
         set compiler.state.ok = false;

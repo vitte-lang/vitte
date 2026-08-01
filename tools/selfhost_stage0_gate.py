@@ -23,6 +23,7 @@ OUT = ROOT / "target/selfhost-stage0"
 REPORT_DIR = ROOT / "target/reports"
 REPORT_JSON = REPORT_DIR / "selfhost_stage0_gate.json"
 REPORT_MD = REPORT_DIR / "selfhost_stage0_gate.md"
+FORBIDDEN_RUNTIME_MARKERS = (b"[vitte][error]", b"E_CLI_IO: cannot read")
 
 
 def sha256_file(path: Path) -> str:
@@ -116,6 +117,42 @@ def ensure_stages(failures: list[str]) -> None:
             failures.append(f"missing {name}: {path.relative_to(ROOT)}")
         elif not os.access(path, os.X_OK):
             failures.append(f"{name} is not executable: {path.relative_to(ROOT)}")
+        else:
+            validate_compiler_provenance(name, path, failures)
+
+
+def validate_compiler_provenance(
+    name: str,
+    path: Path,
+    failures: list[str],
+    *,
+    compiler_input: Path | None = None,
+) -> None:
+    data = path.read_bytes()
+    for marker in FORBIDDEN_RUNTIME_MARKERS:
+        if marker in data:
+            failures.append(f"{name} contains obsolete runtime diagnostic marker: {marker.decode('ascii')}")
+
+    symbols_result = subprocess.run(
+        ["nm", str(path)],
+        cwd=ROOT,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if symbols_result.returncode != 0:
+        failures.append(f"{name} runtime symbols cannot be inspected")
+        return
+    symbols = symbols_result.stdout
+    has_copy_dispatcher = "_command_build" in symbols and "_copy_file" in symbols
+    if has_copy_dispatcher:
+        if compiler_input is not None and compiler_input.is_file() and data == compiler_input.read_bytes():
+            failures.append(f"{name} is a byte-for-byte compiler copy produced by the self-copy dispatcher")
+        else:
+            failures.append(f"{name} contains the self-copy compiler dispatcher")
+    if "run_cli_main_with_ice_boundary" not in symbols:
+        failures.append(f"{name} does not contain run_cli_main_with_ice_boundary")
 
 
 def build_compilers(failures: list[str], comparisons: list[dict[str, Any]]) -> dict[str, Path]:
@@ -129,6 +166,8 @@ def build_compilers(failures: list[str], comparisons: list[dict[str, Any]]) -> d
         results[name] = result
         if result["exit_code"] != 0:
             failures.append(f"{name} cannot build {ENTRYPOINT}: {result['stderr'] or result['stdout']}")
+        elif out.is_file():
+            validate_compiler_provenance(f"{name} compiler output", out, failures, compiler_input=stage)
     compare_results("build-compiler-diagnostics", results, failures, comparisons)
     return outputs
 
