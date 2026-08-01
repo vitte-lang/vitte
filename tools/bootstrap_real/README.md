@@ -38,6 +38,8 @@ The gate accepts only a native candidate aligned with
 `src/vitte/compiler/main.vit`. It requires the compiler entry marker
 `run_cli_main_with_ice_boundary` and the canonical entrypoint marker
 `COMPILER_ENTRY_POINT=src/vitte/compiler/main.vit`.
+Each required marker is checked independently for stage0 sources, installed
+stage0 binaries, and bootstrap candidates.
 
 The only accepted stage0 path is `target/bootstrap-real/stage0/vitte`.
 `--install-stage0` validates a source binary as a real native Vitte compiler

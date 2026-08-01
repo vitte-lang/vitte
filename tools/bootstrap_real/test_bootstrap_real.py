@@ -46,6 +46,30 @@ def test_forbidden_bridge_marker_is_rejected() -> None:
     )
 
 
+def test_required_markers_are_checked_individually() -> None:
+    all_markers = "\n".join(bootstrap_real.REQUIRED_ENTRY_MARKERS)
+    assert_true(
+        bootstrap_real.validate_required_markers(all_markers, "candidate") == [],
+        "all required markers should pass",
+    )
+    missing_driver = bootstrap_real.validate_required_markers(
+        "COMPILER_ENTRY_POINT=src/vitte/compiler/main.vit",
+        "candidate",
+    )
+    assert_true(
+        any("run_cli_main_with_ice_boundary" in error for error in missing_driver),
+        "missing driver entry marker should be reported",
+    )
+    missing_entrypoint = bootstrap_real.validate_required_markers(
+        "run_cli_main_with_ice_boundary",
+        "candidate",
+    )
+    assert_true(
+        any("COMPILER_ENTRY_POINT=src/vitte/compiler/main.vit" in error for error in missing_entrypoint),
+        "missing compiler entrypoint marker should be reported",
+    )
+
+
 def test_script_self_copy_bridge_and_private_tmp_are_rejected() -> None:
     work = ROOT / "target/bootstrap-real/test-work"
     work.mkdir(parents=True, exist_ok=True)
@@ -243,6 +267,7 @@ def main() -> int:
         shutil.rmtree(work)
     test_output_path_must_stay_under_artifact_root()
     test_forbidden_bridge_marker_is_rejected()
+    test_required_markers_are_checked_individually()
     test_script_self_copy_bridge_and_private_tmp_are_rejected()
     test_stage0_must_be_single_trusted_path()
     test_canonical_stage0_path_is_the_only_path_gate()

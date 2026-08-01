@@ -168,6 +168,22 @@ def install_stage0(source: Path) -> None:
         raise
 
 
+def validate_required_markers(text: str, label: str) -> list[str]:
+    errors: list[str] = []
+    for marker in REQUIRED_ENTRY_MARKERS:
+        if marker not in text:
+            errors.append(f"{label} is missing required marker: {marker}")
+    return errors
+
+
+def validate_forbidden_markers(text: str, label: str) -> list[str]:
+    errors: list[str] = []
+    for marker in FORBIDDEN_BINARY_MARKERS:
+        if marker in text:
+            errors.append(f"{label} contains forbidden bootstrap marker: {marker}")
+    return errors
+
+
 def validate_vitte_binary(binary: Path, label: str) -> tuple[list[str], list[dict[str, object]]]:
     errors: list[str] = []
     commands: list[dict[str, object]] = []
@@ -186,12 +202,8 @@ def validate_vitte_binary(binary: Path, label: str) -> tuple[list[str], list[dic
         errors.append(f"{label} format is unknown: {rel(binary)}")
 
     text = binary_text(binary)
-    for marker in REQUIRED_ENTRY_MARKERS:
-        if marker not in text:
-            errors.append(f"{label} is missing required marker: {marker}")
-    for marker in FORBIDDEN_BINARY_MARKERS:
-        if marker in text:
-            errors.append(f"{label} contains forbidden bootstrap marker: {marker}")
+    errors.extend(validate_required_markers(text, label))
+    errors.extend(validate_forbidden_markers(text, label))
 
     for command in (
         [str(binary), "--version"],
