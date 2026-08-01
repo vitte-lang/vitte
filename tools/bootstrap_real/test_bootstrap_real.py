@@ -113,6 +113,22 @@ def test_bootstrap_build_command_is_exact() -> None:
     )
 
 
+def test_stage0_build_outputs_are_canonical() -> None:
+    out = bootstrap_real.DEFAULT_OUT
+    assert_true(
+        out == ROOT / "target/bootstrap-real/vitte",
+        "bootstrap compiler output should be target/bootstrap-real/vitte",
+    )
+    assert_true(
+        bootstrap_real.REPORT_JSON == ROOT / "target/reports/bootstrap_real_gate.json",
+        "bootstrap json report should use the canonical report path",
+    )
+    assert_true(
+        bootstrap_real.REPORT_MD == ROOT / "target/reports/bootstrap_real_gate.md",
+        "bootstrap markdown report should use the canonical report path",
+    )
+
+
 def test_script_self_copy_bridge_and_private_tmp_are_rejected() -> None:
     work = ROOT / "target/bootstrap-real/test-work"
     work.mkdir(parents=True, exist_ok=True)
@@ -314,6 +330,7 @@ def main() -> int:
     test_required_markers_are_checked_individually()
     test_stage0_smoke_commands_are_exact()
     test_bootstrap_build_command_is_exact()
+    test_stage0_build_outputs_are_canonical()
     test_script_self_copy_bridge_and_private_tmp_are_rejected()
     test_stage0_must_be_single_trusted_path()
     test_canonical_stage0_path_is_the_only_path_gate()

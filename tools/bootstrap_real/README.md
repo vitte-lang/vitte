@@ -23,6 +23,14 @@ python3 tools/bootstrap_real/bootstrap_real.py --stage0 target/bootstrap-real/st
 That command compiles `src/vitte/compiler/main.vit` to
 `target/bootstrap-real/vitte`, then verifies the produced compiler.
 
+Expected outputs:
+
+```text
+target/bootstrap-real/vitte
+target/reports/bootstrap_real_gate.json
+target/reports/bootstrap_real_gate.md
+```
+
 Verify an already-built candidate:
 
 ```sh
