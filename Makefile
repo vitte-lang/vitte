@@ -141,8 +141,10 @@ install-debian-0.1.0: install-debian
 # Build
 # ------------------------------------------------------------
 
-.PHONY: build
+.PHONY: build compile
 build: dirs seed-free-release-gate vitte-in-vitte-gate frontend-parser-test frontend-ast-test compiler-test-suite-check-gate vitte-source-audit packages-check-all
+
+compile: build
 
 .PHONY: vittec-kernel kernel-tools
 vittec-kernel: vitte-bootstrap-check
@@ -622,9 +624,20 @@ bootstrap-help:
 	@echo "  3) make build"
 	@echo "  seed bootstrap targets are retired and resolve to the Vitte-in-Vitte gate"
 
-.PHONY: bootstrap-seed-root-check
-bootstrap-seed-root-check: vitte-in-vitte-gate
-	@echo "[bootstrap-seed-root-check] retired: no seed root is allowed"
+.PHONY: bootstrap-trust-root bootstrap-chain bootstrap-seed-root-check
+bootstrap-trust-root:
+	@python3 tools/bootstrap_real/stage0_trust.py
+
+.PHONY: bootstrap-trust-tests
+bootstrap-trust-tests:
+	@python3 tools/bootstrap_real/test_stage0_trust.py
+	@python3 tools/bootstrap_real/test_bootstrap_real.py
+
+bootstrap-chain:
+	@python3 tools/bootstrap_real/bootstrap_chain.py --offline
+
+bootstrap-seed-root-check: bootstrap-trust-root
+	@echo "[bootstrap-seed-root-check] signed per-platform stage0 verified"
 
 .PHONY: bootstrap-hard-gate
 bootstrap-hard-gate: vitte-in-vitte-gate
@@ -647,11 +660,12 @@ bootstrap-vitte-hard-gate bootstrap-v2-hard-gate: vitte-in-vitte-gate
 stage0-check stage0-gate: vitte-in-vitte-gate
 
 .PHONY: bootstrap-all
-bootstrap-all: vitte-in-vitte-gate
-	@echo "[bootstrap-all] completed via Vitte-in-Vitte gate"
+bootstrap-all: bootstrap-chain
+	@echo "[bootstrap-all] signed stage0 -> stage1 -> stage2 -> release -> bin/vitte complete"
 
 .PHONY: bootstrap-parity
-bootstrap-parity: vitte-in-vitte-gate
+bootstrap-parity: bootstrap-chain
+	@python3 tools/bootstrap_real/bootstrap_real.py --verify-chain
 
 .PHONY: bootstrap-verify
 bootstrap-verify: vitte-in-vitte-gate
@@ -1774,6 +1788,16 @@ release-installer-gate: installer-runtime-contract-check installer-real-platform
 real-release-gate:
 	@python3 tools/real_release_gate.py
 
+.PHONY: final final-release-gate
+final-release-gate:
+	@python3 tools/final_release_gate.py
+
+final: compile
+	@RELEASE_INSTALLER_GATE=1 STRICT_REAL_INSTALLERS=1 $(MAKE) --no-print-directory release-check
+	@RELEASE_INSTALLER_GATE=1 STRICT_REAL_INSTALLERS=1 $(MAKE) --no-print-directory real-release-gate
+	@python3 tools/bootstrap_real/final_make_gate.py
+	@$(MAKE) --no-print-directory final-release-gate
+
 .PHONY: vitte-max-construction-gate
 vitte-max-construction-gate:
 	@python3 tools/vitte_max_construction_gate.py
@@ -1782,10 +1806,12 @@ vitte-max-construction-gate:
 
 .PHONY: stage-real-binary
 stage-real-binary:
-	@test -n "$(OS)" || (echo "usage: make stage-real-binary OS=<os> ARCH=<arch> BIN=<path> [SKIP_SMOKE=1]" >&2; exit 2)
-	@test -n "$(ARCH)" || (echo "usage: make stage-real-binary OS=<os> ARCH=<arch> BIN=<path> [SKIP_SMOKE=1]" >&2; exit 2)
-	@test -n "$(BIN)" || (echo "usage: make stage-real-binary OS=<os> ARCH=<arch> BIN=<path> [SKIP_SMOKE=1]" >&2; exit 2)
-	@python3 tools/stage_real_binary.py --os "$(OS)" --arch "$(ARCH)" --binary "$(BIN)" $(if $(filter 1,$(SKIP_SMOKE)),--skip-smoke,)
+	@test -n "$(OS)" || (echo "usage: make stage-real-binary OS=<os> ARCH=<arch> BIN=<path> SIGNATURE=<path> PUBLIC_KEY=<path> [SKIP_SMOKE=1]" >&2; exit 2)
+	@test -n "$(ARCH)" || (echo "missing ARCH" >&2; exit 2)
+	@test -n "$(BIN)" || (echo "missing BIN" >&2; exit 2)
+	@test -n "$(SIGNATURE)" || (echo "missing SIGNATURE" >&2; exit 2)
+	@test -n "$(PUBLIC_KEY)" || (echo "missing PUBLIC_KEY" >&2; exit 2)
+	@python3 tools/stage_real_binary.py --os "$(OS)" --arch "$(ARCH)" --binary "$(BIN)" --signature "$(SIGNATURE)" --public-key "$(PUBLIC_KEY)" $(if $(filter 1,$(SKIP_SMOKE)),--skip-smoke,)
 
 .PHONY: pkg-cli-integration
 pkg-cli-integration:
@@ -2490,7 +2516,7 @@ help:
 	@echo "  make installer-real-platforms-check validate real install matrix and post-install smoke contract"
 	@echo "  make release-installer-gate enforce blocking installer release evidence"
 	@echo "  make real-release-gate require real multi-arch binaries, native compiler entrypoint builds, strict installers, and post-install run evidence"
-	@echo "  make stage-real-binary OS=<os> ARCH=<arch> BIN=<path> import and attest a real binary"
+	@echo "  make stage-real-binary OS=<os> ARCH=<arch> BIN=<path> SIGNATURE=<path> PUBLIC_KEY=<path> import, verify and attest a real binary"
 	@echo "  make pkg-macos build macOS installer pkg (PKG_VERSION=$(PKG_VERSION))"
 	@echo "  make macos-universal-bin build target/universal/vitte (arm64 + x86_64 via lipo)"
 	@echo "  make pkg-macos-universal build macOS universal installer pkg (vitte-$(PKG_VERSION)-universal.pkg)"
@@ -2739,6 +2765,7 @@ lsp-gate:
 
 .PHONY: stdlib-gate
 stdlib-gate:
+	@python3 tools/stdlib/generate_unicode_tables.py --check
 	@python3 tools/stdlib/run_checks.py
 	@python3 tools/stdlib/generate_artifacts.py
 	@test -f target/stdlib/collections_demo.txt
@@ -2776,6 +2803,8 @@ stdlib-json-gate:
 
 .PHONY: stdlib-total-gate
 stdlib-total-gate: stdlib-alloc-gate stdlib-ffi-gate stdlib-json-gate
+	@bin/vitte test src/vitte/stdlib/tests/hashmap_contracts.vit
+	@python3 tools/stdlib_target_matrix.py
 	@python3 tools/check_stdlib_entrypoint.py
 	@test -f target/reports/stdlib_total_gate.json
 	@test -f target/reports/stdlib_total_gate.md
