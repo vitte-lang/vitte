@@ -212,6 +212,15 @@ def validate_stage0(stage0: Path) -> tuple[list[str], list[dict[str, object]]]:
     return errors, commands
 
 
+def validate_stage0_install_source(source: Path) -> tuple[list[str], list[dict[str, object]]]:
+    errors: list[str] = []
+    if is_under(source, Path("/private/tmp")):
+        errors.append(f"stage0 source must not come from /private/tmp: {rel(source)}")
+    source_errors, commands = validate_vitte_binary(source, "stage0 source")
+    errors.extend(source_errors)
+    return errors, commands
+
+
 def write_reports(
     status: str,
     candidate: Path,
@@ -276,7 +285,7 @@ def run(args: argparse.Namespace) -> int:
     smoke_commands: list[dict[str, object]] = []
 
     if args.install_stage0:
-        install_errors, stage0_commands = validate_vitte_binary(args.install_stage0, "stage0 source")
+        install_errors, stage0_commands = validate_stage0_install_source(args.install_stage0)
         errors.extend(install_errors)
         if not install_errors:
             install_stage0(args.install_stage0)

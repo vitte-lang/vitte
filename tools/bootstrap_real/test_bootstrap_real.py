@@ -46,6 +46,45 @@ def test_forbidden_bridge_marker_is_rejected() -> None:
     )
 
 
+def test_script_self_copy_bridge_and_private_tmp_are_rejected() -> None:
+    work = ROOT / "target/bootstrap-real/test-work"
+    work.mkdir(parents=True, exist_ok=True)
+    script = work / "script-vitte"
+    script.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+    script.chmod(script.stat().st_mode | stat.S_IXUSR)
+    script_errors, _commands = bootstrap_real.validate_vitte_binary(script, "stage0 source")
+    assert_true(
+        any("must be a native binary, got script" in error for error in script_errors),
+        "script stage0 sources should be rejected",
+    )
+
+    self_copy = work / "self-copy-vitte"
+    self_copy.write_bytes(
+        b"\xca\xfe\xba\xbe"
+        b"run_cli_main_with_ice_boundary\0"
+        b"COMPILER_ENTRY_POINT=src/vitte/compiler/main.vit\0"
+        b"_command_build\0_copy_file\0"
+    )
+    self_copy.chmod(self_copy.stat().st_mode | stat.S_IXUSR)
+    self_copy_errors, _commands = bootstrap_real.validate_vitte_binary(self_copy, "stage0 source")
+    assert_true(
+        any("_command_build" in error for error in self_copy_errors)
+        and any("_copy_file" in error for error in self_copy_errors),
+        "self-copy stage0 sources should be rejected",
+    )
+
+    original_is_under = bootstrap_real.is_under
+    try:
+        bootstrap_real.is_under = lambda path, parent: str(parent) == "/private/tmp"
+        tmp_errors, _commands = bootstrap_real.validate_stage0_install_source(work / "tmp-vitte")
+        assert_true(
+            any("/private/tmp" in error for error in tmp_errors),
+            "/private/tmp stage0 sources should be rejected",
+        )
+    finally:
+        bootstrap_real.is_under = original_is_under
+
+
 def test_stage0_must_be_single_trusted_path() -> None:
     work = ROOT / "target/bootstrap-real/test-work"
     work.mkdir(parents=True, exist_ok=True)
@@ -128,6 +167,7 @@ def main() -> int:
         shutil.rmtree(work)
     test_output_path_must_stay_under_artifact_root()
     test_forbidden_bridge_marker_is_rejected()
+    test_script_self_copy_bridge_and_private_tmp_are_rejected()
     test_stage0_must_be_single_trusted_path()
     test_canonical_stage0_path_is_the_only_path_gate()
     test_report_writer_records_failure()
