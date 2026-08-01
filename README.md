@@ -6,7 +6,7 @@
 <img src="https://img.shields.io/badge/compiler-46%25%20complete-2563EB">
 <img src="https://img.shields.io/badge/status-experimental-F97316">
 <img src="https://img.shields.io/badge/license-MIT-16A34A">
-<img src="https://img.shields.io/badge/bootstrap-C17-0F766E">
+<img src="https://img.shields.io/badge/bootstrap-signed_stage0-0F766E">
 </p>
 </div>
 
@@ -17,7 +17,7 @@
 ![license](https://img.shields.io/badge/license-MIT-16A34A)
 ![language](https://img.shields.io/badge/language-Vitte-9333EA)
 ![compiler](https://img.shields.io/badge/compiler-self--hosting%20goal-DC2626)
-![bootstrap](https://img.shields.io/badge/bootstrap-C17-0F766E)
+![bootstrap](https://img.shields.io/badge/bootstrap-signed_stage0-0F766E)
 ![platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-2563EB)
 ![frontend](https://img.shields.io/badge/frontend-Lexer%20%7C%20Parser-2563EB)
 ![pipeline](https://img.shields.io/badge/pipeline-AST→HIR→MIR→IR-1D4ED8)
@@ -233,7 +233,7 @@ proc main() -> int {
 ## Project statistics
 
 - Language: Vitte  
-- Bootstrap: C17  
+- Bootstrap: signed native stage0 per OS/architecture, then byte-parity self-hosting stages
 - Primary target: native executables  
 - Intermediate representations: AST, HIR, MIR, IR  
 - Supported architectures: x86_64, AArch64, RISC-V64, i386  

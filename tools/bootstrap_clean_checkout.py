@@ -14,7 +14,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "target" / "bootstrap" / "clean-checkout" / "report.json"
 REMOVED_ARTIFACT_DIRS = ("bin", "target", "build")
-BRIDGE_MARKER = b"vitte-bootstrap-payload-bridge"
+FORBIDDEN_MARKERS = (
+    b"vitte-bootstrap-payload",
+    b"payload_source",
+    b"write_payload_file",
+    b"_command_build",
+    b"_copy_file",
+)
 
 
 def tracked_paths() -> list[Path]:
@@ -89,7 +95,7 @@ def artifact_state(checkout: Path, relative_path: str) -> dict[str, object]:
             "path": relative_path,
             "available": False,
             "executable": False,
-            "embedded_bridge": False,
+            "forbidden_markers": [],
             "sha256": "",
         }
     data = path.read_bytes()
@@ -97,7 +103,7 @@ def artifact_state(checkout: Path, relative_path: str) -> dict[str, object]:
         "path": relative_path,
         "available": True,
         "executable": os.access(path, os.X_OK),
-        "embedded_bridge": BRIDGE_MARKER in data,
+        "forbidden_markers": [marker.decode() for marker in FORBIDDEN_MARKERS if marker in data],
         "sha256": hashlib.sha256(data).hexdigest(),
     }
 
@@ -134,16 +140,12 @@ def main() -> int:
 
         commands = [
             (
-                "bootstrap_seed",
-                ["make", "--no-print-directory", "bootstrap-seed"],
+                "verify_signed_stage0_and_build_chain",
+                ["python3", "tools/bootstrap_real/bootstrap_chain.py", "--offline"],
             ),
             (
-                "verify_seed_artifact",
-                ["python3", "tools/check_bootstrap_seed_root.py", "--artifacts"],
-            ),
-            (
-                "verify_bootstrap_native_snapshots",
-                ["make", "--no-print-directory", "bootstrap-native-snapshots"],
+                "verify_canonical_compiler",
+                ["bin/vitte", "check", "src/vitte/compiler/main.vit"],
             ),
         ]
         steps: list[dict[str, object]] = []
@@ -155,13 +157,25 @@ def main() -> int:
                 break
         payload["steps"] = steps
 
-        artifacts = [artifact_state(checkout, "bin/vitte")]
+        artifacts = [
+            artifact_state(checkout, "target/stage1/vitte"),
+            artifact_state(checkout, "target/stage2/vitte"),
+            artifact_state(checkout, "target/release/vitte"),
+            artifact_state(checkout, "bin/vitte"),
+        ]
         payload["artifacts"] = artifacts
-        artifacts_ok = all(bool(item["available"] and item["executable"]) for item in artifacts)
+        artifacts_ok = all(
+            bool(item["available"] and item["executable"] and not item["forbidden_markers"])
+            for item in artifacts
+        )
+        hashes = {str(item["path"]): str(item["sha256"]) for item in artifacts}
+        payload["stage1_stage2_parity"] = hashes.get("target/stage1/vitte") == hashes.get("target/stage2/vitte")
+        payload["release_install_parity"] = hashes.get("target/release/vitte") == hashes.get("bin/vitte")
         sidecars = list(checkout.glob("bin/*.bootstrap-bridge"))
         payload["bridge_sidecar_count"] = len(sidecars)
         steps_ok = len(steps) == len(commands) and all(bool(step["ok"]) for step in steps)
-        payload["status"] = "ok" if steps_ok and artifacts_ok and not sidecars else "fail"
+        parity_ok = bool(payload["stage1_stage2_parity"] and payload["release_install_parity"])
+        payload["status"] = "ok" if steps_ok and artifacts_ok and parity_ok and not sidecars else "fail"
         write_report(payload)
 
         if payload["status"] == "ok":

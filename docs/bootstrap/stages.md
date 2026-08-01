@@ -1,8 +1,9 @@
 # Compiler Generations
 
-Bootstrap configuration contains one seed trust root. Self-hosting validation
-creates two temporary compiler generations from the canonical source entry and
-compares their artifacts.
+Bootstrap configuration contains one signed native stage0 selected by the host
+OS/architecture tuple. Self-hosting validation constructs stage1, stage2 and the
+release compiler from the canonical source entry, requires stage1/stage2 byte
+parity, and repeats the chain to prove reproducible hashes.
 
 ```text
 vittec0.seed -> generation 1 -> generation 2
