@@ -84,6 +84,19 @@ def test_required_markers_are_checked_individually() -> None:
     )
 
 
+def test_stage0_smoke_commands_are_exact() -> None:
+    stage0 = ROOT / "target/bootstrap-real/stage0/vitte"
+    commands = bootstrap_real.vitte_smoke_commands(stage0)
+    assert_true(
+        commands == [
+            [str(stage0), "--version"],
+            [str(stage0), "--help"],
+            [str(stage0), "check", "src/vitte/compiler/main.vit"],
+        ],
+        "stage0 smoke commands should be version, help, then compiler check",
+    )
+
+
 def test_script_self_copy_bridge_and_private_tmp_are_rejected() -> None:
     work = ROOT / "target/bootstrap-real/test-work"
     work.mkdir(parents=True, exist_ok=True)
@@ -283,6 +296,7 @@ def main() -> int:
     test_forbidden_bridge_marker_is_rejected()
     test_forbidden_markers_are_checked_individually()
     test_required_markers_are_checked_individually()
+    test_stage0_smoke_commands_are_exact()
     test_script_self_copy_bridge_and_private_tmp_are_rejected()
     test_stage0_must_be_single_trusted_path()
     test_canonical_stage0_path_is_the_only_path_gate()

@@ -26,6 +26,14 @@ Verify an already-built candidate:
 python3 tools/bootstrap_real/bootstrap_real.py --candidate target/bootstrap-real/vitte
 ```
 
+Smoke-test the installed stage0 directly:
+
+```sh
+target/bootstrap-real/stage0/vitte --version
+target/bootstrap-real/stage0/vitte --help
+target/bootstrap-real/stage0/vitte check src/vitte/compiler/main.vit
+```
+
 Run the local tests:
 
 ```sh
