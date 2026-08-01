@@ -161,6 +161,27 @@ def test_install_stage0_copies_only_after_validation_path() -> None:
         bootstrap_real.TRUSTED_STAGE0 = original_trusted
 
 
+def test_invalid_install_does_not_replace_existing_stage0() -> None:
+    work = ROOT / "target/bootstrap-real/test-work"
+    trusted = work / "existing/vitte"
+    invalid = work / "invalid-source"
+    trusted.parent.mkdir(parents=True, exist_ok=True)
+    trusted.write_bytes(b"existing-stage0")
+    trusted.chmod(trusted.stat().st_mode | stat.S_IXUSR)
+    invalid.write_bytes(b"#!/bin/sh\nexit 0\n")
+    invalid.chmod(invalid.stat().st_mode | stat.S_IXUSR)
+    original_trusted = bootstrap_real.TRUSTED_STAGE0
+    try:
+        bootstrap_real.TRUSTED_STAGE0 = trusted
+        errors, _commands = bootstrap_real.validate_stage0_install_source(invalid)
+        if not errors:
+            bootstrap_real.install_stage0(invalid)
+        assert_true(errors, "invalid stage0 source should fail validation")
+        assert_true(trusted.read_bytes() == b"existing-stage0", "invalid install should not replace existing stage0")
+    finally:
+        bootstrap_real.TRUSTED_STAGE0 = original_trusted
+
+
 def main() -> int:
     work = ROOT / "target/bootstrap-real/test-work"
     if work.exists():
@@ -172,6 +193,7 @@ def main() -> int:
     test_canonical_stage0_path_is_the_only_path_gate()
     test_report_writer_records_failure()
     test_install_stage0_copies_only_after_validation_path()
+    test_invalid_install_does_not_replace_existing_stage0()
     if work.exists():
         shutil.rmtree(work)
     print("[bootstrap-real-test] ok")

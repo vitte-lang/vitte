@@ -41,8 +41,10 @@ The gate accepts only a native candidate aligned with
 
 The only accepted stage0 path is `target/bootstrap-real/stage0/vitte`.
 `--install-stage0` validates a source binary as a real native Vitte compiler
-before copying it there. The installed stage0 must itself pass the same native
-Vitte checks before it is allowed to compile `src/vitte/compiler/main.vit`.
+before copying it there. The copy is staged under `target/bootstrap-real/stage0/`
+and atomically replaces the trusted stage0 only after validation. The installed
+stage0 must itself pass the same native Vitte checks before it is allowed to
+compile `src/vitte/compiler/main.vit`.
 
 The gate rejects binaries that still contain self-copy or bootstrap bridge
 markers such as `BOOTSTRAP_FULL_COMPILER`,

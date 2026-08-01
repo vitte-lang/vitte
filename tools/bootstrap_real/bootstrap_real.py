@@ -157,8 +157,10 @@ def build_from_stage0(stage0: Path, out: Path) -> list[dict[str, object]]:
 
 def install_stage0(source: Path) -> None:
     TRUSTED_STAGE0.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source, TRUSTED_STAGE0)
-    TRUSTED_STAGE0.chmod(TRUSTED_STAGE0.stat().st_mode | 0o755)
+    tmp = TRUSTED_STAGE0.with_name(TRUSTED_STAGE0.name + ".installing")
+    shutil.copy2(source, tmp)
+    tmp.chmod(tmp.stat().st_mode | 0o755)
+    tmp.replace(TRUSTED_STAGE0)
 
 
 def validate_vitte_binary(binary: Path, label: str) -> tuple[list[str], list[dict[str, object]]]:
