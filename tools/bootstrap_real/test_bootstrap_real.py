@@ -145,6 +145,22 @@ def test_stage2_build_command_is_exact() -> None:
     )
 
 
+def test_release_build_command_is_exact() -> None:
+    stage2 = ROOT / "target/stage2/vitte"
+    out = ROOT / "target/release/vitte"
+    command = bootstrap_real.release_build_command(stage2, out)
+    assert_true(
+        command == [
+            str(stage2),
+            "build",
+            "src/vitte/compiler/main.vit",
+            "-o",
+            str(out),
+        ],
+        "release build should compile main.vit into target/release/vitte",
+    )
+
+
 def test_stage1_output_path_is_canonical() -> None:
     errors = bootstrap_real.validate_stage_output_path(
         ROOT / "target/not-stage1/vitte",
@@ -168,6 +184,19 @@ def test_stage2_output_path_is_canonical() -> None:
     assert_true(
         bootstrap_real.validate_stage_output_path(bootstrap_real.STAGE2_OUT, "stage2", bootstrap_real.STAGE2_OUT) == [],
         "canonical stage2 output should pass",
+    )
+
+
+def test_release_output_path_is_canonical() -> None:
+    errors = bootstrap_real.validate_stage_output_path(
+        ROOT / "target/not-release/vitte",
+        "release",
+        bootstrap_real.RELEASE_OUT,
+    )
+    assert_true(any("target/release/vitte" in error for error in errors), "release output must be canonical")
+    assert_true(
+        bootstrap_real.validate_stage_output_path(bootstrap_real.RELEASE_OUT, "release", bootstrap_real.RELEASE_OUT) == [],
+        "canonical release output should pass",
     )
 
 
@@ -205,6 +234,24 @@ def test_stage2_build_quarantines_stale_output_before_dependency_check() -> None
     assert_true(not stage2.exists(), "stage2 build should remove stale stage2 before dependency checks")
     assert_true(not sidecar.exists(), "stage2 build should remove stale stage2 bridge sidecar")
     assert_true(len(moved) == 2, "stage2 stale output and sidecar should be quarantined")
+
+
+def test_release_build_quarantines_stale_output_before_dependency_check() -> None:
+    work = ROOT / "target/bootstrap-real/test-work"
+    release = work / "release/vitte"
+    sidecar = Path(str(release) + ".bootstrap-bridge")
+    release.parent.mkdir(parents=True, exist_ok=True)
+    release.write_bytes(b"stale-release")
+    sidecar.write_bytes(b"stale-release-bridge")
+    original_quarantine = bootstrap_real.QUARANTINE_DIR
+    try:
+        bootstrap_real.QUARANTINE_DIR = work / "quarantine"
+        moved = bootstrap_real.quarantine_bootstrap_output(release)
+    finally:
+        bootstrap_real.QUARANTINE_DIR = original_quarantine
+    assert_true(not release.exists(), "release build should remove stale release before dependency checks")
+    assert_true(not sidecar.exists(), "release build should remove stale release bridge sidecar")
+    assert_true(len(moved) == 2, "release stale output and sidecar should be quarantined")
 
 
 def test_stage0_build_outputs_are_canonical() -> None:
@@ -445,10 +492,13 @@ def main() -> int:
     test_bootstrap_build_command_is_exact()
     test_stage1_build_command_is_exact()
     test_stage2_build_command_is_exact()
+    test_release_build_command_is_exact()
     test_stage1_output_path_is_canonical()
     test_stage2_output_path_is_canonical()
+    test_release_output_path_is_canonical()
     test_stage1_build_quarantines_stale_output_before_dependency_check()
     test_stage2_build_quarantines_stale_output_before_dependency_check()
+    test_release_build_quarantines_stale_output_before_dependency_check()
     test_stage0_build_outputs_are_canonical()
     test_stage0_build_clears_stale_output_and_bridge_sidecar()
     test_script_self_copy_bridge_and_private_tmp_are_rejected()

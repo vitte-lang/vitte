@@ -78,6 +78,24 @@ Expected Stage2 output:
 target/stage2/vitte
 ```
 
+Build Release from Stage2:
+
+```sh
+python3 tools/bootstrap_real/bootstrap_real.py --release
+```
+
+That command runs:
+
+```sh
+target/stage2/vitte build src/vitte/compiler/main.vit -o target/release/vitte
+```
+
+Expected Release output:
+
+```text
+target/release/vitte
+```
+
 Smoke-test the installed stage0 directly:
 
 ```sh
