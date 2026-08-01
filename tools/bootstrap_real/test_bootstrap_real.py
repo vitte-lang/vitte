@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 MODULE_PATH = ROOT / "tools/bootstrap_real/bootstrap_real.py"
 FINAL_GATE = ROOT / "tools/bootstrap_real/final_make_gate.py"
 FREEZE_GATE = ROOT / "tools/bootstrap_real/freeze_010_gate.py"
+STAGE1_GATE = ROOT / "tools/stage1_compiler_gate.sh"
 
 spec = importlib.util.spec_from_file_location("bootstrap_real", MODULE_PATH)
 assert spec is not None and spec.loader is not None
@@ -28,6 +29,18 @@ def test_output_path_must_stay_under_artifact_root() -> None:
     errors = bootstrap_real.validate_output_path(outside)
     assert_true(errors, "outside output path should be rejected")
     assert_true("target/bootstrap-real" in errors[0], "error should name the artifact root")
+
+
+def test_stage1_gate_uses_bootstrap_compiler_as_stage0() -> None:
+    text = STAGE1_GATE.read_text(encoding="utf-8")
+    assert_true(
+        'STAGE0="${VITTE_STAGE0:-$ROOT_DIR/target/bootstrap-real/vitte}"' in text,
+        "stage1 gate should default to the verified bootstrap compiler",
+    )
+    assert_true(
+        'STAGE0="${VITTE_STAGE0:-$ROOT_DIR/target/release/vitte}"' not in text,
+        "stage1 gate must not use the release output as its trust root",
+    )
 
 
 def test_forbidden_bridge_marker_is_rejected() -> None:
@@ -519,6 +532,7 @@ def main() -> int:
     if work.exists():
         shutil.rmtree(work)
     test_output_path_must_stay_under_artifact_root()
+    test_stage1_gate_uses_bootstrap_compiler_as_stage0()
     test_forbidden_bridge_marker_is_rejected()
     test_forbidden_markers_are_checked_individually()
     test_required_markers_are_checked_individually()
