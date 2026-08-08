@@ -79,7 +79,7 @@ vitte_ir_emit_return(&builder, zero, NULL);
 `vitte_ir_lower_hir` lowers the bootstrap HIR:
 
 - module to module
-- function to function plus entry block
+- function declaration to function plus entry block
 - block statement sequence
 - return
 - let as local plus optional store
@@ -89,7 +89,9 @@ vitte_ir_emit_return(&builder, zero, NULL);
 - binary expression
 - call expression with bounded args
 
-Unsupported nodes return an error status instead of creating partial silent IR.
+Top-level const declarations are not lowered yet because the bootstrap IR does
+not have a global-constant model. Unsupported declarations or nodes return an
+error status instead of creating partial silent IR.
 
 ## Validation
 

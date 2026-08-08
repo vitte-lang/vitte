@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "../codegen/codegen.h"
+#include "../hir/hir.h"
 #include "../parser/parser.h"
 #include "../sema/sema.h"
 
@@ -620,6 +621,37 @@ static vitte_status_t vitte_driver_run_sema(
     return status;
 }
 
+static vitte_status_t vitte_driver_run_backend(
+    vitte_driver_t *driver,
+    const vitte_ast_t *ast
+) {
+    vitte_hir_t hir;
+    vitte_status_t status;
+
+    if (driver == NULL || ast == NULL) {
+        return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+    }
+
+    status = vitte_hir_init_owned(&hir, NULL);
+    if (status != VITTE_STATUS_OK) {
+        vitte_error_copy(&driver->last_error, vitte_hir_last_error(&hir));
+        return status;
+    }
+
+    status = vitte_hir_lower_ast(&hir, ast);
+    if (status == VITTE_STATUS_OK) {
+        status = vitte_hir_validate(&hir);
+    }
+    if (status != VITTE_STATUS_OK) {
+        vitte_error_copy(&driver->last_error, vitte_hir_last_error(&hir));
+    } else {
+        vitte_error_reset(&driver->last_error);
+    }
+
+    vitte_hir_destroy(&hir);
+    return status;
+}
+
 static bool vitte_driver_append_text(char *buffer, size_t capacity, const char *text) {
     size_t used;
     size_t length;
@@ -796,6 +828,19 @@ static vitte_status_t vitte_driver_run_impl(
     vitte_driver_pipeline_mark(&driver->pipeline, VITTE_DRIVER_STAGE_CONSTANTS, VITTE_STATUS_OK);
     vitte_driver_pipeline_mark(&driver->pipeline, VITTE_DRIVER_STAGE_SEMANTIC, VITTE_STATUS_OK);
 
+    if (kind != VITTE_DRIVER_EMIT_AST) {
+        status = vitte_driver_run_backend(driver, &ast);
+        if (status != VITTE_STATUS_OK) {
+            vitte_driver_pipeline_mark(&driver->pipeline, VITTE_DRIVER_STAGE_BACKEND, status);
+            vitte_driver_add_diag(driver, VITTE_DIAGNOSTIC_FATAL, "VITTE_DRIVER_E_BACKEND", "backend lowering failed", vitte_driver_last_error(driver)->details);
+            vitte_driver_result_set_error(result, status, VITTE_DRIVER_STAGE_BACKEND, "VITTE_DRIVER_E_BACKEND", "backend lowering failed", NULL);
+            vitte_ast_destroy(&ast);
+            vitte_driver_update_counts(driver, result);
+            return status;
+        }
+        vitte_driver_pipeline_mark(&driver->pipeline, VITTE_DRIVER_STAGE_BACKEND, VITTE_STATUS_OK);
+    }
+
     if (kind == VITTE_DRIVER_EMIT_AST) {
         if (result != NULL) {
             result->output.kind = VITTE_DRIVER_EMIT_AST;
@@ -803,8 +848,6 @@ static vitte_status_t vitte_driver_run_impl(
         }
     } else if (kind == VITTE_DRIVER_EMIT_C || kind == VITTE_DRIVER_EMIT_BINARY || kind == VITTE_DRIVER_EMIT_OBJECT) {
         const char *c_output_path = output_path;
-
-        vitte_driver_pipeline_mark(&driver->pipeline, VITTE_DRIVER_STAGE_BACKEND, VITTE_STATUS_OK);
         if (kind == VITTE_DRIVER_EMIT_BINARY || kind == VITTE_DRIVER_EMIT_OBJECT) {
             status = vitte_driver_make_c_path(output_path, result);
             if (status != VITTE_STATUS_OK) {

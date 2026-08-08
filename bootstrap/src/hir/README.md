@@ -20,6 +20,7 @@ The bootstrap HIR currently models:
 
 - module
 - function
+- const declaration
 - block
 - return statement
 - let statement
@@ -43,7 +44,9 @@ AST source pointers are optional backreferences. HIR does not own AST nodes.
 
 `vitte_hir_builder_t` provides constructors for all node kinds and helpers for:
 
+- adding declarations to a module
 - adding functions to a module
+- adding const declarations to a module
 - adding statements to a block
 - adding arguments to a call
 
@@ -56,6 +59,7 @@ overflow. The owning `vitte_hir_t` records the last error.
 
 - AST module to HIR module
 - proc declaration to function
+- const declaration to const declaration
 - block statement to block
 - `give` statement to return
 - let statement to let
@@ -67,9 +71,6 @@ overflow. The owning `vitte_hir_t` records the last error.
 - type name
 - error node
 
-Const declarations are represented as HIR error nodes until the global-decl
-model is expanded.
-
 ## Validation
 
 `vitte_hir_validate` checks:
@@ -78,6 +79,7 @@ model is expanded.
 - root module exists
 - valid node kind and non-zero id
 - coherent list counts
+- const declaration name/value
 - function name/body
 - block statement lists
 - binary operands

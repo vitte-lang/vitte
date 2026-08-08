@@ -156,6 +156,8 @@ const char *vitte_hir_kind_name(vitte_hir_kind_t kind) {
             return "module";
         case VITTE_HIR_FUNCTION:
             return "function";
+        case VITTE_HIR_CONST_DECL:
+            return "const";
         case VITTE_HIR_BLOCK:
             return "block";
         case VITTE_HIR_RETURN_STMT:
@@ -191,6 +193,8 @@ const char *vitte_hir_node_label(const vitte_hir_node_t *node) {
             return node->as.module.name != NULL ? node->as.module.name : "<module>";
         case VITTE_HIR_FUNCTION:
             return node->as.function.name != NULL ? node->as.function.name : "<function>";
+        case VITTE_HIR_CONST_DECL:
+            return node->as.const_decl.name != NULL ? node->as.const_decl.name : "<const>";
         case VITTE_HIR_LET_STMT:
             return node->as.let_stmt.name != NULL ? node->as.let_stmt.name : "<let>";
         case VITTE_HIR_STRING_LITERAL:
@@ -213,7 +217,18 @@ size_t vitte_hir_node_count(const vitte_hir_t *hir) {
 }
 
 size_t vitte_hir_function_count(const vitte_hir_t *hir) {
-    return hir != NULL && hir->root != NULL ? hir->root->as.module.functions.count : 0u;
+    const vitte_hir_node_t *decl;
+    size_t count = 0u;
+
+    if (hir == NULL || hir->root == NULL) {
+        return 0u;
+    }
+    for (decl = hir->root->as.module.declarations.first; decl != NULL; decl = decl->next) {
+        if (decl->kind == VITTE_HIR_FUNCTION) {
+            count++;
+        }
+    }
+    return count;
 }
 
 void vitte_hir_builder_init(vitte_hir_builder_t *builder, vitte_hir_t *hir) {
@@ -234,7 +249,7 @@ vitte_hir_module_t *vitte_hir_make_module(vitte_hir_builder_t *builder, const ch
         return NULL;
     }
     node->as.module.name = name;
-    vitte_hir_list_init(&node->as.module.functions);
+    vitte_hir_list_init(&node->as.module.declarations);
     return node;
 }
 
@@ -251,6 +266,22 @@ vitte_hir_function_t *vitte_hir_make_function(vitte_hir_builder_t *builder, cons
     node->as.function.name = name;
     node->as.function.return_type = return_type;
     node->as.function.body = body;
+    return node;
+}
+
+vitte_hir_decl_t *vitte_hir_make_const(vitte_hir_builder_t *builder, const char *name, vitte_hir_type_t *type, vitte_hir_expr_t *value, const vitte_ast_node_t *source) {
+    vitte_hir_node_t *node;
+
+    if (builder == NULL || builder->hir == NULL || name == NULL || value == NULL) {
+        return NULL;
+    }
+    node = vitte_hir_alloc_node(builder->hir, VITTE_HIR_CONST_DECL, source);
+    if (node == NULL) {
+        return NULL;
+    }
+    node->as.const_decl.name = name;
+    node->as.const_decl.declared_type = type;
+    node->as.const_decl.value = value;
     return node;
 }
 
@@ -355,11 +386,28 @@ vitte_hir_node_t *vitte_hir_make_error(vitte_hir_builder_t *builder, const char 
     return node;
 }
 
-bool vitte_hir_module_add_function(vitte_hir_module_t *module, vitte_hir_function_t *function) {
-    if (module == NULL || module->kind != VITTE_HIR_MODULE || function == NULL || function->kind != VITTE_HIR_FUNCTION) {
+bool vitte_hir_module_add_decl(vitte_hir_module_t *module, vitte_hir_decl_t *decl) {
+    if (module == NULL || module->kind != VITTE_HIR_MODULE || decl == NULL) {
         return false;
     }
-    return vitte_hir_list_append(&module->as.module.functions, function);
+    if (decl->kind != VITTE_HIR_FUNCTION && decl->kind != VITTE_HIR_CONST_DECL) {
+        return false;
+    }
+    return vitte_hir_list_append(&module->as.module.declarations, decl);
+}
+
+bool vitte_hir_module_add_function(vitte_hir_module_t *module, vitte_hir_function_t *function) {
+    if (function == NULL || function->kind != VITTE_HIR_FUNCTION) {
+        return false;
+    }
+    return vitte_hir_module_add_decl(module, function);
+}
+
+bool vitte_hir_module_add_const(vitte_hir_module_t *module, vitte_hir_decl_t *decl) {
+    if (decl == NULL || decl->kind != VITTE_HIR_CONST_DECL) {
+        return false;
+    }
+    return vitte_hir_module_add_decl(module, decl);
 }
 
 bool vitte_hir_block_add_stmt(vitte_hir_block_t *block, vitte_hir_stmt_t *stmt) {
@@ -563,6 +611,32 @@ static vitte_hir_function_t *vitte_hir_lower_function(vitte_hir_lowering_t *lowe
     return vitte_hir_make_function(&builder, decl->as.proc_decl.name, return_type, body, decl);
 }
 
+static vitte_hir_decl_t *vitte_hir_lower_const(vitte_hir_lowering_t *lowering, const vitte_ast_node_t *decl, size_t depth) {
+    vitte_hir_builder_t builder;
+    vitte_hir_type_t *declared_type = NULL;
+    vitte_hir_expr_t *value;
+
+    if (!vitte_hir_depth_ok(lowering, depth)) {
+        return NULL;
+    }
+    if (decl == NULL || decl->kind != VITTE_AST_NODE_CONST_DECL) {
+        vitte_hir_lowering_set_error(lowering, VITTE_STATUS_ERROR_UNSUPPORTED, "VITTE_HIR_E_DECL", "HIR lowering expects const declarations", decl != NULL ? vitte_ast_node_kind_name(decl->kind) : NULL);
+        return NULL;
+    }
+    if (decl->as.const_decl.type != NULL) {
+        declared_type = vitte_hir_lower_type(lowering, decl->as.const_decl.type, depth + 1u);
+        if (declared_type == NULL) {
+            return NULL;
+        }
+    }
+    value = vitte_hir_lower_expr(lowering, decl->as.const_decl.value, depth + 1u);
+    if (value == NULL) {
+        return NULL;
+    }
+    vitte_hir_builder_init(&builder, lowering->hir);
+    return vitte_hir_make_const(&builder, decl->as.const_decl.name, declared_type, value, decl);
+}
+
 vitte_status_t vitte_hir_lower_ast_with_options(
     vitte_hir_lowering_t *lowering,
     const vitte_ast_t *ast
@@ -595,10 +669,12 @@ vitte_status_t vitte_hir_lower_ast_with_options(
                 return lowering->last_error.status;
             }
         } else if (decl->kind == VITTE_AST_NODE_CONST_DECL) {
-            vitte_hir_node_t *error_node = vitte_hir_make_error(&builder, "const declarations are not lowered to HIR yet", decl);
-            if (error_node == NULL) {
-                vitte_hir_lowering_set_error(lowering, VITTE_STATUS_ERROR_OUT_OF_MEMORY, "VITTE_HIR_E_ALLOC", "failed to allocate HIR error node", NULL);
-                return VITTE_STATUS_ERROR_OUT_OF_MEMORY;
+            vitte_hir_decl_t *const_decl = vitte_hir_lower_const(lowering, decl, 1u);
+            if (const_decl == NULL || !vitte_hir_module_add_const(module, const_decl)) {
+                if (vitte_error_is_ok(&lowering->last_error)) {
+                    vitte_hir_lowering_set_error(lowering, VITTE_STATUS_ERROR_INTERNAL, "VITTE_HIR_E_MODULE", "failed to append lowered const declaration", NULL);
+                }
+                return lowering->last_error.status;
             }
         } else {
             vitte_hir_lowering_set_error(lowering, VITTE_STATUS_ERROR_UNSUPPORTED, "VITTE_HIR_E_DECL", "unsupported AST declaration for HIR lowering", vitte_ast_node_kind_name(decl->kind));
@@ -677,7 +753,7 @@ static vitte_status_t vitte_hir_validate_node(vitte_hir_t *hir, const vitte_hir_
                 vitte_hir_set_error(hir, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_HIR_E_MODULE", "HIR module has no name", NULL);
                 return VITTE_STATUS_ERROR_INVALID_STATE;
             }
-            return vitte_hir_validate_list(hir, &node->as.module.functions, depth, max_depth, visited);
+            return vitte_hir_validate_list(hir, &node->as.module.declarations, depth, max_depth, visited);
         case VITTE_HIR_FUNCTION:
             if (node->as.function.name == NULL || node->as.function.body == NULL) {
                 vitte_hir_set_error(hir, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_HIR_E_FUNCTION", "HIR function requires name and body", NULL);
@@ -688,6 +764,18 @@ static vitte_status_t vitte_hir_validate_node(vitte_hir_t *hir, const vitte_hir_
                 return status;
             }
             return vitte_hir_validate_node(hir, node->as.function.body, depth + 1u, max_depth, visited);
+        case VITTE_HIR_CONST_DECL:
+            if (node->as.const_decl.name == NULL || node->as.const_decl.value == NULL) {
+                vitte_hir_set_error(hir, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_HIR_E_CONST", "HIR const requires name and value", NULL);
+                return VITTE_STATUS_ERROR_INVALID_STATE;
+            }
+            if (node->as.const_decl.declared_type != NULL) {
+                status = vitte_hir_validate_node(hir, node->as.const_decl.declared_type, depth + 1u, max_depth, visited);
+                if (status != VITTE_STATUS_OK) {
+                    return status;
+                }
+            }
+            return vitte_hir_validate_node(hir, node->as.const_decl.value, depth + 1u, max_depth, visited);
         case VITTE_HIR_BLOCK:
             return vitte_hir_validate_list(hir, &node->as.block.statements, depth, max_depth, visited);
         case VITTE_HIR_RETURN_STMT:
@@ -800,13 +888,17 @@ static size_t vitte_hir_visit_node(vitte_hir_node_t *node, vitte_hir_visit_fn ca
 
     switch (node->kind) {
         case VITTE_HIR_MODULE:
-            for (child = node->as.module.functions.first; child != NULL; child = child->next) {
+            for (child = node->as.module.declarations.first; child != NULL; child = child->next) {
                 count += vitte_hir_visit_node(child, callback, user, depth + 1u, max_depth);
             }
             break;
         case VITTE_HIR_FUNCTION:
             count += vitte_hir_visit_node(node->as.function.return_type, callback, user, depth + 1u, max_depth);
             count += vitte_hir_visit_node(node->as.function.body, callback, user, depth + 1u, max_depth);
+            break;
+        case VITTE_HIR_CONST_DECL:
+            count += vitte_hir_visit_node(node->as.const_decl.declared_type, callback, user, depth + 1u, max_depth);
+            count += vitte_hir_visit_node(node->as.const_decl.value, callback, user, depth + 1u, max_depth);
             break;
         case VITTE_HIR_BLOCK:
             for (child = node->as.block.statements.first; child != NULL; child = child->next) {
@@ -866,13 +958,17 @@ static void vitte_hir_dump_node(const vitte_hir_node_t *node, FILE *stream, size
 
     switch (node->kind) {
         case VITTE_HIR_MODULE:
-            for (child = node->as.module.functions.first; child != NULL; child = child->next) {
+            for (child = node->as.module.declarations.first; child != NULL; child = child->next) {
                 vitte_hir_dump_node(child, stream, depth + 1u, max_depth);
             }
             break;
         case VITTE_HIR_FUNCTION:
             vitte_hir_dump_node(node->as.function.return_type, stream, depth + 1u, max_depth);
             vitte_hir_dump_node(node->as.function.body, stream, depth + 1u, max_depth);
+            break;
+        case VITTE_HIR_CONST_DECL:
+            vitte_hir_dump_node(node->as.const_decl.declared_type, stream, depth + 1u, max_depth);
+            vitte_hir_dump_node(node->as.const_decl.value, stream, depth + 1u, max_depth);
             break;
         case VITTE_HIR_BLOCK:
             for (child = node->as.block.statements.first; child != NULL; child = child->next) {

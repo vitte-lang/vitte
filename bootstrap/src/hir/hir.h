@@ -22,6 +22,7 @@ typedef enum vitte_hir_kind {
     VITTE_HIR_ERROR = 0,
     VITTE_HIR_MODULE,
     VITTE_HIR_FUNCTION,
+    VITTE_HIR_CONST_DECL,
     VITTE_HIR_BLOCK,
     VITTE_HIR_RETURN_STMT,
     VITTE_HIR_LET_STMT,
@@ -37,6 +38,7 @@ typedef enum vitte_hir_kind {
 
 typedef struct vitte_hir_node vitte_hir_node_t;
 typedef vitte_hir_node_t vitte_hir_module_t;
+typedef vitte_hir_node_t vitte_hir_decl_t;
 typedef vitte_hir_node_t vitte_hir_function_t;
 typedef vitte_hir_node_t vitte_hir_block_t;
 typedef vitte_hir_node_t vitte_hir_stmt_t;
@@ -59,7 +61,7 @@ struct vitte_hir_node {
     union {
         struct {
             const char *name;
-            vitte_hir_list_t functions;
+            vitte_hir_list_t declarations;
         } module;
 
         struct {
@@ -67,6 +69,12 @@ struct vitte_hir_node {
             vitte_hir_type_t *return_type;
             vitte_hir_block_t *body;
         } function;
+
+        struct {
+            const char *name;
+            vitte_hir_type_t *declared_type;
+            vitte_hir_expr_t *value;
+        } const_decl;
 
         struct {
             vitte_hir_list_t statements;
@@ -169,6 +177,7 @@ size_t vitte_hir_function_count(const vitte_hir_t *hir);
 void vitte_hir_builder_init(vitte_hir_builder_t *builder, vitte_hir_t *hir);
 vitte_hir_module_t *vitte_hir_make_module(vitte_hir_builder_t *builder, const char *name, const vitte_ast_node_t *source);
 vitte_hir_function_t *vitte_hir_make_function(vitte_hir_builder_t *builder, const char *name, vitte_hir_type_t *return_type, vitte_hir_block_t *body, const vitte_ast_node_t *source);
+vitte_hir_decl_t *vitte_hir_make_const(vitte_hir_builder_t *builder, const char *name, vitte_hir_type_t *type, vitte_hir_expr_t *value, const vitte_ast_node_t *source);
 vitte_hir_block_t *vitte_hir_make_block(vitte_hir_builder_t *builder, const vitte_ast_node_t *source);
 vitte_hir_stmt_t *vitte_hir_make_return(vitte_hir_builder_t *builder, vitte_hir_expr_t *value, const vitte_ast_node_t *source);
 vitte_hir_stmt_t *vitte_hir_make_let(vitte_hir_builder_t *builder, const char *name, vitte_hir_type_t *type, vitte_hir_expr_t *value, const vitte_ast_node_t *source);
@@ -181,7 +190,9 @@ vitte_hir_expr_t *vitte_hir_make_call(vitte_hir_builder_t *builder, vitte_hir_ex
 vitte_hir_type_t *vitte_hir_make_type_name(vitte_hir_builder_t *builder, const char *name, const vitte_ast_node_t *source);
 vitte_hir_node_t *vitte_hir_make_error(vitte_hir_builder_t *builder, const char *message, const vitte_ast_node_t *source);
 
+bool vitte_hir_module_add_decl(vitte_hir_module_t *module, vitte_hir_decl_t *decl);
 bool vitte_hir_module_add_function(vitte_hir_module_t *module, vitte_hir_function_t *function);
+bool vitte_hir_module_add_const(vitte_hir_module_t *module, vitte_hir_decl_t *decl);
 bool vitte_hir_block_add_stmt(vitte_hir_block_t *block, vitte_hir_stmt_t *stmt);
 bool vitte_hir_call_add_arg(vitte_hir_expr_t *call, vitte_hir_expr_t *argument);
 

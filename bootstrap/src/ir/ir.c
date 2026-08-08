@@ -789,7 +789,7 @@ static vitte_status_t vitte_ir_lower_function(vitte_ir_lowering_t *lowering, con
 }
 
 vitte_status_t vitte_ir_lower_hir_with_options(vitte_ir_lowering_t *lowering, const vitte_hir_t *hir) {
-    const vitte_hir_node_t *function;
+    const vitte_hir_node_t *decl;
     vitte_ir_module_t *module;
 
     if (lowering == NULL || !vitte_ir_is_initialized(lowering->ir) || hir == NULL ||
@@ -802,11 +802,22 @@ vitte_status_t vitte_ir_lower_hir_with_options(vitte_ir_lowering_t *lowering, co
         vitte_ir_lowering_set_error(lowering, VITTE_STATUS_ERROR_OUT_OF_MEMORY, "VITTE_IR_E_ALLOC", "failed to allocate IR module", NULL);
         return VITTE_STATUS_ERROR_OUT_OF_MEMORY;
     }
-    for (function = hir->root->as.module.functions.first; function != NULL; function = function->next) {
-        vitte_status_t status = vitte_ir_lower_function(lowering, function);
-        if (status != VITTE_STATUS_OK) {
-            return status;
+    for (decl = hir->root->as.module.declarations.first; decl != NULL; decl = decl->next) {
+        vitte_status_t status;
+
+        if (decl->kind == VITTE_HIR_FUNCTION) {
+            status = vitte_ir_lower_function(lowering, decl);
+            if (status != VITTE_STATUS_OK) {
+                return status;
+            }
+            continue;
         }
+        if (decl->kind == VITTE_HIR_CONST_DECL) {
+            vitte_ir_lowering_set_error(lowering, VITTE_STATUS_ERROR_UNSUPPORTED, "VITTE_IR_E_DECL", "IR lowering does not support HIR const declarations yet", decl->as.const_decl.name);
+            return VITTE_STATUS_ERROR_UNSUPPORTED;
+        }
+        vitte_ir_lowering_set_error(lowering, VITTE_STATUS_ERROR_UNSUPPORTED, "VITTE_IR_E_DECL", "unsupported HIR declaration for IR lowering", vitte_hir_kind_name(decl->kind));
+        return VITTE_STATUS_ERROR_UNSUPPORTED;
     }
     vitte_error_reset(&lowering->last_error);
     vitte_ir_clear_error(lowering->ir);
