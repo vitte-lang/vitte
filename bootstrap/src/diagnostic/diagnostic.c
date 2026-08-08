@@ -132,6 +132,24 @@ const vitte_diagnostic_t *vitte_diagnostic_at(const vitte_diagnostic_bag_t *bag,
     return &bag->storage[index];
 }
 
+size_t vitte_diagnostic_bag_error_count(const vitte_diagnostic_bag_t *bag) {
+    if (bag == NULL) {
+        return 0u;
+    }
+    return bag->counts.error_count + bag->counts.fatal_count;
+}
+
+size_t vitte_diagnostic_bag_total_count(const vitte_diagnostic_bag_t *bag) {
+    if (bag == NULL) {
+        return 0u;
+    }
+    return bag->counts.note_count +
+        bag->counts.help_count +
+        bag->counts.warning_count +
+        bag->counts.error_count +
+        bag->counts.fatal_count;
+}
+
 static void vitte_diagnostic_count(vitte_diagnostic_bag_t *bag, vitte_diagnostic_severity_t severity) {
     switch (severity) {
         case VITTE_DIAGNOSTIC_NOTE:
@@ -216,7 +234,14 @@ vitte_status_t vitte_diagnostic_add(
 }
 
 bool vitte_diagnostic_has_errors(const vitte_diagnostic_bag_t *bag) {
-    return bag != NULL && (bag->counts.error_count > 0u || bag->counts.fatal_count > 0u);
+    return vitte_diagnostic_bag_error_count(bag) > 0u;
+}
+
+vitte_status_t vitte_diagnostic_status(const vitte_diagnostic_bag_t *bag) {
+    if (bag == NULL) {
+        return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+    }
+    return vitte_diagnostic_has_errors(bag) ? VITTE_STATUS_ERROR_PARSE : VITTE_STATUS_OK;
 }
 
 static vitte_status_t vitte_diagnostic_append(
@@ -257,8 +282,20 @@ vitte_status_t vitte_diagnostic_format_one(
     size_t capacity,
     size_t *written
 ) {
+    return vitte_diagnostic_format_one_ex(diagnostic, NULL, buffer, capacity, written);
+}
+
+vitte_status_t vitte_diagnostic_format_one_ex(
+    const vitte_diagnostic_t *diagnostic,
+    const vitte_diagnostic_options_t *options,
+    char *buffer,
+    size_t capacity,
+    size_t *written
+) {
     size_t used = 0u;
     vitte_status_t status;
+    bool show_codes = options == NULL || options->show_codes;
+    bool show_details = options == NULL || options->show_details;
 
     if (written != NULL) {
         *written = 0u;
@@ -268,39 +305,101 @@ vitte_status_t vitte_diagnostic_format_one(
     }
     buffer[0] = '\0';
 
-    status = vitte_diagnostic_append(
-        buffer,
-        capacity,
-        &used,
-        "%s[%s]: %s\n",
-        vitte_diagnostic_severity_name(diagnostic->severity),
-        diagnostic->code != NULL ? diagnostic->code : "VITTE_DIAG",
-        diagnostic->message != NULL ? diagnostic->message : ""
-    );
-    if (status != VITTE_STATUS_OK) {
-        return status;
-    }
-    if (diagnostic->has_span) {
+    if (show_codes) {
         status = vitte_diagnostic_append(
             buffer,
             capacity,
             &used,
-            "  --> %s:%u:%u\n",
-            diagnostic->source_name != NULL ? diagnostic->source_name : "<unknown>",
-            diagnostic->start_line,
-            diagnostic->start_column
+            "%s[%s]: %s\n",
+            vitte_diagnostic_severity_name(diagnostic->severity),
+            diagnostic->code != NULL ? diagnostic->code : "VITTE_DIAG",
+            diagnostic->message != NULL ? diagnostic->message : ""
         );
+    } else {
+        status = vitte_diagnostic_append(
+            buffer,
+            capacity,
+            &used,
+            "%s: %s\n",
+            vitte_diagnostic_severity_name(diagnostic->severity),
+            diagnostic->message != NULL ? diagnostic->message : ""
+        );
+    }
+    if (status != VITTE_STATUS_OK) {
+        return status;
+    }
+    if (diagnostic->has_span) {
+        if (diagnostic->end_line != 0u &&
+            (diagnostic->end_line != diagnostic->start_line ||
+                diagnostic->end_column != diagnostic->start_column)) {
+            status = vitte_diagnostic_append(
+                buffer,
+                capacity,
+                &used,
+                "  --> %s:%u:%u-%u:%u\n",
+                diagnostic->source_name != NULL ? diagnostic->source_name : "<unknown>",
+                diagnostic->start_line,
+                diagnostic->start_column,
+                diagnostic->end_line,
+                diagnostic->end_column
+            );
+        } else {
+            status = vitte_diagnostic_append(
+                buffer,
+                capacity,
+                &used,
+                "  --> %s:%u:%u\n",
+                diagnostic->source_name != NULL ? diagnostic->source_name : "<unknown>",
+                diagnostic->start_line,
+                diagnostic->start_column
+            );
+        }
         if (status != VITTE_STATUS_OK) {
             return status;
         }
     }
-    if (diagnostic->details != NULL && diagnostic->details[0] != '\0') {
+    if (show_details && diagnostic->details != NULL && diagnostic->details[0] != '\0') {
         status = vitte_diagnostic_append(buffer, capacity, &used, "  = %s\n", diagnostic->details);
         if (status != VITTE_STATUS_OK) {
             return status;
         }
     }
 
+    if (written != NULL) {
+        *written = used;
+    }
+    return VITTE_STATUS_OK;
+}
+
+vitte_status_t vitte_diagnostic_format_summary(
+    const vitte_diagnostic_bag_t *bag,
+    char *buffer,
+    size_t capacity,
+    size_t *written
+) {
+    size_t used = 0u;
+    vitte_status_t status;
+
+    if (written != NULL) {
+        *written = 0u;
+    }
+    if (bag == NULL || buffer == NULL || capacity == 0u) {
+        return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+    }
+    buffer[0] = '\0';
+    status = vitte_diagnostic_append(
+        buffer,
+        capacity,
+        &used,
+        "%zu diagnostic(s): %zu error(s), %zu warning(s), %zu suppressed\n",
+        vitte_diagnostic_bag_total_count(bag),
+        vitte_diagnostic_bag_error_count(bag),
+        bag->counts.warning_count,
+        bag->counts.suppressed_count
+    );
+    if (status != VITTE_STATUS_OK) {
+        return status;
+    }
     if (written != NULL) {
         *written = used;
     }
@@ -339,7 +438,7 @@ vitte_status_t vitte_diagnostic_write_one(
             return VITTE_STATUS_ERROR_IO;
         }
     }
-    status = vitte_diagnostic_format_one(diagnostic, buffer, sizeof(buffer), NULL);
+    status = vitte_diagnostic_format_one_ex(diagnostic, options, buffer, sizeof(buffer), NULL);
     if (status != VITTE_STATUS_OK) {
         return status;
     }
@@ -351,6 +450,53 @@ vitte_status_t vitte_diagnostic_write_one(
             return VITTE_STATUS_ERROR_IO;
         }
     }
+    return VITTE_STATUS_OK;
+}
+
+vitte_status_t vitte_diagnostic_merge(
+    vitte_diagnostic_bag_t *destination,
+    const vitte_diagnostic_bag_t *source
+) {
+    size_t index;
+
+    if (!vitte_diagnostic_bag_is_initialized(destination) ||
+        !vitte_diagnostic_bag_is_initialized(source)) {
+        vitte_diagnostic_set_error(destination, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_DIAG_E_ARGUMENT", "invalid diagnostic merge bags", NULL);
+        return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+    }
+
+    for (index = 0u; index < source->count; index++) {
+        const vitte_diagnostic_t *diagnostic = &source->storage[index];
+        vitte_ast_span_t span;
+        vitte_ast_span_t *span_ptr = NULL;
+        vitte_status_t status;
+
+        if (diagnostic->has_span) {
+            vitte_ast_span_init(&span);
+            span.source_name = diagnostic->source_name;
+            span.start_offset = diagnostic->start_offset;
+            span.end_offset = diagnostic->end_offset;
+            span.start_line = diagnostic->start_line;
+            span.start_column = diagnostic->start_column;
+            span.end_line = diagnostic->end_line;
+            span.end_column = diagnostic->end_column;
+            span.valid = true;
+            span_ptr = &span;
+        }
+        status = vitte_diagnostic_add(
+            destination,
+            diagnostic->severity,
+            diagnostic->code,
+            diagnostic->message,
+            diagnostic->details,
+            span_ptr
+        );
+        if (status != VITTE_STATUS_OK) {
+            return status;
+        }
+    }
+    destination->counts.suppressed_count += source->counts.suppressed_count;
+    vitte_error_reset(&destination->last_error);
     return VITTE_STATUS_OK;
 }
 

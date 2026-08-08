@@ -79,6 +79,8 @@ bool vitte_diagnostic_bag_is_initialized(const vitte_diagnostic_bag_t *bag);
 const vitte_error_t *vitte_diagnostic_bag_last_error(const vitte_diagnostic_bag_t *bag);
 const vitte_diagnostic_counts_t *vitte_diagnostic_bag_counts(const vitte_diagnostic_bag_t *bag);
 const vitte_diagnostic_t *vitte_diagnostic_at(const vitte_diagnostic_bag_t *bag, size_t index);
+size_t vitte_diagnostic_bag_error_count(const vitte_diagnostic_bag_t *bag);
+size_t vitte_diagnostic_bag_total_count(const vitte_diagnostic_bag_t *bag);
 
 vitte_status_t vitte_diagnostic_add(
     vitte_diagnostic_bag_t *bag,
@@ -90,12 +92,28 @@ vitte_status_t vitte_diagnostic_add(
 );
 
 bool vitte_diagnostic_has_errors(const vitte_diagnostic_bag_t *bag);
+vitte_status_t vitte_diagnostic_status(const vitte_diagnostic_bag_t *bag);
 const char *vitte_diagnostic_severity_name(vitte_diagnostic_severity_t severity);
 bool vitte_diagnostic_severity_is_error(vitte_diagnostic_severity_t severity);
 bool vitte_diagnostic_severity_is_valid(vitte_diagnostic_severity_t severity);
 
 vitte_status_t vitte_diagnostic_format_one(
     const vitte_diagnostic_t *diagnostic,
+    char *buffer,
+    size_t capacity,
+    size_t *written
+);
+
+vitte_status_t vitte_diagnostic_format_one_ex(
+    const vitte_diagnostic_t *diagnostic,
+    const vitte_diagnostic_options_t *options,
+    char *buffer,
+    size_t capacity,
+    size_t *written
+);
+
+vitte_status_t vitte_diagnostic_format_summary(
+    const vitte_diagnostic_bag_t *bag,
     char *buffer,
     size_t capacity,
     size_t *written
@@ -110,6 +128,11 @@ vitte_status_t vitte_diagnostic_write_one(
 vitte_status_t vitte_diagnostic_write_all(
     const vitte_diagnostic_bag_t *bag,
     FILE *stream
+);
+
+vitte_status_t vitte_diagnostic_merge(
+    vitte_diagnostic_bag_t *destination,
+    const vitte_diagnostic_bag_t *source
 );
 
 #ifdef __cplusplus
