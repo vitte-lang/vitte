@@ -9,6 +9,7 @@ Invariants:
 - `vitte_arena_reset` either keeps the first block or releases all blocks according to policy.
 - Checkpoint rollback releases blocks allocated after the checkpoint and restores the saved offset.
 - Statistics track reserved bytes, used bytes, peak usage, allocation count, failed allocations, blocks, and resets.
+- Fixed-size pools expose allocation/free/cache counters and reject obvious double-free attempts while the object is still in the pool freelist.
 - Errors use `bootstrap/src/api/error.h`; this layer does not depend on `runtime/error.h`.
 
 The arena allocator adapter exposes a `vitte_allocator_t` view. `free` is a no-op and reallocating existing pointers is intentionally unsupported because individual arena allocations are not independently owned.

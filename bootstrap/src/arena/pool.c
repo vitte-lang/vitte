@@ -2,6 +2,40 @@
 
 #include <string.h>
 
+static bool vitte_arena_pool_free_list_contains(
+    const vitte_arena_pool_t *pool,
+    const void *object
+) {
+    const vitte_arena_pool_node_t *node;
+
+    if (pool == NULL || object == NULL) {
+        return false;
+    }
+
+    for (node = pool->free_list; node != NULL; node = node->next) {
+        if ((const void *)node == object) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+static size_t vitte_arena_pool_free_list_count(const vitte_arena_pool_t *pool) {
+    const vitte_arena_pool_node_t *node;
+    size_t count = 0u;
+
+    if (pool == NULL) {
+        return 0u;
+    }
+
+    for (node = pool->free_list; node != NULL; node = node->next) {
+        count++;
+    }
+
+    return count;
+}
+
 bool vitte_arena_pool_init(
     vitte_arena_pool_t *pool,
     vitte_arena_t *arena,
@@ -62,6 +96,10 @@ void vitte_arena_pool_free(vitte_arena_pool_t *pool, void *object) {
         vitte_arena_set_error(pool->arena, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_ARENA_POOL_E_POINTER", "pool object does not belong to arena", NULL);
         return;
     }
+    if (vitte_arena_pool_free_list_contains(pool, object)) {
+        vitte_arena_set_error(pool->arena, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_ARENA_POOL_E_DOUBLE_FREE", "pool object was already freed", NULL);
+        return;
+    }
 
     node = (vitte_arena_pool_node_t *)object;
     node->next = pool->free_list;
@@ -81,4 +119,18 @@ void vitte_arena_pool_reset(vitte_arena_pool_t *pool) {
 
 bool vitte_arena_pool_is_initialized(const vitte_arena_pool_t *pool) {
     return pool != NULL && pool->initialized && vitte_arena_is_initialized(pool->arena);
+}
+
+vitte_arena_pool_stats_t vitte_arena_pool_stats(const vitte_arena_pool_t *pool) {
+    vitte_arena_pool_stats_t stats;
+
+    memset(&stats, 0, sizeof(stats));
+    if (pool == NULL) {
+        return stats;
+    }
+
+    stats.allocation_count = pool->allocation_count;
+    stats.free_count = pool->free_count;
+    stats.cached_object_count = vitte_arena_pool_free_list_count(pool);
+    return stats;
 }
