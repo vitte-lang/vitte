@@ -483,6 +483,29 @@ static char *vitte_default_output_path(const char *input_path, const char *suffi
     return path;
 }
 
+static char *vitte_sidecar_c_path(const char *output_path) {
+    const char *suffix = ".bootstrap.c";
+    size_t output_length;
+    size_t suffix_length;
+    char *path;
+
+    if (output_path == NULL) {
+        return NULL;
+    }
+
+    output_length = strlen(output_path);
+    suffix_length = strlen(suffix);
+    path = (char *)malloc(output_length + suffix_length + 1u);
+    if (path == NULL) {
+        return NULL;
+    }
+
+    memcpy(path, output_path, output_length);
+    memcpy(path + output_length, suffix, suffix_length);
+    path[output_length + suffix_length] = '\0';
+    return path;
+}
+
 static char *vitte_shell_quote(const char *text) {
     size_t extra = 2u;
     size_t index;
@@ -690,10 +713,10 @@ static int vitte_command_emit_or_build(const VitteOptions *options, bool build, 
         return result;
     }
 
-    owned_c_path = vitte_default_output_path(options->input_path, ".bootstrap.c");
     owned_output_path = options->output_path == NULL
         ? vitte_default_output_path(options->input_path, "")
         : vitte_strdup_cstr(options->output_path);
+    owned_c_path = vitte_sidecar_c_path(owned_output_path);
 
     if (owned_c_path == NULL || owned_output_path == NULL) {
         free(c_source);

@@ -3,16 +3,36 @@ CFLAGS ?= -std=c17 -Wall -Wextra -Werror -pedantic -O2
 ROOT_DIR := ..
 OUT_DIR ?= $(ROOT_DIR)/target/bootstrap-c17
 BIN ?= $(OUT_DIR)/vitte-bootstrap
+SOURCES := $(shell find src -type f -name '*.c' | sort)
+HEADERS := $(shell find . -type f -name '*.h' | sort)
+CHECKED_FILES := $(shell find . -type f \( -name '*.c' -o -name '*.h' -o -name 'Makefile' -o -name 'CMakeLists.txt' -o -name 'README.md' \) | sort)
 
-.PHONY: all clean smoke install
+.PHONY: all clean smoke install verify
 
-all: $(BIN)
+all: verify $(BIN)
 
-$(BIN): src/main.c
+$(BIN): $(SOURCES)
 	@mkdir -p "$(OUT_DIR)"
-	$(CC) $(CFLAGS) src/main.c -o "$(BIN)"
+	$(CC) $(CFLAGS) $(SOURCES) -o "$(BIN)"
 
-smoke: $(BIN)
+verify:
+	@test -n "$(SOURCES)"
+	@test -n "$(HEADERS)"
+	@test -n "$(CHECKED_FILES)"
+	@empty="$$(find . -type f -size 0 -print)"; \
+	if [ -n "$$empty" ]; then \
+		printf '%s\n' "$$empty"; \
+		exit 1; \
+	fi
+	@for src in $(SOURCES); do \
+		$(CC) $(CFLAGS) -fsyntax-only "$$src"; \
+	done
+	@for header in $(HEADERS); do \
+		printf '#include "%s"\nint main(void) { return 0; }\n' "$$header" | \
+			$(CC) $(CFLAGS) -I. -x c -fsyntax-only -; \
+	done
+
+smoke: verify $(BIN)
 	@"$(BIN)" --version
 	@"$(BIN)" check "$(ROOT_DIR)/examples/hello.vit"
 	@"$(BIN)" build "$(ROOT_DIR)/examples/hello.vit" -o "$(OUT_DIR)/hello"
