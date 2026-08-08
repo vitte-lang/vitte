@@ -6,7 +6,7 @@
 <img src="https://img.shields.io/badge/compiler-46%25%20complete-2563EB">
 <img src="https://img.shields.io/badge/status-experimental-F97316">
 <img src="https://img.shields.io/badge/license-MIT-16A34A">
-<img src="https://img.shields.io/badge/bootstrap-signed_stage0-0F766E">
+<img src="https://img.shields.io/badge/bootstrap-C17_compiler-0F766E">
 </p>
 </div>
 
