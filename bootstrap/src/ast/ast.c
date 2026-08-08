@@ -1,5 +1,6 @@
 #include "ast.h"
 
+#include <inttypes.h>
 #include <string.h>
 
 static const size_t VITTE_AST_DEFAULT_MAX_DEPTH = 256u;
@@ -211,6 +212,35 @@ bool vitte_ast_node_kind_is_valid(vitte_ast_node_kind_t kind) {
     return kind >= VITTE_AST_NODE_ERROR && kind < VITTE_AST_NODE_COUNT;
 }
 
+const char *vitte_ast_node_label(const vitte_ast_node_t *node) {
+    if (node == NULL) {
+        return NULL;
+    }
+
+    switch (node->kind) {
+        case VITTE_AST_NODE_MODULE:
+            return node->as.module.name;
+        case VITTE_AST_NODE_PROC_DECL:
+            return node->as.proc_decl.name;
+        case VITTE_AST_NODE_CONST_DECL:
+            return node->as.const_decl.name;
+        case VITTE_AST_NODE_LET_STMT:
+            return node->as.let_stmt.name;
+        case VITTE_AST_NODE_STRING_LITERAL:
+            return node->as.string_literal.value;
+        case VITTE_AST_NODE_IDENTIFIER:
+            return node->as.identifier.name;
+        case VITTE_AST_NODE_BINARY_EXPR:
+            return node->as.binary_expr.operator_text;
+        case VITTE_AST_NODE_TYPE_NAME:
+            return node->as.type_name.name;
+        case VITTE_AST_NODE_ERROR:
+            return node->as.error_node.message;
+        default:
+            return NULL;
+    }
+}
+
 void vitte_ast_builder_init(vitte_ast_builder_t *builder, vitte_ast_t *ast) {
     if (builder == NULL) {
         return;
@@ -373,8 +403,49 @@ bool vitte_ast_call_add_arg(vitte_ast_expr_t *call, vitte_ast_expr_t *argument) 
         vitte_ast_list_append(&call->as.call_expr.arguments, argument);
 }
 
+static bool vitte_ast_list_is_coherent(const vitte_ast_list_t *list) {
+    const vitte_ast_node_t *node;
+    const vitte_ast_node_t *last = NULL;
+    size_t count = 0u;
+
+    if (list == NULL) {
+        return false;
+    }
+    if (list->count == 0u) {
+        return list->first == NULL && list->last == NULL;
+    }
+    if (list->first == NULL || list->last == NULL) {
+        return false;
+    }
+
+    for (node = list->first; node != NULL; node = node->next) {
+        count++;
+        last = node;
+        if (count > list->count) {
+            return false;
+        }
+    }
+
+    return count == list->count && last == list->last;
+}
+
+static vitte_status_t vitte_ast_validate_list(
+    vitte_ast_t *ast,
+    const vitte_ast_list_t *list,
+    const char *code,
+    const char *message
+) {
+    if (!vitte_ast_list_is_coherent(list)) {
+        vitte_ast_set_error(ast, VITTE_STATUS_ERROR_INVALID_ARGUMENT, code, message, NULL);
+        return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+    }
+
+    return VITTE_STATUS_OK;
+}
+
 static vitte_status_t vitte_ast_validate_node(vitte_ast_t *ast, const vitte_ast_node_t *node, size_t depth) {
     const vitte_ast_node_t *child;
+    vitte_status_t status;
 
     if (node == NULL) {
         vitte_ast_set_error(ast, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_AST_E_NULL", "null AST node", NULL);
@@ -391,8 +462,12 @@ static vitte_status_t vitte_ast_validate_node(vitte_ast_t *ast, const vitte_ast_
 
     switch (node->kind) {
         case VITTE_AST_NODE_MODULE:
+            status = vitte_ast_validate_list(ast, &node->as.module.declarations, "VITTE_AST_E_LIST", "module declaration list is incoherent");
+            if (status != VITTE_STATUS_OK) {
+                return status;
+            }
             for (child = node->as.module.declarations.first; child != NULL; child = child->next) {
-                vitte_status_t status = vitte_ast_validate_node(ast, child, depth + 1u);
+                status = vitte_ast_validate_node(ast, child, depth + 1u);
                 if (status != VITTE_STATUS_OK) {
                     return status;
                 }
@@ -403,16 +478,32 @@ static vitte_status_t vitte_ast_validate_node(vitte_ast_t *ast, const vitte_ast_
                 vitte_ast_set_error(ast, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_AST_E_PROC", "procedure declaration requires name and body", NULL);
                 return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
             }
+            if (node->as.proc_decl.return_type != NULL) {
+                status = vitte_ast_validate_node(ast, node->as.proc_decl.return_type, depth + 1u);
+                if (status != VITTE_STATUS_OK) {
+                    return status;
+                }
+            }
             return vitte_ast_validate_node(ast, node->as.proc_decl.body, depth + 1u);
         case VITTE_AST_NODE_CONST_DECL:
             if (node->as.const_decl.name == NULL || node->as.const_decl.value == NULL) {
                 vitte_ast_set_error(ast, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_AST_E_CONST", "const declaration requires name and value", NULL);
                 return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
             }
+            if (node->as.const_decl.type != NULL) {
+                status = vitte_ast_validate_node(ast, node->as.const_decl.type, depth + 1u);
+                if (status != VITTE_STATUS_OK) {
+                    return status;
+                }
+            }
             return vitte_ast_validate_node(ast, node->as.const_decl.value, depth + 1u);
         case VITTE_AST_NODE_BLOCK_STMT:
+            status = vitte_ast_validate_list(ast, &node->as.block_stmt.statements, "VITTE_AST_E_LIST", "block statement list is incoherent");
+            if (status != VITTE_STATUS_OK) {
+                return status;
+            }
             for (child = node->as.block_stmt.statements.first; child != NULL; child = child->next) {
-                vitte_status_t status = vitte_ast_validate_node(ast, child, depth + 1u);
+                status = vitte_ast_validate_node(ast, child, depth + 1u);
                 if (status != VITTE_STATUS_OK) {
                     return status;
                 }
@@ -427,11 +518,37 @@ static vitte_status_t vitte_ast_validate_node(vitte_ast_t *ast, const vitte_ast_
                 vitte_ast_set_error(ast, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_AST_E_LET", "let statement requires name", NULL);
                 return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
             }
+            if (node->as.let_stmt.type != NULL) {
+                status = vitte_ast_validate_node(ast, node->as.let_stmt.type, depth + 1u);
+                if (status != VITTE_STATUS_OK) {
+                    return status;
+                }
+            }
+            if (node->as.let_stmt.value != NULL) {
+                status = vitte_ast_validate_node(ast, node->as.let_stmt.value, depth + 1u);
+                if (status != VITTE_STATUS_OK) {
+                    return status;
+                }
+            }
             break;
         case VITTE_AST_NODE_IF_STMT:
             if (node->as.if_stmt.condition == NULL || node->as.if_stmt.then_branch == NULL) {
                 vitte_ast_set_error(ast, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_AST_E_IF", "if statement requires condition and then branch", NULL);
                 return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+            }
+            status = vitte_ast_validate_node(ast, node->as.if_stmt.condition, depth + 1u);
+            if (status != VITTE_STATUS_OK) {
+                return status;
+            }
+            status = vitte_ast_validate_node(ast, node->as.if_stmt.then_branch, depth + 1u);
+            if (status != VITTE_STATUS_OK) {
+                return status;
+            }
+            if (node->as.if_stmt.else_branch != NULL) {
+                status = vitte_ast_validate_node(ast, node->as.if_stmt.else_branch, depth + 1u);
+                if (status != VITTE_STATUS_OK) {
+                    return status;
+                }
             }
             break;
         case VITTE_AST_NODE_BINARY_EXPR:
@@ -439,11 +556,29 @@ static vitte_status_t vitte_ast_validate_node(vitte_ast_t *ast, const vitte_ast_
                 vitte_ast_set_error(ast, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_AST_E_BINARY", "binary expression requires operands", NULL);
                 return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
             }
-            break;
+            status = vitte_ast_validate_node(ast, node->as.binary_expr.left, depth + 1u);
+            if (status != VITTE_STATUS_OK) {
+                return status;
+            }
+            return vitte_ast_validate_node(ast, node->as.binary_expr.right, depth + 1u);
         case VITTE_AST_NODE_CALL_EXPR:
             if (node->as.call_expr.callee == NULL) {
                 vitte_ast_set_error(ast, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_AST_E_CALL", "call expression requires callee", NULL);
                 return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+            }
+            status = vitte_ast_validate_list(ast, &node->as.call_expr.arguments, "VITTE_AST_E_LIST", "call argument list is incoherent");
+            if (status != VITTE_STATUS_OK) {
+                return status;
+            }
+            status = vitte_ast_validate_node(ast, node->as.call_expr.callee, depth + 1u);
+            if (status != VITTE_STATUS_OK) {
+                return status;
+            }
+            for (child = node->as.call_expr.arguments.first; child != NULL; child = child->next) {
+                status = vitte_ast_validate_node(ast, child, depth + 1u);
+                if (status != VITTE_STATUS_OK) {
+                    return status;
+                }
             }
             break;
         case VITTE_AST_NODE_IDENTIFIER:
@@ -477,44 +612,184 @@ vitte_status_t vitte_ast_validate(vitte_ast_t *ast) {
     return vitte_ast_validate_node(ast, ast->root, 0u);
 }
 
-static size_t vitte_ast_visit_node(vitte_ast_node_t *node, vitte_ast_visit_fn callback, void *user, size_t depth, size_t max_depth) {
-    vitte_ast_node_t *child;
-    size_t count = 0u;
+static bool vitte_ast_visit_child(
+    vitte_ast_node_t *node,
+    vitte_ast_visit_fn callback,
+    void *user,
+    size_t depth,
+    size_t max_depth,
+    size_t *count
+);
 
-    if (node == NULL || callback == NULL || depth > max_depth) {
-        return 0u;
+static bool vitte_ast_visit_children(
+    vitte_ast_list_t *list,
+    vitte_ast_visit_fn callback,
+    void *user,
+    size_t depth,
+    size_t max_depth,
+    size_t *count
+) {
+    vitte_ast_node_t *child;
+
+    if (list == NULL) {
+        return true;
+    }
+
+    for (child = list->first; child != NULL; child = child->next) {
+        if (!vitte_ast_visit_child(child, callback, user, depth, max_depth, count)) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static bool vitte_ast_visit_child(
+    vitte_ast_node_t *node,
+    vitte_ast_visit_fn callback,
+    void *user,
+    size_t depth,
+    size_t max_depth,
+    size_t *count
+) {
+    if (node == NULL) {
+        return true;
+    }
+    if (callback == NULL || count == NULL || depth > max_depth) {
+        return false;
     }
     if (!callback(node, user)) {
-        return 0u;
+        return false;
     }
 
-    count = 1u;
+    (*count)++;
     switch (node->kind) {
         case VITTE_AST_NODE_MODULE:
-            for (child = node->as.module.declarations.first; child != NULL; child = child->next) {
-                count += vitte_ast_visit_node(child, callback, user, depth + 1u, max_depth);
-            }
+            return vitte_ast_visit_children(&node->as.module.declarations, callback, user, depth + 1u, max_depth, count);
+        case VITTE_AST_NODE_PROC_DECL:
+            return vitte_ast_visit_child(node->as.proc_decl.return_type, callback, user, depth + 1u, max_depth, count) &&
+                vitte_ast_visit_child(node->as.proc_decl.body, callback, user, depth + 1u, max_depth, count);
+        case VITTE_AST_NODE_CONST_DECL:
+            return vitte_ast_visit_child(node->as.const_decl.type, callback, user, depth + 1u, max_depth, count) &&
+                vitte_ast_visit_child(node->as.const_decl.value, callback, user, depth + 1u, max_depth, count);
+        case VITTE_AST_NODE_BLOCK_STMT:
+            return vitte_ast_visit_children(&node->as.block_stmt.statements, callback, user, depth + 1u, max_depth, count);
+        case VITTE_AST_NODE_GIVE_STMT:
+            return vitte_ast_visit_child(node->as.give_stmt.value, callback, user, depth + 1u, max_depth, count);
+        case VITTE_AST_NODE_LET_STMT:
+            return vitte_ast_visit_child(node->as.let_stmt.type, callback, user, depth + 1u, max_depth, count) &&
+                vitte_ast_visit_child(node->as.let_stmt.value, callback, user, depth + 1u, max_depth, count);
+        case VITTE_AST_NODE_IF_STMT:
+            return vitte_ast_visit_child(node->as.if_stmt.condition, callback, user, depth + 1u, max_depth, count) &&
+                vitte_ast_visit_child(node->as.if_stmt.then_branch, callback, user, depth + 1u, max_depth, count) &&
+                vitte_ast_visit_child(node->as.if_stmt.else_branch, callback, user, depth + 1u, max_depth, count);
+        case VITTE_AST_NODE_BINARY_EXPR:
+            return vitte_ast_visit_child(node->as.binary_expr.left, callback, user, depth + 1u, max_depth, count) &&
+                vitte_ast_visit_child(node->as.binary_expr.right, callback, user, depth + 1u, max_depth, count);
+        case VITTE_AST_NODE_CALL_EXPR:
+            return vitte_ast_visit_child(node->as.call_expr.callee, callback, user, depth + 1u, max_depth, count) &&
+                vitte_ast_visit_children(&node->as.call_expr.arguments, callback, user, depth + 1u, max_depth, count);
+        default:
+            return true;
+    }
+}
+
+static void vitte_ast_dump_indent(FILE *stream, size_t depth) {
+    size_t index;
+
+    for (index = 0u; index < depth; index++) {
+        (void)fputs("  ", stream);
+    }
+}
+
+static void vitte_ast_dump_child(const vitte_ast_node_t *node, FILE *stream, size_t depth, size_t max_depth);
+
+static void vitte_ast_dump_children(const vitte_ast_list_t *list, FILE *stream, size_t depth, size_t max_depth) {
+    const vitte_ast_node_t *child;
+
+    if (list == NULL) {
+        return;
+    }
+
+    for (child = list->first; child != NULL; child = child->next) {
+        vitte_ast_dump_child(child, stream, depth, max_depth);
+    }
+}
+
+static void vitte_ast_dump_child(const vitte_ast_node_t *node, FILE *stream, size_t depth, size_t max_depth) {
+    const char *label;
+
+    if (node == NULL || stream == NULL) {
+        return;
+    }
+
+    vitte_ast_dump_indent(stream, depth);
+    (void)fputs(vitte_ast_node_kind_name(node->kind), stream);
+    label = vitte_ast_node_label(node);
+    if (label != NULL) {
+        (void)fprintf(stream, " %s", label);
+    } else if (node->kind == VITTE_AST_NODE_INTEGER_LITERAL) {
+        (void)fprintf(stream, " %" PRId64, node->as.integer_literal.value);
+    }
+    (void)fputc('\n', stream);
+
+    if (depth >= max_depth) {
+        vitte_ast_dump_indent(stream, depth + 1u);
+        (void)fputs("...\n", stream);
+        return;
+    }
+
+    switch (node->kind) {
+        case VITTE_AST_NODE_MODULE:
+            vitte_ast_dump_children(&node->as.module.declarations, stream, depth + 1u, max_depth);
             break;
         case VITTE_AST_NODE_PROC_DECL:
-            count += vitte_ast_visit_node(node->as.proc_decl.return_type, callback, user, depth + 1u, max_depth);
-            count += vitte_ast_visit_node(node->as.proc_decl.body, callback, user, depth + 1u, max_depth);
+            vitte_ast_dump_child(node->as.proc_decl.return_type, stream, depth + 1u, max_depth);
+            vitte_ast_dump_child(node->as.proc_decl.body, stream, depth + 1u, max_depth);
             break;
         case VITTE_AST_NODE_CONST_DECL:
-            count += vitte_ast_visit_node(node->as.const_decl.type, callback, user, depth + 1u, max_depth);
-            count += vitte_ast_visit_node(node->as.const_decl.value, callback, user, depth + 1u, max_depth);
+            vitte_ast_dump_child(node->as.const_decl.type, stream, depth + 1u, max_depth);
+            vitte_ast_dump_child(node->as.const_decl.value, stream, depth + 1u, max_depth);
             break;
         case VITTE_AST_NODE_BLOCK_STMT:
-            for (child = node->as.block_stmt.statements.first; child != NULL; child = child->next) {
-                count += vitte_ast_visit_node(child, callback, user, depth + 1u, max_depth);
-            }
+            vitte_ast_dump_children(&node->as.block_stmt.statements, stream, depth + 1u, max_depth);
             break;
         case VITTE_AST_NODE_GIVE_STMT:
-            count += vitte_ast_visit_node(node->as.give_stmt.value, callback, user, depth + 1u, max_depth);
+            vitte_ast_dump_child(node->as.give_stmt.value, stream, depth + 1u, max_depth);
+            break;
+        case VITTE_AST_NODE_LET_STMT:
+            vitte_ast_dump_child(node->as.let_stmt.type, stream, depth + 1u, max_depth);
+            vitte_ast_dump_child(node->as.let_stmt.value, stream, depth + 1u, max_depth);
+            break;
+        case VITTE_AST_NODE_IF_STMT:
+            vitte_ast_dump_child(node->as.if_stmt.condition, stream, depth + 1u, max_depth);
+            vitte_ast_dump_child(node->as.if_stmt.then_branch, stream, depth + 1u, max_depth);
+            vitte_ast_dump_child(node->as.if_stmt.else_branch, stream, depth + 1u, max_depth);
+            break;
+        case VITTE_AST_NODE_BINARY_EXPR:
+            vitte_ast_dump_child(node->as.binary_expr.left, stream, depth + 1u, max_depth);
+            vitte_ast_dump_child(node->as.binary_expr.right, stream, depth + 1u, max_depth);
+            break;
+        case VITTE_AST_NODE_CALL_EXPR:
+            vitte_ast_dump_child(node->as.call_expr.callee, stream, depth + 1u, max_depth);
+            vitte_ast_dump_children(&node->as.call_expr.arguments, stream, depth + 1u, max_depth);
             break;
         default:
             break;
     }
+}
 
+void vitte_ast_dump(const vitte_ast_node_t *node, FILE *stream, size_t max_depth) {
+    if (max_depth == 0u) {
+        max_depth = VITTE_AST_DEFAULT_MAX_DEPTH;
+    }
+    vitte_ast_dump_child(node, stream, 0u, max_depth);
+}
+
+static size_t vitte_ast_visit_node(vitte_ast_node_t *node, vitte_ast_visit_fn callback, void *user, size_t max_depth) {
+    size_t count = 0u;
+
+    (void)vitte_ast_visit_child(node, callback, user, 0u, max_depth, &count);
     return count;
 }
 
@@ -522,5 +797,5 @@ size_t vitte_ast_visit(vitte_ast_node_t *node, vitte_ast_visit_fn callback, void
     if (max_depth == 0u) {
         max_depth = VITTE_AST_DEFAULT_MAX_DEPTH;
     }
-    return vitte_ast_visit_node(node, callback, user, 0u, max_depth);
+    return vitte_ast_visit_node(node, callback, user, max_depth);
 }

@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <stdint.h>
 
 #include "../api/error.h"
@@ -175,6 +176,8 @@ const vitte_error_t *vitte_ast_last_error(const vitte_ast_t *ast);
 void vitte_ast_clear_error(vitte_ast_t *ast);
 const char *vitte_ast_node_kind_name(vitte_ast_node_kind_t kind);
 bool vitte_ast_node_kind_is_valid(vitte_ast_node_kind_t kind);
+const char *vitte_ast_node_label(const vitte_ast_node_t *node);
+void vitte_ast_dump(const vitte_ast_node_t *node, FILE *stream, size_t max_depth);
 
 void vitte_ast_builder_init(vitte_ast_builder_t *builder, vitte_ast_t *ast);
 vitte_ast_module_t *vitte_ast_make_module(vitte_ast_builder_t *builder, const char *name, vitte_ast_span_t span);

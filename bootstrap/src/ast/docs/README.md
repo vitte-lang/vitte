@@ -19,4 +19,11 @@ Node kinds:
 
 Builders in `ast.h` construct each node shape and attach list members through explicit helpers such as `vitte_ast_module_add_decl`, `vitte_ast_block_add_stmt`, and `vitte_ast_call_add_arg`.
 
-Validation checks root presence, node kind ranges, required procedure/body fields, coherent expression operands, call callees, and depth limits. Traversal is pre-order and stops when the callback returns false.
+Validation checks initialization, root presence, node kind ranges, coherent list `first`/`last`/`count`, required procedure/body fields, statement requirements, expression operands, call callees, call arguments, and depth limits.
+
+Traversal is pre-order over all children owned by the node model. `vitte_ast_visit` stops immediately when the callback returns false and returns the number of nodes accepted by the callback before the stop.
+
+Debug helpers are intentionally minimal:
+- `vitte_ast_node_kind_name` converts a kind to a stable string.
+- `vitte_ast_node_label` returns the natural label for named/labeled nodes when one exists.
+- `vitte_ast_dump` writes a bounded tree dump to `FILE *` without depending on the printer module.
