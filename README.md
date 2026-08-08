@@ -6,7 +6,7 @@
 <img src="https://img.shields.io/badge/compiler-46%25%20complete-2563EB">
 <img src="https://img.shields.io/badge/status-experimental-F97316">
 <img src="https://img.shields.io/badge/license-MIT-16A34A">
-<img src="https://img.shields.io/badge/bootstrap-signed_stage0-0F766E">
+<img src="https://img.shields.io/badge/bootstrap-C17_compiler-0F766E">
 </p>
 </div>
 
@@ -17,7 +17,7 @@
 ![license](https://img.shields.io/badge/license-MIT-16A34A)
 ![language](https://img.shields.io/badge/language-Vitte-9333EA)
 ![compiler](https://img.shields.io/badge/compiler-self--hosting%20goal-DC2626)
-![bootstrap](https://img.shields.io/badge/bootstrap-signed_stage0-0F766E)
+![bootstrap](https://img.shields.io/badge/bootstrap-C17-2563EB)
 ![platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-2563EB)
 ![frontend](https://img.shields.io/badge/frontend-Lexer%20%7C%20Parser-2563EB)
 ![pipeline](https://img.shields.io/badge/pipeline-AST→HIR→MIR→IR-1D4ED8)
@@ -63,43 +63,6 @@ Compile-Time Simulation is the static execution layer for selected deterministic
 
 Overall measured gate progress: **99%**
 
-```text
-
-████████████████████ 99%
-
-```
-
-## Component | Status 
-
-### Roadmap
-
-```text
-
-Lexer              ██████████  100%
-
-Parser             ██████████  100%
-
-AST                ██████████  100%
-
-HIR                ██████████  100%
-
-Semantic           ██████████  100%
-
-Type Checker       ██████████  100%
-
-Borrow Checker     ██████████  100%
-
-MIR                ██████████  100%
-
-IR                 ██████████  100%
-
-Backend            ██████████  100%
-
-LLVM               ██████████  100%
-
-Self Hosting       ██████████  100%
-
-```
 
 ## Repository
 
