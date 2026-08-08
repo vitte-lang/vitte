@@ -17,7 +17,7 @@
 ![license](https://img.shields.io/badge/license-MIT-16A34A)
 ![language](https://img.shields.io/badge/language-Vitte-9333EA)
 ![compiler](https://img.shields.io/badge/compiler-self--hosting%20goal-DC2626)
-![bootstrap](https://img.shields.io/badge/bootstrap-signed_stage0-0F766E)
+![bootstrap](https://img.shields.io/badge/bootstrap-C17-2563EB)
 ![platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-2563EB)
 ![frontend](https://img.shields.io/badge/frontend-Lexer%20%7C%20Parser-2563EB)
 ![pipeline](https://img.shields.io/badge/pipeline-AST→HIR→MIR→IR-1D4ED8)
