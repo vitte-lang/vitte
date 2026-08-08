@@ -63,43 +63,6 @@ Compile-Time Simulation is the static execution layer for selected deterministic
 
 Overall measured gate progress: **99%**
 
-```text
-
-████████████████████ 99%
-
-```
-
-## Component | Status 
-
-### Roadmap
-
-```text
-
-Lexer              ██████████  100%
-
-Parser             ██████████  100%
-
-AST                ██████████  100%
-
-HIR                ██████████  100%
-
-Semantic           ██████████  100%
-
-Type Checker       ██████████  100%
-
-Borrow Checker     ██████████  100%
-
-MIR                ██████████  100%
-
-IR                 ██████████  100%
-
-Backend            ██████████  100%
-
-LLVM               ██████████  100%
-
-Self Hosting       ██████████  100%
-
-```
 
 ## Repository
 
