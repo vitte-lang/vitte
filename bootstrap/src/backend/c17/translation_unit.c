@@ -85,11 +85,51 @@ vitte_status_t vitte_c17_translation_unit_emit_prelude(
         if (status != VITTE_STATUS_OK) {
             return status;
         }
+        status = vitte_c17_write_string(writer, "#include <stddef.h>");
+        if (status != VITTE_STATUS_OK) {
+            return status;
+        }
         status = vitte_c17_write_newline(writer);
         if (status != VITTE_STATUS_OK) {
             return status;
         }
-        unit->include_count += 2u;
+        status = vitte_c17_write_string(writer, "#include <stdio.h>");
+        if (status != VITTE_STATUS_OK) {
+            return status;
+        }
+        status = vitte_c17_write_newline(writer);
+        if (status != VITTE_STATUS_OK) {
+            return status;
+        }
+        status = vitte_c17_write_string(writer, "#include <stdlib.h>");
+        if (status != VITTE_STATUS_OK) {
+            return status;
+        }
+        status = vitte_c17_write_newline(writer);
+        if (status != VITTE_STATUS_OK) {
+            return status;
+        }
+        status = vitte_c17_write_string(writer, "#include <string.h>");
+        if (status != VITTE_STATUS_OK) {
+            return status;
+        }
+        status = vitte_c17_write_newline(writer);
+        if (status != VITTE_STATUS_OK) {
+            return status;
+        }
+        status = vitte_c17_write_string(writer, "#include <assert.h>");
+        if (status != VITTE_STATUS_OK) {
+            return status;
+        }
+        status = vitte_c17_write_newline(writer);
+        if (status != VITTE_STATUS_OK) {
+            return status;
+        }
+        status = vitte_c17_write_newline(writer);
+        if (status != VITTE_STATUS_OK) {
+            return status;
+        }
+        unit->include_count += 7u;
     }
 
     return VITTE_STATUS_OK;

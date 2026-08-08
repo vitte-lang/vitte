@@ -6,6 +6,8 @@
 
 #include "../api/error.h"
 #include "../ast/ast.h"
+#include "../hir/hir.h"
+#include "../ir/ir.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -83,6 +85,36 @@ vitte_status_t vitte_codegen_emit_ast_to_buffer(
 vitte_status_t vitte_codegen_emit_ast_to_file(
     vitte_codegen_t *codegen,
     const vitte_ast_t *ast,
+    const char *output_path,
+    vitte_codegen_result_t *result
+);
+
+vitte_status_t vitte_codegen_emit_hir_to_buffer(
+    vitte_codegen_t *codegen,
+    const vitte_hir_t *hir,
+    char *buffer,
+    size_t buffer_capacity,
+    vitte_codegen_result_t *result
+);
+
+vitte_status_t vitte_codegen_emit_hir_to_file(
+    vitte_codegen_t *codegen,
+    const vitte_hir_t *hir,
+    const char *output_path,
+    vitte_codegen_result_t *result
+);
+
+vitte_status_t vitte_codegen_emit_ir_to_buffer(
+    vitte_codegen_t *codegen,
+    const vitte_ir_t *ir,
+    char *buffer,
+    size_t buffer_capacity,
+    vitte_codegen_result_t *result
+);
+
+vitte_status_t vitte_codegen_emit_ir_to_file(
+    vitte_codegen_t *codegen,
+    const vitte_ir_t *ir,
     const char *output_path,
     vitte_codegen_result_t *result
 );

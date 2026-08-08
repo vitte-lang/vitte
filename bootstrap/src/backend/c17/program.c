@@ -17,7 +17,7 @@ static void vitte_c17_program_set_error(
     }
 }
 
-void vitte_c17_program_init(
+void vitte_c17_program_init_ast(
     vitte_c17_program_t *program,
     const vitte_ast_t *ast,
     const vitte_c17_options_t *options
@@ -27,7 +27,28 @@ void vitte_c17_program_init(
     }
 
     memset(program, 0, sizeof(*program));
+    program->input_kind = VITTE_C17_PROGRAM_INPUT_AST;
     program->ast = ast;
+    if (options != NULL) {
+        program->options = *options;
+    } else {
+        vitte_c17_options_init(&program->options);
+    }
+    vitte_error_init(&program->last_error);
+}
+
+void vitte_c17_program_init_ir(
+    vitte_c17_program_t *program,
+    const vitte_ir_t *ir,
+    const vitte_c17_options_t *options
+) {
+    if (program == NULL) {
+        return;
+    }
+
+    memset(program, 0, sizeof(*program));
+    program->input_kind = VITTE_C17_PROGRAM_INPUT_IR;
+    program->ir = ir;
     if (options != NULL) {
         program->options = *options;
     } else {
@@ -49,9 +70,20 @@ vitte_status_t vitte_c17_program_emit(vitte_c17_program_t *program, vitte_c17_wr
         vitte_c17_program_set_error(program, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_C17_E_PROGRAM", "missing C17 program or writer", NULL);
         return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
     }
-    if (program->ast == NULL || !vitte_ast_is_initialized(program->ast) || program->ast->root == NULL) {
-        vitte_c17_program_set_error(program, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_C17_E_AST", "C17 backend requires an initialized AST with a root module", NULL);
-        return VITTE_STATUS_ERROR_INVALID_STATE;
+
+    if (program->input_kind == VITTE_C17_PROGRAM_INPUT_AST) {
+        if (program->ast == NULL || !vitte_ast_is_initialized(program->ast) || program->ast->root == NULL) {
+            vitte_c17_program_set_error(program, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_C17_E_AST", "C17 backend requires an initialized AST with a root module", NULL);
+            return VITTE_STATUS_ERROR_INVALID_STATE;
+        }
+    } else if (program->input_kind == VITTE_C17_PROGRAM_INPUT_IR) {
+        if (program->ir == NULL || !vitte_ir_is_initialized(program->ir) || program->ir->module == NULL) {
+            vitte_c17_program_set_error(program, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_C17_E_IR", "C17 backend requires an initialized IR with a module", NULL);
+            return VITTE_STATUS_ERROR_INVALID_STATE;
+        }
+    } else {
+        vitte_c17_program_set_error(program, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_C17_E_PROGRAM", "unknown C17 program input kind", NULL);
+        return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
     }
 
     status = vitte_c17_options_validate(&program->options, &program->last_error);
@@ -60,7 +92,11 @@ vitte_status_t vitte_c17_program_emit(vitte_c17_program_t *program, vitte_c17_wr
     }
 
     vitte_c17_translation_unit_init(&unit, &program->options);
-    vitte_c17_module_init(&module, program->ast->root, &unit);
+    if (program->input_kind == VITTE_C17_PROGRAM_INPUT_AST) {
+        vitte_c17_module_init_ast(&module, program->ast->root, &unit);
+    } else {
+        vitte_c17_module_init_ir(&module, program->ir->module, &unit);
+    }
     status = vitte_c17_module_emit(&module, writer);
     if (status != VITTE_STATUS_OK) {
         vitte_error_copy(&program->last_error, vitte_c17_module_last_error(&module));

@@ -72,7 +72,7 @@ void vitte_c17_emit_result_init(vitte_c17_emit_result_t *result) {
     result->status = VITTE_STATUS_OK;
 }
 
-static size_t vitte_c17_count_functions(const vitte_ast_t *ast) {
+static size_t vitte_c17_count_ast_functions(const vitte_ast_t *ast) {
     const vitte_ast_node_t *decl;
     size_t count = 0u;
 
@@ -88,9 +88,14 @@ static size_t vitte_c17_count_functions(const vitte_ast_t *ast) {
     return count;
 }
 
+static size_t vitte_c17_count_ir_functions(const vitte_ir_t *ir) {
+    return ir != NULL && ir->module != NULL ? ir->module->function_count : 0u;
+}
+
 static vitte_status_t vitte_c17_backend_emit_with_writer(
     vitte_c17_backend_t *backend,
-    const vitte_ast_t *ast,
+    vitte_c17_program_input_kind_t input_kind,
+    const void *input,
     vitte_c17_writer_t *writer,
     vitte_c17_emit_result_t *result
 ) {
@@ -100,15 +105,25 @@ static vitte_status_t vitte_c17_backend_emit_with_writer(
     if (result != NULL) {
         vitte_c17_emit_result_init(result);
     }
-    if (!vitte_c17_backend_is_initialized(backend) || ast == NULL || writer == NULL) {
-        vitte_c17_backend_set_error(backend, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_C17_E_BACKEND", "missing initialized C17 backend, AST, or writer", NULL);
+    if (!vitte_c17_backend_is_initialized(backend) || input == NULL || writer == NULL) {
+        vitte_c17_backend_set_error(backend, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_C17_E_BACKEND", "missing initialized C17 backend, input, or writer", NULL);
         if (result != NULL) {
             result->status = VITTE_STATUS_ERROR_INVALID_ARGUMENT;
         }
         return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
     }
 
-    vitte_c17_program_init(&program, ast, &backend->options);
+    if (input_kind == VITTE_C17_PROGRAM_INPUT_AST) {
+        vitte_c17_program_init_ast(&program, (const vitte_ast_t *)input, &backend->options);
+    } else if (input_kind == VITTE_C17_PROGRAM_INPUT_IR) {
+        vitte_c17_program_init_ir(&program, (const vitte_ir_t *)input, &backend->options);
+    } else {
+        vitte_c17_backend_set_error(backend, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_C17_E_BACKEND", "unknown C17 backend input kind", NULL);
+        if (result != NULL) {
+            result->status = VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+        }
+        return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+    }
     status = vitte_c17_program_emit(&program, writer);
     if (status != VITTE_STATUS_OK) {
         if (vitte_error_is_set(vitte_c17_writer_last_error(writer))) {
@@ -135,7 +150,9 @@ static vitte_status_t vitte_c17_backend_emit_with_writer(
         result->status = VITTE_STATUS_OK;
         result->bytes_written = writer->byte_count;
         result->lines_written = writer->line_count;
-        result->functions_emitted = vitte_c17_count_functions(ast);
+        result->functions_emitted = input_kind == VITTE_C17_PROGRAM_INPUT_AST ?
+            vitte_c17_count_ast_functions((const vitte_ast_t *)input) :
+            vitte_c17_count_ir_functions((const vitte_ir_t *)input);
     }
     vitte_error_reset(&backend->last_error);
     return VITTE_STATUS_OK;
@@ -168,7 +185,7 @@ vitte_status_t vitte_c17_backend_emit_ast_to_buffer(
         return status;
     }
 
-    return vitte_c17_backend_emit_with_writer(backend, ast, &writer, result);
+    return vitte_c17_backend_emit_with_writer(backend, VITTE_C17_PROGRAM_INPUT_AST, ast, &writer, result);
 }
 
 vitte_status_t vitte_c17_backend_emit_ast_to_file(
@@ -200,7 +217,79 @@ vitte_status_t vitte_c17_backend_emit_ast_to_file(
 
     status = vitte_c17_writer_init_file(&writer, stream, backend != NULL ? &backend->options : NULL);
     if (status == VITTE_STATUS_OK) {
-        status = vitte_c17_backend_emit_with_writer(backend, ast, &writer, result);
+        status = vitte_c17_backend_emit_with_writer(backend, VITTE_C17_PROGRAM_INPUT_AST, ast, &writer, result);
+    }
+    if (fclose(stream) != 0 && status == VITTE_STATUS_OK) {
+        vitte_c17_backend_set_error(backend, VITTE_STATUS_ERROR_IO, "VITTE_C17_E_FILE", "failed to close C17 output file", output_path);
+        status = VITTE_STATUS_ERROR_IO;
+        if (result != NULL) {
+            result->status = status;
+        }
+    }
+
+    return status;
+}
+
+vitte_status_t vitte_c17_backend_emit_ir_to_buffer(
+    vitte_c17_backend_t *backend,
+    const vitte_ir_t *ir,
+    char *buffer,
+    size_t buffer_capacity,
+    vitte_c17_emit_result_t *result
+) {
+    vitte_c17_writer_t writer;
+    vitte_status_t status;
+
+    if (buffer == NULL || buffer_capacity == 0u) {
+        vitte_c17_backend_set_error(backend, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_C17_E_BUFFER", "missing C17 output buffer", NULL);
+        if (result != NULL) {
+            result->status = VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+        }
+        return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+    }
+
+    status = vitte_c17_writer_init_buffer(&writer, buffer, buffer_capacity, backend != NULL ? &backend->options : NULL);
+    if (status != VITTE_STATUS_OK) {
+        vitte_c17_backend_set_error(backend, status, "VITTE_C17_E_WRITER", "failed to initialize C17 buffer writer", NULL);
+        if (result != NULL) {
+            result->status = status;
+        }
+        return status;
+    }
+
+    return vitte_c17_backend_emit_with_writer(backend, VITTE_C17_PROGRAM_INPUT_IR, ir, &writer, result);
+}
+
+vitte_status_t vitte_c17_backend_emit_ir_to_file(
+    vitte_c17_backend_t *backend,
+    const vitte_ir_t *ir,
+    const char *output_path,
+    vitte_c17_emit_result_t *result
+) {
+    FILE *stream;
+    vitte_c17_writer_t writer;
+    vitte_status_t status;
+
+    if (output_path == NULL) {
+        vitte_c17_backend_set_error(backend, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_C17_E_FILE", "missing C17 output path", NULL);
+        if (result != NULL) {
+            result->status = VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+        }
+        return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+    }
+
+    stream = fopen(output_path, "wb");
+    if (stream == NULL) {
+        vitte_c17_backend_set_error(backend, VITTE_STATUS_ERROR_IO, "VITTE_C17_E_FILE", "failed to open C17 output file", output_path);
+        if (result != NULL) {
+            result->status = VITTE_STATUS_ERROR_IO;
+        }
+        return VITTE_STATUS_ERROR_IO;
+    }
+
+    status = vitte_c17_writer_init_file(&writer, stream, backend != NULL ? &backend->options : NULL);
+    if (status == VITTE_STATUS_OK) {
+        status = vitte_c17_backend_emit_with_writer(backend, VITTE_C17_PROGRAM_INPUT_IR, ir, &writer, result);
     }
     if (fclose(stream) != 0 && status == VITTE_STATUS_OK) {
         vitte_c17_backend_set_error(backend, VITTE_STATUS_ERROR_IO, "VITTE_C17_E_FILE", "failed to close C17 output file", output_path);

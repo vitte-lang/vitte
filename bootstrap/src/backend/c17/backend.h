@@ -6,6 +6,7 @@
 
 #include "../../api/error.h"
 #include "../../ast/ast.h"
+#include "../../ir/ir.h"
 #include "options.h"
 
 #ifdef __cplusplus
@@ -46,6 +47,21 @@ vitte_status_t vitte_c17_backend_emit_ast_to_buffer(
 vitte_status_t vitte_c17_backend_emit_ast_to_file(
     vitte_c17_backend_t *backend,
     const vitte_ast_t *ast,
+    const char *output_path,
+    vitte_c17_emit_result_t *result
+);
+
+vitte_status_t vitte_c17_backend_emit_ir_to_buffer(
+    vitte_c17_backend_t *backend,
+    const vitte_ir_t *ir,
+    char *buffer,
+    size_t buffer_capacity,
+    vitte_c17_emit_result_t *result
+);
+
+vitte_status_t vitte_c17_backend_emit_ir_to_file(
+    vitte_c17_backend_t *backend,
+    const vitte_ir_t *ir,
     const char *output_path,
     vitte_c17_emit_result_t *result
 );

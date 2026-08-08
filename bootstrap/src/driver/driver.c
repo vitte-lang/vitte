@@ -537,7 +537,8 @@ static vitte_status_t vitte_driver_prepare_config(
 
 static vitte_status_t vitte_driver_emit_c_impl(
     vitte_driver_t *driver,
-    const vitte_ast_t *ast,
+    vitte_codegen_input_kind_t input_kind,
+    const void *input,
     const char *output_path,
     vitte_driver_result_t *result
 ) {
@@ -558,6 +559,7 @@ static vitte_status_t vitte_driver_emit_c_impl(
     } else {
         options.output_kind = VITTE_CODEGEN_OUTPUT_BUFFER;
     }
+    options.input_kind = input_kind;
 
     status = vitte_codegen_init(&codegen, &options);
     if (status != VITTE_STATUS_OK) {
@@ -566,7 +568,7 @@ static vitte_status_t vitte_driver_emit_c_impl(
         return status;
     }
 
-    status = vitte_codegen_emit(&codegen, ast, &codegen_result);
+    status = vitte_codegen_emit(&codegen, input, &codegen_result);
     if (status != VITTE_STATUS_OK) {
         vitte_driver_add_diag(driver, VITTE_DIAGNOSTIC_FATAL, "VITTE_DRIVER_E_CODEGEN", "C17 emission failed", NULL);
         vitte_error_copy(&driver->last_error, vitte_codegen_last_error(&codegen));
@@ -624,51 +626,55 @@ static vitte_status_t vitte_driver_run_sema(
 
 static vitte_status_t vitte_driver_run_backend(
     vitte_driver_t *driver,
-    const vitte_ast_t *ast
+    const vitte_ast_t *ast,
+    vitte_hir_t *hir,
+    vitte_ir_t *ir
 ) {
-    vitte_hir_t hir;
-    vitte_ir_t ir;
     vitte_status_t status;
 
-    if (driver == NULL || ast == NULL) {
+    if (driver == NULL || ast == NULL || hir == NULL || ir == NULL) {
         return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
     }
 
-    status = vitte_hir_init_owned(&hir, NULL);
+    status = vitte_hir_init_owned(hir, NULL);
     if (status != VITTE_STATUS_OK) {
-        vitte_error_copy(&driver->last_error, vitte_hir_last_error(&hir));
+        vitte_error_copy(&driver->last_error, vitte_hir_last_error(hir));
         return status;
     }
 
-    status = vitte_hir_lower_ast(&hir, ast);
+    status = vitte_hir_lower_ast(hir, ast);
     if (status == VITTE_STATUS_OK) {
-        status = vitte_hir_validate(&hir);
+        status = vitte_hir_validate(hir);
     }
     if (status == VITTE_STATUS_OK) {
-        status = vitte_ir_init_owned(&ir, NULL);
+        status = vitte_ir_init_owned(ir, NULL);
         if (status != VITTE_STATUS_OK) {
-            vitte_error_copy(&driver->last_error, vitte_ir_last_error(&ir));
-            vitte_hir_destroy(&hir);
+            vitte_error_copy(&driver->last_error, vitte_ir_last_error(ir));
+            vitte_hir_destroy(hir);
             return status;
         }
-        status = vitte_ir_lower_hir(&ir, &hir);
+        status = vitte_ir_lower_hir(ir, hir);
         if (status == VITTE_STATUS_OK) {
-            status = vitte_ir_validate(&ir);
+            status = vitte_ir_validate(ir);
         }
         if (status != VITTE_STATUS_OK) {
-            vitte_error_copy(&driver->last_error, vitte_ir_last_error(&ir));
+            vitte_error_copy(&driver->last_error, vitte_ir_last_error(ir));
         }
-        vitte_ir_destroy(&ir);
     }
     if (status != VITTE_STATUS_OK) {
         if (vitte_error_is_ok(&driver->last_error)) {
-            vitte_error_copy(&driver->last_error, vitte_hir_last_error(&hir));
+            vitte_error_copy(&driver->last_error, vitte_hir_last_error(hir));
+        }
+        if (vitte_ir_is_initialized(ir)) {
+            vitte_ir_destroy(ir);
+        }
+        if (vitte_hir_is_initialized(hir)) {
+            vitte_hir_destroy(hir);
         }
     } else {
         vitte_error_reset(&driver->last_error);
     }
 
-    vitte_hir_destroy(&hir);
     return status;
 }
 
@@ -765,8 +771,12 @@ static vitte_status_t vitte_driver_run_impl(
     vitte_driver_result_t *result
 ) {
     vitte_ast_t ast;
+    vitte_hir_t hir;
+    vitte_ir_t ir;
     vitte_status_t status;
     bool ast_initialized = false;
+    bool hir_initialized = false;
+    bool ir_initialized = false;
 
     if (result != NULL) {
         vitte_driver_result_reset(result);
@@ -849,7 +859,7 @@ static vitte_status_t vitte_driver_run_impl(
     vitte_driver_pipeline_mark(&driver->pipeline, VITTE_DRIVER_STAGE_SEMANTIC, VITTE_STATUS_OK);
 
     if (kind != VITTE_DRIVER_EMIT_AST) {
-        status = vitte_driver_run_backend(driver, &ast);
+        status = vitte_driver_run_backend(driver, &ast, &hir, &ir);
         if (status != VITTE_STATUS_OK) {
             vitte_driver_pipeline_mark(&driver->pipeline, VITTE_DRIVER_STAGE_BACKEND, status);
             vitte_driver_add_diag(driver, VITTE_DIAGNOSTIC_FATAL, "VITTE_DRIVER_E_BACKEND", "backend lowering failed", vitte_driver_last_error(driver)->details);
@@ -858,6 +868,8 @@ static vitte_status_t vitte_driver_run_impl(
             vitte_driver_update_counts(driver, result);
             return status;
         }
+        hir_initialized = true;
+        ir_initialized = true;
         vitte_driver_pipeline_mark(&driver->pipeline, VITTE_DRIVER_STAGE_BACKEND, VITTE_STATUS_OK);
     }
 
@@ -880,10 +892,16 @@ static vitte_status_t vitte_driver_run_impl(
             }
             c_output_path = result != NULL ? result->generated_c_path : NULL;
         }
-        status = vitte_driver_emit_c_impl(driver, &ast, c_output_path, result);
+        status = vitte_driver_emit_c_impl(driver, VITTE_CODEGEN_INPUT_IR, &ir, c_output_path, result);
         if (status != VITTE_STATUS_OK) {
             vitte_driver_pipeline_mark(&driver->pipeline, VITTE_DRIVER_STAGE_CODEGEN_C, status);
             vitte_driver_result_set_error(result, status, VITTE_DRIVER_STAGE_CODEGEN_C, "VITTE_DRIVER_E_CODEGEN", "failed to emit C17", NULL);
+            if (ir_initialized) {
+                vitte_ir_destroy(&ir);
+            }
+            if (hir_initialized) {
+                vitte_hir_destroy(&hir);
+            }
             vitte_ast_destroy(&ast);
             vitte_driver_update_counts(driver, result);
             return status;
@@ -895,6 +913,12 @@ static vitte_status_t vitte_driver_run_impl(
             if (status != VITTE_STATUS_OK) {
                 vitte_driver_pipeline_mark(&driver->pipeline, VITTE_DRIVER_STAGE_COMPILE_LINK, status);
                 vitte_driver_result_set_error(result, status, VITTE_DRIVER_STAGE_COMPILE_LINK, "VITTE_DRIVER_E_LINK", "failed to compile generated C", output_path);
+                if (ir_initialized) {
+                    vitte_ir_destroy(&ir);
+                }
+                if (hir_initialized) {
+                    vitte_hir_destroy(&hir);
+                }
                 vitte_ast_destroy(&ast);
                 vitte_driver_update_counts(driver, result);
                 return status;
@@ -913,6 +937,12 @@ static vitte_status_t vitte_driver_run_impl(
 
     if (ast_initialized) {
         vitte_ast_destroy(&ast);
+    }
+    if (ir_initialized) {
+        vitte_ir_destroy(&ir);
+    }
+    if (hir_initialized) {
+        vitte_hir_destroy(&hir);
     }
     if (result != NULL) {
         result->status = vitte_diagnostic_status(&driver->diagnostics);
