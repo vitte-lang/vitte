@@ -710,6 +710,7 @@ static vitte_status_t vitte_c17_emit_ir_function(
     const vitte_ir_function_t *function
 ) {
     const vitte_ir_block_t *block;
+    const vitte_ir_value_t *parameter;
     char function_name[128];
     char entry_label[128];
     vitte_status_t status;
@@ -733,7 +734,38 @@ static vitte_status_t vitte_c17_emit_ir_function(
     if (status != VITTE_STATUS_OK) {
         return status;
     }
-    status = vitte_c17_write_string(writer, "(void) ");
+    status = vitte_c17_write_char(writer, '(');
+    if (status != VITTE_STATUS_OK) {
+        return status;
+    }
+    if (function->parameter_count == 0u) {
+        status = vitte_c17_write_string(writer, "void");
+        if (status != VITTE_STATUS_OK) {
+            return status;
+        }
+    } else {
+        for (parameter = function->first_parameter; parameter != NULL; parameter = parameter->next) {
+            if (parameter != function->first_parameter) {
+                status = vitte_c17_write_string(writer, ", ");
+                if (status != VITTE_STATUS_OK) {
+                    return status;
+                }
+            }
+            status = vitte_c17_emit_ir_type(module, writer, parameter->type);
+            if (status != VITTE_STATUS_OK) {
+                return status;
+            }
+            status = vitte_c17_write_char(writer, ' ');
+            if (status != VITTE_STATUS_OK) {
+                return status;
+            }
+            status = vitte_c17_emit_ir_value_ref(module, writer, parameter);
+            if (status != VITTE_STATUS_OK) {
+                return status;
+            }
+        }
+    }
+    status = vitte_c17_write_string(writer, ") ");
     if (status != VITTE_STATUS_OK) {
         return status;
     }
@@ -916,6 +948,45 @@ static vitte_status_t vitte_c17_emit_ast_expr_list(
         first = false;
     }
 
+    return VITTE_STATUS_OK;
+}
+
+static vitte_status_t vitte_c17_emit_ast_param_list(
+    vitte_c17_module_t *module,
+    vitte_c17_writer_t *writer,
+    const vitte_ast_list_t *parameters
+) {
+    const vitte_ast_node_t *param;
+    vitte_status_t status;
+
+    if (parameters == NULL || parameters->count == 0u) {
+        return vitte_c17_write_string(writer, "void");
+    }
+
+    for (param = parameters->first; param != NULL; param = param->next) {
+        if (param != parameters->first) {
+            status = vitte_c17_write_string(writer, ", ");
+            if (status != VITTE_STATUS_OK) {
+                return status;
+            }
+        }
+        if (param->kind != VITTE_AST_NODE_PARAM_DECL || param->as.param_decl.type == NULL || param->as.param_decl.name == NULL) {
+            vitte_c17_module_set_error(module, VITTE_STATUS_ERROR_BACKEND, "VITTE_C17_E_PARAM", "unsupported AST parameter for C17 emission", param != NULL ? vitte_ast_node_kind_name(param->kind) : NULL);
+            return VITTE_STATUS_ERROR_BACKEND;
+        }
+        status = vitte_c17_emit_ast_type(module, writer, param->as.param_decl.type);
+        if (status != VITTE_STATUS_OK) {
+            return status;
+        }
+        status = vitte_c17_write_char(writer, ' ');
+        if (status != VITTE_STATUS_OK) {
+            return status;
+        }
+        status = vitte_c17_emit_identifier(module, writer, param->as.param_decl.name);
+        if (status != VITTE_STATUS_OK) {
+            return status;
+        }
+    }
     return VITTE_STATUS_OK;
 }
 
@@ -1133,7 +1204,15 @@ static vitte_status_t vitte_c17_emit_ast_proc_decl(vitte_c17_module_t *module, v
     if (status != VITTE_STATUS_OK) {
         return status;
     }
-    status = vitte_c17_write_string(writer, "(void) ");
+    status = vitte_c17_write_char(writer, '(');
+    if (status != VITTE_STATUS_OK) {
+        return status;
+    }
+    status = vitte_c17_emit_ast_param_list(module, writer, &decl->as.proc_decl.parameters);
+    if (status != VITTE_STATUS_OK) {
+        return status;
+    }
+    status = vitte_c17_write_string(writer, ") ");
     if (status != VITTE_STATUS_OK) {
         return status;
     }

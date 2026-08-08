@@ -1,0 +1,909 @@
+space vitte/compiler/analysis/modules/module_kind
+
+export *
+
+pick ModuleKind {
+    Source,
+    Library,
+    Executable,
+    Test,
+    Benchmark,
+    Example,
+    Build,
+    Script,
+    Plugin,
+    ProcMacro,
+    StaticLibrary,
+    SharedLibrary,
+    Object,
+    Interface,
+    Header,
+    Package,
+    Workspace,
+    Prelude,
+    Runtime,
+    Stdlib,
+    Compiler,
+    Builtin,
+    Generated,
+    External,
+    Virtual
+}
+
+pick ModuleKindCategory {
+    Source,
+    Binary,
+    Library,
+    Tooling,
+    System,
+    Synthetic,
+    External
+}
+
+pick ModuleArtifactKind {
+    None,
+    Executable,
+    StaticLibrary,
+    SharedLibrary,
+    Object,
+    Interface,
+    Metadata
+}
+
+pick ModuleEntryPointPolicy {
+    Forbidden,
+    Optional,
+    Required
+}
+
+pick ModuleKindError {
+    None,
+    EmptyName,
+    UnknownKind,
+    UnsupportedArtifact,
+    InvalidEntryPoint,
+    InvalidCombination
+}
+
+form ModuleKindResult {
+    kind: Option<ModuleKind>
+    error: ModuleKindError
+    message: string
+}
+
+form ModuleKindProfile {
+    kind: ModuleKind
+    category: ModuleKindCategory
+    artifact: ModuleArtifactKind
+    entry_point: ModuleEntryPointPolicy
+
+    compilable: bool
+    linkable: bool
+    executable: bool
+    importable: bool
+    publishable: bool
+    testable: bool
+
+    synthetic: bool
+    system: bool
+    external: bool
+}
+
+proc module_kind_result_ok(
+    kind: ModuleKind
+) -> ModuleKindResult {
+    give ModuleKindResult {
+        kind: Some(kind),
+        error: ModuleKindError.None,
+        message: ""
+    };
+}
+
+proc module_kind_result_error(
+    error: ModuleKindError,
+    message: string
+) -> ModuleKindResult {
+    give ModuleKindResult {
+        kind: None,
+        error: error,
+        message: message
+    };
+}
+
+proc module_kind_default() -> ModuleKind {
+    give ModuleKind.Source;
+}
+
+proc module_kind_category(
+    kind: ModuleKind
+) -> ModuleKindCategory {
+    pick kind {
+        ModuleKind.Source {
+            give ModuleKindCategory.Source;
+        }
+
+        ModuleKind.Interface {
+            give ModuleKindCategory.Source;
+        }
+
+        ModuleKind.Header {
+            give ModuleKindCategory.Source;
+        }
+
+        ModuleKind.Executable {
+            give ModuleKindCategory.Binary;
+        }
+
+        ModuleKind.Test {
+            give ModuleKindCategory.Binary;
+        }
+
+        ModuleKind.Benchmark {
+            give ModuleKindCategory.Binary;
+        }
+
+        ModuleKind.Example {
+            give ModuleKindCategory.Binary;
+        }
+
+        ModuleKind.Script {
+            give ModuleKindCategory.Binary;
+        }
+
+        ModuleKind.Library {
+            give ModuleKindCategory.Library;
+        }
+
+        ModuleKind.StaticLibrary {
+            give ModuleKindCategory.Library;
+        }
+
+        ModuleKind.SharedLibrary {
+            give ModuleKindCategory.Library;
+        }
+
+        ModuleKind.Object {
+            give ModuleKindCategory.Library;
+        }
+
+        ModuleKind.Plugin {
+            give ModuleKindCategory.Library;
+        }
+
+        ModuleKind.ProcMacro {
+            give ModuleKindCategory.Library;
+        }
+
+        ModuleKind.Build {
+            give ModuleKindCategory.Tooling;
+        }
+
+        ModuleKind.Package {
+            give ModuleKindCategory.Tooling;
+        }
+
+        ModuleKind.Workspace {
+            give ModuleKindCategory.Tooling;
+        }
+
+        ModuleKind.Prelude {
+            give ModuleKindCategory.System;
+        }
+
+        ModuleKind.Runtime {
+            give ModuleKindCategory.System;
+        }
+
+        ModuleKind.Stdlib {
+            give ModuleKindCategory.System;
+        }
+
+        ModuleKind.Compiler {
+            give ModuleKindCategory.System;
+        }
+
+        ModuleKind.Builtin {
+            give ModuleKindCategory.System;
+        }
+
+        ModuleKind.Generated {
+            give ModuleKindCategory.Synthetic;
+        }
+
+        ModuleKind.Virtual {
+            give ModuleKindCategory.Synthetic;
+        }
+
+        ModuleKind.External {
+            give ModuleKindCategory.External;
+        }
+    }
+}
+
+proc module_kind_artifact(
+    kind: ModuleKind
+) -> ModuleArtifactKind {
+    pick kind {
+        ModuleKind.Executable {
+            give ModuleArtifactKind.Executable;
+        }
+
+        ModuleKind.Test {
+            give ModuleArtifactKind.Executable;
+        }
+
+        ModuleKind.Benchmark {
+            give ModuleArtifactKind.Executable;
+        }
+
+        ModuleKind.Example {
+            give ModuleArtifactKind.Executable;
+        }
+
+        ModuleKind.Script {
+            give ModuleArtifactKind.Executable;
+        }
+
+        ModuleKind.StaticLibrary {
+            give ModuleArtifactKind.StaticLibrary;
+        }
+
+        ModuleKind.SharedLibrary {
+            give ModuleArtifactKind.SharedLibrary;
+        }
+
+        ModuleKind.Plugin {
+            give ModuleArtifactKind.SharedLibrary;
+        }
+
+        ModuleKind.ProcMacro {
+            give ModuleArtifactKind.SharedLibrary;
+        }
+
+        ModuleKind.Object {
+            give ModuleArtifactKind.Object;
+        }
+
+        ModuleKind.Interface {
+            give ModuleArtifactKind.Interface;
+        }
+
+        ModuleKind.Header {
+            give ModuleArtifactKind.Interface;
+        }
+
+        ModuleKind.Package {
+            give ModuleArtifactKind.Metadata;
+        }
+
+        ModuleKind.Workspace {
+            give ModuleArtifactKind.Metadata;
+        }
+
+        _ {
+            give ModuleArtifactKind.None;
+        }
+    }
+}
+
+proc module_kind_entry_point_policy(
+    kind: ModuleKind
+) -> ModuleEntryPointPolicy {
+    pick kind {
+        ModuleKind.Executable {
+            give ModuleEntryPointPolicy.Required;
+        }
+
+        ModuleKind.Test {
+            give ModuleEntryPointPolicy.Optional;
+        }
+
+        ModuleKind.Benchmark {
+            give ModuleEntryPointPolicy.Optional;
+        }
+
+        ModuleKind.Example {
+            give ModuleEntryPointPolicy.Required;
+        }
+
+        ModuleKind.Script {
+            give ModuleEntryPointPolicy.Required;
+        }
+
+        ModuleKind.Build {
+            give ModuleEntryPointPolicy.Required;
+        }
+
+        _ {
+            give ModuleEntryPointPolicy.Forbidden;
+        }
+    }
+}
+
+proc module_kind_is_source(
+    kind: ModuleKind
+) -> bool {
+    give module_kind_category(kind)
+        == ModuleKindCategory.Source;
+}
+
+proc module_kind_is_binary(
+    kind: ModuleKind
+) -> bool {
+    give module_kind_category(kind)
+        == ModuleKindCategory.Binary;
+}
+
+proc module_kind_is_library(
+    kind: ModuleKind
+) -> bool {
+    give kind == ModuleKind.Library
+        or kind == ModuleKind.StaticLibrary
+        or kind == ModuleKind.SharedLibrary
+        or kind == ModuleKind.Object
+        or kind == ModuleKind.Plugin
+        or kind == ModuleKind.ProcMacro;
+}
+
+proc module_kind_is_executable(
+    kind: ModuleKind
+) -> bool {
+    give module_kind_artifact(kind)
+        == ModuleArtifactKind.Executable;
+}
+
+proc module_kind_is_test(
+    kind: ModuleKind
+) -> bool {
+    give kind == ModuleKind.Test;
+}
+
+proc module_kind_is_benchmark(
+    kind: ModuleKind
+) -> bool {
+    give kind == ModuleKind.Benchmark;
+}
+
+proc module_kind_is_example(
+    kind: ModuleKind
+) -> bool {
+    give kind == ModuleKind.Example;
+}
+
+proc module_kind_is_build_script(
+    kind: ModuleKind
+) -> bool {
+    give kind == ModuleKind.Build;
+}
+
+proc module_kind_is_plugin(
+    kind: ModuleKind
+) -> bool {
+    give kind == ModuleKind.Plugin
+        or kind == ModuleKind.ProcMacro;
+}
+
+proc module_kind_is_system(
+    kind: ModuleKind
+) -> bool {
+    give module_kind_category(kind)
+        == ModuleKindCategory.System;
+}
+
+proc module_kind_is_synthetic(
+    kind: ModuleKind
+) -> bool {
+    give module_kind_category(kind)
+        == ModuleKindCategory.Synthetic;
+}
+
+proc module_kind_is_external(
+    kind: ModuleKind
+) -> bool {
+    give kind == ModuleKind.External;
+}
+
+proc module_kind_is_container(
+    kind: ModuleKind
+) -> bool {
+    give kind == ModuleKind.Package
+        or kind == ModuleKind.Workspace
+        or kind == ModuleKind.Virtual;
+}
+
+proc module_kind_is_compilable(
+    kind: ModuleKind
+) -> bool {
+    give not module_kind_is_container(kind)
+        and kind != ModuleKind.Header
+        and kind != ModuleKind.External;
+}
+
+proc module_kind_is_linkable(
+    kind: ModuleKind
+) -> bool {
+    give kind == ModuleKind.Executable
+        or kind == ModuleKind.Test
+        or kind == ModuleKind.Benchmark
+        or kind == ModuleKind.Example
+        or kind == ModuleKind.Script
+        or kind == ModuleKind.StaticLibrary
+        or kind == ModuleKind.SharedLibrary
+        or kind == ModuleKind.Plugin
+        or kind == ModuleKind.ProcMacro;
+}
+
+proc module_kind_is_importable(
+    kind: ModuleKind
+) -> bool {
+    give kind != ModuleKind.Executable
+        and kind != ModuleKind.Test
+        and kind != ModuleKind.Benchmark
+        and kind != ModuleKind.Example
+        and kind != ModuleKind.Script
+        and kind != ModuleKind.Build
+        and kind != ModuleKind.Workspace;
+}
+
+proc module_kind_is_publishable(
+    kind: ModuleKind
+) -> bool {
+    give kind == ModuleKind.Library
+        or kind == ModuleKind.StaticLibrary
+        or kind == ModuleKind.SharedLibrary
+        or kind == ModuleKind.Plugin
+        or kind == ModuleKind.ProcMacro
+        or kind == ModuleKind.Executable
+        or kind == ModuleKind.Package;
+}
+
+proc module_kind_is_testable(
+    kind: ModuleKind
+) -> bool {
+    give kind != ModuleKind.External
+        and kind != ModuleKind.Virtual
+        and kind != ModuleKind.Workspace
+        and kind != ModuleKind.Header;
+}
+
+proc module_kind_requires_entry_point(
+    kind: ModuleKind
+) -> bool {
+    give module_kind_entry_point_policy(kind)
+        == ModuleEntryPointPolicy.Required;
+}
+
+proc module_kind_allows_entry_point(
+    kind: ModuleKind
+) -> bool {
+    give module_kind_entry_point_policy(kind)
+        != ModuleEntryPointPolicy.Forbidden;
+}
+
+proc module_kind_profile(
+    kind: ModuleKind
+) -> ModuleKindProfile {
+    give ModuleKindProfile {
+        kind: kind,
+        category: module_kind_category(kind),
+        artifact: module_kind_artifact(kind),
+        entry_point: module_kind_entry_point_policy(kind),
+
+        compilable: module_kind_is_compilable(kind),
+        linkable: module_kind_is_linkable(kind),
+        executable: module_kind_is_executable(kind),
+        importable: module_kind_is_importable(kind),
+        publishable: module_kind_is_publishable(kind),
+        testable: module_kind_is_testable(kind),
+
+        synthetic: module_kind_is_synthetic(kind),
+        system: module_kind_is_system(kind),
+        external: module_kind_is_external(kind)
+    };
+}
+
+proc module_kind_name(
+    kind: ModuleKind
+) -> string {
+    pick kind {
+        ModuleKind.Source {
+            give "source";
+        }
+
+        ModuleKind.Library {
+            give "library";
+        }
+
+        ModuleKind.Executable {
+            give "executable";
+        }
+
+        ModuleKind.Test {
+            give "test";
+        }
+
+        ModuleKind.Benchmark {
+            give "benchmark";
+        }
+
+        ModuleKind.Example {
+            give "example";
+        }
+
+        ModuleKind.Build {
+            give "build";
+        }
+
+        ModuleKind.Script {
+            give "script";
+        }
+
+        ModuleKind.Plugin {
+            give "plugin";
+        }
+
+        ModuleKind.ProcMacro {
+            give "proc-macro";
+        }
+
+        ModuleKind.StaticLibrary {
+            give "static-library";
+        }
+
+        ModuleKind.SharedLibrary {
+            give "shared-library";
+        }
+
+        ModuleKind.Object {
+            give "object";
+        }
+
+        ModuleKind.Interface {
+            give "interface";
+        }
+
+        ModuleKind.Header {
+            give "header";
+        }
+
+        ModuleKind.Package {
+            give "package";
+        }
+
+        ModuleKind.Workspace {
+            give "workspace";
+        }
+
+        ModuleKind.Prelude {
+            give "prelude";
+        }
+
+        ModuleKind.Runtime {
+            give "runtime";
+        }
+
+        ModuleKind.Stdlib {
+            give "stdlib";
+        }
+
+        ModuleKind.Compiler {
+            give "compiler";
+        }
+
+        ModuleKind.Builtin {
+            give "builtin";
+        }
+
+        ModuleKind.Generated {
+            give "generated";
+        }
+
+        ModuleKind.External {
+            give "external";
+        }
+
+        ModuleKind.Virtual {
+            give "virtual";
+        }
+    }
+}
+
+proc module_kind_display_name(
+    kind: ModuleKind
+) -> string {
+    pick kind {
+        ModuleKind.Source {
+            give "source module";
+        }
+
+        ModuleKind.Library {
+            give "library module";
+        }
+
+        ModuleKind.Executable {
+            give "executable module";
+        }
+
+        ModuleKind.Test {
+            give "test module";
+        }
+
+        ModuleKind.Benchmark {
+            give "benchmark module";
+        }
+
+        ModuleKind.Example {
+            give "example module";
+        }
+
+        ModuleKind.Build {
+            give "build module";
+        }
+
+        ModuleKind.Script {
+            give "script module";
+        }
+
+        ModuleKind.Plugin {
+            give "plugin module";
+        }
+
+        ModuleKind.ProcMacro {
+            give "procedural macro module";
+        }
+
+        ModuleKind.StaticLibrary {
+            give "static library module";
+        }
+
+        ModuleKind.SharedLibrary {
+            give "shared library module";
+        }
+
+        ModuleKind.Object {
+            give "object module";
+        }
+
+        ModuleKind.Interface {
+            give "interface module";
+        }
+
+        ModuleKind.Header {
+            give "header module";
+        }
+
+        ModuleKind.Package {
+            give "package";
+        }
+
+        ModuleKind.Workspace {
+            give "workspace";
+        }
+
+        ModuleKind.Prelude {
+            give "prelude module";
+        }
+
+        ModuleKind.Runtime {
+            give "runtime module";
+        }
+
+        ModuleKind.Stdlib {
+            give "standard library module";
+        }
+
+        ModuleKind.Compiler {
+            give "compiler module";
+        }
+
+        ModuleKind.Builtin {
+            give "builtin module";
+        }
+
+        ModuleKind.Generated {
+            give "generated module";
+        }
+
+        ModuleKind.External {
+            give "external module";
+        }
+
+        ModuleKind.Virtual {
+            give "virtual module";
+        }
+    }
+}
+
+proc module_kind_from_string(
+    value: string
+) -> ModuleKindResult {
+    if len(value) == 0 {
+        give module_kind_result_error(
+            ModuleKindError.EmptyName,
+            "module kind must not be empty"
+        );
+    }
+
+    if value == "source" {
+        give module_kind_result_ok(ModuleKind.Source);
+    }
+
+    if value == "library" or value == "lib" {
+        give module_kind_result_ok(ModuleKind.Library);
+    }
+
+    if value == "executable" or value == "binary"
+        or value == "bin"
+    {
+        give module_kind_result_ok(ModuleKind.Executable);
+    }
+
+    if value == "test" {
+        give module_kind_result_ok(ModuleKind.Test);
+    }
+
+    if value == "benchmark" or value == "bench" {
+        give module_kind_result_ok(ModuleKind.Benchmark);
+    }
+
+    if value == "example" {
+        give module_kind_result_ok(ModuleKind.Example);
+    }
+
+    if value == "build" or value == "build-script" {
+        give module_kind_result_ok(ModuleKind.Build);
+    }
+
+    if value == "script" {
+        give module_kind_result_ok(ModuleKind.Script);
+    }
+
+    if value == "plugin" {
+        give module_kind_result_ok(ModuleKind.Plugin);
+    }
+
+    if value == "proc-macro" or value == "proc_macro" {
+        give module_kind_result_ok(ModuleKind.ProcMacro);
+    }
+
+    if value == "static-library" or value == "staticlib" {
+        give module_kind_result_ok(ModuleKind.StaticLibrary);
+    }
+
+    if value == "shared-library" or value == "sharedlib"
+        or value == "dylib"
+    {
+        give module_kind_result_ok(ModuleKind.SharedLibrary);
+    }
+
+    if value == "object" or value == "obj" {
+        give module_kind_result_ok(ModuleKind.Object);
+    }
+
+    if value == "interface" {
+        give module_kind_result_ok(ModuleKind.Interface);
+    }
+
+    if value == "header" {
+        give module_kind_result_ok(ModuleKind.Header);
+    }
+
+    if value == "package" {
+        give module_kind_result_ok(ModuleKind.Package);
+    }
+
+    if value == "workspace" {
+        give module_kind_result_ok(ModuleKind.Workspace);
+    }
+
+    if value == "prelude" {
+        give module_kind_result_ok(ModuleKind.Prelude);
+    }
+
+    if value == "runtime" {
+        give module_kind_result_ok(ModuleKind.Runtime);
+    }
+
+    if value == "stdlib" or value == "standard-library" {
+        give module_kind_result_ok(ModuleKind.Stdlib);
+    }
+
+    if value == "compiler" {
+        give module_kind_result_ok(ModuleKind.Compiler);
+    }
+
+    if value == "builtin" {
+        give module_kind_result_ok(ModuleKind.Builtin);
+    }
+
+    if value == "generated" {
+        give module_kind_result_ok(ModuleKind.Generated);
+    }
+
+    if value == "external" {
+        give module_kind_result_ok(ModuleKind.External);
+    }
+
+    if value == "virtual" {
+        give module_kind_result_ok(ModuleKind.Virtual);
+    }
+
+    give module_kind_result_error(
+        ModuleKindError.UnknownKind,
+        "unknown module kind: " + value
+    );
+}
+
+proc module_kind_validate_entry_point(
+    kind: ModuleKind,
+    has_entry_point: bool
+) -> ModuleKindError {
+    let policy = module_kind_entry_point_policy(kind);
+
+    if policy == ModuleEntryPointPolicy.Required
+        and not has_entry_point
+    {
+        give ModuleKindError.InvalidEntryPoint;
+    }
+
+    if policy == ModuleEntryPointPolicy.Forbidden
+        and has_entry_point
+    {
+        give ModuleKindError.InvalidEntryPoint;
+    }
+
+    give ModuleKindError.None;
+}
+
+proc module_kind_validate_artifact(
+    kind: ModuleKind,
+    artifact: ModuleArtifactKind
+) -> ModuleKindError {
+    let expected = module_kind_artifact(kind);
+
+    if expected == ModuleArtifactKind.None {
+        if artifact != ModuleArtifactKind.None
+            and artifact != ModuleArtifactKind.Metadata
+        {
+            give ModuleKindError.UnsupportedArtifact;
+        }
+
+        give ModuleKindError.None;
+    }
+
+    if expected != artifact {
+        give ModuleKindError.UnsupportedArtifact;
+    }
+
+    give ModuleKindError.None;
+}
+
+proc module_kind_error_code(
+    error: ModuleKindError
+) -> string {
+    pick error {
+        ModuleKindError.None {
+            give "";
+        }
+
+        ModuleKindError.EmptyName {
+            give "E_MODULE_KIND_EMPTY";
+        }
+
+        ModuleKindError.UnknownKind {
+            give "E_MODULE_KIND_UNKNOWN";
+        }
+
+        ModuleKindError.UnsupportedArtifact {
+            give "E_MODULE_KIND_ARTIFACT";
+        }
+
+        ModuleKindError.InvalidEntryPoint {
+            give "E_MODULE_KIND_ENTRY_POINT";
+        }
+
+        ModuleKindError.InvalidCombination {
+            give "E_MODULE_KIND_COMBINATION";
+        }
+    }
+}

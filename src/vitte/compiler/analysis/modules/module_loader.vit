@@ -1,0 +1,2360 @@
+space vitte/compiler/analysis/modules/module_loader
+
+export *
+
+use src/vitte/compiler/frontend/source/span.{Span}
+use src/vitte/compiler/analysis/modules/module_id.{
+    ModuleId,
+    ModuleIdKind,
+    module_id,
+    module_id_invalid,
+    module_id_equal,
+    module_id_is_valid
+}
+use src/vitte/compiler/analysis/modules/module_info.{
+    ModuleInfo,
+    ModuleInfoState,
+    ModuleInfoTable,
+    ModuleSourceInfo,
+    ModuleSourceKind,
+    module_info_create_basic,
+    module_info_full_name,
+    module_info_table_create,
+    module_info_insert,
+    module_info_get,
+    module_info_get_mut,
+    module_info_contains,
+    module_info_mark_discovering,
+    module_info_mark_loading,
+    module_info_mark_loaded,
+    module_info_mark_failed,
+    module_info_invalidate
+}
+use src/vitte/compiler/analysis/modules/module_attributes.{
+    ModuleAttributes,
+    module_attributes_default
+}
+
+pick ModuleLoaderState {
+    Idle,
+    Discovering,
+    Loading,
+    Completed,
+    Failed,
+    Cancelled
+}
+
+pick ModuleLoadState {
+    Pending,
+    Discovering,
+    Reading,
+    Loaded,
+    Missing,
+    Failed,
+    Cancelled,
+    Invalidated
+}
+
+pick ModuleLoadOrigin {
+    Entry,
+    Import,
+    Dependency,
+    Prelude,
+    Stdlib,
+    Runtime,
+    Builtin,
+    Generated,
+    Package,
+    External
+}
+
+pick ModuleLoaderErrorKind {
+    InvalidArgument,
+    InvalidModuleId,
+    InvalidModuleName,
+    InvalidPath,
+
+    ModuleNotFound,
+    SourceUnavailable,
+    SourceReadFailed,
+    SourceTooLarge,
+    SourceChanged,
+
+    DuplicateRequest,
+    DuplicateModule,
+    CircularLoad,
+
+    SearchPathNotFound,
+    UnsupportedSource,
+    InvalidEncoding,
+
+    Cancelled,
+    InvalidState,
+    LoaderBusy,
+    DatabaseCorrupted
+}
+
+form ModuleLoaderConfiguration {
+    search_paths: [string]
+    package_paths: [string]
+    extension: string
+
+    prelude_module: string
+    runtime_module: string
+    stdlib_module: string
+
+    maximum_source_size: usize
+    maximum_depth: usize
+    maximum_modules: usize
+
+    load_prelude: bool
+    load_runtime: bool
+    load_stdlib: bool
+
+    allow_generated: bool
+    allow_external: bool
+    allow_absolute_paths: bool
+    follow_symbolic_links: bool
+
+    deterministic: bool
+}
+
+form ModuleLoadRequest {
+    id: usize
+    module_id: ModuleId
+    parent: ModuleId
+
+    name: string
+    canonical_name: string
+    requested_path: string
+    resolved_path: string
+
+    origin: ModuleLoadOrigin
+    state: ModuleLoadState
+
+    span: Span
+
+    depth: usize
+    optional: bool
+    synthetic: bool
+
+    generation: u64
+}
+
+form ModuleLoadedSource {
+    module_id: ModuleId
+
+    canonical_path: string
+    display_path: string
+    text: string
+
+    source_id: usize
+    source_hash: u64
+    modified_time: u64
+
+    generated: bool
+    external: bool
+}
+
+form ModuleLoaderError {
+    kind: ModuleLoaderErrorKind
+
+    module: string
+    path: string
+    message: string
+
+    span: Span
+
+    request_id: usize
+    optional: bool
+}
+
+form ModuleLoaderStatistics {
+    requests: usize
+    pending: usize
+    discovering: usize
+    reading: usize
+    loaded: usize
+    missing: usize
+    failed: usize
+    cancelled: usize
+    invalidated: usize
+
+    modules: usize
+    source_bytes: usize
+
+    cache_hits: u64
+    cache_misses: u64
+
+    path_probes: u64
+    files_read: u64
+    generated_sources: u64
+    external_sources: u64
+}
+
+form ModuleLoader {
+    configuration: ModuleLoaderConfiguration
+    state: ModuleLoaderState
+
+    requests: [ModuleLoadRequest]
+    sources: [ModuleLoadedSource]
+    stack: [ModuleId]
+
+    modules: ModuleInfoTable
+    errors: [ModuleLoaderError]
+
+    next_request_id: usize
+    next_module_id: u64
+    next_source_id: usize
+
+    generation: u64
+    statistics: ModuleLoaderStatistics
+}
+
+form ModuleLoadResult {
+    module_id: ModuleId
+    request_id: usize
+    source: Option<ModuleLoadedSource>
+    errors: [ModuleLoaderError]
+    loaded: bool
+    optional: bool
+}
+
+form ModuleLoaderResult {
+    modules: ModuleInfoTable
+    sources: [ModuleLoadedSource]
+    errors: [ModuleLoaderError]
+    statistics: ModuleLoaderStatistics
+    valid: bool
+}
+
+form ModuleSourceProviderResult {
+    found: bool
+    text: string
+    canonical_path: string
+    display_path: string
+    modified_time: u64
+    generated: bool
+    external: bool
+    error: string
+}
+
+proc module_loader_empty_span() -> Span {
+    give Span {
+        source: 0,
+        start: 0,
+        end: 0
+    };
+}
+
+proc module_loader_configuration_default()
+    -> ModuleLoaderConfiguration
+{
+    give ModuleLoaderConfiguration {
+        search_paths: ["."],
+        package_paths: [],
+        extension: ".vit",
+
+        prelude_module: "vitte::stdlib::prelude",
+        runtime_module: "vitte::stdlib::runtime",
+        stdlib_module: "vitte::stdlib",
+
+        maximum_source_size: 16 * 1024 * 1024,
+        maximum_depth: 256,
+        maximum_modules: 65536,
+
+        load_prelude: true,
+        load_runtime: true,
+        load_stdlib: true,
+
+        allow_generated: true,
+        allow_external: true,
+        allow_absolute_paths: true,
+        follow_symbolic_links: true,
+
+        deterministic: true
+    };
+}
+
+proc module_loader_statistics_empty()
+    -> ModuleLoaderStatistics
+{
+    give ModuleLoaderStatistics {
+        requests: 0,
+        pending: 0,
+        discovering: 0,
+        reading: 0,
+        loaded: 0,
+        missing: 0,
+        failed: 0,
+        cancelled: 0,
+        invalidated: 0,
+
+        modules: 0,
+        source_bytes: 0,
+
+        cache_hits: 0,
+        cache_misses: 0,
+
+        path_probes: 0,
+        files_read: 0,
+        generated_sources: 0,
+        external_sources: 0
+    };
+}
+
+proc module_loader_create(
+    configuration: ModuleLoaderConfiguration
+) -> ModuleLoader {
+    give ModuleLoader {
+        configuration: configuration,
+        state: ModuleLoaderState.Idle,
+
+        requests: [],
+        sources: [],
+        stack: [],
+
+        modules: module_info_table_create(),
+        errors: [],
+
+        next_request_id: 1,
+        next_module_id: 16,
+        next_source_id: 1,
+
+        generation: 1,
+        statistics: module_loader_statistics_empty()
+    };
+}
+
+proc module_loader_create_default() -> ModuleLoader {
+    give module_loader_create(
+        module_loader_configuration_default()
+    );
+}
+
+proc module_loader_error(
+    kind: ModuleLoaderErrorKind,
+    module: string,
+    path: string,
+    message: string,
+    span: Span,
+    request_id: usize,
+    optional: bool
+) -> ModuleLoaderError {
+    give ModuleLoaderError {
+        kind: kind,
+
+        module: module,
+        path: path,
+        message: message,
+
+        span: span,
+
+        request_id: request_id,
+        optional: optional
+    };
+}
+
+proc module_loader_push_error(
+    loader: ref mut ModuleLoader,
+    kind: ModuleLoaderErrorKind,
+    module: string,
+    path: string,
+    message: string,
+    span: Span,
+    request_id: usize,
+    optional: bool
+) {
+    loader.errors = loader.errors + [
+        module_loader_error(
+            kind,
+            module,
+            path,
+            message,
+            span,
+            request_id,
+            optional
+        )
+    ];
+}
+
+proc module_loader_result_error(
+    request: ref ModuleLoadRequest,
+    errors: [ModuleLoaderError]
+) -> ModuleLoadResult {
+    give ModuleLoadResult {
+        module_id: request.module_id,
+        request_id: request.id,
+        source: None,
+        errors: errors,
+        loaded: false,
+        optional: request.optional
+    };
+}
+
+proc module_loader_result_success(
+    request: ref ModuleLoadRequest,
+    source: ModuleLoadedSource
+) -> ModuleLoadResult {
+    give ModuleLoadResult {
+        module_id: request.module_id,
+        request_id: request.id,
+        source: Some(source),
+        errors: [],
+        loaded: true,
+        optional: request.optional
+    };
+}
+
+proc module_loader_allocate_module_id(
+    loader: ref mut ModuleLoader
+) -> ModuleId {
+    let id = module_id(loader.next_module_id);
+    loader.next_module_id = loader.next_module_id + 1;
+    give id;
+}
+
+proc module_loader_allocate_source_id(
+    loader: ref mut ModuleLoader
+) -> usize {
+    let id = loader.next_source_id;
+    loader.next_source_id = loader.next_source_id + 1;
+    give id;
+}
+
+proc module_loader_is_separator(
+    value: u8
+) -> bool {
+    give value == cast<u8>('/')
+        or value == cast<u8>('\\');
+}
+
+proc module_loader_is_absolute_path(
+    path: string
+) -> bool {
+    if len(path) == 0 {
+        give false;
+    }
+
+    if path[0] == '/' or path[0] == '\\' {
+        give true;
+    }
+
+    if len(path) >= 3 {
+        let first = path[0];
+
+        if (
+            (first >= 'a' and first <= 'z')
+            or (first >= 'A' and first <= 'Z')
+        )
+            and path[1] == ':'
+            and (
+                path[2] == '/'
+                or path[2] == '\\'
+            )
+        {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc module_loader_string_ends_with(
+    value: string,
+    suffix: string
+) -> bool {
+    if len(suffix) > len(value) {
+        give false;
+    }
+
+    let offset = len(value) - len(suffix);
+    set index: usize = 0;
+
+    while index < len(suffix) {
+        if value[offset + index] != suffix[index] {
+            give false;
+        }
+
+        index = index + 1;
+    }
+
+    give true;
+}
+
+proc module_loader_join_path(
+    base: string,
+    path: string
+) -> string {
+    if len(base) == 0 {
+        give path;
+    }
+
+    if len(path) == 0 {
+        give base;
+    }
+
+    let last = base[len(base) - 1];
+
+    if last == '/' or last == '\\' {
+        give base + path;
+    }
+
+    give base + "/" + path;
+}
+
+proc module_loader_module_name_to_path(
+    name: string,
+    extension: string
+) -> string {
+    set output = "";
+    set index: usize = 0;
+
+    while index < len(name) {
+        if index + 1 < len(name)
+            and name[index] == ':'
+            and name[index + 1] == ':'
+        {
+            output = output + "/";
+            index = index + 2;
+        } else {
+            output = output + name[index];
+            index = index + 1;
+        }
+    }
+
+    if len(extension) != 0
+        and not module_loader_string_ends_with(
+            output,
+            extension
+        )
+    {
+        output = output + extension;
+    }
+
+    give output;
+}
+
+proc module_loader_canonical_name(
+    name: string
+) -> string {
+    set output = "";
+    set previous_separator: bool = false;
+    set index: usize = 0;
+
+    while index < len(name) {
+        let current = name[index];
+
+        if current == '/'
+            or current == '\\'
+            or current == ':'
+        {
+            if not previous_separator
+                and len(output) != 0
+            {
+                output = output + "::";
+            }
+
+            previous_separator = true;
+
+            if current == ':'
+                and index + 1 < len(name)
+                and name[index + 1] == ':'
+            {
+                index = index + 1;
+            }
+        } else {
+            output = output + current;
+            previous_separator = false;
+        }
+
+        index = index + 1;
+    }
+
+    while module_loader_string_ends_with(output, "::") {
+        set trimmed = "";
+        set trim_index: usize = 0;
+
+        while trim_index + 2 < len(output) {
+            trimmed = trimmed + output[trim_index];
+            trim_index = trim_index + 1;
+        }
+
+        output = trimmed;
+    }
+
+    give output;
+}
+
+proc module_loader_hash_source(
+    text: string
+) -> u64 {
+    set hash: u64 = 1469598103934665603;
+    set index: usize = 0;
+
+    while index < len(text) {
+        hash = hash xor cast<u64>(text[index]);
+        hash = hash * 1099511628211;
+        index = index + 1;
+    }
+
+    give hash;
+}
+
+proc module_loader_find_request_index(
+    loader: ref ModuleLoader,
+    id: usize
+) -> Option<usize> {
+    set index: usize = 0;
+
+    while index < len(loader.requests) {
+        if loader.requests[index].id == id {
+            give Some(index);
+        }
+
+        index = index + 1;
+    }
+
+    give None;
+}
+
+proc module_loader_find_request_module_index(
+    loader: ref ModuleLoader,
+    module_id: ModuleId
+) -> Option<usize> {
+    set index: usize = 0;
+
+    while index < len(loader.requests) {
+        if module_id_equal(
+            loader.requests[index].module_id,
+            module_id
+        ) {
+            give Some(index);
+        }
+
+        index = index + 1;
+    }
+
+    give None;
+}
+
+proc module_loader_find_request_name_index(
+    loader: ref ModuleLoader,
+    canonical_name: string
+) -> Option<usize> {
+    set index: usize = 0;
+
+    while index < len(loader.requests) {
+        if loader.requests[index].canonical_name
+            == canonical_name
+        {
+            give Some(index);
+        }
+
+        index = index + 1;
+    }
+
+    give None;
+}
+
+proc module_loader_find_source_index(
+    loader: ref ModuleLoader,
+    module_id: ModuleId
+) -> Option<usize> {
+    set index: usize = 0;
+
+    while index < len(loader.sources) {
+        if module_id_equal(
+            loader.sources[index].module_id,
+            module_id
+        ) {
+            give Some(index);
+        }
+
+        index = index + 1;
+    }
+
+    give None;
+}
+
+proc module_loader_get_request(
+    loader: ref ModuleLoader,
+    id: usize
+) -> Option<ref ModuleLoadRequest> {
+    let index = module_loader_find_request_index(loader, id);
+
+    pick index {
+        Some(value) {
+            give Some(ref loader.requests[value]);
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc module_loader_get_request_mut(
+    loader: ref mut ModuleLoader,
+    id: usize
+) -> Option<ref mut ModuleLoadRequest> {
+    let index = module_loader_find_request_index(
+        ref loader,
+        id
+    );
+
+    pick index {
+        Some(value) {
+            give Some(ref mut loader.requests[value]);
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc module_loader_get_source(
+    loader: ref ModuleLoader,
+    module_id: ModuleId
+) -> Option<ref ModuleLoadedSource> {
+    let index = module_loader_find_source_index(
+        loader,
+        module_id
+    );
+
+    pick index {
+        Some(value) {
+            give Some(ref loader.sources[value]);
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc module_loader_stack_contains(
+    stack: ref [ModuleId],
+    id: ModuleId
+) -> bool {
+    for current in stack {
+        if module_id_equal(current, id) {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc module_loader_stack_push(
+    loader: ref mut ModuleLoader,
+    id: ModuleId
+) -> bool {
+    if module_loader_stack_contains(ref loader.stack, id) {
+        give false;
+    }
+
+    loader.stack = loader.stack + [id];
+    give true;
+}
+
+proc module_loader_stack_pop(
+    loader: ref mut ModuleLoader
+) {
+    if len(loader.stack) == 0 {
+        give;
+    }
+
+    set output: [ModuleId] = [];
+    set index: usize = 0;
+
+    while index + 1 < len(loader.stack) {
+        output = output + [loader.stack[index]];
+        index = index + 1;
+    }
+
+    loader.stack = output;
+}
+
+proc module_loader_refresh_statistics(
+    loader: ref mut ModuleLoader
+) {
+    set statistics = loader.statistics;
+
+    statistics.requests = len(loader.requests);
+    statistics.pending = 0;
+    statistics.discovering = 0;
+    statistics.reading = 0;
+    statistics.loaded = 0;
+    statistics.missing = 0;
+    statistics.failed = 0;
+    statistics.cancelled = 0;
+    statistics.invalidated = 0;
+
+    for request in loader.requests {
+        pick request.state {
+            ModuleLoadState.Pending {
+                statistics.pending =
+                    statistics.pending + 1;
+            }
+
+            ModuleLoadState.Discovering {
+                statistics.discovering =
+                    statistics.discovering + 1;
+            }
+
+            ModuleLoadState.Reading {
+                statistics.reading =
+                    statistics.reading + 1;
+            }
+
+            ModuleLoadState.Loaded {
+                statistics.loaded =
+                    statistics.loaded + 1;
+            }
+
+            ModuleLoadState.Missing {
+                statistics.missing =
+                    statistics.missing + 1;
+            }
+
+            ModuleLoadState.Failed {
+                statistics.failed =
+                    statistics.failed + 1;
+            }
+
+            ModuleLoadState.Cancelled {
+                statistics.cancelled =
+                    statistics.cancelled + 1;
+            }
+
+            ModuleLoadState.Invalidated {
+                statistics.invalidated =
+                    statistics.invalidated + 1;
+            }
+        }
+    }
+
+    statistics.modules = len(loader.modules.modules);
+    statistics.source_bytes = 0;
+    statistics.generated_sources = 0;
+    statistics.external_sources = 0;
+
+    for source in loader.sources {
+        statistics.source_bytes =
+            statistics.source_bytes + len(source.text);
+
+        if source.generated {
+            statistics.generated_sources =
+                statistics.generated_sources + 1;
+        }
+
+        if source.external {
+            statistics.external_sources =
+                statistics.external_sources + 1;
+        }
+    }
+
+    loader.statistics = statistics;
+}
+
+proc module_loader_request(
+    loader: ref mut ModuleLoader,
+    module_id: ModuleId,
+    parent: ModuleId,
+    name: string,
+    requested_path: string,
+    origin: ModuleLoadOrigin,
+    span: Span,
+    depth: usize,
+    optional: bool,
+    synthetic: bool
+) -> Option<usize> {
+    if len(name) == 0 {
+        module_loader_push_error(
+            loader,
+            ModuleLoaderErrorKind.InvalidModuleName,
+            name,
+            requested_path,
+            "module load request name must not be empty",
+            span,
+            0,
+            optional
+        );
+
+        give None;
+    }
+
+    if depth > loader.configuration.maximum_depth {
+        module_loader_push_error(
+            loader,
+            ModuleLoaderErrorKind.InvalidArgument,
+            name,
+            requested_path,
+            "maximum module loading depth was exceeded",
+            span,
+            0,
+            optional
+        );
+
+        give None;
+    }
+
+    if loader.configuration.maximum_modules != 0
+        and len(loader.requests)
+            >= loader.configuration.maximum_modules
+    {
+        module_loader_push_error(
+            loader,
+            ModuleLoaderErrorKind.InvalidArgument,
+            name,
+            requested_path,
+            "maximum number of loaded modules was exceeded",
+            span,
+            0,
+            optional
+        );
+
+        give None;
+    }
+
+    let canonical_name = module_loader_canonical_name(name);
+
+    let duplicate = module_loader_find_request_name_index(
+        ref loader,
+        canonical_name
+    );
+
+    pick duplicate {
+        Some(index) {
+            loader.statistics.cache_hits =
+                loader.statistics.cache_hits + 1;
+
+            give Some(loader.requests[index].id);
+        }
+
+        None {}
+    }
+
+    loader.statistics.cache_misses =
+        loader.statistics.cache_misses + 1;
+
+    set resolved_module_id = module_id;
+
+    if not module_id_is_valid(resolved_module_id) {
+        resolved_module_id =
+            module_loader_allocate_module_id(loader);
+    }
+
+    let request_id = loader.next_request_id;
+    loader.next_request_id = loader.next_request_id + 1;
+
+    loader.requests = loader.requests + [
+        ModuleLoadRequest {
+            id: request_id,
+            module_id: resolved_module_id,
+            parent: parent,
+
+            name: name,
+            canonical_name: canonical_name,
+            requested_path: requested_path,
+            resolved_path: "",
+
+            origin: origin,
+            state: ModuleLoadState.Pending,
+
+            span: span,
+
+            depth: depth,
+            optional: optional,
+            synthetic: synthetic,
+
+            generation: loader.generation
+        }
+    ];
+
+    module_loader_refresh_statistics(loader);
+
+    give Some(request_id);
+}
+
+proc module_loader_request_entry(
+    loader: ref mut ModuleLoader,
+    name: string,
+    path: string,
+    span: Span
+) -> Option<usize> {
+    give module_loader_request(
+        loader,
+        module_id_invalid(),
+        module_id_invalid(),
+        name,
+        path,
+        ModuleLoadOrigin.Entry,
+        span,
+        0,
+        false,
+        false
+    );
+}
+
+proc module_loader_request_dependency(
+    loader: ref mut ModuleLoader,
+    parent: ModuleId,
+    name: string,
+    path: string,
+    span: Span,
+    depth: usize,
+    optional: bool
+) -> Option<usize> {
+    give module_loader_request(
+        loader,
+        module_id_invalid(),
+        parent,
+        name,
+        path,
+        ModuleLoadOrigin.Dependency,
+        span,
+        depth,
+        optional,
+        false
+    );
+}
+
+proc module_loader_request_generated(
+    loader: ref mut ModuleLoader,
+    name: string,
+    span: Span
+) -> Option<usize> {
+    if not loader.configuration.allow_generated {
+        module_loader_push_error(
+            loader,
+            ModuleLoaderErrorKind.UnsupportedSource,
+            name,
+            "",
+            "generated modules are disabled",
+            span,
+            0,
+            false
+        );
+
+        give None;
+    }
+
+    give module_loader_request(
+        loader,
+        module_id_invalid(),
+        module_id_invalid(),
+        name,
+        "",
+        ModuleLoadOrigin.Generated,
+        span,
+        0,
+        false,
+        true
+    );
+}
+
+proc module_loader_candidate_paths(
+    loader: ref ModuleLoader,
+    request: ref ModuleLoadRequest
+) -> [string] {
+    set candidates: [string] = [];
+
+    if len(request.requested_path) != 0 {
+        if module_loader_is_absolute_path(
+            request.requested_path
+        ) {
+            if loader.configuration.allow_absolute_paths {
+                candidates = candidates + [
+                    request.requested_path
+                ];
+            }
+        } else {
+            for search_path in loader.configuration.search_paths {
+                candidates = candidates + [
+                    module_loader_join_path(
+                        search_path,
+                        request.requested_path
+                    )
+                ];
+            }
+        }
+    }
+
+    let module_path = module_loader_module_name_to_path(
+        request.canonical_name,
+        loader.configuration.extension
+    );
+
+    for search_path in loader.configuration.search_paths {
+        candidates = candidates + [
+            module_loader_join_path(
+                search_path,
+                module_path
+            )
+        ];
+    }
+
+    for package_path in loader.configuration.package_paths {
+        candidates = candidates + [
+            module_loader_join_path(
+                package_path,
+                module_path
+            )
+        ];
+    }
+
+    give candidates;
+}
+
+proc module_loader_discover_request(
+    loader: ref mut ModuleLoader,
+    request_id: usize
+) -> [string] {
+    let index = module_loader_find_request_index(
+        ref loader,
+        request_id
+    );
+
+    pick index {
+        None {
+            module_loader_push_error(
+                loader,
+                ModuleLoaderErrorKind.InvalidArgument,
+                "",
+                "",
+                "unknown module load request",
+                module_loader_empty_span(),
+                request_id,
+                false
+            );
+
+            give [];
+        }
+
+        Some(value) {
+            loader.requests[value].state =
+                ModuleLoadState.Discovering;
+            loader.state = ModuleLoaderState.Discovering;
+
+            if module_loader_stack_contains(
+                ref loader.stack,
+                loader.requests[value].module_id
+            ) {
+                loader.requests[value].state =
+                    ModuleLoadState.Failed;
+
+                module_loader_push_error(
+                    loader,
+                    ModuleLoaderErrorKind.CircularLoad,
+                    loader.requests[value].canonical_name,
+                    loader.requests[value].requested_path,
+                    "circular module loading request detected",
+                    loader.requests[value].span,
+                    request_id,
+                    loader.requests[value].optional
+                );
+
+                module_loader_refresh_statistics(loader);
+                give [];
+            }
+
+            if loader.requests[value].synthetic {
+                give [];
+            }
+
+            let candidates = module_loader_candidate_paths(
+                ref loader,
+                ref loader.requests[value]
+            );
+
+            loader.statistics.path_probes =
+                loader.statistics.path_probes
+                + cast<u64>(len(candidates));
+
+            module_loader_refresh_statistics(loader);
+
+            give candidates;
+        }
+    }
+}
+
+proc module_loader_source_kind(
+    request: ref ModuleLoadRequest,
+    source: ref ModuleLoadedSource
+) -> ModuleSourceKind {
+    if source.generated {
+        give ModuleSourceKind.Generated;
+    }
+
+    if source.external {
+        give ModuleSourceKind.External;
+    }
+
+    pick request.origin {
+        ModuleLoadOrigin.Builtin {
+            give ModuleSourceKind.Builtin;
+        }
+
+        ModuleLoadOrigin.Package {
+            give ModuleSourceKind.Package;
+        }
+
+        _ {
+            give ModuleSourceKind.File;
+        }
+    }
+}
+
+proc module_loader_id_kind(
+    request: ref ModuleLoadRequest,
+    source: ref ModuleLoadedSource
+) -> ModuleIdKind {
+    if source.generated {
+        give ModuleIdKind.Generated;
+    }
+
+    if source.external {
+        give ModuleIdKind.External;
+    }
+
+    pick request.origin {
+        ModuleLoadOrigin.Prelude {
+            give ModuleIdKind.Prelude;
+        }
+
+        ModuleLoadOrigin.Stdlib {
+            give ModuleIdKind.Stdlib;
+        }
+
+        ModuleLoadOrigin.Runtime {
+            give ModuleIdKind.Runtime;
+        }
+
+        ModuleLoadOrigin.Builtin {
+            give ModuleIdKind.Builtin;
+        }
+
+        _ {
+            give ModuleIdKind.User;
+        }
+    }
+}
+
+proc module_loader_name_parts(
+    canonical_name: string
+) -> [string] {
+    set parts: [string] = [];
+    set current = "";
+    set index: usize = 0;
+
+    while index < len(canonical_name) {
+        if index + 1 < len(canonical_name)
+            and canonical_name[index] == ':'
+            and canonical_name[index + 1] == ':'
+        {
+            if len(current) != 0 {
+                parts = parts + [current];
+                current = "";
+            }
+
+            index = index + 2;
+        } else {
+            current = current + canonical_name[index];
+            index = index + 1;
+        }
+    }
+
+    if len(current) != 0 {
+        parts = parts + [current];
+    }
+
+    give parts;
+}
+
+proc module_loader_package_name(
+    parts: ref [string]
+) -> string {
+    if len(parts) <= 1 {
+        give "";
+    }
+
+    give parts[0];
+}
+
+proc module_loader_local_name(
+    parts: ref [string]
+) -> string {
+    if len(parts) == 0 {
+        give "";
+    }
+
+    give parts[len(parts) - 1];
+}
+
+proc module_loader_namespace_name(
+    parts: ref [string]
+) -> string {
+    if len(parts) <= 2 {
+        give "";
+    }
+
+    set output = "";
+    set index: usize = 1;
+
+    while index + 1 < len(parts) {
+        if len(output) != 0 {
+            output = output + "::";
+        }
+
+        output = output + parts[index];
+        index = index + 1;
+    }
+
+    give output;
+}
+
+proc module_loader_register_source(
+    loader: ref mut ModuleLoader,
+    request: ref ModuleLoadRequest,
+    source: ModuleLoadedSource
+) -> bool {
+    if module_info_contains(
+        ref loader.modules,
+        request.module_id
+    ) {
+        let existing = module_info_get(
+            ref loader.modules,
+            request.module_id
+        );
+
+        pick existing {
+            Some(info) {
+                if info.source.source_hash == source.source_hash {
+                    loader.statistics.cache_hits =
+                        loader.statistics.cache_hits + 1;
+
+                    give true;
+                }
+            }
+
+            None {}
+        }
+
+        module_loader_push_error(
+            loader,
+            ModuleLoaderErrorKind.DuplicateModule,
+            request.canonical_name,
+            source.canonical_path,
+            "module identifier already belongs to another source",
+            request.span,
+            request.id,
+            request.optional
+        );
+
+        give false;
+    }
+
+    let parts = module_loader_name_parts(
+        request.canonical_name
+    );
+
+    let package = module_loader_package_name(ref parts);
+    let namespace = module_loader_namespace_name(ref parts);
+    let name = module_loader_local_name(ref parts);
+
+    let kind = module_loader_id_kind(request, ref source);
+
+    set info = module_info_create_basic(
+        request.module_id,
+        kind,
+        package,
+        namespace,
+        name,
+        source.canonical_path,
+        request.span,
+        loader.generation
+    );
+
+    info.source = ModuleSourceInfo {
+        kind: module_loader_source_kind(
+            request,
+            ref source
+        ),
+
+        canonical_path: source.canonical_path,
+        display_path: source.display_path,
+
+        source_id: source.source_id,
+        source_length: len(source.text),
+        source_hash: source.source_hash,
+        modified_time: source.modified_time,
+
+        available: true,
+        generated: source.generated
+    };
+
+    info.module_span = Span {
+        source: source.source_id,
+        start: 0,
+        end: len(source.text)
+    };
+
+    info.synthetic = source.generated;
+    info.external = source.external;
+
+    if not module_info_insert(
+        ref mut loader.modules,
+        info
+    ) {
+        module_loader_push_error(
+            loader,
+            ModuleLoaderErrorKind.DatabaseCorrupted,
+            request.canonical_name,
+            source.canonical_path,
+            "failed to register loaded module information",
+            request.span,
+            request.id,
+            request.optional
+        );
+
+        give false;
+    }
+
+    module_info_mark_loading(
+        ref mut loader.modules,
+        request.module_id
+    );
+
+    module_info_mark_loaded(
+        ref mut loader.modules,
+        request.module_id
+    );
+
+    give true;
+}
+
+proc module_loader_complete_request(
+    loader: ref mut ModuleLoader,
+    request_id: usize,
+    provider: ModuleSourceProviderResult
+) -> ModuleLoadResult {
+    let index = module_loader_find_request_index(
+        ref loader,
+        request_id
+    );
+
+    pick index {
+        None {
+            let error = module_loader_error(
+                ModuleLoaderErrorKind.InvalidArgument,
+                "",
+                "",
+                "unknown module load request",
+                module_loader_empty_span(),
+                request_id,
+                false
+            );
+
+            loader.errors = loader.errors + [error];
+
+            give ModuleLoadResult {
+                module_id: module_id_invalid(),
+                request_id: request_id,
+                source: None,
+                errors: [error],
+                loaded: false,
+                optional: false
+            };
+        }
+
+        Some(value) {
+            let previous_error_count = len(loader.errors);
+            loader.state = ModuleLoaderState.Loading;
+            loader.requests[value].state =
+                ModuleLoadState.Reading;
+
+            let request = loader.requests[value];
+
+            if not module_loader_stack_push(
+                loader,
+                request.module_id
+            ) {
+                loader.requests[value].state =
+                    ModuleLoadState.Failed;
+
+                module_loader_push_error(
+                    loader,
+                    ModuleLoaderErrorKind.CircularLoad,
+                    request.canonical_name,
+                    request.requested_path,
+                    "module is already present in the loading stack",
+                    request.span,
+                    request.id,
+                    request.optional
+                );
+
+                module_loader_refresh_statistics(loader);
+
+                set errors: [ModuleLoaderError] = [];
+                set error_index = previous_error_count;
+
+                while error_index < len(loader.errors) {
+                    errors = errors + [
+                        loader.errors[error_index]
+                    ];
+
+                    error_index = error_index + 1;
+                }
+
+                give module_loader_result_error(
+                    ref request,
+                    errors
+                );
+            }
+
+            if not provider.found {
+                loader.requests[value].state =
+                    ModuleLoadState.Missing;
+
+                if not request.optional {
+                    module_loader_push_error(
+                        loader,
+                        ModuleLoaderErrorKind.ModuleNotFound,
+                        request.canonical_name,
+                        request.requested_path,
+                        if len(provider.error) != 0 {
+                            provider.error
+                        } else {
+                            "module source could not be located"
+                        },
+                        request.span,
+                        request.id,
+                        request.optional
+                    );
+                }
+
+                module_loader_stack_pop(loader);
+                module_loader_refresh_statistics(loader);
+
+                set errors: [ModuleLoaderError] = [];
+                set error_index = previous_error_count;
+
+                while error_index < len(loader.errors) {
+                    errors = errors + [
+                        loader.errors[error_index]
+                    ];
+
+                    error_index = error_index + 1;
+                }
+
+                give module_loader_result_error(
+                    ref request,
+                    errors
+                );
+            }
+
+            if len(provider.text)
+                > loader.configuration.maximum_source_size
+            {
+                loader.requests[value].state =
+                    ModuleLoadState.Failed;
+
+                module_loader_push_error(
+                    loader,
+                    ModuleLoaderErrorKind.SourceTooLarge,
+                    request.canonical_name,
+                    provider.canonical_path,
+                    "module source exceeds the configured size limit",
+                    request.span,
+                    request.id,
+                    request.optional
+                );
+
+                module_loader_stack_pop(loader);
+                module_loader_refresh_statistics(loader);
+
+                set errors: [ModuleLoaderError] = [];
+                set error_index = previous_error_count;
+
+                while error_index < len(loader.errors) {
+                    errors = errors + [
+                        loader.errors[error_index]
+                    ];
+
+                    error_index = error_index + 1;
+                }
+
+                give module_loader_result_error(
+                    ref request,
+                    errors
+                );
+            }
+
+            if provider.generated
+                and not loader.configuration.allow_generated
+            {
+                loader.requests[value].state =
+                    ModuleLoadState.Failed;
+
+                module_loader_push_error(
+                    loader,
+                    ModuleLoaderErrorKind.UnsupportedSource,
+                    request.canonical_name,
+                    provider.canonical_path,
+                    "generated module sources are disabled",
+                    request.span,
+                    request.id,
+                    request.optional
+                );
+
+                module_loader_stack_pop(loader);
+                module_loader_refresh_statistics(loader);
+
+                set errors: [ModuleLoaderError] = [];
+                set error_index = previous_error_count;
+
+                while error_index < len(loader.errors) {
+                    errors = errors + [
+                        loader.errors[error_index]
+                    ];
+
+                    error_index = error_index + 1;
+                }
+
+                give module_loader_result_error(
+                    ref request,
+                    errors
+                );
+            }
+
+            if provider.external
+                and not loader.configuration.allow_external
+            {
+                loader.requests[value].state =
+                    ModuleLoadState.Failed;
+
+                module_loader_push_error(
+                    loader,
+                    ModuleLoaderErrorKind.UnsupportedSource,
+                    request.canonical_name,
+                    provider.canonical_path,
+                    "external module sources are disabled",
+                    request.span,
+                    request.id,
+                    request.optional
+                );
+
+                module_loader_stack_pop(loader);
+                module_loader_refresh_statistics(loader);
+
+                set errors: [ModuleLoaderError] = [];
+                set error_index = previous_error_count;
+
+                while error_index < len(loader.errors) {
+                    errors = errors + [
+                        loader.errors[error_index]
+                    ];
+
+                    error_index = error_index + 1;
+                }
+
+                give module_loader_result_error(
+                    ref request,
+                    errors
+                );
+            }
+
+            let source = ModuleLoadedSource {
+                module_id: request.module_id,
+
+                canonical_path: provider.canonical_path,
+                display_path: provider.display_path,
+                text: provider.text,
+
+                source_id: module_loader_allocate_source_id(
+                    loader
+                ),
+                source_hash: module_loader_hash_source(
+                    provider.text
+                ),
+                modified_time: provider.modified_time,
+
+                generated: provider.generated,
+                external: provider.external
+            };
+
+            if not module_loader_register_source(
+                loader,
+                ref request,
+                source
+            ) {
+                loader.requests[value].state =
+                    ModuleLoadState.Failed;
+
+                module_loader_stack_pop(loader);
+                module_loader_refresh_statistics(loader);
+
+                set errors: [ModuleLoaderError] = [];
+                set error_index = previous_error_count;
+
+                while error_index < len(loader.errors) {
+                    errors = errors + [
+                        loader.errors[error_index]
+                    ];
+
+                    error_index = error_index + 1;
+                }
+
+                give module_loader_result_error(
+                    ref request,
+                    errors
+                );
+            }
+
+            loader.sources = loader.sources + [source];
+
+            loader.requests[value].resolved_path =
+                source.canonical_path;
+            loader.requests[value].state =
+                ModuleLoadState.Loaded;
+
+            loader.statistics.files_read =
+                loader.statistics.files_read + 1;
+
+            module_loader_stack_pop(loader);
+            module_loader_refresh_statistics(loader);
+
+            give module_loader_result_success(
+                ref loader.requests[value],
+                source
+            );
+        }
+    }
+}
+
+proc module_loader_complete_generated(
+    loader: ref mut ModuleLoader,
+    request_id: usize,
+    text: string
+) -> ModuleLoadResult {
+    let request = module_loader_get_request(
+        ref loader,
+        request_id
+    );
+
+    set name = "generated";
+
+    pick request {
+        Some(value) {
+            name = value.canonical_name;
+        }
+
+        None {}
+    }
+
+    give module_loader_complete_request(
+        loader,
+        request_id,
+        ModuleSourceProviderResult {
+            found: true,
+            text: text,
+            canonical_path: "<generated:" + name + ">",
+            display_path: "<generated:" + name + ">",
+            modified_time: loader.generation,
+            generated: true,
+            external: false,
+            error: ""
+        }
+    );
+}
+
+proc module_loader_fail_request(
+    loader: ref mut ModuleLoader,
+    request_id: usize,
+    message: string
+) -> bool {
+    let index = module_loader_find_request_index(
+        ref loader,
+        request_id
+    );
+
+    pick index {
+        Some(value) {
+            loader.requests[value].state =
+                ModuleLoadState.Failed;
+
+            module_loader_push_error(
+                loader,
+                ModuleLoaderErrorKind.SourceReadFailed,
+                loader.requests[value].canonical_name,
+                loader.requests[value].requested_path,
+                message,
+                loader.requests[value].span,
+                request_id,
+                loader.requests[value].optional
+            );
+
+            if module_info_contains(
+                ref loader.modules,
+                loader.requests[value].module_id
+            ) {
+                module_info_mark_failed(
+                    ref mut loader.modules,
+                    loader.requests[value].module_id,
+                    message,
+                    loader.requests[value].span
+                );
+            }
+
+            module_loader_refresh_statistics(loader);
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_loader_cancel_request(
+    loader: ref mut ModuleLoader,
+    request_id: usize
+) -> bool {
+    let index = module_loader_find_request_index(
+        ref loader,
+        request_id
+    );
+
+    pick index {
+        Some(value) {
+            if loader.requests[value].state
+                == ModuleLoadState.Loaded
+            {
+                give false;
+            }
+
+            loader.requests[value].state =
+                ModuleLoadState.Cancelled;
+
+            module_loader_refresh_statistics(loader);
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_loader_cancel_all(
+    loader: ref mut ModuleLoader
+) -> usize {
+    set cancelled: usize = 0;
+    set index: usize = 0;
+
+    while index < len(loader.requests) {
+        if loader.requests[index].state
+            == ModuleLoadState.Pending
+            or loader.requests[index].state
+                == ModuleLoadState.Discovering
+            or loader.requests[index].state
+                == ModuleLoadState.Reading
+        {
+            loader.requests[index].state =
+                ModuleLoadState.Cancelled;
+
+            cancelled = cancelled + 1;
+        }
+
+        index = index + 1;
+    }
+
+    loader.state = ModuleLoaderState.Cancelled;
+    module_loader_refresh_statistics(loader);
+
+    give cancelled;
+}
+
+proc module_loader_invalidate_module(
+    loader: ref mut ModuleLoader,
+    module_id: ModuleId
+) -> bool {
+    set invalidated: bool = false;
+
+    let request_index =
+        module_loader_find_request_module_index(
+            ref loader,
+            module_id
+        );
+
+    pick request_index {
+        Some(value) {
+            loader.requests[value].state =
+                ModuleLoadState.Invalidated;
+            invalidated = true;
+        }
+
+        None {}
+    }
+
+    if module_info_contains(ref loader.modules, module_id) {
+        module_info_invalidate(
+            ref mut loader.modules,
+            module_id
+        );
+
+        invalidated = true;
+    }
+
+    module_loader_refresh_statistics(loader);
+
+    give invalidated;
+}
+
+proc module_loader_remove_source(
+    loader: ref mut ModuleLoader,
+    module_id: ModuleId
+) -> bool {
+    let index = module_loader_find_source_index(
+        ref loader,
+        module_id
+    );
+
+    pick index {
+        None {
+            give false;
+        }
+
+        Some(value) {
+            set output: [ModuleLoadedSource] = [];
+            set current: usize = 0;
+
+            while current < len(loader.sources) {
+                if current != value {
+                    output = output + [
+                        loader.sources[current]
+                    ];
+                }
+
+                current = current + 1;
+            }
+
+            loader.sources = output;
+            module_loader_refresh_statistics(loader);
+
+            give true;
+        }
+    }
+}
+
+proc module_loader_pending_requests(
+    loader: ref ModuleLoader
+) -> [ModuleLoadRequest] {
+    set output: [ModuleLoadRequest] = [];
+
+    for request in loader.requests {
+        if request.state == ModuleLoadState.Pending {
+            output = output + [request];
+        }
+    }
+
+    give output;
+}
+
+proc module_loader_failed_requests(
+    loader: ref ModuleLoader
+) -> [ModuleLoadRequest] {
+    set output: [ModuleLoadRequest] = [];
+
+    for request in loader.requests {
+        if request.state == ModuleLoadState.Failed
+            or request.state == ModuleLoadState.Missing
+        {
+            output = output + [request];
+        }
+    }
+
+    give output;
+}
+
+proc module_loader_loaded_requests(
+    loader: ref ModuleLoader
+) -> [ModuleLoadRequest] {
+    set output: [ModuleLoadRequest] = [];
+
+    for request in loader.requests {
+        if request.state == ModuleLoadState.Loaded {
+            output = output + [request];
+        }
+    }
+
+    give output;
+}
+
+proc module_loader_has_pending(
+    loader: ref ModuleLoader
+) -> bool {
+    for request in loader.requests {
+        if request.state == ModuleLoadState.Pending
+            or request.state == ModuleLoadState.Discovering
+            or request.state == ModuleLoadState.Reading
+        {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc module_loader_has_required_errors(
+    loader: ref ModuleLoader
+) -> bool {
+    for error in loader.errors {
+        if not error.optional {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc module_loader_finish(
+    loader: ref mut ModuleLoader
+) -> ModuleLoaderResult {
+    if module_loader_has_pending(ref loader) {
+        loader.state = ModuleLoaderState.Failed;
+
+        module_loader_push_error(
+            loader,
+            ModuleLoaderErrorKind.InvalidState,
+            "",
+            "",
+            "module loader still contains pending requests",
+            module_loader_empty_span(),
+            0,
+            false
+        );
+    } else if module_loader_has_required_errors(ref loader) {
+        loader.state = ModuleLoaderState.Failed;
+    } else if loader.state != ModuleLoaderState.Cancelled {
+        loader.state = ModuleLoaderState.Completed;
+    }
+
+    module_loader_refresh_statistics(loader);
+
+    give ModuleLoaderResult {
+        modules: loader.modules,
+        sources: loader.sources,
+        errors: loader.errors,
+        statistics: loader.statistics,
+        valid: loader.state == ModuleLoaderState.Completed
+            and not module_loader_has_required_errors(
+                ref loader
+            )
+    };
+}
+
+proc module_loader_validate_configuration(
+    configuration: ref ModuleLoaderConfiguration
+) -> bool {
+    if len(configuration.extension) == 0 {
+        give false;
+    }
+
+    if configuration.maximum_source_size == 0 {
+        give false;
+    }
+
+    if configuration.maximum_depth == 0 {
+        give false;
+    }
+
+    give true;
+}
+
+proc module_loader_validate(
+    loader: ref mut ModuleLoader
+) -> bool {
+    set valid: bool = true;
+
+    if not module_loader_validate_configuration(
+        ref loader.configuration
+    ) {
+        module_loader_push_error(
+            loader,
+            ModuleLoaderErrorKind.InvalidArgument,
+            "",
+            "",
+            "module loader configuration is invalid",
+            module_loader_empty_span(),
+            0,
+            false
+        );
+
+        valid = false;
+    }
+
+    for request in loader.requests {
+        if request.id == 0
+            or not module_id_is_valid(request.module_id)
+            or len(request.canonical_name) == 0
+        {
+            module_loader_push_error(
+                loader,
+                ModuleLoaderErrorKind.DatabaseCorrupted,
+                request.canonical_name,
+                request.requested_path,
+                "module load request contains invalid data",
+                request.span,
+                request.id,
+                request.optional
+            );
+
+            valid = false;
+        }
+
+        if request.state == ModuleLoadState.Loaded
+            and module_loader_get_source(
+                ref loader,
+                request.module_id
+            ) == None
+        {
+            module_loader_push_error(
+                loader,
+                ModuleLoaderErrorKind.DatabaseCorrupted,
+                request.canonical_name,
+                request.resolved_path,
+                "loaded request has no source entry",
+                request.span,
+                request.id,
+                request.optional
+            );
+
+            valid = false;
+        }
+    }
+
+    for source in loader.sources {
+        if not module_id_is_valid(source.module_id)
+            or source.source_id == 0
+            or len(source.canonical_path) == 0
+        {
+            module_loader_push_error(
+                loader,
+                ModuleLoaderErrorKind.DatabaseCorrupted,
+                "",
+                source.canonical_path,
+                "loaded source contains invalid data",
+                module_loader_empty_span(),
+                0,
+                false
+            );
+
+            valid = false;
+        }
+
+        if source.source_hash
+            != module_loader_hash_source(source.text)
+        {
+            module_loader_push_error(
+                loader,
+                ModuleLoaderErrorKind.SourceChanged,
+                "",
+                source.canonical_path,
+                "loaded source hash does not match its contents",
+                module_loader_empty_span(),
+                0,
+                false
+            );
+
+            valid = false;
+        }
+    }
+
+    give valid
+        and not module_loader_has_required_errors(ref loader);
+}
+
+proc module_loader_clear_errors(
+    loader: ref mut ModuleLoader
+) {
+    loader.errors = [];
+    loader.modules.errors = [];
+}
+
+proc module_loader_advance_generation(
+    loader: ref mut ModuleLoader
+) -> u64 {
+    loader.generation = loader.generation + 1;
+    loader.modules.generation = loader.generation;
+
+    give loader.generation;
+}
+
+proc module_loader_clear(
+    loader: ref mut ModuleLoader
+) {
+    loader.requests = [];
+    loader.sources = [];
+    loader.stack = [];
+    loader.errors = [];
+
+    loader.modules = module_info_table_create();
+
+    loader.state = ModuleLoaderState.Idle;
+    loader.generation = loader.generation + 1;
+
+    loader.statistics = module_loader_statistics_empty();
+}
+
+proc module_loader_reset(
+    loader: ref mut ModuleLoader
+) {
+    let configuration = loader.configuration;
+
+    loader.configuration = configuration;
+    loader.state = ModuleLoaderState.Idle;
+
+    loader.requests = [];
+    loader.sources = [];
+    loader.stack = [];
+
+    loader.modules = module_info_table_create();
+    loader.errors = [];
+
+    loader.next_request_id = 1;
+    loader.next_module_id = 16;
+    loader.next_source_id = 1;
+
+    loader.generation = 1;
+    loader.statistics = module_loader_statistics_empty();
+}
+
+proc module_loader_request_count(
+    loader: ref ModuleLoader
+) -> usize {
+    give len(loader.requests);
+}
+
+proc module_loader_source_count(
+    loader: ref ModuleLoader
+) -> usize {
+    give len(loader.sources);
+}
+
+proc module_loader_is_idle(
+    loader: ref ModuleLoader
+) -> bool {
+    give loader.state == ModuleLoaderState.Idle;
+}
+
+proc module_loader_is_complete(
+    loader: ref ModuleLoader
+) -> bool {
+    give loader.state == ModuleLoaderState.Completed;
+}
+
+proc module_loader_is_failed(
+    loader: ref ModuleLoader
+) -> bool {
+    give loader.state == ModuleLoaderState.Failed;
+}
+
+proc module_loader_has_errors(
+    loader: ref ModuleLoader
+) -> bool {
+    give len(loader.errors) != 0;
+}
+
+proc module_loader_statistics(
+    loader: ref ModuleLoader
+) -> ModuleLoaderStatistics {
+    give loader.statistics;
+}
+
+proc module_loader_error_code(
+    error: ref ModuleLoaderError
+) -> string {
+    pick error.kind {
+        ModuleLoaderErrorKind.InvalidArgument {
+            give "E_MODULE_LOADER_ARGUMENT";
+        }
+
+        ModuleLoaderErrorKind.InvalidModuleId {
+            give "E_MODULE_LOADER_ID";
+        }
+
+        ModuleLoaderErrorKind.InvalidModuleName {
+            give "E_MODULE_LOADER_NAME";
+        }
+
+        ModuleLoaderErrorKind.InvalidPath {
+            give "E_MODULE_LOADER_PATH";
+        }
+
+        ModuleLoaderErrorKind.ModuleNotFound {
+            give "E_MODULE_NOT_FOUND";
+        }
+
+        ModuleLoaderErrorKind.SourceUnavailable {
+            give "E_MODULE_SOURCE_UNAVAILABLE";
+        }
+
+        ModuleLoaderErrorKind.SourceReadFailed {
+            give "E_MODULE_SOURCE_READ";
+        }
+
+        ModuleLoaderErrorKind.SourceTooLarge {
+            give "E_MODULE_SOURCE_TOO_LARGE";
+        }
+
+        ModuleLoaderErrorKind.SourceChanged {
+            give "E_MODULE_SOURCE_CHANGED";
+        }
+
+        ModuleLoaderErrorKind.DuplicateRequest {
+            give "E_MODULE_LOAD_DUPLICATE";
+        }
+
+        ModuleLoaderErrorKind.DuplicateModule {
+            give "E_MODULE_DUPLICATE";
+        }
+
+        ModuleLoaderErrorKind.CircularLoad {
+            give "E_MODULE_LOAD_CYCLE";
+        }
+
+        ModuleLoaderErrorKind.SearchPathNotFound {
+            give "E_MODULE_SEARCH_PATH";
+        }
+
+        ModuleLoaderErrorKind.UnsupportedSource {
+            give "E_MODULE_SOURCE_UNSUPPORTED";
+        }
+
+        ModuleLoaderErrorKind.InvalidEncoding {
+            give "E_MODULE_SOURCE_ENCODING";
+        }
+
+        ModuleLoaderErrorKind.Cancelled {
+            give "E_MODULE_LOAD_CANCELLED";
+        }
+
+        ModuleLoaderErrorKind.InvalidState {
+            give "E_MODULE_LOADER_STATE";
+        }
+
+        ModuleLoaderErrorKind.LoaderBusy {
+            give "E_MODULE_LOADER_BUSY";
+        }
+
+        ModuleLoaderErrorKind.DatabaseCorrupted {
+            give "E_MODULE_LOADER_DATABASE";
+        }
+    }
+}

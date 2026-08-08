@@ -82,6 +82,7 @@ struct vitte_ir_value {
     vitte_ir_type_t *type;
     const char *name;
     vitte_ir_instruction_t *definition;
+    vitte_ir_value_t *next;
     union {
         int64_t int_value;
         const char *string_value;
@@ -117,6 +118,9 @@ struct vitte_ir_function {
     vitte_ir_function_id_t id;
     const char *name;
     vitte_ir_type_t *return_type;
+    vitte_ir_value_t *first_parameter;
+    vitte_ir_value_t *last_parameter;
+    size_t parameter_count;
     vitte_ir_block_t *entry;
     vitte_ir_block_t *first_block;
     vitte_ir_block_t *last_block;
@@ -202,6 +206,8 @@ vitte_ir_global_t *vitte_ir_make_global(vitte_ir_builder_t *builder, const char 
 bool vitte_ir_module_add_global(vitte_ir_module_t *module, vitte_ir_global_t *global);
 vitte_ir_function_t *vitte_ir_make_function(vitte_ir_builder_t *builder, const char *name, vitte_ir_type_t *return_type, const vitte_hir_node_t *source);
 bool vitte_ir_module_add_function(vitte_ir_module_t *module, vitte_ir_function_t *function);
+vitte_ir_value_t *vitte_ir_make_parameter(vitte_ir_builder_t *builder, const char *name, vitte_ir_type_t *type);
+bool vitte_ir_function_add_parameter(vitte_ir_function_t *function, vitte_ir_value_t *parameter);
 vitte_ir_block_t *vitte_ir_make_block(vitte_ir_builder_t *builder, const char *name, const vitte_hir_node_t *source);
 bool vitte_ir_function_add_block(vitte_ir_function_t *function, vitte_ir_block_t *block);
 void vitte_ir_builder_position_at_end(vitte_ir_builder_t *builder, vitte_ir_function_t *function, vitte_ir_block_t *block);

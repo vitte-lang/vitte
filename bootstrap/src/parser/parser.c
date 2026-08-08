@@ -133,6 +133,12 @@ static bool vitte_parser_is_decl_start(vitte_token_kind_t kind) {
     return kind == VITTE_TOKEN_KW_PROC || kind == VITTE_TOKEN_KW_CONST;
 }
 
+static bool vitte_parser_is_top_level_start(vitte_token_kind_t kind) {
+    return kind == VITTE_TOKEN_KW_SPACE ||
+        kind == VITTE_TOKEN_KW_USE ||
+        vitte_parser_is_decl_start(kind);
+}
+
 static bool vitte_parser_is_stmt_start(vitte_token_kind_t kind) {
     return kind == VITTE_TOKEN_LBRACE ||
         kind == VITTE_TOKEN_KW_GIVE ||
@@ -238,6 +244,22 @@ static char *vitte_parser_decode_string(vitte_parser_t *parser, const vitte_toke
 
 static const char *vitte_parser_operator_text(vitte_token_kind_t kind) {
     switch (kind) {
+        case VITTE_TOKEN_KW_OR:
+        case VITTE_TOKEN_PIPE_PIPE:
+            return "or";
+        case VITTE_TOKEN_KW_AND:
+        case VITTE_TOKEN_AMP_AMP:
+            return "and";
+        case VITTE_TOKEN_PIPE:
+            return "|";
+        case VITTE_TOKEN_CARET:
+            return "^";
+        case VITTE_TOKEN_AMP:
+            return "&";
+        case VITTE_TOKEN_SHIFT_LEFT:
+            return "<<";
+        case VITTE_TOKEN_SHIFT_RIGHT:
+            return ">>";
         case VITTE_TOKEN_PLUS:
             return "+";
         case VITTE_TOKEN_MINUS:
@@ -246,6 +268,8 @@ static const char *vitte_parser_operator_text(vitte_token_kind_t kind) {
             return "*";
         case VITTE_TOKEN_SLASH:
             return "/";
+        case VITTE_TOKEN_PERCENT:
+            return "%";
         case VITTE_TOKEN_EQUAL_EQUAL:
             return "==";
         case VITTE_TOKEN_BANG_EQUAL:
@@ -327,7 +351,7 @@ static void vitte_parser_synchronize(vitte_parser_t *parser, bool top_level) {
     parser->stats.recovery_count++;
     while (parser->current.kind != VITTE_TOKEN_EOF && parser->current.kind != VITTE_TOKEN_ERROR) {
         if (top_level) {
-            if (vitte_parser_is_decl_start(parser->current.kind)) {
+            if (vitte_parser_is_top_level_start(parser->current.kind)) {
                 return;
             }
         } else if (parser->current.kind == VITTE_TOKEN_RBRACE || vitte_parser_is_stmt_start(parser->current.kind)) {
@@ -341,8 +365,218 @@ static void vitte_parser_synchronize(vitte_parser_t *parser, bool top_level) {
     }
 }
 
+static bool vitte_parser_token_is_path_segment(vitte_token_kind_t kind) {
+    return kind == VITTE_TOKEN_IDENTIFIER;
+}
+
+static bool vitte_parser_token_is_path_separator(vitte_token_kind_t kind, bool allow_slash) {
+    return kind == VITTE_TOKEN_DOUBLE_COLON || (allow_slash && kind == VITTE_TOKEN_SLASH);
+}
+
+static bool vitte_parser_token_text_is(const vitte_token_t *token, const char *text) {
+    size_t length;
+
+    if (token == NULL || text == NULL || token->lexeme_start == NULL) {
+        return false;
+    }
+    length = strlen(text);
+    return token->lexeme_length == length && memcmp(token->lexeme_start, text, length) == 0;
+}
+
+static char *vitte_parser_join_with_dot(vitte_parser_t *parser, const char *left, const char *right) {
+    size_t left_length;
+    size_t right_length;
+    char *joined;
+
+    if (parser == NULL || right == NULL) {
+        return NULL;
+    }
+    if (left == NULL || left[0] == '\0') {
+        return vitte_parser_copy_text(parser, right, strlen(right));
+    }
+
+    left_length = strlen(left);
+    right_length = strlen(right);
+    joined = (char *)vitte_parser_arena_alloc(parser, left_length + 1u + right_length + 1u);
+    if (joined == NULL) {
+        vitte_ast_span_t span = vitte_parser_span_from_token(&parser->current);
+        (void)vitte_parser_fail(
+            parser,
+            VITTE_STATUS_ERROR_OUT_OF_MEMORY,
+            "VITTE_PARSER_E_MEMORY",
+            "failed to allocate normalized path",
+            right,
+            &span
+        );
+        return NULL;
+    }
+    (void)memcpy(joined, left, left_length);
+    joined[left_length] = '.';
+    (void)memcpy(joined + left_length + 1u, right, right_length);
+    joined[left_length + 1u + right_length] = '\0';
+    return joined;
+}
+
+static char *vitte_parser_join_with_dot_token(
+    vitte_parser_t *parser,
+    const char *left,
+    const vitte_token_t *right
+) {
+    char *segment;
+
+    if (parser == NULL || right == NULL) {
+        return NULL;
+    }
+    segment = vitte_parser_copy_token_text(parser, right);
+    if (segment == NULL) {
+        return NULL;
+    }
+    return vitte_parser_join_with_dot(parser, left, segment);
+}
+
+static bool vitte_parser_import_path_is_relative(const char *path) {
+    return path != NULL &&
+        (strcmp(path, "self") == 0 ||
+            strcmp(path, "super") == 0 ||
+            strncmp(path, "self.", 5u) == 0 ||
+            strncmp(path, "super.", 6u) == 0);
+}
+
+static char *vitte_parser_import_dependency_path(
+    vitte_parser_t *parser,
+    const char *path,
+    vitte_ast_import_kind_t import_kind
+) {
+    const char *last_dot;
+
+    if (parser == NULL || path == NULL) {
+        return NULL;
+    }
+    if (import_kind != VITTE_AST_IMPORT_SYMBOL) {
+        return vitte_parser_copy_text(parser, path, strlen(path));
+    }
+    last_dot = strrchr(path, '.');
+    if (last_dot == NULL) {
+        return vitte_parser_copy_text(parser, path, strlen(path));
+    }
+    return vitte_parser_copy_text(parser, path, (size_t)(last_dot - path));
+}
+
+static char *vitte_parser_parse_path_text(
+    vitte_parser_t *parser,
+    bool allow_slash,
+    const char *code,
+    const char *message,
+    vitte_ast_span_t *span_out
+) {
+    vitte_token_t first;
+    vitte_ast_span_t span;
+    const char *start;
+    size_t length;
+
+    if (parser == NULL) {
+        return NULL;
+    }
+    if (!vitte_parser_token_is_path_segment(parser->current.kind)) {
+        (void)vitte_parser_fail_current(parser, code, message);
+        return NULL;
+    }
+
+    first = parser->current;
+    span = vitte_parser_span_from_token(&first);
+    (void)vitte_parser_advance(parser);
+
+    while (vitte_parser_token_is_path_separator(parser->current.kind, allow_slash)) {
+        vitte_ast_span_t separator_span = vitte_parser_span_from_token(&parser->current);
+        vitte_ast_span_t segment_span;
+
+        (void)vitte_parser_advance(parser);
+        if (!vitte_parser_token_is_path_segment(parser->current.kind)) {
+            (void)vitte_parser_fail(
+                parser,
+                VITTE_STATUS_ERROR_PARSE,
+                code,
+                message,
+                NULL,
+                &separator_span
+            );
+            return NULL;
+        }
+        segment_span = vitte_parser_span_from_token(&parser->current);
+        span = vitte_parser_span_merge(&span, &segment_span);
+        (void)vitte_parser_advance(parser);
+    }
+
+    if (!vitte_ast_span_is_valid(&span)) {
+        (void)vitte_parser_fail(parser, VITTE_STATUS_ERROR_PARSE, code, message, NULL, &span);
+        return NULL;
+    }
+
+    start = first.lexeme_start;
+    length = span.end_offset - first.start_offset;
+    if (span_out != NULL) {
+        *span_out = span;
+    }
+    return vitte_parser_copy_text(parser, start, length);
+}
+
+static char *vitte_parser_parse_module_path_normalized(
+    vitte_parser_t *parser,
+    bool allow_slash,
+    const char *code,
+    const char *message,
+    vitte_ast_span_t *span_out
+) {
+    vitte_ast_span_t span;
+    char *path;
+
+    if (parser == NULL || !vitte_parser_token_is_path_segment(parser->current.kind)) {
+        (void)vitte_parser_fail_current(parser, code, message);
+        return NULL;
+    }
+
+    span = vitte_parser_span_from_token(&parser->current);
+    path = vitte_parser_copy_token_text(parser, &parser->current);
+    if (path == NULL) {
+        return NULL;
+    }
+    (void)vitte_parser_advance(parser);
+
+    while (vitte_parser_token_is_path_separator(parser->current.kind, allow_slash)) {
+        vitte_ast_span_t separator_span = vitte_parser_span_from_token(&parser->current);
+        vitte_ast_span_t segment_span;
+        char *joined;
+
+        (void)vitte_parser_advance(parser);
+        if (!vitte_parser_token_is_path_segment(parser->current.kind)) {
+            (void)vitte_parser_fail(
+                parser,
+                VITTE_STATUS_ERROR_PARSE,
+                code,
+                message,
+                NULL,
+                &separator_span
+            );
+            return NULL;
+        }
+        joined = vitte_parser_join_with_dot_token(parser, path, &parser->current);
+        if (joined == NULL) {
+            return NULL;
+        }
+        path = joined;
+        segment_span = vitte_parser_span_from_token(&parser->current);
+        span = vitte_parser_span_merge(&span, &separator_span);
+        span = vitte_parser_span_merge(&span, &segment_span);
+        (void)vitte_parser_advance(parser);
+    }
+
+    if (span_out != NULL) {
+        *span_out = span;
+    }
+    return path;
+}
+
 static vitte_ast_type_ref_t *vitte_parser_parse_type_ref(vitte_parser_t *parser) {
-    vitte_token_t name_token;
     vitte_ast_span_t span;
     char *name;
     vitte_ast_type_ref_t *type_ref;
@@ -350,18 +584,10 @@ static vitte_ast_type_ref_t *vitte_parser_parse_type_ref(vitte_parser_t *parser)
     if (parser == NULL) {
         return NULL;
     }
-    if (parser->current.kind != VITTE_TOKEN_IDENTIFIER) {
-        (void)vitte_parser_fail_current(parser, "VITTE_PARSER_E_TYPE", "expected type name");
-        return NULL;
-    }
-
-    name_token = parser->current;
-    span = vitte_parser_span_from_token(&name_token);
-    name = vitte_parser_copy_token_text(parser, &name_token);
+    name = vitte_parser_parse_path_text(parser, false, "VITTE_PARSER_E_TYPE", "expected type name", &span);
     if (name == NULL) {
         return NULL;
     }
-    (void)vitte_parser_advance(parser);
     type_ref = vitte_ast_make_type_name(&parser->builder, name, span);
     if (type_ref == NULL) {
         (void)vitte_parser_fail(
@@ -405,11 +631,10 @@ static vitte_ast_expr_t *vitte_parser_parse_primary(vitte_parser_t *parser) {
             expr = vitte_ast_make_string_literal(&parser->builder, text, span);
             break;
         case VITTE_TOKEN_IDENTIFIER:
-            text = vitte_parser_copy_token_text(parser, &token);
+            text = vitte_parser_parse_path_text(parser, false, "VITTE_PARSER_E_EXPR", "expected identifier", &span);
             if (text == NULL) {
                 return NULL;
             }
-            (void)vitte_parser_advance(parser);
             expr = vitte_ast_make_identifier(&parser->builder, text, span);
             break;
         case VITTE_TOKEN_LPAREN:
@@ -505,7 +730,11 @@ static vitte_ast_expr_t *vitte_parser_parse_call(vitte_parser_t *parser) {
 }
 
 static vitte_ast_expr_t *vitte_parser_parse_unary(vitte_parser_t *parser) {
-    if (parser != NULL && (parser->current.kind == VITTE_TOKEN_PLUS || parser->current.kind == VITTE_TOKEN_MINUS)) {
+    if (parser != NULL &&
+        (parser->current.kind == VITTE_TOKEN_PLUS ||
+            parser->current.kind == VITTE_TOKEN_MINUS ||
+            parser->current.kind == VITTE_TOKEN_BANG ||
+            parser->current.kind == VITTE_TOKEN_KW_NOT)) {
         vitte_token_t operator_token = parser->current;
         vitte_ast_expr_t *right;
 
@@ -516,6 +745,40 @@ static vitte_ast_expr_t *vitte_parser_parse_unary(vitte_parser_t *parser) {
         }
         if (operator_token.kind == VITTE_TOKEN_PLUS) {
             return right;
+        }
+        if (operator_token.kind == VITTE_TOKEN_BANG || operator_token.kind == VITTE_TOKEN_KW_NOT) {
+            vitte_ast_span_t zero_span = vitte_parser_span_from_token(&operator_token);
+            vitte_ast_expr_t *zero = vitte_ast_make_integer_literal(&parser->builder, 0, zero_span);
+            vitte_ast_expr_t *expr;
+            vitte_ast_span_t merged_span;
+
+            if (zero == NULL) {
+                (void)vitte_parser_fail(
+                    parser,
+                    VITTE_STATUS_ERROR_OUT_OF_MEMORY,
+                    "VITTE_PARSER_E_MEMORY",
+                    "failed to allocate unary not seed",
+                    NULL,
+                    &zero_span
+                );
+                return NULL;
+            }
+            parser->stats.expr_count++;
+            merged_span = vitte_parser_span_merge(&zero->span, &right->span);
+            expr = vitte_ast_make_binary_expr(&parser->builder, "==", right, zero, merged_span);
+            if (expr == NULL) {
+                (void)vitte_parser_fail(
+                    parser,
+                    VITTE_STATUS_ERROR_OUT_OF_MEMORY,
+                    "VITTE_PARSER_E_MEMORY",
+                    "failed to allocate unary not expression",
+                    NULL,
+                    &merged_span
+                );
+                return NULL;
+            }
+            parser->stats.expr_count++;
+            return expr;
         }
         {
             vitte_ast_span_t zero_span = vitte_parser_span_from_token(&operator_token);
@@ -604,7 +867,7 @@ static vitte_ast_expr_t *vitte_parser_parse_binary_chain(
 }
 
 static bool vitte_parser_is_factor_op(vitte_token_kind_t kind) {
-    return kind == VITTE_TOKEN_STAR || kind == VITTE_TOKEN_SLASH;
+    return kind == VITTE_TOKEN_STAR || kind == VITTE_TOKEN_SLASH || kind == VITTE_TOKEN_PERCENT;
 }
 
 static bool vitte_parser_is_term_op(vitte_token_kind_t kind) {
@@ -622,6 +885,30 @@ static bool vitte_parser_is_equality_op(vitte_token_kind_t kind) {
     return kind == VITTE_TOKEN_EQUAL_EQUAL || kind == VITTE_TOKEN_BANG_EQUAL;
 }
 
+static bool vitte_parser_is_shift_op(vitte_token_kind_t kind) {
+    return kind == VITTE_TOKEN_SHIFT_LEFT || kind == VITTE_TOKEN_SHIFT_RIGHT;
+}
+
+static bool vitte_parser_is_bitwise_and_op(vitte_token_kind_t kind) {
+    return kind == VITTE_TOKEN_AMP;
+}
+
+static bool vitte_parser_is_bitwise_xor_op(vitte_token_kind_t kind) {
+    return kind == VITTE_TOKEN_CARET;
+}
+
+static bool vitte_parser_is_bitwise_or_op(vitte_token_kind_t kind) {
+    return kind == VITTE_TOKEN_PIPE;
+}
+
+static bool vitte_parser_is_logical_and_op(vitte_token_kind_t kind) {
+    return kind == VITTE_TOKEN_AMP_AMP || kind == VITTE_TOKEN_KW_AND;
+}
+
+static bool vitte_parser_is_logical_or_op(vitte_token_kind_t kind) {
+    return kind == VITTE_TOKEN_PIPE_PIPE || kind == VITTE_TOKEN_KW_OR;
+}
+
 static vitte_ast_expr_t *vitte_parser_parse_factor(vitte_parser_t *parser) {
     return vitte_parser_parse_binary_chain(parser, vitte_parser_parse_unary, vitte_parser_is_factor_op);
 }
@@ -630,16 +917,40 @@ static vitte_ast_expr_t *vitte_parser_parse_term(vitte_parser_t *parser) {
     return vitte_parser_parse_binary_chain(parser, vitte_parser_parse_factor, vitte_parser_is_term_op);
 }
 
+static vitte_ast_expr_t *vitte_parser_parse_shift(vitte_parser_t *parser) {
+    return vitte_parser_parse_binary_chain(parser, vitte_parser_parse_term, vitte_parser_is_shift_op);
+}
+
 static vitte_ast_expr_t *vitte_parser_parse_comparison(vitte_parser_t *parser) {
-    return vitte_parser_parse_binary_chain(parser, vitte_parser_parse_term, vitte_parser_is_compare_op);
+    return vitte_parser_parse_binary_chain(parser, vitte_parser_parse_shift, vitte_parser_is_compare_op);
 }
 
 static vitte_ast_expr_t *vitte_parser_parse_equality(vitte_parser_t *parser) {
     return vitte_parser_parse_binary_chain(parser, vitte_parser_parse_comparison, vitte_parser_is_equality_op);
 }
 
+static vitte_ast_expr_t *vitte_parser_parse_bitwise_and(vitte_parser_t *parser) {
+    return vitte_parser_parse_binary_chain(parser, vitte_parser_parse_equality, vitte_parser_is_bitwise_and_op);
+}
+
+static vitte_ast_expr_t *vitte_parser_parse_bitwise_xor(vitte_parser_t *parser) {
+    return vitte_parser_parse_binary_chain(parser, vitte_parser_parse_bitwise_and, vitte_parser_is_bitwise_xor_op);
+}
+
+static vitte_ast_expr_t *vitte_parser_parse_bitwise_or(vitte_parser_t *parser) {
+    return vitte_parser_parse_binary_chain(parser, vitte_parser_parse_bitwise_xor, vitte_parser_is_bitwise_or_op);
+}
+
+static vitte_ast_expr_t *vitte_parser_parse_logical_and(vitte_parser_t *parser) {
+    return vitte_parser_parse_binary_chain(parser, vitte_parser_parse_bitwise_or, vitte_parser_is_logical_and_op);
+}
+
+static vitte_ast_expr_t *vitte_parser_parse_logical_or(vitte_parser_t *parser) {
+    return vitte_parser_parse_binary_chain(parser, vitte_parser_parse_logical_and, vitte_parser_is_logical_or_op);
+}
+
 static vitte_ast_expr_t *vitte_parser_parse_expr_impl(vitte_parser_t *parser) {
-    return vitte_parser_parse_equality(parser);
+    return vitte_parser_parse_logical_or(parser);
 }
 
 static vitte_ast_type_ref_t *vitte_parser_infer_expr_type(
@@ -920,6 +1231,342 @@ static vitte_ast_stmt_t *vitte_parser_parse_stmt_impl(vitte_parser_t *parser) {
     }
 }
 
+static vitte_status_t vitte_parser_record_import(
+    vitte_parser_t *parser,
+    vitte_ast_module_t *module_node,
+    const char *path,
+    const char *alias,
+    vitte_ast_import_kind_t import_kind,
+    vitte_ast_span_t span
+) {
+    bool relative;
+    vitte_ast_decl_t *decl;
+
+    if (parser == NULL || module_node == NULL || path == NULL || path[0] == '\0') {
+        return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+    }
+
+    relative = vitte_parser_import_path_is_relative(path);
+    decl = vitte_ast_make_import_decl(&parser->builder, path, alias, relative, import_kind, span);
+    if (decl == NULL) {
+        return vitte_parser_fail(
+            parser,
+            VITTE_STATUS_ERROR_OUT_OF_MEMORY,
+            "VITTE_PARSER_E_MEMORY",
+            "failed to allocate import declaration",
+            path,
+            &span
+        );
+    }
+    if (!vitte_ast_module_add_import(module_node, decl)) {
+        return vitte_parser_fail(
+            parser,
+            VITTE_STATUS_ERROR_INTERNAL,
+            "VITTE_PARSER_E_IMPORT",
+            "failed to append import declaration",
+            path,
+            &span
+        );
+    }
+    if (parser->module != NULL) {
+        char *dependency_path = vitte_parser_import_dependency_path(parser, path, import_kind);
+        vitte_status_t status;
+        if (dependency_path == NULL) {
+            return VITTE_STATUS_ERROR_OUT_OF_MEMORY;
+        }
+        status = vitte_module_add_import(parser->module, dependency_path, relative);
+        if (status != VITTE_STATUS_OK) {
+            const vitte_error_t *error = vitte_module_last_error(parser->module);
+            return vitte_parser_fail(
+                parser,
+                status,
+                error != NULL && error->code != NULL ? error->code : "VITTE_PARSER_E_IMPORT",
+                error != NULL && error->message != NULL ? error->message : "failed to register module import",
+                error != NULL ? error->details : path,
+                &span
+            );
+        }
+    }
+    return VITTE_STATUS_OK;
+}
+
+static vitte_status_t vitte_parser_parse_import_item(
+    vitte_parser_t *parser,
+    vitte_ast_module_t *module_node,
+    const char *prefix,
+    vitte_ast_span_t *item_span_out
+);
+
+static vitte_status_t vitte_parser_parse_import_group(
+    vitte_parser_t *parser,
+    vitte_ast_module_t *module_node,
+    const char *prefix,
+    vitte_ast_span_t *group_span_out
+) {
+    vitte_ast_span_t span;
+
+    if (parser == NULL || module_node == NULL || parser->current.kind != VITTE_TOKEN_LBRACE) {
+        return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+    }
+    span = vitte_parser_span_from_token(&parser->current);
+    (void)vitte_parser_advance(parser);
+
+    while (parser->current.kind != VITTE_TOKEN_RBRACE &&
+        parser->current.kind != VITTE_TOKEN_EOF &&
+        parser->current.kind != VITTE_TOKEN_ERROR) {
+        vitte_ast_span_t item_span;
+        vitte_status_t status = vitte_parser_parse_import_item(parser, module_node, prefix, &item_span);
+        if (status != VITTE_STATUS_OK) {
+            return status;
+        }
+        span = vitte_parser_span_merge(&span, &item_span);
+        if (!vitte_parser_match(parser, VITTE_TOKEN_COMMA)) {
+            break;
+        }
+    }
+
+    if (!vitte_parser_expect(parser, VITTE_TOKEN_RBRACE, "VITTE_PARSER_E_IMPORT", "expected '}' after import group")) {
+        return VITTE_STATUS_ERROR_PARSE;
+    }
+    {
+        vitte_ast_span_t end_span = vitte_parser_span_from_token(&parser->previous);
+        span = vitte_parser_span_merge(&span, &end_span);
+    }
+    if (group_span_out != NULL) {
+        *group_span_out = span;
+    }
+    return VITTE_STATUS_OK;
+}
+
+static vitte_status_t vitte_parser_parse_import_item(
+    vitte_parser_t *parser,
+    vitte_ast_module_t *module_node,
+    const char *prefix,
+    vitte_ast_span_t *item_span_out
+) {
+    vitte_ast_span_t span;
+    char *path = NULL;
+    char *alias = NULL;
+
+    if (parser == NULL || module_node == NULL) {
+        return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+    }
+
+    if (parser->current.kind == VITTE_TOKEN_STAR) {
+        span = vitte_parser_span_from_token(&parser->current);
+        if (prefix == NULL || prefix[0] == '\0') {
+            return vitte_parser_fail(
+                parser,
+                VITTE_STATUS_ERROR_PARSE,
+                "VITTE_PARSER_E_IMPORT",
+                "glob import requires a module prefix",
+                NULL,
+                &span
+            );
+        }
+        (void)vitte_parser_advance(parser);
+        if (item_span_out != NULL) {
+            *item_span_out = span;
+        }
+        return vitte_parser_record_import(parser, module_node, prefix, NULL, VITTE_AST_IMPORT_GLOB, span);
+    }
+
+    if (parser->current.kind != VITTE_TOKEN_IDENTIFIER) {
+        return vitte_parser_fail_current(parser, "VITTE_PARSER_E_IMPORT", "expected import item");
+    }
+
+    span = vitte_parser_span_from_token(&parser->current);
+    path = prefix != NULL && prefix[0] != '\0' ?
+        vitte_parser_join_with_dot_token(parser, prefix, &parser->current) :
+        vitte_parser_copy_token_text(parser, &parser->current);
+    if (path == NULL) {
+        return VITTE_STATUS_ERROR_OUT_OF_MEMORY;
+    }
+    (void)vitte_parser_advance(parser);
+
+    while (vitte_parser_token_is_path_separator(parser->current.kind, true)) {
+        vitte_ast_span_t separator_span = vitte_parser_span_from_token(&parser->current);
+        (void)vitte_parser_advance(parser);
+
+        if (parser->current.kind == VITTE_TOKEN_LBRACE) {
+            vitte_status_t status;
+            span = vitte_parser_span_merge(&span, &separator_span);
+            status = vitte_parser_parse_import_group(parser, module_node, path, &span);
+            if (item_span_out != NULL) {
+                *item_span_out = span;
+            }
+            return status;
+        }
+        if (parser->current.kind == VITTE_TOKEN_STAR) {
+            vitte_ast_span_t star_span = vitte_parser_span_from_token(&parser->current);
+            span = vitte_parser_span_merge(&span, &separator_span);
+            span = vitte_parser_span_merge(&span, &star_span);
+            (void)vitte_parser_advance(parser);
+            if (item_span_out != NULL) {
+                *item_span_out = span;
+            }
+            return vitte_parser_record_import(
+                parser,
+                module_node,
+                path,
+                NULL,
+                prefix != NULL && prefix[0] != '\0' ? VITTE_AST_IMPORT_GLOB : VITTE_AST_IMPORT_MODULE,
+                span
+            );
+        }
+        if (parser->current.kind != VITTE_TOKEN_IDENTIFIER) {
+            return vitte_parser_fail(
+                parser,
+                VITTE_STATUS_ERROR_PARSE,
+                "VITTE_PARSER_E_IMPORT",
+                "expected import path segment",
+                path,
+                &separator_span
+            );
+        }
+        path = vitte_parser_join_with_dot_token(parser, path, &parser->current);
+        if (path == NULL) {
+            return VITTE_STATUS_ERROR_OUT_OF_MEMORY;
+        }
+        span = vitte_parser_span_merge(&span, &separator_span);
+        {
+            vitte_ast_span_t segment_span = vitte_parser_span_from_token(&parser->current);
+            span = vitte_parser_span_merge(&span, &segment_span);
+        }
+        (void)vitte_parser_advance(parser);
+    }
+
+    if (vitte_parser_match(parser, VITTE_TOKEN_KW_AS)) {
+        vitte_ast_span_t alias_span;
+
+        if (parser->current.kind != VITTE_TOKEN_IDENTIFIER) {
+            return vitte_parser_fail_current(parser, "VITTE_PARSER_E_IMPORT", "expected alias name after 'as'");
+        }
+        alias = vitte_parser_copy_token_text(parser, &parser->current);
+        if (alias == NULL) {
+            return VITTE_STATUS_ERROR_OUT_OF_MEMORY;
+        }
+        alias_span = vitte_parser_span_from_token(&parser->current);
+        span = vitte_parser_span_merge(&span, &alias_span);
+        (void)vitte_parser_advance(parser);
+    }
+
+    if (item_span_out != NULL) {
+        *item_span_out = span;
+    }
+    return vitte_parser_record_import(
+        parser,
+        module_node,
+        path,
+        alias,
+        prefix != NULL && prefix[0] != '\0' ? VITTE_AST_IMPORT_SYMBOL : VITTE_AST_IMPORT_MODULE,
+        span
+    );
+}
+
+static vitte_status_t vitte_parser_parse_imports(
+    vitte_parser_t *parser,
+    vitte_ast_module_t *module_node,
+    vitte_ast_span_t *span_out
+) {
+    vitte_ast_span_t use_span;
+    vitte_ast_span_t item_span;
+    vitte_status_t status;
+
+    if (parser == NULL || module_node == NULL || parser->current.kind != VITTE_TOKEN_KW_USE) {
+        return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+    }
+
+    use_span = vitte_parser_span_from_token(&parser->current);
+    (void)vitte_parser_advance(parser);
+    if (parser->current.kind == VITTE_TOKEN_LBRACE) {
+        status = vitte_parser_parse_import_group(parser, module_node, NULL, &item_span);
+    } else {
+        status = vitte_parser_parse_import_item(parser, module_node, NULL, &item_span);
+    }
+    if (status != VITTE_STATUS_OK) {
+        return status;
+    }
+    use_span = vitte_parser_span_merge(&use_span, &item_span);
+    vitte_parser_optional_semicolon(parser);
+    if (parser->previous.kind == VITTE_TOKEN_SEMICOLON) {
+        vitte_ast_span_t semicolon_span = vitte_parser_span_from_token(&parser->previous);
+        use_span = vitte_parser_span_merge(&use_span, &semicolon_span);
+    }
+    if (span_out != NULL) {
+        *span_out = use_span;
+    }
+    return VITTE_STATUS_OK;
+}
+
+static vitte_ast_node_t *vitte_parser_parse_param(vitte_parser_t *parser) {
+    vitte_ast_span_t start_span;
+    vitte_ast_span_t span;
+    char *name;
+    vitte_ast_type_ref_t *type;
+    bool mutable_value = false;
+    bool by_ref = false;
+    vitte_ast_node_t *param;
+
+    if (parser == NULL) {
+        return NULL;
+    }
+
+    start_span = vitte_parser_span_from_token(&parser->current);
+    if (parser->current.kind == VITTE_TOKEN_IDENTIFIER && vitte_parser_token_text_is(&parser->current, "ref")) {
+        by_ref = true;
+        (void)vitte_parser_advance(parser);
+        if (parser->current.kind == VITTE_TOKEN_IDENTIFIER && vitte_parser_token_text_is(&parser->current, "mut")) {
+            mutable_value = true;
+            (void)vitte_parser_advance(parser);
+        }
+    } else if (parser->current.kind == VITTE_TOKEN_IDENTIFIER && vitte_parser_token_text_is(&parser->current, "mut")) {
+        mutable_value = true;
+        (void)vitte_parser_advance(parser);
+    } else if (parser->current.kind == VITTE_TOKEN_IDENTIFIER &&
+        (vitte_parser_token_text_is(&parser->current, "move") ||
+            vitte_parser_token_text_is(&parser->current, "copy") ||
+            vitte_parser_token_text_is(&parser->current, "const"))) {
+        (void)vitte_parser_advance(parser);
+    }
+
+    if (parser->current.kind != VITTE_TOKEN_IDENTIFIER) {
+        (void)vitte_parser_fail_current(parser, "VITTE_PARSER_E_PARAM", "expected parameter name");
+        return NULL;
+    }
+    name = vitte_parser_copy_token_text(parser, &parser->current);
+    if (name == NULL) {
+        return NULL;
+    }
+    {
+        vitte_ast_span_t name_span = vitte_parser_span_from_token(&parser->current);
+        span = vitte_parser_span_merge(&start_span, &name_span);
+    }
+    (void)vitte_parser_advance(parser);
+
+    if (!vitte_parser_expect(parser, VITTE_TOKEN_COLON, "VITTE_PARSER_E_PARAM", "expected ':' after parameter name")) {
+        return NULL;
+    }
+    type = vitte_parser_parse_type_ref(parser);
+    if (type == NULL) {
+        return NULL;
+    }
+    span = vitte_parser_span_merge(&span, &type->span);
+
+    param = vitte_ast_make_param_decl(&parser->builder, name, type, mutable_value, by_ref, span);
+    if (param == NULL) {
+        (void)vitte_parser_fail(
+            parser,
+            VITTE_STATUS_ERROR_OUT_OF_MEMORY,
+            "VITTE_PARSER_E_MEMORY",
+            "failed to allocate parameter declaration",
+            name,
+            &span
+        );
+    }
+    return param;
+}
+
 static vitte_ast_decl_t *vitte_parser_parse_proc(vitte_parser_t *parser) {
     vitte_ast_span_t keyword_span;
     vitte_token_t name_token;
@@ -945,20 +1592,38 @@ static vitte_ast_decl_t *vitte_parser_parse_proc(vitte_parser_t *parser) {
     if (!vitte_parser_expect(parser, VITTE_TOKEN_LPAREN, "VITTE_PARSER_E_PROC", "expected '(' after procedure name")) {
         return NULL;
     }
-    if (parser->current.kind != VITTE_TOKEN_RPAREN) {
-        vitte_ast_span_t span_params = vitte_parser_span_from_token(&parser->current);
+    decl = vitte_ast_make_proc_decl(&parser->builder, name, NULL, NULL, keyword_span);
+    if (decl == NULL) {
         (void)vitte_parser_fail(
             parser,
-            VITTE_STATUS_ERROR_UNSUPPORTED,
-            "VITTE_PARSER_E_PARAM",
-            "bootstrap parser does not support procedure parameters yet",
+            VITTE_STATUS_ERROR_OUT_OF_MEMORY,
+            "VITTE_PARSER_E_MEMORY",
+            "failed to allocate procedure declaration",
             name,
-            &span_params
+            &keyword_span
         );
-        while (parser->current.kind != VITTE_TOKEN_RPAREN &&
-            parser->current.kind != VITTE_TOKEN_EOF &&
-            parser->current.kind != VITTE_TOKEN_ERROR) {
-            (void)vitte_parser_advance(parser);
+        return NULL;
+    }
+    if (parser->current.kind != VITTE_TOKEN_RPAREN) {
+        for (;;) {
+            vitte_ast_node_t *param = vitte_parser_parse_param(parser);
+            if (param == NULL) {
+                return NULL;
+            }
+            if (!vitte_ast_proc_add_param(decl, param)) {
+                (void)vitte_parser_fail(
+                    parser,
+                    VITTE_STATUS_ERROR_INTERNAL,
+                    "VITTE_PARSER_E_PARAM",
+                    "failed to append procedure parameter",
+                    name,
+                    &param->span
+                );
+                return NULL;
+            }
+            if (!vitte_parser_match(parser, VITTE_TOKEN_COMMA)) {
+                break;
+            }
         }
     }
     if (!vitte_parser_expect(parser, VITTE_TOKEN_RPAREN, "VITTE_PARSER_E_PROC", "expected ')' after procedure parameters")) {
@@ -971,7 +1636,7 @@ static vitte_ast_decl_t *vitte_parser_parse_proc(vitte_parser_t *parser) {
             return NULL;
         }
     } else {
-        return_type = vitte_ast_make_type_name(&parser->builder, "int", keyword_span);
+        return_type = vitte_ast_make_type_name(&parser->builder, "void", keyword_span);
         if (return_type == NULL) {
             (void)vitte_parser_fail(
                 parser,
@@ -991,18 +1656,9 @@ static vitte_ast_decl_t *vitte_parser_parse_proc(vitte_parser_t *parser) {
     }
 
     span = vitte_parser_span_merge(&keyword_span, &body->span);
-    decl = vitte_ast_make_proc_decl(&parser->builder, name, return_type, body, span);
-    if (decl == NULL) {
-        (void)vitte_parser_fail(
-            parser,
-            VITTE_STATUS_ERROR_OUT_OF_MEMORY,
-            "VITTE_PARSER_E_MEMORY",
-            "failed to allocate procedure declaration",
-            name,
-            &span
-        );
-        return NULL;
-    }
+    decl->as.proc_decl.return_type = return_type;
+    decl->as.proc_decl.body = body;
+    decl->span = span;
     parser->stats.decl_count++;
     return decl;
 }
@@ -1087,6 +1743,33 @@ static vitte_ast_decl_t *vitte_parser_parse_decl_impl(vitte_parser_t *parser) {
     }
     (void)vitte_parser_fail_current(parser, "VITTE_PARSER_E_DECL", "expected top-level declaration");
     return NULL;
+}
+
+static char *vitte_parser_parse_module_header(vitte_parser_t *parser, vitte_ast_span_t *header_span) {
+    char *name;
+    vitte_ast_span_t span;
+
+    if (parser == NULL || parser->current.kind != VITTE_TOKEN_KW_SPACE) {
+        return NULL;
+    }
+
+    span = vitte_parser_span_from_token(&parser->current);
+    (void)vitte_parser_advance(parser);
+    name = vitte_parser_parse_module_path_normalized(
+        parser,
+        true,
+        "VITTE_PARSER_E_MODULE",
+        "expected module path after 'space'",
+        &span
+    );
+    if (name == NULL) {
+        return NULL;
+    }
+    vitte_parser_optional_semicolon(parser);
+    if (header_span != NULL) {
+        *header_span = span;
+    }
+    return name;
 }
 
 void vitte_parser_options_init(vitte_parser_options_t *options) {
@@ -1229,6 +1912,7 @@ const vitte_parser_stats_t *vitte_parser_stats(const vitte_parser_t *parser) {
 vitte_status_t vitte_parser_parse_module(vitte_parser_t *parser, vitte_parser_result_t *result) {
     vitte_ast_module_t *module_node;
     vitte_ast_span_t module_span;
+    vitte_ast_span_t header_span;
     char *module_name;
     vitte_status_t status = VITTE_STATUS_OK;
 
@@ -1252,13 +1936,38 @@ vitte_status_t vitte_parser_parse_module(vitte_parser_t *parser, vitte_parser_re
     module_span.end_line = 1u;
     module_span.end_column = 1u;
     module_span.valid = true;
-    module_name = vitte_parser_copy_text(
-        parser,
-        parser->module != NULL && parser->module->module_name[0] != '\0' ? parser->module->module_name : parser->lexer.source_name,
-        strlen(parser->module != NULL && parser->module->module_name[0] != '\0' ? parser->module->module_name : parser->lexer.source_name)
-    );
+    vitte_ast_span_init(&header_span);
+
+    if (parser->current.kind == VITTE_TOKEN_KW_SPACE) {
+        module_name = vitte_parser_parse_module_header(parser, &header_span);
+        if (module_name != NULL) {
+            module_span = vitte_parser_span_merge(&module_span, &header_span);
+        }
+    } else {
+        module_name = NULL;
+    }
+    if (module_name == NULL) {
+        const char *fallback_name = parser->module != NULL && parser->module->module_name[0] != '\0' ?
+            parser->module->module_name :
+            parser->lexer.source_name;
+        module_name = vitte_parser_copy_text(parser, fallback_name, strlen(fallback_name));
+    }
     if (module_name == NULL) {
         return VITTE_STATUS_ERROR_OUT_OF_MEMORY;
+    }
+    if (parser->module != NULL && header_span.valid) {
+        status = vitte_module_set_name(parser->module, module_name);
+        if (status != VITTE_STATUS_OK) {
+            const vitte_error_t *error = vitte_module_last_error(parser->module);
+            return vitte_parser_fail(
+                parser,
+                status,
+                error != NULL && error->code != NULL ? error->code : "VITTE_PARSER_E_MODULE",
+                error != NULL && error->message != NULL ? error->message : "failed to set module name",
+                error != NULL ? error->details : module_name,
+                &header_span
+            );
+        }
     }
 
     module_node = vitte_ast_make_module(&parser->builder, module_name, module_span);
@@ -1276,32 +1985,50 @@ vitte_status_t vitte_parser_parse_module(vitte_parser_t *parser, vitte_parser_re
             parser->current.kind != VITTE_TOKEN_EOF &&
             parser->current.kind != VITTE_TOKEN_ERROR) {
             vitte_ast_decl_t *decl;
+            vitte_ast_span_t import_span;
+            bool have_import_span = false;
 
             if (parser->current.kind == VITTE_TOKEN_SEMICOLON) {
                 (void)vitte_parser_advance(parser);
                 continue;
             }
-            decl = vitte_parser_parse_decl(parser);
-            if (decl == NULL) {
-                status = VITTE_STATUS_ERROR_PARSE;
-                if (!parser->options.recover_errors) {
+            if (parser->current.kind == VITTE_TOKEN_KW_USE) {
+                status = vitte_parser_parse_imports(parser, module_node, &import_span);
+                if (status != VITTE_STATUS_OK) {
+                    if (!parser->options.recover_errors) {
+                        break;
+                    }
+                    vitte_parser_synchronize(parser, true);
+                    continue;
+                }
+                have_import_span = true;
+            } else {
+                decl = vitte_parser_parse_decl(parser);
+                if (decl == NULL) {
+                    status = VITTE_STATUS_ERROR_PARSE;
+                    if (!parser->options.recover_errors) {
+                        break;
+                    }
+                    vitte_parser_synchronize(parser, true);
+                    continue;
+                }
+                if (!vitte_ast_module_add_decl(module_node, decl)) {
+                    status = vitte_parser_fail(
+                        parser,
+                        VITTE_STATUS_ERROR_INTERNAL,
+                        "VITTE_PARSER_E_MODULE",
+                        "failed to append module declaration",
+                        module_name,
+                        &decl->span
+                    );
                     break;
                 }
-                vitte_parser_synchronize(parser, true);
-                continue;
             }
-            if (!vitte_ast_module_add_decl(module_node, decl)) {
-                status = vitte_parser_fail(
-                    parser,
-                    VITTE_STATUS_ERROR_INTERNAL,
-                    "VITTE_PARSER_E_MODULE",
-                    "failed to append module declaration",
-                    module_name,
-                    &decl->span
-                );
-                break;
+            if (have_import_span) {
+                module_node->span = vitte_parser_span_merge(&module_node->span, &import_span);
+            } else {
+                module_node->span = vitte_parser_span_merge(&module_node->span, &decl->span);
             }
-            module_node->span = vitte_parser_span_merge(&module_node->span, &decl->span);
         }
     }
 

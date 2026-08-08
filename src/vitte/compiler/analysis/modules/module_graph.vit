@@ -1,0 +1,1971 @@
+space vitte/compiler/analysis/modules/module_graph
+
+export *
+
+use src/vitte/compiler/frontend/source/span.{Span}
+use src/vitte/compiler/analysis/modules/module_database.{
+    ModuleId,
+    ModuleDatabase,
+    module_id,
+    module_id_invalid,
+    module_id_equal,
+    module_id_is_valid
+}
+use src/vitte/compiler/analysis/modules/module_edge.{
+    ModuleEdge,
+    ModuleEdgeId,
+    ModuleEdgeKind,
+    ModuleEdgeState,
+    ModuleEdgeCollection,
+    ModuleEdgeEvaluationContext,
+    module_edge_id,
+    module_edge_id_invalid,
+    module_edge_id_equal,
+    module_edge_id_is_valid,
+    module_edge_collection_create,
+    module_edge_collection_from_database,
+    module_edge_insert,
+    module_edge_remove,
+    module_edge_remove_module,
+    module_edge_enabled_from,
+    module_edge_edges_to,
+    module_edge_evaluate_collection,
+    module_edge_validate
+}
+
+pick ModuleGraphNodeState {
+    Declared,
+    Loading,
+    Loaded,
+    Analyzed,
+    Ready,
+    Failed,
+    Invalidated
+}
+
+pick ModuleGraphVisitState {
+    Unvisited,
+    Visiting,
+    Visited
+}
+
+pick ModuleGraphErrorKind {
+    InvalidArgument,
+    InvalidModule,
+    DuplicateNode,
+    NodeNotFound,
+    DuplicateEdge,
+    EdgeNotFound,
+    SelfDependency,
+    CircularDependency,
+    UnresolvedDependency,
+    DisabledRequiredDependency,
+    InvalidState,
+    GraphCorrupted
+}
+
+form ModuleGraphNode {
+    id: ModuleId
+    name: string
+    canonical_path: string
+    span: Span
+
+    state: ModuleGraphNodeState
+    visit_state: ModuleGraphVisitState
+
+    incoming: [ModuleEdgeId]
+    outgoing: [ModuleEdgeId]
+
+    generation: u64
+    revision: u64
+}
+
+form ModuleGraphError {
+    kind: ModuleGraphErrorKind
+    module: string
+    dependency: string
+    message: string
+    span: Span
+}
+
+form ModuleGraphStatistics {
+    nodes: usize
+    edges: usize
+    roots: usize
+    leaves: usize
+    isolated: usize
+
+    ready: usize
+    failed: usize
+    invalidated: usize
+
+    maximum_in_degree: usize
+    maximum_out_degree: usize
+}
+
+form ModuleGraph {
+    nodes: [ModuleGraphNode]
+    edges: ModuleEdgeCollection
+    errors: [ModuleGraphError]
+
+    generation: u64
+    statistics: ModuleGraphStatistics
+}
+
+form ModuleGraphTraversal {
+    order: [ModuleId]
+    stack: [ModuleId]
+    visited: [ModuleId]
+    errors: [ModuleGraphError]
+}
+
+form ModuleGraphCycle {
+    modules: [ModuleId]
+    names: [string]
+    edges: [ModuleEdgeId]
+    span: Span
+}
+
+form ModuleGraphAnalysis {
+    order: [ModuleId]
+    cycles: [ModuleGraphCycle]
+    roots: [ModuleId]
+    leaves: [ModuleId]
+    errors: [ModuleGraphError]
+    statistics: ModuleGraphStatistics
+    valid: bool
+}
+
+form ModuleGraphPath {
+    modules: [ModuleId]
+    names: [string]
+    edges: [ModuleEdgeId]
+    found: bool
+}
+
+form ModuleGraphComponent {
+    modules: [ModuleId]
+    names: [string]
+}
+
+proc module_graph_empty_span() -> Span {
+    give Span {
+        source: 0,
+        start: 0,
+        end: 0
+    };
+}
+
+proc module_graph_statistics_empty() -> ModuleGraphStatistics {
+    give ModuleGraphStatistics {
+        nodes: 0,
+        edges: 0,
+        roots: 0,
+        leaves: 0,
+        isolated: 0,
+
+        ready: 0,
+        failed: 0,
+        invalidated: 0,
+
+        maximum_in_degree: 0,
+        maximum_out_degree: 0
+    };
+}
+
+proc module_graph_create() -> ModuleGraph {
+    give ModuleGraph {
+        nodes: [],
+        edges: module_edge_collection_create(),
+        errors: [],
+        generation: 1,
+        statistics: module_graph_statistics_empty()
+    };
+}
+
+proc module_graph_error(
+    kind: ModuleGraphErrorKind,
+    module: string,
+    dependency: string,
+    message: string,
+    span: Span
+) -> ModuleGraphError {
+    give ModuleGraphError {
+        kind: kind,
+        module: module,
+        dependency: dependency,
+        message: message,
+        span: span
+    };
+}
+
+proc module_graph_push_error(
+    graph: ref mut ModuleGraph,
+    kind: ModuleGraphErrorKind,
+    module: string,
+    dependency: string,
+    message: string,
+    span: Span
+) {
+    graph.errors = graph.errors + [
+        module_graph_error(
+            kind,
+            module,
+            dependency,
+            message,
+            span
+        )
+    ];
+}
+
+proc module_graph_node(
+    id: ModuleId,
+    name: string,
+    canonical_path: string,
+    span: Span,
+    generation: u64
+) -> ModuleGraphNode {
+    give ModuleGraphNode {
+        id: id,
+        name: name,
+        canonical_path: canonical_path,
+        span: span,
+
+        state: ModuleGraphNodeState.Declared,
+        visit_state: ModuleGraphVisitState.Unvisited,
+
+        incoming: [],
+        outgoing: [],
+
+        generation: generation,
+        revision: 1
+    };
+}
+
+proc module_graph_traversal_create() -> ModuleGraphTraversal {
+    give ModuleGraphTraversal {
+        order: [],
+        stack: [],
+        visited: [],
+        errors: []
+    };
+}
+
+proc module_graph_path_empty() -> ModuleGraphPath {
+    give ModuleGraphPath {
+        modules: [],
+        names: [],
+        edges: [],
+        found: false
+    };
+}
+
+proc module_graph_find_node_index(
+    graph: ref ModuleGraph,
+    id: ModuleId
+) -> Option<usize> {
+    set index: usize = 0;
+
+    while index < len(graph.nodes) {
+        if module_id_equal(graph.nodes[index].id, id) {
+            give Some(index);
+        }
+
+        index = index + 1;
+    }
+
+    give None;
+}
+
+proc module_graph_find_node_name_index(
+    graph: ref ModuleGraph,
+    name: string
+) -> Option<usize> {
+    set index: usize = 0;
+
+    while index < len(graph.nodes) {
+        if graph.nodes[index].name == name {
+            give Some(index);
+        }
+
+        index = index + 1;
+    }
+
+    give None;
+}
+
+proc module_graph_find_node_path_index(
+    graph: ref ModuleGraph,
+    canonical_path: string
+) -> Option<usize> {
+    set index: usize = 0;
+
+    while index < len(graph.nodes) {
+        if graph.nodes[index].canonical_path == canonical_path {
+            give Some(index);
+        }
+
+        index = index + 1;
+    }
+
+    give None;
+}
+
+proc module_graph_contains_node(
+    graph: ref ModuleGraph,
+    id: ModuleId
+) -> bool {
+    give module_graph_find_node_index(graph, id) != None;
+}
+
+proc module_graph_contains_name(
+    graph: ref ModuleGraph,
+    name: string
+) -> bool {
+    give module_graph_find_node_name_index(graph, name) != None;
+}
+
+proc module_graph_get_node(
+    graph: ref ModuleGraph,
+    id: ModuleId
+) -> Option<ref ModuleGraphNode> {
+    let index = module_graph_find_node_index(graph, id);
+
+    pick index {
+        Some(value) {
+            give Some(ref graph.nodes[value]);
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc module_graph_get_node_mut(
+    graph: ref mut ModuleGraph,
+    id: ModuleId
+) -> Option<ref mut ModuleGraphNode> {
+    let index = module_graph_find_node_index(ref graph, id);
+
+    pick index {
+        Some(value) {
+            give Some(ref mut graph.nodes[value]);
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc module_graph_get_node_by_name(
+    graph: ref ModuleGraph,
+    name: string
+) -> Option<ref ModuleGraphNode> {
+    let index = module_graph_find_node_name_index(graph, name);
+
+    pick index {
+        Some(value) {
+            give Some(ref graph.nodes[value]);
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc module_graph_id_list_contains(
+    values: ref [ModuleId],
+    id: ModuleId
+) -> bool {
+    for current in values {
+        if module_id_equal(current, id) {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc module_graph_edge_id_list_contains(
+    values: ref [ModuleEdgeId],
+    id: ModuleEdgeId
+) -> bool {
+    for current in values {
+        if module_edge_id_equal(current, id) {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc module_graph_edge_id_list_remove(
+    values: [ModuleEdgeId],
+    id: ModuleEdgeId
+) -> [ModuleEdgeId] {
+    set output: [ModuleEdgeId] = [];
+
+    for current in values {
+        if not module_edge_id_equal(current, id) {
+            output = output + [current];
+        }
+    }
+
+    give output;
+}
+
+proc module_graph_add_node(
+    graph: ref mut ModuleGraph,
+    id: ModuleId,
+    name: string,
+    canonical_path: string,
+    span: Span
+) -> bool {
+    if not module_id_is_valid(id)
+        or len(name) == 0
+        or len(canonical_path) == 0
+    {
+        module_graph_push_error(
+            graph,
+            ModuleGraphErrorKind.InvalidArgument,
+            name,
+            "",
+            "module graph node contains invalid data",
+            span
+        );
+
+        give false;
+    }
+
+    if module_graph_contains_node(ref graph, id)
+        or module_graph_contains_name(ref graph, name)
+    {
+        module_graph_push_error(
+            graph,
+            ModuleGraphErrorKind.DuplicateNode,
+            name,
+            "",
+            "module graph node already exists",
+            span
+        );
+
+        give false;
+    }
+
+    if module_graph_find_node_path_index(
+        ref graph,
+        canonical_path
+    ) != None {
+        module_graph_push_error(
+            graph,
+            ModuleGraphErrorKind.DuplicateNode,
+            name,
+            "",
+            "module graph path already belongs to another node",
+            span
+        );
+
+        give false;
+    }
+
+    graph.nodes = graph.nodes + [
+        module_graph_node(
+            id,
+            name,
+            canonical_path,
+            span,
+            graph.generation
+        )
+    ];
+
+    module_graph_refresh_statistics(graph);
+
+    give true;
+}
+
+proc module_graph_add_edge(
+    graph: ref mut ModuleGraph,
+    source: ModuleId,
+    target: ModuleId,
+    kind: ModuleEdgeKind,
+    span: Span
+) -> Option<ModuleEdgeId> {
+    let source_index = module_graph_find_node_index(
+        ref graph,
+        source
+    );
+
+    let target_index = module_graph_find_node_index(
+        ref graph,
+        target
+    );
+
+    pick source_index {
+        None {
+            module_graph_push_error(
+                graph,
+                ModuleGraphErrorKind.NodeNotFound,
+                "",
+                "",
+                "module graph edge source does not exist",
+                span
+            );
+
+            give None;
+        }
+
+        Some(source_value) {
+            pick target_index {
+                None {
+                    module_graph_push_error(
+                        graph,
+                        ModuleGraphErrorKind.NodeNotFound,
+                        graph.nodes[source_value].name,
+                        "",
+                        "module graph edge target does not exist",
+                        span
+                    );
+
+                    give None;
+                }
+
+                Some(target_value) {
+                    if module_id_equal(source, target) {
+                        module_graph_push_error(
+                            graph,
+                            ModuleGraphErrorKind.SelfDependency,
+                            graph.nodes[source_value].name,
+                            graph.nodes[target_value].name,
+                            "module cannot depend on itself",
+                            span
+                        );
+
+                        give None;
+                    }
+
+                    let edge_id = module_edge_insert(
+                        ref mut graph.edges,
+                        source,
+                        target,
+                        graph.nodes[source_value].name,
+                        graph.nodes[target_value].name,
+                        kind,
+                        span
+                    );
+
+                    pick edge_id {
+                        Some(id) {
+                            graph.nodes[source_value].outgoing =
+                                graph.nodes[source_value].outgoing
+                                + [id];
+
+                            graph.nodes[target_value].incoming =
+                                graph.nodes[target_value].incoming
+                                + [id];
+
+                            graph.nodes[source_value].revision =
+                                graph.nodes[source_value].revision + 1;
+                            graph.nodes[target_value].revision =
+                                graph.nodes[target_value].revision + 1;
+
+                            module_graph_refresh_statistics(graph);
+
+                            give Some(id);
+                        }
+
+                        None {
+                            module_graph_push_error(
+                                graph,
+                                ModuleGraphErrorKind.DuplicateEdge,
+                                graph.nodes[source_value].name,
+                                graph.nodes[target_value].name,
+                                "module graph edge could not be inserted",
+                                span
+                            );
+
+                            give None;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+proc module_graph_remove_edge(
+    graph: ref mut ModuleGraph,
+    id: ModuleEdgeId
+) -> bool {
+    let edge = graph.edges.edges;
+    set found: bool = false;
+    set source = module_id_invalid();
+    set target = module_id_invalid();
+
+    for current in edge {
+        if module_edge_id_equal(current.id, id) {
+            found = true;
+            source = current.source;
+            target = current.target;
+        }
+    }
+
+    if not found {
+        give false;
+    }
+
+    if not module_edge_remove(ref mut graph.edges, id) {
+        give false;
+    }
+
+    let source_index = module_graph_find_node_index(
+        ref graph,
+        source
+    );
+
+    pick source_index {
+        Some(value) {
+            graph.nodes[value].outgoing =
+                module_graph_edge_id_list_remove(
+                    graph.nodes[value].outgoing,
+                    id
+                );
+
+            graph.nodes[value].revision =
+                graph.nodes[value].revision + 1;
+        }
+
+        None {}
+    }
+
+    let target_index = module_graph_find_node_index(
+        ref graph,
+        target
+    );
+
+    pick target_index {
+        Some(value) {
+            graph.nodes[value].incoming =
+                module_graph_edge_id_list_remove(
+                    graph.nodes[value].incoming,
+                    id
+                );
+
+            graph.nodes[value].revision =
+                graph.nodes[value].revision + 1;
+        }
+
+        None {}
+    }
+
+    module_graph_refresh_statistics(graph);
+
+    give true;
+}
+
+proc module_graph_remove_node_edges(
+    graph: ref mut ModuleGraph,
+    id: ModuleId
+) -> usize {
+    set edge_ids: [ModuleEdgeId] = [];
+
+    for edge in graph.edges.edges {
+        if module_id_equal(edge.source, id)
+            or module_id_equal(edge.target, id)
+        {
+            edge_ids = edge_ids + [edge.id];
+        }
+    }
+
+    set removed: usize = 0;
+
+    for edge_id in edge_ids {
+        if module_graph_remove_edge(graph, edge_id) {
+            removed = removed + 1;
+        }
+    }
+
+    give removed;
+}
+
+proc module_graph_remove_node(
+    graph: ref mut ModuleGraph,
+    id: ModuleId
+) -> bool {
+    let index = module_graph_find_node_index(ref graph, id);
+
+    pick index {
+        None {
+            give false;
+        }
+
+        Some(value) {
+            module_graph_remove_node_edges(graph, id);
+
+            set output: [ModuleGraphNode] = [];
+            set current: usize = 0;
+
+            while current < len(graph.nodes) {
+                if current != value {
+                    output = output + [graph.nodes[current]];
+                }
+
+                current = current + 1;
+            }
+
+            graph.nodes = output;
+            module_graph_refresh_statistics(graph);
+
+            give true;
+        }
+    }
+}
+
+proc module_graph_set_node_state(
+    graph: ref mut ModuleGraph,
+    id: ModuleId,
+    state: ModuleGraphNodeState
+) -> bool {
+    let index = module_graph_find_node_index(ref graph, id);
+
+    pick index {
+        Some(value) {
+            graph.nodes[value].state = state;
+            graph.nodes[value].generation = graph.generation;
+            graph.nodes[value].revision =
+                graph.nodes[value].revision + 1;
+
+            module_graph_refresh_statistics(graph);
+
+            give true;
+        }
+
+        None {
+            module_graph_push_error(
+                graph,
+                ModuleGraphErrorKind.NodeNotFound,
+                "",
+                "",
+                "cannot update an unknown module graph node",
+                module_graph_empty_span()
+            );
+
+            give false;
+        }
+    }
+}
+
+proc module_graph_mark_loading(
+    graph: ref mut ModuleGraph,
+    id: ModuleId
+) -> bool {
+    give module_graph_set_node_state(
+        graph,
+        id,
+        ModuleGraphNodeState.Loading
+    );
+}
+
+proc module_graph_mark_loaded(
+    graph: ref mut ModuleGraph,
+    id: ModuleId
+) -> bool {
+    give module_graph_set_node_state(
+        graph,
+        id,
+        ModuleGraphNodeState.Loaded
+    );
+}
+
+proc module_graph_mark_analyzed(
+    graph: ref mut ModuleGraph,
+    id: ModuleId
+) -> bool {
+    give module_graph_set_node_state(
+        graph,
+        id,
+        ModuleGraphNodeState.Analyzed
+    );
+}
+
+proc module_graph_mark_ready(
+    graph: ref mut ModuleGraph,
+    id: ModuleId
+) -> bool {
+    give module_graph_set_node_state(
+        graph,
+        id,
+        ModuleGraphNodeState.Ready
+    );
+}
+
+proc module_graph_mark_failed(
+    graph: ref mut ModuleGraph,
+    id: ModuleId
+) -> bool {
+    give module_graph_set_node_state(
+        graph,
+        id,
+        ModuleGraphNodeState.Failed
+    );
+}
+
+proc module_graph_invalidate_node(
+    graph: ref mut ModuleGraph,
+    id: ModuleId
+) -> bool {
+    give module_graph_set_node_state(
+        graph,
+        id,
+        ModuleGraphNodeState.Invalidated
+    );
+}
+
+proc module_graph_outgoing_edges(
+    graph: ref ModuleGraph,
+    id: ModuleId
+) -> [ModuleEdge] {
+    give module_edge_enabled_from(ref graph.edges, id);
+}
+
+proc module_graph_incoming_edges(
+    graph: ref ModuleGraph,
+    id: ModuleId
+) -> [ModuleEdge] {
+    give module_edge_edges_to(ref graph.edges, id);
+}
+
+proc module_graph_dependencies(
+    graph: ref ModuleGraph,
+    id: ModuleId
+) -> [ModuleId] {
+    set output: [ModuleId] = [];
+
+    let edges = module_graph_outgoing_edges(graph, id);
+
+    for edge in edges {
+        if edge.enabled
+            and edge.state == ModuleEdgeState.Resolved
+        {
+            output = output + [edge.target];
+        }
+    }
+
+    give output;
+}
+
+proc module_graph_dependents(
+    graph: ref ModuleGraph,
+    id: ModuleId
+) -> [ModuleId] {
+    set output: [ModuleId] = [];
+
+    let edges = module_graph_incoming_edges(graph, id);
+
+    for edge in edges {
+        if edge.enabled
+            and edge.state == ModuleEdgeState.Resolved
+        {
+            output = output + [edge.source];
+        }
+    }
+
+    give output;
+}
+
+proc module_graph_in_degree(
+    graph: ref ModuleGraph,
+    id: ModuleId
+) -> usize {
+    give len(module_graph_incoming_edges(graph, id));
+}
+
+proc module_graph_out_degree(
+    graph: ref ModuleGraph,
+    id: ModuleId
+) -> usize {
+    give len(module_graph_outgoing_edges(graph, id));
+}
+
+proc module_graph_is_root(
+    graph: ref ModuleGraph,
+    id: ModuleId
+) -> bool {
+    give module_graph_in_degree(graph, id) == 0;
+}
+
+proc module_graph_is_leaf(
+    graph: ref ModuleGraph,
+    id: ModuleId
+) -> bool {
+    give module_graph_out_degree(graph, id) == 0;
+}
+
+proc module_graph_is_isolated(
+    graph: ref ModuleGraph,
+    id: ModuleId
+) -> bool {
+    give module_graph_in_degree(graph, id) == 0
+        and module_graph_out_degree(graph, id) == 0;
+}
+
+proc module_graph_roots(
+    graph: ref ModuleGraph
+) -> [ModuleId] {
+    set output: [ModuleId] = [];
+
+    for node in graph.nodes {
+        if module_graph_is_root(graph, node.id) {
+            output = output + [node.id];
+        }
+    }
+
+    give output;
+}
+
+proc module_graph_leaves(
+    graph: ref ModuleGraph
+) -> [ModuleId] {
+    set output: [ModuleId] = [];
+
+    for node in graph.nodes {
+        if module_graph_is_leaf(graph, node.id) {
+            output = output + [node.id];
+        }
+    }
+
+    give output;
+}
+
+proc module_graph_refresh_statistics(
+    graph: ref mut ModuleGraph
+) {
+    set statistics = module_graph_statistics_empty();
+
+    statistics.nodes = len(graph.nodes);
+    statistics.edges = len(graph.edges.edges);
+
+    for node in graph.nodes {
+        let in_degree = len(node.incoming);
+        let out_degree = len(node.outgoing);
+
+        if in_degree == 0 {
+            statistics.roots = statistics.roots + 1;
+        }
+
+        if out_degree == 0 {
+            statistics.leaves = statistics.leaves + 1;
+        }
+
+        if in_degree == 0 and out_degree == 0 {
+            statistics.isolated = statistics.isolated + 1;
+        }
+
+        if in_degree > statistics.maximum_in_degree {
+            statistics.maximum_in_degree = in_degree;
+        }
+
+        if out_degree > statistics.maximum_out_degree {
+            statistics.maximum_out_degree = out_degree;
+        }
+
+        pick node.state {
+            ModuleGraphNodeState.Ready {
+                statistics.ready = statistics.ready + 1;
+            }
+
+            ModuleGraphNodeState.Failed {
+                statistics.failed = statistics.failed + 1;
+            }
+
+            ModuleGraphNodeState.Invalidated {
+                statistics.invalidated =
+                    statistics.invalidated + 1;
+            }
+
+            _ {}
+        }
+    }
+
+    graph.statistics = statistics;
+}
+
+proc module_graph_reset_visit_states(
+    graph: ref mut ModuleGraph
+) {
+    set index: usize = 0;
+
+    while index < len(graph.nodes) {
+        graph.nodes[index].visit_state =
+            ModuleGraphVisitState.Unvisited;
+        index = index + 1;
+    }
+}
+
+proc module_graph_stack_pop(
+    values: ref mut [ModuleId]
+) {
+    if len(values) == 0 {
+        give;
+    }
+
+    set output: [ModuleId] = [];
+    set index: usize = 0;
+
+    while index + 1 < len(values) {
+        output = output + [values[index]];
+        index = index + 1;
+    }
+
+    values = output;
+}
+
+proc module_graph_stack_find(
+    values: ref [ModuleId],
+    id: ModuleId
+) -> Option<usize> {
+    set index: usize = 0;
+
+    while index < len(values) {
+        if module_id_equal(values[index], id) {
+            give Some(index);
+        }
+
+        index = index + 1;
+    }
+
+    give None;
+}
+
+proc module_graph_node_name(
+    graph: ref ModuleGraph,
+    id: ModuleId
+) -> string {
+    let node = module_graph_get_node(graph, id);
+
+    pick node {
+        Some(value) {
+            give value.name;
+        }
+
+        None {
+            give "";
+        }
+    }
+}
+
+proc module_graph_find_edge_id(
+    graph: ref ModuleGraph,
+    source: ModuleId,
+    target: ModuleId
+) -> ModuleEdgeId {
+    for edge in graph.edges.edges {
+        if module_id_equal(edge.source, source)
+            and module_id_equal(edge.target, target)
+        {
+            give edge.id;
+        }
+    }
+
+    give module_edge_id_invalid();
+}
+
+proc module_graph_build_cycle(
+    graph: ref ModuleGraph,
+    stack: ref [ModuleId],
+    start: usize,
+    destination: ModuleId,
+    closing_edge: ModuleEdgeId,
+    span: Span
+) -> ModuleGraphCycle {
+    set modules: [ModuleId] = [];
+    set names: [string] = [];
+    set edges: [ModuleEdgeId] = [];
+    set index = start;
+
+    while index < len(stack) {
+        modules = modules + [stack[index]];
+        names = names + [
+            module_graph_node_name(graph, stack[index])
+        ];
+
+        if index + 1 < len(stack) {
+            let edge_id = module_graph_find_edge_id(
+                graph,
+                stack[index],
+                stack[index + 1]
+            );
+
+            if module_edge_id_is_valid(edge_id) {
+                edges = edges + [edge_id];
+            }
+        }
+
+        index = index + 1;
+    }
+
+    modules = modules + [destination];
+    names = names + [
+        module_graph_node_name(graph, destination)
+    ];
+
+    if module_edge_id_is_valid(closing_edge) {
+        edges = edges + [closing_edge];
+    }
+
+    give ModuleGraphCycle {
+        modules: modules,
+        names: names,
+        edges: edges,
+        span: span
+    };
+}
+
+proc module_graph_cycle_equal(
+    left: ref ModuleGraphCycle,
+    right: ref ModuleGraphCycle
+) -> bool {
+    if len(left.modules) != len(right.modules) {
+        give false;
+    }
+
+    if len(left.modules) <= 1 {
+        give len(left.modules) == len(right.modules);
+    }
+
+    let count = len(left.modules) - 1;
+    set offset: usize = 0;
+
+    while offset < count {
+        set equal: bool = true;
+        set index: usize = 0;
+
+        while index < count {
+            let right_index = (index + offset) % count;
+
+            if not module_id_equal(
+                left.modules[index],
+                right.modules[right_index]
+            ) {
+                equal = false;
+            }
+
+            index = index + 1;
+        }
+
+        if equal {
+            give true;
+        }
+
+        offset = offset + 1;
+    }
+
+    give false;
+}
+
+proc module_graph_cycle_list_contains(
+    cycles: ref [ModuleGraphCycle],
+    cycle: ref ModuleGraphCycle
+) -> bool {
+    for current in cycles {
+        if module_graph_cycle_equal(ref current, cycle) {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc module_graph_topological_visit(
+    graph: ref mut ModuleGraph,
+    node_index: usize,
+    traversal: ref mut ModuleGraphTraversal,
+    cycles: ref mut [ModuleGraphCycle]
+) {
+    if node_index >= len(graph.nodes) {
+        traversal.errors = traversal.errors + [
+            module_graph_error(
+                ModuleGraphErrorKind.GraphCorrupted,
+                "",
+                "",
+                "module graph node index is invalid",
+                module_graph_empty_span()
+            )
+        ];
+
+        give;
+    }
+
+    graph.nodes[node_index].visit_state =
+        ModuleGraphVisitState.Visiting;
+
+    let current_id = graph.nodes[node_index].id;
+    let current_name = graph.nodes[node_index].name;
+
+    traversal.stack = traversal.stack + [current_id];
+
+    let edges = module_graph_outgoing_edges(
+        ref graph,
+        current_id
+    );
+
+    for edge in edges {
+        if not edge.enabled
+            or edge.state == ModuleEdgeState.Disabled
+        {
+            if edge.required {
+                traversal.errors = traversal.errors + [
+                    module_graph_error(
+                        ModuleGraphErrorKind.DisabledRequiredDependency,
+                        current_name,
+                        edge.target_name,
+                        "required module dependency is disabled",
+                        edge.span
+                    )
+                ];
+            }
+        } else if edge.state != ModuleEdgeState.Resolved {
+            traversal.errors = traversal.errors + [
+                module_graph_error(
+                    ModuleGraphErrorKind.UnresolvedDependency,
+                    current_name,
+                    edge.target_name,
+                    "module dependency is unresolved",
+                    edge.span
+                )
+            ];
+        } else {
+            let target_index = module_graph_find_node_index(
+                ref graph,
+                edge.target
+            );
+
+            pick target_index {
+                None {
+                    traversal.errors = traversal.errors + [
+                        module_graph_error(
+                            ModuleGraphErrorKind.NodeNotFound,
+                            current_name,
+                            edge.target_name,
+                            "module dependency target does not exist",
+                            edge.span
+                        )
+                    ];
+                }
+
+                Some(value) {
+                    pick graph.nodes[value].visit_state {
+                        ModuleGraphVisitState.Unvisited {
+                            module_graph_topological_visit(
+                                graph,
+                                value,
+                                traversal,
+                                cycles
+                            );
+                        }
+
+                        ModuleGraphVisitState.Visiting {
+                            let start = module_graph_stack_find(
+                                ref traversal.stack,
+                                edge.target
+                            );
+
+                            pick start {
+                                Some(stack_index) {
+                                    let cycle =
+                                        module_graph_build_cycle(
+                                            ref graph,
+                                            ref traversal.stack,
+                                            stack_index,
+                                            edge.target,
+                                            edge.id,
+                                            edge.span
+                                        );
+
+                                    if not module_graph_cycle_list_contains(
+                                        ref cycles,
+                                        ref cycle
+                                    ) {
+                                        cycles = cycles + [cycle];
+
+                                        traversal.errors =
+                                            traversal.errors + [
+                                                module_graph_error(
+                                                    ModuleGraphErrorKind.CircularDependency,
+                                                    current_name,
+                                                    edge.target_name,
+                                                    "circular module dependency detected",
+                                                    edge.span
+                                                )
+                                            ];
+                                    }
+                                }
+
+                                None {
+                                    traversal.errors =
+                                        traversal.errors + [
+                                            module_graph_error(
+                                                ModuleGraphErrorKind.GraphCorrupted,
+                                                current_name,
+                                                edge.target_name,
+                                                "visiting node is absent from traversal stack",
+                                                edge.span
+                                            )
+                                        ];
+                                }
+                            }
+                        }
+
+                        ModuleGraphVisitState.Visited {}
+                    }
+                }
+            }
+        }
+    }
+
+    module_graph_stack_pop(ref mut traversal.stack);
+
+    graph.nodes[node_index].visit_state =
+        ModuleGraphVisitState.Visited;
+
+    traversal.visited = traversal.visited + [current_id];
+    traversal.order = traversal.order + [current_id];
+}
+
+proc module_graph_reverse_ids(
+    values: [ModuleId]
+) -> [ModuleId] {
+    set output: [ModuleId] = [];
+    set index = len(values);
+
+    while index > 0 {
+        index = index - 1;
+        output = output + [values[index]];
+    }
+
+    give output;
+}
+
+proc module_graph_analyze(
+    graph: ref mut ModuleGraph
+) -> ModuleGraphAnalysis {
+    module_graph_reset_visit_states(graph);
+
+    set traversal = module_graph_traversal_create();
+    set cycles: [ModuleGraphCycle] = [];
+    set index: usize = 0;
+
+    while index < len(graph.nodes) {
+        if graph.nodes[index].visit_state
+            == ModuleGraphVisitState.Unvisited
+        {
+            module_graph_topological_visit(
+                graph,
+                index,
+                ref mut traversal,
+                ref mut cycles
+            );
+        }
+
+        index = index + 1;
+    }
+
+    module_graph_refresh_statistics(graph);
+
+    let order = module_graph_reverse_ids(traversal.order);
+    let errors = graph.errors + traversal.errors;
+    let valid = len(errors) == 0 and len(cycles) == 0;
+
+    give ModuleGraphAnalysis {
+        order: order,
+        cycles: cycles,
+        roots: module_graph_roots(ref graph),
+        leaves: module_graph_leaves(ref graph),
+        errors: errors,
+        statistics: graph.statistics,
+        valid: valid
+    };
+}
+
+proc module_graph_topological_order(
+    graph: ref mut ModuleGraph
+) -> Option<[ModuleId]> {
+    let analysis = module_graph_analyze(graph);
+
+    if not analysis.valid {
+        give None;
+    }
+
+    give Some(analysis.order);
+}
+
+proc module_graph_find_path_visit(
+    graph: ref ModuleGraph,
+    current: ModuleId,
+    target: ModuleId,
+    visited: ref mut [ModuleId],
+    modules: ref mut [ModuleId],
+    edges: ref mut [ModuleEdgeId]
+) -> bool {
+    if module_graph_id_list_contains(ref visited, current) {
+        give false;
+    }
+
+    visited = visited + [current];
+    modules = modules + [current];
+
+    if module_id_equal(current, target) {
+        give true;
+    }
+
+    let dependencies = module_graph_outgoing_edges(
+        graph,
+        current
+    );
+
+    for edge in dependencies {
+        if edge.enabled
+            and edge.state == ModuleEdgeState.Resolved
+        {
+            edges = edges + [edge.id];
+
+            if module_graph_find_path_visit(
+                graph,
+                edge.target,
+                target,
+                visited,
+                modules,
+                edges
+            ) {
+                give true;
+            }
+
+            edges = module_graph_edge_id_list_remove(
+                edges,
+                edge.id
+            );
+        }
+    }
+
+    set output: [ModuleId] = [];
+    set index: usize = 0;
+
+    while index + 1 < len(modules) {
+        output = output + [modules[index]];
+        index = index + 1;
+    }
+
+    modules = output;
+
+    give false;
+}
+
+proc module_graph_names_for_ids(
+    graph: ref ModuleGraph,
+    ids: [ModuleId]
+) -> [string] {
+    set names: [string] = [];
+
+    for id in ids {
+        names = names + [module_graph_node_name(graph, id)];
+    }
+
+    give names;
+}
+
+proc module_graph_find_path(
+    graph: ref ModuleGraph,
+    source: ModuleId,
+    target: ModuleId
+) -> ModuleGraphPath {
+    if not module_graph_contains_node(graph, source)
+        or not module_graph_contains_node(graph, target)
+    {
+        give module_graph_path_empty();
+    }
+
+    set visited: [ModuleId] = [];
+    set modules: [ModuleId] = [];
+    set edges: [ModuleEdgeId] = [];
+
+    let found = module_graph_find_path_visit(
+        graph,
+        source,
+        target,
+        ref mut visited,
+        ref mut modules,
+        ref mut edges
+    );
+
+    if not found {
+        give module_graph_path_empty();
+    }
+
+    give ModuleGraphPath {
+        modules: modules,
+        names: module_graph_names_for_ids(graph, modules),
+        edges: edges,
+        found: true
+    };
+}
+
+proc module_graph_reachable(
+    graph: ref ModuleGraph,
+    source: ModuleId,
+    target: ModuleId
+) -> bool {
+    give module_graph_find_path(graph, source, target).found;
+}
+
+proc module_graph_collect_reachable(
+    graph: ref ModuleGraph,
+    current: ModuleId,
+    visited: ref mut [ModuleId],
+    output: ref mut [ModuleId]
+) {
+    if module_graph_id_list_contains(ref visited, current) {
+        give;
+    }
+
+    visited = visited + [current];
+
+    let dependencies = module_graph_dependencies(graph, current);
+
+    for dependency in dependencies {
+        if not module_graph_id_list_contains(
+            ref output,
+            dependency
+        ) {
+            output = output + [dependency];
+        }
+
+        module_graph_collect_reachable(
+            graph,
+            dependency,
+            visited,
+            output
+        );
+    }
+}
+
+proc module_graph_reachable_from(
+    graph: ref ModuleGraph,
+    root: ModuleId
+) -> [ModuleId] {
+    set visited: [ModuleId] = [];
+    set output: [ModuleId] = [];
+
+    module_graph_collect_reachable(
+        graph,
+        root,
+        ref mut visited,
+        ref mut output
+    );
+
+    give output;
+}
+
+proc module_graph_collect_component(
+    graph: ref ModuleGraph,
+    current: ModuleId,
+    visited: ref mut [ModuleId],
+    output: ref mut [ModuleId]
+) {
+    if module_graph_id_list_contains(ref visited, current) {
+        give;
+    }
+
+    visited = visited + [current];
+    output = output + [current];
+
+    let dependencies = module_graph_dependencies(graph, current);
+
+    for dependency in dependencies {
+        module_graph_collect_component(
+            graph,
+            dependency,
+            visited,
+            output
+        );
+    }
+
+    let dependents = module_graph_dependents(graph, current);
+
+    for dependent in dependents {
+        module_graph_collect_component(
+            graph,
+            dependent,
+            visited,
+            output
+        );
+    }
+}
+
+proc module_graph_connected_components(
+    graph: ref ModuleGraph
+) -> [ModuleGraphComponent] {
+    set components: [ModuleGraphComponent] = [];
+    set visited: [ModuleId] = [];
+
+    for node in graph.nodes {
+        if not module_graph_id_list_contains(
+            ref visited,
+            node.id
+        ) {
+            set modules: [ModuleId] = [];
+
+            module_graph_collect_component(
+                graph,
+                node.id,
+                ref mut visited,
+                ref mut modules
+            );
+
+            components = components + [
+                ModuleGraphComponent {
+                    modules: modules,
+                    names: module_graph_names_for_ids(
+                        graph,
+                        modules
+                    )
+                }
+            ];
+        }
+    }
+
+    give components;
+}
+
+proc module_graph_invalidate_dependents(
+    graph: ref mut ModuleGraph,
+    id: ModuleId,
+    recursive: bool
+) -> usize {
+    set targets: [ModuleId] = [];
+
+    if recursive {
+        set visited: [ModuleId] = [];
+        module_graph_collect_dependents(
+            ref graph,
+            id,
+            ref mut visited,
+            ref mut targets
+        );
+    } else {
+        targets = module_graph_dependents(ref graph, id);
+    }
+
+    set invalidated: usize = 0;
+
+    for target in targets {
+        let index = module_graph_find_node_index(
+            ref graph,
+            target
+        );
+
+        pick index {
+            Some(value) {
+                if graph.nodes[value].state
+                    != ModuleGraphNodeState.Invalidated
+                {
+                    graph.nodes[value].state =
+                        ModuleGraphNodeState.Invalidated;
+                    graph.nodes[value].generation =
+                        graph.generation;
+                    graph.nodes[value].revision =
+                        graph.nodes[value].revision + 1;
+
+                    invalidated = invalidated + 1;
+                }
+            }
+
+            None {}
+        }
+    }
+
+    module_graph_refresh_statistics(graph);
+
+    give invalidated;
+}
+
+proc module_graph_collect_dependents(
+    graph: ref ModuleGraph,
+    current: ModuleId,
+    visited: ref mut [ModuleId],
+    output: ref mut [ModuleId]
+) {
+    if module_graph_id_list_contains(ref visited, current) {
+        give;
+    }
+
+    visited = visited + [current];
+
+    let dependents = module_graph_dependents(graph, current);
+
+    for dependent in dependents {
+        if not module_graph_id_list_contains(
+            ref output,
+            dependent
+        ) {
+            output = output + [dependent];
+        }
+
+        module_graph_collect_dependents(
+            graph,
+            dependent,
+            visited,
+            output
+        );
+    }
+}
+
+proc module_graph_apply_context(
+    graph: ref mut ModuleGraph,
+    context: ref ModuleEdgeEvaluationContext
+) {
+    module_edge_evaluate_collection(
+        ref mut graph.edges,
+        context
+    );
+
+    module_graph_refresh_statistics(graph);
+}
+
+proc module_graph_validate(
+    graph: ref mut ModuleGraph
+) -> bool {
+    set valid = module_edge_validate(ref mut graph.edges);
+
+    for node in graph.nodes {
+        if not module_id_is_valid(node.id)
+            or len(node.name) == 0
+            or len(node.canonical_path) == 0
+        {
+            module_graph_push_error(
+                graph,
+                ModuleGraphErrorKind.InvalidModule,
+                node.name,
+                "",
+                "module graph node contains invalid data",
+                node.span
+            );
+
+            valid = false;
+        }
+
+        for edge_id in node.outgoing {
+            if not module_graph_edge_id_list_contains(
+                ref node.outgoing,
+                edge_id
+            ) {
+                module_graph_push_error(
+                    graph,
+                    ModuleGraphErrorKind.GraphCorrupted,
+                    node.name,
+                    "",
+                    "module graph outgoing edge reference is invalid",
+                    node.span
+                );
+
+                valid = false;
+            }
+        }
+    }
+
+    let analysis = module_graph_analyze(graph);
+
+    give valid and analysis.valid;
+}
+
+proc module_graph_from_database(
+    database: ref ModuleDatabase
+) -> ModuleGraph {
+    set graph = module_graph_create();
+
+    for module in database.modules {
+        module_graph_add_node(
+            ref mut graph,
+            module.id,
+            module.name,
+            module.canonical_path,
+            module.source_span
+        );
+    }
+
+    graph.edges = module_edge_collection_from_database(database);
+
+    for edge in graph.edges.edges {
+        let source_index = module_graph_find_node_index(
+            ref graph,
+            edge.source
+        );
+
+        pick source_index {
+            Some(value) {
+                graph.nodes[value].outgoing =
+                    graph.nodes[value].outgoing + [edge.id];
+            }
+
+            None {
+                module_graph_push_error(
+                    ref mut graph,
+                    ModuleGraphErrorKind.NodeNotFound,
+                    edge.source_name,
+                    edge.target_name,
+                    "database edge source module is missing",
+                    edge.span
+                );
+            }
+        }
+
+        let target_index = module_graph_find_node_index(
+            ref graph,
+            edge.target
+        );
+
+        pick target_index {
+            Some(value) {
+                graph.nodes[value].incoming =
+                    graph.nodes[value].incoming + [edge.id];
+            }
+
+            None {
+                module_graph_push_error(
+                    ref mut graph,
+                    ModuleGraphErrorKind.NodeNotFound,
+                    edge.source_name,
+                    edge.target_name,
+                    "database edge target module is missing",
+                    edge.span
+                );
+            }
+        }
+    }
+
+    module_graph_refresh_statistics(ref mut graph);
+
+    give graph;
+}
+
+proc module_graph_clear_errors(
+    graph: ref mut ModuleGraph
+) {
+    graph.errors = [];
+    graph.edges.errors = [];
+}
+
+proc module_graph_advance_generation(
+    graph: ref mut ModuleGraph
+) -> u64 {
+    graph.generation = graph.generation + 1;
+    graph.edges.generation = graph.generation;
+
+    give graph.generation;
+}
+
+proc module_graph_clear(
+    graph: ref mut ModuleGraph
+) {
+    graph.nodes = [];
+    graph.edges = module_edge_collection_create();
+    graph.errors = [];
+    graph.generation = graph.generation + 1;
+    graph.statistics = module_graph_statistics_empty();
+}
+
+proc module_graph_reset(
+    graph: ref mut ModuleGraph
+) {
+    graph.nodes = [];
+    graph.edges = module_edge_collection_create();
+    graph.errors = [];
+    graph.generation = 1;
+    graph.statistics = module_graph_statistics_empty();
+}
+
+proc module_graph_node_count(
+    graph: ref ModuleGraph
+) -> usize {
+    give len(graph.nodes);
+}
+
+proc module_graph_edge_count(
+    graph: ref ModuleGraph
+) -> usize {
+    give len(graph.edges.edges);
+}
+
+proc module_graph_is_empty(
+    graph: ref ModuleGraph
+) -> bool {
+    give len(graph.nodes) == 0;
+}
+
+proc module_graph_has_errors(
+    graph: ref ModuleGraph
+) -> bool {
+    give len(graph.errors) != 0
+        or len(graph.edges.errors) != 0;
+}
+
+proc module_graph_statistics(
+    graph: ref ModuleGraph
+) -> ModuleGraphStatistics {
+    give graph.statistics;
+}
+
+proc module_graph_error_code(
+    error: ref ModuleGraphError
+) -> string {
+    pick error.kind {
+        ModuleGraphErrorKind.InvalidArgument {
+            give "E_MODULE_GRAPH_ARGUMENT";
+        }
+
+        ModuleGraphErrorKind.InvalidModule {
+            give "E_MODULE_GRAPH_MODULE";
+        }
+
+        ModuleGraphErrorKind.DuplicateNode {
+            give "E_MODULE_GRAPH_NODE_DUPLICATE";
+        }
+
+        ModuleGraphErrorKind.NodeNotFound {
+            give "E_MODULE_GRAPH_NODE_NOT_FOUND";
+        }
+
+        ModuleGraphErrorKind.DuplicateEdge {
+            give "E_MODULE_GRAPH_EDGE_DUPLICATE";
+        }
+
+        ModuleGraphErrorKind.EdgeNotFound {
+            give "E_MODULE_GRAPH_EDGE_NOT_FOUND";
+        }
+
+        ModuleGraphErrorKind.SelfDependency {
+            give "E_MODULE_SELF_DEPENDENCY";
+        }
+
+        ModuleGraphErrorKind.CircularDependency {
+            give "E_MODULE_CYCLE";
+        }
+
+        ModuleGraphErrorKind.UnresolvedDependency {
+            give "E_MODULE_DEPENDENCY_UNRESOLVED";
+        }
+
+        ModuleGraphErrorKind.DisabledRequiredDependency {
+            give "E_MODULE_DEPENDENCY_REQUIRED_DISABLED";
+        }
+
+        ModuleGraphErrorKind.InvalidState {
+            give "E_MODULE_GRAPH_STATE";
+        }
+
+        ModuleGraphErrorKind.GraphCorrupted {
+            give "E_MODULE_GRAPH";
+        }
+    }
+}

@@ -1,0 +1,324 @@
+space vitte/compiler/analysis/modules/module_id
+
+export *
+
+use src/vitte/compiler/frontend/source/span.{Span}
+
+pick ModuleIdKind {
+    Invalid,
+    User,
+    Stdlib,
+    Builtin,
+    Compiler,
+    Runtime,
+    Prelude,
+    Generated,
+    Temporary,
+    External
+}
+
+form ModuleId {
+    value: u64
+}
+
+form ModuleQualifiedName {
+    package: string
+    namespace: string
+    name: string
+}
+
+form ModuleIdentifier {
+    id: ModuleId
+    kind: ModuleIdKind
+
+    qualified_name: ModuleQualifiedName
+    canonical_path: string
+
+    span: Span
+
+    generation: u64
+    revision: u64
+}
+
+proc module_id(value: u64) -> ModuleId {
+    give ModuleId {
+        value: value
+    };
+}
+
+proc module_id_invalid() -> ModuleId {
+    give module_id(0);
+}
+
+proc module_id_builtin() -> ModuleId {
+    give module_id(1);
+}
+
+proc module_id_stdlib() -> ModuleId {
+    give module_id(2);
+}
+
+proc module_id_prelude() -> ModuleId {
+    give module_id(3);
+}
+
+proc module_id_compiler() -> ModuleId {
+    give module_id(4);
+}
+
+proc module_id_runtime() -> ModuleId {
+    give module_id(5);
+}
+
+proc module_id_equal(
+    left: ModuleId,
+    right: ModuleId
+) -> bool {
+    give left.value == right.value;
+}
+
+proc module_id_not_equal(
+    left: ModuleId,
+    right: ModuleId
+) -> bool {
+    give left.value != right.value;
+}
+
+proc module_id_less(
+    left: ModuleId,
+    right: ModuleId
+) -> bool {
+    give left.value < right.value;
+}
+
+proc module_id_less_equal(
+    left: ModuleId,
+    right: ModuleId
+) -> bool {
+    give left.value <= right.value;
+}
+
+proc module_id_greater(
+    left: ModuleId,
+    right: ModuleId
+) -> bool {
+    give left.value > right.value;
+}
+
+proc module_id_greater_equal(
+    left: ModuleId,
+    right: ModuleId
+) -> bool {
+    give left.value >= right.value;
+}
+
+proc module_id_compare(
+    left: ModuleId,
+    right: ModuleId
+) -> int {
+    if left.value < right.value {
+        give -1;
+    }
+
+    if left.value > right.value {
+        give 1;
+    }
+
+    give 0;
+}
+
+proc module_id_is_valid(
+    id: ModuleId
+) -> bool {
+    give id.value != 0;
+}
+
+proc module_id_is_invalid(
+    id: ModuleId
+) -> bool {
+    give id.value == 0;
+}
+
+proc module_id_is_builtin(
+    id: ModuleId
+) -> bool {
+    give id.value == 1;
+}
+
+proc module_id_is_stdlib(
+    id: ModuleId
+) -> bool {
+    give id.value == 2;
+}
+
+proc module_id_is_prelude(
+    id: ModuleId
+) -> bool {
+    give id.value == 3;
+}
+
+proc module_id_is_compiler(
+    id: ModuleId
+) -> bool {
+    give id.value == 4;
+}
+
+proc module_id_is_runtime(
+    id: ModuleId
+) -> bool {
+    give id.value == 5;
+}
+
+proc module_id_next(
+    id: ModuleId
+) -> ModuleId {
+    give module_id(id.value + 1);
+}
+
+proc module_id_previous(
+    id: ModuleId
+) -> ModuleId {
+    if id.value == 0 {
+        give id;
+    }
+
+    give module_id(id.value - 1);
+}
+
+proc module_id_hash(
+    id: ModuleId
+) -> u64 {
+    set hash = id.value;
+
+    hash = hash xor (hash >> 33);
+    hash = hash * 0xff51afd7ed558ccd;
+    hash = hash xor (hash >> 33);
+    hash = hash * 0xc4ceb9fe1a85ec53;
+    hash = hash xor (hash >> 33);
+
+    give hash;
+}
+
+proc module_qualified_name(
+    package: string,
+    namespace: string,
+    name: string
+) -> ModuleQualifiedName {
+    give ModuleQualifiedName {
+        package: package,
+        namespace: namespace,
+        name: name
+    };
+}
+
+proc module_identifier(
+    id: ModuleId,
+    kind: ModuleIdKind,
+    package: string,
+    namespace: string,
+    name: string,
+    canonical_path: string,
+    span: Span
+) -> ModuleIdentifier {
+    give ModuleIdentifier {
+        id: id,
+        kind: kind,
+        qualified_name: module_qualified_name(
+            package,
+            namespace,
+            name
+        ),
+        canonical_path: canonical_path,
+        span: span,
+        generation: 1,
+        revision: 1
+    };
+}
+
+proc module_identifier_is_valid(
+    identifier: ref ModuleIdentifier
+) -> bool {
+    if not module_id_is_valid(identifier.id) {
+        give false;
+    }
+
+    if len(identifier.qualified_name.name) == 0 {
+        give false;
+    }
+
+    if len(identifier.canonical_path) == 0 {
+        give false;
+    }
+
+    give true;
+}
+
+proc module_identifier_full_name(
+    identifier: ref ModuleIdentifier
+) -> string {
+    set result = "";
+
+    if len(identifier.qualified_name.package) != 0 {
+        result = identifier.qualified_name.package;
+    }
+
+    if len(identifier.qualified_name.namespace) != 0 {
+        if len(result) != 0 {
+            result = result + "::";
+        }
+
+        result = result + identifier.qualified_name.namespace;
+    }
+
+    if len(result) != 0 {
+        result = result + "::";
+    }
+
+    result = result + identifier.qualified_name.name;
+
+    give result;
+}
+
+proc module_identifier_is_generated(
+    identifier: ref ModuleIdentifier
+) -> bool {
+    give identifier.kind == ModuleIdKind.Generated;
+}
+
+proc module_identifier_is_external(
+    identifier: ref ModuleIdentifier
+) -> bool {
+    give identifier.kind == ModuleIdKind.External;
+}
+
+proc module_identifier_is_builtin(
+    identifier: ref ModuleIdentifier
+) -> bool {
+    give identifier.kind == ModuleIdKind.Builtin;
+}
+
+proc module_identifier_is_compiler(
+    identifier: ref ModuleIdentifier
+) -> bool {
+    give identifier.kind == ModuleIdKind.Compiler;
+}
+
+proc module_identifier_is_runtime(
+    identifier: ref ModuleIdentifier
+) -> bool {
+    give identifier.kind == ModuleIdKind.Runtime;
+}
+
+proc module_identifier_is_user(
+    identifier: ref ModuleIdentifier
+) -> bool {
+    give identifier.kind == ModuleIdKind.User;
+}
+
+proc module_identifier_touch(
+    identifier: ref mut ModuleIdentifier,
+    generation: u64
+) {
+    identifier.generation = generation;
+    identifier.revision = identifier.revision + 1;
+}

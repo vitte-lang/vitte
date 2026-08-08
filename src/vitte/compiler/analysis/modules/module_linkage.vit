@@ -1,0 +1,1782 @@
+space vitte/compiler/analysis/modules/module_linkage
+
+export *
+
+use src/vitte/compiler/frontend/source/span.{Span}
+use src/vitte/compiler/analysis/modules/module_id.{
+    ModuleId,
+    module_id_invalid,
+    module_id_equal,
+    module_id_is_valid
+}
+use src/vitte/compiler/analysis/modules/module_kind.{
+    ModuleKind,
+    ModuleArtifactKind,
+    module_kind_is_executable,
+    module_kind_is_library,
+    module_kind_is_linkable
+}
+
+pick ModuleLinkageKind {
+    Internal,
+    Private,
+    Public,
+    External,
+    Weak,
+    Common,
+    Imported,
+    Exported,
+    Reexported,
+    Builtin,
+    Runtime,
+    Dynamic
+}
+
+pick ModuleLinkageVisibility {
+    Hidden,
+    Protected,
+    Default
+}
+
+pick ModuleLinkageState {
+    Declared,
+    Resolving,
+    Resolved,
+    Missing,
+    Conflicting,
+    Invalidated,
+    Failed
+}
+
+pick ModuleLinkageSymbolKind {
+    Procedure,
+    Global,
+    Constant,
+    Type,
+    Metadata,
+    EntryPoint,
+    Initializer,
+    Finalizer,
+    ThreadLocal
+}
+
+pick ModuleLinkageErrorKind {
+    InvalidArgument,
+    InvalidModule,
+    InvalidName,
+    DuplicateSymbol,
+    ConflictingSymbol,
+    SymbolNotFound,
+    InvalidTarget,
+    InvalidLinkage,
+    InvalidVisibility,
+    MissingDefinition,
+    MultipleDefinitions,
+    UnresolvedSymbol,
+    InvalidEntryPoint,
+    UnsupportedArtifact,
+    InvalidState,
+    DatabaseCorrupted
+}
+
+form ModuleLinkageId {
+    value: usize
+}
+
+form ModuleLinkageTarget {
+    module: ModuleId
+    symbol: string
+    library: string
+}
+
+form ModuleLinkageSymbol {
+    id: ModuleLinkageId
+    module: ModuleId
+
+    name: string
+    mangled_name: string
+
+    symbol_kind: ModuleLinkageSymbolKind
+    linkage: ModuleLinkageKind
+    visibility: ModuleLinkageVisibility
+    state: ModuleLinkageState
+
+    target: Option<ModuleLinkageTarget>
+
+    span: Span
+    declaration_span: Span
+    definition_span: Span
+
+    defined: bool
+    referenced: bool
+    exported: bool
+    imported: bool
+    weak: bool
+    thread_local: bool
+
+    size: usize
+    alignment: usize
+
+    generation: u64
+    revision: u64
+}
+
+form ModuleLinkageError {
+    kind: ModuleLinkageErrorKind
+    module: string
+    symbol: string
+    message: string
+    span: Span
+}
+
+form ModuleLinkageStatistics {
+    symbols: usize
+    resolved: usize
+    unresolved: usize
+    missing: usize
+    conflicting: usize
+    failed: usize
+    invalidated: usize
+
+    definitions: usize
+    references: usize
+    exports: usize
+    imports: usize
+    weak_symbols: usize
+    thread_local_symbols: usize
+    entry_points: usize
+}
+
+form ModuleLinkageTable {
+    symbols: [ModuleLinkageSymbol]
+    errors: [ModuleLinkageError]
+
+    next_id: usize
+    generation: u64
+
+    statistics: ModuleLinkageStatistics
+}
+
+form ModuleLinkageLookup {
+    symbol: Option<ModuleLinkageSymbol>
+    candidates: [ModuleLinkageSymbol]
+    found: bool
+    ambiguous: bool
+}
+
+form ModuleLinkageResolution {
+    symbols: [ModuleLinkageSymbol]
+    errors: [ModuleLinkageError]
+
+    resolved: usize
+    failed: usize
+
+    valid: bool
+}
+
+form ModuleLinkageConfiguration {
+    target: string
+    artifact: ModuleArtifactKind
+
+    dynamic_linking: bool
+    position_independent: bool
+    export_all: bool
+    strip_private: bool
+    allow_undefined: bool
+
+    entry_point: string
+}
+
+proc module_linkage_empty_span() -> Span {
+    give Span {
+        source: 0,
+        start: 0,
+        end: 0
+    };
+}
+
+proc module_linkage_id(
+    value: usize
+) -> ModuleLinkageId {
+    give ModuleLinkageId {
+        value: value
+    };
+}
+
+proc module_linkage_id_invalid() -> ModuleLinkageId {
+    give module_linkage_id(0);
+}
+
+proc module_linkage_id_is_valid(
+    id: ModuleLinkageId
+) -> bool {
+    give id.value != 0;
+}
+
+proc module_linkage_id_equal(
+    left: ModuleLinkageId,
+    right: ModuleLinkageId
+) -> bool {
+    give left.value == right.value;
+}
+
+proc module_linkage_target(
+    module: ModuleId,
+    symbol: string,
+    library: string
+) -> ModuleLinkageTarget {
+    give ModuleLinkageTarget {
+        module: module,
+        symbol: symbol,
+        library: library
+    };
+}
+
+proc module_linkage_configuration_default()
+    -> ModuleLinkageConfiguration
+{
+    give ModuleLinkageConfiguration {
+        target: "",
+        artifact: ModuleArtifactKind.None,
+
+        dynamic_linking: false,
+        position_independent: false,
+        export_all: false,
+        strip_private: false,
+        allow_undefined: false,
+
+        entry_point: "main"
+    };
+}
+
+proc module_linkage_statistics_empty()
+    -> ModuleLinkageStatistics
+{
+    give ModuleLinkageStatistics {
+        symbols: 0,
+        resolved: 0,
+        unresolved: 0,
+        missing: 0,
+        conflicting: 0,
+        failed: 0,
+        invalidated: 0,
+
+        definitions: 0,
+        references: 0,
+        exports: 0,
+        imports: 0,
+        weak_symbols: 0,
+        thread_local_symbols: 0,
+        entry_points: 0
+    };
+}
+
+proc module_linkage_table_create() -> ModuleLinkageTable {
+    give ModuleLinkageTable {
+        symbols: [],
+        errors: [],
+        next_id: 1,
+        generation: 1,
+        statistics: module_linkage_statistics_empty()
+    };
+}
+
+proc module_linkage_error(
+    kind: ModuleLinkageErrorKind,
+    module: string,
+    symbol: string,
+    message: string,
+    span: Span
+) -> ModuleLinkageError {
+    give ModuleLinkageError {
+        kind: kind,
+        module: module,
+        symbol: symbol,
+        message: message,
+        span: span
+    };
+}
+
+proc module_linkage_push_error(
+    table: ref mut ModuleLinkageTable,
+    kind: ModuleLinkageErrorKind,
+    module: string,
+    symbol: string,
+    message: string,
+    span: Span
+) {
+    table.errors = table.errors + [
+        module_linkage_error(
+            kind,
+            module,
+            symbol,
+            message,
+            span
+        )
+    ];
+}
+
+proc module_linkage_symbol_create(
+    id: ModuleLinkageId,
+    module: ModuleId,
+    name: string,
+    mangled_name: string,
+    symbol_kind: ModuleLinkageSymbolKind,
+    linkage: ModuleLinkageKind,
+    visibility: ModuleLinkageVisibility,
+    span: Span,
+    generation: u64
+) -> ModuleLinkageSymbol {
+    give ModuleLinkageSymbol {
+        id: id,
+        module: module,
+
+        name: name,
+        mangled_name: mangled_name,
+
+        symbol_kind: symbol_kind,
+        linkage: linkage,
+        visibility: visibility,
+        state: ModuleLinkageState.Declared,
+
+        target: None,
+
+        span: span,
+        declaration_span: span,
+        definition_span: module_linkage_empty_span(),
+
+        defined: false,
+        referenced: false,
+        exported: linkage == ModuleLinkageKind.Public
+            or linkage == ModuleLinkageKind.Exported
+            or linkage == ModuleLinkageKind.Reexported,
+        imported: linkage == ModuleLinkageKind.External
+            or linkage == ModuleLinkageKind.Imported,
+        weak: linkage == ModuleLinkageKind.Weak,
+        thread_local:
+            symbol_kind == ModuleLinkageSymbolKind.ThreadLocal,
+
+        size: 0,
+        alignment: 0,
+
+        generation: generation,
+        revision: 1
+    };
+}
+
+proc module_linkage_symbol_is_valid(
+    symbol: ref ModuleLinkageSymbol
+) -> bool {
+    if not module_linkage_id_is_valid(symbol.id) {
+        give false;
+    }
+
+    if not module_id_is_valid(symbol.module) {
+        give false;
+    }
+
+    if len(symbol.name) == 0
+        or len(symbol.mangled_name) == 0
+    {
+        give false;
+    }
+
+    if symbol.imported and symbol.defined {
+        give false;
+    }
+
+    if symbol.defined
+        and symbol.state == ModuleLinkageState.Missing
+    {
+        give false;
+    }
+
+    give true;
+}
+
+proc module_linkage_symbol_is_resolved(
+    symbol: ref ModuleLinkageSymbol
+) -> bool {
+    give symbol.state == ModuleLinkageState.Resolved;
+}
+
+proc module_linkage_symbol_is_available(
+    symbol: ref ModuleLinkageSymbol
+) -> bool {
+    give symbol.state != ModuleLinkageState.Missing
+        and symbol.state != ModuleLinkageState.Failed
+        and symbol.state != ModuleLinkageState.Invalidated;
+}
+
+proc module_linkage_symbol_is_external(
+    symbol: ref ModuleLinkageSymbol
+) -> bool {
+    give symbol.imported
+        or symbol.linkage == ModuleLinkageKind.External
+        or symbol.linkage == ModuleLinkageKind.Imported
+        or symbol.linkage == ModuleLinkageKind.Dynamic;
+}
+
+proc module_linkage_symbol_is_exported(
+    symbol: ref ModuleLinkageSymbol
+) -> bool {
+    give symbol.exported
+        or symbol.linkage == ModuleLinkageKind.Exported
+        or symbol.linkage == ModuleLinkageKind.Reexported
+        or symbol.linkage == ModuleLinkageKind.Public;
+}
+
+proc module_linkage_symbol_is_entry_point(
+    symbol: ref ModuleLinkageSymbol
+) -> bool {
+    give symbol.symbol_kind
+        == ModuleLinkageSymbolKind.EntryPoint;
+}
+
+proc module_linkage_find_index(
+    table: ref ModuleLinkageTable,
+    id: ModuleLinkageId
+) -> Option<usize> {
+    set index: usize = 0;
+
+    while index < len(table.symbols) {
+        if module_linkage_id_equal(
+            table.symbols[index].id,
+            id
+        ) {
+            give Some(index);
+        }
+
+        index = index + 1;
+    }
+
+    give None;
+}
+
+proc module_linkage_find_mangled_index(
+    table: ref ModuleLinkageTable,
+    mangled_name: string
+) -> Option<usize> {
+    set index: usize = 0;
+
+    while index < len(table.symbols) {
+        if table.symbols[index].mangled_name
+            == mangled_name
+        {
+            give Some(index);
+        }
+
+        index = index + 1;
+    }
+
+    give None;
+}
+
+proc module_linkage_find_exact_index(
+    table: ref ModuleLinkageTable,
+    module: ModuleId,
+    name: string,
+    symbol_kind: ModuleLinkageSymbolKind
+) -> Option<usize> {
+    set index: usize = 0;
+
+    while index < len(table.symbols) {
+        let symbol = table.symbols[index];
+
+        if module_id_equal(symbol.module, module)
+            and symbol.name == name
+            and symbol.symbol_kind == symbol_kind
+        {
+            give Some(index);
+        }
+
+        index = index + 1;
+    }
+
+    give None;
+}
+
+proc module_linkage_contains(
+    table: ref ModuleLinkageTable,
+    id: ModuleLinkageId
+) -> bool {
+    give module_linkage_find_index(table, id) != None;
+}
+
+proc module_linkage_contains_mangled(
+    table: ref ModuleLinkageTable,
+    mangled_name: string
+) -> bool {
+    give module_linkage_find_mangled_index(
+        table,
+        mangled_name
+    ) != None;
+}
+
+proc module_linkage_get(
+    table: ref ModuleLinkageTable,
+    id: ModuleLinkageId
+) -> Option<ref ModuleLinkageSymbol> {
+    let index = module_linkage_find_index(table, id);
+
+    pick index {
+        Some(value) {
+            give Some(ref table.symbols[value]);
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc module_linkage_get_mut(
+    table: ref mut ModuleLinkageTable,
+    id: ModuleLinkageId
+) -> Option<ref mut ModuleLinkageSymbol> {
+    let index = module_linkage_find_index(ref table, id);
+
+    pick index {
+        Some(value) {
+            give Some(ref mut table.symbols[value]);
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc module_linkage_refresh_statistics(
+    table: ref mut ModuleLinkageTable
+) {
+    set statistics = module_linkage_statistics_empty();
+
+    statistics.symbols = len(table.symbols);
+
+    for symbol in table.symbols {
+        pick symbol.state {
+            ModuleLinkageState.Resolved {
+                statistics.resolved = statistics.resolved + 1;
+            }
+
+            ModuleLinkageState.Declared {
+                statistics.unresolved =
+                    statistics.unresolved + 1;
+            }
+
+            ModuleLinkageState.Resolving {
+                statistics.unresolved =
+                    statistics.unresolved + 1;
+            }
+
+            ModuleLinkageState.Missing {
+                statistics.missing = statistics.missing + 1;
+            }
+
+            ModuleLinkageState.Conflicting {
+                statistics.conflicting =
+                    statistics.conflicting + 1;
+            }
+
+            ModuleLinkageState.Failed {
+                statistics.failed = statistics.failed + 1;
+            }
+
+            ModuleLinkageState.Invalidated {
+                statistics.invalidated =
+                    statistics.invalidated + 1;
+            }
+        }
+
+        if symbol.defined {
+            statistics.definitions =
+                statistics.definitions + 1;
+        }
+
+        if symbol.referenced {
+            statistics.references =
+                statistics.references + 1;
+        }
+
+        if module_linkage_symbol_is_exported(ref symbol) {
+            statistics.exports = statistics.exports + 1;
+        }
+
+        if module_linkage_symbol_is_external(ref symbol) {
+            statistics.imports = statistics.imports + 1;
+        }
+
+        if symbol.weak {
+            statistics.weak_symbols =
+                statistics.weak_symbols + 1;
+        }
+
+        if symbol.thread_local {
+            statistics.thread_local_symbols =
+                statistics.thread_local_symbols + 1;
+        }
+
+        if module_linkage_symbol_is_entry_point(ref symbol) {
+            statistics.entry_points =
+                statistics.entry_points + 1;
+        }
+    }
+
+    table.statistics = statistics;
+}
+
+proc module_linkage_insert(
+    table: ref mut ModuleLinkageTable,
+    module: ModuleId,
+    name: string,
+    mangled_name: string,
+    symbol_kind: ModuleLinkageSymbolKind,
+    linkage: ModuleLinkageKind,
+    visibility: ModuleLinkageVisibility,
+    span: Span
+) -> Option<ModuleLinkageId> {
+    if not module_id_is_valid(module) {
+        module_linkage_push_error(
+            table,
+            ModuleLinkageErrorKind.InvalidModule,
+            "",
+            name,
+            "linkage symbol module identifier is invalid",
+            span
+        );
+
+        give None;
+    }
+
+    if len(name) == 0 or len(mangled_name) == 0 {
+        module_linkage_push_error(
+            table,
+            ModuleLinkageErrorKind.InvalidName,
+            "",
+            name,
+            "linkage symbol name must not be empty",
+            span
+        );
+
+        give None;
+    }
+
+    if module_linkage_find_exact_index(
+        ref table,
+        module,
+        name,
+        symbol_kind
+    ) != None {
+        module_linkage_push_error(
+            table,
+            ModuleLinkageErrorKind.DuplicateSymbol,
+            "",
+            name,
+            "module linkage symbol already exists",
+            span
+        );
+
+        give None;
+    }
+
+    let mangled_index = module_linkage_find_mangled_index(
+        ref table,
+        mangled_name
+    );
+
+    pick mangled_index {
+        Some(value) {
+            if table.symbols[value].linkage
+                != ModuleLinkageKind.Weak
+                and linkage != ModuleLinkageKind.Weak
+            {
+                module_linkage_push_error(
+                    table,
+                    ModuleLinkageErrorKind.ConflictingSymbol,
+                    "",
+                    name,
+                    "mangled symbol name conflicts with another definition",
+                    span
+                );
+
+                give None;
+            }
+        }
+
+        None {}
+    }
+
+    let id = module_linkage_id(table.next_id);
+    table.next_id = table.next_id + 1;
+
+    table.symbols = table.symbols + [
+        module_linkage_symbol_create(
+            id,
+            module,
+            name,
+            mangled_name,
+            symbol_kind,
+            linkage,
+            visibility,
+            span,
+            table.generation
+        )
+    ];
+
+    module_linkage_refresh_statistics(table);
+
+    give Some(id);
+}
+
+proc module_linkage_set_state(
+    table: ref mut ModuleLinkageTable,
+    id: ModuleLinkageId,
+    state: ModuleLinkageState
+) -> bool {
+    let index = module_linkage_find_index(ref table, id);
+
+    pick index {
+        Some(value) {
+            table.symbols[value].state = state;
+            table.symbols[value].generation =
+                table.generation;
+            table.symbols[value].revision =
+                table.symbols[value].revision + 1;
+
+            module_linkage_refresh_statistics(table);
+
+            give true;
+        }
+
+        None {
+            module_linkage_push_error(
+                table,
+                ModuleLinkageErrorKind.SymbolNotFound,
+                "",
+                "",
+                "cannot update an unknown linkage symbol",
+                module_linkage_empty_span()
+            );
+
+            give false;
+        }
+    }
+}
+
+proc module_linkage_begin_resolution(
+    table: ref mut ModuleLinkageTable,
+    id: ModuleLinkageId
+) -> bool {
+    give module_linkage_set_state(
+        table,
+        id,
+        ModuleLinkageState.Resolving
+    );
+}
+
+proc module_linkage_mark_resolved(
+    table: ref mut ModuleLinkageTable,
+    id: ModuleLinkageId
+) -> bool {
+    give module_linkage_set_state(
+        table,
+        id,
+        ModuleLinkageState.Resolved
+    );
+}
+
+proc module_linkage_mark_missing(
+    table: ref mut ModuleLinkageTable,
+    id: ModuleLinkageId
+) -> bool {
+    give module_linkage_set_state(
+        table,
+        id,
+        ModuleLinkageState.Missing
+    );
+}
+
+proc module_linkage_mark_failed(
+    table: ref mut ModuleLinkageTable,
+    id: ModuleLinkageId
+) -> bool {
+    give module_linkage_set_state(
+        table,
+        id,
+        ModuleLinkageState.Failed
+    );
+}
+
+proc module_linkage_define(
+    table: ref mut ModuleLinkageTable,
+    id: ModuleLinkageId,
+    span: Span,
+    size: usize,
+    alignment: usize
+) -> bool {
+    let index = module_linkage_find_index(ref table, id);
+
+    pick index {
+        Some(value) {
+            if table.symbols[value].imported {
+                module_linkage_push_error(
+                    table,
+                    ModuleLinkageErrorKind.InvalidLinkage,
+                    "",
+                    table.symbols[value].name,
+                    "imported linkage symbol cannot be defined locally",
+                    span
+                );
+
+                give false;
+            }
+
+            if table.symbols[value].defined
+                and not table.symbols[value].weak
+            {
+                table.symbols[value].state =
+                    ModuleLinkageState.Conflicting;
+
+                module_linkage_push_error(
+                    table,
+                    ModuleLinkageErrorKind.MultipleDefinitions,
+                    "",
+                    table.symbols[value].name,
+                    "linkage symbol has multiple definitions",
+                    span
+                );
+
+                give false;
+            }
+
+            table.symbols[value].defined = true;
+            table.symbols[value].definition_span = span;
+            table.symbols[value].size = size;
+            table.symbols[value].alignment = alignment;
+            table.symbols[value].generation =
+                table.generation;
+            table.symbols[value].revision =
+                table.symbols[value].revision + 1;
+
+            module_linkage_refresh_statistics(table);
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_linkage_reference(
+    table: ref mut ModuleLinkageTable,
+    id: ModuleLinkageId
+) -> bool {
+    let index = module_linkage_find_index(ref table, id);
+
+    pick index {
+        Some(value) {
+            table.symbols[value].referenced = true;
+            table.symbols[value].generation =
+                table.generation;
+            table.symbols[value].revision =
+                table.symbols[value].revision + 1;
+
+            module_linkage_refresh_statistics(table);
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_linkage_set_target(
+    table: ref mut ModuleLinkageTable,
+    id: ModuleLinkageId,
+    target: ModuleLinkageTarget
+) -> bool {
+    let index = module_linkage_find_index(ref table, id);
+
+    pick index {
+        Some(value) {
+            if len(target.symbol) == 0 {
+                module_linkage_push_error(
+                    table,
+                    ModuleLinkageErrorKind.InvalidTarget,
+                    "",
+                    table.symbols[value].name,
+                    "linkage target symbol must not be empty",
+                    table.symbols[value].span
+                );
+
+                give false;
+            }
+
+            if not module_id_is_valid(target.module)
+                and len(target.library) == 0
+            {
+                module_linkage_push_error(
+                    table,
+                    ModuleLinkageErrorKind.InvalidTarget,
+                    "",
+                    table.symbols[value].name,
+                    "linkage target requires a module or library",
+                    table.symbols[value].span
+                );
+
+                give false;
+            }
+
+            table.symbols[value].target = Some(target);
+            table.symbols[value].imported = true;
+            table.symbols[value].defined = false;
+            table.symbols[value].generation =
+                table.generation;
+            table.symbols[value].revision =
+                table.symbols[value].revision + 1;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_linkage_set_exported(
+    table: ref mut ModuleLinkageTable,
+    id: ModuleLinkageId,
+    exported: bool
+) -> bool {
+    let index = module_linkage_find_index(ref table, id);
+
+    pick index {
+        Some(value) {
+            table.symbols[value].exported = exported;
+
+            if exported {
+                table.symbols[value].visibility =
+                    ModuleLinkageVisibility.Default;
+
+                if table.symbols[value].linkage
+                    == ModuleLinkageKind.Internal
+                    or table.symbols[value].linkage
+                        == ModuleLinkageKind.Private
+                {
+                    table.symbols[value].linkage =
+                        ModuleLinkageKind.Exported;
+                }
+            }
+
+            table.symbols[value].generation =
+                table.generation;
+            table.symbols[value].revision =
+                table.symbols[value].revision + 1;
+
+            module_linkage_refresh_statistics(table);
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_linkage_set_visibility(
+    table: ref mut ModuleLinkageTable,
+    id: ModuleLinkageId,
+    visibility: ModuleLinkageVisibility
+) -> bool {
+    let index = module_linkage_find_index(ref table, id);
+
+    pick index {
+        Some(value) {
+            table.symbols[value].visibility = visibility;
+            table.symbols[value].generation =
+                table.generation;
+            table.symbols[value].revision =
+                table.symbols[value].revision + 1;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_linkage_candidates(
+    table: ref ModuleLinkageTable,
+    name: string
+) -> [ModuleLinkageSymbol] {
+    set output: [ModuleLinkageSymbol] = [];
+
+    for symbol in table.symbols {
+        if (
+            symbol.name == name
+            or symbol.mangled_name == name
+        )
+            and module_linkage_symbol_is_available(ref symbol)
+        {
+            output = output + [symbol];
+        }
+    }
+
+    give output;
+}
+
+proc module_linkage_lookup(
+    table: ref ModuleLinkageTable,
+    name: string
+) -> ModuleLinkageLookup {
+    let candidates = module_linkage_candidates(
+        table,
+        name
+    );
+
+    if len(candidates) == 0 {
+        give ModuleLinkageLookup {
+            symbol: None,
+            candidates: [],
+            found: false,
+            ambiguous: false
+        };
+    }
+
+    if len(candidates) == 1 {
+        give ModuleLinkageLookup {
+            symbol: Some(candidates[0]),
+            candidates: candidates,
+            found: true,
+            ambiguous: false
+        };
+    }
+
+    set strong: [ModuleLinkageSymbol] = [];
+
+    for symbol in candidates {
+        if not symbol.weak {
+            strong = strong + [symbol];
+        }
+    }
+
+    if len(strong) == 1 {
+        give ModuleLinkageLookup {
+            symbol: Some(strong[0]),
+            candidates: candidates,
+            found: true,
+            ambiguous: false
+        };
+    }
+
+    give ModuleLinkageLookup {
+        symbol: None,
+        candidates: candidates,
+        found: true,
+        ambiguous: true
+    };
+}
+
+proc module_linkage_of_module(
+    table: ref ModuleLinkageTable,
+    module: ModuleId
+) -> [ModuleLinkageSymbol] {
+    set output: [ModuleLinkageSymbol] = [];
+
+    for symbol in table.symbols {
+        if module_id_equal(symbol.module, module) {
+            output = output + [symbol];
+        }
+    }
+
+    give output;
+}
+
+proc module_linkage_exports_of(
+    table: ref ModuleLinkageTable,
+    module: ModuleId
+) -> [ModuleLinkageSymbol] {
+    set output: [ModuleLinkageSymbol] = [];
+
+    for symbol in table.symbols {
+        if module_id_equal(symbol.module, module)
+            and module_linkage_symbol_is_exported(ref symbol)
+        {
+            output = output + [symbol];
+        }
+    }
+
+    give output;
+}
+
+proc module_linkage_imports_of(
+    table: ref ModuleLinkageTable,
+    module: ModuleId
+) -> [ModuleLinkageSymbol] {
+    set output: [ModuleLinkageSymbol] = [];
+
+    for symbol in table.symbols {
+        if module_id_equal(symbol.module, module)
+            and module_linkage_symbol_is_external(ref symbol)
+        {
+            output = output + [symbol];
+        }
+    }
+
+    give output;
+}
+
+proc module_linkage_entry_points(
+    table: ref ModuleLinkageTable
+) -> [ModuleLinkageSymbol] {
+    set output: [ModuleLinkageSymbol] = [];
+
+    for symbol in table.symbols {
+        if module_linkage_symbol_is_entry_point(ref symbol)
+            and module_linkage_symbol_is_available(ref symbol)
+        {
+            output = output + [symbol];
+        }
+    }
+
+    give output;
+}
+
+proc module_linkage_resolve_symbol(
+    table: ref mut ModuleLinkageTable,
+    index: usize,
+    configuration: ref ModuleLinkageConfiguration
+) -> bool {
+    if index >= len(table.symbols) {
+        give false;
+    }
+
+    table.symbols[index].state =
+        ModuleLinkageState.Resolving;
+
+    if table.symbols[index].imported {
+        pick table.symbols[index].target {
+            Some(target) {
+                if len(target.symbol) == 0 {
+                    table.symbols[index].state =
+                        ModuleLinkageState.Missing;
+
+                    module_linkage_push_error(
+                        table,
+                        ModuleLinkageErrorKind.UnresolvedSymbol,
+                        "",
+                        table.symbols[index].name,
+                        "imported linkage symbol has no target name",
+                        table.symbols[index].span
+                    );
+
+                    give configuration.allow_undefined;
+                }
+
+                table.symbols[index].state =
+                    ModuleLinkageState.Resolved;
+
+                give true;
+            }
+
+            None {
+                if configuration.allow_undefined
+                    or table.symbols[index].weak
+                {
+                    table.symbols[index].state =
+                        ModuleLinkageState.Resolved;
+
+                    give true;
+                }
+
+                table.symbols[index].state =
+                    ModuleLinkageState.Missing;
+
+                module_linkage_push_error(
+                    table,
+                    ModuleLinkageErrorKind.UnresolvedSymbol,
+                    "",
+                    table.symbols[index].name,
+                    "external linkage symbol has no resolution target",
+                    table.symbols[index].span
+                );
+
+                give false;
+            }
+        }
+    }
+
+    if table.symbols[index].referenced
+        and not table.symbols[index].defined
+    {
+        if table.symbols[index].weak
+            or configuration.allow_undefined
+        {
+            table.symbols[index].state =
+                ModuleLinkageState.Resolved;
+
+            give true;
+        }
+
+        table.symbols[index].state =
+            ModuleLinkageState.Missing;
+
+        module_linkage_push_error(
+            table,
+            ModuleLinkageErrorKind.MissingDefinition,
+            "",
+            table.symbols[index].name,
+            "referenced linkage symbol has no definition",
+            table.symbols[index].span
+        );
+
+        give false;
+    }
+
+    table.symbols[index].state =
+        ModuleLinkageState.Resolved;
+
+    give true;
+}
+
+proc module_linkage_resolve(
+    table: ref mut ModuleLinkageTable,
+    configuration: ref ModuleLinkageConfiguration
+) -> ModuleLinkageResolution {
+    let previous_error_count = len(table.errors);
+
+    set resolved: usize = 0;
+    set failed: usize = 0;
+    set index: usize = 0;
+
+    while index < len(table.symbols) {
+        if module_linkage_resolve_symbol(
+            table,
+            index,
+            configuration
+        ) {
+            resolved = resolved + 1;
+        } else {
+            failed = failed + 1;
+        }
+
+        table.symbols[index].generation =
+            table.generation;
+        table.symbols[index].revision =
+            table.symbols[index].revision + 1;
+
+        index = index + 1;
+    }
+
+    module_linkage_refresh_statistics(table);
+
+    set errors: [ModuleLinkageError] = [];
+    set error_index = previous_error_count;
+
+    while error_index < len(table.errors) {
+        errors = errors + [table.errors[error_index]];
+        error_index = error_index + 1;
+    }
+
+    give ModuleLinkageResolution {
+        symbols: table.symbols,
+        errors: errors,
+        resolved: resolved,
+        failed: failed,
+        valid: failed == 0 and len(errors) == 0
+    };
+}
+
+proc module_linkage_validate_entry_point(
+    table: ref mut ModuleLinkageTable,
+    module_kind: ModuleKind,
+    configuration: ref ModuleLinkageConfiguration
+) -> bool {
+    if not module_kind_is_executable(module_kind) {
+        give true;
+    }
+
+    let lookup = module_linkage_lookup(
+        ref table,
+        configuration.entry_point
+    );
+
+    if not lookup.found {
+        module_linkage_push_error(
+            table,
+            ModuleLinkageErrorKind.InvalidEntryPoint,
+            "",
+            configuration.entry_point,
+            "executable module entry point was not found",
+            module_linkage_empty_span()
+        );
+
+        give false;
+    }
+
+    if lookup.ambiguous {
+        module_linkage_push_error(
+            table,
+            ModuleLinkageErrorKind.InvalidEntryPoint,
+            "",
+            configuration.entry_point,
+            "executable module entry point is ambiguous",
+            module_linkage_empty_span()
+        );
+
+        give false;
+    }
+
+    pick lookup.symbol {
+        Some(symbol) {
+            if not symbol.defined
+                or symbol.symbol_kind
+                    != ModuleLinkageSymbolKind.EntryPoint
+            {
+                module_linkage_push_error(
+                    table,
+                    ModuleLinkageErrorKind.InvalidEntryPoint,
+                    "",
+                    configuration.entry_point,
+                    "entry point must be a defined entry-point symbol",
+                    symbol.span
+                );
+
+                give false;
+            }
+        }
+
+        None {
+            give false;
+        }
+    }
+
+    give true;
+}
+
+proc module_linkage_validate_artifact(
+    table: ref mut ModuleLinkageTable,
+    module_kind: ModuleKind,
+    configuration: ref ModuleLinkageConfiguration
+) -> bool {
+    if not module_kind_is_linkable(module_kind)
+        and configuration.artifact
+            != ModuleArtifactKind.None
+        and configuration.artifact
+            != ModuleArtifactKind.Metadata
+        and configuration.artifact
+            != ModuleArtifactKind.Interface
+    {
+        module_linkage_push_error(
+            table,
+            ModuleLinkageErrorKind.UnsupportedArtifact,
+            "",
+            "",
+            "module kind does not support a linked artifact",
+            module_linkage_empty_span()
+        );
+
+        give false;
+    }
+
+    if module_kind_is_library(module_kind)
+        and configuration.artifact
+            == ModuleArtifactKind.Executable
+    {
+        module_linkage_push_error(
+            table,
+            ModuleLinkageErrorKind.UnsupportedArtifact,
+            "",
+            "",
+            "library module cannot produce an executable artifact",
+            module_linkage_empty_span()
+        );
+
+        give false;
+    }
+
+    give true;
+}
+
+proc module_linkage_validate(
+    table: ref mut ModuleLinkageTable,
+    module_kind: ModuleKind,
+    configuration: ref ModuleLinkageConfiguration
+) -> bool {
+    set valid: bool = true;
+
+    for symbol in table.symbols {
+        if not module_linkage_symbol_is_valid(ref symbol) {
+            module_linkage_push_error(
+                table,
+                ModuleLinkageErrorKind.DatabaseCorrupted,
+                "",
+                symbol.name,
+                "module linkage symbol contains invalid data",
+                symbol.span
+            );
+
+            valid = false;
+        }
+
+        if symbol.state == ModuleLinkageState.Declared
+            or symbol.state == ModuleLinkageState.Resolving
+        {
+            module_linkage_push_error(
+                table,
+                ModuleLinkageErrorKind.UnresolvedSymbol,
+                "",
+                symbol.name,
+                "module linkage symbol has not been resolved",
+                symbol.span
+            );
+
+            valid = false;
+        }
+
+        if symbol.state == ModuleLinkageState.Missing {
+            module_linkage_push_error(
+                table,
+                ModuleLinkageErrorKind.SymbolNotFound,
+                "",
+                symbol.name,
+                "module linkage symbol is missing",
+                symbol.span
+            );
+
+            valid = false;
+        }
+
+        if symbol.state == ModuleLinkageState.Conflicting {
+            module_linkage_push_error(
+                table,
+                ModuleLinkageErrorKind.ConflictingSymbol,
+                "",
+                symbol.name,
+                "module linkage symbol conflicts with another symbol",
+                symbol.span
+            );
+
+            valid = false;
+        }
+
+        if symbol.state == ModuleLinkageState.Failed {
+            module_linkage_push_error(
+                table,
+                ModuleLinkageErrorKind.InvalidState,
+                "",
+                symbol.name,
+                "module linkage symbol resolution failed",
+                symbol.span
+            );
+
+            valid = false;
+        }
+    }
+
+    if not module_linkage_validate_entry_point(
+        table,
+        module_kind,
+        configuration
+    ) {
+        valid = false;
+    }
+
+    if not module_linkage_validate_artifact(
+        table,
+        module_kind,
+        configuration
+    ) {
+        valid = false;
+    }
+
+    give valid and len(table.errors) == 0;
+}
+
+proc module_linkage_remove(
+    table: ref mut ModuleLinkageTable,
+    id: ModuleLinkageId
+) -> bool {
+    let index = module_linkage_find_index(ref table, id);
+
+    pick index {
+        None {
+            give false;
+        }
+
+        Some(value) {
+            set output: [ModuleLinkageSymbol] = [];
+            set current: usize = 0;
+
+            while current < len(table.symbols) {
+                if current != value {
+                    output = output + [
+                        table.symbols[current]
+                    ];
+                }
+
+                current = current + 1;
+            }
+
+            table.symbols = output;
+            module_linkage_refresh_statistics(table);
+
+            give true;
+        }
+    }
+}
+
+proc module_linkage_remove_module(
+    table: ref mut ModuleLinkageTable,
+    module: ModuleId
+) -> usize {
+    set output: [ModuleLinkageSymbol] = [];
+    set removed: usize = 0;
+
+    for symbol in table.symbols {
+        if module_id_equal(symbol.module, module) {
+            removed = removed + 1;
+        } else {
+            output = output + [symbol];
+        }
+    }
+
+    table.symbols = output;
+    module_linkage_refresh_statistics(table);
+
+    give removed;
+}
+
+proc module_linkage_invalidate(
+    table: ref mut ModuleLinkageTable,
+    id: ModuleLinkageId
+) -> bool {
+    give module_linkage_set_state(
+        table,
+        id,
+        ModuleLinkageState.Invalidated
+    );
+}
+
+proc module_linkage_invalidate_module(
+    table: ref mut ModuleLinkageTable,
+    module: ModuleId
+) -> usize {
+    set invalidated: usize = 0;
+    set index: usize = 0;
+
+    while index < len(table.symbols) {
+        if module_id_equal(
+            table.symbols[index].module,
+            module
+        ) {
+            if table.symbols[index].state
+                != ModuleLinkageState.Invalidated
+            {
+                table.symbols[index].state =
+                    ModuleLinkageState.Invalidated;
+                table.symbols[index].generation =
+                    table.generation;
+                table.symbols[index].revision =
+                    table.symbols[index].revision + 1;
+
+                invalidated = invalidated + 1;
+            }
+        }
+
+        index = index + 1;
+    }
+
+    module_linkage_refresh_statistics(table);
+
+    give invalidated;
+}
+
+proc module_linkage_clear_errors(
+    table: ref mut ModuleLinkageTable
+) {
+    table.errors = [];
+}
+
+proc module_linkage_advance_generation(
+    table: ref mut ModuleLinkageTable
+) -> u64 {
+    table.generation = table.generation + 1;
+    give table.generation;
+}
+
+proc module_linkage_clear(
+    table: ref mut ModuleLinkageTable
+) {
+    table.symbols = [];
+    table.errors = [];
+    table.generation = table.generation + 1;
+    table.statistics = module_linkage_statistics_empty();
+}
+
+proc module_linkage_reset(
+    table: ref mut ModuleLinkageTable
+) {
+    table.symbols = [];
+    table.errors = [];
+    table.next_id = 1;
+    table.generation = 1;
+    table.statistics = module_linkage_statistics_empty();
+}
+
+proc module_linkage_count(
+    table: ref ModuleLinkageTable
+) -> usize {
+    give len(table.symbols);
+}
+
+proc module_linkage_is_empty(
+    table: ref ModuleLinkageTable
+) -> bool {
+    give len(table.symbols) == 0;
+}
+
+proc module_linkage_has_errors(
+    table: ref ModuleLinkageTable
+) -> bool {
+    give len(table.errors) != 0;
+}
+
+proc module_linkage_statistics(
+    table: ref ModuleLinkageTable
+) -> ModuleLinkageStatistics {
+    give table.statistics;
+}
+
+proc module_linkage_kind_name(
+    linkage: ModuleLinkageKind
+) -> string {
+    pick linkage {
+        ModuleLinkageKind.Internal {
+            give "internal";
+        }
+
+        ModuleLinkageKind.Private {
+            give "private";
+        }
+
+        ModuleLinkageKind.Public {
+            give "public";
+        }
+
+        ModuleLinkageKind.External {
+            give "external";
+        }
+
+        ModuleLinkageKind.Weak {
+            give "weak";
+        }
+
+        ModuleLinkageKind.Common {
+            give "common";
+        }
+
+        ModuleLinkageKind.Imported {
+            give "imported";
+        }
+
+        ModuleLinkageKind.Exported {
+            give "exported";
+        }
+
+        ModuleLinkageKind.Reexported {
+            give "reexported";
+        }
+
+        ModuleLinkageKind.Builtin {
+            give "builtin";
+        }
+
+        ModuleLinkageKind.Runtime {
+            give "runtime";
+        }
+
+        ModuleLinkageKind.Dynamic {
+            give "dynamic";
+        }
+    }
+}
+
+proc module_linkage_error_code(
+    error: ref ModuleLinkageError
+) -> string {
+    pick error.kind {
+        ModuleLinkageErrorKind.InvalidArgument {
+            give "E_MODULE_LINKAGE_ARGUMENT";
+        }
+
+        ModuleLinkageErrorKind.InvalidModule {
+            give "E_MODULE_LINKAGE_MODULE";
+        }
+
+        ModuleLinkageErrorKind.InvalidName {
+            give "E_MODULE_LINKAGE_NAME";
+        }
+
+        ModuleLinkageErrorKind.DuplicateSymbol {
+            give "E_MODULE_LINKAGE_DUPLICATE";
+        }
+
+        ModuleLinkageErrorKind.ConflictingSymbol {
+            give "E_MODULE_LINKAGE_CONFLICT";
+        }
+
+        ModuleLinkageErrorKind.SymbolNotFound {
+            give "E_MODULE_LINKAGE_SYMBOL_NOT_FOUND";
+        }
+
+        ModuleLinkageErrorKind.InvalidTarget {
+            give "E_MODULE_LINKAGE_TARGET";
+        }
+
+        ModuleLinkageErrorKind.InvalidLinkage {
+            give "E_MODULE_LINKAGE_KIND";
+        }
+
+        ModuleLinkageErrorKind.InvalidVisibility {
+            give "E_MODULE_LINKAGE_VISIBILITY";
+        }
+
+        ModuleLinkageErrorKind.MissingDefinition {
+            give "E_MODULE_LINKAGE_DEFINITION_MISSING";
+        }
+
+        ModuleLinkageErrorKind.MultipleDefinitions {
+            give "E_MODULE_LINKAGE_MULTIPLE_DEFINITIONS";
+        }
+
+        ModuleLinkageErrorKind.UnresolvedSymbol {
+            give "E_MODULE_LINKAGE_UNRESOLVED";
+        }
+
+        ModuleLinkageErrorKind.InvalidEntryPoint {
+            give "E_MODULE_LINKAGE_ENTRY_POINT";
+        }
+
+        ModuleLinkageErrorKind.UnsupportedArtifact {
+            give "E_MODULE_LINKAGE_ARTIFACT";
+        }
+
+        ModuleLinkageErrorKind.InvalidState {
+            give "E_MODULE_LINKAGE_STATE";
+        }
+
+        ModuleLinkageErrorKind.DatabaseCorrupted {
+            give "E_MODULE_LINKAGE_DATABASE";
+        }
+    }
+}

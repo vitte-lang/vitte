@@ -1,0 +1,157 @@
+(* Vitte import declarations grammar *)
+
+import_declaration
+    = use_keyword,
+      import_clause,
+      semicolon?
+    ;
+
+import_clause
+    = import_path
+    | import_alias
+    | import_glob
+    | import_group
+    ;
+
+import_path
+    = module_path
+    ;
+
+import_alias
+    = module_path,
+      as_keyword,
+      identifier
+    ;
+
+import_glob
+    = module_path,
+      path_separator,
+      asterisk
+    ;
+
+import_group
+    = import_group_prefix?,
+      left_brace,
+      import_group_items?,
+      right_brace
+    ;
+
+import_group_prefix
+    = module_path,
+      path_separator
+    ;
+
+import_group_items
+    = import_group_item,
+      { comma, import_group_item },
+      comma?
+    ;
+
+import_group_item
+    = import_group_name
+    | import_group_alias
+    | import_group_glob
+    | import_nested_group
+    ;
+
+import_group_name
+    = identifier
+    ;
+
+import_group_alias
+    = identifier,
+      as_keyword,
+      identifier
+    ;
+
+import_group_glob
+    = asterisk
+    ;
+
+import_nested_group
+    = identifier,
+      path_separator,
+      left_brace,
+      import_group_items?,
+      right_brace
+    ;
+
+module_path
+    = module_path_segment,
+      { path_separator, module_path_segment }
+    ;
+
+module_path_segment
+    = identifier
+    | self_keyword
+    | super_keyword
+    | root_keyword
+    ;
+
+use_keyword
+    = "use"
+    ;
+
+as_keyword
+    = "as"
+    ;
+
+self_keyword
+    = "self"
+    ;
+
+super_keyword
+    = "super"
+    ;
+
+root_keyword
+    = "root"
+    ;
+
+path_separator
+    = "::"
+    | "/"
+    ;
+
+asterisk
+    = "*"
+    ;
+
+left_brace
+    = "{"
+    ;
+
+right_brace
+    = "}"
+    ;
+
+comma
+    = ","
+    ;
+
+semicolon
+    = ";"
+    ;
+
+identifier
+    = identifier_start,
+      { identifier_continue }
+    ;
+
+identifier_start
+    = "_"
+    | unicode_letter
+    ;
+
+identifier_continue
+    = identifier_start
+    | unicode_decimal_digit
+    ;
+
+unicode_letter
+    = ? any Unicode scalar value with the Letter property ?
+    ;
+
+unicode_decimal_digit
+    = ? any Unicode scalar value with the Decimal_Number property ?
+    ;

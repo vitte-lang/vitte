@@ -1,0 +1,756 @@
+space vitte/compiler/analysis/modules/module_cycle
+
+export *
+
+use src/vitte/compiler/frontend/source/span.{Span}
+
+pick ModuleVisitState {
+    Unvisited,
+    Visiting,
+    Visited
+}
+
+pick ModuleCycleErrorKind {
+    DuplicateModule,
+    UnknownModule,
+    InvalidDependency,
+    CircularDependency,
+    SelfDependency,
+    GraphCorrupted
+}
+
+form ModuleCycleDependency {
+    module: string
+    span: Span
+}
+
+form ModuleCycleNode {
+    name: string
+    path: string
+    dependencies: [ModuleCycleDependency]
+    state: ModuleVisitState
+    span: Span
+}
+
+form ModuleCycleEdge {
+    source: string
+    destination: string
+    span: Span
+}
+
+form ModuleCycle {
+    modules: [string]
+    edges: [ModuleCycleEdge]
+    span: Span
+}
+
+form ModuleCycleError {
+    kind: ModuleCycleErrorKind
+    module: string
+    dependency: string
+    message: string
+    span: Span
+    cycle: Option<ModuleCycle>
+}
+
+form ModuleCycleGraph {
+    nodes: [ModuleCycleNode]
+    errors: [ModuleCycleError]
+}
+
+form ModuleCycleResult {
+    cycles: [ModuleCycle]
+    errors: [ModuleCycleError]
+    order: [string]
+    valid: bool
+}
+
+form ModuleCycleTraversal {
+    stack: [string]
+    order: [string]
+    cycles: [ModuleCycle]
+    errors: [ModuleCycleError]
+}
+
+proc empty_span() -> Span {
+    give Span {
+        source: 0,
+        start: 0,
+        end: 0
+    };
+}
+
+proc module_cycle_graph_create() -> ModuleCycleGraph {
+    give ModuleCycleGraph {
+        nodes: [],
+        errors: []
+    };
+}
+
+proc module_cycle_result_empty() -> ModuleCycleResult {
+    give ModuleCycleResult {
+        cycles: [],
+        errors: [],
+        order: [],
+        valid: true
+    };
+}
+
+proc module_cycle_traversal_create() -> ModuleCycleTraversal {
+    give ModuleCycleTraversal {
+        stack: [],
+        order: [],
+        cycles: [],
+        errors: []
+    };
+}
+
+proc module_cycle_dependency(
+    module: string,
+    span: Span
+) -> ModuleCycleDependency {
+    give ModuleCycleDependency {
+        module: module,
+        span: span
+    };
+}
+
+proc module_cycle_edge(
+    source: string,
+    destination: string,
+    span: Span
+) -> ModuleCycleEdge {
+    give ModuleCycleEdge {
+        source: source,
+        destination: destination,
+        span: span
+    };
+}
+
+proc module_cycle_error(
+    kind: ModuleCycleErrorKind,
+    module: string,
+    dependency: string,
+    message: string,
+    span: Span
+) -> ModuleCycleError {
+    give ModuleCycleError {
+        kind: kind,
+        module: module,
+        dependency: dependency,
+        message: message,
+        span: span,
+        cycle: None
+    };
+}
+
+proc module_cycle_error_with_cycle(
+    kind: ModuleCycleErrorKind,
+    module: string,
+    dependency: string,
+    message: string,
+    span: Span,
+    cycle: ModuleCycle
+) -> ModuleCycleError {
+    give ModuleCycleError {
+        kind: kind,
+        module: module,
+        dependency: dependency,
+        message: message,
+        span: span,
+        cycle: Some(cycle)
+    };
+}
+
+proc module_cycle_node(
+    name: string,
+    path: string,
+    span: Span
+) -> ModuleCycleNode {
+    give ModuleCycleNode {
+        name: name,
+        path: path,
+        dependencies: [],
+        state: ModuleVisitState.Unvisited,
+        span: span
+    };
+}
+
+proc module_cycle_graph_find_index(
+    graph: ref ModuleCycleGraph,
+    name: string
+) -> Option<usize> {
+    set index: usize = 0;
+
+    while index < len(graph.nodes) {
+        if graph.nodes[index].name == name {
+            give Some(index);
+        }
+
+        index = index + 1;
+    }
+
+    give None;
+}
+
+proc module_cycle_graph_contains(
+    graph: ref ModuleCycleGraph,
+    name: string
+) -> bool {
+    give module_cycle_graph_find_index(graph, name) != None;
+}
+
+proc module_cycle_graph_get(
+    graph: ref ModuleCycleGraph,
+    name: string
+) -> Option<ref ModuleCycleNode> {
+    let index = module_cycle_graph_find_index(graph, name);
+
+    pick index {
+        Some(value) {
+            give Some(ref graph.nodes[value]);
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc module_cycle_graph_get_mut(
+    graph: ref mut ModuleCycleGraph,
+    name: string
+) -> Option<ref mut ModuleCycleNode> {
+    let index = module_cycle_graph_find_index(ref graph, name);
+
+    pick index {
+        Some(value) {
+            give Some(ref mut graph.nodes[value]);
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc module_cycle_graph_add_module(
+    graph: ref mut ModuleCycleGraph,
+    name: string,
+    path: string,
+    span: Span
+) -> bool {
+    if module_cycle_graph_contains(ref graph, name) {
+        graph.errors = graph.errors + [
+            module_cycle_error(
+                ModuleCycleErrorKind.DuplicateModule,
+                name,
+                "",
+                "duplicate module in dependency graph",
+                span
+            )
+        ];
+
+        give false;
+    }
+
+    graph.nodes = graph.nodes + [
+        module_cycle_node(name, path, span)
+    ];
+
+    give true;
+}
+
+proc module_cycle_node_has_dependency(
+    node: ref ModuleCycleNode,
+    dependency: string
+) -> bool {
+    for current in node.dependencies {
+        if current.module == dependency {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc module_cycle_graph_add_dependency(
+    graph: ref mut ModuleCycleGraph,
+    module: string,
+    dependency: string,
+    span: Span
+) -> bool {
+    let source_index = module_cycle_graph_find_index(
+        ref graph,
+        module
+    );
+
+    pick source_index {
+        None {
+            graph.errors = graph.errors + [
+                module_cycle_error(
+                    ModuleCycleErrorKind.UnknownModule,
+                    module,
+                    dependency,
+                    "dependency source module is unknown",
+                    span
+                )
+            ];
+
+            give false;
+        }
+
+        Some(index) {
+            if module == dependency {
+                let edge = module_cycle_edge(
+                    module,
+                    dependency,
+                    span
+                );
+
+                let cycle = ModuleCycle {
+                    modules: [module, module],
+                    edges: [edge],
+                    span: span
+                };
+
+                graph.errors = graph.errors + [
+                    module_cycle_error_with_cycle(
+                        ModuleCycleErrorKind.SelfDependency,
+                        module,
+                        dependency,
+                        "module directly depends on itself",
+                        span,
+                        cycle
+                    )
+                ];
+
+                give false;
+            }
+
+            if module_cycle_node_has_dependency(
+                ref graph.nodes[index],
+                dependency
+            ) {
+                give true;
+            }
+
+            graph.nodes[index].dependencies =
+                graph.nodes[index].dependencies + [
+                    module_cycle_dependency(dependency, span)
+                ];
+
+            give true;
+        }
+    }
+}
+
+proc module_cycle_graph_reset_states(
+    graph: ref mut ModuleCycleGraph
+) {
+    set index: usize = 0;
+
+    while index < len(graph.nodes) {
+        graph.nodes[index].state = ModuleVisitState.Unvisited;
+        index = index + 1;
+    }
+}
+
+proc module_cycle_stack_find(
+    stack: ref [string],
+    module: string
+) -> Option<usize> {
+    set index: usize = 0;
+
+    while index < len(stack) {
+        if stack[index] == module {
+            give Some(index);
+        }
+
+        index = index + 1;
+    }
+
+    give None;
+}
+
+proc module_cycle_stack_pop(
+    stack: ref mut [string]
+) {
+    if len(stack) == 0 {
+        give;
+    }
+
+    set output: [string] = [];
+    set index: usize = 0;
+
+    while index + 1 < len(stack) {
+        output = output + [stack[index]];
+        index = index + 1;
+    }
+
+    stack = output;
+}
+
+proc module_cycle_build(
+    graph: ref ModuleCycleGraph,
+    stack: ref [string],
+    start: usize,
+    destination: string,
+    closing_span: Span
+) -> ModuleCycle {
+    set modules: [string] = [];
+    set edges: [ModuleCycleEdge] = [];
+    set index: usize = start;
+
+    while index < len(stack) {
+        modules = modules + [stack[index]];
+
+        if index + 1 < len(stack) {
+            let current = stack[index];
+            let next = stack[index + 1];
+            let node = module_cycle_graph_get(graph, current);
+            set edge_span = empty_span();
+
+            pick node {
+                Some(value) {
+                    for dependency in value.dependencies {
+                        if dependency.module == next {
+                            edge_span = dependency.span;
+                        }
+                    }
+                }
+
+                None {}
+            }
+
+            edges = edges + [
+                module_cycle_edge(current, next, edge_span)
+            ];
+        }
+
+        index = index + 1;
+    }
+
+    if len(stack) != 0 {
+        let source = stack[len(stack) - 1];
+
+        edges = edges + [
+            module_cycle_edge(
+                source,
+                destination,
+                closing_span
+            )
+        ];
+    }
+
+    modules = modules + [destination];
+
+    give ModuleCycle {
+        modules: modules,
+        edges: edges,
+        span: closing_span
+    };
+}
+
+proc module_cycle_equal(
+    left: ref ModuleCycle,
+    right: ref ModuleCycle
+) -> bool {
+    if len(left.modules) != len(right.modules) {
+        give false;
+    }
+
+    if len(left.modules) <= 1 {
+        give len(left.modules) == len(right.modules);
+    }
+
+    let left_count = len(left.modules) - 1;
+    let right_count = len(right.modules) - 1;
+
+    if left_count != right_count {
+        give false;
+    }
+
+    set offset: usize = 0;
+
+    while offset < right_count {
+        set equal: bool = true;
+        set index: usize = 0;
+
+        while index < left_count {
+            let right_index = (index + offset) % right_count;
+
+            if left.modules[index] != right.modules[right_index] {
+                equal = false;
+            }
+
+            index = index + 1;
+        }
+
+        if equal {
+            give true;
+        }
+
+        offset = offset + 1;
+    }
+
+    give false;
+}
+
+proc module_cycle_list_contains(
+    cycles: ref [ModuleCycle],
+    cycle: ref ModuleCycle
+) -> bool {
+    for current in cycles {
+        if module_cycle_equal(ref current, cycle) {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc module_cycle_visit(
+    graph: ref mut ModuleCycleGraph,
+    node_index: usize,
+    traversal: ref mut ModuleCycleTraversal
+) {
+    if node_index >= len(graph.nodes) {
+        traversal.errors = traversal.errors + [
+            module_cycle_error(
+                ModuleCycleErrorKind.GraphCorrupted,
+                "",
+                "",
+                "module graph node index is invalid",
+                empty_span()
+            )
+        ];
+
+        give;
+    }
+
+    graph.nodes[node_index].state = ModuleVisitState.Visiting;
+    traversal.stack = traversal.stack + [
+        graph.nodes[node_index].name
+    ];
+
+    let module_name = graph.nodes[node_index].name;
+    let dependencies = graph.nodes[node_index].dependencies;
+
+    for dependency in dependencies {
+        let dependency_index = module_cycle_graph_find_index(
+            ref graph,
+            dependency.module
+        );
+
+        pick dependency_index {
+            None {
+                traversal.errors = traversal.errors + [
+                    module_cycle_error(
+                        ModuleCycleErrorKind.UnknownModule,
+                        module_name,
+                        dependency.module,
+                        "module dependency does not exist",
+                        dependency.span
+                    )
+                ];
+            }
+
+            Some(value) {
+                pick graph.nodes[value].state {
+                    ModuleVisitState.Unvisited {
+                        module_cycle_visit(
+                            graph,
+                            value,
+                            traversal
+                        );
+                    }
+
+                    ModuleVisitState.Visiting {
+                        let start = module_cycle_stack_find(
+                            ref traversal.stack,
+                            dependency.module
+                        );
+
+                        pick start {
+                            Some(stack_index) {
+                                let cycle = module_cycle_build(
+                                    ref graph,
+                                    ref traversal.stack,
+                                    stack_index,
+                                    dependency.module,
+                                    dependency.span
+                                );
+
+                                if not module_cycle_list_contains(
+                                    ref traversal.cycles,
+                                    ref cycle
+                                ) {
+                                    traversal.cycles =
+                                        traversal.cycles + [cycle];
+
+                                    traversal.errors =
+                                        traversal.errors + [
+                                            module_cycle_error_with_cycle(
+                                                ModuleCycleErrorKind.CircularDependency,
+                                                module_name,
+                                                dependency.module,
+                                                "circular module dependency detected",
+                                                dependency.span,
+                                                cycle
+                                            )
+                                        ];
+                                }
+                            }
+
+                            None {
+                                traversal.errors =
+                                    traversal.errors + [
+                                        module_cycle_error(
+                                            ModuleCycleErrorKind.GraphCorrupted,
+                                            module_name,
+                                            dependency.module,
+                                            "visiting module is absent from traversal stack",
+                                            dependency.span
+                                        )
+                                    ];
+                            }
+                        }
+                    }
+
+                    ModuleVisitState.Visited {}
+                }
+            }
+        }
+    }
+
+    module_cycle_stack_pop(ref mut traversal.stack);
+
+    graph.nodes[node_index].state = ModuleVisitState.Visited;
+    traversal.order = traversal.order + [module_name];
+}
+
+proc module_cycle_reverse_strings(
+    values: [string]
+) -> [string] {
+    set output: [string] = [];
+    set index = len(values);
+
+    while index > 0 {
+        index = index - 1;
+        output = output + [values[index]];
+    }
+
+    give output;
+}
+
+proc module_cycle_analyze(
+    graph: ref mut ModuleCycleGraph
+) -> ModuleCycleResult {
+    module_cycle_graph_reset_states(graph);
+
+    set traversal = module_cycle_traversal_create();
+    set index: usize = 0;
+
+    while index < len(graph.nodes) {
+        if graph.nodes[index].state == ModuleVisitState.Unvisited {
+            module_cycle_visit(
+                graph,
+                index,
+                ref mut traversal
+            );
+        }
+
+        index = index + 1;
+    }
+
+    let order = module_cycle_reverse_strings(traversal.order);
+    let errors = graph.errors + traversal.errors;
+    let valid = len(errors) == 0 and len(traversal.cycles) == 0;
+
+    give ModuleCycleResult {
+        cycles: traversal.cycles,
+        errors: errors,
+        order: order,
+        valid: valid
+    };
+}
+
+proc module_cycle_detect(
+    graph: ref mut ModuleCycleGraph
+) -> [ModuleCycle] {
+    give module_cycle_analyze(graph).cycles;
+}
+
+proc module_cycle_topological_order(
+    graph: ref mut ModuleCycleGraph
+) -> Option<[string]> {
+    let result = module_cycle_analyze(graph);
+
+    if not result.valid {
+        give None;
+    }
+
+    give Some(result.order);
+}
+
+proc module_cycle_result_is_valid(
+    result: ref ModuleCycleResult
+) -> bool {
+    give result.valid;
+}
+
+proc module_cycle_result_has_cycles(
+    result: ref ModuleCycleResult
+) -> bool {
+    give len(result.cycles) != 0;
+}
+
+proc module_cycle_format_path(
+    cycle: ref ModuleCycle
+) -> string {
+    set output = "";
+
+    set index: usize = 0;
+
+    while index < len(cycle.modules) {
+        if index != 0 {
+            output = output + " -> ";
+        }
+
+        output = output + cycle.modules[index];
+        index = index + 1;
+    }
+
+    give output;
+}
+
+proc module_cycle_error_code(
+    error: ref ModuleCycleError
+) -> string {
+    pick error.kind {
+        ModuleCycleErrorKind.DuplicateModule {
+            give "E_MODULE_DUPLICATE";
+        }
+
+        ModuleCycleErrorKind.UnknownModule {
+            give "E_MODULE_UNKNOWN";
+        }
+
+        ModuleCycleErrorKind.InvalidDependency {
+            give "E_MODULE_DEPENDENCY";
+        }
+
+        ModuleCycleErrorKind.CircularDependency {
+            give "E_MODULE_CYCLE";
+        }
+
+        ModuleCycleErrorKind.SelfDependency {
+            give "E_MODULE_SELF_DEPENDENCY";
+        }
+
+        ModuleCycleErrorKind.GraphCorrupted {
+            give "E_MODULE_GRAPH";
+        }
+    }
+}

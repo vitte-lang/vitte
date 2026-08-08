@@ -264,6 +264,7 @@ vitte_hir_function_t *vitte_hir_make_function(vitte_hir_builder_t *builder, cons
         return NULL;
     }
     node->as.function.name = name;
+    vitte_hir_list_init(&node->as.function.parameters);
     node->as.function.return_type = return_type;
     node->as.function.body = body;
     return node;
@@ -408,6 +409,14 @@ bool vitte_hir_module_add_const(vitte_hir_module_t *module, vitte_hir_decl_t *de
         return false;
     }
     return vitte_hir_module_add_decl(module, decl);
+}
+
+bool vitte_hir_function_add_param(vitte_hir_function_t *function, vitte_hir_node_t *param) {
+    if (function == NULL || function->kind != VITTE_HIR_FUNCTION || param == NULL ||
+        param->kind != VITTE_HIR_VARIABLE || param->type == NULL) {
+        return false;
+    }
+    return vitte_hir_list_append(&function->as.function.parameters, param);
 }
 
 bool vitte_hir_block_add_stmt(vitte_hir_block_t *block, vitte_hir_stmt_t *stmt) {
@@ -592,6 +601,8 @@ static vitte_hir_stmt_t *vitte_hir_lower_stmt(vitte_hir_lowering_t *lowering, co
 
 static vitte_hir_function_t *vitte_hir_lower_function(vitte_hir_lowering_t *lowering, const vitte_ast_node_t *decl, size_t depth) {
     vitte_hir_builder_t builder;
+    const vitte_ast_node_t *param;
+    vitte_hir_function_t *function;
     vitte_hir_type_t *return_type;
     vitte_hir_stmt_t *body;
 
@@ -608,7 +619,33 @@ static vitte_hir_function_t *vitte_hir_lower_function(vitte_hir_lowering_t *lowe
         return NULL;
     }
     vitte_hir_builder_init(&builder, lowering->hir);
-    return vitte_hir_make_function(&builder, decl->as.proc_decl.name, return_type, body, decl);
+    function = vitte_hir_make_function(&builder, decl->as.proc_decl.name, return_type, body, decl);
+    if (function == NULL) {
+        return NULL;
+    }
+    for (param = decl->as.proc_decl.parameters.first; param != NULL; param = param->next) {
+        vitte_hir_type_t *param_type;
+        vitte_hir_node_t *hir_param;
+
+        if (param->kind != VITTE_AST_NODE_PARAM_DECL) {
+            vitte_hir_lowering_set_error(lowering, VITTE_STATUS_ERROR_UNSUPPORTED, "VITTE_HIR_E_PARAM", "unsupported AST parameter node for HIR lowering", vitte_ast_node_kind_name(param->kind));
+            return NULL;
+        }
+        param_type = vitte_hir_lower_type(lowering, param->as.param_decl.type, depth + 1u);
+        if (param_type == NULL) {
+            return NULL;
+        }
+        hir_param = vitte_hir_make_variable(&builder, param->as.param_decl.name, param);
+        if (hir_param == NULL) {
+            return NULL;
+        }
+        hir_param->type = param_type;
+        if (!vitte_hir_function_add_param(function, hir_param)) {
+            vitte_hir_lowering_set_error(lowering, VITTE_STATUS_ERROR_INTERNAL, "VITTE_HIR_E_PARAM", "failed to append lowered function parameter", param->as.param_decl.name);
+            return NULL;
+        }
+    }
+    return function;
 }
 
 static vitte_hir_decl_t *vitte_hir_lower_const(vitte_hir_lowering_t *lowering, const vitte_ast_node_t *decl, size_t depth) {
@@ -759,6 +796,20 @@ static vitte_status_t vitte_hir_validate_node(vitte_hir_t *hir, const vitte_hir_
                 vitte_hir_set_error(hir, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_HIR_E_FUNCTION", "HIR function requires name and body", NULL);
                 return VITTE_STATUS_ERROR_INVALID_STATE;
             }
+            status = vitte_hir_validate_list(hir, &node->as.function.parameters, depth, max_depth, visited);
+            if (status != VITTE_STATUS_OK) {
+                return status;
+            }
+            for (const vitte_hir_node_t *param = node->as.function.parameters.first; param != NULL; param = param->next) {
+                if (param->kind != VITTE_HIR_VARIABLE || param->as.variable.name == NULL || param->type == NULL) {
+                    vitte_hir_set_error(hir, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_HIR_E_PARAM", "HIR function parameter is invalid", node->as.function.name);
+                    return VITTE_STATUS_ERROR_INVALID_STATE;
+                }
+                status = vitte_hir_validate_node(hir, param->type, depth + 1u, max_depth, visited);
+                if (status != VITTE_STATUS_OK) {
+                    return status;
+                }
+            }
             status = vitte_hir_validate_node(hir, node->as.function.return_type, depth + 1u, max_depth, visited);
             if (status != VITTE_STATUS_OK) {
                 return status;
@@ -893,6 +944,9 @@ static size_t vitte_hir_visit_node(vitte_hir_node_t *node, vitte_hir_visit_fn ca
             }
             break;
         case VITTE_HIR_FUNCTION:
+            for (child = node->as.function.parameters.first; child != NULL; child = child->next) {
+                count += vitte_hir_visit_node(child, callback, user, depth + 1u, max_depth);
+            }
             count += vitte_hir_visit_node(node->as.function.return_type, callback, user, depth + 1u, max_depth);
             count += vitte_hir_visit_node(node->as.function.body, callback, user, depth + 1u, max_depth);
             break;
@@ -963,6 +1017,9 @@ static void vitte_hir_dump_node(const vitte_hir_node_t *node, FILE *stream, size
             }
             break;
         case VITTE_HIR_FUNCTION:
+            for (child = node->as.function.parameters.first; child != NULL; child = child->next) {
+                vitte_hir_dump_node(child, stream, depth + 1u, max_depth);
+            }
             vitte_hir_dump_node(node->as.function.return_type, stream, depth + 1u, max_depth);
             vitte_hir_dump_node(node->as.function.body, stream, depth + 1u, max_depth);
             break;

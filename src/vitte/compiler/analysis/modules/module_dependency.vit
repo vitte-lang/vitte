@@ -1,0 +1,1179 @@
+space vitte/compiler/analysis/modules/module_dependency
+
+export *
+
+use src/vitte/compiler/frontend/source/span.{Span}
+use src/vitte/compiler/analysis/modules/module_database.{
+    ModuleId,
+    ModuleDatabase,
+    ModuleDatabaseDependency,
+    module_id,
+    module_id_invalid,
+    module_id_equal,
+    module_id_is_valid,
+    module_database_get,
+    module_database_get_by_name,
+    module_database_dependencies_of,
+    module_database_dependents_of,
+    module_database_direct_dependency_ids,
+    module_database_direct_dependent_ids
+}
+
+pick ModuleDependencyKind {
+    Private,
+    Public,
+    Optional,
+    Development,
+    Build,
+    Runtime,
+    Prelude,
+    Builtin
+}
+
+pick ModuleDependencyState {
+    Unresolved,
+    Resolving,
+    Resolved,
+    Missing,
+    Disabled,
+    Failed
+}
+
+pick ModuleDependencyErrorKind {
+    InvalidArgument,
+    ModuleNotFound,
+    DependencyNotFound,
+    DuplicateDependency,
+    SelfDependency,
+    CircularDependency,
+    DisabledDependency,
+    ResolutionFailed,
+    GraphCorrupted
+}
+
+form ModuleDependency {
+    source: ModuleId
+    target: ModuleId
+    source_name: string
+    target_name: string
+    kind: ModuleDependencyKind
+    state: ModuleDependencyState
+    span: Span
+    enabled: bool
+    required: bool
+}
+
+form ModuleDependencyError {
+    kind: ModuleDependencyErrorKind
+    module: string
+    dependency: string
+    message: string
+    span: Span
+}
+
+form ModuleDependencyNode {
+    id: ModuleId
+    name: string
+    dependencies: [ModuleId]
+    dependents: [ModuleId]
+}
+
+form ModuleDependencyGraph {
+    nodes: [ModuleDependencyNode]
+    edges: [ModuleDependency]
+    errors: [ModuleDependencyError]
+}
+
+form ModuleDependencyPath {
+    modules: [ModuleId]
+    names: [string]
+    found: bool
+}
+
+form ModuleDependencyClosure {
+    root: ModuleId
+    direct: [ModuleId]
+    transitive: [ModuleId]
+    order: [ModuleId]
+}
+
+form ModuleDependencyStatistics {
+    modules: usize
+    dependencies: usize
+    public_dependencies: usize
+    private_dependencies: usize
+    optional_dependencies: usize
+    disabled_dependencies: usize
+    unresolved_dependencies: usize
+    failed_dependencies: usize
+}
+
+form ModuleDependencyAnalysis {
+    graph: ModuleDependencyGraph
+    statistics: ModuleDependencyStatistics
+    errors: [ModuleDependencyError]
+    valid: bool
+}
+
+proc module_dependency_empty_span() -> Span {
+    give Span {
+        source: 0,
+        start: 0,
+        end: 0
+    };
+}
+
+proc module_dependency_error(
+    kind: ModuleDependencyErrorKind,
+    module: string,
+    dependency: string,
+    message: string,
+    span: Span
+) -> ModuleDependencyError {
+    give ModuleDependencyError {
+        kind: kind,
+        module: module,
+        dependency: dependency,
+        message: message,
+        span: span
+    };
+}
+
+proc module_dependency_graph_create() -> ModuleDependencyGraph {
+    give ModuleDependencyGraph {
+        nodes: [],
+        edges: [],
+        errors: []
+    };
+}
+
+proc module_dependency_path_empty() -> ModuleDependencyPath {
+    give ModuleDependencyPath {
+        modules: [],
+        names: [],
+        found: false
+    };
+}
+
+proc module_dependency_statistics_empty()
+    -> ModuleDependencyStatistics
+{
+    give ModuleDependencyStatistics {
+        modules: 0,
+        dependencies: 0,
+        public_dependencies: 0,
+        private_dependencies: 0,
+        optional_dependencies: 0,
+        disabled_dependencies: 0,
+        unresolved_dependencies: 0,
+        failed_dependencies: 0
+    };
+}
+
+proc module_dependency_kind_from_database(
+    dependency: ref ModuleDatabaseDependency
+) -> ModuleDependencyKind {
+    if dependency.optional {
+        give ModuleDependencyKind.Optional;
+    }
+
+    if dependency.public {
+        give ModuleDependencyKind.Public;
+    }
+
+    give ModuleDependencyKind.Private;
+}
+
+proc module_dependency_from_database(
+    dependency: ref ModuleDatabaseDependency
+) -> ModuleDependency {
+    give ModuleDependency {
+        source: dependency.module_id,
+        target: dependency.target_id,
+        source_name: dependency.module_name,
+        target_name: dependency.target_name,
+        kind: module_dependency_kind_from_database(dependency),
+        state: ModuleDependencyState.Resolved,
+        span: dependency.span,
+        enabled: true,
+        required: not dependency.optional
+    };
+}
+
+proc module_dependency_node(
+    id: ModuleId,
+    name: string
+) -> ModuleDependencyNode {
+    give ModuleDependencyNode {
+        id: id,
+        name: name,
+        dependencies: [],
+        dependents: []
+    };
+}
+
+proc module_dependency_graph_find_node_index(
+    graph: ref ModuleDependencyGraph,
+    id: ModuleId
+) -> Option<usize> {
+    set index: usize = 0;
+
+    while index < len(graph.nodes) {
+        if module_id_equal(graph.nodes[index].id, id) {
+            give Some(index);
+        }
+
+        index = index + 1;
+    }
+
+    give None;
+}
+
+proc module_dependency_graph_find_node_by_name(
+    graph: ref ModuleDependencyGraph,
+    name: string
+) -> Option<usize> {
+    set index: usize = 0;
+
+    while index < len(graph.nodes) {
+        if graph.nodes[index].name == name {
+            give Some(index);
+        }
+
+        index = index + 1;
+    }
+
+    give None;
+}
+
+proc module_dependency_graph_contains_node(
+    graph: ref ModuleDependencyGraph,
+    id: ModuleId
+) -> bool {
+    give module_dependency_graph_find_node_index(graph, id) != None;
+}
+
+proc module_dependency_graph_get_node(
+    graph: ref ModuleDependencyGraph,
+    id: ModuleId
+) -> Option<ref ModuleDependencyNode> {
+    let index = module_dependency_graph_find_node_index(graph, id);
+
+    pick index {
+        Some(value) {
+            give Some(ref graph.nodes[value]);
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc module_dependency_graph_get_node_mut(
+    graph: ref mut ModuleDependencyGraph,
+    id: ModuleId
+) -> Option<ref mut ModuleDependencyNode> {
+    let index = module_dependency_graph_find_node_index(
+        ref graph,
+        id
+    );
+
+    pick index {
+        Some(value) {
+            give Some(ref mut graph.nodes[value]);
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc module_dependency_id_list_contains(
+    values: ref [ModuleId],
+    id: ModuleId
+) -> bool {
+    for current in values {
+        if module_id_equal(current, id) {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc module_dependency_id_list_remove(
+    values: [ModuleId],
+    id: ModuleId
+) -> [ModuleId] {
+    set output: [ModuleId] = [];
+
+    for current in values {
+        if not module_id_equal(current, id) {
+            output = output + [current];
+        }
+    }
+
+    give output;
+}
+
+proc module_dependency_graph_add_node(
+    graph: ref mut ModuleDependencyGraph,
+    id: ModuleId,
+    name: string
+) -> bool {
+    if not module_id_is_valid(id) or len(name) == 0 {
+        graph.errors = graph.errors + [
+            module_dependency_error(
+                ModuleDependencyErrorKind.InvalidArgument,
+                name,
+                "",
+                "module dependency node is invalid",
+                module_dependency_empty_span()
+            )
+        ];
+
+        give false;
+    }
+
+    if module_dependency_graph_contains_node(ref graph, id) {
+        graph.errors = graph.errors + [
+            module_dependency_error(
+                ModuleDependencyErrorKind.DuplicateDependency,
+                name,
+                "",
+                "module dependency node already exists",
+                module_dependency_empty_span()
+            )
+        ];
+
+        give false;
+    }
+
+    graph.nodes = graph.nodes + [
+        module_dependency_node(id, name)
+    ];
+
+    give true;
+}
+
+proc module_dependency_graph_has_edge(
+    graph: ref ModuleDependencyGraph,
+    source: ModuleId,
+    target: ModuleId
+) -> bool {
+    for edge in graph.edges {
+        if module_id_equal(edge.source, source)
+            and module_id_equal(edge.target, target)
+        {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc module_dependency_graph_add_edge(
+    graph: ref mut ModuleDependencyGraph,
+    dependency: ModuleDependency
+) -> bool {
+    let source_index = module_dependency_graph_find_node_index(
+        ref graph,
+        dependency.source
+    );
+
+    let target_index = module_dependency_graph_find_node_index(
+        ref graph,
+        dependency.target
+    );
+
+    pick source_index {
+        None {
+            graph.errors = graph.errors + [
+                module_dependency_error(
+                    ModuleDependencyErrorKind.ModuleNotFound,
+                    dependency.source_name,
+                    dependency.target_name,
+                    "dependency source module does not exist",
+                    dependency.span
+                )
+            ];
+
+            give false;
+        }
+
+        Some(source) {
+            pick target_index {
+                None {
+                    graph.errors = graph.errors + [
+                        module_dependency_error(
+                            ModuleDependencyErrorKind.DependencyNotFound,
+                            dependency.source_name,
+                            dependency.target_name,
+                            "dependency target module does not exist",
+                            dependency.span
+                        )
+                    ];
+
+                    give false;
+                }
+
+                Some(target) {
+                    if module_id_equal(
+                        dependency.source,
+                        dependency.target
+                    ) {
+                        graph.errors = graph.errors + [
+                            module_dependency_error(
+                                ModuleDependencyErrorKind.SelfDependency,
+                                dependency.source_name,
+                                dependency.target_name,
+                                "module cannot depend on itself",
+                                dependency.span
+                            )
+                        ];
+
+                        give false;
+                    }
+
+                    if module_dependency_graph_has_edge(
+                        ref graph,
+                        dependency.source,
+                        dependency.target
+                    ) {
+                        graph.errors = graph.errors + [
+                            module_dependency_error(
+                                ModuleDependencyErrorKind.DuplicateDependency,
+                                dependency.source_name,
+                                dependency.target_name,
+                                "module dependency already exists",
+                                dependency.span
+                            )
+                        ];
+
+                        give false;
+                    }
+
+                    graph.edges = graph.edges + [dependency];
+
+                    graph.nodes[source].dependencies =
+                        graph.nodes[source].dependencies
+                        + [graph.nodes[target].id];
+
+                    graph.nodes[target].dependents =
+                        graph.nodes[target].dependents
+                        + [graph.nodes[source].id];
+
+                    give true;
+                }
+            }
+        }
+    }
+}
+
+proc module_dependency_graph_remove_edge(
+    graph: ref mut ModuleDependencyGraph,
+    source: ModuleId,
+    target: ModuleId
+) -> bool {
+    set output: [ModuleDependency] = [];
+    set removed: bool = false;
+
+    for edge in graph.edges {
+        if module_id_equal(edge.source, source)
+            and module_id_equal(edge.target, target)
+        {
+            removed = true;
+        } else {
+            output = output + [edge];
+        }
+    }
+
+    if not removed {
+        give false;
+    }
+
+    graph.edges = output;
+
+    let source_index = module_dependency_graph_find_node_index(
+        ref graph,
+        source
+    );
+
+    let target_index = module_dependency_graph_find_node_index(
+        ref graph,
+        target
+    );
+
+    pick source_index {
+        Some(value) {
+            graph.nodes[value].dependencies =
+                module_dependency_id_list_remove(
+                    graph.nodes[value].dependencies,
+                    target
+                );
+        }
+
+        None {}
+    }
+
+    pick target_index {
+        Some(value) {
+            graph.nodes[value].dependents =
+                module_dependency_id_list_remove(
+                    graph.nodes[value].dependents,
+                    source
+                );
+        }
+
+        None {}
+    }
+
+    give true;
+}
+
+proc module_dependency_graph_edges_from(
+    graph: ref ModuleDependencyGraph,
+    source: ModuleId
+) -> [ModuleDependency] {
+    set output: [ModuleDependency] = [];
+
+    for edge in graph.edges {
+        if module_id_equal(edge.source, source) {
+            output = output + [edge];
+        }
+    }
+
+    give output;
+}
+
+proc module_dependency_graph_edges_to(
+    graph: ref ModuleDependencyGraph,
+    target: ModuleId
+) -> [ModuleDependency] {
+    set output: [ModuleDependency] = [];
+
+    for edge in graph.edges {
+        if module_id_equal(edge.target, target) {
+            output = output + [edge];
+        }
+    }
+
+    give output;
+}
+
+proc module_dependency_graph_enabled_dependencies(
+    graph: ref ModuleDependencyGraph,
+    source: ModuleId
+) -> [ModuleId] {
+    set output: [ModuleId] = [];
+
+    for edge in graph.edges {
+        if module_id_equal(edge.source, source)
+            and edge.enabled
+            and edge.state == ModuleDependencyState.Resolved
+        {
+            output = output + [edge.target];
+        }
+    }
+
+    give output;
+}
+
+proc module_dependency_graph_required_dependencies(
+    graph: ref ModuleDependencyGraph,
+    source: ModuleId
+) -> [ModuleId] {
+    set output: [ModuleId] = [];
+
+    for edge in graph.edges {
+        if module_id_equal(edge.source, source)
+            and edge.enabled
+            and edge.required
+        {
+            output = output + [edge.target];
+        }
+    }
+
+    give output;
+}
+
+proc module_dependency_graph_optional_dependencies(
+    graph: ref ModuleDependencyGraph,
+    source: ModuleId
+) -> [ModuleId] {
+    set output: [ModuleId] = [];
+
+    for edge in graph.edges {
+        if module_id_equal(edge.source, source)
+            and edge.kind == ModuleDependencyKind.Optional
+        {
+            output = output + [edge.target];
+        }
+    }
+
+    give output;
+}
+
+proc module_dependency_graph_public_dependencies(
+    graph: ref ModuleDependencyGraph,
+    source: ModuleId
+) -> [ModuleId] {
+    set output: [ModuleId] = [];
+
+    for edge in graph.edges {
+        if module_id_equal(edge.source, source)
+            and edge.kind == ModuleDependencyKind.Public
+        {
+            output = output + [edge.target];
+        }
+    }
+
+    give output;
+}
+
+proc module_dependency_collect_transitive(
+    graph: ref ModuleDependencyGraph,
+    current: ModuleId,
+    visited: ref mut [ModuleId],
+    output: ref mut [ModuleId]
+) {
+    if module_dependency_id_list_contains(ref visited, current) {
+        give;
+    }
+
+    visited = visited + [current];
+
+    let dependencies = module_dependency_graph_enabled_dependencies(
+        graph,
+        current
+    );
+
+    for dependency in dependencies {
+        if not module_dependency_id_list_contains(
+            ref output,
+            dependency
+        ) {
+            output = output + [dependency];
+        }
+
+        module_dependency_collect_transitive(
+            graph,
+            dependency,
+            visited,
+            output
+        );
+    }
+}
+
+proc module_dependency_transitive_dependencies(
+    graph: ref ModuleDependencyGraph,
+    root: ModuleId
+) -> [ModuleId] {
+    set visited: [ModuleId] = [];
+    set output: [ModuleId] = [];
+
+    module_dependency_collect_transitive(
+        graph,
+        root,
+        ref mut visited,
+        ref mut output
+    );
+
+    give output;
+}
+
+proc module_dependency_collect_transitive_dependents(
+    graph: ref ModuleDependencyGraph,
+    current: ModuleId,
+    visited: ref mut [ModuleId],
+    output: ref mut [ModuleId]
+) {
+    if module_dependency_id_list_contains(ref visited, current) {
+        give;
+    }
+
+    visited = visited + [current];
+
+    let node = module_dependency_graph_get_node(graph, current);
+
+    pick node {
+        Some(value) {
+            for dependent in value.dependents {
+                if not module_dependency_id_list_contains(
+                    ref output,
+                    dependent
+                ) {
+                    output = output + [dependent];
+                }
+
+                module_dependency_collect_transitive_dependents(
+                    graph,
+                    dependent,
+                    visited,
+                    output
+                );
+            }
+        }
+
+        None {}
+    }
+}
+
+proc module_dependency_transitive_dependents(
+    graph: ref ModuleDependencyGraph,
+    root: ModuleId
+) -> [ModuleId] {
+    set visited: [ModuleId] = [];
+    set output: [ModuleId] = [];
+
+    module_dependency_collect_transitive_dependents(
+        graph,
+        root,
+        ref mut visited,
+        ref mut output
+    );
+
+    give output;
+}
+
+proc module_dependency_find_path_visit(
+    graph: ref ModuleDependencyGraph,
+    current: ModuleId,
+    target: ModuleId,
+    visited: ref mut [ModuleId],
+    stack: ref mut [ModuleId]
+) -> bool {
+    if module_dependency_id_list_contains(ref visited, current) {
+        give false;
+    }
+
+    visited = visited + [current];
+    stack = stack + [current];
+
+    if module_id_equal(current, target) {
+        give true;
+    }
+
+    let dependencies = module_dependency_graph_enabled_dependencies(
+        graph,
+        current
+    );
+
+    for dependency in dependencies {
+        if module_dependency_find_path_visit(
+            graph,
+            dependency,
+            target,
+            visited,
+            stack
+        ) {
+            give true;
+        }
+    }
+
+    stack = module_dependency_id_list_remove(stack, current);
+
+    give false;
+}
+
+proc module_dependency_names_for_ids(
+    graph: ref ModuleDependencyGraph,
+    ids: [ModuleId]
+) -> [string] {
+    set output: [string] = [];
+
+    for id in ids {
+        let node = module_dependency_graph_get_node(graph, id);
+
+        pick node {
+            Some(value) {
+                output = output + [value.name];
+            }
+
+            None {
+                output = output + [""];
+            }
+        }
+    }
+
+    give output;
+}
+
+proc module_dependency_find_path(
+    graph: ref ModuleDependencyGraph,
+    source: ModuleId,
+    target: ModuleId
+) -> ModuleDependencyPath {
+    if not module_dependency_graph_contains_node(graph, source)
+        or not module_dependency_graph_contains_node(graph, target)
+    {
+        give module_dependency_path_empty();
+    }
+
+    set visited: [ModuleId] = [];
+    set stack: [ModuleId] = [];
+
+    let found = module_dependency_find_path_visit(
+        graph,
+        source,
+        target,
+        ref mut visited,
+        ref mut stack
+    );
+
+    if not found {
+        give module_dependency_path_empty();
+    }
+
+    give ModuleDependencyPath {
+        modules: stack,
+        names: module_dependency_names_for_ids(graph, stack),
+        found: true
+    };
+}
+
+proc module_dependency_depends_on(
+    graph: ref ModuleDependencyGraph,
+    source: ModuleId,
+    target: ModuleId
+) -> bool {
+    give module_dependency_find_path(
+        graph,
+        source,
+        target
+    ).found;
+}
+
+proc module_dependency_has_cycle(
+    graph: ref ModuleDependencyGraph,
+    source: ModuleId,
+    target: ModuleId
+) -> bool {
+    if module_id_equal(source, target) {
+        give true;
+    }
+
+    give module_dependency_depends_on(graph, target, source);
+}
+
+proc module_dependency_topological_visit(
+    graph: ref ModuleDependencyGraph,
+    current: ModuleId,
+    temporary: ref mut [ModuleId],
+    permanent: ref mut [ModuleId],
+    output: ref mut [ModuleId],
+    errors: ref mut [ModuleDependencyError]
+) -> bool {
+    if module_dependency_id_list_contains(ref permanent, current) {
+        give true;
+    }
+
+    if module_dependency_id_list_contains(ref temporary, current) {
+        let node = module_dependency_graph_get_node(graph, current);
+        set name = "";
+
+        pick node {
+            Some(value) {
+                name = value.name;
+            }
+
+            None {}
+        }
+
+        errors = errors + [
+            module_dependency_error(
+                ModuleDependencyErrorKind.CircularDependency,
+                name,
+                name,
+                "circular module dependency detected",
+                module_dependency_empty_span()
+            )
+        ];
+
+        give false;
+    }
+
+    temporary = temporary + [current];
+
+    let dependencies = module_dependency_graph_enabled_dependencies(
+        graph,
+        current
+    );
+
+    for dependency in dependencies {
+        if not module_dependency_topological_visit(
+            graph,
+            dependency,
+            temporary,
+            permanent,
+            output,
+            errors
+        ) {
+            give false;
+        }
+    }
+
+    temporary = module_dependency_id_list_remove(
+        temporary,
+        current
+    );
+
+    permanent = permanent + [current];
+    output = output + [current];
+
+    give true;
+}
+
+proc module_dependency_topological_order(
+    graph: ref ModuleDependencyGraph
+) -> Option<[ModuleId]> {
+    set temporary: [ModuleId] = [];
+    set permanent: [ModuleId] = [];
+    set output: [ModuleId] = [];
+    set errors: [ModuleDependencyError] = [];
+
+    for node in graph.nodes {
+        if not module_dependency_id_list_contains(
+            ref permanent,
+            node.id
+        ) {
+            if not module_dependency_topological_visit(
+                graph,
+                node.id,
+                ref mut temporary,
+                ref mut permanent,
+                ref mut output,
+                ref mut errors
+            ) {
+                give None;
+            }
+        }
+    }
+
+    give Some(output);
+}
+
+proc module_dependency_closure(
+    graph: ref ModuleDependencyGraph,
+    root: ModuleId
+) -> ModuleDependencyClosure {
+    let direct = module_dependency_graph_enabled_dependencies(
+        graph,
+        root
+    );
+
+    let transitive = module_dependency_transitive_dependencies(
+        graph,
+        root
+    );
+
+    let order = module_dependency_topological_order(graph);
+
+    pick order {
+        Some(values) {
+            give ModuleDependencyClosure {
+                root: root,
+                direct: direct,
+                transitive: transitive,
+                order: values
+            };
+        }
+
+        None {
+            give ModuleDependencyClosure {
+                root: root,
+                direct: direct,
+                transitive: transitive,
+                order: []
+            };
+        }
+    }
+}
+
+proc module_dependency_statistics(
+    graph: ref ModuleDependencyGraph
+) -> ModuleDependencyStatistics {
+    set statistics = module_dependency_statistics_empty();
+
+    statistics.modules = len(graph.nodes);
+    statistics.dependencies = len(graph.edges);
+
+    for edge in graph.edges {
+        pick edge.kind {
+            ModuleDependencyKind.Public {
+                statistics.public_dependencies =
+                    statistics.public_dependencies + 1;
+            }
+
+            ModuleDependencyKind.Private {
+                statistics.private_dependencies =
+                    statistics.private_dependencies + 1;
+            }
+
+            ModuleDependencyKind.Optional {
+                statistics.optional_dependencies =
+                    statistics.optional_dependencies + 1;
+            }
+
+            _ {}
+        }
+
+        if not edge.enabled
+            or edge.state == ModuleDependencyState.Disabled
+        {
+            statistics.disabled_dependencies =
+                statistics.disabled_dependencies + 1;
+        }
+
+        if edge.state == ModuleDependencyState.Unresolved
+            or edge.state == ModuleDependencyState.Resolving
+        {
+            statistics.unresolved_dependencies =
+                statistics.unresolved_dependencies + 1;
+        }
+
+        if edge.state == ModuleDependencyState.Failed
+            or edge.state == ModuleDependencyState.Missing
+        {
+            statistics.failed_dependencies =
+                statistics.failed_dependencies + 1;
+        }
+    }
+
+    give statistics;
+}
+
+proc module_dependency_graph_from_database(
+    database: ref ModuleDatabase
+) -> ModuleDependencyGraph {
+    set graph = module_dependency_graph_create();
+
+    for module in database.modules {
+        module_dependency_graph_add_node(
+            ref mut graph,
+            module.id,
+            module.name
+        );
+    }
+
+    for dependency in database.dependencies {
+        module_dependency_graph_add_edge(
+            ref mut graph,
+            module_dependency_from_database(ref dependency)
+        );
+    }
+
+    give graph;
+}
+
+proc module_dependency_analyze(
+    database: ref ModuleDatabase
+) -> ModuleDependencyAnalysis {
+    let graph = module_dependency_graph_from_database(database);
+    let statistics = module_dependency_statistics(ref graph);
+    set errors = graph.errors;
+
+    for edge in graph.edges {
+        if edge.required and not edge.enabled {
+            errors = errors + [
+                module_dependency_error(
+                    ModuleDependencyErrorKind.DisabledDependency,
+                    edge.source_name,
+                    edge.target_name,
+                    "required module dependency is disabled",
+                    edge.span
+                )
+            ];
+        }
+
+        if edge.state == ModuleDependencyState.Missing {
+            errors = errors + [
+                module_dependency_error(
+                    ModuleDependencyErrorKind.DependencyNotFound,
+                    edge.source_name,
+                    edge.target_name,
+                    "module dependency could not be resolved",
+                    edge.span
+                )
+            ];
+        }
+
+        if edge.state == ModuleDependencyState.Failed {
+            errors = errors + [
+                module_dependency_error(
+                    ModuleDependencyErrorKind.ResolutionFailed,
+                    edge.source_name,
+                    edge.target_name,
+                    "module dependency resolution failed",
+                    edge.span
+                )
+            ];
+        }
+    }
+
+    let valid = len(errors) == 0
+        and module_dependency_topological_order(ref graph) != None;
+
+    give ModuleDependencyAnalysis {
+        graph: graph,
+        statistics: statistics,
+        errors: errors,
+        valid: valid
+    };
+}
+
+proc module_dependency_analysis_is_valid(
+    analysis: ref ModuleDependencyAnalysis
+) -> bool {
+    give analysis.valid;
+}
+
+proc module_dependency_analysis_has_errors(
+    analysis: ref ModuleDependencyAnalysis
+) -> bool {
+    give len(analysis.errors) != 0;
+}
+
+proc module_dependency_error_code(
+    error: ref ModuleDependencyError
+) -> string {
+    pick error.kind {
+        ModuleDependencyErrorKind.InvalidArgument {
+            give "E_MODULE_DEPENDENCY_ARGUMENT";
+        }
+
+        ModuleDependencyErrorKind.ModuleNotFound {
+            give "E_MODULE_NOT_FOUND";
+        }
+
+        ModuleDependencyErrorKind.DependencyNotFound {
+            give "E_MODULE_DEPENDENCY_NOT_FOUND";
+        }
+
+        ModuleDependencyErrorKind.DuplicateDependency {
+            give "E_MODULE_DEPENDENCY_DUPLICATE";
+        }
+
+        ModuleDependencyErrorKind.SelfDependency {
+            give "E_MODULE_SELF_DEPENDENCY";
+        }
+
+        ModuleDependencyErrorKind.CircularDependency {
+            give "E_MODULE_CYCLE";
+        }
+
+        ModuleDependencyErrorKind.DisabledDependency {
+            give "E_MODULE_DEPENDENCY_DISABLED";
+        }
+
+        ModuleDependencyErrorKind.ResolutionFailed {
+            give "E_MODULE_DEPENDENCY_RESOLUTION";
+        }
+
+        ModuleDependencyErrorKind.GraphCorrupted {
+            give "E_MODULE_DEPENDENCY_GRAPH";
+        }
+    }
+}

@@ -1,0 +1,199 @@
+name: Bootstrap CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  seed-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check seed manifest hash drift
+        run: make seed-verify
+      - name: Report seed rotation status
+        run: make seed-rotation-report
+      - name: Check seed artifact contract
+        env:
+          SEED_CONTRACT_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: make seed-contract-check
+      - name: Check bootstrap source coverage
+        run: make bootstrap-source-coverage-check
+      - name: Run seed gate
+        run: make seed-gate
+      - name: Generate seed compatibility report
+        run: make seed-compat-report
+      - name: Upload seed compatibility report
+        uses: actions/upload-artifact@v4
+        with:
+          name: seed-compat-report
+          path: target/reports/seed_compat_report.txt
+          if-no-files-found: error
+
+  bootstrap-minimal:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run seed bootstrap
+        run: |
+          mkdir -p target/reports
+          make bootstrap-seed 2>&1 | tee target/reports/bootstrap-seed.log
+      - name: Verify seed bootstrap contract
+        run: |
+          mkdir -p target/reports
+          python3 tools/check_bootstrap_seed_root.py --artifacts 2>&1 | tee target/reports/bootstrap-seed-contract.log
+      - name: Upload bootstrap-minimal logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bootstrap-minimal-logs
+          path: target/reports/bootstrap-*.log
+          if-no-files-found: warn
+
+  bootstrap-full:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        phase: [hard-gate, verify]
+    needs: bootstrap-minimal
+    name: bootstrap-full (${{ matrix.phase }})
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run seed-rooted hard gate
+        if: matrix.phase == 'hard-gate'
+        run: |
+          mkdir -p target/reports
+          make bootstrap-vitte-hard-gate 2>&1 | tee target/reports/bootstrap-hard-gate.log
+      - name: Run bootstrap verification
+        if: matrix.phase == 'verify'
+        run: |
+          mkdir -p target/reports
+          make bootstrap-seed-root-check 2>&1 | tee target/reports/bootstrap-seed-verify.log
+      - name: Upload bootstrap-full logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bootstrap-full-logs-${{ matrix.phase }}
+          path: |
+            target/reports/bootstrap-hard-gate.log
+            target/reports/bootstrap-seed-verify.log
+          if-no-files-found: warn
+
+  bootstrap-native-contract:
+    runs-on: ubuntu-latest
+    steps:
+      # Equivalent local target: make bootstrap-native-contract.
+      # Keep CI steps split so failures identify the contract layer directly.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check seed manifest hash drift
+        run: make seed-verify
+      - name: Report seed rotation status
+        run: make seed-rotation-report
+      - name: Check bootstrap source coverage
+        run: make bootstrap-source-coverage-check
+      - name: Check POSIX seed shell
+        run: make posix-seed-shell-check
+      - name: Check bootstrap shell fixed point
+        run: make bootstrap-shell-fixed-point
+      - name: Check bootstrap contract docs index
+        run: make bootstrap-contracts-index-check
+      - name: Check bootstrap native snapshot drift
+        env:
+          BOOTSTRAP_NATIVE_DRIFT_BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: make bootstrap-native-drift-check
+      - name: Check bootstrap native snapshots
+        run: make bootstrap-native-snapshots
+      - name: Verify real compiler byte parity
+        run: make selfhost-parity-gate
+      - name: Verify tracked clean checkout rebuild
+        run: make bootstrap-clean-checkout-gate
+      - name: Upload clean checkout report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bootstrap-clean-checkout-report
+          path: target/bootstrap/clean-checkout/report.json
+          if-no-files-found: error
+      - name: Verify offline clean checkout rebuild
+        run: make bootstrap-offline-gate
+      - name: Upload offline bootstrap report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bootstrap-offline-report
+          path: target/bootstrap/offline/report.json
+          if-no-files-found: error
+      - name: Verify seed contract and smoke
+        run: make bootstrap-verify
+      - name: Verify POSIX bootstrap smoke
+        run: make bootstrap-posix-smoke
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build project
+        run: make build
+
+  audit-policy-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ensure vitte-source-audit has zero toolchain exceptions
+        run: |
+          set -euo pipefail
+          if grep -Eq -- "-path './toolchain/[^']+'" Makefile; then
+            echo "[audit-policy-guard][error] unexpected toolchain audit exception detected:"
+            grep -E -- "-path './toolchain/[^']+'" Makefile
+            exit 1
+          fi
+          make vitte-source-audit
+          echo "[audit-policy-guard] ok: zero toolchain audit exceptions"
+
+  zero-host-source-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reject repo-hosted host sources
+        run: |
+          set -euo pipefail
+          if [ -e toolchain/stage0-c ]; then
+            echo "[zero-host-source][error] forbidden path exists: toolchain/stage0-c"
+            exit 1
+          fi
+          bad="$(
+            find . \
+              -path './.git' -prune -o \
+              -path './target' -prune -o \
+              -path './bin' -prune -o \
+              -path './build' -prune -o \
+              -path './.pkgstage' -prune -o \
+              -path './src/vitte/compiler/backends/runtime_c' -prune -o \
+              -path './editors/tree-sitter/bindings/c/tree-sitter-vitte.h' -prune -o \
+              -path './editors/tree-sitter/bindings/python/tree_sitter_vitte/binding.c' -prune -o \
+              -path './editors/tree-sitter/bindings/swift/TreeSitterVitte/vitte.h' -prune -o \
+              -path './editors/tree-sitter/src/parser.c' -prune -o \
+              -path './editors/tree-sitter/src/tree_sitter/alloc.h' -prune -o \
+              -path './editors/tree-sitter/src/tree_sitter/array.h' -prune -o \
+              -path './editors/tree-sitter/src/tree_sitter/parser.h' -prune -o \
+              -type f \( -name '*.c' -o -name '*.h' -o -name '*_gen.c' \) -print | sort
+          )"
+          if [ -n "$bad" ]; then
+            echo "[zero-host-source][error] forbidden host source files:"
+            printf '%s\n' "$bad"
+            exit 1
+          fi
+          echo "[zero-host-source] ok: no forbidden host source files"
+      - name: Build project
+        run: make build
+      - name: Verify bootstrap chain
+        run: make bootstrap-verify
+      - name: Verify seed trust root
+        run: |
+          make bootstrap-seed
+          python3 tools/check_bootstrap_seed_root.py --artifacts

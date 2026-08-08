@@ -19,6 +19,25 @@ static void vitte_ir_lowering_set_error(vitte_ir_lowering_t *lowering, vitte_sta
     }
 }
 
+static const char *vitte_ir_last_name_segment(const char *name) {
+    const char *segment;
+    const char *cursor;
+
+    if (name == NULL) {
+        return NULL;
+    }
+    segment = name;
+    for (cursor = name; *cursor != '\0'; cursor++) {
+        if (*cursor == '.') {
+            segment = cursor + 1;
+        } else if (*cursor == ':' && cursor[1] == ':') {
+            segment = cursor + 2;
+            cursor++;
+        }
+    }
+    return segment;
+}
+
 struct vitte_ir_local_binding {
     const char *name;
     vitte_ir_value_t *value;
@@ -146,6 +165,7 @@ static bool vitte_ir_bind_local(vitte_ir_lowering_t *lowering, const char *name,
 
 static vitte_ir_value_t *vitte_ir_lookup_local(const vitte_ir_lowering_t *lowering, const char *name) {
     const vitte_ir_local_binding_t *binding;
+    const char *alternate = vitte_ir_last_name_segment(name);
 
     if (lowering == NULL || name == NULL) {
         return NULL;
@@ -155,7 +175,38 @@ static vitte_ir_value_t *vitte_ir_lookup_local(const vitte_ir_lowering_t *loweri
             return binding->value;
         }
     }
+    if (alternate != NULL && alternate != name) {
+        for (binding = lowering->locals; binding != NULL; binding = binding->next) {
+            if (binding->name != NULL && strcmp(binding->name, alternate) == 0) {
+                return binding->value;
+            }
+        }
+    }
     return NULL;
+}
+
+static vitte_status_t vitte_ir_bind_function_parameters(
+    vitte_ir_lowering_t *lowering,
+    vitte_ir_function_t *function
+) {
+    vitte_ir_value_t *parameter;
+
+    if (lowering == NULL || function == NULL) {
+        return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+    }
+    for (parameter = function->first_parameter; parameter != NULL; parameter = parameter->next) {
+        if (!vitte_ir_bind_local(lowering, parameter->name, parameter)) {
+            vitte_ir_lowering_set_error(
+                lowering,
+                VITTE_STATUS_ERROR_OUT_OF_MEMORY,
+                "VITTE_IR_E_PARAMETER",
+                "failed to bind function parameter",
+                parameter->name
+            );
+            return VITTE_STATUS_ERROR_OUT_OF_MEMORY;
+        }
+    }
+    return VITTE_STATUS_OK;
 }
 
 static bool vitte_ir_bind_function(vitte_ir_lowering_t *lowering, const char *name, vitte_ir_function_t *function) {
@@ -179,6 +230,7 @@ static bool vitte_ir_bind_function(vitte_ir_lowering_t *lowering, const char *na
 
 static vitte_ir_function_t *vitte_ir_lookup_function(const vitte_ir_lowering_t *lowering, const char *name) {
     const vitte_ir_function_binding_t *binding;
+    const char *alternate = vitte_ir_last_name_segment(name);
 
     if (lowering == NULL || name == NULL) {
         return NULL;
@@ -186,6 +238,13 @@ static vitte_ir_function_t *vitte_ir_lookup_function(const vitte_ir_lowering_t *
     for (binding = lowering->functions; binding != NULL; binding = binding->next) {
         if (binding->name != NULL && strcmp(binding->name, name) == 0) {
             return binding->function;
+        }
+    }
+    if (alternate != NULL && alternate != name) {
+        for (binding = lowering->functions; binding != NULL; binding = binding->next) {
+            if (binding->name != NULL && strcmp(binding->name, alternate) == 0) {
+                return binding->function;
+            }
         }
     }
     return NULL;
@@ -212,6 +271,7 @@ static bool vitte_ir_bind_global(vitte_ir_lowering_t *lowering, const char *name
 
 static vitte_ir_global_t *vitte_ir_lookup_global(const vitte_ir_lowering_t *lowering, const char *name) {
     const vitte_ir_global_binding_t *binding;
+    const char *alternate = vitte_ir_last_name_segment(name);
 
     if (lowering == NULL || name == NULL) {
         return NULL;
@@ -219,6 +279,13 @@ static vitte_ir_global_t *vitte_ir_lookup_global(const vitte_ir_lowering_t *lowe
     for (binding = lowering->globals; binding != NULL; binding = binding->next) {
         if (binding->name != NULL && strcmp(binding->name, name) == 0) {
             return binding->global;
+        }
+    }
+    if (alternate != NULL && alternate != name) {
+        for (binding = lowering->globals; binding != NULL; binding = binding->next) {
+            if (binding->name != NULL && strcmp(binding->name, alternate) == 0) {
+                return binding->global;
+            }
         }
     }
     return NULL;
@@ -535,6 +602,31 @@ bool vitte_ir_module_add_function(vitte_ir_module_t *module, vitte_ir_function_t
     }
     module->last_function = function;
     module->function_count++;
+    return true;
+}
+
+vitte_ir_value_t *vitte_ir_make_parameter(vitte_ir_builder_t *builder, const char *name, vitte_ir_type_t *type) {
+    if (builder == NULL || !vitte_ir_is_initialized(builder->ir) || name == NULL || type == NULL) {
+        if (builder != NULL) {
+            vitte_ir_set_error(builder->ir, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_IR_E_PARAMETER", "invalid IR parameter request", name);
+        }
+        return NULL;
+    }
+    return vitte_ir_make_value(builder->ir, VITTE_IR_VALUE_PARAMETER, type, name);
+}
+
+bool vitte_ir_function_add_parameter(vitte_ir_function_t *function, vitte_ir_value_t *parameter) {
+    if (function == NULL || parameter == NULL || parameter->kind != VITTE_IR_VALUE_PARAMETER) {
+        return false;
+    }
+    parameter->next = NULL;
+    if (function->last_parameter != NULL) {
+        function->last_parameter->next = parameter;
+    } else {
+        function->first_parameter = parameter;
+    }
+    function->last_parameter = parameter;
+    function->parameter_count++;
     return true;
 }
 
@@ -1037,6 +1129,9 @@ static vitte_ir_value_t *vitte_ir_lower_expr(vitte_ir_lowering_t *lowering, cons
             vitte_ir_value_t *builtin_function;
 
             if (local != NULL) {
+                if (local->kind == VITTE_IR_VALUE_PARAMETER) {
+                    return local;
+                }
                 return vitte_ir_emit_load(&lowering->builder, local, node);
             }
             if (global != NULL) {
@@ -1220,6 +1315,7 @@ static vitte_status_t vitte_ir_lower_stmt(vitte_ir_lowering_t *lowering, const v
 }
 
 static vitte_status_t vitte_ir_predeclare_function(vitte_ir_lowering_t *lowering, const vitte_hir_node_t *hir_function) {
+    const vitte_hir_node_t *parameter;
     vitte_ir_type_t *return_type;
     vitte_ir_function_t *function;
 
@@ -1233,6 +1329,21 @@ static vitte_status_t vitte_ir_predeclare_function(vitte_ir_lowering_t *lowering
         !vitte_ir_module_add_function(lowering->ir->module, function) ||
         !vitte_ir_bind_function(lowering, hir_function->as.function.name, function)) {
         return VITTE_STATUS_ERROR_INVALID_STATE;
+    }
+    for (parameter = hir_function->as.function.parameters.first; parameter != NULL; parameter = parameter->next) {
+        vitte_ir_type_t *parameter_type;
+        vitte_ir_value_t *ir_parameter;
+
+        if (parameter->kind != VITTE_HIR_VARIABLE || parameter->as.variable.name == NULL || parameter->type == NULL) {
+            vitte_ir_lowering_set_error(lowering, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_IR_E_PARAMETER", "invalid HIR function parameter", hir_function->as.function.name);
+            return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+        }
+        parameter_type = vitte_ir_type_from_hir(lowering->ir, parameter->type);
+        ir_parameter = parameter_type != NULL ? vitte_ir_make_parameter(&lowering->builder, parameter->as.variable.name, parameter_type) : NULL;
+        if (parameter_type == NULL || ir_parameter == NULL || !vitte_ir_function_add_parameter(function, ir_parameter)) {
+            vitte_ir_lowering_set_error(lowering, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_IR_E_PARAMETER", "failed to predeclare IR parameter", parameter->as.variable.name);
+            return VITTE_STATUS_ERROR_INVALID_STATE;
+        }
     }
     return VITTE_STATUS_OK;
 }
@@ -1260,6 +1371,7 @@ static vitte_status_t vitte_ir_predeclare_global(vitte_ir_lowering_t *lowering, 
 static vitte_status_t vitte_ir_lower_function_body(vitte_ir_lowering_t *lowering, const vitte_hir_node_t *hir_function) {
     vitte_ir_function_t *function;
     vitte_ir_block_t *entry;
+    vitte_status_t status;
 
     if (hir_function == NULL || hir_function->kind != VITTE_HIR_FUNCTION) {
         vitte_ir_lowering_set_error(lowering, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_IR_E_FUNCTION", "expected HIR function", NULL);
@@ -1271,7 +1383,17 @@ static vitte_status_t vitte_ir_lower_function_body(vitte_ir_lowering_t *lowering
         return VITTE_STATUS_ERROR_INVALID_STATE;
     }
     vitte_ir_builder_position_at_end(&lowering->builder, function, entry);
-    return vitte_ir_lower_block(lowering, hir_function->as.function.body, 1u);
+    status = vitte_ir_scope_push(lowering) ? VITTE_STATUS_OK : VITTE_STATUS_ERROR_OUT_OF_MEMORY;
+    if (status != VITTE_STATUS_OK) {
+        vitte_ir_lowering_set_error(lowering, status, "VITTE_IR_E_SCOPE", "failed to push IR parameter scope", function->name);
+        return status;
+    }
+    status = vitte_ir_bind_function_parameters(lowering, function);
+    if (status == VITTE_STATUS_OK) {
+        status = vitte_ir_lower_block(lowering, hir_function->as.function.body, 1u);
+    }
+    vitte_ir_scope_pop(lowering);
+    return status;
 }
 
 vitte_status_t vitte_ir_lower_hir_with_options(vitte_ir_lowering_t *lowering, const vitte_hir_t *hir) {
@@ -1414,9 +1536,22 @@ vitte_status_t vitte_ir_validate(vitte_ir_t *ir) {
     }
     for (function = ir->module->first_function; function != NULL; function = function->next) {
         const vitte_ir_block_t *block;
+        const vitte_ir_value_t *parameter;
+        size_t parameter_count = 0u;
         functions++;
         if (function->id == 0u || function->name == NULL || function->return_type == NULL || function->entry == NULL || function->block_count == 0u) {
             vitte_ir_set_error(ir, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_IR_E_FUNCTION", "invalid IR function", NULL);
+            return VITTE_STATUS_ERROR_INVALID_STATE;
+        }
+        for (parameter = function->first_parameter; parameter != NULL; parameter = parameter->next) {
+            parameter_count++;
+            if (parameter->id == 0u || parameter->kind != VITTE_IR_VALUE_PARAMETER || parameter->name == NULL || parameter->type == NULL) {
+                vitte_ir_set_error(ir, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_IR_E_PARAMETER", "invalid IR function parameter", function->name);
+                return VITTE_STATUS_ERROR_INVALID_STATE;
+            }
+        }
+        if (parameter_count != function->parameter_count) {
+            vitte_ir_set_error(ir, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_IR_E_PARAMETER", "IR function parameter count is inconsistent", function->name);
             return VITTE_STATUS_ERROR_INVALID_STATE;
         }
         for (block = function->first_block; block != NULL; block = block->next) {
@@ -1468,7 +1603,20 @@ void vitte_ir_dump(const vitte_ir_t *ir, FILE *stream) {
     }
     for (function = ir->module->first_function; function != NULL; function = function->next) {
         const vitte_ir_block_t *block;
-        (void)fprintf(stream, "  fn #%" PRIu32 " %s -> %s\n", function->id, function->name, vitte_ir_type_name(function->return_type));
+        const vitte_ir_value_t *parameter;
+        (void)fprintf(stream, "  fn #%" PRIu32 " %s(", function->id, function->name);
+        for (parameter = function->first_parameter; parameter != NULL; parameter = parameter->next) {
+            if (parameter != function->first_parameter) {
+                (void)fputs(", ", stream);
+            }
+            (void)fprintf(
+                stream,
+                "%s:%s",
+                parameter->name != NULL ? parameter->name : "<param>",
+                vitte_ir_type_name(parameter->type)
+            );
+        }
+        (void)fprintf(stream, ") -> %s\n", vitte_ir_type_name(function->return_type));
         for (block = function->first_block; block != NULL; block = block->next) {
             const vitte_ir_instruction_t *instruction;
             (void)fprintf(stream, "    block #%" PRIu32 " %s%s\n", block->id, block->name, block->terminated ? "" : " unterminated");

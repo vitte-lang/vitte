@@ -72,6 +72,30 @@ static void vitte_builtin_set_error(
     }
 }
 
+static const char *vitte_builtin_last_name_segment(const char *name) {
+    const char *segment;
+    const char *cursor;
+
+    if (name == NULL) {
+        return NULL;
+    }
+    segment = name;
+    for (cursor = name; *cursor != '\0'; cursor++) {
+        if (*cursor == '.') {
+            segment = cursor + 1;
+        } else if (*cursor == ':' && cursor[1] == ':') {
+            segment = cursor + 2;
+            cursor++;
+        }
+    }
+    return segment;
+}
+
+static const char *vitte_builtin_alternate_lookup_name(const char *name) {
+    const char *segment = vitte_builtin_last_name_segment(name);
+    return segment != name ? segment : NULL;
+}
+
 static bool vitte_builtin_name_is_valid(const char *name) {
     return name != NULL && name[0] != '\0';
 }
@@ -249,16 +273,19 @@ const vitte_builtin_operator_t *vitte_builtin_operator_at(const vitte_builtin_re
 
 const vitte_builtin_type_t *vitte_builtin_lookup_type(vitte_builtin_registry_t *registry, const char *name) {
     size_t index;
+    const char *segment;
 
     if (!vitte_builtin_registry_is_initialized(registry) || !vitte_builtin_name_is_valid(name)) {
         vitte_builtin_set_error(registry, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_BUILTIN_E_ARGUMENT", "invalid builtin type lookup", name);
         return NULL;
     }
 
-    for (index = 0u; index < registry->type_count; index++) {
-        if (strcmp(registry->types[index].name, name) == 0) {
-            vitte_error_reset(&registry->last_error);
-            return &registry->types[index];
+    for (segment = name; segment != NULL; segment = segment == name ? vitte_builtin_alternate_lookup_name(name) : NULL) {
+        for (index = 0u; index < registry->type_count; index++) {
+            if (strcmp(registry->types[index].name, segment) == 0) {
+                vitte_error_reset(&registry->last_error);
+                return &registry->types[index];
+            }
         }
     }
 
@@ -268,16 +295,19 @@ const vitte_builtin_type_t *vitte_builtin_lookup_type(vitte_builtin_registry_t *
 
 const vitte_builtin_constant_t *vitte_builtin_lookup_constant(vitte_builtin_registry_t *registry, const char *name) {
     size_t index;
+    const char *segment;
 
     if (!vitte_builtin_registry_is_initialized(registry) || !vitte_builtin_name_is_valid(name)) {
         vitte_builtin_set_error(registry, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_BUILTIN_E_ARGUMENT", "invalid builtin constant lookup", name);
         return NULL;
     }
 
-    for (index = 0u; index < registry->constant_count; index++) {
-        if (strcmp(registry->constants[index].name, name) == 0) {
-            vitte_error_reset(&registry->last_error);
-            return &registry->constants[index];
+    for (segment = name; segment != NULL; segment = segment == name ? vitte_builtin_alternate_lookup_name(name) : NULL) {
+        for (index = 0u; index < registry->constant_count; index++) {
+            if (strcmp(registry->constants[index].name, segment) == 0) {
+                vitte_error_reset(&registry->last_error);
+                return &registry->constants[index];
+            }
         }
     }
 
@@ -287,16 +317,19 @@ const vitte_builtin_constant_t *vitte_builtin_lookup_constant(vitte_builtin_regi
 
 const vitte_builtin_function_t *vitte_builtin_lookup_function(vitte_builtin_registry_t *registry, const char *name) {
     size_t index;
+    const char *segment;
 
     if (!vitte_builtin_registry_is_initialized(registry) || !vitte_builtin_name_is_valid(name)) {
         vitte_builtin_set_error(registry, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_BUILTIN_E_ARGUMENT", "invalid builtin function lookup", name);
         return NULL;
     }
 
-    for (index = 0u; index < registry->function_count; index++) {
-        if (strcmp(registry->functions[index].name, name) == 0) {
-            vitte_error_reset(&registry->last_error);
-            return &registry->functions[index];
+    for (segment = name; segment != NULL; segment = segment == name ? vitte_builtin_alternate_lookup_name(name) : NULL) {
+        for (index = 0u; index < registry->function_count; index++) {
+            if (strcmp(registry->functions[index].name, segment) == 0) {
+                vitte_error_reset(&registry->last_error);
+                return &registry->functions[index];
+            }
         }
     }
 

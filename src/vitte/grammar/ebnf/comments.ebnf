@@ -1,0 +1,89 @@
+(* Vitte comments grammar *)
+
+comment
+    = line_comment
+    | block_comment
+    ;
+
+line_comment
+    = "//", { line_comment_character }, line_terminator?
+    ;
+
+line_comment_character
+    = ? any Unicode scalar value except CR and LF ?
+    ;
+
+block_comment
+    = "/*", { block_comment_item }, "*/"
+    ;
+
+block_comment_item
+    = block_comment
+    | block_comment_text
+    ;
+
+block_comment_text
+    = block_comment_character, { block_comment_character }
+    ;
+
+block_comment_character
+    = ? any Unicode scalar value except the beginning of "/*" or "*/" ?
+    ;
+
+documentation_comment
+    = line_documentation_comment
+    | block_documentation_comment
+    ;
+
+line_documentation_comment
+    = outer_line_documentation_comment
+    | inner_line_documentation_comment
+    ;
+
+outer_line_documentation_comment
+    = "///", [ line_documentation_text ], line_terminator?
+    ;
+
+inner_line_documentation_comment
+    = "//!", [ line_documentation_text ], line_terminator?
+    ;
+
+line_documentation_text
+    = line_comment_character, { line_comment_character }
+    ;
+
+block_documentation_comment
+    = outer_block_documentation_comment
+    | inner_block_documentation_comment
+    ;
+
+outer_block_documentation_comment
+    = "/**", { block_documentation_item }, "*/"
+    ;
+
+inner_block_documentation_comment
+    = "/*!", { block_documentation_item }, "*/"
+    ;
+
+block_documentation_item
+    = block_comment
+    | block_documentation_text
+    ;
+
+block_documentation_text
+    = block_comment_character, { block_comment_character }
+    ;
+
+line_terminator
+    = LF
+    | CR
+    | CR, LF
+    ;
+
+LF
+    = ? Unicode U+000A LINE FEED ?
+    ;
+
+CR
+    = ? Unicode U+000D CARRIAGE RETURN ?
+    ;

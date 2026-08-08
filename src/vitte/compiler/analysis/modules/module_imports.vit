@@ -1,0 +1,2084 @@
+space vitte/compiler/analysis/modules/module_imports
+
+export *
+
+use src/vitte/compiler/frontend/source/span.{Span}
+use src/vitte/compiler/analysis/modules/module_id.{
+    ModuleId,
+    module_id_invalid,
+    module_id_equal,
+    module_id_is_valid
+}
+use src/vitte/compiler/analysis/modules/module_database.{
+    ModuleDatabase,
+    module_database_get,
+    module_database_get_by_name
+}
+use src/vitte/compiler/analysis/modules/module_exports.{
+    ModuleExport,
+    ModuleExportId,
+    ModuleExportKind,
+    ModuleExportTable,
+    ModuleExportVisibility,
+    module_export_id_invalid,
+    module_export_lookup,
+    module_export_lookup_kind,
+    module_export_public_of,
+    module_export_is_available
+}
+
+pick ModuleImportKind {
+    Symbol,
+    Module,
+    Glob,
+    Alias,
+    Prelude,
+    Builtin,
+    Reexport
+}
+
+pick ModuleImportVisibility {
+    Private,
+    Package,
+    Public
+}
+
+pick ModuleImportState {
+    Declared,
+    Resolving,
+    Resolved,
+    Ambiguous,
+    MissingModule,
+    MissingSymbol,
+    PrivateSymbol,
+    Disabled,
+    Invalidated,
+    Failed
+}
+
+pick ModuleImportErrorKind {
+    InvalidArgument,
+    InvalidModule,
+    EmptyPath,
+    EmptyName,
+    DuplicateImport,
+    ConflictingImport,
+    ModuleNotFound,
+    SymbolNotFound,
+    PrivateSymbol,
+    AmbiguousSymbol,
+    CircularImport,
+    InvalidAlias,
+    InvalidGlob,
+    DisabledImport,
+    UnresolvedImport,
+    InvalidState,
+    DatabaseCorrupted
+}
+
+form ModuleImportId {
+    value: usize
+}
+
+form ModuleImportPath {
+    package: string
+    modules: [string]
+    symbol: string
+}
+
+form ModuleImportCondition {
+    feature: string
+    target_os: string
+    target_arch: string
+    profile: string
+    inverted: bool
+}
+
+form ModuleImport {
+    id: ModuleImportId
+
+    module: ModuleId
+    source_module: ModuleId
+
+    path: ModuleImportPath
+
+    name: string
+    alias: string
+
+    kind: ModuleImportKind
+    visibility: ModuleImportVisibility
+    state: ModuleImportState
+
+    resolved_export: ModuleExportId
+    candidates: [ModuleExportId]
+
+    span: Span
+    path_span: Span
+    alias_span: Span
+
+    enabled: bool
+    optional: bool
+    reexported: bool
+    synthetic: bool
+
+    conditions: [ModuleImportCondition]
+
+    generation: u64
+    revision: u64
+}
+
+form ModuleImportError {
+    kind: ModuleImportErrorKind
+    module: string
+    path: string
+    name: string
+    message: string
+    span: Span
+}
+
+form ModuleImportStatistics {
+    imports: usize
+    resolved: usize
+    unresolved: usize
+    ambiguous: usize
+    missing_modules: usize
+    missing_symbols: usize
+    private_symbols: usize
+    disabled: usize
+    failed: usize
+    invalidated: usize
+
+    symbol_imports: usize
+    module_imports: usize
+    glob_imports: usize
+    aliases: usize
+    reexports: usize
+    synthetic_imports: usize
+}
+
+form ModuleImportTable {
+    imports: [ModuleImport]
+    errors: [ModuleImportError]
+
+    next_id: usize
+    generation: u64
+
+    statistics: ModuleImportStatistics
+}
+
+form ModuleImportLookup {
+    import: Option<ModuleImport>
+    candidates: [ModuleImport]
+    found: bool
+    ambiguous: bool
+}
+
+form ModuleImportEvaluationContext {
+    enabled_features: [string]
+    target_os: string
+    target_arch: string
+    profile: string
+}
+
+form ModuleImportResolution {
+    imports: [ModuleImport]
+    errors: [ModuleImportError]
+
+    resolved: usize
+    failed: usize
+
+    valid: bool
+}
+
+proc module_import_empty_span() -> Span {
+    give Span {
+        source: 0,
+        start: 0,
+        end: 0
+    };
+}
+
+proc module_import_id(value: usize) -> ModuleImportId {
+    give ModuleImportId {
+        value: value
+    };
+}
+
+proc module_import_id_invalid() -> ModuleImportId {
+    give module_import_id(0);
+}
+
+proc module_import_id_is_valid(
+    id: ModuleImportId
+) -> bool {
+    give id.value != 0;
+}
+
+proc module_import_id_equal(
+    left: ModuleImportId,
+    right: ModuleImportId
+) -> bool {
+    give left.value == right.value;
+}
+
+proc module_import_path(
+    package: string,
+    modules: [string],
+    symbol: string
+) -> ModuleImportPath {
+    give ModuleImportPath {
+        package: package,
+        modules: modules,
+        symbol: symbol
+    };
+}
+
+proc module_import_path_empty() -> ModuleImportPath {
+    give module_import_path("", [], "");
+}
+
+proc module_import_condition(
+    feature: string,
+    target_os: string,
+    target_arch: string,
+    profile: string,
+    inverted: bool
+) -> ModuleImportCondition {
+    give ModuleImportCondition {
+        feature: feature,
+        target_os: target_os,
+        target_arch: target_arch,
+        profile: profile,
+        inverted: inverted
+    };
+}
+
+proc module_import_statistics_empty()
+    -> ModuleImportStatistics
+{
+    give ModuleImportStatistics {
+        imports: 0,
+        resolved: 0,
+        unresolved: 0,
+        ambiguous: 0,
+        missing_modules: 0,
+        missing_symbols: 0,
+        private_symbols: 0,
+        disabled: 0,
+        failed: 0,
+        invalidated: 0,
+
+        symbol_imports: 0,
+        module_imports: 0,
+        glob_imports: 0,
+        aliases: 0,
+        reexports: 0,
+        synthetic_imports: 0
+    };
+}
+
+proc module_import_table_create() -> ModuleImportTable {
+    give ModuleImportTable {
+        imports: [],
+        errors: [],
+        next_id: 1,
+        generation: 1,
+        statistics: module_import_statistics_empty()
+    };
+}
+
+proc module_import_evaluation_context(
+    enabled_features: [string],
+    target_os: string,
+    target_arch: string,
+    profile: string
+) -> ModuleImportEvaluationContext {
+    give ModuleImportEvaluationContext {
+        enabled_features: enabled_features,
+        target_os: target_os,
+        target_arch: target_arch,
+        profile: profile
+    };
+}
+
+proc module_import_error(
+    kind: ModuleImportErrorKind,
+    module: string,
+    path: string,
+    name: string,
+    message: string,
+    span: Span
+) -> ModuleImportError {
+    give ModuleImportError {
+        kind: kind,
+        module: module,
+        path: path,
+        name: name,
+        message: message,
+        span: span
+    };
+}
+
+proc module_import_push_error(
+    table: ref mut ModuleImportTable,
+    kind: ModuleImportErrorKind,
+    module: string,
+    path: string,
+    name: string,
+    message: string,
+    span: Span
+) {
+    table.errors = table.errors + [
+        module_import_error(
+            kind,
+            module,
+            path,
+            name,
+            message,
+            span
+        )
+    ];
+}
+
+proc module_import_create(
+    id: ModuleImportId,
+    module: ModuleId,
+    path: ModuleImportPath,
+    name: string,
+    alias: string,
+    kind: ModuleImportKind,
+    visibility: ModuleImportVisibility,
+    span: Span,
+    generation: u64
+) -> ModuleImport {
+    give ModuleImport {
+        id: id,
+
+        module: module,
+        source_module: module_id_invalid(),
+
+        path: path,
+
+        name: name,
+        alias: alias,
+
+        kind: kind,
+        visibility: visibility,
+        state: ModuleImportState.Declared,
+
+        resolved_export: module_export_id_invalid(),
+        candidates: [],
+
+        span: span,
+        path_span: span,
+        alias_span: span,
+
+        enabled: true,
+        optional: false,
+        reexported: kind == ModuleImportKind.Reexport
+            or visibility == ModuleImportVisibility.Public,
+        synthetic: kind == ModuleImportKind.Prelude
+            or kind == ModuleImportKind.Builtin,
+
+        conditions: [],
+
+        generation: generation,
+        revision: 1
+    };
+}
+
+proc module_import_is_valid(
+    item: ref ModuleImport
+) -> bool {
+    if not module_import_id_is_valid(item.id) {
+        give false;
+    }
+
+    if not module_id_is_valid(item.module) {
+        give false;
+    }
+
+    if item.kind == ModuleImportKind.Glob {
+        give len(item.path.modules) != 0
+            or len(item.path.package) != 0;
+    }
+
+    if item.kind == ModuleImportKind.Module {
+        give len(item.path.modules) != 0;
+    }
+
+    give len(item.name) != 0
+        or len(item.path.symbol) != 0;
+}
+
+proc module_import_is_resolved(
+    item: ref ModuleImport
+) -> bool {
+    give item.enabled
+        and item.state == ModuleImportState.Resolved;
+}
+
+proc module_import_is_available(
+    item: ref ModuleImport
+) -> bool {
+    give item.enabled
+        and item.state != ModuleImportState.Disabled
+        and item.state != ModuleImportState.Invalidated
+        and item.state != ModuleImportState.Failed;
+}
+
+proc module_import_is_glob(
+    item: ref ModuleImport
+) -> bool {
+    give item.kind == ModuleImportKind.Glob;
+}
+
+proc module_import_is_alias(
+    item: ref ModuleImport
+) -> bool {
+    give len(item.alias) != 0
+        and item.alias != item.name;
+}
+
+proc module_import_is_reexport(
+    item: ref ModuleImport
+) -> bool {
+    give item.reexported
+        or item.kind == ModuleImportKind.Reexport
+        or item.visibility == ModuleImportVisibility.Public;
+}
+
+proc module_import_local_name(
+    item: ref ModuleImport
+) -> string {
+    if len(item.alias) != 0 {
+        give item.alias;
+    }
+
+    if len(item.name) != 0 {
+        give item.name;
+    }
+
+    give item.path.symbol;
+}
+
+proc module_import_path_string(
+    path: ref ModuleImportPath
+) -> string {
+    set output = "";
+
+    if len(path.package) != 0 {
+        output = path.package;
+    }
+
+    for module in path.modules {
+        if len(output) != 0 {
+            output = output + "::";
+        }
+
+        output = output + module;
+    }
+
+    if len(path.symbol) != 0 {
+        if len(output) != 0 {
+            output = output + "::";
+        }
+
+        output = output + path.symbol;
+    }
+
+    give output;
+}
+
+proc module_import_source_module_name(
+    path: ref ModuleImportPath
+) -> string {
+    set output = "";
+
+    if len(path.package) != 0 {
+        output = path.package;
+    }
+
+    for module in path.modules {
+        if len(output) != 0 {
+            output = output + "::";
+        }
+
+        output = output + module;
+    }
+
+    give output;
+}
+
+proc module_import_find_index(
+    table: ref ModuleImportTable,
+    id: ModuleImportId
+) -> Option<usize> {
+    set index: usize = 0;
+
+    while index < len(table.imports) {
+        if module_import_id_equal(
+            table.imports[index].id,
+            id
+        ) {
+            give Some(index);
+        }
+
+        index = index + 1;
+    }
+
+    give None;
+}
+
+proc module_import_find_local_index(
+    table: ref ModuleImportTable,
+    module: ModuleId,
+    local_name: string
+) -> Option<usize> {
+    set index: usize = 0;
+
+    while index < len(table.imports) {
+        let item = table.imports[index];
+
+        if module_id_equal(item.module, module)
+            and module_import_local_name(ref item) == local_name
+            and module_import_is_available(ref item)
+        {
+            give Some(index);
+        }
+
+        index = index + 1;
+    }
+
+    give None;
+}
+
+proc module_import_find_exact_index(
+    table: ref ModuleImportTable,
+    module: ModuleId,
+    path: ref ModuleImportPath,
+    alias: string,
+    kind: ModuleImportKind
+) -> Option<usize> {
+    let path_text = module_import_path_string(path);
+    set index: usize = 0;
+
+    while index < len(table.imports) {
+        let item = table.imports[index];
+
+        if module_id_equal(item.module, module)
+            and module_import_path_string(ref item.path) == path_text
+            and item.alias == alias
+            and item.kind == kind
+        {
+            give Some(index);
+        }
+
+        index = index + 1;
+    }
+
+    give None;
+}
+
+proc module_import_contains(
+    table: ref ModuleImportTable,
+    id: ModuleImportId
+) -> bool {
+    give module_import_find_index(table, id) != None;
+}
+
+proc module_import_contains_local(
+    table: ref ModuleImportTable,
+    module: ModuleId,
+    local_name: string
+) -> bool {
+    give module_import_find_local_index(
+        table,
+        module,
+        local_name
+    ) != None;
+}
+
+proc module_import_get(
+    table: ref ModuleImportTable,
+    id: ModuleImportId
+) -> Option<ref ModuleImport> {
+    let index = module_import_find_index(table, id);
+
+    pick index {
+        Some(value) {
+            give Some(ref table.imports[value]);
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc module_import_get_mut(
+    table: ref mut ModuleImportTable,
+    id: ModuleImportId
+) -> Option<ref mut ModuleImport> {
+    let index = module_import_find_index(ref table, id);
+
+    pick index {
+        Some(value) {
+            give Some(ref mut table.imports[value]);
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc module_import_refresh_statistics(
+    table: ref mut ModuleImportTable
+) {
+    set statistics = module_import_statistics_empty();
+
+    statistics.imports = len(table.imports);
+
+    for item in table.imports {
+        pick item.state {
+            ModuleImportState.Resolved {
+                statistics.resolved = statistics.resolved + 1;
+            }
+
+            ModuleImportState.Declared {
+                statistics.unresolved =
+                    statistics.unresolved + 1;
+            }
+
+            ModuleImportState.Resolving {
+                statistics.unresolved =
+                    statistics.unresolved + 1;
+            }
+
+            ModuleImportState.Ambiguous {
+                statistics.ambiguous =
+                    statistics.ambiguous + 1;
+            }
+
+            ModuleImportState.MissingModule {
+                statistics.missing_modules =
+                    statistics.missing_modules + 1;
+            }
+
+            ModuleImportState.MissingSymbol {
+                statistics.missing_symbols =
+                    statistics.missing_symbols + 1;
+            }
+
+            ModuleImportState.PrivateSymbol {
+                statistics.private_symbols =
+                    statistics.private_symbols + 1;
+            }
+
+            ModuleImportState.Disabled {
+                statistics.disabled = statistics.disabled + 1;
+            }
+
+            ModuleImportState.Invalidated {
+                statistics.invalidated =
+                    statistics.invalidated + 1;
+            }
+
+            ModuleImportState.Failed {
+                statistics.failed = statistics.failed + 1;
+            }
+        }
+
+        pick item.kind {
+            ModuleImportKind.Symbol {
+                statistics.symbol_imports =
+                    statistics.symbol_imports + 1;
+            }
+
+            ModuleImportKind.Module {
+                statistics.module_imports =
+                    statistics.module_imports + 1;
+            }
+
+            ModuleImportKind.Glob {
+                statistics.glob_imports =
+                    statistics.glob_imports + 1;
+            }
+
+            ModuleImportKind.Alias {
+                statistics.aliases = statistics.aliases + 1;
+            }
+
+            ModuleImportKind.Reexport {
+                statistics.reexports =
+                    statistics.reexports + 1;
+            }
+
+            _ {}
+        }
+
+        if module_import_is_alias(ref item)
+            and item.kind != ModuleImportKind.Alias
+        {
+            statistics.aliases = statistics.aliases + 1;
+        }
+
+        if module_import_is_reexport(ref item)
+            and item.kind != ModuleImportKind.Reexport
+        {
+            statistics.reexports =
+                statistics.reexports + 1;
+        }
+
+        if item.synthetic {
+            statistics.synthetic_imports =
+                statistics.synthetic_imports + 1;
+        }
+    }
+
+    table.statistics = statistics;
+}
+
+proc module_import_insert(
+    table: ref mut ModuleImportTable,
+    module: ModuleId,
+    path: ModuleImportPath,
+    name: string,
+    alias: string,
+    kind: ModuleImportKind,
+    visibility: ModuleImportVisibility,
+    span: Span
+) -> Option<ModuleImportId> {
+    if not module_id_is_valid(module) {
+        module_import_push_error(
+            table,
+            ModuleImportErrorKind.InvalidModule,
+            "",
+            module_import_path_string(ref path),
+            name,
+            "import owner module identifier is invalid",
+            span
+        );
+
+        give None;
+    }
+
+    let path_text = module_import_path_string(ref path);
+
+    if len(path_text) == 0 {
+        module_import_push_error(
+            table,
+            ModuleImportErrorKind.EmptyPath,
+            "",
+            "",
+            name,
+            "module import path must not be empty",
+            span
+        );
+
+        give None;
+    }
+
+    if kind != ModuleImportKind.Glob
+        and kind != ModuleImportKind.Module
+        and len(name) == 0
+        and len(path.symbol) == 0
+    {
+        module_import_push_error(
+            table,
+            ModuleImportErrorKind.EmptyName,
+            "",
+            path_text,
+            "",
+            "module import symbol name must not be empty",
+            span
+        );
+
+        give None;
+    }
+
+    if module_import_find_exact_index(
+        ref table,
+        module,
+        ref path,
+        alias,
+        kind
+    ) != None {
+        module_import_push_error(
+            table,
+            ModuleImportErrorKind.DuplicateImport,
+            "",
+            path_text,
+            name,
+            "module import already exists",
+            span
+        );
+
+        give None;
+    }
+
+    set local_name = alias;
+
+    if len(local_name) == 0 {
+        if len(name) != 0 {
+            local_name = name;
+        } else {
+            local_name = path.symbol;
+        }
+    }
+
+    if kind != ModuleImportKind.Glob
+        and len(local_name) != 0
+        and module_import_contains_local(
+            ref table,
+            module,
+            local_name
+        )
+    {
+        module_import_push_error(
+            table,
+            ModuleImportErrorKind.ConflictingImport,
+            "",
+            path_text,
+            local_name,
+            "local import name conflicts with another import",
+            span
+        );
+
+        give None;
+    }
+
+    let id = module_import_id(table.next_id);
+    table.next_id = table.next_id + 1;
+
+    table.imports = table.imports + [
+        module_import_create(
+            id,
+            module,
+            path,
+            name,
+            alias,
+            kind,
+            visibility,
+            span,
+            table.generation
+        )
+    ];
+
+    module_import_refresh_statistics(table);
+
+    give Some(id);
+}
+
+proc module_import_insert_symbol(
+    table: ref mut ModuleImportTable,
+    module: ModuleId,
+    path: ModuleImportPath,
+    alias: string,
+    visibility: ModuleImportVisibility,
+    span: Span
+) -> Option<ModuleImportId> {
+    give module_import_insert(
+        table,
+        module,
+        path,
+        path.symbol,
+        alias,
+        if len(alias) != 0 {
+            ModuleImportKind.Alias
+        } else {
+            ModuleImportKind.Symbol
+        },
+        visibility,
+        span
+    );
+}
+
+proc module_import_insert_glob(
+    table: ref mut ModuleImportTable,
+    module: ModuleId,
+    path: ModuleImportPath,
+    visibility: ModuleImportVisibility,
+    span: Span
+) -> Option<ModuleImportId> {
+    give module_import_insert(
+        table,
+        module,
+        path,
+        "*",
+        "",
+        ModuleImportKind.Glob,
+        visibility,
+        span
+    );
+}
+
+proc module_import_set_state(
+    table: ref mut ModuleImportTable,
+    id: ModuleImportId,
+    state: ModuleImportState
+) -> bool {
+    let index = module_import_find_index(ref table, id);
+
+    pick index {
+        Some(value) {
+            table.imports[value].state = state;
+            table.imports[value].generation =
+                table.generation;
+            table.imports[value].revision =
+                table.imports[value].revision + 1;
+
+            table.imports[value].enabled =
+                state != ModuleImportState.Disabled
+                and state != ModuleImportState.Invalidated
+                and state != ModuleImportState.Failed;
+
+            module_import_refresh_statistics(table);
+
+            give true;
+        }
+
+        None {
+            module_import_push_error(
+                table,
+                ModuleImportErrorKind.InvalidArgument,
+                "",
+                "",
+                "",
+                "cannot update an unknown module import",
+                module_import_empty_span()
+            );
+
+            give false;
+        }
+    }
+}
+
+proc module_import_begin_resolution(
+    table: ref mut ModuleImportTable,
+    id: ModuleImportId
+) -> bool {
+    give module_import_set_state(
+        table,
+        id,
+        ModuleImportState.Resolving
+    );
+}
+
+proc module_import_mark_resolved(
+    table: ref mut ModuleImportTable,
+    id: ModuleImportId,
+    source_module: ModuleId,
+    export_id: ModuleExportId
+) -> bool {
+    let index = module_import_find_index(ref table, id);
+
+    pick index {
+        Some(value) {
+            table.imports[value].source_module = source_module;
+            table.imports[value].resolved_export = export_id;
+            table.imports[value].candidates = [];
+            table.imports[value].state =
+                ModuleImportState.Resolved;
+            table.imports[value].enabled = true;
+            table.imports[value].generation =
+                table.generation;
+            table.imports[value].revision =
+                table.imports[value].revision + 1;
+
+            module_import_refresh_statistics(table);
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_import_disable(
+    table: ref mut ModuleImportTable,
+    id: ModuleImportId
+) -> bool {
+    give module_import_set_state(
+        table,
+        id,
+        ModuleImportState.Disabled
+    );
+}
+
+proc module_import_enable(
+    table: ref mut ModuleImportTable,
+    id: ModuleImportId
+) -> bool {
+    let index = module_import_find_index(ref table, id);
+
+    pick index {
+        Some(value) {
+            table.imports[value].enabled = true;
+
+            if table.imports[value].state
+                == ModuleImportState.Disabled
+                or table.imports[value].state
+                    == ModuleImportState.Invalidated
+            {
+                table.imports[value].state =
+                    ModuleImportState.Declared;
+            }
+
+            table.imports[value].generation =
+                table.generation;
+            table.imports[value].revision =
+                table.imports[value].revision + 1;
+
+            module_import_refresh_statistics(table);
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_import_set_optional(
+    table: ref mut ModuleImportTable,
+    id: ModuleImportId,
+    optional: bool
+) -> bool {
+    let index = module_import_find_index(ref table, id);
+
+    pick index {
+        Some(value) {
+            table.imports[value].optional = optional;
+            table.imports[value].generation =
+                table.generation;
+            table.imports[value].revision =
+                table.imports[value].revision + 1;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_import_set_reexported(
+    table: ref mut ModuleImportTable,
+    id: ModuleImportId,
+    reexported: bool
+) -> bool {
+    let index = module_import_find_index(ref table, id);
+
+    pick index {
+        Some(value) {
+            table.imports[value].reexported = reexported;
+
+            if reexported {
+                table.imports[value].kind =
+                    ModuleImportKind.Reexport;
+                table.imports[value].visibility =
+                    ModuleImportVisibility.Public;
+            }
+
+            table.imports[value].generation =
+                table.generation;
+            table.imports[value].revision =
+                table.imports[value].revision + 1;
+
+            module_import_refresh_statistics(table);
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_import_add_condition(
+    table: ref mut ModuleImportTable,
+    id: ModuleImportId,
+    condition: ModuleImportCondition
+) -> bool {
+    let index = module_import_find_index(ref table, id);
+
+    pick index {
+        Some(value) {
+            table.imports[value].conditions =
+                table.imports[value].conditions + [condition];
+            table.imports[value].generation =
+                table.generation;
+            table.imports[value].revision =
+                table.imports[value].revision + 1;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_import_string_list_contains(
+    values: ref [string],
+    value: string
+) -> bool {
+    for current in values {
+        if current == value {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc module_import_condition_matches(
+    condition: ref ModuleImportCondition,
+    context: ref ModuleImportEvaluationContext
+) -> bool {
+    set matches: bool = true;
+
+    if len(condition.feature) != 0 {
+        matches = matches
+            and module_import_string_list_contains(
+                ref context.enabled_features,
+                condition.feature
+            );
+    }
+
+    if len(condition.target_os) != 0 {
+        matches = matches
+            and condition.target_os == context.target_os;
+    }
+
+    if len(condition.target_arch) != 0 {
+        matches = matches
+            and condition.target_arch == context.target_arch;
+    }
+
+    if len(condition.profile) != 0 {
+        matches = matches
+            and condition.profile == context.profile;
+    }
+
+    if condition.inverted {
+        give not matches;
+    }
+
+    give matches;
+}
+
+proc module_import_evaluate(
+    item: ref ModuleImport,
+    context: ref ModuleImportEvaluationContext
+) -> bool {
+    if len(item.conditions) == 0 {
+        give item.enabled;
+    }
+
+    for condition in item.conditions {
+        if not module_import_condition_matches(
+            ref condition,
+            context
+        ) {
+            give false;
+        }
+    }
+
+    give true;
+}
+
+proc module_import_evaluate_table(
+    table: ref mut ModuleImportTable,
+    context: ref ModuleImportEvaluationContext
+) {
+    set index: usize = 0;
+
+    while index < len(table.imports) {
+        let active = module_import_evaluate(
+            ref table.imports[index],
+            context
+        );
+
+        table.imports[index].enabled = active;
+
+        if not active {
+            table.imports[index].state =
+                ModuleImportState.Disabled;
+        } else if table.imports[index].state
+            == ModuleImportState.Disabled
+        {
+            table.imports[index].state =
+                ModuleImportState.Declared;
+        }
+
+        table.imports[index].generation =
+            table.generation;
+        table.imports[index].revision =
+            table.imports[index].revision + 1;
+
+        index = index + 1;
+    }
+
+    module_import_refresh_statistics(table);
+}
+
+proc module_import_candidates(
+    table: ref ModuleImportTable,
+    module: ModuleId,
+    local_name: string
+) -> [ModuleImport] {
+    set output: [ModuleImport] = [];
+
+    for item in table.imports {
+        if module_id_equal(item.module, module)
+            and module_import_local_name(ref item) == local_name
+            and module_import_is_available(ref item)
+        {
+            output = output + [item];
+        }
+    }
+
+    give output;
+}
+
+proc module_import_lookup(
+    table: ref ModuleImportTable,
+    module: ModuleId,
+    local_name: string
+) -> ModuleImportLookup {
+    let candidates = module_import_candidates(
+        table,
+        module,
+        local_name
+    );
+
+    if len(candidates) == 0 {
+        give ModuleImportLookup {
+            import: None,
+            candidates: [],
+            found: false,
+            ambiguous: false
+        };
+    }
+
+    if len(candidates) == 1 {
+        give ModuleImportLookup {
+            import: Some(candidates[0]),
+            candidates: candidates,
+            found: true,
+            ambiguous: false
+        };
+    }
+
+    give ModuleImportLookup {
+        import: None,
+        candidates: candidates,
+        found: true,
+        ambiguous: true
+    };
+}
+
+proc module_import_resolve_source_module(
+    database: ref ModuleDatabase,
+    path: ref ModuleImportPath
+) -> ModuleId {
+    let source_name = module_import_source_module_name(path);
+
+    if len(source_name) == 0 {
+        give module_id_invalid();
+    }
+
+    let module = module_database_get_by_name(
+        database,
+        source_name
+    );
+
+    pick module {
+        Some(value) {
+            give value.id;
+        }
+
+        None {
+            give module_id_invalid();
+        }
+    }
+}
+
+proc module_import_export_ids(
+    exports: [ModuleExport]
+) -> [ModuleExportId] {
+    set output: [ModuleExportId] = [];
+
+    for item in exports {
+        output = output + [item.id];
+    }
+
+    give output;
+}
+
+proc module_import_resolve_glob(
+    table: ref mut ModuleImportTable,
+    index: usize,
+    export_table: ref ModuleExportTable
+) -> bool {
+    let source_module = table.imports[index].source_module;
+    let exports = module_export_public_of(
+        export_table,
+        source_module
+    );
+
+    if len(exports) == 0 {
+        table.imports[index].state =
+            ModuleImportState.MissingSymbol;
+
+        if not table.imports[index].optional {
+            module_import_push_error(
+                table,
+                ModuleImportErrorKind.SymbolNotFound,
+                "",
+                module_import_path_string(
+                    ref table.imports[index].path
+                ),
+                "*",
+                "glob import source module has no public exports",
+                table.imports[index].span
+            );
+        }
+
+        give table.imports[index].optional;
+    }
+
+    table.imports[index].candidates =
+        module_import_export_ids(exports);
+    table.imports[index].resolved_export =
+        module_export_id_invalid();
+    table.imports[index].state =
+        ModuleImportState.Resolved;
+
+    give true;
+}
+
+proc module_import_resolve_symbol(
+    table: ref mut ModuleImportTable,
+    index: usize,
+    export_table: ref ModuleExportTable
+) -> bool {
+    let item = table.imports[index];
+    set symbol = item.path.symbol;
+
+    if len(symbol) == 0 {
+        symbol = item.name;
+    }
+
+    let lookup = module_export_lookup(
+        export_table,
+        item.source_module,
+        symbol
+    );
+
+    if not lookup.found {
+        table.imports[index].state =
+            ModuleImportState.MissingSymbol;
+
+        if not item.optional {
+            module_import_push_error(
+                table,
+                ModuleImportErrorKind.SymbolNotFound,
+                "",
+                module_import_path_string(ref item.path),
+                symbol,
+                "imported symbol does not exist",
+                item.span
+            );
+        }
+
+        give item.optional;
+    }
+
+    if lookup.ambiguous {
+        table.imports[index].state =
+            ModuleImportState.Ambiguous;
+        table.imports[index].candidates =
+            module_import_export_ids(lookup.candidates);
+
+        module_import_push_error(
+            table,
+            ModuleImportErrorKind.AmbiguousSymbol,
+            "",
+            module_import_path_string(ref item.path),
+            symbol,
+            "imported symbol is ambiguous",
+            item.span
+        );
+
+        give false;
+    }
+
+    pick lookup.export {
+        Some(exported) {
+            if exported.visibility
+                == ModuleExportVisibility.Private
+            {
+                table.imports[index].state =
+                    ModuleImportState.PrivateSymbol;
+
+                module_import_push_error(
+                    table,
+                    ModuleImportErrorKind.PrivateSymbol,
+                    "",
+                    module_import_path_string(ref item.path),
+                    symbol,
+                    "private symbol cannot be imported",
+                    item.span
+                );
+
+                give false;
+            }
+
+            if not module_export_is_available(ref exported) {
+                table.imports[index].state =
+                    ModuleImportState.MissingSymbol;
+
+                give false;
+            }
+
+            table.imports[index].resolved_export = exported.id;
+            table.imports[index].candidates = [exported.id];
+            table.imports[index].state =
+                ModuleImportState.Resolved;
+
+            give true;
+        }
+
+        None {
+            table.imports[index].state =
+                ModuleImportState.MissingSymbol;
+
+            give false;
+        }
+    }
+}
+
+proc module_import_resolve_item(
+    table: ref mut ModuleImportTable,
+    index: usize,
+    database: ref ModuleDatabase,
+    export_table: ref ModuleExportTable
+) -> bool {
+    if index >= len(table.imports) {
+        give false;
+    }
+
+    if not table.imports[index].enabled {
+        table.imports[index].state =
+            ModuleImportState.Disabled;
+
+        give table.imports[index].optional;
+    }
+
+    table.imports[index].state =
+        ModuleImportState.Resolving;
+
+    let source_module = module_import_resolve_source_module(
+        database,
+        ref table.imports[index].path
+    );
+
+    if not module_id_is_valid(source_module) {
+        table.imports[index].state =
+            ModuleImportState.MissingModule;
+
+        if not table.imports[index].optional {
+            module_import_push_error(
+                table,
+                ModuleImportErrorKind.ModuleNotFound,
+                "",
+                module_import_path_string(
+                    ref table.imports[index].path
+                ),
+                table.imports[index].name,
+                "import source module does not exist",
+                table.imports[index].path_span
+            );
+        }
+
+        give table.imports[index].optional;
+    }
+
+    if module_id_equal(
+        table.imports[index].module,
+        source_module
+    ) {
+        table.imports[index].state =
+            ModuleImportState.Failed;
+
+        module_import_push_error(
+            table,
+            ModuleImportErrorKind.CircularImport,
+            "",
+            module_import_path_string(
+                ref table.imports[index].path
+            ),
+            table.imports[index].name,
+            "module cannot import itself through its own path",
+            table.imports[index].span
+        );
+
+        give false;
+    }
+
+    table.imports[index].source_module = source_module;
+
+    if table.imports[index].kind == ModuleImportKind.Module {
+        table.imports[index].resolved_export =
+            module_export_id_invalid();
+        table.imports[index].state =
+            ModuleImportState.Resolved;
+
+        give true;
+    }
+
+    if table.imports[index].kind == ModuleImportKind.Glob {
+        give module_import_resolve_glob(
+            table,
+            index,
+            export_table
+        );
+    }
+
+    give module_import_resolve_symbol(
+        table,
+        index,
+        export_table
+    );
+}
+
+proc module_import_resolve(
+    table: ref mut ModuleImportTable,
+    database: ref ModuleDatabase,
+    export_table: ref ModuleExportTable
+) -> ModuleImportResolution {
+    let previous_error_count = len(table.errors);
+
+    set resolved: usize = 0;
+    set failed: usize = 0;
+    set index: usize = 0;
+
+    while index < len(table.imports) {
+        if module_import_resolve_item(
+            table,
+            index,
+            database,
+            export_table
+        ) {
+            resolved = resolved + 1;
+        } else {
+            failed = failed + 1;
+        }
+
+        table.imports[index].generation =
+            table.generation;
+        table.imports[index].revision =
+            table.imports[index].revision + 1;
+
+        index = index + 1;
+    }
+
+    module_import_refresh_statistics(table);
+
+    set errors: [ModuleImportError] = [];
+    set error_index = previous_error_count;
+
+    while error_index < len(table.errors) {
+        errors = errors + [table.errors[error_index]];
+        error_index = error_index + 1;
+    }
+
+    give ModuleImportResolution {
+        imports: table.imports,
+        errors: errors,
+        resolved: resolved,
+        failed: failed,
+        valid: failed == 0 and len(errors) == 0
+    };
+}
+
+proc module_imports_of(
+    table: ref ModuleImportTable,
+    module: ModuleId
+) -> [ModuleImport] {
+    set output: [ModuleImport] = [];
+
+    for item in table.imports {
+        if module_id_equal(item.module, module) {
+            output = output + [item];
+        }
+    }
+
+    give output;
+}
+
+proc module_imports_from(
+    table: ref ModuleImportTable,
+    source_module: ModuleId
+) -> [ModuleImport] {
+    set output: [ModuleImport] = [];
+
+    for item in table.imports {
+        if module_id_equal(
+            item.source_module,
+            source_module
+        ) {
+            output = output + [item];
+        }
+    }
+
+    give output;
+}
+
+proc module_import_resolved_of(
+    table: ref ModuleImportTable,
+    module: ModuleId
+) -> [ModuleImport] {
+    set output: [ModuleImport] = [];
+
+    for item in table.imports {
+        if module_id_equal(item.module, module)
+            and module_import_is_resolved(ref item)
+        {
+            output = output + [item];
+        }
+    }
+
+    give output;
+}
+
+proc module_import_reexports_of(
+    table: ref ModuleImportTable,
+    module: ModuleId
+) -> [ModuleImport] {
+    set output: [ModuleImport] = [];
+
+    for item in table.imports {
+        if module_id_equal(item.module, module)
+            and module_import_is_reexport(ref item)
+        {
+            output = output + [item];
+        }
+    }
+
+    give output;
+}
+
+proc module_import_remove(
+    table: ref mut ModuleImportTable,
+    id: ModuleImportId
+) -> bool {
+    let index = module_import_find_index(ref table, id);
+
+    pick index {
+        None {
+            give false;
+        }
+
+        Some(value) {
+            set output: [ModuleImport] = [];
+            set current: usize = 0;
+
+            while current < len(table.imports) {
+                if current != value {
+                    output = output + [
+                        table.imports[current]
+                    ];
+                }
+
+                current = current + 1;
+            }
+
+            table.imports = output;
+            module_import_refresh_statistics(table);
+
+            give true;
+        }
+    }
+}
+
+proc module_import_remove_module(
+    table: ref mut ModuleImportTable,
+    module: ModuleId
+) -> usize {
+    set output: [ModuleImport] = [];
+    set removed: usize = 0;
+
+    for item in table.imports {
+        if module_id_equal(item.module, module)
+            or module_id_equal(item.source_module, module)
+        {
+            removed = removed + 1;
+        } else {
+            output = output + [item];
+        }
+    }
+
+    table.imports = output;
+    module_import_refresh_statistics(table);
+
+    give removed;
+}
+
+proc module_import_invalidate(
+    table: ref mut ModuleImportTable,
+    id: ModuleImportId
+) -> bool {
+    give module_import_set_state(
+        table,
+        id,
+        ModuleImportState.Invalidated
+    );
+}
+
+proc module_import_invalidate_module(
+    table: ref mut ModuleImportTable,
+    module: ModuleId
+) -> usize {
+    set invalidated: usize = 0;
+    set index: usize = 0;
+
+    while index < len(table.imports) {
+        if module_id_equal(table.imports[index].module, module)
+            or module_id_equal(
+                table.imports[index].source_module,
+                module
+            )
+        {
+            if table.imports[index].state
+                != ModuleImportState.Invalidated
+            {
+                table.imports[index].state =
+                    ModuleImportState.Invalidated;
+                table.imports[index].enabled = false;
+                table.imports[index].generation =
+                    table.generation;
+                table.imports[index].revision =
+                    table.imports[index].revision + 1;
+
+                invalidated = invalidated + 1;
+            }
+        }
+
+        index = index + 1;
+    }
+
+    module_import_refresh_statistics(table);
+
+    give invalidated;
+}
+
+proc module_import_validate_database(
+    table: ref mut ModuleImportTable,
+    database: ref ModuleDatabase
+) -> bool {
+    set valid: bool = true;
+
+    for item in table.imports {
+        if module_database_get(database, item.module) == None {
+            module_import_push_error(
+                table,
+                ModuleImportErrorKind.InvalidModule,
+                "",
+                module_import_path_string(ref item.path),
+                item.name,
+                "import owner module does not exist",
+                item.span
+            );
+
+            valid = false;
+        }
+
+        if module_id_is_valid(item.source_module)
+            and module_database_get(
+                database,
+                item.source_module
+            ) == None
+        {
+            module_import_push_error(
+                table,
+                ModuleImportErrorKind.ModuleNotFound,
+                "",
+                module_import_path_string(ref item.path),
+                item.name,
+                "resolved import source module does not exist",
+                item.span
+            );
+
+            valid = false;
+        }
+    }
+
+    give valid;
+}
+
+proc module_import_validate(
+    table: ref mut ModuleImportTable
+) -> bool {
+    set valid: bool = true;
+
+    for item in table.imports {
+        if not module_import_is_valid(ref item) {
+            module_import_push_error(
+                table,
+                ModuleImportErrorKind.DatabaseCorrupted,
+                "",
+                module_import_path_string(ref item.path),
+                item.name,
+                "module import contains invalid data",
+                item.span
+            );
+
+            valid = false;
+        }
+
+        if item.state == ModuleImportState.Declared
+            or item.state == ModuleImportState.Resolving
+        {
+            module_import_push_error(
+                table,
+                ModuleImportErrorKind.UnresolvedImport,
+                "",
+                module_import_path_string(ref item.path),
+                item.name,
+                "module import has not been resolved",
+                item.span
+            );
+
+            valid = false;
+        }
+
+        if item.state == ModuleImportState.Ambiguous {
+            module_import_push_error(
+                table,
+                ModuleImportErrorKind.AmbiguousSymbol,
+                "",
+                module_import_path_string(ref item.path),
+                item.name,
+                "module import is ambiguous",
+                item.span
+            );
+
+            valid = false;
+        }
+
+        if item.state == ModuleImportState.MissingModule {
+            module_import_push_error(
+                table,
+                ModuleImportErrorKind.ModuleNotFound,
+                "",
+                module_import_path_string(ref item.path),
+                item.name,
+                "module import source is missing",
+                item.span
+            );
+
+            valid = false;
+        }
+
+        if item.state == ModuleImportState.MissingSymbol {
+            module_import_push_error(
+                table,
+                ModuleImportErrorKind.SymbolNotFound,
+                "",
+                module_import_path_string(ref item.path),
+                item.name,
+                "module import symbol is missing",
+                item.span
+            );
+
+            valid = false;
+        }
+
+        if item.state == ModuleImportState.PrivateSymbol {
+            module_import_push_error(
+                table,
+                ModuleImportErrorKind.PrivateSymbol,
+                "",
+                module_import_path_string(ref item.path),
+                item.name,
+                "module import refers to a private symbol",
+                item.span
+            );
+
+            valid = false;
+        }
+
+        if item.state == ModuleImportState.Disabled
+            and not item.optional
+        {
+            module_import_push_error(
+                table,
+                ModuleImportErrorKind.DisabledImport,
+                "",
+                module_import_path_string(ref item.path),
+                item.name,
+                "required module import is disabled",
+                item.span
+            );
+
+            valid = false;
+        }
+
+        if item.state == ModuleImportState.Failed {
+            module_import_push_error(
+                table,
+                ModuleImportErrorKind.InvalidState,
+                "",
+                module_import_path_string(ref item.path),
+                item.name,
+                "module import resolution failed",
+                item.span
+            );
+
+            valid = false;
+        }
+    }
+
+    give valid and len(table.errors) == 0;
+}
+
+proc module_import_clear_errors(
+    table: ref mut ModuleImportTable
+) {
+    table.errors = [];
+}
+
+proc module_import_advance_generation(
+    table: ref mut ModuleImportTable
+) -> u64 {
+    table.generation = table.generation + 1;
+    give table.generation;
+}
+
+proc module_import_clear(
+    table: ref mut ModuleImportTable
+) {
+    table.imports = [];
+    table.errors = [];
+    table.generation = table.generation + 1;
+    table.statistics = module_import_statistics_empty();
+}
+
+proc module_import_reset(
+    table: ref mut ModuleImportTable
+) {
+    table.imports = [];
+    table.errors = [];
+    table.next_id = 1;
+    table.generation = 1;
+    table.statistics = module_import_statistics_empty();
+}
+
+proc module_import_count(
+    table: ref ModuleImportTable
+) -> usize {
+    give len(table.imports);
+}
+
+proc module_import_is_empty(
+    table: ref ModuleImportTable
+) -> bool {
+    give len(table.imports) == 0;
+}
+
+proc module_import_has_errors(
+    table: ref ModuleImportTable
+) -> bool {
+    give len(table.errors) != 0;
+}
+
+proc module_import_statistics(
+    table: ref ModuleImportTable
+) -> ModuleImportStatistics {
+    give table.statistics;
+}
+
+proc module_import_error_code(
+    error: ref ModuleImportError
+) -> string {
+    pick error.kind {
+        ModuleImportErrorKind.InvalidArgument {
+            give "E_MODULE_IMPORT_ARGUMENT";
+        }
+
+        ModuleImportErrorKind.InvalidModule {
+            give "E_MODULE_IMPORT_MODULE";
+        }
+
+        ModuleImportErrorKind.EmptyPath {
+            give "E_MODULE_IMPORT_PATH";
+        }
+
+        ModuleImportErrorKind.EmptyName {
+            give "E_MODULE_IMPORT_NAME";
+        }
+
+        ModuleImportErrorKind.DuplicateImport {
+            give "E_MODULE_IMPORT_DUPLICATE";
+        }
+
+        ModuleImportErrorKind.ConflictingImport {
+            give "E_MODULE_IMPORT_CONFLICT";
+        }
+
+        ModuleImportErrorKind.ModuleNotFound {
+            give "E_MODULE_NOT_FOUND";
+        }
+
+        ModuleImportErrorKind.SymbolNotFound {
+            give "E_MODULE_IMPORT_SYMBOL_NOT_FOUND";
+        }
+
+        ModuleImportErrorKind.PrivateSymbol {
+            give "E_MODULE_IMPORT_PRIVATE";
+        }
+
+        ModuleImportErrorKind.AmbiguousSymbol {
+            give "E_MODULE_IMPORT_AMBIGUOUS";
+        }
+
+        ModuleImportErrorKind.CircularImport {
+            give "E_MODULE_IMPORT_CYCLE";
+        }
+
+        ModuleImportErrorKind.InvalidAlias {
+            give "E_MODULE_IMPORT_ALIAS";
+        }
+
+        ModuleImportErrorKind.InvalidGlob {
+            give "E_MODULE_IMPORT_GLOB";
+        }
+
+        ModuleImportErrorKind.DisabledImport {
+            give "E_MODULE_IMPORT_DISABLED";
+        }
+
+        ModuleImportErrorKind.UnresolvedImport {
+            give "E_MODULE_IMPORT_UNRESOLVED";
+        }
+
+        ModuleImportErrorKind.InvalidState {
+            give "E_MODULE_IMPORT_STATE";
+        }
+
+        ModuleImportErrorKind.DatabaseCorrupted {
+            give "E_MODULE_IMPORT_DATABASE";
+        }
+    }
+}

@@ -1,3 +1,7 @@
-# src/util/README.md
+# src/util
 
-Bootstrap support directory for the Vitte C17 seed compiler.
+Category: Utilities.
+
+Purpose: shared bootstrap utilities.
+
+This directory is part of the C17 bootstrap source tree and is covered by `make -C bootstrap verify`.

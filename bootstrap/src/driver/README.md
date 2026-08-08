@@ -36,10 +36,17 @@ Stages are explicit and stable:
 - `diagnostics`
 - `cleanup`
 
-The current bootstrap parser is intentionally minimal: it validates source
-presence, builds a deterministic AST module containing `main -> int { give N }`,
-and extracts the first integer literal from the source as `N`. This gives the
-driver a real end-to-end path while the lexer/parser/sema folders are completed.
+The current bootstrap driver runs the real bootstrap frontend:
+
+- parser over the source text or module wrapper
+- AST validation
+- semantic analysis
+- HIR and IR lowering
+- C17 emission or native C compilation
+
+When parsing through `vitte_module_t`, the driver also registers and resolves
+imports before semantic analysis. Global imports use configured search paths,
+and sibling modules are discoverable from the input file directory.
 
 ## Options
 
@@ -65,6 +72,8 @@ All user-facing failures are recorded in `vitte_diagnostic_bag_t`:
 - source size limit exceeded
 - empty source
 - invalid configuration
+- import resolver initialization failure
+- missing imported module
 - AST allocation or validation failure
 - semantic failure
 - HIR or IR backend lowering failure
@@ -77,7 +86,8 @@ does not depend on `runtime/*`.
 ## Output
 
 `check` validates the pipeline through semantic analysis and backend HIR/IR
-validation.
+validation. For file inputs it also verifies that declared imports can be
+resolved on disk.
 
 `emit-c` writes to the requested file path or to the result output buffer when
 the path is `NULL`.

@@ -1,0 +1,237 @@
+(* Vitte attribute grammar *)
+
+attribute
+    = outer_attribute
+    | inner_attribute
+    ;
+
+outer_attribute
+    = "#", "[", attribute_body, "]"
+    ;
+
+inner_attribute
+    = "#", "!", "[", attribute_body, "]"
+    ;
+
+attribute_body
+    = attribute_path, [ attribute_input ]
+    ;
+
+attribute_path
+    = identifier, { "::", identifier }
+    ;
+
+attribute_input
+    = "(", [ attribute_arguments ], ")"
+    | "=", attribute_value
+    ;
+
+attribute_arguments
+    = attribute_argument, { ",", attribute_argument }, [ "," ]
+    ;
+
+attribute_argument
+    = attribute_named_argument
+    | attribute_value
+    ;
+
+attribute_named_argument
+    = identifier, "=", attribute_value
+    ;
+
+attribute_value
+    = literal
+    | path
+    | expression
+    | attribute_list
+    ;
+
+attribute_list
+    = "[", [ attribute_arguments ], "]"
+    ;
+
+attribute_name
+    = "allow"
+    | "aligned"
+    | "benchmark"
+    | "c"
+    | "cold"
+    | "deprecated"
+    | "deny"
+    | "error"
+    | "export"
+    | "hot"
+    | "import"
+    | "inline"
+    | "intrinsic"
+    | "must_use"
+    | "no_inline"
+    | "no_mangle"
+    | "packed"
+    | "repr"
+    | "test"
+    | "warning"
+    | identifier
+    ;
+
+attribute_sequence
+    = { attribute }
+    ;
+
+item_attributes
+    = { outer_attribute }
+    ;
+
+module_attributes
+    = { inner_attribute }
+    ;
+
+representation_attribute
+    = "#", "[", "repr", "(", representation_kind,
+      { ",", representation_option }, [ "," ], ")", "]"
+    ;
+
+representation_kind
+    = "C"
+    | "transparent"
+    | "native"
+    | identifier
+    ;
+
+representation_option
+    = "packed"
+    | "aligned", "(", integer_literal, ")"
+    | identifier
+    ;
+
+alignment_attribute
+    = "#", "[", "aligned", "(", integer_literal, ")", "]"
+    ;
+
+deprecation_attribute
+    = "#", "[", "deprecated",
+      [ "(", deprecation_arguments, ")" ], "]"
+    ;
+
+deprecation_arguments
+    = deprecation_argument,
+      { ",", deprecation_argument },
+      [ "," ]
+    ;
+
+deprecation_argument
+    = "since", "=", string_literal
+    | "note", "=", string_literal
+    | string_literal
+    ;
+
+lint_attribute
+    = "#", "[", lint_level, "(", lint_names, ")", "]"
+    ;
+
+lint_level
+    = "allow"
+    | "warning"
+    | "deny"
+    | "error"
+    ;
+
+lint_names
+    = identifier, { ",", identifier }, [ "," ]
+    ;
+
+inline_attribute
+    = "#", "[", "inline",
+      [ "(", inline_mode, ")" ], "]"
+    ;
+
+inline_mode
+    = "always"
+    | "never"
+    | "hint"
+    ;
+
+import_attribute
+    = "#", "[", "import", "(", string_literal,
+      [ ",", import_options ], ")", "]"
+    ;
+
+import_options
+    = import_option, { ",", import_option }, [ "," ]
+    ;
+
+import_option
+    = "name", "=", string_literal
+    | "library", "=", string_literal
+    | "abi", "=", string_literal
+    | "weak", "=", boolean_literal
+    ;
+
+export_attribute
+    = "#", "[", "export",
+      [ "(", export_options, ")" ], "]"
+    ;
+
+export_options
+    = export_option, { ",", export_option }, [ "," ]
+    ;
+
+export_option
+    = "name", "=", string_literal
+    | "abi", "=", string_literal
+    | "visibility", "=", string_literal
+    ;
+
+test_attribute
+    = "#", "[", "test",
+      [ "(", test_options, ")" ], "]"
+    ;
+
+test_options
+    = test_option, { ",", test_option }, [ "," ]
+    ;
+
+test_option
+    = "name", "=", string_literal
+    | "ignore", "=", boolean_literal
+    | "timeout", "=", integer_literal
+    | "should_panic", "=", boolean_literal
+    ;
+
+benchmark_attribute
+    = "#", "[", "benchmark",
+      [ "(", benchmark_options, ")" ], "]"
+    ;
+
+benchmark_options
+    = benchmark_option,
+      { ",", benchmark_option },
+      [ "," ]
+    ;
+
+benchmark_option
+    = "name", "=", string_literal
+    | "iterations", "=", integer_literal
+    | "warmup", "=", integer_literal
+    ;
+
+identifier
+    = identifier_start, { identifier_continue }
+    ;
+
+path
+    = identifier, { "::", identifier }
+    ;
+
+literal
+    = integer_literal
+    | float_literal
+    | string_literal
+    | character_literal
+    | boolean_literal
+    ;
+
+boolean_literal
+    = "true"
+    | "false"
+    ;

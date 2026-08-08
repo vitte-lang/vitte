@@ -84,6 +84,288 @@ static void vitte_sema_leave(vitte_sema_t *sema) {
 static const vitte_type_t *vitte_sema_resolve_type_ref(
     vitte_sema_t *sema,
     const vitte_ast_type_ref_t *type_ref
+);
+
+static const char *vitte_sema_last_name_segment(const char *name) {
+    const char *segment;
+    const char *cursor;
+
+    if (name == NULL) {
+        return NULL;
+    }
+    segment = name;
+    for (cursor = name; *cursor != '\0'; cursor++) {
+        if (*cursor == '.') {
+            segment = cursor + 1;
+        } else if (*cursor == ':' && cursor[1] == ':') {
+            segment = cursor + 2;
+            cursor++;
+        }
+    }
+    return segment;
+}
+
+static char *vitte_sema_copy_text(vitte_sema_t *sema, const char *text, size_t length) {
+    char *copy;
+
+    if (sema == NULL || sema->ast == NULL || sema->ast->arena == NULL || text == NULL) {
+        return NULL;
+    }
+    copy = (char *)vitte_arena_alloc(sema->ast->arena, length + 1u, 1u);
+    if (copy == NULL) {
+        return NULL;
+    }
+    if (length > 0u) {
+        (void)memcpy(copy, text, length);
+    }
+    copy[length] = '\0';
+    return copy;
+}
+
+static char *vitte_sema_join_qualified_name(
+    vitte_sema_t *sema,
+    const char *prefix,
+    const char *name
+) {
+    size_t prefix_length;
+    size_t name_length;
+    char *joined;
+
+    if (sema == NULL || prefix == NULL || name == NULL) {
+        return NULL;
+    }
+    prefix_length = strlen(prefix);
+    name_length = strlen(name);
+    joined = (char *)vitte_arena_alloc(sema->ast->arena, prefix_length + 2u + name_length + 1u, 1u);
+    if (joined == NULL) {
+        return NULL;
+    }
+    (void)memcpy(joined, prefix, prefix_length);
+    joined[prefix_length] = ':';
+    joined[prefix_length + 1u] = ':';
+    (void)memcpy(joined + prefix_length + 2u, name, name_length);
+    joined[prefix_length + 2u + name_length] = '\0';
+    return joined;
+}
+
+static const vitte_ast_module_t *vitte_sema_find_import_module(
+    const vitte_sema_t *sema,
+    const char *module_name
+) {
+    size_t index;
+
+    if (sema == NULL || module_name == NULL) {
+        return NULL;
+    }
+    for (index = 0u; index < sema->imported_module_count; index++) {
+        if (sema->imported_modules[index].module_name != NULL &&
+            strcmp(sema->imported_modules[index].module_name, module_name) == 0) {
+            return sema->imported_modules[index].root;
+        }
+    }
+    return NULL;
+}
+
+static const vitte_ast_decl_t *vitte_sema_find_module_decl(
+    const vitte_ast_module_t *module,
+    const char *name
+) {
+    const vitte_ast_node_t *decl;
+
+    if (module == NULL || name == NULL) {
+        return NULL;
+    }
+    for (decl = module->as.module.declarations.first; decl != NULL; decl = decl->next) {
+        if ((decl->kind == VITTE_AST_NODE_PROC_DECL && decl->as.proc_decl.name != NULL &&
+                strcmp(decl->as.proc_decl.name, name) == 0) ||
+            (decl->kind == VITTE_AST_NODE_CONST_DECL && decl->as.const_decl.name != NULL &&
+                strcmp(decl->as.const_decl.name, name) == 0)) {
+            return decl;
+        }
+    }
+    return NULL;
+}
+
+static vitte_status_t vitte_sema_define_imported_decl(
+    vitte_sema_t *sema,
+    const char *visible_name,
+    const vitte_ast_decl_t *decl,
+    const vitte_ast_span_t *span
+) {
+    const vitte_symbol_t *symbol = NULL;
+    const vitte_type_t *type = NULL;
+    vitte_status_t status;
+
+    if (sema == NULL || visible_name == NULL || decl == NULL) {
+        return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+    }
+    if (decl->kind == VITTE_AST_NODE_PROC_DECL) {
+        type = decl->as.proc_decl.return_type != NULL ?
+            vitte_sema_resolve_type_ref(sema, decl->as.proc_decl.return_type) :
+            vitte_type_builtin(&sema->types, VITTE_BUILTIN_TYPE_VOID);
+        status = vitte_symbol_define_proc(
+            &sema->symbols,
+            visible_name,
+            type,
+            decl->as.proc_decl.parameters.count,
+            false,
+            decl,
+            &symbol
+        );
+    } else if (decl->kind == VITTE_AST_NODE_CONST_DECL) {
+        type = decl->as.const_decl.type != NULL ?
+            vitte_sema_resolve_type_ref(sema, decl->as.const_decl.type) :
+            vitte_sema_error_type(sema);
+        status = vitte_symbol_define(
+            &sema->symbols,
+            VITTE_SYMBOL_KIND_CONST,
+            visible_name,
+            type,
+            decl,
+            false,
+            &symbol
+        );
+    } else {
+        return VITTE_STATUS_OK;
+    }
+    if (status == VITTE_STATUS_OK) {
+        status = vitte_scope_define(&sema->scopes, visible_name, symbol);
+    }
+    if (status != VITTE_STATUS_OK) {
+        return vitte_sema_fail(
+            sema,
+            VITTE_STATUS_ERROR_PARSE,
+            "VITTE_SEMA_E_IMPORT",
+            "failed to define imported symbol",
+            visible_name,
+            span
+        );
+    }
+    sema->stats.symbol_count++;
+    return VITTE_STATUS_OK;
+}
+
+static vitte_status_t vitte_sema_predeclare_imports(
+    vitte_sema_t *sema,
+    const vitte_ast_module_t *module
+) {
+    const vitte_ast_node_t *import_decl;
+
+    if (sema == NULL || module == NULL) {
+        return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+    }
+    for (import_decl = module->as.module.imports.first; import_decl != NULL; import_decl = import_decl->next) {
+        const vitte_ast_module_t *imported_module;
+        const char *path;
+        const char *last_dot;
+        const char *leaf_name;
+        char *owner_name = NULL;
+
+        if (import_decl->kind != VITTE_AST_NODE_IMPORT_DECL || import_decl->as.import_decl.path == NULL) {
+            continue;
+        }
+        path = import_decl->as.import_decl.path;
+        last_dot = strrchr(path, '.');
+        if (import_decl->as.import_decl.import_kind == VITTE_AST_IMPORT_SYMBOL && last_dot != NULL) {
+            owner_name = vitte_sema_copy_text(sema, path, (size_t)(last_dot - path));
+            leaf_name = last_dot + 1;
+        } else {
+            owner_name = vitte_sema_copy_text(sema, path, strlen(path));
+            leaf_name = vitte_sema_last_name_segment(path);
+        }
+        if (owner_name == NULL || leaf_name == NULL) {
+            return vitte_sema_fail(
+                sema,
+                VITTE_STATUS_ERROR_OUT_OF_MEMORY,
+                "VITTE_SEMA_E_IMPORT",
+                "failed to allocate import metadata",
+                path,
+                &import_decl->span
+            );
+        }
+
+        imported_module = vitte_sema_find_import_module(sema, owner_name);
+        if (imported_module == NULL) {
+            return vitte_sema_fail(
+                sema,
+                VITTE_STATUS_ERROR_PARSE,
+                "VITTE_SEMA_E_IMPORT",
+                "imported module metadata is missing",
+                owner_name,
+                &import_decl->span
+            );
+        }
+
+        if (import_decl->as.import_decl.import_kind == VITTE_AST_IMPORT_MODULE) {
+            const char *prefix = import_decl->as.import_decl.alias != NULL ?
+                import_decl->as.import_decl.alias :
+                vitte_sema_last_name_segment(path);
+            const vitte_ast_node_t *decl;
+
+            for (decl = imported_module->as.module.declarations.first; decl != NULL; decl = decl->next) {
+                const char *decl_name = decl->kind == VITTE_AST_NODE_PROC_DECL ? decl->as.proc_decl.name :
+                    decl->kind == VITTE_AST_NODE_CONST_DECL ? decl->as.const_decl.name : NULL;
+                char *qualified_name;
+
+                if (decl_name == NULL) {
+                    continue;
+                }
+                qualified_name = vitte_sema_join_qualified_name(sema, prefix, decl_name);
+                if (qualified_name == NULL) {
+                    return vitte_sema_fail(
+                        sema,
+                        VITTE_STATUS_ERROR_OUT_OF_MEMORY,
+                        "VITTE_SEMA_E_IMPORT",
+                        "failed to allocate imported namespace symbol",
+                        prefix,
+                        &import_decl->span
+                    );
+                }
+                if (vitte_sema_define_imported_decl(sema, qualified_name, decl, &import_decl->span) != VITTE_STATUS_OK) {
+                    return sema->last_error.status;
+                }
+            }
+        } else if (import_decl->as.import_decl.import_kind == VITTE_AST_IMPORT_GLOB) {
+            const vitte_ast_node_t *decl;
+
+            for (decl = imported_module->as.module.declarations.first; decl != NULL; decl = decl->next) {
+                const char *decl_name = decl->kind == VITTE_AST_NODE_PROC_DECL ? decl->as.proc_decl.name :
+                    decl->kind == VITTE_AST_NODE_CONST_DECL ? decl->as.const_decl.name : NULL;
+
+                if (decl_name == NULL) {
+                    continue;
+                }
+                if (vitte_sema_define_imported_decl(sema, decl_name, decl, &import_decl->span) != VITTE_STATUS_OK) {
+                    return sema->last_error.status;
+                }
+            }
+        } else {
+            const vitte_ast_decl_t *decl = vitte_sema_find_module_decl(imported_module, leaf_name);
+            const char *visible_name = import_decl->as.import_decl.alias != NULL ?
+                import_decl->as.import_decl.alias :
+                leaf_name;
+
+            if (decl == NULL) {
+                return vitte_sema_fail(
+                    sema,
+                    VITTE_STATUS_ERROR_PARSE,
+                    "VITTE_SEMA_E_IMPORT",
+                    "imported symbol was not found in module",
+                    path,
+                    &import_decl->span
+                );
+            }
+            if (vitte_sema_define_imported_decl(sema, visible_name, decl, &import_decl->span) != VITTE_STATUS_OK) {
+                return sema->last_error.status;
+            }
+        }
+    }
+    return VITTE_STATUS_OK;
+}
+
+static const vitte_type_t *vitte_sema_resolve_type_ref(
+    vitte_sema_t *sema,
+    const vitte_ast_type_ref_t *type_ref
 ) {
     const vitte_type_t *type;
 
@@ -232,12 +514,36 @@ const vitte_sema_stats_t *vitte_sema_stats(const vitte_sema_t *sema) {
     return sema != NULL ? &sema->stats : NULL;
 }
 
+vitte_status_t vitte_sema_add_import_module(
+    vitte_sema_t *sema,
+    const char *module_name,
+    const vitte_ast_t *ast
+) {
+    if (!vitte_sema_is_initialized(sema) || module_name == NULL || ast == NULL ||
+        !vitte_ast_is_initialized(ast) || ast->root == NULL || ast->root->kind != VITTE_AST_NODE_MODULE) {
+        return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+    }
+    if (sema->imported_module_count >= VITTE_SEMA_MAX_IMPORT_MODULES) {
+        vitte_sema_set_error(sema, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_SEMA_E_IMPORT", "semantic import module table is full", module_name);
+        return VITTE_STATUS_ERROR_INVALID_STATE;
+    }
+    sema->imported_modules[sema->imported_module_count].module_name = module_name;
+    sema->imported_modules[sema->imported_module_count].root = ast->root;
+    sema->imported_module_count++;
+    return VITTE_STATUS_OK;
+}
+
 static const vitte_symbol_t *vitte_sema_lookup_symbol(
     vitte_sema_t *sema,
     const char *name,
     const vitte_ast_span_t *span
 ) {
     const vitte_symbol_t *symbol = vitte_scope_lookup(&sema->scopes, name);
+    const char *segment = vitte_sema_last_name_segment(name);
+
+    if (symbol == NULL && segment != NULL && segment != name) {
+        symbol = vitte_scope_lookup(&sema->scopes, segment);
+    }
     if (symbol == NULL) {
         (void)vitte_sema_fail(
             sema,
@@ -449,6 +755,55 @@ static vitte_status_t vitte_sema_define_local(
     return VITTE_STATUS_OK;
 }
 
+static vitte_status_t vitte_sema_define_param(
+    vitte_sema_t *sema,
+    const vitte_ast_node_t *param
+) {
+    const vitte_symbol_t *symbol = NULL;
+    const vitte_type_t *type;
+    vitte_status_t status;
+
+    if (sema == NULL || param == NULL || param->kind != VITTE_AST_NODE_PARAM_DECL) {
+        return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+    }
+    if (!sema->options.allow_shadowing && vitte_scope_lookup_current(&sema->scopes, param->as.param_decl.name) != NULL) {
+        return vitte_sema_fail(
+            sema,
+            VITTE_STATUS_ERROR_PARSE,
+            "VITTE_SEMA_E_DUPLICATE",
+            "duplicate parameter name",
+            param->as.param_decl.name,
+            &param->span
+        );
+    }
+
+    type = vitte_sema_resolve_type_ref(sema, param->as.param_decl.type);
+    status = vitte_symbol_define(
+        &sema->symbols,
+        VITTE_SYMBOL_KIND_PARAM,
+        param->as.param_decl.name,
+        type,
+        param,
+        param->as.param_decl.mutable_value,
+        &symbol
+    );
+    if (status == VITTE_STATUS_OK) {
+        status = vitte_scope_define(&sema->scopes, param->as.param_decl.name, symbol);
+    }
+    if (status != VITTE_STATUS_OK) {
+        return vitte_sema_fail(
+            sema,
+            VITTE_STATUS_ERROR_PARSE,
+            "VITTE_SEMA_E_DEFINE",
+            "failed to define parameter",
+            param->as.param_decl.name,
+            &param->span
+        );
+    }
+    sema->stats.symbol_count++;
+    return VITTE_STATUS_OK;
+}
+
 static vitte_status_t vitte_sema_analyze_stmt(
     vitte_sema_t *sema,
     const vitte_ast_stmt_t *stmt,
@@ -567,7 +922,7 @@ static vitte_status_t vitte_sema_predeclare_module(vitte_sema_t *sema, const vit
                 &sema->symbols,
                 decl->as.proc_decl.name,
                 type,
-                0u,
+                decl->as.proc_decl.parameters.count,
                 false,
                 decl,
                 &symbol
@@ -631,6 +986,7 @@ static vitte_status_t vitte_sema_analyze_decl(vitte_sema_t *sema, const vitte_as
             break;
         }
         case VITTE_AST_NODE_PROC_DECL: {
+            const vitte_ast_node_t *param;
             const vitte_symbol_t *symbol = vitte_scope_lookup(&sema->scopes, decl->as.proc_decl.name);
             sema->current_function = symbol;
             sema->current_return_type = symbol != NULL && symbol->type != NULL ? symbol->type->return_type : vitte_sema_error_type(sema);
@@ -640,6 +996,18 @@ static vitte_status_t vitte_sema_analyze_decl(vitte_sema_t *sema, const vitte_as
                 break;
             }
             sema->stats.scope_push_count++;
+            for (param = decl->as.proc_decl.parameters.first; param != NULL; param = param->next) {
+                status = vitte_sema_define_param(sema, param);
+                if (status != VITTE_STATUS_OK) {
+                    break;
+                }
+            }
+            if (status != VITTE_STATUS_OK) {
+                (void)vitte_scope_pop(&sema->scopes);
+                sema->current_function = NULL;
+                sema->current_return_type = NULL;
+                break;
+            }
             status = vitte_sema_analyze_block(sema, decl->as.proc_decl.body, false);
             (void)vitte_scope_pop(&sema->scopes);
             sema->current_function = NULL;
@@ -686,6 +1054,15 @@ vitte_status_t vitte_sema_analyze(
     vitte_scope_stack_init(&sema->scopes);
 
     status = vitte_sema_load_builtins(sema);
+    if (status != VITTE_STATUS_OK) {
+        if (result != NULL) {
+            result->status = status;
+            vitte_error_copy(&result->last_error, &sema->last_error);
+        }
+        return status;
+    }
+
+    status = vitte_sema_predeclare_imports(sema, ast->root);
     if (status != VITTE_STATUS_OK) {
         if (result != NULL) {
             result->status = status;

@@ -1,3 +1,7 @@
-# src/source/README.md
+# src/source
 
-Bootstrap support directory for the Vitte C17 seed compiler.
+Category: Source.
+
+Purpose: source buffer accounting.
+
+This directory is part of the C17 bootstrap source tree and is covered by `make -C bootstrap verify`.

@@ -1,0 +1,1752 @@
+space vitte/compiler/analysis/modules/module_database
+
+export *
+
+use src/vitte/compiler/frontend/source/span.{Span}
+use src/vitte/compiler/analysis/modules/module_attributes.{
+    ModuleAttributes,
+    module_attributes_default
+}
+use src/vitte/compiler/analysis/modules/module_cycle.{
+    ModuleCycleGraph,
+    ModuleCycleResult,
+    module_cycle_graph_create,
+    module_cycle_graph_add_module,
+    module_cycle_graph_add_dependency,
+    module_cycle_analyze
+}
+
+pick ModuleDatabaseEntryState {
+    Declared,
+    Loading,
+    Parsed,
+    Analyzed,
+    Ready,
+    Failed,
+    Invalidated
+}
+
+pick ModuleDatabaseErrorKind {
+    InvalidArgument,
+    DuplicateModule,
+    ModuleNotFound,
+    PathConflict,
+    InvalidDependency,
+    DuplicateDependency,
+    CircularDependency,
+    InvalidState,
+    AnalysisFailed,
+    DatabaseCorrupted
+}
+
+form ModuleId {
+    value: usize
+}
+
+form ModuleDependencyId {
+    value: usize
+}
+
+form ModuleDatabaseDependency {
+    id: ModuleDependencyId
+    module_id: ModuleId
+    target_id: ModuleId
+    module_name: string
+    target_name: string
+    span: Span
+    public: bool
+    optional: bool
+}
+
+form ModuleDatabaseEntry {
+    id: ModuleId
+    name: string
+    canonical_path: string
+    source_text: string
+    source_span: Span
+    attributes: ModuleAttributes
+    state: ModuleDatabaseEntryState
+    dependencies: [ModuleDependencyId]
+    dependents: [ModuleDependencyId]
+    generation: u64
+    revision: u64
+}
+
+form ModuleDatabaseError {
+    kind: ModuleDatabaseErrorKind
+    module: string
+    dependency: string
+    message: string
+    span: Span
+}
+
+form ModuleDatabaseStatistics {
+    modules: usize
+    dependencies: usize
+    ready_modules: usize
+    failed_modules: usize
+    invalidated_modules: usize
+    insertions: u64
+    removals: u64
+    dependency_insertions: u64
+    dependency_removals: u64
+    lookups: u64
+    failed_lookups: u64
+    invalidations: u64
+}
+
+form ModuleDatabase {
+    modules: [ModuleDatabaseEntry]
+    dependencies: [ModuleDatabaseDependency]
+    errors: [ModuleDatabaseError]
+    next_module_id: usize
+    next_dependency_id: usize
+    generation: u64
+    statistics: ModuleDatabaseStatistics
+}
+
+form ModuleDatabaseAnalysis {
+    cycle_result: ModuleCycleResult
+    order: [ModuleId]
+    errors: [ModuleDatabaseError]
+    valid: bool
+}
+
+proc module_database_empty_span() -> Span {
+    give Span {
+        source: 0,
+        start: 0,
+        end: 0
+    };
+}
+
+proc module_id(value: usize) -> ModuleId {
+    give ModuleId {
+        value: value
+    };
+}
+
+proc module_dependency_id(value: usize) -> ModuleDependencyId {
+    give ModuleDependencyId {
+        value: value
+    };
+}
+
+proc module_id_invalid() -> ModuleId {
+    give module_id(0);
+}
+
+proc module_dependency_id_invalid() -> ModuleDependencyId {
+    give module_dependency_id(0);
+}
+
+proc module_id_is_valid(id: ModuleId) -> bool {
+    give id.value != 0;
+}
+
+proc module_dependency_id_is_valid(
+    id: ModuleDependencyId
+) -> bool {
+    give id.value != 0;
+}
+
+proc module_id_equal(
+    left: ModuleId,
+    right: ModuleId
+) -> bool {
+    give left.value == right.value;
+}
+
+proc module_dependency_id_equal(
+    left: ModuleDependencyId,
+    right: ModuleDependencyId
+) -> bool {
+    give left.value == right.value;
+}
+
+proc module_database_statistics_empty() -> ModuleDatabaseStatistics {
+    give ModuleDatabaseStatistics {
+        modules: 0,
+        dependencies: 0,
+        ready_modules: 0,
+        failed_modules: 0,
+        invalidated_modules: 0,
+        insertions: 0,
+        removals: 0,
+        dependency_insertions: 0,
+        dependency_removals: 0,
+        lookups: 0,
+        failed_lookups: 0,
+        invalidations: 0
+    };
+}
+
+proc module_database_create() -> ModuleDatabase {
+    give ModuleDatabase {
+        modules: [],
+        dependencies: [],
+        errors: [],
+        next_module_id: 1,
+        next_dependency_id: 1,
+        generation: 1,
+        statistics: module_database_statistics_empty()
+    };
+}
+
+proc module_database_error(
+    kind: ModuleDatabaseErrorKind,
+    module: string,
+    dependency: string,
+    message: string,
+    span: Span
+) -> ModuleDatabaseError {
+    give ModuleDatabaseError {
+        kind: kind,
+        module: module,
+        dependency: dependency,
+        message: message,
+        span: span
+    };
+}
+
+proc module_database_push_error(
+    database: ref mut ModuleDatabase,
+    kind: ModuleDatabaseErrorKind,
+    module: string,
+    dependency: string,
+    message: string,
+    span: Span
+) {
+    database.errors = database.errors + [
+        module_database_error(
+            kind,
+            module,
+            dependency,
+            message,
+            span
+        )
+    ];
+}
+
+proc module_database_find_index_by_id(
+    database: ref ModuleDatabase,
+    id: ModuleId
+) -> Option<usize> {
+    set index: usize = 0;
+
+    while index < len(database.modules) {
+        if module_id_equal(database.modules[index].id, id) {
+            give Some(index);
+        }
+
+        index = index + 1;
+    }
+
+    give None;
+}
+
+proc module_database_find_index_by_name(
+    database: ref ModuleDatabase,
+    name: string
+) -> Option<usize> {
+    set index: usize = 0;
+
+    while index < len(database.modules) {
+        if database.modules[index].name == name {
+            give Some(index);
+        }
+
+        index = index + 1;
+    }
+
+    give None;
+}
+
+proc module_database_find_index_by_path(
+    database: ref ModuleDatabase,
+    canonical_path: string
+) -> Option<usize> {
+    set index: usize = 0;
+
+    while index < len(database.modules) {
+        if database.modules[index].canonical_path == canonical_path {
+            give Some(index);
+        }
+
+        index = index + 1;
+    }
+
+    give None;
+}
+
+proc module_database_find_dependency_index(
+    database: ref ModuleDatabase,
+    id: ModuleDependencyId
+) -> Option<usize> {
+    set index: usize = 0;
+
+    while index < len(database.dependencies) {
+        if module_dependency_id_equal(
+            database.dependencies[index].id,
+            id
+        ) {
+            give Some(index);
+        }
+
+        index = index + 1;
+    }
+
+    give None;
+}
+
+proc module_database_contains_id(
+    database: ref ModuleDatabase,
+    id: ModuleId
+) -> bool {
+    give module_database_find_index_by_id(database, id) != None;
+}
+
+proc module_database_contains_name(
+    database: ref ModuleDatabase,
+    name: string
+) -> bool {
+    give module_database_find_index_by_name(database, name) != None;
+}
+
+proc module_database_contains_path(
+    database: ref ModuleDatabase,
+    canonical_path: string
+) -> bool {
+    give module_database_find_index_by_path(
+        database,
+        canonical_path
+    ) != None;
+}
+
+proc module_database_get(
+    database: ref ModuleDatabase,
+    id: ModuleId
+) -> Option<ref ModuleDatabaseEntry> {
+    let index = module_database_find_index_by_id(database, id);
+
+    pick index {
+        Some(value) {
+            give Some(ref database.modules[value]);
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc module_database_get_mut(
+    database: ref mut ModuleDatabase,
+    id: ModuleId
+) -> Option<ref mut ModuleDatabaseEntry> {
+    let index = module_database_find_index_by_id(ref database, id);
+
+    pick index {
+        Some(value) {
+            give Some(ref mut database.modules[value]);
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc module_database_get_by_name(
+    database: ref ModuleDatabase,
+    name: string
+) -> Option<ref ModuleDatabaseEntry> {
+    let index = module_database_find_index_by_name(database, name);
+
+    pick index {
+        Some(value) {
+            give Some(ref database.modules[value]);
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc module_database_get_by_name_mut(
+    database: ref mut ModuleDatabase,
+    name: string
+) -> Option<ref mut ModuleDatabaseEntry> {
+    let index = module_database_find_index_by_name(
+        ref database,
+        name
+    );
+
+    pick index {
+        Some(value) {
+            give Some(ref mut database.modules[value]);
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc module_database_get_by_path(
+    database: ref ModuleDatabase,
+    canonical_path: string
+) -> Option<ref ModuleDatabaseEntry> {
+    let index = module_database_find_index_by_path(
+        database,
+        canonical_path
+    );
+
+    pick index {
+        Some(value) {
+            give Some(ref database.modules[value]);
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc module_database_get_dependency(
+    database: ref ModuleDatabase,
+    id: ModuleDependencyId
+) -> Option<ref ModuleDatabaseDependency> {
+    let index = module_database_find_dependency_index(database, id);
+
+    pick index {
+        Some(value) {
+            give Some(ref database.dependencies[value]);
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc module_database_get_dependency_mut(
+    database: ref mut ModuleDatabase,
+    id: ModuleDependencyId
+) -> Option<ref mut ModuleDatabaseDependency> {
+    let index = module_database_find_dependency_index(
+        ref database,
+        id
+    );
+
+    pick index {
+        Some(value) {
+            give Some(ref mut database.dependencies[value]);
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc module_database_refresh_statistics(
+    database: ref mut ModuleDatabase
+) {
+    set ready: usize = 0;
+    set failed: usize = 0;
+    set invalidated: usize = 0;
+
+    for module in database.modules {
+        pick module.state {
+            ModuleDatabaseEntryState.Ready {
+                ready = ready + 1;
+            }
+
+            ModuleDatabaseEntryState.Failed {
+                failed = failed + 1;
+            }
+
+            ModuleDatabaseEntryState.Invalidated {
+                invalidated = invalidated + 1;
+            }
+
+            _ {}
+        }
+    }
+
+    database.statistics.modules = len(database.modules);
+    database.statistics.dependencies = len(database.dependencies);
+    database.statistics.ready_modules = ready;
+    database.statistics.failed_modules = failed;
+    database.statistics.invalidated_modules = invalidated;
+}
+
+proc module_database_insert(
+    database: ref mut ModuleDatabase,
+    name: string,
+    canonical_path: string,
+    source_span: Span
+) -> Option<ModuleId> {
+    if len(name) == 0 or len(canonical_path) == 0 {
+        module_database_push_error(
+            database,
+            ModuleDatabaseErrorKind.InvalidArgument,
+            name,
+            "",
+            "module name and canonical path must not be empty",
+            source_span
+        );
+
+        give None;
+    }
+
+    if module_database_contains_name(ref database, name) {
+        module_database_push_error(
+            database,
+            ModuleDatabaseErrorKind.DuplicateModule,
+            name,
+            "",
+            "module name already exists in database",
+            source_span
+        );
+
+        give None;
+    }
+
+    let path_index = module_database_find_index_by_path(
+        ref database,
+        canonical_path
+    );
+
+    pick path_index {
+        Some(value) {
+            module_database_push_error(
+                database,
+                ModuleDatabaseErrorKind.PathConflict,
+                name,
+                database.modules[value].name,
+                "module path is already assigned to another module",
+                source_span
+            );
+
+            give None;
+        }
+
+        None {}
+    }
+
+    let id = module_id(database.next_module_id);
+    database.next_module_id = database.next_module_id + 1;
+
+    database.modules = database.modules + [
+        ModuleDatabaseEntry {
+            id: id,
+            name: name,
+            canonical_path: canonical_path,
+            source_text: "",
+            source_span: source_span,
+            attributes: module_attributes_default(),
+            state: ModuleDatabaseEntryState.Declared,
+            dependencies: [],
+            dependents: [],
+            generation: database.generation,
+            revision: 1
+        }
+    ];
+
+    database.statistics.insertions =
+        database.statistics.insertions + 1;
+
+    module_database_refresh_statistics(database);
+
+    give Some(id);
+}
+
+proc module_database_insert_full(
+    database: ref mut ModuleDatabase,
+    name: string,
+    canonical_path: string,
+    source_text: string,
+    source_span: Span,
+    attributes: ModuleAttributes
+) -> Option<ModuleId> {
+    let id = module_database_insert(
+        database,
+        name,
+        canonical_path,
+        source_span
+    );
+
+    pick id {
+        Some(value) {
+            let index = module_database_find_index_by_id(
+                ref database,
+                value
+            );
+
+            pick index {
+                Some(module_index) {
+                    database.modules[module_index].source_text =
+                        source_text;
+                    database.modules[module_index].attributes =
+                        attributes;
+                    database.modules[module_index].state =
+                        ModuleDatabaseEntryState.Parsed;
+                    database.modules[module_index].revision =
+                        database.modules[module_index].revision + 1;
+                }
+
+                None {
+                    module_database_push_error(
+                        database,
+                        ModuleDatabaseErrorKind.DatabaseCorrupted,
+                        name,
+                        "",
+                        "inserted module cannot be found",
+                        source_span
+                    );
+
+                    give None;
+                }
+            }
+
+            module_database_refresh_statistics(database);
+            give Some(value);
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc module_database_set_source(
+    database: ref mut ModuleDatabase,
+    id: ModuleId,
+    source_text: string,
+    source_span: Span
+) -> bool {
+    let index = module_database_find_index_by_id(ref database, id);
+
+    pick index {
+        Some(value) {
+            database.modules[value].source_text = source_text;
+            database.modules[value].source_span = source_span;
+            database.modules[value].revision =
+                database.modules[value].revision + 1;
+            database.modules[value].generation =
+                database.generation;
+
+            if database.modules[value].state
+                == ModuleDatabaseEntryState.Declared
+            {
+                database.modules[value].state =
+                    ModuleDatabaseEntryState.Parsed;
+            }
+
+            module_database_refresh_statistics(database);
+            give true;
+        }
+
+        None {
+            module_database_push_error(
+                database,
+                ModuleDatabaseErrorKind.ModuleNotFound,
+                "",
+                "",
+                "cannot set source of unknown module",
+                source_span
+            );
+
+            give false;
+        }
+    }
+}
+
+proc module_database_set_attributes(
+    database: ref mut ModuleDatabase,
+    id: ModuleId,
+    attributes: ModuleAttributes
+) -> bool {
+    let index = module_database_find_index_by_id(ref database, id);
+
+    pick index {
+        Some(value) {
+            database.modules[value].attributes = attributes;
+            database.modules[value].revision =
+                database.modules[value].revision + 1;
+            database.modules[value].generation =
+                database.generation;
+
+            give true;
+        }
+
+        None {
+            module_database_push_error(
+                database,
+                ModuleDatabaseErrorKind.ModuleNotFound,
+                "",
+                "",
+                "cannot set attributes of unknown module",
+                module_database_empty_span()
+            );
+
+            give false;
+        }
+    }
+}
+
+proc module_database_set_state(
+    database: ref mut ModuleDatabase,
+    id: ModuleId,
+    state: ModuleDatabaseEntryState
+) -> bool {
+    let index = module_database_find_index_by_id(ref database, id);
+
+    pick index {
+        Some(value) {
+            database.modules[value].state = state;
+            database.modules[value].generation =
+                database.generation;
+            database.modules[value].revision =
+                database.modules[value].revision + 1;
+
+            module_database_refresh_statistics(database);
+            give true;
+        }
+
+        None {
+            module_database_push_error(
+                database,
+                ModuleDatabaseErrorKind.ModuleNotFound,
+                "",
+                "",
+                "cannot update state of unknown module",
+                module_database_empty_span()
+            );
+
+            give false;
+        }
+    }
+}
+
+proc module_database_begin_loading(
+    database: ref mut ModuleDatabase,
+    id: ModuleId
+) -> bool {
+    let index = module_database_find_index_by_id(ref database, id);
+
+    pick index {
+        Some(value) {
+            if database.modules[value].state
+                == ModuleDatabaseEntryState.Loading
+            {
+                module_database_push_error(
+                    database,
+                    ModuleDatabaseErrorKind.CircularDependency,
+                    database.modules[value].name,
+                    "",
+                    "module is already being loaded",
+                    database.modules[value].source_span
+                );
+
+                give false;
+            }
+
+            database.modules[value].state =
+                ModuleDatabaseEntryState.Loading;
+            database.modules[value].generation =
+                database.generation;
+
+            module_database_refresh_statistics(database);
+            give true;
+        }
+
+        None {
+            module_database_push_error(
+                database,
+                ModuleDatabaseErrorKind.ModuleNotFound,
+                "",
+                "",
+                "cannot load unknown module",
+                module_database_empty_span()
+            );
+
+            give false;
+        }
+    }
+}
+
+proc module_database_mark_parsed(
+    database: ref mut ModuleDatabase,
+    id: ModuleId
+) -> bool {
+    give module_database_set_state(
+        database,
+        id,
+        ModuleDatabaseEntryState.Parsed
+    );
+}
+
+proc module_database_mark_analyzed(
+    database: ref mut ModuleDatabase,
+    id: ModuleId
+) -> bool {
+    give module_database_set_state(
+        database,
+        id,
+        ModuleDatabaseEntryState.Analyzed
+    );
+}
+
+proc module_database_mark_ready(
+    database: ref mut ModuleDatabase,
+    id: ModuleId
+) -> bool {
+    give module_database_set_state(
+        database,
+        id,
+        ModuleDatabaseEntryState.Ready
+    );
+}
+
+proc module_database_mark_failed(
+    database: ref mut ModuleDatabase,
+    id: ModuleId,
+    message: string,
+    span: Span
+) -> bool {
+    let index = module_database_find_index_by_id(ref database, id);
+
+    pick index {
+        Some(value) {
+            database.modules[value].state =
+                ModuleDatabaseEntryState.Failed;
+            database.modules[value].generation =
+                database.generation;
+            database.modules[value].revision =
+                database.modules[value].revision + 1;
+
+            module_database_push_error(
+                database,
+                ModuleDatabaseErrorKind.AnalysisFailed,
+                database.modules[value].name,
+                "",
+                message,
+                span
+            );
+
+            module_database_refresh_statistics(database);
+            give true;
+        }
+
+        None {
+            module_database_push_error(
+                database,
+                ModuleDatabaseErrorKind.ModuleNotFound,
+                "",
+                "",
+                "cannot fail unknown module",
+                span
+            );
+
+            give false;
+        }
+    }
+}
+
+proc module_database_dependency_exists(
+    database: ref ModuleDatabase,
+    module_id: ModuleId,
+    target_id: ModuleId
+) -> bool {
+    for dependency in database.dependencies {
+        if module_id_equal(dependency.module_id, module_id)
+            and module_id_equal(dependency.target_id, target_id)
+        {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc module_database_add_dependency(
+    database: ref mut ModuleDatabase,
+    module_id: ModuleId,
+    target_id: ModuleId,
+    span: Span,
+    public: bool,
+    optional: bool
+) -> Option<ModuleDependencyId> {
+    let module_index = module_database_find_index_by_id(
+        ref database,
+        module_id
+    );
+
+    let target_index = module_database_find_index_by_id(
+        ref database,
+        target_id
+    );
+
+    pick module_index {
+        None {
+            module_database_push_error(
+                database,
+                ModuleDatabaseErrorKind.ModuleNotFound,
+                "",
+                "",
+                "dependency source module does not exist",
+                span
+            );
+
+            give None;
+        }
+
+        Some(source) {
+            pick target_index {
+                None {
+                    module_database_push_error(
+                        database,
+                        ModuleDatabaseErrorKind.ModuleNotFound,
+                        database.modules[source].name,
+                        "",
+                        "dependency target module does not exist",
+                        span
+                    );
+
+                    give None;
+                }
+
+                Some(target) {
+                    if module_id_equal(module_id, target_id) {
+                        module_database_push_error(
+                            database,
+                            ModuleDatabaseErrorKind.CircularDependency,
+                            database.modules[source].name,
+                            database.modules[target].name,
+                            "module cannot directly depend on itself",
+                            span
+                        );
+
+                        give None;
+                    }
+
+                    if module_database_dependency_exists(
+                        ref database,
+                        module_id,
+                        target_id
+                    ) {
+                        module_database_push_error(
+                            database,
+                            ModuleDatabaseErrorKind.DuplicateDependency,
+                            database.modules[source].name,
+                            database.modules[target].name,
+                            "module dependency already exists",
+                            span
+                        );
+
+                        give None;
+                    }
+
+                    let id = module_dependency_id(
+                        database.next_dependency_id
+                    );
+
+                    database.next_dependency_id =
+                        database.next_dependency_id + 1;
+
+                    database.dependencies = database.dependencies + [
+                        ModuleDatabaseDependency {
+                            id: id,
+                            module_id: module_id,
+                            target_id: target_id,
+                            module_name: database.modules[source].name,
+                            target_name: database.modules[target].name,
+                            span: span,
+                            public: public,
+                            optional: optional
+                        }
+                    ];
+
+                    database.modules[source].dependencies =
+                        database.modules[source].dependencies + [id];
+
+                    database.modules[target].dependents =
+                        database.modules[target].dependents + [id];
+
+                    database.modules[source].revision =
+                        database.modules[source].revision + 1;
+
+                    database.statistics.dependency_insertions =
+                        database.statistics.dependency_insertions + 1;
+
+                    module_database_refresh_statistics(database);
+
+                    give Some(id);
+                }
+            }
+        }
+    }
+}
+
+proc module_database_add_dependency_by_name(
+    database: ref mut ModuleDatabase,
+    module_name: string,
+    target_name: string,
+    span: Span,
+    public: bool,
+    optional: bool
+) -> Option<ModuleDependencyId> {
+    let module_index = module_database_find_index_by_name(
+        ref database,
+        module_name
+    );
+
+    let target_index = module_database_find_index_by_name(
+        ref database,
+        target_name
+    );
+
+    pick module_index {
+        None {
+            module_database_push_error(
+                database,
+                ModuleDatabaseErrorKind.ModuleNotFound,
+                module_name,
+                target_name,
+                "dependency source module does not exist",
+                span
+            );
+
+            give None;
+        }
+
+        Some(source) {
+            pick target_index {
+                None {
+                    module_database_push_error(
+                        database,
+                        ModuleDatabaseErrorKind.ModuleNotFound,
+                        module_name,
+                        target_name,
+                        "dependency target module does not exist",
+                        span
+                    );
+
+                    give None;
+                }
+
+                Some(target) {
+                    give module_database_add_dependency(
+                        database,
+                        database.modules[source].id,
+                        database.modules[target].id,
+                        span,
+                        public,
+                        optional
+                    );
+                }
+            }
+        }
+    }
+}
+
+proc module_database_remove_dependency_reference(
+    references: [ModuleDependencyId],
+    id: ModuleDependencyId
+) -> [ModuleDependencyId] {
+    set output: [ModuleDependencyId] = [];
+
+    for current in references {
+        if not module_dependency_id_equal(current, id) {
+            output = output + [current];
+        }
+    }
+
+    give output;
+}
+
+proc module_database_remove_dependency(
+    database: ref mut ModuleDatabase,
+    id: ModuleDependencyId
+) -> bool {
+    let dependency_index = module_database_find_dependency_index(
+        ref database,
+        id
+    );
+
+    pick dependency_index {
+        None {
+            give false;
+        }
+
+        Some(value) {
+            let dependency = database.dependencies[value];
+
+            let module_index = module_database_find_index_by_id(
+                ref database,
+                dependency.module_id
+            );
+
+            let target_index = module_database_find_index_by_id(
+                ref database,
+                dependency.target_id
+            );
+
+            pick module_index {
+                Some(source) {
+                    database.modules[source].dependencies =
+                        module_database_remove_dependency_reference(
+                            database.modules[source].dependencies,
+                            id
+                        );
+
+                    database.modules[source].revision =
+                        database.modules[source].revision + 1;
+                }
+
+                None {}
+            }
+
+            pick target_index {
+                Some(target) {
+                    database.modules[target].dependents =
+                        module_database_remove_dependency_reference(
+                            database.modules[target].dependents,
+                            id
+                        );
+                }
+
+                None {}
+            }
+
+            set output: [ModuleDatabaseDependency] = [];
+            set index: usize = 0;
+
+            while index < len(database.dependencies) {
+                if index != value {
+                    output = output + [database.dependencies[index]];
+                }
+
+                index = index + 1;
+            }
+
+            database.dependencies = output;
+
+            database.statistics.dependency_removals =
+                database.statistics.dependency_removals + 1;
+
+            module_database_refresh_statistics(database);
+
+            give true;
+        }
+    }
+}
+
+proc module_database_remove_module_dependencies(
+    database: ref mut ModuleDatabase,
+    id: ModuleId
+) -> usize {
+    set ids: [ModuleDependencyId] = [];
+
+    for dependency in database.dependencies {
+        if module_id_equal(dependency.module_id, id)
+            or module_id_equal(dependency.target_id, id)
+        {
+            ids = ids + [dependency.id];
+        }
+    }
+
+    set removed: usize = 0;
+
+    for dependency_id in ids {
+        if module_database_remove_dependency(
+            database,
+            dependency_id
+        ) {
+            removed = removed + 1;
+        }
+    }
+
+    give removed;
+}
+
+proc module_database_remove(
+    database: ref mut ModuleDatabase,
+    id: ModuleId
+) -> bool {
+    let module_index = module_database_find_index_by_id(
+        ref database,
+        id
+    );
+
+    pick module_index {
+        None {
+            give false;
+        }
+
+        Some(value) {
+            module_database_remove_module_dependencies(database, id);
+
+            set output: [ModuleDatabaseEntry] = [];
+            set index: usize = 0;
+
+            while index < len(database.modules) {
+                if index != value {
+                    output = output + [database.modules[index]];
+                }
+
+                index = index + 1;
+            }
+
+            database.modules = output;
+            database.statistics.removals =
+                database.statistics.removals + 1;
+
+            module_database_refresh_statistics(database);
+
+            give true;
+        }
+    }
+}
+
+proc module_database_dependencies_of(
+    database: ref ModuleDatabase,
+    id: ModuleId
+) -> [ModuleDatabaseDependency] {
+    set output: [ModuleDatabaseDependency] = [];
+
+    for dependency in database.dependencies {
+        if module_id_equal(dependency.module_id, id) {
+            output = output + [dependency];
+        }
+    }
+
+    give output;
+}
+
+proc module_database_dependents_of(
+    database: ref ModuleDatabase,
+    id: ModuleId
+) -> [ModuleDatabaseDependency] {
+    set output: [ModuleDatabaseDependency] = [];
+
+    for dependency in database.dependencies {
+        if module_id_equal(dependency.target_id, id) {
+            output = output + [dependency];
+        }
+    }
+
+    give output;
+}
+
+proc module_database_direct_dependency_ids(
+    database: ref ModuleDatabase,
+    id: ModuleId
+) -> [ModuleId] {
+    set output: [ModuleId] = [];
+
+    for dependency in database.dependencies {
+        if module_id_equal(dependency.module_id, id) {
+            output = output + [dependency.target_id];
+        }
+    }
+
+    give output;
+}
+
+proc module_database_direct_dependent_ids(
+    database: ref ModuleDatabase,
+    id: ModuleId
+) -> [ModuleId] {
+    set output: [ModuleId] = [];
+
+    for dependency in database.dependencies {
+        if module_id_equal(dependency.target_id, id) {
+            output = output + [dependency.module_id];
+        }
+    }
+
+    give output;
+}
+
+proc module_database_id_list_contains(
+    values: ref [ModuleId],
+    id: ModuleId
+) -> bool {
+    for current in values {
+        if module_id_equal(current, id) {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc module_database_collect_dependencies(
+    database: ref ModuleDatabase,
+    id: ModuleId,
+    visited: ref mut [ModuleId],
+    output: ref mut [ModuleId]
+) {
+    if module_database_id_list_contains(ref visited, id) {
+        give;
+    }
+
+    visited = visited + [id];
+
+    let dependencies = module_database_direct_dependency_ids(
+        database,
+        id
+    );
+
+    for dependency in dependencies {
+        if not module_database_id_list_contains(
+            ref output,
+            dependency
+        ) {
+            output = output + [dependency];
+        }
+
+        module_database_collect_dependencies(
+            database,
+            dependency,
+            visited,
+            output
+        );
+    }
+}
+
+proc module_database_transitive_dependencies(
+    database: ref ModuleDatabase,
+    id: ModuleId
+) -> [ModuleId] {
+    set visited: [ModuleId] = [];
+    set output: [ModuleId] = [];
+
+    module_database_collect_dependencies(
+        database,
+        id,
+        ref mut visited,
+        ref mut output
+    );
+
+    give output;
+}
+
+proc module_database_collect_dependents(
+    database: ref ModuleDatabase,
+    id: ModuleId,
+    visited: ref mut [ModuleId],
+    output: ref mut [ModuleId]
+) {
+    if module_database_id_list_contains(ref visited, id) {
+        give;
+    }
+
+    visited = visited + [id];
+
+    let dependents = module_database_direct_dependent_ids(
+        database,
+        id
+    );
+
+    for dependent in dependents {
+        if not module_database_id_list_contains(
+            ref output,
+            dependent
+        ) {
+            output = output + [dependent];
+        }
+
+        module_database_collect_dependents(
+            database,
+            dependent,
+            visited,
+            output
+        );
+    }
+}
+
+proc module_database_transitive_dependents(
+    database: ref ModuleDatabase,
+    id: ModuleId
+) -> [ModuleId] {
+    set visited: [ModuleId] = [];
+    set output: [ModuleId] = [];
+
+    module_database_collect_dependents(
+        database,
+        id,
+        ref mut visited,
+        ref mut output
+    );
+
+    give output;
+}
+
+proc module_database_invalidate(
+    database: ref mut ModuleDatabase,
+    id: ModuleId
+) -> bool {
+    let index = module_database_find_index_by_id(ref database, id);
+
+    pick index {
+        Some(value) {
+            if database.modules[value].state
+                != ModuleDatabaseEntryState.Invalidated
+            {
+                database.modules[value].state =
+                    ModuleDatabaseEntryState.Invalidated;
+                database.modules[value].generation =
+                    database.generation;
+                database.modules[value].revision =
+                    database.modules[value].revision + 1;
+
+                database.statistics.invalidations =
+                    database.statistics.invalidations + 1;
+
+                module_database_refresh_statistics(database);
+            }
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_database_invalidate_dependents(
+    database: ref mut ModuleDatabase,
+    id: ModuleId,
+    recursive: bool
+) -> usize {
+    let dependents = if recursive {
+        module_database_transitive_dependents(ref database, id)
+    } else {
+        module_database_direct_dependent_ids(ref database, id)
+    };
+
+    set invalidated: usize = 0;
+
+    for dependent in dependents {
+        let index = module_database_find_index_by_id(
+            ref database,
+            dependent
+        );
+
+        pick index {
+            Some(value) {
+                if database.modules[value].state
+                    != ModuleDatabaseEntryState.Invalidated
+                {
+                    database.modules[value].state =
+                        ModuleDatabaseEntryState.Invalidated;
+                    database.modules[value].generation =
+                        database.generation;
+                    database.modules[value].revision =
+                        database.modules[value].revision + 1;
+
+                    invalidated = invalidated + 1;
+                }
+            }
+
+            None {}
+        }
+    }
+
+    database.statistics.invalidations =
+        database.statistics.invalidations + invalidated;
+
+    module_database_refresh_statistics(database);
+
+    give invalidated;
+}
+
+proc module_database_invalidate_module_and_dependents(
+    database: ref mut ModuleDatabase,
+    id: ModuleId
+) -> usize {
+    set invalidated: usize = 0;
+
+    if module_database_invalidate(database, id) {
+        invalidated = invalidated + 1;
+    }
+
+    invalidated = invalidated
+        + module_database_invalidate_dependents(
+            database,
+            id,
+            true
+        );
+
+    give invalidated;
+}
+
+proc module_database_build_cycle_graph(
+    database: ref ModuleDatabase
+) -> ModuleCycleGraph {
+    set graph = module_cycle_graph_create();
+
+    for module in database.modules {
+        module_cycle_graph_add_module(
+            ref mut graph,
+            module.name,
+            module.canonical_path,
+            module.source_span
+        );
+    }
+
+    for dependency in database.dependencies {
+        module_cycle_graph_add_dependency(
+            ref mut graph,
+            dependency.module_name,
+            dependency.target_name,
+            dependency.span
+        );
+    }
+
+    give graph;
+}
+
+proc module_database_order_ids(
+    database: ref ModuleDatabase,
+    names: [string]
+) -> [ModuleId] {
+    set output: [ModuleId] = [];
+
+    for name in names {
+        let index = module_database_find_index_by_name(
+            database,
+            name
+        );
+
+        pick index {
+            Some(value) {
+                output = output + [database.modules[value].id];
+            }
+
+            None {}
+        }
+    }
+
+    give output;
+}
+
+proc module_database_analyze(
+    database: ref mut ModuleDatabase
+) -> ModuleDatabaseAnalysis {
+    set graph = module_database_build_cycle_graph(ref database);
+    let cycle_result = module_cycle_analyze(ref mut graph);
+
+    set errors: [ModuleDatabaseError] = [];
+
+    for error in cycle_result.errors {
+        errors = errors + [
+            module_database_error(
+                ModuleDatabaseErrorKind.CircularDependency,
+                error.module,
+                error.dependency,
+                error.message,
+                error.span
+            )
+        ];
+    }
+
+    let order = module_database_order_ids(
+        ref database,
+        cycle_result.order
+    );
+
+    let valid = cycle_result.valid
+        and len(errors) == 0
+        and len(database.errors) == 0;
+
+    give ModuleDatabaseAnalysis {
+        cycle_result: cycle_result,
+        order: order,
+        errors: database.errors + errors,
+        valid: valid
+    };
+}
+
+proc module_database_topological_order(
+    database: ref mut ModuleDatabase
+) -> Option<[ModuleId]> {
+    let analysis = module_database_analyze(database);
+
+    if not analysis.valid {
+        give None;
+    }
+
+    give Some(analysis.order);
+}
+
+proc module_database_is_ready(
+    database: ref ModuleDatabase,
+    id: ModuleId
+) -> bool {
+    let module = module_database_get(database, id);
+
+    pick module {
+        Some(value) {
+            give value.state == ModuleDatabaseEntryState.Ready;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_database_has_failed(
+    database: ref ModuleDatabase,
+    id: ModuleId
+) -> bool {
+    let module = module_database_get(database, id);
+
+    pick module {
+        Some(value) {
+            give value.state == ModuleDatabaseEntryState.Failed;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_database_is_invalidated(
+    database: ref ModuleDatabase,
+    id: ModuleId
+) -> bool {
+    let module = module_database_get(database, id);
+
+    pick module {
+        Some(value) {
+            give value.state
+                == ModuleDatabaseEntryState.Invalidated;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_database_clear_errors(
+    database: ref mut ModuleDatabase
+) {
+    database.errors = [];
+}
+
+proc module_database_advance_generation(
+    database: ref mut ModuleDatabase
+) -> u64 {
+    database.generation = database.generation + 1;
+    give database.generation;
+}
+
+proc module_database_clear(
+    database: ref mut ModuleDatabase
+) {
+    database.modules = [];
+    database.dependencies = [];
+    database.errors = [];
+    database.generation = database.generation + 1;
+
+    module_database_refresh_statistics(database);
+}
+
+proc module_database_reset(
+    database: ref mut ModuleDatabase
+) {
+    database.modules = [];
+    database.dependencies = [];
+    database.errors = [];
+    database.next_module_id = 1;
+    database.next_dependency_id = 1;
+    database.generation = 1;
+    database.statistics = module_database_statistics_empty();
+}
+
+proc module_database_module_count(
+    database: ref ModuleDatabase
+) -> usize {
+    give len(database.modules);
+}
+
+proc module_database_dependency_count(
+    database: ref ModuleDatabase
+) -> usize {
+    give len(database.dependencies);
+}
+
+proc module_database_is_empty(
+    database: ref ModuleDatabase
+) -> bool {
+    give len(database.modules) == 0;
+}
+
+proc module_database_has_errors(
+    database: ref ModuleDatabase
+) -> bool {
+    give len(database.errors) != 0;
+}
+
+proc module_database_statistics(
+    database: ref ModuleDatabase
+) -> ModuleDatabaseStatistics {
+    give database.statistics;
+}
+
+proc module_database_error_code(
+    error: ref ModuleDatabaseError
+) -> string {
+    pick error.kind {
+        ModuleDatabaseErrorKind.InvalidArgument {
+            give "E_MODULE_DATABASE_ARGUMENT";
+        }
+
+        ModuleDatabaseErrorKind.DuplicateModule {
+            give "E_MODULE_DUPLICATE";
+        }
+
+        ModuleDatabaseErrorKind.ModuleNotFound {
+            give "E_MODULE_NOT_FOUND";
+        }
+
+        ModuleDatabaseErrorKind.PathConflict {
+            give "E_MODULE_PATH_CONFLICT";
+        }
+
+        ModuleDatabaseErrorKind.InvalidDependency {
+            give "E_MODULE_DEPENDENCY";
+        }
+
+        ModuleDatabaseErrorKind.DuplicateDependency {
+            give "E_MODULE_DEPENDENCY_DUPLICATE";
+        }
+
+        ModuleDatabaseErrorKind.CircularDependency {
+            give "E_MODULE_CYCLE";
+        }
+
+        ModuleDatabaseErrorKind.InvalidState {
+            give "E_MODULE_STATE";
+        }
+
+        ModuleDatabaseErrorKind.AnalysisFailed {
+            give "E_MODULE_ANALYSIS";
+        }
+
+        ModuleDatabaseErrorKind.DatabaseCorrupted {
+            give "E_MODULE_DATABASE";
+        }
+    }
+}

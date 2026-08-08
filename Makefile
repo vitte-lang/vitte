@@ -636,6 +636,10 @@ bootstrap-trust-tests:
 bootstrap-chain:
 	@python3 tools/bootstrap_real/bootstrap_chain.py --offline
 
+.PHONY: bootstrap-legacy-local
+bootstrap-legacy-local:
+	@sh tools/bootstrap_legacy_local.sh
+
 .PHONY: bootstrap-c17 bootstrap-binary bootstrap-c17-smoke
 bootstrap-c17:
 	@$(MAKE) --no-print-directory -C bootstrap all

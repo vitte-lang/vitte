@@ -1,0 +1,2294 @@
+space vitte/compiler/analysis/modules/module_metadata
+
+export *
+
+use src/vitte/compiler/frontend/source/span.{Span}
+use src/vitte/compiler/analysis/modules/module_id.{
+    ModuleId,
+    ModuleIdKind,
+    module_id_invalid,
+    module_id_equal,
+    module_id_is_valid
+}
+use src/vitte/compiler/analysis/modules/module_kind.{
+    ModuleKind,
+    ModuleArtifactKind,
+    module_kind_default,
+    module_kind_artifact,
+    module_kind_name
+}
+use src/vitte/compiler/analysis/modules/module_attributes.{
+    ModuleAttributes,
+    ModuleStability,
+    ModuleVisibility,
+    module_attributes_default,
+    module_attributes_is_valid
+}
+
+pick ModuleMetadataState {
+    Declared,
+    Collecting,
+    Complete,
+    Serialized,
+    Loaded,
+    Invalidated,
+    Failed
+}
+
+pick ModuleMetadataOrigin {
+    Source,
+    Cache,
+    Package,
+    Artifact,
+    Generated,
+    Builtin,
+    External
+}
+
+pick ModuleMetadataDependencyKind {
+    Private,
+    Public,
+    Optional,
+    Development,
+    Build,
+    Runtime,
+    Prelude,
+    Builtin
+}
+
+pick ModuleMetadataSymbolKind {
+    Value,
+    Procedure,
+    Type,
+    Form,
+    Pick,
+    Constant,
+    Module,
+    Namespace,
+    Macro,
+    Trait,
+    Implementation,
+    Global,
+    EntryPoint
+}
+
+pick ModuleMetadataVisibility {
+    Private,
+    Package,
+    Public
+}
+
+pick ModuleMetadataErrorKind {
+    InvalidArgument,
+    InvalidModule,
+    InvalidName,
+    InvalidPath,
+    InvalidVersion,
+    InvalidAttributes,
+    DuplicateModule,
+    DuplicateDependency,
+    DuplicateSymbol,
+    DependencyNotFound,
+    SymbolNotFound,
+    InvalidState,
+    InvalidFormat,
+    UnsupportedVersion,
+    ChecksumMismatch,
+    SerializationFailed,
+    DeserializationFailed,
+    MetadataCorrupted
+}
+
+form ModuleMetadataVersion {
+    major: u32
+    minor: u32
+    patch: u32
+}
+
+form ModuleMetadataFingerprint {
+    source_hash: u64
+    interface_hash: u64
+    implementation_hash: u64
+    dependency_hash: u64
+    configuration_hash: u64
+    metadata_hash: u64
+}
+
+form ModuleMetadataTarget {
+    triple: string
+    architecture: string
+    operating_system: string
+    environment: string
+    vendor: string
+    pointer_width: usize
+    little_endian: bool
+}
+
+form ModuleMetadataDependency {
+    module: ModuleId
+    name: string
+    version: string
+    path: string
+
+    kind: ModuleMetadataDependencyKind
+
+    interface_hash: u64
+    metadata_hash: u64
+
+    public: bool
+    optional: bool
+    enabled: bool
+
+    span: Span
+}
+
+form ModuleMetadataSymbol {
+    name: string
+    mangled_name: string
+
+    kind: ModuleMetadataSymbolKind
+    visibility: ModuleMetadataVisibility
+
+    signature: string
+    type_name: string
+
+    exported: bool
+    imported: bool
+    reexported: bool
+    weak: bool
+
+    size: usize
+    alignment: usize
+
+    declaration_span: Span
+}
+
+form ModuleMetadataArtifact {
+    kind: ModuleArtifactKind
+    path: string
+    name: string
+
+    size: usize
+    checksum: u64
+
+    position_independent: bool
+    dynamically_linked: bool
+    stripped: bool
+}
+
+form ModuleMetadataCompilation {
+    compiler_name: string
+    compiler_version: string
+
+    target: ModuleMetadataTarget
+    profile: string
+
+    optimization_level: usize
+    debug_information: bool
+    incremental: bool
+    deterministic: bool
+
+    features: [string]
+    configuration: [string]
+
+    timestamp: u64
+}
+
+form ModuleMetadata {
+    module: ModuleId
+    module_kind: ModuleKind
+    id_kind: ModuleIdKind
+
+    name: string
+    qualified_name: string
+    package: string
+    namespace: string
+
+    canonical_path: string
+    source_path: string
+
+    version: string
+    documentation: string
+
+    attributes: ModuleAttributes
+    stability: ModuleStability
+    visibility: ModuleVisibility
+
+    metadata_version: ModuleMetadataVersion
+    origin: ModuleMetadataOrigin
+    state: ModuleMetadataState
+
+    fingerprint: ModuleMetadataFingerprint
+    compilation: ModuleMetadataCompilation
+    artifact: ModuleMetadataArtifact
+
+    dependencies: [ModuleMetadataDependency]
+    symbols: [ModuleMetadataSymbol]
+
+    generation: u64
+    revision: u64
+
+    synthetic: bool
+    external: bool
+    complete: bool
+}
+
+form ModuleMetadataError {
+    kind: ModuleMetadataErrorKind
+    module: string
+    item: string
+    message: string
+    span: Span
+}
+
+form ModuleMetadataStatistics {
+    modules: usize
+
+    complete: usize
+    serialized: usize
+    loaded: usize
+    invalidated: usize
+    failed: usize
+
+    dependencies: usize
+    symbols: usize
+    exported_symbols: usize
+    imported_symbols: usize
+    reexported_symbols: usize
+
+    source_bytes: usize
+    artifact_bytes: usize
+}
+
+form ModuleMetadataTable {
+    modules: [ModuleMetadata]
+    errors: [ModuleMetadataError]
+
+    generation: u64
+    statistics: ModuleMetadataStatistics
+}
+
+form ModuleMetadataLookup {
+    metadata: Option<ModuleMetadata>
+    found: bool
+}
+
+form ModuleMetadataValidation {
+    errors: [ModuleMetadataError]
+    valid: bool
+}
+
+proc module_metadata_empty_span() -> Span {
+    give Span {
+        source: 0,
+        start: 0,
+        end: 0
+    };
+}
+
+proc module_metadata_version(
+    major: u32,
+    minor: u32,
+    patch: u32
+) -> ModuleMetadataVersion {
+    give ModuleMetadataVersion {
+        major: major,
+        minor: minor,
+        patch: patch
+    };
+}
+
+proc module_metadata_current_version()
+    -> ModuleMetadataVersion
+{
+    give module_metadata_version(1, 0, 0);
+}
+
+proc module_metadata_version_equal(
+    left: ModuleMetadataVersion,
+    right: ModuleMetadataVersion
+) -> bool {
+    give left.major == right.major
+        and left.minor == right.minor
+        and left.patch == right.patch;
+}
+
+proc module_metadata_version_compatible(
+    version: ModuleMetadataVersion
+) -> bool {
+    let current = module_metadata_current_version();
+
+    give version.major == current.major
+        and version.minor <= current.minor;
+}
+
+proc module_metadata_version_string(
+    version: ModuleMetadataVersion
+) -> string {
+    give cast<string>(version.major)
+        + "."
+        + cast<string>(version.minor)
+        + "."
+        + cast<string>(version.patch);
+}
+
+proc module_metadata_fingerprint_empty()
+    -> ModuleMetadataFingerprint
+{
+    give ModuleMetadataFingerprint {
+        source_hash: 0,
+        interface_hash: 0,
+        implementation_hash: 0,
+        dependency_hash: 0,
+        configuration_hash: 0,
+        metadata_hash: 0
+    };
+}
+
+proc module_metadata_target_empty()
+    -> ModuleMetadataTarget
+{
+    give ModuleMetadataTarget {
+        triple: "",
+        architecture: "",
+        operating_system: "",
+        environment: "",
+        vendor: "",
+        pointer_width: 0,
+        little_endian: true
+    };
+}
+
+proc module_metadata_target(
+    triple: string,
+    architecture: string,
+    operating_system: string,
+    environment: string,
+    vendor: string,
+    pointer_width: usize,
+    little_endian: bool
+) -> ModuleMetadataTarget {
+    give ModuleMetadataTarget {
+        triple: triple,
+        architecture: architecture,
+        operating_system: operating_system,
+        environment: environment,
+        vendor: vendor,
+        pointer_width: pointer_width,
+        little_endian: little_endian
+    };
+}
+
+proc module_metadata_artifact_empty()
+    -> ModuleMetadataArtifact
+{
+    give ModuleMetadataArtifact {
+        kind: ModuleArtifactKind.None,
+        path: "",
+        name: "",
+
+        size: 0,
+        checksum: 0,
+
+        position_independent: false,
+        dynamically_linked: false,
+        stripped: false
+    };
+}
+
+proc module_metadata_compilation_empty()
+    -> ModuleMetadataCompilation
+{
+    give ModuleMetadataCompilation {
+        compiler_name: "vittec",
+        compiler_version: "",
+
+        target: module_metadata_target_empty(),
+        profile: "",
+
+        optimization_level: 0,
+        debug_information: false,
+        incremental: false,
+        deterministic: true,
+
+        features: [],
+        configuration: [],
+
+        timestamp: 0
+    };
+}
+
+proc module_metadata_statistics_empty()
+    -> ModuleMetadataStatistics
+{
+    give ModuleMetadataStatistics {
+        modules: 0,
+
+        complete: 0,
+        serialized: 0,
+        loaded: 0,
+        invalidated: 0,
+        failed: 0,
+
+        dependencies: 0,
+        symbols: 0,
+        exported_symbols: 0,
+        imported_symbols: 0,
+        reexported_symbols: 0,
+
+        source_bytes: 0,
+        artifact_bytes: 0
+    };
+}
+
+proc module_metadata_table_create()
+    -> ModuleMetadataTable
+{
+    give ModuleMetadataTable {
+        modules: [],
+        errors: [],
+        generation: 1,
+        statistics: module_metadata_statistics_empty()
+    };
+}
+
+proc module_metadata_error(
+    kind: ModuleMetadataErrorKind,
+    module: string,
+    item: string,
+    message: string,
+    span: Span
+) -> ModuleMetadataError {
+    give ModuleMetadataError {
+        kind: kind,
+        module: module,
+        item: item,
+        message: message,
+        span: span
+    };
+}
+
+proc module_metadata_push_error(
+    table: ref mut ModuleMetadataTable,
+    kind: ModuleMetadataErrorKind,
+    module: string,
+    item: string,
+    message: string,
+    span: Span
+) {
+    table.errors = table.errors + [
+        module_metadata_error(
+            kind,
+            module,
+            item,
+            message,
+            span
+        )
+    ];
+}
+
+proc module_metadata_dependency(
+    module: ModuleId,
+    name: string,
+    version: string,
+    path: string,
+    kind: ModuleMetadataDependencyKind,
+    span: Span
+) -> ModuleMetadataDependency {
+    give ModuleMetadataDependency {
+        module: module,
+        name: name,
+        version: version,
+        path: path,
+
+        kind: kind,
+
+        interface_hash: 0,
+        metadata_hash: 0,
+
+        public:
+            kind == ModuleMetadataDependencyKind.Public,
+        optional:
+            kind == ModuleMetadataDependencyKind.Optional,
+        enabled: true,
+
+        span: span
+    };
+}
+
+proc module_metadata_symbol(
+    name: string,
+    mangled_name: string,
+    kind: ModuleMetadataSymbolKind,
+    visibility: ModuleMetadataVisibility,
+    signature: string,
+    declaration_span: Span
+) -> ModuleMetadataSymbol {
+    give ModuleMetadataSymbol {
+        name: name,
+        mangled_name: mangled_name,
+
+        kind: kind,
+        visibility: visibility,
+
+        signature: signature,
+        type_name: "",
+
+        exported:
+            visibility == ModuleMetadataVisibility.Public,
+        imported: false,
+        reexported: false,
+        weak: false,
+
+        size: 0,
+        alignment: 0,
+
+        declaration_span: declaration_span
+    };
+}
+
+proc module_metadata_create(
+    module: ModuleId,
+    module_kind: ModuleKind,
+    id_kind: ModuleIdKind,
+    name: string,
+    qualified_name: string,
+    canonical_path: string,
+    attributes: ModuleAttributes,
+    generation: u64
+) -> ModuleMetadata {
+    give ModuleMetadata {
+        module: module,
+        module_kind: module_kind,
+        id_kind: id_kind,
+
+        name: name,
+        qualified_name: qualified_name,
+        package: "",
+        namespace: "",
+
+        canonical_path: canonical_path,
+        source_path: canonical_path,
+
+        version: attributes.version,
+        documentation: attributes.documentation,
+
+        attributes: attributes,
+        stability: attributes.stability,
+        visibility: attributes.visibility,
+
+        metadata_version: module_metadata_current_version(),
+        origin: ModuleMetadataOrigin.Source,
+        state: ModuleMetadataState.Declared,
+
+        fingerprint: module_metadata_fingerprint_empty(),
+        compilation: module_metadata_compilation_empty(),
+        artifact: module_metadata_artifact_empty(),
+
+        dependencies: [],
+        symbols: [],
+
+        generation: generation,
+        revision: 1,
+
+        synthetic:
+            id_kind == ModuleIdKind.Generated
+            or id_kind == ModuleIdKind.Builtin,
+        external: id_kind == ModuleIdKind.External,
+        complete: false
+    };
+}
+
+proc module_metadata_create_basic(
+    module: ModuleId,
+    name: string,
+    qualified_name: string,
+    canonical_path: string,
+    generation: u64
+) -> ModuleMetadata {
+    give module_metadata_create(
+        module,
+        module_kind_default(),
+        ModuleIdKind.User,
+        name,
+        qualified_name,
+        canonical_path,
+        module_attributes_default(),
+        generation
+    );
+}
+
+proc module_metadata_is_valid(
+    metadata: ref ModuleMetadata
+) -> bool {
+    if not module_id_is_valid(metadata.module) {
+        give false;
+    }
+
+    if len(metadata.name) == 0
+        or len(metadata.qualified_name) == 0
+    {
+        give false;
+    }
+
+    if len(metadata.canonical_path) == 0
+        and not metadata.synthetic
+    {
+        give false;
+    }
+
+    if not module_attributes_is_valid(
+        ref metadata.attributes
+    ) {
+        give false;
+    }
+
+    if not module_metadata_version_compatible(
+        metadata.metadata_version
+    ) {
+        give false;
+    }
+
+    give true;
+}
+
+proc module_metadata_is_complete(
+    metadata: ref ModuleMetadata
+) -> bool {
+    give metadata.complete
+        and metadata.state == ModuleMetadataState.Complete;
+}
+
+proc module_metadata_is_serialized(
+    metadata: ref ModuleMetadata
+) -> bool {
+    give metadata.state == ModuleMetadataState.Serialized;
+}
+
+proc module_metadata_is_loaded(
+    metadata: ref ModuleMetadata
+) -> bool {
+    give metadata.state == ModuleMetadataState.Loaded;
+}
+
+proc module_metadata_is_invalidated(
+    metadata: ref ModuleMetadata
+) -> bool {
+    give metadata.state
+        == ModuleMetadataState.Invalidated;
+}
+
+proc module_metadata_is_failed(
+    metadata: ref ModuleMetadata
+) -> bool {
+    give metadata.state == ModuleMetadataState.Failed;
+}
+
+proc module_metadata_find_index(
+    table: ref ModuleMetadataTable,
+    module: ModuleId
+) -> Option<usize> {
+    set index: usize = 0;
+
+    while index < len(table.modules) {
+        if module_id_equal(
+            table.modules[index].module,
+            module
+        ) {
+            give Some(index);
+        }
+
+        index = index + 1;
+    }
+
+    give None;
+}
+
+proc module_metadata_find_name_index(
+    table: ref ModuleMetadataTable,
+    qualified_name: string
+) -> Option<usize> {
+    set index: usize = 0;
+
+    while index < len(table.modules) {
+        if table.modules[index].qualified_name
+            == qualified_name
+        {
+            give Some(index);
+        }
+
+        index = index + 1;
+    }
+
+    give None;
+}
+
+proc module_metadata_find_path_index(
+    table: ref ModuleMetadataTable,
+    canonical_path: string
+) -> Option<usize> {
+    set index: usize = 0;
+
+    while index < len(table.modules) {
+        if table.modules[index].canonical_path
+            == canonical_path
+        {
+            give Some(index);
+        }
+
+        index = index + 1;
+    }
+
+    give None;
+}
+
+proc module_metadata_contains(
+    table: ref ModuleMetadataTable,
+    module: ModuleId
+) -> bool {
+    give module_metadata_find_index(table, module) != None;
+}
+
+proc module_metadata_contains_name(
+    table: ref ModuleMetadataTable,
+    qualified_name: string
+) -> bool {
+    give module_metadata_find_name_index(
+        table,
+        qualified_name
+    ) != None;
+}
+
+proc module_metadata_contains_path(
+    table: ref ModuleMetadataTable,
+    canonical_path: string
+) -> bool {
+    give module_metadata_find_path_index(
+        table,
+        canonical_path
+    ) != None;
+}
+
+proc module_metadata_get(
+    table: ref ModuleMetadataTable,
+    module: ModuleId
+) -> Option<ref ModuleMetadata> {
+    let index = module_metadata_find_index(table, module);
+
+    pick index {
+        Some(value) {
+            give Some(ref table.modules[value]);
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc module_metadata_get_mut(
+    table: ref mut ModuleMetadataTable,
+    module: ModuleId
+) -> Option<ref mut ModuleMetadata> {
+    let index = module_metadata_find_index(
+        ref table,
+        module
+    );
+
+    pick index {
+        Some(value) {
+            give Some(ref mut table.modules[value]);
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc module_metadata_get_by_name(
+    table: ref ModuleMetadataTable,
+    qualified_name: string
+) -> Option<ref ModuleMetadata> {
+    let index = module_metadata_find_name_index(
+        table,
+        qualified_name
+    );
+
+    pick index {
+        Some(value) {
+            give Some(ref table.modules[value]);
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc module_metadata_lookup(
+    table: ref ModuleMetadataTable,
+    module: ModuleId
+) -> ModuleMetadataLookup {
+    let metadata = module_metadata_get(table, module);
+
+    pick metadata {
+        Some(value) {
+            give ModuleMetadataLookup {
+                metadata: Some(value),
+                found: true
+            };
+        }
+
+        None {
+            give ModuleMetadataLookup {
+                metadata: None,
+                found: false
+            };
+        }
+    }
+}
+
+proc module_metadata_dependency_equal(
+    left: ref ModuleMetadataDependency,
+    right: ref ModuleMetadataDependency
+) -> bool {
+    if module_id_is_valid(left.module)
+        and module_id_is_valid(right.module)
+    {
+        give module_id_equal(left.module, right.module);
+    }
+
+    give left.name == right.name
+        and left.path == right.path;
+}
+
+proc module_metadata_has_dependency(
+    metadata: ref ModuleMetadata,
+    dependency: ref ModuleMetadataDependency
+) -> bool {
+    for current in metadata.dependencies {
+        if module_metadata_dependency_equal(
+            ref current,
+            dependency
+        ) {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc module_metadata_has_symbol(
+    metadata: ref ModuleMetadata,
+    name: string,
+    kind: ModuleMetadataSymbolKind
+) -> bool {
+    for symbol in metadata.symbols {
+        if symbol.name == name and symbol.kind == kind {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc module_metadata_refresh_statistics(
+    table: ref mut ModuleMetadataTable
+) {
+    set statistics = module_metadata_statistics_empty();
+
+    statistics.modules = len(table.modules);
+
+    for metadata in table.modules {
+        pick metadata.state {
+            ModuleMetadataState.Complete {
+                statistics.complete =
+                    statistics.complete + 1;
+            }
+
+            ModuleMetadataState.Serialized {
+                statistics.serialized =
+                    statistics.serialized + 1;
+            }
+
+            ModuleMetadataState.Loaded {
+                statistics.loaded =
+                    statistics.loaded + 1;
+            }
+
+            ModuleMetadataState.Invalidated {
+                statistics.invalidated =
+                    statistics.invalidated + 1;
+            }
+
+            ModuleMetadataState.Failed {
+                statistics.failed =
+                    statistics.failed + 1;
+            }
+
+            _ {}
+        }
+
+        statistics.dependencies =
+            statistics.dependencies
+            + len(metadata.dependencies);
+
+        statistics.symbols =
+            statistics.symbols
+            + len(metadata.symbols);
+
+        statistics.artifact_bytes =
+            statistics.artifact_bytes
+            + metadata.artifact.size;
+
+        for symbol in metadata.symbols {
+            if symbol.exported {
+                statistics.exported_symbols =
+                    statistics.exported_symbols + 1;
+            }
+
+            if symbol.imported {
+                statistics.imported_symbols =
+                    statistics.imported_symbols + 1;
+            }
+
+            if symbol.reexported {
+                statistics.reexported_symbols =
+                    statistics.reexported_symbols + 1;
+            }
+        }
+    }
+
+    table.statistics = statistics;
+}
+
+proc module_metadata_insert(
+    table: ref mut ModuleMetadataTable,
+    metadata: ModuleMetadata
+) -> bool {
+    if not module_metadata_is_valid(ref metadata) {
+        module_metadata_push_error(
+            table,
+            ModuleMetadataErrorKind.InvalidArgument,
+            metadata.qualified_name,
+            "",
+            "module metadata contains invalid data",
+            module_metadata_empty_span()
+        );
+
+        give false;
+    }
+
+    if module_metadata_contains(
+        ref table,
+        metadata.module
+    ) {
+        module_metadata_push_error(
+            table,
+            ModuleMetadataErrorKind.DuplicateModule,
+            metadata.qualified_name,
+            "",
+            "module metadata identifier already exists",
+            module_metadata_empty_span()
+        );
+
+        give false;
+    }
+
+    if module_metadata_contains_name(
+        ref table,
+        metadata.qualified_name
+    ) {
+        module_metadata_push_error(
+            table,
+            ModuleMetadataErrorKind.DuplicateModule,
+            metadata.qualified_name,
+            "",
+            "module qualified name already exists",
+            module_metadata_empty_span()
+        );
+
+        give false;
+    }
+
+    if len(metadata.canonical_path) != 0
+        and module_metadata_contains_path(
+            ref table,
+            metadata.canonical_path
+        )
+    {
+        module_metadata_push_error(
+            table,
+            ModuleMetadataErrorKind.DuplicateModule,
+            metadata.qualified_name,
+            metadata.canonical_path,
+            "module canonical path already exists",
+            module_metadata_empty_span()
+        );
+
+        give false;
+    }
+
+    table.modules = table.modules + [metadata];
+
+    module_metadata_refresh_statistics(table);
+
+    give true;
+}
+
+proc module_metadata_set_state(
+    table: ref mut ModuleMetadataTable,
+    module: ModuleId,
+    state: ModuleMetadataState
+) -> bool {
+    let index = module_metadata_find_index(
+        ref table,
+        module
+    );
+
+    pick index {
+        Some(value) {
+            table.modules[value].state = state;
+            table.modules[value].generation =
+                table.generation;
+            table.modules[value].revision =
+                table.modules[value].revision + 1;
+
+            if state == ModuleMetadataState.Complete {
+                table.modules[value].complete = true;
+            }
+
+            if state == ModuleMetadataState.Invalidated
+                or state == ModuleMetadataState.Failed
+            {
+                table.modules[value].complete = false;
+            }
+
+            module_metadata_refresh_statistics(table);
+
+            give true;
+        }
+
+        None {
+            module_metadata_push_error(
+                table,
+                ModuleMetadataErrorKind.InvalidModule,
+                "",
+                "",
+                "cannot update unknown module metadata",
+                module_metadata_empty_span()
+            );
+
+            give false;
+        }
+    }
+}
+
+proc module_metadata_begin_collection(
+    table: ref mut ModuleMetadataTable,
+    module: ModuleId
+) -> bool {
+    give module_metadata_set_state(
+        table,
+        module,
+        ModuleMetadataState.Collecting
+    );
+}
+
+proc module_metadata_mark_complete(
+    table: ref mut ModuleMetadataTable,
+    module: ModuleId
+) -> bool {
+    give module_metadata_set_state(
+        table,
+        module,
+        ModuleMetadataState.Complete
+    );
+}
+
+proc module_metadata_mark_serialized(
+    table: ref mut ModuleMetadataTable,
+    module: ModuleId
+) -> bool {
+    give module_metadata_set_state(
+        table,
+        module,
+        ModuleMetadataState.Serialized
+    );
+}
+
+proc module_metadata_mark_loaded(
+    table: ref mut ModuleMetadataTable,
+    module: ModuleId
+) -> bool {
+    give module_metadata_set_state(
+        table,
+        module,
+        ModuleMetadataState.Loaded
+    );
+}
+
+proc module_metadata_mark_failed(
+    table: ref mut ModuleMetadataTable,
+    module: ModuleId,
+    message: string,
+    span: Span
+) -> bool {
+    let index = module_metadata_find_index(
+        ref table,
+        module
+    );
+
+    pick index {
+        Some(value) {
+            module_metadata_push_error(
+                table,
+                ModuleMetadataErrorKind.InvalidState,
+                table.modules[value].qualified_name,
+                "",
+                message,
+                span
+            );
+
+            give module_metadata_set_state(
+                table,
+                module,
+                ModuleMetadataState.Failed
+            );
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_metadata_set_identity(
+    table: ref mut ModuleMetadataTable,
+    module: ModuleId,
+    name: string,
+    qualified_name: string,
+    package: string,
+    namespace: string
+) -> bool {
+    if len(name) == 0 or len(qualified_name) == 0 {
+        module_metadata_push_error(
+            table,
+            ModuleMetadataErrorKind.InvalidName,
+            qualified_name,
+            name,
+            "module metadata name must not be empty",
+            module_metadata_empty_span()
+        );
+
+        give false;
+    }
+
+    let index = module_metadata_find_index(
+        ref table,
+        module
+    );
+
+    pick index {
+        Some(value) {
+            table.modules[value].name = name;
+            table.modules[value].qualified_name =
+                qualified_name;
+            table.modules[value].package = package;
+            table.modules[value].namespace = namespace;
+            table.modules[value].generation =
+                table.generation;
+            table.modules[value].revision =
+                table.modules[value].revision + 1;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_metadata_set_paths(
+    table: ref mut ModuleMetadataTable,
+    module: ModuleId,
+    canonical_path: string,
+    source_path: string
+) -> bool {
+    if len(canonical_path) == 0 {
+        module_metadata_push_error(
+            table,
+            ModuleMetadataErrorKind.InvalidPath,
+            "",
+            canonical_path,
+            "module canonical path must not be empty",
+            module_metadata_empty_span()
+        );
+
+        give false;
+    }
+
+    let index = module_metadata_find_index(
+        ref table,
+        module
+    );
+
+    pick index {
+        Some(value) {
+            table.modules[value].canonical_path =
+                canonical_path;
+            table.modules[value].source_path = source_path;
+            table.modules[value].generation =
+                table.generation;
+            table.modules[value].revision =
+                table.modules[value].revision + 1;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_metadata_set_attributes(
+    table: ref mut ModuleMetadataTable,
+    module: ModuleId,
+    attributes: ModuleAttributes
+) -> bool {
+    if not module_attributes_is_valid(ref attributes) {
+        module_metadata_push_error(
+            table,
+            ModuleMetadataErrorKind.InvalidAttributes,
+            "",
+            "",
+            "module attributes contain errors",
+            module_metadata_empty_span()
+        );
+
+        give false;
+    }
+
+    let index = module_metadata_find_index(
+        ref table,
+        module
+    );
+
+    pick index {
+        Some(value) {
+            table.modules[value].attributes = attributes;
+            table.modules[value].stability =
+                attributes.stability;
+            table.modules[value].visibility =
+                attributes.visibility;
+            table.modules[value].version =
+                attributes.version;
+            table.modules[value].documentation =
+                attributes.documentation;
+            table.modules[value].generation =
+                table.generation;
+            table.modules[value].revision =
+                table.modules[value].revision + 1;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_metadata_set_fingerprint(
+    table: ref mut ModuleMetadataTable,
+    module: ModuleId,
+    fingerprint: ModuleMetadataFingerprint
+) -> bool {
+    let index = module_metadata_find_index(
+        ref table,
+        module
+    );
+
+    pick index {
+        Some(value) {
+            table.modules[value].fingerprint =
+                fingerprint;
+            table.modules[value].generation =
+                table.generation;
+            table.modules[value].revision =
+                table.modules[value].revision + 1;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_metadata_set_compilation(
+    table: ref mut ModuleMetadataTable,
+    module: ModuleId,
+    compilation: ModuleMetadataCompilation
+) -> bool {
+    let index = module_metadata_find_index(
+        ref table,
+        module
+    );
+
+    pick index {
+        Some(value) {
+            table.modules[value].compilation =
+                compilation;
+            table.modules[value].generation =
+                table.generation;
+            table.modules[value].revision =
+                table.modules[value].revision + 1;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_metadata_set_artifact(
+    table: ref mut ModuleMetadataTable,
+    module: ModuleId,
+    artifact: ModuleMetadataArtifact
+) -> bool {
+    let index = module_metadata_find_index(
+        ref table,
+        module
+    );
+
+    pick index {
+        Some(value) {
+            table.modules[value].artifact = artifact;
+            table.modules[value].generation =
+                table.generation;
+            table.modules[value].revision =
+                table.modules[value].revision + 1;
+
+            module_metadata_refresh_statistics(table);
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_metadata_add_dependency(
+    table: ref mut ModuleMetadataTable,
+    module: ModuleId,
+    dependency: ModuleMetadataDependency
+) -> bool {
+    let index = module_metadata_find_index(
+        ref table,
+        module
+    );
+
+    pick index {
+        None {
+            give false;
+        }
+
+        Some(value) {
+            if len(dependency.name) == 0
+                and not module_id_is_valid(
+                    dependency.module
+                )
+            {
+                module_metadata_push_error(
+                    table,
+                    ModuleMetadataErrorKind.InvalidArgument,
+                    table.modules[value].qualified_name,
+                    dependency.name,
+                    "metadata dependency requires a module identifier or name",
+                    dependency.span
+                );
+
+                give false;
+            }
+
+            if module_id_equal(
+                module,
+                dependency.module
+            ) {
+                module_metadata_push_error(
+                    table,
+                    ModuleMetadataErrorKind.InvalidArgument,
+                    table.modules[value].qualified_name,
+                    dependency.name,
+                    "module metadata cannot depend on itself",
+                    dependency.span
+                );
+
+                give false;
+            }
+
+            if module_metadata_has_dependency(
+                ref table.modules[value],
+                ref dependency
+            ) {
+                module_metadata_push_error(
+                    table,
+                    ModuleMetadataErrorKind.DuplicateDependency,
+                    table.modules[value].qualified_name,
+                    dependency.name,
+                    "module metadata dependency already exists",
+                    dependency.span
+                );
+
+                give false;
+            }
+
+            table.modules[value].dependencies =
+                table.modules[value].dependencies
+                + [dependency];
+
+            table.modules[value].generation =
+                table.generation;
+            table.modules[value].revision =
+                table.modules[value].revision + 1;
+
+            module_metadata_refresh_statistics(table);
+
+            give true;
+        }
+    }
+}
+
+proc module_metadata_add_symbol(
+    table: ref mut ModuleMetadataTable,
+    module: ModuleId,
+    symbol: ModuleMetadataSymbol
+) -> bool {
+    let index = module_metadata_find_index(
+        ref table,
+        module
+    );
+
+    pick index {
+        None {
+            give false;
+        }
+
+        Some(value) {
+            if len(symbol.name) == 0 {
+                module_metadata_push_error(
+                    table,
+                    ModuleMetadataErrorKind.InvalidName,
+                    table.modules[value].qualified_name,
+                    "",
+                    "metadata symbol name must not be empty",
+                    symbol.declaration_span
+                );
+
+                give false;
+            }
+
+            if module_metadata_has_symbol(
+                ref table.modules[value],
+                symbol.name,
+                symbol.kind
+            ) {
+                module_metadata_push_error(
+                    table,
+                    ModuleMetadataErrorKind.DuplicateSymbol,
+                    table.modules[value].qualified_name,
+                    symbol.name,
+                    "module metadata symbol already exists",
+                    symbol.declaration_span
+                );
+
+                give false;
+            }
+
+            table.modules[value].symbols =
+                table.modules[value].symbols + [symbol];
+
+            table.modules[value].generation =
+                table.generation;
+            table.modules[value].revision =
+                table.modules[value].revision + 1;
+
+            module_metadata_refresh_statistics(table);
+
+            give true;
+        }
+    }
+}
+
+proc module_metadata_dependencies_of(
+    table: ref ModuleMetadataTable,
+    module: ModuleId
+) -> [ModuleMetadataDependency] {
+    let metadata = module_metadata_get(table, module);
+
+    pick metadata {
+        Some(value) {
+            give value.dependencies;
+        }
+
+        None {
+            give [];
+        }
+    }
+}
+
+proc module_metadata_symbols_of(
+    table: ref ModuleMetadataTable,
+    module: ModuleId
+) -> [ModuleMetadataSymbol] {
+    let metadata = module_metadata_get(table, module);
+
+    pick metadata {
+        Some(value) {
+            give value.symbols;
+        }
+
+        None {
+            give [];
+        }
+    }
+}
+
+proc module_metadata_exported_symbols(
+    table: ref ModuleMetadataTable,
+    module: ModuleId
+) -> [ModuleMetadataSymbol] {
+    set output: [ModuleMetadataSymbol] = [];
+
+    let symbols = module_metadata_symbols_of(
+        table,
+        module
+    );
+
+    for symbol in symbols {
+        if symbol.exported {
+            output = output + [symbol];
+        }
+    }
+
+    give output;
+}
+
+proc module_metadata_imported_symbols(
+    table: ref ModuleMetadataTable,
+    module: ModuleId
+) -> [ModuleMetadataSymbol] {
+    set output: [ModuleMetadataSymbol] = [];
+
+    let symbols = module_metadata_symbols_of(
+        table,
+        module
+    );
+
+    for symbol in symbols {
+        if symbol.imported {
+            output = output + [symbol];
+        }
+    }
+
+    give output;
+}
+
+proc module_metadata_find_symbol(
+    table: ref ModuleMetadataTable,
+    module: ModuleId,
+    name: string
+) -> Option<ModuleMetadataSymbol> {
+    let metadata = module_metadata_get(table, module);
+
+    pick metadata {
+        Some(value) {
+            for symbol in value.symbols {
+                if symbol.name == name
+                    or symbol.mangled_name == name
+                {
+                    give Some(symbol);
+                }
+            }
+        }
+
+        None {}
+    }
+
+    give None;
+}
+
+proc module_metadata_remove_dependency(
+    table: ref mut ModuleMetadataTable,
+    module: ModuleId,
+    dependency_module: ModuleId,
+    dependency_name: string
+) -> bool {
+    let index = module_metadata_find_index(
+        ref table,
+        module
+    );
+
+    pick index {
+        None {
+            give false;
+        }
+
+        Some(value) {
+            set output: [ModuleMetadataDependency] = [];
+            set removed: bool = false;
+
+            for dependency in table.modules[value].dependencies {
+                let matches_id =
+                    module_id_is_valid(dependency_module)
+                    and module_id_equal(
+                        dependency.module,
+                        dependency_module
+                    );
+
+                let matches_name =
+                    len(dependency_name) != 0
+                    and dependency.name == dependency_name;
+
+                if matches_id or matches_name {
+                    removed = true;
+                } else {
+                    output = output + [dependency];
+                }
+            }
+
+            if not removed {
+                give false;
+            }
+
+            table.modules[value].dependencies = output;
+            table.modules[value].generation =
+                table.generation;
+            table.modules[value].revision =
+                table.modules[value].revision + 1;
+
+            module_metadata_refresh_statistics(table);
+
+            give true;
+        }
+    }
+}
+
+proc module_metadata_remove_symbol(
+    table: ref mut ModuleMetadataTable,
+    module: ModuleId,
+    name: string,
+    kind: ModuleMetadataSymbolKind
+) -> bool {
+    let index = module_metadata_find_index(
+        ref table,
+        module
+    );
+
+    pick index {
+        None {
+            give false;
+        }
+
+        Some(value) {
+            set output: [ModuleMetadataSymbol] = [];
+            set removed: bool = false;
+
+            for symbol in table.modules[value].symbols {
+                if symbol.name == name
+                    and symbol.kind == kind
+                {
+                    removed = true;
+                } else {
+                    output = output + [symbol];
+                }
+            }
+
+            if not removed {
+                give false;
+            }
+
+            table.modules[value].symbols = output;
+            table.modules[value].generation =
+                table.generation;
+            table.modules[value].revision =
+                table.modules[value].revision + 1;
+
+            module_metadata_refresh_statistics(table);
+
+            give true;
+        }
+    }
+}
+
+proc module_metadata_remove(
+    table: ref mut ModuleMetadataTable,
+    module: ModuleId
+) -> bool {
+    let index = module_metadata_find_index(
+        ref table,
+        module
+    );
+
+    pick index {
+        None {
+            give false;
+        }
+
+        Some(value) {
+            set output: [ModuleMetadata] = [];
+            set current: usize = 0;
+
+            while current < len(table.modules) {
+                if current != value {
+                    output = output + [
+                        table.modules[current]
+                    ];
+                }
+
+                current = current + 1;
+            }
+
+            table.modules = output;
+            module_metadata_refresh_statistics(table);
+
+            give true;
+        }
+    }
+}
+
+proc module_metadata_invalidate(
+    table: ref mut ModuleMetadataTable,
+    module: ModuleId
+) -> bool {
+    give module_metadata_set_state(
+        table,
+        module,
+        ModuleMetadataState.Invalidated
+    );
+}
+
+proc module_metadata_invalidate_dependents(
+    table: ref mut ModuleMetadataTable,
+    dependency: ModuleId
+) -> usize {
+    set invalidated: usize = 0;
+    set index: usize = 0;
+
+    while index < len(table.modules) {
+        set depends: bool = false;
+
+        for current in table.modules[index].dependencies {
+            if module_id_equal(
+                current.module,
+                dependency
+            ) {
+                depends = true;
+            }
+        }
+
+        if depends
+            and table.modules[index].state
+                != ModuleMetadataState.Invalidated
+        {
+            table.modules[index].state =
+                ModuleMetadataState.Invalidated;
+            table.modules[index].complete = false;
+            table.modules[index].generation =
+                table.generation;
+            table.modules[index].revision =
+                table.modules[index].revision + 1;
+
+            invalidated = invalidated + 1;
+        }
+
+        index = index + 1;
+    }
+
+    module_metadata_refresh_statistics(table);
+
+    give invalidated;
+}
+
+proc module_metadata_compute_hash(
+    metadata: ref ModuleMetadata
+) -> u64 {
+    set hash: u64 = 1469598103934665603;
+
+    set index: usize = 0;
+
+    while index < len(metadata.qualified_name) {
+        hash = hash xor cast<u64>(
+            metadata.qualified_name[index]
+        );
+        hash = hash * 1099511628211;
+        index = index + 1;
+    }
+
+    hash = hash xor metadata.fingerprint.source_hash;
+    hash = hash * 1099511628211;
+
+    hash = hash xor metadata.fingerprint.interface_hash;
+    hash = hash * 1099511628211;
+
+    hash = hash xor metadata.fingerprint.dependency_hash;
+    hash = hash * 1099511628211;
+
+    hash = hash xor cast<u64>(len(metadata.dependencies));
+    hash = hash * 1099511628211;
+
+    hash = hash xor cast<u64>(len(metadata.symbols));
+    hash = hash * 1099511628211;
+
+    give hash;
+}
+
+proc module_metadata_update_hash(
+    table: ref mut ModuleMetadataTable,
+    module: ModuleId
+) -> bool {
+    let index = module_metadata_find_index(
+        ref table,
+        module
+    );
+
+    pick index {
+        Some(value) {
+            table.modules[value].fingerprint.metadata_hash =
+                module_metadata_compute_hash(
+                    ref table.modules[value]
+                );
+
+            table.modules[value].generation =
+                table.generation;
+            table.modules[value].revision =
+                table.modules[value].revision + 1;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_metadata_validate_item(
+    metadata: ref ModuleMetadata
+) -> [ModuleMetadataError] {
+    set errors: [ModuleMetadataError] = [];
+
+    if not module_id_is_valid(metadata.module) {
+        errors = errors + [
+            module_metadata_error(
+                ModuleMetadataErrorKind.InvalidModule,
+                metadata.qualified_name,
+                "",
+                "module metadata identifier is invalid",
+                module_metadata_empty_span()
+            )
+        ];
+    }
+
+    if len(metadata.name) == 0
+        or len(metadata.qualified_name) == 0
+    {
+        errors = errors + [
+            module_metadata_error(
+                ModuleMetadataErrorKind.InvalidName,
+                metadata.qualified_name,
+                metadata.name,
+                "module metadata name is invalid",
+                module_metadata_empty_span()
+            )
+        ];
+    }
+
+    if len(metadata.canonical_path) == 0
+        and not metadata.synthetic
+    {
+        errors = errors + [
+            module_metadata_error(
+                ModuleMetadataErrorKind.InvalidPath,
+                metadata.qualified_name,
+                "",
+                "module metadata canonical path is missing",
+                module_metadata_empty_span()
+            )
+        ];
+    }
+
+    if not module_attributes_is_valid(
+        ref metadata.attributes
+    ) {
+        errors = errors + [
+            module_metadata_error(
+                ModuleMetadataErrorKind.InvalidAttributes,
+                metadata.qualified_name,
+                "",
+                "module metadata attributes contain errors",
+                module_metadata_empty_span()
+            )
+        ];
+    }
+
+    if not module_metadata_version_compatible(
+        metadata.metadata_version
+    ) {
+        errors = errors + [
+            module_metadata_error(
+                ModuleMetadataErrorKind.UnsupportedVersion,
+                metadata.qualified_name,
+                module_metadata_version_string(
+                    metadata.metadata_version
+                ),
+                "module metadata version is not supported",
+                module_metadata_empty_span()
+            )
+        ];
+    }
+
+    if metadata.complete
+        and (
+            metadata.state
+                != ModuleMetadataState.Complete
+            and metadata.state
+                != ModuleMetadataState.Serialized
+            and metadata.state
+                != ModuleMetadataState.Loaded
+        )
+    {
+        errors = errors + [
+            module_metadata_error(
+                ModuleMetadataErrorKind.InvalidState,
+                metadata.qualified_name,
+                "",
+                "complete metadata has an incompatible state",
+                module_metadata_empty_span()
+            )
+        ];
+    }
+
+    if metadata.artifact.kind
+        != ModuleArtifactKind.None
+        and metadata.artifact.kind
+            != module_kind_artifact(metadata.module_kind)
+    {
+        errors = errors + [
+            module_metadata_error(
+                ModuleMetadataErrorKind.InvalidState,
+                metadata.qualified_name,
+                metadata.artifact.name,
+                "metadata artifact does not match the module kind",
+                module_metadata_empty_span()
+            )
+        ];
+    }
+
+    for dependency in metadata.dependencies {
+        if len(dependency.name) == 0
+            and not module_id_is_valid(
+                dependency.module
+            )
+        {
+            errors = errors + [
+                module_metadata_error(
+                    ModuleMetadataErrorKind.DependencyNotFound,
+                    metadata.qualified_name,
+                    dependency.name,
+                    "metadata dependency has no identifier or name",
+                    dependency.span
+                )
+            ];
+        }
+
+        if module_id_equal(
+            metadata.module,
+            dependency.module
+        ) {
+            errors = errors + [
+                module_metadata_error(
+                    ModuleMetadataErrorKind.InvalidArgument,
+                    metadata.qualified_name,
+                    dependency.name,
+                    "module metadata contains a self dependency",
+                    dependency.span
+                )
+            ];
+        }
+    }
+
+    for symbol in metadata.symbols {
+        if len(symbol.name) == 0 {
+            errors = errors + [
+                module_metadata_error(
+                    ModuleMetadataErrorKind.InvalidName,
+                    metadata.qualified_name,
+                    "",
+                    "metadata symbol has an empty name",
+                    symbol.declaration_span
+                )
+            ];
+        }
+
+        if symbol.exported
+            and symbol.visibility
+                == ModuleMetadataVisibility.Private
+        {
+            errors = errors + [
+                module_metadata_error(
+                    ModuleMetadataErrorKind.InvalidState,
+                    metadata.qualified_name,
+                    symbol.name,
+                    "private metadata symbol cannot be exported",
+                    symbol.declaration_span
+                )
+            ];
+        }
+    }
+
+    give errors;
+}
+
+proc module_metadata_validate(
+    table: ref mut ModuleMetadataTable
+) -> ModuleMetadataValidation {
+    let previous_error_count = len(table.errors);
+
+    for metadata in table.modules {
+        let errors = module_metadata_validate_item(
+            ref metadata
+        );
+
+        table.errors = table.errors + errors;
+    }
+
+    set errors: [ModuleMetadataError] = [];
+    set index = previous_error_count;
+
+    while index < len(table.errors) {
+        errors = errors + [table.errors[index]];
+        index = index + 1;
+    }
+
+    give ModuleMetadataValidation {
+        errors: errors,
+        valid: len(errors) == 0
+    };
+}
+
+proc module_metadata_complete_modules(
+    table: ref ModuleMetadataTable
+) -> [ModuleMetadata] {
+    set output: [ModuleMetadata] = [];
+
+    for metadata in table.modules {
+        if module_metadata_is_complete(ref metadata) {
+            output = output + [metadata];
+        }
+    }
+
+    give output;
+}
+
+proc module_metadata_invalidated_modules(
+    table: ref ModuleMetadataTable
+) -> [ModuleMetadata] {
+    set output: [ModuleMetadata] = [];
+
+    for metadata in table.modules {
+        if module_metadata_is_invalidated(ref metadata) {
+            output = output + [metadata];
+        }
+    }
+
+    give output;
+}
+
+proc module_metadata_clear_errors(
+    table: ref mut ModuleMetadataTable
+) {
+    table.errors = [];
+}
+
+proc module_metadata_advance_generation(
+    table: ref mut ModuleMetadataTable
+) -> u64 {
+    table.generation = table.generation + 1;
+    give table.generation;
+}
+
+proc module_metadata_clear(
+    table: ref mut ModuleMetadataTable
+) {
+    table.modules = [];
+    table.errors = [];
+    table.generation = table.generation + 1;
+    table.statistics = module_metadata_statistics_empty();
+}
+
+proc module_metadata_reset(
+    table: ref mut ModuleMetadataTable
+) {
+    table.modules = [];
+    table.errors = [];
+    table.generation = 1;
+    table.statistics = module_metadata_statistics_empty();
+}
+
+proc module_metadata_count(
+    table: ref ModuleMetadataTable
+) -> usize {
+    give len(table.modules);
+}
+
+proc module_metadata_is_empty(
+    table: ref ModuleMetadataTable
+) -> bool {
+    give len(table.modules) == 0;
+}
+
+proc module_metadata_has_errors(
+    table: ref ModuleMetadataTable
+) -> bool {
+    give len(table.errors) != 0;
+}
+
+proc module_metadata_statistics(
+    table: ref ModuleMetadataTable
+) -> ModuleMetadataStatistics {
+    give table.statistics;
+}
+
+proc module_metadata_origin_name(
+    origin: ModuleMetadataOrigin
+) -> string {
+    pick origin {
+        ModuleMetadataOrigin.Source {
+            give "source";
+        }
+
+        ModuleMetadataOrigin.Cache {
+            give "cache";
+        }
+
+        ModuleMetadataOrigin.Package {
+            give "package";
+        }
+
+        ModuleMetadataOrigin.Artifact {
+            give "artifact";
+        }
+
+        ModuleMetadataOrigin.Generated {
+            give "generated";
+        }
+
+        ModuleMetadataOrigin.Builtin {
+            give "builtin";
+        }
+
+        ModuleMetadataOrigin.External {
+            give "external";
+        }
+    }
+}
+
+proc module_metadata_summary(
+    metadata: ref ModuleMetadata
+) -> string {
+    give metadata.qualified_name
+        + " ["
+        + module_kind_name(metadata.module_kind)
+        + "] metadata "
+        + module_metadata_version_string(
+            metadata.metadata_version
+        );
+}
+
+proc module_metadata_error_code(
+    error: ref ModuleMetadataError
+) -> string {
+    pick error.kind {
+        ModuleMetadataErrorKind.InvalidArgument {
+            give "E_MODULE_METADATA_ARGUMENT";
+        }
+
+        ModuleMetadataErrorKind.InvalidModule {
+            give "E_MODULE_METADATA_MODULE";
+        }
+
+        ModuleMetadataErrorKind.InvalidName {
+            give "E_MODULE_METADATA_NAME";
+        }
+
+        ModuleMetadataErrorKind.InvalidPath {
+            give "E_MODULE_METADATA_PATH";
+        }
+
+        ModuleMetadataErrorKind.InvalidVersion {
+            give "E_MODULE_METADATA_VERSION";
+        }
+
+        ModuleMetadataErrorKind.InvalidAttributes {
+            give "E_MODULE_METADATA_ATTRIBUTES";
+        }
+
+        ModuleMetadataErrorKind.DuplicateModule {
+            give "E_MODULE_METADATA_DUPLICATE";
+        }
+
+        ModuleMetadataErrorKind.DuplicateDependency {
+            give "E_MODULE_METADATA_DEPENDENCY_DUPLICATE";
+        }
+
+        ModuleMetadataErrorKind.DuplicateSymbol {
+            give "E_MODULE_METADATA_SYMBOL_DUPLICATE";
+        }
+
+        ModuleMetadataErrorKind.DependencyNotFound {
+            give "E_MODULE_METADATA_DEPENDENCY_NOT_FOUND";
+        }
+
+        ModuleMetadataErrorKind.SymbolNotFound {
+            give "E_MODULE_METADATA_SYMBOL_NOT_FOUND";
+        }
+
+        ModuleMetadataErrorKind.InvalidState {
+            give "E_MODULE_METADATA_STATE";
+        }
+
+        ModuleMetadataErrorKind.InvalidFormat {
+            give "E_MODULE_METADATA_FORMAT";
+        }
+
+        ModuleMetadataErrorKind.UnsupportedVersion {
+            give "E_MODULE_METADATA_VERSION_UNSUPPORTED";
+        }
+
+        ModuleMetadataErrorKind.ChecksumMismatch {
+            give "E_MODULE_METADATA_CHECKSUM";
+        }
+
+        ModuleMetadataErrorKind.SerializationFailed {
+            give "E_MODULE_METADATA_SERIALIZE";
+        }
+
+        ModuleMetadataErrorKind.DeserializationFailed {
+            give "E_MODULE_METADATA_DESERIALIZE";
+        }
+
+        ModuleMetadataErrorKind.MetadataCorrupted {
+            give "E_MODULE_METADATA_CORRUPTED";
+        }
+    }
+}

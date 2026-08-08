@@ -1,0 +1,621 @@
+(* Vitte expressions grammar *)
+
+expression
+    = assignment_expression
+    ;
+
+assignment_expression
+    = conditional_expression
+    | assignment_target, assignment_operator, assignment_expression
+    ;
+
+assignment_target
+    = path_expression
+    | field_expression
+    | index_expression
+    | dereference_expression
+    | tuple_field_expression
+    ;
+
+assignment_operator
+    = "="
+    | "+="
+    | "-="
+    | "*="
+    | "/="
+    | "%="
+    | "&="
+    | "|="
+    | "^="
+    | "<<="
+    | ">>="
+    ;
+
+conditional_expression
+    = logical_or_expression
+    ;
+
+logical_or_expression
+    = logical_and_expression,
+      { logical_or_operator, logical_and_expression }
+    ;
+
+logical_or_operator
+    = "or"
+    | "||"
+    ;
+
+logical_and_expression
+    = equality_expression,
+      { logical_and_operator, equality_expression }
+    ;
+
+logical_and_operator
+    = "and"
+    | "&&"
+    ;
+
+equality_expression
+    = comparison_expression,
+      { equality_operator, comparison_expression }
+    ;
+
+equality_operator
+    = "=="
+    | "!="
+    ;
+
+comparison_expression
+    = bitwise_or_expression,
+      { comparison_operator, bitwise_or_expression }
+    ;
+
+comparison_operator
+    = "<"
+    | "<="
+    | ">"
+    | ">="
+    | "is"
+    | "is", "not"
+    | "in"
+    | "not", "in"
+    ;
+
+bitwise_or_expression
+    = bitwise_xor_expression,
+      { bitwise_or_operator, bitwise_xor_expression }
+    ;
+
+bitwise_or_operator
+    = "|"
+    ;
+
+bitwise_xor_expression
+    = bitwise_and_expression,
+      { bitwise_xor_operator, bitwise_and_expression }
+    ;
+
+bitwise_xor_operator
+    = "^"
+    ;
+
+bitwise_and_expression
+    = shift_expression,
+      { bitwise_and_operator, shift_expression }
+    ;
+
+bitwise_and_operator
+    = "&"
+    ;
+
+shift_expression
+    = additive_expression,
+      { shift_operator, additive_expression }
+    ;
+
+shift_operator
+    = "<<"
+    | ">>"
+    ;
+
+additive_expression
+    = multiplicative_expression,
+      { additive_operator, multiplicative_expression }
+    ;
+
+additive_operator
+    = "+"
+    | "-"
+    ;
+
+multiplicative_expression
+    = cast_expression,
+      { multiplicative_operator, cast_expression }
+    ;
+
+multiplicative_operator
+    = "*"
+    | "/"
+    | "%"
+    ;
+
+cast_expression
+    = unary_expression,
+      { cast_operator, type }
+    ;
+
+cast_operator
+    = "as"
+    ;
+
+unary_expression
+    = postfix_expression
+    | unary_operator, unary_expression
+    | borrow_expression
+    | dereference_expression
+    | await_expression
+    | try_expression
+    ;
+
+unary_operator
+    = "+"
+    | "-"
+    | "!"
+    | "not"
+    | "~"
+    ;
+
+borrow_expression
+    = "ref", unary_expression
+    | "ref", "mut", unary_expression
+    ;
+
+dereference_expression
+    = "*", unary_expression
+    ;
+
+await_expression
+    = "await", unary_expression
+    ;
+
+try_expression
+    = "try", unary_expression
+    ;
+
+postfix_expression
+    = primary_expression,
+      { postfix_operation }
+    ;
+
+postfix_operation
+    = call_suffix
+    | index_suffix
+    | field_suffix
+    | tuple_field_suffix
+    | method_call_suffix
+    | generic_argument_suffix
+    | optional_suffix
+    | unwrap_suffix
+    | postfix_try_suffix
+    ;
+
+call_suffix
+    = left_parenthesis,
+      argument_list?,
+      right_parenthesis
+    ;
+
+argument_list
+    = argument,
+      { comma, argument },
+      comma?
+    ;
+
+argument
+    = expression
+    | named_argument
+    | spread_argument
+    ;
+
+named_argument
+    = identifier, colon, expression
+    ;
+
+spread_argument
+    = "..", expression
+    ;
+
+index_suffix
+    = left_bracket,
+      index_argument,
+      right_bracket
+    ;
+
+index_argument
+    = expression
+    | range_expression
+    ;
+
+field_suffix
+    = dot, identifier
+    ;
+
+tuple_field_suffix
+    = dot, decimal_integer_literal
+    ;
+
+method_call_suffix
+    = dot,
+      identifier,
+      generic_argument_suffix?,
+      call_suffix
+    ;
+
+generic_argument_suffix
+    = "<",
+      generic_argument_list,
+      ">"
+    ;
+
+generic_argument_list
+    = generic_argument,
+      { comma, generic_argument },
+      comma?
+    ;
+
+generic_argument
+    = type
+    | constant_expression
+    ;
+
+optional_suffix
+    = "?"
+    ;
+
+unwrap_suffix
+    = "!"
+    ;
+
+postfix_try_suffix
+    = "?"
+    ;
+
+primary_expression
+    = literal_expression
+    | path_expression
+    | grouped_expression
+    | tuple_expression
+    | array_expression
+    | form_expression
+    | block_expression
+    | if_expression
+    | pick_expression
+    | loop_expression
+    | while_expression
+    | for_expression
+    | closure_expression
+    | range_expression
+    | return_expression
+    | break_expression
+    | continue_expression
+    | give_expression
+    | unsafe_expression
+    | async_expression
+    | compiler_expression
+    ;
+
+literal_expression
+    = integer_literal
+    | floating_literal
+    | boolean_literal
+    | character_literal
+    | string_literal
+    | byte_literal
+    | byte_string_literal
+    | null_literal
+    ;
+
+boolean_literal
+    = "true"
+    | "false"
+    ;
+
+null_literal
+    = "null"
+    ;
+
+path_expression
+    = qualified_path
+    ;
+
+qualified_path
+    = path_segment,
+      { path_separator, path_segment }
+    ;
+
+path_segment
+    = identifier
+    | self_keyword
+    | super_keyword
+    | root_keyword
+    ;
+
+grouped_expression
+    = left_parenthesis,
+      expression,
+      right_parenthesis
+    ;
+
+tuple_expression
+    = left_parenthesis,
+      tuple_expression_items,
+      right_parenthesis
+    ;
+
+tuple_expression_items
+    = expression,
+      comma,
+      [ expression, { comma, expression }, comma? ]
+    ;
+
+array_expression
+    = array_list_expression
+    | array_repeat_expression
+    ;
+
+array_list_expression
+    = left_bracket,
+      [ expression, { comma, expression }, comma? ],
+      right_bracket
+    ;
+
+array_repeat_expression
+    = left_bracket,
+      expression,
+      semicolon,
+      expression,
+      right_bracket
+    ;
+
+form_expression
+    = qualified_path,
+      left_brace,
+      form_field_initializers?,
+      right_brace
+    ;
+
+form_field_initializers
+    = form_field_initializer,
+      { comma, form_field_initializer },
+      comma?
+    ;
+
+form_field_initializer
+    = identifier, colon, expression
+    | identifier
+    | form_update_initializer
+    ;
+
+form_update_initializer
+    = "..", expression
+    ;
+
+block_expression
+    = left_brace,
+      { statement },
+      trailing_expression?,
+      right_brace
+    ;
+
+trailing_expression
+    = expression
+    ;
+
+if_expression
+    = "if",
+      expression,
+      block_expression,
+      { "else", "if", expression, block_expression },
+      [ "else", block_expression ]
+    ;
+
+pick_expression
+    = "pick",
+      expression,
+      left_brace,
+      pick_arm*,
+      right_brace
+    ;
+
+pick_arm
+    = pattern,
+      pick_guard?,
+      pick_arm_body,
+      comma?
+    ;
+
+pick_guard
+    = "if", expression
+    ;
+
+pick_arm_body
+    = block_expression
+    | fat_arrow, expression
+    ;
+
+loop_expression
+    = "loop", loop_label?, block_expression
+    ;
+
+while_expression
+    = "while",
+      loop_label?,
+      expression,
+      block_expression
+    ;
+
+for_expression
+    = "for",
+      loop_label?,
+      pattern,
+      "in",
+      expression,
+      block_expression
+    ;
+
+loop_label
+    = apostrophe, identifier, colon
+    ;
+
+closure_expression
+    = closure_parameters,
+      closure_return_type?,
+      closure_body
+    ;
+
+closure_parameters
+    = vertical_bar,
+      closure_parameter_list?,
+      vertical_bar
+    ;
+
+closure_parameter_list
+    = closure_parameter,
+      { comma, closure_parameter },
+      comma?
+    ;
+
+closure_parameter
+    = pattern, [ colon, type ]
+    ;
+
+closure_return_type
+    = arrow, type
+    ;
+
+closure_body
+    = expression
+    | block_expression
+    ;
+
+range_expression
+    = expression?, range_operator, expression?
+    ;
+
+range_operator
+    = ".."
+    | "..="
+    ;
+
+return_expression
+    = "return", expression?
+    ;
+
+give_expression
+    = "give", expression?
+    ;
+
+break_expression
+    = "break", loop_label_reference?, expression?
+    ;
+
+continue_expression
+    = "continue", loop_label_reference?
+    ;
+
+loop_label_reference
+    = apostrophe, identifier
+    ;
+
+unsafe_expression
+    = "unsafe", block_expression
+    ;
+
+async_expression
+    = "async", block_expression
+    ;
+
+compiler_expression
+    = "compiler",
+      path_separator,
+      identifier,
+      generic_argument_suffix?,
+      call_suffix
+    ;
+
+constant_expression
+    = expression
+    ;
+
+left_parenthesis
+    = "("
+    ;
+
+right_parenthesis
+    = ")"
+    ;
+
+left_bracket
+    = "["
+    ;
+
+right_bracket
+    = "]"
+    ;
+
+left_brace
+    = "{"
+    ;
+
+right_brace
+    = "}"
+    ;
+
+comma
+    = ","
+    ;
+
+colon
+    = ":"
+    ;
+
+semicolon
+    = ";"
+    ;
+
+dot
+    = "."
+    ;
+
+arrow
+    = "->"
+    ;
+
+fat_arrow
+    = "=>"
+    ;
+
+vertical_bar
+    = "|"
+    ;
+
+apostrophe
+    = "'"
+    ;
+
+path_separator
+    = "::"
+    | "/"
+    ;
+
+self_keyword
+    = "self"
+    ;
+
+super_keyword
+    = "super"
+    ;
+
+root_keyword
+    = "root"
+    ;

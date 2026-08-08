@@ -1,0 +1,320 @@
+(* Vitte literals grammar *)
+
+literal
+    = integer_literal
+    | floating_literal
+    | boolean_literal
+    | character_literal
+    | string_literal
+    | raw_string_literal
+    | multiline_string_literal
+    | byte_literal
+    | byte_string_literal
+    | raw_byte_string_literal
+    | null_literal
+    ;
+
+integer_literal
+    = decimal_integer_literal
+    | hexadecimal_integer_literal
+    | octal_integer_literal
+    | binary_integer_literal
+    ;
+
+decimal_integer_literal
+    = decimal_digit,
+      { decimal_digit | "_" },
+      integer_suffix?
+    ;
+
+hexadecimal_integer_literal
+    = "0x",
+      hexadecimal_digit,
+      { hexadecimal_digit | "_" },
+      integer_suffix?
+    ;
+
+octal_integer_literal
+    = "0o",
+      octal_digit,
+      { octal_digit | "_" },
+      integer_suffix?
+    ;
+
+binary_integer_literal
+    = "0b",
+      binary_digit,
+      { binary_digit | "_" },
+      integer_suffix?
+    ;
+
+integer_suffix
+    = signed_integer_suffix
+    | unsigned_integer_suffix
+    ;
+
+signed_integer_suffix
+    = "i8"
+    | "i16"
+    | "i32"
+    | "i64"
+    | "i128"
+    | "isize"
+    ;
+
+unsigned_integer_suffix
+    = "u8"
+    | "u16"
+    | "u32"
+    | "u64"
+    | "u128"
+    | "usize"
+    ;
+
+floating_literal
+    = floating_decimal_literal
+    | floating_exponent_literal
+    ;
+
+floating_decimal_literal
+    = decimal_integer_literal,
+      ".",
+      decimal_fraction,
+      exponent_part?,
+      floating_suffix?
+    ;
+
+floating_exponent_literal
+    = decimal_integer_literal,
+      exponent_part,
+      floating_suffix?
+    ;
+
+decimal_fraction
+    = decimal_digit,
+      { decimal_digit | "_" }
+    ;
+
+exponent_part
+    = exponent_marker,
+      exponent_sign?,
+      decimal_digit,
+      { decimal_digit | "_" }
+    ;
+
+exponent_marker
+    = "e"
+    | "E"
+    ;
+
+exponent_sign
+    = "+"
+    | "-"
+    ;
+
+floating_suffix
+    = "f32"
+    | "f64"
+    ;
+
+boolean_literal
+    = "true"
+    | "false"
+    ;
+
+null_literal
+    = "null"
+    ;
+
+character_literal
+    = "'",
+      character_content,
+      "'"
+    ;
+
+character_content
+    = unicode_character
+    | escape_sequence
+    ;
+
+string_literal
+    = "\"",
+      { string_content },
+      "\""
+    ;
+
+string_content
+    = unicode_character
+    | escape_sequence
+    ;
+
+raw_string_literal
+    = raw_string_start,
+      raw_string_body,
+      raw_string_end
+    ;
+
+raw_string_start
+    = "r\""
+    | "r#\""
+    | "r##\""
+    | "r###\""
+    | "r####\""
+    ;
+
+raw_string_end
+    = "\""
+    | "\"#"
+    | "\"##"
+    | "\"###"
+    | "\"####"
+    ;
+
+raw_string_body
+    = { raw_string_character }
+    ;
+
+raw_string_character
+    = ? any Unicode scalar value ?
+    ;
+
+multiline_string_literal
+    = "\"\"\"",
+      multiline_string_body,
+      "\"\"\""
+    ;
+
+multiline_string_body
+    = { multiline_character }
+    ;
+
+multiline_character
+    = unicode_character
+    | escape_sequence
+    | line_terminator
+    ;
+
+byte_literal
+    = "b'",
+      byte_character,
+      "'"
+    ;
+
+byte_character
+    = ascii_character
+    | escape_sequence
+    ;
+
+byte_string_literal
+    = "b\"",
+      { byte_string_character },
+      "\""
+    ;
+
+byte_string_character
+    = ascii_character
+    | escape_sequence
+    ;
+
+raw_byte_string_literal
+    = raw_byte_string_start,
+      raw_byte_string_body,
+      raw_byte_string_end
+    ;
+
+raw_byte_string_start
+    = "br\""
+    | "br#\""
+    | "br##\""
+    | "br###\""
+    | "br####\""
+    ;
+
+raw_byte_string_end
+    = "\""
+    | "\"#"
+    | "\"##"
+    | "\"###"
+    | "\"####"
+    ;
+
+raw_byte_string_body
+    = { ascii_character }
+    ;
+
+escape_sequence
+    = simple_escape
+    | hexadecimal_escape
+    | unicode_escape
+    ;
+
+simple_escape
+    = "\\0"
+    | "\\a"
+    | "\\b"
+    | "\\e"
+    | "\\f"
+    | "\\n"
+    | "\\r"
+    | "\\t"
+    | "\\v"
+    | "\\\\"
+    | "\\'"
+    | "\\\""
+    ;
+
+hexadecimal_escape
+    = "\\x",
+      hexadecimal_digit,
+      hexadecimal_digit
+    ;
+
+unicode_escape
+    = "\\u{",
+      hexadecimal_digit,
+      { hexadecimal_digit },
+      "}"
+    ;
+
+decimal_digit
+    = "0" | "1" | "2" | "3" | "4"
+    | "5" | "6" | "7" | "8" | "9"
+    ;
+
+binary_digit
+    = "0"
+    | "1"
+    ;
+
+octal_digit
+    = "0" | "1" | "2" | "3"
+    | "4" | "5" | "6" | "7"
+    ;
+
+hexadecimal_digit
+    = decimal_digit
+    | "a" | "b" | "c" | "d" | "e" | "f"
+    | "A" | "B" | "C" | "D" | "E" | "F"
+    ;
+
+ascii_character
+    = ? any ASCII character except backslash and matching quote ?
+    ;
+
+unicode_character
+    = ? any valid Unicode scalar value except backslash and matching quote ?
+    ;
+
+line_terminator
+    = LF
+    | CR
+    | CR, LF
+    ;
+
+LF
+    = ? Unicode U+000A LINE FEED ?
+    ;
+
+CR
+    = ? Unicode U+000D CARRIAGE RETURN ?
+    ;

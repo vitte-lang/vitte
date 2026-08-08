@@ -1,0 +1,1452 @@
+space vitte/compiler/analysis/modules/module_edge
+
+export *
+
+use src/vitte/compiler/frontend/source/span.{Span}
+use src/vitte/compiler/analysis/modules/module_database.{
+    ModuleId,
+    ModuleDependencyId,
+    ModuleDatabase,
+    ModuleDatabaseDependency,
+    module_id_invalid,
+    module_dependency_id_invalid,
+    module_id_equal,
+    module_dependency_id_equal,
+    module_id_is_valid,
+    module_dependency_id_is_valid
+}
+
+pick ModuleEdgeKind {
+    Private,
+    Public,
+    Optional,
+    Development,
+    Build,
+    Runtime,
+    Prelude,
+    Builtin,
+    Generated
+}
+
+pick ModuleEdgeState {
+    Declared,
+    Resolving,
+    Resolved,
+    Disabled,
+    Missing,
+    Failed,
+    Invalidated
+}
+
+pick ModuleEdgeErrorKind {
+    InvalidArgument,
+    InvalidSource,
+    InvalidTarget,
+    SelfDependency,
+    DuplicateEdge,
+    EdgeNotFound,
+    DisabledRequiredEdge,
+    UnresolvedEdge,
+    FailedEdge,
+    InvalidState,
+    GraphCorrupted
+}
+
+form ModuleEdgeId {
+    value: usize
+}
+
+form ModuleEdgeCondition {
+    feature: string
+    target_os: string
+    target_arch: string
+    profile: string
+    inverted: bool
+}
+
+form ModuleEdge {
+    id: ModuleEdgeId
+    database_id: ModuleDependencyId
+
+    source: ModuleId
+    target: ModuleId
+
+    source_name: string
+    target_name: string
+
+    kind: ModuleEdgeKind
+    state: ModuleEdgeState
+
+    span: Span
+
+    enabled: bool
+    required: bool
+    reexported: bool
+
+    conditions: [ModuleEdgeCondition]
+
+    generation: u64
+    revision: u64
+}
+
+form ModuleEdgeError {
+    kind: ModuleEdgeErrorKind
+    source: string
+    target: string
+    message: string
+    span: Span
+}
+
+form ModuleEdgeStatistics {
+    edges: usize
+    resolved: usize
+    unresolved: usize
+    disabled: usize
+    missing: usize
+    failed: usize
+
+    public_edges: usize
+    private_edges: usize
+    optional_edges: usize
+    conditional_edges: usize
+    reexported_edges: usize
+}
+
+form ModuleEdgeCollection {
+    edges: [ModuleEdge]
+    errors: [ModuleEdgeError]
+    next_id: usize
+    generation: u64
+    statistics: ModuleEdgeStatistics
+}
+
+form ModuleEdgeEvaluationContext {
+    enabled_features: [string]
+    target_os: string
+    target_arch: string
+    profile: string
+}
+
+proc module_edge_empty_span() -> Span {
+    give Span {
+        source: 0,
+        start: 0,
+        end: 0
+    };
+}
+
+proc module_edge_id(value: usize) -> ModuleEdgeId {
+    give ModuleEdgeId {
+        value: value
+    };
+}
+
+proc module_edge_id_invalid() -> ModuleEdgeId {
+    give module_edge_id(0);
+}
+
+proc module_edge_id_is_valid(id: ModuleEdgeId) -> bool {
+    give id.value != 0;
+}
+
+proc module_edge_id_equal(
+    left: ModuleEdgeId,
+    right: ModuleEdgeId
+) -> bool {
+    give left.value == right.value;
+}
+
+proc module_edge_condition(
+    feature: string,
+    target_os: string,
+    target_arch: string,
+    profile: string,
+    inverted: bool
+) -> ModuleEdgeCondition {
+    give ModuleEdgeCondition {
+        feature: feature,
+        target_os: target_os,
+        target_arch: target_arch,
+        profile: profile,
+        inverted: inverted
+    };
+}
+
+proc module_edge_statistics_empty() -> ModuleEdgeStatistics {
+    give ModuleEdgeStatistics {
+        edges: 0,
+        resolved: 0,
+        unresolved: 0,
+        disabled: 0,
+        missing: 0,
+        failed: 0,
+
+        public_edges: 0,
+        private_edges: 0,
+        optional_edges: 0,
+        conditional_edges: 0,
+        reexported_edges: 0
+    };
+}
+
+proc module_edge_collection_create() -> ModuleEdgeCollection {
+    give ModuleEdgeCollection {
+        edges: [],
+        errors: [],
+        next_id: 1,
+        generation: 1,
+        statistics: module_edge_statistics_empty()
+    };
+}
+
+proc module_edge_evaluation_context(
+    enabled_features: [string],
+    target_os: string,
+    target_arch: string,
+    profile: string
+) -> ModuleEdgeEvaluationContext {
+    give ModuleEdgeEvaluationContext {
+        enabled_features: enabled_features,
+        target_os: target_os,
+        target_arch: target_arch,
+        profile: profile
+    };
+}
+
+proc module_edge_error(
+    kind: ModuleEdgeErrorKind,
+    source: string,
+    target: string,
+    message: string,
+    span: Span
+) -> ModuleEdgeError {
+    give ModuleEdgeError {
+        kind: kind,
+        source: source,
+        target: target,
+        message: message,
+        span: span
+    };
+}
+
+proc module_edge_collection_push_error(
+    collection: ref mut ModuleEdgeCollection,
+    kind: ModuleEdgeErrorKind,
+    source: string,
+    target: string,
+    message: string,
+    span: Span
+) {
+    collection.errors = collection.errors + [
+        module_edge_error(
+            kind,
+            source,
+            target,
+            message,
+            span
+        )
+    ];
+}
+
+proc module_edge_kind_from_database(
+    dependency: ref ModuleDatabaseDependency
+) -> ModuleEdgeKind {
+    if dependency.optional {
+        give ModuleEdgeKind.Optional;
+    }
+
+    if dependency.public {
+        give ModuleEdgeKind.Public;
+    }
+
+    give ModuleEdgeKind.Private;
+}
+
+proc module_edge_from_database(
+    dependency: ref ModuleDatabaseDependency,
+    id: ModuleEdgeId,
+    generation: u64
+) -> ModuleEdge {
+    let kind = module_edge_kind_from_database(dependency);
+
+    give ModuleEdge {
+        id: id,
+        database_id: dependency.id,
+
+        source: dependency.module_id,
+        target: dependency.target_id,
+
+        source_name: dependency.module_name,
+        target_name: dependency.target_name,
+
+        kind: kind,
+        state: ModuleEdgeState.Resolved,
+
+        span: dependency.span,
+
+        enabled: true,
+        required: not dependency.optional,
+        reexported: dependency.public,
+
+        conditions: [],
+
+        generation: generation,
+        revision: 1
+    };
+}
+
+proc module_edge_create(
+    id: ModuleEdgeId,
+    source: ModuleId,
+    target: ModuleId,
+    source_name: string,
+    target_name: string,
+    kind: ModuleEdgeKind,
+    span: Span,
+    generation: u64
+) -> ModuleEdge {
+    give ModuleEdge {
+        id: id,
+        database_id: module_dependency_id_invalid(),
+
+        source: source,
+        target: target,
+
+        source_name: source_name,
+        target_name: target_name,
+
+        kind: kind,
+        state: ModuleEdgeState.Declared,
+
+        span: span,
+
+        enabled: true,
+        required: kind != ModuleEdgeKind.Optional,
+        reexported: kind == ModuleEdgeKind.Public,
+
+        conditions: [],
+
+        generation: generation,
+        revision: 1
+    };
+}
+
+proc module_edge_is_valid(
+    edge: ref ModuleEdge
+) -> bool {
+    give module_edge_id_is_valid(edge.id)
+        and module_id_is_valid(edge.source)
+        and module_id_is_valid(edge.target)
+        and not module_id_equal(edge.source, edge.target)
+        and len(edge.source_name) != 0
+        and len(edge.target_name) != 0;
+}
+
+proc module_edge_is_resolved(
+    edge: ref ModuleEdge
+) -> bool {
+    give edge.state == ModuleEdgeState.Resolved
+        and edge.enabled;
+}
+
+proc module_edge_is_optional(
+    edge: ref ModuleEdge
+) -> bool {
+    give edge.kind == ModuleEdgeKind.Optional
+        or not edge.required;
+}
+
+proc module_edge_is_public(
+    edge: ref ModuleEdge
+) -> bool {
+    give edge.kind == ModuleEdgeKind.Public
+        or edge.reexported;
+}
+
+proc module_edge_is_conditional(
+    edge: ref ModuleEdge
+) -> bool {
+    give len(edge.conditions) != 0;
+}
+
+proc module_edge_is_failed(
+    edge: ref ModuleEdge
+) -> bool {
+    give edge.state == ModuleEdgeState.Failed
+        or edge.state == ModuleEdgeState.Missing;
+}
+
+proc module_edge_find_index(
+    collection: ref ModuleEdgeCollection,
+    id: ModuleEdgeId
+) -> Option<usize> {
+    set index: usize = 0;
+
+    while index < len(collection.edges) {
+        if module_edge_id_equal(collection.edges[index].id, id) {
+            give Some(index);
+        }
+
+        index = index + 1;
+    }
+
+    give None;
+}
+
+proc module_edge_find_database_index(
+    collection: ref ModuleEdgeCollection,
+    id: ModuleDependencyId
+) -> Option<usize> {
+    set index: usize = 0;
+
+    while index < len(collection.edges) {
+        if module_dependency_id_equal(
+            collection.edges[index].database_id,
+            id
+        ) {
+            give Some(index);
+        }
+
+        index = index + 1;
+    }
+
+    give None;
+}
+
+proc module_edge_find_pair_index(
+    collection: ref ModuleEdgeCollection,
+    source: ModuleId,
+    target: ModuleId
+) -> Option<usize> {
+    set index: usize = 0;
+
+    while index < len(collection.edges) {
+        if module_id_equal(collection.edges[index].source, source)
+            and module_id_equal(
+                collection.edges[index].target,
+                target
+            )
+        {
+            give Some(index);
+        }
+
+        index = index + 1;
+    }
+
+    give None;
+}
+
+proc module_edge_contains(
+    collection: ref ModuleEdgeCollection,
+    id: ModuleEdgeId
+) -> bool {
+    give module_edge_find_index(collection, id) != None;
+}
+
+proc module_edge_contains_pair(
+    collection: ref ModuleEdgeCollection,
+    source: ModuleId,
+    target: ModuleId
+) -> bool {
+    give module_edge_find_pair_index(
+        collection,
+        source,
+        target
+    ) != None;
+}
+
+proc module_edge_get(
+    collection: ref ModuleEdgeCollection,
+    id: ModuleEdgeId
+) -> Option<ref ModuleEdge> {
+    let index = module_edge_find_index(collection, id);
+
+    pick index {
+        Some(value) {
+            give Some(ref collection.edges[value]);
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc module_edge_get_mut(
+    collection: ref mut ModuleEdgeCollection,
+    id: ModuleEdgeId
+) -> Option<ref mut ModuleEdge> {
+    let index = module_edge_find_index(ref collection, id);
+
+    pick index {
+        Some(value) {
+            give Some(ref mut collection.edges[value]);
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc module_edge_refresh_statistics(
+    collection: ref mut ModuleEdgeCollection
+) {
+    set statistics = module_edge_statistics_empty();
+
+    statistics.edges = len(collection.edges);
+
+    for edge in collection.edges {
+        pick edge.state {
+            ModuleEdgeState.Resolved {
+                statistics.resolved = statistics.resolved + 1;
+            }
+
+            ModuleEdgeState.Declared {
+                statistics.unresolved =
+                    statistics.unresolved + 1;
+            }
+
+            ModuleEdgeState.Resolving {
+                statistics.unresolved =
+                    statistics.unresolved + 1;
+            }
+
+            ModuleEdgeState.Disabled {
+                statistics.disabled = statistics.disabled + 1;
+            }
+
+            ModuleEdgeState.Missing {
+                statistics.missing = statistics.missing + 1;
+            }
+
+            ModuleEdgeState.Failed {
+                statistics.failed = statistics.failed + 1;
+            }
+
+            ModuleEdgeState.Invalidated {
+                statistics.unresolved =
+                    statistics.unresolved + 1;
+            }
+        }
+
+        pick edge.kind {
+            ModuleEdgeKind.Public {
+                statistics.public_edges =
+                    statistics.public_edges + 1;
+            }
+
+            ModuleEdgeKind.Private {
+                statistics.private_edges =
+                    statistics.private_edges + 1;
+            }
+
+            ModuleEdgeKind.Optional {
+                statistics.optional_edges =
+                    statistics.optional_edges + 1;
+            }
+
+            _ {}
+        }
+
+        if module_edge_is_conditional(ref edge) {
+            statistics.conditional_edges =
+                statistics.conditional_edges + 1;
+        }
+
+        if edge.reexported {
+            statistics.reexported_edges =
+                statistics.reexported_edges + 1;
+        }
+    }
+
+    collection.statistics = statistics;
+}
+
+proc module_edge_insert(
+    collection: ref mut ModuleEdgeCollection,
+    source: ModuleId,
+    target: ModuleId,
+    source_name: string,
+    target_name: string,
+    kind: ModuleEdgeKind,
+    span: Span
+) -> Option<ModuleEdgeId> {
+    if not module_id_is_valid(source)
+        or not module_id_is_valid(target)
+        or len(source_name) == 0
+        or len(target_name) == 0
+    {
+        module_edge_collection_push_error(
+            collection,
+            ModuleEdgeErrorKind.InvalidArgument,
+            source_name,
+            target_name,
+            "module edge contains invalid source or target data",
+            span
+        );
+
+        give None;
+    }
+
+    if module_id_equal(source, target) {
+        module_edge_collection_push_error(
+            collection,
+            ModuleEdgeErrorKind.SelfDependency,
+            source_name,
+            target_name,
+            "module cannot depend on itself",
+            span
+        );
+
+        give None;
+    }
+
+    if module_edge_contains_pair(ref collection, source, target) {
+        module_edge_collection_push_error(
+            collection,
+            ModuleEdgeErrorKind.DuplicateEdge,
+            source_name,
+            target_name,
+            "module edge already exists",
+            span
+        );
+
+        give None;
+    }
+
+    let id = module_edge_id(collection.next_id);
+    collection.next_id = collection.next_id + 1;
+
+    collection.edges = collection.edges + [
+        module_edge_create(
+            id,
+            source,
+            target,
+            source_name,
+            target_name,
+            kind,
+            span,
+            collection.generation
+        )
+    ];
+
+    module_edge_refresh_statistics(collection);
+
+    give Some(id);
+}
+
+proc module_edge_insert_database(
+    collection: ref mut ModuleEdgeCollection,
+    dependency: ref ModuleDatabaseDependency
+) -> Option<ModuleEdgeId> {
+    if module_edge_find_database_index(
+        ref collection,
+        dependency.id
+    ) != None {
+        module_edge_collection_push_error(
+            collection,
+            ModuleEdgeErrorKind.DuplicateEdge,
+            dependency.module_name,
+            dependency.target_name,
+            "database dependency edge already exists",
+            dependency.span
+        );
+
+        give None;
+    }
+
+    if module_edge_contains_pair(
+        ref collection,
+        dependency.module_id,
+        dependency.target_id
+    ) {
+        module_edge_collection_push_error(
+            collection,
+            ModuleEdgeErrorKind.DuplicateEdge,
+            dependency.module_name,
+            dependency.target_name,
+            "module edge pair already exists",
+            dependency.span
+        );
+
+        give None;
+    }
+
+    let id = module_edge_id(collection.next_id);
+    collection.next_id = collection.next_id + 1;
+
+    collection.edges = collection.edges + [
+        module_edge_from_database(
+            dependency,
+            id,
+            collection.generation
+        )
+    ];
+
+    module_edge_refresh_statistics(collection);
+
+    give Some(id);
+}
+
+proc module_edge_set_state(
+    collection: ref mut ModuleEdgeCollection,
+    id: ModuleEdgeId,
+    state: ModuleEdgeState
+) -> bool {
+    let index = module_edge_find_index(ref collection, id);
+
+    pick index {
+        Some(value) {
+            collection.edges[value].state = state;
+            collection.edges[value].generation =
+                collection.generation;
+            collection.edges[value].revision =
+                collection.edges[value].revision + 1;
+
+            collection.edges[value].enabled =
+                state != ModuleEdgeState.Disabled
+                and state != ModuleEdgeState.Missing
+                and state != ModuleEdgeState.Failed
+                and state != ModuleEdgeState.Invalidated;
+
+            module_edge_refresh_statistics(collection);
+            give true;
+        }
+
+        None {
+            module_edge_collection_push_error(
+                collection,
+                ModuleEdgeErrorKind.EdgeNotFound,
+                "",
+                "",
+                "cannot update an unknown module edge",
+                module_edge_empty_span()
+            );
+
+            give false;
+        }
+    }
+}
+
+proc module_edge_begin_resolution(
+    collection: ref mut ModuleEdgeCollection,
+    id: ModuleEdgeId
+) -> bool {
+    give module_edge_set_state(
+        collection,
+        id,
+        ModuleEdgeState.Resolving
+    );
+}
+
+proc module_edge_mark_resolved(
+    collection: ref mut ModuleEdgeCollection,
+    id: ModuleEdgeId
+) -> bool {
+    give module_edge_set_state(
+        collection,
+        id,
+        ModuleEdgeState.Resolved
+    );
+}
+
+proc module_edge_mark_missing(
+    collection: ref mut ModuleEdgeCollection,
+    id: ModuleEdgeId
+) -> bool {
+    give module_edge_set_state(
+        collection,
+        id,
+        ModuleEdgeState.Missing
+    );
+}
+
+proc module_edge_mark_failed(
+    collection: ref mut ModuleEdgeCollection,
+    id: ModuleEdgeId
+) -> bool {
+    give module_edge_set_state(
+        collection,
+        id,
+        ModuleEdgeState.Failed
+    );
+}
+
+proc module_edge_enable(
+    collection: ref mut ModuleEdgeCollection,
+    id: ModuleEdgeId
+) -> bool {
+    let index = module_edge_find_index(ref collection, id);
+
+    pick index {
+        Some(value) {
+            collection.edges[value].enabled = true;
+
+            if collection.edges[value].state
+                == ModuleEdgeState.Disabled
+            {
+                collection.edges[value].state =
+                    ModuleEdgeState.Declared;
+            }
+
+            collection.edges[value].revision =
+                collection.edges[value].revision + 1;
+            collection.edges[value].generation =
+                collection.generation;
+
+            module_edge_refresh_statistics(collection);
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_edge_disable(
+    collection: ref mut ModuleEdgeCollection,
+    id: ModuleEdgeId
+) -> bool {
+    let index = module_edge_find_index(ref collection, id);
+
+    pick index {
+        Some(value) {
+            if collection.edges[value].required {
+                module_edge_collection_push_error(
+                    collection,
+                    ModuleEdgeErrorKind.DisabledRequiredEdge,
+                    collection.edges[value].source_name,
+                    collection.edges[value].target_name,
+                    "required module edge cannot be disabled",
+                    collection.edges[value].span
+                );
+
+                give false;
+            }
+
+            collection.edges[value].enabled = false;
+            collection.edges[value].state =
+                ModuleEdgeState.Disabled;
+            collection.edges[value].revision =
+                collection.edges[value].revision + 1;
+            collection.edges[value].generation =
+                collection.generation;
+
+            module_edge_refresh_statistics(collection);
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_edge_set_required(
+    collection: ref mut ModuleEdgeCollection,
+    id: ModuleEdgeId,
+    required: bool
+) -> bool {
+    let index = module_edge_find_index(ref collection, id);
+
+    pick index {
+        Some(value) {
+            collection.edges[value].required = required;
+            collection.edges[value].revision =
+                collection.edges[value].revision + 1;
+            collection.edges[value].generation =
+                collection.generation;
+
+            if required
+                and collection.edges[value].kind
+                    == ModuleEdgeKind.Optional
+            {
+                collection.edges[value].kind =
+                    ModuleEdgeKind.Private;
+            }
+
+            module_edge_refresh_statistics(collection);
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_edge_set_reexported(
+    collection: ref mut ModuleEdgeCollection,
+    id: ModuleEdgeId,
+    reexported: bool
+) -> bool {
+    let index = module_edge_find_index(ref collection, id);
+
+    pick index {
+        Some(value) {
+            collection.edges[value].reexported = reexported;
+            collection.edges[value].revision =
+                collection.edges[value].revision + 1;
+            collection.edges[value].generation =
+                collection.generation;
+
+            if reexported {
+                collection.edges[value].kind =
+                    ModuleEdgeKind.Public;
+            }
+
+            module_edge_refresh_statistics(collection);
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_edge_add_condition(
+    collection: ref mut ModuleEdgeCollection,
+    id: ModuleEdgeId,
+    condition: ModuleEdgeCondition
+) -> bool {
+    let index = module_edge_find_index(ref collection, id);
+
+    pick index {
+        Some(value) {
+            collection.edges[value].conditions =
+                collection.edges[value].conditions + [condition];
+            collection.edges[value].revision =
+                collection.edges[value].revision + 1;
+            collection.edges[value].generation =
+                collection.generation;
+
+            module_edge_refresh_statistics(collection);
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_edge_clear_conditions(
+    collection: ref mut ModuleEdgeCollection,
+    id: ModuleEdgeId
+) -> bool {
+    let index = module_edge_find_index(ref collection, id);
+
+    pick index {
+        Some(value) {
+            collection.edges[value].conditions = [];
+            collection.edges[value].revision =
+                collection.edges[value].revision + 1;
+            collection.edges[value].generation =
+                collection.generation;
+
+            module_edge_refresh_statistics(collection);
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_edge_string_list_contains(
+    values: ref [string],
+    value: string
+) -> bool {
+    for current in values {
+        if current == value {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc module_edge_condition_matches(
+    condition: ref ModuleEdgeCondition,
+    context: ref ModuleEdgeEvaluationContext
+) -> bool {
+    set matches: bool = true;
+
+    if len(condition.feature) != 0 {
+        matches = matches and module_edge_string_list_contains(
+            ref context.enabled_features,
+            condition.feature
+        );
+    }
+
+    if len(condition.target_os) != 0 {
+        matches = matches
+            and condition.target_os == context.target_os;
+    }
+
+    if len(condition.target_arch) != 0 {
+        matches = matches
+            and condition.target_arch == context.target_arch;
+    }
+
+    if len(condition.profile) != 0 {
+        matches = matches
+            and condition.profile == context.profile;
+    }
+
+    if condition.inverted {
+        give not matches;
+    }
+
+    give matches;
+}
+
+proc module_edge_evaluate(
+    edge: ref ModuleEdge,
+    context: ref ModuleEdgeEvaluationContext
+) -> bool {
+    if len(edge.conditions) == 0 {
+        give edge.enabled;
+    }
+
+    for condition in edge.conditions {
+        if not module_edge_condition_matches(
+            ref condition,
+            context
+        ) {
+            give false;
+        }
+    }
+
+    give edge.enabled;
+}
+
+proc module_edge_evaluate_collection(
+    collection: ref mut ModuleEdgeCollection,
+    context: ref ModuleEdgeEvaluationContext
+) {
+    set index: usize = 0;
+
+    while index < len(collection.edges) {
+        let active = module_edge_evaluate(
+            ref collection.edges[index],
+            context
+        );
+
+        collection.edges[index].enabled = active;
+
+        if not active {
+            collection.edges[index].state =
+                ModuleEdgeState.Disabled;
+        } else if collection.edges[index].state
+            == ModuleEdgeState.Disabled
+        {
+            collection.edges[index].state =
+                ModuleEdgeState.Declared;
+        }
+
+        collection.edges[index].generation =
+            collection.generation;
+        collection.edges[index].revision =
+            collection.edges[index].revision + 1;
+
+        index = index + 1;
+    }
+
+    module_edge_refresh_statistics(collection);
+}
+
+proc module_edge_edges_from(
+    collection: ref ModuleEdgeCollection,
+    source: ModuleId
+) -> [ModuleEdge] {
+    set output: [ModuleEdge] = [];
+
+    for edge in collection.edges {
+        if module_id_equal(edge.source, source) {
+            output = output + [edge];
+        }
+    }
+
+    give output;
+}
+
+proc module_edge_edges_to(
+    collection: ref ModuleEdgeCollection,
+    target: ModuleId
+) -> [ModuleEdge] {
+    set output: [ModuleEdge] = [];
+
+    for edge in collection.edges {
+        if module_id_equal(edge.target, target) {
+            output = output + [edge];
+        }
+    }
+
+    give output;
+}
+
+proc module_edge_enabled_from(
+    collection: ref ModuleEdgeCollection,
+    source: ModuleId
+) -> [ModuleEdge] {
+    set output: [ModuleEdge] = [];
+
+    for edge in collection.edges {
+        if module_id_equal(edge.source, source)
+            and edge.enabled
+        {
+            output = output + [edge];
+        }
+    }
+
+    give output;
+}
+
+proc module_edge_required_from(
+    collection: ref ModuleEdgeCollection,
+    source: ModuleId
+) -> [ModuleEdge] {
+    set output: [ModuleEdge] = [];
+
+    for edge in collection.edges {
+        if module_id_equal(edge.source, source)
+            and edge.enabled
+            and edge.required
+        {
+            output = output + [edge];
+        }
+    }
+
+    give output;
+}
+
+proc module_edge_public_from(
+    collection: ref ModuleEdgeCollection,
+    source: ModuleId
+) -> [ModuleEdge] {
+    set output: [ModuleEdge] = [];
+
+    for edge in collection.edges {
+        if module_id_equal(edge.source, source)
+            and edge.enabled
+            and module_edge_is_public(ref edge)
+        {
+            output = output + [edge];
+        }
+    }
+
+    give output;
+}
+
+proc module_edge_remove(
+    collection: ref mut ModuleEdgeCollection,
+    id: ModuleEdgeId
+) -> bool {
+    let index = module_edge_find_index(ref collection, id);
+
+    pick index {
+        None {
+            give false;
+        }
+
+        Some(value) {
+            set output: [ModuleEdge] = [];
+            set current: usize = 0;
+
+            while current < len(collection.edges) {
+                if current != value {
+                    output = output + [
+                        collection.edges[current]
+                    ];
+                }
+
+                current = current + 1;
+            }
+
+            collection.edges = output;
+            module_edge_refresh_statistics(collection);
+
+            give true;
+        }
+    }
+}
+
+proc module_edge_remove_module(
+    collection: ref mut ModuleEdgeCollection,
+    module: ModuleId
+) -> usize {
+    set output: [ModuleEdge] = [];
+    set removed: usize = 0;
+
+    for edge in collection.edges {
+        if module_id_equal(edge.source, module)
+            or module_id_equal(edge.target, module)
+        {
+            removed = removed + 1;
+        } else {
+            output = output + [edge];
+        }
+    }
+
+    collection.edges = output;
+    module_edge_refresh_statistics(collection);
+
+    give removed;
+}
+
+proc module_edge_invalidate(
+    collection: ref mut ModuleEdgeCollection,
+    id: ModuleEdgeId
+) -> bool {
+    give module_edge_set_state(
+        collection,
+        id,
+        ModuleEdgeState.Invalidated
+    );
+}
+
+proc module_edge_invalidate_module(
+    collection: ref mut ModuleEdgeCollection,
+    module: ModuleId
+) -> usize {
+    set invalidated: usize = 0;
+    set index: usize = 0;
+
+    while index < len(collection.edges) {
+        if module_id_equal(collection.edges[index].source, module)
+            or module_id_equal(
+                collection.edges[index].target,
+                module
+            )
+        {
+            if collection.edges[index].state
+                != ModuleEdgeState.Invalidated
+            {
+                collection.edges[index].state =
+                    ModuleEdgeState.Invalidated;
+                collection.edges[index].enabled = false;
+                collection.edges[index].generation =
+                    collection.generation;
+                collection.edges[index].revision =
+                    collection.edges[index].revision + 1;
+
+                invalidated = invalidated + 1;
+            }
+        }
+
+        index = index + 1;
+    }
+
+    module_edge_refresh_statistics(collection);
+
+    give invalidated;
+}
+
+proc module_edge_collection_from_database(
+    database: ref ModuleDatabase
+) -> ModuleEdgeCollection {
+    set collection = module_edge_collection_create();
+
+    for dependency in database.dependencies {
+        module_edge_insert_database(
+            ref mut collection,
+            ref dependency
+        );
+    }
+
+    give collection;
+}
+
+proc module_edge_validate(
+    collection: ref mut ModuleEdgeCollection
+) -> bool {
+    set valid: bool = true;
+
+    for edge in collection.edges {
+        if not module_edge_is_valid(ref edge) {
+            module_edge_collection_push_error(
+                collection,
+                ModuleEdgeErrorKind.GraphCorrupted,
+                edge.source_name,
+                edge.target_name,
+                "module edge contains invalid data",
+                edge.span
+            );
+
+            valid = false;
+        }
+
+        if edge.required
+            and (
+                not edge.enabled
+                or edge.state == ModuleEdgeState.Disabled
+            )
+        {
+            module_edge_collection_push_error(
+                collection,
+                ModuleEdgeErrorKind.DisabledRequiredEdge,
+                edge.source_name,
+                edge.target_name,
+                "required module edge is disabled",
+                edge.span
+            );
+
+            valid = false;
+        }
+
+        if edge.state == ModuleEdgeState.Declared
+            or edge.state == ModuleEdgeState.Resolving
+        {
+            module_edge_collection_push_error(
+                collection,
+                ModuleEdgeErrorKind.UnresolvedEdge,
+                edge.source_name,
+                edge.target_name,
+                "module edge has not been resolved",
+                edge.span
+            );
+
+            valid = false;
+        }
+
+        if edge.state == ModuleEdgeState.Missing {
+            module_edge_collection_push_error(
+                collection,
+                ModuleEdgeErrorKind.InvalidTarget,
+                edge.source_name,
+                edge.target_name,
+                "module edge target is missing",
+                edge.span
+            );
+
+            valid = false;
+        }
+
+        if edge.state == ModuleEdgeState.Failed {
+            module_edge_collection_push_error(
+                collection,
+                ModuleEdgeErrorKind.FailedEdge,
+                edge.source_name,
+                edge.target_name,
+                "module edge resolution failed",
+                edge.span
+            );
+
+            valid = false;
+        }
+    }
+
+    give valid and len(collection.errors) == 0;
+}
+
+proc module_edge_clear_errors(
+    collection: ref mut ModuleEdgeCollection
+) {
+    collection.errors = [];
+}
+
+proc module_edge_advance_generation(
+    collection: ref mut ModuleEdgeCollection
+) -> u64 {
+    collection.generation = collection.generation + 1;
+    give collection.generation;
+}
+
+proc module_edge_clear(
+    collection: ref mut ModuleEdgeCollection
+) {
+    collection.edges = [];
+    collection.errors = [];
+    collection.generation = collection.generation + 1;
+
+    module_edge_refresh_statistics(collection);
+}
+
+proc module_edge_reset(
+    collection: ref mut ModuleEdgeCollection
+) {
+    collection.edges = [];
+    collection.errors = [];
+    collection.next_id = 1;
+    collection.generation = 1;
+    collection.statistics = module_edge_statistics_empty();
+}
+
+proc module_edge_count(
+    collection: ref ModuleEdgeCollection
+) -> usize {
+    give len(collection.edges);
+}
+
+proc module_edge_is_empty(
+    collection: ref ModuleEdgeCollection
+) -> bool {
+    give len(collection.edges) == 0;
+}
+
+proc module_edge_has_errors(
+    collection: ref ModuleEdgeCollection
+) -> bool {
+    give len(collection.errors) != 0;
+}
+
+proc module_edge_statistics(
+    collection: ref ModuleEdgeCollection
+) -> ModuleEdgeStatistics {
+    give collection.statistics;
+}
+
+proc module_edge_error_code(
+    error: ref ModuleEdgeError
+) -> string {
+    pick error.kind {
+        ModuleEdgeErrorKind.InvalidArgument {
+            give "E_MODULE_EDGE_ARGUMENT";
+        }
+
+        ModuleEdgeErrorKind.InvalidSource {
+            give "E_MODULE_EDGE_SOURCE";
+        }
+
+        ModuleEdgeErrorKind.InvalidTarget {
+            give "E_MODULE_EDGE_TARGET";
+        }
+
+        ModuleEdgeErrorKind.SelfDependency {
+            give "E_MODULE_SELF_DEPENDENCY";
+        }
+
+        ModuleEdgeErrorKind.DuplicateEdge {
+            give "E_MODULE_EDGE_DUPLICATE";
+        }
+
+        ModuleEdgeErrorKind.EdgeNotFound {
+            give "E_MODULE_EDGE_NOT_FOUND";
+        }
+
+        ModuleEdgeErrorKind.DisabledRequiredEdge {
+            give "E_MODULE_EDGE_REQUIRED_DISABLED";
+        }
+
+        ModuleEdgeErrorKind.UnresolvedEdge {
+            give "E_MODULE_EDGE_UNRESOLVED";
+        }
+
+        ModuleEdgeErrorKind.FailedEdge {
+            give "E_MODULE_EDGE_FAILED";
+        }
+
+        ModuleEdgeErrorKind.InvalidState {
+            give "E_MODULE_EDGE_STATE";
+        }
+
+        ModuleEdgeErrorKind.GraphCorrupted {
+            give "E_MODULE_EDGE_GRAPH";
+        }
+    }
+}

@@ -26,6 +26,6 @@ Supported bootstrap mapping:
 - selected builtin IR calls: `print`, `println`, `eprint`, `eprintln`, `panic`, `assert`, `len`
 
 Limitations:
-- Function parameters are not modeled by the current bootstrap AST and are emitted as `(void)`.
+- Parameter modifiers such as `ref` and `mut` are currently parsed but lowered as plain C value parameters.
 - Unknown types, unsupported operators, unsupported AST nodes, and unsupported IR instructions are rejected with backend errors.
 - String literals are escaped for C output, including quotes, backslashes, control characters, and non-printable bytes.

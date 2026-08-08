@@ -1,0 +1,998 @@
+space vitte/compiler/analysis/modules/module_cache
+
+export *
+
+use src/vitte/compiler/frontend/source/span.{Span}
+use src/vitte/compiler/analysis/modules/module_attributes.{
+    ModuleAttributes,
+    module_attributes_default
+}
+
+pick ModuleCacheEntryState {
+    Empty,
+    Loading,
+    Loaded,
+    Failed,
+    Invalidated
+}
+
+pick ModuleCacheErrorKind {
+    ModuleNotFound,
+    DuplicateModule,
+    CircularDependency,
+    InvalidModule,
+    LoadFailed,
+    ParseFailed,
+    AnalysisFailed,
+    CacheCorrupted,
+    InvalidArgument
+}
+
+pick ModuleCacheLookupKind {
+    Miss,
+    Hit,
+    Stale,
+    Failed
+}
+
+form ModuleCacheKey {
+    canonical_path: string
+    target: string
+    profile: string
+    configuration_hash: u64
+}
+
+form ModuleFingerprint {
+    source_hash: u64
+    dependency_hash: u64
+    configuration_hash: u64
+    modified_time: u64
+    source_size: usize
+}
+
+form CachedModuleDependency {
+    path: string
+    fingerprint: ModuleFingerprint
+}
+
+form CachedModule {
+    id: usize
+    key: ModuleCacheKey
+    name: string
+    source_path: string
+    source_text: string
+    span: Span
+    attributes: ModuleAttributes
+    dependencies: [CachedModuleDependency]
+    fingerprint: ModuleFingerprint
+    generation: u64
+}
+
+form ModuleCacheEntry {
+    key: ModuleCacheKey
+    state: ModuleCacheEntryState
+    module: Option<CachedModule>
+    error: Option<ModuleCacheError>
+    access_count: u64
+    last_access_generation: u64
+}
+
+form ModuleCacheError {
+    kind: ModuleCacheErrorKind
+    path: string
+    message: string
+    span: Span
+}
+
+form ModuleCacheLookup {
+    kind: ModuleCacheLookupKind
+    module: Option<CachedModule>
+    error: Option<ModuleCacheError>
+}
+
+form ModuleCacheStatistics {
+    entries: usize
+    loaded: usize
+    loading: usize
+    failed: usize
+    invalidated: usize
+    hits: u64
+    misses: u64
+    stale_hits: u64
+    insertions: u64
+    replacements: u64
+    invalidations: u64
+    evictions: u64
+}
+
+form ModuleCache {
+    entries: [ModuleCacheEntry]
+    next_module_id: usize
+    generation: u64
+    maximum_entries: usize
+    statistics: ModuleCacheStatistics
+}
+
+proc empty_span() -> Span {
+    give Span {
+        source: 0,
+        start: 0,
+        end: 0
+    };
+}
+
+proc module_cache_key(
+    canonical_path: string,
+    target: string,
+    profile: string,
+    configuration_hash: u64
+) -> ModuleCacheKey {
+    give ModuleCacheKey {
+        canonical_path: canonical_path,
+        target: target,
+        profile: profile,
+        configuration_hash: configuration_hash
+    };
+}
+
+proc module_fingerprint_empty() -> ModuleFingerprint {
+    give ModuleFingerprint {
+        source_hash: 0,
+        dependency_hash: 0,
+        configuration_hash: 0,
+        modified_time: 0,
+        source_size: 0
+    };
+}
+
+proc module_cache_statistics_empty() -> ModuleCacheStatistics {
+    give ModuleCacheStatistics {
+        entries: 0,
+        loaded: 0,
+        loading: 0,
+        failed: 0,
+        invalidated: 0,
+        hits: 0,
+        misses: 0,
+        stale_hits: 0,
+        insertions: 0,
+        replacements: 0,
+        invalidations: 0,
+        evictions: 0
+    };
+}
+
+proc module_cache_create(
+    maximum_entries: usize
+) -> ModuleCache {
+    give ModuleCache {
+        entries: [],
+        next_module_id: 1,
+        generation: 1,
+        maximum_entries: maximum_entries,
+        statistics: module_cache_statistics_empty()
+    };
+}
+
+proc module_cache_create_unbounded() -> ModuleCache {
+    give module_cache_create(0);
+}
+
+proc module_cache_error(
+    kind: ModuleCacheErrorKind,
+    path: string,
+    message: string,
+    span: Span
+) -> ModuleCacheError {
+    give ModuleCacheError {
+        kind: kind,
+        path: path,
+        message: message,
+        span: span
+    };
+}
+
+proc module_cache_lookup_miss() -> ModuleCacheLookup {
+    give ModuleCacheLookup {
+        kind: ModuleCacheLookupKind.Miss,
+        module: None,
+        error: None
+    };
+}
+
+proc module_cache_lookup_hit(
+    module: CachedModule
+) -> ModuleCacheLookup {
+    give ModuleCacheLookup {
+        kind: ModuleCacheLookupKind.Hit,
+        module: Some(module),
+        error: None
+    };
+}
+
+proc module_cache_lookup_stale(
+    module: CachedModule
+) -> ModuleCacheLookup {
+    give ModuleCacheLookup {
+        kind: ModuleCacheLookupKind.Stale,
+        module: Some(module),
+        error: None
+    };
+}
+
+proc module_cache_lookup_failed(
+    error: ModuleCacheError
+) -> ModuleCacheLookup {
+    give ModuleCacheLookup {
+        kind: ModuleCacheLookupKind.Failed,
+        module: None,
+        error: Some(error)
+    };
+}
+
+proc module_cache_key_equal(
+    left: ref ModuleCacheKey,
+    right: ref ModuleCacheKey
+) -> bool {
+    give left.canonical_path == right.canonical_path
+        and left.target == right.target
+        and left.profile == right.profile
+        and left.configuration_hash == right.configuration_hash;
+}
+
+proc module_fingerprint_equal(
+    left: ref ModuleFingerprint,
+    right: ref ModuleFingerprint
+) -> bool {
+    give left.source_hash == right.source_hash
+        and left.dependency_hash == right.dependency_hash
+        and left.configuration_hash == right.configuration_hash
+        and left.modified_time == right.modified_time
+        and left.source_size == right.source_size;
+}
+
+proc module_fingerprint_source_equal(
+    left: ref ModuleFingerprint,
+    right: ref ModuleFingerprint
+) -> bool {
+    give left.source_hash == right.source_hash
+        and left.modified_time == right.modified_time
+        and left.source_size == right.source_size;
+}
+
+proc module_fingerprint_dependencies_equal(
+    left: ref ModuleFingerprint,
+    right: ref ModuleFingerprint
+) -> bool {
+    give left.dependency_hash == right.dependency_hash;
+}
+
+proc module_cache_entry_is_usable(
+    entry: ref ModuleCacheEntry
+) -> bool {
+    give entry.state == ModuleCacheEntryState.Loaded
+        and entry.module != None;
+}
+
+proc module_cache_entry_is_loading(
+    entry: ref ModuleCacheEntry
+) -> bool {
+    give entry.state == ModuleCacheEntryState.Loading;
+}
+
+proc module_cache_entry_is_failed(
+    entry: ref ModuleCacheEntry
+) -> bool {
+    give entry.state == ModuleCacheEntryState.Failed;
+}
+
+proc module_cache_entry_is_invalidated(
+    entry: ref ModuleCacheEntry
+) -> bool {
+    give entry.state == ModuleCacheEntryState.Invalidated;
+}
+
+proc module_cache_find_index(
+    cache: ref ModuleCache,
+    key: ref ModuleCacheKey
+) -> Option<usize> {
+    set index: usize = 0;
+
+    while index < len(cache.entries) {
+        if module_cache_key_equal(
+            ref cache.entries[index].key,
+            key
+        ) {
+            give Some(index);
+        }
+
+        index = index + 1;
+    }
+
+    give None;
+}
+
+proc module_cache_contains(
+    cache: ref ModuleCache,
+    key: ref ModuleCacheKey
+) -> bool {
+    give module_cache_find_index(cache, key) != None;
+}
+
+proc module_cache_get_entry(
+    cache: ref ModuleCache,
+    key: ref ModuleCacheKey
+) -> Option<ref ModuleCacheEntry> {
+    let index = module_cache_find_index(cache, key);
+
+    pick index {
+        Some(value) {
+            give Some(ref cache.entries[value]);
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc module_cache_get_entry_mut(
+    cache: ref mut ModuleCache,
+    key: ref ModuleCacheKey
+) -> Option<ref mut ModuleCacheEntry> {
+    let index = module_cache_find_index(ref cache, key);
+
+    pick index {
+        Some(value) {
+            give Some(ref mut cache.entries[value]);
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc module_cache_refresh_statistics(
+    cache: ref mut ModuleCache
+) {
+    set loaded: usize = 0;
+    set loading: usize = 0;
+    set failed: usize = 0;
+    set invalidated: usize = 0;
+
+    for entry in cache.entries {
+        pick entry.state {
+            ModuleCacheEntryState.Loaded {
+                loaded = loaded + 1;
+            }
+
+            ModuleCacheEntryState.Loading {
+                loading = loading + 1;
+            }
+
+            ModuleCacheEntryState.Failed {
+                failed = failed + 1;
+            }
+
+            ModuleCacheEntryState.Invalidated {
+                invalidated = invalidated + 1;
+            }
+
+            _ {}
+        }
+    }
+
+    cache.statistics.entries = len(cache.entries);
+    cache.statistics.loaded = loaded;
+    cache.statistics.loading = loading;
+    cache.statistics.failed = failed;
+    cache.statistics.invalidated = invalidated;
+}
+
+proc module_cache_oldest_evictable_index(
+    cache: ref ModuleCache
+) -> Option<usize> {
+    set found: bool = false;
+    set result: usize = 0;
+    set oldest_generation: u64 = 0;
+    set index: usize = 0;
+
+    while index < len(cache.entries) {
+        let entry = cache.entries[index];
+
+        if entry.state != ModuleCacheEntryState.Loading {
+            if not found
+                or entry.last_access_generation < oldest_generation
+            {
+                found = true;
+                result = index;
+                oldest_generation = entry.last_access_generation;
+            }
+        }
+
+        index = index + 1;
+    }
+
+    if found {
+        give Some(result);
+    }
+
+    give None;
+}
+
+proc module_cache_remove_index(
+    cache: ref mut ModuleCache,
+    index: usize
+) -> bool {
+    if index >= len(cache.entries) {
+        give false;
+    }
+
+    set output: [ModuleCacheEntry] = [];
+    set current: usize = 0;
+
+    while current < len(cache.entries) {
+        if current != index {
+            output = output + [cache.entries[current]];
+        }
+
+        current = current + 1;
+    }
+
+    cache.entries = output;
+    module_cache_refresh_statistics(cache);
+
+    give true;
+}
+
+proc module_cache_enforce_limit(
+    cache: ref mut ModuleCache
+) {
+    if cache.maximum_entries == 0 {
+        give;
+    }
+
+    while len(cache.entries) > cache.maximum_entries {
+        let candidate = module_cache_oldest_evictable_index(ref cache);
+
+        pick candidate {
+            Some(index) {
+                if module_cache_remove_index(cache, index) {
+                    cache.statistics.evictions =
+                        cache.statistics.evictions + 1;
+                }
+            }
+
+            None {
+                give;
+            }
+        }
+    }
+}
+
+proc module_cache_begin_loading(
+    cache: ref mut ModuleCache,
+    key: ModuleCacheKey
+) -> Option<ModuleCacheError> {
+    let existing = module_cache_find_index(ref cache, ref key);
+
+    pick existing {
+        Some(index) {
+            if cache.entries[index].state
+                == ModuleCacheEntryState.Loading
+            {
+                give Some(module_cache_error(
+                    ModuleCacheErrorKind.CircularDependency,
+                    key.canonical_path,
+                    "module is already being loaded",
+                    empty_span()
+                ));
+            }
+
+            cache.entries[index].state =
+                ModuleCacheEntryState.Loading;
+            cache.entries[index].module = None;
+            cache.entries[index].error = None;
+            cache.entries[index].last_access_generation =
+                cache.generation;
+
+            cache.statistics.replacements =
+                cache.statistics.replacements + 1;
+
+            module_cache_refresh_statistics(cache);
+            give None;
+        }
+
+        None {
+            cache.entries = cache.entries + [
+                ModuleCacheEntry {
+                    key: key,
+                    state: ModuleCacheEntryState.Loading,
+                    module: None,
+                    error: None,
+                    access_count: 0,
+                    last_access_generation: cache.generation
+                }
+            ];
+
+            cache.statistics.insertions =
+                cache.statistics.insertions + 1;
+
+            module_cache_refresh_statistics(cache);
+            module_cache_enforce_limit(cache);
+
+            give None;
+        }
+    }
+}
+
+proc module_cache_complete_loading(
+    cache: ref mut ModuleCache,
+    key: ref ModuleCacheKey,
+    name: string,
+    source_text: string,
+    span: Span,
+    attributes: ModuleAttributes,
+    dependencies: [CachedModuleDependency],
+    fingerprint: ModuleFingerprint
+) -> Option<ModuleCacheError> {
+    let index = module_cache_find_index(ref cache, key);
+
+    pick index {
+        Some(value) {
+            let module = CachedModule {
+                id: cache.next_module_id,
+                key: cache.entries[value].key,
+                name: name,
+                source_path: key.canonical_path,
+                source_text: source_text,
+                span: span,
+                attributes: attributes,
+                dependencies: dependencies,
+                fingerprint: fingerprint,
+                generation: cache.generation
+            };
+
+            cache.next_module_id = cache.next_module_id + 1;
+            cache.entries[value].module = Some(module);
+            cache.entries[value].error = None;
+            cache.entries[value].state =
+                ModuleCacheEntryState.Loaded;
+            cache.entries[value].last_access_generation =
+                cache.generation;
+
+            module_cache_refresh_statistics(cache);
+            give None;
+        }
+
+        None {
+            give Some(module_cache_error(
+                ModuleCacheErrorKind.ModuleNotFound,
+                key.canonical_path,
+                "module loading was not started",
+                empty_span()
+            ));
+        }
+    }
+}
+
+proc module_cache_fail_loading(
+    cache: ref mut ModuleCache,
+    key: ref ModuleCacheKey,
+    error: ModuleCacheError
+) -> bool {
+    let index = module_cache_find_index(ref cache, key);
+
+    pick index {
+        Some(value) {
+            cache.entries[value].module = None;
+            cache.entries[value].error = Some(error);
+            cache.entries[value].state =
+                ModuleCacheEntryState.Failed;
+            cache.entries[value].last_access_generation =
+                cache.generation;
+
+            module_cache_refresh_statistics(cache);
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_cache_lookup(
+    cache: ref mut ModuleCache,
+    key: ref ModuleCacheKey,
+    fingerprint: ref ModuleFingerprint
+) -> ModuleCacheLookup {
+    let index = module_cache_find_index(ref cache, key);
+
+    pick index {
+        None {
+            cache.statistics.misses =
+                cache.statistics.misses + 1;
+
+            give module_cache_lookup_miss();
+        }
+
+        Some(value) {
+            cache.entries[value].access_count =
+                cache.entries[value].access_count + 1;
+            cache.entries[value].last_access_generation =
+                cache.generation;
+
+            pick cache.entries[value].state {
+                ModuleCacheEntryState.Loaded {
+                    pick cache.entries[value].module {
+                        Some(module) {
+                            if module_fingerprint_equal(
+                                ref module.fingerprint,
+                                fingerprint
+                            ) {
+                                cache.statistics.hits =
+                                    cache.statistics.hits + 1;
+
+                                give module_cache_lookup_hit(module);
+                            }
+
+                            cache.statistics.stale_hits =
+                                cache.statistics.stale_hits + 1;
+
+                            give module_cache_lookup_stale(module);
+                        }
+
+                        None {
+                            cache.statistics.misses =
+                                cache.statistics.misses + 1;
+
+                            give module_cache_lookup_miss();
+                        }
+                    }
+                }
+
+                ModuleCacheEntryState.Failed {
+                    pick cache.entries[value].error {
+                        Some(error) {
+                            give module_cache_lookup_failed(error);
+                        }
+
+                        None {
+                            give module_cache_lookup_failed(
+                                module_cache_error(
+                                    ModuleCacheErrorKind.CacheCorrupted,
+                                    key.canonical_path,
+                                    "failed cache entry has no error",
+                                    empty_span()
+                                )
+                            );
+                        }
+                    }
+                }
+
+                ModuleCacheEntryState.Loading {
+                    give module_cache_lookup_failed(
+                        module_cache_error(
+                            ModuleCacheErrorKind.CircularDependency,
+                            key.canonical_path,
+                            "module is currently being loaded",
+                            empty_span()
+                        )
+                    );
+                }
+
+                _ {
+                    cache.statistics.misses =
+                        cache.statistics.misses + 1;
+
+                    give module_cache_lookup_miss();
+                }
+            }
+        }
+    }
+}
+
+proc module_cache_lookup_without_fingerprint(
+    cache: ref mut ModuleCache,
+    key: ref ModuleCacheKey
+) -> ModuleCacheLookup {
+    let index = module_cache_find_index(ref cache, key);
+
+    pick index {
+        None {
+            cache.statistics.misses =
+                cache.statistics.misses + 1;
+
+            give module_cache_lookup_miss();
+        }
+
+        Some(value) {
+            cache.entries[value].access_count =
+                cache.entries[value].access_count + 1;
+            cache.entries[value].last_access_generation =
+                cache.generation;
+
+            pick cache.entries[value].state {
+                ModuleCacheEntryState.Loaded {
+                    pick cache.entries[value].module {
+                        Some(module) {
+                            cache.statistics.hits =
+                                cache.statistics.hits + 1;
+
+                            give module_cache_lookup_hit(module);
+                        }
+
+                        None {
+                            give module_cache_lookup_miss();
+                        }
+                    }
+                }
+
+                ModuleCacheEntryState.Failed {
+                    pick cache.entries[value].error {
+                        Some(error) {
+                            give module_cache_lookup_failed(error);
+                        }
+
+                        None {
+                            give module_cache_lookup_miss();
+                        }
+                    }
+                }
+
+                _ {
+                    give module_cache_lookup_miss();
+                }
+            }
+        }
+    }
+}
+
+proc module_cache_invalidate(
+    cache: ref mut ModuleCache,
+    key: ref ModuleCacheKey
+) -> bool {
+    let index = module_cache_find_index(ref cache, key);
+
+    pick index {
+        Some(value) {
+            if cache.entries[value].state
+                != ModuleCacheEntryState.Invalidated
+            {
+                cache.entries[value].state =
+                    ModuleCacheEntryState.Invalidated;
+                cache.entries[value].last_access_generation =
+                    cache.generation;
+
+                cache.statistics.invalidations =
+                    cache.statistics.invalidations + 1;
+
+                module_cache_refresh_statistics(cache);
+            }
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_cache_invalidate_path(
+    cache: ref mut ModuleCache,
+    canonical_path: string
+) -> usize {
+    set invalidated: usize = 0;
+    set index: usize = 0;
+
+    while index < len(cache.entries) {
+        if cache.entries[index].key.canonical_path
+            == canonical_path
+        {
+            if cache.entries[index].state
+                != ModuleCacheEntryState.Invalidated
+            {
+                cache.entries[index].state =
+                    ModuleCacheEntryState.Invalidated;
+                cache.entries[index].last_access_generation =
+                    cache.generation;
+
+                invalidated = invalidated + 1;
+            }
+        }
+
+        index = index + 1;
+    }
+
+    cache.statistics.invalidations =
+        cache.statistics.invalidations + invalidated;
+
+    module_cache_refresh_statistics(cache);
+
+    give invalidated;
+}
+
+proc module_cache_invalidate_dependents(
+    cache: ref mut ModuleCache,
+    dependency_path: string
+) -> usize {
+    set invalidated: usize = 0;
+    set index: usize = 0;
+
+    while index < len(cache.entries) {
+        pick cache.entries[index].module {
+            Some(module) {
+                set dependency_index: usize = 0;
+                set depends_on_module: bool = false;
+
+                while dependency_index < len(module.dependencies) {
+                    if module.dependencies[dependency_index].path
+                        == dependency_path
+                    {
+                        depends_on_module = true;
+                    }
+
+                    dependency_index = dependency_index + 1;
+                }
+
+                if depends_on_module
+                    and cache.entries[index].state
+                        != ModuleCacheEntryState.Invalidated
+                {
+                    cache.entries[index].state =
+                        ModuleCacheEntryState.Invalidated;
+                    cache.entries[index].last_access_generation =
+                        cache.generation;
+
+                    invalidated = invalidated + 1;
+                }
+            }
+
+            None {}
+        }
+
+        index = index + 1;
+    }
+
+    cache.statistics.invalidations =
+        cache.statistics.invalidations + invalidated;
+
+    module_cache_refresh_statistics(cache);
+
+    give invalidated;
+}
+
+proc module_cache_remove(
+    cache: ref mut ModuleCache,
+    key: ref ModuleCacheKey
+) -> bool {
+    let index = module_cache_find_index(ref cache, key);
+
+    pick index {
+        Some(value) {
+            give module_cache_remove_index(cache, value);
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_cache_remove_invalidated(
+    cache: ref mut ModuleCache
+) -> usize {
+    set output: [ModuleCacheEntry] = [];
+    set removed: usize = 0;
+
+    for entry in cache.entries {
+        if entry.state == ModuleCacheEntryState.Invalidated {
+            removed = removed + 1;
+        } else {
+            output = output + [entry];
+        }
+    }
+
+    cache.entries = output;
+    module_cache_refresh_statistics(cache);
+
+    give removed;
+}
+
+proc module_cache_remove_failed(
+    cache: ref mut ModuleCache
+) -> usize {
+    set output: [ModuleCacheEntry] = [];
+    set removed: usize = 0;
+
+    for entry in cache.entries {
+        if entry.state == ModuleCacheEntryState.Failed {
+            removed = removed + 1;
+        } else {
+            output = output + [entry];
+        }
+    }
+
+    cache.entries = output;
+    module_cache_refresh_statistics(cache);
+
+    give removed;
+}
+
+proc module_cache_clear(
+    cache: ref mut ModuleCache
+) {
+    cache.entries = [];
+    cache.generation = cache.generation + 1;
+    module_cache_refresh_statistics(cache);
+}
+
+proc module_cache_reset(
+    cache: ref mut ModuleCache
+) {
+    let maximum_entries = cache.maximum_entries;
+
+    cache.entries = [];
+    cache.next_module_id = 1;
+    cache.generation = 1;
+    cache.maximum_entries = maximum_entries;
+    cache.statistics = module_cache_statistics_empty();
+}
+
+proc module_cache_advance_generation(
+    cache: ref mut ModuleCache
+) -> u64 {
+    cache.generation = cache.generation + 1;
+    give cache.generation;
+}
+
+proc module_cache_entry_count(
+    cache: ref ModuleCache
+) -> usize {
+    give len(cache.entries);
+}
+
+proc module_cache_is_empty(
+    cache: ref ModuleCache
+) -> bool {
+    give len(cache.entries) == 0;
+}
+
+proc module_cache_statistics(
+    cache: ref ModuleCache
+) -> ModuleCacheStatistics {
+    give cache.statistics;
+}
+
+proc module_cache_hit_rate(
+    cache: ref ModuleCache
+) -> f64 {
+    let total = cache.statistics.hits
+        + cache.statistics.misses
+        + cache.statistics.stale_hits;
+
+    if total == 0 {
+        give 0.0;
+    }
+
+    give cast<f64>(cache.statistics.hits)
+        / cast<f64>(total);
+}
+
+proc module_cache_miss_rate(
+    cache: ref ModuleCache
+) -> f64 {
+    let total = cache.statistics.hits
+        + cache.statistics.misses
+        + cache.statistics.stale_hits;
+
+    if total == 0 {
+        give 0.0;
+    }
+
+    give cast<f64>(cache.statistics.misses)
+        / cast<f64>(total);
+}

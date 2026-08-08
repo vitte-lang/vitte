@@ -1,3 +1,7 @@
-# src/scanner/README.md
+# src/scanner
 
-Bootstrap support directory for the Vitte C17 seed compiler.
+Category: Scanner.
+
+Purpose: character stream scanning.
+
+This directory is part of the C17 bootstrap source tree and is covered by `make -C bootstrap verify`.

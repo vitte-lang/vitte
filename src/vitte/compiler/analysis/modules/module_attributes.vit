@@ -1,0 +1,884 @@
+space vitte/compiler/analysis/modules/module_attributes
+
+export *
+
+use src/vitte/compiler/frontend/source/span.{Span}
+use src/vitte/compiler/frontend/syntax/attribute.{
+    Attribute,
+    AttributeArgument,
+    AttributeValue
+}
+use src/vitte/compiler/diagnostics/diagnostic.{
+    Diagnostic,
+    DiagnosticLevel
+}
+
+pick ModuleVisibility {
+    Private,
+    Package,
+    Public
+}
+
+pick ModuleKind {
+    Source,
+    Library,
+    Executable,
+    Test,
+    Benchmark,
+    Generated,
+    Builtin
+}
+
+pick ModuleStability {
+    Stable,
+    Unstable,
+    Experimental,
+    Deprecated
+}
+
+pick ModuleAttributeErrorKind {
+    DuplicateAttribute,
+    UnknownAttribute,
+    MissingArgument,
+    UnexpectedArgument,
+    InvalidArgument,
+    InvalidVersion,
+    InvalidVisibility,
+    InvalidModuleKind,
+    ConflictingAttribute
+}
+
+form ModuleDeprecation {
+    enabled: bool
+    message: string
+    since: string
+    replacement: string
+    span: Span
+}
+
+form ModuleFeature {
+    name: string
+    enabled: bool
+    span: Span
+}
+
+form ModuleAttributeError {
+    kind: ModuleAttributeErrorKind
+    name: string
+    message: string
+    span: Span
+}
+
+form ModuleAttributes {
+    visibility: ModuleVisibility
+    kind: ModuleKind
+    stability: ModuleStability
+
+    name: string
+    documentation: string
+    version: string
+
+    no_std: bool
+    no_prelude: bool
+    no_runtime: bool
+
+    allow_unsafe: bool
+    deny_unsafe: bool
+
+    test_only: bool
+    platform_specific: bool
+    generated: bool
+    builtin: bool
+
+    target_os: [string]
+    target_arch: [string]
+    required_features: [ModuleFeature]
+
+    deprecation: ModuleDeprecation
+    errors: [ModuleAttributeError]
+}
+
+proc empty_span() -> Span {
+    give Span {
+        source: 0,
+        start: 0,
+        end: 0
+    };
+}
+
+proc module_deprecation_none() -> ModuleDeprecation {
+    give ModuleDeprecation {
+        enabled: false,
+        message: "",
+        since: "",
+        replacement: "",
+        span: empty_span()
+    };
+}
+
+proc module_attributes_default() -> ModuleAttributes {
+    give ModuleAttributes {
+        visibility: ModuleVisibility.Private,
+        kind: ModuleKind.Source,
+        stability: ModuleStability.Stable,
+
+        name: "",
+        documentation: "",
+        version: "",
+
+        no_std: false,
+        no_prelude: false,
+        no_runtime: false,
+
+        allow_unsafe: false,
+        deny_unsafe: false,
+
+        test_only: false,
+        platform_specific: false,
+        generated: false,
+        builtin: false,
+
+        target_os: [],
+        target_arch: [],
+        required_features: [],
+
+        deprecation: module_deprecation_none(),
+        errors: []
+    };
+}
+
+proc module_attributes_is_valid(
+    attributes: ref ModuleAttributes
+) -> bool {
+    give len(attributes.errors) == 0;
+}
+
+proc module_attributes_has_errors(
+    attributes: ref ModuleAttributes
+) -> bool {
+    give len(attributes.errors) != 0;
+}
+
+proc module_attributes_is_public(
+    attributes: ref ModuleAttributes
+) -> bool {
+    give attributes.visibility == ModuleVisibility.Public;
+}
+
+proc module_attributes_is_package_visible(
+    attributes: ref ModuleAttributes
+) -> bool {
+    give attributes.visibility == ModuleVisibility.Package;
+}
+
+proc module_attributes_is_executable(
+    attributes: ref ModuleAttributes
+) -> bool {
+    give attributes.kind == ModuleKind.Executable;
+}
+
+proc module_attributes_is_library(
+    attributes: ref ModuleAttributes
+) -> bool {
+    give attributes.kind == ModuleKind.Library;
+}
+
+proc module_attributes_is_test(
+    attributes: ref ModuleAttributes
+) -> bool {
+    give attributes.kind == ModuleKind.Test or attributes.test_only;
+}
+
+proc module_attributes_is_generated(
+    attributes: ref ModuleAttributes
+) -> bool {
+    give attributes.kind == ModuleKind.Generated or attributes.generated;
+}
+
+proc module_attributes_is_builtin(
+    attributes: ref ModuleAttributes
+) -> bool {
+    give attributes.kind == ModuleKind.Builtin or attributes.builtin;
+}
+
+proc module_attributes_is_deprecated(
+    attributes: ref ModuleAttributes
+) -> bool {
+    give attributes.deprecation.enabled;
+}
+
+proc module_attributes_uses_std(
+    attributes: ref ModuleAttributes
+) -> bool {
+    give not attributes.no_std;
+}
+
+proc module_attributes_uses_prelude(
+    attributes: ref ModuleAttributes
+) -> bool {
+    give not attributes.no_prelude;
+}
+
+proc module_attributes_uses_runtime(
+    attributes: ref ModuleAttributes
+) -> bool {
+    give not attributes.no_runtime;
+}
+
+proc module_attributes_allows_unsafe(
+    attributes: ref ModuleAttributes
+) -> bool {
+    give attributes.allow_unsafe and not attributes.deny_unsafe;
+}
+
+proc module_attribute_error(
+    kind: ModuleAttributeErrorKind,
+    name: string,
+    message: string,
+    span: Span
+) -> ModuleAttributeError {
+    give ModuleAttributeError {
+        kind: kind,
+        name: name,
+        message: message,
+        span: span
+    };
+}
+
+proc module_attributes_push_error(
+    attributes: ref mut ModuleAttributes,
+    kind: ModuleAttributeErrorKind,
+    name: string,
+    message: string,
+    span: Span
+) {
+    let error = module_attribute_error(kind, name, message, span);
+    attributes.errors = attributes.errors + [error];
+}
+
+proc module_visibility_from_string(
+    value: string
+) -> Option<ModuleVisibility> {
+    if value == "private" {
+        give Some(ModuleVisibility.Private);
+    }
+
+    if value == "package" {
+        give Some(ModuleVisibility.Package);
+    }
+
+    if value == "public" {
+        give Some(ModuleVisibility.Public);
+    }
+
+    give None;
+}
+
+proc module_kind_from_string(
+    value: string
+) -> Option<ModuleKind> {
+    if value == "source" {
+        give Some(ModuleKind.Source);
+    }
+
+    if value == "library" {
+        give Some(ModuleKind.Library);
+    }
+
+    if value == "executable" {
+        give Some(ModuleKind.Executable);
+    }
+
+    if value == "test" {
+        give Some(ModuleKind.Test);
+    }
+
+    if value == "benchmark" {
+        give Some(ModuleKind.Benchmark);
+    }
+
+    if value == "generated" {
+        give Some(ModuleKind.Generated);
+    }
+
+    if value == "builtin" {
+        give Some(ModuleKind.Builtin);
+    }
+
+    give None;
+}
+
+proc module_stability_from_string(
+    value: string
+) -> Option<ModuleStability> {
+    if value == "stable" {
+        give Some(ModuleStability.Stable);
+    }
+
+    if value == "unstable" {
+        give Some(ModuleStability.Unstable);
+    }
+
+    if value == "experimental" {
+        give Some(ModuleStability.Experimental);
+    }
+
+    if value == "deprecated" {
+        give Some(ModuleStability.Deprecated);
+    }
+
+    give None;
+}
+
+proc attribute_first_string(
+    attribute: ref Attribute
+) -> Option<string> {
+    if len(attribute.arguments) == 0 {
+        give None;
+    }
+
+    let argument = attribute.arguments[0];
+
+    pick argument.value {
+        AttributeValue.String(value) {
+            give Some(value);
+        }
+
+        AttributeValue.Identifier(value) {
+            give Some(value);
+        }
+
+        _ {
+            give None;
+        }
+    }
+}
+
+proc apply_visibility_attribute(
+    output: ref mut ModuleAttributes,
+    attribute: ref Attribute
+) {
+    let value = attribute_first_string(attribute);
+
+    pick value {
+        Some(text) {
+            let visibility = module_visibility_from_string(text);
+
+            pick visibility {
+                Some(result) {
+                    output.visibility = result;
+                }
+
+                None {
+                    module_attributes_push_error(
+                        output,
+                        ModuleAttributeErrorKind.InvalidVisibility,
+                        attribute.name,
+                        "invalid module visibility",
+                        attribute.span
+                    );
+                }
+            }
+        }
+
+        None {
+            module_attributes_push_error(
+                output,
+                ModuleAttributeErrorKind.MissingArgument,
+                attribute.name,
+                "visibility attribute requires a value",
+                attribute.span
+            );
+        }
+    }
+}
+
+proc apply_kind_attribute(
+    output: ref mut ModuleAttributes,
+    attribute: ref Attribute
+) {
+    let value = attribute_first_string(attribute);
+
+    pick value {
+        Some(text) {
+            let kind = module_kind_from_string(text);
+
+            pick kind {
+                Some(result) {
+                    output.kind = result;
+
+                    if result == ModuleKind.Test {
+                        output.test_only = true;
+                    }
+
+                    if result == ModuleKind.Generated {
+                        output.generated = true;
+                    }
+
+                    if result == ModuleKind.Builtin {
+                        output.builtin = true;
+                    }
+                }
+
+                None {
+                    module_attributes_push_error(
+                        output,
+                        ModuleAttributeErrorKind.InvalidModuleKind,
+                        attribute.name,
+                        "invalid module kind",
+                        attribute.span
+                    );
+                }
+            }
+        }
+
+        None {
+            module_attributes_push_error(
+                output,
+                ModuleAttributeErrorKind.MissingArgument,
+                attribute.name,
+                "module kind attribute requires a value",
+                attribute.span
+            );
+        }
+    }
+}
+
+proc apply_stability_attribute(
+    output: ref mut ModuleAttributes,
+    attribute: ref Attribute
+) {
+    let value = attribute_first_string(attribute);
+
+    pick value {
+        Some(text) {
+            let stability = module_stability_from_string(text);
+
+            pick stability {
+                Some(result) {
+                    output.stability = result;
+                }
+
+                None {
+                    module_attributes_push_error(
+                        output,
+                        ModuleAttributeErrorKind.InvalidArgument,
+                        attribute.name,
+                        "invalid module stability",
+                        attribute.span
+                    );
+                }
+            }
+        }
+
+        None {
+            module_attributes_push_error(
+                output,
+                ModuleAttributeErrorKind.MissingArgument,
+                attribute.name,
+                "stability attribute requires a value",
+                attribute.span
+            );
+        }
+    }
+}
+
+proc apply_deprecated_attribute(
+    output: ref mut ModuleAttributes,
+    attribute: ref Attribute
+) {
+    if output.deprecation.enabled {
+        module_attributes_push_error(
+            output,
+            ModuleAttributeErrorKind.DuplicateAttribute,
+            attribute.name,
+            "duplicate deprecated attribute",
+            attribute.span
+        );
+
+        give;
+    }
+
+    output.deprecation.enabled = true;
+    output.deprecation.span = attribute.span;
+    output.stability = ModuleStability.Deprecated;
+
+    if len(attribute.arguments) > 0 {
+        let message = attribute_first_string(attribute);
+
+        pick message {
+            Some(value) {
+                output.deprecation.message = value;
+            }
+
+            None {
+                module_attributes_push_error(
+                    output,
+                    ModuleAttributeErrorKind.InvalidArgument,
+                    attribute.name,
+                    "deprecated message must be a string",
+                    attribute.span
+                );
+            }
+        }
+    }
+}
+
+proc apply_target_attribute(
+    output: ref mut ModuleAttributes,
+    attribute: ref Attribute,
+    architecture: bool
+) {
+    if len(attribute.arguments) == 0 {
+        module_attributes_push_error(
+            output,
+            ModuleAttributeErrorKind.MissingArgument,
+            attribute.name,
+            "target attribute requires at least one value",
+            attribute.span
+        );
+
+        give;
+    }
+
+    for argument in attribute.arguments {
+        pick argument.value {
+            AttributeValue.String(value) {
+                if architecture {
+                    output.target_arch = output.target_arch + [value];
+                } else {
+                    output.target_os = output.target_os + [value];
+                }
+
+                output.platform_specific = true;
+            }
+
+            AttributeValue.Identifier(value) {
+                if architecture {
+                    output.target_arch = output.target_arch + [value];
+                } else {
+                    output.target_os = output.target_os + [value];
+                }
+
+                output.platform_specific = true;
+            }
+
+            _ {
+                module_attributes_push_error(
+                    output,
+                    ModuleAttributeErrorKind.InvalidArgument,
+                    attribute.name,
+                    "target value must be a string or identifier",
+                    argument.span
+                );
+            }
+        }
+    }
+}
+
+proc apply_feature_attribute(
+    output: ref mut ModuleAttributes,
+    attribute: ref Attribute
+) {
+    let value = attribute_first_string(attribute);
+
+    pick value {
+        Some(name) {
+            output.required_features = output.required_features + [
+                ModuleFeature {
+                    name: name,
+                    enabled: true,
+                    span: attribute.span
+                }
+            ];
+        }
+
+        None {
+            module_attributes_push_error(
+                output,
+                ModuleAttributeErrorKind.MissingArgument,
+                attribute.name,
+                "feature attribute requires a feature name",
+                attribute.span
+            );
+        }
+    }
+}
+
+proc apply_module_attribute(
+    output: ref mut ModuleAttributes,
+    attribute: ref Attribute
+) {
+    if attribute.name == "public" {
+        output.visibility = ModuleVisibility.Public;
+        give;
+    }
+
+    if attribute.name == "private" {
+        output.visibility = ModuleVisibility.Private;
+        give;
+    }
+
+    if attribute.name == "package" {
+        output.visibility = ModuleVisibility.Package;
+        give;
+    }
+
+    if attribute.name == "visibility" {
+        apply_visibility_attribute(output, attribute);
+        give;
+    }
+
+    if attribute.name == "kind" {
+        apply_kind_attribute(output, attribute);
+        give;
+    }
+
+    if attribute.name == "stable" {
+        output.stability = ModuleStability.Stable;
+        give;
+    }
+
+    if attribute.name == "unstable" {
+        output.stability = ModuleStability.Unstable;
+        give;
+    }
+
+    if attribute.name == "experimental" {
+        output.stability = ModuleStability.Experimental;
+        give;
+    }
+
+    if attribute.name == "stability" {
+        apply_stability_attribute(output, attribute);
+        give;
+    }
+
+    if attribute.name == "deprecated" {
+        apply_deprecated_attribute(output, attribute);
+        give;
+    }
+
+    if attribute.name == "no_std" {
+        output.no_std = true;
+        give;
+    }
+
+    if attribute.name == "no_prelude" {
+        output.no_prelude = true;
+        give;
+    }
+
+    if attribute.name == "no_runtime" {
+        output.no_runtime = true;
+        give;
+    }
+
+    if attribute.name == "allow_unsafe" {
+        output.allow_unsafe = true;
+        give;
+    }
+
+    if attribute.name == "deny_unsafe" {
+        output.deny_unsafe = true;
+        give;
+    }
+
+    if attribute.name == "test" {
+        output.test_only = true;
+        output.kind = ModuleKind.Test;
+        give;
+    }
+
+    if attribute.name == "benchmark" {
+        output.kind = ModuleKind.Benchmark;
+        give;
+    }
+
+    if attribute.name == "generated" {
+        output.generated = true;
+        output.kind = ModuleKind.Generated;
+        give;
+    }
+
+    if attribute.name == "builtin" {
+        output.builtin = true;
+        output.kind = ModuleKind.Builtin;
+        give;
+    }
+
+    if attribute.name == "target_os" {
+        apply_target_attribute(output, attribute, false);
+        give;
+    }
+
+    if attribute.name == "target_arch" {
+        apply_target_attribute(output, attribute, true);
+        give;
+    }
+
+    if attribute.name == "feature" {
+        apply_feature_attribute(output, attribute);
+        give;
+    }
+
+    if attribute.name == "name" {
+        let value = attribute_first_string(attribute);
+
+        pick value {
+            Some(name) {
+                output.name = name;
+            }
+
+            None {
+                module_attributes_push_error(
+                    output,
+                    ModuleAttributeErrorKind.MissingArgument,
+                    attribute.name,
+                    "name attribute requires a string",
+                    attribute.span
+                );
+            }
+        }
+
+        give;
+    }
+
+    if attribute.name == "version" {
+        let value = attribute_first_string(attribute);
+
+        pick value {
+            Some(version) {
+                output.version = version;
+            }
+
+            None {
+                module_attributes_push_error(
+                    output,
+                    ModuleAttributeErrorKind.InvalidVersion,
+                    attribute.name,
+                    "version attribute requires a version string",
+                    attribute.span
+                );
+            }
+        }
+
+        give;
+    }
+
+    if attribute.name == "doc" {
+        let value = attribute_first_string(attribute);
+
+        pick value {
+            Some(documentation) {
+                if len(output.documentation) == 0 {
+                    output.documentation = documentation;
+                } else {
+                    output.documentation =
+                        output.documentation + "\n" + documentation;
+                }
+            }
+
+            None {
+                module_attributes_push_error(
+                    output,
+                    ModuleAttributeErrorKind.InvalidArgument,
+                    attribute.name,
+                    "doc attribute requires a string",
+                    attribute.span
+                );
+            }
+        }
+
+        give;
+    }
+
+    module_attributes_push_error(
+        output,
+        ModuleAttributeErrorKind.UnknownAttribute,
+        attribute.name,
+        "unknown module attribute",
+        attribute.span
+    );
+}
+
+proc validate_module_attributes(
+    attributes: ref mut ModuleAttributes
+) {
+    if attributes.allow_unsafe and attributes.deny_unsafe {
+        module_attributes_push_error(
+            attributes,
+            ModuleAttributeErrorKind.ConflictingAttribute,
+            "unsafe",
+            "allow_unsafe and deny_unsafe cannot be used together",
+            empty_span()
+        );
+    }
+
+    if attributes.builtin and attributes.no_runtime {
+        module_attributes_push_error(
+            attributes,
+            ModuleAttributeErrorKind.ConflictingAttribute,
+            "builtin",
+            "builtin modules require the runtime",
+            empty_span()
+        );
+    }
+
+    if attributes.kind == ModuleKind.Executable and attributes.test_only {
+        module_attributes_push_error(
+            attributes,
+            ModuleAttributeErrorKind.ConflictingAttribute,
+            "kind",
+            "an executable module cannot be test-only",
+            empty_span()
+        );
+    }
+
+    if attributes.no_std {
+        attributes.no_prelude = true;
+    }
+}
+
+proc analyze_module_attributes(
+    source: [Attribute]
+) -> ModuleAttributes {
+    set output = module_attributes_default();
+
+    for attribute in source {
+        apply_module_attribute(ref mut output, ref attribute);
+    }
+
+    validate_module_attributes(ref mut output);
+
+    give output;
+}
+
+proc module_attribute_error_to_diagnostic(
+    error: ref ModuleAttributeError
+) -> Diagnostic {
+    give Diagnostic {
+        level: DiagnosticLevel.Error,
+        code: "E_MODULE_ATTRIBUTE",
+        message: error.message,
+        primary_span: error.span,
+        labels: [],
+        notes: [],
+        help: [],
+        fixes: []
+    };
+}
+
+proc module_attributes_diagnostics(
+    attributes: ref ModuleAttributes
+) -> [Diagnostic] {
+    set diagnostics: [Diagnostic] = [];
+
+    for error in attributes.errors {
+        diagnostics = diagnostics + [
+            module_attribute_error_to_diagnostic(ref error)
+        ];
+    }
+
+    give diagnostics;
+}

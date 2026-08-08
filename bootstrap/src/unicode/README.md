@@ -1,3 +1,7 @@
-# src/unicode/README.md
+# src/unicode
 
-Bootstrap support directory for the Vitte C17 seed compiler.
+Category: Unicode.
+
+Purpose: unicode classification hooks.
+
+This directory is part of the C17 bootstrap source tree and is covered by `make -C bootstrap verify`.

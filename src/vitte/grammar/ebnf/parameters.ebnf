@@ -1,0 +1,197 @@
+(* Vitte parameter grammar *)
+
+parameter_list
+    = left_parenthesis,
+      parameter_sequence?,
+      right_parenthesis
+    ;
+
+parameter_sequence
+    = parameter,
+      { comma, parameter },
+      comma?
+    ;
+
+parameter
+    = parameter_attributes?,
+      parameter_modifier?,
+      parameter_pattern,
+      parameter_type?,
+      parameter_default?
+    ;
+
+parameter_attributes
+    = attribute,
+      { attribute }
+    ;
+
+parameter_modifier
+    = "ref"
+    | "ref", "mut"
+    | "mut"
+    | "move"
+    | "copy"
+    | "const"
+    ;
+
+parameter_pattern
+    = pattern
+    | identifier
+    ;
+
+parameter_type
+    = colon,
+      type
+    ;
+
+parameter_default
+    = equals,
+      expression
+    ;
+
+named_parameter
+    = identifier,
+      colon,
+      expression
+    ;
+
+argument_list
+    = left_parenthesis,
+      argument_sequence?,
+      right_parenthesis
+    ;
+
+argument_sequence
+    = argument,
+      { comma, argument },
+      comma?
+    ;
+
+argument
+    = expression
+    | named_argument
+    | spread_argument
+    ;
+
+named_argument
+    = identifier,
+      colon,
+      expression
+    ;
+
+spread_argument
+    = "..",
+      expression
+    ;
+
+closure_parameter_list
+    = vertical_bar,
+      closure_parameter_sequence?,
+      vertical_bar
+    ;
+
+closure_parameter_sequence
+    = closure_parameter,
+      { comma, closure_parameter },
+      comma?
+    ;
+
+closure_parameter
+    = parameter_pattern,
+      parameter_type?
+    ;
+
+generic_parameter_list
+    = less_than,
+      generic_parameter_sequence,
+      greater_than
+    ;
+
+generic_parameter_sequence
+    = generic_parameter,
+      { comma, generic_parameter },
+      comma?
+    ;
+
+generic_parameter
+    = lifetime_parameter
+    | type_parameter
+    | constant_parameter
+    ;
+
+type_parameter
+    = identifier,
+      generic_parameter_bounds?,
+      generic_parameter_default?
+    ;
+
+generic_parameter_bounds
+    = colon,
+      type_bound,
+      { plus, type_bound }
+    ;
+
+generic_parameter_default
+    = equals,
+      type
+    ;
+
+constant_parameter
+    = "const",
+      identifier,
+      colon,
+      type,
+      generic_constant_default?
+    ;
+
+generic_constant_default
+    = equals,
+      constant_expression
+    ;
+
+lifetime_parameter
+    = lifetime,
+      lifetime_bounds?
+    ;
+
+lifetime_bounds
+    = colon,
+      lifetime,
+      { plus, lifetime }
+    ;
+
+left_parenthesis
+    = "("
+    ;
+
+right_parenthesis
+    = ")"
+    ;
+
+less_than
+    = "<"
+    ;
+
+greater_than
+    = ">"
+    ;
+
+vertical_bar
+    = "|"
+    ;
+
+colon
+    = ":"
+    ;
+
+comma
+    = ","
+    ;
+
+equals
+    = "="
+    ;
+
+plus
+    = "+"
+    ;

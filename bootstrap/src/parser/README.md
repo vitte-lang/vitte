@@ -33,10 +33,17 @@ The normal bootstrap path is:
 
 Current bootstrap grammar:
 
-- module: zero or more top-level declarations
+- module:
+  - optional `space module/path`
+  - zero or more `use` imports:
+    - simple path `use math/core`
+    - alias `use math::core as core`
+    - glob `use math::*`
+    - groups `use math::{add, sub as minus, ops::{mul}}`
+  - zero or more top-level declarations
 - declaration:
-  - `proc name() -> type { ... }`
-  - `proc name() { ... }`
+  - `proc name(param: type, ...) -> type { ... }`
+  - `proc name(param: type, ...) { ... }`
   - `const name: type = expr`
   - `const name = expr`
 - statement:
@@ -49,18 +56,21 @@ Current bootstrap grammar:
 - expression:
   - integer literal
   - string literal
-  - identifier
+  - identifier and qualified identifier `a::b`
   - grouped expression `(expr)`
   - call `callee(arg, ...)`
-  - unary `+expr` and `-expr`
-  - binary `* / + - < <= > >= == !=`
+  - unary `+expr` `-expr` `!expr` `not expr`
+  - binary `* / % + - << >> & ^ | < <= > >= == != and or && ||`
+  - qualified type names `a::b`
 
 ## Bootstrap Limits
 
-- procedure parameters are rejected for now
-- `let` requires an explicit type in the bootstrap parser
+- import paths are normalized to dotted module names in AST/module tracking
+- `let` still requires an explicit type
 - `const` without a type relies on simple literal/operator inference
 - there are no expression statements yet
+- generics, where clauses, attributes, visibility, forms, picks, traits, impls,
+  exports, and patterns are still outside the bootstrap parser
 
 ## Recovery
 
@@ -78,8 +88,12 @@ the AST.
 ## Module Integration
 
 `vitte_parser_init_module` parses a `vitte_module_t` that already owns loaded
-source text. On success, the parser attaches the AST to the module and advances
-its state to `PARSED`.
+source text. On success, the parser:
+
+- attaches the AST to the module
+- normalizes `space foo/bar` to module name `foo.bar`
+- registers `use` imports into both the AST and `vitte_module_t`
+- advances module state to `PARSED`
 
 ## Driver Integration
 

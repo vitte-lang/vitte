@@ -1,0 +1,1823 @@
+(* Vitte complete grammar entry point *)
+
+grammar
+    = source_file
+    ;
+
+source_file
+    = byte_order_mark?,
+      shebang?,
+      trivia*,
+      module_declaration?,
+      source_item*,
+      end_of_file
+    ;
+
+byte_order_mark
+    = ? Unicode U+FEFF BYTE ORDER MARK ?
+    ;
+
+shebang
+    = "#!",
+      { shebang_character },
+      line_terminator
+    ;
+
+shebang_character
+    = ? any Unicode scalar value except CR and LF ?
+    ;
+
+source_item
+    = trivia*
+      item
+      trivia*
+    ;
+
+item
+    = attributed_item
+    | declaration
+    | semicolon
+    ;
+
+attributed_item
+    = attribute*,
+      declaration
+    ;
+
+declaration
+    = module_declaration
+    | import_declaration
+    | export_declaration
+    | procedure_declaration
+    | form_declaration
+    | pick_declaration
+    | trait_declaration
+    | implementation_declaration
+    | type_alias_declaration
+    | constant_declaration
+    | static_declaration
+    | macro_declaration
+    | external_declaration
+    ;
+
+module_declaration
+    = space_keyword,
+      module_path,
+      semicolon?
+    ;
+
+import_declaration
+    = use_keyword,
+      import_clause,
+      semicolon?
+    ;
+
+import_clause
+    = import_path
+    | import_alias
+    | import_group
+    | import_glob
+    ;
+
+import_path
+    = module_path
+    ;
+
+import_alias
+    = module_path,
+      as_keyword,
+      identifier
+    ;
+
+import_glob
+    = module_path,
+      path_separator,
+      asterisk
+    ;
+
+import_group
+    = module_path?,
+      path_separator?,
+      left_brace,
+      import_group_items?,
+      right_brace
+    ;
+
+import_group_items
+    = import_group_item,
+      { comma, import_group_item },
+      comma?
+    ;
+
+import_group_item
+    = identifier
+    | identifier, as_keyword, identifier
+    | asterisk
+    | identifier,
+      path_separator,
+      left_brace,
+      import_group_items?,
+      right_brace
+    ;
+
+export_declaration
+    = export_keyword,
+      export_clause,
+      semicolon?
+    ;
+
+export_clause
+    = asterisk
+    | module_path
+    | module_path, as_keyword, identifier
+    | export_group
+    ;
+
+export_group
+    = module_path?,
+      path_separator?,
+      left_brace,
+      export_group_items?,
+      right_brace
+    ;
+
+export_group_items
+    = export_group_item,
+      { comma, export_group_item },
+      comma?
+    ;
+
+export_group_item
+    = identifier
+    | identifier, as_keyword, identifier
+    | asterisk
+    | identifier,
+      path_separator,
+      left_brace,
+      export_group_items?,
+      right_brace
+    ;
+
+procedure_declaration
+    = procedure_modifiers*,
+      proc_keyword,
+      identifier,
+      generic_parameter_clause?,
+      procedure_parameters,
+      procedure_return_type?,
+      where_clause?,
+      procedure_body
+    ;
+
+procedure_modifiers
+    = public_keyword
+    | package_keyword
+    | private_keyword
+    | unsafe_keyword
+    | async_keyword
+    | external_keyword
+    | compiler_keyword
+    ;
+
+procedure_parameters
+    = left_parenthesis,
+      procedure_parameter_list?,
+      right_parenthesis
+    ;
+
+procedure_parameter_list
+    = procedure_parameter,
+      { comma, procedure_parameter },
+      comma?
+    ;
+
+procedure_parameter
+    = parameter_attributes?,
+      pattern,
+      colon,
+      type
+    ;
+
+parameter_attributes
+    = attribute,
+      { attribute }
+    ;
+
+procedure_return_type
+    = arrow,
+      type
+    ;
+
+procedure_body
+    = block_expression
+    | semicolon
+    ;
+
+form_declaration
+    = form_modifiers*,
+      form_keyword,
+      identifier,
+      generic_parameter_clause?,
+      where_clause?,
+      form_body
+    ;
+
+form_modifiers
+    = public_keyword
+    | package_keyword
+    | private_keyword
+    | compiler_keyword
+    ;
+
+form_body
+    = named_field_block
+    | tuple_field_block,
+      semicolon?
+    | semicolon
+    ;
+
+pick_declaration
+    = pick_modifiers*,
+      pick_keyword,
+      identifier,
+      generic_parameter_clause?,
+      where_clause?,
+      left_brace,
+      pick_variant_list?,
+      right_brace
+    ;
+
+pick_modifiers
+    = public_keyword
+    | package_keyword
+    | private_keyword
+    | compiler_keyword
+    ;
+
+pick_variant_list
+    = pick_variant,
+      { comma, pick_variant },
+      comma?
+    ;
+
+pick_variant
+    = attribute*,
+      identifier,
+      pick_variant_payload?,
+      pick_variant_discriminant?
+    ;
+
+pick_variant_payload
+    = tuple_field_block
+    | named_field_block
+    ;
+
+pick_variant_discriminant
+    = equals,
+      constant_expression
+    ;
+
+trait_declaration
+    = trait_modifiers*,
+      trait_keyword,
+      identifier,
+      generic_parameter_clause?,
+      trait_bounds?,
+      where_clause?,
+      left_brace,
+      trait_item*,
+      right_brace
+    ;
+
+trait_modifiers
+    = public_keyword
+    | package_keyword
+    | private_keyword
+    | unsafe_keyword
+    | compiler_keyword
+    ;
+
+trait_bounds
+    = colon,
+      type_bound,
+      { plus, type_bound }
+    ;
+
+trait_item
+    = attribute*,
+      (
+          procedure_declaration
+        | type_alias_declaration
+        | constant_declaration
+      )
+    ;
+
+implementation_declaration
+    = impl_keyword,
+      generic_parameter_clause?,
+      implementation_target,
+      where_clause?,
+      left_brace,
+      implementation_item*,
+      right_brace
+    ;
+
+implementation_target
+    = type
+    | type_path,
+      for_keyword,
+      type
+    ;
+
+implementation_item
+    = attribute*,
+      (
+          procedure_declaration
+        | type_alias_declaration
+        | constant_declaration
+      )
+    ;
+
+type_alias_declaration
+    = visibility?,
+      type_keyword,
+      identifier,
+      generic_parameter_clause?,
+      where_clause?,
+      equals,
+      type,
+      semicolon
+    ;
+
+constant_declaration
+    = visibility?,
+      const_keyword,
+      identifier,
+      colon,
+      type,
+      equals,
+      constant_expression,
+      semicolon
+    ;
+
+static_declaration
+    = visibility?,
+      static_keyword,
+      mut_keyword?,
+      identifier,
+      colon,
+      type,
+      equals,
+      expression,
+      semicolon
+    ;
+
+macro_declaration
+    = visibility?,
+      macro_keyword,
+      identifier,
+      generic_parameter_clause?,
+      macro_parameters?,
+      macro_body
+    ;
+
+macro_parameters
+    = left_parenthesis,
+      macro_parameter_list?,
+      right_parenthesis
+    ;
+
+macro_parameter_list
+    = macro_parameter,
+      { comma, macro_parameter },
+      comma?
+    ;
+
+macro_parameter
+    = identifier,
+      colon,
+      identifier
+    ;
+
+macro_body
+    = token_tree
+    | semicolon
+    ;
+
+external_declaration
+    = external_keyword,
+      string_literal?,
+      left_brace,
+      external_item*,
+      right_brace
+    ;
+
+external_item
+    = attribute*,
+      (
+          procedure_declaration
+        | static_declaration
+        | type_alias_declaration
+      )
+    ;
+
+visibility
+    = public_keyword
+    | package_keyword
+    | private_keyword
+    ;
+
+attribute
+    = outer_attribute
+    | inner_attribute
+    ;
+
+outer_attribute
+    = "#",
+      left_bracket,
+      attribute_content,
+      right_bracket
+    ;
+
+inner_attribute
+    = "#!",
+      left_bracket,
+      attribute_content,
+      right_bracket
+    ;
+
+attribute_content
+    = attribute_path,
+      attribute_arguments?
+    ;
+
+attribute_path
+    = identifier,
+      { path_separator, identifier }
+    ;
+
+attribute_arguments
+    = left_parenthesis,
+      attribute_argument_list?,
+      right_parenthesis
+    | equals,
+      attribute_value
+    ;
+
+attribute_argument_list
+    = attribute_argument,
+      { comma, attribute_argument },
+      comma?
+    ;
+
+attribute_argument
+    = identifier, equals, attribute_value
+    | attribute_value
+    ;
+
+attribute_value
+    = literal_expression
+    | identifier
+    | module_path
+    | token_tree
+    ;
+
+statement
+    = item_statement
+    | let_statement
+    | set_statement
+    | expression_statement
+    | empty_statement
+    ;
+
+item_statement
+    = declaration
+    ;
+
+let_statement
+    = let_keyword,
+      pattern,
+      type_annotation?,
+      initializer?,
+      semicolon
+    ;
+
+set_statement
+    = set_keyword,
+      pattern,
+      type_annotation?,
+      initializer?,
+      semicolon
+    ;
+
+type_annotation
+    = colon,
+      type
+    ;
+
+initializer
+    = equals,
+      expression
+    ;
+
+expression_statement
+    = expression,
+      semicolon?
+    ;
+
+empty_statement
+    = semicolon
+    ;
+
+expression
+    = assignment_expression
+    ;
+
+assignment_expression
+    = logical_or_expression,
+      assignment_tail?
+    ;
+
+assignment_tail
+    = assignment_operator,
+      assignment_expression
+    ;
+
+assignment_operator
+    = equals
+    | "+="
+    | "-="
+    | "*="
+    | "/="
+    | "%="
+    | "&="
+    | "|="
+    | "^="
+    | "<<="
+    | ">>="
+    ;
+
+logical_or_expression
+    = logical_and_expression,
+      { logical_or_operator, logical_and_expression }
+    ;
+
+logical_or_operator
+    = or_keyword
+    | "||"
+    ;
+
+logical_and_expression
+    = equality_expression,
+      { logical_and_operator, equality_expression }
+    ;
+
+logical_and_operator
+    = and_keyword
+    | "&&"
+    ;
+
+equality_expression
+    = comparison_expression,
+      { equality_operator, comparison_expression }
+    ;
+
+equality_operator
+    = "=="
+    | "!="
+    ;
+
+comparison_expression
+    = bitwise_or_expression,
+      { comparison_operator, bitwise_or_expression }
+    ;
+
+comparison_operator
+    = less_than
+    | "<="
+    | greater_than
+    | ">="
+    | is_keyword
+    | is_keyword, not_keyword
+    | in_keyword
+    | not_keyword, in_keyword
+    ;
+
+bitwise_or_expression
+    = bitwise_xor_expression,
+      { vertical_bar, bitwise_xor_expression }
+    ;
+
+bitwise_xor_expression
+    = bitwise_and_expression,
+      { caret, bitwise_and_expression }
+    ;
+
+bitwise_and_expression
+    = shift_expression,
+      { ampersand, shift_expression }
+    ;
+
+shift_expression
+    = additive_expression,
+      { shift_operator, additive_expression }
+    ;
+
+shift_operator
+    = "<<"
+    | ">>"
+    ;
+
+additive_expression
+    = multiplicative_expression,
+      { additive_operator, multiplicative_expression }
+    ;
+
+additive_operator
+    = plus
+    | minus
+    ;
+
+multiplicative_expression
+    = cast_expression,
+      { multiplicative_operator, cast_expression }
+    ;
+
+multiplicative_operator
+    = asterisk
+    | slash
+    | percent
+    ;
+
+cast_expression
+    = unary_expression,
+      { as_keyword, type }
+    ;
+
+unary_expression
+    = postfix_expression
+    | unary_operator, unary_expression
+    | borrow_expression
+    | dereference_expression
+    | await_expression
+    | try_expression
+    ;
+
+unary_operator
+    = plus
+    | minus
+    | exclamation
+    | not_keyword
+    | tilde
+    ;
+
+borrow_expression
+    = ref_keyword,
+      mut_keyword?,
+      unary_expression
+    ;
+
+dereference_expression
+    = asterisk,
+      unary_expression
+    ;
+
+await_expression
+    = await_keyword,
+      unary_expression
+    ;
+
+try_expression
+    = try_keyword,
+      unary_expression
+    ;
+
+postfix_expression
+    = primary_expression,
+      { postfix_operation }
+    ;
+
+postfix_operation
+    = call_suffix
+    | index_suffix
+    | field_suffix
+    | tuple_field_suffix
+    | generic_argument_clause
+    | question_mark
+    | exclamation
+    ;
+
+call_suffix
+    = left_parenthesis,
+      argument_list?,
+      right_parenthesis
+    ;
+
+argument_list
+    = argument,
+      { comma, argument },
+      comma?
+    ;
+
+argument
+    = expression
+    | identifier, colon, expression
+    | range_operator, expression
+    ;
+
+index_suffix
+    = left_bracket,
+      expression,
+      right_bracket
+    ;
+
+field_suffix
+    = dot,
+      identifier
+    ;
+
+tuple_field_suffix
+    = dot,
+      decimal_integer_literal
+    ;
+
+primary_expression
+    = literal_expression
+    | path_expression
+    | grouped_expression
+    | tuple_expression
+    | array_expression
+    | form_expression
+    | block_expression
+    | if_expression
+    | pick_expression
+    | loop_expression
+    | while_expression
+    | for_expression
+    | closure_expression
+    | range_expression
+    | return_expression
+    | give_expression
+    | break_expression
+    | continue_expression
+    | unsafe_expression
+    | async_expression
+    | compiler_expression
+    ;
+
+literal_expression
+    = integer_literal
+    | floating_literal
+    | boolean_literal
+    | character_literal
+    | string_literal
+    | byte_literal
+    | byte_string_literal
+    | null_literal
+    ;
+
+path_expression
+    = qualified_path
+    ;
+
+qualified_path
+    = path_segment,
+      { path_separator, path_segment }
+    ;
+
+path_segment
+    = identifier,
+      generic_argument_clause?
+    | self_keyword
+    | super_keyword
+    | root_keyword
+    ;
+
+grouped_expression
+    = left_parenthesis,
+      expression,
+      right_parenthesis
+    ;
+
+tuple_expression
+    = left_parenthesis,
+      expression,
+      comma,
+      [ expression, { comma, expression }, comma? ],
+      right_parenthesis
+    ;
+
+array_expression
+    = left_bracket,
+      array_expression_content?,
+      right_bracket
+    ;
+
+array_expression_content
+    = expression,
+      (
+          semicolon, expression
+        | { comma, expression }, comma?
+      )
+    ;
+
+form_expression
+    = qualified_path,
+      left_brace,
+      field_initializer_list?,
+      right_brace
+    ;
+
+field_initializer_list
+    = field_initializer,
+      { comma, field_initializer },
+      comma?
+    ;
+
+field_initializer
+    = identifier, colon, expression
+    | identifier
+    | range_operator, expression
+    ;
+
+block_expression
+    = left_brace,
+      statement*,
+      expression?,
+      right_brace
+    ;
+
+if_expression
+    = if_keyword,
+      expression,
+      block_expression,
+      { else_keyword, if_keyword, expression, block_expression },
+      [ else_keyword, block_expression ]
+    ;
+
+pick_expression
+    = pick_keyword,
+      expression,
+      left_brace,
+      pick_arm*,
+      right_brace
+    ;
+
+pick_arm
+    = pattern,
+      pick_guard?,
+      fat_arrow?,
+      (
+          expression
+        | block_expression
+      ),
+      comma?
+    ;
+
+pick_guard
+    = if_keyword,
+      expression
+    ;
+
+loop_expression
+    = loop_keyword,
+      loop_label?,
+      block_expression
+    ;
+
+while_expression
+    = while_keyword,
+      loop_label?,
+      expression,
+      block_expression
+    ;
+
+for_expression
+    = for_keyword,
+      loop_label?,
+      pattern,
+      in_keyword,
+      expression,
+      block_expression
+    ;
+
+loop_label
+    = apostrophe,
+      identifier,
+      colon
+    ;
+
+closure_expression
+    = vertical_bar,
+      closure_parameter_list?,
+      vertical_bar,
+      closure_return_type?,
+      (
+          expression
+        | block_expression
+      )
+    ;
+
+closure_parameter_list
+    = closure_parameter,
+      { comma, closure_parameter },
+      comma?
+    ;
+
+closure_parameter
+    = pattern,
+      [ colon, type ]
+    ;
+
+closure_return_type
+    = arrow,
+      type
+    ;
+
+range_expression
+    = expression?,
+      range_operator,
+      expression?
+    ;
+
+range_operator
+    = ".."
+    | "..="
+    ;
+
+return_expression
+    = return_keyword,
+      expression?
+    ;
+
+give_expression
+    = give_keyword,
+      expression?
+    ;
+
+break_expression
+    = break_keyword,
+      loop_label_reference?,
+      expression?
+    ;
+
+continue_expression
+    = continue_keyword,
+      loop_label_reference?
+    ;
+
+loop_label_reference
+    = apostrophe,
+      identifier
+    ;
+
+unsafe_expression
+    = unsafe_keyword,
+      block_expression
+    ;
+
+async_expression
+    = async_keyword,
+      block_expression
+    ;
+
+compiler_expression
+    = compiler_keyword,
+      path_separator,
+      identifier,
+      generic_argument_clause?,
+      call_suffix
+    ;
+
+constant_expression
+    = expression
+    ;
+
+pattern
+    = wildcard_pattern
+    | identifier_pattern
+    | literal_pattern
+    | path_pattern
+    | tuple_pattern
+    | array_pattern
+    | form_pattern
+    | variant_pattern
+    | reference_pattern
+    | range_pattern
+    | or_pattern
+    ;
+
+wildcard_pattern
+    = underscore
+    ;
+
+identifier_pattern
+    = mut_keyword?,
+      identifier,
+      [ at_sign, pattern ]
+    ;
+
+literal_pattern
+    = literal_expression
+    ;
+
+path_pattern
+    = qualified_path
+    ;
+
+tuple_pattern
+    = left_parenthesis,
+      pattern_list?,
+      right_parenthesis
+    ;
+
+array_pattern
+    = left_bracket,
+      pattern_list?,
+      right_bracket
+    ;
+
+pattern_list
+    = pattern,
+      { comma, pattern },
+      comma?
+    ;
+
+form_pattern
+    = qualified_path,
+      left_brace,
+      field_pattern_list?,
+      right_brace
+    ;
+
+field_pattern_list
+    = field_pattern,
+      { comma, field_pattern },
+      comma?
+    ;
+
+field_pattern
+    = identifier, colon, pattern
+    | identifier
+    | range_operator
+    ;
+
+variant_pattern
+    = qualified_path,
+      (
+          tuple_pattern
+        | left_brace, field_pattern_list?, right_brace
+      )
+    ;
+
+reference_pattern
+    = ref_keyword,
+      mut_keyword?,
+      pattern
+    ;
+
+range_pattern
+    = pattern_atom,
+      range_operator,
+      pattern_atom
+    ;
+
+pattern_atom
+    = literal_pattern
+    | path_pattern
+    ;
+
+or_pattern
+    = pattern_atom,
+      { vertical_bar, pattern_atom }
+    ;
+
+type
+    = reference_type
+    | pointer_type
+    | array_type
+    | slice_type
+    | tuple_type
+    | procedure_type
+    | optional_type
+    | result_type
+    | dynamic_type
+    | inferred_type
+    | never_type
+    | type_path
+    ;
+
+reference_type
+    = ref_keyword,
+      lifetime?,
+      mut_keyword?,
+      type
+    ;
+
+pointer_type
+    = asterisk,
+      (
+          const_keyword
+        | mut_keyword
+      ),
+      type
+    ;
+
+array_type
+    = left_bracket,
+      type,
+      semicolon,
+      constant_expression,
+      right_bracket
+    ;
+
+slice_type
+    = left_bracket,
+      type,
+      right_bracket
+    ;
+
+tuple_type
+    = left_parenthesis,
+      type_list?,
+      right_parenthesis
+    ;
+
+procedure_type
+    = proc_keyword,
+      left_parenthesis,
+      type_list?,
+      right_parenthesis,
+      procedure_return_type?
+    ;
+
+optional_type
+    = type_path,
+      question_mark
+    ;
+
+result_type
+    = identifier,
+      generic_argument_clause
+    ;
+
+dynamic_type
+    = dynamic_keyword,
+      type_bound,
+      { plus, type_bound }
+    ;
+
+inferred_type
+    = underscore
+    ;
+
+never_type
+    = exclamation
+    ;
+
+type_path
+    = type_path_segment,
+      { path_separator, type_path_segment }
+    ;
+
+type_path_segment
+    = identifier,
+      generic_argument_clause?
+    | self_keyword
+    | super_keyword
+    | root_keyword
+    ;
+
+type_list
+    = type,
+      { comma, type },
+      comma?
+    ;
+
+generic_parameter_clause
+    = less_than,
+      generic_parameter_list,
+      greater_than
+    ;
+
+generic_parameter_list
+    = generic_parameter,
+      { comma, generic_parameter },
+      comma?
+    ;
+
+generic_parameter
+    = lifetime_parameter
+    | type_parameter
+    | constant_parameter
+    ;
+
+lifetime_parameter
+    = lifetime,
+      [
+          colon,
+          lifetime,
+          { plus, lifetime }
+      ]
+    ;
+
+type_parameter
+    = identifier,
+      [
+          colon,
+          type_bound,
+          { plus, type_bound }
+      ],
+      [ equals, type ]
+    ;
+
+constant_parameter
+    = const_keyword,
+      identifier,
+      colon,
+      type,
+      [ equals, constant_expression ]
+    ;
+
+generic_argument_clause
+    = less_than,
+      generic_argument_list,
+      greater_than
+    ;
+
+generic_argument_list
+    = generic_argument,
+      { comma, generic_argument },
+      comma?
+    ;
+
+generic_argument
+    = lifetime
+    | type
+    | constant_expression
+    | identifier, equals, type
+    ;
+
+where_clause
+    = where_keyword,
+      where_predicate_list
+    ;
+
+where_predicate_list
+    = where_predicate,
+      { comma, where_predicate },
+      comma?
+    ;
+
+where_predicate
+    = type,
+      colon,
+      type_bound,
+      { plus, type_bound }
+    | lifetime,
+      colon,
+      lifetime,
+      { plus, lifetime }
+    ;
+
+type_bound
+    = lifetime
+    | type_path
+    | question_mark, type_path
+    | not_keyword, type_path
+    ;
+
+named_field_block
+    = left_brace,
+      field_declaration_list?,
+      right_brace
+    ;
+
+field_declaration_list
+    = field_declaration,
+      { field_separator, field_declaration },
+      field_separator?
+    ;
+
+field_declaration
+    = attribute*,
+      visibility?,
+      mut_keyword?,
+      identifier,
+      colon,
+      type,
+      [ equals, expression ]
+    ;
+
+field_separator
+    = comma
+    | semicolon
+    ;
+
+tuple_field_block
+    = left_parenthesis,
+      tuple_field_declaration_list?,
+      right_parenthesis
+    ;
+
+tuple_field_declaration_list
+    = tuple_field_declaration,
+      { comma, tuple_field_declaration },
+      comma?
+    ;
+
+tuple_field_declaration
+    = attribute*,
+      visibility?,
+      type,
+      [ equals, expression ]
+    ;
+
+module_path
+    = module_path_segment,
+      { path_separator, module_path_segment }
+    ;
+
+module_path_segment
+    = identifier
+    | self_keyword
+    | super_keyword
+    | root_keyword
+    ;
+
+token_tree
+    = left_parenthesis,
+      token_tree_items?,
+      right_parenthesis
+    | left_bracket,
+      token_tree_items?,
+      right_bracket
+    | left_brace,
+      token_tree_items?,
+      right_brace
+    ;
+
+token_tree_items
+    = token_tree_item,
+      { token_tree_item }
+    ;
+
+token_tree_item
+    = token_tree
+    | token
+    ;
+
+token
+    = identifier
+    | keyword
+    | literal_expression
+    | punctuation
+    ;
+
+trivia
+    = whitespace
+    | comment
+    ;
+
+comment
+    = line_comment
+    | block_comment
+    | documentation_comment
+    ;
+
+line_comment
+    = "//",
+      { line_comment_character },
+      line_terminator?
+    ;
+
+line_comment_character
+    = ? any Unicode scalar value except CR and LF ?
+    ;
+
+block_comment
+    = "/*",
+      { block_comment_item },
+      "*/"
+    ;
+
+block_comment_item
+    = block_comment
+    | block_comment_character
+    ;
+
+block_comment_character
+    = ? any Unicode scalar value except the start of "/*" or "*/" ?
+    ;
+
+documentation_comment
+    = "///",
+      { line_comment_character },
+      line_terminator?
+    | "//!",
+      { line_comment_character },
+      line_terminator?
+    | "/**",
+      { block_comment_item },
+      "*/"
+    | "/*!",
+      { block_comment_item },
+      "*/"
+    ;
+
+whitespace
+    = whitespace_character,
+      { whitespace_character }
+    ;
+
+whitespace_character
+    = space
+    | horizontal_tab
+    | line_terminator
+    | ? any Unicode scalar value with the White_Space property ?
+    ;
+
+identifier
+    = identifier_start,
+      { identifier_continue }
+    ;
+
+identifier_start
+    = underscore
+    | unicode_letter
+    ;
+
+identifier_continue
+    = identifier_start
+    | unicode_decimal_digit
+    ;
+
+integer_literal
+    = decimal_integer_literal
+    | hexadecimal_integer_literal
+    | octal_integer_literal
+    | binary_integer_literal
+    ;
+
+decimal_integer_literal
+    = decimal_digit,
+      { decimal_digit | underscore },
+      integer_suffix?
+    ;
+
+hexadecimal_integer_literal
+    = "0x",
+      hexadecimal_digit,
+      { hexadecimal_digit | underscore },
+      integer_suffix?
+    ;
+
+octal_integer_literal
+    = "0o",
+      octal_digit,
+      { octal_digit | underscore },
+      integer_suffix?
+    ;
+
+binary_integer_literal
+    = "0b",
+      binary_digit,
+      { binary_digit | underscore },
+      integer_suffix?
+    ;
+
+integer_suffix
+    = "i8"
+    | "i16"
+    | "i32"
+    | "i64"
+    | "i128"
+    | "isize"
+    | "u8"
+    | "u16"
+    | "u32"
+    | "u64"
+    | "u128"
+    | "usize"
+    ;
+
+floating_literal
+    = decimal_integer_literal,
+      dot,
+      decimal_digit,
+      { decimal_digit | underscore },
+      exponent_part?,
+      floating_suffix?
+    | decimal_integer_literal,
+      exponent_part,
+      floating_suffix?
+    ;
+
+exponent_part
+    = ("e" | "E"),
+      (plus | minus)?,
+      decimal_digit,
+      { decimal_digit | underscore }
+    ;
+
+floating_suffix
+    = "f32"
+    | "f64"
+    ;
+
+boolean_literal
+    = true_keyword
+    | false_keyword
+    ;
+
+character_literal
+    = apostrophe,
+      character_content,
+      apostrophe
+    ;
+
+character_content
+    = escape_sequence
+    | ? any Unicode scalar value except apostrophe, backslash, CR and LF ?
+    ;
+
+string_literal
+    = quotation_mark,
+      { string_content },
+      quotation_mark
+    ;
+
+string_content
+    = escape_sequence
+    | ? any Unicode scalar value except quotation mark, backslash, CR and LF ?
+    ;
+
+byte_literal
+    = "b",
+      apostrophe,
+      byte_content,
+      apostrophe
+    ;
+
+byte_content
+    = escape_sequence
+    | ? any ASCII character except apostrophe, backslash, CR and LF ?
+    ;
+
+byte_string_literal
+    = "b",
+      quotation_mark,
+      { byte_string_content },
+      quotation_mark
+    ;
+
+byte_string_content
+    = escape_sequence
+    | ? any ASCII character except quotation mark, backslash, CR and LF ?
+    ;
+
+escape_sequence
+    = "\\0"
+    | "\\n"
+    | "\\r"
+    | "\\t"
+    | "\\\\"
+    | "\\'"
+    | "\\\""
+    | "\\x", hexadecimal_digit, hexadecimal_digit
+    | "\\u{", hexadecimal_digit, { hexadecimal_digit }, "}"
+    ;
+
+null_literal
+    = null_keyword
+    ;
+
+lifetime
+    = apostrophe,
+      (
+          identifier
+        | static_keyword
+        | underscore
+      )
+    ;
+
+keyword
+    = space_keyword
+    | use_keyword
+    | export_keyword
+    | as_keyword
+    | proc_keyword
+    | form_keyword
+    | pick_keyword
+    | trait_keyword
+    | impl_keyword
+    | type_keyword
+    | const_keyword
+    | static_keyword
+    | macro_keyword
+    | public_keyword
+    | package_keyword
+    | private_keyword
+    | let_keyword
+    | set_keyword
+    | mut_keyword
+    | ref_keyword
+    | give_keyword
+    | return_keyword
+    | break_keyword
+    | continue_keyword
+    | if_keyword
+    | else_keyword
+    | loop_keyword
+    | while_keyword
+    | for_keyword
+    | in_keyword
+    | where_keyword
+    | self_keyword
+    | super_keyword
+    | root_keyword
+    | true_keyword
+    | false_keyword
+    | null_keyword
+    | and_keyword
+    | or_keyword
+    | not_keyword
+    | is_keyword
+    | unsafe_keyword
+    | async_keyword
+    | await_keyword
+    | try_keyword
+    | external_keyword
+    | compiler_keyword
+    | dynamic_keyword
+    ;
+
+space_keyword = "space" ;
+use_keyword = "use" ;
+export_keyword = "export" ;
+as_keyword = "as" ;
+proc_keyword = "proc" ;
+form_keyword = "form" ;
+pick_keyword = "pick" ;
+trait_keyword = "trait" ;
+impl_keyword = "impl" ;
+type_keyword = "type" ;
+const_keyword = "const" ;
+static_keyword = "static" ;
+macro_keyword = "macro" ;
+public_keyword = "public" ;
+package_keyword = "package" ;
+private_keyword = "private" ;
+let_keyword = "let" ;
+set_keyword = "set" ;
+mut_keyword = "mut" ;
+ref_keyword = "ref" ;
+give_keyword = "give" ;
+return_keyword = "return" ;
+break_keyword = "break" ;
+continue_keyword = "continue" ;
+if_keyword = "if" ;
+else_keyword = "else" ;
+loop_keyword = "loop" ;
+while_keyword = "while" ;
+for_keyword = "for" ;
+in_keyword = "in" ;
+where_keyword = "where" ;
+self_keyword = "self" ;
+super_keyword = "super" ;
+root_keyword = "root" ;
+true_keyword = "true" ;
+false_keyword = "false" ;
+null_keyword = "null" ;
+and_keyword = "and" ;
+or_keyword = "or" ;
+not_keyword = "not" ;
+is_keyword = "is" ;
+unsafe_keyword = "unsafe" ;
+async_keyword = "async" ;
+await_keyword = "await" ;
+try_keyword = "try" ;
+external_keyword = "external" ;
+compiler_keyword = "compiler" ;
+dynamic_keyword = "dynamic" ;
+
+punctuation
+    = path_separator
+    | arrow
+    | fat_arrow
+    | range_operator
+    | equals
+    | plus
+    | minus
+    | asterisk
+    | slash
+    | percent
+    | ampersand
+    | vertical_bar
+    | caret
+    | tilde
+    | exclamation
+    | question_mark
+    | less_than
+    | greater_than
+    | comma
+    | colon
+    | semicolon
+    | dot
+    | at_sign
+    | left_parenthesis
+    | right_parenthesis
+    | left_bracket
+    | right_bracket
+    | left_brace
+    | right_brace
+    ;
+
+path_separator = "::" | "/" ;
+arrow = "->" ;
+fat_arrow = "=>" ;
+equals = "=" ;
+plus = "+" ;
+minus = "-" ;
+asterisk = "*" ;
+slash = "/" ;
+percent = "%" ;
+ampersand = "&" ;
+vertical_bar = "|" ;
+caret = "^" ;
+tilde = "~" ;
+exclamation = "!" ;
+question_mark = "?" ;
+less_than = "<" ;
+greater_than = ">" ;
+comma = "," ;
+colon = ":" ;
+semicolon = ";" ;
+dot = "." ;
+at_sign = "@" ;
+underscore = "_" ;
+apostrophe = "'" ;
+quotation_mark = "\"" ;
+backslash = "\\" ;
+
+left_parenthesis = "(" ;
+right_parenthesis = ")" ;
+left_bracket = "[" ;
+right_bracket = "]" ;
+left_brace = "{" ;
+right_brace = "}" ;
+
+decimal_digit
+    = "0" | "1" | "2" | "3" | "4"
+    | "5" | "6" | "7" | "8" | "9"
+    ;
+
+binary_digit
+    = "0"
+    | "1"
+    ;
+
+octal_digit
+    = "0" | "1" | "2" | "3"
+    | "4" | "5" | "6" | "7"
+    ;
+
+hexadecimal_digit
+    = decimal_digit
+    | "a" | "b" | "c" | "d" | "e" | "f"
+    | "A" | "B" | "C" | "D" | "E" | "F"
+    ;
+
+unicode_letter
+    = ? any Unicode scalar value with the Letter property ?
+    ;
+
+unicode_decimal_digit
+    = ? any Unicode scalar value with the Decimal_Number property ?
+    ;
+
+space
+    = ? Unicode U+0020 SPACE ?
+    ;
+
+horizontal_tab
+    = ? Unicode U+0009 CHARACTER TABULATION ?
+    ;
+
+line_terminator
+    = LF
+    | CR
+    | CR, LF
+    ;
+
+LF
+    = ? Unicode U+000A LINE FEED ?
+    ;
+
+CR
+    = ? Unicode U+000D CARRIAGE RETURN ?
+    ;
+
+end_of_file
+    = ? end of input ?
+    ;

@@ -16,7 +16,9 @@ extern "C" {
 typedef enum vitte_ast_node_kind {
     VITTE_AST_NODE_ERROR = 0,
     VITTE_AST_NODE_MODULE,
+    VITTE_AST_NODE_IMPORT_DECL,
     VITTE_AST_NODE_PROC_DECL,
+    VITTE_AST_NODE_PARAM_DECL,
     VITTE_AST_NODE_CONST_DECL,
     VITTE_AST_NODE_BLOCK_STMT,
     VITTE_AST_NODE_GIVE_STMT,
@@ -30,6 +32,12 @@ typedef enum vitte_ast_node_kind {
     VITTE_AST_NODE_TYPE_NAME,
     VITTE_AST_NODE_COUNT
 } vitte_ast_node_kind_t;
+
+typedef enum vitte_ast_import_kind {
+    VITTE_AST_IMPORT_MODULE = 0,
+    VITTE_AST_IMPORT_SYMBOL,
+    VITTE_AST_IMPORT_GLOB
+} vitte_ast_import_kind_t;
 
 typedef struct vitte_ast_span {
     const char *source_name;
@@ -63,14 +71,30 @@ struct vitte_ast_node {
     union {
         struct {
             const char *name;
+            vitte_ast_list_t imports;
             vitte_ast_list_t declarations;
         } module;
 
         struct {
+            const char *path;
+            const char *alias;
+            bool relative;
+            vitte_ast_import_kind_t import_kind;
+        } import_decl;
+
+        struct {
             const char *name;
+            vitte_ast_list_t parameters;
             vitte_ast_type_ref_t *return_type;
             vitte_ast_stmt_t *body;
         } proc_decl;
+
+        struct {
+            const char *name;
+            vitte_ast_type_ref_t *type;
+            bool mutable_value;
+            bool by_ref;
+        } param_decl;
 
         struct {
             const char *name;
@@ -181,7 +205,16 @@ void vitte_ast_dump(const vitte_ast_node_t *node, FILE *stream, size_t max_depth
 
 void vitte_ast_builder_init(vitte_ast_builder_t *builder, vitte_ast_t *ast);
 vitte_ast_module_t *vitte_ast_make_module(vitte_ast_builder_t *builder, const char *name, vitte_ast_span_t span);
+vitte_ast_decl_t *vitte_ast_make_import_decl(
+    vitte_ast_builder_t *builder,
+    const char *path,
+    const char *alias,
+    bool relative,
+    vitte_ast_import_kind_t import_kind,
+    vitte_ast_span_t span
+);
 vitte_ast_decl_t *vitte_ast_make_proc_decl(vitte_ast_builder_t *builder, const char *name, vitte_ast_type_ref_t *return_type, vitte_ast_stmt_t *body, vitte_ast_span_t span);
+vitte_ast_node_t *vitte_ast_make_param_decl(vitte_ast_builder_t *builder, const char *name, vitte_ast_type_ref_t *type, bool mutable_value, bool by_ref, vitte_ast_span_t span);
 vitte_ast_decl_t *vitte_ast_make_const_decl(vitte_ast_builder_t *builder, const char *name, vitte_ast_type_ref_t *type, vitte_ast_expr_t *value, vitte_ast_span_t span);
 vitte_ast_stmt_t *vitte_ast_make_block_stmt(vitte_ast_builder_t *builder, vitte_ast_span_t span);
 vitte_ast_stmt_t *vitte_ast_make_give_stmt(vitte_ast_builder_t *builder, vitte_ast_expr_t *value, vitte_ast_span_t span);
@@ -196,6 +229,8 @@ vitte_ast_type_ref_t *vitte_ast_make_type_name(vitte_ast_builder_t *builder, con
 vitte_ast_node_t *vitte_ast_make_error(vitte_ast_builder_t *builder, const char *message, vitte_ast_span_t span);
 
 bool vitte_ast_module_add_decl(vitte_ast_module_t *module, vitte_ast_decl_t *decl);
+bool vitte_ast_module_add_import(vitte_ast_module_t *module, vitte_ast_decl_t *import_decl);
+bool vitte_ast_proc_add_param(vitte_ast_decl_t *proc, vitte_ast_node_t *param);
 bool vitte_ast_block_add_stmt(vitte_ast_stmt_t *block, vitte_ast_stmt_t *stmt);
 bool vitte_ast_call_add_arg(vitte_ast_expr_t *call, vitte_ast_expr_t *argument);
 

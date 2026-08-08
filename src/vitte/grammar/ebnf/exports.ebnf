@@ -1,0 +1,139 @@
+(* Vitte export declarations grammar *)
+
+export_declaration
+    = export_keyword, export_clause, semicolon
+    ;
+
+export_clause
+    = export_all
+    | export_path
+    | export_group
+    | export_alias
+    ;
+
+export_all
+    = "*"
+    ;
+
+export_path
+    = module_path
+    ;
+
+export_alias
+    = module_path, as_keyword, identifier
+    ;
+
+export_group
+    = [ module_path, path_separator ],
+      left_brace,
+      export_group_items?,
+      right_brace
+    ;
+
+export_group_items
+    = export_group_item,
+      { comma, export_group_item },
+      comma?
+    ;
+
+export_group_item
+    = export_group_all
+    | export_group_path
+    | export_group_alias
+    | export_nested_group
+    ;
+
+export_group_all
+    = "*"
+    ;
+
+export_group_path
+    = identifier
+    ;
+
+export_group_alias
+    = identifier, as_keyword, identifier
+    ;
+
+export_nested_group
+    = identifier,
+      path_separator,
+      left_brace,
+      export_group_items?,
+      right_brace
+    ;
+
+module_path
+    = path_segment,
+      { path_separator, path_segment }
+    ;
+
+path_segment
+    = identifier
+    | self_keyword
+    | super_keyword
+    | root_keyword
+    ;
+
+export_keyword
+    = "export"
+    ;
+
+as_keyword
+    = "as"
+    ;
+
+self_keyword
+    = "self"
+    ;
+
+super_keyword
+    = "super"
+    ;
+
+root_keyword
+    = "root"
+    ;
+
+path_separator
+    = "::"
+    | "/"
+    ;
+
+left_brace
+    = "{"
+    ;
+
+right_brace
+    = "}"
+    ;
+
+comma
+    = ","
+    ;
+
+semicolon
+    = ";"
+    ;
+
+identifier
+    = identifier_start, { identifier_continue }
+    ;
+
+identifier_start
+    = "_"
+    | unicode_letter
+    ;
+
+identifier_continue
+    = identifier_start
+    | unicode_decimal_digit
+    ;
+
+unicode_letter
+    = ? any Unicode scalar value with the Letter property ?
+    ;
+
+unicode_decimal_digit
+    = ? any Unicode scalar value with the Decimal_Number property ?
+    ;

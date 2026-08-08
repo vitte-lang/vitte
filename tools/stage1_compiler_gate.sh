@@ -40,7 +40,18 @@ EOF
 mkdir -p "$OUT_DIR" "$REPORT_DIR"
 cd "$ROOT_DIR"
 
-[ -x "$STAGE0" ] || fail "missing Vitte stage0 compiler: $STAGE0"
+if [ ! -x "$STAGE0" ]; then
+    # A clean checkout may have the signed platform stage0 but not the
+    # materialized bootstrap compiler.  Materialize it through the canonical
+    # bootstrap driver before declaring the stage1 gate broken.
+    TRUST_ROOT="$ROOT_DIR/target/bootstrap-real/stage0/vitte"
+    if [ -x "$TRUST_ROOT" ]; then
+        if ! python3 "$ROOT_DIR/tools/bootstrap_real/bootstrap_real.py" --stage0 "$TRUST_ROOT" >/dev/null 2>&1; then
+            fail "unable to materialize Vitte stage0 compiler: $STAGE0 (run: python3 tools/bootstrap_real/bootstrap_real.py --stage0 $TRUST_ROOT)"
+        fi
+    fi
+fi
+[ -x "$STAGE0" ] || fail "missing Vitte stage0 compiler: $STAGE0; install a signed platform stage0 with: make bootstrap-chain"
 [ -f "$SRC" ] || fail "missing compiler entrypoint: $SRC"
 case "$STAGE0" in
     */bin/vittec0|*/toolchain/seed/*|*/vittec0.seed)

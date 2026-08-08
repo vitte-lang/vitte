@@ -66,6 +66,7 @@ struct vitte_hir_node {
 
         struct {
             const char *name;
+            vitte_hir_list_t parameters;
             vitte_hir_type_t *return_type;
             vitte_hir_block_t *body;
         } function;
@@ -193,6 +194,7 @@ vitte_hir_node_t *vitte_hir_make_error(vitte_hir_builder_t *builder, const char 
 bool vitte_hir_module_add_decl(vitte_hir_module_t *module, vitte_hir_decl_t *decl);
 bool vitte_hir_module_add_function(vitte_hir_module_t *module, vitte_hir_function_t *function);
 bool vitte_hir_module_add_const(vitte_hir_module_t *module, vitte_hir_decl_t *decl);
+bool vitte_hir_function_add_param(vitte_hir_function_t *function, vitte_hir_node_t *param);
 bool vitte_hir_block_add_stmt(vitte_hir_block_t *block, vitte_hir_stmt_t *stmt);
 bool vitte_hir_call_add_arg(vitte_hir_expr_t *call, vitte_hir_expr_t *argument);
 

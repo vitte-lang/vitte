@@ -1,0 +1,1551 @@
+space vitte/compiler/analysis/modules/module_info
+
+export *
+
+use src/vitte/compiler/frontend/source/span.{Span}
+use src/vitte/compiler/analysis/modules/module_id.{
+    ModuleId,
+    ModuleIdKind,
+    ModuleIdentifier,
+    ModuleQualifiedName,
+    module_id_invalid,
+    module_id_equal,
+    module_id_is_valid,
+    module_qualified_name,
+    module_identifier,
+    module_identifier_full_name
+}
+use src/vitte/compiler/analysis/modules/module_attributes.{
+    ModuleAttributes,
+    ModuleKind,
+    ModuleStability,
+    ModuleVisibility,
+    module_attributes_default,
+    module_attributes_is_valid
+}
+
+pick ModuleInfoState {
+    Declared,
+    Discovering,
+    Loading,
+    Loaded,
+    Parsing,
+    Parsed,
+    Analyzing,
+    Analyzed,
+    Ready,
+    Failed,
+    Invalidated
+}
+
+pick ModuleSourceKind {
+    File,
+    Memory,
+    Generated,
+    Builtin,
+    Package,
+    External
+}
+
+pick ModuleInfoErrorKind {
+    InvalidArgument,
+    InvalidIdentifier,
+    InvalidName,
+    InvalidPath,
+    DuplicateModule,
+    SourceUnavailable,
+    InvalidAttributes,
+    InvalidState,
+    RevisionOverflow,
+    DatabaseCorrupted
+}
+
+form ModuleSourceInfo {
+    kind: ModuleSourceKind
+
+    canonical_path: string
+    display_path: string
+
+    source_id: usize
+    source_length: usize
+    source_hash: u64
+    modified_time: u64
+
+    available: bool
+    generated: bool
+}
+
+form ModuleCompilationInfo {
+    target: string
+    profile: string
+
+    configuration_hash: u64
+    dependency_hash: u64
+    interface_hash: u64
+    implementation_hash: u64
+
+    parsed: bool
+    analyzed: bool
+    type_checked: bool
+    borrow_checked: bool
+    lowered: bool
+    code_generated: bool
+}
+
+form ModuleInfo {
+    identifier: ModuleIdentifier
+    attributes: ModuleAttributes
+    source: ModuleSourceInfo
+    compilation: ModuleCompilationInfo
+
+    state: ModuleInfoState
+
+    declaration_span: Span
+    module_span: Span
+
+    documentation: string
+
+    dependency_count: usize
+    dependent_count: usize
+    import_count: usize
+    export_count: usize
+    diagnostic_count: usize
+
+    generation: u64
+    revision: u64
+
+    dirty: bool
+    synthetic: bool
+    external: bool
+}
+
+form ModuleInfoError {
+    kind: ModuleInfoErrorKind
+    module: string
+    message: string
+    span: Span
+}
+
+form ModuleInfoStatistics {
+    modules: usize
+
+    declared: usize
+    loading: usize
+    parsed: usize
+    analyzed: usize
+    ready: usize
+    failed: usize
+    invalidated: usize
+
+    builtin: usize
+    generated: usize
+    external: usize
+    dirty: usize
+
+    source_bytes: usize
+    dependencies: usize
+    imports: usize
+    exports: usize
+    diagnostics: usize
+}
+
+form ModuleInfoTable {
+    modules: [ModuleInfo]
+    errors: [ModuleInfoError]
+
+    generation: u64
+    statistics: ModuleInfoStatistics
+}
+
+proc module_info_empty_span() -> Span {
+    give Span {
+        source: 0,
+        start: 0,
+        end: 0
+    };
+}
+
+proc module_source_info_empty() -> ModuleSourceInfo {
+    give ModuleSourceInfo {
+        kind: ModuleSourceKind.Memory,
+
+        canonical_path: "",
+        display_path: "",
+
+        source_id: 0,
+        source_length: 0,
+        source_hash: 0,
+        modified_time: 0,
+
+        available: false,
+        generated: false
+    };
+}
+
+proc module_source_info(
+    kind: ModuleSourceKind,
+    canonical_path: string,
+    display_path: string,
+    source_id: usize,
+    source_length: usize,
+    source_hash: u64,
+    modified_time: u64
+) -> ModuleSourceInfo {
+    give ModuleSourceInfo {
+        kind: kind,
+
+        canonical_path: canonical_path,
+        display_path: display_path,
+
+        source_id: source_id,
+        source_length: source_length,
+        source_hash: source_hash,
+        modified_time: modified_time,
+
+        available: true,
+        generated: kind == ModuleSourceKind.Generated
+            or kind == ModuleSourceKind.Builtin
+    };
+}
+
+proc module_compilation_info_empty()
+    -> ModuleCompilationInfo
+{
+    give ModuleCompilationInfo {
+        target: "",
+        profile: "",
+
+        configuration_hash: 0,
+        dependency_hash: 0,
+        interface_hash: 0,
+        implementation_hash: 0,
+
+        parsed: false,
+        analyzed: false,
+        type_checked: false,
+        borrow_checked: false,
+        lowered: false,
+        code_generated: false
+    };
+}
+
+proc module_info_statistics_empty()
+    -> ModuleInfoStatistics
+{
+    give ModuleInfoStatistics {
+        modules: 0,
+
+        declared: 0,
+        loading: 0,
+        parsed: 0,
+        analyzed: 0,
+        ready: 0,
+        failed: 0,
+        invalidated: 0,
+
+        builtin: 0,
+        generated: 0,
+        external: 0,
+        dirty: 0,
+
+        source_bytes: 0,
+        dependencies: 0,
+        imports: 0,
+        exports: 0,
+        diagnostics: 0
+    };
+}
+
+proc module_info_table_create() -> ModuleInfoTable {
+    give ModuleInfoTable {
+        modules: [],
+        errors: [],
+        generation: 1,
+        statistics: module_info_statistics_empty()
+    };
+}
+
+proc module_info_error(
+    kind: ModuleInfoErrorKind,
+    module: string,
+    message: string,
+    span: Span
+) -> ModuleInfoError {
+    give ModuleInfoError {
+        kind: kind,
+        module: module,
+        message: message,
+        span: span
+    };
+}
+
+proc module_info_push_error(
+    table: ref mut ModuleInfoTable,
+    kind: ModuleInfoErrorKind,
+    module: string,
+    message: string,
+    span: Span
+) {
+    table.errors = table.errors + [
+        module_info_error(
+            kind,
+            module,
+            message,
+            span
+        )
+    ];
+}
+
+proc module_info_create(
+    identifier: ModuleIdentifier,
+    source: ModuleSourceInfo,
+    attributes: ModuleAttributes,
+    declaration_span: Span,
+    generation: u64
+) -> ModuleInfo {
+    give ModuleInfo {
+        identifier: identifier,
+        attributes: attributes,
+        source: source,
+        compilation: module_compilation_info_empty(),
+
+        state: ModuleInfoState.Declared,
+
+        declaration_span: declaration_span,
+        module_span: declaration_span,
+
+        documentation: attributes.documentation,
+
+        dependency_count: 0,
+        dependent_count: 0,
+        import_count: 0,
+        export_count: 0,
+        diagnostic_count: 0,
+
+        generation: generation,
+        revision: 1,
+
+        dirty: true,
+        synthetic: identifier.kind == ModuleIdKind.Generated
+            or identifier.kind == ModuleIdKind.Builtin,
+        external: identifier.kind == ModuleIdKind.External
+    };
+}
+
+proc module_info_create_basic(
+    id: ModuleId,
+    kind: ModuleIdKind,
+    package: string,
+    namespace: string,
+    name: string,
+    canonical_path: string,
+    span: Span,
+    generation: u64
+) -> ModuleInfo {
+    let identifier = module_identifier(
+        id,
+        kind,
+        package,
+        namespace,
+        name,
+        canonical_path,
+        span
+    );
+
+    let source = module_source_info(
+        if kind == ModuleIdKind.Generated {
+            ModuleSourceKind.Generated
+        } else if kind == ModuleIdKind.Builtin {
+            ModuleSourceKind.Builtin
+        } else if kind == ModuleIdKind.External {
+            ModuleSourceKind.External
+        } else {
+            ModuleSourceKind.File
+        },
+        canonical_path,
+        canonical_path,
+        0,
+        0,
+        0,
+        0
+    );
+
+    give module_info_create(
+        identifier,
+        source,
+        module_attributes_default(),
+        span,
+        generation
+    );
+}
+
+proc module_info_name(
+    info: ref ModuleInfo
+) -> string {
+    give info.identifier.qualified_name.name;
+}
+
+proc module_info_full_name(
+    info: ref ModuleInfo
+) -> string {
+    give module_identifier_full_name(ref info.identifier);
+}
+
+proc module_info_id(
+    info: ref ModuleInfo
+) -> ModuleId {
+    give info.identifier.id;
+}
+
+proc module_info_is_valid(
+    info: ref ModuleInfo
+) -> bool {
+    if not module_id_is_valid(info.identifier.id) {
+        give false;
+    }
+
+    if len(info.identifier.qualified_name.name) == 0 {
+        give false;
+    }
+
+    if len(info.identifier.canonical_path) == 0
+        and not info.synthetic
+    {
+        give false;
+    }
+
+    if not module_attributes_is_valid(ref info.attributes) {
+        give false;
+    }
+
+    give true;
+}
+
+proc module_info_is_ready(
+    info: ref ModuleInfo
+) -> bool {
+    give info.state == ModuleInfoState.Ready;
+}
+
+proc module_info_is_failed(
+    info: ref ModuleInfo
+) -> bool {
+    give info.state == ModuleInfoState.Failed;
+}
+
+proc module_info_is_invalidated(
+    info: ref ModuleInfo
+) -> bool {
+    give info.state == ModuleInfoState.Invalidated;
+}
+
+proc module_info_is_loaded(
+    info: ref ModuleInfo
+) -> bool {
+    give info.state == ModuleInfoState.Loaded
+        or info.state == ModuleInfoState.Parsing
+        or info.state == ModuleInfoState.Parsed
+        or info.state == ModuleInfoState.Analyzing
+        or info.state == ModuleInfoState.Analyzed
+        or info.state == ModuleInfoState.Ready;
+}
+
+proc module_info_is_parsed(
+    info: ref ModuleInfo
+) -> bool {
+    give info.compilation.parsed
+        or info.state == ModuleInfoState.Parsed
+        or info.state == ModuleInfoState.Analyzing
+        or info.state == ModuleInfoState.Analyzed
+        or info.state == ModuleInfoState.Ready;
+}
+
+proc module_info_is_analyzed(
+    info: ref ModuleInfo
+) -> bool {
+    give info.compilation.analyzed
+        or info.state == ModuleInfoState.Analyzed
+        or info.state == ModuleInfoState.Ready;
+}
+
+proc module_info_is_public(
+    info: ref ModuleInfo
+) -> bool {
+    give info.attributes.visibility
+        == ModuleVisibility.Public;
+}
+
+proc module_info_is_library(
+    info: ref ModuleInfo
+) -> bool {
+    give info.attributes.kind == ModuleKind.Library;
+}
+
+proc module_info_is_executable(
+    info: ref ModuleInfo
+) -> bool {
+    give info.attributes.kind == ModuleKind.Executable;
+}
+
+proc module_info_is_test(
+    info: ref ModuleInfo
+) -> bool {
+    give info.attributes.kind == ModuleKind.Test
+        or info.attributes.test_only;
+}
+
+proc module_info_is_builtin(
+    info: ref ModuleInfo
+) -> bool {
+    give info.identifier.kind == ModuleIdKind.Builtin
+        or info.attributes.builtin;
+}
+
+proc module_info_is_generated(
+    info: ref ModuleInfo
+) -> bool {
+    give info.identifier.kind == ModuleIdKind.Generated
+        or info.attributes.generated
+        or info.source.generated;
+}
+
+proc module_info_is_external(
+    info: ref ModuleInfo
+) -> bool {
+    give info.external
+        or info.identifier.kind == ModuleIdKind.External;
+}
+
+proc module_info_find_index(
+    table: ref ModuleInfoTable,
+    id: ModuleId
+) -> Option<usize> {
+    set index: usize = 0;
+
+    while index < len(table.modules) {
+        if module_id_equal(
+            table.modules[index].identifier.id,
+            id
+        ) {
+            give Some(index);
+        }
+
+        index = index + 1;
+    }
+
+    give None;
+}
+
+proc module_info_find_name_index(
+    table: ref ModuleInfoTable,
+    full_name: string
+) -> Option<usize> {
+    set index: usize = 0;
+
+    while index < len(table.modules) {
+        if module_info_full_name(
+            ref table.modules[index]
+        ) == full_name {
+            give Some(index);
+        }
+
+        index = index + 1;
+    }
+
+    give None;
+}
+
+proc module_info_find_path_index(
+    table: ref ModuleInfoTable,
+    canonical_path: string
+) -> Option<usize> {
+    set index: usize = 0;
+
+    while index < len(table.modules) {
+        if table.modules[index].source.canonical_path
+            == canonical_path
+        {
+            give Some(index);
+        }
+
+        index = index + 1;
+    }
+
+    give None;
+}
+
+proc module_info_contains(
+    table: ref ModuleInfoTable,
+    id: ModuleId
+) -> bool {
+    give module_info_find_index(table, id) != None;
+}
+
+proc module_info_contains_name(
+    table: ref ModuleInfoTable,
+    full_name: string
+) -> bool {
+    give module_info_find_name_index(
+        table,
+        full_name
+    ) != None;
+}
+
+proc module_info_contains_path(
+    table: ref ModuleInfoTable,
+    canonical_path: string
+) -> bool {
+    give module_info_find_path_index(
+        table,
+        canonical_path
+    ) != None;
+}
+
+proc module_info_get(
+    table: ref ModuleInfoTable,
+    id: ModuleId
+) -> Option<ref ModuleInfo> {
+    let index = module_info_find_index(table, id);
+
+    pick index {
+        Some(value) {
+            give Some(ref table.modules[value]);
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc module_info_get_mut(
+    table: ref mut ModuleInfoTable,
+    id: ModuleId
+) -> Option<ref mut ModuleInfo> {
+    let index = module_info_find_index(ref table, id);
+
+    pick index {
+        Some(value) {
+            give Some(ref mut table.modules[value]);
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc module_info_get_by_name(
+    table: ref ModuleInfoTable,
+    full_name: string
+) -> Option<ref ModuleInfo> {
+    let index = module_info_find_name_index(
+        table,
+        full_name
+    );
+
+    pick index {
+        Some(value) {
+            give Some(ref table.modules[value]);
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc module_info_get_by_path(
+    table: ref ModuleInfoTable,
+    canonical_path: string
+) -> Option<ref ModuleInfo> {
+    let index = module_info_find_path_index(
+        table,
+        canonical_path
+    );
+
+    pick index {
+        Some(value) {
+            give Some(ref table.modules[value]);
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc module_info_refresh_statistics(
+    table: ref mut ModuleInfoTable
+) {
+    set statistics = module_info_statistics_empty();
+
+    statistics.modules = len(table.modules);
+
+    for info in table.modules {
+        pick info.state {
+            ModuleInfoState.Declared {
+                statistics.declared =
+                    statistics.declared + 1;
+            }
+
+            ModuleInfoState.Discovering {
+                statistics.loading =
+                    statistics.loading + 1;
+            }
+
+            ModuleInfoState.Loading {
+                statistics.loading =
+                    statistics.loading + 1;
+            }
+
+            ModuleInfoState.Loaded {}
+
+            ModuleInfoState.Parsing {}
+
+            ModuleInfoState.Parsed {
+                statistics.parsed =
+                    statistics.parsed + 1;
+            }
+
+            ModuleInfoState.Analyzing {}
+
+            ModuleInfoState.Analyzed {
+                statistics.analyzed =
+                    statistics.analyzed + 1;
+            }
+
+            ModuleInfoState.Ready {
+                statistics.ready =
+                    statistics.ready + 1;
+            }
+
+            ModuleInfoState.Failed {
+                statistics.failed =
+                    statistics.failed + 1;
+            }
+
+            ModuleInfoState.Invalidated {
+                statistics.invalidated =
+                    statistics.invalidated + 1;
+            }
+        }
+
+        if module_info_is_builtin(ref info) {
+            statistics.builtin = statistics.builtin + 1;
+        }
+
+        if module_info_is_generated(ref info) {
+            statistics.generated =
+                statistics.generated + 1;
+        }
+
+        if module_info_is_external(ref info) {
+            statistics.external =
+                statistics.external + 1;
+        }
+
+        if info.dirty {
+            statistics.dirty = statistics.dirty + 1;
+        }
+
+        statistics.source_bytes =
+            statistics.source_bytes
+            + info.source.source_length;
+
+        statistics.dependencies =
+            statistics.dependencies
+            + info.dependency_count;
+
+        statistics.imports =
+            statistics.imports
+            + info.import_count;
+
+        statistics.exports =
+            statistics.exports
+            + info.export_count;
+
+        statistics.diagnostics =
+            statistics.diagnostics
+            + info.diagnostic_count;
+    }
+
+    table.statistics = statistics;
+}
+
+proc module_info_insert(
+    table: ref mut ModuleInfoTable,
+    info: ModuleInfo
+) -> bool {
+    if not module_info_is_valid(ref info) {
+        module_info_push_error(
+            table,
+            ModuleInfoErrorKind.InvalidArgument,
+            module_info_full_name(ref info),
+            "module information contains invalid data",
+            info.declaration_span
+        );
+
+        give false;
+    }
+
+    if module_info_contains(
+        ref table,
+        info.identifier.id
+    ) {
+        module_info_push_error(
+            table,
+            ModuleInfoErrorKind.DuplicateModule,
+            module_info_full_name(ref info),
+            "module identifier already exists",
+            info.declaration_span
+        );
+
+        give false;
+    }
+
+    let full_name = module_info_full_name(ref info);
+
+    if module_info_contains_name(ref table, full_name) {
+        module_info_push_error(
+            table,
+            ModuleInfoErrorKind.DuplicateModule,
+            full_name,
+            "module qualified name already exists",
+            info.declaration_span
+        );
+
+        give false;
+    }
+
+    if len(info.source.canonical_path) != 0
+        and module_info_contains_path(
+            ref table,
+            info.source.canonical_path
+        )
+    {
+        module_info_push_error(
+            table,
+            ModuleInfoErrorKind.DuplicateModule,
+            full_name,
+            "module canonical path already exists",
+            info.declaration_span
+        );
+
+        give false;
+    }
+
+    table.modules = table.modules + [info];
+    module_info_refresh_statistics(table);
+
+    give true;
+}
+
+proc module_info_set_state(
+    table: ref mut ModuleInfoTable,
+    id: ModuleId,
+    state: ModuleInfoState
+) -> bool {
+    let index = module_info_find_index(ref table, id);
+
+    pick index {
+        Some(value) {
+            table.modules[value].state = state;
+            table.modules[value].generation =
+                table.generation;
+            table.modules[value].revision =
+                table.modules[value].revision + 1;
+
+            if state == ModuleInfoState.Invalidated {
+                table.modules[value].dirty = true;
+            }
+
+            if state == ModuleInfoState.Ready {
+                table.modules[value].dirty = false;
+            }
+
+            module_info_refresh_statistics(table);
+
+            give true;
+        }
+
+        None {
+            module_info_push_error(
+                table,
+                ModuleInfoErrorKind.InvalidIdentifier,
+                "",
+                "cannot update an unknown module",
+                module_info_empty_span()
+            );
+
+            give false;
+        }
+    }
+}
+
+proc module_info_mark_discovering(
+    table: ref mut ModuleInfoTable,
+    id: ModuleId
+) -> bool {
+    give module_info_set_state(
+        table,
+        id,
+        ModuleInfoState.Discovering
+    );
+}
+
+proc module_info_mark_loading(
+    table: ref mut ModuleInfoTable,
+    id: ModuleId
+) -> bool {
+    give module_info_set_state(
+        table,
+        id,
+        ModuleInfoState.Loading
+    );
+}
+
+proc module_info_mark_loaded(
+    table: ref mut ModuleInfoTable,
+    id: ModuleId
+) -> bool {
+    give module_info_set_state(
+        table,
+        id,
+        ModuleInfoState.Loaded
+    );
+}
+
+proc module_info_mark_parsing(
+    table: ref mut ModuleInfoTable,
+    id: ModuleId
+) -> bool {
+    give module_info_set_state(
+        table,
+        id,
+        ModuleInfoState.Parsing
+    );
+}
+
+proc module_info_mark_parsed(
+    table: ref mut ModuleInfoTable,
+    id: ModuleId
+) -> bool {
+    let index = module_info_find_index(ref table, id);
+
+    pick index {
+        Some(value) {
+            table.modules[value].compilation.parsed = true;
+
+            give module_info_set_state(
+                table,
+                id,
+                ModuleInfoState.Parsed
+            );
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_info_mark_analyzing(
+    table: ref mut ModuleInfoTable,
+    id: ModuleId
+) -> bool {
+    give module_info_set_state(
+        table,
+        id,
+        ModuleInfoState.Analyzing
+    );
+}
+
+proc module_info_mark_analyzed(
+    table: ref mut ModuleInfoTable,
+    id: ModuleId
+) -> bool {
+    let index = module_info_find_index(ref table, id);
+
+    pick index {
+        Some(value) {
+            table.modules[value].compilation.analyzed = true;
+
+            give module_info_set_state(
+                table,
+                id,
+                ModuleInfoState.Analyzed
+            );
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_info_mark_ready(
+    table: ref mut ModuleInfoTable,
+    id: ModuleId
+) -> bool {
+    give module_info_set_state(
+        table,
+        id,
+        ModuleInfoState.Ready
+    );
+}
+
+proc module_info_mark_failed(
+    table: ref mut ModuleInfoTable,
+    id: ModuleId,
+    message: string,
+    span: Span
+) -> bool {
+    let index = module_info_find_index(ref table, id);
+
+    pick index {
+        Some(value) {
+            table.modules[value].diagnostic_count =
+                table.modules[value].diagnostic_count + 1;
+
+            module_info_push_error(
+                table,
+                ModuleInfoErrorKind.InvalidState,
+                module_info_full_name(
+                    ref table.modules[value]
+                ),
+                message,
+                span
+            );
+
+            give module_info_set_state(
+                table,
+                id,
+                ModuleInfoState.Failed
+            );
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_info_invalidate(
+    table: ref mut ModuleInfoTable,
+    id: ModuleId
+) -> bool {
+    give module_info_set_state(
+        table,
+        id,
+        ModuleInfoState.Invalidated
+    );
+}
+
+proc module_info_set_source(
+    table: ref mut ModuleInfoTable,
+    id: ModuleId,
+    source: ModuleSourceInfo
+) -> bool {
+    let index = module_info_find_index(ref table, id);
+
+    pick index {
+        Some(value) {
+            table.modules[value].source = source;
+            table.modules[value].identifier.canonical_path =
+                source.canonical_path;
+            table.modules[value].generation =
+                table.generation;
+            table.modules[value].revision =
+                table.modules[value].revision + 1;
+            table.modules[value].dirty = true;
+
+            module_info_refresh_statistics(table);
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_info_set_attributes(
+    table: ref mut ModuleInfoTable,
+    id: ModuleId,
+    attributes: ModuleAttributes
+) -> bool {
+    if not module_attributes_is_valid(ref attributes) {
+        module_info_push_error(
+            table,
+            ModuleInfoErrorKind.InvalidAttributes,
+            "",
+            "module attributes contain errors",
+            module_info_empty_span()
+        );
+
+        give false;
+    }
+
+    let index = module_info_find_index(ref table, id);
+
+    pick index {
+        Some(value) {
+            table.modules[value].attributes = attributes;
+            table.modules[value].documentation =
+                attributes.documentation;
+            table.modules[value].generation =
+                table.generation;
+            table.modules[value].revision =
+                table.modules[value].revision + 1;
+            table.modules[value].dirty = true;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_info_set_compilation(
+    table: ref mut ModuleInfoTable,
+    id: ModuleId,
+    compilation: ModuleCompilationInfo
+) -> bool {
+    let index = module_info_find_index(ref table, id);
+
+    pick index {
+        Some(value) {
+            table.modules[value].compilation = compilation;
+            table.modules[value].generation =
+                table.generation;
+            table.modules[value].revision =
+                table.modules[value].revision + 1;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_info_set_counts(
+    table: ref mut ModuleInfoTable,
+    id: ModuleId,
+    dependencies: usize,
+    dependents: usize,
+    imports: usize,
+    exports: usize,
+    diagnostics: usize
+) -> bool {
+    let index = module_info_find_index(ref table, id);
+
+    pick index {
+        Some(value) {
+            table.modules[value].dependency_count =
+                dependencies;
+            table.modules[value].dependent_count =
+                dependents;
+            table.modules[value].import_count = imports;
+            table.modules[value].export_count = exports;
+            table.modules[value].diagnostic_count =
+                diagnostics;
+            table.modules[value].generation =
+                table.generation;
+            table.modules[value].revision =
+                table.modules[value].revision + 1;
+
+            module_info_refresh_statistics(table);
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_info_set_hashes(
+    table: ref mut ModuleInfoTable,
+    id: ModuleId,
+    source_hash: u64,
+    dependency_hash: u64,
+    interface_hash: u64,
+    implementation_hash: u64
+) -> bool {
+    let index = module_info_find_index(ref table, id);
+
+    pick index {
+        Some(value) {
+            table.modules[value].source.source_hash =
+                source_hash;
+            table.modules[value].compilation.dependency_hash =
+                dependency_hash;
+            table.modules[value].compilation.interface_hash =
+                interface_hash;
+            table.modules[value].compilation.implementation_hash =
+                implementation_hash;
+
+            table.modules[value].generation =
+                table.generation;
+            table.modules[value].revision =
+                table.modules[value].revision + 1;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_info_mark_type_checked(
+    table: ref mut ModuleInfoTable,
+    id: ModuleId
+) -> bool {
+    let index = module_info_find_index(ref table, id);
+
+    pick index {
+        Some(value) {
+            table.modules[value].compilation.type_checked =
+                true;
+            table.modules[value].revision =
+                table.modules[value].revision + 1;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_info_mark_borrow_checked(
+    table: ref mut ModuleInfoTable,
+    id: ModuleId
+) -> bool {
+    let index = module_info_find_index(ref table, id);
+
+    pick index {
+        Some(value) {
+            table.modules[value].compilation.borrow_checked =
+                true;
+            table.modules[value].revision =
+                table.modules[value].revision + 1;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_info_mark_lowered(
+    table: ref mut ModuleInfoTable,
+    id: ModuleId
+) -> bool {
+    let index = module_info_find_index(ref table, id);
+
+    pick index {
+        Some(value) {
+            table.modules[value].compilation.lowered = true;
+            table.modules[value].revision =
+                table.modules[value].revision + 1;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_info_mark_code_generated(
+    table: ref mut ModuleInfoTable,
+    id: ModuleId
+) -> bool {
+    let index = module_info_find_index(ref table, id);
+
+    pick index {
+        Some(value) {
+            table.modules[value].compilation.code_generated =
+                true;
+            table.modules[value].revision =
+                table.modules[value].revision + 1;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_info_remove(
+    table: ref mut ModuleInfoTable,
+    id: ModuleId
+) -> bool {
+    let index = module_info_find_index(ref table, id);
+
+    pick index {
+        None {
+            give false;
+        }
+
+        Some(value) {
+            set output: [ModuleInfo] = [];
+            set current: usize = 0;
+
+            while current < len(table.modules) {
+                if current != value {
+                    output = output + [
+                        table.modules[current]
+                    ];
+                }
+
+                current = current + 1;
+            }
+
+            table.modules = output;
+            module_info_refresh_statistics(table);
+
+            give true;
+        }
+    }
+}
+
+proc module_info_dirty_modules(
+    table: ref ModuleInfoTable
+) -> [ModuleInfo] {
+    set output: [ModuleInfo] = [];
+
+    for info in table.modules {
+        if info.dirty {
+            output = output + [info];
+        }
+    }
+
+    give output;
+}
+
+proc module_info_ready_modules(
+    table: ref ModuleInfoTable
+) -> [ModuleInfo] {
+    set output: [ModuleInfo] = [];
+
+    for info in table.modules {
+        if module_info_is_ready(ref info) {
+            output = output + [info];
+        }
+    }
+
+    give output;
+}
+
+proc module_info_failed_modules(
+    table: ref ModuleInfoTable
+) -> [ModuleInfo] {
+    set output: [ModuleInfo] = [];
+
+    for info in table.modules {
+        if module_info_is_failed(ref info) {
+            output = output + [info];
+        }
+    }
+
+    give output;
+}
+
+proc module_info_validate(
+    table: ref mut ModuleInfoTable
+) -> bool {
+    set valid: bool = true;
+
+    for info in table.modules {
+        if not module_info_is_valid(ref info) {
+            module_info_push_error(
+                table,
+                ModuleInfoErrorKind.DatabaseCorrupted,
+                module_info_full_name(ref info),
+                "module information is internally inconsistent",
+                info.declaration_span
+            );
+
+            valid = false;
+        }
+
+        if info.state == ModuleInfoState.Ready
+            and (
+                not info.compilation.parsed
+                or not info.compilation.analyzed
+            )
+        {
+            module_info_push_error(
+                table,
+                ModuleInfoErrorKind.InvalidState,
+                module_info_full_name(ref info),
+                "ready module has not completed analysis",
+                info.module_span
+            );
+
+            valid = false;
+        }
+
+        if info.compilation.borrow_checked
+            and not info.compilation.type_checked
+        {
+            module_info_push_error(
+                table,
+                ModuleInfoErrorKind.InvalidState,
+                module_info_full_name(ref info),
+                "borrow checking requires type checking",
+                info.module_span
+            );
+
+            valid = false;
+        }
+
+        if info.compilation.lowered
+            and not info.compilation.analyzed
+        {
+            module_info_push_error(
+                table,
+                ModuleInfoErrorKind.InvalidState,
+                module_info_full_name(ref info),
+                "lowering requires completed analysis",
+                info.module_span
+            );
+
+            valid = false;
+        }
+
+        if info.compilation.code_generated
+            and not info.compilation.lowered
+        {
+            module_info_push_error(
+                table,
+                ModuleInfoErrorKind.InvalidState,
+                module_info_full_name(ref info),
+                "code generation requires a lowered module",
+                info.module_span
+            );
+
+            valid = false;
+        }
+    }
+
+    give valid and len(table.errors) == 0;
+}
+
+proc module_info_clear_errors(
+    table: ref mut ModuleInfoTable
+) {
+    table.errors = [];
+}
+
+proc module_info_advance_generation(
+    table: ref mut ModuleInfoTable
+) -> u64 {
+    table.generation = table.generation + 1;
+    give table.generation;
+}
+
+proc module_info_clear(
+    table: ref mut ModuleInfoTable
+) {
+    table.modules = [];
+    table.errors = [];
+    table.generation = table.generation + 1;
+    table.statistics = module_info_statistics_empty();
+}
+
+proc module_info_reset(
+    table: ref mut ModuleInfoTable
+) {
+    table.modules = [];
+    table.errors = [];
+    table.generation = 1;
+    table.statistics = module_info_statistics_empty();
+}
+
+proc module_info_count(
+    table: ref ModuleInfoTable
+) -> usize {
+    give len(table.modules);
+}
+
+proc module_info_is_empty(
+    table: ref ModuleInfoTable
+) -> bool {
+    give len(table.modules) == 0;
+}
+
+proc module_info_has_errors(
+    table: ref ModuleInfoTable
+) -> bool {
+    give len(table.errors) != 0;
+}
+
+proc module_info_statistics(
+    table: ref ModuleInfoTable
+) -> ModuleInfoStatistics {
+    give table.statistics;
+}
+
+proc module_info_error_code(
+    error: ref ModuleInfoError
+) -> string {
+    pick error.kind {
+        ModuleInfoErrorKind.InvalidArgument {
+            give "E_MODULE_INFO_ARGUMENT";
+        }
+
+        ModuleInfoErrorKind.InvalidIdentifier {
+            give "E_MODULE_INFO_IDENTIFIER";
+        }
+
+        ModuleInfoErrorKind.InvalidName {
+            give "E_MODULE_INFO_NAME";
+        }
+
+        ModuleInfoErrorKind.InvalidPath {
+            give "E_MODULE_INFO_PATH";
+        }
+
+        ModuleInfoErrorKind.DuplicateModule {
+            give "E_MODULE_INFO_DUPLICATE";
+        }
+
+        ModuleInfoErrorKind.SourceUnavailable {
+            give "E_MODULE_SOURCE_UNAVAILABLE";
+        }
+
+        ModuleInfoErrorKind.InvalidAttributes {
+            give "E_MODULE_ATTRIBUTES";
+        }
+
+        ModuleInfoErrorKind.InvalidState {
+            give "E_MODULE_INFO_STATE";
+        }
+
+        ModuleInfoErrorKind.RevisionOverflow {
+            give "E_MODULE_INFO_REVISION";
+        }
+
+        ModuleInfoErrorKind.DatabaseCorrupted {
+            give "E_MODULE_INFO_DATABASE";
+        }
+    }
+}

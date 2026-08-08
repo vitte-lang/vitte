@@ -1,0 +1,198 @@
+(* Vitte module grammar *)
+
+module_declaration
+    = space_keyword,
+      module_path,
+      semicolon?
+    ;
+
+module_path
+    = module_segment,
+      { path_separator, module_segment }
+    ;
+
+module_segment
+    = identifier
+    | self_keyword
+    | super_keyword
+    | root_keyword
+    ;
+
+module_reference
+    = module_path
+    ;
+
+qualified_module_path
+    = absolute_module_path
+    | relative_module_path
+    ;
+
+absolute_module_path
+    = root_keyword,
+      path_separator,
+      module_path
+    ;
+
+relative_module_path
+    = self_keyword
+    | super_keyword,
+      { path_separator, super_keyword }
+    | module_path
+    ;
+
+module_group
+    = module_path?,
+      path_separator?,
+      left_brace,
+      module_group_items?,
+      right_brace
+    ;
+
+module_group_items
+    = module_group_item,
+      { comma, module_group_item },
+      comma?
+    ;
+
+module_group_item
+    = identifier
+    | identifier,
+      as_keyword,
+      identifier
+    | asterisk
+    | identifier,
+      path_separator,
+      left_brace,
+      module_group_items?,
+      right_brace
+    ;
+
+module_alias
+    = module_path,
+      as_keyword,
+      identifier
+    ;
+
+module_glob
+    = module_path,
+      path_separator,
+      asterisk
+    ;
+
+module_visibility
+    = public_keyword
+    | package_keyword
+    | private_keyword
+    ;
+
+module_attribute_list
+    = attribute,
+      { attribute }
+    ;
+
+module_header
+    = module_attribute_list?,
+      module_visibility?,
+      module_declaration
+    ;
+
+module_item
+    = declaration
+    | import_declaration
+    | export_declaration
+    | attribute
+    ;
+
+module_body
+    = { module_item }
+    ;
+
+module_file
+    = module_header?,
+      module_body,
+      end_of_file
+    ;
+
+space_keyword
+    = "space"
+    ;
+
+as_keyword
+    = "as"
+    ;
+
+public_keyword
+    = "public"
+    ;
+
+package_keyword
+    = "package"
+    ;
+
+private_keyword
+    = "private"
+    ;
+
+self_keyword
+    = "self"
+    ;
+
+super_keyword
+    = "super"
+    ;
+
+root_keyword
+    = "root"
+    ;
+
+path_separator
+    = "::"
+    | "/"
+    ;
+
+asterisk
+    = "*"
+    ;
+
+left_brace
+    = "{"
+    ;
+
+right_brace
+    = "}"
+    ;
+
+comma
+    = ","
+    ;
+
+semicolon
+    = ";"
+    ;
+
+identifier
+    = identifier_start,
+      { identifier_continue }
+    ;
+
+identifier_start
+    = "_"
+    | unicode_letter
+    ;
+
+identifier_continue
+    = identifier_start
+    | unicode_decimal_digit
+    ;
+
+unicode_letter
+    = ? any Unicode scalar value with the Letter property ?
+    ;
+
+unicode_decimal_digit
+    = ? any Unicode scalar value with the Decimal_Number property ?
+    ;
+
+end_of_file
+    = ? end of input ?
+    ;

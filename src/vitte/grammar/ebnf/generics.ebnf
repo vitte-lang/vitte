@@ -1,0 +1,315 @@
+(* Vitte generic declarations and arguments grammar *)
+
+generic_parameter_clause
+    = less_than,
+      generic_parameter_list,
+      greater_than
+    ;
+
+generic_parameter_list
+    = generic_parameter,
+      { comma, generic_parameter },
+      comma?
+    ;
+
+generic_parameter
+    = lifetime_parameter
+    | type_parameter
+    | constant_parameter
+    ;
+
+lifetime_parameter
+    = lifetime,
+      lifetime_bounds?
+    ;
+
+lifetime_bounds
+    = colon,
+      lifetime_bound,
+      { plus, lifetime_bound }
+    ;
+
+lifetime_bound
+    = lifetime
+    | static_lifetime
+    ;
+
+type_parameter
+    = identifier,
+      type_parameter_bounds?,
+      type_parameter_default?
+    ;
+
+type_parameter_bounds
+    = colon,
+      type_bound,
+      { plus, type_bound }
+    ;
+
+type_parameter_default
+    = equals,
+      type
+    ;
+
+constant_parameter
+    = const_keyword,
+      identifier,
+      colon,
+      type,
+      constant_parameter_default?
+    ;
+
+constant_parameter_default
+    = equals,
+      constant_expression
+    ;
+
+generic_argument_clause
+    = less_than,
+      generic_argument_list,
+      greater_than
+    ;
+
+generic_argument_list
+    = generic_argument,
+      { comma, generic_argument },
+      comma?
+    ;
+
+generic_argument
+    = lifetime_argument
+    | type_argument
+    | constant_argument
+    | associated_type_binding
+    | associated_constant_binding
+    ;
+
+lifetime_argument
+    = lifetime
+    | static_lifetime
+    | inferred_lifetime
+    ;
+
+type_argument
+    = type
+    ;
+
+constant_argument
+    = constant_expression
+    ;
+
+associated_type_binding
+    = identifier,
+      equals,
+      type
+    ;
+
+associated_constant_binding
+    = const_keyword?,
+      identifier,
+      equals,
+      constant_expression
+    ;
+
+where_clause
+    = where_keyword,
+      where_predicate_list
+    ;
+
+where_predicate_list
+    = where_predicate,
+      { comma, where_predicate },
+      comma?
+    ;
+
+where_predicate
+    = lifetime_predicate
+    | type_predicate
+    | equality_predicate
+    | constant_predicate
+    ;
+
+lifetime_predicate
+    = lifetime,
+      colon,
+      lifetime_bound,
+      { plus, lifetime_bound }
+    ;
+
+type_predicate
+    = type,
+      colon,
+      type_bound,
+      { plus, type_bound }
+    ;
+
+equality_predicate
+    = type,
+      equals,
+      type
+    ;
+
+constant_predicate
+    = constant_expression,
+      comparison_operator,
+      constant_expression
+    ;
+
+type_bound
+    = lifetime_bound
+    | trait_bound
+    | optional_trait_bound
+    | negative_trait_bound
+    | function_trait_bound
+    ;
+
+trait_bound
+    = qualified_type_path
+    ;
+
+optional_trait_bound
+    = question_mark,
+      qualified_type_path
+    ;
+
+negative_trait_bound
+    = not_keyword,
+      qualified_type_path
+    ;
+
+function_trait_bound
+    = qualified_type_path,
+      left_parenthesis,
+      type_list?,
+      right_parenthesis,
+      function_trait_return_type?
+    ;
+
+function_trait_return_type
+    = arrow,
+      type
+    ;
+
+qualified_type_path
+    = type_path_segment,
+      { path_separator, type_path_segment }
+    ;
+
+type_path_segment
+    = identifier,
+      generic_argument_clause?
+    | self_keyword
+    | super_keyword
+    | root_keyword
+    ;
+
+type_list
+    = type,
+      { comma, type },
+      comma?
+    ;
+
+lifetime
+    = apostrophe,
+      identifier
+    ;
+
+static_lifetime
+    = apostrophe,
+      static_keyword
+    ;
+
+inferred_lifetime
+    = apostrophe,
+      underscore
+    ;
+
+comparison_operator
+    = "=="
+    | "!="
+    | "<"
+    | "<="
+    | ">"
+    | ">="
+    ;
+
+const_keyword
+    = "const"
+    ;
+
+where_keyword
+    = "where"
+    ;
+
+not_keyword
+    = "not"
+    ;
+
+self_keyword
+    = "self"
+    ;
+
+super_keyword
+    = "super"
+    ;
+
+root_keyword
+    = "root"
+    ;
+
+static_keyword
+    = "static"
+    ;
+
+less_than
+    = "<"
+    ;
+
+greater_than
+    = ">"
+    ;
+
+left_parenthesis
+    = "("
+    ;
+
+right_parenthesis
+    = ")"
+    ;
+
+colon
+    = ":"
+    ;
+
+comma
+    = ","
+    ;
+
+plus
+    = "+"
+    ;
+
+equals
+    = "="
+    ;
+
+arrow
+    = "->"
+    ;
+
+question_mark
+    = "?"
+    ;
+
+apostrophe
+    = "'"
+    ;
+
+underscore
+    = "_"
+    ;
+
+path_separator
+    = "::"
+    | "/"
+    ;

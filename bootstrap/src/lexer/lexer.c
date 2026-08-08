@@ -137,6 +137,12 @@ const char *vitte_token_kind_name(vitte_token_kind_t kind) {
             return "integer";
         case VITTE_TOKEN_STRING:
             return "string";
+        case VITTE_TOKEN_KW_SPACE:
+            return "space";
+        case VITTE_TOKEN_KW_USE:
+            return "use";
+        case VITTE_TOKEN_KW_AS:
+            return "as";
         case VITTE_TOKEN_KW_PROC:
             return "proc";
         case VITTE_TOKEN_KW_CONST:
@@ -149,6 +155,12 @@ const char *vitte_token_kind_name(vitte_token_kind_t kind) {
             return "else";
         case VITTE_TOKEN_KW_GIVE:
             return "give";
+        case VITTE_TOKEN_KW_AND:
+            return "and";
+        case VITTE_TOKEN_KW_OR:
+            return "or";
+        case VITTE_TOKEN_KW_NOT:
+            return "not";
         case VITTE_TOKEN_LPAREN:
             return "lparen";
         case VITTE_TOKEN_RPAREN:
@@ -161,12 +173,16 @@ const char *vitte_token_kind_name(vitte_token_kind_t kind) {
             return "comma";
         case VITTE_TOKEN_COLON:
             return "colon";
+        case VITTE_TOKEN_DOUBLE_COLON:
+            return "double_colon";
         case VITTE_TOKEN_SEMICOLON:
             return "semicolon";
         case VITTE_TOKEN_EQUAL:
             return "equal";
         case VITTE_TOKEN_EQUAL_EQUAL:
             return "equal_equal";
+        case VITTE_TOKEN_BANG:
+            return "bang";
         case VITTE_TOKEN_BANG_EQUAL:
             return "bang_equal";
         case VITTE_TOKEN_PLUS:
@@ -177,14 +193,30 @@ const char *vitte_token_kind_name(vitte_token_kind_t kind) {
             return "star";
         case VITTE_TOKEN_SLASH:
             return "slash";
+        case VITTE_TOKEN_PERCENT:
+            return "percent";
+        case VITTE_TOKEN_AMP:
+            return "amp";
+        case VITTE_TOKEN_AMP_AMP:
+            return "amp_amp";
+        case VITTE_TOKEN_PIPE:
+            return "pipe";
+        case VITTE_TOKEN_PIPE_PIPE:
+            return "pipe_pipe";
+        case VITTE_TOKEN_CARET:
+            return "caret";
         case VITTE_TOKEN_LESS:
             return "less";
         case VITTE_TOKEN_LESS_EQUAL:
             return "less_equal";
+        case VITTE_TOKEN_SHIFT_LEFT:
+            return "shift_left";
         case VITTE_TOKEN_GREATER:
             return "greater";
         case VITTE_TOKEN_GREATER_EQUAL:
             return "greater_equal";
+        case VITTE_TOKEN_SHIFT_RIGHT:
+            return "shift_right";
         case VITTE_TOKEN_ARROW:
             return "arrow";
         case VITTE_TOKEN_KIND_COUNT:
@@ -194,12 +226,18 @@ const char *vitte_token_kind_name(vitte_token_kind_t kind) {
 }
 
 bool vitte_token_kind_is_keyword(vitte_token_kind_t kind) {
-    return kind == VITTE_TOKEN_KW_PROC ||
+    return kind == VITTE_TOKEN_KW_SPACE ||
+        kind == VITTE_TOKEN_KW_USE ||
+        kind == VITTE_TOKEN_KW_AS ||
+        kind == VITTE_TOKEN_KW_PROC ||
         kind == VITTE_TOKEN_KW_CONST ||
         kind == VITTE_TOKEN_KW_LET ||
         kind == VITTE_TOKEN_KW_IF ||
         kind == VITTE_TOKEN_KW_ELSE ||
-        kind == VITTE_TOKEN_KW_GIVE;
+        kind == VITTE_TOKEN_KW_GIVE ||
+        kind == VITTE_TOKEN_KW_AND ||
+        kind == VITTE_TOKEN_KW_OR ||
+        kind == VITTE_TOKEN_KW_NOT;
 }
 
 static bool vitte_lexer_at_end(const vitte_lexer_t *lexer) {
@@ -281,6 +319,15 @@ static void vitte_lexer_count_token(vitte_lexer_t *lexer, const vitte_token_t *t
 }
 
 static vitte_token_kind_t vitte_lexer_keyword_kind(const char *start, size_t length) {
+    if (length == 5u && memcmp(start, "space", 5u) == 0) {
+        return VITTE_TOKEN_KW_SPACE;
+    }
+    if (length == 3u && memcmp(start, "use", 3u) == 0) {
+        return VITTE_TOKEN_KW_USE;
+    }
+    if (length == 2u && memcmp(start, "as", 2u) == 0) {
+        return VITTE_TOKEN_KW_AS;
+    }
     if (length == 4u && memcmp(start, "proc", 4u) == 0) {
         return VITTE_TOKEN_KW_PROC;
     }
@@ -298,6 +345,15 @@ static vitte_token_kind_t vitte_lexer_keyword_kind(const char *start, size_t len
     }
     if (length == 4u && memcmp(start, "give", 4u) == 0) {
         return VITTE_TOKEN_KW_GIVE;
+    }
+    if (length == 3u && memcmp(start, "and", 3u) == 0) {
+        return VITTE_TOKEN_KW_AND;
+    }
+    if (length == 2u && memcmp(start, "or", 2u) == 0) {
+        return VITTE_TOKEN_KW_OR;
+    }
+    if (length == 3u && memcmp(start, "not", 3u) == 0) {
+        return VITTE_TOKEN_KW_NOT;
     }
     return VITTE_TOKEN_IDENTIFIER;
 }
@@ -480,7 +536,7 @@ static vitte_status_t vitte_lexer_scan_punct(vitte_lexer_t *lexer, vitte_token_t
             kind = VITTE_TOKEN_COMMA;
             break;
         case ':':
-            kind = VITTE_TOKEN_COLON;
+            kind = vitte_lexer_match_char(lexer, ':') ? VITTE_TOKEN_DOUBLE_COLON : VITTE_TOKEN_COLON;
             break;
         case ';':
             kind = VITTE_TOKEN_SEMICOLON;
@@ -494,25 +550,44 @@ static vitte_status_t vitte_lexer_scan_punct(vitte_lexer_t *lexer, vitte_token_t
         case '/':
             kind = VITTE_TOKEN_SLASH;
             break;
+        case '%':
+            kind = VITTE_TOKEN_PERCENT;
+            break;
+        case '&':
+            kind = vitte_lexer_match_char(lexer, '&') ? VITTE_TOKEN_AMP_AMP : VITTE_TOKEN_AMP;
+            break;
+        case '|':
+            kind = vitte_lexer_match_char(lexer, '|') ? VITTE_TOKEN_PIPE_PIPE : VITTE_TOKEN_PIPE;
+            break;
+        case '^':
+            kind = VITTE_TOKEN_CARET;
+            break;
         case '=':
             kind = vitte_lexer_match_char(lexer, '=') ? VITTE_TOKEN_EQUAL_EQUAL : VITTE_TOKEN_EQUAL;
             break;
         case '!':
-            if (vitte_lexer_match_char(lexer, '=')) {
-                kind = VITTE_TOKEN_BANG_EQUAL;
-                break;
-            }
-            vitte_lexer_fill_token(lexer, token, VITTE_TOKEN_ERROR, start_offset, start_line, start_column, "unexpected '!'");
-            vitte_lexer_set_error(lexer, VITTE_STATUS_ERROR_PARSE, "VITTE_LEXER_E_TOKEN", "unexpected character", "!");
-            return VITTE_STATUS_ERROR_PARSE;
+            kind = vitte_lexer_match_char(lexer, '=') ? VITTE_TOKEN_BANG_EQUAL : VITTE_TOKEN_BANG;
+            break;
         case '-':
             kind = vitte_lexer_match_char(lexer, '>') ? VITTE_TOKEN_ARROW : VITTE_TOKEN_MINUS;
             break;
         case '<':
-            kind = vitte_lexer_match_char(lexer, '=') ? VITTE_TOKEN_LESS_EQUAL : VITTE_TOKEN_LESS;
+            if (vitte_lexer_match_char(lexer, '=')) {
+                kind = VITTE_TOKEN_LESS_EQUAL;
+            } else if (vitte_lexer_match_char(lexer, '<')) {
+                kind = VITTE_TOKEN_SHIFT_LEFT;
+            } else {
+                kind = VITTE_TOKEN_LESS;
+            }
             break;
         case '>':
-            kind = vitte_lexer_match_char(lexer, '=') ? VITTE_TOKEN_GREATER_EQUAL : VITTE_TOKEN_GREATER;
+            if (vitte_lexer_match_char(lexer, '=')) {
+                kind = VITTE_TOKEN_GREATER_EQUAL;
+            } else if (vitte_lexer_match_char(lexer, '>')) {
+                kind = VITTE_TOKEN_SHIFT_RIGHT;
+            } else {
+                kind = VITTE_TOKEN_GREATER;
+            }
             break;
         default:
             vitte_lexer_fill_token(lexer, token, VITTE_TOKEN_ERROR, start_offset, start_line, start_column, "unexpected character");

@@ -1,0 +1,1774 @@
+space vitte/compiler/analysis/modules/module_exports
+
+export *
+
+use src/vitte/compiler/frontend/source/span.{Span}
+use src/vitte/compiler/analysis/modules/module_database.{
+    ModuleId,
+    ModuleDatabase,
+    module_id_equal,
+    module_id_is_valid,
+    module_database_get
+}
+
+pick ModuleExportKind {
+    Value,
+    Procedure,
+    Type,
+    Form,
+    Pick,
+    Constant,
+    Module,
+    Namespace,
+    Macro,
+    Trait,
+    Implementation
+}
+
+pick ModuleExportVisibility {
+    Private,
+    Package,
+    Public
+}
+
+pick ModuleExportState {
+    Declared,
+    Resolving,
+    Resolved,
+    Ambiguous,
+    Missing,
+    Invalidated,
+    Failed
+}
+
+pick ModuleExportOrigin {
+    Local,
+    Explicit,
+    Reexport,
+    Glob,
+    Prelude,
+    Builtin,
+    Generated
+}
+
+pick ModuleExportErrorKind {
+    InvalidArgument,
+    InvalidModule,
+    EmptyName,
+    DuplicateExport,
+    ConflictingExport,
+    ExportNotFound,
+    SourceNotFound,
+    PrivateExport,
+    InvalidReexport,
+    CircularReexport,
+    AmbiguousExport,
+    UnresolvedExport,
+    InvalidState,
+    DatabaseCorrupted
+}
+
+form ModuleExportId {
+    value: usize
+}
+
+form ModuleExportTarget {
+    module: ModuleId
+    symbol: string
+}
+
+form ModuleExport {
+    id: ModuleExportId
+    module: ModuleId
+
+    name: string
+    original_name: string
+
+    kind: ModuleExportKind
+    visibility: ModuleExportVisibility
+    state: ModuleExportState
+    origin: ModuleExportOrigin
+
+    target: Option<ModuleExportTarget>
+
+    span: Span
+    declaration_span: Span
+
+    enabled: bool
+    reexported: bool
+    synthetic: bool
+
+    generation: u64
+    revision: u64
+}
+
+form ModuleExportError {
+    kind: ModuleExportErrorKind
+    module: string
+    name: string
+    message: string
+    span: Span
+}
+
+form ModuleExportStatistics {
+    exports: usize
+    resolved: usize
+    unresolved: usize
+    ambiguous: usize
+    missing: usize
+    failed: usize
+    invalidated: usize
+
+    public_exports: usize
+    package_exports: usize
+    private_exports: usize
+
+    local_exports: usize
+    reexports: usize
+    glob_exports: usize
+    synthetic_exports: usize
+}
+
+form ModuleExportTable {
+    exports: [ModuleExport]
+    errors: [ModuleExportError]
+    next_id: usize
+    generation: u64
+    statistics: ModuleExportStatistics
+}
+
+form ModuleExportLookup {
+    export: Option<ModuleExport>
+    candidates: [ModuleExport]
+    found: bool
+    ambiguous: bool
+}
+
+form ModuleExportResolution {
+    exports: [ModuleExport]
+    errors: [ModuleExportError]
+    resolved: usize
+    failed: usize
+    valid: bool
+}
+
+proc module_export_empty_span() -> Span {
+    give Span {
+        source: 0,
+        start: 0,
+        end: 0
+    };
+}
+
+proc module_export_id(value: usize) -> ModuleExportId {
+    give ModuleExportId {
+        value: value
+    };
+}
+
+proc module_export_id_invalid() -> ModuleExportId {
+    give module_export_id(0);
+}
+
+proc module_export_id_is_valid(
+    id: ModuleExportId
+) -> bool {
+    give id.value != 0;
+}
+
+proc module_export_id_equal(
+    left: ModuleExportId,
+    right: ModuleExportId
+) -> bool {
+    give left.value == right.value;
+}
+
+proc module_export_target(
+    module: ModuleId,
+    symbol: string
+) -> ModuleExportTarget {
+    give ModuleExportTarget {
+        module: module,
+        symbol: symbol
+    };
+}
+
+proc module_export_statistics_empty()
+    -> ModuleExportStatistics
+{
+    give ModuleExportStatistics {
+        exports: 0,
+        resolved: 0,
+        unresolved: 0,
+        ambiguous: 0,
+        missing: 0,
+        failed: 0,
+        invalidated: 0,
+
+        public_exports: 0,
+        package_exports: 0,
+        private_exports: 0,
+
+        local_exports: 0,
+        reexports: 0,
+        glob_exports: 0,
+        synthetic_exports: 0
+    };
+}
+
+proc module_export_table_create() -> ModuleExportTable {
+    give ModuleExportTable {
+        exports: [],
+        errors: [],
+        next_id: 1,
+        generation: 1,
+        statistics: module_export_statistics_empty()
+    };
+}
+
+proc module_export_error(
+    kind: ModuleExportErrorKind,
+    module: string,
+    name: string,
+    message: string,
+    span: Span
+) -> ModuleExportError {
+    give ModuleExportError {
+        kind: kind,
+        module: module,
+        name: name,
+        message: message,
+        span: span
+    };
+}
+
+proc module_export_push_error(
+    table: ref mut ModuleExportTable,
+    kind: ModuleExportErrorKind,
+    module: string,
+    name: string,
+    message: string,
+    span: Span
+) {
+    table.errors = table.errors + [
+        module_export_error(
+            kind,
+            module,
+            name,
+            message,
+            span
+        )
+    ];
+}
+
+proc module_export_create(
+    id: ModuleExportId,
+    module: ModuleId,
+    name: string,
+    kind: ModuleExportKind,
+    visibility: ModuleExportVisibility,
+    origin: ModuleExportOrigin,
+    span: Span,
+    generation: u64
+) -> ModuleExport {
+    give ModuleExport {
+        id: id,
+        module: module,
+
+        name: name,
+        original_name: name,
+
+        kind: kind,
+        visibility: visibility,
+        state: ModuleExportState.Declared,
+        origin: origin,
+
+        target: None,
+
+        span: span,
+        declaration_span: span,
+
+        enabled: true,
+        reexported: false,
+        synthetic: origin == ModuleExportOrigin.Generated
+            or origin == ModuleExportOrigin.Builtin,
+
+        generation: generation,
+        revision: 1
+    };
+}
+
+proc module_export_create_reexport(
+    id: ModuleExportId,
+    module: ModuleId,
+    name: string,
+    original_name: string,
+    target_module: ModuleId,
+    kind: ModuleExportKind,
+    visibility: ModuleExportVisibility,
+    origin: ModuleExportOrigin,
+    span: Span,
+    generation: u64
+) -> ModuleExport {
+    give ModuleExport {
+        id: id,
+        module: module,
+
+        name: name,
+        original_name: original_name,
+
+        kind: kind,
+        visibility: visibility,
+        state: ModuleExportState.Declared,
+        origin: origin,
+
+        target: Some(module_export_target(
+            target_module,
+            original_name
+        )),
+
+        span: span,
+        declaration_span: span,
+
+        enabled: true,
+        reexported: true,
+        synthetic: false,
+
+        generation: generation,
+        revision: 1
+    };
+}
+
+proc module_export_is_valid(
+    item: ref ModuleExport
+) -> bool {
+    if not module_export_id_is_valid(item.id) {
+        give false;
+    }
+
+    if not module_id_is_valid(item.module) {
+        give false;
+    }
+
+    if len(item.name) == 0 {
+        give false;
+    }
+
+    if item.reexported and item.target == None {
+        give false;
+    }
+
+    give true;
+}
+
+proc module_export_is_public(
+    item: ref ModuleExport
+) -> bool {
+    give item.visibility == ModuleExportVisibility.Public;
+}
+
+proc module_export_is_package_visible(
+    item: ref ModuleExport
+) -> bool {
+    give item.visibility == ModuleExportVisibility.Package;
+}
+
+proc module_export_is_private(
+    item: ref ModuleExport
+) -> bool {
+    give item.visibility == ModuleExportVisibility.Private;
+}
+
+proc module_export_is_resolved(
+    item: ref ModuleExport
+) -> bool {
+    give item.enabled
+        and item.state == ModuleExportState.Resolved;
+}
+
+proc module_export_is_available(
+    item: ref ModuleExport
+) -> bool {
+    give item.enabled
+        and item.state != ModuleExportState.Missing
+        and item.state != ModuleExportState.Failed
+        and item.state != ModuleExportState.Invalidated;
+}
+
+proc module_export_is_reexport(
+    item: ref ModuleExport
+) -> bool {
+    give item.reexported
+        or item.origin == ModuleExportOrigin.Reexport
+        or item.origin == ModuleExportOrigin.Glob;
+}
+
+proc module_export_find_index(
+    table: ref ModuleExportTable,
+    id: ModuleExportId
+) -> Option<usize> {
+    set index: usize = 0;
+
+    while index < len(table.exports) {
+        if module_export_id_equal(
+            table.exports[index].id,
+            id
+        ) {
+            give Some(index);
+        }
+
+        index = index + 1;
+    }
+
+    give None;
+}
+
+proc module_export_find_exact_index(
+    table: ref ModuleExportTable,
+    module: ModuleId,
+    name: string,
+    kind: ModuleExportKind
+) -> Option<usize> {
+    set index: usize = 0;
+
+    while index < len(table.exports) {
+        let item = table.exports[index];
+
+        if module_id_equal(item.module, module)
+            and item.name == name
+            and item.kind == kind
+        {
+            give Some(index);
+        }
+
+        index = index + 1;
+    }
+
+    give None;
+}
+
+proc module_export_contains(
+    table: ref ModuleExportTable,
+    id: ModuleExportId
+) -> bool {
+    give module_export_find_index(table, id) != None;
+}
+
+proc module_export_contains_exact(
+    table: ref ModuleExportTable,
+    module: ModuleId,
+    name: string,
+    kind: ModuleExportKind
+) -> bool {
+    give module_export_find_exact_index(
+        table,
+        module,
+        name,
+        kind
+    ) != None;
+}
+
+proc module_export_get(
+    table: ref ModuleExportTable,
+    id: ModuleExportId
+) -> Option<ref ModuleExport> {
+    let index = module_export_find_index(table, id);
+
+    pick index {
+        Some(value) {
+            give Some(ref table.exports[value]);
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc module_export_get_mut(
+    table: ref mut ModuleExportTable,
+    id: ModuleExportId
+) -> Option<ref mut ModuleExport> {
+    let index = module_export_find_index(ref table, id);
+
+    pick index {
+        Some(value) {
+            give Some(ref mut table.exports[value]);
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc module_export_refresh_statistics(
+    table: ref mut ModuleExportTable
+) {
+    set statistics = module_export_statistics_empty();
+
+    statistics.exports = len(table.exports);
+
+    for item in table.exports {
+        pick item.state {
+            ModuleExportState.Resolved {
+                statistics.resolved = statistics.resolved + 1;
+            }
+
+            ModuleExportState.Declared {
+                statistics.unresolved =
+                    statistics.unresolved + 1;
+            }
+
+            ModuleExportState.Resolving {
+                statistics.unresolved =
+                    statistics.unresolved + 1;
+            }
+
+            ModuleExportState.Ambiguous {
+                statistics.ambiguous =
+                    statistics.ambiguous + 1;
+            }
+
+            ModuleExportState.Missing {
+                statistics.missing = statistics.missing + 1;
+            }
+
+            ModuleExportState.Failed {
+                statistics.failed = statistics.failed + 1;
+            }
+
+            ModuleExportState.Invalidated {
+                statistics.invalidated =
+                    statistics.invalidated + 1;
+            }
+        }
+
+        pick item.visibility {
+            ModuleExportVisibility.Public {
+                statistics.public_exports =
+                    statistics.public_exports + 1;
+            }
+
+            ModuleExportVisibility.Package {
+                statistics.package_exports =
+                    statistics.package_exports + 1;
+            }
+
+            ModuleExportVisibility.Private {
+                statistics.private_exports =
+                    statistics.private_exports + 1;
+            }
+        }
+
+        pick item.origin {
+            ModuleExportOrigin.Local {
+                statistics.local_exports =
+                    statistics.local_exports + 1;
+            }
+
+            ModuleExportOrigin.Reexport {
+                statistics.reexports =
+                    statistics.reexports + 1;
+            }
+
+            ModuleExportOrigin.Glob {
+                statistics.glob_exports =
+                    statistics.glob_exports + 1;
+            }
+
+            _ {}
+        }
+
+        if item.synthetic {
+            statistics.synthetic_exports =
+                statistics.synthetic_exports + 1;
+        }
+    }
+
+    table.statistics = statistics;
+}
+
+proc module_export_insert(
+    table: ref mut ModuleExportTable,
+    module: ModuleId,
+    name: string,
+    kind: ModuleExportKind,
+    visibility: ModuleExportVisibility,
+    origin: ModuleExportOrigin,
+    span: Span
+) -> Option<ModuleExportId> {
+    if not module_id_is_valid(module) {
+        module_export_push_error(
+            table,
+            ModuleExportErrorKind.InvalidModule,
+            "",
+            name,
+            "export module identifier is invalid",
+            span
+        );
+
+        give None;
+    }
+
+    if len(name) == 0 {
+        module_export_push_error(
+            table,
+            ModuleExportErrorKind.EmptyName,
+            "",
+            "",
+            "export name must not be empty",
+            span
+        );
+
+        give None;
+    }
+
+    if module_export_contains_exact(
+        ref table,
+        module,
+        name,
+        kind
+    ) {
+        module_export_push_error(
+            table,
+            ModuleExportErrorKind.DuplicateExport,
+            "",
+            name,
+            "module export already exists",
+            span
+        );
+
+        give None;
+    }
+
+    let id = module_export_id(table.next_id);
+    table.next_id = table.next_id + 1;
+
+    table.exports = table.exports + [
+        module_export_create(
+            id,
+            module,
+            name,
+            kind,
+            visibility,
+            origin,
+            span,
+            table.generation
+        )
+    ];
+
+    module_export_refresh_statistics(table);
+
+    give Some(id);
+}
+
+proc module_export_insert_reexport(
+    table: ref mut ModuleExportTable,
+    module: ModuleId,
+    name: string,
+    target_module: ModuleId,
+    original_name: string,
+    kind: ModuleExportKind,
+    visibility: ModuleExportVisibility,
+    origin: ModuleExportOrigin,
+    span: Span
+) -> Option<ModuleExportId> {
+    if not module_id_is_valid(module)
+        or not module_id_is_valid(target_module)
+    {
+        module_export_push_error(
+            table,
+            ModuleExportErrorKind.InvalidModule,
+            "",
+            name,
+            "reexport module identifier is invalid",
+            span
+        );
+
+        give None;
+    }
+
+    if module_id_equal(module, target_module)
+        and name == original_name
+    {
+        module_export_push_error(
+            table,
+            ModuleExportErrorKind.CircularReexport,
+            "",
+            name,
+            "module cannot reexport the same symbol from itself",
+            span
+        );
+
+        give None;
+    }
+
+    if len(name) == 0 or len(original_name) == 0 {
+        module_export_push_error(
+            table,
+            ModuleExportErrorKind.EmptyName,
+            "",
+            name,
+            "reexport names must not be empty",
+            span
+        );
+
+        give None;
+    }
+
+    if module_export_contains_exact(
+        ref table,
+        module,
+        name,
+        kind
+    ) {
+        module_export_push_error(
+            table,
+            ModuleExportErrorKind.DuplicateExport,
+            "",
+            name,
+            "module reexport already exists",
+            span
+        );
+
+        give None;
+    }
+
+    let id = module_export_id(table.next_id);
+    table.next_id = table.next_id + 1;
+
+    table.exports = table.exports + [
+        module_export_create_reexport(
+            id,
+            module,
+            name,
+            original_name,
+            target_module,
+            kind,
+            visibility,
+            origin,
+            span,
+            table.generation
+        )
+    ];
+
+    module_export_refresh_statistics(table);
+
+    give Some(id);
+}
+
+proc module_export_set_state(
+    table: ref mut ModuleExportTable,
+    id: ModuleExportId,
+    state: ModuleExportState
+) -> bool {
+    let index = module_export_find_index(ref table, id);
+
+    pick index {
+        Some(value) {
+            table.exports[value].state = state;
+            table.exports[value].generation =
+                table.generation;
+            table.exports[value].revision =
+                table.exports[value].revision + 1;
+
+            table.exports[value].enabled =
+                state != ModuleExportState.Missing
+                and state != ModuleExportState.Failed
+                and state != ModuleExportState.Invalidated;
+
+            module_export_refresh_statistics(table);
+            give true;
+        }
+
+        None {
+            module_export_push_error(
+                table,
+                ModuleExportErrorKind.ExportNotFound,
+                "",
+                "",
+                "cannot update an unknown module export",
+                module_export_empty_span()
+            );
+
+            give false;
+        }
+    }
+}
+
+proc module_export_begin_resolution(
+    table: ref mut ModuleExportTable,
+    id: ModuleExportId
+) -> bool {
+    give module_export_set_state(
+        table,
+        id,
+        ModuleExportState.Resolving
+    );
+}
+
+proc module_export_mark_resolved(
+    table: ref mut ModuleExportTable,
+    id: ModuleExportId
+) -> bool {
+    give module_export_set_state(
+        table,
+        id,
+        ModuleExportState.Resolved
+    );
+}
+
+proc module_export_mark_ambiguous(
+    table: ref mut ModuleExportTable,
+    id: ModuleExportId
+) -> bool {
+    give module_export_set_state(
+        table,
+        id,
+        ModuleExportState.Ambiguous
+    );
+}
+
+proc module_export_mark_missing(
+    table: ref mut ModuleExportTable,
+    id: ModuleExportId
+) -> bool {
+    give module_export_set_state(
+        table,
+        id,
+        ModuleExportState.Missing
+    );
+}
+
+proc module_export_mark_failed(
+    table: ref mut ModuleExportTable,
+    id: ModuleExportId
+) -> bool {
+    give module_export_set_state(
+        table,
+        id,
+        ModuleExportState.Failed
+    );
+}
+
+proc module_export_enable(
+    table: ref mut ModuleExportTable,
+    id: ModuleExportId
+) -> bool {
+    let index = module_export_find_index(ref table, id);
+
+    pick index {
+        Some(value) {
+            table.exports[value].enabled = true;
+
+            if table.exports[value].state
+                == ModuleExportState.Invalidated
+                or table.exports[value].state
+                    == ModuleExportState.Missing
+            {
+                table.exports[value].state =
+                    ModuleExportState.Declared;
+            }
+
+            table.exports[value].generation =
+                table.generation;
+            table.exports[value].revision =
+                table.exports[value].revision + 1;
+
+            module_export_refresh_statistics(table);
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_export_disable(
+    table: ref mut ModuleExportTable,
+    id: ModuleExportId
+) -> bool {
+    let index = module_export_find_index(ref table, id);
+
+    pick index {
+        Some(value) {
+            table.exports[value].enabled = false;
+            table.exports[value].state =
+                ModuleExportState.Invalidated;
+            table.exports[value].generation =
+                table.generation;
+            table.exports[value].revision =
+                table.exports[value].revision + 1;
+
+            module_export_refresh_statistics(table);
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_export_set_visibility(
+    table: ref mut ModuleExportTable,
+    id: ModuleExportId,
+    visibility: ModuleExportVisibility
+) -> bool {
+    let index = module_export_find_index(ref table, id);
+
+    pick index {
+        Some(value) {
+            table.exports[value].visibility = visibility;
+            table.exports[value].generation =
+                table.generation;
+            table.exports[value].revision =
+                table.exports[value].revision + 1;
+
+            module_export_refresh_statistics(table);
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_export_set_target(
+    table: ref mut ModuleExportTable,
+    id: ModuleExportId,
+    target: ModuleExportTarget
+) -> bool {
+    let index = module_export_find_index(ref table, id);
+
+    pick index {
+        Some(value) {
+            if not module_id_is_valid(target.module)
+                or len(target.symbol) == 0
+            {
+                module_export_push_error(
+                    table,
+                    ModuleExportErrorKind.InvalidReexport,
+                    "",
+                    table.exports[value].name,
+                    "module export target is invalid",
+                    table.exports[value].span
+                );
+
+                give false;
+            }
+
+            table.exports[value].target = Some(target);
+            table.exports[value].reexported = true;
+            table.exports[value].generation =
+                table.generation;
+            table.exports[value].revision =
+                table.exports[value].revision + 1;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_export_candidates(
+    table: ref ModuleExportTable,
+    module: ModuleId,
+    name: string
+) -> [ModuleExport] {
+    set output: [ModuleExport] = [];
+
+    for item in table.exports {
+        if module_id_equal(item.module, module)
+            and item.name == name
+            and module_export_is_available(ref item)
+        {
+            output = output + [item];
+        }
+    }
+
+    give output;
+}
+
+proc module_export_lookup(
+    table: ref ModuleExportTable,
+    module: ModuleId,
+    name: string
+) -> ModuleExportLookup {
+    let candidates = module_export_candidates(
+        table,
+        module,
+        name
+    );
+
+    if len(candidates) == 0 {
+        give ModuleExportLookup {
+            export: None,
+            candidates: [],
+            found: false,
+            ambiguous: false
+        };
+    }
+
+    if len(candidates) == 1 {
+        give ModuleExportLookup {
+            export: Some(candidates[0]),
+            candidates: candidates,
+            found: true,
+            ambiguous: false
+        };
+    }
+
+    give ModuleExportLookup {
+        export: None,
+        candidates: candidates,
+        found: true,
+        ambiguous: true
+    };
+}
+
+proc module_export_lookup_kind(
+    table: ref ModuleExportTable,
+    module: ModuleId,
+    name: string,
+    kind: ModuleExportKind
+) -> ModuleExportLookup {
+    set candidates: [ModuleExport] = [];
+
+    for item in table.exports {
+        if module_id_equal(item.module, module)
+            and item.name == name
+            and item.kind == kind
+            and module_export_is_available(ref item)
+        {
+            candidates = candidates + [item];
+        }
+    }
+
+    if len(candidates) == 0 {
+        give ModuleExportLookup {
+            export: None,
+            candidates: [],
+            found: false,
+            ambiguous: false
+        };
+    }
+
+    if len(candidates) == 1 {
+        give ModuleExportLookup {
+            export: Some(candidates[0]),
+            candidates: candidates,
+            found: true,
+            ambiguous: false
+        };
+    }
+
+    give ModuleExportLookup {
+        export: None,
+        candidates: candidates,
+        found: true,
+        ambiguous: true
+    };
+}
+
+proc module_export_public_of(
+    table: ref ModuleExportTable,
+    module: ModuleId
+) -> [ModuleExport] {
+    set output: [ModuleExport] = [];
+
+    for item in table.exports {
+        if module_id_equal(item.module, module)
+            and module_export_is_public(ref item)
+            and module_export_is_available(ref item)
+        {
+            output = output + [item];
+        }
+    }
+
+    give output;
+}
+
+proc module_export_visible_of(
+    table: ref ModuleExportTable,
+    module: ModuleId
+) -> [ModuleExport] {
+    set output: [ModuleExport] = [];
+
+    for item in table.exports {
+        if module_id_equal(item.module, module)
+            and not module_export_is_private(ref item)
+            and module_export_is_available(ref item)
+        {
+            output = output + [item];
+        }
+    }
+
+    give output;
+}
+
+proc module_export_local_of(
+    table: ref ModuleExportTable,
+    module: ModuleId
+) -> [ModuleExport] {
+    set output: [ModuleExport] = [];
+
+    for item in table.exports {
+        if module_id_equal(item.module, module)
+            and item.origin == ModuleExportOrigin.Local
+        {
+            output = output + [item];
+        }
+    }
+
+    give output;
+}
+
+proc module_export_reexports_of(
+    table: ref ModuleExportTable,
+    module: ModuleId
+) -> [ModuleExport] {
+    set output: [ModuleExport] = [];
+
+    for item in table.exports {
+        if module_id_equal(item.module, module)
+            and module_export_is_reexport(ref item)
+        {
+            output = output + [item];
+        }
+    }
+
+    give output;
+}
+
+proc module_export_target_matches(
+    item: ref ModuleExport,
+    module: ModuleId,
+    symbol: string
+) -> bool {
+    pick item.target {
+        Some(target) {
+            give module_id_equal(target.module, module)
+                and target.symbol == symbol;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc module_export_reexport_path_contains(
+    path: ref [ModuleExportTarget],
+    target: ref ModuleExportTarget
+) -> bool {
+    for current in path {
+        if module_id_equal(current.module, target.module)
+            and current.symbol == target.symbol
+        {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc module_export_resolve_item(
+    table: ref mut ModuleExportTable,
+    id: ModuleExportId,
+    path: ref mut [ModuleExportTarget]
+) -> bool {
+    let index = module_export_find_index(ref table, id);
+
+    pick index {
+        None {
+            give false;
+        }
+
+        Some(value) {
+            if table.exports[value].state
+                == ModuleExportState.Resolved
+            {
+                give true;
+            }
+
+            if not table.exports[value].enabled {
+                give false;
+            }
+
+            if not table.exports[value].reexported {
+                table.exports[value].state =
+                    ModuleExportState.Resolved;
+                table.exports[value].generation =
+                    table.generation;
+                table.exports[value].revision =
+                    table.exports[value].revision + 1;
+
+                give true;
+            }
+
+            let target = table.exports[value].target;
+
+            pick target {
+                None {
+                    table.exports[value].state =
+                        ModuleExportState.Failed;
+
+                    module_export_push_error(
+                        table,
+                        ModuleExportErrorKind.InvalidReexport,
+                        "",
+                        table.exports[value].name,
+                        "reexport has no target",
+                        table.exports[value].span
+                    );
+
+                    give false;
+                }
+
+                Some(destination) {
+                    if module_export_reexport_path_contains(
+                        path,
+                        ref destination
+                    ) {
+                        table.exports[value].state =
+                            ModuleExportState.Failed;
+
+                        module_export_push_error(
+                            table,
+                            ModuleExportErrorKind.CircularReexport,
+                            "",
+                            table.exports[value].name,
+                            "circular module reexport detected",
+                            table.exports[value].span
+                        );
+
+                        give false;
+                    }
+
+                    path = path + [destination];
+
+                    let lookup = module_export_lookup(
+                        ref table,
+                        destination.module,
+                        destination.symbol
+                    );
+
+                    if not lookup.found {
+                        table.exports[value].state =
+                            ModuleExportState.Missing;
+
+                        module_export_push_error(
+                            table,
+                            ModuleExportErrorKind.SourceNotFound,
+                            "",
+                            table.exports[value].name,
+                            "reexport source symbol was not found",
+                            table.exports[value].span
+                        );
+
+                        give false;
+                    }
+
+                    if lookup.ambiguous {
+                        table.exports[value].state =
+                            ModuleExportState.Ambiguous;
+
+                        module_export_push_error(
+                            table,
+                            ModuleExportErrorKind.AmbiguousExport,
+                            "",
+                            table.exports[value].name,
+                            "reexport source symbol is ambiguous",
+                            table.exports[value].span
+                        );
+
+                        give false;
+                    }
+
+                    pick lookup.export {
+                        Some(source) {
+                            if source.visibility
+                                == ModuleExportVisibility.Private
+                            {
+                                table.exports[value].state =
+                                    ModuleExportState.Failed;
+
+                                module_export_push_error(
+                                    table,
+                                    ModuleExportErrorKind.PrivateExport,
+                                    "",
+                                    table.exports[value].name,
+                                    "private symbol cannot be reexported",
+                                    table.exports[value].span
+                                );
+
+                                give false;
+                            }
+
+                            if not module_export_resolve_item(
+                                table,
+                                source.id,
+                                path
+                            ) {
+                                table.exports[value].state =
+                                    ModuleExportState.Failed;
+
+                                give false;
+                            }
+
+                            table.exports[value].kind = source.kind;
+                            table.exports[value].state =
+                                ModuleExportState.Resolved;
+                            table.exports[value].generation =
+                                table.generation;
+                            table.exports[value].revision =
+                                table.exports[value].revision + 1;
+
+                            give true;
+                        }
+
+                        None {
+                            table.exports[value].state =
+                                ModuleExportState.Missing;
+
+                            give false;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+proc module_export_resolve(
+    table: ref mut ModuleExportTable
+) -> ModuleExportResolution {
+    let previous_error_count = len(table.errors);
+
+    set resolved: usize = 0;
+    set failed: usize = 0;
+    set index: usize = 0;
+
+    while index < len(table.exports) {
+        set path: [ModuleExportTarget] = [];
+
+        let root = module_export_target(
+            table.exports[index].module,
+            table.exports[index].name
+        );
+
+        path = path + [root];
+
+        if module_export_resolve_item(
+            table,
+            table.exports[index].id,
+            ref mut path
+        ) {
+            resolved = resolved + 1;
+        } else {
+            failed = failed + 1;
+        }
+
+        index = index + 1;
+    }
+
+    module_export_refresh_statistics(table);
+
+    set errors: [ModuleExportError] = [];
+    set error_index = previous_error_count;
+
+    while error_index < len(table.errors) {
+        errors = errors + [table.errors[error_index]];
+        error_index = error_index + 1;
+    }
+
+    give ModuleExportResolution {
+        exports: table.exports,
+        errors: errors,
+        resolved: resolved,
+        failed: failed,
+        valid: failed == 0 and len(errors) == 0
+    };
+}
+
+proc module_export_remove(
+    table: ref mut ModuleExportTable,
+    id: ModuleExportId
+) -> bool {
+    let index = module_export_find_index(ref table, id);
+
+    pick index {
+        None {
+            give false;
+        }
+
+        Some(value) {
+            set output: [ModuleExport] = [];
+            set current: usize = 0;
+
+            while current < len(table.exports) {
+                if current != value {
+                    output = output + [
+                        table.exports[current]
+                    ];
+                }
+
+                current = current + 1;
+            }
+
+            table.exports = output;
+            module_export_refresh_statistics(table);
+
+            give true;
+        }
+    }
+}
+
+proc module_export_remove_module(
+    table: ref mut ModuleExportTable,
+    module: ModuleId
+) -> usize {
+    set output: [ModuleExport] = [];
+    set removed: usize = 0;
+
+    for item in table.exports {
+        if module_id_equal(item.module, module) {
+            removed = removed + 1;
+        } else {
+            output = output + [item];
+        }
+    }
+
+    table.exports = output;
+    module_export_refresh_statistics(table);
+
+    give removed;
+}
+
+proc module_export_invalidate(
+    table: ref mut ModuleExportTable,
+    id: ModuleExportId
+) -> bool {
+    give module_export_set_state(
+        table,
+        id,
+        ModuleExportState.Invalidated
+    );
+}
+
+proc module_export_invalidate_module(
+    table: ref mut ModuleExportTable,
+    module: ModuleId
+) -> usize {
+    set invalidated: usize = 0;
+    set index: usize = 0;
+
+    while index < len(table.exports) {
+        if module_id_equal(
+            table.exports[index].module,
+            module
+        ) {
+            if table.exports[index].state
+                != ModuleExportState.Invalidated
+            {
+                table.exports[index].state =
+                    ModuleExportState.Invalidated;
+                table.exports[index].enabled = false;
+                table.exports[index].generation =
+                    table.generation;
+                table.exports[index].revision =
+                    table.exports[index].revision + 1;
+
+                invalidated = invalidated + 1;
+            }
+        }
+
+        index = index + 1;
+    }
+
+    module_export_refresh_statistics(table);
+
+    give invalidated;
+}
+
+proc module_export_invalidate_target(
+    table: ref mut ModuleExportTable,
+    target_module: ModuleId,
+    symbol: string
+) -> usize {
+    set invalidated: usize = 0;
+    set index: usize = 0;
+
+    while index < len(table.exports) {
+        if module_export_target_matches(
+            ref table.exports[index],
+            target_module,
+            symbol
+        ) {
+            table.exports[index].state =
+                ModuleExportState.Invalidated;
+            table.exports[index].enabled = false;
+            table.exports[index].generation =
+                table.generation;
+            table.exports[index].revision =
+                table.exports[index].revision + 1;
+
+            invalidated = invalidated + 1;
+        }
+
+        index = index + 1;
+    }
+
+    module_export_refresh_statistics(table);
+
+    give invalidated;
+}
+
+proc module_export_validate_database(
+    table: ref mut ModuleExportTable,
+    database: ref ModuleDatabase
+) -> bool {
+    set valid: bool = true;
+
+    for item in table.exports {
+        if module_database_get(database, item.module) == None {
+            module_export_push_error(
+                table,
+                ModuleExportErrorKind.InvalidModule,
+                "",
+                item.name,
+                "export refers to an unknown module",
+                item.span
+            );
+
+            valid = false;
+        }
+
+        pick item.target {
+            Some(target) {
+                if module_database_get(
+                    database,
+                    target.module
+                ) == None {
+                    module_export_push_error(
+                        table,
+                        ModuleExportErrorKind.SourceNotFound,
+                        "",
+                        item.name,
+                        "reexport target module does not exist",
+                        item.span
+                    );
+
+                    valid = false;
+                }
+            }
+
+            None {}
+        }
+    }
+
+    give valid;
+}
+
+proc module_export_validate(
+    table: ref mut ModuleExportTable
+) -> bool {
+    set valid: bool = true;
+
+    for item in table.exports {
+        if not module_export_is_valid(ref item) {
+            module_export_push_error(
+                table,
+                ModuleExportErrorKind.DatabaseCorrupted,
+                "",
+                item.name,
+                "module export contains invalid data",
+                item.span
+            );
+
+            valid = false;
+        }
+
+        if item.state == ModuleExportState.Declared
+            or item.state == ModuleExportState.Resolving
+        {
+            module_export_push_error(
+                table,
+                ModuleExportErrorKind.UnresolvedExport,
+                "",
+                item.name,
+                "module export has not been resolved",
+                item.span
+            );
+
+            valid = false;
+        }
+
+        if item.state == ModuleExportState.Ambiguous {
+            module_export_push_error(
+                table,
+                ModuleExportErrorKind.AmbiguousExport,
+                "",
+                item.name,
+                "module export is ambiguous",
+                item.span
+            );
+
+            valid = false;
+        }
+
+        if item.state == ModuleExportState.Missing {
+            module_export_push_error(
+                table,
+                ModuleExportErrorKind.ExportNotFound,
+                "",
+                item.name,
+                "module export source is missing",
+                item.span
+            );
+
+            valid = false;
+        }
+
+        if item.state == ModuleExportState.Failed {
+            module_export_push_error(
+                table,
+                ModuleExportErrorKind.InvalidState,
+                "",
+                item.name,
+                "module export resolution failed",
+                item.span
+            );
+
+            valid = false;
+        }
+    }
+
+    give valid and len(table.errors) == 0;
+}
+
+proc module_export_clear_errors(
+    table: ref mut ModuleExportTable
+) {
+    table.errors = [];
+}
+
+proc module_export_advance_generation(
+    table: ref mut ModuleExportTable
+) -> u64 {
+    table.generation = table.generation + 1;
+    give table.generation;
+}
+
+proc module_export_clear(
+    table: ref mut ModuleExportTable
+) {
+    table.exports = [];
+    table.errors = [];
+    table.generation = table.generation + 1;
+
+    module_export_refresh_statistics(table);
+}
+
+proc module_export_reset(
+    table: ref mut ModuleExportTable
+) {
+    table.exports = [];
+    table.errors = [];
+    table.next_id = 1;
+    table.generation = 1;
+    table.statistics = module_export_statistics_empty();
+}
+
+proc module_export_count(
+    table: ref ModuleExportTable
+) -> usize {
+    give len(table.exports);
+}
+
+proc module_export_is_empty(
+    table: ref ModuleExportTable
+) -> bool {
+    give len(table.exports) == 0;
+}
+
+proc module_export_has_errors(
+    table: ref ModuleExportTable
+) -> bool {
+    give len(table.errors) != 0;
+}
+
+proc module_export_statistics(
+    table: ref ModuleExportTable
+) -> ModuleExportStatistics {
+    give table.statistics;
+}
+
+proc module_export_error_code(
+    error: ref ModuleExportError
+) -> string {
+    pick error.kind {
+        ModuleExportErrorKind.InvalidArgument {
+            give "E_MODULE_EXPORT_ARGUMENT";
+        }
+
+        ModuleExportErrorKind.InvalidModule {
+            give "E_MODULE_EXPORT_MODULE";
+        }
+
+        ModuleExportErrorKind.EmptyName {
+            give "E_MODULE_EXPORT_NAME";
+        }
+
+        ModuleExportErrorKind.DuplicateExport {
+            give "E_MODULE_EXPORT_DUPLICATE";
+        }
+
+        ModuleExportErrorKind.ConflictingExport {
+            give "E_MODULE_EXPORT_CONFLICT";
+        }
+
+        ModuleExportErrorKind.ExportNotFound {
+            give "E_MODULE_EXPORT_NOT_FOUND";
+        }
+
+        ModuleExportErrorKind.SourceNotFound {
+            give "E_MODULE_EXPORT_SOURCE_NOT_FOUND";
+        }
+
+        ModuleExportErrorKind.PrivateExport {
+            give "E_MODULE_EXPORT_PRIVATE";
+        }
+
+        ModuleExportErrorKind.InvalidReexport {
+            give "E_MODULE_REEXPORT_INVALID";
+        }
+
+        ModuleExportErrorKind.CircularReexport {
+            give "E_MODULE_REEXPORT_CYCLE";
+        }
+
+        ModuleExportErrorKind.AmbiguousExport {
+            give "E_MODULE_EXPORT_AMBIGUOUS";
+        }
+
+        ModuleExportErrorKind.UnresolvedExport {
+            give "E_MODULE_EXPORT_UNRESOLVED";
+        }
+
+        ModuleExportErrorKind.InvalidState {
+            give "E_MODULE_EXPORT_STATE";
+        }
+
+        ModuleExportErrorKind.DatabaseCorrupted {
+            give "E_MODULE_EXPORT_DATABASE";
+        }
+    }
+}

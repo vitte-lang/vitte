@@ -21,9 +21,9 @@ Current bootstrap token kinds include:
 - identifiers
 - integer literals
 - string literals
-- keywords: `proc`, `const`, `let`, `if`, `else`, `give`
-- punctuation: `(` `)` `{` `}` `,` `:` `;`
-- operators: `=` `==` `!=` `+` `-` `*` `/` `<` `<=` `>` `>=` `->`
+- keywords: `space`, `use`, `as`, `proc`, `const`, `let`, `if`, `else`, `give`, `and`, `or`, `not`
+- punctuation: `(` `)` `{` `}` `,` `:` `::` `;`
+- operators: `=` `==` `!` `!=` `+` `-` `*` `/` `%` `&` `&&` `|` `||` `^` `<` `<=` `<<` `>` `>=` `>>` `->`
 - `error`
 - `eof`
 
@@ -70,6 +70,7 @@ rescanning.
 - source size is bounded by `max_source_bytes`
 - token storage for `vitte_lexer_lex_all` is caller-provided
 - tab width defaults to `4`
+- path separators for module/import parsing are tokenized as `::` and `/`
 
 ## Example
 

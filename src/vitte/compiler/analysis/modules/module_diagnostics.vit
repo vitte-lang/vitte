@@ -1,0 +1,1104 @@
+space vitte/compiler/analysis/modules/module_diagnostics
+
+export *
+
+use src/vitte/compiler/frontend/source/span.{Span}
+use src/vitte/compiler/diagnostics/diagnostic.{
+    Diagnostic,
+    DiagnosticLevel
+}
+use src/vitte/compiler/analysis/modules/module_attributes.{
+    ModuleAttributeError,
+    ModuleAttributeErrorKind
+}
+use src/vitte/compiler/analysis/modules/module_cache.{
+    ModuleCacheError,
+    ModuleCacheErrorKind
+}
+use src/vitte/compiler/analysis/modules/module_cycle.{
+    ModuleCycle,
+    ModuleCycleError,
+    ModuleCycleErrorKind,
+    module_cycle_format_path
+}
+use src/vitte/compiler/analysis/modules/module_database.{
+    ModuleDatabase,
+    ModuleDatabaseAnalysis,
+    ModuleDatabaseError,
+    ModuleDatabaseErrorKind
+}
+use src/vitte/compiler/analysis/modules/module_dependency.{
+    ModuleDependencyAnalysis,
+    ModuleDependencyError,
+    ModuleDependencyErrorKind
+}
+
+pick ModuleDiagnosticOrigin {
+    Attribute,
+    Cache,
+    Cycle,
+    Database,
+    Dependency,
+    Resolver,
+    Loader,
+    Internal
+}
+
+pick ModuleDiagnosticKind {
+    InvalidAttribute,
+    DuplicateAttribute,
+    ConflictingAttribute,
+    UnknownAttribute,
+
+    ModuleNotFound,
+    DuplicateModule,
+    PathConflict,
+    InvalidModuleState,
+
+    DependencyNotFound,
+    DuplicateDependency,
+    SelfDependency,
+    CircularDependency,
+    DisabledDependency,
+    DependencyResolutionFailed,
+
+    CacheLoadFailed,
+    CacheCorrupted,
+
+    InternalError
+}
+
+form ModuleDiagnostic {
+    origin: ModuleDiagnosticOrigin
+    kind: ModuleDiagnosticKind
+    level: DiagnosticLevel
+    code: string
+    message: string
+    module: string
+    dependency: string
+    primary_span: Span
+    labels: [string]
+    notes: [string]
+    help: [string]
+}
+
+form ModuleDiagnosticCollection {
+    diagnostics: [ModuleDiagnostic]
+    errors: usize
+    warnings: usize
+    notes: usize
+}
+
+proc module_diagnostic_empty_span() -> Span {
+    give Span {
+        source: 0,
+        start: 0,
+        end: 0
+    };
+}
+
+proc module_diagnostic(
+    origin: ModuleDiagnosticOrigin,
+    kind: ModuleDiagnosticKind,
+    level: DiagnosticLevel,
+    code: string,
+    message: string,
+    module: string,
+    dependency: string,
+    span: Span
+) -> ModuleDiagnostic {
+    give ModuleDiagnostic {
+        origin: origin,
+        kind: kind,
+        level: level,
+        code: code,
+        message: message,
+        module: module,
+        dependency: dependency,
+        primary_span: span,
+        labels: [],
+        notes: [],
+        help: []
+    };
+}
+
+proc module_diagnostic_with_details(
+    origin: ModuleDiagnosticOrigin,
+    kind: ModuleDiagnosticKind,
+    level: DiagnosticLevel,
+    code: string,
+    message: string,
+    module: string,
+    dependency: string,
+    span: Span,
+    labels: [string],
+    notes: [string],
+    help: [string]
+) -> ModuleDiagnostic {
+    give ModuleDiagnostic {
+        origin: origin,
+        kind: kind,
+        level: level,
+        code: code,
+        message: message,
+        module: module,
+        dependency: dependency,
+        primary_span: span,
+        labels: labels,
+        notes: notes,
+        help: help
+    };
+}
+
+proc module_diagnostic_collection_create()
+    -> ModuleDiagnosticCollection
+{
+    give ModuleDiagnosticCollection {
+        diagnostics: [],
+        errors: 0,
+        warnings: 0,
+        notes: 0
+    };
+}
+
+proc module_diagnostic_collection_push(
+    collection: ref mut ModuleDiagnosticCollection,
+    diagnostic: ModuleDiagnostic
+) {
+    collection.diagnostics =
+        collection.diagnostics + [diagnostic];
+
+    pick diagnostic.level {
+        DiagnosticLevel.Error {
+            collection.errors = collection.errors + 1;
+        }
+
+        DiagnosticLevel.Warning {
+            collection.warnings = collection.warnings + 1;
+        }
+
+        _ {
+            collection.notes = collection.notes + 1;
+        }
+    }
+}
+
+proc module_diagnostic_collection_append(
+    collection: ref mut ModuleDiagnosticCollection,
+    diagnostics: [ModuleDiagnostic]
+) {
+    for diagnostic in diagnostics {
+        module_diagnostic_collection_push(
+            collection,
+            diagnostic
+        );
+    }
+}
+
+proc module_diagnostic_collection_has_errors(
+    collection: ref ModuleDiagnosticCollection
+) -> bool {
+    give collection.errors != 0;
+}
+
+proc module_diagnostic_collection_is_empty(
+    collection: ref ModuleDiagnosticCollection
+) -> bool {
+    give len(collection.diagnostics) == 0;
+}
+
+proc module_diagnostic_collection_count(
+    collection: ref ModuleDiagnosticCollection
+) -> usize {
+    give len(collection.diagnostics);
+}
+
+proc module_diagnostic_attribute_kind(
+    kind: ModuleAttributeErrorKind
+) -> ModuleDiagnosticKind {
+    pick kind {
+        ModuleAttributeErrorKind.DuplicateAttribute {
+            give ModuleDiagnosticKind.DuplicateAttribute;
+        }
+
+        ModuleAttributeErrorKind.UnknownAttribute {
+            give ModuleDiagnosticKind.UnknownAttribute;
+        }
+
+        ModuleAttributeErrorKind.ConflictingAttribute {
+            give ModuleDiagnosticKind.ConflictingAttribute;
+        }
+
+        _ {
+            give ModuleDiagnosticKind.InvalidAttribute;
+        }
+    }
+}
+
+proc module_diagnostic_attribute_code(
+    kind: ModuleAttributeErrorKind
+) -> string {
+    pick kind {
+        ModuleAttributeErrorKind.DuplicateAttribute {
+            give "E_MODULE_ATTRIBUTE_DUPLICATE";
+        }
+
+        ModuleAttributeErrorKind.UnknownAttribute {
+            give "E_MODULE_ATTRIBUTE_UNKNOWN";
+        }
+
+        ModuleAttributeErrorKind.MissingArgument {
+            give "E_MODULE_ATTRIBUTE_ARGUMENT_MISSING";
+        }
+
+        ModuleAttributeErrorKind.UnexpectedArgument {
+            give "E_MODULE_ATTRIBUTE_ARGUMENT_UNEXPECTED";
+        }
+
+        ModuleAttributeErrorKind.InvalidArgument {
+            give "E_MODULE_ATTRIBUTE_ARGUMENT";
+        }
+
+        ModuleAttributeErrorKind.InvalidVersion {
+            give "E_MODULE_VERSION";
+        }
+
+        ModuleAttributeErrorKind.InvalidVisibility {
+            give "E_MODULE_VISIBILITY";
+        }
+
+        ModuleAttributeErrorKind.InvalidModuleKind {
+            give "E_MODULE_KIND";
+        }
+
+        ModuleAttributeErrorKind.ConflictingAttribute {
+            give "E_MODULE_ATTRIBUTE_CONFLICT";
+        }
+    }
+}
+
+proc module_diagnostic_from_attribute_error(
+    error: ref ModuleAttributeError
+) -> ModuleDiagnostic {
+    set labels: [string] = [];
+    set help: [string] = [];
+
+    if len(error.name) != 0 {
+        labels = labels + [
+            "invalid module attribute: " + error.name
+        ];
+    }
+
+    pick error.kind {
+        ModuleAttributeErrorKind.UnknownAttribute {
+            help = help + [
+                "remove the attribute or use a supported module attribute"
+            ];
+        }
+
+        ModuleAttributeErrorKind.MissingArgument {
+            help = help + [
+                "provide the required attribute argument"
+            ];
+        }
+
+        ModuleAttributeErrorKind.UnexpectedArgument {
+            help = help + [
+                "remove the unexpected attribute argument"
+            ];
+        }
+
+        ModuleAttributeErrorKind.ConflictingAttribute {
+            help = help + [
+                "remove one of the conflicting module attributes"
+            ];
+        }
+
+        _ {}
+    }
+
+    give module_diagnostic_with_details(
+        ModuleDiagnosticOrigin.Attribute,
+        module_diagnostic_attribute_kind(error.kind),
+        DiagnosticLevel.Error,
+        module_diagnostic_attribute_code(error.kind),
+        error.message,
+        "",
+        "",
+        error.span,
+        labels,
+        [],
+        help
+    );
+}
+
+proc module_diagnostics_from_attribute_errors(
+    errors: ref [ModuleAttributeError]
+) -> [ModuleDiagnostic] {
+    set diagnostics: [ModuleDiagnostic] = [];
+
+    for error in errors {
+        diagnostics = diagnostics + [
+            module_diagnostic_from_attribute_error(ref error)
+        ];
+    }
+
+    give diagnostics;
+}
+
+proc module_diagnostic_cache_kind(
+    kind: ModuleCacheErrorKind
+) -> ModuleDiagnosticKind {
+    pick kind {
+        ModuleCacheErrorKind.ModuleNotFound {
+            give ModuleDiagnosticKind.ModuleNotFound;
+        }
+
+        ModuleCacheErrorKind.DuplicateModule {
+            give ModuleDiagnosticKind.DuplicateModule;
+        }
+
+        ModuleCacheErrorKind.CircularDependency {
+            give ModuleDiagnosticKind.CircularDependency;
+        }
+
+        ModuleCacheErrorKind.CacheCorrupted {
+            give ModuleDiagnosticKind.CacheCorrupted;
+        }
+
+        _ {
+            give ModuleDiagnosticKind.CacheLoadFailed;
+        }
+    }
+}
+
+proc module_diagnostic_cache_code(
+    kind: ModuleCacheErrorKind
+) -> string {
+    pick kind {
+        ModuleCacheErrorKind.ModuleNotFound {
+            give "E_MODULE_NOT_FOUND";
+        }
+
+        ModuleCacheErrorKind.DuplicateModule {
+            give "E_MODULE_DUPLICATE";
+        }
+
+        ModuleCacheErrorKind.CircularDependency {
+            give "E_MODULE_CYCLE";
+        }
+
+        ModuleCacheErrorKind.InvalidModule {
+            give "E_MODULE_INVALID";
+        }
+
+        ModuleCacheErrorKind.LoadFailed {
+            give "E_MODULE_LOAD";
+        }
+
+        ModuleCacheErrorKind.ParseFailed {
+            give "E_MODULE_PARSE";
+        }
+
+        ModuleCacheErrorKind.AnalysisFailed {
+            give "E_MODULE_ANALYSIS";
+        }
+
+        ModuleCacheErrorKind.CacheCorrupted {
+            give "E_MODULE_CACHE_CORRUPTED";
+        }
+
+        ModuleCacheErrorKind.InvalidArgument {
+            give "E_MODULE_CACHE_ARGUMENT";
+        }
+    }
+}
+
+proc module_diagnostic_from_cache_error(
+    error: ref ModuleCacheError
+) -> ModuleDiagnostic {
+    set labels: [string] = [];
+    set notes: [string] = [];
+    set help: [string] = [];
+
+    if len(error.path) != 0 {
+        labels = labels + [
+            "module path: " + error.path
+        ];
+    }
+
+    pick error.kind {
+        ModuleCacheErrorKind.ModuleNotFound {
+            help = help + [
+                "verify that the module path exists and is accessible"
+            ];
+        }
+
+        ModuleCacheErrorKind.CircularDependency {
+            help = help + [
+                "break the circular dependency between the modules"
+            ];
+        }
+
+        ModuleCacheErrorKind.CacheCorrupted {
+            notes = notes + [
+                "the cached module entry is internally inconsistent"
+            ];
+
+            help = help + [
+                "invalidate the module cache and rebuild the project"
+            ];
+        }
+
+        _ {
+            help = help + [
+                "reload the module without using the cached entry"
+            ];
+        }
+    }
+
+    give module_diagnostic_with_details(
+        ModuleDiagnosticOrigin.Cache,
+        module_diagnostic_cache_kind(error.kind),
+        DiagnosticLevel.Error,
+        module_diagnostic_cache_code(error.kind),
+        error.message,
+        error.path,
+        "",
+        error.span,
+        labels,
+        notes,
+        help
+    );
+}
+
+proc module_diagnostics_from_cache_errors(
+    errors: ref [ModuleCacheError]
+) -> [ModuleDiagnostic] {
+    set diagnostics: [ModuleDiagnostic] = [];
+
+    for error in errors {
+        diagnostics = diagnostics + [
+            module_diagnostic_from_cache_error(ref error)
+        ];
+    }
+
+    give diagnostics;
+}
+
+proc module_diagnostic_cycle_kind(
+    kind: ModuleCycleErrorKind
+) -> ModuleDiagnosticKind {
+    pick kind {
+        ModuleCycleErrorKind.DuplicateModule {
+            give ModuleDiagnosticKind.DuplicateModule;
+        }
+
+        ModuleCycleErrorKind.UnknownModule {
+            give ModuleDiagnosticKind.ModuleNotFound;
+        }
+
+        ModuleCycleErrorKind.InvalidDependency {
+            give ModuleDiagnosticKind.DependencyResolutionFailed;
+        }
+
+        ModuleCycleErrorKind.CircularDependency {
+            give ModuleDiagnosticKind.CircularDependency;
+        }
+
+        ModuleCycleErrorKind.SelfDependency {
+            give ModuleDiagnosticKind.SelfDependency;
+        }
+
+        ModuleCycleErrorKind.GraphCorrupted {
+            give ModuleDiagnosticKind.InternalError;
+        }
+    }
+}
+
+proc module_diagnostic_cycle_code(
+    kind: ModuleCycleErrorKind
+) -> string {
+    pick kind {
+        ModuleCycleErrorKind.DuplicateModule {
+            give "E_MODULE_DUPLICATE";
+        }
+
+        ModuleCycleErrorKind.UnknownModule {
+            give "E_MODULE_UNKNOWN";
+        }
+
+        ModuleCycleErrorKind.InvalidDependency {
+            give "E_MODULE_DEPENDENCY";
+        }
+
+        ModuleCycleErrorKind.CircularDependency {
+            give "E_MODULE_CYCLE";
+        }
+
+        ModuleCycleErrorKind.SelfDependency {
+            give "E_MODULE_SELF_DEPENDENCY";
+        }
+
+        ModuleCycleErrorKind.GraphCorrupted {
+            give "E_MODULE_GRAPH";
+        }
+    }
+}
+
+proc module_diagnostic_cycle_notes(
+    cycle: ref ModuleCycle
+) -> [string] {
+    let path = module_cycle_format_path(cycle);
+
+    if len(path) == 0 {
+        give [];
+    }
+
+    give [
+        "dependency cycle: " + path
+    ];
+}
+
+proc module_diagnostic_cycle_labels(
+    cycle: ref ModuleCycle
+) -> [string] {
+    set labels: [string] = [];
+
+    for edge in cycle.edges {
+        labels = labels + [
+            edge.source + " depends on " + edge.destination
+        ];
+    }
+
+    give labels;
+}
+
+proc module_diagnostic_from_cycle_error(
+    error: ref ModuleCycleError
+) -> ModuleDiagnostic {
+    set labels: [string] = [];
+    set notes: [string] = [];
+    set help: [string] = [];
+
+    pick error.cycle {
+        Some(cycle) {
+            labels = module_diagnostic_cycle_labels(ref cycle);
+            notes = module_diagnostic_cycle_notes(ref cycle);
+        }
+
+        None {}
+    }
+
+    pick error.kind {
+        ModuleCycleErrorKind.CircularDependency {
+            help = help + [
+                "remove or invert one dependency in the cycle"
+            ];
+        }
+
+        ModuleCycleErrorKind.SelfDependency {
+            help = help + [
+                "remove the dependency from the module to itself"
+            ];
+        }
+
+        ModuleCycleErrorKind.UnknownModule {
+            help = help + [
+                "declare the dependency target before analyzing the graph"
+            ];
+        }
+
+        ModuleCycleErrorKind.GraphCorrupted {
+            notes = notes + [
+                "the module dependency graph is internally inconsistent"
+            ];
+        }
+
+        _ {}
+    }
+
+    give module_diagnostic_with_details(
+        ModuleDiagnosticOrigin.Cycle,
+        module_diagnostic_cycle_kind(error.kind),
+        DiagnosticLevel.Error,
+        module_diagnostic_cycle_code(error.kind),
+        error.message,
+        error.module,
+        error.dependency,
+        error.span,
+        labels,
+        notes,
+        help
+    );
+}
+
+proc module_diagnostics_from_cycle_errors(
+    errors: ref [ModuleCycleError]
+) -> [ModuleDiagnostic] {
+    set diagnostics: [ModuleDiagnostic] = [];
+
+    for error in errors {
+        diagnostics = diagnostics + [
+            module_diagnostic_from_cycle_error(ref error)
+        ];
+    }
+
+    give diagnostics;
+}
+
+proc module_diagnostic_database_kind(
+    kind: ModuleDatabaseErrorKind
+) -> ModuleDiagnosticKind {
+    pick kind {
+        ModuleDatabaseErrorKind.DuplicateModule {
+            give ModuleDiagnosticKind.DuplicateModule;
+        }
+
+        ModuleDatabaseErrorKind.ModuleNotFound {
+            give ModuleDiagnosticKind.ModuleNotFound;
+        }
+
+        ModuleDatabaseErrorKind.PathConflict {
+            give ModuleDiagnosticKind.PathConflict;
+        }
+
+        ModuleDatabaseErrorKind.DuplicateDependency {
+            give ModuleDiagnosticKind.DuplicateDependency;
+        }
+
+        ModuleDatabaseErrorKind.CircularDependency {
+            give ModuleDiagnosticKind.CircularDependency;
+        }
+
+        ModuleDatabaseErrorKind.InvalidState {
+            give ModuleDiagnosticKind.InvalidModuleState;
+        }
+
+        ModuleDatabaseErrorKind.DatabaseCorrupted {
+            give ModuleDiagnosticKind.InternalError;
+        }
+
+        _ {
+            give ModuleDiagnosticKind.DependencyResolutionFailed;
+        }
+    }
+}
+
+proc module_diagnostic_database_code(
+    kind: ModuleDatabaseErrorKind
+) -> string {
+    pick kind {
+        ModuleDatabaseErrorKind.InvalidArgument {
+            give "E_MODULE_DATABASE_ARGUMENT";
+        }
+
+        ModuleDatabaseErrorKind.DuplicateModule {
+            give "E_MODULE_DUPLICATE";
+        }
+
+        ModuleDatabaseErrorKind.ModuleNotFound {
+            give "E_MODULE_NOT_FOUND";
+        }
+
+        ModuleDatabaseErrorKind.PathConflict {
+            give "E_MODULE_PATH_CONFLICT";
+        }
+
+        ModuleDatabaseErrorKind.InvalidDependency {
+            give "E_MODULE_DEPENDENCY";
+        }
+
+        ModuleDatabaseErrorKind.DuplicateDependency {
+            give "E_MODULE_DEPENDENCY_DUPLICATE";
+        }
+
+        ModuleDatabaseErrorKind.CircularDependency {
+            give "E_MODULE_CYCLE";
+        }
+
+        ModuleDatabaseErrorKind.InvalidState {
+            give "E_MODULE_STATE";
+        }
+
+        ModuleDatabaseErrorKind.AnalysisFailed {
+            give "E_MODULE_ANALYSIS";
+        }
+
+        ModuleDatabaseErrorKind.DatabaseCorrupted {
+            give "E_MODULE_DATABASE";
+        }
+    }
+}
+
+proc module_diagnostic_from_database_error(
+    error: ref ModuleDatabaseError
+) -> ModuleDiagnostic {
+    set labels: [string] = [];
+    set notes: [string] = [];
+    set help: [string] = [];
+
+    if len(error.module) != 0 {
+        labels = labels + [
+            "module: " + error.module
+        ];
+    }
+
+    if len(error.dependency) != 0 {
+        labels = labels + [
+            "dependency: " + error.dependency
+        ];
+    }
+
+    pick error.kind {
+        ModuleDatabaseErrorKind.DuplicateModule {
+            help = help + [
+                "rename the module or remove the duplicate declaration"
+            ];
+        }
+
+        ModuleDatabaseErrorKind.ModuleNotFound {
+            help = help + [
+                "verify that the referenced module is registered"
+            ];
+        }
+
+        ModuleDatabaseErrorKind.PathConflict {
+            help = help + [
+                "assign a unique canonical path to each module"
+            ];
+        }
+
+        ModuleDatabaseErrorKind.DuplicateDependency {
+            help = help + [
+                "remove the repeated dependency declaration"
+            ];
+        }
+
+        ModuleDatabaseErrorKind.CircularDependency {
+            help = help + [
+                "break the circular module dependency"
+            ];
+        }
+
+        ModuleDatabaseErrorKind.InvalidState {
+            help = help + [
+                "perform the module analysis stages in their required order"
+            ];
+        }
+
+        ModuleDatabaseErrorKind.DatabaseCorrupted {
+            notes = notes + [
+                "the module database invariants were violated"
+            ];
+        }
+
+        _ {}
+    }
+
+    give module_diagnostic_with_details(
+        ModuleDiagnosticOrigin.Database,
+        module_diagnostic_database_kind(error.kind),
+        DiagnosticLevel.Error,
+        module_diagnostic_database_code(error.kind),
+        error.message,
+        error.module,
+        error.dependency,
+        error.span,
+        labels,
+        notes,
+        help
+    );
+}
+
+proc module_diagnostics_from_database_errors(
+    errors: ref [ModuleDatabaseError]
+) -> [ModuleDiagnostic] {
+    set diagnostics: [ModuleDiagnostic] = [];
+
+    for error in errors {
+        diagnostics = diagnostics + [
+            module_diagnostic_from_database_error(ref error)
+        ];
+    }
+
+    give diagnostics;
+}
+
+proc module_diagnostic_dependency_kind(
+    kind: ModuleDependencyErrorKind
+) -> ModuleDiagnosticKind {
+    pick kind {
+        ModuleDependencyErrorKind.ModuleNotFound {
+            give ModuleDiagnosticKind.ModuleNotFound;
+        }
+
+        ModuleDependencyErrorKind.DependencyNotFound {
+            give ModuleDiagnosticKind.DependencyNotFound;
+        }
+
+        ModuleDependencyErrorKind.DuplicateDependency {
+            give ModuleDiagnosticKind.DuplicateDependency;
+        }
+
+        ModuleDependencyErrorKind.SelfDependency {
+            give ModuleDiagnosticKind.SelfDependency;
+        }
+
+        ModuleDependencyErrorKind.CircularDependency {
+            give ModuleDiagnosticKind.CircularDependency;
+        }
+
+        ModuleDependencyErrorKind.DisabledDependency {
+            give ModuleDiagnosticKind.DisabledDependency;
+        }
+
+        ModuleDependencyErrorKind.GraphCorrupted {
+            give ModuleDiagnosticKind.InternalError;
+        }
+
+        _ {
+            give ModuleDiagnosticKind.DependencyResolutionFailed;
+        }
+    }
+}
+
+proc module_diagnostic_dependency_code(
+    kind: ModuleDependencyErrorKind
+) -> string {
+    pick kind {
+        ModuleDependencyErrorKind.InvalidArgument {
+            give "E_MODULE_DEPENDENCY_ARGUMENT";
+        }
+
+        ModuleDependencyErrorKind.ModuleNotFound {
+            give "E_MODULE_NOT_FOUND";
+        }
+
+        ModuleDependencyErrorKind.DependencyNotFound {
+            give "E_MODULE_DEPENDENCY_NOT_FOUND";
+        }
+
+        ModuleDependencyErrorKind.DuplicateDependency {
+            give "E_MODULE_DEPENDENCY_DUPLICATE";
+        }
+
+        ModuleDependencyErrorKind.SelfDependency {
+            give "E_MODULE_SELF_DEPENDENCY";
+        }
+
+        ModuleDependencyErrorKind.CircularDependency {
+            give "E_MODULE_CYCLE";
+        }
+
+        ModuleDependencyErrorKind.DisabledDependency {
+            give "E_MODULE_DEPENDENCY_DISABLED";
+        }
+
+        ModuleDependencyErrorKind.ResolutionFailed {
+            give "E_MODULE_DEPENDENCY_RESOLUTION";
+        }
+
+        ModuleDependencyErrorKind.GraphCorrupted {
+            give "E_MODULE_DEPENDENCY_GRAPH";
+        }
+    }
+}
+
+proc module_diagnostic_from_dependency_error(
+    error: ref ModuleDependencyError
+) -> ModuleDiagnostic {
+    set labels: [string] = [];
+    set notes: [string] = [];
+    set help: [string] = [];
+
+    if len(error.module) != 0 and len(error.dependency) != 0 {
+        labels = labels + [
+            error.module + " depends on " + error.dependency
+        ];
+    }
+
+    pick error.kind {
+        ModuleDependencyErrorKind.DependencyNotFound {
+            help = help + [
+                "verify the dependency name and module search paths"
+            ];
+        }
+
+        ModuleDependencyErrorKind.DuplicateDependency {
+            help = help + [
+                "remove the duplicate dependency"
+            ];
+        }
+
+        ModuleDependencyErrorKind.SelfDependency {
+            help = help + [
+                "remove the module dependency on itself"
+            ];
+        }
+
+        ModuleDependencyErrorKind.CircularDependency {
+            help = help + [
+                "break the dependency cycle by extracting shared declarations"
+            ];
+        }
+
+        ModuleDependencyErrorKind.DisabledDependency {
+            help = help + [
+                "enable the dependency or make it optional"
+            ];
+        }
+
+        ModuleDependencyErrorKind.ResolutionFailed {
+            help = help + [
+                "check module paths, feature conditions and target settings"
+            ];
+        }
+
+        ModuleDependencyErrorKind.GraphCorrupted {
+            notes = notes + [
+                "the dependency graph is internally inconsistent"
+            ];
+        }
+
+        _ {}
+    }
+
+    give module_diagnostic_with_details(
+        ModuleDiagnosticOrigin.Dependency,
+        module_diagnostic_dependency_kind(error.kind),
+        DiagnosticLevel.Error,
+        module_diagnostic_dependency_code(error.kind),
+        error.message,
+        error.module,
+        error.dependency,
+        error.span,
+        labels,
+        notes,
+        help
+    );
+}
+
+proc module_diagnostics_from_dependency_errors(
+    errors: ref [ModuleDependencyError]
+) -> [ModuleDiagnostic] {
+    set diagnostics: [ModuleDiagnostic] = [];
+
+    for error in errors {
+        diagnostics = diagnostics + [
+            module_diagnostic_from_dependency_error(ref error)
+        ];
+    }
+
+    give diagnostics;
+}
+
+proc module_diagnostics_from_database_analysis(
+    analysis: ref ModuleDatabaseAnalysis
+) -> [ModuleDiagnostic] {
+    set diagnostics =
+        module_diagnostics_from_database_errors(
+            ref analysis.errors
+        );
+
+    give diagnostics;
+}
+
+proc module_diagnostics_from_dependency_analysis(
+    analysis: ref ModuleDependencyAnalysis
+) -> [ModuleDiagnostic] {
+    give module_diagnostics_from_dependency_errors(
+        ref analysis.errors
+    );
+}
+
+proc module_diagnostic_to_diagnostic(
+    source: ref ModuleDiagnostic
+) -> Diagnostic {
+    give Diagnostic {
+        level: source.level,
+        code: source.code,
+        message: source.message,
+        primary_span: source.primary_span,
+        labels: source.labels,
+        notes: source.notes,
+        help: source.help,
+        fixes: []
+    };
+}
+
+proc module_diagnostics_to_diagnostics(
+    source: ref [ModuleDiagnostic]
+) -> [Diagnostic] {
+    set diagnostics: [Diagnostic] = [];
+
+    for diagnostic in source {
+        diagnostics = diagnostics + [
+            module_diagnostic_to_diagnostic(ref diagnostic)
+        ];
+    }
+
+    give diagnostics;
+}
+
+proc module_diagnostic_collection_to_diagnostics(
+    collection: ref ModuleDiagnosticCollection
+) -> [Diagnostic] {
+    give module_diagnostics_to_diagnostics(
+        ref collection.diagnostics
+    );
+}
+
+proc module_diagnostic_collect_database(
+    database: ref ModuleDatabase
+) -> ModuleDiagnosticCollection {
+    set collection = module_diagnostic_collection_create();
+
+    let diagnostics = module_diagnostics_from_database_errors(
+        ref database.errors
+    );
+
+    module_diagnostic_collection_append(
+        ref mut collection,
+        diagnostics
+    );
+
+    give collection;
+}
+
+proc module_diagnostic_merge(
+    attributes: [ModuleDiagnostic],
+    cache: [ModuleDiagnostic],
+    cycles: [ModuleDiagnostic],
+    database: [ModuleDiagnostic],
+    dependencies: [ModuleDiagnostic]
+) -> ModuleDiagnosticCollection {
+    set collection = module_diagnostic_collection_create();
+
+    module_diagnostic_collection_append(
+        ref mut collection,
+        attributes
+    );
+
+    module_diagnostic_collection_append(
+        ref mut collection,
+        cache
+    );
+
+    module_diagnostic_collection_append(
+        ref mut collection,
+        cycles
+    );
+
+    module_diagnostic_collection_append(
+        ref mut collection,
+        database
+    );
+
+    module_diagnostic_collection_append(
+        ref mut collection,
+        dependencies
+    );
+
+    give collection;
+}

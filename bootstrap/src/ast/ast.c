@@ -178,8 +178,12 @@ const char *vitte_ast_node_kind_name(vitte_ast_node_kind_t kind) {
             return "error";
         case VITTE_AST_NODE_MODULE:
             return "module";
+        case VITTE_AST_NODE_IMPORT_DECL:
+            return "import_decl";
         case VITTE_AST_NODE_PROC_DECL:
             return "proc_decl";
+        case VITTE_AST_NODE_PARAM_DECL:
+            return "param_decl";
         case VITTE_AST_NODE_CONST_DECL:
             return "const_decl";
         case VITTE_AST_NODE_BLOCK_STMT:
@@ -220,8 +224,12 @@ const char *vitte_ast_node_label(const vitte_ast_node_t *node) {
     switch (node->kind) {
         case VITTE_AST_NODE_MODULE:
             return node->as.module.name;
+        case VITTE_AST_NODE_IMPORT_DECL:
+            return node->as.import_decl.path;
         case VITTE_AST_NODE_PROC_DECL:
             return node->as.proc_decl.name;
+        case VITTE_AST_NODE_PARAM_DECL:
+            return node->as.param_decl.name;
         case VITTE_AST_NODE_CONST_DECL:
             return node->as.const_decl.name;
         case VITTE_AST_NODE_LET_STMT:
@@ -261,8 +269,27 @@ vitte_ast_module_t *vitte_ast_make_module(vitte_ast_builder_t *builder, const ch
         return NULL;
     }
     node->as.module.name = name;
+    vitte_ast_list_init(&node->as.module.imports);
     vitte_ast_list_init(&node->as.module.declarations);
     builder->ast->root = node;
+    return node;
+}
+
+vitte_ast_decl_t *vitte_ast_make_import_decl(
+    vitte_ast_builder_t *builder,
+    const char *path,
+    const char *alias,
+    bool relative,
+    vitte_ast_import_kind_t import_kind,
+    vitte_ast_span_t span
+) {
+    vitte_ast_node_t *node = builder != NULL ? vitte_ast_alloc_node(builder->ast, VITTE_AST_NODE_IMPORT_DECL, span) : NULL;
+    if (node != NULL) {
+        node->as.import_decl.path = path;
+        node->as.import_decl.alias = alias;
+        node->as.import_decl.relative = relative;
+        node->as.import_decl.import_kind = import_kind;
+    }
     return node;
 }
 
@@ -270,8 +297,20 @@ vitte_ast_decl_t *vitte_ast_make_proc_decl(vitte_ast_builder_t *builder, const c
     vitte_ast_node_t *node = builder != NULL ? vitte_ast_alloc_node(builder->ast, VITTE_AST_NODE_PROC_DECL, span) : NULL;
     if (node != NULL) {
         node->as.proc_decl.name = name;
+        vitte_ast_list_init(&node->as.proc_decl.parameters);
         node->as.proc_decl.return_type = return_type;
         node->as.proc_decl.body = body;
+    }
+    return node;
+}
+
+vitte_ast_node_t *vitte_ast_make_param_decl(vitte_ast_builder_t *builder, const char *name, vitte_ast_type_ref_t *type, bool mutable_value, bool by_ref, vitte_ast_span_t span) {
+    vitte_ast_node_t *node = builder != NULL ? vitte_ast_alloc_node(builder->ast, VITTE_AST_NODE_PARAM_DECL, span) : NULL;
+    if (node != NULL) {
+        node->as.param_decl.name = name;
+        node->as.param_decl.type = type;
+        node->as.param_decl.mutable_value = mutable_value;
+        node->as.param_decl.by_ref = by_ref;
     }
     return node;
 }
@@ -389,6 +428,22 @@ bool vitte_ast_module_add_decl(vitte_ast_module_t *module, vitte_ast_decl_t *dec
         vitte_ast_list_append(&module->as.module.declarations, decl);
 }
 
+bool vitte_ast_module_add_import(vitte_ast_module_t *module, vitte_ast_decl_t *import_decl) {
+    return module != NULL &&
+        module->kind == VITTE_AST_NODE_MODULE &&
+        import_decl != NULL &&
+        import_decl->kind == VITTE_AST_NODE_IMPORT_DECL &&
+        vitte_ast_list_append(&module->as.module.imports, import_decl);
+}
+
+bool vitte_ast_proc_add_param(vitte_ast_decl_t *proc, vitte_ast_node_t *param) {
+    return proc != NULL &&
+        proc->kind == VITTE_AST_NODE_PROC_DECL &&
+        param != NULL &&
+        param->kind == VITTE_AST_NODE_PARAM_DECL &&
+        vitte_ast_list_append(&proc->as.proc_decl.parameters, param);
+}
+
 bool vitte_ast_block_add_stmt(vitte_ast_stmt_t *block, vitte_ast_stmt_t *stmt) {
     return block != NULL &&
         block->kind == VITTE_AST_NODE_BLOCK_STMT &&
@@ -462,9 +517,19 @@ static vitte_status_t vitte_ast_validate_node(vitte_ast_t *ast, const vitte_ast_
 
     switch (node->kind) {
         case VITTE_AST_NODE_MODULE:
+            status = vitte_ast_validate_list(ast, &node->as.module.imports, "VITTE_AST_E_LIST", "module import list is incoherent");
+            if (status != VITTE_STATUS_OK) {
+                return status;
+            }
             status = vitte_ast_validate_list(ast, &node->as.module.declarations, "VITTE_AST_E_LIST", "module declaration list is incoherent");
             if (status != VITTE_STATUS_OK) {
                 return status;
+            }
+            for (child = node->as.module.imports.first; child != NULL; child = child->next) {
+                status = vitte_ast_validate_node(ast, child, depth + 1u);
+                if (status != VITTE_STATUS_OK) {
+                    return status;
+                }
             }
             for (child = node->as.module.declarations.first; child != NULL; child = child->next) {
                 status = vitte_ast_validate_node(ast, child, depth + 1u);
@@ -473,10 +538,28 @@ static vitte_status_t vitte_ast_validate_node(vitte_ast_t *ast, const vitte_ast_
                 }
             }
             break;
+        case VITTE_AST_NODE_IMPORT_DECL:
+            if (node->as.import_decl.path == NULL ||
+                node->as.import_decl.import_kind < VITTE_AST_IMPORT_MODULE ||
+                node->as.import_decl.import_kind > VITTE_AST_IMPORT_GLOB) {
+                vitte_ast_set_error(ast, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_AST_E_IMPORT", "import declaration requires a path", NULL);
+                return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+            }
+            break;
         case VITTE_AST_NODE_PROC_DECL:
             if (node->as.proc_decl.name == NULL || node->as.proc_decl.body == NULL) {
                 vitte_ast_set_error(ast, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_AST_E_PROC", "procedure declaration requires name and body", NULL);
                 return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+            }
+            status = vitte_ast_validate_list(ast, &node->as.proc_decl.parameters, "VITTE_AST_E_LIST", "procedure parameter list is incoherent");
+            if (status != VITTE_STATUS_OK) {
+                return status;
+            }
+            for (child = node->as.proc_decl.parameters.first; child != NULL; child = child->next) {
+                status = vitte_ast_validate_node(ast, child, depth + 1u);
+                if (status != VITTE_STATUS_OK) {
+                    return status;
+                }
             }
             if (node->as.proc_decl.return_type != NULL) {
                 status = vitte_ast_validate_node(ast, node->as.proc_decl.return_type, depth + 1u);
@@ -485,6 +568,12 @@ static vitte_status_t vitte_ast_validate_node(vitte_ast_t *ast, const vitte_ast_
                 }
             }
             return vitte_ast_validate_node(ast, node->as.proc_decl.body, depth + 1u);
+        case VITTE_AST_NODE_PARAM_DECL:
+            if (node->as.param_decl.name == NULL || node->as.param_decl.type == NULL) {
+                vitte_ast_set_error(ast, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_AST_E_PARAM", "parameter requires name and type", NULL);
+                return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+            }
+            return vitte_ast_validate_node(ast, node->as.param_decl.type, depth + 1u);
         case VITTE_AST_NODE_CONST_DECL:
             if (node->as.const_decl.name == NULL || node->as.const_decl.value == NULL) {
                 vitte_ast_set_error(ast, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_AST_E_CONST", "const declaration requires name and value", NULL);
@@ -665,10 +754,16 @@ static bool vitte_ast_visit_child(
     (*count)++;
     switch (node->kind) {
         case VITTE_AST_NODE_MODULE:
-            return vitte_ast_visit_children(&node->as.module.declarations, callback, user, depth + 1u, max_depth, count);
+            return vitte_ast_visit_children(&node->as.module.imports, callback, user, depth + 1u, max_depth, count) &&
+                vitte_ast_visit_children(&node->as.module.declarations, callback, user, depth + 1u, max_depth, count);
+        case VITTE_AST_NODE_IMPORT_DECL:
+            return true;
         case VITTE_AST_NODE_PROC_DECL:
-            return vitte_ast_visit_child(node->as.proc_decl.return_type, callback, user, depth + 1u, max_depth, count) &&
+            return vitte_ast_visit_children(&node->as.proc_decl.parameters, callback, user, depth + 1u, max_depth, count) &&
+                vitte_ast_visit_child(node->as.proc_decl.return_type, callback, user, depth + 1u, max_depth, count) &&
                 vitte_ast_visit_child(node->as.proc_decl.body, callback, user, depth + 1u, max_depth, count);
+        case VITTE_AST_NODE_PARAM_DECL:
+            return vitte_ast_visit_child(node->as.param_decl.type, callback, user, depth + 1u, max_depth, count);
         case VITTE_AST_NODE_CONST_DECL:
             return vitte_ast_visit_child(node->as.const_decl.type, callback, user, depth + 1u, max_depth, count) &&
                 vitte_ast_visit_child(node->as.const_decl.value, callback, user, depth + 1u, max_depth, count);
@@ -741,11 +836,18 @@ static void vitte_ast_dump_child(const vitte_ast_node_t *node, FILE *stream, siz
 
     switch (node->kind) {
         case VITTE_AST_NODE_MODULE:
+            vitte_ast_dump_children(&node->as.module.imports, stream, depth + 1u, max_depth);
             vitte_ast_dump_children(&node->as.module.declarations, stream, depth + 1u, max_depth);
             break;
+        case VITTE_AST_NODE_IMPORT_DECL:
+            break;
         case VITTE_AST_NODE_PROC_DECL:
+            vitte_ast_dump_children(&node->as.proc_decl.parameters, stream, depth + 1u, max_depth);
             vitte_ast_dump_child(node->as.proc_decl.return_type, stream, depth + 1u, max_depth);
             vitte_ast_dump_child(node->as.proc_decl.body, stream, depth + 1u, max_depth);
+            break;
+        case VITTE_AST_NODE_PARAM_DECL:
+            vitte_ast_dump_child(node->as.param_decl.type, stream, depth + 1u, max_depth);
             break;
         case VITTE_AST_NODE_CONST_DECL:
             vitte_ast_dump_child(node->as.const_decl.type, stream, depth + 1u, max_depth);
