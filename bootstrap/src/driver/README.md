@@ -2,7 +2,8 @@
 
 The driver is the bootstrap compiler orchestration layer. It owns the ordered
 pipeline for one compilation session and connects configuration, diagnostics,
-AST construction, C17 code generation, and optional native C compilation.
+AST construction, semantic analysis, HIR/IR backend lowering, C17 code
+generation, and optional native C compilation.
 
 ## Lifecycle
 
@@ -65,6 +66,8 @@ All user-facing failures are recorded in `vitte_diagnostic_bag_t`:
 - empty source
 - invalid configuration
 - AST allocation or validation failure
+- semantic failure
+- HIR or IR backend lowering failure
 - C17 codegen failure
 - C compiler/link failure
 
@@ -73,7 +76,8 @@ does not depend on `runtime/*`.
 
 ## Output
 
-`check` validates the pipeline through AST validation.
+`check` validates the pipeline through semantic analysis and backend HIR/IR
+validation.
 
 `emit-c` writes to the requested file path or to the result output buffer when
 the path is `NULL`.

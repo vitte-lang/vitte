@@ -7,6 +7,7 @@
 
 #include "../codegen/codegen.h"
 #include "../hir/hir.h"
+#include "../ir/ir.h"
 #include "../parser/parser.h"
 #include "../sema/sema.h"
 
@@ -626,6 +627,7 @@ static vitte_status_t vitte_driver_run_backend(
     const vitte_ast_t *ast
 ) {
     vitte_hir_t hir;
+    vitte_ir_t ir;
     vitte_status_t status;
 
     if (driver == NULL || ast == NULL) {
@@ -642,8 +644,26 @@ static vitte_status_t vitte_driver_run_backend(
     if (status == VITTE_STATUS_OK) {
         status = vitte_hir_validate(&hir);
     }
+    if (status == VITTE_STATUS_OK) {
+        status = vitte_ir_init_owned(&ir, NULL);
+        if (status != VITTE_STATUS_OK) {
+            vitte_error_copy(&driver->last_error, vitte_ir_last_error(&ir));
+            vitte_hir_destroy(&hir);
+            return status;
+        }
+        status = vitte_ir_lower_hir(&ir, &hir);
+        if (status == VITTE_STATUS_OK) {
+            status = vitte_ir_validate(&ir);
+        }
+        if (status != VITTE_STATUS_OK) {
+            vitte_error_copy(&driver->last_error, vitte_ir_last_error(&ir));
+        }
+        vitte_ir_destroy(&ir);
+    }
     if (status != VITTE_STATUS_OK) {
-        vitte_error_copy(&driver->last_error, vitte_hir_last_error(&hir));
+        if (vitte_error_is_ok(&driver->last_error)) {
+            vitte_error_copy(&driver->last_error, vitte_hir_last_error(&hir));
+        }
     } else {
         vitte_error_reset(&driver->last_error);
     }

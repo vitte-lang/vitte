@@ -16,8 +16,9 @@ before optimization/backend-specific lowering.
 
 ## Model
 
-The module owns a linked list of functions. Each function owns linked blocks.
-Each block owns linked instructions and has a `terminated` flag.
+The module owns a linked list of global constant declarations and a linked list
+of functions. Each function owns linked blocks. Each block owns linked
+instructions and has a `terminated` flag.
 
 Supported IR types:
 
@@ -25,6 +26,7 @@ Supported IR types:
 - `bool`
 - `i32`
 - `i64`
+- `usize`
 - `string*`
 - `unknown`
 - `error`
@@ -79,25 +81,27 @@ vitte_ir_emit_return(&builder, zero, NULL);
 `vitte_ir_lower_hir` lowers the bootstrap HIR:
 
 - module to module
+- const declaration to global constant entry
 - function declaration to function plus entry block
 - block statement sequence
 - return
 - let as local plus optional store
 - if as conditional branch with then/else/merge blocks
 - integer and string literals
-- variable as local plus load
+- variable as local load, global const reference, builtin const, or function reference
 - binary expression
 - call expression with bounded args
 
-Top-level const declarations are not lowered yet because the bootstrap IR does
-not have a global-constant model. Unsupported declarations or nodes return an
-error status instead of creating partial silent IR.
+Global constant initializers are resolved recursively. Cycles are rejected.
+Unsupported declarations or nodes return an error status instead of creating
+partial silent IR.
 
 ## Validation
 
 `vitte_ir_validate` checks:
 
 - initialized IR and module
+- globals have names, types, and resolved initializers
 - functions have ids, names, return types, entry blocks
 - blocks have ids, names, coherent instruction counts, and terminators
 - instruction opcodes and operand counts

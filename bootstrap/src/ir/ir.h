@@ -27,6 +27,7 @@ typedef enum vitte_ir_type_kind {
     VITTE_IR_TYPE_BOOL,
     VITTE_IR_TYPE_I32,
     VITTE_IR_TYPE_I64,
+    VITTE_IR_TYPE_USIZE,
     VITTE_IR_TYPE_STRING_PTR,
     VITTE_IR_TYPE_UNKNOWN,
     VITTE_IR_TYPE_COUNT
@@ -64,7 +65,12 @@ typedef struct vitte_ir_value vitte_ir_value_t;
 typedef struct vitte_ir_instruction vitte_ir_instruction_t;
 typedef struct vitte_ir_block vitte_ir_block_t;
 typedef struct vitte_ir_function vitte_ir_function_t;
+typedef struct vitte_ir_global vitte_ir_global_t;
 typedef struct vitte_ir_module vitte_ir_module_t;
+typedef struct vitte_ir_local_binding vitte_ir_local_binding_t;
+typedef struct vitte_ir_function_binding vitte_ir_function_binding_t;
+typedef struct vitte_ir_global_binding vitte_ir_global_binding_t;
+typedef struct vitte_ir_scope_marker vitte_ir_scope_marker_t;
 
 struct vitte_ir_type {
     vitte_ir_type_kind_t kind;
@@ -119,8 +125,21 @@ struct vitte_ir_function {
     vitte_ir_function_t *next;
 };
 
+struct vitte_ir_global {
+    const char *name;
+    vitte_ir_type_t *type;
+    vitte_ir_value_t *initializer;
+    const vitte_hir_node_t *source;
+    bool resolving;
+    bool initialized;
+    vitte_ir_global_t *next;
+};
+
 struct vitte_ir_module {
     const char *name;
+    vitte_ir_global_t *first_global;
+    vitte_ir_global_t *last_global;
+    size_t global_count;
     vitte_ir_function_t *first_function;
     vitte_ir_function_t *last_function;
     size_t function_count;
@@ -152,6 +171,10 @@ typedef struct vitte_ir_lowering {
     vitte_ir_t *ir;
     vitte_ir_builder_t builder;
     size_t max_depth;
+    vitte_ir_local_binding_t *locals;
+    vitte_ir_function_binding_t *functions;
+    vitte_ir_global_binding_t *globals;
+    vitte_ir_scope_marker_t *scopes;
     vitte_error_t last_error;
 } vitte_ir_lowering_t;
 
@@ -175,6 +198,8 @@ vitte_ir_type_t *vitte_ir_type_from_hir(vitte_ir_t *ir, const vitte_hir_node_t *
 
 void vitte_ir_builder_init(vitte_ir_builder_t *builder, vitte_ir_t *ir);
 vitte_ir_module_t *vitte_ir_make_module(vitte_ir_builder_t *builder, const char *name);
+vitte_ir_global_t *vitte_ir_make_global(vitte_ir_builder_t *builder, const char *name, vitte_ir_type_t *type, const vitte_hir_node_t *source);
+bool vitte_ir_module_add_global(vitte_ir_module_t *module, vitte_ir_global_t *global);
 vitte_ir_function_t *vitte_ir_make_function(vitte_ir_builder_t *builder, const char *name, vitte_ir_type_t *return_type, const vitte_hir_node_t *source);
 bool vitte_ir_module_add_function(vitte_ir_module_t *module, vitte_ir_function_t *function);
 vitte_ir_block_t *vitte_ir_make_block(vitte_ir_builder_t *builder, const char *name, const vitte_hir_node_t *source);
