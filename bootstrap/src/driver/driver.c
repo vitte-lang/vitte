@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "../codegen/codegen.h"
+#include "../parser/parser.h"
 
 static void vitte_driver_set_error(
     vitte_driver_t *driver,
@@ -437,88 +438,45 @@ static bool vitte_driver_source_is_blank(const char *source, size_t size) {
     return true;
 }
 
-static int vitte_driver_extract_return_value(const char *source, size_t size) {
-    size_t index;
-
-    if (source == NULL) {
-        return 0;
-    }
-    for (index = 0u; index < size; index++) {
-        if (isdigit((unsigned char)source[index]) ||
-            ((source[index] == '-' || source[index] == '+') &&
-                index + 1u < size &&
-                isdigit((unsigned char)source[index + 1u]))) {
-            return (int)strtol(&source[index], NULL, 10);
-        }
-    }
-    return 0;
-}
-
-static vitte_ast_span_t vitte_driver_full_span(const vitte_driver_input_t *input) {
-    vitte_ast_span_t span;
-
-    vitte_ast_span_init(&span);
-    span.source_name = input != NULL && input->source_name != NULL ? input->source_name : "<memory>";
-    span.start_offset = 0u;
-    span.end_offset = input != NULL ? input->size : 0u;
-    span.start_line = 1u;
-    span.start_column = 1u;
-    span.end_line = 1u;
-    span.end_column = input != NULL ? (unsigned)(input->size + 1u) : 1u;
-    span.valid = true;
-    return span;
-}
-
-static const char *vitte_driver_module_name(const vitte_driver_t *driver, const vitte_driver_input_t *input) {
-    if (driver != NULL && driver->config.paths.input_path != NULL) {
-        return driver->config.paths.input_path;
-    }
-    if (input != NULL && input->source_name != NULL) {
-        return input->source_name;
-    }
-    return "main";
-}
-
-static vitte_status_t vitte_driver_build_minimal_ast(
+static vitte_status_t vitte_driver_parse_ast(
     vitte_driver_t *driver,
     const vitte_driver_input_t *input,
     vitte_ast_t *ast
 ) {
-    vitte_ast_builder_t builder;
-    vitte_ast_span_t span;
-    vitte_ast_module_t *module;
-    vitte_ast_type_ref_t *int_type;
-    vitte_ast_stmt_t *body;
-    vitte_ast_expr_t *value;
-    vitte_ast_stmt_t *give;
-    vitte_ast_decl_t *main_decl;
-    int return_value;
+    vitte_parser_t parser;
+    vitte_parser_options_t parser_options;
+    vitte_parser_result_t parser_result;
+    vitte_status_t status;
 
     if (driver == NULL || input == NULL || ast == NULL) {
         return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
     }
 
-    span = vitte_driver_full_span(input);
-    vitte_ast_builder_init(&builder, ast);
-    module = vitte_ast_make_module(&builder, vitte_driver_module_name(driver, input), span);
-    int_type = vitte_ast_make_type_name(&builder, "int", span);
-    body = vitte_ast_make_block_stmt(&builder, span);
-    return_value = vitte_driver_extract_return_value(input->buffer, input->size);
-    value = vitte_ast_make_integer_literal(&builder, return_value, span);
-    give = vitte_ast_make_give_stmt(&builder, value, span);
-    main_decl = vitte_ast_make_proc_decl(&builder, "main", int_type, body, span);
+    vitte_parser_options_init(&parser_options);
+    parser_options.max_depth = driver->config.limits.max_ast_depth;
+    parser_options.recover_errors = true;
+    vitte_parser_result_init(&parser_result);
+    status = vitte_parser_init(
+        &parser,
+        ast,
+        input->source_name != NULL ? input->source_name : "<memory>",
+        input->buffer,
+        input->size,
+        &parser_options,
+        &driver->diagnostics
+    );
+    if (status != VITTE_STATUS_OK) {
+        vitte_error_copy(&driver->last_error, vitte_parser_last_error(&parser));
+        return status;
+    }
 
-    if (module == NULL || int_type == NULL || body == NULL || value == NULL || give == NULL || main_decl == NULL) {
-        vitte_driver_add_diag(driver, VITTE_DIAGNOSTIC_FATAL, "VITTE_DRIVER_E_AST", "failed to allocate bootstrap AST", NULL);
-        vitte_error_copy(&driver->last_error, vitte_ast_last_error(ast));
-        return VITTE_STATUS_ERROR_OUT_OF_MEMORY;
+    status = vitte_parser_parse_module(&parser, &parser_result);
+    if (status != VITTE_STATUS_OK) {
+        vitte_error_copy(&driver->last_error, &parser_result.last_error);
+        vitte_parser_destroy(&parser);
+        return status;
     }
-    if (!vitte_ast_block_add_stmt(body, give) || !vitte_ast_module_add_decl(module, main_decl)) {
-        vitte_driver_set_error(driver, VITTE_STATUS_ERROR_INTERNAL, "VITTE_DRIVER_E_AST", "failed to link bootstrap AST nodes", NULL);
-        vitte_driver_add_diag(driver, VITTE_DIAGNOSTIC_FATAL, "VITTE_DRIVER_E_AST", "failed to link bootstrap AST nodes", NULL);
-        return VITTE_STATUS_ERROR_INTERNAL;
-    }
-    ast->root = module;
+    vitte_parser_destroy(&parser);
     return VITTE_STATUS_OK;
 }
 
@@ -757,9 +715,6 @@ static vitte_status_t vitte_driver_run_impl(
         return status;
     }
     vitte_driver_pipeline_mark(&driver->pipeline, VITTE_DRIVER_STAGE_LOAD_CONFIG, VITTE_STATUS_OK);
-    vitte_driver_pipeline_mark(&driver->pipeline, VITTE_DRIVER_STAGE_LEX, VITTE_STATUS_OK);
-    vitte_driver_pipeline_mark(&driver->pipeline, VITTE_DRIVER_STAGE_PARSE, VITTE_STATUS_OK);
-
     status = vitte_ast_init_owned(&ast, NULL);
     if (status != VITTE_STATUS_OK) {
         vitte_driver_pipeline_mark(&driver->pipeline, VITTE_DRIVER_STAGE_BUILD_AST, status);
@@ -770,14 +725,18 @@ static vitte_status_t vitte_driver_run_impl(
     }
     ast_initialized = true;
 
-    status = vitte_driver_build_minimal_ast(driver, input, &ast);
+    status = vitte_driver_parse_ast(driver, input, &ast);
     if (status != VITTE_STATUS_OK) {
+        vitte_driver_pipeline_mark(&driver->pipeline, VITTE_DRIVER_STAGE_LEX, status);
+        vitte_driver_pipeline_mark(&driver->pipeline, VITTE_DRIVER_STAGE_PARSE, status);
         vitte_driver_pipeline_mark(&driver->pipeline, VITTE_DRIVER_STAGE_BUILD_AST, status);
-        vitte_driver_result_set_error(result, status, VITTE_DRIVER_STAGE_BUILD_AST, "VITTE_DRIVER_E_AST", "failed to build AST", NULL);
+        vitte_driver_result_set_error(result, status, VITTE_DRIVER_STAGE_PARSE, "VITTE_DRIVER_E_PARSE", "failed to parse source", NULL);
         vitte_ast_destroy(&ast);
         vitte_driver_update_counts(driver, result);
         return status;
     }
+    vitte_driver_pipeline_mark(&driver->pipeline, VITTE_DRIVER_STAGE_LEX, VITTE_STATUS_OK);
+    vitte_driver_pipeline_mark(&driver->pipeline, VITTE_DRIVER_STAGE_PARSE, VITTE_STATUS_OK);
     vitte_driver_pipeline_mark(&driver->pipeline, VITTE_DRIVER_STAGE_BUILD_AST, VITTE_STATUS_OK);
 
     status = vitte_ast_validate(&ast);
