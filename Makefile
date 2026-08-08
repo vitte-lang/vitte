@@ -636,6 +636,16 @@ bootstrap-trust-tests:
 bootstrap-chain:
 	@python3 tools/bootstrap_real/bootstrap_chain.py --offline
 
+.PHONY: bootstrap-c17 bootstrap-binary bootstrap-c17-smoke
+bootstrap-c17:
+	@$(MAKE) --no-print-directory -C bootstrap all
+
+bootstrap-binary: bootstrap-c17
+	@$(MAKE) --no-print-directory -C bootstrap install
+
+bootstrap-c17-smoke: bootstrap-binary
+	@$(MAKE) --no-print-directory -C bootstrap smoke
+
 bootstrap-seed-root-check: bootstrap-trust-root
 	@echo "[bootstrap-seed-root-check] signed per-platform stage0 verified"
 
