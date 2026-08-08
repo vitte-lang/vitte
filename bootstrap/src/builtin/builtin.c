@@ -3,20 +3,36 @@
 #include <string.h>
 
 static const vitte_builtin_type_t VITTE_BUILTIN_TYPES[] = {
-    {"void", VITTE_BUILTIN_TYPE_VOID, 0u, 0u, false, false, false, false, false},
-    {"bool", VITTE_BUILTIN_TYPE_BOOL, 1u, 1u, false, true, false, false, false},
-    {"int", VITTE_BUILTIN_TYPE_INT, 4u, 4u, true, false, false, false, false},
-    {"i64", VITTE_BUILTIN_TYPE_I64, 8u, 8u, true, false, false, false, false},
-    {"string", VITTE_BUILTIN_TYPE_STRING, sizeof(const char *), _Alignof(const char *), false, false, true, false, false},
-    {"never", VITTE_BUILTIN_TYPE_NEVER, 0u, 0u, false, false, false, true, false},
-    {"error", VITTE_BUILTIN_TYPE_ERROR, 0u, 0u, false, false, false, false, true}
+    {"void", VITTE_BUILTIN_TYPE_VOID, 0u, 0u, false, false, false, false, false, false, false, false},
+    {"bool", VITTE_BUILTIN_TYPE_BOOL, 1u, 1u, false, false, false, false, true, false, false, false},
+    {"u8", VITTE_BUILTIN_TYPE_U8, 1u, 1u, true, true, false, true, false, false, false, false},
+    {"u32", VITTE_BUILTIN_TYPE_U32, 4u, 4u, true, true, false, true, false, false, false, false},
+    {"u64", VITTE_BUILTIN_TYPE_U64, 8u, 8u, true, true, false, true, false, false, false, false},
+    {"usize", VITTE_BUILTIN_TYPE_USIZE, sizeof(size_t), _Alignof(size_t), true, true, false, true, false, false, false, false},
+    {"int", VITTE_BUILTIN_TYPE_INT, 4u, 4u, true, true, false, false, false, false, false, false},
+    {"i64", VITTE_BUILTIN_TYPE_I64, 8u, 8u, true, true, false, false, false, false, false, false},
+    {"f32", VITTE_BUILTIN_TYPE_F32, 4u, 4u, true, false, true, false, false, false, false, false},
+    {"f64", VITTE_BUILTIN_TYPE_F64, 8u, 8u, true, false, true, false, false, false, false, false},
+    {"string", VITTE_BUILTIN_TYPE_STRING, sizeof(const char *), _Alignof(const char *), false, false, false, false, false, true, false, false},
+    {"never", VITTE_BUILTIN_TYPE_NEVER, 0u, 0u, false, false, false, false, false, false, true, false},
+    {"error", VITTE_BUILTIN_TYPE_ERROR, 0u, 0u, false, false, false, false, false, false, false, true}
+};
+
+static const vitte_builtin_constant_t VITTE_BUILTIN_CONSTANTS[] = {
+    {"true", VITTE_BUILTIN_TYPE_BOOL, true, 1, NULL},
+    {"false", VITTE_BUILTIN_TYPE_BOOL, false, 0, NULL}
 };
 
 static const vitte_builtin_function_t VITTE_BUILTIN_FUNCTIONS[] = {
     {"print", VITTE_BUILTIN_TYPE_VOID, VITTE_BUILTIN_TYPE_STRING, 1u, 1u, false, false, false},
     {"println", VITTE_BUILTIN_TYPE_VOID, VITTE_BUILTIN_TYPE_STRING, 1u, 1u, false, false, false},
+    {"eprint", VITTE_BUILTIN_TYPE_VOID, VITTE_BUILTIN_TYPE_STRING, 1u, 1u, false, false, false},
+    {"eprintln", VITTE_BUILTIN_TYPE_VOID, VITTE_BUILTIN_TYPE_STRING, 1u, 1u, false, false, false},
     {"panic", VITTE_BUILTIN_TYPE_NEVER, VITTE_BUILTIN_TYPE_STRING, 1u, 1u, false, false, true},
-    {"assert", VITTE_BUILTIN_TYPE_VOID, VITTE_BUILTIN_TYPE_BOOL, 1u, 1u, false, false, false}
+    {"assert", VITTE_BUILTIN_TYPE_VOID, VITTE_BUILTIN_TYPE_BOOL, 1u, 1u, false, false, false},
+    {"len", VITTE_BUILTIN_TYPE_USIZE, VITTE_BUILTIN_TYPE_STRING, 1u, 1u, false, true, false},
+    {"to_string", VITTE_BUILTIN_TYPE_STRING, VITTE_BUILTIN_TYPE_INT, 1u, 1u, false, true, false},
+    {"type_name", VITTE_BUILTIN_TYPE_STRING, VITTE_BUILTIN_TYPE_ERROR, 1u, 1u, false, true, false}
 };
 
 static const vitte_builtin_operator_t VITTE_BUILTIN_OPERATORS[] = {
@@ -24,16 +40,24 @@ static const vitte_builtin_operator_t VITTE_BUILTIN_OPERATORS[] = {
     {"-", VITTE_BUILTIN_OPERATOR_BINARY, VITTE_BUILTIN_TYPE_CLASS_NUMERIC, VITTE_BUILTIN_TYPE_ERROR, 60u, VITTE_BUILTIN_ASSOC_LEFT},
     {"*", VITTE_BUILTIN_OPERATOR_BINARY, VITTE_BUILTIN_TYPE_CLASS_NUMERIC, VITTE_BUILTIN_TYPE_ERROR, 70u, VITTE_BUILTIN_ASSOC_LEFT},
     {"/", VITTE_BUILTIN_OPERATOR_BINARY, VITTE_BUILTIN_TYPE_CLASS_NUMERIC, VITTE_BUILTIN_TYPE_ERROR, 70u, VITTE_BUILTIN_ASSOC_LEFT},
-    {"%", VITTE_BUILTIN_OPERATOR_BINARY, VITTE_BUILTIN_TYPE_CLASS_NUMERIC, VITTE_BUILTIN_TYPE_ERROR, 70u, VITTE_BUILTIN_ASSOC_LEFT},
-    {"==", VITTE_BUILTIN_OPERATOR_BINARY, VITTE_BUILTIN_TYPE_CLASS_ANY, VITTE_BUILTIN_TYPE_BOOL, 40u, VITTE_BUILTIN_ASSOC_LEFT},
-    {"!=", VITTE_BUILTIN_OPERATOR_BINARY, VITTE_BUILTIN_TYPE_CLASS_ANY, VITTE_BUILTIN_TYPE_BOOL, 40u, VITTE_BUILTIN_ASSOC_LEFT},
-    {"<", VITTE_BUILTIN_OPERATOR_BINARY, VITTE_BUILTIN_TYPE_CLASS_NUMERIC, VITTE_BUILTIN_TYPE_BOOL, 50u, VITTE_BUILTIN_ASSOC_LEFT},
-    {"<=", VITTE_BUILTIN_OPERATOR_BINARY, VITTE_BUILTIN_TYPE_CLASS_NUMERIC, VITTE_BUILTIN_TYPE_BOOL, 50u, VITTE_BUILTIN_ASSOC_LEFT},
-    {">", VITTE_BUILTIN_OPERATOR_BINARY, VITTE_BUILTIN_TYPE_CLASS_NUMERIC, VITTE_BUILTIN_TYPE_BOOL, 50u, VITTE_BUILTIN_ASSOC_LEFT},
-    {">=", VITTE_BUILTIN_OPERATOR_BINARY, VITTE_BUILTIN_TYPE_CLASS_NUMERIC, VITTE_BUILTIN_TYPE_BOOL, 50u, VITTE_BUILTIN_ASSOC_LEFT},
+    {"%", VITTE_BUILTIN_OPERATOR_BINARY, VITTE_BUILTIN_TYPE_CLASS_INTEGER, VITTE_BUILTIN_TYPE_ERROR, 70u, VITTE_BUILTIN_ASSOC_LEFT},
+    {"&", VITTE_BUILTIN_OPERATOR_BINARY, VITTE_BUILTIN_TYPE_CLASS_INTEGER, VITTE_BUILTIN_TYPE_ERROR, 55u, VITTE_BUILTIN_ASSOC_LEFT},
+    {"|", VITTE_BUILTIN_OPERATOR_BINARY, VITTE_BUILTIN_TYPE_CLASS_INTEGER, VITTE_BUILTIN_TYPE_ERROR, 45u, VITTE_BUILTIN_ASSOC_LEFT},
+    {"^", VITTE_BUILTIN_OPERATOR_BINARY, VITTE_BUILTIN_TYPE_CLASS_INTEGER, VITTE_BUILTIN_TYPE_ERROR, 50u, VITTE_BUILTIN_ASSOC_LEFT},
+    {"<<", VITTE_BUILTIN_OPERATOR_BINARY, VITTE_BUILTIN_TYPE_CLASS_INTEGER, VITTE_BUILTIN_TYPE_ERROR, 58u, VITTE_BUILTIN_ASSOC_LEFT},
+    {">>", VITTE_BUILTIN_OPERATOR_BINARY, VITTE_BUILTIN_TYPE_CLASS_INTEGER, VITTE_BUILTIN_TYPE_ERROR, 58u, VITTE_BUILTIN_ASSOC_LEFT},
+    {"==", VITTE_BUILTIN_OPERATOR_BINARY, VITTE_BUILTIN_TYPE_CLASS_EQUALITY, VITTE_BUILTIN_TYPE_BOOL, 40u, VITTE_BUILTIN_ASSOC_LEFT},
+    {"!=", VITTE_BUILTIN_OPERATOR_BINARY, VITTE_BUILTIN_TYPE_CLASS_EQUALITY, VITTE_BUILTIN_TYPE_BOOL, 40u, VITTE_BUILTIN_ASSOC_LEFT},
+    {"<", VITTE_BUILTIN_OPERATOR_BINARY, VITTE_BUILTIN_TYPE_CLASS_ORDERED, VITTE_BUILTIN_TYPE_BOOL, 50u, VITTE_BUILTIN_ASSOC_LEFT},
+    {"<=", VITTE_BUILTIN_OPERATOR_BINARY, VITTE_BUILTIN_TYPE_CLASS_ORDERED, VITTE_BUILTIN_TYPE_BOOL, 50u, VITTE_BUILTIN_ASSOC_LEFT},
+    {">", VITTE_BUILTIN_OPERATOR_BINARY, VITTE_BUILTIN_TYPE_CLASS_ORDERED, VITTE_BUILTIN_TYPE_BOOL, 50u, VITTE_BUILTIN_ASSOC_LEFT},
+    {">=", VITTE_BUILTIN_OPERATOR_BINARY, VITTE_BUILTIN_TYPE_CLASS_ORDERED, VITTE_BUILTIN_TYPE_BOOL, 50u, VITTE_BUILTIN_ASSOC_LEFT},
     {"&&", VITTE_BUILTIN_OPERATOR_BINARY, VITTE_BUILTIN_TYPE_CLASS_BOOLEAN, VITTE_BUILTIN_TYPE_BOOL, 30u, VITTE_BUILTIN_ASSOC_LEFT},
     {"||", VITTE_BUILTIN_OPERATOR_BINARY, VITTE_BUILTIN_TYPE_CLASS_BOOLEAN, VITTE_BUILTIN_TYPE_BOOL, 20u, VITTE_BUILTIN_ASSOC_LEFT},
-    {"!", VITTE_BUILTIN_OPERATOR_UNARY, VITTE_BUILTIN_TYPE_CLASS_BOOLEAN, VITTE_BUILTIN_TYPE_BOOL, 80u, VITTE_BUILTIN_ASSOC_RIGHT}
+    {"!", VITTE_BUILTIN_OPERATOR_UNARY, VITTE_BUILTIN_TYPE_CLASS_BOOLEAN, VITTE_BUILTIN_TYPE_BOOL, 80u, VITTE_BUILTIN_ASSOC_RIGHT},
+    {"-", VITTE_BUILTIN_OPERATOR_UNARY, VITTE_BUILTIN_TYPE_CLASS_NUMERIC, VITTE_BUILTIN_TYPE_ERROR, 80u, VITTE_BUILTIN_ASSOC_RIGHT},
+    {"+", VITTE_BUILTIN_OPERATOR_UNARY, VITTE_BUILTIN_TYPE_CLASS_NUMERIC, VITTE_BUILTIN_TYPE_ERROR, 80u, VITTE_BUILTIN_ASSOC_RIGHT},
+    {"~", VITTE_BUILTIN_OPERATOR_UNARY, VITTE_BUILTIN_TYPE_CLASS_INTEGER, VITTE_BUILTIN_TYPE_ERROR, 80u, VITTE_BUILTIN_ASSOC_RIGHT}
 };
 
 static void vitte_builtin_set_error(
@@ -61,6 +85,8 @@ void vitte_builtin_registry_init(vitte_builtin_registry_t *registry) {
     registry->initialized = true;
     registry->types = VITTE_BUILTIN_TYPES;
     registry->type_count = sizeof(VITTE_BUILTIN_TYPES) / sizeof(VITTE_BUILTIN_TYPES[0]);
+    registry->constants = VITTE_BUILTIN_CONSTANTS;
+    registry->constant_count = sizeof(VITTE_BUILTIN_CONSTANTS) / sizeof(VITTE_BUILTIN_CONSTANTS[0]);
     registry->functions = VITTE_BUILTIN_FUNCTIONS;
     registry->function_count = sizeof(VITTE_BUILTIN_FUNCTIONS) / sizeof(VITTE_BUILTIN_FUNCTIONS[0]);
     registry->operators = VITTE_BUILTIN_OPERATORS;
@@ -80,6 +106,7 @@ bool vitte_builtin_registry_is_initialized(const vitte_builtin_registry_t *regis
     return registry != NULL &&
         registry->initialized &&
         registry->types != NULL &&
+        registry->constants != NULL &&
         registry->functions != NULL &&
         registry->operators != NULL;
 }
@@ -98,10 +125,18 @@ static bool vitte_builtin_type_class_accepts(vitte_builtin_type_class_t type_cla
             return vitte_builtin_type_kind_is_valid(kind) && kind != VITTE_BUILTIN_TYPE_VOID && kind != VITTE_BUILTIN_TYPE_NEVER && kind != VITTE_BUILTIN_TYPE_ERROR;
         case VITTE_BUILTIN_TYPE_CLASS_NUMERIC:
             return vitte_builtin_type_is_numeric(kind);
+        case VITTE_BUILTIN_TYPE_CLASS_INTEGER:
+            return vitte_builtin_type_is_integer(kind);
+        case VITTE_BUILTIN_TYPE_CLASS_FLOAT:
+            return vitte_builtin_type_is_float(kind);
         case VITTE_BUILTIN_TYPE_CLASS_BOOLEAN:
             return vitte_builtin_type_is_boolean(kind);
         case VITTE_BUILTIN_TYPE_CLASS_TEXTUAL:
-            return kind == VITTE_BUILTIN_TYPE_STRING;
+            return vitte_builtin_type_is_textual(kind);
+        case VITTE_BUILTIN_TYPE_CLASS_ORDERED:
+            return vitte_builtin_type_is_numeric(kind) || vitte_builtin_type_is_textual(kind);
+        case VITTE_BUILTIN_TYPE_CLASS_EQUALITY:
+            return vitte_builtin_type_kind_is_valid(kind) && kind != VITTE_BUILTIN_TYPE_VOID && kind != VITTE_BUILTIN_TYPE_NEVER && kind != VITTE_BUILTIN_TYPE_ERROR;
         default:
             return false;
     }
@@ -129,6 +164,21 @@ vitte_status_t vitte_builtin_registry_validate(vitte_builtin_registry_t *registr
         for (other = index + 1u; other < registry->type_count; other++) {
             if (type->kind == registry->types[other].kind || strcmp(type->name, registry->types[other].name) == 0) {
                 vitte_builtin_set_error(registry, VITTE_STATUS_ERROR_INTERNAL, "VITTE_BUILTIN_E_DUPLICATE", "duplicate builtin type", type->name);
+                return VITTE_STATUS_ERROR_INTERNAL;
+            }
+        }
+    }
+
+    for (index = 0u; index < registry->constant_count; index++) {
+        const vitte_builtin_constant_t *constant = &registry->constants[index];
+        if (!vitte_builtin_name_is_valid(constant->name) ||
+            !vitte_builtin_type_kind_is_valid(constant->type)) {
+            vitte_builtin_set_error(registry, VITTE_STATUS_ERROR_INTERNAL, "VITTE_BUILTIN_E_CONSTANT", "invalid builtin constant entry", constant->name);
+            return VITTE_STATUS_ERROR_INTERNAL;
+        }
+        for (other = index + 1u; other < registry->constant_count; other++) {
+            if (strcmp(constant->name, registry->constants[other].name) == 0) {
+                vitte_builtin_set_error(registry, VITTE_STATUS_ERROR_INTERNAL, "VITTE_BUILTIN_E_DUPLICATE", "duplicate builtin constant", constant->name);
                 return VITTE_STATUS_ERROR_INTERNAL;
             }
         }
@@ -169,6 +219,10 @@ size_t vitte_builtin_type_count(const vitte_builtin_registry_t *registry) {
     return vitte_builtin_registry_is_initialized(registry) ? registry->type_count : 0u;
 }
 
+size_t vitte_builtin_constant_count(const vitte_builtin_registry_t *registry) {
+    return vitte_builtin_registry_is_initialized(registry) ? registry->constant_count : 0u;
+}
+
 size_t vitte_builtin_function_count(const vitte_builtin_registry_t *registry) {
     return vitte_builtin_registry_is_initialized(registry) ? registry->function_count : 0u;
 }
@@ -179,6 +233,10 @@ size_t vitte_builtin_operator_count(const vitte_builtin_registry_t *registry) {
 
 const vitte_builtin_type_t *vitte_builtin_type_at(const vitte_builtin_registry_t *registry, size_t index) {
     return vitte_builtin_registry_is_initialized(registry) && index < registry->type_count ? &registry->types[index] : NULL;
+}
+
+const vitte_builtin_constant_t *vitte_builtin_constant_at(const vitte_builtin_registry_t *registry, size_t index) {
+    return vitte_builtin_registry_is_initialized(registry) && index < registry->constant_count ? &registry->constants[index] : NULL;
 }
 
 const vitte_builtin_function_t *vitte_builtin_function_at(const vitte_builtin_registry_t *registry, size_t index) {
@@ -205,6 +263,25 @@ const vitte_builtin_type_t *vitte_builtin_lookup_type(vitte_builtin_registry_t *
     }
 
     vitte_builtin_set_error(registry, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_BUILTIN_E_NOT_FOUND", "builtin type not found", name);
+    return NULL;
+}
+
+const vitte_builtin_constant_t *vitte_builtin_lookup_constant(vitte_builtin_registry_t *registry, const char *name) {
+    size_t index;
+
+    if (!vitte_builtin_registry_is_initialized(registry) || !vitte_builtin_name_is_valid(name)) {
+        vitte_builtin_set_error(registry, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_BUILTIN_E_ARGUMENT", "invalid builtin constant lookup", name);
+        return NULL;
+    }
+
+    for (index = 0u; index < registry->constant_count; index++) {
+        if (strcmp(registry->constants[index].name, name) == 0) {
+            vitte_error_reset(&registry->last_error);
+            return &registry->constants[index];
+        }
+    }
+
+    vitte_builtin_set_error(registry, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_BUILTIN_E_NOT_FOUND", "builtin constant not found", name);
     return NULL;
 }
 
@@ -253,6 +330,7 @@ const vitte_builtin_operator_t *vitte_builtin_lookup_operator(
 vitte_builtin_lookup_result_t vitte_builtin_lookup(vitte_builtin_registry_t *registry, const char *name) {
     vitte_builtin_lookup_result_t result;
     const vitte_builtin_type_t *type;
+    const vitte_builtin_constant_t *constant;
     const vitte_builtin_function_t *function;
 
     memset(&result, 0, sizeof(result));
@@ -264,6 +342,15 @@ vitte_builtin_lookup_result_t vitte_builtin_lookup(vitte_builtin_registry_t *reg
         result.symbol.kind = VITTE_BUILTIN_KIND_TYPE;
         result.symbol.name = type->name;
         result.symbol.as.type = type;
+        return result;
+    }
+
+    constant = vitte_builtin_lookup_constant(registry, name);
+    if (constant != NULL) {
+        result.status = VITTE_STATUS_OK;
+        result.symbol.kind = VITTE_BUILTIN_KIND_CONSTANT;
+        result.symbol.name = constant->name;
+        result.symbol.as.constant = constant;
         return result;
     }
 
@@ -284,6 +371,8 @@ const char *vitte_builtin_kind_name(vitte_builtin_kind_t kind) {
     switch (kind) {
         case VITTE_BUILTIN_KIND_TYPE:
             return "type";
+        case VITTE_BUILTIN_KIND_CONSTANT:
+            return "constant";
         case VITTE_BUILTIN_KIND_FUNCTION:
             return "function";
         case VITTE_BUILTIN_KIND_OPERATOR:
@@ -299,10 +388,22 @@ const char *vitte_builtin_type_kind_name(vitte_builtin_type_kind_t kind) {
             return "void";
         case VITTE_BUILTIN_TYPE_BOOL:
             return "bool";
+        case VITTE_BUILTIN_TYPE_U8:
+            return "u8";
+        case VITTE_BUILTIN_TYPE_U32:
+            return "u32";
+        case VITTE_BUILTIN_TYPE_U64:
+            return "u64";
+        case VITTE_BUILTIN_TYPE_USIZE:
+            return "usize";
         case VITTE_BUILTIN_TYPE_INT:
             return "int";
         case VITTE_BUILTIN_TYPE_I64:
             return "i64";
+        case VITTE_BUILTIN_TYPE_F32:
+            return "f32";
+        case VITTE_BUILTIN_TYPE_F64:
+            return "f64";
         case VITTE_BUILTIN_TYPE_STRING:
             return "string";
         case VITTE_BUILTIN_TYPE_NEVER:
@@ -335,11 +436,35 @@ const vitte_builtin_type_t *vitte_builtin_type_by_kind(vitte_builtin_registry_t 
 }
 
 bool vitte_builtin_type_is_numeric(vitte_builtin_type_kind_t kind) {
-    return kind == VITTE_BUILTIN_TYPE_INT || kind == VITTE_BUILTIN_TYPE_I64;
+    return vitte_builtin_type_is_integer(kind) || vitte_builtin_type_is_float(kind);
+}
+
+bool vitte_builtin_type_is_integer(vitte_builtin_type_kind_t kind) {
+    return kind == VITTE_BUILTIN_TYPE_U8 ||
+        kind == VITTE_BUILTIN_TYPE_U32 ||
+        kind == VITTE_BUILTIN_TYPE_U64 ||
+        kind == VITTE_BUILTIN_TYPE_USIZE ||
+        kind == VITTE_BUILTIN_TYPE_INT ||
+        kind == VITTE_BUILTIN_TYPE_I64;
+}
+
+bool vitte_builtin_type_is_float(vitte_builtin_type_kind_t kind) {
+    return kind == VITTE_BUILTIN_TYPE_F32 || kind == VITTE_BUILTIN_TYPE_F64;
+}
+
+bool vitte_builtin_type_is_unsigned_integer(vitte_builtin_type_kind_t kind) {
+    return kind == VITTE_BUILTIN_TYPE_U8 ||
+        kind == VITTE_BUILTIN_TYPE_U32 ||
+        kind == VITTE_BUILTIN_TYPE_U64 ||
+        kind == VITTE_BUILTIN_TYPE_USIZE;
 }
 
 bool vitte_builtin_type_is_boolean(vitte_builtin_type_kind_t kind) {
     return kind == VITTE_BUILTIN_TYPE_BOOL;
+}
+
+bool vitte_builtin_type_is_textual(vitte_builtin_type_kind_t kind) {
+    return kind == VITTE_BUILTIN_TYPE_STRING;
 }
 
 bool vitte_builtin_function_accepts_arity(const vitte_builtin_function_t *function, size_t arity) {
@@ -370,6 +495,28 @@ bool vitte_builtin_operator_accepts(
         left != right) {
         return false;
     }
+    if ((operator_info->operand_class == VITTE_BUILTIN_TYPE_CLASS_NUMERIC ||
+            operator_info->operand_class == VITTE_BUILTIN_TYPE_CLASS_INTEGER ||
+            operator_info->operand_class == VITTE_BUILTIN_TYPE_CLASS_FLOAT ||
+            operator_info->operand_class == VITTE_BUILTIN_TYPE_CLASS_ORDERED ||
+            operator_info->operand_class == VITTE_BUILTIN_TYPE_CLASS_EQUALITY) &&
+        left != right) {
+        return false;
+    }
     return vitte_builtin_type_class_accepts(operator_info->operand_class, left) &&
         vitte_builtin_type_class_accepts(operator_info->operand_class, right);
+}
+
+vitte_builtin_type_kind_t vitte_builtin_operator_result_type(
+    const vitte_builtin_operator_t *operator_info,
+    vitte_builtin_type_kind_t left,
+    vitte_builtin_type_kind_t right
+) {
+    if (!vitte_builtin_operator_accepts(operator_info, left, right)) {
+        return VITTE_BUILTIN_TYPE_ERROR;
+    }
+    if (operator_info->return_type != VITTE_BUILTIN_TYPE_ERROR) {
+        return operator_info->return_type;
+    }
+    return left;
 }

@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #include "../api/error.h"
 
@@ -12,6 +13,7 @@ extern "C" {
 
 typedef enum vitte_builtin_kind {
     VITTE_BUILTIN_KIND_TYPE = 0,
+    VITTE_BUILTIN_KIND_CONSTANT,
     VITTE_BUILTIN_KIND_FUNCTION,
     VITTE_BUILTIN_KIND_OPERATOR
 } vitte_builtin_kind_t;
@@ -19,8 +21,14 @@ typedef enum vitte_builtin_kind {
 typedef enum vitte_builtin_type_kind {
     VITTE_BUILTIN_TYPE_VOID = 0,
     VITTE_BUILTIN_TYPE_BOOL,
+    VITTE_BUILTIN_TYPE_U8,
+    VITTE_BUILTIN_TYPE_U32,
+    VITTE_BUILTIN_TYPE_U64,
+    VITTE_BUILTIN_TYPE_USIZE,
     VITTE_BUILTIN_TYPE_INT,
     VITTE_BUILTIN_TYPE_I64,
+    VITTE_BUILTIN_TYPE_F32,
+    VITTE_BUILTIN_TYPE_F64,
     VITTE_BUILTIN_TYPE_STRING,
     VITTE_BUILTIN_TYPE_NEVER,
     VITTE_BUILTIN_TYPE_ERROR,
@@ -41,8 +49,12 @@ typedef enum vitte_builtin_associativity {
 typedef enum vitte_builtin_type_class {
     VITTE_BUILTIN_TYPE_CLASS_ANY = 0,
     VITTE_BUILTIN_TYPE_CLASS_NUMERIC,
+    VITTE_BUILTIN_TYPE_CLASS_INTEGER,
+    VITTE_BUILTIN_TYPE_CLASS_FLOAT,
     VITTE_BUILTIN_TYPE_CLASS_BOOLEAN,
-    VITTE_BUILTIN_TYPE_CLASS_TEXTUAL
+    VITTE_BUILTIN_TYPE_CLASS_TEXTUAL,
+    VITTE_BUILTIN_TYPE_CLASS_ORDERED,
+    VITTE_BUILTIN_TYPE_CLASS_EQUALITY
 } vitte_builtin_type_class_t;
 
 typedef struct vitte_builtin_type {
@@ -51,11 +63,22 @@ typedef struct vitte_builtin_type {
     size_t size_hint;
     size_t align_hint;
     bool numeric;
+    bool integer;
+    bool floating;
+    bool unsigned_integer;
     bool boolean;
     bool textual;
     bool bottom;
     bool error;
 } vitte_builtin_type_t;
+
+typedef struct vitte_builtin_constant {
+    const char *name;
+    vitte_builtin_type_kind_t type;
+    bool bool_value;
+    int64_t int_value;
+    const char *text_value;
+} vitte_builtin_constant_t;
 
 typedef struct vitte_builtin_function {
     const char *name;
@@ -82,6 +105,7 @@ typedef struct vitte_builtin_symbol {
     const char *name;
     union {
         const vitte_builtin_type_t *type;
+        const vitte_builtin_constant_t *constant;
         const vitte_builtin_function_t *function;
         const vitte_builtin_operator_t *operator_info;
     } as;
@@ -96,6 +120,8 @@ typedef struct vitte_builtin_registry {
     bool initialized;
     const vitte_builtin_type_t *types;
     size_t type_count;
+    const vitte_builtin_constant_t *constants;
+    size_t constant_count;
     const vitte_builtin_function_t *functions;
     size_t function_count;
     const vitte_builtin_operator_t *operators;
@@ -110,14 +136,17 @@ const vitte_error_t *vitte_builtin_registry_last_error(const vitte_builtin_regis
 vitte_status_t vitte_builtin_registry_validate(vitte_builtin_registry_t *registry);
 
 size_t vitte_builtin_type_count(const vitte_builtin_registry_t *registry);
+size_t vitte_builtin_constant_count(const vitte_builtin_registry_t *registry);
 size_t vitte_builtin_function_count(const vitte_builtin_registry_t *registry);
 size_t vitte_builtin_operator_count(const vitte_builtin_registry_t *registry);
 
 const vitte_builtin_type_t *vitte_builtin_type_at(const vitte_builtin_registry_t *registry, size_t index);
+const vitte_builtin_constant_t *vitte_builtin_constant_at(const vitte_builtin_registry_t *registry, size_t index);
 const vitte_builtin_function_t *vitte_builtin_function_at(const vitte_builtin_registry_t *registry, size_t index);
 const vitte_builtin_operator_t *vitte_builtin_operator_at(const vitte_builtin_registry_t *registry, size_t index);
 
 const vitte_builtin_type_t *vitte_builtin_lookup_type(vitte_builtin_registry_t *registry, const char *name);
+const vitte_builtin_constant_t *vitte_builtin_lookup_constant(vitte_builtin_registry_t *registry, const char *name);
 const vitte_builtin_function_t *vitte_builtin_lookup_function(vitte_builtin_registry_t *registry, const char *name);
 const vitte_builtin_operator_t *vitte_builtin_lookup_operator(
     vitte_builtin_registry_t *registry,
@@ -132,9 +161,18 @@ const vitte_builtin_type_t *vitte_builtin_type_by_kind(vitte_builtin_registry_t 
 
 bool vitte_builtin_type_kind_is_valid(vitte_builtin_type_kind_t kind);
 bool vitte_builtin_type_is_numeric(vitte_builtin_type_kind_t kind);
+bool vitte_builtin_type_is_integer(vitte_builtin_type_kind_t kind);
+bool vitte_builtin_type_is_float(vitte_builtin_type_kind_t kind);
+bool vitte_builtin_type_is_unsigned_integer(vitte_builtin_type_kind_t kind);
 bool vitte_builtin_type_is_boolean(vitte_builtin_type_kind_t kind);
+bool vitte_builtin_type_is_textual(vitte_builtin_type_kind_t kind);
 bool vitte_builtin_function_accepts_arity(const vitte_builtin_function_t *function, size_t arity);
 bool vitte_builtin_operator_accepts(
+    const vitte_builtin_operator_t *operator_info,
+    vitte_builtin_type_kind_t left,
+    vitte_builtin_type_kind_t right
+);
+vitte_builtin_type_kind_t vitte_builtin_operator_result_type(
     const vitte_builtin_operator_t *operator_info,
     vitte_builtin_type_kind_t left,
     vitte_builtin_type_kind_t right
