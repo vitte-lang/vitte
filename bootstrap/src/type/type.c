@@ -1,5 +1,246 @@
-#include <stddef.h>
+#include "type.h"
 
-int vitte_bootstrap_src_type_type_c_translation_unit(void) {
-    return (int)sizeof("src/type/type.c");
+#include <string.h>
+
+static void vitte_type_registry_set_error(
+    vitte_type_registry_t *registry,
+    vitte_status_t status,
+    const char *code,
+    const char *message,
+    const char *details
+) {
+    if (registry != NULL) {
+        vitte_error_set_details(&registry->last_error, status, code, message, details);
+    }
+}
+
+void vitte_type_init_invalid(vitte_type_t *type) {
+    if (type == NULL) {
+        return;
+    }
+    memset(type, 0, sizeof(*type));
+    type->kind = VITTE_TYPE_KIND_INVALID;
+    type->builtin_kind = VITTE_BUILTIN_TYPE_ERROR;
+    type->error = true;
+}
+
+void vitte_type_init_proc(
+    vitte_type_t *type,
+    const char *name,
+    const vitte_type_t *return_type,
+    size_t arity,
+    bool variadic
+) {
+    if (type == NULL) {
+        return;
+    }
+    memset(type, 0, sizeof(*type));
+    type->kind = VITTE_TYPE_KIND_PROC;
+    type->name = name != NULL ? name : "<proc>";
+    type->builtin_kind = VITTE_BUILTIN_TYPE_ERROR;
+    type->return_type = return_type;
+    type->arity = arity;
+    type->variadic = variadic;
+    type->valid = true;
+}
+
+static void vitte_type_init_builtin(
+    vitte_type_t *type,
+    const vitte_builtin_type_t *builtin
+) {
+    if (type == NULL || builtin == NULL) {
+        return;
+    }
+    memset(type, 0, sizeof(*type));
+    type->kind = VITTE_TYPE_KIND_BUILTIN;
+    type->name = builtin->name;
+    type->builtin_kind = builtin->kind;
+    type->valid = true;
+    type->error = builtin->error;
+}
+
+vitte_status_t vitte_type_registry_init(vitte_type_registry_t *registry) {
+    size_t index;
+
+    if (registry == NULL) {
+        return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+    }
+
+    memset(registry, 0, sizeof(*registry));
+    vitte_error_init(&registry->last_error);
+    vitte_builtin_registry_init(&registry->builtins);
+    if (vitte_builtin_registry_validate(&registry->builtins) != VITTE_STATUS_OK) {
+        vitte_error_copy(&registry->last_error, vitte_builtin_registry_last_error(&registry->builtins));
+        return VITTE_STATUS_ERROR_INTERNAL;
+    }
+
+    for (index = 0u; index < VITTE_BUILTIN_TYPE_COUNT; index++) {
+        const vitte_builtin_type_t *builtin = vitte_builtin_type_by_kind(&registry->builtins, (vitte_builtin_type_kind_t)index);
+        if (builtin == NULL) {
+            vitte_error_copy(&registry->last_error, vitte_builtin_registry_last_error(&registry->builtins));
+            return VITTE_STATUS_ERROR_INTERNAL;
+        }
+        vitte_type_init_builtin(&registry->builtin_types[index], builtin);
+    }
+
+    registry->initialized = true;
+    return VITTE_STATUS_OK;
+}
+
+void vitte_type_registry_destroy(vitte_type_registry_t *registry) {
+    if (registry == NULL) {
+        return;
+    }
+    memset(registry, 0, sizeof(*registry));
+}
+
+bool vitte_type_registry_is_initialized(const vitte_type_registry_t *registry) {
+    return registry != NULL && registry->initialized;
+}
+
+const vitte_error_t *vitte_type_registry_last_error(const vitte_type_registry_t *registry) {
+    return registry != NULL ? &registry->last_error : vitte_error_last();
+}
+
+const vitte_type_t *vitte_type_builtin(
+    vitte_type_registry_t *registry,
+    vitte_builtin_type_kind_t kind
+) {
+    if (!vitte_type_registry_is_initialized(registry) || !vitte_builtin_type_kind_is_valid(kind)) {
+        vitte_type_registry_set_error(registry, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_TYPE_E_KIND", "invalid builtin type kind", NULL);
+        return NULL;
+    }
+    vitte_error_reset(&registry->last_error);
+    return &registry->builtin_types[kind];
+}
+
+const vitte_type_t *vitte_type_lookup(
+    vitte_type_registry_t *registry,
+    const char *name
+) {
+    const vitte_builtin_type_t *builtin;
+
+    if (!vitte_type_registry_is_initialized(registry) || name == NULL || name[0] == '\0') {
+        vitte_type_registry_set_error(registry, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_TYPE_E_LOOKUP", "invalid type lookup name", name);
+        return NULL;
+    }
+    builtin = vitte_builtin_lookup_type(&registry->builtins, name);
+    if (builtin == NULL) {
+        vitte_error_copy(&registry->last_error, vitte_builtin_registry_last_error(&registry->builtins));
+        return NULL;
+    }
+    vitte_error_reset(&registry->last_error);
+    return &registry->builtin_types[builtin->kind];
+}
+
+const vitte_type_t *vitte_type_from_ast(
+    vitte_type_registry_t *registry,
+    const vitte_ast_type_ref_t *type_ref
+) {
+    if (!vitte_type_registry_is_initialized(registry) || type_ref == NULL || type_ref->kind != VITTE_AST_NODE_TYPE_NAME || type_ref->as.type_name.name == NULL) {
+        vitte_type_registry_set_error(registry, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_TYPE_E_AST", "invalid AST type reference", NULL);
+        return NULL;
+    }
+    return vitte_type_lookup(registry, type_ref->as.type_name.name);
+}
+
+const char *vitte_type_kind_name(vitte_type_kind_t kind) {
+    switch (kind) {
+        case VITTE_TYPE_KIND_INVALID:
+            return "invalid";
+        case VITTE_TYPE_KIND_BUILTIN:
+            return "builtin";
+        case VITTE_TYPE_KIND_PROC:
+            return "proc";
+        default:
+            return "unknown";
+    }
+}
+
+const char *vitte_type_name(const vitte_type_t *type) {
+    if (type == NULL) {
+        return "<null>";
+    }
+    if (type->name != NULL) {
+        return type->name;
+    }
+    if (type->kind == VITTE_TYPE_KIND_BUILTIN) {
+        return vitte_builtin_type_kind_name(type->builtin_kind);
+    }
+    return "<type>";
+}
+
+bool vitte_type_is_valid(const vitte_type_t *type) {
+    return type != NULL && type->valid;
+}
+
+bool vitte_type_is_builtin(const vitte_type_t *type) {
+    return vitte_type_is_valid(type) && type->kind == VITTE_TYPE_KIND_BUILTIN;
+}
+
+bool vitte_type_is_proc(const vitte_type_t *type) {
+    return vitte_type_is_valid(type) && type->kind == VITTE_TYPE_KIND_PROC;
+}
+
+bool vitte_type_is_error(const vitte_type_t *type) {
+    return type == NULL ||
+        !type->valid ||
+        (type->kind == VITTE_TYPE_KIND_BUILTIN && type->builtin_kind == VITTE_BUILTIN_TYPE_ERROR) ||
+        type->error;
+}
+
+bool vitte_type_is_void(const vitte_type_t *type) {
+    return vitte_type_is_builtin(type) && type->builtin_kind == VITTE_BUILTIN_TYPE_VOID;
+}
+
+bool vitte_type_is_bool(const vitte_type_t *type) {
+    return vitte_type_is_builtin(type) && type->builtin_kind == VITTE_BUILTIN_TYPE_BOOL;
+}
+
+bool vitte_type_is_integer(const vitte_type_t *type) {
+    return vitte_type_is_builtin(type) && vitte_builtin_type_is_integer(type->builtin_kind);
+}
+
+bool vitte_type_is_numeric(const vitte_type_t *type) {
+    return vitte_type_is_builtin(type) && vitte_builtin_type_is_numeric(type->builtin_kind);
+}
+
+bool vitte_type_is_textual(const vitte_type_t *type) {
+    return vitte_type_is_builtin(type) && vitte_builtin_type_is_textual(type->builtin_kind);
+}
+
+bool vitte_type_equals(const vitte_type_t *left, const vitte_type_t *right) {
+    if (!vitte_type_is_valid(left) || !vitte_type_is_valid(right) || left->kind != right->kind) {
+        return false;
+    }
+    if (left->kind == VITTE_TYPE_KIND_BUILTIN) {
+        return left->builtin_kind == right->builtin_kind;
+    }
+    if (left->kind == VITTE_TYPE_KIND_PROC) {
+        return left->arity == right->arity &&
+            left->variadic == right->variadic &&
+            vitte_type_equals(left->return_type, right->return_type);
+    }
+    return false;
+}
+
+bool vitte_type_is_assignable(const vitte_type_t *destination, const vitte_type_t *source) {
+    if (!vitte_type_is_valid(destination) || !vitte_type_is_valid(source)) {
+        return false;
+    }
+    if (vitte_type_equals(destination, source)) {
+        return true;
+    }
+    if (vitte_type_is_integer(destination) && vitte_type_is_integer(source)) {
+        return true;
+    }
+    if (vitte_type_is_numeric(destination) && vitte_type_is_numeric(source) &&
+        destination->builtin_kind == source->builtin_kind) {
+        return true;
+    }
+    return false;
+}
+
+bool vitte_type_is_condition(const vitte_type_t *type) {
+    return vitte_type_is_bool(type) || vitte_type_is_integer(type);
 }

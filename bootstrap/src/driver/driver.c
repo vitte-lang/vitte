@@ -7,6 +7,7 @@
 
 #include "../codegen/codegen.h"
 #include "../parser/parser.h"
+#include "../sema/sema.h"
 
 static void vitte_driver_set_error(
     vitte_driver_t *driver,
@@ -586,6 +587,39 @@ static vitte_status_t vitte_driver_emit_c_impl(
     return VITTE_STATUS_OK;
 }
 
+static vitte_status_t vitte_driver_run_sema(
+    vitte_driver_t *driver,
+    const vitte_ast_t *ast
+) {
+    vitte_sema_t sema;
+    vitte_sema_options_t options;
+    vitte_sema_result_t result;
+    vitte_status_t status;
+
+    if (driver == NULL || ast == NULL) {
+        return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+    }
+
+    vitte_sema_options_init(&options);
+    options.max_depth = driver->config.limits.max_ast_depth;
+    options.enable_constant_folding = true;
+    vitte_sema_result_init(&result);
+    status = vitte_sema_init(&sema, &options, &driver->diagnostics);
+    if (status != VITTE_STATUS_OK) {
+        vitte_error_copy(&driver->last_error, vitte_sema_last_error(&sema));
+        return status;
+    }
+
+    status = vitte_sema_analyze(&sema, ast, &result);
+    if (status != VITTE_STATUS_OK) {
+        vitte_error_copy(&driver->last_error, &result.last_error);
+    } else {
+        vitte_error_reset(&driver->last_error);
+    }
+    vitte_sema_destroy(&sema);
+    return status;
+}
+
 static bool vitte_driver_append_text(char *buffer, size_t capacity, const char *text) {
     size_t used;
     size_t length;
@@ -749,6 +783,16 @@ static vitte_status_t vitte_driver_run_impl(
         return status;
     }
     vitte_driver_pipeline_mark(&driver->pipeline, VITTE_DRIVER_STAGE_VALIDATE_AST, VITTE_STATUS_OK);
+
+    status = vitte_driver_run_sema(driver, &ast);
+    if (status != VITTE_STATUS_OK) {
+        vitte_driver_pipeline_mark(&driver->pipeline, VITTE_DRIVER_STAGE_CONSTANTS, status);
+        vitte_driver_pipeline_mark(&driver->pipeline, VITTE_DRIVER_STAGE_SEMANTIC, status);
+        vitte_driver_result_set_error(result, status, VITTE_DRIVER_STAGE_SEMANTIC, "VITTE_DRIVER_E_SEMA", "semantic analysis failed", NULL);
+        vitte_ast_destroy(&ast);
+        vitte_driver_update_counts(driver, result);
+        return status;
+    }
     vitte_driver_pipeline_mark(&driver->pipeline, VITTE_DRIVER_STAGE_CONSTANTS, VITTE_STATUS_OK);
     vitte_driver_pipeline_mark(&driver->pipeline, VITTE_DRIVER_STAGE_SEMANTIC, VITTE_STATUS_OK);
 
