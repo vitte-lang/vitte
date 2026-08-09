@@ -234,6 +234,17 @@ static char *vitte_parser_decode_string(vitte_parser_t *parser, const vitte_toke
                 case '"':
                     decoded[write_index++] = '"';
                     break;
+                case 'u': {
+                    unsigned value0 = 0u;
+                    size_t digit;
+                    for (digit = 0u; digit < 4u && index + 1u < token->lexeme_length; digit++) {
+                        char hex = token->lexeme_start[++index];
+                        value0 <<= 4u;
+                        value0 += (unsigned)(hex >= '0' && hex <= '9' ? hex - '0' : hex >= 'a' && hex <= 'f' ? hex - 'a' + 10 : hex - 'A' + 10);
+                    }
+                    decoded[write_index++] = value0 <= 255u ? (char)value0 : '?';
+                    break;
+                }
                 default:
                     decoded[write_index++] = token->lexeme_start[index];
                     break;
@@ -652,6 +663,32 @@ static vitte_ast_type_ref_t *vitte_parser_parse_type_ref(vitte_parser_t *parser)
 
 static vitte_ast_expr_t *vitte_parser_parse_expr_impl(vitte_parser_t *parser);
 
+static vitte_ast_expr_t *vitte_parser_parse_conditional_expr(vitte_parser_t *parser, vitte_ast_span_t keyword_span) {
+    vitte_ast_expr_t *condition;
+    vitte_ast_expr_t *then_value;
+    vitte_ast_expr_t *else_value;
+    vitte_ast_span_t close_span;
+
+    parser->suppress_record_literals = true;
+    condition = vitte_parser_parse_expr_impl(parser);
+    parser->suppress_record_literals = false;
+    if (condition == NULL || !vitte_parser_expect(parser, VITTE_TOKEN_LBRACE, "VITTE_PARSER_E_IF_EXPR", "expected '{' after conditional expression")) return NULL;
+    then_value = vitte_parser_parse_expr_impl(parser);
+    if (then_value == NULL || !vitte_parser_expect(parser, VITTE_TOKEN_RBRACE, "VITTE_PARSER_E_IF_EXPR", "expected '}' after conditional expression branch")) return NULL;
+    if (vitte_parser_match(parser, VITTE_TOKEN_KW_ELIF)) {
+        vitte_ast_span_t elif_span = vitte_parser_span_from_token(&parser->previous);
+        else_value = vitte_parser_parse_conditional_expr(parser, elif_span);
+    } else {
+        if (!vitte_parser_expect(parser, VITTE_TOKEN_KW_ELSE, "VITTE_PARSER_E_IF_EXPR", "expected 'else' in conditional expression") ||
+            !vitte_parser_expect(parser, VITTE_TOKEN_LBRACE, "VITTE_PARSER_E_IF_EXPR", "expected '{' after 'else'")) return NULL;
+        else_value = vitte_parser_parse_expr_impl(parser);
+        if (else_value == NULL || !vitte_parser_expect(parser, VITTE_TOKEN_RBRACE, "VITTE_PARSER_E_IF_EXPR", "expected '}' after else branch")) return NULL;
+    }
+    if (else_value == NULL) return NULL;
+    close_span = vitte_parser_span_from_token(&parser->previous);
+    return vitte_ast_make_if_expr(&parser->builder, condition, then_value, else_value, vitte_parser_span_merge(&keyword_span, &close_span));
+}
+
 static vitte_ast_expr_t *vitte_parser_parse_primary(vitte_parser_t *parser) {
     vitte_token_t token;
     vitte_ast_span_t span;
@@ -666,24 +703,8 @@ static vitte_ast_expr_t *vitte_parser_parse_primary(vitte_parser_t *parser) {
     span = vitte_parser_span_from_token(&token);
     switch (token.kind) {
         case VITTE_TOKEN_KW_IF: {
-            vitte_ast_expr_t *condition;
-            vitte_ast_expr_t *then_value;
-            vitte_ast_expr_t *else_value;
-            vitte_ast_span_t close_span;
-
             (void)vitte_parser_advance(parser);
-            parser->suppress_record_literals = true;
-            condition = vitte_parser_parse_expr_impl(parser);
-            parser->suppress_record_literals = false;
-            if (condition == NULL || !vitte_parser_expect(parser, VITTE_TOKEN_LBRACE, "VITTE_PARSER_E_IF_EXPR", "expected '{' after conditional expression")) return NULL;
-            then_value = vitte_parser_parse_expr_impl(parser);
-            if (then_value == NULL || !vitte_parser_expect(parser, VITTE_TOKEN_RBRACE, "VITTE_PARSER_E_IF_EXPR", "expected '}' after conditional expression branch")) return NULL;
-            if (!vitte_parser_expect(parser, VITTE_TOKEN_KW_ELSE, "VITTE_PARSER_E_IF_EXPR", "expected 'else' in conditional expression") ||
-                !vitte_parser_expect(parser, VITTE_TOKEN_LBRACE, "VITTE_PARSER_E_IF_EXPR", "expected '{' after 'else'")) return NULL;
-            else_value = vitte_parser_parse_expr_impl(parser);
-            if (else_value == NULL || !vitte_parser_expect(parser, VITTE_TOKEN_RBRACE, "VITTE_PARSER_E_IF_EXPR", "expected '}' after else branch")) return NULL;
-            close_span = vitte_parser_span_from_token(&parser->previous);
-            expr = vitte_ast_make_if_expr(&parser->builder, condition, then_value, else_value, vitte_parser_span_merge(&span, &close_span));
+            expr = vitte_parser_parse_conditional_expr(parser, span);
             break;
         }
         case VITTE_TOKEN_LBRACKET: {
@@ -912,6 +933,23 @@ static vitte_ast_expr_t *vitte_parser_parse_call(vitte_parser_t *parser) {
         if (callee == NULL) return NULL;
     }
 
+    while (parser->current.kind == VITTE_TOKEN_DOT) {
+        vitte_ast_span_t span = callee->span;
+        vitte_ast_span_t member_span;
+        char *member;
+        (void)vitte_parser_advance(parser);
+        if (parser->current.kind != VITTE_TOKEN_IDENTIFIER) {
+            (void)vitte_parser_fail_current(parser, "VITTE_PARSER_E_MEMBER", "expected member name after '.'");
+            return NULL;
+        }
+        member = vitte_parser_copy_token_text(parser, &parser->current);
+        member_span = vitte_parser_span_from_token(&parser->current);
+        span = vitte_parser_span_merge(&span, &member_span);
+        (void)vitte_parser_advance(parser);
+        callee = vitte_ast_make_member_expr(&parser->builder, callee, member, span);
+        if (callee == NULL) return NULL;
+    }
+
     /* Indexing binds before a following cast, for example `items[i] as u64`. */
     while (parser->current.kind == VITTE_TOKEN_KW_AS) {
         vitte_ast_span_t span = callee->span;
@@ -922,6 +960,37 @@ static vitte_ast_expr_t *vitte_parser_parse_call(vitte_parser_t *parser) {
         span = vitte_parser_span_merge(&span, &type->span);
         callee = vitte_ast_make_cast_expr(&parser->builder, callee, type, span);
         if (callee == NULL) return NULL;
+    }
+
+    /* Continue postfix chains such as `items[i].field[j]` after the first pass. */
+    for (;;) {
+        bool changed = false;
+        while (parser->current.kind == VITTE_TOKEN_DOT) {
+            vitte_ast_span_t span = callee->span;
+            vitte_ast_span_t member_span;
+            char *member;
+            (void)vitte_parser_advance(parser);
+            if (parser->current.kind != VITTE_TOKEN_IDENTIFIER) return NULL;
+            member = vitte_parser_copy_token_text(parser, &parser->current);
+            member_span = vitte_parser_span_from_token(&parser->current);
+            span = vitte_parser_span_merge(&span, &member_span);
+            (void)vitte_parser_advance(parser);
+            callee = vitte_ast_make_member_expr(&parser->builder, callee, member, span);
+            if (callee == NULL) return NULL;
+            changed = true;
+        }
+        while (parser->current.kind == VITTE_TOKEN_LBRACKET) {
+            vitte_ast_span_t span = callee->span;
+            vitte_ast_expr_t *index;
+            (void)vitte_parser_advance(parser);
+            index = vitte_parser_parse_expr_impl(parser);
+            if (index == NULL || !vitte_parser_expect(parser, VITTE_TOKEN_RBRACKET, "VITTE_PARSER_E_INDEX", "expected ']' after index expression")) return NULL;
+            span = vitte_parser_span_merge(&span, &index->span);
+            callee = vitte_ast_make_index_expr(&parser->builder, callee, index, span);
+            if (callee == NULL) return NULL;
+            changed = true;
+        }
+        if (!changed) break;
     }
 
     return callee;
@@ -1446,6 +1515,16 @@ static vitte_ast_stmt_t *vitte_parser_parse_expr_stmt(vitte_parser_t *parser) {
     if (value == NULL) {
         return NULL;
     }
+    if (value->kind == VITTE_AST_NODE_IDENTIFIER && vitte_parser_match(parser, VITTE_TOKEN_EQUAL)) {
+        vitte_ast_expr_t *rhs = vitte_parser_parse_expr(parser);
+        vitte_ast_stmt_t *assignment;
+        if (rhs == NULL) return NULL;
+        assignment = vitte_ast_make_assign_stmt(&parser->builder, value, rhs, vitte_parser_span_merge(&value->span, &rhs->span));
+        if (assignment == NULL) return NULL;
+        vitte_parser_optional_semicolon(parser);
+        parser->stats.stmt_count++;
+        return assignment;
+    }
     vitte_parser_optional_semicolon(parser);
     span = value->span;
     stmt = vitte_ast_make_expr_stmt(&parser->builder, value, span);
@@ -1475,10 +1554,6 @@ static vitte_ast_stmt_t *vitte_parser_parse_set(vitte_parser_t *parser) {
     (void)vitte_parser_advance(parser);
     target = vitte_parser_parse_expr(parser);
     if (target == NULL) {
-        return NULL;
-    }
-    if (target->kind != VITTE_AST_NODE_IDENTIFIER) {
-        (void)vitte_parser_fail(parser, VITTE_STATUS_ERROR_PARSE, "VITTE_PARSER_E_ASSIGN", "assignment target must be an identifier", NULL, &target->span);
         return NULL;
     }
     if (!vitte_parser_expect(parser, VITTE_TOKEN_EQUAL, "VITTE_PARSER_E_ASSIGN", "expected '=' in assignment")) {
@@ -2072,7 +2147,11 @@ static vitte_ast_decl_t *vitte_parser_parse_proc(vitte_parser_t *parser, bool ex
         }
     }
 
-    body = vitte_parser_parse_block(parser);
+    if (vitte_parser_match(parser, VITTE_TOKEN_SEMICOLON)) {
+        body = vitte_ast_make_block_stmt(&parser->builder, keyword_span);
+    } else {
+        body = vitte_parser_parse_block(parser);
+    }
     if (body == NULL) {
         return NULL;
     }
@@ -2289,6 +2368,10 @@ static vitte_ast_decl_t *vitte_parser_parse_decl_impl(vitte_parser_t *parser) {
         }
     }
     if (parser->current.kind == VITTE_TOKEN_KW_PROC) {
+        return vitte_parser_parse_proc(parser, exported);
+    }
+    if (parser->current.kind == VITTE_TOKEN_KW_INTRINSIC) {
+        parser->current.kind = VITTE_TOKEN_KW_PROC;
         return vitte_parser_parse_proc(parser, exported);
     }
     if (parser->current.kind == VITTE_TOKEN_KW_CONST) {
@@ -2674,6 +2757,26 @@ vitte_status_t vitte_parser_parse_module(vitte_parser_t *parser, vitte_parser_re
                     );
                     break;
                 }
+            } else if (parser->current.kind == VITTE_TOKEN_KW_SHARE) {
+                vitte_ast_span_t share_span = vitte_parser_span_from_token(&parser->current);
+                vitte_ast_decl_t *share_decl;
+                vitte_ast_span_t name_span;
+                char *name;
+                (void)vitte_parser_advance(parser);
+                if (parser->current.kind != VITTE_TOKEN_IDENTIFIER) {
+                    status = vitte_parser_fail_current(parser, "VITTE_PARSER_E_SHARE", "expected identifier after 'share'");
+                    continue;
+                }
+                name = vitte_parser_copy_token_text(parser, &parser->current);
+                name_span = vitte_parser_span_from_token(&parser->current);
+                share_span = vitte_parser_span_merge(&share_span, &name_span);
+                (void)vitte_parser_advance(parser);
+                share_decl = vitte_ast_make_export_decl(&parser->builder, name, name, share_span);
+                if (share_decl == NULL || !vitte_ast_module_add_export(module_node, share_decl)) {
+                    status = VITTE_STATUS_ERROR_OUT_OF_MEMORY;
+                    continue;
+                }
+                vitte_parser_optional_semicolon(parser);
             } else {
                 decl = vitte_parser_parse_decl(parser);
                 if (decl == NULL) {

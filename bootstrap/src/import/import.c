@@ -355,7 +355,18 @@ static bool vitte_import_try_candidate(
         return false;
     }
     if (!vitte_fs_is_file(fs_out.text)) {
-        return false;
+        vitte_import_path_t alternate = *relative;
+        if (alternate.length < 4u || strcmp(alternate.text + alternate.length - 4u, ".vit") != 0 || alternate.length + 1u >= VITTE_FS_MAX_PATH) {
+            return false;
+        }
+        alternate.text[alternate.length++] = 'l';
+        alternate.text[alternate.length] = '\0';
+        if (vitte_fs_path_join(&fs_out, &fs_base, alternate.text) != VITTE_STATUS_OK) {
+            return false;
+        }
+        if (!vitte_fs_is_file(fs_out.text)) {
+            return false;
+        }
     }
     return vitte_import_path_from_fs(out, &fs_out);
 }

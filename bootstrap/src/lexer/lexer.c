@@ -163,6 +163,10 @@ const char *vitte_token_kind_name(vitte_token_kind_t kind) {
             return "elif";
         case VITTE_TOKEN_KW_WHILE:
             return "while";
+        case VITTE_TOKEN_KW_SHARE:
+            return "share";
+        case VITTE_TOKEN_KW_INTRINSIC:
+            return "intrinsic";
         case VITTE_TOKEN_KW_GIVE:
             return "give";
         case VITTE_TOKEN_KW_PICK:
@@ -259,6 +263,8 @@ bool vitte_token_kind_is_keyword(vitte_token_kind_t kind) {
         kind == VITTE_TOKEN_KW_ELSE ||
         kind == VITTE_TOKEN_KW_ELIF ||
         kind == VITTE_TOKEN_KW_WHILE ||
+        kind == VITTE_TOKEN_KW_SHARE ||
+        kind == VITTE_TOKEN_KW_INTRINSIC ||
         kind == VITTE_TOKEN_KW_GIVE ||
         kind == VITTE_TOKEN_KW_PICK ||
         kind == VITTE_TOKEN_KW_FORM ||
@@ -384,6 +390,12 @@ static vitte_token_kind_t vitte_lexer_keyword_kind(const char *start, size_t len
     }
     if (length == 5u && memcmp(start, "while", 5u) == 0) {
         return VITTE_TOKEN_KW_WHILE;
+    }
+    if (length == 5u && memcmp(start, "share", 5u) == 0) {
+        return VITTE_TOKEN_KW_SHARE;
+    }
+    if (length == 9u && memcmp(start, "intrinsic", 9u) == 0) {
+        return VITTE_TOKEN_KW_INTRINSIC;
     }
     if (length == 4u && memcmp(start, "give", 4u) == 0) {
         return VITTE_TOKEN_KW_GIVE;
@@ -542,6 +554,20 @@ static vitte_status_t vitte_lexer_scan_string(vitte_lexer_t *lexer, vitte_token_
                 case 't':
                     (void)vitte_lexer_advance_char(lexer);
                     break;
+                case 'u': {
+                    size_t digit;
+                    (void)vitte_lexer_advance_char(lexer);
+                    for (digit = 0u; digit < 4u; digit++) {
+                        char hex = vitte_lexer_peek_char(lexer);
+                        if (!isxdigit((unsigned char)hex)) {
+                            vitte_lexer_fill_token(lexer, token, VITTE_TOKEN_ERROR, start_offset, start_line, start_column, "invalid unicode string escape");
+                            vitte_lexer_set_error(lexer, VITTE_STATUS_ERROR_PARSE, "VITTE_LEXER_E_STRING", "invalid unicode string escape", lexer->source_name);
+                            return VITTE_STATUS_ERROR_PARSE;
+                        }
+                        (void)vitte_lexer_advance_char(lexer);
+                    }
+                    break;
+                }
                 default:
                     (void)vitte_lexer_advance_char(lexer);
                     vitte_lexer_fill_token(lexer, token, VITTE_TOKEN_ERROR, start_offset, start_line, start_column, "invalid string escape");
