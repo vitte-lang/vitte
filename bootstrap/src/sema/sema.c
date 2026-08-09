@@ -721,6 +721,10 @@ static vitte_status_t vitte_sema_define_imported_decl(
         if (existing_symbol->declaration == decl) {
             return VITTE_STATUS_OK;
         }
+        if (strstr(visible_name, "::") != NULL) {
+            /* Distinct module-only imports may share a leaf namespace. */
+            return VITTE_STATUS_OK;
+        }
         return vitte_sema_fail(
             sema,
             VITTE_STATUS_ERROR_PARSE,
@@ -760,10 +764,20 @@ static vitte_status_t vitte_sema_define_imported_decl(
         );
     } else if (decl->kind == VITTE_AST_NODE_PICK_DECL) {
         type = vitte_type_register_pick(&sema->types, decl->as.pick_decl.name);
-        return type != NULL ? VITTE_STATUS_OK : VITTE_STATUS_ERROR_INVALID_STATE;
+        if (type != NULL && strcmp(visible_name, decl->as.pick_decl.name) != 0) {
+            type = vitte_type_register_pick(&sema->types, visible_name);
+        }
+        status = type != NULL ? vitte_symbol_define(
+            &sema->symbols, VITTE_SYMBOL_KIND_CONST, visible_name, type, decl, false, &symbol
+        ) : VITTE_STATUS_ERROR_INVALID_STATE;
     } else if (decl->kind == VITTE_AST_NODE_FORM_DECL) {
         type = vitte_type_register_form(&sema->types, decl->as.form_decl.name);
-        return type != NULL ? VITTE_STATUS_OK : VITTE_STATUS_ERROR_INVALID_STATE;
+        if (type != NULL && strcmp(visible_name, decl->as.form_decl.name) != 0) {
+            type = vitte_type_register_form(&sema->types, visible_name);
+        }
+        status = type != NULL ? vitte_symbol_define(
+            &sema->symbols, VITTE_SYMBOL_KIND_CONST, visible_name, type, decl, false, &symbol
+        ) : VITTE_STATUS_ERROR_INVALID_STATE;
     } else {
         return VITTE_STATUS_OK;
     }
