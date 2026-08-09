@@ -161,6 +161,8 @@ const char *vitte_token_kind_name(vitte_token_kind_t kind) {
             return "else";
         case VITTE_TOKEN_KW_ELIF:
             return "elif";
+        case VITTE_TOKEN_KW_WHILE:
+            return "while";
         case VITTE_TOKEN_KW_GIVE:
             return "give";
         case VITTE_TOKEN_KW_PICK:
@@ -256,6 +258,7 @@ bool vitte_token_kind_is_keyword(vitte_token_kind_t kind) {
         kind == VITTE_TOKEN_KW_IF ||
         kind == VITTE_TOKEN_KW_ELSE ||
         kind == VITTE_TOKEN_KW_ELIF ||
+        kind == VITTE_TOKEN_KW_WHILE ||
         kind == VITTE_TOKEN_KW_GIVE ||
         kind == VITTE_TOKEN_KW_PICK ||
         kind == VITTE_TOKEN_KW_FORM ||
@@ -378,6 +381,9 @@ static vitte_token_kind_t vitte_lexer_keyword_kind(const char *start, size_t len
     }
     if (length == 4u && memcmp(start, "elif", 4u) == 0) {
         return VITTE_TOKEN_KW_ELIF;
+    }
+    if (length == 5u && memcmp(start, "while", 5u) == 0) {
+        return VITTE_TOKEN_KW_WHILE;
     }
     if (length == 4u && memcmp(start, "give", 4u) == 0) {
         return VITTE_TOKEN_KW_GIVE;
