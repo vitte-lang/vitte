@@ -5,8 +5,6 @@
 #include <stddef.h>
 
 #include "../api/error.h"
-#include "../ast/ast.h"
-#include "../hir/hir.h"
 #include "../ir/ir.h"
 
 #ifdef __cplusplus
@@ -18,9 +16,7 @@ typedef enum vitte_codegen_backend {
 } vitte_codegen_backend_t;
 
 typedef enum vitte_codegen_input_kind {
-    VITTE_CODEGEN_INPUT_AST = 0,
-    VITTE_CODEGEN_INPUT_HIR,
-    VITTE_CODEGEN_INPUT_IR
+    VITTE_CODEGEN_INPUT_IR = 0
 } vitte_codegen_input_kind_t;
 
 typedef enum vitte_codegen_output_kind {
@@ -73,36 +69,6 @@ void vitte_codegen_clear_error(vitte_codegen_t *codegen);
 const char *vitte_codegen_backend_name(vitte_codegen_backend_t backend);
 const char *vitte_codegen_input_kind_name(vitte_codegen_input_kind_t kind);
 const char *vitte_codegen_output_kind_name(vitte_codegen_output_kind_t kind);
-
-vitte_status_t vitte_codegen_emit_ast_to_buffer(
-    vitte_codegen_t *codegen,
-    const vitte_ast_t *ast,
-    char *buffer,
-    size_t buffer_capacity,
-    vitte_codegen_result_t *result
-);
-
-vitte_status_t vitte_codegen_emit_ast_to_file(
-    vitte_codegen_t *codegen,
-    const vitte_ast_t *ast,
-    const char *output_path,
-    vitte_codegen_result_t *result
-);
-
-vitte_status_t vitte_codegen_emit_hir_to_buffer(
-    vitte_codegen_t *codegen,
-    const vitte_hir_t *hir,
-    char *buffer,
-    size_t buffer_capacity,
-    vitte_codegen_result_t *result
-);
-
-vitte_status_t vitte_codegen_emit_hir_to_file(
-    vitte_codegen_t *codegen,
-    const vitte_hir_t *hir,
-    const char *output_path,
-    vitte_codegen_result_t *result
-);
 
 vitte_status_t vitte_codegen_emit_ir_to_buffer(
     vitte_codegen_t *codegen,

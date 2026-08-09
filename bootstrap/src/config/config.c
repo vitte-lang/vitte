@@ -369,7 +369,7 @@ void vitte_config_to_codegen_options(
     }
 
     options->backend = VITTE_CODEGEN_BACKEND_C17;
-    options->input_kind = VITTE_CODEGEN_INPUT_AST;
+    options->input_kind = VITTE_CODEGEN_INPUT_IR;
     options->output_kind = config->paths.output_path != NULL ? VITTE_CODEGEN_OUTPUT_FILE : VITTE_CODEGEN_OUTPUT_BUFFER;
     options->source_name = config->paths.input_path;
     options->output_path = config->paths.output_path;

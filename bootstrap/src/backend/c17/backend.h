@@ -5,7 +5,6 @@
 #include <stddef.h>
 
 #include "../../api/error.h"
-#include "../../ast/ast.h"
 #include "../../ir/ir.h"
 #include "options.h"
 
@@ -35,21 +34,6 @@ void vitte_c17_backend_destroy(vitte_c17_backend_t *backend);
 bool vitte_c17_backend_is_initialized(const vitte_c17_backend_t *backend);
 const vitte_error_t *vitte_c17_backend_last_error(const vitte_c17_backend_t *backend);
 void vitte_c17_emit_result_init(vitte_c17_emit_result_t *result);
-
-vitte_status_t vitte_c17_backend_emit_ast_to_buffer(
-    vitte_c17_backend_t *backend,
-    const vitte_ast_t *ast,
-    char *buffer,
-    size_t buffer_capacity,
-    vitte_c17_emit_result_t *result
-);
-
-vitte_status_t vitte_c17_backend_emit_ast_to_file(
-    vitte_c17_backend_t *backend,
-    const vitte_ast_t *ast,
-    const char *output_path,
-    vitte_c17_emit_result_t *result
-);
 
 vitte_status_t vitte_c17_backend_emit_ir_to_buffer(
     vitte_c17_backend_t *backend,
