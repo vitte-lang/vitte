@@ -13,6 +13,9 @@ before optimization/backend-specific lowering.
 - Instructions are stored in block-local linked lists.
 - Blocks must end in a terminator.
 - Validation is deterministic and checks list/count coherence.
+- Backend-facing IR must not contain `unknown` or `error` types.
+- Numeric conversions accepted by sema are represented by explicit `cast`
+  instructions before backend emission.
 
 ## Model
 
@@ -38,6 +41,7 @@ Supported instructions:
 - `local`
 - `store`
 - `load`
+- `cast`
 - `binary`
 - `call`
 - `return`
@@ -46,7 +50,9 @@ Supported instructions:
 - `unreachable`
 
 Instructions use a fixed small operand array. Calls currently support at most
-three arguments because operand slot zero is reserved for the callee.
+three arguments because operand slot zero is reserved for the callee. A call
+may have no result when its value is intentionally discarded, but its instruction
+type still records the callee return type.
 
 ## Builder
 
@@ -86,6 +92,7 @@ vitte_ir_emit_return(&builder, zero, NULL);
 - block statement sequence
 - return
 - let as local plus optional store
+- numeric `let`/`give` coercions as explicit cast instructions
 - expression statement as evaluated expression with discarded result
 - if as conditional branch with then/else/merge blocks
 - integer and string literals
@@ -104,9 +111,12 @@ partial silent IR.
 - initialized IR and module
 - globals have names, types, and resolved initializers
 - functions have ids, names, return types, entry blocks
+- function, global, and parameter names are unique within their owner
 - blocks have ids, names, coherent instruction counts, and terminators
 - instruction opcodes and operand counts
-- branch targets
+- branch targets stay inside the current function
+- constants, stores, loads, casts, binary operations, calls, and returns satisfy
+  their structural and type contracts
 - global function/block/instruction counters
 
 ## Debug
