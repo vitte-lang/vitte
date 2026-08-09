@@ -19,25 +19,6 @@ static void vitte_ir_lowering_set_error(vitte_ir_lowering_t *lowering, vitte_sta
     }
 }
 
-static const char *vitte_ir_last_name_segment(const char *name) {
-    const char *segment;
-    const char *cursor;
-
-    if (name == NULL) {
-        return NULL;
-    }
-    segment = name;
-    for (cursor = name; *cursor != '\0'; cursor++) {
-        if (*cursor == '.') {
-            segment = cursor + 1;
-        } else if (*cursor == ':' && cursor[1] == ':') {
-            segment = cursor + 2;
-            cursor++;
-        }
-    }
-    return segment;
-}
-
 struct vitte_ir_local_binding {
     const char *name;
     vitte_ir_value_t *value;
@@ -165,7 +146,6 @@ static bool vitte_ir_bind_local(vitte_ir_lowering_t *lowering, const char *name,
 
 static vitte_ir_value_t *vitte_ir_lookup_local(const vitte_ir_lowering_t *lowering, const char *name) {
     const vitte_ir_local_binding_t *binding;
-    const char *alternate = vitte_ir_last_name_segment(name);
 
     if (lowering == NULL || name == NULL) {
         return NULL;
@@ -173,13 +153,6 @@ static vitte_ir_value_t *vitte_ir_lookup_local(const vitte_ir_lowering_t *loweri
     for (binding = lowering->locals; binding != NULL; binding = binding->next) {
         if (binding->name != NULL && strcmp(binding->name, name) == 0) {
             return binding->value;
-        }
-    }
-    if (alternate != NULL && alternate != name) {
-        for (binding = lowering->locals; binding != NULL; binding = binding->next) {
-            if (binding->name != NULL && strcmp(binding->name, alternate) == 0) {
-                return binding->value;
-            }
         }
     }
     return NULL;
@@ -230,7 +203,6 @@ static bool vitte_ir_bind_function(vitte_ir_lowering_t *lowering, const char *na
 
 static vitte_ir_function_t *vitte_ir_lookup_function(const vitte_ir_lowering_t *lowering, const char *name) {
     const vitte_ir_function_binding_t *binding;
-    const char *alternate = vitte_ir_last_name_segment(name);
 
     if (lowering == NULL || name == NULL) {
         return NULL;
@@ -238,13 +210,6 @@ static vitte_ir_function_t *vitte_ir_lookup_function(const vitte_ir_lowering_t *
     for (binding = lowering->functions; binding != NULL; binding = binding->next) {
         if (binding->name != NULL && strcmp(binding->name, name) == 0) {
             return binding->function;
-        }
-    }
-    if (alternate != NULL && alternate != name) {
-        for (binding = lowering->functions; binding != NULL; binding = binding->next) {
-            if (binding->name != NULL && strcmp(binding->name, alternate) == 0) {
-                return binding->function;
-            }
         }
     }
     return NULL;
@@ -271,7 +236,6 @@ static bool vitte_ir_bind_global(vitte_ir_lowering_t *lowering, const char *name
 
 static vitte_ir_global_t *vitte_ir_lookup_global(const vitte_ir_lowering_t *lowering, const char *name) {
     const vitte_ir_global_binding_t *binding;
-    const char *alternate = vitte_ir_last_name_segment(name);
 
     if (lowering == NULL || name == NULL) {
         return NULL;
@@ -279,13 +243,6 @@ static vitte_ir_global_t *vitte_ir_lookup_global(const vitte_ir_lowering_t *lowe
     for (binding = lowering->globals; binding != NULL; binding = binding->next) {
         if (binding->name != NULL && strcmp(binding->name, name) == 0) {
             return binding->global;
-        }
-    }
-    if (alternate != NULL && alternate != name) {
-        for (binding = lowering->globals; binding != NULL; binding = binding->next) {
-            if (binding->name != NULL && strcmp(binding->name, alternate) == 0) {
-                return binding->global;
-            }
         }
     }
     return NULL;
@@ -1138,7 +1095,7 @@ static vitte_ir_value_t *vitte_ir_lower_expr(vitte_ir_lowering_t *lowering, cons
                 return vitte_ir_resolve_global_initializer(lowering, global);
             }
             if (function != NULL) {
-                return vitte_ir_make_function_ref_value(lowering->ir, node->as.variable.name, function, function->return_type);
+                return vitte_ir_make_function_ref_value(lowering->ir, function->name, function, function->return_type);
             }
             builtin_constant = vitte_ir_lower_builtin_constant(lowering, node->as.variable.name);
             if (builtin_constant != NULL) {
