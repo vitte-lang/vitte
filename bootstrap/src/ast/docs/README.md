@@ -5,6 +5,7 @@ The AST layer owns syntax nodes through `vitte_arena_t`. Nodes are zero-initiali
 Invariants:
 - Node kinds are always in `vitte_ast_node_kind_t`.
 - Nodes are immutable after construction except `next` and list fields.
+- Top-level `proc` and `const` declarations carry an `exported` flag; declarations are private by default.
 - Source spans are optional; valid spans keep stable source name, offsets, lines, and columns.
 - Lists maintain `first`, `last`, and `count`.
 - Errors use `bootstrap/src/api/error.h`.

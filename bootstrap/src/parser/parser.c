@@ -130,7 +130,9 @@ static void vitte_parser_leave_depth(vitte_parser_t *parser) {
 }
 
 static bool vitte_parser_is_decl_start(vitte_token_kind_t kind) {
-    return kind == VITTE_TOKEN_KW_PROC || kind == VITTE_TOKEN_KW_CONST;
+    return kind == VITTE_TOKEN_KW_EXPORT ||
+        kind == VITTE_TOKEN_KW_PROC ||
+        kind == VITTE_TOKEN_KW_CONST;
 }
 
 static bool vitte_parser_is_top_level_start(vitte_token_kind_t kind) {
@@ -1567,7 +1569,7 @@ static vitte_ast_node_t *vitte_parser_parse_param(vitte_parser_t *parser) {
     return param;
 }
 
-static vitte_ast_decl_t *vitte_parser_parse_proc(vitte_parser_t *parser) {
+static vitte_ast_decl_t *vitte_parser_parse_proc(vitte_parser_t *parser, bool exported) {
     vitte_ast_span_t keyword_span;
     vitte_token_t name_token;
     char *name;
@@ -1592,7 +1594,7 @@ static vitte_ast_decl_t *vitte_parser_parse_proc(vitte_parser_t *parser) {
     if (!vitte_parser_expect(parser, VITTE_TOKEN_LPAREN, "VITTE_PARSER_E_PROC", "expected '(' after procedure name")) {
         return NULL;
     }
-    decl = vitte_ast_make_proc_decl(&parser->builder, name, NULL, NULL, keyword_span);
+    decl = vitte_ast_make_proc_decl(&parser->builder, name, exported, NULL, NULL, keyword_span);
     if (decl == NULL) {
         (void)vitte_parser_fail(
             parser,
@@ -1663,7 +1665,7 @@ static vitte_ast_decl_t *vitte_parser_parse_proc(vitte_parser_t *parser) {
     return decl;
 }
 
-static vitte_ast_decl_t *vitte_parser_parse_const(vitte_parser_t *parser) {
+static vitte_ast_decl_t *vitte_parser_parse_const(vitte_parser_t *parser, bool exported) {
     vitte_ast_span_t keyword_span;
     vitte_token_t name_token;
     char *name;
@@ -1715,7 +1717,7 @@ static vitte_ast_decl_t *vitte_parser_parse_const(vitte_parser_t *parser) {
     vitte_parser_optional_semicolon(parser);
 
     span = vitte_parser_span_merge(&keyword_span, &value->span);
-    decl = vitte_ast_make_const_decl(&parser->builder, name, type, value, span);
+    decl = vitte_ast_make_const_decl(&parser->builder, name, exported, type, value, span);
     if (decl == NULL) {
         (void)vitte_parser_fail(
             parser,
@@ -1732,14 +1734,34 @@ static vitte_ast_decl_t *vitte_parser_parse_const(vitte_parser_t *parser) {
 }
 
 static vitte_ast_decl_t *vitte_parser_parse_decl_impl(vitte_parser_t *parser) {
+    bool exported = false;
+
     if (parser == NULL) {
         return NULL;
     }
+    if (parser->current.kind == VITTE_TOKEN_KW_EXPORT) {
+        vitte_ast_span_t export_span = vitte_parser_span_from_token(&parser->current);
+
+        exported = true;
+        (void)vitte_parser_advance(parser);
+        if (parser->current.kind != VITTE_TOKEN_KW_PROC &&
+            parser->current.kind != VITTE_TOKEN_KW_CONST) {
+            (void)vitte_parser_fail(
+                parser,
+                VITTE_STATUS_ERROR_PARSE,
+                "VITTE_PARSER_E_EXPORT",
+                "expected 'proc' or 'const' after 'export'",
+                NULL,
+                &export_span
+            );
+            return NULL;
+        }
+    }
     if (parser->current.kind == VITTE_TOKEN_KW_PROC) {
-        return vitte_parser_parse_proc(parser);
+        return vitte_parser_parse_proc(parser, exported);
     }
     if (parser->current.kind == VITTE_TOKEN_KW_CONST) {
-        return vitte_parser_parse_const(parser);
+        return vitte_parser_parse_const(parser, exported);
     }
     (void)vitte_parser_fail_current(parser, "VITTE_PARSER_E_DECL", "expected top-level declaration");
     return NULL;

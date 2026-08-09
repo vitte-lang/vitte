@@ -141,6 +141,8 @@ const char *vitte_token_kind_name(vitte_token_kind_t kind) {
             return "space";
         case VITTE_TOKEN_KW_USE:
             return "use";
+        case VITTE_TOKEN_KW_EXPORT:
+            return "export";
         case VITTE_TOKEN_KW_AS:
             return "as";
         case VITTE_TOKEN_KW_PROC:
@@ -228,6 +230,7 @@ const char *vitte_token_kind_name(vitte_token_kind_t kind) {
 bool vitte_token_kind_is_keyword(vitte_token_kind_t kind) {
     return kind == VITTE_TOKEN_KW_SPACE ||
         kind == VITTE_TOKEN_KW_USE ||
+        kind == VITTE_TOKEN_KW_EXPORT ||
         kind == VITTE_TOKEN_KW_AS ||
         kind == VITTE_TOKEN_KW_PROC ||
         kind == VITTE_TOKEN_KW_CONST ||
@@ -324,6 +327,9 @@ static vitte_token_kind_t vitte_lexer_keyword_kind(const char *start, size_t len
     }
     if (length == 3u && memcmp(start, "use", 3u) == 0) {
         return VITTE_TOKEN_KW_USE;
+    }
+    if (length == 6u && memcmp(start, "export", 6u) == 0) {
+        return VITTE_TOKEN_KW_EXPORT;
     }
     if (length == 2u && memcmp(start, "as", 2u) == 0) {
         return VITTE_TOKEN_KW_AS;

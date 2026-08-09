@@ -293,10 +293,11 @@ vitte_ast_decl_t *vitte_ast_make_import_decl(
     return node;
 }
 
-vitte_ast_decl_t *vitte_ast_make_proc_decl(vitte_ast_builder_t *builder, const char *name, vitte_ast_type_ref_t *return_type, vitte_ast_stmt_t *body, vitte_ast_span_t span) {
+vitte_ast_decl_t *vitte_ast_make_proc_decl(vitte_ast_builder_t *builder, const char *name, bool exported, vitte_ast_type_ref_t *return_type, vitte_ast_stmt_t *body, vitte_ast_span_t span) {
     vitte_ast_node_t *node = builder != NULL ? vitte_ast_alloc_node(builder->ast, VITTE_AST_NODE_PROC_DECL, span) : NULL;
     if (node != NULL) {
         node->as.proc_decl.name = name;
+        node->as.proc_decl.exported = exported;
         vitte_ast_list_init(&node->as.proc_decl.parameters);
         node->as.proc_decl.return_type = return_type;
         node->as.proc_decl.body = body;
@@ -315,10 +316,11 @@ vitte_ast_node_t *vitte_ast_make_param_decl(vitte_ast_builder_t *builder, const 
     return node;
 }
 
-vitte_ast_decl_t *vitte_ast_make_const_decl(vitte_ast_builder_t *builder, const char *name, vitte_ast_type_ref_t *type, vitte_ast_expr_t *value, vitte_ast_span_t span) {
+vitte_ast_decl_t *vitte_ast_make_const_decl(vitte_ast_builder_t *builder, const char *name, bool exported, vitte_ast_type_ref_t *type, vitte_ast_expr_t *value, vitte_ast_span_t span) {
     vitte_ast_node_t *node = builder != NULL ? vitte_ast_alloc_node(builder->ast, VITTE_AST_NODE_CONST_DECL, span) : NULL;
     if (node != NULL) {
         node->as.const_decl.name = name;
+        node->as.const_decl.exported = exported;
         node->as.const_decl.type = type;
         node->as.const_decl.value = value;
     }

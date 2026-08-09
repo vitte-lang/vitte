@@ -931,6 +931,19 @@ static const vitte_ast_decl_t *vitte_driver_find_module_decl(
     return NULL;
 }
 
+static bool vitte_driver_decl_is_exported(const vitte_ast_decl_t *decl) {
+    if (decl == NULL) {
+        return false;
+    }
+    if (decl->kind == VITTE_AST_NODE_PROC_DECL) {
+        return decl->as.proc_decl.exported;
+    }
+    if (decl->kind == VITTE_AST_NODE_CONST_DECL) {
+        return decl->as.const_decl.exported;
+    }
+    return false;
+}
+
 static vitte_ast_decl_t *vitte_driver_clone_decl_shallow(
     vitte_ast_t *ast,
     const vitte_ast_decl_t *source_decl,
@@ -1285,7 +1298,7 @@ static vitte_status_t vitte_driver_flatten_module_imports(
                 char *visible_name;
                 vitte_status_t status;
 
-                if (decl_name == NULL) {
+                if (decl_name == NULL || !vitte_driver_decl_is_exported(decl)) {
                     continue;
                 }
                 visible_name = vitte_driver_ast_join_name(ast, prefix, "::", decl_name);
@@ -1309,6 +1322,10 @@ static vitte_status_t vitte_driver_flatten_module_imports(
 
             if (decl == NULL) {
                 vitte_driver_set_error(driver, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_DRIVER_E_IMPORT", "missing imported symbol declaration", import_decl->as.import_decl.path);
+                return VITTE_STATUS_ERROR_INVALID_STATE;
+            }
+            if (!vitte_driver_decl_is_exported(decl)) {
+                vitte_driver_set_error(driver, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_DRIVER_E_IMPORT_PRIVATE", "imported symbol is not exported by module", import_decl->as.import_decl.path);
                 return VITTE_STATUS_ERROR_INVALID_STATE;
             }
             status = vitte_driver_append_import_decl(ast, module_root, decl, visible_name);
@@ -1354,7 +1371,7 @@ static vitte_status_t vitte_driver_flatten_imported_modules(
                 decl->kind == VITTE_AST_NODE_CONST_DECL ? decl->as.const_decl.name : NULL;
             vitte_status_t status;
 
-            if (decl_name == NULL) {
+            if (decl_name == NULL || !vitte_driver_decl_is_exported(decl)) {
                 continue;
             }
             status = vitte_driver_append_import_decl(ast, module_root, decl, decl_name);

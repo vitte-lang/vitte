@@ -186,6 +186,19 @@ static const vitte_ast_decl_t *vitte_sema_find_module_decl(
     return NULL;
 }
 
+static bool vitte_sema_decl_is_exported(const vitte_ast_decl_t *decl) {
+    if (decl == NULL) {
+        return false;
+    }
+    if (decl->kind == VITTE_AST_NODE_PROC_DECL) {
+        return decl->as.proc_decl.exported;
+    }
+    if (decl->kind == VITTE_AST_NODE_CONST_DECL) {
+        return decl->as.const_decl.exported;
+    }
+    return false;
+}
+
 static bool vitte_sema_text_equal(const char *left, const char *right) {
     if (left == right) {
         return true;
@@ -421,7 +434,7 @@ static vitte_status_t vitte_sema_predeclare_imports(
                     decl->kind == VITTE_AST_NODE_CONST_DECL ? decl->as.const_decl.name : NULL;
                 char *qualified_name;
 
-                if (decl_name == NULL) {
+                if (decl_name == NULL || !vitte_sema_decl_is_exported(decl)) {
                     continue;
                 }
                 qualified_name = vitte_sema_join_qualified_name(sema, prefix, decl_name);
@@ -446,7 +459,7 @@ static vitte_status_t vitte_sema_predeclare_imports(
                 const char *decl_name = decl->kind == VITTE_AST_NODE_PROC_DECL ? decl->as.proc_decl.name :
                     decl->kind == VITTE_AST_NODE_CONST_DECL ? decl->as.const_decl.name : NULL;
 
-                if (decl_name == NULL) {
+                if (decl_name == NULL || !vitte_sema_decl_is_exported(decl)) {
                     continue;
                 }
                 if (vitte_sema_define_imported_decl(sema, decl_name, decl, &import_decl->span) != VITTE_STATUS_OK) {
@@ -465,6 +478,16 @@ static vitte_status_t vitte_sema_predeclare_imports(
                     VITTE_STATUS_ERROR_PARSE,
                     "VITTE_SEMA_E_IMPORT",
                     "imported symbol was not found in module",
+                    path,
+                    &import_decl->span
+                );
+            }
+            if (!vitte_sema_decl_is_exported(decl)) {
+                return vitte_sema_fail(
+                    sema,
+                    VITTE_STATUS_ERROR_PARSE,
+                    "VITTE_SEMA_E_IMPORT_PRIVATE",
+                    "imported symbol is not exported by module",
                     path,
                     &import_decl->span
                 );
@@ -691,13 +714,23 @@ static const vitte_type_t *vitte_sema_analyze_call(
 
     sema->stats.expr_count++;
     if (expr->as.call_expr.callee != NULL && expr->as.call_expr.callee->kind == VITTE_AST_NODE_IDENTIFIER) {
-        callee_symbol = vitte_sema_lookup_symbol(sema, expr->as.call_expr.callee->as.identifier.name, &expr->as.call_expr.callee->span);
+        callee_symbol = vitte_sema_lookup_symbol(
+            sema,
+            expr->as.call_expr.callee->as.identifier.name,
+            &expr->as.call_expr.callee->span
+        );
+        callee_type = callee_symbol != NULL ? callee_symbol->type : vitte_sema_error_type(sema);
+    } else {
+        callee_type = vitte_sema_analyze_expr(sema, expr->as.call_expr.callee);
     }
-    callee_type = vitte_sema_analyze_expr(sema, expr->as.call_expr.callee);
 
     for (argument = expr->as.call_expr.arguments.first; argument != NULL; argument = argument->next) {
         (void)vitte_sema_analyze_expr(sema, argument);
         arity++;
+    }
+
+    if (vitte_type_is_error(callee_type)) {
+        return vitte_sema_error_type(sema);
     }
 
     if (!vitte_type_is_proc(callee_type)) {
@@ -728,7 +761,9 @@ static const vitte_type_t *vitte_sema_analyze_call(
         if (arity == 1u && function->parameter_type != VITTE_BUILTIN_TYPE_ERROR && expr->as.call_expr.arguments.first != NULL) {
             const vitte_type_t *parameter_type = vitte_type_builtin(&sema->types, function->parameter_type);
             const vitte_type_t *argument_type = vitte_sema_analyze_expr(sema, expr->as.call_expr.arguments.first);
-            if (parameter_type != NULL && !vitte_type_is_assignable(parameter_type, argument_type)) {
+            if (parameter_type != NULL &&
+                !vitte_type_is_error(argument_type) &&
+                !vitte_type_is_assignable(parameter_type, argument_type)) {
                 (void)vitte_sema_fail(
                     sema,
                     VITTE_STATUS_ERROR_PARSE,
@@ -984,7 +1019,8 @@ static vitte_status_t vitte_sema_analyze_stmt(
                 status = vitte_sema_fail(sema, VITTE_STATUS_ERROR_PARSE, "VITTE_SEMA_E_RETURN", "non-void procedure must return a value", NULL, &stmt->span);
             } else {
                 type = vitte_sema_analyze_expr(sema, stmt->as.give_stmt.value);
-                if (!vitte_type_is_assignable(sema->current_return_type, type)) {
+                if (!vitte_type_is_error(type) &&
+                    !vitte_type_is_assignable(sema->current_return_type, type)) {
                     status = vitte_sema_fail(sema, VITTE_STATUS_ERROR_PARSE, "VITTE_SEMA_E_RETURN", "return value type mismatch", vitte_type_name(type), &stmt->as.give_stmt.value->span);
                 }
             }
@@ -993,7 +1029,8 @@ static vitte_status_t vitte_sema_analyze_stmt(
             type = vitte_sema_resolve_type_ref(sema, stmt->as.let_stmt.type);
             if (stmt->as.let_stmt.value != NULL) {
                 const vitte_type_t *value_type = vitte_sema_analyze_expr(sema, stmt->as.let_stmt.value);
-                if (!vitte_type_is_assignable(type, value_type)) {
+                if (!vitte_type_is_error(value_type) &&
+                    !vitte_type_is_assignable(type, value_type)) {
                     status = vitte_sema_fail(sema, VITTE_STATUS_ERROR_PARSE, "VITTE_SEMA_E_ASSIGN", "initializer type mismatch", stmt->as.let_stmt.name, &stmt->as.let_stmt.value->span);
                     break;
                 }
@@ -1088,7 +1125,8 @@ static vitte_status_t vitte_sema_analyze_decl(vitte_sema_t *sema, const vitte_as
         case VITTE_AST_NODE_CONST_DECL: {
             const vitte_type_t *type = vitte_sema_resolve_type_ref(sema, decl->as.const_decl.type);
             const vitte_type_t *value_type = vitte_sema_analyze_expr(sema, decl->as.const_decl.value);
-            if (!vitte_type_is_assignable(type, value_type)) {
+            if (!vitte_type_is_error(value_type) &&
+                !vitte_type_is_assignable(type, value_type)) {
                 status = vitte_sema_fail(sema, VITTE_STATUS_ERROR_PARSE, "VITTE_SEMA_E_CONST", "constant value type mismatch", decl->as.const_decl.name, &decl->as.const_decl.value->span);
             } else if (sema->options.enable_constant_folding) {
                 vitte_constant_result_t constant_result;
