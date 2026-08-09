@@ -41,19 +41,31 @@ smoke: verify $(BIN)
 	if "$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/import_visibility/direct_private.vit" >"$$tmp" 2>&1; then \
 		cat "$$tmp"; rm -f "$$tmp"; exit 1; \
 	fi; \
-	grep -q "VITTE_SEMA_E_IMPORT_PRIVATE" "$$tmp"; \
+	grep -q "VITTE_SEMA_E_IMPORT_PRIVATE" "$$tmp" || { cat "$$tmp"; rm -f "$$tmp"; exit 1; }; \
 	rm -f "$$tmp"
 	@tmp="$$(mktemp)"; \
 	if "$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/import_visibility/glob_private.vit" >"$$tmp" 2>&1; then \
 		cat "$$tmp"; rm -f "$$tmp"; exit 1; \
 	fi; \
-	grep -q "VITTE_SEMA_E_IMPORT_PRIVATE" "$$tmp"; \
+	grep -q "VITTE_SEMA_E_IMPORT_PRIVATE" "$$tmp" || { cat "$$tmp"; rm -f "$$tmp"; exit 1; }; \
 	rm -f "$$tmp"
 	@tmp="$$(mktemp)"; \
 	if "$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/import_visibility/module_private.vit" >"$$tmp" 2>&1; then \
 		cat "$$tmp"; rm -f "$$tmp"; exit 1; \
 	fi; \
-	grep -q "VITTE_SEMA_E_IMPORT_PRIVATE_MEMBER" "$$tmp"; \
+	grep -q "VITTE_SEMA_E_IMPORT_PRIVATE_MEMBER" "$$tmp" || { cat "$$tmp"; rm -f "$$tmp"; exit 1; }; \
+	rm -f "$$tmp"
+	@tmp="$$(mktemp)"; \
+	if "$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/import_collision/local_main.vit" >"$$tmp" 2>&1; then \
+		cat "$$tmp"; rm -f "$$tmp"; exit 1; \
+	fi; \
+	grep -q "VITTE_DRIVER_E_IMPORT_COLLISION_LOCAL" "$$tmp" || { cat "$$tmp"; rm -f "$$tmp"; exit 1; }; \
+	rm -f "$$tmp"
+	@tmp="$$(mktemp)"; \
+	if "$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/import_collision/modules_main.vit" >"$$tmp" 2>&1; then \
+		cat "$$tmp"; rm -f "$$tmp"; exit 1; \
+	fi; \
+	grep -q "VITTE_DRIVER_E_IMPORT_COLLISION_IMPORTED" "$$tmp" || { cat "$$tmp"; rm -f "$$tmp"; exit 1; }; \
 	rm -f "$$tmp"
 	@"$(BIN)" build "$(ROOT_DIR)/examples/hello.vit" -o "$(OUT_DIR)/hello"
 	@"$(OUT_DIR)/hello"
