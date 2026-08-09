@@ -171,6 +171,8 @@ const char *vitte_token_kind_name(vitte_token_kind_t kind) {
             return "for";
         case VITTE_TOKEN_KW_IN:
             return "in";
+        case VITTE_TOKEN_KW_MATCH:
+            return "match";
         case VITTE_TOKEN_KW_GIVE:
             return "give";
         case VITTE_TOKEN_KW_PICK:
@@ -271,6 +273,7 @@ bool vitte_token_kind_is_keyword(vitte_token_kind_t kind) {
         kind == VITTE_TOKEN_KW_INTRINSIC ||
         kind == VITTE_TOKEN_KW_FOR ||
         kind == VITTE_TOKEN_KW_IN ||
+        kind == VITTE_TOKEN_KW_MATCH ||
         kind == VITTE_TOKEN_KW_GIVE ||
         kind == VITTE_TOKEN_KW_PICK ||
         kind == VITTE_TOKEN_KW_FORM ||
@@ -405,6 +408,7 @@ static vitte_token_kind_t vitte_lexer_keyword_kind(const char *start, size_t len
     }
     if (length == 3u && memcmp(start, "for", 3u) == 0) return VITTE_TOKEN_KW_FOR;
     if (length == 2u && memcmp(start, "in", 2u) == 0) return VITTE_TOKEN_KW_IN;
+    if (length == 5u && memcmp(start, "match", 5u) == 0) return VITTE_TOKEN_KW_MATCH;
     if (length == 4u && memcmp(start, "give", 4u) == 0) {
         return VITTE_TOKEN_KW_GIVE;
     }
@@ -536,12 +540,13 @@ static vitte_status_t vitte_lexer_scan_string(vitte_lexer_t *lexer, vitte_token_
     size_t start_offset = lexer->cursor.offset;
     uint32_t start_line = lexer->cursor.line;
     uint32_t start_column = lexer->cursor.column;
+    char quote = vitte_lexer_peek_char(lexer);
     bool has_escape = false;
 
     (void)vitte_lexer_advance_char(lexer);
     while (!vitte_lexer_at_end(lexer)) {
         char value = vitte_lexer_peek_char(lexer);
-        if (value == '"') {
+        if (value == quote) {
             (void)vitte_lexer_advance_char(lexer);
             vitte_lexer_fill_token(lexer, token, VITTE_TOKEN_STRING, start_offset, start_line, start_column, NULL);
             token->has_escape = has_escape;
@@ -559,6 +564,7 @@ static vitte_status_t vitte_lexer_scan_string(vitte_lexer_t *lexer, vitte_token_
             switch (vitte_lexer_peek_char(lexer)) {
                 case '\\':
                 case '"':
+                case '\'':
                 case 'n':
                 case 'r':
                 case 't':
@@ -661,6 +667,9 @@ static vitte_status_t vitte_lexer_scan_punct(vitte_lexer_t *lexer, vitte_token_t
         case '!':
             kind = vitte_lexer_match_char(lexer, '=') ? VITTE_TOKEN_BANG_EQUAL : VITTE_TOKEN_BANG;
             break;
+        case '~':
+            kind = VITTE_TOKEN_BANG;
+            break;
         case '-':
             kind = vitte_lexer_match_char(lexer, '>') ? VITTE_TOKEN_ARROW : VITTE_TOKEN_MINUS;
             break;
@@ -757,7 +766,7 @@ static vitte_status_t vitte_lexer_scan_one(vitte_lexer_t *lexer, vitte_token_t *
             vitte_lexer_count_token(lexer, token);
             return status;
         }
-        if (value == '"') {
+        if (value == '"' || value == '\'') {
             vitte_status_t status = vitte_lexer_scan_string(lexer, token);
             vitte_lexer_count_token(lexer, token);
             return status;

@@ -319,6 +319,8 @@ const char *vitte_ast_decl_name(const vitte_ast_decl_t *decl) {
     if (decl->kind == VITTE_AST_NODE_CONST_DECL) {
         return decl->as.const_decl.name;
     }
+    if (decl->kind == VITTE_AST_NODE_PICK_DECL) return decl->as.pick_decl.name;
+    if (decl->kind == VITTE_AST_NODE_FORM_DECL) return decl->as.form_decl.name;
     return NULL;
 }
 
@@ -366,6 +368,10 @@ bool vitte_ast_module_decl_is_exported(
         if (decl->as.const_decl.exported || module->as.module.export_all) {
             return true;
         }
+    } else if (decl->kind == VITTE_AST_NODE_PICK_DECL) {
+        return decl->as.pick_decl.exported || module->as.module.export_all;
+    } else if (decl->kind == VITTE_AST_NODE_FORM_DECL) {
+        return decl->as.form_decl.exported || module->as.module.export_all;
     } else {
         return false;
     }
