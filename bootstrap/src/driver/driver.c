@@ -43,6 +43,13 @@ static const vitte_driver_import_unit_t *vitte_driver_find_import_unit_by_path(
     const char *resolved_path
 );
 
+static vitte_status_t vitte_driver_parse_imported_unit(
+    vitte_driver_t *driver,
+    const char *module_name,
+    const char *path,
+    vitte_driver_import_unit_t *unit
+);
+
 static void vitte_driver_set_error(
     vitte_driver_t *driver,
     vitte_status_t status,
@@ -996,6 +1003,132 @@ static const vitte_ast_decl_t *vitte_driver_find_exported_decl(
     return NULL;
 }
 
+static bool vitte_driver_split_import_owner_symbol(
+    const char *path,
+    char *owner_name,
+    size_t owner_capacity,
+    const char **leaf_name
+) {
+    const char *last_dot;
+    size_t owner_length;
+
+    if (path == NULL || owner_name == NULL || owner_capacity == 0u || leaf_name == NULL) {
+        return false;
+    }
+    last_dot = strrchr(path, '.');
+    if (last_dot == NULL || last_dot == path || last_dot[1] == '\0') {
+        return false;
+    }
+    owner_length = (size_t)(last_dot - path);
+    if (owner_length >= owner_capacity) {
+        return false;
+    }
+    (void)memcpy(owner_name, path, owner_length);
+    owner_name[owner_length] = '\0';
+    *leaf_name = last_dot + 1;
+    return true;
+}
+
+static const vitte_module_import_t *vitte_driver_find_failed_module_import(
+    const vitte_module_t *module
+) {
+    size_t index;
+
+    if (module == NULL) {
+        return NULL;
+    }
+    for (index = 0u; index < module->import_count; index++) {
+        if (module->imports[index].last_error.status != VITTE_STATUS_OK) {
+            return &module->imports[index];
+        }
+    }
+    return NULL;
+}
+
+static bool vitte_driver_maybe_set_ambiguous_use_path_error(
+    vitte_driver_t *driver,
+    vitte_import_resolver_t *resolver,
+    const vitte_module_t *module
+) {
+    const vitte_module_import_t *failed_import;
+    vitte_import_request_t request;
+    vitte_import_result_t result;
+    vitte_driver_import_unit_t imported_unit;
+    const vitte_ast_decl_t *exported_decl;
+    const char *leaf_name = NULL;
+    char owner_name[VITTE_IMPORT_MAX_MODULE_NAME];
+    char details[512];
+    vitte_status_t status;
+    int written;
+    bool matched = false;
+
+    if (driver == NULL || resolver == NULL || module == NULL) {
+        return false;
+    }
+    failed_import = vitte_driver_find_failed_module_import(module);
+    if (failed_import == NULL ||
+        failed_import->module_name[0] == '\0' ||
+        failed_import->last_error.code == NULL ||
+        strcmp(failed_import->last_error.code, "VITTE_IMPORT_E_NOT_FOUND") != 0 ||
+        !vitte_driver_split_import_owner_symbol(failed_import->module_name, owner_name, sizeof(owner_name), &leaf_name)) {
+        return false;
+    }
+
+    memset(&imported_unit, 0, sizeof(imported_unit));
+    vitte_import_request_init(&request);
+    request.module_name = owner_name;
+    request.importer_path = module->source_path[0] != '\0' ? module->source_path : NULL;
+    request.relative = failed_import->relative;
+    request.read_source = false;
+    vitte_import_result_init(&result);
+
+    status = vitte_import_resolve(resolver, &request, &result);
+    if (status != VITTE_STATUS_OK) {
+        goto cleanup;
+    }
+    status = vitte_driver_parse_imported_unit(driver, owner_name, result.resolved_path.text, &imported_unit);
+    if (status != VITTE_STATUS_OK || !vitte_ast_is_initialized(&imported_unit.ast) || imported_unit.ast.root == NULL) {
+        goto cleanup;
+    }
+    exported_decl = vitte_driver_find_exported_decl(imported_unit.ast.root, leaf_name);
+    if (exported_decl == NULL) {
+        goto cleanup;
+    }
+
+    written = snprintf(
+        details,
+        sizeof(details),
+        "'use %s::%s' imports module '%s'; use 'use %s::{%s}' to import symbol '%s'",
+        owner_name,
+        leaf_name,
+        failed_import->module_name,
+        owner_name,
+        leaf_name,
+        leaf_name
+    );
+    if (written < 0 || (size_t)written >= sizeof(details)) {
+        return false;
+    }
+    vitte_driver_set_error(
+        driver,
+        VITTE_STATUS_ERROR_PARSE,
+        "VITTE_DRIVER_E_IMPORT_USE_CONTRACT",
+        "ambiguous use path resolved as a module import; symbol imports must use braces",
+        details
+    );
+    matched = true;
+
+cleanup:
+    vitte_import_result_destroy(&result);
+    if (vitte_module_is_initialized(&imported_unit.module)) {
+        vitte_module_destroy(&imported_unit.module);
+    }
+    if (vitte_ast_is_initialized(&imported_unit.ast)) {
+        vitte_ast_destroy(&imported_unit.ast);
+    }
+    return matched;
+}
+
 static bool vitte_driver_decl_is_exported(
     const vitte_ast_module_t *module_root,
     const vitte_ast_decl_t *decl
@@ -1701,7 +1834,9 @@ static vitte_status_t vitte_driver_collect_import_unit(
     if (unit->module.import_count > 0u) {
         status = vitte_module_resolve_imports(&unit->module, resolver);
         if (status != VITTE_STATUS_OK) {
-            vitte_error_copy(&driver->last_error, vitte_module_last_error(&unit->module));
+            if (!vitte_driver_maybe_set_ambiguous_use_path_error(driver, resolver, &unit->module)) {
+                vitte_error_copy(&driver->last_error, vitte_module_last_error(&unit->module));
+            }
             units[*unit_count - 1u] = NULL;
             (*unit_count)--;
             vitte_driver_destroy_import_unit(unit);
@@ -2429,7 +2564,16 @@ static vitte_status_t vitte_driver_run_impl(
         resolver_initialized = true;
         status = vitte_module_resolve_imports(&module, &resolver);
         if (status != VITTE_STATUS_OK) {
-            const vitte_error_t *error = vitte_module_last_error(&module);
+            const vitte_error_t *error;
+
+            if (vitte_driver_maybe_set_ambiguous_use_path_error(driver, &resolver, &module)) {
+                error = vitte_driver_last_error(driver);
+            } else {
+                error = vitte_module_last_error(&module);
+                if (error != NULL) {
+                    vitte_error_copy(&driver->last_error, error);
+                }
+            }
             vitte_driver_pipeline_mark(&driver->pipeline, VITTE_DRIVER_STAGE_SEMANTIC, status);
             vitte_driver_add_diag(
                 driver,
@@ -2438,9 +2582,6 @@ static vitte_status_t vitte_driver_run_impl(
                 error != NULL && error->message != NULL ? error->message : "failed to resolve module imports",
                 error != NULL ? error->details : input->source_name
             );
-            if (error != NULL) {
-                vitte_error_copy(&driver->last_error, error);
-            }
             vitte_driver_result_set_error(result, status, VITTE_DRIVER_STAGE_SEMANTIC, "VITTE_DRIVER_E_IMPORT", "failed to resolve module imports", NULL);
             vitte_import_resolver_destroy(&resolver);
             vitte_module_destroy(&module);
@@ -2507,13 +2648,14 @@ static vitte_status_t vitte_driver_run_impl(
                 &imported_unit_count
             );
             if (status != VITTE_STATUS_OK) {
+                const vitte_error_t *error = vitte_driver_last_error(driver);
                 vitte_driver_pipeline_mark(&driver->pipeline, VITTE_DRIVER_STAGE_SEMANTIC, status);
                 vitte_driver_add_diag(
                     driver,
                     VITTE_DIAGNOSTIC_FATAL,
-                    "VITTE_DRIVER_E_IMPORT",
-                    "failed to collect imported module graph",
-                    module.imports[imported_index].resolved_path
+                    error != NULL && error->code != NULL ? error->code : "VITTE_DRIVER_E_IMPORT",
+                    error != NULL && error->message != NULL ? error->message : "failed to collect imported module graph",
+                    error != NULL && error->details != NULL ? error->details : module.imports[imported_index].resolved_path
                 );
                 if (resolver_initialized) {
                     vitte_import_resolver_destroy(&resolver);

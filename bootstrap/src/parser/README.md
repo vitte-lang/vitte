@@ -74,7 +74,9 @@ Current bootstrap grammar:
 ## Bootstrap Limits
 
 - import paths are normalized to dotted module names in AST/module tracking
-- direct `use a::b` remains a module-path import; symbol imports must use groups like `use a::{b}`
+- direct `use a::b` is locked as a module-path import
+- symbol imports must use groups like `use a::{b}`
+- when `use a::b` fails as a module import but `a` exports `b`, the driver emits a dedicated diagnostic pointing to `use a::{b}`
 - standalone bootstrap export clauses only target local top-level items; module re-export forms remain outside this stage
 - `let` still requires an explicit type
 - `const` without a type relies on simple literal/operator inference
