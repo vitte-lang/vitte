@@ -192,6 +192,10 @@ const char *vitte_ast_node_kind_name(vitte_ast_node_kind_t kind) {
             return "pick_decl";
         case VITTE_AST_NODE_PICK_VARIANT:
             return "pick_variant";
+        case VITTE_AST_NODE_FORM_DECL:
+            return "form_decl";
+        case VITTE_AST_NODE_FORM_FIELD:
+            return "form_field";
         case VITTE_AST_NODE_BLOCK_STMT:
             return "block_stmt";
         case VITTE_AST_NODE_GIVE_STMT:
@@ -248,6 +252,10 @@ const char *vitte_ast_node_label(const vitte_ast_node_t *node) {
             return node->as.pick_decl.name;
         case VITTE_AST_NODE_PICK_VARIANT:
             return node->as.pick_variant.name;
+        case VITTE_AST_NODE_FORM_DECL:
+            return node->as.form_decl.name;
+        case VITTE_AST_NODE_FORM_FIELD:
+            return node->as.form_field.name;
         case VITTE_AST_NODE_LET_STMT:
             return node->as.let_stmt.name;
         case VITTE_AST_NODE_ASSIGN_STMT:
@@ -512,6 +520,25 @@ vitte_ast_node_t *vitte_ast_make_pick_variant(vitte_ast_builder_t *builder, cons
     return node;
 }
 
+vitte_ast_decl_t *vitte_ast_make_form_decl(vitte_ast_builder_t *builder, const char *name, bool exported, vitte_ast_span_t span) {
+    vitte_ast_node_t *node = builder != NULL ? vitte_ast_alloc_node(builder->ast, VITTE_AST_NODE_FORM_DECL, span) : NULL;
+    if (node != NULL) {
+        node->as.form_decl.name = name;
+        node->as.form_decl.exported = exported;
+        vitte_ast_list_init(&node->as.form_decl.fields);
+    }
+    return node;
+}
+
+vitte_ast_node_t *vitte_ast_make_form_field(vitte_ast_builder_t *builder, const char *name, vitte_ast_type_ref_t *type, vitte_ast_span_t span) {
+    vitte_ast_node_t *node = builder != NULL ? vitte_ast_alloc_node(builder->ast, VITTE_AST_NODE_FORM_FIELD, span) : NULL;
+    if (node != NULL) {
+        node->as.form_field.name = name;
+        node->as.form_field.type = type;
+    }
+    return node;
+}
+
 vitte_ast_decl_t *vitte_ast_make_import_decl(
     vitte_ast_builder_t *builder,
     const char *path,
@@ -695,7 +722,7 @@ bool vitte_ast_module_add_decl(vitte_ast_module_t *module, vitte_ast_decl_t *dec
     return module != NULL &&
         module->kind == VITTE_AST_NODE_MODULE &&
         decl != NULL &&
-        (decl->kind == VITTE_AST_NODE_PROC_DECL || decl->kind == VITTE_AST_NODE_CONST_DECL || decl->kind == VITTE_AST_NODE_PICK_DECL) &&
+        (decl->kind == VITTE_AST_NODE_PROC_DECL || decl->kind == VITTE_AST_NODE_CONST_DECL || decl->kind == VITTE_AST_NODE_PICK_DECL || decl->kind == VITTE_AST_NODE_FORM_DECL) &&
         vitte_ast_list_append(&module->as.module.declarations, decl);
 }
 
@@ -904,6 +931,24 @@ static vitte_status_t vitte_ast_validate_node(vitte_ast_t *ast, const vitte_ast_
                 }
             }
             return VITTE_STATUS_OK;
+        case VITTE_AST_NODE_FORM_DECL:
+            if (node->as.form_decl.name == NULL) {
+                vitte_ast_set_error(ast, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_AST_E_FORM", "form declaration requires a name", NULL);
+                return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+            }
+            status = vitte_ast_validate_list(ast, &node->as.form_decl.fields, "VITTE_AST_E_LIST", "form field list is incoherent");
+            if (status != VITTE_STATUS_OK) return status;
+            for (child = node->as.form_decl.fields.first; child != NULL; child = child->next) {
+                status = vitte_ast_validate_node(ast, child, depth + 1u);
+                if (status != VITTE_STATUS_OK) return status;
+            }
+            return VITTE_STATUS_OK;
+        case VITTE_AST_NODE_FORM_FIELD:
+            if (node->as.form_field.name == NULL || node->as.form_field.type == NULL) {
+                vitte_ast_set_error(ast, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_AST_E_FORM", "form field requires name and type", NULL);
+                return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+            }
+            return vitte_ast_validate_node(ast, node->as.form_field.type, depth + 1u);
         case VITTE_AST_NODE_PICK_VARIANT:
             if (node->as.pick_variant.name == NULL || node->as.pick_variant.name[0] == '\0') {
                 vitte_ast_set_error(ast, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_AST_E_PICK", "pick variant requires a name", NULL);
@@ -1113,6 +1158,10 @@ static bool vitte_ast_visit_child(
             return vitte_ast_visit_children(&node->as.pick_decl.variants, callback, user, depth + 1u, max_depth, count);
         case VITTE_AST_NODE_PICK_VARIANT:
             return true;
+        case VITTE_AST_NODE_FORM_DECL:
+            return vitte_ast_visit_children(&node->as.form_decl.fields, callback, user, depth + 1u, max_depth, count);
+        case VITTE_AST_NODE_FORM_FIELD:
+            return vitte_ast_visit_child(node->as.form_field.type, callback, user, depth + 1u, max_depth, count);
         case VITTE_AST_NODE_BLOCK_STMT:
             return vitte_ast_visit_children(&node->as.block_stmt.statements, callback, user, depth + 1u, max_depth, count);
         case VITTE_AST_NODE_GIVE_STMT:

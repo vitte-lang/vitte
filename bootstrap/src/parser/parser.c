@@ -588,15 +588,33 @@ static vitte_ast_type_ref_t *vitte_parser_parse_type_ref(vitte_parser_t *parser)
     char *generic_name;
     size_t name_length;
     size_t argument_length;
+    bool bracket_prefix = false;
 
     if (parser == NULL) {
         return NULL;
     }
-    name = vitte_parser_parse_path_text(parser, false, "VITTE_PARSER_E_TYPE", "expected type name", &span);
+    if (parser->current.kind == VITTE_TOKEN_LBRACKET) {
+        bracket_prefix = true;
+        span = vitte_parser_span_from_token(&parser->current);
+        (void)vitte_parser_advance(parser);
+        name = vitte_parser_parse_path_text(parser, false, "VITTE_PARSER_E_TYPE", "expected element type", &close_span);
+        if (name == NULL || !vitte_parser_expect(parser, VITTE_TOKEN_RBRACKET, "VITTE_PARSER_E_TYPE", "expected ']' after element type")) {
+            return NULL;
+        }
+        name_length = strlen(name);
+        generic_name = (char *)vitte_arena_alloc(parser->builder.ast->arena, name_length + 7u, _Alignof(char));
+        if (generic_name == NULL) return NULL;
+        (void)snprintf(generic_name, name_length + 7u, "list[%s]", name);
+        name = generic_name;
+        close_span = vitte_parser_span_from_token(&parser->previous);
+        span = vitte_parser_span_merge(&span, &close_span);
+    } else {
+        name = vitte_parser_parse_path_text(parser, false, "VITTE_PARSER_E_TYPE", "expected type name", &span);
+    }
     if (name == NULL) {
         return NULL;
     }
-    if (parser->current.kind == VITTE_TOKEN_LBRACKET) {
+    if (!bracket_prefix && parser->current.kind == VITTE_TOKEN_LBRACKET) {
         (void)vitte_parser_advance(parser);
         argument = vitte_parser_parse_path_text(parser, false, "VITTE_PARSER_E_TYPE", "expected generic type argument", &close_span);
         if (argument == NULL || parser->current.kind != VITTE_TOKEN_RBRACKET) {
@@ -2020,6 +2038,54 @@ static vitte_ast_decl_t *vitte_parser_parse_pick(vitte_parser_t *parser, bool ex
     return decl;
 }
 
+static vitte_ast_decl_t *vitte_parser_parse_form(vitte_parser_t *parser, bool exported) {
+    vitte_ast_span_t start_span;
+    vitte_ast_span_t end_span;
+    vitte_ast_span_t field_span;
+    char *name;
+    vitte_ast_decl_t *decl;
+
+    start_span = vitte_parser_span_from_token(&parser->current);
+    (void)vitte_parser_advance(parser);
+    if (parser->current.kind != VITTE_TOKEN_IDENTIFIER) {
+        (void)vitte_parser_fail_current(parser, "VITTE_PARSER_E_FORM", "expected form name");
+        return NULL;
+    }
+    name = vitte_parser_copy_token_text(parser, &parser->current);
+    if (name == NULL) return NULL;
+    (void)vitte_parser_advance(parser);
+    if (!vitte_parser_expect(parser, VITTE_TOKEN_LBRACE, "VITTE_PARSER_E_FORM", "expected '{' after form name")) return NULL;
+    decl = vitte_ast_make_form_decl(&parser->builder, name, exported, start_span);
+    if (decl == NULL) return NULL;
+    while (parser->current.kind != VITTE_TOKEN_RBRACE && parser->current.kind != VITTE_TOKEN_EOF) {
+        char *field_name;
+        vitte_ast_type_ref_t *type;
+        vitte_ast_node_t *field;
+        if (parser->current.kind == VITTE_TOKEN_COMMA || parser->current.kind == VITTE_TOKEN_SEMICOLON) {
+            (void)vitte_parser_advance(parser);
+            continue;
+        }
+        if (parser->current.kind != VITTE_TOKEN_IDENTIFIER) {
+            (void)vitte_parser_fail_current(parser, "VITTE_PARSER_E_FORM", "expected form field name");
+            return NULL;
+        }
+        field_span = vitte_parser_span_from_token(&parser->current);
+        field_name = vitte_parser_copy_token_text(parser, &parser->current);
+        (void)vitte_parser_advance(parser);
+        if (!vitte_parser_expect(parser, VITTE_TOKEN_COLON, "VITTE_PARSER_E_FORM", "expected ':' after form field name")) return NULL;
+        type = vitte_parser_parse_type_ref(parser);
+        if (type == NULL) return NULL;
+        field_span = vitte_parser_span_merge(&field_span, &type->span);
+        field = vitte_ast_make_form_field(&parser->builder, field_name, type, field_span);
+        if (field == NULL || !vitte_ast_list_append(&decl->as.form_decl.fields, field)) return NULL;
+    }
+    if (!vitte_parser_expect(parser, VITTE_TOKEN_RBRACE, "VITTE_PARSER_E_FORM", "expected '}' after form fields")) return NULL;
+    end_span = vitte_parser_span_from_token(&parser->previous);
+    decl->span = vitte_parser_span_merge(&start_span, &end_span);
+    parser->stats.decl_count++;
+    return decl;
+}
+
 static vitte_ast_decl_t *vitte_parser_parse_decl_impl(vitte_parser_t *parser) {
     bool exported = false;
 
@@ -2033,12 +2099,13 @@ static vitte_ast_decl_t *vitte_parser_parse_decl_impl(vitte_parser_t *parser) {
         (void)vitte_parser_advance(parser);
         if (parser->current.kind != VITTE_TOKEN_KW_PROC &&
             parser->current.kind != VITTE_TOKEN_KW_CONST &&
-            parser->current.kind != VITTE_TOKEN_KW_PICK) {
+            parser->current.kind != VITTE_TOKEN_KW_PICK &&
+            parser->current.kind != VITTE_TOKEN_KW_FORM) {
             (void)vitte_parser_fail(
                 parser,
                 VITTE_STATUS_ERROR_PARSE,
                 "VITTE_PARSER_E_EXPORT",
-                "expected 'proc', 'const', or 'pick' after 'export'",
+                "expected 'proc', 'const', 'pick', or 'form' after 'export'",
                 NULL,
                 &export_span
             );
@@ -2053,6 +2120,9 @@ static vitte_ast_decl_t *vitte_parser_parse_decl_impl(vitte_parser_t *parser) {
     }
     if (parser->current.kind == VITTE_TOKEN_KW_PICK) {
         return vitte_parser_parse_pick(parser, exported);
+    }
+    if (parser->current.kind == VITTE_TOKEN_KW_FORM) {
+        return vitte_parser_parse_form(parser, exported);
     }
     (void)vitte_parser_fail_current(parser, "VITTE_PARSER_E_DECL", "expected top-level declaration");
     return NULL;

@@ -163,6 +163,8 @@ const char *vitte_token_kind_name(vitte_token_kind_t kind) {
             return "give";
         case VITTE_TOKEN_KW_PICK:
             return "pick";
+        case VITTE_TOKEN_KW_FORM:
+            return "form";
         case VITTE_TOKEN_KW_AND:
             return "and";
         case VITTE_TOKEN_KW_OR:
@@ -253,6 +255,7 @@ bool vitte_token_kind_is_keyword(vitte_token_kind_t kind) {
         kind == VITTE_TOKEN_KW_ELSE ||
         kind == VITTE_TOKEN_KW_GIVE ||
         kind == VITTE_TOKEN_KW_PICK ||
+        kind == VITTE_TOKEN_KW_FORM ||
         kind == VITTE_TOKEN_KW_AND ||
         kind == VITTE_TOKEN_KW_OR ||
         kind == VITTE_TOKEN_KW_NOT;
@@ -375,6 +378,9 @@ static vitte_token_kind_t vitte_lexer_keyword_kind(const char *start, size_t len
     }
     if (length == 4u && memcmp(start, "pick", 4u) == 0) {
         return VITTE_TOKEN_KW_PICK;
+    }
+    if (length == 4u && memcmp(start, "form", 4u) == 0) {
+        return VITTE_TOKEN_KW_FORM;
     }
     if (length == 3u && memcmp(start, "and", 3u) == 0) {
         return VITTE_TOKEN_KW_AND;

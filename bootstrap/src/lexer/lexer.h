@@ -35,6 +35,7 @@ typedef enum vitte_token_kind {
     VITTE_TOKEN_KW_ELSE,
     VITTE_TOKEN_KW_GIVE,
     VITTE_TOKEN_KW_PICK,
+    VITTE_TOKEN_KW_FORM,
     VITTE_TOKEN_KW_AND,
     VITTE_TOKEN_KW_OR,
     VITTE_TOKEN_KW_NOT,
