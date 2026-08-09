@@ -15,6 +15,8 @@ The semantic analyzer validates the parsed AST before backend emission.
 
 ## Current Checks
 
+- duplicate import declarations and conflicting visible import names
+- imported symbol visibility for direct, glob, and module-alias usage
 - duplicate top-level `proc` and `const`
 - unknown identifiers
 - unknown type names
@@ -31,7 +33,7 @@ The semantic analyzer validates the parsed AST before backend emission.
 - no user-defined aggregate types
 - no mutation analysis
 - no unreachable-code analysis
-- no cross-module semantic pass yet
+- imported modules are analyzed for bootstrap visibility and declaration validity only
 
 ## Driver Integration
 

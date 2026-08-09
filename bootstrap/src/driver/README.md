@@ -47,6 +47,8 @@ The current bootstrap driver runs the real bootstrap frontend:
 When parsing through `vitte_module_t`, the driver also registers and resolves
 imports before semantic analysis. Global imports use configured search paths,
 and sibling modules are discoverable from the input file directory.
+Imported module graphs are semantically checked before the root module. Backend
+flattening only carries exported imported declarations into the lowered module.
 
 ## Options
 

@@ -9,6 +9,7 @@
 #include "../builtin/builtin.h"
 #include "../constant_fold/constant.h"
 #include "../diagnostic/diagnostic.h"
+#include "../import/import.h"
 #include "../scope/scope.h"
 #include "../symbol/symbol.h"
 #include "../type/type.h"

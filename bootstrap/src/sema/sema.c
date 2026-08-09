@@ -248,6 +248,174 @@ static const char *vitte_sema_import_visible_name(const vitte_ast_decl_t *import
     return vitte_sema_last_name_segment(path);
 }
 
+static bool vitte_sema_import_module_name(
+    const vitte_ast_decl_t *import_decl,
+    char *buffer,
+    size_t buffer_capacity
+) {
+    const char *path;
+    size_t length;
+
+    if (import_decl == NULL || import_decl->kind != VITTE_AST_NODE_IMPORT_DECL ||
+        buffer == NULL || buffer_capacity == 0u) {
+        return false;
+    }
+    path = import_decl->as.import_decl.path;
+    if (path == NULL || path[0] == '\0') {
+        return false;
+    }
+    length = strlen(path);
+    if (import_decl->as.import_decl.import_kind == VITTE_AST_IMPORT_SYMBOL) {
+        const char *last_dot = strrchr(path, '.');
+        if (last_dot == NULL) {
+            return false;
+        }
+        length = (size_t)(last_dot - path);
+    }
+    if (length + 1u > buffer_capacity) {
+        return false;
+    }
+    (void)memcpy(buffer, path, length);
+    buffer[length] = '\0';
+    return true;
+}
+
+static bool vitte_sema_split_module_member_name(
+    const char *name,
+    const char **prefix,
+    size_t *prefix_length,
+    const char **member
+) {
+    const char *separator;
+
+    if (name == NULL || prefix == NULL || prefix_length == NULL || member == NULL) {
+        return false;
+    }
+    separator = strstr(name, "::");
+    if (separator == NULL || separator == name || separator[2] == '\0') {
+        return false;
+    }
+    *prefix = name;
+    *prefix_length = (size_t)(separator - name);
+    *member = separator + 2;
+    return true;
+}
+
+static bool vitte_sema_report_private_import_use(
+    vitte_sema_t *sema,
+    const char *name,
+    const vitte_ast_span_t *span
+) {
+    const vitte_ast_module_t *module;
+    const vitte_ast_node_t *import_decl;
+    const char *prefix;
+    const char *member;
+    size_t prefix_length;
+
+    if (sema == NULL || name == NULL || sema->ast == NULL || sema->ast->root == NULL ||
+        sema->ast->root->kind != VITTE_AST_NODE_MODULE) {
+        return false;
+    }
+    module = sema->ast->root;
+
+    if (vitte_sema_split_module_member_name(name, &prefix, &prefix_length, &member)) {
+        for (import_decl = module->as.module.imports.first; import_decl != NULL; import_decl = import_decl->next) {
+            char module_name[VITTE_IMPORT_MAX_MODULE_NAME];
+            const char *visible_name;
+            const vitte_ast_module_t *imported_module;
+            const vitte_ast_decl_t *decl;
+
+            if (import_decl->kind != VITTE_AST_NODE_IMPORT_DECL ||
+                import_decl->as.import_decl.import_kind != VITTE_AST_IMPORT_MODULE) {
+                continue;
+            }
+            visible_name = vitte_sema_import_visible_name(import_decl);
+            if (visible_name == NULL ||
+                strlen(visible_name) != prefix_length ||
+                memcmp(visible_name, prefix, prefix_length) != 0) {
+                continue;
+            }
+            if (!vitte_sema_import_module_name(import_decl, module_name, sizeof(module_name))) {
+                continue;
+            }
+            imported_module = vitte_sema_find_import_module(sema, module_name);
+            if (imported_module == NULL) {
+                continue;
+            }
+            decl = vitte_sema_find_module_decl(imported_module, member);
+            if (decl != NULL && !vitte_sema_decl_is_exported(decl)) {
+                (void)vitte_sema_fail(
+                    sema,
+                    VITTE_STATUS_ERROR_PARSE,
+                    "VITTE_SEMA_E_IMPORT_PRIVATE_MEMBER",
+                    "module alias member is not exported",
+                    name,
+                    span
+                );
+                return true;
+            }
+        }
+        return false;
+    }
+
+    for (import_decl = module->as.module.imports.first; import_decl != NULL; import_decl = import_decl->next) {
+        char module_name[VITTE_IMPORT_MAX_MODULE_NAME];
+        const vitte_ast_module_t *imported_module;
+        const vitte_ast_decl_t *decl;
+
+        if (import_decl->kind != VITTE_AST_NODE_IMPORT_DECL) {
+            continue;
+        }
+        if (import_decl->as.import_decl.import_kind == VITTE_AST_IMPORT_SYMBOL) {
+            const char *visible_name = vitte_sema_import_visible_name(import_decl);
+            const char *decl_name;
+
+            if (visible_name == NULL || strcmp(visible_name, name) != 0 ||
+                !vitte_sema_import_module_name(import_decl, module_name, sizeof(module_name))) {
+                continue;
+            }
+            imported_module = vitte_sema_find_import_module(sema, module_name);
+            if (imported_module == NULL) {
+                continue;
+            }
+            decl_name = vitte_sema_last_name_segment(import_decl->as.import_decl.path);
+            decl = vitte_sema_find_module_decl(imported_module, decl_name);
+            if (decl != NULL && !vitte_sema_decl_is_exported(decl)) {
+                (void)vitte_sema_fail(
+                    sema,
+                    VITTE_STATUS_ERROR_PARSE,
+                    "VITTE_SEMA_E_IMPORT_PRIVATE",
+                    "imported symbol is not exported by module",
+                    import_decl->as.import_decl.path,
+                    span
+                );
+                return true;
+            }
+        } else if (import_decl->as.import_decl.import_kind == VITTE_AST_IMPORT_GLOB) {
+            if (!vitte_sema_import_module_name(import_decl, module_name, sizeof(module_name))) {
+                continue;
+            }
+            imported_module = vitte_sema_find_import_module(sema, module_name);
+            if (imported_module == NULL) {
+                continue;
+            }
+            decl = vitte_sema_find_module_decl(imported_module, name);
+            if (decl != NULL && !vitte_sema_decl_is_exported(decl)) {
+                (void)vitte_sema_fail(
+                    sema,
+                    VITTE_STATUS_ERROR_PARSE,
+                    "VITTE_SEMA_E_IMPORT_PRIVATE",
+                    "imported symbol is not exported by module",
+                    name,
+                    span
+                );
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 static vitte_status_t vitte_sema_validate_import_decl(
     vitte_sema_t *sema,
     const vitte_ast_module_t *module,
@@ -682,6 +850,9 @@ static const vitte_symbol_t *vitte_sema_lookup_symbol(
         symbol = vitte_scope_lookup(&sema->scopes, segment);
     }
     if (symbol == NULL) {
+        if (vitte_sema_report_private_import_use(sema, name, span)) {
+            return NULL;
+        }
         (void)vitte_sema_fail(
             sema,
             VITTE_STATUS_ERROR_PARSE,
@@ -724,13 +895,13 @@ static const vitte_type_t *vitte_sema_analyze_call(
         callee_type = vitte_sema_analyze_expr(sema, expr->as.call_expr.callee);
     }
 
+    if (vitte_type_is_error(callee_type)) {
+        return vitte_sema_error_type(sema);
+    }
+
     for (argument = expr->as.call_expr.arguments.first; argument != NULL; argument = argument->next) {
         (void)vitte_sema_analyze_expr(sema, argument);
         arity++;
-    }
-
-    if (vitte_type_is_error(callee_type)) {
-        return vitte_sema_error_type(sema);
     }
 
     if (!vitte_type_is_proc(callee_type)) {

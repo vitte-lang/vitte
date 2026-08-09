@@ -35,6 +35,26 @@ verify:
 smoke: verify $(BIN)
 	@"$(BIN)" --version
 	@"$(BIN)" check "$(ROOT_DIR)/examples/hello.vit"
+	@"$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/import_visibility/direct_ok.vit"
+	@"$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/import_visibility/module_ok.vit"
+	@tmp="$$(mktemp)"; \
+	if "$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/import_visibility/direct_private.vit" >"$$tmp" 2>&1; then \
+		cat "$$tmp"; rm -f "$$tmp"; exit 1; \
+	fi; \
+	grep -q "VITTE_SEMA_E_IMPORT_PRIVATE" "$$tmp"; \
+	rm -f "$$tmp"
+	@tmp="$$(mktemp)"; \
+	if "$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/import_visibility/glob_private.vit" >"$$tmp" 2>&1; then \
+		cat "$$tmp"; rm -f "$$tmp"; exit 1; \
+	fi; \
+	grep -q "VITTE_SEMA_E_IMPORT_PRIVATE" "$$tmp"; \
+	rm -f "$$tmp"
+	@tmp="$$(mktemp)"; \
+	if "$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/import_visibility/module_private.vit" >"$$tmp" 2>&1; then \
+		cat "$$tmp"; rm -f "$$tmp"; exit 1; \
+	fi; \
+	grep -q "VITTE_SEMA_E_IMPORT_PRIVATE_MEMBER" "$$tmp"; \
+	rm -f "$$tmp"
 	@"$(BIN)" build "$(ROOT_DIR)/examples/hello.vit" -o "$(OUT_DIR)/hello"
 	@"$(OUT_DIR)/hello"
 
