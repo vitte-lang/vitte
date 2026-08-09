@@ -895,7 +895,51 @@ static vitte_status_t vitte_c17_emit_ir_global(
     return vitte_c17_emit_statement_line_end(writer);
 }
 
+static vitte_status_t vitte_c17_emit_ir_pick(
+    vitte_c17_module_t *module,
+    vitte_c17_writer_t *writer,
+    const vitte_ir_pick_t *pick
+) {
+    char pick_name[128];
+    char variant_name[128];
+    const vitte_ir_pick_variant_t *variant;
+    size_t index = 0u;
+    vitte_status_t status;
+
+    if (pick == NULL || pick->name == NULL || pick->variant_count == 0u) {
+        vitte_c17_module_set_error(module, VITTE_STATUS_ERROR_BACKEND, "VITTE_C17_E_PICK", "invalid IR pick for C17 emission", NULL);
+        return VITTE_STATUS_ERROR_BACKEND;
+    }
+    if (vitte_c17_make_symbol_name(module, "vitte_pick_", pick->name, 0u, pick_name, sizeof(pick_name)) != VITTE_STATUS_OK) {
+        return module->last_error.status;
+    }
+    status = vitte_c17_write_string(writer, "enum ");
+    if (status == VITTE_STATUS_OK) status = vitte_c17_write_string(writer, pick_name);
+    if (status == VITTE_STATUS_OK) status = vitte_c17_write_string(writer, " {");
+    if (status != VITTE_STATUS_OK) return status;
+    for (variant = pick->first_variant; variant != NULL; variant = variant->next) {
+        if (vitte_c17_make_symbol_name(module, "vitte_pick_variant_", variant->name, (unsigned int)index, variant_name, sizeof(variant_name)) != VITTE_STATUS_OK) {
+            return module->last_error.status;
+        }
+        status = vitte_c17_write_newline(writer);
+        if (status == VITTE_STATUS_OK) status = vitte_c17_write_string(writer, "    ");
+        if (status == VITTE_STATUS_OK) status = vitte_c17_write_string(writer, variant_name);
+        if (status == VITTE_STATUS_OK) status = vitte_c17_write_format(writer, " = %zu", index);
+        if (status == VITTE_STATUS_OK && variant->next != NULL) status = vitte_c17_write_char(writer, ',');
+        if (status != VITTE_STATUS_OK) return status;
+        index++;
+    }
+    status = vitte_c17_write_newline(writer);
+    if (status == VITTE_STATUS_OK) status = vitte_c17_write_string(writer, "};");
+    if (status == VITTE_STATUS_OK) {
+        module->unit->declaration_count++;
+        status = vitte_c17_write_newline(writer);
+    }
+    return status;
+}
+
 static vitte_status_t vitte_c17_module_emit_ir(vitte_c17_module_t *module, vitte_c17_writer_t *writer) {
+    const vitte_ir_pick_t *pick;
     const vitte_ir_global_t *global;
     const vitte_ir_function_t *function;
     vitte_status_t status;
@@ -908,6 +952,17 @@ static vitte_status_t vitte_c17_module_emit_ir(vitte_c17_module_t *module, vitte
     status = vitte_c17_translation_unit_emit_prelude(module->unit, writer);
     if (status != VITTE_STATUS_OK) {
         return status;
+    }
+
+    for (pick = module->ir_module->first_pick; pick != NULL; pick = pick->next) {
+        status = vitte_c17_emit_ir_pick(module, writer, pick);
+        if (status != VITTE_STATUS_OK) {
+            return status;
+        }
+        status = vitte_c17_write_newline(writer);
+        if (status != VITTE_STATUS_OK) {
+            return status;
+        }
     }
 
     for (global = module->ir_module->first_global; global != NULL; global = global->next) {
