@@ -127,6 +127,7 @@ struct vitte_ast_node {
             const char *name;
             vitte_ast_type_ref_t *type;
             vitte_ast_expr_t *value;
+            bool mutable_value;
         } let_stmt;
 
         struct {
@@ -253,7 +254,7 @@ vitte_ast_node_t *vitte_ast_make_param_decl(vitte_ast_builder_t *builder, const 
 vitte_ast_decl_t *vitte_ast_make_const_decl(vitte_ast_builder_t *builder, const char *name, bool exported, vitte_ast_type_ref_t *type, vitte_ast_expr_t *value, vitte_ast_span_t span);
 vitte_ast_stmt_t *vitte_ast_make_block_stmt(vitte_ast_builder_t *builder, vitte_ast_span_t span);
 vitte_ast_stmt_t *vitte_ast_make_give_stmt(vitte_ast_builder_t *builder, vitte_ast_expr_t *value, vitte_ast_span_t span);
-vitte_ast_stmt_t *vitte_ast_make_let_stmt(vitte_ast_builder_t *builder, const char *name, vitte_ast_type_ref_t *type, vitte_ast_expr_t *value, vitte_ast_span_t span);
+vitte_ast_stmt_t *vitte_ast_make_let_stmt(vitte_ast_builder_t *builder, const char *name, vitte_ast_type_ref_t *type, vitte_ast_expr_t *value, bool mutable_value, vitte_ast_span_t span);
 vitte_ast_stmt_t *vitte_ast_make_expr_stmt(vitte_ast_builder_t *builder, vitte_ast_expr_t *value, vitte_ast_span_t span);
 vitte_ast_stmt_t *vitte_ast_make_if_stmt(vitte_ast_builder_t *builder, vitte_ast_expr_t *condition, vitte_ast_stmt_t *then_branch, vitte_ast_stmt_t *else_branch, vitte_ast_span_t span);
 vitte_ast_expr_t *vitte_ast_make_integer_literal(vitte_ast_builder_t *builder, int64_t value, vitte_ast_span_t span);

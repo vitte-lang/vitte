@@ -59,6 +59,7 @@ Current bootstrap grammar:
   - `give expr`
   - `let name: type`
   - `let name: type = expr`
+  - `let mut name: type = expr`
   - `expr;`
   - `if expr stmt`
   - `if expr stmt else stmt`

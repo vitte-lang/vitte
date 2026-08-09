@@ -151,6 +151,8 @@ const char *vitte_token_kind_name(vitte_token_kind_t kind) {
             return "const";
         case VITTE_TOKEN_KW_LET:
             return "let";
+        case VITTE_TOKEN_KW_MUT:
+            return "mut";
         case VITTE_TOKEN_KW_IF:
             return "if";
         case VITTE_TOKEN_KW_ELSE:
@@ -235,6 +237,7 @@ bool vitte_token_kind_is_keyword(vitte_token_kind_t kind) {
         kind == VITTE_TOKEN_KW_PROC ||
         kind == VITTE_TOKEN_KW_CONST ||
         kind == VITTE_TOKEN_KW_LET ||
+        kind == VITTE_TOKEN_KW_MUT ||
         kind == VITTE_TOKEN_KW_IF ||
         kind == VITTE_TOKEN_KW_ELSE ||
         kind == VITTE_TOKEN_KW_GIVE ||
@@ -342,6 +345,9 @@ static vitte_token_kind_t vitte_lexer_keyword_kind(const char *start, size_t len
     }
     if (length == 3u && memcmp(start, "let", 3u) == 0) {
         return VITTE_TOKEN_KW_LET;
+    }
+    if (length == 3u && memcmp(start, "mut", 3u) == 0) {
+        return VITTE_TOKEN_KW_MUT;
     }
     if (length == 2u && memcmp(start, "if", 2u) == 0) {
         return VITTE_TOKEN_KW_IF;

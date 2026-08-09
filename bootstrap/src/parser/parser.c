@@ -1106,9 +1106,11 @@ static vitte_ast_stmt_t *vitte_parser_parse_let(vitte_parser_t *parser) {
     vitte_ast_expr_t *value = NULL;
     vitte_ast_stmt_t *stmt;
     vitte_ast_span_t span;
+    bool mutable_value = false;
 
     keyword_span = vitte_parser_span_from_token(&parser->current);
     (void)vitte_parser_advance(parser);
+    mutable_value = vitte_parser_match(parser, VITTE_TOKEN_KW_MUT);
     if (parser->current.kind != VITTE_TOKEN_IDENTIFIER) {
         (void)vitte_parser_fail_current(parser, "VITTE_PARSER_E_LET", "expected identifier after 'let'");
         return NULL;
@@ -1149,7 +1151,7 @@ static vitte_ast_stmt_t *vitte_parser_parse_let(vitte_parser_t *parser) {
     if (value != NULL) {
         span = vitte_parser_span_merge(&span, &value->span);
     }
-    stmt = vitte_ast_make_let_stmt(&parser->builder, name, type, value, span);
+    stmt = vitte_ast_make_let_stmt(&parser->builder, name, type, value, mutable_value, span);
     if (stmt == NULL) {
         (void)vitte_parser_fail(
             parser,
@@ -1679,11 +1681,11 @@ static vitte_ast_node_t *vitte_parser_parse_param(vitte_parser_t *parser) {
     if (parser->current.kind == VITTE_TOKEN_IDENTIFIER && vitte_parser_token_text_is(&parser->current, "ref")) {
         by_ref = true;
         (void)vitte_parser_advance(parser);
-        if (parser->current.kind == VITTE_TOKEN_IDENTIFIER && vitte_parser_token_text_is(&parser->current, "mut")) {
+        if (parser->current.kind == VITTE_TOKEN_KW_MUT) {
             mutable_value = true;
             (void)vitte_parser_advance(parser);
         }
-    } else if (parser->current.kind == VITTE_TOKEN_IDENTIFIER && vitte_parser_token_text_is(&parser->current, "mut")) {
+    } else if (parser->current.kind == VITTE_TOKEN_KW_MUT) {
         mutable_value = true;
         (void)vitte_parser_advance(parser);
     } else if (parser->current.kind == VITTE_TOKEN_IDENTIFIER &&

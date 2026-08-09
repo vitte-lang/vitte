@@ -58,7 +58,7 @@ Legend:
 | Procedure return type | yes | yes | yes | yes | yes |
 | Procedure modifiers / generics / where | no | no | no | no | no |
 | Top-level `const` | yes | yes | yes | yes | yes |
-| `let` statements | yes | yes | yes | yes | yes |
+| `let` statements, including `let mut` | yes | yes | yes | yes | yes |
 | `if` / `else` | yes | yes | yes | yes | yes |
 | Block statements | yes | yes | yes | yes | yes |
 | `give` return statements | yes | yes | yes | yes | yes |

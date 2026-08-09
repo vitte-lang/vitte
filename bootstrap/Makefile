@@ -48,6 +48,7 @@ smoke: verify $(BIN)
 	@"$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/sema_calls/import_param_ok.vit"
 	@"$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/frontend_expr_stmt/expr_stmt_ok.vit"
 	@"$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/sema_operators/logical_ok.vit"
+	@"$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/grammar_alignment/let_mut_ok.vit"
 	@tmp="$$(mktemp)"; \
 	if "$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/import_visibility/ambiguous_symbol_form_main.vit" >"$$tmp" 2>&1; then \
 		cat "$$tmp"; rm -f "$$tmp"; exit 1; \
@@ -130,6 +131,8 @@ smoke: verify $(BIN)
 	rm -f "$$tmp"
 	@"$(BIN)" build "$(ROOT_DIR)/bootstrap/tests/sema_operators/logical_ok.vit" -o "$(OUT_DIR)/logical_ok"
 	@"$(OUT_DIR)/logical_ok"
+	@"$(BIN)" build "$(ROOT_DIR)/bootstrap/tests/grammar_alignment/let_mut_ok.vit" -o "$(OUT_DIR)/let_mut_ok"
+	@"$(OUT_DIR)/let_mut_ok"
 
 install: $(BIN)
 	@mkdir -p "$(ROOT_DIR)/bin"

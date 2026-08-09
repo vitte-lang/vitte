@@ -564,12 +564,13 @@ vitte_ast_stmt_t *vitte_ast_make_give_stmt(vitte_ast_builder_t *builder, vitte_a
     return node;
 }
 
-vitte_ast_stmt_t *vitte_ast_make_let_stmt(vitte_ast_builder_t *builder, const char *name, vitte_ast_type_ref_t *type, vitte_ast_expr_t *value, vitte_ast_span_t span) {
+vitte_ast_stmt_t *vitte_ast_make_let_stmt(vitte_ast_builder_t *builder, const char *name, vitte_ast_type_ref_t *type, vitte_ast_expr_t *value, bool mutable_value, vitte_ast_span_t span) {
     vitte_ast_node_t *node = builder != NULL ? vitte_ast_alloc_node(builder->ast, VITTE_AST_NODE_LET_STMT, span) : NULL;
     if (node != NULL) {
         node->as.let_stmt.name = name;
         node->as.let_stmt.type = type;
         node->as.let_stmt.value = value;
+        node->as.let_stmt.mutable_value = mutable_value;
     }
     return node;
 }

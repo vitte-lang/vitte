@@ -1418,7 +1418,7 @@ static vitte_status_t vitte_sema_analyze_stmt(
                     break;
                 }
             }
-            status = vitte_sema_define_local(sema, stmt->as.let_stmt.name, type, stmt, true);
+            status = vitte_sema_define_local(sema, stmt->as.let_stmt.name, type, stmt, stmt->as.let_stmt.mutable_value);
             break;
         case VITTE_AST_NODE_EXPR_STMT:
             if (stmt->as.expr_stmt.value == NULL) {
