@@ -873,6 +873,23 @@ static vitte_ast_expr_t *vitte_parser_parse_call(vitte_parser_t *parser) {
         callee = call;
     }
 
+    while (parser->current.kind == VITTE_TOKEN_DOT) {
+        vitte_ast_span_t span = callee->span;
+        vitte_ast_span_t member_span;
+        char *member;
+        (void)vitte_parser_advance(parser);
+        if (parser->current.kind != VITTE_TOKEN_IDENTIFIER) {
+            (void)vitte_parser_fail_current(parser, "VITTE_PARSER_E_MEMBER", "expected member name after '.'");
+            return NULL;
+        }
+        member = vitte_parser_copy_token_text(parser, &parser->current);
+        member_span = vitte_parser_span_from_token(&parser->current);
+        span = vitte_parser_span_merge(&span, &member_span);
+        (void)vitte_parser_advance(parser);
+        callee = vitte_ast_make_member_expr(&parser->builder, callee, member, span);
+        if (callee == NULL) return NULL;
+    }
+
     while (parser->current.kind == VITTE_TOKEN_KW_AS) {
         vitte_ast_span_t span = callee->span;
         vitte_ast_type_ref_t *type;

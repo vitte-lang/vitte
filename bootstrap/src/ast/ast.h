@@ -43,6 +43,7 @@ typedef enum vitte_ast_node_kind {
     VITTE_AST_NODE_CAST_EXPR,
     VITTE_AST_NODE_INDEX_EXPR,
     VITTE_AST_NODE_IF_EXPR,
+    VITTE_AST_NODE_MEMBER_EXPR,
     VITTE_AST_NODE_TYPE_NAME,
     VITTE_AST_NODE_COUNT
 } vitte_ast_node_kind_t;
@@ -221,6 +222,7 @@ struct vitte_ast_node {
         struct { vitte_ast_expr_t *value; vitte_ast_type_ref_t *type; } cast_expr;
         struct { vitte_ast_expr_t *base; vitte_ast_expr_t *index; } index_expr;
         struct { vitte_ast_expr_t *condition; vitte_ast_expr_t *then_value; vitte_ast_expr_t *else_value; } if_expr;
+        struct { vitte_ast_expr_t *base; const char *member; } member_expr;
 
         struct {
             const char *name;
@@ -331,6 +333,7 @@ vitte_ast_node_t *vitte_ast_make_record_field(vitte_ast_builder_t *builder, cons
 vitte_ast_expr_t *vitte_ast_make_cast_expr(vitte_ast_builder_t *builder, vitte_ast_expr_t *value, vitte_ast_type_ref_t *type, vitte_ast_span_t span);
 vitte_ast_expr_t *vitte_ast_make_index_expr(vitte_ast_builder_t *builder, vitte_ast_expr_t *base, vitte_ast_expr_t *index, vitte_ast_span_t span);
 vitte_ast_expr_t *vitte_ast_make_if_expr(vitte_ast_builder_t *builder, vitte_ast_expr_t *condition, vitte_ast_expr_t *then_value, vitte_ast_expr_t *else_value, vitte_ast_span_t span);
+vitte_ast_expr_t *vitte_ast_make_member_expr(vitte_ast_builder_t *builder, vitte_ast_expr_t *base, const char *member, vitte_ast_span_t span);
 vitte_ast_stmt_t *vitte_ast_make_while_stmt(vitte_ast_builder_t *builder, vitte_ast_expr_t *condition, vitte_ast_stmt_t *body, vitte_ast_span_t span);
 vitte_ast_type_ref_t *vitte_ast_make_type_name(vitte_ast_builder_t *builder, const char *name, vitte_ast_span_t span);
 vitte_ast_node_t *vitte_ast_make_error(vitte_ast_builder_t *builder, const char *message, vitte_ast_span_t span);
