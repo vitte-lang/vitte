@@ -862,6 +862,29 @@ static vitte_ast_expr_t *vitte_parser_parse_call(vitte_parser_t *parser) {
         if (callee == NULL) return NULL;
     }
 
+    while (parser->current.kind == VITTE_TOKEN_LBRACKET) {
+        vitte_ast_span_t span = callee->span;
+        vitte_ast_expr_t *index;
+        (void)vitte_parser_advance(parser);
+        index = vitte_parser_parse_expr_impl(parser);
+        if (index == NULL || !vitte_parser_expect(parser, VITTE_TOKEN_RBRACKET, "VITTE_PARSER_E_INDEX", "expected ']' after index expression")) return NULL;
+        span = vitte_parser_span_merge(&span, &index->span);
+        callee = vitte_ast_make_index_expr(&parser->builder, callee, index, span);
+        if (callee == NULL) return NULL;
+    }
+
+    /* Indexing binds before a following cast, for example `items[i] as u64`. */
+    while (parser->current.kind == VITTE_TOKEN_KW_AS) {
+        vitte_ast_span_t span = callee->span;
+        vitte_ast_type_ref_t *type;
+        (void)vitte_parser_advance(parser);
+        type = vitte_parser_parse_type_ref(parser);
+        if (type == NULL) return NULL;
+        span = vitte_parser_span_merge(&span, &type->span);
+        callee = vitte_ast_make_cast_expr(&parser->builder, callee, type, span);
+        if (callee == NULL) return NULL;
+    }
+
     return callee;
 }
 
