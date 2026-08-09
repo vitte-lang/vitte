@@ -4,6 +4,8 @@
 #include <stdio.h>
 #include <string.h>
 
+static bool vitte_hir_depth_ok(vitte_hir_lowering_t *lowering, size_t depth);
+
 static void vitte_hir_set_error(
     vitte_hir_t *hir,
     vitte_status_t status,
@@ -158,6 +160,10 @@ const char *vitte_hir_kind_name(vitte_hir_kind_t kind) {
             return "function";
         case VITTE_HIR_CONST_DECL:
             return "const";
+        case VITTE_HIR_PICK_DECL:
+            return "pick";
+        case VITTE_HIR_PICK_VARIANT:
+            return "pick_variant";
         case VITTE_HIR_BLOCK:
             return "block";
         case VITTE_HIR_RETURN_STMT:
@@ -199,6 +205,10 @@ const char *vitte_hir_node_label(const vitte_hir_node_t *node) {
             return node->as.function.name != NULL ? node->as.function.name : "<function>";
         case VITTE_HIR_CONST_DECL:
             return node->as.const_decl.name != NULL ? node->as.const_decl.name : "<const>";
+        case VITTE_HIR_PICK_DECL:
+            return node->as.pick_decl.name != NULL ? node->as.pick_decl.name : "<pick>";
+        case VITTE_HIR_PICK_VARIANT:
+            return node->as.pick_variant.name != NULL ? node->as.pick_variant.name : "<variant>";
         case VITTE_HIR_LET_STMT:
             return node->as.let_stmt.name != NULL ? node->as.let_stmt.name : "<let>";
         case VITTE_HIR_ASSIGN_STMT:
@@ -352,6 +362,29 @@ vitte_hir_decl_t *vitte_hir_make_const(vitte_hir_builder_t *builder, const char 
     return node;
 }
 
+vitte_hir_decl_t *vitte_hir_make_pick(vitte_hir_builder_t *builder, const char *name, const vitte_ast_node_t *source) {
+    vitte_hir_node_t *node;
+
+    if (builder == NULL || builder->hir == NULL || name == NULL) {
+        return NULL;
+    }
+    node = vitte_hir_alloc_node(builder->hir, VITTE_HIR_PICK_DECL, source);
+    if (node == NULL) {
+        return NULL;
+    }
+    node->as.pick_decl.name = name;
+    vitte_hir_list_init(&node->as.pick_decl.variants);
+    return node;
+}
+
+vitte_hir_node_t *vitte_hir_make_pick_variant(vitte_hir_builder_t *builder, const char *name, const vitte_ast_node_t *source) {
+    vitte_hir_node_t *node = builder != NULL ? vitte_hir_alloc_node(builder->hir, VITTE_HIR_PICK_VARIANT, source) : NULL;
+    if (node != NULL) {
+        node->as.pick_variant.name = name;
+    }
+    return node;
+}
+
 vitte_hir_block_t *vitte_hir_make_block(vitte_hir_builder_t *builder, const vitte_ast_node_t *source) {
     vitte_hir_node_t *node;
 
@@ -476,10 +509,39 @@ bool vitte_hir_module_add_decl(vitte_hir_module_t *module, vitte_hir_decl_t *dec
     if (module == NULL || module->kind != VITTE_HIR_MODULE || decl == NULL) {
         return false;
     }
-    if (decl->kind != VITTE_HIR_FUNCTION && decl->kind != VITTE_HIR_CONST_DECL) {
+    if (decl->kind != VITTE_HIR_FUNCTION && decl->kind != VITTE_HIR_CONST_DECL && decl->kind != VITTE_HIR_PICK_DECL) {
         return false;
     }
     return vitte_hir_list_append(&module->as.module.declarations, decl);
+}
+
+static vitte_hir_decl_t *vitte_hir_lower_pick(vitte_hir_lowering_t *lowering, const vitte_ast_node_t *decl, size_t depth) {
+    vitte_hir_builder_t builder;
+    vitte_hir_decl_t *pick;
+    const vitte_ast_node_t *variant;
+
+    if (!vitte_hir_depth_ok(lowering, depth) || decl == NULL || decl->kind != VITTE_AST_NODE_PICK_DECL) {
+        vitte_hir_lowering_set_error(lowering, VITTE_STATUS_ERROR_UNSUPPORTED, "VITTE_HIR_E_DECL", "HIR lowering expects pick declarations", decl != NULL ? vitte_ast_node_kind_name(decl->kind) : NULL);
+        return NULL;
+    }
+    vitte_hir_builder_init(&builder, lowering->hir);
+    pick = vitte_hir_make_pick(&builder, decl->as.pick_decl.name, decl);
+    if (pick == NULL) {
+        return NULL;
+    }
+    for (variant = decl->as.pick_decl.variants.first; variant != NULL; variant = variant->next) {
+        vitte_hir_node_t *hir_variant;
+        if (variant->kind != VITTE_AST_NODE_PICK_VARIANT) {
+            vitte_hir_lowering_set_error(lowering, VITTE_STATUS_ERROR_UNSUPPORTED, "VITTE_HIR_E_PICK", "unsupported AST pick variant", vitte_ast_node_kind_name(variant->kind));
+            return NULL;
+        }
+        hir_variant = vitte_hir_make_pick_variant(&builder, variant->as.pick_variant.name, variant);
+        if (hir_variant == NULL || !vitte_hir_list_append(&pick->as.pick_decl.variants, hir_variant)) {
+            vitte_hir_lowering_set_error(lowering, VITTE_STATUS_ERROR_INTERNAL, "VITTE_HIR_E_PICK", "failed to append lowered pick variant", variant->as.pick_variant.name);
+            return NULL;
+        }
+    }
+    return pick;
 }
 
 bool vitte_hir_module_add_function(vitte_hir_module_t *module, vitte_hir_function_t *function) {
@@ -833,6 +895,14 @@ vitte_status_t vitte_hir_lower_ast_with_options(
                 }
                 return lowering->last_error.status;
             }
+        } else if (decl->kind == VITTE_AST_NODE_PICK_DECL) {
+            vitte_hir_decl_t *pick = vitte_hir_lower_pick(lowering, decl, 1u);
+            if (pick == NULL || !vitte_hir_module_add_decl(module, pick)) {
+                if (vitte_error_is_ok(&lowering->last_error)) {
+                    vitte_hir_lowering_set_error(lowering, VITTE_STATUS_ERROR_INTERNAL, "VITTE_HIR_E_MODULE", "failed to append lowered pick declaration", NULL);
+                }
+                return lowering->last_error.status;
+            }
         } else {
             vitte_hir_lowering_set_error(lowering, VITTE_STATUS_ERROR_UNSUPPORTED, "VITTE_HIR_E_DECL", "unsupported AST declaration for HIR lowering", vitte_ast_node_kind_name(decl->kind));
             return VITTE_STATUS_ERROR_UNSUPPORTED;
@@ -998,6 +1068,19 @@ static vitte_status_t vitte_hir_validate_node(vitte_hir_t *hir, const vitte_hir_
                 }
             }
             return vitte_hir_validate_node(hir, node->as.const_decl.value, depth + 1u, max_depth, visited);
+        case VITTE_HIR_PICK_DECL:
+            if (node->as.pick_decl.name == NULL || node->as.pick_decl.variants.count == 0u) {
+                vitte_hir_set_error(hir, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_HIR_E_PICK", "HIR pick requires a name and variants", NULL);
+                return VITTE_STATUS_ERROR_INVALID_STATE;
+            }
+            status = vitte_hir_validate_list(hir, &node->as.pick_decl.variants, depth, max_depth, visited);
+            return status;
+        case VITTE_HIR_PICK_VARIANT:
+            if (node->as.pick_variant.name == NULL || node->as.pick_variant.name[0] == '\0') {
+                vitte_hir_set_error(hir, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_HIR_E_PICK", "HIR pick variant requires a name", NULL);
+                return VITTE_STATUS_ERROR_INVALID_STATE;
+            }
+            return VITTE_STATUS_OK;
         case VITTE_HIR_BLOCK:
             return vitte_hir_validate_list(hir, &node->as.block.statements, depth, max_depth, visited);
         case VITTE_HIR_RETURN_STMT:
