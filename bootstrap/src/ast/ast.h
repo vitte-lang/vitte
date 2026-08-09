@@ -32,6 +32,7 @@ typedef enum vitte_ast_node_kind {
     VITTE_AST_NODE_EXPR_STMT,
     VITTE_AST_NODE_IF_STMT,
     VITTE_AST_NODE_WHILE_STMT,
+    VITTE_AST_NODE_FOR_STMT,
     VITTE_AST_NODE_INTEGER_LITERAL,
     VITTE_AST_NODE_STRING_LITERAL,
     VITTE_AST_NODE_IDENTIFIER,
@@ -181,6 +182,7 @@ struct vitte_ast_node {
         } if_stmt;
 
         struct { vitte_ast_expr_t *condition; vitte_ast_stmt_t *body; } while_stmt;
+        struct { const char *name; vitte_ast_expr_t *iterable; vitte_ast_stmt_t *body; } for_stmt;
 
         struct {
             int64_t value;
@@ -338,6 +340,7 @@ vitte_ast_expr_t *vitte_ast_make_if_expr(vitte_ast_builder_t *builder, vitte_ast
 vitte_ast_expr_t *vitte_ast_make_member_expr(vitte_ast_builder_t *builder, vitte_ast_expr_t *base, const char *member, vitte_ast_span_t span);
 vitte_ast_expr_t *vitte_ast_make_block_expr(vitte_ast_builder_t *builder, vitte_ast_list_t statements, vitte_ast_expr_t *value, vitte_ast_span_t span);
 vitte_ast_stmt_t *vitte_ast_make_while_stmt(vitte_ast_builder_t *builder, vitte_ast_expr_t *condition, vitte_ast_stmt_t *body, vitte_ast_span_t span);
+vitte_ast_stmt_t *vitte_ast_make_for_stmt(vitte_ast_builder_t *builder, const char *name, vitte_ast_expr_t *iterable, vitte_ast_stmt_t *body, vitte_ast_span_t span);
 vitte_ast_type_ref_t *vitte_ast_make_type_name(vitte_ast_builder_t *builder, const char *name, vitte_ast_span_t span);
 vitte_ast_node_t *vitte_ast_make_error(vitte_ast_builder_t *builder, const char *message, vitte_ast_span_t span);
 

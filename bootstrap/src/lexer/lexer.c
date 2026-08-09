@@ -167,6 +167,10 @@ const char *vitte_token_kind_name(vitte_token_kind_t kind) {
             return "share";
         case VITTE_TOKEN_KW_INTRINSIC:
             return "intrinsic";
+        case VITTE_TOKEN_KW_FOR:
+            return "for";
+        case VITTE_TOKEN_KW_IN:
+            return "in";
         case VITTE_TOKEN_KW_GIVE:
             return "give";
         case VITTE_TOKEN_KW_PICK:
@@ -265,6 +269,8 @@ bool vitte_token_kind_is_keyword(vitte_token_kind_t kind) {
         kind == VITTE_TOKEN_KW_WHILE ||
         kind == VITTE_TOKEN_KW_SHARE ||
         kind == VITTE_TOKEN_KW_INTRINSIC ||
+        kind == VITTE_TOKEN_KW_FOR ||
+        kind == VITTE_TOKEN_KW_IN ||
         kind == VITTE_TOKEN_KW_GIVE ||
         kind == VITTE_TOKEN_KW_PICK ||
         kind == VITTE_TOKEN_KW_FORM ||
@@ -397,6 +403,8 @@ static vitte_token_kind_t vitte_lexer_keyword_kind(const char *start, size_t len
     if (length == 9u && memcmp(start, "intrinsic", 9u) == 0) {
         return VITTE_TOKEN_KW_INTRINSIC;
     }
+    if (length == 3u && memcmp(start, "for", 3u) == 0) return VITTE_TOKEN_KW_FOR;
+    if (length == 2u && memcmp(start, "in", 2u) == 0) return VITTE_TOKEN_KW_IN;
     if (length == 4u && memcmp(start, "give", 4u) == 0) {
         return VITTE_TOKEN_KW_GIVE;
     }
