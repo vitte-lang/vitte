@@ -534,6 +534,22 @@ vitte_ir_pick_variant_t *vitte_ir_make_pick_variant(vitte_ir_builder_t *builder,
     return variant;
 }
 
+vitte_ir_form_t *vitte_ir_make_form(vitte_ir_builder_t *builder, const char *name, const vitte_hir_node_t *source) {
+    vitte_ir_form_t *form;
+    if (builder == NULL || builder->ir == NULL || name == NULL) return NULL;
+    form = (vitte_ir_form_t *)vitte_arena_alloc_zeroed(builder->ir->arena, sizeof(*form), _Alignof(vitte_ir_form_t));
+    if (form != NULL) { form->name = name; form->source = source; }
+    return form;
+}
+
+vitte_ir_form_field_t *vitte_ir_make_form_field(vitte_ir_builder_t *builder, const char *name, vitte_ir_type_t *type) {
+    vitte_ir_form_field_t *field;
+    if (builder == NULL || builder->ir == NULL || name == NULL || type == NULL) return NULL;
+    field = (vitte_ir_form_field_t *)vitte_arena_alloc_zeroed(builder->ir->arena, sizeof(*field), _Alignof(vitte_ir_form_field_t));
+    if (field != NULL) { field->name = name; field->type = type; }
+    return field;
+}
+
 bool vitte_ir_module_add_global(vitte_ir_module_t *module, vitte_ir_global_t *global) {
     if (module == NULL || global == NULL) {
         return false;
@@ -576,6 +592,24 @@ bool vitte_ir_pick_add_variant(vitte_ir_pick_t *pick, vitte_ir_pick_variant_t *v
     }
     pick->last_variant = variant;
     pick->variant_count++;
+    return true;
+}
+
+bool vitte_ir_module_add_form(vitte_ir_module_t *module, vitte_ir_form_t *form) {
+    if (module == NULL || form == NULL || form->name == NULL) return false;
+    form->next = NULL;
+    if (module->last_form != NULL) module->last_form->next = form; else module->first_form = form;
+    module->last_form = form;
+    module->form_count++;
+    return true;
+}
+
+bool vitte_ir_form_add_field(vitte_ir_form_t *form, vitte_ir_form_field_t *field) {
+    if (form == NULL || field == NULL || field->name == NULL || field->type == NULL) return false;
+    field->next = NULL;
+    if (form->last_field != NULL) form->last_field->next = field; else form->first_field = field;
+    form->last_field = field;
+    form->field_count++;
     return true;
 }
 
@@ -1567,6 +1601,23 @@ static vitte_status_t vitte_ir_predeclare_pick(vitte_ir_lowering_t *lowering, co
     return VITTE_STATUS_OK;
 }
 
+static vitte_status_t vitte_ir_predeclare_form(vitte_ir_lowering_t *lowering, const vitte_hir_node_t *hir_decl) {
+    vitte_ir_form_t *form;
+    const vitte_hir_node_t *field;
+    if (hir_decl == NULL || hir_decl->kind != VITTE_HIR_FORM_DECL) return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+    form = vitte_ir_make_form(&lowering->builder, hir_decl->as.form_decl.name, hir_decl);
+    if (form == NULL || !vitte_ir_module_add_form(lowering->ir->module, form)) return VITTE_STATUS_ERROR_INVALID_STATE;
+    for (field = hir_decl->as.form_decl.fields.first; field != NULL; field = field->next) {
+        vitte_ir_type_t *type;
+        vitte_ir_form_field_t *ir_field;
+        if (field->kind != VITTE_HIR_FORM_FIELD) return VITTE_STATUS_ERROR_INVALID_STATE;
+        type = vitte_ir_type_from_hir(lowering->ir, field->as.form_field.type);
+        ir_field = type != NULL ? vitte_ir_make_form_field(&lowering->builder, field->as.form_field.name, type) : NULL;
+        if (ir_field == NULL || !vitte_ir_form_add_field(form, ir_field)) return VITTE_STATUS_ERROR_INVALID_STATE;
+    }
+    return VITTE_STATUS_OK;
+}
+
 static vitte_status_t vitte_ir_lower_function_body(vitte_ir_lowering_t *lowering, const vitte_hir_node_t *hir_function) {
     vitte_ir_function_t *function;
     vitte_ir_block_t *entry;
@@ -1636,6 +1687,11 @@ vitte_status_t vitte_ir_lower_hir_with_options(vitte_ir_lowering_t *lowering, co
             if (status != VITTE_STATUS_OK) {
                 return status;
             }
+            continue;
+        }
+        if (decl->kind == VITTE_HIR_FORM_DECL) {
+            status = vitte_ir_predeclare_form(lowering, decl);
+            if (status != VITTE_STATUS_OK) return status;
             continue;
         }
         vitte_ir_lowering_set_error(lowering, VITTE_STATUS_ERROR_UNSUPPORTED, "VITTE_IR_E_DECL", "unsupported HIR declaration for IR lowering", vitte_hir_kind_name(decl->kind));
@@ -2022,6 +2078,7 @@ vitte_status_t vitte_ir_validate(vitte_ir_t *ir) {
     size_t blocks = 0u;
     size_t instructions = 0u;
     size_t picks = 0u;
+    size_t forms = 0u;
 
     if (!vitte_ir_is_initialized(ir) || ir->module == NULL) {
         vitte_ir_set_error(ir, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_IR_E_STATE", "IR module is missing", NULL);
@@ -2062,6 +2119,20 @@ vitte_status_t vitte_ir_validate(vitte_ir_t *ir) {
                 vitte_ir_set_error(ir, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_IR_E_PICK", "IR pick variant count is inconsistent", pick->name);
                 return VITTE_STATUS_ERROR_INVALID_STATE;
             }
+        }
+    }
+    {
+        const vitte_ir_form_t *form;
+        for (form = ir->module->first_form; form != NULL; form = form->next) {
+            const vitte_ir_form_field_t *field;
+            size_t fields = 0u;
+            forms++;
+            if (form->name == NULL || form->field_count == 0u) return VITTE_STATUS_ERROR_INVALID_STATE;
+            for (field = form->first_field; field != NULL; field = field->next) {
+                fields++;
+                if (field->name == NULL || !vitte_ir_type_is_backend_stable(field->type)) return VITTE_STATUS_ERROR_INVALID_STATE;
+            }
+            if (fields != form->field_count) return VITTE_STATUS_ERROR_INVALID_STATE;
         }
     }
     for (function = ir->module->first_function; function != NULL; function = function->next) {
@@ -2114,7 +2185,7 @@ vitte_status_t vitte_ir_validate(vitte_ir_t *ir) {
             }
         }
     }
-    if (picks != ir->module->pick_count ||
+    if (forms != ir->module->form_count || picks != ir->module->pick_count ||
         globals != ir->module->global_count ||
         functions != ir->module->function_count ||
         functions != ir->function_count ||

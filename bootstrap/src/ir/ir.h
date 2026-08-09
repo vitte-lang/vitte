@@ -69,6 +69,8 @@ typedef struct vitte_ir_function vitte_ir_function_t;
 typedef struct vitte_ir_global vitte_ir_global_t;
 typedef struct vitte_ir_pick_variant vitte_ir_pick_variant_t;
 typedef struct vitte_ir_pick vitte_ir_pick_t;
+typedef struct vitte_ir_form_field vitte_ir_form_field_t;
+typedef struct vitte_ir_form vitte_ir_form_t;
 typedef struct vitte_ir_module vitte_ir_module_t;
 typedef struct vitte_ir_local_binding vitte_ir_local_binding_t;
 typedef struct vitte_ir_function_binding vitte_ir_function_binding_t;
@@ -156,6 +158,21 @@ struct vitte_ir_pick {
     vitte_ir_pick_t *next;
 };
 
+struct vitte_ir_form_field {
+    const char *name;
+    vitte_ir_type_t *type;
+    vitte_ir_form_field_t *next;
+};
+
+struct vitte_ir_form {
+    const char *name;
+    vitte_ir_form_field_t *first_field;
+    vitte_ir_form_field_t *last_field;
+    size_t field_count;
+    const vitte_hir_node_t *source;
+    vitte_ir_form_t *next;
+};
+
 struct vitte_ir_module {
     const char *name;
     vitte_ir_global_t *first_global;
@@ -164,6 +181,9 @@ struct vitte_ir_module {
     vitte_ir_pick_t *first_pick;
     vitte_ir_pick_t *last_pick;
     size_t pick_count;
+    vitte_ir_form_t *first_form;
+    vitte_ir_form_t *last_form;
+    size_t form_count;
     vitte_ir_function_t *first_function;
     vitte_ir_function_t *last_function;
     size_t function_count;
@@ -225,9 +245,13 @@ vitte_ir_module_t *vitte_ir_make_module(vitte_ir_builder_t *builder, const char 
 vitte_ir_global_t *vitte_ir_make_global(vitte_ir_builder_t *builder, const char *name, vitte_ir_type_t *type, const vitte_hir_node_t *source);
 vitte_ir_pick_t *vitte_ir_make_pick(vitte_ir_builder_t *builder, const char *name, const vitte_hir_node_t *source);
 vitte_ir_pick_variant_t *vitte_ir_make_pick_variant(vitte_ir_builder_t *builder, const char *name);
+vitte_ir_form_t *vitte_ir_make_form(vitte_ir_builder_t *builder, const char *name, const vitte_hir_node_t *source);
+vitte_ir_form_field_t *vitte_ir_make_form_field(vitte_ir_builder_t *builder, const char *name, vitte_ir_type_t *type);
 bool vitte_ir_module_add_global(vitte_ir_module_t *module, vitte_ir_global_t *global);
 bool vitte_ir_module_add_pick(vitte_ir_module_t *module, vitte_ir_pick_t *pick);
 bool vitte_ir_pick_add_variant(vitte_ir_pick_t *pick, vitte_ir_pick_variant_t *variant);
+bool vitte_ir_module_add_form(vitte_ir_module_t *module, vitte_ir_form_t *form);
+bool vitte_ir_form_add_field(vitte_ir_form_t *form, vitte_ir_form_field_t *field);
 vitte_ir_function_t *vitte_ir_make_function(vitte_ir_builder_t *builder, const char *name, vitte_ir_type_t *return_type, const vitte_hir_node_t *source);
 bool vitte_ir_module_add_function(vitte_ir_module_t *module, vitte_ir_function_t *function);
 vitte_ir_value_t *vitte_ir_make_parameter(vitte_ir_builder_t *builder, const char *name, vitte_ir_type_t *type);
