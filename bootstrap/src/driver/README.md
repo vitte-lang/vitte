@@ -51,9 +51,9 @@ Imported module graphs are semantically checked before the root module. Backend
 flattening only carries exported imported declarations into the lowered module.
 That export surface now includes `export *`, explicit local export items, and
 local export aliases in addition to inline `export proc/const`.
-When different imported modules, or a local declaration and an imported module,
-would require the same lowered C-visible bootstrap name, the driver now stops
-with a dedicated backend collision diagnostic instead of silently overwriting.
+Flattening now assigns stable internal lowered names to imported declarations,
+so different imported modules can expose the same public Vitte symbol without
+colliding during backend lowering.
 
 ## Options
 

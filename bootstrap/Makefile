@@ -59,18 +59,8 @@ smoke: verify $(BIN)
 	fi; \
 	grep -q "VITTE_SEMA_E_IMPORT_PRIVATE_MEMBER" "$$tmp" || { cat "$$tmp"; rm -f "$$tmp"; exit 1; }; \
 	rm -f "$$tmp"
-	@tmp="$$(mktemp)"; \
-	if "$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/import_collision/local_main.vit" >"$$tmp" 2>&1; then \
-		cat "$$tmp"; rm -f "$$tmp"; exit 1; \
-	fi; \
-	grep -q "VITTE_DRIVER_E_IMPORT_COLLISION_LOCAL" "$$tmp" || { cat "$$tmp"; rm -f "$$tmp"; exit 1; }; \
-	rm -f "$$tmp"
-	@tmp="$$(mktemp)"; \
-	if "$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/import_collision/modules_main.vit" >"$$tmp" 2>&1; then \
-		cat "$$tmp"; rm -f "$$tmp"; exit 1; \
-	fi; \
-	grep -q "VITTE_DRIVER_E_IMPORT_COLLISION_IMPORTED" "$$tmp" || { cat "$$tmp"; rm -f "$$tmp"; exit 1; }; \
-	rm -f "$$tmp"
+	@"$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/import_collision/local_main.vit"
+	@"$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/import_collision/modules_main.vit"
 	@tmp="$$(mktemp)"; \
 	if "$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/export_forms/missing_export.vit" >"$$tmp" 2>&1; then \
 		cat "$$tmp"; rm -f "$$tmp"; exit 1; \

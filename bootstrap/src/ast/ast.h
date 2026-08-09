@@ -93,6 +93,7 @@ struct vitte_ast_node {
         struct {
             const char *name;
             bool exported;
+            const char *lowered_name;
             vitte_ast_list_t parameters;
             vitte_ast_type_ref_t *return_type;
             vitte_ast_stmt_t *body;
@@ -108,6 +109,7 @@ struct vitte_ast_node {
         struct {
             const char *name;
             bool exported;
+            const char *lowered_name;
             vitte_ast_type_ref_t *type;
             vitte_ast_expr_t *value;
         } const_decl;
@@ -142,6 +144,7 @@ struct vitte_ast_node {
 
         struct {
             const char *name;
+            const char *lowered_name;
         } identifier;
 
         struct {

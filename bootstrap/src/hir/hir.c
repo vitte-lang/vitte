@@ -451,6 +451,26 @@ static vitte_hir_type_t *vitte_hir_lower_type(vitte_hir_lowering_t *lowering, co
 static vitte_hir_expr_t *vitte_hir_lower_expr(vitte_hir_lowering_t *lowering, const vitte_ast_node_t *node, size_t depth);
 static vitte_hir_stmt_t *vitte_hir_lower_stmt(vitte_hir_lowering_t *lowering, const vitte_ast_node_t *node, size_t depth);
 
+static const char *vitte_hir_ast_decl_lowered_name(const vitte_ast_node_t *decl) {
+    if (decl == NULL) {
+        return NULL;
+    }
+    if (decl->kind == VITTE_AST_NODE_PROC_DECL) {
+        return decl->as.proc_decl.lowered_name != NULL ? decl->as.proc_decl.lowered_name : decl->as.proc_decl.name;
+    }
+    if (decl->kind == VITTE_AST_NODE_CONST_DECL) {
+        return decl->as.const_decl.lowered_name != NULL ? decl->as.const_decl.lowered_name : decl->as.const_decl.name;
+    }
+    return NULL;
+}
+
+static const char *vitte_hir_ast_identifier_lowered_name(const vitte_ast_node_t *node) {
+    if (node == NULL || node->kind != VITTE_AST_NODE_IDENTIFIER) {
+        return NULL;
+    }
+    return node->as.identifier.lowered_name != NULL ? node->as.identifier.lowered_name : node->as.identifier.name;
+}
+
 static bool vitte_hir_depth_ok(vitte_hir_lowering_t *lowering, size_t depth) {
     if (lowering == NULL || depth > lowering->max_depth) {
         vitte_hir_lowering_set_error(lowering, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_HIR_E_DEPTH", "HIR lowering exceeded maximum depth", NULL);
@@ -493,7 +513,7 @@ static vitte_hir_expr_t *vitte_hir_lower_expr(vitte_hir_lowering_t *lowering, co
         case VITTE_AST_NODE_STRING_LITERAL:
             return vitte_hir_make_string_literal(&builder, node->as.string_literal.value, node);
         case VITTE_AST_NODE_IDENTIFIER:
-            return vitte_hir_make_variable(&builder, node->as.identifier.name, node);
+            return vitte_hir_make_variable(&builder, vitte_hir_ast_identifier_lowered_name(node), node);
         case VITTE_AST_NODE_BINARY_EXPR: {
             vitte_hir_expr_t *left = vitte_hir_lower_expr(lowering, node->as.binary_expr.left, depth + 1u);
             vitte_hir_expr_t *right = vitte_hir_lower_expr(lowering, node->as.binary_expr.right, depth + 1u);
@@ -619,7 +639,7 @@ static vitte_hir_function_t *vitte_hir_lower_function(vitte_hir_lowering_t *lowe
         return NULL;
     }
     vitte_hir_builder_init(&builder, lowering->hir);
-    function = vitte_hir_make_function(&builder, decl->as.proc_decl.name, return_type, body, decl);
+    function = vitte_hir_make_function(&builder, vitte_hir_ast_decl_lowered_name(decl), return_type, body, decl);
     if (function == NULL) {
         return NULL;
     }
@@ -671,7 +691,7 @@ static vitte_hir_decl_t *vitte_hir_lower_const(vitte_hir_lowering_t *lowering, c
         return NULL;
     }
     vitte_hir_builder_init(&builder, lowering->hir);
-    return vitte_hir_make_const(&builder, decl->as.const_decl.name, declared_type, value, decl);
+    return vitte_hir_make_const(&builder, vitte_hir_ast_decl_lowered_name(decl), declared_type, value, decl);
 }
 
 vitte_status_t vitte_hir_lower_ast_with_options(
