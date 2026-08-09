@@ -218,6 +218,52 @@ static const vitte_ast_module_t *vitte_sema_find_import_module(
     return NULL;
 }
 
+static bool vitte_sema_import_module_name(
+    const vitte_ast_decl_t *import_decl,
+    char *buffer,
+    size_t buffer_capacity
+);
+
+static const vitte_ast_decl_t *vitte_sema_find_exported_decl_recursive(
+    const vitte_sema_t *sema,
+    const vitte_ast_module_t *module,
+    const char *name,
+    size_t depth
+) {
+    const vitte_ast_decl_t *decl;
+    const vitte_ast_node_t *import_node;
+
+    if (sema == NULL || module == NULL || name == NULL || depth > 64u) {
+        return NULL;
+    }
+    decl = vitte_ast_module_find_exported_decl(module, name);
+    if (decl != NULL) {
+        return decl;
+    }
+    if (!module->as.module.export_all) {
+        return NULL;
+    }
+    for (import_node = module->as.module.imports.first; import_node != NULL; import_node = import_node->next) {
+        const vitte_ast_decl_t *import_decl;
+        const vitte_ast_module_t *child;
+        char child_name[VITTE_IMPORT_MAX_MODULE_NAME];
+
+        if (import_node->kind != VITTE_AST_NODE_IMPORT_DECL) {
+            continue;
+        }
+        import_decl = import_node;
+        if (!vitte_sema_import_module_name(import_decl, child_name, sizeof(child_name))) {
+            continue;
+        }
+        child = vitte_sema_find_import_module(sema, child_name);
+        decl = vitte_sema_find_exported_decl_recursive(sema, child, name, depth + 1u);
+        if (decl != NULL) {
+            return decl;
+        }
+    }
+    return NULL;
+}
+
 static const vitte_ast_decl_t *vitte_sema_find_reexport_import(
     vitte_sema_t *sema,
     const vitte_ast_module_t *module,
@@ -250,7 +296,7 @@ static const vitte_ast_decl_t *vitte_sema_find_reexport_import(
             }
             (void)memcpy(module_name, path, length + 1u);
             imported_module = vitte_sema_find_import_module(sema, module_name);
-            if (imported_module != NULL && vitte_ast_module_find_exported_decl(imported_module, name) != NULL) {
+            if (imported_module != NULL && vitte_sema_find_exported_decl_recursive(sema, imported_module, name, 0u) != NULL) {
                 return import_decl;
             }
             continue;
@@ -865,7 +911,7 @@ static vitte_status_t vitte_sema_predeclare_imports(
                 return context.status;
             }
         } else {
-            const vitte_ast_decl_t *decl = vitte_ast_module_find_exported_decl(imported_module, leaf_name);
+            const vitte_ast_decl_t *decl = vitte_sema_find_exported_decl_recursive(sema, imported_module, leaf_name, 0u);
             const char *visible_name = import_decl->as.import_decl.alias != NULL ?
                 import_decl->as.import_decl.alias :
                 leaf_name;
@@ -915,9 +961,11 @@ static const vitte_type_t *vitte_sema_resolve_type_ref(
         size_t module_index;
         for (module_index = 0u; module_index < sema->imported_module_count && type == NULL; module_index++) {
             const vitte_ast_module_t *imported = sema->imported_modules[module_index].root;
-            const vitte_ast_decl_t *decl = vitte_ast_module_find_exported_decl(
+            const vitte_ast_decl_t *decl = vitte_sema_find_exported_decl_recursive(
+                sema,
                 imported,
-                type_ref->as.type_name.name
+                type_ref->as.type_name.name,
+                0u
             );
             if (decl != NULL && decl->kind == VITTE_AST_NODE_PICK_DECL) {
                 type = vitte_type_register_pick(&sema->types, decl->as.pick_decl.name);
