@@ -17,6 +17,7 @@ typedef enum vitte_ast_node_kind {
     VITTE_AST_NODE_ERROR = 0,
     VITTE_AST_NODE_MODULE,
     VITTE_AST_NODE_IMPORT_DECL,
+    VITTE_AST_NODE_EXPORT_DECL,
     VITTE_AST_NODE_PROC_DECL,
     VITTE_AST_NODE_PARAM_DECL,
     VITTE_AST_NODE_CONST_DECL,
@@ -72,7 +73,9 @@ struct vitte_ast_node {
         struct {
             const char *name;
             vitte_ast_list_t imports;
+            vitte_ast_list_t exports;
             vitte_ast_list_t declarations;
+            bool export_all;
         } module;
 
         struct {
@@ -81,6 +84,11 @@ struct vitte_ast_node {
             bool relative;
             vitte_ast_import_kind_t import_kind;
         } import_decl;
+
+        struct {
+            const char *local_name;
+            const char *export_name;
+        } export_decl;
 
         struct {
             const char *name;
@@ -215,6 +223,12 @@ vitte_ast_decl_t *vitte_ast_make_import_decl(
     vitte_ast_import_kind_t import_kind,
     vitte_ast_span_t span
 );
+vitte_ast_decl_t *vitte_ast_make_export_decl(
+    vitte_ast_builder_t *builder,
+    const char *local_name,
+    const char *export_name,
+    vitte_ast_span_t span
+);
 vitte_ast_decl_t *vitte_ast_make_proc_decl(vitte_ast_builder_t *builder, const char *name, bool exported, vitte_ast_type_ref_t *return_type, vitte_ast_stmt_t *body, vitte_ast_span_t span);
 vitte_ast_node_t *vitte_ast_make_param_decl(vitte_ast_builder_t *builder, const char *name, vitte_ast_type_ref_t *type, bool mutable_value, bool by_ref, vitte_ast_span_t span);
 vitte_ast_decl_t *vitte_ast_make_const_decl(vitte_ast_builder_t *builder, const char *name, bool exported, vitte_ast_type_ref_t *type, vitte_ast_expr_t *value, vitte_ast_span_t span);
@@ -232,6 +246,7 @@ vitte_ast_node_t *vitte_ast_make_error(vitte_ast_builder_t *builder, const char 
 
 bool vitte_ast_module_add_decl(vitte_ast_module_t *module, vitte_ast_decl_t *decl);
 bool vitte_ast_module_add_import(vitte_ast_module_t *module, vitte_ast_decl_t *import_decl);
+bool vitte_ast_module_add_export(vitte_ast_module_t *module, vitte_ast_decl_t *export_decl);
 bool vitte_ast_proc_add_param(vitte_ast_decl_t *proc, vitte_ast_node_t *param);
 bool vitte_ast_block_add_stmt(vitte_ast_stmt_t *block, vitte_ast_stmt_t *stmt);
 bool vitte_ast_call_add_arg(vitte_ast_expr_t *call, vitte_ast_expr_t *argument);

@@ -180,6 +180,8 @@ const char *vitte_ast_node_kind_name(vitte_ast_node_kind_t kind) {
             return "module";
         case VITTE_AST_NODE_IMPORT_DECL:
             return "import_decl";
+        case VITTE_AST_NODE_EXPORT_DECL:
+            return "export_decl";
         case VITTE_AST_NODE_PROC_DECL:
             return "proc_decl";
         case VITTE_AST_NODE_PARAM_DECL:
@@ -226,6 +228,8 @@ const char *vitte_ast_node_label(const vitte_ast_node_t *node) {
             return node->as.module.name;
         case VITTE_AST_NODE_IMPORT_DECL:
             return node->as.import_decl.path;
+        case VITTE_AST_NODE_EXPORT_DECL:
+            return node->as.export_decl.export_name;
         case VITTE_AST_NODE_PROC_DECL:
             return node->as.proc_decl.name;
         case VITTE_AST_NODE_PARAM_DECL:
@@ -270,7 +274,9 @@ vitte_ast_module_t *vitte_ast_make_module(vitte_ast_builder_t *builder, const ch
     }
     node->as.module.name = name;
     vitte_ast_list_init(&node->as.module.imports);
+    vitte_ast_list_init(&node->as.module.exports);
     vitte_ast_list_init(&node->as.module.declarations);
+    node->as.module.export_all = false;
     builder->ast->root = node;
     return node;
 }
@@ -289,6 +295,20 @@ vitte_ast_decl_t *vitte_ast_make_import_decl(
         node->as.import_decl.alias = alias;
         node->as.import_decl.relative = relative;
         node->as.import_decl.import_kind = import_kind;
+    }
+    return node;
+}
+
+vitte_ast_decl_t *vitte_ast_make_export_decl(
+    vitte_ast_builder_t *builder,
+    const char *local_name,
+    const char *export_name,
+    vitte_ast_span_t span
+) {
+    vitte_ast_node_t *node = builder != NULL ? vitte_ast_alloc_node(builder->ast, VITTE_AST_NODE_EXPORT_DECL, span) : NULL;
+    if (node != NULL) {
+        node->as.export_decl.local_name = local_name;
+        node->as.export_decl.export_name = export_name;
     }
     return node;
 }
@@ -438,6 +458,14 @@ bool vitte_ast_module_add_import(vitte_ast_module_t *module, vitte_ast_decl_t *i
         vitte_ast_list_append(&module->as.module.imports, import_decl);
 }
 
+bool vitte_ast_module_add_export(vitte_ast_module_t *module, vitte_ast_decl_t *export_decl) {
+    return module != NULL &&
+        module->kind == VITTE_AST_NODE_MODULE &&
+        export_decl != NULL &&
+        export_decl->kind == VITTE_AST_NODE_EXPORT_DECL &&
+        vitte_ast_list_append(&module->as.module.exports, export_decl);
+}
+
 bool vitte_ast_proc_add_param(vitte_ast_decl_t *proc, vitte_ast_node_t *param) {
     return proc != NULL &&
         proc->kind == VITTE_AST_NODE_PROC_DECL &&
@@ -523,11 +551,21 @@ static vitte_status_t vitte_ast_validate_node(vitte_ast_t *ast, const vitte_ast_
             if (status != VITTE_STATUS_OK) {
                 return status;
             }
+            status = vitte_ast_validate_list(ast, &node->as.module.exports, "VITTE_AST_E_LIST", "module export list is incoherent");
+            if (status != VITTE_STATUS_OK) {
+                return status;
+            }
             status = vitte_ast_validate_list(ast, &node->as.module.declarations, "VITTE_AST_E_LIST", "module declaration list is incoherent");
             if (status != VITTE_STATUS_OK) {
                 return status;
             }
             for (child = node->as.module.imports.first; child != NULL; child = child->next) {
+                status = vitte_ast_validate_node(ast, child, depth + 1u);
+                if (status != VITTE_STATUS_OK) {
+                    return status;
+                }
+            }
+            for (child = node->as.module.exports.first; child != NULL; child = child->next) {
                 status = vitte_ast_validate_node(ast, child, depth + 1u);
                 if (status != VITTE_STATUS_OK) {
                     return status;
@@ -545,6 +583,12 @@ static vitte_status_t vitte_ast_validate_node(vitte_ast_t *ast, const vitte_ast_
                 node->as.import_decl.import_kind < VITTE_AST_IMPORT_MODULE ||
                 node->as.import_decl.import_kind > VITTE_AST_IMPORT_GLOB) {
                 vitte_ast_set_error(ast, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_AST_E_IMPORT", "import declaration requires a path", NULL);
+                return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+            }
+            break;
+        case VITTE_AST_NODE_EXPORT_DECL:
+            if (node->as.export_decl.local_name == NULL || node->as.export_decl.export_name == NULL) {
+                vitte_ast_set_error(ast, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_AST_E_EXPORT", "export declaration requires local and visible names", NULL);
                 return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
             }
             break;
@@ -757,8 +801,10 @@ static bool vitte_ast_visit_child(
     switch (node->kind) {
         case VITTE_AST_NODE_MODULE:
             return vitte_ast_visit_children(&node->as.module.imports, callback, user, depth + 1u, max_depth, count) &&
+                vitte_ast_visit_children(&node->as.module.exports, callback, user, depth + 1u, max_depth, count) &&
                 vitte_ast_visit_children(&node->as.module.declarations, callback, user, depth + 1u, max_depth, count);
         case VITTE_AST_NODE_IMPORT_DECL:
+        case VITTE_AST_NODE_EXPORT_DECL:
             return true;
         case VITTE_AST_NODE_PROC_DECL:
             return vitte_ast_visit_children(&node->as.proc_decl.parameters, callback, user, depth + 1u, max_depth, count) &&
@@ -839,9 +885,11 @@ static void vitte_ast_dump_child(const vitte_ast_node_t *node, FILE *stream, siz
     switch (node->kind) {
         case VITTE_AST_NODE_MODULE:
             vitte_ast_dump_children(&node->as.module.imports, stream, depth + 1u, max_depth);
+            vitte_ast_dump_children(&node->as.module.exports, stream, depth + 1u, max_depth);
             vitte_ast_dump_children(&node->as.module.declarations, stream, depth + 1u, max_depth);
             break;
         case VITTE_AST_NODE_IMPORT_DECL:
+        case VITTE_AST_NODE_EXPORT_DECL:
             break;
         case VITTE_AST_NODE_PROC_DECL:
             vitte_ast_dump_children(&node->as.proc_decl.parameters, stream, depth + 1u, max_depth);

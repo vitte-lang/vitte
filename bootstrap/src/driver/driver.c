@@ -942,15 +942,89 @@ static const vitte_ast_decl_t *vitte_driver_find_module_decl(
     return NULL;
 }
 
-static bool vitte_driver_decl_is_exported(const vitte_ast_decl_t *decl) {
+static const char *vitte_driver_decl_name(const vitte_ast_decl_t *decl) {
     if (decl == NULL) {
+        return NULL;
+    }
+    if (decl->kind == VITTE_AST_NODE_PROC_DECL) {
+        return decl->as.proc_decl.name;
+    }
+    if (decl->kind == VITTE_AST_NODE_CONST_DECL) {
+        return decl->as.const_decl.name;
+    }
+    return NULL;
+}
+
+static const vitte_ast_decl_t *vitte_driver_find_exported_decl(
+    const vitte_ast_module_t *module_root,
+    const char *export_name
+) {
+    const vitte_ast_node_t *export_decl;
+    const vitte_ast_node_t *decl;
+
+    if (module_root == NULL || module_root->kind != VITTE_AST_NODE_MODULE || export_name == NULL) {
+        return NULL;
+    }
+    for (export_decl = module_root->as.module.exports.first; export_decl != NULL; export_decl = export_decl->next) {
+        const vitte_ast_decl_t *target;
+
+        if (export_decl->kind != VITTE_AST_NODE_EXPORT_DECL ||
+            export_decl->as.export_decl.export_name == NULL ||
+            strcmp(export_decl->as.export_decl.export_name, export_name) != 0) {
+            continue;
+        }
+        target = vitte_driver_find_module_decl(module_root, export_decl->as.export_decl.local_name);
+        if (target != NULL) {
+            return target;
+        }
+    }
+    for (decl = module_root->as.module.declarations.first; decl != NULL; decl = decl->next) {
+        const char *decl_name = vitte_driver_decl_name(decl);
+        bool exported;
+
+        if (decl_name == NULL || strcmp(decl_name, export_name) != 0) {
+            continue;
+        }
+        exported = decl->kind == VITTE_AST_NODE_PROC_DECL ? decl->as.proc_decl.exported : decl->as.const_decl.exported;
+        if (exported || module_root->as.module.export_all) {
+            return decl;
+        }
+    }
+    return NULL;
+}
+
+static bool vitte_driver_decl_is_exported(
+    const vitte_ast_module_t *module_root,
+    const vitte_ast_decl_t *decl
+) {
+    const vitte_ast_node_t *export_decl;
+    const char *decl_name;
+
+    if (module_root == NULL || decl == NULL) {
         return false;
     }
     if (decl->kind == VITTE_AST_NODE_PROC_DECL) {
-        return decl->as.proc_decl.exported;
+        if (decl->as.proc_decl.exported || module_root->as.module.export_all) {
+            return true;
+        }
+    } else if (decl->kind == VITTE_AST_NODE_CONST_DECL) {
+        if (decl->as.const_decl.exported || module_root->as.module.export_all) {
+            return true;
+        }
+    } else {
+        return false;
     }
-    if (decl->kind == VITTE_AST_NODE_CONST_DECL) {
-        return decl->as.const_decl.exported;
+
+    decl_name = vitte_driver_decl_name(decl);
+    if (decl_name == NULL) {
+        return false;
+    }
+    for (export_decl = module_root->as.module.exports.first; export_decl != NULL; export_decl = export_decl->next) {
+        if (export_decl->kind == VITTE_AST_NODE_EXPORT_DECL &&
+            export_decl->as.export_decl.local_name != NULL &&
+            strcmp(export_decl->as.export_decl.local_name, decl_name) == 0) {
+            return true;
+        }
     }
     return false;
 }
@@ -1398,7 +1472,7 @@ static vitte_status_t vitte_driver_flatten_module_imports(
                 char *visible_name;
                 vitte_status_t status;
 
-                if (decl_name == NULL || !vitte_driver_decl_is_exported(decl)) {
+                if (decl_name == NULL || !vitte_driver_decl_is_exported(imported_root, decl)) {
                     continue;
                 }
                 visible_name = vitte_driver_ast_join_name(ast, prefix, "::", decl_name);
@@ -1427,20 +1501,62 @@ static vitte_status_t vitte_driver_flatten_module_imports(
                     return status;
                 }
             }
+            for (decl = imported_root->as.module.exports.first; decl != NULL; decl = decl->next) {
+                const vitte_ast_decl_t *target;
+                const char *export_name;
+                char *visible_name;
+                vitte_status_t status;
+
+                if (decl->kind != VITTE_AST_NODE_EXPORT_DECL) {
+                    continue;
+                }
+                target = vitte_driver_find_module_decl(imported_root, decl->as.export_decl.local_name);
+                export_name = decl->as.export_decl.export_name;
+                if (target == NULL || export_name == NULL) {
+                    continue;
+                }
+                visible_name = vitte_driver_ast_join_name(ast, prefix, "::", export_name);
+                if (visible_name == NULL) {
+                    vitte_driver_set_error(driver, vitte_ast_last_error(ast)->status, "VITTE_DRIVER_E_IMPORT", "failed to allocate qualified import alias", export_name);
+                    return vitte_ast_last_error(ast)->status;
+                }
+                status = vitte_driver_append_import_decl(
+                    driver,
+                    ast,
+                    module_root,
+                    state,
+                    target,
+                    visible_name,
+                    imported_unit->module_name
+                );
+                if (status != VITTE_STATUS_OK) {
+                    const vitte_error_t *error = vitte_driver_last_error(driver);
+                    vitte_driver_set_error(
+                        driver,
+                        status,
+                        error != NULL && error->code != NULL ? error->code : "VITTE_DRIVER_E_IMPORT",
+                        error != NULL && error->message != NULL ? error->message : "failed to append qualified imported export alias",
+                        error != NULL ? error->details : visible_name
+                    );
+                    return status;
+                }
+            }
         } else if (import_decl->as.import_decl.import_kind == VITTE_AST_IMPORT_SYMBOL) {
             const char *leaf_name = vitte_driver_last_path_segment(import_decl->as.import_decl.path);
             const char *visible_name = import_decl->as.import_decl.alias != NULL ?
                 import_decl->as.import_decl.alias :
                 leaf_name;
-            const vitte_ast_decl_t *decl = vitte_driver_find_module_decl(imported_root, leaf_name);
+            const vitte_ast_decl_t *decl = vitte_driver_find_exported_decl(imported_root, leaf_name);
             vitte_status_t status;
 
             if (decl == NULL) {
-                vitte_driver_set_error(driver, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_DRIVER_E_IMPORT", "missing imported symbol declaration", import_decl->as.import_decl.path);
-                return VITTE_STATUS_ERROR_INVALID_STATE;
-            }
-            if (!vitte_driver_decl_is_exported(decl)) {
-                vitte_driver_set_error(driver, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_DRIVER_E_IMPORT_PRIVATE", "imported symbol is not exported by module", import_decl->as.import_decl.path);
+                const vitte_ast_decl_t *private_decl = vitte_driver_find_module_decl(imported_root, leaf_name);
+
+                if (private_decl != NULL) {
+                    vitte_driver_set_error(driver, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_DRIVER_E_IMPORT_PRIVATE", "imported symbol is not exported by module", import_decl->as.import_decl.path);
+                } else {
+                    vitte_driver_set_error(driver, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_DRIVER_E_IMPORT", "missing imported symbol declaration", import_decl->as.import_decl.path);
+                }
                 return VITTE_STATUS_ERROR_INVALID_STATE;
             }
             status = vitte_driver_append_import_decl(
@@ -1503,7 +1619,7 @@ static vitte_status_t vitte_driver_flatten_imported_modules(
                 decl->kind == VITTE_AST_NODE_CONST_DECL ? decl->as.const_decl.name : NULL;
             vitte_status_t status;
 
-            if (decl_name == NULL || !vitte_driver_decl_is_exported(decl)) {
+            if (decl_name == NULL || !vitte_driver_decl_is_exported(imported_root, decl)) {
                 continue;
             }
             status = vitte_driver_append_import_decl(
@@ -1523,6 +1639,40 @@ static vitte_status_t vitte_driver_flatten_imported_modules(
                     error != NULL && error->code != NULL ? error->code : "VITTE_DRIVER_E_IMPORT",
                     error != NULL && error->message != NULL ? error->message : "failed to flatten imported declaration",
                     error != NULL ? error->details : decl_name
+                );
+                return status;
+            }
+        }
+        for (decl = imported_root->as.module.exports.first; decl != NULL; decl = decl->next) {
+            const vitte_ast_decl_t *target;
+            const char *export_name;
+            vitte_status_t status;
+
+            if (decl->kind != VITTE_AST_NODE_EXPORT_DECL) {
+                continue;
+            }
+            target = vitte_driver_find_module_decl(imported_root, decl->as.export_decl.local_name);
+            export_name = decl->as.export_decl.export_name;
+            if (target == NULL || export_name == NULL) {
+                continue;
+            }
+            status = vitte_driver_append_import_decl(
+                driver,
+                ast,
+                module_root,
+                &state,
+                target,
+                export_name,
+                unit->module_name
+            );
+            if (status != VITTE_STATUS_OK) {
+                const vitte_error_t *error = vitte_driver_last_error(driver);
+                vitte_driver_set_error(
+                    driver,
+                    status,
+                    error != NULL && error->code != NULL ? error->code : "VITTE_DRIVER_E_IMPORT",
+                    error != NULL && error->message != NULL ? error->message : "failed to flatten explicit exported declaration",
+                    error != NULL ? error->details : export_name
                 );
                 return status;
             }

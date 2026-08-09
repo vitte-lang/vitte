@@ -5,14 +5,15 @@ The AST layer owns syntax nodes through `vitte_arena_t`. Nodes are zero-initiali
 Invariants:
 - Node kinds are always in `vitte_ast_node_kind_t`.
 - Nodes are immutable after construction except `next` and list fields.
-- Top-level `proc` and `const` declarations carry an `exported` flag; declarations are private by default.
+- Module roots own import lists, export lists, declaration lists, and an `export_all` flag.
+- Top-level `proc` and `const` declarations still carry an inline `exported` flag; declarations are private by default unless an export clause or `export *` marks them visible.
 - Source spans are optional; valid spans keep stable source name, offsets, lines, and columns.
 - Lists maintain `first`, `last`, and `count`.
 - Errors use `bootstrap/src/api/error.h`.
 - The AST layer does not depend on `runtime/*`.
 
 Node kinds:
-- module, proc decl, const decl
+- module, import decl, export decl, proc decl, const decl
 - block, give, let, if
 - integer literal, string literal, identifier
 - binary expr, call expr, type name

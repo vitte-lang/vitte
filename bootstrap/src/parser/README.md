@@ -42,6 +42,10 @@ Current bootstrap grammar:
     - groups `use math::{add, sub as minus, ops::{mul}}`
   - zero or more top-level declarations
 - declaration:
+  - `export *`
+  - `export name`
+  - `export name as alias`
+  - `export { name, other as alias }`
   - `export proc name(param: type, ...) -> type { ... }`
   - `export proc name(param: type, ...) { ... }`
   - `export const name: type = expr`
@@ -71,11 +75,12 @@ Current bootstrap grammar:
 
 - import paths are normalized to dotted module names in AST/module tracking
 - direct `use a::b` remains a module-path import; symbol imports must use groups like `use a::{b}`
+- standalone bootstrap export clauses only target local top-level items; module re-export forms remain outside this stage
 - `let` still requires an explicit type
 - `const` without a type relies on simple literal/operator inference
 - there are no expression statements yet
 - generics, where clauses, attributes, visibility, forms, picks, traits, impls,
-  generalized export declarations, and patterns are still outside the bootstrap parser
+  generalized re-export declarations, and patterns are still outside the bootstrap parser
 
 ## Recovery
 

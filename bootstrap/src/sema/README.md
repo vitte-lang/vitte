@@ -16,6 +16,8 @@ The semantic analyzer validates the parsed AST before backend emission.
 ## Current Checks
 
 - duplicate import declarations and conflicting visible import names
+- explicit export targets must resolve to local top-level declarations
+- explicit export names must not collide with other exported names
 - imported symbol visibility for direct, glob, and module-alias usage
 - duplicate top-level `proc` and `const`
 - unknown identifiers
@@ -33,6 +35,7 @@ The semantic analyzer validates the parsed AST before backend emission.
 - no user-defined aggregate types
 - no mutation analysis
 - no unreachable-code analysis
+- export clauses are local-only in bootstrap; re-exporting imported module paths still belongs to a later stage
 - imported modules are analyzed for bootstrap visibility and declaration validity only
 
 ## Driver Integration

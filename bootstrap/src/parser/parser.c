@@ -1299,6 +1299,138 @@ static vitte_status_t vitte_parser_parse_import_item(
     vitte_ast_span_t *item_span_out
 );
 
+static vitte_status_t vitte_parser_record_export(
+    vitte_parser_t *parser,
+    vitte_ast_module_t *module_node,
+    const char *local_name,
+    const char *export_name,
+    vitte_ast_span_t span
+) {
+    vitte_ast_decl_t *decl;
+
+    if (parser == NULL || module_node == NULL || local_name == NULL || export_name == NULL) {
+        return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+    }
+    decl = vitte_ast_make_export_decl(&parser->builder, local_name, export_name, span);
+    if (decl == NULL) {
+        return vitte_parser_fail(
+            parser,
+            VITTE_STATUS_ERROR_OUT_OF_MEMORY,
+            "VITTE_PARSER_E_MEMORY",
+            "failed to allocate export declaration",
+            export_name,
+            &span
+        );
+    }
+    if (!vitte_ast_module_add_export(module_node, decl)) {
+        return vitte_parser_fail(
+            parser,
+            VITTE_STATUS_ERROR_INTERNAL,
+            "VITTE_PARSER_E_EXPORT",
+            "failed to append export declaration",
+            export_name,
+            &span
+        );
+    }
+    return VITTE_STATUS_OK;
+}
+
+static vitte_status_t vitte_parser_parse_export_item(
+    vitte_parser_t *parser,
+    vitte_ast_module_t *module_node,
+    vitte_ast_span_t *item_span_out
+) {
+    vitte_ast_span_t span;
+    char *local_name;
+    char *export_name;
+
+    if (parser == NULL || module_node == NULL) {
+        return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+    }
+    if (parser->current.kind != VITTE_TOKEN_IDENTIFIER) {
+        return vitte_parser_fail_current(parser, "VITTE_PARSER_E_EXPORT", "expected exported name");
+    }
+
+    span = vitte_parser_span_from_token(&parser->current);
+    local_name = vitte_parser_copy_token_text(parser, &parser->current);
+    if (local_name == NULL) {
+        return VITTE_STATUS_ERROR_OUT_OF_MEMORY;
+    }
+    export_name = local_name;
+    (void)vitte_parser_advance(parser);
+
+    if (vitte_parser_token_is_path_separator(parser->current.kind, true)) {
+        return vitte_parser_fail(
+            parser,
+            VITTE_STATUS_ERROR_PARSE,
+            "VITTE_PARSER_E_EXPORT",
+            "bootstrap export clauses only support local item names",
+            local_name,
+            &span
+        );
+    }
+
+    if (vitte_parser_match(parser, VITTE_TOKEN_KW_AS)) {
+        vitte_ast_span_t alias_span;
+
+        if (parser->current.kind != VITTE_TOKEN_IDENTIFIER) {
+            return vitte_parser_fail_current(parser, "VITTE_PARSER_E_EXPORT", "expected export alias after 'as'");
+        }
+        export_name = vitte_parser_copy_token_text(parser, &parser->current);
+        if (export_name == NULL) {
+            return VITTE_STATUS_ERROR_OUT_OF_MEMORY;
+        }
+        alias_span = vitte_parser_span_from_token(&parser->current);
+        span = vitte_parser_span_merge(&span, &alias_span);
+        (void)vitte_parser_advance(parser);
+    }
+
+    if (item_span_out != NULL) {
+        *item_span_out = span;
+    }
+    return vitte_parser_record_export(parser, module_node, local_name, export_name, span);
+}
+
+static vitte_status_t vitte_parser_parse_export_group(
+    vitte_parser_t *parser,
+    vitte_ast_module_t *module_node,
+    vitte_ast_span_t *group_span_out
+) {
+    vitte_ast_span_t span;
+
+    if (parser == NULL || module_node == NULL || parser->current.kind != VITTE_TOKEN_LBRACE) {
+        return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+    }
+    span = vitte_parser_span_from_token(&parser->current);
+    (void)vitte_parser_advance(parser);
+
+    while (parser->current.kind != VITTE_TOKEN_RBRACE &&
+        parser->current.kind != VITTE_TOKEN_EOF &&
+        parser->current.kind != VITTE_TOKEN_ERROR) {
+        vitte_ast_span_t item_span;
+        vitte_status_t status = vitte_parser_parse_export_item(parser, module_node, &item_span);
+        if (status != VITTE_STATUS_OK) {
+            return status;
+        }
+        span = vitte_parser_span_merge(&span, &item_span);
+        if (!vitte_parser_match(parser, VITTE_TOKEN_COMMA)) {
+            break;
+        }
+    }
+
+    if (!vitte_parser_expect(parser, VITTE_TOKEN_RBRACE, "VITTE_PARSER_E_EXPORT", "expected '}' after export group")) {
+        return VITTE_STATUS_ERROR_PARSE;
+    }
+    {
+        vitte_ast_span_t end_span = vitte_parser_span_from_token(&parser->previous);
+        span = vitte_parser_span_merge(&span, &end_span);
+    }
+    if (group_span_out != NULL) {
+        *group_span_out = span;
+    }
+    return VITTE_STATUS_OK;
+}
+
 static vitte_status_t vitte_parser_parse_import_group(
     vitte_parser_t *parser,
     vitte_ast_module_t *module_node,
@@ -1767,6 +1899,96 @@ static vitte_ast_decl_t *vitte_parser_parse_decl_impl(vitte_parser_t *parser) {
     return NULL;
 }
 
+static vitte_status_t vitte_parser_parse_export_top_level(
+    vitte_parser_t *parser,
+    vitte_ast_module_t *module_node,
+    vitte_ast_decl_t **decl_out,
+    vitte_ast_span_t *span_out
+) {
+    vitte_ast_span_t export_span;
+    vitte_ast_span_t clause_span;
+    vitte_status_t status;
+
+    if (parser == NULL || module_node == NULL || parser->current.kind != VITTE_TOKEN_KW_EXPORT) {
+        return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+    }
+    if (decl_out != NULL) {
+        *decl_out = NULL;
+    }
+
+    export_span = vitte_parser_span_from_token(&parser->current);
+    clause_span = export_span;
+    (void)vitte_parser_advance(parser);
+
+    if (parser->current.kind == VITTE_TOKEN_KW_PROC) {
+        vitte_ast_decl_t *decl = vitte_parser_parse_proc(parser, true);
+        if (decl == NULL) {
+            return VITTE_STATUS_ERROR_PARSE;
+        }
+        decl->span = vitte_parser_span_merge(&export_span, &decl->span);
+        clause_span = decl->span;
+        if (decl_out != NULL) {
+            *decl_out = decl;
+        }
+    } else if (parser->current.kind == VITTE_TOKEN_KW_CONST) {
+        vitte_ast_decl_t *decl = vitte_parser_parse_const(parser, true);
+        if (decl == NULL) {
+            return VITTE_STATUS_ERROR_PARSE;
+        }
+        decl->span = vitte_parser_span_merge(&export_span, &decl->span);
+        clause_span = decl->span;
+        if (decl_out != NULL) {
+            *decl_out = decl;
+        }
+    } else if (parser->current.kind == VITTE_TOKEN_STAR) {
+        vitte_ast_span_t star_span = vitte_parser_span_from_token(&parser->current);
+        module_node->as.module.export_all = true;
+        clause_span = vitte_parser_span_merge(&export_span, &star_span);
+        (void)vitte_parser_advance(parser);
+        vitte_parser_optional_semicolon(parser);
+        if (parser->previous.kind == VITTE_TOKEN_SEMICOLON) {
+            vitte_ast_span_t semicolon_span = vitte_parser_span_from_token(&parser->previous);
+            clause_span = vitte_parser_span_merge(&clause_span, &semicolon_span);
+        }
+    } else if (parser->current.kind == VITTE_TOKEN_LBRACE) {
+        status = vitte_parser_parse_export_group(parser, module_node, &clause_span);
+        if (status != VITTE_STATUS_OK) {
+            return status;
+        }
+        clause_span = vitte_parser_span_merge(&export_span, &clause_span);
+        vitte_parser_optional_semicolon(parser);
+        if (parser->previous.kind == VITTE_TOKEN_SEMICOLON) {
+            vitte_ast_span_t semicolon_span = vitte_parser_span_from_token(&parser->previous);
+            clause_span = vitte_parser_span_merge(&clause_span, &semicolon_span);
+        }
+    } else if (parser->current.kind == VITTE_TOKEN_IDENTIFIER) {
+        status = vitte_parser_parse_export_item(parser, module_node, &clause_span);
+        if (status != VITTE_STATUS_OK) {
+            return status;
+        }
+        clause_span = vitte_parser_span_merge(&export_span, &clause_span);
+        vitte_parser_optional_semicolon(parser);
+        if (parser->previous.kind == VITTE_TOKEN_SEMICOLON) {
+            vitte_ast_span_t semicolon_span = vitte_parser_span_from_token(&parser->previous);
+            clause_span = vitte_parser_span_merge(&clause_span, &semicolon_span);
+        }
+    } else {
+        return vitte_parser_fail(
+            parser,
+            VITTE_STATUS_ERROR_PARSE,
+            "VITTE_PARSER_E_EXPORT",
+            "expected '*', '{', exported name, 'proc', or 'const' after 'export'",
+            NULL,
+            &export_span
+        );
+    }
+
+    if (span_out != NULL) {
+        *span_out = clause_span;
+    }
+    return VITTE_STATUS_OK;
+}
+
 static char *vitte_parser_parse_module_header(vitte_parser_t *parser, vitte_ast_span_t *header_span) {
     char *name;
     vitte_ast_span_t span;
@@ -2024,6 +2246,29 @@ vitte_status_t vitte_parser_parse_module(vitte_parser_t *parser, vitte_parser_re
                     continue;
                 }
                 have_import_span = true;
+            } else if (parser->current.kind == VITTE_TOKEN_KW_EXPORT) {
+                vitte_ast_span_t export_span;
+                status = vitte_parser_parse_export_top_level(parser, module_node, &decl, &export_span);
+                if (status != VITTE_STATUS_OK) {
+                    if (!parser->options.recover_errors) {
+                        break;
+                    }
+                    vitte_parser_synchronize(parser, true);
+                    continue;
+                }
+                have_import_span = true;
+                import_span = export_span;
+                if (decl != NULL && !vitte_ast_module_add_decl(module_node, decl)) {
+                    status = vitte_parser_fail(
+                        parser,
+                        VITTE_STATUS_ERROR_INTERNAL,
+                        "VITTE_PARSER_E_MODULE",
+                        "failed to append exported module declaration",
+                        module_name,
+                        &decl->span
+                    );
+                    break;
+                }
             } else {
                 decl = vitte_parser_parse_decl(parser);
                 if (decl == NULL) {

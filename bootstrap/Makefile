@@ -37,6 +37,10 @@ smoke: verify $(BIN)
 	@"$(BIN)" check "$(ROOT_DIR)/examples/hello.vit"
 	@"$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/import_visibility/direct_ok.vit"
 	@"$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/import_visibility/module_ok.vit"
+	@"$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/export_forms/direct_star_ok.vit"
+	@"$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/export_forms/module_star_ok.vit"
+	@"$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/export_forms/direct_alias_ok.vit"
+	@"$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/export_forms/module_alias_ok.vit"
 	@tmp="$$(mktemp)"; \
 	if "$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/import_visibility/direct_private.vit" >"$$tmp" 2>&1; then \
 		cat "$$tmp"; rm -f "$$tmp"; exit 1; \
@@ -66,6 +70,12 @@ smoke: verify $(BIN)
 		cat "$$tmp"; rm -f "$$tmp"; exit 1; \
 	fi; \
 	grep -q "VITTE_DRIVER_E_IMPORT_COLLISION_IMPORTED" "$$tmp" || { cat "$$tmp"; rm -f "$$tmp"; exit 1; }; \
+	rm -f "$$tmp"
+	@tmp="$$(mktemp)"; \
+	if "$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/export_forms/missing_export.vit" >"$$tmp" 2>&1; then \
+		cat "$$tmp"; rm -f "$$tmp"; exit 1; \
+	fi; \
+	grep -q "VITTE_SEMA_E_EXPORT" "$$tmp" || { cat "$$tmp"; rm -f "$$tmp"; exit 1; }; \
 	rm -f "$$tmp"
 	@"$(BIN)" build "$(ROOT_DIR)/examples/hello.vit" -o "$(OUT_DIR)/hello"
 	@"$(OUT_DIR)/hello"
