@@ -44,6 +44,8 @@ smoke: verify $(BIN)
 	@"$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/import_export_coverage/coverage_explicit_main.vit"
 	@"$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/import_export_coverage/coverage_star_main.vit"
 	@"$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/import_export_coverage/coverage_chain_main.vit"
+	@"$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/import_export_coverage/multi_decl_main.vit"
+	@"$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/import_export_coverage/module_alias_rich_main.vit"
 	@"$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/sema_calls/local_param_ok.vit"
 	@"$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/sema_calls/import_param_ok.vit"
 	@"$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/frontend_expr_stmt/expr_stmt_ok.vit"
@@ -77,6 +79,19 @@ smoke: verify $(BIN)
 	@"$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/import_collision/local_main.vit"
 	@"$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/import_collision/modules_main.vit"
 	@"$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/import_collision/symbol_alias_main.vit"
+	@tmp="$$(mktemp)"; \
+	if "$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/import_collision/glob_conflict_main.vit" >"$$tmp" 2>&1; then \
+		cat "$$tmp"; rm -f "$$tmp"; exit 1; \
+	fi; \
+	grep -q "VITTE_SEMA_E_IMPORT_CONFLICT" "$$tmp" || { cat "$$tmp"; rm -f "$$tmp"; exit 1; }; \
+	rm -f "$$tmp"
+	@tmp="$$(mktemp)"; \
+	if "$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/import_export_coverage/module_path_unsupported.vit" >"$$tmp" 2>&1; then \
+		cat "$$tmp"; rm -f "$$tmp"; exit 1; \
+	fi; \
+	grep -q "VITTE_DRIVER_E_IMPORT_USE_CONTRACT" "$$tmp" || { cat "$$tmp"; rm -f "$$tmp"; exit 1; }; \
+	grep -q "use 'use multi_decl_lib::{first}' to import symbol 'first'" "$$tmp" || { cat "$$tmp"; rm -f "$$tmp"; exit 1; }; \
+	rm -f "$$tmp"
 	@tmp="$$(mktemp)"; \
 	if "$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/sema_calls/local_param_mismatch.vit" >"$$tmp" 2>&1; then \
 		cat "$$tmp"; rm -f "$$tmp"; exit 1; \
