@@ -23,6 +23,12 @@ typedef struct vitte_driver_import_unit {
     vitte_module_t module;
 } vitte_driver_import_unit_t;
 
+static const vitte_driver_import_unit_t *vitte_driver_find_import_unit_by_path(
+    vitte_driver_import_unit_t *const *units,
+    size_t unit_count,
+    const char *resolved_path
+);
+
 static void vitte_driver_set_error(
     vitte_driver_t *driver,
     vitte_status_t status,
@@ -749,6 +755,102 @@ static vitte_status_t vitte_driver_run_sema(
     }
     vitte_sema_destroy(&sema);
     return status;
+}
+
+static vitte_status_t vitte_driver_run_import_unit_sema(
+    vitte_driver_t *driver,
+    const vitte_driver_import_unit_t *unit,
+    vitte_driver_import_unit_t *const *imported_units,
+    size_t imported_unit_count
+) {
+    vitte_sema_t sema;
+    vitte_sema_options_t options;
+    vitte_sema_result_t result;
+    vitte_status_t status;
+    size_t index;
+
+    if (driver == NULL || unit == NULL || imported_units == NULL ||
+        !vitte_ast_is_initialized(&unit->ast) || unit->ast.root == NULL ||
+        !vitte_module_is_initialized(&unit->module)) {
+        return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+    }
+
+    vitte_sema_options_init(&options);
+    options.max_depth = driver->config.limits.max_ast_depth;
+    options.enable_constant_folding = true;
+    vitte_sema_result_init(&result);
+    status = vitte_sema_init(&sema, &options, &driver->diagnostics);
+    if (status != VITTE_STATUS_OK) {
+        vitte_error_copy(&driver->last_error, vitte_sema_last_error(&sema));
+        return status;
+    }
+
+    for (index = 0u; index < unit->module.import_count; index++) {
+        const vitte_module_import_t *dependency = &unit->module.imports[index];
+        const vitte_driver_import_unit_t *dependency_unit;
+
+        if (!dependency->resolved || dependency->resolved_path[0] == '\0') {
+            continue;
+        }
+        dependency_unit = vitte_driver_find_import_unit_by_path(
+            imported_units,
+            imported_unit_count,
+            dependency->resolved_path
+        );
+        if (dependency_unit == NULL || !vitte_ast_is_initialized(&dependency_unit->ast) ||
+            dependency_unit->ast.root == NULL) {
+            vitte_driver_set_error(
+                driver,
+                VITTE_STATUS_ERROR_INVALID_STATE,
+                "VITTE_DRIVER_E_IMPORT",
+                "missing imported dependency AST for semantic analysis",
+                dependency->resolved_path
+            );
+            vitte_sema_destroy(&sema);
+            return VITTE_STATUS_ERROR_INVALID_STATE;
+        }
+        status = vitte_sema_add_import_module(&sema, dependency->module_name, &dependency_unit->ast);
+        if (status != VITTE_STATUS_OK) {
+            vitte_error_copy(&driver->last_error, vitte_sema_last_error(&sema));
+            vitte_sema_destroy(&sema);
+            return status;
+        }
+    }
+
+    status = vitte_sema_analyze(&sema, &unit->ast, &result);
+    if (status != VITTE_STATUS_OK) {
+        vitte_error_copy(&driver->last_error, &result.last_error);
+    } else {
+        vitte_error_reset(&driver->last_error);
+    }
+    vitte_sema_destroy(&sema);
+    return status;
+}
+
+static vitte_status_t vitte_driver_run_import_graph_sema(
+    vitte_driver_t *driver,
+    vitte_driver_import_unit_t *const *imported_units,
+    size_t imported_unit_count
+) {
+    size_t index;
+
+    if (driver == NULL || imported_units == NULL) {
+        return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+    }
+    for (index = 0u; index < imported_unit_count; index++) {
+        if (imported_units[index] == NULL) {
+            continue;
+        }
+        if (vitte_driver_run_import_unit_sema(
+                driver,
+                imported_units[index],
+                imported_units,
+                imported_unit_count
+            ) != VITTE_STATUS_OK) {
+            return vitte_driver_last_error(driver)->status;
+        }
+    }
+    return VITTE_STATUS_OK;
 }
 
 static const char *vitte_driver_last_path_segment(const char *text) {
@@ -1638,6 +1740,39 @@ static vitte_status_t vitte_driver_run_impl(
                 return status;
             }
         }
+    }
+
+    status = vitte_driver_run_import_graph_sema(driver, imported_units, imported_unit_count);
+    if (status != VITTE_STATUS_OK) {
+        vitte_driver_pipeline_mark(&driver->pipeline, VITTE_DRIVER_STAGE_CONSTANTS, status);
+        vitte_driver_pipeline_mark(&driver->pipeline, VITTE_DRIVER_STAGE_SEMANTIC, status);
+        vitte_driver_add_diag(
+            driver,
+            VITTE_DIAGNOSTIC_FATAL,
+            "VITTE_DRIVER_E_IMPORT",
+            "semantic analysis failed in imported module graph",
+            vitte_driver_last_error(driver)->details
+        );
+        vitte_driver_result_set_error(
+            result,
+            status,
+            VITTE_DRIVER_STAGE_SEMANTIC,
+            "VITTE_DRIVER_E_IMPORT",
+            "semantic analysis failed in imported module graph",
+            NULL
+        );
+        if (resolver_initialized) {
+            vitte_import_resolver_destroy(&resolver);
+        }
+        vitte_module_destroy(&module);
+        while (imported_ast_count > 0u) {
+            imported_ast_count--;
+            vitte_ast_destroy(&imported_asts[imported_ast_count]);
+        }
+        vitte_driver_destroy_import_units(imported_units, &imported_unit_count);
+        vitte_ast_destroy(&ast);
+        vitte_driver_update_counts(driver, result);
+        return status;
     }
 
     status = vitte_driver_run_sema(driver, &ast, &module, imported_asts, imported_ast_count);
