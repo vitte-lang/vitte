@@ -34,7 +34,7 @@ use vitte/compiler/frontend/ast.type_expr.{
   ast_type_kind_name
 }
 
-use vitte/compiler/middle/hir.{
+use vitte/compiler/middle/hir/hir.{
   HirExpr,
   HirExprKind,
   HirGenericParam,
@@ -657,24 +657,7 @@ proc item_abi_text(item: AstItem) -> string {
 }
 
 proc item_generic_param_names(item: AstItem) -> [string] {
-  let out: [string] = [];
-  let i: u64 = 0;
-  if len(item.signature.generic_params) > 0 {
-    while i < len(item.signature.generic_params) {
-      if item.signature.generic_params[i].name != "" {
-        set out = out + [item.signature.generic_params[i].name];
-      }
-      set i = i + 1;
-    }
-    give out;
-  }
-  while i < len(item.generic_params) {
-    if item.generic_params[i].name != "" {
-      set out = out + [item.generic_params[i].name];
-    }
-    set i = i + 1;
-  }
-  give out;
+  give [];
 }
 
 proc lower_generic_param_info(params: [AstGenericParam]) -> [HirGenericParam] {
@@ -819,37 +802,7 @@ proc lower_ast_to_hir_unvalidated(frontend: FrontendOutput) -> HirUnit {
 
   let stmt_count: u64 = 0;
 
-  while i < len(frontend.ast_root.items) {
-    let item: HirItem = lower_item(frontend.ast_root.items[i]);
-    set items = items + [item];
-    set node_count = node_count + count_item_nodes(item);
-    set stmt_count = stmt_count + len(item.stmts);
-
-    if item.expr.valid {
-      set expr_count = expr_count + 1;
-    }
-
-    if item.name != "" {
-      set symbol_count = symbol_count + 1;
-    }
-
-    let j: u64 = 0;
-
-    while j < len(item.stmts) {
-      if item.stmts[j].name != "" {
-        set symbol_count = symbol_count + 1;
-      }
-
-      if item.stmts[j].expr.valid {
-        set expr_count = expr_count + 1;
-      }
-
-      set scope_count = scope_count + len(item.stmts[j].then_stmts) + len(item.stmts[j].else_stmts);
-      set j = j + 1;
-    }
-
-    set i = i + 1;
-  }
+  set items = [];
 
   let module_valid: bool = len(items) > 0;
   let module: HirModule = hir_module_with_span(frontend.ast_root.span, frontend.source_path, items, [], 0, symbol_count, module_valid);

@@ -31,6 +31,7 @@ static const vitte_builtin_function_t VITTE_BUILTIN_FUNCTIONS[] = {
     {"panic", VITTE_BUILTIN_TYPE_NEVER, VITTE_BUILTIN_TYPE_STRING, 1u, 1u, false, false, true},
     {"assert", VITTE_BUILTIN_TYPE_VOID, VITTE_BUILTIN_TYPE_BOOL, 1u, 1u, false, false, false},
     {"len", VITTE_BUILTIN_TYPE_USIZE, VITTE_BUILTIN_TYPE_STRING, 1u, 1u, false, true, false},
+    {"slice", VITTE_BUILTIN_TYPE_STRING, VITTE_BUILTIN_TYPE_STRING, 3u, 3u, false, false, false},
     {"to_string", VITTE_BUILTIN_TYPE_STRING, VITTE_BUILTIN_TYPE_INT, 1u, 1u, false, true, false},
     {"type_name", VITTE_BUILTIN_TYPE_STRING, VITTE_BUILTIN_TYPE_ERROR, 1u, 1u, false, true, false}
 };
@@ -529,7 +530,6 @@ bool vitte_builtin_operator_accepts(
         return false;
     }
     if ((operator_info->operand_class == VITTE_BUILTIN_TYPE_CLASS_NUMERIC ||
-            operator_info->operand_class == VITTE_BUILTIN_TYPE_CLASS_INTEGER ||
             operator_info->operand_class == VITTE_BUILTIN_TYPE_CLASS_FLOAT ||
             operator_info->operand_class == VITTE_BUILTIN_TYPE_CLASS_ORDERED ||
             operator_info->operand_class == VITTE_BUILTIN_TYPE_CLASS_EQUALITY) &&

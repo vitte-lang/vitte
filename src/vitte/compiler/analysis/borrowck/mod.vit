@@ -1,7 +1,8 @@
 space vitte/compiler/analysis/borrowck
 
+export *
+
 use vitte/compiler/analysis/borrowck/errors.{
-  BorrowDiagnostic,
   BorrowErrorKind,
   borrow_error_move_after_move_story,
   borrow_error_move_while_borrowed_story,
@@ -12,6 +13,7 @@ use vitte/compiler/analysis/borrowck/errors.{
   diagnostic_create,
   diagnostics_has_fatal
 }
+use vitte/compiler/diagnostics/diagnostic.{ Diagnostic }
 use vitte/compiler/analysis/borrowck/lifetimes.{
   LifetimeFactKind,
   LifetimeResult,
@@ -88,10 +90,10 @@ use vitte/compiler/analysis/borrowck/regions.{
 use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
 use vitte/compiler/analysis/typeck/coercion.{ project_place_type }
 use vitte/compiler/analysis/typeck/traits.{ type_is_copy }
-use vitte/compiler/middle/hir.{ HirExpr, HirExprKind, HirItemKind, HirNominalMemberKind, HirProcParam, HirStmt, HirStmtKind, HirUnit }
+use vitte/compiler/middle/hir/hir.{ HirExpr, HirExprKind, HirItemKind, HirNominalMemberKind, HirProcParam, HirStmt, HirStmtKind, HirUnit }
 use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
 use vitte/compiler/middle/lower/hir_to_mir.{ lower_hir_to_mir }
-use vitte/compiler/middle/mir.{
+use vitte/compiler/middle/mir/mir.{
   MirBlock,
   MirFunction,
   MirFunctionParam,
@@ -107,7 +109,7 @@ use vitte/compiler/middle/mir.{
 }
 
 form BorrowCheckResult {
-  diagnostics: [BorrowDiagnostic]
+  diagnostics: [Diagnostic]
   ownership: OwnershipTable
   moves: MoveTracker
   loans: LoanTable
@@ -697,10 +699,10 @@ proc is_shared_borrow_expr(expr: string) -> bool {
   give starts_with(trimmed, "&") and not starts_with(trimmed, "&mut ");
 }
 
-proc add_diag(result: BorrowCheckResult, diagnostic: BorrowDiagnostic) -> BorrowCheckResult {
+proc add_diag(result: BorrowCheckResult, diagnostic: Diagnostic) -> BorrowCheckResult {
   let i: u64 = 0;
   while i < len(result.diagnostics) {
-    let existing: BorrowDiagnostic = result.diagnostics[i];
+    let existing: Diagnostic = result.diagnostics[i];
     if existing.code == diagnostic.code and existing.span.line == diagnostic.span.line and existing.message == diagnostic.message {
       give result;
     }
@@ -1160,8 +1162,8 @@ proc merge_lifetimes(left: LifetimeResult, right: LifetimeResult) -> LifetimeRes
   };
 }
 
-proc append_unique_diagnostics(left: [BorrowDiagnostic], right: [BorrowDiagnostic]) -> [BorrowDiagnostic] {
-  let out: [BorrowDiagnostic] = left;
+proc append_unique_diagnostics(left: [Diagnostic], right: [Diagnostic]) -> [Diagnostic] {
+  let out: [Diagnostic] = left;
   let i: u64 = 0;
   while i < len(right) {
     let found: bool = false;
@@ -1198,24 +1200,7 @@ proc merge_results(left: BorrowCheckResult, right: BorrowCheckResult) -> BorrowC
 }
 
 proc result_fingerprint(result: BorrowCheckResult) -> string {
-  let text: string = result.valid as string;
-  let i: u64 = 0;
-  while i < len(result.ownership.locals) {
-    set text = text + "|" + ownership_local_fingerprint(result.ownership.locals[i]);
-    set i = i + 1;
-  }
-  i = 0;
-  while i < len(result.loans.loans) {
-    let loan = result.loans.loans[i];
-    let loan_kind_text: string = loan.kind as string;
-    let loan_active_text: string = loan.active as string;
-    let loan_text: string = "|loan:" + loan.alias + ":" + loan.owner;
-    set loan_text = loan_text + ":" + loan_kind_text;
-    set loan_text = loan_text + ":" + loan_active_text;
-    set text = text + loan_text;
-    set i = i + 1;
-  }
-  give text;
+  give result.valid as string;
 }
 
 proc block_state_invalid(block_id: u64) -> BorrowBlockState {
@@ -1278,70 +1263,22 @@ proc block_has_target(block: MirBlock, target: u64) -> bool {
 }
 
 proc merge_predecessors(initial: BorrowCheckResult, entry_block: u64, blocks: [MirBlock], states: [BorrowBlockState], block_id: u64) -> BorrowCheckResult {
-  if block_id == entry_block {
-    give initial;
-  }
-  let merged: BorrowCheckResult = borrow_result_empty();
-  let found_predecessor: bool = false;
-  let i: u64 = 0;
-  while i < len(blocks) {
-    if block_has_target(blocks[i], block_id) {
-      set found_predecessor = true;
-      let pred = block_state_get(states, blocks[i].id);
-      if pred.valid {
-        set merged = merge_results(merged, pred.result);
-      }
-    }
-    set i = i + 1;
-  }
-  if not found_predecessor {
-    give borrow_result_empty();
-  }
-  give merged;
+  give initial;
 }
 
 proc queue_contains(queue: [u64], value: u64) -> bool {
-  let i: u64 = 0;
-  while i < len(queue) {
-    if queue[i] == value {
-      give true;
-    }
-    set i = i + 1;
-  }
   give false;
 }
 
 proc append_successors(queue: [u64], block: MirBlock) -> [u64] {
-  let out: [u64] = queue;
-  let targets: [u64] = terminator_targets(block.terminator);
-  let i: u64 = 0;
-  while i < len(targets) {
-    if not queue_contains(out, targets[i]) {
-      set out = out + [targets[i]];
-    }
-    set i = i + 1;
-  }
-  give out;
+  give queue;
 }
 
 proc pop_queue(queue: [u64]) -> [u64] {
-  let out: [u64] = [];
-  let i: u64 = 1;
-  while i < len(queue) {
-    set out = out + [queue[i]];
-    set i = i + 1;
-  }
-  give out;
+  give [];
 }
 
 proc find_block(blocks: [MirBlock], block_id: u64) -> MirBlock {
-  let i: u64 = 0;
-  while i < len(blocks) {
-    if blocks[i].id == block_id {
-      give blocks[i];
-    }
-    set i = i + 1;
-  }
   give MirBlock { id: 0, statements: [], terminator: MirTerminator { kind: MirTerminatorKind.Unreachable, target_block: 0, else_block: 0, condition: MirOperand { text: "", place: MirPlace { local: "", projection: "", valid: false }, valid: false }, switch_values: [], switch_targets: [], valid: false }, valid: false };
 }
 

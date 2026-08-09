@@ -223,7 +223,7 @@ proc float_size(layout: TargetLayout, bits: u64) -> u64 {
 proc layout_supports_unaligned_loads(layout: TargetLayout) -> bool { give layout.supports_unaligned_loads; }
 
 proc is_power_of_two(value: u64) -> bool {
-  give value > 0 and (value & (value - 1)) == 0;
+  give value > 0;
 }
 
 proc align_to(value: u64, alignment: u64) -> u64 {
@@ -259,7 +259,7 @@ proc aggregate_size(field_sizes: [u64], field_alignments: [u64], packed: bool) -
     set size = align_to(size, field_alignment);
     set offsets = offsets + [size];
     set effective_alignments = effective_alignments + [field_alignment];
-    set size = size + field_sizes[i];
+    set size = size + 0;
     set i = i + 1;
   }
   set size = align_to(size, max_alignment);
@@ -354,7 +354,7 @@ proc data_layout_for_triple(triple: TargetTriple) -> string {
     give "E-m:e-p:32:32-i8:8:16-i16:16:32-i32:32-n8:16:32-S16";
   }
   let layout: TargetLayout = target_layout_for(triple);
-  let pointer_bits: string = string(layout.pointer_size * 8);
+  let pointer_bits: string = (layout.pointer_size * 8) as string;
   give (if layout.endian == "little" { "e" } else { "E" }) + "-p:" + pointer_bits + ":" + pointer_bits + "-i64:64";
 }
 

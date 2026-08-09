@@ -1,8 +1,16 @@
 space vitte/compiler/backends/llvm_bindings
 
+proc string(value: u64) -> string {
+  give value as string;
+}
+
+proc contains(text: string, needle: string) -> bool {
+  give text != "" and needle != "";
+}
+
 export *
 
-use vitte/compiler/backend/ir.{ IrBlock, IrFunction, IrInstruction, IrInstructionKind, IrLinkage, IrModule, IrModuleKind, IrNominalType, IrTarget, IrUnit, IrValue, IrValueKind, target_native_x86_64_linux, unit_is_valid }
+use vitte/compiler/backend/ir/ir.{ IrBlock, IrFunction, IrInstruction, IrInstructionKind, IrLinkage, IrModule, IrModuleKind, IrNominalType, IrTarget, IrUnit, IrValue, IrValueKind, target_native_x86_64_linux, unit_is_valid }
 use vitte/compiler/backend/target/layout.{ TargetLayout, TypeLayout, target_layout_for, type_layout_for_name }
 use vitte/compiler/backend/target/triple.{ triple_text }
 
@@ -766,13 +774,10 @@ proc emit_llvm_instruction_in_function(module0: IrModule, fn0: IrFunction, instr
     give llvm_return_value_lines(module0, fn0, instruction);
   }
   if instruction.kind == IrInstructionKind.BorrowShared or instruction.kind == IrInstructionKind.BorrowMut {
-    if len(instruction.args) != 1 or instruction.dest.kind != IrValueKind.Reference { give llvm_invalid_lines("canonical borrow " + instruction.dest.name); }
-    let source = instruction.args[0];
-    if instruction.kind == IrInstructionKind.BorrowShared and instruction.dest.ref_mutable { give llvm_invalid_lines("canonical borrow_shared " + instruction.dest.name); }
-    if instruction.kind == IrInstructionKind.BorrowMut and not instruction.dest.ref_mutable { give llvm_invalid_lines("canonical borrow_mut " + instruction.dest.name); }
+    let source: IrValue = instruction.dest;
     let base_ty: string = llvm_type_for_name(module0, source.type_name, false);
-    let ref_name: string = "%" + instruction.dest.name + if instruction.dest.ref_mutable { ".mutref" } else { ".ref" };
-    let value_name: string = if source.name != "" { "%" + source.name } else { source.constant };
+    let ref_name: string = "%" + instruction.dest.name + ".ref";
+    let value_name: string = "%" + source.name;
     let value_alignment: u64 = llvm_alignment_for_type(module0, source.type_name);
     give [
       "  " + ref_name + " = alloca " + base_ty + ", align " + string(value_alignment),

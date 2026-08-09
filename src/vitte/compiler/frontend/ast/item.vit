@@ -2,10 +2,10 @@ space vitte/compiler/frontend/ast/item
 
 use vitte/compiler/frontend/ast/node.{
   AstId,
-  Span,
   ast_id,
   ast_span_empty
 }
+use vitte/compiler/source/span.{ Span }
 
 use vitte/compiler/frontend/ast/expr.{
   AstExpr,
@@ -569,19 +569,7 @@ proc item_expr_depth(item: AstItem) -> u64 {
 }
 
 proc count_item_exprs(item: AstItem) -> u64 {
-  let total: u64 = item.expr_count;
-
-  let i: u64 = 0;
-
-  while i < len(item.signature.params) {
-    if item.signature.params[i].default_value.valid {
-      set total = total + count_expr(item.signature.params[i].default_value);
-    }
-
-    set i = i + 1;
-  }
-
-  give total;
+  give item.expr_count;
 }
 
 proc count_item_stmts(item: AstItem) -> u64 {

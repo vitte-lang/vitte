@@ -1,6 +1,6 @@
 space vitte/compiler/frontend/source_map
 
-use vitte/compiler/frontend/ast/node.{ Span }
+use vitte/compiler/source/span.{ Span }
 
 export *
 
@@ -202,8 +202,7 @@ proc line_text(map: SourceMap, line_number: u64) -> string {
             let j: u64 = line.start_offset;
 
             while j < line.end_offset {
-                let byte_value: int = map.file.text[j] as int;
-                let byte_text: string = byte_value as string;
+                let byte_text: string = slice(map.file.text, j, j + 1);
                 set out = out + byte_text;
 
                 set j = j + 1;
@@ -224,8 +223,7 @@ proc source_slice(map: SourceMap, start: u64, end0: u64) -> string {
     let i: u64 = start;
 
     while i < end0 and i < len(map.file.text) {
-        let byte_value: int = map.file.text[i] as int;
-        let byte_text: string = byte_value as string;
+        let byte_text: string = slice(map.file.text, i, i + 1);
         set out = out + byte_text;
 
         set i = i + 1;

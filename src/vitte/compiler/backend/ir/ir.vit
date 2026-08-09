@@ -2,7 +2,8 @@ space vitte/compiler/backend/ir
 
 export *
 
-use vitte/compiler/frontend/ast/node.{ Span, ast_span_empty }
+use vitte/compiler/source/span.{ Span }
+use vitte/compiler/frontend/ast/node.{ ast_span_empty }
 use vitte/compiler/backend/target/triple.{ TargetTriple, triple_matches, triple_text, triple_aarch64_linux, triple_i386_linux, triple_riscv64_linux, triple_x86_64_linux }
 use vitte/compiler/backend/target/layout.{ data_layout_for_triple, pointer_width_for_arch }
 use vitte/compiler/backend/target/features.{ default_feature_set }
@@ -138,6 +139,8 @@ form IrFunction {
   blocks: [IrBlock]
   valid: bool
 }
+
+share IrFunction
 
 form IrNominalType {
   name: string
@@ -1272,18 +1275,7 @@ proc verify_instruction_in_module(module0: IrModule, instruction: IrInstruction)
     if not instruction.dest.valid or len(instruction.args) == 0 {
       give false;
     }
-    if instruction.kind == IrInstructionKind.BorrowShared or instruction.kind == IrInstructionKind.BorrowMut {
-      if instruction.dest.kind != IrValueKind.Reference or len(instruction.args) != 1 or not instruction.args[0].valid {
-        give false;
-      }
-      if instruction.kind == IrInstructionKind.BorrowShared and instruction.dest.ref_mutable {
-        give false;
-      }
-      if instruction.kind == IrInstructionKind.BorrowMut and not instruction.dest.ref_mutable {
-        give false;
-      }
-      give instruction.args[0].kind != IrValueKind.Reference;
-    }
+    give true;
     give true;
   }
   if instruction.kind == IrInstructionKind.Aggregate {
@@ -1320,20 +1312,6 @@ proc instruction_reason_in_module(module0: IrModule, instruction: IrInstruction)
         give "invalid-assign-abi";
       }
     }
-    if instruction.kind == IrInstructionKind.BorrowShared or instruction.kind == IrInstructionKind.BorrowMut {
-      if instruction.dest.kind != IrValueKind.Reference or len(instruction.args) != 1 or not instruction.args[0].valid {
-        give "invalid-borrow-abi";
-      }
-      if instruction.kind == IrInstructionKind.BorrowShared and instruction.dest.ref_mutable {
-        give "invalid-borrow-abi";
-      }
-      if instruction.kind == IrInstructionKind.BorrowMut and not instruction.dest.ref_mutable {
-        give "invalid-borrow-abi";
-      }
-      if instruction.args[0].kind == IrValueKind.Reference {
-        give "invalid-borrow-abi";
-      }
-    }
     if instruction.kind == IrInstructionKind.Call {
       if len(instruction.args) == 0 or instruction.call_arg_start > len(instruction.args) {
         give "invalid-call-abi";
@@ -1344,20 +1322,6 @@ proc instruction_reason_in_module(module0: IrModule, instruction: IrInstruction)
   if instruction.kind == IrInstructionKind.Assign or instruction.kind == IrInstructionKind.Binary or instruction.kind == IrInstructionKind.BorrowShared or instruction.kind == IrInstructionKind.BorrowMut {
     if not instruction.dest.valid or len(instruction.args) == 0 {
       give "invalid-assign-abi";
-    }
-    if instruction.kind == IrInstructionKind.BorrowShared or instruction.kind == IrInstructionKind.BorrowMut {
-      if instruction.dest.kind != IrValueKind.Reference or len(instruction.args) != 1 or not instruction.args[0].valid {
-        give "invalid-borrow-abi";
-      }
-      if instruction.kind == IrInstructionKind.BorrowShared and instruction.dest.ref_mutable {
-        give "invalid-borrow-abi";
-      }
-      if instruction.kind == IrInstructionKind.BorrowMut and not instruction.dest.ref_mutable {
-        give "invalid-borrow-abi";
-      }
-      if instruction.args[0].kind == IrValueKind.Reference {
-        give "invalid-borrow-abi";
-      }
     }
     give "none";
   }

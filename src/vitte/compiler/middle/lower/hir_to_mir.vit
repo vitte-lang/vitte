@@ -1,8 +1,10 @@
 space vitte/compiler/middle/lower/hir_to_mir
 
-use vitte/compiler/frontend/ast/node.{ Span }
-use vitte/compiler/middle/hir.{ HirExpr, HirExprKind, HirItem, HirItemKind, HirNominalMember, HirNominalMemberKind, HirStmt, HirStmtKind, HirUnit }
-use vitte/compiler/middle/mir.{
+export *
+
+use vitte/compiler/source/span.{ Span, span_empty }
+use vitte/compiler/middle/hir/hir.{ HirExpr, HirExprKind, HirItem, HirItemKind, HirNominalMember, HirNominalMemberKind, HirStmt, HirStmtKind, HirUnit }
+use vitte/compiler/middle/mir/mir.{
   MirBlock,
   MirBinaryOperator,
   MirFunction,
@@ -536,7 +538,9 @@ proc mir_function_instruction_count(function0: MirFunction) -> u64 {
 }
 
 proc lower_stmt_sequence_as_function(function_id: u64, function_span: Span, function_name: string, generic_params: [string], params: [MirFunctionParam], return_type: string, stmts: [HirStmt], items: [HirItem], next_block_id: u64) -> MirFunction {
-  let exit_block: MirBlock = mir_block_with_span(next_block_id, function_span, "", [], [], mir_terminator_return_at(function_span), false, true, true);
+  let no_predecessors: [u64] = [];
+  let no_statements: [MirStatement] = [];
+  let exit_block: MirBlock = mir_block_with_span(next_block_id, function_span, "", no_predecessors, no_statements, mir_terminator_return_at(function_span), false, true, true);
   let sequence: MirSequence = build_stmt_sequence(stmts, items, exit_block.id, exit_block.id + 1);
   let entry_block: u64 = choose_entry(sequence.entry_block, exit_block.id);
   let blocks: [MirBlock] = sequence.blocks + [exit_block];
@@ -669,7 +673,8 @@ proc lower_hir_to_mir_templates(hir: HirUnit) -> MirUnit {
       let j: u64 = 0;
       while j < len(item.members) {
         if item.members[j].kind == HirNominalMemberKind.ImplMethod {
-          let lowered: MirFunction = lower_stmt_sequence_as_function(item.members[j].id, item.members[j].span, impl_method_symbol_name(item, item.members[j]), [], mir_params_from_member(item, item.members[j]), item.members[j].annotation_text, item.members[j].body_stmts, hir.module.items, next_block_id);
+          let no_generic_params: [string] = [];
+          let lowered: MirFunction = lower_stmt_sequence_as_function(item.members[j].id, item.members[j].span, impl_method_symbol_name(item, item.members[j]), no_generic_params, mir_params_from_member(item, item.members[j]), item.members[j].annotation_text, item.members[j].body_stmts, hir.module.items, next_block_id);
           set functions = functions + [lowered];
           set block_count = block_count + len(lowered.blocks);
           set instruction_count = instruction_count + mir_function_instruction_count(lowered);
@@ -682,15 +687,18 @@ proc lower_hir_to_mir_templates(hir: HirUnit) -> MirUnit {
   }
 
   if len(functions) == 0 {
-    let entry = mir_block_with_span(1, hir.module.span, "", [], [], mir_terminator_return_at(hir.module.span), false, true, true);
-    set functions = [mir_function_with_span(1, hir.module.span, "__module_init", 1, [], "unit", 0, 0, [entry], true)];
+    let no_predecessors: [u64] = [];
+    let no_statements: [MirStatement] = [];
+    let no_params: [MirFunctionParam] = [];
+    let entry = mir_block_with_span(1, span_empty(), "", no_predecessors, no_statements, mir_terminator_return_at(span_empty()), false, true, true);
+    set functions = [mir_function_with_span(1, span_empty(), "__module_init", 1, no_params, "unit", 0, 0, [entry], true)];
     set block_count = 1 as u64;
   }
 
   give mir_unit_with_span(
     hir.span,
     hir.source_path,
-    mir_module_with_span(hir.module.span, hir.module.name, functions, len(functions) > 0),
+    mir_module_with_span(span_empty(), hir.module.name, functions, len(functions) > 0),
     len(functions),
     block_count,
     instruction_count,

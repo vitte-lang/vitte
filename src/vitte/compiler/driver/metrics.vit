@@ -3,7 +3,7 @@ space vitte/compiler/driver/metrics
 use vitte/compiler/driver/compile.{ DriverCompileResult }
 use vitte/compiler/driver/compile.{ DriverBackendModuleSetResult }
 use vitte/compiler/driver/exit_status.{ DriverExitStatus, exit_code }
-use vitte/compiler/backend/ir.{ ir_validation_reason, unit_is_valid }
+use vitte/compiler/backend/ir/ir.{ ir_validation_reason, unit_is_valid }
 use vitte/compiler/middle/mir/validate.{ mir_validation_reason }
 
 export *
@@ -335,28 +335,8 @@ proc compile_metrics_report_from_module_set(command: string, source_path: string
     let expr_count: u64 = 0;
     let type_count: u64 = 0;
     let pattern_count: u64 = 0;
-    let i: u64 = 0;
-    while i < len(result.analysis.modules) {
-        let fe = result.analysis.modules[i].frontend;
-        set token_count = token_count + fe.token_count;
-        set toplevel_count = toplevel_count + fe.toplevel_count;
-        set stmt_count = stmt_count + fe.stmt_count;
-        set expr_count = expr_count + fe.expr_count;
-        set type_count = type_count + fe.type_count;
-        set pattern_count = pattern_count + fe.pattern_count;
-        set i = i + 1;
-    }
 
     let module_mir_reason: string = "none";
-    i = 0 as u64;
-    while i < len(result.analysis.modules) {
-        let reason: string = mir_validation_reason(result.analysis.modules[i].mir);
-        if reason != "none" {
-            set module_mir_reason = reason;
-            break;
-        }
-        set i = i + 1;
-    }
     let pseudo_status: DriverExitStatus = if result.valid {
         DriverExitStatus.Ok
     } elif module_mir_reason != "none" {

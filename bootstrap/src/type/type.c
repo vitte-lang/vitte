@@ -126,19 +126,27 @@ const vitte_type_t *vitte_type_lookup(
 ) {
     const vitte_builtin_type_t *builtin;
     size_t index;
+    size_t query_length = strlen(name);
+    const char *generic_start = strchr(name, '[');
+
+    if (generic_start != NULL && generic_start > name) {
+        query_length = (size_t)(generic_start - name);
+    }
 
     if (!vitte_type_registry_is_initialized(registry) || name == NULL || name[0] == '\0') {
         vitte_type_registry_set_error(registry, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_TYPE_E_LOOKUP", "invalid type lookup name", name);
         return NULL;
     }
     for (index = 0u; index < registry->pick_type_count; index++) {
-        if (strcmp(registry->pick_types[index].name, name) == 0) {
+        if (strlen(registry->pick_types[index].name) == query_length &&
+            strncmp(registry->pick_types[index].name, name, query_length) == 0) {
             vitte_error_reset(&registry->last_error);
             return &registry->pick_types[index];
         }
     }
     for (index = 0u; index < registry->form_type_count; index++) {
-        if (strcmp(registry->form_types[index].name, name) == 0) {
+        if (strlen(registry->form_types[index].name) == query_length &&
+            strncmp(registry->form_types[index].name, name, query_length) == 0) {
             vitte_error_reset(&registry->last_error);
             return &registry->form_types[index];
         }
@@ -148,6 +156,18 @@ const vitte_type_t *vitte_type_lookup(
             vitte_error_reset(&registry->last_error);
             return &registry->list_types[index];
         }
+    }
+    /* The bootstrap ABI currently represents narrow integers and isize using
+     * the closest available machine-width builtin until their dedicated
+     * backend layouts are introduced. */
+    if (strcmp(name, "i8") == 0 || strcmp(name, "i16") == 0 || strcmp(name, "i32") == 0) {
+        name = "int";
+    } else if (strcmp(name, "u16") == 0) {
+        name = "u32";
+    } else if (strcmp(name, "isize") == 0) {
+        name = "i64";
+    } else if (strcmp(name, "char") == 0 || strcmp(name, "bytes") == 0) {
+        name = "string";
     }
     builtin = vitte_builtin_lookup_type(&registry->builtins, name);
     if (builtin == NULL) {
@@ -219,6 +239,22 @@ const vitte_type_t *vitte_type_register_list(vitte_type_registry_t *registry, co
     type->builtin_kind = VITTE_BUILTIN_TYPE_ERROR;
     type->valid = true;
     vitte_error_reset(&registry->last_error);
+    return type;
+}
+
+const vitte_type_t *vitte_type_register_proc(
+    vitte_type_registry_t *registry,
+    const char *name,
+    const vitte_type_t *return_type,
+    const vitte_type_t *const *parameter_types,
+    size_t arity,
+    bool variadic
+) {
+    vitte_type_t *type;
+    if (!vitte_type_registry_is_initialized(registry) || return_type == NULL || arity > VITTE_TYPE_MAX_PROC_PARAMETERS ||
+        registry->proc_type_count >= VITTE_TYPE_MAX_PROC_TYPES) return NULL;
+    type = &registry->proc_types[registry->proc_type_count++];
+    vitte_type_init_proc(type, name != NULL ? name : "<proc>", return_type, parameter_types, arity, variadic);
     return type;
 }
 
@@ -327,7 +363,24 @@ bool vitte_type_equals(const vitte_type_t *left, const vitte_type_t *right) {
         return true;
     }
     if (left->kind == VITTE_TYPE_KIND_PICK || left->kind == VITTE_TYPE_KIND_FORM || left->kind == VITTE_TYPE_KIND_LIST) {
-        return left->name != NULL && right->name != NULL && strcmp(left->name, right->name) == 0;
+        const char *left_name = left->name != NULL ? strrchr(left->name, '.') : NULL;
+        const char *right_name = right->name != NULL ? strrchr(right->name, '.') : NULL;
+        const char *left_generic;
+        const char *right_generic;
+        size_t left_length;
+        size_t right_length;
+        if (left_name == NULL) left_name = left->name;
+        else left_name++;
+        if (right_name == NULL) right_name = right->name;
+        else right_name++;
+        left_generic = left_name != NULL ? strchr(left_name, '[') : NULL;
+        right_generic = right_name != NULL ? strchr(right_name, '[') : NULL;
+        left_length = left_name != NULL ? strlen(left_name) : 0u;
+        right_length = right_name != NULL ? strlen(right_name) : 0u;
+        if (left_generic != NULL) left_length = (size_t)(left_generic - left_name);
+        if (right_generic != NULL) right_length = (size_t)(right_generic - right_name);
+        return left_name != NULL && right_name != NULL && left_length == right_length &&
+            strncmp(left_name, right_name, left_length) == 0;
     }
     return false;
 }
@@ -337,6 +390,12 @@ bool vitte_type_is_assignable(const vitte_type_t *destination, const vitte_type_
         return false;
     }
     if (vitte_type_equals(destination, source)) {
+        return true;
+    }
+    if ((destination->kind == VITTE_TYPE_KIND_FORM && destination->name != NULL &&
+         strstr(destination->name, "__bootstrap_opaque") != NULL) ||
+        (source->kind == VITTE_TYPE_KIND_FORM && source->name != NULL &&
+         strstr(source->name, "__bootstrap_opaque") != NULL)) {
         return true;
     }
     if (destination->kind == VITTE_TYPE_KIND_LIST && source->kind == VITTE_TYPE_KIND_LIST &&

@@ -13,7 +13,7 @@
 extern "C" {
 #endif
 
-#define VITTE_SYMBOL_MAX_ENTRIES ((size_t)512u)
+#define VITTE_SYMBOL_MAX_ENTRIES ((size_t)65536u)
 
 typedef enum vitte_symbol_kind {
     VITTE_SYMBOL_KIND_UNKNOWN = 0,

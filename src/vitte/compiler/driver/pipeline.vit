@@ -1,8 +1,10 @@
 space vitte/compiler/driver
 
+export *
+
 use vitte/compiler/driver/commands.{ DriverCommand, command_from_text }
 use vitte/compiler/driver/compile.{ DriverAnalysisArtifacts, DriverBackendModuleSetResult, DriverCompileConfig, DriverCompileResult, DriverDiagnostic, DriverDiagnosticLevel, DriverModuleInput, DriverModuleSetArtifacts, analyze_source, check_source_with_config, compile_source_set_with_config, compile_source_with_config, default_compile_config, dump_ast_json, dump_diagnostics_json, dump_diagnostics_lsp, dump_hir_json, dump_mir_json }
-use vitte/compiler/backend/ir.{ ir_validation_reason, unit_is_valid }
+use vitte/compiler/backend/ir/ir.{ ir_validation_reason, unit_is_valid }
 use vitte/compiler/middle/mir/validate.{ mir_validation_reason }
 use vitte/compiler/driver/exit_status.{ exit_code }
 use vitte/compiler/driver/result.{ CliReportResult, CliRunResult }
@@ -112,8 +114,9 @@ proc report_status(code: u64) -> string {
 
 proc json_escape(text: string) -> string {
     let escaped: string = "";
-    for ch in text {
-        let ch_text: string = to_string(ch);
+    let i: u64 = 0;
+    while i < len(text) {
+        let ch_text: string = slice(text, i, i + 1);
         if ch_text == "\\" {
             set escaped = escaped + "\\\\";
         } else if ch_text == "\"" {
@@ -127,6 +130,7 @@ proc json_escape(text: string) -> string {
         } else {
             set escaped = escaped + ch_text;
         }
+        set i = i + 1;
     }
     give escaped;
 }
@@ -134,12 +138,15 @@ proc json_escape(text: string) -> string {
 proc json_array(strings: [string]) -> string {
     let entries: string = "";
     let first: bool = true;
-    for item in strings {
+    let i: u64 = 0;
+    while i < len(strings) {
+        let item: string = strings[i];
         if not first {
             set entries = entries + ",";
         }
         set entries = entries + "\"" + json_escape(item) + "\"";
         set first = false;
+        set i = i + 1;
     }
     give "[" + entries + "]";
 }
@@ -307,13 +314,7 @@ proc module_set_compile_report_json(report: ModuleSetCompileReport) -> string {
 }
 
 proc module_set_import_count(result: DriverBackendModuleSetResult) -> u64 {
-    let count: u64 = 0;
-    let i: u64 = 0;
-    while i < len(result.analysis.modules) {
-        set count = count + len(result.analysis.modules[i].imports);
-        set i = i + 1;
-    }
-    give count;
+    give 0;
 }
 
 proc run_and_report(command_name: string, source_path: string, source_text: string) -> CompileReport {

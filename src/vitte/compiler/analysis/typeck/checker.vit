@@ -1,11 +1,26 @@
 space vitte/compiler/analysis/typeck
 
+export *
+
+proc join(values: [string], separator: string) -> string {
+  let out: string = "";
+  let i: u64 = 0;
+  while i < len(values) {
+    if i > 0 {
+      set out = out + separator;
+    }
+    set out = out + values[i];
+    set i = i + 1;
+  }
+  give out;
+}
+
 use vitte/compiler/analysis/typeck/errors.{ TypeckResult, add_unique_diag, typeck_assignment_mismatch, typeck_condition_type, typeck_conflicting_impl, typeck_constraint_cycle, typeck_diag, typeck_give_missing_path, typeck_give_value_in_unit_proc, typeck_invalid_hir_result, typeck_let_inference_failed, typeck_non_exhaustive_match, typeck_result, typeck_return_mismatch, typeck_set_immutable, typeck_unknown_type }
 use vitte/compiler/analysis/typeck/infer.{ TypeBinding, constrained_generic_type_binding, env_get, env_has, env_index, env_set, expression_types_compatible, function_param_types, function_return_type, infer_expr_type, param_type_binding, resolved_call_generic_arguments, split_function_signature_types, trait_impl_binding_name, type_identifier_index }
 use vitte/compiler/analysis/typeck/traits.{ type_is_copy, type_is_known, type_is_truthy }
 use vitte/compiler/diagnostics/diagnostic.{ Diagnostic }
-use vitte/compiler/frontend/ast/node.{ Span }
-use vitte/compiler/middle/hir.{ HirExpr, HirExprKind, HirItem, HirItemKind, HirModule, HirNominalMember, HirNominalMemberKind, HirProcParam, HirStmt, HirStmtKind, HirUnit }
+use vitte/compiler/source/span.{ Span }
+use vitte/compiler/middle/hir/hir.{ HirExpr, HirExprKind, HirItem, HirItemKind, HirModule, HirNominalMember, HirNominalMemberKind, HirProcParam, HirStmt, HirStmtKind, HirUnit }
 
 form TypeckStmtWalk {
   stmts: [HirStmt]

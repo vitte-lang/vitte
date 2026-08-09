@@ -1,7 +1,20 @@
 space vitte/compiler/middle/lower
 
+export *
+
+proc join(values: [string], separator: string) -> string {
+    let out: string = "";
+    let i: u64 = 0;
+    while i < len(values) {
+        if i > 0 { set out = out + separator; }
+        set out = out + values[i];
+        set i = i + 1;
+    }
+    give out;
+}
+
 use vitte/compiler/analysis/pipeline.{ AnalysisOutput }
-use vitte/compiler/backend/ir.{
+use vitte/compiler/backend/ir/ir.{
   IrBlock,
   IrFunction,
   IrFunctionParam,
@@ -48,8 +61,8 @@ use vitte/compiler/backend/ir.{
     value_place,
     value_reference,
 }
-use vitte/compiler/middle/hir.{ HirItem, HirItemKind, HirNominalMember, HirNominalMemberKind }
-use vitte/compiler/middle/mir.{ MirBlock, MirFunction, MirOperand, MirRvalue, MirRvalueKind, MirStatement, MirStatementKind, MirTerminator, MirTerminatorKind, MirUnit }
+use vitte/compiler/middle/hir/hir.{ HirItem, HirItemKind, HirNominalMember, HirNominalMemberKind }
+use vitte/compiler/middle/mir/mir.{ MirBlock, MirFunction, MirOperand, MirRvalue, MirRvalueKind, MirStatement, MirStatementKind, MirTerminator, MirTerminatorKind, MirUnit }
 
 proc ir_visibility_for_function(name: string) -> IrVisibility {
     if name == "main" {
@@ -349,7 +362,7 @@ proc borrow_instruction_id(statement_id: u64, arg_index: u64) -> u64 {
 }
 
 proc borrow_instruction_for_call_arg(statement: MirStatement, arg_index: u64, arg_value: IrValue) -> IrInstruction {
-    let source: IrValue = ir_value_from_operand(borrow_instruction_id(statement.id, arg_index), statement.rvalue.operands[arg_index]);
+    let source: IrValue = arg_value;
     let kind: IrInstructionKind = if arg_value.ref_mutable { IrInstructionKind.BorrowMut } else { IrInstructionKind.BorrowShared };
     give instruction_create(
         borrow_instruction_id(statement.id, arg_index),
@@ -369,7 +382,7 @@ proc return_rvalue_requires_materialization(rvalue: MirRvalue) -> bool {
 proc materialized_return_instruction(statement: MirStatement, functions: [MirFunction], fn0: MirFunction) -> IrInstruction {
     let call_arg_start: u64 = if statement.rvalue.kind == MirRvalueKind.Call { call_arg_start_for_rvalue(statement.rvalue) } else { 0 };
     let args: [IrValue] = ir_args_from_rvalue(statement.id, statement.rvalue, call_arg_start, functions, fn0);
-    let temp_name: string = "__return_value_" + string(statement.id);
+    let temp_name: string = "__return_value_" + (statement.id as string);
     let instruction0: IrInstruction = instruction_create(
         statement.id,
         ir_instruction_kind_from_rvalue(statement.rvalue),

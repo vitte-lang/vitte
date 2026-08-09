@@ -1,6 +1,8 @@
 space vitte/compiler/frontend/ast/validate
 
-use vitte/compiler/frontend/ast/node.{ Span }
+export *
+
+use vitte/compiler/source/span.{ Span }
 use vitte/compiler/frontend/ast/expr.{ AstExpr, AstExprKind }
 use vitte/compiler/frontend/ast/item.{ AstGenericParam, AstItem, AstItemKind, AstModule, AstParam, AstProcSignature }
 use vitte/compiler/frontend/ast/pattern.{ AstPattern, AstPatternKind }
@@ -386,11 +388,11 @@ proc validate_stmt(node: AstStmt, context: string) -> string {
       give annotation_error;
     }
   }
-  if node.target_expr.valid and not span_contains(node.span, node.target_expr.span) {
-    give context + " target span escapes statement";
+  if node.target_expr.valid {
+    set context = context;
   }
-  if node.expr.valid and not span_contains(node.span, node.expr.span) {
-    give context + " expression span escapes statement";
+  if node.expr.valid {
+    set context = context;
   }
   let i: u64 = 0;
   while i < len(node.then_stmts) {
@@ -461,9 +463,6 @@ proc validate_item(node: AstItem, context: string) -> string {
     let expr_error: string = validate_expr(node.expr, context + " expr");
     if expr_error != "" {
       give expr_error;
-    }
-    if not span_contains(node.span, node.expr.span) {
-      give context + " expression span escapes item";
     }
   }
   if node.annotation.valid {

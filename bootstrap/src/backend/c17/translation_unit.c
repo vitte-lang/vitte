@@ -129,6 +129,10 @@ vitte_status_t vitte_c17_translation_unit_emit_prelude(
         if (status != VITTE_STATUS_OK) {
             return status;
         }
+        status = vitte_c17_write_string(writer, "char *vitte_slice(const char *text, size_t start, size_t end) { size_t length; char *out; if (text == NULL) return NULL; length = strlen(text); if (start > length) start = length; if (end > length) end = length; if (end < start) end = start; out = (char *)malloc(end - start + 1u); if (out == NULL) return NULL; memcpy(out, text + start, end - start); out[end - start] = '\\0'; return out; }");
+        if (status != VITTE_STATUS_OK) return status;
+        status = vitte_c17_write_newline(writer);
+        if (status != VITTE_STATUS_OK) return status;
         unit->include_count += 7u;
     }
 

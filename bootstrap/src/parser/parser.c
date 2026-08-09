@@ -884,7 +884,7 @@ static vitte_ast_expr_t *vitte_parser_parse_primary(vitte_parser_t *parser) {
                 expr = vitte_ast_make_string_literal(&parser->builder, decoded, span);
                 break;
             }
-            if (parser->current.kind == VITTE_TOKEN_LBRACKET) {
+            if (parser->current.kind == VITTE_TOKEN_LBRACKET && text[0] >= 'A' && text[0] <= 'Z') {
                 int generic_depth = 0;
                 do {
                     if (parser->current.kind == VITTE_TOKEN_LBRACKET) generic_depth++;

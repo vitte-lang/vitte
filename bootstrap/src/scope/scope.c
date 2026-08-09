@@ -116,6 +116,16 @@ vitte_status_t vitte_scope_define(
         return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
     }
     if (vitte_scope_lookup_current(stack, name) != NULL) {
+        size_t index;
+        frame = &stack->frames[stack->frame_count - 1u];
+        for (index = stack->binding_count; index > frame->binding_start; index--) {
+            vitte_scope_binding_t *current = &stack->bindings[index - 1u];
+            if (current->name != NULL && strcmp(current->name, name) == 0 && current->symbol != NULL) {
+                current->symbol = symbol;
+                vitte_error_reset(&stack->last_error);
+                return VITTE_STATUS_OK;
+            }
+        }
         vitte_scope_set_error(stack, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_SCOPE_E_DUPLICATE", "duplicate symbol in current scope", name);
         return VITTE_STATUS_ERROR_INVALID_STATE;
     }

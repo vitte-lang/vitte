@@ -1,9 +1,7 @@
 space vitte/compiler/diagnostics/catalog
 
-use vitte/compiler/frontend/ast/node.{
-  Span,
-  ast_span_empty
-}
+use vitte/compiler/source/span.{ Span }
+use vitte/compiler/frontend/ast/node.{ ast_span_empty }
 
 pick DiagnosticSeverity {
   Info
@@ -110,7 +108,7 @@ proc diagnostic_code(code: string, category: DiagnosticCategory, severity: Diagn
 
 proc add_note(diagnostic: DiagnosticCode, note: DiagnosticNote) -> DiagnosticCode {
 
-  make next = diagnostic
+  let next: DiagnosticCode = diagnostic;
 
   set next.notes = next.notes + [note]
 
@@ -119,7 +117,7 @@ proc add_note(diagnostic: DiagnosticCode, note: DiagnosticNote) -> DiagnosticCod
 
 proc add_label(diagnostic: DiagnosticCode, label: DiagnosticLabel) -> DiagnosticCode {
 
-  make next = diagnostic
+  let next: DiagnosticCode = diagnostic;
 
   set next.labels = next.labels + [label]
 
@@ -319,7 +317,7 @@ proc versioned_diagnostic_lookup(code: string) -> VersionedDiagnosticCode {
 
 proc register(catalog: DiagnosticCatalog, diagnostic: DiagnosticCode) -> DiagnosticCatalog {
 
-  make next = catalog
+  let next: DiagnosticCatalog = catalog;
 
   set next.diagnostics = next.diagnostics + [diagnostic]
 
@@ -328,7 +326,7 @@ proc register(catalog: DiagnosticCatalog, diagnostic: DiagnosticCode) -> Diagnos
 
 proc find_by_code(catalog: DiagnosticCatalog, code: string) -> DiagnosticCode {
 
-  let i: i32 = 0
+  let i: u64 = 0;
 
   while i < len(catalog.diagnostics) {
 
@@ -374,7 +372,7 @@ proc diagnostic_default_note(code: string) -> string {
 
 proc bootstrap_catalog() -> DiagnosticCatalog {
 
-  make catalog = empty_catalog()
+  let catalog: DiagnosticCatalog = empty_catalog();
 
   <<< ===================================================== >>>
   <<< Lexer diagnostics                                     >>>
@@ -545,7 +543,7 @@ proc bootstrap_catalog() -> DiagnosticCatalog {
   give catalog
 }
 
-proc catalog_size(catalog: DiagnosticCatalog) -> i32 {
+proc catalog_size(catalog: DiagnosticCatalog) -> u64 {
 
   give len(catalog.diagnostics)
 }
@@ -556,7 +554,7 @@ proc catalog_valid(catalog: DiagnosticCatalog) -> bool {
     give false
   }
 
-  let i: i32 = 0
+  let i: u64 = 0;
 
   while i < len(catalog.diagnostics) {
 

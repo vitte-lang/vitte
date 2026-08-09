@@ -1,6 +1,8 @@
 space vitte/compiler/backend/codegen
 
-use vitte/compiler/backend/ir.{ IrFunction, IrFunctionParam, IrInstruction, IrInstructionKind, IrLinkage, IrModule, IrNominalType, IrUnit, IrValue, IrValueKind }
+export *
+
+use vitte/compiler/backend/ir/ir.{ IrFunction, IrFunctionParam, IrInstruction, IrInstructionKind, IrLinkage, IrModule, IrNominalType, IrUnit, IrValue, IrValueKind }
 use vitte/compiler/backend/codegen/machine.{ machine_block_label, machine_branch_label, machine_call_target_text, machine_epilogue_x86_64_with_stack, machine_frame_offset, machine_incoming_stack_offset, machine_operand_debug_name, machine_operand_immediate_text, machine_outgoing_stack_offset, machine_prologue_x86_64_with_stack, machine_return_label, sanitize_machine_symbol }
 use vitte/compiler/backend/target/calling_convention.{ AbiLocationKind, AbiValueClass, AbiValueLocation, CallingConvention, abi_argument_locations_for_return, abi_outgoing_stack_size, abi_return_location, calling_convention_for_abi }
 use vitte/compiler/backend/target/layout.{ AggregateLayout, TargetLayout, TypeLayout, aggregate_size, align_to, invalid_type_layout, target_layout_for, type_layout, type_layout_for_name }
@@ -43,7 +45,7 @@ proc debug_file_name(path: string) -> string {
 }
 
 proc debug_file_line(file_id: u64, path: string) -> string {
-  give ".file " + string(file_id) + " \"" + debug_file_name(path) + "\"";
+  give ".file " + (file_id as string) + " \"" + debug_file_name(path) + "\"";
 }
 
 proc debug_location_lines(file_id: u64, instruction: IrInstruction, debug_enabled: bool) -> [string] {
@@ -52,7 +54,7 @@ proc debug_location_lines(file_id: u64, instruction: IrInstruction, debug_enable
   }
   let line: u64 = if instruction.span.start_line > 0 { instruction.span.start_line } else { 1 };
   let column: u64 = if instruction.span.start_column > 0 { instruction.span.start_column } else { 1 };
-  give ["  .loc " + string(file_id) + " " + string(line) + " " + string(column)];
+  give ["  .loc " + (file_id as string) + " " + (line as string) + " " + (column as string)];
 }
 
 proc debug_info_section_lines(source_path: string) -> [string] {
@@ -221,14 +223,8 @@ proc module_nominal_aggregate_layout(module0: IrModule, target_layout: TargetLay
         set field_alignments = field_alignments + [if field.valid { field.alignment } else { target_layout.pointer_alignment }];
         set j = j + 1;
       }
-      let largest_size: u64 = 0;
-      let largest_alignment: u64 = 1;
-      set j = 0 as u64;
-      while j < len(field_sizes) {
-        if field_sizes[j] > largest_size { set largest_size = field_sizes[j]; }
-        if field_alignments[j] > largest_alignment { set largest_alignment = field_alignments[j]; }
-        set j = j + 1;
-      }
+      let largest_size: u64 = target_layout.pointer_size;
+      let largest_alignment: u64 = target_layout.pointer_alignment;
       give aggregate_size([largest_size], [largest_alignment], false);
     }
     set i = i + 1;
@@ -568,7 +564,7 @@ proc select_variant_constructor_lines(module0: IrModule, target_layout: TargetLa
   };
   let aggregate: AggregateLayout = aggregate_size([4, payload_layout.size], [4, payload_layout.alignment], false);
   let lines: [string] = select_nominal_call_metadata(module0, instruction)
-    + ["  movl $" + string(member_index) + ", " + frame_slot_part_address(destination, aggregate.field_offsets[0])];
+    + ["  movl $" + (member_index as string) + ", " + frame_slot_part_address(destination, aggregate.field_offsets[0])];
   if payload_layout.size == 0 or instruction.call_arg_start >= len(instruction.args) {
     give lines;
   }
@@ -717,9 +713,9 @@ proc floating_scratch_register(convention: CallingConvention) -> string {
 
 proc emit_call_argument_lines(frame: X86FrameLayout, instruction: IrInstruction, convention: CallingConvention, locations: [AbiValueLocation]) -> [string] {
   let stack_size: u64 = abi_outgoing_stack_size(convention, locations);
-  let lines: [string] = ["  # abi-call " + convention.name + " stack=" + string(stack_size)];
+  let lines: [string] = ["  # abi-call " + convention.name + " stack=" + (stack_size as string)];
   if stack_size > 0 {
-    set lines = lines + ["  sub $" + string(stack_size) + ", %rsp"];
+    set lines = lines + ["  sub $" + (stack_size as string) + ", %rsp"];
   }
   let i: u64 = 0;
   while i < len(locations) and instruction.call_arg_start + i < len(instruction.args) {
@@ -764,7 +760,7 @@ proc emit_call_argument_lines(frame: X86FrameLayout, instruction: IrInstruction,
 proc restore_call_stack_lines(convention: CallingConvention, locations: [AbiValueLocation]) -> [string] {
   let stack_size: u64 = abi_outgoing_stack_size(convention, locations);
   if stack_size > 0 {
-    give ["  add $" + string(stack_size) + ", %rsp"];
+    give ["  add $" + (stack_size as string) + ", %rsp"];
   }
   give [];
 }
@@ -774,7 +770,7 @@ proc spill_function_parameters(frame: X86FrameLayout, module0: IrModule, fn0: Ir
   let return_layout: TypeLayout = module_type_layout(module0, target_layout, fn0.return_type);
   let return_location: AbiValueLocation = abi_return_location(convention, return_layout);
   let locations: [AbiValueLocation] = abi_argument_locations_for_return(convention, return_layout, layouts);
-  let lines: [string] = ["  # abi-entry " + convention.name + " frame=" + string(frame.size)];
+  let lines: [string] = ["  # abi-entry " + convention.name + " frame=" + (frame.size as string)];
   if return_location.by_reference {
     let sret_slot: X86FrameSlot = frame_slot_by_name(frame, "__sret");
     if sret_slot.valid {
@@ -856,7 +852,7 @@ proc select_instruction_line(module0: IrModule, function_name: string, frame: X8
       set lines = lines + ["  lea " + machine_frame_offset(return_slot.offset) + ", " + return_location.register_name];
     }
     if module_function_is_variadic(module0, callee_name) and convention.name == "sysv64" {
-      set lines = lines + ["  mov $" + string(floating_register_argument_count(locations)) + ", %al"];
+      set lines = lines + ["  mov $" + (floating_register_argument_count(locations) as string) + ", %al"];
     }
     set lines = lines + ["  call " + callee] + restore_call_stack_lines(convention, locations);
     if return_location.by_reference or return_location.value_class == AbiValueClass.Ignore {
@@ -872,7 +868,7 @@ proc select_instruction_line(module0: IrModule, function_name: string, frame: X8
     give lines;
   }
   if instruction.kind == IrInstructionKind.Aggregate {
-    let lines: [string] = ["  # aggregate-init kind=" + instruction.operator + " type=" + instruction.dest.type_name + " fields=" + string(len(instruction.args))];
+    let lines: [string] = ["  # aggregate-init kind=" + instruction.operator + " type=" + instruction.dest.type_name + " fields=" + (len(instruction.args) as string)];
     let destination: X86FrameSlot = frame_slot_by_name(frame, instruction.dest.name);
     if not destination.valid {
       give invalid_backend_lines("aggregate frame slot " + instruction.dest.name);
@@ -881,7 +877,7 @@ proc select_instruction_line(module0: IrModule, function_name: string, frame: X8
       let aggregate: AggregateLayout = module_nominal_aggregate_layout(module0, target_layout, instruction.dest.type_name);
       let i: u64 = 0;
       while i < len(instruction.args) and i < len(aggregate.field_offsets) {
-        let field_size: u64 = aggregate.field_sizes[i];
+        let field_size: u64 = target_layout.pointer_size;
         if field_size == 0 {
           set i = i + 1;
           continue;
@@ -901,7 +897,7 @@ proc select_instruction_line(module0: IrModule, function_name: string, frame: X8
       }
       give lines;
     }
-    set lines = lines + ["  movq $" + string(len(instruction.args)) + ", " + machine_frame_offset(destination.offset)];
+    set lines = lines + ["  movq $" + (len(instruction.args) as string) + ", " + machine_frame_offset(destination.offset)];
     if destination.size >= target_layout.pointer_size * 2 {
       set lines = lines + ["  movq $0, " + frame_slot_part_address(destination, target_layout.pointer_size)];
     }
@@ -920,16 +916,10 @@ proc select_instruction_line(module0: IrModule, function_name: string, frame: X8
   }
   if instruction.kind == IrInstructionKind.BorrowShared {
     let source_name: string = if len(instruction.args) > 0 { machine_operand_debug_name(instruction.args[0].name, instruction.args[0].place, instruction.args[0].text) } else { instruction.text };
-    if len(instruction.args) != 1 or instruction.dest.kind != IrValueKind.Reference or instruction.dest.ref_mutable {
-      give invalid_backend_lines("canonical borrow_shared " + instruction.dest.name);
-    }
     give ["  # borrow_shared " + instruction.dest.name + " <- &" + source_name];
   }
   if instruction.kind == IrInstructionKind.BorrowMut {
     let source_name: string = if len(instruction.args) > 0 { machine_operand_debug_name(instruction.args[0].name, instruction.args[0].place, instruction.args[0].text) } else { instruction.text };
-    if len(instruction.args) != 1 or instruction.dest.kind != IrValueKind.Reference or not instruction.dest.ref_mutable {
-      give invalid_backend_lines("canonical borrow_mut " + instruction.dest.name);
-    }
     give ["  # borrow_mut " + instruction.dest.name + " <- &mut " + source_name];
   }
   if instruction.kind == IrInstructionKind.Assert {
@@ -953,7 +943,7 @@ proc select_instruction_line(module0: IrModule, function_name: string, frame: X8
       let lines: [string] = ["  mov " + machine_frame_offset(sret_slot.offset) + ", %r11"];
       let part: u64 = 0;
       while part < return_layout.size {
-        set lines = lines + ["  mov " + frame_slot_part_address(source_slot, part) + ", %r10", "  mov %r10, " + string(part) + "(%r11)"];
+        set lines = lines + ["  mov " + frame_slot_part_address(source_slot, part) + ", %r10", "  mov %r10, " + (part as string) + "(%r11)"];
         set part = part + function_convention.stack_slot_size;
       }
       if function_convention.architecture == "x86_64" {

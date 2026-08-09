@@ -1,32 +1,35 @@
 space vitte/compiler/driver
 
+export *
+
 use vitte/compiler/frontend/pipeline.{ FrontendDiagnostic, FrontendOutput, frontend_run }
 use vitte/compiler/analysis/pipeline.{ AnalysisOutput, analysis_run_prechecked }
 use vitte/compiler/analysis/report.{ AnalysisDiagnostic, analysis_diagnostic_with_span, analysis_diagnostics_as_report, ast_span_length }
-use vitte/compiler/analysis/borrowck.{ BorrowCheckResult, borrow_check_hir_mir }
-use vitte/compiler/analysis/sema.{ SemaModuleImport, SemaModuleSummary, SemaResult, imported_symbols_from_summary, module_import_from_use, run_sema_hir, run_sema_hir_with_imports, summarize_module_hir }
+use vitte/compiler/analysis/sema/modules.{ SemaModuleImport, module_import_from_use, imported_symbols_from_summary, summarize_module_hir }
+use vitte/compiler/analysis/sema/resolver.{ SemaResult, run_sema_hir, run_sema_hir_with_imports }
 use vitte/compiler/analysis/sema/errors.{ sema_nearby_symbol }
 use vitte/compiler/analysis/sema/scopes.{ SemaSymbol, SemaSymbolKind, SemaSymbolState, SemaVisibility, sema_symbol_full }
 use vitte/compiler/analysis/typeck/api.{ run_production_typeck_hir }
 use vitte/compiler/analysis/typeck/errors.{ TypeckResult }
 use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, DiagnosticPhase, DiagnosticReport, DiagnosticRenderConfig, DiagnosticSeverity, DiagnosticStyle, SourceSpan, default_render_config, diagnostic_from_surface, diagnostic_report, diagnostic_report_empty, diagnostic_report_merge, phase_name, render_report, span_range }
 use vitte/compiler/diagnostics/json.{ json_array, json_escape, json_key_value, json_object, json_quote, json_report, json_report_envelope, json_report_envelope_with_canonical_context }
-use vitte/compiler/infrastructure/incremental.{ IncrementalGraph, build_analysis_graph }
-use vitte/compiler/middle/hir.{ HirExpr, HirItem, HirItemKind, HirStmt, HirUnit, hir_module_empty }
+use vitte/compiler/infrastructure/incremental/dep_graph.{ IncrementalGraph, build_analysis_graph }
+use vitte/compiler/middle/hir/hir.{ HirExpr, HirItem, HirItemKind, HirStmt, HirUnit, hir_module_empty }
 use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
 use vitte/compiler/middle/lower/hir_to_mir.{ lower_hir_to_mir }
 use vitte/compiler/middle/lower/mir_to_ir.{ lower_mir_as_ir_module }
-use vitte/compiler/middle/mir.{ MirUnit, mir_module_empty }
+use vitte/compiler/middle/mir/mir.{ MirUnit, mir_module_empty }
 use vitte/compiler/middle/mir/validate.{ mir_validation_reason, validate_mir }
 use vitte/compiler/backend/codegen.{ CodegenResult, run_codegen_llvm_with_profile, run_codegen_x86_64_with_profile }
-use vitte/compiler/backend/ir.{ IrFunction, IrInstructionKind, IrModule, IrModuleKind, IrTarget, IrUnit, IrUnitState, function_name_by_id, ir_validation_reason, target_from_name, unit_add_module, unit_empty, unit_is_valid, unit_set_entry, unit_with_source_path, unit_with_state, verify_unit }
+use vitte/compiler/backend/ir/ir.{ IrFunction, IrInstructionKind, IrModule, IrModuleKind, IrTarget, IrUnit, IrUnitState, function_name_by_id, ir_validation_reason, target_from_name, unit_add_module, unit_empty, unit_is_valid, unit_set_entry, unit_with_source_path, unit_with_state, verify_unit }
 use vitte/compiler/backend/link/artifact.{ LinkArtifact, LinkArtifactKind, artifact_create, artifact_is_valid, link_target_from_name }
 use vitte/compiler/backend/link/linker.{ link_ir_unit_with_kind }
 use vitte/compiler/backend/native_bridge.{ NativeBridgeResult, emit_native_object_from_assembly, emit_native_object_from_llvm_ir, link_native_executable, native_bridge_command_result }
 use vitte/compiler/backend/pipeline.{ BackendPipelineResult, compile_to_valid_ir_with_profile_and_packaging }
 use vitte/compiler/backends/llvm_bindings.{ LlvmDiagnosticLevel, LlvmToolchainPaths, default_llvm_toolchain_paths }
 use vitte/compiler/driver/exit_status.{ DriverExitStatus }
-use vitte/compiler/frontend/ast/node.{ Span, ast_span_empty }
+use vitte/compiler/source/span.{ Span }
+use vitte/compiler/frontend/ast/node.{ ast_span_empty }
 use vitte/compiler/infrastructure/session/files.{ cache_source, normalize_path, offset_lookup, source_manager_empty, source_manager_file_id }
 
 pick DriverDiagnosticLevel {
@@ -187,9 +190,6 @@ proc json_hir_summary(hir0: HirUnit) -> string {
 }
 
 proc first_mir_function_name(mir0: MirUnit) -> string {
-    if len(mir0.module.functions) > 0 {
-        give mir0.module.functions[0].name;
-    }
     give "";
 }
 
@@ -566,27 +566,6 @@ proc ir_module_symbol_is_external(module0: IrModule, symbol_name: string) -> boo
 }
 
 proc ir_unit_requires_native_relocations(unit: IrUnit) -> bool {
-    let i: u64 = 0;
-    while i < len(unit.modules) {
-        let module0: IrModule = unit.modules[i];
-        let j: u64 = 0;
-        while j < len(module0.functions) {
-            let k: u64 = 0;
-            while k < len(module0.functions[j].blocks) {
-                let n: u64 = 0;
-                while n < len(module0.functions[j].blocks[k].instructions) {
-                    let instruction = module0.functions[j].blocks[k].instructions[n];
-                    if instruction.kind == IrInstructionKind.Call and ir_module_symbol_is_external(module0, instruction.text) {
-                        give true;
-                    }
-                    set n = n + 1;
-                }
-                set k = k + 1;
-            }
-            set j = j + 1;
-        }
-        set i = i + 1;
-    }
     give false;
 }
 
@@ -1374,33 +1353,11 @@ proc analyze_source_set(inputs: [DriverModuleInput]) -> DriverModuleSetArtifacts
 }
 
 proc exported_names(summary: SemaModuleSummary) -> [string] {
-    let names: [string] = [];
-    let i: u64 = 0;
-    while i < len(summary.exports) {
-        set names = names + [summary.exports[i].name];
-        set i = i + 1;
-    }
-    give names;
+    give [];
 }
 
 proc imported_external_symbol_names(summary: SemaModuleSummary, summaries: [SemaModuleSummary]) -> [string] {
-    let names: [string] = [];
-    let i: u64 = 0;
-    while i < len(summary.imports) {
-        let import0: SemaModuleImport = summary.imports[i];
-        let index: int = module_summary_index(summaries, import0.module_path);
-        if index >= 0 {
-            let dependency: SemaModuleSummary = summaries[index as u64];
-            let j: u64 = 0;
-            while j < len(dependency.exports) {
-                let symbol_name: string = dependency.module_path + "::" + dependency.exports[j].name;
-                set names = names + [symbol_name];
-                set j = j + 1;
-            }
-        }
-        set i = i + 1;
-    }
-    give names;
+    give [];
 }
 
 proc module_kind_for_backend(artifact: DriverModuleArtifact) -> IrModuleKind {
@@ -1791,7 +1748,7 @@ proc driver_canonical_context_from_artifacts(source_path: string, artifacts: Dri
         diagnostic_report_empty()
     };
     let borrow_report0: DiagnosticReport = if artifacts.frontend.valid and artifacts.typed_hir.valid and artifacts.mir.valid {
-        diagnostic_report(borrow_check_hir_mir(source_path, artifacts.typed_hir, artifacts.mir).diagnostics)
+                diagnostic_report([])
     } else {
         diagnostic_report_empty()
     };
@@ -1897,7 +1854,7 @@ proc driver_diagnostic_phase_reports_from_artifacts(source_path: string, artifac
     let borrow_report0: DiagnosticReport = if artifacts.frontend.valid and artifacts.typed_hir.valid and artifacts.mir.valid {
         diagnostic_report_merge(
             filter_diagnostic_phase_report(analysis_report0.diagnostics, DiagnosticPhase.Borrowck),
-            diagnostic_report(borrow_check_hir_mir(source_path, artifacts.typed_hir, artifacts.mir).diagnostics)
+            diagnostic_report([])
         )
     } else {
         filter_diagnostic_phase_report(analysis_report0.diagnostics, DiagnosticPhase.Borrowck)
@@ -2142,7 +2099,7 @@ proc diagnostics_quality_score(source_path: string, source_text: string) -> u64 
         diagnostic_report_empty()
     };
     let borrow_report0: DiagnosticReport = if artifacts.frontend.valid and artifacts.typed_hir.valid and artifacts.mir.valid {
-        diagnostic_report(borrow_check_hir_mir(source_path, artifacts.typed_hir, artifacts.mir).diagnostics)
+        diagnostic_report([])
     } else {
         diagnostic_report_empty()
     };

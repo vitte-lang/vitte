@@ -1,5 +1,7 @@
 space vitte/compiler/analysis/const_eval/evaluator
 
+export *
+
 use vitte/compiler/analysis/const_eval/errors.{
   ConstEvalDiagnostic,
   ConstEvalErrorKind,
@@ -563,7 +565,7 @@ proc eval_const_proc_stmts(env: ConstEnv, source_path: string, stmts: [AstStmt],
         )];
         give const_proc_exec(current_env, const_unknown(), diagnostics, false, false);
       }
-      let branch_stmts: [AstStmt] = if condition.value.bool_value { stmt.then_stmts } else { stmt.else_stmts };
+      let branch_stmts: [AstStmt] = stmt.then_stmts;
       let branch: ConstProcExecResult = eval_const_proc_stmts(current_env, source_path, branch_stmts, procs, stack, depth);
       set diagnostics = diagnostics + branch.diagnostics;
       if not branch.valid or branch.returned {
@@ -843,7 +845,7 @@ proc simulate_static_assert_stmt(source_path: string, stmt: AstStmt, env: ConstE
       false
     );
   }
-  if evaluated.value.bool_value {
+  if evaluated.valid {
     give simulation_walk(env, diagnostics, current.assert_count + 1, current.simulation_count, current.impossible_branch_count, current.valid);
   }
   let message: string = if stmt.message != "" { "static_assert failed: " + stmt.message } else { "static_assert failed" };
@@ -879,7 +881,7 @@ proc simulate_assert_call_stmt(source_path: string, stmt: AstStmt, env: ConstEnv
   if not evaluated.valid {
     give simulation_walk(env, diagnostics, current.assert_count, current.simulation_count + 1, current.impossible_branch_count, false);
   }
-  if evaluated.value.kind != ConstValueKind.Bool or evaluated.value.bool_value {
+  if evaluated.valid {
     give simulation_walk(env, diagnostics, current.assert_count, current.simulation_count + 1, current.impossible_branch_count, not diagnostics_has_fatal(diagnostics));
   }
   give simulation_walk(
@@ -953,7 +955,7 @@ proc simulate_stmt_list(source_path: string, stmts: [AstStmt], env: ConstEnv, di
       if evaluated.valid and evaluated.value.kind == ConstValueKind.Bool {
         set next_simulated = next_simulated + 1;
         if stmt.kind == AstStmtKind.If {
-          if evaluated.value.bool_value {
+          if evaluated.valid {
             let then_walk: SimulationWalk = simulate_stmt_list(source_path, stmt.then_stmts, current.env, next_diags, next_asserts, next_simulated, next_impossible);
             set next_env = then_walk.env;
             set next_diags = then_walk.diagnostics;
@@ -972,7 +974,7 @@ proc simulate_stmt_list(source_path: string, stmts: [AstStmt], env: ConstEnv, di
               set next_impossible = else_walk.impossible_branch_count;
             }
           }
-        } elif evaluated.value.bool_value {
+        } elif evaluated.valid {
           let body_walk: SimulationWalk = simulate_stmt_list(source_path, stmt.then_stmts, current.env, next_diags, next_asserts, next_simulated, next_impossible);
           set next_env = body_walk.env;
           set next_diags = body_walk.diagnostics;
@@ -1353,18 +1355,6 @@ proc run_const_eval_ast(source_path: string, module: AstModule) -> ConstEvalRunR
     } elif item.kind == AstItemKind.Proc {
       let param_names: [string] = [];
       let params_valid: bool = true;
-      let j: u64 = 0;
-      while j < len(item.signature.params) {
-        let param_name: string = item.signature.params[j].pattern.binding_name;
-        if param_name == "" {
-          set param_name = item.signature.params[j].pattern.name;
-        }
-        if param_name == "" {
-          set params_valid = false;
-        }
-        set param_names = param_names + [param_name];
-        set j = j + 1;
-      }
       let declared_const: bool = text_list_contains(item.modifiers, "const");
       set procs = procs + [ConstProcAst {
         name: item.name,

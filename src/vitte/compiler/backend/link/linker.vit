@@ -1,7 +1,27 @@
 space vitte/compiler/backend/link/linker
 
-use vitte/compiler/backend/ir.{ IrLinkage, IrUnit, function_name_by_id, unit_is_valid, unit_module_count }
-use vitte/compiler/backends/backend_infrastructure.{ RuntimeLibrary, create_vitte_runtime }
+export *
+
+use vitte/compiler/backend/ir/ir.{ IrLinkage, IrUnit, function_name_by_id, unit_is_valid, unit_module_count }
+form RuntimeFunction {
+    link_name: string
+}
+
+form RuntimeLibrary {
+    name: string
+    c_header_path: string
+    c_source_path: string
+    functions: [RuntimeFunction]
+}
+
+proc create_vitte_runtime() -> RuntimeLibrary {
+    give RuntimeLibrary {
+        name: "vitte-runtime",
+        c_header_path: "src/vitte/compiler/backends/runtime_c/vitte_runtime.h",
+        c_source_path: "src/vitte/compiler/backends/runtime_c/vitte_runtime.c",
+        functions: []
+    };
+}
 use vitte/compiler/backend/link/artifact.{
     LinkArtifact,
     LinkArtifactFormat,

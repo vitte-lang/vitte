@@ -1,6 +1,6 @@
 space vitte/compiler/middle/mir/monomorphize
 
-use vitte/compiler/middle/mir.{ MirBlock, MirFunction, MirFunctionParam, MirModule, MirOperand, MirPlace, MirRvalue, MirRvalueKind, MirStatement, MirTerminator, MirUnit, mir_substitute_type, mir_terminator_return }
+use vitte/compiler/middle/mir/mir.{ MirBlock, MirFunction, MirFunctionParam, MirModule, MirOperand, MirPlace, MirRvalue, MirRvalueKind, MirStatement, MirTerminator, MirUnit, mir_substitute_type, mir_terminator_return }
 
 const MIR_MONOMORPHIZATION_LIMIT: u64 = 1024
 
@@ -84,13 +84,13 @@ proc generic_instance_symbol(instances: [MirGenericInstance], reserved_functions
   let base: string = "vitte_mono_" + generic_symbol_part(template_name);
   let i: u64 = 0;
   while i < len(generic_arguments) {
-    set base = base + "__" + string(len(generic_arguments[i])) + "_" + generic_symbol_part(generic_arguments[i]);
+    set base = base + "__" + (len(generic_arguments[i]) as string) + "_" + generic_symbol_part(generic_arguments[i]);
     set i = i + 1;
   }
   let candidate: string = base;
   let suffix: u64 = len(instances);
   while generic_symbol_exists(instances, candidate) or generic_function_symbol_exists(reserved_functions, candidate) {
-    set candidate = base + "__instance_" + string(suffix);
+    set candidate = base + "__instance_" + (suffix as string);
     set suffix = suffix + 1;
   }
   give candidate;

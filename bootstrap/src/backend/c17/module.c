@@ -257,7 +257,8 @@ static bool vitte_c17_ir_builtin_supported(const char *name) {
         strcmp(name, "eprintln") == 0 ||
         strcmp(name, "panic") == 0 ||
         strcmp(name, "assert") == 0 ||
-        strcmp(name, "len") == 0);
+        strcmp(name, "len") == 0 ||
+        strcmp(name, "slice") == 0);
 }
 
 static vitte_status_t vitte_c17_emit_ir_builtin_call(
@@ -371,6 +372,21 @@ static vitte_status_t vitte_c17_emit_ir_builtin_call(
         if (status != VITTE_STATUS_OK) {
             return status;
         }
+        return vitte_c17_emit_statement_line_end(writer);
+    }
+    if (strcmp(name, "slice") == 0) {
+        status = vitte_c17_write_string(writer, "vitte_slice(");
+        if (status != VITTE_STATUS_OK) return status;
+        for (size_t index = 1u; index < instruction->operand_count; index++) {
+            if (index > 1u) {
+                status = vitte_c17_write_string(writer, ", ");
+                if (status != VITTE_STATUS_OK) return status;
+            }
+            status = vitte_c17_emit_ir_value_ref(module, writer, instruction->operands[index]);
+            if (status != VITTE_STATUS_OK) return status;
+        }
+        status = vitte_c17_write_string(writer, ")");
+        if (status != VITTE_STATUS_OK) return status;
         return vitte_c17_emit_statement_line_end(writer);
     }
 

@@ -1,5 +1,7 @@
 space vitte/compiler/backend/native_bridge
 
+export *
+
 use vitte/compiler/backend/native_toolchain.{ NativeTargetContext, NativeToolCommand, NativeToolchain, default_cross_native_toolchain, default_native_toolchain, native_cross_target_context, native_host_target_context, native_object_target_context, native_target_triple, plan_assembly_object_command, plan_assembly_object_command_with_context, plan_link_executable_command, plan_link_executable_command_with_context, plan_llvm_object_command, plan_llvm_object_command_with_context }
 use vitte/stdlib/io/host_runtime.{ host_emit_assembly_object, host_emit_llvm_object, host_is_directory, host_is_file, host_link_executable, host_mkdir_all, host_run_executable, host_runtime_available, host_verify_native_object }
 
@@ -145,7 +147,7 @@ proc emit_native_object_from_assembly_with_context_and_toolchain(assembly_text: 
     if verification_code == 0 {
       give native_bridge_command_result(object_path, "", "deterministic native assembly object materialized and verified", "", command.tool, command_text, "", entry_symbol, code, true)
     }
-    give native_bridge_command_result(object_path, "", native_object_verification_message(verification_code), "BACKEND_E_CODEGEN_FAILED", "object-verifier", command_text, "object verification code " + string(verification_code), entry_symbol, verification_code, false)
+    give native_bridge_command_result(object_path, "", native_object_verification_message(verification_code), "BACKEND_E_CODEGEN_FAILED", "object-verifier", command_text, "object verification code " + (verification_code as string), entry_symbol, verification_code, false)
   }
   if code == 127 {
     give native_bridge_command_result(object_path, "", "required native assembler `" + command.tool + "` was not found", "BACKEND_E_NATIVE_TOOL_MISSING", command.tool, command_text, "native assembler command was not found", "", code, false)

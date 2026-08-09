@@ -64,33 +64,16 @@ use vitte/compiler/frontend/lexer/mod
 use vitte/compiler/frontend/parse/mod
 use vitte/compiler/frontend/lexer/token.{ Token, TokenKind }
 use vitte/compiler/frontend/lexer/scanner.{ ScanResult, scan_tokens_from_file }
-use vitte/compiler/analysis/mod
 use vitte/compiler/frontend/ast/mod
 use vitte/compiler/analysis/pipeline.{ AnalysisOutput, analysis_run_frontend }
 use vitte/compiler/analysis/report.{ AnalysisDiagnostic }
-use vitte/compiler/analysis/borrowck/mod
 use vitte/compiler/analysis/lint/engine
 use vitte/compiler/analysis/lint/mod
 use vitte/compiler/analysis/lint/report
 use vitte/compiler/analysis/lint/rules
-use vitte/compiler/analysis/sema/mod
 use vitte/compiler/analysis/typeck/mod
-use vitte/compiler/middle/mod
 use vitte/compiler/middle/pipeline.{ MiddleOutput, middle_run_frontend }
 use vitte/compiler/middle/mir/validate.{ mir_validation_reason }
-use vitte/compiler/backend/mod
-use vitte/compiler/middle/borrow/checks
-use vitte/compiler/middle/borrow/mod
-use vitte/compiler/middle/dataflow/cfg
-use vitte/compiler/middle/dataflow/mod
-use vitte/compiler/middle/hir/mod
-use vitte/compiler/middle/infer/mod
-use vitte/compiler/middle/infer/solver
-use vitte/compiler/middle/lower/mod
-use vitte/compiler/middle/mir/mod
-use vitte/compiler/middle/typecheck/diagnostics
-use vitte/compiler/middle/typecheck/mod
-use vitte/compiler/middle/typecheck/rules
 use vitte/compiler/backend/api.{ backend_runtime_defines_native_symbol }
 use vitte/compiler/backend/diagnostics.{ backend_diagnostic_severity_text, backend_diagnostic_text, backend_missing_c_compiler, backend_native_generation_failed, backend_output_overwrites_source, backend_output_permission_denied, backend_unsupported_feature, backend_unsupported_target, linker_command_failed, linker_native_symbol_not_found }
 use vitte/compiler/backend/pipeline.{ BackendPipelineResult }
@@ -117,6 +100,7 @@ use vitte/compiler/backend/target/config.{ TargetConfig, target_config_from_name
 use vitte/compiler/infrastructure/session/stdlib.{ resolve_stdlib, verify_stdlib_versions }
 use vitte/compiler/driver/cli
 use vitte/compiler/driver/mod
+use vitte/compiler/driver/exit_status.{ exit_code }
 use vitte/stdlib/io/fileops.{ file_exists, is_directory, is_file, list_directory, read_file }
 use vitte/stdlib/core.{ env_get, option_unwrap_or }
 use vitte/compiler/frontend/macros/errors
@@ -326,7 +310,7 @@ proc initial_state() -> CompilerState {
 }
 
 proc cli_exit_code(status: driver.DriverExitStatus) -> int {
-    give (driver.exit_code(status) as int);
+    give (exit_code(status) as int);
 }
 
 proc cli_environment_language() -> string {
@@ -1421,13 +1405,13 @@ proc print_phase_results(result0: CompilerResult, command: string) {
             }
             set j = j + 1;
         }
+        let msg: string = "";
         if hit_success {
-            let msg: string = "[OK] " + expected[i] + "\n";
-            emit_internal_log(msg);
+            set msg = "[OK] " + expected[i] + "\n";
         } else {
-            let msg: string = "[FAIL] " + expected[i] + " not executed\n";
-            emit_internal_log(msg);
+            set msg = "[FAIL] " + expected[i] + " not executed\n";
         }
+        emit_internal_log(msg);
         set i = i + 1;
     }
 }

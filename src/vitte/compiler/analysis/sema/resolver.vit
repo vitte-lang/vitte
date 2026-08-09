@@ -1,8 +1,8 @@
 space vitte/compiler/analysis/sema
 
+export *
+
 use vitte/compiler/analysis/sema/errors.{
-  SemaDiagnostic,
-  SemaSeverity,
   sema_diagnostic,
   sema_ambiguous_symbol,
   sema_inaccessible_module,
@@ -10,6 +10,8 @@ use vitte/compiler/analysis/sema/errors.{
   sema_unknown_symbol_with_candidate_groups,
   sema_span_empty
 }
+use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, DiagnosticSeverity }
+use vitte/compiler/source/span.{ span_empty }
 use vitte/compiler/analysis/sema/names.{ place_root_name, sema_builtin_name }
 use vitte/compiler/analysis/sema.modules.{ SemaModuleImport, module_import_from_use }
 use vitte/compiler/analysis/sema/scopes.{
@@ -27,17 +29,17 @@ use vitte/compiler/analysis/sema/scopes.{
   symbol_visible
 }
 use vitte/compiler/analysis/sema/visibility.{ visibility_valid }
-use vitte/compiler/middle/hir.{ HirExpr, HirExprKind, HirItem, HirItemKind, HirModule, HirNominalMember, HirProcParam, HirStmt, HirStmtKind, HirUnit }
+use vitte/compiler/middle/hir/hir.{ HirExpr, HirExprKind, HirItem, HirItemKind, HirModule, HirNominalMember, HirProcParam, HirStmt, HirStmtKind, HirUnit, HirPlaceCategory }
 
 form SemaResult {
-  diagnostics: [SemaDiagnostic]
+  diagnostics: [Diagnostic]
   hir: HirUnit
   symbol_count: u64
   valid: bool
 }
 
 form SemaWalk {
-  diagnostics: [SemaDiagnostic]
+  diagnostics: [Diagnostic]
   symbols: [SemaSymbol]
   next_symbol_id: u64
   valid: bool
@@ -45,7 +47,7 @@ form SemaWalk {
 
 form SemaExprWalk {
   expr: HirExpr
-  diagnostics: [SemaDiagnostic]
+  diagnostics: [Diagnostic]
   symbols: [SemaSymbol]
   next_symbol_id: u64
   valid: bool
@@ -53,7 +55,7 @@ form SemaExprWalk {
 
 form SemaStmtWalk {
   stmt: HirStmt
-  diagnostics: [SemaDiagnostic]
+  diagnostics: [Diagnostic]
   symbols: [SemaSymbol]
   next_symbol_id: u64
   valid: bool
@@ -61,7 +63,7 @@ form SemaStmtWalk {
 
 form SemaStmtListWalk {
   stmts: [HirStmt]
-  diagnostics: [SemaDiagnostic]
+  diagnostics: [Diagnostic]
   symbols: [SemaSymbol]
   next_symbol_id: u64
   valid: bool
@@ -69,7 +71,7 @@ form SemaStmtListWalk {
 
 form SemaMemberWalk {
   member: HirNominalMember
-  diagnostics: [SemaDiagnostic]
+  diagnostics: [Diagnostic]
   symbols: [SemaSymbol]
   next_symbol_id: u64
   valid: bool
@@ -77,13 +79,13 @@ form SemaMemberWalk {
 
 form SemaMemberListWalk {
   members: [HirNominalMember]
-  diagnostics: [SemaDiagnostic]
+  diagnostics: [Diagnostic]
   symbols: [SemaSymbol]
   next_symbol_id: u64
   valid: bool
 }
 
-proc sema_add_diag(diagnostics: [SemaDiagnostic], diagnostic: SemaDiagnostic) -> [SemaDiagnostic] {
+proc sema_add_diag(diagnostics: [Diagnostic], diagnostic: Diagnostic) -> [Diagnostic] {
   let i: u64 = 0;
   while i < len(diagnostics) {
     if diagnostics[i].code == diagnostic.code and diagnostics[i].span.start_line == diagnostic.span.start_line and diagnostics[i].message == diagnostic.message {
@@ -116,7 +118,7 @@ proc item_symbol_kind(kind: HirItemKind) -> SemaSymbolKind {
   give SemaSymbolKind.Item;
 }
 
-proc sema_has_fatal(diagnostics: [SemaDiagnostic]) -> bool {
+proc sema_has_fatal(diagnostics: [Diagnostic]) -> bool {
   let i: u64 = 0;
   while i < len(diagnostics) {
     if diagnostics[i].fatal {
@@ -302,7 +304,7 @@ proc symbol_or_external(symbols: [SemaSymbol], name: string, scope_depth: u64, n
 proc annotate_expr_children(children: [HirExpr], symbols: [SemaSymbol], scope_depth: u64, next_symbol_id: u64) -> SemaExprWalk {
   let out_children: [HirExpr] = [];
   let current_symbols: [SemaSymbol] = symbols;
-  let diagnostics: [SemaDiagnostic] = [];
+  let diagnostics: [Diagnostic] = [];
   let current_next_id: u64 = next_symbol_id;
   let i: u64 = 0;
   while i < len(children) {
@@ -355,14 +357,14 @@ proc annotate_expr(expr: HirExpr, symbols: [SemaSymbol], scope_depth: u64, next_
   let children_walk: SemaExprWalk = annotate_expr_children(expr.children, symbols, scope_depth, next_symbol_id);
   let children: [HirExpr] = children_walk.expr.children;
   let current_symbols: [SemaSymbol] = children_walk.symbols;
-  let diagnostics: [SemaDiagnostic] = children_walk.diagnostics;
+  let diagnostics: [Diagnostic] = children_walk.diagnostics;
   let current_next_id: u64 = children_walk.next_symbol_id;
 
   let binding: string = expr.binding;
   let resolved_id: u64 = expr.resolved_id;
   let resolved_kind: string = expr.resolved_kind;
   let external: bool = expr.external;
-  let place_category: string = expr.place_category;
+  let place_category: HirPlaceCategory = expr.place_category;
   let is_borrow_expr: bool = expr.kind == HirExprKind.BorrowShared or expr.kind == HirExprKind.BorrowMut;
 
   if expr.kind == HirExprKind.Name and expr.name != "" {
@@ -384,7 +386,7 @@ proc annotate_expr(expr: HirExpr, symbols: [SemaSymbol], scope_depth: u64, next_
     set external = resolved.kind == SemaSymbolKind.External;
     if external {
       let hidden_line: u64 = symbol_hidden_declaration_line(current_symbols, expr.name, scope_depth);
-      let unresolved_diag: SemaDiagnostic = if hidden_line > 0 {
+      let unresolved_diag: Diagnostic = if hidden_line > 0 {
         sema_out_of_scope_symbol(expr.name, hidden_line, expr.span)
       } else {
         sema_unknown_symbol_with_candidate_groups(
@@ -416,12 +418,12 @@ proc annotate_expr(expr: HirExpr, symbols: [SemaSymbol], scope_depth: u64, next_
         set resolved_id = resolved_member.id;
         set resolved_kind = symbol_kind_name(resolved_member.kind);
         set external = false;
-        set place_category = "value";
+        set place_category = HirPlaceCategory.Value;
       } else {
         set binding = member;
         set resolved_kind = "external";
         set external = true;
-        set place_category = "value";
+        set place_category = HirPlaceCategory.Value;
         set diagnostics = sema_add_diag(diagnostics, sema_inaccessible_module(base_symbol.module_path, member, expr.span));
       }
     } else {
@@ -436,7 +438,7 @@ proc annotate_expr(expr: HirExpr, symbols: [SemaSymbol], scope_depth: u64, next_
       set resolved_id = base.resolved_id;
       set resolved_kind = "member";
       set external = base.external;
-      set place_category = "field";
+      set place_category = HirPlaceCategory.Field;
     }
   } elif expr.kind == HirExprKind.Index and len(children) > 0 {
     let base: HirExpr = children[0];
@@ -448,14 +450,14 @@ proc annotate_expr(expr: HirExpr, symbols: [SemaSymbol], scope_depth: u64, next_
     set resolved_id = base.resolved_id;
     set resolved_kind = "index";
     set external = base.external;
-    set place_category = "index";
+    set place_category = HirPlaceCategory.Index;
   } elif expr.kind == HirExprKind.Unary and expr.operator == "*" and len(children) > 0 {
     let base: HirExpr = children[0];
     set binding = "*" + base.binding;
     set resolved_id = base.resolved_id;
     set resolved_kind = "deref";
     set external = base.external;
-    set place_category = "deref";
+    set place_category = HirPlaceCategory.Deref;
   } elif is_borrow_expr and len(children) > 0 {
     let base: HirExpr = children[0];
     set binding = base.binding;
@@ -505,7 +507,7 @@ proc resolve_target(symbols: [SemaSymbol], target: string, scope_depth: u64, spa
     give SemaWalk {
       diagnostics: [sema_diagnostic(
         "SEMA_E_INVALID_ASSIGN_TARGET",
-        SemaSeverity.Error,
+        DiagnosticSeverity.Error,
         "assignment target is empty or invalid",
         [target],
         "assign to a declared local or a valid place expression",
@@ -522,7 +524,7 @@ proc resolve_target(symbols: [SemaSymbol], target: string, scope_depth: u64, spa
     give SemaWalk {
       diagnostics: [sema_diagnostic(
         "SEMA_E_UNDECLARED_TARGET",
-        SemaSeverity.Error,
+        DiagnosticSeverity.Error,
         "cannot assign to undeclared local `" + root + "`",
         [root],
         "declare the local before assigning to it",
@@ -544,7 +546,7 @@ proc resolve_target(symbols: [SemaSymbol], target: string, scope_depth: u64, spa
 
 proc annotate_stmt(module_symbols: [SemaSymbol], local_symbols: [SemaSymbol], stmt: HirStmt, next_symbol_id: u64) -> SemaStmtWalk {
   let expr_walk: SemaExprWalk = annotate_expr(stmt.expr, module_symbols + local_symbols, stmt.scope_depth, next_symbol_id);
-  let diagnostics: [SemaDiagnostic] = expr_walk.diagnostics;
+  let diagnostics: [Diagnostic] = expr_walk.diagnostics;
   let current_symbols: [SemaSymbol] = local_symbols;
   let extern_symbols: [SemaSymbol] = expr_walk.symbols;
   let current_next_id: u64 = expr_walk.next_symbol_id;
@@ -557,7 +559,7 @@ proc annotate_stmt(module_symbols: [SemaSymbol], local_symbols: [SemaSymbol], st
     if stmt.name == "" {
       set diagnostics = sema_add_diag(diagnostics, sema_diagnostic(
         "SEMA_E_MISSING_BINDING",
-        SemaSeverity.Error,
+        DiagnosticSeverity.Error,
         "binding declaration requires a name",
         ["binding"],
         "provide a binding name for the declaration",
@@ -567,7 +569,7 @@ proc annotate_stmt(module_symbols: [SemaSymbol], local_symbols: [SemaSymbol], st
     } elif symbol_index_in_scope(current_symbols, stmt.name, stmt.scope_depth) >= 0 {
       set diagnostics = sema_add_diag(diagnostics, sema_diagnostic(
         "SEMA_E_DUPLICATE_BINDING",
-        SemaSeverity.Error,
+        DiagnosticSeverity.Error,
         "duplicate binding `" + stmt.name + "` in the same scope",
         [stmt.name],
         "rename or remove one of the declarations",
@@ -578,7 +580,7 @@ proc annotate_stmt(module_symbols: [SemaSymbol], local_symbols: [SemaSymbol], st
       if symbol_visible(current_symbols, stmt.name) or symbol_visible(module_symbols, stmt.name) {
         set diagnostics = sema_add_diag(diagnostics, sema_diagnostic(
           "SEMA_W_SHADOWING",
-          SemaSeverity.Warning,
+          DiagnosticSeverity.Warning,
           "binding `" + stmt.name + "` shadows an existing symbol",
           [stmt.name],
           "rename the local if the shadowing is accidental",
@@ -595,7 +597,7 @@ proc annotate_stmt(module_symbols: [SemaSymbol], local_symbols: [SemaSymbol], st
     if not resolved.valid {
       set diagnostics = sema_add_diag(diagnostics, sema_diagnostic(
         "SEMA_E_UNDECLARED_TARGET",
-        SemaSeverity.Error,
+        DiagnosticSeverity.Error,
         "cannot assign to undeclared local `" + root + "`",
         [root],
         "declare the local before assigning to it",
@@ -612,7 +614,7 @@ proc annotate_stmt(module_symbols: [SemaSymbol], local_symbols: [SemaSymbol], st
   let then_walk: SemaStmtListWalk = annotate_stmt_list(module_symbols, current_symbols, stmt.then_stmts, current_next_id);
   let else_walk: SemaStmtListWalk = annotate_stmt_list(module_symbols, current_symbols, stmt.else_stmts, then_walk.next_symbol_id);
 
-  let all_diagnostics: [SemaDiagnostic] = diagnostics + then_walk.diagnostics + else_walk.diagnostics;
+  let all_diagnostics: [Diagnostic] = diagnostics + then_walk.diagnostics + else_walk.diagnostics;
   let all_valid: bool = not sema_has_fatal(all_diagnostics);
   give SemaStmtWalk {
     stmt: HirStmt {
@@ -644,7 +646,7 @@ proc annotate_stmt(module_symbols: [SemaSymbol], local_symbols: [SemaSymbol], st
 
 proc annotate_stmt_list(module_symbols: [SemaSymbol], local_symbols: [SemaSymbol], stmts: [HirStmt], next_symbol_id: u64) -> SemaStmtListWalk {
   let out: [HirStmt] = [];
-  let diagnostics: [SemaDiagnostic] = [];
+  let diagnostics: [Diagnostic] = [];
   let current_symbols: [SemaSymbol] = local_symbols;
   let current_next_id: u64 = next_symbol_id;
   let i: u64 = 0;
@@ -677,7 +679,7 @@ proc member_symbol_kind(item: HirItem, member: HirNominalMember) -> SemaSymbolKi
 
 proc member_param_symbols(params: [HirProcParam], scope_depth: u64, next_symbol_id: u64) -> SemaWalk {
   let symbols: [SemaSymbol] = [];
-  let diagnostics: [SemaDiagnostic] = [];
+  let diagnostics: [Diagnostic] = [];
   let current_next_id: u64 = next_symbol_id;
   let i: u64 = 0;
   while i < len(params) {
@@ -685,11 +687,11 @@ proc member_param_symbols(params: [HirProcParam], scope_depth: u64, next_symbol_
       if symbol_index(symbols, params[i].name) >= 0 {
         set diagnostics = sema_add_diag(diagnostics, sema_diagnostic(
           "SEMA_E_DUPLICATE_PARAM",
-          SemaSeverity.Error,
+          DiagnosticSeverity.Error,
           "duplicate member parameter `" + params[i].name + "`",
           [params[i].name],
           "rename one of the conflicting parameters",
-          sema_span_empty(),
+          span_empty(),
           true
         ));
       } else {
@@ -711,7 +713,7 @@ proc annotate_member(module_symbols: [SemaSymbol], item: HirItem, member: HirNom
   let param_walk: SemaWalk = member_param_symbols(member.params, 1, next_symbol_id);
   let expr_walk: SemaExprWalk = annotate_expr(member.expr, module_symbols + param_walk.symbols, 1, param_walk.next_symbol_id);
   let body_walk: SemaStmtListWalk = annotate_stmt_list(module_symbols, param_walk.symbols, member.body_stmts, expr_walk.next_symbol_id);
-  let all_diagnostics: [SemaDiagnostic] = param_walk.diagnostics + expr_walk.diagnostics + body_walk.diagnostics;
+  let all_diagnostics: [Diagnostic] = param_walk.diagnostics + expr_walk.diagnostics + body_walk.diagnostics;
   give SemaMemberWalk {
     member: HirNominalMember {
       id: member.id,
@@ -734,7 +736,7 @@ proc annotate_member(module_symbols: [SemaSymbol], item: HirItem, member: HirNom
 
 proc annotate_member_list(module_symbols: [SemaSymbol], item: HirItem, members: [HirNominalMember], next_symbol_id: u64) -> SemaMemberListWalk {
   let out: [HirNominalMember] = [];
-  let diagnostics: [SemaDiagnostic] = [];
+  let diagnostics: [Diagnostic] = [];
   let current_symbols: [SemaSymbol] = module_symbols;
   let current_next_id: u64 = next_symbol_id;
   let i: u64 = 0;
@@ -760,7 +762,7 @@ proc collect_module_symbols(hir: HirUnit) -> SemaWalk {
 }
 
 proc collect_module_symbols_with_imports(hir: HirUnit, imported_symbols: [SemaSymbol]) -> SemaWalk {
-  let diagnostics: [SemaDiagnostic] = [];
+  let diagnostics: [Diagnostic] = [];
   let symbols: [SemaSymbol] = builtin_symbols() + imported_symbols;
   let next_symbol_id: u64 = len(symbols) as u64 + 1;
   let i: u64 = 0;
@@ -769,7 +771,7 @@ proc collect_module_symbols_with_imports(hir: HirUnit, imported_symbols: [SemaSy
     if not visibility_valid(item.visibility) {
       set diagnostics = sema_add_diag(diagnostics, sema_diagnostic(
         "SEMA_E_INVALID_VISIBILITY",
-        SemaSeverity.Error,
+        DiagnosticSeverity.Error,
         "invalid visibility `" + item.visibility + "` on item `" + item.name + "`",
         [item.name, item.visibility],
         "use one of: private, public, internal, export",
@@ -802,7 +804,7 @@ proc collect_module_symbols_with_imports(hir: HirUnit, imported_symbols: [SemaSy
       if symbol_index(symbols, item.name) >= 0 {
         set diagnostics = sema_add_diag(diagnostics, sema_diagnostic(
           "SEMA_E_DUPLICATE_ITEM",
-          SemaSeverity.Error,
+          DiagnosticSeverity.Error,
           "duplicate item `" + item.name + "` in module scope",
           [item.name],
           "rename or remove one of the conflicting items",
@@ -837,7 +839,7 @@ proc annotate_item(module_symbols: [SemaSymbol], item: HirItem, next_symbol_id: 
   let expr_walk: SemaExprWalk = annotate_expr(item.expr, module_symbols, 0, next_symbol_id);
   let body_walk: SemaStmtListWalk = annotate_stmt_list(module_symbols, [], item.stmts, expr_walk.next_symbol_id);
   let resolved: SemaSymbol = resolve_symbol(module_symbols, item.name, 0);
-  let all_diagnostics: [SemaDiagnostic] = expr_walk.diagnostics + body_walk.diagnostics;
+  let all_diagnostics: [Diagnostic] = expr_walk.diagnostics + body_walk.diagnostics;
   let all_valid: bool = resolved.valid and not sema_has_fatal(all_diagnostics);
 
   give SemaStmtWalk {
@@ -877,11 +879,11 @@ proc run_sema_hir_with_imports(hir: HirUnit, imported_symbols: [SemaSymbol]) -> 
     give SemaResult {
       diagnostics: [sema_diagnostic(
         "SEMA_E_INVALID_HIR",
-        SemaSeverity.Error,
+        DiagnosticSeverity.Error,
         "semantic analysis requires valid HIR",
         ["hir"],
         "fix frontend or HIR validation errors before semantic analysis",
-        sema_span_empty(),
+        span_empty(),
         true
       )],
       hir: hir,
@@ -891,7 +893,7 @@ proc run_sema_hir_with_imports(hir: HirUnit, imported_symbols: [SemaSymbol]) -> 
   }
 
   let module_walk: SemaWalk = collect_module_symbols_with_imports(hir, imported_symbols);
-  let diagnostics: [SemaDiagnostic] = module_walk.diagnostics;
+  let diagnostics: [Diagnostic] = module_walk.diagnostics;
   let module_symbols: [SemaSymbol] = module_walk.symbols;
   let next_symbol_id: u64 = module_walk.next_symbol_id;
   let items: [HirItem] = [];

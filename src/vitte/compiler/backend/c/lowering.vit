@@ -1,11 +1,15 @@
 space vitte/compiler/backend/c/lowering
 
+proc string(value: u64) -> string {
+  give value as string;
+}
+
 use vitte/compiler/backend/c/architecture.{ CBackendTargetProfile, c_type_for_vitte_type, c_target_x86_64_linux }
 use vitte/compiler/backend/c/abi.{ CAbiContract, CAbiFunction, CAbiValue, c_abi_contract, c_abi_function, c_abi_param_value }
 use vitte/compiler/backend/c/diagnostics.{ CBackendDiagnostic, c_diag_add_unique, c_error, c_has_errors, c_info, c_warning }
-use vitte/compiler/backend/ir.{ IrBlock, IrFunction, IrInstruction, IrInstructionKind, IrLinkage, IrNominalType, IrUnit, IrValue, IrValueKind, IrVisibility, ir_value_invalid, span_empty, target_native_x86_64_linux, unit_empty, unit_with_source_path }
-use vitte/compiler/middle/hir.{ HirItem, HirItemKind, HirNominalMember, HirNominalMemberKind, HirProcParam, HirStmt }
-use vitte/compiler/middle/mir.{
+use vitte/compiler/backend/ir/ir.{ IrBlock, IrFunction, IrInstruction, IrInstructionKind, IrLinkage, IrNominalType, IrUnit, IrValue, IrValueKind, IrVisibility, ir_value_invalid, span_empty, target_native_x86_64_linux, unit_empty, unit_with_source_path }
+use vitte/compiler/middle/hir/hir.{ HirItem, HirItemKind, HirNominalMember, HirNominalMemberKind, HirProcParam, HirStmt }
+use vitte/compiler/middle/mir/mir.{
   MirBinaryOperator,
   MirBlock,
   MirFunction,
@@ -890,9 +894,6 @@ proc c_call_target_name(rvalue: MirRvalue) -> string {
   let open0: int = find(rvalue.text, "(");
   if open0 > 0 {
     give trim(slice(rvalue.text, 0, open0));
-  }
-  if len(rvalue.operands) > 0 {
-    give lower_operand_text([], [], rvalue.operands[0]);
   }
   give rvalue.text;
 }

@@ -754,13 +754,14 @@ static vitte_status_t vitte_driver_run_sema(
     const vitte_ast_t *imported_asts,
     size_t imported_ast_count
 ) {
-    vitte_sema_t sema;
+    vitte_sema_t *sema = (vitte_sema_t *)calloc(1u, sizeof(*sema));
     vitte_sema_options_t options;
     vitte_sema_result_t result;
     vitte_status_t status;
     size_t index;
 
-    if (driver == NULL || ast == NULL) {
+    if (driver == NULL || ast == NULL || sema == NULL) {
+        free(sema);
         return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
     }
 
@@ -768,29 +769,32 @@ static vitte_status_t vitte_driver_run_sema(
     options.max_depth = driver->config.limits.max_ast_depth;
     options.enable_constant_folding = true;
     vitte_sema_result_init(&result);
-    status = vitte_sema_init(&sema, &options, &driver->diagnostics);
+    status = vitte_sema_init(sema, &options, &driver->diagnostics);
     if (status != VITTE_STATUS_OK) {
-        vitte_error_copy(&driver->last_error, vitte_sema_last_error(&sema));
+        vitte_error_copy(&driver->last_error, vitte_sema_last_error(sema));
+        free(sema);
         return status;
     }
     if (module != NULL) {
         for (index = 0u; index < imported_ast_count && index < module->import_count; index++) {
-            status = vitte_sema_add_import_module(&sema, module->imports[index].module_name, &imported_asts[index]);
+            status = vitte_sema_add_import_module(sema, module->imports[index].module_name, &imported_asts[index]);
             if (status != VITTE_STATUS_OK) {
-                vitte_error_copy(&driver->last_error, vitte_sema_last_error(&sema));
-                vitte_sema_destroy(&sema);
+                vitte_error_copy(&driver->last_error, vitte_sema_last_error(sema));
+                vitte_sema_destroy(sema);
+                free(sema);
                 return status;
             }
         }
     }
 
-    status = vitte_sema_analyze(&sema, ast, &result);
+    status = vitte_sema_analyze(sema, ast, &result);
     if (status != VITTE_STATUS_OK) {
         vitte_error_copy(&driver->last_error, &result.last_error);
     } else {
         vitte_error_reset(&driver->last_error);
     }
-    vitte_sema_destroy(&sema);
+    vitte_sema_destroy(sema);
+    free(sema);
     return status;
 }
 
@@ -800,15 +804,16 @@ static vitte_status_t vitte_driver_run_import_unit_sema(
     vitte_driver_import_unit_t *const *imported_units,
     size_t imported_unit_count
 ) {
-    vitte_sema_t sema;
+    vitte_sema_t *sema = (vitte_sema_t *)calloc(1u, sizeof(*sema));
     vitte_sema_options_t options;
     vitte_sema_result_t result;
     vitte_status_t status;
     size_t index;
 
-    if (driver == NULL || unit == NULL || imported_units == NULL ||
+    if (driver == NULL || unit == NULL || imported_units == NULL || sema == NULL ||
         !vitte_ast_is_initialized(&unit->ast) || unit->ast.root == NULL ||
         !vitte_module_is_initialized(&unit->module)) {
+        free(sema);
         return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
     }
 
@@ -816,9 +821,10 @@ static vitte_status_t vitte_driver_run_import_unit_sema(
     options.max_depth = driver->config.limits.max_ast_depth;
     options.enable_constant_folding = true;
     vitte_sema_result_init(&result);
-    status = vitte_sema_init(&sema, &options, &driver->diagnostics);
+    status = vitte_sema_init(sema, &options, &driver->diagnostics);
     if (status != VITTE_STATUS_OK) {
-        vitte_error_copy(&driver->last_error, vitte_sema_last_error(&sema));
+        vitte_error_copy(&driver->last_error, vitte_sema_last_error(sema));
+        free(sema);
         return status;
     }
 
@@ -843,24 +849,27 @@ static vitte_status_t vitte_driver_run_import_unit_sema(
                 "missing imported dependency AST for semantic analysis",
                 dependency->resolved_path
             );
-            vitte_sema_destroy(&sema);
+            vitte_sema_destroy(sema);
+            free(sema);
             return VITTE_STATUS_ERROR_INVALID_STATE;
         }
-        status = vitte_sema_add_import_module(&sema, dependency->module_name, &dependency_unit->ast);
+        status = vitte_sema_add_import_module(sema, dependency->module_name, &dependency_unit->ast);
         if (status != VITTE_STATUS_OK) {
-            vitte_error_copy(&driver->last_error, vitte_sema_last_error(&sema));
-            vitte_sema_destroy(&sema);
+            vitte_error_copy(&driver->last_error, vitte_sema_last_error(sema));
+            vitte_sema_destroy(sema);
+            free(sema);
             return status;
         }
     }
 
-    status = vitte_sema_analyze(&sema, &unit->ast, &result);
+    status = vitte_sema_analyze(sema, &unit->ast, &result);
     if (status != VITTE_STATUS_OK) {
         vitte_error_copy(&driver->last_error, &result.last_error);
     } else {
         vitte_error_reset(&driver->last_error);
     }
-    vitte_sema_destroy(&sema);
+    vitte_sema_destroy(sema);
+    free(sema);
     return status;
 }
 
@@ -981,6 +990,24 @@ static const vitte_module_import_t *vitte_driver_find_failed_module_import(
     for (index = 0u; index < module->import_count; index++) {
         if (module->imports[index].last_error.status != VITTE_STATUS_OK) {
             return &module->imports[index];
+        }
+    }
+    return NULL;
+}
+
+static const vitte_driver_import_unit_t *vitte_driver_find_import_unit_by_module(
+    vitte_driver_import_unit_t *const *units,
+    size_t unit_count,
+    const char *module_name
+) {
+    size_t index;
+
+    if (units == NULL || module_name == NULL || module_name[0] == '\0') {
+        return NULL;
+    }
+    for (index = 0u; index < unit_count; index++) {
+        if (units[index] != NULL && strcmp(units[index]->module_name, module_name) == 0) {
+            return units[index];
         }
     }
     return NULL;
@@ -1693,7 +1720,8 @@ static vitte_status_t vitte_driver_collect_import_unit(
         units == NULL || unit_count == NULL) {
         return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
     }
-    if (vitte_driver_find_import_unit_by_path(units, *unit_count, resolved_path) != NULL) {
+    if (vitte_driver_find_import_unit_by_path(units, *unit_count, resolved_path) != NULL ||
+        vitte_driver_find_import_unit_by_module(units, *unit_count, module_name) != NULL) {
         return VITTE_STATUS_OK;
     }
     if (*unit_count >= VITTE_DRIVER_MAX_IMPORTED_UNITS) {
@@ -2173,6 +2201,9 @@ static vitte_status_t vitte_driver_flatten_imported_modules(
             imported_units,
             imported_unit_count
         ) != VITTE_STATUS_OK) {
+        if (vitte_error_is_ok(vitte_driver_last_error(driver))) {
+            vitte_driver_set_error(driver, VITTE_STATUS_ERROR_INTERNAL, "VITTE_DRIVER_E_FLATTEN", "failed to flatten root module imports", root_module_name);
+        }
         return vitte_driver_last_error(driver)->status;
     }
 
@@ -2191,12 +2222,18 @@ static vitte_status_t vitte_driver_flatten_imported_modules(
                 &unit->module,
                 imported_units,
                 imported_unit_count
-            ) != VITTE_STATUS_OK) {
+        ) != VITTE_STATUS_OK) {
+            if (vitte_error_is_ok(vitte_driver_last_error(driver))) {
+                vitte_driver_set_error(driver, VITTE_STATUS_ERROR_INTERNAL, "VITTE_DRIVER_E_FLATTEN", "failed to flatten imported module imports", unit->module_name);
+            }
             return vitte_driver_last_error(driver)->status;
         }
     }
 
     if (vitte_driver_rewrite_module_decls(driver, ast, &state, root_module_name, module_root) != VITTE_STATUS_OK) {
+        if (vitte_error_is_ok(vitte_driver_last_error(driver))) {
+            vitte_driver_set_error(driver, VITTE_STATUS_ERROR_INTERNAL, "VITTE_DRIVER_E_FLATTEN", "failed to rewrite root module declarations", root_module_name);
+        }
         return vitte_driver_last_error(driver)->status;
     }
 
@@ -2207,6 +2244,9 @@ static vitte_status_t vitte_driver_flatten_imported_modules(
             continue;
         }
         if (vitte_driver_rewrite_module_decls(driver, &unit->ast, &state, unit->module_name, unit->ast.root) != VITTE_STATUS_OK) {
+            if (vitte_error_is_ok(vitte_driver_last_error(driver))) {
+                vitte_driver_set_error(driver, VITTE_STATUS_ERROR_INTERNAL, "VITTE_DRIVER_E_FLATTEN", "failed to rewrite imported module declarations", unit->module_name);
+            }
             return vitte_driver_last_error(driver)->status;
         }
     }
@@ -2254,6 +2294,9 @@ static vitte_status_t vitte_driver_run_backend(
     if (status != VITTE_STATUS_OK) {
         if (vitte_error_is_ok(&driver->last_error)) {
             vitte_error_copy(&driver->last_error, vitte_hir_last_error(hir));
+        }
+        if (vitte_error_is_ok(&driver->last_error)) {
+            vitte_driver_set_error(driver, status, "VITTE_DRIVER_E_BACKEND", "backend validation failed without a diagnostic", NULL);
         }
         if (vitte_ir_is_initialized(ir)) {
             vitte_ir_destroy(ir);
@@ -2540,6 +2583,9 @@ static vitte_status_t vitte_driver_run_impl(
                 &imported_unit_count
             );
             if (status != VITTE_STATUS_OK) {
+                if (vitte_error_is_ok(vitte_driver_last_error(driver))) {
+                    vitte_driver_set_error(driver, status, "VITTE_DRIVER_E_IMPORT", "failed to collect imported module graph", module.imports[imported_index].resolved_path);
+                }
                 const vitte_error_t *error = vitte_driver_last_error(driver);
                 vitte_driver_pipeline_mark(&driver->pipeline, VITTE_DRIVER_STAGE_SEMANTIC, status);
                 vitte_driver_add_diag(

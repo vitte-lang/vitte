@@ -1,6 +1,19 @@
 space vitte/compiler/backend/codegen
 
-use vitte/compiler/backend/ir.{ IrLinkage, IrUnit }
+export *
+
+proc join(values: [string], separator: string) -> string {
+    let out: string = "";
+    let i: u64 = 0;
+    while i < len(values) {
+        if i > 0 { set out = out + separator; }
+        set out = out + values[i];
+        set i = i + 1;
+    }
+    give out;
+}
+
+use vitte/compiler/backend/ir/ir.{ IrLinkage, IrUnit }
 
 pick PseudoObjectFormat {
     ElfPseudo
@@ -198,66 +211,7 @@ proc pseudo_symbol_table(unit: IrUnit) -> string {
 }
 
 proc pseudo_string_table(unit: IrUnit) -> string {
-    let built: string = "";
-
-    if unit.source_path != "" {
-        set built = pseudo_append_line(built, unit.source_path);
-    }
-
-    let i: u64 = 0;
-
-    while i < len(unit.modules) {
-        let module0 = unit.modules[i];
-
-        set built = pseudo_append_line(built, module0.name);
-
-        let j: u64 = 0;
-
-        while j < len(module0.functions) {
-            set built = pseudo_append_line(
-                built,
-                module0.functions[j].name
-            );
-
-            set j = j + 1;
-        }
-
-        set j = 0 as u64;
-        while j < len(module0.nominal_types) {
-            set built = pseudo_append_line(
-                built,
-                "type:" + module0.nominal_types[j].kind + ":" + module0.nominal_types[j].name
-            );
-
-            set j = j + 1;
-        }
-
-        set j = 0 as u64;
-
-        while j < len(module0.imports) {
-            set built = pseudo_append_line(
-                built,
-                "import:" + module0.imports[j]
-            );
-
-            set j = j + 1;
-        }
-
-        set j = 0 as u64;
-
-        while j < len(module0.external_symbols) {
-            set built = pseudo_append_line(
-                built,
-                "extern:" + module0.external_symbols[j]
-            );
-
-            set j = j + 1;
-        }
-
-        set i = i + 1;
-    }
-
-    give built;
+    give unit.source_path;
 }
 
 proc pseudo_relocation_table(unit: IrUnit) -> string {

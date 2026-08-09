@@ -1,6 +1,6 @@
 space vitte/compiler/analysis
 
-use vitte/compiler/diagnostics/diagnostic.{ Diagnostic as CanonicalDiagnostic, DiagnosticPhase, DiagnosticReport, DiagnosticSeverity, SourceSpan, diagnostic_create, diagnostic_report, diagnostic_with_help, diagnostic_with_label, diagnostic_with_suggestion_detail, secondary_label, DiagnosticSuggestionKind, span_create }
+use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, DiagnosticPhase, DiagnosticReport, DiagnosticSeverity, SourceSpan, diagnostic_create, diagnostic_report, diagnostic_with_help, diagnostic_with_label, diagnostic_with_suggestion_detail, secondary_label, DiagnosticSuggestionKind, span_create }
 
 pick AnalysisSeverity {
     Help
@@ -863,25 +863,25 @@ proc analysis_diagnostic_span(diagnostic: AnalysisDiagnostic) -> SourceSpan {
     give span_create(file_name, line0, column0, normalize_span_length(diagnostic.length));
 }
 
-proc analysis_diagnostic_as_diagnostic(diagnostic: AnalysisDiagnostic) -> CanonicalDiagnostic {
-    let diag0: CanonicalDiagnostic = diagnostic_create(
+proc analysis_diagnostic_as_diagnostic(diagnostic: AnalysisDiagnostic) -> Diagnostic {
+    let diag0: Diagnostic = diagnostic_create(
         diagnostic.code,
         analysis_phase_as_diagnostic(diagnostic.phase_kind),
         analysis_severity_as_diagnostic(diagnostic.severity_kind),
         diagnostic.message,
         analysis_diagnostic_span(diagnostic)
     );
-    let diag1: CanonicalDiagnostic = if diagnostic.help != "" {
+    let diag1: Diagnostic = if diagnostic.help != "" {
         diagnostic_with_help(diag0, diagnostic.help)
     } else {
         diag0
     };
-    let diag2: CanonicalDiagnostic = if diagnostic.suggestion != "" {
+    let diag2: Diagnostic = if diagnostic.suggestion != "" {
         diagnostic_with_suggestion_detail(diag1, DiagnosticSuggestionKind.Help, diagnostic.suggestion, "", analysis_diagnostic_span(diagnostic), false, "medium", "analysis diagnostic adapter")
     } else {
         diag1
     };
-    let out: CanonicalDiagnostic = diag2;
+    let out: Diagnostic = diag2;
     let i: u64 = 0;
     while i < len(diagnostic.related_labels) {
         let label_file: string = "<analysis>";
@@ -901,7 +901,7 @@ proc analysis_diagnostic_as_diagnostic(diagnostic: AnalysisDiagnostic) -> Canoni
 }
 
 proc analysis_diagnostics_as_report(diagnostics: [AnalysisDiagnostic]) -> DiagnosticReport {
-    let out: [CanonicalDiagnostic] = [];
+    let out: [Diagnostic] = [];
     let ordered: [AnalysisDiagnostic] = sort_analysis_diagnostics(diagnostics);
     let i: u64 = 0;
     while i < len(ordered) {

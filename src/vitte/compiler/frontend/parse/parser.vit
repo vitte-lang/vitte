@@ -1,9 +1,12 @@
 space vitte/compiler/frontend/parse/parser
 
+export *
+
 use vitte/compiler/frontend/lexer/token.{ Token, TokenKind }
 use vitte/compiler/frontend/parse/errors.{ ParseDiagnostic, parse_error_with_span }
 use vitte/compiler/frontend/parse/recovery.{ RecoveryControl, default_recovery_control, recover_decl_index, recover_expr_index, recover_pattern_index, recover_stmt_index, recover_type_index, recovery_allowed }
-use vitte/compiler/frontend/ast/node.{ Span, ast_span, ast_span_empty, ast_span_offsets }
+use vitte/compiler/source/span.{ Span }
+use vitte/compiler/frontend/ast/node.{ ast_span, ast_span_empty, ast_span_offsets }
 use vitte/compiler/frontend/ast/expr.{ AstExpr, AstExprKind, ast_expr_binary, ast_expr_call, ast_expr_index, ast_expr_leaf, ast_expr_member, ast_expr_node, ast_expr_typed, ast_expr_unary, ast_expr_unknown }
 use vitte/compiler/frontend/ast/item.{ AstGenericParam, AstItem, AstItemKind, AstModule, AstNominalMember, AstNominalMemberKind, AstParam, AstProcSignature, ast_generic_param, ast_generic_param_empty, ast_item_create, ast_item_typed, ast_item_typed_with_members, ast_module, ast_module_empty, ast_nominal_member, ast_param, ast_param_empty, ast_proc_signature, ast_proc_signature_empty, count_module_exprs, count_module_patterns, count_module_stmts, count_module_types }
 use vitte/compiler/frontend/ast/pattern.{ AstPattern, AstPatternKind, ast_pattern, ast_pattern_empty, ast_pattern_node }
@@ -295,6 +298,10 @@ proc next_is_text(state: ParserState, text: string) -> bool {
 
 proc at_kind(state: ParserState, kind: TokenKind) -> bool {
   give current_token(state).kind == kind;
+}
+
+proc token_at_kind(tok: Token, kind: TokenKind) -> bool {
+  give tok.kind == kind;
 }
 
 proc is_ident_like(tok: Token) -> bool {
@@ -1098,7 +1105,7 @@ proc parse_primary(state: ParserState) -> ParserState {
   if is_literal_token(tok) {
     give advance(current);
   }
-  if at_text(current, "b") and at_kind(peek_token(current, 1), TokenKind.String) {
+  if at_text(current, "b") and token_at_kind(peek_token(current, 1), TokenKind.String) {
     give advance(advance(current));
   }
   if at_text(current, "if") {
@@ -3519,7 +3526,8 @@ proc build_ast_module(source_name: string, tokens: [Token]) -> AstModule {
         }
       }
       let name: string = if actual + 1 < end_i { tokens[actual + 1].lexeme } else { "" };
-      set items = items + [ast_item_typed(range_id(5, prefix.start, end_i), span_from_tokens(source_name, tokens, prefix.start, end_i), AstItemKind.Region, name, prefix.attributes, "", prefix.visibility, prefix.modifiers, prefix_abi(prefix.modifiers), ast_expr_unknown(0, span_from_tokens(source_name, tokens, prefix.start, end_i), ""), [], ast_type_empty(), ast_type_empty(), [], [], ast_proc_signature_empty(), parse_item_meta_args(tokens, actual + 1, end_i), token_text(tokens, actual, end_i))];
+      let empty_stmts: [AstStmt] = [];
+      set items = items + [ast_item_typed(range_id(5, prefix.start, end_i), span_from_tokens(source_name, tokens, prefix.start, end_i), AstItemKind.Region, name, prefix.attributes, "", prefix.visibility, prefix.modifiers, prefix_abi(prefix.modifiers), ast_expr_unknown(0, span_from_tokens(source_name, tokens, prefix.start, end_i), ""), empty_stmts, ast_type_empty(), ast_type_empty(), [], [], ast_proc_signature_empty(), parse_item_meta_args(tokens, actual + 1, end_i), token_text(tokens, actual, end_i))];
       if has_block {
         set i = end_i;
       } else {
@@ -3580,7 +3588,8 @@ proc build_ast_module(source_name: string, tokens: [Token]) -> AstModule {
         let close: int = find_matching(tokens, open as u64, "{", "}");
         if close >= 0 {
           let abi: string = if actual + 1 < open as u64 { token_text(tokens, actual + 1, open as u64) } else { "extern" };
-          set items = items + [ast_item_typed(range_id(5, prefix.start, close as u64 + 1), span_from_tokens(source_name, tokens, prefix.start, close as u64 + 1), AstItemKind.Extern, abi, prefix.attributes, "", prefix.visibility, prefix.modifiers + [abi], abi, ast_expr_unknown(0, span_from_tokens(source_name, tokens, prefix.start, close as u64 + 1), ""), [], ast_type_empty(), ast_type_empty(), [], [], ast_proc_signature_empty(), [], token_text(tokens, actual, close as u64 + 1))];
+          let empty_stmts: [AstStmt] = [];
+          set items = items + [ast_item_typed(range_id(5, prefix.start, close as u64 + 1), span_from_tokens(source_name, tokens, prefix.start, close as u64 + 1), AstItemKind.Extern, abi, prefix.attributes, "", prefix.visibility, prefix.modifiers + [abi], abi, ast_expr_unknown(0, span_from_tokens(source_name, tokens, prefix.start, close as u64 + 1), ""), empty_stmts, ast_type_empty(), ast_type_empty(), [], [], ast_proc_signature_empty(), [], token_text(tokens, actual, close as u64 + 1))];
           set i = close as u64 + 1;
           continue;
         }
@@ -3693,7 +3702,8 @@ proc build_ast_module(source_name: string, tokens: [Token]) -> AstModule {
         }
       }
       let meta_args: [string] = parse_item_meta_args(tokens, actual + 1, end_i);
-      set items = items + [ast_item_typed(range_id(5, prefix.start, end_i), span_from_tokens(source_name, tokens, prefix.start, end_i), item_kind_for_keyword(keyword), name, prefix.attributes, "", prefix.visibility, prefix.modifiers, prefix_abi(prefix.modifiers), ast_expr_unknown(0, span_from_tokens(source_name, tokens, prefix.start, end_i), ""), [], ast_type_empty(), ast_type_empty(), [], [], ast_proc_signature_empty(), meta_args, token_text(tokens, actual, end_i))];
+      let empty_stmts: [AstStmt] = [];
+      set items = items + [ast_item_typed(range_id(5, prefix.start, end_i), span_from_tokens(source_name, tokens, prefix.start, end_i), item_kind_for_keyword(keyword), name, prefix.attributes, "", prefix.visibility, prefix.modifiers, prefix_abi(prefix.modifiers), ast_expr_unknown(0, span_from_tokens(source_name, tokens, prefix.start, end_i), ""), empty_stmts, ast_type_empty(), ast_type_empty(), [], [], ast_proc_signature_empty(), meta_args, token_text(tokens, actual, end_i))];
       if has_block {
         set i = end_i;
       } else {

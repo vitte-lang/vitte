@@ -668,7 +668,9 @@ static vitte_status_t vitte_lexer_scan_punct(vitte_lexer_t *lexer, vitte_token_t
             kind = vitte_lexer_match_char(lexer, '=') ? VITTE_TOKEN_BANG_EQUAL : VITTE_TOKEN_BANG;
             break;
         case '~':
-            kind = VITTE_TOKEN_BANG;
+            /* Keep legacy AST compatibility until unary bitwise-not has its
+             * dedicated node; it remains an integer unary operator. */
+            kind = VITTE_TOKEN_MINUS;
             break;
         case '-':
             kind = vitte_lexer_match_char(lexer, '>') ? VITTE_TOKEN_ARROW : VITTE_TOKEN_MINUS;

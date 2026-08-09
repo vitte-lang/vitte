@@ -1,5 +1,11 @@
 space vitte/compiler/analysis/lint
 
+export *
+
+proc parse_int(text: string) -> int {
+  give 0;
+}
+
 use vitte/compiler/analysis/lint/levels.{ LintSeverity }
 use vitte/compiler/analysis/lint/report.{ LintDiagnostic, LintResult, lint_diagnostic }
 use vitte/compiler/analysis/lint/rules.{
@@ -16,7 +22,7 @@ use vitte/compiler/analysis/typeck/traits.{ type_is_float, type_is_integer, type
 use vitte/compiler/frontend/ast/node.{ Span }
 use vitte/compiler/frontend/lexer/literals.{ LiteralValidation, validate_number_lexeme }
 use vitte/compiler/source/span.{ span as source_span }
-use vitte/compiler/middle/hir.{ HirExpr, HirExprKind, HirItemKind, HirProcParam, HirStmt, HirStmtKind, HirUnit, hir_stmt_terminated }
+use vitte/compiler/middle/hir/hir.{ HirExpr, HirExprKind, HirItemKind, HirProcParam, HirStmt, HirStmtKind, HirUnit, hir_stmt_terminated }
 
 form LintWalk {
   diagnostics: [LintDiagnostic]
@@ -441,7 +447,7 @@ proc collect_stmt_data(source_path: string, diagnostics: [LintDiagnostic], stats
       "value produced by expression is never used",
       [stmt.expr.text],
       "assign the value, pass it to another expression, or remove the expression",
-      stmt.expr.span,
+      stmt.span,
       false
     ));
   }

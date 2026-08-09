@@ -12,7 +12,7 @@ extern "C" {
 #endif
 
 #define VITTE_SCOPE_MAX_FRAMES ((size_t)128u)
-#define VITTE_SCOPE_MAX_BINDINGS ((size_t)1024u)
+#define VITTE_SCOPE_MAX_BINDINGS ((size_t)65536u)
 
 typedef struct vitte_scope_frame {
     size_t binding_start;
