@@ -7,7 +7,7 @@ Invariants:
 - Nodes are immutable after construction except `next` and list fields.
 - Module roots own import lists, export lists, declaration lists, and an `export_all` flag.
 - Top-level `proc` and `const` declarations still carry an inline `exported` flag; declarations are private by default unless an export clause or `export *` marks them visible.
-- Export visibility and explicit export alias resolution are centralized through `vitte_ast_decl_name`, `vitte_ast_module_find_decl`, `vitte_ast_export_decl_target`, `vitte_ast_module_decl_is_exported`, and `vitte_ast_module_find_exported_decl`.
+- Export visibility and explicit export alias resolution are centralized through `vitte_ast_decl_name`, `vitte_ast_module_find_decl`, `vitte_ast_export_decl_target`, `vitte_ast_module_decl_is_exported`, `vitte_ast_module_find_exported_decl`, and `vitte_ast_module_visit_exports`.
 - Source spans are optional; valid spans keep stable source name, offsets, lines, and columns.
 - Lists maintain `first`, `last`, and `count`.
 - Errors use `bootstrap/src/api/error.h`.

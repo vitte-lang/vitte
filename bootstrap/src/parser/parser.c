@@ -1942,7 +1942,7 @@ static vitte_status_t vitte_parser_parse_export_top_level(
         }
     } else if (parser->current.kind == VITTE_TOKEN_STAR) {
         vitte_ast_span_t star_span = vitte_parser_span_from_token(&parser->current);
-        module_node->as.module.export_all = true;
+        vitte_ast_module_set_export_all(module_node, true);
         clause_span = vitte_parser_span_merge(&export_span, &star_span);
         (void)vitte_parser_advance(parser);
         vitte_parser_optional_semicolon(parser);

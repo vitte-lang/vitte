@@ -85,6 +85,12 @@ static const vitte_type_t *vitte_sema_resolve_type_ref(
     vitte_sema_t *sema,
     const vitte_ast_type_ref_t *type_ref
 );
+static vitte_status_t vitte_sema_define_imported_decl(
+    vitte_sema_t *sema,
+    const char *visible_name,
+    const vitte_ast_decl_t *decl,
+    const vitte_ast_span_t *span
+);
 
 static const char *vitte_sema_last_name_segment(const char *name) {
     const char *segment;
@@ -254,6 +260,43 @@ static bool vitte_sema_import_decl_is_exact_duplicate(
         left->as.import_decl.relative == right->as.import_decl.relative &&
         vitte_sema_text_equal(left->as.import_decl.path, right->as.import_decl.path) &&
         vitte_sema_text_equal(left->as.import_decl.alias, right->as.import_decl.alias);
+}
+
+typedef struct vitte_sema_import_export_context {
+    vitte_sema_t *sema;
+    const char *prefix;
+    const vitte_ast_span_t *span;
+    bool qualify_names;
+    vitte_status_t status;
+} vitte_sema_import_export_context_t;
+
+static bool vitte_sema_define_imported_export(
+    const vitte_ast_decl_t *decl,
+    const char *public_name,
+    void *user
+) {
+    vitte_sema_import_export_context_t *context = (vitte_sema_import_export_context_t *)user;
+    const char *visible_name = public_name;
+
+    if (context == NULL || context->sema == NULL || decl == NULL || public_name == NULL) {
+        return false;
+    }
+    if (context->qualify_names) {
+        visible_name = vitte_sema_join_qualified_name(context->sema, context->prefix, public_name);
+        if (visible_name == NULL) {
+            context->status = vitte_sema_fail(
+                context->sema,
+                VITTE_STATUS_ERROR_OUT_OF_MEMORY,
+                "VITTE_SEMA_E_IMPORT",
+                "failed to allocate imported namespace symbol",
+                context->prefix,
+                context->span
+            );
+            return false;
+        }
+    }
+    context->status = vitte_sema_define_imported_decl(context->sema, visible_name, decl, context->span);
+    return context->status == VITTE_STATUS_OK;
 }
 
 static const char *vitte_sema_import_visible_name(const vitte_ast_decl_t *import_decl) {
@@ -627,86 +670,28 @@ static vitte_status_t vitte_sema_predeclare_imports(
             const char *prefix = import_decl->as.import_decl.alias != NULL ?
                 import_decl->as.import_decl.alias :
                 vitte_sema_last_name_segment(path);
-            const vitte_ast_node_t *decl;
+            vitte_sema_import_export_context_t context;
 
-            for (decl = imported_module->as.module.declarations.first; decl != NULL; decl = decl->next) {
-                const char *decl_name = vitte_ast_decl_name(decl);
-                char *qualified_name;
-
-                if (decl_name == NULL || !vitte_ast_module_decl_is_exported(imported_module, decl)) {
-                    continue;
-                }
-                qualified_name = vitte_sema_join_qualified_name(sema, prefix, decl_name);
-                if (qualified_name == NULL) {
-                    return vitte_sema_fail(
-                        sema,
-                        VITTE_STATUS_ERROR_OUT_OF_MEMORY,
-                        "VITTE_SEMA_E_IMPORT",
-                        "failed to allocate imported namespace symbol",
-                        prefix,
-                        &import_decl->span
-                    );
-                }
-                if (vitte_sema_define_imported_decl(sema, qualified_name, decl, &import_decl->span) != VITTE_STATUS_OK) {
-                    return sema->last_error.status;
-                }
-            }
-            for (decl = imported_module->as.module.exports.first; decl != NULL; decl = decl->next) {
-                const vitte_ast_decl_t *target;
-                const char *export_name;
-                char *qualified_name;
-
-                if (decl->kind != VITTE_AST_NODE_EXPORT_DECL) {
-                    continue;
-                }
-                target = vitte_ast_export_decl_target(imported_module, decl);
-                export_name = decl->as.export_decl.export_name;
-                if (target == NULL || export_name == NULL) {
-                    continue;
-                }
-                qualified_name = vitte_sema_join_qualified_name(sema, prefix, export_name);
-                if (qualified_name == NULL) {
-                    return vitte_sema_fail(
-                        sema,
-                        VITTE_STATUS_ERROR_OUT_OF_MEMORY,
-                        "VITTE_SEMA_E_IMPORT",
-                        "failed to allocate imported namespace symbol",
-                        prefix,
-                        &import_decl->span
-                    );
-                }
-                if (vitte_sema_define_imported_decl(sema, qualified_name, target, &import_decl->span) != VITTE_STATUS_OK) {
-                    return sema->last_error.status;
-                }
+            context.sema = sema;
+            context.prefix = prefix;
+            context.span = &import_decl->span;
+            context.qualify_names = true;
+            context.status = VITTE_STATUS_OK;
+            (void)vitte_ast_module_visit_exports(imported_module, vitte_sema_define_imported_export, &context);
+            if (context.status != VITTE_STATUS_OK) {
+                return context.status;
             }
         } else if (import_decl->as.import_decl.import_kind == VITTE_AST_IMPORT_GLOB) {
-            const vitte_ast_node_t *decl;
+            vitte_sema_import_export_context_t context;
 
-            for (decl = imported_module->as.module.declarations.first; decl != NULL; decl = decl->next) {
-                const char *decl_name = vitte_ast_decl_name(decl);
-
-                if (decl_name == NULL || !vitte_ast_module_decl_is_exported(imported_module, decl)) {
-                    continue;
-                }
-                if (vitte_sema_define_imported_decl(sema, decl_name, decl, &import_decl->span) != VITTE_STATUS_OK) {
-                    return sema->last_error.status;
-                }
-            }
-            for (decl = imported_module->as.module.exports.first; decl != NULL; decl = decl->next) {
-                const vitte_ast_decl_t *target;
-                const char *export_name;
-
-                if (decl->kind != VITTE_AST_NODE_EXPORT_DECL) {
-                    continue;
-                }
-                target = vitte_ast_export_decl_target(imported_module, decl);
-                export_name = decl->as.export_decl.export_name;
-                if (target == NULL || export_name == NULL) {
-                    continue;
-                }
-                if (vitte_sema_define_imported_decl(sema, export_name, target, &import_decl->span) != VITTE_STATUS_OK) {
-                    return sema->last_error.status;
-                }
+            context.sema = sema;
+            context.prefix = NULL;
+            context.span = &import_decl->span;
+            context.qualify_names = false;
+            context.status = VITTE_STATUS_OK;
+            (void)vitte_ast_module_visit_exports(imported_module, vitte_sema_define_imported_export, &context);
+            if (context.status != VITTE_STATUS_OK) {
+                return context.status;
             }
         } else {
             const vitte_ast_decl_t *decl = vitte_ast_module_find_exported_decl(imported_module, leaf_name);

@@ -359,6 +359,99 @@ const vitte_ast_decl_t *vitte_ast_module_find_exported_decl(
     return NULL;
 }
 
+static bool vitte_ast_export_matches(
+    const vitte_ast_decl_t *decl,
+    const char *public_name,
+    const vitte_ast_decl_t *other_decl,
+    const char *other_public_name
+) {
+    return decl == other_decl &&
+        public_name != NULL &&
+        other_public_name != NULL &&
+        strcmp(public_name, other_public_name) == 0;
+}
+
+static bool vitte_ast_module_export_is_duplicate(
+    const vitte_ast_module_t *module,
+    const vitte_ast_decl_t *export_decl,
+    const vitte_ast_decl_t *target_decl,
+    const char *public_name
+) {
+    const char *decl_name;
+    const vitte_ast_node_t *previous;
+
+    if (module == NULL || export_decl == NULL || target_decl == NULL || public_name == NULL) {
+        return false;
+    }
+    decl_name = vitte_ast_decl_name(target_decl);
+    if (decl_name != NULL &&
+        vitte_ast_module_decl_is_exported(module, target_decl) &&
+        vitte_ast_export_matches(target_decl, public_name, target_decl, decl_name)) {
+        return true;
+    }
+    for (previous = module->as.module.exports.first; previous != NULL && previous != export_decl; previous = previous->next) {
+        const vitte_ast_decl_t *previous_target;
+        const char *previous_public_name;
+
+        if (previous->kind != VITTE_AST_NODE_EXPORT_DECL) {
+            continue;
+        }
+        previous_target = vitte_ast_export_decl_target(module, previous);
+        previous_public_name = previous->as.export_decl.export_name;
+        if (vitte_ast_export_matches(target_decl, public_name, previous_target, previous_public_name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+size_t vitte_ast_module_visit_exports(
+    const vitte_ast_module_t *module,
+    vitte_ast_export_visit_fn callback,
+    void *user
+) {
+    const vitte_ast_node_t *decl;
+    const vitte_ast_node_t *export_decl;
+    size_t count = 0u;
+
+    if (module == NULL || module->kind != VITTE_AST_NODE_MODULE || callback == NULL) {
+        return 0u;
+    }
+
+    for (decl = module->as.module.declarations.first; decl != NULL; decl = decl->next) {
+        const char *decl_name = vitte_ast_decl_name(decl);
+
+        if (decl_name == NULL || !vitte_ast_module_decl_is_exported(module, decl)) {
+            continue;
+        }
+        if (!callback(decl, decl_name, user)) {
+            return count;
+        }
+        count++;
+    }
+
+    for (export_decl = module->as.module.exports.first; export_decl != NULL; export_decl = export_decl->next) {
+        const vitte_ast_decl_t *target_decl;
+        const char *public_name;
+
+        if (export_decl->kind != VITTE_AST_NODE_EXPORT_DECL) {
+            continue;
+        }
+        target_decl = vitte_ast_export_decl_target(module, export_decl);
+        public_name = export_decl->as.export_decl.export_name;
+        if (target_decl == NULL || public_name == NULL ||
+            vitte_ast_module_export_is_duplicate(module, export_decl, target_decl, public_name)) {
+            continue;
+        }
+        if (!callback(target_decl, public_name, user)) {
+            return count;
+        }
+        count++;
+    }
+
+    return count;
+}
+
 void vitte_ast_builder_init(vitte_ast_builder_t *builder, vitte_ast_t *ast) {
     if (builder == NULL) {
         return;
@@ -570,6 +663,13 @@ bool vitte_ast_module_add_export(vitte_ast_module_t *module, vitte_ast_decl_t *e
         export_decl != NULL &&
         export_decl->kind == VITTE_AST_NODE_EXPORT_DECL &&
         vitte_ast_list_append(&module->as.module.exports, export_decl);
+}
+
+void vitte_ast_module_set_export_all(vitte_ast_module_t *module, bool enabled) {
+    if (module == NULL || module->kind != VITTE_AST_NODE_MODULE) {
+        return;
+    }
+    module->as.module.export_all = enabled;
 }
 
 bool vitte_ast_proc_add_param(vitte_ast_decl_t *proc, vitte_ast_node_t *param) {

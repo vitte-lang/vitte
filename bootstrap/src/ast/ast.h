@@ -186,6 +186,11 @@ typedef bool (*vitte_ast_visit_fn)(
     vitte_ast_node_t *node,
     void *user
 );
+typedef bool (*vitte_ast_export_visit_fn)(
+    const vitte_ast_decl_t *decl,
+    const char *public_name,
+    void *user
+);
 
 void vitte_ast_span_init(vitte_ast_span_t *span);
 bool vitte_ast_span_is_valid(const vitte_ast_span_t *span);
@@ -219,6 +224,7 @@ const vitte_ast_decl_t *vitte_ast_module_find_decl(const vitte_ast_module_t *mod
 const vitte_ast_decl_t *vitte_ast_export_decl_target(const vitte_ast_module_t *module, const vitte_ast_decl_t *export_decl);
 bool vitte_ast_module_decl_is_exported(const vitte_ast_module_t *module, const vitte_ast_decl_t *decl);
 const vitte_ast_decl_t *vitte_ast_module_find_exported_decl(const vitte_ast_module_t *module, const char *export_name);
+size_t vitte_ast_module_visit_exports(const vitte_ast_module_t *module, vitte_ast_export_visit_fn callback, void *user);
 void vitte_ast_dump(const vitte_ast_node_t *node, FILE *stream, size_t max_depth);
 
 void vitte_ast_builder_init(vitte_ast_builder_t *builder, vitte_ast_t *ast);
@@ -255,6 +261,7 @@ vitte_ast_node_t *vitte_ast_make_error(vitte_ast_builder_t *builder, const char 
 bool vitte_ast_module_add_decl(vitte_ast_module_t *module, vitte_ast_decl_t *decl);
 bool vitte_ast_module_add_import(vitte_ast_module_t *module, vitte_ast_decl_t *import_decl);
 bool vitte_ast_module_add_export(vitte_ast_module_t *module, vitte_ast_decl_t *export_decl);
+void vitte_ast_module_set_export_all(vitte_ast_module_t *module, bool enabled);
 bool vitte_ast_proc_add_param(vitte_ast_decl_t *proc, vitte_ast_node_t *param);
 bool vitte_ast_block_add_stmt(vitte_ast_stmt_t *block, vitte_ast_stmt_t *stmt);
 bool vitte_ast_call_add_arg(vitte_ast_expr_t *call, vitte_ast_expr_t *argument);
