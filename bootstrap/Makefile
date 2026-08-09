@@ -78,6 +78,24 @@ smoke: verify $(BIN)
 	fi; \
 	grep -q "VITTE_SEMA_E_EXPORT" "$$tmp" || { cat "$$tmp"; rm -f "$$tmp"; exit 1; }; \
 	rm -f "$$tmp"
+	@tmp="$$(mktemp)"; \
+	if "$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/export_forms/reexport_group_unsupported.vit" >"$$tmp" 2>&1; then \
+		cat "$$tmp"; rm -f "$$tmp"; exit 1; \
+	fi; \
+	grep -q "VITTE_PARSER_E_REEXPORT" "$$tmp" || { cat "$$tmp"; rm -f "$$tmp"; exit 1; }; \
+	rm -f "$$tmp"
+	@tmp="$$(mktemp)"; \
+	if "$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/export_forms/reexport_module_alias_unsupported.vit" >"$$tmp" 2>&1; then \
+		cat "$$tmp"; rm -f "$$tmp"; exit 1; \
+	fi; \
+	grep -q "VITTE_SEMA_E_REEXPORT" "$$tmp" || { cat "$$tmp"; rm -f "$$tmp"; exit 1; }; \
+	rm -f "$$tmp"
+	@tmp="$$(mktemp)"; \
+	if "$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/export_forms/reexport_symbol_unsupported.vit" >"$$tmp" 2>&1; then \
+		cat "$$tmp"; rm -f "$$tmp"; exit 1; \
+	fi; \
+	grep -q "VITTE_SEMA_E_REEXPORT" "$$tmp" || { cat "$$tmp"; rm -f "$$tmp"; exit 1; }; \
+	rm -f "$$tmp"
 	@"$(BIN)" build "$(ROOT_DIR)/examples/hello.vit" -o "$(OUT_DIR)/hello"
 	@"$(OUT_DIR)/hello"
 

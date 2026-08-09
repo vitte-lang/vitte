@@ -77,7 +77,8 @@ Current bootstrap grammar:
 - direct `use a::b` is locked as a module-path import
 - symbol imports must use groups like `use a::{b}`
 - when `use a::b` fails as a module import but `a` exports `b`, the driver emits a dedicated diagnostic pointing to `use a::{b}`
-- standalone bootstrap export clauses only target local top-level items; module re-export forms remain outside this stage
+- standalone bootstrap export clauses only target local top-level items
+- bootstrap re-exports such as `export mod::{x}` and `export mod as alias` are explicitly rejected with dedicated diagnostics
 - `let` still requires an explicit type
 - `const` without a type relies on simple literal/operator inference
 - there are no expression statements yet

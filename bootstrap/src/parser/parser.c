@@ -1363,8 +1363,8 @@ static vitte_status_t vitte_parser_parse_export_item(
         return vitte_parser_fail(
             parser,
             VITTE_STATUS_ERROR_PARSE,
-            "VITTE_PARSER_E_EXPORT",
-            "bootstrap export clauses only support local item names",
+            "VITTE_PARSER_E_REEXPORT",
+            "bootstrap re-exports are unsupported; export local declarations only",
             local_name,
             &span
         );

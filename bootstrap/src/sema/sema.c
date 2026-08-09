@@ -172,6 +172,58 @@ static const vitte_ast_module_t *vitte_sema_find_import_module(
     return NULL;
 }
 
+static const vitte_ast_decl_t *vitte_sema_find_reexport_import(
+    vitte_sema_t *sema,
+    const vitte_ast_module_t *module,
+    const char *name
+) {
+    const vitte_ast_node_t *import_decl;
+
+    if (sema == NULL || module == NULL || name == NULL) {
+        return NULL;
+    }
+    for (import_decl = module->as.module.imports.first; import_decl != NULL; import_decl = import_decl->next) {
+        const char *path;
+        const char *visible_name = NULL;
+
+        if (import_decl->kind != VITTE_AST_NODE_IMPORT_DECL) {
+            continue;
+        }
+        path = import_decl->as.import_decl.path;
+        if (import_decl->as.import_decl.import_kind == VITTE_AST_IMPORT_GLOB) {
+            char module_name[VITTE_IMPORT_MAX_MODULE_NAME];
+            const vitte_ast_module_t *imported_module;
+            size_t length;
+
+            if (path == NULL || path[0] == '\0') {
+                continue;
+            }
+            length = strlen(path);
+            if (length + 1u > sizeof(module_name)) {
+                continue;
+            }
+            (void)memcpy(module_name, path, length + 1u);
+            imported_module = vitte_sema_find_import_module(sema, module_name);
+            if (imported_module != NULL && vitte_ast_module_find_exported_decl(imported_module, name) != NULL) {
+                return import_decl;
+            }
+            continue;
+        }
+        if (import_decl->as.import_decl.alias != NULL && import_decl->as.import_decl.alias[0] != '\0') {
+            visible_name = import_decl->as.import_decl.alias;
+        } else if (import_decl->as.import_decl.import_kind == VITTE_AST_IMPORT_SYMBOL) {
+            const char *last_dot = path != NULL ? strrchr(path, '.') : NULL;
+            visible_name = last_dot != NULL ? last_dot + 1 : path;
+        } else {
+            visible_name = vitte_sema_last_name_segment(path);
+        }
+        if (visible_name != NULL && strcmp(visible_name, name) == 0) {
+            return import_decl;
+        }
+    }
+    return NULL;
+}
+
 static vitte_status_t vitte_sema_validate_module_exports(
     vitte_sema_t *sema,
     const vitte_ast_module_t *module
@@ -192,6 +244,16 @@ static vitte_status_t vitte_sema_validate_module_exports(
         }
         target = vitte_ast_export_decl_target(module, export_decl);
         if (target == NULL) {
+            if (vitte_sema_find_reexport_import(sema, module, export_decl->as.export_decl.local_name) != NULL) {
+                return vitte_sema_fail(
+                    sema,
+                    VITTE_STATUS_ERROR_PARSE,
+                    "VITTE_SEMA_E_REEXPORT",
+                    "bootstrap re-exports are unsupported; export local declarations only",
+                    export_decl->as.export_decl.local_name,
+                    &export_decl->span
+                );
+            }
             return vitte_sema_fail(
                 sema,
                 VITTE_STATUS_ERROR_PARSE,
