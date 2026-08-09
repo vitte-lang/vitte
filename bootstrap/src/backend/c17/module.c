@@ -116,6 +116,10 @@ static vitte_status_t vitte_c17_emit_identifier(
     return vitte_c17_write_string(writer, sanitized);
 }
 
+static bool vitte_c17_is_main_name(const char *name) {
+    return name != NULL && strcmp(name, "main") == 0;
+}
+
 static vitte_status_t vitte_c17_make_symbol_name(
     vitte_c17_module_t *module,
     const char *prefix,
@@ -180,6 +184,14 @@ static vitte_status_t vitte_c17_make_value_name(
             return vitte_c17_make_symbol_name(module, "vitte_tmp_", value->name != NULL ? value->name : "tmp", value->id, output, output_capacity);
         case VITTE_IR_VALUE_FUNCTION_REF:
             if (value->as.function != NULL) {
+                if (vitte_c17_is_main_name(value->as.function->name)) {
+                    if (output_capacity < sizeof("main")) {
+                        vitte_c17_module_set_error(module, VITTE_STATUS_ERROR_BACKEND, "VITTE_C17_E_NAME", "C17 symbol name buffer is too small", value->name);
+                        return VITTE_STATUS_ERROR_BACKEND;
+                    }
+                    memcpy(output, "main", sizeof("main"));
+                    return VITTE_STATUS_OK;
+                }
                 return vitte_c17_make_symbol_name(module, "vitte_fn_", value->name, value->as.function->id, output, output_capacity);
             }
             return vitte_c17_sanitize_identifier(value->name, output, output_capacity, &module->last_error);
@@ -500,33 +512,9 @@ static vitte_status_t vitte_c17_emit_ir_instruction(
 
     switch (instruction->opcode) {
         case VITTE_IR_OP_CONST_INT:
-            status = vitte_c17_emit_ir_value_ref(module, writer, instruction->result);
-            if (status != VITTE_STATUS_OK) {
-                return status;
-            }
-            status = vitte_c17_write_string(writer, " = ");
-            if (status != VITTE_STATUS_OK) {
-                return status;
-            }
-            status = vitte_c17_write_format(writer, "%" PRId64, instruction->result->as.int_value);
-            if (status != VITTE_STATUS_OK) {
-                return status;
-            }
-            return vitte_c17_emit_statement_line_end(writer);
+            return VITTE_STATUS_OK;
         case VITTE_IR_OP_CONST_STRING:
-            status = vitte_c17_emit_ir_value_ref(module, writer, instruction->result);
-            if (status != VITTE_STATUS_OK) {
-                return status;
-            }
-            status = vitte_c17_write_string(writer, " = ");
-            if (status != VITTE_STATUS_OK) {
-                return status;
-            }
-            status = vitte_c17_emit_c_string(writer, instruction->result->as.string_value);
-            if (status != VITTE_STATUS_OK) {
-                return status;
-            }
-            return vitte_c17_emit_statement_line_end(writer);
+            return VITTE_STATUS_OK;
         case VITTE_IR_OP_LOCAL:
             return VITTE_STATUS_OK;
         case VITTE_IR_OP_STORE:
@@ -666,6 +654,8 @@ static vitte_status_t vitte_c17_emit_ir_instruction(
 
 static bool vitte_c17_ir_instruction_needs_declaration(const vitte_ir_instruction_t *instruction) {
     return instruction != NULL &&
+        instruction->opcode != VITTE_IR_OP_CONST_INT &&
+        instruction->opcode != VITTE_IR_OP_CONST_STRING &&
         instruction->result != NULL &&
         instruction->result->type != NULL &&
         instruction->result->type->kind != VITTE_IR_TYPE_VOID;
@@ -719,7 +709,9 @@ static vitte_status_t vitte_c17_emit_ir_function(
         vitte_c17_module_set_error(module, VITTE_STATUS_ERROR_BACKEND, "VITTE_C17_E_FUNCTION", "missing IR function", NULL);
         return VITTE_STATUS_ERROR_BACKEND;
     }
-    if (vitte_c17_make_symbol_name(module, "vitte_fn_", function->name, function->id, function_name, sizeof(function_name)) != VITTE_STATUS_OK) {
+    if (vitte_c17_is_main_name(function->name)) {
+        memcpy(function_name, "main", sizeof("main"));
+    } else if (vitte_c17_make_symbol_name(module, "vitte_fn_", function->name, function->id, function_name, sizeof(function_name)) != VITTE_STATUS_OK) {
         return module->last_error.status;
     }
     status = vitte_c17_emit_ir_type(module, writer, function->return_type);
@@ -1200,7 +1192,11 @@ static vitte_status_t vitte_c17_emit_ast_proc_decl(vitte_c17_module_t *module, v
     if (status != VITTE_STATUS_OK) {
         return status;
     }
-    status = vitte_c17_emit_identifier(module, writer, decl->as.proc_decl.name);
+    if (vitte_c17_is_main_name(decl->as.proc_decl.name)) {
+        status = vitte_c17_write_string(writer, "main");
+    } else {
+        status = vitte_c17_emit_identifier(module, writer, decl->as.proc_decl.name);
+    }
     if (status != VITTE_STATUS_OK) {
         return status;
     }
