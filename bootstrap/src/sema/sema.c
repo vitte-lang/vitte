@@ -630,6 +630,14 @@ static vitte_status_t vitte_sema_validate_import_decl(
         }
 
         previous_visible_name = vitte_sema_import_visible_name(previous);
+        if (import_decl->as.import_decl.import_kind == VITTE_AST_IMPORT_MODULE &&
+            import_decl->as.import_decl.alias == NULL &&
+            previous->as.import_decl.import_kind == VITTE_AST_IMPORT_MODULE &&
+            previous->as.import_decl.alias == NULL) {
+            /* Module-only imports are qualified namespaces, so their leaf names
+             * do not create bindings in the ordinary value/type scope. */
+            continue;
+        }
         if (visible_name != NULL &&
             previous_visible_name != NULL &&
             strcmp(visible_name, previous_visible_name) == 0) {
@@ -704,6 +712,12 @@ static vitte_status_t vitte_sema_define_imported_decl(
             false,
             &symbol
         );
+    } else if (decl->kind == VITTE_AST_NODE_PICK_DECL) {
+        type = vitte_type_register_pick(&sema->types, decl->as.pick_decl.name);
+        return type != NULL ? VITTE_STATUS_OK : VITTE_STATUS_ERROR_INVALID_STATE;
+    } else if (decl->kind == VITTE_AST_NODE_FORM_DECL) {
+        type = vitte_type_register_form(&sema->types, decl->as.form_decl.name);
+        return type != NULL ? VITTE_STATUS_OK : VITTE_STATUS_ERROR_INVALID_STATE;
     } else {
         return VITTE_STATUS_OK;
     }
@@ -896,6 +910,22 @@ static const vitte_type_t *vitte_sema_resolve_type_ref(
         return NULL;
     }
     type = vitte_type_from_ast(&sema->types, type_ref);
+    if (type == NULL && type_ref != NULL && type_ref->kind == VITTE_AST_NODE_TYPE_NAME &&
+        type_ref->as.type_name.name != NULL) {
+        size_t module_index;
+        for (module_index = 0u; module_index < sema->imported_module_count && type == NULL; module_index++) {
+            const vitte_ast_module_t *imported = sema->imported_modules[module_index].root;
+            const vitte_ast_decl_t *decl = vitte_ast_module_find_exported_decl(
+                imported,
+                type_ref->as.type_name.name
+            );
+            if (decl != NULL && decl->kind == VITTE_AST_NODE_PICK_DECL) {
+                type = vitte_type_register_pick(&sema->types, decl->as.pick_decl.name);
+            } else if (decl != NULL && decl->kind == VITTE_AST_NODE_FORM_DECL) {
+                type = vitte_type_register_form(&sema->types, decl->as.form_decl.name);
+            }
+        }
+    }
     if (type == NULL && type_ref != NULL && type_ref->kind == VITTE_AST_NODE_TYPE_NAME &&
         (strncmp(type_ref->as.type_name.name, "list[", 5u) == 0 || strncmp(type_ref->as.type_name.name, "ptr[", 4u) == 0)) {
         type = vitte_type_register_list(&sema->types, type_ref->as.type_name.name);

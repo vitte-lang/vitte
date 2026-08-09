@@ -369,9 +369,11 @@ bool vitte_ast_module_decl_is_exported(
             return true;
         }
     } else if (decl->kind == VITTE_AST_NODE_PICK_DECL) {
-        return decl->as.pick_decl.exported || module->as.module.export_all;
+        /* Nominal declarations are part of a module's public type surface. */
+        return true;
     } else if (decl->kind == VITTE_AST_NODE_FORM_DECL) {
-        return decl->as.form_decl.exported || module->as.module.export_all;
+        /* Nominal declarations are part of a module's public type surface. */
+        return true;
     } else {
         return false;
     }
