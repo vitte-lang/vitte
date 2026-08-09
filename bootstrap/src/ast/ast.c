@@ -188,6 +188,10 @@ const char *vitte_ast_node_kind_name(vitte_ast_node_kind_t kind) {
             return "param_decl";
         case VITTE_AST_NODE_CONST_DECL:
             return "const_decl";
+        case VITTE_AST_NODE_PICK_DECL:
+            return "pick_decl";
+        case VITTE_AST_NODE_PICK_VARIANT:
+            return "pick_variant";
         case VITTE_AST_NODE_BLOCK_STMT:
             return "block_stmt";
         case VITTE_AST_NODE_GIVE_STMT:
@@ -240,6 +244,10 @@ const char *vitte_ast_node_label(const vitte_ast_node_t *node) {
             return node->as.param_decl.name;
         case VITTE_AST_NODE_CONST_DECL:
             return node->as.const_decl.name;
+        case VITTE_AST_NODE_PICK_DECL:
+            return node->as.pick_decl.name;
+        case VITTE_AST_NODE_PICK_VARIANT:
+            return node->as.pick_variant.name;
         case VITTE_AST_NODE_LET_STMT:
             return node->as.let_stmt.name;
         case VITTE_AST_NODE_ASSIGN_STMT:
@@ -486,6 +494,24 @@ vitte_ast_module_t *vitte_ast_make_module(vitte_ast_builder_t *builder, const ch
     return node;
 }
 
+vitte_ast_decl_t *vitte_ast_make_pick_decl(vitte_ast_builder_t *builder, const char *name, bool exported, vitte_ast_span_t span) {
+    vitte_ast_node_t *node = builder != NULL ? vitte_ast_alloc_node(builder->ast, VITTE_AST_NODE_PICK_DECL, span) : NULL;
+    if (node != NULL) {
+        node->as.pick_decl.name = name;
+        node->as.pick_decl.exported = exported;
+        vitte_ast_list_init(&node->as.pick_decl.variants);
+    }
+    return node;
+}
+
+vitte_ast_node_t *vitte_ast_make_pick_variant(vitte_ast_builder_t *builder, const char *name, vitte_ast_span_t span) {
+    vitte_ast_node_t *node = builder != NULL ? vitte_ast_alloc_node(builder->ast, VITTE_AST_NODE_PICK_VARIANT, span) : NULL;
+    if (node != NULL) {
+        node->as.pick_variant.name = name;
+    }
+    return node;
+}
+
 vitte_ast_decl_t *vitte_ast_make_import_decl(
     vitte_ast_builder_t *builder,
     const char *path,
@@ -669,7 +695,7 @@ bool vitte_ast_module_add_decl(vitte_ast_module_t *module, vitte_ast_decl_t *dec
     return module != NULL &&
         module->kind == VITTE_AST_NODE_MODULE &&
         decl != NULL &&
-        (decl->kind == VITTE_AST_NODE_PROC_DECL || decl->kind == VITTE_AST_NODE_CONST_DECL) &&
+        (decl->kind == VITTE_AST_NODE_PROC_DECL || decl->kind == VITTE_AST_NODE_CONST_DECL || decl->kind == VITTE_AST_NODE_PICK_DECL) &&
         vitte_ast_list_append(&module->as.module.declarations, decl);
 }
 
@@ -862,6 +888,28 @@ static vitte_status_t vitte_ast_validate_node(vitte_ast_t *ast, const vitte_ast_
                 }
             }
             return vitte_ast_validate_node(ast, node->as.const_decl.value, depth + 1u);
+        case VITTE_AST_NODE_PICK_DECL:
+            if (node->as.pick_decl.name == NULL) {
+                vitte_ast_set_error(ast, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_AST_E_PICK", "pick declaration requires a name", NULL);
+                return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+            }
+            status = vitte_ast_validate_list(ast, &node->as.pick_decl.variants, "VITTE_AST_E_LIST", "pick variant list is incoherent");
+            if (status != VITTE_STATUS_OK) {
+                return status;
+            }
+            for (child = node->as.pick_decl.variants.first; child != NULL; child = child->next) {
+                status = vitte_ast_validate_node(ast, child, depth + 1u);
+                if (status != VITTE_STATUS_OK) {
+                    return status;
+                }
+            }
+            return VITTE_STATUS_OK;
+        case VITTE_AST_NODE_PICK_VARIANT:
+            if (node->as.pick_variant.name == NULL || node->as.pick_variant.name[0] == '\0') {
+                vitte_ast_set_error(ast, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_AST_E_PICK", "pick variant requires a name", NULL);
+                return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+            }
+            return VITTE_STATUS_OK;
         case VITTE_AST_NODE_BLOCK_STMT:
             status = vitte_ast_validate_list(ast, &node->as.block_stmt.statements, "VITTE_AST_E_LIST", "block statement list is incoherent");
             if (status != VITTE_STATUS_OK) {
@@ -1061,6 +1109,10 @@ static bool vitte_ast_visit_child(
         case VITTE_AST_NODE_CONST_DECL:
             return vitte_ast_visit_child(node->as.const_decl.type, callback, user, depth + 1u, max_depth, count) &&
                 vitte_ast_visit_child(node->as.const_decl.value, callback, user, depth + 1u, max_depth, count);
+        case VITTE_AST_NODE_PICK_DECL:
+            return vitte_ast_visit_children(&node->as.pick_decl.variants, callback, user, depth + 1u, max_depth, count);
+        case VITTE_AST_NODE_PICK_VARIANT:
+            return true;
         case VITTE_AST_NODE_BLOCK_STMT:
             return vitte_ast_visit_children(&node->as.block_stmt.statements, callback, user, depth + 1u, max_depth, count);
         case VITTE_AST_NODE_GIVE_STMT:

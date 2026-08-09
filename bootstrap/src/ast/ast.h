@@ -21,6 +21,8 @@ typedef enum vitte_ast_node_kind {
     VITTE_AST_NODE_PROC_DECL,
     VITTE_AST_NODE_PARAM_DECL,
     VITTE_AST_NODE_CONST_DECL,
+    VITTE_AST_NODE_PICK_DECL,
+    VITTE_AST_NODE_PICK_VARIANT,
     VITTE_AST_NODE_BLOCK_STMT,
     VITTE_AST_NODE_GIVE_STMT,
     VITTE_AST_NODE_LET_STMT,
@@ -115,6 +117,16 @@ struct vitte_ast_node {
             vitte_ast_type_ref_t *type;
             vitte_ast_expr_t *value;
         } const_decl;
+
+        struct {
+            const char *name;
+            bool exported;
+            vitte_ast_list_t variants;
+        } pick_decl;
+
+        struct {
+            const char *name;
+        } pick_variant;
 
         struct {
             vitte_ast_list_t statements;
@@ -258,6 +270,8 @@ vitte_ast_decl_t *vitte_ast_make_export_decl(
 vitte_ast_decl_t *vitte_ast_make_proc_decl(vitte_ast_builder_t *builder, const char *name, bool exported, vitte_ast_type_ref_t *return_type, vitte_ast_stmt_t *body, vitte_ast_span_t span);
 vitte_ast_node_t *vitte_ast_make_param_decl(vitte_ast_builder_t *builder, const char *name, vitte_ast_type_ref_t *type, bool mutable_value, bool by_ref, vitte_ast_span_t span);
 vitte_ast_decl_t *vitte_ast_make_const_decl(vitte_ast_builder_t *builder, const char *name, bool exported, vitte_ast_type_ref_t *type, vitte_ast_expr_t *value, vitte_ast_span_t span);
+vitte_ast_decl_t *vitte_ast_make_pick_decl(vitte_ast_builder_t *builder, const char *name, bool exported, vitte_ast_span_t span);
+vitte_ast_node_t *vitte_ast_make_pick_variant(vitte_ast_builder_t *builder, const char *name, vitte_ast_span_t span);
 vitte_ast_stmt_t *vitte_ast_make_block_stmt(vitte_ast_builder_t *builder, vitte_ast_span_t span);
 vitte_ast_stmt_t *vitte_ast_make_give_stmt(vitte_ast_builder_t *builder, vitte_ast_expr_t *value, vitte_ast_span_t span);
 vitte_ast_stmt_t *vitte_ast_make_let_stmt(vitte_ast_builder_t *builder, const char *name, vitte_ast_type_ref_t *type, vitte_ast_expr_t *value, bool mutable_value, vitte_ast_span_t span);

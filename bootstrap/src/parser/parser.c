@@ -1959,6 +1959,67 @@ static vitte_ast_decl_t *vitte_parser_parse_const(vitte_parser_t *parser, bool e
     return decl;
 }
 
+static vitte_ast_decl_t *vitte_parser_parse_pick(vitte_parser_t *parser, bool exported) {
+    vitte_ast_span_t start_span;
+    vitte_ast_span_t end_span;
+    vitte_ast_span_t span;
+    char *name;
+    vitte_ast_decl_t *decl;
+
+    start_span = vitte_parser_span_from_token(&parser->current);
+    (void)vitte_parser_advance(parser);
+    if (parser->current.kind != VITTE_TOKEN_IDENTIFIER) {
+        (void)vitte_parser_fail_current(parser, "VITTE_PARSER_E_PICK", "expected pick name");
+        return NULL;
+    }
+    name = vitte_parser_copy_token_text(parser, &parser->current);
+    if (name == NULL) {
+        return NULL;
+    }
+    (void)vitte_parser_advance(parser);
+    if (!vitte_parser_expect(parser, VITTE_TOKEN_LBRACE, "VITTE_PARSER_E_PICK", "expected '{' after pick name")) {
+        return NULL;
+    }
+    decl = vitte_ast_make_pick_decl(&parser->builder, name, exported, start_span);
+    if (decl == NULL) {
+        (void)vitte_parser_fail(parser, VITTE_STATUS_ERROR_OUT_OF_MEMORY, "VITTE_PARSER_E_MEMORY", "failed to allocate pick declaration", name, &start_span);
+        return NULL;
+    }
+    while (parser->current.kind != VITTE_TOKEN_RBRACE && parser->current.kind != VITTE_TOKEN_EOF) {
+        vitte_ast_span_t variant_span;
+        vitte_ast_node_t *variant;
+        char *variant_name;
+
+        if (parser->current.kind == VITTE_TOKEN_COMMA) {
+            (void)vitte_parser_advance(parser);
+            continue;
+        }
+        if (parser->current.kind != VITTE_TOKEN_IDENTIFIER) {
+            (void)vitte_parser_fail_current(parser, "VITTE_PARSER_E_PICK", "expected pick variant name");
+            return NULL;
+        }
+        variant_span = vitte_parser_span_from_token(&parser->current);
+        variant_name = vitte_parser_copy_token_text(parser, &parser->current);
+        if (variant_name == NULL) {
+            return NULL;
+        }
+        (void)vitte_parser_advance(parser);
+        variant = vitte_ast_make_pick_variant(&parser->builder, variant_name, variant_span);
+        if (variant == NULL || !vitte_ast_list_append(&decl->as.pick_decl.variants, variant)) {
+            (void)vitte_parser_fail(parser, VITTE_STATUS_ERROR_OUT_OF_MEMORY, "VITTE_PARSER_E_MEMORY", "failed to append pick variant", variant_name, &variant_span);
+            return NULL;
+        }
+    }
+    if (!vitte_parser_expect(parser, VITTE_TOKEN_RBRACE, "VITTE_PARSER_E_PICK", "expected '}' after pick variants")) {
+        return NULL;
+    }
+    end_span = vitte_parser_span_from_token(&parser->previous);
+    span = vitte_parser_span_merge(&start_span, &end_span);
+    decl->span = span;
+    parser->stats.decl_count++;
+    return decl;
+}
+
 static vitte_ast_decl_t *vitte_parser_parse_decl_impl(vitte_parser_t *parser) {
     bool exported = false;
 
@@ -1971,12 +2032,13 @@ static vitte_ast_decl_t *vitte_parser_parse_decl_impl(vitte_parser_t *parser) {
         exported = true;
         (void)vitte_parser_advance(parser);
         if (parser->current.kind != VITTE_TOKEN_KW_PROC &&
-            parser->current.kind != VITTE_TOKEN_KW_CONST) {
+            parser->current.kind != VITTE_TOKEN_KW_CONST &&
+            parser->current.kind != VITTE_TOKEN_KW_PICK) {
             (void)vitte_parser_fail(
                 parser,
                 VITTE_STATUS_ERROR_PARSE,
                 "VITTE_PARSER_E_EXPORT",
-                "expected 'proc' or 'const' after 'export'",
+                "expected 'proc', 'const', or 'pick' after 'export'",
                 NULL,
                 &export_span
             );
@@ -1988,6 +2050,9 @@ static vitte_ast_decl_t *vitte_parser_parse_decl_impl(vitte_parser_t *parser) {
     }
     if (parser->current.kind == VITTE_TOKEN_KW_CONST) {
         return vitte_parser_parse_const(parser, exported);
+    }
+    if (parser->current.kind == VITTE_TOKEN_KW_PICK) {
+        return vitte_parser_parse_pick(parser, exported);
     }
     (void)vitte_parser_fail_current(parser, "VITTE_PARSER_E_DECL", "expected top-level declaration");
     return NULL;
