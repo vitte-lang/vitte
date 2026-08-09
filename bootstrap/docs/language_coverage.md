@@ -39,6 +39,32 @@ Current bootstrap frontend invariants:
 - type names and qualified identifiers are preserved as source text
 - errors flow through `bootstrap/src/api/error.h` and `bootstrap/src/diagnostic`
 
+## Bootstrap Alignment Profile
+
+The bootstrap compiler follows a deliberately small `src`-aligned profile for
+the useful syntax and module contracts needed to rebuild the compiler.
+
+The locked pipeline for this profile is:
+
+```text
+AST -> HIR -> IR -> C17
+```
+
+Alignment means:
+
+- syntax forms are sourced from `src/vitte/grammar/ebnf`
+- module headers, grouped imports, aliases, globs, explicit exports, and
+  `export *` use the same source shapes as the `src` grammar
+- re-exports are explicitly unsupported by the bootstrap compiler until their
+  IR/backend contract is implemented end to end
+- import/export failures use stable structured diagnostic codes rather than
+  generic parser or backend failures
+- C17 code generation consumes validated bootstrap IR only
+
+Run `make -C bootstrap alignment` before changing any bootstrap parser,
+driver, IR, C17 backend, or import/export fixture that participates in this
+profile.
+
 ## Coverage Matrix
 
 Legend:

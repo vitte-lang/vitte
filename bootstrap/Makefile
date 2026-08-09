@@ -7,7 +7,7 @@ SOURCES := $(shell find src -type f -name '*.c' | sort)
 HEADERS := $(shell find . -type f -name '*.h' | sort)
 CHECKED_FILES := $(shell find . -type f \( -name '*.c' -o -name '*.h' -o -name 'Makefile' -o -name 'CMakeLists.txt' -o -name 'README.md' \) | sort)
 
-.PHONY: all clean corpus smoke install verify
+.PHONY: all alignment clean corpus smoke install verify
 
 all: verify $(BIN)
 
@@ -31,6 +31,9 @@ verify:
 		printf '#include "%s"\nint main(void) { return 0; }\n' "$$header" | \
 			$(CC) $(CFLAGS) -I. -x c -fsyntax-only -; \
 	done
+
+alignment:
+	@python3 "$(ROOT_DIR)/tools/bootstrap_src_alignment_gate.py"
 
 smoke: verify $(BIN)
 	@"$(BIN)" --version
