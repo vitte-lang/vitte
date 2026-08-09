@@ -896,6 +896,10 @@ static const vitte_type_t *vitte_sema_resolve_type_ref(
         return NULL;
     }
     type = vitte_type_from_ast(&sema->types, type_ref);
+    if (type == NULL && type_ref != NULL && type_ref->kind == VITTE_AST_NODE_TYPE_NAME &&
+        strncmp(type_ref->as.type_name.name, "list[", 5u) == 0) {
+        type = vitte_type_register_list(&sema->types, type_ref->as.type_name.name);
+    }
     if (type == NULL) {
         (void)vitte_sema_fail(
             sema,
@@ -1233,6 +1237,28 @@ static const vitte_type_t *vitte_sema_analyze_expr(
             sema->stats.expr_count++;
             vitte_sema_leave(sema);
             return vitte_type_builtin(&sema->types, VITTE_BUILTIN_TYPE_STRING);
+        case VITTE_AST_NODE_LIST_EXPR: {
+            const vitte_ast_node_t *element = expr->as.list_expr.elements.first;
+            const vitte_type_t *element_type = NULL;
+            char list_name[128];
+            if (element != NULL) element_type = vitte_sema_analyze_expr(sema, element);
+            if (element_type == NULL || vitte_type_is_error(element_type)) {
+                element_type = vitte_type_builtin(&sema->types, VITTE_BUILTIN_TYPE_ERROR);
+            }
+            (void)snprintf(list_name, sizeof(list_name), "list[%s]", vitte_type_name(element_type));
+            sema->stats.expr_count++;
+            return vitte_type_register_list(&sema->types, list_name);
+        }
+        case VITTE_AST_NODE_RECORD_EXPR: {
+            const vitte_type_t *record_type = vitte_type_lookup(&sema->types, expr->as.record_expr.type_name);
+            const vitte_ast_node_t *field;
+            for (field = expr->as.record_expr.fields.first; field != NULL; field = field->next) {
+                (void)vitte_sema_analyze_expr(sema, field->as.record_field.value);
+            }
+            sema->stats.expr_count++;
+            if (record_type == NULL) return vitte_sema_error_type(sema);
+            return record_type;
+        }
         case VITTE_AST_NODE_IDENTIFIER: {
             const vitte_symbol_t *symbol = vitte_sema_lookup_symbol(sema, expr->as.identifier.name, &expr->span);
             sema->stats.expr_count++;

@@ -15,13 +15,15 @@ extern "C" {
 #define VITTE_TYPE_MAX_PROC_PARAMETERS ((size_t)16u)
 #define VITTE_TYPE_MAX_PICK_TYPES ((size_t)256u)
 #define VITTE_TYPE_MAX_FORM_TYPES ((size_t)256u)
+#define VITTE_TYPE_MAX_LIST_TYPES ((size_t)256u)
 
 typedef enum vitte_type_kind {
     VITTE_TYPE_KIND_INVALID = 0,
     VITTE_TYPE_KIND_BUILTIN,
     VITTE_TYPE_KIND_PROC,
     VITTE_TYPE_KIND_PICK,
-    VITTE_TYPE_KIND_FORM
+    VITTE_TYPE_KIND_FORM,
+    VITTE_TYPE_KIND_LIST
 } vitte_type_kind_t;
 
 typedef struct vitte_type {
@@ -44,6 +46,8 @@ typedef struct vitte_type_registry {
     size_t pick_type_count;
     vitte_type_t form_types[VITTE_TYPE_MAX_FORM_TYPES];
     size_t form_type_count;
+    vitte_type_t list_types[VITTE_TYPE_MAX_LIST_TYPES];
+    size_t list_type_count;
     vitte_error_t last_error;
 } vitte_type_registry_t;
 
@@ -78,6 +82,7 @@ const vitte_type_t *vitte_type_register_form(
     vitte_type_registry_t *registry,
     const char *name
 );
+const vitte_type_t *vitte_type_register_list(vitte_type_registry_t *registry, const char *name);
 const vitte_type_t *vitte_type_from_ast(
     vitte_type_registry_t *registry,
     const vitte_ast_type_ref_t *type_ref

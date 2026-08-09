@@ -143,6 +143,12 @@ const vitte_type_t *vitte_type_lookup(
             return &registry->form_types[index];
         }
     }
+    for (index = 0u; index < registry->list_type_count; index++) {
+        if (strcmp(registry->list_types[index].name, name) == 0) {
+            vitte_error_reset(&registry->last_error);
+            return &registry->list_types[index];
+        }
+    }
     builtin = vitte_builtin_lookup_type(&registry->builtins, name);
     if (builtin == NULL) {
         vitte_error_copy(&registry->last_error, vitte_builtin_registry_last_error(&registry->builtins));
@@ -200,6 +206,22 @@ const vitte_type_t *vitte_type_register_form(vitte_type_registry_t *registry, co
     return type;
 }
 
+const vitte_type_t *vitte_type_register_list(vitte_type_registry_t *registry, const char *name) {
+    vitte_type_t *type;
+    if (!vitte_type_registry_is_initialized(registry) || name == NULL || name[0] == '\0') return NULL;
+    type = (vitte_type_t *)vitte_type_lookup(registry, name);
+    if (type != NULL && type->kind == VITTE_TYPE_KIND_LIST) return type;
+    if (registry->list_type_count >= VITTE_TYPE_MAX_LIST_TYPES) return NULL;
+    type = &registry->list_types[registry->list_type_count++];
+    memset(type, 0, sizeof(*type));
+    type->kind = VITTE_TYPE_KIND_LIST;
+    type->name = name;
+    type->builtin_kind = VITTE_BUILTIN_TYPE_ERROR;
+    type->valid = true;
+    vitte_error_reset(&registry->last_error);
+    return type;
+}
+
 const vitte_type_t *vitte_type_from_ast(
     vitte_type_registry_t *registry,
     const vitte_ast_type_ref_t *type_ref
@@ -223,6 +245,8 @@ const char *vitte_type_kind_name(vitte_type_kind_t kind) {
             return "pick";
         case VITTE_TYPE_KIND_FORM:
             return "form";
+        case VITTE_TYPE_KIND_LIST:
+            return "list";
         default:
             return "unknown";
     }
@@ -302,6 +326,9 @@ bool vitte_type_equals(const vitte_type_t *left, const vitte_type_t *right) {
         }
         return true;
     }
+    if (left->kind == VITTE_TYPE_KIND_PICK || left->kind == VITTE_TYPE_KIND_FORM || left->kind == VITTE_TYPE_KIND_LIST) {
+        return left->name != NULL && right->name != NULL && strcmp(left->name, right->name) == 0;
+    }
     return false;
 }
 
@@ -310,6 +337,10 @@ bool vitte_type_is_assignable(const vitte_type_t *destination, const vitte_type_
         return false;
     }
     if (vitte_type_equals(destination, source)) {
+        return true;
+    }
+    if (destination->kind == VITTE_TYPE_KIND_LIST && source->kind == VITTE_TYPE_KIND_LIST &&
+        source->name != NULL && strstr(source->name, "[error]") != NULL) {
         return true;
     }
     if (vitte_type_is_integer(destination) && vitte_type_is_integer(source)) {
