@@ -8,6 +8,8 @@
 extern "C" {
 #endif
 
+#define VITTE_ERROR_DETAILS_CAPACITY ((size_t)4096u)
+
 typedef enum vitte_status {
     VITTE_STATUS_OK = 0,
     VITTE_STATUS_ERROR_INVALID_ARGUMENT,
@@ -25,6 +27,7 @@ typedef struct vitte_error {
     const char *code;
     const char *message;
     const char *details;
+    char details_storage[VITTE_ERROR_DETAILS_CAPACITY];
 } vitte_error_t;
 
 void vitte_error_init(vitte_error_t *error);

@@ -4,6 +4,31 @@
 
 static _Thread_local vitte_error_t g_vitte_last_error;
 
+static void vitte_error_copy_details_text(
+    vitte_error_t *error,
+    const char *details
+) {
+    size_t length;
+
+    if (error == NULL) {
+        return;
+    }
+    error->details = NULL;
+    error->details_storage[0] = '\0';
+    if (details == NULL || details[0] == '\0') {
+        return;
+    }
+    length = strlen(details);
+    if (length >= sizeof(error->details_storage)) {
+        length = sizeof(error->details_storage) - 1u;
+    }
+    if (length > 0u) {
+        (void)memcpy(error->details_storage, details, length);
+    }
+    error->details_storage[length] = '\0';
+    error->details = error->details_storage;
+}
+
 void vitte_error_init(vitte_error_t *error) {
     if (error == NULL) {
         return;
@@ -13,6 +38,7 @@ void vitte_error_init(vitte_error_t *error) {
     error->code = "VITTE_OK";
     error->message = "ok";
     error->details = NULL;
+    error->details_storage[0] = '\0';
 }
 
 void vitte_error_reset(vitte_error_t *error) {
@@ -50,7 +76,7 @@ void vitte_error_set_details(
     error->status = status;
     error->code = code != NULL ? code : vitte_status_name(status);
     error->message = message != NULL ? message : vitte_status_message(status);
-    error->details = details;
+    vitte_error_copy_details_text(error, details);
 
     vitte_error_set_last(error);
 }
@@ -68,7 +94,10 @@ void vitte_error_copy(
         return;
     }
 
-    *destination = *source;
+    destination->status = source->status;
+    destination->code = source->code;
+    destination->message = source->message;
+    vitte_error_copy_details_text(destination, source->details);
 }
 
 const char *vitte_status_name(vitte_status_t status) {
@@ -127,7 +156,7 @@ void vitte_error_set_last(const vitte_error_t *error) {
         return;
     }
 
-    g_vitte_last_error = *error;
+    vitte_error_copy(&g_vitte_last_error, error);
 }
 
 const vitte_error_t *vitte_error_last(void) {
