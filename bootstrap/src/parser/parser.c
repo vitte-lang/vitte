@@ -851,6 +851,17 @@ static vitte_ast_expr_t *vitte_parser_parse_call(vitte_parser_t *parser) {
         callee = call;
     }
 
+    while (parser->current.kind == VITTE_TOKEN_KW_AS) {
+        vitte_ast_span_t span = callee->span;
+        vitte_ast_type_ref_t *type;
+        (void)vitte_parser_advance(parser);
+        type = vitte_parser_parse_type_ref(parser);
+        if (type == NULL) return NULL;
+        span = vitte_parser_span_merge(&span, &type->span);
+        callee = vitte_ast_make_cast_expr(&parser->builder, callee, type, span);
+        if (callee == NULL) return NULL;
+    }
+
     return callee;
 }
 

@@ -224,6 +224,8 @@ const char *vitte_ast_node_kind_name(vitte_ast_node_kind_t kind) {
             return "record_expr";
         case VITTE_AST_NODE_RECORD_FIELD:
             return "record_field";
+        case VITTE_AST_NODE_CAST_EXPR:
+            return "cast_expr";
         case VITTE_AST_NODE_TYPE_NAME:
             return "type_name";
         case VITTE_AST_NODE_COUNT:
@@ -278,6 +280,8 @@ const char *vitte_ast_node_label(const vitte_ast_node_t *node) {
             return node->as.record_expr.type_name;
         case VITTE_AST_NODE_RECORD_FIELD:
             return node->as.record_field.name;
+        case VITTE_AST_NODE_CAST_EXPR:
+            return node->as.cast_expr.type != NULL ? node->as.cast_expr.type->as.type_name.name : NULL;
         case VITTE_AST_NODE_ERROR:
             return node->as.error_node.message;
         default:
@@ -736,6 +740,12 @@ vitte_ast_node_t *vitte_ast_make_record_field(vitte_ast_builder_t *builder, cons
     return node;
 }
 
+vitte_ast_expr_t *vitte_ast_make_cast_expr(vitte_ast_builder_t *builder, vitte_ast_expr_t *value, vitte_ast_type_ref_t *type, vitte_ast_span_t span) {
+    vitte_ast_node_t *node = builder != NULL ? vitte_ast_alloc_node(builder->ast, VITTE_AST_NODE_CAST_EXPR, span) : NULL;
+    if (node != NULL) { node->as.cast_expr.value = value; node->as.cast_expr.type = type; }
+    return node;
+}
+
 vitte_ast_type_ref_t *vitte_ast_make_type_name(vitte_ast_builder_t *builder, const char *name, vitte_ast_span_t span) {
     vitte_ast_node_t *node = builder != NULL ? vitte_ast_alloc_node(builder->ast, VITTE_AST_NODE_TYPE_NAME, span) : NULL;
     if (node != NULL) {
@@ -983,6 +993,14 @@ static vitte_status_t vitte_ast_validate_node(vitte_ast_t *ast, const vitte_ast_
                 return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
             }
             return vitte_ast_validate_node(ast, node->as.form_field.type, depth + 1u);
+        case VITTE_AST_NODE_CAST_EXPR:
+            if (node->as.cast_expr.value == NULL || node->as.cast_expr.type == NULL) {
+                vitte_ast_set_error(ast, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_AST_E_CAST", "cast expression requires value and type", NULL);
+                return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+            }
+            status = vitte_ast_validate_node(ast, node->as.cast_expr.value, depth + 1u);
+            if (status != VITTE_STATUS_OK) return status;
+            return vitte_ast_validate_node(ast, node->as.cast_expr.type, depth + 1u);
         case VITTE_AST_NODE_PICK_VARIANT:
             if (node->as.pick_variant.name == NULL || node->as.pick_variant.name[0] == '\0') {
                 vitte_ast_set_error(ast, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_AST_E_PICK", "pick variant requires a name", NULL);
@@ -1196,6 +1214,9 @@ static bool vitte_ast_visit_child(
             return vitte_ast_visit_children(&node->as.form_decl.fields, callback, user, depth + 1u, max_depth, count);
         case VITTE_AST_NODE_FORM_FIELD:
             return vitte_ast_visit_child(node->as.form_field.type, callback, user, depth + 1u, max_depth, count);
+        case VITTE_AST_NODE_CAST_EXPR:
+            return vitte_ast_visit_child(node->as.cast_expr.value, callback, user, depth + 1u, max_depth, count) &&
+                vitte_ast_visit_child(node->as.cast_expr.type, callback, user, depth + 1u, max_depth, count);
         case VITTE_AST_NODE_BLOCK_STMT:
             return vitte_ast_visit_children(&node->as.block_stmt.statements, callback, user, depth + 1u, max_depth, count);
         case VITTE_AST_NODE_GIVE_STMT:
