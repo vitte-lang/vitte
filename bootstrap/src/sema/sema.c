@@ -142,6 +142,21 @@ static vitte_status_t vitte_sema_predeclare_pick(
     return VITTE_STATUS_OK;
 }
 
+static vitte_status_t vitte_sema_predeclare_form(vitte_sema_t *sema, const vitte_ast_decl_t *decl) {
+    const vitte_type_t *form_type = vitte_type_register_form(&sema->types, decl->as.form_decl.name);
+    const vitte_ast_node_t *field;
+    if (form_type == NULL) {
+        return vitte_sema_fail(sema, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_SEMA_E_FORM", "failed to register form type", decl->as.form_decl.name, &decl->span);
+    }
+    (void)form_type;
+    for (field = decl->as.form_decl.fields.first; field != NULL; field = field->next) {
+        if (field->kind != VITTE_AST_NODE_FORM_FIELD || vitte_sema_resolve_type_ref(sema, field->as.form_field.type) == NULL) {
+            return vitte_sema_fail(sema, VITTE_STATUS_ERROR_PARSE, "VITTE_SEMA_E_FORM", "invalid form field type", decl->as.form_decl.name, &field->span);
+        }
+    }
+    return VITTE_STATUS_OK;
+}
+
 static char *vitte_sema_copy_text(vitte_sema_t *sema, const char *text, size_t length) {
     char *copy;
 
@@ -1504,6 +1519,10 @@ static vitte_status_t vitte_sema_predeclare_module(vitte_sema_t *sema, const vit
                 return pick_status;
             }
         }
+        if (decl->kind == VITTE_AST_NODE_FORM_DECL) {
+            vitte_status_t form_status = vitte_sema_predeclare_form(sema, decl);
+            if (form_status != VITTE_STATUS_OK) return form_status;
+        }
     }
 
     for (decl = module->as.module.declarations.first; decl != NULL; decl = decl->next) {
@@ -1513,7 +1532,7 @@ static vitte_status_t vitte_sema_predeclare_module(vitte_sema_t *sema, const vit
         size_t arity = 0u;
         vitte_status_t status;
 
-        if (decl->kind == VITTE_AST_NODE_PICK_DECL) {
+        if (decl->kind == VITTE_AST_NODE_PICK_DECL || decl->kind == VITTE_AST_NODE_FORM_DECL) {
             continue;
         } else if (decl->kind == VITTE_AST_NODE_PROC_DECL) {
             status = vitte_sema_collect_proc_signature(sema, decl, &type, parameter_types, &arity);
@@ -1575,6 +1594,9 @@ static vitte_status_t vitte_sema_analyze_decl(vitte_sema_t *sema, const vitte_as
     sema->stats.decl_count++;
     switch (decl->kind) {
         case VITTE_AST_NODE_PICK_DECL:
+            status = VITTE_STATUS_OK;
+            break;
+        case VITTE_AST_NODE_FORM_DECL:
             status = VITTE_STATUS_OK;
             break;
         case VITTE_AST_NODE_CONST_DECL: {

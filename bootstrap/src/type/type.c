@@ -137,6 +137,12 @@ const vitte_type_t *vitte_type_lookup(
             return &registry->pick_types[index];
         }
     }
+    for (index = 0u; index < registry->form_type_count; index++) {
+        if (strcmp(registry->form_types[index].name, name) == 0) {
+            vitte_error_reset(&registry->last_error);
+            return &registry->form_types[index];
+        }
+    }
     builtin = vitte_builtin_lookup_type(&registry->builtins, name);
     if (builtin == NULL) {
         vitte_error_copy(&registry->last_error, vitte_builtin_registry_last_error(&registry->builtins));
@@ -172,6 +178,28 @@ const vitte_type_t *vitte_type_register_pick(vitte_type_registry_t *registry, co
     return type;
 }
 
+const vitte_type_t *vitte_type_register_form(vitte_type_registry_t *registry, const char *name) {
+    vitte_type_t *type;
+    if (!vitte_type_registry_is_initialized(registry) || name == NULL || name[0] == '\0') {
+        vitte_type_registry_set_error(registry, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_TYPE_E_FORM", "invalid form type name", name);
+        return NULL;
+    }
+    type = (vitte_type_t *)vitte_type_lookup(registry, name);
+    if (type != NULL && type->kind == VITTE_TYPE_KIND_FORM) return type;
+    if (registry->form_type_count >= VITTE_TYPE_MAX_FORM_TYPES) {
+        vitte_type_registry_set_error(registry, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_TYPE_E_FORM", "form type registry is full", name);
+        return NULL;
+    }
+    type = &registry->form_types[registry->form_type_count++];
+    memset(type, 0, sizeof(*type));
+    type->kind = VITTE_TYPE_KIND_FORM;
+    type->name = name;
+    type->builtin_kind = VITTE_BUILTIN_TYPE_ERROR;
+    type->valid = true;
+    vitte_error_reset(&registry->last_error);
+    return type;
+}
+
 const vitte_type_t *vitte_type_from_ast(
     vitte_type_registry_t *registry,
     const vitte_ast_type_ref_t *type_ref
@@ -193,6 +221,8 @@ const char *vitte_type_kind_name(vitte_type_kind_t kind) {
             return "proc";
         case VITTE_TYPE_KIND_PICK:
             return "pick";
+        case VITTE_TYPE_KIND_FORM:
+            return "form";
         default:
             return "unknown";
     }
