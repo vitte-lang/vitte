@@ -187,6 +187,8 @@ const char *vitte_hir_kind_name(vitte_hir_kind_t kind) {
             return "expr_stmt";
         case VITTE_HIR_IF_STMT:
             return "if";
+        case VITTE_HIR_WHILE_STMT:
+            return "while";
         case VITTE_HIR_INTEGER_LITERAL:
             return "integer";
         case VITTE_HIR_STRING_LITERAL:
@@ -197,6 +199,8 @@ const char *vitte_hir_kind_name(vitte_hir_kind_t kind) {
             return "binary";
         case VITTE_HIR_CALL_EXPR:
             return "call";
+        case VITTE_HIR_IF_EXPR:
+            return "if_expr";
         case VITTE_HIR_TYPE_NAME:
             return "type";
         case VITTE_HIR_KIND_COUNT:
@@ -544,6 +548,22 @@ vitte_hir_expr_t *vitte_hir_make_call(vitte_hir_builder_t *builder, vitte_hir_ex
     return node;
 }
 
+vitte_hir_expr_t *vitte_hir_make_if_expr(vitte_hir_builder_t *builder, vitte_hir_expr_t *condition, vitte_hir_expr_t *then_value, vitte_hir_expr_t *else_value, const vitte_ast_node_t *source) {
+    vitte_hir_node_t *node = builder != NULL ? vitte_hir_alloc_node(builder->hir, VITTE_HIR_IF_EXPR, source) : NULL;
+    if (node != NULL) {
+        node->as.if_expr.condition = condition;
+        node->as.if_expr.then_value = then_value;
+        node->as.if_expr.else_value = else_value;
+    }
+    return node;
+}
+
+vitte_hir_stmt_t *vitte_hir_make_while(vitte_hir_builder_t *builder, vitte_hir_expr_t *condition, vitte_hir_stmt_t *body, const vitte_ast_node_t *source) {
+    vitte_hir_node_t *node = builder != NULL ? vitte_hir_alloc_node(builder->hir, VITTE_HIR_WHILE_STMT, source) : NULL;
+    if (node != NULL) { node->as.while_stmt.condition = condition; node->as.while_stmt.body = body; }
+    return node;
+}
+
 vitte_hir_type_t *vitte_hir_make_type_name(vitte_hir_builder_t *builder, const char *name, const vitte_ast_node_t *source) {
     vitte_hir_node_t *node = builder != NULL ? vitte_hir_alloc_node(builder->hir, VITTE_HIR_TYPE_NAME, source) : NULL;
     if (node != NULL) {
@@ -787,6 +807,13 @@ static vitte_hir_expr_t *vitte_hir_lower_expr(vitte_hir_lowering_t *lowering, co
             }
             return call;
         }
+        case VITTE_AST_NODE_IF_EXPR: {
+            vitte_hir_expr_t *condition = vitte_hir_lower_expr(lowering, node->as.if_expr.condition, depth + 1u);
+            vitte_hir_expr_t *then_value = vitte_hir_lower_expr(lowering, node->as.if_expr.then_value, depth + 1u);
+            vitte_hir_expr_t *else_value = vitte_hir_lower_expr(lowering, node->as.if_expr.else_value, depth + 1u);
+            if (condition == NULL || then_value == NULL || else_value == NULL) return NULL;
+            return vitte_hir_make_if_expr(&builder, condition, then_value, else_value, node);
+        }
         case VITTE_AST_NODE_ERROR:
             return vitte_hir_make_error(&builder, node->as.error_node.message, node);
         default:
@@ -870,6 +897,12 @@ static vitte_hir_stmt_t *vitte_hir_lower_stmt(vitte_hir_lowering_t *lowering, co
                 return NULL;
             }
             return vitte_hir_make_if(&builder, condition, then_branch, else_branch, node);
+        }
+        case VITTE_AST_NODE_WHILE_STMT: {
+            vitte_hir_expr_t *condition = vitte_hir_lower_expr(lowering, node->as.while_stmt.condition, depth + 1u);
+            vitte_hir_stmt_t *body = vitte_hir_lower_stmt(lowering, node->as.while_stmt.body, depth + 1u);
+            if (condition == NULL || body == NULL) return NULL;
+            return vitte_hir_make_while(&builder, condition, body, node);
         }
         case VITTE_AST_NODE_ERROR:
             return vitte_hir_make_error(&builder, node->as.error_node.message, node);
@@ -1278,6 +1311,16 @@ static vitte_status_t vitte_hir_validate_node(vitte_hir_t *hir, const vitte_hir_
                 return status;
             }
             return vitte_hir_validate_list(hir, &node->as.call_expr.arguments, depth, max_depth, visited);
+        case VITTE_HIR_IF_EXPR:
+            if (node->as.if_expr.condition == NULL || node->as.if_expr.then_value == NULL || node->as.if_expr.else_value == NULL) {
+                vitte_hir_set_error(hir, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_HIR_E_IF_EXPR", "HIR conditional expression is incomplete", NULL);
+                return VITTE_STATUS_ERROR_INVALID_STATE;
+            }
+            status = vitte_hir_validate_node(hir, node->as.if_expr.condition, depth + 1u, max_depth, visited);
+            if (status != VITTE_STATUS_OK) return status;
+            status = vitte_hir_validate_node(hir, node->as.if_expr.then_value, depth + 1u, max_depth, visited);
+            if (status != VITTE_STATUS_OK) return status;
+            return vitte_hir_validate_node(hir, node->as.if_expr.else_value, depth + 1u, max_depth, visited);
         case VITTE_HIR_TYPE_NAME:
             if (node->as.type_name.name == NULL) {
                 vitte_hir_set_error(hir, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_HIR_E_TYPE", "HIR type name requires name", NULL);
@@ -1390,6 +1433,11 @@ static size_t vitte_hir_visit_node(vitte_hir_node_t *node, vitte_hir_visit_fn ca
                 count += vitte_hir_visit_node(child, callback, user, depth + 1u, max_depth);
             }
             break;
+        case VITTE_HIR_IF_EXPR:
+            count += vitte_hir_visit_node(node->as.if_expr.condition, callback, user, depth + 1u, max_depth);
+            count += vitte_hir_visit_node(node->as.if_expr.then_value, callback, user, depth + 1u, max_depth);
+            count += vitte_hir_visit_node(node->as.if_expr.else_value, callback, user, depth + 1u, max_depth);
+            break;
         default:
             break;
     }
@@ -1468,6 +1516,11 @@ static void vitte_hir_dump_node(const vitte_hir_node_t *node, FILE *stream, size
             for (child = node->as.call_expr.arguments.first; child != NULL; child = child->next) {
                 vitte_hir_dump_node(child, stream, depth + 1u, max_depth);
             }
+            break;
+        case VITTE_HIR_IF_EXPR:
+            vitte_hir_dump_node(node->as.if_expr.condition, stream, depth + 1u, max_depth);
+            vitte_hir_dump_node(node->as.if_expr.then_value, stream, depth + 1u, max_depth);
+            vitte_hir_dump_node(node->as.if_expr.else_value, stream, depth + 1u, max_depth);
             break;
         default:
             break;

@@ -146,7 +146,8 @@ static bool vitte_parser_is_stmt_start(vitte_token_kind_t kind) {
         kind == VITTE_TOKEN_KW_GIVE ||
         kind == VITTE_TOKEN_KW_LET ||
         kind == VITTE_TOKEN_KW_SET ||
-        kind == VITTE_TOKEN_KW_IF;
+        kind == VITTE_TOKEN_KW_IF ||
+        kind == VITTE_TOKEN_KW_WHILE;
 }
 
 static void *vitte_parser_arena_alloc(vitte_parser_t *parser, size_t size) {
@@ -664,6 +665,27 @@ static vitte_ast_expr_t *vitte_parser_parse_primary(vitte_parser_t *parser) {
     token = parser->current;
     span = vitte_parser_span_from_token(&token);
     switch (token.kind) {
+        case VITTE_TOKEN_KW_IF: {
+            vitte_ast_expr_t *condition;
+            vitte_ast_expr_t *then_value;
+            vitte_ast_expr_t *else_value;
+            vitte_ast_span_t close_span;
+
+            (void)vitte_parser_advance(parser);
+            parser->suppress_record_literals = true;
+            condition = vitte_parser_parse_expr_impl(parser);
+            parser->suppress_record_literals = false;
+            if (condition == NULL || !vitte_parser_expect(parser, VITTE_TOKEN_LBRACE, "VITTE_PARSER_E_IF_EXPR", "expected '{' after conditional expression")) return NULL;
+            then_value = vitte_parser_parse_expr_impl(parser);
+            if (then_value == NULL || !vitte_parser_expect(parser, VITTE_TOKEN_RBRACE, "VITTE_PARSER_E_IF_EXPR", "expected '}' after conditional expression branch")) return NULL;
+            if (!vitte_parser_expect(parser, VITTE_TOKEN_KW_ELSE, "VITTE_PARSER_E_IF_EXPR", "expected 'else' in conditional expression") ||
+                !vitte_parser_expect(parser, VITTE_TOKEN_LBRACE, "VITTE_PARSER_E_IF_EXPR", "expected '{' after 'else'")) return NULL;
+            else_value = vitte_parser_parse_expr_impl(parser);
+            if (else_value == NULL || !vitte_parser_expect(parser, VITTE_TOKEN_RBRACE, "VITTE_PARSER_E_IF_EXPR", "expected '}' after else branch")) return NULL;
+            close_span = vitte_parser_span_from_token(&parser->previous);
+            expr = vitte_ast_make_if_expr(&parser->builder, condition, then_value, else_value, vitte_parser_span_merge(&span, &close_span));
+            break;
+        }
         case VITTE_TOKEN_LBRACKET: {
             vitte_ast_expr_t *list;
             vitte_ast_span_t close_span;
@@ -1316,6 +1338,21 @@ static vitte_ast_stmt_t *vitte_parser_parse_let(vitte_parser_t *parser) {
 
 static vitte_ast_stmt_t *vitte_parser_parse_if(vitte_parser_t *parser);
 
+static vitte_ast_stmt_t *vitte_parser_parse_while(vitte_parser_t *parser) {
+    vitte_ast_span_t span = vitte_parser_span_from_token(&parser->current);
+    vitte_ast_expr_t *condition;
+    vitte_ast_stmt_t *body;
+    (void)vitte_parser_advance(parser);
+    parser->suppress_record_literals = true;
+    condition = vitte_parser_parse_expr(parser);
+    parser->suppress_record_literals = false;
+    if (condition == NULL) return NULL;
+    body = vitte_parser_parse_stmt(parser);
+    if (body == NULL) return NULL;
+    span = vitte_parser_span_merge(&span, &body->span);
+    return vitte_ast_make_while_stmt(&parser->builder, condition, body, span);
+}
+
 static vitte_ast_stmt_t *vitte_parser_parse_if_tail(vitte_parser_t *parser, vitte_ast_span_t keyword_span) {
     vitte_ast_expr_t *condition;
     vitte_ast_stmt_t *then_branch;
@@ -1460,6 +1497,8 @@ static vitte_ast_stmt_t *vitte_parser_parse_stmt_impl(vitte_parser_t *parser) {
             return vitte_parser_parse_set(parser);
         case VITTE_TOKEN_KW_IF:
             return vitte_parser_parse_if(parser);
+        case VITTE_TOKEN_KW_WHILE:
+            return vitte_parser_parse_while(parser);
         default:
             return vitte_parser_parse_expr_stmt(parser);
     }

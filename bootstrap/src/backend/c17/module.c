@@ -565,6 +565,24 @@ static vitte_status_t vitte_c17_emit_ir_instruction(
                 return status;
             }
             return vitte_c17_emit_statement_line_end(writer);
+        case VITTE_IR_OP_SELECT:
+            status = vitte_c17_emit_ir_value_ref(module, writer, instruction->result);
+            if (status != VITTE_STATUS_OK) return status;
+            status = vitte_c17_write_string(writer, " = (");
+            if (status != VITTE_STATUS_OK) return status;
+            status = vitte_c17_emit_ir_value_ref(module, writer, instruction->operands[0]);
+            if (status != VITTE_STATUS_OK) return status;
+            status = vitte_c17_write_string(writer, " ? ");
+            if (status != VITTE_STATUS_OK) return status;
+            status = vitte_c17_emit_ir_value_ref(module, writer, instruction->operands[1]);
+            if (status != VITTE_STATUS_OK) return status;
+            status = vitte_c17_write_string(writer, " : ");
+            if (status != VITTE_STATUS_OK) return status;
+            status = vitte_c17_emit_ir_value_ref(module, writer, instruction->operands[2]);
+            if (status != VITTE_STATUS_OK) return status;
+            status = vitte_c17_write_string(writer, ")");
+            if (status != VITTE_STATUS_OK) return status;
+            return vitte_c17_emit_statement_line_end(writer);
         case VITTE_IR_OP_CALL:
             return vitte_c17_emit_ir_call(module, writer, instruction);
         case VITTE_IR_OP_RETURN:

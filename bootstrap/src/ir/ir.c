@@ -419,6 +419,8 @@ const char *vitte_ir_opcode_name(vitte_ir_opcode_t opcode) {
             return "cast";
         case VITTE_IR_OP_BINARY:
             return "binary";
+        case VITTE_IR_OP_SELECT:
+            return "select";
         case VITTE_IR_OP_CALL:
             return "call";
         case VITTE_IR_OP_RETURN:
@@ -918,6 +920,21 @@ vitte_ir_value_t *vitte_ir_emit_binary(vitte_ir_builder_t *builder, const char *
     return result;
 }
 
+vitte_ir_value_t *vitte_ir_emit_select(vitte_ir_builder_t *builder, vitte_ir_value_t *condition, vitte_ir_value_t *then_value, vitte_ir_value_t *else_value, const vitte_hir_node_t *source) {
+    vitte_ir_instruction_t *instruction = vitte_ir_emit_instruction(builder, VITTE_IR_OP_SELECT, then_value != NULL ? then_value->type : NULL, source);
+    vitte_ir_value_t *result;
+    if (instruction == NULL || condition == NULL || then_value == NULL || else_value == NULL) return NULL;
+    result = vitte_ir_make_value(builder->ir, VITTE_IR_VALUE_INSTRUCTION, then_value->type, NULL);
+    if (result == NULL) return NULL;
+    result->definition = instruction;
+    instruction->operands[0] = condition;
+    instruction->operands[1] = then_value;
+    instruction->operands[2] = else_value;
+    instruction->operand_count = 3u;
+    instruction->result = result;
+    return result;
+}
+
 vitte_ir_value_t *vitte_ir_emit_call(vitte_ir_builder_t *builder, vitte_ir_value_t *callee, vitte_ir_value_t *const *arguments, size_t argument_count, vitte_ir_type_t *return_type, const vitte_hir_node_t *source) {
     vitte_ir_instruction_t *instruction;
     vitte_ir_value_t *result;
@@ -1235,6 +1252,13 @@ static vitte_ir_value_t *vitte_ir_lower_expr(vitte_ir_lowering_t *lowering, cons
             }
             return result;
         }
+        case VITTE_HIR_IF_EXPR: {
+            vitte_ir_value_t *condition = vitte_ir_lower_expr(lowering, node->as.if_expr.condition, depth + 1u);
+            vitte_ir_value_t *then_value = vitte_ir_lower_expr(lowering, node->as.if_expr.then_value, depth + 1u);
+            vitte_ir_value_t *else_value = vitte_ir_lower_expr(lowering, node->as.if_expr.else_value, depth + 1u);
+            if (condition == NULL || then_value == NULL || else_value == NULL) return NULL;
+            return vitte_ir_emit_select(&lowering->builder, condition, then_value, else_value, node);
+        }
         case VITTE_HIR_CALL_EXPR: {
             vitte_ir_value_t *callee = vitte_ir_lower_expr(lowering, node->as.call_expr.callee, depth + 1u);
             vitte_ir_value_t *args[VITTE_IR_MAX_OPERANDS - 1u];
@@ -1509,6 +1533,28 @@ static vitte_status_t vitte_ir_lower_stmt(vitte_ir_lowering_t *lowering, const v
                 return VITTE_STATUS_ERROR_INVALID_STATE;
             }
             vitte_ir_builder_position_at_end(&lowering->builder, function, merge_block);
+            return VITTE_STATUS_OK;
+        }
+        case VITTE_HIR_WHILE_STMT: {
+            vitte_ir_function_t *function = lowering->builder.function;
+            vitte_ir_block_t *condition_block;
+            vitte_ir_block_t *body_block;
+            vitte_ir_block_t *end_block;
+            vitte_ir_value_t *condition;
+            if (function == NULL || lowering->builder.block == NULL) return VITTE_STATUS_ERROR_INVALID_STATE;
+            condition_block = vitte_ir_make_block(&lowering->builder, "while.cond", node);
+            body_block = vitte_ir_make_block(&lowering->builder, "while.body", node->as.while_stmt.body);
+            end_block = vitte_ir_make_block(&lowering->builder, "while.end", node);
+            if (condition_block == NULL || body_block == NULL || end_block == NULL ||
+                !vitte_ir_function_add_block(function, condition_block) || !vitte_ir_function_add_block(function, body_block) ||
+                !vitte_ir_function_add_block(function, end_block) || vitte_ir_emit_branch(&lowering->builder, condition_block, node) == NULL) return VITTE_STATUS_ERROR_INVALID_STATE;
+            vitte_ir_builder_position_at_end(&lowering->builder, function, condition_block);
+            condition = vitte_ir_lower_expr(lowering, node->as.while_stmt.condition, depth + 1u);
+            if (condition == NULL || vitte_ir_emit_cond_branch(&lowering->builder, condition, body_block, end_block, node) == NULL) return VITTE_STATUS_ERROR_INVALID_STATE;
+            vitte_ir_builder_position_at_end(&lowering->builder, function, body_block);
+            if (vitte_ir_lower_stmt(lowering, node->as.while_stmt.body, depth + 1u) != VITTE_STATUS_OK) return lowering->last_error.status;
+            if (!body_block->terminated && vitte_ir_emit_branch(&lowering->builder, condition_block, node) == NULL) return VITTE_STATUS_ERROR_INVALID_STATE;
+            vitte_ir_builder_position_at_end(&lowering->builder, function, end_block);
             return VITTE_STATUS_OK;
         }
         case VITTE_HIR_ERROR:
@@ -1982,6 +2028,15 @@ static vitte_status_t vitte_ir_validate_instruction(vitte_ir_t *ir, const vitte_
         case VITTE_IR_OP_CALL:
             expected_min = 1u;
             if (vitte_ir_validate_call_signature(ir, instruction) != VITTE_STATUS_OK) {
+                return VITTE_STATUS_ERROR_INVALID_STATE;
+            }
+            break;
+        case VITTE_IR_OP_SELECT:
+            expected_exact = 3u;
+            if (instruction->result == NULL || instruction->operand_count != 3u || instruction->operands[0]->type == NULL || instruction->operands[0]->type->kind != VITTE_IR_TYPE_BOOL ||
+                instruction->operands[1]->type == NULL || instruction->operands[2]->type == NULL || !vitte_ir_type_equals(instruction->operands[1]->type, instruction->operands[2]->type) ||
+                !vitte_ir_type_equals(instruction->result->type, instruction->operands[1]->type)) {
+                vitte_ir_set_error(ir, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_IR_E_SELECT", "IR select requires bool condition and matching branch types", NULL);
                 return VITTE_STATUS_ERROR_INVALID_STATE;
             }
             break;

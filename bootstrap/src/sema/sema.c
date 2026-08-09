@@ -1270,6 +1270,20 @@ static const vitte_type_t *vitte_sema_analyze_expr(
             vitte_sema_leave(sema);
             return result;
         }
+        case VITTE_AST_NODE_IF_EXPR: {
+            const vitte_type_t *condition_type = vitte_sema_analyze_expr(sema, expr->as.if_expr.condition);
+            const vitte_type_t *then_type = vitte_sema_analyze_expr(sema, expr->as.if_expr.then_value);
+            const vitte_type_t *else_type = vitte_sema_analyze_expr(sema, expr->as.if_expr.else_value);
+            if (!vitte_type_is_builtin(condition_type) || condition_type->builtin_kind != VITTE_BUILTIN_TYPE_BOOL ||
+                !vitte_type_is_assignable(then_type, else_type) || !vitte_type_is_assignable(else_type, then_type)) {
+                (void)vitte_sema_fail(sema, VITTE_STATUS_ERROR_PARSE, "VITTE_SEMA_E_IF_EXPR", "conditional expression branches must have one common type and a boolean condition", NULL, &expr->span);
+                vitte_sema_leave(sema);
+                return vitte_sema_error_type(sema);
+            }
+            sema->stats.expr_count++;
+            vitte_sema_leave(sema);
+            return then_type;
+        }
         case VITTE_AST_NODE_BINARY_EXPR:
             left = vitte_sema_analyze_expr(sema, expr->as.binary_expr.left);
             right = vitte_sema_analyze_expr(sema, expr->as.binary_expr.right);
@@ -1532,6 +1546,14 @@ static vitte_status_t vitte_sema_analyze_stmt(
             if (status == VITTE_STATUS_OK && stmt->as.if_stmt.else_branch != NULL) {
                 status = vitte_sema_analyze_stmt(sema, stmt->as.if_stmt.else_branch, true);
             }
+            break;
+        case VITTE_AST_NODE_WHILE_STMT:
+            type = vitte_sema_analyze_expr(sema, stmt->as.while_stmt.condition);
+            if (!vitte_type_is_condition(type)) {
+                status = vitte_sema_fail(sema, VITTE_STATUS_ERROR_PARSE, "VITTE_SEMA_E_CONDITION", "while condition must be bool or integer", vitte_type_name(type), &stmt->as.while_stmt.condition->span);
+                break;
+            }
+            status = vitte_sema_analyze_stmt(sema, stmt->as.while_stmt.body, true);
             break;
         default:
             status = vitte_sema_fail(sema, VITTE_STATUS_ERROR_UNSUPPORTED, "VITTE_SEMA_E_STMT", "unsupported statement node in semantic analysis", vitte_ast_node_kind_name(stmt->kind), &stmt->span);

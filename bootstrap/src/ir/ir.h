@@ -53,6 +53,7 @@ typedef enum vitte_ir_opcode {
     VITTE_IR_OP_LOAD,
     VITTE_IR_OP_CAST,
     VITTE_IR_OP_BINARY,
+    VITTE_IR_OP_SELECT,
     VITTE_IR_OP_CALL,
     VITTE_IR_OP_RETURN,
     VITTE_IR_OP_BRANCH,
@@ -274,6 +275,7 @@ vitte_ir_instruction_t *vitte_ir_emit_store(vitte_ir_builder_t *builder, vitte_i
 vitte_ir_value_t *vitte_ir_emit_load(vitte_ir_builder_t *builder, vitte_ir_value_t *local, const vitte_hir_node_t *source);
 vitte_ir_value_t *vitte_ir_emit_cast(vitte_ir_builder_t *builder, vitte_ir_value_t *value, vitte_ir_type_t *target_type, const vitte_hir_node_t *source);
 vitte_ir_value_t *vitte_ir_emit_binary(vitte_ir_builder_t *builder, const char *operator_text, vitte_ir_value_t *left, vitte_ir_value_t *right, const vitte_hir_node_t *source);
+vitte_ir_value_t *vitte_ir_emit_select(vitte_ir_builder_t *builder, vitte_ir_value_t *condition, vitte_ir_value_t *then_value, vitte_ir_value_t *else_value, const vitte_hir_node_t *source);
 vitte_ir_value_t *vitte_ir_emit_call(vitte_ir_builder_t *builder, vitte_ir_value_t *callee, vitte_ir_value_t *const *arguments, size_t argument_count, vitte_ir_type_t *return_type, const vitte_hir_node_t *source);
 vitte_ir_instruction_t *vitte_ir_emit_return(vitte_ir_builder_t *builder, vitte_ir_value_t *value, const vitte_hir_node_t *source);
 vitte_ir_instruction_t *vitte_ir_emit_branch(vitte_ir_builder_t *builder, vitte_ir_block_t *target, const vitte_hir_node_t *source);

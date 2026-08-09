@@ -208,6 +208,8 @@ const char *vitte_ast_node_kind_name(vitte_ast_node_kind_t kind) {
             return "expr_stmt";
         case VITTE_AST_NODE_IF_STMT:
             return "if_stmt";
+        case VITTE_AST_NODE_WHILE_STMT:
+            return "while_stmt";
         case VITTE_AST_NODE_INTEGER_LITERAL:
             return "integer_literal";
         case VITTE_AST_NODE_STRING_LITERAL:
@@ -228,6 +230,8 @@ const char *vitte_ast_node_kind_name(vitte_ast_node_kind_t kind) {
             return "cast_expr";
         case VITTE_AST_NODE_INDEX_EXPR:
             return "index_expr";
+        case VITTE_AST_NODE_IF_EXPR:
+            return "if_expr";
         case VITTE_AST_NODE_TYPE_NAME:
             return "type_name";
         case VITTE_AST_NODE_COUNT:
@@ -286,6 +290,8 @@ const char *vitte_ast_node_label(const vitte_ast_node_t *node) {
             return node->as.cast_expr.type != NULL ? node->as.cast_expr.type->as.type_name.name : NULL;
         case VITTE_AST_NODE_INDEX_EXPR:
             return "[]";
+        case VITTE_AST_NODE_IF_EXPR:
+            return "if";
         case VITTE_AST_NODE_ERROR:
             return node->as.error_node.message;
         default:
@@ -756,6 +762,22 @@ vitte_ast_expr_t *vitte_ast_make_index_expr(vitte_ast_builder_t *builder, vitte_
     return node;
 }
 
+vitte_ast_expr_t *vitte_ast_make_if_expr(vitte_ast_builder_t *builder, vitte_ast_expr_t *condition, vitte_ast_expr_t *then_value, vitte_ast_expr_t *else_value, vitte_ast_span_t span) {
+    vitte_ast_node_t *node = builder != NULL ? vitte_ast_alloc_node(builder->ast, VITTE_AST_NODE_IF_EXPR, span) : NULL;
+    if (node != NULL) {
+        node->as.if_expr.condition = condition;
+        node->as.if_expr.then_value = then_value;
+        node->as.if_expr.else_value = else_value;
+    }
+    return node;
+}
+
+vitte_ast_stmt_t *vitte_ast_make_while_stmt(vitte_ast_builder_t *builder, vitte_ast_expr_t *condition, vitte_ast_stmt_t *body, vitte_ast_span_t span) {
+    vitte_ast_node_t *node = builder != NULL ? vitte_ast_alloc_node(builder->ast, VITTE_AST_NODE_WHILE_STMT, span) : NULL;
+    if (node != NULL) { node->as.while_stmt.condition = condition; node->as.while_stmt.body = body; }
+    return node;
+}
+
 vitte_ast_type_ref_t *vitte_ast_make_type_name(vitte_ast_builder_t *builder, const char *name, vitte_ast_span_t span) {
     vitte_ast_node_t *node = builder != NULL ? vitte_ast_alloc_node(builder->ast, VITTE_AST_NODE_TYPE_NAME, span) : NULL;
     if (node != NULL) {
@@ -1019,6 +1041,21 @@ static vitte_status_t vitte_ast_validate_node(vitte_ast_t *ast, const vitte_ast_
             status = vitte_ast_validate_node(ast, node->as.index_expr.base, depth + 1u);
             if (status != VITTE_STATUS_OK) return status;
             return vitte_ast_validate_node(ast, node->as.index_expr.index, depth + 1u);
+        case VITTE_AST_NODE_IF_EXPR:
+            if (node->as.if_expr.condition == NULL || node->as.if_expr.then_value == NULL || node->as.if_expr.else_value == NULL) {
+                vitte_ast_set_error(ast, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_AST_E_IF_EXPR", "conditional expression requires three operands", NULL);
+                return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+            }
+            status = vitte_ast_validate_node(ast, node->as.if_expr.condition, depth + 1u);
+            if (status != VITTE_STATUS_OK) return status;
+            status = vitte_ast_validate_node(ast, node->as.if_expr.then_value, depth + 1u);
+            if (status != VITTE_STATUS_OK) return status;
+            return vitte_ast_validate_node(ast, node->as.if_expr.else_value, depth + 1u);
+        case VITTE_AST_NODE_WHILE_STMT:
+            if (node->as.while_stmt.condition == NULL || node->as.while_stmt.body == NULL) return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+            status = vitte_ast_validate_node(ast, node->as.while_stmt.condition, depth + 1u);
+            if (status != VITTE_STATUS_OK) return status;
+            return vitte_ast_validate_node(ast, node->as.while_stmt.body, depth + 1u);
         case VITTE_AST_NODE_PICK_VARIANT:
             if (node->as.pick_variant.name == NULL || node->as.pick_variant.name[0] == '\0') {
                 vitte_ast_set_error(ast, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_AST_E_PICK", "pick variant requires a name", NULL);
@@ -1238,6 +1275,10 @@ static bool vitte_ast_visit_child(
         case VITTE_AST_NODE_INDEX_EXPR:
             return vitte_ast_visit_child(node->as.index_expr.base, callback, user, depth + 1u, max_depth, count) &&
                 vitte_ast_visit_child(node->as.index_expr.index, callback, user, depth + 1u, max_depth, count);
+        case VITTE_AST_NODE_IF_EXPR:
+            return vitte_ast_visit_child(node->as.if_expr.condition, callback, user, depth + 1u, max_depth, count) &&
+                vitte_ast_visit_child(node->as.if_expr.then_value, callback, user, depth + 1u, max_depth, count) &&
+                vitte_ast_visit_child(node->as.if_expr.else_value, callback, user, depth + 1u, max_depth, count);
         case VITTE_AST_NODE_BLOCK_STMT:
             return vitte_ast_visit_children(&node->as.block_stmt.statements, callback, user, depth + 1u, max_depth, count);
         case VITTE_AST_NODE_GIVE_STMT:
@@ -1254,6 +1295,9 @@ static bool vitte_ast_visit_child(
             return vitte_ast_visit_child(node->as.if_stmt.condition, callback, user, depth + 1u, max_depth, count) &&
                 vitte_ast_visit_child(node->as.if_stmt.then_branch, callback, user, depth + 1u, max_depth, count) &&
                 vitte_ast_visit_child(node->as.if_stmt.else_branch, callback, user, depth + 1u, max_depth, count);
+        case VITTE_AST_NODE_WHILE_STMT:
+            return vitte_ast_visit_child(node->as.while_stmt.condition, callback, user, depth + 1u, max_depth, count) &&
+                vitte_ast_visit_child(node->as.while_stmt.body, callback, user, depth + 1u, max_depth, count);
         case VITTE_AST_NODE_BINARY_EXPR:
             return vitte_ast_visit_child(node->as.binary_expr.left, callback, user, depth + 1u, max_depth, count) &&
                 vitte_ast_visit_child(node->as.binary_expr.right, callback, user, depth + 1u, max_depth, count);
