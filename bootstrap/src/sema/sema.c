@@ -1477,11 +1477,18 @@ static vitte_status_t vitte_sema_analyze_stmt(
             type = vitte_sema_resolve_type_ref(sema, stmt->as.let_stmt.type);
             if (stmt->as.let_stmt.value != NULL) {
                 const vitte_type_t *value_type = vitte_sema_analyze_expr(sema, stmt->as.let_stmt.value);
+                if (stmt->as.let_stmt.type == NULL) {
+                    type = value_type;
+                }
                 if (!vitte_type_is_error(value_type) &&
-                    !vitte_type_is_assignable(type, value_type)) {
+                    (type == NULL || !vitte_type_is_assignable(type, value_type))) {
                     status = vitte_sema_fail(sema, VITTE_STATUS_ERROR_PARSE, "VITTE_SEMA_E_ASSIGN", "initializer type mismatch", stmt->as.let_stmt.name, &stmt->as.let_stmt.value->span);
                     break;
                 }
+            }
+            if (type == NULL) {
+                status = vitte_sema_fail(sema, VITTE_STATUS_ERROR_PARSE, "VITTE_SEMA_E_LET", "let binding requires an initializer or an explicit type", stmt->as.let_stmt.name, &stmt->span);
+                break;
             }
             status = vitte_sema_define_local(sema, stmt->as.let_stmt.name, type, stmt, stmt->as.let_stmt.mutable_value);
             break;

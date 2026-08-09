@@ -1284,16 +1284,6 @@ static vitte_ast_stmt_t *vitte_parser_parse_let(vitte_parser_t *parser) {
         if (type == NULL) {
             return NULL;
         }
-    } else {
-        (void)vitte_parser_fail(
-            parser,
-            VITTE_STATUS_ERROR_PARSE,
-            "VITTE_PARSER_E_LET",
-            "bootstrap let statement requires an explicit type",
-            name,
-            &keyword_span
-        );
-        return NULL;
     }
 
     if (vitte_parser_match(parser, VITTE_TOKEN_EQUAL)) {
