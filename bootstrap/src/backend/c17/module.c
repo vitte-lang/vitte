@@ -688,15 +688,13 @@ static vitte_status_t vitte_c17_emit_ir_function_declarations(
     return VITTE_STATUS_OK;
 }
 
-static vitte_status_t vitte_c17_emit_ir_function(
+static vitte_status_t vitte_c17_emit_ir_function_signature(
     vitte_c17_module_t *module,
     vitte_c17_writer_t *writer,
     const vitte_ir_function_t *function
 ) {
-    const vitte_ir_block_t *block;
     const vitte_ir_value_t *parameter;
     char function_name[128];
-    char entry_label[128];
     vitte_status_t status;
 
     if (function == NULL) {
@@ -751,7 +749,36 @@ static vitte_status_t vitte_c17_emit_ir_function(
             }
         }
     }
-    status = vitte_c17_write_string(writer, ") ");
+    return vitte_c17_write_char(writer, ')');
+}
+
+static vitte_status_t vitte_c17_emit_ir_function_prototype(
+    vitte_c17_module_t *module,
+    vitte_c17_writer_t *writer,
+    const vitte_ir_function_t *function
+) {
+    vitte_status_t status = vitte_c17_emit_ir_function_signature(module, writer, function);
+    if (status != VITTE_STATUS_OK) {
+        return status;
+    }
+    module->unit->declaration_count++;
+    return vitte_c17_emit_statement_line_end(writer);
+}
+
+static vitte_status_t vitte_c17_emit_ir_function_body(
+    vitte_c17_module_t *module,
+    vitte_c17_writer_t *writer,
+    const vitte_ir_function_t *function
+) {
+    const vitte_ir_block_t *block;
+    char entry_label[128];
+    vitte_status_t status;
+
+    status = vitte_c17_emit_ir_function_signature(module, writer, function);
+    if (status != VITTE_STATUS_OK) {
+        return status;
+    }
+    status = vitte_c17_write_char(writer, ' ');
     if (status != VITTE_STATUS_OK) {
         return status;
     }
@@ -840,7 +867,7 @@ static vitte_status_t vitte_c17_emit_ir_global(
     if (vitte_c17_make_symbol_name(module, "vitte_global_", global->name, 0u, name, sizeof(name)) != VITTE_STATUS_OK) {
         return module->last_error.status;
     }
-    status = vitte_c17_write_string(writer, "static const ");
+    status = vitte_c17_write_string(writer, "const ");
     if (status != VITTE_STATUS_OK) {
         return status;
     }
@@ -894,7 +921,19 @@ static vitte_status_t vitte_c17_module_emit_ir(vitte_c17_module_t *module, vitte
         }
     }
     for (function = module->ir_module->first_function; function != NULL; function = function->next) {
-        status = vitte_c17_emit_ir_function(module, writer, function);
+        status = vitte_c17_emit_ir_function_prototype(module, writer, function);
+        if (status != VITTE_STATUS_OK) {
+            return status;
+        }
+    }
+    if (module->ir_module->first_function != NULL) {
+        status = vitte_c17_write_newline(writer);
+        if (status != VITTE_STATUS_OK) {
+            return status;
+        }
+    }
+    for (function = module->ir_module->first_function; function != NULL; function = function->next) {
+        status = vitte_c17_emit_ir_function_body(module, writer, function);
         if (status != VITTE_STATUS_OK) {
             return status;
         }

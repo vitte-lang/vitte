@@ -7,7 +7,7 @@ SOURCES := $(shell find src -type f -name '*.c' | sort)
 HEADERS := $(shell find . -type f -name '*.h' | sort)
 CHECKED_FILES := $(shell find . -type f \( -name '*.c' -o -name '*.h' -o -name 'Makefile' -o -name 'CMakeLists.txt' -o -name 'README.md' \) | sort)
 
-.PHONY: all clean smoke install verify
+.PHONY: all clean corpus smoke install verify
 
 all: verify $(BIN)
 
@@ -148,6 +148,40 @@ smoke: verify $(BIN)
 	@"$(OUT_DIR)/logical_ok"
 	@"$(BIN)" build "$(ROOT_DIR)/bootstrap/tests/grammar_alignment/let_mut_ok.vit" -o "$(OUT_DIR)/let_mut_ok"
 	@"$(OUT_DIR)/let_mut_ok"
+
+corpus: verify $(BIN)
+	@mkdir -p "$(OUT_DIR)/corpus"
+	@"$(BIN)" check "$(ROOT_DIR)/examples/hello.vit"
+	@"$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/frontend_expr_stmt/expr_stmt_ok.vit"
+	@"$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/import_export_coverage/multi_decl_main.vit"
+	@"$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/import_export_coverage/module_alias_rich_main.vit"
+	@"$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/import_export_coverage/coverage_chain_main.vit"
+	@"$(BIN)" emit-c "$(ROOT_DIR)/examples/hello.vit" -o "$(OUT_DIR)/corpus/hello.c"
+	@"$(BIN)" emit-c "$(ROOT_DIR)/bootstrap/tests/import_export_coverage/multi_decl_main.vit" -o "$(OUT_DIR)/corpus/multi_decl_main.c"
+	@"$(BIN)" emit-c "$(ROOT_DIR)/bootstrap/tests/import_export_coverage/module_alias_rich_main.vit" -o "$(OUT_DIR)/corpus/module_alias_rich_main.c"
+	@"$(BIN)" emit-c "$(ROOT_DIR)/bootstrap/tests/import_export_coverage/coverage_chain_main.vit" -o "$(OUT_DIR)/corpus/coverage_chain_main.c"
+	@"$(BIN)" build "$(ROOT_DIR)/examples/hello.vit" -o "$(OUT_DIR)/corpus/hello"
+	@"$(BIN)" build "$(ROOT_DIR)/bootstrap/tests/import_export_coverage/multi_decl_main.vit" -o "$(OUT_DIR)/corpus/multi_decl_main"
+	@"$(BIN)" build "$(ROOT_DIR)/bootstrap/tests/import_export_coverage/module_alias_rich_main.vit" -o "$(OUT_DIR)/corpus/module_alias_rich_main"
+	@"$(BIN)" build "$(ROOT_DIR)/bootstrap/tests/import_export_coverage/coverage_chain_main.vit" -o "$(OUT_DIR)/corpus/coverage_chain_main"
+	@tmp="$$(mktemp)"; \
+	if "$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/import_collision/glob_conflict_main.vit" >"$$tmp" 2>&1; then \
+		cat "$$tmp"; rm -f "$$tmp"; exit 1; \
+	fi; \
+	grep -q "VITTE_SEMA_E_IMPORT_CONFLICT" "$$tmp" || { cat "$$tmp"; rm -f "$$tmp"; exit 1; }; \
+	rm -f "$$tmp"
+	@tmp="$$(mktemp)"; \
+	if "$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/import_export_coverage/module_path_unsupported.vit" >"$$tmp" 2>&1; then \
+		cat "$$tmp"; rm -f "$$tmp"; exit 1; \
+	fi; \
+	grep -q "VITTE_DRIVER_E_IMPORT_USE_CONTRACT" "$$tmp" || { cat "$$tmp"; rm -f "$$tmp"; exit 1; }; \
+	rm -f "$$tmp"
+	@tmp="$$(mktemp)"; \
+	if "$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/sema_calls/import_param_mismatch.vit" >"$$tmp" 2>&1; then \
+		cat "$$tmp"; rm -f "$$tmp"; exit 1; \
+	fi; \
+	grep -q "VITTE_SEMA_E_CALL" "$$tmp" || { cat "$$tmp"; rm -f "$$tmp"; exit 1; }; \
+	rm -f "$$tmp"
 
 install: $(BIN)
 	@mkdir -p "$(ROOT_DIR)/bin"
