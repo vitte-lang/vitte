@@ -13,11 +13,13 @@ extern "C" {
 #endif
 
 #define VITTE_TYPE_MAX_PROC_PARAMETERS ((size_t)16u)
+#define VITTE_TYPE_MAX_PICK_TYPES ((size_t)256u)
 
 typedef enum vitte_type_kind {
     VITTE_TYPE_KIND_INVALID = 0,
     VITTE_TYPE_KIND_BUILTIN,
-    VITTE_TYPE_KIND_PROC
+    VITTE_TYPE_KIND_PROC,
+    VITTE_TYPE_KIND_PICK
 } vitte_type_kind_t;
 
 typedef struct vitte_type {
@@ -36,6 +38,8 @@ typedef struct vitte_type_registry {
     bool initialized;
     vitte_builtin_registry_t builtins;
     vitte_type_t builtin_types[VITTE_BUILTIN_TYPE_COUNT];
+    vitte_type_t pick_types[VITTE_TYPE_MAX_PICK_TYPES];
+    size_t pick_type_count;
     vitte_error_t last_error;
 } vitte_type_registry_t;
 
@@ -59,6 +63,10 @@ const vitte_type_t *vitte_type_builtin(
     vitte_builtin_type_kind_t kind
 );
 const vitte_type_t *vitte_type_lookup(
+    vitte_type_registry_t *registry,
+    const char *name
+);
+const vitte_type_t *vitte_type_register_pick(
     vitte_type_registry_t *registry,
     const char *name
 );

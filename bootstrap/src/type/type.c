@@ -125,10 +125,17 @@ const vitte_type_t *vitte_type_lookup(
     const char *name
 ) {
     const vitte_builtin_type_t *builtin;
+    size_t index;
 
     if (!vitte_type_registry_is_initialized(registry) || name == NULL || name[0] == '\0') {
         vitte_type_registry_set_error(registry, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_TYPE_E_LOOKUP", "invalid type lookup name", name);
         return NULL;
+    }
+    for (index = 0u; index < registry->pick_type_count; index++) {
+        if (strcmp(registry->pick_types[index].name, name) == 0) {
+            vitte_error_reset(&registry->last_error);
+            return &registry->pick_types[index];
+        }
     }
     builtin = vitte_builtin_lookup_type(&registry->builtins, name);
     if (builtin == NULL) {
@@ -137,6 +144,32 @@ const vitte_type_t *vitte_type_lookup(
     }
     vitte_error_reset(&registry->last_error);
     return &registry->builtin_types[builtin->kind];
+}
+
+const vitte_type_t *vitte_type_register_pick(vitte_type_registry_t *registry, const char *name) {
+    vitte_type_t *type;
+
+    if (!vitte_type_registry_is_initialized(registry) || name == NULL || name[0] == '\0') {
+        vitte_type_registry_set_error(registry, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_TYPE_E_PICK", "invalid pick type name", name);
+        return NULL;
+    }
+    type = (vitte_type_t *)vitte_type_lookup(registry, name);
+    if (type != NULL && type->kind == VITTE_TYPE_KIND_PICK) {
+        return type;
+    }
+    if (registry->pick_type_count >= VITTE_TYPE_MAX_PICK_TYPES) {
+        vitte_type_registry_set_error(registry, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_TYPE_E_PICK", "pick type registry is full", name);
+        return NULL;
+    }
+    type = &registry->pick_types[registry->pick_type_count++];
+    memset(type, 0, sizeof(*type));
+    type->kind = VITTE_TYPE_KIND_PICK;
+    type->name = name;
+    type->builtin_kind = VITTE_BUILTIN_TYPE_ERROR;
+    type->valid = true;
+    type->error = false;
+    vitte_error_reset(&registry->last_error);
+    return type;
 }
 
 const vitte_type_t *vitte_type_from_ast(
@@ -158,6 +191,8 @@ const char *vitte_type_kind_name(vitte_type_kind_t kind) {
             return "builtin";
         case VITTE_TYPE_KIND_PROC:
             return "proc";
+        case VITTE_TYPE_KIND_PICK:
+            return "pick";
         default:
             return "unknown";
     }

@@ -118,6 +118,30 @@ static const char *vitte_sema_last_name_segment(const char *name) {
     return segment;
 }
 
+static vitte_status_t vitte_sema_predeclare_pick(
+    vitte_sema_t *sema,
+    const vitte_ast_decl_t *decl
+) {
+    const vitte_type_t *pick_type;
+    const vitte_ast_node_t *variant;
+
+    pick_type = vitte_type_register_pick(&sema->types, decl->as.pick_decl.name);
+    if (pick_type == NULL) {
+        return vitte_sema_fail(sema, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_SEMA_E_PICK", "failed to register pick type", decl->as.pick_decl.name, &decl->span);
+    }
+    for (variant = decl->as.pick_decl.variants.first; variant != NULL; variant = variant->next) {
+        const vitte_symbol_t *symbol = NULL;
+
+        /* Qualified expressions resolve their leaf segment in the bootstrap scope. */
+        if (vitte_symbol_define(&sema->symbols, VITTE_SYMBOL_KIND_CONST, variant->as.pick_variant.name, pick_type, decl, false, &symbol) != VITTE_STATUS_OK ||
+            vitte_scope_define(&sema->scopes, variant->as.pick_variant.name, symbol) != VITTE_STATUS_OK) {
+            return vitte_sema_fail(sema, VITTE_STATUS_ERROR_PARSE, "VITTE_SEMA_E_PICK", "failed to define pick variant", variant->as.pick_variant.name, &variant->span);
+        }
+        sema->stats.symbol_count++;
+    }
+    return VITTE_STATUS_OK;
+}
+
 static char *vitte_sema_copy_text(vitte_sema_t *sema, const char *text, size_t length) {
     char *copy;
 
@@ -1474,13 +1498,24 @@ static vitte_status_t vitte_sema_predeclare_module(vitte_sema_t *sema, const vit
     const vitte_ast_node_t *decl;
 
     for (decl = module->as.module.declarations.first; decl != NULL; decl = decl->next) {
+        if (decl->kind == VITTE_AST_NODE_PICK_DECL) {
+            vitte_status_t pick_status = vitte_sema_predeclare_pick(sema, decl);
+            if (pick_status != VITTE_STATUS_OK) {
+                return pick_status;
+            }
+        }
+    }
+
+    for (decl = module->as.module.declarations.first; decl != NULL; decl = decl->next) {
         const vitte_symbol_t *symbol = NULL;
         const vitte_type_t *type = NULL;
         const vitte_type_t *parameter_types[VITTE_TYPE_MAX_PROC_PARAMETERS];
         size_t arity = 0u;
         vitte_status_t status;
 
-        if (decl->kind == VITTE_AST_NODE_PROC_DECL) {
+        if (decl->kind == VITTE_AST_NODE_PICK_DECL) {
+            continue;
+        } else if (decl->kind == VITTE_AST_NODE_PROC_DECL) {
             status = vitte_sema_collect_proc_signature(sema, decl, &type, parameter_types, &arity);
             if (status != VITTE_STATUS_OK) {
                 return status;
@@ -1539,6 +1574,9 @@ static vitte_status_t vitte_sema_analyze_decl(vitte_sema_t *sema, const vitte_as
 
     sema->stats.decl_count++;
     switch (decl->kind) {
+        case VITTE_AST_NODE_PICK_DECL:
+            status = VITTE_STATUS_OK;
+            break;
         case VITTE_AST_NODE_CONST_DECL: {
             const vitte_type_t *type = vitte_sema_resolve_type_ref(sema, decl->as.const_decl.type);
             const vitte_type_t *value_type = vitte_sema_analyze_expr(sema, decl->as.const_decl.value);
