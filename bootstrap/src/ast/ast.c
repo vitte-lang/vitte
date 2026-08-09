@@ -218,6 +218,12 @@ const char *vitte_ast_node_kind_name(vitte_ast_node_kind_t kind) {
             return "binary_expr";
         case VITTE_AST_NODE_CALL_EXPR:
             return "call_expr";
+        case VITTE_AST_NODE_LIST_EXPR:
+            return "list_expr";
+        case VITTE_AST_NODE_RECORD_EXPR:
+            return "record_expr";
+        case VITTE_AST_NODE_RECORD_FIELD:
+            return "record_field";
         case VITTE_AST_NODE_TYPE_NAME:
             return "type_name";
         case VITTE_AST_NODE_COUNT:
@@ -268,6 +274,10 @@ const char *vitte_ast_node_label(const vitte_ast_node_t *node) {
             return node->as.binary_expr.operator_text;
         case VITTE_AST_NODE_TYPE_NAME:
             return node->as.type_name.name;
+        case VITTE_AST_NODE_RECORD_EXPR:
+            return node->as.record_expr.type_name;
+        case VITTE_AST_NODE_RECORD_FIELD:
+            return node->as.record_field.name;
         case VITTE_AST_NODE_ERROR:
             return node->as.error_node.message;
         default:
@@ -698,6 +708,30 @@ vitte_ast_expr_t *vitte_ast_make_call_expr(vitte_ast_builder_t *builder, vitte_a
     if (node != NULL) {
         node->as.call_expr.callee = callee;
         vitte_ast_list_init(&node->as.call_expr.arguments);
+    }
+    return node;
+}
+
+vitte_ast_expr_t *vitte_ast_make_list_expr(vitte_ast_builder_t *builder, vitte_ast_span_t span) {
+    vitte_ast_node_t *node = builder != NULL ? vitte_ast_alloc_node(builder->ast, VITTE_AST_NODE_LIST_EXPR, span) : NULL;
+    if (node != NULL) vitte_ast_list_init(&node->as.list_expr.elements);
+    return node;
+}
+
+vitte_ast_expr_t *vitte_ast_make_record_expr(vitte_ast_builder_t *builder, const char *type_name, vitte_ast_span_t span) {
+    vitte_ast_node_t *node = builder != NULL ? vitte_ast_alloc_node(builder->ast, VITTE_AST_NODE_RECORD_EXPR, span) : NULL;
+    if (node != NULL) {
+        node->as.record_expr.type_name = type_name;
+        vitte_ast_list_init(&node->as.record_expr.fields);
+    }
+    return node;
+}
+
+vitte_ast_node_t *vitte_ast_make_record_field(vitte_ast_builder_t *builder, const char *name, vitte_ast_expr_t *value, vitte_ast_span_t span) {
+    vitte_ast_node_t *node = builder != NULL ? vitte_ast_alloc_node(builder->ast, VITTE_AST_NODE_RECORD_FIELD, span) : NULL;
+    if (node != NULL) {
+        node->as.record_field.name = name;
+        node->as.record_field.value = value;
     }
     return node;
 }
