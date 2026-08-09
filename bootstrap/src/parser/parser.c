@@ -1410,7 +1410,7 @@ static vitte_status_t vitte_parser_parse_import_item(
                 module_node,
                 path,
                 NULL,
-                prefix != NULL && prefix[0] != '\0' ? VITTE_AST_IMPORT_GLOB : VITTE_AST_IMPORT_MODULE,
+                VITTE_AST_IMPORT_GLOB,
                 span
             );
         }
