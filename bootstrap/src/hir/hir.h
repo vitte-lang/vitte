@@ -25,6 +25,8 @@ typedef enum vitte_hir_kind {
     VITTE_HIR_CONST_DECL,
     VITTE_HIR_PICK_DECL,
     VITTE_HIR_PICK_VARIANT,
+    VITTE_HIR_FORM_DECL,
+    VITTE_HIR_FORM_FIELD,
     VITTE_HIR_BLOCK,
     VITTE_HIR_RETURN_STMT,
     VITTE_HIR_LET_STMT,
@@ -93,6 +95,16 @@ struct vitte_hir_node {
         struct {
             const char *name;
         } pick_variant;
+
+        struct {
+            const char *name;
+            vitte_hir_list_t fields;
+        } form_decl;
+
+        struct {
+            const char *name;
+            vitte_hir_type_t *type;
+        } form_field;
 
         struct {
             vitte_hir_list_t statements;
@@ -209,6 +221,8 @@ vitte_hir_function_t *vitte_hir_make_function(vitte_hir_builder_t *builder, cons
 vitte_hir_decl_t *vitte_hir_make_const(vitte_hir_builder_t *builder, const char *name, vitte_hir_type_t *type, vitte_hir_expr_t *value, const vitte_ast_node_t *source);
 vitte_hir_decl_t *vitte_hir_make_pick(vitte_hir_builder_t *builder, const char *name, const vitte_ast_node_t *source);
 vitte_hir_node_t *vitte_hir_make_pick_variant(vitte_hir_builder_t *builder, const char *name, const vitte_ast_node_t *source);
+vitte_hir_decl_t *vitte_hir_make_form(vitte_hir_builder_t *builder, const char *name, const vitte_ast_node_t *source);
+vitte_hir_node_t *vitte_hir_make_form_field(vitte_hir_builder_t *builder, const char *name, vitte_hir_type_t *type, const vitte_ast_node_t *source);
 vitte_hir_block_t *vitte_hir_make_block(vitte_hir_builder_t *builder, const vitte_ast_node_t *source);
 vitte_hir_stmt_t *vitte_hir_make_return(vitte_hir_builder_t *builder, vitte_hir_expr_t *value, const vitte_ast_node_t *source);
 vitte_hir_stmt_t *vitte_hir_make_let(vitte_hir_builder_t *builder, const char *name, vitte_hir_type_t *type, vitte_hir_expr_t *value, const vitte_ast_node_t *source);

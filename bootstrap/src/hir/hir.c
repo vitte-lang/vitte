@@ -5,6 +5,7 @@
 #include <string.h>
 
 static bool vitte_hir_depth_ok(vitte_hir_lowering_t *lowering, size_t depth);
+static vitte_hir_type_t *vitte_hir_lower_type(vitte_hir_lowering_t *lowering, const vitte_ast_node_t *node, size_t depth);
 
 static void vitte_hir_set_error(
     vitte_hir_t *hir,
@@ -164,6 +165,10 @@ const char *vitte_hir_kind_name(vitte_hir_kind_t kind) {
             return "pick";
         case VITTE_HIR_PICK_VARIANT:
             return "pick_variant";
+        case VITTE_HIR_FORM_DECL:
+            return "form";
+        case VITTE_HIR_FORM_FIELD:
+            return "form_field";
         case VITTE_HIR_BLOCK:
             return "block";
         case VITTE_HIR_RETURN_STMT:
@@ -209,6 +214,10 @@ const char *vitte_hir_node_label(const vitte_hir_node_t *node) {
             return node->as.pick_decl.name != NULL ? node->as.pick_decl.name : "<pick>";
         case VITTE_HIR_PICK_VARIANT:
             return node->as.pick_variant.name != NULL ? node->as.pick_variant.name : "<variant>";
+        case VITTE_HIR_FORM_DECL:
+            return node->as.form_decl.name != NULL ? node->as.form_decl.name : "<form>";
+        case VITTE_HIR_FORM_FIELD:
+            return node->as.form_field.name != NULL ? node->as.form_field.name : "<field>";
         case VITTE_HIR_LET_STMT:
             return node->as.let_stmt.name != NULL ? node->as.let_stmt.name : "<let>";
         case VITTE_HIR_ASSIGN_STMT:
@@ -385,6 +394,24 @@ vitte_hir_node_t *vitte_hir_make_pick_variant(vitte_hir_builder_t *builder, cons
     return node;
 }
 
+vitte_hir_decl_t *vitte_hir_make_form(vitte_hir_builder_t *builder, const char *name, const vitte_ast_node_t *source) {
+    vitte_hir_node_t *node = builder != NULL && name != NULL ? vitte_hir_alloc_node(builder->hir, VITTE_HIR_FORM_DECL, source) : NULL;
+    if (node != NULL) {
+        node->as.form_decl.name = name;
+        vitte_hir_list_init(&node->as.form_decl.fields);
+    }
+    return node;
+}
+
+vitte_hir_node_t *vitte_hir_make_form_field(vitte_hir_builder_t *builder, const char *name, vitte_hir_type_t *type, const vitte_ast_node_t *source) {
+    vitte_hir_node_t *node = builder != NULL && name != NULL && type != NULL ? vitte_hir_alloc_node(builder->hir, VITTE_HIR_FORM_FIELD, source) : NULL;
+    if (node != NULL) {
+        node->as.form_field.name = name;
+        node->as.form_field.type = type;
+    }
+    return node;
+}
+
 vitte_hir_block_t *vitte_hir_make_block(vitte_hir_builder_t *builder, const vitte_ast_node_t *source) {
     vitte_hir_node_t *node;
 
@@ -509,7 +536,7 @@ bool vitte_hir_module_add_decl(vitte_hir_module_t *module, vitte_hir_decl_t *dec
     if (module == NULL || module->kind != VITTE_HIR_MODULE || decl == NULL) {
         return false;
     }
-    if (decl->kind != VITTE_HIR_FUNCTION && decl->kind != VITTE_HIR_CONST_DECL && decl->kind != VITTE_HIR_PICK_DECL) {
+    if (decl->kind != VITTE_HIR_FUNCTION && decl->kind != VITTE_HIR_CONST_DECL && decl->kind != VITTE_HIR_PICK_DECL && decl->kind != VITTE_HIR_FORM_DECL) {
         return false;
     }
     return vitte_hir_list_append(&module->as.module.declarations, decl);
@@ -542,6 +569,28 @@ static vitte_hir_decl_t *vitte_hir_lower_pick(vitte_hir_lowering_t *lowering, co
         }
     }
     return pick;
+}
+
+static vitte_hir_decl_t *vitte_hir_lower_form(vitte_hir_lowering_t *lowering, const vitte_ast_node_t *decl, size_t depth) {
+    vitte_hir_builder_t builder;
+    vitte_hir_decl_t *form;
+    const vitte_ast_node_t *field;
+    if (!vitte_hir_depth_ok(lowering, depth) || decl == NULL || decl->kind != VITTE_AST_NODE_FORM_DECL) {
+        vitte_hir_lowering_set_error(lowering, VITTE_STATUS_ERROR_UNSUPPORTED, "VITTE_HIR_E_DECL", "HIR lowering expects form declarations", NULL);
+        return NULL;
+    }
+    vitte_hir_builder_init(&builder, lowering->hir);
+    form = vitte_hir_make_form(&builder, decl->as.form_decl.name, decl);
+    if (form == NULL) return NULL;
+    for (field = decl->as.form_decl.fields.first; field != NULL; field = field->next) {
+        vitte_hir_type_t *type;
+        vitte_hir_node_t *hir_field;
+        if (field->kind != VITTE_AST_NODE_FORM_FIELD) return NULL;
+        type = vitte_hir_lower_type(lowering, field->as.form_field.type, depth + 1u);
+        hir_field = type != NULL ? vitte_hir_make_form_field(&builder, field->as.form_field.name, type, field) : NULL;
+        if (hir_field == NULL || !vitte_hir_list_append(&form->as.form_decl.fields, hir_field)) return NULL;
+    }
+    return form;
 }
 
 bool vitte_hir_module_add_function(vitte_hir_module_t *module, vitte_hir_function_t *function) {
@@ -903,6 +952,9 @@ vitte_status_t vitte_hir_lower_ast_with_options(
                 }
                 return lowering->last_error.status;
             }
+        } else if (decl->kind == VITTE_AST_NODE_FORM_DECL) {
+            vitte_hir_decl_t *form = vitte_hir_lower_form(lowering, decl, 1u);
+            if (form == NULL || !vitte_hir_module_add_decl(module, form)) return VITTE_STATUS_ERROR_INVALID_STATE;
         } else {
             vitte_hir_lowering_set_error(lowering, VITTE_STATUS_ERROR_UNSUPPORTED, "VITTE_HIR_E_DECL", "unsupported AST declaration for HIR lowering", vitte_ast_node_kind_name(decl->kind));
             return VITTE_STATUS_ERROR_UNSUPPORTED;
@@ -1081,6 +1133,18 @@ static vitte_status_t vitte_hir_validate_node(vitte_hir_t *hir, const vitte_hir_
                 return VITTE_STATUS_ERROR_INVALID_STATE;
             }
             return VITTE_STATUS_OK;
+        case VITTE_HIR_FORM_DECL:
+            if (node->as.form_decl.name == NULL || node->as.form_decl.fields.count == 0u) {
+                vitte_hir_set_error(hir, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_HIR_E_FORM", "HIR form requires name and fields", NULL);
+                return VITTE_STATUS_ERROR_INVALID_STATE;
+            }
+            return vitte_hir_validate_list(hir, &node->as.form_decl.fields, depth, max_depth, visited);
+        case VITTE_HIR_FORM_FIELD:
+            if (node->as.form_field.name == NULL || node->as.form_field.type == NULL) {
+                vitte_hir_set_error(hir, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_HIR_E_FORM", "HIR form field requires name and type", NULL);
+                return VITTE_STATUS_ERROR_INVALID_STATE;
+            }
+            return vitte_hir_validate_node(hir, node->as.form_field.type, depth + 1u, max_depth, visited);
         case VITTE_HIR_BLOCK:
             return vitte_hir_validate_list(hir, &node->as.block.statements, depth, max_depth, visited);
         case VITTE_HIR_RETURN_STMT:
