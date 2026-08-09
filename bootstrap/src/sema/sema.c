@@ -897,7 +897,7 @@ static const vitte_type_t *vitte_sema_resolve_type_ref(
     }
     type = vitte_type_from_ast(&sema->types, type_ref);
     if (type == NULL && type_ref != NULL && type_ref->kind == VITTE_AST_NODE_TYPE_NAME &&
-        strncmp(type_ref->as.type_name.name, "list[", 5u) == 0) {
+        (strncmp(type_ref->as.type_name.name, "list[", 5u) == 0 || strncmp(type_ref->as.type_name.name, "ptr[", 4u) == 0)) {
         type = vitte_type_register_list(&sema->types, type_ref->as.type_name.name);
     }
     if (type == NULL) {
@@ -1086,6 +1086,8 @@ static const vitte_symbol_t *vitte_sema_lookup_symbol(
     }
     return symbol;
 }
+
+static vitte_status_t vitte_sema_analyze_stmt(vitte_sema_t *sema, const vitte_ast_stmt_t *stmt, bool push_scope);
 
 static const vitte_type_t *vitte_sema_analyze_expr(
     vitte_sema_t *sema,
@@ -1283,6 +1285,20 @@ static const vitte_type_t *vitte_sema_analyze_expr(
             sema->stats.expr_count++;
             vitte_sema_leave(sema);
             return then_type;
+        }
+        case VITTE_AST_NODE_BLOCK_EXPR: {
+            const vitte_ast_node_t *statement;
+            const vitte_type_t *value_type;
+            for (statement = expr->as.block_expr.statements.first; statement != NULL; statement = statement->next) {
+                if (vitte_sema_analyze_stmt(sema, statement, true) != VITTE_STATUS_OK) {
+                    vitte_sema_leave(sema);
+                    return vitte_sema_error_type(sema);
+                }
+            }
+            value_type = vitte_sema_analyze_expr(sema, expr->as.block_expr.value);
+            sema->stats.expr_count++;
+            vitte_sema_leave(sema);
+            return value_type;
         }
         case VITTE_AST_NODE_BINARY_EXPR:
             left = vitte_sema_analyze_expr(sema, expr->as.binary_expr.left);

@@ -43,6 +43,7 @@ typedef enum vitte_hir_kind {
     VITTE_HIR_BINARY_EXPR,
     VITTE_HIR_CALL_EXPR,
     VITTE_HIR_IF_EXPR,
+    VITTE_HIR_BLOCK_EXPR,
     VITTE_HIR_TYPE_NAME,
     VITTE_HIR_KIND_COUNT
 } vitte_hir_kind_t;
@@ -171,6 +172,7 @@ struct vitte_hir_node {
         } call_expr;
 
         struct { vitte_hir_expr_t *condition; vitte_hir_expr_t *then_value; vitte_hir_expr_t *else_value; } if_expr;
+        struct { vitte_hir_list_t statements; vitte_hir_expr_t *value; } block_expr;
 
         struct {
             const char *name;
@@ -251,6 +253,7 @@ vitte_hir_expr_t *vitte_hir_make_binary(vitte_hir_builder_t *builder, const char
 vitte_hir_expr_t *vitte_hir_make_call(vitte_hir_builder_t *builder, vitte_hir_expr_t *callee, const vitte_ast_node_t *source);
 vitte_hir_expr_t *vitte_hir_make_if_expr(vitte_hir_builder_t *builder, vitte_hir_expr_t *condition, vitte_hir_expr_t *then_value, vitte_hir_expr_t *else_value, const vitte_ast_node_t *source);
 vitte_hir_stmt_t *vitte_hir_make_while(vitte_hir_builder_t *builder, vitte_hir_expr_t *condition, vitte_hir_stmt_t *body, const vitte_ast_node_t *source);
+vitte_hir_expr_t *vitte_hir_make_block_expr(vitte_hir_builder_t *builder, vitte_hir_list_t statements, vitte_hir_expr_t *value, const vitte_ast_node_t *source);
 vitte_hir_type_t *vitte_hir_make_type_name(vitte_hir_builder_t *builder, const char *name, const vitte_ast_node_t *source);
 vitte_hir_node_t *vitte_hir_make_error(vitte_hir_builder_t *builder, const char *message, const vitte_ast_node_t *source);
 

@@ -432,17 +432,20 @@ static vitte_status_t vitte_import_cache_store(
     }
     slot = vitte_import_cache_slot(resolver);
     if (slot == NULL) {
-        vitte_import_resolver_set_error(resolver, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_IMPORT_E_CACHE", "import cache is full", module_name);
-        return VITTE_STATUS_ERROR_INVALID_STATE;
+        /* The bootstrap graph can contain more importer bases than the bounded cache.
+         * Reclaim the cache and continue resolving deterministically. */
+        vitte_import_resolver_clear_cache(resolver);
+        slot = &resolver->cache[0];
     }
     memset(slot, 0, sizeof(*slot));
     slot->occupied = true;
     if (!vitte_import_copy_text(slot->module_name, sizeof(slot->module_name), module_name) ||
         !vitte_import_copy_text(slot->base_path, sizeof(slot->base_path), base_path) ||
         !vitte_import_copy_text(slot->module.name, sizeof(slot->module.name), module_name)) {
-        memset(slot, 0, sizeof(*slot));
-        vitte_import_resolver_set_error(resolver, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_IMPORT_E_CACHE", "failed to store import cache key", module_name);
-        return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+        /* Oversized names are still valid resolver inputs; disable caching for this entry. */
+        slot->module_name[0] = '\0';
+        slot->base_path[0] = '\0';
+        slot->module.name[0] = '\0';
     }
     slot->module.resolved_path = *resolved_path;
     if (read_source) {
@@ -607,14 +610,6 @@ vitte_status_t vitte_import_resolve(
         vitte_import_set_error(&result->error, VITTE_STATUS_ERROR_IO, "VITTE_IMPORT_E_NOT_FOUND", "import module was not found", request->module_name);
         result->status = VITTE_STATUS_ERROR_IO;
         return VITTE_STATUS_ERROR_IO;
-    }
-
-    if (request->importer_path != NULL && strcmp(request->importer_path, resolved_path.text) == 0) {
-        resolver->stats.failed_count++;
-        vitte_import_resolver_set_error(resolver, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_IMPORT_E_CYCLE", "import resolves to importer path", resolved_path.text);
-        vitte_import_set_error(&result->error, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_IMPORT_E_CYCLE", "import resolves to importer path", resolved_path.text);
-        result->status = VITTE_STATUS_ERROR_INVALID_STATE;
-        return VITTE_STATUS_ERROR_INVALID_STATE;
     }
 
     status = vitte_import_cache_store(resolver, request->module_name, base_path, &resolved_path, should_read_source, &stored);

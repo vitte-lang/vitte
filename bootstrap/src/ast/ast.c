@@ -234,6 +234,8 @@ const char *vitte_ast_node_kind_name(vitte_ast_node_kind_t kind) {
             return "if_expr";
         case VITTE_AST_NODE_MEMBER_EXPR:
             return "member_expr";
+        case VITTE_AST_NODE_BLOCK_EXPR:
+            return "block_expr";
         case VITTE_AST_NODE_TYPE_NAME:
             return "type_name";
         case VITTE_AST_NODE_COUNT:
@@ -296,6 +298,8 @@ const char *vitte_ast_node_label(const vitte_ast_node_t *node) {
             return "if";
         case VITTE_AST_NODE_MEMBER_EXPR:
             return node->as.member_expr.member;
+        case VITTE_AST_NODE_BLOCK_EXPR:
+            return "{}";
         case VITTE_AST_NODE_ERROR:
             return node->as.error_node.message;
         default:
@@ -788,6 +792,12 @@ vitte_ast_expr_t *vitte_ast_make_member_expr(vitte_ast_builder_t *builder, vitte
     return node;
 }
 
+vitte_ast_expr_t *vitte_ast_make_block_expr(vitte_ast_builder_t *builder, vitte_ast_list_t statements, vitte_ast_expr_t *value, vitte_ast_span_t span) {
+    vitte_ast_node_t *node = builder != NULL ? vitte_ast_alloc_node(builder->ast, VITTE_AST_NODE_BLOCK_EXPR, span) : NULL;
+    if (node != NULL) { node->as.block_expr.statements = statements; node->as.block_expr.value = value; }
+    return node;
+}
+
 vitte_ast_type_ref_t *vitte_ast_make_type_name(vitte_ast_builder_t *builder, const char *name, vitte_ast_span_t span) {
     vitte_ast_node_t *node = builder != NULL ? vitte_ast_alloc_node(builder->ast, VITTE_AST_NODE_TYPE_NAME, span) : NULL;
     if (node != NULL) {
@@ -1069,6 +1079,11 @@ static vitte_status_t vitte_ast_validate_node(vitte_ast_t *ast, const vitte_ast_
         case VITTE_AST_NODE_MEMBER_EXPR:
             if (node->as.member_expr.base == NULL || node->as.member_expr.member == NULL) return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
             return vitte_ast_validate_node(ast, node->as.member_expr.base, depth + 1u);
+        case VITTE_AST_NODE_BLOCK_EXPR:
+            if (node->as.block_expr.value == NULL) return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+            status = vitte_ast_validate_list(ast, &node->as.block_expr.statements, "VITTE_AST_E_BLOCK_EXPR", "invalid block expression statements");
+            if (status != VITTE_STATUS_OK) return status;
+            return vitte_ast_validate_node(ast, node->as.block_expr.value, depth + 1u);
         case VITTE_AST_NODE_PICK_VARIANT:
             if (node->as.pick_variant.name == NULL || node->as.pick_variant.name[0] == '\0') {
                 vitte_ast_set_error(ast, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_AST_E_PICK", "pick variant requires a name", NULL);
@@ -1294,6 +1309,9 @@ static bool vitte_ast_visit_child(
                 vitte_ast_visit_child(node->as.if_expr.else_value, callback, user, depth + 1u, max_depth, count);
         case VITTE_AST_NODE_MEMBER_EXPR:
             return vitte_ast_visit_child(node->as.member_expr.base, callback, user, depth + 1u, max_depth, count);
+        case VITTE_AST_NODE_BLOCK_EXPR:
+            return vitte_ast_visit_children(&node->as.block_expr.statements, callback, user, depth + 1u, max_depth, count) &&
+                vitte_ast_visit_child(node->as.block_expr.value, callback, user, depth + 1u, max_depth, count);
         case VITTE_AST_NODE_BLOCK_STMT:
             return vitte_ast_visit_children(&node->as.block_stmt.statements, callback, user, depth + 1u, max_depth, count);
         case VITTE_AST_NODE_GIVE_STMT:

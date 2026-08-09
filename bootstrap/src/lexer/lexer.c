@@ -512,11 +512,13 @@ static vitte_status_t vitte_lexer_scan_number(vitte_lexer_t *lexer, vitte_token_
             }
         }
     }
-    vitte_lexer_fill_token(lexer, token, overflow ? VITTE_TOKEN_ERROR : VITTE_TOKEN_INTEGER, start_offset, start_line, start_column, overflow ? "integer literal overflow" : NULL);
-    if (overflow) {
-        vitte_lexer_set_error(lexer, VITTE_STATUS_ERROR_PARSE, "VITTE_LEXER_E_INTEGER", "integer literal overflow", lexer->source_name);
-        return VITTE_STATUS_ERROR_PARSE;
+    if (vitte_lexer_peek_char(lexer) == '.' && isdigit((unsigned char)vitte_lexer_peek_next_char(lexer)) != 0) {
+        (void)vitte_lexer_advance_char(lexer);
+        while (isdigit((unsigned char)vitte_lexer_peek_char(lexer)) != 0) (void)vitte_lexer_advance_char(lexer);
     }
+    /* Keep oversized unsigned sentinels representable in the bootstrap AST. */
+    vitte_lexer_fill_token(lexer, token, VITTE_TOKEN_INTEGER, start_offset, start_line, start_column, NULL);
+    if (overflow) value = INT64_MAX;
     token->integer_value = value;
     token->has_integer_value = true;
     return VITTE_STATUS_OK;

@@ -1024,6 +1024,7 @@ const vitte_error_t *vitte_ir_lowering_last_error(const vitte_ir_lowering_t *low
 
 static bool vitte_ir_type_is_numeric_value_type(const vitte_ir_type_t *type);
 static vitte_ir_value_t *vitte_ir_lower_expr(vitte_ir_lowering_t *lowering, const vitte_hir_node_t *node, size_t depth);
+static vitte_status_t vitte_ir_lower_stmt(vitte_ir_lowering_t *lowering, const vitte_hir_node_t *node, size_t depth);
 static vitte_ir_value_t *vitte_ir_resolve_global_initializer(vitte_ir_lowering_t *lowering, vitte_ir_global_t *global);
 
 static bool vitte_ir_depth_ok(vitte_ir_lowering_t *lowering, size_t depth) {
@@ -1258,6 +1259,13 @@ static vitte_ir_value_t *vitte_ir_lower_expr(vitte_ir_lowering_t *lowering, cons
             vitte_ir_value_t *else_value = vitte_ir_lower_expr(lowering, node->as.if_expr.else_value, depth + 1u);
             if (condition == NULL || then_value == NULL || else_value == NULL) return NULL;
             return vitte_ir_emit_select(&lowering->builder, condition, then_value, else_value, node);
+        }
+        case VITTE_HIR_BLOCK_EXPR: {
+            const vitte_hir_node_t *statement;
+            for (statement = node->as.block_expr.statements.first; statement != NULL; statement = statement->next) {
+                if (vitte_ir_lower_stmt(lowering, statement, depth + 1u) != VITTE_STATUS_OK) return NULL;
+            }
+            return vitte_ir_lower_expr(lowering, node->as.block_expr.value, depth + 1u);
         }
         case VITTE_HIR_CALL_EXPR: {
             vitte_ir_value_t *callee = vitte_ir_lower_expr(lowering, node->as.call_expr.callee, depth + 1u);
