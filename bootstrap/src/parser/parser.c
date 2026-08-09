@@ -248,10 +248,10 @@ static const char *vitte_parser_operator_text(vitte_token_kind_t kind) {
     switch (kind) {
         case VITTE_TOKEN_KW_OR:
         case VITTE_TOKEN_PIPE_PIPE:
-            return "or";
+            return "||";
         case VITTE_TOKEN_KW_AND:
         case VITTE_TOKEN_AMP_AMP:
-            return "and";
+            return "&&";
         case VITTE_TOKEN_PIPE:
             return "|";
         case VITTE_TOKEN_CARET:
@@ -749,25 +749,25 @@ static vitte_ast_expr_t *vitte_parser_parse_unary(vitte_parser_t *parser) {
             return right;
         }
         if (operator_token.kind == VITTE_TOKEN_BANG || operator_token.kind == VITTE_TOKEN_KW_NOT) {
-            vitte_ast_span_t zero_span = vitte_parser_span_from_token(&operator_token);
-            vitte_ast_expr_t *zero = vitte_ast_make_integer_literal(&parser->builder, 0, zero_span);
+            vitte_ast_span_t false_span = vitte_parser_span_from_token(&operator_token);
+            vitte_ast_expr_t *false_expr = vitte_ast_make_identifier(&parser->builder, "false", false_span);
             vitte_ast_expr_t *expr;
             vitte_ast_span_t merged_span;
 
-            if (zero == NULL) {
+            if (false_expr == NULL) {
                 (void)vitte_parser_fail(
                     parser,
                     VITTE_STATUS_ERROR_OUT_OF_MEMORY,
                     "VITTE_PARSER_E_MEMORY",
                     "failed to allocate unary not seed",
                     NULL,
-                    &zero_span
+                    &false_span
                 );
                 return NULL;
             }
             parser->stats.expr_count++;
-            merged_span = vitte_parser_span_merge(&zero->span, &right->span);
-            expr = vitte_ast_make_binary_expr(&parser->builder, "==", right, zero, merged_span);
+            merged_span = vitte_parser_span_merge(&false_expr->span, &right->span);
+            expr = vitte_ast_make_binary_expr(&parser->builder, "==", right, false_expr, merged_span);
             if (expr == NULL) {
                 (void)vitte_parser_fail(
                     parser,

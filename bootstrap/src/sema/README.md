@@ -28,6 +28,7 @@ The semantic analyzer validates the parsed AST before backend emission.
 - callability, call arity, and procedure argument type compatibility
 - builtin function argument compatibility
 - operator operand compatibility
+- canonical logical operator semantics for `and`, `or`, `&&`, and `||`
 
 ## Current Limits
 

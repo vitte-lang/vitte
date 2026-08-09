@@ -47,6 +47,7 @@ smoke: verify $(BIN)
 	@"$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/sema_calls/local_param_ok.vit"
 	@"$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/sema_calls/import_param_ok.vit"
 	@"$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/frontend_expr_stmt/expr_stmt_ok.vit"
+	@"$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/sema_operators/logical_ok.vit"
 	@tmp="$$(mktemp)"; \
 	if "$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/import_visibility/ambiguous_symbol_form_main.vit" >"$$tmp" 2>&1; then \
 		cat "$$tmp"; rm -f "$$tmp"; exit 1; \
@@ -90,6 +91,13 @@ smoke: verify $(BIN)
 	grep -q "procedure argument type mismatch" "$$tmp" || { cat "$$tmp"; rm -f "$$tmp"; exit 1; }; \
 	rm -f "$$tmp"
 	@tmp="$$(mktemp)"; \
+	if "$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/sema_operators/logical_type_mismatch.vit" >"$$tmp" 2>&1; then \
+		cat "$$tmp"; rm -f "$$tmp"; exit 1; \
+	fi; \
+	grep -q "VITTE_SEMA_E_OPERATOR" "$$tmp" || { cat "$$tmp"; rm -f "$$tmp"; exit 1; }; \
+	grep -q "invalid operand types for operator" "$$tmp" || { cat "$$tmp"; rm -f "$$tmp"; exit 1; }; \
+	rm -f "$$tmp"
+	@tmp="$$(mktemp)"; \
 	if "$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/export_forms/missing_export.vit" >"$$tmp" 2>&1; then \
 		cat "$$tmp"; rm -f "$$tmp"; exit 1; \
 	fi; \
@@ -120,6 +128,8 @@ smoke: verify $(BIN)
 	"$(OUT_DIR)/expr_stmt_ok" >"$$tmp"; \
 	grep -q "^expr-stmt-ok$$" "$$tmp" || { cat "$$tmp"; rm -f "$$tmp"; exit 1; }; \
 	rm -f "$$tmp"
+	@"$(BIN)" build "$(ROOT_DIR)/bootstrap/tests/sema_operators/logical_ok.vit" -o "$(OUT_DIR)/logical_ok"
+	@"$(OUT_DIR)/logical_ok"
 
 install: $(BIN)
 	@mkdir -p "$(ROOT_DIR)/bin"

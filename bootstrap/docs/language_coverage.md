@@ -62,7 +62,7 @@ Legend:
 | `if` / `else` | yes | yes | yes | yes | yes |
 | Block statements | yes | yes | yes | yes | yes |
 | `give` return statements | yes | yes | yes | yes | yes |
-| Expression statements | no | no | no | no | no |
+| Expression statements | yes | yes | yes | yes | yes |
 | Integer literals | yes | yes | yes | yes | yes |
 | String literals | yes | yes | yes | yes | yes |
 | Qualified identifiers `a::b` | yes | partial | no | partial | partial |
@@ -75,7 +75,7 @@ Legend:
 | `& ^ \|` | yes | partial | no | no | no |
 | `< <= > >=` | yes | yes | yes | yes | yes |
 | `== !=` | yes | yes | yes | yes | yes |
-| `and or && \|\|` | yes | partial | no | no | no |
+| `and or && \|\|` | yes | yes | yes | yes | yes |
 | Assignment expressions | no | no | no | no | no |
 | Patterns | no | no | no | no | no |
 | Attributes / visibility | no | no | no | no | no |
