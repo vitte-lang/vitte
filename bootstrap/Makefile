@@ -167,6 +167,7 @@ corpus: verify $(BIN)
 	@"$(BIN)" emit-c "$(ROOT_DIR)/bootstrap/tests/import_export_coverage/module_alias_rich_main.vit" -o "$(OUT_DIR)/corpus/module_alias_rich_main.c"
 	@"$(BIN)" emit-c "$(ROOT_DIR)/bootstrap/tests/import_export_coverage/coverage_chain_main.vit" -o "$(OUT_DIR)/corpus/coverage_chain_main.c"
 	@"$(BIN)" emit-c "$(ROOT_DIR)/bootstrap/tests/pick_parse.vit" -o "$(OUT_DIR)/corpus/pick_parse.c"
+	@"$(BIN)" emit-c "$(ROOT_DIR)/bootstrap/tests/form_parse.vit" -o "$(OUT_DIR)/corpus/form_parse.c"
 	@"$(BIN)" build "$(ROOT_DIR)/examples/hello.vit" -o "$(OUT_DIR)/corpus/hello"
 	@"$(BIN)" build "$(ROOT_DIR)/bootstrap/tests/import_export_coverage/multi_decl_main.vit" -o "$(OUT_DIR)/corpus/multi_decl_main"
 	@"$(BIN)" build "$(ROOT_DIR)/bootstrap/tests/import_export_coverage/module_alias_rich_main.vit" -o "$(OUT_DIR)/corpus/module_alias_rich_main"

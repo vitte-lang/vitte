@@ -938,8 +938,45 @@ static vitte_status_t vitte_c17_emit_ir_pick(
     return status;
 }
 
+static vitte_status_t vitte_c17_emit_ir_form(vitte_c17_module_t *module, vitte_c17_writer_t *writer, const vitte_ir_form_t *form) {
+    char form_name[128];
+    char field_name[128];
+    const vitte_ir_form_field_t *field;
+    vitte_status_t status;
+
+    if (form == NULL || form->name == NULL || form->field_count == 0u) {
+        vitte_c17_module_set_error(module, VITTE_STATUS_ERROR_BACKEND, "VITTE_C17_E_FORM", "invalid IR form for C17 emission", NULL);
+        return VITTE_STATUS_ERROR_BACKEND;
+    }
+    if (vitte_c17_make_symbol_name(module, "vitte_form_", form->name, 0u, form_name, sizeof(form_name)) != VITTE_STATUS_OK) return module->last_error.status;
+    status = vitte_c17_write_string(writer, "typedef struct ");
+    if (status == VITTE_STATUS_OK) status = vitte_c17_write_string(writer, form_name);
+    if (status == VITTE_STATUS_OK) status = vitte_c17_write_string(writer, " {");
+    if (status != VITTE_STATUS_OK) return status;
+    for (field = form->first_field; field != NULL; field = field->next) {
+        if (vitte_c17_sanitize_identifier(field->name, field_name, sizeof(field_name), &module->last_error) != VITTE_STATUS_OK) return module->last_error.status;
+        status = vitte_c17_write_newline(writer);
+        if (status == VITTE_STATUS_OK) status = vitte_c17_write_string(writer, "    ");
+        if (status == VITTE_STATUS_OK) status = vitte_c17_emit_ir_type(module, writer, field->type);
+        if (status == VITTE_STATUS_OK) status = vitte_c17_write_char(writer, ' ');
+        if (status == VITTE_STATUS_OK) status = vitte_c17_write_string(writer, field_name);
+        if (status == VITTE_STATUS_OK) status = vitte_c17_write_string(writer, ";");
+        if (status != VITTE_STATUS_OK) return status;
+    }
+    status = vitte_c17_write_newline(writer);
+    if (status == VITTE_STATUS_OK) status = vitte_c17_write_string(writer, "} ");
+    if (status == VITTE_STATUS_OK) status = vitte_c17_write_string(writer, form_name);
+    if (status == VITTE_STATUS_OK) status = vitte_c17_write_string(writer, ";");
+    if (status == VITTE_STATUS_OK) {
+        module->unit->declaration_count++;
+        status = vitte_c17_write_newline(writer);
+    }
+    return status;
+}
+
 static vitte_status_t vitte_c17_module_emit_ir(vitte_c17_module_t *module, vitte_c17_writer_t *writer) {
     const vitte_ir_pick_t *pick;
+    const vitte_ir_form_t *form;
     const vitte_ir_global_t *global;
     const vitte_ir_function_t *function;
     vitte_status_t status;
@@ -963,6 +1000,13 @@ static vitte_status_t vitte_c17_module_emit_ir(vitte_c17_module_t *module, vitte
         if (status != VITTE_STATUS_OK) {
             return status;
         }
+    }
+
+    for (form = module->ir_module->first_form; form != NULL; form = form->next) {
+        status = vitte_c17_emit_ir_form(module, writer, form);
+        if (status != VITTE_STATUS_OK) return status;
+        status = vitte_c17_write_newline(writer);
+        if (status != VITTE_STATUS_OK) return status;
     }
 
     for (global = module->ir_module->first_global; global != NULL; global = global->next) {
