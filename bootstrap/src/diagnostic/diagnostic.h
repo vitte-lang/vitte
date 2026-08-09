@@ -12,6 +12,8 @@
 extern "C" {
 #endif
 
+#define VITTE_DIAGNOSTIC_SOURCE_NAME_CAPACITY ((size_t)4096u)
+
 typedef enum vitte_diagnostic_severity {
     VITTE_DIAGNOSTIC_NOTE = 0,
     VITTE_DIAGNOSTIC_HELP,
@@ -44,6 +46,7 @@ typedef struct vitte_diagnostic {
     const char *message;
     const char *details;
     const char *source_name;
+    char source_name_storage[VITTE_DIAGNOSTIC_SOURCE_NAME_CAPACITY];
     size_t start_offset;
     size_t end_offset;
     unsigned start_line;

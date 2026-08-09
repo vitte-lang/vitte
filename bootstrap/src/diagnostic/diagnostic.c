@@ -176,12 +176,37 @@ static bool vitte_diagnostic_text_is_valid(const char *text) {
     return text != NULL && text[0] != '\0';
 }
 
+static void vitte_diagnostic_copy_source_name(
+    vitte_diagnostic_t *diagnostic,
+    const char *source_name
+) {
+    size_t length;
+
+    if (diagnostic == NULL) {
+        return;
+    }
+    diagnostic->source_name = NULL;
+    diagnostic->source_name_storage[0] = '\0';
+    if (!vitte_diagnostic_text_is_valid(source_name)) {
+        return;
+    }
+    length = strlen(source_name);
+    if (length >= sizeof(diagnostic->source_name_storage)) {
+        length = sizeof(diagnostic->source_name_storage) - 1u;
+    }
+    if (length > 0u) {
+        (void)memcpy(diagnostic->source_name_storage, source_name, length);
+    }
+    diagnostic->source_name_storage[length] = '\0';
+    diagnostic->source_name = diagnostic->source_name_storage;
+}
+
 static void vitte_diagnostic_copy_span(vitte_diagnostic_t *diagnostic, const vitte_ast_span_t *span) {
     if (diagnostic == NULL || span == NULL || !vitte_ast_span_is_valid(span)) {
         return;
     }
 
-    diagnostic->source_name = span->source_name;
+    vitte_diagnostic_copy_source_name(diagnostic, span->source_name);
     diagnostic->start_offset = span->start_offset;
     diagnostic->end_offset = span->end_offset;
     diagnostic->start_line = span->start_line;
@@ -337,7 +362,7 @@ vitte_status_t vitte_diagnostic_format_one_ex(
                 capacity,
                 &used,
                 "  --> %s:%u:%u-%u:%u\n",
-                diagnostic->source_name != NULL ? diagnostic->source_name : "<unknown>",
+                vitte_diagnostic_text_is_valid(diagnostic->source_name) ? diagnostic->source_name : "<unknown>",
                 diagnostic->start_line,
                 diagnostic->start_column,
                 diagnostic->end_line,
@@ -349,7 +374,7 @@ vitte_status_t vitte_diagnostic_format_one_ex(
                 capacity,
                 &used,
                 "  --> %s:%u:%u\n",
-                diagnostic->source_name != NULL ? diagnostic->source_name : "<unknown>",
+                vitte_diagnostic_text_is_valid(diagnostic->source_name) ? diagnostic->source_name : "<unknown>",
                 diagnostic->start_line,
                 diagnostic->start_column
             );
