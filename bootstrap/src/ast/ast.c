@@ -253,6 +253,112 @@ const char *vitte_ast_node_label(const vitte_ast_node_t *node) {
     }
 }
 
+const char *vitte_ast_decl_name(const vitte_ast_decl_t *decl) {
+    if (decl == NULL) {
+        return NULL;
+    }
+    if (decl->kind == VITTE_AST_NODE_PROC_DECL) {
+        return decl->as.proc_decl.name;
+    }
+    if (decl->kind == VITTE_AST_NODE_CONST_DECL) {
+        return decl->as.const_decl.name;
+    }
+    return NULL;
+}
+
+const vitte_ast_decl_t *vitte_ast_module_find_decl(const vitte_ast_module_t *module, const char *name) {
+    const vitte_ast_node_t *decl;
+
+    if (module == NULL || module->kind != VITTE_AST_NODE_MODULE || name == NULL) {
+        return NULL;
+    }
+    for (decl = module->as.module.declarations.first; decl != NULL; decl = decl->next) {
+        const char *decl_name = vitte_ast_decl_name(decl);
+        if (decl_name != NULL && strcmp(decl_name, name) == 0) {
+            return decl;
+        }
+    }
+    return NULL;
+}
+
+const vitte_ast_decl_t *vitte_ast_export_decl_target(
+    const vitte_ast_module_t *module,
+    const vitte_ast_decl_t *export_decl
+) {
+    if (module == NULL || export_decl == NULL || export_decl->kind != VITTE_AST_NODE_EXPORT_DECL ||
+        export_decl->as.export_decl.local_name == NULL) {
+        return NULL;
+    }
+    return vitte_ast_module_find_decl(module, export_decl->as.export_decl.local_name);
+}
+
+bool vitte_ast_module_decl_is_exported(
+    const vitte_ast_module_t *module,
+    const vitte_ast_decl_t *decl
+) {
+    const vitte_ast_node_t *export_decl;
+    const char *decl_name;
+
+    if (module == NULL || module->kind != VITTE_AST_NODE_MODULE || decl == NULL) {
+        return false;
+    }
+    if (decl->kind == VITTE_AST_NODE_PROC_DECL) {
+        if (decl->as.proc_decl.exported || module->as.module.export_all) {
+            return true;
+        }
+    } else if (decl->kind == VITTE_AST_NODE_CONST_DECL) {
+        if (decl->as.const_decl.exported || module->as.module.export_all) {
+            return true;
+        }
+    } else {
+        return false;
+    }
+
+    decl_name = vitte_ast_decl_name(decl);
+    if (decl_name == NULL) {
+        return false;
+    }
+    for (export_decl = module->as.module.exports.first; export_decl != NULL; export_decl = export_decl->next) {
+        if (export_decl->kind == VITTE_AST_NODE_EXPORT_DECL &&
+            export_decl->as.export_decl.local_name != NULL &&
+            strcmp(export_decl->as.export_decl.local_name, decl_name) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+const vitte_ast_decl_t *vitte_ast_module_find_exported_decl(
+    const vitte_ast_module_t *module,
+    const char *export_name
+) {
+    const vitte_ast_node_t *export_decl;
+    const vitte_ast_decl_t *decl;
+
+    if (module == NULL || module->kind != VITTE_AST_NODE_MODULE || export_name == NULL) {
+        return NULL;
+    }
+    for (export_decl = module->as.module.exports.first; export_decl != NULL; export_decl = export_decl->next) {
+        const vitte_ast_decl_t *target;
+
+        if (export_decl->kind != VITTE_AST_NODE_EXPORT_DECL ||
+            export_decl->as.export_decl.export_name == NULL ||
+            strcmp(export_decl->as.export_decl.export_name, export_name) != 0) {
+            continue;
+        }
+        target = vitte_ast_export_decl_target(module, export_decl);
+        if (target != NULL) {
+            return target;
+        }
+    }
+
+    decl = vitte_ast_module_find_decl(module, export_name);
+    if (decl != NULL && vitte_ast_module_decl_is_exported(module, decl)) {
+        return decl;
+    }
+    return NULL;
+}
+
 void vitte_ast_builder_init(vitte_ast_builder_t *builder, vitte_ast_t *ast) {
     if (builder == NULL) {
         return;

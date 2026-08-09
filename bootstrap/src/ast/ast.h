@@ -214,6 +214,11 @@ void vitte_ast_clear_error(vitte_ast_t *ast);
 const char *vitte_ast_node_kind_name(vitte_ast_node_kind_t kind);
 bool vitte_ast_node_kind_is_valid(vitte_ast_node_kind_t kind);
 const char *vitte_ast_node_label(const vitte_ast_node_t *node);
+const char *vitte_ast_decl_name(const vitte_ast_decl_t *decl);
+const vitte_ast_decl_t *vitte_ast_module_find_decl(const vitte_ast_module_t *module, const char *name);
+const vitte_ast_decl_t *vitte_ast_export_decl_target(const vitte_ast_module_t *module, const vitte_ast_decl_t *export_decl);
+bool vitte_ast_module_decl_is_exported(const vitte_ast_module_t *module, const vitte_ast_decl_t *decl);
+const vitte_ast_decl_t *vitte_ast_module_find_exported_decl(const vitte_ast_module_t *module, const char *export_name);
 void vitte_ast_dump(const vitte_ast_node_t *node, FILE *stream, size_t max_depth);
 
 void vitte_ast_builder_init(vitte_ast_builder_t *builder, vitte_ast_t *ast);
