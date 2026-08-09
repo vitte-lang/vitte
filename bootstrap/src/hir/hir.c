@@ -169,6 +169,12 @@ const char *vitte_hir_kind_name(vitte_hir_kind_t kind) {
             return "form";
         case VITTE_HIR_FORM_FIELD:
             return "form_field";
+        case VITTE_HIR_LIST_EXPR:
+            return "list";
+        case VITTE_HIR_RECORD_EXPR:
+            return "record";
+        case VITTE_HIR_RECORD_FIELD:
+            return "record_field";
         case VITTE_HIR_BLOCK:
             return "block";
         case VITTE_HIR_RETURN_STMT:
@@ -218,6 +224,10 @@ const char *vitte_hir_node_label(const vitte_hir_node_t *node) {
             return node->as.form_decl.name != NULL ? node->as.form_decl.name : "<form>";
         case VITTE_HIR_FORM_FIELD:
             return node->as.form_field.name != NULL ? node->as.form_field.name : "<field>";
+        case VITTE_HIR_RECORD_EXPR:
+            return node->as.record_expr.type_name != NULL ? node->as.record_expr.type_name : "<record>";
+        case VITTE_HIR_RECORD_FIELD:
+            return node->as.record_field.name != NULL ? node->as.record_field.name : "<field>";
         case VITTE_HIR_LET_STMT:
             return node->as.let_stmt.name != NULL ? node->as.let_stmt.name : "<let>";
         case VITTE_HIR_ASSIGN_STMT:
@@ -409,6 +419,24 @@ vitte_hir_node_t *vitte_hir_make_form_field(vitte_hir_builder_t *builder, const 
         node->as.form_field.name = name;
         node->as.form_field.type = type;
     }
+    return node;
+}
+
+vitte_hir_expr_t *vitte_hir_make_list(vitte_hir_builder_t *builder, const vitte_ast_node_t *source) {
+    vitte_hir_node_t *node = builder != NULL ? vitte_hir_alloc_node(builder->hir, VITTE_HIR_LIST_EXPR, source) : NULL;
+    if (node != NULL) vitte_hir_list_init(&node->as.list_expr.elements);
+    return node;
+}
+
+vitte_hir_expr_t *vitte_hir_make_record(vitte_hir_builder_t *builder, const char *type_name, const vitte_ast_node_t *source) {
+    vitte_hir_node_t *node = builder != NULL ? vitte_hir_alloc_node(builder->hir, VITTE_HIR_RECORD_EXPR, source) : NULL;
+    if (node != NULL) { node->as.record_expr.type_name = type_name; vitte_hir_list_init(&node->as.record_expr.fields); }
+    return node;
+}
+
+vitte_hir_node_t *vitte_hir_make_record_field(vitte_hir_builder_t *builder, const char *name, vitte_hir_expr_t *value, const vitte_ast_node_t *source) {
+    vitte_hir_node_t *node = builder != NULL ? vitte_hir_alloc_node(builder->hir, VITTE_HIR_RECORD_FIELD, source) : NULL;
+    if (node != NULL) { node->as.record_field.name = name; node->as.record_field.value = value; }
     return node;
 }
 
@@ -708,6 +736,27 @@ static vitte_hir_expr_t *vitte_hir_lower_expr(vitte_hir_lowering_t *lowering, co
             return vitte_hir_make_integer_literal(&builder, node->as.integer_literal.value, node);
         case VITTE_AST_NODE_STRING_LITERAL:
             return vitte_hir_make_string_literal(&builder, node->as.string_literal.value, node);
+        case VITTE_AST_NODE_LIST_EXPR: {
+            const vitte_ast_node_t *element;
+            vitte_hir_expr_t *list = vitte_hir_make_list(&builder, node);
+            if (list == NULL) return NULL;
+            for (element = node->as.list_expr.elements.first; element != NULL; element = element->next) {
+                vitte_hir_expr_t *item = vitte_hir_lower_expr(lowering, element, depth + 1u);
+                if (item == NULL || !vitte_hir_list_append(&list->as.list_expr.elements, item)) return NULL;
+            }
+            return list;
+        }
+        case VITTE_AST_NODE_RECORD_EXPR: {
+            const vitte_ast_node_t *field;
+            vitte_hir_expr_t *record = vitte_hir_make_record(&builder, node->as.record_expr.type_name, node);
+            if (record == NULL) return NULL;
+            for (field = node->as.record_expr.fields.first; field != NULL; field = field->next) {
+                vitte_hir_expr_t *value = vitte_hir_lower_expr(lowering, field->as.record_field.value, depth + 1u);
+                vitte_hir_node_t *hir_field = value != NULL ? vitte_hir_make_record_field(&builder, field->as.record_field.name, value, field) : NULL;
+                if (hir_field == NULL || !vitte_hir_list_append(&record->as.record_expr.fields, hir_field)) return NULL;
+            }
+            return record;
+        }
         case VITTE_AST_NODE_IDENTIFIER:
             return vitte_hir_make_variable(&builder, vitte_hir_ast_identifier_lowered_name(node), node);
         case VITTE_AST_NODE_BINARY_EXPR: {
@@ -1145,6 +1194,20 @@ static vitte_status_t vitte_hir_validate_node(vitte_hir_t *hir, const vitte_hir_
                 return VITTE_STATUS_ERROR_INVALID_STATE;
             }
             return vitte_hir_validate_node(hir, node->as.form_field.type, depth + 1u, max_depth, visited);
+        case VITTE_HIR_LIST_EXPR:
+            return vitte_hir_validate_list(hir, &node->as.list_expr.elements, depth, max_depth, visited);
+        case VITTE_HIR_RECORD_EXPR:
+            if (node->as.record_expr.type_name == NULL) {
+                vitte_hir_set_error(hir, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_HIR_E_RECORD", "HIR record requires a type name", NULL);
+                return VITTE_STATUS_ERROR_INVALID_STATE;
+            }
+            return vitte_hir_validate_list(hir, &node->as.record_expr.fields, depth, max_depth, visited);
+        case VITTE_HIR_RECORD_FIELD:
+            if (node->as.record_field.name == NULL || node->as.record_field.value == NULL) {
+                vitte_hir_set_error(hir, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_HIR_E_RECORD", "HIR record field requires name and value", NULL);
+                return VITTE_STATUS_ERROR_INVALID_STATE;
+            }
+            return vitte_hir_validate_node(hir, node->as.record_field.value, depth + 1u, max_depth, visited);
         case VITTE_HIR_BLOCK:
             return vitte_hir_validate_list(hir, &node->as.block.statements, depth, max_depth, visited);
         case VITTE_HIR_RETURN_STMT:

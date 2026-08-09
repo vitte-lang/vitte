@@ -733,7 +733,34 @@ static vitte_ast_expr_t *vitte_parser_parse_primary(vitte_parser_t *parser) {
             if (text == NULL) {
                 return NULL;
             }
-            expr = vitte_ast_make_identifier(&parser->builder, text, span);
+            if (parser->current.kind == VITTE_TOKEN_LBRACE && !parser->suppress_record_literals) {
+                vitte_ast_span_t close_span;
+                (void)vitte_parser_advance(parser);
+                expr = vitte_ast_make_record_expr(&parser->builder, text, span);
+                if (expr == NULL) return NULL;
+                while (parser->current.kind != VITTE_TOKEN_RBRACE && parser->current.kind != VITTE_TOKEN_EOF) {
+                    vitte_ast_span_t field_span = vitte_parser_span_from_token(&parser->current);
+                    char *field_name;
+                    vitte_ast_expr_t *value;
+                    vitte_ast_node_t *field;
+                    if (vitte_parser_match(parser, VITTE_TOKEN_COMMA)) continue;
+                    if (parser->current.kind != VITTE_TOKEN_IDENTIFIER) return NULL;
+                    field_name = vitte_parser_copy_token_text(parser, &parser->current);
+                    (void)vitte_parser_advance(parser);
+                    if (!vitte_parser_expect(parser, VITTE_TOKEN_COLON, "VITTE_PARSER_E_RECORD", "expected ':' after record field")) return NULL;
+                    value = vitte_parser_parse_expr_impl(parser);
+                    if (value == NULL) return NULL;
+                    field_span = vitte_parser_span_merge(&field_span, &value->span);
+                    field = vitte_ast_make_record_field(&parser->builder, field_name, value, field_span);
+                    if (field == NULL || !vitte_ast_list_append(&expr->as.record_expr.fields, field)) return NULL;
+                    (void)vitte_parser_match(parser, VITTE_TOKEN_COMMA);
+                }
+                if (!vitte_parser_expect(parser, VITTE_TOKEN_RBRACE, "VITTE_PARSER_E_RECORD", "expected '}' after record literal")) return NULL;
+                close_span = vitte_parser_span_from_token(&parser->previous);
+                expr->span = vitte_parser_span_merge(&span, &close_span);
+            } else {
+                expr = vitte_ast_make_identifier(&parser->builder, text, span);
+            }
             break;
         case VITTE_TOKEN_LPAREN:
             (void)vitte_parser_advance(parser);
@@ -1273,7 +1300,9 @@ static vitte_ast_stmt_t *vitte_parser_parse_if(vitte_parser_t *parser) {
 
     keyword_span = vitte_parser_span_from_token(&parser->current);
     (void)vitte_parser_advance(parser);
+    parser->suppress_record_literals = true;
     condition = vitte_parser_parse_expr(parser);
+    parser->suppress_record_literals = false;
     if (condition == NULL) {
         return NULL;
     }

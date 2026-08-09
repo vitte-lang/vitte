@@ -56,6 +56,7 @@ typedef struct vitte_parser {
     vitte_token_t current;
     vitte_token_t previous;
     size_t depth;
+    bool suppress_record_literals;
     vitte_error_t last_error;
 } vitte_parser_t;
 
