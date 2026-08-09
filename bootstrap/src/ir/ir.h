@@ -67,6 +67,8 @@ typedef struct vitte_ir_instruction vitte_ir_instruction_t;
 typedef struct vitte_ir_block vitte_ir_block_t;
 typedef struct vitte_ir_function vitte_ir_function_t;
 typedef struct vitte_ir_global vitte_ir_global_t;
+typedef struct vitte_ir_pick_variant vitte_ir_pick_variant_t;
+typedef struct vitte_ir_pick vitte_ir_pick_t;
 typedef struct vitte_ir_module vitte_ir_module_t;
 typedef struct vitte_ir_local_binding vitte_ir_local_binding_t;
 typedef struct vitte_ir_function_binding vitte_ir_function_binding_t;
@@ -140,11 +142,28 @@ struct vitte_ir_global {
     vitte_ir_global_t *next;
 };
 
+struct vitte_ir_pick_variant {
+    const char *name;
+    vitte_ir_pick_variant_t *next;
+};
+
+struct vitte_ir_pick {
+    const char *name;
+    vitte_ir_pick_variant_t *first_variant;
+    vitte_ir_pick_variant_t *last_variant;
+    size_t variant_count;
+    const vitte_hir_node_t *source;
+    vitte_ir_pick_t *next;
+};
+
 struct vitte_ir_module {
     const char *name;
     vitte_ir_global_t *first_global;
     vitte_ir_global_t *last_global;
     size_t global_count;
+    vitte_ir_pick_t *first_pick;
+    vitte_ir_pick_t *last_pick;
+    size_t pick_count;
     vitte_ir_function_t *first_function;
     vitte_ir_function_t *last_function;
     size_t function_count;
@@ -204,7 +223,11 @@ vitte_ir_type_t *vitte_ir_type_from_hir(vitte_ir_t *ir, const vitte_hir_node_t *
 void vitte_ir_builder_init(vitte_ir_builder_t *builder, vitte_ir_t *ir);
 vitte_ir_module_t *vitte_ir_make_module(vitte_ir_builder_t *builder, const char *name);
 vitte_ir_global_t *vitte_ir_make_global(vitte_ir_builder_t *builder, const char *name, vitte_ir_type_t *type, const vitte_hir_node_t *source);
+vitte_ir_pick_t *vitte_ir_make_pick(vitte_ir_builder_t *builder, const char *name, const vitte_hir_node_t *source);
+vitte_ir_pick_variant_t *vitte_ir_make_pick_variant(vitte_ir_builder_t *builder, const char *name);
 bool vitte_ir_module_add_global(vitte_ir_module_t *module, vitte_ir_global_t *global);
+bool vitte_ir_module_add_pick(vitte_ir_module_t *module, vitte_ir_pick_t *pick);
+bool vitte_ir_pick_add_variant(vitte_ir_pick_t *pick, vitte_ir_pick_variant_t *variant);
 vitte_ir_function_t *vitte_ir_make_function(vitte_ir_builder_t *builder, const char *name, vitte_ir_type_t *return_type, const vitte_hir_node_t *source);
 bool vitte_ir_module_add_function(vitte_ir_module_t *module, vitte_ir_function_t *function);
 vitte_ir_value_t *vitte_ir_make_parameter(vitte_ir_builder_t *builder, const char *name, vitte_ir_type_t *type);

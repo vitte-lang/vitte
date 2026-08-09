@@ -508,6 +508,32 @@ vitte_ir_global_t *vitte_ir_make_global(vitte_ir_builder_t *builder, const char 
     return global;
 }
 
+vitte_ir_pick_t *vitte_ir_make_pick(vitte_ir_builder_t *builder, const char *name, const vitte_hir_node_t *source) {
+    vitte_ir_pick_t *pick;
+    if (builder == NULL || builder->ir == NULL || name == NULL) {
+        return NULL;
+    }
+    pick = (vitte_ir_pick_t *)vitte_arena_alloc_zeroed(builder->ir->arena, sizeof(*pick), _Alignof(vitte_ir_pick_t));
+    if (pick == NULL) {
+        return NULL;
+    }
+    pick->name = name;
+    pick->source = source;
+    return pick;
+}
+
+vitte_ir_pick_variant_t *vitte_ir_make_pick_variant(vitte_ir_builder_t *builder, const char *name) {
+    vitte_ir_pick_variant_t *variant;
+    if (builder == NULL || builder->ir == NULL || name == NULL) {
+        return NULL;
+    }
+    variant = (vitte_ir_pick_variant_t *)vitte_arena_alloc_zeroed(builder->ir->arena, sizeof(*variant), _Alignof(vitte_ir_pick_variant_t));
+    if (variant != NULL) {
+        variant->name = name;
+    }
+    return variant;
+}
+
 bool vitte_ir_module_add_global(vitte_ir_module_t *module, vitte_ir_global_t *global) {
     if (module == NULL || global == NULL) {
         return false;
@@ -520,6 +546,36 @@ bool vitte_ir_module_add_global(vitte_ir_module_t *module, vitte_ir_global_t *gl
     }
     module->last_global = global;
     module->global_count++;
+    return true;
+}
+
+bool vitte_ir_module_add_pick(vitte_ir_module_t *module, vitte_ir_pick_t *pick) {
+    if (module == NULL || pick == NULL || pick->name == NULL) {
+        return false;
+    }
+    pick->next = NULL;
+    if (module->last_pick != NULL) {
+        module->last_pick->next = pick;
+    } else {
+        module->first_pick = pick;
+    }
+    module->last_pick = pick;
+    module->pick_count++;
+    return true;
+}
+
+bool vitte_ir_pick_add_variant(vitte_ir_pick_t *pick, vitte_ir_pick_variant_t *variant) {
+    if (pick == NULL || variant == NULL || variant->name == NULL) {
+        return false;
+    }
+    variant->next = NULL;
+    if (pick->last_variant != NULL) {
+        pick->last_variant->next = variant;
+    } else {
+        pick->first_variant = variant;
+    }
+    pick->last_variant = variant;
+    pick->variant_count++;
     return true;
 }
 
@@ -1483,6 +1539,34 @@ static vitte_status_t vitte_ir_predeclare_global(vitte_ir_lowering_t *lowering, 
     return VITTE_STATUS_OK;
 }
 
+static vitte_status_t vitte_ir_predeclare_pick(vitte_ir_lowering_t *lowering, const vitte_hir_node_t *hir_decl) {
+    vitte_ir_pick_t *pick;
+    const vitte_hir_node_t *variant;
+
+    if (hir_decl == NULL || hir_decl->kind != VITTE_HIR_PICK_DECL) {
+        vitte_ir_lowering_set_error(lowering, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_IR_E_PICK", "expected HIR pick declaration", NULL);
+        return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+    }
+    pick = vitte_ir_make_pick(&lowering->builder, hir_decl->as.pick_decl.name, hir_decl);
+    if (pick == NULL || !vitte_ir_module_add_pick(lowering->ir->module, pick)) {
+        vitte_ir_lowering_set_error(lowering, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_IR_E_PICK", "failed to create IR pick declaration", hir_decl->as.pick_decl.name);
+        return VITTE_STATUS_ERROR_INVALID_STATE;
+    }
+    for (variant = hir_decl->as.pick_decl.variants.first; variant != NULL; variant = variant->next) {
+        vitte_ir_pick_variant_t *ir_variant;
+        if (variant->kind != VITTE_HIR_PICK_VARIANT) {
+            vitte_ir_lowering_set_error(lowering, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_IR_E_PICK", "invalid HIR pick variant", hir_decl->as.pick_decl.name);
+            return VITTE_STATUS_ERROR_INVALID_STATE;
+        }
+        ir_variant = vitte_ir_make_pick_variant(&lowering->builder, variant->as.pick_variant.name);
+        if (ir_variant == NULL || !vitte_ir_pick_add_variant(pick, ir_variant)) {
+            vitte_ir_lowering_set_error(lowering, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_IR_E_PICK", "failed to append IR pick variant", variant->as.pick_variant.name);
+            return VITTE_STATUS_ERROR_INVALID_STATE;
+        }
+    }
+    return VITTE_STATUS_OK;
+}
+
 static vitte_status_t vitte_ir_lower_function_body(vitte_ir_lowering_t *lowering, const vitte_hir_node_t *hir_function) {
     vitte_ir_function_t *function;
     vitte_ir_block_t *entry;
@@ -1542,6 +1626,13 @@ vitte_status_t vitte_ir_lower_hir_with_options(vitte_ir_lowering_t *lowering, co
         }
         if (decl->kind == VITTE_HIR_CONST_DECL) {
             status = vitte_ir_predeclare_global(lowering, decl);
+            if (status != VITTE_STATUS_OK) {
+                return status;
+            }
+            continue;
+        }
+        if (decl->kind == VITTE_HIR_PICK_DECL) {
+            status = vitte_ir_predeclare_pick(lowering, decl);
             if (status != VITTE_STATUS_OK) {
                 return status;
             }
@@ -1930,6 +2021,7 @@ vitte_status_t vitte_ir_validate(vitte_ir_t *ir) {
     size_t functions = 0u;
     size_t blocks = 0u;
     size_t instructions = 0u;
+    size_t picks = 0u;
 
     if (!vitte_ir_is_initialized(ir) || ir->module == NULL) {
         vitte_ir_set_error(ir, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_IR_E_STATE", "IR module is missing", NULL);
@@ -1947,6 +2039,29 @@ vitte_status_t vitte_ir_validate(vitte_ir_t *ir) {
             !vitte_ir_type_equals(global->type, global->initializer->type)) {
             vitte_ir_set_error(ir, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_IR_E_GLOBAL", "invalid IR global", global != NULL ? global->name : NULL);
             return VITTE_STATUS_ERROR_INVALID_STATE;
+        }
+    }
+    {
+        const vitte_ir_pick_t *pick;
+        for (pick = ir->module->first_pick; pick != NULL; pick = pick->next) {
+            const vitte_ir_pick_variant_t *variant;
+            size_t variants = 0u;
+            picks++;
+            if (pick->name == NULL || pick->variant_count == 0u) {
+                vitte_ir_set_error(ir, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_IR_E_PICK", "invalid IR pick declaration", NULL);
+                return VITTE_STATUS_ERROR_INVALID_STATE;
+            }
+            for (variant = pick->first_variant; variant != NULL; variant = variant->next) {
+                variants++;
+                if (variant->name == NULL || variant->name[0] == '\0') {
+                    vitte_ir_set_error(ir, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_IR_E_PICK", "invalid IR pick variant", pick->name);
+                    return VITTE_STATUS_ERROR_INVALID_STATE;
+                }
+            }
+            if (variants != pick->variant_count) {
+                vitte_ir_set_error(ir, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_IR_E_PICK", "IR pick variant count is inconsistent", pick->name);
+                return VITTE_STATUS_ERROR_INVALID_STATE;
+            }
         }
     }
     for (function = ir->module->first_function; function != NULL; function = function->next) {
@@ -1999,7 +2114,8 @@ vitte_status_t vitte_ir_validate(vitte_ir_t *ir) {
             }
         }
     }
-    if (globals != ir->module->global_count ||
+    if (picks != ir->module->pick_count ||
+        globals != ir->module->global_count ||
         functions != ir->module->function_count ||
         functions != ir->function_count ||
         blocks != ir->block_count ||
