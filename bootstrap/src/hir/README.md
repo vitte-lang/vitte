@@ -13,6 +13,10 @@ compiler after AST construction and before lower-level IR or backend emission.
 - Lists store `first`, `last`, and `count`.
 - Nodes are stable after construction except list `next` links.
 - Validation and traversal are deterministic and depth-limited.
+- Symbol-bearing HIR nodes keep both the public source name and the lowered
+  internal name when the AST has one.
+- `name` is always the effective name consumed by IR lowering. If
+  `lowered_name` is present, `name` must match it exactly.
 
 ## Node Kinds
 
@@ -33,6 +37,19 @@ The bootstrap HIR currently models:
 - call expression
 - type name
 - error node
+
+## Symbol Names
+
+For functions, constants, and variables:
+
+- `source_name` stores the public Vitte spelling when it is available from AST.
+- `lowered_name` stores the unique internal symbol name introduced by import
+  flattening or backend pre-lowering.
+- `name` stores the effective resolved name used by downstream lowering.
+
+HIR validation rejects a symbol whose `lowered_name` is present but differs from
+`name`. This prevents later IR/C17 lowering from falling back to ambiguous source
+names for imported or rewritten symbols.
 
 ## Ownership
 
@@ -81,6 +98,7 @@ overflow. The owning `vitte_hir_t` records the last error.
 - root module exists
 - valid node kind and non-zero id
 - coherent list counts
+- lowered symbol names match the effective HIR name
 - const declaration name/value
 - function name/body
 - block statement lists

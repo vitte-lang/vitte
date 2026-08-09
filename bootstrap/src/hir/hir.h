@@ -67,6 +67,8 @@ struct vitte_hir_node {
 
         struct {
             const char *name;
+            const char *source_name;
+            const char *lowered_name;
             vitte_hir_list_t parameters;
             vitte_hir_type_t *return_type;
             vitte_hir_block_t *body;
@@ -74,6 +76,8 @@ struct vitte_hir_node {
 
         struct {
             const char *name;
+            const char *source_name;
+            const char *lowered_name;
             vitte_hir_type_t *declared_type;
             vitte_hir_expr_t *value;
         } const_decl;
@@ -112,6 +116,8 @@ struct vitte_hir_node {
 
         struct {
             const char *name;
+            const char *source_name;
+            const char *lowered_name;
         } variable;
 
         struct {
