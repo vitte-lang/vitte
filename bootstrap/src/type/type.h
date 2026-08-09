@@ -12,6 +12,8 @@
 extern "C" {
 #endif
 
+#define VITTE_TYPE_MAX_PROC_PARAMETERS ((size_t)16u)
+
 typedef enum vitte_type_kind {
     VITTE_TYPE_KIND_INVALID = 0,
     VITTE_TYPE_KIND_BUILTIN,
@@ -23,6 +25,7 @@ typedef struct vitte_type {
     const char *name;
     vitte_builtin_type_kind_t builtin_kind;
     const struct vitte_type *return_type;
+    const struct vitte_type *parameter_types[VITTE_TYPE_MAX_PROC_PARAMETERS];
     size_t arity;
     bool variadic;
     bool valid;
@@ -41,6 +44,7 @@ void vitte_type_init_proc(
     vitte_type_t *type,
     const char *name,
     const vitte_type_t *return_type,
+    const struct vitte_type *const *parameter_types,
     size_t arity,
     bool variadic
 );
@@ -77,6 +81,7 @@ bool vitte_type_is_textual(const vitte_type_t *type);
 bool vitte_type_equals(const vitte_type_t *left, const vitte_type_t *right);
 bool vitte_type_is_assignable(const vitte_type_t *destination, const vitte_type_t *source);
 bool vitte_type_is_condition(const vitte_type_t *type);
+const vitte_type_t *vitte_type_proc_parameter(const vitte_type_t *type, size_t index);
 
 #ifdef __cplusplus
 }

@@ -85,6 +85,13 @@ static const vitte_type_t *vitte_sema_resolve_type_ref(
     vitte_sema_t *sema,
     const vitte_ast_type_ref_t *type_ref
 );
+static vitte_status_t vitte_sema_collect_proc_signature(
+    vitte_sema_t *sema,
+    const vitte_ast_decl_t *decl,
+    const vitte_type_t **return_type,
+    const vitte_type_t **parameter_types,
+    size_t *arity
+);
 static vitte_status_t vitte_sema_define_imported_decl(
     vitte_sema_t *sema,
     const char *visible_name,
@@ -609,6 +616,8 @@ static vitte_status_t vitte_sema_define_imported_decl(
     const vitte_symbol_t *symbol = NULL;
     const vitte_symbol_t *existing_symbol;
     const vitte_type_t *type = NULL;
+    const vitte_type_t *parameter_types[VITTE_TYPE_MAX_PROC_PARAMETERS];
+    size_t arity = 0u;
     vitte_status_t status;
 
     if (sema == NULL || visible_name == NULL || decl == NULL) {
@@ -629,14 +638,16 @@ static vitte_status_t vitte_sema_define_imported_decl(
         );
     }
     if (decl->kind == VITTE_AST_NODE_PROC_DECL) {
-        type = decl->as.proc_decl.return_type != NULL ?
-            vitte_sema_resolve_type_ref(sema, decl->as.proc_decl.return_type) :
-            vitte_type_builtin(&sema->types, VITTE_BUILTIN_TYPE_VOID);
+        status = vitte_sema_collect_proc_signature(sema, decl, &type, parameter_types, &arity);
+        if (status != VITTE_STATUS_OK) {
+            return status;
+        }
         status = vitte_symbol_define_proc(
             &sema->symbols,
             visible_name,
             type,
-            decl->as.proc_decl.parameters.count,
+            parameter_types,
+            arity,
             false,
             decl,
             &symbol
@@ -671,6 +682,51 @@ static vitte_status_t vitte_sema_define_imported_decl(
         );
     }
     sema->stats.symbol_count++;
+    return VITTE_STATUS_OK;
+}
+
+static vitte_status_t vitte_sema_collect_proc_signature(
+    vitte_sema_t *sema,
+    const vitte_ast_decl_t *decl,
+    const vitte_type_t **return_type,
+    const vitte_type_t **parameter_types,
+    size_t *arity
+) {
+    const vitte_ast_node_t *param;
+    size_t index = 0u;
+
+    if (sema == NULL || decl == NULL || decl->kind != VITTE_AST_NODE_PROC_DECL ||
+        return_type == NULL || parameter_types == NULL || arity == NULL) {
+        return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+    }
+    if (decl->as.proc_decl.parameters.count > VITTE_TYPE_MAX_PROC_PARAMETERS) {
+        return vitte_sema_fail(
+            sema,
+            VITTE_STATUS_ERROR_UNSUPPORTED,
+            "VITTE_SEMA_E_PARAM",
+            "bootstrap procedure parameter limit exceeded",
+            decl->as.proc_decl.name,
+            &decl->span
+        );
+    }
+
+    *return_type = decl->as.proc_decl.return_type != NULL ?
+        vitte_sema_resolve_type_ref(sema, decl->as.proc_decl.return_type) :
+        vitte_type_builtin(&sema->types, VITTE_BUILTIN_TYPE_VOID);
+    for (param = decl->as.proc_decl.parameters.first; param != NULL; param = param->next) {
+        if (param->kind != VITTE_AST_NODE_PARAM_DECL) {
+            return vitte_sema_fail(
+                sema,
+                VITTE_STATUS_ERROR_UNSUPPORTED,
+                "VITTE_SEMA_E_PARAM",
+                "unsupported procedure parameter node",
+                vitte_ast_node_kind_name(param->kind),
+                &param->span
+            );
+        }
+        parameter_types[index++] = vitte_sema_resolve_type_ref(sema, param->as.param_decl.type);
+    }
+    *arity = index;
     return VITTE_STATUS_OK;
 }
 
@@ -998,6 +1054,8 @@ static const vitte_type_t *vitte_sema_analyze_call(
     const vitte_ast_expr_t *expr
 ) {
     const vitte_ast_node_t *argument;
+    const vitte_ast_node_t *argument_nodes[VITTE_TYPE_MAX_PROC_PARAMETERS];
+    const vitte_type_t *argument_types[VITTE_TYPE_MAX_PROC_PARAMETERS];
     size_t arity = 0u;
     const vitte_symbol_t *callee_symbol = NULL;
     const vitte_type_t *callee_type;
@@ -1023,7 +1081,12 @@ static const vitte_type_t *vitte_sema_analyze_call(
     }
 
     for (argument = expr->as.call_expr.arguments.first; argument != NULL; argument = argument->next) {
-        (void)vitte_sema_analyze_expr(sema, argument);
+        const vitte_type_t *argument_type = vitte_sema_analyze_expr(sema, argument);
+
+        if (arity < VITTE_TYPE_MAX_PROC_PARAMETERS) {
+            argument_nodes[arity] = argument;
+            argument_types[arity] = argument_type;
+        }
         arity++;
     }
 
@@ -1054,7 +1117,7 @@ static const vitte_type_t *vitte_sema_analyze_call(
         }
         if (arity == 1u && function->parameter_type != VITTE_BUILTIN_TYPE_ERROR && expr->as.call_expr.arguments.first != NULL) {
             const vitte_type_t *parameter_type = vitte_type_builtin(&sema->types, function->parameter_type);
-            const vitte_type_t *argument_type = vitte_sema_analyze_expr(sema, expr->as.call_expr.arguments.first);
+            const vitte_type_t *argument_type = argument_types[0];
             if (parameter_type != NULL &&
                 !vitte_type_is_error(argument_type) &&
                 !vitte_type_is_assignable(parameter_type, argument_type)) {
@@ -1068,16 +1131,42 @@ static const vitte_type_t *vitte_sema_analyze_call(
                 );
             }
         }
-    } else if (arity != callee_type->arity && !callee_type->variadic) {
-        (void)vitte_sema_fail(
-            sema,
-            VITTE_STATUS_ERROR_PARSE,
-            "VITTE_SEMA_E_CALL",
-            "procedure arity mismatch",
-            callee_symbol != NULL ? callee_symbol->name : vitte_type_name(callee_type),
-            &expr->span
-        );
-        return vitte_sema_error_type(sema);
+    } else {
+        if (arity != callee_type->arity && !callee_type->variadic) {
+            (void)vitte_sema_fail(
+                sema,
+                VITTE_STATUS_ERROR_PARSE,
+                "VITTE_SEMA_E_CALL",
+                "procedure arity mismatch",
+                callee_symbol != NULL ? callee_symbol->name : vitte_type_name(callee_type),
+                &expr->span
+            );
+            return vitte_sema_error_type(sema);
+        }
+        if (!callee_type->variadic) {
+            size_t index;
+
+            for (index = 0u; index < arity && index < callee_type->arity; index++) {
+                const vitte_type_t *expected_type = vitte_type_proc_parameter(callee_type, index);
+                const vitte_type_t *argument_type = argument_types[index];
+
+                if (expected_type == NULL ||
+                    vitte_type_is_error(expected_type) ||
+                    vitte_type_is_error(argument_type) ||
+                    vitte_type_is_assignable(expected_type, argument_type)) {
+                    continue;
+                }
+                (void)vitte_sema_fail(
+                    sema,
+                    VITTE_STATUS_ERROR_PARSE,
+                    "VITTE_SEMA_E_CALL",
+                    "procedure argument type mismatch",
+                    callee_symbol != NULL ? callee_symbol->name : vitte_type_name(callee_type),
+                    &argument_nodes[index]->span
+                );
+                return vitte_sema_error_type(sema);
+            }
+        }
     }
 
     return callee_type->return_type != NULL ? callee_type->return_type : vitte_sema_error_type(sema);
@@ -1357,17 +1446,21 @@ static vitte_status_t vitte_sema_predeclare_module(vitte_sema_t *sema, const vit
     for (decl = module->as.module.declarations.first; decl != NULL; decl = decl->next) {
         const vitte_symbol_t *symbol = NULL;
         const vitte_type_t *type = NULL;
+        const vitte_type_t *parameter_types[VITTE_TYPE_MAX_PROC_PARAMETERS];
+        size_t arity = 0u;
         vitte_status_t status;
 
         if (decl->kind == VITTE_AST_NODE_PROC_DECL) {
-            type = decl->as.proc_decl.return_type != NULL ?
-                vitte_sema_resolve_type_ref(sema, decl->as.proc_decl.return_type) :
-                vitte_type_builtin(&sema->types, VITTE_BUILTIN_TYPE_VOID);
+            status = vitte_sema_collect_proc_signature(sema, decl, &type, parameter_types, &arity);
+            if (status != VITTE_STATUS_OK) {
+                return status;
+            }
             status = vitte_symbol_define_proc(
                 &sema->symbols,
                 decl->as.proc_decl.name,
                 type,
-                decl->as.proc_decl.parameters.count,
+                parameter_types,
+                arity,
                 false,
                 decl,
                 &symbol

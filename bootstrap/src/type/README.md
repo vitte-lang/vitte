@@ -14,7 +14,7 @@ basic compatibility rules used by semantic analysis.
 ## Supported Types
 
 - builtin scalar types from the builtin registry
-- procedure signatures with return type and arity
+- procedure signatures with return type, arity, and parameter type list
 
 Current compatibility rules are intentionally conservative:
 
@@ -26,4 +26,3 @@ Current compatibility rules are intentionally conservative:
 
 - no user-defined struct, enum, or alias types
 - no generic or pointer type constructors
-- no parameter type list storage beyond arity for procedures

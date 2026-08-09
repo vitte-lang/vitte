@@ -28,9 +28,12 @@ void vitte_type_init_proc(
     vitte_type_t *type,
     const char *name,
     const vitte_type_t *return_type,
+    const vitte_type_t *const *parameter_types,
     size_t arity,
     bool variadic
 ) {
+    size_t index;
+
     if (type == NULL) {
         return;
     }
@@ -42,6 +45,9 @@ void vitte_type_init_proc(
     type->arity = arity;
     type->variadic = variadic;
     type->valid = true;
+    for (index = 0u; index < arity && index < VITTE_TYPE_MAX_PROC_PARAMETERS; index++) {
+        type->parameter_types[index] = parameter_types != NULL ? parameter_types[index] : NULL;
+    }
 }
 
 static void vitte_type_init_builtin(
@@ -217,9 +223,19 @@ bool vitte_type_equals(const vitte_type_t *left, const vitte_type_t *right) {
         return left->builtin_kind == right->builtin_kind;
     }
     if (left->kind == VITTE_TYPE_KIND_PROC) {
-        return left->arity == right->arity &&
-            left->variadic == right->variadic &&
-            vitte_type_equals(left->return_type, right->return_type);
+        size_t index;
+
+        if (left->arity != right->arity ||
+            left->variadic != right->variadic ||
+            !vitte_type_equals(left->return_type, right->return_type)) {
+            return false;
+        }
+        for (index = 0u; index < left->arity; index++) {
+            if (!vitte_type_equals(left->parameter_types[index], right->parameter_types[index])) {
+                return false;
+            }
+        }
+        return true;
     }
     return false;
 }
@@ -243,4 +259,11 @@ bool vitte_type_is_assignable(const vitte_type_t *destination, const vitte_type_
 
 bool vitte_type_is_condition(const vitte_type_t *type) {
     return vitte_type_is_bool(type) || vitte_type_is_integer(type);
+}
+
+const vitte_type_t *vitte_type_proc_parameter(const vitte_type_t *type, size_t index) {
+    if (!vitte_type_is_proc(type) || index >= type->arity || index >= VITTE_TYPE_MAX_PROC_PARAMETERS) {
+        return NULL;
+    }
+    return type->parameter_types[index];
 }

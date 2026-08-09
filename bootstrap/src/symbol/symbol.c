@@ -124,6 +124,7 @@ vitte_status_t vitte_symbol_define_proc(
     vitte_symbol_table_t *table,
     const char *name,
     const vitte_type_t *return_type,
+    const vitte_type_t *const *parameter_types,
     size_t arity,
     bool variadic,
     const vitte_ast_node_t *declaration,
@@ -131,7 +132,8 @@ vitte_status_t vitte_symbol_define_proc(
 ) {
     vitte_symbol_t symbol;
 
-    if (!vitte_symbol_table_is_initialized(table) || name == NULL || name[0] == '\0' || !vitte_type_is_valid(return_type)) {
+    if (!vitte_symbol_table_is_initialized(table) || name == NULL || name[0] == '\0' ||
+        !vitte_type_is_valid(return_type) || arity > VITTE_TYPE_MAX_PROC_PARAMETERS) {
         vitte_symbol_set_error(table, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_SYMBOL_E_PROC", "invalid procedure symbol definition", name);
         return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
     }
@@ -140,7 +142,7 @@ vitte_status_t vitte_symbol_define_proc(
     symbol.name = name;
     symbol.declaration = declaration;
     symbol.initialized = true;
-    vitte_type_init_proc(&symbol.owned_type, name, return_type, arity, variadic);
+    vitte_type_init_proc(&symbol.owned_type, name, return_type, parameter_types, arity, variadic);
     symbol.type = &symbol.owned_type;
     return vitte_symbol_append(table, &symbol, out_symbol);
 }
@@ -174,6 +176,7 @@ vitte_status_t vitte_symbol_define_builtin_function(
     const vitte_symbol_t **out_symbol
 ) {
     vitte_symbol_t symbol;
+    const vitte_type_t *parameter_types[1];
 
     if (!vitte_symbol_table_is_initialized(table) || builtin_function == NULL || !vitte_type_is_valid(return_type)) {
         vitte_symbol_set_error(table, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_SYMBOL_E_BUILTIN", "invalid builtin function symbol definition", NULL);
@@ -185,7 +188,15 @@ vitte_status_t vitte_symbol_define_builtin_function(
     symbol.builtin_function = builtin_function;
     symbol.builtin = true;
     symbol.initialized = true;
-    vitte_type_init_proc(&symbol.owned_type, builtin_function->name, return_type, builtin_function->max_arity, builtin_function->variadic);
+    parameter_types[0] = NULL;
+    vitte_type_init_proc(
+        &symbol.owned_type,
+        builtin_function->name,
+        return_type,
+        parameter_types,
+        builtin_function->max_arity,
+        builtin_function->variadic
+    );
     symbol.type = &symbol.owned_type;
     return vitte_symbol_append(table, &symbol, out_symbol);
 }

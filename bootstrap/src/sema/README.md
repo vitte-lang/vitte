@@ -25,13 +25,12 @@ The semantic analyzer validates the parsed AST before backend emission.
 - return value compatibility
 - `let` initializer compatibility
 - `if` condition type validity
-- callability and call arity
+- callability, call arity, and procedure argument type compatibility
 - builtin function argument compatibility
 - operator operand compatibility
 
 ## Current Limits
 
-- procedure parameters are still unsupported
 - no user-defined aggregate types
 - no mutation analysis
 - no unreachable-code analysis

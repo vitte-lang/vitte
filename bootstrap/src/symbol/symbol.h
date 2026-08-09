@@ -69,6 +69,7 @@ vitte_status_t vitte_symbol_define_proc(
     vitte_symbol_table_t *table,
     const char *name,
     const vitte_type_t *return_type,
+    const vitte_type_t *const *parameter_types,
     size_t arity,
     bool variadic,
     const vitte_ast_node_t *declaration,
