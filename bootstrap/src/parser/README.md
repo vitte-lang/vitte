@@ -59,6 +59,7 @@ Current bootstrap grammar:
   - `give expr`
   - `let name: type`
   - `let name: type = expr`
+  - `expr;`
   - `if expr stmt`
   - `if expr stmt else stmt`
 - expression:
@@ -81,7 +82,6 @@ Current bootstrap grammar:
 - bootstrap re-exports such as `export mod::{x}` and `export mod as alias` are explicitly rejected with dedicated diagnostics
 - `let` still requires an explicit type
 - `const` without a type relies on simple literal/operator inference
-- there are no expression statements yet
 - generics, where clauses, attributes, visibility, forms, picks, traits, impls,
   generalized re-export declarations, and patterns are still outside the bootstrap parser
 

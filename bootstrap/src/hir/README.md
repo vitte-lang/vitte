@@ -24,6 +24,7 @@ The bootstrap HIR currently models:
 - block
 - return statement
 - let statement
+- expression statement
 - if statement
 - integer literal
 - string literal
@@ -63,6 +64,7 @@ overflow. The owning `vitte_hir_t` records the last error.
 - block statement to block
 - `give` statement to return
 - let statement to let
+- expression statement to expression statement
 - if statement to if
 - integer and string literals
 - identifier to variable

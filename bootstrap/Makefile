@@ -46,6 +46,7 @@ smoke: verify $(BIN)
 	@"$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/import_export_coverage/coverage_chain_main.vit"
 	@"$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/sema_calls/local_param_ok.vit"
 	@"$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/sema_calls/import_param_ok.vit"
+	@"$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/frontend_expr_stmt/expr_stmt_ok.vit"
 	@tmp="$$(mktemp)"; \
 	if "$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/import_visibility/ambiguous_symbol_form_main.vit" >"$$tmp" 2>&1; then \
 		cat "$$tmp"; rm -f "$$tmp"; exit 1; \
@@ -114,6 +115,11 @@ smoke: verify $(BIN)
 	rm -f "$$tmp"
 	@"$(BIN)" build "$(ROOT_DIR)/examples/hello.vit" -o "$(OUT_DIR)/hello"
 	@"$(OUT_DIR)/hello"
+	@"$(BIN)" build "$(ROOT_DIR)/bootstrap/tests/frontend_expr_stmt/expr_stmt_ok.vit" -o "$(OUT_DIR)/expr_stmt_ok"
+	@tmp="$$(mktemp)"; \
+	"$(OUT_DIR)/expr_stmt_ok" >"$$tmp"; \
+	grep -q "^expr-stmt-ok$$" "$$tmp" || { cat "$$tmp"; rm -f "$$tmp"; exit 1; }; \
+	rm -f "$$tmp"
 
 install: $(BIN)
 	@mkdir -p "$(ROOT_DIR)/bin"

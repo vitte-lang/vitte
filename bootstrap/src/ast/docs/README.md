@@ -15,7 +15,7 @@ Invariants:
 
 Node kinds:
 - module, import decl, export decl, proc decl, const decl
-- block, give, let, if
+- block, give, let, expr stmt, if
 - integer literal, string literal, identifier
 - binary expr, call expr, type name
 - error node

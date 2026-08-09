@@ -1214,6 +1214,36 @@ static vitte_ast_stmt_t *vitte_parser_parse_if(vitte_parser_t *parser) {
     return stmt;
 }
 
+static vitte_ast_stmt_t *vitte_parser_parse_expr_stmt(vitte_parser_t *parser) {
+    vitte_ast_expr_t *value;
+    vitte_ast_stmt_t *stmt;
+    vitte_ast_span_t span;
+
+    if (parser == NULL) {
+        return NULL;
+    }
+    value = vitte_parser_parse_expr(parser);
+    if (value == NULL) {
+        return NULL;
+    }
+    vitte_parser_optional_semicolon(parser);
+    span = value->span;
+    stmt = vitte_ast_make_expr_stmt(&parser->builder, value, span);
+    if (stmt == NULL) {
+        (void)vitte_parser_fail(
+            parser,
+            VITTE_STATUS_ERROR_OUT_OF_MEMORY,
+            "VITTE_PARSER_E_MEMORY",
+            "failed to allocate expression statement",
+            NULL,
+            &span
+        );
+        return NULL;
+    }
+    parser->stats.stmt_count++;
+    return stmt;
+}
+
 static vitte_ast_stmt_t *vitte_parser_parse_stmt_impl(vitte_parser_t *parser) {
     if (parser == NULL) {
         return NULL;
@@ -1228,8 +1258,7 @@ static vitte_ast_stmt_t *vitte_parser_parse_stmt_impl(vitte_parser_t *parser) {
         case VITTE_TOKEN_KW_IF:
             return vitte_parser_parse_if(parser);
         default:
-            (void)vitte_parser_fail_current(parser, "VITTE_PARSER_E_STMT", "expected statement");
-            return NULL;
+            return vitte_parser_parse_expr_stmt(parser);
     }
 }
 

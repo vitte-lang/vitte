@@ -89,7 +89,7 @@ The highest-value remaining gaps for real-language coverage are:
 2. richer type semantics for qualified names
 3. semantic resolution for imports and qualified names
 4. non-procedure declarations from the real grammar
-5. expression statements and richer statement forms
+5. loops and richer control-flow statement forms
 
 ## Notes
 

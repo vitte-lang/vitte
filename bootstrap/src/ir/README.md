@@ -86,6 +86,7 @@ vitte_ir_emit_return(&builder, zero, NULL);
 - block statement sequence
 - return
 - let as local plus optional store
+- expression statement as evaluated expression with discarded result
 - if as conditional branch with then/else/merge blocks
 - integer and string literals
 - variable as local load, global const reference, builtin const, or function reference

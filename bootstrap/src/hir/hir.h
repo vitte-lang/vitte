@@ -26,6 +26,7 @@ typedef enum vitte_hir_kind {
     VITTE_HIR_BLOCK,
     VITTE_HIR_RETURN_STMT,
     VITTE_HIR_LET_STMT,
+    VITTE_HIR_EXPR_STMT,
     VITTE_HIR_IF_STMT,
     VITTE_HIR_INTEGER_LITERAL,
     VITTE_HIR_STRING_LITERAL,
@@ -90,6 +91,10 @@ struct vitte_hir_node {
             vitte_hir_type_t *declared_type;
             vitte_hir_expr_t *value;
         } let_stmt;
+
+        struct {
+            vitte_hir_expr_t *value;
+        } expr_stmt;
 
         struct {
             vitte_hir_expr_t *condition;
@@ -182,6 +187,7 @@ vitte_hir_decl_t *vitte_hir_make_const(vitte_hir_builder_t *builder, const char 
 vitte_hir_block_t *vitte_hir_make_block(vitte_hir_builder_t *builder, const vitte_ast_node_t *source);
 vitte_hir_stmt_t *vitte_hir_make_return(vitte_hir_builder_t *builder, vitte_hir_expr_t *value, const vitte_ast_node_t *source);
 vitte_hir_stmt_t *vitte_hir_make_let(vitte_hir_builder_t *builder, const char *name, vitte_hir_type_t *type, vitte_hir_expr_t *value, const vitte_ast_node_t *source);
+vitte_hir_stmt_t *vitte_hir_make_expr_stmt(vitte_hir_builder_t *builder, vitte_hir_expr_t *value, const vitte_ast_node_t *source);
 vitte_hir_stmt_t *vitte_hir_make_if(vitte_hir_builder_t *builder, vitte_hir_expr_t *condition, vitte_hir_stmt_t *then_branch, vitte_hir_stmt_t *else_branch, const vitte_ast_node_t *source);
 vitte_hir_expr_t *vitte_hir_make_integer_literal(vitte_hir_builder_t *builder, int64_t value, const vitte_ast_node_t *source);
 vitte_hir_expr_t *vitte_hir_make_string_literal(vitte_hir_builder_t *builder, const char *value, const vitte_ast_node_t *source);

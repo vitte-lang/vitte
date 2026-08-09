@@ -1420,6 +1420,13 @@ static vitte_status_t vitte_sema_analyze_stmt(
             }
             status = vitte_sema_define_local(sema, stmt->as.let_stmt.name, type, stmt, true);
             break;
+        case VITTE_AST_NODE_EXPR_STMT:
+            if (stmt->as.expr_stmt.value == NULL) {
+                status = vitte_sema_fail(sema, VITTE_STATUS_ERROR_PARSE, "VITTE_SEMA_E_STMT", "expression statement requires value", NULL, &stmt->span);
+                break;
+            }
+            (void)vitte_sema_analyze_expr(sema, stmt->as.expr_stmt.value);
+            break;
         case VITTE_AST_NODE_IF_STMT:
             type = vitte_sema_analyze_expr(sema, stmt->as.if_stmt.condition);
             if (!vitte_type_is_condition(type)) {

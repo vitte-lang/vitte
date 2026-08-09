@@ -194,6 +194,8 @@ const char *vitte_ast_node_kind_name(vitte_ast_node_kind_t kind) {
             return "give_stmt";
         case VITTE_AST_NODE_LET_STMT:
             return "let_stmt";
+        case VITTE_AST_NODE_EXPR_STMT:
+            return "expr_stmt";
         case VITTE_AST_NODE_IF_STMT:
             return "if_stmt";
         case VITTE_AST_NODE_INTEGER_LITERAL:
@@ -572,6 +574,14 @@ vitte_ast_stmt_t *vitte_ast_make_let_stmt(vitte_ast_builder_t *builder, const ch
     return node;
 }
 
+vitte_ast_stmt_t *vitte_ast_make_expr_stmt(vitte_ast_builder_t *builder, vitte_ast_expr_t *value, vitte_ast_span_t span) {
+    vitte_ast_node_t *node = builder != NULL ? vitte_ast_alloc_node(builder->ast, VITTE_AST_NODE_EXPR_STMT, span) : NULL;
+    if (node != NULL) {
+        node->as.expr_stmt.value = value;
+    }
+    return node;
+}
+
 vitte_ast_stmt_t *vitte_ast_make_if_stmt(vitte_ast_builder_t *builder, vitte_ast_expr_t *condition, vitte_ast_stmt_t *then_branch, vitte_ast_stmt_t *else_branch, vitte_ast_span_t span) {
     vitte_ast_node_t *node = builder != NULL ? vitte_ast_alloc_node(builder->ast, VITTE_AST_NODE_IF_STMT, span) : NULL;
     if (node != NULL) {
@@ -872,6 +882,12 @@ static vitte_status_t vitte_ast_validate_node(vitte_ast_t *ast, const vitte_ast_
                 }
             }
             break;
+        case VITTE_AST_NODE_EXPR_STMT:
+            if (node->as.expr_stmt.value == NULL) {
+                vitte_ast_set_error(ast, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_AST_E_EXPR_STMT", "expression statement requires value", NULL);
+                return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+            }
+            return vitte_ast_validate_node(ast, node->as.expr_stmt.value, depth + 1u);
         case VITTE_AST_NODE_IF_STMT:
             if (node->as.if_stmt.condition == NULL || node->as.if_stmt.then_branch == NULL) {
                 vitte_ast_set_error(ast, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_AST_E_IF", "if statement requires condition and then branch", NULL);
@@ -1028,6 +1044,8 @@ static bool vitte_ast_visit_child(
         case VITTE_AST_NODE_LET_STMT:
             return vitte_ast_visit_child(node->as.let_stmt.type, callback, user, depth + 1u, max_depth, count) &&
                 vitte_ast_visit_child(node->as.let_stmt.value, callback, user, depth + 1u, max_depth, count);
+        case VITTE_AST_NODE_EXPR_STMT:
+            return vitte_ast_visit_child(node->as.expr_stmt.value, callback, user, depth + 1u, max_depth, count);
         case VITTE_AST_NODE_IF_STMT:
             return vitte_ast_visit_child(node->as.if_stmt.condition, callback, user, depth + 1u, max_depth, count) &&
                 vitte_ast_visit_child(node->as.if_stmt.then_branch, callback, user, depth + 1u, max_depth, count) &&
@@ -1118,6 +1136,9 @@ static void vitte_ast_dump_child(const vitte_ast_node_t *node, FILE *stream, siz
         case VITTE_AST_NODE_LET_STMT:
             vitte_ast_dump_child(node->as.let_stmt.type, stream, depth + 1u, max_depth);
             vitte_ast_dump_child(node->as.let_stmt.value, stream, depth + 1u, max_depth);
+            break;
+        case VITTE_AST_NODE_EXPR_STMT:
+            vitte_ast_dump_child(node->as.expr_stmt.value, stream, depth + 1u, max_depth);
             break;
         case VITTE_AST_NODE_IF_STMT:
             vitte_ast_dump_child(node->as.if_stmt.condition, stream, depth + 1u, max_depth);

@@ -164,6 +164,8 @@ const char *vitte_hir_kind_name(vitte_hir_kind_t kind) {
             return "return";
         case VITTE_HIR_LET_STMT:
             return "let";
+        case VITTE_HIR_EXPR_STMT:
+            return "expr_stmt";
         case VITTE_HIR_IF_STMT:
             return "if";
         case VITTE_HIR_INTEGER_LITERAL:
@@ -314,6 +316,14 @@ vitte_hir_stmt_t *vitte_hir_make_let(vitte_hir_builder_t *builder, const char *n
         node->as.let_stmt.name = name;
         node->as.let_stmt.declared_type = type;
         node->as.let_stmt.value = value;
+    }
+    return node;
+}
+
+vitte_hir_stmt_t *vitte_hir_make_expr_stmt(vitte_hir_builder_t *builder, vitte_hir_expr_t *value, const vitte_ast_node_t *source) {
+    vitte_hir_node_t *node = builder != NULL ? vitte_hir_alloc_node(builder->hir, VITTE_HIR_EXPR_STMT, source) : NULL;
+    if (node != NULL) {
+        node->as.expr_stmt.value = value;
     }
     return node;
 }
@@ -599,6 +609,13 @@ static vitte_hir_stmt_t *vitte_hir_lower_stmt(vitte_hir_lowering_t *lowering, co
             }
             return vitte_hir_make_let(&builder, node->as.let_stmt.name, type, value, node);
         }
+        case VITTE_AST_NODE_EXPR_STMT: {
+            vitte_hir_expr_t *value = vitte_hir_lower_expr(lowering, node->as.expr_stmt.value, depth + 1u);
+            if (value == NULL) {
+                return NULL;
+            }
+            return vitte_hir_make_expr_stmt(&builder, value, node);
+        }
         case VITTE_AST_NODE_IF_STMT: {
             vitte_hir_expr_t *condition = vitte_hir_lower_expr(lowering, node->as.if_stmt.condition, depth + 1u);
             vitte_hir_stmt_t *then_branch = vitte_hir_lower_stmt(lowering, node->as.if_stmt.then_branch, depth + 1u);
@@ -867,6 +884,12 @@ static vitte_status_t vitte_hir_validate_node(vitte_hir_t *hir, const vitte_hir_
             return node->as.let_stmt.value != NULL ?
                 vitte_hir_validate_node(hir, node->as.let_stmt.value, depth + 1u, max_depth, visited) :
                 VITTE_STATUS_OK;
+        case VITTE_HIR_EXPR_STMT:
+            if (node->as.expr_stmt.value == NULL) {
+                vitte_hir_set_error(hir, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_HIR_E_EXPR_STMT", "HIR expression statement requires value", NULL);
+                return VITTE_STATUS_ERROR_INVALID_STATE;
+            }
+            return vitte_hir_validate_node(hir, node->as.expr_stmt.value, depth + 1u, max_depth, visited);
         case VITTE_HIR_IF_STMT:
             if (node->as.if_stmt.condition == NULL || node->as.if_stmt.then_branch == NULL) {
                 vitte_hir_set_error(hir, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_HIR_E_IF", "HIR if requires condition and then branch", NULL);
@@ -986,6 +1009,9 @@ static size_t vitte_hir_visit_node(vitte_hir_node_t *node, vitte_hir_visit_fn ca
             count += vitte_hir_visit_node(node->as.let_stmt.declared_type, callback, user, depth + 1u, max_depth);
             count += vitte_hir_visit_node(node->as.let_stmt.value, callback, user, depth + 1u, max_depth);
             break;
+        case VITTE_HIR_EXPR_STMT:
+            count += vitte_hir_visit_node(node->as.expr_stmt.value, callback, user, depth + 1u, max_depth);
+            break;
         case VITTE_HIR_IF_STMT:
             count += vitte_hir_visit_node(node->as.if_stmt.condition, callback, user, depth + 1u, max_depth);
             count += vitte_hir_visit_node(node->as.if_stmt.then_branch, callback, user, depth + 1u, max_depth);
@@ -1058,6 +1084,9 @@ static void vitte_hir_dump_node(const vitte_hir_node_t *node, FILE *stream, size
         case VITTE_HIR_LET_STMT:
             vitte_hir_dump_node(node->as.let_stmt.declared_type, stream, depth + 1u, max_depth);
             vitte_hir_dump_node(node->as.let_stmt.value, stream, depth + 1u, max_depth);
+            break;
+        case VITTE_HIR_EXPR_STMT:
+            vitte_hir_dump_node(node->as.expr_stmt.value, stream, depth + 1u, max_depth);
             break;
         case VITTE_HIR_IF_STMT:
             vitte_hir_dump_node(node->as.if_stmt.condition, stream, depth + 1u, max_depth);

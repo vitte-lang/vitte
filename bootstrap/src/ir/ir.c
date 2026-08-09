@@ -1159,6 +1159,101 @@ static vitte_ir_value_t *vitte_ir_lower_expr(vitte_ir_lowering_t *lowering, cons
 
 static vitte_status_t vitte_ir_lower_stmt(vitte_ir_lowering_t *lowering, const vitte_hir_node_t *node, size_t depth);
 
+static void vitte_ir_discard_emitted_result(vitte_ir_value_t *value) {
+    if (value != NULL &&
+        value->kind == VITTE_IR_VALUE_INSTRUCTION &&
+        value->definition != NULL &&
+        value->definition->result == value) {
+        value->definition->result = NULL;
+    }
+}
+
+static bool vitte_ir_is_short_circuit_operator(const char *operator_text) {
+    return operator_text != NULL &&
+        (strcmp(operator_text, "&&") == 0 || strcmp(operator_text, "||") == 0);
+}
+
+static vitte_status_t vitte_ir_lower_expr_discard(vitte_ir_lowering_t *lowering, const vitte_hir_node_t *node, size_t depth) {
+    if (!vitte_ir_depth_ok(lowering, depth) || node == NULL) {
+        vitte_ir_lowering_set_error(lowering, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_IR_E_EXPR", "missing HIR expression", NULL);
+        return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+    }
+
+    switch (node->kind) {
+        case VITTE_HIR_INTEGER_LITERAL:
+        case VITTE_HIR_STRING_LITERAL:
+        case VITTE_HIR_VARIABLE:
+            return VITTE_STATUS_OK;
+        case VITTE_HIR_CALL_EXPR: {
+            vitte_ir_value_t *value = vitte_ir_lower_expr(lowering, node, depth + 1u);
+            if (value == NULL) {
+                return lowering->last_error.status;
+            }
+            vitte_ir_discard_emitted_result(value);
+            return VITTE_STATUS_OK;
+        }
+        case VITTE_HIR_BINARY_EXPR:
+            if (vitte_ir_is_short_circuit_operator(node->as.binary_expr.operator_text)) {
+                vitte_ir_function_t *function = lowering->builder.function;
+                vitte_ir_block_t *rhs_block;
+                vitte_ir_block_t *skip_block;
+                vitte_ir_block_t *merge_block;
+                vitte_ir_value_t *condition = vitte_ir_lower_expr(lowering, node->as.binary_expr.left, depth + 1u);
+
+                if (function == NULL || lowering->builder.block == NULL || condition == NULL) {
+                    return VITTE_STATUS_ERROR_INVALID_STATE;
+                }
+
+                rhs_block = vitte_ir_make_block(&lowering->builder, "expr.rhs", node->as.binary_expr.right);
+                skip_block = vitte_ir_make_block(&lowering->builder, "expr.skip", node);
+                merge_block = vitte_ir_make_block(&lowering->builder, "expr.end", node);
+                if (rhs_block == NULL || skip_block == NULL || merge_block == NULL ||
+                    !vitte_ir_function_add_block(function, rhs_block) ||
+                    !vitte_ir_function_add_block(function, skip_block) ||
+                    !vitte_ir_function_add_block(function, merge_block)) {
+                    return VITTE_STATUS_ERROR_INVALID_STATE;
+                }
+
+                if (strcmp(node->as.binary_expr.operator_text, "&&") == 0) {
+                    if (vitte_ir_emit_cond_branch(&lowering->builder, condition, rhs_block, skip_block, node) == NULL) {
+                        return VITTE_STATUS_ERROR_INVALID_STATE;
+                    }
+                } else {
+                    if (vitte_ir_emit_cond_branch(&lowering->builder, condition, skip_block, rhs_block, node) == NULL) {
+                        return VITTE_STATUS_ERROR_INVALID_STATE;
+                    }
+                }
+
+                vitte_ir_builder_position_at_end(&lowering->builder, function, rhs_block);
+                if (vitte_ir_lower_expr_discard(lowering, node->as.binary_expr.right, depth + 1u) != VITTE_STATUS_OK) {
+                    return lowering->last_error.status;
+                }
+                if (!rhs_block->terminated && vitte_ir_emit_branch(&lowering->builder, merge_block, node) == NULL) {
+                    return VITTE_STATUS_ERROR_INVALID_STATE;
+                }
+
+                vitte_ir_builder_position_at_end(&lowering->builder, function, skip_block);
+                if (!skip_block->terminated && vitte_ir_emit_branch(&lowering->builder, merge_block, node) == NULL) {
+                    return VITTE_STATUS_ERROR_INVALID_STATE;
+                }
+
+                vitte_ir_builder_position_at_end(&lowering->builder, function, merge_block);
+                return VITTE_STATUS_OK;
+            }
+
+            if (vitte_ir_lower_expr_discard(lowering, node->as.binary_expr.left, depth + 1u) != VITTE_STATUS_OK) {
+                return lowering->last_error.status;
+            }
+            return vitte_ir_lower_expr_discard(lowering, node->as.binary_expr.right, depth + 1u);
+        case VITTE_HIR_ERROR:
+            vitte_ir_lowering_set_error(lowering, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_IR_E_EXPR", "cannot discard invalid HIR expression", NULL);
+            return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+        default:
+            vitte_ir_lowering_set_error(lowering, VITTE_STATUS_ERROR_UNSUPPORTED, "VITTE_IR_E_EXPR", "unsupported HIR expression for discarded IR lowering", vitte_hir_kind_name(node->kind));
+            return VITTE_STATUS_ERROR_UNSUPPORTED;
+    }
+}
+
 static vitte_status_t vitte_ir_lower_block(vitte_ir_lowering_t *lowering, const vitte_hir_node_t *block, size_t depth) {
     const vitte_hir_node_t *stmt;
     vitte_status_t status = VITTE_STATUS_OK;
@@ -1178,11 +1273,6 @@ static vitte_status_t vitte_ir_lower_block(vitte_ir_lowering_t *lowering, const 
         }
         if (lowering->builder.block != NULL && lowering->builder.block->terminated) {
             break;
-        }
-    }
-    if (status == VITTE_STATUS_OK && lowering->builder.block != NULL && !lowering->builder.block->terminated) {
-        if (vitte_ir_emit_unreachable(&lowering->builder, block) == NULL) {
-            status = VITTE_STATUS_ERROR_INVALID_STATE;
         }
     }
     vitte_ir_scope_pop(lowering);
@@ -1222,6 +1312,9 @@ static vitte_status_t vitte_ir_lower_stmt(vitte_ir_lowering_t *lowering, const v
                 return VITTE_STATUS_ERROR_INVALID_STATE;
             }
             return VITTE_STATUS_OK;
+        }
+        case VITTE_HIR_EXPR_STMT: {
+            return vitte_ir_lower_expr_discard(lowering, node->as.expr_stmt.value, depth + 1u);
         }
         case VITTE_HIR_BLOCK:
             return vitte_ir_lower_block(lowering, node, depth + 1u);
@@ -1348,6 +1441,11 @@ static vitte_status_t vitte_ir_lower_function_body(vitte_ir_lowering_t *lowering
     status = vitte_ir_bind_function_parameters(lowering, function);
     if (status == VITTE_STATUS_OK) {
         status = vitte_ir_lower_block(lowering, hir_function->as.function.body, 1u);
+    }
+    if (status == VITTE_STATUS_OK && lowering->builder.block != NULL && !lowering->builder.block->terminated) {
+        status = vitte_ir_emit_unreachable(&lowering->builder, hir_function->as.function.body) != NULL ?
+            VITTE_STATUS_OK :
+            VITTE_STATUS_ERROR_INVALID_STATE;
     }
     vitte_ir_scope_pop(lowering);
     return status;
