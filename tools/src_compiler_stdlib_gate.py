@@ -101,6 +101,8 @@ def iter_use_statements(text: str) -> list[str]:
 
 
 def is_negative_fixture(path: Path) -> bool:
+    if path.stat().st_size == 0:
+        return True
     path_text = "/" + rel(path)
     return any(marker in path_text for marker in NEGATIVE_FIXTURE_MARKERS)
 

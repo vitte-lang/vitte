@@ -12,7 +12,7 @@
 extern "C" {
 #endif
 
-#define VITTE_MODULE_MAX_IMPORTS ((size_t)64u)
+#define VITTE_MODULE_MAX_IMPORTS ((size_t)256u)
 
 typedef struct vitte_ast vitte_ast_t;
 typedef struct vitte_hir vitte_hir_t;

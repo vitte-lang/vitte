@@ -18,7 +18,7 @@
 extern "C" {
 #endif
 
-#define VITTE_SEMA_MAX_IMPORT_MODULES ((size_t)64u)
+#define VITTE_SEMA_MAX_IMPORT_MODULES ((size_t)256u)
 
 typedef struct vitte_sema_import_module {
     const char *module_name;

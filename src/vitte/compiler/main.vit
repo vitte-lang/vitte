@@ -6,7 +6,7 @@ const BANNER_TEXT: string = "vittec Vitte compiler driver"
 const COMPILER_SOURCE_ROOT: string = "src/vitte/compiler"
 const COMPILER_ENTRY_POINT: string = "src/vitte/compiler/main.vit"
 
-use vitte/compiler/driver/compiler.{ run_cli_main_with_ice_boundary }
+use vitte/compiler/driver/compiler::{ run_cli_main_with_ice_boundary }
 use vitte/compiler/infrastructure/session/panic_boundary
 use vitte/compiler/analysis/static
 use vitte/compiler/infrastructure/distributed
@@ -34,11 +34,10 @@ proc compiler_entry_point() -> string {
 proc main(args: list[string]) -> int {
     let boundary0: panic_boundary.PanicBoundaryState = panic_boundary.native_panic_boundary_begin();
     let code: int = run_cli_main_with_ice_boundary(args);
-    let boundary1: panic_boundary.PanicBoundaryState = if code == 2 {
-        panic_boundary.native_panic_boundary_mark_triggered(boundary0, code)
-    } else {
-        boundary0
-    };
+    let mut boundary1: panic_boundary.PanicBoundaryState = boundary0;
+    if code == 2 {
+        set boundary1 = panic_boundary.native_panic_boundary_mark_triggered(boundary0, code);
+    }
     let boundary2: panic_boundary.PanicBoundaryState = panic_boundary.native_panic_boundary_end(boundary1);
     if not panic_boundary.native_panic_boundary_ok(boundary2) and code == 0 {
         give 2;

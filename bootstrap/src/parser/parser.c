@@ -145,6 +145,7 @@ static bool vitte_parser_is_stmt_start(vitte_token_kind_t kind) {
     return kind == VITTE_TOKEN_LBRACE ||
         kind == VITTE_TOKEN_KW_GIVE ||
         kind == VITTE_TOKEN_KW_LET ||
+        kind == VITTE_TOKEN_KW_SET ||
         kind == VITTE_TOKEN_KW_IF;
 }
 
@@ -372,7 +373,7 @@ static bool vitte_parser_token_is_path_segment(vitte_token_kind_t kind) {
 }
 
 static bool vitte_parser_token_is_path_separator(vitte_token_kind_t kind, bool allow_slash) {
-    return kind == VITTE_TOKEN_DOUBLE_COLON || (allow_slash && kind == VITTE_TOKEN_SLASH);
+    return kind == VITTE_TOKEN_DOUBLE_COLON || kind == VITTE_TOKEN_DOT || (allow_slash && kind == VITTE_TOKEN_SLASH);
 }
 
 static bool vitte_parser_token_text_is(const vitte_token_t *token, const char *text) {
@@ -582,6 +583,11 @@ static vitte_ast_type_ref_t *vitte_parser_parse_type_ref(vitte_parser_t *parser)
     vitte_ast_span_t span;
     char *name;
     vitte_ast_type_ref_t *type_ref;
+    vitte_ast_span_t close_span;
+    char *argument;
+    char *generic_name;
+    size_t name_length;
+    size_t argument_length;
 
     if (parser == NULL) {
         return NULL;
@@ -589,6 +595,26 @@ static vitte_ast_type_ref_t *vitte_parser_parse_type_ref(vitte_parser_t *parser)
     name = vitte_parser_parse_path_text(parser, false, "VITTE_PARSER_E_TYPE", "expected type name", &span);
     if (name == NULL) {
         return NULL;
+    }
+    if (parser->current.kind == VITTE_TOKEN_LBRACKET) {
+        (void)vitte_parser_advance(parser);
+        argument = vitte_parser_parse_path_text(parser, false, "VITTE_PARSER_E_TYPE", "expected generic type argument", &close_span);
+        if (argument == NULL || parser->current.kind != VITTE_TOKEN_RBRACKET) {
+            (void)vitte_parser_fail_current(parser, "VITTE_PARSER_E_TYPE", "expected ']' after generic type argument");
+            return NULL;
+        }
+        name_length = strlen(name);
+        argument_length = strlen(argument);
+        generic_name = (char *)vitte_arena_alloc(parser->builder.ast->arena, name_length + argument_length + 3u, _Alignof(char));
+        if (generic_name == NULL) {
+            (void)vitte_parser_fail(parser, VITTE_STATUS_ERROR_OUT_OF_MEMORY, "VITTE_PARSER_E_MEMORY", "failed to allocate generic type name", name, &span);
+            return NULL;
+        }
+        (void)snprintf(generic_name, name_length + argument_length + 3u, "%s[%s]", name, argument);
+        name = generic_name;
+        close_span = vitte_parser_span_from_token(&parser->current);
+        span = vitte_parser_span_merge(&span, &close_span);
+        (void)vitte_parser_advance(parser);
     }
     type_ref = vitte_ast_make_type_name(&parser->builder, name, span);
     if (type_ref == NULL) {
@@ -1246,6 +1272,41 @@ static vitte_ast_stmt_t *vitte_parser_parse_expr_stmt(vitte_parser_t *parser) {
     return stmt;
 }
 
+static vitte_ast_stmt_t *vitte_parser_parse_set(vitte_parser_t *parser) {
+    vitte_ast_span_t keyword_span;
+    vitte_ast_expr_t *target;
+    vitte_ast_expr_t *value;
+    vitte_ast_stmt_t *stmt;
+    vitte_ast_span_t span;
+
+    keyword_span = vitte_parser_span_from_token(&parser->current);
+    (void)vitte_parser_advance(parser);
+    target = vitte_parser_parse_expr(parser);
+    if (target == NULL) {
+        return NULL;
+    }
+    if (target->kind != VITTE_AST_NODE_IDENTIFIER) {
+        (void)vitte_parser_fail(parser, VITTE_STATUS_ERROR_PARSE, "VITTE_PARSER_E_ASSIGN", "assignment target must be an identifier", NULL, &target->span);
+        return NULL;
+    }
+    if (!vitte_parser_expect(parser, VITTE_TOKEN_EQUAL, "VITTE_PARSER_E_ASSIGN", "expected '=' in assignment")) {
+        return NULL;
+    }
+    value = vitte_parser_parse_expr(parser);
+    if (value == NULL) {
+        return NULL;
+    }
+    vitte_parser_optional_semicolon(parser);
+    span = vitte_parser_span_merge(&keyword_span, &value->span);
+    stmt = vitte_ast_make_assign_stmt(&parser->builder, target, value, span);
+    if (stmt == NULL) {
+        (void)vitte_parser_fail(parser, VITTE_STATUS_ERROR_OUT_OF_MEMORY, "VITTE_PARSER_E_MEMORY", "failed to allocate assignment statement", NULL, &span);
+        return NULL;
+    }
+    parser->stats.stmt_count++;
+    return stmt;
+}
+
 static vitte_ast_stmt_t *vitte_parser_parse_stmt_impl(vitte_parser_t *parser) {
     if (parser == NULL) {
         return NULL;
@@ -1257,6 +1318,8 @@ static vitte_ast_stmt_t *vitte_parser_parse_stmt_impl(vitte_parser_t *parser) {
             return vitte_parser_parse_give(parser);
         case VITTE_TOKEN_KW_LET:
             return vitte_parser_parse_let(parser);
+        case VITTE_TOKEN_KW_SET:
+            return vitte_parser_parse_set(parser);
         case VITTE_TOKEN_KW_IF:
             return vitte_parser_parse_if(parser);
         default:

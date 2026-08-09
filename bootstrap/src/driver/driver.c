@@ -524,6 +524,13 @@ static vitte_status_t vitte_driver_configure_import_resolver(
             return status;
         }
     }
+    /* Compiler sources use the canonical `vitte/...` namespace rooted at src/. */
+    if (vitte_fs_is_directory("src")) {
+        status = vitte_import_resolver_add_search_path(resolver, "src");
+        if (status != VITTE_STATUS_OK) {
+            return status;
+        }
+    }
     if (input->path != NULL && input->path[0] != '\0' &&
         vitte_fs_parent_path(input->path, &parent_path) == VITTE_STATUS_OK) {
         status = vitte_import_resolver_add_search_path(resolver, parent_path.text);
@@ -2354,7 +2361,8 @@ static vitte_status_t vitte_driver_run_impl(
     vitte_driver_result_t *result
 ) {
     vitte_ast_t ast;
-    vitte_ast_t imported_asts[VITTE_MODULE_MAX_IMPORTS];
+    /* Imported ASTs are large; keep the bootstrap graph off the small process stack. */
+    static vitte_ast_t imported_asts[VITTE_MODULE_MAX_IMPORTS];
     vitte_driver_import_unit_t *imported_units[VITTE_DRIVER_MAX_IMPORTED_UNITS];
     vitte_hir_t hir;
     vitte_ir_t ir;

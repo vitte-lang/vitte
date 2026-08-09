@@ -1364,6 +1364,20 @@ static vitte_status_t vitte_ir_lower_stmt(vitte_ir_lowering_t *lowering, const v
             }
             return VITTE_STATUS_OK;
         }
+        case VITTE_HIR_ASSIGN_STMT: {
+            vitte_ir_value_t *local = vitte_ir_lookup_local(lowering, node->as.assign_stmt.name);
+            vitte_ir_value_t *value;
+            if (local == NULL) {
+                vitte_ir_lowering_set_error(lowering, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_IR_E_ASSIGN", "assignment target is not a local binding", node->as.assign_stmt.name);
+                return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+            }
+            value = vitte_ir_lower_expr(lowering, node->as.assign_stmt.value, depth + 1u);
+            value = value != NULL ? vitte_ir_coerce_value(lowering, value, local->type, node) : NULL;
+            if (value == NULL || vitte_ir_emit_store(&lowering->builder, local, value, node) == NULL) {
+                return VITTE_STATUS_ERROR_INVALID_STATE;
+            }
+            return VITTE_STATUS_OK;
+        }
         case VITTE_HIR_EXPR_STMT: {
             return vitte_ir_lower_expr_discard(lowering, node->as.expr_stmt.value, depth + 1u);
         }

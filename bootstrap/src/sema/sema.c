@@ -1420,6 +1420,29 @@ static vitte_status_t vitte_sema_analyze_stmt(
             }
             status = vitte_sema_define_local(sema, stmt->as.let_stmt.name, type, stmt, stmt->as.let_stmt.mutable_value);
             break;
+        case VITTE_AST_NODE_ASSIGN_STMT: {
+            const vitte_ast_expr_t *target = stmt->as.assign_stmt.target;
+            const vitte_symbol_t *symbol;
+            const vitte_type_t *value_type;
+            if (target == NULL || target->kind != VITTE_AST_NODE_IDENTIFIER) {
+                status = vitte_sema_fail(sema, VITTE_STATUS_ERROR_PARSE, "VITTE_SEMA_E_ASSIGN", "assignment target must be an identifier", NULL, &stmt->span);
+                break;
+            }
+            symbol = vitte_sema_lookup_symbol(sema, target->as.identifier.name, &target->span);
+            if (symbol == NULL) {
+                status = VITTE_STATUS_ERROR_PARSE;
+                break;
+            }
+            if (!symbol->mutable_value) {
+                status = vitte_sema_fail(sema, VITTE_STATUS_ERROR_PARSE, "VITTE_SEMA_E_ASSIGN", "cannot assign to immutable binding", target->as.identifier.name, &target->span);
+                break;
+            }
+            value_type = vitte_sema_analyze_expr(sema, stmt->as.assign_stmt.value);
+            if (!vitte_type_is_error(value_type) && !vitte_type_is_assignable(symbol->type, value_type)) {
+                status = vitte_sema_fail(sema, VITTE_STATUS_ERROR_PARSE, "VITTE_SEMA_E_ASSIGN", "assignment type mismatch", target->as.identifier.name, &stmt->as.assign_stmt.value->span);
+            }
+            break;
+        }
         case VITTE_AST_NODE_EXPR_STMT:
             if (stmt->as.expr_stmt.value == NULL) {
                 status = vitte_sema_fail(sema, VITTE_STATUS_ERROR_PARSE, "VITTE_SEMA_E_STMT", "expression statement requires value", NULL, &stmt->span);
