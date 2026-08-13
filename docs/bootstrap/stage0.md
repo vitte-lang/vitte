@@ -21,4 +21,11 @@ after the source-built candidate is runtime-complete.
 make bootstrap-trust-root
 make bootstrap-trust-tests
 make compiler-source-sensitivity-gate
+make stage0-rotation-readiness
 ```
+
+`stage0-rotation-readiness` is the fail-closed handoff to the signing-key owner.
+It requires the 971-module candidate to be source-sensitive, copy-free and able
+to run `--version`, `check`, `build`, and the resulting program. The private key
+is never read or created by readiness checks. Signing and manifest replacement
+may happen only after this target reports `ready`.

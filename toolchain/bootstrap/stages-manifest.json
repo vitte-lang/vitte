@@ -10,18 +10,23 @@
     "vittec"
   ],
   "parity_policy": {
-    "byte_identical": [
-      "signed_stage0",
-      "trusted_stage0",
-      "bootstrap_compiler",
-      "stage1",
-      "stage2",
-      "release",
-      "bin",
-      "vittec"
-    ],
-    "generated_artifacts": [
-      "trusted_stage0",
+    "byte_identical_groups": {
+      "release_install": [
+        "stage2",
+        "release",
+        "bin",
+        "vittec"
+      ],
+      "selfhost_fixed_point": [
+        "stage1",
+        "stage2"
+      ],
+      "trust_root_install": [
+        "signed_stage0",
+        "trusted_stage0"
+      ]
+    },
+    "compiler_built_artifacts": [
       "bootstrap_compiler",
       "stage1",
       "stage2",
@@ -29,17 +34,29 @@
     ],
     "signature_required": [
       "signed_stage0"
+    ],
+    "source_sensitivity_required": [
+      "bootstrap_compiler",
+      "stage1"
+    ],
+    "verified_install_artifacts": [
+      "trusted_stage0",
+      "bin",
+      "vittec"
     ]
   },
-  "schema": "vitte.toolchain.bootstrap.stages.v1",
+  "schema": "vitte.toolchain.bootstrap.stages.v2",
   "source_of_truth": "src/vitte/compiler/main.vit",
   "stages": [
     {
       "executable": true,
       "exists": true,
-      "forbidden_markers": [],
+      "forbidden_markers": [
+        "vitte_stage0_clone_self"
+      ],
       "format": "Mach-O",
       "kind": "trust-root",
+      "materialization": "signed-commit",
       "materialized_by": "committed signed artifact",
       "name": "signed_stage0",
       "path": "toolchain/bootstrap/stage0/macos-arm64/vitte",
@@ -51,9 +68,12 @@
     {
       "executable": true,
       "exists": true,
-      "forbidden_markers": [],
+      "forbidden_markers": [
+        "vitte_stage0_clone_self"
+      ],
       "format": "Mach-O",
       "kind": "verified-stage0",
+      "materialization": "verified-install",
       "materialized_by": "make bootstrap-all",
       "name": "trusted_stage0",
       "path": "target/bootstrap-real/stage0/vitte",
@@ -63,9 +83,12 @@
     {
       "executable": true,
       "exists": true,
-      "forbidden_markers": [],
+      "forbidden_markers": [
+        "vitte_stage0_clone_self"
+      ],
       "format": "Mach-O",
       "kind": "bootstrap-compiler",
+      "materialization": "compiler-build",
       "materialized_by": "make bootstrap-all",
       "name": "bootstrap_compiler",
       "path": "target/bootstrap-real/vitte",
@@ -75,9 +98,12 @@
     {
       "executable": true,
       "exists": true,
-      "forbidden_markers": [],
+      "forbidden_markers": [
+        "vitte_stage0_clone_self"
+      ],
       "format": "Mach-O",
       "kind": "selfhost-stage",
+      "materialization": "compiler-build",
       "materialized_by": "make bootstrap-all",
       "name": "stage1",
       "path": "target/stage1/vitte",
@@ -87,9 +113,12 @@
     {
       "executable": true,
       "exists": true,
-      "forbidden_markers": [],
+      "forbidden_markers": [
+        "vitte_stage0_clone_self"
+      ],
       "format": "Mach-O",
       "kind": "selfhost-stage",
+      "materialization": "compiler-build",
       "materialized_by": "make bootstrap-all",
       "name": "stage2",
       "path": "target/stage2/vitte",
@@ -99,9 +128,12 @@
     {
       "executable": true,
       "exists": true,
-      "forbidden_markers": [],
+      "forbidden_markers": [
+        "vitte_stage0_clone_self"
+      ],
       "format": "Mach-O",
       "kind": "release",
+      "materialization": "compiler-build",
       "materialized_by": "make bootstrap-all",
       "name": "release",
       "path": "target/release/vitte",
@@ -111,9 +143,12 @@
     {
       "executable": true,
       "exists": true,
-      "forbidden_markers": [],
+      "forbidden_markers": [
+        "vitte_stage0_clone_self"
+      ],
       "format": "Mach-O",
       "kind": "installed-release",
+      "materialization": "verified-install",
       "materialized_by": "make bootstrap-all",
       "name": "bin",
       "path": "bin/vitte",
@@ -123,9 +158,12 @@
     {
       "executable": true,
       "exists": true,
-      "forbidden_markers": [],
+      "forbidden_markers": [
+        "vitte_stage0_clone_self"
+      ],
       "format": "Mach-O",
       "kind": "installed-release-alias",
+      "materialization": "verified-install",
       "materialized_by": "make bootstrap-all",
       "name": "vittec",
       "path": "bin/vittec",

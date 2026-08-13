@@ -21,7 +21,14 @@ ARTIFACTS = {
     "stage1": ROOT / "target/stage1/vitte",
     "stage2": ROOT / "target/stage2/vitte",
 }
-FORBIDDEN = (b"vitte-bootstrap-payload", b"payload_source", b"BOOTSTRAP_FULL_COMPILER", b"VITTE_BOOTSTRAP_ALLOW_FULL_COMPILER_BRIDGE", b"E_CLI_IO: cannot read")
+FORBIDDEN = (
+    b"vitte-bootstrap-payload",
+    b"payload_source",
+    b"BOOTSTRAP_FULL_COMPILER",
+    b"VITTE_BOOTSTRAP_ALLOW_FULL_COMPILER_BRIDGE",
+    b"vitte_stage0_clone_self",
+    b"E_CLI_IO: cannot read",
+)
 REPORT = ROOT / "target/reports/toolchain_stage012.json"
 
 
@@ -103,8 +110,8 @@ def main() -> int:
         if markers:
             errors.append(f"forbidden markers in {stage}: {', '.join(markers)}")
         rows.append({"stage": stage, "artifact": str(artifact.relative_to(ROOT)), "sha256": digest, "size": artifact.stat().st_size, "forbidden_markers": markers})
-    if len(set(hashes.values())) != 1:
-        errors.append("stage0/stage1/stage2 byte parity failed")
+    if hashes.get("stage1") != hashes.get("stage2"):
+        errors.append("stage1/stage2 fixed-point byte parity failed")
     openssl = shutil.which("openssl")
     signature = ROOT / "toolchain/bootstrap/stage0/macos-arm64/vitte.sig"
     public_key = ROOT / "toolchain/bootstrap/stage0/stage0-public.pem"

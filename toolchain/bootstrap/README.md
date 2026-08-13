@@ -8,7 +8,7 @@ stage chain used by `make bootstrap-all`.
 - `stage0/macos-arm64/vitte.sig` is the detached RSA/SHA-256 signature.
 - `stage0/stage0-public.pem` verifies the detached signature offline.
 - `stages-manifest.json` records every canonical stage path, SHA-256, size,
-  native format and materialization command.
+  native format, materialization command and scoped byte-parity policy.
 
 The canonical chain is:
 
@@ -17,6 +17,8 @@ The canonical chain is:
 Run:
 
 - `make bootstrap-trust-root`
+- `make compiler-source-sensitivity-gate`
+- `make stage0-rotation-readiness`
 - `make bootstrap-all`
 - `make toolchain-stages-gate`
 - `make bootstrap-max-gate`

@@ -18,6 +18,7 @@ SOURCE_ROOT = ROOT / "src/vitte"
 ENTRY = Path("src/vitte/compiler/main.vit")
 DRIVER = Path("src/vitte/compiler/driver/compiler.vit")
 REPORT = ROOT / "target/reports/compiler_source_sensitivity.json"
+CANDIDATE = ROOT / "target/compiler-source-sensitivity/stage1-candidate"
 ORIGINAL_VERSION = 'const VERSION_TEXT: string = "vittec vitte-compiler 0.1.0"'
 PROBE_VERSION = 'const VERSION_TEXT: string = "vittec vitte-compiler source-sensitivity-probe"'
 FORBIDDEN_SYMBOLS = ("_command_build", "_copy_file", "_vitte_stage0_clone_self")
@@ -25,6 +26,16 @@ FORBIDDEN_SYMBOLS = ("_command_build", "_copy_file", "_vitte_stage0_clone_self")
 
 def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def source_tree_sha256(root: Path) -> str:
+    digest = hashlib.sha256()
+    for path in sorted(root.rglob("*.vit")):
+        digest.update(path.relative_to(root).as_posix().encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()
 
 
 def run(command: list[str], cwd: Path, env: dict[str, str] | None = None) -> dict[str, Any]:
@@ -45,6 +56,7 @@ def run(command: list[str], cwd: Path, env: dict[str, str] | None = None) -> dic
 
 
 def build_candidate(project: Path, output: Path) -> dict[str, Any]:
+    output.parent.mkdir(parents=True, exist_ok=True)
     env = os.environ.copy()
     env["VITTE_C17_GENERIC_COMPILER"] = "1"
     result = run([str(BOOTSTRAP), "build", str(project / ENTRY), "-o", str(output)], project, env)
@@ -63,7 +75,10 @@ def main() -> int:
     if module_count != 971:
         failures.append(f"compiler source closure changed: expected 971 .vit modules, found {module_count}")
 
-    evidence: dict[str, Any] = {"compiler_module_count": module_count}
+    evidence: dict[str, Any] = {
+        "compiler_module_count": module_count,
+        "compiler_source_sha256": source_tree_sha256(ROOT / "src/vitte/compiler"),
+    }
     if not failures:
         with tempfile.TemporaryDirectory(prefix="vitte-source-sensitivity-") as raw_tmp:
             work = Path(raw_tmp)
@@ -80,8 +95,9 @@ def main() -> int:
             else:
                 probe_driver.write_text(perturbed_text, encoding="utf-8")
 
-            baseline_output = work / "baseline-stage1"
+            baseline_output = CANDIDATE
             perturbed_output = work / "perturbed-stage1"
+            baseline_output.unlink(missing_ok=True)
             baseline = build_candidate(baseline_project, baseline_output)
             perturbed = build_candidate(perturbed_project, perturbed_output)
             evidence["baseline"] = baseline
@@ -113,6 +129,7 @@ def main() -> int:
         "status": "fail" if failures else "pass",
         "scope": "C17 generic compilation of the complete Vitte compiler source closure",
         "runtime_selfhost_proven": bool(evidence.get("runtime_ready", False)),
+        "candidate": str(CANDIDATE.relative_to(ROOT)),
         "evidence": evidence,
         "failures": failures,
     }

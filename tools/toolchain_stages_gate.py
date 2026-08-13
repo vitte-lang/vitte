@@ -25,48 +25,56 @@ STAGES: tuple[dict[str, str], ...] = (
         "signature": "toolchain/bootstrap/stage0/macos-arm64/vitte.sig",
         "public_key": "toolchain/bootstrap/stage0/stage0-public.pem",
         "materialized_by": "committed signed artifact",
+        "materialization": "signed-commit",
     },
     {
         "name": "trusted_stage0",
         "kind": "verified-stage0",
         "path": "target/bootstrap-real/stage0/vitte",
         "materialized_by": "make bootstrap-all",
+        "materialization": "verified-install",
     },
     {
         "name": "bootstrap_compiler",
         "kind": "bootstrap-compiler",
         "path": "target/bootstrap-real/vitte",
         "materialized_by": "make bootstrap-all",
+        "materialization": "compiler-build",
     },
     {
         "name": "stage1",
         "kind": "selfhost-stage",
         "path": "target/stage1/vitte",
         "materialized_by": "make bootstrap-all",
+        "materialization": "compiler-build",
     },
     {
         "name": "stage2",
         "kind": "selfhost-stage",
         "path": "target/stage2/vitte",
         "materialized_by": "make bootstrap-all",
+        "materialization": "compiler-build",
     },
     {
         "name": "release",
         "kind": "release",
         "path": "target/release/vitte",
         "materialized_by": "make bootstrap-all",
+        "materialization": "compiler-build",
     },
     {
         "name": "bin",
         "kind": "installed-release",
         "path": "bin/vitte",
         "materialized_by": "make bootstrap-all",
+        "materialization": "verified-install",
     },
     {
         "name": "vittec",
         "kind": "installed-release-alias",
         "path": "bin/vittec",
         "materialized_by": "make bootstrap-all",
+        "materialization": "verified-install",
     },
 )
 
@@ -119,6 +127,7 @@ def stage_row(stage: dict[str, str]) -> dict[str, Any]:
         "kind": stage["kind"],
         "path": stage["path"],
         "materialized_by": stage["materialized_by"],
+        "materialization": stage["materialization"],
         "exists": path.is_file(),
     }
     if "signature" in stage:
@@ -144,7 +153,7 @@ def stage_row(stage: dict[str, str]) -> dict[str, Any]:
 
 def generate_manifest() -> dict[str, Any]:
     return {
-        "schema": "vitte.toolchain.bootstrap.stages.v1",
+        "schema": "vitte.toolchain.bootstrap.stages.v2",
         "source_of_truth": "src/vitte/compiler/main.vit",
         "canonical_chain": [
             "signed_stage0",
@@ -157,9 +166,15 @@ def generate_manifest() -> dict[str, Any]:
             "vittec",
         ],
         "parity_policy": {
-            "byte_identical": ["signed_stage0", "trusted_stage0", "bootstrap_compiler", "stage1", "stage2", "release", "bin", "vittec"],
+            "byte_identical_groups": {
+                "trust_root_install": ["signed_stage0", "trusted_stage0"],
+                "selfhost_fixed_point": ["stage1", "stage2"],
+                "release_install": ["stage2", "release", "bin", "vittec"],
+            },
             "signature_required": ["signed_stage0"],
-            "generated_artifacts": ["trusted_stage0", "bootstrap_compiler", "stage1", "stage2", "release"],
+            "compiler_built_artifacts": ["bootstrap_compiler", "stage1", "stage2", "release"],
+            "verified_install_artifacts": ["trusted_stage0", "bin", "vittec"],
+            "source_sensitivity_required": ["bootstrap_compiler", "stage1"],
         },
         "stages": [stage_row(stage) for stage in STAGES],
     }
@@ -218,9 +233,34 @@ def validate_manifest(manifest: dict[str, Any]) -> tuple[list[str], dict[str, An
             errors.append(f"{name} contains forbidden markers: {', '.join(markers)}")
         if isinstance(stage.get("sha256"), str):
             hashes[name] = stage["sha256"]
-    expected_hashes = {hashes[name] for name in required if name in hashes}
-    if len(expected_hashes) != 1:
-        errors.append("stage byte parity failed across toolchain manifest")
+    policy = manifest.get("parity_policy", {})
+    if isinstance(policy, dict):
+        compiler_built = policy.get("compiler_built_artifacts", [])
+        installed = policy.get("verified_install_artifacts", [])
+        if compiler_built != ["bootstrap_compiler", "stage1", "stage2", "release"]:
+            errors.append("compiler_built_artifacts policy is invalid")
+        if installed != ["trusted_stage0", "bin", "vittec"]:
+            errors.append("verified_install_artifacts policy is invalid")
+        for name in compiler_built if isinstance(compiler_built, list) else []:
+            stage = by_name.get(name)
+            if isinstance(stage, dict) and stage.get("materialization") != "compiler-build":
+                errors.append(f"{name} is not materialized by compiler build")
+        for name in installed if isinstance(installed, list) else []:
+            stage = by_name.get(name)
+            if isinstance(stage, dict) and stage.get("materialization") != "verified-install":
+                errors.append(f"{name} is not classified as a verified installation")
+    parity = manifest.get("parity_policy", {})
+    groups = parity.get("byte_identical_groups", {}) if isinstance(parity, dict) else {}
+    if not isinstance(groups, dict):
+        errors.append("parity_policy.byte_identical_groups must be an object")
+    else:
+        for group_name, members in groups.items():
+            if not isinstance(members, list) or len(members) < 2:
+                errors.append(f"invalid byte parity group: {group_name}")
+                continue
+            group_hashes = {hashes[name] for name in members if name in hashes}
+            if len(group_hashes) != 1 or any(name not in hashes for name in members):
+                errors.append(f"byte parity failed for {group_name}: {', '.join(members)}")
     signed = by_name.get("signed_stage0")
     if isinstance(signed, dict):
         verify_signature(signed, errors)
