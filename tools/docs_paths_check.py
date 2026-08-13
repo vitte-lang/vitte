@@ -42,6 +42,15 @@ OPTIONAL_PATH_PREFIXES = (
     "docs/fr/",
 )
 
+# These paths are retained in migration and archaeology documents as historical
+# source names. They are not live repository paths and must not be recreated as
+# compiler inputs just to satisfy the documentation checker.
+LEGACY_REFERENCE_PREFIXES = (
+    "toolchain/seed/",
+    "toolchain/src/bootstrap_vitte/",
+    "src/vitte/packages/compiler/",
+)
+
 LINK_RE = re.compile(r"\[[^\]]+\]\(([^)\s]+)(?:\s+\"[^\"]*\")?\)")
 CODE_RE = re.compile(r"`([^`\n]+)`")
 LINE_REF_RE = re.compile(r"^([^:]+(?:/[^:]+)*):[0-9]+(?::.*)?$")
@@ -82,6 +91,8 @@ def is_local_path(token: str) -> bool:
 
 def existing(path_token: str) -> bool:
     if any(path_token == p.rstrip("/") or path_token.startswith(p) for p in OPTIONAL_PATH_PREFIXES):
+        return True
+    if any(path_token.startswith(prefix) for prefix in LEGACY_REFERENCE_PREFIXES):
         return True
     return (ROOT / path_token).exists()
 

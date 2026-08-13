@@ -4,22 +4,22 @@ Reference model: bootstrap builder graph semantics (step contracts, strict stage
 
 ## Target Architecture
 
-1. `toolchain/src/bootstrap_vitte/mod.vit`
+1. `toolchain/stage0/src/stage0.vit`
 - Global context (paths, host/target, budgets, report sinks).
 
-2. `toolchain/src/bootstrap_vitte/core/build_steps/mod.vit`
+2. `toolchain/stage1/src/stage1_pipeline.vit`
 - Step contract (`name`, `deps`, `run`, `artifacts`, `invariants`).
 
-3. `toolchain/src/bootstrap_vitte/core/builder/mod.vit`
+3. `toolchain/stage1/src/stage1_driver.vit`
 - Deterministic DAG executor with fail-fast semantics.
 
-4. `toolchain/src/bootstrap_vitte/core/sanity/mod.vit`
+4. `toolchain/stage1/src/stage1_validation.vit`
 - Reproducibility, interface contract, parity, corpus diagnostics, perf budgets.
 
-5. `toolchain/src/bootstrap_vitte/utils/metrics.vit`
+5. `toolchain/stage1/src/stage1_statistics.vit`
 - JSON report writer to `target/reports/bootstrap/*.json`.
 
-6. `toolchain/src/bootstrap_vitte/main.vit`
+6. `toolchain/stage0/src/main.vit`
 - CLI entrypoint, routes to full `hard` gate or scoped runs.
 
 ## Migration Phases

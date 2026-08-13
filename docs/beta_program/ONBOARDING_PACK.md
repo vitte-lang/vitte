@@ -5,7 +5,7 @@
 - `docs/book/compiler-stdlib-contract.html`
 
 ## Example projects
-- `tests/bootstrap_native/native_user_main.vit`
+- `tests/pipeline/hello_world.vit`
 - `src/vitte/compiler/tests/smoke.vit`
 
 ## Troubleshooting guide

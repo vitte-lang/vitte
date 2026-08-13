@@ -49,6 +49,6 @@
 
 See also:
 
-- `docs/seed_diagnostics.md`
+- `docs/seed_diagnostics.html`
 - `docs/bootstrap_seed.md`
 - `docs/compiler/diagnostics.md`

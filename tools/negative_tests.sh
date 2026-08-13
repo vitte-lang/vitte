@@ -31,10 +31,7 @@ for file in "${files[@]}"; do
 
   log "$base"
   set +e
-  (
-    cd "$TEST_DIR"
-    "$BIN" parse "$base"
-  ) >"$tmp" 2>&1
+  "$BIN" check "tests/negative/$base" >"$tmp" 2>&1
   rc=$?
   set -e
 

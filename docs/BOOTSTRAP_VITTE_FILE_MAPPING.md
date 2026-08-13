@@ -4,11 +4,11 @@ Source reference: `reference-bootstrap-vitte`
 
 ## Top-level
 
-- reference-bootstrap-vitte:src/bootstrap/src/lib.rs -> `toolchain/src/bootstrap_vitte/mod.vit`
-- reference-bootstrap-vitte:src/bootstrap/src/bin/main.rs -> `toolchain/src/bootstrap_vitte/bin/main.vit`
-- reference-bootstrap-vitte:src/bootstrap/src/bin/compiler_frontend.rs -> `toolchain/src/bootstrap_vitte/bin/compiler_frontend.vit`
-- reference-bootstrap-vitte:src/bootstrap/src/bin/docgen.rs -> `toolchain/src/bootstrap_vitte/bin/docgen.vit`
-- reference-bootstrap-vitte:src/bootstrap/src/bin/cache-plus-cl.rs -> `toolchain/src/bootstrap_vitte/bin/cache_bridge.vit`
+- reference-bootstrap-vitte:src/bootstrap/src/lib.rs -> `toolchain/stage0/src/stage0.vit`
+- reference-bootstrap-vitte:src/bootstrap/src/bin/main.rs -> `toolchain/stage0/src/main.vit`
+- reference-bootstrap-vitte:src/bootstrap/src/bin/compiler_frontend.rs -> `toolchain/stage1/src/stage1_pipeline.vit`
+- reference-bootstrap-vitte:src/bootstrap/src/bin/docgen.rs -> `toolchain/stage1/src/stage1_diagnostics.vit`
+- reference-bootstrap-vitte:src/bootstrap/src/bin/cache-plus-cl.rs -> `toolchain/stage1/src/stage1_context.vit`
 
 ## core/
 

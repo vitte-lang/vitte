@@ -10,7 +10,7 @@ entrypoints that users, CI, bootstrap flows, and documentation all depend on.
 
 | Concern | Current contract |
 | --- | --- |
-| Surface ownership | `src/vitte/packages/compiler/driver/*` catalogs |
+| Surface ownership | `src/vitte/compiler/driver/*` catalogs |
 | Runtime implementation | `src/vitte/compiler/driver/*` |
 | Audit goals | parity, normalization, stage mapping |
 | Enforcement | dedicated make targets and strict gates |
@@ -37,11 +37,11 @@ Why the driver stays explicit:
 
 The Vitte package lives in:
 
-- `src/vitte/packages/compiler/driver/mod.vit`
-- `src/vitte/packages/compiler/driver/info.vit`
-- `src/vitte/packages/compiler/driver/internal/command_catalog.vit`
-- `src/vitte/packages/compiler/driver/internal/option_catalog.vit`
-- `src/vitte/packages/compiler/driver/internal/normalize.vit`
+- `src/vitte/compiler/driver/mod.vit`
+- `src/vitte/compiler/driver/commands.vit`
+- `src/vitte/compiler/driver/cli.vit`
+- `src/vitte/compiler/driver/pipeline.vit`
+- `src/vitte/compiler/driver/compiler.vit`
 
 This package now owns:
 

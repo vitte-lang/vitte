@@ -137,6 +137,8 @@ def generate_report(startup_time_ms, baseline_ms, passed):
         regression = 1.0
     
     status = "✅ PASS" if passed else "❌ FAIL"
+    baseline_display = f"{baseline_ms:.2f}ms" if baseline_ms else "Not set"
+    baseline_analysis = f"{baseline_ms:.2f}ms" if baseline_ms else "No baseline set (first run)"
     
     report = f"""# Startup Time Benchmark Report
 
@@ -148,7 +150,7 @@ def generate_report(startup_time_ms, baseline_ms, passed):
 |--------|-------|
 | Startup Time | {startup_time_ms:.2f}ms |
 | Max Allowed | {MAX_STARTUP_TIME_MS}ms |
-| Baseline | {baseline_ms:.2f}ms if baseline_ms else "Not set"} |
+| Baseline | {baseline_display} |
 | Change vs Baseline | {change_str} |
 | Status | {status} |
 
@@ -156,7 +158,7 @@ def generate_report(startup_time_ms, baseline_ms, passed):
 
 - **Current startup time**: {startup_time_ms:.2f}ms
 - **Threshold**: {MAX_STARTUP_TIME_MS}ms
-- **Baseline**: {baseline_ms:.2f}ms if baseline_ms else "No baseline set (first run)"}
+- **Baseline**: {baseline_analysis}
 - **Regression factor**: {regression:.2f}x
 
 ## Gate Status

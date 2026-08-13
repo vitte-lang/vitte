@@ -134,7 +134,7 @@ SEED_CONTRACT_BASE=origin/main make seed-contract-check
 `toolchain/seed/vittec0.seed` contains a small AWK parser inside
 `compile_native_ir()`. This parser is not a general Vitte parser. Its contract is
 to recognize only the bootstrap-native subset documented in
-`docs/bootstrap_native_ir.md`, emit deterministic `native_ir_v1` text, and fail
+`docs/bootstrap_native_ir.html`, emit deterministic `native_ir_v1` text, and fail
 closed on anything outside that subset.
 
 Review rules for the AWK block:

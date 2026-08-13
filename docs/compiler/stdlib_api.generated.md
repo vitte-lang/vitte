@@ -3607,7 +3607,7 @@ Stability: `stable`
 - `proc __getitem__` signature `proc __getitem__(q: Queue, idx: i64) -> i64 {` example `queue.__getitem__(...)` executable_example `proc example_queue___getitem__() { queue.__getitem__(...); }` stability `stable`
 - `proc __iter__` signature `proc __iter__(q: Queue) -> [i64] {` example `queue.__iter__(...)` executable_example `proc example_queue___iter__() { queue.__iter__(...); }` stability `stable`
 
-## `src/vitte/stdlib/collections/vector.vitl`
+## `src/vitte/stdlib/math/vector.vitl`
 
 Stability: `stable`
 
@@ -3915,7 +3915,7 @@ Stability: `stable`
 - `proc crypto_utils_manifest` signature `proc crypto_utils_manifest() -> CryptoUtilsManifest {` example `utils.crypto_utils_manifest(...)` executable_example `proc example_utils_crypto_utils_manifest() { utils.crypto_utils_manifest(...); }` stability `stable`
 - `proc crypto_utils_selftest` signature `proc crypto_utils_selftest() -> bool {` example `utils.crypto_utils_selftest(...)` executable_example `proc example_utils_crypto_utils_selftest() { utils.crypto_utils_selftest(...); }` stability `stable`
 
-## `src/vitte/stdlib/encoding/utf.vitl`
+## `src/vitte/stdlib/encoding/utf8.vitl`
 
 Stability: `stable`
 
@@ -5720,7 +5720,7 @@ Stability: `stable`
 - `proc windows_read` signature `proc windows_read(handle: WindowsHandle, buffer: ref mut [byte]) -> Result<usize, WindowsError> { give compiler_windows_read(handle, buffer); }` example `windows.windows_read(...)` executable_example `proc example_windows_windows_read() { windows.windows_read(...); }` stability `stable`
 - `proc windows_write` signature `proc windows_write(handle: WindowsHandle, buffer: [byte]) -> Result<usize, WindowsError> { give compiler_windows_write(handle, buffer); }` example `windows.windows_write(...)` executable_example `proc example_windows_windows_write() { windows.windows_write(...); }` stability `stable`
 
-## `src/vitte/stdlib/profiling/profiler.vitl`
+## `src/vitte/stdlib/runtime.vitl`
 
 Stability: `stable`
 

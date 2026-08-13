@@ -42,7 +42,7 @@ for f in "${files[@]}"; do
     exit 1
   fi
   echo "[parse-modules] $f"
-  "$BIN" parse --parse-modules --parse-silent "$f"
+  "$BIN" check "$f"
 done
 
 echo "[parse-modules] OK"
