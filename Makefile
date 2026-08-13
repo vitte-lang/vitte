@@ -1923,12 +1923,18 @@ package-compile-gate: package-cli-gate
 .PHONY: package-import-gate
 package-import-gate: package-cli-gate
 
-.PHONY: script-build-install-gate
+.PHONY: script-build-install-gate scripts-build-check
 script-build-install-gate:
 	@chmod 0755 tools/script_build_install_check.sh
 	@sh -n scripts_build/common.sh
 	@sh -n scripts_build/stage-installer-payload.sh
 	@tools/script_build_install_check.sh
+
+scripts-build-check: script-build-install-gate
+	@tools/scripts_build_checksum_fallback_test.sh
+	@tools/scripts_build_reproducibility_test.sh
+	@tools/scripts_build_staging_test.sh
+	@tools/scripts_build_arch_matrix_test.sh
 
 .PHONY: installer-doctor-gate
 installer-doctor-gate: installer-runtime-contract-check
@@ -2666,10 +2672,9 @@ llvm-backend-gate:
 	@python3 tools/llvm/check_backend_reports.py
 	@$(MAKE) --no-print-directory llvm-native-final-gate
 	@test -f target/llvm/demo_module.ll
-	@test -f target/llvm/demo_module.o.meta
-	@test -f target/llvm/debug_format.txt
-	@test -f target/llvm/opt_levels.txt
-	@test -f target/llvm/pgo_status.txt
+	@test -f target/llvm/demo_module.meta.json
+	@test -f target/llvm/optimizations.json
+	@test -f target/llvm/targets.json
 	@test -f target/reports/llvm_backend_coverage.md
 
 .PHONY: llvm-native-final-gate
