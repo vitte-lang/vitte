@@ -37,11 +37,15 @@ typedef enum vitte_hir_kind {
     VITTE_HIR_EXPR_STMT,
     VITTE_HIR_IF_STMT,
     VITTE_HIR_WHILE_STMT,
+    VITTE_HIR_BREAK_STMT,
+    VITTE_HIR_CONTINUE_STMT,
     VITTE_HIR_INTEGER_LITERAL,
     VITTE_HIR_STRING_LITERAL,
     VITTE_HIR_VARIABLE,
     VITTE_HIR_BINARY_EXPR,
     VITTE_HIR_CALL_EXPR,
+    VITTE_HIR_INDEX_EXPR,
+    VITTE_HIR_MEMBER_EXPR,
     VITTE_HIR_IF_EXPR,
     VITTE_HIR_BLOCK_EXPR,
     VITTE_HIR_TYPE_NAME,
@@ -131,7 +135,7 @@ struct vitte_hir_node {
         } let_stmt;
 
         struct {
-            const char *name;
+            vitte_hir_expr_t *target;
             vitte_hir_expr_t *value;
         } assign_stmt;
 
@@ -170,6 +174,9 @@ struct vitte_hir_node {
             vitte_hir_expr_t *callee;
             vitte_hir_list_t arguments;
         } call_expr;
+
+        struct { vitte_hir_expr_t *base; vitte_hir_expr_t *index; } index_expr;
+        struct { vitte_hir_expr_t *base; const char *member; } member_expr;
 
         struct { vitte_hir_expr_t *condition; vitte_hir_expr_t *then_value; vitte_hir_expr_t *else_value; } if_expr;
         struct { vitte_hir_list_t statements; vitte_hir_expr_t *value; } block_expr;
@@ -243,7 +250,7 @@ vitte_hir_node_t *vitte_hir_make_record_field(vitte_hir_builder_t *builder, cons
 vitte_hir_block_t *vitte_hir_make_block(vitte_hir_builder_t *builder, const vitte_ast_node_t *source);
 vitte_hir_stmt_t *vitte_hir_make_return(vitte_hir_builder_t *builder, vitte_hir_expr_t *value, const vitte_ast_node_t *source);
 vitte_hir_stmt_t *vitte_hir_make_let(vitte_hir_builder_t *builder, const char *name, vitte_hir_type_t *type, vitte_hir_expr_t *value, const vitte_ast_node_t *source);
-vitte_hir_stmt_t *vitte_hir_make_assign(vitte_hir_builder_t *builder, const char *name, vitte_hir_expr_t *value, const vitte_ast_node_t *source);
+vitte_hir_stmt_t *vitte_hir_make_assign(vitte_hir_builder_t *builder, vitte_hir_expr_t *target, vitte_hir_expr_t *value, const vitte_ast_node_t *source);
 vitte_hir_stmt_t *vitte_hir_make_expr_stmt(vitte_hir_builder_t *builder, vitte_hir_expr_t *value, const vitte_ast_node_t *source);
 vitte_hir_stmt_t *vitte_hir_make_if(vitte_hir_builder_t *builder, vitte_hir_expr_t *condition, vitte_hir_stmt_t *then_branch, vitte_hir_stmt_t *else_branch, const vitte_ast_node_t *source);
 vitte_hir_expr_t *vitte_hir_make_integer_literal(vitte_hir_builder_t *builder, int64_t value, const vitte_ast_node_t *source);
@@ -251,8 +258,11 @@ vitte_hir_expr_t *vitte_hir_make_string_literal(vitte_hir_builder_t *builder, co
 vitte_hir_expr_t *vitte_hir_make_variable(vitte_hir_builder_t *builder, const char *name, const vitte_ast_node_t *source);
 vitte_hir_expr_t *vitte_hir_make_binary(vitte_hir_builder_t *builder, const char *operator_text, vitte_hir_expr_t *left, vitte_hir_expr_t *right, const vitte_ast_node_t *source);
 vitte_hir_expr_t *vitte_hir_make_call(vitte_hir_builder_t *builder, vitte_hir_expr_t *callee, const vitte_ast_node_t *source);
+vitte_hir_expr_t *vitte_hir_make_index(vitte_hir_builder_t *builder, vitte_hir_expr_t *base, vitte_hir_expr_t *index, const vitte_ast_node_t *source);
+vitte_hir_expr_t *vitte_hir_make_member(vitte_hir_builder_t *builder, vitte_hir_expr_t *base, const char *member, const vitte_ast_node_t *source);
 vitte_hir_expr_t *vitte_hir_make_if_expr(vitte_hir_builder_t *builder, vitte_hir_expr_t *condition, vitte_hir_expr_t *then_value, vitte_hir_expr_t *else_value, const vitte_ast_node_t *source);
 vitte_hir_stmt_t *vitte_hir_make_while(vitte_hir_builder_t *builder, vitte_hir_expr_t *condition, vitte_hir_stmt_t *body, const vitte_ast_node_t *source);
+vitte_hir_stmt_t *vitte_hir_make_loop_control(vitte_hir_builder_t *builder, bool continue_loop, const vitte_ast_node_t *source);
 vitte_hir_expr_t *vitte_hir_make_block_expr(vitte_hir_builder_t *builder, vitte_hir_list_t statements, vitte_hir_expr_t *value, const vitte_ast_node_t *source);
 vitte_hir_type_t *vitte_hir_make_type_name(vitte_hir_builder_t *builder, const char *name, const vitte_ast_node_t *source);
 vitte_hir_node_t *vitte_hir_make_error(vitte_hir_builder_t *builder, const char *message, const vitte_ast_node_t *source);

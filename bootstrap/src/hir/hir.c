@@ -189,6 +189,10 @@ const char *vitte_hir_kind_name(vitte_hir_kind_t kind) {
             return "if";
         case VITTE_HIR_WHILE_STMT:
             return "while";
+        case VITTE_HIR_BREAK_STMT:
+            return "break";
+        case VITTE_HIR_CONTINUE_STMT:
+            return "continue";
         case VITTE_HIR_INTEGER_LITERAL:
             return "integer";
         case VITTE_HIR_STRING_LITERAL:
@@ -199,6 +203,10 @@ const char *vitte_hir_kind_name(vitte_hir_kind_t kind) {
             return "binary";
         case VITTE_HIR_CALL_EXPR:
             return "call";
+        case VITTE_HIR_INDEX_EXPR:
+            return "index";
+        case VITTE_HIR_MEMBER_EXPR:
+            return "member";
         case VITTE_HIR_IF_EXPR:
             return "if_expr";
         case VITTE_HIR_BLOCK_EXPR:
@@ -237,13 +245,15 @@ const char *vitte_hir_node_label(const vitte_hir_node_t *node) {
         case VITTE_HIR_LET_STMT:
             return node->as.let_stmt.name != NULL ? node->as.let_stmt.name : "<let>";
         case VITTE_HIR_ASSIGN_STMT:
-            return node->as.assign_stmt.name != NULL ? node->as.assign_stmt.name : "<assign>";
+            return "<assign>";
         case VITTE_HIR_STRING_LITERAL:
             return node->as.string_literal.value != NULL ? node->as.string_literal.value : "";
         case VITTE_HIR_VARIABLE:
             return node->as.variable.name != NULL ? node->as.variable.name : "<var>";
         case VITTE_HIR_BINARY_EXPR:
             return node->as.binary_expr.operator_text != NULL ? node->as.binary_expr.operator_text : "<op>";
+        case VITTE_HIR_MEMBER_EXPR:
+            return node->as.member_expr.member != NULL ? node->as.member_expr.member : "<member>";
         case VITTE_HIR_TYPE_NAME:
             return node->as.type_name.name != NULL ? node->as.type_name.name : "<type>";
         case VITTE_HIR_ERROR:
@@ -478,10 +488,10 @@ vitte_hir_stmt_t *vitte_hir_make_let(vitte_hir_builder_t *builder, const char *n
     return node;
 }
 
-vitte_hir_stmt_t *vitte_hir_make_assign(vitte_hir_builder_t *builder, const char *name, vitte_hir_expr_t *value, const vitte_ast_node_t *source) {
-    vitte_hir_node_t *node = builder != NULL ? vitte_hir_alloc_node(builder->hir, VITTE_HIR_ASSIGN_STMT, source) : NULL;
+vitte_hir_stmt_t *vitte_hir_make_assign(vitte_hir_builder_t *builder, vitte_hir_expr_t *target, vitte_hir_expr_t *value, const vitte_ast_node_t *source) {
+    vitte_hir_node_t *node = builder != NULL && target != NULL && value != NULL ? vitte_hir_alloc_node(builder->hir, VITTE_HIR_ASSIGN_STMT, source) : NULL;
     if (node != NULL) {
-        node->as.assign_stmt.name = name;
+        node->as.assign_stmt.target = target;
         node->as.assign_stmt.value = value;
     }
     return node;
@@ -550,6 +560,24 @@ vitte_hir_expr_t *vitte_hir_make_call(vitte_hir_builder_t *builder, vitte_hir_ex
     return node;
 }
 
+vitte_hir_expr_t *vitte_hir_make_index(vitte_hir_builder_t *builder, vitte_hir_expr_t *base, vitte_hir_expr_t *index, const vitte_ast_node_t *source) {
+    vitte_hir_node_t *node = builder != NULL && base != NULL && index != NULL ? vitte_hir_alloc_node(builder->hir, VITTE_HIR_INDEX_EXPR, source) : NULL;
+    if (node != NULL) {
+        node->as.index_expr.base = base;
+        node->as.index_expr.index = index;
+    }
+    return node;
+}
+
+vitte_hir_expr_t *vitte_hir_make_member(vitte_hir_builder_t *builder, vitte_hir_expr_t *base, const char *member, const vitte_ast_node_t *source) {
+    vitte_hir_node_t *node = builder != NULL && base != NULL && member != NULL ? vitte_hir_alloc_node(builder->hir, VITTE_HIR_MEMBER_EXPR, source) : NULL;
+    if (node != NULL) {
+        node->as.member_expr.base = base;
+        node->as.member_expr.member = member;
+    }
+    return node;
+}
+
 vitte_hir_expr_t *vitte_hir_make_if_expr(vitte_hir_builder_t *builder, vitte_hir_expr_t *condition, vitte_hir_expr_t *then_value, vitte_hir_expr_t *else_value, const vitte_ast_node_t *source) {
     vitte_hir_node_t *node = builder != NULL ? vitte_hir_alloc_node(builder->hir, VITTE_HIR_IF_EXPR, source) : NULL;
     if (node != NULL) {
@@ -564,6 +592,14 @@ vitte_hir_stmt_t *vitte_hir_make_while(vitte_hir_builder_t *builder, vitte_hir_e
     vitte_hir_node_t *node = builder != NULL ? vitte_hir_alloc_node(builder->hir, VITTE_HIR_WHILE_STMT, source) : NULL;
     if (node != NULL) { node->as.while_stmt.condition = condition; node->as.while_stmt.body = body; }
     return node;
+}
+
+vitte_hir_stmt_t *vitte_hir_make_loop_control(vitte_hir_builder_t *builder, bool continue_loop, const vitte_ast_node_t *source) {
+    return builder != NULL ? vitte_hir_alloc_node(
+        builder->hir,
+        continue_loop ? VITTE_HIR_CONTINUE_STMT : VITTE_HIR_BREAK_STMT,
+        source
+    ) : NULL;
 }
 
 vitte_hir_expr_t *vitte_hir_make_block_expr(vitte_hir_builder_t *builder, vitte_hir_list_t statements, vitte_hir_expr_t *value, const vitte_ast_node_t *source) {
@@ -723,22 +759,6 @@ static const char *vitte_hir_ast_identifier_lowered_name(const vitte_ast_node_t 
     return node->as.identifier.lowered_name != NULL ? node->as.identifier.lowered_name : node->as.identifier.name;
 }
 
-static const char *vitte_hir_ast_assignment_target_name(const vitte_ast_node_t *node) {
-    if (node == NULL) {
-        return NULL;
-    }
-    if (node->kind == VITTE_AST_NODE_IDENTIFIER) {
-        return node->as.identifier.name;
-    }
-    if (node->kind == VITTE_AST_NODE_MEMBER_EXPR) {
-        return vitte_hir_ast_assignment_target_name(node->as.member_expr.base);
-    }
-    if (node->kind == VITTE_AST_NODE_INDEX_EXPR) {
-        return vitte_hir_ast_assignment_target_name(node->as.index_expr.base);
-    }
-    return NULL;
-}
-
 static bool vitte_hir_depth_ok(vitte_hir_lowering_t *lowering, size_t depth) {
     if (lowering == NULL || depth > lowering->max_depth) {
         vitte_hir_lowering_set_error(lowering, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_HIR_E_DEPTH", "HIR lowering exceeded maximum depth", NULL);
@@ -842,10 +862,15 @@ static vitte_hir_expr_t *vitte_hir_lower_expr(vitte_hir_lowering_t *lowering, co
         }
         case VITTE_AST_NODE_CAST_EXPR:
             return vitte_hir_lower_expr(lowering, node->as.cast_expr.value, depth + 1u);
-        case VITTE_AST_NODE_INDEX_EXPR:
-            return vitte_hir_lower_expr(lowering, node->as.index_expr.base, depth + 1u);
-        case VITTE_AST_NODE_MEMBER_EXPR:
-            return vitte_hir_lower_expr(lowering, node->as.member_expr.base, depth + 1u);
+        case VITTE_AST_NODE_INDEX_EXPR: {
+            vitte_hir_expr_t *base = vitte_hir_lower_expr(lowering, node->as.index_expr.base, depth + 1u);
+            vitte_hir_expr_t *index = vitte_hir_lower_expr(lowering, node->as.index_expr.index, depth + 1u);
+            return base != NULL && index != NULL ? vitte_hir_make_index(&builder, base, index, node) : NULL;
+        }
+        case VITTE_AST_NODE_MEMBER_EXPR: {
+            vitte_hir_expr_t *base = vitte_hir_lower_expr(lowering, node->as.member_expr.base, depth + 1u);
+            return base != NULL ? vitte_hir_make_member(&builder, base, node->as.member_expr.member, node) : NULL;
+        }
         case VITTE_AST_NODE_BLOCK_EXPR: {
             const vitte_ast_node_t *statement;
             vitte_hir_list_t statements;
@@ -918,13 +943,13 @@ static vitte_hir_stmt_t *vitte_hir_lower_stmt(vitte_hir_lowering_t *lowering, co
             return vitte_hir_make_let(&builder, node->as.let_stmt.name, type, value, node);
         }
         case VITTE_AST_NODE_ASSIGN_STMT: {
+            vitte_hir_expr_t *target = vitte_hir_lower_expr(lowering, node->as.assign_stmt.target, depth + 1u);
             vitte_hir_expr_t *value = vitte_hir_lower_expr(lowering, node->as.assign_stmt.value, depth + 1u);
-            const char *target_name = vitte_hir_ast_assignment_target_name(node->as.assign_stmt.target);
-            if (value == NULL || target_name == NULL) {
-                vitte_hir_lowering_set_error(lowering, VITTE_STATUS_ERROR_UNSUPPORTED, "VITTE_HIR_E_ASSIGN", "assignment target must be an identifier", NULL);
+            if (target == NULL || value == NULL) {
+                vitte_hir_lowering_set_error(lowering, VITTE_STATUS_ERROR_UNSUPPORTED, "VITTE_HIR_E_ASSIGN", "assignment target could not be lowered", NULL);
                 return NULL;
             }
-            return vitte_hir_make_assign(&builder, target_name, value, node);
+            return vitte_hir_make_assign(&builder, target, value, node);
         }
         case VITTE_AST_NODE_EXPR_STMT: {
             vitte_hir_expr_t *value = vitte_hir_lower_expr(lowering, node->as.expr_stmt.value, depth + 1u);
@@ -951,6 +976,10 @@ static vitte_hir_stmt_t *vitte_hir_lower_stmt(vitte_hir_lowering_t *lowering, co
             if (condition == NULL || body == NULL) return NULL;
             return vitte_hir_make_while(&builder, condition, body, node);
         }
+        case VITTE_AST_NODE_BREAK_STMT:
+            return vitte_hir_make_loop_control(&builder, false, node);
+        case VITTE_AST_NODE_CONTINUE_STMT:
+            return vitte_hir_make_loop_control(&builder, true, node);
         case VITTE_AST_NODE_ERROR:
             return vitte_hir_make_error(&builder, node->as.error_node.message, node);
         default:
@@ -1311,11 +1340,13 @@ static vitte_status_t vitte_hir_validate_node(vitte_hir_t *hir, const vitte_hir_
         case VITTE_HIR_EXPR_STMT:
         case VITTE_HIR_ASSIGN_STMT:
             if (node->kind == VITTE_HIR_ASSIGN_STMT) {
-                if (node->as.assign_stmt.name == NULL || node->as.assign_stmt.value == NULL) {
-                    vitte_hir_set_error(hir, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_HIR_E_ASSIGN", "HIR assignment requires name and value", NULL);
+                if (node->as.assign_stmt.target == NULL || node->as.assign_stmt.value == NULL) {
+                    vitte_hir_set_error(hir, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_HIR_E_ASSIGN", "HIR assignment requires target and value", NULL);
                     return VITTE_STATUS_ERROR_INVALID_STATE;
                 }
-                return vitte_hir_validate_node(hir, node->as.assign_stmt.value, depth + 1u, max_depth, visited);
+                status = vitte_hir_validate_node(hir, node->as.assign_stmt.target, depth + 1u, max_depth, visited);
+                return status == VITTE_STATUS_OK ?
+                    vitte_hir_validate_node(hir, node->as.assign_stmt.value, depth + 1u, max_depth, visited) : status;
             }
             if (node->as.expr_stmt.value == NULL) {
                 vitte_hir_set_error(hir, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_HIR_E_EXPR_STMT", "HIR expression statement requires value", NULL);
@@ -1348,6 +1379,9 @@ static vitte_status_t vitte_hir_validate_node(vitte_hir_t *hir, const vitte_hir_
                 return status;
             }
             return vitte_hir_validate_node(hir, node->as.while_stmt.body, depth + 1u, max_depth, visited);
+        case VITTE_HIR_BREAK_STMT:
+        case VITTE_HIR_CONTINUE_STMT:
+            return VITTE_STATUS_OK;
         case VITTE_HIR_BINARY_EXPR:
             if (node->as.binary_expr.operator_text == NULL || node->as.binary_expr.left == NULL || node->as.binary_expr.right == NULL) {
                 vitte_hir_set_error(hir, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_HIR_E_BINARY", "HIR binary expression is incomplete", NULL);
@@ -1368,6 +1402,20 @@ static vitte_status_t vitte_hir_validate_node(vitte_hir_t *hir, const vitte_hir_
                 return status;
             }
             return vitte_hir_validate_list(hir, &node->as.call_expr.arguments, depth, max_depth, visited);
+        case VITTE_HIR_INDEX_EXPR:
+            if (node->as.index_expr.base == NULL || node->as.index_expr.index == NULL) {
+                vitte_hir_set_error(hir, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_HIR_E_INDEX", "HIR index expression is incomplete", NULL);
+                return VITTE_STATUS_ERROR_INVALID_STATE;
+            }
+            status = vitte_hir_validate_node(hir, node->as.index_expr.base, depth + 1u, max_depth, visited);
+            return status == VITTE_STATUS_OK ?
+                vitte_hir_validate_node(hir, node->as.index_expr.index, depth + 1u, max_depth, visited) : status;
+        case VITTE_HIR_MEMBER_EXPR:
+            if (node->as.member_expr.base == NULL || node->as.member_expr.member == NULL) {
+                vitte_hir_set_error(hir, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_HIR_E_MEMBER", "HIR member expression is incomplete", NULL);
+                return VITTE_STATUS_ERROR_INVALID_STATE;
+            }
+            return vitte_hir_validate_node(hir, node->as.member_expr.base, depth + 1u, max_depth, visited);
         case VITTE_HIR_IF_EXPR:
             if (node->as.if_expr.condition == NULL || node->as.if_expr.then_value == NULL || node->as.if_expr.else_value == NULL) {
                 vitte_hir_set_error(hir, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_HIR_E_IF_EXPR", "HIR conditional expression is incomplete", NULL);
@@ -1474,6 +1522,7 @@ static size_t vitte_hir_visit_node(vitte_hir_node_t *node, vitte_hir_visit_fn ca
             count += vitte_hir_visit_node(node->as.let_stmt.value, callback, user, depth + 1u, max_depth);
             break;
         case VITTE_HIR_ASSIGN_STMT:
+            count += vitte_hir_visit_node(node->as.assign_stmt.target, callback, user, depth + 1u, max_depth);
             count += vitte_hir_visit_node(node->as.assign_stmt.value, callback, user, depth + 1u, max_depth);
             break;
         case VITTE_HIR_EXPR_STMT:
@@ -1493,6 +1542,13 @@ static size_t vitte_hir_visit_node(vitte_hir_node_t *node, vitte_hir_visit_fn ca
             for (child = node->as.call_expr.arguments.first; child != NULL; child = child->next) {
                 count += vitte_hir_visit_node(child, callback, user, depth + 1u, max_depth);
             }
+            break;
+        case VITTE_HIR_INDEX_EXPR:
+            count += vitte_hir_visit_node(node->as.index_expr.base, callback, user, depth + 1u, max_depth);
+            count += vitte_hir_visit_node(node->as.index_expr.index, callback, user, depth + 1u, max_depth);
+            break;
+        case VITTE_HIR_MEMBER_EXPR:
+            count += vitte_hir_visit_node(node->as.member_expr.base, callback, user, depth + 1u, max_depth);
             break;
         case VITTE_HIR_IF_EXPR:
             count += vitte_hir_visit_node(node->as.if_expr.condition, callback, user, depth + 1u, max_depth);
@@ -1562,6 +1618,7 @@ static void vitte_hir_dump_node(const vitte_hir_node_t *node, FILE *stream, size
             vitte_hir_dump_node(node->as.let_stmt.value, stream, depth + 1u, max_depth);
             break;
         case VITTE_HIR_ASSIGN_STMT:
+            vitte_hir_dump_node(node->as.assign_stmt.target, stream, depth + 1u, max_depth);
             vitte_hir_dump_node(node->as.assign_stmt.value, stream, depth + 1u, max_depth);
             break;
         case VITTE_HIR_EXPR_STMT:
@@ -1581,6 +1638,13 @@ static void vitte_hir_dump_node(const vitte_hir_node_t *node, FILE *stream, size
             for (child = node->as.call_expr.arguments.first; child != NULL; child = child->next) {
                 vitte_hir_dump_node(child, stream, depth + 1u, max_depth);
             }
+            break;
+        case VITTE_HIR_INDEX_EXPR:
+            vitte_hir_dump_node(node->as.index_expr.base, stream, depth + 1u, max_depth);
+            vitte_hir_dump_node(node->as.index_expr.index, stream, depth + 1u, max_depth);
+            break;
+        case VITTE_HIR_MEMBER_EXPR:
+            vitte_hir_dump_node(node->as.member_expr.base, stream, depth + 1u, max_depth);
             break;
         case VITTE_HIR_IF_EXPR:
             vitte_hir_dump_node(node->as.if_expr.condition, stream, depth + 1u, max_depth);
