@@ -11,6 +11,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 STAGES = ("stage0", "stage1", "stage2")
+STAGE_META = {
+    "stage0": {"predecessor": "none", "policy": "signature-required, offline, single-platform-artifact"},
+    "stage1": {"predecessor": "stage0", "policy": "verified-predecessor, canonical-output, deterministic-build"},
+    "stage2": {"predecessor": "stage1", "policy": "verified-predecessor, release-parity, deterministic-build"},
+}
 ARTIFACTS = {
     "stage0": ROOT / "toolchain/bootstrap/stage0/macos-arm64/vitte",
     "stage1": ROOT / "target/stage1/vitte",
@@ -35,7 +40,7 @@ def check_contracts(errors: list[str], rows: list[dict[str, object]]) -> None:
         return
     for stage in STAGES:
         root = ROOT / f"toolchain/{stage}/src"
-        files = sorted(root.glob("*.vit"))
+        files = sorted((ROOT / f"toolchain/{stage}").rglob("*.vit"))
         if not files:
             errors.append(f"{stage} has no source contracts")
         for path in files:
@@ -46,6 +51,31 @@ def check_contracts(errors: list[str], rows: list[dict[str, object]]) -> None:
             if result.returncode != 0:
                 errors.append(f"syntax failure: {path.relative_to(ROOT)}: {result.stdout.strip()}")
             rows.append({"stage": stage, "contract": str(path.relative_to(ROOT)), "checked": result.returncode == 0})
+
+
+def check_stage_surfaces(errors: list[str], rows: list[dict[str, object]]) -> None:
+    for stage in STAGES:
+        manifest_path = ROOT / f"toolchain/{stage}/{stage}-manifest.json"
+        if not manifest_path.is_file():
+            continue
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        meta = STAGE_META[stage]
+        if manifest.get("predecessor") != meta["predecessor"]:
+            errors.append(f"{stage} predecessor contract is inconsistent")
+        if manifest.get("policy") != meta["policy"]:
+            errors.append(f"{stage} policy contract is inconsistent")
+        capabilities = manifest.get("capabilities")
+        if not isinstance(capabilities, list) or len(capabilities) < 5:
+            errors.append(f"{stage} must declare at least five stage capabilities")
+        for auxiliary in manifest.get("auxiliary_contracts", []):
+            path = ROOT / str(auxiliary)
+            if not path.is_file() or path.stat().st_size == 0:
+                errors.append(f"missing auxiliary stage contract: {auxiliary}")
+        for required in ("src", "config", "tests", "reports"):
+            directory = ROOT / f"toolchain/{stage}/{required}"
+            if not directory.is_dir() or not any(directory.iterdir()):
+                errors.append(f"{stage}/{required} surface is empty")
+        rows.append({"stage": stage, "surface": "src/config/tests/reports", "predecessor": meta["predecessor"], "policy": meta["policy"], "capabilities": capabilities})
 
 
 def main() -> int:
@@ -85,6 +115,7 @@ def main() -> int:
         if result.returncode != 0 or "Verified OK" not in result.stdout:
             errors.append(f"stage0 signature verification failed: {result.stdout.strip()}")
     check_contracts(errors, rows)
+    check_stage_surfaces(errors, rows)
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     payload = {"schema": "vitte.toolchain.stage012.report.v1", "status": "ok" if not errors else "failed", "errors": errors, "rows": rows}
     REPORT.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")

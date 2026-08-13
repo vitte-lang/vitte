@@ -19,6 +19,12 @@ Stage-specific source contracts and artifact manifests live in
 `toolchain/stage0`, `toolchain/stage1` and `toolchain/stage2`. They are checked
 by `make toolchain-stage012-gate`.
 
+Each stage owns four deliberate surfaces: `src/` for compiler contracts,
+`config/` for its policy, `tests/` for executable contract checks, and
+`reports/` for stage-local report ownership. Stage0 is the signed trust root;
+stage1 consumes the verified bootstrap compiler; stage2 consumes stage1 and
+owns release-parity validation.
+
 Removed source roots and artifacts are blocked by `make vitte-in-vitte-gate`.
 
 Blocking gates:

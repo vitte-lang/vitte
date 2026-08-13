@@ -15,6 +15,9 @@ The stage-specific contract roots are `toolchain/stage0/src`,
 `toolchain/stage1/src` and `toolchain/stage2/src`. Their artifact manifests are
 checked by `make toolchain-stage012-gate`.
 
+For each stage, `config/` records the policy, `tests/` records executable
+contract checks, and `reports/` is reserved for generated stage evidence.
+
 Run `make bootstrap-all` for the chain and `make bootstrap-native-contract` for
 the clean-checkout/offline contract. Run `make toolchain-stages-gate` to verify
 the registered stage paths and `make bootstrap-max-gate` for the maximal
