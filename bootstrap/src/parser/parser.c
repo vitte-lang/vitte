@@ -1803,6 +1803,17 @@ static vitte_ast_stmt_t *vitte_parser_parse_stmt_impl(vitte_parser_t *parser) {
     if (parser == NULL) {
         return NULL;
     }
+    if (parser->current.kind == VITTE_TOKEN_IDENTIFIER &&
+        (vitte_parser_token_text_is(&parser->current, "break") || vitte_parser_token_text_is(&parser->current, "continue"))) {
+        bool continue_loop = vitte_parser_token_text_is(&parser->current, "continue");
+        vitte_ast_span_t span = vitte_parser_span_from_token(&parser->current);
+        vitte_ast_stmt_t *stmt;
+        (void)vitte_parser_advance(parser);
+        vitte_parser_optional_semicolon(parser);
+        stmt = vitte_ast_make_loop_control_stmt(&parser->builder, continue_loop, span);
+        if (stmt != NULL) parser->stats.stmt_count++;
+        return stmt;
+    }
     switch (parser->current.kind) {
         case VITTE_TOKEN_LBRACE:
             return vitte_parser_parse_block(parser);
