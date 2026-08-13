@@ -1818,7 +1818,9 @@ proc find_top_level_token(tokens: [Token], start: u64, end: u64, text: string) -
   let bracket_depth: int = 0;
   let brace_depth: int = 0;
   while i < bounds.end and i < len(tokens) {
-    if tokens[i].lexeme == parser_lparen() {
+    if tokens[i].lexeme == text and paren_depth == 0 and bracket_depth == 0 and brace_depth == 0 {
+      give i as int;
+    } elif tokens[i].lexeme == parser_lparen() {
       set paren_depth = paren_depth + 1;
     } elif tokens[i].lexeme == parser_rparen() {
       set paren_depth = paren_depth - 1;
@@ -1830,8 +1832,6 @@ proc find_top_level_token(tokens: [Token], start: u64, end: u64, text: string) -
       set brace_depth = brace_depth + 1;
     } elif tokens[i].lexeme == "}" {
       set brace_depth = brace_depth - 1;
-    } elif tokens[i].lexeme == text and paren_depth == 0 and bracket_depth == 0 and brace_depth == 0 {
-      give i as int;
     }
     set i = i + 1;
   }
@@ -3457,6 +3457,36 @@ proc find_item_body_open(tokens: [Token], start: u64, end: u64) -> int {
   give find_top_level_token(tokens, start, end, "{");
 }
 
+proc find_header_end(tokens: [Token], start: u64, end: u64) -> u64 {
+  let i: u64 = start;
+  let paren_depth: int = 0;
+  let bracket_depth: int = 0;
+  let brace_depth: int = 0;
+  while i < end and i < len(tokens) {
+    if i > start and paren_depth == 0 and bracket_depth == 0 and brace_depth == 0 and tokens[i].line > tokens[i - 1].line {
+      give i;
+    }
+    if tokens[i].lexeme == ";" and paren_depth == 0 and bracket_depth == 0 and brace_depth == 0 {
+      give i;
+    }
+    if tokens[i].lexeme == parser_lparen() {
+      set paren_depth = paren_depth + 1;
+    } elif tokens[i].lexeme == parser_rparen() {
+      set paren_depth = paren_depth - 1;
+    } elif tokens[i].lexeme == "[" {
+      set bracket_depth = bracket_depth + 1;
+    } elif tokens[i].lexeme == "]" {
+      set bracket_depth = bracket_depth - 1;
+    } elif tokens[i].lexeme == "{" {
+      set brace_depth = brace_depth + 1;
+    } elif tokens[i].lexeme == "}" {
+      set brace_depth = brace_depth - 1;
+    }
+    set i = i + 1;
+  }
+  give i;
+}
+
 proc parse_item_meta_args(tokens: [Token], name_index: u64, limit: u64) -> [string] {
   let args: [string] = [];
   if name_index + 1 >= limit or name_index + 1 >= len(tokens) or tokens[name_index + 1].lexeme != "(" {
@@ -3482,10 +3512,14 @@ proc build_ast_module(source_name: string, tokens: [Token]) -> AstModule {
     let keyword: string = tokens[actual].lexeme;
 
     if keyword == "space" or keyword == "use" or keyword == "export" {
-      let end_i: u64 = if find_top_level_token(tokens, actual, len(tokens), ";") >= 0 { find_top_level_token(tokens, actual, len(tokens), ";") as u64 } else { len(tokens) };
+      let end_i: u64 = find_header_end(tokens, actual, len(tokens));
       let name: string = token_text(tokens, actual + 1, end_i);
       set items = items + [ast_item_typed(range_id(5, prefix.start, end_i), span_from_tokens(source_name, tokens, prefix.start, end_i), item_kind_for_keyword(keyword), name, prefix.attributes, "", prefix.visibility, prefix.modifiers, prefix_abi(prefix.modifiers), ast_expr_unknown(0, span_from_tokens(source_name, tokens, prefix.start, end_i), ""), [], ast_type_empty(), ast_type_empty(), [], [], ast_proc_signature_empty(), [], "")];
-      set i = end_i + 1;
+      if end_i < len(tokens) and tokens[end_i].lexeme == ";" {
+        set i = end_i + 1;
+      } else {
+        set i = end_i;
+      }
       continue;
     }
 
@@ -3736,5 +3770,5 @@ proc build_ast_module(source_name: string, tokens: [Token]) -> AstModule {
   if len(items) == 0 {
     give ast_module_empty();
   }
-  give ast_module(9000000 + len(items), span_from_tokens(source_name, tokens, 0, len(tokens) - 1), items);
+  give ast_module(9000000 + len(items), span_from_tokens(source_name, tokens, 0, len(tokens)), items);
 }
