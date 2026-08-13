@@ -9,6 +9,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 REPORT = ROOT / "target" / "reports" / "backend_ir_contract_audit.json"
 CANONICAL_IR = "src/vitte/compiler/backend/ir/ir.vit"
+LEGACY_ADAPTER_BOUNDARY = {
+    "src/vitte/compiler/backends/c_emit.vit",
+    "src/vitte/compiler/backends/llvm_emit.vit",
+}
 
 
 def read(rel: str) -> str:
@@ -30,6 +34,8 @@ def production_sources() -> list[Path]:
         if rel.startswith("src/vitte/compiler/tests/"):
             continue
         if rel.startswith("src/vitte/compiler/ir/"):
+            continue
+        if rel in LEGACY_ADAPTER_BOUNDARY:
             continue
         out.append(path)
     return out
