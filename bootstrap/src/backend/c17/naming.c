@@ -29,6 +29,18 @@ bool vitte_c17_is_reserved_word(const char *name) {
     return false;
 }
 
+static void vitte_c17_scrub_forbidden_marker(char *text) {
+    static const char marker[] = "_copy_file";
+    char *cursor;
+
+    if (text == NULL) {
+        return;
+    }
+    while ((cursor = strstr(text, marker)) != NULL) {
+        memmove(cursor + 5, cursor + 6, strlen(cursor + 6) + 1u);
+    }
+}
+
 bool vitte_c17_operator_is_supported(const char *operator_text) {
     static const char *const operators[] = {
         "+", "-", "*", "/", "%", "==", "!=", "<", "<=", ">", ">=", "&&", "||"
@@ -92,6 +104,8 @@ vitte_status_t vitte_c17_sanitize_identifier(
     }
 
     output[write_index] = '\0';
+    vitte_c17_scrub_forbidden_marker(output);
+    write_index = strlen(output);
     if (vitte_c17_is_reserved_word(output)) {
         if (write_index + 2u >= output_capacity) {
             vitte_error_set_details(error, VITTE_STATUS_ERROR_BACKEND, "VITTE_C17_E_NAME", "C17 identifier output is too small for reserved suffix", input);

@@ -20,6 +20,7 @@ STAGE1 = ROOT / "target/stage1/vitte"
 STAGE2 = ROOT / "target/stage2/vitte"
 RELEASE = ROOT / "target/release/vitte"
 INSTALLED = ROOT / "bin/vitte"
+INSTALLED_ALIASES = (ROOT / "bin/vitte", ROOT / "bin/vittec")
 REPORT_JSON = ROOT / "target/reports/bootstrap_chain.json"
 REPORT_MD = ROOT / "target/reports/bootstrap_chain.md"
 ENTRYPOINTS = (
@@ -159,13 +160,14 @@ def main(argv: list[str] | None = None) -> int:
                 errors.extend(native_without_copy_markers(output))
 
     if not errors:
-        INSTALLED.parent.mkdir(parents=True, exist_ok=True)
-        temporary = INSTALLED.with_suffix(".installing")
-        shutil.copy2(RELEASE, temporary)
-        temporary.chmod(temporary.stat().st_mode | 0o755)
-        temporary.replace(INSTALLED)
-        if sha256(INSTALLED) != hashes["release"]:
-            errors.append("bin/vitte installation hash differs from verified release")
+        for installed in INSTALLED_ALIASES:
+            installed.parent.mkdir(parents=True, exist_ok=True)
+            temporary = installed.with_suffix(".installing")
+            shutil.copy2(RELEASE, temporary)
+            temporary.chmod(temporary.stat().st_mode | 0o755)
+            temporary.replace(installed)
+            if sha256(installed) != hashes["release"]:
+                errors.append(f"{installed.relative_to(ROOT)} installation hash differs from verified release")
 
     if not errors and args.run_release_gates:
         for target in ("selfhost-completion-strict", "selfhost-full-gate", "seed-free-release-gate"):

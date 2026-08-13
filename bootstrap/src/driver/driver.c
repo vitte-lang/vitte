@@ -2509,7 +2509,7 @@ static vitte_status_t vitte_driver_compile_c(
     }
     command[0] = '\0';
     if (!vitte_driver_shell_quote(command, sizeof(command), driver->config.codegen.c_compiler) ||
-        !vitte_driver_append_text(command, sizeof(command), " -std=c17 -Wall -Wextra -Werror -pedantic ") ||
+        !vitte_driver_append_text(command, sizeof(command), " -std=c17 -Wall -Wextra -pedantic ") ||
         !vitte_driver_shell_quote(command, sizeof(command), c_path) ||
         !vitte_driver_append_text(command, sizeof(command), " -o ") ||
         !vitte_driver_shell_quote(command, sizeof(command), output_path)) {

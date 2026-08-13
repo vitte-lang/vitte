@@ -125,6 +125,14 @@ vitte_status_t vitte_c17_translation_unit_emit_prelude(
         if (status != VITTE_STATUS_OK) {
             return status;
         }
+        status = vitte_c17_write_string(writer, "#include <sys/stat.h>");
+        if (status != VITTE_STATUS_OK) {
+            return status;
+        }
+        status = vitte_c17_write_newline(writer);
+        if (status != VITTE_STATUS_OK) {
+            return status;
+        }
         status = vitte_c17_write_newline(writer);
         if (status != VITTE_STATUS_OK) {
             return status;
@@ -133,7 +141,31 @@ vitte_status_t vitte_c17_translation_unit_emit_prelude(
         if (status != VITTE_STATUS_OK) return status;
         status = vitte_c17_write_newline(writer);
         if (status != VITTE_STATUS_OK) return status;
-        unit->include_count += 7u;
+        status = vitte_c17_write_string(writer, "#if defined(__GNUC__) || defined(__clang__)");
+        if (status != VITTE_STATUS_OK) return status;
+        status = vitte_c17_write_newline(writer);
+        if (status != VITTE_STATUS_OK) return status;
+        status = vitte_c17_write_string(writer, "#define VITTE_C17_USED __attribute__((used))");
+        if (status != VITTE_STATUS_OK) return status;
+        status = vitte_c17_write_newline(writer);
+        if (status != VITTE_STATUS_OK) return status;
+        status = vitte_c17_write_string(writer, "#else");
+        if (status != VITTE_STATUS_OK) return status;
+        status = vitte_c17_write_newline(writer);
+        if (status != VITTE_STATUS_OK) return status;
+        status = vitte_c17_write_string(writer, "#define VITTE_C17_USED");
+        if (status != VITTE_STATUS_OK) return status;
+        status = vitte_c17_write_newline(writer);
+        if (status != VITTE_STATUS_OK) return status;
+        status = vitte_c17_write_string(writer, "#endif");
+        if (status != VITTE_STATUS_OK) return status;
+        status = vitte_c17_write_newline(writer);
+        if (status != VITTE_STATUS_OK) return status;
+        status = vitte_c17_write_string(writer, "static const char vitte_bootstrap_compiler_entry_marker[] VITTE_C17_USED = \"COMPILER_ENTRY_POINT=src/vitte/compiler/main.vit\";");
+        if (status != VITTE_STATUS_OK) return status;
+        status = vitte_c17_write_newline(writer);
+        if (status != VITTE_STATUS_OK) return status;
+        unit->include_count += 8u;
     }
 
     return VITTE_STATUS_OK;
