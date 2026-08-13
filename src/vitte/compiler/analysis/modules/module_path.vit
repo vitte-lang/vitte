@@ -1,0 +1,727 @@
+space vitte/compiler/analysis/modules/module_path
+
+export *
+
+pick ModulePathKind {
+    Invalid,
+    Relative,
+    Absolute,
+    Package,
+    Module,
+    Generated,
+    External
+}
+
+pick ModulePathErrorKind {
+    None,
+    Empty,
+    InvalidCharacter,
+    InvalidSeparator,
+    EmptySegment,
+    EscapesRoot,
+    TooDeep
+}
+
+form ModulePath {
+    value: string
+    kind: ModulePathKind
+    depth: usize
+}
+
+form ModulePathSegment {
+    value: string
+    index: usize
+    last: bool
+}
+
+form ModulePathValidation {
+    valid: bool
+    kind: ModulePathKind
+    depth: usize
+    error: ModulePathErrorKind
+    message: string
+}
+
+form ModulePathParts {
+    root: string
+    parent: string
+    name: string
+}
+
+proc module_path_invalid() -> ModulePath {
+    give ModulePath {
+        value: "",
+        kind: ModulePathKind.Invalid,
+        depth: 0
+    };
+}
+
+proc module_path_create(
+    value: string,
+    kind: ModulePathKind,
+    depth: usize
+) -> ModulePath {
+    give ModulePath {
+        value: value,
+        kind: kind,
+        depth: depth
+    };
+}
+
+proc module_path_segment(
+    value: string,
+    index: usize,
+    last: bool
+) -> ModulePathSegment {
+    give ModulePathSegment {
+        value: value,
+        index: index,
+        last: last
+    };
+}
+
+proc module_path_validation(
+    valid: bool,
+    kind: ModulePathKind,
+    depth: usize,
+    error: ModulePathErrorKind,
+    message: string
+) -> ModulePathValidation {
+    give ModulePathValidation {
+        valid: valid,
+        kind: kind,
+        depth: depth,
+        error: error,
+        message: message
+    };
+}
+
+proc module_path_parts(
+    root: string,
+    parent: string,
+    name: string
+) -> ModulePathParts {
+    give ModulePathParts {
+        root: root,
+        parent: parent,
+        name: name
+    };
+}
+
+proc module_path_is_separator(
+    value: char
+) -> bool {
+    give value == '/';
+}
+
+proc module_path_segment_count(
+    value: string
+) -> usize {
+    if value == "" {
+        give 0;
+    }
+
+    let mut count: usize = 1;
+    let mut index: usize = 0;
+
+    while index < len(value) {
+        if module_path_is_separator(value[index]) {
+            set count = count + 1;
+        }
+
+        set index = index + 1;
+    }
+
+    give count;
+}
+
+proc module_path_kind_from_text(
+    value: string
+) -> ModulePathKind {
+    if value == "" {
+        give ModulePathKind.Invalid;
+    }
+
+    if value[0] == '/' {
+        give ModulePathKind.Absolute;
+    }
+
+    if len(value) >= 2
+        and value[0] == '.'
+        and value[1] == '/' {
+        give ModulePathKind.Relative;
+    }
+
+    if len(value) >= 3
+        and value[0] == '.'
+        and value[1] == '.'
+        and value[2] == '/' {
+        give ModulePathKind.Relative;
+    }
+
+    if module_path_segment_count(value) > 1 {
+        give ModulePathKind.Module;
+    }
+
+    give ModulePathKind.Package;
+}
+
+proc module_path(
+    value: string
+) -> ModulePath {
+    if value == "" {
+        give module_path_invalid();
+    }
+
+    give ModulePath {
+        value: value,
+        kind: module_path_kind_from_text(value),
+        depth: module_path_segment_count(value)
+    };
+}
+
+proc module_path_relative(
+    value: string
+) -> ModulePath {
+    give ModulePath {
+        value: value,
+        kind: ModulePathKind.Relative,
+        depth: module_path_segment_count(value)
+    };
+}
+
+proc module_path_absolute(
+    value: string
+) -> ModulePath {
+    give ModulePath {
+        value: value,
+        kind: ModulePathKind.Absolute,
+        depth: module_path_segment_count(value)
+    };
+}
+
+proc module_path_generated(
+    value: string
+) -> ModulePath {
+    give ModulePath {
+        value: value,
+        kind: ModulePathKind.Generated,
+        depth: module_path_segment_count(value)
+    };
+}
+
+proc module_path_external(
+    value: string
+) -> ModulePath {
+    give ModulePath {
+        value: value,
+        kind: ModulePathKind.External,
+        depth: module_path_segment_count(value)
+    };
+}
+
+proc module_path_text(
+    path: ModulePath
+) -> string {
+    give path.value;
+}
+
+proc module_path_kind(
+    path: ModulePath
+) -> ModulePathKind {
+    give path.kind;
+}
+
+proc module_path_depth(
+    path: ModulePath
+) -> usize {
+    give path.depth;
+}
+
+proc module_path_is_valid(
+    path: ModulePath
+) -> bool {
+    give path.kind != ModulePathKind.Invalid
+        and path.value != "";
+}
+
+proc module_path_is_invalid(
+    path: ModulePath
+) -> bool {
+    give not module_path_is_valid(path);
+}
+
+proc module_path_is_relative(
+    path: ModulePath
+) -> bool {
+    give path.kind == ModulePathKind.Relative;
+}
+
+proc module_path_is_absolute(
+    path: ModulePath
+) -> bool {
+    give path.kind == ModulePathKind.Absolute;
+}
+
+proc module_path_is_package(
+    path: ModulePath
+) -> bool {
+    give path.kind == ModulePathKind.Package;
+}
+
+proc module_path_is_module(
+    path: ModulePath
+) -> bool {
+    give path.kind == ModulePathKind.Module;
+}
+
+proc module_path_is_generated(
+    path: ModulePath
+) -> bool {
+    give path.kind == ModulePathKind.Generated;
+}
+
+proc module_path_is_external(
+    path: ModulePath
+) -> bool {
+    give path.kind == ModulePathKind.External;
+}
+
+proc module_path_equal(
+    left: ModulePath,
+    right: ModulePath
+) -> bool {
+    give left.value == right.value;
+}
+
+proc module_path_not_equal(
+    left: ModulePath,
+    right: ModulePath
+) -> bool {
+    give left.value != right.value;
+}
+
+proc module_path_compare(
+    left: ModulePath,
+    right: ModulePath
+) -> int {
+    if left.value == right.value {
+        give 0;
+    }
+
+    if left.value < right.value {
+        give -1;
+    }
+
+    give 1;
+}
+
+proc module_path_has_parent(
+    path: ModulePath
+) -> bool {
+    give path.depth > 1;
+}
+
+proc module_path_last_separator(
+    value: string
+) -> int {
+    if value == "" {
+        give -1;
+    }
+
+    let mut index: usize = len(value);
+
+    while index > 0 {
+        set index = index - 1;
+
+        if value[index] == '/' {
+            give index as int;
+        }
+    }
+
+    give -1;
+}
+
+proc module_path_name(
+    path: ModulePath
+) -> string {
+    if path.value == "" {
+        give "";
+    }
+
+    let separator: int =
+        module_path_last_separator(path.value);
+
+    if separator < 0 {
+        give path.value;
+    }
+
+    let mut result: string = "";
+    let mut index: usize = separator as usize + 1;
+
+    while index < len(path.value) {
+        set result = result + path.value[index];
+        set index = index + 1;
+    }
+
+    give result;
+}
+
+proc module_path_parent_text(
+    path: ModulePath
+) -> string {
+    let separator: int =
+        module_path_last_separator(path.value);
+
+    if separator <= 0 {
+        give "";
+    }
+
+    let mut result: string = "";
+    let mut index: usize = 0;
+
+    while index < separator as usize {
+        set result = result + path.value[index];
+        set index = index + 1;
+    }
+
+    give result;
+}
+
+proc module_path_parent(
+    path: ModulePath
+) -> ModulePath {
+    let value: string =
+        module_path_parent_text(path);
+
+    if value == "" {
+        give module_path_invalid();
+    }
+
+    give module_path(value);
+}
+
+proc module_path_join(
+    parent: ModulePath,
+    child: string
+) -> ModulePath {
+    if child == "" {
+        give parent;
+    }
+
+    if parent.value == "" {
+        give module_path(child);
+    }
+
+    give module_path(
+        parent.value + "/" + child
+    );
+}
+
+proc module_path_child(
+    parent: ModulePath,
+    child: string
+) -> ModulePath {
+    give module_path_join(
+        parent,
+        child
+    );
+}
+
+proc module_path_is_direct_child(
+    child: ModulePath,
+    parent: ModulePath
+) -> bool {
+    if child.depth != parent.depth + 1 {
+        give false;
+    }
+
+    give module_path_parent_text(child)
+        == parent.value;
+}
+
+proc module_path_same_parent(
+    left: ModulePath,
+    right: ModulePath
+) -> bool {
+    if left.depth == 0 or right.depth == 0 {
+        give false;
+    }
+
+    give module_path_parent_text(left)
+        == module_path_parent_text(right);
+}
+
+proc module_path_segment_at(
+    path: ModulePath,
+    wanted: usize
+) -> ModulePathSegment {
+    let mut segment: string = "";
+    let mut segment_index: usize = 0;
+    let mut index: usize = 0;
+
+    while index <= len(path.value) {
+        let end: bool = index == len(path.value);
+
+        if end or path.value[index] == '/' {
+            if segment_index == wanted {
+                give module_path_segment(
+                    segment,
+                    segment_index,
+                    end
+                );
+            }
+
+            set segment = "";
+            set segment_index = segment_index + 1;
+        } else {
+            set segment = segment + path.value[index];
+        }
+
+        set index = index + 1;
+    }
+
+    give module_path_segment(
+        "",
+        wanted,
+        true
+    );
+}
+
+proc module_path_root_name(
+    path: ModulePath
+) -> string {
+    if path.depth == 0 {
+        give "";
+    }
+
+    give module_path_segment_at(
+        path,
+        0
+    ).value;
+}
+
+proc module_path_parts_of(
+    path: ModulePath
+) -> ModulePathParts {
+    give ModulePathParts {
+        root: module_path_root_name(path),
+        parent: module_path_parent_text(path),
+        name: module_path_name(path)
+    };
+}
+
+proc module_path_contains_empty_segment(
+    value: string
+) -> bool {
+    if value == "" {
+        give true;
+    }
+
+    let mut index: usize = 0;
+
+    while index + 1 < len(value) {
+        if value[index] == '/'
+            and value[index + 1] == '/' {
+            give true;
+        }
+
+        set index = index + 1;
+    }
+
+    give false;
+}
+
+proc module_path_has_trailing_separator(
+    value: string
+) -> bool {
+    if value == "" {
+        give false;
+    }
+
+    give value[len(value) - 1] == '/';
+}
+
+proc module_path_has_leading_separator(
+    value: string
+) -> bool {
+    if value == "" {
+        give false;
+    }
+
+    give value[0] == '/';
+}
+
+proc module_path_validate_text(
+    value: string
+) -> ModulePathValidation {
+    if value == "" {
+        give module_path_validation(
+            false,
+            ModulePathKind.Invalid,
+            0,
+            ModulePathErrorKind.Empty,
+            "module path is empty"
+        );
+    }
+
+    if module_path_contains_empty_segment(value) {
+        give module_path_validation(
+            false,
+            ModulePathKind.Invalid,
+            module_path_segment_count(value),
+            ModulePathErrorKind.EmptySegment,
+            "module path contains an empty segment"
+        );
+    }
+
+    if module_path_has_trailing_separator(value) {
+        give module_path_validation(
+            false,
+            ModulePathKind.Invalid,
+            module_path_segment_count(value),
+            ModulePathErrorKind.InvalidSeparator,
+            "module path ends with a separator"
+        );
+    }
+
+    let depth: usize =
+        module_path_segment_count(value);
+
+    if depth > 128 {
+        give module_path_validation(
+            false,
+            ModulePathKind.Invalid,
+            depth,
+            ModulePathErrorKind.TooDeep,
+            "module path is too deep"
+        );
+    }
+
+    give module_path_validation(
+        true,
+        module_path_kind_from_text(value),
+        depth,
+        ModulePathErrorKind.None,
+        ""
+    );
+}
+
+proc module_path_validate(
+    path: ModulePath
+) -> ModulePathValidation {
+    give module_path_validate_text(
+        path.value
+    );
+}
+
+proc module_path_normalize(
+    path: ModulePath
+) -> ModulePath {
+    if path.value == "" {
+        give module_path_invalid();
+    }
+
+    let validation: ModulePathValidation =
+        module_path_validate(path);
+
+    if not validation.valid {
+        give module_path_invalid();
+    }
+
+    give ModulePath {
+        value: path.value,
+        kind: validation.kind,
+        depth: validation.depth
+    };
+}
+
+proc module_path_with_kind(
+    path: ModulePath,
+    kind: ModulePathKind
+) -> ModulePath {
+    give ModulePath {
+        value: path.value,
+        kind: kind,
+        depth: path.depth
+    };
+}
+
+proc module_path_mark_generated(
+    path: ModulePath
+) -> ModulePath {
+    give module_path_with_kind(
+        path,
+        ModulePathKind.Generated
+    );
+}
+
+proc module_path_mark_external(
+    path: ModulePath
+) -> ModulePath {
+    give module_path_with_kind(
+        path,
+        ModulePathKind.External
+    );
+}
+
+proc module_path_hash(
+    path: ModulePath
+) -> u64 {
+    let mut hash: u64 = 1469598103934665603;
+    let mut index: usize = 0;
+
+    while index < len(path.value) {
+        set hash = hash xor (path.value[index] as u64);
+        set hash = hash * 1099511628211;
+        set index = index + 1;
+    }
+
+    give hash;
+}
+
+proc module_path_kind_name(
+    kind: ModulePathKind
+) -> string {
+    pick kind {
+        ModulePathKind.Invalid {
+            give "invalid";
+        }
+
+        ModulePathKind.Relative {
+            give "relative";
+        }
+
+        ModulePathKind.Absolute {
+            give "absolute";
+        }
+
+        ModulePathKind.Package {
+            give "package";
+        }
+
+        ModulePathKind.Module {
+            give "module";
+        }
+
+        ModulePathKind.Generated {
+            give "generated";
+        }
+
+        ModulePathKind.External {
+            give "external";
+        }
+    }
+
+    give "invalid";
+}
+
+proc module_path_debug_text(
+    path: ModulePath
+) -> string {
+    give "ModulePath("
+        + module_path_kind_name(path.kind)
+        + ", "
+        + path.value
+        + ")";
+}

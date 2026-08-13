@@ -1,0 +1,580 @@
+space vitte/compiler/analysis/modules/module_namespace
+
+export *
+
+pick ModuleNamespaceKind {
+    Root,
+    Package,
+    Module,
+    Nested,
+    Generated,
+    Builtin,
+    External,
+    Invalid
+}
+
+pick ModuleNamespaceError {
+    None,
+    Empty,
+    InvalidName,
+    InvalidParent,
+    InvalidSegment,
+    TooDeep
+}
+
+form ModuleNamespace {
+    name: string
+    qualified_name: string
+    parent: string
+    depth: u64
+    kind: ModuleNamespaceKind
+}
+
+form ModuleNamespaceSegment {
+    name: string
+    index: u64
+    last: bool
+}
+
+form ModuleNamespaceResult {
+    namespace: Option<ModuleNamespace>
+    error: ModuleNamespaceError
+    message: string
+}
+
+form ModuleNamespaceProfile {
+    valid: bool
+    root: bool
+    nested: bool
+    generated: bool
+    builtin: bool
+    external: bool
+    depth: u64
+}
+
+proc module_namespace_result_ok(
+    namespace: ModuleNamespace
+) -> ModuleNamespaceResult {
+    give ModuleNamespaceResult {
+        namespace: Some(namespace),
+        error: ModuleNamespaceError.None,
+        message: ""
+    };
+}
+
+proc module_namespace_result_error(
+    error: ModuleNamespaceError,
+    message: string
+) -> ModuleNamespaceResult {
+    give ModuleNamespaceResult {
+        namespace: None,
+        error: error,
+        message: message
+    };
+}
+
+proc module_namespace_root() -> ModuleNamespace {
+    give ModuleNamespace {
+        name: "",
+        qualified_name: "",
+        parent: "",
+        depth: 0,
+        kind: ModuleNamespaceKind.Root
+    };
+}
+
+proc module_namespace_invalid() -> ModuleNamespace {
+    give ModuleNamespace {
+        name: "",
+        qualified_name: "",
+        parent: "",
+        depth: 0,
+        kind: ModuleNamespaceKind.Invalid
+    };
+}
+
+proc module_namespace_create(
+    name: string,
+    qualified_name: string,
+    parent: string,
+    depth: u64,
+    kind: ModuleNamespaceKind
+) -> ModuleNamespace {
+    give ModuleNamespace {
+        name: name,
+        qualified_name: qualified_name,
+        parent: parent,
+        depth: depth,
+        kind: kind
+    };
+}
+
+proc module_namespace_simple(
+    name: string
+) -> ModuleNamespace {
+    if name == "" {
+        give module_namespace_invalid();
+    }
+
+    give ModuleNamespace {
+        name: name,
+        qualified_name: name,
+        parent: "",
+        depth: 1,
+        kind: ModuleNamespaceKind.Module
+    };
+}
+
+proc module_namespace_package(
+    name: string
+) -> ModuleNamespace {
+    if name == "" {
+        give module_namespace_invalid();
+    }
+
+    give ModuleNamespace {
+        name: name,
+        qualified_name: name,
+        parent: "",
+        depth: 1,
+        kind: ModuleNamespaceKind.Package
+    };
+}
+
+proc module_namespace_nested(
+    parent: ModuleNamespace,
+    name: string
+) -> ModuleNamespace {
+    if name == "" {
+        give module_namespace_invalid();
+    }
+
+    if not module_namespace_is_valid(parent) {
+        give module_namespace_invalid();
+    }
+
+    let qualified_name: string = "";
+
+    if parent.qualified_name == "" {
+        set qualified_name = name;
+    } else {
+        set qualified_name = parent.qualified_name + "/" + name;
+    }
+
+    give ModuleNamespace {
+        name: name,
+        qualified_name: qualified_name,
+        parent: parent.qualified_name,
+        depth: parent.depth + 1,
+        kind: ModuleNamespaceKind.Nested
+    };
+}
+
+proc module_namespace_generated(
+    name: string
+) -> ModuleNamespace {
+    if name == "" {
+        give module_namespace_invalid();
+    }
+
+    give ModuleNamespace {
+        name: name,
+        qualified_name: name,
+        parent: "",
+        depth: 1,
+        kind: ModuleNamespaceKind.Generated
+    };
+}
+
+proc module_namespace_builtin(
+    name: string
+) -> ModuleNamespace {
+    if name == "" {
+        give module_namespace_invalid();
+    }
+
+    give ModuleNamespace {
+        name: name,
+        qualified_name: name,
+        parent: "",
+        depth: 1,
+        kind: ModuleNamespaceKind.Builtin
+    };
+}
+
+proc module_namespace_external(
+    name: string
+) -> ModuleNamespace {
+    if name == "" {
+        give module_namespace_invalid();
+    }
+
+    give ModuleNamespace {
+        name: name,
+        qualified_name: name,
+        parent: "",
+        depth: 1,
+        kind: ModuleNamespaceKind.External
+    };
+}
+
+proc module_namespace_name(
+    namespace: ModuleNamespace
+) -> string {
+    give namespace.name;
+}
+
+proc module_namespace_qualified_name(
+    namespace: ModuleNamespace
+) -> string {
+    give namespace.qualified_name;
+}
+
+proc module_namespace_parent_name(
+    namespace: ModuleNamespace
+) -> string {
+    give namespace.parent;
+}
+
+proc module_namespace_depth(
+    namespace: ModuleNamespace
+) -> u64 {
+    give namespace.depth;
+}
+
+proc module_namespace_kind(
+    namespace: ModuleNamespace
+) -> ModuleNamespaceKind {
+    give namespace.kind;
+}
+
+proc module_namespace_is_valid(
+    namespace: ModuleNamespace
+) -> bool {
+    give namespace.kind != ModuleNamespaceKind.Invalid;
+}
+
+proc module_namespace_is_invalid(
+    namespace: ModuleNamespace
+) -> bool {
+    give namespace.kind == ModuleNamespaceKind.Invalid;
+}
+
+proc module_namespace_is_root(
+    namespace: ModuleNamespace
+) -> bool {
+    give namespace.kind == ModuleNamespaceKind.Root;
+}
+
+proc module_namespace_is_package(
+    namespace: ModuleNamespace
+) -> bool {
+    give namespace.kind == ModuleNamespaceKind.Package;
+}
+
+proc module_namespace_is_module(
+    namespace: ModuleNamespace
+) -> bool {
+    give namespace.kind == ModuleNamespaceKind.Module;
+}
+
+proc module_namespace_is_nested(
+    namespace: ModuleNamespace
+) -> bool {
+    give namespace.kind == ModuleNamespaceKind.Nested;
+}
+
+proc module_namespace_is_generated(
+    namespace: ModuleNamespace
+) -> bool {
+    give namespace.kind == ModuleNamespaceKind.Generated;
+}
+
+proc module_namespace_is_builtin(
+    namespace: ModuleNamespace
+) -> bool {
+    give namespace.kind == ModuleNamespaceKind.Builtin;
+}
+
+proc module_namespace_is_external(
+    namespace: ModuleNamespace
+) -> bool {
+    give namespace.kind == ModuleNamespaceKind.External;
+}
+
+proc module_namespace_has_parent(
+    namespace: ModuleNamespace
+) -> bool {
+    give namespace.parent != "";
+}
+
+proc module_namespace_equal(
+    left: ModuleNamespace,
+    right: ModuleNamespace
+) -> bool {
+    give left.qualified_name == right.qualified_name;
+}
+
+proc module_namespace_not_equal(
+    left: ModuleNamespace,
+    right: ModuleNamespace
+) -> bool {
+    give left.qualified_name != right.qualified_name;
+}
+
+proc module_namespace_compare(
+    left: ModuleNamespace,
+    right: ModuleNamespace
+) -> int {
+    if left.qualified_name == right.qualified_name {
+        give 0;
+    }
+
+    if left.qualified_name < right.qualified_name {
+        give -1;
+    }
+
+    give 1;
+}
+
+proc module_namespace_is_child_of(
+    namespace: ModuleNamespace,
+    parent: ModuleNamespace
+) -> bool {
+    if namespace.parent == "" {
+        give false;
+    }
+
+    give namespace.parent == parent.qualified_name;
+}
+
+proc module_namespace_is_direct_child_of(
+    namespace: ModuleNamespace,
+    parent: ModuleNamespace
+) -> bool {
+    if namespace.depth != parent.depth + 1 {
+        give false;
+    }
+
+    give namespace.parent == parent.qualified_name;
+}
+
+proc module_namespace_same_parent(
+    left: ModuleNamespace,
+    right: ModuleNamespace
+) -> bool {
+    if left.parent == "" {
+        give false;
+    }
+
+    give left.parent == right.parent;
+}
+
+proc module_namespace_profile(
+    namespace: ModuleNamespace
+) -> ModuleNamespaceProfile {
+    give ModuleNamespaceProfile {
+        valid: module_namespace_is_valid(namespace),
+        root: module_namespace_is_root(namespace),
+        nested: module_namespace_is_nested(namespace),
+        generated: module_namespace_is_generated(namespace),
+        builtin: module_namespace_is_builtin(namespace),
+        external: module_namespace_is_external(namespace),
+        depth: namespace.depth
+    };
+}
+
+proc module_namespace_validate(
+    namespace: ModuleNamespace
+) -> ModuleNamespaceResult {
+    if namespace.kind == ModuleNamespaceKind.Invalid {
+        give module_namespace_result_error(
+            ModuleNamespaceError.InvalidName,
+            "invalid module namespace"
+        );
+    }
+
+    if namespace.kind == ModuleNamespaceKind.Root {
+        give module_namespace_result_ok(namespace);
+    }
+
+    if namespace.name == "" {
+        give module_namespace_result_error(
+            ModuleNamespaceError.Empty,
+            "module namespace name is empty"
+        );
+    }
+
+    if namespace.depth == 0 {
+        give module_namespace_result_error(
+            ModuleNamespaceError.InvalidName,
+            "non-root namespace has zero depth"
+        );
+    }
+
+    if namespace.depth > 128 {
+        give module_namespace_result_error(
+            ModuleNamespaceError.TooDeep,
+            "module namespace nesting is too deep"
+        );
+    }
+
+    if namespace.qualified_name == "" {
+        give module_namespace_result_error(
+            ModuleNamespaceError.InvalidName,
+            "module namespace qualified name is empty"
+        );
+    }
+
+    give module_namespace_result_ok(namespace);
+}
+
+proc module_namespace_child(
+    parent: ModuleNamespace,
+    name: string
+) -> ModuleNamespaceResult {
+    if not module_namespace_is_valid(parent) {
+        give module_namespace_result_error(
+            ModuleNamespaceError.InvalidParent,
+            "invalid parent namespace"
+        );
+    }
+
+    if name == "" {
+        give module_namespace_result_error(
+            ModuleNamespaceError.InvalidSegment,
+            "namespace segment is empty"
+        );
+    }
+
+    if parent.depth >= 128 {
+        give module_namespace_result_error(
+            ModuleNamespaceError.TooDeep,
+            "module namespace nesting limit reached"
+        );
+    }
+
+    let child: ModuleNamespace = module_namespace_nested(
+        parent,
+        name
+    );
+
+    give module_namespace_result_ok(child);
+}
+
+proc module_namespace_with_kind(
+    namespace: ModuleNamespace,
+    kind: ModuleNamespaceKind
+) -> ModuleNamespace {
+    give ModuleNamespace {
+        name: namespace.name,
+        qualified_name: namespace.qualified_name,
+        parent: namespace.parent,
+        depth: namespace.depth,
+        kind: kind
+    };
+}
+
+proc module_namespace_mark_generated(
+    namespace: ModuleNamespace
+) -> ModuleNamespace {
+    give module_namespace_with_kind(
+        namespace,
+        ModuleNamespaceKind.Generated
+    );
+}
+
+proc module_namespace_mark_builtin(
+    namespace: ModuleNamespace
+) -> ModuleNamespace {
+    give module_namespace_with_kind(
+        namespace,
+        ModuleNamespaceKind.Builtin
+    );
+}
+
+proc module_namespace_mark_external(
+    namespace: ModuleNamespace
+) -> ModuleNamespace {
+    give module_namespace_with_kind(
+        namespace,
+        ModuleNamespaceKind.External
+    );
+}
+
+proc module_namespace_segment(
+    name: string,
+    index: u64,
+    last: bool
+) -> ModuleNamespaceSegment {
+    give ModuleNamespaceSegment {
+        name: name,
+        index: index,
+        last: last
+    };
+}
+
+proc module_namespace_hash(
+    namespace: ModuleNamespace
+) -> u64 {
+    let mut hash: u64 = 1469598103934665603;
+    let mut index: u64 = 0;
+
+    while index < len(namespace.qualified_name) {
+        set hash = hash xor (namespace.qualified_name[index] as u64);
+        set hash = hash * 1099511628211;
+        set index = index + 1;
+    }
+
+    give hash;
+}
+
+proc module_namespace_kind_name(
+    kind: ModuleNamespaceKind
+) -> string {
+    pick kind {
+        ModuleNamespaceKind.Root {
+            give "root";
+        }
+
+        ModuleNamespaceKind.Package {
+            give "package";
+        }
+
+        ModuleNamespaceKind.Module {
+            give "module";
+        }
+
+        ModuleNamespaceKind.Nested {
+            give "nested";
+        }
+
+        ModuleNamespaceKind.Generated {
+            give "generated";
+        }
+
+        ModuleNamespaceKind.Builtin {
+            give "builtin";
+        }
+
+        ModuleNamespaceKind.External {
+            give "external";
+        }
+
+        ModuleNamespaceKind.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+proc module_namespace_debug_text(
+    namespace: ModuleNamespace
+) -> string {
+    give "ModuleNamespace("
+        + module_namespace_kind_name(namespace.kind)
+        + ", "
+        + namespace.qualified_name
+        + ")";
+}

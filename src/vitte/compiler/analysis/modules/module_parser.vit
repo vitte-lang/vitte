@@ -1,0 +1,771 @@
+space vitte/compiler/analysis/modules/module_parser
+
+export *
+
+use vitte/compiler/frontend/source/span.{Span}
+
+use vitte/compiler/analysis/modules/module_database.{
+    ModuleId,
+    module_id_invalid
+}
+
+pick ModuleParserItemKind {
+    Space,
+    Use,
+    Export,
+    Entry,
+    Unknown
+}
+
+pick ModuleParserErrorKind {
+    None,
+    EmptySource,
+    MissingSpace,
+    InvalidSpace,
+    InvalidUse,
+    InvalidExport,
+    DuplicateSpace,
+    InvalidEntry,
+    UnexpectedItem
+}
+
+form ModuleParserItem {
+    kind: ModuleParserItemKind
+
+    name: string
+    path: string
+    alias: string
+
+    glob: bool
+    grouped: bool
+    exported: bool
+
+    span: Span
+}
+
+form ModuleParserError {
+    kind: ModuleParserErrorKind
+    message: string
+    span: Span
+}
+
+form ModuleParserState {
+    source: string
+    path: string
+
+    cursor: usize
+    line: usize
+    column: usize
+
+    finished: bool
+}
+
+form ModuleParserOutput {
+    module_id: ModuleId
+
+    module_name: string
+    module_path: string
+
+    imports: [ModuleParserItem]
+    exports: [ModuleParserItem]
+    entries: [ModuleParserItem]
+
+    errors: [ModuleParserError]
+
+    valid: bool
+}
+
+proc module_parser_empty_span() -> Span {
+    give Span {
+        source: 0,
+        start: 0,
+        end: 0
+    };
+}
+
+proc module_parser_error_none() -> ModuleParserError {
+    give ModuleParserError {
+        kind: ModuleParserErrorKind.None,
+        message: "",
+        span: module_parser_empty_span()
+    };
+}
+
+proc module_parser_error(
+    kind: ModuleParserErrorKind,
+    message: string,
+    span: Span
+) -> ModuleParserError {
+    give ModuleParserError {
+        kind: kind,
+        message: message,
+        span: span
+    };
+}
+
+proc module_parser_item(
+    kind: ModuleParserItemKind,
+    name: string,
+    path: string,
+    alias: string,
+    glob: bool,
+    grouped: bool,
+    exported: bool,
+    span: Span
+) -> ModuleParserItem {
+    give ModuleParserItem {
+        kind: kind,
+
+        name: name,
+        path: path,
+        alias: alias,
+
+        glob: glob,
+        grouped: grouped,
+        exported: exported,
+
+        span: span
+    };
+}
+
+proc module_parser_state(
+    source: string,
+    path: string
+) -> ModuleParserState {
+    give ModuleParserState {
+        source: source,
+        path: path,
+
+        cursor: 0,
+        line: 1,
+        column: 1,
+
+        finished: false
+    };
+}
+
+proc module_parser_output() -> ModuleParserOutput {
+    give ModuleParserOutput {
+        module_id: module_id_invalid(),
+
+        module_name: "",
+        module_path: "",
+
+        imports: [],
+        exports: [],
+        entries: [],
+
+        errors: [],
+
+        valid: true
+    };
+}
+
+proc module_parser_push_error(
+    output: ref mut ModuleParserOutput,
+    kind: ModuleParserErrorKind,
+    message: string,
+    span: Span
+) {
+    output.errors = output.errors + [
+        module_parser_error(
+            kind,
+            message,
+            span
+        )
+    ];
+
+    output.valid = false;
+}
+
+proc module_parser_at_end(
+    state: ModuleParserState
+) -> bool {
+    give state.cursor >= len(state.source);
+}
+
+proc module_parser_current(
+    state: ModuleParserState
+) -> char {
+    if module_parser_at_end(state) {
+        give '\0';
+    }
+
+    give state.source[state.cursor];
+}
+
+proc module_parser_peek(
+    state: ModuleParserState,
+    offset: usize
+) -> char {
+    let index: usize = state.cursor + offset;
+
+    if index >= len(state.source) {
+        give '\0';
+    }
+
+    give state.source[index];
+}
+
+proc module_parser_advance(
+    state: ref mut ModuleParserState
+) -> char {
+    if module_parser_at_end(*state) {
+        state.finished = true;
+        give '\0';
+    }
+
+    let value: char = state.source[state.cursor];
+
+    state.cursor = state.cursor + 1;
+
+    if value == '\n' {
+        state.line = state.line + 1;
+        state.column = 1;
+    } else {
+        state.column = state.column + 1;
+    }
+
+    if state.cursor >= len(state.source) {
+        state.finished = true;
+    }
+
+    give value;
+}
+
+proc module_parser_is_space(
+    value: char
+) -> bool {
+    give value == ' '
+        or value == '\t'
+        or value == '\r'
+        or value == '\n';
+}
+
+proc module_parser_is_name_char(
+    value: char
+) -> bool {
+    give value == '_'
+        or value == '/'
+        or value == '.'
+        or value == ':'
+        or (value >= 'a' and value <= 'z')
+        or (value >= 'A' and value <= 'Z')
+        or (value >= '0' and value <= '9');
+}
+
+proc module_parser_skip_space(
+    state: ref mut ModuleParserState
+) {
+    while not module_parser_at_end(*state)
+        and module_parser_is_space(
+            module_parser_current(*state)
+        ) {
+        module_parser_advance(state);
+    }
+}
+
+proc module_parser_starts_with(
+    state: ModuleParserState,
+    text: string
+) -> bool {
+    if state.cursor + len(text) > len(state.source) {
+        give false;
+    }
+
+    let mut index: usize = 0;
+
+    while index < len(text) {
+        if state.source[state.cursor + index]
+            != text[index] {
+            give false;
+        }
+
+        index = index + 1;
+    }
+
+    give true;
+}
+
+proc module_parser_consume_text(
+    state: ref mut ModuleParserState,
+    text: string
+) -> bool {
+    if not module_parser_starts_with(
+        *state,
+        text
+    ) {
+        give false;
+    }
+
+    let mut index: usize = 0;
+
+    while index < len(text) {
+        module_parser_advance(state);
+        index = index + 1;
+    }
+
+    give true;
+}
+
+proc module_parser_read_name(
+    state: ref mut ModuleParserState
+) -> string {
+    let mut value: string = "";
+
+    while not module_parser_at_end(*state)
+        and module_parser_is_name_char(
+            module_parser_current(*state)
+        ) {
+        value = value + module_parser_current(*state);
+        module_parser_advance(state);
+    }
+
+    give value;
+}
+
+proc module_parser_read_identifier(
+    state: ref mut ModuleParserState
+) -> string {
+    let mut value: string = "";
+
+    while not module_parser_at_end(*state) {
+        let current: char =
+            module_parser_current(*state);
+
+        if current == '_'
+            or (current >= 'a' and current <= 'z')
+            or (current >= 'A' and current <= 'Z')
+            or (current >= '0' and current <= '9') {
+            value = value + current;
+            module_parser_advance(state);
+        } else {
+            give value;
+        }
+    }
+
+    give value;
+}
+
+proc module_parser_parse_space(
+    state: ref mut ModuleParserState,
+    output: ref mut ModuleParserOutput
+) -> bool {
+    if not module_parser_consume_text(
+        state,
+        "space"
+    ) {
+        give false;
+    }
+
+    module_parser_skip_space(state);
+
+    let path: string =
+        module_parser_read_name(state);
+
+    if path == "" {
+        module_parser_push_error(
+            output,
+            ModuleParserErrorKind.InvalidSpace,
+            "expected module path after space",
+            module_parser_empty_span()
+        );
+
+        give true;
+    }
+
+    if output.module_path != "" {
+        module_parser_push_error(
+            output,
+            ModuleParserErrorKind.DuplicateSpace,
+            "module already declares a space",
+            module_parser_empty_span()
+        );
+
+        give true;
+    }
+
+    output.module_path = path;
+    output.module_name = path;
+
+    give true;
+}
+
+proc module_parser_parse_use(
+    state: ref mut ModuleParserState,
+    output: ref mut ModuleParserOutput
+) -> bool {
+    if not module_parser_consume_text(
+        state,
+        "use"
+    ) {
+        give false;
+    }
+
+    module_parser_skip_space(state);
+
+    let path: string =
+        module_parser_read_name(state);
+
+    if path == "" {
+        module_parser_push_error(
+            output,
+            ModuleParserErrorKind.InvalidUse,
+            "expected import path after use",
+            module_parser_empty_span()
+        );
+
+        give true;
+    }
+
+    let mut alias: string = "";
+    let mut glob: bool = false;
+    let mut grouped: bool = false;
+
+    module_parser_skip_space(state);
+
+    if module_parser_starts_with(
+        *state,
+        ".*"
+    ) {
+        module_parser_consume_text(
+            state,
+            ".*"
+        );
+
+        glob = true;
+    }
+
+    if module_parser_starts_with(
+        *state,
+        ".{"
+    ) {
+        grouped = true;
+    }
+
+    module_parser_skip_space(state);
+
+    if module_parser_starts_with(
+        *state,
+        "as"
+    ) {
+        module_parser_consume_text(
+            state,
+            "as"
+        );
+
+        module_parser_skip_space(state);
+
+        alias =
+            module_parser_read_identifier(state);
+    }
+
+    output.imports = output.imports + [
+        module_parser_item(
+            ModuleParserItemKind.Use,
+            "",
+            path,
+            alias,
+            glob,
+            grouped,
+            false,
+            module_parser_empty_span()
+        )
+    ];
+
+    give true;
+}
+
+proc module_parser_parse_export(
+    state: ref mut ModuleParserState,
+    output: ref mut ModuleParserOutput
+) -> bool {
+    if not module_parser_consume_text(
+        state,
+        "export"
+    ) {
+        give false;
+    }
+
+    module_parser_skip_space(state);
+
+    let value: string =
+        module_parser_read_name(state);
+
+    output.exports = output.exports + [
+        module_parser_item(
+            ModuleParserItemKind.Export,
+            value,
+            "",
+            "",
+            value == "*",
+            false,
+            true,
+            module_parser_empty_span()
+        )
+    ];
+
+    give true;
+}
+
+proc module_parser_parse_entry(
+    state: ref mut ModuleParserState,
+    output: ref mut ModuleParserOutput
+) -> bool {
+    if not module_parser_consume_text(
+        state,
+        "entry"
+    ) {
+        give false;
+    }
+
+    module_parser_skip_space(state);
+
+    let name: string =
+        module_parser_read_identifier(state);
+
+    if name == "" {
+        module_parser_push_error(
+            output,
+            ModuleParserErrorKind.InvalidEntry,
+            "expected entry name",
+            module_parser_empty_span()
+        );
+
+        give true;
+    }
+
+    module_parser_skip_space(state);
+
+    if not module_parser_consume_text(
+        state,
+        "at"
+    ) {
+        module_parser_push_error(
+            output,
+            ModuleParserErrorKind.InvalidEntry,
+            "expected at after entry name",
+            module_parser_empty_span()
+        );
+
+        give true;
+    }
+
+    module_parser_skip_space(state);
+
+    let path: string =
+        module_parser_read_name(state);
+
+    output.entries = output.entries + [
+        module_parser_item(
+            ModuleParserItemKind.Entry,
+            name,
+            path,
+            "",
+            false,
+            false,
+            false,
+            module_parser_empty_span()
+        )
+    ];
+
+    give true;
+}
+
+proc module_parser_skip_line(
+    state: ref mut ModuleParserState
+) {
+    while not module_parser_at_end(*state) {
+        let current: char =
+            module_parser_advance(state);
+
+        if current == '\n' {
+            give;
+        }
+    }
+}
+
+proc module_parser_parse_next(
+    state: ref mut ModuleParserState,
+    output: ref mut ModuleParserOutput
+) {
+    module_parser_skip_space(state);
+
+    if module_parser_at_end(*state) {
+        state.finished = true;
+        give;
+    }
+
+    if module_parser_parse_space(
+        state,
+        output
+    ) {
+        module_parser_skip_line(state);
+        give;
+    }
+
+    if module_parser_parse_use(
+        state,
+        output
+    ) {
+        module_parser_skip_line(state);
+        give;
+    }
+
+    if module_parser_parse_export(
+        state,
+        output
+    ) {
+        module_parser_skip_line(state);
+        give;
+    }
+
+    if module_parser_parse_entry(
+        state,
+        output
+    ) {
+        module_parser_skip_line(state);
+        give;
+    }
+
+    module_parser_skip_line(state);
+}
+
+proc module_parser_parse(
+    source: string,
+    path: string
+) -> ModuleParserOutput {
+    let mut state: ModuleParserState =
+        module_parser_state(
+            source,
+            path
+        );
+
+    let mut output: ModuleParserOutput =
+        module_parser_output();
+
+    if source == "" {
+        module_parser_push_error(
+            ref mut output,
+            ModuleParserErrorKind.EmptySource,
+            "module source is empty",
+            module_parser_empty_span()
+        );
+
+        give output;
+    }
+
+    while not state.finished {
+        module_parser_parse_next(
+            ref mut state,
+            ref mut output
+        );
+    }
+
+    if output.module_path == "" {
+        module_parser_push_error(
+            ref mut output,
+            ModuleParserErrorKind.MissingSpace,
+            "module has no space declaration",
+            module_parser_empty_span()
+        );
+    }
+
+    give output;
+}
+
+proc module_parser_has_errors(
+    output: ModuleParserOutput
+) -> bool {
+    give len(output.errors) > 0;
+}
+
+proc module_parser_import_count(
+    output: ModuleParserOutput
+) -> usize {
+    give len(output.imports);
+}
+
+proc module_parser_export_count(
+    output: ModuleParserOutput
+) -> usize {
+    give len(output.exports);
+}
+
+proc module_parser_entry_count(
+    output: ModuleParserOutput
+) -> usize {
+    give len(output.entries);
+}
+
+proc module_parser_item_kind_name(
+    kind: ModuleParserItemKind
+) -> string {
+    pick kind {
+        ModuleParserItemKind.Space {
+            give "space";
+        }
+
+        ModuleParserItemKind.Use {
+            give "use";
+        }
+
+        ModuleParserItemKind.Export {
+            give "export";
+        }
+
+        ModuleParserItemKind.Entry {
+            give "entry";
+        }
+
+        ModuleParserItemKind.Unknown {
+            give "unknown";
+        }
+    }
+
+    give "unknown";
+}
+
+proc module_parser_error_kind_name(
+    kind: ModuleParserErrorKind
+) -> string {
+    pick kind {
+        ModuleParserErrorKind.None {
+            give "none";
+        }
+
+        ModuleParserErrorKind.EmptySource {
+            give "empty-source";
+        }
+
+        ModuleParserErrorKind.MissingSpace {
+            give "missing-space";
+        }
+
+        ModuleParserErrorKind.InvalidSpace {
+            give "invalid-space";
+        }
+
+        ModuleParserErrorKind.InvalidUse {
+            give "invalid-use";
+        }
+
+        ModuleParserErrorKind.InvalidExport {
+            give "invalid-export";
+        }
+
+        ModuleParserErrorKind.DuplicateSpace {
+            give "duplicate-space";
+        }
+
+        ModuleParserErrorKind.InvalidEntry {
+            give "invalid-entry";
+        }
+
+        ModuleParserErrorKind.UnexpectedItem {
+            give "unexpected-item";
+        }
+    }
+
+    give "unexpected-item";
+}

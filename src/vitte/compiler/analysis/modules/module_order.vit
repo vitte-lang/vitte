@@ -1,0 +1,795 @@
+space vitte/compiler/analysis/modules/module_order
+
+export *
+
+use vitte/compiler/analysis/modules/module_database.{
+    ModuleId,
+    module_id_equal,
+    module_id_is_valid
+}
+
+use vitte/compiler/analysis/modules/module_edge.{
+    ModuleEdge,
+    ModuleEdgeId,
+    ModuleEdgeState
+}
+
+use vitte/compiler/analysis/modules/module_graph.{
+    ModuleGraph,
+    ModuleGraphNode,
+    ModuleGraphNodeState
+}
+
+pick ModuleOrderKind {
+    Topological,
+    ReverseTopological,
+    DependencyFirst,
+    SourceOrder
+}
+
+pick ModuleOrderState {
+    Empty,
+    Building,
+    Ready,
+    Partial,
+    Cyclic,
+    Failed
+}
+
+pick ModuleOrderErrorKind {
+    None,
+    InvalidGraph,
+    InvalidModule,
+    DuplicateModule,
+    MissingDependency,
+    CircularDependency,
+    UnresolvedDependency,
+    InvalidEdge,
+    IncompleteOrder
+}
+
+form ModuleOrderError {
+    kind: ModuleOrderErrorKind
+    module: string
+    dependency: string
+    message: string
+}
+
+form ModuleOrderEntry {
+    id: ModuleId
+    name: string
+
+    index: usize
+    level: usize
+
+    dependencies: usize
+    dependents: usize
+
+    ready: bool
+}
+
+form ModuleOrderLevel {
+    index: usize
+    modules: [ModuleId]
+    names: [string]
+}
+
+form ModuleOrderStatistics {
+    modules: usize
+    ordered: usize
+    levels: usize
+
+    roots: usize
+    leaves: usize
+
+    blocked: usize
+    unresolved: usize
+    cycles: usize
+}
+
+form ModuleOrder {
+    kind: ModuleOrderKind
+    state: ModuleOrderState
+
+    entries: [ModuleOrderEntry]
+    order: [ModuleId]
+    names: [string]
+
+    levels: [ModuleOrderLevel]
+
+    blocked: [ModuleId]
+    unresolved: [ModuleId]
+
+    errors: [ModuleOrderError]
+
+    statistics: ModuleOrderStatistics
+}
+
+proc module_order_error_none() -> ModuleOrderError {
+    give ModuleOrderError {
+        kind: ModuleOrderErrorKind.None,
+        module: "",
+        dependency: "",
+        message: ""
+    };
+}
+
+proc module_order_error(
+    kind: ModuleOrderErrorKind,
+    module: string,
+    dependency: string,
+    message: string
+) -> ModuleOrderError {
+    give ModuleOrderError {
+        kind: kind,
+        module: module,
+        dependency: dependency,
+        message: message
+    };
+}
+
+proc module_order_statistics_empty() -> ModuleOrderStatistics {
+    give ModuleOrderStatistics {
+        modules: 0,
+        ordered: 0,
+        levels: 0,
+
+        roots: 0,
+        leaves: 0,
+
+        blocked: 0,
+        unresolved: 0,
+        cycles: 0
+    };
+}
+
+proc module_order_create(
+    kind: ModuleOrderKind
+) -> ModuleOrder {
+    give ModuleOrder {
+        kind: kind,
+        state: ModuleOrderState.Empty,
+
+        entries: [],
+        order: [],
+        names: [],
+
+        levels: [],
+
+        blocked: [],
+        unresolved: [],
+
+        errors: [],
+
+        statistics: module_order_statistics_empty()
+    };
+}
+
+proc module_order_default() -> ModuleOrder {
+    give module_order_create(
+        ModuleOrderKind.Topological
+    );
+}
+
+proc module_order_entry(
+    node: ModuleGraphNode,
+    index: usize,
+    level: usize
+) -> ModuleOrderEntry {
+    give ModuleOrderEntry {
+        id: node.id,
+        name: node.name,
+
+        index: index,
+        level: level,
+
+        dependencies: len(node.outgoing),
+        dependents: len(node.incoming),
+
+        ready: node.state == ModuleGraphNodeState.Ready
+    };
+}
+
+proc module_order_level(
+    index: usize
+) -> ModuleOrderLevel {
+    give ModuleOrderLevel {
+        index: index,
+        modules: [],
+        names: []
+    };
+}
+
+proc module_order_push_error(
+    order: ref mut ModuleOrder,
+    kind: ModuleOrderErrorKind,
+    module: string,
+    dependency: string,
+    message: string
+) {
+    order.errors = order.errors + [
+        module_order_error(
+            kind,
+            module,
+            dependency,
+            message
+        )
+    ];
+}
+
+proc module_order_contains_id(
+    values: [ModuleId],
+    id: ModuleId
+) -> bool {
+    let mut index: usize = 0;
+
+    while index < len(values) {
+        if module_id_equal(values[index], id) {
+            give true;
+        }
+
+        index = index + 1;
+    }
+
+    give false;
+}
+
+proc module_order_find_node_index(
+    graph: ModuleGraph,
+    id: ModuleId
+) -> int {
+    let mut index: usize = 0;
+
+    while index < len(graph.nodes) {
+        if module_id_equal(graph.nodes[index].id, id) {
+            give index as int;
+        }
+
+        index = index + 1;
+    }
+
+    give -1;
+}
+
+proc module_order_find_entry_index(
+    order: ModuleOrder,
+    id: ModuleId
+) -> int {
+    let mut index: usize = 0;
+
+    while index < len(order.entries) {
+        if module_id_equal(order.entries[index].id, id) {
+            give index as int;
+        }
+
+        index = index + 1;
+    }
+
+    give -1;
+}
+
+proc module_order_node_is_root(
+    node: ModuleGraphNode
+) -> bool {
+    give len(node.outgoing) == 0;
+}
+
+proc module_order_node_is_leaf(
+    node: ModuleGraphNode
+) -> bool {
+    give len(node.incoming) == 0;
+}
+
+proc module_order_dependency_count(
+    node: ModuleGraphNode
+) -> usize {
+    give len(node.outgoing);
+}
+
+proc module_order_unprocessed_dependency_count(
+    graph: ModuleGraph,
+    node: ModuleGraphNode,
+    ordered: [ModuleId]
+) -> usize {
+    let mut count: usize = 0;
+    let mut edge_index: usize = 0;
+
+    while edge_index < len(node.outgoing) {
+        let edge_id: ModuleEdgeId = node.outgoing[edge_index];
+
+        let mut found: bool = false;
+        let mut graph_edge_index: usize = 0;
+
+        while graph_edge_index < len(graph.edges.edges) {
+            let edge: ModuleEdge = graph.edges.edges[graph_edge_index];
+
+            if edge.id.value == edge_id.value {
+                if edge.state == ModuleEdgeState.Resolved
+                    and not module_order_contains_id(
+                        ordered,
+                        edge.target
+                    ) {
+                    count = count + 1;
+                }
+
+                found = true;
+            }
+
+            graph_edge_index = graph_edge_index + 1;
+        }
+
+        edge_index = edge_index + 1;
+    }
+
+    give count;
+}
+
+proc module_order_node_ready(
+    graph: ModuleGraph,
+    node: ModuleGraphNode,
+    ordered: [ModuleId]
+) -> bool {
+    if not module_id_is_valid(node.id) {
+        give false;
+    }
+
+    if module_order_contains_id(ordered, node.id) {
+        give false;
+    }
+
+    give module_order_unprocessed_dependency_count(
+        graph,
+        node,
+        ordered
+    ) == 0;
+}
+
+proc module_order_append_entry(
+    order: ref mut ModuleOrder,
+    node: ModuleGraphNode,
+    level: usize
+) {
+    let index: usize = len(order.order);
+
+    order.order = order.order + [node.id];
+    order.names = order.names + [node.name];
+
+    order.entries = order.entries + [
+        module_order_entry(
+            node,
+            index,
+            level
+        )
+    ];
+}
+
+proc module_order_append_level_module(
+    level: ref mut ModuleOrderLevel,
+    node: ModuleGraphNode
+) {
+    level.modules = level.modules + [node.id];
+    level.names = level.names + [node.name];
+}
+
+proc module_order_collect_level(
+    graph: ModuleGraph,
+    ordered: [ModuleId],
+    level_index: usize
+) -> ModuleOrderLevel {
+    let mut level: ModuleOrderLevel =
+        module_order_level(level_index);
+
+    let mut index: usize = 0;
+
+    while index < len(graph.nodes) {
+        let node: ModuleGraphNode = graph.nodes[index];
+
+        if module_order_node_ready(
+            graph,
+            node,
+            ordered
+        ) {
+            module_order_append_level_module(
+                ref mut level,
+                node
+            );
+        }
+
+        index = index + 1;
+    }
+
+    give level;
+}
+
+proc module_order_apply_level(
+    graph: ModuleGraph,
+    order: ref mut ModuleOrder,
+    level: ModuleOrderLevel
+) {
+    let mut index: usize = 0;
+
+    while index < len(level.modules) {
+        let id: ModuleId = level.modules[index];
+
+        let node_index: int =
+            module_order_find_node_index(
+                graph,
+                id
+            );
+
+        if node_index >= 0 {
+            module_order_append_entry(
+                order,
+                graph.nodes[node_index as usize],
+                level.index
+            );
+        }
+
+        index = index + 1;
+    }
+
+    order.levels = order.levels + [level];
+}
+
+proc module_order_collect_blocked(
+    graph: ModuleGraph,
+    order: ref mut ModuleOrder
+) {
+    let mut index: usize = 0;
+
+    while index < len(graph.nodes) {
+        let node: ModuleGraphNode = graph.nodes[index];
+
+        if not module_order_contains_id(
+            order.order,
+            node.id
+        ) {
+            order.blocked =
+                order.blocked + [node.id];
+        }
+
+        index = index + 1;
+    }
+}
+
+proc module_order_build_topological(
+    graph: ModuleGraph
+) -> ModuleOrder {
+    let mut order: ModuleOrder =
+        module_order_create(
+            ModuleOrderKind.Topological
+        );
+
+    order.state = ModuleOrderState.Building;
+    order.statistics.modules = len(graph.nodes);
+
+    if len(graph.nodes) == 0 {
+        order.state = ModuleOrderState.Ready;
+        give order;
+    }
+
+    let mut level_index: usize = 0;
+
+    while len(order.order) < len(graph.nodes) {
+        let level: ModuleOrderLevel =
+            module_order_collect_level(
+                graph,
+                order.order,
+                level_index
+            );
+
+        if len(level.modules) == 0 {
+            module_order_collect_blocked(
+                graph,
+                ref mut order
+            );
+
+            order.state = ModuleOrderState.Cyclic;
+
+            module_order_push_error(
+                ref mut order,
+                ModuleOrderErrorKind.CircularDependency,
+                "",
+                "",
+                "module dependency graph cannot be ordered"
+            );
+
+            order.statistics.cycles =
+                order.statistics.cycles + 1;
+
+            give order;
+        }
+
+        module_order_apply_level(
+            graph,
+            ref mut order,
+            level
+        );
+
+        level_index = level_index + 1;
+    }
+
+    order.state = ModuleOrderState.Ready;
+
+    give module_order_recalculate_statistics(
+        order,
+        graph
+    );
+}
+
+proc module_order_reverse(
+    source: ModuleOrder
+) -> ModuleOrder {
+    let mut result: ModuleOrder =
+        module_order_create(
+            ModuleOrderKind.ReverseTopological
+        );
+
+    let mut index: usize = len(source.order);
+
+    while index > 0 {
+        index = index - 1;
+
+        result.order =
+            result.order + [source.order[index]];
+
+        result.names =
+            result.names + [source.names[index]];
+    }
+
+    let mut entry_index: usize = 0;
+
+    while entry_index < len(result.order) {
+        let source_index: int =
+            module_order_find_entry_index(
+                source,
+                result.order[entry_index]
+            );
+
+        if source_index >= 0 {
+            let old: ModuleOrderEntry =
+                source.entries[source_index as usize];
+
+            result.entries = result.entries + [
+                ModuleOrderEntry {
+                    id: old.id,
+                    name: old.name,
+                    index: entry_index,
+                    level: old.level,
+                    dependencies: old.dependencies,
+                    dependents: old.dependents,
+                    ready: old.ready
+                }
+            ];
+        }
+
+        entry_index = entry_index + 1;
+    }
+
+    result.levels = source.levels;
+    result.blocked = source.blocked;
+    result.unresolved = source.unresolved;
+    result.errors = source.errors;
+    result.statistics = source.statistics;
+    result.state = source.state;
+
+    give result;
+}
+
+proc module_order_recalculate_statistics(
+    order: ModuleOrder,
+    graph: ModuleGraph
+) -> ModuleOrder {
+    let mut result: ModuleOrder = order;
+
+    let mut roots: usize = 0;
+    let mut leaves: usize = 0;
+
+    let mut index: usize = 0;
+
+    while index < len(graph.nodes) {
+        let node: ModuleGraphNode = graph.nodes[index];
+
+        if module_order_node_is_root(node) {
+            roots = roots + 1;
+        }
+
+        if module_order_node_is_leaf(node) {
+            leaves = leaves + 1;
+        }
+
+        index = index + 1;
+    }
+
+    result.statistics = ModuleOrderStatistics {
+        modules: len(graph.nodes),
+        ordered: len(result.order),
+        levels: len(result.levels),
+
+        roots: roots,
+        leaves: leaves,
+
+        blocked: len(result.blocked),
+        unresolved: len(result.unresolved),
+        cycles: result.statistics.cycles
+    };
+
+    give result;
+}
+
+proc module_order_validate(
+    order: ModuleOrder,
+    graph: ModuleGraph
+) -> bool {
+    if order.state == ModuleOrderState.Failed {
+        give false;
+    }
+
+    if len(order.order) != len(graph.nodes) {
+        give false;
+    }
+
+    let mut index: usize = 0;
+
+    while index < len(order.order) {
+        if not module_id_is_valid(order.order[index]) {
+            give false;
+        }
+
+        let mut other: usize = index + 1;
+
+        while other < len(order.order) {
+            if module_id_equal(
+                order.order[index],
+                order.order[other]
+            ) {
+                give false;
+            }
+
+            other = other + 1;
+        }
+
+        index = index + 1;
+    }
+
+    give true;
+}
+
+proc module_order_index_of(
+    order: ModuleOrder,
+    id: ModuleId
+) -> int {
+    let mut index: usize = 0;
+
+    while index < len(order.order) {
+        if module_id_equal(
+            order.order[index],
+            id
+        ) {
+            give index as int;
+        }
+
+        index = index + 1;
+    }
+
+    give -1;
+}
+
+proc module_order_before(
+    order: ModuleOrder,
+    left: ModuleId,
+    right: ModuleId
+) -> bool {
+    let left_index: int =
+        module_order_index_of(order, left);
+
+    let right_index: int =
+        module_order_index_of(order, right);
+
+    if left_index < 0 or right_index < 0 {
+        give false;
+    }
+
+    give left_index < right_index;
+}
+
+proc module_order_after(
+    order: ModuleOrder,
+    left: ModuleId,
+    right: ModuleId
+) -> bool {
+    let left_index: int =
+        module_order_index_of(order, left);
+
+    let right_index: int =
+        module_order_index_of(order, right);
+
+    if left_index < 0 or right_index < 0 {
+        give false;
+    }
+
+    give left_index > right_index;
+}
+
+proc module_order_is_complete(
+    order: ModuleOrder
+) -> bool {
+    give order.state == ModuleOrderState.Ready
+        and len(order.blocked) == 0
+        and len(order.unresolved) == 0;
+}
+
+proc module_order_has_cycle(
+    order: ModuleOrder
+) -> bool {
+    give order.state == ModuleOrderState.Cyclic
+        or order.statistics.cycles > 0;
+}
+
+proc module_order_kind_name(
+    kind: ModuleOrderKind
+) -> string {
+    pick kind {
+        ModuleOrderKind.Topological {
+            give "topological";
+        }
+
+        ModuleOrderKind.ReverseTopological {
+            give "reverse-topological";
+        }
+
+        ModuleOrderKind.DependencyFirst {
+            give "dependency-first";
+        }
+
+        ModuleOrderKind.SourceOrder {
+            give "source-order";
+        }
+    }
+
+    give "topological";
+}
+
+proc module_order_state_name(
+    state: ModuleOrderState
+) -> string {
+    pick state {
+        ModuleOrderState.Empty {
+            give "empty";
+        }
+
+        ModuleOrderState.Building {
+            give "building";
+        }
+
+        ModuleOrderState.Ready {
+            give "ready";
+        }
+
+        ModuleOrderState.Partial {
+            give "partial";
+        }
+
+        ModuleOrderState.Cyclic {
+            give "cyclic";
+        }
+
+        ModuleOrderState.Failed {
+            give "failed";
+        }
+    }
+
+    give "failed";
+}
+
+proc module_order_debug_text(
+    order: ModuleOrder
+) -> string {
+    give "ModuleOrder("
+        + module_order_kind_name(order.kind)
+        + ", "
+        + module_order_state_name(order.state)
+        + ", modules="
+        + len(order.order)
+        + ")";
+}

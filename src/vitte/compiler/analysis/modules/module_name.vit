@@ -1,0 +1,461 @@
+space vitte/compiler/analysis/modules/module_name
+
+export *
+
+pick ModuleNameKind {
+    Invalid,
+    Simple,
+    Qualified,
+    Absolute,
+    Relative,
+    Generated,
+    Builtin,
+    External
+}
+
+form ModuleName {
+    value: string
+    kind: ModuleNameKind
+}
+
+form ModuleNameParts {
+    package: string
+    namespace: string
+    name: string
+}
+
+form ModuleNameValidation {
+    valid: bool
+    empty: bool
+    absolute: bool
+    relative: bool
+    qualified: bool
+    segments: u64
+}
+
+proc module_name(
+    value: string
+) -> ModuleName {
+    give ModuleName {
+        value: value,
+        kind: module_name_kind_from_text(value)
+    };
+}
+
+proc module_name_invalid() -> ModuleName {
+    give ModuleName {
+        value: "",
+        kind: ModuleNameKind::Invalid
+    };
+}
+
+proc module_name_simple(
+    value: string
+) -> ModuleName {
+    give ModuleName {
+        value: value,
+        kind: ModuleNameKind::Simple
+    };
+}
+
+proc module_name_generated(
+    value: string
+) -> ModuleName {
+    give ModuleName {
+        value: value,
+        kind: ModuleNameKind::Generated
+    };
+}
+
+proc module_name_builtin(
+    value: string
+) -> ModuleName {
+    give ModuleName {
+        value: value,
+        kind: ModuleNameKind::Builtin
+    };
+}
+
+proc module_name_external(
+    value: string
+) -> ModuleName {
+    give ModuleName {
+        value: value,
+        kind: ModuleNameKind::External
+    };
+}
+
+proc module_name_parts(
+    package: string,
+    namespace: string,
+    name: string
+) -> ModuleNameParts {
+    give ModuleNameParts {
+        package: package,
+        namespace: namespace,
+        name: name
+    };
+}
+
+proc module_name_validation(
+    valid: bool,
+    empty: bool,
+    absolute: bool,
+    relative: bool,
+    qualified: bool,
+    segments: u64
+) -> ModuleNameValidation {
+    give ModuleNameValidation {
+        valid: valid,
+        empty: empty,
+        absolute: absolute,
+        relative: relative,
+        qualified: qualified,
+        segments: segments
+    };
+}
+
+proc module_name_text(
+    name: ModuleName
+) -> string {
+    give name.value;
+}
+
+proc module_name_kind(
+    name: ModuleName
+) -> ModuleNameKind {
+    give name.kind;
+}
+
+proc module_name_is_valid(
+    name: ModuleName
+) -> bool {
+    give name.kind != ModuleNameKind::Invalid
+        and name.value != "";
+}
+
+proc module_name_is_invalid(
+    name: ModuleName
+) -> bool {
+    give not module_name_is_valid(name);
+}
+
+proc module_name_is_empty(
+    name: ModuleName
+) -> bool {
+    give name.value == "";
+}
+
+proc module_name_equal(
+    left: ModuleName,
+    right: ModuleName
+) -> bool {
+    give left.value == right.value;
+}
+
+proc module_name_not_equal(
+    left: ModuleName,
+    right: ModuleName
+) -> bool {
+    give left.value != right.value;
+}
+
+proc module_name_compare(
+    left: ModuleName,
+    right: ModuleName
+) -> int {
+    if left.value == right.value {
+        give 0;
+    }
+
+    if left.value < right.value {
+        give -1;
+    }
+
+    give 1;
+}
+
+proc module_name_is_simple(
+    name: ModuleName
+) -> bool {
+    give name.kind == ModuleNameKind::Simple;
+}
+
+proc module_name_is_qualified(
+    name: ModuleName
+) -> bool {
+    give name.kind == ModuleNameKind::Qualified
+        or name.kind == ModuleNameKind::Absolute;
+}
+
+proc module_name_is_absolute(
+    name: ModuleName
+) -> bool {
+    give name.kind == ModuleNameKind::Absolute;
+}
+
+proc module_name_is_relative(
+    name: ModuleName
+) -> bool {
+    give name.kind == ModuleNameKind::Relative;
+}
+
+proc module_name_is_generated(
+    name: ModuleName
+) -> bool {
+    give name.kind == ModuleNameKind::Generated;
+}
+
+proc module_name_is_builtin(
+    name: ModuleName
+) -> bool {
+    give name.kind == ModuleNameKind::Builtin;
+}
+
+proc module_name_is_external(
+    name: ModuleName
+) -> bool {
+    give name.kind == ModuleNameKind::External;
+}
+
+proc module_name_kind_from_text(
+    value: string
+) -> ModuleNameKind {
+    if value == "" {
+        give ModuleNameKind::Invalid;
+    }
+
+    if starts_with_text(value, "./")
+        or starts_with_text(value, "../") {
+        give ModuleNameKind::Relative;
+    }
+
+    if starts_with_text(value, "/") {
+        give ModuleNameKind::Absolute;
+    }
+
+    if contains_text(value, "/") {
+        give ModuleNameKind::Qualified;
+    }
+
+    give ModuleNameKind::Simple;
+}
+
+proc module_name_segment_count(
+    value: string
+) -> u64 {
+    if value == "" {
+        give 0;
+    }
+
+    let mut count: u64 = 1;
+    let mut index: u64 = 0;
+
+    while index < len(value) {
+        if value[index] == '/' {
+            set count = count + 1;
+        }
+
+        set index = index + 1;
+    }
+
+    give count;
+}
+
+proc module_name_validate_text(
+    value: string
+) -> ModuleNameValidation {
+    if value == "" {
+        give module_name_validation(
+            false,
+            true,
+            false,
+            false,
+            false,
+            0
+        );
+    }
+
+    let kind: ModuleNameKind = module_name_kind_from_text(value);
+    let count: u64 = module_name_segment_count(value);
+
+    give module_name_validation(
+        kind != ModuleNameKind::Invalid,
+        false,
+        kind == ModuleNameKind::Absolute,
+        kind == ModuleNameKind::Relative,
+        kind == ModuleNameKind::Qualified
+            or kind == ModuleNameKind::Absolute,
+        count
+    );
+}
+
+proc module_name_validate(
+    name: ModuleName
+) -> ModuleNameValidation {
+    give module_name_validate_text(name.value);
+}
+
+proc module_name_has_separator(
+    name: ModuleName
+) -> bool {
+    give contains_text(name.value, "/");
+}
+
+proc module_name_has_namespace_separator(
+    name: ModuleName
+) -> bool {
+    give contains_text(name.value, "::");
+}
+
+proc module_name_has_member_separator(
+    name: ModuleName
+) -> bool {
+    give contains_text(name.value, ".");
+}
+
+proc module_name_hash(
+    name: ModuleName
+) -> u64 {
+    let mut hash: u64 = 1469598103934665603;
+    let mut index: u64 = 0;
+
+    while index < len(name.value) {
+        set hash = hash xor (name.value[index] as u64);
+        set hash = hash * 1099511628211;
+        set index = index + 1;
+    }
+
+    give hash;
+}
+
+proc module_name_join(
+    parent: ModuleName,
+    child: string
+) -> ModuleName {
+    if parent.value == "" {
+        give module_name(child);
+    }
+
+    if child == "" {
+        give parent;
+    }
+
+    give module_name(
+        parent.value + "/" + child
+    );
+}
+
+proc module_name_from_parts(
+    parts: ModuleNameParts
+) -> ModuleName {
+    let mut value: string = "";
+
+    if parts.package != "" {
+        set value = parts.package;
+    }
+
+    if parts.namespace != "" {
+        if value != "" {
+            set value = value + "/";
+        }
+
+        set value = value + parts.namespace;
+    }
+
+    if parts.name != "" {
+        if value != "" {
+            set value = value + "/";
+        }
+
+        set value = value + parts.name;
+    }
+
+    give module_name(value);
+}
+
+proc module_name_with_kind(
+    name: ModuleName,
+    kind: ModuleNameKind
+) -> ModuleName {
+    give ModuleName {
+        value: name.value,
+        kind: kind
+    };
+}
+
+proc module_name_mark_generated(
+    name: ModuleName
+) -> ModuleName {
+    give module_name_with_kind(
+        name,
+        ModuleNameKind::Generated
+    );
+}
+
+proc module_name_mark_builtin(
+    name: ModuleName
+) -> ModuleName {
+    give module_name_with_kind(
+        name,
+        ModuleNameKind::Builtin
+    );
+}
+
+proc module_name_mark_external(
+    name: ModuleName
+) -> ModuleName {
+    give module_name_with_kind(
+        name,
+        ModuleNameKind::External
+    );
+}
+
+proc module_name_normalize(
+    name: ModuleName
+) -> ModuleName {
+    if name.value == "" {
+        give module_name_invalid();
+    }
+
+    give ModuleName {
+        value: name.value,
+        kind: module_name_kind_from_text(name.value)
+    };
+}
+
+proc module_name_debug_text(
+    name: ModuleName
+) -> string {
+    let mut kind: string = "invalid";
+
+    if name.kind == ModuleNameKind::Simple {
+        set kind = "simple";
+    }
+
+    if name.kind == ModuleNameKind::Qualified {
+        set kind = "qualified";
+    }
+
+    if name.kind == ModuleNameKind::Absolute {
+        set kind = "absolute";
+    }
+
+    if name.kind == ModuleNameKind::Relative {
+        set kind = "relative";
+    }
+
+    if name.kind == ModuleNameKind::Generated {
+        set kind = "generated";
+    }
+
+    if name.kind == ModuleNameKind::Builtin {
+        set kind = "builtin";
+    }
+
+    if name.kind == ModuleNameKind::External {
+        set kind = "external";
+    }
+
+    give "ModuleName(" + kind + ", " + name.value + ")";
+}

@@ -1,0 +1,729 @@
+space vitte/compiler/analysis/modules/module_node
+
+export *
+
+use vitte/compiler/frontend/source/span.{Span}
+
+use vitte/compiler/analysis/modules/module_database.{
+    ModuleId,
+    module_id_invalid,
+    module_id_equal,
+    module_id_is_valid
+}
+
+use vitte/compiler/analysis/modules/module_edge.{
+    ModuleEdgeId,
+    module_edge_id_equal,
+    module_edge_id_is_valid
+}
+
+pick ModuleNodeState {
+    Declared,
+    Loading,
+    Loaded,
+    Resolving,
+    Resolved,
+    Analyzing,
+    Analyzed,
+    Ready,
+    Failed,
+    Invalidated
+}
+
+pick ModuleNodeVisitState {
+    Unvisited,
+    Visiting,
+    Visited
+}
+
+pick ModuleNodeKind {
+    Source,
+    Package,
+    Prelude,
+    Runtime,
+    Stdlib,
+    Compiler,
+    Builtin,
+    Generated,
+    External,
+    Virtual
+}
+
+pick ModuleNodeErrorKind {
+    None,
+    InvalidId,
+    EmptyName,
+    EmptyPath,
+    DuplicateIncomingEdge,
+    DuplicateOutgoingEdge,
+    IncomingEdgeNotFound,
+    OutgoingEdgeNotFound,
+    InvalidState,
+    InvalidRevision
+}
+
+form ModuleNode {
+    id: ModuleId
+
+    name: string
+    canonical_path: string
+
+    kind: ModuleNodeKind
+    state: ModuleNodeState
+    visit_state: ModuleNodeVisitState
+
+    span: Span
+
+    incoming: [ModuleEdgeId]
+    outgoing: [ModuleEdgeId]
+
+    generation: u64
+    revision: u64
+}
+
+form ModuleNodeError {
+    kind: ModuleNodeErrorKind
+    module: string
+    message: string
+    span: Span
+}
+
+form ModuleNodeStatistics {
+    incoming: usize
+    outgoing: usize
+
+    root: bool
+    leaf: bool
+    isolated: bool
+
+    ready: bool
+    failed: bool
+    invalidated: bool
+}
+
+form ModuleNodeResult {
+    node: ModuleNode
+    error: ModuleNodeError
+    valid: bool
+}
+
+proc module_node_empty_span() -> Span {
+    give Span {
+        source: 0,
+        start: 0,
+        end: 0
+    };
+}
+
+proc module_node_error_none() -> ModuleNodeError {
+    give ModuleNodeError {
+        kind: ModuleNodeErrorKind.None,
+        module: "",
+        message: "",
+        span: module_node_empty_span()
+    };
+}
+
+proc module_node_error(
+    kind: ModuleNodeErrorKind,
+    module: string,
+    message: string,
+    span: Span
+) -> ModuleNodeError {
+    give ModuleNodeError {
+        kind: kind,
+        module: module,
+        message: message,
+        span: span
+    };
+}
+
+proc module_node_invalid() -> ModuleNode {
+    give ModuleNode {
+        id: module_id_invalid(),
+
+        name: "",
+        canonical_path: "",
+
+        kind: ModuleNodeKind.Source,
+        state: ModuleNodeState.Invalidated,
+        visit_state: ModuleNodeVisitState.Unvisited,
+
+        span: module_node_empty_span(),
+
+        incoming: [],
+        outgoing: [],
+
+        generation: 0,
+        revision: 0
+    };
+}
+
+proc module_node_create(
+    id: ModuleId,
+    name: string,
+    canonical_path: string,
+    kind: ModuleNodeKind,
+    span: Span
+) -> ModuleNode {
+    give ModuleNode {
+        id: id,
+
+        name: name,
+        canonical_path: canonical_path,
+
+        kind: kind,
+        state: ModuleNodeState.Declared,
+        visit_state: ModuleNodeVisitState.Unvisited,
+
+        span: span,
+
+        incoming: [],
+        outgoing: [],
+
+        generation: 1,
+        revision: 1
+    };
+}
+
+proc module_node_result_ok(
+    node: ModuleNode
+) -> ModuleNodeResult {
+    give ModuleNodeResult {
+        node: node,
+        error: module_node_error_none(),
+        valid: true
+    };
+}
+
+proc module_node_result_error(
+    node: ModuleNode,
+    kind: ModuleNodeErrorKind,
+    message: string
+) -> ModuleNodeResult {
+    give ModuleNodeResult {
+        node: node,
+        error: module_node_error(
+            kind,
+            node.name,
+            message,
+            node.span
+        ),
+        valid: false
+    };
+}
+
+proc module_node_is_valid(
+    node: ModuleNode
+) -> bool {
+    give module_id_is_valid(node.id)
+        and node.name != ""
+        and node.canonical_path != "";
+}
+
+proc module_node_is_invalid(
+    node: ModuleNode
+) -> bool {
+    give not module_node_is_valid(node);
+}
+
+proc module_node_equal(
+    left: ModuleNode,
+    right: ModuleNode
+) -> bool {
+    give module_id_equal(left.id, right.id);
+}
+
+proc module_node_same_name(
+    left: ModuleNode,
+    right: ModuleNode
+) -> bool {
+    give left.name == right.name;
+}
+
+proc module_node_same_path(
+    left: ModuleNode,
+    right: ModuleNode
+) -> bool {
+    give left.canonical_path == right.canonical_path;
+}
+
+proc module_node_is_root(
+    node: ModuleNode
+) -> bool {
+    give len(node.incoming) == 0;
+}
+
+proc module_node_is_leaf(
+    node: ModuleNode
+) -> bool {
+    give len(node.outgoing) == 0;
+}
+
+proc module_node_is_isolated(
+    node: ModuleNode
+) -> bool {
+    give len(node.incoming) == 0
+        and len(node.outgoing) == 0;
+}
+
+proc module_node_in_degree(
+    node: ModuleNode
+) -> usize {
+    give len(node.incoming);
+}
+
+proc module_node_out_degree(
+    node: ModuleNode
+) -> usize {
+    give len(node.outgoing);
+}
+
+proc module_node_edge_list_contains(
+    edges: [ModuleEdgeId],
+    edge: ModuleEdgeId
+) -> bool {
+    let mut index: usize = 0;
+
+    while index < len(edges) {
+        if module_edge_id_equal(edges[index], edge) {
+            give true;
+        }
+
+        set index = index + 1;
+    }
+
+    give false;
+}
+
+proc module_node_has_incoming(
+    node: ModuleNode,
+    edge: ModuleEdgeId
+) -> bool {
+    give module_node_edge_list_contains(
+        node.incoming,
+        edge
+    );
+}
+
+proc module_node_has_outgoing(
+    node: ModuleNode,
+    edge: ModuleEdgeId
+) -> bool {
+    give module_node_edge_list_contains(
+        node.outgoing,
+        edge
+    );
+}
+
+proc module_node_add_incoming(
+    node: ref mut ModuleNode,
+    edge: ModuleEdgeId
+) -> bool {
+    if not module_edge_id_is_valid(edge) {
+        give false;
+    }
+
+    if module_node_has_incoming(*node, edge) {
+        give false;
+    }
+
+    node.incoming = node.incoming + [edge];
+    node.revision = node.revision + 1;
+
+    give true;
+}
+
+proc module_node_add_outgoing(
+    node: ref mut ModuleNode,
+    edge: ModuleEdgeId
+) -> bool {
+    if not module_edge_id_is_valid(edge) {
+        give false;
+    }
+
+    if module_node_has_outgoing(*node, edge) {
+        give false;
+    }
+
+    node.outgoing = node.outgoing + [edge];
+    node.revision = node.revision + 1;
+
+    give true;
+}
+
+proc module_node_remove_incoming(
+    node: ref mut ModuleNode,
+    edge: ModuleEdgeId
+) -> bool {
+    let mut result: [ModuleEdgeId] = [];
+    let mut removed: bool = false;
+    let mut index: usize = 0;
+
+    while index < len(node.incoming) {
+        if module_edge_id_equal(node.incoming[index], edge) {
+            set removed = true;
+        } else {
+            set result = result + [node.incoming[index]];
+        }
+
+        set index = index + 1;
+    }
+
+    if removed {
+        node.incoming = result;
+        node.revision = node.revision + 1;
+    }
+
+    give removed;
+}
+
+proc module_node_remove_outgoing(
+    node: ref mut ModuleNode,
+    edge: ModuleEdgeId
+) -> bool {
+    let mut result: [ModuleEdgeId] = [];
+    let mut removed: bool = false;
+    let mut index: usize = 0;
+
+    while index < len(node.outgoing) {
+        if module_edge_id_equal(node.outgoing[index], edge) {
+            set removed = true;
+        } else {
+            set result = result + [node.outgoing[index]];
+        }
+
+        set index = index + 1;
+    }
+
+    if removed {
+        node.outgoing = result;
+        node.revision = node.revision + 1;
+    }
+
+    give removed;
+}
+
+proc module_node_clear_edges(
+    node: ref mut ModuleNode
+) {
+    node.incoming = [];
+    node.outgoing = [];
+    node.revision = node.revision + 1;
+}
+
+proc module_node_set_state(
+    node: ref mut ModuleNode,
+    state: ModuleNodeState
+) {
+    node.state = state;
+    node.revision = node.revision + 1;
+}
+
+proc module_node_set_visit_state(
+    node: ref mut ModuleNode,
+    state: ModuleNodeVisitState
+) {
+    node.visit_state = state;
+}
+
+proc module_node_mark_loading(
+    node: ref mut ModuleNode
+) {
+    module_node_set_state(
+        node,
+        ModuleNodeState.Loading
+    );
+}
+
+proc module_node_mark_loaded(
+    node: ref mut ModuleNode
+) {
+    module_node_set_state(
+        node,
+        ModuleNodeState.Loaded
+    );
+}
+
+proc module_node_mark_resolving(
+    node: ref mut ModuleNode
+) {
+    module_node_set_state(
+        node,
+        ModuleNodeState.Resolving
+    );
+}
+
+proc module_node_mark_resolved(
+    node: ref mut ModuleNode
+) {
+    module_node_set_state(
+        node,
+        ModuleNodeState.Resolved
+    );
+}
+
+proc module_node_mark_analyzing(
+    node: ref mut ModuleNode
+) {
+    module_node_set_state(
+        node,
+        ModuleNodeState.Analyzing
+    );
+}
+
+proc module_node_mark_analyzed(
+    node: ref mut ModuleNode
+) {
+    module_node_set_state(
+        node,
+        ModuleNodeState.Analyzed
+    );
+}
+
+proc module_node_mark_ready(
+    node: ref mut ModuleNode
+) {
+    module_node_set_state(
+        node,
+        ModuleNodeState.Ready
+    );
+}
+
+proc module_node_mark_failed(
+    node: ref mut ModuleNode
+) {
+    module_node_set_state(
+        node,
+        ModuleNodeState.Failed
+    );
+}
+
+proc module_node_invalidate(
+    node: ref mut ModuleNode
+) {
+    node.state = ModuleNodeState.Invalidated;
+    node.visit_state = ModuleNodeVisitState.Unvisited;
+
+    node.generation = node.generation + 1;
+    node.revision = node.revision + 1;
+}
+
+proc module_node_reset_visit(
+    node: ref mut ModuleNode
+) {
+    node.visit_state = ModuleNodeVisitState.Unvisited;
+}
+
+proc module_node_mark_visiting(
+    node: ref mut ModuleNode
+) {
+    node.visit_state = ModuleNodeVisitState.Visiting;
+}
+
+proc module_node_mark_visited(
+    node: ref mut ModuleNode
+) {
+    node.visit_state = ModuleNodeVisitState.Visited;
+}
+
+proc module_node_is_ready(
+    node: ModuleNode
+) -> bool {
+    give node.state == ModuleNodeState.Ready;
+}
+
+proc module_node_is_failed(
+    node: ModuleNode
+) -> bool {
+    give node.state == ModuleNodeState.Failed;
+}
+
+proc module_node_is_invalidated(
+    node: ModuleNode
+) -> bool {
+    give node.state == ModuleNodeState.Invalidated;
+}
+
+proc module_node_is_visiting(
+    node: ModuleNode
+) -> bool {
+    give node.visit_state == ModuleNodeVisitState.Visiting;
+}
+
+proc module_node_is_visited(
+    node: ModuleNode
+) -> bool {
+    give node.visit_state == ModuleNodeVisitState.Visited;
+}
+
+proc module_node_statistics(
+    node: ModuleNode
+) -> ModuleNodeStatistics {
+    give ModuleNodeStatistics {
+        incoming: len(node.incoming),
+        outgoing: len(node.outgoing),
+
+        root: module_node_is_root(node),
+        leaf: module_node_is_leaf(node),
+        isolated: module_node_is_isolated(node),
+
+        ready: module_node_is_ready(node),
+        failed: module_node_is_failed(node),
+        invalidated: module_node_is_invalidated(node)
+    };
+}
+
+proc module_node_validate(
+    node: ModuleNode
+) -> ModuleNodeResult {
+    if not module_id_is_valid(node.id) {
+        give module_node_result_error(
+            node,
+            ModuleNodeErrorKind.InvalidId,
+            "module node has invalid module id"
+        );
+    }
+
+    if node.name == "" {
+        give module_node_result_error(
+            node,
+            ModuleNodeErrorKind.EmptyName,
+            "module node name is empty"
+        );
+    }
+
+    if node.canonical_path == "" {
+        give module_node_result_error(
+            node,
+            ModuleNodeErrorKind.EmptyPath,
+            "module node canonical path is empty"
+        );
+    }
+
+    if node.generation == 0 {
+        give module_node_result_error(
+            node,
+            ModuleNodeErrorKind.InvalidRevision,
+            "module node generation is zero"
+        );
+    }
+
+    if node.revision == 0 {
+        give module_node_result_error(
+            node,
+            ModuleNodeErrorKind.InvalidRevision,
+            "module node revision is zero"
+        );
+    }
+
+    give module_node_result_ok(node);
+}
+
+proc module_node_kind_name(
+    kind: ModuleNodeKind
+) -> string {
+    pick kind {
+        ModuleNodeKind.Source {
+            give "source";
+        }
+
+        ModuleNodeKind.Package {
+            give "package";
+        }
+
+        ModuleNodeKind.Prelude {
+            give "prelude";
+        }
+
+        ModuleNodeKind.Runtime {
+            give "runtime";
+        }
+
+        ModuleNodeKind.Stdlib {
+            give "stdlib";
+        }
+
+        ModuleNodeKind.Compiler {
+            give "compiler";
+        }
+
+        ModuleNodeKind.Builtin {
+            give "builtin";
+        }
+
+        ModuleNodeKind.Generated {
+            give "generated";
+        }
+
+        ModuleNodeKind.External {
+            give "external";
+        }
+
+        ModuleNodeKind.Virtual {
+            give "virtual";
+        }
+    }
+
+    give "source";
+}
+
+proc module_node_state_name(
+    state: ModuleNodeState
+) -> string {
+    pick state {
+        ModuleNodeState.Declared {
+            give "declared";
+        }
+
+        ModuleNodeState.Loading {
+            give "loading";
+        }
+
+        ModuleNodeState.Loaded {
+            give "loaded";
+        }
+
+        ModuleNodeState.Resolving {
+            give "resolving";
+        }
+
+        ModuleNodeState.Resolved {
+            give "resolved";
+        }
+
+        ModuleNodeState.Analyzing {
+            give "analyzing";
+        }
+
+        ModuleNodeState.Analyzed {
+            give "analyzed";
+        }
+
+        ModuleNodeState.Ready {
+            give "ready";
+        }
+
+        ModuleNodeState.Failed {
+            give "failed";
+        }
+
+        ModuleNodeState.Invalidated {
+            give "invalidated";
+        }
+    }
+
+    give "declared";
+}
+
+proc module_node_debug_text(
+    node: ModuleNode
+) -> string {
+    give "ModuleNode("
+        + node.name
+        + ", "
+        + module_node_kind_name(node.kind)
+        + ", "
+        + module_node_state_name(node.state)
+        + ")";
+}
