@@ -566,6 +566,33 @@ proc ir_module_symbol_is_external(module0: IrModule, symbol_name: string) -> boo
 }
 
 proc ir_unit_requires_native_relocations(unit: IrUnit) -> bool {
+    let module_index: u64 = 0;
+    while module_index < len(unit.modules) {
+        let module0: IrModule = unit.modules[module_index];
+        let function_index: u64 = 0;
+        while function_index < len(module0.functions) {
+            let function0: IrFunction = module0.functions[function_index];
+            let block_index: u64 = 0;
+            while block_index < len(function0.blocks) {
+                let block0 = function0.blocks[block_index];
+                let instruction_index: u64 = 0;
+                while instruction_index < len(block0.instructions) {
+                    let instruction = block0.instructions[instruction_index];
+                    if instruction.kind == IrInstructionKind.Call and ir_module_symbol_is_external(module0, instruction.text) {
+                        give true;
+                    }
+                    set instruction_index = instruction_index + 1;
+                }
+                let terminator = block0.terminator;
+                if terminator.kind == IrInstructionKind.Call and ir_module_symbol_is_external(module0, terminator.text) {
+                    give true;
+                }
+                set block_index = block_index + 1;
+            }
+            set function_index = function_index + 1;
+        }
+        set module_index = module_index + 1;
+    }
     give false;
 }
 
@@ -574,7 +601,7 @@ proc empty_native_bridge_result(message: string) -> NativeBridgeResult {
         object_path: "",
         executable_path: "",
         message: message,
-        diagnostic_code: "",
+        diagnostic_code: "BACKEND_E_OUTPUT_NOT_MATERIALIZED",
         tool: "",
         command_text: "",
         stderr_text: "",
@@ -2274,6 +2301,8 @@ proc emit_native_backend_object_with_config(source_path: string, source_text: st
     let object0: NativeBridgeResult = empty_native_bridge_result(object_skip_message);
     if native_output_overwrites_source(source_path, object_path0) {
         set object0 = native_bridge_command_result(object_path0, "", "output path would overwrite the source file", "DRIVER_E_OUTPUT_WRITE_FAILED", "driver", "", "source and output paths are identical", "", -1, false);
+    } elif compile0.status == DriverExitStatus.Ok and not backend0.valid {
+        set object0 = native_bridge_command_result(object_path0, "", "backend did not produce a valid native object candidate", "BACKEND_E_OUTPUT_NOT_MATERIALIZED", config.backend_name, "compile_to_valid_ir_with_profile_and_packaging", backend0.message, "", -1, false);
     } elif compile0.status == DriverExitStatus.Ok and backend0.valid {
         let object_output_dir: string = output_dir_from_path(object_path0);
         if config.backend_name == "llvm" or config.backend_name == "llvm-ir" {
