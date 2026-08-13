@@ -2446,6 +2446,10 @@ static vitte_status_t vitte_sema_analyze_stmt(
             }
             status = vitte_sema_analyze_stmt(sema, stmt->as.while_stmt.body, true);
             break;
+        case VITTE_AST_NODE_BREAK_STMT:
+        case VITTE_AST_NODE_CONTINUE_STMT:
+            status = VITTE_STATUS_OK;
+            break;
         default:
             status = vitte_sema_fail(sema, VITTE_STATUS_ERROR_UNSUPPORTED, "VITTE_SEMA_E_STMT", "unsupported statement node in semantic analysis", vitte_ast_node_kind_name(stmt->kind), &stmt->span);
             break;
