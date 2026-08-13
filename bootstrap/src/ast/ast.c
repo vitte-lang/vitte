@@ -210,6 +210,10 @@ const char *vitte_ast_node_kind_name(vitte_ast_node_kind_t kind) {
             return "if_stmt";
         case VITTE_AST_NODE_WHILE_STMT:
             return "while_stmt";
+        case VITTE_AST_NODE_BREAK_STMT:
+            return "break_stmt";
+        case VITTE_AST_NODE_CONTINUE_STMT:
+            return "continue_stmt";
         case VITTE_AST_NODE_FOR_STMT:
             return "for_stmt";
         case VITTE_AST_NODE_INTEGER_LITERAL:
@@ -796,6 +800,14 @@ vitte_ast_stmt_t *vitte_ast_make_while_stmt(vitte_ast_builder_t *builder, vitte_
     return node;
 }
 
+vitte_ast_stmt_t *vitte_ast_make_loop_control_stmt(vitte_ast_builder_t *builder, bool continue_loop, vitte_ast_span_t span) {
+    return builder != NULL ? vitte_ast_alloc_node(
+        builder->ast,
+        continue_loop ? VITTE_AST_NODE_CONTINUE_STMT : VITTE_AST_NODE_BREAK_STMT,
+        span
+    ) : NULL;
+}
+
 vitte_ast_stmt_t *vitte_ast_make_for_stmt(vitte_ast_builder_t *builder, const char *name, vitte_ast_expr_t *iterable, vitte_ast_stmt_t *body, vitte_ast_span_t span) {
     vitte_ast_node_t *node = builder != NULL ? vitte_ast_alloc_node(builder->ast, VITTE_AST_NODE_FOR_STMT, span) : NULL;
     if (node != NULL) { node->as.for_stmt.name = name; node->as.for_stmt.iterable = iterable; node->as.for_stmt.body = body; }
@@ -1092,6 +1104,9 @@ static vitte_status_t vitte_ast_validate_node(vitte_ast_t *ast, const vitte_ast_
             status = vitte_ast_validate_node(ast, node->as.while_stmt.condition, depth + 1u);
             if (status != VITTE_STATUS_OK) return status;
             return vitte_ast_validate_node(ast, node->as.while_stmt.body, depth + 1u);
+        case VITTE_AST_NODE_BREAK_STMT:
+        case VITTE_AST_NODE_CONTINUE_STMT:
+            return VITTE_STATUS_OK;
         case VITTE_AST_NODE_FOR_STMT:
             if (node->as.for_stmt.name == NULL || node->as.for_stmt.iterable == NULL || node->as.for_stmt.body == NULL) return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
             status = vitte_ast_validate_node(ast, node->as.for_stmt.iterable, depth + 1u);
@@ -1352,6 +1367,9 @@ static bool vitte_ast_visit_child(
         case VITTE_AST_NODE_WHILE_STMT:
             return vitte_ast_visit_child(node->as.while_stmt.condition, callback, user, depth + 1u, max_depth, count) &&
                 vitte_ast_visit_child(node->as.while_stmt.body, callback, user, depth + 1u, max_depth, count);
+        case VITTE_AST_NODE_BREAK_STMT:
+        case VITTE_AST_NODE_CONTINUE_STMT:
+            return true;
         case VITTE_AST_NODE_FOR_STMT:
             return vitte_ast_visit_child(node->as.for_stmt.iterable, callback, user, depth + 1u, max_depth, count) &&
                 vitte_ast_visit_child(node->as.for_stmt.body, callback, user, depth + 1u, max_depth, count);
