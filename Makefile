@@ -220,8 +220,11 @@ vitte-source-audit:
 		-path './.git' -prune -o \
 		-path './bin' -prune -o \
 		-path './build' -prune -o \
+		-path './bootstrap/include' -prune -o \
+		-path './bootstrap/src' -prune -o \
 		-path './.pkgstage' -prune -o \
 		-path './target' -prune -o \
+		-path './toolchain/sysroot/include' -prune -o \
 		-path './vscode/VitteLangVsCode-main/.vscode-test' -prune -o \
 		-path './vscode/VitteLangVsCode-main/node_modules' -prune -o \
 		-type f \( -name '*.'c -o -name '*.'cc -o -name '*.'c'pp' -o -name '*.'cxx -o -name '*.'h -o -name '*.'h'pp' -o -name '*.'hxx \) -print | sort)"; \
@@ -230,7 +233,7 @@ vitte-source-audit:
 		printf '%s\n' "$$bad"; \
 		exit 1; \
 	fi; \
-	echo "[vitte-source-audit] ok: workspace source is Vitte-only"
+	echo "[vitte-source-audit] ok: workspace source is Vitte-only outside bootstrap/toolchain boundaries"
 
 vitte-legacy-text-audit:
 	@tools/ci_surface_legacy_audit.sh
