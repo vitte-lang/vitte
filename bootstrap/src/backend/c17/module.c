@@ -49,6 +49,9 @@ static bool vitte_c17_is_bootstrap_compiler_source(const vitte_c17_module_t *mod
     if (generic_compiler != NULL && strcmp(generic_compiler, "1") == 0) {
         return false;
     }
+    if (generic_compiler == NULL || strcmp(generic_compiler, "0") != 0) {
+        return false;
+    }
     if (module == NULL || module->unit == NULL || module->unit->options.source_name == NULL) {
         return false;
     }
@@ -150,6 +153,74 @@ static vitte_status_t vitte_c17_emit_c_string(vitte_c17_writer_t *writer, const 
 
 static bool vitte_c17_is_main_name(const char *name) {
     return name != NULL && strcmp(name, "main") == 0;
+}
+
+static bool vitte_c17_is_list_type(const vitte_ir_type_t *type) {
+    if (type == NULL || type->kind != VITTE_IR_TYPE_AGGREGATE_PTR || type->name == NULL) {
+        return false;
+    }
+    return strncmp(type->name, "list[", strlen("list[")) == 0 || type->name[0] == '[';
+}
+
+static vitte_status_t vitte_c17_emit_ir_value_ref(
+    vitte_c17_module_t *module,
+    vitte_c17_writer_t *writer,
+    const vitte_ir_value_t *value
+);
+static vitte_status_t vitte_c17_emit_statement_line_end(vitte_c17_writer_t *writer);
+
+static const char *vitte_c17_function_source_name(const vitte_ir_function_t *function) {
+    if (function != NULL && function->source != NULL && function->source->kind == VITTE_HIR_FUNCTION &&
+        function->source->as.function.source_name != NULL) {
+        return function->source->as.function.source_name;
+    }
+    return function != NULL ? function->name : NULL;
+}
+
+static const char *vitte_c17_host_intrinsic_helper(const vitte_ir_function_t *function) {
+    const char *name = vitte_c17_function_source_name(function);
+
+    if (name == NULL) return NULL;
+    if (strcmp(name, "vitte_host_runtime_available") == 0) return "vitte_c17_host_runtime_available";
+    if (strcmp(name, "vitte_host_read_file") == 0) return "vitte_c17_host_read_file";
+    if (strcmp(name, "vitte_host_write_file") == 0) return "vitte_c17_host_write_file";
+    if (strcmp(name, "vitte_host_append_file") == 0) return "vitte_c17_host_append_file";
+    if (strcmp(name, "vitte_host_file_exists") == 0) return "vitte_c17_host_file_exists";
+    if (strcmp(name, "vitte_host_is_file") == 0) return "vitte_c17_host_is_file";
+    if (strcmp(name, "vitte_host_is_directory") == 0) return "vitte_c17_host_is_directory";
+    if (strcmp(name, "vitte_host_mkdir_all") == 0) return "vitte_c17_host_mkdir_all";
+    if (strcmp(name, "vitte_host_system") == 0) return "vitte_c17_host_system";
+    if (strcmp(name, "vitte_host_emit_llvm_object") == 0) return "vitte_c17_host_emit_llvm_object";
+    if (strcmp(name, "vitte_host_emit_assembly_object") == 0) return "vitte_c17_host_emit_assembly_object";
+    if (strcmp(name, "vitte_host_verify_native_object") == 0) return "vitte_c17_host_verify_native_object";
+    if (strcmp(name, "vitte_host_link_executable") == 0) return "vitte_c17_host_link_executable";
+    if (strcmp(name, "vitte_host_run_executable") == 0) return "vitte_c17_host_run_executable";
+    return NULL;
+}
+
+static vitte_status_t vitte_c17_emit_host_intrinsic_return(
+    vitte_c17_module_t *module,
+    vitte_c17_writer_t *writer,
+    const vitte_ir_function_t *function,
+    const char *helper
+) {
+    const vitte_ir_value_t *parameter;
+    bool first = true;
+    vitte_status_t status = vitte_c17_write_string(writer, "return ");
+
+    if (status == VITTE_STATUS_OK) status = vitte_c17_write_string(writer, helper);
+    if (status == VITTE_STATUS_OK) status = vitte_c17_write_char(writer, '(');
+    for (parameter = function->first_parameter; status == VITTE_STATUS_OK && parameter != NULL; parameter = parameter->next) {
+        if (!first) status = vitte_c17_write_string(writer, ", ");
+        if (status == VITTE_STATUS_OK) status = vitte_c17_emit_ir_value_ref(module, writer, parameter);
+        first = false;
+    }
+    if (status == VITTE_STATUS_OK) status = vitte_c17_write_char(writer, ')');
+    if (status == VITTE_STATUS_OK) status = vitte_c17_emit_statement_line_end(writer);
+    if (status == VITTE_STATUS_OK) status = vitte_c17_write_close_block(writer);
+    if (status == VITTE_STATUS_OK) status = vitte_c17_write_newline(writer);
+    if (status == VITTE_STATUS_OK) module->unit->function_count++;
+    return status;
 }
 
 static vitte_status_t vitte_c17_make_symbol_name(
@@ -259,6 +330,8 @@ static vitte_status_t vitte_c17_emit_ir_type(
             return vitte_c17_write_string(writer, "size_t");
         case VITTE_IR_TYPE_STRING_PTR:
             return vitte_c17_write_string(writer, "const char *");
+        case VITTE_IR_TYPE_AGGREGATE_PTR:
+            return vitte_c17_write_string(writer, "vitte_aggregate *");
         case VITTE_IR_TYPE_UNKNOWN:
         case VITTE_IR_TYPE_ERROR:
         case VITTE_IR_TYPE_COUNT:
@@ -314,6 +387,17 @@ static vitte_status_t vitte_c17_emit_statement_line_end(vitte_c17_writer_t *writ
         return status;
     }
     return vitte_c17_write_newline(writer);
+}
+
+static vitte_status_t vitte_c17_emit_aggregate_ref(
+    vitte_c17_module_t *module,
+    vitte_c17_writer_t *writer,
+    const vitte_ir_value_t *value
+) {
+    vitte_status_t status = vitte_c17_write_string(writer, "(vitte_aggregate *)(uintptr_t)(");
+    if (status == VITTE_STATUS_OK) status = vitte_c17_emit_ir_value_ref(module, writer, value);
+    if (status == VITTE_STATUS_OK) status = vitte_c17_write_char(writer, ')');
+    return status;
 }
 
 static bool vitte_c17_ir_builtin_supported(const char *name) {
@@ -450,6 +534,13 @@ static vitte_status_t vitte_c17_emit_ir_builtin_call(
             if (status != VITTE_STATUS_OK) return status;
             return vitte_c17_emit_statement_line_end(writer);
         }
+        if (instruction->result != NULL && instruction->result->type != NULL &&
+            instruction->result->type->kind != VITTE_IR_TYPE_VOID) {
+            status = vitte_c17_emit_ir_value_ref(module, writer, instruction->result);
+            if (status != VITTE_STATUS_OK) return status;
+            status = vitte_c17_write_string(writer, " = ");
+            if (status != VITTE_STATUS_OK) return status;
+        }
         status = vitte_c17_write_string(writer, "vitte_slice(");
         if (status != VITTE_STATUS_OK) return status;
         for (size_t index = 1u; index < instruction->operand_count; index++) {
@@ -515,6 +606,18 @@ static vitte_status_t vitte_c17_emit_ir_call(
             if (status != VITTE_STATUS_OK) {
                 return status;
             }
+        } else if (instruction->operand_count > 1u &&
+            instruction->operands[1] != NULL &&
+            instruction->operands[1]->type != NULL &&
+            instruction->operands[1]->type->kind == VITTE_IR_TYPE_AGGREGATE_PTR) {
+            status = vitte_c17_emit_ir_value_ref(module, writer, instruction->operands[1]);
+            if (status != VITTE_STATUS_OK) return status;
+            status = vitte_c17_write_string(writer, " != NULL ? ");
+            if (status != VITTE_STATUS_OK) return status;
+            status = vitte_c17_emit_ir_value_ref(module, writer, instruction->operands[1]);
+            if (status != VITTE_STATUS_OK) return status;
+            status = vitte_c17_write_string(writer, "->count : 0u");
+            if (status != VITTE_STATUS_OK) return status;
         } else {
             status = vitte_c17_write_string(writer, "0");
             if (status != VITTE_STATUS_OK) {
@@ -681,7 +784,7 @@ static vitte_status_t vitte_c17_emit_ir_instruction(
                 instruction->operands[1]->type->kind == VITTE_IR_TYPE_STRING_PTR) {
                 if (instruction->operator_text != NULL &&
                     (strcmp(instruction->operator_text, "==") == 0 || strcmp(instruction->operator_text, "!=") == 0)) {
-                    status = vitte_c17_write_string(writer, "strcmp(");
+                    status = vitte_c17_write_string(writer, "vitte_string_equal(");
                     if (status != VITTE_STATUS_OK) return status;
                     status = vitte_c17_emit_ir_value_ref(module, writer, instruction->operands[0]);
                     if (status != VITTE_STATUS_OK) return status;
@@ -689,12 +792,70 @@ static vitte_status_t vitte_c17_emit_ir_instruction(
                     if (status != VITTE_STATUS_OK) return status;
                     status = vitte_c17_emit_ir_value_ref(module, writer, instruction->operands[1]);
                     if (status != VITTE_STATUS_OK) return status;
-                    status = vitte_c17_write_format(writer, ") %s 0", strcmp(instruction->operator_text, "==") == 0 ? "==" : "!=");
+                    status = vitte_c17_write_format(writer, ") %s true", strcmp(instruction->operator_text, "==") == 0 ? "==" : "!=");
+                    if (status != VITTE_STATUS_OK) return status;
+                } else if (instruction->operator_text != NULL && strcmp(instruction->operator_text, "+") == 0) {
+                    status = vitte_c17_write_string(writer, "vitte_string_concat(");
+                    if (status != VITTE_STATUS_OK) return status;
+                    status = vitte_c17_emit_ir_value_ref(module, writer, instruction->operands[0]);
+                    if (status != VITTE_STATUS_OK) return status;
+                    status = vitte_c17_write_string(writer, ", ");
+                    if (status != VITTE_STATUS_OK) return status;
+                    status = vitte_c17_emit_ir_value_ref(module, writer, instruction->operands[1]);
+                    if (status != VITTE_STATUS_OK) return status;
+                    status = vitte_c17_write_char(writer, ')');
+                    if (status != VITTE_STATUS_OK) return status;
+                } else if (instruction->operator_text != NULL &&
+                    (strcmp(instruction->operator_text, "<") == 0 || strcmp(instruction->operator_text, "<=") == 0 ||
+                        strcmp(instruction->operator_text, ">") == 0 || strcmp(instruction->operator_text, ">=") == 0)) {
+                    status = vitte_c17_write_string(writer, "vitte_string_compare(");
+                    if (status != VITTE_STATUS_OK) return status;
+                    status = vitte_c17_emit_ir_value_ref(module, writer, instruction->operands[0]);
+                    if (status != VITTE_STATUS_OK) return status;
+                    status = vitte_c17_write_string(writer, ", ");
+                    if (status != VITTE_STATUS_OK) return status;
+                    status = vitte_c17_emit_ir_value_ref(module, writer, instruction->operands[1]);
+                    if (status != VITTE_STATUS_OK) return status;
+                    status = vitte_c17_write_format(writer, ") %s 0", instruction->operator_text);
                     if (status != VITTE_STATUS_OK) return status;
                 } else {
                     status = vitte_c17_write_string(writer, "\"\"");
                     if (status != VITTE_STATUS_OK) return status;
                 }
+            } else if (instruction->operands[0] != NULL &&
+                instruction->operands[1] != NULL &&
+                instruction->operands[0]->type != NULL &&
+                instruction->operands[1]->type != NULL &&
+                instruction->operands[0]->type->kind == VITTE_IR_TYPE_AGGREGATE_PTR &&
+                instruction->operands[1]->type->kind == VITTE_IR_TYPE_AGGREGATE_PTR &&
+                instruction->operator_text != NULL) {
+                if (instruction->result != NULL && instruction->result->type != NULL &&
+                    instruction->result->type->kind == VITTE_IR_TYPE_AGGREGATE_PTR) {
+                    if (strcmp(instruction->operator_text, "+") == 0 &&
+                        vitte_c17_is_list_type(instruction->operands[0]->type) &&
+                        vitte_c17_is_list_type(instruction->operands[1]->type)) {
+                        status = vitte_c17_write_string(writer, "vitte_aggregate_concat(");
+                        if (status == VITTE_STATUS_OK) status = vitte_c17_emit_aggregate_ref(module, writer, instruction->operands[0]);
+                        if (status == VITTE_STATUS_OK) status = vitte_c17_write_string(writer, ", ");
+                        if (status == VITTE_STATUS_OK) status = vitte_c17_emit_aggregate_ref(module, writer, instruction->operands[1]);
+                        if (status == VITTE_STATUS_OK) status = vitte_c17_write_char(writer, ')');
+                    } else {
+                        status = vitte_c17_write_string(writer, "vitte_aggregate_binary_int(");
+                        if (status == VITTE_STATUS_OK) status = vitte_c17_emit_aggregate_ref(module, writer, instruction->operands[0]);
+                        if (status == VITTE_STATUS_OK) status = vitte_c17_write_string(writer, ", ");
+                        if (status == VITTE_STATUS_OK) status = vitte_c17_emit_aggregate_ref(module, writer, instruction->operands[1]);
+                        if (status == VITTE_STATUS_OK) status = vitte_c17_write_string(writer, ", ");
+                        if (status == VITTE_STATUS_OK) status = vitte_c17_emit_c_string(writer, instruction->operator_text);
+                        if (status == VITTE_STATUS_OK) status = vitte_c17_write_char(writer, ')');
+                    }
+                } else {
+                    status = vitte_c17_write_string(writer, "vitte_aggregate_unbox_int(");
+                    if (status == VITTE_STATUS_OK) status = vitte_c17_emit_aggregate_ref(module, writer, instruction->operands[0]);
+                    if (status == VITTE_STATUS_OK) status = vitte_c17_write_format(writer, ") %s vitte_aggregate_unbox_int(", instruction->operator_text);
+                    if (status == VITTE_STATUS_OK) status = vitte_c17_emit_aggregate_ref(module, writer, instruction->operands[1]);
+                    if (status == VITTE_STATUS_OK) status = vitte_c17_write_char(writer, ')');
+                }
+                if (status != VITTE_STATUS_OK) return status;
             } else {
                 status = vitte_c17_emit_ir_value_ref(module, writer, instruction->operands[0]);
                 if (status != VITTE_STATUS_OK) {
@@ -734,6 +895,82 @@ static vitte_status_t vitte_c17_emit_ir_instruction(
             return vitte_c17_emit_statement_line_end(writer);
         case VITTE_IR_OP_CALL:
             return vitte_c17_emit_ir_call(module, writer, instruction);
+        case VITTE_IR_OP_AGGREGATE_NEW:
+            status = vitte_c17_emit_ir_value_ref(module, writer, instruction->result);
+            if (status == VITTE_STATUS_OK) status = vitte_c17_write_string(writer, " = vitte_aggregate_new()");
+            return status == VITTE_STATUS_OK ? vitte_c17_emit_statement_line_end(writer) : status;
+        case VITTE_IR_OP_LIST_APPEND: {
+            const vitte_ir_value_t *value = instruction->operands[1];
+            const char *helper = value != NULL && value->type != NULL && value->type->kind == VITTE_IR_TYPE_STRING_PTR ?
+                "vitte_aggregate_append_string(" :
+                value != NULL && value->type != NULL && value->type->kind == VITTE_IR_TYPE_AGGREGATE_PTR ?
+                    "vitte_aggregate_append_aggregate(" : "vitte_aggregate_append_int(";
+            status = vitte_c17_write_string(writer, helper);
+            if (status == VITTE_STATUS_OK) status = vitte_c17_emit_aggregate_ref(module, writer, instruction->operands[0]);
+            if (status == VITTE_STATUS_OK) status = vitte_c17_write_string(writer, ", ");
+            if (status == VITTE_STATUS_OK) status = vitte_c17_emit_ir_value_ref(module, writer, value);
+            if (status == VITTE_STATUS_OK) status = vitte_c17_write_char(writer, ')');
+            return status == VITTE_STATUS_OK ? vitte_c17_emit_statement_line_end(writer) : status;
+        }
+        case VITTE_IR_OP_INDEX_GET: {
+            const char *helper = instruction->result != NULL && instruction->result->type != NULL && instruction->result->type->kind == VITTE_IR_TYPE_STRING_PTR ?
+                "vitte_aggregate_get_string(" :
+                instruction->result != NULL && instruction->result->type != NULL && instruction->result->type->kind == VITTE_IR_TYPE_AGGREGATE_PTR ?
+                    "vitte_aggregate_get_aggregate(" : "vitte_aggregate_get_int(";
+            status = vitte_c17_emit_ir_value_ref(module, writer, instruction->result);
+            if (status == VITTE_STATUS_OK) status = vitte_c17_write_string(writer, " = ");
+            if (status == VITTE_STATUS_OK) status = vitte_c17_write_string(writer, helper);
+            if (status == VITTE_STATUS_OK) status = vitte_c17_emit_aggregate_ref(module, writer, instruction->operands[0]);
+            if (status == VITTE_STATUS_OK) status = vitte_c17_write_string(writer, ", ");
+            if (status == VITTE_STATUS_OK) status = vitte_c17_emit_ir_value_ref(module, writer, instruction->operands[1]);
+            if (status == VITTE_STATUS_OK) status = vitte_c17_write_char(writer, ')');
+            return status == VITTE_STATUS_OK ? vitte_c17_emit_statement_line_end(writer) : status;
+        }
+        case VITTE_IR_OP_INDEX_SET: {
+            const vitte_ir_value_t *value = instruction->operands[2];
+            const char *helper = value != NULL && value->type != NULL && value->type->kind == VITTE_IR_TYPE_STRING_PTR ?
+                "vitte_aggregate_set_index_string(" :
+                value != NULL && value->type != NULL && value->type->kind == VITTE_IR_TYPE_AGGREGATE_PTR ?
+                    "vitte_aggregate_set_index_aggregate(" : "vitte_aggregate_set_index_int(";
+            status = vitte_c17_write_string(writer, helper);
+            for (size_t index = 0u; status == VITTE_STATUS_OK && index < 3u; index++) {
+                if (index > 0u) status = vitte_c17_write_string(writer, ", ");
+                if (status == VITTE_STATUS_OK) status = index == 0u ?
+                    vitte_c17_emit_aggregate_ref(module, writer, instruction->operands[index]) :
+                    vitte_c17_emit_ir_value_ref(module, writer, instruction->operands[index]);
+            }
+            if (status == VITTE_STATUS_OK) status = vitte_c17_write_char(writer, ')');
+            return status == VITTE_STATUS_OK ? vitte_c17_emit_statement_line_end(writer) : status;
+        }
+        case VITTE_IR_OP_FIELD_GET: {
+            const char *helper = instruction->result != NULL && instruction->result->type != NULL && instruction->result->type->kind == VITTE_IR_TYPE_STRING_PTR ?
+                "vitte_aggregate_get_field_string(" :
+                instruction->result != NULL && instruction->result->type != NULL && instruction->result->type->kind == VITTE_IR_TYPE_AGGREGATE_PTR ?
+                    "vitte_aggregate_get_field_aggregate(" : "vitte_aggregate_get_field_int(";
+            status = vitte_c17_emit_ir_value_ref(module, writer, instruction->result);
+            if (status == VITTE_STATUS_OK) status = vitte_c17_write_string(writer, " = ");
+            if (status == VITTE_STATUS_OK) status = vitte_c17_write_string(writer, helper);
+            if (status == VITTE_STATUS_OK) status = vitte_c17_emit_aggregate_ref(module, writer, instruction->operands[0]);
+            if (status == VITTE_STATUS_OK) status = vitte_c17_write_string(writer, ", ");
+            if (status == VITTE_STATUS_OK) status = vitte_c17_emit_c_string(writer, instruction->operator_text);
+            if (status == VITTE_STATUS_OK) status = vitte_c17_write_char(writer, ')');
+            return status == VITTE_STATUS_OK ? vitte_c17_emit_statement_line_end(writer) : status;
+        }
+        case VITTE_IR_OP_FIELD_SET: {
+            const vitte_ir_value_t *value = instruction->operands[1];
+            const char *helper = value != NULL && value->type != NULL && value->type->kind == VITTE_IR_TYPE_STRING_PTR ?
+                "vitte_aggregate_set_field_string(" :
+                value != NULL && value->type != NULL && value->type->kind == VITTE_IR_TYPE_AGGREGATE_PTR ?
+                    "vitte_aggregate_set_field_aggregate(" : "vitte_aggregate_set_field_int(";
+            status = vitte_c17_write_string(writer, helper);
+            if (status == VITTE_STATUS_OK) status = vitte_c17_emit_aggregate_ref(module, writer, instruction->operands[0]);
+            if (status == VITTE_STATUS_OK) status = vitte_c17_write_string(writer, ", ");
+            if (status == VITTE_STATUS_OK) status = vitte_c17_emit_c_string(writer, instruction->operator_text);
+            if (status == VITTE_STATUS_OK) status = vitte_c17_write_string(writer, ", ");
+            if (status == VITTE_STATUS_OK) status = vitte_c17_emit_ir_value_ref(module, writer, value);
+            if (status == VITTE_STATUS_OK) status = vitte_c17_write_char(writer, ')');
+            return status == VITTE_STATUS_OK ? vitte_c17_emit_statement_line_end(writer) : status;
+        }
         case VITTE_IR_OP_RETURN:
             status = vitte_c17_write_string(writer, "return");
             if (status != VITTE_STATUS_OK) {
@@ -871,7 +1108,8 @@ static vitte_status_t vitte_c17_emit_ir_function_signature(
     if (vitte_c17_is_main_name(function->name)) {
         status = vitte_c17_write_string(
             writer,
-            vitte_c17_is_bootstrap_compiler_source(module) ? "int main(int argc, char **argv)" : "int main(void)"
+            (vitte_c17_is_bootstrap_compiler_source(module) || function->parameter_count > 0u) ?
+                "int main(int argc, char **argv)" : "int main(void)"
         );
         if (status != VITTE_STATUS_OK) {
             return status;
@@ -945,6 +1183,7 @@ static vitte_status_t vitte_c17_emit_ir_function_body(
     const vitte_ir_function_t *function
 ) {
     const vitte_ir_block_t *block;
+    const char *host_intrinsic_helper;
     char entry_label[128];
     vitte_status_t status;
 
@@ -1729,6 +1968,11 @@ static vitte_status_t vitte_c17_emit_ir_function_body(
         return status;
     }
 
+    host_intrinsic_helper = vitte_c17_host_intrinsic_helper(function);
+    if (host_intrinsic_helper != NULL) {
+        return vitte_c17_emit_host_intrinsic_return(module, writer, function, host_intrinsic_helper);
+    }
+
     status = vitte_c17_emit_ir_function_declarations(module, writer, function);
     if (status != VITTE_STATUS_OK) {
         return status;
@@ -1748,7 +1992,9 @@ static vitte_status_t vitte_c17_emit_ir_function_body(
             if (status != VITTE_STATUS_OK) {
                 return status;
             }
-            status = vitte_c17_write_string(writer, " = 0");
+            status = parameter == function->first_parameter && parameter->type != NULL && parameter->type->kind == VITTE_IR_TYPE_AGGREGATE_PTR ?
+                vitte_c17_write_string(writer, " = vitte_aggregate_from_argv(argc, argv)") :
+                vitte_c17_write_string(writer, " = 0");
             if (status != VITTE_STATUS_OK) {
                 return status;
             }

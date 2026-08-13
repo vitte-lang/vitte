@@ -29,6 +29,7 @@ typedef enum vitte_ir_type_kind {
     VITTE_IR_TYPE_I64,
     VITTE_IR_TYPE_USIZE,
     VITTE_IR_TYPE_STRING_PTR,
+    VITTE_IR_TYPE_AGGREGATE_PTR,
     VITTE_IR_TYPE_UNKNOWN,
     VITTE_IR_TYPE_COUNT
 } vitte_ir_type_kind_t;
@@ -55,6 +56,12 @@ typedef enum vitte_ir_opcode {
     VITTE_IR_OP_BINARY,
     VITTE_IR_OP_SELECT,
     VITTE_IR_OP_CALL,
+    VITTE_IR_OP_AGGREGATE_NEW,
+    VITTE_IR_OP_LIST_APPEND,
+    VITTE_IR_OP_INDEX_GET,
+    VITTE_IR_OP_INDEX_SET,
+    VITTE_IR_OP_FIELD_GET,
+    VITTE_IR_OP_FIELD_SET,
     VITTE_IR_OP_RETURN,
     VITTE_IR_OP_BRANCH,
     VITTE_IR_OP_COND_BRANCH,
@@ -80,6 +87,7 @@ typedef struct vitte_ir_scope_marker vitte_ir_scope_marker_t;
 
 struct vitte_ir_type {
     vitte_ir_type_kind_t kind;
+    const char *name;
 };
 
 struct vitte_ir_value {
@@ -220,6 +228,9 @@ typedef struct vitte_ir_lowering {
     vitte_ir_function_binding_t *functions;
     vitte_ir_global_binding_t *globals;
     vitte_ir_scope_marker_t *scopes;
+    vitte_ir_block_t *break_targets[64];
+    vitte_ir_block_t *continue_targets[64];
+    size_t loop_depth;
     vitte_error_t last_error;
 } vitte_ir_lowering_t;
 
@@ -239,6 +250,7 @@ const char *vitte_ir_value_label(const vitte_ir_value_t *value);
 bool vitte_ir_type_equals(const vitte_ir_type_t *left, const vitte_ir_type_t *right);
 
 vitte_ir_type_t *vitte_ir_make_type(vitte_ir_t *ir, vitte_ir_type_kind_t kind);
+vitte_ir_type_t *vitte_ir_make_named_type(vitte_ir_t *ir, vitte_ir_type_kind_t kind, const char *name);
 vitte_ir_type_t *vitte_ir_type_from_hir(vitte_ir_t *ir, const vitte_hir_node_t *hir_type);
 
 void vitte_ir_builder_init(vitte_ir_builder_t *builder, vitte_ir_t *ir);

@@ -163,6 +163,8 @@ smoke: verify $(BIN)
 	@"$(OUT_DIR)/let_mut_ok"
 	@"$(BIN)" build "$(ROOT_DIR)/bootstrap/tests/assignment_ok.vit" -o "$(OUT_DIR)/assignment_ok"
 	@"$(OUT_DIR)/assignment_ok"; status=$$?; test "$$status" -eq 2
+	@"$(BIN)" build "$(ROOT_DIR)/bootstrap/tests/aggregate_runtime.vit" -o "$(OUT_DIR)/aggregate_runtime"
+	@"$(OUT_DIR)/aggregate_runtime"
 
 corpus: verify $(BIN)
 	@mkdir -p "$(OUT_DIR)/corpus"
