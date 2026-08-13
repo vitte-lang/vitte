@@ -1,30 +1,59 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Vitte EBNF Memory Guide (EN)</title><link rel="stylesheet" href="css/site.css?v=34fa1e8389"><link rel="preload" as="style" href="css/site.css?v=34fa1e8389">
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vitte EBNF Memory Guide (EN)</title>
+<link rel="stylesheet" href="css/site.css?v=34fa1e8389">
+<link rel="preload" as="style" href="css/site.css?v=34fa1e8389">
 <link rel="alternate" hreflang="en" href="https://vitte-lang.org/vitte-ebnf-memory.html">
 <link rel="alternate" hreflang="x-default" href="https://vitte-lang.org/vitte-ebnf-memory.html">
-
 <link rel="canonical" href="https://vitte-lang.org/vitte-ebnf-memory.html">
 <meta property="og:title" content="Vitte EBNF Memory Guide (EN)">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://vitte-lang.org/vitte-ebnf-memory.html">
 <meta name="twitter:card" content="summary">
-
-
-
-
-
-
-
-
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none';">
-</head><body class="classic-doc">
-<a class="skip-link" href="#main-content">Skip to content</a><div class="site-shell"><main id="main-content" class="site-main"><article class="doc-content"><h1>Vitte EBNF Memory Guide (EN)</h1><p>Source of truth: <code>src/vitte/grammar/vitte.ebnf</code>.</p><p>Checksum (SHA-256): <code>4493876f55f9d93e4b5dd3dccc15a337693deb68955e9952648866ba8a8230f6</code></p><h2>Prompt Contract</h2><ol><li>Use only this grammar as source of truth.</li><li>If unsure, answer: unknown.</li><li>Validate rule by rule with production names.</li><li>Return compliant/non-compliant with evidence.</li><li>Provide minimal valid/invalid examples per rule.</li></ol><pre><code>&lt;&lt;&lt; =========================================================
+</head>
+<body class="classic-doc">
+<a class="skip-link" href="#main-content">Skip to content</a>
+<div class="site-shell">
+<main id="main-content" class="site-main">
+<article class="doc-content">
+<h1>Vitte EBNF Memory Guide (EN)</h1>
+<p>Source of truth: <code>src/vitte/grammar/vitte.ebnf</code>.</p>
+<p>Compiler-aligned corpus: <code>src/vitte/compiler/**/*.vit</code>, parser/frontend implementation, and validated project templates.</p>
+<p>Checksum (SHA-256): <code>58f260a17d3e532b00b4d67ed97a72b1a0f2d5503135eb6f28d7d52cfec6f6a6</code></p>
+
+<h2>Prompt Contract</h2>
+<ol>
+<li>Use this grammar as the canonical syntax reference.</li>
+<li>Cross-check ambiguous syntax against validated <code>src/vitte/compiler/**/*.vit</code> sources.</li>
+<li>If neither grammar nor validated compiler sources establish a construct, answer: unknown.</li>
+<li>Validate rule by rule with production names.</li>
+<li>Return compliant/non-compliant with evidence.</li>
+<li>Provide minimal valid/invalid examples per rule.</li>
+</ol>
+
+<pre><code>&lt;&lt;&lt; =========================================================
    Vitte — Complete Core Grammar
    systems + application + kernel + compiler surface
+
+   canonical sources:
+     src/vitte/compiler/**/*.vit
+     parser/frontend implementation
+     validated project templates
+
    canonical blocks: { }
-   canonical syntax source for parser/docs/tests
+   canonical module paths: /
+   canonical scoped names: ::
+   canonical member access: .
+   statement semicolons: optional where accepted
+   form fields: whitespace/newline separated
+   pick variants: comma separated
    low-level capable
    compiler-capable
-   no aliases, reduced duplicates
+   reduced aliases and duplicate productions
    ========================================================= &gt;&gt;&gt;
 
 program ::= WS? { toplevel WS? } EOF ;
@@ -65,167 +94,589 @@ toplevel ::= inner_attribute
           | entry_decl
           ;
 
-space_decl ::= &quot;space&quot; WS1 module_path ;
+&lt;&lt;&lt; ================= Modules ================= &gt;&gt;&gt;
 
-use_decl ::= &quot;use&quot; WS1 package_path [ use_group | use_glob ] [ WS1 &quot;as&quot; WS1 ident ] ;
-use_glob ::= &quot;.&quot; &quot;*&quot; ;
-use_group ::= &quot;.&quot; &quot;{&quot; WS? ( &quot;*&quot; | import_items [ WS? &quot;,&quot; WS? &quot;*&quot; ]? ) WS? &quot;}&quot; ;
+space_decl ::= "space" WS1 module_path [ stmt_term ] ;
 
-import_items ::= import_item { WS? &quot;,&quot; WS? import_item } [ WS? &quot;,&quot; ] ;
-import_item ::= ident [ WS1 &quot;as&quot; WS1 ident ] ;
+module_path ::= relative_module? module_parts ;
+package_path ::= relative_module? module_parts ;
 
-export_decl ::= &quot;export&quot; WS1 ( &quot;*&quot; | ident_list | &quot;{&quot; WS? ident_list WS? &quot;}&quot; ) ;
+relative_module ::= "." { "." } ;
 
-const_decl ::= { attr_prefix WS? } &quot;const&quot; WS1 ident [ WS? &quot;:&quot; WS? type_expr ] WS? &quot;=&quot; WS? expr ;
-static_decl ::= { attr_prefix WS? } &quot;static&quot; WS1 ident [ WS? &quot;:&quot; WS? type_expr ] WS? &quot;=&quot; WS? expr ;
-global_decl ::= { attr_prefix WS? } &quot;global&quot; WS1 ident [ WS? &quot;:&quot; WS? type_expr ] WS? &quot;=&quot; WS? expr ;
+module_parts ::= ident { "/" ident } ;
 
-type_alias_decl ::= { attr_prefix WS? } &quot;type&quot; WS1 ident [ generic_params ] WS? &quot;=&quot; WS? type_expr ;
-opaque_type_decl ::= { attr_prefix WS? } &quot;opaque&quot; WS1 &quot;type&quot; WS1 ident [ generic_params ] [ WS? &quot;=&quot; WS? type_expr ] ;
-extern_type_decl ::= { attr_prefix WS? } &quot;extern&quot; WS1 &quot;type&quot; WS1 ident [ generic_params ] [ WS? &quot;;&quot; ] ;
+&lt;&lt;&lt; ================= Imports / Exports ================= &gt;&gt;&gt;
 
-form_decl ::= { attr_prefix WS? } &quot;form&quot; WS1 ident [ generic_params ] [ WS? where_clause ] WS? &quot;{&quot; WS? form_items? WS? &quot;}&quot; ;
-class_decl ::= { attr_prefix WS? } &quot;class&quot; WS1 ident [ generic_params ] [ WS? where_clause ] WS? &quot;{&quot; WS? class_items? WS? &quot;}&quot; ;
-union_decl ::= { attr_prefix WS? } &quot;union&quot; WS1 ident [ generic_params ] [ WS? where_clause ] WS? &quot;{&quot; WS? field_list? WS? &quot;}&quot; ;
+use_decl ::= "use" WS1 package_path
+             [ use_group | use_glob ]
+             [ WS1 "as" WS1 ident ]
+             [ stmt_term ]
+             ;
 
-form_items ::= form_item { WS? &quot;,&quot;? WS? form_item } [ WS? &quot;,&quot; ] ;
-form_item ::= field_item | const_decl | type_alias_decl | proc_decl ;
+use_glob ::= "." "*" ;
 
-class_items ::= class_item { WS? &quot;,&quot;? WS? class_item } [ WS? &quot;,&quot; ] ;
-class_item ::= field_item | const_decl | type_alias_decl | proc_decl ;
-
-field_list ::= field_item { WS? &quot;,&quot; WS? field_item } [ WS? &quot;,&quot; ] ;
-field_item ::= { attr_prefix WS? } [ visibility WS1 ] ident WS? &quot;:&quot; WS? type_expr [ WS? &quot;=&quot; WS? expr ] ;
-
-bits_decl ::= { attr_prefix WS? } &quot;bits&quot; WS1 ident [ WS? &quot;:&quot; WS? type_expr ] WS? &quot;{&quot; WS? bitfield_list? WS? &quot;}&quot; ;
-bitfield_list ::= bitfield_item { WS? &quot;,&quot; WS? bitfield_item } [ WS? &quot;,&quot; ] ;
-bitfield_item ::= ident WS? &quot;:&quot; WS? expr WS? &quot;..&quot; WS? expr ;
-
-pick_decl ::= { attr_prefix WS? } &quot;pick&quot; WS1 ident [ generic_params ] [ WS? &quot;:&quot; WS? type_expr ] [ WS? where_clause ] WS? &quot;{&quot; WS? case_list? WS? &quot;}&quot; ;
-case_list ::= case_item { WS? &quot;,&quot; WS? case_item } [ WS? &quot;,&quot; ] ;
-case_item ::= [ &quot;case&quot; WS1 ] ident [ &quot;(&quot; WS? case_payload? WS? &quot;)&quot; ] [ WS? &quot;=&quot; WS? expr ] ;
-case_payload ::= case_field { WS? &quot;,&quot; WS? case_field } [ WS? &quot;,&quot; ] ;
-case_field ::= ident WS? &quot;:&quot; WS? type_expr | type_expr ;
-
-flags_decl ::= { attr_prefix WS? } &quot;flags&quot; WS1 ident [ WS? &quot;:&quot; WS? type_expr ] WS? &quot;{&quot; WS? flag_list? WS? &quot;}&quot; ;
-flag_list ::= flag_item { WS? &quot;,&quot; WS? flag_item } [ WS? &quot;,&quot; ] ;
-flag_item ::= ident [ WS? &quot;=&quot; WS? expr ] ;
-
-trait_decl ::= { attr_prefix WS? } [ &quot;unsafe&quot; WS1 ] &quot;trait&quot; WS1 ident [ generic_params ] [ WS? where_clause ] WS? &quot;{&quot; WS? trait_item* WS? &quot;}&quot; ;
-trait_item ::= proc_signature | const_decl | associated_type_decl ;
-
-associated_type_decl ::= &quot;type&quot; WS1 ident [ WS? &quot;:&quot; WS? trait_bound ] [ WS? &quot;=&quot; WS? type_expr ] ;
-
-impl_decl ::= { attr_prefix WS? } [ &quot;unsafe&quot; WS1 ] &quot;impl&quot; WS1 impl_head [ WS? where_clause ] WS? &quot;{&quot; WS? impl_item* WS? &quot;}&quot; ;
-impl_head ::= type_expr | type_expr WS1 &quot;for&quot; WS1 type_expr ;
-impl_item ::= const_decl | type_alias_decl | associated_type_decl | proc_decl ;
-
-proc_signature ::= { attr_prefix WS? } &quot;proc&quot; WS1 ident [ generic_params ]
-                   &quot;(&quot; WS? param_list? WS? &quot;)&quot;
-                   [ WS? &quot;-&gt;&quot; WS? type_expr ]
-                   WS? proc_suffix*
-                   WS? &quot;;&quot;
-                   ;
-
-proc_decl ::= { attr_prefix WS? } [ visibility WS1 ] proc_modifier* [ extern_clause WS1 ] &quot;proc&quot; WS1 proc_name [ generic_params ]
-              &quot;(&quot; WS? param_list? WS? &quot;)&quot;
-              [ WS? &quot;-&gt;&quot; WS? type_expr ]
-              WS? proc_suffix*
-              WS? ( block | &quot;;&quot; )
+use_group ::= "." "{"
+              WS?
+              (
+                  "*"
+                | import_items [ WS? "," WS? "*" ]
+              )?
+              WS?
+              "}"
               ;
 
-proc_name ::= ident | &quot;operator&quot; WS? operator_symbol ;
-operator_symbol ::= &quot;+&quot; | &quot;-&quot; | &quot;*&quot; | &quot;/&quot; | &quot;%&quot;
-                  | &quot;==&quot; | &quot;!=&quot; | &quot;&lt;&quot; | &quot;&lt;=&quot; | &quot;&gt;&quot; | &quot;&gt;=&quot;
-                  | &quot;[]&quot; | &quot;()&quot; ;
+import_items ::= import_item
+                 { WS? "," WS? import_item }
+                 [ WS? "," ]
+                 ;
 
-proc_modifier ::= &quot;async&quot; WS1
-                | &quot;unsafe&quot; WS1
-                | &quot;const&quot; WS1
-                | &quot;inline&quot; WS1
-                | &quot;noinline&quot; WS1
-                | &quot;naked&quot; WS1
-                | &quot;interrupt&quot; WS1
+import_item ::= ident [ WS1 "as" WS1 ident ] ;
+
+export_decl ::= "export" WS1
+                (
+                    "*"
+                  | ident_list
+                  | "{" WS? ident_list WS? "}"
+                )
+                [ stmt_term ]
+                ;
+
+ident_list ::= ident
+               { WS? "," WS? ident }
+               [ WS? "," ]
+               ;
+
+&lt;&lt;&lt; ================= Constants / Globals ================= &gt;&gt;&gt;
+
+const_decl ::= { attr_prefix WS? }
+               "const" WS1 ident
+               [ WS? ":" WS? type_expr ]
+               WS? "=" WS? expr
+               [ stmt_term ]
+               ;
+
+static_decl ::= { attr_prefix WS? }
+                "static" WS1 ident
+                [ WS? ":" WS? type_expr ]
+                WS? "=" WS? expr
+                [ stmt_term ]
+                ;
+
+global_decl ::= { attr_prefix WS? }
+                "global" WS1 ident
+                [ WS? ":" WS? type_expr ]
+                WS? "=" WS? expr
+                [ stmt_term ]
+                ;
+
+&lt;&lt;&lt; ================= Type Declarations ================= &gt;&gt;&gt;
+
+type_alias_decl ::= { attr_prefix WS? }
+                    "type" WS1 ident
+                    [ generic_params ]
+                    WS? "=" WS? type_expr
+                    [ stmt_term ]
+                    ;
+
+opaque_type_decl ::= { attr_prefix WS? }
+                     "opaque" WS1 "type" WS1 ident
+                     [ generic_params ]
+                     [ WS? "=" WS? type_expr ]
+                     [ stmt_term ]
+                     ;
+
+extern_type_decl ::= { attr_prefix WS? }
+                     "extern" WS1 "type" WS1 ident
+                     [ generic_params ]
+                     [ stmt_term ]
+                     ;
+
+&lt;&lt;&lt; ================= Forms / Classes / Unions ================= &gt;&gt;&gt;
+
+form_decl ::= { attr_prefix WS? }
+              "form" WS1 ident
+              [ generic_params ]
+              [ WS? where_clause ]
+              WS? "{"
+              WS?
+              form_items?
+              WS?
+              "}"
+              ;
+
+form_items ::= form_item
+               { form_item_separator form_item }
+               [ WS? "," ]
+               ;
+
+form_item_separator ::= WS1
+                      | WS? "," WS?
+                      ;
+
+form_item ::= field_item
+            | const_decl
+            | type_alias_decl
+            | proc_decl
+            ;
+
+class_decl ::= { attr_prefix WS? }
+               "class" WS1 ident
+               [ generic_params ]
+               [ WS? where_clause ]
+               WS? "{"
+               WS?
+               class_items?
+               WS?
+               "}"
+               ;
+
+class_items ::= class_item
+                { form_item_separator class_item }
+                [ WS? "," ]
+                ;
+
+class_item ::= field_item
+             | const_decl
+             | type_alias_decl
+             | proc_decl
+             ;
+
+union_decl ::= { attr_prefix WS? }
+               "union" WS1 ident
+               [ generic_params ]
+               [ WS? where_clause ]
+               WS? "{"
+               WS?
+               field_items?
+               WS?
+               "}"
+               ;
+
+field_items ::= field_item
+                { form_item_separator field_item }
+                [ WS? "," ]
+                ;
+
+field_item ::= { attr_prefix WS? }
+               [ visibility WS1 ]
+               ident
+               WS? ":" WS? type_expr
+               [ WS? "=" WS? expr ]
+               ;
+
+&lt;&lt;&lt; ================= Bits ================= &gt;&gt;&gt;
+
+bits_decl ::= { attr_prefix WS? }
+              "bits" WS1 ident
+              [ WS? ":" WS? type_expr ]
+              WS? "{"
+              WS?
+              bitfield_list?
+              WS?
+              "}"
+              ;
+
+bitfield_list ::= bitfield_item
+                  { WS? "," WS? bitfield_item }
+                  [ WS? "," ]
+                  ;
+
+bitfield_item ::= ident
+                  WS? ":" WS? expr
+                  WS? ".." WS? expr
+                  ;
+
+&lt;&lt;&lt; ================= Picks ================= &gt;&gt;&gt;
+
+pick_decl ::= { attr_prefix WS? }
+              "pick" WS1 ident
+              [ generic_params ]
+              [ WS? ":" WS? type_expr ]
+              [ WS? where_clause ]
+              WS? "{"
+              WS?
+              case_list?
+              WS?
+              "}"
+              ;
+
+case_list ::= case_item
+              { WS? "," WS? case_item }
+              [ WS? "," ]
+              ;
+
+case_item ::= [ "case" WS1 ]
+              ident
+              [ "(" WS? case_payload? WS? ")" ]
+              [ WS? "=" WS? expr ]
+              ;
+
+case_payload ::= case_field
+                 { WS? "," WS? case_field }
+                 [ WS? "," ]
+                 ;
+
+case_field ::= ident WS? ":" WS? type_expr
+             | type_expr
+             ;
+
+&lt;&lt;&lt; ================= Flags ================= &gt;&gt;&gt;
+
+flags_decl ::= { attr_prefix WS? }
+               "flags" WS1 ident
+               [ WS? ":" WS? type_expr ]
+               WS? "{"
+               WS?
+               flag_list?
+               WS?
+               "}"
+               ;
+
+flag_list ::= flag_item
+              { WS? "," WS? flag_item }
+              [ WS? "," ]
+              ;
+
+flag_item ::= ident [ WS? "=" WS? expr ] ;
+
+&lt;&lt;&lt; ================= Traits ================= &gt;&gt;&gt;
+
+trait_decl ::= { attr_prefix WS? }
+               [ "unsafe" WS1 ]
+               "trait" WS1 ident
+               [ generic_params ]
+               [ WS? where_clause ]
+               WS? "{"
+               WS?
+               trait_item*
+               WS?
+               "}"
+               ;
+
+trait_item ::= proc_signature
+             | const_decl
+             | associated_type_decl
+             ;
+
+associated_type_decl ::= "type" WS1 ident
+                         [ WS? ":" WS? trait_bound ]
+                         [ WS? "=" WS? type_expr ]
+                         [ stmt_term ]
+                         ;
+
+&lt;&lt;&lt; ================= Implementations ================= &gt;&gt;&gt;
+
+impl_decl ::= { attr_prefix WS? }
+              [ "unsafe" WS1 ]
+              "impl" WS1 impl_head
+              [ WS? where_clause ]
+              WS? "{"
+              WS?
+              impl_item*
+              WS?
+              "}"
+              ;
+
+impl_head ::= type_expr
+            | type_expr WS1 "for" WS1 type_expr
+            ;
+
+impl_item ::= const_decl
+            | type_alias_decl
+            | associated_type_decl
+            | proc_decl
+            ;
+
+&lt;&lt;&lt; ================= Procedures ================= &gt;&gt;&gt;
+
+proc_signature ::= { attr_prefix WS? }
+                   "proc" WS1 ident
+                   [ generic_params ]
+                   "(" WS? param_list? WS? ")"
+                   [ WS? "-&gt;" WS? type_expr ]
+                   WS? proc_suffix*
+                   stmt_term
+                   ;
+
+proc_decl ::= { attr_prefix WS? }
+              [ visibility WS1 ]
+              proc_modifier*
+              [ extern_clause WS1 ]
+              "proc" WS1 proc_name
+              [ generic_params ]
+              "(" WS? param_list? WS? ")"
+              [ WS? "-&gt;" WS? type_expr ]
+              WS? proc_suffix*
+              WS?
+              (
+                  block
+                | stmt_term
+              )
+              ;
+
+proc_name ::= ident
+            | "operator" WS? operator_symbol
+            ;
+
+operator_symbol ::= "+"
+                  | "-"
+                  | "*"
+                  | "/"
+                  | "%"
+                  | "=="
+                  | "!="
+                  | "&lt;"
+                  | "&lt;="
+                  | "&gt;"
+                  | "&gt;="
+                  | "[]"
+                  | "()"
+                  ;
+
+proc_modifier ::= "async" WS1
+                | "unsafe" WS1
+                | "const" WS1
+                | "inline" WS1
+                | "noinline" WS1
+                | "naked" WS1
+                | "interrupt" WS1
                 ;
 
 proc_suffix ::= effects_clause
               | requires_clause
               | where_clause
-              | &quot;noexcept&quot;
+              | "noexcept"
               ;
 
-extern_block ::= { attr_prefix WS? } &quot;extern&quot; WS1 extern_abi WS? &quot;{&quot; WS? extern_item* WS? &quot;}&quot; ;
-extern_item ::= extern_proc_decl | extern_type_decl | const_decl ;
+&lt;&lt;&lt; ================= Extern ================= &gt;&gt;&gt;
 
-extern_proc_decl ::= { attr_prefix WS? } &quot;proc&quot; WS1 ident [ generic_params ]
-                     &quot;(&quot; WS? param_list? WS? &quot;)&quot;
-                     [ WS? &quot;-&gt;&quot; WS? type_expr ]
+extern_block ::= { attr_prefix WS? }
+                 "extern" WS1 extern_abi
+                 WS? "{"
+                 WS?
+                 extern_item*
+                 WS?
+                 "}"
+                 ;
+
+extern_item ::= extern_proc_decl
+              | extern_type_decl
+              | const_decl
+              ;
+
+extern_proc_decl ::= { attr_prefix WS? }
+                     "proc" WS1 ident
+                     [ generic_params ]
+                     "(" WS? param_list? WS? ")"
+                     [ WS? "-&gt;" WS? type_expr ]
                      WS? proc_suffix*
-                     WS? &quot;;&quot;
+                     stmt_term
                      ;
 
-extern_clause ::= &quot;extern&quot; WS1 extern_abi ;
-extern_abi ::= callconv | string_lit ;
-callconv ::= &quot;C&quot; | &quot;sysv64&quot; | &quot;win64&quot; | &quot;interrupt&quot; | &quot;naked&quot; ;
+extern_clause ::= "extern" WS1 extern_abi ;
 
-intrinsic_decl ::= { attr_prefix WS? } &quot;intrinsic&quot; WS1 ident [ generic_params ]
-                   &quot;(&quot; WS? param_list? WS? &quot;)&quot;
-                   [ WS? &quot;-&gt;&quot; WS? type_expr ]
-                   WS? &quot;;&quot;
+extern_abi ::= callconv
+             | string_lit
+             ;
+
+callconv ::= "C"
+           | "sysv64"
+           | "win64"
+           | "interrupt"
+           | "naked"
+           ;
+
+&lt;&lt;&lt; ================= Intrinsics ================= &gt;&gt;&gt;
+
+intrinsic_decl ::= { attr_prefix WS? }
+                   "intrinsic" WS1 ident
+                   [ generic_params ]
+                   "(" WS? param_list? WS? ")"
+                   [ WS? "-&gt;" WS? type_expr ]
+                   stmt_term
                    ;
 
-macro_decl ::= { attr_prefix WS? } &quot;macro&quot; WS1 ident &quot;(&quot; WS? macro_param_list? WS? &quot;)&quot; WS? block ;
-macro_param_list ::= macro_param { WS? &quot;,&quot; WS? macro_param } [ WS? &quot;,&quot; ] ;
-macro_param ::= ident [ WS? &quot;:&quot; WS? macro_kind ] ;
-macro_kind ::= &quot;expr&quot; | &quot;stmt&quot; | &quot;type&quot; | &quot;ident&quot; | &quot;block&quot; | &quot;item&quot; ;
+&lt;&lt;&lt; ================= Macros / Comptime ================= &gt;&gt;&gt;
 
-comptime_decl ::= &quot;comptime&quot; WS? block ;
-static_assert_decl ::= &quot;static_assert&quot; WS? &quot;(&quot; WS? expr [ WS? &quot;,&quot; WS? expr ] WS? &quot;)&quot; ;
-test_decl ::= { attr_prefix WS? } &quot;test&quot; WS1 string_lit WS? block ;
-bench_decl ::= { attr_prefix WS? } &quot;bench&quot; WS1 string_lit WS? block ;
-entry_decl ::= { attr_prefix WS? } &quot;entry&quot; WS1 ident WS1 &quot;at&quot; WS1 module_path WS? block ;
+macro_decl ::= { attr_prefix WS? }
+               "macro" WS1 ident
+               "(" WS? macro_param_list? WS? ")"
+               WS? block
+               ;
 
-visibility ::= &quot;pub&quot; | &quot;priv&quot; | &quot;pub&quot; WS? &quot;(&quot; WS? visibility_scope WS? &quot;)&quot; ;
-visibility_scope ::= &quot;package&quot; | &quot;module&quot; | &quot;super&quot; ;
+macro_param_list ::= macro_param
+                     { WS? "," WS? macro_param }
+                     [ WS? "," ]
+                     ;
 
-generic_params ::= &quot;[&quot; WS? generic_param_list? WS? &quot;]&quot; ;
-generic_param_list ::= generic_param { WS? &quot;,&quot; WS? generic_param } [ WS? &quot;,&quot; ] ;
-generic_param ::= ident [ WS? &quot;:&quot; WS? trait_bound ] [ WS? &quot;=&quot; WS? type_expr ]
-                | &quot;const&quot; WS1 ident WS? &quot;:&quot; WS? type_expr
-                | &quot;comptime&quot; WS1 ident WS? &quot;:&quot; WS? type_expr
+macro_param ::= ident [ WS? ":" WS? macro_kind ] ;
+
+macro_kind ::= "expr"
+             | "stmt"
+             | "type"
+             | "ident"
+             | "block"
+             | "item"
+             ;
+
+comptime_decl ::= "comptime" WS? block ;
+
+static_assert_decl ::= "static_assert"
+                       WS? "("
+                       WS? expr
+                       [ WS? "," WS? expr ]
+                       WS? ")"
+                       [ stmt_term ]
+                       ;
+
+test_decl ::= { attr_prefix WS? }
+              "test" WS1 string_lit
+              WS? block
+              ;
+
+bench_decl ::= { attr_prefix WS? }
+               "bench" WS1 string_lit
+               WS? block
+               ;
+
+&lt;&lt;&lt; ================= Entry ================= &gt;&gt;&gt;
+
+entry_decl ::= { attr_prefix WS? }
+               "entry" WS1 ident
+               WS1 "at" WS1 module_path
+               WS? block
+               ;
+
+&lt;&lt;&lt; ================= Visibility ================= &gt;&gt;&gt;
+
+visibility ::= "pub"
+             | "priv"
+             | "pub" WS? "(" WS? visibility_scope WS? ")"
+             ;
+
+visibility_scope ::= "package"
+                   | "module"
+                   | "super"
+                   ;
+
+&lt;&lt;&lt; ================= Generics ================= &gt;&gt;&gt;
+
+generic_params ::= "["
+                   WS?
+                   generic_param_list?
+                   WS?
+                   "]"
+                   ;
+
+generic_param_list ::= generic_param
+                       { WS? "," WS? generic_param }
+                       [ WS? "," ]
+                       ;
+
+generic_param ::= ident
+                  [ WS? ":" WS? trait_bound ]
+                  [ WS? "=" WS? type_expr ]
+
+                | "const" WS1 ident
+                  WS? ":" WS? type_expr
+
+                | "comptime" WS1 ident
+                  WS? ":" WS? type_expr
                 ;
 
-where_clause ::= &quot;where&quot; WS1 where_bounds ;
-where_bounds ::= where_bound { WS? &quot;,&quot; WS? where_bound } [ WS? &quot;,&quot; ] ;
-where_bound ::= type_expr WS? &quot;:&quot; WS? trait_bound
-              | type_expr WS? &quot;==&quot; WS? type_expr
+generic_args ::= "["
+                 WS?
+                 type_list?
+                 WS?
+                 "]"
+                 ;
+
+&lt;&lt;&lt; ================= Constraints ================= &gt;&gt;&gt;
+
+where_clause ::= "where" WS1 where_bounds ;
+
+where_bounds ::= where_bound
+                 { WS? "," WS? where_bound }
+                 [ WS? "," ]
+                 ;
+
+where_bound ::= type_expr WS? ":" WS? trait_bound
+              | type_expr WS? "==" WS? type_expr
               | expr WS? rel_op WS? expr
               ;
 
-trait_bound ::= type_expr { WS? &quot;+&quot; WS? type_expr } ;
+trait_bound ::= type_expr
+                { WS? "+" WS? type_expr }
+                ;
 
-param_list ::= param { WS? &quot;,&quot; WS? param } [ WS? &quot;,&quot; ] ;
-param ::= self_param | normal_param | variadic_param ;
-self_param ::= [ &quot;&amp;&quot; WS? ] [ &quot;mut&quot; WS1 ] &quot;self&quot; ;
-normal_param ::= [ param_mode WS1 ] pattern [ WS? &quot;:&quot; WS? type_expr ] [ WS? &quot;=&quot; WS? expr ] ;
-variadic_param ::= &quot;...&quot; | ident WS? &quot;:&quot; WS? &quot;...&quot; type_expr ;
-param_mode ::= &quot;mut&quot; | &quot;owned&quot; | &quot;borrow&quot; | &quot;move&quot; ;
+&lt;&lt;&lt; ================= Parameters ================= &gt;&gt;&gt;
 
-effects_clause ::= &quot;effects&quot; WS? &quot;(&quot; WS? ident_list? WS? &quot;)&quot; ;
-requires_clause ::= &quot;requires&quot; WS? &quot;(&quot; WS? capability_list? WS? &quot;)&quot; ;
-capability_list ::= capability { WS? &quot;,&quot; WS? capability } [ WS? &quot;,&quot; ] ;
-capability ::= ident { &quot;.&quot; ident } ;
+param_list ::= param
+               { WS? "," WS? param }
+               [ WS? "," ]
+               ;
 
-module_path ::= relative? package_parts ;
-package_path ::= relative? package_parts ;
-relative ::= { &quot;.&quot; } ;
-package_parts ::= ident { ( &quot;/&quot; | &quot;.&quot; | &quot;::&quot; ) ident } ;
-ident_list ::= ident { WS? &quot;,&quot; WS? ident } [ WS? &quot;,&quot; ] ;
+param ::= self_param
+        | normal_param
+        | variadic_param
+        ;
+
+self_param ::= [ "&amp;" WS? ]
+               [ "mut" WS1 ]
+               "self"
+               ;
+
+normal_param ::= [ param_mode WS1 ]
+                 pattern
+                 [ WS? ":" WS? type_expr ]
+                 [ WS? "=" WS? expr ]
+                 ;
+
+variadic_param ::= "..."
+                 | ident WS? ":" WS? "..." type_expr
+                 ;
+
+param_mode ::= "mut"
+             | "owned"
+             | "borrow"
+             | "move"
+             ;
+
+&lt;&lt;&lt; ================= Effects / Capabilities ================= &gt;&gt;&gt;
+
+effects_clause ::= "effects"
+                   WS? "("
+                   WS? ident_list?
+                   WS? ")"
+                   ;
+
+requires_clause ::= "requires"
+                    WS? "("
+                    WS? capability_list?
+                    WS? ")"
+                    ;
+
+capability_list ::= capability
+                    { WS? "," WS? capability }
+                    [ WS? "," ]
+                    ;
+
+capability ::= ident { "." ident } ;
 
 &lt;&lt;&lt; ================= Compiler Declarations ================= &gt;&gt;&gt;
 
-compiler_decl ::= { attr_prefix WS? } &quot;compiler&quot; WS1 ident WS? &quot;{&quot; WS? compiler_items? WS? &quot;}&quot; ;
-compiler_items ::= compiler_item { WS? compiler_item } ;
+compiler_decl ::= { attr_prefix WS? }
+                  "compiler" WS1 ident
+                  WS? "{"
+                  WS?
+                  compiler_items?
+                  WS?
+                  "}"
+                  ;
+
+compiler_items ::= compiler_item
+                   { WS? compiler_item }
+                   ;
 
 compiler_item ::= compiler_phase_decl
                 | compiler_stage_decl
@@ -235,217 +686,508 @@ compiler_item ::= compiler_phase_decl
                 | compiler_target_decl
                 ;
 
-compiler_phase_decl ::= &quot;phase&quot; WS1 ident WS? &quot;{&quot; WS?
-                        &quot;input&quot; WS? &quot;:&quot; WS? type_expr WS? &quot;;&quot;
-                        &quot;output&quot; WS? &quot;:&quot; WS? type_expr WS? &quot;;&quot;
-                        [ &quot;errors&quot; WS? &quot;:&quot; WS? type_expr WS? &quot;;&quot; ]
-                        WS? &quot;}&quot; ;
+compiler_phase_decl ::= "phase" WS1 ident
+                        WS? "{"
+                        WS?
+                        "input" WS? ":" WS? type_expr [ stmt_term ]
+                        "output" WS? ":" WS? type_expr [ stmt_term ]
+                        [ "errors" WS? ":" WS? type_expr [ stmt_term ] ]
+                        WS?
+                        "}"
+                        ;
 
-compiler_stage_decl ::= &quot;stage&quot; WS1 ident WS? &quot;:&quot; WS? ident_list WS? &quot;;&quot; ;
-compiler_artifact_decl ::= &quot;artifact&quot; WS1 ident WS? &quot;:&quot; WS? type_expr WS? &quot;;&quot; ;
+compiler_stage_decl ::= "stage" WS1 ident
+                        WS? ":" WS? ident_list
+                        [ stmt_term ]
+                        ;
 
-compiler_pipeline_decl ::= &quot;pipeline&quot; WS1 ident WS? &quot;{&quot; WS? pipeline_step* WS? &quot;}&quot; ;
-pipeline_step ::= &quot;run&quot; WS1 ident [ WS? &quot;as&quot; WS? ident ] WS? &quot;;&quot;
-                | &quot;dump&quot; WS1 ident WS? &quot;;&quot;
-                | &quot;verify&quot; WS1 ident WS? &quot;;&quot;
+compiler_artifact_decl ::= "artifact" WS1 ident
+                           WS? ":" WS? type_expr
+                           [ stmt_term ]
+                           ;
+
+compiler_pipeline_decl ::= "pipeline" WS1 ident
+                           WS? "{"
+                           WS?
+                           pipeline_step*
+                           WS?
+                           "}"
+                           ;
+
+pipeline_step ::= "run" WS1 ident
+                  [ WS1 "as" WS1 ident ]
+                  [ stmt_term ]
+
+                | "dump" WS1 ident
+                  [ stmt_term ]
+
+                | "verify" WS1 ident
+                  [ stmt_term ]
                 ;
 
-compiler_cache_decl ::= &quot;cache&quot; WS1 ident WS? &quot;{&quot; WS? cache_item* WS? &quot;}&quot; ;
-cache_item ::= &quot;key&quot; WS? &quot;:&quot; WS? type_expr WS? &quot;;&quot;
-             | &quot;value&quot; WS? &quot;:&quot; WS? type_expr WS? &quot;;&quot;
-             | &quot;strategy&quot; WS? &quot;:&quot; WS? ident WS? &quot;;&quot;
+compiler_cache_decl ::= "cache" WS1 ident
+                        WS? "{"
+                        WS?
+                        cache_item*
+                        WS?
+                        "}"
+                        ;
+
+cache_item ::= "key" WS? ":" WS? type_expr [ stmt_term ]
+             | "value" WS? ":" WS? type_expr [ stmt_term ]
+             | "strategy" WS? ":" WS? ident [ stmt_term ]
              ;
 
-compiler_target_decl ::= &quot;target&quot; WS1 ident WS? &quot;{&quot; WS? target_item* WS? &quot;}&quot; ;
-target_item ::= ident WS? &quot;:&quot; WS? expr WS? &quot;;&quot; ;
+compiler_target_decl ::= "target" WS1 ident
+                         WS? "{"
+                         WS?
+                         target_item*
+                         WS?
+                         "}"
+                         ;
 
-query_decl ::= { attr_prefix WS? } &quot;query&quot; WS1 ident
-               &quot;(&quot; WS? param_list? WS? &quot;)&quot;
-               WS? &quot;-&gt;&quot; WS? type_expr
-               WS? query_body ;
+target_item ::= ident
+                WS? ":" WS? expr
+                [ stmt_term ]
+                ;
 
-query_body ::= block | &quot;;&quot; ;
+&lt;&lt;&lt; ================= Queries ================= &gt;&gt;&gt;
 
-pass_decl ::= { attr_prefix WS? } &quot;pass&quot; WS1 ident WS? &quot;{&quot; WS? pass_items? WS? &quot;}&quot; ;
-pass_items ::= pass_item { WS? pass_item } ;
-pass_item ::= &quot;input&quot; WS? &quot;:&quot; WS? type_expr WS? &quot;;&quot;
-            | &quot;output&quot; WS? &quot;:&quot; WS? type_expr WS? &quot;;&quot;
-            | &quot;requires&quot; WS? &quot;:&quot; WS? ident_list WS? &quot;;&quot;
-            | &quot;invalidates&quot; WS? &quot;:&quot; WS? ident_list WS? &quot;;&quot;
+query_decl ::= { attr_prefix WS? }
+               "query" WS1 ident
+               "(" WS? param_list? WS? ")"
+               WS? "-&gt;" WS? type_expr
+               WS? query_body
+               ;
+
+query_body ::= block
+             | stmt_term
+             ;
+
+&lt;&lt;&lt; ================= Passes ================= &gt;&gt;&gt;
+
+pass_decl ::= { attr_prefix WS? }
+              "pass" WS1 ident
+              WS? "{"
+              WS?
+              pass_items?
+              WS?
+              "}"
+              ;
+
+pass_items ::= pass_item
+               { WS? pass_item }
+               ;
+
+pass_item ::= "input" WS? ":" WS? type_expr [ stmt_term ]
+            | "output" WS? ":" WS? type_expr [ stmt_term ]
+            | "requires" WS? ":" WS? ident_list [ stmt_term ]
+            | "invalidates" WS? ":" WS? ident_list [ stmt_term ]
             | proc_decl
             ;
 
-backend_decl ::= { attr_prefix WS? } &quot;backend&quot; WS1 ident WS? &quot;{&quot; WS? backend_items? WS? &quot;}&quot; ;
-backend_items ::= backend_item { WS? backend_item } ;
-backend_item ::= &quot;target&quot; WS? &quot;:&quot; WS? string_lit WS? &quot;;&quot;
-               | &quot;format&quot; WS? &quot;:&quot; WS? backend_format WS? &quot;;&quot;
-               | &quot;emits&quot; WS? &quot;:&quot; WS? backend_output WS? &quot;;&quot;
-               | &quot;requires&quot; WS? &quot;:&quot; WS? ident_list WS? &quot;;&quot;
+&lt;&lt;&lt; ================= Backends ================= &gt;&gt;&gt;
+
+backend_decl ::= { attr_prefix WS? }
+                 "backend" WS1 ident
+                 WS? "{"
+                 WS?
+                 backend_items?
+                 WS?
+                 "}"
+                 ;
+
+backend_items ::= backend_item
+                  { WS? backend_item }
+                  ;
+
+backend_item ::= "target" WS? ":" WS? string_lit [ stmt_term ]
+               | "format" WS? ":" WS? backend_format [ stmt_term ]
+               | "emits" WS? ":" WS? backend_output [ stmt_term ]
+               | "requires" WS? ":" WS? ident_list [ stmt_term ]
                | proc_decl
                ;
 
-backend_format ::= &quot;c&quot; | &quot;llvm&quot; | &quot;asm&quot; | &quot;object&quot; | &quot;wasm&quot; | &quot;ir&quot; ;
-backend_output ::= &quot;source&quot; | &quot;assembly&quot; | &quot;object&quot; | &quot;executable&quot; | &quot;library&quot; ;
+backend_format ::= "c"
+                 | "llvm"
+                 | "asm"
+                 | "object"
+                 | "wasm"
+                 | "ir"
+                 ;
 
-diagnostic_decl ::= { attr_prefix WS? } &quot;diagnostic&quot; WS1 diagnostic_code WS? &quot;{&quot; WS? diagnostic_items? WS? &quot;}&quot; ;
-diagnostic_code ::= ident | string_lit ;
-diagnostic_items ::= diagnostic_item { WS? diagnostic_item } ;
+backend_output ::= "source"
+                 | "assembly"
+                 | "object"
+                 | "executable"
+                 | "library"
+                 ;
 
-diagnostic_item ::= &quot;level&quot; WS? &quot;:&quot; WS? diagnostic_level WS? &quot;;&quot;
-                  | &quot;message&quot; WS? &quot;:&quot; WS? string_lit WS? &quot;;&quot;
-                  | &quot;label&quot; WS? &quot;:&quot; WS? string_lit WS? &quot;;&quot;
-                  | &quot;help&quot; WS? &quot;:&quot; WS? string_lit WS? &quot;;&quot;
-                  | &quot;note&quot; WS? &quot;:&quot; WS? string_lit WS? &quot;;&quot;
-                  | &quot;suggest&quot; WS? &quot;:&quot; WS? string_lit WS? &quot;;&quot;
+&lt;&lt;&lt; ================= Diagnostics ================= &gt;&gt;&gt;
+
+diagnostic_decl ::= { attr_prefix WS? }
+                    "diagnostic" WS1 diagnostic_code
+                    WS? "{"
+                    WS?
+                    diagnostic_items?
+                    WS?
+                    "}"
+                    ;
+
+diagnostic_code ::= ident
+                  | string_lit
                   ;
 
-diagnostic_level ::= &quot;error&quot; | &quot;warning&quot; | &quot;note&quot; | &quot;help&quot; | &quot;fatal&quot; ;
+diagnostic_items ::= diagnostic_item
+                     { WS? diagnostic_item }
+                     ;
+
+diagnostic_item ::= "level" WS? ":" WS? diagnostic_level [ stmt_term ]
+                  | "message" WS? ":" WS? string_lit [ stmt_term ]
+                  | "label" WS? ":" WS? string_lit [ stmt_term ]
+                  | "help" WS? ":" WS? string_lit [ stmt_term ]
+                  | "note" WS? ":" WS? string_lit [ stmt_term ]
+                  | "suggest" WS? ":" WS? string_lit [ stmt_term ]
+                  ;
+
+diagnostic_level ::= "error"
+                   | "warning"
+                   | "note"
+                   | "help"
+                   | "fatal"
+                   ;
 
 &lt;&lt;&lt; ================= Attributes ================= &gt;&gt;&gt;
 
-attr_prefix ::= outer_attribute | doc_comment | docstring ;
-inner_attribute ::= &quot;#![&quot; attr_path [ &quot;(&quot; WS? attr_arg_list? WS? &quot;)&quot; ] &quot;]&quot; ;
-outer_attribute ::= &quot;#[&quot; attr_path [ &quot;(&quot; WS? attr_arg_list? WS? &quot;)&quot; ] &quot;]&quot; ;
-doc_comment ::= &quot;///&quot; { ~NEWLINE ANY } ;
+attr_prefix ::= outer_attribute
+              | doc_comment
+              | docstring
+              ;
+
+inner_attribute ::= "#!["
+                    attr_path
+                    [ "(" WS? attr_arg_list? WS? ")" ]
+                    "]"
+                    ;
+
+outer_attribute ::= "#["
+                    attr_path
+                    [ "(" WS? attr_arg_list? WS? ")" ]
+                    "]"
+                    ;
+
+doc_comment ::= "///" { ~NEWLINE ANY } ;
+
 docstring ::= raw_string_lit ;
 
-attr_path ::= ident { &quot;.&quot; ident } ;
-attr_arg_list ::= attr_arg { WS? &quot;,&quot; WS? attr_arg } [ WS? &quot;,&quot; ] ;
+attr_path ::= ident { "." ident } ;
+
+attr_arg_list ::= attr_arg
+                  { WS? "," WS? attr_arg }
+                  [ WS? "," ]
+                  ;
+
 attr_arg ::= ident
            | string_lit
            | int_lit
            | bool_lit
-           | ident WS? &quot;=&quot; WS? literal
+           | ident WS? "=" WS? literal
            ;
 
 &lt;&lt;&lt; ================= Blocks / Statements ================= &gt;&gt;&gt;
 
-block ::= &quot;{&quot; WS? { stmt WS? } &quot;}&quot; ;
+block ::= "{"
+          WS?
+          { stmt WS? }
+          "}"
+          ;
 
-stmt ::= local_const_stmt stmt_end
-       | let_stmt stmt_end
-       | set_stmt stmt_end
-       | give_stmt stmt_end
-       | try_stmt stmt_end
+stmt ::= local_const_stmt stmt_term?
+       | let_stmt stmt_term?
+       | set_stmt stmt_term?
+       | give_stmt stmt_term?
+       | try_stmt stmt_term?
        | defer_stmt
-       | asm_stmt stmt_end
+       | asm_stmt stmt_term?
        | unsafe_stmt
-       | emit_stmt stmt_end
-       | assert_stmt stmt_end
-       | panic_stmt stmt_end
-       | unreachable_stmt stmt_end
+       | emit_stmt stmt_term?
+       | assert_stmt stmt_term?
+       | panic_stmt stmt_term?
+       | unreachable_stmt stmt_term?
        | if_stmt
        | while_stmt
        | loop_stmt
        | for_stmt
-       | break_stmt stmt_end
-       | continue_stmt stmt_end
+       | break_stmt stmt_term?
+       | continue_stmt stmt_term?
        | select_stmt
        | match_stmt
        | when_match_stmt
        | with_stmt
        | critical_stmt
-       | expr_stmt stmt_end
+       | expr_stmt stmt_term?
        ;
 
-stmt_end ::= WS? &quot;;&quot; ;
+stmt_term ::= WS? ";" ;
 
-local_const_stmt ::= &quot;const&quot; WS1 ident [ WS? &quot;:&quot; WS? type_expr ] WS? &quot;=&quot; WS? expr ;
-let_stmt ::= &quot;let&quot; WS1 [ &quot;mut&quot; WS1 ] pattern [ WS? &quot;:&quot; WS? type_expr ] WS? &quot;=&quot; WS? expr ;
-&lt;&lt;&lt; assign_target stays intentionally syntactic here; projection validity and aliasing
-    are enforced later by sema/typeck/borrowck on structured HIR/MIR places. &gt;&gt;&gt;
-set_stmt ::= &quot;set&quot; WS1 assign_target WS? assign_op WS? expr ;
+local_const_stmt ::= "const" WS1 ident
+                     [ WS? ":" WS? type_expr ]
+                     WS? "=" WS? expr
+                     ;
+
+let_stmt ::= "let" WS1
+             [ "mut" WS1 ]
+             pattern
+             [ WS? ":" WS? type_expr ]
+             WS? "=" WS? expr
+             ;
+
+set_stmt ::= "set" WS1
+             assign_target
+             WS? assign_op WS?
+             expr
+             ;
+
 assign_target ::= unary_expr ;
 
-give_stmt ::= &quot;give&quot; [ WS1 expr ] ;
-try_stmt ::= &quot;try&quot; WS1 expr ;
-defer_stmt ::= &quot;defer&quot; WS? block ;
+give_stmt ::= "give" [ WS1 expr ] ;
 
-asm_stmt ::= &quot;asm&quot; WS? &quot;(&quot; WS? asm_arg_list? WS? &quot;)&quot; ;
-asm_arg_list ::= asm_arg { WS? &quot;,&quot; WS? asm_arg } [ WS? &quot;,&quot; ] ;
-asm_arg ::= string_lit | ident WS? &quot;(&quot; WS? arg_list? WS? &quot;)&quot; | ident WS? &quot;:&quot; WS? expr ;
+try_stmt ::= "try" WS1 expr ;
 
-unsafe_stmt ::= &quot;unsafe&quot; WS? block ;
+defer_stmt ::= "defer" WS? block ;
 
-emit_stmt ::= &quot;emit&quot; WS1 expr ;
-assert_stmt ::= &quot;assert&quot; WS1 expr [ WS? &quot;,&quot; WS? expr ] ;
-panic_stmt ::= &quot;panic&quot; WS1 expr ;
-unreachable_stmt ::= &quot;unreachable&quot; ;
+asm_stmt ::= "asm"
+             WS? "("
+             WS? asm_arg_list?
+             WS? ")"
+             ;
 
-if_stmt ::= &quot;if&quot; WS1 expr WS? block
-            { WS? &quot;elif&quot; WS1 expr WS? block }
-            [ WS? &quot;else&quot; WS? block ] ;
+asm_arg_list ::= asm_arg
+                 { WS? "," WS? asm_arg }
+                 [ WS? "," ]
+                 ;
 
-while_stmt ::= &quot;while&quot; WS1 expr WS? block ;
-loop_stmt ::= &quot;loop&quot; WS? block ;
-for_stmt ::= &quot;for&quot; WS1 pattern WS1 &quot;in&quot; WS1 expr WS? block ;
+asm_arg ::= string_lit
+          | ident WS? "(" WS? arg_list? WS? ")"
+          | ident WS? ":" WS? expr
+          ;
 
-break_stmt ::= &quot;break&quot; [ WS1 expr ] ;
-continue_stmt ::= &quot;continue&quot; ;
+unsafe_stmt ::= "unsafe" WS? block ;
 
-select_stmt ::= &quot;select&quot; WS1 expr WS? &quot;{&quot; WS?
-                { &quot;when&quot; WS1 pattern WS? block WS? }
-                [ &quot;else&quot; WS? block ]
-                WS? &quot;}&quot; ;
+emit_stmt ::= "emit" WS1 expr ;
 
-match_stmt ::= &quot;match&quot; WS1 expr WS?
-               &quot;{&quot; WS?
-               { &quot;case&quot; WS1 pattern [ WS1 &quot;if&quot; WS1 expr ] WS? match_arm_body WS? }
-               [ WS? &quot;else&quot; WS? match_arm_body ]
-               WS? &quot;}&quot; ;
+assert_stmt ::= "assert" WS1 expr
+                [ WS? "," WS? expr ]
+                ;
 
-match_arm_body ::= block | &quot;=&gt;&quot; WS? expr WS? &quot;;&quot; ;
+panic_stmt ::= "panic" WS1 expr ;
 
-when_match_stmt ::= &quot;when&quot; WS1 expr WS1 &quot;is&quot; WS1 pattern WS? block ;
-with_stmt ::= &quot;with&quot; WS1 expr [ WS1 &quot;as&quot; WS1 pattern ] WS? block ;
-critical_stmt ::= &quot;critical&quot; WS? block ;
+unreachable_stmt ::= "unreachable" ;
+
+if_stmt ::= "if" WS1 expr
+            WS? block
+            { WS? "elif" WS1 expr WS? block }
+            [ WS? "else" WS? block ]
+            ;
+
+while_stmt ::= "while" WS1 expr WS? block ;
+
+loop_stmt ::= "loop" WS? block ;
+
+for_stmt ::= "for" WS1 pattern
+             WS1 "in" WS1 expr
+             WS? block
+             ;
+
+break_stmt ::= "break" [ WS1 expr ] ;
+
+continue_stmt ::= "continue" ;
+
+select_stmt ::= "select" WS1 expr
+                WS? "{"
+                WS?
+                { "when" WS1 pattern WS? block WS? }
+                [ "else" WS? block ]
+                WS?
+                "}"
+                ;
+
+match_stmt ::= "match" WS1 expr
+               WS? "{"
+               WS?
+               {
+                   "case" WS1 pattern
+                   [ WS1 "if" WS1 expr ]
+                   WS? match_arm_body
+                   WS?
+               }
+               [ "else" WS? match_arm_body ]
+               WS?
+               "}"
+               ;
+
+match_arm_body ::= block
+                 | "=&gt;" WS? expr [ stmt_term ]
+                 ;
+
+when_match_stmt ::= "when" WS1 expr
+                    WS1 "is" WS1 pattern
+                    WS? block
+                    ;
+
+with_stmt ::= "with" WS1 expr
+              [ WS1 "as" WS1 pattern ]
+              WS? block
+              ;
+
+critical_stmt ::= "critical" WS? block ;
+
 expr_stmt ::= expr ;
 
 &lt;&lt;&lt; ================= Expressions ================= &gt;&gt;&gt;
 
 expr ::= assign_expr ;
 
-assign_expr ::= ternary_expr [ WS? assign_op WS? assign_expr ] ;
-assign_op ::= &quot;=&quot; | &quot;+=&quot; | &quot;-=&quot; | &quot;*=&quot; | &quot;/=&quot; | &quot;%=&quot; | &quot;&amp;=&quot; | &quot;|=&quot; | &quot;^=&quot; | &quot;&lt;&lt;=&quot; | &quot;&gt;&gt;=&quot; ;
+assign_expr ::= ternary_expr
+                [ WS? assign_op WS? assign_expr ]
+                ;
 
-ternary_expr ::= coalesce_expr [ WS? &quot;?&quot; WS? expr WS? &quot;:&quot; WS? expr ] ;
-coalesce_expr ::= range_expr { WS? &quot;??&quot; WS? range_expr } ;
-range_expr ::= or_expr [ WS? ( &quot;..&quot; | &quot;..=&quot; ) WS? or_expr ] ;
+assign_op ::= "="
+            | "+="
+            | "-="
+            | "*="
+            | "/="
+            | "%="
+            | "&amp;="
+            | "|="
+            | "^="
+            | "&lt;&lt;="
+            | "&gt;&gt;="
+            ;
 
-or_expr ::= and_expr { WS? ( &quot;or&quot; | &quot;||&quot; ) WS? and_expr } ;
-and_expr ::= bit_or_expr { WS? ( &quot;and&quot; | &quot;&amp;&amp;&quot; ) WS? bit_or_expr } ;
+ternary_expr ::= coalesce_expr
+                 [
+                     WS? "?"
+                     WS? expr
+                     WS? ":"
+                     WS? expr
+                 ]
+                 ;
 
-bit_or_expr ::= bit_xor_expr { WS? &quot;|&quot; WS? bit_xor_expr } ;
-bit_xor_expr ::= bit_and_expr { WS? &quot;^&quot; WS? bit_and_expr } ;
-bit_and_expr ::= eq_expr { WS? &quot;&amp;&quot; WS? eq_expr } ;
+coalesce_expr ::= range_expr
+                  { WS? "??" WS? range_expr }
+                  ;
 
-eq_expr ::= rel_expr { WS? ( &quot;==&quot; | &quot;!=&quot; ) WS? rel_expr } ;
-rel_expr ::= shift_expr { WS? rel_op WS? shift_expr } ;
-rel_op ::= &quot;&lt;&quot; | &quot;&lt;=&quot; | &quot;&gt;&quot; | &quot;&gt;=&quot; | &quot;in&quot; | &quot;not&quot; WS1 &quot;in&quot; ;
+range_expr ::= or_expr
+               [
+                   WS? ( ".." | "..=" )
+                   WS? or_expr
+               ]
+               ;
 
-shift_expr ::= add_expr { WS? ( &quot;&lt;&lt;&quot; | &quot;&gt;&gt;&quot; ) WS? add_expr } ;
-add_expr ::= mul_expr { WS? ( &quot;+&quot; | &quot;-&quot; ) WS? mul_expr } ;
-mul_expr ::= cast_expr { WS? ( &quot;*&quot; | &quot;/&quot; | &quot;%&quot; ) WS? cast_expr } ;
+or_expr ::= and_expr
+            { WS? ( "or" | "||" ) WS? and_expr }
+            ;
 
-cast_expr ::= unary_expr { WS? ( &quot;as&quot; WS? type_expr | &quot;is&quot; WS? pattern | &quot;is&quot; WS1 &quot;not&quot; WS1 pattern ) } ;
+and_expr ::= bit_or_expr
+             { WS? ( "and" | "&amp;&amp;" ) WS? bit_or_expr }
+             ;
 
-&lt;&lt;&lt; unary borrow and move syntax are accepted at parse time; whether a use is
-    actually a copy or a move is decided later from inferred types. &gt;&gt;&gt;
-unary_expr ::= ( &quot;not&quot; | &quot;-&quot; | &quot;~&quot; | &quot;*&quot; | &quot;&amp;&quot; | &quot;move&quot; | &quot;await&quot; ) WS? unary_expr
+bit_or_expr ::= bit_xor_expr
+                { WS? "|" WS? bit_xor_expr }
+                ;
+
+bit_xor_expr ::= bit_and_expr
+                 { WS? "^" WS? bit_and_expr }
+                 ;
+
+bit_and_expr ::= eq_expr
+                 { WS? "&amp;" WS? eq_expr }
+                 ;
+
+eq_expr ::= rel_expr
+            { WS? ( "==" | "!=" ) WS? rel_expr }
+            ;
+
+rel_expr ::= shift_expr
+             { WS? rel_op WS? shift_expr }
+             ;
+
+rel_op ::= "&lt;"
+         | "&lt;="
+         | "&gt;"
+         | "&gt;="
+         | "in"
+         | "not" WS1 "in"
+         ;
+
+shift_expr ::= add_expr
+               { WS? ( "&lt;&lt;" | "&gt;&gt;" ) WS? add_expr }
+               ;
+
+add_expr ::= mul_expr
+             { WS? ( "+" | "-" ) WS? mul_expr }
+             ;
+
+mul_expr ::= cast_expr
+             { WS? ( "*" | "/" | "%" ) WS? cast_expr }
+             ;
+
+cast_expr ::= unary_expr
+              {
+                  WS?
+                  (
+                      "as" WS? type_expr
+                    | "is" WS? pattern
+                    | "is" WS1 "not" WS1 pattern
+                  )
+              }
+              ;
+
+unary_expr ::= (
+                   "not"
+                 | "-"
+                 | "~"
+                 | "*"
+                 | "&amp;"
+                 | "move"
+                 | "await"
+               )
+               WS? unary_expr
              | postfix_expr
              ;
 
-&lt;&lt;&lt; postfix chains define the full place surface used later by ownership and
-    borrow analysis: field projection, indexing, call, try and await suffixes. &gt;&gt;&gt;
-postfix_expr ::= primary { call_suffix | member_suffix | index_suffix | try_suffix | await_suffix } ;
-call_suffix ::= &quot;(&quot; WS? arg_list? WS? &quot;)&quot; ;
-member_suffix ::= &quot;.&quot; ident ;
-index_suffix ::= &quot;[&quot; WS? index_expr WS? &quot;]&quot; ;
-try_suffix ::= &quot;?&quot; ;
-await_suffix ::= &quot;.&quot; &quot;await&quot; ;
+postfix_expr ::= primary
+                 {
+                     call_suffix
+                   | member_suffix
+                   | index_suffix
+                   | try_suffix
+                   | await_suffix
+                 }
+                 ;
 
-index_expr ::= expr | slice_expr ;
-slice_expr ::= [ expr ] &quot;:&quot; [ expr ] [ &quot;:&quot; expr ] ;
+call_suffix ::= "(" WS? arg_list? WS? ")" ;
+
+member_suffix ::= "." ident ;
+
+index_suffix ::= "[" WS? index_expr WS? "]" ;
+
+try_suffix ::= "?" ;
+
+await_suffix ::= "." "await" ;
+
+index_expr ::= expr
+             | slice_expr
+             ;
+
+slice_expr ::= [ expr ]
+               ":"
+               [ expr ]
+               [ ":" expr ]
+               ;
+
+&lt;&lt;&lt; ================= Primary Expressions ================= &gt;&gt;&gt;
 
 primary ::= literal
           | builtin_expr
@@ -463,69 +1205,181 @@ primary ::= literal
           | lambda_expr
           | unsafe_expr
           | block
-          | &quot;(&quot; WS? expr WS? &quot;)&quot;
+          | "(" WS? expr WS? ")"
           ;
 
-path_expr ::= ident { ( &quot;.&quot; | &quot;::&quot; ) ident } ;
+path_expr ::= value_path { "." ident } ;
 
-arg_list ::= arg { WS? &quot;,&quot; WS? arg } [ WS? &quot;,&quot; ] ;
-arg ::= ident WS? &quot;:&quot; WS? expr | expr ;
+value_path ::= ident { "::" ident } ;
 
-tuple_lit ::= &quot;(&quot; WS? expr WS? &quot;,&quot; WS? expr { WS? &quot;,&quot; WS? expr } [ WS? &quot;,&quot; ] WS? &quot;)&quot; ;
-set_lit ::= &quot;set&quot; WS? &quot;{&quot; WS? arg_list? WS? &quot;}&quot; ;
-
-map_lit ::= &quot;map&quot; WS? &quot;{&quot; WS? map_items? WS? &quot;}&quot; ;
-map_items ::= map_item { WS? &quot;,&quot; WS? map_item } [ WS? &quot;,&quot; ] ;
-map_item ::= expr WS? &quot;:&quot; WS? expr ;
-
-bytes_lit ::= &quot;b&quot; string_lit ;
-
-resource_lit ::= &quot;resource&quot; WS? &quot;{&quot; WS? resource_items? WS? &quot;}&quot; ;
-resource_items ::= resource_item { WS? &quot;,&quot; WS? resource_item } [ WS? &quot;,&quot; ] ;
-resource_item ::= ident WS? &quot;:&quot; WS? expr ;
-
-struct_lit ::= type_path WS? &quot;{&quot; WS? field_init_list? WS? &quot;}&quot; ;
-type_path ::= ident { ( &quot;.&quot; | &quot;::&quot; ) ident } ;
-field_init_list ::= field_init { WS? &quot;,&quot; WS? field_init } [ WS? &quot;,&quot; ] ;
-field_init ::= ident WS? &quot;:&quot; WS? expr
-             | ident
-             | &quot;..&quot; expr
+arg_list ::= arg
+             { WS? "," WS? arg }
+             [ WS? "," ]
              ;
 
-if_expr ::= &quot;if&quot; WS1 expr WS? block
-            { WS? &quot;elif&quot; WS1 expr WS? block }
-            [ WS? &quot;else&quot; WS? block ] ;
+arg ::= ident WS? ":" WS? expr
+      | expr
+      ;
 
-proc_expr ::= { attr_prefix WS? } proc_modifier* &quot;proc&quot; WS? &quot;(&quot; WS? param_list? WS? &quot;)&quot;
-              [ WS? &quot;-&gt;&quot; WS? type_expr ]
+&lt;&lt;&lt; ================= Structured Literals ================= &gt;&gt;&gt;
+
+struct_lit ::= type_path
+               WS? "{"
+               WS?
+               field_init_list?
+               WS?
+               "}"
+               ;
+
+field_init_list ::= field_init
+                    { WS? "," WS? field_init }
+                    [ WS? "," ]
+                    ;
+
+field_init ::= ident WS? ":" WS? expr
+             | ident
+             | ".." expr
+             ;
+
+tuple_lit ::= "("
+              WS? expr
+              WS? ","
+              WS? expr
+              { WS? "," WS? expr }
+              [ WS? "," ]
+              WS?
+              ")"
+              ;
+
+set_lit ::= "set"
+            WS? "{"
+            WS? arg_list?
+            WS? "}"
+            ;
+
+map_lit ::= "map"
+            WS? "{"
+            WS? map_items?
+            WS? "}"
+            ;
+
+map_items ::= map_item
+              { WS? "," WS? map_item }
+              [ WS? "," ]
+              ;
+
+map_item ::= expr WS? ":" WS? expr ;
+
+bytes_lit ::= "b" string_lit ;
+
+resource_lit ::= "resource"
+                 WS? "{"
+                 WS? resource_items?
+                 WS? "}"
+                 ;
+
+resource_items ::= resource_item
+                   { WS? "," WS? resource_item }
+                   [ WS? "," ]
+                   ;
+
+resource_item ::= ident WS? ":" WS? expr ;
+
+&lt;&lt;&lt; ================= Expression Forms ================= &gt;&gt;&gt;
+
+if_expr ::= "if" WS1 expr
+            WS? block
+            { WS? "elif" WS1 expr WS? block }
+            [ WS? "else" WS? block ]
+            ;
+
+proc_expr ::= { attr_prefix WS? }
+              proc_modifier*
+              "proc"
+              WS? "("
+              WS? param_list?
+              WS? ")"
+              [ WS? "-&gt;" WS? type_expr ]
               WS? proc_suffix*
-              WS? block ;
+              WS? block
+              ;
 
-match_expr ::= &quot;match&quot; WS1 expr WS?
-               &quot;{&quot; WS?
-               { &quot;case&quot; WS1 pattern [ WS1 &quot;if&quot; WS1 expr ] WS? match_arm_body WS? }
-               [ WS? &quot;else&quot; WS? match_arm_body ]
-               WS? &quot;}&quot; ;
+match_expr ::= "match" WS1 expr
+               WS? "{"
+               WS?
+               {
+                   "case" WS1 pattern
+                   [ WS1 "if" WS1 expr ]
+                   WS? match_arm_body
+                   WS?
+               }
+               [ "else" WS? match_arm_body ]
+               WS?
+               "}"
+               ;
 
-lambda_expr ::= &quot;|&quot; WS? param_list? WS? &quot;|&quot; WS? ( expr | block ) ;
-unsafe_expr ::= &quot;unsafe&quot; WS? block ;
+lambda_expr ::= "|"
+                WS? param_list?
+                WS? "|"
+                WS?
+                ( expr | block )
+                ;
 
-builtin_expr ::= sizeof_expr | alignof_expr | offsetof_expr | typeof_expr | nameof_expr ;
-sizeof_expr ::= &quot;sizeof&quot; WS? &quot;(&quot; WS? ( type_expr | expr ) WS? &quot;)&quot; ;
-alignof_expr ::= &quot;alignof&quot; WS? &quot;(&quot; WS? type_expr WS? &quot;)&quot; ;
-offsetof_expr ::= &quot;offsetof&quot; WS? &quot;(&quot; WS? type_expr WS? &quot;,&quot; WS? ident WS? &quot;)&quot; ;
-typeof_expr ::= &quot;typeof&quot; WS? &quot;(&quot; WS? expr WS? &quot;)&quot; ;
-nameof_expr ::= &quot;nameof&quot; WS? &quot;(&quot; WS? path_expr WS? &quot;)&quot; ;
+unsafe_expr ::= "unsafe" WS? block ;
+
+&lt;&lt;&lt; ================= Builtins ================= &gt;&gt;&gt;
+
+builtin_expr ::= sizeof_expr
+               | alignof_expr
+               | offsetof_expr
+               | typeof_expr
+               | nameof_expr
+               ;
+
+sizeof_expr ::= "sizeof"
+                WS? "("
+                WS? ( type_expr | expr )
+                WS? ")"
+                ;
+
+alignof_expr ::= "alignof"
+                 WS? "("
+                 WS? type_expr
+                 WS? ")"
+                 ;
+
+offsetof_expr ::= "offsetof"
+                  WS? "("
+                  WS? type_expr
+                  WS? ","
+                  WS? ident
+                  WS? ")"
+                  ;
+
+typeof_expr ::= "typeof"
+                WS? "("
+                WS? expr
+                WS? ")"
+                ;
+
+nameof_expr ::= "nameof"
+                WS? "("
+                WS? path_expr
+                WS? ")"
+                ;
 
 &lt;&lt;&lt; ================= Patterns ================= &gt;&gt;&gt;
 
 pattern ::= pattern_or ;
-pattern_or ::= pattern_atom { WS? &quot;|&quot; WS? pattern_atom } ;
 
-pattern_atom ::= &quot;_&quot;
+pattern_or ::= pattern_atom
+               { WS? "|" WS? pattern_atom }
+               ;
+
+pattern_atom ::= "_"
                | literal
-               | &quot;mut&quot; WS1 pattern_bind
-               | &quot;ref&quot; WS1 pattern_bind
+               | "mut" WS1 pattern_bind
+               | "ref" WS1 pattern_bind
                | pattern_bind
                | pattern_ctor
                | pattern_struct
@@ -535,29 +1389,81 @@ pattern_atom ::= &quot;_&quot;
                ;
 
 pattern_bind ::= ident ;
-pattern_ctor ::= pattern_head [ &quot;(&quot; WS? pattern_args? WS? &quot;)&quot; ] ;
-pattern_head ::= ident { ( &quot;.&quot; | &quot;::&quot; ) ident } ;
-pattern_args ::= pattern { WS? &quot;,&quot; WS? pattern } [ WS? &quot;,&quot; ] ;
 
-pattern_struct ::= pattern_head WS? &quot;{&quot; WS? pattern_fields? WS? &quot;}&quot; ;
-pattern_fields ::= pattern_field { WS? &quot;,&quot; WS? pattern_field } [ WS? &quot;,&quot; ] ;
-pattern_field ::= ident [ WS? &quot;:&quot; WS? pattern ] | &quot;..&quot; ;
+pattern_ctor ::= pattern_head
+                 [ "(" WS? pattern_args? WS? ")" ]
+                 ;
 
-pattern_tuple ::= &quot;(&quot; WS? pattern WS? &quot;,&quot; WS? pattern { WS? &quot;,&quot; WS? pattern } [ WS? &quot;,&quot; ] WS? &quot;)&quot; ;
-pattern_list ::= &quot;[&quot; WS? pattern_args? WS? &quot;]&quot; ;
-pattern_range ::= literal WS? ( &quot;..&quot; | &quot;..=&quot; ) WS? literal ;
+pattern_head ::= ident { ( "." | "::" ) ident } ;
+
+pattern_args ::= pattern
+                 { WS? "," WS? pattern }
+                 [ WS? "," ]
+                 ;
+
+pattern_struct ::= pattern_head
+                   WS? "{"
+                   WS? pattern_fields?
+                   WS? "}"
+                   ;
+
+pattern_fields ::= pattern_field
+                   { WS? "," WS? pattern_field }
+                   [ WS? "," ]
+                   ;
+
+pattern_field ::= ident [ WS? ":" WS? pattern ]
+                | ".."
+                ;
+
+pattern_tuple ::= "("
+                  WS? pattern
+                  WS? ","
+                  WS? pattern
+                  { WS? "," WS? pattern }
+                  [ WS? "," ]
+                  WS?
+                  ")"
+                  ;
+
+pattern_list ::= "["
+                 WS? pattern_args?
+                 WS? "]"
+                 ;
+
+pattern_range ::= literal
+                  WS? ( ".." | "..=" )
+                  WS? literal
+                  ;
 
 &lt;&lt;&lt; ================= Types ================= &gt;&gt;&gt;
 
 type_expr ::= type_union ;
 
-type_union ::= type_prefix { WS? &quot;|&quot; WS? type_prefix } ;
+type_union ::= type_prefix
+               { WS? "|" WS? type_prefix }
+               ;
 
 type_prefix ::= type_qualifier* type_atom ;
-type_qualifier ::= type_qual WS1 | addr_space WS1 ;
 
-type_qual ::= &quot;const&quot; | &quot;volatile&quot; | &quot;atomic&quot; | &quot;mut&quot; | &quot;owned&quot; | &quot;borrow&quot; ;
-addr_space ::= &quot;user&quot; | &quot;kernel&quot; | &quot;phys&quot; | &quot;mmio&quot; | &quot;dma&quot; ;
+type_qualifier ::= type_qual WS1
+                 | addr_space WS1
+                 ;
+
+type_qual ::= "const"
+            | "volatile"
+            | "atomic"
+            | "mut"
+            | "owned"
+            | "borrow"
+            ;
+
+addr_space ::= "user"
+             | "kernel"
+             | "phys"
+             | "mmio"
+             | "dma"
+             ;
 
 type_atom ::= reference_type
             | pointer_type
@@ -571,59 +1477,118 @@ type_atom ::= reference_type
             | type_primary
             ;
 
-&lt;&lt;&lt; shared and mutable references are part of the core surface grammar; lifetime,
-    aliasing and region closure remain semantic checks outside the parser. &gt;&gt;&gt;
-reference_type ::= &quot;&amp;&quot; WS? [ lifetime WS? ] [ &quot;mut&quot; WS1 ] type_expr ;
-pointer_type ::= &quot;*&quot; WS? [ &quot;const&quot; WS1 | &quot;mut&quot; WS1 | &quot;volatile&quot; WS1 | addr_space WS1 ] type_expr ;
-optional_type ::= &quot;?&quot; WS? type_expr ;
+reference_type ::= "&amp;"
+                   WS?
+                   [ lifetime WS? ]
+                   [ "mut" WS1 ]
+                   type_expr
+                   ;
 
-fixed_array_type ::= &quot;[&quot; WS? type_expr WS? &quot;;&quot; WS? expr WS? &quot;]&quot; ;
-slice_type ::= &quot;[&quot; WS? type_expr WS? &quot;]&quot; ;
+pointer_type ::= "*"
+                 WS?
+                 [
+                     "const" WS1
+                   | "mut" WS1
+                   | "volatile" WS1
+                   | addr_space WS1
+                 ]
+                 type_expr
+                 ;
 
-tuple_type ::= &quot;(&quot; WS? type_expr WS? &quot;,&quot; WS? type_expr { WS? &quot;,&quot; WS? type_expr } [ WS? &quot;,&quot; ] WS? &quot;)&quot; ;
-proc_type ::= &quot;proc&quot; WS? &quot;(&quot; WS? type_list? WS? &quot;)&quot; [ WS? &quot;-&gt;&quot; WS? type_expr ] ;
+optional_type ::= "?" WS? type_expr ;
 
-type_list ::= type_param { WS? &quot;,&quot; WS? type_param } [ WS? &quot;,&quot; ] ;
-type_param ::= ident WS? &quot;:&quot; WS? type_expr | type_expr ;
+fixed_array_type ::= "["
+                     WS?
+                     type_expr
+                     WS? ";"
+                     WS? expr
+                     WS?
+                     "]"
+                     ;
 
-dyn_type ::= &quot;dyn&quot; WS1 trait_bound ;
-impl_trait_type ::= &quot;impl&quot; WS1 trait_bound ;
-
-type_primary ::= type_path [ &quot;[&quot; WS? type_list? WS? &quot;]&quot; ]
-               | primitive_type
-               | &quot;Self&quot;
+slice_type ::= "["
+               WS?
+               type_expr
+               WS?
+               "]"
                ;
 
-lifetime ::= &quot;&#x27;&quot; ident ;
+tuple_type ::= "("
+               WS? type_expr
+               WS? ","
+               WS? type_expr
+               { WS? "," WS? type_expr }
+               [ WS? "," ]
+               WS?
+               ")"
+               ;
 
-primitive_type ::= &quot;void&quot;
-                 | &quot;never&quot;
-                 | &quot;unit&quot;
-                 | &quot;bool&quot;
-                 | &quot;char&quot;
-                 | &quot;rune&quot;
-                 | &quot;str&quot;
-                 | &quot;string&quot;
-                 | &quot;bytes&quot;
-                 | &quot;cstr&quot;
-                 | &quot;int&quot;
-                 | &quot;i8&quot; | &quot;i16&quot; | &quot;i32&quot; | &quot;i64&quot; | &quot;i128&quot;
-                 | &quot;u8&quot; | &quot;u16&quot; | &quot;u32&quot; | &quot;u64&quot; | &quot;u128&quot;
-                 | &quot;usize&quot; | &quot;isize&quot;
-                 | &quot;intptr&quot; | &quot;uintptr&quot;
-                 | &quot;f16&quot; | &quot;f32&quot; | &quot;f64&quot; | &quot;f128&quot;
-                 | &quot;c_char&quot; | &quot;c_int&quot; | &quot;c_uint&quot; | &quot;c_long&quot; | &quot;c_ulong&quot; | &quot;c_void&quot;
-                 | &quot;TokenId&quot;
-                 | &quot;NodeId&quot;
-                 | &quot;DefId&quot;
-                 | &quot;HirId&quot;
-                 | &quot;MirId&quot;
-                 | &quot;TypeId&quot;
-                 | &quot;SymbolId&quot;
-                 | &quot;ScopeId&quot;
-                 | &quot;BlockId&quot;
-                 | &quot;ValueId&quot;
-                 | &quot;InstrId&quot;
+proc_type ::= "proc"
+              WS? "("
+              WS? type_list?
+              WS? ")"
+              [ WS? "-&gt;" WS? type_expr ]
+              ;
+
+type_list ::= type_param
+              { WS? "," WS? type_param }
+              [ WS? "," ]
+              ;
+
+type_param ::= ident WS? ":" WS? type_expr
+             | type_expr
+             ;
+
+dyn_type ::= "dyn" WS1 trait_bound ;
+
+impl_trait_type ::= "impl" WS1 trait_bound ;
+
+type_primary ::= type_path [ generic_args ]
+               | primitive_type
+               | "Self"
+               ;
+
+type_path ::= ident { ( "." | "::" ) ident } ;
+
+lifetime ::= "'" ident ;
+
+&lt;&lt;&lt; ================= Primitive Types ================= &gt;&gt;&gt;
+
+primitive_type ::= "void"
+                 | "never"
+                 | "unit"
+                 | "bool"
+                 | "char"
+                 | "rune"
+                 | "str"
+                 | "string"
+                 | "bytes"
+                 | "cstr"
+                 | "int"
+                 | "i8"
+                 | "i16"
+                 | "i32"
+                 | "i64"
+                 | "i128"
+                 | "u8"
+                 | "u16"
+                 | "u32"
+                 | "u64"
+                 | "u128"
+                 | "usize"
+                 | "isize"
+                 | "intptr"
+                 | "uintptr"
+                 | "f16"
+                 | "f32"
+                 | "f64"
+                 | "f128"
+                 | "c_char"
+                 | "c_int"
+                 | "c_uint"
+                 | "c_long"
+                 | "c_ulong"
+                 | "c_void"
                  ;
 
 &lt;&lt;&lt; ================= Literals ================= &gt;&gt;&gt;
@@ -637,67 +1602,192 @@ literal ::= bool_lit
           | list_lit
           ;
 
-list_lit ::= &quot;[&quot; WS? ( list_comp | arg_list? ) WS? &quot;]&quot; ;
-list_comp ::= expr WS1 &quot;for&quot; WS1 pattern WS1 &quot;in&quot; WS1 expr [ WS1 &quot;if&quot; WS1 expr ] ;
-
-bool_lit ::= &quot;true&quot; | &quot;false&quot; ;
-null_lit ::= &quot;null&quot; ;
-
-int_lit ::= [ &quot;-&quot; ] DIGIT { DIGIT | &quot;_&quot; } [ suffix ]
-          | [ &quot;-&quot; ] &quot;0x&quot; HEXDIGIT { HEXDIGIT | &quot;_&quot; } [ suffix ]
-          | [ &quot;-&quot; ] &quot;0b&quot; BINDIGIT { BINDIGIT | &quot;_&quot; } [ suffix ]
-          | [ &quot;-&quot; ] &quot;0o&quot; OCTDIGIT { OCTDIGIT | &quot;_&quot; } [ suffix ]
-          ;
-
-float_lit ::= [ &quot;-&quot; ] DIGIT { DIGIT | &quot;_&quot; } &quot;.&quot; DIGIT { DIGIT | &quot;_&quot; } [ exponent ] [ suffix ] ;
-exponent ::= ( &quot;e&quot; | &quot;E&quot; ) [ &quot;+&quot; | &quot;-&quot; ] DIGIT { DIGIT | &quot;_&quot; } ;
-
-char_lit ::= &quot;&#x27;&quot; char_char &quot;&#x27;&quot; ;
-char_char ::= escape_seq | ~&quot;&#x27;&quot; ;
-
-string_lit ::= &quot;\&quot;&quot; { string_char } &quot;\&quot;&quot; | raw_string_lit ;
-string_char ::= escape_seq | ~&quot;\&quot;&quot; ;
-
-escape_seq ::= &quot;\\n&quot;
-             | &quot;\\r&quot;
-             | &quot;\\t&quot;
-             | &quot;\\0&quot;
-             | &quot;\\\&quot;&quot;
-             | &quot;\\&#x27;&quot;
-             | &quot;\\\\&quot;
-             | &quot;\\x&quot; HEXDIGIT HEXDIGIT
-             | &quot;\\u{&quot; HEXDIGIT { HEXDIGIT } &quot;}&quot;
+list_lit ::= "["
+             WS?
+             ( list_comp | arg_list? )
+             WS?
+             "]"
              ;
 
-raw_string_lit ::= &quot;\&quot;\&quot;\&quot;&quot; { raw_string_char } &quot;\&quot;\&quot;\&quot;&quot;
-                 | &quot;r\&quot;&quot; { raw_string_char } &quot;\&quot;&quot;
+list_comp ::= expr
+              WS1 "for" WS1 pattern
+              WS1 "in" WS1 expr
+              [ WS1 "if" WS1 expr ]
+              ;
+
+bool_lit ::= "true"
+           | "false"
+           ;
+
+null_lit ::= "null" ;
+
+int_lit ::= [ "-" ]
+            DIGIT
+            { DIGIT | "_" }
+            [ suffix ]
+
+          | [ "-" ]
+            "0x"
+            HEXDIGIT
+            { HEXDIGIT | "_" }
+            [ suffix ]
+
+          | [ "-" ]
+            "0b"
+            BINDIGIT
+            { BINDIGIT | "_" }
+            [ suffix ]
+
+          | [ "-" ]
+            "0o"
+            OCTDIGIT
+            { OCTDIGIT | "_" }
+            [ suffix ]
+          ;
+
+float_lit ::= [ "-" ]
+              DIGIT
+              { DIGIT | "_" }
+              "."
+              DIGIT
+              { DIGIT | "_" }
+              [ exponent ]
+              [ suffix ]
+              ;
+
+exponent ::= ( "e" | "E" )
+             [ "+" | "-" ]
+             DIGIT
+             { DIGIT | "_" }
+             ;
+
+char_lit ::= "'"
+             char_char
+             "'"
+             ;
+
+char_char ::= escape_seq
+            | ~"'"
+            ;
+
+string_lit ::= "\""
+               { string_char }
+               "\""
+
+             | raw_string_lit
+             ;
+
+string_char ::= escape_seq
+              | ~"\""
+              ;
+
+escape_seq ::= "\\n"
+             | "\\r"
+             | "\\t"
+             | "\\0"
+             | "\\\""
+             | "\\'"
+             | "\\\\"
+             | "\\x" HEXDIGIT HEXDIGIT
+             | "\\u{" HEXDIGIT { HEXDIGIT } "}"
+             ;
+
+raw_string_lit ::= "\"\"\""
+                   { raw_string_char }
+                   "\"\"\""
+
+                 | "r\""
+                   { raw_string_char }
+                   "\""
                  ;
-raw_string_char ::= ~&quot;\&quot;\&quot;\&quot;&quot; ;
+
+raw_string_char ::= ~"\"\"\"" ;
 
 &lt;&lt;&lt; ================= Lexical ================= &gt;&gt;&gt;
 
-line_comment ::= &quot;#&quot; { ~NEWLINE ANY }
-               | &quot;//&quot; { ~NEWLINE ANY }
+line_comment ::= "#"
+                 { ~NEWLINE ANY }
+
+               | "//"
+                 { ~NEWLINE ANY }
                ;
 
-block_comment ::= &quot;/*&quot; { ~&quot;*/&quot; ANY } &quot;*/&quot; ;
-zone_comment ::= &quot;&lt;&lt;&lt;&quot; { ~&quot;&gt;&gt;&gt;&quot; ANY } &quot;&gt;&gt;&gt;&quot; ;
+block_comment ::= "/*"
+                  { ~"*/" ANY }
+                  "*/"
+                  ;
 
-ident ::= ( LETTER | &quot;_&quot; ) { LETTER | DIGIT | &quot;_&quot; } ;
-suffix ::= LETTER { LETTER | DIGIT } ;
+zone_comment ::= "&lt;&lt;&lt;"
+                 { ~"&gt;&gt;&gt;" ANY }
+                 "&gt;&gt;&gt;"
+                 ;
 
-WS ::= { &quot; &quot; | &quot;\t&quot; | NEWLINE | line_comment | block_comment | zone_comment } ;
-WS1 ::= ( &quot; &quot; | &quot;\t&quot; | NEWLINE | line_comment | block_comment | zone_comment )
-        { &quot; &quot; | &quot;\t&quot; | NEWLINE | line_comment | block_comment | zone_comment } ;
+ident ::= ( LETTER | "_" )
+          { LETTER | DIGIT | "_" }
+          ;
 
-NEWLINE ::= &quot;\n&quot; | &quot;\r\n&quot; ;
+suffix ::= LETTER
+           { LETTER | DIGIT }
+           ;
 
-LETTER ::= &quot;a&quot;...&quot;z&quot; | &quot;A&quot;...&quot;Z&quot; ;
-DIGIT ::= &quot;0&quot;...&quot;9&quot; ;
-BINDIGIT ::= &quot;0&quot; | &quot;1&quot; ;
-OCTDIGIT ::= &quot;0&quot;...&quot;7&quot; ;
-HEXDIGIT ::= DIGIT | &quot;a&quot;...&quot;f&quot; | &quot;A&quot;...&quot;F&quot; ;
+WS ::= {
+           " "
+         | "\t"
+         | NEWLINE
+         | line_comment
+         | block_comment
+         | zone_comment
+       }
+       ;
+
+WS1 ::= (
+            " "
+          | "\t"
+          | NEWLINE
+          | line_comment
+          | block_comment
+          | zone_comment
+        )
+        {
+            " "
+          | "\t"
+          | NEWLINE
+          | line_comment
+          | block_comment
+          | zone_comment
+        }
+        ;
+
+NEWLINE ::= "\n"
+          | "\r\n"
+          ;
+
+LETTER ::= "a"..."z"
+         | "A"..."Z"
+         ;
+
+DIGIT ::= "0"..."9" ;
+
+BINDIGIT ::= "0"
+           | "1"
+           ;
+
+OCTDIGIT ::= "0"..."7" ;
+
+HEXDIGIT ::= DIGIT
+           | "a"..."f"
+           | "A"..."F"
+           ;
 
 EOF ::= !ANY ;
-</code></pre><nav class="doc-pagination"><a href="suggestions.html">← Previous</a></nav></article></main></div><script type="module" src="js/main.js?v=28b2516d9c"></script>
-</body></html>
+</code></pre>
+
+<nav class="doc-pagination">
+<a href="suggestions.html">← Previous</a>
+</nav>
+</article>
+</main>
+</div>
+<script type="module" src="js/main.js?v=28b2516d9c"></script>
+</body>
+</html>
