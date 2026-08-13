@@ -37,6 +37,7 @@ FORBIDDEN_BINARY_MARKERS = (
     "write_payload_file",
     "_command_build",
     "_copy_file",
+    "vitte_stage0_clone_self",
 )
 SMOKE_TIMEOUT_SECONDS = 10
 

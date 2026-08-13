@@ -3,6 +3,7 @@
 #include <ctype.h>
 #include <inttypes.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "naming.h"
@@ -40,10 +41,14 @@ const vitte_error_t *vitte_c17_module_last_error(const vitte_c17_module_t *modul
 
 static bool vitte_c17_is_bootstrap_compiler_source(const vitte_c17_module_t *module) {
     static const char suffix[] = "src/vitte/compiler/main.vit";
+    const char *generic_compiler = getenv("VITTE_C17_GENERIC_COMPILER");
     const char *source_name;
     size_t source_length;
     size_t suffix_length = sizeof(suffix) - 1u;
 
+    if (generic_compiler != NULL && strcmp(generic_compiler, "1") == 0) {
+        return false;
+    }
     if (module == NULL || module->unit == NULL || module->unit->options.source_name == NULL) {
         return false;
     }
@@ -945,16 +950,6 @@ static vitte_status_t vitte_c17_emit_ir_function_body(
 
     if (function != NULL && vitte_c17_is_main_name(function->name) && vitte_c17_is_bootstrap_compiler_source(module)) {
         const char *lines[] = {
-            "static int vitte_runtime_ends_with(const char *text, const char *suffix) {",
-            "    size_t text_length;",
-            "    size_t suffix_length;",
-            "    if (text == NULL || suffix == NULL) {",
-            "        return 0;",
-            "    }",
-            "    text_length = strlen(text);",
-            "    suffix_length = strlen(suffix);",
-            "    return text_length >= suffix_length && strcmp(text + text_length - suffix_length, suffix) == 0;",
-            "}",
             "static void vitte_stage0_ensure_parent_dirs(const char *path) {",
             "    char scratch[4096];",
             "    size_t length;",
@@ -976,42 +971,6 @@ static vitte_status_t vitte_c17_emit_ir_function_body(
             "            scratch[index] = '/';",
             "        }",
             "    }",
-            "}",
-            "static int vitte_stage0_clone_self(const char *self_path, const char *out_path) {",
-            "    FILE *in_file;",
-            "    FILE *out_file;",
-            "    char buffer[65536];",
-            "    size_t read_count;",
-            "    int failed = 0;",
-            "    if (self_path == NULL || out_path == NULL) {",
-            "        return 2;",
-            "    }",
-            "    in_file = fopen(self_path, \"rb\");",
-            "    if (in_file == NULL) {",
-            "        return 2;",
-            "    }",
-            "    vitte_stage0_ensure_parent_dirs(out_path);",
-            "    remove(out_path);",
-            "    out_file = fopen(out_path, \"wb\");",
-            "    if (out_file == NULL) {",
-            "        fclose(in_file);",
-            "        return 2;",
-            "    }",
-            "    while ((read_count = fread(buffer, 1u, sizeof(buffer), in_file)) > 0u) {",
-            "        if (fwrite(buffer, 1u, read_count, out_file) != read_count) {",
-            "            failed = 1;",
-            "            break;",
-            "        }",
-            "    }",
-            "    if (ferror(in_file)) {",
-            "        failed = 1;",
-            "    }",
-            "    fclose(in_file);",
-            "    if (fclose(out_file) != 0) {",
-            "        failed = 1;",
-            "    }",
-            "    chmod(out_path, 0755);",
-            "    return failed ? 2 : 0;",
             "}",
             "static int vitte_stage0_emit_native_stub(const char *out_path) {",
             "    char c_path[4096];",
@@ -1710,9 +1669,6 @@ static vitte_status_t vitte_c17_emit_ir_function_body(
             "        if (out_path == NULL || argv[0] == NULL) {",
             "            return 2;",
             "        }",
-            "        if (vitte_runtime_ends_with(source_path, \"src/vitte/compiler/main.vit\")) {",
-            "            return vitte_stage0_clone_self(argv[0], out_path);",
-            "        }",
             "        return vitte_stage0_emit_native_stub(out_path);",
             "    }",
             "    if (argc > 1) {",
@@ -1776,6 +1732,31 @@ static vitte_status_t vitte_c17_emit_ir_function_body(
     status = vitte_c17_emit_ir_function_declarations(module, writer, function);
     if (status != VITTE_STATUS_OK) {
         return status;
+    }
+    if (vitte_c17_is_main_name(function->name)) {
+        const vitte_ir_value_t *parameter;
+        for (parameter = function->first_parameter; parameter != NULL; parameter = parameter->next) {
+            status = vitte_c17_emit_ir_type(module, writer, parameter->type);
+            if (status != VITTE_STATUS_OK) {
+                return status;
+            }
+            status = vitte_c17_write_char(writer, ' ');
+            if (status != VITTE_STATUS_OK) {
+                return status;
+            }
+            status = vitte_c17_emit_ir_value_ref(module, writer, parameter);
+            if (status != VITTE_STATUS_OK) {
+                return status;
+            }
+            status = vitte_c17_write_string(writer, " = 0");
+            if (status != VITTE_STATUS_OK) {
+                return status;
+            }
+            status = vitte_c17_emit_statement_line_end(writer);
+            if (status != VITTE_STATUS_OK) {
+                return status;
+            }
+        }
     }
     if (function->entry != NULL) {
         if (vitte_c17_make_block_label(module, function->entry, entry_label, sizeof(entry_label)) != VITTE_STATUS_OK) {

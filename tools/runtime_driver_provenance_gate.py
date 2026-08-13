@@ -86,7 +86,10 @@ def main() -> int:
 
         symbols = run(["nm", str(BIN)])
         symbol_text = symbols["stdout"] + symbols["stderr"]
-        copy_symbols = [name for name in ("_command_build", "_copy_file") if name in symbol_text]
+        copy_symbols = [
+            name for name in ("_command_build", "_copy_file", "_vitte_stage0_clone_self")
+            if name in symbol_text
+        ]
         run_cli_symbols = [line for line in symbol_text.splitlines() if "run_cli_main" in line]
         ice_boundary_symbols = [line for line in run_cli_symbols if "run_cli_main_with_ice_boundary" in line]
         evidence["copy_symbols"] = copy_symbols

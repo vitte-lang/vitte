@@ -6,12 +6,19 @@ artifact, detached signature, public key, SHA-256 and native format. Verificatio
 is offline and fail-closed before the binary is executed.
 
 The accepted chain is `stage0 -> bootstrap compiler -> stage1 -> stage2 ->
-release -> bin/vitte`. Stage1 and stage2 must have byte parity, a repeated build
-must reproduce the hashes, and every compiler artifact is scanned for shell,
-payload and self-copy markers.
+release -> bin/vitte`. A repeated build must reproduce each stage hash, and
+every compiler artifact is scanned for shell, payload, and self-copy markers,
+including `vitte_stage0_clone_self`.
+
+Cryptographic validity is necessary but not sufficient. A correctly signed
+artifact is rejected when it contains a binary-copy implementation. The
+currently committed macOS arm64 artifact has a valid RSA-SHA256 signature and
+pinned digest, but is rejected by the strengthened trust policy because it
+contains the retired clone-self path. It must be rotated by the stage0 key owner
+after the source-built candidate is runtime-complete.
 
 ```sh
-make seed-verify
-make bootstrap-seed
-make bootstrap-source-of-truth
+make bootstrap-trust-root
+make bootstrap-trust-tests
+make compiler-source-sensitivity-gate
 ```

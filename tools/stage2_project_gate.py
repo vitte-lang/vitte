@@ -145,7 +145,7 @@ def compiler_provenance_failures() -> list[str]:
         stderr=subprocess.DEVNULL,
         check=False,
     ).stdout
-    if "_command_build" in symbols and "_copy_file" in symbols:
+    if ("_command_build" in symbols and "_copy_file" in symbols) or "_vitte_stage0_clone_self" in symbols:
         if STAGE1.is_file() and STAGE1.read_bytes() == STAGE2.read_bytes():
             failures.append("stage2 is a byte-for-byte stage1 copy and still contains the self-copy dispatcher")
         else:

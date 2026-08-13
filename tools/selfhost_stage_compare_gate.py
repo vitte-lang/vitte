@@ -125,7 +125,7 @@ def validate_compiler_provenance(path: Path, failures: list[str], *, compiler_in
         stderr=subprocess.DEVNULL,
         check=False,
     ).stdout
-    if "_command_build" in symbols and "_copy_file" in symbols:
+    if ("_command_build" in symbols and "_copy_file" in symbols) or "_vitte_stage0_clone_self" in symbols:
         if compiler_input is not None and compiler_input.is_file() and sha256_file(path) == sha256_file(compiler_input):
             failures.append(f"{path.relative_to(ROOT)} is a byte-for-byte compiler copy produced by the self-copy dispatcher")
         else:

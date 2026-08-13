@@ -145,7 +145,10 @@ def validate_compiler_provenance(
         failures.append(f"{name} runtime symbols cannot be inspected")
         return
     symbols = symbols_result.stdout
-    has_copy_dispatcher = "_command_build" in symbols and "_copy_file" in symbols
+    has_copy_dispatcher = (
+        ("_command_build" in symbols and "_copy_file" in symbols)
+        or "_vitte_stage0_clone_self" in symbols
+    )
     if has_copy_dispatcher:
         if compiler_input is not None and compiler_input.is_file() and data == compiler_input.read_bytes():
             failures.append(f"{name} is a byte-for-byte compiler copy produced by the self-copy dispatcher")

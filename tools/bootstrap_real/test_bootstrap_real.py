@@ -363,6 +363,20 @@ def test_script_self_copy_bridge_and_private_tmp_are_rejected() -> None:
         "self-copy stage0 sources should be rejected",
     )
 
+    clone_self = work / "clone-self-vitte"
+    clone_self.write_bytes(
+        b"\xca\xfe\xba\xbe"
+        b"run_cli_main_with_ice_boundary\0"
+        b"COMPILER_ENTRY_POINT=src/vitte/compiler/main.vit\0"
+        b"vitte_stage0_clone_self\0"
+    )
+    clone_self.chmod(clone_self.stat().st_mode | stat.S_IXUSR)
+    clone_errors, _commands = bootstrap_real.validate_vitte_binary(clone_self, "stage0 source")
+    assert_true(
+        any("vitte_stage0_clone_self" in error for error in clone_errors),
+        "clone-self stage0 sources should be rejected",
+    )
+
     original_is_under = bootstrap_real.is_under
     try:
         bootstrap_real.is_under = lambda path, parent: str(parent) == "/private/tmp"

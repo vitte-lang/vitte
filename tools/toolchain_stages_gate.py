@@ -76,6 +76,7 @@ FORBIDDEN_MARKERS = (
     b"write_payload_file",
     b"_command_build",
     b"_copy_file",
+    b"vitte_stage0_clone_self",
     b"BOOTSTRAP_FULL_COMPILER",
     b"VITTE_BOOTSTRAP_ALLOW_FULL_COMPILER_BRIDGE",
     b"[vitte][error]",

@@ -563,6 +563,10 @@ compiler-reachability-audit:
 compiler-real-pipeline-audit:
 	@python3 tools/compiler_real_pipeline_audit.py
 
+.PHONY: compiler-source-sensitivity-gate
+compiler-source-sensitivity-gate: bootstrap-c17
+	@python3 tools/compiler_source_sensitivity_gate.py
+
 .PHONY: truth-triangle
 truth-triangle:
 	@tools/truth_triangle_gate.sh

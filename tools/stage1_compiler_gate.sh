@@ -75,7 +75,8 @@ fi
 if ! nm "$OUT_BIN" > "$SYMBOL_LOG" 2>/dev/null; then
     fail "unable to inspect stage1 runtime symbols"
 fi
-if grep -Fq '_command_build' "$SYMBOL_LOG" && grep -Fq '_copy_file' "$SYMBOL_LOG"; then
+if { grep -Fq '_command_build' "$SYMBOL_LOG" && grep -Fq '_copy_file' "$SYMBOL_LOG"; } || \
+   grep -Fq '_vitte_stage0_clone_self' "$SYMBOL_LOG"; then
     if cmp -s "$STAGE0" "$OUT_BIN"; then
         fail "stage1 is a byte-for-byte stage0 copy and still contains the self-copy dispatcher"
     fi

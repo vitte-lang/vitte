@@ -292,7 +292,10 @@ def scan_binary_path(path: Path, failures: list[str], *, compiler_input: Path | 
         stderr=subprocess.DEVNULL,
         check=False,
     ).stdout
-    has_copy_dispatcher = "_command_build" in symbols and "_copy_file" in symbols
+    has_copy_dispatcher = (
+        ("_command_build" in symbols and "_copy_file" in symbols)
+        or "_vitte_stage0_clone_self" in symbols
+    )
     if has_copy_dispatcher:
         if compiler_input is not None and compiler_input.is_file() and compiler_input.read_bytes() == path.read_bytes():
             failures.append(f"{rel(path)} is a byte-for-byte compiler copy produced by the self-copy dispatcher")

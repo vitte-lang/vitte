@@ -166,7 +166,7 @@ def binary_marker_failures(path: Path) -> list[str]:
         stderr=subprocess.DEVNULL,
         check=False,
     ).stdout
-    if "_command_build" in symbols and "_copy_file" in symbols:
+    if ("_command_build" in symbols and "_copy_file" in symbols) or "_vitte_stage0_clone_self" in symbols:
         failures.append(
             f"{path.relative_to(ROOT)} build path still materializes the compiler through self-copy symbols"
         )

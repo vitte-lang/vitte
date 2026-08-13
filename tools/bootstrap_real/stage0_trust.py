@@ -30,6 +30,7 @@ FORBIDDEN_MARKERS = (
     b"write_payload_file",
     b"BOOTSTRAP_FULL_COMPILER",
     b"VITTE_BOOTSTRAP_ALLOW_FULL_COMPILER_BRIDGE",
+    b"vitte_stage0_clone_self",
 )
 
 
