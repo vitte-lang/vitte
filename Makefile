@@ -581,8 +581,8 @@ compiler-audit-report:
 
 .PHONY: driver-surface-audit
 driver-surface-audit:
-	@$(DRIVER_BOOTSTRAP_RUNNER) check src/vitte/packages/compiler/driver/mod.vit >/dev/null
-	@$(DRIVER_BOOTSTRAP_RUNNER) check src/vitte/packages/compiler/driver/info.vit >/dev/null
+	@$(DRIVER_BOOTSTRAP_RUNNER) check src/vitte/compiler/driver/mod.vit >/dev/null
+	@$(DRIVER_BOOTSTRAP_RUNNER) check src/vitte/compiler/driver/compiler.vit >/dev/null
 	@python3 tools/driver_runtime_surface_audit.py
 	@echo "[driver-surface-audit] ok: compiler/driver package surface is Vitte-backed"
 
@@ -591,12 +591,11 @@ driver-surface-parity: selfhost-driver-bootstrap
 
 .PHONY: selfhost-driver-bootstrap
 selfhost-driver-bootstrap:
-	@tools/package_check_portable.sh src/vitte/packages/compiler/driver/mod.vit
-	@$(DRIVER_BOOTSTRAP_RUNNER) check src/vitte/packages/compiler/driver/info.vit
-	@$(DRIVER_BOOTSTRAP_RUNNER) check src/vitte/packages/compiler/driver/internal/normalize.vit
-	@$(DRIVER_BOOTSTRAP_RUNNER) check src/vitte/packages/compiler/driver/internal/value_normalize.vit
-	@$(DRIVER_BOOTSTRAP_RUNNER) check src/vitte/packages/compiler/driver/internal/normalized_options.vit
-	@$(DRIVER_BOOTSTRAP_RUNNER) check src/vitte/packages/compiler/driver/internal/tokenized_parse.vit
+	@$(DRIVER_BOOTSTRAP_RUNNER) check src/vitte/compiler/driver/mod.vit
+	@$(DRIVER_BOOTSTRAP_RUNNER) check src/vitte/compiler/driver/compiler.vit
+	@$(DRIVER_BOOTSTRAP_RUNNER) check src/vitte/compiler/driver/compile.vit
+	@$(DRIVER_BOOTSTRAP_RUNNER) check src/vitte/compiler/driver/cli.vit
+	@$(DRIVER_BOOTSTRAP_RUNNER) check src/vitte/compiler/driver/commands.vit
 
 	@echo "[$@] retired: Vitte now bootstraps from src/vitte/compiler via target/release/vitte, stage1, and stage2"
 

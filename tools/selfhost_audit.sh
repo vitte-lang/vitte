@@ -37,8 +37,8 @@ existing_dirs() {
   done
 }
 
-compiler_dirs="src/vitte/compiler src/vitte/packages/compiler/driver"
-compiler_existing_dirs=$(existing_dirs src/vitte/compiler src/vitte/packages/compiler/driver | tr '\n' ' ')
+compiler_dirs="src/vitte/compiler"
+compiler_existing_dirs=$(existing_dirs src/vitte/compiler | tr '\n' ' ')
 expected_compiler_root="src/vitte/compiler"
 expected_compiler_entry="src/vitte/compiler/main.vit"
 seed_manifest="toolchain/seed/manifest.txt"
@@ -47,6 +47,16 @@ stage1_artifact="target/stage1/vitte"
 stage2_artifact="target/stage2/vitte"
 audit_errors=0
 runtime_bridge_dir="$ROOT_DIR/src/vitte/compiler/backends/runtime_c"
+
+# These sources belong to the retained C17 compatibility bootstrap. They are
+# not part of the Vitte runtime provenance surface, but remain inputs to
+# `make bootstrap-c17` and its explicit sysroot contract.
+backend_c17_roots=(
+  "$ROOT_DIR/bootstrap/include/runtime/"
+  "$ROOT_DIR/bootstrap/include/vitte/"
+  "$ROOT_DIR/bootstrap/src/"
+  "$ROOT_DIR/toolchain/sysroot/include/"
+)
 
 legacy_source_files=$(
   find "$ROOT_DIR" \
@@ -64,10 +74,26 @@ legacy_source_files=$(
 )
 
 runtime_bridge_files=$(printf '%s\n' "$legacy_source_files" | awk -v dir="$runtime_bridge_dir/" 'index($0, dir) == 1')
-legacy_non_runtime_files=$(printf '%s\n' "$legacy_source_files" | awk -v dir="$runtime_bridge_dir/" 'index($0, dir) != 1')
+backend_c17_files=""
+legacy_non_runtime_files=""
+while IFS= read -r legacy_file; do
+  [ -n "$legacy_file" ] || continue
+  is_backend_c17=false
+  for backend_root in "${backend_c17_roots[@]}"; do
+    case "$legacy_file" in
+      "$backend_root"*) is_backend_c17=true; break ;;
+    esac
+  done
+  if [ "$is_backend_c17" = true ]; then
+    backend_c17_files="${backend_c17_files}${legacy_file}"$'\n'
+  elif [[ "$legacy_file" != "$runtime_bridge_dir/"* ]]; then
+    legacy_non_runtime_files="${legacy_non_runtime_files}${legacy_file}"$'\n'
+  fi
+done <<< "$legacy_source_files"
 
 runtime_bridge_count=$(printf '%s\n' "$runtime_bridge_files" | sed '/^$/d' | wc -l | tr -d ' ')
 legacy_non_runtime_count=$(printf '%s\n' "$legacy_non_runtime_files" | sed '/^$/d' | wc -l | tr -d ' ')
+backend_c17_count=$(printf '%s\n' "$backend_c17_files" | sed '/^$/d' | wc -l | tr -d ' ')
 legacy_source_count=$(printf '%s\n' "$legacy_source_files" | sed '/^$/d' | wc -l | tr -d ' ')
 compiler_vitte_files=$(count_files '*.vit' $compiler_existing_dirs)
 compiler_vitl_files=$(count_files '*.vitl' $compiler_existing_dirs)
@@ -79,19 +105,24 @@ printf 'Status: '
 if [ "$legacy_source_count" -eq 0 ]; then
   printf 'workspace source is Vitte-only\n'
 elif [ "$legacy_non_runtime_count" -eq 0 ]; then
-  printf 'runtime bridge sources still remain\n'
+  printf 'declared C17 compatibility sources only\n'
 else
   printf 'legacy host sources still remain\n'
 fi
 
 printf '\nLegacy source files: %s\n' "$legacy_source_count"
-if [ "$legacy_source_count" -ne 0 ]; then
-  printf '%s\n' "$legacy_source_files"
+if [ "$legacy_non_runtime_count" -ne 0 ]; then
+  printf 'Unclassified legacy source files:\n%s\n' "$legacy_non_runtime_files"
 fi
 
 if [ "$runtime_bridge_count" -ne 0 ]; then
   printf '\nRuntime bridge sources: %s\n' "$runtime_bridge_count"
   printf '%s\n' "$runtime_bridge_files"
+fi
+
+printf '\nDeclared C17 compatibility sources: %s\n' "$backend_c17_count"
+if [ "$backend_c17_count" -ne 0 ]; then
+  printf '%s\n' "$backend_c17_files"
 fi
 
 if [ "$legacy_non_runtime_count" -ne 0 ]; then
