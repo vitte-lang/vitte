@@ -3,13 +3,21 @@ CFLAGS ?= -std=c17 -Wall -Wextra -Werror -pedantic -O2
 ROOT_DIR := ..
 OUT_DIR ?= $(ROOT_DIR)/target/bootstrap-c17
 BIN ?= $(OUT_DIR)/vitte-bootstrap
-SOURCES := $(shell find src -type f -name '*.c' | sort)
-HEADERS := $(shell find . -type f -name '*.h' | sort)
-CHECKED_FILES := $(shell find . -type f \( -name '*.c' -o -name '*.h' -o -name 'Makefile' -o -name 'CMakeLists.txt' -o -name 'README.md' \) | sort)
+TRACKED_FILES := $(shell if git -C "$(ROOT_DIR)" rev-parse --is-inside-work-tree >/dev/null 2>&1; then git -C "$(ROOT_DIR)" ls-files 'bootstrap/src' 'bootstrap/Makefile' 'bootstrap/CMakeLists.txt' 'bootstrap/README.md' | sed 's|^bootstrap/||'; fi)
+
+ifeq ($(strip $(TRACKED_FILES)),)
+SOURCES := $(shell find src -type f -name '*.c' ! -name '* *' -print | sort)
+HEADERS := $(shell find . -type f -name '*.h' ! -name '* *' -print | sort)
+CHECKED_FILES := $(shell find . -type f \( -name '*.c' -o -name '*.h' -o -name 'Makefile' -o -name 'CMakeLists.txt' -o -name 'README.md' \) ! -name '* *' -print | sort)
+else
+SOURCES := $(filter %.c,$(TRACKED_FILES))
+HEADERS := $(filter %.h,$(TRACKED_FILES))
+CHECKED_FILES := $(filter %.c %.h %Makefile %CMakeLists.txt %README.md,$(TRACKED_FILES))
+endif
 
 .PHONY: all alignment clean corpus smoke install verify
 
-all: verify $(BIN)
+all: alignment verify $(BIN)
 
 $(BIN): $(SOURCES)
 	@mkdir -p "$(OUT_DIR)"
