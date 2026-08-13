@@ -656,8 +656,23 @@ proc item_abi_text(item: AstItem) -> string {
   give item.abi;
 }
 
+proc generic_param_names(params: [AstGenericParam]) -> [string] {
+  let names: [string] = [];
+  let i: u64 = 0;
+  while i < len(params) {
+    if params[i].name != "" {
+      set names = names + [params[i].name];
+    }
+    set i = i + 1;
+  }
+  give names;
+}
+
 proc item_generic_param_names(item: AstItem) -> [string] {
-  give [];
+  if len(item.signature.generic_params) > 0 {
+    give generic_param_names(item.signature.generic_params);
+  }
+  give generic_param_names(item.generic_params);
 }
 
 proc lower_generic_param_info(params: [AstGenericParam]) -> [HirGenericParam] {
@@ -802,10 +817,29 @@ proc lower_ast_to_hir_unvalidated(frontend: FrontendOutput) -> HirUnit {
 
   let stmt_count: u64 = 0;
 
-  set items = [];
+  let dependency_count: u64 = 0;
+  let all_items_valid: bool = true;
+  let ast_items: [AstItem] = frontend.ast_root.items;
+  while i < len(ast_items) {
+    let ast_item: AstItem = ast_items[i];
+    let item: HirItem = lower_item(ast_item);
+    set items = items + [item];
+    set node_count = node_count + count_item_nodes(item);
+    set symbol_count = symbol_count + 1;
+    if item.kind == HirItemKind.Use {
+      set dependency_count = dependency_count + 1;
+    }
+    if not item.valid {
+      set all_items_valid = false;
+    }
+    set i = i + 1;
+  }
 
-  let module_valid: bool = len(items) > 0;
-  let module: HirModule = hir_module_with_span(frontend.ast_root.span, frontend.source_path, items, [], 0, symbol_count, module_valid);
+  set expr_count = frontend.expr_count;
+  set stmt_count = frontend.stmt_count;
+
+  let module_valid: bool = len(items) > 0 and all_items_valid;
+  let module: HirModule = hir_module_with_span(frontend.ast_root.span, frontend.source_path, items, [], dependency_count, symbol_count, module_valid);
 
   give hir_unit(
     frontend.source_path,
