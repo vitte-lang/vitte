@@ -62,6 +62,7 @@ smoke: verify $(BIN)
 	@"$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/frontend_expr_stmt/expr_stmt_ok.vit"
 	@"$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/sema_operators/logical_ok.vit"
 	@"$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/grammar_alignment/let_mut_ok.vit"
+	@"$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/grammar_alignment/ref_param_type_marker_ok.vit"
 	@"$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/assignment_ok.vit"
 	@tmp="$$(mktemp)"; \
 	if "$(BIN)" check "$(ROOT_DIR)/bootstrap/tests/import_visibility/ambiguous_symbol_form_main.vit" >"$$tmp" 2>&1; then \

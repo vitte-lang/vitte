@@ -635,6 +635,46 @@ static void vitte_driver_update_counts(vitte_driver_t *driver, vitte_driver_resu
     result->stages_completed = driver->pipeline.completed_count;
 }
 
+static void vitte_driver_set_error_from_diagnostics(
+    vitte_driver_t *driver,
+    vitte_driver_result_t *result,
+    vitte_status_t status
+) {
+    size_t index;
+    size_t total;
+
+    if (driver == NULL) {
+        return;
+    }
+    total = vitte_diagnostic_bag_total_count(&driver->diagnostics);
+    for (index = 0u; index < total; index++) {
+        const vitte_diagnostic_t *diagnostic = vitte_diagnostic_at(&driver->diagnostics, index);
+        if (diagnostic != NULL && vitte_diagnostic_severity_is_error(diagnostic->severity)) {
+            vitte_driver_set_error(driver, status, diagnostic->code, diagnostic->message, diagnostic->details);
+            if (result != NULL) {
+                vitte_error_copy(&result->last_error, &driver->last_error);
+            }
+            return;
+        }
+    }
+    vitte_driver_set_error(driver, status, "VITTE_DRIVER_E_DIAGNOSTIC", "driver failed with diagnostics", NULL);
+    if (result != NULL) {
+        vitte_error_copy(&result->last_error, &driver->last_error);
+    }
+}
+
+static const char *vitte_driver_error_code_or(const vitte_error_t *error, const char *fallback) {
+    return error != NULL && vitte_error_is_set(error) && error->code != NULL ? error->code : fallback;
+}
+
+static const char *vitte_driver_error_message_or(const vitte_error_t *error, const char *fallback) {
+    return error != NULL && vitte_error_is_set(error) && error->message != NULL ? error->message : fallback;
+}
+
+static const char *vitte_driver_error_details_or(const vitte_error_t *error, const char *fallback) {
+    return error != NULL && vitte_error_is_set(error) && error->details != NULL ? error->details : fallback;
+}
+
 static vitte_status_t vitte_driver_prepare_config(
     vitte_driver_t *driver,
     const vitte_driver_input_t *input,
@@ -1169,6 +1209,18 @@ static vitte_ast_decl_t *vitte_driver_clone_decl_shallow(
         decl->as.const_decl.value = source_decl->as.const_decl.value;
         return decl;
     }
+    if (source_decl->kind == VITTE_AST_NODE_PICK_DECL) {
+        decl->as.pick_decl.name = name;
+        decl->as.pick_decl.exported = source_decl->as.pick_decl.exported;
+        decl->as.pick_decl.variants = source_decl->as.pick_decl.variants;
+        return decl;
+    }
+    if (source_decl->kind == VITTE_AST_NODE_FORM_DECL) {
+        decl->as.form_decl.name = name;
+        decl->as.form_decl.exported = source_decl->as.form_decl.exported;
+        decl->as.form_decl.fields = source_decl->as.form_decl.fields;
+        return decl;
+    }
     vitte_error_set_details(&ast->last_error, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_DRIVER_E_IMPORT", "unsupported imported declaration kind", vitte_ast_node_kind_name(source_decl->kind));
     return NULL;
 }
@@ -1284,6 +1336,10 @@ static vitte_status_t vitte_driver_flatten_register_visible_binding(
             strcmp(existing->lowered_name, lowered_name) == 0) {
             return VITTE_STATUS_OK;
         }
+        if (strcmp(existing->owner_module_name, source_module_name) == 0 &&
+            strcmp(owner_module_name, source_module_name) != 0) {
+            return VITTE_STATUS_OK;
+        }
         vitte_error_set_details(
             &ast->last_error,
             VITTE_STATUS_ERROR_INVALID_STATE,
@@ -1367,6 +1423,10 @@ static vitte_status_t vitte_driver_ensure_import_decl(
     } else if (clone->kind == VITTE_AST_NODE_CONST_DECL) {
         clone->as.const_decl.exported = source_decl->as.const_decl.exported;
         clone->as.const_decl.lowered_name = lowered_name;
+    } else if (clone->kind == VITTE_AST_NODE_PICK_DECL) {
+        clone->as.pick_decl.exported = source_decl->as.pick_decl.exported;
+    } else if (clone->kind == VITTE_AST_NODE_FORM_DECL) {
+        clone->as.form_decl.exported = source_decl->as.form_decl.exported;
     } else {
         vitte_driver_set_error(driver, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_DRIVER_E_IMPORT", "unsupported imported declaration kind", decl_name);
         return VITTE_STATUS_ERROR_INVALID_STATE;
@@ -1884,6 +1944,48 @@ static vitte_status_t vitte_driver_rewrite_expr(
                 }
             }
             return VITTE_STATUS_OK;
+        case VITTE_AST_NODE_LIST_EXPR:
+            for (argument = expr->as.list_expr.elements.first; argument != NULL; argument = argument->next) {
+                vitte_status_t status = vitte_driver_rewrite_expr(driver, ast, state, source_module_name, argument, scope);
+                if (status != VITTE_STATUS_OK) {
+                    return status;
+                }
+            }
+            return VITTE_STATUS_OK;
+        case VITTE_AST_NODE_RECORD_EXPR:
+            for (argument = expr->as.record_expr.fields.first; argument != NULL; argument = argument->next) {
+                vitte_status_t status = vitte_driver_rewrite_expr(driver, ast, state, source_module_name, argument->as.record_field.value, scope);
+                if (status != VITTE_STATUS_OK) {
+                    return status;
+                }
+            }
+            return VITTE_STATUS_OK;
+        case VITTE_AST_NODE_CAST_EXPR:
+            return vitte_driver_rewrite_expr(driver, ast, state, source_module_name, expr->as.cast_expr.value, scope);
+        case VITTE_AST_NODE_INDEX_EXPR:
+            if (vitte_driver_rewrite_expr(driver, ast, state, source_module_name, expr->as.index_expr.base, scope) != VITTE_STATUS_OK) {
+                return vitte_ast_last_error(ast)->status;
+            }
+            return vitte_driver_rewrite_expr(driver, ast, state, source_module_name, expr->as.index_expr.index, scope);
+        case VITTE_AST_NODE_MEMBER_EXPR:
+            return vitte_driver_rewrite_expr(driver, ast, state, source_module_name, expr->as.member_expr.base, scope);
+        case VITTE_AST_NODE_IF_EXPR:
+            if (vitte_driver_rewrite_expr(driver, ast, state, source_module_name, expr->as.if_expr.condition, scope) != VITTE_STATUS_OK ||
+                vitte_driver_rewrite_expr(driver, ast, state, source_module_name, expr->as.if_expr.then_value, scope) != VITTE_STATUS_OK) {
+                return vitte_ast_last_error(ast)->status;
+            }
+            return vitte_driver_rewrite_expr(driver, ast, state, source_module_name, expr->as.if_expr.else_value, scope);
+        case VITTE_AST_NODE_BLOCK_EXPR:
+            {
+                vitte_driver_rewrite_scope_t *block_scope = (vitte_driver_rewrite_scope_t *)scope;
+                for (argument = expr->as.block_expr.statements.first; argument != NULL; argument = argument->next) {
+                    vitte_status_t status = vitte_driver_rewrite_stmt(driver, ast, state, source_module_name, argument, &block_scope, false);
+                    if (status != VITTE_STATUS_OK) {
+                        return status;
+                    }
+                }
+                return vitte_driver_rewrite_expr(driver, ast, state, source_module_name, expr->as.block_expr.value, block_scope);
+            }
         case VITTE_AST_NODE_INTEGER_LITERAL:
         case VITTE_AST_NODE_STRING_LITERAL:
         case VITTE_AST_NODE_ERROR:
@@ -1943,6 +2045,16 @@ static vitte_status_t vitte_driver_rewrite_stmt(
                 return vitte_driver_rewrite_stmt(driver, ast, state, source_module_name, stmt->as.if_stmt.else_branch, scope, true);
             }
             return VITTE_STATUS_OK;
+        case VITTE_AST_NODE_ASSIGN_STMT:
+            return vitte_driver_rewrite_expr(driver, ast, state, source_module_name, stmt->as.assign_stmt.value, *scope);
+        case VITTE_AST_NODE_EXPR_STMT:
+            return vitte_driver_rewrite_expr(driver, ast, state, source_module_name, stmt->as.expr_stmt.value, *scope);
+        case VITTE_AST_NODE_WHILE_STMT:
+            status = vitte_driver_rewrite_expr(driver, ast, state, source_module_name, stmt->as.while_stmt.condition, *scope);
+            if (status != VITTE_STATUS_OK) {
+                return status;
+            }
+            return vitte_driver_rewrite_stmt(driver, ast, state, source_module_name, stmt->as.while_stmt.body, scope, true);
         default:
             return VITTE_STATUS_OK;
     }
@@ -2073,6 +2185,24 @@ static vitte_status_t vitte_driver_flatten_module_imports(
             const vitte_ast_decl_t *decl = vitte_ast_module_find_exported_decl(imported_root, leaf_name);
 
             if (decl == NULL) {
+                const vitte_driver_flatten_binding_t *reexport_binding =
+                    vitte_driver_flatten_find_visible_binding(state, imported_unit->module_name, leaf_name);
+                if (reexport_binding != NULL) {
+                    if (vitte_driver_flatten_register_visible_binding(
+                            driver,
+                            ast,
+                            state,
+                            source_module_name,
+                            visible_name,
+                            reexport_binding->owner_module_name,
+                            reexport_binding->source_decl,
+                            reexport_binding->lowered_name,
+                            reexport_binding->clone_decl
+                        ) != VITTE_STATUS_OK) {
+                        return vitte_driver_last_error(driver)->status;
+                    }
+                    continue;
+                }
                 const vitte_ast_decl_t *private_decl = vitte_ast_module_find_decl(imported_root, leaf_name);
 
                 if (private_decl != NULL) {
@@ -2162,9 +2292,9 @@ static vitte_status_t vitte_driver_flatten_imported_modules(
                 vitte_driver_set_error(
                     driver,
                     status,
-                    error != NULL && error->code != NULL ? error->code : "VITTE_DRIVER_E_IMPORT",
-                    error != NULL && error->message != NULL ? error->message : "failed to flatten imported declaration",
-                    error != NULL ? error->details : decl_name
+                    vitte_driver_error_code_or(error, "VITTE_DRIVER_E_IMPORT"),
+                    vitte_driver_error_message_or(error, "failed to flatten imported declaration"),
+                    vitte_driver_error_details_or(error, decl_name)
                 );
                 return status;
             }
@@ -2182,9 +2312,9 @@ static vitte_status_t vitte_driver_flatten_imported_modules(
                 vitte_driver_set_error(
                     driver,
                     status,
-                    error != NULL && error->code != NULL ? error->code : "VITTE_DRIVER_E_IMPORT",
-                    error != NULL && error->message != NULL ? error->message : "failed to register imported declaration binding",
-                    error != NULL ? error->details : decl_name
+                    vitte_driver_error_code_or(error, "VITTE_DRIVER_E_IMPORT"),
+                    vitte_driver_error_message_or(error, "failed to register imported declaration binding"),
+                    vitte_driver_error_details_or(error, decl_name)
                 );
                 return status;
             }
@@ -2513,9 +2643,9 @@ static vitte_status_t vitte_driver_run_impl(
             vitte_driver_add_diag(
                 driver,
                 VITTE_DIAGNOSTIC_FATAL,
-                error != NULL && error->code != NULL ? error->code : "VITTE_DRIVER_E_IMPORT",
-                error != NULL && error->message != NULL ? error->message : "failed to resolve module imports",
-                error != NULL ? error->details : input->source_name
+                vitte_driver_error_code_or(error, "VITTE_DRIVER_E_IMPORT"),
+                vitte_driver_error_message_or(error, "failed to resolve module imports"),
+                vitte_driver_error_details_or(error, input->source_name)
             );
             vitte_driver_result_set_error(result, status, VITTE_DRIVER_STAGE_SEMANTIC, "VITTE_DRIVER_E_IMPORT", "failed to resolve module imports", NULL);
             vitte_import_resolver_destroy(&resolver);
@@ -2591,9 +2721,9 @@ static vitte_status_t vitte_driver_run_impl(
                 vitte_driver_add_diag(
                     driver,
                     VITTE_DIAGNOSTIC_FATAL,
-                    error != NULL && error->code != NULL ? error->code : "VITTE_DRIVER_E_IMPORT",
-                    error != NULL && error->message != NULL ? error->message : "failed to collect imported module graph",
-                    error != NULL && error->details != NULL ? error->details : module.imports[imported_index].resolved_path
+                    vitte_driver_error_code_or(error, "VITTE_DRIVER_E_IMPORT"),
+                    vitte_driver_error_message_or(error, "failed to collect imported module graph"),
+                    vitte_driver_error_details_or(error, module.imports[imported_index].resolved_path)
                 );
                 if (resolver_initialized) {
                     vitte_import_resolver_destroy(&resolver);
@@ -2673,17 +2803,17 @@ static vitte_status_t vitte_driver_run_impl(
             vitte_driver_add_diag(
                 driver,
                 VITTE_DIAGNOSTIC_FATAL,
-                error != NULL && error->code != NULL ? error->code : "VITTE_DRIVER_E_IMPORT",
-                error != NULL && error->message != NULL ? error->message : "failed to prepare imported declarations for backend lowering",
-                error != NULL ? error->details : NULL
+                vitte_driver_error_code_or(error, "VITTE_DRIVER_E_IMPORT"),
+                vitte_driver_error_message_or(error, "failed to prepare imported declarations for backend lowering"),
+                vitte_driver_error_details_or(error, NULL)
             );
             vitte_driver_result_set_error(
                 result,
                 status,
                 VITTE_DRIVER_STAGE_BACKEND,
-                error != NULL && error->code != NULL ? error->code : "VITTE_DRIVER_E_IMPORT",
-                error != NULL && error->message != NULL ? error->message : "failed to prepare imported declarations for backend lowering",
-                error != NULL ? error->details : NULL
+                vitte_driver_error_code_or(error, "VITTE_DRIVER_E_IMPORT"),
+                vitte_driver_error_message_or(error, "failed to prepare imported declarations for backend lowering"),
+                vitte_driver_error_details_or(error, NULL)
             );
             if (resolver_initialized) {
                 vitte_import_resolver_destroy(&resolver);
@@ -2834,9 +2964,15 @@ static vitte_status_t vitte_driver_run_impl(
         result->status = vitte_diagnostic_status(&driver->diagnostics);
         if (result->status == VITTE_STATUS_OK) {
             vitte_error_reset(&result->last_error);
+            vitte_error_reset(&driver->last_error);
+        } else {
+            vitte_driver_set_error_from_diagnostics(driver, result, result->status);
         }
+    } else if (vitte_diagnostic_status(&driver->diagnostics) == VITTE_STATUS_OK) {
+        vitte_error_reset(&driver->last_error);
+    } else {
+        vitte_driver_set_error_from_diagnostics(driver, NULL, vitte_diagnostic_status(&driver->diagnostics));
     }
-    vitte_error_reset(&driver->last_error);
     vitte_driver_update_counts(driver, result);
     return result != NULL ? result->status : vitte_diagnostic_status(&driver->diagnostics);
 }

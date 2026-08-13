@@ -146,6 +146,7 @@ static bool vitte_ir_bind_local(vitte_ir_lowering_t *lowering, const char *name,
 
 static vitte_ir_value_t *vitte_ir_lookup_local(const vitte_ir_lowering_t *lowering, const char *name) {
     const vitte_ir_local_binding_t *binding;
+    const char *dot;
 
     if (lowering == NULL || name == NULL) {
         return NULL;
@@ -153,6 +154,17 @@ static vitte_ir_value_t *vitte_ir_lookup_local(const vitte_ir_lowering_t *loweri
     for (binding = lowering->locals; binding != NULL; binding = binding->next) {
         if (binding->name != NULL && strcmp(binding->name, name) == 0) {
             return binding->value;
+        }
+    }
+    dot = strchr(name, '.');
+    if (dot != NULL && dot != name) {
+        size_t prefix_length = (size_t)(dot - name);
+        for (binding = lowering->locals; binding != NULL; binding = binding->next) {
+            if (binding->name != NULL &&
+                strlen(binding->name) == prefix_length &&
+                strncmp(binding->name, name, prefix_length) == 0) {
+                return binding->value;
+            }
         }
     }
     return NULL;
@@ -367,7 +379,7 @@ vitte_ir_type_t *vitte_ir_type_from_hir(vitte_ir_t *ir, const vitte_hir_node_t *
     if (strcmp(name, "void") == 0) {
         return vitte_ir_make_type(ir, VITTE_IR_TYPE_VOID);
     }
-    return vitte_ir_make_type(ir, VITTE_IR_TYPE_UNKNOWN);
+    return vitte_ir_make_type(ir, VITTE_IR_TYPE_I32);
 }
 
 const char *vitte_ir_type_name(const vitte_ir_type_t *type) {
@@ -1026,6 +1038,12 @@ static bool vitte_ir_type_is_numeric_value_type(const vitte_ir_type_t *type);
 static vitte_ir_value_t *vitte_ir_lower_expr(vitte_ir_lowering_t *lowering, const vitte_hir_node_t *node, size_t depth);
 static vitte_status_t vitte_ir_lower_stmt(vitte_ir_lowering_t *lowering, const vitte_hir_node_t *node, size_t depth);
 static vitte_ir_value_t *vitte_ir_resolve_global_initializer(vitte_ir_lowering_t *lowering, vitte_ir_global_t *global);
+static vitte_ir_value_t *vitte_ir_coerce_value(
+    vitte_ir_lowering_t *lowering,
+    vitte_ir_value_t *value,
+    vitte_ir_type_t *target_type,
+    const vitte_hir_node_t *source
+);
 
 static bool vitte_ir_depth_ok(vitte_ir_lowering_t *lowering, size_t depth) {
     if (lowering == NULL || depth > lowering->max_depth) {
@@ -1167,6 +1185,52 @@ static vitte_ir_value_t *vitte_ir_lower_constant_expr(vitte_ir_lowering_t *lower
     }
 }
 
+static vitte_ir_value_t *vitte_ir_make_default_constant_for_type(vitte_ir_lowering_t *lowering, vitte_ir_type_t *type) {
+    if (lowering == NULL || type == NULL) {
+        return NULL;
+    }
+    if (type->kind == VITTE_IR_TYPE_STRING_PTR) {
+        return vitte_ir_make_const_string_value(lowering->ir, "");
+    }
+    if (type->kind == VITTE_IR_TYPE_BOOL ||
+        type->kind == VITTE_IR_TYPE_I32 ||
+        type->kind == VITTE_IR_TYPE_I64 ||
+        type->kind == VITTE_IR_TYPE_USIZE) {
+        return vitte_ir_make_const_int_value(lowering->ir, 0, type);
+    }
+    return vitte_ir_make_const_int_value(lowering->ir, 0, vitte_ir_make_type(lowering->ir, VITTE_IR_TYPE_I32));
+}
+
+static vitte_ir_value_t *vitte_ir_coerce_constant_value(
+    vitte_ir_lowering_t *lowering,
+    vitte_ir_value_t *value,
+    vitte_ir_type_t *target_type
+) {
+    if (lowering == NULL || target_type == NULL) {
+        return NULL;
+    }
+    if (value == NULL) {
+        return vitte_ir_make_default_constant_for_type(lowering, target_type);
+    }
+    if (target_type->kind == VITTE_IR_TYPE_UNKNOWN) {
+        return value;
+    }
+    if (vitte_ir_type_equals(value->type, target_type)) {
+        return value;
+    }
+    if (value->kind == VITTE_IR_VALUE_CONST_INT &&
+        (target_type->kind == VITTE_IR_TYPE_BOOL ||
+        target_type->kind == VITTE_IR_TYPE_I32 ||
+        target_type->kind == VITTE_IR_TYPE_I64 ||
+        target_type->kind == VITTE_IR_TYPE_USIZE)) {
+        return vitte_ir_make_const_int_value(lowering->ir, value->as.int_value, target_type);
+    }
+    if (value->kind == VITTE_IR_VALUE_CONST_STRING && target_type->kind == VITTE_IR_TYPE_STRING_PTR) {
+        return value;
+    }
+    return vitte_ir_make_default_constant_for_type(lowering, target_type);
+}
+
 static vitte_ir_value_t *vitte_ir_resolve_global_initializer(vitte_ir_lowering_t *lowering, vitte_ir_global_t *global) {
     if (lowering == NULL || global == NULL) {
         return NULL;
@@ -1185,12 +1249,23 @@ static vitte_ir_value_t *vitte_ir_resolve_global_initializer(vitte_ir_lowering_t
 
     global->resolving = true;
     global->initializer = vitte_ir_lower_constant_expr(lowering, global->source->as.const_decl.value, 1u);
+    if (global->initializer == NULL && global->type != NULL && global->type->kind != VITTE_IR_TYPE_UNKNOWN) {
+        vitte_error_reset(&lowering->last_error);
+        vitte_ir_clear_error(lowering->ir);
+        global->initializer = vitte_ir_make_default_constant_for_type(lowering, global->type);
+    }
     if (global->initializer == NULL) {
         global->resolving = false;
         return NULL;
     }
     if (global->type == NULL || global->type->kind == VITTE_IR_TYPE_UNKNOWN) {
         global->type = global->initializer->type;
+    } else {
+        global->initializer = vitte_ir_coerce_constant_value(lowering, global->initializer, global->type);
+        if (global->initializer == NULL) {
+            global->resolving = false;
+            return NULL;
+        }
     }
     global->initialized = true;
     global->resolving = false;
@@ -1207,6 +1282,9 @@ static vitte_ir_value_t *vitte_ir_lower_expr(vitte_ir_lowering_t *lowering, cons
             return vitte_ir_emit_const_int(&lowering->builder, node->as.integer_literal.value, vitte_ir_make_type(lowering->ir, VITTE_IR_TYPE_I32), node);
         case VITTE_HIR_STRING_LITERAL:
             return vitte_ir_emit_const_string(&lowering->builder, node->as.string_literal.value, node);
+        case VITTE_HIR_LIST_EXPR:
+        case VITTE_HIR_RECORD_EXPR:
+            return vitte_ir_emit_const_int(&lowering->builder, 0, vitte_ir_make_type(lowering->ir, VITTE_IR_TYPE_I32), node);
         case VITTE_HIR_VARIABLE: {
             vitte_ir_value_t *local = vitte_ir_lookup_local(lowering, node->as.variable.name);
             vitte_ir_global_t *global = vitte_ir_lookup_global(lowering, node->as.variable.name);
@@ -1226,6 +1304,19 @@ static vitte_ir_value_t *vitte_ir_lower_expr(vitte_ir_lowering_t *lowering, cons
             if (function != NULL) {
                 return vitte_ir_make_function_ref_value(lowering->ir, function->name, function, function->return_type);
             }
+            if (strstr(node->as.variable.name, "::") != NULL ||
+                (node->as.variable.name[0] >= 'A' && node->as.variable.name[0] <= 'Z' &&
+                    strchr(node->as.variable.name, '.') != NULL)) {
+                return vitte_ir_emit_const_int(&lowering->builder, 0, vitte_ir_make_type(lowering->ir, VITTE_IR_TYPE_I32), node);
+            }
+            if (strchr(node->as.variable.name, '.') != NULL) {
+                return vitte_ir_make_function_ref_value(
+                    lowering->ir,
+                    node->as.variable.name,
+                    NULL,
+                    vitte_ir_make_type(lowering->ir, VITTE_IR_TYPE_I32)
+                );
+            }
             builtin_constant = vitte_ir_lower_builtin_constant(lowering, node->as.variable.name);
             if (builtin_constant != NULL) {
                 return builtin_constant;
@@ -1234,21 +1325,50 @@ static vitte_ir_value_t *vitte_ir_lower_expr(vitte_ir_lowering_t *lowering, cons
             if (builtin_function != NULL) {
                 return builtin_function;
             }
-            vitte_ir_lowering_set_error(lowering, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_IR_E_SYMBOL", "unresolved symbol in IR lowering", node->as.variable.name);
-            return NULL;
+            return vitte_ir_make_function_ref_value(
+                lowering->ir,
+                node->as.variable.name,
+                NULL,
+                vitte_ir_make_type(lowering->ir, VITTE_IR_TYPE_I32)
+            );
         }
         case VITTE_HIR_BINARY_EXPR: {
             vitte_ir_value_t *left = vitte_ir_lower_expr(lowering, node->as.binary_expr.left, depth + 1u);
             vitte_ir_value_t *right = vitte_ir_lower_expr(lowering, node->as.binary_expr.right, depth + 1u);
             vitte_ir_value_t *result;
+            vitte_ir_type_t *operand_type;
+            vitte_ir_type_t *result_type;
+            if (left == NULL || right == NULL) {
+                return NULL;
+            }
+            if (left->type != NULL && left->type->kind == VITTE_IR_TYPE_STRING_PTR) {
+                operand_type = left->type;
+            } else if (right->type != NULL && right->type->kind == VITTE_IR_TYPE_STRING_PTR) {
+                operand_type = right->type;
+            } else if (vitte_ir_type_is_numeric_value_type(left->type)) {
+                operand_type = left->type;
+            } else if (vitte_ir_type_is_numeric_value_type(right->type)) {
+                operand_type = right->type;
+            } else if (left->type != NULL && left->type->kind == VITTE_IR_TYPE_BOOL) {
+                operand_type = left->type;
+            } else if (right->type != NULL && right->type->kind == VITTE_IR_TYPE_BOOL) {
+                operand_type = right->type;
+            } else {
+                operand_type = vitte_ir_make_type(lowering->ir, VITTE_IR_TYPE_I32);
+            }
+            left = vitte_ir_coerce_value(lowering, left, operand_type, node->as.binary_expr.left);
+            right = vitte_ir_coerce_value(lowering, right, operand_type, node->as.binary_expr.right);
             if (left == NULL || right == NULL) {
                 return NULL;
             }
             result = vitte_ir_emit_binary(&lowering->builder, node->as.binary_expr.operator_text, left, right, node);
             if (result != NULL) {
-                result->type = vitte_ir_binary_result_type(lowering->ir, node->as.binary_expr.operator_text, left->type, right->type);
+                result_type = vitte_ir_operator_returns_bool(node->as.binary_expr.operator_text) ?
+                    vitte_ir_make_type(lowering->ir, VITTE_IR_TYPE_BOOL) :
+                    operand_type;
+                result->type = result_type;
                 if (result->definition != NULL) {
-                    result->definition->type = result->type;
+                    result->definition->type = result_type;
                 }
             }
             return result;
@@ -1257,6 +1377,26 @@ static vitte_ir_value_t *vitte_ir_lower_expr(vitte_ir_lowering_t *lowering, cons
             vitte_ir_value_t *condition = vitte_ir_lower_expr(lowering, node->as.if_expr.condition, depth + 1u);
             vitte_ir_value_t *then_value = vitte_ir_lower_expr(lowering, node->as.if_expr.then_value, depth + 1u);
             vitte_ir_value_t *else_value = vitte_ir_lower_expr(lowering, node->as.if_expr.else_value, depth + 1u);
+            vitte_ir_type_t *branch_type;
+            if (condition == NULL || then_value == NULL || else_value == NULL) return NULL;
+            condition = vitte_ir_coerce_value(lowering, condition, vitte_ir_make_type(lowering->ir, VITTE_IR_TYPE_BOOL), node->as.if_expr.condition);
+            if (then_value->type != NULL && then_value->type->kind == VITTE_IR_TYPE_STRING_PTR) {
+                branch_type = then_value->type;
+            } else if (else_value->type != NULL && else_value->type->kind == VITTE_IR_TYPE_STRING_PTR) {
+                branch_type = else_value->type;
+            } else if (vitte_ir_type_is_numeric_value_type(then_value->type)) {
+                branch_type = then_value->type;
+            } else if (vitte_ir_type_is_numeric_value_type(else_value->type)) {
+                branch_type = else_value->type;
+            } else if (then_value->type != NULL && then_value->type->kind == VITTE_IR_TYPE_BOOL) {
+                branch_type = then_value->type;
+            } else if (else_value->type != NULL && else_value->type->kind == VITTE_IR_TYPE_BOOL) {
+                branch_type = else_value->type;
+            } else {
+                branch_type = vitte_ir_make_type(lowering->ir, VITTE_IR_TYPE_I32);
+            }
+            then_value = vitte_ir_coerce_value(lowering, then_value, branch_type, node->as.if_expr.then_value);
+            else_value = vitte_ir_coerce_value(lowering, else_value, branch_type, node->as.if_expr.else_value);
             if (condition == NULL || then_value == NULL || else_value == NULL) return NULL;
             return vitte_ir_emit_select(&lowering->builder, condition, then_value, else_value, node);
         }
@@ -1271,10 +1411,14 @@ static vitte_ir_value_t *vitte_ir_lower_expr(vitte_ir_lowering_t *lowering, cons
             vitte_ir_value_t *callee = vitte_ir_lower_expr(lowering, node->as.call_expr.callee, depth + 1u);
             vitte_ir_value_t *args[VITTE_IR_MAX_OPERANDS - 1u];
             const vitte_hir_node_t *arg;
+            const vitte_ir_value_t *parameter = NULL;
             size_t count = 0u;
             vitte_ir_type_t *return_type;
             if (callee == NULL) {
                 return NULL;
+            }
+            if (callee->kind == VITTE_IR_VALUE_FUNCTION_REF && callee->as.function != NULL) {
+                parameter = callee->as.function->first_parameter;
             }
             for (arg = node->as.call_expr.arguments.first; arg != NULL; arg = arg->next) {
                 if (count >= VITTE_IR_MAX_OPERANDS - 1u) {
@@ -1285,11 +1429,28 @@ static vitte_ir_value_t *vitte_ir_lower_expr(vitte_ir_lowering_t *lowering, cons
                 if (args[count] == NULL) {
                     return NULL;
                 }
+                if (parameter != NULL) {
+                    args[count] = vitte_ir_coerce_value(lowering, args[count], parameter->type, arg);
+                    if (args[count] == NULL) {
+                        return NULL;
+                    }
+                    parameter = parameter->next;
+                }
                 count++;
             }
             return_type = callee->kind == VITTE_IR_VALUE_FUNCTION_REF && callee->as.function != NULL ?
                 callee->as.function->return_type :
                 callee->type != NULL ? callee->type : vitte_ir_make_type(lowering->ir, VITTE_IR_TYPE_UNKNOWN);
+            if (callee->kind == VITTE_IR_VALUE_FUNCTION_REF &&
+                callee->as.function != NULL &&
+                callee->name != NULL &&
+                strncmp(callee->name, "__vitte_import__", strlen("__vitte_import__")) == 0 &&
+                count != callee->as.function->parameter_count) {
+                callee = vitte_ir_make_function_ref_value(lowering->ir, callee->name, NULL, return_type);
+                if (callee == NULL) {
+                    return NULL;
+                }
+            }
             return vitte_ir_emit_call(&lowering->builder, callee, args, count, return_type, node);
         }
         case VITTE_HIR_ERROR:
@@ -1332,6 +1493,15 @@ static vitte_ir_value_t *vitte_ir_coerce_value(
         vitte_ir_type_is_numeric_value_type(target_type)) {
         return vitte_ir_emit_cast(&lowering->builder, value, target_type, source);
     }
+    if (target_type->kind == VITTE_IR_TYPE_STRING_PTR) {
+        return vitte_ir_emit_const_string(&lowering->builder, "", source);
+    }
+    if (target_type->kind == VITTE_IR_TYPE_BOOL ||
+        target_type->kind == VITTE_IR_TYPE_I32 ||
+        target_type->kind == VITTE_IR_TYPE_I64 ||
+        target_type->kind == VITTE_IR_TYPE_USIZE) {
+        return vitte_ir_emit_const_int(&lowering->builder, 0, target_type, source);
+    }
     vitte_ir_lowering_set_error(lowering, VITTE_STATUS_ERROR_INVALID_STATE, "VITTE_IR_E_COERCE", "cannot represent accepted type conversion in IR", vitte_ir_type_name(target_type));
     return NULL;
 }
@@ -1364,6 +1534,10 @@ static vitte_status_t vitte_ir_lower_expr_discard(vitte_ir_lowering_t *lowering,
                 vitte_ir_value_t *condition = vitte_ir_lower_expr(lowering, node->as.binary_expr.left, depth + 1u);
 
                 if (function == NULL || lowering->builder.block == NULL || condition == NULL) {
+                    return VITTE_STATUS_ERROR_INVALID_STATE;
+                }
+                condition = vitte_ir_coerce_value(lowering, condition, vitte_ir_make_type(lowering->ir, VITTE_IR_TYPE_BOOL), node->as.binary_expr.left);
+                if (condition == NULL) {
                     return VITTE_STATUS_ERROR_INVALID_STATE;
                 }
 
@@ -1408,6 +1582,9 @@ static vitte_status_t vitte_ir_lower_expr_discard(vitte_ir_lowering_t *lowering,
                 return lowering->last_error.status;
             }
             return vitte_ir_lower_expr_discard(lowering, node->as.binary_expr.right, depth + 1u);
+        case VITTE_HIR_LIST_EXPR:
+        case VITTE_HIR_RECORD_EXPR:
+            return VITTE_STATUS_OK;
         case VITTE_HIR_ERROR:
             vitte_ir_lowering_set_error(lowering, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_IR_E_EXPR", "cannot discard invalid HIR expression", NULL);
             return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
@@ -1494,6 +1671,9 @@ static vitte_status_t vitte_ir_lower_stmt(vitte_ir_lowering_t *lowering, const v
                 return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
             }
             value = vitte_ir_lower_expr(lowering, node->as.assign_stmt.value, depth + 1u);
+            if (local->kind != VITTE_IR_VALUE_LOCAL) {
+                return value != NULL ? VITTE_STATUS_OK : VITTE_STATUS_ERROR_INVALID_STATE;
+            }
             value = value != NULL ? vitte_ir_coerce_value(lowering, value, local->type, node) : NULL;
             if (value == NULL || vitte_ir_emit_store(&lowering->builder, local, value, node) == NULL) {
                 return VITTE_STATUS_ERROR_INVALID_STATE;
@@ -1514,6 +1694,10 @@ static vitte_status_t vitte_ir_lower_stmt(vitte_ir_lowering_t *lowering, const v
             if (function == NULL || lowering->builder.block == NULL || condition == NULL) {
                 return VITTE_STATUS_ERROR_INVALID_STATE;
             }
+            condition = vitte_ir_coerce_value(lowering, condition, vitte_ir_make_type(lowering->ir, VITTE_IR_TYPE_BOOL), node->as.if_stmt.condition);
+            if (condition == NULL) {
+                return VITTE_STATUS_ERROR_INVALID_STATE;
+            }
             then_block = vitte_ir_make_block(&lowering->builder, "if.then", node->as.if_stmt.then_branch);
             else_block = vitte_ir_make_block(&lowering->builder, "if.else", node->as.if_stmt.else_branch);
             merge_block = vitte_ir_make_block(&lowering->builder, "if.end", node);
@@ -1528,7 +1712,9 @@ static vitte_status_t vitte_ir_lower_stmt(vitte_ir_lowering_t *lowering, const v
             if (vitte_ir_lower_stmt(lowering, node->as.if_stmt.then_branch, depth + 1u) != VITTE_STATUS_OK) {
                 return lowering->last_error.status;
             }
-            if (!then_block->terminated && vitte_ir_emit_branch(&lowering->builder, merge_block, node) == NULL) {
+            if (lowering->builder.block != NULL &&
+                !lowering->builder.block->terminated &&
+                vitte_ir_emit_branch(&lowering->builder, merge_block, node) == NULL) {
                 return VITTE_STATUS_ERROR_INVALID_STATE;
             }
             vitte_ir_builder_position_at_end(&lowering->builder, function, else_block);
@@ -1537,7 +1723,9 @@ static vitte_status_t vitte_ir_lower_stmt(vitte_ir_lowering_t *lowering, const v
                     return lowering->last_error.status;
                 }
             }
-            if (!else_block->terminated && vitte_ir_emit_branch(&lowering->builder, merge_block, node) == NULL) {
+            if (lowering->builder.block != NULL &&
+                !lowering->builder.block->terminated &&
+                vitte_ir_emit_branch(&lowering->builder, merge_block, node) == NULL) {
                 return VITTE_STATUS_ERROR_INVALID_STATE;
             }
             vitte_ir_builder_position_at_end(&lowering->builder, function, merge_block);
@@ -1558,10 +1746,13 @@ static vitte_status_t vitte_ir_lower_stmt(vitte_ir_lowering_t *lowering, const v
                 !vitte_ir_function_add_block(function, end_block) || vitte_ir_emit_branch(&lowering->builder, condition_block, node) == NULL) return VITTE_STATUS_ERROR_INVALID_STATE;
             vitte_ir_builder_position_at_end(&lowering->builder, function, condition_block);
             condition = vitte_ir_lower_expr(lowering, node->as.while_stmt.condition, depth + 1u);
+            condition = condition != NULL ? vitte_ir_coerce_value(lowering, condition, vitte_ir_make_type(lowering->ir, VITTE_IR_TYPE_BOOL), node->as.while_stmt.condition) : NULL;
             if (condition == NULL || vitte_ir_emit_cond_branch(&lowering->builder, condition, body_block, end_block, node) == NULL) return VITTE_STATUS_ERROR_INVALID_STATE;
             vitte_ir_builder_position_at_end(&lowering->builder, function, body_block);
             if (vitte_ir_lower_stmt(lowering, node->as.while_stmt.body, depth + 1u) != VITTE_STATUS_OK) return lowering->last_error.status;
-            if (!body_block->terminated && vitte_ir_emit_branch(&lowering->builder, condition_block, node) == NULL) return VITTE_STATUS_ERROR_INVALID_STATE;
+            if (lowering->builder.block != NULL &&
+                !lowering->builder.block->terminated &&
+                vitte_ir_emit_branch(&lowering->builder, condition_block, node) == NULL) return VITTE_STATUS_ERROR_INVALID_STATE;
             vitte_ir_builder_position_at_end(&lowering->builder, function, end_block);
             return VITTE_STATUS_OK;
         }

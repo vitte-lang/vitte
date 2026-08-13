@@ -14,7 +14,7 @@
 extern "C" {
 #endif
 
-#define VITTE_IR_MAX_OPERANDS ((size_t)4u)
+#define VITTE_IR_MAX_OPERANDS ((size_t)32u)
 #define VITTE_IR_DEFAULT_MAX_DEPTH ((size_t)256u)
 
 typedef uint32_t vitte_ir_value_id_t;
