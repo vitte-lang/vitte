@@ -28,10 +28,10 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def run(command: list[str]) -> dict[str, Any]:
+def run(command: list[str], cwd: Path = ROOT) -> dict[str, Any]:
     proc = subprocess.run(
         command,
-        cwd=ROOT,
+        cwd=cwd,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -126,12 +126,16 @@ def main() -> int:
                         "building src/vitte/compiler/main.vit reproduces bin/vitte byte-for-byte through the self-copy path"
                     )
 
-            probe_root = Path(directory) / "src/vitte/compiler"
-            shutil.copytree(ROOT / "src/vitte/compiler", probe_root)
+            probe_project = Path(directory)
+            probe_root = probe_project / "src/vitte/compiler"
+            shutil.copytree(ROOT / "src/vitte", probe_project / "src/vitte")
             probe_entry = probe_root / "main.vit"
             probe_driver = probe_root / "driver/compiler.vit"
             probe_output = Path(directory) / "compiler-provenance"
-            baseline_build = run([str(BIN), "build", str(probe_entry), "-o", str(probe_output)])
+            baseline_build = run(
+                [str(BIN), "build", str(probe_entry), "-o", str(probe_output)],
+                cwd=probe_project,
+            )
             evidence["source_sensitivity_baseline_build"] = baseline_build
             baseline_hash = sha256(probe_output) if baseline_build["exit_code"] == 0 and probe_output.is_file() else ""
             driver_text = probe_driver.read_text(encoding="utf-8")
@@ -145,7 +149,10 @@ def main() -> int:
             else:
                 probe_driver.write_text(perturbed_text, encoding="utf-8")
                 probe_output.unlink(missing_ok=True)
-                perturbed_build = run([str(BIN), "build", str(probe_entry), "-o", str(probe_output)])
+                perturbed_build = run(
+                    [str(BIN), "build", str(probe_entry), "-o", str(probe_output)],
+                    cwd=probe_project,
+                )
                 evidence["source_sensitivity_perturbed_build"] = perturbed_build
                 perturbed_hash = sha256(probe_output) if perturbed_build["exit_code"] == 0 and probe_output.is_file() else ""
                 evidence["source_sensitivity"] = {

@@ -13,8 +13,9 @@ DOCS = [
     ROOT / "docs" / "compiler" / "architecture.md",
     ROOT / "docs" / "compiler" / "pipeline.md",
     ROOT / "docs" / "COMPILER_DRIVER_MIGRATION.md",
-    ROOT / "docs" / "bootstrap_contracts.md",
-    ROOT / "docs" / "bootstrap_migration_checklist.md",
+    ROOT / "docs" / "bootstrap_seed.md",
+    ROOT / "docs" / "BOOTSTRAP_NATIVE_MIGRATION_FROM_RUST.md",
+    ROOT / "docs" / "BOOTSTRAP_VITTE_FILE_MAPPING.md",
     ROOT / "docs" / "MAKE_TARGETS.md",
 ]
 
@@ -32,9 +33,12 @@ FORBIDDEN = [
 ]
 
 REQUIRED = [
-    "toolchain/seed/vittec0.seed",
+    "toolchain/bootstrap/stage0-manifest.json",
+    "toolchain/bootstrap/stages-manifest.json",
+    "make bootstrap-all",
     "make bootstrap-native-contract",
     "make bootstrap-verify",
+    "make bootstrap-max-gate",
     "make build",
 ]
 

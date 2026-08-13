@@ -1,4 +1,4 @@
-# Compiler Architecture (Seed Reality)
+# Compiler Architecture (Current Reality)
 
 This document describes what the current seed compiler actually does.
 
@@ -12,7 +12,7 @@ current repository state.
 
 | Area | Current contract |
 | --- | --- |
-| Entry point | `toolchain/seed/vittec0.seed` |
+| Entry point | `src/vitte/compiler/main.vit` |
 | Driver | explicit command surface with stable modes |
 | Frontend | registry, module graph, symbols, visibility, type DB |
 | Analysis | HIR validate, sema, typeck, control-flow, borrowck |
@@ -20,7 +20,8 @@ current repository state.
 | Backend | C backend plus host object/link toolchain |
 | Diagnostics | cataloged codes, text or JSON output |
 
-- Front door: `toolchain/seed/vittec0.seed`.
+- Front door: `src/vitte/compiler/main.vit`, routed through
+  `src/vitte/compiler/driver/compiler.vit`.
 - Modes: `check`, `build`, `run`, `test`, `dump-*`, `self-check`.
 - Core pipeline in `check`:
   `registry -> module graph -> symbol/visibility -> type-db -> HIR validate ->`
@@ -40,7 +41,7 @@ This page owns the high-level architecture map:
 
 ## Invariants
 
-- The documented entry remains `toolchain/seed/vittec0.seed`.
+- The documented entry remains `src/vitte/compiler/main.vit`.
 - The checked pipeline order must stay deterministic.
 - Driver and diagnostics contracts stay explicit rather than hidden behind
   fallback behavior.
@@ -62,8 +63,8 @@ The real compiler flow currently looks like this:
 ## Bootstrap
 
 Bootstrap is part of the architecture contract because the compiler is audited
-through a reproducible seed trust root and explicit compiler generations, not
-just through source organization.
+through a reproducible signed stage0 trust root and explicit compiler
+generations, not just through source organization.
 
 - [Bootstrap overview](../bootstrap/overview.md)
 - [Bootstrap seed](../bootstrap/stage0.md)
@@ -72,7 +73,13 @@ just through source organization.
 - [Bootstrap self-host checks](../bootstrap/self_host.md)
 - [Bootstrap troubleshooting](../bootstrap/troubleshooting.md)
 - [Bootstrap seed contract](../bootstrap_seed.md)
-- [Bootstrap native IR contract](../bootstrap_native_ir.md)
+- [Bootstrap native IR contract](../bootstrap_native_ir.html)
+
+The active chain is recorded by `toolchain/bootstrap/stage0-manifest.json` and
+`toolchain/bootstrap/stages-manifest.json`. The supported verification sequence
+is `make bootstrap-all`, `make bootstrap-verify`, and
+`make bootstrap-max-gate`; the native contract is enforced by
+`make bootstrap-native-contract`.
 
 ## Driver
 
@@ -80,8 +87,7 @@ The driver is intentionally visible in the architecture because it defines the
 user-facing command boundary and CI audit surface.
 
 - [Compiler driver alignment](../COMPILER_DRIVER_MIGRATION.md)
-- [Build and release surface](build.md)
-- [Release engineering](release_engineering.md)
+- [Build and release surface](../MAKE_TARGETS.md)
 
 ## Foundation Status (170-173)
 
@@ -112,9 +118,9 @@ Roadmap links (161-200):
 
 ## Examples
 
-Un développeur qui souhaite vérifier un module utilise la commande `check` du compilateur seed :
+Un développeur qui souhaite vérifier un module utilise la commande `check` du compilateur :
 ```sh
-./toolchain/seed/vittec0.seed check src/app.vit
+./bin/vitte check src/app.vit
 ```
 Ce mode exécute les étapes principales du frontend et du pipeline de validation sans produire d'objet exécutable.
 - `check` lance la résolution de module, la validation HIR, la vérification sémantique et le borrow check.
