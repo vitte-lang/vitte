@@ -373,6 +373,9 @@ proc cli_request_failure(request: CompilerCliRequest, status: driver.DriverExitS
 }
 
 proc cli_command_from_text(text: string) -> string {
+    if text == "--version" or text == "-V" or text == "version" {
+        give "version";
+    }
     if text == "check" {
         give "check";
     }
@@ -760,6 +763,12 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
         set request.valid = true;
         set request.status = driver.DriverExitStatus::Ok;
         set request.message = "usage: vitte <command> [options] [file]";
+        give request;
+    }
+
+    if request.command == "version" {
+        set request.valid = true;
+        set request.status = driver.DriverExitStatus::Ok;
         give request;
     }
 
@@ -1336,11 +1345,12 @@ proc cli_output_dir(path: string) -> string {
 
 proc cli_compiler_options(request: CompilerCliRequest, mode: CompilerMode, output_path: string) -> CompilerOptions {
     let opts: CompilerOptions = default_options();
+    let effective_output_path: string = if output_path != "" { output_path } else { "build/main" };
     set opts.mode = mode;
     set opts.target = request.target;
     set opts.profile = request.profile;
-    set opts.output_dir = cli_output_dir(output_path);
-    set opts.output_path = output_path;
+    set opts.output_dir = cli_output_dir(effective_output_path);
+    set opts.output_path = effective_output_path;
     set opts.emit_json = request.format == "json";
     set opts.verbose = request.verbose;
     set opts.trace_pipeline = request.trace_pipeline;
@@ -1427,6 +1437,11 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
     if request.command == "help" {
         let msg: string = request.message + "\n";
         emit_cli_help(msg);
+        give cli_exit_code(driver.DriverExitStatus::Ok);
+    }
+
+    if request.command == "version" {
+        emit_cli_help(version_text() + "\n");
         give cli_exit_code(driver.DriverExitStatus::Ok);
     }
 
