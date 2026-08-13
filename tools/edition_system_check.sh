@@ -43,8 +43,8 @@ EOF
 cp "$TMP/e2025/main.vit" "$TMP/e2026/main.vit"
 
 # Cross-edition smoke: parser/check path remains stable for same program.
-"$TOOL" parse "$TMP/e2025/main.vit" >/dev/null
-"$TOOL" parse "$TMP/e2026/main.vit" >/dev/null
+"$TOOL" check --stage parse "$TMP/e2025/main.vit" >/dev/null
+"$TOOL" check --stage parse "$TMP/e2026/main.vit" >/dev/null
 "$TOOL" check "$TMP/e2025/main.vit" >/dev/null
 "$TOOL" check "$TMP/e2026/main.vit" >/dev/null
 

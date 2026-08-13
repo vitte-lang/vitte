@@ -9,7 +9,7 @@ SRC="${SRC:-$ROOT_DIR/tests/diag_snapshots/composite_type_arity.vit}"
 [ -f "$SRC" ] || { echo "[strict-recovery-smoke][error] missing source: $SRC" >&2; exit 1; }
 
 set +e
-out="$($BIN parse --lang=en "$SRC" 2>&1)"
+out="$($BIN check --stage parse --lang=en "$SRC" 2>&1)"
 rc=$?
 set -e
 

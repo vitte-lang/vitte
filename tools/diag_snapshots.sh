@@ -67,7 +67,7 @@ for src in "${files[@]}"; do
 
   [ -f "$must" ] || die "missing snapshot requirements file: $must"
 
-  cmd="parse"
+  cmd="check --stage parse"
   [ -f "$cmd_file" ] && cmd="$(tr -d '\n' < "$cmd_file")"
 
   flags=""

@@ -20,7 +20,7 @@ norm_file() {
 
 FIXTURE="tests/bootstrap_native/bad_unknown_const.vit"
 
-if "$BIN" --strict parse "$FIXTURE" >"$TMP_DIR/strict.out" 2>"$TMP_DIR/strict.err"; then
+if "$BIN" --strict check --stage parse "$FIXTURE" >"$TMP_DIR/strict.out" 2>"$TMP_DIR/strict.err"; then
     die "strict diagnostic fixture unexpectedly succeeded"
 fi
 norm_file "$TMP_DIR/strict.err" "$TMP_DIR/strict.norm.err"

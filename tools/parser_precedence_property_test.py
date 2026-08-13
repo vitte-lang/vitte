@@ -39,7 +39,7 @@ def parse_ast(vitte_bin: Path, src: str) -> dict:
         tmp.write(src)
         tmp_path = Path(tmp.name)
     try:
-        cmd = [str(vitte_bin), "parse", "--parse-silent", "--dump-ast-json", str(tmp_path)]
+        cmd = [str(vitte_bin), "check", "--stage", "parse", "--parse-silent", "--dump-ast-json", str(tmp_path)]
         proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
         out = (proc.stdout or "") + "\n" + (proc.stderr or "")
         start = out.find("{")
@@ -56,7 +56,7 @@ def parse_ast(vitte_bin: Path, src: str) -> dict:
 
 def has_detailed_ast_surface(vitte_bin: Path, repo: Path) -> bool:
     src = repo / "src/vitte/compiler/main.vit"
-    cmd = [str(vitte_bin), "parse", "--dump-ast-json", str(src)]
+    cmd = [str(vitte_bin), "check", "--stage", "parse", "--dump-ast-json", str(src)]
     proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
     out = (proc.stdout or "") + "\n" + (proc.stderr or "")
     if proc.returncode != 0:

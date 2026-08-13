@@ -56,11 +56,11 @@ proc main(args: list[string]) -> int {
 export *
 EOF
 
-"$BIN" parse --parse-silent --strict-core "$TMP_OK" >/dev/null
-"$BIN" parse --parse-silent --syntax-profile core-v1 "$TMP_OK" >/dev/null
+"$BIN" check --stage parse --parse-silent --strict-core "$TMP_OK" >/dev/null
+"$BIN" check --stage parse --parse-silent --syntax-profile core-v1 "$TMP_OK" >/dev/null
 
 set +e
-OUT="$("$BIN" parse --parse-silent --diag-code-only --strict-core "$TMP_BAD" 2>&1)"
+OUT="$("$BIN" check --stage parse --parse-silent --diag-code-only --strict-core "$TMP_BAD" 2>&1)"
 RC=$?
 set -e
 
@@ -81,7 +81,7 @@ if ! grep -q "E0014" <<<"$OUT"; then
 fi
 
 set +e
-OUT_PROFILE="$("$BIN" parse --parse-silent --diag-code-only --syntax-profile core-v1 "$TMP_BAD" 2>&1)"
+OUT_PROFILE="$("$BIN" check --stage parse --parse-silent --diag-code-only --syntax-profile core-v1 "$TMP_BAD" 2>&1)"
 RC_PROFILE=$?
 set -e
 

@@ -14,9 +14,8 @@ die() { printf "[wrapper-stage-test][error] %s\n" "$*" >&2; exit 1; }
 [ -f "$SRC" ] || die "missing input file: $SRC"
 
 for wrapper in "$VITTE_BIN" "$VITTEC_BIN"; do
-  log "$(basename "$wrapper") parse --stage parse"
-  out="$("$wrapper" parse --stage parse "$SRC" 2>&1)"
-  if [ "$out" != "parse ok: $SRC" ]; then
+  log "$(basename "$wrapper") check --stage parse"
+  if ! out="$("$wrapper" check --stage parse "$SRC" 2>&1)"; then
     printf "%s\n" "$out"
     die "active wrapper did not forward --stage parse correctly: $wrapper"
   fi

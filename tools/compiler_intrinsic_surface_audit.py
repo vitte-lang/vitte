@@ -55,7 +55,7 @@ def has_source_support() -> dict[str, object]:
 
 
 def bootstrap_support() -> dict[str, object]:
-    parse_cmd = ["bin/vitte", "parse", "--src", str(HOST_RUNTIME), "--dump-ast-json"]
+    parse_cmd = ["bin/vitte", "check", "--stage", "parse", "--src", str(HOST_RUNTIME), "--dump-ast-json"]
     check_cmd = ["bin/vitte", "check", "--src", str(HOST_RUNTIME), "--dump-hir-json"]
     parse_result = run_command(parse_cmd)
     check_result = run_command(check_cmd)

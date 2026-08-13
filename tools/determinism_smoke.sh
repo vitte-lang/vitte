@@ -10,8 +10,8 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 [ -x "$BIN" ] || { echo "[determinism-smoke][error] missing binary: $BIN" >&2; exit 1; }
 [ -f "$SRC" ] || { echo "[determinism-smoke][error] missing source: $SRC" >&2; exit 1; }
 
-"$BIN" parse --parse-silent --deterministic --dump-ast-json --lang=en "$SRC" > "$TMP_DIR/a.out" 2> "$TMP_DIR/a.err"
-"$BIN" parse --parse-silent --deterministic --dump-ast-json --lang=en "$SRC" > "$TMP_DIR/b.out" 2> "$TMP_DIR/b.err"
+"$BIN" check --stage parse --parse-silent --deterministic --dump-ast-json --lang=en "$SRC" > "$TMP_DIR/a.out" 2> "$TMP_DIR/a.err"
+"$BIN" check --stage parse --parse-silent --deterministic --dump-ast-json --lang=en "$SRC" > "$TMP_DIR/b.out" 2> "$TMP_DIR/b.err"
 
 cmp "$TMP_DIR/a.out" "$TMP_DIR/b.out" >/dev/null
 cmp "$TMP_DIR/a.err" "$TMP_DIR/b.err" >/dev/null

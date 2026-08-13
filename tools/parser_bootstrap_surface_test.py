@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def run(vitte: Path, src: Path) -> tuple[int, str, str]:
     p = subprocess.run(
-        [str(vitte), "parse", "--parse-silent", "--deterministic", "--dump-ast-json", "--lang=en", str(src)],
+        [str(vitte), "check", "--stage", "parse", "--parse-silent", "--deterministic", "--dump-ast-json", "--lang=en", str(src)],
         capture_output=True,
         text=True,
         encoding="utf-8",

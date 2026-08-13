@@ -50,7 +50,7 @@ check_surface() {
 
 cd "$ROOT_DIR"
 
-check_surface ast "'$DRIVER_BIN' parse --dump-ast-json '$AST_SRC'" '"command":"parse".*"ast":{"kind":"bootstrap-structural".*"node_count":' '"source":{"path":"[^"]*tests/bootstrap_native/main_proc.vit"'
+check_surface ast "'$DRIVER_BIN' check --stage parse --dump-ast-json '$AST_SRC'" '"command":"check".*"ast":{"kind":"bootstrap-structural".*"node_count":' '"source":{"path":"[^"]*tests/bootstrap_native/main_proc.vit"'
 check_surface hir "'$DRIVER_BIN' check --dump-hir-json '$SRC'" '"command":"check".*"hir":{"kind":"bootstrap-structural".*"node_count":' '"source":{"path":"[^"]*src/vitte/compiler/main.vit"'
 check_surface mir "'$DRIVER_BIN' check --dump-mir-json '$SRC'" '"command":"check".*"mir":{"kind":"bootstrap-structural".*"block_count":' '"source":{"path":"[^"]*src/vitte/compiler/main.vit"'
 check_surface diagnostics "'$DRIVER_BIN' check --diagnostics-json '$SRC'" '"pipeline_failed_at":"none".*"phase_reports":' '"source":{"path":"[^"]*src/vitte/compiler/main.vit"'

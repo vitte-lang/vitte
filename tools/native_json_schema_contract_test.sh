@@ -59,7 +59,7 @@ for bin in "$DRIVER_BIN"; do
   assert_help_flag "$bin" "--dump-mir-json"
   assert_help_flag "$bin" "--diagnostics-json"
 
-  ast_json="$($bin parse --src "$SRC" --dump-ast-json)"
+  ast_json="$($bin check --stage parse --src "$SRC" --dump-ast-json)"
   hir_json="$($bin check --src "$SRC" --dump-hir-json)"
   mir_json="$($bin check --src "$SRC" --dump-mir-json)"
   diag_json="$($bin check --src "$SRC" --diagnostics-json)"
