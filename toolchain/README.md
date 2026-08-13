@@ -11,6 +11,10 @@ output may be used as an implicit stage0. The verified chain is:
 
 `signed stage0 -> bootstrap compiler -> stage1 -> stage2 -> release -> bin/vitte`
 
+The stage-specific contract roots are `toolchain/stage0/src`,
+`toolchain/stage1/src` and `toolchain/stage2/src`. Their artifact manifests are
+checked by `make toolchain-stage012-gate`.
+
 Run `make bootstrap-all` for the chain and `make bootstrap-native-contract` for
 the clean-checkout/offline contract. Run `make toolchain-stages-gate` to verify
 the registered stage paths and `make bootstrap-max-gate` for the maximal

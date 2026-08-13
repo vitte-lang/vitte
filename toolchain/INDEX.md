@@ -15,6 +15,10 @@ The toolchain is Vitte-in-Vitte only.
 All canonical stage paths, hashes, formats and materialization commands are
 registered in `toolchain/bootstrap/stages-manifest.json`.
 
+Stage-specific source contracts and artifact manifests live in
+`toolchain/stage0`, `toolchain/stage1` and `toolchain/stage2`. They are checked
+by `make toolchain-stage012-gate`.
+
 Removed source roots and artifacts are blocked by `make vitte-in-vitte-gate`.
 
 Blocking gates:
@@ -22,5 +26,6 @@ Blocking gates:
 - `make seed-free-release-gate`
 - `make vitte-in-vitte-gate`
 - `make toolchain-stages-gate`
+- `make toolchain-stage012-gate`
 - `make bootstrap-max-gate`
 - `make build`
