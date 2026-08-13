@@ -606,8 +606,8 @@ selfhost-subset-check:
 	@tools/check_selfhost_subset.sh
 
 .PHONY: bootstrap-native-drift-check bootstrap-generated-code-test bootstrap-multifile-native-test native-artifact-gate-test
-bootstrap-native-drift-check bootstrap-generated-code-test bootstrap-multifile-native-test native-artifact-gate-test: vitte-in-vitte-gate
-	@echo "[$@] retired seed-native compatibility check covered by vitte-in-vitte-gate"
+bootstrap-native-drift-check bootstrap-generated-code-test bootstrap-multifile-native-test native-artifact-gate-test: bootstrap-source-of-truth bootstrap-c17
+	@echo "[$@] retired seed-native compatibility check covered by bootstrap source and C17 alignment gates"
 
 .PHONY: posix-seed-shell-check
 posix-seed-shell-check: vitte-in-vitte-gate
@@ -692,7 +692,7 @@ bootstrap-verify: vitte-in-vitte-gate
 bootstrap-native-contract: vitte-in-vitte-gate bootstrap-source-coverage-check selfhost-subset-check bootstrap-clean-checkout-gate bootstrap-offline-gate bootstrap-verify
 
 .PHONY: bootstrap-native-fast-contract
-bootstrap-native-fast-contract: vitte-in-vitte-gate bootstrap-source-coverage-check selfhost-subset-check bootstrap-native-drift-check
+bootstrap-native-fast-contract: bootstrap-source-of-truth bootstrap-source-coverage-check selfhost-subset-check bootstrap-native-drift-check
 
 .PHONY: bootstrap-posix-smoke
 bootstrap-posix-smoke: vitte-in-vitte-gate
