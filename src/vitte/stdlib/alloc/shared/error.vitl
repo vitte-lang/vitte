@@ -1,0 +1,1794 @@
+space vitte/stdlib/alloc/shared/error
+
+export *
+
+use src/vitte/stdlib/alloc/shared/core as shared_core
+use src/vitte/stdlib/alloc/shared/count as shared_count
+
+pick SharedErrorKind {
+    None,
+
+    InvalidShared,
+    InvalidState,
+    InvalidControlBlock,
+
+    InvalidStrongCount,
+    InvalidWeakCount,
+    CountOverflow,
+    CountUnderflow,
+
+    CloneFailed,
+    DropFailed,
+
+    UpgradeFailed,
+    DowngradeFailed,
+
+    ValueDropped,
+    AllocationReleased,
+
+    InvalidPointer,
+    NullPointer,
+    StaleReference,
+
+    NotUnique,
+    NotAlive,
+
+    InvalidAccess,
+    MutableAccessDenied,
+
+    RuntimeFailure,
+    Internal
+}
+
+pick SharedErrorSeverity {
+    Note,
+    Warning,
+    Error,
+    Fatal
+}
+
+pick SharedErrorDomain {
+    General,
+    Shared,
+    Count,
+    Strong,
+    Weak,
+    Upgrade,
+    Downgrade,
+    Access,
+    Pointer,
+    Runtime,
+    Internal
+}
+
+pick SharedErrorOperation {
+    None,
+
+    New,
+
+    CloneStrong,
+    DropStrong,
+
+    CloneWeak,
+    DropWeak,
+
+    Upgrade,
+    Downgrade,
+
+    Get,
+    GetMut,
+
+    Replace,
+
+    DropValue,
+    ReleaseAllocation,
+
+    Validate
+}
+
+form SharedErrorContext {
+    operation: SharedErrorOperation
+
+    state: shared_core.SharedCoreState
+    ownership: shared_core.SharedCoreOwnership
+    access: shared_core.SharedCoreAccess
+
+    strong: usize
+    weak: usize
+
+    generation: u64
+    revision: u64
+}
+
+form SharedError {
+    kind: SharedErrorKind
+    severity: SharedErrorSeverity
+    domain: SharedErrorDomain
+
+    context: SharedErrorContext
+
+    message: string
+}
+
+form SharedErrorProfile {
+    kind: SharedErrorKind
+    severity: SharedErrorSeverity
+    domain: SharedErrorDomain
+    operation: SharedErrorOperation
+
+    none: bool
+    warning: bool
+    error: bool
+    fatal: bool
+
+    recoverable: bool
+    runtime: bool
+    internal: bool
+}
+
+form SharedErrorStatistics {
+    total: u64
+
+    notes: u64
+    warnings: u64
+    errors: u64
+    fatals: u64
+
+    shared_errors: u64
+    count_errors: u64
+    strong_errors: u64
+    weak_errors: u64
+    upgrade_errors: u64
+    downgrade_errors: u64
+    access_errors: u64
+    pointer_errors: u64
+    runtime_errors: u64
+    internal_errors: u64
+}
+
+// -----------------------------------------------------------------------------
+// Context
+// -----------------------------------------------------------------------------
+
+proc shared_error_context_empty()
+    -> SharedErrorContext
+{
+    give SharedErrorContext {
+        operation:
+            SharedErrorOperation.None,
+
+        state:
+            shared_core.SharedCoreState.Invalid,
+
+        ownership:
+            shared_core.SharedCoreOwnership.Dead,
+
+        access:
+            shared_core.SharedCoreAccess.None,
+
+        strong:
+            0,
+
+        weak:
+            0,
+
+        generation:
+            0,
+
+        revision:
+            0
+    };
+}
+
+proc shared_error_context_counts(
+    counts: shared_count.SharedCountPair,
+    operation: SharedErrorOperation
+) -> SharedErrorContext {
+    let core =
+        shared_count.shared_count_core(
+            counts
+        );
+
+    give SharedErrorContext {
+        operation:
+            operation,
+
+        state:
+            shared_core.shared_core_state(
+                core
+            ),
+
+        ownership:
+            shared_core.shared_core_ownership(
+                core
+            ),
+
+        access:
+            shared_core.shared_core_access(
+                core
+            ),
+
+        strong:
+            counts.strong.value,
+
+        weak:
+            counts.weak.value,
+
+        generation:
+            counts.strong.generation,
+
+        revision:
+            counts.strong.revision
+    };
+}
+
+proc shared_error_context_core(
+    profile: shared_core.SharedCoreProfile,
+    operation: SharedErrorOperation
+) -> SharedErrorContext {
+    give SharedErrorContext {
+        operation:
+            operation,
+
+        state:
+            profile.info.state,
+
+        ownership:
+            profile.info.ownership,
+
+        access:
+            profile.info.access,
+
+        strong:
+            profile.counts.strong,
+
+        weak:
+            profile.counts.weak,
+
+        generation:
+            profile.meta.generation,
+
+        revision:
+            profile.meta.revision
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Constructors
+// -----------------------------------------------------------------------------
+
+proc shared_error(
+    kind: SharedErrorKind,
+    severity: SharedErrorSeverity,
+    domain: SharedErrorDomain,
+    context: SharedErrorContext,
+    message: string
+) -> SharedError {
+    give SharedError {
+        kind:
+            kind,
+
+        severity:
+            severity,
+
+        domain:
+            domain,
+
+        context:
+            context,
+
+        message:
+            message
+    };
+}
+
+proc shared_error_none()
+    -> SharedError
+{
+    give shared_error(
+        SharedErrorKind.None,
+        SharedErrorSeverity.Note,
+        SharedErrorDomain.General,
+        shared_error_context_empty(),
+        ""
+    );
+}
+
+proc shared_error_simple(
+    kind: SharedErrorKind,
+    message: string
+) -> SharedError {
+    give shared_error(
+        kind,
+        SharedErrorSeverity.Error,
+        shared_error_domain_for_kind(
+            kind
+        ),
+        shared_error_context_empty(),
+        message
+    );
+}
+
+proc shared_error_warning(
+    kind: SharedErrorKind,
+    message: string
+) -> SharedError {
+    give shared_error(
+        kind,
+        SharedErrorSeverity.Warning,
+        shared_error_domain_for_kind(
+            kind
+        ),
+        shared_error_context_empty(),
+        message
+    );
+}
+
+proc shared_error_fatal(
+    kind: SharedErrorKind,
+    message: string
+) -> SharedError {
+    give shared_error(
+        kind,
+        SharedErrorSeverity.Fatal,
+        shared_error_domain_for_kind(
+            kind
+        ),
+        shared_error_context_empty(),
+        message
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Shared errors
+// -----------------------------------------------------------------------------
+
+proc shared_error_invalid_shared(
+    counts: shared_count.SharedCountPair
+) -> SharedError {
+    give shared_error(
+        SharedErrorKind.InvalidShared,
+        SharedErrorSeverity.Fatal,
+        SharedErrorDomain.Shared,
+        shared_error_context_counts(
+            counts,
+            SharedErrorOperation.Validate
+        ),
+        "shared value is invalid"
+    );
+}
+
+proc shared_error_invalid_state(
+    counts: shared_count.SharedCountPair
+) -> SharedError {
+    give shared_error(
+        SharedErrorKind.InvalidState,
+        SharedErrorSeverity.Error,
+        SharedErrorDomain.Shared,
+        shared_error_context_counts(
+            counts,
+            SharedErrorOperation.Validate
+        ),
+        "shared ownership state is invalid"
+    );
+}
+
+proc shared_error_invalid_control_block(
+    counts: shared_count.SharedCountPair
+) -> SharedError {
+    give shared_error(
+        SharedErrorKind.InvalidControlBlock,
+        SharedErrorSeverity.Fatal,
+        SharedErrorDomain.Shared,
+        shared_error_context_counts(
+            counts,
+            SharedErrorOperation.Validate
+        ),
+        "shared control block is invalid"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Count errors
+// -----------------------------------------------------------------------------
+
+proc shared_error_invalid_strong_count(
+    counts: shared_count.SharedCountPair
+) -> SharedError {
+    give shared_error(
+        SharedErrorKind.InvalidStrongCount,
+        SharedErrorSeverity.Fatal,
+        SharedErrorDomain.Count,
+        shared_error_context_counts(
+            counts,
+            SharedErrorOperation.Validate
+        ),
+        "shared strong count is invalid"
+    );
+}
+
+proc shared_error_invalid_weak_count(
+    counts: shared_count.SharedCountPair
+) -> SharedError {
+    give shared_error(
+        SharedErrorKind.InvalidWeakCount,
+        SharedErrorSeverity.Fatal,
+        SharedErrorDomain.Count,
+        shared_error_context_counts(
+            counts,
+            SharedErrorOperation.Validate
+        ),
+        "shared weak count is invalid"
+    );
+}
+
+proc shared_error_count_overflow(
+    counts: shared_count.SharedCountPair,
+    operation: SharedErrorOperation
+) -> SharedError {
+    give shared_error(
+        SharedErrorKind.CountOverflow,
+        SharedErrorSeverity.Fatal,
+        SharedErrorDomain.Count,
+        shared_error_context_counts(
+            counts,
+            operation
+        ),
+        "shared reference count overflow"
+    );
+}
+
+proc shared_error_count_underflow(
+    counts: shared_count.SharedCountPair,
+    operation: SharedErrorOperation
+) -> SharedError {
+    give shared_error(
+        SharedErrorKind.CountUnderflow,
+        SharedErrorSeverity.Fatal,
+        SharedErrorDomain.Count,
+        shared_error_context_counts(
+            counts,
+            operation
+        ),
+        "shared reference count underflow"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Strong errors
+// -----------------------------------------------------------------------------
+
+proc shared_error_clone_strong_failed(
+    counts: shared_count.SharedCountPair
+) -> SharedError {
+    give shared_error(
+        SharedErrorKind.CloneFailed,
+        SharedErrorSeverity.Error,
+        SharedErrorDomain.Strong,
+        shared_error_context_counts(
+            counts,
+            SharedErrorOperation.CloneStrong
+        ),
+        "shared strong clone failed"
+    );
+}
+
+proc shared_error_drop_strong_failed(
+    counts: shared_count.SharedCountPair
+) -> SharedError {
+    give shared_error(
+        SharedErrorKind.DropFailed,
+        SharedErrorSeverity.Error,
+        SharedErrorDomain.Strong,
+        shared_error_context_counts(
+            counts,
+            SharedErrorOperation.DropStrong
+        ),
+        "shared strong drop failed"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Weak errors
+// -----------------------------------------------------------------------------
+
+proc shared_error_clone_weak_failed(
+    counts: shared_count.SharedCountPair
+) -> SharedError {
+    give shared_error(
+        SharedErrorKind.CloneFailed,
+        SharedErrorSeverity.Error,
+        SharedErrorDomain.Weak,
+        shared_error_context_counts(
+            counts,
+            SharedErrorOperation.CloneWeak
+        ),
+        "shared weak clone failed"
+    );
+}
+
+proc shared_error_drop_weak_failed(
+    counts: shared_count.SharedCountPair
+) -> SharedError {
+    give shared_error(
+        SharedErrorKind.DropFailed,
+        SharedErrorSeverity.Error,
+        SharedErrorDomain.Weak,
+        shared_error_context_counts(
+            counts,
+            SharedErrorOperation.DropWeak
+        ),
+        "shared weak drop failed"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Upgrade / downgrade
+// -----------------------------------------------------------------------------
+
+proc shared_error_upgrade_failed(
+    counts: shared_count.SharedCountPair
+) -> SharedError {
+    give shared_error(
+        SharedErrorKind.UpgradeFailed,
+        SharedErrorSeverity.Error,
+        SharedErrorDomain.Upgrade,
+        shared_error_context_counts(
+            counts,
+            SharedErrorOperation.Upgrade
+        ),
+        "shared weak reference cannot be upgraded"
+    );
+}
+
+proc shared_error_downgrade_failed(
+    counts: shared_count.SharedCountPair
+) -> SharedError {
+    give shared_error(
+        SharedErrorKind.DowngradeFailed,
+        SharedErrorSeverity.Error,
+        SharedErrorDomain.Downgrade,
+        shared_error_context_counts(
+            counts,
+            SharedErrorOperation.Downgrade
+        ),
+        "shared strong reference cannot be downgraded"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Lifetime
+// -----------------------------------------------------------------------------
+
+proc shared_error_value_dropped(
+    counts: shared_count.SharedCountPair
+) -> SharedError {
+    give shared_error(
+        SharedErrorKind.ValueDropped,
+        SharedErrorSeverity.Error,
+        SharedErrorDomain.Shared,
+        shared_error_context_counts(
+            counts,
+            SharedErrorOperation.Get
+        ),
+        "shared managed value has already been dropped"
+    );
+}
+
+proc shared_error_allocation_released(
+    counts: shared_count.SharedCountPair
+) -> SharedError {
+    give shared_error(
+        SharedErrorKind.AllocationReleased,
+        SharedErrorSeverity.Error,
+        SharedErrorDomain.Shared,
+        shared_error_context_counts(
+            counts,
+            SharedErrorOperation.Get
+        ),
+        "shared control allocation has already been released"
+    );
+}
+
+proc shared_error_not_alive(
+    counts: shared_count.SharedCountPair
+) -> SharedError {
+    give shared_error(
+        SharedErrorKind.NotAlive,
+        SharedErrorSeverity.Error,
+        SharedErrorDomain.Shared,
+        shared_error_context_counts(
+            counts,
+            SharedErrorOperation.Get
+        ),
+        "shared managed value is not alive"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Access
+// -----------------------------------------------------------------------------
+
+proc shared_error_not_unique(
+    counts: shared_count.SharedCountPair
+) -> SharedError {
+    give shared_error(
+        SharedErrorKind.NotUnique,
+        SharedErrorSeverity.Error,
+        SharedErrorDomain.Access,
+        shared_error_context_counts(
+            counts,
+            SharedErrorOperation.GetMut
+        ),
+        "mutable shared access requires unique ownership"
+    );
+}
+
+proc shared_error_invalid_access(
+    counts: shared_count.SharedCountPair
+) -> SharedError {
+    give shared_error(
+        SharedErrorKind.InvalidAccess,
+        SharedErrorSeverity.Error,
+        SharedErrorDomain.Access,
+        shared_error_context_counts(
+            counts,
+            SharedErrorOperation.Get
+        ),
+        "shared access is invalid"
+    );
+}
+
+proc shared_error_mutable_access_denied(
+    counts: shared_count.SharedCountPair
+) -> SharedError {
+    give shared_error(
+        SharedErrorKind.MutableAccessDenied,
+        SharedErrorSeverity.Error,
+        SharedErrorDomain.Access,
+        shared_error_context_counts(
+            counts,
+            SharedErrorOperation.GetMut
+        ),
+        "mutable shared access denied"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Pointer
+// -----------------------------------------------------------------------------
+
+proc shared_error_invalid_pointer()
+    -> SharedError
+{
+    give shared_error(
+        SharedErrorKind.InvalidPointer,
+        SharedErrorSeverity.Fatal,
+        SharedErrorDomain.Pointer,
+        shared_error_context_empty(),
+        "shared pointer is invalid"
+    );
+}
+
+proc shared_error_null_pointer()
+    -> SharedError
+{
+    give shared_error(
+        SharedErrorKind.NullPointer,
+        SharedErrorSeverity.Fatal,
+        SharedErrorDomain.Pointer,
+        shared_error_context_empty(),
+        "shared pointer is null"
+    );
+}
+
+proc shared_error_stale_reference(
+    counts: shared_count.SharedCountPair
+) -> SharedError {
+    give shared_error(
+        SharedErrorKind.StaleReference,
+        SharedErrorSeverity.Error,
+        SharedErrorDomain.Pointer,
+        shared_error_context_counts(
+            counts,
+            SharedErrorOperation.Get
+        ),
+        "shared reference is stale"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Runtime / internal
+// -----------------------------------------------------------------------------
+
+proc shared_error_runtime(
+    message: string
+) -> SharedError {
+    give shared_error(
+        SharedErrorKind.RuntimeFailure,
+        SharedErrorSeverity.Fatal,
+        SharedErrorDomain.Runtime,
+        shared_error_context_empty(),
+        message
+    );
+}
+
+proc shared_error_internal(
+    message: string
+) -> SharedError {
+    give shared_error(
+        SharedErrorKind.Internal,
+        SharedErrorSeverity.Fatal,
+        SharedErrorDomain.Internal,
+        shared_error_context_empty(),
+        message
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Strong checks
+// -----------------------------------------------------------------------------
+
+proc shared_error_for_strong_clone(
+    counts: shared_count.SharedCountPair
+) -> SharedError {
+    if counts.strong.value == 0 {
+        give shared_error_not_alive(
+            counts
+        );
+    }
+
+    if not shared_count.shared_count_can_increment(
+        counts.strong
+    ) {
+        give shared_error_count_overflow(
+            counts,
+            SharedErrorOperation.CloneStrong
+        );
+    }
+
+    give shared_error_none();
+}
+
+proc shared_error_for_strong_drop(
+    counts: shared_count.SharedCountPair
+) -> SharedError {
+    if not shared_count.shared_count_can_decrement(
+        counts.strong
+    ) {
+        give shared_error_count_underflow(
+            counts,
+            SharedErrorOperation.DropStrong
+        );
+    }
+
+    give shared_error_none();
+}
+
+// -----------------------------------------------------------------------------
+// Weak checks
+// -----------------------------------------------------------------------------
+
+proc shared_error_for_weak_clone(
+    counts: shared_count.SharedCountPair
+) -> SharedError {
+    if not shared_count.shared_count_can_increment(
+        counts.weak
+    ) {
+        give shared_error_count_overflow(
+            counts,
+            SharedErrorOperation.CloneWeak
+        );
+    }
+
+    give shared_error_none();
+}
+
+proc shared_error_for_weak_drop(
+    counts: shared_count.SharedCountPair
+) -> SharedError {
+    if not shared_count.shared_count_can_decrement(
+        counts.weak
+    ) {
+        give shared_error_count_underflow(
+            counts,
+            SharedErrorOperation.DropWeak
+        );
+    }
+
+    give shared_error_none();
+}
+
+// -----------------------------------------------------------------------------
+// Upgrade / downgrade checks
+// -----------------------------------------------------------------------------
+
+proc shared_error_for_upgrade(
+    counts: shared_count.SharedCountPair
+) -> SharedError {
+    if counts.weak.value == 0 {
+        give shared_error_upgrade_failed(
+            counts
+        );
+    }
+
+    if counts.strong.value == 0 {
+        give shared_error_value_dropped(
+            counts
+        );
+    }
+
+    if not shared_count.shared_count_can_increment(
+        counts.strong
+    ) {
+        give shared_error_count_overflow(
+            counts,
+            SharedErrorOperation.Upgrade
+        );
+    }
+
+    give shared_error_none();
+}
+
+proc shared_error_for_downgrade(
+    counts: shared_count.SharedCountPair
+) -> SharedError {
+    if counts.strong.value == 0 {
+        give shared_error_not_alive(
+            counts
+        );
+    }
+
+    if not shared_count.shared_count_can_increment(
+        counts.weak
+    ) {
+        give shared_error_count_overflow(
+            counts,
+            SharedErrorOperation.Downgrade
+        );
+    }
+
+    give shared_error_none();
+}
+
+// -----------------------------------------------------------------------------
+// Access checks
+// -----------------------------------------------------------------------------
+
+proc shared_error_for_read(
+    counts: shared_count.SharedCountPair
+) -> SharedError {
+    if not shared_count.shared_count_is_alive(
+        counts
+    ) {
+        give shared_error_not_alive(
+            counts
+        );
+    }
+
+    give shared_error_none();
+}
+
+proc shared_error_for_write(
+    counts: shared_count.SharedCountPair
+) -> SharedError {
+    if not shared_count.shared_count_is_alive(
+        counts
+    ) {
+        give shared_error_not_alive(
+            counts
+        );
+    }
+
+    if not shared_count.shared_count_strong_is_unique(
+        counts
+    ) {
+        give shared_error_not_unique(
+            counts
+        );
+    }
+
+    give shared_error_none();
+}
+
+proc shared_error_for_replace(
+    counts: shared_count.SharedCountPair
+) -> SharedError {
+    let access =
+        shared_error_for_write(
+            counts
+        );
+
+    if not shared_error_is_none(
+        access
+    ) {
+        give access;
+    }
+
+    give shared_error_none();
+}
+
+// -----------------------------------------------------------------------------
+// Count validation mapping
+// -----------------------------------------------------------------------------
+
+proc shared_error_from_count_validation(
+    count: shared_count.SharedCount,
+    validation: shared_count.SharedCountValidation
+) -> SharedError {
+    if validation.valid {
+        give shared_error_none();
+    }
+
+    if not validation.kind_valid {
+        give shared_error_internal(
+            "shared count kind is invalid"
+        );
+    }
+
+    if not validation.state_valid {
+        if count.kind
+            == shared_count.SharedCountKind.Strong
+        {
+            give shared_error_simple(
+                SharedErrorKind.InvalidStrongCount,
+                "shared strong counter state is invalid"
+            );
+        }
+
+        give shared_error_simple(
+            SharedErrorKind.InvalidWeakCount,
+            "shared weak counter state is invalid"
+        );
+    }
+
+    if not validation.generation_valid {
+        give shared_error_internal(
+            "shared count generation metadata is invalid"
+        );
+    }
+
+    give shared_error_internal(
+        "unknown shared count validation failure"
+    );
+}
+
+proc shared_error_from_count_pair(
+    counts: shared_count.SharedCountPair
+) -> SharedError {
+    let strong =
+        shared_count.shared_count_validate(
+            counts.strong
+        );
+
+    if not strong.valid {
+        give shared_error_from_count_validation(
+            counts.strong,
+            strong
+        );
+    }
+
+    let weak =
+        shared_count.shared_count_validate(
+            counts.weak
+        );
+
+    if not weak.valid {
+        give shared_error_from_count_validation(
+            counts.weak,
+            weak
+        );
+    }
+
+    let pair =
+        shared_count.shared_count_pair_validate(
+            counts
+        );
+
+    if not pair.total_valid {
+        give shared_error_count_overflow(
+            counts,
+            SharedErrorOperation.Validate
+        );
+    }
+
+    if not pair.lifecycle_valid {
+        give shared_error_invalid_state(
+            counts
+        );
+    }
+
+    if not pair.valid {
+        give shared_error_invalid_shared(
+            counts
+        );
+    }
+
+    give shared_error_none();
+}
+
+// -----------------------------------------------------------------------------
+// Core validation mapping
+// -----------------------------------------------------------------------------
+
+proc shared_error_from_core_validation(
+    profile: shared_core.SharedCoreProfile,
+    validation: shared_core.SharedCoreValidation
+) -> SharedError {
+    if validation.valid {
+        give shared_error_none();
+    }
+
+    let context =
+        shared_error_context_core(
+            profile,
+            SharedErrorOperation.Validate
+        );
+
+    if not validation.counts_valid {
+        give shared_error(
+            SharedErrorKind.InvalidShared,
+            SharedErrorSeverity.Fatal,
+            SharedErrorDomain.Count,
+            context,
+            "shared reference counts are invalid"
+        );
+    }
+
+    if not validation.state_valid {
+        give shared_error(
+            SharedErrorKind.InvalidState,
+            SharedErrorSeverity.Error,
+            SharedErrorDomain.Shared,
+            context,
+            "shared core state is invalid"
+        );
+    }
+
+    if not validation.ownership_valid {
+        give shared_error(
+            SharedErrorKind.InvalidState,
+            SharedErrorSeverity.Error,
+            SharedErrorDomain.Shared,
+            context,
+            "shared ownership classification is invalid"
+        );
+    }
+
+    if not validation.access_valid {
+        give shared_error(
+            SharedErrorKind.InvalidAccess,
+            SharedErrorSeverity.Error,
+            SharedErrorDomain.Access,
+            context,
+            "shared access classification is invalid"
+        );
+    }
+
+    if not validation.generation_valid {
+        give shared_error(
+            SharedErrorKind.Internal,
+            SharedErrorSeverity.Fatal,
+            SharedErrorDomain.Internal,
+            context,
+            "shared generation metadata is invalid"
+        );
+    }
+
+    give shared_error_internal(
+        "unknown shared core validation failure"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Predicates
+// -----------------------------------------------------------------------------
+
+proc shared_error_is_none(
+    error: SharedError
+) -> bool {
+    give error.kind
+        == SharedErrorKind.None;
+}
+
+proc shared_error_is_warning(
+    error: SharedError
+) -> bool {
+    give error.severity
+        == SharedErrorSeverity.Warning;
+}
+
+proc shared_error_is_error(
+    error: SharedError
+) -> bool {
+    give error.severity
+        == SharedErrorSeverity.Error
+        or error.severity
+            == SharedErrorSeverity.Fatal;
+}
+
+proc shared_error_is_fatal(
+    error: SharedError
+) -> bool {
+    give error.severity
+        == SharedErrorSeverity.Fatal;
+}
+
+proc shared_error_is_recoverable(
+    error: SharedError
+) -> bool {
+    give error.severity
+        == SharedErrorSeverity.Note
+        or error.severity
+            == SharedErrorSeverity.Warning
+        or error.severity
+            == SharedErrorSeverity.Error;
+}
+
+proc shared_error_is_count(
+    error: SharedError
+) -> bool {
+    give error.domain
+        == SharedErrorDomain.Count;
+}
+
+proc shared_error_is_strong(
+    error: SharedError
+) -> bool {
+    give error.domain
+        == SharedErrorDomain.Strong;
+}
+
+proc shared_error_is_weak(
+    error: SharedError
+) -> bool {
+    give error.domain
+        == SharedErrorDomain.Weak;
+}
+
+proc shared_error_is_upgrade(
+    error: SharedError
+) -> bool {
+    give error.domain
+        == SharedErrorDomain.Upgrade;
+}
+
+proc shared_error_is_downgrade(
+    error: SharedError
+) -> bool {
+    give error.domain
+        == SharedErrorDomain.Downgrade;
+}
+
+proc shared_error_is_access(
+    error: SharedError
+) -> bool {
+    give error.domain
+        == SharedErrorDomain.Access;
+}
+
+proc shared_error_is_pointer(
+    error: SharedError
+) -> bool {
+    give error.domain
+        == SharedErrorDomain.Pointer;
+}
+
+proc shared_error_is_overflow(
+    error: SharedError
+) -> bool {
+    give error.kind
+        == SharedErrorKind.CountOverflow;
+}
+
+proc shared_error_is_underflow(
+    error: SharedError
+) -> bool {
+    give error.kind
+        == SharedErrorKind.CountUnderflow;
+}
+
+proc shared_error_is_stale(
+    error: SharedError
+) -> bool {
+    give error.kind
+        == SharedErrorKind.StaleReference;
+}
+
+proc shared_error_is_lifetime(
+    error: SharedError
+) -> bool {
+    give error.kind == SharedErrorKind.ValueDropped
+        or error.kind == SharedErrorKind.AllocationReleased
+        or error.kind == SharedErrorKind.NotAlive;
+}
+
+// -----------------------------------------------------------------------------
+// Profile
+// -----------------------------------------------------------------------------
+
+proc shared_error_profile(
+    error: SharedError
+) -> SharedErrorProfile {
+    give SharedErrorProfile {
+        kind:
+            error.kind,
+
+        severity:
+            error.severity,
+
+        domain:
+            error.domain,
+
+        operation:
+            error.context.operation,
+
+        none:
+            shared_error_is_none(
+                error
+            ),
+
+        warning:
+            shared_error_is_warning(
+                error
+            ),
+
+        error:
+            shared_error_is_error(
+                error
+            ),
+
+        fatal:
+            shared_error_is_fatal(
+                error
+            ),
+
+        recoverable:
+            shared_error_is_recoverable(
+                error
+            ),
+
+        runtime:
+            error.domain
+                == SharedErrorDomain.Runtime,
+
+        internal:
+            error.domain
+                == SharedErrorDomain.Internal
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Domain mapping
+// -----------------------------------------------------------------------------
+
+proc shared_error_domain_for_kind(
+    kind: SharedErrorKind
+) -> SharedErrorDomain {
+    pick kind {
+        SharedErrorKind.None {
+            give SharedErrorDomain.General;
+        }
+
+        SharedErrorKind.InvalidShared
+        | SharedErrorKind.InvalidState
+        | SharedErrorKind.InvalidControlBlock
+        | SharedErrorKind.ValueDropped
+        | SharedErrorKind.AllocationReleased
+        | SharedErrorKind.NotAlive {
+            give SharedErrorDomain.Shared;
+        }
+
+        SharedErrorKind.InvalidStrongCount
+        | SharedErrorKind.InvalidWeakCount
+        | SharedErrorKind.CountOverflow
+        | SharedErrorKind.CountUnderflow {
+            give SharedErrorDomain.Count;
+        }
+
+        SharedErrorKind.CloneFailed
+        | SharedErrorKind.DropFailed {
+            give SharedErrorDomain.Strong;
+        }
+
+        SharedErrorKind.UpgradeFailed {
+            give SharedErrorDomain.Upgrade;
+        }
+
+        SharedErrorKind.DowngradeFailed {
+            give SharedErrorDomain.Downgrade;
+        }
+
+        SharedErrorKind.NotUnique
+        | SharedErrorKind.InvalidAccess
+        | SharedErrorKind.MutableAccessDenied {
+            give SharedErrorDomain.Access;
+        }
+
+        SharedErrorKind.InvalidPointer
+        | SharedErrorKind.NullPointer
+        | SharedErrorKind.StaleReference {
+            give SharedErrorDomain.Pointer;
+        }
+
+        SharedErrorKind.RuntimeFailure {
+            give SharedErrorDomain.Runtime;
+        }
+
+        SharedErrorKind.Internal {
+            give SharedErrorDomain.Internal;
+        }
+    }
+
+    give SharedErrorDomain.Internal;
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc shared_error_statistics_empty()
+    -> SharedErrorStatistics
+{
+    give SharedErrorStatistics {
+        total: 0,
+
+        notes: 0,
+        warnings: 0,
+        errors: 0,
+        fatals: 0,
+
+        shared_errors: 0,
+        count_errors: 0,
+        strong_errors: 0,
+        weak_errors: 0,
+        upgrade_errors: 0,
+        downgrade_errors: 0,
+        access_errors: 0,
+        pointer_errors: 0,
+        runtime_errors: 0,
+        internal_errors: 0
+    };
+}
+
+proc shared_error_statistics_record(
+    statistics: ref mut SharedErrorStatistics,
+    error: SharedError
+) {
+    if shared_error_is_none(
+        error
+    ) {
+        give;
+    }
+
+    set statistics.total =
+        statistics.total + 1;
+
+    pick error.severity {
+        SharedErrorSeverity.Note {
+            set statistics.notes =
+                statistics.notes + 1;
+        }
+
+        SharedErrorSeverity.Warning {
+            set statistics.warnings =
+                statistics.warnings + 1;
+        }
+
+        SharedErrorSeverity.Error {
+            set statistics.errors =
+                statistics.errors + 1;
+        }
+
+        SharedErrorSeverity.Fatal {
+            set statistics.fatals =
+                statistics.fatals + 1;
+        }
+    }
+
+    pick error.domain {
+        SharedErrorDomain.Shared {
+            set statistics.shared_errors =
+                statistics.shared_errors + 1;
+        }
+
+        SharedErrorDomain.Count {
+            set statistics.count_errors =
+                statistics.count_errors + 1;
+        }
+
+        SharedErrorDomain.Strong {
+            set statistics.strong_errors =
+                statistics.strong_errors + 1;
+        }
+
+        SharedErrorDomain.Weak {
+            set statistics.weak_errors =
+                statistics.weak_errors + 1;
+        }
+
+        SharedErrorDomain.Upgrade {
+            set statistics.upgrade_errors =
+                statistics.upgrade_errors + 1;
+        }
+
+        SharedErrorDomain.Downgrade {
+            set statistics.downgrade_errors =
+                statistics.downgrade_errors + 1;
+        }
+
+        SharedErrorDomain.Access {
+            set statistics.access_errors =
+                statistics.access_errors + 1;
+        }
+
+        SharedErrorDomain.Pointer {
+            set statistics.pointer_errors =
+                statistics.pointer_errors + 1;
+        }
+
+        SharedErrorDomain.Runtime {
+            set statistics.runtime_errors =
+                statistics.runtime_errors + 1;
+        }
+
+        SharedErrorDomain.Internal {
+            set statistics.internal_errors =
+                statistics.internal_errors + 1;
+        }
+
+        SharedErrorDomain.General {}
+    }
+}
+
+proc shared_error_statistics_total(
+    statistics: SharedErrorStatistics
+) -> u64 {
+    give statistics.total;
+}
+
+proc shared_error_statistics_reset(
+    statistics: ref mut SharedErrorStatistics
+) {
+    set *statistics =
+        shared_error_statistics_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc shared_error_kind_name(
+    kind: SharedErrorKind
+) -> string {
+    pick kind {
+        SharedErrorKind.None {
+            give "none";
+        }
+
+        SharedErrorKind.InvalidShared {
+            give "invalid-shared";
+        }
+
+        SharedErrorKind.InvalidState {
+            give "invalid-state";
+        }
+
+        SharedErrorKind.InvalidControlBlock {
+            give "invalid-control-block";
+        }
+
+        SharedErrorKind.InvalidStrongCount {
+            give "invalid-strong-count";
+        }
+
+        SharedErrorKind.InvalidWeakCount {
+            give "invalid-weak-count";
+        }
+
+        SharedErrorKind.CountOverflow {
+            give "count-overflow";
+        }
+
+        SharedErrorKind.CountUnderflow {
+            give "count-underflow";
+        }
+
+        SharedErrorKind.CloneFailed {
+            give "clone-failed";
+        }
+
+        SharedErrorKind.DropFailed {
+            give "drop-failed";
+        }
+
+        SharedErrorKind.UpgradeFailed {
+            give "upgrade-failed";
+        }
+
+        SharedErrorKind.DowngradeFailed {
+            give "downgrade-failed";
+        }
+
+        SharedErrorKind.ValueDropped {
+            give "value-dropped";
+        }
+
+        SharedErrorKind.AllocationReleased {
+            give "allocation-released";
+        }
+
+        SharedErrorKind.InvalidPointer {
+            give "invalid-pointer";
+        }
+
+        SharedErrorKind.NullPointer {
+            give "null-pointer";
+        }
+
+        SharedErrorKind.StaleReference {
+            give "stale-reference";
+        }
+
+        SharedErrorKind.NotUnique {
+            give "not-unique";
+        }
+
+        SharedErrorKind.NotAlive {
+            give "not-alive";
+        }
+
+        SharedErrorKind.InvalidAccess {
+            give "invalid-access";
+        }
+
+        SharedErrorKind.MutableAccessDenied {
+            give "mutable-access-denied";
+        }
+
+        SharedErrorKind.RuntimeFailure {
+            give "runtime-failure";
+        }
+
+        SharedErrorKind.Internal {
+            give "internal";
+        }
+    }
+
+    give "internal";
+}
+
+proc shared_error_severity_name(
+    severity: SharedErrorSeverity
+) -> string {
+    pick severity {
+        SharedErrorSeverity.Note {
+            give "note";
+        }
+
+        SharedErrorSeverity.Warning {
+            give "warning";
+        }
+
+        SharedErrorSeverity.Error {
+            give "error";
+        }
+
+        SharedErrorSeverity.Fatal {
+            give "fatal";
+        }
+    }
+
+    give "error";
+}
+
+proc shared_error_domain_name(
+    domain: SharedErrorDomain
+) -> string {
+    pick domain {
+        SharedErrorDomain.General {
+            give "general";
+        }
+
+        SharedErrorDomain.Shared {
+            give "shared";
+        }
+
+        SharedErrorDomain.Count {
+            give "count";
+        }
+
+        SharedErrorDomain.Strong {
+            give "strong";
+        }
+
+        SharedErrorDomain.Weak {
+            give "weak";
+        }
+
+        SharedErrorDomain.Upgrade {
+            give "upgrade";
+        }
+
+        SharedErrorDomain.Downgrade {
+            give "downgrade";
+        }
+
+        SharedErrorDomain.Access {
+            give "access";
+        }
+
+        SharedErrorDomain.Pointer {
+            give "pointer";
+        }
+
+        SharedErrorDomain.Runtime {
+            give "runtime";
+        }
+
+        SharedErrorDomain.Internal {
+            give "internal";
+        }
+    }
+
+    give "internal";
+}
+
+proc shared_error_operation_name(
+    operation: SharedErrorOperation
+) -> string {
+    pick operation {
+        SharedErrorOperation.None {
+            give "none";
+        }
+
+        SharedErrorOperation.New {
+            give "new";
+        }
+
+        SharedErrorOperation.CloneStrong {
+            give "clone-strong";
+        }
+
+        SharedErrorOperation.DropStrong {
+            give "drop-strong";
+        }
+
+        SharedErrorOperation.CloneWeak {
+            give "clone-weak";
+        }
+
+        SharedErrorOperation.DropWeak {
+            give "drop-weak";
+        }
+
+        SharedErrorOperation.Upgrade {
+            give "upgrade";
+        }
+
+        SharedErrorOperation.Downgrade {
+            give "downgrade";
+        }
+
+        SharedErrorOperation.Get {
+            give "get";
+        }
+
+        SharedErrorOperation.GetMut {
+            give "get-mut";
+        }
+
+        SharedErrorOperation.Replace {
+            give "replace";
+        }
+
+        SharedErrorOperation.DropValue {
+            give "drop-value";
+        }
+
+        SharedErrorOperation.ReleaseAllocation {
+            give "release-allocation";
+        }
+
+        SharedErrorOperation.Validate {
+            give "validate";
+        }
+    }
+
+    give "none";
+}
+
+// -----------------------------------------------------------------------------
+// Shared error model
+// -----------------------------------------------------------------------------
+//
+// Shared errors cover:
+//
+//     reference counts
+//     ownership state
+//     lifetime
+//     access
+//     raw pointers
+//     upgrade / downgrade
+//
+// Strong clone:
+//
+//     strong > 0
+//     strong < usize_max()
+//
+// Strong drop:
+//
+//     strong > 0
+//
+// Weak clone:
+//
+//     weak < usize_max()
+//
+// Weak drop:
+//
+//     weak > 0
+//
+// Upgrade:
+//
+//     weak > 0
+//     strong > 0
+//     strong < usize_max()
+//
+// Downgrade:
+//
+//     strong > 0
+//     weak < usize_max()
+//
+// Read:
+//
+//     strong > 0
+//
+// Mutable access:
+//
+//     strong == 1
+//
+// Value lifetime:
+//
+//     strong > 0
+//         alive
+//
+//     strong == 0
+//         dropped
+//
+// Control allocation:
+//
+//     strong == 0
+//     weak == 0
+//
+//     releasable
+//
+// Fatal conditions:
+//
+//     counter overflow
+//     counter underflow
+//     invalid pointer metadata
+//     invalid control block
+//     internal invariant failure
+//
+// Recoverable conditions:
+//
+//     upgrade on expired weak reference
+//     mutable access while shared
+//     ordinary invalid operation
+//
+// This module only classifies failures.
+//
+// It does not:
+//
+//     allocate memory
+//     mutate counters
+//     destroy values
+//     release control blocks
+//
+// Concrete state transitions remain in:
+//
+//     core.vitl
+//     count.vitl
+//
+// Higher-level shared modules convert their runtime failures into this
+// normalized error representation.

@@ -1,0 +1,1487 @@
+space vitte/stdlib/alloc/shared/count
+
+export *
+
+use src/vitte/stdlib/alloc/shared/core as shared_core
+
+const SHARED_COUNT_MAX: usize = usize_max();
+
+pick SharedCountKind {
+    Strong,
+    Weak
+}
+
+pick SharedCountState {
+    Zero,
+    One,
+    Many,
+    Maximum,
+    Invalid
+}
+
+pick SharedCountOperation {
+    None,
+    Increment,
+    Decrement,
+    Clone,
+    Drop,
+    Upgrade,
+    Downgrade
+}
+
+form SharedCount {
+    value: usize
+    kind: SharedCountKind
+
+    generation: u64
+    revision: u64
+}
+
+form SharedCountPair {
+    strong: SharedCount
+    weak: SharedCount
+}
+
+form SharedCountProfile {
+    value: usize
+    kind: SharedCountKind
+    state: SharedCountState
+
+    zero: bool
+    one: bool
+    many: bool
+    maximum: bool
+
+    incrementable: bool
+    decrementable: bool
+
+    valid: bool
+
+    generation: u64
+    revision: u64
+}
+
+form SharedCountSnapshot {
+    value: usize
+    state: SharedCountState
+
+    generation: u64
+    revision: u64
+}
+
+form SharedCountDelta {
+    value: int
+    generation: int
+    revision: int
+
+    state_changed: bool
+    changed: bool
+}
+
+form SharedCountValidation {
+    valid: bool
+
+    kind_valid: bool
+    state_valid: bool
+    generation_valid: bool
+}
+
+form SharedCountPairValidation {
+    valid: bool
+
+    strong_valid: bool
+    weak_valid: bool
+    total_valid: bool
+    lifecycle_valid: bool
+}
+
+form SharedCountStatistics {
+    increments: u64
+    decrements: u64
+
+    strong_increments: u64
+    strong_decrements: u64
+
+    weak_increments: u64
+    weak_decrements: u64
+
+    clone_operations: u64
+    drop_operations: u64
+    upgrades: u64
+    downgrades: u64
+
+    failures: u64
+
+    peak_strong: usize
+    peak_weak: usize
+    peak_total: usize
+}
+
+// -----------------------------------------------------------------------------
+// Construction
+// -----------------------------------------------------------------------------
+
+proc shared_count(
+    value: usize,
+    kind: SharedCountKind
+) -> SharedCount {
+    give SharedCount {
+        value: value,
+        kind: kind,
+
+        generation: 1,
+        revision: 1
+    };
+}
+
+proc shared_count_strong_new()
+    -> SharedCount
+{
+    give shared_count(
+        1,
+        SharedCountKind.Strong
+    );
+}
+
+proc shared_count_weak_new()
+    -> SharedCount
+{
+    give shared_count(
+        0,
+        SharedCountKind.Weak
+    );
+}
+
+proc shared_count_zero(
+    kind: SharedCountKind
+) -> SharedCount {
+    give shared_count(
+        0,
+        kind
+    );
+}
+
+proc shared_count_pair_new()
+    -> SharedCountPair
+{
+    give SharedCountPair {
+        strong:
+            shared_count_strong_new(),
+
+        weak:
+            shared_count_weak_new()
+    };
+}
+
+proc shared_count_pair(
+    strong: usize,
+    weak: usize
+) -> SharedCountPair {
+    give SharedCountPair {
+        strong:
+            shared_count(
+                strong,
+                SharedCountKind.Strong
+            ),
+
+        weak:
+            shared_count(
+                weak,
+                SharedCountKind.Weak
+            )
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Accessors
+// -----------------------------------------------------------------------------
+
+proc shared_count_value(
+    count: SharedCount
+) -> usize {
+    give count.value;
+}
+
+proc shared_count_kind(
+    count: SharedCount
+) -> SharedCountKind {
+    give count.kind;
+}
+
+proc shared_count_generation(
+    count: SharedCount
+) -> u64 {
+    give count.generation;
+}
+
+proc shared_count_revision(
+    count: SharedCount
+) -> u64 {
+    give count.revision;
+}
+
+proc shared_count_pair_strong(
+    counts: SharedCountPair
+) -> usize {
+    give counts.strong.value;
+}
+
+proc shared_count_pair_weak(
+    counts: SharedCountPair
+) -> usize {
+    give counts.weak.value;
+}
+
+proc shared_count_pair_total(
+    counts: SharedCountPair
+) -> usize {
+    if shared_count_add_overflows(
+        counts.strong.value,
+        counts.weak.value
+    ) {
+        give SHARED_COUNT_MAX;
+    }
+
+    give counts.strong.value
+        + counts.weak.value;
+}
+
+// -----------------------------------------------------------------------------
+// Arithmetic
+// -----------------------------------------------------------------------------
+
+proc shared_count_add_overflows(
+    left: usize,
+    right: usize
+) -> bool {
+    give left > SHARED_COUNT_MAX - right;
+}
+
+proc shared_count_sub_underflows(
+    left: usize,
+    right: usize
+) -> bool {
+    give right > left;
+}
+
+proc shared_count_can_increment(
+    count: SharedCount
+) -> bool {
+    give count.value < SHARED_COUNT_MAX;
+}
+
+proc shared_count_can_increment_by(
+    count: SharedCount,
+    amount: usize
+) -> bool {
+    give not shared_count_add_overflows(
+        count.value,
+        amount
+    );
+}
+
+proc shared_count_can_decrement(
+    count: SharedCount
+) -> bool {
+    give count.value > 0;
+}
+
+proc shared_count_can_decrement_by(
+    count: SharedCount,
+    amount: usize
+) -> bool {
+    give not shared_count_sub_underflows(
+        count.value,
+        amount
+    );
+}
+
+// -----------------------------------------------------------------------------
+// State
+// -----------------------------------------------------------------------------
+
+proc shared_count_state(
+    count: SharedCount
+) -> SharedCountState {
+    if count.value == 0 {
+        give SharedCountState.Zero;
+    }
+
+    if count.value == 1 {
+        give SharedCountState.One;
+    }
+
+    if count.value == SHARED_COUNT_MAX {
+        give SharedCountState.Maximum;
+    }
+
+    if count.value > 1 {
+        give SharedCountState.Many;
+    }
+
+    give SharedCountState.Invalid;
+}
+
+proc shared_count_is_zero(
+    count: SharedCount
+) -> bool {
+    give count.value == 0;
+}
+
+proc shared_count_is_one(
+    count: SharedCount
+) -> bool {
+    give count.value == 1;
+}
+
+proc shared_count_is_many(
+    count: SharedCount
+) -> bool {
+    give count.value > 1
+        and count.value < SHARED_COUNT_MAX;
+}
+
+proc shared_count_is_maximum(
+    count: SharedCount
+) -> bool {
+    give count.value == SHARED_COUNT_MAX;
+}
+
+proc shared_count_is_strong(
+    count: SharedCount
+) -> bool {
+    give count.kind
+        == SharedCountKind.Strong;
+}
+
+proc shared_count_is_weak(
+    count: SharedCount
+) -> bool {
+    give count.kind
+        == SharedCountKind.Weak;
+}
+
+// -----------------------------------------------------------------------------
+// Mutation metadata
+// -----------------------------------------------------------------------------
+
+proc shared_count_touch(
+    count: ref mut SharedCount
+) {
+    set count.revision =
+        count.revision + 1;
+}
+
+proc shared_count_advance_generation(
+    count: ref mut SharedCount
+) -> u64 {
+    set count.generation =
+        count.generation + 1;
+
+    set count.revision =
+        count.revision + 1;
+
+    give count.generation;
+}
+
+// -----------------------------------------------------------------------------
+// Increment
+// -----------------------------------------------------------------------------
+
+proc shared_count_increment(
+    count: ref mut SharedCount
+) -> bool {
+    if not shared_count_can_increment(
+        *count
+    ) {
+        give false;
+    }
+
+    set count.value =
+        count.value + 1;
+
+    set count.revision =
+        count.revision + 1;
+
+    give true;
+}
+
+proc shared_count_increment_by(
+    count: ref mut SharedCount,
+    amount: usize
+) -> bool {
+    if not shared_count_can_increment_by(
+        *count,
+        amount
+    ) {
+        give false;
+    }
+
+    if amount == 0 {
+        give true;
+    }
+
+    set count.value =
+        count.value + amount;
+
+    set count.revision =
+        count.revision + 1;
+
+    give true;
+}
+
+proc shared_count_clone(
+    count: ref mut SharedCount
+) -> bool {
+    give shared_count_increment(
+        count
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Decrement
+// -----------------------------------------------------------------------------
+
+proc shared_count_decrement(
+    count: ref mut SharedCount
+) -> bool {
+    if not shared_count_can_decrement(
+        *count
+    ) {
+        give false;
+    }
+
+    set count.value =
+        count.value - 1;
+
+    set count.revision =
+        count.revision + 1;
+
+    if count.value == 0 {
+        set count.generation =
+            count.generation + 1;
+    }
+
+    give true;
+}
+
+proc shared_count_decrement_by(
+    count: ref mut SharedCount,
+    amount: usize
+) -> bool {
+    if not shared_count_can_decrement_by(
+        *count,
+        amount
+    ) {
+        give false;
+    }
+
+    if amount == 0 {
+        give true;
+    }
+
+    set count.value =
+        count.value - amount;
+
+    set count.revision =
+        count.revision + 1;
+
+    if count.value == 0 {
+        set count.generation =
+            count.generation + 1;
+    }
+
+    give true;
+}
+
+proc shared_count_drop(
+    count: ref mut SharedCount
+) -> bool {
+    give shared_count_decrement(
+        count
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Strong helpers
+// -----------------------------------------------------------------------------
+
+proc shared_count_strong_clone(
+    counts: ref mut SharedCountPair
+) -> bool {
+    if counts.strong.value == 0 {
+        give false;
+    }
+
+    give shared_count_increment(
+        ref mut counts.strong
+    );
+}
+
+proc shared_count_strong_drop(
+    counts: ref mut SharedCountPair
+) -> bool {
+    give shared_count_decrement(
+        ref mut counts.strong
+    );
+}
+
+proc shared_count_strong_is_alive(
+    counts: SharedCountPair
+) -> bool {
+    give counts.strong.value > 0;
+}
+
+proc shared_count_strong_is_unique(
+    counts: SharedCountPair
+) -> bool {
+    give counts.strong.value == 1;
+}
+
+proc shared_count_strong_is_shared(
+    counts: SharedCountPair
+) -> bool {
+    give counts.strong.value > 1;
+}
+
+// -----------------------------------------------------------------------------
+// Weak helpers
+// -----------------------------------------------------------------------------
+
+proc shared_count_weak_clone(
+    counts: ref mut SharedCountPair
+) -> bool {
+    give shared_count_increment(
+        ref mut counts.weak
+    );
+}
+
+proc shared_count_weak_drop(
+    counts: ref mut SharedCountPair
+) -> bool {
+    give shared_count_decrement(
+        ref mut counts.weak
+    );
+}
+
+proc shared_count_has_weak(
+    counts: SharedCountPair
+) -> bool {
+    give counts.weak.value > 0;
+}
+
+proc shared_count_is_weak_only(
+    counts: SharedCountPair
+) -> bool {
+    give counts.strong.value == 0
+        and counts.weak.value > 0;
+}
+
+// -----------------------------------------------------------------------------
+// Upgrade / downgrade
+// -----------------------------------------------------------------------------
+
+proc shared_count_can_downgrade(
+    counts: SharedCountPair
+) -> bool {
+    give counts.strong.value > 0
+        and shared_count_can_increment(
+            counts.weak
+        );
+}
+
+proc shared_count_downgrade(
+    counts: ref mut SharedCountPair
+) -> bool {
+    if not shared_count_can_downgrade(
+        *counts
+    ) {
+        give false;
+    }
+
+    give shared_count_weak_clone(
+        counts
+    );
+}
+
+proc shared_count_can_upgrade(
+    counts: SharedCountPair
+) -> bool {
+    give counts.strong.value > 0
+        and counts.weak.value > 0
+        and shared_count_can_increment(
+            counts.strong
+        );
+}
+
+proc shared_count_upgrade(
+    counts: ref mut SharedCountPair
+) -> bool {
+    if not shared_count_can_upgrade(
+        *counts
+    ) {
+        give false;
+    }
+
+    give shared_count_strong_clone(
+        counts
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Lifecycle
+// -----------------------------------------------------------------------------
+
+proc shared_count_is_alive(
+    counts: SharedCountPair
+) -> bool {
+    give counts.strong.value > 0;
+}
+
+proc shared_count_is_dead(
+    counts: SharedCountPair
+) -> bool {
+    give counts.strong.value == 0
+        and counts.weak.value == 0;
+}
+
+proc shared_count_should_drop_value(
+    before: SharedCountPair,
+    after: SharedCountPair
+) -> bool {
+    give before.strong.value > 0
+        and after.strong.value == 0;
+}
+
+proc shared_count_should_release_control(
+    counts: SharedCountPair
+) -> bool {
+    give counts.strong.value == 0
+        and counts.weak.value == 0;
+}
+
+// -----------------------------------------------------------------------------
+// Conversion to core
+// -----------------------------------------------------------------------------
+
+proc shared_count_core(
+    counts: SharedCountPair
+) -> shared_core.SharedCoreCounts {
+    give shared_core.shared_core_counts(
+        counts.strong.value,
+        counts.weak.value
+    );
+}
+
+proc shared_count_from_core(
+    counts: shared_core.SharedCoreCounts
+) -> SharedCountPair {
+    give shared_count_pair(
+        counts.strong,
+        counts.weak
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Profile
+// -----------------------------------------------------------------------------
+
+proc shared_count_profile(
+    count: SharedCount
+) -> SharedCountProfile {
+    let state =
+        shared_count_state(
+            count
+        );
+
+    give SharedCountProfile {
+        value:
+            count.value,
+
+        kind:
+            count.kind,
+
+        state:
+            state,
+
+        zero:
+            state == SharedCountState.Zero,
+
+        one:
+            state == SharedCountState.One,
+
+        many:
+            state == SharedCountState.Many,
+
+        maximum:
+            state == SharedCountState.Maximum,
+
+        incrementable:
+            shared_count_can_increment(
+                count
+            ),
+
+        decrementable:
+            shared_count_can_decrement(
+                count
+            ),
+
+        valid:
+            state != SharedCountState.Invalid,
+
+        generation:
+            count.generation,
+
+        revision:
+            count.revision
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Snapshot
+// -----------------------------------------------------------------------------
+
+proc shared_count_snapshot(
+    count: SharedCount
+) -> SharedCountSnapshot {
+    give SharedCountSnapshot {
+        value:
+            count.value,
+
+        state:
+            shared_count_state(
+                count
+            ),
+
+        generation:
+            count.generation,
+
+        revision:
+            count.revision
+    };
+}
+
+proc shared_count_snapshot_equal(
+    left: SharedCountSnapshot,
+    right: SharedCountSnapshot
+) -> bool {
+    give left.value == right.value
+        and left.state == right.state
+        and left.generation == right.generation
+        and left.revision == right.revision;
+}
+
+proc shared_count_snapshot_changed(
+    left: SharedCountSnapshot,
+    right: SharedCountSnapshot
+) -> bool {
+    give not shared_count_snapshot_equal(
+        left,
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Delta
+// -----------------------------------------------------------------------------
+
+proc shared_count_usize_delta(
+    before: usize,
+    after: usize
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc shared_count_u64_delta(
+    before: u64,
+    after: u64
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc shared_count_delta(
+    before: SharedCountSnapshot,
+    after: SharedCountSnapshot
+) -> SharedCountDelta {
+    let value =
+        shared_count_usize_delta(
+            before.value,
+            after.value
+        );
+
+    let generation =
+        shared_count_u64_delta(
+            before.generation,
+            after.generation
+        );
+
+    let revision =
+        shared_count_u64_delta(
+            before.revision,
+            after.revision
+        );
+
+    let state_changed =
+        before.state
+            != after.state;
+
+    give SharedCountDelta {
+        value:
+            value,
+
+        generation:
+            generation,
+
+        revision:
+            revision,
+
+        state_changed:
+            state_changed,
+
+        changed:
+            value != 0
+            or generation != 0
+            or revision != 0
+            or state_changed
+    };
+}
+
+proc shared_count_delta_is_zero(
+    delta: SharedCountDelta
+) -> bool {
+    give not delta.changed;
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+proc shared_count_validate(
+    count: SharedCount
+) -> SharedCountValidation {
+    let kind_valid =
+        count.kind == SharedCountKind.Strong
+        or count.kind == SharedCountKind.Weak;
+
+    let state_valid =
+        shared_count_state(
+            count
+        ) != SharedCountState.Invalid;
+
+    let generation_valid =
+        count.generation > 0
+        and count.revision > 0;
+
+    give SharedCountValidation {
+        valid:
+            kind_valid
+            and state_valid
+            and generation_valid,
+
+        kind_valid:
+            kind_valid,
+
+        state_valid:
+            state_valid,
+
+        generation_valid:
+            generation_valid
+    };
+}
+
+proc shared_count_pair_validate(
+    counts: SharedCountPair
+) -> SharedCountPairValidation {
+    let strong_validation =
+        shared_count_validate(
+            counts.strong
+        );
+
+    let weak_validation =
+        shared_count_validate(
+            counts.weak
+        );
+
+    let strong_valid =
+        strong_validation.valid
+        and counts.strong.kind
+            == SharedCountKind.Strong;
+
+    let weak_valid =
+        weak_validation.valid
+        and counts.weak.kind
+            == SharedCountKind.Weak;
+
+    let total_valid =
+        not shared_count_add_overflows(
+            counts.strong.value,
+            counts.weak.value
+        );
+
+    let lifecycle_valid =
+        shared_core.shared_core_state(
+            shared_count_core(
+                counts
+            )
+        ) != shared_core.SharedCoreState.Invalid;
+
+    give SharedCountPairValidation {
+        valid:
+            strong_valid
+            and weak_valid
+            and total_valid
+            and lifecycle_valid,
+
+        strong_valid:
+            strong_valid,
+
+        weak_valid:
+            weak_valid,
+
+        total_valid:
+            total_valid,
+
+        lifecycle_valid:
+            lifecycle_valid
+    };
+}
+
+proc shared_count_pair_valid(
+    counts: SharedCountPair
+) -> bool {
+    give shared_count_pair_validate(
+        counts
+    ).valid;
+}
+
+proc shared_count_invariant_holds(
+    counts: SharedCountPair
+) -> bool {
+    give shared_count_pair_valid(
+        counts
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Comparison
+// -----------------------------------------------------------------------------
+
+proc shared_count_equal(
+    left: SharedCount,
+    right: SharedCount
+) -> bool {
+    give left.value == right.value
+        and left.kind == right.kind;
+}
+
+proc shared_count_pair_equal(
+    left: SharedCountPair,
+    right: SharedCountPair
+) -> bool {
+    give shared_count_equal(
+        left.strong,
+        right.strong
+    )
+    and shared_count_equal(
+        left.weak,
+        right.weak
+    );
+}
+
+proc shared_count_compare(
+    left: SharedCount,
+    right: SharedCount
+) -> shared_core.SharedCoreOrdering {
+    if left.value < right.value {
+        give shared_core.SharedCoreOrdering.Less;
+    }
+
+    if left.value > right.value {
+        give shared_core.SharedCoreOrdering.Greater;
+    }
+
+    give shared_core.SharedCoreOrdering.Equal;
+}
+
+proc shared_count_pair_compare_strong(
+    left: SharedCountPair,
+    right: SharedCountPair
+) -> shared_core.SharedCoreOrdering {
+    give shared_count_compare(
+        left.strong,
+        right.strong
+    );
+}
+
+proc shared_count_pair_compare_weak(
+    left: SharedCountPair,
+    right: SharedCountPair
+) -> shared_core.SharedCoreOrdering {
+    give shared_count_compare(
+        left.weak,
+        right.weak
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc shared_count_statistics_empty()
+    -> SharedCountStatistics
+{
+    give SharedCountStatistics {
+        increments: 0,
+        decrements: 0,
+
+        strong_increments: 0,
+        strong_decrements: 0,
+
+        weak_increments: 0,
+        weak_decrements: 0,
+
+        clone_operations: 0,
+        drop_operations: 0,
+        upgrades: 0,
+        downgrades: 0,
+
+        failures: 0,
+
+        peak_strong: 0,
+        peak_weak: 0,
+        peak_total: 0
+    };
+}
+
+proc shared_count_statistics_update_peaks(
+    statistics: ref mut SharedCountStatistics,
+    counts: SharedCountPair
+) {
+    let strong =
+        shared_count_pair_strong(
+            counts
+        );
+
+    let weak =
+        shared_count_pair_weak(
+            counts
+        );
+
+    let total =
+        shared_count_pair_total(
+            counts
+        );
+
+    if strong > statistics.peak_strong {
+        set statistics.peak_strong =
+            strong;
+    }
+
+    if weak > statistics.peak_weak {
+        set statistics.peak_weak =
+            weak;
+    }
+
+    if total > statistics.peak_total {
+        set statistics.peak_total =
+            total;
+    }
+}
+
+proc shared_count_statistics_record_increment(
+    statistics: ref mut SharedCountStatistics,
+    count: SharedCount,
+    success: bool
+) {
+    if not success {
+        set statistics.failures =
+            statistics.failures + 1;
+
+        give;
+    }
+
+    set statistics.increments =
+        statistics.increments + 1;
+
+    if count.kind == SharedCountKind.Strong {
+        set statistics.strong_increments =
+            statistics.strong_increments + 1;
+
+        if count.value > statistics.peak_strong {
+            set statistics.peak_strong =
+                count.value;
+        }
+    } else {
+        set statistics.weak_increments =
+            statistics.weak_increments + 1;
+
+        if count.value > statistics.peak_weak {
+            set statistics.peak_weak =
+                count.value;
+        }
+    }
+}
+
+proc shared_count_statistics_record_decrement(
+    statistics: ref mut SharedCountStatistics,
+    count: SharedCount,
+    success: bool
+) {
+    if not success {
+        set statistics.failures =
+            statistics.failures + 1;
+
+        give;
+    }
+
+    set statistics.decrements =
+        statistics.decrements + 1;
+
+    if count.kind == SharedCountKind.Strong {
+        set statistics.strong_decrements =
+            statistics.strong_decrements + 1;
+    } else {
+        set statistics.weak_decrements =
+            statistics.weak_decrements + 1;
+    }
+}
+
+proc shared_count_statistics_record_clone(
+    statistics: ref mut SharedCountStatistics,
+    counts: SharedCountPair,
+    success: bool
+) {
+    if success {
+        set statistics.clone_operations =
+            statistics.clone_operations + 1;
+
+        shared_count_statistics_update_peaks(
+            statistics,
+            counts
+        );
+    } else {
+        set statistics.failures =
+            statistics.failures + 1;
+    }
+}
+
+proc shared_count_statistics_record_drop(
+    statistics: ref mut SharedCountStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.drop_operations =
+            statistics.drop_operations + 1;
+    } else {
+        set statistics.failures =
+            statistics.failures + 1;
+    }
+}
+
+proc shared_count_statistics_record_upgrade(
+    statistics: ref mut SharedCountStatistics,
+    counts: SharedCountPair,
+    success: bool
+) {
+    if success {
+        set statistics.upgrades =
+            statistics.upgrades + 1;
+
+        shared_count_statistics_update_peaks(
+            statistics,
+            counts
+        );
+    } else {
+        set statistics.failures =
+            statistics.failures + 1;
+    }
+}
+
+proc shared_count_statistics_record_downgrade(
+    statistics: ref mut SharedCountStatistics,
+    counts: SharedCountPair,
+    success: bool
+) {
+    if success {
+        set statistics.downgrades =
+            statistics.downgrades + 1;
+
+        shared_count_statistics_update_peaks(
+            statistics,
+            counts
+        );
+    } else {
+        set statistics.failures =
+            statistics.failures + 1;
+    }
+}
+
+proc shared_count_statistics_total(
+    statistics: SharedCountStatistics
+) -> u64 {
+    give statistics.increments
+        + statistics.decrements
+        + statistics.clone_operations
+        + statistics.drop_operations
+        + statistics.upgrades
+        + statistics.downgrades
+        + statistics.failures;
+}
+
+proc shared_count_statistics_reset(
+    statistics: ref mut SharedCountStatistics
+) {
+    set *statistics =
+        shared_count_statistics_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc shared_count_kind_name(
+    kind: SharedCountKind
+) -> string {
+    pick kind {
+        SharedCountKind.Strong {
+            give "strong";
+        }
+
+        SharedCountKind.Weak {
+            give "weak";
+        }
+    }
+
+    give "strong";
+}
+
+proc shared_count_state_name(
+    state: SharedCountState
+) -> string {
+    pick state {
+        SharedCountState.Zero {
+            give "zero";
+        }
+
+        SharedCountState.One {
+            give "one";
+        }
+
+        SharedCountState.Many {
+            give "many";
+        }
+
+        SharedCountState.Maximum {
+            give "maximum";
+        }
+
+        SharedCountState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+proc shared_count_operation_name(
+    operation: SharedCountOperation
+) -> string {
+    pick operation {
+        SharedCountOperation.None {
+            give "none";
+        }
+
+        SharedCountOperation.Increment {
+            give "increment";
+        }
+
+        SharedCountOperation.Decrement {
+            give "decrement";
+        }
+
+        SharedCountOperation.Clone {
+            give "clone";
+        }
+
+        SharedCountOperation.Drop {
+            give "drop";
+        }
+
+        SharedCountOperation.Upgrade {
+            give "upgrade";
+        }
+
+        SharedCountOperation.Downgrade {
+            give "downgrade";
+        }
+    }
+
+    give "none";
+}
+
+// -----------------------------------------------------------------------------
+// Shared count model
+// -----------------------------------------------------------------------------
+//
+// Shared ownership maintains two counters:
+//
+//     strong
+//     weak
+//
+// Initial:
+//
+//     strong = 1
+//     weak   = 0
+//
+// Strong clone:
+//
+//     strong++
+//
+// Strong drop:
+//
+//     strong--
+//
+// Weak creation:
+//
+//     weak++
+//
+// Weak drop:
+//
+//     weak--
+//
+// -----------------------------------------------------------------------------
+//
+// Managed value lifetime:
+//
+//     strong > 0
+//         value alive
+//
+//     strong == 0
+//         value dropped
+//
+// The control block may survive after the value dies:
+//
+//     strong == 0
+//     weak > 0
+//
+// This is the WeakOnly state.
+//
+// The control allocation may be reclaimed when:
+//
+//     strong == 0
+//     weak == 0
+//
+// -----------------------------------------------------------------------------
+//
+// Upgrade:
+//
+//     strong > 0
+//     weak > 0
+//
+//     strong++
+//
+// Downgrade:
+//
+//     strong > 0
+//
+//     weak++
+//
+// -----------------------------------------------------------------------------
+//
+// Overflow handling:
+//
+//     value == usize_max()
+//
+// prevents another increment.
+//
+// An overflowing reference counter is never allowed to wrap to zero.
+//
+// Otherwise a live allocation could incorrectly appear to have no owners.
+//
+// -----------------------------------------------------------------------------
+//
+// Underflow handling:
+//
+//     value == 0
+//
+// prevents decrement.
+//
+// This avoids:
+//
+//     0 - 1
+//
+// wrapping to usize_max().
+//
+// -----------------------------------------------------------------------------
+//
+// Generation:
+//
+//     generation changes when a count reaches zero.
+//
+// This can participate in stale-reference detection.
+//
+// Revision:
+//
+//     revision changes for every successful mutation.
+//
+// -----------------------------------------------------------------------------
+//
+// Fundamental invariants:
+//
+//     strong.kind == Strong
+//
+//     weak.kind == Weak
+//
+//     strong + weak does not overflow
+//
+//     generation > 0
+//
+//     revision > 0
+//
+//     strong == 1
+//         => unique strong ownership
+//
+//     strong > 1
+//         => shared strong ownership
+//
+//     strong == 0 && weak > 0
+//         => weak-only control block
+//
+//     strong == 0 && weak == 0
+//         => allocation reclaimable
+//
+// -----------------------------------------------------------------------------
+//
+// Module responsibilities:
+//
+//     core.vitl
+//         pure shared-ownership state machine
+//
+//     count.vitl
+//         concrete strong/weak counter operations
+//
+// Higher-level Shared modules own:
+//
+//     value storage
+//     control block allocation
+//     pointer identity
+//     cloning
+//     weak references
+//     raw conversions
+//     destruction

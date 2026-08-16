@@ -1,0 +1,1430 @@
+space vitte/stdlib/alloc/shared/core
+
+export *
+
+const SHARED_CORE_MIN_STRONG: usize = 1;
+
+pick SharedCoreState {
+    Alive,
+    WeakOnly,
+    Dropped,
+    Invalid
+}
+
+pick SharedCoreOwnership {
+    Unique,
+    Shared,
+    Dead
+}
+
+pick SharedCoreAccess {
+    None,
+    Read,
+    ReadWrite
+}
+
+pick SharedCoreTransitionKind {
+    None,
+
+    CloneStrong,
+    DropStrong,
+
+    CloneWeak,
+    DropWeak,
+
+    UpgradeWeak,
+    DowngradeStrong,
+
+    DropValue,
+    ReleaseAllocation,
+
+    Touch,
+    Invalidate
+}
+
+pick SharedCoreOrdering {
+    Less,
+    Equal,
+    Greater
+}
+
+form SharedCoreCounts {
+    strong: usize
+    weak: usize
+}
+
+form SharedCoreMeta {
+    generation: u64
+    revision: u64
+}
+
+form SharedCoreInfo {
+    state: SharedCoreState
+    ownership: SharedCoreOwnership
+    access: SharedCoreAccess
+
+    alive: bool
+    unique: bool
+    shared: bool
+    weak_only: bool
+    dropped: bool
+    valid: bool
+}
+
+form SharedCoreProfile {
+    counts: SharedCoreCounts
+    meta: SharedCoreMeta
+    info: SharedCoreInfo
+}
+
+form SharedCoreSnapshot {
+    strong: usize
+    weak: usize
+
+    state: SharedCoreState
+    ownership: SharedCoreOwnership
+
+    generation: u64
+    revision: u64
+}
+
+form SharedCoreDelta {
+    strong: int
+    weak: int
+
+    generation: int
+    revision: int
+
+    state_changed: bool
+    ownership_changed: bool
+    changed: bool
+}
+
+form SharedCoreTransition {
+    before: SharedCoreSnapshot
+    after: SharedCoreSnapshot
+
+    kind: SharedCoreTransitionKind
+
+    valid: bool
+}
+
+form SharedCoreValidation {
+    valid: bool
+
+    counts_valid: bool
+    state_valid: bool
+    ownership_valid: bool
+    access_valid: bool
+    generation_valid: bool
+}
+
+form SharedCoreStatistics {
+    strong_clones: u64
+    strong_drops: u64
+
+    weak_clones: u64
+    weak_drops: u64
+
+    upgrades: u64
+    downgrades: u64
+
+    value_drops: u64
+    allocation_releases: u64
+
+    touches: u64
+    invalidations: u64
+
+    peak_strong: usize
+    peak_weak: usize
+}
+
+// -----------------------------------------------------------------------------
+// Arithmetic
+// -----------------------------------------------------------------------------
+
+proc shared_core_add_overflows(
+    left: usize,
+    right: usize
+) -> bool {
+    give left > usize_max() - right;
+}
+
+// -----------------------------------------------------------------------------
+// Counts
+// -----------------------------------------------------------------------------
+
+proc shared_core_counts(
+    strong: usize,
+    weak: usize
+) -> SharedCoreCounts {
+    give SharedCoreCounts {
+        strong: strong,
+        weak: weak
+    };
+}
+
+proc shared_core_counts_new()
+    -> SharedCoreCounts
+{
+    give SharedCoreCounts {
+        strong: 1,
+        weak: 0
+    };
+}
+
+proc shared_core_counts_empty()
+    -> SharedCoreCounts
+{
+    give SharedCoreCounts {
+        strong: 0,
+        weak: 0
+    };
+}
+
+proc shared_core_strong(
+    counts: SharedCoreCounts
+) -> usize {
+    give counts.strong;
+}
+
+proc shared_core_weak(
+    counts: SharedCoreCounts
+) -> usize {
+    give counts.weak;
+}
+
+proc shared_core_total_refs(
+    counts: SharedCoreCounts
+) -> usize {
+    if shared_core_add_overflows(
+        counts.strong,
+        counts.weak
+    ) {
+        give usize_max();
+    }
+
+    give counts.strong
+        + counts.weak;
+}
+
+proc shared_core_counts_valid(
+    counts: SharedCoreCounts
+) -> bool {
+    give not shared_core_add_overflows(
+        counts.strong,
+        counts.weak
+    );
+}
+
+// -----------------------------------------------------------------------------
+// State
+// -----------------------------------------------------------------------------
+
+proc shared_core_state(
+    counts: SharedCoreCounts
+) -> SharedCoreState {
+    if not shared_core_counts_valid(
+        counts
+    ) {
+        give SharedCoreState.Invalid;
+    }
+
+    if counts.strong > 0 {
+        give SharedCoreState.Alive;
+    }
+
+    if counts.weak > 0 {
+        give SharedCoreState.WeakOnly;
+    }
+
+    give SharedCoreState.Dropped;
+}
+
+proc shared_core_ownership(
+    counts: SharedCoreCounts
+) -> SharedCoreOwnership {
+    if counts.strong == 0 {
+        give SharedCoreOwnership.Dead;
+    }
+
+    if counts.strong == 1 {
+        give SharedCoreOwnership.Unique;
+    }
+
+    give SharedCoreOwnership.Shared;
+}
+
+proc shared_core_access(
+    counts: SharedCoreCounts
+) -> SharedCoreAccess {
+    if counts.strong == 0 {
+        give SharedCoreAccess.None;
+    }
+
+    if counts.strong == 1 {
+        give SharedCoreAccess.ReadWrite;
+    }
+
+    give SharedCoreAccess.Read;
+}
+
+proc shared_core_info(
+    counts: SharedCoreCounts
+) -> SharedCoreInfo {
+    let state =
+        shared_core_state(
+            counts
+        );
+
+    let ownership =
+        shared_core_ownership(
+            counts
+        );
+
+    let access =
+        shared_core_access(
+            counts
+        );
+
+    give SharedCoreInfo {
+        state:
+            state,
+
+        ownership:
+            ownership,
+
+        access:
+            access,
+
+        alive:
+            state == SharedCoreState.Alive,
+
+        unique:
+            ownership == SharedCoreOwnership.Unique,
+
+        shared:
+            ownership == SharedCoreOwnership.Shared,
+
+        weak_only:
+            state == SharedCoreState.WeakOnly,
+
+        dropped:
+            state == SharedCoreState.Dropped,
+
+        valid:
+            state != SharedCoreState.Invalid
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Predicates
+// -----------------------------------------------------------------------------
+
+proc shared_core_is_alive(
+    counts: SharedCoreCounts
+) -> bool {
+    give counts.strong > 0;
+}
+
+proc shared_core_is_unique(
+    counts: SharedCoreCounts
+) -> bool {
+    give counts.strong == 1;
+}
+
+proc shared_core_is_shared(
+    counts: SharedCoreCounts
+) -> bool {
+    give counts.strong > 1;
+}
+
+proc shared_core_has_weak(
+    counts: SharedCoreCounts
+) -> bool {
+    give counts.weak > 0;
+}
+
+proc shared_core_is_weak_only(
+    counts: SharedCoreCounts
+) -> bool {
+    give counts.strong == 0
+        and counts.weak > 0;
+}
+
+proc shared_core_is_dropped(
+    counts: SharedCoreCounts
+) -> bool {
+    give counts.strong == 0
+        and counts.weak == 0;
+}
+
+proc shared_core_can_read(
+    counts: SharedCoreCounts
+) -> bool {
+    give counts.strong > 0;
+}
+
+proc shared_core_can_write(
+    counts: SharedCoreCounts
+) -> bool {
+    give counts.strong == 1;
+}
+
+proc shared_core_can_upgrade(
+    counts: SharedCoreCounts
+) -> bool {
+    give counts.strong > 0
+        and counts.weak > 0;
+}
+
+proc shared_core_should_drop_value(
+    before: SharedCoreCounts,
+    after: SharedCoreCounts
+) -> bool {
+    give before.strong > 0
+        and after.strong == 0;
+}
+
+proc shared_core_should_release_allocation(
+    counts: SharedCoreCounts
+) -> bool {
+    give counts.strong == 0
+        and counts.weak == 0;
+}
+
+// -----------------------------------------------------------------------------
+// Metadata
+// -----------------------------------------------------------------------------
+
+proc shared_core_meta()
+    -> SharedCoreMeta
+{
+    give SharedCoreMeta {
+        generation: 1,
+        revision: 1
+    };
+}
+
+proc shared_core_meta_empty()
+    -> SharedCoreMeta
+{
+    give SharedCoreMeta {
+        generation: 0,
+        revision: 0
+    };
+}
+
+proc shared_core_touch(
+    meta: SharedCoreMeta
+) -> SharedCoreMeta {
+    let out = meta;
+
+    set out.revision =
+        out.revision + 1;
+
+    give out;
+}
+
+proc shared_core_advance_generation(
+    meta: SharedCoreMeta
+) -> SharedCoreMeta {
+    let out = meta;
+
+    set out.generation =
+        out.generation + 1;
+
+    set out.revision =
+        out.revision + 1;
+
+    give out;
+}
+
+// -----------------------------------------------------------------------------
+// Strong operations
+// -----------------------------------------------------------------------------
+
+proc shared_core_clone_strong(
+    counts: SharedCoreCounts
+) -> SharedCoreCounts {
+    if counts.strong == 0 {
+        give counts;
+    }
+
+    if counts.strong == usize_max() {
+        give counts;
+    }
+
+    let out = counts;
+
+    set out.strong =
+        out.strong + 1;
+
+    give out;
+}
+
+proc shared_core_drop_strong(
+    counts: SharedCoreCounts
+) -> SharedCoreCounts {
+    if counts.strong == 0 {
+        give counts;
+    }
+
+    let out = counts;
+
+    set out.strong =
+        out.strong - 1;
+
+    give out;
+}
+
+// -----------------------------------------------------------------------------
+// Weak operations
+// -----------------------------------------------------------------------------
+
+proc shared_core_clone_weak(
+    counts: SharedCoreCounts
+) -> SharedCoreCounts {
+    if counts.weak == usize_max() {
+        give counts;
+    }
+
+    let out = counts;
+
+    set out.weak =
+        out.weak + 1;
+
+    give out;
+}
+
+proc shared_core_drop_weak(
+    counts: SharedCoreCounts
+) -> SharedCoreCounts {
+    if counts.weak == 0 {
+        give counts;
+    }
+
+    let out = counts;
+
+    set out.weak =
+        out.weak - 1;
+
+    give out;
+}
+
+// -----------------------------------------------------------------------------
+// Downgrade / upgrade
+// -----------------------------------------------------------------------------
+
+proc shared_core_downgrade(
+    counts: SharedCoreCounts
+) -> SharedCoreCounts {
+    if counts.strong == 0 {
+        give counts;
+    }
+
+    give shared_core_clone_weak(
+        counts
+    );
+}
+
+proc shared_core_upgrade(
+    counts: SharedCoreCounts
+) -> SharedCoreCounts {
+    if counts.strong == 0 {
+        give counts;
+    }
+
+    if counts.weak == 0 {
+        give counts;
+    }
+
+    give shared_core_clone_strong(
+        counts
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Profile
+// -----------------------------------------------------------------------------
+
+proc shared_core_profile(
+    counts: SharedCoreCounts,
+    meta: SharedCoreMeta
+) -> SharedCoreProfile {
+    give SharedCoreProfile {
+        counts:
+            counts,
+
+        meta:
+            meta,
+
+        info:
+            shared_core_info(
+                counts
+            )
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Snapshot
+// -----------------------------------------------------------------------------
+
+proc shared_core_snapshot(
+    profile: SharedCoreProfile
+) -> SharedCoreSnapshot {
+    give SharedCoreSnapshot {
+        strong:
+            profile.counts.strong,
+
+        weak:
+            profile.counts.weak,
+
+        state:
+            profile.info.state,
+
+        ownership:
+            profile.info.ownership,
+
+        generation:
+            profile.meta.generation,
+
+        revision:
+            profile.meta.revision
+    };
+}
+
+proc shared_core_snapshot_equal(
+    left: SharedCoreSnapshot,
+    right: SharedCoreSnapshot
+) -> bool {
+    give left.strong == right.strong
+        and left.weak == right.weak
+        and left.state == right.state
+        and left.ownership == right.ownership
+        and left.generation == right.generation
+        and left.revision == right.revision;
+}
+
+proc shared_core_snapshot_changed(
+    left: SharedCoreSnapshot,
+    right: SharedCoreSnapshot
+) -> bool {
+    give not shared_core_snapshot_equal(
+        left,
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Delta
+// -----------------------------------------------------------------------------
+
+proc shared_core_usize_delta(
+    before: usize,
+    after: usize
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc shared_core_u64_delta(
+    before: u64,
+    after: u64
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc shared_core_delta(
+    before: SharedCoreSnapshot,
+    after: SharedCoreSnapshot
+) -> SharedCoreDelta {
+    let strong =
+        shared_core_usize_delta(
+            before.strong,
+            after.strong
+        );
+
+    let weak =
+        shared_core_usize_delta(
+            before.weak,
+            after.weak
+        );
+
+    let generation =
+        shared_core_u64_delta(
+            before.generation,
+            after.generation
+        );
+
+    let revision =
+        shared_core_u64_delta(
+            before.revision,
+            after.revision
+        );
+
+    let state_changed =
+        before.state != after.state;
+
+    let ownership_changed =
+        before.ownership
+            != after.ownership;
+
+    give SharedCoreDelta {
+        strong:
+            strong,
+
+        weak:
+            weak,
+
+        generation:
+            generation,
+
+        revision:
+            revision,
+
+        state_changed:
+            state_changed,
+
+        ownership_changed:
+            ownership_changed,
+
+        changed:
+            strong != 0
+            or weak != 0
+            or generation != 0
+            or revision != 0
+            or state_changed
+            or ownership_changed
+    };
+}
+
+proc shared_core_delta_is_zero(
+    delta: SharedCoreDelta
+) -> bool {
+    give not delta.changed;
+}
+
+// -----------------------------------------------------------------------------
+// Transition classification
+// -----------------------------------------------------------------------------
+
+proc shared_core_transition_kind(
+    before: SharedCoreSnapshot,
+    after: SharedCoreSnapshot
+) -> SharedCoreTransitionKind {
+    if shared_core_snapshot_equal(
+        before,
+        after
+    ) {
+        give SharedCoreTransitionKind.None;
+    }
+
+    if after.state
+        == SharedCoreState.Invalid
+    {
+        give SharedCoreTransitionKind.Invalidate;
+    }
+
+    if after.strong
+        == before.strong + 1
+        and after.weak == before.weak
+    {
+        give SharedCoreTransitionKind.CloneStrong;
+    }
+
+    if before.strong
+        == after.strong + 1
+        and before.weak == after.weak
+    {
+        if before.strong == 1
+            and after.strong == 0
+        {
+            give SharedCoreTransitionKind.DropValue;
+        }
+
+        give SharedCoreTransitionKind.DropStrong;
+    }
+
+    if after.weak
+        == before.weak + 1
+        and after.strong == before.strong
+    {
+        give SharedCoreTransitionKind.CloneWeak;
+    }
+
+    if before.weak
+        == after.weak + 1
+        and after.strong == before.strong
+    {
+        if after.strong == 0
+            and after.weak == 0
+        {
+            give SharedCoreTransitionKind.ReleaseAllocation;
+        }
+
+        give SharedCoreTransitionKind.DropWeak;
+    }
+
+    if after.revision > before.revision {
+        give SharedCoreTransitionKind.Touch;
+    }
+
+    give SharedCoreTransitionKind.None;
+}
+
+proc shared_core_transition_valid(
+    before: SharedCoreSnapshot,
+    after: SharedCoreSnapshot,
+    kind: SharedCoreTransitionKind
+) -> bool {
+    pick kind {
+        SharedCoreTransitionKind.None {
+            give shared_core_snapshot_equal(
+                before,
+                after
+            );
+        }
+
+        SharedCoreTransitionKind.CloneStrong {
+            give before.strong > 0
+                and after.strong
+                    == before.strong + 1
+                and after.weak
+                    == before.weak;
+        }
+
+        SharedCoreTransitionKind.DropStrong {
+            give before.strong > 1
+                and after.strong
+                    == before.strong - 1
+                and after.weak
+                    == before.weak;
+        }
+
+        SharedCoreTransitionKind.CloneWeak {
+            give after.weak
+                == before.weak + 1
+                and after.strong
+                    == before.strong;
+        }
+
+        SharedCoreTransitionKind.DropWeak {
+            give before.weak > 0
+                and after.weak
+                    == before.weak - 1
+                and after.strong
+                    == before.strong;
+        }
+
+        SharedCoreTransitionKind.UpgradeWeak {
+            give before.strong > 0
+                and before.weak > 0
+                and after.strong
+                    == before.strong + 1;
+        }
+
+        SharedCoreTransitionKind.DowngradeStrong {
+            give before.strong > 0
+                and after.weak
+                    == before.weak + 1;
+        }
+
+        SharedCoreTransitionKind.DropValue {
+            give before.strong == 1
+                and after.strong == 0;
+        }
+
+        SharedCoreTransitionKind.ReleaseAllocation {
+            give after.strong == 0
+                and after.weak == 0;
+        }
+
+        SharedCoreTransitionKind.Touch {
+            give after.revision
+                > before.revision;
+        }
+
+        SharedCoreTransitionKind.Invalidate {
+            give after.state
+                == SharedCoreState.Invalid;
+        }
+    }
+
+    give false;
+}
+
+proc shared_core_transition(
+    before: SharedCoreSnapshot,
+    after: SharedCoreSnapshot
+) -> SharedCoreTransition {
+    let kind =
+        shared_core_transition_kind(
+            before,
+            after
+        );
+
+    give SharedCoreTransition {
+        before:
+            before,
+
+        after:
+            after,
+
+        kind:
+            kind,
+
+        valid:
+            shared_core_transition_valid(
+                before,
+                after,
+                kind
+            )
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+proc shared_core_state_valid(
+    profile: SharedCoreProfile
+) -> bool {
+    pick profile.info.state {
+        SharedCoreState.Alive {
+            give profile.counts.strong > 0;
+        }
+
+        SharedCoreState.WeakOnly {
+            give profile.counts.strong == 0
+                and profile.counts.weak > 0;
+        }
+
+        SharedCoreState.Dropped {
+            give profile.counts.strong == 0
+                and profile.counts.weak == 0;
+        }
+
+        SharedCoreState.Invalid {
+            give false;
+        }
+    }
+
+    give false;
+}
+
+proc shared_core_ownership_valid(
+    profile: SharedCoreProfile
+) -> bool {
+    pick profile.info.ownership {
+        SharedCoreOwnership.Unique {
+            give profile.counts.strong == 1;
+        }
+
+        SharedCoreOwnership.Shared {
+            give profile.counts.strong > 1;
+        }
+
+        SharedCoreOwnership.Dead {
+            give profile.counts.strong == 0;
+        }
+    }
+
+    give false;
+}
+
+proc shared_core_access_valid(
+    profile: SharedCoreProfile
+) -> bool {
+    give profile.info.access
+        == shared_core_access(
+            profile.counts
+        );
+}
+
+proc shared_core_validate(
+    profile: SharedCoreProfile
+) -> SharedCoreValidation {
+    let counts_valid =
+        shared_core_counts_valid(
+            profile.counts
+        );
+
+    let state_valid =
+        shared_core_state_valid(
+            profile
+        );
+
+    let ownership_valid =
+        shared_core_ownership_valid(
+            profile
+        );
+
+    let access_valid =
+        shared_core_access_valid(
+            profile
+        );
+
+    let generation_valid =
+        profile.meta.generation > 0
+        and profile.meta.revision > 0;
+
+    give SharedCoreValidation {
+        valid:
+            counts_valid
+            and state_valid
+            and ownership_valid
+            and access_valid
+            and generation_valid,
+
+        counts_valid:
+            counts_valid,
+
+        state_valid:
+            state_valid,
+
+        ownership_valid:
+            ownership_valid,
+
+        access_valid:
+            access_valid,
+
+        generation_valid:
+            generation_valid
+    };
+}
+
+proc shared_core_invariant_holds(
+    profile: SharedCoreProfile
+) -> bool {
+    give shared_core_validate(
+        profile
+    ).valid;
+}
+
+// -----------------------------------------------------------------------------
+// Comparisons
+// -----------------------------------------------------------------------------
+
+proc shared_core_compare_strong(
+    left: SharedCoreCounts,
+    right: SharedCoreCounts
+) -> SharedCoreOrdering {
+    if left.strong < right.strong {
+        give SharedCoreOrdering.Less;
+    }
+
+    if left.strong > right.strong {
+        give SharedCoreOrdering.Greater;
+    }
+
+    give SharedCoreOrdering.Equal;
+}
+
+proc shared_core_compare_weak(
+    left: SharedCoreCounts,
+    right: SharedCoreCounts
+) -> SharedCoreOrdering {
+    if left.weak < right.weak {
+        give SharedCoreOrdering.Less;
+    }
+
+    if left.weak > right.weak {
+        give SharedCoreOrdering.Greater;
+    }
+
+    give SharedCoreOrdering.Equal;
+}
+
+proc shared_core_counts_equal(
+    left: SharedCoreCounts,
+    right: SharedCoreCounts
+) -> bool {
+    give left.strong == right.strong
+        and left.weak == right.weak;
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc shared_core_statistics_empty()
+    -> SharedCoreStatistics
+{
+    give SharedCoreStatistics {
+        strong_clones: 0,
+        strong_drops: 0,
+
+        weak_clones: 0,
+        weak_drops: 0,
+
+        upgrades: 0,
+        downgrades: 0,
+
+        value_drops: 0,
+        allocation_releases: 0,
+
+        touches: 0,
+        invalidations: 0,
+
+        peak_strong: 0,
+        peak_weak: 0
+    };
+}
+
+proc shared_core_statistics_record(
+    statistics: ref mut SharedCoreStatistics,
+    transition: SharedCoreTransition
+) {
+    if not transition.valid {
+        set statistics.invalidations =
+            statistics.invalidations + 1;
+
+        give;
+    }
+
+    pick transition.kind {
+        SharedCoreTransitionKind.CloneStrong {
+            set statistics.strong_clones =
+                statistics.strong_clones + 1;
+        }
+
+        SharedCoreTransitionKind.DropStrong {
+            set statistics.strong_drops =
+                statistics.strong_drops + 1;
+        }
+
+        SharedCoreTransitionKind.CloneWeak {
+            set statistics.weak_clones =
+                statistics.weak_clones + 1;
+        }
+
+        SharedCoreTransitionKind.DropWeak {
+            set statistics.weak_drops =
+                statistics.weak_drops + 1;
+        }
+
+        SharedCoreTransitionKind.UpgradeWeak {
+            set statistics.upgrades =
+                statistics.upgrades + 1;
+        }
+
+        SharedCoreTransitionKind.DowngradeStrong {
+            set statistics.downgrades =
+                statistics.downgrades + 1;
+        }
+
+        SharedCoreTransitionKind.DropValue {
+            set statistics.value_drops =
+                statistics.value_drops + 1;
+        }
+
+        SharedCoreTransitionKind.ReleaseAllocation {
+            set statistics.allocation_releases =
+                statistics.allocation_releases + 1;
+        }
+
+        SharedCoreTransitionKind.Touch {
+            set statistics.touches =
+                statistics.touches + 1;
+        }
+
+        SharedCoreTransitionKind.Invalidate {
+            set statistics.invalidations =
+                statistics.invalidations + 1;
+        }
+
+        SharedCoreTransitionKind.None {}
+    }
+
+    if transition.after.strong
+        > statistics.peak_strong
+    {
+        set statistics.peak_strong =
+            transition.after.strong;
+    }
+
+    if transition.after.weak
+        > statistics.peak_weak
+    {
+        set statistics.peak_weak =
+            transition.after.weak;
+    }
+}
+
+proc shared_core_statistics_total(
+    statistics: SharedCoreStatistics
+) -> u64 {
+    give statistics.strong_clones
+        + statistics.strong_drops
+        + statistics.weak_clones
+        + statistics.weak_drops
+        + statistics.upgrades
+        + statistics.downgrades
+        + statistics.value_drops
+        + statistics.allocation_releases
+        + statistics.touches
+        + statistics.invalidations;
+}
+
+proc shared_core_statistics_reset(
+    statistics: ref mut SharedCoreStatistics
+) {
+    set *statistics =
+        shared_core_statistics_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc shared_core_state_name(
+    state: SharedCoreState
+) -> string {
+    pick state {
+        SharedCoreState.Alive {
+            give "alive";
+        }
+
+        SharedCoreState.WeakOnly {
+            give "weak-only";
+        }
+
+        SharedCoreState.Dropped {
+            give "dropped";
+        }
+
+        SharedCoreState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+proc shared_core_ownership_name(
+    ownership: SharedCoreOwnership
+) -> string {
+    pick ownership {
+        SharedCoreOwnership.Unique {
+            give "unique";
+        }
+
+        SharedCoreOwnership.Shared {
+            give "shared";
+        }
+
+        SharedCoreOwnership.Dead {
+            give "dead";
+        }
+    }
+
+    give "dead";
+}
+
+proc shared_core_access_name(
+    access: SharedCoreAccess
+) -> string {
+    pick access {
+        SharedCoreAccess.None {
+            give "none";
+        }
+
+        SharedCoreAccess.Read {
+            give "read";
+        }
+
+        SharedCoreAccess.ReadWrite {
+            give "read-write";
+        }
+    }
+
+    give "none";
+}
+
+proc shared_core_transition_name(
+    kind: SharedCoreTransitionKind
+) -> string {
+    pick kind {
+        SharedCoreTransitionKind.None {
+            give "none";
+        }
+
+        SharedCoreTransitionKind.CloneStrong {
+            give "clone-strong";
+        }
+
+        SharedCoreTransitionKind.DropStrong {
+            give "drop-strong";
+        }
+
+        SharedCoreTransitionKind.CloneWeak {
+            give "clone-weak";
+        }
+
+        SharedCoreTransitionKind.DropWeak {
+            give "drop-weak";
+        }
+
+        SharedCoreTransitionKind.UpgradeWeak {
+            give "upgrade-weak";
+        }
+
+        SharedCoreTransitionKind.DowngradeStrong {
+            give "downgrade-strong";
+        }
+
+        SharedCoreTransitionKind.DropValue {
+            give "drop-value";
+        }
+
+        SharedCoreTransitionKind.ReleaseAllocation {
+            give "release-allocation";
+        }
+
+        SharedCoreTransitionKind.Touch {
+            give "touch";
+        }
+
+        SharedCoreTransitionKind.Invalidate {
+            give "invalidate";
+        }
+    }
+
+    give "none";
+}
+
+// -----------------------------------------------------------------------------
+// Shared ownership model
+// -----------------------------------------------------------------------------
+//
+// Shared is the generic shared-ownership model used by the higher-level
+// allocation layer.
+//
+// Control state:
+//
+//     strong
+//     weak
+//
+// Initial:
+//
+//     strong = 1
+//     weak   = 0
+//
+// Strong clone:
+//
+//     strong++
+//
+// Strong drop:
+//
+//     strong--
+//
+// Weak creation:
+//
+//     weak++
+//
+// Weak drop:
+//
+//     weak--
+//
+// Lifecycle:
+//
+//     strong > 0
+//         Alive
+//
+//     strong == 0 && weak > 0
+//         WeakOnly
+//
+//     strong == 0 && weak == 0
+//         Dropped
+//
+// Final strong release:
+//
+//     strong: 1 -> 0
+//
+//     destroy managed value
+//
+// The control allocation remains available while:
+//
+//     weak > 0
+//
+// Final weak release:
+//
+//     weak: 1 -> 0
+//
+// when strong is already zero:
+//
+//     release control allocation
+//
+// Ownership:
+//
+//     strong == 1
+//         Unique
+//
+//     strong > 1
+//         Shared
+//
+//     strong == 0
+//         Dead
+//
+// Access:
+//
+//     strong == 1
+//         ReadWrite
+//
+//     strong > 1
+//         Read
+//
+//     strong == 0
+//         None
+//
+// Upgrade:
+//
+//     weak > 0
+//     strong > 0
+//
+//     => strong++
+//
+// Downgrade:
+//
+//     strong > 0
+//
+//     => weak++
+//
+// Fundamental invariants:
+//
+//     strong + weak must not overflow
+//
+//     strong > 0
+//         => managed value alive
+//
+//     strong == 0
+//         => managed value dead
+//
+//     strong == 0 && weak > 0
+//         => control block alive
+//
+//     strong == 0 && weak == 0
+//         => control block releasable
+//
+//     mutable access
+//         => strong == 1
+//
+// `core.vitl` intentionally contains only the pure shared-ownership state
+// machine. Concrete allocation, pointer storage and synchronization belong to
+// the other modules in `alloc/shared`.
