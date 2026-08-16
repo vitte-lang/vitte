@@ -1,0 +1,2449 @@
+space vitte/stdlib/alloc/unique/raw
+
+export *
+
+use src/vitte/stdlib/alloc/unique/core as unique_core
+use src/vitte/stdlib/alloc/unique/alloc as unique_alloc
+use src/vitte/stdlib/alloc/unique/drop as unique_drop
+use src/vitte/stdlib/alloc/unique/error as unique_error
+use src/vitte/stdlib/alloc/unique/inner as unique_inner
+use src/vitte/stdlib/alloc/unique/owner as unique_owner
+use src/vitte/stdlib/core/option as core_option
+
+pick UniqueRawState {
+    Null,
+    Alive,
+    Moved,
+    Dropped,
+    Released,
+    Stale,
+    Invalid
+}
+
+pick UniqueRawKind {
+    Inner,
+    Value,
+    Allocation
+}
+
+pick UniqueRawAccess {
+    None,
+    Read,
+    ReadWrite
+}
+
+pick UniqueRawOperation {
+    None,
+    FromOwner,
+    FromInner,
+    FromValue,
+    Dereference,
+    DereferenceMut,
+    Move,
+    Drop,
+    Release,
+    Forget,
+    Validate
+}
+
+form UniqueRaw<T> {
+    inner: raw ref unique_inner.UniqueInner<T>
+
+    generation: u64
+    revision: u64
+}
+
+form UniqueRawValue<T> {
+    ptr: raw ref T
+
+    inner: raw ref unique_inner.UniqueInner<T>
+
+    generation: u64
+    revision: u64
+}
+
+form UniqueRawAllocation {
+    ptr: raw ref u8
+
+    size: usize
+    align: usize
+
+    generation: u64
+    revision: u64
+}
+
+form UniqueRawIdentity {
+    address: usize
+    generation: u64
+}
+
+form UniqueRawProfile {
+    state: UniqueRawState
+    access: UniqueRawAccess
+
+    null: bool
+    alive: bool
+    moved: bool
+    dropped: bool
+    released: bool
+    stale: bool
+    valid: bool
+
+    readable: bool
+    writable: bool
+
+    size: usize
+    align: usize
+
+    generation: u64
+    revision: u64
+}
+
+form UniqueRawValidation {
+    valid: bool
+
+    pointer_valid: bool
+    generation_valid: bool
+    inner_valid: bool
+    state_valid: bool
+    access_valid: bool
+}
+
+form UniqueRawValueValidation {
+    valid: bool
+
+    pointer_valid: bool
+    inner_pointer_valid: bool
+    generation_valid: bool
+    inner_valid: bool
+    value_alive: bool
+}
+
+form UniqueRawSnapshot {
+    address: usize
+
+    state: UniqueRawState
+
+    size: usize
+    align: usize
+
+    generation: u64
+    revision: u64
+}
+
+form UniqueRawDelta {
+    address: int
+    size: int
+    align: int
+
+    generation: int
+    revision: int
+
+    state_changed: bool
+    changed: bool
+}
+
+form UniqueRawStatistics {
+    creations: u64
+    creation_failures: u64
+
+    value_views: u64
+    value_view_failures: u64
+
+    allocation_views: u64
+    allocation_view_failures: u64
+
+    reads: u64
+    read_failures: u64
+
+    writes: u64
+    write_failures: u64
+
+    moves: u64
+    move_failures: u64
+
+    drops: u64
+    drop_failures: u64
+
+    releases: u64
+    release_failures: u64
+
+    forgets: u64
+    forget_failures: u64
+
+    validations: u64
+    validation_failures: u64
+}
+
+// -----------------------------------------------------------------------------
+// Construction
+// -----------------------------------------------------------------------------
+
+proc unique_raw_null<T>()
+    -> UniqueRaw<T>
+{
+    give UniqueRaw<T> {
+        inner:
+            compiler_raw_null(),
+
+        generation:
+            0,
+
+        revision:
+            0
+    };
+}
+
+proc unique_raw_from_owner<T>(
+    owner: ref unique_owner.UniqueOwner<T>
+) -> UniqueRaw<T> {
+    give UniqueRaw<T> {
+        inner:
+            unique_owner.unique_owner_raw_inner(
+                owner
+            ),
+
+        generation:
+            owner.generation,
+
+        revision:
+            owner.revision
+    };
+}
+
+proc unique_raw_from_inner<T>(
+    inner: ref unique_inner.UniqueInner<T>
+) -> UniqueRaw<T> {
+    give UniqueRaw<T> {
+        inner:
+            compiler_ref_as_raw(
+                inner
+            ),
+
+        generation:
+            inner.generation,
+
+        revision:
+            inner.revision
+    };
+}
+
+proc unique_raw_from_inner_mut<T>(
+    inner: ref mut unique_inner.UniqueInner<T>
+) -> UniqueRaw<T> {
+    give UniqueRaw<T> {
+        inner:
+            compiler_mut_ref_as_raw(
+                inner
+            ),
+
+        generation:
+            inner.generation,
+
+        revision:
+            inner.revision
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Inner pointer
+// -----------------------------------------------------------------------------
+
+proc unique_raw_inner_ptr<T>(
+    raw: ref UniqueRaw<T>
+) -> raw ref unique_inner.UniqueInner<T> {
+    give raw.inner;
+}
+
+proc unique_raw_inner<T>(
+    raw: ref UniqueRaw<T>
+) -> Option<ref unique_inner.UniqueInner<T>> {
+    if compiler_raw_ptr_is_null(
+        raw.inner
+    ) {
+        give none<ref unique_inner.UniqueInner<T>>();
+    }
+
+    give some<ref unique_inner.UniqueInner<T>>(
+        compiler_raw_as_ref(
+            raw.inner
+        )
+    );
+}
+
+proc unique_raw_inner_mut<T>(
+    raw: ref mut UniqueRaw<T>
+) -> Option<ref mut unique_inner.UniqueInner<T>> {
+    if compiler_raw_ptr_is_null(
+        raw.inner
+    ) {
+        give none<ref mut unique_inner.UniqueInner<T>>();
+    }
+
+    give some<ref mut unique_inner.UniqueInner<T>>(
+        compiler_raw_as_mut(
+            raw.inner
+        )
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Metadata
+// -----------------------------------------------------------------------------
+
+proc unique_raw_generation<T>(
+    raw: ref UniqueRaw<T>
+) -> u64 {
+    give raw.generation;
+}
+
+proc unique_raw_revision<T>(
+    raw: ref UniqueRaw<T>
+) -> u64 {
+    give raw.revision;
+}
+
+proc unique_raw_refresh<T>(
+    raw: ref mut UniqueRaw<T>
+) -> bool {
+    if compiler_raw_ptr_is_null(
+        raw.inner
+    ) {
+        give false;
+    }
+
+    let inner =
+        compiler_raw_as_ref(
+            raw.inner
+        );
+
+    set raw.generation =
+        inner.generation;
+
+    set raw.revision =
+        inner.revision;
+
+    give true;
+}
+
+proc unique_raw_generation_matches<T>(
+    raw: ref UniqueRaw<T>
+) -> bool {
+    if compiler_raw_ptr_is_null(
+        raw.inner
+    ) {
+        give false;
+    }
+
+    let inner =
+        compiler_raw_as_ref(
+            raw.inner
+        );
+
+    give inner.generation
+        == raw.generation;
+}
+
+proc unique_raw_revision_matches<T>(
+    raw: ref UniqueRaw<T>
+) -> bool {
+    if compiler_raw_ptr_is_null(
+        raw.inner
+    ) {
+        give false;
+    }
+
+    let inner =
+        compiler_raw_as_ref(
+            raw.inner
+        );
+
+    give inner.revision
+        == raw.revision;
+}
+
+// -----------------------------------------------------------------------------
+// State
+// -----------------------------------------------------------------------------
+
+proc unique_raw_state<T>(
+    raw: ref UniqueRaw<T>
+) -> UniqueRawState {
+    if compiler_raw_ptr_is_null(
+        raw.inner
+    ) {
+        give UniqueRawState.Null;
+    }
+
+    let inner =
+        compiler_raw_as_ref(
+            raw.inner
+        );
+
+    if inner.generation
+        != raw.generation
+    {
+        give UniqueRawState.Stale;
+    }
+
+    if not unique_inner.unique_inner_is_valid(
+        inner
+    ) {
+        give UniqueRawState.Invalid;
+    }
+
+    pick unique_inner.unique_inner_state(
+        inner
+    ) {
+        unique_inner.UniqueInnerState.Alive {
+            give UniqueRawState.Alive;
+        }
+
+        unique_inner.UniqueInnerState.Moved {
+            give UniqueRawState.Moved;
+        }
+
+        unique_inner.UniqueInnerState.Dropped {
+            give UniqueRawState.Dropped;
+        }
+
+        unique_inner.UniqueInnerState.Released {
+            give UniqueRawState.Released;
+        }
+
+        unique_inner.UniqueInnerState.Invalid {
+            give UniqueRawState.Invalid;
+        }
+    }
+
+    give UniqueRawState.Invalid;
+}
+
+proc unique_raw_access<T>(
+    raw: ref UniqueRaw<T>
+) -> UniqueRawAccess {
+    pick unique_raw_state(
+        raw
+    ) {
+        UniqueRawState.Alive {
+            give UniqueRawAccess.ReadWrite;
+        }
+
+        UniqueRawState.Null
+        | UniqueRawState.Moved
+        | UniqueRawState.Dropped
+        | UniqueRawState.Released
+        | UniqueRawState.Stale
+        | UniqueRawState.Invalid {
+            give UniqueRawAccess.None;
+        }
+    }
+
+    give UniqueRawAccess.None;
+}
+
+// -----------------------------------------------------------------------------
+// Predicates
+// -----------------------------------------------------------------------------
+
+proc unique_raw_is_null<T>(
+    raw: ref UniqueRaw<T>
+) -> bool {
+    give compiler_raw_ptr_is_null(
+        raw.inner
+    );
+}
+
+proc unique_raw_is_alive<T>(
+    raw: ref UniqueRaw<T>
+) -> bool {
+    give unique_raw_state(
+        raw
+    ) == UniqueRawState.Alive;
+}
+
+proc unique_raw_is_moved<T>(
+    raw: ref UniqueRaw<T>
+) -> bool {
+    give unique_raw_state(
+        raw
+    ) == UniqueRawState.Moved;
+}
+
+proc unique_raw_is_dropped<T>(
+    raw: ref UniqueRaw<T>
+) -> bool {
+    give unique_raw_state(
+        raw
+    ) == UniqueRawState.Dropped;
+}
+
+proc unique_raw_is_released<T>(
+    raw: ref UniqueRaw<T>
+) -> bool {
+    give unique_raw_state(
+        raw
+    ) == UniqueRawState.Released;
+}
+
+proc unique_raw_is_stale<T>(
+    raw: ref UniqueRaw<T>
+) -> bool {
+    give unique_raw_state(
+        raw
+    ) == UniqueRawState.Stale;
+}
+
+proc unique_raw_is_valid<T>(
+    raw: ref UniqueRaw<T>
+) -> bool {
+    give unique_raw_validate(
+        raw
+    ).valid;
+}
+
+proc unique_raw_can_read<T>(
+    raw: ref UniqueRaw<T>
+) -> bool {
+    let access =
+        unique_raw_access(
+            raw
+        );
+
+    give access == UniqueRawAccess.Read
+        or access == UniqueRawAccess.ReadWrite;
+}
+
+proc unique_raw_can_write<T>(
+    raw: ref UniqueRaw<T>
+) -> bool {
+    give unique_raw_access(
+        raw
+    ) == UniqueRawAccess.ReadWrite;
+}
+
+// -----------------------------------------------------------------------------
+// Layout
+// -----------------------------------------------------------------------------
+
+proc unique_raw_size<T>(
+    raw: ref UniqueRaw<T>
+) -> usize {
+    let inner =
+        unique_raw_inner(
+            raw
+        );
+
+    pick inner {
+        Some(current) {
+            give unique_inner.unique_inner_size(
+                current
+            );
+        }
+
+        None {
+            give 0;
+        }
+    }
+}
+
+proc unique_raw_align<T>(
+    raw: ref UniqueRaw<T>
+) -> usize {
+    let inner =
+        unique_raw_inner(
+            raw
+        );
+
+    pick inner {
+        Some(current) {
+            give unique_inner.unique_inner_align(
+                current
+            );
+        }
+
+        None {
+            give 0;
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Value raw view
+// -----------------------------------------------------------------------------
+
+proc unique_raw_value<T>(
+    raw: ref UniqueRaw<T>
+) -> UniqueRawValue<T> {
+    if not unique_raw_can_read(
+        raw
+    ) {
+        give UniqueRawValue<T> {
+            ptr:
+                compiler_raw_null(),
+
+            inner:
+                raw.inner,
+
+            generation:
+                raw.generation,
+
+            revision:
+                raw.revision
+        };
+    }
+
+    let inner =
+        compiler_raw_as_ref(
+            raw.inner
+        );
+
+    give UniqueRawValue<T> {
+        ptr:
+            unique_inner.unique_inner_value_ptr(
+                inner
+            ),
+
+        inner:
+            raw.inner,
+
+        generation:
+            raw.generation,
+
+        revision:
+            raw.revision
+    };
+}
+
+proc unique_raw_value_mut<T>(
+    raw: ref mut UniqueRaw<T>
+) -> UniqueRawValue<T> {
+    if not unique_raw_can_write(
+        ref *raw
+    ) {
+        give UniqueRawValue<T> {
+            ptr:
+                compiler_raw_null(),
+
+            inner:
+                raw.inner,
+
+            generation:
+                raw.generation,
+
+            revision:
+                raw.revision
+        };
+    }
+
+    let inner =
+        compiler_raw_as_mut(
+            raw.inner
+        );
+
+    give UniqueRawValue<T> {
+        ptr:
+            unique_inner.unique_inner_value_ptr_mut(
+                inner
+            ),
+
+        inner:
+            raw.inner,
+
+        generation:
+            raw.generation,
+
+        revision:
+            raw.revision
+    };
+}
+
+proc unique_raw_value_ptr<T>(
+    value: ref UniqueRawValue<T>
+) -> raw ref T {
+    give value.ptr;
+}
+
+proc unique_raw_value_is_null<T>(
+    value: ref UniqueRawValue<T>
+) -> bool {
+    give compiler_raw_ptr_is_null(
+        value.ptr
+    );
+}
+
+proc unique_raw_value_read<T>(
+    value: ref UniqueRawValue<T>
+) -> Option<ref T> {
+    if not unique_raw_value_validate(
+        value
+    ).valid {
+        give none<ref T>();
+    }
+
+    give some<ref T>(
+        compiler_raw_as_ref(
+            value.ptr
+        )
+    );
+}
+
+proc unique_raw_value_write<T>(
+    value: ref mut UniqueRawValue<T>
+) -> Option<ref mut T> {
+    if not unique_raw_value_validate(
+        ref *value
+    ).valid {
+        give none<ref mut T>();
+    }
+
+    give some<ref mut T>(
+        compiler_raw_as_mut(
+            value.ptr
+        )
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Allocation raw view
+// -----------------------------------------------------------------------------
+
+proc unique_raw_allocation<T>(
+    raw: ref UniqueRaw<T>
+) -> UniqueRawAllocation {
+    if compiler_raw_ptr_is_null(
+        raw.inner
+    ) {
+        give UniqueRawAllocation {
+            ptr:
+                compiler_raw_null(),
+
+            size:
+                0,
+
+            align:
+                0,
+
+            generation:
+                raw.generation,
+
+            revision:
+                raw.revision
+        };
+    }
+
+    let inner =
+        compiler_raw_as_ref(
+            raw.inner
+        );
+
+    let allocation =
+        ref inner.allocation;
+
+    give UniqueRawAllocation {
+        ptr:
+            unique_alloc.unique_alloc_ptr(
+                allocation
+            ),
+
+        size:
+            unique_alloc.unique_alloc_size(
+                allocation
+            ),
+
+        align:
+            unique_alloc.unique_alloc_align(
+                allocation
+            ),
+
+        generation:
+            raw.generation,
+
+        revision:
+            raw.revision
+    };
+}
+
+proc unique_raw_allocation_ptr(
+    allocation: ref UniqueRawAllocation
+) -> raw ref u8 {
+    give allocation.ptr;
+}
+
+proc unique_raw_allocation_is_null(
+    allocation: ref UniqueRawAllocation
+) -> bool {
+    give compiler_raw_ptr_is_null(
+        allocation.ptr
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Dereference
+// -----------------------------------------------------------------------------
+
+proc unique_raw_deref<T>(
+    raw: ref UniqueRaw<T>
+) -> Option<ref T> {
+    if not unique_raw_can_read(
+        raw
+    ) {
+        give none<ref T>();
+    }
+
+    let inner =
+        compiler_raw_as_ref(
+            raw.inner
+        );
+
+    give unique_inner.unique_inner_get(
+        inner
+    );
+}
+
+proc unique_raw_deref_mut<T>(
+    raw: ref mut UniqueRaw<T>
+) -> Option<ref mut T> {
+    if not unique_raw_can_write(
+        ref *raw
+    ) {
+        give none<ref mut T>();
+    }
+
+    let inner =
+        compiler_raw_as_mut(
+            raw.inner
+        );
+
+    give unique_inner.unique_inner_get_mut(
+        inner
+    );
+}
+
+proc unique_raw_deref_unchecked<T>(
+    raw: ref UniqueRaw<T>
+) -> ref T {
+    let inner =
+        compiler_raw_as_ref(
+            raw.inner
+        );
+
+    give ref inner.value;
+}
+
+proc unique_raw_deref_mut_unchecked<T>(
+    raw: ref mut UniqueRaw<T>
+) -> ref mut T {
+    let inner =
+        compiler_raw_as_mut(
+            raw.inner
+        );
+
+    give ref mut inner.value;
+}
+
+// -----------------------------------------------------------------------------
+// Replace
+// -----------------------------------------------------------------------------
+
+proc unique_raw_replace<T>(
+    raw: ref mut UniqueRaw<T>,
+    value: T
+) -> bool {
+    if not unique_raw_can_write(
+        ref *raw
+    ) {
+        give false;
+    }
+
+    let inner =
+        compiler_raw_as_mut(
+            raw.inner
+        );
+
+    if not unique_inner.unique_inner_replace(
+        inner,
+        value
+    ) {
+        give false;
+    }
+
+    set raw.generation =
+        inner.generation;
+
+    set raw.revision =
+        inner.revision;
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Move
+// -----------------------------------------------------------------------------
+
+proc unique_raw_move<T>(
+    raw: ref mut UniqueRaw<T>
+) -> Option<T> {
+    if not unique_raw_is_alive(
+        ref *raw
+    ) {
+        give none<T>();
+    }
+
+    let inner =
+        compiler_raw_as_mut(
+            raw.inner
+        );
+
+    if inner.generation
+        != raw.generation
+    {
+        give none<T>();
+    }
+
+    let result =
+        unique_inner.unique_inner_move(
+            inner
+        );
+
+    pick result {
+        Some(value) {
+            set raw.generation =
+                inner.generation;
+
+            set raw.revision =
+                inner.revision;
+
+            set raw.inner =
+                compiler_raw_null();
+
+            give some<T>(
+                value
+            );
+        }
+
+        None {
+            give none<T>();
+        }
+    }
+}
+
+proc unique_raw_take<T>(
+    raw: ref mut UniqueRaw<T>
+) -> T {
+    let result =
+        unique_raw_move(
+            raw
+        );
+
+    pick result {
+        Some(value) {
+            give value;
+        }
+
+        None {
+            give compiler_unique_move_failure<T>();
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Value drop
+// -----------------------------------------------------------------------------
+
+proc unique_raw_drop_value<T>(
+    raw: ref mut UniqueRaw<T>
+) -> bool {
+    if compiler_raw_ptr_is_null(
+        raw.inner
+    ) {
+        give false;
+    }
+
+    let inner =
+        compiler_raw_as_mut(
+            raw.inner
+        );
+
+    if inner.generation
+        != raw.generation
+    {
+        give false;
+    }
+
+    if not unique_inner.unique_inner_drop_value(
+        inner
+    ) {
+        give false;
+    }
+
+    set raw.generation =
+        inner.generation;
+
+    set raw.revision =
+        inner.revision;
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Allocation release
+// -----------------------------------------------------------------------------
+
+proc unique_raw_release<T>(
+    raw: ref mut UniqueRaw<T>
+) -> bool {
+    if compiler_raw_ptr_is_null(
+        raw.inner
+    ) {
+        give false;
+    }
+
+    let inner =
+        compiler_raw_as_mut(
+            raw.inner
+        );
+
+    if inner.generation
+        != raw.generation
+    {
+        give false;
+    }
+
+    if not unique_inner.unique_inner_release(
+        inner
+    ) {
+        give false;
+    }
+
+    set raw.generation =
+        inner.generation;
+
+    set raw.revision =
+        inner.revision;
+
+    set raw.inner =
+        compiler_raw_null();
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Full drop
+// -----------------------------------------------------------------------------
+
+proc unique_raw_drop<T>(
+    raw: ref mut UniqueRaw<T>
+) -> bool {
+    if compiler_raw_ptr_is_null(
+        raw.inner
+    ) {
+        give false;
+    }
+
+    let inner =
+        compiler_raw_as_mut(
+            raw.inner
+        );
+
+    if inner.generation
+        != raw.generation
+    {
+        give false;
+    }
+
+    if not unique_inner.unique_inner_drop(
+        inner
+    ) {
+        give false;
+    }
+
+    set raw.generation =
+        inner.generation;
+
+    set raw.revision =
+        inner.revision;
+
+    set raw.inner =
+        compiler_raw_null();
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Forget
+// -----------------------------------------------------------------------------
+
+proc unique_raw_forget<T>(
+    raw: ref mut UniqueRaw<T>
+) -> bool {
+    if compiler_raw_ptr_is_null(
+        raw.inner
+    ) {
+        give false;
+    }
+
+    let inner =
+        compiler_raw_as_mut(
+            raw.inner
+        );
+
+    if inner.generation
+        != raw.generation
+    {
+        give false;
+    }
+
+    if not unique_inner.unique_inner_forget(
+        inner
+    ) {
+        give false;
+    }
+
+    set raw.generation =
+        inner.generation;
+
+    set raw.revision =
+        inner.revision;
+
+    set raw.inner =
+        compiler_raw_null();
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Conversion back to owner
+// -----------------------------------------------------------------------------
+
+proc unique_raw_into_owner<T>(
+    raw: UniqueRaw<T>
+) -> Option<unique_owner.UniqueOwner<T>> {
+    if compiler_raw_ptr_is_null(
+        raw.inner
+    ) {
+        give none<unique_owner.UniqueOwner<T>>();
+    }
+
+    let inner =
+        compiler_raw_as_ref(
+            raw.inner
+        );
+
+    if inner.generation
+        != raw.generation
+    {
+        give none<unique_owner.UniqueOwner<T>>();
+    }
+
+    if not unique_inner.unique_inner_is_alive(
+        inner
+    ) {
+        give none<unique_owner.UniqueOwner<T>>();
+    }
+
+    give some<unique_owner.UniqueOwner<T>>(
+        unique_owner.UniqueOwner<T> {
+            inner:
+                raw.inner,
+
+            generation:
+                raw.generation,
+
+            revision:
+                raw.revision
+        }
+    );
+}
+
+proc unique_raw_as_owner<T>(
+    raw: ref UniqueRaw<T>
+) -> Option<unique_owner.UniqueOwner<T>> {
+    if not unique_raw_is_alive(
+        raw
+    ) {
+        give none<unique_owner.UniqueOwner<T>>();
+    }
+
+    give some<unique_owner.UniqueOwner<T>>(
+        unique_owner.UniqueOwner<T> {
+            inner:
+                raw.inner,
+
+            generation:
+                raw.generation,
+
+            revision:
+                raw.revision
+        }
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Identity
+// -----------------------------------------------------------------------------
+
+proc unique_raw_identity<T>(
+    raw: ref UniqueRaw<T>
+) -> UniqueRawIdentity {
+    give UniqueRawIdentity {
+        address:
+            compiler_raw_ptr_address(
+                raw.inner
+            ),
+
+        generation:
+            raw.generation
+    };
+}
+
+proc unique_raw_value_identity<T>(
+    value: ref UniqueRawValue<T>
+) -> UniqueRawIdentity {
+    give UniqueRawIdentity {
+        address:
+            compiler_raw_ptr_address(
+                value.inner
+            ),
+
+        generation:
+            value.generation
+    };
+}
+
+proc unique_raw_identity_equal(
+    left: UniqueRawIdentity,
+    right: UniqueRawIdentity
+) -> bool {
+    give left.address == right.address
+        and left.generation == right.generation;
+}
+
+proc unique_raw_ptr_equal<T>(
+    left: ref UniqueRaw<T>,
+    right: ref UniqueRaw<T>
+) -> bool {
+    give compiler_raw_ptr_equal(
+        left.inner,
+        right.inner
+    );
+}
+
+proc unique_raw_same_allocation<T>(
+    left: ref UniqueRaw<T>,
+    right: ref UniqueRaw<T>
+) -> bool {
+    give unique_raw_ptr_equal(
+        left,
+        right
+    );
+}
+
+proc unique_raw_same_identity<T>(
+    left: ref UniqueRaw<T>,
+    right: ref UniqueRaw<T>
+) -> bool {
+    give unique_raw_identity_equal(
+        unique_raw_identity(left),
+        unique_raw_identity(right)
+    );
+}
+
+proc unique_raw_value_ptr_equal<T>(
+    left: ref UniqueRawValue<T>,
+    right: ref UniqueRawValue<T>
+) -> bool {
+    give compiler_raw_ptr_equal(
+        left.ptr,
+        right.ptr
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+proc unique_raw_validate<T>(
+    raw: ref UniqueRaw<T>
+) -> UniqueRawValidation {
+    let pointer_valid =
+        not compiler_raw_ptr_is_null(
+            raw.inner
+        );
+
+    if not pointer_valid {
+        give UniqueRawValidation {
+            valid:
+                false,
+
+            pointer_valid:
+                false,
+
+            generation_valid:
+                false,
+
+            inner_valid:
+                false,
+
+            state_valid:
+                false,
+
+            access_valid:
+                false
+        };
+    }
+
+    let inner =
+        compiler_raw_as_ref(
+            raw.inner
+        );
+
+    let generation_valid =
+        inner.generation
+            == raw.generation;
+
+    let inner_valid =
+        unique_inner.unique_inner_is_valid(
+            inner
+        );
+
+    let state =
+        unique_raw_state(
+            raw
+        );
+
+    let state_valid =
+        state == UniqueRawState.Alive;
+
+    let access =
+        unique_raw_access(
+            raw
+        );
+
+    let access_valid =
+        if state == UniqueRawState.Alive {
+            access == UniqueRawAccess.ReadWrite
+        } else {
+            access == UniqueRawAccess.None
+        };
+
+    give UniqueRawValidation {
+        valid:
+            pointer_valid
+            and generation_valid
+            and inner_valid
+            and state_valid
+            and access_valid,
+
+        pointer_valid:
+            pointer_valid,
+
+        generation_valid:
+            generation_valid,
+
+        inner_valid:
+            inner_valid,
+
+        state_valid:
+            state_valid,
+
+        access_valid:
+            access_valid
+    };
+}
+
+proc unique_raw_value_validate<T>(
+    value: ref UniqueRawValue<T>
+) -> UniqueRawValueValidation {
+    let pointer_valid =
+        not compiler_raw_ptr_is_null(
+            value.ptr
+        );
+
+    let inner_pointer_valid =
+        not compiler_raw_ptr_is_null(
+            value.inner
+        );
+
+    if not pointer_valid
+        or not inner_pointer_valid
+    {
+        give UniqueRawValueValidation {
+            valid:
+                false,
+
+            pointer_valid:
+                pointer_valid,
+
+            inner_pointer_valid:
+                inner_pointer_valid,
+
+            generation_valid:
+                false,
+
+            inner_valid:
+                false,
+
+            value_alive:
+                false
+        };
+    }
+
+    let inner =
+        compiler_raw_as_ref(
+            value.inner
+        );
+
+    let generation_valid =
+        inner.generation
+            == value.generation;
+
+    let inner_valid =
+        unique_inner.unique_inner_is_valid(
+            inner
+        );
+
+    let value_alive =
+        unique_inner.unique_inner_is_alive(
+            inner
+        );
+
+    give UniqueRawValueValidation {
+        valid:
+            pointer_valid
+            and inner_pointer_valid
+            and generation_valid
+            and inner_valid
+            and value_alive,
+
+        pointer_valid:
+            pointer_valid,
+
+        inner_pointer_valid:
+            inner_pointer_valid,
+
+        generation_valid:
+            generation_valid,
+
+        inner_valid:
+            inner_valid,
+
+        value_alive:
+            value_alive
+    };
+}
+
+proc unique_raw_invariant_holds<T>(
+    raw: ref UniqueRaw<T>
+) -> bool {
+    give unique_raw_validate(
+        raw
+    ).valid;
+}
+
+proc unique_raw_value_invariant_holds<T>(
+    value: ref UniqueRawValue<T>
+) -> bool {
+    give unique_raw_value_validate(
+        value
+    ).valid;
+}
+
+// -----------------------------------------------------------------------------
+// Error mapping
+// -----------------------------------------------------------------------------
+
+proc unique_raw_error<T>(
+    raw: ref UniqueRaw<T>
+) -> unique_error.UniqueError {
+    if compiler_raw_ptr_is_null(
+        raw.inner
+    ) {
+        give unique_error.unique_error_null_pointer();
+    }
+
+    let inner =
+        compiler_raw_as_ref(
+            raw.inner
+        );
+
+    if inner.generation
+        != raw.generation
+    {
+        give unique_error.unique_error_stale_reference();
+    }
+
+    if not unique_inner.unique_inner_is_valid(
+        inner
+    ) {
+        give unique_inner.unique_inner_error(
+            inner
+        );
+    }
+
+    pick unique_raw_state(
+        raw
+    ) {
+        UniqueRawState.Null {
+            give unique_error.unique_error_null_pointer();
+        }
+
+        UniqueRawState.Alive {
+            give unique_error.unique_error_none();
+        }
+
+        UniqueRawState.Moved {
+            give unique_error.unique_error_value_moved();
+        }
+
+        UniqueRawState.Dropped {
+            give unique_error.unique_error_value_dropped();
+        }
+
+        UniqueRawState.Released {
+            give unique_error.unique_error_allocation_released();
+        }
+
+        UniqueRawState.Stale {
+            give unique_error.unique_error_stale_reference();
+        }
+
+        UniqueRawState.Invalid {
+            give unique_error.unique_error_invalid_pointer();
+        }
+    }
+
+    give unique_error.unique_error_internal(
+        "unknown unique raw state"
+    );
+}
+
+proc unique_raw_value_error<T>(
+    value: ref UniqueRawValue<T>
+) -> unique_error.UniqueError {
+    let validation =
+        unique_raw_value_validate(
+            value
+        );
+
+    if validation.valid {
+        give unique_error.unique_error_none();
+    }
+
+    if not validation.pointer_valid {
+        give unique_error.unique_error_null_pointer();
+    }
+
+    if not validation.inner_pointer_valid {
+        give unique_error.unique_error_invalid_pointer();
+    }
+
+    let inner =
+        compiler_raw_as_ref(
+            value.inner
+        );
+
+    if not validation.generation_valid {
+        give unique_error.unique_error_stale_reference();
+    }
+
+    if not validation.inner_valid {
+        give unique_inner.unique_inner_error(
+            inner
+        );
+    }
+
+    if not validation.value_alive {
+        give unique_error.unique_error_value_dropped();
+    }
+
+    give unique_error.unique_error_internal(
+        "unknown unique raw value validation failure"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Profile
+// -----------------------------------------------------------------------------
+
+proc unique_raw_profile<T>(
+    raw: ref UniqueRaw<T>
+) -> UniqueRawProfile {
+    let state =
+        unique_raw_state(
+            raw
+        );
+
+    give UniqueRawProfile {
+        state:
+            state,
+
+        access:
+            unique_raw_access(
+                raw
+            ),
+
+        null:
+            state == UniqueRawState.Null,
+
+        alive:
+            state == UniqueRawState.Alive,
+
+        moved:
+            state == UniqueRawState.Moved,
+
+        dropped:
+            state == UniqueRawState.Dropped,
+
+        released:
+            state == UniqueRawState.Released,
+
+        stale:
+            state == UniqueRawState.Stale,
+
+        valid:
+            unique_raw_is_valid(
+                raw
+            ),
+
+        readable:
+            unique_raw_can_read(
+                raw
+            ),
+
+        writable:
+            unique_raw_can_write(
+                raw
+            ),
+
+        size:
+            unique_raw_size(
+                raw
+            ),
+
+        align:
+            unique_raw_align(
+                raw
+            ),
+
+        generation:
+            raw.generation,
+
+        revision:
+            raw.revision
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Snapshot
+// -----------------------------------------------------------------------------
+
+proc unique_raw_snapshot<T>(
+    raw: ref UniqueRaw<T>
+) -> UniqueRawSnapshot {
+    give UniqueRawSnapshot {
+        address:
+            compiler_raw_ptr_address(
+                raw.inner
+            ),
+
+        state:
+            unique_raw_state(
+                raw
+            ),
+
+        size:
+            unique_raw_size(
+                raw
+            ),
+
+        align:
+            unique_raw_align(
+                raw
+            ),
+
+        generation:
+            raw.generation,
+
+        revision:
+            raw.revision
+    };
+}
+
+proc unique_raw_snapshot_equal(
+    left: UniqueRawSnapshot,
+    right: UniqueRawSnapshot
+) -> bool {
+    give left.address == right.address
+        and left.state == right.state
+        and left.size == right.size
+        and left.align == right.align
+        and left.generation == right.generation
+        and left.revision == right.revision;
+}
+
+proc unique_raw_snapshot_changed(
+    left: UniqueRawSnapshot,
+    right: UniqueRawSnapshot
+) -> bool {
+    give not unique_raw_snapshot_equal(
+        left,
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Delta
+// -----------------------------------------------------------------------------
+
+proc unique_raw_usize_delta(
+    before: usize,
+    after: usize
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc unique_raw_u64_delta(
+    before: u64,
+    after: u64
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc unique_raw_delta(
+    before: UniqueRawSnapshot,
+    after: UniqueRawSnapshot
+) -> UniqueRawDelta {
+    let address =
+        unique_raw_usize_delta(
+            before.address,
+            after.address
+        );
+
+    let size =
+        unique_raw_usize_delta(
+            before.size,
+            after.size
+        );
+
+    let align =
+        unique_raw_usize_delta(
+            before.align,
+            after.align
+        );
+
+    let generation =
+        unique_raw_u64_delta(
+            before.generation,
+            after.generation
+        );
+
+    let revision =
+        unique_raw_u64_delta(
+            before.revision,
+            after.revision
+        );
+
+    let state_changed =
+        before.state
+            != after.state;
+
+    give UniqueRawDelta {
+        address:
+            address,
+
+        size:
+            size,
+
+        align:
+            align,
+
+        generation:
+            generation,
+
+        revision:
+            revision,
+
+        state_changed:
+            state_changed,
+
+        changed:
+            address != 0
+            or size != 0
+            or align != 0
+            or generation != 0
+            or revision != 0
+            or state_changed
+    };
+}
+
+proc unique_raw_delta_is_zero(
+    delta: UniqueRawDelta
+) -> bool {
+    give not delta.changed;
+}
+
+// -----------------------------------------------------------------------------
+// Core conversion
+// -----------------------------------------------------------------------------
+
+proc unique_raw_core_flags<T>(
+    raw: ref UniqueRaw<T>
+) -> unique_core.UniqueCoreFlags {
+    let inner =
+        unique_raw_inner(
+            raw
+        );
+
+    pick inner {
+        Some(current) {
+            give unique_inner.unique_inner_core_flags(
+                current
+            );
+        }
+
+        None {
+            give unique_core.unique_core_flags_released();
+        }
+    }
+}
+
+proc unique_raw_core_profile<T>(
+    raw: ref UniqueRaw<T>
+) -> unique_core.UniqueCoreProfile {
+    give unique_core.unique_core_profile(
+        unique_raw_core_flags(
+            raw
+        ),
+        unique_core.UniqueCoreMeta {
+            generation:
+                raw.generation,
+
+            revision:
+                raw.revision
+        }
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc unique_raw_statistics_empty()
+    -> UniqueRawStatistics
+{
+    give UniqueRawStatistics {
+        creations: 0,
+        creation_failures: 0,
+
+        value_views: 0,
+        value_view_failures: 0,
+
+        allocation_views: 0,
+        allocation_view_failures: 0,
+
+        reads: 0,
+        read_failures: 0,
+
+        writes: 0,
+        write_failures: 0,
+
+        moves: 0,
+        move_failures: 0,
+
+        drops: 0,
+        drop_failures: 0,
+
+        releases: 0,
+        release_failures: 0,
+
+        forgets: 0,
+        forget_failures: 0,
+
+        validations: 0,
+        validation_failures: 0
+    };
+}
+
+proc unique_raw_statistics_record_create(
+    statistics: ref mut UniqueRawStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.creations =
+            statistics.creations + 1;
+    } else {
+        set statistics.creation_failures =
+            statistics.creation_failures + 1;
+    }
+}
+
+proc unique_raw_statistics_record_value_view(
+    statistics: ref mut UniqueRawStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.value_views =
+            statistics.value_views + 1;
+    } else {
+        set statistics.value_view_failures =
+            statistics.value_view_failures + 1;
+    }
+}
+
+proc unique_raw_statistics_record_allocation_view(
+    statistics: ref mut UniqueRawStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.allocation_views =
+            statistics.allocation_views + 1;
+    } else {
+        set statistics.allocation_view_failures =
+            statistics.allocation_view_failures + 1;
+    }
+}
+
+proc unique_raw_statistics_record_read(
+    statistics: ref mut UniqueRawStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.reads =
+            statistics.reads + 1;
+    } else {
+        set statistics.read_failures =
+            statistics.read_failures + 1;
+    }
+}
+
+proc unique_raw_statistics_record_write(
+    statistics: ref mut UniqueRawStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.writes =
+            statistics.writes + 1;
+    } else {
+        set statistics.write_failures =
+            statistics.write_failures + 1;
+    }
+}
+
+proc unique_raw_statistics_record_move(
+    statistics: ref mut UniqueRawStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.moves =
+            statistics.moves + 1;
+    } else {
+        set statistics.move_failures =
+            statistics.move_failures + 1;
+    }
+}
+
+proc unique_raw_statistics_record_drop(
+    statistics: ref mut UniqueRawStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.drops =
+            statistics.drops + 1;
+    } else {
+        set statistics.drop_failures =
+            statistics.drop_failures + 1;
+    }
+}
+
+proc unique_raw_statistics_record_release(
+    statistics: ref mut UniqueRawStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.releases =
+            statistics.releases + 1;
+    } else {
+        set statistics.release_failures =
+            statistics.release_failures + 1;
+    }
+}
+
+proc unique_raw_statistics_record_forget(
+    statistics: ref mut UniqueRawStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.forgets =
+            statistics.forgets + 1;
+    } else {
+        set statistics.forget_failures =
+            statistics.forget_failures + 1;
+    }
+}
+
+proc unique_raw_statistics_record_validation(
+    statistics: ref mut UniqueRawStatistics,
+    valid: bool
+) {
+    set statistics.validations =
+        statistics.validations + 1;
+
+    if not valid {
+        set statistics.validation_failures =
+            statistics.validation_failures + 1;
+    }
+}
+
+proc unique_raw_statistics_failures(
+    statistics: UniqueRawStatistics
+) -> u64 {
+    give statistics.creation_failures
+        + statistics.value_view_failures
+        + statistics.allocation_view_failures
+        + statistics.read_failures
+        + statistics.write_failures
+        + statistics.move_failures
+        + statistics.drop_failures
+        + statistics.release_failures
+        + statistics.forget_failures
+        + statistics.validation_failures;
+}
+
+proc unique_raw_statistics_total(
+    statistics: UniqueRawStatistics
+) -> u64 {
+    give statistics.creations
+        + statistics.creation_failures
+        + statistics.value_views
+        + statistics.value_view_failures
+        + statistics.allocation_views
+        + statistics.allocation_view_failures
+        + statistics.reads
+        + statistics.read_failures
+        + statistics.writes
+        + statistics.write_failures
+        + statistics.moves
+        + statistics.move_failures
+        + statistics.drops
+        + statistics.drop_failures
+        + statistics.releases
+        + statistics.release_failures
+        + statistics.forgets
+        + statistics.forget_failures
+        + statistics.validations
+        + statistics.validation_failures;
+}
+
+proc unique_raw_statistics_reset(
+    statistics: ref mut UniqueRawStatistics
+) {
+    set *statistics =
+        unique_raw_statistics_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc unique_raw_state_name(
+    state: UniqueRawState
+) -> string {
+    pick state {
+        UniqueRawState.Null {
+            give "null";
+        }
+
+        UniqueRawState.Alive {
+            give "alive";
+        }
+
+        UniqueRawState.Moved {
+            give "moved";
+        }
+
+        UniqueRawState.Dropped {
+            give "dropped";
+        }
+
+        UniqueRawState.Released {
+            give "released";
+        }
+
+        UniqueRawState.Stale {
+            give "stale";
+        }
+
+        UniqueRawState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+proc unique_raw_kind_name(
+    kind: UniqueRawKind
+) -> string {
+    pick kind {
+        UniqueRawKind.Inner {
+            give "inner";
+        }
+
+        UniqueRawKind.Value {
+            give "value";
+        }
+
+        UniqueRawKind.Allocation {
+            give "allocation";
+        }
+    }
+
+    give "inner";
+}
+
+proc unique_raw_access_name(
+    access: UniqueRawAccess
+) -> string {
+    pick access {
+        UniqueRawAccess.None {
+            give "none";
+        }
+
+        UniqueRawAccess.Read {
+            give "read";
+        }
+
+        UniqueRawAccess.ReadWrite {
+            give "read-write";
+        }
+    }
+
+    give "none";
+}
+
+proc unique_raw_operation_name(
+    operation: UniqueRawOperation
+) -> string {
+    pick operation {
+        UniqueRawOperation.None {
+            give "none";
+        }
+
+        UniqueRawOperation.FromOwner {
+            give "from-owner";
+        }
+
+        UniqueRawOperation.FromInner {
+            give "from-inner";
+        }
+
+        UniqueRawOperation.FromValue {
+            give "from-value";
+        }
+
+        UniqueRawOperation.Dereference {
+            give "dereference";
+        }
+
+        UniqueRawOperation.DereferenceMut {
+            give "dereference-mut";
+        }
+
+        UniqueRawOperation.Move {
+            give "move";
+        }
+
+        UniqueRawOperation.Drop {
+            give "drop";
+        }
+
+        UniqueRawOperation.Release {
+            give "release";
+        }
+
+        UniqueRawOperation.Forget {
+            give "forget";
+        }
+
+        UniqueRawOperation.Validate {
+            give "validate";
+        }
+    }
+
+    give "none";
+}
+
+// -----------------------------------------------------------------------------
+// Raw unique ownership model
+// -----------------------------------------------------------------------------
+//
+// `raw.vitl` exposes the low-level pointer interface of `alloc/unique`.
+//
+// It is intentionally lower-level than:
+//
+//     UniqueOwner<T>
+//
+// and should be treated as an unsafe/runtime-facing layer.
+//
+// Architecture:
+//
+//     UniqueRaw<T>
+//         |
+//         | raw pointer
+//         v
+//
+//     UniqueInner<T>
+//     +------------------------------+
+//     | value: T                     |
+//     | UniqueAlloc                  |
+//     | UniqueDrop                   |
+//     | lifecycle                    |
+//     | generation                   |
+//     | revision                     |
+//     +------------------------------+
+//
+// -----------------------------------------------------------------------------
+//
+// Raw handles retain:
+//
+//     inner pointer
+//     generation
+//     revision
+//
+// Generation is essential.
+//
+// A pointer address alone is not enough to establish lifetime identity because
+// the same address may theoretically be reused by a later allocation.
+//
+// Logical identity:
+//
+//     address + generation
+//
+// -----------------------------------------------------------------------------
+//
+// Raw states:
+//
+//     Null
+//     Alive
+//     Moved
+//     Dropped
+//     Released
+//     Stale
+//     Invalid
+//
+// -----------------------------------------------------------------------------
+//
+// Stale:
+//
+//     raw.generation
+//         != inner.generation
+//
+// A stale raw handle must not be dereferenced.
+//
+// -----------------------------------------------------------------------------
+//
+// Value view:
+//
+//     UniqueRawValue<T>
+//
+// stores:
+//
+//     raw T pointer
+//     raw UniqueInner<T> pointer
+//     generation
+//     revision
+//
+// Validation checks both:
+//
+//     value pointer
+//     control/lifetime pointer
+//
+// This prevents a value pointer from being considered valid merely because its
+// address is non-null.
+//
+// -----------------------------------------------------------------------------
+//
+// Allocation view:
+//
+//     UniqueRawAllocation
+//
+// exposes:
+//
+//     raw byte pointer
+//     size
+//     alignment
+//     generation
+//     revision
+//
+// -----------------------------------------------------------------------------
+//
+// Read:
+//
+//     unique_raw_deref
+//
+// requires:
+//
+//     Alive
+//     generation match
+//     valid inner
+//
+// -----------------------------------------------------------------------------
+//
+// Mutable access:
+//
+//     unique_raw_deref_mut
+//
+// also requires:
+//
+//     Alive
+//
+// Because ownership is unique, there is no shared reference-count check.
+//
+// -----------------------------------------------------------------------------
+//
+// Unchecked access:
+//
+//     unique_raw_deref_unchecked
+//     unique_raw_deref_mut_unchecked
+//
+// performs no lifecycle validation.
+//
+// These functions are intended only for compiler/runtime internals where the
+// caller already proved:
+//
+//     pointer != null
+//     generation valid
+//     value alive
+//
+// -----------------------------------------------------------------------------
+//
+// Move:
+//
+//     unique_raw_move
+//
+// transfers T out of the underlying UniqueInner<T>.
+//
+// On success the raw handle is nulled.
+//
+// -----------------------------------------------------------------------------
+//
+// Drop:
+//
+//     unique_raw_drop_value
+//
+// destroys only T.
+//
+//     unique_raw_release
+//
+// releases allocation after T is already destroyed.
+//
+//     unique_raw_drop
+//
+// performs the complete destruction sequence.
+//
+// -----------------------------------------------------------------------------
+//
+// Forget:
+//
+//     unique_raw_forget
+//
+// disables this ownership path without running normal destruction.
+//
+// Intended for:
+//
+//     FFI transfer
+//     intentional leak
+//     external ownership systems
+//
+// -----------------------------------------------------------------------------
+//
+// Conversion back:
+//
+//     unique_raw_into_owner
+//
+// is only valid if:
+//
+//     pointer != null
+//     generation matches
+//     inner is Alive
+//
+// No clone is performed.
+//
+// Ownership semantics require the caller to ensure that no second owning
+// wrapper is active for the same allocation.
+//
+// -----------------------------------------------------------------------------
+//
+// Fundamental invariants:
+//
+//     valid raw
+//         => inner != null
+//
+//     valid raw
+//         => generation == inner.generation
+//
+//     valid raw
+//         => inner valid
+//
+//     dereference
+//         => state == Alive
+//
+//     mutable dereference
+//         => state == Alive
+//
+//     stale
+//         => no access
+//
+//     moved
+//         => no access
+//
+//     dropped
+//         => no T access
+//
+//     released
+//         => no allocation access
+//
+// -----------------------------------------------------------------------------
+//
+// Module split:
+//
+//     core.vitl
+//         lifecycle state machine
+//
+//     alloc.vitl
+//         allocation descriptor
+//
+//     drop.vitl
+//         destruction controller
+//
+//     error.vitl
+//         failure classification
+//
+//     inner.vitl
+//         concrete value lifecycle
+//
+//     owner.vitl
+//         safe/exclusive owner handle
+//
+//     raw.vitl
+//         raw pointer and FFI/runtime interface
+//
+// The final high-level `unique.vitl` can expose the safe public Unique<T> API
+// while keeping these raw primitives isolated.

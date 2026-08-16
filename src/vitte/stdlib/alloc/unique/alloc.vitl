@@ -1,0 +1,1314 @@
+space vitte/stdlib/alloc/unique/alloc
+
+export *
+
+use src/vitte/stdlib/alloc/allocator as alloc_allocator
+use src/vitte/stdlib/core/option as core_option
+
+pick UniqueAllocState {
+    Empty,
+    Allocated,
+    Released,
+    Invalid
+}
+
+pick UniqueAllocOperation {
+    None,
+    Allocate,
+    Reallocate,
+    Release,
+    Resize,
+    Validate
+}
+
+form UniqueAlloc {
+    allocation: alloc_allocator.Allocation
+
+    size: usize
+    align: usize
+
+    state: UniqueAllocState
+
+    generation: u64
+    revision: u64
+}
+
+form UniqueAllocProfile {
+    size: usize
+    align: usize
+
+    state: UniqueAllocState
+
+    allocated: bool
+    released: bool
+    empty: bool
+    valid: bool
+
+    generation: u64
+    revision: u64
+}
+
+form UniqueAllocValidation {
+    valid: bool
+
+    state_valid: bool
+    size_valid: bool
+    align_valid: bool
+    allocation_valid: bool
+    generation_valid: bool
+}
+
+form UniqueAllocSnapshot {
+    size: usize
+    align: usize
+
+    state: UniqueAllocState
+
+    generation: u64
+    revision: u64
+}
+
+form UniqueAllocDelta {
+    size: int
+    align: int
+
+    generation: int
+    revision: int
+
+    state_changed: bool
+    changed: bool
+}
+
+form UniqueAllocStatistics {
+    allocations: u64
+    allocation_failures: u64
+
+    reallocations: u64
+    reallocation_failures: u64
+
+    releases: u64
+    release_failures: u64
+
+    resizes: u64
+    resize_failures: u64
+
+    validations: u64
+    validation_failures: u64
+
+    bytes_allocated: u64
+    bytes_reallocated: u64
+    bytes_released: u64
+
+    peak_size: usize
+}
+
+// -----------------------------------------------------------------------------
+// Helpers
+// -----------------------------------------------------------------------------
+
+proc unique_alloc_valid_align(
+    align: usize
+) -> bool {
+    if align == 0 {
+        give false;
+    }
+
+    give (align & (align - 1)) == 0;
+}
+
+proc unique_alloc_usize_delta(
+    before: usize,
+    after: usize
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc unique_alloc_u64_delta(
+    before: u64,
+    after: u64
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+// -----------------------------------------------------------------------------
+// Construction
+// -----------------------------------------------------------------------------
+
+proc unique_alloc_empty()
+    -> UniqueAlloc
+{
+    give UniqueAlloc {
+        allocation:
+            alloc_allocator.allocation_empty(),
+
+        size:
+            0,
+
+        align:
+            1,
+
+        state:
+            UniqueAllocState.Empty,
+
+        generation:
+            1,
+
+        revision:
+            1
+    };
+}
+
+proc unique_alloc_from(
+    allocation: alloc_allocator.Allocation,
+    size: usize,
+    align: usize
+) -> UniqueAlloc {
+    give UniqueAlloc {
+        allocation:
+            allocation,
+
+        size:
+            size,
+
+        align:
+            align,
+
+        state:
+            UniqueAllocState.Allocated,
+
+        generation:
+            1,
+
+        revision:
+            1
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Allocation
+// -----------------------------------------------------------------------------
+
+proc unique_alloc_allocate(
+    size: usize,
+    align: usize
+) -> Option<UniqueAlloc> {
+    if size == 0 {
+        give none<UniqueAlloc>();
+    }
+
+    if not unique_alloc_valid_align(
+        align
+    ) {
+        give none<UniqueAlloc>();
+    }
+
+    let layout =
+        alloc_allocator.layout(
+            size,
+            align
+        );
+
+    let mut allocator =
+        alloc_allocator.allocator(
+            "unique",
+            alloc_allocator.GrowthPolicy.Exact
+        );
+
+    let result =
+        alloc_allocator.allocator_allocate(
+            ref mut allocator,
+            layout
+        );
+
+    pick result {
+        Some(allocation) {
+            give some<UniqueAlloc>(
+                unique_alloc_from(
+                    allocation,
+                    size,
+                    align
+                )
+            );
+        }
+
+        None {
+            give none<UniqueAlloc>();
+        }
+    }
+}
+
+proc unique_alloc_allocate_for<T>()
+    -> Option<UniqueAlloc>
+{
+    give unique_alloc_allocate(
+        compiler_size_of<T>(),
+        compiler_align_of<T>()
+    );
+}
+
+proc unique_alloc_new(
+    size: usize,
+    align: usize
+) -> UniqueAlloc {
+    let result =
+        unique_alloc_allocate(
+            size,
+            align
+        );
+
+    pick result {
+        Some(allocation) {
+            give allocation;
+        }
+
+        None {
+            give compiler_unique_allocation_failure();
+        }
+    }
+}
+
+proc unique_alloc_new_for<T>()
+    -> UniqueAlloc
+{
+    give unique_alloc_new(
+        compiler_size_of<T>(),
+        compiler_align_of<T>()
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Accessors
+// -----------------------------------------------------------------------------
+
+proc unique_alloc_size(
+    allocation: ref UniqueAlloc
+) -> usize {
+    give allocation.size;
+}
+
+proc unique_alloc_align(
+    allocation: ref UniqueAlloc
+) -> usize {
+    give allocation.align;
+}
+
+proc unique_alloc_generation(
+    allocation: ref UniqueAlloc
+) -> u64 {
+    give allocation.generation;
+}
+
+proc unique_alloc_revision(
+    allocation: ref UniqueAlloc
+) -> u64 {
+    give allocation.revision;
+}
+
+proc unique_alloc_state(
+    allocation: ref UniqueAlloc
+) -> UniqueAllocState {
+    give allocation.state;
+}
+
+// -----------------------------------------------------------------------------
+// Predicates
+// -----------------------------------------------------------------------------
+
+proc unique_alloc_is_empty(
+    allocation: ref UniqueAlloc
+) -> bool {
+    give allocation.state
+        == UniqueAllocState.Empty;
+}
+
+proc unique_alloc_is_allocated(
+    allocation: ref UniqueAlloc
+) -> bool {
+    give allocation.state
+        == UniqueAllocState.Allocated;
+}
+
+proc unique_alloc_is_released(
+    allocation: ref UniqueAlloc
+) -> bool {
+    give allocation.state
+        == UniqueAllocState.Released;
+}
+
+proc unique_alloc_is_valid(
+    allocation: ref UniqueAlloc
+) -> bool {
+    give unique_alloc_validate(
+        allocation
+    ).valid;
+}
+
+// -----------------------------------------------------------------------------
+// Pointer access
+// -----------------------------------------------------------------------------
+
+proc unique_alloc_ptr(
+    allocation: ref UniqueAlloc
+) -> raw ref u8 {
+    if not unique_alloc_is_allocated(
+        allocation
+    ) {
+        give compiler_raw_null();
+    }
+
+    give alloc_allocator.allocation_ptr(
+        ref allocation.allocation
+    );
+}
+
+proc unique_alloc_ptr_mut(
+    allocation: ref mut UniqueAlloc
+) -> raw ref u8 {
+    if not unique_alloc_is_allocated(
+        ref *allocation
+    ) {
+        give compiler_raw_null();
+    }
+
+    give alloc_allocator.allocation_ptr_mut(
+        ref mut allocation.allocation
+    );
+}
+
+proc unique_alloc_as<T>(
+    allocation: ref UniqueAlloc
+) -> Option<ref T> {
+    if not unique_alloc_is_allocated(
+        allocation
+    ) {
+        give none<ref T>();
+    }
+
+    if allocation.size < compiler_size_of<T>() {
+        give none<ref T>();
+    }
+
+    if allocation.align < compiler_align_of<T>() {
+        give none<ref T>();
+    }
+
+    let ptr =
+        unique_alloc_ptr(
+            allocation
+        );
+
+    if compiler_raw_ptr_is_null(
+        ptr
+    ) {
+        give none<ref T>();
+    }
+
+    give some<ref T>(
+        compiler_raw_as_ref(
+            compiler_raw_cast<T>(
+                ptr
+            )
+        )
+    );
+}
+
+proc unique_alloc_as_mut<T>(
+    allocation: ref mut UniqueAlloc
+) -> Option<ref mut T> {
+    if not unique_alloc_is_allocated(
+        ref *allocation
+    ) {
+        give none<ref mut T>();
+    }
+
+    if allocation.size < compiler_size_of<T>() {
+        give none<ref mut T>();
+    }
+
+    if allocation.align < compiler_align_of<T>() {
+        give none<ref mut T>();
+    }
+
+    let ptr =
+        unique_alloc_ptr_mut(
+            allocation
+        );
+
+    if compiler_raw_ptr_is_null(
+        ptr
+    ) {
+        give none<ref mut T>();
+    }
+
+    give some<ref mut T>(
+        compiler_raw_as_mut(
+            compiler_raw_cast<T>(
+                ptr
+            )
+        )
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Revision
+// -----------------------------------------------------------------------------
+
+proc unique_alloc_touch(
+    allocation: ref mut UniqueAlloc
+) {
+    set allocation.revision =
+        allocation.revision + 1;
+}
+
+proc unique_alloc_advance_generation(
+    allocation: ref mut UniqueAlloc
+) -> u64 {
+    set allocation.generation =
+        allocation.generation + 1;
+
+    set allocation.revision =
+        allocation.revision + 1;
+
+    give allocation.generation;
+}
+
+// -----------------------------------------------------------------------------
+// Resize
+// -----------------------------------------------------------------------------
+
+proc unique_alloc_resize(
+    allocation: ref mut UniqueAlloc,
+    new_size: usize
+) -> bool {
+    if not unique_alloc_is_allocated(
+        ref *allocation
+    ) {
+        give false;
+    }
+
+    if new_size == 0 {
+        give false;
+    }
+
+    if new_size == allocation.size {
+        give true;
+    }
+
+    let old_layout =
+        alloc_allocator.layout(
+            allocation.size,
+            allocation.align
+        );
+
+    let new_layout =
+        alloc_allocator.layout(
+            new_size,
+            allocation.align
+        );
+
+    let mut allocator =
+        alloc_allocator.allocator(
+            "unique",
+            alloc_allocator.GrowthPolicy.Exact
+        );
+
+    let result =
+        alloc_allocator.allocator_reallocate(
+            ref mut allocator,
+            allocation.allocation,
+            old_layout,
+            new_layout
+        );
+
+    pick result {
+        Some(next) {
+            set allocation.allocation =
+                next;
+
+            set allocation.size =
+                new_size;
+
+            set allocation.revision =
+                allocation.revision + 1;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc unique_alloc_resize_for<T>(
+    allocation: ref mut UniqueAlloc
+) -> bool {
+    if allocation.align
+        < compiler_align_of<T>()
+    {
+        give false;
+    }
+
+    give unique_alloc_resize(
+        allocation,
+        compiler_size_of<T>()
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Reallocate with alignment
+// -----------------------------------------------------------------------------
+
+proc unique_alloc_reallocate(
+    allocation: ref mut UniqueAlloc,
+    new_size: usize,
+    new_align: usize
+) -> bool {
+    if not unique_alloc_is_allocated(
+        ref *allocation
+    ) {
+        give false;
+    }
+
+    if new_size == 0 {
+        give false;
+    }
+
+    if not unique_alloc_valid_align(
+        new_align
+    ) {
+        give false;
+    }
+
+    if new_size == allocation.size
+        and new_align == allocation.align
+    {
+        give true;
+    }
+
+    let old_layout =
+        alloc_allocator.layout(
+            allocation.size,
+            allocation.align
+        );
+
+    let new_layout =
+        alloc_allocator.layout(
+            new_size,
+            new_align
+        );
+
+    let mut allocator =
+        alloc_allocator.allocator(
+            "unique",
+            alloc_allocator.GrowthPolicy.Exact
+        );
+
+    let result =
+        alloc_allocator.allocator_reallocate(
+            ref mut allocator,
+            allocation.allocation,
+            old_layout,
+            new_layout
+        );
+
+    pick result {
+        Some(next) {
+            set allocation.allocation =
+                next;
+
+            set allocation.size =
+                new_size;
+
+            set allocation.align =
+                new_align;
+
+            set allocation.generation =
+                allocation.generation + 1;
+
+            set allocation.revision =
+                allocation.revision + 1;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Release
+// -----------------------------------------------------------------------------
+
+proc unique_alloc_release(
+    allocation: ref mut UniqueAlloc
+) -> bool {
+    if not unique_alloc_is_allocated(
+        ref *allocation
+    ) {
+        give false;
+    }
+
+    let layout =
+        alloc_allocator.layout(
+            allocation.size,
+            allocation.align
+        );
+
+    let mut allocator =
+        alloc_allocator.allocator(
+            "unique",
+            alloc_allocator.GrowthPolicy.Exact
+        );
+
+    if not alloc_allocator.allocator_deallocate(
+        ref mut allocator,
+        allocation.allocation,
+        layout
+    ) {
+        give false;
+    }
+
+    set allocation.allocation =
+        alloc_allocator.allocation_empty();
+
+    set allocation.size =
+        0;
+
+    set allocation.align =
+        1;
+
+    set allocation.state =
+        UniqueAllocState.Released;
+
+    set allocation.generation =
+        allocation.generation + 1;
+
+    set allocation.revision =
+        allocation.revision + 1;
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Reset
+// -----------------------------------------------------------------------------
+
+proc unique_alloc_reset(
+    allocation: ref mut UniqueAlloc
+) {
+    if unique_alloc_is_allocated(
+        ref *allocation
+    ) {
+        unique_alloc_release(
+            allocation
+        );
+    }
+
+    set allocation.allocation =
+        alloc_allocator.allocation_empty();
+
+    set allocation.size =
+        0;
+
+    set allocation.align =
+        1;
+
+    set allocation.state =
+        UniqueAllocState.Empty;
+
+    set allocation.generation =
+        allocation.generation + 1;
+
+    set allocation.revision =
+        allocation.revision + 1;
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+proc unique_alloc_validate(
+    allocation: ref UniqueAlloc
+) -> UniqueAllocValidation {
+    let state_valid =
+        allocation.state == UniqueAllocState.Empty
+        or allocation.state == UniqueAllocState.Allocated
+        or allocation.state == UniqueAllocState.Released;
+
+    let size_valid =
+        if allocation.state
+            == UniqueAllocState.Allocated
+        {
+            allocation.size > 0
+        } else {
+            allocation.size == 0
+        };
+
+    let align_valid =
+        unique_alloc_valid_align(
+            allocation.align
+        );
+
+    let allocation_valid =
+        if allocation.state
+            == UniqueAllocState.Allocated
+        {
+            alloc_allocator.allocation_is_valid(
+                ref allocation.allocation
+            )
+        } else {
+            true
+        };
+
+    let generation_valid =
+        allocation.generation > 0
+        and allocation.revision > 0;
+
+    give UniqueAllocValidation {
+        valid:
+            state_valid
+            and size_valid
+            and align_valid
+            and allocation_valid
+            and generation_valid,
+
+        state_valid:
+            state_valid,
+
+        size_valid:
+            size_valid,
+
+        align_valid:
+            align_valid,
+
+        allocation_valid:
+            allocation_valid,
+
+        generation_valid:
+            generation_valid
+    };
+}
+
+proc unique_alloc_invariant_holds(
+    allocation: ref UniqueAlloc
+) -> bool {
+    give unique_alloc_validate(
+        allocation
+    ).valid;
+}
+
+// -----------------------------------------------------------------------------
+// Profile
+// -----------------------------------------------------------------------------
+
+proc unique_alloc_profile(
+    allocation: ref UniqueAlloc
+) -> UniqueAllocProfile {
+    let state =
+        allocation.state;
+
+    give UniqueAllocProfile {
+        size:
+            allocation.size,
+
+        align:
+            allocation.align,
+
+        state:
+            state,
+
+        allocated:
+            state == UniqueAllocState.Allocated,
+
+        released:
+            state == UniqueAllocState.Released,
+
+        empty:
+            state == UniqueAllocState.Empty,
+
+        valid:
+            unique_alloc_is_valid(
+                allocation
+            ),
+
+        generation:
+            allocation.generation,
+
+        revision:
+            allocation.revision
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Snapshot
+// -----------------------------------------------------------------------------
+
+proc unique_alloc_snapshot(
+    allocation: ref UniqueAlloc
+) -> UniqueAllocSnapshot {
+    give UniqueAllocSnapshot {
+        size:
+            allocation.size,
+
+        align:
+            allocation.align,
+
+        state:
+            allocation.state,
+
+        generation:
+            allocation.generation,
+
+        revision:
+            allocation.revision
+    };
+}
+
+proc unique_alloc_snapshot_equal(
+    left: UniqueAllocSnapshot,
+    right: UniqueAllocSnapshot
+) -> bool {
+    give left.size == right.size
+        and left.align == right.align
+        and left.state == right.state
+        and left.generation == right.generation
+        and left.revision == right.revision;
+}
+
+proc unique_alloc_snapshot_changed(
+    left: UniqueAllocSnapshot,
+    right: UniqueAllocSnapshot
+) -> bool {
+    give not unique_alloc_snapshot_equal(
+        left,
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Delta
+// -----------------------------------------------------------------------------
+
+proc unique_alloc_delta(
+    before: UniqueAllocSnapshot,
+    after: UniqueAllocSnapshot
+) -> UniqueAllocDelta {
+    let size =
+        unique_alloc_usize_delta(
+            before.size,
+            after.size
+        );
+
+    let align =
+        unique_alloc_usize_delta(
+            before.align,
+            after.align
+        );
+
+    let generation =
+        unique_alloc_u64_delta(
+            before.generation,
+            after.generation
+        );
+
+    let revision =
+        unique_alloc_u64_delta(
+            before.revision,
+            after.revision
+        );
+
+    let state_changed =
+        before.state
+            != after.state;
+
+    give UniqueAllocDelta {
+        size:
+            size,
+
+        align:
+            align,
+
+        generation:
+            generation,
+
+        revision:
+            revision,
+
+        state_changed:
+            state_changed,
+
+        changed:
+            size != 0
+            or align != 0
+            or generation != 0
+            or revision != 0
+            or state_changed
+    };
+}
+
+proc unique_alloc_delta_is_zero(
+    delta: UniqueAllocDelta
+) -> bool {
+    give not delta.changed;
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc unique_alloc_statistics_empty()
+    -> UniqueAllocStatistics
+{
+    give UniqueAllocStatistics {
+        allocations: 0,
+        allocation_failures: 0,
+
+        reallocations: 0,
+        reallocation_failures: 0,
+
+        releases: 0,
+        release_failures: 0,
+
+        resizes: 0,
+        resize_failures: 0,
+
+        validations: 0,
+        validation_failures: 0,
+
+        bytes_allocated: 0,
+        bytes_reallocated: 0,
+        bytes_released: 0,
+
+        peak_size: 0
+    };
+}
+
+proc unique_alloc_statistics_record_allocate(
+    statistics: ref mut UniqueAllocStatistics,
+    size: usize,
+    success: bool
+) {
+    if success {
+        set statistics.allocations =
+            statistics.allocations + 1;
+
+        set statistics.bytes_allocated =
+            statistics.bytes_allocated
+            + size as u64;
+
+        if size > statistics.peak_size {
+            set statistics.peak_size =
+                size;
+        }
+    } else {
+        set statistics.allocation_failures =
+            statistics.allocation_failures + 1;
+    }
+}
+
+proc unique_alloc_statistics_record_reallocate(
+    statistics: ref mut UniqueAllocStatistics,
+    size: usize,
+    success: bool
+) {
+    if success {
+        set statistics.reallocations =
+            statistics.reallocations + 1;
+
+        set statistics.bytes_reallocated =
+            statistics.bytes_reallocated
+            + size as u64;
+
+        if size > statistics.peak_size {
+            set statistics.peak_size =
+                size;
+        }
+    } else {
+        set statistics.reallocation_failures =
+            statistics.reallocation_failures + 1;
+    }
+}
+
+proc unique_alloc_statistics_record_resize(
+    statistics: ref mut UniqueAllocStatistics,
+    size: usize,
+    success: bool
+) {
+    if success {
+        set statistics.resizes =
+            statistics.resizes + 1;
+
+        if size > statistics.peak_size {
+            set statistics.peak_size =
+                size;
+        }
+    } else {
+        set statistics.resize_failures =
+            statistics.resize_failures + 1;
+    }
+}
+
+proc unique_alloc_statistics_record_release(
+    statistics: ref mut UniqueAllocStatistics,
+    size: usize,
+    success: bool
+) {
+    if success {
+        set statistics.releases =
+            statistics.releases + 1;
+
+        set statistics.bytes_released =
+            statistics.bytes_released
+            + size as u64;
+    } else {
+        set statistics.release_failures =
+            statistics.release_failures + 1;
+    }
+}
+
+proc unique_alloc_statistics_record_validation(
+    statistics: ref mut UniqueAllocStatistics,
+    valid: bool
+) {
+    set statistics.validations =
+        statistics.validations + 1;
+
+    if not valid {
+        set statistics.validation_failures =
+            statistics.validation_failures + 1;
+    }
+}
+
+proc unique_alloc_statistics_failures(
+    statistics: UniqueAllocStatistics
+) -> u64 {
+    give statistics.allocation_failures
+        + statistics.reallocation_failures
+        + statistics.release_failures
+        + statistics.resize_failures
+        + statistics.validation_failures;
+}
+
+proc unique_alloc_statistics_total(
+    statistics: UniqueAllocStatistics
+) -> u64 {
+    give statistics.allocations
+        + statistics.allocation_failures
+        + statistics.reallocations
+        + statistics.reallocation_failures
+        + statistics.releases
+        + statistics.release_failures
+        + statistics.resizes
+        + statistics.resize_failures
+        + statistics.validations
+        + statistics.validation_failures;
+}
+
+proc unique_alloc_statistics_reset(
+    statistics: ref mut UniqueAllocStatistics
+) {
+    set *statistics =
+        unique_alloc_statistics_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc unique_alloc_state_name(
+    state: UniqueAllocState
+) -> string {
+    pick state {
+        UniqueAllocState.Empty {
+            give "empty";
+        }
+
+        UniqueAllocState.Allocated {
+            give "allocated";
+        }
+
+        UniqueAllocState.Released {
+            give "released";
+        }
+
+        UniqueAllocState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+proc unique_alloc_operation_name(
+    operation: UniqueAllocOperation
+) -> string {
+    pick operation {
+        UniqueAllocOperation.None {
+            give "none";
+        }
+
+        UniqueAllocOperation.Allocate {
+            give "allocate";
+        }
+
+        UniqueAllocOperation.Reallocate {
+            give "reallocate";
+        }
+
+        UniqueAllocOperation.Release {
+            give "release";
+        }
+
+        UniqueAllocOperation.Resize {
+            give "resize";
+        }
+
+        UniqueAllocOperation.Validate {
+            give "validate";
+        }
+    }
+
+    give "none";
+}
+
+// -----------------------------------------------------------------------------
+// Unique allocation model
+// -----------------------------------------------------------------------------
+//
+// `UniqueAlloc` represents one exclusively-owned allocation.
+//
+// Lifecycle:
+//
+//     Empty
+//       |
+//       | allocate
+//       v
+//
+//     Allocated
+//       |
+//       | resize / reallocate
+//       |
+//       | release
+//       v
+//
+//     Released
+//
+// Reset can return the descriptor to:
+//
+//     Empty
+//
+// -----------------------------------------------------------------------------
+//
+// Allocation:
+//
+//     size  > 0
+//     align > 0
+//     align is power-of-two
+//
+// -----------------------------------------------------------------------------
+//
+// Resize:
+//
+//     preserves alignment
+//
+//     size A
+//       |
+//       v
+//     size B
+//
+// Revision changes.
+//
+// -----------------------------------------------------------------------------
+//
+// Reallocate:
+//
+//     may change:
+//
+//         size
+//         alignment
+//
+// Because storage identity may change, generation is advanced.
+//
+// -----------------------------------------------------------------------------
+//
+// Release:
+//
+//     frees the backing allocation
+//
+//     size  = 0
+//     align = 1
+//
+//     state = Released
+//
+//     generation++
+//     revision++
+//
+// -----------------------------------------------------------------------------
+//
+// Typed access:
+//
+//     unique_alloc_as<T>
+//
+// requires:
+//
+//     allocated
+//     size  >= sizeof(T)
+//     align >= alignof(T)
+//
+// Mutable typed access obeys the same layout constraints.
+//
+// -----------------------------------------------------------------------------
+//
+// Fundamental invariants:
+//
+//     Allocated
+//         => size > 0
+//         => valid backing allocation
+//
+//     Empty
+//         => size == 0
+//
+//     Released
+//         => size == 0
+//
+//     align > 0
+//
+//     align is power-of-two
+//
+//     generation > 0
+//
+//     revision > 0
+//
+// -----------------------------------------------------------------------------
+//
+// `alloc.vitl` is the low-level allocation layer for `alloc/unique`.
+//
+// Higher-level modules can build:
+//
+//     Unique<T>
+//     ownership transfer
+//     move-only values
+//     raw conversions
+//     typed destruction
+//     release / leak primitives
+//
+// on top of this descriptor.

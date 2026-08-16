@@ -1,0 +1,1625 @@
+space vitte/stdlib/alloc/unique/inner
+
+export *
+
+use src/vitte/stdlib/alloc/unique/core as unique_core
+use src/vitte/stdlib/alloc/unique/alloc as unique_alloc
+use src/vitte/stdlib/alloc/unique/drop as unique_drop
+use src/vitte/stdlib/alloc/unique/error as unique_error
+use src/vitte/stdlib/core/option as core_option
+
+pick UniqueInnerState {
+    Alive,
+    Moved,
+    Dropped,
+    Released,
+    Invalid
+}
+
+pick UniqueInnerAccess {
+    None,
+    ReadWrite
+}
+
+form UniqueInner<T> {
+    value: T
+
+    allocation: unique_alloc.UniqueAlloc
+    drop: unique_drop.UniqueDrop
+
+    value_alive: bool
+    allocation_alive: bool
+    moved: bool
+
+    generation: u64
+    revision: u64
+}
+
+form UniqueInnerHandle {
+    generation: u64
+    revision: u64
+}
+
+form UniqueInnerProfile {
+    state: UniqueInnerState
+    access: UniqueInnerAccess
+
+    value_alive: bool
+    allocation_alive: bool
+    moved: bool
+
+    readable: bool
+    writable: bool
+
+    dropped: bool
+    released: bool
+    valid: bool
+
+    size: usize
+    align: usize
+
+    generation: u64
+    revision: u64
+}
+
+form UniqueInnerValidation {
+    valid: bool
+
+    allocation_valid: bool
+    drop_valid: bool
+    lifecycle_valid: bool
+    state_valid: bool
+    access_valid: bool
+    generation_valid: bool
+}
+
+form UniqueInnerSnapshot {
+    state: UniqueInnerState
+
+    value_alive: bool
+    allocation_alive: bool
+    moved: bool
+
+    size: usize
+    align: usize
+
+    generation: u64
+    revision: u64
+}
+
+form UniqueInnerDelta {
+    size: int
+    align: int
+
+    generation: int
+    revision: int
+
+    state_changed: bool
+    value_alive_changed: bool
+    allocation_alive_changed: bool
+    moved_changed: bool
+
+    changed: bool
+}
+
+form UniqueInnerStatistics {
+    creations: u64
+    creation_failures: u64
+
+    reads: u64
+    read_failures: u64
+
+    writes: u64
+    write_failures: u64
+
+    replacements: u64
+    replacement_failures: u64
+
+    moves: u64
+    move_failures: u64
+
+    value_drops: u64
+    value_drop_failures: u64
+
+    allocation_releases: u64
+    allocation_release_failures: u64
+
+    full_drops: u64
+    full_drop_failures: u64
+
+    forgets: u64
+    forget_failures: u64
+
+    validations: u64
+    validation_failures: u64
+
+    peak_size: usize
+}
+
+// -----------------------------------------------------------------------------
+// Construction
+// -----------------------------------------------------------------------------
+
+proc unique_inner_new<T>(
+    value: T,
+    allocation: unique_alloc.UniqueAlloc
+) -> UniqueInner<T> {
+    give UniqueInner<T> {
+        value:
+            value,
+
+        allocation:
+            allocation,
+
+        drop:
+            unique_drop.unique_drop_new(),
+
+        value_alive:
+            true,
+
+        allocation_alive:
+            true,
+
+        moved:
+            false,
+
+        generation:
+            1,
+
+        revision:
+            1
+    };
+}
+
+proc unique_inner_try_new<T>(
+    value: T
+) -> Option<UniqueInner<T>> {
+    let result =
+        unique_alloc.unique_alloc_allocate_for<T>();
+
+    pick result {
+        Some(allocation) {
+            give some<UniqueInner<T>>(
+                unique_inner_new(
+                    value,
+                    allocation
+                )
+            );
+        }
+
+        None {
+            give none<UniqueInner<T>>();
+        }
+    }
+}
+
+proc unique_inner_create<T>(
+    value: T
+) -> UniqueInner<T> {
+    let result =
+        unique_inner_try_new(
+            value
+        );
+
+    pick result {
+        Some(inner) {
+            give inner;
+        }
+
+        None {
+            give compiler_unique_allocation_failure<T>();
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Metadata
+// -----------------------------------------------------------------------------
+
+proc unique_inner_generation<T>(
+    inner: ref UniqueInner<T>
+) -> u64 {
+    give inner.generation;
+}
+
+proc unique_inner_revision<T>(
+    inner: ref UniqueInner<T>
+) -> u64 {
+    give inner.revision;
+}
+
+proc unique_inner_touch<T>(
+    inner: ref mut UniqueInner<T>
+) {
+    set inner.revision =
+        inner.revision + 1;
+}
+
+proc unique_inner_advance_generation<T>(
+    inner: ref mut UniqueInner<T>
+) -> u64 {
+    set inner.generation =
+        inner.generation + 1;
+
+    set inner.revision =
+        inner.revision + 1;
+
+    give inner.generation;
+}
+
+// -----------------------------------------------------------------------------
+// State
+// -----------------------------------------------------------------------------
+
+proc unique_inner_state<T>(
+    inner: ref UniqueInner<T>
+) -> UniqueInnerState {
+    if inner.moved {
+        if inner.value_alive
+            or inner.allocation_alive
+        {
+            give UniqueInnerState.Invalid;
+        }
+
+        give UniqueInnerState.Moved;
+    }
+
+    if inner.value_alive {
+        if not inner.allocation_alive {
+            give UniqueInnerState.Invalid;
+        }
+
+        give UniqueInnerState.Alive;
+    }
+
+    if inner.allocation_alive {
+        give UniqueInnerState.Dropped;
+    }
+
+    if not inner.value_alive
+        and not inner.allocation_alive
+    {
+        give UniqueInnerState.Released;
+    }
+
+    give UniqueInnerState.Invalid;
+}
+
+proc unique_inner_access<T>(
+    inner: ref UniqueInner<T>
+) -> UniqueInnerAccess {
+    if unique_inner_state(
+        inner
+    ) == UniqueInnerState.Alive
+    {
+        give UniqueInnerAccess.ReadWrite;
+    }
+
+    give UniqueInnerAccess.None;
+}
+
+// -----------------------------------------------------------------------------
+// Predicates
+// -----------------------------------------------------------------------------
+
+proc unique_inner_is_alive<T>(
+    inner: ref UniqueInner<T>
+) -> bool {
+    give unique_inner_state(
+        inner
+    ) == UniqueInnerState.Alive;
+}
+
+proc unique_inner_is_moved<T>(
+    inner: ref UniqueInner<T>
+) -> bool {
+    give unique_inner_state(
+        inner
+    ) == UniqueInnerState.Moved;
+}
+
+proc unique_inner_is_dropped<T>(
+    inner: ref UniqueInner<T>
+) -> bool {
+    give unique_inner_state(
+        inner
+    ) == UniqueInnerState.Dropped;
+}
+
+proc unique_inner_is_released<T>(
+    inner: ref UniqueInner<T>
+) -> bool {
+    give unique_inner_state(
+        inner
+    ) == UniqueInnerState.Released;
+}
+
+proc unique_inner_can_read<T>(
+    inner: ref UniqueInner<T>
+) -> bool {
+    give unique_inner_access(
+        inner
+    ) == UniqueInnerAccess.ReadWrite;
+}
+
+proc unique_inner_can_write<T>(
+    inner: ref UniqueInner<T>
+) -> bool {
+    give unique_inner_access(
+        inner
+    ) == UniqueInnerAccess.ReadWrite;
+}
+
+proc unique_inner_can_move<T>(
+    inner: ref UniqueInner<T>
+) -> bool {
+    give unique_inner_is_alive(
+        inner
+    );
+}
+
+proc unique_inner_can_replace<T>(
+    inner: ref UniqueInner<T>
+) -> bool {
+    give unique_inner_is_alive(
+        inner
+    );
+}
+
+proc unique_inner_can_drop_value<T>(
+    inner: ref UniqueInner<T>
+) -> bool {
+    give inner.value_alive
+        and inner.allocation_alive
+        and not inner.moved;
+}
+
+proc unique_inner_can_release<T>(
+    inner: ref UniqueInner<T>
+) -> bool {
+    give not inner.value_alive
+        and inner.allocation_alive
+        and not inner.moved;
+}
+
+// -----------------------------------------------------------------------------
+// Handle
+// -----------------------------------------------------------------------------
+
+proc unique_inner_handle<T>(
+    inner: ref UniqueInner<T>
+) -> UniqueInnerHandle {
+    give UniqueInnerHandle {
+        generation:
+            inner.generation,
+
+        revision:
+            inner.revision
+    };
+}
+
+proc unique_inner_handle_valid<T>(
+    inner: ref UniqueInner<T>,
+    handle: UniqueInnerHandle
+) -> bool {
+    give inner.generation
+        == handle.generation
+        and not unique_inner_is_released(
+            inner
+        );
+}
+
+proc unique_inner_handle_current<T>(
+    inner: ref UniqueInner<T>,
+    handle: UniqueInnerHandle
+) -> bool {
+    give unique_inner_handle_valid(
+        inner,
+        handle
+    )
+    and inner.revision
+        == handle.revision;
+}
+
+// -----------------------------------------------------------------------------
+// Access
+// -----------------------------------------------------------------------------
+
+proc unique_inner_get<T>(
+    inner: ref UniqueInner<T>
+) -> Option<ref T> {
+    if not unique_inner_can_read(
+        inner
+    ) {
+        give none<ref T>();
+    }
+
+    give some<ref T>(
+        ref inner.value
+    );
+}
+
+proc unique_inner_get_mut<T>(
+    inner: ref mut UniqueInner<T>
+) -> Option<ref mut T> {
+    if not unique_inner_can_write(
+        ref *inner
+    ) {
+        give none<ref mut T>();
+    }
+
+    give some<ref mut T>(
+        ref mut inner.value
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Raw value pointer
+// -----------------------------------------------------------------------------
+
+proc unique_inner_value_ptr<T>(
+    inner: ref UniqueInner<T>
+) -> raw ref T {
+    if not unique_inner_can_read(
+        inner
+    ) {
+        give compiler_raw_null();
+    }
+
+    give compiler_ref_as_raw(
+        ref inner.value
+    );
+}
+
+proc unique_inner_value_ptr_mut<T>(
+    inner: ref mut UniqueInner<T>
+) -> raw ref T {
+    if not unique_inner_can_write(
+        ref *inner
+    ) {
+        give compiler_raw_null();
+    }
+
+    give compiler_mut_ref_as_raw(
+        ref mut inner.value
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Allocation access
+// -----------------------------------------------------------------------------
+
+proc unique_inner_allocation<T>(
+    inner: ref UniqueInner<T>
+) -> ref unique_alloc.UniqueAlloc {
+    give ref inner.allocation;
+}
+
+proc unique_inner_allocation_mut<T>(
+    inner: ref mut UniqueInner<T>
+) -> ref mut unique_alloc.UniqueAlloc {
+    give ref mut inner.allocation;
+}
+
+proc unique_inner_size<T>(
+    inner: ref UniqueInner<T>
+) -> usize {
+    give unique_alloc.unique_alloc_size(
+        ref inner.allocation
+    );
+}
+
+proc unique_inner_align<T>(
+    inner: ref UniqueInner<T>
+) -> usize {
+    give unique_alloc.unique_alloc_align(
+        ref inner.allocation
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Replace
+// -----------------------------------------------------------------------------
+
+proc unique_inner_replace<T>(
+    inner: ref mut UniqueInner<T>,
+    value: T
+) -> bool {
+    if not unique_inner_can_replace(
+        ref *inner
+    ) {
+        give false;
+    }
+
+    compiler_drop_in_place<T>(
+        ref mut inner.value
+    );
+
+    set inner.value =
+        value;
+
+    set inner.revision =
+        inner.revision + 1;
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Move
+// -----------------------------------------------------------------------------
+
+proc unique_inner_move<T>(
+    inner: ref mut UniqueInner<T>
+) -> Option<T> {
+    if not unique_inner_can_move(
+        ref *inner
+    ) {
+        give none<T>();
+    }
+
+    let value =
+        compiler_move_value(
+            ref mut inner.value
+        );
+
+    set inner.value_alive =
+        false;
+
+    set inner.allocation_alive =
+        false;
+
+    set inner.moved =
+        true;
+
+    set inner.generation =
+        inner.generation + 1;
+
+    set inner.revision =
+        inner.revision + 1;
+
+    give some<T>(
+        value
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Value destruction
+// -----------------------------------------------------------------------------
+
+proc unique_inner_drop_value<T>(
+    inner: ref mut UniqueInner<T>
+) -> bool {
+    if not unique_inner_can_drop_value(
+        ref *inner
+    ) {
+        give false;
+    }
+
+    if not unique_drop.unique_drop_value(
+        ref mut inner.drop,
+        ref mut inner.value
+    ) {
+        give false;
+    }
+
+    set inner.value_alive =
+        false;
+
+    set inner.generation =
+        inner.generation + 1;
+
+    set inner.revision =
+        inner.revision + 1;
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Allocation release
+// -----------------------------------------------------------------------------
+
+proc unique_inner_release<T>(
+    inner: ref mut UniqueInner<T>
+) -> bool {
+    if not unique_inner_can_release(
+        ref *inner
+    ) {
+        give false;
+    }
+
+    if not unique_drop.unique_drop_allocation(
+        ref mut inner.drop,
+        ref mut inner.allocation
+    ) {
+        give false;
+    }
+
+    set inner.allocation_alive =
+        false;
+
+    set inner.generation =
+        inner.generation + 1;
+
+    set inner.revision =
+        inner.revision + 1;
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Full destruction
+// -----------------------------------------------------------------------------
+
+proc unique_inner_drop<T>(
+    inner: ref mut UniqueInner<T>
+) -> bool {
+    if inner.moved {
+        give false;
+    }
+
+    if inner.value_alive {
+        if not unique_inner_drop_value(
+            inner
+        ) {
+            give false;
+        }
+    }
+
+    if inner.allocation_alive {
+        if not unique_inner_release(
+            inner
+        ) {
+            give false;
+        }
+    }
+
+    give unique_inner_is_released(
+        ref *inner
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Forget
+// -----------------------------------------------------------------------------
+
+proc unique_inner_forget<T>(
+    inner: ref mut UniqueInner<T>
+) -> bool {
+    if not unique_inner_is_alive(
+        ref *inner
+    ) {
+        give false;
+    }
+
+    if not unique_drop.unique_drop_forget(
+        ref mut inner.drop
+    ) {
+        give false;
+    }
+
+    set inner.value_alive =
+        false;
+
+    set inner.allocation_alive =
+        false;
+
+    set inner.moved =
+        true;
+
+    set inner.generation =
+        inner.generation + 1;
+
+    set inner.revision =
+        inner.revision + 1;
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Core conversion
+// -----------------------------------------------------------------------------
+
+proc unique_inner_core_flags<T>(
+    inner: ref UniqueInner<T>
+) -> unique_core.UniqueCoreFlags {
+    give unique_core.UniqueCoreFlags {
+        initialized:
+            true,
+
+        value_alive:
+            inner.value_alive,
+
+        allocation_alive:
+            inner.allocation_alive,
+
+        moved:
+            inner.moved
+    };
+}
+
+proc unique_inner_core_profile<T>(
+    inner: ref UniqueInner<T>
+) -> unique_core.UniqueCoreProfile {
+    give unique_core.unique_core_profile(
+        unique_inner_core_flags(
+            inner
+        ),
+        unique_core.UniqueCoreMeta {
+            generation:
+                inner.generation,
+
+            revision:
+                inner.revision
+        }
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+proc unique_inner_validate<T>(
+    inner: ref UniqueInner<T>
+) -> UniqueInnerValidation {
+    let allocation_valid =
+        if inner.allocation_alive {
+            unique_alloc.unique_alloc_is_valid(
+                ref inner.allocation
+            )
+        } else {
+            unique_alloc.unique_alloc_is_released(
+                ref inner.allocation
+            )
+            or unique_alloc.unique_alloc_is_empty(
+                ref inner.allocation
+            )
+        };
+
+    let drop_valid =
+        unique_drop.unique_drop_is_valid(
+            ref inner.drop
+        );
+
+    let lifecycle_valid =
+        if inner.moved {
+            not inner.value_alive
+            and not inner.allocation_alive
+        } else if inner.value_alive {
+            inner.allocation_alive
+        } else if inner.allocation_alive {
+            true
+        } else {
+            true
+        };
+
+    let state =
+        unique_inner_state(
+            inner
+        );
+
+    let state_valid =
+        state != UniqueInnerState.Invalid;
+
+    let access =
+        unique_inner_access(
+            inner
+        );
+
+    let access_valid =
+        if state == UniqueInnerState.Alive {
+            access == UniqueInnerAccess.ReadWrite
+        } else {
+            access == UniqueInnerAccess.None
+        };
+
+    let generation_valid =
+        inner.generation > 0
+        and inner.revision > 0;
+
+    give UniqueInnerValidation {
+        valid:
+            allocation_valid
+            and drop_valid
+            and lifecycle_valid
+            and state_valid
+            and access_valid
+            and generation_valid,
+
+        allocation_valid:
+            allocation_valid,
+
+        drop_valid:
+            drop_valid,
+
+        lifecycle_valid:
+            lifecycle_valid,
+
+        state_valid:
+            state_valid,
+
+        access_valid:
+            access_valid,
+
+        generation_valid:
+            generation_valid
+    };
+}
+
+proc unique_inner_is_valid<T>(
+    inner: ref UniqueInner<T>
+) -> bool {
+    give unique_inner_validate(
+        inner
+    ).valid;
+}
+
+proc unique_inner_invariant_holds<T>(
+    inner: ref UniqueInner<T>
+) -> bool {
+    give unique_inner_is_valid(
+        inner
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Error mapping
+// -----------------------------------------------------------------------------
+
+proc unique_inner_error<T>(
+    inner: ref UniqueInner<T>
+) -> unique_error.UniqueError {
+    let validation =
+        unique_inner_validate(
+            inner
+        );
+
+    if validation.valid {
+        give unique_error.unique_error_none();
+    }
+
+    if not validation.allocation_valid {
+        give unique_error.unique_error_from_allocation(
+            ref inner.allocation
+        );
+    }
+
+    if not validation.drop_valid {
+        give unique_error.unique_error_from_drop(
+            ref inner.drop
+        );
+    }
+
+    if not validation.lifecycle_valid {
+        give unique_error.unique_error_simple(
+            unique_error.UniqueErrorKind.InvalidState,
+            "unique inner lifecycle is invalid"
+        );
+    }
+
+    if not validation.state_valid {
+        give unique_error.unique_error_simple(
+            unique_error.UniqueErrorKind.InvalidState,
+            "unique inner state is invalid"
+        );
+    }
+
+    if not validation.access_valid {
+        give unique_error.unique_error_simple(
+            unique_error.UniqueErrorKind.ReadDenied,
+            "unique inner access state is invalid"
+        );
+    }
+
+    if not validation.generation_valid {
+        give unique_error.unique_error_internal(
+            "unique inner generation metadata is invalid"
+        );
+    }
+
+    give unique_error.unique_error_internal(
+        "unknown unique inner validation failure"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Profile
+// -----------------------------------------------------------------------------
+
+proc unique_inner_profile<T>(
+    inner: ref UniqueInner<T>
+) -> UniqueInnerProfile {
+    let state =
+        unique_inner_state(
+            inner
+        );
+
+    give UniqueInnerProfile {
+        state:
+            state,
+
+        access:
+            unique_inner_access(
+                inner
+            ),
+
+        value_alive:
+            inner.value_alive,
+
+        allocation_alive:
+            inner.allocation_alive,
+
+        moved:
+            inner.moved,
+
+        readable:
+            unique_inner_can_read(
+                inner
+            ),
+
+        writable:
+            unique_inner_can_write(
+                inner
+            ),
+
+        dropped:
+            state == UniqueInnerState.Dropped,
+
+        released:
+            state == UniqueInnerState.Released,
+
+        valid:
+            unique_inner_is_valid(
+                inner
+            ),
+
+        size:
+            unique_inner_size(
+                inner
+            ),
+
+        align:
+            unique_inner_align(
+                inner
+            ),
+
+        generation:
+            inner.generation,
+
+        revision:
+            inner.revision
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Snapshot
+// -----------------------------------------------------------------------------
+
+proc unique_inner_snapshot<T>(
+    inner: ref UniqueInner<T>
+) -> UniqueInnerSnapshot {
+    give UniqueInnerSnapshot {
+        state:
+            unique_inner_state(
+                inner
+            ),
+
+        value_alive:
+            inner.value_alive,
+
+        allocation_alive:
+            inner.allocation_alive,
+
+        moved:
+            inner.moved,
+
+        size:
+            unique_inner_size(
+                inner
+            ),
+
+        align:
+            unique_inner_align(
+                inner
+            ),
+
+        generation:
+            inner.generation,
+
+        revision:
+            inner.revision
+    };
+}
+
+proc unique_inner_snapshot_equal(
+    left: UniqueInnerSnapshot,
+    right: UniqueInnerSnapshot
+) -> bool {
+    give left.state == right.state
+        and left.value_alive == right.value_alive
+        and left.allocation_alive == right.allocation_alive
+        and left.moved == right.moved
+        and left.size == right.size
+        and left.align == right.align
+        and left.generation == right.generation
+        and left.revision == right.revision;
+}
+
+proc unique_inner_snapshot_changed(
+    left: UniqueInnerSnapshot,
+    right: UniqueInnerSnapshot
+) -> bool {
+    give not unique_inner_snapshot_equal(
+        left,
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Delta
+// -----------------------------------------------------------------------------
+
+proc unique_inner_usize_delta(
+    before: usize,
+    after: usize
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc unique_inner_u64_delta(
+    before: u64,
+    after: u64
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc unique_inner_delta(
+    before: UniqueInnerSnapshot,
+    after: UniqueInnerSnapshot
+) -> UniqueInnerDelta {
+    let size =
+        unique_inner_usize_delta(
+            before.size,
+            after.size
+        );
+
+    let align =
+        unique_inner_usize_delta(
+            before.align,
+            after.align
+        );
+
+    let generation =
+        unique_inner_u64_delta(
+            before.generation,
+            after.generation
+        );
+
+    let revision =
+        unique_inner_u64_delta(
+            before.revision,
+            after.revision
+        );
+
+    let state_changed =
+        before.state
+            != after.state;
+
+    let value_alive_changed =
+        before.value_alive
+            != after.value_alive;
+
+    let allocation_alive_changed =
+        before.allocation_alive
+            != after.allocation_alive;
+
+    let moved_changed =
+        before.moved
+            != after.moved;
+
+    give UniqueInnerDelta {
+        size:
+            size,
+
+        align:
+            align,
+
+        generation:
+            generation,
+
+        revision:
+            revision,
+
+        state_changed:
+            state_changed,
+
+        value_alive_changed:
+            value_alive_changed,
+
+        allocation_alive_changed:
+            allocation_alive_changed,
+
+        moved_changed:
+            moved_changed,
+
+        changed:
+            size != 0
+            or align != 0
+            or generation != 0
+            or revision != 0
+            or state_changed
+            or value_alive_changed
+            or allocation_alive_changed
+            or moved_changed
+    };
+}
+
+proc unique_inner_delta_is_zero(
+    delta: UniqueInnerDelta
+) -> bool {
+    give not delta.changed;
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc unique_inner_statistics_empty()
+    -> UniqueInnerStatistics
+{
+    give UniqueInnerStatistics {
+        creations: 0,
+        creation_failures: 0,
+
+        reads: 0,
+        read_failures: 0,
+
+        writes: 0,
+        write_failures: 0,
+
+        replacements: 0,
+        replacement_failures: 0,
+
+        moves: 0,
+        move_failures: 0,
+
+        value_drops: 0,
+        value_drop_failures: 0,
+
+        allocation_releases: 0,
+        allocation_release_failures: 0,
+
+        full_drops: 0,
+        full_drop_failures: 0,
+
+        forgets: 0,
+        forget_failures: 0,
+
+        validations: 0,
+        validation_failures: 0,
+
+        peak_size: 0
+    };
+}
+
+proc unique_inner_statistics_update_peak<T>(
+    statistics: ref mut UniqueInnerStatistics,
+    inner: ref UniqueInner<T>
+) {
+    let size =
+        unique_inner_size(
+            inner
+        );
+
+    if size > statistics.peak_size {
+        set statistics.peak_size =
+            size;
+    }
+}
+
+proc unique_inner_statistics_record_create<T>(
+    statistics: ref mut UniqueInnerStatistics,
+    inner: ref UniqueInner<T>,
+    success: bool
+) {
+    if success {
+        set statistics.creations =
+            statistics.creations + 1;
+
+        unique_inner_statistics_update_peak(
+            statistics,
+            inner
+        );
+    } else {
+        set statistics.creation_failures =
+            statistics.creation_failures + 1;
+    }
+}
+
+proc unique_inner_statistics_record_read(
+    statistics: ref mut UniqueInnerStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.reads =
+            statistics.reads + 1;
+    } else {
+        set statistics.read_failures =
+            statistics.read_failures + 1;
+    }
+}
+
+proc unique_inner_statistics_record_write(
+    statistics: ref mut UniqueInnerStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.writes =
+            statistics.writes + 1;
+    } else {
+        set statistics.write_failures =
+            statistics.write_failures + 1;
+    }
+}
+
+proc unique_inner_statistics_record_replace(
+    statistics: ref mut UniqueInnerStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.replacements =
+            statistics.replacements + 1;
+    } else {
+        set statistics.replacement_failures =
+            statistics.replacement_failures + 1;
+    }
+}
+
+proc unique_inner_statistics_record_move(
+    statistics: ref mut UniqueInnerStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.moves =
+            statistics.moves + 1;
+    } else {
+        set statistics.move_failures =
+            statistics.move_failures + 1;
+    }
+}
+
+proc unique_inner_statistics_record_value_drop(
+    statistics: ref mut UniqueInnerStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.value_drops =
+            statistics.value_drops + 1;
+    } else {
+        set statistics.value_drop_failures =
+            statistics.value_drop_failures + 1;
+    }
+}
+
+proc unique_inner_statistics_record_release(
+    statistics: ref mut UniqueInnerStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.allocation_releases =
+            statistics.allocation_releases + 1;
+    } else {
+        set statistics.allocation_release_failures =
+            statistics.allocation_release_failures + 1;
+    }
+}
+
+proc unique_inner_statistics_record_drop(
+    statistics: ref mut UniqueInnerStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.full_drops =
+            statistics.full_drops + 1;
+    } else {
+        set statistics.full_drop_failures =
+            statistics.full_drop_failures + 1;
+    }
+}
+
+proc unique_inner_statistics_record_forget(
+    statistics: ref mut UniqueInnerStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.forgets =
+            statistics.forgets + 1;
+    } else {
+        set statistics.forget_failures =
+            statistics.forget_failures + 1;
+    }
+}
+
+proc unique_inner_statistics_record_validation(
+    statistics: ref mut UniqueInnerStatistics,
+    valid: bool
+) {
+    set statistics.validations =
+        statistics.validations + 1;
+
+    if not valid {
+        set statistics.validation_failures =
+            statistics.validation_failures + 1;
+    }
+}
+
+proc unique_inner_statistics_failures(
+    statistics: UniqueInnerStatistics
+) -> u64 {
+    give statistics.creation_failures
+        + statistics.read_failures
+        + statistics.write_failures
+        + statistics.replacement_failures
+        + statistics.move_failures
+        + statistics.value_drop_failures
+        + statistics.allocation_release_failures
+        + statistics.full_drop_failures
+        + statistics.forget_failures
+        + statistics.validation_failures;
+}
+
+proc unique_inner_statistics_total(
+    statistics: UniqueInnerStatistics
+) -> u64 {
+    give statistics.creations
+        + statistics.creation_failures
+        + statistics.reads
+        + statistics.read_failures
+        + statistics.writes
+        + statistics.write_failures
+        + statistics.replacements
+        + statistics.replacement_failures
+        + statistics.moves
+        + statistics.move_failures
+        + statistics.value_drops
+        + statistics.value_drop_failures
+        + statistics.allocation_releases
+        + statistics.allocation_release_failures
+        + statistics.full_drops
+        + statistics.full_drop_failures
+        + statistics.forgets
+        + statistics.forget_failures
+        + statistics.validations
+        + statistics.validation_failures;
+}
+
+proc unique_inner_statistics_reset(
+    statistics: ref mut UniqueInnerStatistics
+) {
+    set *statistics =
+        unique_inner_statistics_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc unique_inner_state_name(
+    state: UniqueInnerState
+) -> string {
+    pick state {
+        UniqueInnerState.Alive {
+            give "alive";
+        }
+
+        UniqueInnerState.Moved {
+            give "moved";
+        }
+
+        UniqueInnerState.Dropped {
+            give "dropped";
+        }
+
+        UniqueInnerState.Released {
+            give "released";
+        }
+
+        UniqueInnerState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+proc unique_inner_access_name(
+    access: UniqueInnerAccess
+) -> string {
+    pick access {
+        UniqueInnerAccess.None {
+            give "none";
+        }
+
+        UniqueInnerAccess.ReadWrite {
+            give "read-write";
+        }
+    }
+
+    give "none";
+}
+
+// -----------------------------------------------------------------------------
+// Unique inner model
+// -----------------------------------------------------------------------------
+//
+// UniqueInner<T> combines:
+//
+//     value: T
+//     UniqueAlloc
+//     UniqueDrop
+//     lifecycle metadata
+//
+// Normal lifecycle:
+//
+//     Alive
+//       |
+//       +-----------------------+
+//       |                       |
+//       | move                  | drop value
+//       v                       v
+//
+//     Moved                  Dropped
+//                               |
+//                               | release
+//                               v
+//
+//                            Released
+//
+// -----------------------------------------------------------------------------
+//
+// Alive:
+//
+//     value_alive      = true
+//     allocation_alive = true
+//     moved            = false
+//
+// Access:
+//
+//     ReadWrite
+//
+// -----------------------------------------------------------------------------
+//
+// Replace:
+//
+//     Alive -> Alive
+//
+// old T is destroyed
+// new T becomes the managed value
+//
+// allocation identity is preserved.
+//
+// -----------------------------------------------------------------------------
+//
+// Move:
+//
+//     Alive -> Moved
+//
+// ownership of T is transferred out.
+//
+// Source becomes unusable.
+//
+// A moved source must never:
+//
+//     read T
+//     write T
+//     destroy T again
+//     release transferred ownership again
+//
+// -----------------------------------------------------------------------------
+//
+// Drop:
+//
+//     Alive -> Dropped -> Released
+//
+// order:
+//
+//     destroy T
+//     release allocation
+//
+// -----------------------------------------------------------------------------
+//
+// Forget:
+//
+//     transfers responsibility away from this controller.
+//
+// It behaves as a terminal moved-like state:
+//
+//     value_alive      = false
+//     allocation_alive = false
+//     moved            = true
+//
+// -----------------------------------------------------------------------------
+//
+// Handle:
+//
+//     generation
+//     revision
+//
+// Generation tracks lifetime identity.
+//
+// Revision tracks mutation inside that identity.
+//
+// -----------------------------------------------------------------------------
+//
+// Fundamental invariants:
+//
+//     value_alive
+//         => allocation_alive
+//         => !moved
+//
+//     moved
+//         => !value_alive
+//         => !allocation_alive
+//
+//     Dropped
+//         => !value_alive
+//         => allocation_alive
+//
+//     Released
+//         => !value_alive
+//         => !allocation_alive
+//         => !moved
+//
+//     readable
+//         => Alive
+//
+//     writable
+//         => Alive
+//
+//     movable
+//         => Alive
+//
+//     replaceable
+//         => Alive
+//
+// -----------------------------------------------------------------------------
+//
+// Module split:
+//
+//     core.vitl
+//         pure unique lifetime model
+//
+//     alloc.vitl
+//         low-level allocation
+//
+//     drop.vitl
+//         deterministic destruction
+//
+//     error.vitl
+//         failure normalization
+//
+//     inner.vitl
+//         concrete value + allocation lifecycle
+//
+// Higher layers can now implement:
+//
+//     owner.vitl
+//     raw.vitl
+//     unique.vitl
+//
+// without duplicating the core lifetime logic.

@@ -1,0 +1,2158 @@
+space vitte/stdlib/alloc/unique/owner
+
+export *
+
+use src/vitte/stdlib/alloc/unique/core as unique_core
+use src/vitte/stdlib/alloc/unique/alloc as unique_alloc
+use src/vitte/stdlib/alloc/unique/drop as unique_drop
+use src/vitte/stdlib/alloc/unique/error as unique_error
+use src/vitte/stdlib/alloc/unique/inner as unique_inner
+use src/vitte/stdlib/core/option as core_option
+
+pick UniqueOwnerState {
+    Alive,
+    Moved,
+    Dropped,
+    Released,
+    Stale,
+    Invalid
+}
+
+pick UniqueOwnerAccess {
+    None,
+    ReadWrite
+}
+
+pick UniqueOwnerOperation {
+    None,
+    Create,
+    Get,
+    GetMut,
+    Replace,
+    Move,
+    DropValue,
+    Release,
+    Drop,
+    Forget,
+    Refresh,
+    Validate
+}
+
+form UniqueOwner<T> {
+    inner: raw ref unique_inner.UniqueInner<T>
+
+    generation: u64
+    revision: u64
+}
+
+form UniqueOwnerProfile {
+    state: UniqueOwnerState
+    access: UniqueOwnerAccess
+
+    alive: bool
+    moved: bool
+    dropped: bool
+    released: bool
+    stale: bool
+    valid: bool
+
+    readable: bool
+    writable: bool
+    movable: bool
+
+    size: usize
+    align: usize
+
+    generation: u64
+    revision: u64
+}
+
+form UniqueOwnerValidation {
+    valid: bool
+
+    pointer_valid: bool
+    generation_valid: bool
+    inner_valid: bool
+    state_valid: bool
+    access_valid: bool
+}
+
+form UniqueOwnerSnapshot {
+    state: UniqueOwnerState
+
+    size: usize
+    align: usize
+
+    generation: u64
+    revision: u64
+}
+
+form UniqueOwnerDelta {
+    size: int
+    align: int
+
+    generation: int
+    revision: int
+
+    state_changed: bool
+    changed: bool
+}
+
+form UniqueOwnerIdentity {
+    address: usize
+    generation: u64
+}
+
+form UniqueOwnerStatistics {
+    creations: u64
+    creation_failures: u64
+
+    reads: u64
+    read_failures: u64
+
+    mutable_reads: u64
+    mutable_failures: u64
+
+    replacements: u64
+    replacement_failures: u64
+
+    moves: u64
+    move_failures: u64
+
+    value_drops: u64
+    value_drop_failures: u64
+
+    releases: u64
+    release_failures: u64
+
+    drops: u64
+    drop_failures: u64
+
+    forgets: u64
+    forget_failures: u64
+
+    refreshes: u64
+    refresh_failures: u64
+
+    validations: u64
+    validation_failures: u64
+
+    peak_size: usize
+}
+
+// -----------------------------------------------------------------------------
+// Allocation
+// -----------------------------------------------------------------------------
+
+proc unique_owner_allocate_inner<T>(
+    value: T
+) -> Option<raw ref unique_inner.UniqueInner<T>> {
+    let result =
+        unique_inner.unique_inner_try_new(
+            value
+        );
+
+    pick result {
+        Some(inner) {
+            let storage =
+                unique_alloc.unique_alloc_new_for<
+                    unique_inner.UniqueInner<T>
+                >();
+
+            let ptr =
+                unique_alloc.unique_alloc_as_mut<
+                    unique_inner.UniqueInner<T>
+                >(
+                    ref mut storage
+                );
+
+            pick ptr {
+                Some(current) {
+                    set *current =
+                        inner;
+
+                    give some<raw ref unique_inner.UniqueInner<T>>(
+                        compiler_mut_ref_as_raw(
+                            current
+                        )
+                    );
+                }
+
+                None {
+                    give none<raw ref unique_inner.UniqueInner<T>>();
+                }
+            }
+        }
+
+        None {
+            give none<raw ref unique_inner.UniqueInner<T>>();
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Construction
+// -----------------------------------------------------------------------------
+
+proc unique_owner_new<T>(
+    value: T
+) -> UniqueOwner<T> {
+    let result =
+        unique_owner_allocate_inner(
+            value
+        );
+
+    pick result {
+        Some(ptr) {
+            let inner =
+                compiler_raw_as_ref(
+                    ptr
+                );
+
+            give UniqueOwner<T> {
+                inner:
+                    ptr,
+
+                generation:
+                    inner.generation,
+
+                revision:
+                    inner.revision
+            };
+        }
+
+        None {
+            give compiler_unique_allocation_failure<T>();
+        }
+    }
+}
+
+proc unique_owner_try_new<T>(
+    value: T
+) -> Option<UniqueOwner<T>> {
+    let result =
+        unique_owner_allocate_inner(
+            value
+        );
+
+    pick result {
+        Some(ptr) {
+            let inner =
+                compiler_raw_as_ref(
+                    ptr
+                );
+
+            give some<UniqueOwner<T>>(
+                UniqueOwner<T> {
+                    inner:
+                        ptr,
+
+                    generation:
+                        inner.generation,
+
+                    revision:
+                        inner.revision
+                }
+            );
+        }
+
+        None {
+            give none<UniqueOwner<T>>();
+        }
+    }
+}
+
+proc unique_owner_from_inner<T>(
+    inner: ref unique_inner.UniqueInner<T>
+) -> UniqueOwner<T> {
+    give UniqueOwner<T> {
+        inner:
+            compiler_ref_as_raw(
+                inner
+            ),
+
+        generation:
+            inner.generation,
+
+        revision:
+            inner.revision
+    };
+}
+
+proc unique_owner_from_inner_mut<T>(
+    inner: ref mut unique_inner.UniqueInner<T>
+) -> UniqueOwner<T> {
+    give UniqueOwner<T> {
+        inner:
+            compiler_mut_ref_as_raw(
+                inner
+            ),
+
+        generation:
+            inner.generation,
+
+        revision:
+            inner.revision
+    };
+}
+
+proc unique_owner_null<T>()
+    -> UniqueOwner<T>
+{
+    give UniqueOwner<T> {
+        inner:
+            compiler_raw_null(),
+
+        generation:
+            0,
+
+        revision:
+            0
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Inner access
+// -----------------------------------------------------------------------------
+
+proc unique_owner_inner<T>(
+    owner: ref UniqueOwner<T>
+) -> Option<ref unique_inner.UniqueInner<T>> {
+    if compiler_raw_ptr_is_null(
+        owner.inner
+    ) {
+        give none<ref unique_inner.UniqueInner<T>>();
+    }
+
+    give some<ref unique_inner.UniqueInner<T>>(
+        compiler_raw_as_ref(
+            owner.inner
+        )
+    );
+}
+
+proc unique_owner_inner_mut<T>(
+    owner: ref mut UniqueOwner<T>
+) -> Option<ref mut unique_inner.UniqueInner<T>> {
+    if compiler_raw_ptr_is_null(
+        owner.inner
+    ) {
+        give none<ref mut unique_inner.UniqueInner<T>>();
+    }
+
+    give some<ref mut unique_inner.UniqueInner<T>>(
+        compiler_raw_as_mut(
+            owner.inner
+        )
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Metadata
+// -----------------------------------------------------------------------------
+
+proc unique_owner_generation<T>(
+    owner: ref UniqueOwner<T>
+) -> u64 {
+    give owner.generation;
+}
+
+proc unique_owner_revision<T>(
+    owner: ref UniqueOwner<T>
+) -> u64 {
+    give owner.revision;
+}
+
+proc unique_owner_refresh<T>(
+    owner: ref mut UniqueOwner<T>
+) -> bool {
+    let inner =
+        unique_owner_inner(
+            ref *owner
+        );
+
+    pick inner {
+        Some(current) {
+            set owner.generation =
+                current.generation;
+
+            set owner.revision =
+                current.revision;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc unique_owner_generation_matches<T>(
+    owner: ref UniqueOwner<T>
+) -> bool {
+    let inner =
+        unique_owner_inner(
+            owner
+        );
+
+    pick inner {
+        Some(current) {
+            give current.generation
+                == owner.generation;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc unique_owner_revision_matches<T>(
+    owner: ref UniqueOwner<T>
+) -> bool {
+    let inner =
+        unique_owner_inner(
+            owner
+        );
+
+    pick inner {
+        Some(current) {
+            give current.revision
+                == owner.revision;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// State
+// -----------------------------------------------------------------------------
+
+proc unique_owner_state<T>(
+    owner: ref UniqueOwner<T>
+) -> UniqueOwnerState {
+    if compiler_raw_ptr_is_null(
+        owner.inner
+    ) {
+        give UniqueOwnerState.Released;
+    }
+
+    let inner =
+        compiler_raw_as_ref(
+            owner.inner
+        );
+
+    if inner.generation
+        != owner.generation
+    {
+        give UniqueOwnerState.Stale;
+    }
+
+    if not unique_inner.unique_inner_is_valid(
+        inner
+    ) {
+        give UniqueOwnerState.Invalid;
+    }
+
+    pick unique_inner.unique_inner_state(
+        inner
+    ) {
+        unique_inner.UniqueInnerState.Alive {
+            give UniqueOwnerState.Alive;
+        }
+
+        unique_inner.UniqueInnerState.Moved {
+            give UniqueOwnerState.Moved;
+        }
+
+        unique_inner.UniqueInnerState.Dropped {
+            give UniqueOwnerState.Dropped;
+        }
+
+        unique_inner.UniqueInnerState.Released {
+            give UniqueOwnerState.Released;
+        }
+
+        unique_inner.UniqueInnerState.Invalid {
+            give UniqueOwnerState.Invalid;
+        }
+    }
+
+    give UniqueOwnerState.Invalid;
+}
+
+proc unique_owner_access<T>(
+    owner: ref UniqueOwner<T>
+) -> UniqueOwnerAccess {
+    if unique_owner_state(
+        owner
+    ) == UniqueOwnerState.Alive
+    {
+        give UniqueOwnerAccess.ReadWrite;
+    }
+
+    give UniqueOwnerAccess.None;
+}
+
+// -----------------------------------------------------------------------------
+// Predicates
+// -----------------------------------------------------------------------------
+
+proc unique_owner_is_alive<T>(
+    owner: ref UniqueOwner<T>
+) -> bool {
+    give unique_owner_state(
+        owner
+    ) == UniqueOwnerState.Alive;
+}
+
+proc unique_owner_is_moved<T>(
+    owner: ref UniqueOwner<T>
+) -> bool {
+    give unique_owner_state(
+        owner
+    ) == UniqueOwnerState.Moved;
+}
+
+proc unique_owner_is_dropped<T>(
+    owner: ref UniqueOwner<T>
+) -> bool {
+    give unique_owner_state(
+        owner
+    ) == UniqueOwnerState.Dropped;
+}
+
+proc unique_owner_is_released<T>(
+    owner: ref UniqueOwner<T>
+) -> bool {
+    give unique_owner_state(
+        owner
+    ) == UniqueOwnerState.Released;
+}
+
+proc unique_owner_is_stale<T>(
+    owner: ref UniqueOwner<T>
+) -> bool {
+    give unique_owner_state(
+        owner
+    ) == UniqueOwnerState.Stale;
+}
+
+proc unique_owner_is_valid<T>(
+    owner: ref UniqueOwner<T>
+) -> bool {
+    give unique_owner_validate(
+        owner
+    ).valid;
+}
+
+proc unique_owner_can_read<T>(
+    owner: ref UniqueOwner<T>
+) -> bool {
+    give unique_owner_access(
+        owner
+    ) == UniqueOwnerAccess.ReadWrite;
+}
+
+proc unique_owner_can_write<T>(
+    owner: ref UniqueOwner<T>
+) -> bool {
+    give unique_owner_access(
+        owner
+    ) == UniqueOwnerAccess.ReadWrite;
+}
+
+proc unique_owner_can_move<T>(
+    owner: ref UniqueOwner<T>
+) -> bool {
+    give unique_owner_state(
+        owner
+    ) == UniqueOwnerState.Alive;
+}
+
+// -----------------------------------------------------------------------------
+// Size / layout
+// -----------------------------------------------------------------------------
+
+proc unique_owner_size<T>(
+    owner: ref UniqueOwner<T>
+) -> usize {
+    let inner =
+        unique_owner_inner(
+            owner
+        );
+
+    pick inner {
+        Some(current) {
+            give unique_inner.unique_inner_size(
+                current
+            );
+        }
+
+        None {
+            give 0;
+        }
+    }
+}
+
+proc unique_owner_align<T>(
+    owner: ref UniqueOwner<T>
+) -> usize {
+    let inner =
+        unique_owner_inner(
+            owner
+        );
+
+    pick inner {
+        Some(current) {
+            give unique_inner.unique_inner_align(
+                current
+            );
+        }
+
+        None {
+            give 0;
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Read
+// -----------------------------------------------------------------------------
+
+proc unique_owner_get<T>(
+    owner: ref UniqueOwner<T>
+) -> ref T {
+    let result =
+        unique_owner_try_get(
+            owner
+        );
+
+    pick result {
+        Some(value) {
+            give value;
+        }
+
+        None {
+            give compiler_unique_access_failure<T>();
+        }
+    }
+}
+
+proc unique_owner_try_get<T>(
+    owner: ref UniqueOwner<T>
+) -> Option<ref T> {
+    if not unique_owner_can_read(
+        owner
+    ) {
+        give none<ref T>();
+    }
+
+    let inner =
+        unique_owner_inner(
+            owner
+        );
+
+    pick inner {
+        Some(current) {
+            give unique_inner.unique_inner_get(
+                current
+            );
+        }
+
+        None {
+            give none<ref T>();
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Mutable access
+// -----------------------------------------------------------------------------
+
+proc unique_owner_get_mut<T>(
+    owner: ref mut UniqueOwner<T>
+) -> Option<ref mut T> {
+    if not unique_owner_can_write(
+        ref *owner
+    ) {
+        give none<ref mut T>();
+    }
+
+    let inner =
+        unique_owner_inner_mut(
+            owner
+        );
+
+    pick inner {
+        Some(current) {
+            give unique_inner.unique_inner_get_mut(
+                current
+            );
+        }
+
+        None {
+            give none<ref mut T>();
+        }
+    }
+}
+
+proc unique_owner_get_mut_unchecked<T>(
+    owner: ref mut UniqueOwner<T>
+) -> ref mut T {
+    let inner =
+        compiler_raw_as_mut(
+            owner.inner
+        );
+
+    give ref mut inner.value;
+}
+
+// -----------------------------------------------------------------------------
+// Replace
+// -----------------------------------------------------------------------------
+
+proc unique_owner_replace<T>(
+    owner: ref mut UniqueOwner<T>,
+    value: T
+) -> bool {
+    if not unique_owner_can_write(
+        ref *owner
+    ) {
+        give false;
+    }
+
+    let inner =
+        unique_owner_inner_mut(
+            owner
+        );
+
+    pick inner {
+        Some(current) {
+            let result =
+                unique_inner.unique_inner_replace(
+                    current,
+                    value
+                );
+
+            if result {
+                set owner.generation =
+                    current.generation;
+
+                set owner.revision =
+                    current.revision;
+            }
+
+            give result;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Move
+// -----------------------------------------------------------------------------
+
+proc unique_owner_move<T>(
+    owner: ref mut UniqueOwner<T>
+) -> Option<T> {
+    if not unique_owner_can_move(
+        ref *owner
+    ) {
+        give none<T>();
+    }
+
+    let inner =
+        unique_owner_inner_mut(
+            owner
+        );
+
+    pick inner {
+        Some(current) {
+            let result =
+                unique_inner.unique_inner_move(
+                    current
+                );
+
+            pick result {
+                Some(value) {
+                    set owner.generation =
+                        current.generation;
+
+                    set owner.revision =
+                        current.revision;
+
+                    set owner.inner =
+                        compiler_raw_null();
+
+                    give some<T>(
+                        value
+                    );
+                }
+
+                None {
+                    give none<T>();
+                }
+            }
+        }
+
+        None {
+            give none<T>();
+        }
+    }
+}
+
+proc unique_owner_take<T>(
+    owner: ref mut UniqueOwner<T>
+) -> T {
+    let result =
+        unique_owner_move(
+            owner
+        );
+
+    pick result {
+        Some(value) {
+            give value;
+        }
+
+        None {
+            give compiler_unique_move_failure<T>();
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Value drop
+// -----------------------------------------------------------------------------
+
+proc unique_owner_drop_value<T>(
+    owner: ref mut UniqueOwner<T>
+) -> bool {
+    if compiler_raw_ptr_is_null(
+        owner.inner
+    ) {
+        give false;
+    }
+
+    let inner =
+        compiler_raw_as_mut(
+            owner.inner
+        );
+
+    if inner.generation
+        != owner.generation
+    {
+        give false;
+    }
+
+    let result =
+        unique_inner.unique_inner_drop_value(
+            inner
+        );
+
+    if result {
+        set owner.generation =
+            inner.generation;
+
+        set owner.revision =
+            inner.revision;
+    }
+
+    give result;
+}
+
+// -----------------------------------------------------------------------------
+// Allocation release
+// -----------------------------------------------------------------------------
+
+proc unique_owner_release<T>(
+    owner: ref mut UniqueOwner<T>
+) -> bool {
+    if compiler_raw_ptr_is_null(
+        owner.inner
+    ) {
+        give false;
+    }
+
+    let inner =
+        compiler_raw_as_mut(
+            owner.inner
+        );
+
+    if inner.generation
+        != owner.generation
+    {
+        give false;
+    }
+
+    let result =
+        unique_inner.unique_inner_release(
+            inner
+        );
+
+    if not result {
+        give false;
+    }
+
+    set owner.generation =
+        inner.generation;
+
+    set owner.revision =
+        inner.revision;
+
+    set owner.inner =
+        compiler_raw_null();
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Full drop
+// -----------------------------------------------------------------------------
+
+proc unique_owner_drop<T>(
+    owner: ref mut UniqueOwner<T>
+) -> bool {
+    if compiler_raw_ptr_is_null(
+        owner.inner
+    ) {
+        give false;
+    }
+
+    let inner =
+        compiler_raw_as_mut(
+            owner.inner
+        );
+
+    if inner.generation
+        != owner.generation
+    {
+        give false;
+    }
+
+    if not unique_inner.unique_inner_drop(
+        inner
+    ) {
+        give false;
+    }
+
+    set owner.generation =
+        inner.generation;
+
+    set owner.revision =
+        inner.revision;
+
+    set owner.inner =
+        compiler_raw_null();
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Forget
+// -----------------------------------------------------------------------------
+
+proc unique_owner_forget<T>(
+    owner: ref mut UniqueOwner<T>
+) -> bool {
+    if compiler_raw_ptr_is_null(
+        owner.inner
+    ) {
+        give false;
+    }
+
+    let inner =
+        compiler_raw_as_mut(
+            owner.inner
+        );
+
+    if inner.generation
+        != owner.generation
+    {
+        give false;
+    }
+
+    if not unique_inner.unique_inner_forget(
+        inner
+    ) {
+        give false;
+    }
+
+    set owner.generation =
+        inner.generation;
+
+    set owner.revision =
+        inner.revision;
+
+    set owner.inner =
+        compiler_raw_null();
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Pointer access
+// -----------------------------------------------------------------------------
+
+proc unique_owner_raw_inner<T>(
+    owner: ref UniqueOwner<T>
+) -> raw ref unique_inner.UniqueInner<T> {
+    give owner.inner;
+}
+
+proc unique_owner_value_ptr<T>(
+    owner: ref UniqueOwner<T>
+) -> raw ref T {
+    if not unique_owner_can_read(
+        owner
+    ) {
+        give compiler_raw_null();
+    }
+
+    let inner =
+        compiler_raw_as_ref(
+            owner.inner
+        );
+
+    give unique_inner.unique_inner_value_ptr(
+        inner
+    );
+}
+
+proc unique_owner_value_ptr_mut<T>(
+    owner: ref mut UniqueOwner<T>
+) -> raw ref T {
+    if not unique_owner_can_write(
+        ref *owner
+    ) {
+        give compiler_raw_null();
+    }
+
+    let inner =
+        compiler_raw_as_mut(
+            owner.inner
+        );
+
+    give unique_inner.unique_inner_value_ptr_mut(
+        inner
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Identity
+// -----------------------------------------------------------------------------
+
+proc unique_owner_identity<T>(
+    owner: ref UniqueOwner<T>
+) -> UniqueOwnerIdentity {
+    give UniqueOwnerIdentity {
+        address:
+            compiler_raw_ptr_address(
+                owner.inner
+            ),
+
+        generation:
+            owner.generation
+    };
+}
+
+proc unique_owner_identity_equal(
+    left: UniqueOwnerIdentity,
+    right: UniqueOwnerIdentity
+) -> bool {
+    give left.address == right.address
+        and left.generation == right.generation;
+}
+
+proc unique_owner_ptr_equal<T>(
+    left: ref UniqueOwner<T>,
+    right: ref UniqueOwner<T>
+) -> bool {
+    give compiler_raw_ptr_equal(
+        left.inner,
+        right.inner
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Core conversion
+// -----------------------------------------------------------------------------
+
+proc unique_owner_core_flags<T>(
+    owner: ref UniqueOwner<T>
+) -> unique_core.UniqueCoreFlags {
+    let inner =
+        unique_owner_inner(
+            owner
+        );
+
+    pick inner {
+        Some(current) {
+            give unique_inner.unique_inner_core_flags(
+                current
+            );
+        }
+
+        None {
+            give unique_core.unique_core_flags_released();
+        }
+    }
+}
+
+proc unique_owner_core_profile<T>(
+    owner: ref UniqueOwner<T>
+) -> unique_core.UniqueCoreProfile {
+    give unique_core.unique_core_profile(
+        unique_owner_core_flags(
+            owner
+        ),
+        unique_core.UniqueCoreMeta {
+            generation:
+                owner.generation,
+
+            revision:
+                owner.revision
+        }
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Allocation access
+// -----------------------------------------------------------------------------
+
+proc unique_owner_allocation<T>(
+    owner: ref UniqueOwner<T>
+) -> Option<ref unique_alloc.UniqueAlloc> {
+    let inner =
+        unique_owner_inner(
+            owner
+        );
+
+    pick inner {
+        Some(current) {
+            give some<ref unique_alloc.UniqueAlloc>(
+                ref current.allocation
+            );
+        }
+
+        None {
+            give none<ref unique_alloc.UniqueAlloc>();
+        }
+    }
+}
+
+proc unique_owner_allocation_mut<T>(
+    owner: ref mut UniqueOwner<T>
+) -> Option<ref mut unique_alloc.UniqueAlloc> {
+    let inner =
+        unique_owner_inner_mut(
+            owner
+        );
+
+    pick inner {
+        Some(current) {
+            give some<ref mut unique_alloc.UniqueAlloc>(
+                ref mut current.allocation
+            );
+        }
+
+        None {
+            give none<ref mut unique_alloc.UniqueAlloc>();
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+proc unique_owner_validate<T>(
+    owner: ref UniqueOwner<T>
+) -> UniqueOwnerValidation {
+    let pointer_valid =
+        not compiler_raw_ptr_is_null(
+            owner.inner
+        );
+
+    if not pointer_valid {
+        give UniqueOwnerValidation {
+            valid:
+                false,
+
+            pointer_valid:
+                false,
+
+            generation_valid:
+                false,
+
+            inner_valid:
+                false,
+
+            state_valid:
+                false,
+
+            access_valid:
+                false
+        };
+    }
+
+    let inner =
+        compiler_raw_as_ref(
+            owner.inner
+        );
+
+    let generation_valid =
+        inner.generation
+            == owner.generation;
+
+    let inner_valid =
+        unique_inner.unique_inner_is_valid(
+            inner
+        );
+
+    let state =
+        unique_owner_state(
+            owner
+        );
+
+    let state_valid =
+        state == UniqueOwnerState.Alive;
+
+    let access =
+        unique_owner_access(
+            owner
+        );
+
+    let access_valid =
+        if state == UniqueOwnerState.Alive {
+            access == UniqueOwnerAccess.ReadWrite
+        } else {
+            access == UniqueOwnerAccess.None
+        };
+
+    give UniqueOwnerValidation {
+        valid:
+            pointer_valid
+            and generation_valid
+            and inner_valid
+            and state_valid
+            and access_valid,
+
+        pointer_valid:
+            pointer_valid,
+
+        generation_valid:
+            generation_valid,
+
+        inner_valid:
+            inner_valid,
+
+        state_valid:
+            state_valid,
+
+        access_valid:
+            access_valid
+    };
+}
+
+proc unique_owner_invariant_holds<T>(
+    owner: ref UniqueOwner<T>
+) -> bool {
+    give unique_owner_validate(
+        owner
+    ).valid;
+}
+
+// -----------------------------------------------------------------------------
+// Error mapping
+// -----------------------------------------------------------------------------
+
+proc unique_owner_error<T>(
+    owner: ref UniqueOwner<T>
+) -> unique_error.UniqueError {
+    if compiler_raw_ptr_is_null(
+        owner.inner
+    ) {
+        give unique_error.unique_error_null_pointer();
+    }
+
+    let inner =
+        compiler_raw_as_ref(
+            owner.inner
+        );
+
+    if inner.generation
+        != owner.generation
+    {
+        give unique_error.unique_error_stale_reference();
+    }
+
+    let validation =
+        unique_owner_validate(
+            owner
+        );
+
+    if validation.valid {
+        give unique_error.unique_error_none();
+    }
+
+    if not validation.inner_valid {
+        give unique_inner.unique_inner_error(
+            inner
+        );
+    }
+
+    let state =
+        unique_owner_state(
+            owner
+        );
+
+    pick state {
+        UniqueOwnerState.Alive {
+            give unique_error.unique_error_none();
+        }
+
+        UniqueOwnerState.Moved {
+            give unique_error.unique_error_value_moved();
+        }
+
+        UniqueOwnerState.Dropped {
+            give unique_error.unique_error_value_dropped();
+        }
+
+        UniqueOwnerState.Released {
+            give unique_error.unique_error_allocation_released();
+        }
+
+        UniqueOwnerState.Stale {
+            give unique_error.unique_error_stale_reference();
+        }
+
+        UniqueOwnerState.Invalid {
+            give unique_error.unique_error_invalid_unique();
+        }
+    }
+
+    give unique_error.unique_error_internal(
+        "unknown unique owner validation failure"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Profile
+// -----------------------------------------------------------------------------
+
+proc unique_owner_profile<T>(
+    owner: ref UniqueOwner<T>
+) -> UniqueOwnerProfile {
+    let state =
+        unique_owner_state(
+            owner
+        );
+
+    give UniqueOwnerProfile {
+        state:
+            state,
+
+        access:
+            unique_owner_access(
+                owner
+            ),
+
+        alive:
+            state == UniqueOwnerState.Alive,
+
+        moved:
+            state == UniqueOwnerState.Moved,
+
+        dropped:
+            state == UniqueOwnerState.Dropped,
+
+        released:
+            state == UniqueOwnerState.Released,
+
+        stale:
+            state == UniqueOwnerState.Stale,
+
+        valid:
+            unique_owner_is_valid(
+                owner
+            ),
+
+        readable:
+            unique_owner_can_read(
+                owner
+            ),
+
+        writable:
+            unique_owner_can_write(
+                owner
+            ),
+
+        movable:
+            unique_owner_can_move(
+                owner
+            ),
+
+        size:
+            unique_owner_size(
+                owner
+            ),
+
+        align:
+            unique_owner_align(
+                owner
+            ),
+
+        generation:
+            owner.generation,
+
+        revision:
+            owner.revision
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Snapshot
+// -----------------------------------------------------------------------------
+
+proc unique_owner_snapshot<T>(
+    owner: ref UniqueOwner<T>
+) -> UniqueOwnerSnapshot {
+    give UniqueOwnerSnapshot {
+        state:
+            unique_owner_state(
+                owner
+            ),
+
+        size:
+            unique_owner_size(
+                owner
+            ),
+
+        align:
+            unique_owner_align(
+                owner
+            ),
+
+        generation:
+            owner.generation,
+
+        revision:
+            owner.revision
+    };
+}
+
+proc unique_owner_snapshot_equal(
+    left: UniqueOwnerSnapshot,
+    right: UniqueOwnerSnapshot
+) -> bool {
+    give left.state == right.state
+        and left.size == right.size
+        and left.align == right.align
+        and left.generation == right.generation
+        and left.revision == right.revision;
+}
+
+proc unique_owner_snapshot_changed(
+    left: UniqueOwnerSnapshot,
+    right: UniqueOwnerSnapshot
+) -> bool {
+    give not unique_owner_snapshot_equal(
+        left,
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Delta
+// -----------------------------------------------------------------------------
+
+proc unique_owner_usize_delta(
+    before: usize,
+    after: usize
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc unique_owner_u64_delta(
+    before: u64,
+    after: u64
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc unique_owner_delta(
+    before: UniqueOwnerSnapshot,
+    after: UniqueOwnerSnapshot
+) -> UniqueOwnerDelta {
+    let size =
+        unique_owner_usize_delta(
+            before.size,
+            after.size
+        );
+
+    let align =
+        unique_owner_usize_delta(
+            before.align,
+            after.align
+        );
+
+    let generation =
+        unique_owner_u64_delta(
+            before.generation,
+            after.generation
+        );
+
+    let revision =
+        unique_owner_u64_delta(
+            before.revision,
+            after.revision
+        );
+
+    let state_changed =
+        before.state
+            != after.state;
+
+    give UniqueOwnerDelta {
+        size:
+            size,
+
+        align:
+            align,
+
+        generation:
+            generation,
+
+        revision:
+            revision,
+
+        state_changed:
+            state_changed,
+
+        changed:
+            size != 0
+            or align != 0
+            or generation != 0
+            or revision != 0
+            or state_changed
+    };
+}
+
+proc unique_owner_delta_is_zero(
+    delta: UniqueOwnerDelta
+) -> bool {
+    give not delta.changed;
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc unique_owner_statistics_empty()
+    -> UniqueOwnerStatistics
+{
+    give UniqueOwnerStatistics {
+        creations: 0,
+        creation_failures: 0,
+
+        reads: 0,
+        read_failures: 0,
+
+        mutable_reads: 0,
+        mutable_failures: 0,
+
+        replacements: 0,
+        replacement_failures: 0,
+
+        moves: 0,
+        move_failures: 0,
+
+        value_drops: 0,
+        value_drop_failures: 0,
+
+        releases: 0,
+        release_failures: 0,
+
+        drops: 0,
+        drop_failures: 0,
+
+        forgets: 0,
+        forget_failures: 0,
+
+        refreshes: 0,
+        refresh_failures: 0,
+
+        validations: 0,
+        validation_failures: 0,
+
+        peak_size: 0
+    };
+}
+
+proc unique_owner_statistics_update_peak<T>(
+    statistics: ref mut UniqueOwnerStatistics,
+    owner: ref UniqueOwner<T>
+) {
+    let size =
+        unique_owner_size(
+            owner
+        );
+
+    if size > statistics.peak_size {
+        set statistics.peak_size =
+            size;
+    }
+}
+
+proc unique_owner_statistics_record_create<T>(
+    statistics: ref mut UniqueOwnerStatistics,
+    owner: ref UniqueOwner<T>,
+    success: bool
+) {
+    if success {
+        set statistics.creations =
+            statistics.creations + 1;
+
+        unique_owner_statistics_update_peak(
+            statistics,
+            owner
+        );
+    } else {
+        set statistics.creation_failures =
+            statistics.creation_failures + 1;
+    }
+}
+
+proc unique_owner_statistics_record_read(
+    statistics: ref mut UniqueOwnerStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.reads =
+            statistics.reads + 1;
+    } else {
+        set statistics.read_failures =
+            statistics.read_failures + 1;
+    }
+}
+
+proc unique_owner_statistics_record_mutable(
+    statistics: ref mut UniqueOwnerStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.mutable_reads =
+            statistics.mutable_reads + 1;
+    } else {
+        set statistics.mutable_failures =
+            statistics.mutable_failures + 1;
+    }
+}
+
+proc unique_owner_statistics_record_replace(
+    statistics: ref mut UniqueOwnerStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.replacements =
+            statistics.replacements + 1;
+    } else {
+        set statistics.replacement_failures =
+            statistics.replacement_failures + 1;
+    }
+}
+
+proc unique_owner_statistics_record_move(
+    statistics: ref mut UniqueOwnerStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.moves =
+            statistics.moves + 1;
+    } else {
+        set statistics.move_failures =
+            statistics.move_failures + 1;
+    }
+}
+
+proc unique_owner_statistics_record_value_drop(
+    statistics: ref mut UniqueOwnerStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.value_drops =
+            statistics.value_drops + 1;
+    } else {
+        set statistics.value_drop_failures =
+            statistics.value_drop_failures + 1;
+    }
+}
+
+proc unique_owner_statistics_record_release(
+    statistics: ref mut UniqueOwnerStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.releases =
+            statistics.releases + 1;
+    } else {
+        set statistics.release_failures =
+            statistics.release_failures + 1;
+    }
+}
+
+proc unique_owner_statistics_record_drop(
+    statistics: ref mut UniqueOwnerStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.drops =
+            statistics.drops + 1;
+    } else {
+        set statistics.drop_failures =
+            statistics.drop_failures + 1;
+    }
+}
+
+proc unique_owner_statistics_record_forget(
+    statistics: ref mut UniqueOwnerStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.forgets =
+            statistics.forgets + 1;
+    } else {
+        set statistics.forget_failures =
+            statistics.forget_failures + 1;
+    }
+}
+
+proc unique_owner_statistics_record_refresh(
+    statistics: ref mut UniqueOwnerStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.refreshes =
+            statistics.refreshes + 1;
+    } else {
+        set statistics.refresh_failures =
+            statistics.refresh_failures + 1;
+    }
+}
+
+proc unique_owner_statistics_record_validation(
+    statistics: ref mut UniqueOwnerStatistics,
+    valid: bool
+) {
+    set statistics.validations =
+        statistics.validations + 1;
+
+    if not valid {
+        set statistics.validation_failures =
+            statistics.validation_failures + 1;
+    }
+}
+
+proc unique_owner_statistics_failures(
+    statistics: UniqueOwnerStatistics
+) -> u64 {
+    give statistics.creation_failures
+        + statistics.read_failures
+        + statistics.mutable_failures
+        + statistics.replacement_failures
+        + statistics.move_failures
+        + statistics.value_drop_failures
+        + statistics.release_failures
+        + statistics.drop_failures
+        + statistics.forget_failures
+        + statistics.refresh_failures
+        + statistics.validation_failures;
+}
+
+proc unique_owner_statistics_total(
+    statistics: UniqueOwnerStatistics
+) -> u64 {
+    give statistics.creations
+        + statistics.creation_failures
+        + statistics.reads
+        + statistics.read_failures
+        + statistics.mutable_reads
+        + statistics.mutable_failures
+        + statistics.replacements
+        + statistics.replacement_failures
+        + statistics.moves
+        + statistics.move_failures
+        + statistics.value_drops
+        + statistics.value_drop_failures
+        + statistics.releases
+        + statistics.release_failures
+        + statistics.drops
+        + statistics.drop_failures
+        + statistics.forgets
+        + statistics.forget_failures
+        + statistics.refreshes
+        + statistics.refresh_failures
+        + statistics.validations
+        + statistics.validation_failures;
+}
+
+proc unique_owner_statistics_reset(
+    statistics: ref mut UniqueOwnerStatistics
+) {
+    set *statistics =
+        unique_owner_statistics_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc unique_owner_state_name(
+    state: UniqueOwnerState
+) -> string {
+    pick state {
+        UniqueOwnerState.Alive {
+            give "alive";
+        }
+
+        UniqueOwnerState.Moved {
+            give "moved";
+        }
+
+        UniqueOwnerState.Dropped {
+            give "dropped";
+        }
+
+        UniqueOwnerState.Released {
+            give "released";
+        }
+
+        UniqueOwnerState.Stale {
+            give "stale";
+        }
+
+        UniqueOwnerState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+proc unique_owner_access_name(
+    access: UniqueOwnerAccess
+) -> string {
+    pick access {
+        UniqueOwnerAccess.None {
+            give "none";
+        }
+
+        UniqueOwnerAccess.ReadWrite {
+            give "read-write";
+        }
+    }
+
+    give "none";
+}
+
+proc unique_owner_operation_name(
+    operation: UniqueOwnerOperation
+) -> string {
+    pick operation {
+        UniqueOwnerOperation.None {
+            give "none";
+        }
+
+        UniqueOwnerOperation.Create {
+            give "create";
+        }
+
+        UniqueOwnerOperation.Get {
+            give "get";
+        }
+
+        UniqueOwnerOperation.GetMut {
+            give "get-mut";
+        }
+
+        UniqueOwnerOperation.Replace {
+            give "replace";
+        }
+
+        UniqueOwnerOperation.Move {
+            give "move";
+        }
+
+        UniqueOwnerOperation.DropValue {
+            give "drop-value";
+        }
+
+        UniqueOwnerOperation.Release {
+            give "release";
+        }
+
+        UniqueOwnerOperation.Drop {
+            give "drop";
+        }
+
+        UniqueOwnerOperation.Forget {
+            give "forget";
+        }
+
+        UniqueOwnerOperation.Refresh {
+            give "refresh";
+        }
+
+        UniqueOwnerOperation.Validate {
+            give "validate";
+        }
+    }
+
+    give "none";
+}
+
+// -----------------------------------------------------------------------------
+// Unique owner model
+// -----------------------------------------------------------------------------
+//
+// `UniqueOwner<T>` is the exclusive owner handle over `UniqueInner<T>`.
+//
+// Architecture:
+//
+//     UniqueOwner<T>
+//     +----------------------+
+//     | inner                |
+//     | generation           |
+//     | revision             |
+//     +----------+-----------+
+//                |
+//                v
+//
+//     UniqueInner<T>
+//     +----------------------+
+//     | value: T             |
+//     | UniqueAlloc          |
+//     | UniqueDrop           |
+//     | lifecycle flags      |
+//     | generation           |
+//     | revision             |
+//     +----------------------+
+//
+// -----------------------------------------------------------------------------
+//
+// Ownership:
+//
+//     exactly one logical owner
+//
+// There is deliberately no:
+//
+//     clone
+//     strong counter
+//     weak counter
+//
+// A `UniqueOwner<T>` is move-only.
+//
+// -----------------------------------------------------------------------------
+//
+// Creation:
+//
+//     let owner = unique_owner_new(value);
+//
+// state:
+//
+//     Alive
+//
+// access:
+//
+//     ReadWrite
+//
+// -----------------------------------------------------------------------------
+//
+// Read:
+//
+//     unique_owner_get(ref owner)
+//
+// requires:
+//
+//     Alive
+//
+// -----------------------------------------------------------------------------
+//
+// Mutable access:
+//
+//     unique_owner_get_mut(ref mut owner)
+//
+// requires:
+//
+//     Alive
+//
+// Unique ownership means mutable access does not require a reference-count
+// uniqueness check.
+//
+// -----------------------------------------------------------------------------
+//
+// Replacement:
+//
+//     unique_owner_replace(
+//         ref mut owner,
+//         value
+//     )
+//
+// destroys the old T and stores the new T.
+//
+// The logical owner remains the same.
+//
+// -----------------------------------------------------------------------------
+//
+// Move:
+//
+//     let value = unique_owner_take(
+//         ref mut owner
+//     );
+//
+// transfers T out of the owner.
+//
+// Source becomes unusable.
+//
+// No copy is performed.
+//
+// -----------------------------------------------------------------------------
+//
+// Destruction:
+//
+//     unique_owner_drop_value
+//
+// performs:
+//
+//     Alive -> Dropped
+//
+// followed by:
+//
+//     unique_owner_release
+//
+//     Dropped -> Released
+//
+// Full destruction:
+//
+//     unique_owner_drop
+//
+// performs both phases.
+//
+// -----------------------------------------------------------------------------
+//
+// Forget:
+//
+//     unique_owner_forget
+//
+// intentionally suppresses normal destruction.
+//
+// This is a low-level primitive for:
+//
+//     FFI ownership transfer
+//     intentional leaks
+//     external lifetime management
+//
+// -----------------------------------------------------------------------------
+//
+// Stale detection:
+//
+//     owner.generation
+//         != inner.generation
+//
+// means:
+//
+//     Stale
+//
+// Revision mismatches are not ownership failures. They only indicate a tracked
+// mutation since the owner snapshot was last refreshed.
+//
+// -----------------------------------------------------------------------------
+//
+// Identity:
+//
+//     raw inner address
+//     +
+//     generation
+//
+// forms logical lifetime identity.
+//
+// -----------------------------------------------------------------------------
+//
+// Fundamental invariants:
+//
+//     valid owner
+//         => inner != null
+//
+//     valid owner
+//         => generation == inner.generation
+//
+//     valid owner
+//         => inner valid
+//
+//     valid owner
+//         => state == Alive
+//
+//     Alive
+//         => ReadWrite
+//
+//     Moved
+//         => no access
+//
+//     Dropped
+//         => no value access
+//
+//     Released
+//         => no allocation access
+//
+// -----------------------------------------------------------------------------
+//
+// Module split:
+//
+//     core.vitl
+//         pure unique lifecycle
+//
+//     alloc.vitl
+//         low-level allocation
+//
+//     drop.vitl
+//         deterministic destruction
+//
+//     error.vitl
+//         normalized failures
+//
+//     inner.vitl
+//         concrete value lifecycle
+//
+//     owner.vitl
+//         exclusive owner handle
+//
+// Higher layers can now build:
+//
+//     raw.vitl
+//     unique.vitl
+//
+// as the public and unsafe/raw interfaces.

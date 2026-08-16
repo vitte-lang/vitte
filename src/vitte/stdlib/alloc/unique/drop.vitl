@@ -1,0 +1,1071 @@
+space vitte/stdlib/alloc/unique/drop
+
+export *
+
+use src/vitte/stdlib/alloc/unique/core as unique_core
+use src/vitte/stdlib/alloc/unique/alloc as unique_alloc
+
+pick UniqueDropState {
+    Ready,
+    ValueDropped,
+    AllocationReleased,
+    Completed,
+    Invalid
+}
+
+pick UniqueDropOperation {
+    None,
+    DropValue,
+    ReleaseAllocation,
+    DropAll,
+    Forget,
+    Validate
+}
+
+form UniqueDrop {
+    state: UniqueDropState
+
+    value_dropped: bool
+    allocation_released: bool
+    forgotten: bool
+
+    generation: u64
+    revision: u64
+}
+
+form UniqueDropProfile {
+    state: UniqueDropState
+
+    value_dropped: bool
+    allocation_released: bool
+    forgotten: bool
+
+    completed: bool
+    valid: bool
+
+    generation: u64
+    revision: u64
+}
+
+form UniqueDropValidation {
+    valid: bool
+
+    state_valid: bool
+    value_valid: bool
+    allocation_valid: bool
+    generation_valid: bool
+}
+
+form UniqueDropSnapshot {
+    state: UniqueDropState
+
+    value_dropped: bool
+    allocation_released: bool
+    forgotten: bool
+
+    generation: u64
+    revision: u64
+}
+
+form UniqueDropDelta {
+    generation: int
+    revision: int
+
+    state_changed: bool
+    value_changed: bool
+    allocation_changed: bool
+    forgotten_changed: bool
+
+    changed: bool
+}
+
+form UniqueDropStatistics {
+    value_drops: u64
+    value_drop_failures: u64
+
+    allocation_releases: u64
+    allocation_release_failures: u64
+
+    full_drops: u64
+    full_drop_failures: u64
+
+    forgets: u64
+
+    validations: u64
+    validation_failures: u64
+}
+
+// -----------------------------------------------------------------------------
+// Construction
+// -----------------------------------------------------------------------------
+
+proc unique_drop_new()
+    -> UniqueDrop
+{
+    give UniqueDrop {
+        state:
+            UniqueDropState.Ready,
+
+        value_dropped:
+            false,
+
+        allocation_released:
+            false,
+
+        forgotten:
+            false,
+
+        generation:
+            1,
+
+        revision:
+            1
+    };
+}
+
+proc unique_drop_completed()
+    -> UniqueDrop
+{
+    give UniqueDrop {
+        state:
+            UniqueDropState.Completed,
+
+        value_dropped:
+            true,
+
+        allocation_released:
+            true,
+
+        forgotten:
+            false,
+
+        generation:
+            1,
+
+        revision:
+            1
+    };
+}
+
+// -----------------------------------------------------------------------------
+// State
+// -----------------------------------------------------------------------------
+
+proc unique_drop_state(
+    drop: ref UniqueDrop
+) -> UniqueDropState {
+    if drop.forgotten {
+        if drop.value_dropped
+            or drop.allocation_released
+        {
+            give UniqueDropState.Invalid;
+        }
+
+        give UniqueDropState.Completed;
+    }
+
+    if not drop.value_dropped
+        and not drop.allocation_released
+    {
+        give UniqueDropState.Ready;
+    }
+
+    if drop.value_dropped
+        and not drop.allocation_released
+    {
+        give UniqueDropState.ValueDropped;
+    }
+
+    if drop.value_dropped
+        and drop.allocation_released
+    {
+        give UniqueDropState.Completed;
+    }
+
+    if not drop.value_dropped
+        and drop.allocation_released
+    {
+        give UniqueDropState.Invalid;
+    }
+
+    give UniqueDropState.Invalid;
+}
+
+// -----------------------------------------------------------------------------
+// Predicates
+// -----------------------------------------------------------------------------
+
+proc unique_drop_is_ready(
+    drop: ref UniqueDrop
+) -> bool {
+    give unique_drop_state(
+        drop
+    ) == UniqueDropState.Ready;
+}
+
+proc unique_drop_value_is_dropped(
+    drop: ref UniqueDrop
+) -> bool {
+    give drop.value_dropped;
+}
+
+proc unique_drop_allocation_is_released(
+    drop: ref UniqueDrop
+) -> bool {
+    give drop.allocation_released;
+}
+
+proc unique_drop_is_forgotten(
+    drop: ref UniqueDrop
+) -> bool {
+    give drop.forgotten;
+}
+
+proc unique_drop_is_completed(
+    drop: ref UniqueDrop
+) -> bool {
+    give unique_drop_state(
+        drop
+    ) == UniqueDropState.Completed;
+}
+
+proc unique_drop_is_valid(
+    drop: ref UniqueDrop
+) -> bool {
+    give unique_drop_validate(
+        drop
+    ).valid;
+}
+
+proc unique_drop_can_drop_value(
+    drop: ref UniqueDrop
+) -> bool {
+    give unique_drop_is_ready(
+        drop
+    )
+    and not drop.forgotten;
+}
+
+proc unique_drop_can_release_allocation(
+    drop: ref UniqueDrop
+) -> bool {
+    give drop.value_dropped
+        and not drop.allocation_released
+        and not drop.forgotten;
+}
+
+// -----------------------------------------------------------------------------
+// Metadata
+// -----------------------------------------------------------------------------
+
+proc unique_drop_generation(
+    drop: ref UniqueDrop
+) -> u64 {
+    give drop.generation;
+}
+
+proc unique_drop_revision(
+    drop: ref UniqueDrop
+) -> u64 {
+    give drop.revision;
+}
+
+proc unique_drop_touch(
+    drop: ref mut UniqueDrop
+) {
+    set drop.revision =
+        drop.revision + 1;
+}
+
+proc unique_drop_advance_generation(
+    drop: ref mut UniqueDrop
+) -> u64 {
+    set drop.generation =
+        drop.generation + 1;
+
+    set drop.revision =
+        drop.revision + 1;
+
+    give drop.generation;
+}
+
+// -----------------------------------------------------------------------------
+// Value destruction
+// -----------------------------------------------------------------------------
+
+proc unique_drop_value<T>(
+    drop: ref mut UniqueDrop,
+    value: ref mut T
+) -> bool {
+    if not unique_drop_can_drop_value(
+        ref *drop
+    ) {
+        give false;
+    }
+
+    compiler_drop_in_place<T>(
+        value
+    );
+
+    set drop.value_dropped =
+        true;
+
+    set drop.state =
+        UniqueDropState.ValueDropped;
+
+    set drop.generation =
+        drop.generation + 1;
+
+    set drop.revision =
+        drop.revision + 1;
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Allocation release
+// -----------------------------------------------------------------------------
+
+proc unique_drop_allocation(
+    drop: ref mut UniqueDrop,
+    allocation: ref mut unique_alloc.UniqueAlloc
+) -> bool {
+    if not unique_drop_can_release_allocation(
+        ref *drop
+    ) {
+        give false;
+    }
+
+    if not unique_alloc.unique_alloc_is_allocated(
+        ref *allocation
+    ) {
+        give false;
+    }
+
+    if not unique_alloc.unique_alloc_release(
+        allocation
+    ) {
+        give false;
+    }
+
+    set drop.allocation_released =
+        true;
+
+    set drop.state =
+        UniqueDropState.Completed;
+
+    set drop.generation =
+        drop.generation + 1;
+
+    set drop.revision =
+        drop.revision + 1;
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Complete destruction
+// -----------------------------------------------------------------------------
+
+proc unique_drop_all<T>(
+    drop: ref mut UniqueDrop,
+    value: ref mut T,
+    allocation: ref mut unique_alloc.UniqueAlloc
+) -> bool {
+    if drop.forgotten {
+        give false;
+    }
+
+    if not drop.value_dropped {
+        if not unique_drop_value(
+            drop,
+            value
+        ) {
+            give false;
+        }
+    }
+
+    if not drop.allocation_released {
+        if not unique_drop_allocation(
+            drop,
+            allocation
+        ) {
+            give false;
+        }
+    }
+
+    give unique_drop_is_completed(
+        ref *drop
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Forget / leak
+// -----------------------------------------------------------------------------
+
+proc unique_drop_forget(
+    drop: ref mut UniqueDrop
+) -> bool {
+    if drop.value_dropped
+        or drop.allocation_released
+    {
+        give false;
+    }
+
+    if drop.forgotten {
+        give false;
+    }
+
+    set drop.forgotten =
+        true;
+
+    set drop.state =
+        UniqueDropState.Completed;
+
+    set drop.generation =
+        drop.generation + 1;
+
+    set drop.revision =
+        drop.revision + 1;
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Reset
+// -----------------------------------------------------------------------------
+
+proc unique_drop_reset(
+    drop: ref mut UniqueDrop
+) {
+    set drop.state =
+        UniqueDropState.Ready;
+
+    set drop.value_dropped =
+        false;
+
+    set drop.allocation_released =
+        false;
+
+    set drop.forgotten =
+        false;
+
+    set drop.generation =
+        drop.generation + 1;
+
+    set drop.revision =
+        drop.revision + 1;
+}
+
+// -----------------------------------------------------------------------------
+// Core conversion
+// -----------------------------------------------------------------------------
+
+proc unique_drop_core_flags(
+    drop: ref UniqueDrop
+) -> unique_core.UniqueCoreFlags {
+    if drop.forgotten {
+        give unique_core.unique_core_flags_moved();
+    }
+
+    if not drop.value_dropped
+        and not drop.allocation_released
+    {
+        give unique_core.unique_core_flags_new();
+    }
+
+    if drop.value_dropped
+        and not drop.allocation_released
+    {
+        give unique_core.unique_core_flags_dropped();
+    }
+
+    if drop.value_dropped
+        and drop.allocation_released
+    {
+        give unique_core.unique_core_flags_released();
+    }
+
+    give unique_core.UniqueCoreFlags {
+        initialized: true,
+        value_alive: false,
+        allocation_alive: false,
+        moved: false
+    };
+}
+
+proc unique_drop_core_profile(
+    drop: ref UniqueDrop
+) -> unique_core.UniqueCoreProfile {
+    give unique_core.unique_core_profile(
+        unique_drop_core_flags(
+            drop
+        ),
+        unique_core.UniqueCoreMeta {
+            generation:
+                drop.generation,
+
+            revision:
+                drop.revision
+        }
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+proc unique_drop_validate(
+    drop: ref UniqueDrop
+) -> UniqueDropValidation {
+    let state =
+        unique_drop_state(
+            drop
+        );
+
+    let state_valid =
+        state != UniqueDropState.Invalid;
+
+    let value_valid =
+        if drop.allocation_released {
+            drop.value_dropped
+        } else {
+            true
+        };
+
+    let allocation_valid =
+        if drop.forgotten {
+            not drop.value_dropped
+            and not drop.allocation_released
+        } else {
+            true
+        };
+
+    let generation_valid =
+        drop.generation > 0
+        and drop.revision > 0;
+
+    give UniqueDropValidation {
+        valid:
+            state_valid
+            and value_valid
+            and allocation_valid
+            and generation_valid,
+
+        state_valid:
+            state_valid,
+
+        value_valid:
+            value_valid,
+
+        allocation_valid:
+            allocation_valid,
+
+        generation_valid:
+            generation_valid
+    };
+}
+
+proc unique_drop_invariant_holds(
+    drop: ref UniqueDrop
+) -> bool {
+    give unique_drop_validate(
+        drop
+    ).valid;
+}
+
+// -----------------------------------------------------------------------------
+// Profile
+// -----------------------------------------------------------------------------
+
+proc unique_drop_profile(
+    drop: ref UniqueDrop
+) -> UniqueDropProfile {
+    let state =
+        unique_drop_state(
+            drop
+        );
+
+    give UniqueDropProfile {
+        state:
+            state,
+
+        value_dropped:
+            drop.value_dropped,
+
+        allocation_released:
+            drop.allocation_released,
+
+        forgotten:
+            drop.forgotten,
+
+        completed:
+            state == UniqueDropState.Completed,
+
+        valid:
+            unique_drop_is_valid(
+                drop
+            ),
+
+        generation:
+            drop.generation,
+
+        revision:
+            drop.revision
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Snapshot
+// -----------------------------------------------------------------------------
+
+proc unique_drop_snapshot(
+    drop: ref UniqueDrop
+) -> UniqueDropSnapshot {
+    give UniqueDropSnapshot {
+        state:
+            unique_drop_state(
+                drop
+            ),
+
+        value_dropped:
+            drop.value_dropped,
+
+        allocation_released:
+            drop.allocation_released,
+
+        forgotten:
+            drop.forgotten,
+
+        generation:
+            drop.generation,
+
+        revision:
+            drop.revision
+    };
+}
+
+proc unique_drop_snapshot_equal(
+    left: UniqueDropSnapshot,
+    right: UniqueDropSnapshot
+) -> bool {
+    give left.state == right.state
+        and left.value_dropped == right.value_dropped
+        and left.allocation_released == right.allocation_released
+        and left.forgotten == right.forgotten
+        and left.generation == right.generation
+        and left.revision == right.revision;
+}
+
+proc unique_drop_snapshot_changed(
+    left: UniqueDropSnapshot,
+    right: UniqueDropSnapshot
+) -> bool {
+    give not unique_drop_snapshot_equal(
+        left,
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Delta
+// -----------------------------------------------------------------------------
+
+proc unique_drop_u64_delta(
+    before: u64,
+    after: u64
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc unique_drop_delta(
+    before: UniqueDropSnapshot,
+    after: UniqueDropSnapshot
+) -> UniqueDropDelta {
+    let generation =
+        unique_drop_u64_delta(
+            before.generation,
+            after.generation
+        );
+
+    let revision =
+        unique_drop_u64_delta(
+            before.revision,
+            after.revision
+        );
+
+    let state_changed =
+        before.state
+            != after.state;
+
+    let value_changed =
+        before.value_dropped
+            != after.value_dropped;
+
+    let allocation_changed =
+        before.allocation_released
+            != after.allocation_released;
+
+    let forgotten_changed =
+        before.forgotten
+            != after.forgotten;
+
+    give UniqueDropDelta {
+        generation:
+            generation,
+
+        revision:
+            revision,
+
+        state_changed:
+            state_changed,
+
+        value_changed:
+            value_changed,
+
+        allocation_changed:
+            allocation_changed,
+
+        forgotten_changed:
+            forgotten_changed,
+
+        changed:
+            generation != 0
+            or revision != 0
+            or state_changed
+            or value_changed
+            or allocation_changed
+            or forgotten_changed
+    };
+}
+
+proc unique_drop_delta_is_zero(
+    delta: UniqueDropDelta
+) -> bool {
+    give not delta.changed;
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc unique_drop_statistics_empty()
+    -> UniqueDropStatistics
+{
+    give UniqueDropStatistics {
+        value_drops: 0,
+        value_drop_failures: 0,
+
+        allocation_releases: 0,
+        allocation_release_failures: 0,
+
+        full_drops: 0,
+        full_drop_failures: 0,
+
+        forgets: 0,
+
+        validations: 0,
+        validation_failures: 0
+    };
+}
+
+proc unique_drop_statistics_record_value(
+    statistics: ref mut UniqueDropStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.value_drops =
+            statistics.value_drops + 1;
+    } else {
+        set statistics.value_drop_failures =
+            statistics.value_drop_failures + 1;
+    }
+}
+
+proc unique_drop_statistics_record_allocation(
+    statistics: ref mut UniqueDropStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.allocation_releases =
+            statistics.allocation_releases + 1;
+    } else {
+        set statistics.allocation_release_failures =
+            statistics.allocation_release_failures + 1;
+    }
+}
+
+proc unique_drop_statistics_record_all(
+    statistics: ref mut UniqueDropStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.full_drops =
+            statistics.full_drops + 1;
+    } else {
+        set statistics.full_drop_failures =
+            statistics.full_drop_failures + 1;
+    }
+}
+
+proc unique_drop_statistics_record_forget(
+    statistics: ref mut UniqueDropStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.forgets =
+            statistics.forgets + 1;
+    }
+}
+
+proc unique_drop_statistics_record_validation(
+    statistics: ref mut UniqueDropStatistics,
+    valid: bool
+) {
+    set statistics.validations =
+        statistics.validations + 1;
+
+    if not valid {
+        set statistics.validation_failures =
+            statistics.validation_failures + 1;
+    }
+}
+
+proc unique_drop_statistics_failures(
+    statistics: UniqueDropStatistics
+) -> u64 {
+    give statistics.value_drop_failures
+        + statistics.allocation_release_failures
+        + statistics.full_drop_failures
+        + statistics.validation_failures;
+}
+
+proc unique_drop_statistics_total(
+    statistics: UniqueDropStatistics
+) -> u64 {
+    give statistics.value_drops
+        + statistics.value_drop_failures
+        + statistics.allocation_releases
+        + statistics.allocation_release_failures
+        + statistics.full_drops
+        + statistics.full_drop_failures
+        + statistics.forgets
+        + statistics.validations
+        + statistics.validation_failures;
+}
+
+proc unique_drop_statistics_reset(
+    statistics: ref mut UniqueDropStatistics
+) {
+    set *statistics =
+        unique_drop_statistics_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc unique_drop_state_name(
+    state: UniqueDropState
+) -> string {
+    pick state {
+        UniqueDropState.Ready {
+            give "ready";
+        }
+
+        UniqueDropState.ValueDropped {
+            give "value-dropped";
+        }
+
+        UniqueDropState.AllocationReleased {
+            give "allocation-released";
+        }
+
+        UniqueDropState.Completed {
+            give "completed";
+        }
+
+        UniqueDropState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+proc unique_drop_operation_name(
+    operation: UniqueDropOperation
+) -> string {
+    pick operation {
+        UniqueDropOperation.None {
+            give "none";
+        }
+
+        UniqueDropOperation.DropValue {
+            give "drop-value";
+        }
+
+        UniqueDropOperation.ReleaseAllocation {
+            give "release-allocation";
+        }
+
+        UniqueDropOperation.DropAll {
+            give "drop-all";
+        }
+
+        UniqueDropOperation.Forget {
+            give "forget";
+        }
+
+        UniqueDropOperation.Validate {
+            give "validate";
+        }
+    }
+
+    give "none";
+}
+
+// -----------------------------------------------------------------------------
+// Unique destruction model
+// -----------------------------------------------------------------------------
+//
+// `drop.vitl` centralizes destruction semantics for unique ownership.
+//
+// Normal lifecycle:
+//
+//     Ready
+//       |
+//       | drop T
+//       v
+//
+//     ValueDropped
+//       |
+//       | release allocation
+//       v
+//
+//     Completed
+//
+// The required order is:
+//
+//     destructor(T)
+//     then
+//     allocator release
+//
+// Releasing backing storage before destroying T is invalid.
+//
+// -----------------------------------------------------------------------------
+//
+// Value destruction:
+//
+//     unique_drop_value<T>
+//
+// performs:
+//
+//     compiler_drop_in_place<T>()
+//
+// then records:
+//
+//     value_dropped = true
+//
+// -----------------------------------------------------------------------------
+//
+// Allocation release:
+//
+//     unique_drop_allocation
+//
+// requires:
+//
+//     value_dropped == true
+//
+// and releases:
+//
+//     UniqueAlloc
+//
+// -----------------------------------------------------------------------------
+//
+// Full destruction:
+//
+//     unique_drop_all<T>
+//
+// performs both phases:
+//
+//     drop value
+//     release allocation
+//
+// -----------------------------------------------------------------------------
+//
+// Forget:
+//
+//     unique_drop_forget
+//
+// intentionally suppresses destruction.
+//
+// It models operations such as:
+//
+//     leak
+//     ownership transfer to foreign code
+//     deliberate forget
+//
+// After forget:
+//
+//     this drop controller must never destroy
+//     the value or release the allocation.
+//
+// -----------------------------------------------------------------------------
+//
+// Generation:
+//
+//     advances when ownership/lifetime semantics change.
+//
+// Revision:
+//
+//     advances for each tracked state mutation.
+//
+// -----------------------------------------------------------------------------
+//
+// Fundamental invariants:
+//
+//     allocation_released
+//         => value_dropped
+//
+//     forgotten
+//         => !value_dropped
+//         => !allocation_released
+//
+//     Ready
+//         => !value_dropped
+//         => !allocation_released
+//
+//     ValueDropped
+//         => value_dropped
+//         => !allocation_released
+//
+//     Completed normal path
+//         => value_dropped
+//         => allocation_released
+//
+//     Completed forgotten path
+//         => forgotten
+//         => !value_dropped
+//         => !allocation_released
+//
+// -----------------------------------------------------------------------------
+//
+// `drop.vitl` does not own the value itself.
+//
+// It coordinates:
+//
+//     T destruction
+//     UniqueAlloc release
+//     lifecycle tracking
+//
+// Higher-level `Unique<T>` owns the complete object and uses this module to
+// guarantee deterministic destruction exactly once.

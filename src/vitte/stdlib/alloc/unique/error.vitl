@@ -1,0 +1,2172 @@
+space vitte/stdlib/alloc/unique/error
+
+export *
+
+use src/vitte/stdlib/alloc/unique/core as unique_core
+use src/vitte/stdlib/alloc/unique/alloc as unique_alloc
+use src/vitte/stdlib/alloc/unique/drop as unique_drop
+
+pick UniqueErrorKind {
+    None,
+
+    InvalidUnique,
+    InvalidState,
+    InvalidAllocation,
+    InvalidDropState,
+
+    AllocationFailed,
+    ReallocationFailed,
+    ResizeFailed,
+    ReleaseFailed,
+
+    ValueDropped,
+    ValueMoved,
+    AllocationReleased,
+    AlreadyDropped,
+    AlreadyReleased,
+    AlreadyMoved,
+
+    InvalidPointer,
+    NullPointer,
+    StaleReference,
+
+    ReadDenied,
+    WriteDenied,
+    MoveDenied,
+    ReplaceDenied,
+
+    DropFailed,
+    ForgetFailed,
+
+    InvalidSize,
+    InvalidAlignment,
+    LayoutMismatch,
+
+    RuntimeFailure,
+    Internal
+}
+
+pick UniqueErrorSeverity {
+    Note,
+    Warning,
+    Error,
+    Fatal
+}
+
+pick UniqueErrorDomain {
+    General,
+    Unique,
+    Allocation,
+    Lifetime,
+    Access,
+    Move,
+    Drop,
+    Pointer,
+    Layout,
+    Runtime,
+    Internal
+}
+
+pick UniqueErrorOperation {
+    None,
+
+    Create,
+    Allocate,
+    Reallocate,
+    Resize,
+    Release,
+
+    Get,
+    GetMut,
+    Replace,
+
+    Move,
+
+    DropValue,
+    DropAllocation,
+    DropAll,
+    Forget,
+
+    Raw,
+    Validate
+}
+
+form UniqueErrorContext {
+    operation: UniqueErrorOperation
+
+    core_state: unique_core.UniqueCoreState
+    alloc_state: unique_alloc.UniqueAllocState
+    drop_state: unique_drop.UniqueDropState
+
+    size: usize
+    align: usize
+
+    generation: u64
+    revision: u64
+}
+
+form UniqueError {
+    kind: UniqueErrorKind
+    severity: UniqueErrorSeverity
+    domain: UniqueErrorDomain
+
+    context: UniqueErrorContext
+
+    message: string
+}
+
+form UniqueErrorProfile {
+    kind: UniqueErrorKind
+    severity: UniqueErrorSeverity
+    domain: UniqueErrorDomain
+    operation: UniqueErrorOperation
+
+    none: bool
+    warning: bool
+    error: bool
+    fatal: bool
+
+    recoverable: bool
+    lifetime: bool
+    allocation: bool
+    pointer: bool
+    runtime: bool
+    internal: bool
+}
+
+form UniqueErrorStatistics {
+    total: u64
+
+    notes: u64
+    warnings: u64
+    errors: u64
+    fatals: u64
+
+    unique_errors: u64
+    allocation_errors: u64
+    lifetime_errors: u64
+    access_errors: u64
+    move_errors: u64
+    drop_errors: u64
+    pointer_errors: u64
+    layout_errors: u64
+    runtime_errors: u64
+    internal_errors: u64
+}
+
+// -----------------------------------------------------------------------------
+// Context
+// -----------------------------------------------------------------------------
+
+proc unique_error_context_empty()
+    -> UniqueErrorContext
+{
+    give UniqueErrorContext {
+        operation:
+            UniqueErrorOperation.None,
+
+        core_state:
+            unique_core.UniqueCoreState.Invalid,
+
+        alloc_state:
+            unique_alloc.UniqueAllocState.Invalid,
+
+        drop_state:
+            unique_drop.UniqueDropState.Invalid,
+
+        size:
+            0,
+
+        align:
+            0,
+
+        generation:
+            0,
+
+        revision:
+            0
+    };
+}
+
+proc unique_error_context_alloc(
+    allocation: ref unique_alloc.UniqueAlloc,
+    operation: UniqueErrorOperation
+) -> UniqueErrorContext {
+    give UniqueErrorContext {
+        operation:
+            operation,
+
+        core_state:
+            unique_core.UniqueCoreState.Invalid,
+
+        alloc_state:
+            unique_alloc.unique_alloc_state(
+                allocation
+            ),
+
+        drop_state:
+            unique_drop.UniqueDropState.Invalid,
+
+        size:
+            unique_alloc.unique_alloc_size(
+                allocation
+            ),
+
+        align:
+            unique_alloc.unique_alloc_align(
+                allocation
+            ),
+
+        generation:
+            unique_alloc.unique_alloc_generation(
+                allocation
+            ),
+
+        revision:
+            unique_alloc.unique_alloc_revision(
+                allocation
+            )
+    };
+}
+
+proc unique_error_context_drop(
+    drop: ref unique_drop.UniqueDrop,
+    operation: UniqueErrorOperation
+) -> UniqueErrorContext {
+    give UniqueErrorContext {
+        operation:
+            operation,
+
+        core_state:
+            unique_core.UniqueCoreState.Invalid,
+
+        alloc_state:
+            unique_alloc.UniqueAllocState.Invalid,
+
+        drop_state:
+            unique_drop.unique_drop_state(
+                drop
+            ),
+
+        size:
+            0,
+
+        align:
+            0,
+
+        generation:
+            unique_drop.unique_drop_generation(
+                drop
+            ),
+
+        revision:
+            unique_drop.unique_drop_revision(
+                drop
+            )
+    };
+}
+
+proc unique_error_context_core(
+    profile: unique_core.UniqueCoreProfile,
+    operation: UniqueErrorOperation
+) -> UniqueErrorContext {
+    give UniqueErrorContext {
+        operation:
+            operation,
+
+        core_state:
+            profile.info.state,
+
+        alloc_state:
+            unique_alloc.UniqueAllocState.Invalid,
+
+        drop_state:
+            unique_drop.UniqueDropState.Invalid,
+
+        size:
+            0,
+
+        align:
+            0,
+
+        generation:
+            profile.meta.generation,
+
+        revision:
+            profile.meta.revision
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Constructors
+// -----------------------------------------------------------------------------
+
+proc unique_error(
+    kind: UniqueErrorKind,
+    severity: UniqueErrorSeverity,
+    domain: UniqueErrorDomain,
+    context: UniqueErrorContext,
+    message: string
+) -> UniqueError {
+    give UniqueError {
+        kind:
+            kind,
+
+        severity:
+            severity,
+
+        domain:
+            domain,
+
+        context:
+            context,
+
+        message:
+            message
+    };
+}
+
+proc unique_error_none()
+    -> UniqueError
+{
+    give unique_error(
+        UniqueErrorKind.None,
+        UniqueErrorSeverity.Note,
+        UniqueErrorDomain.General,
+        unique_error_context_empty(),
+        ""
+    );
+}
+
+proc unique_error_simple(
+    kind: UniqueErrorKind,
+    message: string
+) -> UniqueError {
+    give unique_error(
+        kind,
+        UniqueErrorSeverity.Error,
+        unique_error_domain_for_kind(
+            kind
+        ),
+        unique_error_context_empty(),
+        message
+    );
+}
+
+proc unique_error_warning(
+    kind: UniqueErrorKind,
+    message: string
+) -> UniqueError {
+    give unique_error(
+        kind,
+        UniqueErrorSeverity.Warning,
+        unique_error_domain_for_kind(
+            kind
+        ),
+        unique_error_context_empty(),
+        message
+    );
+}
+
+proc unique_error_fatal(
+    kind: UniqueErrorKind,
+    message: string
+) -> UniqueError {
+    give unique_error(
+        kind,
+        UniqueErrorSeverity.Fatal,
+        unique_error_domain_for_kind(
+            kind
+        ),
+        unique_error_context_empty(),
+        message
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Generic unique errors
+// -----------------------------------------------------------------------------
+
+proc unique_error_invalid_unique()
+    -> UniqueError
+{
+    give unique_error(
+        UniqueErrorKind.InvalidUnique,
+        UniqueErrorSeverity.Fatal,
+        UniqueErrorDomain.Unique,
+        unique_error_context_empty(),
+        "unique value is invalid"
+    );
+}
+
+proc unique_error_invalid_state(
+    profile: unique_core.UniqueCoreProfile
+) -> UniqueError {
+    give unique_error(
+        UniqueErrorKind.InvalidState,
+        UniqueErrorSeverity.Error,
+        UniqueErrorDomain.Unique,
+        unique_error_context_core(
+            profile,
+            UniqueErrorOperation.Validate
+        ),
+        "unique ownership state is invalid"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Allocation errors
+// -----------------------------------------------------------------------------
+
+proc unique_error_allocation_failed(
+    size: usize,
+    align: usize
+) -> UniqueError {
+    let context =
+        unique_error_context_empty();
+
+    set context.operation =
+        UniqueErrorOperation.Allocate;
+
+    set context.size =
+        size;
+
+    set context.align =
+        align;
+
+    give unique_error(
+        UniqueErrorKind.AllocationFailed,
+        UniqueErrorSeverity.Error,
+        UniqueErrorDomain.Allocation,
+        context,
+        "unique allocation failed"
+    );
+}
+
+proc unique_error_reallocation_failed(
+    allocation: ref unique_alloc.UniqueAlloc
+) -> UniqueError {
+    give unique_error(
+        UniqueErrorKind.ReallocationFailed,
+        UniqueErrorSeverity.Error,
+        UniqueErrorDomain.Allocation,
+        unique_error_context_alloc(
+            allocation,
+            UniqueErrorOperation.Reallocate
+        ),
+        "unique reallocation failed"
+    );
+}
+
+proc unique_error_resize_failed(
+    allocation: ref unique_alloc.UniqueAlloc
+) -> UniqueError {
+    give unique_error(
+        UniqueErrorKind.ResizeFailed,
+        UniqueErrorSeverity.Error,
+        UniqueErrorDomain.Allocation,
+        unique_error_context_alloc(
+            allocation,
+            UniqueErrorOperation.Resize
+        ),
+        "unique allocation resize failed"
+    );
+}
+
+proc unique_error_release_failed(
+    allocation: ref unique_alloc.UniqueAlloc
+) -> UniqueError {
+    give unique_error(
+        UniqueErrorKind.ReleaseFailed,
+        UniqueErrorSeverity.Error,
+        UniqueErrorDomain.Allocation,
+        unique_error_context_alloc(
+            allocation,
+            UniqueErrorOperation.Release
+        ),
+        "unique allocation release failed"
+    );
+}
+
+proc unique_error_invalid_allocation(
+    allocation: ref unique_alloc.UniqueAlloc
+) -> UniqueError {
+    give unique_error(
+        UniqueErrorKind.InvalidAllocation,
+        UniqueErrorSeverity.Fatal,
+        UniqueErrorDomain.Allocation,
+        unique_error_context_alloc(
+            allocation,
+            UniqueErrorOperation.Validate
+        ),
+        "unique allocation is invalid"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Layout errors
+// -----------------------------------------------------------------------------
+
+proc unique_error_invalid_size(
+    size: usize
+) -> UniqueError {
+    let context =
+        unique_error_context_empty();
+
+    set context.size =
+        size;
+
+    give unique_error(
+        UniqueErrorKind.InvalidSize,
+        UniqueErrorSeverity.Error,
+        UniqueErrorDomain.Layout,
+        context,
+        "unique allocation size is invalid"
+    );
+}
+
+proc unique_error_invalid_alignment(
+    align: usize
+) -> UniqueError {
+    let context =
+        unique_error_context_empty();
+
+    set context.align =
+        align;
+
+    give unique_error(
+        UniqueErrorKind.InvalidAlignment,
+        UniqueErrorSeverity.Error,
+        UniqueErrorDomain.Layout,
+        context,
+        "unique allocation alignment is invalid"
+    );
+}
+
+proc unique_error_layout_mismatch(
+    allocation: ref unique_alloc.UniqueAlloc
+) -> UniqueError {
+    give unique_error(
+        UniqueErrorKind.LayoutMismatch,
+        UniqueErrorSeverity.Error,
+        UniqueErrorDomain.Layout,
+        unique_error_context_alloc(
+            allocation,
+            UniqueErrorOperation.Get
+        ),
+        "unique allocation layout does not match requested type"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Lifetime errors
+// -----------------------------------------------------------------------------
+
+proc unique_error_value_dropped()
+    -> UniqueError
+{
+    give unique_error(
+        UniqueErrorKind.ValueDropped,
+        UniqueErrorSeverity.Error,
+        UniqueErrorDomain.Lifetime,
+        unique_error_context_empty(),
+        "unique value has already been dropped"
+    );
+}
+
+proc unique_error_value_moved()
+    -> UniqueError
+{
+    give unique_error(
+        UniqueErrorKind.ValueMoved,
+        UniqueErrorSeverity.Error,
+        UniqueErrorDomain.Move,
+        unique_error_context_empty(),
+        "unique value has already been moved"
+    );
+}
+
+proc unique_error_allocation_released()
+    -> UniqueError
+{
+    give unique_error(
+        UniqueErrorKind.AllocationReleased,
+        UniqueErrorSeverity.Error,
+        UniqueErrorDomain.Lifetime,
+        unique_error_context_empty(),
+        "unique allocation has already been released"
+    );
+}
+
+proc unique_error_already_dropped(
+    drop: ref unique_drop.UniqueDrop
+) -> UniqueError {
+    give unique_error(
+        UniqueErrorKind.AlreadyDropped,
+        UniqueErrorSeverity.Error,
+        UniqueErrorDomain.Drop,
+        unique_error_context_drop(
+            drop,
+            UniqueErrorOperation.DropValue
+        ),
+        "unique value has already been destroyed"
+    );
+}
+
+proc unique_error_already_released(
+    drop: ref unique_drop.UniqueDrop
+) -> UniqueError {
+    give unique_error(
+        UniqueErrorKind.AlreadyReleased,
+        UniqueErrorSeverity.Error,
+        UniqueErrorDomain.Drop,
+        unique_error_context_drop(
+            drop,
+            UniqueErrorOperation.DropAllocation
+        ),
+        "unique allocation has already been released"
+    );
+}
+
+proc unique_error_already_moved()
+    -> UniqueError
+{
+    give unique_error(
+        UniqueErrorKind.AlreadyMoved,
+        UniqueErrorSeverity.Error,
+        UniqueErrorDomain.Move,
+        unique_error_context_empty(),
+        "unique ownership has already been moved"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Pointer errors
+// -----------------------------------------------------------------------------
+
+proc unique_error_invalid_pointer()
+    -> UniqueError
+{
+    give unique_error(
+        UniqueErrorKind.InvalidPointer,
+        UniqueErrorSeverity.Fatal,
+        UniqueErrorDomain.Pointer,
+        unique_error_context_empty(),
+        "unique pointer is invalid"
+    );
+}
+
+proc unique_error_null_pointer()
+    -> UniqueError
+{
+    give unique_error(
+        UniqueErrorKind.NullPointer,
+        UniqueErrorSeverity.Fatal,
+        UniqueErrorDomain.Pointer,
+        unique_error_context_empty(),
+        "unique pointer is null"
+    );
+}
+
+proc unique_error_stale_reference()
+    -> UniqueError
+{
+    give unique_error(
+        UniqueErrorKind.StaleReference,
+        UniqueErrorSeverity.Error,
+        UniqueErrorDomain.Pointer,
+        unique_error_context_empty(),
+        "unique reference is stale"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Access errors
+// -----------------------------------------------------------------------------
+
+proc unique_error_read_denied()
+    -> UniqueError
+{
+    give unique_error(
+        UniqueErrorKind.ReadDenied,
+        UniqueErrorSeverity.Error,
+        UniqueErrorDomain.Access,
+        unique_error_context_empty(),
+        "unique value cannot be read in its current state"
+    );
+}
+
+proc unique_error_write_denied()
+    -> UniqueError
+{
+    give unique_error(
+        UniqueErrorKind.WriteDenied,
+        UniqueErrorSeverity.Error,
+        UniqueErrorDomain.Access,
+        unique_error_context_empty(),
+        "unique value cannot be modified in its current state"
+    );
+}
+
+proc unique_error_move_denied()
+    -> UniqueError
+{
+    give unique_error(
+        UniqueErrorKind.MoveDenied,
+        UniqueErrorSeverity.Error,
+        UniqueErrorDomain.Move,
+        unique_error_context_empty(),
+        "unique ownership cannot be moved in its current state"
+    );
+}
+
+proc unique_error_replace_denied()
+    -> UniqueError
+{
+    give unique_error(
+        UniqueErrorKind.ReplaceDenied,
+        UniqueErrorSeverity.Error,
+        UniqueErrorDomain.Access,
+        unique_error_context_empty(),
+        "unique value cannot be replaced in its current state"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Drop errors
+// -----------------------------------------------------------------------------
+
+proc unique_error_drop_failed(
+    drop: ref unique_drop.UniqueDrop
+) -> UniqueError {
+    give unique_error(
+        UniqueErrorKind.DropFailed,
+        UniqueErrorSeverity.Error,
+        UniqueErrorDomain.Drop,
+        unique_error_context_drop(
+            drop,
+            UniqueErrorOperation.DropAll
+        ),
+        "unique destruction failed"
+    );
+}
+
+proc unique_error_invalid_drop_state(
+    drop: ref unique_drop.UniqueDrop
+) -> UniqueError {
+    give unique_error(
+        UniqueErrorKind.InvalidDropState,
+        UniqueErrorSeverity.Fatal,
+        UniqueErrorDomain.Drop,
+        unique_error_context_drop(
+            drop,
+            UniqueErrorOperation.Validate
+        ),
+        "unique destruction state is invalid"
+    );
+}
+
+proc unique_error_forget_failed(
+    drop: ref unique_drop.UniqueDrop
+) -> UniqueError {
+    give unique_error(
+        UniqueErrorKind.ForgetFailed,
+        UniqueErrorSeverity.Error,
+        UniqueErrorDomain.Drop,
+        unique_error_context_drop(
+            drop,
+            UniqueErrorOperation.Forget
+        ),
+        "unique ownership cannot be forgotten"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Runtime / internal
+// -----------------------------------------------------------------------------
+
+proc unique_error_runtime(
+    message: string
+) -> UniqueError {
+    give unique_error(
+        UniqueErrorKind.RuntimeFailure,
+        UniqueErrorSeverity.Fatal,
+        UniqueErrorDomain.Runtime,
+        unique_error_context_empty(),
+        message
+    );
+}
+
+proc unique_error_internal(
+    message: string
+) -> UniqueError {
+    give unique_error(
+        UniqueErrorKind.Internal,
+        UniqueErrorSeverity.Fatal,
+        UniqueErrorDomain.Internal,
+        unique_error_context_empty(),
+        message
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Allocation checks
+// -----------------------------------------------------------------------------
+
+proc unique_error_for_allocate(
+    size: usize,
+    align: usize
+) -> UniqueError {
+    if size == 0 {
+        give unique_error_invalid_size(
+            size
+        );
+    }
+
+    if not unique_alloc.unique_alloc_valid_align(
+        align
+    ) {
+        give unique_error_invalid_alignment(
+            align
+        );
+    }
+
+    give unique_error_none();
+}
+
+proc unique_error_for_resize(
+    allocation: ref unique_alloc.UniqueAlloc,
+    new_size: usize
+) -> UniqueError {
+    if not unique_alloc.unique_alloc_is_allocated(
+        allocation
+    ) {
+        give unique_error_invalid_allocation(
+            allocation
+        );
+    }
+
+    if new_size == 0 {
+        give unique_error_invalid_size(
+            new_size
+        );
+    }
+
+    give unique_error_none();
+}
+
+proc unique_error_for_reallocate(
+    allocation: ref unique_alloc.UniqueAlloc,
+    new_size: usize,
+    new_align: usize
+) -> UniqueError {
+    if not unique_alloc.unique_alloc_is_allocated(
+        allocation
+    ) {
+        give unique_error_invalid_allocation(
+            allocation
+        );
+    }
+
+    if new_size == 0 {
+        give unique_error_invalid_size(
+            new_size
+        );
+    }
+
+    if not unique_alloc.unique_alloc_valid_align(
+        new_align
+    ) {
+        give unique_error_invalid_alignment(
+            new_align
+        );
+    }
+
+    give unique_error_none();
+}
+
+proc unique_error_for_release(
+    allocation: ref unique_alloc.UniqueAlloc
+) -> UniqueError {
+    if unique_alloc.unique_alloc_is_released(
+        allocation
+    ) {
+        give unique_error_allocation_released();
+    }
+
+    if not unique_alloc.unique_alloc_is_allocated(
+        allocation
+    ) {
+        give unique_error_invalid_allocation(
+            allocation
+        );
+    }
+
+    give unique_error_none();
+}
+
+// -----------------------------------------------------------------------------
+// Core access checks
+// -----------------------------------------------------------------------------
+
+proc unique_error_for_read(
+    flags: unique_core.UniqueCoreFlags
+) -> UniqueError {
+    let state =
+        unique_core.unique_core_state(
+            flags
+        );
+
+    if state == unique_core.UniqueCoreState.Moved {
+        give unique_error_value_moved();
+    }
+
+    if state == unique_core.UniqueCoreState.Dropped {
+        give unique_error_value_dropped();
+    }
+
+    if state == unique_core.UniqueCoreState.Released {
+        give unique_error_allocation_released();
+    }
+
+    if not unique_core.unique_core_can_read(
+        flags
+    ) {
+        give unique_error_read_denied();
+    }
+
+    give unique_error_none();
+}
+
+proc unique_error_for_write(
+    flags: unique_core.UniqueCoreFlags
+) -> UniqueError {
+    let state =
+        unique_core.unique_core_state(
+            flags
+        );
+
+    if state == unique_core.UniqueCoreState.Moved {
+        give unique_error_value_moved();
+    }
+
+    if state == unique_core.UniqueCoreState.Dropped {
+        give unique_error_value_dropped();
+    }
+
+    if state == unique_core.UniqueCoreState.Released {
+        give unique_error_allocation_released();
+    }
+
+    if not unique_core.unique_core_can_write(
+        flags
+    ) {
+        give unique_error_write_denied();
+    }
+
+    give unique_error_none();
+}
+
+proc unique_error_for_move(
+    flags: unique_core.UniqueCoreFlags
+) -> UniqueError {
+    if unique_core.unique_core_is_moved(
+        flags
+    ) {
+        give unique_error_already_moved();
+    }
+
+    if unique_core.unique_core_is_dropped(
+        flags
+    ) {
+        give unique_error_value_dropped();
+    }
+
+    if unique_core.unique_core_is_released(
+        flags
+    ) {
+        give unique_error_allocation_released();
+    }
+
+    if not unique_core.unique_core_can_move(
+        flags
+    ) {
+        give unique_error_move_denied();
+    }
+
+    give unique_error_none();
+}
+
+proc unique_error_for_replace(
+    flags: unique_core.UniqueCoreFlags
+) -> UniqueError {
+    let access =
+        unique_error_for_write(
+            flags
+        );
+
+    if not unique_error_is_none(
+        access
+    ) {
+        give access;
+    }
+
+    if not unique_core.unique_core_can_replace(
+        flags
+    ) {
+        give unique_error_replace_denied();
+    }
+
+    give unique_error_none();
+}
+
+// -----------------------------------------------------------------------------
+// Drop checks
+// -----------------------------------------------------------------------------
+
+proc unique_error_for_drop_value(
+    drop: ref unique_drop.UniqueDrop
+) -> UniqueError {
+    if drop.forgotten {
+        give unique_error_forget_failed(
+            drop
+        );
+    }
+
+    if drop.value_dropped {
+        give unique_error_already_dropped(
+            drop
+        );
+    }
+
+    if not unique_drop.unique_drop_can_drop_value(
+        drop
+    ) {
+        give unique_error_drop_failed(
+            drop
+        );
+    }
+
+    give unique_error_none();
+}
+
+proc unique_error_for_drop_allocation(
+    drop: ref unique_drop.UniqueDrop
+) -> UniqueError {
+    if drop.forgotten {
+        give unique_error_forget_failed(
+            drop
+        );
+    }
+
+    if drop.allocation_released {
+        give unique_error_already_released(
+            drop
+        );
+    }
+
+    if not drop.value_dropped {
+        give unique_error_simple(
+            UniqueErrorKind.DropFailed,
+            "unique value must be dropped before allocation release"
+        );
+    }
+
+    if not unique_drop.unique_drop_can_release_allocation(
+        drop
+    ) {
+        give unique_error_drop_failed(
+            drop
+        );
+    }
+
+    give unique_error_none();
+}
+
+proc unique_error_for_forget(
+    drop: ref unique_drop.UniqueDrop
+) -> UniqueError {
+    if drop.forgotten {
+        give unique_error_forget_failed(
+            drop
+        );
+    }
+
+    if drop.value_dropped
+        or drop.allocation_released
+    {
+        give unique_error_forget_failed(
+            drop
+        );
+    }
+
+    give unique_error_none();
+}
+
+// -----------------------------------------------------------------------------
+// Allocation validation mapping
+// -----------------------------------------------------------------------------
+
+proc unique_error_from_alloc_validation(
+    allocation: ref unique_alloc.UniqueAlloc,
+    validation: unique_alloc.UniqueAllocValidation
+) -> UniqueError {
+    if validation.valid {
+        give unique_error_none();
+    }
+
+    if not validation.state_valid {
+        give unique_error_invalid_allocation(
+            allocation
+        );
+    }
+
+    if not validation.size_valid {
+        give unique_error_invalid_size(
+            allocation.size
+        );
+    }
+
+    if not validation.align_valid {
+        give unique_error_invalid_alignment(
+            allocation.align
+        );
+    }
+
+    if not validation.allocation_valid {
+        give unique_error_invalid_allocation(
+            allocation
+        );
+    }
+
+    if not validation.generation_valid {
+        give unique_error_internal(
+            "unique allocation metadata is invalid"
+        );
+    }
+
+    give unique_error_internal(
+        "unknown unique allocation validation failure"
+    );
+}
+
+proc unique_error_from_allocation(
+    allocation: ref unique_alloc.UniqueAlloc
+) -> UniqueError {
+    give unique_error_from_alloc_validation(
+        allocation,
+        unique_alloc.unique_alloc_validate(
+            allocation
+        )
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Drop validation mapping
+// -----------------------------------------------------------------------------
+
+proc unique_error_from_drop_validation(
+    drop: ref unique_drop.UniqueDrop,
+    validation: unique_drop.UniqueDropValidation
+) -> UniqueError {
+    if validation.valid {
+        give unique_error_none();
+    }
+
+    if not validation.state_valid {
+        give unique_error_invalid_drop_state(
+            drop
+        );
+    }
+
+    if not validation.value_valid {
+        give unique_error_simple(
+            UniqueErrorKind.DropFailed,
+            "unique drop value lifecycle is invalid"
+        );
+    }
+
+    if not validation.allocation_valid {
+        give unique_error_simple(
+            UniqueErrorKind.DropFailed,
+            "unique drop allocation lifecycle is invalid"
+        );
+    }
+
+    if not validation.generation_valid {
+        give unique_error_internal(
+            "unique drop metadata is invalid"
+        );
+    }
+
+    give unique_error_internal(
+        "unknown unique drop validation failure"
+    );
+}
+
+proc unique_error_from_drop(
+    drop: ref unique_drop.UniqueDrop
+) -> UniqueError {
+    give unique_error_from_drop_validation(
+        drop,
+        unique_drop.unique_drop_validate(
+            drop
+        )
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Core validation mapping
+// -----------------------------------------------------------------------------
+
+proc unique_error_from_core_validation(
+    profile: unique_core.UniqueCoreProfile,
+    validation: unique_core.UniqueCoreValidation
+) -> UniqueError {
+    if validation.valid {
+        give unique_error_none();
+    }
+
+    let context =
+        unique_error_context_core(
+            profile,
+            UniqueErrorOperation.Validate
+        );
+
+    if not validation.flags_valid {
+        give unique_error(
+            UniqueErrorKind.InvalidUnique,
+            UniqueErrorSeverity.Fatal,
+            UniqueErrorDomain.Unique,
+            context,
+            "unique lifecycle flags are invalid"
+        );
+    }
+
+    if not validation.state_valid {
+        give unique_error(
+            UniqueErrorKind.InvalidState,
+            UniqueErrorSeverity.Error,
+            UniqueErrorDomain.Unique,
+            context,
+            "unique state classification is invalid"
+        );
+    }
+
+    if not validation.access_valid {
+        give unique_error(
+            UniqueErrorKind.ReadDenied,
+            UniqueErrorSeverity.Error,
+            UniqueErrorDomain.Access,
+            context,
+            "unique access classification is invalid"
+        );
+    }
+
+    if not validation.ownership_valid {
+        give unique_error(
+            UniqueErrorKind.InvalidUnique,
+            UniqueErrorSeverity.Error,
+            UniqueErrorDomain.Unique,
+            context,
+            "unique ownership classification is invalid"
+        );
+    }
+
+    if not validation.generation_valid {
+        give unique_error(
+            UniqueErrorKind.Internal,
+            UniqueErrorSeverity.Fatal,
+            UniqueErrorDomain.Internal,
+            context,
+            "unique generation metadata is invalid"
+        );
+    }
+
+    give unique_error_internal(
+        "unknown unique core validation failure"
+    );
+}
+
+proc unique_error_from_core(
+    profile: unique_core.UniqueCoreProfile
+) -> UniqueError {
+    give unique_error_from_core_validation(
+        profile,
+        unique_core.unique_core_validate(
+            profile
+        )
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Predicates
+// -----------------------------------------------------------------------------
+
+proc unique_error_is_none(
+    error: UniqueError
+) -> bool {
+    give error.kind
+        == UniqueErrorKind.None;
+}
+
+proc unique_error_is_warning(
+    error: UniqueError
+) -> bool {
+    give error.severity
+        == UniqueErrorSeverity.Warning;
+}
+
+proc unique_error_is_error(
+    error: UniqueError
+) -> bool {
+    give error.severity == UniqueErrorSeverity.Error
+        or error.severity == UniqueErrorSeverity.Fatal;
+}
+
+proc unique_error_is_fatal(
+    error: UniqueError
+) -> bool {
+    give error.severity
+        == UniqueErrorSeverity.Fatal;
+}
+
+proc unique_error_is_recoverable(
+    error: UniqueError
+) -> bool {
+    give error.severity == UniqueErrorSeverity.Note
+        or error.severity == UniqueErrorSeverity.Warning
+        or error.severity == UniqueErrorSeverity.Error;
+}
+
+proc unique_error_is_allocation(
+    error: UniqueError
+) -> bool {
+    give error.domain
+        == UniqueErrorDomain.Allocation;
+}
+
+proc unique_error_is_lifetime(
+    error: UniqueError
+) -> bool {
+    give error.domain
+        == UniqueErrorDomain.Lifetime;
+}
+
+proc unique_error_is_access(
+    error: UniqueError
+) -> bool {
+    give error.domain
+        == UniqueErrorDomain.Access;
+}
+
+proc unique_error_is_move(
+    error: UniqueError
+) -> bool {
+    give error.domain
+        == UniqueErrorDomain.Move;
+}
+
+proc unique_error_is_drop(
+    error: UniqueError
+) -> bool {
+    give error.domain
+        == UniqueErrorDomain.Drop;
+}
+
+proc unique_error_is_pointer(
+    error: UniqueError
+) -> bool {
+    give error.domain
+        == UniqueErrorDomain.Pointer;
+}
+
+proc unique_error_is_layout(
+    error: UniqueError
+) -> bool {
+    give error.domain
+        == UniqueErrorDomain.Layout;
+}
+
+proc unique_error_is_stale(
+    error: UniqueError
+) -> bool {
+    give error.kind
+        == UniqueErrorKind.StaleReference;
+}
+
+proc unique_error_is_moved(
+    error: UniqueError
+) -> bool {
+    give error.kind == UniqueErrorKind.ValueMoved
+        or error.kind == UniqueErrorKind.AlreadyMoved;
+}
+
+proc unique_error_is_dropped(
+    error: UniqueError
+) -> bool {
+    give error.kind == UniqueErrorKind.ValueDropped
+        or error.kind == UniqueErrorKind.AlreadyDropped;
+}
+
+proc unique_error_is_released(
+    error: UniqueError
+) -> bool {
+    give error.kind == UniqueErrorKind.AllocationReleased
+        or error.kind == UniqueErrorKind.AlreadyReleased;
+}
+
+// -----------------------------------------------------------------------------
+// Profile
+// -----------------------------------------------------------------------------
+
+proc unique_error_profile(
+    error: UniqueError
+) -> UniqueErrorProfile {
+    give UniqueErrorProfile {
+        kind:
+            error.kind,
+
+        severity:
+            error.severity,
+
+        domain:
+            error.domain,
+
+        operation:
+            error.context.operation,
+
+        none:
+            unique_error_is_none(
+                error
+            ),
+
+        warning:
+            unique_error_is_warning(
+                error
+            ),
+
+        error:
+            unique_error_is_error(
+                error
+            ),
+
+        fatal:
+            unique_error_is_fatal(
+                error
+            ),
+
+        recoverable:
+            unique_error_is_recoverable(
+                error
+            ),
+
+        lifetime:
+            error.domain
+                == UniqueErrorDomain.Lifetime,
+
+        allocation:
+            error.domain
+                == UniqueErrorDomain.Allocation,
+
+        pointer:
+            error.domain
+                == UniqueErrorDomain.Pointer,
+
+        runtime:
+            error.domain
+                == UniqueErrorDomain.Runtime,
+
+        internal:
+            error.domain
+                == UniqueErrorDomain.Internal
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Domain mapping
+// -----------------------------------------------------------------------------
+
+proc unique_error_domain_for_kind(
+    kind: UniqueErrorKind
+) -> UniqueErrorDomain {
+    pick kind {
+        UniqueErrorKind.None {
+            give UniqueErrorDomain.General;
+        }
+
+        UniqueErrorKind.InvalidUnique
+        | UniqueErrorKind.InvalidState {
+            give UniqueErrorDomain.Unique;
+        }
+
+        UniqueErrorKind.InvalidAllocation
+        | UniqueErrorKind.AllocationFailed
+        | UniqueErrorKind.ReallocationFailed
+        | UniqueErrorKind.ResizeFailed
+        | UniqueErrorKind.ReleaseFailed {
+            give UniqueErrorDomain.Allocation;
+        }
+
+        UniqueErrorKind.ValueDropped
+        | UniqueErrorKind.AllocationReleased
+        | UniqueErrorKind.AlreadyDropped
+        | UniqueErrorKind.AlreadyReleased {
+            give UniqueErrorDomain.Lifetime;
+        }
+
+        UniqueErrorKind.ValueMoved
+        | UniqueErrorKind.AlreadyMoved
+        | UniqueErrorKind.MoveDenied {
+            give UniqueErrorDomain.Move;
+        }
+
+        UniqueErrorKind.ReadDenied
+        | UniqueErrorKind.WriteDenied
+        | UniqueErrorKind.ReplaceDenied {
+            give UniqueErrorDomain.Access;
+        }
+
+        UniqueErrorKind.DropFailed
+        | UniqueErrorKind.InvalidDropState
+        | UniqueErrorKind.ForgetFailed {
+            give UniqueErrorDomain.Drop;
+        }
+
+        UniqueErrorKind.InvalidPointer
+        | UniqueErrorKind.NullPointer
+        | UniqueErrorKind.StaleReference {
+            give UniqueErrorDomain.Pointer;
+        }
+
+        UniqueErrorKind.InvalidSize
+        | UniqueErrorKind.InvalidAlignment
+        | UniqueErrorKind.LayoutMismatch {
+            give UniqueErrorDomain.Layout;
+        }
+
+        UniqueErrorKind.RuntimeFailure {
+            give UniqueErrorDomain.Runtime;
+        }
+
+        UniqueErrorKind.Internal {
+            give UniqueErrorDomain.Internal;
+        }
+    }
+
+    give UniqueErrorDomain.Internal;
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc unique_error_statistics_empty()
+    -> UniqueErrorStatistics
+{
+    give UniqueErrorStatistics {
+        total: 0,
+
+        notes: 0,
+        warnings: 0,
+        errors: 0,
+        fatals: 0,
+
+        unique_errors: 0,
+        allocation_errors: 0,
+        lifetime_errors: 0,
+        access_errors: 0,
+        move_errors: 0,
+        drop_errors: 0,
+        pointer_errors: 0,
+        layout_errors: 0,
+        runtime_errors: 0,
+        internal_errors: 0
+    };
+}
+
+proc unique_error_statistics_record(
+    statistics: ref mut UniqueErrorStatistics,
+    error: UniqueError
+) {
+    if unique_error_is_none(
+        error
+    ) {
+        give;
+    }
+
+    set statistics.total =
+        statistics.total + 1;
+
+    pick error.severity {
+        UniqueErrorSeverity.Note {
+            set statistics.notes =
+                statistics.notes + 1;
+        }
+
+        UniqueErrorSeverity.Warning {
+            set statistics.warnings =
+                statistics.warnings + 1;
+        }
+
+        UniqueErrorSeverity.Error {
+            set statistics.errors =
+                statistics.errors + 1;
+        }
+
+        UniqueErrorSeverity.Fatal {
+            set statistics.fatals =
+                statistics.fatals + 1;
+        }
+    }
+
+    pick error.domain {
+        UniqueErrorDomain.General {}
+
+        UniqueErrorDomain.Unique {
+            set statistics.unique_errors =
+                statistics.unique_errors + 1;
+        }
+
+        UniqueErrorDomain.Allocation {
+            set statistics.allocation_errors =
+                statistics.allocation_errors + 1;
+        }
+
+        UniqueErrorDomain.Lifetime {
+            set statistics.lifetime_errors =
+                statistics.lifetime_errors + 1;
+        }
+
+        UniqueErrorDomain.Access {
+            set statistics.access_errors =
+                statistics.access_errors + 1;
+        }
+
+        UniqueErrorDomain.Move {
+            set statistics.move_errors =
+                statistics.move_errors + 1;
+        }
+
+        UniqueErrorDomain.Drop {
+            set statistics.drop_errors =
+                statistics.drop_errors + 1;
+        }
+
+        UniqueErrorDomain.Pointer {
+            set statistics.pointer_errors =
+                statistics.pointer_errors + 1;
+        }
+
+        UniqueErrorDomain.Layout {
+            set statistics.layout_errors =
+                statistics.layout_errors + 1;
+        }
+
+        UniqueErrorDomain.Runtime {
+            set statistics.runtime_errors =
+                statistics.runtime_errors + 1;
+        }
+
+        UniqueErrorDomain.Internal {
+            set statistics.internal_errors =
+                statistics.internal_errors + 1;
+        }
+    }
+}
+
+proc unique_error_statistics_total(
+    statistics: UniqueErrorStatistics
+) -> u64 {
+    give statistics.total;
+}
+
+proc unique_error_statistics_reset(
+    statistics: ref mut UniqueErrorStatistics
+) {
+    set *statistics =
+        unique_error_statistics_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc unique_error_kind_name(
+    kind: UniqueErrorKind
+) -> string {
+    pick kind {
+        UniqueErrorKind.None {
+            give "none";
+        }
+
+        UniqueErrorKind.InvalidUnique {
+            give "invalid-unique";
+        }
+
+        UniqueErrorKind.InvalidState {
+            give "invalid-state";
+        }
+
+        UniqueErrorKind.InvalidAllocation {
+            give "invalid-allocation";
+        }
+
+        UniqueErrorKind.InvalidDropState {
+            give "invalid-drop-state";
+        }
+
+        UniqueErrorKind.AllocationFailed {
+            give "allocation-failed";
+        }
+
+        UniqueErrorKind.ReallocationFailed {
+            give "reallocation-failed";
+        }
+
+        UniqueErrorKind.ResizeFailed {
+            give "resize-failed";
+        }
+
+        UniqueErrorKind.ReleaseFailed {
+            give "release-failed";
+        }
+
+        UniqueErrorKind.ValueDropped {
+            give "value-dropped";
+        }
+
+        UniqueErrorKind.ValueMoved {
+            give "value-moved";
+        }
+
+        UniqueErrorKind.AllocationReleased {
+            give "allocation-released";
+        }
+
+        UniqueErrorKind.AlreadyDropped {
+            give "already-dropped";
+        }
+
+        UniqueErrorKind.AlreadyReleased {
+            give "already-released";
+        }
+
+        UniqueErrorKind.AlreadyMoved {
+            give "already-moved";
+        }
+
+        UniqueErrorKind.InvalidPointer {
+            give "invalid-pointer";
+        }
+
+        UniqueErrorKind.NullPointer {
+            give "null-pointer";
+        }
+
+        UniqueErrorKind.StaleReference {
+            give "stale-reference";
+        }
+
+        UniqueErrorKind.ReadDenied {
+            give "read-denied";
+        }
+
+        UniqueErrorKind.WriteDenied {
+            give "write-denied";
+        }
+
+        UniqueErrorKind.MoveDenied {
+            give "move-denied";
+        }
+
+        UniqueErrorKind.ReplaceDenied {
+            give "replace-denied";
+        }
+
+        UniqueErrorKind.DropFailed {
+            give "drop-failed";
+        }
+
+        UniqueErrorKind.ForgetFailed {
+            give "forget-failed";
+        }
+
+        UniqueErrorKind.InvalidSize {
+            give "invalid-size";
+        }
+
+        UniqueErrorKind.InvalidAlignment {
+            give "invalid-alignment";
+        }
+
+        UniqueErrorKind.LayoutMismatch {
+            give "layout-mismatch";
+        }
+
+        UniqueErrorKind.RuntimeFailure {
+            give "runtime-failure";
+        }
+
+        UniqueErrorKind.Internal {
+            give "internal";
+        }
+    }
+
+    give "internal";
+}
+
+proc unique_error_severity_name(
+    severity: UniqueErrorSeverity
+) -> string {
+    pick severity {
+        UniqueErrorSeverity.Note {
+            give "note";
+        }
+
+        UniqueErrorSeverity.Warning {
+            give "warning";
+        }
+
+        UniqueErrorSeverity.Error {
+            give "error";
+        }
+
+        UniqueErrorSeverity.Fatal {
+            give "fatal";
+        }
+    }
+
+    give "error";
+}
+
+proc unique_error_domain_name(
+    domain: UniqueErrorDomain
+) -> string {
+    pick domain {
+        UniqueErrorDomain.General {
+            give "general";
+        }
+
+        UniqueErrorDomain.Unique {
+            give "unique";
+        }
+
+        UniqueErrorDomain.Allocation {
+            give "allocation";
+        }
+
+        UniqueErrorDomain.Lifetime {
+            give "lifetime";
+        }
+
+        UniqueErrorDomain.Access {
+            give "access";
+        }
+
+        UniqueErrorDomain.Move {
+            give "move";
+        }
+
+        UniqueErrorDomain.Drop {
+            give "drop";
+        }
+
+        UniqueErrorDomain.Pointer {
+            give "pointer";
+        }
+
+        UniqueErrorDomain.Layout {
+            give "layout";
+        }
+
+        UniqueErrorDomain.Runtime {
+            give "runtime";
+        }
+
+        UniqueErrorDomain.Internal {
+            give "internal";
+        }
+    }
+
+    give "internal";
+}
+
+proc unique_error_operation_name(
+    operation: UniqueErrorOperation
+) -> string {
+    pick operation {
+        UniqueErrorOperation.None {
+            give "none";
+        }
+
+        UniqueErrorOperation.Create {
+            give "create";
+        }
+
+        UniqueErrorOperation.Allocate {
+            give "allocate";
+        }
+
+        UniqueErrorOperation.Reallocate {
+            give "reallocate";
+        }
+
+        UniqueErrorOperation.Resize {
+            give "resize";
+        }
+
+        UniqueErrorOperation.Release {
+            give "release";
+        }
+
+        UniqueErrorOperation.Get {
+            give "get";
+        }
+
+        UniqueErrorOperation.GetMut {
+            give "get-mut";
+        }
+
+        UniqueErrorOperation.Replace {
+            give "replace";
+        }
+
+        UniqueErrorOperation.Move {
+            give "move";
+        }
+
+        UniqueErrorOperation.DropValue {
+            give "drop-value";
+        }
+
+        UniqueErrorOperation.DropAllocation {
+            give "drop-allocation";
+        }
+
+        UniqueErrorOperation.DropAll {
+            give "drop-all";
+        }
+
+        UniqueErrorOperation.Forget {
+            give "forget";
+        }
+
+        UniqueErrorOperation.Raw {
+            give "raw";
+        }
+
+        UniqueErrorOperation.Validate {
+            give "validate";
+        }
+    }
+
+    give "none";
+}
+
+// -----------------------------------------------------------------------------
+// Unique error model
+// -----------------------------------------------------------------------------
+//
+// `error.vitl` normalizes failures across the entire unique ownership stack.
+//
+// Covered domains:
+//
+//     ownership state
+//     allocation
+//     lifetime
+//     access
+//     move semantics
+//     destruction
+//     raw pointers
+//     layout
+//     runtime failures
+//
+// -----------------------------------------------------------------------------
+//
+// Allocation rules:
+//
+//     size > 0
+//
+//     align > 0
+//
+//     align must be a power of two
+//
+// Invalid layout:
+//
+//     InvalidSize
+//     InvalidAlignment
+//     LayoutMismatch
+//
+// Allocation failures:
+//
+//     AllocationFailed
+//     ReallocationFailed
+//     ResizeFailed
+//     ReleaseFailed
+//
+// -----------------------------------------------------------------------------
+//
+// Unique lifecycle:
+//
+//     Empty
+//       |
+//       | initialize
+//       v
+//
+//     Alive
+//       |
+//       +--------------------+
+//       |                    |
+//       | move               | drop
+//       v                    v
+//
+//     Moved               Dropped
+//                            |
+//                            | release
+//                            v
+//
+//                         Released
+//
+// Invalid operations map to:
+//
+//     ValueMoved
+//     ValueDropped
+//     AllocationReleased
+//     AlreadyMoved
+//     AlreadyDropped
+//     AlreadyReleased
+//
+// -----------------------------------------------------------------------------
+//
+// Access:
+//
+//     Alive
+//         => ReadWrite
+//
+// Every other lifecycle state:
+//
+//     => no access
+//
+// Failed reads:
+//
+//     ReadDenied
+//
+// Failed mutable access:
+//
+//     WriteDenied
+//
+// Failed replacement:
+//
+//     ReplaceDenied
+//
+// -----------------------------------------------------------------------------
+//
+// Move:
+//
+//     only Alive may move.
+//
+// Move from:
+//
+//     Moved
+//         => AlreadyMoved
+//
+//     Dropped
+//         => ValueDropped
+//
+//     Released
+//         => AllocationReleased
+//
+// -----------------------------------------------------------------------------
+//
+// Destruction:
+//
+//     drop value
+//         before
+//     release allocation
+//
+// Invalid destruction ordering:
+//
+//     release allocation while value alive
+//
+// is represented as:
+//
+//     DropFailed
+//
+// Forget suppresses destruction and ownership cleanup.
+//
+// Forget may only occur before:
+//
+//     value drop
+//     allocation release
+//
+// -----------------------------------------------------------------------------
+//
+// Pointer safety:
+//
+//     NullPointer
+//     InvalidPointer
+//     StaleReference
+//
+// `StaleReference` is intended for generation-based lifetime checks:
+//
+//     handle.generation != owner.generation
+//
+// -----------------------------------------------------------------------------
+//
+// Severity model:
+//
+//     Note
+//         informational
+//
+//     Warning
+//         non-fatal abnormal condition
+//
+//     Error
+//         operation failed but process may recover
+//
+//     Fatal
+//         invariant/runtime corruption
+//
+// -----------------------------------------------------------------------------
+//
+// Typical recoverable failures:
+//
+//     allocation failure
+//     resize failure
+//     move denied
+//     read after move
+//     double drop request
+//
+// Fatal failures:
+//
+//     invalid internal state
+//     invalid control metadata
+//     corrupt allocation
+//     invalid raw pointer
+//     runtime invariant violation
+//
+// -----------------------------------------------------------------------------
+//
+// Module split:
+//
+//     core.vitl
+//         lifecycle state machine
+//
+//     alloc.vitl
+//         allocation descriptor
+//
+//     drop.vitl
+//         deterministic destruction controller
+//
+//     error.vitl
+//         normalized error classification
+//
+// Higher layers:
+//
+//     inner.vitl
+//     owner.vitl
+//     raw.vitl
+//     unique.vitl
+//
+// can map every failure into `UniqueError` without duplicating error semantics.

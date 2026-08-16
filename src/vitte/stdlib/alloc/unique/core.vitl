@@ -1,0 +1,1332 @@
+space vitte/stdlib/alloc/unique/core
+
+export *
+
+pick UniqueCoreState {
+    Empty,
+    Alive,
+    Moved,
+    Dropped,
+    Released,
+    Invalid
+}
+
+pick UniqueCoreAccess {
+    None,
+    Read,
+    ReadWrite
+}
+
+pick UniqueCoreOwnership {
+    None,
+    Unique,
+    Dead
+}
+
+pick UniqueCoreTransitionKind {
+    None,
+    Initialize,
+    Move,
+    DropValue,
+    ReleaseAllocation,
+    Replace,
+    Touch,
+    Invalidate
+}
+
+form UniqueCoreMeta {
+    generation: u64
+    revision: u64
+}
+
+form UniqueCoreFlags {
+    initialized: bool
+    value_alive: bool
+    allocation_alive: bool
+    moved: bool
+}
+
+form UniqueCoreInfo {
+    state: UniqueCoreState
+    access: UniqueCoreAccess
+    ownership: UniqueCoreOwnership
+
+    initialized: bool
+    alive: bool
+    moved: bool
+    dropped: bool
+    released: bool
+    valid: bool
+}
+
+form UniqueCoreProfile {
+    flags: UniqueCoreFlags
+    meta: UniqueCoreMeta
+    info: UniqueCoreInfo
+}
+
+form UniqueCoreSnapshot {
+    state: UniqueCoreState
+
+    initialized: bool
+    value_alive: bool
+    allocation_alive: bool
+    moved: bool
+
+    generation: u64
+    revision: u64
+}
+
+form UniqueCoreDelta {
+    generation: int
+    revision: int
+
+    state_changed: bool
+    initialized_changed: bool
+    value_alive_changed: bool
+    allocation_alive_changed: bool
+    moved_changed: bool
+
+    changed: bool
+}
+
+form UniqueCoreValidation {
+    valid: bool
+
+    flags_valid: bool
+    state_valid: bool
+    access_valid: bool
+    ownership_valid: bool
+    generation_valid: bool
+}
+
+form UniqueCoreTransition {
+    before: UniqueCoreSnapshot
+    after: UniqueCoreSnapshot
+
+    kind: UniqueCoreTransitionKind
+
+    valid: bool
+}
+
+form UniqueCoreStatistics {
+    initializations: u64
+    moves: u64
+    value_drops: u64
+    allocation_releases: u64
+    replacements: u64
+    touches: u64
+    invalidations: u64
+}
+
+// -----------------------------------------------------------------------------
+// Metadata
+// -----------------------------------------------------------------------------
+
+proc unique_core_meta()
+    -> UniqueCoreMeta
+{
+    give UniqueCoreMeta {
+        generation: 1,
+        revision: 1
+    };
+}
+
+proc unique_core_meta_empty()
+    -> UniqueCoreMeta
+{
+    give UniqueCoreMeta {
+        generation: 0,
+        revision: 0
+    };
+}
+
+proc unique_core_touch(
+    meta: UniqueCoreMeta
+) -> UniqueCoreMeta {
+    let out = meta;
+
+    set out.revision =
+        out.revision + 1;
+
+    give out;
+}
+
+proc unique_core_advance_generation(
+    meta: UniqueCoreMeta
+) -> UniqueCoreMeta {
+    let out = meta;
+
+    set out.generation =
+        out.generation + 1;
+
+    set out.revision =
+        out.revision + 1;
+
+    give out;
+}
+
+// -----------------------------------------------------------------------------
+// Flags
+// -----------------------------------------------------------------------------
+
+proc unique_core_flags_empty()
+    -> UniqueCoreFlags
+{
+    give UniqueCoreFlags {
+        initialized: false,
+        value_alive: false,
+        allocation_alive: false,
+        moved: false
+    };
+}
+
+proc unique_core_flags_new()
+    -> UniqueCoreFlags
+{
+    give UniqueCoreFlags {
+        initialized: true,
+        value_alive: true,
+        allocation_alive: true,
+        moved: false
+    };
+}
+
+proc unique_core_flags_moved()
+    -> UniqueCoreFlags
+{
+    give UniqueCoreFlags {
+        initialized: true,
+        value_alive: false,
+        allocation_alive: false,
+        moved: true
+    };
+}
+
+proc unique_core_flags_dropped()
+    -> UniqueCoreFlags
+{
+    give UniqueCoreFlags {
+        initialized: true,
+        value_alive: false,
+        allocation_alive: true,
+        moved: false
+    };
+}
+
+proc unique_core_flags_released()
+    -> UniqueCoreFlags
+{
+    give UniqueCoreFlags {
+        initialized: true,
+        value_alive: false,
+        allocation_alive: false,
+        moved: false
+    };
+}
+
+// -----------------------------------------------------------------------------
+// State
+// -----------------------------------------------------------------------------
+
+proc unique_core_state(
+    flags: UniqueCoreFlags
+) -> UniqueCoreState {
+    if not flags.initialized {
+        if flags.value_alive
+            or flags.allocation_alive
+            or flags.moved
+        {
+            give UniqueCoreState.Invalid;
+        }
+
+        give UniqueCoreState.Empty;
+    }
+
+    if flags.moved {
+        if flags.value_alive
+            or flags.allocation_alive
+        {
+            give UniqueCoreState.Invalid;
+        }
+
+        give UniqueCoreState.Moved;
+    }
+
+    if flags.value_alive {
+        if not flags.allocation_alive {
+            give UniqueCoreState.Invalid;
+        }
+
+        give UniqueCoreState.Alive;
+    }
+
+    if flags.allocation_alive {
+        give UniqueCoreState.Dropped;
+    }
+
+    give UniqueCoreState.Released;
+}
+
+proc unique_core_access(
+    flags: UniqueCoreFlags
+) -> UniqueCoreAccess {
+    if unique_core_state(flags)
+        == UniqueCoreState.Alive
+    {
+        give UniqueCoreAccess.ReadWrite;
+    }
+
+    give UniqueCoreAccess.None;
+}
+
+proc unique_core_ownership(
+    flags: UniqueCoreFlags
+) -> UniqueCoreOwnership {
+    if unique_core_state(flags)
+        == UniqueCoreState.Alive
+    {
+        give UniqueCoreOwnership.Unique;
+    }
+
+    if unique_core_state(flags)
+        == UniqueCoreState.Empty
+    {
+        give UniqueCoreOwnership.None;
+    }
+
+    give UniqueCoreOwnership.Dead;
+}
+
+proc unique_core_info(
+    flags: UniqueCoreFlags
+) -> UniqueCoreInfo {
+    let state =
+        unique_core_state(
+            flags
+        );
+
+    give UniqueCoreInfo {
+        state:
+            state,
+
+        access:
+            unique_core_access(
+                flags
+            ),
+
+        ownership:
+            unique_core_ownership(
+                flags
+            ),
+
+        initialized:
+            flags.initialized,
+
+        alive:
+            state == UniqueCoreState.Alive,
+
+        moved:
+            state == UniqueCoreState.Moved,
+
+        dropped:
+            state == UniqueCoreState.Dropped,
+
+        released:
+            state == UniqueCoreState.Released,
+
+        valid:
+            state != UniqueCoreState.Invalid
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Predicates
+// -----------------------------------------------------------------------------
+
+proc unique_core_is_empty(
+    flags: UniqueCoreFlags
+) -> bool {
+    give unique_core_state(flags)
+        == UniqueCoreState.Empty;
+}
+
+proc unique_core_is_alive(
+    flags: UniqueCoreFlags
+) -> bool {
+    give unique_core_state(flags)
+        == UniqueCoreState.Alive;
+}
+
+proc unique_core_is_moved(
+    flags: UniqueCoreFlags
+) -> bool {
+    give unique_core_state(flags)
+        == UniqueCoreState.Moved;
+}
+
+proc unique_core_is_dropped(
+    flags: UniqueCoreFlags
+) -> bool {
+    give unique_core_state(flags)
+        == UniqueCoreState.Dropped;
+}
+
+proc unique_core_is_released(
+    flags: UniqueCoreFlags
+) -> bool {
+    give unique_core_state(flags)
+        == UniqueCoreState.Released;
+}
+
+proc unique_core_is_valid(
+    flags: UniqueCoreFlags
+) -> bool {
+    give unique_core_state(flags)
+        != UniqueCoreState.Invalid;
+}
+
+proc unique_core_can_read(
+    flags: UniqueCoreFlags
+) -> bool {
+    give unique_core_access(flags)
+        == UniqueCoreAccess.ReadWrite;
+}
+
+proc unique_core_can_write(
+    flags: UniqueCoreFlags
+) -> bool {
+    give unique_core_access(flags)
+        == UniqueCoreAccess.ReadWrite;
+}
+
+proc unique_core_can_move(
+    flags: UniqueCoreFlags
+) -> bool {
+    give unique_core_is_alive(
+        flags
+    );
+}
+
+proc unique_core_can_drop_value(
+    flags: UniqueCoreFlags
+) -> bool {
+    give flags.initialized
+        and flags.value_alive
+        and flags.allocation_alive
+        and not flags.moved;
+}
+
+proc unique_core_can_release_allocation(
+    flags: UniqueCoreFlags
+) -> bool {
+    give flags.initialized
+        and not flags.value_alive
+        and flags.allocation_alive
+        and not flags.moved;
+}
+
+proc unique_core_can_replace(
+    flags: UniqueCoreFlags
+) -> bool {
+    give unique_core_is_alive(
+        flags
+    );
+}
+
+// -----------------------------------------------------------------------------
+// State transitions
+// -----------------------------------------------------------------------------
+
+proc unique_core_initialize(
+    flags: UniqueCoreFlags
+) -> UniqueCoreFlags {
+    if flags.initialized {
+        give flags;
+    }
+
+    give unique_core_flags_new();
+}
+
+proc unique_core_move(
+    flags: UniqueCoreFlags
+) -> UniqueCoreFlags {
+    if not unique_core_can_move(
+        flags
+    ) {
+        give flags;
+    }
+
+    give unique_core_flags_moved();
+}
+
+proc unique_core_drop_value(
+    flags: UniqueCoreFlags
+) -> UniqueCoreFlags {
+    if not unique_core_can_drop_value(
+        flags
+    ) {
+        give flags;
+    }
+
+    give unique_core_flags_dropped();
+}
+
+proc unique_core_release_allocation(
+    flags: UniqueCoreFlags
+) -> UniqueCoreFlags {
+    if not unique_core_can_release_allocation(
+        flags
+    ) {
+        give flags;
+    }
+
+    give unique_core_flags_released();
+}
+
+proc unique_core_replace(
+    flags: UniqueCoreFlags
+) -> UniqueCoreFlags {
+    if not unique_core_can_replace(
+        flags
+    ) {
+        give flags;
+    }
+
+    give flags;
+}
+
+// -----------------------------------------------------------------------------
+// Profile
+// -----------------------------------------------------------------------------
+
+proc unique_core_profile(
+    flags: UniqueCoreFlags,
+    meta: UniqueCoreMeta
+) -> UniqueCoreProfile {
+    give UniqueCoreProfile {
+        flags:
+            flags,
+
+        meta:
+            meta,
+
+        info:
+            unique_core_info(
+                flags
+            )
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Snapshot
+// -----------------------------------------------------------------------------
+
+proc unique_core_snapshot(
+    profile: UniqueCoreProfile
+) -> UniqueCoreSnapshot {
+    give UniqueCoreSnapshot {
+        state:
+            profile.info.state,
+
+        initialized:
+            profile.flags.initialized,
+
+        value_alive:
+            profile.flags.value_alive,
+
+        allocation_alive:
+            profile.flags.allocation_alive,
+
+        moved:
+            profile.flags.moved,
+
+        generation:
+            profile.meta.generation,
+
+        revision:
+            profile.meta.revision
+    };
+}
+
+proc unique_core_snapshot_equal(
+    left: UniqueCoreSnapshot,
+    right: UniqueCoreSnapshot
+) -> bool {
+    give left.state == right.state
+        and left.initialized == right.initialized
+        and left.value_alive == right.value_alive
+        and left.allocation_alive == right.allocation_alive
+        and left.moved == right.moved
+        and left.generation == right.generation
+        and left.revision == right.revision;
+}
+
+proc unique_core_snapshot_changed(
+    left: UniqueCoreSnapshot,
+    right: UniqueCoreSnapshot
+) -> bool {
+    give not unique_core_snapshot_equal(
+        left,
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Delta
+// -----------------------------------------------------------------------------
+
+proc unique_core_u64_delta(
+    before: u64,
+    after: u64
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc unique_core_delta(
+    before: UniqueCoreSnapshot,
+    after: UniqueCoreSnapshot
+) -> UniqueCoreDelta {
+    let generation =
+        unique_core_u64_delta(
+            before.generation,
+            after.generation
+        );
+
+    let revision =
+        unique_core_u64_delta(
+            before.revision,
+            after.revision
+        );
+
+    let state_changed =
+        before.state
+            != after.state;
+
+    let initialized_changed =
+        before.initialized
+            != after.initialized;
+
+    let value_alive_changed =
+        before.value_alive
+            != after.value_alive;
+
+    let allocation_alive_changed =
+        before.allocation_alive
+            != after.allocation_alive;
+
+    let moved_changed =
+        before.moved
+            != after.moved;
+
+    give UniqueCoreDelta {
+        generation:
+            generation,
+
+        revision:
+            revision,
+
+        state_changed:
+            state_changed,
+
+        initialized_changed:
+            initialized_changed,
+
+        value_alive_changed:
+            value_alive_changed,
+
+        allocation_alive_changed:
+            allocation_alive_changed,
+
+        moved_changed:
+            moved_changed,
+
+        changed:
+            generation != 0
+            or revision != 0
+            or state_changed
+            or initialized_changed
+            or value_alive_changed
+            or allocation_alive_changed
+            or moved_changed
+    };
+}
+
+proc unique_core_delta_is_zero(
+    delta: UniqueCoreDelta
+) -> bool {
+    give not delta.changed;
+}
+
+// -----------------------------------------------------------------------------
+// Transition classification
+// -----------------------------------------------------------------------------
+
+proc unique_core_transition_kind(
+    before: UniqueCoreSnapshot,
+    after: UniqueCoreSnapshot
+) -> UniqueCoreTransitionKind {
+    if unique_core_snapshot_equal(
+        before,
+        after
+    ) {
+        give UniqueCoreTransitionKind.None;
+    }
+
+    if after.state == UniqueCoreState.Invalid {
+        give UniqueCoreTransitionKind.Invalidate;
+    }
+
+    if before.state == UniqueCoreState.Empty
+        and after.state == UniqueCoreState.Alive
+    {
+        give UniqueCoreTransitionKind.Initialize;
+    }
+
+    if before.state == UniqueCoreState.Alive
+        and after.state == UniqueCoreState.Moved
+    {
+        give UniqueCoreTransitionKind.Move;
+    }
+
+    if before.state == UniqueCoreState.Alive
+        and after.state == UniqueCoreState.Dropped
+    {
+        give UniqueCoreTransitionKind.DropValue;
+    }
+
+    if before.state == UniqueCoreState.Dropped
+        and after.state == UniqueCoreState.Released
+    {
+        give UniqueCoreTransitionKind.ReleaseAllocation;
+    }
+
+    if before.state == UniqueCoreState.Alive
+        and after.state == UniqueCoreState.Alive
+        and after.generation == before.generation
+        and after.revision > before.revision
+    {
+        give UniqueCoreTransitionKind.Replace;
+    }
+
+    if after.revision > before.revision {
+        give UniqueCoreTransitionKind.Touch;
+    }
+
+    give UniqueCoreTransitionKind.None;
+}
+
+proc unique_core_transition_valid(
+    before: UniqueCoreSnapshot,
+    after: UniqueCoreSnapshot,
+    kind: UniqueCoreTransitionKind
+) -> bool {
+    pick kind {
+        UniqueCoreTransitionKind.None {
+            give unique_core_snapshot_equal(
+                before,
+                after
+            );
+        }
+
+        UniqueCoreTransitionKind.Initialize {
+            give before.state == UniqueCoreState.Empty
+                and after.state == UniqueCoreState.Alive
+                and after.initialized
+                and after.value_alive
+                and after.allocation_alive
+                and not after.moved;
+        }
+
+        UniqueCoreTransitionKind.Move {
+            give before.state == UniqueCoreState.Alive
+                and after.state == UniqueCoreState.Moved
+                and after.initialized
+                and not after.value_alive
+                and not after.allocation_alive
+                and after.moved;
+        }
+
+        UniqueCoreTransitionKind.DropValue {
+            give before.state == UniqueCoreState.Alive
+                and after.state == UniqueCoreState.Dropped
+                and not after.value_alive
+                and after.allocation_alive;
+        }
+
+        UniqueCoreTransitionKind.ReleaseAllocation {
+            give before.state == UniqueCoreState.Dropped
+                and after.state == UniqueCoreState.Released
+                and not after.value_alive
+                and not after.allocation_alive;
+        }
+
+        UniqueCoreTransitionKind.Replace {
+            give before.state == UniqueCoreState.Alive
+                and after.state == UniqueCoreState.Alive
+                and before.generation == after.generation
+                and after.revision > before.revision;
+        }
+
+        UniqueCoreTransitionKind.Touch {
+            give after.revision
+                > before.revision;
+        }
+
+        UniqueCoreTransitionKind.Invalidate {
+            give after.state
+                == UniqueCoreState.Invalid;
+        }
+    }
+
+    give false;
+}
+
+proc unique_core_transition(
+    before: UniqueCoreSnapshot,
+    after: UniqueCoreSnapshot
+) -> UniqueCoreTransition {
+    let kind =
+        unique_core_transition_kind(
+            before,
+            after
+        );
+
+    give UniqueCoreTransition {
+        before:
+            before,
+
+        after:
+            after,
+
+        kind:
+            kind,
+
+        valid:
+            unique_core_transition_valid(
+                before,
+                after,
+                kind
+            )
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+proc unique_core_flags_valid(
+    flags: UniqueCoreFlags
+) -> bool {
+    give unique_core_state(
+        flags
+    ) != UniqueCoreState.Invalid;
+}
+
+proc unique_core_state_valid(
+    profile: UniqueCoreProfile
+) -> bool {
+    give profile.info.state
+        == unique_core_state(
+            profile.flags
+        );
+}
+
+proc unique_core_access_valid(
+    profile: UniqueCoreProfile
+) -> bool {
+    give profile.info.access
+        == unique_core_access(
+            profile.flags
+        );
+}
+
+proc unique_core_ownership_valid(
+    profile: UniqueCoreProfile
+) -> bool {
+    give profile.info.ownership
+        == unique_core_ownership(
+            profile.flags
+        );
+}
+
+proc unique_core_validate(
+    profile: UniqueCoreProfile
+) -> UniqueCoreValidation {
+    let flags_valid =
+        unique_core_flags_valid(
+            profile.flags
+        );
+
+    let state_valid =
+        unique_core_state_valid(
+            profile
+        );
+
+    let access_valid =
+        unique_core_access_valid(
+            profile
+        );
+
+    let ownership_valid =
+        unique_core_ownership_valid(
+            profile
+        );
+
+    let generation_valid =
+        profile.meta.generation > 0
+        and profile.meta.revision > 0;
+
+    give UniqueCoreValidation {
+        valid:
+            flags_valid
+            and state_valid
+            and access_valid
+            and ownership_valid
+            and generation_valid,
+
+        flags_valid:
+            flags_valid,
+
+        state_valid:
+            state_valid,
+
+        access_valid:
+            access_valid,
+
+        ownership_valid:
+            ownership_valid,
+
+        generation_valid:
+            generation_valid
+    };
+}
+
+proc unique_core_invariant_holds(
+    profile: UniqueCoreProfile
+) -> bool {
+    give unique_core_validate(
+        profile
+    ).valid;
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc unique_core_statistics_empty()
+    -> UniqueCoreStatistics
+{
+    give UniqueCoreStatistics {
+        initializations: 0,
+        moves: 0,
+        value_drops: 0,
+        allocation_releases: 0,
+        replacements: 0,
+        touches: 0,
+        invalidations: 0
+    };
+}
+
+proc unique_core_statistics_record(
+    statistics: ref mut UniqueCoreStatistics,
+    transition: UniqueCoreTransition
+) {
+    if not transition.valid {
+        set statistics.invalidations =
+            statistics.invalidations + 1;
+
+        give;
+    }
+
+    pick transition.kind {
+        UniqueCoreTransitionKind.None {}
+
+        UniqueCoreTransitionKind.Initialize {
+            set statistics.initializations =
+                statistics.initializations + 1;
+        }
+
+        UniqueCoreTransitionKind.Move {
+            set statistics.moves =
+                statistics.moves + 1;
+        }
+
+        UniqueCoreTransitionKind.DropValue {
+            set statistics.value_drops =
+                statistics.value_drops + 1;
+        }
+
+        UniqueCoreTransitionKind.ReleaseAllocation {
+            set statistics.allocation_releases =
+                statistics.allocation_releases + 1;
+        }
+
+        UniqueCoreTransitionKind.Replace {
+            set statistics.replacements =
+                statistics.replacements + 1;
+        }
+
+        UniqueCoreTransitionKind.Touch {
+            set statistics.touches =
+                statistics.touches + 1;
+        }
+
+        UniqueCoreTransitionKind.Invalidate {
+            set statistics.invalidations =
+                statistics.invalidations + 1;
+        }
+    }
+}
+
+proc unique_core_statistics_total(
+    statistics: UniqueCoreStatistics
+) -> u64 {
+    give statistics.initializations
+        + statistics.moves
+        + statistics.value_drops
+        + statistics.allocation_releases
+        + statistics.replacements
+        + statistics.touches
+        + statistics.invalidations;
+}
+
+proc unique_core_statistics_reset(
+    statistics: ref mut UniqueCoreStatistics
+) {
+    set *statistics =
+        unique_core_statistics_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc unique_core_state_name(
+    state: UniqueCoreState
+) -> string {
+    pick state {
+        UniqueCoreState.Empty {
+            give "empty";
+        }
+
+        UniqueCoreState.Alive {
+            give "alive";
+        }
+
+        UniqueCoreState.Moved {
+            give "moved";
+        }
+
+        UniqueCoreState.Dropped {
+            give "dropped";
+        }
+
+        UniqueCoreState.Released {
+            give "released";
+        }
+
+        UniqueCoreState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+proc unique_core_access_name(
+    access: UniqueCoreAccess
+) -> string {
+    pick access {
+        UniqueCoreAccess.None {
+            give "none";
+        }
+
+        UniqueCoreAccess.Read {
+            give "read";
+        }
+
+        UniqueCoreAccess.ReadWrite {
+            give "read-write";
+        }
+    }
+
+    give "none";
+}
+
+proc unique_core_ownership_name(
+    ownership: UniqueCoreOwnership
+) -> string {
+    pick ownership {
+        UniqueCoreOwnership.None {
+            give "none";
+        }
+
+        UniqueCoreOwnership.Unique {
+            give "unique";
+        }
+
+        UniqueCoreOwnership.Dead {
+            give "dead";
+        }
+    }
+
+    give "dead";
+}
+
+proc unique_core_transition_name(
+    kind: UniqueCoreTransitionKind
+) -> string {
+    pick kind {
+        UniqueCoreTransitionKind.None {
+            give "none";
+        }
+
+        UniqueCoreTransitionKind.Initialize {
+            give "initialize";
+        }
+
+        UniqueCoreTransitionKind.Move {
+            give "move";
+        }
+
+        UniqueCoreTransitionKind.DropValue {
+            give "drop-value";
+        }
+
+        UniqueCoreTransitionKind.ReleaseAllocation {
+            give "release-allocation";
+        }
+
+        UniqueCoreTransitionKind.Replace {
+            give "replace";
+        }
+
+        UniqueCoreTransitionKind.Touch {
+            give "touch";
+        }
+
+        UniqueCoreTransitionKind.Invalidate {
+            give "invalidate";
+        }
+    }
+
+    give "none";
+}
+
+// -----------------------------------------------------------------------------
+// Unique ownership model
+// -----------------------------------------------------------------------------
+//
+// `UniqueCore` is the pure lifecycle state machine behind `alloc/unique`.
+//
+// It does not allocate memory and does not manipulate raw pointers.
+//
+// States:
+//
+//     Empty
+//       |
+//       | initialize
+//       v
+//
+//     Alive
+//       |
+//       +-------------------+
+//       |                   |
+//       | move              | drop value
+//       v                   v
+//
+//     Moved              Dropped
+//                           |
+//                           | release allocation
+//                           v
+//
+//                        Released
+//
+// -----------------------------------------------------------------------------
+//
+// Empty:
+//
+//     initialized      = false
+//     value_alive      = false
+//     allocation_alive = false
+//     moved            = false
+//
+// -----------------------------------------------------------------------------
+//
+// Alive:
+//
+//     initialized      = true
+//     value_alive      = true
+//     allocation_alive = true
+//     moved            = false
+//
+// Ownership:
+//
+//     Unique
+//
+// Access:
+//
+//     ReadWrite
+//
+// There can only be one logical owner.
+//
+// -----------------------------------------------------------------------------
+//
+// Move:
+//
+//     Alive -> Moved
+//
+// A move transfers ownership to another object.
+//
+// The source becomes:
+//
+//     initialized      = true
+//     value_alive      = false
+//     allocation_alive = false
+//     moved            = true
+//
+// A moved-from owner must not:
+//
+//     read
+//     write
+//     drop the value again
+//     release the transferred allocation
+//
+// -----------------------------------------------------------------------------
+//
+// Drop value:
+//
+//     Alive -> Dropped
+//
+// The managed value is destroyed while the allocation descriptor may still
+// exist.
+//
+//     value_alive      = false
+//     allocation_alive = true
+//
+// -----------------------------------------------------------------------------
+//
+// Release allocation:
+//
+//     Dropped -> Released
+//
+// The backing allocation is released.
+//
+//     value_alive      = false
+//     allocation_alive = false
+//
+// -----------------------------------------------------------------------------
+//
+// Replacement:
+//
+//     Alive -> Alive
+//
+// The old value is destroyed and replaced with a new value while preserving
+// ownership of the same logical allocation.
+//
+// Generation remains unchanged.
+//
+// Revision advances.
+//
+// -----------------------------------------------------------------------------
+//
+// Generation:
+//
+//     identifies a logical lifetime generation.
+//
+// Operations which invalidate old handles may advance generation in the
+// concrete layers.
+//
+// Revision:
+//
+//     tracks mutations inside the current generation.
+//
+// -----------------------------------------------------------------------------
+//
+// Access model:
+//
+//     Alive
+//         => ReadWrite
+//
+//     Empty
+//     Moved
+//     Dropped
+//     Released
+//         => None
+//
+// Because ownership is exclusive, there is no read-only shared state.
+//
+// -----------------------------------------------------------------------------
+//
+// Fundamental invariants:
+//
+//     !initialized
+//         => !value_alive
+//         => !allocation_alive
+//         => !moved
+//
+//     value_alive
+//         => initialized
+//         => allocation_alive
+//         => !moved
+//
+//     moved
+//         => initialized
+//         => !value_alive
+//         => !allocation_alive
+//
+//     Dropped
+//         => initialized
+//         => !value_alive
+//         => allocation_alive
+//         => !moved
+//
+//     Released
+//         => initialized
+//         => !value_alive
+//         => !allocation_alive
+//         => !moved
+//
+//     mutable access
+//         => Alive
+//
+//     move
+//         => Alive
+//
+//     replace
+//         => Alive
+//
+//     drop value
+//         => Alive
+//
+//     release allocation
+//         => Dropped
+//
+// -----------------------------------------------------------------------------
+//
+// Module split:
+//
+//     core.vitl
+//         pure ownership/lifetime state machine
+//
+//     alloc.vitl
+//         low-level backing allocation
+//
+// Higher layers can implement:
+//
+//     inner.vitl
+//     owner.vitl
+//     raw.vitl
+//     unique.vitl
+//     error.vitl
+//
+// using this state machine as the common lifecycle reference.
