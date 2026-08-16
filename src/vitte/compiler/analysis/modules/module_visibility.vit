@@ -1,0 +1,960 @@
+space vitte/compiler/analysis/modules/module_visibility
+
+export *
+
+use vitte/compiler/frontend/source/span.{
+    Span
+}
+
+use vitte/compiler/analysis/modules/module_database.{
+    ModuleId,
+    ModuleDatabase,
+    ModuleDatabaseEntry,
+    module_id_equal,
+    module_id_is_valid,
+    module_database_get
+}
+
+use vitte/compiler/analysis/modules/module_exports.{
+    ModuleExport,
+    ModuleExportVisibility,
+    ModuleExportState
+}
+
+pick ModuleVisibilityKind {
+    Private,
+    Package,
+    Public
+}
+
+pick ModuleVisibilityState {
+    Allowed,
+    Denied,
+    Invalid,
+    Unresolved
+}
+
+pick ModuleVisibilityReason {
+    None,
+    SameModule,
+    SamePackage,
+    PublicExport,
+    PrivateExport,
+    PackageBoundary,
+    InvalidSource,
+    InvalidTarget,
+    ExportDisabled,
+    ExportUnresolved,
+    ExportFailed
+}
+
+form ModuleVisibilityConfig {
+    allow_private_same_module: bool
+    allow_package_same_package: bool
+    require_resolved_export: bool
+    allow_invalidated_export: bool
+}
+
+form ModuleVisibilityDecision {
+    state: ModuleVisibilityState
+    reason: ModuleVisibilityReason
+
+    source: ModuleId
+    target: ModuleId
+
+    visibility: ModuleVisibilityKind
+
+    message: string
+    span: Span
+}
+
+form ModuleVisibilityStatistics {
+    checks: u64
+    allowed: u64
+    denied: u64
+    invalid: u64
+    unresolved: u64
+
+    private_checks: u64
+    package_checks: u64
+    public_checks: u64
+}
+
+form ModuleVisibility {
+    config: ModuleVisibilityConfig
+    statistics: ModuleVisibilityStatistics
+}
+
+proc module_visibility_empty_span() -> Span {
+    give Span {
+        source: 0,
+        start: 0,
+        end: 0
+    };
+}
+
+proc module_visibility_config_default()
+    -> ModuleVisibilityConfig
+{
+    give ModuleVisibilityConfig {
+        allow_private_same_module: true,
+        allow_package_same_package: true,
+        require_resolved_export: true,
+        allow_invalidated_export: false
+    };
+}
+
+proc module_visibility_statistics_empty()
+    -> ModuleVisibilityStatistics
+{
+    give ModuleVisibilityStatistics {
+        checks: 0,
+        allowed: 0,
+        denied: 0,
+        invalid: 0,
+        unresolved: 0,
+
+        private_checks: 0,
+        package_checks: 0,
+        public_checks: 0
+    };
+}
+
+proc module_visibility_create_with_config(
+    config: ModuleVisibilityConfig
+) -> ModuleVisibility {
+    give ModuleVisibility {
+        config: config,
+        statistics:
+            module_visibility_statistics_empty()
+    };
+}
+
+proc module_visibility_create()
+    -> ModuleVisibility
+{
+    give module_visibility_create_with_config(
+        module_visibility_config_default()
+    );
+}
+
+proc module_visibility_from_export(
+    visibility: ModuleExportVisibility
+) -> ModuleVisibilityKind {
+    pick visibility {
+        ModuleExportVisibility.Private {
+            give ModuleVisibilityKind.Private;
+        }
+
+        ModuleExportVisibility.Package {
+            give ModuleVisibilityKind.Package;
+        }
+
+        ModuleExportVisibility.Public {
+            give ModuleVisibilityKind.Public;
+        }
+    }
+
+    give ModuleVisibilityKind.Private;
+}
+
+proc module_visibility_decision(
+    state: ModuleVisibilityState,
+    reason: ModuleVisibilityReason,
+    source: ModuleId,
+    target: ModuleId,
+    visibility: ModuleVisibilityKind,
+    message: string,
+    span: Span
+) -> ModuleVisibilityDecision {
+    give ModuleVisibilityDecision {
+        state: state,
+        reason: reason,
+
+        source: source,
+        target: target,
+
+        visibility: visibility,
+
+        message: message,
+        span: span
+    };
+}
+
+proc module_visibility_allowed(
+    source: ModuleId,
+    target: ModuleId,
+    visibility: ModuleVisibilityKind,
+    reason: ModuleVisibilityReason,
+    span: Span
+) -> ModuleVisibilityDecision {
+    give module_visibility_decision(
+        ModuleVisibilityState.Allowed,
+        reason,
+        source,
+        target,
+        visibility,
+        "",
+        span
+    );
+}
+
+proc module_visibility_denied(
+    source: ModuleId,
+    target: ModuleId,
+    visibility: ModuleVisibilityKind,
+    reason: ModuleVisibilityReason,
+    message: string,
+    span: Span
+) -> ModuleVisibilityDecision {
+    give module_visibility_decision(
+        ModuleVisibilityState.Denied,
+        reason,
+        source,
+        target,
+        visibility,
+        message,
+        span
+    );
+}
+
+proc module_visibility_invalid(
+    source: ModuleId,
+    target: ModuleId,
+    visibility: ModuleVisibilityKind,
+    reason: ModuleVisibilityReason,
+    message: string,
+    span: Span
+) -> ModuleVisibilityDecision {
+    give module_visibility_decision(
+        ModuleVisibilityState.Invalid,
+        reason,
+        source,
+        target,
+        visibility,
+        message,
+        span
+    );
+}
+
+proc module_visibility_unresolved(
+    source: ModuleId,
+    target: ModuleId,
+    visibility: ModuleVisibilityKind,
+    reason: ModuleVisibilityReason,
+    message: string,
+    span: Span
+) -> ModuleVisibilityDecision {
+    give module_visibility_decision(
+        ModuleVisibilityState.Unresolved,
+        reason,
+        source,
+        target,
+        visibility,
+        message,
+        span
+    );
+}
+
+proc module_visibility_record(
+    visibility: ref mut ModuleVisibility,
+    decision: ModuleVisibilityDecision
+) {
+    visibility.statistics.checks =
+        visibility.statistics.checks + 1;
+
+    pick decision.visibility {
+        ModuleVisibilityKind.Private {
+            visibility.statistics.private_checks =
+                visibility.statistics.private_checks + 1;
+        }
+
+        ModuleVisibilityKind.Package {
+            visibility.statistics.package_checks =
+                visibility.statistics.package_checks + 1;
+        }
+
+        ModuleVisibilityKind.Public {
+            visibility.statistics.public_checks =
+                visibility.statistics.public_checks + 1;
+        }
+    }
+
+    pick decision.state {
+        ModuleVisibilityState.Allowed {
+            visibility.statistics.allowed =
+                visibility.statistics.allowed + 1;
+        }
+
+        ModuleVisibilityState.Denied {
+            visibility.statistics.denied =
+                visibility.statistics.denied + 1;
+        }
+
+        ModuleVisibilityState.Invalid {
+            visibility.statistics.invalid =
+                visibility.statistics.invalid + 1;
+        }
+
+        ModuleVisibilityState.Unresolved {
+            visibility.statistics.unresolved =
+                visibility.statistics.unresolved + 1;
+        }
+    }
+}
+
+proc module_visibility_first_segment(
+    path: string
+) -> string {
+    if path == "" {
+        give "";
+    }
+
+    let mut output: string = "";
+    let mut index: usize = 0;
+
+    if path[0] == '/' {
+        set index = 1;
+    }
+
+    while index < len(path) {
+        if path[index] == '/' {
+            give output;
+        }
+
+        set output =
+            output + path[index];
+
+        set index = index + 1;
+    }
+
+    give output;
+}
+
+proc module_visibility_package_name(
+    module: ModuleDatabaseEntry
+) -> string {
+    give module_visibility_first_segment(
+        module.canonical_path
+    );
+}
+
+proc module_visibility_same_package(
+    left: ModuleDatabaseEntry,
+    right: ModuleDatabaseEntry
+) -> bool {
+    let left_package: string =
+        module_visibility_package_name(left);
+
+    let right_package: string =
+        module_visibility_package_name(right);
+
+    if left_package == ""
+        or right_package == ""
+    {
+        give false;
+    }
+
+    give left_package == right_package;
+}
+
+proc module_visibility_validate_export_state(
+    visibility: ModuleVisibility,
+    export: ModuleExport
+) -> Option<ModuleVisibilityDecision> {
+    if not export.enabled {
+        give Some(
+            module_visibility_denied(
+                export.module,
+                export.module,
+                module_visibility_from_export(
+                    export.visibility
+                ),
+                ModuleVisibilityReason.ExportDisabled,
+                "export is disabled",
+                export.span
+            )
+        );
+    }
+
+    pick export.state {
+        ModuleExportState.Resolved {
+            give None;
+        }
+
+        ModuleExportState.Invalidated {
+            if visibility.config.allow_invalidated_export {
+                give None;
+            }
+
+            give Some(
+                module_visibility_unresolved(
+                    export.module,
+                    export.module,
+                    module_visibility_from_export(
+                        export.visibility
+                    ),
+                    ModuleVisibilityReason.ExportUnresolved,
+                    "export is invalidated",
+                    export.span
+                )
+            );
+        }
+
+        ModuleExportState.Failed {
+            give Some(
+                module_visibility_invalid(
+                    export.module,
+                    export.module,
+                    module_visibility_from_export(
+                        export.visibility
+                    ),
+                    ModuleVisibilityReason.ExportFailed,
+                    "export resolution failed",
+                    export.span
+                )
+            );
+        }
+
+        ModuleExportState.Ambiguous {
+            give Some(
+                module_visibility_unresolved(
+                    export.module,
+                    export.module,
+                    module_visibility_from_export(
+                        export.visibility
+                    ),
+                    ModuleVisibilityReason.ExportUnresolved,
+                    "export is ambiguous",
+                    export.span
+                )
+            );
+        }
+
+        ModuleExportState.Missing {
+            give Some(
+                module_visibility_unresolved(
+                    export.module,
+                    export.module,
+                    module_visibility_from_export(
+                        export.visibility
+                    ),
+                    ModuleVisibilityReason.ExportUnresolved,
+                    "export target is missing",
+                    export.span
+                )
+            );
+        }
+
+        ModuleExportState.Declared {
+            if visibility.config.require_resolved_export {
+                give Some(
+                    module_visibility_unresolved(
+                        export.module,
+                        export.module,
+                        module_visibility_from_export(
+                            export.visibility
+                        ),
+                        ModuleVisibilityReason.ExportUnresolved,
+                        "export has not been resolved",
+                        export.span
+                    )
+                );
+            }
+
+            give None;
+        }
+
+        ModuleExportState.Resolving {
+            if visibility.config.require_resolved_export {
+                give Some(
+                    module_visibility_unresolved(
+                        export.module,
+                        export.module,
+                        module_visibility_from_export(
+                            export.visibility
+                        ),
+                        ModuleVisibilityReason.ExportUnresolved,
+                        "export is still resolving",
+                        export.span
+                    )
+                );
+            }
+
+            give None;
+        }
+    }
+
+    give None;
+}
+
+proc module_visibility_check_modules(
+    visibility: ref mut ModuleVisibility,
+    database: ref ModuleDatabase,
+    source: ModuleId,
+    target: ModuleId,
+    kind: ModuleVisibilityKind,
+    span: Span
+) -> ModuleVisibilityDecision {
+    if not module_id_is_valid(source) {
+        let decision =
+            module_visibility_invalid(
+                source,
+                target,
+                kind,
+                ModuleVisibilityReason.InvalidSource,
+                "source module id is invalid",
+                span
+            );
+
+        module_visibility_record(
+            visibility,
+            decision
+        );
+
+        give decision;
+    }
+
+    if not module_id_is_valid(target) {
+        let decision =
+            module_visibility_invalid(
+                source,
+                target,
+                kind,
+                ModuleVisibilityReason.InvalidTarget,
+                "target module id is invalid",
+                span
+            );
+
+        module_visibility_record(
+            visibility,
+            decision
+        );
+
+        give decision;
+    }
+
+    let source_module =
+        module_database_get(
+            database,
+            source
+        );
+
+    let target_module =
+        module_database_get(
+            database,
+            target
+        );
+
+    pick source_module {
+        None {
+            let decision =
+                module_visibility_invalid(
+                    source,
+                    target,
+                    kind,
+                    ModuleVisibilityReason.InvalidSource,
+                    "source module does not exist",
+                    span
+                );
+
+            module_visibility_record(
+                visibility,
+                decision
+            );
+
+            give decision;
+        }
+
+        Some(source_value) {
+            pick target_module {
+                None {
+                    let decision =
+                        module_visibility_invalid(
+                            source,
+                            target,
+                            kind,
+                            ModuleVisibilityReason.InvalidTarget,
+                            "target module does not exist",
+                            span
+                        );
+
+                    module_visibility_record(
+                        visibility,
+                        decision
+                    );
+
+                    give decision;
+                }
+
+                Some(target_value) {
+                    if module_id_equal(
+                        source,
+                        target
+                    ) {
+                        let decision =
+                            module_visibility_allowed(
+                                source,
+                                target,
+                                kind,
+                                ModuleVisibilityReason.SameModule,
+                                span
+                            );
+
+                        module_visibility_record(
+                            visibility,
+                            decision
+                        );
+
+                        give decision;
+                    }
+
+                    pick kind {
+                        ModuleVisibilityKind.Public {
+                            let decision =
+                                module_visibility_allowed(
+                                    source,
+                                    target,
+                                    kind,
+                                    ModuleVisibilityReason.PublicExport,
+                                    span
+                                );
+
+                            module_visibility_record(
+                                visibility,
+                                decision
+                            );
+
+                            give decision;
+                        }
+
+                        ModuleVisibilityKind.Package {
+                            if visibility.config.allow_package_same_package
+                                and module_visibility_same_package(
+                                    *source_value,
+                                    *target_value
+                                )
+                            {
+                                let decision =
+                                    module_visibility_allowed(
+                                        source,
+                                        target,
+                                        kind,
+                                        ModuleVisibilityReason.SamePackage,
+                                        span
+                                    );
+
+                                module_visibility_record(
+                                    visibility,
+                                    decision
+                                );
+
+                                give decision;
+                            }
+
+                            let decision =
+                                module_visibility_denied(
+                                    source,
+                                    target,
+                                    kind,
+                                    ModuleVisibilityReason.PackageBoundary,
+                                    "package-private export is not visible outside its package",
+                                    span
+                                );
+
+                            module_visibility_record(
+                                visibility,
+                                decision
+                            );
+
+                            give decision;
+                        }
+
+                        ModuleVisibilityKind.Private {
+                            if visibility.config.allow_private_same_module
+                                and module_id_equal(
+                                    source,
+                                    target
+                                )
+                            {
+                                let decision =
+                                    module_visibility_allowed(
+                                        source,
+                                        target,
+                                        kind,
+                                        ModuleVisibilityReason.SameModule,
+                                        span
+                                    );
+
+                                module_visibility_record(
+                                    visibility,
+                                    decision
+                                );
+
+                                give decision;
+                            }
+
+                            let decision =
+                                module_visibility_denied(
+                                    source,
+                                    target,
+                                    kind,
+                                    ModuleVisibilityReason.PrivateExport,
+                                    "private export is visible only inside its declaring module",
+                                    span
+                                );
+
+                            module_visibility_record(
+                                visibility,
+                                decision
+                            );
+
+                            give decision;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let decision =
+        module_visibility_invalid(
+            source,
+            target,
+            kind,
+            ModuleVisibilityReason.InvalidTarget,
+            "visibility check failed",
+            span
+        );
+
+    module_visibility_record(
+        visibility,
+        decision
+    );
+
+    give decision;
+}
+
+proc module_visibility_check_export(
+    visibility: ref mut ModuleVisibility,
+    database: ref ModuleDatabase,
+    source: ModuleId,
+    export: ModuleExport
+) -> ModuleVisibilityDecision {
+    let state_decision =
+        module_visibility_validate_export_state(
+            *visibility,
+            export
+        );
+
+    pick state_decision {
+        Some(value) {
+            let decision =
+                ModuleVisibilityDecision {
+                    state: value.state,
+                    reason: value.reason,
+
+                    source: source,
+                    target: export.module,
+
+                    visibility:
+                        value.visibility,
+
+                    message:
+                        value.message,
+
+                    span:
+                        export.span
+                };
+
+            module_visibility_record(
+                visibility,
+                decision
+            );
+
+            give decision;
+        }
+
+        None {}
+    }
+
+    give module_visibility_check_modules(
+        visibility,
+        database,
+        source,
+        export.module,
+        module_visibility_from_export(
+            export.visibility
+        ),
+        export.span
+    );
+}
+
+proc module_visibility_can_access_export(
+    visibility: ref mut ModuleVisibility,
+    database: ref ModuleDatabase,
+    source: ModuleId,
+    export: ModuleExport
+) -> bool {
+    let decision =
+        module_visibility_check_export(
+            visibility,
+            database,
+            source,
+            export
+        );
+
+    give decision.state
+        == ModuleVisibilityState.Allowed;
+}
+
+proc module_visibility_can_access_module(
+    visibility: ref mut ModuleVisibility,
+    database: ref ModuleDatabase,
+    source: ModuleId,
+    target: ModuleId,
+    kind: ModuleVisibilityKind
+) -> bool {
+    let decision =
+        module_visibility_check_modules(
+            visibility,
+            database,
+            source,
+            target,
+            kind,
+            module_visibility_empty_span()
+        );
+
+    give decision.state
+        == ModuleVisibilityState.Allowed;
+}
+
+proc module_visibility_is_public(
+    export: ModuleExport
+) -> bool {
+    give export.visibility
+        == ModuleExportVisibility.Public;
+}
+
+proc module_visibility_is_package(
+    export: ModuleExport
+) -> bool {
+    give export.visibility
+        == ModuleExportVisibility.Package;
+}
+
+proc module_visibility_is_private(
+    export: ModuleExport
+) -> bool {
+    give export.visibility
+        == ModuleExportVisibility.Private;
+}
+
+proc module_visibility_statistics(
+    visibility: ref ModuleVisibility
+) -> ModuleVisibilityStatistics {
+    give visibility.statistics;
+}
+
+proc module_visibility_reset_statistics(
+    visibility: ref mut ModuleVisibility
+) {
+    visibility.statistics =
+        module_visibility_statistics_empty();
+}
+
+proc module_visibility_state_name(
+    state: ModuleVisibilityState
+) -> string {
+    pick state {
+        ModuleVisibilityState.Allowed {
+            give "allowed";
+        }
+
+        ModuleVisibilityState.Denied {
+            give "denied";
+        }
+
+        ModuleVisibilityState.Invalid {
+            give "invalid";
+        }
+
+        ModuleVisibilityState.Unresolved {
+            give "unresolved";
+        }
+    }
+
+    give "invalid";
+}
+
+proc module_visibility_kind_name(
+    kind: ModuleVisibilityKind
+) -> string {
+    pick kind {
+        ModuleVisibilityKind.Private {
+            give "private";
+        }
+
+        ModuleVisibilityKind.Package {
+            give "package";
+        }
+
+        ModuleVisibilityKind.Public {
+            give "public";
+        }
+    }
+
+    give "private";
+}
+
+proc module_visibility_reason_name(
+    reason: ModuleVisibilityReason
+) -> string {
+    pick reason {
+        ModuleVisibilityReason.None {
+            give "none";
+        }
+
+        ModuleVisibilityReason.SameModule {
+            give "same-module";
+        }
+
+        ModuleVisibilityReason.SamePackage {
+            give "same-package";
+        }
+
+        ModuleVisibilityReason.PublicExport {
+            give "public-export";
+        }
+
+        ModuleVisibilityReason.PrivateExport {
+            give "private-export";
+        }
+
+        ModuleVisibilityReason.PackageBoundary {
+            give "package-boundary";
+        }
+
+        ModuleVisibilityReason.InvalidSource {
+            give "invalid-source";
+        }
+
+        ModuleVisibilityReason.InvalidTarget {
+            give "invalid-target";
+        }
+
+        ModuleVisibilityReason.ExportDisabled {
+            give "export-disabled";
+        }
+
+        ModuleVisibilityReason.ExportUnresolved {
+            give "export-unresolved";
+        }
+
+        ModuleVisibilityReason.ExportFailed {
+            give "export-failed";
+        }
+    }
+
+    give "none";
+}

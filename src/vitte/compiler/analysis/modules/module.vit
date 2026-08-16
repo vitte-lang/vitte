@@ -1,0 +1,329 @@
+space vitte/compiler/analysis/modules/module
+
+export *
+
+use vitte/compiler/analysis/modules/module_attributes.*
+use vitte/compiler/analysis/modules/module_cache.*
+use vitte/compiler/analysis/modules/module_cycle.*
+use vitte/compiler/analysis/modules/module_database.*
+use vitte/compiler/analysis/modules/module_diagnostics.*
+use vitte/compiler/analysis/modules/module_edge.*
+use vitte/compiler/analysis/modules/module_exports.*
+use vitte/compiler/analysis/modules/module_graph.*
+use vitte/compiler/analysis/modules/module_imports.*
+use vitte/compiler/analysis/modules/module_info.*
+use vitte/compiler/analysis/modules/module_kind.*
+use vitte/compiler/analysis/modules/module_manager.*
+use vitte/compiler/analysis/modules/module_name.*
+use vitte/compiler/analysis/modules/module_namespace.*
+use vitte/compiler/analysis/modules/module_node.*
+use vitte/compiler/analysis/modules/module_order.*
+use vitte/compiler/analysis/modules/module_parser.*
+use vitte/compiler/analysis/modules/module_path.*
+use vitte/compiler/analysis/modules/module_registry.*
+use vitte/compiler/analysis/modules/module_resolver.*
+use vitte/compiler/analysis/modules/module_search.*
+use vitte/compiler/analysis/modules/module_statistics.*
+use vitte/compiler/analysis/modules/module_validation.*
+use vitte/compiler/analysis/modules/module_visibility.*
+
+form ModuleSystem {
+    manager: ModuleManager
+    registry: ModuleRegistry
+    resolver: ModuleResolver
+    search: ModuleSearch
+    visibility: ModuleVisibility
+}
+
+form ModuleAnalysisResult {
+    manager: ModuleManagerAnalysis
+    order: ModuleOrder
+    validation: ModuleValidationResult
+    statistics: ModuleStatistics
+
+    valid: bool
+}
+
+proc module_system_create() -> ModuleSystem {
+    give ModuleSystem {
+        manager: module_manager_create(),
+        registry: module_registry_create(),
+        resolver: module_resolver_create(),
+        search: module_search_create(),
+        visibility: module_visibility_create()
+    };
+}
+
+proc module_system_database(
+    system: ref ModuleSystem
+) -> ref ModuleDatabase {
+    give ref system.manager.database;
+}
+
+proc module_system_database_mut(
+    system: ref mut ModuleSystem
+) -> ref mut ModuleDatabase {
+    give ref mut system.manager.database;
+}
+
+proc module_system_register(
+    system: ref mut ModuleSystem,
+    name: string,
+    canonical_path: string,
+    source_text: string,
+    span: Span
+) -> Option<ModuleId> {
+    let id =
+        module_manager_add_source_module(
+            ref mut system.manager,
+            name,
+            canonical_path,
+            source_text,
+            span
+        );
+
+    pick id {
+        Some(value) {
+            let module =
+                module_database_get(
+                    ref system.manager.database,
+                    value
+                );
+
+            pick module {
+                Some(entry) {
+                    module_registry_insert_module(
+                        ref mut system.registry,
+                        entry
+                    );
+                }
+
+                None {}
+            }
+        }
+
+        None {}
+    }
+
+    give id;
+}
+
+proc module_system_add_dependency(
+    system: ref mut ModuleSystem,
+    module: ModuleId,
+    target: ModuleId,
+    span: Span,
+    public: bool,
+    optional: bool
+) -> Option<ModuleDependencyId> {
+    give module_manager_add_dependency(
+        ref mut system.manager,
+        module,
+        target,
+        span,
+        public,
+        optional
+    );
+}
+
+proc module_system_resolve_name(
+    system: ref mut ModuleSystem,
+    name: string,
+    span: Span
+) -> ModuleResolution {
+    give module_resolver_lookup_name(
+        ref mut system.resolver,
+        ref mut system.registry,
+        ref system.manager.database,
+        name,
+        span
+    );
+}
+
+proc module_system_resolve_path(
+    system: ref mut ModuleSystem,
+    path: string,
+    span: Span
+) -> ModuleResolution {
+    give module_resolver_lookup_path(
+        ref mut system.resolver,
+        ref mut system.registry,
+        ref system.manager.database,
+        path,
+        span
+    );
+}
+
+proc module_system_resolve_import(
+    system: ref mut ModuleSystem,
+    import: ModuleImport
+) -> ModuleResolution {
+    give module_resolver_resolve_import(
+        ref mut system.resolver,
+        ref mut system.registry,
+        ref system.manager.database,
+        import
+    );
+}
+
+proc module_system_search(
+    system: ref mut ModuleSystem,
+    query: ModuleSearchQuery
+) -> ModuleSearchResult {
+    give module_search_run(
+        ref mut system.search,
+        ref system.manager.database,
+        query
+    );
+}
+
+proc module_system_can_access(
+    system: ref mut ModuleSystem,
+    source: ModuleId,
+    export: ModuleExport
+) -> bool {
+    give module_visibility_can_access_export(
+        ref mut system.visibility,
+        ref system.manager.database,
+        source,
+        export
+    );
+}
+
+proc module_system_invalidate(
+    system: ref mut ModuleSystem,
+    id: ModuleId
+) -> usize {
+    let count =
+        module_manager_invalidate(
+            ref mut system.manager,
+            id
+        );
+
+    if count > 0 {
+        module_registry_rebuild(
+            ref mut system.registry,
+            ref system.manager.database
+        );
+    }
+
+    give count;
+}
+
+proc module_system_analyze(
+    system: ref mut ModuleSystem,
+    imports: ref ModuleImportTable,
+    exports: ref ModuleExportTable
+) -> ModuleAnalysisResult {
+    let manager_analysis =
+        module_manager_analyze(
+            ref mut system.manager
+        );
+
+    let order =
+        module_order_default(
+            ref mut system.manager.database
+        );
+
+    module_registry_rebuild(
+        ref mut system.registry,
+        ref system.manager.database
+    );
+
+    let validation =
+        module_validation_default(
+            ref system.manager.database,
+            imports,
+            exports,
+            ref system.registry,
+            ref order
+        );
+
+    let statistics =
+        module_statistics_collect(
+            ref system.manager.database,
+            imports,
+            exports,
+            ref order,
+            ref system.registry
+        );
+
+    give ModuleAnalysisResult {
+        manager: manager_analysis,
+        order: order,
+        validation: validation,
+        statistics: statistics,
+
+        valid:
+            manager_analysis.valid
+            and validation.valid
+            and module_order_is_complete(
+                ref order
+            )
+    };
+}
+
+proc module_system_is_ready(
+    system: ref ModuleSystem
+) -> bool {
+    give module_manager_is_ready(
+        ref system.manager
+    )
+        and module_registry_is_ready(
+            ref system.registry
+        );
+}
+
+proc module_system_has_errors(
+    system: ref ModuleSystem
+) -> bool {
+    give module_manager_has_errors(
+        ref system.manager
+    )
+        or module_registry_has_errors(
+            ref system.registry
+        )
+        or module_resolver_has_errors(
+            ref system.resolver
+        );
+}
+
+proc module_system_module_count(
+    system: ref ModuleSystem
+) -> usize {
+    give module_database_module_count(
+        ref system.manager.database
+    );
+}
+
+proc module_system_dependency_count(
+    system: ref ModuleSystem
+) -> usize {
+    give module_database_dependency_count(
+        ref system.manager.database
+    );
+}
+
+proc module_system_reset(
+    system: ref mut ModuleSystem
+) {
+    module_manager_reset(
+        ref mut system.manager
+    );
+
+    module_registry_clear(
+        ref mut system.registry
+    );
+
+    module_resolver_reset(
+        ref mut system.resolver
+    );
+
+    module_search_reset(
+        ref mut system.search
+    );
+
+    module_visibility_reset_statistics(
+        ref mut system.visibility
+    );
+}

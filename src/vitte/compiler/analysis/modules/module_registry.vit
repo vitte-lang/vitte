@@ -1,0 +1,960 @@
+space vitte/compiler/analysis/modules/module_registry
+
+export *
+
+use vitte/compiler/analysis/modules/module_database.{
+    ModuleId,
+    ModuleDatabase,
+    ModuleDatabaseEntry,
+    module_id_invalid,
+    module_id_equal,
+    module_id_is_valid,
+    module_database_get,
+    module_database_get_by_name,
+    module_database_get_by_path,
+    module_database_contains_name,
+    module_database_contains_path
+}
+
+pick ModuleRegistryEntryKind {
+    Module,
+    Alias,
+    Generated,
+    External
+}
+
+pick ModuleRegistryState {
+    Empty,
+    Building,
+    Ready,
+    Dirty,
+    Failed
+}
+
+pick ModuleRegistryErrorKind {
+    None,
+    InvalidModule,
+    DuplicateName,
+    DuplicatePath,
+    DuplicateAlias,
+    UnknownModule,
+    UnknownAlias,
+    InvalidAlias,
+    RegistryCorrupted
+}
+
+form ModuleRegistryEntry {
+    id: ModuleId
+
+    name: string
+    canonical_path: string
+
+    kind: ModuleRegistryEntryKind
+
+    generation: u64
+    revision: u64
+}
+
+form ModuleRegistryAlias {
+    alias: string
+    target: ModuleId
+
+    generation: u64
+}
+
+form ModuleRegistryError {
+    kind: ModuleRegistryErrorKind
+
+    name: string
+    path: string
+    message: string
+}
+
+form ModuleRegistryStatistics {
+    entries: usize
+    aliases: usize
+
+    lookups: u64
+    hits: u64
+    misses: u64
+
+    insertions: u64
+    removals: u64
+    rebuilds: u64
+}
+
+form ModuleRegistry {
+    state: ModuleRegistryState
+
+    entries: [ModuleRegistryEntry]
+    aliases: [ModuleRegistryAlias]
+
+    errors: [ModuleRegistryError]
+
+    generation: u64
+
+    statistics: ModuleRegistryStatistics
+}
+
+proc module_registry_statistics_empty()
+    -> ModuleRegistryStatistics
+{
+    give ModuleRegistryStatistics {
+        entries: 0,
+        aliases: 0,
+
+        lookups: 0,
+        hits: 0,
+        misses: 0,
+
+        insertions: 0,
+        removals: 0,
+        rebuilds: 0
+    };
+}
+
+proc module_registry_create()
+    -> ModuleRegistry
+{
+    give ModuleRegistry {
+        state: ModuleRegistryState.Empty,
+
+        entries: [],
+        aliases: [],
+
+        errors: [],
+
+        generation: 1,
+
+        statistics:
+            module_registry_statistics_empty()
+    };
+}
+
+proc module_registry_error(
+    kind: ModuleRegistryErrorKind,
+    name: string,
+    path: string,
+    message: string
+) -> ModuleRegistryError {
+    give ModuleRegistryError {
+        kind: kind,
+        name: name,
+        path: path,
+        message: message
+    };
+}
+
+proc module_registry_push_error(
+    registry: ref mut ModuleRegistry,
+    kind: ModuleRegistryErrorKind,
+    name: string,
+    path: string,
+    message: string
+) {
+    registry.errors = registry.errors + [
+        module_registry_error(
+            kind,
+            name,
+            path,
+            message
+        )
+    ];
+
+    registry.state =
+        ModuleRegistryState.Failed;
+}
+
+proc module_registry_entry(
+    module: ref ModuleDatabaseEntry,
+    kind: ModuleRegistryEntryKind
+) -> ModuleRegistryEntry {
+    give ModuleRegistryEntry {
+        id: module.id,
+
+        name: module.name,
+        canonical_path: module.canonical_path,
+
+        kind: kind,
+
+        generation: module.generation,
+        revision: module.revision
+    };
+}
+
+proc module_registry_contains_id(
+    registry: ref ModuleRegistry,
+    id: ModuleId
+) -> bool {
+    for entry in registry.entries {
+        if module_id_equal(
+            entry.id,
+            id
+        ) {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc module_registry_contains_name(
+    registry: ref ModuleRegistry,
+    name: string
+) -> bool {
+    for entry in registry.entries {
+        if entry.name == name {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc module_registry_contains_path(
+    registry: ref ModuleRegistry,
+    path: string
+) -> bool {
+    for entry in registry.entries {
+        if entry.canonical_path == path {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc module_registry_alias_exists(
+    registry: ref ModuleRegistry,
+    alias: string
+) -> bool {
+    for entry in registry.aliases {
+        if entry.alias == alias {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc module_registry_insert(
+    registry: ref mut ModuleRegistry,
+    module: ref ModuleDatabaseEntry,
+    kind: ModuleRegistryEntryKind
+) -> bool {
+    if not module_id_is_valid(module.id) {
+        module_registry_push_error(
+            registry,
+            ModuleRegistryErrorKind.InvalidModule,
+            module.name,
+            module.canonical_path,
+            "cannot register module with invalid id"
+        );
+
+        give false;
+    }
+
+    if module_registry_contains_name(
+        ref registry,
+        module.name
+    ) {
+        module_registry_push_error(
+            registry,
+            ModuleRegistryErrorKind.DuplicateName,
+            module.name,
+            module.canonical_path,
+            "module name already registered"
+        );
+
+        give false;
+    }
+
+    if module_registry_contains_path(
+        ref registry,
+        module.canonical_path
+    ) {
+        module_registry_push_error(
+            registry,
+            ModuleRegistryErrorKind.DuplicatePath,
+            module.name,
+            module.canonical_path,
+            "module path already registered"
+        );
+
+        give false;
+    }
+
+    registry.entries =
+        registry.entries + [
+            module_registry_entry(
+                module,
+                kind
+            )
+        ];
+
+    registry.statistics.insertions =
+        registry.statistics.insertions + 1;
+
+    registry.statistics.entries =
+        len(registry.entries);
+
+    registry.state =
+        ModuleRegistryState.Dirty;
+
+    give true;
+}
+
+proc module_registry_insert_module(
+    registry: ref mut ModuleRegistry,
+    module: ref ModuleDatabaseEntry
+) -> bool {
+    give module_registry_insert(
+        registry,
+        module,
+        ModuleRegistryEntryKind.Module
+    );
+}
+
+proc module_registry_add_alias(
+    registry: ref mut ModuleRegistry,
+    alias: string,
+    target: ModuleId
+) -> bool {
+    if alias == "" {
+        module_registry_push_error(
+            registry,
+            ModuleRegistryErrorKind.InvalidAlias,
+            alias,
+            "",
+            "module alias must not be empty"
+        );
+
+        give false;
+    }
+
+    if not module_id_is_valid(target) {
+        module_registry_push_error(
+            registry,
+            ModuleRegistryErrorKind.InvalidModule,
+            alias,
+            "",
+            "module alias target is invalid"
+        );
+
+        give false;
+    }
+
+    if module_registry_alias_exists(
+        ref registry,
+        alias
+    ) {
+        module_registry_push_error(
+            registry,
+            ModuleRegistryErrorKind.DuplicateAlias,
+            alias,
+            "",
+            "module alias already exists"
+        );
+
+        give false;
+    }
+
+    registry.aliases =
+        registry.aliases + [
+            ModuleRegistryAlias {
+                alias: alias,
+                target: target,
+                generation: registry.generation
+            }
+        ];
+
+    registry.statistics.aliases =
+        len(registry.aliases);
+
+    registry.state =
+        ModuleRegistryState.Dirty;
+
+    give true;
+}
+
+proc module_registry_find_index_by_id(
+    registry: ref ModuleRegistry,
+    id: ModuleId
+) -> Option<usize> {
+    set index: usize = 0;
+
+    while index < len(registry.entries) {
+        if module_id_equal(
+            registry.entries[index].id,
+            id
+        ) {
+            give Some(index);
+        }
+
+        index = index + 1;
+    }
+
+    give None;
+}
+
+proc module_registry_find_index_by_name(
+    registry: ref ModuleRegistry,
+    name: string
+) -> Option<usize> {
+    set index: usize = 0;
+
+    while index < len(registry.entries) {
+        if registry.entries[index].name
+            == name
+        {
+            give Some(index);
+        }
+
+        index = index + 1;
+    }
+
+    give None;
+}
+
+proc module_registry_find_index_by_path(
+    registry: ref ModuleRegistry,
+    path: string
+) -> Option<usize> {
+    set index: usize = 0;
+
+    while index < len(registry.entries) {
+        if registry.entries[index].canonical_path
+            == path
+        {
+            give Some(index);
+        }
+
+        index = index + 1;
+    }
+
+    give None;
+}
+
+proc module_registry_find_alias_index(
+    registry: ref ModuleRegistry,
+    alias: string
+) -> Option<usize> {
+    set index: usize = 0;
+
+    while index < len(registry.aliases) {
+        if registry.aliases[index].alias
+            == alias
+        {
+            give Some(index);
+        }
+
+        index = index + 1;
+    }
+
+    give None;
+}
+
+proc module_registry_get(
+    registry: ref mut ModuleRegistry,
+    id: ModuleId
+) -> Option<ref ModuleRegistryEntry> {
+    registry.statistics.lookups =
+        registry.statistics.lookups + 1;
+
+    let index =
+        module_registry_find_index_by_id(
+            ref registry,
+            id
+        );
+
+    pick index {
+        Some(value) {
+            registry.statistics.hits =
+                registry.statistics.hits + 1;
+
+            give Some(
+                ref registry.entries[value]
+            );
+        }
+
+        None {
+            registry.statistics.misses =
+                registry.statistics.misses + 1;
+
+            give None;
+        }
+    }
+}
+
+proc module_registry_get_by_name(
+    registry: ref mut ModuleRegistry,
+    name: string
+) -> Option<ref ModuleRegistryEntry> {
+    registry.statistics.lookups =
+        registry.statistics.lookups + 1;
+
+    let index =
+        module_registry_find_index_by_name(
+            ref registry,
+            name
+        );
+
+    pick index {
+        Some(value) {
+            registry.statistics.hits =
+                registry.statistics.hits + 1;
+
+            give Some(
+                ref registry.entries[value]
+            );
+        }
+
+        None {
+            registry.statistics.misses =
+                registry.statistics.misses + 1;
+
+            give None;
+        }
+    }
+}
+
+proc module_registry_get_by_path(
+    registry: ref mut ModuleRegistry,
+    path: string
+) -> Option<ref ModuleRegistryEntry> {
+    registry.statistics.lookups =
+        registry.statistics.lookups + 1;
+
+    let index =
+        module_registry_find_index_by_path(
+            ref registry,
+            path
+        );
+
+    pick index {
+        Some(value) {
+            registry.statistics.hits =
+                registry.statistics.hits + 1;
+
+            give Some(
+                ref registry.entries[value]
+            );
+        }
+
+        None {
+            registry.statistics.misses =
+                registry.statistics.misses + 1;
+
+            give None;
+        }
+    }
+}
+
+proc module_registry_resolve_alias(
+    registry: ref mut ModuleRegistry,
+    alias: string
+) -> Option<ModuleId> {
+    registry.statistics.lookups =
+        registry.statistics.lookups + 1;
+
+    let index =
+        module_registry_find_alias_index(
+            ref registry,
+            alias
+        );
+
+    pick index {
+        Some(value) {
+            registry.statistics.hits =
+                registry.statistics.hits + 1;
+
+            give Some(
+                registry.aliases[value].target
+            );
+        }
+
+        None {
+            registry.statistics.misses =
+                registry.statistics.misses + 1;
+
+            give None;
+        }
+    }
+}
+
+proc module_registry_remove_alias(
+    registry: ref mut ModuleRegistry,
+    alias: string
+) -> bool {
+    let index =
+        module_registry_find_alias_index(
+            ref registry,
+            alias
+        );
+
+    pick index {
+        None {
+            give false;
+        }
+
+        Some(value) {
+            set output: [ModuleRegistryAlias] = [];
+            set current: usize = 0;
+
+            while current < len(registry.aliases) {
+                if current != value {
+                    output =
+                        output + [
+                            registry.aliases[current]
+                        ];
+                }
+
+                current = current + 1;
+            }
+
+            registry.aliases = output;
+
+            registry.statistics.aliases =
+                len(registry.aliases);
+
+            registry.statistics.removals =
+                registry.statistics.removals + 1;
+
+            registry.state =
+                ModuleRegistryState.Dirty;
+
+            give true;
+        }
+    }
+}
+
+proc module_registry_remove(
+    registry: ref mut ModuleRegistry,
+    id: ModuleId
+) -> bool {
+    let index =
+        module_registry_find_index_by_id(
+            ref registry,
+            id
+        );
+
+    pick index {
+        None {
+            give false;
+        }
+
+        Some(value) {
+            set entries: [ModuleRegistryEntry] = [];
+            set current: usize = 0;
+
+            while current < len(registry.entries) {
+                if current != value {
+                    entries =
+                        entries + [
+                            registry.entries[current]
+                        ];
+                }
+
+                current = current + 1;
+            }
+
+            set aliases: [ModuleRegistryAlias] = [];
+
+            for alias in registry.aliases {
+                if not module_id_equal(
+                    alias.target,
+                    id
+                ) {
+                    aliases =
+                        aliases + [alias];
+                }
+            }
+
+            registry.entries = entries;
+            registry.aliases = aliases;
+
+            registry.statistics.entries =
+                len(registry.entries);
+
+            registry.statistics.aliases =
+                len(registry.aliases);
+
+            registry.statistics.removals =
+                registry.statistics.removals + 1;
+
+            registry.state =
+                ModuleRegistryState.Dirty;
+
+            give true;
+        }
+    }
+}
+
+proc module_registry_clear(
+    registry: ref mut ModuleRegistry
+) {
+    registry.entries = [];
+    registry.aliases = [];
+    registry.errors = [];
+
+    registry.generation =
+        registry.generation + 1;
+
+    registry.statistics.entries = 0;
+    registry.statistics.aliases = 0;
+
+    registry.state =
+        ModuleRegistryState.Empty;
+}
+
+proc module_registry_rebuild(
+    registry: ref mut ModuleRegistry,
+    database: ref ModuleDatabase
+) -> bool {
+    registry.entries = [];
+    registry.aliases = [];
+    registry.errors = [];
+
+    registry.state =
+        ModuleRegistryState.Building;
+
+    registry.generation =
+        registry.generation + 1;
+
+    for module in database.modules {
+        if not module_registry_insert_module(
+            registry,
+            ref module
+        ) {
+            registry.state =
+                ModuleRegistryState.Failed;
+
+            give false;
+        }
+    }
+
+    registry.statistics.rebuilds =
+        registry.statistics.rebuilds + 1;
+
+    registry.statistics.entries =
+        len(registry.entries);
+
+    registry.statistics.aliases =
+        len(registry.aliases);
+
+    registry.state =
+        ModuleRegistryState.Ready;
+
+    give true;
+}
+
+proc module_registry_sync(
+    registry: ref mut ModuleRegistry,
+    database: ref ModuleDatabase
+) -> bool {
+    give module_registry_rebuild(
+        registry,
+        database
+    );
+}
+
+proc module_registry_validate(
+    registry: ref ModuleRegistry,
+    database: ref ModuleDatabase
+) -> bool {
+    for entry in registry.entries {
+        if not module_id_is_valid(entry.id) {
+            give false;
+        }
+
+        let module =
+            module_database_get(
+                database,
+                entry.id
+            );
+
+        pick module {
+            None {
+                give false;
+            }
+
+            Some(value) {
+                if value.name != entry.name {
+                    give false;
+                }
+
+                if value.canonical_path
+                    != entry.canonical_path
+                {
+                    give false;
+                }
+            }
+        }
+    }
+
+    give true;
+}
+
+proc module_registry_lookup_database_by_name(
+    registry: ref mut ModuleRegistry,
+    database: ref ModuleDatabase,
+    name: string
+) -> Option<ref ModuleDatabaseEntry> {
+    let entry =
+        module_registry_get_by_name(
+            registry,
+            name
+        );
+
+    pick entry {
+        Some(value) {
+            give module_database_get(
+                database,
+                value.id
+            );
+        }
+
+        None {
+            let alias =
+                module_registry_resolve_alias(
+                    registry,
+                    name
+                );
+
+            pick alias {
+                Some(id) {
+                    give module_database_get(
+                        database,
+                        id
+                    );
+                }
+
+                None {
+                    give None;
+                }
+            }
+        }
+    }
+}
+
+proc module_registry_lookup_database_by_path(
+    registry: ref mut ModuleRegistry,
+    database: ref ModuleDatabase,
+    path: string
+) -> Option<ref ModuleDatabaseEntry> {
+    let entry =
+        module_registry_get_by_path(
+            registry,
+            path
+        );
+
+    pick entry {
+        Some(value) {
+            give module_database_get(
+                database,
+                value.id
+            );
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc module_registry_is_ready(
+    registry: ref ModuleRegistry
+) -> bool {
+    give registry.state
+        == ModuleRegistryState.Ready;
+}
+
+proc module_registry_has_errors(
+    registry: ref ModuleRegistry
+) -> bool {
+    give len(registry.errors) != 0;
+}
+
+proc module_registry_entry_count(
+    registry: ref ModuleRegistry
+) -> usize {
+    give len(registry.entries);
+}
+
+proc module_registry_alias_count(
+    registry: ref ModuleRegistry
+) -> usize {
+    give len(registry.aliases);
+}
+
+proc module_registry_statistics(
+    registry: ref ModuleRegistry
+) -> ModuleRegistryStatistics {
+    give registry.statistics;
+}
+
+proc module_registry_state_name(
+    state: ModuleRegistryState
+) -> string {
+    pick state {
+        ModuleRegistryState.Empty {
+            give "empty";
+        }
+
+        ModuleRegistryState.Building {
+            give "building";
+        }
+
+        ModuleRegistryState.Ready {
+            give "ready";
+        }
+
+        ModuleRegistryState.Dirty {
+            give "dirty";
+        }
+
+        ModuleRegistryState.Failed {
+            give "failed";
+        }
+    }
+
+    give "failed";
+}
+
+proc module_registry_entry_kind_name(
+    kind: ModuleRegistryEntryKind
+) -> string {
+    pick kind {
+        ModuleRegistryEntryKind.Module {
+            give "module";
+        }
+
+        ModuleRegistryEntryKind.Alias {
+            give "alias";
+        }
+
+        ModuleRegistryEntryKind.Generated {
+            give "generated";
+        }
+
+        ModuleRegistryEntryKind.External {
+            give "external";
+        }
+    }
+
+    give "module";
+}
+
+proc module_registry_debug_text(
+    registry: ref ModuleRegistry
+) -> string {
+    give "ModuleRegistry("
+        + module_registry_state_name(
+            registry.state
+        )
+        + ", entries="
+        + len(registry.entries)
+        + ", aliases="
+        + len(registry.aliases)
+        + ")";
+}

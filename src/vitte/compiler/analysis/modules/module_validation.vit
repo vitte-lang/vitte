@@ -1,0 +1,1092 @@
+space vitte/compiler/analysis/modules/module_validation
+
+export *
+
+use vitte/compiler/frontend/source/span.{
+    Span
+}
+
+use vitte/compiler/analysis/modules/module_id.{
+    ModuleId,
+    module_id_equal,
+    module_id_is_valid
+}
+
+use vitte/compiler/analysis/modules/module_database.{
+    ModuleDatabase,
+    ModuleDatabaseEntry,
+    ModuleDatabaseEntryState,
+    module_database_get
+}
+
+use vitte/compiler/analysis/modules/module_imports.{
+    ModuleImport,
+    ModuleImportState,
+    ModuleImportTable
+}
+
+use vitte/compiler/analysis/modules/module_exports.{
+    ModuleExport,
+    ModuleExportTable
+}
+
+use vitte/compiler/analysis/modules/module_path.{
+    ModulePath,
+    ModulePathValidation,
+    module_path,
+    module_path_validate
+}
+
+use vitte/compiler/analysis/modules/module_registry.{
+    ModuleRegistry,
+    module_registry_validate
+}
+
+use vitte/compiler/analysis/modules/module_order.{
+    ModuleOrder,
+    ModuleOrderState,
+    module_order_is_complete,
+    module_order_has_cycle
+}
+
+pick ModuleValidationSeverity {
+    Note,
+    Warning,
+    Error,
+    Fatal
+}
+
+pick ModuleValidationErrorKind {
+    InvalidModuleId,
+    EmptyModuleName,
+    EmptyModulePath,
+    InvalidModulePath,
+
+    DuplicateModuleId,
+    DuplicateModuleName,
+    DuplicateModulePath,
+
+    InvalidDependency,
+    MissingDependencyTarget,
+    SelfDependency,
+
+    InvalidImport,
+    UnresolvedImport,
+    AmbiguousImport,
+    MissingImportModule,
+    MissingImportSymbol,
+
+    InvalidExport,
+
+    InvalidRegistry,
+
+    InvalidOrder,
+    IncompleteOrder,
+    CircularDependency,
+
+    FailedModule,
+    InvalidatedModule,
+
+    InternalInvariant
+}
+
+form ModuleValidationConfig {
+    validate_database: bool
+    validate_paths: bool
+    validate_dependencies: bool
+
+    validate_imports: bool
+    validate_exports: bool
+
+    validate_registry: bool
+    validate_order: bool
+
+    reject_failed_modules: bool
+    reject_invalidated_modules: bool
+
+    warnings_as_errors: bool
+    fail_fast: bool
+}
+
+form ModuleValidationError {
+    kind: ModuleValidationErrorKind
+    severity: ModuleValidationSeverity
+
+    module: string
+    related: string
+
+    message: string
+
+    span: Span
+}
+
+form ModuleValidationStatistics {
+    modules_checked: usize
+    dependencies_checked: usize
+
+    imports_checked: usize
+    exports_checked: usize
+
+    notes: usize
+    warnings: usize
+    errors: usize
+    fatals: usize
+}
+
+form ModuleValidationResult {
+    errors: [ModuleValidationError]
+
+    statistics: ModuleValidationStatistics
+
+    valid: bool
+}
+
+proc module_validation_empty_span() -> Span {
+    give Span {
+        source: 0,
+        start: 0,
+        end: 0
+    };
+}
+
+proc module_validation_config_default()
+    -> ModuleValidationConfig
+{
+    give ModuleValidationConfig {
+        validate_database: true,
+        validate_paths: true,
+        validate_dependencies: true,
+
+        validate_imports: true,
+        validate_exports: true,
+
+        validate_registry: true,
+        validate_order: true,
+
+        reject_failed_modules: true,
+        reject_invalidated_modules: false,
+
+        warnings_as_errors: false,
+        fail_fast: false
+    };
+}
+
+proc module_validation_statistics_empty()
+    -> ModuleValidationStatistics
+{
+    give ModuleValidationStatistics {
+        modules_checked: 0,
+        dependencies_checked: 0,
+
+        imports_checked: 0,
+        exports_checked: 0,
+
+        notes: 0,
+        warnings: 0,
+        errors: 0,
+        fatals: 0
+    };
+}
+
+proc module_validation_result_empty()
+    -> ModuleValidationResult
+{
+    give ModuleValidationResult {
+        errors: [],
+
+        statistics:
+            module_validation_statistics_empty(),
+
+        valid: true
+    };
+}
+
+proc module_validation_error(
+    kind: ModuleValidationErrorKind,
+    severity: ModuleValidationSeverity,
+    module: string,
+    related: string,
+    message: string,
+    span: Span
+) -> ModuleValidationError {
+    give ModuleValidationError {
+        kind: kind,
+        severity: severity,
+
+        module: module,
+        related: related,
+
+        message: message,
+
+        span: span
+    };
+}
+
+proc module_validation_push(
+    result: ref mut ModuleValidationResult,
+    config: ModuleValidationConfig,
+    error: ModuleValidationError
+) {
+    result.errors =
+        result.errors + [error];
+
+    pick error.severity {
+        ModuleValidationSeverity.Note {
+            result.statistics.notes =
+                result.statistics.notes + 1;
+        }
+
+        ModuleValidationSeverity.Warning {
+            result.statistics.warnings =
+                result.statistics.warnings + 1;
+
+            if config.warnings_as_errors {
+                result.valid = false;
+            }
+        }
+
+        ModuleValidationSeverity.Error {
+            result.statistics.errors =
+                result.statistics.errors + 1;
+
+            result.valid = false;
+        }
+
+        ModuleValidationSeverity.Fatal {
+            result.statistics.fatals =
+                result.statistics.fatals + 1;
+
+            result.valid = false;
+        }
+    }
+}
+
+proc module_validation_has_fatal(
+    result: ModuleValidationResult
+) -> bool {
+    give result.statistics.fatals > 0;
+}
+
+proc module_validation_should_stop(
+    result: ModuleValidationResult,
+    config: ModuleValidationConfig
+) -> bool {
+    give config.fail_fast
+        and not result.valid;
+}
+
+proc module_validation_validate_path(
+    module: ModuleDatabaseEntry,
+    result: ref mut ModuleValidationResult,
+    config: ModuleValidationConfig
+) {
+    if module.canonical_path == "" {
+        module_validation_push(
+            result,
+            config,
+            module_validation_error(
+                ModuleValidationErrorKind.EmptyModulePath,
+                ModuleValidationSeverity.Error,
+                module.name,
+                "",
+                "module canonical path is empty",
+                module.span
+            )
+        );
+
+        give;
+    }
+
+    let path: ModulePath =
+        module_path(
+            module.canonical_path
+        );
+
+    let validation:
+        ModulePathValidation =
+        module_path_validate(path);
+
+    if not validation.valid {
+        module_validation_push(
+            result,
+            config,
+            module_validation_error(
+                ModuleValidationErrorKind.InvalidModulePath,
+                ModuleValidationSeverity.Error,
+                module.name,
+                module.canonical_path,
+                validation.message,
+                module.span
+            )
+        );
+    }
+}
+
+proc module_validation_validate_module(
+    module: ModuleDatabaseEntry,
+    result: ref mut ModuleValidationResult,
+    config: ModuleValidationConfig
+) {
+    result.statistics.modules_checked =
+        result.statistics.modules_checked + 1;
+
+    if not module_id_is_valid(module.id) {
+        module_validation_push(
+            result,
+            config,
+            module_validation_error(
+                ModuleValidationErrorKind.InvalidModuleId,
+                ModuleValidationSeverity.Fatal,
+                module.name,
+                "",
+                "module has invalid id",
+                module.span
+            )
+        );
+
+        give;
+    }
+
+    if module.name == "" {
+        module_validation_push(
+            result,
+            config,
+            module_validation_error(
+                ModuleValidationErrorKind.EmptyModuleName,
+                ModuleValidationSeverity.Error,
+                "",
+                module.canonical_path,
+                "module name is empty",
+                module.span
+            )
+        );
+    }
+
+    if config.validate_paths {
+        module_validation_validate_path(
+            module,
+            result,
+            config
+        );
+    }
+
+    if config.reject_failed_modules
+        and module.state
+        == ModuleDatabaseEntryState.Failed
+    {
+        module_validation_push(
+            result,
+            config,
+            module_validation_error(
+                ModuleValidationErrorKind.FailedModule,
+                ModuleValidationSeverity.Error,
+                module.name,
+                "",
+                "module is in failed state",
+                module.span
+            )
+        );
+    }
+
+    if config.reject_invalidated_modules
+        and module.state
+        == ModuleDatabaseEntryState.Invalidated
+    {
+        module_validation_push(
+            result,
+            config,
+            module_validation_error(
+                ModuleValidationErrorKind.InvalidatedModule,
+                ModuleValidationSeverity.Error,
+                module.name,
+                "",
+                "module is invalidated",
+                module.span
+            )
+        );
+    }
+}
+
+proc module_validation_validate_duplicates(
+    database: ref ModuleDatabase,
+    result: ref mut ModuleValidationResult,
+    config: ModuleValidationConfig
+) {
+    let mut left: usize = 0;
+
+    while left < len(database.modules) {
+        let mut right: usize =
+            left + 1;
+
+        while right < len(database.modules) {
+            let a =
+                database.modules[left];
+
+            let b =
+                database.modules[right];
+
+            if module_id_equal(
+                a.id,
+                b.id
+            ) {
+                module_validation_push(
+                    result,
+                    config,
+                    module_validation_error(
+                        ModuleValidationErrorKind.DuplicateModuleId,
+                        ModuleValidationSeverity.Fatal,
+                        a.name,
+                        b.name,
+                        "duplicate module id",
+                        a.span
+                    )
+                );
+            }
+
+            if a.name == b.name {
+                module_validation_push(
+                    result,
+                    config,
+                    module_validation_error(
+                        ModuleValidationErrorKind.DuplicateModuleName,
+                        ModuleValidationSeverity.Error,
+                        a.name,
+                        b.name,
+                        "duplicate module name",
+                        a.span
+                    )
+                );
+            }
+
+            if a.canonical_path
+                == b.canonical_path
+            {
+                module_validation_push(
+                    result,
+                    config,
+                    module_validation_error(
+                        ModuleValidationErrorKind.DuplicateModulePath,
+                        ModuleValidationSeverity.Error,
+                        a.name,
+                        b.name,
+                        "duplicate canonical module path",
+                        a.span
+                    )
+                );
+            }
+
+            set right = right + 1;
+        }
+
+        set left = left + 1;
+    }
+}
+
+proc module_validation_validate_dependencies(
+    database: ref ModuleDatabase,
+    result: ref mut ModuleValidationResult,
+    config: ModuleValidationConfig
+) {
+    for dependency in database.dependencies {
+        result.statistics.dependencies_checked =
+            result.statistics.dependencies_checked + 1;
+
+        if not module_id_is_valid(
+            dependency.module
+        )
+            or not module_id_is_valid(
+                dependency.target
+            )
+        {
+            module_validation_push(
+                result,
+                config,
+                module_validation_error(
+                    ModuleValidationErrorKind.InvalidDependency,
+                    ModuleValidationSeverity.Error,
+                    "",
+                    "",
+                    "dependency contains invalid module id",
+                    dependency.span
+                )
+            );
+
+            continue;
+        }
+
+        if module_id_equal(
+            dependency.module,
+            dependency.target
+        ) {
+            module_validation_push(
+                result,
+                config,
+                module_validation_error(
+                    ModuleValidationErrorKind.SelfDependency,
+                    ModuleValidationSeverity.Error,
+                    "",
+                    "",
+                    "module depends on itself",
+                    dependency.span
+                )
+            );
+        }
+
+        let source =
+            module_database_get(
+                database,
+                dependency.module
+            );
+
+        let target =
+            module_database_get(
+                database,
+                dependency.target
+            );
+
+        pick source {
+            None {
+                module_validation_push(
+                    result,
+                    config,
+                    module_validation_error(
+                        ModuleValidationErrorKind.InvalidDependency,
+                        ModuleValidationSeverity.Fatal,
+                        "",
+                        "",
+                        "dependency source module does not exist",
+                        dependency.span
+                    )
+                );
+            }
+
+            Some(_) {}
+        }
+
+        pick target {
+            None {
+                module_validation_push(
+                    result,
+                    config,
+                    module_validation_error(
+                        ModuleValidationErrorKind.MissingDependencyTarget,
+                        ModuleValidationSeverity.Error,
+                        "",
+                        "",
+                        "dependency target module does not exist",
+                        dependency.span
+                    )
+                );
+            }
+
+            Some(_) {}
+        }
+
+        if module_validation_should_stop(
+            *result,
+            config
+        ) {
+            give;
+        }
+    }
+}
+
+proc module_validation_validate_import(
+    import: ModuleImport,
+    result: ref mut ModuleValidationResult,
+    config: ModuleValidationConfig
+) {
+    result.statistics.imports_checked =
+        result.statistics.imports_checked + 1;
+
+    if not module_id_is_valid(
+        import.module
+    ) {
+        module_validation_push(
+            result,
+            config,
+            module_validation_error(
+                ModuleValidationErrorKind.InvalidImport,
+                ModuleValidationSeverity.Error,
+                import.name,
+                "",
+                "import owner module id is invalid",
+                import.span
+            )
+        );
+    }
+
+    pick import.state {
+        ModuleImportState.Resolved {}
+
+        ModuleImportState.Disabled {
+            module_validation_push(
+                result,
+                config,
+                module_validation_error(
+                    ModuleValidationErrorKind.InvalidImport,
+                    ModuleValidationSeverity.Note,
+                    import.name,
+                    "",
+                    "import is disabled",
+                    import.span
+                )
+            );
+        }
+
+        ModuleImportState.Ambiguous {
+            module_validation_push(
+                result,
+                config,
+                module_validation_error(
+                    ModuleValidationErrorKind.AmbiguousImport,
+                    ModuleValidationSeverity.Error,
+                    import.name,
+                    "",
+                    "import resolution is ambiguous",
+                    import.span
+                )
+            );
+        }
+
+        ModuleImportState.MissingModule {
+            module_validation_push(
+                result,
+                config,
+                module_validation_error(
+                    ModuleValidationErrorKind.MissingImportModule,
+                    ModuleValidationSeverity.Error,
+                    import.name,
+                    "",
+                    "imported module was not found",
+                    import.span
+                )
+            );
+        }
+
+        ModuleImportState.MissingSymbol {
+            module_validation_push(
+                result,
+                config,
+                module_validation_error(
+                    ModuleValidationErrorKind.MissingImportSymbol,
+                    ModuleValidationSeverity.Error,
+                    import.name,
+                    "",
+                    "imported symbol was not found",
+                    import.span
+                )
+            );
+        }
+
+        ModuleImportState.PrivateSymbol {
+            module_validation_push(
+                result,
+                config,
+                module_validation_error(
+                    ModuleValidationErrorKind.InvalidImport,
+                    ModuleValidationSeverity.Error,
+                    import.name,
+                    "",
+                    "import references private symbol",
+                    import.span
+                )
+            );
+        }
+
+        ModuleImportState.Failed {
+            module_validation_push(
+                result,
+                config,
+                module_validation_error(
+                    ModuleValidationErrorKind.InvalidImport,
+                    ModuleValidationSeverity.Error,
+                    import.name,
+                    "",
+                    "import resolution failed",
+                    import.span
+                )
+            );
+        }
+
+        ModuleImportState.Invalidated {
+            module_validation_push(
+                result,
+                config,
+                module_validation_error(
+                    ModuleValidationErrorKind.InvalidImport,
+                    ModuleValidationSeverity.Warning,
+                    import.name,
+                    "",
+                    "import is invalidated",
+                    import.span
+                )
+            );
+        }
+
+        ModuleImportState.Declared {
+            module_validation_push(
+                result,
+                config,
+                module_validation_error(
+                    ModuleValidationErrorKind.UnresolvedImport,
+                    ModuleValidationSeverity.Error,
+                    import.name,
+                    "",
+                    "import was not resolved",
+                    import.span
+                )
+            );
+        }
+
+        ModuleImportState.Resolving {
+            module_validation_push(
+                result,
+                config,
+                module_validation_error(
+                    ModuleValidationErrorKind.UnresolvedImport,
+                    ModuleValidationSeverity.Error,
+                    import.name,
+                    "",
+                    "import is still resolving",
+                    import.span
+                )
+            );
+        }
+    }
+}
+
+proc module_validation_validate_imports(
+    imports: ref ModuleImportTable,
+    result: ref mut ModuleValidationResult,
+    config: ModuleValidationConfig
+) {
+    for import in imports.imports {
+        module_validation_validate_import(
+            import,
+            result,
+            config
+        );
+
+        if module_validation_should_stop(
+            *result,
+            config
+        ) {
+            give;
+        }
+    }
+}
+
+proc module_validation_validate_export(
+    export: ModuleExport,
+    result: ref mut ModuleValidationResult,
+    config: ModuleValidationConfig
+) {
+    result.statistics.exports_checked =
+        result.statistics.exports_checked + 1;
+
+    if export.name == "" {
+        module_validation_push(
+            result,
+            config,
+            module_validation_error(
+                ModuleValidationErrorKind.InvalidExport,
+                ModuleValidationSeverity.Error,
+                "",
+                "",
+                "module export has empty name",
+                export.span
+            )
+        );
+    }
+
+    if not module_id_is_valid(
+        export.module
+    ) {
+        module_validation_push(
+            result,
+            config,
+            module_validation_error(
+                ModuleValidationErrorKind.InvalidExport,
+                ModuleValidationSeverity.Error,
+                export.name,
+                "",
+                "module export has invalid owner",
+                export.span
+            )
+        );
+    }
+}
+
+proc module_validation_validate_exports(
+    exports: ref ModuleExportTable,
+    result: ref mut ModuleValidationResult,
+    config: ModuleValidationConfig
+) {
+    for export in exports.exports {
+        module_validation_validate_export(
+            export,
+            result,
+            config
+        );
+
+        if module_validation_should_stop(
+            *result,
+            config
+        ) {
+            give;
+        }
+    }
+}
+
+proc module_validation_validate_registry(
+    registry: ref ModuleRegistry,
+    database: ref ModuleDatabase,
+    result: ref mut ModuleValidationResult,
+    config: ModuleValidationConfig
+) {
+    if not module_registry_validate(
+        registry,
+        database
+    ) {
+        module_validation_push(
+            result,
+            config,
+            module_validation_error(
+                ModuleValidationErrorKind.InvalidRegistry,
+                ModuleValidationSeverity.Fatal,
+                "",
+                "",
+                "module registry is inconsistent with module database",
+                module_validation_empty_span()
+            )
+        );
+    }
+}
+
+proc module_validation_validate_order(
+    order: ref ModuleOrder,
+    result: ref mut ModuleValidationResult,
+    config: ModuleValidationConfig
+) {
+    if module_order_has_cycle(order) {
+        module_validation_push(
+            result,
+            config,
+            module_validation_error(
+                ModuleValidationErrorKind.CircularDependency,
+                ModuleValidationSeverity.Error,
+                "",
+                "",
+                "module dependency graph contains a cycle",
+                module_validation_empty_span()
+            )
+        );
+    }
+
+    if order.state == ModuleOrderState.Failed {
+        module_validation_push(
+            result,
+            config,
+            module_validation_error(
+                ModuleValidationErrorKind.InvalidOrder,
+                ModuleValidationSeverity.Error,
+                "",
+                "",
+                "module order construction failed",
+                module_validation_empty_span()
+            )
+        );
+    }
+
+    if not module_order_is_complete(order) {
+        module_validation_push(
+            result,
+            config,
+            module_validation_error(
+                ModuleValidationErrorKind.IncompleteOrder,
+                ModuleValidationSeverity.Error,
+                "",
+                "",
+                "module order is incomplete",
+                module_validation_empty_span()
+            )
+        );
+    }
+}
+
+proc module_validation_run(
+    database: ref ModuleDatabase,
+    imports: ref ModuleImportTable,
+    exports: ref ModuleExportTable,
+    registry: ref ModuleRegistry,
+    order: ref ModuleOrder,
+    config: ModuleValidationConfig
+) -> ModuleValidationResult {
+    let mut result:
+        ModuleValidationResult =
+        module_validation_result_empty();
+
+    if config.validate_database {
+        for module in database.modules {
+            module_validation_validate_module(
+                module,
+                ref mut result,
+                config
+            );
+
+            if module_validation_should_stop(
+                result,
+                config
+            ) {
+                give result;
+            }
+        }
+
+        module_validation_validate_duplicates(
+            database,
+            ref mut result,
+            config
+        );
+
+        if module_validation_should_stop(
+            result,
+            config
+        ) {
+            give result;
+        }
+    }
+
+    if config.validate_dependencies {
+        module_validation_validate_dependencies(
+            database,
+            ref mut result,
+            config
+        );
+
+        if module_validation_should_stop(
+            result,
+            config
+        ) {
+            give result;
+        }
+    }
+
+    if config.validate_imports {
+        module_validation_validate_imports(
+            imports,
+            ref mut result,
+            config
+        );
+
+        if module_validation_should_stop(
+            result,
+            config
+        ) {
+            give result;
+        }
+    }
+
+    if config.validate_exports {
+        module_validation_validate_exports(
+            exports,
+            ref mut result,
+            config
+        );
+
+        if module_validation_should_stop(
+            result,
+            config
+        ) {
+            give result;
+        }
+    }
+
+    if config.validate_registry {
+        module_validation_validate_registry(
+            registry,
+            database,
+            ref mut result,
+            config
+        );
+
+        if module_validation_should_stop(
+            result,
+            config
+        ) {
+            give result;
+        }
+    }
+
+    if config.validate_order {
+        module_validation_validate_order(
+            order,
+            ref mut result,
+            config
+        );
+    }
+
+    give result;
+}
+
+proc module_validation_default(
+    database: ref ModuleDatabase,
+    imports: ref ModuleImportTable,
+    exports: ref ModuleExportTable,
+    registry: ref ModuleRegistry,
+    order: ref ModuleOrder
+) -> ModuleValidationResult {
+    give module_validation_run(
+        database,
+        imports,
+        exports,
+        registry,
+        order,
+        module_validation_config_default()
+    );
+}
+
+proc module_validation_error_count(
+    result: ModuleValidationResult
+) -> usize {
+    give result.statistics.errors
+        + result.statistics.fatals;
+}
+
+proc module_validation_warning_count(
+    result: ModuleValidationResult
+) -> usize {
+    give result.statistics.warnings;
+}
+
+proc module_validation_is_valid(
+    result: ModuleValidationResult
+) -> bool {
+    give result.valid
+        and result.statistics.errors == 0
+        and result.statistics.fatals == 0;
+}
+
+proc module_validation_severity_name(
+    severity: ModuleValidationSeverity
+) -> string {
+    pick severity {
+        ModuleValidationSeverity.Note {
+            give "note";
+        }
+
+        ModuleValidationSeverity.Warning {
+            give "warning";
+        }
+
+        ModuleValidationSeverity.Error {
+            give "error";
+        }
+
+        ModuleValidationSeverity.Fatal {
+            give "fatal";
+        }
+    }
+
+    give "error";
+}

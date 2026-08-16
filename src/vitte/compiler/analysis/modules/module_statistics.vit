@@ -1,0 +1,684 @@
+space vitte/compiler/analysis/modules/module_statistics
+
+export *
+
+use vitte/compiler/analysis/modules/module_database.{
+    ModuleDatabase,
+    ModuleDatabaseEntryState,
+    ModuleDatabaseStatistics,
+    module_database_statistics
+}
+
+use vitte/compiler/analysis/modules/module_imports.{
+    ModuleImportTable,
+    ModuleImportStatistics
+}
+
+use vitte/compiler/analysis/modules/module_exports.{
+    ModuleExportTable
+}
+
+use vitte/compiler/analysis/modules/module_registry.{
+    ModuleRegistry,
+    ModuleRegistryStatistics,
+    module_registry_statistics
+}
+
+use vitte/compiler/analysis/modules/module_order.{
+    ModuleOrder,
+    ModuleOrderStatistics
+}
+
+pick ModuleStatisticsState {
+    Empty,
+    Partial,
+    Complete,
+    Invalid
+}
+
+form ModuleStateStatistics {
+    declared: usize
+    loading: usize
+    parsed: usize
+    analyzed: usize
+    ready: usize
+    failed: usize
+    invalidated: usize
+}
+
+form ModuleDependencyStatistics {
+    dependencies: usize
+
+    roots: usize
+    leaves: usize
+    isolated: usize
+
+    max_dependencies: usize
+    max_dependents: usize
+
+    average_dependencies: f64
+    average_dependents: f64
+}
+
+form ModuleImportAggregate {
+    total: usize
+
+    resolved: usize
+    unresolved: usize
+    ambiguous: usize
+
+    missing_modules: usize
+    missing_symbols: usize
+    private_symbols: usize
+
+    disabled: usize
+    failed: usize
+    invalidated: usize
+
+    symbol_imports: usize
+    module_imports: usize
+    glob_imports: usize
+    aliases: usize
+    reexports: usize
+    synthetic: usize
+}
+
+form ModuleExportAggregate {
+    total: usize
+    public: usize
+    private: usize
+}
+
+form ModuleOrderAggregate {
+    ordered: usize
+    levels: usize
+
+    skipped: usize
+    cycles: usize
+
+    complete: bool
+}
+
+form ModuleRegistryAggregate {
+    entries: usize
+    aliases: usize
+
+    lookups: u64
+    hits: u64
+    misses: u64
+
+    hit_rate: f64
+}
+
+form ModuleStatistics {
+    state: ModuleStatisticsState
+
+    modules: usize
+
+    module_states: ModuleStateStatistics
+    dependencies: ModuleDependencyStatistics
+
+    imports: ModuleImportAggregate
+    exports: ModuleExportAggregate
+
+    order: ModuleOrderAggregate
+    registry: ModuleRegistryAggregate
+
+    generation: u64
+}
+
+proc module_state_statistics_empty()
+    -> ModuleStateStatistics
+{
+    give ModuleStateStatistics {
+        declared: 0,
+        loading: 0,
+        parsed: 0,
+        analyzed: 0,
+        ready: 0,
+        failed: 0,
+        invalidated: 0
+    };
+}
+
+proc module_dependency_statistics_empty()
+    -> ModuleDependencyStatistics
+{
+    give ModuleDependencyStatistics {
+        dependencies: 0,
+
+        roots: 0,
+        leaves: 0,
+        isolated: 0,
+
+        max_dependencies: 0,
+        max_dependents: 0,
+
+        average_dependencies: 0.0,
+        average_dependents: 0.0
+    };
+}
+
+proc module_import_aggregate_empty()
+    -> ModuleImportAggregate
+{
+    give ModuleImportAggregate {
+        total: 0,
+
+        resolved: 0,
+        unresolved: 0,
+        ambiguous: 0,
+
+        missing_modules: 0,
+        missing_symbols: 0,
+        private_symbols: 0,
+
+        disabled: 0,
+        failed: 0,
+        invalidated: 0,
+
+        symbol_imports: 0,
+        module_imports: 0,
+        glob_imports: 0,
+        aliases: 0,
+        reexports: 0,
+        synthetic: 0
+    };
+}
+
+proc module_export_aggregate_empty()
+    -> ModuleExportAggregate
+{
+    give ModuleExportAggregate {
+        total: 0,
+        public: 0,
+        private: 0
+    };
+}
+
+proc module_order_aggregate_empty()
+    -> ModuleOrderAggregate
+{
+    give ModuleOrderAggregate {
+        ordered: 0,
+        levels: 0,
+
+        skipped: 0,
+        cycles: 0,
+
+        complete: false
+    };
+}
+
+proc module_registry_aggregate_empty()
+    -> ModuleRegistryAggregate
+{
+    give ModuleRegistryAggregate {
+        entries: 0,
+        aliases: 0,
+
+        lookups: 0,
+        hits: 0,
+        misses: 0,
+
+        hit_rate: 0.0
+    };
+}
+
+proc module_statistics_empty()
+    -> ModuleStatistics
+{
+    give ModuleStatistics {
+        state: ModuleStatisticsState.Empty,
+
+        modules: 0,
+
+        module_states:
+            module_state_statistics_empty(),
+
+        dependencies:
+            module_dependency_statistics_empty(),
+
+        imports:
+            module_import_aggregate_empty(),
+
+        exports:
+            module_export_aggregate_empty(),
+
+        order:
+            module_order_aggregate_empty(),
+
+        registry:
+            module_registry_aggregate_empty(),
+
+        generation: 0
+    };
+}
+
+proc module_statistics_collect_states(
+    database: ref ModuleDatabase
+) -> ModuleStateStatistics {
+    let mut statistics:
+        ModuleStateStatistics =
+        module_state_statistics_empty();
+
+    for module in database.modules {
+        pick module.state {
+            ModuleDatabaseEntryState.Declared {
+                statistics.declared =
+                    statistics.declared + 1;
+            }
+
+            ModuleDatabaseEntryState.Loading {
+                statistics.loading =
+                    statistics.loading + 1;
+            }
+
+            ModuleDatabaseEntryState.Parsed {
+                statistics.parsed =
+                    statistics.parsed + 1;
+            }
+
+            ModuleDatabaseEntryState.Analyzed {
+                statistics.analyzed =
+                    statistics.analyzed + 1;
+            }
+
+            ModuleDatabaseEntryState.Ready {
+                statistics.ready =
+                    statistics.ready + 1;
+            }
+
+            ModuleDatabaseEntryState.Failed {
+                statistics.failed =
+                    statistics.failed + 1;
+            }
+
+            ModuleDatabaseEntryState.Invalidated {
+                statistics.invalidated =
+                    statistics.invalidated + 1;
+            }
+        }
+    }
+
+    give statistics;
+}
+
+proc module_statistics_collect_dependencies(
+    database: ref ModuleDatabase
+) -> ModuleDependencyStatistics {
+    let mut statistics:
+        ModuleDependencyStatistics =
+        module_dependency_statistics_empty();
+
+    statistics.dependencies =
+        len(database.dependencies);
+
+    if len(database.modules) == 0 {
+        give statistics;
+    }
+
+    let mut total_dependencies: usize = 0;
+    let mut total_dependents: usize = 0;
+
+    for module in database.modules {
+        let dependencies: usize = 0;
+        let dependents: usize = 0;
+
+        for dependency in database.dependencies {
+            if dependency.module == module.id {
+                set dependencies =
+                    dependencies + 1;
+            }
+
+            if dependency.target == module.id {
+                set dependents =
+                    dependents + 1;
+            }
+        }
+
+        if dependencies == 0 {
+            statistics.roots =
+                statistics.roots + 1;
+        }
+
+        if dependents == 0 {
+            statistics.leaves =
+                statistics.leaves + 1;
+        }
+
+        if dependencies == 0
+            and dependents == 0
+        {
+            statistics.isolated =
+                statistics.isolated + 1;
+        }
+
+        if dependencies
+            > statistics.max_dependencies
+        {
+            statistics.max_dependencies =
+                dependencies;
+        }
+
+        if dependents
+            > statistics.max_dependents
+        {
+            statistics.max_dependents =
+                dependents;
+        }
+
+        set total_dependencies =
+            total_dependencies
+            + dependencies;
+
+        set total_dependents =
+            total_dependents
+            + dependents;
+    }
+
+    statistics.average_dependencies =
+        (total_dependencies as f64)
+        / (len(database.modules) as f64);
+
+    statistics.average_dependents =
+        (total_dependents as f64)
+        / (len(database.modules) as f64);
+
+    give statistics;
+}
+
+proc module_statistics_collect_imports(
+    table: ref ModuleImportTable
+) -> ModuleImportAggregate {
+    let source: ModuleImportStatistics =
+        table.statistics;
+
+    give ModuleImportAggregate {
+        total: source.imports,
+
+        resolved: source.resolved,
+        unresolved: source.unresolved,
+        ambiguous: source.ambiguous,
+
+        missing_modules:
+            source.missing_modules,
+
+        missing_symbols:
+            source.missing_symbols,
+
+        private_symbols:
+            source.private_symbols,
+
+        disabled: source.disabled,
+        failed: source.failed,
+        invalidated: source.invalidated,
+
+        symbol_imports:
+            source.symbol_imports,
+
+        module_imports:
+            source.module_imports,
+
+        glob_imports:
+            source.glob_imports,
+
+        aliases: source.aliases,
+        reexports: source.reexports,
+
+        synthetic:
+            source.synthetic_imports
+    };
+}
+
+proc module_statistics_collect_exports(
+    table: ref ModuleExportTable
+) -> ModuleExportAggregate {
+    let mut statistics:
+        ModuleExportAggregate =
+        module_export_aggregate_empty();
+
+    statistics.total =
+        len(table.exports);
+
+    for export in table.exports {
+        if export.visibility == ModuleExportVisibility.Public {
+            statistics.public =
+                statistics.public + 1;
+        } else {
+            statistics.private =
+                statistics.private + 1;
+        }
+    }
+
+    give statistics;
+}
+
+proc module_statistics_collect_order(
+    order: ref ModuleOrder
+) -> ModuleOrderAggregate {
+    let statistics:
+        ModuleOrderStatistics =
+        order.statistics;
+
+    give ModuleOrderAggregate {
+        ordered: statistics.ordered,
+        levels: statistics.levels,
+
+        skipped: statistics.skipped,
+        cycles: statistics.cycles,
+
+        complete:
+            order.state
+            == ModuleOrderState.Ready
+            and statistics.skipped == 0
+            and statistics.cycles == 0
+    };
+}
+
+proc module_statistics_collect_registry(
+    registry: ref ModuleRegistry
+) -> ModuleRegistryAggregate {
+    let source:
+        ModuleRegistryStatistics =
+        module_registry_statistics(
+            registry
+        );
+
+    let mut rate: f64 = 0.0;
+
+    if source.lookups > 0 {
+        set rate =
+            (source.hits as f64)
+            / (source.lookups as f64);
+    }
+
+    give ModuleRegistryAggregate {
+        entries: source.entries,
+        aliases: source.aliases,
+
+        lookups: source.lookups,
+        hits: source.hits,
+        misses: source.misses,
+
+        hit_rate: rate
+    };
+}
+
+proc module_statistics_determine_state(
+    statistics: ModuleStatistics
+) -> ModuleStatisticsState {
+    if statistics.modules == 0 {
+        give ModuleStatisticsState.Empty;
+    }
+
+    if statistics.module_states.failed > 0 {
+        give ModuleStatisticsState.Invalid;
+    }
+
+    if statistics.module_states.ready
+        == statistics.modules
+        and statistics.order.complete
+    {
+        give ModuleStatisticsState.Complete;
+    }
+
+    give ModuleStatisticsState.Partial;
+}
+
+proc module_statistics_collect(
+    database: ref ModuleDatabase,
+    imports: ref ModuleImportTable,
+    exports: ref ModuleExportTable,
+    order: ref ModuleOrder,
+    registry: ref ModuleRegistry
+) -> ModuleStatistics {
+    let database_statistics:
+        ModuleDatabaseStatistics =
+        module_database_statistics(
+            database
+        );
+
+    let mut statistics:
+        ModuleStatistics =
+        module_statistics_empty();
+
+    statistics.modules =
+        database_statistics.modules;
+
+    statistics.module_states =
+        module_statistics_collect_states(
+            database
+        );
+
+    statistics.dependencies =
+        module_statistics_collect_dependencies(
+            database
+        );
+
+    statistics.imports =
+        module_statistics_collect_imports(
+            imports
+        );
+
+    statistics.exports =
+        module_statistics_collect_exports(
+            exports
+        );
+
+    statistics.order =
+        module_statistics_collect_order(
+            order
+        );
+
+    statistics.registry =
+        module_statistics_collect_registry(
+            registry
+        );
+
+    statistics.generation =
+        database.generation;
+
+    statistics.state =
+        module_statistics_determine_state(
+            statistics
+        );
+
+    give statistics;
+}
+
+proc module_statistics_module_failure_rate(
+    statistics: ModuleStatistics
+) -> f64 {
+    if statistics.modules == 0 {
+        give 0.0;
+    }
+
+    give
+        (statistics.module_states.failed as f64)
+        / (statistics.modules as f64);
+}
+
+proc module_statistics_module_ready_rate(
+    statistics: ModuleStatistics
+) -> f64 {
+    if statistics.modules == 0 {
+        give 0.0;
+    }
+
+    give
+        (statistics.module_states.ready as f64)
+        / (statistics.modules as f64);
+}
+
+proc module_statistics_import_resolution_rate(
+    statistics: ModuleStatistics
+) -> f64 {
+    if statistics.imports.total == 0 {
+        give 1.0;
+    }
+
+    give
+        (statistics.imports.resolved as f64)
+        / (statistics.imports.total as f64);
+}
+
+proc module_statistics_has_failures(
+    statistics: ModuleStatistics
+) -> bool {
+    give statistics.module_states.failed > 0
+        or statistics.imports.failed > 0;
+}
+
+proc module_statistics_has_cycles(
+    statistics: ModuleStatistics
+) -> bool {
+    give statistics.order.cycles > 0;
+}
+
+proc module_statistics_is_complete(
+    statistics: ModuleStatistics
+) -> bool {
+    give statistics.state
+        == ModuleStatisticsState.Complete;
+}
+
+proc module_statistics_state_name(
+    state: ModuleStatisticsState
+) -> string {
+    pick state {
+        ModuleStatisticsState.Empty {
+            give "empty";
+        }
+
+        ModuleStatisticsState.Partial {
+            give "partial";
+        }
+
+        ModuleStatisticsState.Complete {
+            give "complete";
+        }
+
+        ModuleStatisticsState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+proc module_statistics_debug_text(
+    statistics: ModuleStatistics
+) -> string {
+    give "ModuleStatistics("
+        + module_statistics_state_name(
+            statistics.state
+        )
+        + ", modules="
+        + statistics.modules
+        + ", dependencies="
+        + statistics.dependencies.dependencies
+        + ", imports="
+        + statistics.imports.total
+        + ")";
+}

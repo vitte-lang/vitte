@@ -1,0 +1,1067 @@
+space vitte/compiler/analysis/modules/module_manager
+
+export *
+
+use vitte/compiler/frontend/source/span.{
+    Span
+}
+
+use vitte/compiler/analysis/modules/module_attributes.{
+    ModuleAttributes,
+    module_attributes_default
+}
+
+use vitte/compiler/analysis/modules/module_database.{
+    ModuleId,
+    ModuleDependencyId,
+    ModuleDatabase,
+    ModuleDatabaseEntry,
+    ModuleDatabaseEntryState,
+    ModuleDatabaseError,
+    ModuleDatabaseAnalysis,
+    ModuleDatabaseStatistics,
+
+    module_id_invalid,
+    module_id_is_valid,
+
+    module_database_create,
+    module_database_insert,
+    module_database_insert_full,
+    module_database_get,
+    module_database_get_by_name,
+    module_database_get_by_path,
+    module_database_contains_name,
+    module_database_contains_path,
+
+    module_database_add_dependency,
+    module_database_add_dependency_by_name,
+
+    module_database_set_source,
+    module_database_set_attributes,
+
+    module_database_begin_loading,
+    module_database_mark_parsed,
+    module_database_mark_analyzed,
+    module_database_mark_ready,
+    module_database_mark_failed,
+
+    module_database_analyze,
+    module_database_topological_order,
+
+    module_database_invalidate,
+    module_database_invalidate_dependents,
+    module_database_invalidate_module_and_dependents,
+
+    module_database_clear_errors,
+    module_database_advance_generation,
+    module_database_clear,
+    module_database_reset,
+
+    module_database_module_count,
+    module_database_dependency_count,
+    module_database_is_empty,
+    module_database_has_errors,
+    module_database_statistics
+}
+
+pick ModuleManagerState {
+    Created,
+    Loading,
+    Parsing,
+    Resolving,
+    Analyzing,
+    Ready,
+    Invalidated,
+    Failed
+}
+
+pick ModuleManagerErrorKind {
+    None,
+    InvalidArgument,
+    ModuleNotFound,
+    DuplicateModule,
+    DependencyError,
+    CircularDependency,
+    AnalysisFailed,
+    InvalidState,
+    LimitExceeded
+}
+
+form ModuleManagerAnalysisConfig {
+    analyze_dependencies: bool
+    detect_cycles: bool
+    compute_order: bool
+
+    invalidate_dependents: bool
+    recursive_invalidation: bool
+
+    fail_fast: bool
+    allow_optional_dependencies: bool
+
+    max_modules: usize
+    max_dependencies: usize
+}
+
+form ModuleManagerConfig {
+    analysis: ModuleManagerAnalysisConfig
+
+    auto_advance_generation: bool
+    clear_errors_before_analysis: bool
+
+    mark_analyzed_modules_ready: bool
+}
+
+form ModuleManagerError {
+    kind: ModuleManagerErrorKind
+
+    module: string
+    dependency: string
+    message: string
+
+    span: Span
+}
+
+form ModuleManagerStatistics {
+    modules: usize
+    dependencies: usize
+
+    ready: usize
+    failed: usize
+    invalidated: usize
+
+    analyses: u64
+    successful_analyses: u64
+    failed_analyses: u64
+
+    invalidations: u64
+    generations: u64
+}
+
+form ModuleManagerAnalysis {
+    database_analysis: ModuleDatabaseAnalysis
+
+    order: [ModuleId]
+    errors: [ModuleManagerError]
+
+    valid: bool
+}
+
+form ModuleManager {
+    config: ModuleManagerConfig
+    state: ModuleManagerState
+
+    database: ModuleDatabase
+
+    last_order: [ModuleId]
+    errors: [ModuleManagerError]
+
+    generation: u64
+
+    statistics: ModuleManagerStatistics
+}
+
+proc module_manager_empty_span() -> Span {
+    give Span {
+        source: 0,
+        start: 0,
+        end: 0
+    };
+}
+
+proc module_manager_analysis_config_default()
+    -> ModuleManagerAnalysisConfig
+{
+    give ModuleManagerAnalysisConfig {
+        analyze_dependencies: true,
+        detect_cycles: true,
+        compute_order: true,
+
+        invalidate_dependents: true,
+        recursive_invalidation: true,
+
+        fail_fast: true,
+        allow_optional_dependencies: true,
+
+        max_modules: 65536,
+        max_dependencies: 262144
+    };
+}
+
+proc module_manager_config_default()
+    -> ModuleManagerConfig
+{
+    give ModuleManagerConfig {
+        analysis:
+            module_manager_analysis_config_default(),
+
+        auto_advance_generation: true,
+        clear_errors_before_analysis: true,
+
+        mark_analyzed_modules_ready: true
+    };
+}
+
+proc module_manager_statistics_empty()
+    -> ModuleManagerStatistics
+{
+    give ModuleManagerStatistics {
+        modules: 0,
+        dependencies: 0,
+
+        ready: 0,
+        failed: 0,
+        invalidated: 0,
+
+        analyses: 0,
+        successful_analyses: 0,
+        failed_analyses: 0,
+
+        invalidations: 0,
+        generations: 1
+    };
+}
+
+proc module_manager_error(
+    kind: ModuleManagerErrorKind,
+    module: string,
+    dependency: string,
+    message: string,
+    span: Span
+) -> ModuleManagerError {
+    give ModuleManagerError {
+        kind: kind,
+
+        module: module,
+        dependency: dependency,
+        message: message,
+
+        span: span
+    };
+}
+
+proc module_manager_push_error(
+    manager: ref mut ModuleManager,
+    kind: ModuleManagerErrorKind,
+    module: string,
+    dependency: string,
+    message: string,
+    span: Span
+) {
+    manager.errors = manager.errors + [
+        module_manager_error(
+            kind,
+            module,
+            dependency,
+            message,
+            span
+        )
+    ];
+}
+
+proc module_manager_create_with_config(
+    config: ModuleManagerConfig
+) -> ModuleManager {
+    give ModuleManager {
+        config: config,
+        state: ModuleManagerState.Created,
+
+        database: module_database_create(),
+
+        last_order: [],
+        errors: [],
+
+        generation: 1,
+
+        statistics:
+            module_manager_statistics_empty()
+    };
+}
+
+proc module_manager_create()
+    -> ModuleManager
+{
+    give module_manager_create_with_config(
+        module_manager_config_default()
+    );
+}
+
+proc module_manager_refresh_statistics(
+    manager: ref mut ModuleManager
+) {
+    let statistics: ModuleDatabaseStatistics =
+        module_database_statistics(
+            ref manager.database
+        );
+
+    manager.statistics.modules =
+        statistics.modules;
+
+    manager.statistics.dependencies =
+        statistics.dependencies;
+
+    manager.statistics.ready =
+        statistics.ready_modules;
+
+    manager.statistics.failed =
+        statistics.failed_modules;
+
+    manager.statistics.invalidated =
+        statistics.invalidated_modules;
+}
+
+proc module_manager_module_limit_reached(
+    manager: ref ModuleManager
+) -> bool {
+    give module_database_module_count(
+        ref manager.database
+    ) >= manager.config.analysis.max_modules;
+}
+
+proc module_manager_dependency_limit_reached(
+    manager: ref ModuleManager
+) -> bool {
+    give module_database_dependency_count(
+        ref manager.database
+    ) >= manager.config.analysis.max_dependencies;
+}
+
+proc module_manager_add_module(
+    manager: ref mut ModuleManager,
+    name: string,
+    canonical_path: string,
+    span: Span
+) -> Option<ModuleId> {
+    if name == "" or canonical_path == "" {
+        module_manager_push_error(
+            manager,
+            ModuleManagerErrorKind.InvalidArgument,
+            name,
+            "",
+            "module name and path must not be empty",
+            span
+        );
+
+        give None;
+    }
+
+    if module_manager_module_limit_reached(
+        ref manager
+    ) {
+        module_manager_push_error(
+            manager,
+            ModuleManagerErrorKind.LimitExceeded,
+            name,
+            "",
+            "module limit exceeded",
+            span
+        );
+
+        give None;
+    }
+
+    if module_database_contains_name(
+        ref manager.database,
+        name
+    ) {
+        module_manager_push_error(
+            manager,
+            ModuleManagerErrorKind.DuplicateModule,
+            name,
+            "",
+            "module already registered",
+            span
+        );
+
+        give None;
+    }
+
+    let id = module_database_insert(
+        ref mut manager.database,
+        name,
+        canonical_path,
+        span
+    );
+
+    module_manager_refresh_statistics(manager);
+
+    give id;
+}
+
+proc module_manager_add_module_full(
+    manager: ref mut ModuleManager,
+    name: string,
+    canonical_path: string,
+    source_text: string,
+    span: Span,
+    attributes: ModuleAttributes
+) -> Option<ModuleId> {
+    if module_manager_module_limit_reached(
+        ref manager
+    ) {
+        module_manager_push_error(
+            manager,
+            ModuleManagerErrorKind.LimitExceeded,
+            name,
+            "",
+            "module limit exceeded",
+            span
+        );
+
+        give None;
+    }
+
+    let id = module_database_insert_full(
+        ref mut manager.database,
+        name,
+        canonical_path,
+        source_text,
+        span,
+        attributes
+    );
+
+    module_manager_refresh_statistics(manager);
+
+    give id;
+}
+
+proc module_manager_add_source_module(
+    manager: ref mut ModuleManager,
+    name: string,
+    canonical_path: string,
+    source_text: string,
+    span: Span
+) -> Option<ModuleId> {
+    give module_manager_add_module_full(
+        manager,
+        name,
+        canonical_path,
+        source_text,
+        span,
+        module_attributes_default()
+    );
+}
+
+proc module_manager_add_dependency(
+    manager: ref mut ModuleManager,
+    module: ModuleId,
+    target: ModuleId,
+    span: Span,
+    public: bool,
+    optional: bool
+) -> Option<ModuleDependencyId> {
+    if not module_id_is_valid(module)
+        or not module_id_is_valid(target)
+    {
+        module_manager_push_error(
+            manager,
+            ModuleManagerErrorKind.InvalidArgument,
+            "",
+            "",
+            "invalid module dependency id",
+            span
+        );
+
+        give None;
+    }
+
+    if module_manager_dependency_limit_reached(
+        ref manager
+    ) {
+        module_manager_push_error(
+            manager,
+            ModuleManagerErrorKind.LimitExceeded,
+            "",
+            "",
+            "module dependency limit exceeded",
+            span
+        );
+
+        give None;
+    }
+
+    if optional
+        and not manager.config.analysis.allow_optional_dependencies
+    {
+        module_manager_push_error(
+            manager,
+            ModuleManagerErrorKind.DependencyError,
+            "",
+            "",
+            "optional dependencies are disabled",
+            span
+        );
+
+        give None;
+    }
+
+    let dependency =
+        module_database_add_dependency(
+            ref mut manager.database,
+            module,
+            target,
+            span,
+            public,
+            optional
+        );
+
+    module_manager_refresh_statistics(manager);
+
+    give dependency;
+}
+
+proc module_manager_add_dependency_by_name(
+    manager: ref mut ModuleManager,
+    module: string,
+    target: string,
+    span: Span,
+    public: bool,
+    optional: bool
+) -> Option<ModuleDependencyId> {
+    if module_manager_dependency_limit_reached(
+        ref manager
+    ) {
+        module_manager_push_error(
+            manager,
+            ModuleManagerErrorKind.LimitExceeded,
+            module,
+            target,
+            "module dependency limit exceeded",
+            span
+        );
+
+        give None;
+    }
+
+    let dependency =
+        module_database_add_dependency_by_name(
+            ref mut manager.database,
+            module,
+            target,
+            span,
+            public,
+            optional
+        );
+
+    module_manager_refresh_statistics(manager);
+
+    give dependency;
+}
+
+proc module_manager_begin_loading(
+    manager: ref mut ModuleManager,
+    id: ModuleId
+) -> bool {
+    manager.state = ModuleManagerState.Loading;
+
+    give module_database_begin_loading(
+        ref mut manager.database,
+        id
+    );
+}
+
+proc module_manager_mark_parsed(
+    manager: ref mut ModuleManager,
+    id: ModuleId
+) -> bool {
+    manager.state = ModuleManagerState.Parsing;
+
+    give module_database_mark_parsed(
+        ref mut manager.database,
+        id
+    );
+}
+
+proc module_manager_mark_analyzed(
+    manager: ref mut ModuleManager,
+    id: ModuleId
+) -> bool {
+    give module_database_mark_analyzed(
+        ref mut manager.database,
+        id
+    );
+}
+
+proc module_manager_mark_ready(
+    manager: ref mut ModuleManager,
+    id: ModuleId
+) -> bool {
+    give module_database_mark_ready(
+        ref mut manager.database,
+        id
+    );
+}
+
+proc module_manager_mark_failed(
+    manager: ref mut ModuleManager,
+    id: ModuleId,
+    message: string,
+    span: Span
+) -> bool {
+    manager.state = ModuleManagerState.Failed;
+
+    let result = module_database_mark_failed(
+        ref mut manager.database,
+        id,
+        message,
+        span
+    );
+
+    module_manager_push_error(
+        manager,
+        ModuleManagerErrorKind.AnalysisFailed,
+        "",
+        "",
+        message,
+        span
+    );
+
+    module_manager_refresh_statistics(manager);
+
+    give result;
+}
+
+proc module_manager_mark_order_ready(
+    manager: ref mut ModuleManager,
+    order: [ModuleId]
+) {
+    if not manager.config.mark_analyzed_modules_ready {
+        give;
+    }
+
+    for id in order {
+        module_database_mark_analyzed(
+            ref mut manager.database,
+            id
+        );
+
+        module_database_mark_ready(
+            ref mut manager.database,
+            id
+        );
+    }
+}
+
+proc module_manager_database_errors(
+    database_errors: [ModuleDatabaseError]
+) -> [ModuleManagerError] {
+    set output: [ModuleManagerError] = [];
+
+    for error in database_errors {
+        output = output + [
+            module_manager_error(
+                ModuleManagerErrorKind.AnalysisFailed,
+                error.module,
+                error.dependency,
+                error.message,
+                error.span
+            )
+        ];
+    }
+
+    give output;
+}
+
+proc module_manager_analysis_invalid()
+    -> ModuleManagerAnalysis
+{
+    let empty_database =
+        module_database_create();
+
+    let database_analysis =
+        module_database_analyze(
+            ref mut empty_database
+        );
+
+    give ModuleManagerAnalysis {
+        database_analysis: database_analysis,
+
+        order: [],
+        errors: [],
+        valid: false
+    };
+}
+
+proc module_manager_analyze(
+    manager: ref mut ModuleManager
+) -> ModuleManagerAnalysis {
+    manager.state = ModuleManagerState.Analyzing;
+
+    manager.statistics.analyses =
+        manager.statistics.analyses + 1;
+
+    if manager.config.clear_errors_before_analysis {
+        manager.errors = [];
+
+        module_database_clear_errors(
+            ref mut manager.database
+        );
+    }
+
+    if manager.config.auto_advance_generation {
+        manager.generation =
+            module_database_advance_generation(
+                ref mut manager.database
+            );
+
+        manager.statistics.generations =
+            manager.statistics.generations + 1;
+    }
+
+    if module_database_is_empty(
+        ref manager.database
+    ) {
+        manager.state = ModuleManagerState.Ready;
+        manager.last_order = [];
+
+        manager.statistics.successful_analyses =
+            manager.statistics.successful_analyses + 1;
+
+        let analysis =
+            module_database_analyze(
+                ref mut manager.database
+            );
+
+        give ModuleManagerAnalysis {
+            database_analysis: analysis,
+            order: [],
+            errors: [],
+            valid: true
+        };
+    }
+
+    if not manager.config.analysis.analyze_dependencies {
+        set order: [ModuleId] = [];
+
+        for module in manager.database.modules {
+            order = order + [module.id];
+        }
+
+        manager.last_order = order;
+
+        module_manager_mark_order_ready(
+            manager,
+            order
+        );
+
+        manager.state = ModuleManagerState.Ready;
+
+        manager.statistics.successful_analyses =
+            manager.statistics.successful_analyses + 1;
+
+        module_manager_refresh_statistics(manager);
+
+        let analysis =
+            module_database_analyze(
+                ref mut manager.database
+            );
+
+        give ModuleManagerAnalysis {
+            database_analysis: analysis,
+            order: order,
+            errors: [],
+            valid: true
+        };
+    }
+
+    let database_analysis =
+        module_database_analyze(
+            ref mut manager.database
+        );
+
+    let errors =
+        module_manager_database_errors(
+            database_analysis.errors
+        );
+
+    if not database_analysis.valid {
+        manager.errors =
+            manager.errors + errors;
+
+        manager.state = ModuleManagerState.Failed;
+
+        manager.statistics.failed_analyses =
+            manager.statistics.failed_analyses + 1;
+
+        module_manager_refresh_statistics(manager);
+
+        give ModuleManagerAnalysis {
+            database_analysis: database_analysis,
+            order: [],
+            errors: manager.errors,
+            valid: false
+        };
+    }
+
+    set order: [ModuleId] = [];
+
+    if manager.config.analysis.compute_order {
+        order = database_analysis.order;
+    } else {
+        for module in manager.database.modules {
+            order = order + [module.id];
+        }
+    }
+
+    manager.last_order = order;
+
+    module_manager_mark_order_ready(
+        manager,
+        order
+    );
+
+    manager.state = ModuleManagerState.Ready;
+
+    manager.statistics.successful_analyses =
+        manager.statistics.successful_analyses + 1;
+
+    module_manager_refresh_statistics(manager);
+
+    give ModuleManagerAnalysis {
+        database_analysis: database_analysis,
+        order: order,
+        errors: errors,
+        valid: true
+    };
+}
+
+proc module_manager_invalidate(
+    manager: ref mut ModuleManager,
+    id: ModuleId
+) -> usize {
+    if not module_id_is_valid(id) {
+        give 0;
+    }
+
+    set count: usize = 0;
+
+    if manager.config.analysis.invalidate_dependents {
+        if manager.config.analysis.recursive_invalidation {
+            count =
+                module_database_invalidate_module_and_dependents(
+                    ref mut manager.database,
+                    id
+                );
+        } else {
+            if module_database_invalidate(
+                ref mut manager.database,
+                id
+            ) {
+                count = count + 1;
+            }
+
+            count = count
+                + module_database_invalidate_dependents(
+                    ref mut manager.database,
+                    id,
+                    false
+                );
+        }
+    } else {
+        if module_database_invalidate(
+            ref mut manager.database,
+            id
+        ) {
+            count = 1;
+        }
+    }
+
+    if count > 0 {
+        manager.state =
+            ModuleManagerState.Invalidated;
+
+        manager.last_order = [];
+
+        manager.statistics.invalidations =
+            manager.statistics.invalidations + count;
+    }
+
+    module_manager_refresh_statistics(manager);
+
+    give count;
+}
+
+proc module_manager_find(
+    manager: ref ModuleManager,
+    id: ModuleId
+) -> Option<ref ModuleDatabaseEntry> {
+    give module_database_get(
+        ref manager.database,
+        id
+    );
+}
+
+proc module_manager_find_by_name(
+    manager: ref ModuleManager,
+    name: string
+) -> Option<ref ModuleDatabaseEntry> {
+    give module_database_get_by_name(
+        ref manager.database,
+        name
+    );
+}
+
+proc module_manager_find_by_path(
+    manager: ref ModuleManager,
+    path: string
+) -> Option<ref ModuleDatabaseEntry> {
+    give module_database_get_by_path(
+        ref manager.database,
+        path
+    );
+}
+
+proc module_manager_contains_name(
+    manager: ref ModuleManager,
+    name: string
+) -> bool {
+    give module_database_contains_name(
+        ref manager.database,
+        name
+    );
+}
+
+proc module_manager_contains_path(
+    manager: ref ModuleManager,
+    path: string
+) -> bool {
+    give module_database_contains_path(
+        ref manager.database,
+        path
+    );
+}
+
+proc module_manager_order(
+    manager: ref ModuleManager
+) -> [ModuleId] {
+    give manager.last_order;
+}
+
+proc module_manager_is_ready(
+    manager: ref ModuleManager
+) -> bool {
+    give manager.state == ModuleManagerState.Ready
+        and len(manager.errors) == 0;
+}
+
+proc module_manager_has_errors(
+    manager: ref ModuleManager
+) -> bool {
+    give len(manager.errors) != 0
+        or module_database_has_errors(
+            ref manager.database
+        );
+}
+
+proc module_manager_statistics(
+    manager: ref ModuleManager
+) -> ModuleManagerStatistics {
+    give manager.statistics;
+}
+
+proc module_manager_advance_generation(
+    manager: ref mut ModuleManager
+) -> u64 {
+    manager.generation =
+        module_database_advance_generation(
+            ref mut manager.database
+        );
+
+    manager.statistics.generations =
+        manager.statistics.generations + 1;
+
+    give manager.generation;
+}
+
+proc module_manager_clear(
+    manager: ref mut ModuleManager
+) {
+    module_database_clear(
+        ref mut manager.database
+    );
+
+    manager.state =
+        ModuleManagerState.Created;
+
+    manager.last_order = [];
+    manager.errors = [];
+
+    manager.generation =
+        manager.database.generation;
+
+    module_manager_refresh_statistics(manager);
+}
+
+proc module_manager_reset(
+    manager: ref mut ModuleManager
+) {
+    module_database_reset(
+        ref mut manager.database
+    );
+
+    manager.state =
+        ModuleManagerState.Created;
+
+    manager.last_order = [];
+    manager.errors = [];
+
+    manager.generation = 1;
+
+    manager.statistics =
+        module_manager_statistics_empty();
+}
+
+proc module_manager_state_name(
+    state: ModuleManagerState
+) -> string {
+    pick state {
+        ModuleManagerState.Created {
+            give "created";
+        }
+
+        ModuleManagerState.Loading {
+            give "loading";
+        }
+
+        ModuleManagerState.Parsing {
+            give "parsing";
+        }
+
+        ModuleManagerState.Resolving {
+            give "resolving";
+        }
+
+        ModuleManagerState.Analyzing {
+            give "analyzing";
+        }
+
+        ModuleManagerState.Ready {
+            give "ready";
+        }
+
+        ModuleManagerState.Invalidated {
+            give "invalidated";
+        }
+
+        ModuleManagerState.Failed {
+            give "failed";
+        }
+    }
+
+    give "failed";
+}
+
+proc module_manager_debug_text(
+    manager: ref ModuleManager
+) -> string {
+    give "ModuleManager("
+        + module_manager_state_name(manager.state)
+        + ", modules="
+        + module_database_module_count(
+            ref manager.database
+        )
+        + ", dependencies="
+        + module_database_dependency_count(
+            ref manager.database
+        )
+        + ")";
+}

@@ -1,0 +1,1039 @@
+space vitte/compiler/analysis/modules/module_resolver
+
+export *
+
+use vitte/compiler/frontend/source/span.{
+    Span
+}
+
+use vitte/compiler/analysis/modules/module_id.{
+    ModuleId,
+    module_id_invalid,
+    module_id_equal,
+    module_id_is_valid
+}
+
+use vitte/compiler/analysis/modules/module_database.{
+    ModuleDatabase,
+    ModuleDatabaseEntry,
+    module_database_get,
+    module_database_get_by_name,
+    module_database_get_by_path
+}
+
+use vitte/compiler/analysis/modules/module_imports.{
+    ModuleImport,
+    ModuleImportKind,
+    ModuleImportPath,
+    ModuleImportState
+}
+
+use vitte/compiler/analysis/modules/module_registry.{
+    ModuleRegistry,
+    module_registry_lookup_database_by_name,
+    module_registry_lookup_database_by_path
+}
+
+use vitte/compiler/analysis/modules/module_path.{
+    ModulePath,
+    ModulePathValidation,
+    module_path,
+    module_path_join,
+    module_path_parent,
+    module_path_validate,
+    module_path_is_valid,
+    module_path_is_relative
+}
+
+pick ModuleResolverState {
+    Created,
+    Resolving,
+    Ready,
+    Failed
+}
+
+pick ModuleResolutionKind {
+    Name,
+    Path,
+    Import,
+    Alias,
+    Relative,
+    Absolute,
+    Package,
+    Generated,
+    External
+}
+
+pick ModuleResolutionState {
+    Unresolved,
+    Resolved,
+    Missing,
+    Ambiguous,
+    Invalid,
+    Disabled
+}
+
+pick ModuleResolverErrorKind {
+    None,
+    InvalidArgument,
+    InvalidModule,
+    InvalidPath,
+    EmptyName,
+    EmptyPath,
+    ModuleNotFound,
+    ImportNotFound,
+    InvalidRelativePath,
+    EscapesRoot,
+    AmbiguousModule,
+    DisabledImport,
+    RegistryCorrupted,
+    DatabaseCorrupted
+}
+
+form ModuleResolverConfig {
+    use_registry: bool
+    allow_relative: bool
+    allow_absolute: bool
+    allow_generated: bool
+    allow_external: bool
+    fail_fast: bool
+}
+
+form ModuleResolverError {
+    kind: ModuleResolverErrorKind
+
+    module: string
+    path: string
+    message: string
+
+    span: Span
+}
+
+form ModuleResolution {
+    id: ModuleId
+
+    name: string
+    canonical_path: string
+
+    kind: ModuleResolutionKind
+    state: ModuleResolutionState
+
+    error: ModuleResolverError
+
+    found: bool
+}
+
+form ModuleResolverStatistics {
+    resolutions: u64
+
+    by_name: u64
+    by_path: u64
+    imports: u64
+
+    hits: u64
+    misses: u64
+    invalid: u64
+    ambiguous: u64
+}
+
+form ModuleResolver {
+    config: ModuleResolverConfig
+    state: ModuleResolverState
+
+    errors: [ModuleResolverError]
+
+    statistics: ModuleResolverStatistics
+}
+
+proc module_resolver_empty_span() -> Span {
+    give Span {
+        source: 0,
+        start: 0,
+        end: 0
+    };
+}
+
+proc module_resolver_config_default()
+    -> ModuleResolverConfig
+{
+    give ModuleResolverConfig {
+        use_registry: true,
+        allow_relative: true,
+        allow_absolute: true,
+        allow_generated: true,
+        allow_external: true,
+        fail_fast: false
+    };
+}
+
+proc module_resolver_statistics_empty()
+    -> ModuleResolverStatistics
+{
+    give ModuleResolverStatistics {
+        resolutions: 0,
+
+        by_name: 0,
+        by_path: 0,
+        imports: 0,
+
+        hits: 0,
+        misses: 0,
+        invalid: 0,
+        ambiguous: 0
+    };
+}
+
+proc module_resolver_error_none()
+    -> ModuleResolverError
+{
+    give ModuleResolverError {
+        kind: ModuleResolverErrorKind.None,
+
+        module: "",
+        path: "",
+        message: "",
+
+        span: module_resolver_empty_span()
+    };
+}
+
+proc module_resolver_error(
+    kind: ModuleResolverErrorKind,
+    module: string,
+    path: string,
+    message: string,
+    span: Span
+) -> ModuleResolverError {
+    give ModuleResolverError {
+        kind: kind,
+
+        module: module,
+        path: path,
+        message: message,
+
+        span: span
+    };
+}
+
+proc module_resolution_missing(
+    kind: ModuleResolutionKind,
+    name: string,
+    path: string,
+    error: ModuleResolverError
+) -> ModuleResolution {
+    give ModuleResolution {
+        id: module_id_invalid(),
+
+        name: name,
+        canonical_path: path,
+
+        kind: kind,
+        state: ModuleResolutionState.Missing,
+
+        error: error,
+
+        found: false
+    };
+}
+
+proc module_resolution_invalid(
+    kind: ModuleResolutionKind,
+    name: string,
+    path: string,
+    error: ModuleResolverError
+) -> ModuleResolution {
+    give ModuleResolution {
+        id: module_id_invalid(),
+
+        name: name,
+        canonical_path: path,
+
+        kind: kind,
+        state: ModuleResolutionState.Invalid,
+
+        error: error,
+
+        found: false
+    };
+}
+
+proc module_resolution_resolved(
+    module: ref ModuleDatabaseEntry,
+    kind: ModuleResolutionKind
+) -> ModuleResolution {
+    give ModuleResolution {
+        id: module.id,
+
+        name: module.name,
+        canonical_path: module.canonical_path,
+
+        kind: kind,
+        state: ModuleResolutionState.Resolved,
+
+        error: module_resolver_error_none(),
+
+        found: true
+    };
+}
+
+proc module_resolver_create_with_config(
+    config: ModuleResolverConfig
+) -> ModuleResolver {
+    give ModuleResolver {
+        config: config,
+        state: ModuleResolverState.Created,
+
+        errors: [],
+
+        statistics:
+            module_resolver_statistics_empty()
+    };
+}
+
+proc module_resolver_create()
+    -> ModuleResolver
+{
+    give module_resolver_create_with_config(
+        module_resolver_config_default()
+    );
+}
+
+proc module_resolver_push_error(
+    resolver: ref mut ModuleResolver,
+    error: ModuleResolverError
+) {
+    resolver.errors =
+        resolver.errors + [error];
+
+    if resolver.config.fail_fast {
+        resolver.state =
+            ModuleResolverState.Failed;
+    }
+}
+
+proc module_resolver_record_hit(
+    resolver: ref mut ModuleResolver
+) {
+    resolver.statistics.resolutions =
+        resolver.statistics.resolutions + 1;
+
+    resolver.statistics.hits =
+        resolver.statistics.hits + 1;
+}
+
+proc module_resolver_record_miss(
+    resolver: ref mut ModuleResolver
+) {
+    resolver.statistics.resolutions =
+        resolver.statistics.resolutions + 1;
+
+    resolver.statistics.misses =
+        resolver.statistics.misses + 1;
+}
+
+proc module_resolver_record_invalid(
+    resolver: ref mut ModuleResolver
+) {
+    resolver.statistics.resolutions =
+        resolver.statistics.resolutions + 1;
+
+    resolver.statistics.invalid =
+        resolver.statistics.invalid + 1;
+}
+
+proc module_resolver_lookup_name(
+    resolver: ref mut ModuleResolver,
+    registry: ref mut ModuleRegistry,
+    database: ref ModuleDatabase,
+    name: string,
+    span: Span
+) -> ModuleResolution {
+    resolver.state =
+        ModuleResolverState.Resolving;
+
+    resolver.statistics.by_name =
+        resolver.statistics.by_name + 1;
+
+    if name == "" {
+        let error =
+            module_resolver_error(
+                ModuleResolverErrorKind.EmptyName,
+                name,
+                "",
+                "module name is empty",
+                span
+            );
+
+        module_resolver_push_error(
+            resolver,
+            error
+        );
+
+        module_resolver_record_invalid(
+            resolver
+        );
+
+        give module_resolution_invalid(
+            ModuleResolutionKind.Name,
+            name,
+            "",
+            error
+        );
+    }
+
+    let module =
+        if resolver.config.use_registry {
+            module_registry_lookup_database_by_name(
+                registry,
+                database,
+                name
+            )
+        } else {
+            module_database_get_by_name(
+                database,
+                name
+            )
+        };
+
+    pick module {
+        Some(value) {
+            module_resolver_record_hit(
+                resolver
+            );
+
+            resolver.state =
+                ModuleResolverState.Ready;
+
+            give module_resolution_resolved(
+                value,
+                ModuleResolutionKind.Name
+            );
+        }
+
+        None {
+            let error =
+                module_resolver_error(
+                    ModuleResolverErrorKind.ModuleNotFound,
+                    name,
+                    "",
+                    "module name cannot be resolved",
+                    span
+                );
+
+            module_resolver_push_error(
+                resolver,
+                error
+            );
+
+            module_resolver_record_miss(
+                resolver
+            );
+
+            give module_resolution_missing(
+                ModuleResolutionKind.Name,
+                name,
+                "",
+                error
+            );
+        }
+    }
+}
+
+proc module_resolver_lookup_path(
+    resolver: ref mut ModuleResolver,
+    registry: ref mut ModuleRegistry,
+    database: ref ModuleDatabase,
+    path_text: string,
+    span: Span
+) -> ModuleResolution {
+    resolver.state =
+        ModuleResolverState.Resolving;
+
+    resolver.statistics.by_path =
+        resolver.statistics.by_path + 1;
+
+    if path_text == "" {
+        let error =
+            module_resolver_error(
+                ModuleResolverErrorKind.EmptyPath,
+                "",
+                path_text,
+                "module path is empty",
+                span
+            );
+
+        module_resolver_push_error(
+            resolver,
+            error
+        );
+
+        module_resolver_record_invalid(
+            resolver
+        );
+
+        give module_resolution_invalid(
+            ModuleResolutionKind.Path,
+            "",
+            path_text,
+            error
+        );
+    }
+
+    let parsed: ModulePath =
+        module_path(path_text);
+
+    let validation: ModulePathValidation =
+        module_path_validate(parsed);
+
+    if not validation.valid {
+        let error =
+            module_resolver_error(
+                ModuleResolverErrorKind.InvalidPath,
+                "",
+                path_text,
+                validation.message,
+                span
+            );
+
+        module_resolver_push_error(
+            resolver,
+            error
+        );
+
+        module_resolver_record_invalid(
+            resolver
+        );
+
+        give module_resolution_invalid(
+            ModuleResolutionKind.Path,
+            "",
+            path_text,
+            error
+        );
+    }
+
+    if module_path_is_relative(parsed)
+        and not resolver.config.allow_relative
+    {
+        let error =
+            module_resolver_error(
+                ModuleResolverErrorKind.InvalidRelativePath,
+                "",
+                path_text,
+                "relative module paths are disabled",
+                span
+            );
+
+        module_resolver_push_error(
+            resolver,
+            error
+        );
+
+        module_resolver_record_invalid(
+            resolver
+        );
+
+        give module_resolution_invalid(
+            ModuleResolutionKind.Relative,
+            "",
+            path_text,
+            error
+        );
+    }
+
+    let module =
+        if resolver.config.use_registry {
+            module_registry_lookup_database_by_path(
+                registry,
+                database,
+                path_text
+            )
+        } else {
+            module_database_get_by_path(
+                database,
+                path_text
+            )
+        };
+
+    pick module {
+        Some(value) {
+            module_resolver_record_hit(
+                resolver
+            );
+
+            resolver.state =
+                ModuleResolverState.Ready;
+
+            give module_resolution_resolved(
+                value,
+                ModuleResolutionKind.Path
+            );
+        }
+
+        None {
+            let error =
+                module_resolver_error(
+                    ModuleResolverErrorKind.ModuleNotFound,
+                    "",
+                    path_text,
+                    "module path cannot be resolved",
+                    span
+                );
+
+            module_resolver_push_error(
+                resolver,
+                error
+            );
+
+            module_resolver_record_miss(
+                resolver
+            );
+
+            give module_resolution_missing(
+                ModuleResolutionKind.Path,
+                "",
+                path_text,
+                error
+            );
+        }
+    }
+}
+
+proc module_resolver_import_path_text(
+    path: ModuleImportPath
+) -> string {
+    let mut value: string = "";
+
+    if path.package != "" {
+        set value = path.package;
+    }
+
+    for module in path.modules {
+        if value != "" {
+            set value =
+                value + "/";
+        }
+
+        set value =
+            value + module;
+    }
+
+    give value;
+}
+
+proc module_resolver_import_symbol_name(
+    import: ModuleImport
+) -> string {
+    if import.alias != "" {
+        give import.alias;
+    }
+
+    if import.name != "" {
+        give import.name;
+    }
+
+    give import.path.symbol;
+}
+
+proc module_resolver_import_target_name(
+    import: ModuleImport
+) -> string {
+    if import.path.symbol != "" {
+        give import.path.symbol;
+    }
+
+    give import.name;
+}
+
+proc module_resolver_resolve_import(
+    resolver: ref mut ModuleResolver,
+    registry: ref mut ModuleRegistry,
+    database: ref ModuleDatabase,
+    import: ModuleImport
+) -> ModuleResolution {
+    resolver.statistics.imports =
+        resolver.statistics.imports + 1;
+
+    if not import.enabled {
+        let error =
+            module_resolver_error(
+                ModuleResolverErrorKind.DisabledImport,
+                import.name,
+                "",
+                "module import is disabled",
+                import.span
+            );
+
+        give ModuleResolution {
+            id: module_id_invalid(),
+
+            name: import.name,
+            canonical_path: "",
+
+            kind: ModuleResolutionKind.Import,
+            state: ModuleResolutionState.Disabled,
+
+            error: error,
+
+            found: false
+        };
+    }
+
+    let path_text: string =
+        module_resolver_import_path_text(
+            import.path
+        );
+
+    if path_text == "" {
+        let error =
+            module_resolver_error(
+                ModuleResolverErrorKind.EmptyPath,
+                import.name,
+                "",
+                "import has no module path",
+                import.path_span
+            );
+
+        module_resolver_push_error(
+            resolver,
+            error
+        );
+
+        module_resolver_record_invalid(
+            resolver
+        );
+
+        give module_resolution_invalid(
+            ModuleResolutionKind.Import,
+            import.name,
+            "",
+            error
+        );
+    }
+
+    give module_resolver_lookup_path(
+        resolver,
+        registry,
+        database,
+        path_text,
+        import.path_span
+    );
+}
+
+proc module_resolver_resolve_relative(
+    resolver: ref mut ModuleResolver,
+    registry: ref mut ModuleRegistry,
+    database: ref ModuleDatabase,
+    current: ModuleId,
+    relative: string,
+    span: Span
+) -> ModuleResolution {
+    if not resolver.config.allow_relative {
+        let error =
+            module_resolver_error(
+                ModuleResolverErrorKind.InvalidRelativePath,
+                "",
+                relative,
+                "relative module resolution is disabled",
+                span
+            );
+
+        module_resolver_push_error(
+            resolver,
+            error
+        );
+
+        give module_resolution_invalid(
+            ModuleResolutionKind.Relative,
+            "",
+            relative,
+            error
+        );
+    }
+
+    if not module_id_is_valid(current) {
+        let error =
+            module_resolver_error(
+                ModuleResolverErrorKind.InvalidModule,
+                "",
+                relative,
+                "current module id is invalid",
+                span
+            );
+
+        module_resolver_push_error(
+            resolver,
+            error
+        );
+
+        give module_resolution_invalid(
+            ModuleResolutionKind.Relative,
+            "",
+            relative,
+            error
+        );
+    }
+
+    let current_module =
+        module_database_get(
+            database,
+            current
+        );
+
+    pick current_module {
+        None {
+            let error =
+                module_resolver_error(
+                    ModuleResolverErrorKind.ModuleNotFound,
+                    "",
+                    relative,
+                    "current module does not exist",
+                    span
+                );
+
+            module_resolver_push_error(
+                resolver,
+                error
+            );
+
+            give module_resolution_missing(
+                ModuleResolutionKind.Relative,
+                "",
+                relative,
+                error
+            );
+        }
+
+        Some(value) {
+            let current_path =
+                module_path(
+                    value.canonical_path
+                );
+
+            let parent =
+                module_path_parent(
+                    current_path
+                );
+
+            if not module_path_is_valid(parent) {
+                let error =
+                    module_resolver_error(
+                        ModuleResolverErrorKind.EscapesRoot,
+                        value.name,
+                        relative,
+                        "relative module path escapes module root",
+                        span
+                    );
+
+                module_resolver_push_error(
+                    resolver,
+                    error
+                );
+
+                give module_resolution_invalid(
+                    ModuleResolutionKind.Relative,
+                    value.name,
+                    relative,
+                    error
+                );
+            }
+
+            let target =
+                module_path_join(
+                    parent,
+                    relative
+                );
+
+            give module_resolver_lookup_path(
+                resolver,
+                registry,
+                database,
+                target.value,
+                span
+            );
+        }
+    }
+}
+
+proc module_resolver_resolve(
+    resolver: ref mut ModuleResolver,
+    registry: ref mut ModuleRegistry,
+    database: ref ModuleDatabase,
+    text: string,
+    span: Span
+) -> ModuleResolution {
+    if text == "" {
+        let error =
+            module_resolver_error(
+                ModuleResolverErrorKind.InvalidArgument,
+                "",
+                "",
+                "resolution target is empty",
+                span
+            );
+
+        module_resolver_push_error(
+            resolver,
+            error
+        );
+
+        give module_resolution_invalid(
+            ModuleResolutionKind.Name,
+            "",
+            "",
+            error
+        );
+    }
+
+    let by_path =
+        module_resolver_lookup_path(
+            resolver,
+            registry,
+            database,
+            text,
+            span
+        );
+
+    if by_path.found {
+        give by_path;
+    }
+
+    give module_resolver_lookup_name(
+        resolver,
+        registry,
+        database,
+        text,
+        span
+    );
+}
+
+proc module_resolver_resolve_all_imports(
+    resolver: ref mut ModuleResolver,
+    registry: ref mut ModuleRegistry,
+    database: ref ModuleDatabase,
+    imports: [ModuleImport]
+) -> [ModuleResolution] {
+    let mut output: [ModuleResolution] = [];
+
+    for import in imports {
+        output = output + [
+            module_resolver_resolve_import(
+                resolver,
+                registry,
+                database,
+                import
+            )
+        ];
+    }
+
+    if len(resolver.errors) == 0 {
+        resolver.state =
+            ModuleResolverState.Ready;
+    }
+
+    give output;
+}
+
+proc module_resolver_is_resolved(
+    resolution: ModuleResolution
+) -> bool {
+    give resolution.state
+        == ModuleResolutionState.Resolved
+        and resolution.found
+        and module_id_is_valid(
+            resolution.id
+        );
+}
+
+proc module_resolver_has_errors(
+    resolver: ref ModuleResolver
+) -> bool {
+    give len(resolver.errors) != 0;
+}
+
+proc module_resolver_clear_errors(
+    resolver: ref mut ModuleResolver
+) {
+    resolver.errors = [];
+
+    if resolver.state
+        == ModuleResolverState.Failed
+    {
+        resolver.state =
+            ModuleResolverState.Created;
+    }
+}
+
+proc module_resolver_reset(
+    resolver: ref mut ModuleResolver
+) {
+    resolver.state =
+        ModuleResolverState.Created;
+
+    resolver.errors = [];
+
+    resolver.statistics =
+        module_resolver_statistics_empty();
+}
+
+proc module_resolver_statistics(
+    resolver: ref ModuleResolver
+) -> ModuleResolverStatistics {
+    give resolver.statistics;
+}
+
+proc module_resolution_state_name(
+    state: ModuleResolutionState
+) -> string {
+    pick state {
+        ModuleResolutionState.Unresolved {
+            give "unresolved";
+        }
+
+        ModuleResolutionState.Resolved {
+            give "resolved";
+        }
+
+        ModuleResolutionState.Missing {
+            give "missing";
+        }
+
+        ModuleResolutionState.Ambiguous {
+            give "ambiguous";
+        }
+
+        ModuleResolutionState.Invalid {
+            give "invalid";
+        }
+
+        ModuleResolutionState.Disabled {
+            give "disabled";
+        }
+    }
+
+    give "invalid";
+}
+
+proc module_resolver_state_name(
+    state: ModuleResolverState
+) -> string {
+    pick state {
+        ModuleResolverState.Created {
+            give "created";
+        }
+
+        ModuleResolverState.Resolving {
+            give "resolving";
+        }
+
+        ModuleResolverState.Ready {
+            give "ready";
+        }
+
+        ModuleResolverState.Failed {
+            give "failed";
+        }
+    }
+
+    give "failed";
+}

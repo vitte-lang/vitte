@@ -1,0 +1,839 @@
+space vitte/compiler/analysis/modules/module_search
+
+export *
+
+use vitte/compiler/analysis/modules/module_id.{
+    ModuleId,
+    module_id_equal,
+    module_id_is_valid
+}
+
+use vitte/compiler/analysis/modules/module_database.{
+    ModuleDatabase,
+    ModuleDatabaseEntry,
+    ModuleDatabaseEntryState,
+    module_database_get
+}
+
+pick ModuleSearchKind {
+    ExactName,
+    ExactPath,
+    NamePrefix,
+    PathPrefix,
+    NameContains,
+    PathContains,
+    Any
+}
+
+pick ModuleSearchOrder {
+    Source,
+    Name,
+    Path
+}
+
+pick ModuleSearchState {
+    Created,
+    Searching,
+    Ready,
+    Empty,
+    Failed
+}
+
+form ModuleSearchConfig {
+    kind: ModuleSearchKind
+    order: ModuleSearchOrder
+
+    include_failed: bool
+    include_invalidated: bool
+
+    case_sensitive: bool
+
+    offset: usize
+    limit: usize
+}
+
+form ModuleSearchQuery {
+    text: string
+    state: Option<ModuleDatabaseEntryState>
+}
+
+form ModuleSearchMatch {
+    id: ModuleId
+
+    name: string
+    canonical_path: string
+
+    state: ModuleDatabaseEntryState
+
+    exact: bool
+    score: usize
+}
+
+form ModuleSearchStatistics {
+    scanned: usize
+    matched: usize
+    returned: usize
+    skipped: usize
+}
+
+form ModuleSearchResult {
+    query: ModuleSearchQuery
+    matches: [ModuleSearchMatch]
+
+    statistics: ModuleSearchStatistics
+
+    truncated: bool
+    valid: bool
+}
+
+form ModuleSearch {
+    config: ModuleSearchConfig
+    state: ModuleSearchState
+
+    searches: u64
+    total_matches: u64
+}
+
+proc module_search_config_default()
+    -> ModuleSearchConfig
+{
+    give ModuleSearchConfig {
+        kind: ModuleSearchKind.Any,
+        order: ModuleSearchOrder.Source,
+
+        include_failed: false,
+        include_invalidated: false,
+
+        case_sensitive: true,
+
+        offset: 0,
+        limit: 256
+    };
+}
+
+proc module_search_query(
+    text: string
+) -> ModuleSearchQuery {
+    give ModuleSearchQuery {
+        text: text,
+        state: None
+    };
+}
+
+proc module_search_query_with_state(
+    text: string,
+    state: ModuleDatabaseEntryState
+) -> ModuleSearchQuery {
+    give ModuleSearchQuery {
+        text: text,
+        state: Some(state)
+    };
+}
+
+proc module_search_statistics_empty()
+    -> ModuleSearchStatistics
+{
+    give ModuleSearchStatistics {
+        scanned: 0,
+        matched: 0,
+        returned: 0,
+        skipped: 0
+    };
+}
+
+proc module_search_create_with_config(
+    config: ModuleSearchConfig
+) -> ModuleSearch {
+    give ModuleSearch {
+        config: config,
+        state: ModuleSearchState.Created,
+
+        searches: 0,
+        total_matches: 0
+    };
+}
+
+proc module_search_create()
+    -> ModuleSearch
+{
+    give module_search_create_with_config(
+        module_search_config_default()
+    );
+}
+
+proc module_search_result_empty(
+    query: ModuleSearchQuery
+) -> ModuleSearchResult {
+    give ModuleSearchResult {
+        query: query,
+        matches: [],
+
+        statistics:
+            module_search_statistics_empty(),
+
+        truncated: false,
+        valid: true
+    };
+}
+
+proc module_search_should_include(
+    config: ModuleSearchConfig,
+    module: ModuleDatabaseEntry
+) -> bool {
+    if module.state
+        == ModuleDatabaseEntryState.Failed
+        and not config.include_failed
+    {
+        give false;
+    }
+
+    if module.state
+        == ModuleDatabaseEntryState.Invalidated
+        and not config.include_invalidated
+    {
+        give false;
+    }
+
+    give true;
+}
+
+proc module_search_state_matches(
+    query: ModuleSearchQuery,
+    module: ModuleDatabaseEntry
+) -> bool {
+    pick query.state {
+        None {
+            give true;
+        }
+
+        Some(state) {
+            give module.state == state;
+        }
+    }
+
+    give false;
+}
+
+proc module_search_starts_with(
+    value: string,
+    prefix: string
+) -> bool {
+    if len(prefix) > len(value) {
+        give false;
+    }
+
+    let mut index: usize = 0;
+
+    while index < len(prefix) {
+        if value[index] != prefix[index] {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give true;
+}
+
+proc module_search_contains(
+    value: string,
+    needle: string
+) -> bool {
+    if needle == "" {
+        give true;
+    }
+
+    if len(needle) > len(value) {
+        give false;
+    }
+
+    let mut start: usize = 0;
+
+    while start + len(needle) <= len(value) {
+        let mut index: usize = 0;
+        let mut equal: bool = true;
+
+        while index < len(needle) {
+            if value[start + index]
+                != needle[index]
+            {
+                set equal = false;
+            }
+
+            set index = index + 1;
+        }
+
+        if equal {
+            give true;
+        }
+
+        set start = start + 1;
+    }
+
+    give false;
+}
+
+proc module_search_match_text(
+    config: ModuleSearchConfig,
+    query: string,
+    module: ModuleDatabaseEntry
+) -> bool {
+    if query == "" {
+        give true;
+    }
+
+    pick config.kind {
+        ModuleSearchKind.ExactName {
+            give module.name == query;
+        }
+
+        ModuleSearchKind.ExactPath {
+            give module.canonical_path == query;
+        }
+
+        ModuleSearchKind.NamePrefix {
+            give module_search_starts_with(
+                module.name,
+                query
+            );
+        }
+
+        ModuleSearchKind.PathPrefix {
+            give module_search_starts_with(
+                module.canonical_path,
+                query
+            );
+        }
+
+        ModuleSearchKind.NameContains {
+            give module_search_contains(
+                module.name,
+                query
+            );
+        }
+
+        ModuleSearchKind.PathContains {
+            give module_search_contains(
+                module.canonical_path,
+                query
+            );
+        }
+
+        ModuleSearchKind.Any {
+            give module.name == query
+                or module.canonical_path == query
+                or module_search_starts_with(
+                    module.name,
+                    query
+                )
+                or module_search_starts_with(
+                    module.canonical_path,
+                    query
+                )
+                or module_search_contains(
+                    module.name,
+                    query
+                )
+                or module_search_contains(
+                    module.canonical_path,
+                    query
+                );
+        }
+    }
+
+    give false;
+}
+
+proc module_search_score(
+    query: string,
+    module: ModuleDatabaseEntry
+) -> usize {
+    if query == "" {
+        give 0;
+    }
+
+    if module.name == query {
+        give 100;
+    }
+
+    if module.canonical_path == query {
+        give 95;
+    }
+
+    if module_search_starts_with(
+        module.name,
+        query
+    ) {
+        give 80;
+    }
+
+    if module_search_starts_with(
+        module.canonical_path,
+        query
+    ) {
+        give 70;
+    }
+
+    if module_search_contains(
+        module.name,
+        query
+    ) {
+        give 50;
+    }
+
+    if module_search_contains(
+        module.canonical_path,
+        query
+    ) {
+        give 40;
+    }
+
+    give 0;
+}
+
+proc module_search_match(
+    query: string,
+    module: ModuleDatabaseEntry
+) -> ModuleSearchMatch {
+    give ModuleSearchMatch {
+        id: module.id,
+
+        name: module.name,
+        canonical_path: module.canonical_path,
+
+        state: module.state,
+
+        exact:
+            module.name == query
+            or module.canonical_path == query,
+
+        score:
+            module_search_score(
+                query,
+                module
+            )
+    };
+}
+
+proc module_search_compare_name(
+    left: ModuleSearchMatch,
+    right: ModuleSearchMatch
+) -> int {
+    if left.name == right.name {
+        give 0;
+    }
+
+    if left.name < right.name {
+        give -1;
+    }
+
+    give 1;
+}
+
+proc module_search_compare_path(
+    left: ModuleSearchMatch,
+    right: ModuleSearchMatch
+) -> int {
+    if left.canonical_path
+        == right.canonical_path
+    {
+        give 0;
+    }
+
+    if left.canonical_path
+        < right.canonical_path
+    {
+        give -1;
+    }
+
+    give 1;
+}
+
+proc module_search_compare_score(
+    left: ModuleSearchMatch,
+    right: ModuleSearchMatch
+) -> int {
+    if left.score == right.score {
+        give 0;
+    }
+
+    if left.score > right.score {
+        give -1;
+    }
+
+    give 1;
+}
+
+proc module_search_sort(
+    matches: [ModuleSearchMatch],
+    order: ModuleSearchOrder
+) -> [ModuleSearchMatch] {
+    let mut output: [ModuleSearchMatch] =
+        matches;
+
+    let mut i: usize = 0;
+
+    while i < len(output) {
+        let mut j: usize = i + 1;
+
+        while j < len(output) {
+            let mut compare: int = 0;
+
+            pick order {
+                ModuleSearchOrder.Source {
+                    set compare =
+                        module_search_compare_score(
+                            output[i],
+                            output[j]
+                        );
+                }
+
+                ModuleSearchOrder.Name {
+                    set compare =
+                        module_search_compare_name(
+                            output[i],
+                            output[j]
+                        );
+                }
+
+                ModuleSearchOrder.Path {
+                    set compare =
+                        module_search_compare_path(
+                            output[i],
+                            output[j]
+                        );
+                }
+            }
+
+            if compare > 0 {
+                let temporary:
+                    ModuleSearchMatch =
+                    output[i];
+
+                set output[i] = output[j];
+                set output[j] = temporary;
+            }
+
+            set j = j + 1;
+        }
+
+        set i = i + 1;
+    }
+
+    give output;
+}
+
+proc module_search_slice(
+    matches: [ModuleSearchMatch],
+    offset: usize,
+    limit: usize
+) -> [ModuleSearchMatch] {
+    let mut output: [ModuleSearchMatch] = [];
+
+    if offset >= len(matches) {
+        give output;
+    }
+
+    let mut index: usize = offset;
+    let mut count: usize = 0;
+
+    while index < len(matches)
+        and count < limit
+    {
+        set output =
+            output + [matches[index]];
+
+        set index = index + 1;
+        set count = count + 1;
+    }
+
+    give output;
+}
+
+proc module_search_run(
+    search: ref mut ModuleSearch,
+    database: ref ModuleDatabase,
+    query: ModuleSearchQuery
+) -> ModuleSearchResult {
+    search.state =
+        ModuleSearchState.Searching;
+
+    search.searches =
+        search.searches + 1;
+
+    let mut result:
+        ModuleSearchResult =
+        module_search_result_empty(query);
+
+    let mut matches:
+        [ModuleSearchMatch] = [];
+
+    for module in database.modules {
+        result.statistics.scanned =
+            result.statistics.scanned + 1;
+
+        if not module_search_should_include(
+            search.config,
+            module
+        ) {
+            result.statistics.skipped =
+                result.statistics.skipped + 1;
+
+            continue;
+        }
+
+        if not module_search_state_matches(
+            query,
+            module
+        ) {
+            continue;
+        }
+
+        if not module_search_match_text(
+            search.config,
+            query.text,
+            module
+        ) {
+            continue;
+        }
+
+        set matches = matches + [
+            module_search_match(
+                query.text,
+                module
+            )
+        ];
+    }
+
+    result.statistics.matched =
+        len(matches);
+
+    set matches =
+        module_search_sort(
+            matches,
+            search.config.order
+        );
+
+    if search.config.limit == 0 {
+        result.matches = [];
+    } else {
+        result.matches =
+            module_search_slice(
+                matches,
+                search.config.offset,
+                search.config.limit
+            );
+    }
+
+    result.statistics.returned =
+        len(result.matches);
+
+    result.truncated =
+        result.statistics.returned
+        < result.statistics.matched;
+
+    search.total_matches =
+        search.total_matches
+        + result.statistics.matched;
+
+    if len(result.matches) == 0 {
+        search.state =
+            ModuleSearchState.Empty;
+    } else {
+        search.state =
+            ModuleSearchState.Ready;
+    }
+
+    give result;
+}
+
+proc module_search_exact_name(
+    search: ref mut ModuleSearch,
+    database: ref ModuleDatabase,
+    name: string
+) -> ModuleSearchResult {
+    let old_kind:
+        ModuleSearchKind =
+        search.config.kind;
+
+    search.config.kind =
+        ModuleSearchKind.ExactName;
+
+    let result =
+        module_search_run(
+            search,
+            database,
+            module_search_query(name)
+        );
+
+    search.config.kind = old_kind;
+
+    give result;
+}
+
+proc module_search_exact_path(
+    search: ref mut ModuleSearch,
+    database: ref ModuleDatabase,
+    path: string
+) -> ModuleSearchResult {
+    let old_kind:
+        ModuleSearchKind =
+        search.config.kind;
+
+    search.config.kind =
+        ModuleSearchKind.ExactPath;
+
+    let result =
+        module_search_run(
+            search,
+            database,
+            module_search_query(path)
+        );
+
+    search.config.kind = old_kind;
+
+    give result;
+}
+
+proc module_search_name_prefix(
+    search: ref mut ModuleSearch,
+    database: ref ModuleDatabase,
+    prefix: string
+) -> ModuleSearchResult {
+    let old_kind:
+        ModuleSearchKind =
+        search.config.kind;
+
+    search.config.kind =
+        ModuleSearchKind.NamePrefix;
+
+    let result =
+        module_search_run(
+            search,
+            database,
+            module_search_query(prefix)
+        );
+
+    search.config.kind = old_kind;
+
+    give result;
+}
+
+proc module_search_path_prefix(
+    search: ref mut ModuleSearch,
+    database: ref ModuleDatabase,
+    prefix: string
+) -> ModuleSearchResult {
+    let old_kind:
+        ModuleSearchKind =
+        search.config.kind;
+
+    search.config.kind =
+        ModuleSearchKind.PathPrefix;
+
+    let result =
+        module_search_run(
+            search,
+            database,
+            module_search_query(prefix)
+        );
+
+    search.config.kind = old_kind;
+
+    give result;
+}
+
+proc module_search_by_state(
+    search: ref mut ModuleSearch,
+    database: ref ModuleDatabase,
+    state: ModuleDatabaseEntryState
+) -> ModuleSearchResult {
+    give module_search_run(
+        search,
+        database,
+        module_search_query_with_state(
+            "",
+            state
+        )
+    );
+}
+
+proc module_search_find_id(
+    result: ModuleSearchResult,
+    id: ModuleId
+) -> Option<ModuleSearchMatch> {
+    if not module_id_is_valid(id) {
+        give None;
+    }
+
+    for entry in result.matches {
+        if module_id_equal(
+            entry.id,
+            id
+        ) {
+            give Some(entry);
+        }
+    }
+
+    give None;
+}
+
+proc module_search_first(
+    result: ModuleSearchResult
+) -> Option<ModuleSearchMatch> {
+    if len(result.matches) == 0 {
+        give None;
+    }
+
+    give Some(result.matches[0]);
+}
+
+proc module_search_is_empty(
+    result: ModuleSearchResult
+) -> bool {
+    give len(result.matches) == 0;
+}
+
+proc module_search_count(
+    result: ModuleSearchResult
+) -> usize {
+    give len(result.matches);
+}
+
+proc module_search_reset(
+    search: ref mut ModuleSearch
+) {
+    search.state =
+        ModuleSearchState.Created;
+
+    search.searches = 0;
+    search.total_matches = 0;
+}
+
+proc module_search_state_name(
+    state: ModuleSearchState
+) -> string {
+    pick state {
+        ModuleSearchState.Created {
+            give "created";
+        }
+
+        ModuleSearchState.Searching {
+            give "searching";
+        }
+
+        ModuleSearchState.Ready {
+            give "ready";
+        }
+
+        ModuleSearchState.Empty {
+            give "empty";
+        }
+
+        ModuleSearchState.Failed {
+            give "failed";
+        }
+    }
+
+    give "failed";
+}
