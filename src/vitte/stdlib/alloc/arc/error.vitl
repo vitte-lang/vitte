@@ -1,0 +1,1430 @@
+space vitte/stdlib/alloc/arc/error
+
+export *
+
+use src/vitte/stdlib/alloc/arc/core as arc_core
+
+// -----------------------------------------------------------------------------
+// Error kinds
+// -----------------------------------------------------------------------------
+
+pick ArcErrorKind {
+    None,
+
+    AllocationFailed,
+    InvalidAllocation,
+    InvalidPointer,
+
+    InvalidStrongCount,
+    InvalidWeakCount,
+    CountOverflow,
+    CountUnderflow,
+    CountSaturated,
+
+    InvalidState,
+    InvalidTransition,
+    InvalidInvariant,
+
+    NotUnique,
+    SharedOwnership,
+    WeakReferencesPresent,
+
+    CannotGetMut,
+    CannotMakeMut,
+    CannotUnwrap,
+
+    WeakExpired,
+    WeakUpgradeFailed,
+    WeakDowngradeFailed,
+
+    RawPointerInvalid,
+    RawPointerNull,
+    RawPointerConsumed,
+    RawOwnershipMismatch,
+
+    TypeMismatch,
+
+    RuntimeFailure,
+    Internal
+}
+
+pick ArcErrorSeverity {
+    Note,
+    Warning,
+    Error,
+    Fatal
+}
+
+pick ArcErrorDomain {
+    General,
+    Allocation,
+    ReferenceCount,
+    Ownership,
+    Mutation,
+    Weak,
+    Raw,
+    Runtime,
+    Internal
+}
+
+pick ArcErrorOperation {
+    None,
+
+    New,
+    TryNew,
+
+    Clone,
+    Drop,
+
+    Get,
+    GetMut,
+    MakeMut,
+
+    TryUnwrap,
+
+    StrongCount,
+    WeakCount,
+
+    Downgrade,
+    Upgrade,
+
+    IntoRaw,
+    FromRaw,
+
+    Validate
+}
+
+// -----------------------------------------------------------------------------
+// Error context
+// -----------------------------------------------------------------------------
+
+form ArcErrorContext {
+    operation: ArcErrorOperation
+
+    strong: usize
+    weak: usize
+
+    expected_strong: Option<usize>
+    expected_weak: Option<usize>
+
+    has_pointer: bool
+}
+
+form ArcError {
+    kind: ArcErrorKind
+    severity: ArcErrorSeverity
+    domain: ArcErrorDomain
+
+    context: ArcErrorContext
+
+    message: string
+}
+
+form ArcErrorResult {
+    error: ArcError
+
+    valid: bool
+}
+
+form ArcErrorStatistics {
+    total: u64
+
+    notes: u64
+    warnings: u64
+    errors: u64
+    fatals: u64
+
+    allocation: u64
+    counts: u64
+    ownership: u64
+    mutation: u64
+    weak: u64
+    raw: u64
+    runtime: u64
+    internal: u64
+}
+
+// -----------------------------------------------------------------------------
+// Context
+// -----------------------------------------------------------------------------
+
+proc arc_error_context_empty()
+    -> ArcErrorContext
+{
+    give ArcErrorContext {
+        operation:
+            ArcErrorOperation.None,
+
+        strong:
+            0,
+
+        weak:
+            0,
+
+        expected_strong:
+            None,
+
+        expected_weak:
+            None,
+
+        has_pointer:
+            false
+    };
+}
+
+proc arc_error_context(
+    operation: ArcErrorOperation,
+    strong: usize,
+    weak: usize
+) -> ArcErrorContext {
+    give ArcErrorContext {
+        operation:
+            operation,
+
+        strong:
+            strong,
+
+        weak:
+            weak,
+
+        expected_strong:
+            None,
+
+        expected_weak:
+            None,
+
+        has_pointer:
+            true
+    };
+}
+
+proc arc_error_context_with_expected_strong(
+    context: ArcErrorContext,
+    value: usize
+) -> ArcErrorContext {
+    let out =
+        context;
+
+    set out.expected_strong =
+        Some(value);
+
+    give out;
+}
+
+proc arc_error_context_with_expected_weak(
+    context: ArcErrorContext,
+    value: usize
+) -> ArcErrorContext {
+    let out =
+        context;
+
+    set out.expected_weak =
+        Some(value);
+
+    give out;
+}
+
+proc arc_error_context_without_pointer(
+    context: ArcErrorContext
+) -> ArcErrorContext {
+    let out =
+        context;
+
+    set out.has_pointer =
+        false;
+
+    give out;
+}
+
+// -----------------------------------------------------------------------------
+// Error constructors
+// -----------------------------------------------------------------------------
+
+proc arc_error(
+    kind: ArcErrorKind,
+    severity: ArcErrorSeverity,
+    domain: ArcErrorDomain,
+    context: ArcErrorContext,
+    message: string
+) -> ArcError {
+    give ArcError {
+        kind:
+            kind,
+
+        severity:
+            severity,
+
+        domain:
+            domain,
+
+        context:
+            context,
+
+        message:
+            message
+    };
+}
+
+proc arc_error_none()
+    -> ArcError
+{
+    give arc_error(
+        ArcErrorKind.None,
+        ArcErrorSeverity.Note,
+        ArcErrorDomain.General,
+        arc_error_context_empty(),
+        ""
+    );
+}
+
+proc arc_error_simple(
+    kind: ArcErrorKind,
+    message: string
+) -> ArcError {
+    give arc_error(
+        kind,
+        ArcErrorSeverity.Error,
+        arc_error_domain_for_kind(
+            kind
+        ),
+        arc_error_context_empty(),
+        message
+    );
+}
+
+proc arc_error_fatal(
+    kind: ArcErrorKind,
+    message: string
+) -> ArcError {
+    give arc_error(
+        kind,
+        ArcErrorSeverity.Fatal,
+        arc_error_domain_for_kind(
+            kind
+        ),
+        arc_error_context_empty(),
+        message
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Allocation errors
+// -----------------------------------------------------------------------------
+
+proc arc_error_allocation_failed()
+    -> ArcError
+{
+    give arc_error(
+        ArcErrorKind.AllocationFailed,
+        ArcErrorSeverity.Error,
+        ArcErrorDomain.Allocation,
+        arc_error_context(
+            ArcErrorOperation.New,
+            0,
+            0
+        ),
+        "arc allocation failed"
+    );
+}
+
+proc arc_error_invalid_allocation()
+    -> ArcError
+{
+    give arc_error(
+        ArcErrorKind.InvalidAllocation,
+        ArcErrorSeverity.Fatal,
+        ArcErrorDomain.Allocation,
+        arc_error_context_empty(),
+        "arc allocation is invalid"
+    );
+}
+
+proc arc_error_invalid_pointer()
+    -> ArcError
+{
+    give arc_error(
+        ArcErrorKind.InvalidPointer,
+        ArcErrorSeverity.Fatal,
+        ArcErrorDomain.Allocation,
+        arc_error_context_empty(),
+        "arc pointer is invalid"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Count errors
+// -----------------------------------------------------------------------------
+
+proc arc_error_invalid_strong_count(
+    strong: usize,
+    weak: usize
+) -> ArcError {
+    give arc_error(
+        ArcErrorKind.InvalidStrongCount,
+        ArcErrorSeverity.Error,
+        ArcErrorDomain.ReferenceCount,
+
+        arc_error_context(
+            ArcErrorOperation.StrongCount,
+            strong,
+            weak
+        ),
+
+        "invalid strong reference count"
+    );
+}
+
+proc arc_error_invalid_weak_count(
+    strong: usize,
+    weak: usize
+) -> ArcError {
+    give arc_error(
+        ArcErrorKind.InvalidWeakCount,
+        ArcErrorSeverity.Error,
+        ArcErrorDomain.ReferenceCount,
+
+        arc_error_context(
+            ArcErrorOperation.WeakCount,
+            strong,
+            weak
+        ),
+
+        "invalid weak reference count"
+    );
+}
+
+proc arc_error_count_overflow(
+    strong: usize,
+    weak: usize
+) -> ArcError {
+    give arc_error(
+        ArcErrorKind.CountOverflow,
+        ArcErrorSeverity.Fatal,
+        ArcErrorDomain.ReferenceCount,
+
+        arc_error_context(
+            ArcErrorOperation.Clone,
+            strong,
+            weak
+        ),
+
+        "arc reference count overflow"
+    );
+}
+
+proc arc_error_count_underflow(
+    strong: usize,
+    weak: usize
+) -> ArcError {
+    give arc_error(
+        ArcErrorKind.CountUnderflow,
+        ArcErrorSeverity.Fatal,
+        ArcErrorDomain.ReferenceCount,
+
+        arc_error_context(
+            ArcErrorOperation.Drop,
+            strong,
+            weak
+        ),
+
+        "arc reference count underflow"
+    );
+}
+
+proc arc_error_count_saturated(
+    strong: usize,
+    weak: usize
+) -> ArcError {
+    give arc_error(
+        ArcErrorKind.CountSaturated,
+        ArcErrorSeverity.Error,
+        ArcErrorDomain.ReferenceCount,
+
+        arc_error_context(
+            ArcErrorOperation.Clone,
+            strong,
+            weak
+        ),
+
+        "arc reference count is saturated"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Ownership errors
+// -----------------------------------------------------------------------------
+
+proc arc_error_not_unique(
+    strong: usize,
+    weak: usize
+) -> ArcError {
+    give arc_error(
+        ArcErrorKind.NotUnique,
+        ArcErrorSeverity.Error,
+        ArcErrorDomain.Ownership,
+
+        arc_error_context(
+            ArcErrorOperation.GetMut,
+            strong,
+            weak
+        ),
+
+        "arc does not have unique ownership"
+    );
+}
+
+proc arc_error_shared_ownership(
+    strong: usize,
+    weak: usize
+) -> ArcError {
+    give arc_error(
+        ArcErrorKind.SharedOwnership,
+        ArcErrorSeverity.Error,
+        ArcErrorDomain.Ownership,
+
+        arc_error_context(
+            ArcErrorOperation.GetMut,
+            strong,
+            weak
+        ),
+
+        "arc is shared by multiple strong references"
+    );
+}
+
+proc arc_error_weak_references_present(
+    strong: usize,
+    weak: usize
+) -> ArcError {
+    give arc_error(
+        ArcErrorKind.WeakReferencesPresent,
+        ArcErrorSeverity.Warning,
+        ArcErrorDomain.Ownership,
+
+        arc_error_context(
+            ArcErrorOperation.TryUnwrap,
+            strong,
+            weak
+        ),
+
+        "arc allocation still has weak references"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Mutation errors
+// -----------------------------------------------------------------------------
+
+proc arc_error_cannot_get_mut(
+    strong: usize,
+    weak: usize
+) -> ArcError {
+    give arc_error(
+        ArcErrorKind.CannotGetMut,
+        ArcErrorSeverity.Error,
+        ArcErrorDomain.Mutation,
+
+        arc_error_context(
+            ArcErrorOperation.GetMut,
+            strong,
+            weak
+        ),
+
+        "cannot obtain direct mutable access to shared Arc"
+    );
+}
+
+proc arc_error_cannot_make_mut(
+    strong: usize,
+    weak: usize
+) -> ArcError {
+    give arc_error(
+        ArcErrorKind.CannotMakeMut,
+        ArcErrorSeverity.Error,
+        ArcErrorDomain.Mutation,
+
+        arc_error_context(
+            ArcErrorOperation.MakeMut,
+            strong,
+            weak
+        ),
+
+        "cannot obtain mutable Arc value"
+    );
+}
+
+proc arc_error_cannot_unwrap(
+    strong: usize,
+    weak: usize
+) -> ArcError {
+    give arc_error(
+        ArcErrorKind.CannotUnwrap,
+        ArcErrorSeverity.Error,
+        ArcErrorDomain.Ownership,
+
+        arc_error_context(
+            ArcErrorOperation.TryUnwrap,
+            strong,
+            weak
+        ),
+
+        "cannot unwrap shared Arc"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Weak errors
+// -----------------------------------------------------------------------------
+
+proc arc_error_weak_expired(
+    strong: usize,
+    weak: usize
+) -> ArcError {
+    give arc_error(
+        ArcErrorKind.WeakExpired,
+        ArcErrorSeverity.Error,
+        ArcErrorDomain.Weak,
+
+        arc_error_context(
+            ArcErrorOperation.Upgrade,
+            strong,
+            weak
+        ),
+
+        "weak Arc reference has expired"
+    );
+}
+
+proc arc_error_weak_upgrade_failed(
+    strong: usize,
+    weak: usize
+) -> ArcError {
+    give arc_error(
+        ArcErrorKind.WeakUpgradeFailed,
+        ArcErrorSeverity.Error,
+        ArcErrorDomain.Weak,
+
+        arc_error_context(
+            ArcErrorOperation.Upgrade,
+            strong,
+            weak
+        ),
+
+        "failed to upgrade ArcWeak"
+    );
+}
+
+proc arc_error_weak_downgrade_failed(
+    strong: usize,
+    weak: usize
+) -> ArcError {
+    give arc_error(
+        ArcErrorKind.WeakDowngradeFailed,
+        ArcErrorSeverity.Error,
+        ArcErrorDomain.Weak,
+
+        arc_error_context(
+            ArcErrorOperation.Downgrade,
+            strong,
+            weak
+        ),
+
+        "failed to downgrade Arc"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Raw pointer errors
+// -----------------------------------------------------------------------------
+
+proc arc_error_raw_pointer_invalid()
+    -> ArcError
+{
+    give arc_error(
+        ArcErrorKind.RawPointerInvalid,
+        ArcErrorSeverity.Fatal,
+        ArcErrorDomain.Raw,
+
+        arc_error_context(
+            ArcErrorOperation.FromRaw,
+            0,
+            0
+        ),
+
+        "raw Arc pointer is invalid"
+    );
+}
+
+proc arc_error_raw_pointer_null()
+    -> ArcError
+{
+    give arc_error(
+        ArcErrorKind.RawPointerNull,
+        ArcErrorSeverity.Error,
+        ArcErrorDomain.Raw,
+
+        arc_error_context(
+            ArcErrorOperation.FromRaw,
+            0,
+            0
+        ),
+
+        "raw Arc pointer is null"
+    );
+}
+
+proc arc_error_raw_pointer_consumed()
+    -> ArcError
+{
+    give arc_error(
+        ArcErrorKind.RawPointerConsumed,
+        ArcErrorSeverity.Fatal,
+        ArcErrorDomain.Raw,
+
+        arc_error_context(
+            ArcErrorOperation.FromRaw,
+            0,
+            0
+        ),
+
+        "raw Arc pointer was already consumed"
+    );
+}
+
+proc arc_error_raw_ownership_mismatch()
+    -> ArcError
+{
+    give arc_error(
+        ArcErrorKind.RawOwnershipMismatch,
+        ArcErrorSeverity.Fatal,
+        ArcErrorDomain.Raw,
+
+        arc_error_context(
+            ArcErrorOperation.FromRaw,
+            0,
+            0
+        ),
+
+        "raw Arc pointer ownership does not match"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// State / invariant errors
+// -----------------------------------------------------------------------------
+
+proc arc_error_invalid_state(
+    strong: usize,
+    weak: usize
+) -> ArcError {
+    give arc_error(
+        ArcErrorKind.InvalidState,
+        ArcErrorSeverity.Fatal,
+        ArcErrorDomain.Internal,
+
+        arc_error_context(
+            ArcErrorOperation.Validate,
+            strong,
+            weak
+        ),
+
+        "Arc is in an invalid state"
+    );
+}
+
+proc arc_error_invalid_transition(
+    strong: usize,
+    weak: usize
+) -> ArcError {
+    give arc_error(
+        ArcErrorKind.InvalidTransition,
+        ArcErrorSeverity.Fatal,
+        ArcErrorDomain.Internal,
+
+        arc_error_context(
+            ArcErrorOperation.Validate,
+            strong,
+            weak
+        ),
+
+        "invalid Arc reference-count transition"
+    );
+}
+
+proc arc_error_invalid_invariant(
+    strong: usize,
+    weak: usize
+) -> ArcError {
+    give arc_error(
+        ArcErrorKind.InvalidInvariant,
+        ArcErrorSeverity.Fatal,
+        ArcErrorDomain.Internal,
+
+        arc_error_context(
+            ArcErrorOperation.Validate,
+            strong,
+            weak
+        ),
+
+        "Arc invariant failed"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+proc arc_error_validate_counts(
+    strong: usize,
+    weak: usize
+) -> ArcError {
+    let counts =
+        arc_core.arc_core_counts(
+            strong,
+            weak
+        );
+
+    let validation =
+        arc_core.arc_core_validate(
+            counts,
+            arc_core.arc_core_limits_default()
+        );
+
+    if not validation.strong_valid {
+        give arc_error_invalid_strong_count(
+            strong,
+            weak
+        );
+    }
+
+    if not validation.weak_valid {
+        give arc_error_invalid_weak_count(
+            strong,
+            weak
+        );
+    }
+
+    if not validation.invariant_valid {
+        give arc_error_invalid_invariant(
+            strong,
+            weak
+        );
+    }
+
+    give arc_error_none();
+}
+
+proc arc_error_from_core_validation(
+    counts: arc_core.ArcCoreCounts,
+    validation: arc_core.ArcCoreValidation
+) -> ArcError {
+    if validation.valid {
+        give arc_error_none();
+    }
+
+    if not validation.strong_valid {
+        give arc_error_invalid_strong_count(
+            counts.strong,
+            counts.weak
+        );
+    }
+
+    if not validation.weak_valid {
+        give arc_error_invalid_weak_count(
+            counts.strong,
+            counts.weak
+        );
+    }
+
+    if not validation.state_valid {
+        give arc_error_invalid_state(
+            counts.strong,
+            counts.weak
+        );
+    }
+
+    if not validation.invariant_valid {
+        give arc_error_invalid_invariant(
+            counts.strong,
+            counts.weak
+        );
+    }
+
+    give arc_error_fatal(
+        ArcErrorKind.Internal,
+        "unknown Arc validation failure"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Predicates
+// -----------------------------------------------------------------------------
+
+proc arc_error_is_none(
+    error: ArcError
+) -> bool {
+    give error.kind
+        == ArcErrorKind.None;
+}
+
+proc arc_error_is_error(
+    error: ArcError
+) -> bool {
+    give error.severity
+        == ArcErrorSeverity.Error
+        or error.severity
+        == ArcErrorSeverity.Fatal;
+}
+
+proc arc_error_is_fatal(
+    error: ArcError
+) -> bool {
+    give error.severity
+        == ArcErrorSeverity.Fatal;
+}
+
+proc arc_error_is_warning(
+    error: ArcError
+) -> bool {
+    give error.severity
+        == ArcErrorSeverity.Warning;
+}
+
+proc arc_error_is_allocation(
+    error: ArcError
+) -> bool {
+    give error.domain
+        == ArcErrorDomain.Allocation;
+}
+
+proc arc_error_is_count(
+    error: ArcError
+) -> bool {
+    give error.domain
+        == ArcErrorDomain.ReferenceCount;
+}
+
+proc arc_error_is_ownership(
+    error: ArcError
+) -> bool {
+    give error.domain
+        == ArcErrorDomain.Ownership;
+}
+
+proc arc_error_is_weak(
+    error: ArcError
+) -> bool {
+    give error.domain
+        == ArcErrorDomain.Weak;
+}
+
+proc arc_error_is_raw(
+    error: ArcError
+) -> bool {
+    give error.domain
+        == ArcErrorDomain.Raw;
+}
+
+proc arc_error_is_internal(
+    error: ArcError
+) -> bool {
+    give error.domain
+        == ArcErrorDomain.Internal;
+}
+
+// -----------------------------------------------------------------------------
+// Domain mapping
+// -----------------------------------------------------------------------------
+
+proc arc_error_domain_for_kind(
+    kind: ArcErrorKind
+) -> ArcErrorDomain {
+    pick kind {
+        ArcErrorKind.AllocationFailed
+        | ArcErrorKind.InvalidAllocation
+        | ArcErrorKind.InvalidPointer {
+            give ArcErrorDomain.Allocation;
+        }
+
+        ArcErrorKind.InvalidStrongCount
+        | ArcErrorKind.InvalidWeakCount
+        | ArcErrorKind.CountOverflow
+        | ArcErrorKind.CountUnderflow
+        | ArcErrorKind.CountSaturated {
+            give ArcErrorDomain.ReferenceCount;
+        }
+
+        ArcErrorKind.NotUnique
+        | ArcErrorKind.SharedOwnership
+        | ArcErrorKind.WeakReferencesPresent
+        | ArcErrorKind.CannotUnwrap {
+            give ArcErrorDomain.Ownership;
+        }
+
+        ArcErrorKind.CannotGetMut
+        | ArcErrorKind.CannotMakeMut {
+            give ArcErrorDomain.Mutation;
+        }
+
+        ArcErrorKind.WeakExpired
+        | ArcErrorKind.WeakUpgradeFailed
+        | ArcErrorKind.WeakDowngradeFailed {
+            give ArcErrorDomain.Weak;
+        }
+
+        ArcErrorKind.RawPointerInvalid
+        | ArcErrorKind.RawPointerNull
+        | ArcErrorKind.RawPointerConsumed
+        | ArcErrorKind.RawOwnershipMismatch {
+            give ArcErrorDomain.Raw;
+        }
+
+        ArcErrorKind.RuntimeFailure {
+            give ArcErrorDomain.Runtime;
+        }
+
+        ArcErrorKind.InvalidState
+        | ArcErrorKind.InvalidTransition
+        | ArcErrorKind.InvalidInvariant
+        | ArcErrorKind.TypeMismatch
+        | ArcErrorKind.Internal {
+            give ArcErrorDomain.Internal;
+        }
+
+        ArcErrorKind.None {
+            give ArcErrorDomain.General;
+        }
+    }
+
+    give ArcErrorDomain.Internal;
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc arc_error_statistics_empty()
+    -> ArcErrorStatistics
+{
+    give ArcErrorStatistics {
+        total: 0,
+
+        notes: 0,
+        warnings: 0,
+        errors: 0,
+        fatals: 0,
+
+        allocation: 0,
+        counts: 0,
+        ownership: 0,
+        mutation: 0,
+        weak: 0,
+        raw: 0,
+        runtime: 0,
+        internal: 0
+    };
+}
+
+proc arc_error_statistics_record(
+    statistics: ref mut ArcErrorStatistics,
+    error: ArcError
+) {
+    if arc_error_is_none(
+        error
+    ) {
+        give;
+    }
+
+    set statistics.total =
+        statistics.total + 1;
+
+    pick error.severity {
+        ArcErrorSeverity.Note {
+            set statistics.notes =
+                statistics.notes + 1;
+        }
+
+        ArcErrorSeverity.Warning {
+            set statistics.warnings =
+                statistics.warnings + 1;
+        }
+
+        ArcErrorSeverity.Error {
+            set statistics.errors =
+                statistics.errors + 1;
+        }
+
+        ArcErrorSeverity.Fatal {
+            set statistics.fatals =
+                statistics.fatals + 1;
+        }
+    }
+
+    pick error.domain {
+        ArcErrorDomain.Allocation {
+            set statistics.allocation =
+                statistics.allocation + 1;
+        }
+
+        ArcErrorDomain.ReferenceCount {
+            set statistics.counts =
+                statistics.counts + 1;
+        }
+
+        ArcErrorDomain.Ownership {
+            set statistics.ownership =
+                statistics.ownership + 1;
+        }
+
+        ArcErrorDomain.Mutation {
+            set statistics.mutation =
+                statistics.mutation + 1;
+        }
+
+        ArcErrorDomain.Weak {
+            set statistics.weak =
+                statistics.weak + 1;
+        }
+
+        ArcErrorDomain.Raw {
+            set statistics.raw =
+                statistics.raw + 1;
+        }
+
+        ArcErrorDomain.Runtime {
+            set statistics.runtime =
+                statistics.runtime + 1;
+        }
+
+        ArcErrorDomain.Internal {
+            set statistics.internal =
+                statistics.internal + 1;
+        }
+
+        ArcErrorDomain.General {}
+    }
+}
+
+proc arc_error_statistics_reset(
+    statistics: ref mut ArcErrorStatistics
+) {
+    set *statistics =
+        arc_error_statistics_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc arc_error_kind_name(
+    kind: ArcErrorKind
+) -> string {
+    pick kind {
+        ArcErrorKind.None {
+            give "none";
+        }
+
+        ArcErrorKind.AllocationFailed {
+            give "allocation-failed";
+        }
+
+        ArcErrorKind.InvalidAllocation {
+            give "invalid-allocation";
+        }
+
+        ArcErrorKind.InvalidPointer {
+            give "invalid-pointer";
+        }
+
+        ArcErrorKind.InvalidStrongCount {
+            give "invalid-strong-count";
+        }
+
+        ArcErrorKind.InvalidWeakCount {
+            give "invalid-weak-count";
+        }
+
+        ArcErrorKind.CountOverflow {
+            give "count-overflow";
+        }
+
+        ArcErrorKind.CountUnderflow {
+            give "count-underflow";
+        }
+
+        ArcErrorKind.CountSaturated {
+            give "count-saturated";
+        }
+
+        ArcErrorKind.InvalidState {
+            give "invalid-state";
+        }
+
+        ArcErrorKind.InvalidTransition {
+            give "invalid-transition";
+        }
+
+        ArcErrorKind.InvalidInvariant {
+            give "invalid-invariant";
+        }
+
+        ArcErrorKind.NotUnique {
+            give "not-unique";
+        }
+
+        ArcErrorKind.SharedOwnership {
+            give "shared-ownership";
+        }
+
+        ArcErrorKind.WeakReferencesPresent {
+            give "weak-references-present";
+        }
+
+        ArcErrorKind.CannotGetMut {
+            give "cannot-get-mut";
+        }
+
+        ArcErrorKind.CannotMakeMut {
+            give "cannot-make-mut";
+        }
+
+        ArcErrorKind.CannotUnwrap {
+            give "cannot-unwrap";
+        }
+
+        ArcErrorKind.WeakExpired {
+            give "weak-expired";
+        }
+
+        ArcErrorKind.WeakUpgradeFailed {
+            give "weak-upgrade-failed";
+        }
+
+        ArcErrorKind.WeakDowngradeFailed {
+            give "weak-downgrade-failed";
+        }
+
+        ArcErrorKind.RawPointerInvalid {
+            give "raw-pointer-invalid";
+        }
+
+        ArcErrorKind.RawPointerNull {
+            give "raw-pointer-null";
+        }
+
+        ArcErrorKind.RawPointerConsumed {
+            give "raw-pointer-consumed";
+        }
+
+        ArcErrorKind.RawOwnershipMismatch {
+            give "raw-ownership-mismatch";
+        }
+
+        ArcErrorKind.TypeMismatch {
+            give "type-mismatch";
+        }
+
+        ArcErrorKind.RuntimeFailure {
+            give "runtime-failure";
+        }
+
+        ArcErrorKind.Internal {
+            give "internal";
+        }
+    }
+
+    give "internal";
+}
+
+proc arc_error_severity_name(
+    severity: ArcErrorSeverity
+) -> string {
+    pick severity {
+        ArcErrorSeverity.Note {
+            give "note";
+        }
+
+        ArcErrorSeverity.Warning {
+            give "warning";
+        }
+
+        ArcErrorSeverity.Error {
+            give "error";
+        }
+
+        ArcErrorSeverity.Fatal {
+            give "fatal";
+        }
+    }
+
+    give "error";
+}
+
+proc arc_error_domain_name(
+    domain: ArcErrorDomain
+) -> string {
+    pick domain {
+        ArcErrorDomain.General {
+            give "general";
+        }
+
+        ArcErrorDomain.Allocation {
+            give "allocation";
+        }
+
+        ArcErrorDomain.ReferenceCount {
+            give "reference-count";
+        }
+
+        ArcErrorDomain.Ownership {
+            give "ownership";
+        }
+
+        ArcErrorDomain.Mutation {
+            give "mutation";
+        }
+
+        ArcErrorDomain.Weak {
+            give "weak";
+        }
+
+        ArcErrorDomain.Raw {
+            give "raw";
+        }
+
+        ArcErrorDomain.Runtime {
+            give "runtime";
+        }
+
+        ArcErrorDomain.Internal {
+            give "internal";
+        }
+    }
+
+    give "internal";
+}
+
+proc arc_error_operation_name(
+    operation: ArcErrorOperation
+) -> string {
+    pick operation {
+        ArcErrorOperation.None {
+            give "none";
+        }
+
+        ArcErrorOperation.New {
+            give "new";
+        }
+
+        ArcErrorOperation.TryNew {
+            give "try-new";
+        }
+
+        ArcErrorOperation.Clone {
+            give "clone";
+        }
+
+        ArcErrorOperation.Drop {
+            give "drop";
+        }
+
+        ArcErrorOperation.Get {
+            give "get";
+        }
+
+        ArcErrorOperation.GetMut {
+            give "get-mut";
+        }
+
+        ArcErrorOperation.MakeMut {
+            give "make-mut";
+        }
+
+        ArcErrorOperation.TryUnwrap {
+            give "try-unwrap";
+        }
+
+        ArcErrorOperation.StrongCount {
+            give "strong-count";
+        }
+
+        ArcErrorOperation.WeakCount {
+            give "weak-count";
+        }
+
+        ArcErrorOperation.Downgrade {
+            give "downgrade";
+        }
+
+        ArcErrorOperation.Upgrade {
+            give "upgrade";
+        }
+
+        ArcErrorOperation.IntoRaw {
+            give "into-raw";
+        }
+
+        ArcErrorOperation.FromRaw {
+            give "from-raw";
+        }
+
+        ArcErrorOperation.Validate {
+            give "validate";
+        }
+    }
+
+    give "none";
+}
+
+// -----------------------------------------------------------------------------
+// Error model
+// -----------------------------------------------------------------------------
+//
+// arc/error.vitl
+//
+//     allocation errors
+//          |
+//          +-- allocation failed
+//          +-- invalid allocation
+//          +-- invalid pointer
+//
+//     reference-count errors
+//          |
+//          +-- overflow
+//          +-- underflow
+//          +-- saturation
+//          +-- invalid strong/weak counts
+//
+//     ownership errors
+//          |
+//          +-- not unique
+//          +-- shared ownership
+//          +-- cannot unwrap
+//
+//     mutation errors
+//          |
+//          +-- cannot get_mut
+//          +-- cannot make_mut
+//
+//     weak-reference errors
+//          |
+//          +-- expired
+//          +-- upgrade failure
+//          +-- downgrade failure
+//
+//     raw-pointer errors
+//          |
+//          +-- invalid
+//          +-- null
+//          +-- consumed
+//          +-- ownership mismatch
+//
+//     internal errors
+//          |
+//          +-- invalid state
+//          +-- invalid transition
+//          +-- invariant failure
+//
+// Public high-level APIs may convert these structured errors into Result<T, E>.
+//
+// Diagnostic rendering and localization should stay outside this file.

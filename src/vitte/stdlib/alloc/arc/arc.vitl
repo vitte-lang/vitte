@@ -1,0 +1,1582 @@
+space vitte/stdlib/alloc/arc/arc
+
+export *
+
+use src/vitte/stdlib/core/option as core_option
+use src/vitte/stdlib/alloc/arc/core as arc_core
+use src/vitte/stdlib/alloc/arc/count as arc_count
+
+// -----------------------------------------------------------------------------
+// Core types
+// -----------------------------------------------------------------------------
+
+form Arc<T> {
+    ptr: ref T
+}
+
+form ArcWeak<T> {
+    ptr: ref T
+}
+
+pick ArcStateKind {
+    Invalid,
+    Unique,
+    Shared,
+    Observed,
+    SharedObserved
+}
+
+pick ArcRelation {
+    SameAllocation,
+    DifferentAllocation
+}
+
+pick ArcAccessState {
+    ReadOnly,
+    Mutable,
+    CopyOnWrite
+}
+
+form ArcProfile {
+    strong: usize
+    weak: usize
+
+    total: usize
+
+    unique: bool
+    shared: bool
+
+    has_weak: bool
+    unobserved: bool
+
+    mutable: bool
+    exclusive: bool
+
+    valid: bool
+}
+
+form ArcState {
+    kind: ArcStateKind
+
+    strong: usize
+    weak: usize
+
+    alive: bool
+    unique: bool
+    shared: bool
+    observed: bool
+}
+
+form ArcSnapshot {
+    profile: ArcProfile
+
+    strong: usize
+    weak: usize
+    total: usize
+}
+
+form ArcComparison {
+    same_allocation: bool
+
+    same_strong_count: bool
+    same_weak_count: bool
+
+    left_more_shared: bool
+    right_more_shared: bool
+
+    left_more_observed: bool
+    right_more_observed: bool
+}
+
+form ArcMutationProfile {
+    unique: bool
+    has_weak: bool
+
+    direct_mutation: bool
+    copy_on_write: bool
+}
+
+form ArcStatistics {
+    creations: u64
+    clones: u64
+
+    mutable_accesses: u64
+    make_mut_calls: u64
+
+    unwrap_attempts: u64
+    unwrap_successes: u64
+
+    pointer_comparisons: u64
+
+    snapshots: u64
+}
+
+// -----------------------------------------------------------------------------
+// Construction
+// -----------------------------------------------------------------------------
+
+proc arc_new<T>(
+    value: T
+) -> Arc<T> {
+    give compiler_arc_new<T>(
+        value
+    );
+}
+
+proc arc_try_new<T>(
+    value: T
+) -> Option<Arc<T>> {
+    give compiler_arc_try_new<T>(
+        value
+    );
+}
+
+proc arc_from<T>(
+    value: T
+) -> Arc<T> {
+    give arc_new<T>(
+        value
+    );
+}
+
+proc arc_try_from<T>(
+    value: T
+) -> Option<Arc<T>> {
+    give arc_try_new<T>(
+        value
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Clone / sharing
+// -----------------------------------------------------------------------------
+
+proc arc_clone<T>(
+    value: Arc<T>
+) -> Arc<T> {
+    give compiler_arc_clone<T>(
+        value
+    );
+}
+
+proc arc_clone_ref<T>(
+    value: ref Arc<T>
+) -> Arc<T> {
+    give compiler_arc_clone<T>(
+        *value
+    );
+}
+
+proc arc_share<T>(
+    value: Arc<T>
+) -> Arc<T> {
+    give arc_clone<T>(
+        value
+    );
+}
+
+proc arc_clone_once<T>(
+    value: Arc<T>
+) -> Arc<T> {
+    give arc_clone<T>(
+        value
+    );
+}
+
+proc arc_clone_twice<T>(
+    value: Arc<T>
+) -> Arc<T> {
+    let first: Arc<T> =
+        arc_clone<T>(
+            value
+        );
+
+    give arc_clone<T>(
+        first
+    );
+}
+
+proc arc_clone_many<T>(
+    value: Arc<T>,
+    count: usize
+) -> Arc<T> {
+    let out: Arc<T> =
+        value;
+
+    let index: usize =
+        0;
+
+    while index < count {
+        set out =
+            arc_clone<T>(
+                out
+            );
+
+        set index =
+            index + 1;
+    }
+
+    give out;
+}
+
+proc arc_share_many<T>(
+    value: Arc<T>,
+    count: usize
+) -> Arc<T> {
+    give arc_clone_many<T>(
+        value,
+        count
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Read access
+// -----------------------------------------------------------------------------
+
+proc arc_get<T>(
+    value: ref Arc<T>
+) -> ref T {
+    give compiler_arc_get<T>(
+        value
+    );
+}
+
+proc arc_as_ref<T>(
+    value: ref Arc<T>
+) -> ref T {
+    give arc_get<T>(
+        value
+    );
+}
+
+proc arc_value_ref<T>(
+    value: ref Arc<T>
+) -> ref T {
+    give arc_get<T>(
+        value
+    );
+}
+
+proc arc_read<T>(
+    value: ref Arc<T>
+) -> ref T {
+    give arc_get<T>(
+        value
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Mutable access
+// -----------------------------------------------------------------------------
+
+proc arc_get_mut<T>(
+    value: ref mut Arc<T>
+) -> Option<ref mut T> {
+    give compiler_arc_get_mut<T>(
+        value
+    );
+}
+
+proc arc_try_get_mut<T>(
+    value: ref mut Arc<T>
+) -> Option<ref mut T> {
+    if not arc_is_unique<T>(
+        *value
+    ) {
+        give None;
+    }
+
+    give arc_get_mut<T>(
+        value
+    );
+}
+
+proc arc_make_mut<T>(
+    value: ref mut Arc<T>
+) -> ref mut T {
+    give compiler_arc_make_mut<T>(
+        value
+    );
+}
+
+proc arc_get_or_make_mut<T>(
+    value: ref mut Arc<T>
+) -> ref mut T {
+    let direct =
+        arc_get_mut<T>(
+            value
+        );
+
+    pick direct {
+        Some(inner) {
+            give inner;
+        }
+
+        None {
+            give arc_make_mut<T>(
+                value
+            );
+        }
+    }
+}
+
+proc arc_can_get_mut<T>(
+    value: Arc<T>
+) -> bool {
+    give arc_is_unique<T>(
+        value
+    );
+}
+
+proc arc_can_mutate_directly<T>(
+    value: Arc<T>
+) -> bool {
+    give arc_can_get_mut<T>(
+        value
+    );
+}
+
+proc arc_requires_copy_on_write<T>(
+    value: Arc<T>
+) -> bool {
+    give not arc_can_get_mut<T>(
+        value
+    );
+}
+
+proc arc_mutation_profile<T>(
+    value: Arc<T>
+) -> ArcMutationProfile {
+    let unique =
+        arc_is_unique<T>(
+            value
+        );
+
+    let weak =
+        arc_has_weak<T>(
+            value
+        );
+
+    give ArcMutationProfile {
+        unique:
+            unique,
+
+        has_weak:
+            weak,
+
+        direct_mutation:
+            unique,
+
+        copy_on_write:
+            not unique
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Mutation helpers
+// -----------------------------------------------------------------------------
+
+proc arc_replace<T>(
+    value: ref mut Arc<T>,
+    replacement: T
+) {
+    let target =
+        arc_make_mut<T>(
+            value
+        );
+
+    set *target =
+        replacement;
+}
+
+proc arc_write<T>(
+    value: ref mut Arc<T>,
+    replacement: T
+) {
+    arc_replace<T>(
+        value,
+        replacement
+    );
+}
+
+proc arc_update<T>(
+    value: ref mut Arc<T>,
+    replacement: T
+) {
+    arc_replace<T>(
+        value,
+        replacement
+    );
+}
+
+proc arc_try_replace_unique<T>(
+    value: ref mut Arc<T>,
+    replacement: T
+) -> bool {
+    let target =
+        arc_get_mut<T>(
+            value
+        );
+
+    pick target {
+        Some(inner) {
+            set *inner =
+                replacement;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc arc_swap_value<T>(
+    value: ref mut Arc<T>,
+    replacement: T
+) -> T {
+    let target =
+        arc_make_mut<T>(
+            value
+        );
+
+    let old: T =
+        *target;
+
+    set *target =
+        replacement;
+
+    give old;
+}
+
+// -----------------------------------------------------------------------------
+// Unwrap
+// -----------------------------------------------------------------------------
+
+proc arc_try_unwrap<T>(
+    value: Arc<T>
+) -> Option<T> {
+    give compiler_arc_try_unwrap<T>(
+        value
+    );
+}
+
+proc arc_can_unwrap<T>(
+    value: Arc<T>
+) -> bool {
+    give arc_is_unique<T>(
+        value
+    );
+}
+
+proc arc_is_unwrappable<T>(
+    value: Arc<T>
+) -> bool {
+    give arc_can_unwrap<T>(
+        value
+    );
+}
+
+proc arc_try_into_inner<T>(
+    value: Arc<T>
+) -> Option<T> {
+    give arc_try_unwrap<T>(
+        value
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Count access
+// -----------------------------------------------------------------------------
+
+proc arc_strong_count<T>(
+    value: Arc<T>
+) -> usize {
+    give compiler_arc_strong_count<T>(
+        value
+    );
+}
+
+proc arc_weak_count<T>(
+    value: Arc<T>
+) -> usize {
+    give compiler_arc_weak_count<T>(
+        value
+    );
+}
+
+proc arc_reference_count<T>(
+    value: Arc<T>
+) -> usize {
+    give arc_strong_count<T>(
+        value
+    );
+}
+
+proc arc_observer_count<T>(
+    value: Arc<T>
+) -> usize {
+    give arc_weak_count<T>(
+        value
+    );
+}
+
+proc arc_total_reference_count<T>(
+    value: Arc<T>
+) -> usize {
+    let strong =
+        arc_strong_count<T>(
+            value
+        );
+
+    let weak =
+        arc_weak_count<T>(
+            value
+        );
+
+    give strong + weak;
+}
+
+proc arc_counts<T>(
+    value: Arc<T>
+) -> arc_count.ArcCounts {
+    give arc_count.ArcCounts {
+        strong:
+            arc_strong_count<T>(
+                value
+            ),
+
+        weak:
+            arc_weak_count<T>(
+                value
+            )
+    };
+}
+
+// -----------------------------------------------------------------------------
+// State predicates
+// -----------------------------------------------------------------------------
+
+proc arc_is_valid<T>(
+    value: Arc<T>
+) -> bool {
+    give arc_strong_count<T>(
+        value
+    ) > 0;
+}
+
+proc arc_is_alive<T>(
+    value: Arc<T>
+) -> bool {
+    give arc_is_valid<T>(
+        value
+    );
+}
+
+proc arc_is_unique<T>(
+    value: Arc<T>
+) -> bool {
+    give arc_strong_count<T>(
+        value
+    ) == 1;
+}
+
+proc arc_is_shared<T>(
+    value: Arc<T>
+) -> bool {
+    give arc_strong_count<T>(
+        value
+    ) > 1;
+}
+
+proc arc_has_single_owner<T>(
+    value: Arc<T>
+) -> bool {
+    give arc_is_unique<T>(
+        value
+    );
+}
+
+proc arc_has_multiple_owners<T>(
+    value: Arc<T>
+) -> bool {
+    give arc_is_shared<T>(
+        value
+    );
+}
+
+proc arc_has_weak<T>(
+    value: Arc<T>
+) -> bool {
+    give arc_weak_count<T>(
+        value
+    ) > 0;
+}
+
+proc arc_has_no_weak<T>(
+    value: Arc<T>
+) -> bool {
+    give arc_weak_count<T>(
+        value
+    ) == 0;
+}
+
+proc arc_has_observers<T>(
+    value: Arc<T>
+) -> bool {
+    give arc_has_weak<T>(
+        value
+    );
+}
+
+proc arc_is_unobserved<T>(
+    value: Arc<T>
+) -> bool {
+    give arc_has_no_weak<T>(
+        value
+    );
+}
+
+proc arc_is_exclusive<T>(
+    value: Arc<T>
+) -> bool {
+    give arc_is_unique<T>(
+        value
+    )
+    and arc_has_no_weak<T>(
+        value
+    );
+}
+
+proc arc_is_shared_observed<T>(
+    value: Arc<T>
+) -> bool {
+    give arc_is_shared<T>(
+        value
+    )
+    and arc_has_weak<T>(
+        value
+    );
+}
+
+// -----------------------------------------------------------------------------
+// State
+// -----------------------------------------------------------------------------
+
+proc arc_state_kind<T>(
+    value: Arc<T>
+) -> ArcStateKind {
+    if not arc_is_valid<T>(
+        value
+    ) {
+        give ArcStateKind.Invalid;
+    }
+
+    let unique =
+        arc_is_unique<T>(
+            value
+        );
+
+    let weak =
+        arc_has_weak<T>(
+            value
+        );
+
+    if unique and not weak {
+        give ArcStateKind.Unique;
+    }
+
+    if unique and weak {
+        give ArcStateKind.Observed;
+    }
+
+    if not unique and weak {
+        give ArcStateKind.SharedObserved;
+    }
+
+    give ArcStateKind.Shared;
+}
+
+proc arc_state<T>(
+    value: Arc<T>
+) -> ArcState {
+    let strong =
+        arc_strong_count<T>(
+            value
+        );
+
+    let weak =
+        arc_weak_count<T>(
+            value
+        );
+
+    give ArcState {
+        kind:
+            arc_state_kind<T>(
+                value
+            ),
+
+        strong:
+            strong,
+
+        weak:
+            weak,
+
+        alive:
+            strong > 0,
+
+        unique:
+            strong == 1,
+
+        shared:
+            strong > 1,
+
+        observed:
+            weak > 0
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Profiles
+// -----------------------------------------------------------------------------
+
+proc arc_profile<T>(
+    value: Arc<T>
+) -> ArcProfile {
+    let strong =
+        arc_strong_count<T>(
+            value
+        );
+
+    let weak =
+        arc_weak_count<T>(
+            value
+        );
+
+    let unique =
+        strong == 1;
+
+    let shared =
+        strong > 1;
+
+    let observed =
+        weak > 0;
+
+    give ArcProfile {
+        strong:
+            strong,
+
+        weak:
+            weak,
+
+        total:
+            strong + weak,
+
+        unique:
+            unique,
+
+        shared:
+            shared,
+
+        has_weak:
+            observed,
+
+        unobserved:
+            not observed,
+
+        mutable:
+            unique,
+
+        exclusive:
+            unique
+            and not observed,
+
+        valid:
+            strong > 0
+    };
+}
+
+proc arc_profile_is_valid(
+    profile: ArcProfile
+) -> bool {
+    give profile.valid;
+}
+
+proc arc_profile_is_unique(
+    profile: ArcProfile
+) -> bool {
+    give profile.valid
+        and profile.unique;
+}
+
+proc arc_profile_is_shared(
+    profile: ArcProfile
+) -> bool {
+    give profile.valid
+        and profile.shared;
+}
+
+proc arc_profile_has_weak(
+    profile: ArcProfile
+) -> bool {
+    give profile.has_weak;
+}
+
+proc arc_profile_is_exclusive(
+    profile: ArcProfile
+) -> bool {
+    give profile.valid
+        and profile.exclusive;
+}
+
+// -----------------------------------------------------------------------------
+// Pointer identity
+// -----------------------------------------------------------------------------
+
+proc arc_ptr_eq<T>(
+    left: Arc<T>,
+    right: Arc<T>
+) -> bool {
+    give compiler_arc_ptr_eq<T>(
+        left,
+        right
+    );
+}
+
+proc arc_ptr_ne<T>(
+    left: Arc<T>,
+    right: Arc<T>
+) -> bool {
+    give not arc_ptr_eq<T>(
+        left,
+        right
+    );
+}
+
+proc arc_same_allocation<T>(
+    left: Arc<T>,
+    right: Arc<T>
+) -> bool {
+    give arc_ptr_eq<T>(
+        left,
+        right
+    );
+}
+
+proc arc_different_allocation<T>(
+    left: Arc<T>,
+    right: Arc<T>
+) -> bool {
+    give not arc_same_allocation<T>(
+        left,
+        right
+    );
+}
+
+proc arc_relation<T>(
+    left: Arc<T>,
+    right: Arc<T>
+) -> ArcRelation {
+    if arc_ptr_eq<T>(
+        left,
+        right
+    ) {
+        give ArcRelation.SameAllocation;
+    }
+
+    give ArcRelation.DifferentAllocation;
+}
+
+// -----------------------------------------------------------------------------
+// Comparison
+// -----------------------------------------------------------------------------
+
+proc arc_same_strong_count<T>(
+    left: Arc<T>,
+    right: Arc<T>
+) -> bool {
+    give arc_strong_count<T>(
+        left
+    )
+    == arc_strong_count<T>(
+        right
+    );
+}
+
+proc arc_same_weak_count<T>(
+    left: Arc<T>,
+    right: Arc<T>
+) -> bool {
+    give arc_weak_count<T>(
+        left
+    )
+    == arc_weak_count<T>(
+        right
+    );
+}
+
+proc arc_same_counts<T>(
+    left: Arc<T>,
+    right: Arc<T>
+) -> bool {
+    give arc_same_strong_count<T>(
+        left,
+        right
+    )
+    and arc_same_weak_count<T>(
+        left,
+        right
+    );
+}
+
+proc arc_more_shared_than<T>(
+    left: Arc<T>,
+    right: Arc<T>
+) -> bool {
+    give arc_strong_count<T>(
+        left
+    )
+    > arc_strong_count<T>(
+        right
+    );
+}
+
+proc arc_less_shared_than<T>(
+    left: Arc<T>,
+    right: Arc<T>
+) -> bool {
+    give arc_strong_count<T>(
+        left
+    )
+    < arc_strong_count<T>(
+        right
+    );
+}
+
+proc arc_more_observed_than<T>(
+    left: Arc<T>,
+    right: Arc<T>
+) -> bool {
+    give arc_weak_count<T>(
+        left
+    )
+    > arc_weak_count<T>(
+        right
+    );
+}
+
+proc arc_less_observed_than<T>(
+    left: Arc<T>,
+    right: Arc<T>
+) -> bool {
+    give arc_weak_count<T>(
+        left
+    )
+    < arc_weak_count<T>(
+        right
+    );
+}
+
+proc arc_compare<T>(
+    left: Arc<T>,
+    right: Arc<T>
+) -> ArcComparison {
+    let left_strong =
+        arc_strong_count<T>(
+            left
+        );
+
+    let right_strong =
+        arc_strong_count<T>(
+            right
+        );
+
+    let left_weak =
+        arc_weak_count<T>(
+            left
+        );
+
+    let right_weak =
+        arc_weak_count<T>(
+            right
+        );
+
+    give ArcComparison {
+        same_allocation:
+            arc_ptr_eq<T>(
+                left,
+                right
+            ),
+
+        same_strong_count:
+            left_strong == right_strong,
+
+        same_weak_count:
+            left_weak == right_weak,
+
+        left_more_shared:
+            left_strong > right_strong,
+
+        right_more_shared:
+            right_strong > left_strong,
+
+        left_more_observed:
+            left_weak > right_weak,
+
+        right_more_observed:
+            right_weak > left_weak
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Snapshot
+// -----------------------------------------------------------------------------
+
+proc arc_snapshot<T>(
+    value: Arc<T>
+) -> ArcSnapshot {
+    let profile =
+        arc_profile<T>(
+            value
+        );
+
+    give ArcSnapshot {
+        profile:
+            profile,
+
+        strong:
+            profile.strong,
+
+        weak:
+            profile.weak,
+
+        total:
+            profile.total
+    };
+}
+
+proc arc_snapshot_equal(
+    left: ArcSnapshot,
+    right: ArcSnapshot
+) -> bool {
+    give left.strong == right.strong
+        and left.weak == right.weak
+        and left.total == right.total
+        and arc_profile_equal(
+            left.profile,
+            right.profile
+        );
+}
+
+proc arc_snapshot_changed<T>(
+    snapshot: ArcSnapshot,
+    value: Arc<T>
+) -> bool {
+    give not arc_snapshot_equal(
+        snapshot,
+        arc_snapshot<T>(
+            value
+        )
+    );
+}
+
+proc arc_snapshot_unchanged<T>(
+    snapshot: ArcSnapshot,
+    value: Arc<T>
+) -> bool {
+    give not arc_snapshot_changed<T>(
+        snapshot,
+        value
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Profile comparisons
+// -----------------------------------------------------------------------------
+
+proc arc_profile_equal(
+    left: ArcProfile,
+    right: ArcProfile
+) -> bool {
+    give left.strong == right.strong
+        and left.weak == right.weak
+        and left.total == right.total
+        and left.unique == right.unique
+        and left.shared == right.shared
+        and left.has_weak == right.has_weak
+        and left.unobserved == right.unobserved
+        and left.mutable == right.mutable
+        and left.exclusive == right.exclusive
+        and left.valid == right.valid;
+}
+
+proc arc_profile_not_equal(
+    left: ArcProfile,
+    right: ArcProfile
+) -> bool {
+    give not arc_profile_equal(
+        left,
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Count delta helpers
+// -----------------------------------------------------------------------------
+
+proc arc_strong_delta<T>(
+    before: ArcSnapshot,
+    value: Arc<T>
+) -> int {
+    let current =
+        arc_strong_count<T>(
+            value
+        );
+
+    if current > before.strong {
+        give (
+            current - before.strong
+        ) as int;
+    }
+
+    if current < before.strong {
+        give -(
+            (
+                before.strong - current
+            ) as int
+        );
+    }
+
+    give 0;
+}
+
+proc arc_weak_delta<T>(
+    before: ArcSnapshot,
+    value: Arc<T>
+) -> int {
+    let current =
+        arc_weak_count<T>(
+            value
+        );
+
+    if current > before.weak {
+        give (
+            current - before.weak
+        ) as int;
+    }
+
+    if current < before.weak {
+        give -(
+            (
+                before.weak - current
+            ) as int
+        );
+    }
+
+    give 0;
+}
+
+// -----------------------------------------------------------------------------
+// Weak interaction
+// -----------------------------------------------------------------------------
+
+proc arc_downgrade<T>(
+    value: Arc<T>
+) -> ArcWeak<T> {
+    give compiler_arc_downgrade<T>(
+        value
+    );
+}
+
+proc arc_has_downgrade_capacity<T>(
+    value: Arc<T>
+) -> bool {
+    give arc_is_valid<T>(
+        value
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Invariants
+// -----------------------------------------------------------------------------
+
+proc arc_profile_invariant_holds(
+    profile: ArcProfile
+) -> bool {
+    if profile.valid
+        != (profile.strong > 0)
+    {
+        give false;
+    }
+
+    if profile.unique
+        != (profile.strong == 1)
+    {
+        give false;
+    }
+
+    if profile.shared
+        != (profile.strong > 1)
+    {
+        give false;
+    }
+
+    if profile.has_weak
+        != (profile.weak > 0)
+    {
+        give false;
+    }
+
+    if profile.unobserved
+        != (profile.weak == 0)
+    {
+        give false;
+    }
+
+    if profile.mutable
+        != profile.unique
+    {
+        give false;
+    }
+
+    if profile.exclusive
+        != (
+            profile.unique
+            and profile.unobserved
+        )
+    {
+        give false;
+    }
+
+    if profile.total
+        != profile.strong
+        + profile.weak
+    {
+        give false;
+    }
+
+    if profile.unique
+        and profile.shared
+    {
+        give false;
+    }
+
+    give true;
+}
+
+proc arc_state_invariant_holds(
+    state: ArcState
+) -> bool {
+    if state.alive
+        != (state.strong > 0)
+    {
+        give false;
+    }
+
+    if state.unique
+        != (state.strong == 1)
+    {
+        give false;
+    }
+
+    if state.shared
+        != (state.strong > 1)
+    {
+        give false;
+    }
+
+    if state.observed
+        != (state.weak > 0)
+    {
+        give false;
+    }
+
+    if state.unique
+        and state.shared
+    {
+        give false;
+    }
+
+    give true;
+}
+
+proc arc_invariant_holds<T>(
+    value: Arc<T>
+) -> bool {
+    let profile =
+        arc_profile<T>(
+            value
+        );
+
+    let state =
+        arc_state<T>(
+            value
+        );
+
+    give arc_profile_invariant_holds(
+        profile
+    )
+    and arc_state_invariant_holds(
+        state
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Assertions / predicates
+// -----------------------------------------------------------------------------
+
+proc arc_expect_valid<T>(
+    value: Arc<T>
+) -> bool {
+    give arc_is_valid<T>(
+        value
+    );
+}
+
+proc arc_expect_unique<T>(
+    value: Arc<T>
+) -> bool {
+    give arc_is_unique<T>(
+        value
+    );
+}
+
+proc arc_expect_shared<T>(
+    value: Arc<T>
+) -> bool {
+    give arc_is_shared<T>(
+        value
+    );
+}
+
+proc arc_expect_observed<T>(
+    value: Arc<T>
+) -> bool {
+    give arc_has_weak<T>(
+        value
+    );
+}
+
+proc arc_expect_exclusive<T>(
+    value: Arc<T>
+) -> bool {
+    give arc_is_exclusive<T>(
+        value
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Access classification
+// -----------------------------------------------------------------------------
+
+proc arc_access_state<T>(
+    value: Arc<T>
+) -> ArcAccessState {
+    if arc_is_unique<T>(
+        value
+    ) {
+        give ArcAccessState.Mutable;
+    }
+
+    if arc_is_shared<T>(
+        value
+    ) {
+        give ArcAccessState.CopyOnWrite;
+    }
+
+    give ArcAccessState.ReadOnly;
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc arc_statistics_empty()
+    -> ArcStatistics
+{
+    give ArcStatistics {
+        creations: 0,
+        clones: 0,
+
+        mutable_accesses: 0,
+        make_mut_calls: 0,
+
+        unwrap_attempts: 0,
+        unwrap_successes: 0,
+
+        pointer_comparisons: 0,
+
+        snapshots: 0
+    };
+}
+
+proc arc_statistics_total_operations(
+    statistics: ArcStatistics
+) -> u64 {
+    give statistics.creations
+        + statistics.clones
+        + statistics.mutable_accesses
+        + statistics.make_mut_calls
+        + statistics.unwrap_attempts
+        + statistics.pointer_comparisons
+        + statistics.snapshots;
+}
+
+proc arc_statistics_reset(
+    statistics: ref mut ArcStatistics
+) {
+    set *statistics =
+        arc_statistics_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc arc_state_kind_name(
+    state: ArcStateKind
+) -> string {
+    pick state {
+        ArcStateKind.Invalid {
+            give "invalid";
+        }
+
+        ArcStateKind.Unique {
+            give "unique";
+        }
+
+        ArcStateKind.Shared {
+            give "shared";
+        }
+
+        ArcStateKind.Observed {
+            give "observed";
+        }
+
+        ArcStateKind.SharedObserved {
+            give "shared-observed";
+        }
+    }
+
+    give "invalid";
+}
+
+proc arc_relation_name(
+    relation: ArcRelation
+) -> string {
+    pick relation {
+        ArcRelation.SameAllocation {
+            give "same-allocation";
+        }
+
+        ArcRelation.DifferentAllocation {
+            give "different-allocation";
+        }
+    }
+
+    give "different-allocation";
+}
+
+proc arc_access_state_name(
+    state: ArcAccessState
+) -> string {
+    pick state {
+        ArcAccessState.ReadOnly {
+            give "read-only";
+        }
+
+        ArcAccessState.Mutable {
+            give "mutable";
+        }
+
+        ArcAccessState.CopyOnWrite {
+            give "copy-on-write";
+        }
+    }
+
+    give "read-only";
+}
+
+// -----------------------------------------------------------------------------
+// Arc model
+// -----------------------------------------------------------------------------
+//
+// Arc<T>
+//     |
+//     +-- strong reference
+//     +-- thread-safe shared ownership
+//     +-- immutable access by default
+//     +-- direct mutable access when unique
+//     +-- copy-on-write through make_mut
+//     +-- weak observers through ArcWeak<T>
+//
+// Creation:
+//
+//     arc_new(value)
+//         |
+//         v
+//     strong = 1
+//     weak   = 0
+//
+// Clone:
+//
+//     Arc<T>
+//       |
+//       +-- arc_clone
+//              |
+//              v
+//          strong += 1
+//
+// Downgrade:
+//
+//     Arc<T>
+//       |
+//       +-- arc_downgrade
+//              |
+//              v
+//          ArcWeak<T>
+//          weak += 1
+//
+// Unique:
+//
+//     strong == 1
+//
+// Shared:
+//
+//     strong > 1
+//
+// Observed:
+//
+//     weak > 0
+//
+// Exclusive:
+//
+//     strong == 1
+//     weak   == 0
+//
+// Mutable:
+//
+//     get_mut
+//         requires unique strong ownership
+//
+// Copy-on-write:
+//
+//     make_mut
+//         returns mutable access
+//         and may detach from shared ownership
+//
+// Lifetime:
+//
+//     strong > 0
+//         T remains alive
+//
+//     strong == 0
+//         T may be destroyed
+//
+//     strong == 0 && weak == 0
+//         control block/allocation may be destroyed
+//
+// Low-level atomic count manipulation remains implemented by the
+// runtime/compiler primitives. This module provides the public high-level
+// Arc<T> API and semantic helpers.

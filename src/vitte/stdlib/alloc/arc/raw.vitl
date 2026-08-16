@@ -1,0 +1,1413 @@
+space vitte/stdlib/alloc/arc/raw
+
+export *
+
+use src/vitte/stdlib/core/option as core_option
+use src/vitte/stdlib/alloc/arc/arc as arc
+use src/vitte/stdlib/alloc/arc/core as arc_core
+use src/vitte/stdlib/alloc/arc/error as arc_error
+
+// -----------------------------------------------------------------------------
+// Raw pointer model
+// -----------------------------------------------------------------------------
+
+pick ArcRawState {
+    Valid,
+    Null,
+    Consumed,
+    Released,
+    Invalid
+}
+
+pick ArcRawKind {
+    Strong,
+    Weak,
+    Value,
+    Control
+}
+
+pick ArcRawOwnership {
+    Borrowed,
+    Owned,
+    Transferred,
+    Unknown
+}
+
+pick ArcRawConversion {
+    None,
+    IntoRaw,
+    FromRaw,
+    AsRaw,
+    CloneRaw,
+    WeakIntoRaw,
+    WeakFromRaw
+}
+
+pick ArcRawAccess {
+    Read,
+    Write,
+    Control
+}
+
+// -----------------------------------------------------------------------------
+// Raw handles
+// -----------------------------------------------------------------------------
+
+form ArcRaw<T> {
+    ptr: raw ref T
+
+    state: ArcRawState
+    ownership: ArcRawOwnership
+
+    generation: u64
+    revision: u64
+}
+
+form ArcWeakRaw<T> {
+    ptr: raw ref T
+
+    state: ArcRawState
+    ownership: ArcRawOwnership
+
+    generation: u64
+    revision: u64
+}
+
+form ArcRawControl {
+    ptr: raw ref u8
+
+    strong: usize
+    weak: usize
+
+    state: ArcRawState
+}
+
+form ArcRawProfile {
+    kind: ArcRawKind
+
+    state: ArcRawState
+    ownership: ArcRawOwnership
+
+    valid: bool
+    null: bool
+    consumed: bool
+    released: bool
+
+    strong: usize
+    weak: usize
+
+    generation: u64
+    revision: u64
+}
+
+form ArcRawValidation {
+    valid: bool
+
+    pointer_valid: bool
+    state_valid: bool
+    ownership_valid: bool
+    counts_valid: bool
+}
+
+form ArcRawTransition {
+    before: ArcRawState
+    after: ArcRawState
+
+    conversion: ArcRawConversion
+
+    valid: bool
+}
+
+form ArcRawStatistics {
+    into_raw: u64
+    from_raw: u64
+    as_raw: u64
+
+    weak_into_raw: u64
+    weak_from_raw: u64
+
+    consumed: u64
+    released: u64
+
+    invalid: u64
+}
+
+// -----------------------------------------------------------------------------
+// Construction
+// -----------------------------------------------------------------------------
+
+proc arc_raw<T>(
+    ptr: raw ref T
+) -> ArcRaw<T> {
+    give ArcRaw<T> {
+        ptr: ptr,
+
+        state:
+            ArcRawState.Valid,
+
+        ownership:
+            ArcRawOwnership.Owned,
+
+        generation:
+            1,
+
+        revision:
+            1
+    };
+}
+
+proc arc_raw_borrowed<T>(
+    ptr: raw ref T
+) -> ArcRaw<T> {
+    give ArcRaw<T> {
+        ptr: ptr,
+
+        state:
+            ArcRawState.Valid,
+
+        ownership:
+            ArcRawOwnership.Borrowed,
+
+        generation:
+            1,
+
+        revision:
+            1
+    };
+}
+
+proc arc_raw_null<T>()
+    -> ArcRaw<T>
+{
+    give ArcRaw<T> {
+        ptr:
+            compiler_null_raw_ref<T>(),
+
+        state:
+            ArcRawState.Null,
+
+        ownership:
+            ArcRawOwnership.Unknown,
+
+        generation:
+            0,
+
+        revision:
+            0
+    };
+}
+
+proc arc_weak_raw<T>(
+    ptr: raw ref T
+) -> ArcWeakRaw<T> {
+    give ArcWeakRaw<T> {
+        ptr: ptr,
+
+        state:
+            ArcRawState.Valid,
+
+        ownership:
+            ArcRawOwnership.Owned,
+
+        generation:
+            1,
+
+        revision:
+            1
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Arc -> raw
+// -----------------------------------------------------------------------------
+
+proc arc_into_raw<T>(
+    value: arc.Arc<T>
+) -> ArcRaw<T> {
+    let ptr =
+        compiler_arc_into_raw<T>(
+            value
+        );
+
+    give ArcRaw<T> {
+        ptr: ptr,
+
+        state:
+            ArcRawState.Valid,
+
+        ownership:
+            ArcRawOwnership.Transferred,
+
+        generation:
+            1,
+
+        revision:
+            1
+    };
+}
+
+proc arc_as_raw<T>(
+    value: ref arc.Arc<T>
+) -> ArcRaw<T> {
+    let ptr =
+        compiler_arc_as_raw<T>(
+            value
+        );
+
+    give ArcRaw<T> {
+        ptr: ptr,
+
+        state:
+            ArcRawState.Valid,
+
+        ownership:
+            ArcRawOwnership.Borrowed,
+
+        generation:
+            1,
+
+        revision:
+            1
+    };
+}
+
+proc arc_clone_into_raw<T>(
+    value: arc.Arc<T>
+) -> ArcRaw<T> {
+    let cloned =
+        arc.arc_clone<T>(
+            value
+        );
+
+    give arc_into_raw<T>(
+        cloned
+    );
+}
+
+// -----------------------------------------------------------------------------
+// raw -> Arc
+// -----------------------------------------------------------------------------
+
+proc arc_from_raw<T>(
+    value: ArcRaw<T>
+) -> Option<arc.Arc<T>> {
+    if not arc_raw_can_reconstruct<T>(
+        value
+    ) {
+        give None;
+    }
+
+    give Some(
+        compiler_arc_from_raw<T>(
+            value.ptr
+        )
+    );
+}
+
+proc arc_from_raw_unchecked<T>(
+    value: ArcRaw<T>
+) -> arc.Arc<T> {
+    give compiler_arc_from_raw<T>(
+        value.ptr
+    );
+}
+
+proc arc_raw_reconstruct<T>(
+    value: ref mut ArcRaw<T>
+) -> Option<arc.Arc<T>> {
+    if not arc_raw_can_reconstruct<T>(
+        *value
+    ) {
+        give None;
+    }
+
+    let result =
+        compiler_arc_from_raw<T>(
+            value.ptr
+        );
+
+    arc_raw_mark_consumed<T>(
+        value
+    );
+
+    give Some(result);
+}
+
+// -----------------------------------------------------------------------------
+// Weak raw conversions
+// -----------------------------------------------------------------------------
+
+proc arc_weak_into_raw<T>(
+    value: arc.ArcWeak<T>
+) -> ArcWeakRaw<T> {
+    let ptr =
+        compiler_arc_weak_into_raw<T>(
+            value
+        );
+
+    give ArcWeakRaw<T> {
+        ptr: ptr,
+
+        state:
+            ArcRawState.Valid,
+
+        ownership:
+            ArcRawOwnership.Transferred,
+
+        generation:
+            1,
+
+        revision:
+            1
+    };
+}
+
+proc arc_weak_as_raw<T>(
+    value: ref arc.ArcWeak<T>
+) -> ArcWeakRaw<T> {
+    give ArcWeakRaw<T> {
+        ptr:
+            compiler_arc_weak_as_raw<T>(
+                value
+            ),
+
+        state:
+            ArcRawState.Valid,
+
+        ownership:
+            ArcRawOwnership.Borrowed,
+
+        generation:
+            1,
+
+        revision:
+            1
+    };
+}
+
+proc arc_weak_from_raw<T>(
+    value: ArcWeakRaw<T>
+) -> Option<arc.ArcWeak<T>> {
+    if not arc_weak_raw_can_reconstruct<T>(
+        value
+    ) {
+        give None;
+    }
+
+    give Some(
+        compiler_arc_weak_from_raw<T>(
+            value.ptr
+        )
+    );
+}
+
+proc arc_weak_raw_reconstruct<T>(
+    value: ref mut ArcWeakRaw<T>
+) -> Option<arc.ArcWeak<T>> {
+    if not arc_weak_raw_can_reconstruct<T>(
+        *value
+    ) {
+        give None;
+    }
+
+    let result =
+        compiler_arc_weak_from_raw<T>(
+            value.ptr
+        );
+
+    arc_weak_raw_mark_consumed<T>(
+        value
+    );
+
+    give Some(result);
+}
+
+// -----------------------------------------------------------------------------
+// Pointer access
+// -----------------------------------------------------------------------------
+
+proc arc_raw_ptr<T>(
+    value: ArcRaw<T>
+) -> raw ref T {
+    give value.ptr;
+}
+
+proc arc_weak_raw_ptr<T>(
+    value: ArcWeakRaw<T>
+) -> raw ref T {
+    give value.ptr;
+}
+
+proc arc_raw_as_ref<T>(
+    value: ArcRaw<T>
+) -> Option<ref T> {
+    if not arc_raw_is_valid<T>(
+        value
+    ) {
+        give None;
+    }
+
+    give Some(
+        compiler_raw_ref_as_ref<T>(
+            value.ptr
+        )
+    );
+}
+
+proc arc_raw_as_mut<T>(
+    value: ArcRaw<T>
+) -> Option<ref mut T> {
+    if not arc_raw_can_write<T>(
+        value
+    ) {
+        give None;
+    }
+
+    give Some(
+        compiler_raw_ref_as_mut<T>(
+            value.ptr
+        )
+    );
+}
+
+// -----------------------------------------------------------------------------
+// State predicates
+// -----------------------------------------------------------------------------
+
+proc arc_raw_is_valid<T>(
+    value: ArcRaw<T>
+) -> bool {
+    give value.state
+        == ArcRawState.Valid;
+}
+
+proc arc_raw_is_null<T>(
+    value: ArcRaw<T>
+) -> bool {
+    give value.state
+        == ArcRawState.Null;
+}
+
+proc arc_raw_is_consumed<T>(
+    value: ArcRaw<T>
+) -> bool {
+    give value.state
+        == ArcRawState.Consumed;
+}
+
+proc arc_raw_is_released<T>(
+    value: ArcRaw<T>
+) -> bool {
+    give value.state
+        == ArcRawState.Released;
+}
+
+proc arc_raw_is_owned<T>(
+    value: ArcRaw<T>
+) -> bool {
+    give value.ownership
+        == ArcRawOwnership.Owned
+        or value.ownership
+        == ArcRawOwnership.Transferred;
+}
+
+proc arc_raw_is_borrowed<T>(
+    value: ArcRaw<T>
+) -> bool {
+    give value.ownership
+        == ArcRawOwnership.Borrowed;
+}
+
+proc arc_raw_can_reconstruct<T>(
+    value: ArcRaw<T>
+) -> bool {
+    give value.state
+        == ArcRawState.Valid
+        and value.ownership
+            != ArcRawOwnership.Borrowed;
+}
+
+proc arc_raw_can_read<T>(
+    value: ArcRaw<T>
+) -> bool {
+    give value.state
+        == ArcRawState.Valid;
+}
+
+proc arc_raw_can_write<T>(
+    value: ArcRaw<T>
+) -> bool {
+    give value.state
+        == ArcRawState.Valid
+        and value.ownership
+            != ArcRawOwnership.Borrowed;
+}
+
+// -----------------------------------------------------------------------------
+// Weak predicates
+// -----------------------------------------------------------------------------
+
+proc arc_weak_raw_is_valid<T>(
+    value: ArcWeakRaw<T>
+) -> bool {
+    give value.state
+        == ArcRawState.Valid;
+}
+
+proc arc_weak_raw_is_consumed<T>(
+    value: ArcWeakRaw<T>
+) -> bool {
+    give value.state
+        == ArcRawState.Consumed;
+}
+
+proc arc_weak_raw_can_reconstruct<T>(
+    value: ArcWeakRaw<T>
+) -> bool {
+    give value.state
+        == ArcRawState.Valid
+        and value.ownership
+            != ArcRawOwnership.Borrowed;
+}
+
+// -----------------------------------------------------------------------------
+// State transitions
+// -----------------------------------------------------------------------------
+
+proc arc_raw_mark_consumed<T>(
+    value: ref mut ArcRaw<T>
+) {
+    set value.state =
+        ArcRawState.Consumed;
+
+    set value.ownership =
+        ArcRawOwnership.Unknown;
+
+    set value.revision =
+        value.revision + 1;
+}
+
+proc arc_raw_mark_released<T>(
+    value: ref mut ArcRaw<T>
+) {
+    set value.state =
+        ArcRawState.Released;
+
+    set value.ownership =
+        ArcRawOwnership.Unknown;
+
+    set value.revision =
+        value.revision + 1;
+}
+
+proc arc_raw_mark_invalid<T>(
+    value: ref mut ArcRaw<T>
+) {
+    set value.state =
+        ArcRawState.Invalid;
+
+    set value.revision =
+        value.revision + 1;
+}
+
+proc arc_weak_raw_mark_consumed<T>(
+    value: ref mut ArcWeakRaw<T>
+) {
+    set value.state =
+        ArcRawState.Consumed;
+
+    set value.ownership =
+        ArcRawOwnership.Unknown;
+
+    set value.revision =
+        value.revision + 1;
+}
+
+proc arc_weak_raw_mark_invalid<T>(
+    value: ref mut ArcWeakRaw<T>
+) {
+    set value.state =
+        ArcRawState.Invalid;
+
+    set value.revision =
+        value.revision + 1;
+}
+
+// -----------------------------------------------------------------------------
+// Identity
+// -----------------------------------------------------------------------------
+
+proc arc_raw_ptr_eq<T>(
+    left: ArcRaw<T>,
+    right: ArcRaw<T>
+) -> bool {
+    if not arc_raw_is_valid<T>(
+        left
+    ) {
+        give false;
+    }
+
+    if not arc_raw_is_valid<T>(
+        right
+    ) {
+        give false;
+    }
+
+    give compiler_raw_ptr_eq<T>(
+        left.ptr,
+        right.ptr
+    );
+}
+
+proc arc_raw_ptr_ne<T>(
+    left: ArcRaw<T>,
+    right: ArcRaw<T>
+) -> bool {
+    give not arc_raw_ptr_eq<T>(
+        left,
+        right
+    );
+}
+
+proc arc_raw_same_allocation<T>(
+    left: ArcRaw<T>,
+    right: ArcRaw<T>
+) -> bool {
+    give arc_raw_ptr_eq<T>(
+        left,
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Control block
+// -----------------------------------------------------------------------------
+
+proc arc_raw_control<T>(
+    value: ArcRaw<T>
+) -> Option<ArcRawControl> {
+    if not arc_raw_is_valid<T>(
+        value
+    ) {
+        give None;
+    }
+
+    give Some(
+        ArcRawControl {
+            ptr:
+                compiler_arc_raw_control_ptr<T>(
+                    value.ptr
+                ),
+
+            strong:
+                compiler_arc_raw_strong_count<T>(
+                    value.ptr
+                ),
+
+            weak:
+                compiler_arc_raw_weak_count<T>(
+                    value.ptr
+                ),
+
+            state:
+                ArcRawState.Valid
+        }
+    );
+}
+
+proc arc_raw_strong_count<T>(
+    value: ArcRaw<T>
+) -> usize {
+    let control =
+        arc_raw_control<T>(
+            value
+        );
+
+    pick control {
+        Some(current) {
+            give current.strong;
+        }
+
+        None {
+            give 0;
+        }
+    }
+}
+
+proc arc_raw_weak_count<T>(
+    value: ArcRaw<T>
+) -> usize {
+    let control =
+        arc_raw_control<T>(
+            value
+        );
+
+    pick control {
+        Some(current) {
+            give current.weak;
+        }
+
+        None {
+            give 0;
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Profiles
+// -----------------------------------------------------------------------------
+
+proc arc_raw_profile<T>(
+    value: ArcRaw<T>
+) -> ArcRawProfile {
+    let strong =
+        arc_raw_strong_count<T>(
+            value
+        );
+
+    let weak =
+        arc_raw_weak_count<T>(
+            value
+        );
+
+    give ArcRawProfile {
+        kind:
+            ArcRawKind.Strong,
+
+        state:
+            value.state,
+
+        ownership:
+            value.ownership,
+
+        valid:
+            arc_raw_is_valid<T>(
+                value
+            ),
+
+        null:
+            arc_raw_is_null<T>(
+                value
+            ),
+
+        consumed:
+            arc_raw_is_consumed<T>(
+                value
+            ),
+
+        released:
+            arc_raw_is_released<T>(
+                value
+            ),
+
+        strong:
+            strong,
+
+        weak:
+            weak,
+
+        generation:
+            value.generation,
+
+        revision:
+            value.revision
+    };
+}
+
+proc arc_weak_raw_profile<T>(
+    value: ArcWeakRaw<T>
+) -> ArcRawProfile {
+    let strong =
+        if arc_weak_raw_is_valid<T>(value) {
+            compiler_arc_raw_weak_strong_count<T>(
+                value.ptr
+            )
+        } else {
+            0
+        };
+
+    let weak =
+        if arc_weak_raw_is_valid<T>(value) {
+            compiler_arc_raw_weak_weak_count<T>(
+                value.ptr
+            )
+        } else {
+            0
+        };
+
+    give ArcRawProfile {
+        kind:
+            ArcRawKind.Weak,
+
+        state:
+            value.state,
+
+        ownership:
+            value.ownership,
+
+        valid:
+            value.state
+                == ArcRawState.Valid,
+
+        null:
+            value.state
+                == ArcRawState.Null,
+
+        consumed:
+            value.state
+                == ArcRawState.Consumed,
+
+        released:
+            value.state
+                == ArcRawState.Released,
+
+        strong:
+            strong,
+
+        weak:
+            weak,
+
+        generation:
+            value.generation,
+
+        revision:
+            value.revision
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+proc arc_raw_state_valid(
+    state: ArcRawState
+) -> bool {
+    give state
+        != ArcRawState.Invalid;
+}
+
+proc arc_raw_ownership_valid(
+    ownership: ArcRawOwnership,
+    state: ArcRawState
+) -> bool {
+    if state == ArcRawState.Consumed
+        or state == ArcRawState.Released
+    {
+        give ownership
+            == ArcRawOwnership.Unknown;
+    }
+
+    if state == ArcRawState.Valid {
+        give ownership
+            != ArcRawOwnership.Unknown;
+    }
+
+    give true;
+}
+
+proc arc_raw_validate<T>(
+    value: ArcRaw<T>
+) -> ArcRawValidation {
+    let pointer_valid =
+        if value.state == ArcRawState.Valid {
+            not compiler_raw_ref_is_null<T>(
+                value.ptr
+            )
+        } else {
+            true
+        };
+
+    let state_valid =
+        arc_raw_state_valid(
+            value.state
+        );
+
+    let ownership_valid =
+        arc_raw_ownership_valid(
+            value.ownership,
+            value.state
+        );
+
+    let strong =
+        arc_raw_strong_count<T>(
+            value
+        );
+
+    let weak =
+        arc_raw_weak_count<T>(
+            value
+        );
+
+    let counts =
+        arc_core.arc_core_counts(
+            strong,
+            weak
+        );
+
+    let counts_valid =
+        if value.state == ArcRawState.Valid {
+            arc_core.arc_core_invariant_holds(
+                counts
+            )
+        } else {
+            true
+        };
+
+    give ArcRawValidation {
+        valid:
+            pointer_valid
+            and state_valid
+            and ownership_valid
+            and counts_valid,
+
+        pointer_valid:
+            pointer_valid,
+
+        state_valid:
+            state_valid,
+
+        ownership_valid:
+            ownership_valid,
+
+        counts_valid:
+            counts_valid
+    };
+}
+
+proc arc_raw_invariant_holds<T>(
+    value: ArcRaw<T>
+) -> bool {
+    give arc_raw_validate<T>(
+        value
+    ).valid;
+}
+
+// -----------------------------------------------------------------------------
+// Errors
+// -----------------------------------------------------------------------------
+
+proc arc_raw_error<T>(
+    value: ArcRaw<T>
+) -> arc_error.ArcError {
+    if value.state == ArcRawState.Null {
+        give arc_error.arc_error_raw_pointer_null();
+    }
+
+    if value.state == ArcRawState.Consumed {
+        give arc_error.arc_error_raw_pointer_consumed();
+    }
+
+    if value.state == ArcRawState.Invalid {
+        give arc_error.arc_error_raw_pointer_invalid();
+    }
+
+    if not arc_raw_ownership_valid(
+        value.ownership,
+        value.state
+    ) {
+        give arc_error.arc_error_raw_ownership_mismatch();
+    }
+
+    let validation =
+        arc_raw_validate<T>(
+            value
+        );
+
+    if not validation.pointer_valid {
+        give arc_error.arc_error_raw_pointer_invalid();
+    }
+
+    if not validation.counts_valid {
+        give arc_error.arc_error_invalid_invariant(
+            arc_raw_strong_count<T>(
+                value
+            ),
+            arc_raw_weak_count<T>(
+                value
+            )
+        );
+    }
+
+    give arc_error.arc_error_none();
+}
+
+// -----------------------------------------------------------------------------
+// Release helpers
+// -----------------------------------------------------------------------------
+
+proc arc_raw_release<T>(
+    value: ref mut ArcRaw<T>
+) -> bool {
+    if value.state
+        != ArcRawState.Valid
+    {
+        give false;
+    }
+
+    if value.ownership
+        == ArcRawOwnership.Borrowed
+    {
+        give false;
+    }
+
+    compiler_arc_raw_release<T>(
+        value.ptr
+    );
+
+    arc_raw_mark_released<T>(
+        value
+    );
+
+    give true;
+}
+
+proc arc_weak_raw_release<T>(
+    value: ref mut ArcWeakRaw<T>
+) -> bool {
+    if value.state
+        != ArcRawState.Valid
+    {
+        give false;
+    }
+
+    if value.ownership
+        == ArcRawOwnership.Borrowed
+    {
+        give false;
+    }
+
+    compiler_arc_weak_raw_release<T>(
+        value.ptr
+    );
+
+    set value.state =
+        ArcRawState.Released;
+
+    set value.ownership =
+        ArcRawOwnership.Unknown;
+
+    set value.revision =
+        value.revision + 1;
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Generation / revision
+// -----------------------------------------------------------------------------
+
+proc arc_raw_generation<T>(
+    value: ArcRaw<T>
+) -> u64 {
+    give value.generation;
+}
+
+proc arc_raw_revision<T>(
+    value: ArcRaw<T>
+) -> u64 {
+    give value.revision;
+}
+
+proc arc_raw_touch<T>(
+    value: ref mut ArcRaw<T>
+) {
+    set value.revision =
+        value.revision + 1;
+}
+
+proc arc_raw_advance_generation<T>(
+    value: ref mut ArcRaw<T>
+) -> u64 {
+    set value.generation =
+        value.generation + 1;
+
+    set value.revision =
+        value.revision + 1;
+
+    give value.generation;
+}
+
+// -----------------------------------------------------------------------------
+// Transition model
+// -----------------------------------------------------------------------------
+
+proc arc_raw_transition(
+    before: ArcRawState,
+    after: ArcRawState,
+    conversion: ArcRawConversion
+) -> ArcRawTransition {
+    give ArcRawTransition {
+        before:
+            before,
+
+        after:
+            after,
+
+        conversion:
+            conversion,
+
+        valid:
+            arc_raw_transition_valid(
+                before,
+                after,
+                conversion
+            )
+    };
+}
+
+proc arc_raw_transition_valid(
+    before: ArcRawState,
+    after: ArcRawState,
+    conversion: ArcRawConversion
+) -> bool {
+    pick conversion {
+        ArcRawConversion.IntoRaw {
+            give after
+                == ArcRawState.Valid;
+        }
+
+        ArcRawConversion.AsRaw {
+            give after
+                == ArcRawState.Valid;
+        }
+
+        ArcRawConversion.FromRaw {
+            give before
+                == ArcRawState.Valid
+                and after
+                == ArcRawState.Consumed;
+        }
+
+        ArcRawConversion.CloneRaw {
+            give before
+                == ArcRawState.Valid
+                and after
+                == ArcRawState.Valid;
+        }
+
+        ArcRawConversion.WeakIntoRaw {
+            give after
+                == ArcRawState.Valid;
+        }
+
+        ArcRawConversion.WeakFromRaw {
+            give before
+                == ArcRawState.Valid
+                and after
+                == ArcRawState.Consumed;
+        }
+
+        ArcRawConversion.None {
+            give before == after;
+        }
+    }
+
+    give false;
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc arc_raw_statistics_empty()
+    -> ArcRawStatistics
+{
+    give ArcRawStatistics {
+        into_raw: 0,
+        from_raw: 0,
+        as_raw: 0,
+
+        weak_into_raw: 0,
+        weak_from_raw: 0,
+
+        consumed: 0,
+        released: 0,
+
+        invalid: 0
+    };
+}
+
+proc arc_raw_statistics_total(
+    statistics: ArcRawStatistics
+) -> u64 {
+    give statistics.into_raw
+        + statistics.from_raw
+        + statistics.as_raw
+        + statistics.weak_into_raw
+        + statistics.weak_from_raw
+        + statistics.consumed
+        + statistics.released
+        + statistics.invalid;
+}
+
+proc arc_raw_statistics_reset(
+    statistics: ref mut ArcRawStatistics
+) {
+    set *statistics =
+        arc_raw_statistics_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc arc_raw_state_name(
+    state: ArcRawState
+) -> string {
+    pick state {
+        ArcRawState.Valid {
+            give "valid";
+        }
+
+        ArcRawState.Null {
+            give "null";
+        }
+
+        ArcRawState.Consumed {
+            give "consumed";
+        }
+
+        ArcRawState.Released {
+            give "released";
+        }
+
+        ArcRawState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+proc arc_raw_kind_name(
+    kind: ArcRawKind
+) -> string {
+    pick kind {
+        ArcRawKind.Strong {
+            give "strong";
+        }
+
+        ArcRawKind.Weak {
+            give "weak";
+        }
+
+        ArcRawKind.Value {
+            give "value";
+        }
+
+        ArcRawKind.Control {
+            give "control";
+        }
+    }
+
+    give "value";
+}
+
+proc arc_raw_ownership_name(
+    ownership: ArcRawOwnership
+) -> string {
+    pick ownership {
+        ArcRawOwnership.Borrowed {
+            give "borrowed";
+        }
+
+        ArcRawOwnership.Owned {
+            give "owned";
+        }
+
+        ArcRawOwnership.Transferred {
+            give "transferred";
+        }
+
+        ArcRawOwnership.Unknown {
+            give "unknown";
+        }
+    }
+
+    give "unknown";
+}
+
+proc arc_raw_conversion_name(
+    conversion: ArcRawConversion
+) -> string {
+    pick conversion {
+        ArcRawConversion.None {
+            give "none";
+        }
+
+        ArcRawConversion.IntoRaw {
+            give "into-raw";
+        }
+
+        ArcRawConversion.FromRaw {
+            give "from-raw";
+        }
+
+        ArcRawConversion.AsRaw {
+            give "as-raw";
+        }
+
+        ArcRawConversion.CloneRaw {
+            give "clone-raw";
+        }
+
+        ArcRawConversion.WeakIntoRaw {
+            give "weak-into-raw";
+        }
+
+        ArcRawConversion.WeakFromRaw {
+            give "weak-from-raw";
+        }
+    }
+
+    give "none";
+}
+
+// -----------------------------------------------------------------------------
+// Raw ownership model
+// -----------------------------------------------------------------------------
+//
+// Arc<T>
+//    |
+//    +-- arc_as_raw()
+//    |      |
+//    |      +-- borrowed pointer
+//    |      +-- Arc remains owner
+//    |      +-- raw pointer must not reconstruct ownership
+//    |
+//    +-- arc_into_raw()
+//           |
+//           +-- ownership transferred
+//           +-- Arc handle consumed
+//           +-- raw pointer represents one strong reference
+//           |
+//           +-- arc_from_raw()
+//                  |
+//                  +-- ownership reconstructed
+//                  +-- raw handle becomes consumed
+//
+// ArcWeak<T>
+//    |
+//    +-- weak_into_raw()
+//    |
+//    +-- weak_from_raw()
+//
+// Critical invariant:
+//
+// Every successful `into_raw` that transfers one owning reference must have
+// exactly one matching ownership-consuming operation:
+//
+//     from_raw
+//
+// or:
+//
+//     raw_release
+//
+// Reconstructing the same owning raw pointer twice would duplicate ownership
+// without incrementing the strong count and is therefore invalid.
+//
+// Borrowed pointers returned by `as_raw` must never be passed to an owning
+// `from_raw` conversion.
+//
+// Low-level pointer representation, atomic counters and allocation destruction
+// remain runtime/compiler responsibilities.

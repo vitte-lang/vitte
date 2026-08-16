@@ -1,0 +1,1856 @@
+space vitte/stdlib/alloc/arc/core
+
+export *
+
+// -----------------------------------------------------------------------------
+// Core constants
+// -----------------------------------------------------------------------------
+
+const ARC_STRONG_INITIAL: usize = 1;
+const ARC_WEAK_INITIAL: usize = 0;
+
+const ARC_COUNT_ZERO: usize = 0;
+const ARC_COUNT_ONE: usize = 1;
+
+const ARC_COUNT_MAX: usize = usize_max();
+
+// -----------------------------------------------------------------------------
+// Core enums
+// -----------------------------------------------------------------------------
+
+pick ArcCoreState {
+    Empty,
+    WeakOnly,
+    Unique,
+    Shared,
+    Saturated,
+    Invalid
+}
+
+pick ArcCoreOwnership {
+    None,
+    Unique,
+    Shared
+}
+
+pick ArcCoreObservation {
+    Unobserved,
+    Observed
+}
+
+pick ArcCoreLifetime {
+    Dead,
+    Alive
+}
+
+pick ArcCoreMutability {
+    None,
+    Direct,
+    CopyOnWrite
+}
+
+pick ArcCoreRelation {
+    Same,
+    Different
+}
+
+pick ArcCoreOrdering {
+    Less,
+    Equal,
+    Greater
+}
+
+pick ArcCoreTransitionKind {
+    None,
+
+    Create,
+    Clone,
+
+    Downgrade,
+    Upgrade,
+
+    DropStrong,
+    DropWeak,
+
+    DestroyValue,
+    DestroyAllocation,
+
+    SaturateStrong,
+    SaturateWeak,
+
+    Invalid
+}
+
+// -----------------------------------------------------------------------------
+// Core structures
+// -----------------------------------------------------------------------------
+
+form ArcCoreCounts {
+    strong: usize
+    weak: usize
+}
+
+form ArcCoreFlags {
+    alive: bool
+
+    unique: bool
+    shared: bool
+
+    observed: bool
+    unobserved: bool
+
+    exclusive: bool
+
+    mutable_direct: bool
+    copy_on_write: bool
+
+    valid: bool
+}
+
+form ArcCoreProfile {
+    counts: ArcCoreCounts
+
+    total: usize
+
+    state: ArcCoreState
+    ownership: ArcCoreOwnership
+    observation: ArcCoreObservation
+    lifetime: ArcCoreLifetime
+    mutability: ArcCoreMutability
+
+    flags: ArcCoreFlags
+}
+
+form ArcCoreDelta {
+    strong: int
+    weak: int
+    total: int
+}
+
+form ArcCoreTransition {
+    before: ArcCoreCounts
+    after: ArcCoreCounts
+
+    delta: ArcCoreDelta
+
+    kind: ArcCoreTransitionKind
+
+    valid: bool
+}
+
+form ArcCoreLimits {
+    strong_max: usize
+    weak_max: usize
+    total_max: usize
+}
+
+form ArcCoreValidation {
+    valid: bool
+
+    strong_valid: bool
+    weak_valid: bool
+    total_valid: bool
+
+    state_valid: bool
+    ownership_valid: bool
+    observation_valid: bool
+    lifetime_valid: bool
+    mutability_valid: bool
+
+    invariant_valid: bool
+}
+
+form ArcCoreStatistics {
+    profiles: u64
+    validations: u64
+
+    transitions: u64
+
+    creates: u64
+    clones: u64
+
+    downgrades: u64
+    upgrades: u64
+
+    strong_drops: u64
+    weak_drops: u64
+
+    value_destroys: u64
+    allocation_destroys: u64
+
+    invalid_transitions: u64
+}
+
+// -----------------------------------------------------------------------------
+// Constructors
+// -----------------------------------------------------------------------------
+
+proc arc_core_counts(
+    strong: usize,
+    weak: usize
+) -> ArcCoreCounts {
+    give ArcCoreCounts {
+        strong: strong,
+        weak: weak
+    };
+}
+
+proc arc_core_counts_initial()
+    -> ArcCoreCounts
+{
+    give ArcCoreCounts {
+        strong: ARC_STRONG_INITIAL,
+        weak: ARC_WEAK_INITIAL
+    };
+}
+
+proc arc_core_counts_empty()
+    -> ArcCoreCounts
+{
+    give ArcCoreCounts {
+        strong: 0,
+        weak: 0
+    };
+}
+
+proc arc_core_counts_weak_only(
+    weak: usize
+) -> ArcCoreCounts {
+    give ArcCoreCounts {
+        strong: 0,
+        weak: weak
+    };
+}
+
+proc arc_core_limits_default()
+    -> ArcCoreLimits
+{
+    give ArcCoreLimits {
+        strong_max: ARC_COUNT_MAX,
+        weak_max: ARC_COUNT_MAX,
+        total_max: ARC_COUNT_MAX
+    };
+}
+
+proc arc_core_statistics_empty()
+    -> ArcCoreStatistics
+{
+    give ArcCoreStatistics {
+        profiles: 0,
+        validations: 0,
+
+        transitions: 0,
+
+        creates: 0,
+        clones: 0,
+
+        downgrades: 0,
+        upgrades: 0,
+
+        strong_drops: 0,
+        weak_drops: 0,
+
+        value_destroys: 0,
+        allocation_destroys: 0,
+
+        invalid_transitions: 0
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Basic count access
+// -----------------------------------------------------------------------------
+
+proc arc_core_strong(
+    counts: ArcCoreCounts
+) -> usize {
+    give counts.strong;
+}
+
+proc arc_core_weak(
+    counts: ArcCoreCounts
+) -> usize {
+    give counts.weak;
+}
+
+proc arc_core_total(
+    counts: ArcCoreCounts
+) -> usize {
+    if counts.strong
+        > ARC_COUNT_MAX - counts.weak
+    {
+        give ARC_COUNT_MAX;
+    }
+
+    give counts.strong
+        + counts.weak;
+}
+
+proc arc_core_has_strong(
+    counts: ArcCoreCounts
+) -> bool {
+    give counts.strong > 0;
+}
+
+proc arc_core_has_weak(
+    counts: ArcCoreCounts
+) -> bool {
+    give counts.weak > 0;
+}
+
+proc arc_core_is_empty(
+    counts: ArcCoreCounts
+) -> bool {
+    give counts.strong == 0
+        and counts.weak == 0;
+}
+
+proc arc_core_is_alive(
+    counts: ArcCoreCounts
+) -> bool {
+    give counts.strong > 0;
+}
+
+proc arc_core_is_dead(
+    counts: ArcCoreCounts
+) -> bool {
+    give counts.strong == 0;
+}
+
+proc arc_core_is_unique(
+    counts: ArcCoreCounts
+) -> bool {
+    give counts.strong == 1;
+}
+
+proc arc_core_is_shared(
+    counts: ArcCoreCounts
+) -> bool {
+    give counts.strong > 1;
+}
+
+proc arc_core_is_observed(
+    counts: ArcCoreCounts
+) -> bool {
+    give counts.weak > 0;
+}
+
+proc arc_core_is_unobserved(
+    counts: ArcCoreCounts
+) -> bool {
+    give counts.weak == 0;
+}
+
+proc arc_core_is_exclusive(
+    counts: ArcCoreCounts
+) -> bool {
+    give counts.strong == 1
+        and counts.weak == 0;
+}
+
+proc arc_core_is_weak_only(
+    counts: ArcCoreCounts
+) -> bool {
+    give counts.strong == 0
+        and counts.weak > 0;
+}
+
+proc arc_core_is_saturated(
+    counts: ArcCoreCounts
+) -> bool {
+    give counts.strong == ARC_COUNT_MAX
+        or counts.weak == ARC_COUNT_MAX;
+}
+
+// -----------------------------------------------------------------------------
+// State classification
+// -----------------------------------------------------------------------------
+
+proc arc_core_state(
+    counts: ArcCoreCounts
+) -> ArcCoreState {
+    if arc_core_is_saturated(
+        counts
+    ) {
+        give ArcCoreState.Saturated;
+    }
+
+    if counts.strong == 0 {
+        if counts.weak == 0 {
+            give ArcCoreState.Empty;
+        }
+
+        give ArcCoreState.WeakOnly;
+    }
+
+    if counts.strong == 1 {
+        give ArcCoreState.Unique;
+    }
+
+    if counts.strong > 1 {
+        give ArcCoreState.Shared;
+    }
+
+    give ArcCoreState.Invalid;
+}
+
+proc arc_core_ownership(
+    counts: ArcCoreCounts
+) -> ArcCoreOwnership {
+    if counts.strong == 0 {
+        give ArcCoreOwnership.None;
+    }
+
+    if counts.strong == 1 {
+        give ArcCoreOwnership.Unique;
+    }
+
+    give ArcCoreOwnership.Shared;
+}
+
+proc arc_core_observation(
+    counts: ArcCoreCounts
+) -> ArcCoreObservation {
+    if counts.weak == 0 {
+        give ArcCoreObservation.Unobserved;
+    }
+
+    give ArcCoreObservation.Observed;
+}
+
+proc arc_core_lifetime(
+    counts: ArcCoreCounts
+) -> ArcCoreLifetime {
+    if counts.strong > 0 {
+        give ArcCoreLifetime.Alive;
+    }
+
+    give ArcCoreLifetime.Dead;
+}
+
+proc arc_core_mutability(
+    counts: ArcCoreCounts
+) -> ArcCoreMutability {
+    if counts.strong == 0 {
+        give ArcCoreMutability.None;
+    }
+
+    if counts.strong == 1 {
+        give ArcCoreMutability.Direct;
+    }
+
+    give ArcCoreMutability.CopyOnWrite;
+}
+
+// -----------------------------------------------------------------------------
+// Flags
+// -----------------------------------------------------------------------------
+
+proc arc_core_flags(
+    counts: ArcCoreCounts
+) -> ArcCoreFlags {
+    let alive =
+        arc_core_is_alive(
+            counts
+        );
+
+    let unique =
+        arc_core_is_unique(
+            counts
+        );
+
+    let shared =
+        arc_core_is_shared(
+            counts
+        );
+
+    let observed =
+        arc_core_is_observed(
+            counts
+        );
+
+    let unobserved =
+        not observed;
+
+    give ArcCoreFlags {
+        alive:
+            alive,
+
+        unique:
+            unique,
+
+        shared:
+            shared,
+
+        observed:
+            observed,
+
+        unobserved:
+            unobserved,
+
+        exclusive:
+            unique and unobserved,
+
+        mutable_direct:
+            alive and unique,
+
+        copy_on_write:
+            alive and shared,
+
+        valid:
+            alive or observed
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Profile
+// -----------------------------------------------------------------------------
+
+proc arc_core_profile(
+    counts: ArcCoreCounts
+) -> ArcCoreProfile {
+    give ArcCoreProfile {
+        counts:
+            counts,
+
+        total:
+            arc_core_total(
+                counts
+            ),
+
+        state:
+            arc_core_state(
+                counts
+            ),
+
+        ownership:
+            arc_core_ownership(
+                counts
+            ),
+
+        observation:
+            arc_core_observation(
+                counts
+            ),
+
+        lifetime:
+            arc_core_lifetime(
+                counts
+            ),
+
+        mutability:
+            arc_core_mutability(
+                counts
+            ),
+
+        flags:
+            arc_core_flags(
+                counts
+            )
+    };
+}
+
+proc arc_core_profile_initial()
+    -> ArcCoreProfile
+{
+    give arc_core_profile(
+        arc_core_counts_initial()
+    );
+}
+
+proc arc_core_profile_empty()
+    -> ArcCoreProfile
+{
+    give arc_core_profile(
+        arc_core_counts_empty()
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Capacity
+// -----------------------------------------------------------------------------
+
+proc arc_core_can_increment_strong(
+    counts: ArcCoreCounts
+) -> bool {
+    give counts.strong < ARC_COUNT_MAX;
+}
+
+proc arc_core_can_increment_weak(
+    counts: ArcCoreCounts
+) -> bool {
+    give counts.weak < ARC_COUNT_MAX;
+}
+
+proc arc_core_can_decrement_strong(
+    counts: ArcCoreCounts
+) -> bool {
+    give counts.strong > 0;
+}
+
+proc arc_core_can_decrement_weak(
+    counts: ArcCoreCounts
+) -> bool {
+    give counts.weak > 0;
+}
+
+proc arc_core_can_clone(
+    counts: ArcCoreCounts
+) -> bool {
+    give counts.strong > 0
+        and arc_core_can_increment_strong(
+            counts
+        );
+}
+
+proc arc_core_can_downgrade(
+    counts: ArcCoreCounts
+) -> bool {
+    give counts.strong > 0
+        and arc_core_can_increment_weak(
+            counts
+        );
+}
+
+proc arc_core_can_upgrade(
+    counts: ArcCoreCounts
+) -> bool {
+    give counts.strong > 0
+        and arc_core_can_increment_strong(
+            counts
+        );
+}
+
+proc arc_core_can_get_mut(
+    counts: ArcCoreCounts
+) -> bool {
+    give counts.strong == 1;
+}
+
+proc arc_core_can_make_mut(
+    counts: ArcCoreCounts
+) -> bool {
+    give counts.strong > 0;
+}
+
+proc arc_core_can_unwrap(
+    counts: ArcCoreCounts
+) -> bool {
+    give counts.strong == 1;
+}
+
+proc arc_core_can_destroy_value(
+    counts: ArcCoreCounts
+) -> bool {
+    give counts.strong == 0;
+}
+
+proc arc_core_can_destroy_allocation(
+    counts: ArcCoreCounts
+) -> bool {
+    give counts.strong == 0
+        and counts.weak == 0;
+}
+
+// -----------------------------------------------------------------------------
+// Pure count transforms
+// -----------------------------------------------------------------------------
+
+proc arc_core_increment_strong(
+    counts: ArcCoreCounts
+) -> ArcCoreCounts {
+    if not arc_core_can_increment_strong(
+        counts
+    ) {
+        give counts;
+    }
+
+    give ArcCoreCounts {
+        strong:
+            counts.strong + 1,
+
+        weak:
+            counts.weak
+    };
+}
+
+proc arc_core_decrement_strong(
+    counts: ArcCoreCounts
+) -> ArcCoreCounts {
+    if not arc_core_can_decrement_strong(
+        counts
+    ) {
+        give counts;
+    }
+
+    give ArcCoreCounts {
+        strong:
+            counts.strong - 1,
+
+        weak:
+            counts.weak
+    };
+}
+
+proc arc_core_increment_weak(
+    counts: ArcCoreCounts
+) -> ArcCoreCounts {
+    if not arc_core_can_increment_weak(
+        counts
+    ) {
+        give counts;
+    }
+
+    give ArcCoreCounts {
+        strong:
+            counts.strong,
+
+        weak:
+            counts.weak + 1
+    };
+}
+
+proc arc_core_decrement_weak(
+    counts: ArcCoreCounts
+) -> ArcCoreCounts {
+    if not arc_core_can_decrement_weak(
+        counts
+    ) {
+        give counts;
+    }
+
+    give ArcCoreCounts {
+        strong:
+            counts.strong,
+
+        weak:
+            counts.weak - 1
+    };
+}
+
+proc arc_core_clone_counts(
+    counts: ArcCoreCounts
+) -> ArcCoreCounts {
+    give arc_core_increment_strong(
+        counts
+    );
+}
+
+proc arc_core_downgrade_counts(
+    counts: ArcCoreCounts
+) -> ArcCoreCounts {
+    give arc_core_increment_weak(
+        counts
+    );
+}
+
+proc arc_core_upgrade_counts(
+    counts: ArcCoreCounts
+) -> ArcCoreCounts {
+    if not arc_core_can_upgrade(
+        counts
+    ) {
+        give counts;
+    }
+
+    give arc_core_increment_strong(
+        counts
+    );
+}
+
+proc arc_core_drop_strong_counts(
+    counts: ArcCoreCounts
+) -> ArcCoreCounts {
+    give arc_core_decrement_strong(
+        counts
+    );
+}
+
+proc arc_core_drop_weak_counts(
+    counts: ArcCoreCounts
+) -> ArcCoreCounts {
+    give arc_core_decrement_weak(
+        counts
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Comparisons
+// -----------------------------------------------------------------------------
+
+proc arc_core_counts_equal(
+    left: ArcCoreCounts,
+    right: ArcCoreCounts
+) -> bool {
+    give left.strong == right.strong
+        and left.weak == right.weak;
+}
+
+proc arc_core_counts_not_equal(
+    left: ArcCoreCounts,
+    right: ArcCoreCounts
+) -> bool {
+    give not arc_core_counts_equal(
+        left,
+        right
+    );
+}
+
+proc arc_core_same_strong(
+    left: ArcCoreCounts,
+    right: ArcCoreCounts
+) -> bool {
+    give left.strong
+        == right.strong;
+}
+
+proc arc_core_same_weak(
+    left: ArcCoreCounts,
+    right: ArcCoreCounts
+) -> bool {
+    give left.weak
+        == right.weak;
+}
+
+proc arc_core_compare_strong(
+    left: ArcCoreCounts,
+    right: ArcCoreCounts
+) -> ArcCoreOrdering {
+    if left.strong < right.strong {
+        give ArcCoreOrdering.Less;
+    }
+
+    if left.strong > right.strong {
+        give ArcCoreOrdering.Greater;
+    }
+
+    give ArcCoreOrdering.Equal;
+}
+
+proc arc_core_compare_weak(
+    left: ArcCoreCounts,
+    right: ArcCoreCounts
+) -> ArcCoreOrdering {
+    if left.weak < right.weak {
+        give ArcCoreOrdering.Less;
+    }
+
+    if left.weak > right.weak {
+        give ArcCoreOrdering.Greater;
+    }
+
+    give ArcCoreOrdering.Equal;
+}
+
+proc arc_core_compare_total(
+    left: ArcCoreCounts,
+    right: ArcCoreCounts
+) -> ArcCoreOrdering {
+    let left_total =
+        arc_core_total(
+            left
+        );
+
+    let right_total =
+        arc_core_total(
+            right
+        );
+
+    if left_total < right_total {
+        give ArcCoreOrdering.Less;
+    }
+
+    if left_total > right_total {
+        give ArcCoreOrdering.Greater;
+    }
+
+    give ArcCoreOrdering.Equal;
+}
+
+// -----------------------------------------------------------------------------
+// Delta
+// -----------------------------------------------------------------------------
+
+proc arc_core_usize_delta(
+    before: usize,
+    after: usize
+) -> int {
+    if after > before {
+        give (
+            after - before
+        ) as int;
+    }
+
+    if after < before {
+        give -(
+            (
+                before - after
+            ) as int
+        );
+    }
+
+    give 0;
+}
+
+proc arc_core_delta(
+    before: ArcCoreCounts,
+    after: ArcCoreCounts
+) -> ArcCoreDelta {
+    let strong =
+        arc_core_usize_delta(
+            before.strong,
+            after.strong
+        );
+
+    let weak =
+        arc_core_usize_delta(
+            before.weak,
+            after.weak
+        );
+
+    give ArcCoreDelta {
+        strong:
+            strong,
+
+        weak:
+            weak,
+
+        total:
+            strong + weak
+    };
+}
+
+proc arc_core_delta_is_zero(
+    delta: ArcCoreDelta
+) -> bool {
+    give delta.strong == 0
+        and delta.weak == 0;
+}
+
+proc arc_core_delta_changed(
+    delta: ArcCoreDelta
+) -> bool {
+    give not arc_core_delta_is_zero(
+        delta
+    );
+}
+
+proc arc_core_delta_strong_increased(
+    delta: ArcCoreDelta
+) -> bool {
+    give delta.strong > 0;
+}
+
+proc arc_core_delta_strong_decreased(
+    delta: ArcCoreDelta
+) -> bool {
+    give delta.strong < 0;
+}
+
+proc arc_core_delta_weak_increased(
+    delta: ArcCoreDelta
+) -> bool {
+    give delta.weak > 0;
+}
+
+proc arc_core_delta_weak_decreased(
+    delta: ArcCoreDelta
+) -> bool {
+    give delta.weak < 0;
+}
+
+// -----------------------------------------------------------------------------
+// Transition classification
+// -----------------------------------------------------------------------------
+
+proc arc_core_transition_kind(
+    before: ArcCoreCounts,
+    after: ArcCoreCounts
+) -> ArcCoreTransitionKind {
+    let delta =
+        arc_core_delta(
+            before,
+            after
+        );
+
+    if arc_core_delta_is_zero(
+        delta
+    ) {
+        give ArcCoreTransitionKind.None;
+    }
+
+    if before.strong == 0
+        and before.weak == 0
+        and after.strong == 1
+    {
+        give ArcCoreTransitionKind.Create;
+    }
+
+    if delta.strong == 1
+        and delta.weak == 0
+    {
+        give ArcCoreTransitionKind.Clone;
+    }
+
+    if delta.strong == 0
+        and delta.weak == 1
+    {
+        give ArcCoreTransitionKind.Downgrade;
+    }
+
+    if before.strong > 0
+        and delta.strong == 1
+        and delta.weak == 0
+    {
+        give ArcCoreTransitionKind.Upgrade;
+    }
+
+    if delta.strong == -1
+        and delta.weak == 0
+    {
+        if after.strong == 0 {
+            give ArcCoreTransitionKind.DestroyValue;
+        }
+
+        give ArcCoreTransitionKind.DropStrong;
+    }
+
+    if delta.strong == 0
+        and delta.weak == -1
+    {
+        if after.strong == 0
+            and after.weak == 0
+        {
+            give ArcCoreTransitionKind.DestroyAllocation;
+        }
+
+        give ArcCoreTransitionKind.DropWeak;
+    }
+
+    if after.strong == ARC_COUNT_MAX {
+        give ArcCoreTransitionKind.SaturateStrong;
+    }
+
+    if after.weak == ARC_COUNT_MAX {
+        give ArcCoreTransitionKind.SaturateWeak;
+    }
+
+    give ArcCoreTransitionKind.Invalid;
+}
+
+proc arc_core_transition(
+    before: ArcCoreCounts,
+    after: ArcCoreCounts
+) -> ArcCoreTransition {
+    let kind =
+        arc_core_transition_kind(
+            before,
+            after
+        );
+
+    give ArcCoreTransition {
+        before:
+            before,
+
+        after:
+            after,
+
+        delta:
+            arc_core_delta(
+                before,
+                after
+            ),
+
+        kind:
+            kind,
+
+        valid:
+            kind != ArcCoreTransitionKind.Invalid
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Transition predicates
+// -----------------------------------------------------------------------------
+
+proc arc_core_transition_is_clone(
+    transition: ArcCoreTransition
+) -> bool {
+    give transition.kind
+        == ArcCoreTransitionKind.Clone;
+}
+
+proc arc_core_transition_is_downgrade(
+    transition: ArcCoreTransition
+) -> bool {
+    give transition.kind
+        == ArcCoreTransitionKind.Downgrade;
+}
+
+proc arc_core_transition_is_upgrade(
+    transition: ArcCoreTransition
+) -> bool {
+    give transition.kind
+        == ArcCoreTransitionKind.Upgrade;
+}
+
+proc arc_core_transition_destroys_value(
+    transition: ArcCoreTransition
+) -> bool {
+    give transition.after.strong == 0
+        and transition.before.strong > 0;
+}
+
+proc arc_core_transition_destroys_allocation(
+    transition: ArcCoreTransition
+) -> bool {
+    give transition.after.strong == 0
+        and transition.after.weak == 0
+        and (
+            transition.before.strong > 0
+            or transition.before.weak > 0
+        );
+}
+
+// -----------------------------------------------------------------------------
+// Limits
+// -----------------------------------------------------------------------------
+
+proc arc_core_within_strong_limit(
+    counts: ArcCoreCounts,
+    limits: ArcCoreLimits
+) -> bool {
+    give counts.strong
+        <= limits.strong_max;
+}
+
+proc arc_core_within_weak_limit(
+    counts: ArcCoreCounts,
+    limits: ArcCoreLimits
+) -> bool {
+    give counts.weak
+        <= limits.weak_max;
+}
+
+proc arc_core_within_total_limit(
+    counts: ArcCoreCounts,
+    limits: ArcCoreLimits
+) -> bool {
+    give arc_core_total(
+        counts
+    ) <= limits.total_max;
+}
+
+proc arc_core_within_limits(
+    counts: ArcCoreCounts,
+    limits: ArcCoreLimits
+) -> bool {
+    give arc_core_within_strong_limit(
+        counts,
+        limits
+    )
+    and arc_core_within_weak_limit(
+        counts,
+        limits
+    )
+    and arc_core_within_total_limit(
+        counts,
+        limits
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Validation helpers
+// -----------------------------------------------------------------------------
+
+proc arc_core_state_valid(
+    profile: ArcCoreProfile
+) -> bool {
+    pick profile.state {
+        ArcCoreState.Empty {
+            give profile.counts.strong == 0
+                and profile.counts.weak == 0;
+        }
+
+        ArcCoreState.WeakOnly {
+            give profile.counts.strong == 0
+                and profile.counts.weak > 0;
+        }
+
+        ArcCoreState.Unique {
+            give profile.counts.strong == 1;
+        }
+
+        ArcCoreState.Shared {
+            give profile.counts.strong > 1;
+        }
+
+        ArcCoreState.Saturated {
+            give profile.counts.strong == ARC_COUNT_MAX
+                or profile.counts.weak == ARC_COUNT_MAX;
+        }
+
+        ArcCoreState.Invalid {
+            give false;
+        }
+    }
+
+    give false;
+}
+
+proc arc_core_ownership_valid(
+    profile: ArcCoreProfile
+) -> bool {
+    pick profile.ownership {
+        ArcCoreOwnership.None {
+            give profile.counts.strong == 0;
+        }
+
+        ArcCoreOwnership.Unique {
+            give profile.counts.strong == 1;
+        }
+
+        ArcCoreOwnership.Shared {
+            give profile.counts.strong > 1;
+        }
+    }
+
+    give false;
+}
+
+proc arc_core_observation_valid(
+    profile: ArcCoreProfile
+) -> bool {
+    pick profile.observation {
+        ArcCoreObservation.Unobserved {
+            give profile.counts.weak == 0;
+        }
+
+        ArcCoreObservation.Observed {
+            give profile.counts.weak > 0;
+        }
+    }
+
+    give false;
+}
+
+proc arc_core_lifetime_valid(
+    profile: ArcCoreProfile
+) -> bool {
+    pick profile.lifetime {
+        ArcCoreLifetime.Dead {
+            give profile.counts.strong == 0;
+        }
+
+        ArcCoreLifetime.Alive {
+            give profile.counts.strong > 0;
+        }
+    }
+
+    give false;
+}
+
+proc arc_core_mutability_valid(
+    profile: ArcCoreProfile
+) -> bool {
+    pick profile.mutability {
+        ArcCoreMutability.None {
+            give profile.counts.strong == 0;
+        }
+
+        ArcCoreMutability.Direct {
+            give profile.counts.strong == 1;
+        }
+
+        ArcCoreMutability.CopyOnWrite {
+            give profile.counts.strong > 1;
+        }
+    }
+
+    give false;
+}
+
+proc arc_core_flags_valid(
+    profile: ArcCoreProfile
+) -> bool {
+    let flags =
+        profile.flags;
+
+    if flags.alive
+        != (profile.counts.strong > 0)
+    {
+        give false;
+    }
+
+    if flags.unique
+        != (profile.counts.strong == 1)
+    {
+        give false;
+    }
+
+    if flags.shared
+        != (profile.counts.strong > 1)
+    {
+        give false;
+    }
+
+    if flags.observed
+        != (profile.counts.weak > 0)
+    {
+        give false;
+    }
+
+    if flags.unobserved
+        != (profile.counts.weak == 0)
+    {
+        give false;
+    }
+
+    if flags.exclusive
+        != (
+            profile.counts.strong == 1
+            and profile.counts.weak == 0
+        )
+    {
+        give false;
+    }
+
+    if flags.mutable_direct
+        != (profile.counts.strong == 1)
+    {
+        give false;
+    }
+
+    if flags.copy_on_write
+        != (profile.counts.strong > 1)
+    {
+        give false;
+    }
+
+    give true;
+}
+
+proc arc_core_profile_invariant_holds(
+    profile: ArcCoreProfile
+) -> bool {
+    if profile.total
+        != arc_core_total(
+            profile.counts
+        )
+    {
+        give false;
+    }
+
+    if not arc_core_state_valid(
+        profile
+    ) {
+        give false;
+    }
+
+    if not arc_core_ownership_valid(
+        profile
+    ) {
+        give false;
+    }
+
+    if not arc_core_observation_valid(
+        profile
+    ) {
+        give false;
+    }
+
+    if not arc_core_lifetime_valid(
+        profile
+    ) {
+        give false;
+    }
+
+    if not arc_core_mutability_valid(
+        profile
+    ) {
+        give false;
+    }
+
+    if not arc_core_flags_valid(
+        profile
+    ) {
+        give false;
+    }
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Complete validation
+// -----------------------------------------------------------------------------
+
+proc arc_core_validate(
+    counts: ArcCoreCounts,
+    limits: ArcCoreLimits
+) -> ArcCoreValidation {
+    let profile =
+        arc_core_profile(
+            counts
+        );
+
+    let strong_valid =
+        arc_core_within_strong_limit(
+            counts,
+            limits
+        );
+
+    let weak_valid =
+        arc_core_within_weak_limit(
+            counts,
+            limits
+        );
+
+    let total_valid =
+        arc_core_within_total_limit(
+            counts,
+            limits
+        );
+
+    let state_valid =
+        arc_core_state_valid(
+            profile
+        );
+
+    let ownership_valid =
+        arc_core_ownership_valid(
+            profile
+        );
+
+    let observation_valid =
+        arc_core_observation_valid(
+            profile
+        );
+
+    let lifetime_valid =
+        arc_core_lifetime_valid(
+            profile
+        );
+
+    let mutability_valid =
+        arc_core_mutability_valid(
+            profile
+        );
+
+    let invariant_valid =
+        arc_core_profile_invariant_holds(
+            profile
+        );
+
+    give ArcCoreValidation {
+        valid:
+            strong_valid
+            and weak_valid
+            and total_valid
+            and state_valid
+            and ownership_valid
+            and observation_valid
+            and lifetime_valid
+            and mutability_valid
+            and invariant_valid,
+
+        strong_valid:
+            strong_valid,
+
+        weak_valid:
+            weak_valid,
+
+        total_valid:
+            total_valid,
+
+        state_valid:
+            state_valid,
+
+        ownership_valid:
+            ownership_valid,
+
+        observation_valid:
+            observation_valid,
+
+        lifetime_valid:
+            lifetime_valid,
+
+        mutability_valid:
+            mutability_valid,
+
+        invariant_valid:
+            invariant_valid
+    };
+}
+
+proc arc_core_invariant_holds(
+    counts: ArcCoreCounts
+) -> bool {
+    give arc_core_validate(
+        counts,
+        arc_core_limits_default()
+    ).valid;
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc arc_core_statistics_record(
+    statistics: ref mut ArcCoreStatistics,
+    transition: ArcCoreTransition
+) {
+    set statistics.transitions =
+        statistics.transitions + 1;
+
+    if not transition.valid {
+        set statistics.invalid_transitions =
+            statistics.invalid_transitions + 1;
+
+        give;
+    }
+
+    pick transition.kind {
+        ArcCoreTransitionKind.Create {
+            set statistics.creates =
+                statistics.creates + 1;
+        }
+
+        ArcCoreTransitionKind.Clone {
+            set statistics.clones =
+                statistics.clones + 1;
+        }
+
+        ArcCoreTransitionKind.Downgrade {
+            set statistics.downgrades =
+                statistics.downgrades + 1;
+        }
+
+        ArcCoreTransitionKind.Upgrade {
+            set statistics.upgrades =
+                statistics.upgrades + 1;
+        }
+
+        ArcCoreTransitionKind.DropStrong {
+            set statistics.strong_drops =
+                statistics.strong_drops + 1;
+        }
+
+        ArcCoreTransitionKind.DropWeak {
+            set statistics.weak_drops =
+                statistics.weak_drops + 1;
+        }
+
+        ArcCoreTransitionKind.DestroyValue {
+            set statistics.value_destroys =
+                statistics.value_destroys + 1;
+        }
+
+        ArcCoreTransitionKind.DestroyAllocation {
+            set statistics.allocation_destroys =
+                statistics.allocation_destroys + 1;
+        }
+
+        _ {}
+    }
+}
+
+proc arc_core_statistics_reset(
+    statistics: ref mut ArcCoreStatistics
+) {
+    set *statistics =
+        arc_core_statistics_empty();
+}
+
+proc arc_core_statistics_total_events(
+    statistics: ArcCoreStatistics
+) -> u64 {
+    give statistics.transitions
+        + statistics.profiles
+        + statistics.validations;
+}
+
+// -----------------------------------------------------------------------------
+// Equality helpers
+// -----------------------------------------------------------------------------
+
+proc arc_core_flags_equal(
+    left: ArcCoreFlags,
+    right: ArcCoreFlags
+) -> bool {
+    give left.alive == right.alive
+        and left.unique == right.unique
+        and left.shared == right.shared
+        and left.observed == right.observed
+        and left.unobserved == right.unobserved
+        and left.exclusive == right.exclusive
+        and left.mutable_direct == right.mutable_direct
+        and left.copy_on_write == right.copy_on_write
+        and left.valid == right.valid;
+}
+
+proc arc_core_profile_equal(
+    left: ArcCoreProfile,
+    right: ArcCoreProfile
+) -> bool {
+    give arc_core_counts_equal(
+        left.counts,
+        right.counts
+    )
+    and left.total == right.total
+    and left.state == right.state
+    and left.ownership == right.ownership
+    and left.observation == right.observation
+    and left.lifetime == right.lifetime
+    and left.mutability == right.mutability
+    and arc_core_flags_equal(
+        left.flags,
+        right.flags
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc arc_core_state_name(
+    state: ArcCoreState
+) -> string {
+    pick state {
+        ArcCoreState.Empty {
+            give "empty";
+        }
+
+        ArcCoreState.WeakOnly {
+            give "weak-only";
+        }
+
+        ArcCoreState.Unique {
+            give "unique";
+        }
+
+        ArcCoreState.Shared {
+            give "shared";
+        }
+
+        ArcCoreState.Saturated {
+            give "saturated";
+        }
+
+        ArcCoreState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+proc arc_core_ownership_name(
+    ownership: ArcCoreOwnership
+) -> string {
+    pick ownership {
+        ArcCoreOwnership.None {
+            give "none";
+        }
+
+        ArcCoreOwnership.Unique {
+            give "unique";
+        }
+
+        ArcCoreOwnership.Shared {
+            give "shared";
+        }
+    }
+
+    give "none";
+}
+
+proc arc_core_observation_name(
+    observation: ArcCoreObservation
+) -> string {
+    pick observation {
+        ArcCoreObservation.Unobserved {
+            give "unobserved";
+        }
+
+        ArcCoreObservation.Observed {
+            give "observed";
+        }
+    }
+
+    give "unobserved";
+}
+
+proc arc_core_lifetime_name(
+    lifetime: ArcCoreLifetime
+) -> string {
+    pick lifetime {
+        ArcCoreLifetime.Dead {
+            give "dead";
+        }
+
+        ArcCoreLifetime.Alive {
+            give "alive";
+        }
+    }
+
+    give "dead";
+}
+
+proc arc_core_mutability_name(
+    mutability: ArcCoreMutability
+) -> string {
+    pick mutability {
+        ArcCoreMutability.None {
+            give "none";
+        }
+
+        ArcCoreMutability.Direct {
+            give "direct";
+        }
+
+        ArcCoreMutability.CopyOnWrite {
+            give "copy-on-write";
+        }
+    }
+
+    give "none";
+}
+
+proc arc_core_transition_name(
+    kind: ArcCoreTransitionKind
+) -> string {
+    pick kind {
+        ArcCoreTransitionKind.None {
+            give "none";
+        }
+
+        ArcCoreTransitionKind.Create {
+            give "create";
+        }
+
+        ArcCoreTransitionKind.Clone {
+            give "clone";
+        }
+
+        ArcCoreTransitionKind.Downgrade {
+            give "downgrade";
+        }
+
+        ArcCoreTransitionKind.Upgrade {
+            give "upgrade";
+        }
+
+        ArcCoreTransitionKind.DropStrong {
+            give "drop-strong";
+        }
+
+        ArcCoreTransitionKind.DropWeak {
+            give "drop-weak";
+        }
+
+        ArcCoreTransitionKind.DestroyValue {
+            give "destroy-value";
+        }
+
+        ArcCoreTransitionKind.DestroyAllocation {
+            give "destroy-allocation";
+        }
+
+        ArcCoreTransitionKind.SaturateStrong {
+            give "saturate-strong";
+        }
+
+        ArcCoreTransitionKind.SaturateWeak {
+            give "saturate-weak";
+        }
+
+        ArcCoreTransitionKind.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+// -----------------------------------------------------------------------------
+// Internal Arc model
+// -----------------------------------------------------------------------------
+//
+// Arc control block:
+//
+//     +-----------------------------------+
+//     |            control block          |
+//     +-----------------------------------+
+//     | strong references                 |
+//     | weak references                   |
+//     | metadata                          |
+//     | allocation state                  |
+//     +-----------------------------------+
+//                     |
+//                     v
+//                    T
+//
+// Initial:
+//
+//     strong = 1
+//     weak   = 0
+//
+// Clone:
+//
+//     strong += 1
+//
+// Downgrade:
+//
+//     weak += 1
+//
+// Upgrade:
+//
+//     if strong > 0:
+//         strong += 1
+//
+// Strong drop:
+//
+//     strong -= 1
+//
+//     if strong == 0:
+//         destroy T
+//
+// Weak drop:
+//
+//     weak -= 1
+//
+//     if strong == 0 && weak == 0:
+//         destroy control block
+//
+// Ownership:
+//
+//     strong == 0
+//         none
+//
+//     strong == 1
+//         unique
+//
+//     strong > 1
+//         shared
+//
+// Observation:
+//
+//     weak == 0
+//         unobserved
+//
+//     weak > 0
+//         observed
+//
+// Mutability:
+//
+//     strong == 1
+//         direct mutable access possible
+//
+//     strong > 1
+//         copy-on-write required
+//
+// This module is deliberately pure.
+//
+// It describes Arc state, counts, transitions and invariants.
+// Actual atomic synchronization and allocation operations remain implemented
+// by compiler/runtime primitives.

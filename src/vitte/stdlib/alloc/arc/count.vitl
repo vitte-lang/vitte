@@ -1,0 +1,1599 @@
+space vitte/stdlib/alloc/arc/count
+
+export *
+
+use src/vitte/stdlib/alloc/arc/core as arc_core
+
+// -----------------------------------------------------------------------------
+// Constants
+// -----------------------------------------------------------------------------
+
+const ARC_COUNT_ZERO: usize = 0;
+const ARC_COUNT_ONE: usize = 1;
+
+const ARC_STRONG_INITIAL: usize = 1;
+const ARC_WEAK_INITIAL: usize = 0;
+
+// Reserved upper bound. The runtime/compiler backend may enforce
+// a stricter architecture-specific limit.
+const ARC_COUNT_MAX: usize = usize_max();
+
+// -----------------------------------------------------------------------------
+// Count state
+// -----------------------------------------------------------------------------
+
+pick ArcCountState {
+    Empty,
+    WeakOnly,
+    Unique,
+    Shared,
+    Saturated,
+    Invalid
+}
+
+pick ArcCountKind {
+    Strong,
+    Weak
+}
+
+pick ArcCountOrdering {
+    Less,
+    Equal,
+    Greater
+}
+
+pick ArcCountTransitionKind {
+    None,
+    StrongIncrement,
+    StrongDecrement,
+    WeakIncrement,
+    WeakDecrement,
+    Upgrade,
+    Downgrade,
+    Clone,
+    DropStrong,
+    DropWeak,
+    DestroyValue,
+    DestroyAllocation,
+    Invalid
+}
+
+// -----------------------------------------------------------------------------
+// Core count structures
+// -----------------------------------------------------------------------------
+
+form ArcCount {
+    value: usize
+}
+
+form ArcCounts {
+    strong: usize
+    weak: usize
+}
+
+form ArcCountSnapshot {
+    strong: usize
+    weak: usize
+    total: usize
+
+    state: ArcCountState
+
+    alive: bool
+    unique: bool
+    shared: bool
+    observed: bool
+
+    valid: bool
+}
+
+form ArcCountDelta {
+    strong: int
+    weak: int
+    total: int
+}
+
+form ArcCountTransition {
+    before: ArcCounts
+    after: ArcCounts
+
+    delta: ArcCountDelta
+
+    kind: ArcCountTransitionKind
+
+    valid: bool
+}
+
+form ArcCountLimits {
+    strong_max: usize
+    weak_max: usize
+    total_max: usize
+}
+
+form ArcCountValidation {
+    valid: bool
+
+    strong_valid: bool
+    weak_valid: bool
+    total_valid: bool
+
+    alive_consistent: bool
+    state_consistent: bool
+}
+
+form ArcCountStatistics {
+    strong_increments: u64
+    strong_decrements: u64
+
+    weak_increments: u64
+    weak_decrements: u64
+
+    clones: u64
+    upgrades: u64
+    downgrades: u64
+
+    strong_drops: u64
+    weak_drops: u64
+
+    value_destroys: u64
+    allocation_destroys: u64
+
+    failed_increments: u64
+    failed_decrements: u64
+
+    invalid_transitions: u64
+}
+
+// -----------------------------------------------------------------------------
+// Constructors
+// -----------------------------------------------------------------------------
+
+proc arc_count(
+    value: usize
+) -> ArcCount {
+    give ArcCount {
+        value: value
+    };
+}
+
+proc arc_count_zero()
+    -> ArcCount
+{
+    give arc_count(
+        ARC_COUNT_ZERO
+    );
+}
+
+proc arc_count_one()
+    -> ArcCount
+{
+    give arc_count(
+        ARC_COUNT_ONE
+    );
+}
+
+proc arc_counts(
+    strong: usize,
+    weak: usize
+) -> ArcCounts {
+    give ArcCounts {
+        strong: strong,
+        weak: weak
+    };
+}
+
+proc arc_counts_initial()
+    -> ArcCounts
+{
+    give ArcCounts {
+        strong: ARC_STRONG_INITIAL,
+        weak: ARC_WEAK_INITIAL
+    };
+}
+
+proc arc_counts_empty()
+    -> ArcCounts
+{
+    give ArcCounts {
+        strong: 0,
+        weak: 0
+    };
+}
+
+proc arc_counts_weak_only(
+    weak: usize
+) -> ArcCounts {
+    give ArcCounts {
+        strong: 0,
+        weak: weak
+    };
+}
+
+proc arc_count_limits_default()
+    -> ArcCountLimits
+{
+    give ArcCountLimits {
+        strong_max: ARC_COUNT_MAX,
+        weak_max: ARC_COUNT_MAX,
+        total_max: ARC_COUNT_MAX
+    };
+}
+
+proc arc_count_statistics_empty()
+    -> ArcCountStatistics
+{
+    give ArcCountStatistics {
+        strong_increments: 0,
+        strong_decrements: 0,
+
+        weak_increments: 0,
+        weak_decrements: 0,
+
+        clones: 0,
+        upgrades: 0,
+        downgrades: 0,
+
+        strong_drops: 0,
+        weak_drops: 0,
+
+        value_destroys: 0,
+        allocation_destroys: 0,
+
+        failed_increments: 0,
+        failed_decrements: 0,
+
+        invalid_transitions: 0
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Basic ArcCount operations
+// -----------------------------------------------------------------------------
+
+proc arc_count_value(
+    count: ArcCount
+) -> usize {
+    give count.value;
+}
+
+proc arc_count_is_zero(
+    count: ArcCount
+) -> bool {
+    give count.value == 0;
+}
+
+proc arc_count_is_nonzero(
+    count: ArcCount
+) -> bool {
+    give count.value > 0;
+}
+
+proc arc_count_is_one(
+    count: ArcCount
+) -> bool {
+    give count.value == 1;
+}
+
+proc arc_count_is_many(
+    count: ArcCount
+) -> bool {
+    give count.value > 1;
+}
+
+proc arc_count_is_max(
+    count: ArcCount
+) -> bool {
+    give count.value == ARC_COUNT_MAX;
+}
+
+proc arc_count_can_increment(
+    count: ArcCount
+) -> bool {
+    give count.value < ARC_COUNT_MAX;
+}
+
+proc arc_count_can_decrement(
+    count: ArcCount
+) -> bool {
+    give count.value > 0;
+}
+
+proc arc_count_increment(
+    count: ArcCount
+) -> ArcCount {
+    if not arc_count_can_increment(
+        count
+    ) {
+        give count;
+    }
+
+    give arc_count(
+        count.value + 1
+    );
+}
+
+proc arc_count_decrement(
+    count: ArcCount
+) -> ArcCount {
+    if not arc_count_can_decrement(
+        count
+    ) {
+        give count;
+    }
+
+    give arc_count(
+        count.value - 1
+    );
+}
+
+proc arc_count_add(
+    count: ArcCount,
+    amount: usize
+) -> ArcCount {
+    if amount == 0 {
+        give count;
+    }
+
+    if count.value > ARC_COUNT_MAX - amount {
+        give arc_count(
+            ARC_COUNT_MAX
+        );
+    }
+
+    give arc_count(
+        count.value + amount
+    );
+}
+
+proc arc_count_sub(
+    count: ArcCount,
+    amount: usize
+) -> ArcCount {
+    if amount >= count.value {
+        give arc_count_zero();
+    }
+
+    give arc_count(
+        count.value - amount
+    );
+}
+
+proc arc_count_equal(
+    left: ArcCount,
+    right: ArcCount
+) -> bool {
+    give left.value == right.value;
+}
+
+proc arc_count_not_equal(
+    left: ArcCount,
+    right: ArcCount
+) -> bool {
+    give left.value != right.value;
+}
+
+proc arc_count_less(
+    left: ArcCount,
+    right: ArcCount
+) -> bool {
+    give left.value < right.value;
+}
+
+proc arc_count_less_equal(
+    left: ArcCount,
+    right: ArcCount
+) -> bool {
+    give left.value <= right.value;
+}
+
+proc arc_count_greater(
+    left: ArcCount,
+    right: ArcCount
+) -> bool {
+    give left.value > right.value;
+}
+
+proc arc_count_greater_equal(
+    left: ArcCount,
+    right: ArcCount
+) -> bool {
+    give left.value >= right.value;
+}
+
+proc arc_count_compare(
+    left: ArcCount,
+    right: ArcCount
+) -> ArcCountOrdering {
+    if left.value < right.value {
+        give ArcCountOrdering.Less;
+    }
+
+    if left.value > right.value {
+        give ArcCountOrdering.Greater;
+    }
+
+    give ArcCountOrdering.Equal;
+}
+
+// -----------------------------------------------------------------------------
+// ArcCounts accessors
+// -----------------------------------------------------------------------------
+
+proc arc_counts_strong(
+    counts: ArcCounts
+) -> usize {
+    give counts.strong;
+}
+
+proc arc_counts_weak(
+    counts: ArcCounts
+) -> usize {
+    give counts.weak;
+}
+
+proc arc_counts_total(
+    counts: ArcCounts
+) -> usize {
+    if counts.strong
+        > ARC_COUNT_MAX - counts.weak
+    {
+        give ARC_COUNT_MAX;
+    }
+
+    give counts.strong
+        + counts.weak;
+}
+
+proc arc_counts_is_empty(
+    counts: ArcCounts
+) -> bool {
+    give counts.strong == 0
+        and counts.weak == 0;
+}
+
+proc arc_counts_has_strong(
+    counts: ArcCounts
+) -> bool {
+    give counts.strong > 0;
+}
+
+proc arc_counts_has_weak(
+    counts: ArcCounts
+) -> bool {
+    give counts.weak > 0;
+}
+
+proc arc_counts_is_alive(
+    counts: ArcCounts
+) -> bool {
+    give counts.strong > 0;
+}
+
+proc arc_counts_is_expired(
+    counts: ArcCounts
+) -> bool {
+    give counts.strong == 0;
+}
+
+proc arc_counts_is_unique(
+    counts: ArcCounts
+) -> bool {
+    give counts.strong == 1;
+}
+
+proc arc_counts_is_shared(
+    counts: ArcCounts
+) -> bool {
+    give counts.strong > 1;
+}
+
+proc arc_counts_is_observed(
+    counts: ArcCounts
+) -> bool {
+    give counts.weak > 0;
+}
+
+proc arc_counts_is_unobserved(
+    counts: ArcCounts
+) -> bool {
+    give counts.weak == 0;
+}
+
+proc arc_counts_is_exclusive(
+    counts: ArcCounts
+) -> bool {
+    give counts.strong == 1
+        and counts.weak == 0;
+}
+
+proc arc_counts_can_mutate(
+    counts: ArcCounts
+) -> bool {
+    give counts.strong == 1;
+}
+
+proc arc_counts_can_unwrap(
+    counts: ArcCounts
+) -> bool {
+    give counts.strong == 1;
+}
+
+proc arc_counts_can_upgrade(
+    counts: ArcCounts
+) -> bool {
+    give counts.strong > 0
+        and counts.strong < ARC_COUNT_MAX;
+}
+
+proc arc_counts_can_downgrade(
+    counts: ArcCounts
+) -> bool {
+    give counts.strong > 0
+        and counts.weak < ARC_COUNT_MAX;
+}
+
+proc arc_counts_can_destroy_value(
+    counts: ArcCounts
+) -> bool {
+    give counts.strong == 0;
+}
+
+proc arc_counts_can_destroy_allocation(
+    counts: ArcCounts
+) -> bool {
+    give counts.strong == 0
+        and counts.weak == 0;
+}
+
+// -----------------------------------------------------------------------------
+// Count state
+// -----------------------------------------------------------------------------
+
+proc arc_counts_state(
+    counts: ArcCounts
+) -> ArcCountState {
+    if counts.strong > ARC_COUNT_MAX
+        or counts.weak > ARC_COUNT_MAX
+    {
+        give ArcCountState.Invalid;
+    }
+
+    if counts.strong == ARC_COUNT_MAX
+        or counts.weak == ARC_COUNT_MAX
+    {
+        give ArcCountState.Saturated;
+    }
+
+    if counts.strong == 0 {
+        if counts.weak == 0 {
+            give ArcCountState.Empty;
+        }
+
+        give ArcCountState.WeakOnly;
+    }
+
+    if counts.strong == 1 {
+        give ArcCountState.Unique;
+    }
+
+    give ArcCountState.Shared;
+}
+
+proc arc_count_state_is_alive(
+    state: ArcCountState
+) -> bool {
+    give state == ArcCountState.Unique
+        or state == ArcCountState.Shared
+        or state == ArcCountState.Saturated;
+}
+
+proc arc_count_state_is_dead(
+    state: ArcCountState
+) -> bool {
+    give state == ArcCountState.Empty
+        or state == ArcCountState.WeakOnly;
+}
+
+proc arc_count_state_is_valid(
+    state: ArcCountState
+) -> bool {
+    give state != ArcCountState.Invalid;
+}
+
+// -----------------------------------------------------------------------------
+// Strong operations
+// -----------------------------------------------------------------------------
+
+proc arc_counts_increment_strong(
+    counts: ArcCounts
+) -> ArcCounts {
+    if counts.strong == ARC_COUNT_MAX {
+        give counts;
+    }
+
+    give ArcCounts {
+        strong: counts.strong + 1,
+        weak: counts.weak
+    };
+}
+
+proc arc_counts_decrement_strong(
+    counts: ArcCounts
+) -> ArcCounts {
+    if counts.strong == 0 {
+        give counts;
+    }
+
+    give ArcCounts {
+        strong: counts.strong - 1,
+        weak: counts.weak
+    };
+}
+
+proc arc_counts_add_strong(
+    counts: ArcCounts,
+    amount: usize
+) -> ArcCounts {
+    if amount == 0 {
+        give counts;
+    }
+
+    if counts.strong > ARC_COUNT_MAX - amount {
+        give ArcCounts {
+            strong: ARC_COUNT_MAX,
+            weak: counts.weak
+        };
+    }
+
+    give ArcCounts {
+        strong: counts.strong + amount,
+        weak: counts.weak
+    };
+}
+
+proc arc_counts_sub_strong(
+    counts: ArcCounts,
+    amount: usize
+) -> ArcCounts {
+    if amount >= counts.strong {
+        give ArcCounts {
+            strong: 0,
+            weak: counts.weak
+        };
+    }
+
+    give ArcCounts {
+        strong: counts.strong - amount,
+        weak: counts.weak
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Weak operations
+// -----------------------------------------------------------------------------
+
+proc arc_counts_increment_weak(
+    counts: ArcCounts
+) -> ArcCounts {
+    if counts.weak == ARC_COUNT_MAX {
+        give counts;
+    }
+
+    give ArcCounts {
+        strong: counts.strong,
+        weak: counts.weak + 1
+    };
+}
+
+proc arc_counts_decrement_weak(
+    counts: ArcCounts
+) -> ArcCounts {
+    if counts.weak == 0 {
+        give counts;
+    }
+
+    give ArcCounts {
+        strong: counts.strong,
+        weak: counts.weak - 1
+    };
+}
+
+proc arc_counts_add_weak(
+    counts: ArcCounts,
+    amount: usize
+) -> ArcCounts {
+    if amount == 0 {
+        give counts;
+    }
+
+    if counts.weak > ARC_COUNT_MAX - amount {
+        give ArcCounts {
+            strong: counts.strong,
+            weak: ARC_COUNT_MAX
+        };
+    }
+
+    give ArcCounts {
+        strong: counts.strong,
+        weak: counts.weak + amount
+    };
+}
+
+proc arc_counts_sub_weak(
+    counts: ArcCounts,
+    amount: usize
+) -> ArcCounts {
+    if amount >= counts.weak {
+        give ArcCounts {
+            strong: counts.strong,
+            weak: 0
+        };
+    }
+
+    give ArcCounts {
+        strong: counts.strong,
+        weak: counts.weak - amount
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Runtime Arc helpers
+// -----------------------------------------------------------------------------
+
+proc arc_count_read_strong<T>(
+    value: Arc<T>
+) -> usize {
+    give compiler_arc_strong_count<T>(
+        value
+    );
+}
+
+proc arc_count_read_weak<T>(
+    value: Arc<T>
+) -> usize {
+    give compiler_arc_weak_count<T>(
+        value
+    );
+}
+
+proc arc_count_read<T>(
+    value: Arc<T>
+) -> ArcCounts {
+    give ArcCounts {
+        strong:
+            compiler_arc_strong_count<T>(
+                value
+            ),
+
+        weak:
+            compiler_arc_weak_count<T>(
+                value
+            )
+    };
+}
+
+proc arc_count_read_weak_handle<T>(
+    value: ArcWeak<T>
+) -> ArcCounts {
+    give ArcCounts {
+        strong:
+            compiler_arc_weak_strong_count<T>(
+                value
+            ),
+
+        weak:
+            compiler_arc_weak_weak_count<T>(
+                value
+            )
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Snapshot
+// -----------------------------------------------------------------------------
+
+proc arc_count_snapshot_from_counts(
+    counts: ArcCounts
+) -> ArcCountSnapshot {
+    let state: ArcCountState =
+        arc_counts_state(
+            counts
+        );
+
+    give ArcCountSnapshot {
+        strong: counts.strong,
+        weak: counts.weak,
+
+        total:
+            arc_counts_total(
+                counts
+            ),
+
+        state:
+            state,
+
+        alive:
+            counts.strong > 0,
+
+        unique:
+            counts.strong == 1,
+
+        shared:
+            counts.strong > 1,
+
+        observed:
+            counts.weak > 0,
+
+        valid:
+            state != ArcCountState.Invalid
+    };
+}
+
+proc arc_count_snapshot<T>(
+    value: Arc<T>
+) -> ArcCountSnapshot {
+    give arc_count_snapshot_from_counts(
+        arc_count_read<T>(
+            value
+        )
+    );
+}
+
+proc arc_count_weak_snapshot<T>(
+    value: ArcWeak<T>
+) -> ArcCountSnapshot {
+    give arc_count_snapshot_from_counts(
+        arc_count_read_weak_handle<T>(
+            value
+        )
+    );
+}
+
+proc arc_count_snapshot_equal(
+    left: ArcCountSnapshot,
+    right: ArcCountSnapshot
+) -> bool {
+    give left.strong == right.strong
+        and left.weak == right.weak
+        and left.total == right.total
+        and left.state == right.state
+        and left.alive == right.alive
+        and left.unique == right.unique
+        and left.shared == right.shared
+        and left.observed == right.observed
+        and left.valid == right.valid;
+}
+
+proc arc_count_snapshot_changed(
+    before: ArcCountSnapshot,
+    after: ArcCountSnapshot
+) -> bool {
+    give not arc_count_snapshot_equal(
+        before,
+        after
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Delta
+// -----------------------------------------------------------------------------
+
+proc arc_count_usize_delta(
+    before: usize,
+    after: usize
+) -> int {
+    if after > before {
+        give (
+            after - before
+        ) as int;
+    }
+
+    if after < before {
+        give -(
+            (
+                before - after
+            ) as int
+        );
+    }
+
+    give 0;
+}
+
+proc arc_count_delta(
+    before: ArcCounts,
+    after: ArcCounts
+) -> ArcCountDelta {
+    let strong: int =
+        arc_count_usize_delta(
+            before.strong,
+            after.strong
+        );
+
+    let weak: int =
+        arc_count_usize_delta(
+            before.weak,
+            after.weak
+        );
+
+    give ArcCountDelta {
+        strong: strong,
+        weak: weak,
+        total: strong + weak
+    };
+}
+
+proc arc_count_snapshot_delta(
+    before: ArcCountSnapshot,
+    after: ArcCountSnapshot
+) -> ArcCountDelta {
+    give arc_count_delta(
+        ArcCounts {
+            strong: before.strong,
+            weak: before.weak
+        },
+
+        ArcCounts {
+            strong: after.strong,
+            weak: after.weak
+        }
+    );
+}
+
+proc arc_count_delta_is_zero(
+    delta: ArcCountDelta
+) -> bool {
+    give delta.strong == 0
+        and delta.weak == 0;
+}
+
+proc arc_count_delta_has_change(
+    delta: ArcCountDelta
+) -> bool {
+    give not arc_count_delta_is_zero(
+        delta
+    );
+}
+
+proc arc_count_delta_strong_increased(
+    delta: ArcCountDelta
+) -> bool {
+    give delta.strong > 0;
+}
+
+proc arc_count_delta_strong_decreased(
+    delta: ArcCountDelta
+) -> bool {
+    give delta.strong < 0;
+}
+
+proc arc_count_delta_weak_increased(
+    delta: ArcCountDelta
+) -> bool {
+    give delta.weak > 0;
+}
+
+proc arc_count_delta_weak_decreased(
+    delta: ArcCountDelta
+) -> bool {
+    give delta.weak < 0;
+}
+
+// -----------------------------------------------------------------------------
+// Transition detection
+// -----------------------------------------------------------------------------
+
+proc arc_count_transition_kind(
+    before: ArcCounts,
+    after: ArcCounts
+) -> ArcCountTransitionKind {
+    let delta: ArcCountDelta =
+        arc_count_delta(
+            before,
+            after
+        );
+
+    if arc_count_delta_is_zero(
+        delta
+    ) {
+        give ArcCountTransitionKind.None;
+    }
+
+    if delta.strong == 1
+        and delta.weak == 0
+    {
+        give ArcCountTransitionKind.StrongIncrement;
+    }
+
+    if delta.strong == -1
+        and delta.weak == 0
+    {
+        give ArcCountTransitionKind.StrongDecrement;
+    }
+
+    if delta.strong == 0
+        and delta.weak == 1
+    {
+        give ArcCountTransitionKind.WeakIncrement;
+    }
+
+    if delta.strong == 0
+        and delta.weak == -1
+    {
+        give ArcCountTransitionKind.WeakDecrement;
+    }
+
+    give ArcCountTransitionKind.Invalid;
+}
+
+proc arc_count_transition(
+    before: ArcCounts,
+    after: ArcCounts
+) -> ArcCountTransition {
+    let delta =
+        arc_count_delta(
+            before,
+            after
+        );
+
+    let kind =
+        arc_count_transition_kind(
+            before,
+            after
+        );
+
+    give ArcCountTransition {
+        before: before,
+        after: after,
+
+        delta: delta,
+
+        kind: kind,
+
+        valid:
+            kind != ArcCountTransitionKind.Invalid
+    };
+}
+
+proc arc_count_transition_is_clone(
+    transition: ArcCountTransition
+) -> bool {
+    give transition.delta.strong == 1
+        and transition.delta.weak == 0;
+}
+
+proc arc_count_transition_is_strong_drop(
+    transition: ArcCountTransition
+) -> bool {
+    give transition.delta.strong == -1
+        and transition.delta.weak == 0;
+}
+
+proc arc_count_transition_is_downgrade(
+    transition: ArcCountTransition
+) -> bool {
+    give transition.delta.strong == 0
+        and transition.delta.weak == 1;
+}
+
+proc arc_count_transition_is_weak_drop(
+    transition: ArcCountTransition
+) -> bool {
+    give transition.delta.strong == 0
+        and transition.delta.weak == -1;
+}
+
+proc arc_count_transition_is_upgrade(
+    transition: ArcCountTransition
+) -> bool {
+    give transition.before.strong > 0
+        and transition.delta.strong == 1
+        and transition.delta.weak == 0;
+}
+
+proc arc_count_transition_destroyed_value(
+    transition: ArcCountTransition
+) -> bool {
+    give transition.before.strong > 0
+        and transition.after.strong == 0;
+}
+
+proc arc_count_transition_destroyed_allocation(
+    transition: ArcCountTransition
+) -> bool {
+    give (
+        transition.before.strong > 0
+        or transition.before.weak > 0
+    )
+    and transition.after.strong == 0
+    and transition.after.weak == 0;
+}
+
+// -----------------------------------------------------------------------------
+// Comparisons
+// -----------------------------------------------------------------------------
+
+proc arc_counts_equal(
+    left: ArcCounts,
+    right: ArcCounts
+) -> bool {
+    give left.strong == right.strong
+        and left.weak == right.weak;
+}
+
+proc arc_counts_not_equal(
+    left: ArcCounts,
+    right: ArcCounts
+) -> bool {
+    give not arc_counts_equal(
+        left,
+        right
+    );
+}
+
+proc arc_counts_same_strong(
+    left: ArcCounts,
+    right: ArcCounts
+) -> bool {
+    give left.strong == right.strong;
+}
+
+proc arc_counts_same_weak(
+    left: ArcCounts,
+    right: ArcCounts
+) -> bool {
+    give left.weak == right.weak;
+}
+
+proc arc_counts_compare_strong(
+    left: ArcCounts,
+    right: ArcCounts
+) -> ArcCountOrdering {
+    if left.strong < right.strong {
+        give ArcCountOrdering.Less;
+    }
+
+    if left.strong > right.strong {
+        give ArcCountOrdering.Greater;
+    }
+
+    give ArcCountOrdering.Equal;
+}
+
+proc arc_counts_compare_weak(
+    left: ArcCounts,
+    right: ArcCounts
+) -> ArcCountOrdering {
+    if left.weak < right.weak {
+        give ArcCountOrdering.Less;
+    }
+
+    if left.weak > right.weak {
+        give ArcCountOrdering.Greater;
+    }
+
+    give ArcCountOrdering.Equal;
+}
+
+proc arc_counts_compare_total(
+    left: ArcCounts,
+    right: ArcCounts
+) -> ArcCountOrdering {
+    let left_total =
+        arc_counts_total(
+            left
+        );
+
+    let right_total =
+        arc_counts_total(
+            right
+        );
+
+    if left_total < right_total {
+        give ArcCountOrdering.Less;
+    }
+
+    if left_total > right_total {
+        give ArcCountOrdering.Greater;
+    }
+
+    give ArcCountOrdering.Equal;
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+proc arc_count_within_limit(
+    value: usize,
+    maximum: usize
+) -> bool {
+    give value <= maximum;
+}
+
+proc arc_counts_within_limits(
+    counts: ArcCounts,
+    limits: ArcCountLimits
+) -> bool {
+    if counts.strong > limits.strong_max {
+        give false;
+    }
+
+    if counts.weak > limits.weak_max {
+        give false;
+    }
+
+    if arc_counts_total(
+        counts
+    ) > limits.total_max {
+        give false;
+    }
+
+    give true;
+}
+
+proc arc_count_validate(
+    counts: ArcCounts,
+    limits: ArcCountLimits
+) -> ArcCountValidation {
+    let strong_valid =
+        counts.strong <= limits.strong_max;
+
+    let weak_valid =
+        counts.weak <= limits.weak_max;
+
+    let total_valid =
+        arc_counts_total(
+            counts
+        ) <= limits.total_max;
+
+    let state =
+        arc_counts_state(
+            counts
+        );
+
+    let state_consistent =
+        state != ArcCountState.Invalid;
+
+    let alive_consistent =
+        arc_counts_is_alive(
+            counts
+        )
+        == (
+            state == ArcCountState.Unique
+            or state == ArcCountState.Shared
+            or state == ArcCountState.Saturated
+        );
+
+    give ArcCountValidation {
+        valid:
+            strong_valid
+            and weak_valid
+            and total_valid
+            and state_consistent
+            and alive_consistent,
+
+        strong_valid:
+            strong_valid,
+
+        weak_valid:
+            weak_valid,
+
+        total_valid:
+            total_valid,
+
+        alive_consistent:
+            alive_consistent,
+
+        state_consistent:
+            state_consistent
+    };
+}
+
+proc arc_count_invariant_holds(
+    counts: ArcCounts
+) -> bool {
+    give arc_count_validate(
+        counts,
+        arc_count_limits_default()
+    ).valid;
+}
+
+proc arc_count_snapshot_invariant_holds(
+    snapshot: ArcCountSnapshot
+) -> bool {
+    if snapshot.total
+        != arc_counts_total(
+            ArcCounts {
+                strong: snapshot.strong,
+                weak: snapshot.weak
+            }
+        )
+    {
+        give false;
+    }
+
+    if snapshot.alive
+        != (snapshot.strong > 0)
+    {
+        give false;
+    }
+
+    if snapshot.unique
+        != (snapshot.strong == 1)
+    {
+        give false;
+    }
+
+    if snapshot.shared
+        != (snapshot.strong > 1)
+    {
+        give false;
+    }
+
+    if snapshot.observed
+        != (snapshot.weak > 0)
+    {
+        give false;
+    }
+
+    if snapshot.unique
+        and snapshot.shared
+    {
+        give false;
+    }
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc arc_count_statistics_record_transition(
+    statistics: ref mut ArcCountStatistics,
+    transition: ArcCountTransition
+) {
+    if not transition.valid {
+        set statistics.invalid_transitions =
+            statistics.invalid_transitions + 1;
+
+        give;
+    }
+
+    if transition.delta.strong > 0 {
+        set statistics.strong_increments =
+            statistics.strong_increments + 1;
+    }
+
+    if transition.delta.strong < 0 {
+        set statistics.strong_decrements =
+            statistics.strong_decrements + 1;
+    }
+
+    if transition.delta.weak > 0 {
+        set statistics.weak_increments =
+            statistics.weak_increments + 1;
+    }
+
+    if transition.delta.weak < 0 {
+        set statistics.weak_decrements =
+            statistics.weak_decrements + 1;
+    }
+
+    if arc_count_transition_is_clone(
+        transition
+    ) {
+        set statistics.clones =
+            statistics.clones + 1;
+    }
+
+    if arc_count_transition_is_downgrade(
+        transition
+    ) {
+        set statistics.downgrades =
+            statistics.downgrades + 1;
+    }
+
+    if arc_count_transition_destroyed_value(
+        transition
+    ) {
+        set statistics.value_destroys =
+            statistics.value_destroys + 1;
+    }
+
+    if arc_count_transition_destroyed_allocation(
+        transition
+    ) {
+        set statistics.allocation_destroys =
+            statistics.allocation_destroys + 1;
+    }
+}
+
+proc arc_count_statistics_reset(
+    statistics: ref mut ArcCountStatistics
+) {
+    set *statistics =
+        arc_count_statistics_empty();
+}
+
+proc arc_count_statistics_total_operations(
+    statistics: ArcCountStatistics
+) -> u64 {
+    give statistics.strong_increments
+        + statistics.strong_decrements
+        + statistics.weak_increments
+        + statistics.weak_decrements;
+}
+
+// -----------------------------------------------------------------------------
+// State names
+// -----------------------------------------------------------------------------
+
+proc arc_count_state_name(
+    state: ArcCountState
+) -> string {
+    pick state {
+        ArcCountState.Empty {
+            give "empty";
+        }
+
+        ArcCountState.WeakOnly {
+            give "weak-only";
+        }
+
+        ArcCountState.Unique {
+            give "unique";
+        }
+
+        ArcCountState.Shared {
+            give "shared";
+        }
+
+        ArcCountState.Saturated {
+            give "saturated";
+        }
+
+        ArcCountState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+proc arc_count_kind_name(
+    kind: ArcCountKind
+) -> string {
+    pick kind {
+        ArcCountKind.Strong {
+            give "strong";
+        }
+
+        ArcCountKind.Weak {
+            give "weak";
+        }
+    }
+
+    give "strong";
+}
+
+proc arc_count_transition_name(
+    kind: ArcCountTransitionKind
+) -> string {
+    pick kind {
+        ArcCountTransitionKind.None {
+            give "none";
+        }
+
+        ArcCountTransitionKind.StrongIncrement {
+            give "strong-increment";
+        }
+
+        ArcCountTransitionKind.StrongDecrement {
+            give "strong-decrement";
+        }
+
+        ArcCountTransitionKind.WeakIncrement {
+            give "weak-increment";
+        }
+
+        ArcCountTransitionKind.WeakDecrement {
+            give "weak-decrement";
+        }
+
+        ArcCountTransitionKind.Upgrade {
+            give "upgrade";
+        }
+
+        ArcCountTransitionKind.Downgrade {
+            give "downgrade";
+        }
+
+        ArcCountTransitionKind.Clone {
+            give "clone";
+        }
+
+        ArcCountTransitionKind.DropStrong {
+            give "drop-strong";
+        }
+
+        ArcCountTransitionKind.DropWeak {
+            give "drop-weak";
+        }
+
+        ArcCountTransitionKind.DestroyValue {
+            give "destroy-value";
+        }
+
+        ArcCountTransitionKind.DestroyAllocation {
+            give "destroy-allocation";
+        }
+
+        ArcCountTransitionKind.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+// -----------------------------------------------------------------------------
+// Arc count model
+// -----------------------------------------------------------------------------
+//
+// new Arc<T>
+//
+//     strong = 1
+//     weak   = 0
+//
+// clone:
+//
+//     strong += 1
+//
+// downgrade:
+//
+//     weak += 1
+//
+// weak upgrade:
+//
+//     if strong > 0
+//         strong += 1
+//
+// strong drop:
+//
+//     strong -= 1
+//
+//     if strong == 0
+//         destroy T
+//
+// weak drop:
+//
+//     weak -= 1
+//
+//     if strong == 0 && weak == 0
+//         destroy allocation
+//
+// States:
+//
+//     (0, 0)
+//        |
+//        +-- Empty
+//
+//     (0, N)
+//        |
+//        +-- WeakOnly
+//        +-- value expired
+//        +-- allocation retained
+//
+//     (1, N)
+//        |
+//        +-- Unique
+//
+//     (>1, N)
+//        |
+//        +-- Shared
+//
+// This file models and observes counters.
+//
+// Actual concurrent atomic increments/decrements remain runtime/compiler
+// operations. High-level code must not implement Arc synchronization by
+// modifying these model structures directly.

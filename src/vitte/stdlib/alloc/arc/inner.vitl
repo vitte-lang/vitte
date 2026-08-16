@@ -1,0 +1,1002 @@
+space vitte/stdlib/alloc/arc/inner
+
+export *
+
+use src/vitte/stdlib/alloc/arc/core as arc_core
+use src/vitte/stdlib/alloc/arc/error as arc_error
+
+// -----------------------------------------------------------------------------
+// Internal state
+// -----------------------------------------------------------------------------
+
+pick ArcInnerState {
+    Uninitialized,
+    Alive,
+    ValueDropped,
+    AllocationReleased,
+    Invalid
+}
+
+pick ArcInnerStorageKind {
+    Inline,
+    Heap,
+    External,
+    Unknown
+}
+
+pick ArcInnerOwnershipState {
+    Unique,
+    Shared,
+    WeakOnly,
+    Dead
+}
+
+// -----------------------------------------------------------------------------
+// Internal metadata
+// -----------------------------------------------------------------------------
+
+form ArcInnerMetadata {
+    size: usize
+    align: usize
+
+    generation: u64
+
+    storage: ArcInnerStorageKind
+
+    initialized: bool
+    value_alive: bool
+    allocation_alive: bool
+}
+
+form ArcInnerHeader {
+    strong: usize
+    weak: usize
+
+    state: ArcInnerState
+
+    generation: u64
+    revision: u64
+}
+
+form ArcInner<T> {
+    header: ArcInnerHeader
+    metadata: ArcInnerMetadata
+
+    value: T
+}
+
+form ArcInnerProfile {
+    strong: usize
+    weak: usize
+    total: usize
+
+    state: ArcInnerState
+    ownership: ArcInnerOwnershipState
+
+    value_alive: bool
+    allocation_alive: bool
+
+    unique: bool
+    shared: bool
+    observed: bool
+
+    valid: bool
+}
+
+form ArcInnerValidation {
+    valid: bool
+
+    header_valid: bool
+    metadata_valid: bool
+    counts_valid: bool
+    state_valid: bool
+    lifetime_valid: bool
+}
+
+form ArcInnerStatistics {
+    created: u64
+    initialized: u64
+
+    value_drops: u64
+    allocation_releases: u64
+
+    reads: u64
+    mutable_reads: u64
+
+    validations: u64
+    invalid_states: u64
+}
+
+// -----------------------------------------------------------------------------
+// Metadata
+// -----------------------------------------------------------------------------
+
+proc arc_inner_metadata(
+    size: usize,
+    align: usize
+) -> ArcInnerMetadata {
+    give ArcInnerMetadata {
+        size: size,
+        align: align,
+
+        generation: 1,
+
+        storage:
+            ArcInnerStorageKind.Heap,
+
+        initialized:
+            true,
+
+        value_alive:
+            true,
+
+        allocation_alive:
+            true
+    };
+}
+
+proc arc_inner_metadata_empty()
+    -> ArcInnerMetadata
+{
+    give ArcInnerMetadata {
+        size: 0,
+        align: 0,
+
+        generation: 0,
+
+        storage:
+            ArcInnerStorageKind.Unknown,
+
+        initialized:
+            false,
+
+        value_alive:
+            false,
+
+        allocation_alive:
+            false
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Header
+// -----------------------------------------------------------------------------
+
+proc arc_inner_header()
+    -> ArcInnerHeader
+{
+    give ArcInnerHeader {
+        strong:
+            arc_core.ARC_STRONG_INITIAL,
+
+        weak:
+            arc_core.ARC_WEAK_INITIAL,
+
+        state:
+            ArcInnerState.Alive,
+
+        generation:
+            1,
+
+        revision:
+            1
+    };
+}
+
+proc arc_inner_header_empty()
+    -> ArcInnerHeader
+{
+    give ArcInnerHeader {
+        strong: 0,
+        weak: 0,
+
+        state:
+            ArcInnerState.Uninitialized,
+
+        generation:
+            0,
+
+        revision:
+            0
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Construction
+// -----------------------------------------------------------------------------
+
+proc arc_inner<T>(
+    value: T,
+    size: usize,
+    align: usize
+) -> ArcInner<T> {
+    give ArcInner<T> {
+        header:
+            arc_inner_header(),
+
+        metadata:
+            arc_inner_metadata(
+                size,
+                align
+            ),
+
+        value:
+            value
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Count access
+// -----------------------------------------------------------------------------
+
+proc arc_inner_strong_count<T>(
+    inner: ref ArcInner<T>
+) -> usize {
+    give inner.header.strong;
+}
+
+proc arc_inner_weak_count<T>(
+    inner: ref ArcInner<T>
+) -> usize {
+    give inner.header.weak;
+}
+
+proc arc_inner_counts<T>(
+    inner: ref ArcInner<T>
+) -> arc_core.ArcCoreCounts {
+    give arc_core.ArcCoreCounts {
+        strong:
+            inner.header.strong,
+
+        weak:
+            inner.header.weak
+    };
+}
+
+proc arc_inner_total_count<T>(
+    inner: ref ArcInner<T>
+) -> usize {
+    give arc_core.arc_core_total(
+        arc_inner_counts<T>(
+            inner
+        )
+    );
+}
+
+// -----------------------------------------------------------------------------
+// State
+// -----------------------------------------------------------------------------
+
+proc arc_inner_is_initialized<T>(
+    inner: ref ArcInner<T>
+) -> bool {
+    give inner.metadata.initialized;
+}
+
+proc arc_inner_is_alive<T>(
+    inner: ref ArcInner<T>
+) -> bool {
+    give inner.header.state
+        == ArcInnerState.Alive
+        and inner.metadata.value_alive;
+}
+
+proc arc_inner_value_alive<T>(
+    inner: ref ArcInner<T>
+) -> bool {
+    give inner.metadata.value_alive;
+}
+
+proc arc_inner_allocation_alive<T>(
+    inner: ref ArcInner<T>
+) -> bool {
+    give inner.metadata.allocation_alive;
+}
+
+proc arc_inner_is_unique<T>(
+    inner: ref ArcInner<T>
+) -> bool {
+    give inner.header.strong == 1;
+}
+
+proc arc_inner_is_shared<T>(
+    inner: ref ArcInner<T>
+) -> bool {
+    give inner.header.strong > 1;
+}
+
+proc arc_inner_has_weak<T>(
+    inner: ref ArcInner<T>
+) -> bool {
+    give inner.header.weak > 0;
+}
+
+proc arc_inner_is_weak_only<T>(
+    inner: ref ArcInner<T>
+) -> bool {
+    give inner.header.strong == 0
+        and inner.header.weak > 0;
+}
+
+proc arc_inner_is_dead<T>(
+    inner: ref ArcInner<T>
+) -> bool {
+    give inner.header.strong == 0
+        and not inner.metadata.value_alive;
+}
+
+// -----------------------------------------------------------------------------
+// Ownership classification
+// -----------------------------------------------------------------------------
+
+proc arc_inner_ownership_state<T>(
+    inner: ref ArcInner<T>
+) -> ArcInnerOwnershipState {
+    if inner.header.strong == 0 {
+        if inner.header.weak > 0 {
+            give ArcInnerOwnershipState.WeakOnly;
+        }
+
+        give ArcInnerOwnershipState.Dead;
+    }
+
+    if inner.header.strong == 1 {
+        give ArcInnerOwnershipState.Unique;
+    }
+
+    give ArcInnerOwnershipState.Shared;
+}
+
+// -----------------------------------------------------------------------------
+// Value access
+// -----------------------------------------------------------------------------
+
+proc arc_inner_get<T>(
+    inner: ref ArcInner<T>
+) -> ref T {
+    give ref inner.value;
+}
+
+proc arc_inner_get_mut<T>(
+    inner: ref mut ArcInner<T>
+) -> Option<ref mut T> {
+    if not arc_inner_is_unique<T>(
+        inner
+    ) {
+        give None;
+    }
+
+    if not inner.metadata.value_alive {
+        give None;
+    }
+
+    give Some(
+        ref mut inner.value
+    );
+}
+
+proc arc_inner_value_ref<T>(
+    inner: ref ArcInner<T>
+) -> ref T {
+    give arc_inner_get<T>(
+        inner
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Strong transitions
+// -----------------------------------------------------------------------------
+
+proc arc_inner_can_clone<T>(
+    inner: ref ArcInner<T>
+) -> bool {
+    give arc_core.arc_core_can_clone(
+        arc_inner_counts<T>(
+            inner
+        )
+    );
+}
+
+proc arc_inner_increment_strong<T>(
+    inner: ref mut ArcInner<T>
+) -> bool {
+    if not arc_inner_can_clone<T>(
+        inner
+    ) {
+        give false;
+    }
+
+    set inner.header.strong =
+        inner.header.strong + 1;
+
+    set inner.header.revision =
+        inner.header.revision + 1;
+
+    give true;
+}
+
+proc arc_inner_decrement_strong<T>(
+    inner: ref mut ArcInner<T>
+) -> bool {
+    if inner.header.strong == 0 {
+        give false;
+    }
+
+    set inner.header.strong =
+        inner.header.strong - 1;
+
+    set inner.header.revision =
+        inner.header.revision + 1;
+
+    if inner.header.strong == 0 {
+        arc_inner_mark_value_dropped<T>(
+            inner
+        );
+    }
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Weak transitions
+// -----------------------------------------------------------------------------
+
+proc arc_inner_increment_weak<T>(
+    inner: ref mut ArcInner<T>
+) -> bool {
+    if not arc_core.arc_core_can_increment_weak(
+        arc_inner_counts<T>(
+            inner
+        )
+    ) {
+        give false;
+    }
+
+    set inner.header.weak =
+        inner.header.weak + 1;
+
+    set inner.header.revision =
+        inner.header.revision + 1;
+
+    give true;
+}
+
+proc arc_inner_decrement_weak<T>(
+    inner: ref mut ArcInner<T>
+) -> bool {
+    if inner.header.weak == 0 {
+        give false;
+    }
+
+    set inner.header.weak =
+        inner.header.weak - 1;
+
+    set inner.header.revision =
+        inner.header.revision + 1;
+
+    if inner.header.strong == 0
+        and inner.header.weak == 0
+    {
+        arc_inner_mark_allocation_released<T>(
+            inner
+        );
+    }
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Lifetime transitions
+// -----------------------------------------------------------------------------
+
+proc arc_inner_mark_value_dropped<T>(
+    inner: ref mut ArcInner<T>
+) {
+    set inner.metadata.value_alive =
+        false;
+
+    set inner.header.state =
+        ArcInnerState.ValueDropped;
+
+    set inner.header.revision =
+        inner.header.revision + 1;
+}
+
+proc arc_inner_mark_allocation_released<T>(
+    inner: ref mut ArcInner<T>
+) {
+    set inner.metadata.allocation_alive =
+        false;
+
+    set inner.header.state =
+        ArcInnerState.AllocationReleased;
+
+    set inner.header.revision =
+        inner.header.revision + 1;
+}
+
+proc arc_inner_mark_invalid<T>(
+    inner: ref mut ArcInner<T>
+) {
+    set inner.header.state =
+        ArcInnerState.Invalid;
+
+    set inner.header.revision =
+        inner.header.revision + 1;
+}
+
+// -----------------------------------------------------------------------------
+// Mutation
+// -----------------------------------------------------------------------------
+
+proc arc_inner_can_get_mut<T>(
+    inner: ref ArcInner<T>
+) -> bool {
+    give inner.header.strong == 1
+        and inner.metadata.value_alive;
+}
+
+proc arc_inner_replace<T>(
+    inner: ref mut ArcInner<T>,
+    value: T
+) -> bool {
+    if not arc_inner_can_get_mut<T>(
+        inner
+    ) {
+        give false;
+    }
+
+    set inner.value =
+        value;
+
+    set inner.header.revision =
+        inner.header.revision + 1;
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Profile
+// -----------------------------------------------------------------------------
+
+proc arc_inner_profile<T>(
+    inner: ref ArcInner<T>
+) -> ArcInnerProfile {
+    let counts =
+        arc_inner_counts<T>(
+            inner
+        );
+
+    give ArcInnerProfile {
+        strong:
+            counts.strong,
+
+        weak:
+            counts.weak,
+
+        total:
+            arc_core.arc_core_total(
+                counts
+            ),
+
+        state:
+            inner.header.state,
+
+        ownership:
+            arc_inner_ownership_state<T>(
+                inner
+            ),
+
+        value_alive:
+            inner.metadata.value_alive,
+
+        allocation_alive:
+            inner.metadata.allocation_alive,
+
+        unique:
+            counts.strong == 1,
+
+        shared:
+            counts.strong > 1,
+
+        observed:
+            counts.weak > 0,
+
+        valid:
+            arc_inner_invariant_holds<T>(
+                inner
+            )
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+proc arc_inner_header_valid(
+    header: ArcInnerHeader
+) -> bool {
+    if header.state == ArcInnerState.Alive
+        and header.strong == 0
+    {
+        give false;
+    }
+
+    if header.state == ArcInnerState.ValueDropped
+        and header.strong != 0
+    {
+        give false;
+    }
+
+    if header.state == ArcInnerState.AllocationReleased
+        and (
+            header.strong != 0
+            or header.weak != 0
+        )
+    {
+        give false;
+    }
+
+    give true;
+}
+
+proc arc_inner_metadata_valid(
+    metadata: ArcInnerMetadata
+) -> bool {
+    if metadata.value_alive
+        and not metadata.allocation_alive
+    {
+        give false;
+    }
+
+    if metadata.initialized
+        and metadata.align == 0
+    {
+        give false;
+    }
+
+    give true;
+}
+
+proc arc_inner_lifetime_valid<T>(
+    inner: ref ArcInner<T>
+) -> bool {
+    if inner.header.strong > 0
+        and not inner.metadata.value_alive
+    {
+        give false;
+    }
+
+    if inner.header.strong == 0
+        and inner.metadata.value_alive
+    {
+        give false;
+    }
+
+    if inner.header.strong == 0
+        and inner.header.weak == 0
+        and inner.metadata.allocation_alive
+    {
+        give false;
+    }
+
+    give true;
+}
+
+proc arc_inner_state_valid<T>(
+    inner: ref ArcInner<T>
+) -> bool {
+    pick inner.header.state {
+        ArcInnerState.Uninitialized {
+            give not inner.metadata.initialized;
+        }
+
+        ArcInnerState.Alive {
+            give inner.header.strong > 0
+                and inner.metadata.value_alive
+                and inner.metadata.allocation_alive;
+        }
+
+        ArcInnerState.ValueDropped {
+            give inner.header.strong == 0
+                and not inner.metadata.value_alive
+                and inner.metadata.allocation_alive;
+        }
+
+        ArcInnerState.AllocationReleased {
+            give inner.header.strong == 0
+                and inner.header.weak == 0
+                and not inner.metadata.allocation_alive;
+        }
+
+        ArcInnerState.Invalid {
+            give false;
+        }
+    }
+
+    give false;
+}
+
+proc arc_inner_validate<T>(
+    inner: ref ArcInner<T>
+) -> ArcInnerValidation {
+    let header_valid =
+        arc_inner_header_valid(
+            inner.header
+        );
+
+    let metadata_valid =
+        arc_inner_metadata_valid(
+            inner.metadata
+        );
+
+    let counts_valid =
+        arc_core.arc_core_invariant_holds(
+            arc_inner_counts<T>(
+                inner
+            )
+        );
+
+    let state_valid =
+        arc_inner_state_valid<T>(
+            inner
+        );
+
+    let lifetime_valid =
+        arc_inner_lifetime_valid<T>(
+            inner
+        );
+
+    give ArcInnerValidation {
+        valid:
+            header_valid
+            and metadata_valid
+            and counts_valid
+            and state_valid
+            and lifetime_valid,
+
+        header_valid:
+            header_valid,
+
+        metadata_valid:
+            metadata_valid,
+
+        counts_valid:
+            counts_valid,
+
+        state_valid:
+            state_valid,
+
+        lifetime_valid:
+            lifetime_valid
+    };
+}
+
+proc arc_inner_invariant_holds<T>(
+    inner: ref ArcInner<T>
+) -> bool {
+    give arc_inner_validate<T>(
+        inner
+    ).valid;
+}
+
+// -----------------------------------------------------------------------------
+// Error conversion
+// -----------------------------------------------------------------------------
+
+proc arc_inner_error<T>(
+    inner: ref ArcInner<T>
+) -> arc_error.ArcError {
+    let validation =
+        arc_inner_validate<T>(
+            inner
+        );
+
+    if validation.valid {
+        give arc_error.arc_error_none();
+    }
+
+    if not validation.counts_valid {
+        give arc_error.arc_error_invalid_invariant(
+            inner.header.strong,
+            inner.header.weak
+        );
+    }
+
+    if not validation.state_valid {
+        give arc_error.arc_error_invalid_state(
+            inner.header.strong,
+            inner.header.weak
+        );
+    }
+
+    give arc_error.arc_error_fatal(
+        arc_error.ArcErrorKind.Internal,
+        "invalid ArcInner state"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Revision / generation
+// -----------------------------------------------------------------------------
+
+proc arc_inner_revision<T>(
+    inner: ref ArcInner<T>
+) -> u64 {
+    give inner.header.revision;
+}
+
+proc arc_inner_generation<T>(
+    inner: ref ArcInner<T>
+) -> u64 {
+    give inner.header.generation;
+}
+
+proc arc_inner_touch<T>(
+    inner: ref mut ArcInner<T>
+) {
+    set inner.header.revision =
+        inner.header.revision + 1;
+}
+
+proc arc_inner_advance_generation<T>(
+    inner: ref mut ArcInner<T>
+) -> u64 {
+    set inner.header.generation =
+        inner.header.generation + 1;
+
+    set inner.metadata.generation =
+        inner.header.generation;
+
+    set inner.header.revision =
+        inner.header.revision + 1;
+
+    give inner.header.generation;
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc arc_inner_statistics_empty()
+    -> ArcInnerStatistics
+{
+    give ArcInnerStatistics {
+        created: 0,
+        initialized: 0,
+
+        value_drops: 0,
+        allocation_releases: 0,
+
+        reads: 0,
+        mutable_reads: 0,
+
+        validations: 0,
+        invalid_states: 0
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc arc_inner_state_name(
+    state: ArcInnerState
+) -> string {
+    pick state {
+        ArcInnerState.Uninitialized {
+            give "uninitialized";
+        }
+
+        ArcInnerState.Alive {
+            give "alive";
+        }
+
+        ArcInnerState.ValueDropped {
+            give "value-dropped";
+        }
+
+        ArcInnerState.AllocationReleased {
+            give "allocation-released";
+        }
+
+        ArcInnerState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+proc arc_inner_storage_kind_name(
+    kind: ArcInnerStorageKind
+) -> string {
+    pick kind {
+        ArcInnerStorageKind.Inline {
+            give "inline";
+        }
+
+        ArcInnerStorageKind.Heap {
+            give "heap";
+        }
+
+        ArcInnerStorageKind.External {
+            give "external";
+        }
+
+        ArcInnerStorageKind.Unknown {
+            give "unknown";
+        }
+    }
+
+    give "unknown";
+}
+
+proc arc_inner_ownership_state_name(
+    state: ArcInnerOwnershipState
+) -> string {
+    pick state {
+        ArcInnerOwnershipState.Unique {
+            give "unique";
+        }
+
+        ArcInnerOwnershipState.Shared {
+            give "shared";
+        }
+
+        ArcInnerOwnershipState.WeakOnly {
+            give "weak-only";
+        }
+
+        ArcInnerOwnershipState.Dead {
+            give "dead";
+        }
+    }
+
+    give "dead";
+}
+
+// -----------------------------------------------------------------------------
+// Internal model
+// -----------------------------------------------------------------------------
+//
+// Arc<T>
+//    |
+//    v
+// ArcInner<T>
+//    |
+//    +-- ArcInnerHeader
+//    |      |
+//    |      +-- strong
+//    |      +-- weak
+//    |      +-- state
+//    |      +-- generation
+//    |      +-- revision
+//    |
+//    +-- ArcInnerMetadata
+//    |      |
+//    |      +-- size
+//    |      +-- align
+//    |      +-- storage
+//    |      +-- value_alive
+//    |      +-- allocation_alive
+//    |
+//    +-- value: T
+//
+// Lifecycle:
+//
+// Uninitialized
+//      |
+//      v
+//    Alive
+//      |
+//      | strong -> 0
+//      v
+// ValueDropped
+//      |
+//      | weak -> 0
+//      v
+// AllocationReleased
+//
+// `inner.vitl` models the private Arc control block.
+// Atomic synchronization and physical allocation remain runtime concerns.
