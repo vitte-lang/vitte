@@ -1,0 +1,1039 @@
+space vitte/compiler/analysis/resolution/export_resolution
+
+export *
+
+use vitte/compiler/analysis/modules/module_database.{
+    ModuleId,
+    ModuleDatabase,
+    module_id_equal,
+    module_id_is_valid,
+    module_database_get
+}
+
+use vitte/compiler/analysis/modules/module_exports.{
+    ModuleExport,
+    ModuleExportId,
+    ModuleExportKind,
+    ModuleExportVisibility,
+    ModuleExportState,
+    ModuleExportOrigin,
+    ModuleExportTarget,
+    ModuleExportTable
+}
+
+use vitte/compiler/analysis/resolution/candidate.{
+    Candidate,
+    CandidateKind,
+    CandidateOrigin,
+    CandidateVisibility,
+    CandidateState,
+    CandidateSet,
+    candidate_create,
+    candidate_with_priority,
+    candidate_mark_exact,
+    candidate_mark_inaccessible,
+    candidate_set_create,
+    candidate_set_push,
+    candidate_set_resolve
+}
+
+pick ExportResolutionState {
+    Unresolved,
+    Resolved,
+    Missing,
+    Ambiguous,
+    Inaccessible,
+    Invalid
+}
+
+pick ExportResolutionErrorKind {
+    None,
+    InvalidModule,
+    EmptyName,
+    MissingExport,
+    AmbiguousExport,
+    PrivateExport,
+    PackageExport,
+    InvalidTarget,
+    UnresolvedExport,
+    FailedExport
+}
+
+form ExportResolutionError {
+    kind: ExportResolutionErrorKind
+
+    module: ModuleId
+    name: string
+
+    message: string
+}
+
+form ResolvedExport {
+    export: Option<ModuleExport>
+    candidate: Option<Candidate>
+
+    state: ExportResolutionState
+    error: ExportResolutionError
+
+    found: bool
+}
+
+form ExportResolverConfig {
+    allow_private: bool
+    allow_package: bool
+    allow_reexports: bool
+    allow_glob: bool
+
+    require_resolved: bool
+}
+
+form ExportResolverStatistics {
+    resolutions: u64
+
+    resolved: u64
+    missing: u64
+    ambiguous: u64
+    inaccessible: u64
+    invalid: u64
+
+    reexports: u64
+    glob_exports: u64
+}
+
+form ExportResolver {
+    config: ExportResolverConfig
+    statistics: ExportResolverStatistics
+}
+
+proc export_resolver_config_default()
+    -> ExportResolverConfig
+{
+    give ExportResolverConfig {
+        allow_private: false,
+        allow_package: false,
+        allow_reexports: true,
+        allow_glob: true,
+
+        require_resolved: true
+    };
+}
+
+proc export_resolver_statistics_empty()
+    -> ExportResolverStatistics
+{
+    give ExportResolverStatistics {
+        resolutions: 0,
+
+        resolved: 0,
+        missing: 0,
+        ambiguous: 0,
+        inaccessible: 0,
+        invalid: 0,
+
+        reexports: 0,
+        glob_exports: 0
+    };
+}
+
+proc export_resolver_create_with_config(
+    config: ExportResolverConfig
+) -> ExportResolver {
+    give ExportResolver {
+        config: config,
+        statistics:
+            export_resolver_statistics_empty()
+    };
+}
+
+proc export_resolver_create()
+    -> ExportResolver
+{
+    give export_resolver_create_with_config(
+        export_resolver_config_default()
+    );
+}
+
+proc export_resolution_error_none()
+    -> ExportResolutionError
+{
+    give ExportResolutionError {
+        kind: ExportResolutionErrorKind.None,
+
+        module: ModuleId {
+            value: 0
+        },
+
+        name: "",
+        message: ""
+    };
+}
+
+proc export_resolution_error(
+    kind: ExportResolutionErrorKind,
+    module: ModuleId,
+    name: string,
+    message: string
+) -> ExportResolutionError {
+    give ExportResolutionError {
+        kind: kind,
+        module: module,
+        name: name,
+        message: message
+    };
+}
+
+proc export_resolution_missing(
+    module: ModuleId,
+    name: string
+) -> ResolvedExport {
+    give ResolvedExport {
+        export: None,
+        candidate: None,
+
+        state: ExportResolutionState.Missing,
+
+        error:
+            export_resolution_error(
+                ExportResolutionErrorKind.MissingExport,
+                module,
+                name,
+                "export was not found"
+            ),
+
+        found: false
+    };
+}
+
+proc export_resolution_invalid(
+    module: ModuleId,
+    name: string,
+    kind: ExportResolutionErrorKind,
+    message: string
+) -> ResolvedExport {
+    give ResolvedExport {
+        export: None,
+        candidate: None,
+
+        state: ExportResolutionState.Invalid,
+
+        error:
+            export_resolution_error(
+                kind,
+                module,
+                name,
+                message
+            ),
+
+        found: false
+    };
+}
+
+proc export_resolution_ambiguous(
+    module: ModuleId,
+    name: string
+) -> ResolvedExport {
+    give ResolvedExport {
+        export: None,
+        candidate: None,
+
+        state:
+            ExportResolutionState.Ambiguous,
+
+        error:
+            export_resolution_error(
+                ExportResolutionErrorKind.AmbiguousExport,
+                module,
+                name,
+                "export resolution is ambiguous"
+            ),
+
+        found: false
+    };
+}
+
+proc export_resolution_inaccessible(
+    export: ModuleExport,
+    candidate: Candidate,
+    kind: ExportResolutionErrorKind,
+    message: string
+) -> ResolvedExport {
+    give ResolvedExport {
+        export: Some(export),
+        candidate: Some(candidate),
+
+        state:
+            ExportResolutionState.Inaccessible,
+
+        error:
+            export_resolution_error(
+                kind,
+                export.module,
+                export.name,
+                message
+            ),
+
+        found: false
+    };
+}
+
+proc export_resolution_resolved(
+    export: ModuleExport,
+    candidate: Candidate
+) -> ResolvedExport {
+    give ResolvedExport {
+        export: Some(export),
+        candidate: Some(candidate),
+
+        state: ExportResolutionState.Resolved,
+        error: export_resolution_error_none(),
+
+        found: true
+    };
+}
+
+proc export_candidate_kind(
+    kind: ModuleExportKind
+) -> CandidateKind {
+    pick kind {
+        ModuleExportKind.Value {
+            give CandidateKind.Global;
+        }
+
+        ModuleExportKind.Procedure {
+            give CandidateKind.Procedure;
+        }
+
+        ModuleExportKind.Type {
+            give CandidateKind.Type;
+        }
+
+        ModuleExportKind.Form {
+            give CandidateKind.Form;
+        }
+
+        ModuleExportKind.Pick {
+            give CandidateKind.Pick;
+        }
+
+        ModuleExportKind.Constant {
+            give CandidateKind.Constant;
+        }
+
+        ModuleExportKind.Module {
+            give CandidateKind.Module;
+        }
+
+        ModuleExportKind.Namespace {
+            give CandidateKind.Namespace;
+        }
+
+        ModuleExportKind.Macro {
+            give CandidateKind.Unknown;
+        }
+
+        ModuleExportKind.Trait {
+            give CandidateKind.Trait;
+        }
+
+        ModuleExportKind.Implementation {
+            give CandidateKind.Impl;
+        }
+    }
+
+    give CandidateKind.Unknown;
+}
+
+proc export_candidate_origin(
+    origin: ModuleExportOrigin
+) -> CandidateOrigin {
+    pick origin {
+        ModuleExportOrigin.Local {
+            give CandidateOrigin.Local;
+        }
+
+        ModuleExportOrigin.Explicit {
+            give CandidateOrigin.Module;
+        }
+
+        ModuleExportOrigin.Reexport {
+            give CandidateOrigin.Import;
+        }
+
+        ModuleExportOrigin.Glob {
+            give CandidateOrigin.Import;
+        }
+
+        ModuleExportOrigin.Prelude {
+            give CandidateOrigin.Prelude;
+        }
+
+        ModuleExportOrigin.Builtin {
+            give CandidateOrigin.Builtin;
+        }
+
+        ModuleExportOrigin.Generated {
+            give CandidateOrigin.Generated;
+        }
+    }
+
+    give CandidateOrigin.Module;
+}
+
+proc export_candidate_visibility(
+    visibility: ModuleExportVisibility
+) -> CandidateVisibility {
+    pick visibility {
+        ModuleExportVisibility.Private {
+            give CandidateVisibility.Private;
+        }
+
+        ModuleExportVisibility.Package {
+            give CandidateVisibility.Package;
+        }
+
+        ModuleExportVisibility.Public {
+            give CandidateVisibility.Public;
+        }
+    }
+
+    give CandidateVisibility.Private;
+}
+
+proc export_candidate(
+    export: ModuleExport,
+    requested: string
+) -> Candidate {
+    let mut candidate =
+        candidate_create(
+            export.name,
+            export_candidate_kind(
+                export.kind
+            ),
+            export_candidate_origin(
+                export.origin
+            ),
+            export_candidate_visibility(
+                export.visibility
+            ),
+            None
+        );
+
+    if export.name == requested {
+        set candidate =
+            candidate_mark_exact(
+                candidate
+            );
+    }
+
+    if export.synthetic {
+        set candidate.synthetic = true;
+    }
+
+    pick export.origin {
+        ModuleExportOrigin.Local {
+            set candidate =
+                candidate_with_priority(
+                    candidate,
+                    100
+                );
+        }
+
+        ModuleExportOrigin.Explicit {
+            set candidate =
+                candidate_with_priority(
+                    candidate,
+                    90
+                );
+        }
+
+        ModuleExportOrigin.Reexport {
+            set candidate =
+                candidate_with_priority(
+                    candidate,
+                    80
+                );
+        }
+
+        ModuleExportOrigin.Glob {
+            set candidate =
+                candidate_with_priority(
+                    candidate,
+                    60
+                );
+        }
+
+        ModuleExportOrigin.Prelude {
+            set candidate =
+                candidate_with_priority(
+                    candidate,
+                    40
+                );
+        }
+
+        ModuleExportOrigin.Builtin {
+            set candidate =
+                candidate_with_priority(
+                    candidate,
+                    30
+                );
+        }
+
+        ModuleExportOrigin.Generated {
+            set candidate =
+                candidate_with_priority(
+                    candidate,
+                    20
+                );
+        }
+    }
+
+    give candidate;
+}
+
+proc export_resolver_export_enabled(
+    resolver: ref ExportResolver,
+    export: ModuleExport
+) -> bool {
+    if not export.enabled {
+        give false;
+    }
+
+    if export.origin
+        == ModuleExportOrigin.Reexport
+        and not resolver.config.allow_reexports
+    {
+        give false;
+    }
+
+    if export.origin
+        == ModuleExportOrigin.Glob
+        and not resolver.config.allow_glob
+    {
+        give false;
+    }
+
+    give true;
+}
+
+proc export_resolver_export_state_valid(
+    resolver: ref ExportResolver,
+    export: ModuleExport
+) -> bool {
+    if not resolver.config.require_resolved {
+        give export.state
+            != ModuleExportState.Failed;
+    }
+
+    give export.state
+        == ModuleExportState.Resolved;
+}
+
+proc export_resolver_export_accessible(
+    resolver: ref ExportResolver,
+    export: ModuleExport
+) -> bool {
+    pick export.visibility {
+        ModuleExportVisibility.Public {
+            give true;
+        }
+
+        ModuleExportVisibility.Package {
+            give resolver.config.allow_package;
+        }
+
+        ModuleExportVisibility.Private {
+            give resolver.config.allow_private;
+        }
+    }
+
+    give false;
+}
+
+proc export_resolver_collect(
+    resolver: ref ExportResolver,
+    table: ref ModuleExportTable,
+    module: ModuleId,
+    name: string
+) -> CandidateSet {
+    let mut candidates =
+        candidate_set_create();
+
+    for export in table.exports {
+        if not module_id_equal(
+            export.module,
+            module
+        ) {
+            continue;
+        }
+
+        if export.name != name {
+            continue;
+        }
+
+        if not export_resolver_export_enabled(
+            resolver,
+            export
+        ) {
+            continue;
+        }
+
+        let mut candidate =
+            export_candidate(
+                export,
+                name
+            );
+
+        if not export_resolver_export_state_valid(
+            resolver,
+            export
+        ) {
+            set candidate.state =
+                CandidateState.Invalid;
+        }
+
+        if not export_resolver_export_accessible(
+            resolver,
+            export
+        ) {
+            set candidate =
+                candidate_mark_inaccessible(
+                    candidate
+                );
+        }
+
+        candidate_set_push(
+            ref mut candidates,
+            candidate
+        );
+    }
+
+    give candidates;
+}
+
+proc export_resolver_find_export(
+    table: ref ModuleExportTable,
+    module: ModuleId,
+    candidate: Candidate
+) -> Option<ModuleExport> {
+    for export in table.exports {
+        if module_id_equal(
+            export.module,
+            module
+        )
+            and export.name == candidate.name
+        {
+            give Some(export);
+        }
+    }
+
+    give None;
+}
+
+proc export_resolver_record(
+    resolver: ref mut ExportResolver,
+    resolution: ResolvedExport
+) {
+    set resolver.statistics.resolutions =
+        resolver.statistics.resolutions + 1;
+
+    pick resolution.state {
+        ExportResolutionState.Resolved {
+            set resolver.statistics.resolved =
+                resolver.statistics.resolved + 1;
+        }
+
+        ExportResolutionState.Missing {
+            set resolver.statistics.missing =
+                resolver.statistics.missing + 1;
+        }
+
+        ExportResolutionState.Ambiguous {
+            set resolver.statistics.ambiguous =
+                resolver.statistics.ambiguous + 1;
+        }
+
+        ExportResolutionState.Inaccessible {
+            set resolver.statistics.inaccessible =
+                resolver.statistics.inaccessible + 1;
+        }
+
+        ExportResolutionState.Invalid {
+            set resolver.statistics.invalid =
+                resolver.statistics.invalid + 1;
+        }
+
+        ExportResolutionState.Unresolved {}
+    }
+}
+
+proc export_resolver_resolve(
+    resolver: ref mut ExportResolver,
+    database: ref ModuleDatabase,
+    table: ref ModuleExportTable,
+    module: ModuleId,
+    name: string
+) -> ResolvedExport {
+    if not module_id_is_valid(module) {
+        let result =
+            export_resolution_invalid(
+                module,
+                name,
+                ExportResolutionErrorKind.InvalidModule,
+                "invalid module id"
+            );
+
+        export_resolver_record(
+            resolver,
+            result
+        );
+
+        give result;
+    }
+
+    if name == "" {
+        let result =
+            export_resolution_invalid(
+                module,
+                name,
+                ExportResolutionErrorKind.EmptyName,
+                "export name is empty"
+            );
+
+        export_resolver_record(
+            resolver,
+            result
+        );
+
+        give result;
+    }
+
+    let owner =
+        module_database_get(
+            database,
+            module
+        );
+
+    pick owner {
+        None {
+            let result =
+                export_resolution_invalid(
+                    module,
+                    name,
+                    ExportResolutionErrorKind.InvalidModule,
+                    "module does not exist"
+                );
+
+            export_resolver_record(
+                resolver,
+                result
+            );
+
+            give result;
+        }
+
+        Some(_) {}
+    }
+
+    let mut candidates =
+        export_resolver_collect(
+            ref resolver,
+            table,
+            module,
+            name
+        );
+
+    if len(candidates.candidates) == 0 {
+        let result =
+            export_resolution_missing(
+                module,
+                name
+            );
+
+        export_resolver_record(
+            resolver,
+            result
+        );
+
+        give result;
+    }
+
+    let candidate =
+        candidate_set_resolve(
+            ref mut candidates
+        );
+
+    if candidates.ambiguous {
+        let result =
+            export_resolution_ambiguous(
+                module,
+                name
+            );
+
+        export_resolver_record(
+            resolver,
+            result
+        );
+
+        give result;
+    }
+
+    pick candidate {
+        None {
+            for current in candidates.candidates {
+                if current.state
+                    == CandidateState.Inaccessible
+                {
+                    let export =
+                        export_resolver_find_export(
+                            table,
+                            module,
+                            current
+                        );
+
+                    pick export {
+                        Some(value) {
+                            let kind =
+                                if value.visibility
+                                    == ModuleExportVisibility.Private
+                                {
+                                    ExportResolutionErrorKind.PrivateExport
+                                } else {
+                                    ExportResolutionErrorKind.PackageExport
+                                };
+
+                            let result =
+                                export_resolution_inaccessible(
+                                    value,
+                                    current,
+                                    kind,
+                                    "export is not visible from this context"
+                                );
+
+                            export_resolver_record(
+                                resolver,
+                                result
+                            );
+
+                            give result;
+                        }
+
+                        None {}
+                    }
+                }
+            }
+
+            let result =
+                export_resolution_invalid(
+                    module,
+                    name,
+                    ExportResolutionErrorKind.UnresolvedExport,
+                    "no usable export candidate"
+                );
+
+            export_resolver_record(
+                resolver,
+                result
+            );
+
+            give result;
+        }
+
+        Some(value) {
+            let export =
+                export_resolver_find_export(
+                    table,
+                    module,
+                    value
+                );
+
+            pick export {
+                None {
+                    let result =
+                        export_resolution_invalid(
+                            module,
+                            name,
+                            ExportResolutionErrorKind.InvalidTarget,
+                            "resolved candidate has no export"
+                        );
+
+                    export_resolver_record(
+                        resolver,
+                        result
+                    );
+
+                    give result;
+                }
+
+                Some(resolved_export) {
+                    if resolved_export.origin
+                        == ModuleExportOrigin.Reexport
+                    {
+                        set resolver.statistics.reexports =
+                            resolver.statistics.reexports + 1;
+                    }
+
+                    if resolved_export.origin
+                        == ModuleExportOrigin.Glob
+                    {
+                        set resolver.statistics.glob_exports =
+                            resolver.statistics.glob_exports + 1;
+                    }
+
+                    let result =
+                        export_resolution_resolved(
+                            resolved_export,
+                            value
+                        );
+
+                    export_resolver_record(
+                        resolver,
+                        result
+                    );
+
+                    give result;
+                }
+            }
+        }
+    }
+
+    give export_resolution_invalid(
+        module,
+        name,
+        ExportResolutionErrorKind.UnresolvedExport,
+        "export resolution failed"
+    );
+}
+
+proc export_resolver_resolve_public(
+    resolver: ref mut ExportResolver,
+    database: ref ModuleDatabase,
+    table: ref ModuleExportTable,
+    module: ModuleId,
+    name: string
+) -> ResolvedExport {
+    let old_private =
+        resolver.config.allow_private;
+
+    let old_package =
+        resolver.config.allow_package;
+
+    set resolver.config.allow_private =
+        false;
+
+    set resolver.config.allow_package =
+        false;
+
+    let result =
+        export_resolver_resolve(
+            resolver,
+            database,
+            table,
+            module,
+            name
+        );
+
+    set resolver.config.allow_private =
+        old_private;
+
+    set resolver.config.allow_package =
+        old_package;
+
+    give result;
+}
+
+proc export_resolver_resolve_local(
+    resolver: ref mut ExportResolver,
+    database: ref ModuleDatabase,
+    table: ref ModuleExportTable,
+    module: ModuleId,
+    name: string
+) -> ResolvedExport {
+    let old_private =
+        resolver.config.allow_private;
+
+    let old_package =
+        resolver.config.allow_package;
+
+    set resolver.config.allow_private =
+        true;
+
+    set resolver.config.allow_package =
+        true;
+
+    let result =
+        export_resolver_resolve(
+            resolver,
+            database,
+            table,
+            module,
+            name
+        );
+
+    set resolver.config.allow_private =
+        old_private;
+
+    set resolver.config.allow_package =
+        old_package;
+
+    give result;
+}
+
+proc export_resolution_is_resolved(
+    resolution: ResolvedExport
+) -> bool {
+    give resolution.state
+        == ExportResolutionState.Resolved
+        and resolution.found;
+}
+
+proc export_resolution_has_error(
+    resolution: ResolvedExport
+) -> bool {
+    give resolution.error.kind
+        != ExportResolutionErrorKind.None;
+}
+
+proc export_resolver_statistics(
+    resolver: ref ExportResolver
+) -> ExportResolverStatistics {
+    give resolver.statistics;
+}
+
+proc export_resolver_reset_statistics(
+    resolver: ref mut ExportResolver
+) {
+    set resolver.statistics =
+        export_resolver_statistics_empty();
+}
+
+proc export_resolution_state_name(
+    state: ExportResolutionState
+) -> string {
+    pick state {
+        ExportResolutionState.Unresolved {
+            give "unresolved";
+        }
+
+        ExportResolutionState.Resolved {
+            give "resolved";
+        }
+
+        ExportResolutionState.Missing {
+            give "missing";
+        }
+
+        ExportResolutionState.Ambiguous {
+            give "ambiguous";
+        }
+
+        ExportResolutionState.Inaccessible {
+            give "inaccessible";
+        }
+
+        ExportResolutionState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}

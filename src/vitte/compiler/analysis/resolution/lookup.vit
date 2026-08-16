@@ -1,0 +1,1121 @@
+space vitte/compiler/analysis/resolution/lookup
+
+export *
+
+use vitte/compiler/analysis/resolution/candidate.{
+    Candidate,
+    CandidateKind,
+    CandidateOrigin,
+    CandidateVisibility,
+    CandidateSet,
+    candidate_create,
+    candidate_with_priority,
+    candidate_with_scope_depth,
+    candidate_mark_exact,
+    candidate_set_create,
+    candidate_set_push,
+    candidate_set_resolve
+}
+
+use vitte/compiler/analysis/resolution/lookup_cache.{
+    LookupCache,
+    LookupCacheKind,
+    LookupCacheKey,
+    LookupCacheValue,
+    lookup_cache_key,
+    lookup_cache_get,
+    lookup_cache_insert_definition,
+    lookup_cache_insert_missing,
+    lookup_cache_insert_ambiguous
+}
+
+pick LookupKind {
+    Any,
+    Value,
+    Type,
+    Module,
+    Procedure,
+    Method,
+    Field,
+    Constant,
+    Generic,
+    Attribute,
+    Import,
+    Export
+}
+
+pick LookupState {
+    Unresolved,
+    Resolved,
+    Missing,
+    Ambiguous,
+    Invalid
+}
+
+pick LookupSymbolKind {
+    Value,
+    Type,
+    Module,
+    Procedure,
+    Method,
+    Field,
+    Constant,
+    Generic,
+    Attribute,
+    Import,
+    Export
+}
+
+form LookupSymbol {
+    name: string
+
+    definition: DefId
+    symbol: SymbolId
+
+    kind: LookupSymbolKind
+
+    scope: ScopeId
+    scope_depth: usize
+
+    visibility: CandidateVisibility
+    origin: CandidateOrigin
+
+    priority: usize
+    synthetic: bool
+}
+
+form LookupScope {
+    id: ScopeId
+    parent: Option<ScopeId>
+
+    symbols: [LookupSymbol]
+
+    depth: usize
+}
+
+form LookupQuery {
+    scope: ScopeId
+    name: string
+    kind: LookupKind
+
+    search_parents: bool
+    search_imports: bool
+    search_builtins: bool
+}
+
+form LookupResult {
+    query: LookupQuery
+
+    candidate: Option<Candidate>
+    candidates: [Candidate]
+
+    definition: Option<DefId>
+
+    state: LookupState
+
+    cached: bool
+}
+
+form LookupStatistics {
+    lookups: u64
+
+    resolved: u64
+    missing: u64
+    ambiguous: u64
+    invalid: u64
+
+    scope_visits: u64
+    symbol_checks: u64
+
+    cache_hits: u64
+    cache_misses: u64
+}
+
+form Lookup {
+    scopes: [LookupScope]
+
+    cache: LookupCache
+
+    statistics: LookupStatistics
+}
+
+proc lookup_statistics_empty()
+    -> LookupStatistics
+{
+    give LookupStatistics {
+        lookups: 0,
+
+        resolved: 0,
+        missing: 0,
+        ambiguous: 0,
+        invalid: 0,
+
+        scope_visits: 0,
+        symbol_checks: 0,
+
+        cache_hits: 0,
+        cache_misses: 0
+    };
+}
+
+proc lookup_create(
+    cache: LookupCache
+) -> Lookup {
+    give Lookup {
+        scopes: [],
+        cache: cache,
+
+        statistics:
+            lookup_statistics_empty()
+    };
+}
+
+proc lookup_scope(
+    id: ScopeId,
+    parent: Option<ScopeId>,
+    depth: usize
+) -> LookupScope {
+    give LookupScope {
+        id: id,
+        parent: parent,
+
+        symbols: [],
+
+        depth: depth
+    };
+}
+
+proc lookup_symbol(
+    name: string,
+    definition: DefId,
+    symbol: SymbolId,
+    kind: LookupSymbolKind,
+    scope: ScopeId,
+    scope_depth: usize,
+    visibility: CandidateVisibility,
+    origin: CandidateOrigin,
+    priority: usize
+) -> LookupSymbol {
+    give LookupSymbol {
+        name: name,
+
+        definition: definition,
+        symbol: symbol,
+
+        kind: kind,
+
+        scope: scope,
+        scope_depth: scope_depth,
+
+        visibility: visibility,
+        origin: origin,
+
+        priority: priority,
+        synthetic: false
+    };
+}
+
+proc lookup_query(
+    scope: ScopeId,
+    name: string,
+    kind: LookupKind
+) -> LookupQuery {
+    give LookupQuery {
+        scope: scope,
+        name: name,
+        kind: kind,
+
+        search_parents: true,
+        search_imports: true,
+        search_builtins: true
+    };
+}
+
+proc lookup_result_missing(
+    query: LookupQuery
+) -> LookupResult {
+    give LookupResult {
+        query: query,
+
+        candidate: None,
+        candidates: [],
+
+        definition: None,
+
+        state: LookupState.Missing,
+
+        cached: false
+    };
+}
+
+proc lookup_result_invalid(
+    query: LookupQuery
+) -> LookupResult {
+    give LookupResult {
+        query: query,
+
+        candidate: None,
+        candidates: [],
+
+        definition: None,
+
+        state: LookupState.Invalid,
+
+        cached: false
+    };
+}
+
+proc lookup_result_ambiguous(
+    query: LookupQuery,
+    candidates: [Candidate]
+) -> LookupResult {
+    give LookupResult {
+        query: query,
+
+        candidate: None,
+        candidates: candidates,
+
+        definition: None,
+
+        state: LookupState.Ambiguous,
+
+        cached: false
+    };
+}
+
+proc lookup_result_resolved(
+    query: LookupQuery,
+    candidate: Candidate,
+    candidates: [Candidate]
+) -> LookupResult {
+    give LookupResult {
+        query: query,
+
+        candidate: Some(candidate),
+        candidates: candidates,
+
+        definition: candidate.definition,
+
+        state: LookupState.Resolved,
+
+        cached: false
+    };
+}
+
+proc lookup_kind_to_cache_kind(
+    kind: LookupKind
+) -> LookupCacheKind {
+    pick kind {
+        LookupKind.Any {
+            give LookupCacheKind.Any;
+        }
+
+        LookupKind.Value {
+            give LookupCacheKind.Value;
+        }
+
+        LookupKind.Type {
+            give LookupCacheKind.Type;
+        }
+
+        LookupKind.Module {
+            give LookupCacheKind.Module;
+        }
+
+        LookupKind.Procedure {
+            give LookupCacheKind.Procedure;
+        }
+
+        LookupKind.Method {
+            give LookupCacheKind.Method;
+        }
+
+        LookupKind.Field {
+            give LookupCacheKind.Field;
+        }
+
+        LookupKind.Constant {
+            give LookupCacheKind.Constant;
+        }
+
+        LookupKind.Generic {
+            give LookupCacheKind.Generic;
+        }
+
+        LookupKind.Attribute {
+            give LookupCacheKind.Attribute;
+        }
+
+        LookupKind.Import {
+            give LookupCacheKind.Import;
+        }
+
+        LookupKind.Export {
+            give LookupCacheKind.Export;
+        }
+    }
+
+    give LookupCacheKind.Any;
+}
+
+proc lookup_symbol_to_candidate_kind(
+    kind: LookupSymbolKind
+) -> CandidateKind {
+    pick kind {
+        LookupSymbolKind.Value {
+            give CandidateKind.Global;
+        }
+
+        LookupSymbolKind.Type {
+            give CandidateKind.Type;
+        }
+
+        LookupSymbolKind.Module {
+            give CandidateKind.Module;
+        }
+
+        LookupSymbolKind.Procedure {
+            give CandidateKind.Procedure;
+        }
+
+        LookupSymbolKind.Method {
+            give CandidateKind.Method;
+        }
+
+        LookupSymbolKind.Field {
+            give CandidateKind.Field;
+        }
+
+        LookupSymbolKind.Constant {
+            give CandidateKind.Constant;
+        }
+
+        LookupSymbolKind.Generic {
+            give CandidateKind.Generic;
+        }
+
+        LookupSymbolKind.Attribute {
+            give CandidateKind.Attribute;
+        }
+
+        LookupSymbolKind.Import {
+            give CandidateKind.Import;
+        }
+
+        LookupSymbolKind.Export {
+            give CandidateKind.Export;
+        }
+    }
+
+    give CandidateKind.Unknown;
+}
+
+proc lookup_kind_matches(
+    query: LookupKind,
+    symbol: LookupSymbolKind
+) -> bool {
+    if query == LookupKind.Any {
+        give true;
+    }
+
+    pick query {
+        LookupKind.Value {
+            give symbol == LookupSymbolKind.Value
+                or symbol == LookupSymbolKind.Constant
+                or symbol == LookupSymbolKind.Procedure;
+        }
+
+        LookupKind.Type {
+            give symbol == LookupSymbolKind.Type;
+        }
+
+        LookupKind.Module {
+            give symbol == LookupSymbolKind.Module;
+        }
+
+        LookupKind.Procedure {
+            give symbol == LookupSymbolKind.Procedure;
+        }
+
+        LookupKind.Method {
+            give symbol == LookupSymbolKind.Method;
+        }
+
+        LookupKind.Field {
+            give symbol == LookupSymbolKind.Field;
+        }
+
+        LookupKind.Constant {
+            give symbol == LookupSymbolKind.Constant;
+        }
+
+        LookupKind.Generic {
+            give symbol == LookupSymbolKind.Generic;
+        }
+
+        LookupKind.Attribute {
+            give symbol == LookupSymbolKind.Attribute;
+        }
+
+        LookupKind.Import {
+            give symbol == LookupSymbolKind.Import;
+        }
+
+        LookupKind.Export {
+            give symbol == LookupSymbolKind.Export;
+        }
+
+        LookupKind.Any {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc lookup_find_scope_index(
+    lookup: ref Lookup,
+    id: ScopeId
+) -> Option<usize> {
+    let mut index: usize = 0;
+
+    while index < len(lookup.scopes) {
+        if lookup.scopes[index].id == id {
+            give Some(index);
+        }
+
+        set index = index + 1;
+    }
+
+    give None;
+}
+
+proc lookup_get_scope(
+    lookup: ref Lookup,
+    id: ScopeId
+) -> Option<ref LookupScope> {
+    let index =
+        lookup_find_scope_index(
+            lookup,
+            id
+        );
+
+    pick index {
+        Some(value) {
+            give Some(
+                ref lookup.scopes[value]
+            );
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc lookup_get_scope_mut(
+    lookup: ref mut Lookup,
+    id: ScopeId
+) -> Option<ref mut LookupScope> {
+    let index =
+        lookup_find_scope_index(
+            ref lookup,
+            id
+        );
+
+    pick index {
+        Some(value) {
+            give Some(
+                ref mut lookup.scopes[value]
+            );
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc lookup_register_scope(
+    lookup: ref mut Lookup,
+    scope: LookupScope
+) {
+    set lookup.scopes =
+        lookup.scopes + [scope];
+}
+
+proc lookup_register_symbol(
+    lookup: ref mut Lookup,
+    symbol: LookupSymbol
+) -> bool {
+    let scope =
+        lookup_get_scope_mut(
+            lookup,
+            symbol.scope
+        );
+
+    pick scope {
+        Some(value) {
+            set value.symbols =
+                value.symbols + [symbol];
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc lookup_symbol_candidate(
+    symbol: LookupSymbol,
+    query: LookupQuery
+) -> Candidate {
+    let mut candidate =
+        candidate_create(
+            symbol.name,
+            lookup_symbol_to_candidate_kind(
+                symbol.kind
+            ),
+            symbol.origin,
+            symbol.visibility,
+            Some(symbol.definition)
+        );
+
+    set candidate =
+        candidate_with_scope_depth(
+            candidate,
+            symbol.scope_depth
+        );
+
+    set candidate =
+        candidate_with_priority(
+            candidate,
+            symbol.priority
+        );
+
+    if symbol.name == query.name {
+        set candidate =
+            candidate_mark_exact(
+                candidate
+            );
+    }
+
+    set candidate.synthetic =
+        symbol.synthetic;
+
+    give candidate;
+}
+
+proc lookup_collect_scope(
+    lookup: ref mut Lookup,
+    query: LookupQuery,
+    scope: ref LookupScope,
+    candidates: ref mut CandidateSet
+) {
+    set lookup.statistics.scope_visits =
+        lookup.statistics.scope_visits + 1;
+
+    for symbol in scope.symbols {
+        set lookup.statistics.symbol_checks =
+            lookup.statistics.symbol_checks + 1;
+
+        if symbol.name != query.name {
+            continue;
+        }
+
+        if not lookup_kind_matches(
+            query.kind,
+            symbol.kind
+        ) {
+            continue;
+        }
+
+        if symbol.origin == CandidateOrigin.Import
+            and not query.search_imports
+        {
+            continue;
+        }
+
+        if symbol.origin == CandidateOrigin.Builtin
+            and not query.search_builtins
+        {
+            continue;
+        }
+
+        candidate_set_push(
+            candidates,
+            lookup_symbol_candidate(
+                symbol,
+                query
+            )
+        );
+    }
+}
+
+proc lookup_collect(
+    lookup: ref mut Lookup,
+    query: LookupQuery
+) -> CandidateSet {
+    let mut candidates =
+        candidate_set_create();
+
+    let mut current:
+        Option<ScopeId> =
+        Some(query.scope);
+
+    loop {
+        pick current {
+            None {
+                break;
+            }
+
+            Some(scope_id) {
+                let scope =
+                    lookup_get_scope(
+                        ref lookup,
+                        scope_id
+                    );
+
+                pick scope {
+                    None {
+                        break;
+                    }
+
+                    Some(value) {
+                        lookup_collect_scope(
+                            lookup,
+                            query,
+                            value,
+                            ref mut candidates
+                        );
+
+                        if not query.search_parents {
+                            break;
+                        }
+
+                        set current =
+                            value.parent;
+                    }
+                }
+            }
+        }
+    }
+
+    give candidates;
+}
+
+proc lookup_cache_result(
+    query: LookupQuery,
+    value: LookupCacheValue
+) -> LookupResult {
+    if value.ambiguous {
+        give LookupResult {
+            query: query,
+
+            candidate: None,
+            candidates: [],
+
+            definition: None,
+
+            state: LookupState.Ambiguous,
+
+            cached: true
+        };
+    }
+
+    if not value.found {
+        give LookupResult {
+            query: query,
+
+            candidate: None,
+            candidates: [],
+
+            definition: None,
+
+            state: LookupState.Missing,
+
+            cached: true
+        };
+    }
+
+    give LookupResult {
+        query: query,
+
+        candidate: None,
+        candidates: [],
+
+        definition: value.definition,
+
+        state: LookupState.Resolved,
+
+        cached: true
+    };
+}
+
+proc lookup_record_result(
+    lookup: ref mut Lookup,
+    result: LookupResult
+) {
+    set lookup.statistics.lookups =
+        lookup.statistics.lookups + 1;
+
+    pick result.state {
+        LookupState.Resolved {
+            set lookup.statistics.resolved =
+                lookup.statistics.resolved + 1;
+        }
+
+        LookupState.Missing {
+            set lookup.statistics.missing =
+                lookup.statistics.missing + 1;
+        }
+
+        LookupState.Ambiguous {
+            set lookup.statistics.ambiguous =
+                lookup.statistics.ambiguous + 1;
+        }
+
+        LookupState.Invalid {
+            set lookup.statistics.invalid =
+                lookup.statistics.invalid + 1;
+        }
+
+        LookupState.Unresolved {}
+    }
+}
+
+proc lookup_store_cache(
+    lookup: ref mut Lookup,
+    result: LookupResult
+) {
+    let kind =
+        lookup_kind_to_cache_kind(
+            result.query.kind
+        );
+
+    pick result.state {
+        LookupState.Resolved {
+            pick result.definition {
+                Some(definition) {
+                    lookup_cache_insert_definition(
+                        ref mut lookup.cache,
+                        result.query.scope,
+                        result.query.name,
+                        kind,
+                        definition
+                    );
+                }
+
+                None {}
+            }
+        }
+
+        LookupState.Missing {
+            lookup_cache_insert_missing(
+                ref mut lookup.cache,
+                result.query.scope,
+                result.query.name,
+                kind
+            );
+        }
+
+        LookupState.Ambiguous {
+            let mut ids: [DefId] = [];
+
+            for candidate in result.candidates {
+                pick candidate.definition {
+                    Some(id) {
+                        set ids =
+                            ids + [id];
+                    }
+
+                    None {}
+                }
+            }
+
+            lookup_cache_insert_ambiguous(
+                ref mut lookup.cache,
+                result.query.scope,
+                result.query.name,
+                kind,
+                ids
+            );
+        }
+
+        _ {}
+    }
+}
+
+proc lookup_resolve(
+    lookup: ref mut Lookup,
+    query: LookupQuery
+) -> LookupResult {
+    if query.name == "" {
+        let result =
+            lookup_result_invalid(
+                query
+            );
+
+        lookup_record_result(
+            lookup,
+            result
+        );
+
+        give result;
+    }
+
+    let cache_key =
+        lookup_cache_key(
+            query.scope,
+            query.name,
+            lookup_kind_to_cache_kind(
+                query.kind
+            )
+        );
+
+    let cached =
+        lookup_cache_get(
+            ref mut lookup.cache,
+            cache_key
+        );
+
+    pick cached {
+        Some(value) {
+            set lookup.statistics.cache_hits =
+                lookup.statistics.cache_hits + 1;
+
+            let result =
+                lookup_cache_result(
+                    query,
+                    value
+                );
+
+            lookup_record_result(
+                lookup,
+                result
+            );
+
+            give result;
+        }
+
+        None {
+            set lookup.statistics.cache_misses =
+                lookup.statistics.cache_misses + 1;
+        }
+    }
+
+    let mut candidates =
+        lookup_collect(
+            lookup,
+            query
+        );
+
+    if len(candidates.candidates) == 0 {
+        let result =
+            lookup_result_missing(
+                query
+            );
+
+        lookup_store_cache(
+            lookup,
+            result
+        );
+
+        lookup_record_result(
+            lookup,
+            result
+        );
+
+        give result;
+    }
+
+    let selected =
+        candidate_set_resolve(
+            ref mut candidates
+        );
+
+    if candidates.ambiguous {
+        let result =
+            lookup_result_ambiguous(
+                query,
+                candidates.accepted
+            );
+
+        lookup_store_cache(
+            lookup,
+            result
+        );
+
+        lookup_record_result(
+            lookup,
+            result
+        );
+
+        give result;
+    }
+
+    pick selected {
+        Some(candidate) {
+            let result =
+                lookup_result_resolved(
+                    query,
+                    candidate,
+                    candidates.accepted
+                );
+
+            lookup_store_cache(
+                lookup,
+                result
+            );
+
+            lookup_record_result(
+                lookup,
+                result
+            );
+
+            give result;
+        }
+
+        None {
+            let result =
+                lookup_result_missing(
+                    query
+                );
+
+            lookup_store_cache(
+                lookup,
+                result
+            );
+
+            lookup_record_result(
+                lookup,
+                result
+            );
+
+            give result;
+        }
+    }
+
+    give lookup_result_invalid(query);
+}
+
+proc lookup_name(
+    lookup: ref mut Lookup,
+    scope: ScopeId,
+    name: string
+) -> LookupResult {
+    give lookup_resolve(
+        lookup,
+        lookup_query(
+            scope,
+            name,
+            LookupKind.Any
+        )
+    );
+}
+
+proc lookup_value(
+    lookup: ref mut Lookup,
+    scope: ScopeId,
+    name: string
+) -> LookupResult {
+    give lookup_resolve(
+        lookup,
+        lookup_query(
+            scope,
+            name,
+            LookupKind.Value
+        )
+    );
+}
+
+proc lookup_type(
+    lookup: ref mut Lookup,
+    scope: ScopeId,
+    name: string
+) -> LookupResult {
+    give lookup_resolve(
+        lookup,
+        lookup_query(
+            scope,
+            name,
+            LookupKind.Type
+        )
+    );
+}
+
+proc lookup_module(
+    lookup: ref mut Lookup,
+    scope: ScopeId,
+    name: string
+) -> LookupResult {
+    give lookup_resolve(
+        lookup,
+        lookup_query(
+            scope,
+            name,
+            LookupKind.Module
+        )
+    );
+}
+
+proc lookup_constant(
+    lookup: ref mut Lookup,
+    scope: ScopeId,
+    name: string
+) -> LookupResult {
+    give lookup_resolve(
+        lookup,
+        lookup_query(
+            scope,
+            name,
+            LookupKind.Constant
+        )
+    );
+}
+
+proc lookup_generic(
+    lookup: ref mut Lookup,
+    scope: ScopeId,
+    name: string
+) -> LookupResult {
+    give lookup_resolve(
+        lookup,
+        lookup_query(
+            scope,
+            name,
+            LookupKind.Generic
+        )
+    );
+}
+
+proc lookup_is_resolved(
+    result: LookupResult
+) -> bool {
+    give result.state
+        == LookupState.Resolved;
+}
+
+proc lookup_has_error(
+    result: LookupResult
+) -> bool {
+    give result.state
+        == LookupState.Invalid
+        or result.state
+        == LookupState.Ambiguous;
+}
+
+proc lookup_statistics(
+    lookup: ref Lookup
+) -> LookupStatistics {
+    give lookup.statistics;
+}
+
+proc lookup_reset_statistics(
+    lookup: ref mut Lookup
+) {
+    set lookup.statistics =
+        lookup_statistics_empty();
+}

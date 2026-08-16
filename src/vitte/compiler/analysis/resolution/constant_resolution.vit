@@ -1,0 +1,698 @@
+space vitte/compiler/analysis/resolution/constant_resolution
+
+export *
+
+use vitte/compiler/analysis/resolution/candidate.{
+    Candidate,
+    CandidateKind,
+    CandidateOrigin,
+    CandidateVisibility,
+    CandidateState,
+    CandidateSet,
+    candidate_create,
+    candidate_builtin,
+    candidate_with_priority,
+    candidate_with_scope_depth,
+    candidate_mark_exact,
+    candidate_mark_inaccessible,
+    candidate_mark_invalid,
+    candidate_set_create,
+    candidate_set_push,
+    candidate_set_resolve
+}
+
+pick ConstantResolutionState {
+    Unresolved,
+    Resolved,
+    Missing,
+    Ambiguous,
+    Inaccessible,
+    Invalid
+}
+
+pick ConstantResolutionErrorKind {
+    None,
+    EmptyName,
+    NotFound,
+    Ambiguous,
+    Inaccessible,
+    InvalidCandidate,
+    InvalidDefinition
+}
+
+form ConstantResolutionError {
+    kind: ConstantResolutionErrorKind
+    name: string
+    message: string
+}
+
+form ConstantDefinition {
+    name: string
+    definition: DefId
+
+    visibility: CandidateVisibility
+    origin: CandidateOrigin
+
+    scope_depth: usize
+    priority: usize
+
+    synthetic: bool
+}
+
+form ConstantResolution {
+    name: string
+
+    definition: Option<DefId>
+    candidate: Option<Candidate>
+
+    state: ConstantResolutionState
+    error: ConstantResolutionError
+
+    found: bool
+}
+
+form ConstantResolverStatistics {
+    resolutions: u64
+
+    resolved: u64
+    missing: u64
+    ambiguous: u64
+    inaccessible: u64
+    invalid: u64
+}
+
+form ConstantResolver {
+    constants: [ConstantDefinition]
+    builtins: [string]
+
+    statistics: ConstantResolverStatistics
+}
+
+proc constant_resolution_error_none()
+    -> ConstantResolutionError
+{
+    give ConstantResolutionError {
+        kind: ConstantResolutionErrorKind.None,
+        name: "",
+        message: ""
+    };
+}
+
+proc constant_resolution_error(
+    kind: ConstantResolutionErrorKind,
+    name: string,
+    message: string
+) -> ConstantResolutionError {
+    give ConstantResolutionError {
+        kind: kind,
+        name: name,
+        message: message
+    };
+}
+
+proc constant_resolver_statistics_empty()
+    -> ConstantResolverStatistics
+{
+    give ConstantResolverStatistics {
+        resolutions: 0,
+
+        resolved: 0,
+        missing: 0,
+        ambiguous: 0,
+        inaccessible: 0,
+        invalid: 0
+    };
+}
+
+proc constant_resolver_create()
+    -> ConstantResolver
+{
+    give ConstantResolver {
+        constants: [],
+
+        builtins: [
+            "true",
+            "false",
+            "null"
+        ],
+
+        statistics:
+            constant_resolver_statistics_empty()
+    };
+}
+
+proc constant_definition(
+    name: string,
+    definition: DefId,
+    visibility: CandidateVisibility,
+    origin: CandidateOrigin,
+    scope_depth: usize,
+    priority: usize
+) -> ConstantDefinition {
+    give ConstantDefinition {
+        name: name,
+        definition: definition,
+
+        visibility: visibility,
+        origin: origin,
+
+        scope_depth: scope_depth,
+        priority: priority,
+
+        synthetic: false
+    };
+}
+
+proc constant_definition_synthetic(
+    name: string,
+    definition: DefId
+) -> ConstantDefinition {
+    give ConstantDefinition {
+        name: name,
+        definition: definition,
+
+        visibility: CandidateVisibility.Public,
+        origin: CandidateOrigin.Generated,
+
+        scope_depth: 0,
+        priority: 0,
+
+        synthetic: true
+    };
+}
+
+proc constant_resolver_register(
+    resolver: ref mut ConstantResolver,
+    definition: ConstantDefinition
+) {
+    set resolver.constants =
+        resolver.constants + [definition];
+}
+
+proc constant_resolver_is_builtin(
+    resolver: ref ConstantResolver,
+    name: string
+) -> bool {
+    for builtin in resolver.builtins {
+        if builtin == name {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc constant_candidate_from_definition(
+    definition: ConstantDefinition,
+    requested: string
+) -> Candidate {
+    let mut candidate =
+        candidate_create(
+            definition.name,
+            CandidateKind.Constant,
+            definition.origin,
+            definition.visibility,
+            Some(definition.definition)
+        );
+
+    set candidate =
+        candidate_with_scope_depth(
+            candidate,
+            definition.scope_depth
+        );
+
+    set candidate =
+        candidate_with_priority(
+            candidate,
+            definition.priority
+        );
+
+    if definition.name == requested {
+        set candidate =
+            candidate_mark_exact(candidate);
+    }
+
+    set candidate.synthetic =
+        definition.synthetic;
+
+    give candidate;
+}
+
+proc constant_resolver_collect(
+    resolver: ref ConstantResolver,
+    name: string
+) -> CandidateSet {
+    let mut set =
+        candidate_set_create();
+
+    if constant_resolver_is_builtin(
+        resolver,
+        name
+    ) {
+        let builtin =
+            candidate_builtin(
+                name,
+                CandidateKind.Constant
+            );
+
+        candidate_set_push(
+            ref mut set,
+            builtin
+        );
+    }
+
+    for definition in resolver.constants {
+        if definition.name == name {
+            let candidate =
+                constant_candidate_from_definition(
+                    definition,
+                    name
+                );
+
+            candidate_set_push(
+                ref mut set,
+                candidate
+            );
+        }
+    }
+
+    give set;
+}
+
+proc constant_resolution_missing(
+    name: string
+) -> ConstantResolution {
+    give ConstantResolution {
+        name: name,
+
+        definition: None,
+        candidate: None,
+
+        state: ConstantResolutionState.Missing,
+
+        error:
+            constant_resolution_error(
+                ConstantResolutionErrorKind.NotFound,
+                name,
+                "constant was not found"
+            ),
+
+        found: false
+    };
+}
+
+proc constant_resolution_invalid(
+    name: string,
+    message: string
+) -> ConstantResolution {
+    give ConstantResolution {
+        name: name,
+
+        definition: None,
+        candidate: None,
+
+        state: ConstantResolutionState.Invalid,
+
+        error:
+            constant_resolution_error(
+                ConstantResolutionErrorKind.InvalidCandidate,
+                name,
+                message
+            ),
+
+        found: false
+    };
+}
+
+proc constant_resolution_ambiguous(
+    name: string
+) -> ConstantResolution {
+    give ConstantResolution {
+        name: name,
+
+        definition: None,
+        candidate: None,
+
+        state: ConstantResolutionState.Ambiguous,
+
+        error:
+            constant_resolution_error(
+                ConstantResolutionErrorKind.Ambiguous,
+                name,
+                "constant resolution is ambiguous"
+            ),
+
+        found: false
+    };
+}
+
+proc constant_resolution_inaccessible(
+    name: string,
+    candidate: Candidate
+) -> ConstantResolution {
+    give ConstantResolution {
+        name: name,
+
+        definition: candidate.definition,
+        candidate: Some(candidate),
+
+        state:
+            ConstantResolutionState.Inaccessible,
+
+        error:
+            constant_resolution_error(
+                ConstantResolutionErrorKind.Inaccessible,
+                name,
+                "constant is not visible from this scope"
+            ),
+
+        found: false
+    };
+}
+
+proc constant_resolution_resolved(
+    name: string,
+    candidate: Candidate
+) -> ConstantResolution {
+    give ConstantResolution {
+        name: name,
+
+        definition: candidate.definition,
+        candidate: Some(candidate),
+
+        state: ConstantResolutionState.Resolved,
+        error: constant_resolution_error_none(),
+
+        found: true
+    };
+}
+
+proc constant_candidate_accessible(
+    candidate: Candidate,
+    allow_private: bool,
+    allow_package: bool
+) -> bool {
+    pick candidate.visibility {
+        CandidateVisibility.Public {
+            give true;
+        }
+
+        CandidateVisibility.Package {
+            give allow_package;
+        }
+
+        CandidateVisibility.Private {
+            give allow_private;
+        }
+    }
+
+    give false;
+}
+
+proc constant_resolver_apply_visibility(
+    set: ref mut CandidateSet,
+    allow_private: bool,
+    allow_package: bool
+) {
+    let mut output: [Candidate] = [];
+
+    for candidate in set.candidates {
+        if constant_candidate_accessible(
+            candidate,
+            allow_private,
+            allow_package
+        ) {
+            set output =
+                output + [candidate];
+        } else {
+            set output =
+                output + [
+                    candidate_mark_inaccessible(
+                        candidate
+                    )
+                ];
+        }
+    }
+
+    set set.candidates = output;
+}
+
+proc constant_resolver_record(
+    resolver: ref mut ConstantResolver,
+    resolution: ConstantResolution
+) {
+    set resolver.statistics.resolutions =
+        resolver.statistics.resolutions + 1;
+
+    pick resolution.state {
+        ConstantResolutionState.Resolved {
+            set resolver.statistics.resolved =
+                resolver.statistics.resolved + 1;
+        }
+
+        ConstantResolutionState.Missing {
+            set resolver.statistics.missing =
+                resolver.statistics.missing + 1;
+        }
+
+        ConstantResolutionState.Ambiguous {
+            set resolver.statistics.ambiguous =
+                resolver.statistics.ambiguous + 1;
+        }
+
+        ConstantResolutionState.Inaccessible {
+            set resolver.statistics.inaccessible =
+                resolver.statistics.inaccessible + 1;
+        }
+
+        ConstantResolutionState.Invalid {
+            set resolver.statistics.invalid =
+                resolver.statistics.invalid + 1;
+        }
+
+        ConstantResolutionState.Unresolved {}
+    }
+}
+
+proc constant_resolver_resolve(
+    resolver: ref mut ConstantResolver,
+    name: string,
+    allow_private: bool,
+    allow_package: bool
+) -> ConstantResolution {
+    if name == "" {
+        let result =
+            constant_resolution_invalid(
+                name,
+                "constant name is empty"
+            );
+
+        constant_resolver_record(
+            resolver,
+            result
+        );
+
+        give result;
+    }
+
+    let mut candidates =
+        constant_resolver_collect(
+            ref resolver,
+            name
+        );
+
+    if len(candidates.candidates) == 0 {
+        let result =
+            constant_resolution_missing(name);
+
+        constant_resolver_record(
+            resolver,
+            result
+        );
+
+        give result;
+    }
+
+    constant_resolver_apply_visibility(
+        ref mut candidates,
+        allow_private,
+        allow_package
+    );
+
+    let resolved =
+        candidate_set_resolve(
+            ref mut candidates
+        );
+
+    if candidates.ambiguous {
+        let result =
+            constant_resolution_ambiguous(name);
+
+        constant_resolver_record(
+            resolver,
+            result
+        );
+
+        give result;
+    }
+
+    pick resolved {
+        None {
+            let mut inaccessible:
+                Option<Candidate> = None;
+
+            for candidate in candidates.candidates {
+                if candidate.state
+                    == CandidateState.Inaccessible
+                {
+                    set inaccessible =
+                        Some(candidate);
+                }
+            }
+
+            pick inaccessible {
+                Some(candidate) {
+                    let result =
+                        constant_resolution_inaccessible(
+                            name,
+                            candidate
+                        );
+
+                    constant_resolver_record(
+                        resolver,
+                        result
+                    );
+
+                    give result;
+                }
+
+                None {
+                    let result =
+                        constant_resolution_missing(
+                            name
+                        );
+
+                    constant_resolver_record(
+                        resolver,
+                        result
+                    );
+
+                    give result;
+                }
+            }
+        }
+
+        Some(candidate) {
+            let result =
+                constant_resolution_resolved(
+                    name,
+                    candidate
+                );
+
+            constant_resolver_record(
+                resolver,
+                result
+            );
+
+            give result;
+        }
+    }
+
+    let result =
+        constant_resolution_invalid(
+            name,
+            "constant resolution failed"
+        );
+
+    constant_resolver_record(
+        resolver,
+        result
+    );
+
+    give result;
+}
+
+proc constant_resolver_resolve_local(
+    resolver: ref mut ConstantResolver,
+    name: string
+) -> ConstantResolution {
+    give constant_resolver_resolve(
+        resolver,
+        name,
+        true,
+        true
+    );
+}
+
+proc constant_resolver_resolve_external(
+    resolver: ref mut ConstantResolver,
+    name: string,
+    same_package: bool
+) -> ConstantResolution {
+    give constant_resolver_resolve(
+        resolver,
+        name,
+        false,
+        same_package
+    );
+}
+
+proc constant_resolution_is_resolved(
+    resolution: ConstantResolution
+) -> bool {
+    give resolution.state
+        == ConstantResolutionState.Resolved
+        and resolution.found;
+}
+
+proc constant_resolution_has_error(
+    resolution: ConstantResolution
+) -> bool {
+    give resolution.error.kind
+        != ConstantResolutionErrorKind.None;
+}
+
+proc constant_resolver_statistics(
+    resolver: ref ConstantResolver
+) -> ConstantResolverStatistics {
+    give resolver.statistics;
+}
+
+proc constant_resolver_reset_statistics(
+    resolver: ref mut ConstantResolver
+) {
+    set resolver.statistics =
+        constant_resolver_statistics_empty();
+}
+
+proc constant_resolution_state_name(
+    state: ConstantResolutionState
+) -> string {
+    pick state {
+        ConstantResolutionState.Unresolved {
+            give "unresolved";
+        }
+
+        ConstantResolutionState.Resolved {
+            give "resolved";
+        }
+
+        ConstantResolutionState.Missing {
+            give "missing";
+        }
+
+        ConstantResolutionState.Ambiguous {
+            give "ambiguous";
+        }
+
+        ConstantResolutionState.Inaccessible {
+            give "inaccessible";
+        }
+
+        ConstantResolutionState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}

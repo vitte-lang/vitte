@@ -1,0 +1,1152 @@
+space vitte/compiler/analysis/resolution/import_resolution
+
+export *
+
+use vitte/compiler/analysis/modules/module_id.{
+    ModuleId,
+    module_id_invalid,
+    module_id_equal,
+    module_id_is_valid
+}
+
+use vitte/compiler/analysis/modules/module_database.{
+    ModuleDatabase,
+    module_database_get,
+    module_database_get_by_name
+}
+
+use vitte/compiler/analysis/modules/module_exports.{
+    ModuleExport,
+    ModuleExportId,
+    ModuleExportKind,
+    ModuleExportTable,
+    ModuleExportVisibility,
+    module_export_id_invalid,
+    module_export_lookup,
+    module_export_lookup_kind,
+    module_export_is_available
+}
+
+use vitte/compiler/analysis/modules/module_imports.{
+    ModuleImport,
+    ModuleImportId,
+    ModuleImportKind,
+    ModuleImportState,
+    ModuleImportError,
+    ModuleImportErrorKind,
+    ModuleImportPath,
+    ModuleImportTable,
+    ModuleImportResolution,
+
+    module_import_id_is_valid,
+    module_import_path_string,
+    module_import_source_module_name,
+    module_import_local_name,
+    module_import_is_available,
+    module_import_is_glob,
+    module_import_get,
+    module_import_get_mut,
+    module_import_refresh_statistics,
+    module_import_error
+}
+
+pick ImportResolutionState {
+    Unresolved,
+    Resolving,
+    Resolved,
+    MissingModule,
+    MissingSymbol,
+    PrivateSymbol,
+    Ambiguous,
+    Disabled,
+    Invalid,
+    Failed
+}
+
+form ImportResolverConfig {
+    allow_private: bool
+    allow_package: bool
+
+    allow_glob: bool
+    allow_reexport: bool
+    allow_optional_missing: bool
+
+    fail_fast: bool
+}
+
+form ImportResolutionResult {
+    id: ModuleImportId
+
+    source_module: ModuleId
+    resolved_export: ModuleExportId
+
+    candidates: [ModuleExportId]
+
+    state: ImportResolutionState
+
+    errors: [ModuleImportError]
+
+    valid: bool
+}
+
+form ImportResolverStatistics {
+    resolutions: u64
+
+    resolved: u64
+    missing_modules: u64
+    missing_symbols: u64
+    private_symbols: u64
+    ambiguous: u64
+    disabled: u64
+    failed: u64
+}
+
+form ImportResolver {
+    config: ImportResolverConfig
+    statistics: ImportResolverStatistics
+}
+
+proc import_resolver_config_default()
+    -> ImportResolverConfig
+{
+    give ImportResolverConfig {
+        allow_private: false,
+        allow_package: false,
+
+        allow_glob: true,
+        allow_reexport: true,
+        allow_optional_missing: true,
+
+        fail_fast: false
+    };
+}
+
+proc import_resolver_statistics_empty()
+    -> ImportResolverStatistics
+{
+    give ImportResolverStatistics {
+        resolutions: 0,
+
+        resolved: 0,
+        missing_modules: 0,
+        missing_symbols: 0,
+        private_symbols: 0,
+        ambiguous: 0,
+        disabled: 0,
+        failed: 0
+    };
+}
+
+proc import_resolver_create_with_config(
+    config: ImportResolverConfig
+) -> ImportResolver {
+    give ImportResolver {
+        config: config,
+        statistics:
+            import_resolver_statistics_empty()
+    };
+}
+
+proc import_resolver_create()
+    -> ImportResolver
+{
+    give import_resolver_create_with_config(
+        import_resolver_config_default()
+    );
+}
+
+proc import_resolution_result(
+    item: ModuleImport
+) -> ImportResolutionResult {
+    give ImportResolutionResult {
+        id: item.id,
+
+        source_module:
+            item.source_module,
+
+        resolved_export:
+            item.resolved_export,
+
+        candidates:
+            item.candidates,
+
+        state:
+            ImportResolutionState.Unresolved,
+
+        errors: [],
+
+        valid: false
+    };
+}
+
+proc import_resolution_push_error(
+    result: ref mut ImportResolutionResult,
+    error: ModuleImportError
+) {
+    set result.errors =
+        result.errors + [error];
+
+    set result.valid = false;
+}
+
+proc import_resolution_error(
+    item: ModuleImport,
+    kind: ModuleImportErrorKind,
+    message: string
+) -> ModuleImportError {
+    give module_import_error(
+        kind,
+        "",
+        module_import_path_string(
+            ref item.path
+        ),
+        module_import_local_name(
+            ref item
+        ),
+        message,
+        item.span
+    );
+}
+
+proc import_resolution_state_from_import(
+    state: ModuleImportState
+) -> ImportResolutionState {
+    pick state {
+        ModuleImportState.Declared {
+            give ImportResolutionState.Unresolved;
+        }
+
+        ModuleImportState.Resolving {
+            give ImportResolutionState.Resolving;
+        }
+
+        ModuleImportState.Resolved {
+            give ImportResolutionState.Resolved;
+        }
+
+        ModuleImportState.Ambiguous {
+            give ImportResolutionState.Ambiguous;
+        }
+
+        ModuleImportState.MissingModule {
+            give ImportResolutionState.MissingModule;
+        }
+
+        ModuleImportState.MissingSymbol {
+            give ImportResolutionState.MissingSymbol;
+        }
+
+        ModuleImportState.PrivateSymbol {
+            give ImportResolutionState.PrivateSymbol;
+        }
+
+        ModuleImportState.Disabled {
+            give ImportResolutionState.Disabled;
+        }
+
+        ModuleImportState.Invalidated {
+            give ImportResolutionState.Unresolved;
+        }
+
+        ModuleImportState.Failed {
+            give ImportResolutionState.Failed;
+        }
+    }
+
+    give ImportResolutionState.Invalid;
+}
+
+proc import_resolution_export_visible(
+    resolver: ref ImportResolver,
+    export: ModuleExport
+) -> bool {
+    pick export.visibility {
+        ModuleExportVisibility.Public {
+            give true;
+        }
+
+        ModuleExportVisibility.Package {
+            give resolver.config.allow_package;
+        }
+
+        ModuleExportVisibility.Private {
+            give resolver.config.allow_private;
+        }
+    }
+
+    give false;
+}
+
+proc import_resolution_find_source_module(
+    database: ref ModuleDatabase,
+    item: ModuleImport
+) -> ModuleId {
+    let source_name: string =
+        module_import_source_module_name(
+            ref item.path
+        );
+
+    if source_name == "" {
+        give module_id_invalid();
+    }
+
+    let module =
+        module_database_get_by_name(
+            database,
+            source_name
+        );
+
+    pick module {
+        Some(value) {
+            give value.id;
+        }
+
+        None {
+            give module_id_invalid();
+        }
+    }
+}
+
+proc import_resolution_collect_candidates(
+    exports: ref ModuleExportTable,
+    source: ModuleId,
+    name: string
+) -> [ModuleExport] {
+    let mut output: [ModuleExport] = [];
+
+    for export in exports.exports {
+        if not module_id_equal(
+            export.module,
+            source
+        ) {
+            continue;
+        }
+
+        if export.name != name {
+            continue;
+        }
+
+        if not module_export_is_available(
+            ref export
+        ) {
+            continue;
+        }
+
+        set output =
+            output + [export];
+    }
+
+    give output;
+}
+
+proc import_resolution_collect_glob(
+    exports: ref ModuleExportTable,
+    source: ModuleId
+) -> [ModuleExport] {
+    let mut output: [ModuleExport] = [];
+
+    for export in exports.exports {
+        if not module_id_equal(
+            export.module,
+            source
+        ) {
+            continue;
+        }
+
+        if not module_export_is_available(
+            ref export
+        ) {
+            continue;
+        }
+
+        if export.visibility
+            != ModuleExportVisibility.Public
+        {
+            continue;
+        }
+
+        set output =
+            output + [export];
+    }
+
+    give output;
+}
+
+proc import_resolution_candidate_ids(
+    candidates: [ModuleExport]
+) -> [ModuleExportId] {
+    let mut output: [ModuleExportId] = [];
+
+    for candidate in candidates {
+        set output =
+            output + [candidate.id];
+    }
+
+    give output;
+}
+
+proc import_resolution_mark_missing_module(
+    item: ref mut ModuleImport
+) {
+    set item.state =
+        ModuleImportState.MissingModule;
+
+    set item.source_module =
+        module_id_invalid();
+
+    set item.resolved_export =
+        module_export_id_invalid();
+
+    set item.candidates = [];
+
+    set item.revision =
+        item.revision + 1;
+}
+
+proc import_resolution_mark_missing_symbol(
+    item: ref mut ModuleImport
+) {
+    set item.state =
+        ModuleImportState.MissingSymbol;
+
+    set item.resolved_export =
+        module_export_id_invalid();
+
+    set item.candidates = [];
+
+    set item.revision =
+        item.revision + 1;
+}
+
+proc import_resolution_mark_private(
+    item: ref mut ModuleImport,
+    candidates: [ModuleExportId]
+) {
+    set item.state =
+        ModuleImportState.PrivateSymbol;
+
+    set item.resolved_export =
+        module_export_id_invalid();
+
+    set item.candidates =
+        candidates;
+
+    set item.revision =
+        item.revision + 1;
+}
+
+proc import_resolution_mark_ambiguous(
+    item: ref mut ModuleImport,
+    candidates: [ModuleExportId]
+) {
+    set item.state =
+        ModuleImportState.Ambiguous;
+
+    set item.resolved_export =
+        module_export_id_invalid();
+
+    set item.candidates =
+        candidates;
+
+    set item.revision =
+        item.revision + 1;
+}
+
+proc import_resolution_mark_resolved(
+    item: ref mut ModuleImport,
+    source: ModuleId,
+    export: ModuleExportId
+) {
+    set item.source_module = source;
+
+    set item.resolved_export = export;
+
+    set item.candidates = [export];
+
+    set item.state =
+        ModuleImportState.Resolved;
+
+    set item.revision =
+        item.revision + 1;
+}
+
+proc import_resolution_mark_glob_resolved(
+    item: ref mut ModuleImport,
+    source: ModuleId,
+    candidates: [ModuleExportId]
+) {
+    set item.source_module = source;
+
+    set item.resolved_export =
+        module_export_id_invalid();
+
+    set item.candidates =
+        candidates;
+
+    set item.state =
+        ModuleImportState.Resolved;
+
+    set item.revision =
+        item.revision + 1;
+}
+
+proc import_resolver_record(
+    resolver: ref mut ImportResolver,
+    state: ImportResolutionState
+) {
+    set resolver.statistics.resolutions =
+        resolver.statistics.resolutions + 1;
+
+    pick state {
+        ImportResolutionState.Resolved {
+            set resolver.statistics.resolved =
+                resolver.statistics.resolved + 1;
+        }
+
+        ImportResolutionState.MissingModule {
+            set resolver.statistics.missing_modules =
+                resolver.statistics.missing_modules + 1;
+        }
+
+        ImportResolutionState.MissingSymbol {
+            set resolver.statistics.missing_symbols =
+                resolver.statistics.missing_symbols + 1;
+        }
+
+        ImportResolutionState.PrivateSymbol {
+            set resolver.statistics.private_symbols =
+                resolver.statistics.private_symbols + 1;
+        }
+
+        ImportResolutionState.Ambiguous {
+            set resolver.statistics.ambiguous =
+                resolver.statistics.ambiguous + 1;
+        }
+
+        ImportResolutionState.Disabled {
+            set resolver.statistics.disabled =
+                resolver.statistics.disabled + 1;
+        }
+
+        ImportResolutionState.Failed {
+            set resolver.statistics.failed =
+                resolver.statistics.failed + 1;
+        }
+
+        _ {}
+    }
+}
+
+proc import_resolver_resolve_glob(
+    resolver: ref mut ImportResolver,
+    exports: ref ModuleExportTable,
+    item: ref mut ModuleImport,
+    source: ModuleId
+) -> ImportResolutionResult {
+    let mut result =
+        import_resolution_result(*item);
+
+    if not resolver.config.allow_glob {
+        set item.state =
+            ModuleImportState.Failed;
+
+        set result.state =
+            ImportResolutionState.Failed;
+
+        import_resolution_push_error(
+            ref mut result,
+            import_resolution_error(
+                *item,
+                ModuleImportErrorKind.InvalidGlob,
+                "glob imports are disabled"
+            )
+        );
+
+        import_resolver_record(
+            resolver,
+            result.state
+        );
+
+        give result;
+    }
+
+    let candidates =
+        import_resolution_collect_glob(
+            exports,
+            source
+        );
+
+    let ids =
+        import_resolution_candidate_ids(
+            candidates
+        );
+
+    import_resolution_mark_glob_resolved(
+        item,
+        source,
+        ids
+    );
+
+    set result.source_module =
+        source;
+
+    set result.candidates =
+        ids;
+
+    set result.state =
+        ImportResolutionState.Resolved;
+
+    set result.valid = true;
+
+    import_resolver_record(
+        resolver,
+        result.state
+    );
+
+    give result;
+}
+
+proc import_resolver_resolve_symbol(
+    resolver: ref mut ImportResolver,
+    exports: ref ModuleExportTable,
+    item: ref mut ModuleImport,
+    source: ModuleId
+) -> ImportResolutionResult {
+    let mut result =
+        import_resolution_result(*item);
+
+    let name: string =
+        if item.path.symbol != "" {
+            item.path.symbol
+        } else {
+            item.name
+        };
+
+    let candidates =
+        import_resolution_collect_candidates(
+            exports,
+            source,
+            name
+        );
+
+    if len(candidates) == 0 {
+        import_resolution_mark_missing_symbol(
+            item
+        );
+
+        set result.state =
+            ImportResolutionState.MissingSymbol;
+
+        if not item.optional {
+            import_resolution_push_error(
+                ref mut result,
+                import_resolution_error(
+                    *item,
+                    ModuleImportErrorKind.SymbolNotFound,
+                    "imported symbol was not found"
+                )
+            );
+        } else {
+            set result.valid =
+                resolver.config.allow_optional_missing;
+        }
+
+        import_resolver_record(
+            resolver,
+            result.state
+        );
+
+        give result;
+    }
+
+    let mut visible: [ModuleExport] = [];
+
+    for candidate in candidates {
+        if import_resolution_export_visible(
+            ref resolver,
+            candidate
+        ) {
+            set visible =
+                visible + [candidate];
+        }
+    }
+
+    if len(visible) == 0 {
+        let ids =
+            import_resolution_candidate_ids(
+                candidates
+            );
+
+        import_resolution_mark_private(
+            item,
+            ids
+        );
+
+        set result.candidates = ids;
+
+        set result.state =
+            ImportResolutionState.PrivateSymbol;
+
+        import_resolution_push_error(
+            ref mut result,
+            import_resolution_error(
+                *item,
+                ModuleImportErrorKind.PrivateSymbol,
+                "imported symbol is not visible"
+            )
+        );
+
+        import_resolver_record(
+            resolver,
+            result.state
+        );
+
+        give result;
+    }
+
+    if len(visible) > 1 {
+        let ids =
+            import_resolution_candidate_ids(
+                visible
+            );
+
+        import_resolution_mark_ambiguous(
+            item,
+            ids
+        );
+
+        set result.candidates = ids;
+
+        set result.state =
+            ImportResolutionState.Ambiguous;
+
+        import_resolution_push_error(
+            ref mut result,
+            import_resolution_error(
+                *item,
+                ModuleImportErrorKind.AmbiguousSymbol,
+                "imported symbol is ambiguous"
+            )
+        );
+
+        import_resolver_record(
+            resolver,
+            result.state
+        );
+
+        give result;
+    }
+
+    let export =
+        visible[0];
+
+    import_resolution_mark_resolved(
+        item,
+        source,
+        export.id
+    );
+
+    set result.source_module =
+        source;
+
+    set result.resolved_export =
+        export.id;
+
+    set result.candidates =
+        [export.id];
+
+    set result.state =
+        ImportResolutionState.Resolved;
+
+    set result.valid = true;
+
+    import_resolver_record(
+        resolver,
+        result.state
+    );
+
+    give result;
+}
+
+proc import_resolver_resolve_module(
+    resolver: ref mut ImportResolver,
+    item: ref mut ModuleImport,
+    source: ModuleId
+) -> ImportResolutionResult {
+    let mut result =
+        import_resolution_result(*item);
+
+    set item.source_module =
+        source;
+
+    set item.state =
+        ModuleImportState.Resolved;
+
+    set item.resolved_export =
+        module_export_id_invalid();
+
+    set item.candidates = [];
+
+    set item.revision =
+        item.revision + 1;
+
+    set result.source_module =
+        source;
+
+    set result.state =
+        ImportResolutionState.Resolved;
+
+    set result.valid = true;
+
+    import_resolver_record(
+        resolver,
+        result.state
+    );
+
+    give result;
+}
+
+proc import_resolver_resolve(
+    resolver: ref mut ImportResolver,
+    database: ref ModuleDatabase,
+    exports: ref ModuleExportTable,
+    item: ref mut ModuleImport
+) -> ImportResolutionResult {
+    let mut result =
+        import_resolution_result(*item);
+
+    if not module_import_id_is_valid(
+        item.id
+    ) {
+        set result.state =
+            ImportResolutionState.Invalid;
+
+        import_resolution_push_error(
+            ref mut result,
+            import_resolution_error(
+                *item,
+                ModuleImportErrorKind.InvalidArgument,
+                "invalid import id"
+            )
+        );
+
+        give result;
+    }
+
+    if not item.enabled {
+        set item.state =
+            ModuleImportState.Disabled;
+
+        set result.state =
+            ImportResolutionState.Disabled;
+
+        set result.valid = true;
+
+        import_resolver_record(
+            resolver,
+            result.state
+        );
+
+        give result;
+    }
+
+    if item.kind == ModuleImportKind.Reexport
+        and not resolver.config.allow_reexport
+    {
+        set item.state =
+            ModuleImportState.Failed;
+
+        set result.state =
+            ImportResolutionState.Failed;
+
+        import_resolution_push_error(
+            ref mut result,
+            import_resolution_error(
+                *item,
+                ModuleImportErrorKind.InvalidState,
+                "reexports are disabled"
+            )
+        );
+
+        import_resolver_record(
+            resolver,
+            result.state
+        );
+
+        give result;
+    }
+
+    set item.state =
+        ModuleImportState.Resolving;
+
+    let source =
+        import_resolution_find_source_module(
+            database,
+            *item
+        );
+
+    if not module_id_is_valid(source) {
+        import_resolution_mark_missing_module(
+            item
+        );
+
+        set result.state =
+            ImportResolutionState.MissingModule;
+
+        if not item.optional {
+            import_resolution_push_error(
+                ref mut result,
+                import_resolution_error(
+                    *item,
+                    ModuleImportErrorKind.ModuleNotFound,
+                    "import source module was not found"
+                )
+            );
+        } else {
+            set result.valid =
+                resolver.config.allow_optional_missing;
+        }
+
+        import_resolver_record(
+            resolver,
+            result.state
+        );
+
+        give result;
+    }
+
+    if item.kind == ModuleImportKind.Module {
+        give import_resolver_resolve_module(
+            resolver,
+            item,
+            source
+        );
+    }
+
+    if module_import_is_glob(
+        ref item
+    ) {
+        give import_resolver_resolve_glob(
+            resolver,
+            exports,
+            item,
+            source
+        );
+    }
+
+    give import_resolver_resolve_symbol(
+        resolver,
+        exports,
+        item,
+        source
+    );
+}
+
+proc import_resolver_resolve_id(
+    resolver: ref mut ImportResolver,
+    database: ref ModuleDatabase,
+    exports: ref ModuleExportTable,
+    table: ref mut ModuleImportTable,
+    id: ModuleImportId
+) -> ImportResolutionResult {
+    let item =
+        module_import_get_mut(
+            table,
+            id
+        );
+
+    pick item {
+        Some(value) {
+            let result =
+                import_resolver_resolve(
+                    resolver,
+                    database,
+                    exports,
+                    value
+                );
+
+            module_import_refresh_statistics(
+                table
+            );
+
+            give result;
+        }
+
+        None {
+            let mut result =
+                ImportResolutionResult {
+                    id: id,
+
+                    source_module:
+                        module_id_invalid(),
+
+                    resolved_export:
+                        module_export_id_invalid(),
+
+                    candidates: [],
+
+                    state:
+                        ImportResolutionState.Invalid,
+
+                    errors: [],
+
+                    valid: false
+                };
+
+            set result.errors =
+                result.errors + [
+                    module_import_error(
+                        ModuleImportErrorKind.InvalidArgument,
+                        "",
+                        "",
+                        "",
+                        "import id does not exist",
+                        ModuleImport {
+                            id: id
+                        }.span
+                    )
+                ];
+
+            give result;
+        }
+    }
+}
+
+proc import_resolver_resolve_all(
+    resolver: ref mut ImportResolver,
+    database: ref ModuleDatabase,
+    exports: ref ModuleExportTable,
+    table: ref mut ModuleImportTable
+) -> ModuleImportResolution {
+    let mut resolved: [ModuleImport] = [];
+    let mut errors: [ModuleImportError] = [];
+
+    let mut success: usize = 0;
+    let mut failed: usize = 0;
+
+    let mut index: usize = 0;
+
+    while index < len(table.imports) {
+        let result =
+            import_resolver_resolve(
+                resolver,
+                database,
+                exports,
+                ref mut table.imports[index]
+            );
+
+        set resolved =
+            resolved + [
+                table.imports[index]
+            ];
+
+        set errors =
+            errors + result.errors;
+
+        if result.valid {
+            set success =
+                success + 1;
+        } else {
+            set failed =
+                failed + 1;
+
+            if resolver.config.fail_fast {
+                break;
+            }
+        }
+
+        set index = index + 1;
+    }
+
+    set table.errors =
+        table.errors + errors;
+
+    module_import_refresh_statistics(
+        table
+    );
+
+    give ModuleImportResolution {
+        imports: resolved,
+        errors: errors,
+
+        resolved: success,
+        failed: failed,
+
+        valid: failed == 0
+    };
+}
+
+proc import_resolution_is_resolved(
+    result: ImportResolutionResult
+) -> bool {
+    give result.valid
+        and result.state
+        == ImportResolutionState.Resolved;
+}
+
+proc import_resolution_has_errors(
+    result: ImportResolutionResult
+) -> bool {
+    give len(result.errors) != 0;
+}
+
+proc import_resolver_statistics(
+    resolver: ref ImportResolver
+) -> ImportResolverStatistics {
+    give resolver.statistics;
+}
+
+proc import_resolver_reset_statistics(
+    resolver: ref mut ImportResolver
+) {
+    set resolver.statistics =
+        import_resolver_statistics_empty();
+}
+
+proc import_resolution_state_name(
+    state: ImportResolutionState
+) -> string {
+    pick state {
+        ImportResolutionState.Unresolved {
+            give "unresolved";
+        }
+
+        ImportResolutionState.Resolving {
+            give "resolving";
+        }
+
+        ImportResolutionState.Resolved {
+            give "resolved";
+        }
+
+        ImportResolutionState.MissingModule {
+            give "missing-module";
+        }
+
+        ImportResolutionState.MissingSymbol {
+            give "missing-symbol";
+        }
+
+        ImportResolutionState.PrivateSymbol {
+            give "private-symbol";
+        }
+
+        ImportResolutionState.Ambiguous {
+            give "ambiguous";
+        }
+
+        ImportResolutionState.Disabled {
+            give "disabled";
+        }
+
+        ImportResolutionState.Invalid {
+            give "invalid";
+        }
+
+        ImportResolutionState.Failed {
+            give "failed";
+        }
+    }
+
+    give "invalid";
+}

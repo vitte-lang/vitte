@@ -1,0 +1,795 @@
+space vitte/compiler/analysis/resolution/field_resolution
+
+export *
+
+use vitte/compiler/analysis/resolution/candidate.{
+    Candidate,
+    CandidateKind,
+    CandidateOrigin,
+    CandidateVisibility,
+    CandidateState,
+    CandidateSet,
+    candidate_create,
+    candidate_with_priority,
+    candidate_with_scope_depth,
+    candidate_mark_exact,
+    candidate_mark_inaccessible,
+    candidate_set_create,
+    candidate_set_push,
+    candidate_set_resolve
+}
+
+pick FieldResolutionState {
+    Unresolved,
+    Resolved,
+    Missing,
+    Ambiguous,
+    Inaccessible,
+    Invalid
+}
+
+pick FieldResolutionErrorKind {
+    None,
+    EmptyName,
+    InvalidOwner,
+    NotFound,
+    Ambiguous,
+    Inaccessible,
+    InvalidDefinition
+}
+
+form FieldResolutionError {
+    kind: FieldResolutionErrorKind
+    owner: TypeId
+    name: string
+    message: string
+}
+
+form FieldDefinition {
+    owner: TypeId
+
+    name: string
+    definition: DefId
+
+    visibility: CandidateVisibility
+    origin: CandidateOrigin
+
+    index: usize
+    scope_depth: usize
+    priority: usize
+
+    mutable: bool
+    synthetic: bool
+}
+
+form ResolvedField {
+    owner: TypeId
+    name: string
+
+    definition: Option<DefId>
+    candidate: Option<Candidate>
+
+    index: usize
+    mutable: bool
+
+    state: FieldResolutionState
+    error: FieldResolutionError
+
+    found: bool
+}
+
+form FieldResolverStatistics {
+    resolutions: u64
+
+    resolved: u64
+    missing: u64
+    ambiguous: u64
+    inaccessible: u64
+    invalid: u64
+}
+
+form FieldResolver {
+    fields: [FieldDefinition]
+    statistics: FieldResolverStatistics
+}
+
+proc field_resolution_error_none()
+    -> FieldResolutionError
+{
+    give FieldResolutionError {
+        kind: FieldResolutionErrorKind.None,
+        owner: 0 as TypeId,
+        name: "",
+        message: ""
+    };
+}
+
+proc field_resolution_error(
+    kind: FieldResolutionErrorKind,
+    owner: TypeId,
+    name: string,
+    message: string
+) -> FieldResolutionError {
+    give FieldResolutionError {
+        kind: kind,
+        owner: owner,
+        name: name,
+        message: message
+    };
+}
+
+proc field_resolver_statistics_empty()
+    -> FieldResolverStatistics
+{
+    give FieldResolverStatistics {
+        resolutions: 0,
+
+        resolved: 0,
+        missing: 0,
+        ambiguous: 0,
+        inaccessible: 0,
+        invalid: 0
+    };
+}
+
+proc field_resolver_create()
+    -> FieldResolver
+{
+    give FieldResolver {
+        fields: [],
+        statistics:
+            field_resolver_statistics_empty()
+    };
+}
+
+proc field_definition(
+    owner: TypeId,
+    name: string,
+    definition: DefId,
+    visibility: CandidateVisibility,
+    origin: CandidateOrigin,
+    index: usize
+) -> FieldDefinition {
+    give FieldDefinition {
+        owner: owner,
+
+        name: name,
+        definition: definition,
+
+        visibility: visibility,
+        origin: origin,
+
+        index: index,
+        scope_depth: 0,
+        priority: 0,
+
+        mutable: false,
+        synthetic: false
+    };
+}
+
+proc field_definition_mutable(
+    definition: FieldDefinition
+) -> FieldDefinition {
+    let mut result: FieldDefinition =
+        definition;
+
+    set result.mutable = true;
+
+    give result;
+}
+
+proc field_definition_synthetic(
+    definition: FieldDefinition
+) -> FieldDefinition {
+    let mut result: FieldDefinition =
+        definition;
+
+    set result.synthetic = true;
+
+    give result;
+}
+
+proc field_definition_with_priority(
+    definition: FieldDefinition,
+    priority: usize
+) -> FieldDefinition {
+    let mut result: FieldDefinition =
+        definition;
+
+    set result.priority = priority;
+
+    give result;
+}
+
+proc field_definition_with_scope_depth(
+    definition: FieldDefinition,
+    depth: usize
+) -> FieldDefinition {
+    let mut result: FieldDefinition =
+        definition;
+
+    set result.scope_depth = depth;
+
+    give result;
+}
+
+proc field_resolver_register(
+    resolver: ref mut FieldResolver,
+    definition: FieldDefinition
+) {
+    set resolver.fields =
+        resolver.fields + [definition];
+}
+
+proc field_candidate_from_definition(
+    definition: FieldDefinition,
+    requested: string
+) -> Candidate {
+    let mut candidate =
+        candidate_create(
+            definition.name,
+            CandidateKind.Field,
+            definition.origin,
+            definition.visibility,
+            Some(definition.definition)
+        );
+
+    set candidate =
+        candidate_with_scope_depth(
+            candidate,
+            definition.scope_depth
+        );
+
+    set candidate =
+        candidate_with_priority(
+            candidate,
+            definition.priority
+        );
+
+    if definition.name == requested {
+        set candidate =
+            candidate_mark_exact(candidate);
+    }
+
+    set candidate.synthetic =
+        definition.synthetic;
+
+    give candidate;
+}
+
+proc field_resolver_collect(
+    resolver: ref FieldResolver,
+    owner: TypeId,
+    name: string
+) -> CandidateSet {
+    let mut set =
+        candidate_set_create();
+
+    for definition in resolver.fields {
+        if definition.owner != owner {
+            continue;
+        }
+
+        if definition.name != name {
+            continue;
+        }
+
+        candidate_set_push(
+            ref mut set,
+            field_candidate_from_definition(
+                definition,
+                name
+            )
+        );
+    }
+
+    give set;
+}
+
+proc field_candidate_accessible(
+    candidate: Candidate,
+    allow_private: bool,
+    allow_package: bool
+) -> bool {
+    pick candidate.visibility {
+        CandidateVisibility.Public {
+            give true;
+        }
+
+        CandidateVisibility.Package {
+            give allow_package;
+        }
+
+        CandidateVisibility.Private {
+            give allow_private;
+        }
+    }
+
+    give false;
+}
+
+proc field_resolver_apply_visibility(
+    set: ref mut CandidateSet,
+    allow_private: bool,
+    allow_package: bool
+) {
+    let mut output: [Candidate] = [];
+
+    for candidate in set.candidates {
+        if field_candidate_accessible(
+            candidate,
+            allow_private,
+            allow_package
+        ) {
+            set output =
+                output + [candidate];
+        } else {
+            set output =
+                output + [
+                    candidate_mark_inaccessible(
+                        candidate
+                    )
+                ];
+        }
+    }
+
+    set set.candidates = output;
+}
+
+proc field_resolver_find_definition(
+    resolver: ref FieldResolver,
+    owner: TypeId,
+    candidate: Candidate
+) -> Option<FieldDefinition> {
+    for definition in resolver.fields {
+        if definition.owner == owner
+            and definition.name == candidate.name
+        {
+            pick candidate.definition {
+                Some(id) {
+                    if definition.definition == id {
+                        give Some(definition);
+                    }
+                }
+
+                None {}
+            }
+        }
+    }
+
+    give None;
+}
+
+proc field_resolution_missing(
+    owner: TypeId,
+    name: string
+) -> ResolvedField {
+    give ResolvedField {
+        owner: owner,
+        name: name,
+
+        definition: None,
+        candidate: None,
+
+        index: 0,
+        mutable: false,
+
+        state: FieldResolutionState.Missing,
+
+        error:
+            field_resolution_error(
+                FieldResolutionErrorKind.NotFound,
+                owner,
+                name,
+                "field was not found"
+            ),
+
+        found: false
+    };
+}
+
+proc field_resolution_invalid(
+    owner: TypeId,
+    name: string,
+    kind: FieldResolutionErrorKind,
+    message: string
+) -> ResolvedField {
+    give ResolvedField {
+        owner: owner,
+        name: name,
+
+        definition: None,
+        candidate: None,
+
+        index: 0,
+        mutable: false,
+
+        state: FieldResolutionState.Invalid,
+
+        error:
+            field_resolution_error(
+                kind,
+                owner,
+                name,
+                message
+            ),
+
+        found: false
+    };
+}
+
+proc field_resolution_ambiguous(
+    owner: TypeId,
+    name: string
+) -> ResolvedField {
+    give ResolvedField {
+        owner: owner,
+        name: name,
+
+        definition: None,
+        candidate: None,
+
+        index: 0,
+        mutable: false,
+
+        state: FieldResolutionState.Ambiguous,
+
+        error:
+            field_resolution_error(
+                FieldResolutionErrorKind.Ambiguous,
+                owner,
+                name,
+                "field resolution is ambiguous"
+            ),
+
+        found: false
+    };
+}
+
+proc field_resolution_inaccessible(
+    owner: TypeId,
+    name: string,
+    candidate: Candidate
+) -> ResolvedField {
+    give ResolvedField {
+        owner: owner,
+        name: name,
+
+        definition: candidate.definition,
+        candidate: Some(candidate),
+
+        index: 0,
+        mutable: false,
+
+        state:
+            FieldResolutionState.Inaccessible,
+
+        error:
+            field_resolution_error(
+                FieldResolutionErrorKind.Inaccessible,
+                owner,
+                name,
+                "field is not visible from this context"
+            ),
+
+        found: false
+    };
+}
+
+proc field_resolution_resolved(
+    definition: FieldDefinition,
+    candidate: Candidate
+) -> ResolvedField {
+    give ResolvedField {
+        owner: definition.owner,
+        name: definition.name,
+
+        definition:
+            Some(definition.definition),
+
+        candidate:
+            Some(candidate),
+
+        index:
+            definition.index,
+
+        mutable:
+            definition.mutable,
+
+        state:
+            FieldResolutionState.Resolved,
+
+        error:
+            field_resolution_error_none(),
+
+        found:
+            true
+    };
+}
+
+proc field_resolver_record(
+    resolver: ref mut FieldResolver,
+    resolution: ResolvedField
+) {
+    set resolver.statistics.resolutions =
+        resolver.statistics.resolutions + 1;
+
+    pick resolution.state {
+        FieldResolutionState.Resolved {
+            set resolver.statistics.resolved =
+                resolver.statistics.resolved + 1;
+        }
+
+        FieldResolutionState.Missing {
+            set resolver.statistics.missing =
+                resolver.statistics.missing + 1;
+        }
+
+        FieldResolutionState.Ambiguous {
+            set resolver.statistics.ambiguous =
+                resolver.statistics.ambiguous + 1;
+        }
+
+        FieldResolutionState.Inaccessible {
+            set resolver.statistics.inaccessible =
+                resolver.statistics.inaccessible + 1;
+        }
+
+        FieldResolutionState.Invalid {
+            set resolver.statistics.invalid =
+                resolver.statistics.invalid + 1;
+        }
+
+        FieldResolutionState.Unresolved {}
+    }
+}
+
+proc field_resolver_resolve(
+    resolver: ref mut FieldResolver,
+    owner: TypeId,
+    name: string,
+    allow_private: bool,
+    allow_package: bool
+) -> ResolvedField {
+    if name == "" {
+        let result =
+            field_resolution_invalid(
+                owner,
+                name,
+                FieldResolutionErrorKind.EmptyName,
+                "field name is empty"
+            );
+
+        field_resolver_record(
+            resolver,
+            result
+        );
+
+        give result;
+    }
+
+    let mut candidates =
+        field_resolver_collect(
+            ref resolver,
+            owner,
+            name
+        );
+
+    if len(candidates.candidates) == 0 {
+        let result =
+            field_resolution_missing(
+                owner,
+                name
+            );
+
+        field_resolver_record(
+            resolver,
+            result
+        );
+
+        give result;
+    }
+
+    field_resolver_apply_visibility(
+        ref mut candidates,
+        allow_private,
+        allow_package
+    );
+
+    let resolved =
+        candidate_set_resolve(
+            ref mut candidates
+        );
+
+    if candidates.ambiguous {
+        let result =
+            field_resolution_ambiguous(
+                owner,
+                name
+            );
+
+        field_resolver_record(
+            resolver,
+            result
+        );
+
+        give result;
+    }
+
+    pick resolved {
+        None {
+            for candidate in candidates.candidates {
+                if candidate.state
+                    == CandidateState.Inaccessible
+                {
+                    let result =
+                        field_resolution_inaccessible(
+                            owner,
+                            name,
+                            candidate
+                        );
+
+                    field_resolver_record(
+                        resolver,
+                        result
+                    );
+
+                    give result;
+                }
+            }
+
+            let result =
+                field_resolution_missing(
+                    owner,
+                    name
+                );
+
+            field_resolver_record(
+                resolver,
+                result
+            );
+
+            give result;
+        }
+
+        Some(candidate) {
+            let definition =
+                field_resolver_find_definition(
+                    ref resolver,
+                    owner,
+                    candidate
+                );
+
+            pick definition {
+                Some(value) {
+                    let result =
+                        field_resolution_resolved(
+                            value,
+                            candidate
+                        );
+
+                    field_resolver_record(
+                        resolver,
+                        result
+                    );
+
+                    give result;
+                }
+
+                None {
+                    let result =
+                        field_resolution_invalid(
+                            owner,
+                            name,
+                            FieldResolutionErrorKind.InvalidDefinition,
+                            "resolved field candidate has no definition"
+                        );
+
+                    field_resolver_record(
+                        resolver,
+                        result
+                    );
+
+                    give result;
+                }
+            }
+        }
+    }
+
+    give field_resolution_invalid(
+        owner,
+        name,
+        FieldResolutionErrorKind.InvalidDefinition,
+        "field resolution failed"
+    );
+}
+
+proc field_resolver_resolve_local(
+    resolver: ref mut FieldResolver,
+    owner: TypeId,
+    name: string
+) -> ResolvedField {
+    give field_resolver_resolve(
+        resolver,
+        owner,
+        name,
+        true,
+        true
+    );
+}
+
+proc field_resolver_resolve_external(
+    resolver: ref mut FieldResolver,
+    owner: TypeId,
+    name: string,
+    same_package: bool
+) -> ResolvedField {
+    give field_resolver_resolve(
+        resolver,
+        owner,
+        name,
+        false,
+        same_package
+    );
+}
+
+proc field_resolution_is_resolved(
+    resolution: ResolvedField
+) -> bool {
+    give resolution.state
+        == FieldResolutionState.Resolved
+        and resolution.found;
+}
+
+proc field_resolution_has_error(
+    resolution: ResolvedField
+) -> bool {
+    give resolution.error.kind
+        != FieldResolutionErrorKind.None;
+}
+
+proc field_resolver_statistics(
+    resolver: ref FieldResolver
+) -> FieldResolverStatistics {
+    give resolver.statistics;
+}
+
+proc field_resolver_reset_statistics(
+    resolver: ref mut FieldResolver
+) {
+    set resolver.statistics =
+        field_resolver_statistics_empty();
+}
+
+proc field_resolution_state_name(
+    state: FieldResolutionState
+) -> string {
+    pick state {
+        FieldResolutionState.Unresolved {
+            give "unresolved";
+        }
+
+        FieldResolutionState.Resolved {
+            give "resolved";
+        }
+
+        FieldResolutionState.Missing {
+            give "missing";
+        }
+
+        FieldResolutionState.Ambiguous {
+            give "ambiguous";
+        }
+
+        FieldResolutionState.Inaccessible {
+            give "inaccessible";
+        }
+
+        FieldResolutionState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}

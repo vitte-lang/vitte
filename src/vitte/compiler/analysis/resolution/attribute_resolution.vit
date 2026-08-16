@@ -1,0 +1,448 @@
+space vitte/compiler/analysis/resolution/attribute_resolution
+
+export *
+
+pick AttributeResolutionKind {
+    Builtin,
+    User,
+    Unknown
+}
+
+pick AttributeTargetKind {
+    Module,
+    Form,
+    Class,
+    Union,
+    Pick,
+    Trait,
+    Impl,
+    Proc,
+    Field,
+    Const,
+    Static,
+    Global,
+    Type,
+    Parameter
+}
+
+pick AttributeResolutionState {
+    Pending,
+    Resolved,
+    Unknown,
+    Invalid,
+    Duplicate
+}
+
+form AttributePath {
+    segments: [string]
+}
+
+form AttributeArgument {
+    name: ?string
+    value: string
+}
+
+form AttributeReference {
+    path: AttributePath
+    arguments: [AttributeArgument]
+    target: AttributeTargetKind
+}
+
+form ResolvedAttribute {
+    reference: AttributeReference
+    kind: AttributeResolutionKind
+    state: AttributeResolutionState
+    definition_id: ?DefId
+}
+
+form AttributeResolutionDiagnostic {
+    message: string
+    attribute: string
+}
+
+form AttributeResolutionResult {
+    attributes: [ResolvedAttribute]
+    diagnostics: [AttributeResolutionDiagnostic]
+    resolved: usize
+    failed: usize
+}
+
+form AttributeResolver {
+    builtin_names: [string]
+    resolved_count: usize
+    failed_count: usize
+}
+
+proc attribute_path_create() -> AttributePath {
+    give AttributePath {
+        segments: []
+    };
+}
+
+proc attribute_path_from_name(name: string) -> AttributePath {
+    give AttributePath {
+        segments: [name]
+    };
+}
+
+proc attribute_path_push(
+    path: ref mut AttributePath,
+    segment: string
+) {
+    set path.segments = path.segments + [segment];
+}
+
+proc attribute_path_is_empty(
+    path: ref AttributePath
+) -> bool {
+    give len(path.segments) == 0;
+}
+
+proc attribute_path_name(
+    path: ref AttributePath
+) -> string {
+    if len(path.segments) == 0 {
+        give "";
+    }
+
+    give path.segments[len(path.segments) - 1];
+}
+
+proc attribute_argument_create(
+    name: ?string,
+    value: string
+) -> AttributeArgument {
+    give AttributeArgument {
+        name: name,
+        value: value
+    };
+}
+
+proc attribute_reference_create(
+    path: AttributePath,
+    arguments: [AttributeArgument],
+    target: AttributeTargetKind
+) -> AttributeReference {
+    give AttributeReference {
+        path: path,
+        arguments: arguments,
+        target: target
+    };
+}
+
+proc attribute_resolver_create() -> AttributeResolver {
+    give AttributeResolver {
+        builtin_names: [
+            "inline",
+            "noinline",
+            "deprecated",
+            "cold",
+            "hot",
+            "noreturn",
+            "must_use",
+            "repr",
+            "align",
+            "packed",
+            "export_name",
+            "link_name",
+            "link_section",
+            "cfg",
+            "test",
+            "bench"
+        ],
+        resolved_count: 0,
+        failed_count: 0
+    };
+}
+
+proc attribute_resolver_reset(
+    resolver: ref mut AttributeResolver
+) {
+    set resolver.resolved_count = 0;
+    set resolver.failed_count = 0;
+}
+
+proc attribute_resolver_is_builtin(
+    resolver: ref AttributeResolver,
+    name: string
+) -> bool {
+    for builtin in resolver.builtin_names {
+        if builtin == name {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc attribute_target_accepts_builtin(
+    target: AttributeTargetKind,
+    name: string
+) -> bool {
+    match target {
+        case AttributeTargetKind.Module {
+            give name == "deprecated"
+                or name == "cfg";
+        }
+
+        case AttributeTargetKind.Form {
+            give name == "repr"
+                or name == "align"
+                or name == "packed"
+                or name == "deprecated";
+        }
+
+        case AttributeTargetKind.Class {
+            give name == "deprecated";
+        }
+
+        case AttributeTargetKind.Union {
+            give name == "repr"
+                or name == "align"
+                or name == "packed";
+        }
+
+        case AttributeTargetKind.Pick {
+            give name == "repr"
+                or name == "deprecated";
+        }
+
+        case AttributeTargetKind.Proc {
+            give name == "inline"
+                or name == "noinline"
+                or name == "cold"
+                or name == "hot"
+                or name == "noreturn"
+                or name == "must_use"
+                or name == "deprecated"
+                or name == "export_name"
+                or name == "link_name"
+                or name == "link_section"
+                or name == "test"
+                or name == "bench";
+        }
+
+        case AttributeTargetKind.Field {
+            give name == "deprecated";
+        }
+
+        case AttributeTargetKind.Const {
+            give name == "deprecated";
+        }
+
+        case AttributeTargetKind.Static {
+            give name == "deprecated"
+                or name == "link_name"
+                or name == "link_section";
+        }
+
+        case AttributeTargetKind.Global {
+            give name == "deprecated"
+                or name == "link_name"
+                or name == "link_section";
+        }
+
+        else {
+            give true;
+        }
+    }
+}
+
+proc attribute_resolution_unknown(
+    reference: AttributeReference
+) -> ResolvedAttribute {
+    give ResolvedAttribute {
+        reference: reference,
+        kind: AttributeResolutionKind.Unknown,
+        state: AttributeResolutionState.Unknown,
+        definition_id: null
+    };
+}
+
+proc attribute_resolution_builtin(
+    reference: AttributeReference
+) -> ResolvedAttribute {
+    give ResolvedAttribute {
+        reference: reference,
+        kind: AttributeResolutionKind.Builtin,
+        state: AttributeResolutionState.Resolved,
+        definition_id: null
+    };
+}
+
+proc attribute_resolution_user(
+    reference: AttributeReference,
+    definition_id: DefId
+) -> ResolvedAttribute {
+    give ResolvedAttribute {
+        reference: reference,
+        kind: AttributeResolutionKind.User,
+        state: AttributeResolutionState.Resolved,
+        definition_id: definition_id
+    };
+}
+
+proc attribute_resolution_invalid(
+    reference: AttributeReference
+) -> ResolvedAttribute {
+    give ResolvedAttribute {
+        reference: reference,
+        kind: AttributeResolutionKind.Unknown,
+        state: AttributeResolutionState.Invalid,
+        definition_id: null
+    };
+}
+
+proc attribute_resolver_resolve_builtin(
+    resolver: ref mut AttributeResolver,
+    reference: AttributeReference
+) -> ResolvedAttribute {
+    if attribute_path_is_empty(ref reference.path) {
+        set resolver.failed_count += 1;
+
+        give attribute_resolution_invalid(reference);
+    }
+
+    let name = attribute_path_name(ref reference.path);
+
+    if not attribute_resolver_is_builtin(
+        ref resolver,
+        name
+    ) {
+        set resolver.failed_count += 1;
+
+        give attribute_resolution_unknown(reference);
+    }
+
+    if not attribute_target_accepts_builtin(
+        reference.target,
+        name
+    ) {
+        set resolver.failed_count += 1;
+
+        give attribute_resolution_invalid(reference);
+    }
+
+    set resolver.resolved_count += 1;
+
+    give attribute_resolution_builtin(reference);
+}
+
+proc attribute_resolution_diagnostic(
+    message: string,
+    attribute: string
+) -> AttributeResolutionDiagnostic {
+    give AttributeResolutionDiagnostic {
+        message: message,
+        attribute: attribute
+    };
+}
+
+proc attribute_resolution_result_create()
+    -> AttributeResolutionResult {
+    give AttributeResolutionResult {
+        attributes: [],
+        diagnostics: [],
+        resolved: 0,
+        failed: 0
+    };
+}
+
+proc attribute_resolution_result_push(
+    result: ref mut AttributeResolutionResult,
+    attribute: ResolvedAttribute
+) {
+    set result.attributes =
+        result.attributes + [attribute];
+
+    match attribute.state {
+        case AttributeResolutionState.Resolved {
+            set result.resolved += 1;
+        }
+
+        case AttributeResolutionState.Pending {}
+
+        else {
+            set result.failed += 1;
+        }
+    }
+}
+
+proc attribute_resolution_result_diagnostic(
+    result: ref mut AttributeResolutionResult,
+    diagnostic: AttributeResolutionDiagnostic
+) {
+    set result.diagnostics =
+        result.diagnostics + [diagnostic];
+}
+
+proc attribute_resolver_resolve_all(
+    resolver: ref mut AttributeResolver,
+    attributes: [AttributeReference]
+) -> AttributeResolutionResult {
+    let mut result =
+        attribute_resolution_result_create();
+
+    for attribute in attributes {
+        let resolved =
+            attribute_resolver_resolve_builtin(
+                resolver,
+                attribute
+            );
+
+        if resolved.state == AttributeResolutionState.Unknown {
+            attribute_resolution_result_diagnostic(
+                ref mut result,
+                attribute_resolution_diagnostic(
+                    "unknown attribute",
+                    attribute_path_name(
+                        ref resolved.reference.path
+                    )
+                )
+            );
+        }
+
+        if resolved.state == AttributeResolutionState.Invalid {
+            attribute_resolution_result_diagnostic(
+                ref mut result,
+                attribute_resolution_diagnostic(
+                    "attribute is not valid for this target",
+                    attribute_path_name(
+                        ref resolved.reference.path
+                    )
+                )
+            );
+        }
+
+        attribute_resolution_result_push(
+            ref mut result,
+            resolved
+        );
+    }
+
+    give result;
+}
+
+proc attribute_resolution_is_success(
+    result: ref AttributeResolutionResult
+) -> bool {
+    give result.failed == 0;
+}
+
+proc attribute_resolution_has_errors(
+    result: ref AttributeResolutionResult
+) -> bool {
+    give result.failed > 0;
+}
+
+proc attribute_resolver_resolved_count(
+    resolver: ref AttributeResolver
+) -> usize {
+    give resolver.resolved_count;
+}
+
+proc attribute_resolver_failed_count(
+    resolver: ref AttributeResolver
+) -> usize {
+    give resolver.failed_count;
+}

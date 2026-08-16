@@ -1,0 +1,624 @@
+space vitte/compiler/analysis/resolution/candidate
+
+export *
+
+pick CandidateKind {
+    Module,
+    Namespace,
+    Type,
+    Form,
+    Class,
+    Union,
+    Pick,
+    Trait,
+    Impl,
+    Procedure,
+    Method,
+    Field,
+    Constant,
+    Static,
+    Global,
+    Parameter,
+    Generic,
+    Attribute,
+    Import,
+    Export,
+    Builtin,
+    Unknown
+}
+
+pick CandidateOrigin {
+    Local,
+    ParentScope,
+    Module,
+    Import,
+    Prelude,
+    Trait,
+    Impl,
+    Builtin,
+    Generated
+}
+
+pick CandidateVisibility {
+    Private,
+    Package,
+    Public
+}
+
+pick CandidateState {
+    Available,
+    Rejected,
+    Ambiguous,
+    Inaccessible,
+    Invalid
+}
+
+form Candidate {
+    name: string
+
+    kind: CandidateKind
+    origin: CandidateOrigin
+    visibility: CandidateVisibility
+    state: CandidateState
+
+    definition: Option<DefId>
+
+    scope_depth: usize
+    priority: usize
+
+    exact: bool
+    synthetic: bool
+}
+
+form CandidateSet {
+    candidates: [Candidate]
+    accepted: [Candidate]
+    rejected: [Candidate]
+
+    ambiguous: bool
+}
+
+form CandidateStatistics {
+    total: usize
+    accepted: usize
+    rejected: usize
+    exact: usize
+    synthetic: usize
+}
+
+proc candidate_create(
+    name: string,
+    kind: CandidateKind,
+    origin: CandidateOrigin,
+    visibility: CandidateVisibility,
+    definition: Option<DefId>
+) -> Candidate {
+    give Candidate {
+        name: name,
+
+        kind: kind,
+        origin: origin,
+        visibility: visibility,
+        state: CandidateState.Available,
+
+        definition: definition,
+
+        scope_depth: 0,
+        priority: 0,
+
+        exact: false,
+        synthetic: false
+    };
+}
+
+proc candidate_builtin(
+    name: string,
+    kind: CandidateKind
+) -> Candidate {
+    give Candidate {
+        name: name,
+
+        kind: kind,
+        origin: CandidateOrigin.Builtin,
+        visibility: CandidateVisibility.Public,
+        state: CandidateState.Available,
+
+        definition: None,
+
+        scope_depth: 0,
+        priority: 0,
+
+        exact: true,
+        synthetic: true
+    };
+}
+
+proc candidate_set_create() -> CandidateSet {
+    give CandidateSet {
+        candidates: [],
+        accepted: [],
+        rejected: [],
+
+        ambiguous: false
+    };
+}
+
+proc candidate_statistics_empty()
+    -> CandidateStatistics
+{
+    give CandidateStatistics {
+        total: 0,
+        accepted: 0,
+        rejected: 0,
+        exact: 0,
+        synthetic: 0
+    };
+}
+
+proc candidate_with_priority(
+    candidate: Candidate,
+    priority: usize
+) -> Candidate {
+    let mut result: Candidate = candidate;
+
+    set result.priority = priority;
+
+    give result;
+}
+
+proc candidate_with_scope_depth(
+    candidate: Candidate,
+    depth: usize
+) -> Candidate {
+    let mut result: Candidate = candidate;
+
+    set result.scope_depth = depth;
+
+    give result;
+}
+
+proc candidate_mark_exact(
+    candidate: Candidate
+) -> Candidate {
+    let mut result: Candidate = candidate;
+
+    set result.exact = true;
+
+    give result;
+}
+
+proc candidate_mark_synthetic(
+    candidate: Candidate
+) -> Candidate {
+    let mut result: Candidate = candidate;
+
+    set result.synthetic = true;
+
+    give result;
+}
+
+proc candidate_reject(
+    candidate: Candidate
+) -> Candidate {
+    let mut result: Candidate = candidate;
+
+    set result.state =
+        CandidateState.Rejected;
+
+    give result;
+}
+
+proc candidate_mark_ambiguous(
+    candidate: Candidate
+) -> Candidate {
+    let mut result: Candidate = candidate;
+
+    set result.state =
+        CandidateState.Ambiguous;
+
+    give result;
+}
+
+proc candidate_mark_inaccessible(
+    candidate: Candidate
+) -> Candidate {
+    let mut result: Candidate = candidate;
+
+    set result.state =
+        CandidateState.Inaccessible;
+
+    give result;
+}
+
+proc candidate_mark_invalid(
+    candidate: Candidate
+) -> Candidate {
+    let mut result: Candidate = candidate;
+
+    set result.state =
+        CandidateState.Invalid;
+
+    give result;
+}
+
+proc candidate_is_available(
+    candidate: Candidate
+) -> bool {
+    give candidate.state
+        == CandidateState.Available;
+}
+
+proc candidate_is_exact(
+    candidate: Candidate
+) -> bool {
+    give candidate.exact;
+}
+
+proc candidate_has_definition(
+    candidate: Candidate
+) -> bool {
+    pick candidate.definition {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc candidate_same_definition(
+    left: Candidate,
+    right: Candidate
+) -> bool {
+    pick left.definition {
+        None {
+            give false;
+        }
+
+        Some(left_id) {
+            pick right.definition {
+                None {
+                    give false;
+                }
+
+                Some(right_id) {
+                    give left_id == right_id;
+                }
+            }
+        }
+    }
+
+    give false;
+}
+
+proc candidate_same_identity(
+    left: Candidate,
+    right: Candidate
+) -> bool {
+    if candidate_same_definition(
+        left,
+        right
+    ) {
+        give true;
+    }
+
+    give left.name == right.name
+        and left.kind == right.kind
+        and left.origin == right.origin;
+}
+
+proc candidate_better_than(
+    left: Candidate,
+    right: Candidate
+) -> bool {
+    if left.exact
+        and not right.exact
+    {
+        give true;
+    }
+
+    if right.exact
+        and not left.exact
+    {
+        give false;
+    }
+
+    if left.priority != right.priority {
+        give left.priority > right.priority;
+    }
+
+    if left.scope_depth
+        != right.scope_depth
+    {
+        give left.scope_depth
+            < right.scope_depth;
+    }
+
+    give false;
+}
+
+proc candidate_set_contains(
+    set: CandidateSet,
+    candidate: Candidate
+) -> bool {
+    for current in set.candidates {
+        if candidate_same_identity(
+            current,
+            candidate
+        ) {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc candidate_set_push(
+    set: ref mut CandidateSet,
+    candidate: Candidate
+) -> bool {
+    if candidate_set_contains(
+        *set,
+        candidate
+    ) {
+        give false;
+    }
+
+    set set.candidates =
+        set.candidates + [candidate];
+
+    give true;
+}
+
+proc candidate_set_accept(
+    set: ref mut CandidateSet,
+    candidate: Candidate
+) {
+    set set.accepted =
+        set.accepted + [candidate];
+}
+
+proc candidate_set_reject(
+    set: ref mut CandidateSet,
+    candidate: Candidate
+) {
+    set set.rejected =
+        set.rejected + [
+            candidate_reject(candidate)
+        ];
+}
+
+proc candidate_set_filter_available(
+    set: ref mut CandidateSet
+) {
+    set set.accepted = [];
+    set set.rejected = [];
+
+    for candidate in set.candidates {
+        if candidate_is_available(candidate) {
+            candidate_set_accept(
+                set,
+                candidate
+            );
+        } else {
+            candidate_set_reject(
+                set,
+                candidate
+            );
+        }
+    }
+}
+
+proc candidate_set_best(
+    set: CandidateSet
+) -> Option<Candidate> {
+    let mut found: bool = false;
+
+    let mut best: Candidate =
+        candidate_create(
+            "",
+            CandidateKind.Unknown,
+            CandidateOrigin.Local,
+            CandidateVisibility.Private,
+            None
+        );
+
+    for candidate in set.accepted {
+        if not found {
+            set best = candidate;
+            set found = true;
+        } else {
+            if candidate_better_than(
+                candidate,
+                best
+            ) {
+                set best = candidate;
+            }
+        }
+    }
+
+    if not found {
+        give None;
+    }
+
+    give Some(best);
+}
+
+proc candidate_set_detect_ambiguity(
+    set: ref mut CandidateSet
+) -> bool {
+    let best =
+        candidate_set_best(*set);
+
+    pick best {
+        None {
+            set set.ambiguous = false;
+
+            give false;
+        }
+
+        Some(best_candidate) {
+            let mut count: usize = 0;
+
+            for candidate in set.accepted {
+                if not candidate_better_than(
+                    best_candidate,
+                    candidate
+                )
+                    and not candidate_better_than(
+                        candidate,
+                        best_candidate
+                    )
+                {
+                    set count = count + 1;
+                }
+            }
+
+            set set.ambiguous =
+                count > 1;
+
+            give set.ambiguous;
+        }
+    }
+}
+
+proc candidate_set_resolve(
+    set: ref mut CandidateSet
+) -> Option<Candidate> {
+    candidate_set_filter_available(set);
+
+    if candidate_set_detect_ambiguity(set) {
+        give None;
+    }
+
+    give candidate_set_best(*set);
+}
+
+proc candidate_set_statistics(
+    set: CandidateSet
+) -> CandidateStatistics {
+    let mut statistics:
+        CandidateStatistics =
+        candidate_statistics_empty();
+
+    statistics.total =
+        len(set.candidates);
+
+    statistics.accepted =
+        len(set.accepted);
+
+    statistics.rejected =
+        len(set.rejected);
+
+    for candidate in set.candidates {
+        if candidate.exact {
+            set statistics.exact =
+                statistics.exact + 1;
+        }
+
+        if candidate.synthetic {
+            set statistics.synthetic =
+                statistics.synthetic + 1;
+        }
+    }
+
+    give statistics;
+}
+
+proc candidate_kind_name(
+    kind: CandidateKind
+) -> string {
+    pick kind {
+        CandidateKind.Module {
+            give "module";
+        }
+
+        CandidateKind.Namespace {
+            give "namespace";
+        }
+
+        CandidateKind.Type {
+            give "type";
+        }
+
+        CandidateKind.Form {
+            give "form";
+        }
+
+        CandidateKind.Class {
+            give "class";
+        }
+
+        CandidateKind.Union {
+            give "union";
+        }
+
+        CandidateKind.Pick {
+            give "pick";
+        }
+
+        CandidateKind.Trait {
+            give "trait";
+        }
+
+        CandidateKind.Impl {
+            give "impl";
+        }
+
+        CandidateKind.Procedure {
+            give "procedure";
+        }
+
+        CandidateKind.Method {
+            give "method";
+        }
+
+        CandidateKind.Field {
+            give "field";
+        }
+
+        CandidateKind.Constant {
+            give "constant";
+        }
+
+        CandidateKind.Static {
+            give "static";
+        }
+
+        CandidateKind.Global {
+            give "global";
+        }
+
+        CandidateKind.Parameter {
+            give "parameter";
+        }
+
+        CandidateKind.Generic {
+            give "generic";
+        }
+
+        CandidateKind.Attribute {
+            give "attribute";
+        }
+
+        CandidateKind.Import {
+            give "import";
+        }
+
+        CandidateKind.Export {
+            give "export";
+        }
+
+        CandidateKind.Builtin {
+            give "builtin";
+        }
+
+        CandidateKind.Unknown {
+            give "unknown";
+        }
+    }
+
+    give "unknown";
+}

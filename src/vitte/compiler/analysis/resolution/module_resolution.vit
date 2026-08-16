@@ -1,0 +1,1100 @@
+space vitte/compiler/analysis/resolution/module_resolution
+
+export *
+
+use vitte/compiler/analysis/modules/module_database.{
+    ModuleId,
+    ModuleDatabase,
+    ModuleDatabaseEntry,
+    ModuleDatabaseEntryState,
+
+    module_id_invalid,
+    module_id_is_valid,
+    module_id_equal,
+
+    module_database_get,
+    module_database_get_by_name,
+    module_database_get_by_path
+}
+
+use vitte/compiler/analysis/modules/module_path.{
+    ModulePath,
+    ModulePathValidation,
+
+    module_path,
+    module_path_validate,
+    module_path_parent,
+    module_path_join,
+    module_path_is_valid,
+    module_path_is_relative
+}
+
+use vitte/compiler/analysis/resolution/candidate.{
+    Candidate,
+    CandidateKind,
+    CandidateOrigin,
+    CandidateVisibility,
+    CandidateSet,
+
+    candidate_create,
+    candidate_mark_exact,
+    candidate_with_priority,
+
+    candidate_set_create,
+    candidate_set_push,
+    candidate_set_resolve
+}
+
+pick ModuleResolutionKind {
+    Name,
+    Path,
+    RelativePath,
+    Qualified,
+    Candidate
+}
+
+pick ModuleResolutionState {
+    Unresolved,
+    Resolved,
+    Missing,
+    Ambiguous,
+    Invalid,
+    Failed
+}
+
+pick ModuleResolutionErrorKind {
+    None,
+
+    EmptyName,
+    EmptyPath,
+
+    InvalidModule,
+    InvalidPath,
+    InvalidBaseModule,
+
+    ModuleNotFound,
+    AmbiguousModule,
+
+    RelativePathWithoutBase,
+    RelativePathEscapesRoot,
+
+    ModuleFailed,
+    ModuleInvalidated
+}
+
+form ModuleResolutionError {
+    kind: ModuleResolutionErrorKind
+
+    name: string
+    path: string
+
+    message: string
+}
+
+form ResolvedModule {
+    id: ModuleId
+
+    name: string
+    canonical_path: string
+
+    candidate: Option<Candidate>
+
+    kind: ModuleResolutionKind
+    state: ModuleResolutionState
+
+    error: ModuleResolutionError
+
+    found: bool
+}
+
+form ModuleResolutionConfig {
+    allow_relative: bool
+    allow_failed: bool
+    allow_invalidated: bool
+
+    search_name_fallback: bool
+    search_path_fallback: bool
+}
+
+form ModuleResolutionStatistics {
+    resolutions: u64
+
+    by_name: u64
+    by_path: u64
+    relative: u64
+
+    resolved: u64
+    missing: u64
+    ambiguous: u64
+    invalid: u64
+
+    fallbacks: u64
+}
+
+form ModuleResolver {
+    config: ModuleResolutionConfig
+    statistics: ModuleResolutionStatistics
+}
+
+proc module_resolution_config_default()
+    -> ModuleResolutionConfig
+{
+    give ModuleResolutionConfig {
+        allow_relative: true,
+        allow_failed: false,
+        allow_invalidated: false,
+
+        search_name_fallback: true,
+        search_path_fallback: true
+    };
+}
+
+proc module_resolution_statistics_empty()
+    -> ModuleResolutionStatistics
+{
+    give ModuleResolutionStatistics {
+        resolutions: 0,
+
+        by_name: 0,
+        by_path: 0,
+        relative: 0,
+
+        resolved: 0,
+        missing: 0,
+        ambiguous: 0,
+        invalid: 0,
+
+        fallbacks: 0
+    };
+}
+
+proc module_resolver_create_with_config(
+    config: ModuleResolutionConfig
+) -> ModuleResolver {
+    give ModuleResolver {
+        config: config,
+        statistics:
+            module_resolution_statistics_empty()
+    };
+}
+
+proc module_resolver_create()
+    -> ModuleResolver
+{
+    give module_resolver_create_with_config(
+        module_resolution_config_default()
+    );
+}
+
+proc module_resolution_error_none()
+    -> ModuleResolutionError
+{
+    give ModuleResolutionError {
+        kind: ModuleResolutionErrorKind.None,
+
+        name: "",
+        path: "",
+
+        message: ""
+    };
+}
+
+proc module_resolution_error(
+    kind: ModuleResolutionErrorKind,
+    name: string,
+    path: string,
+    message: string
+) -> ModuleResolutionError {
+    give ModuleResolutionError {
+        kind: kind,
+
+        name: name,
+        path: path,
+
+        message: message
+    };
+}
+
+proc module_resolution_missing(
+    name: string,
+    path: string,
+    kind: ModuleResolutionKind
+) -> ResolvedModule {
+    give ResolvedModule {
+        id: module_id_invalid(),
+
+        name: name,
+        canonical_path: path,
+
+        candidate: None,
+
+        kind: kind,
+        state: ModuleResolutionState.Missing,
+
+        error:
+            module_resolution_error(
+                ModuleResolutionErrorKind.ModuleNotFound,
+                name,
+                path,
+                "module was not found"
+            ),
+
+        found: false
+    };
+}
+
+proc module_resolution_invalid(
+    name: string,
+    path: string,
+    kind: ModuleResolutionKind,
+    error_kind: ModuleResolutionErrorKind,
+    message: string
+) -> ResolvedModule {
+    give ResolvedModule {
+        id: module_id_invalid(),
+
+        name: name,
+        canonical_path: path,
+
+        candidate: None,
+
+        kind: kind,
+        state: ModuleResolutionState.Invalid,
+
+        error:
+            module_resolution_error(
+                error_kind,
+                name,
+                path,
+                message
+            ),
+
+        found: false
+    };
+}
+
+proc module_resolution_resolved(
+    module: ref ModuleDatabaseEntry,
+    kind: ModuleResolutionKind,
+    candidate: Option<Candidate>
+) -> ResolvedModule {
+    give ResolvedModule {
+        id: module.id,
+
+        name: module.name,
+        canonical_path:
+            module.canonical_path,
+
+        candidate: candidate,
+
+        kind: kind,
+        state: ModuleResolutionState.Resolved,
+
+        error:
+            module_resolution_error_none(),
+
+        found: true
+    };
+}
+
+proc module_resolution_candidate(
+    module: ref ModuleDatabaseEntry,
+    requested: string
+) -> Candidate {
+    let mut candidate =
+        candidate_create(
+            module.name,
+            CandidateKind.Module,
+            CandidateOrigin.Module,
+            CandidateVisibility.Public,
+            None
+        );
+
+    if module.name == requested
+        or module.canonical_path == requested
+    {
+        set candidate =
+            candidate_mark_exact(
+                candidate
+            );
+    }
+
+    set candidate =
+        candidate_with_priority(
+            candidate,
+            100
+        );
+
+    give candidate;
+}
+
+proc module_resolution_entry_available(
+    resolver: ref ModuleResolver,
+    module: ref ModuleDatabaseEntry
+) -> bool {
+    pick module.state {
+        ModuleDatabaseEntryState.Failed {
+            give resolver.config.allow_failed;
+        }
+
+        ModuleDatabaseEntryState.Invalidated {
+            give resolver.config.allow_invalidated;
+        }
+
+        _ {
+            give true;
+        }
+    }
+}
+
+proc module_resolution_entry_error(
+    module: ref ModuleDatabaseEntry,
+    kind: ModuleResolutionKind
+) -> ResolvedModule {
+    pick module.state {
+        ModuleDatabaseEntryState.Failed {
+            give module_resolution_invalid(
+                module.name,
+                module.canonical_path,
+                kind,
+                ModuleResolutionErrorKind.ModuleFailed,
+                "module is in failed state"
+            );
+        }
+
+        ModuleDatabaseEntryState.Invalidated {
+            give module_resolution_invalid(
+                module.name,
+                module.canonical_path,
+                kind,
+                ModuleResolutionErrorKind.ModuleInvalidated,
+                "module is invalidated"
+            );
+        }
+
+        _ {
+            give module_resolution_invalid(
+                module.name,
+                module.canonical_path,
+                kind,
+                ModuleResolutionErrorKind.InvalidModule,
+                "module is not available"
+            );
+        }
+    }
+}
+
+proc module_resolver_record(
+    resolver: ref mut ModuleResolver,
+    result: ResolvedModule
+) {
+    set resolver.statistics.resolutions =
+        resolver.statistics.resolutions + 1;
+
+    pick result.kind {
+        ModuleResolutionKind.Name {
+            set resolver.statistics.by_name =
+                resolver.statistics.by_name + 1;
+        }
+
+        ModuleResolutionKind.Path {
+            set resolver.statistics.by_path =
+                resolver.statistics.by_path + 1;
+        }
+
+        ModuleResolutionKind.RelativePath {
+            set resolver.statistics.relative =
+                resolver.statistics.relative + 1;
+        }
+
+        _ {}
+    }
+
+    pick result.state {
+        ModuleResolutionState.Resolved {
+            set resolver.statistics.resolved =
+                resolver.statistics.resolved + 1;
+        }
+
+        ModuleResolutionState.Missing {
+            set resolver.statistics.missing =
+                resolver.statistics.missing + 1;
+        }
+
+        ModuleResolutionState.Ambiguous {
+            set resolver.statistics.ambiguous =
+                resolver.statistics.ambiguous + 1;
+        }
+
+        ModuleResolutionState.Invalid {
+            set resolver.statistics.invalid =
+                resolver.statistics.invalid + 1;
+        }
+
+        _ {}
+    }
+}
+
+proc module_resolver_resolve_name(
+    resolver: ref mut ModuleResolver,
+    database: ref ModuleDatabase,
+    name: string
+) -> ResolvedModule {
+    if name == "" {
+        let result =
+            module_resolution_invalid(
+                name,
+                "",
+                ModuleResolutionKind.Name,
+                ModuleResolutionErrorKind.EmptyName,
+                "module name is empty"
+            );
+
+        module_resolver_record(
+            resolver,
+            result
+        );
+
+        give result;
+    }
+
+    let module =
+        module_database_get_by_name(
+            database,
+            name
+        );
+
+    pick module {
+        Some(value) {
+            if not module_resolution_entry_available(
+                ref resolver,
+                value
+            ) {
+                let result =
+                    module_resolution_entry_error(
+                        value,
+                        ModuleResolutionKind.Name
+                    );
+
+                module_resolver_record(
+                    resolver,
+                    result
+                );
+
+                give result;
+            }
+
+            let candidate =
+                module_resolution_candidate(
+                    value,
+                    name
+                );
+
+            let result =
+                module_resolution_resolved(
+                    value,
+                    ModuleResolutionKind.Name,
+                    Some(candidate)
+                );
+
+            module_resolver_record(
+                resolver,
+                result
+            );
+
+            give result;
+        }
+
+        None {}
+    }
+
+    if resolver.config.search_path_fallback {
+        set resolver.statistics.fallbacks =
+            resolver.statistics.fallbacks + 1;
+
+        let fallback =
+            module_database_get_by_path(
+                database,
+                name
+            );
+
+        pick fallback {
+            Some(value) {
+                if module_resolution_entry_available(
+                    ref resolver,
+                    value
+                ) {
+                    let candidate =
+                        module_resolution_candidate(
+                            value,
+                            name
+                        );
+
+                    let result =
+                        module_resolution_resolved(
+                            value,
+                            ModuleResolutionKind.Path,
+                            Some(candidate)
+                        );
+
+                    module_resolver_record(
+                        resolver,
+                        result
+                    );
+
+                    give result;
+                }
+            }
+
+            None {}
+        }
+    }
+
+    let result =
+        module_resolution_missing(
+            name,
+            "",
+            ModuleResolutionKind.Name
+        );
+
+    module_resolver_record(
+        resolver,
+        result
+    );
+
+    give result;
+}
+
+proc module_resolver_resolve_path(
+    resolver: ref mut ModuleResolver,
+    database: ref ModuleDatabase,
+    path_text: string
+) -> ResolvedModule {
+    if path_text == "" {
+        let result =
+            module_resolution_invalid(
+                "",
+                path_text,
+                ModuleResolutionKind.Path,
+                ModuleResolutionErrorKind.EmptyPath,
+                "module path is empty"
+            );
+
+        module_resolver_record(
+            resolver,
+            result
+        );
+
+        give result;
+    }
+
+    let parsed: ModulePath =
+        module_path(path_text);
+
+    let validation: ModulePathValidation =
+        module_path_validate(parsed);
+
+    if not validation.valid {
+        let result =
+            module_resolution_invalid(
+                "",
+                path_text,
+                ModuleResolutionKind.Path,
+                ModuleResolutionErrorKind.InvalidPath,
+                validation.message
+            );
+
+        module_resolver_record(
+            resolver,
+            result
+        );
+
+        give result;
+    }
+
+    let module =
+        module_database_get_by_path(
+            database,
+            path_text
+        );
+
+    pick module {
+        Some(value) {
+            if not module_resolution_entry_available(
+                ref resolver,
+                value
+            ) {
+                let result =
+                    module_resolution_entry_error(
+                        value,
+                        ModuleResolutionKind.Path
+                    );
+
+                module_resolver_record(
+                    resolver,
+                    result
+                );
+
+                give result;
+            }
+
+            let candidate =
+                module_resolution_candidate(
+                    value,
+                    path_text
+                );
+
+            let result =
+                module_resolution_resolved(
+                    value,
+                    ModuleResolutionKind.Path,
+                    Some(candidate)
+                );
+
+            module_resolver_record(
+                resolver,
+                result
+            );
+
+            give result;
+        }
+
+        None {}
+    }
+
+    if resolver.config.search_name_fallback {
+        set resolver.statistics.fallbacks =
+            resolver.statistics.fallbacks + 1;
+
+        let fallback =
+            module_database_get_by_name(
+                database,
+                path_text
+            );
+
+        pick fallback {
+            Some(value) {
+                if module_resolution_entry_available(
+                    ref resolver,
+                    value
+                ) {
+                    let candidate =
+                        module_resolution_candidate(
+                            value,
+                            path_text
+                        );
+
+                    let result =
+                        module_resolution_resolved(
+                            value,
+                            ModuleResolutionKind.Name,
+                            Some(candidate)
+                        );
+
+                    module_resolver_record(
+                        resolver,
+                        result
+                    );
+
+                    give result;
+                }
+            }
+
+            None {}
+        }
+    }
+
+    let result =
+        module_resolution_missing(
+            "",
+            path_text,
+            ModuleResolutionKind.Path
+        );
+
+    module_resolver_record(
+        resolver,
+        result
+    );
+
+    give result;
+}
+
+proc module_resolver_resolve_relative(
+    resolver: ref mut ModuleResolver,
+    database: ref ModuleDatabase,
+    base: ModuleId,
+    relative: string
+) -> ResolvedModule {
+    if not resolver.config.allow_relative {
+        let result =
+            module_resolution_invalid(
+                "",
+                relative,
+                ModuleResolutionKind.RelativePath,
+                ModuleResolutionErrorKind.InvalidPath,
+                "relative module resolution is disabled"
+            );
+
+        module_resolver_record(
+            resolver,
+            result
+        );
+
+        give result;
+    }
+
+    if not module_id_is_valid(base) {
+        let result =
+            module_resolution_invalid(
+                "",
+                relative,
+                ModuleResolutionKind.RelativePath,
+                ModuleResolutionErrorKind.InvalidBaseModule,
+                "base module id is invalid"
+            );
+
+        module_resolver_record(
+            resolver,
+            result
+        );
+
+        give result;
+    }
+
+    let base_module =
+        module_database_get(
+            database,
+            base
+        );
+
+    pick base_module {
+        None {
+            let result =
+                module_resolution_invalid(
+                    "",
+                    relative,
+                    ModuleResolutionKind.RelativePath,
+                    ModuleResolutionErrorKind.InvalidBaseModule,
+                    "base module does not exist"
+                );
+
+            module_resolver_record(
+                resolver,
+                result
+            );
+
+            give result;
+        }
+
+        Some(value) {
+            let base_path =
+                module_path(
+                    value.canonical_path
+                );
+
+            let parent =
+                module_path_parent(
+                    base_path
+                );
+
+            if not module_path_is_valid(parent) {
+                let result =
+                    module_resolution_invalid(
+                        value.name,
+                        relative,
+                        ModuleResolutionKind.RelativePath,
+                        ModuleResolutionErrorKind.RelativePathEscapesRoot,
+                        "relative module path escapes module root"
+                    );
+
+                module_resolver_record(
+                    resolver,
+                    result
+                );
+
+                give result;
+            }
+
+            let target =
+                module_path_join(
+                    parent,
+                    relative
+                );
+
+            if not module_path_is_valid(target) {
+                let result =
+                    module_resolution_invalid(
+                        value.name,
+                        relative,
+                        ModuleResolutionKind.RelativePath,
+                        ModuleResolutionErrorKind.InvalidPath,
+                        "invalid relative module path"
+                    );
+
+                module_resolver_record(
+                    resolver,
+                    result
+                );
+
+                give result;
+            }
+
+            let module =
+                module_database_get_by_path(
+                    database,
+                    target.value
+                );
+
+            pick module {
+                Some(resolved) {
+                    if not module_resolution_entry_available(
+                        ref resolver,
+                        resolved
+                    ) {
+                        let result =
+                            module_resolution_entry_error(
+                                resolved,
+                                ModuleResolutionKind.RelativePath
+                            );
+
+                        module_resolver_record(
+                            resolver,
+                            result
+                        );
+
+                        give result;
+                    }
+
+                    let candidate =
+                        module_resolution_candidate(
+                            resolved,
+                            relative
+                        );
+
+                    let result =
+                        module_resolution_resolved(
+                            resolved,
+                            ModuleResolutionKind.RelativePath,
+                            Some(candidate)
+                        );
+
+                    module_resolver_record(
+                        resolver,
+                        result
+                    );
+
+                    give result;
+                }
+
+                None {}
+            }
+        }
+    }
+
+    let result =
+        module_resolution_missing(
+            "",
+            relative,
+            ModuleResolutionKind.RelativePath
+        );
+
+    module_resolver_record(
+        resolver,
+        result
+    );
+
+    give result;
+}
+
+proc module_resolver_collect_name_candidates(
+    database: ref ModuleDatabase,
+    name: string
+) -> CandidateSet {
+    let mut candidates =
+        candidate_set_create();
+
+    for module in database.modules {
+        if module.name != name {
+            continue;
+        }
+
+        candidate_set_push(
+            ref mut candidates,
+            module_resolution_candidate(
+                ref module,
+                name
+            )
+        );
+    }
+
+    give candidates;
+}
+
+proc module_resolver_resolve_candidates(
+    resolver: ref mut ModuleResolver,
+    database: ref ModuleDatabase,
+    name: string
+) -> ResolvedModule {
+    let mut candidates =
+        module_resolver_collect_name_candidates(
+            database,
+            name
+        );
+
+    if len(candidates.candidates) == 0 {
+        let result =
+            module_resolution_missing(
+                name,
+                "",
+                ModuleResolutionKind.Candidate
+            );
+
+        module_resolver_record(
+            resolver,
+            result
+        );
+
+        give result;
+    }
+
+    let selected =
+        candidate_set_resolve(
+            ref mut candidates
+        );
+
+    if candidates.ambiguous {
+        let result =
+            ResolvedModule {
+                id: module_id_invalid(),
+
+                name: name,
+                canonical_path: "",
+
+                candidate: None,
+
+                kind:
+                    ModuleResolutionKind.Candidate,
+
+                state:
+                    ModuleResolutionState.Ambiguous,
+
+                error:
+                    module_resolution_error(
+                        ModuleResolutionErrorKind.AmbiguousModule,
+                        name,
+                        "",
+                        "module resolution is ambiguous"
+                    ),
+
+                found: false
+            };
+
+        module_resolver_record(
+            resolver,
+            result
+        );
+
+        give result;
+    }
+
+    pick selected {
+        Some(candidate) {
+            for module in database.modules {
+                if module.name == candidate.name {
+                    let result =
+                        module_resolution_resolved(
+                            ref module,
+                            ModuleResolutionKind.Candidate,
+                            Some(candidate)
+                        );
+
+                    module_resolver_record(
+                        resolver,
+                        result
+                    );
+
+                    give result;
+                }
+            }
+        }
+
+        None {}
+    }
+
+    let result =
+        module_resolution_missing(
+            name,
+            "",
+            ModuleResolutionKind.Candidate
+        );
+
+    module_resolver_record(
+        resolver,
+        result
+    );
+
+    give result;
+}
+
+proc module_resolution_is_resolved(
+    result: ResolvedModule
+) -> bool {
+    give result.state
+        == ModuleResolutionState.Resolved
+        and result.found
+        and module_id_is_valid(
+            result.id
+        );
+}
+
+proc module_resolution_has_error(
+    result: ResolvedModule
+) -> bool {
+    give result.error.kind
+        != ModuleResolutionErrorKind.None;
+}
+
+proc module_resolver_statistics(
+    resolver: ref ModuleResolver
+) -> ModuleResolutionStatistics {
+    give resolver.statistics;
+}
+
+proc module_resolver_reset_statistics(
+    resolver: ref mut ModuleResolver
+) {
+    set resolver.statistics =
+        module_resolution_statistics_empty();
+}
+
+proc module_resolution_state_name(
+    state: ModuleResolutionState
+) -> string {
+    pick state {
+        ModuleResolutionState.Unresolved {
+            give "unresolved";
+        }
+
+        ModuleResolutionState.Resolved {
+            give "resolved";
+        }
+
+        ModuleResolutionState.Missing {
+            give "missing";
+        }
+
+        ModuleResolutionState.Ambiguous {
+            give "ambiguous";
+        }
+
+        ModuleResolutionState.Invalid {
+            give "invalid";
+        }
+
+        ModuleResolutionState.Failed {
+            give "failed";
+        }
+    }
+
+    give "invalid";
+}

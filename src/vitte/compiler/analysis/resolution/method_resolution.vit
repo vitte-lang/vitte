@@ -1,0 +1,1320 @@
+space vitte/compiler/analysis/resolution/method_resolution
+
+export *
+
+use vitte/compiler/analysis/resolution/candidate.{
+    Candidate,
+    CandidateKind,
+    CandidateOrigin,
+    CandidateVisibility,
+    CandidateState,
+    CandidateSet,
+    candidate_create,
+    candidate_with_priority,
+    candidate_with_scope_depth,
+    candidate_mark_exact,
+    candidate_mark_inaccessible,
+    candidate_set_create,
+    candidate_set_push,
+    candidate_set_resolve
+}
+
+pick MethodOrigin {
+    Inherent,
+    Trait,
+    Extension,
+    Builtin
+}
+
+pick MethodReceiverKind {
+    Value,
+    Ref,
+    RefMut,
+    Owned,
+    Static
+}
+
+pick MethodResolutionState {
+    Unresolved,
+    Resolved,
+    Missing,
+    Ambiguous,
+    Inaccessible,
+    ReceiverMismatch,
+    Invalid
+}
+
+pick MethodResolutionErrorKind {
+    None,
+    EmptyName,
+    InvalidReceiver,
+    NotFound,
+    Ambiguous,
+    Inaccessible,
+    ReceiverMismatch,
+    InvalidDefinition
+}
+
+form MethodDefinition {
+    owner: TypeId
+
+    name: string
+    definition: DefId
+
+    origin: MethodOrigin
+    receiver: MethodReceiverKind
+
+    trait_definition: Option<DefId>
+    impl_definition: Option<DefId>
+
+    visibility: CandidateVisibility
+
+    priority: usize
+    scope_depth: usize
+
+    generic_arity: usize
+    parameter_count: usize
+
+    synthetic: bool
+}
+
+form MethodResolutionError {
+    kind: MethodResolutionErrorKind
+
+    receiver: TypeId
+    name: string
+
+    message: string
+}
+
+form MethodCandidate {
+    method: MethodDefinition
+    candidate: Candidate
+
+    deref_depth: usize
+    receiver_exact: bool
+}
+
+form ResolvedMethod {
+    receiver: TypeId
+    name: string
+
+    definition: Option<DefId>
+
+    method: Option<MethodDefinition>
+    candidate: Option<Candidate>
+
+    deref_depth: usize
+
+    state: MethodResolutionState
+    error: MethodResolutionError
+
+    found: bool
+}
+
+form MethodResolverConfig {
+    allow_private: bool
+    allow_package: bool
+
+    allow_traits: bool
+    allow_extensions: bool
+    allow_builtins: bool
+
+    autoderef: bool
+    max_deref_depth: usize
+}
+
+form MethodResolverStatistics {
+    resolutions: u64
+
+    resolved: u64
+    missing: u64
+    ambiguous: u64
+    inaccessible: u64
+    receiver_mismatch: u64
+    invalid: u64
+
+    inherent_candidates: u64
+    trait_candidates: u64
+    extension_candidates: u64
+
+    autoderef_steps: u64
+}
+
+form MethodResolver {
+    config: MethodResolverConfig
+
+    methods: [MethodDefinition]
+
+    statistics: MethodResolverStatistics
+}
+
+proc method_resolver_config_default()
+    -> MethodResolverConfig
+{
+    give MethodResolverConfig {
+        allow_private: false,
+        allow_package: false,
+
+        allow_traits: true,
+        allow_extensions: true,
+        allow_builtins: true,
+
+        autoderef: true,
+        max_deref_depth: 8
+    };
+}
+
+proc method_resolver_statistics_empty()
+    -> MethodResolverStatistics
+{
+    give MethodResolverStatistics {
+        resolutions: 0,
+
+        resolved: 0,
+        missing: 0,
+        ambiguous: 0,
+        inaccessible: 0,
+        receiver_mismatch: 0,
+        invalid: 0,
+
+        inherent_candidates: 0,
+        trait_candidates: 0,
+        extension_candidates: 0,
+
+        autoderef_steps: 0
+    };
+}
+
+proc method_resolver_create_with_config(
+    config: MethodResolverConfig
+) -> MethodResolver {
+    give MethodResolver {
+        config: config,
+        methods: [],
+
+        statistics:
+            method_resolver_statistics_empty()
+    };
+}
+
+proc method_resolver_create()
+    -> MethodResolver
+{
+    give method_resolver_create_with_config(
+        method_resolver_config_default()
+    );
+}
+
+proc method_resolution_error_none()
+    -> MethodResolutionError
+{
+    give MethodResolutionError {
+        kind: MethodResolutionErrorKind.None,
+
+        receiver: 0 as TypeId,
+        name: "",
+
+        message: ""
+    };
+}
+
+proc method_resolution_error(
+    kind: MethodResolutionErrorKind,
+    receiver: TypeId,
+    name: string,
+    message: string
+) -> MethodResolutionError {
+    give MethodResolutionError {
+        kind: kind,
+
+        receiver: receiver,
+        name: name,
+
+        message: message
+    };
+}
+
+proc method_definition(
+    owner: TypeId,
+    name: string,
+    definition: DefId,
+    origin: MethodOrigin,
+    receiver: MethodReceiverKind,
+    visibility: CandidateVisibility
+) -> MethodDefinition {
+    give MethodDefinition {
+        owner: owner,
+
+        name: name,
+        definition: definition,
+
+        origin: origin,
+        receiver: receiver,
+
+        trait_definition: None,
+        impl_definition: None,
+
+        visibility: visibility,
+
+        priority: 0,
+        scope_depth: 0,
+
+        generic_arity: 0,
+        parameter_count: 0,
+
+        synthetic: false
+    };
+}
+
+proc method_definition_with_trait(
+    method: MethodDefinition,
+    trait_definition: DefId
+) -> MethodDefinition {
+    let mut result: MethodDefinition =
+        method;
+
+    set result.trait_definition =
+        Some(trait_definition);
+
+    give result;
+}
+
+proc method_definition_with_impl(
+    method: MethodDefinition,
+    impl_definition: DefId
+) -> MethodDefinition {
+    let mut result: MethodDefinition =
+        method;
+
+    set result.impl_definition =
+        Some(impl_definition);
+
+    give result;
+}
+
+proc method_definition_with_priority(
+    method: MethodDefinition,
+    priority: usize
+) -> MethodDefinition {
+    let mut result: MethodDefinition =
+        method;
+
+    set result.priority =
+        priority;
+
+    give result;
+}
+
+proc method_definition_with_scope_depth(
+    method: MethodDefinition,
+    depth: usize
+) -> MethodDefinition {
+    let mut result: MethodDefinition =
+        method;
+
+    set result.scope_depth =
+        depth;
+
+    give result;
+}
+
+proc method_definition_with_generic_arity(
+    method: MethodDefinition,
+    arity: usize
+) -> MethodDefinition {
+    let mut result: MethodDefinition =
+        method;
+
+    set result.generic_arity =
+        arity;
+
+    give result;
+}
+
+proc method_definition_with_parameter_count(
+    method: MethodDefinition,
+    count: usize
+) -> MethodDefinition {
+    let mut result: MethodDefinition =
+        method;
+
+    set result.parameter_count =
+        count;
+
+    give result;
+}
+
+proc method_definition_mark_synthetic(
+    method: MethodDefinition
+) -> MethodDefinition {
+    let mut result: MethodDefinition =
+        method;
+
+    set result.synthetic =
+        true;
+
+    give result;
+}
+
+proc method_resolver_register(
+    resolver: ref mut MethodResolver,
+    method: MethodDefinition
+) {
+    set resolver.methods =
+        resolver.methods + [method];
+}
+
+proc method_origin_candidate_origin(
+    origin: MethodOrigin
+) -> CandidateOrigin {
+    pick origin {
+        MethodOrigin.Inherent {
+            give CandidateOrigin.Impl;
+        }
+
+        MethodOrigin.Trait {
+            give CandidateOrigin.Trait;
+        }
+
+        MethodOrigin.Extension {
+            give CandidateOrigin.Import;
+        }
+
+        MethodOrigin.Builtin {
+            give CandidateOrigin.Builtin;
+        }
+    }
+
+    give CandidateOrigin.Impl;
+}
+
+proc method_origin_priority(
+    origin: MethodOrigin
+) -> usize {
+    pick origin {
+        MethodOrigin.Inherent {
+            give 400;
+        }
+
+        MethodOrigin.Trait {
+            give 300;
+        }
+
+        MethodOrigin.Extension {
+            give 200;
+        }
+
+        MethodOrigin.Builtin {
+            give 100;
+        }
+    }
+
+    give 0;
+}
+
+proc method_candidate_from_definition(
+    method: MethodDefinition,
+    requested: string
+) -> Candidate {
+    let mut candidate =
+        candidate_create(
+            method.name,
+            CandidateKind.Method,
+            method_origin_candidate_origin(
+                method.origin
+            ),
+            method.visibility,
+            Some(method.definition)
+        );
+
+    set candidate =
+        candidate_with_scope_depth(
+            candidate,
+            method.scope_depth
+        );
+
+    set candidate =
+        candidate_with_priority(
+            candidate,
+            method_origin_priority(
+                method.origin
+            ) + method.priority
+        );
+
+    if method.name == requested {
+        set candidate =
+            candidate_mark_exact(candidate);
+    }
+
+    set candidate.synthetic =
+        method.synthetic;
+
+    give candidate;
+}
+
+proc method_resolver_origin_enabled(
+    resolver: ref MethodResolver,
+    origin: MethodOrigin
+) -> bool {
+    pick origin {
+        MethodOrigin.Inherent {
+            give true;
+        }
+
+        MethodOrigin.Trait {
+            give resolver.config.allow_traits;
+        }
+
+        MethodOrigin.Extension {
+            give resolver.config.allow_extensions;
+        }
+
+        MethodOrigin.Builtin {
+            give resolver.config.allow_builtins;
+        }
+    }
+
+    give false;
+}
+
+proc method_resolver_accessible(
+    resolver: ref MethodResolver,
+    method: MethodDefinition
+) -> bool {
+    pick method.visibility {
+        CandidateVisibility.Public {
+            give true;
+        }
+
+        CandidateVisibility.Package {
+            give resolver.config.allow_package;
+        }
+
+        CandidateVisibility.Private {
+            give resolver.config.allow_private;
+        }
+    }
+
+    give false;
+}
+
+proc method_receiver_accepts(
+    receiver: MethodReceiverKind,
+    mutable: bool,
+    owned: bool
+) -> bool {
+    pick receiver {
+        MethodReceiverKind.Value {
+            give true;
+        }
+
+        MethodReceiverKind.Ref {
+            give true;
+        }
+
+        MethodReceiverKind.RefMut {
+            give mutable;
+        }
+
+        MethodReceiverKind.Owned {
+            give owned;
+        }
+
+        MethodReceiverKind.Static {
+            give false;
+        }
+    }
+
+    give false;
+}
+
+proc method_resolver_collect_for_type(
+    resolver: ref mut MethodResolver,
+    receiver_type: TypeId,
+    name: string,
+    mutable: bool,
+    owned: bool,
+    deref_depth: usize
+) -> [MethodCandidate] {
+    let mut output: [MethodCandidate] = [];
+
+    for method in resolver.methods {
+        if method.owner != receiver_type {
+            continue;
+        }
+
+        if method.name != name {
+            continue;
+        }
+
+        if not method_resolver_origin_enabled(
+            ref resolver,
+            method.origin
+        ) {
+            continue;
+        }
+
+        let mut candidate =
+            method_candidate_from_definition(
+                method,
+                name
+            );
+
+        if not method_resolver_accessible(
+            ref resolver,
+            method
+        ) {
+            set candidate =
+                candidate_mark_inaccessible(
+                    candidate
+                );
+        }
+
+        let receiver_exact =
+            method_receiver_accepts(
+                method.receiver,
+                mutable,
+                owned
+            );
+
+        if not receiver_exact {
+            set candidate.state =
+                CandidateState.Rejected;
+        }
+
+        pick method.origin {
+            MethodOrigin.Inherent {
+                set resolver.statistics.inherent_candidates =
+                    resolver.statistics.inherent_candidates + 1;
+            }
+
+            MethodOrigin.Trait {
+                set resolver.statistics.trait_candidates =
+                    resolver.statistics.trait_candidates + 1;
+            }
+
+            MethodOrigin.Extension {
+                set resolver.statistics.extension_candidates =
+                    resolver.statistics.extension_candidates + 1;
+            }
+
+            MethodOrigin.Builtin {}
+        }
+
+        set output =
+            output + [
+                MethodCandidate {
+                    method: method,
+                    candidate: candidate,
+
+                    deref_depth: deref_depth,
+                    receiver_exact: receiver_exact
+                }
+            ];
+    }
+
+    give output;
+}
+
+proc method_candidates_to_set(
+    methods: [MethodCandidate]
+) -> CandidateSet {
+    let mut set =
+        candidate_set_create();
+
+    for method in methods {
+        candidate_set_push(
+            ref mut set,
+            method.candidate
+        );
+    }
+
+    give set;
+}
+
+proc method_resolver_find_definition(
+    methods: [MethodCandidate],
+    candidate: Candidate
+) -> Option<MethodCandidate> {
+    pick candidate.definition {
+        None {
+            give None;
+        }
+
+        Some(id) {
+            for method in methods {
+                if method.method.definition == id {
+                    give Some(method);
+                }
+            }
+        }
+    }
+
+    give None;
+}
+
+proc method_resolution_missing(
+    receiver: TypeId,
+    name: string
+) -> ResolvedMethod {
+    give ResolvedMethod {
+        receiver: receiver,
+        name: name,
+
+        definition: None,
+
+        method: None,
+        candidate: None,
+
+        deref_depth: 0,
+
+        state:
+            MethodResolutionState.Missing,
+
+        error:
+            method_resolution_error(
+                MethodResolutionErrorKind.NotFound,
+                receiver,
+                name,
+                "method was not found"
+            ),
+
+        found: false
+    };
+}
+
+proc method_resolution_ambiguous(
+    receiver: TypeId,
+    name: string
+) -> ResolvedMethod {
+    give ResolvedMethod {
+        receiver: receiver,
+        name: name,
+
+        definition: None,
+
+        method: None,
+        candidate: None,
+
+        deref_depth: 0,
+
+        state:
+            MethodResolutionState.Ambiguous,
+
+        error:
+            method_resolution_error(
+                MethodResolutionErrorKind.Ambiguous,
+                receiver,
+                name,
+                "method resolution is ambiguous"
+            ),
+
+        found: false
+    };
+}
+
+proc method_resolution_inaccessible(
+    receiver: TypeId,
+    name: string,
+    method: MethodCandidate
+) -> ResolvedMethod {
+    give ResolvedMethod {
+        receiver: receiver,
+        name: name,
+
+        definition:
+            Some(method.method.definition),
+
+        method:
+            Some(method.method),
+
+        candidate:
+            Some(method.candidate),
+
+        deref_depth:
+            method.deref_depth,
+
+        state:
+            MethodResolutionState.Inaccessible,
+
+        error:
+            method_resolution_error(
+                MethodResolutionErrorKind.Inaccessible,
+                receiver,
+                name,
+                "method is not visible from this context"
+            ),
+
+        found: false
+    };
+}
+
+proc method_resolution_receiver_mismatch(
+    receiver: TypeId,
+    name: string,
+    method: MethodCandidate
+) -> ResolvedMethod {
+    give ResolvedMethod {
+        receiver: receiver,
+        name: name,
+
+        definition:
+            Some(method.method.definition),
+
+        method:
+            Some(method.method),
+
+        candidate:
+            Some(method.candidate),
+
+        deref_depth:
+            method.deref_depth,
+
+        state:
+            MethodResolutionState.ReceiverMismatch,
+
+        error:
+            method_resolution_error(
+                MethodResolutionErrorKind.ReceiverMismatch,
+                receiver,
+                name,
+                "receiver does not satisfy method receiver requirements"
+            ),
+
+        found: false
+    };
+}
+
+proc method_resolution_resolved(
+    receiver: TypeId,
+    method: MethodCandidate
+) -> ResolvedMethod {
+    give ResolvedMethod {
+        receiver: receiver,
+        name: method.method.name,
+
+        definition:
+            Some(method.method.definition),
+
+        method:
+            Some(method.method),
+
+        candidate:
+            Some(method.candidate),
+
+        deref_depth:
+            method.deref_depth,
+
+        state:
+            MethodResolutionState.Resolved,
+
+        error:
+            method_resolution_error_none(),
+
+        found:
+            true
+    };
+}
+
+proc method_resolution_invalid(
+    receiver: TypeId,
+    name: string,
+    kind: MethodResolutionErrorKind,
+    message: string
+) -> ResolvedMethod {
+    give ResolvedMethod {
+        receiver: receiver,
+        name: name,
+
+        definition: None,
+
+        method: None,
+        candidate: None,
+
+        deref_depth: 0,
+
+        state:
+            MethodResolutionState.Invalid,
+
+        error:
+            method_resolution_error(
+                kind,
+                receiver,
+                name,
+                message
+            ),
+
+        found: false
+    };
+}
+
+proc method_resolver_record(
+    resolver: ref mut MethodResolver,
+    result: ResolvedMethod
+) {
+    set resolver.statistics.resolutions =
+        resolver.statistics.resolutions + 1;
+
+    pick result.state {
+        MethodResolutionState.Resolved {
+            set resolver.statistics.resolved =
+                resolver.statistics.resolved + 1;
+        }
+
+        MethodResolutionState.Missing {
+            set resolver.statistics.missing =
+                resolver.statistics.missing + 1;
+        }
+
+        MethodResolutionState.Ambiguous {
+            set resolver.statistics.ambiguous =
+                resolver.statistics.ambiguous + 1;
+        }
+
+        MethodResolutionState.Inaccessible {
+            set resolver.statistics.inaccessible =
+                resolver.statistics.inaccessible + 1;
+        }
+
+        MethodResolutionState.ReceiverMismatch {
+            set resolver.statistics.receiver_mismatch =
+                resolver.statistics.receiver_mismatch + 1;
+        }
+
+        MethodResolutionState.Invalid {
+            set resolver.statistics.invalid =
+                resolver.statistics.invalid + 1;
+        }
+
+        MethodResolutionState.Unresolved {}
+    }
+}
+
+proc method_resolver_select(
+    resolver: ref mut MethodResolver,
+    receiver: TypeId,
+    name: string,
+    methods: [MethodCandidate]
+) -> ResolvedMethod {
+    if len(methods) == 0 {
+        let result =
+            method_resolution_missing(
+                receiver,
+                name
+            );
+
+        method_resolver_record(
+            resolver,
+            result
+        );
+
+        give result;
+    }
+
+    let mut candidates =
+        method_candidates_to_set(
+            methods
+        );
+
+    let selected =
+        candidate_set_resolve(
+            ref mut candidates
+        );
+
+    if candidates.ambiguous {
+        let result =
+            method_resolution_ambiguous(
+                receiver,
+                name
+            );
+
+        method_resolver_record(
+            resolver,
+            result
+        );
+
+        give result;
+    }
+
+    pick selected {
+        Some(candidate) {
+            let method =
+                method_resolver_find_definition(
+                    methods,
+                    candidate
+                );
+
+            pick method {
+                Some(value) {
+                    let result =
+                        method_resolution_resolved(
+                            receiver,
+                            value
+                        );
+
+                    method_resolver_record(
+                        resolver,
+                        result
+                    );
+
+                    give result;
+                }
+
+                None {}
+            }
+        }
+
+        None {
+            for method in methods {
+                if method.candidate.state
+                    == CandidateState.Inaccessible
+                {
+                    let result =
+                        method_resolution_inaccessible(
+                            receiver,
+                            name,
+                            method
+                        );
+
+                    method_resolver_record(
+                        resolver,
+                        result
+                    );
+
+                    give result;
+                }
+            }
+
+            for method in methods {
+                if not method.receiver_exact {
+                    let result =
+                        method_resolution_receiver_mismatch(
+                            receiver,
+                            name,
+                            method
+                        );
+
+                    method_resolver_record(
+                        resolver,
+                        result
+                    );
+
+                    give result;
+                }
+            }
+        }
+    }
+
+    let result =
+        method_resolution_missing(
+            receiver,
+            name
+        );
+
+    method_resolver_record(
+        resolver,
+        result
+    );
+
+    give result;
+}
+
+proc method_resolver_resolve_exact(
+    resolver: ref mut MethodResolver,
+    receiver: TypeId,
+    name: string,
+    mutable: bool,
+    owned: bool
+) -> ResolvedMethod {
+    if name == "" {
+        let result =
+            method_resolution_invalid(
+                receiver,
+                name,
+                MethodResolutionErrorKind.EmptyName,
+                "method name is empty"
+            );
+
+        method_resolver_record(
+            resolver,
+            result
+        );
+
+        give result;
+    }
+
+    let methods =
+        method_resolver_collect_for_type(
+            resolver,
+            receiver,
+            name,
+            mutable,
+            owned,
+            0
+        );
+
+    give method_resolver_select(
+        resolver,
+        receiver,
+        name,
+        methods
+    );
+}
+
+proc method_resolver_resolve_with_deref_chain(
+    resolver: ref mut MethodResolver,
+    receiver: TypeId,
+    deref_types: [TypeId],
+    name: string,
+    mutable: bool,
+    owned: bool
+) -> ResolvedMethod {
+    if name == "" {
+        let result =
+            method_resolution_invalid(
+                receiver,
+                name,
+                MethodResolutionErrorKind.EmptyName,
+                "method name is empty"
+            );
+
+        method_resolver_record(
+            resolver,
+            result
+        );
+
+        give result;
+    }
+
+    let direct =
+        method_resolver_collect_for_type(
+            resolver,
+            receiver,
+            name,
+            mutable,
+            owned,
+            0
+        );
+
+    if len(direct) != 0 {
+        give method_resolver_select(
+            resolver,
+            receiver,
+            name,
+            direct
+        );
+    }
+
+    if not resolver.config.autoderef {
+        let result =
+            method_resolution_missing(
+                receiver,
+                name
+            );
+
+        method_resolver_record(
+            resolver,
+            result
+        );
+
+        give result;
+    }
+
+    let mut depth: usize = 0;
+
+    while depth < len(deref_types)
+        and depth < resolver.config.max_deref_depth
+    {
+        let current_type =
+            deref_types[depth];
+
+        set resolver.statistics.autoderef_steps =
+            resolver.statistics.autoderef_steps + 1;
+
+        let methods =
+            method_resolver_collect_for_type(
+                resolver,
+                current_type,
+                name,
+                mutable,
+                owned,
+                depth + 1
+            );
+
+        if len(methods) != 0 {
+            give method_resolver_select(
+                resolver,
+                receiver,
+                name,
+                methods
+            );
+        }
+
+        set depth = depth + 1;
+    }
+
+    let result =
+        method_resolution_missing(
+            receiver,
+            name
+        );
+
+    method_resolver_record(
+        resolver,
+        result
+    );
+
+    give result;
+}
+
+proc method_resolver_methods_of(
+    resolver: ref MethodResolver,
+    owner: TypeId
+) -> [MethodDefinition] {
+    let mut output: [MethodDefinition] = [];
+
+    for method in resolver.methods {
+        if method.owner == owner {
+            set output =
+                output + [method];
+        }
+    }
+
+    give output;
+}
+
+proc method_resolver_named_methods_of(
+    resolver: ref MethodResolver,
+    owner: TypeId,
+    name: string
+) -> [MethodDefinition] {
+    let mut output: [MethodDefinition] = [];
+
+    for method in resolver.methods {
+        if method.owner == owner
+            and method.name == name
+        {
+            set output =
+                output + [method];
+        }
+    }
+
+    give output;
+}
+
+proc method_resolution_is_resolved(
+    result: ResolvedMethod
+) -> bool {
+    give result.state
+        == MethodResolutionState.Resolved
+        and result.found;
+}
+
+proc method_resolution_has_error(
+    result: ResolvedMethod
+) -> bool {
+    give result.error.kind
+        != MethodResolutionErrorKind.None;
+}
+
+proc method_resolver_statistics(
+    resolver: ref MethodResolver
+) -> MethodResolverStatistics {
+    give resolver.statistics;
+}
+
+proc method_resolver_reset_statistics(
+    resolver: ref mut MethodResolver
+) {
+    set resolver.statistics =
+        method_resolver_statistics_empty();
+}
+
+proc method_origin_name(
+    origin: MethodOrigin
+) -> string {
+    pick origin {
+        MethodOrigin.Inherent {
+            give "inherent";
+        }
+
+        MethodOrigin.Trait {
+            give "trait";
+        }
+
+        MethodOrigin.Extension {
+            give "extension";
+        }
+
+        MethodOrigin.Builtin {
+            give "builtin";
+        }
+    }
+
+    give "inherent";
+}
+
+proc method_receiver_kind_name(
+    kind: MethodReceiverKind
+) -> string {
+    pick kind {
+        MethodReceiverKind.Value {
+            give "value";
+        }
+
+        MethodReceiverKind.Ref {
+            give "ref";
+        }
+
+        MethodReceiverKind.RefMut {
+            give "ref-mut";
+        }
+
+        MethodReceiverKind.Owned {
+            give "owned";
+        }
+
+        MethodReceiverKind.Static {
+            give "static";
+        }
+    }
+
+    give "value";
+}
+
+proc method_resolution_state_name(
+    state: MethodResolutionState
+) -> string {
+    pick state {
+        MethodResolutionState.Unresolved {
+            give "unresolved";
+        }
+
+        MethodResolutionState.Resolved {
+            give "resolved";
+        }
+
+        MethodResolutionState.Missing {
+            give "missing";
+        }
+
+        MethodResolutionState.Ambiguous {
+            give "ambiguous";
+        }
+
+        MethodResolutionState.Inaccessible {
+            give "inaccessible";
+        }
+
+        MethodResolutionState.ReceiverMismatch {
+            give "receiver-mismatch";
+        }
+
+        MethodResolutionState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}

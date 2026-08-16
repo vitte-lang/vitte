@@ -1,0 +1,1207 @@
+space vitte/compiler/analysis/resolution/overload_resolution
+
+export *
+
+use vitte/compiler/analysis/resolution/candidate.{
+    Candidate,
+    CandidateKind,
+    CandidateOrigin,
+    CandidateVisibility,
+    CandidateState
+}
+
+pick OverloadCandidateKind {
+    Procedure,
+    Method,
+    Operator,
+    Constructor,
+    Intrinsic
+}
+
+pick OverloadMatchKind {
+    Exact,
+    Coercion,
+    Conversion,
+    Generic,
+    Variadic,
+    Incompatible
+}
+
+pick OverloadResolutionState {
+    Unresolved,
+    Resolved,
+    Missing,
+    Ambiguous,
+    ArityMismatch,
+    TypeMismatch,
+    Invalid
+}
+
+pick OverloadResolutionErrorKind {
+    None,
+    EmptyCandidates,
+    NoMatchingOverload,
+    AmbiguousOverload,
+    TooFewArguments,
+    TooManyArguments,
+    ParameterTypeMismatch,
+    GenericMismatch,
+    InvalidDefinition
+}
+
+form OverloadParameter {
+    type_id: TypeId
+
+    optional: bool
+    variadic: bool
+}
+
+form OverloadDefinition {
+    name: string
+
+    definition: DefId
+
+    kind: OverloadCandidateKind
+
+    parameters: [OverloadParameter]
+
+    return_type: TypeId
+
+    generic_arity: usize
+
+    priority: usize
+    synthetic: bool
+}
+
+form OverloadArgument {
+    type_id: TypeId
+
+    mutable: bool
+    moved: bool
+}
+
+form OverloadMatch {
+    parameter_index: usize
+
+    expected: TypeId
+    actual: TypeId
+
+    kind: OverloadMatchKind
+
+    score: usize
+}
+
+form OverloadCandidate {
+    definition: OverloadDefinition
+
+    matches: [OverloadMatch]
+
+    score: usize
+
+    exact_matches: usize
+    conversions: usize
+    coercions: usize
+
+    compatible: bool
+}
+
+form OverloadResolutionError {
+    kind: OverloadResolutionErrorKind
+
+    name: string
+    index: usize
+
+    message: string
+}
+
+form OverloadResolution {
+    name: string
+
+    definition: Option<DefId>
+    candidate: Option<OverloadCandidate>
+
+    candidates: [OverloadCandidate]
+
+    state: OverloadResolutionState
+
+    error: OverloadResolutionError
+
+    found: bool
+}
+
+form OverloadResolverConfig {
+    allow_coercions: bool
+    allow_conversions: bool
+    allow_variadic: bool
+
+    prefer_exact: bool
+    prefer_non_generic: bool
+}
+
+form OverloadResolverStatistics {
+    resolutions: u64
+
+    candidates_checked: u64
+
+    resolved: u64
+    missing: u64
+    ambiguous: u64
+
+    arity_failures: u64
+    type_failures: u64
+
+    exact_matches: u64
+    coercions: u64
+    conversions: u64
+}
+
+form OverloadResolver {
+    definitions: [OverloadDefinition]
+
+    config: OverloadResolverConfig
+
+    statistics: OverloadResolverStatistics
+}
+
+proc overload_resolver_config_default()
+    -> OverloadResolverConfig
+{
+    give OverloadResolverConfig {
+        allow_coercions: true,
+        allow_conversions: true,
+        allow_variadic: true,
+
+        prefer_exact: true,
+        prefer_non_generic: true
+    };
+}
+
+proc overload_resolver_statistics_empty()
+    -> OverloadResolverStatistics
+{
+    give OverloadResolverStatistics {
+        resolutions: 0,
+
+        candidates_checked: 0,
+
+        resolved: 0,
+        missing: 0,
+        ambiguous: 0,
+
+        arity_failures: 0,
+        type_failures: 0,
+
+        exact_matches: 0,
+        coercions: 0,
+        conversions: 0
+    };
+}
+
+proc overload_resolver_create_with_config(
+    config: OverloadResolverConfig
+) -> OverloadResolver {
+    give OverloadResolver {
+        definitions: [],
+
+        config: config,
+
+        statistics:
+            overload_resolver_statistics_empty()
+    };
+}
+
+proc overload_resolver_create()
+    -> OverloadResolver
+{
+    give overload_resolver_create_with_config(
+        overload_resolver_config_default()
+    );
+}
+
+proc overload_parameter(
+    type_id: TypeId
+) -> OverloadParameter {
+    give OverloadParameter {
+        type_id: type_id,
+
+        optional: false,
+        variadic: false
+    };
+}
+
+proc overload_parameter_optional(
+    type_id: TypeId
+) -> OverloadParameter {
+    give OverloadParameter {
+        type_id: type_id,
+
+        optional: true,
+        variadic: false
+    };
+}
+
+proc overload_parameter_variadic(
+    type_id: TypeId
+) -> OverloadParameter {
+    give OverloadParameter {
+        type_id: type_id,
+
+        optional: false,
+        variadic: true
+    };
+}
+
+proc overload_argument(
+    type_id: TypeId
+) -> OverloadArgument {
+    give OverloadArgument {
+        type_id: type_id,
+
+        mutable: false,
+        moved: false
+    };
+}
+
+proc overload_definition(
+    name: string,
+    definition: DefId,
+    kind: OverloadCandidateKind,
+    parameters: [OverloadParameter],
+    return_type: TypeId
+) -> OverloadDefinition {
+    give OverloadDefinition {
+        name: name,
+
+        definition: definition,
+
+        kind: kind,
+
+        parameters: parameters,
+
+        return_type: return_type,
+
+        generic_arity: 0,
+
+        priority: 0,
+        synthetic: false
+    };
+}
+
+proc overload_definition_with_priority(
+    definition: OverloadDefinition,
+    priority: usize
+) -> OverloadDefinition {
+    let mut result: OverloadDefinition =
+        definition;
+
+    set result.priority = priority;
+
+    give result;
+}
+
+proc overload_definition_with_generics(
+    definition: OverloadDefinition,
+    arity: usize
+) -> OverloadDefinition {
+    let mut result: OverloadDefinition =
+        definition;
+
+    set result.generic_arity = arity;
+
+    give result;
+}
+
+proc overload_definition_mark_synthetic(
+    definition: OverloadDefinition
+) -> OverloadDefinition {
+    let mut result: OverloadDefinition =
+        definition;
+
+    set result.synthetic = true;
+
+    give result;
+}
+
+proc overload_resolver_register(
+    resolver: ref mut OverloadResolver,
+    definition: OverloadDefinition
+) {
+    set resolver.definitions =
+        resolver.definitions
+        + [definition];
+}
+
+proc overload_resolution_error_none()
+    -> OverloadResolutionError
+{
+    give OverloadResolutionError {
+        kind: OverloadResolutionErrorKind.None,
+
+        name: "",
+        index: 0,
+
+        message: ""
+    };
+}
+
+proc overload_resolution_error(
+    kind: OverloadResolutionErrorKind,
+    name: string,
+    index: usize,
+    message: string
+) -> OverloadResolutionError {
+    give OverloadResolutionError {
+        kind: kind,
+
+        name: name,
+        index: index,
+
+        message: message
+    };
+}
+
+proc overload_match(
+    parameter_index: usize,
+    expected: TypeId,
+    actual: TypeId,
+    kind: OverloadMatchKind,
+    score: usize
+) -> OverloadMatch {
+    give OverloadMatch {
+        parameter_index: parameter_index,
+
+        expected: expected,
+        actual: actual,
+
+        kind: kind,
+        score: score
+    };
+}
+
+proc overload_candidate(
+    definition: OverloadDefinition
+) -> OverloadCandidate {
+    give OverloadCandidate {
+        definition: definition,
+
+        matches: [],
+
+        score: definition.priority,
+
+        exact_matches: 0,
+        conversions: 0,
+        coercions: 0,
+
+        compatible: true
+    };
+}
+
+proc overload_parameter_required_count(
+    parameters: [OverloadParameter]
+) -> usize {
+    let mut count: usize = 0;
+
+    for parameter in parameters {
+        if not parameter.optional
+            and not parameter.variadic
+        {
+            set count = count + 1;
+        }
+    }
+
+    give count;
+}
+
+proc overload_has_variadic(
+    parameters: [OverloadParameter]
+) -> bool {
+    for parameter in parameters {
+        if parameter.variadic {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc overload_arity_compatible(
+    resolver: ref OverloadResolver,
+    definition: OverloadDefinition,
+    arguments: [OverloadArgument]
+) -> bool {
+    let required =
+        overload_parameter_required_count(
+            definition.parameters
+        );
+
+    if len(arguments) < required {
+        give false;
+    }
+
+    if len(arguments)
+        > len(definition.parameters)
+    {
+        if not resolver.config.allow_variadic {
+            give false;
+        }
+
+        if not overload_has_variadic(
+            definition.parameters
+        ) {
+            give false;
+        }
+    }
+
+    give true;
+}
+
+proc overload_type_exact(
+    expected: TypeId,
+    actual: TypeId
+) -> bool {
+    give expected == actual;
+}
+
+proc overload_type_can_coerce(
+    expected: TypeId,
+    actual: TypeId
+) -> bool {
+    if expected == actual {
+        give true;
+    }
+
+    give false;
+}
+
+proc overload_type_can_convert(
+    expected: TypeId,
+    actual: TypeId
+) -> bool {
+    if expected == actual {
+        give true;
+    }
+
+    give false;
+}
+
+proc overload_match_types(
+    resolver: ref OverloadResolver,
+    expected: TypeId,
+    actual: TypeId,
+    index: usize
+) -> OverloadMatch {
+    if overload_type_exact(
+        expected,
+        actual
+    ) {
+        give overload_match(
+            index,
+            expected,
+            actual,
+            OverloadMatchKind.Exact,
+            100
+        );
+    }
+
+    if resolver.config.allow_coercions
+        and overload_type_can_coerce(
+            expected,
+            actual
+        )
+    {
+        give overload_match(
+            index,
+            expected,
+            actual,
+            OverloadMatchKind.Coercion,
+            70
+        );
+    }
+
+    if resolver.config.allow_conversions
+        and overload_type_can_convert(
+            expected,
+            actual
+        )
+    {
+        give overload_match(
+            index,
+            expected,
+            actual,
+            OverloadMatchKind.Conversion,
+            40
+        );
+    }
+
+    give overload_match(
+        index,
+        expected,
+        actual,
+        OverloadMatchKind.Incompatible,
+        0
+    );
+}
+
+proc overload_parameter_for_argument(
+    parameters: [OverloadParameter],
+    index: usize
+) -> Option<OverloadParameter> {
+    if index < len(parameters) {
+        give Some(
+            parameters[index]
+        );
+    }
+
+    if len(parameters) == 0 {
+        give None;
+    }
+
+    let last =
+        parameters[
+            len(parameters) - 1
+        ];
+
+    if last.variadic {
+        give Some(last);
+    }
+
+    give None;
+}
+
+proc overload_resolver_evaluate(
+    resolver: ref mut OverloadResolver,
+    definition: OverloadDefinition,
+    arguments: [OverloadArgument]
+) -> OverloadCandidate {
+    let mut candidate =
+        overload_candidate(
+            definition
+        );
+
+    set resolver.statistics.candidates_checked =
+        resolver.statistics.candidates_checked + 1;
+
+    if not overload_arity_compatible(
+        ref resolver,
+        definition,
+        arguments
+    ) {
+        set candidate.compatible = false;
+
+        set resolver.statistics.arity_failures =
+            resolver.statistics.arity_failures + 1;
+
+        give candidate;
+    }
+
+    let mut index: usize = 0;
+
+    while index < len(arguments) {
+        let parameter =
+            overload_parameter_for_argument(
+                definition.parameters,
+                index
+            );
+
+        pick parameter {
+            None {
+                set candidate.compatible = false;
+
+                set resolver.statistics.arity_failures =
+                    resolver.statistics.arity_failures + 1;
+
+                give candidate;
+            }
+
+            Some(value) {
+                let matched =
+                    overload_match_types(
+                        ref resolver,
+                        value.type_id,
+                        arguments[index].type_id,
+                        index
+                    );
+
+                set candidate.matches =
+                    candidate.matches
+                    + [matched];
+
+                pick matched.kind {
+                    OverloadMatchKind.Exact {
+                        set candidate.exact_matches =
+                            candidate.exact_matches + 1;
+
+                        set resolver.statistics.exact_matches =
+                            resolver.statistics.exact_matches + 1;
+                    }
+
+                    OverloadMatchKind.Coercion {
+                        set candidate.coercions =
+                            candidate.coercions + 1;
+
+                        set resolver.statistics.coercions =
+                            resolver.statistics.coercions + 1;
+                    }
+
+                    OverloadMatchKind.Conversion {
+                        set candidate.conversions =
+                            candidate.conversions + 1;
+
+                        set resolver.statistics.conversions =
+                            resolver.statistics.conversions + 1;
+                    }
+
+                    OverloadMatchKind.Generic {
+                        set candidate.score =
+                            candidate.score + 20;
+                    }
+
+                    OverloadMatchKind.Variadic {
+                        set candidate.score =
+                            candidate.score + 10;
+                    }
+
+                    OverloadMatchKind.Incompatible {
+                        set candidate.compatible = false;
+
+                        set resolver.statistics.type_failures =
+                            resolver.statistics.type_failures + 1;
+                    }
+                }
+
+                set candidate.score =
+                    candidate.score
+                    + matched.score;
+            }
+        }
+
+        set index = index + 1;
+    }
+
+    if resolver.config.prefer_non_generic
+        and definition.generic_arity == 0
+    {
+        set candidate.score =
+            candidate.score + 20;
+    }
+
+    give candidate;
+}
+
+proc overload_resolver_collect(
+    resolver: ref mut OverloadResolver,
+    name: string,
+    arguments: [OverloadArgument]
+) -> [OverloadCandidate] {
+    let mut output: [OverloadCandidate] = [];
+
+    for definition in resolver.definitions {
+        if definition.name != name {
+            continue;
+        }
+
+        let candidate =
+            overload_resolver_evaluate(
+                resolver,
+                definition,
+                arguments
+            );
+
+        set output =
+            output + [candidate];
+    }
+
+    give output;
+}
+
+proc overload_candidate_better(
+    left: OverloadCandidate,
+    right: OverloadCandidate
+) -> bool {
+    if left.compatible
+        and not right.compatible
+    {
+        give true;
+    }
+
+    if right.compatible
+        and not left.compatible
+    {
+        give false;
+    }
+
+    if left.score != right.score {
+        give left.score > right.score;
+    }
+
+    if left.exact_matches
+        != right.exact_matches
+    {
+        give left.exact_matches
+            > right.exact_matches;
+    }
+
+    if left.conversions
+        != right.conversions
+    {
+        give left.conversions
+            < right.conversions;
+    }
+
+    if left.coercions
+        != right.coercions
+    {
+        give left.coercions
+            < right.coercions;
+    }
+
+    if left.definition.generic_arity
+        != right.definition.generic_arity
+    {
+        give left.definition.generic_arity
+            < right.definition.generic_arity;
+    }
+
+    give false;
+}
+
+proc overload_candidates_compatible(
+    candidates: [OverloadCandidate]
+) -> [OverloadCandidate] {
+    let mut output: [OverloadCandidate] = [];
+
+    for candidate in candidates {
+        if candidate.compatible {
+            set output =
+                output + [candidate];
+        }
+    }
+
+    give output;
+}
+
+proc overload_candidate_best(
+    candidates: [OverloadCandidate]
+) -> Option<OverloadCandidate> {
+    if len(candidates) == 0 {
+        give None;
+    }
+
+    let mut best =
+        candidates[0];
+
+    let mut index: usize = 1;
+
+    while index < len(candidates) {
+        if overload_candidate_better(
+            candidates[index],
+            best
+        ) {
+            set best =
+                candidates[index];
+        }
+
+        set index = index + 1;
+    }
+
+    give Some(best);
+}
+
+proc overload_candidates_ambiguous(
+    candidates: [OverloadCandidate],
+    best: OverloadCandidate
+) -> bool {
+    let mut count: usize = 0;
+
+    for candidate in candidates {
+        if not overload_candidate_better(
+            best,
+            candidate
+        )
+            and not overload_candidate_better(
+                candidate,
+                best
+            )
+        {
+            set count = count + 1;
+        }
+    }
+
+    give count > 1;
+}
+
+proc overload_resolution_missing(
+    name: string,
+    candidates: [OverloadCandidate]
+) -> OverloadResolution {
+    give OverloadResolution {
+        name: name,
+
+        definition: None,
+        candidate: None,
+
+        candidates: candidates,
+
+        state:
+            OverloadResolutionState.Missing,
+
+        error:
+            overload_resolution_error(
+                OverloadResolutionErrorKind.NoMatchingOverload,
+                name,
+                0,
+                "no matching overload was found"
+            ),
+
+        found: false
+    };
+}
+
+proc overload_resolution_ambiguous(
+    name: string,
+    candidates: [OverloadCandidate]
+) -> OverloadResolution {
+    give OverloadResolution {
+        name: name,
+
+        definition: None,
+        candidate: None,
+
+        candidates: candidates,
+
+        state:
+            OverloadResolutionState.Ambiguous,
+
+        error:
+            overload_resolution_error(
+                OverloadResolutionErrorKind.AmbiguousOverload,
+                name,
+                0,
+                "multiple overloads are equally applicable"
+            ),
+
+        found: false
+    };
+}
+
+proc overload_resolution_resolved(
+    name: string,
+    candidate: OverloadCandidate,
+    candidates: [OverloadCandidate]
+) -> OverloadResolution {
+    give OverloadResolution {
+        name: name,
+
+        definition:
+            Some(
+                candidate.definition.definition
+            ),
+
+        candidate:
+            Some(candidate),
+
+        candidates:
+            candidates,
+
+        state:
+            OverloadResolutionState.Resolved,
+
+        error:
+            overload_resolution_error_none(),
+
+        found:
+            true
+    };
+}
+
+proc overload_resolution_invalid(
+    name: string,
+    message: string
+) -> OverloadResolution {
+    give OverloadResolution {
+        name: name,
+
+        definition: None,
+        candidate: None,
+
+        candidates: [],
+
+        state:
+            OverloadResolutionState.Invalid,
+
+        error:
+            overload_resolution_error(
+                OverloadResolutionErrorKind.InvalidDefinition,
+                name,
+                0,
+                message
+            ),
+
+        found: false
+    };
+}
+
+proc overload_resolver_record(
+    resolver: ref mut OverloadResolver,
+    result: OverloadResolution
+) {
+    set resolver.statistics.resolutions =
+        resolver.statistics.resolutions + 1;
+
+    pick result.state {
+        OverloadResolutionState.Resolved {
+            set resolver.statistics.resolved =
+                resolver.statistics.resolved + 1;
+        }
+
+        OverloadResolutionState.Missing {
+            set resolver.statistics.missing =
+                resolver.statistics.missing + 1;
+        }
+
+        OverloadResolutionState.Ambiguous {
+            set resolver.statistics.ambiguous =
+                resolver.statistics.ambiguous + 1;
+        }
+
+        _ {}
+    }
+}
+
+proc overload_resolver_resolve(
+    resolver: ref mut OverloadResolver,
+    name: string,
+    arguments: [OverloadArgument]
+) -> OverloadResolution {
+    if name == "" {
+        let result =
+            overload_resolution_invalid(
+                name,
+                "overload name is empty"
+            );
+
+        overload_resolver_record(
+            resolver,
+            result
+        );
+
+        give result;
+    }
+
+    let candidates =
+        overload_resolver_collect(
+            resolver,
+            name,
+            arguments
+        );
+
+    if len(candidates) == 0 {
+        let result =
+            overload_resolution_missing(
+                name,
+                candidates
+            );
+
+        overload_resolver_record(
+            resolver,
+            result
+        );
+
+        give result;
+    }
+
+    let compatible =
+        overload_candidates_compatible(
+            candidates
+        );
+
+    if len(compatible) == 0 {
+        let result =
+            overload_resolution_missing(
+                name,
+                candidates
+            );
+
+        overload_resolver_record(
+            resolver,
+            result
+        );
+
+        give result;
+    }
+
+    let best =
+        overload_candidate_best(
+            compatible
+        );
+
+    pick best {
+        None {
+            let result =
+                overload_resolution_missing(
+                    name,
+                    candidates
+                );
+
+            overload_resolver_record(
+                resolver,
+                result
+            );
+
+            give result;
+        }
+
+        Some(candidate) {
+            if overload_candidates_ambiguous(
+                compatible,
+                candidate
+            ) {
+                let result =
+                    overload_resolution_ambiguous(
+                        name,
+                        compatible
+                    );
+
+                overload_resolver_record(
+                    resolver,
+                    result
+                );
+
+                give result;
+            }
+
+            let result =
+                overload_resolution_resolved(
+                    name,
+                    candidate,
+                    compatible
+                );
+
+            overload_resolver_record(
+                resolver,
+                result
+            );
+
+            give result;
+        }
+    }
+}
+
+proc overload_resolver_definitions_named(
+    resolver: ref OverloadResolver,
+    name: string
+) -> [OverloadDefinition] {
+    let mut output: [OverloadDefinition] = [];
+
+    for definition in resolver.definitions {
+        if definition.name == name {
+            set output =
+                output + [definition];
+        }
+    }
+
+    give output;
+}
+
+proc overload_resolution_is_resolved(
+    result: OverloadResolution
+) -> bool {
+    give result.state
+        == OverloadResolutionState.Resolved
+        and result.found;
+}
+
+proc overload_resolution_is_ambiguous(
+    result: OverloadResolution
+) -> bool {
+    give result.state
+        == OverloadResolutionState.Ambiguous;
+}
+
+proc overload_resolution_has_error(
+    result: OverloadResolution
+) -> bool {
+    give result.error.kind
+        != OverloadResolutionErrorKind.None;
+}
+
+proc overload_resolver_statistics(
+    resolver: ref OverloadResolver
+) -> OverloadResolverStatistics {
+    give resolver.statistics;
+}
+
+proc overload_resolver_reset_statistics(
+    resolver: ref mut OverloadResolver
+) {
+    set resolver.statistics =
+        overload_resolver_statistics_empty();
+}
+
+proc overload_match_kind_name(
+    kind: OverloadMatchKind
+) -> string {
+    pick kind {
+        OverloadMatchKind.Exact {
+            give "exact";
+        }
+
+        OverloadMatchKind.Coercion {
+            give "coercion";
+        }
+
+        OverloadMatchKind.Conversion {
+            give "conversion";
+        }
+
+        OverloadMatchKind.Generic {
+            give "generic";
+        }
+
+        OverloadMatchKind.Variadic {
+            give "variadic";
+        }
+
+        OverloadMatchKind.Incompatible {
+            give "incompatible";
+        }
+    }
+
+    give "incompatible";
+}
+
+proc overload_resolution_state_name(
+    state: OverloadResolutionState
+) -> string {
+    pick state {
+        OverloadResolutionState.Unresolved {
+            give "unresolved";
+        }
+
+        OverloadResolutionState.Resolved {
+            give "resolved";
+        }
+
+        OverloadResolutionState.Missing {
+            give "missing";
+        }
+
+        OverloadResolutionState.Ambiguous {
+            give "ambiguous";
+        }
+
+        OverloadResolutionState.ArityMismatch {
+            give "arity-mismatch";
+        }
+
+        OverloadResolutionState.TypeMismatch {
+            give "type-mismatch";
+        }
+
+        OverloadResolutionState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}

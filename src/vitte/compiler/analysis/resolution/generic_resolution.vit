@@ -1,0 +1,1040 @@
+space vitte/compiler/analysis/resolution/generic_resolution
+
+export *
+
+use vitte/compiler/analysis/resolution/candidate.{
+    Candidate,
+    CandidateKind,
+    CandidateOrigin,
+    CandidateVisibility,
+    CandidateState,
+    CandidateSet,
+    candidate_create,
+    candidate_with_priority,
+    candidate_with_scope_depth,
+    candidate_mark_exact,
+    candidate_set_create,
+    candidate_set_push,
+    candidate_set_resolve
+}
+
+pick GenericParameterKind {
+    Type,
+    Const,
+    Comptime
+}
+
+pick GenericArgumentKind {
+    Type,
+    Const,
+    Comptime
+}
+
+pick GenericResolutionState {
+    Unresolved,
+    Resolved,
+    Missing,
+    Ambiguous,
+    ArityMismatch,
+    KindMismatch,
+    ConstraintFailure,
+    Invalid
+}
+
+pick GenericResolutionErrorKind {
+    None,
+    EmptyName,
+    InvalidOwner,
+    MissingParameter,
+    AmbiguousParameter,
+    TooFewArguments,
+    TooManyArguments,
+    ArgumentKindMismatch,
+    MissingDefault,
+    ConstraintFailure,
+    InvalidDefinition
+}
+
+form GenericParameter {
+    name: string
+
+    kind: GenericParameterKind
+
+    definition: DefId
+
+    index: usize
+    scope_depth: usize
+    priority: usize
+
+    has_default: bool
+    default_type: Option<TypeId>
+    default_value: Option<DefId>
+
+    synthetic: bool
+}
+
+form GenericArgument {
+    kind: GenericArgumentKind
+
+    type_value: Option<TypeId>
+    const_value: Option<DefId>
+
+    inferred: bool
+}
+
+form GenericBinding {
+    parameter: GenericParameter
+    argument: GenericArgument
+
+    defaulted: bool
+}
+
+form GenericResolutionError {
+    kind: GenericResolutionErrorKind
+
+    name: string
+    index: usize
+
+    message: string
+}
+
+form GenericParameterResolution {
+    parameter: Option<GenericParameter>
+    candidate: Option<Candidate>
+
+    state: GenericResolutionState
+    error: GenericResolutionError
+
+    found: bool
+}
+
+form GenericResolution {
+    owner: DefId
+
+    bindings: [GenericBinding]
+    errors: [GenericResolutionError]
+
+    expected: usize
+    provided: usize
+
+    state: GenericResolutionState
+    valid: bool
+}
+
+form GenericResolverStatistics {
+    parameter_resolutions: u64
+    argument_resolutions: u64
+
+    resolved: u64
+    missing: u64
+    ambiguous: u64
+    arity_errors: u64
+    kind_errors: u64
+    constraint_errors: u64
+    invalid: u64
+}
+
+form GenericResolver {
+    parameters: [GenericParameter]
+
+    statistics: GenericResolverStatistics
+}
+
+proc generic_resolution_error_none()
+    -> GenericResolutionError
+{
+    give GenericResolutionError {
+        kind: GenericResolutionErrorKind.None,
+
+        name: "",
+        index: 0,
+
+        message: ""
+    };
+}
+
+proc generic_resolution_error(
+    kind: GenericResolutionErrorKind,
+    name: string,
+    index: usize,
+    message: string
+) -> GenericResolutionError {
+    give GenericResolutionError {
+        kind: kind,
+        name: name,
+        index: index,
+        message: message
+    };
+}
+
+proc generic_resolver_statistics_empty()
+    -> GenericResolverStatistics
+{
+    give GenericResolverStatistics {
+        parameter_resolutions: 0,
+        argument_resolutions: 0,
+
+        resolved: 0,
+        missing: 0,
+        ambiguous: 0,
+        arity_errors: 0,
+        kind_errors: 0,
+        constraint_errors: 0,
+        invalid: 0
+    };
+}
+
+proc generic_resolver_create()
+    -> GenericResolver
+{
+    give GenericResolver {
+        parameters: [],
+
+        statistics:
+            generic_resolver_statistics_empty()
+    };
+}
+
+proc generic_parameter_type(
+    name: string,
+    definition: DefId,
+    index: usize
+) -> GenericParameter {
+    give GenericParameter {
+        name: name,
+
+        kind: GenericParameterKind.Type,
+
+        definition: definition,
+
+        index: index,
+        scope_depth: 0,
+        priority: 0,
+
+        has_default: false,
+        default_type: None,
+        default_value: None,
+
+        synthetic: false
+    };
+}
+
+proc generic_parameter_const(
+    name: string,
+    definition: DefId,
+    index: usize
+) -> GenericParameter {
+    give GenericParameter {
+        name: name,
+
+        kind: GenericParameterKind.Const,
+
+        definition: definition,
+
+        index: index,
+        scope_depth: 0,
+        priority: 0,
+
+        has_default: false,
+        default_type: None,
+        default_value: None,
+
+        synthetic: false
+    };
+}
+
+proc generic_parameter_comptime(
+    name: string,
+    definition: DefId,
+    index: usize
+) -> GenericParameter {
+    give GenericParameter {
+        name: name,
+
+        kind: GenericParameterKind.Comptime,
+
+        definition: definition,
+
+        index: index,
+        scope_depth: 0,
+        priority: 0,
+
+        has_default: false,
+        default_type: None,
+        default_value: None,
+
+        synthetic: false
+    };
+}
+
+proc generic_parameter_with_type_default(
+    parameter: GenericParameter,
+    type_value: TypeId
+) -> GenericParameter {
+    let mut result: GenericParameter =
+        parameter;
+
+    set result.has_default = true;
+    set result.default_type =
+        Some(type_value);
+
+    give result;
+}
+
+proc generic_parameter_with_value_default(
+    parameter: GenericParameter,
+    value: DefId
+) -> GenericParameter {
+    let mut result: GenericParameter =
+        parameter;
+
+    set result.has_default = true;
+    set result.default_value =
+        Some(value);
+
+    give result;
+}
+
+proc generic_parameter_with_priority(
+    parameter: GenericParameter,
+    priority: usize
+) -> GenericParameter {
+    let mut result: GenericParameter =
+        parameter;
+
+    set result.priority = priority;
+
+    give result;
+}
+
+proc generic_parameter_with_scope_depth(
+    parameter: GenericParameter,
+    depth: usize
+) -> GenericParameter {
+    let mut result: GenericParameter =
+        parameter;
+
+    set result.scope_depth = depth;
+
+    give result;
+}
+
+proc generic_parameter_mark_synthetic(
+    parameter: GenericParameter
+) -> GenericParameter {
+    let mut result: GenericParameter =
+        parameter;
+
+    set result.synthetic = true;
+
+    give result;
+}
+
+proc generic_argument_type(
+    type_value: TypeId
+) -> GenericArgument {
+    give GenericArgument {
+        kind: GenericArgumentKind.Type,
+
+        type_value:
+            Some(type_value),
+
+        const_value:
+            None,
+
+        inferred:
+            false
+    };
+}
+
+proc generic_argument_const(
+    value: DefId
+) -> GenericArgument {
+    give GenericArgument {
+        kind: GenericArgumentKind.Const,
+
+        type_value:
+            None,
+
+        const_value:
+            Some(value),
+
+        inferred:
+            false
+    };
+}
+
+proc generic_argument_comptime(
+    value: DefId
+) -> GenericArgument {
+    give GenericArgument {
+        kind: GenericArgumentKind.Comptime,
+
+        type_value:
+            None,
+
+        const_value:
+            Some(value),
+
+        inferred:
+            false
+    };
+}
+
+proc generic_argument_mark_inferred(
+    argument: GenericArgument
+) -> GenericArgument {
+    let mut result: GenericArgument =
+        argument;
+
+    set result.inferred = true;
+
+    give result;
+}
+
+proc generic_resolver_register(
+    resolver: ref mut GenericResolver,
+    parameter: GenericParameter
+) {
+    set resolver.parameters =
+        resolver.parameters + [parameter];
+}
+
+proc generic_candidate_kind(
+    kind: GenericParameterKind
+) -> CandidateKind {
+    pick kind {
+        GenericParameterKind.Type {
+            give CandidateKind.Generic;
+        }
+
+        GenericParameterKind.Const {
+            give CandidateKind.Generic;
+        }
+
+        GenericParameterKind.Comptime {
+            give CandidateKind.Generic;
+        }
+    }
+
+    give CandidateKind.Generic;
+}
+
+proc generic_candidate_from_parameter(
+    parameter: GenericParameter,
+    requested: string
+) -> Candidate {
+    let mut candidate =
+        candidate_create(
+            parameter.name,
+            generic_candidate_kind(
+                parameter.kind
+            ),
+            CandidateOrigin.Local,
+            CandidateVisibility.Private,
+            Some(parameter.definition)
+        );
+
+    set candidate =
+        candidate_with_scope_depth(
+            candidate,
+            parameter.scope_depth
+        );
+
+    set candidate =
+        candidate_with_priority(
+            candidate,
+            parameter.priority
+        );
+
+    if parameter.name == requested {
+        set candidate =
+            candidate_mark_exact(
+                candidate
+            );
+    }
+
+    set candidate.synthetic =
+        parameter.synthetic;
+
+    give candidate;
+}
+
+proc generic_resolver_collect(
+    resolver: ref GenericResolver,
+    name: string
+) -> CandidateSet {
+    let mut candidates =
+        candidate_set_create();
+
+    for parameter in resolver.parameters {
+        if parameter.name != name {
+            continue;
+        }
+
+        candidate_set_push(
+            ref mut candidates,
+            generic_candidate_from_parameter(
+                parameter,
+                name
+            )
+        );
+    }
+
+    give candidates;
+}
+
+proc generic_resolver_find_parameter(
+    resolver: ref GenericResolver,
+    candidate: Candidate
+) -> Option<GenericParameter> {
+    pick candidate.definition {
+        None {
+            give None;
+        }
+
+        Some(definition) {
+            for parameter in resolver.parameters {
+                if parameter.definition
+                    == definition
+                {
+                    give Some(parameter);
+                }
+            }
+        }
+    }
+
+    give None;
+}
+
+proc generic_parameter_resolution_missing(
+    name: string
+) -> GenericParameterResolution {
+    give GenericParameterResolution {
+        parameter: None,
+        candidate: None,
+
+        state:
+            GenericResolutionState.Missing,
+
+        error:
+            generic_resolution_error(
+                GenericResolutionErrorKind.MissingParameter,
+                name,
+                0,
+                "generic parameter was not found"
+            ),
+
+        found: false
+    };
+}
+
+proc generic_parameter_resolution_ambiguous(
+    name: string
+) -> GenericParameterResolution {
+    give GenericParameterResolution {
+        parameter: None,
+        candidate: None,
+
+        state:
+            GenericResolutionState.Ambiguous,
+
+        error:
+            generic_resolution_error(
+                GenericResolutionErrorKind.AmbiguousParameter,
+                name,
+                0,
+                "generic parameter resolution is ambiguous"
+            ),
+
+        found: false
+    };
+}
+
+proc generic_parameter_resolution_invalid(
+    name: string,
+    message: string
+) -> GenericParameterResolution {
+    give GenericParameterResolution {
+        parameter: None,
+        candidate: None,
+
+        state:
+            GenericResolutionState.Invalid,
+
+        error:
+            generic_resolution_error(
+                GenericResolutionErrorKind.InvalidDefinition,
+                name,
+                0,
+                message
+            ),
+
+        found: false
+    };
+}
+
+proc generic_parameter_resolution_resolved(
+    parameter: GenericParameter,
+    candidate: Candidate
+) -> GenericParameterResolution {
+    give GenericParameterResolution {
+        parameter:
+            Some(parameter),
+
+        candidate:
+            Some(candidate),
+
+        state:
+            GenericResolutionState.Resolved,
+
+        error:
+            generic_resolution_error_none(),
+
+        found:
+            true
+    };
+}
+
+proc generic_resolver_resolve_parameter(
+    resolver: ref mut GenericResolver,
+    name: string
+) -> GenericParameterResolution {
+    set resolver.statistics.parameter_resolutions =
+        resolver.statistics.parameter_resolutions + 1;
+
+    if name == "" {
+        set resolver.statistics.invalid =
+            resolver.statistics.invalid + 1;
+
+        give generic_parameter_resolution_invalid(
+            name,
+            "generic parameter name is empty"
+        );
+    }
+
+    let mut candidates =
+        generic_resolver_collect(
+            ref resolver,
+            name
+        );
+
+    if len(candidates.candidates) == 0 {
+        set resolver.statistics.missing =
+            resolver.statistics.missing + 1;
+
+        give generic_parameter_resolution_missing(
+            name
+        );
+    }
+
+    let resolved =
+        candidate_set_resolve(
+            ref mut candidates
+        );
+
+    if candidates.ambiguous {
+        set resolver.statistics.ambiguous =
+            resolver.statistics.ambiguous + 1;
+
+        give generic_parameter_resolution_ambiguous(
+            name
+        );
+    }
+
+    pick resolved {
+        None {
+            set resolver.statistics.missing =
+                resolver.statistics.missing + 1;
+
+            give generic_parameter_resolution_missing(
+                name
+            );
+        }
+
+        Some(candidate) {
+            let parameter =
+                generic_resolver_find_parameter(
+                    ref resolver,
+                    candidate
+                );
+
+            pick parameter {
+                None {
+                    set resolver.statistics.invalid =
+                        resolver.statistics.invalid + 1;
+
+                    give generic_parameter_resolution_invalid(
+                        name,
+                        "resolved candidate has no generic parameter"
+                    );
+                }
+
+                Some(value) {
+                    set resolver.statistics.resolved =
+                        resolver.statistics.resolved + 1;
+
+                    give generic_parameter_resolution_resolved(
+                        value,
+                        candidate
+                    );
+                }
+            }
+        }
+    }
+
+    give generic_parameter_resolution_invalid(
+        name,
+        "generic parameter resolution failed"
+    );
+}
+
+proc generic_parameter_accepts_argument(
+    parameter: GenericParameter,
+    argument: GenericArgument
+) -> bool {
+    pick parameter.kind {
+        GenericParameterKind.Type {
+            give argument.kind
+                == GenericArgumentKind.Type;
+        }
+
+        GenericParameterKind.Const {
+            give argument.kind
+                == GenericArgumentKind.Const;
+        }
+
+        GenericParameterKind.Comptime {
+            give argument.kind
+                == GenericArgumentKind.Comptime;
+        }
+    }
+
+    give false;
+}
+
+proc generic_argument_from_default(
+    parameter: GenericParameter
+) -> Option<GenericArgument> {
+    if not parameter.has_default {
+        give None;
+    }
+
+    pick parameter.kind {
+        GenericParameterKind.Type {
+            pick parameter.default_type {
+                Some(value) {
+                    give Some(
+                        generic_argument_type(
+                            value
+                        )
+                    );
+                }
+
+                None {
+                    give None;
+                }
+            }
+        }
+
+        GenericParameterKind.Const {
+            pick parameter.default_value {
+                Some(value) {
+                    give Some(
+                        generic_argument_const(
+                            value
+                        )
+                    );
+                }
+
+                None {
+                    give None;
+                }
+            }
+        }
+
+        GenericParameterKind.Comptime {
+            pick parameter.default_value {
+                Some(value) {
+                    give Some(
+                        generic_argument_comptime(
+                            value
+                        )
+                    );
+                }
+
+                None {
+                    give None;
+                }
+            }
+        }
+    }
+
+    give None;
+}
+
+proc generic_binding(
+    parameter: GenericParameter,
+    argument: GenericArgument,
+    defaulted: bool
+) -> GenericBinding {
+    give GenericBinding {
+        parameter: parameter,
+        argument: argument,
+        defaulted: defaulted
+    };
+}
+
+proc generic_resolution_create(
+    owner: DefId,
+    expected: usize,
+    provided: usize
+) -> GenericResolution {
+    give GenericResolution {
+        owner: owner,
+
+        bindings: [],
+        errors: [],
+
+        expected: expected,
+        provided: provided,
+
+        state:
+            GenericResolutionState.Unresolved,
+
+        valid:
+            true
+    };
+}
+
+proc generic_resolution_push_error(
+    result: ref mut GenericResolution,
+    error: GenericResolutionError
+) {
+    set result.errors =
+        result.errors + [error];
+
+    set result.valid = false;
+}
+
+proc generic_resolver_resolve_arguments(
+    resolver: ref mut GenericResolver,
+    owner: DefId,
+    parameters: [GenericParameter],
+    arguments: [GenericArgument]
+) -> GenericResolution {
+    set resolver.statistics.argument_resolutions =
+        resolver.statistics.argument_resolutions + 1;
+
+    let mut result =
+        generic_resolution_create(
+            owner,
+            len(parameters),
+            len(arguments)
+        );
+
+    if len(arguments) > len(parameters) {
+        generic_resolution_push_error(
+            ref mut result,
+            generic_resolution_error(
+                GenericResolutionErrorKind.TooManyArguments,
+                "",
+                len(parameters),
+                "too many generic arguments"
+            )
+        );
+
+        set result.state =
+            GenericResolutionState.ArityMismatch;
+
+        set resolver.statistics.arity_errors =
+            resolver.statistics.arity_errors + 1;
+
+        give result;
+    }
+
+    let mut index: usize = 0;
+
+    while index < len(parameters) {
+        let parameter =
+            parameters[index];
+
+        if index < len(arguments) {
+            let argument =
+                arguments[index];
+
+            if not generic_parameter_accepts_argument(
+                parameter,
+                argument
+            ) {
+                generic_resolution_push_error(
+                    ref mut result,
+                    generic_resolution_error(
+                        GenericResolutionErrorKind.ArgumentKindMismatch,
+                        parameter.name,
+                        index,
+                        "generic argument kind does not match parameter"
+                    )
+                );
+
+                set resolver.statistics.kind_errors =
+                    resolver.statistics.kind_errors + 1;
+
+                set index = index + 1;
+                continue;
+            }
+
+            set result.bindings =
+                result.bindings + [
+                    generic_binding(
+                        parameter,
+                        argument,
+                        false
+                    )
+                ];
+        } else {
+            let default_argument =
+                generic_argument_from_default(
+                    parameter
+                );
+
+            pick default_argument {
+                Some(argument) {
+                    set result.bindings =
+                        result.bindings + [
+                            generic_binding(
+                                parameter,
+                                argument,
+                                true
+                            )
+                        ];
+                }
+
+                None {
+                    generic_resolution_push_error(
+                        ref mut result,
+                        generic_resolution_error(
+                            GenericResolutionErrorKind.MissingDefault,
+                            parameter.name,
+                            index,
+                            "generic argument is missing and parameter has no default"
+                        )
+                    );
+
+                    set resolver.statistics.arity_errors =
+                        resolver.statistics.arity_errors + 1;
+                }
+            }
+        }
+
+        set index = index + 1;
+    }
+
+    if not result.valid {
+        set result.state =
+            GenericResolutionState.ArityMismatch;
+
+        give result;
+    }
+
+    set result.state =
+        GenericResolutionState.Resolved;
+
+    set resolver.statistics.resolved =
+        resolver.statistics.resolved + 1;
+
+    give result;
+}
+
+proc generic_resolution_is_resolved(
+    result: GenericResolution
+) -> bool {
+    give result.valid
+        and result.state
+        == GenericResolutionState.Resolved;
+}
+
+proc generic_resolution_has_errors(
+    result: GenericResolution
+) -> bool {
+    give len(result.errors) != 0;
+}
+
+proc generic_resolution_binding_count(
+    result: GenericResolution
+) -> usize {
+    give len(result.bindings);
+}
+
+proc generic_resolver_statistics(
+    resolver: ref GenericResolver
+) -> GenericResolverStatistics {
+    give resolver.statistics;
+}
+
+proc generic_resolver_reset_statistics(
+    resolver: ref mut GenericResolver
+) {
+    set resolver.statistics =
+        generic_resolver_statistics_empty();
+}
+
+proc generic_parameter_kind_name(
+    kind: GenericParameterKind
+) -> string {
+    pick kind {
+        GenericParameterKind.Type {
+            give "type";
+        }
+
+        GenericParameterKind.Const {
+            give "const";
+        }
+
+        GenericParameterKind.Comptime {
+            give "comptime";
+        }
+    }
+
+    give "type";
+}
+
+proc generic_resolution_state_name(
+    state: GenericResolutionState
+) -> string {
+    pick state {
+        GenericResolutionState.Unresolved {
+            give "unresolved";
+        }
+
+        GenericResolutionState.Resolved {
+            give "resolved";
+        }
+
+        GenericResolutionState.Missing {
+            give "missing";
+        }
+
+        GenericResolutionState.Ambiguous {
+            give "ambiguous";
+        }
+
+        GenericResolutionState.ArityMismatch {
+            give "arity-mismatch";
+        }
+
+        GenericResolutionState.KindMismatch {
+            give "kind-mismatch";
+        }
+
+        GenericResolutionState.ConstraintFailure {
+            give "constraint-failure";
+        }
+
+        GenericResolutionState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}

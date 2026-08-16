@@ -1,0 +1,957 @@
+space vitte/compiler/analysis/resolution/namespace_resolution
+
+export *
+
+use vitte/compiler/analysis/modules/module_namespace.{
+    ModuleNamespace,
+    ModuleNamespaceKind,
+    ModuleNamespaceResult,
+    ModuleNamespaceError,
+
+    module_namespace_root,
+    module_namespace_invalid,
+    module_namespace_simple,
+    module_namespace_package,
+    module_namespace_nested,
+    module_namespace_generated,
+    module_namespace_builtin,
+    module_namespace_external,
+
+    module_namespace_name,
+    module_namespace_qualified_name,
+    module_namespace_parent_name,
+    module_namespace_depth,
+    module_namespace_kind,
+
+    module_namespace_is_valid,
+    module_namespace_is_root,
+    module_namespace_has_parent,
+    module_namespace_equal,
+    module_namespace_is_child_of,
+    module_namespace_is_direct_child_of,
+
+    module_namespace_validate
+}
+
+use vitte/compiler/analysis/resolution/candidate.{
+    Candidate,
+    CandidateKind,
+    CandidateOrigin,
+    CandidateVisibility,
+    CandidateSet,
+
+    candidate_create,
+    candidate_with_priority,
+    candidate_with_scope_depth,
+    candidate_mark_exact,
+
+    candidate_set_create,
+    candidate_set_push,
+    candidate_set_resolve
+}
+
+pick NamespaceResolutionState {
+    Unresolved,
+    Resolved,
+    Missing,
+    Ambiguous,
+    Invalid
+}
+
+pick NamespaceResolutionErrorKind {
+    None,
+    EmptyName,
+    InvalidNamespace,
+    InvalidParent,
+    NamespaceNotFound,
+    AmbiguousNamespace,
+    InvalidQualifiedName,
+    TooDeep
+}
+
+form NamespaceResolutionError {
+    kind: NamespaceResolutionErrorKind
+
+    name: string
+    qualified_name: string
+
+    message: string
+}
+
+form NamespaceDefinition {
+    namespace: ModuleNamespace
+
+    definition: Option<DefId>
+
+    priority: usize
+    synthetic: bool
+}
+
+form ResolvedNamespace {
+    namespace: Option<ModuleNamespace>
+    definition: Option<DefId>
+    candidate: Option<Candidate>
+
+    state: NamespaceResolutionState
+    error: NamespaceResolutionError
+
+    found: bool
+}
+
+form NamespaceResolverStatistics {
+    resolutions: u64
+
+    resolved: u64
+    missing: u64
+    ambiguous: u64
+    invalid: u64
+
+    qualified_lookups: u64
+    parent_lookups: u64
+
+    candidates: u64
+}
+
+form NamespaceResolver {
+    namespaces: [NamespaceDefinition]
+
+    statistics: NamespaceResolverStatistics
+}
+
+proc namespace_resolution_error_none()
+    -> NamespaceResolutionError
+{
+    give NamespaceResolutionError {
+        kind: NamespaceResolutionErrorKind.None,
+
+        name: "",
+        qualified_name: "",
+
+        message: ""
+    };
+}
+
+proc namespace_resolution_error(
+    kind: NamespaceResolutionErrorKind,
+    name: string,
+    qualified_name: string,
+    message: string
+) -> NamespaceResolutionError {
+    give NamespaceResolutionError {
+        kind: kind,
+
+        name: name,
+        qualified_name: qualified_name,
+
+        message: message
+    };
+}
+
+proc namespace_resolver_statistics_empty()
+    -> NamespaceResolverStatistics
+{
+    give NamespaceResolverStatistics {
+        resolutions: 0,
+
+        resolved: 0,
+        missing: 0,
+        ambiguous: 0,
+        invalid: 0,
+
+        qualified_lookups: 0,
+        parent_lookups: 0,
+
+        candidates: 0
+    };
+}
+
+proc namespace_resolver_create()
+    -> NamespaceResolver
+{
+    give NamespaceResolver {
+        namespaces: [],
+
+        statistics:
+            namespace_resolver_statistics_empty()
+    };
+}
+
+proc namespace_definition(
+    namespace: ModuleNamespace,
+    definition: Option<DefId>
+) -> NamespaceDefinition {
+    give NamespaceDefinition {
+        namespace: namespace,
+        definition: definition,
+
+        priority: 0,
+        synthetic: false
+    };
+}
+
+proc namespace_definition_with_priority(
+    definition: NamespaceDefinition,
+    priority: usize
+) -> NamespaceDefinition {
+    let mut result: NamespaceDefinition =
+        definition;
+
+    set result.priority = priority;
+
+    give result;
+}
+
+proc namespace_definition_mark_synthetic(
+    definition: NamespaceDefinition
+) -> NamespaceDefinition {
+    let mut result: NamespaceDefinition =
+        definition;
+
+    set result.synthetic = true;
+
+    give result;
+}
+
+proc namespace_resolver_register(
+    resolver: ref mut NamespaceResolver,
+    definition: NamespaceDefinition
+) -> bool {
+    if not module_namespace_is_valid(
+        definition.namespace
+    ) {
+        give false;
+    }
+
+    for current in resolver.namespaces {
+        if module_namespace_equal(
+            current.namespace,
+            definition.namespace
+        ) {
+            give false;
+        }
+    }
+
+    set resolver.namespaces =
+        resolver.namespaces + [definition];
+
+    give true;
+}
+
+proc namespace_candidate_origin(
+    kind: ModuleNamespaceKind
+) -> CandidateOrigin {
+    pick kind {
+        ModuleNamespaceKind.Root {
+            give CandidateOrigin.Module;
+        }
+
+        ModuleNamespaceKind.Package {
+            give CandidateOrigin.Module;
+        }
+
+        ModuleNamespaceKind.Module {
+            give CandidateOrigin.Module;
+        }
+
+        ModuleNamespaceKind.Nested {
+            give CandidateOrigin.ParentScope;
+        }
+
+        ModuleNamespaceKind.Generated {
+            give CandidateOrigin.Generated;
+        }
+
+        ModuleNamespaceKind.Builtin {
+            give CandidateOrigin.Builtin;
+        }
+
+        ModuleNamespaceKind.External {
+            give CandidateOrigin.Import;
+        }
+
+        ModuleNamespaceKind.Invalid {
+            give CandidateOrigin.Module;
+        }
+    }
+
+    give CandidateOrigin.Module;
+}
+
+proc namespace_candidate(
+    definition: NamespaceDefinition,
+    requested: string
+) -> Candidate {
+    let namespace =
+        definition.namespace;
+
+    let mut candidate =
+        candidate_create(
+            namespace.name,
+            CandidateKind.Namespace,
+            namespace_candidate_origin(
+                namespace.kind
+            ),
+            CandidateVisibility.Public,
+            definition.definition
+        );
+
+    set candidate =
+        candidate_with_scope_depth(
+            candidate,
+            namespace.depth as usize
+        );
+
+    set candidate =
+        candidate_with_priority(
+            candidate,
+            definition.priority
+        );
+
+    if namespace.name == requested
+        or namespace.qualified_name == requested
+    {
+        set candidate =
+            candidate_mark_exact(
+                candidate
+            );
+    }
+
+    set candidate.synthetic =
+        definition.synthetic;
+
+    give candidate;
+}
+
+proc namespace_resolver_find_definition(
+    resolver: ref NamespaceResolver,
+    candidate: Candidate
+) -> Option<NamespaceDefinition> {
+    pick candidate.definition {
+        Some(id) {
+            for definition in resolver.namespaces {
+                pick definition.definition {
+                    Some(current) {
+                        if current == id {
+                            give Some(definition);
+                        }
+                    }
+
+                    None {}
+                }
+            }
+        }
+
+        None {
+            for definition in resolver.namespaces {
+                if definition.namespace.name
+                    == candidate.name
+                {
+                    give Some(definition);
+                }
+            }
+        }
+    }
+
+    give None;
+}
+
+proc namespace_resolution_missing(
+    name: string
+) -> ResolvedNamespace {
+    give ResolvedNamespace {
+        namespace: None,
+        definition: None,
+        candidate: None,
+
+        state:
+            NamespaceResolutionState.Missing,
+
+        error:
+            namespace_resolution_error(
+                NamespaceResolutionErrorKind.NamespaceNotFound,
+                name,
+                "",
+                "namespace was not found"
+            ),
+
+        found: false
+    };
+}
+
+proc namespace_resolution_invalid(
+    name: string,
+    qualified_name: string,
+    kind: NamespaceResolutionErrorKind,
+    message: string
+) -> ResolvedNamespace {
+    give ResolvedNamespace {
+        namespace: None,
+        definition: None,
+        candidate: None,
+
+        state:
+            NamespaceResolutionState.Invalid,
+
+        error:
+            namespace_resolution_error(
+                kind,
+                name,
+                qualified_name,
+                message
+            ),
+
+        found: false
+    };
+}
+
+proc namespace_resolution_ambiguous(
+    name: string
+) -> ResolvedNamespace {
+    give ResolvedNamespace {
+        namespace: None,
+        definition: None,
+        candidate: None,
+
+        state:
+            NamespaceResolutionState.Ambiguous,
+
+        error:
+            namespace_resolution_error(
+                NamespaceResolutionErrorKind.AmbiguousNamespace,
+                name,
+                "",
+                "namespace resolution is ambiguous"
+            ),
+
+        found: false
+    };
+}
+
+proc namespace_resolution_resolved(
+    definition: NamespaceDefinition,
+    candidate: Candidate
+) -> ResolvedNamespace {
+    give ResolvedNamespace {
+        namespace:
+            Some(definition.namespace),
+
+        definition:
+            definition.definition,
+
+        candidate:
+            Some(candidate),
+
+        state:
+            NamespaceResolutionState.Resolved,
+
+        error:
+            namespace_resolution_error_none(),
+
+        found:
+            true
+    };
+}
+
+proc namespace_resolver_collect_name(
+    resolver: ref mut NamespaceResolver,
+    name: string
+) -> CandidateSet {
+    let mut candidates =
+        candidate_set_create();
+
+    for definition in resolver.namespaces {
+        if definition.namespace.name != name {
+            continue;
+        }
+
+        candidate_set_push(
+            ref mut candidates,
+            namespace_candidate(
+                definition,
+                name
+            )
+        );
+
+        set resolver.statistics.candidates =
+            resolver.statistics.candidates + 1;
+    }
+
+    give candidates;
+}
+
+proc namespace_resolver_collect_qualified(
+    resolver: ref mut NamespaceResolver,
+    qualified_name: string
+) -> CandidateSet {
+    let mut candidates =
+        candidate_set_create();
+
+    for definition in resolver.namespaces {
+        if definition.namespace.qualified_name
+            != qualified_name
+        {
+            continue;
+        }
+
+        candidate_set_push(
+            ref mut candidates,
+            namespace_candidate(
+                definition,
+                qualified_name
+            )
+        );
+
+        set resolver.statistics.candidates =
+            resolver.statistics.candidates + 1;
+    }
+
+    give candidates;
+}
+
+proc namespace_resolver_collect_child(
+    resolver: ref mut NamespaceResolver,
+    parent: ModuleNamespace,
+    name: string
+) -> CandidateSet {
+    let mut candidates =
+        candidate_set_create();
+
+    for definition in resolver.namespaces {
+        if definition.namespace.name != name {
+            continue;
+        }
+
+        if not module_namespace_is_direct_child_of(
+            definition.namespace,
+            parent
+        ) {
+            continue;
+        }
+
+        candidate_set_push(
+            ref mut candidates,
+            namespace_candidate(
+                definition,
+                name
+            )
+        );
+
+        set resolver.statistics.candidates =
+            resolver.statistics.candidates + 1;
+    }
+
+    give candidates;
+}
+
+proc namespace_resolver_select(
+    resolver: ref NamespaceResolver,
+    candidates: ref mut CandidateSet,
+    name: string
+) -> ResolvedNamespace {
+    if len(candidates.candidates) == 0 {
+        give namespace_resolution_missing(
+            name
+        );
+    }
+
+    let selected =
+        candidate_set_resolve(
+            candidates
+        );
+
+    if candidates.ambiguous {
+        give namespace_resolution_ambiguous(
+            name
+        );
+    }
+
+    pick selected {
+        Some(candidate) {
+            let definition =
+                namespace_resolver_find_definition(
+                    resolver,
+                    candidate
+                );
+
+            pick definition {
+                Some(value) {
+                    give namespace_resolution_resolved(
+                        value,
+                        candidate
+                    );
+                }
+
+                None {
+                    give namespace_resolution_invalid(
+                        name,
+                        "",
+                        NamespaceResolutionErrorKind.InvalidNamespace,
+                        "resolved candidate has no namespace definition"
+                    );
+                }
+            }
+        }
+
+        None {
+            give namespace_resolution_missing(
+                name
+            );
+        }
+    }
+}
+
+proc namespace_resolver_record(
+    resolver: ref mut NamespaceResolver,
+    result: ResolvedNamespace
+) {
+    set resolver.statistics.resolutions =
+        resolver.statistics.resolutions + 1;
+
+    pick result.state {
+        NamespaceResolutionState.Resolved {
+            set resolver.statistics.resolved =
+                resolver.statistics.resolved + 1;
+        }
+
+        NamespaceResolutionState.Missing {
+            set resolver.statistics.missing =
+                resolver.statistics.missing + 1;
+        }
+
+        NamespaceResolutionState.Ambiguous {
+            set resolver.statistics.ambiguous =
+                resolver.statistics.ambiguous + 1;
+        }
+
+        NamespaceResolutionState.Invalid {
+            set resolver.statistics.invalid =
+                resolver.statistics.invalid + 1;
+        }
+
+        NamespaceResolutionState.Unresolved {}
+    }
+}
+
+proc namespace_resolver_resolve_name(
+    resolver: ref mut NamespaceResolver,
+    name: string
+) -> ResolvedNamespace {
+    if name == "" {
+        let result =
+            namespace_resolution_invalid(
+                name,
+                "",
+                NamespaceResolutionErrorKind.EmptyName,
+                "namespace name is empty"
+            );
+
+        namespace_resolver_record(
+            resolver,
+            result
+        );
+
+        give result;
+    }
+
+    let mut candidates =
+        namespace_resolver_collect_name(
+            resolver,
+            name
+        );
+
+    let result =
+        namespace_resolver_select(
+            ref resolver,
+            ref mut candidates,
+            name
+        );
+
+    namespace_resolver_record(
+        resolver,
+        result
+    );
+
+    give result;
+}
+
+proc namespace_resolver_resolve_qualified(
+    resolver: ref mut NamespaceResolver,
+    qualified_name: string
+) -> ResolvedNamespace {
+    set resolver.statistics.qualified_lookups =
+        resolver.statistics.qualified_lookups + 1;
+
+    if qualified_name == "" {
+        let result =
+            namespace_resolution_invalid(
+                "",
+                qualified_name,
+                NamespaceResolutionErrorKind.InvalidQualifiedName,
+                "qualified namespace name is empty"
+            );
+
+        namespace_resolver_record(
+            resolver,
+            result
+        );
+
+        give result;
+    }
+
+    let mut candidates =
+        namespace_resolver_collect_qualified(
+            resolver,
+            qualified_name
+        );
+
+    let result =
+        namespace_resolver_select(
+            ref resolver,
+            ref mut candidates,
+            qualified_name
+        );
+
+    namespace_resolver_record(
+        resolver,
+        result
+    );
+
+    give result;
+}
+
+proc namespace_resolver_resolve_child(
+    resolver: ref mut NamespaceResolver,
+    parent: ModuleNamespace,
+    name: string
+) -> ResolvedNamespace {
+    set resolver.statistics.parent_lookups =
+        resolver.statistics.parent_lookups + 1;
+
+    if not module_namespace_is_valid(parent) {
+        let result =
+            namespace_resolution_invalid(
+                name,
+                "",
+                NamespaceResolutionErrorKind.InvalidParent,
+                "parent namespace is invalid"
+            );
+
+        namespace_resolver_record(
+            resolver,
+            result
+        );
+
+        give result;
+    }
+
+    if name == "" {
+        let result =
+            namespace_resolution_invalid(
+                name,
+                "",
+                NamespaceResolutionErrorKind.EmptyName,
+                "child namespace name is empty"
+            );
+
+        namespace_resolver_record(
+            resolver,
+            result
+        );
+
+        give result;
+    }
+
+    let mut candidates =
+        namespace_resolver_collect_child(
+            resolver,
+            parent,
+            name
+        );
+
+    let result =
+        namespace_resolver_select(
+            ref resolver,
+            ref mut candidates,
+            name
+        );
+
+    namespace_resolver_record(
+        resolver,
+        result
+    );
+
+    give result;
+}
+
+proc namespace_resolver_resolve_parent(
+    resolver: ref mut NamespaceResolver,
+    namespace: ModuleNamespace
+) -> ResolvedNamespace {
+    set resolver.statistics.parent_lookups =
+        resolver.statistics.parent_lookups + 1;
+
+    if not module_namespace_is_valid(namespace) {
+        let result =
+            namespace_resolution_invalid(
+                namespace.name,
+                namespace.qualified_name,
+                NamespaceResolutionErrorKind.InvalidNamespace,
+                "namespace is invalid"
+            );
+
+        namespace_resolver_record(
+            resolver,
+            result
+        );
+
+        give result;
+    }
+
+    if not module_namespace_has_parent(
+        namespace
+    ) {
+        let result =
+            namespace_resolution_missing(
+                namespace.parent
+            );
+
+        namespace_resolver_record(
+            resolver,
+            result
+        );
+
+        give result;
+    }
+
+    give namespace_resolver_resolve_qualified(
+        resolver,
+        namespace.parent
+    );
+}
+
+proc namespace_resolver_contains(
+    resolver: ref NamespaceResolver,
+    namespace: ModuleNamespace
+) -> bool {
+    for definition in resolver.namespaces {
+        if module_namespace_equal(
+            definition.namespace,
+            namespace
+        ) {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc namespace_resolver_contains_qualified(
+    resolver: ref NamespaceResolver,
+    qualified_name: string
+) -> bool {
+    for definition in resolver.namespaces {
+        if definition.namespace.qualified_name
+            == qualified_name
+        {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc namespace_resolver_children(
+    resolver: ref NamespaceResolver,
+    parent: ModuleNamespace
+) -> [ModuleNamespace] {
+    let mut output: [ModuleNamespace] = [];
+
+    for definition in resolver.namespaces {
+        if module_namespace_is_direct_child_of(
+            definition.namespace,
+            parent
+        ) {
+            set output =
+                output
+                + [definition.namespace];
+        }
+    }
+
+    give output;
+}
+
+proc namespace_resolver_descendants(
+    resolver: ref NamespaceResolver,
+    parent: ModuleNamespace
+) -> [ModuleNamespace] {
+    let mut output: [ModuleNamespace] = [];
+
+    for definition in resolver.namespaces {
+        if module_namespace_is_child_of(
+            definition.namespace,
+            parent
+        ) {
+            set output =
+                output
+                + [definition.namespace];
+        }
+    }
+
+    give output;
+}
+
+proc namespace_resolution_is_resolved(
+    result: ResolvedNamespace
+) -> bool {
+    give result.state
+        == NamespaceResolutionState.Resolved
+        and result.found;
+}
+
+proc namespace_resolution_has_error(
+    result: ResolvedNamespace
+) -> bool {
+    give result.error.kind
+        != NamespaceResolutionErrorKind.None;
+}
+
+proc namespace_resolver_statistics(
+    resolver: ref NamespaceResolver
+) -> NamespaceResolverStatistics {
+    give resolver.statistics;
+}
+
+proc namespace_resolver_reset_statistics(
+    resolver: ref mut NamespaceResolver
+) {
+    set resolver.statistics =
+        namespace_resolver_statistics_empty();
+}
+
+proc namespace_resolution_state_name(
+    state: NamespaceResolutionState
+) -> string {
+    pick state {
+        NamespaceResolutionState.Unresolved {
+            give "unresolved";
+        }
+
+        NamespaceResolutionState.Resolved {
+            give "resolved";
+        }
+
+        NamespaceResolutionState.Missing {
+            give "missing";
+        }
+
+        NamespaceResolutionState.Ambiguous {
+            give "ambiguous";
+        }
+
+        NamespaceResolutionState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}

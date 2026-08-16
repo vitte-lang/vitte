@@ -1,0 +1,891 @@
+space vitte/compiler/analysis/resolution/name_resolution
+
+export *
+
+use vitte/compiler/analysis/resolution/lookup.{
+    Lookup,
+    LookupKind,
+    LookupQuery,
+    LookupResult,
+    LookupState,
+
+    lookup_query,
+    lookup_resolve,
+    lookup_name,
+    lookup_value,
+    lookup_type,
+    lookup_module,
+    lookup_constant,
+    lookup_generic
+}
+
+use vitte/compiler/analysis/resolution/candidate.{
+    Candidate,
+    CandidateKind
+}
+
+pick NameResolutionKind {
+    Any,
+    Value,
+    Type,
+    Module,
+    Procedure,
+    Method,
+    Field,
+    Constant,
+    Generic,
+    Attribute,
+    Import,
+    Export
+}
+
+pick NameResolutionState {
+    Unresolved,
+    Resolved,
+    Missing,
+    Ambiguous,
+    Invalid
+}
+
+pick NameResolutionErrorKind {
+    None,
+    EmptyName,
+    InvalidScope,
+    NotFound,
+    Ambiguous,
+    InvalidCandidate,
+    InvalidDefinition
+}
+
+form NameResolutionError {
+    kind: NameResolutionErrorKind
+
+    name: string
+    scope: ScopeId
+
+    message: string
+}
+
+form NameResolution {
+    name: string
+    scope: ScopeId
+
+    kind: NameResolutionKind
+
+    definition: Option<DefId>
+    candidate: Option<Candidate>
+
+    state: NameResolutionState
+    error: NameResolutionError
+
+    cached: bool
+    found: bool
+}
+
+form NameResolverConfig {
+    search_parents: bool
+    search_imports: bool
+    search_builtins: bool
+}
+
+form NameResolverStatistics {
+    resolutions: u64
+
+    resolved: u64
+    missing: u64
+    ambiguous: u64
+    invalid: u64
+
+    value_resolutions: u64
+    type_resolutions: u64
+    module_resolutions: u64
+
+    cache_hits: u64
+}
+
+form NameResolver {
+    config: NameResolverConfig
+    statistics: NameResolverStatistics
+}
+
+proc name_resolver_config_default()
+    -> NameResolverConfig
+{
+    give NameResolverConfig {
+        search_parents: true,
+        search_imports: true,
+        search_builtins: true
+    };
+}
+
+proc name_resolver_statistics_empty()
+    -> NameResolverStatistics
+{
+    give NameResolverStatistics {
+        resolutions: 0,
+
+        resolved: 0,
+        missing: 0,
+        ambiguous: 0,
+        invalid: 0,
+
+        value_resolutions: 0,
+        type_resolutions: 0,
+        module_resolutions: 0,
+
+        cache_hits: 0
+    };
+}
+
+proc name_resolver_create_with_config(
+    config: NameResolverConfig
+) -> NameResolver {
+    give NameResolver {
+        config: config,
+        statistics:
+            name_resolver_statistics_empty()
+    };
+}
+
+proc name_resolver_create()
+    -> NameResolver
+{
+    give name_resolver_create_with_config(
+        name_resolver_config_default()
+    );
+}
+
+proc name_resolution_error_none(
+    scope: ScopeId
+) -> NameResolutionError {
+    give NameResolutionError {
+        kind: NameResolutionErrorKind.None,
+
+        name: "",
+        scope: scope,
+
+        message: ""
+    };
+}
+
+proc name_resolution_error(
+    kind: NameResolutionErrorKind,
+    name: string,
+    scope: ScopeId,
+    message: string
+) -> NameResolutionError {
+    give NameResolutionError {
+        kind: kind,
+
+        name: name,
+        scope: scope,
+
+        message: message
+    };
+}
+
+proc name_resolution_missing(
+    scope: ScopeId,
+    name: string,
+    kind: NameResolutionKind,
+    cached: bool
+) -> NameResolution {
+    give NameResolution {
+        name: name,
+        scope: scope,
+
+        kind: kind,
+
+        definition: None,
+        candidate: None,
+
+        state:
+            NameResolutionState.Missing,
+
+        error:
+            name_resolution_error(
+                NameResolutionErrorKind.NotFound,
+                name,
+                scope,
+                "name was not found"
+            ),
+
+        cached: cached,
+        found: false
+    };
+}
+
+proc name_resolution_ambiguous(
+    scope: ScopeId,
+    name: string,
+    kind: NameResolutionKind,
+    cached: bool
+) -> NameResolution {
+    give NameResolution {
+        name: name,
+        scope: scope,
+
+        kind: kind,
+
+        definition: None,
+        candidate: None,
+
+        state:
+            NameResolutionState.Ambiguous,
+
+        error:
+            name_resolution_error(
+                NameResolutionErrorKind.Ambiguous,
+                name,
+                scope,
+                "name resolution is ambiguous"
+            ),
+
+        cached: cached,
+        found: false
+    };
+}
+
+proc name_resolution_invalid(
+    scope: ScopeId,
+    name: string,
+    kind: NameResolutionKind,
+    error_kind: NameResolutionErrorKind,
+    message: string
+) -> NameResolution {
+    give NameResolution {
+        name: name,
+        scope: scope,
+
+        kind: kind,
+
+        definition: None,
+        candidate: None,
+
+        state:
+            NameResolutionState.Invalid,
+
+        error:
+            name_resolution_error(
+                error_kind,
+                name,
+                scope,
+                message
+            ),
+
+        cached: false,
+        found: false
+    };
+}
+
+proc name_resolution_resolved(
+    scope: ScopeId,
+    name: string,
+    kind: NameResolutionKind,
+    result: LookupResult
+) -> NameResolution {
+    give NameResolution {
+        name: name,
+        scope: scope,
+
+        kind: kind,
+
+        definition:
+            result.definition,
+
+        candidate:
+            result.candidate,
+
+        state:
+            NameResolutionState.Resolved,
+
+        error:
+            name_resolution_error_none(
+                scope
+            ),
+
+        cached:
+            result.cached,
+
+        found:
+            true
+    };
+}
+
+proc name_resolution_kind_to_lookup(
+    kind: NameResolutionKind
+) -> LookupKind {
+    pick kind {
+        NameResolutionKind.Any {
+            give LookupKind.Any;
+        }
+
+        NameResolutionKind.Value {
+            give LookupKind.Value;
+        }
+
+        NameResolutionKind.Type {
+            give LookupKind.Type;
+        }
+
+        NameResolutionKind.Module {
+            give LookupKind.Module;
+        }
+
+        NameResolutionKind.Procedure {
+            give LookupKind.Procedure;
+        }
+
+        NameResolutionKind.Method {
+            give LookupKind.Method;
+        }
+
+        NameResolutionKind.Field {
+            give LookupKind.Field;
+        }
+
+        NameResolutionKind.Constant {
+            give LookupKind.Constant;
+        }
+
+        NameResolutionKind.Generic {
+            give LookupKind.Generic;
+        }
+
+        NameResolutionKind.Attribute {
+            give LookupKind.Attribute;
+        }
+
+        NameResolutionKind.Import {
+            give LookupKind.Import;
+        }
+
+        NameResolutionKind.Export {
+            give LookupKind.Export;
+        }
+    }
+
+    give LookupKind.Any;
+}
+
+proc name_resolution_kind_from_candidate(
+    candidate: Candidate
+) -> NameResolutionKind {
+    pick candidate.kind {
+        CandidateKind.Module {
+            give NameResolutionKind.Module;
+        }
+
+        CandidateKind.Type {
+            give NameResolutionKind.Type;
+        }
+
+        CandidateKind.Form {
+            give NameResolutionKind.Type;
+        }
+
+        CandidateKind.Class {
+            give NameResolutionKind.Type;
+        }
+
+        CandidateKind.Union {
+            give NameResolutionKind.Type;
+        }
+
+        CandidateKind.Pick {
+            give NameResolutionKind.Type;
+        }
+
+        CandidateKind.Trait {
+            give NameResolutionKind.Type;
+        }
+
+        CandidateKind.Procedure {
+            give NameResolutionKind.Procedure;
+        }
+
+        CandidateKind.Method {
+            give NameResolutionKind.Method;
+        }
+
+        CandidateKind.Field {
+            give NameResolutionKind.Field;
+        }
+
+        CandidateKind.Constant {
+            give NameResolutionKind.Constant;
+        }
+
+        CandidateKind.Generic {
+            give NameResolutionKind.Generic;
+        }
+
+        CandidateKind.Attribute {
+            give NameResolutionKind.Attribute;
+        }
+
+        CandidateKind.Import {
+            give NameResolutionKind.Import;
+        }
+
+        CandidateKind.Export {
+            give NameResolutionKind.Export;
+        }
+
+        _ {
+            give NameResolutionKind.Value;
+        }
+    }
+}
+
+proc name_resolver_make_query(
+    resolver: ref NameResolver,
+    scope: ScopeId,
+    name: string,
+    kind: NameResolutionKind
+) -> LookupQuery {
+    give LookupQuery {
+        scope: scope,
+        name: name,
+
+        kind:
+            name_resolution_kind_to_lookup(
+                kind
+            ),
+
+        search_parents:
+            resolver.config.search_parents,
+
+        search_imports:
+            resolver.config.search_imports,
+
+        search_builtins:
+            resolver.config.search_builtins
+    };
+}
+
+proc name_resolver_record(
+    resolver: ref mut NameResolver,
+    result: NameResolution
+) {
+    set resolver.statistics.resolutions =
+        resolver.statistics.resolutions + 1;
+
+    pick result.kind {
+        NameResolutionKind.Value {
+            set resolver.statistics.value_resolutions =
+                resolver.statistics.value_resolutions + 1;
+        }
+
+        NameResolutionKind.Type {
+            set resolver.statistics.type_resolutions =
+                resolver.statistics.type_resolutions + 1;
+        }
+
+        NameResolutionKind.Module {
+            set resolver.statistics.module_resolutions =
+                resolver.statistics.module_resolutions + 1;
+        }
+
+        _ {}
+    }
+
+    pick result.state {
+        NameResolutionState.Resolved {
+            set resolver.statistics.resolved =
+                resolver.statistics.resolved + 1;
+        }
+
+        NameResolutionState.Missing {
+            set resolver.statistics.missing =
+                resolver.statistics.missing + 1;
+        }
+
+        NameResolutionState.Ambiguous {
+            set resolver.statistics.ambiguous =
+                resolver.statistics.ambiguous + 1;
+        }
+
+        NameResolutionState.Invalid {
+            set resolver.statistics.invalid =
+                resolver.statistics.invalid + 1;
+        }
+
+        NameResolutionState.Unresolved {}
+    }
+
+    if result.cached {
+        set resolver.statistics.cache_hits =
+            resolver.statistics.cache_hits + 1;
+    }
+}
+
+proc name_resolver_from_lookup(
+    resolver: ref mut NameResolver,
+    result: LookupResult,
+    kind: NameResolutionKind
+) -> NameResolution {
+    let resolution =
+        pick result.state {
+            LookupState.Resolved {
+                name_resolution_resolved(
+                    result.query.scope,
+                    result.query.name,
+                    kind,
+                    result
+                )
+            }
+
+            LookupState.Missing {
+                name_resolution_missing(
+                    result.query.scope,
+                    result.query.name,
+                    kind,
+                    result.cached
+                )
+            }
+
+            LookupState.Ambiguous {
+                name_resolution_ambiguous(
+                    result.query.scope,
+                    result.query.name,
+                    kind,
+                    result.cached
+                )
+            }
+
+            LookupState.Invalid {
+                name_resolution_invalid(
+                    result.query.scope,
+                    result.query.name,
+                    kind,
+                    NameResolutionErrorKind.InvalidCandidate,
+                    "lookup returned invalid result"
+                )
+            }
+
+            LookupState.Unresolved {
+                name_resolution_invalid(
+                    result.query.scope,
+                    result.query.name,
+                    kind,
+                    NameResolutionErrorKind.InvalidDefinition,
+                    "lookup did not resolve the name"
+                )
+            }
+        };
+
+    name_resolver_record(
+        resolver,
+        resolution
+    );
+
+    give resolution;
+}
+
+proc name_resolver_resolve(
+    resolver: ref mut NameResolver,
+    lookup: ref mut Lookup,
+    scope: ScopeId,
+    name: string,
+    kind: NameResolutionKind
+) -> NameResolution {
+    if name == "" {
+        let result =
+            name_resolution_invalid(
+                scope,
+                name,
+                kind,
+                NameResolutionErrorKind.EmptyName,
+                "name is empty"
+            );
+
+        name_resolver_record(
+            resolver,
+            result
+        );
+
+        give result;
+    }
+
+    let query =
+        name_resolver_make_query(
+            ref resolver,
+            scope,
+            name,
+            kind
+        );
+
+    let result =
+        lookup_resolve(
+            lookup,
+            query
+        );
+
+    give name_resolver_from_lookup(
+        resolver,
+        result,
+        kind
+    );
+}
+
+proc name_resolver_resolve_any(
+    resolver: ref mut NameResolver,
+    lookup: ref mut Lookup,
+    scope: ScopeId,
+    name: string
+) -> NameResolution {
+    give name_resolver_resolve(
+        resolver,
+        lookup,
+        scope,
+        name,
+        NameResolutionKind.Any
+    );
+}
+
+proc name_resolver_resolve_value(
+    resolver: ref mut NameResolver,
+    lookup: ref mut Lookup,
+    scope: ScopeId,
+    name: string
+) -> NameResolution {
+    give name_resolver_resolve(
+        resolver,
+        lookup,
+        scope,
+        name,
+        NameResolutionKind.Value
+    );
+}
+
+proc name_resolver_resolve_type(
+    resolver: ref mut NameResolver,
+    lookup: ref mut Lookup,
+    scope: ScopeId,
+    name: string
+) -> NameResolution {
+    give name_resolver_resolve(
+        resolver,
+        lookup,
+        scope,
+        name,
+        NameResolutionKind.Type
+    );
+}
+
+proc name_resolver_resolve_module(
+    resolver: ref mut NameResolver,
+    lookup: ref mut Lookup,
+    scope: ScopeId,
+    name: string
+) -> NameResolution {
+    give name_resolver_resolve(
+        resolver,
+        lookup,
+        scope,
+        name,
+        NameResolutionKind.Module
+    );
+}
+
+proc name_resolver_resolve_procedure(
+    resolver: ref mut NameResolver,
+    lookup: ref mut Lookup,
+    scope: ScopeId,
+    name: string
+) -> NameResolution {
+    give name_resolver_resolve(
+        resolver,
+        lookup,
+        scope,
+        name,
+        NameResolutionKind.Procedure
+    );
+}
+
+proc name_resolver_resolve_constant(
+    resolver: ref mut NameResolver,
+    lookup: ref mut Lookup,
+    scope: ScopeId,
+    name: string
+) -> NameResolution {
+    give name_resolver_resolve(
+        resolver,
+        lookup,
+        scope,
+        name,
+        NameResolutionKind.Constant
+    );
+}
+
+proc name_resolver_resolve_generic(
+    resolver: ref mut NameResolver,
+    lookup: ref mut Lookup,
+    scope: ScopeId,
+    name: string
+) -> NameResolution {
+    give name_resolver_resolve(
+        resolver,
+        lookup,
+        scope,
+        name,
+        NameResolutionKind.Generic
+    );
+}
+
+proc name_resolver_resolve_import(
+    resolver: ref mut NameResolver,
+    lookup: ref mut Lookup,
+    scope: ScopeId,
+    name: string
+) -> NameResolution {
+    give name_resolver_resolve(
+        resolver,
+        lookup,
+        scope,
+        name,
+        NameResolutionKind.Import
+    );
+}
+
+proc name_resolver_resolve_export(
+    resolver: ref mut NameResolver,
+    lookup: ref mut Lookup,
+    scope: ScopeId,
+    name: string
+) -> NameResolution {
+    give name_resolver_resolve(
+        resolver,
+        lookup,
+        scope,
+        name,
+        NameResolutionKind.Export
+    );
+}
+
+proc name_resolution_is_resolved(
+    result: NameResolution
+) -> bool {
+    give result.state
+        == NameResolutionState.Resolved
+        and result.found;
+}
+
+proc name_resolution_is_missing(
+    result: NameResolution
+) -> bool {
+    give result.state
+        == NameResolutionState.Missing;
+}
+
+proc name_resolution_is_ambiguous(
+    result: NameResolution
+) -> bool {
+    give result.state
+        == NameResolutionState.Ambiguous;
+}
+
+proc name_resolution_has_error(
+    result: NameResolution
+) -> bool {
+    give result.error.kind
+        != NameResolutionErrorKind.None;
+}
+
+proc name_resolver_statistics(
+    resolver: ref NameResolver
+) -> NameResolverStatistics {
+    give resolver.statistics;
+}
+
+proc name_resolver_reset_statistics(
+    resolver: ref mut NameResolver
+) {
+    set resolver.statistics =
+        name_resolver_statistics_empty();
+}
+
+proc name_resolution_kind_name(
+    kind: NameResolutionKind
+) -> string {
+    pick kind {
+        NameResolutionKind.Any {
+            give "any";
+        }
+
+        NameResolutionKind.Value {
+            give "value";
+        }
+
+        NameResolutionKind.Type {
+            give "type";
+        }
+
+        NameResolutionKind.Module {
+            give "module";
+        }
+
+        NameResolutionKind.Procedure {
+            give "procedure";
+        }
+
+        NameResolutionKind.Method {
+            give "method";
+        }
+
+        NameResolutionKind.Field {
+            give "field";
+        }
+
+        NameResolutionKind.Constant {
+            give "constant";
+        }
+
+        NameResolutionKind.Generic {
+            give "generic";
+        }
+
+        NameResolutionKind.Attribute {
+            give "attribute";
+        }
+
+        NameResolutionKind.Import {
+            give "import";
+        }
+
+        NameResolutionKind.Export {
+            give "export";
+        }
+    }
+
+    give "any";
+}
+
+proc name_resolution_state_name(
+    state: NameResolutionState
+) -> string {
+    pick state {
+        NameResolutionState.Unresolved {
+            give "unresolved";
+        }
+
+        NameResolutionState.Resolved {
+            give "resolved";
+        }
+
+        NameResolutionState.Missing {
+            give "missing";
+        }
+
+        NameResolutionState.Ambiguous {
+            give "ambiguous";
+        }
+
+        NameResolutionState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}

@@ -1,0 +1,901 @@
+space vitte/compiler/analysis/resolution/lookup_cache
+
+export *
+
+pick LookupCacheKind {
+    Any,
+    Value,
+    Type,
+    Module,
+    Procedure,
+    Method,
+    Field,
+    Constant,
+    Generic,
+    Attribute,
+    Import,
+    Export
+}
+
+pick LookupCacheState {
+    Empty,
+    Ready,
+    Dirty,
+    Disabled
+}
+
+pick LookupCacheEntryState {
+    Valid,
+    Negative,
+    Ambiguous,
+    Invalidated
+}
+
+form LookupCacheKey {
+    scope: ScopeId
+    name: string
+    kind: LookupCacheKind
+}
+
+form LookupCacheValue {
+    definition: Option<DefId>
+    type_id: Option<TypeId>
+
+    candidates: [DefId]
+
+    found: bool
+    ambiguous: bool
+}
+
+form LookupCacheEntry {
+    key: LookupCacheKey
+    value: LookupCacheValue
+
+    state: LookupCacheEntryState
+
+    generation: u64
+    revision: u64
+
+    hits: u64
+}
+
+form LookupCacheConfig {
+    enabled: bool
+
+    cache_negative: bool
+    cache_ambiguous: bool
+
+    max_entries: usize
+}
+
+form LookupCacheStatistics {
+    entries: usize
+
+    lookups: u64
+    hits: u64
+    misses: u64
+
+    insertions: u64
+    replacements: u64
+
+    invalidations: u64
+    evictions: u64
+
+    negative_hits: u64
+    ambiguous_hits: u64
+}
+
+form LookupCache {
+    config: LookupCacheConfig
+
+    state: LookupCacheState
+
+    entries: [LookupCacheEntry]
+
+    generation: u64
+
+    statistics: LookupCacheStatistics
+}
+
+proc lookup_cache_config_default()
+    -> LookupCacheConfig
+{
+    give LookupCacheConfig {
+        enabled: true,
+
+        cache_negative: true,
+        cache_ambiguous: true,
+
+        max_entries: 4096
+    };
+}
+
+proc lookup_cache_statistics_empty()
+    -> LookupCacheStatistics
+{
+    give LookupCacheStatistics {
+        entries: 0,
+
+        lookups: 0,
+        hits: 0,
+        misses: 0,
+
+        insertions: 0,
+        replacements: 0,
+
+        invalidations: 0,
+        evictions: 0,
+
+        negative_hits: 0,
+        ambiguous_hits: 0
+    };
+}
+
+proc lookup_cache_create_with_config(
+    config: LookupCacheConfig
+) -> LookupCache {
+    let state =
+        if config.enabled {
+            LookupCacheState.Empty
+        } else {
+            LookupCacheState.Disabled
+        };
+
+    give LookupCache {
+        config: config,
+
+        state: state,
+
+        entries: [],
+
+        generation: 1,
+
+        statistics:
+            lookup_cache_statistics_empty()
+    };
+}
+
+proc lookup_cache_create()
+    -> LookupCache
+{
+    give lookup_cache_create_with_config(
+        lookup_cache_config_default()
+    );
+}
+
+proc lookup_cache_key(
+    scope: ScopeId,
+    name: string,
+    kind: LookupCacheKind
+) -> LookupCacheKey {
+    give LookupCacheKey {
+        scope: scope,
+        name: name,
+        kind: kind
+    };
+}
+
+proc lookup_cache_value_missing()
+    -> LookupCacheValue
+{
+    give LookupCacheValue {
+        definition: None,
+        type_id: None,
+
+        candidates: [],
+
+        found: false,
+        ambiguous: false
+    };
+}
+
+proc lookup_cache_value_definition(
+    definition: DefId
+) -> LookupCacheValue {
+    give LookupCacheValue {
+        definition:
+            Some(definition),
+
+        type_id:
+            None,
+
+        candidates:
+            [definition],
+
+        found:
+            true,
+
+        ambiguous:
+            false
+    };
+}
+
+proc lookup_cache_value_typed(
+    definition: DefId,
+    type_id: TypeId
+) -> LookupCacheValue {
+    give LookupCacheValue {
+        definition:
+            Some(definition),
+
+        type_id:
+            Some(type_id),
+
+        candidates:
+            [definition],
+
+        found:
+            true,
+
+        ambiguous:
+            false
+    };
+}
+
+proc lookup_cache_value_ambiguous(
+    candidates: [DefId]
+) -> LookupCacheValue {
+    give LookupCacheValue {
+        definition:
+            None,
+
+        type_id:
+            None,
+
+        candidates:
+            candidates,
+
+        found:
+            false,
+
+        ambiguous:
+            true
+    };
+}
+
+proc lookup_cache_key_equal(
+    left: LookupCacheKey,
+    right: LookupCacheKey
+) -> bool {
+    give left.scope == right.scope
+        and left.name == right.name
+        and left.kind == right.kind;
+}
+
+proc lookup_cache_find_index(
+    cache: ref LookupCache,
+    key: LookupCacheKey
+) -> Option<usize> {
+    let mut index: usize = 0;
+
+    while index < len(cache.entries) {
+        let entry =
+            cache.entries[index];
+
+        if entry.state
+            != LookupCacheEntryState.Invalidated
+            and entry.generation
+            == cache.generation
+            and lookup_cache_key_equal(
+                entry.key,
+                key
+            )
+        {
+            give Some(index);
+        }
+
+        set index = index + 1;
+    }
+
+    give None;
+}
+
+proc lookup_cache_contains(
+    cache: ref LookupCache,
+    key: LookupCacheKey
+) -> bool {
+    give lookup_cache_find_index(
+        cache,
+        key
+    ) != None;
+}
+
+proc lookup_cache_get(
+    cache: ref mut LookupCache,
+    key: LookupCacheKey
+) -> Option<LookupCacheValue> {
+    if not cache.config.enabled {
+        give None;
+    }
+
+    set cache.statistics.lookups =
+        cache.statistics.lookups + 1;
+
+    let index =
+        lookup_cache_find_index(
+            ref cache,
+            key
+        );
+
+    pick index {
+        None {
+            set cache.statistics.misses =
+                cache.statistics.misses + 1;
+
+            give None;
+        }
+
+        Some(value) {
+            set cache.statistics.hits =
+                cache.statistics.hits + 1;
+
+            set cache.entries[value].hits =
+                cache.entries[value].hits + 1;
+
+            pick cache.entries[value].state {
+                LookupCacheEntryState.Negative {
+                    set cache.statistics.negative_hits =
+                        cache.statistics.negative_hits + 1;
+                }
+
+                LookupCacheEntryState.Ambiguous {
+                    set cache.statistics.ambiguous_hits =
+                        cache.statistics.ambiguous_hits + 1;
+                }
+
+                _ {}
+            }
+
+            give Some(
+                cache.entries[value].value
+            );
+        }
+    }
+}
+
+proc lookup_cache_entry_state(
+    value: LookupCacheValue
+) -> LookupCacheEntryState {
+    if value.ambiguous {
+        give LookupCacheEntryState.Ambiguous;
+    }
+
+    if not value.found {
+        give LookupCacheEntryState.Negative;
+    }
+
+    give LookupCacheEntryState.Valid;
+}
+
+proc lookup_cache_should_store(
+    cache: ref LookupCache,
+    value: LookupCacheValue
+) -> bool {
+    if value.ambiguous
+        and not cache.config.cache_ambiguous
+    {
+        give false;
+    }
+
+    if not value.found
+        and not value.ambiguous
+        and not cache.config.cache_negative
+    {
+        give false;
+    }
+
+    give true;
+}
+
+proc lookup_cache_evict_one(
+    cache: ref mut LookupCache
+) -> bool {
+    if len(cache.entries) == 0 {
+        give false;
+    }
+
+    let mut best_index: usize = 0;
+    let mut best_hits: u64 =
+        cache.entries[0].hits;
+
+    let mut index: usize = 1;
+
+    while index < len(cache.entries) {
+        if cache.entries[index].hits
+            < best_hits
+        {
+            set best_index = index;
+            set best_hits =
+                cache.entries[index].hits;
+        }
+
+        set index = index + 1;
+    }
+
+    let mut output: [LookupCacheEntry] = [];
+    set index = 0;
+
+    while index < len(cache.entries) {
+        if index != best_index {
+            set output =
+                output + [
+                    cache.entries[index]
+                ];
+        }
+
+        set index = index + 1;
+    }
+
+    set cache.entries = output;
+
+    set cache.statistics.evictions =
+        cache.statistics.evictions + 1;
+
+    set cache.statistics.entries =
+        len(cache.entries);
+
+    give true;
+}
+
+proc lookup_cache_insert(
+    cache: ref mut LookupCache,
+    key: LookupCacheKey,
+    value: LookupCacheValue
+) -> bool {
+    if not cache.config.enabled {
+        give false;
+    }
+
+    if not lookup_cache_should_store(
+        ref cache,
+        value
+    ) {
+        give false;
+    }
+
+    let existing =
+        lookup_cache_find_index(
+            ref cache,
+            key
+        );
+
+    pick existing {
+        Some(index) {
+            set cache.entries[index].value =
+                value;
+
+            set cache.entries[index].state =
+                lookup_cache_entry_state(
+                    value
+                );
+
+            set cache.entries[index].generation =
+                cache.generation;
+
+            set cache.entries[index].revision =
+                cache.entries[index].revision + 1;
+
+            set cache.statistics.replacements =
+                cache.statistics.replacements + 1;
+
+            set cache.state =
+                LookupCacheState.Ready;
+
+            give true;
+        }
+
+        None {}
+    }
+
+    if cache.config.max_entries > 0
+        and len(cache.entries)
+        >= cache.config.max_entries
+    {
+        lookup_cache_evict_one(cache);
+    }
+
+    set cache.entries =
+        cache.entries + [
+            LookupCacheEntry {
+                key: key,
+                value: value,
+
+                state:
+                    lookup_cache_entry_state(
+                        value
+                    ),
+
+                generation:
+                    cache.generation,
+
+                revision:
+                    1,
+
+                hits:
+                    0
+            }
+        ];
+
+    set cache.statistics.insertions =
+        cache.statistics.insertions + 1;
+
+    set cache.statistics.entries =
+        len(cache.entries);
+
+    set cache.state =
+        LookupCacheState.Ready;
+
+    give true;
+}
+
+proc lookup_cache_insert_definition(
+    cache: ref mut LookupCache,
+    scope: ScopeId,
+    name: string,
+    kind: LookupCacheKind,
+    definition: DefId
+) -> bool {
+    give lookup_cache_insert(
+        cache,
+        lookup_cache_key(
+            scope,
+            name,
+            kind
+        ),
+        lookup_cache_value_definition(
+            definition
+        )
+    );
+}
+
+proc lookup_cache_insert_typed(
+    cache: ref mut LookupCache,
+    scope: ScopeId,
+    name: string,
+    kind: LookupCacheKind,
+    definition: DefId,
+    type_id: TypeId
+) -> bool {
+    give lookup_cache_insert(
+        cache,
+        lookup_cache_key(
+            scope,
+            name,
+            kind
+        ),
+        lookup_cache_value_typed(
+            definition,
+            type_id
+        )
+    );
+}
+
+proc lookup_cache_insert_missing(
+    cache: ref mut LookupCache,
+    scope: ScopeId,
+    name: string,
+    kind: LookupCacheKind
+) -> bool {
+    give lookup_cache_insert(
+        cache,
+        lookup_cache_key(
+            scope,
+            name,
+            kind
+        ),
+        lookup_cache_value_missing()
+    );
+}
+
+proc lookup_cache_insert_ambiguous(
+    cache: ref mut LookupCache,
+    scope: ScopeId,
+    name: string,
+    kind: LookupCacheKind,
+    candidates: [DefId]
+) -> bool {
+    give lookup_cache_insert(
+        cache,
+        lookup_cache_key(
+            scope,
+            name,
+            kind
+        ),
+        lookup_cache_value_ambiguous(
+            candidates
+        )
+    );
+}
+
+proc lookup_cache_invalidate_key(
+    cache: ref mut LookupCache,
+    key: LookupCacheKey
+) -> bool {
+    let index =
+        lookup_cache_find_index(
+            ref cache,
+            key
+        );
+
+    pick index {
+        None {
+            give false;
+        }
+
+        Some(value) {
+            set cache.entries[value].state =
+                LookupCacheEntryState.Invalidated;
+
+            set cache.entries[value].revision =
+                cache.entries[value].revision + 1;
+
+            set cache.statistics.invalidations =
+                cache.statistics.invalidations + 1;
+
+            set cache.state =
+                LookupCacheState.Dirty;
+
+            give true;
+        }
+    }
+}
+
+proc lookup_cache_invalidate_scope(
+    cache: ref mut LookupCache,
+    scope: ScopeId
+) -> usize {
+    let mut count: usize = 0;
+    let mut index: usize = 0;
+
+    while index < len(cache.entries) {
+        if cache.entries[index].key.scope
+            == scope
+            and cache.entries[index].state
+            != LookupCacheEntryState.Invalidated
+        {
+            set cache.entries[index].state =
+                LookupCacheEntryState.Invalidated;
+
+            set cache.entries[index].revision =
+                cache.entries[index].revision + 1;
+
+            set count = count + 1;
+        }
+
+        set index = index + 1;
+    }
+
+    if count > 0 {
+        set cache.statistics.invalidations =
+            cache.statistics.invalidations
+            + count;
+
+        set cache.state =
+            LookupCacheState.Dirty;
+    }
+
+    give count;
+}
+
+proc lookup_cache_invalidate_name(
+    cache: ref mut LookupCache,
+    name: string
+) -> usize {
+    let mut count: usize = 0;
+
+    for entry in cache.entries {
+        if entry.key.name == name
+            and entry.state
+            != LookupCacheEntryState.Invalidated
+        {
+            set entry.state =
+                LookupCacheEntryState.Invalidated;
+
+            set count = count + 1;
+        }
+    }
+
+    if count > 0 {
+        set cache.statistics.invalidations =
+            cache.statistics.invalidations
+            + count;
+
+        set cache.state =
+            LookupCacheState.Dirty;
+    }
+
+    give count;
+}
+
+proc lookup_cache_advance_generation(
+    cache: ref mut LookupCache
+) -> u64 {
+    set cache.generation =
+        cache.generation + 1;
+
+    set cache.state =
+        LookupCacheState.Dirty;
+
+    give cache.generation;
+}
+
+proc lookup_cache_compact(
+    cache: ref mut LookupCache
+) -> usize {
+    let before: usize =
+        len(cache.entries);
+
+    let mut output: [LookupCacheEntry] = [];
+
+    for entry in cache.entries {
+        if entry.state
+            != LookupCacheEntryState.Invalidated
+            and entry.generation
+            == cache.generation
+        {
+            set output =
+                output + [entry];
+        }
+    }
+
+    set cache.entries = output;
+
+    set cache.statistics.entries =
+        len(cache.entries);
+
+    if len(cache.entries) == 0 {
+        set cache.state =
+            LookupCacheState.Empty;
+    } else {
+        set cache.state =
+            LookupCacheState.Ready;
+    }
+
+    give before - len(cache.entries);
+}
+
+proc lookup_cache_clear(
+    cache: ref mut LookupCache
+) {
+    set cache.entries = [];
+
+    set cache.generation =
+        cache.generation + 1;
+
+    set cache.statistics.entries = 0;
+
+    if cache.config.enabled {
+        set cache.state =
+            LookupCacheState.Empty;
+    } else {
+        set cache.state =
+            LookupCacheState.Disabled;
+    }
+}
+
+proc lookup_cache_enable(
+    cache: ref mut LookupCache
+) {
+    set cache.config.enabled = true;
+
+    if len(cache.entries) == 0 {
+        set cache.state =
+            LookupCacheState.Empty;
+    } else {
+        set cache.state =
+            LookupCacheState.Ready;
+    }
+}
+
+proc lookup_cache_disable(
+    cache: ref mut LookupCache
+) {
+    set cache.config.enabled = false;
+    set cache.state =
+        LookupCacheState.Disabled;
+}
+
+proc lookup_cache_is_enabled(
+    cache: ref LookupCache
+) -> bool {
+    give cache.config.enabled;
+}
+
+proc lookup_cache_is_empty(
+    cache: ref LookupCache
+) -> bool {
+    give len(cache.entries) == 0;
+}
+
+proc lookup_cache_count(
+    cache: ref LookupCache
+) -> usize {
+    give len(cache.entries);
+}
+
+proc lookup_cache_hit_rate(
+    cache: ref LookupCache
+) -> f64 {
+    if cache.statistics.lookups == 0 {
+        give 0.0;
+    }
+
+    give
+        (cache.statistics.hits as f64)
+        / (cache.statistics.lookups as f64);
+}
+
+proc lookup_cache_statistics(
+    cache: ref LookupCache
+) -> LookupCacheStatistics {
+    give cache.statistics;
+}
+
+proc lookup_cache_reset_statistics(
+    cache: ref mut LookupCache
+) {
+    let entries =
+        len(cache.entries);
+
+    set cache.statistics =
+        lookup_cache_statistics_empty();
+
+    set cache.statistics.entries =
+        entries;
+}
+
+proc lookup_cache_kind_name(
+    kind: LookupCacheKind
+) -> string {
+    pick kind {
+        LookupCacheKind.Any {
+            give "any";
+        }
+
+        LookupCacheKind.Value {
+            give "value";
+        }
+
+        LookupCacheKind.Type {
+            give "type";
+        }
+
+        LookupCacheKind.Module {
+            give "module";
+        }
+
+        LookupCacheKind.Procedure {
+            give "procedure";
+        }
+
+        LookupCacheKind.Method {
+            give "method";
+        }
+
+        LookupCacheKind.Field {
+            give "field";
+        }
+
+        LookupCacheKind.Constant {
+            give "constant";
+        }
+
+        LookupCacheKind.Generic {
+            give "generic";
+        }
+
+        LookupCacheKind.Attribute {
+            give "attribute";
+        }
+
+        LookupCacheKind.Import {
+            give "import";
+        }
+
+        LookupCacheKind.Export {
+            give "export";
+        }
+    }
+
+    give "any";
+}
