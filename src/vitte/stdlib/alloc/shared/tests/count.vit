@@ -1,0 +1,1676 @@
+use src/vitte/stdlib/alloc/shared/count
+use src/vitte/stdlib/alloc/shared/core
+
+proc test_new_pair() -> bool {
+    let counts = shared_count_pair_new();
+
+    give shared_count_pair_strong(counts) == 1
+        and shared_count_pair_weak(counts) == 0
+        and shared_count_pair_total(counts) == 1;
+}
+
+proc test_manual_pair() -> bool {
+    let counts = shared_count_pair(
+        4,
+        3
+    );
+
+    give shared_count_pair_strong(counts) == 4
+        and shared_count_pair_weak(counts) == 3
+        and shared_count_pair_total(counts) == 7;
+}
+
+proc test_strong_new() -> bool {
+    let count = shared_count_strong_new();
+
+    give shared_count_value(count) == 1
+        and shared_count_is_strong(count)
+        and shared_count_state(count)
+            == SharedCountState.One;
+}
+
+proc test_weak_new() -> bool {
+    let count = shared_count_weak_new();
+
+    give shared_count_value(count) == 0
+        and shared_count_is_weak(count)
+        and shared_count_state(count)
+            == SharedCountState.Zero;
+}
+
+proc test_zero() -> bool {
+    let strong = shared_count_zero(
+        SharedCountKind.Strong
+    );
+
+    let weak = shared_count_zero(
+        SharedCountKind.Weak
+    );
+
+    give shared_count_is_zero(strong)
+        and shared_count_is_zero(weak)
+        and shared_count_value(strong) == 0
+        and shared_count_value(weak) == 0;
+}
+
+proc test_states() -> bool {
+    let zero = shared_count(
+        0,
+        SharedCountKind.Strong
+    );
+
+    let one = shared_count(
+        1,
+        SharedCountKind.Strong
+    );
+
+    let many = shared_count(
+        10,
+        SharedCountKind.Strong
+    );
+
+    give shared_count_state(zero)
+            == SharedCountState.Zero
+        and shared_count_state(one)
+            == SharedCountState.One
+        and shared_count_state(many)
+            == SharedCountState.Many;
+}
+
+proc test_maximum_state() -> bool {
+    let count = shared_count(
+        SHARED_COUNT_MAX,
+        SharedCountKind.Strong
+    );
+
+    give shared_count_state(count)
+            == SharedCountState.Maximum
+        and shared_count_is_maximum(count)
+        and not shared_count_can_increment(count);
+}
+
+proc test_increment() -> bool {
+    let mut count = shared_count(
+        1,
+        SharedCountKind.Strong
+    );
+
+    let before = shared_count_revision(
+        count
+    );
+
+    if not shared_count_increment(
+        ref mut count
+    ) {
+        give false;
+    }
+
+    give shared_count_value(count) == 2
+        and shared_count_revision(count) > before;
+}
+
+proc test_increment_by() -> bool {
+    let mut count = shared_count(
+        2,
+        SharedCountKind.Strong
+    );
+
+    if not shared_count_increment_by(
+        ref mut count,
+        10
+    ) {
+        give false;
+    }
+
+    give shared_count_value(count) == 12;
+}
+
+proc test_increment_zero() -> bool {
+    let mut count = shared_count(
+        7,
+        SharedCountKind.Strong
+    );
+
+    let revision = shared_count_revision(
+        count
+    );
+
+    if not shared_count_increment_by(
+        ref mut count,
+        0
+    ) {
+        give false;
+    }
+
+    give shared_count_value(count) == 7
+        and shared_count_revision(count)
+            == revision;
+}
+
+proc test_increment_overflow_fails() -> bool {
+    let mut count = shared_count(
+        SHARED_COUNT_MAX,
+        SharedCountKind.Strong
+    );
+
+    give not shared_count_increment(
+        ref mut count
+    )
+    and shared_count_value(count)
+        == SHARED_COUNT_MAX;
+}
+
+proc test_increment_by_overflow_fails() -> bool {
+    let mut count = shared_count(
+        SHARED_COUNT_MAX - 2,
+        SharedCountKind.Strong
+    );
+
+    give not shared_count_increment_by(
+        ref mut count,
+        3
+    )
+    and shared_count_value(count)
+        == SHARED_COUNT_MAX - 2;
+}
+
+proc test_decrement() -> bool {
+    let mut count = shared_count(
+        2,
+        SharedCountKind.Strong
+    );
+
+    if not shared_count_decrement(
+        ref mut count
+    ) {
+        give false;
+    }
+
+    give shared_count_value(count) == 1;
+}
+
+proc test_decrement_to_zero() -> bool {
+    let mut count = shared_count(
+        1,
+        SharedCountKind.Strong
+    );
+
+    let generation = shared_count_generation(
+        count
+    );
+
+    if not shared_count_decrement(
+        ref mut count
+    ) {
+        give false;
+    }
+
+    give shared_count_value(count) == 0
+        and shared_count_generation(count)
+            == generation + 1;
+}
+
+proc test_decrement_by() -> bool {
+    let mut count = shared_count(
+        10,
+        SharedCountKind.Weak
+    );
+
+    if not shared_count_decrement_by(
+        ref mut count,
+        4
+    ) {
+        give false;
+    }
+
+    give shared_count_value(count) == 6;
+}
+
+proc test_decrement_zero_amount() -> bool {
+    let mut count = shared_count(
+        5,
+        SharedCountKind.Weak
+    );
+
+    let revision =
+        shared_count_revision(count);
+
+    if not shared_count_decrement_by(
+        ref mut count,
+        0
+    ) {
+        give false;
+    }
+
+    give shared_count_value(count) == 5
+        and shared_count_revision(count)
+            == revision;
+}
+
+proc test_decrement_underflow_fails() -> bool {
+    let mut count = shared_count(
+        0,
+        SharedCountKind.Strong
+    );
+
+    give not shared_count_decrement(
+        ref mut count
+    )
+    and shared_count_value(count) == 0;
+}
+
+proc test_decrement_by_underflow_fails() -> bool {
+    let mut count = shared_count(
+        2,
+        SharedCountKind.Weak
+    );
+
+    give not shared_count_decrement_by(
+        ref mut count,
+        3
+    )
+    and shared_count_value(count) == 2;
+}
+
+proc test_clone_alias() -> bool {
+    let mut count = shared_count(
+        1,
+        SharedCountKind.Strong
+    );
+
+    if not shared_count_clone(
+        ref mut count
+    ) {
+        give false;
+    }
+
+    give shared_count_value(count) == 2;
+}
+
+proc test_drop_alias() -> bool {
+    let mut count = shared_count(
+        2,
+        SharedCountKind.Strong
+    );
+
+    if not shared_count_drop(
+        ref mut count
+    ) {
+        give false;
+    }
+
+    give shared_count_value(count) == 1;
+}
+
+proc test_strong_clone_pair() -> bool {
+    let mut counts = shared_count_pair_new();
+
+    if not shared_count_strong_clone(
+        ref mut counts
+    ) {
+        give false;
+    }
+
+    give shared_count_pair_strong(counts) == 2
+        and shared_count_pair_weak(counts) == 0;
+}
+
+proc test_strong_clone_dead_fails() -> bool {
+    let mut counts = shared_count_pair(
+        0,
+        1
+    );
+
+    give not shared_count_strong_clone(
+        ref mut counts
+    )
+    and shared_count_pair_strong(counts) == 0;
+}
+
+proc test_strong_drop_pair() -> bool {
+    let mut counts = shared_count_pair(
+        3,
+        1
+    );
+
+    if not shared_count_strong_drop(
+        ref mut counts
+    ) {
+        give false;
+    }
+
+    give shared_count_pair_strong(counts) == 2
+        and shared_count_pair_weak(counts) == 1;
+}
+
+proc test_strong_drop_to_zero() -> bool {
+    let mut counts = shared_count_pair(
+        1,
+        2
+    );
+
+    if not shared_count_strong_drop(
+        ref mut counts
+    ) {
+        give false;
+    }
+
+    give shared_count_pair_strong(counts) == 0
+        and shared_count_pair_weak(counts) == 2
+        and shared_count_is_weak_only(counts);
+}
+
+proc test_weak_clone_pair() -> bool {
+    let mut counts = shared_count_pair_new();
+
+    if not shared_count_weak_clone(
+        ref mut counts
+    ) {
+        give false;
+    }
+
+    give shared_count_pair_strong(counts) == 1
+        and shared_count_pair_weak(counts) == 1;
+}
+
+proc test_weak_drop_pair() -> bool {
+    let mut counts = shared_count_pair(
+        1,
+        2
+    );
+
+    if not shared_count_weak_drop(
+        ref mut counts
+    ) {
+        give false;
+    }
+
+    give shared_count_pair_weak(counts) == 1;
+}
+
+proc test_weak_drop_zero_fails() -> bool {
+    let mut counts = shared_count_pair(
+        1,
+        0
+    );
+
+    give not shared_count_weak_drop(
+        ref mut counts
+    );
+}
+
+proc test_alive() -> bool {
+    let alive = shared_count_pair(
+        1,
+        0
+    );
+
+    let dead = shared_count_pair(
+        0,
+        0
+    );
+
+    give shared_count_is_alive(alive)
+        and not shared_count_is_alive(dead);
+}
+
+proc test_dead() -> bool {
+    let counts = shared_count_pair(
+        0,
+        0
+    );
+
+    give shared_count_is_dead(counts)
+        and shared_count_should_release_control(
+            counts
+        );
+}
+
+proc test_unique() -> bool {
+    let counts = shared_count_pair(
+        1,
+        3
+    );
+
+    give shared_count_strong_is_unique(
+        counts
+    )
+    and not shared_count_strong_is_shared(
+        counts
+    );
+}
+
+proc test_shared() -> bool {
+    let counts = shared_count_pair(
+        4,
+        3
+    );
+
+    give shared_count_strong_is_shared(
+        counts
+    )
+    and not shared_count_strong_is_unique(
+        counts
+    );
+}
+
+proc test_has_weak() -> bool {
+    let with_weak = shared_count_pair(
+        1,
+        1
+    );
+
+    let without_weak = shared_count_pair(
+        1,
+        0
+    );
+
+    give shared_count_has_weak(with_weak)
+        and not shared_count_has_weak(
+            without_weak
+        );
+}
+
+proc test_weak_only() -> bool {
+    let counts = shared_count_pair(
+        0,
+        2
+    );
+
+    give shared_count_is_weak_only(
+        counts
+    );
+}
+
+proc test_should_drop_value() -> bool {
+    let before = shared_count_pair(
+        1,
+        2
+    );
+
+    let after = shared_count_pair(
+        0,
+        2
+    );
+
+    give shared_count_should_drop_value(
+        before,
+        after
+    );
+}
+
+proc test_should_not_drop_value() -> bool {
+    let before = shared_count_pair(
+        3,
+        2
+    );
+
+    let after = shared_count_pair(
+        2,
+        2
+    );
+
+    give not shared_count_should_drop_value(
+        before,
+        after
+    );
+}
+
+proc test_downgrade() -> bool {
+    let mut counts = shared_count_pair(
+        1,
+        0
+    );
+
+    if not shared_count_downgrade(
+        ref mut counts
+    ) {
+        give false;
+    }
+
+    give shared_count_pair_strong(counts) == 1
+        and shared_count_pair_weak(counts) == 1;
+}
+
+proc test_downgrade_dead_fails() -> bool {
+    let mut counts = shared_count_pair(
+        0,
+        1
+    );
+
+    give not shared_count_downgrade(
+        ref mut counts
+    );
+}
+
+proc test_can_downgrade() -> bool {
+    let valid = shared_count_pair(
+        1,
+        0
+    );
+
+    let dead = shared_count_pair(
+        0,
+        1
+    );
+
+    give shared_count_can_downgrade(valid)
+        and not shared_count_can_downgrade(dead);
+}
+
+proc test_upgrade() -> bool {
+    let mut counts = shared_count_pair(
+        1,
+        1
+    );
+
+    if not shared_count_upgrade(
+        ref mut counts
+    ) {
+        give false;
+    }
+
+    give shared_count_pair_strong(counts) == 2
+        and shared_count_pair_weak(counts) == 1;
+}
+
+proc test_upgrade_without_weak_fails() -> bool {
+    let mut counts = shared_count_pair(
+        1,
+        0
+    );
+
+    give not shared_count_upgrade(
+        ref mut counts
+    );
+}
+
+proc test_upgrade_dead_fails() -> bool {
+    let mut counts = shared_count_pair(
+        0,
+        1
+    );
+
+    give not shared_count_upgrade(
+        ref mut counts
+    );
+}
+
+proc test_can_upgrade() -> bool {
+    let valid = shared_count_pair(
+        1,
+        1
+    );
+
+    let no_weak = shared_count_pair(
+        1,
+        0
+    );
+
+    let dead = shared_count_pair(
+        0,
+        1
+    );
+
+    give shared_count_can_upgrade(valid)
+        and not shared_count_can_upgrade(
+            no_weak
+        )
+        and not shared_count_can_upgrade(
+            dead
+        );
+}
+
+proc test_core_conversion() -> bool {
+    let counts = shared_count_pair(
+        4,
+        7
+    );
+
+    let core = shared_count_core(
+        counts
+    );
+
+    give core.strong == 4
+        and core.weak == 7;
+}
+
+proc test_from_core() -> bool {
+    let core = shared_core_counts(
+        5,
+        6
+    );
+
+    let counts = shared_count_from_core(
+        core
+    );
+
+    give shared_count_pair_strong(counts) == 5
+        and shared_count_pair_weak(counts) == 6;
+}
+
+proc test_core_roundtrip() -> bool {
+    let first = shared_count_pair(
+        12,
+        9
+    );
+
+    let core = shared_count_core(
+        first
+    );
+
+    let second = shared_count_from_core(
+        core
+    );
+
+    give shared_count_pair_equal(
+        first,
+        second
+    );
+}
+
+proc test_profile_zero() -> bool {
+    let count = shared_count(
+        0,
+        SharedCountKind.Weak
+    );
+
+    let profile = shared_count_profile(
+        count
+    );
+
+    give profile.value == 0
+        and profile.zero
+        and not profile.one
+        and not profile.many
+        and not profile.maximum
+        and profile.incrementable
+        and not profile.decrementable
+        and profile.valid;
+}
+
+proc test_profile_one() -> bool {
+    let count = shared_count(
+        1,
+        SharedCountKind.Strong
+    );
+
+    let profile = shared_count_profile(
+        count
+    );
+
+    give profile.value == 1
+        and profile.one
+        and profile.incrementable
+        and profile.decrementable
+        and profile.valid;
+}
+
+proc test_profile_many() -> bool {
+    let count = shared_count(
+        64,
+        SharedCountKind.Strong
+    );
+
+    let profile = shared_count_profile(
+        count
+    );
+
+    give profile.value == 64
+        and profile.many
+        and profile.incrementable
+        and profile.decrementable
+        and profile.valid;
+}
+
+proc test_profile_maximum() -> bool {
+    let count = shared_count(
+        SHARED_COUNT_MAX,
+        SharedCountKind.Weak
+    );
+
+    let profile = shared_count_profile(
+        count
+    );
+
+    give profile.maximum
+        and not profile.incrementable
+        and profile.decrementable
+        and profile.valid;
+}
+
+proc test_snapshot_equal() -> bool {
+    let count = shared_count(
+        5,
+        SharedCountKind.Strong
+    );
+
+    let first = shared_count_snapshot(
+        count
+    );
+
+    let second = shared_count_snapshot(
+        count
+    );
+
+    give shared_count_snapshot_equal(
+        first,
+        second
+    );
+}
+
+proc test_increment_snapshot_changed() -> bool {
+    let mut count = shared_count(
+        1,
+        SharedCountKind.Strong
+    );
+
+    let before = shared_count_snapshot(
+        count
+    );
+
+    if not shared_count_increment(
+        ref mut count
+    ) {
+        give false;
+    }
+
+    let after = shared_count_snapshot(
+        count
+    );
+
+    give shared_count_snapshot_changed(
+        before,
+        after
+    );
+}
+
+proc test_increment_delta() -> bool {
+    let mut count = shared_count(
+        1,
+        SharedCountKind.Strong
+    );
+
+    let before = shared_count_snapshot(
+        count
+    );
+
+    if not shared_count_increment(
+        ref mut count
+    ) {
+        give false;
+    }
+
+    let after = shared_count_snapshot(
+        count
+    );
+
+    let delta = shared_count_delta(
+        before,
+        after
+    );
+
+    give delta.changed
+        and delta.value == 1
+        and delta.revision == 1;
+}
+
+proc test_decrement_delta() -> bool {
+    let mut count = shared_count(
+        2,
+        SharedCountKind.Strong
+    );
+
+    let before = shared_count_snapshot(
+        count
+    );
+
+    if not shared_count_decrement(
+        ref mut count
+    ) {
+        give false;
+    }
+
+    let after = shared_count_snapshot(
+        count
+    );
+
+    let delta = shared_count_delta(
+        before,
+        after
+    );
+
+    give delta.changed
+        and delta.value == -1;
+}
+
+proc test_zero_delta() -> bool {
+    let count = shared_count(
+        2,
+        SharedCountKind.Strong
+    );
+
+    let snapshot = shared_count_snapshot(
+        count
+    );
+
+    let delta = shared_count_delta(
+        snapshot,
+        snapshot
+    );
+
+    give shared_count_delta_is_zero(
+        delta
+    );
+}
+
+proc test_validate_strong() -> bool {
+    let count = shared_count(
+        1,
+        SharedCountKind.Strong
+    );
+
+    let validation = shared_count_validate(
+        count
+    );
+
+    give validation.valid
+        and validation.kind_valid
+        and validation.state_valid
+        and validation.generation_valid;
+}
+
+proc test_validate_weak() -> bool {
+    let count = shared_count(
+        0,
+        SharedCountKind.Weak
+    );
+
+    give shared_count_validate(
+        count
+    ).valid;
+}
+
+proc test_validate_pair() -> bool {
+    let counts = shared_count_pair_new();
+
+    let validation =
+        shared_count_pair_validate(
+            counts
+        );
+
+    give validation.valid
+        and validation.strong_valid
+        and validation.weak_valid
+        and validation.total_valid
+        and validation.lifecycle_valid;
+}
+
+proc test_pair_invariant() -> bool {
+    let counts = shared_count_pair(
+        5,
+        3
+    );
+
+    give shared_count_invariant_holds(
+        counts
+    );
+}
+
+proc test_count_equal() -> bool {
+    let left = shared_count(
+        4,
+        SharedCountKind.Strong
+    );
+
+    let right = shared_count(
+        4,
+        SharedCountKind.Strong
+    );
+
+    give shared_count_equal(
+        left,
+        right
+    );
+}
+
+proc test_count_not_equal_kind() -> bool {
+    let left = shared_count(
+        4,
+        SharedCountKind.Strong
+    );
+
+    let right = shared_count(
+        4,
+        SharedCountKind.Weak
+    );
+
+    give not shared_count_equal(
+        left,
+        right
+    );
+}
+
+proc test_pair_equal() -> bool {
+    let left = shared_count_pair(
+        3,
+        2
+    );
+
+    let right = shared_count_pair(
+        3,
+        2
+    );
+
+    give shared_count_pair_equal(
+        left,
+        right
+    );
+}
+
+proc test_compare_equal() -> bool {
+    let left = shared_count(
+        10,
+        SharedCountKind.Strong
+    );
+
+    let right = shared_count(
+        10,
+        SharedCountKind.Strong
+    );
+
+    give shared_count_compare(
+        left,
+        right
+    ) == SharedCoreOrdering.Equal;
+}
+
+proc test_compare_less() -> bool {
+    let left = shared_count(
+        4,
+        SharedCountKind.Strong
+    );
+
+    let right = shared_count(
+        8,
+        SharedCountKind.Strong
+    );
+
+    give shared_count_compare(
+        left,
+        right
+    ) == SharedCoreOrdering.Less;
+}
+
+proc test_compare_greater() -> bool {
+    let left = shared_count(
+        10,
+        SharedCountKind.Strong
+    );
+
+    let right = shared_count(
+        3,
+        SharedCountKind.Strong
+    );
+
+    give shared_count_compare(
+        left,
+        right
+    ) == SharedCoreOrdering.Greater;
+}
+
+proc test_pair_compare_strong() -> bool {
+    let left = shared_count_pair(
+        2,
+        10
+    );
+
+    let right = shared_count_pair(
+        5,
+        1
+    );
+
+    give shared_count_pair_compare_strong(
+        left,
+        right
+    ) == SharedCoreOrdering.Less;
+}
+
+proc test_pair_compare_weak() -> bool {
+    let left = shared_count_pair(
+        10,
+        8
+    );
+
+    let right = shared_count_pair(
+        1,
+        3
+    );
+
+    give shared_count_pair_compare_weak(
+        left,
+        right
+    ) == SharedCoreOrdering.Greater;
+}
+
+proc test_touch() -> bool {
+    let mut count = shared_count(
+        1,
+        SharedCountKind.Strong
+    );
+
+    let before = shared_count_revision(
+        count
+    );
+
+    shared_count_touch(
+        ref mut count
+    );
+
+    give shared_count_revision(count)
+        == before + 1;
+}
+
+proc test_advance_generation() -> bool {
+    let mut count = shared_count(
+        1,
+        SharedCountKind.Strong
+    );
+
+    let generation =
+        shared_count_generation(
+            count
+        );
+
+    let revision =
+        shared_count_revision(
+            count
+        );
+
+    let next =
+        shared_count_advance_generation(
+            ref mut count
+        );
+
+    give next == generation + 1
+        and shared_count_generation(count)
+            == generation + 1
+        and shared_count_revision(count)
+            == revision + 1;
+}
+
+proc test_total_overflow_saturates() -> bool {
+    let counts = shared_count_pair(
+        SHARED_COUNT_MAX,
+        1
+    );
+
+    give shared_count_pair_total(
+        counts
+    ) == SHARED_COUNT_MAX;
+}
+
+proc test_add_overflow_detection() -> bool {
+    give shared_count_add_overflows(
+        SHARED_COUNT_MAX,
+        1
+    )
+    and not shared_count_add_overflows(
+        10,
+        20
+    );
+}
+
+proc test_sub_underflow_detection() -> bool {
+    give shared_count_sub_underflows(
+        1,
+        2
+    )
+    and not shared_count_sub_underflows(
+        2,
+        1
+    );
+}
+
+proc test_statistics_empty() -> bool {
+    let statistics =
+        shared_count_statistics_empty();
+
+    give statistics.increments == 0
+        and statistics.decrements == 0
+        and statistics.clone_operations == 0
+        and statistics.drop_operations == 0
+        and statistics.upgrades == 0
+        and statistics.downgrades == 0
+        and statistics.failures == 0;
+}
+
+proc test_statistics_increment() -> bool {
+    let count = shared_count(
+        5,
+        SharedCountKind.Strong
+    );
+
+    let mut statistics =
+        shared_count_statistics_empty();
+
+    shared_count_statistics_record_increment(
+        ref mut statistics,
+        count,
+        true
+    );
+
+    give statistics.increments == 1
+        and statistics.strong_increments == 1
+        and statistics.weak_increments == 0
+        and statistics.peak_strong == 5;
+}
+
+proc test_statistics_weak_increment() -> bool {
+    let count = shared_count(
+        7,
+        SharedCountKind.Weak
+    );
+
+    let mut statistics =
+        shared_count_statistics_empty();
+
+    shared_count_statistics_record_increment(
+        ref mut statistics,
+        count,
+        true
+    );
+
+    give statistics.increments == 1
+        and statistics.weak_increments == 1
+        and statistics.peak_weak == 7;
+}
+
+proc test_statistics_decrement() -> bool {
+    let count = shared_count(
+        4,
+        SharedCountKind.Strong
+    );
+
+    let mut statistics =
+        shared_count_statistics_empty();
+
+    shared_count_statistics_record_decrement(
+        ref mut statistics,
+        count,
+        true
+    );
+
+    give statistics.decrements == 1
+        and statistics.strong_decrements == 1;
+}
+
+proc test_statistics_failure() -> bool {
+    let count = shared_count(
+        0,
+        SharedCountKind.Strong
+    );
+
+    let mut statistics =
+        shared_count_statistics_empty();
+
+    shared_count_statistics_record_increment(
+        ref mut statistics,
+        count,
+        false
+    );
+
+    give statistics.increments == 0
+        and statistics.failures == 1;
+}
+
+proc test_statistics_clone() -> bool {
+    let counts = shared_count_pair(
+        4,
+        2
+    );
+
+    let mut statistics =
+        shared_count_statistics_empty();
+
+    shared_count_statistics_record_clone(
+        ref mut statistics,
+        counts,
+        true
+    );
+
+    give statistics.clone_operations == 1
+        and statistics.peak_strong == 4
+        and statistics.peak_weak == 2
+        and statistics.peak_total == 6;
+}
+
+proc test_statistics_upgrade() -> bool {
+    let counts = shared_count_pair(
+        3,
+        1
+    );
+
+    let mut statistics =
+        shared_count_statistics_empty();
+
+    shared_count_statistics_record_upgrade(
+        ref mut statistics,
+        counts,
+        true
+    );
+
+    give statistics.upgrades == 1
+        and statistics.peak_strong == 3
+        and statistics.peak_weak == 1;
+}
+
+proc test_statistics_downgrade() -> bool {
+    let counts = shared_count_pair(
+        1,
+        4
+    );
+
+    let mut statistics =
+        shared_count_statistics_empty();
+
+    shared_count_statistics_record_downgrade(
+        ref mut statistics,
+        counts,
+        true
+    );
+
+    give statistics.downgrades == 1
+        and statistics.peak_weak == 4;
+}
+
+proc test_statistics_reset() -> bool {
+    let mut statistics =
+        shared_count_statistics_empty();
+
+    set statistics.increments = 10;
+    set statistics.decrements = 20;
+    set statistics.failures = 3;
+    set statistics.peak_strong = 100;
+
+    shared_count_statistics_reset(
+        ref mut statistics
+    );
+
+    give statistics.increments == 0
+        and statistics.decrements == 0
+        and statistics.failures == 0
+        and statistics.peak_strong == 0;
+}
+
+proc test_strong_clone_drop_stress() -> bool {
+    let mut counts = shared_count_pair_new();
+
+    let cycle: usize = 0;
+
+    while cycle < 100000 {
+        if not shared_count_strong_clone(
+            ref mut counts
+        ) {
+            give false;
+        }
+
+        if shared_count_pair_strong(
+            counts
+        ) != 2 {
+            give false;
+        }
+
+        if not shared_count_strong_drop(
+            ref mut counts
+        ) {
+            give false;
+        }
+
+        if shared_count_pair_strong(
+            counts
+        ) != 1 {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give shared_count_pair_valid(
+        counts
+    );
+}
+
+proc test_weak_clone_drop_stress() -> bool {
+    let mut counts = shared_count_pair_new();
+
+    let cycle: usize = 0;
+
+    while cycle < 100000 {
+        if not shared_count_weak_clone(
+            ref mut counts
+        ) {
+            give false;
+        }
+
+        if shared_count_pair_weak(
+            counts
+        ) != 1 {
+            give false;
+        }
+
+        if not shared_count_weak_drop(
+            ref mut counts
+        ) {
+            give false;
+        }
+
+        if shared_count_pair_weak(
+            counts
+        ) != 0 {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give shared_count_pair_valid(
+        counts
+    );
+}
+
+proc test_upgrade_cycle_stress() -> bool {
+    let mut counts = shared_count_pair(
+        1,
+        1
+    );
+
+    let cycle: usize = 0;
+
+    while cycle < 100000 {
+        if not shared_count_upgrade(
+            ref mut counts
+        ) {
+            give false;
+        }
+
+        if shared_count_pair_strong(
+            counts
+        ) != 2 {
+            give false;
+        }
+
+        if not shared_count_strong_drop(
+            ref mut counts
+        ) {
+            give false;
+        }
+
+        if shared_count_pair_strong(
+            counts
+        ) != 1 {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give shared_count_pair_strong(counts) == 1
+        and shared_count_pair_weak(counts) == 1
+        and shared_count_pair_valid(counts);
+}
+
+proc test_downgrade_cycle_stress() -> bool {
+    let mut counts = shared_count_pair_new();
+
+    let cycle: usize = 0;
+
+    while cycle < 100000 {
+        if not shared_count_downgrade(
+            ref mut counts
+        ) {
+            give false;
+        }
+
+        if shared_count_pair_weak(
+            counts
+        ) != 1 {
+            give false;
+        }
+
+        if not shared_count_weak_drop(
+            ref mut counts
+        ) {
+            give false;
+        }
+
+        if shared_count_pair_weak(
+            counts
+        ) != 0 {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc test_snapshot_stress() -> bool {
+    let mut count = shared_count(
+        1,
+        SharedCountKind.Strong
+    );
+
+    let cycle: usize = 0;
+
+    while cycle < 10000 {
+        let before =
+            shared_count_snapshot(
+                count
+            );
+
+        if not shared_count_increment(
+            ref mut count
+        ) {
+            give false;
+        }
+
+        let after_increment =
+            shared_count_snapshot(
+                count
+            );
+
+        let up = shared_count_delta(
+            before,
+            after_increment
+        );
+
+        if up.value != 1 {
+            give false;
+        }
+
+        if not shared_count_decrement(
+            ref mut count
+        ) {
+            give false;
+        }
+
+        let after =
+            shared_count_snapshot(
+                count
+            );
+
+        if after.value != before.value {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc test_pair_validation_stress() -> bool {
+    let mut counts = shared_count_pair_new();
+
+    let cycle: usize = 0;
+
+    while cycle < 10000 {
+        if not shared_count_strong_clone(
+            ref mut counts
+        ) {
+            give false;
+        }
+
+        if not shared_count_weak_clone(
+            ref mut counts
+        ) {
+            give false;
+        }
+
+        if not shared_count_pair_valid(
+            counts
+        ) {
+            give false;
+        }
+
+        if not shared_count_strong_drop(
+            ref mut counts
+        ) {
+            give false;
+        }
+
+        if not shared_count_weak_drop(
+            ref mut counts
+        ) {
+            give false;
+        }
+
+        if not shared_count_invariant_holds(
+            counts
+        ) {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc run_count_tests() -> bool {
+    give test_new_pair()
+        and test_manual_pair()
+        and test_strong_new()
+        and test_weak_new()
+        and test_zero()
+
+        and test_states()
+        and test_maximum_state()
+
+        and test_increment()
+        and test_increment_by()
+        and test_increment_zero()
+        and test_increment_overflow_fails()
+        and test_increment_by_overflow_fails()
+
+        and test_decrement()
+        and test_decrement_to_zero()
+        and test_decrement_by()
+        and test_decrement_zero_amount()
+        and test_decrement_underflow_fails()
+        and test_decrement_by_underflow_fails()
+
+        and test_clone_alias()
+        and test_drop_alias()
+
+        and test_strong_clone_pair()
+        and test_strong_clone_dead_fails()
+        and test_strong_drop_pair()
+        and test_strong_drop_to_zero()
+
+        and test_weak_clone_pair()
+        and test_weak_drop_pair()
+        and test_weak_drop_zero_fails()
+
+        and test_alive()
+        and test_dead()
+        and test_unique()
+        and test_shared()
+        and test_has_weak()
+        and test_weak_only()
+
+        and test_should_drop_value()
+        and test_should_not_drop_value()
+
+        and test_downgrade()
+        and test_downgrade_dead_fails()
+        and test_can_downgrade()
+
+        and test_upgrade()
+        and test_upgrade_without_weak_fails()
+        and test_upgrade_dead_fails()
+        and test_can_upgrade()
+
+        and test_core_conversion()
+        and test_from_core()
+        and test_core_roundtrip()
+
+        and test_profile_zero()
+        and test_profile_one()
+        and test_profile_many()
+        and test_profile_maximum()
+
+        and test_snapshot_equal()
+        and test_increment_snapshot_changed()
+        and test_increment_delta()
+        and test_decrement_delta()
+        and test_zero_delta()
+
+        and test_validate_strong()
+        and test_validate_weak()
+        and test_validate_pair()
+        and test_pair_invariant()
+
+        and test_count_equal()
+        and test_count_not_equal_kind()
+        and test_pair_equal()
+        and test_compare_equal()
+        and test_compare_less()
+        and test_compare_greater()
+        and test_pair_compare_strong()
+        and test_pair_compare_weak()
+
+        and test_touch()
+        and test_advance_generation()
+
+        and test_total_overflow_saturates()
+        and test_add_overflow_detection()
+        and test_sub_underflow_detection()
+
+        and test_statistics_empty()
+        and test_statistics_increment()
+        and test_statistics_weak_increment()
+        and test_statistics_decrement()
+        and test_statistics_failure()
+        and test_statistics_clone()
+        and test_statistics_upgrade()
+        and test_statistics_downgrade()
+        and test_statistics_reset()
+
+        and test_strong_clone_drop_stress()
+        and test_weak_clone_drop_stress()
+        and test_upgrade_cycle_stress()
+        and test_downgrade_cycle_stress()
+        and test_snapshot_stress()
+        and test_pair_validation_stress();
+}
+
+proc main() -> int {
+    if run_count_tests() {
+        give 0;
+    }
+
+    give 1;
+}

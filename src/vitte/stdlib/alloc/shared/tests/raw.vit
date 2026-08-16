@@ -1,0 +1,1193 @@
+use src/vitte/stdlib/alloc/shared/shared
+
+form Point {
+    x: int
+    y: int
+}
+
+proc test_raw_inner() -> bool {
+    let value = shared_new(42);
+
+    let raw = shared_raw_inner(
+        ref value
+    );
+
+    give not compiler_raw_ptr_is_null(
+        raw
+    );
+}
+
+proc test_raw_inner_points_to_control_block() -> bool {
+    let value = shared_new(42);
+
+    let raw = shared_raw_inner(
+        ref value
+    );
+
+    if compiler_raw_ptr_is_null(
+        raw
+    ) {
+        give false;
+    }
+
+    let inner = compiler_raw_as_ref(
+        raw
+    );
+
+    give inner.value_alive
+        and inner.allocation_alive
+        and inner.counts.strong.value == 1
+        and inner.counts.weak.value == 0;
+}
+
+proc test_raw_inner_value() -> bool {
+    let value = shared_new(42);
+
+    let raw = shared_raw_inner(
+        ref value
+    );
+
+    let inner = compiler_raw_as_ref(
+        raw
+    );
+
+    give inner.value == 42;
+}
+
+proc test_raw_inner_point() -> bool {
+    let value = shared_new(
+        Point {
+            x: 10
+            y: 20
+        }
+    );
+
+    let raw = shared_raw_inner(
+        ref value
+    );
+
+    let inner = compiler_raw_as_ref(
+        raw
+    );
+
+    give inner.value.x == 10
+        and inner.value.y == 20;
+}
+
+proc test_raw_identity_after_clone() -> bool {
+    let value = shared_new(42);
+    let copy = shared_clone(value);
+
+    let first = shared_raw_inner(
+        ref value
+    );
+
+    let second = shared_raw_inner(
+        ref copy
+    );
+
+    give compiler_raw_ptr_equal(
+        first,
+        second
+    );
+}
+
+proc test_raw_identity_many_clones() -> bool {
+    let value = shared_new(42);
+
+    let first = shared_clone(value);
+    let second = shared_clone(value);
+    let third = shared_clone(value);
+
+    let root_raw = shared_raw_inner(
+        ref value
+    );
+
+    give compiler_raw_ptr_equal(
+        root_raw,
+        shared_raw_inner(ref first)
+    )
+    and compiler_raw_ptr_equal(
+        root_raw,
+        shared_raw_inner(ref second)
+    )
+    and compiler_raw_ptr_equal(
+        root_raw,
+        shared_raw_inner(ref third)
+    );
+}
+
+proc test_raw_strong_count_after_clone() -> bool {
+    let value = shared_new(42);
+    let copy = shared_clone(value);
+
+    let raw = shared_raw_inner(
+        ref value
+    );
+
+    let inner = compiler_raw_as_ref(
+        raw
+    );
+
+    give inner.counts.strong.value == 2
+        and inner.counts.weak.value == 0
+        and shared_strong_count(ref copy) == 2;
+}
+
+proc test_raw_strong_count_after_drop() -> bool {
+    let value = shared_new(42);
+    let mut copy = shared_clone(value);
+
+    if not shared_drop(
+        ref mut copy
+    ) {
+        give false;
+    }
+
+    let raw = shared_raw_inner(
+        ref value
+    );
+
+    let inner = compiler_raw_as_ref(
+        raw
+    );
+
+    give inner.counts.strong.value == 1
+        and shared_is_unique(ref value);
+}
+
+proc test_raw_weak_count_after_downgrade() -> bool {
+    let value = shared_new(42);
+
+    let weak = shared_downgrade(
+        ref value
+    );
+
+    let raw = shared_raw_inner(
+        ref value
+    );
+
+    let inner = compiler_raw_as_ref(
+        raw
+    );
+
+    give inner.counts.strong.value == 1
+        and inner.counts.weak.value == 1
+        and shared_weak_weak_count(ref weak) == 1;
+}
+
+proc test_raw_from_weak_same_allocation() -> bool {
+    let value = shared_new(42);
+
+    let weak = shared_downgrade(
+        ref value
+    );
+
+    let strong_raw = shared_raw_inner(
+        ref value
+    );
+
+    let weak_raw = shared_weak_raw_inner(
+        ref weak
+    );
+
+    give compiler_raw_ptr_equal(
+        strong_raw,
+        weak_raw
+    );
+}
+
+proc test_raw_weak_clone_identity() -> bool {
+    let value = shared_new(42);
+
+    let weak = shared_downgrade(
+        ref value
+    );
+
+    let copy = shared_weak_clone(
+        weak
+    );
+
+    let first = shared_weak_raw_inner(
+        ref weak
+    );
+
+    let second = shared_weak_raw_inner(
+        ref copy
+    );
+
+    give compiler_raw_ptr_equal(
+        first,
+        second
+    );
+}
+
+proc test_raw_weak_clone_count() -> bool {
+    let value = shared_new(42);
+
+    let weak = shared_downgrade(
+        ref value
+    );
+
+    let copy = shared_weak_clone(
+        weak
+    );
+
+    let raw = shared_weak_raw_inner(
+        ref weak
+    );
+
+    let inner = compiler_raw_as_ref(
+        raw
+    );
+
+    give inner.counts.strong.value == 1
+        and inner.counts.weak.value == 2
+        and shared_weak_weak_count(ref copy) == 2;
+}
+
+proc test_raw_value_ptr() -> bool {
+    let value = shared_new(42);
+
+    let ptr = shared_value_ptr(
+        ref value
+    );
+
+    give not compiler_raw_ptr_is_null(
+        ptr
+    );
+}
+
+proc test_raw_value_ptr_read() -> bool {
+    let value = shared_new(42);
+
+    let ptr = shared_value_ptr(
+        ref value
+    );
+
+    let item = compiler_raw_as_ref(
+        ptr
+    );
+
+    give *item == 42;
+}
+
+proc test_raw_value_ptr_point() -> bool {
+    let value = shared_new(
+        Point {
+            x: 20
+            y: 30
+        }
+    );
+
+    let ptr = shared_value_ptr(
+        ref value
+    );
+
+    let point = compiler_raw_as_ref(
+        ptr
+    );
+
+    give point.x == 20
+        and point.y == 30;
+}
+
+proc test_raw_value_ptr_shared_identity() -> bool {
+    let value = shared_new(42);
+    let copy = shared_clone(value);
+
+    let first = shared_value_ptr(
+        ref value
+    );
+
+    let second = shared_value_ptr(
+        ref copy
+    );
+
+    give compiler_raw_ptr_equal(
+        first,
+        second
+    );
+}
+
+proc test_raw_value_ptr_mut_unique() -> bool {
+    let mut value = shared_new(42);
+
+    let result = shared_value_ptr_mut(
+        ref mut value
+    );
+
+    pick result {
+        Some(ptr) {
+            let item = compiler_raw_as_mut(
+                ptr
+            );
+
+            set *item = 84;
+
+            give *shared_get(
+                ref value
+            ) == 84;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_raw_value_ptr_mut_point() -> bool {
+    let mut value = shared_new(
+        Point {
+            x: 1
+            y: 2
+        }
+    );
+
+    let result = shared_value_ptr_mut(
+        ref mut value
+    );
+
+    pick result {
+        Some(ptr) {
+            let point = compiler_raw_as_mut(
+                ptr
+            );
+
+            set point.x = 100;
+            set point.y = 200;
+
+            let current = shared_get(
+                ref value
+            );
+
+            give current.x == 100
+                and current.y == 200;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_raw_value_ptr_mut_shared_denied() -> bool {
+    let mut value = shared_new(42);
+    let copy = shared_clone(value);
+
+    let result = shared_value_ptr_mut(
+        ref mut value
+    );
+
+    give is_none(result)
+        and *shared_get(ref copy) == 42;
+}
+
+proc test_raw_value_ptr_after_unique_restored() -> bool {
+    let mut value = shared_new(42);
+    let mut copy = shared_clone(value);
+
+    if not shared_drop(
+        ref mut copy
+    ) {
+        give false;
+    }
+
+    let result = shared_value_ptr_mut(
+        ref mut value
+    );
+
+    pick result {
+        Some(ptr) {
+            let item = compiler_raw_as_mut(
+                ptr
+            );
+
+            set *item = 99;
+
+            give *shared_get(ref value) == 99;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_raw_inner_mut_unique() -> bool {
+    let mut value = shared_new(42);
+
+    let raw = shared_raw_inner(
+        ref value
+    );
+
+    let inner = compiler_raw_as_mut(
+        raw
+    );
+
+    if inner.counts.strong.value != 1 {
+        give false;
+    }
+
+    set inner.value = 123;
+
+    give *shared_get(ref value) == 123;
+}
+
+proc test_raw_inner_metadata() -> bool {
+    let value = shared_new(42);
+
+    let raw = shared_raw_inner(
+        ref value
+    );
+
+    let inner = compiler_raw_as_ref(
+        raw
+    );
+
+    give inner.generation
+            == shared_generation(ref value)
+        and inner.revision
+            == shared_revision(ref value);
+}
+
+proc test_raw_clone_revision_changes() -> bool {
+    let value = shared_new(42);
+
+    let raw = shared_raw_inner(
+        ref value
+    );
+
+    let before = compiler_raw_as_ref(
+        raw
+    ).revision;
+
+    let copy = shared_clone(
+        value
+    );
+
+    let after = compiler_raw_as_ref(
+        raw
+    ).revision;
+
+    give after > before
+        and shared_strong_count(ref copy) == 2;
+}
+
+proc test_raw_downgrade_revision_changes() -> bool {
+    let value = shared_new(42);
+
+    let raw = shared_raw_inner(
+        ref value
+    );
+
+    let before = compiler_raw_as_ref(
+        raw
+    ).revision;
+
+    let weak = shared_downgrade(
+        ref value
+    );
+
+    let after = compiler_raw_as_ref(
+        raw
+    ).revision;
+
+    give after > before
+        and shared_weak_weak_count(ref weak) == 1;
+}
+
+proc test_raw_clone_drop_revision_changes() -> bool {
+    let value = shared_new(42);
+
+    let raw = shared_raw_inner(
+        ref value
+    );
+
+    let mut copy = shared_clone(
+        value
+    );
+
+    let after_clone = compiler_raw_as_ref(
+        raw
+    ).revision;
+
+    if not shared_drop(
+        ref mut copy
+    ) {
+        give false;
+    }
+
+    let after_drop = compiler_raw_as_ref(
+        raw
+    ).revision;
+
+    give after_drop > after_clone;
+}
+
+proc test_raw_identity_address() -> bool {
+    let value = shared_new(42);
+
+    let identity = shared_identity(
+        ref value
+    );
+
+    let raw = shared_raw_inner(
+        ref value
+    );
+
+    give identity.address
+        == compiler_raw_ptr_address(
+            raw
+        );
+}
+
+proc test_raw_weak_identity_address() -> bool {
+    let value = shared_new(42);
+
+    let weak = shared_downgrade(
+        ref value
+    );
+
+    let identity = shared_weak_identity(
+        ref weak
+    );
+
+    let raw = shared_weak_raw_inner(
+        ref weak
+    );
+
+    give identity.address
+        == compiler_raw_ptr_address(
+            raw
+        );
+}
+
+proc test_raw_strong_weak_identity() -> bool {
+    let value = shared_new(42);
+
+    let weak = shared_downgrade(
+        ref value
+    );
+
+    let strong_identity = shared_identity(
+        ref value
+    );
+
+    let weak_identity = shared_weak_identity(
+        ref weak
+    );
+
+    give shared_identity_equal(
+        strong_identity,
+        weak_identity
+    );
+}
+
+proc test_raw_make_mut_unique_same_pointer() -> bool {
+    let mut value = shared_new(42);
+
+    let before = shared_raw_inner(
+        ref value
+    );
+
+    let item = shared_make_mut(
+        ref mut value
+    );
+
+    set *item = 100;
+
+    let after = shared_raw_inner(
+        ref value
+    );
+
+    give compiler_raw_ptr_equal(
+        before,
+        after
+    )
+    and *shared_get(ref value) == 100;
+}
+
+proc test_raw_make_mut_shared_new_pointer() -> bool {
+    let mut value = shared_new(42);
+
+    let copy = shared_clone(
+        value
+    );
+
+    let before = shared_raw_inner(
+        ref value
+    );
+
+    let item = shared_make_mut(
+        ref mut value
+    );
+
+    set *item = 100;
+
+    let after = shared_raw_inner(
+        ref value
+    );
+
+    give not compiler_raw_ptr_equal(
+        before,
+        after
+    )
+    and compiler_raw_ptr_equal(
+        before,
+        shared_raw_inner(ref copy)
+    )
+    and *shared_get(ref value) == 100
+    and *shared_get(ref copy) == 42;
+}
+
+proc test_raw_make_mut_shared_value_pointers_detach() -> bool {
+    let mut value = shared_new(42);
+
+    let copy = shared_clone(
+        value
+    );
+
+    let old_value_ptr = shared_value_ptr(
+        ref copy
+    );
+
+    let item = shared_make_mut(
+        ref mut value
+    );
+
+    set *item = 99;
+
+    let new_value_ptr = shared_value_ptr(
+        ref value
+    );
+
+    give not compiler_raw_ptr_equal(
+        old_value_ptr,
+        new_value_ptr
+    )
+    and *compiler_raw_as_ref(old_value_ptr) == 42
+    and *compiler_raw_as_ref(new_value_ptr) == 99;
+}
+
+proc test_raw_profile_consistency() -> bool {
+    let value = shared_new(42);
+
+    let raw = shared_raw_inner(
+        ref value
+    );
+
+    let inner = compiler_raw_as_ref(
+        raw
+    );
+
+    let profile = shared_profile(
+        ref value
+    );
+
+    give profile.strong
+            == inner.counts.strong.value
+        and profile.weak
+            == inner.counts.weak.value
+        and profile.generation
+            == inner.generation;
+}
+
+proc test_raw_snapshot_consistency() -> bool {
+    let value = shared_new(42);
+
+    let snapshot = shared_snapshot(
+        ref value
+    );
+
+    let raw = shared_raw_inner(
+        ref value
+    );
+
+    let inner = compiler_raw_as_ref(
+        raw
+    );
+
+    give snapshot.strong
+            == inner.counts.strong.value
+        and snapshot.weak
+            == inner.counts.weak.value
+        and snapshot.generation
+            == inner.generation;
+}
+
+proc test_raw_validation_consistency() -> bool {
+    let value = shared_new(42);
+
+    let raw = shared_raw_inner(
+        ref value
+    );
+
+    let inner = compiler_raw_as_ref(
+        raw
+    );
+
+    give shared_validate(
+        ref value
+    ).valid
+    and inner.value_alive
+    and inner.allocation_alive;
+}
+
+proc test_raw_after_weak_creation() -> bool {
+    let value = shared_new(42);
+
+    let weak = shared_downgrade(
+        ref value
+    );
+
+    let raw = shared_raw_inner(
+        ref value
+    );
+
+    let inner = compiler_raw_as_ref(
+        raw
+    );
+
+    give inner.counts.strong.value == 1
+        and inner.counts.weak.value == 1
+        and inner.value_alive
+        and inner.allocation_alive
+        and shared_weak_is_alive(ref weak);
+}
+
+proc test_raw_after_multiple_weak() -> bool {
+    let value = shared_new(42);
+
+    let weak = shared_downgrade(
+        ref value
+    );
+
+    let copy1 = shared_weak_clone(
+        weak
+    );
+
+    let copy2 = shared_weak_clone(
+        weak
+    );
+
+    let raw = shared_raw_inner(
+        ref value
+    );
+
+    let inner = compiler_raw_as_ref(
+        raw
+    );
+
+    give inner.counts.strong.value == 1
+        and inner.counts.weak.value == 3
+        and shared_weak_weak_count(ref copy1) == 3
+        and shared_weak_weak_count(ref copy2) == 3;
+}
+
+proc test_raw_upgrade_updates_strong() -> bool {
+    let value = shared_new(42);
+
+    let weak = shared_downgrade(
+        ref value
+    );
+
+    let raw = shared_raw_inner(
+        ref value
+    );
+
+    let before = compiler_raw_as_ref(
+        raw
+    ).counts.strong.value;
+
+    let result = shared_upgrade(
+        ref weak
+    );
+
+    pick result {
+        Some(copy) {
+            let after = compiler_raw_as_ref(
+                raw
+            ).counts.strong.value;
+
+            give before == 1
+                and after == 2
+                and shared_strong_count(ref copy) == 2;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_raw_upgrade_drop_restores_count() -> bool {
+    let value = shared_new(42);
+
+    let weak = shared_downgrade(
+        ref value
+    );
+
+    let raw = shared_raw_inner(
+        ref value
+    );
+
+    let result = shared_upgrade(
+        ref weak
+    );
+
+    pick result {
+        Some(copy) {
+            let mut temp = copy;
+
+            if compiler_raw_as_ref(
+                raw
+            ).counts.strong.value != 2 {
+                give false;
+            }
+
+            if not shared_drop(
+                ref mut temp
+            ) {
+                give false;
+            }
+
+            give compiler_raw_as_ref(
+                raw
+            ).counts.strong.value == 1;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_raw_value_pointer_clone_stress() -> bool {
+    let value = shared_new(42);
+
+    let root_ptr = shared_value_ptr(
+        ref value
+    );
+
+    let cycle: usize = 0;
+
+    while cycle < 10000 {
+        let mut copy = shared_clone(
+            value
+        );
+
+        let copy_ptr = shared_value_ptr(
+            ref copy
+        );
+
+        if not compiler_raw_ptr_equal(
+            root_ptr,
+            copy_ptr
+        ) {
+            give false;
+        }
+
+        if not shared_drop(
+            ref mut copy
+        ) {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give *compiler_raw_as_ref(
+        root_ptr
+    ) == 42;
+}
+
+proc test_raw_inner_clone_stress() -> bool {
+    let value = shared_new(42);
+
+    let root_raw = shared_raw_inner(
+        ref value
+    );
+
+    let cycle: usize = 0;
+
+    while cycle < 10000 {
+        let mut copy = shared_clone(
+            value
+        );
+
+        let copy_raw = shared_raw_inner(
+            ref copy
+        );
+
+        if not compiler_raw_ptr_equal(
+            root_raw,
+            copy_raw
+        ) {
+            give false;
+        }
+
+        if compiler_raw_as_ref(
+            root_raw
+        ).counts.strong.value != 2 {
+            give false;
+        }
+
+        if not shared_drop(
+            ref mut copy
+        ) {
+            give false;
+        }
+
+        if compiler_raw_as_ref(
+            root_raw
+        ).counts.strong.value != 1 {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc test_raw_weak_stress() -> bool {
+    let value = shared_new(42);
+
+    let raw = shared_raw_inner(
+        ref value
+    );
+
+    let cycle: usize = 0;
+
+    while cycle < 10000 {
+        let mut weak = shared_downgrade(
+            ref value
+        );
+
+        let weak_raw = shared_weak_raw_inner(
+            ref weak
+        );
+
+        if not compiler_raw_ptr_equal(
+            raw,
+            weak_raw
+        ) {
+            give false;
+        }
+
+        if compiler_raw_as_ref(
+            raw
+        ).counts.weak.value != 1 {
+            give false;
+        }
+
+        if not shared_weak_drop(
+            ref mut weak
+        ) {
+            give false;
+        }
+
+        if compiler_raw_as_ref(
+            raw
+        ).counts.weak.value != 0 {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc test_raw_upgrade_stress() -> bool {
+    let value = shared_new(42);
+
+    let weak = shared_downgrade(
+        ref value
+    );
+
+    let raw = shared_raw_inner(
+        ref value
+    );
+
+    let cycle: usize = 0;
+
+    while cycle < 10000 {
+        let result = shared_upgrade(
+            ref weak
+        );
+
+        pick result {
+            Some(copy) {
+                let mut temp = copy;
+
+                if compiler_raw_as_ref(
+                    raw
+                ).counts.strong.value != 2 {
+                    give false;
+                }
+
+                if not shared_drop(
+                    ref mut temp
+                ) {
+                    give false;
+                }
+            }
+
+            None {
+                give false;
+            }
+        }
+
+        if compiler_raw_as_ref(
+            raw
+        ).counts.strong.value != 1 {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc test_raw_many_clones() -> bool {
+    let value = shared_new(42);
+
+    let raw = shared_raw_inner(
+        ref value
+    );
+
+    let copies: [Shared<int>] = [];
+
+    let index: usize = 0;
+
+    while index < 256 {
+        let copy = shared_clone(
+            value
+        );
+
+        if not compiler_raw_ptr_equal(
+            raw,
+            shared_raw_inner(ref copy)
+        ) {
+            give false;
+        }
+
+        set copies =
+            copies + [copy];
+
+        set index = index + 1;
+    }
+
+    give compiler_raw_as_ref(
+        raw
+    ).counts.strong.value == 257;
+}
+
+proc test_raw_many_weak() -> bool {
+    let value = shared_new(42);
+
+    let root = shared_downgrade(
+        ref value
+    );
+
+    let raw = shared_raw_inner(
+        ref value
+    );
+
+    let values: [SharedWeak<int>] = [
+        root
+    ];
+
+    let index: usize = 1;
+
+    while index < 256 {
+        let weak = shared_weak_clone(
+            root
+        );
+
+        if not compiler_raw_ptr_equal(
+            raw,
+            shared_weak_raw_inner(ref weak)
+        ) {
+            give false;
+        }
+
+        set values =
+            values + [weak];
+
+        set index = index + 1;
+    }
+
+    give compiler_raw_as_ref(
+        raw
+    ).counts.weak.value == 256;
+}
+
+proc run_raw_tests() -> bool {
+    give test_raw_inner()
+        and test_raw_inner_points_to_control_block()
+        and test_raw_inner_value()
+        and test_raw_inner_point()
+
+        and test_raw_identity_after_clone()
+        and test_raw_identity_many_clones()
+        and test_raw_strong_count_after_clone()
+        and test_raw_strong_count_after_drop()
+
+        and test_raw_weak_count_after_downgrade()
+        and test_raw_from_weak_same_allocation()
+        and test_raw_weak_clone_identity()
+        and test_raw_weak_clone_count()
+
+        and test_raw_value_ptr()
+        and test_raw_value_ptr_read()
+        and test_raw_value_ptr_point()
+        and test_raw_value_ptr_shared_identity()
+
+        and test_raw_value_ptr_mut_unique()
+        and test_raw_value_ptr_mut_point()
+        and test_raw_value_ptr_mut_shared_denied()
+        and test_raw_value_ptr_after_unique_restored()
+
+        and test_raw_inner_mut_unique()
+        and test_raw_inner_metadata()
+        and test_raw_clone_revision_changes()
+        and test_raw_downgrade_revision_changes()
+        and test_raw_clone_drop_revision_changes()
+
+        and test_raw_identity_address()
+        and test_raw_weak_identity_address()
+        and test_raw_strong_weak_identity()
+
+        and test_raw_make_mut_unique_same_pointer()
+        and test_raw_make_mut_shared_new_pointer()
+        and test_raw_make_mut_shared_value_pointers_detach()
+
+        and test_raw_profile_consistency()
+        and test_raw_snapshot_consistency()
+        and test_raw_validation_consistency()
+
+        and test_raw_after_weak_creation()
+        and test_raw_after_multiple_weak()
+        and test_raw_upgrade_updates_strong()
+        and test_raw_upgrade_drop_restores_count()
+
+        and test_raw_value_pointer_clone_stress()
+        and test_raw_inner_clone_stress()
+        and test_raw_weak_stress()
+        and test_raw_upgrade_stress()
+
+        and test_raw_many_clones()
+        and test_raw_many_weak();
+}
+
+proc main() -> int {
+    if run_raw_tests() {
+        give 0;
+    }
+
+    give 1;
+}

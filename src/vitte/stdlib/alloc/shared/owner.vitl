@@ -1,0 +1,2213 @@
+space vitte/stdlib/alloc/shared/owner
+
+export *
+
+use src/vitte/stdlib/alloc/shared/core as shared_core
+use src/vitte/stdlib/alloc/shared/count as shared_count
+use src/vitte/stdlib/alloc/shared/error as shared_error
+use src/vitte/stdlib/alloc/shared/inner as shared_inner
+use src/vitte/stdlib/alloc/allocator as alloc_allocator
+use src/vitte/stdlib/core/option as core_option
+
+pick SharedOwnerState {
+    Alive,
+    Unique,
+    Shared,
+    Released,
+    Stale,
+    Invalid
+}
+
+pick SharedOwnerAccess {
+    None,
+    Read,
+    ReadWrite
+}
+
+pick SharedOwnerOperation {
+    None,
+    Create,
+    Clone,
+    Drop,
+    Get,
+    GetMut,
+    Replace,
+    Downgrade,
+    Refresh,
+    Validate
+}
+
+form SharedOwner<T> {
+    inner: raw ref shared_inner.SharedInner<T>
+
+    generation: u64
+    revision: u64
+}
+
+form SharedOwnerProfile {
+    strong: usize
+    weak: usize
+
+    state: SharedOwnerState
+    access: SharedOwnerAccess
+
+    alive: bool
+    unique: bool
+    shared: bool
+    released: bool
+    stale: bool
+    valid: bool
+
+    generation: u64
+    revision: u64
+}
+
+form SharedOwnerValidation {
+    valid: bool
+
+    pointer_valid: bool
+    generation_valid: bool
+    inner_valid: bool
+    strong_valid: bool
+    state_valid: bool
+    access_valid: bool
+}
+
+form SharedOwnerSnapshot {
+    strong: usize
+    weak: usize
+
+    state: SharedOwnerState
+
+    generation: u64
+    revision: u64
+}
+
+form SharedOwnerDelta {
+    strong: int
+    weak: int
+
+    generation: int
+    revision: int
+
+    state_changed: bool
+    changed: bool
+}
+
+form SharedOwnerIdentity {
+    address: usize
+    generation: u64
+}
+
+form SharedOwnerStatistics {
+    creations: u64
+    creation_failures: u64
+
+    clones: u64
+    clone_failures: u64
+
+    drops: u64
+    drop_failures: u64
+
+    reads: u64
+    read_failures: u64
+
+    mutable_reads: u64
+    mutable_failures: u64
+
+    replacements: u64
+    replacement_failures: u64
+
+    downgrades: u64
+    downgrade_failures: u64
+
+    refreshes: u64
+    refresh_failures: u64
+
+    validations: u64
+    validation_failures: u64
+
+    peak_strong: usize
+    peak_weak: usize
+}
+
+// -----------------------------------------------------------------------------
+// Allocation
+// -----------------------------------------------------------------------------
+
+proc shared_owner_allocate_inner<T>(
+    value: T
+) -> Option<raw ref shared_inner.SharedInner<T>> {
+    let layout =
+        alloc_allocator.layout(
+            compiler_size_of<shared_inner.SharedInner<T>>(),
+            compiler_align_of<shared_inner.SharedInner<T>>()
+        );
+
+    let mut allocator =
+        alloc_allocator.allocator(
+            "shared-owner",
+            alloc_allocator.GrowthPolicy.Exact
+        );
+
+    let allocation =
+        alloc_allocator.allocator_allocate(
+            ref mut allocator,
+            layout
+        );
+
+    pick allocation {
+        Some(storage) {
+            let ptr =
+                compiler_allocation_as_mut<shared_inner.SharedInner<T>>(
+                    storage
+                );
+
+            set *ptr =
+                shared_inner.shared_inner_new(
+                    value,
+                    storage
+                );
+
+            give some<raw ref shared_inner.SharedInner<T>>(
+                compiler_mut_ref_as_raw(
+                    ptr
+                )
+            );
+        }
+
+        None {
+            give none<raw ref shared_inner.SharedInner<T>>();
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Construction
+// -----------------------------------------------------------------------------
+
+proc shared_owner_new<T>(
+    value: T
+) -> SharedOwner<T> {
+    let result =
+        shared_owner_allocate_inner(
+            value
+        );
+
+    pick result {
+        Some(ptr) {
+            let inner =
+                compiler_raw_as_ref(
+                    ptr
+                );
+
+            give SharedOwner<T> {
+                inner:
+                    ptr,
+
+                generation:
+                    inner.generation,
+
+                revision:
+                    inner.revision
+            };
+        }
+
+        None {
+            give compiler_shared_allocation_failure<T>();
+        }
+    }
+}
+
+proc shared_owner_try_new<T>(
+    value: T
+) -> Option<SharedOwner<T>> {
+    let result =
+        shared_owner_allocate_inner(
+            value
+        );
+
+    pick result {
+        Some(ptr) {
+            let inner =
+                compiler_raw_as_ref(
+                    ptr
+                );
+
+            give some<SharedOwner<T>>(
+                SharedOwner<T> {
+                    inner:
+                        ptr,
+
+                    generation:
+                        inner.generation,
+
+                    revision:
+                        inner.revision
+                }
+            );
+        }
+
+        None {
+            give none<SharedOwner<T>>();
+        }
+    }
+}
+
+proc shared_owner_from_inner<T>(
+    inner: ref shared_inner.SharedInner<T>
+) -> SharedOwner<T> {
+    give SharedOwner<T> {
+        inner:
+            compiler_ref_as_raw(
+                inner
+            ),
+
+        generation:
+            inner.generation,
+
+        revision:
+            inner.revision
+    };
+}
+
+proc shared_owner_from_inner_mut<T>(
+    inner: ref mut shared_inner.SharedInner<T>
+) -> SharedOwner<T> {
+    give SharedOwner<T> {
+        inner:
+            compiler_mut_ref_as_raw(
+                inner
+            ),
+
+        generation:
+            inner.generation,
+
+        revision:
+            inner.revision
+    };
+}
+
+proc shared_owner_null<T>()
+    -> SharedOwner<T>
+{
+    give SharedOwner<T> {
+        inner:
+            compiler_raw_null(),
+
+        generation:
+            0,
+
+        revision:
+            0
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Inner access
+// -----------------------------------------------------------------------------
+
+proc shared_owner_inner<T>(
+    value: ref SharedOwner<T>
+) -> Option<ref shared_inner.SharedInner<T>> {
+    if compiler_raw_ptr_is_null(
+        value.inner
+    ) {
+        give none<ref shared_inner.SharedInner<T>>();
+    }
+
+    give some<ref shared_inner.SharedInner<T>>(
+        compiler_raw_as_ref(
+            value.inner
+        )
+    );
+}
+
+proc shared_owner_inner_mut<T>(
+    value: ref mut SharedOwner<T>
+) -> Option<ref mut shared_inner.SharedInner<T>> {
+    if compiler_raw_ptr_is_null(
+        value.inner
+    ) {
+        give none<ref mut shared_inner.SharedInner<T>>();
+    }
+
+    give some<ref mut shared_inner.SharedInner<T>>(
+        compiler_raw_as_mut(
+            value.inner
+        )
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Metadata
+// -----------------------------------------------------------------------------
+
+proc shared_owner_generation<T>(
+    value: ref SharedOwner<T>
+) -> u64 {
+    give value.generation;
+}
+
+proc shared_owner_revision<T>(
+    value: ref SharedOwner<T>
+) -> u64 {
+    give value.revision;
+}
+
+proc shared_owner_refresh<T>(
+    value: ref mut SharedOwner<T>
+) -> bool {
+    let inner =
+        shared_owner_inner(
+            ref *value
+        );
+
+    pick inner {
+        Some(current) {
+            set value.generation =
+                current.generation;
+
+            set value.revision =
+                current.revision;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc shared_owner_generation_matches<T>(
+    value: ref SharedOwner<T>
+) -> bool {
+    let inner =
+        shared_owner_inner(
+            value
+        );
+
+    pick inner {
+        Some(current) {
+            give current.generation
+                == value.generation;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc shared_owner_revision_matches<T>(
+    value: ref SharedOwner<T>
+) -> bool {
+    let inner =
+        shared_owner_inner(
+            value
+        );
+
+    pick inner {
+        Some(current) {
+            give current.revision
+                == value.revision;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// State
+// -----------------------------------------------------------------------------
+
+proc shared_owner_state<T>(
+    value: ref SharedOwner<T>
+) -> SharedOwnerState {
+    if compiler_raw_ptr_is_null(
+        value.inner
+    ) {
+        give SharedOwnerState.Released;
+    }
+
+    let inner =
+        shared_owner_inner(
+            value
+        );
+
+    pick inner {
+        Some(current) {
+            if current.generation
+                != value.generation
+            {
+                give SharedOwnerState.Stale;
+            }
+
+            if not shared_inner.shared_inner_is_valid(
+                current
+            ) {
+                give SharedOwnerState.Invalid;
+            }
+
+            let strong =
+                shared_inner.shared_inner_strong_count(
+                    current
+                );
+
+            if strong == 0 {
+                give SharedOwnerState.Released;
+            }
+
+            if strong == 1 {
+                give SharedOwnerState.Unique;
+            }
+
+            if strong > 1 {
+                give SharedOwnerState.Shared;
+            }
+
+            give SharedOwnerState.Alive;
+        }
+
+        None {
+            give SharedOwnerState.Invalid;
+        }
+    }
+}
+
+proc shared_owner_access<T>(
+    value: ref SharedOwner<T>
+) -> SharedOwnerAccess {
+    let state =
+        shared_owner_state(
+            value
+        );
+
+    pick state {
+        SharedOwnerState.Unique {
+            give SharedOwnerAccess.ReadWrite;
+        }
+
+        SharedOwnerState.Alive
+        | SharedOwnerState.Shared {
+            give SharedOwnerAccess.Read;
+        }
+
+        SharedOwnerState.Released
+        | SharedOwnerState.Stale
+        | SharedOwnerState.Invalid {
+            give SharedOwnerAccess.None;
+        }
+    }
+
+    give SharedOwnerAccess.None;
+}
+
+// -----------------------------------------------------------------------------
+// Predicates
+// -----------------------------------------------------------------------------
+
+proc shared_owner_is_alive<T>(
+    value: ref SharedOwner<T>
+) -> bool {
+    let state =
+        shared_owner_state(
+            value
+        );
+
+    give state == SharedOwnerState.Alive
+        or state == SharedOwnerState.Unique
+        or state == SharedOwnerState.Shared;
+}
+
+proc shared_owner_is_unique<T>(
+    value: ref SharedOwner<T>
+) -> bool {
+    give shared_owner_state(
+        value
+    ) == SharedOwnerState.Unique;
+}
+
+proc shared_owner_is_shared<T>(
+    value: ref SharedOwner<T>
+) -> bool {
+    give shared_owner_state(
+        value
+    ) == SharedOwnerState.Shared;
+}
+
+proc shared_owner_is_released<T>(
+    value: ref SharedOwner<T>
+) -> bool {
+    give shared_owner_state(
+        value
+    ) == SharedOwnerState.Released;
+}
+
+proc shared_owner_is_stale<T>(
+    value: ref SharedOwner<T>
+) -> bool {
+    give shared_owner_state(
+        value
+    ) == SharedOwnerState.Stale;
+}
+
+proc shared_owner_is_valid<T>(
+    value: ref SharedOwner<T>
+) -> bool {
+    let state =
+        shared_owner_state(
+            value
+        );
+
+    give state != SharedOwnerState.Invalid
+        and state != SharedOwnerState.Stale
+        and state != SharedOwnerState.Released;
+}
+
+proc shared_owner_can_read<T>(
+    value: ref SharedOwner<T>
+) -> bool {
+    let access =
+        shared_owner_access(
+            value
+        );
+
+    give access == SharedOwnerAccess.Read
+        or access == SharedOwnerAccess.ReadWrite;
+}
+
+proc shared_owner_can_write<T>(
+    value: ref SharedOwner<T>
+) -> bool {
+    give shared_owner_access(
+        value
+    ) == SharedOwnerAccess.ReadWrite;
+}
+
+// -----------------------------------------------------------------------------
+// Counts
+// -----------------------------------------------------------------------------
+
+proc shared_owner_strong_count<T>(
+    value: ref SharedOwner<T>
+) -> usize {
+    let inner =
+        shared_owner_inner(
+            value
+        );
+
+    pick inner {
+        Some(current) {
+            give shared_inner.shared_inner_strong_count(
+                current
+            );
+        }
+
+        None {
+            give 0;
+        }
+    }
+}
+
+proc shared_owner_weak_count<T>(
+    value: ref SharedOwner<T>
+) -> usize {
+    let inner =
+        shared_owner_inner(
+            value
+        );
+
+    pick inner {
+        Some(current) {
+            give shared_inner.shared_inner_weak_count(
+                current
+            );
+        }
+
+        None {
+            give 0;
+        }
+    }
+}
+
+proc shared_owner_total_count<T>(
+    value: ref SharedOwner<T>
+) -> usize {
+    let inner =
+        shared_owner_inner(
+            value
+        );
+
+    pick inner {
+        Some(current) {
+            give shared_inner.shared_inner_total_count(
+                current
+            );
+        }
+
+        None {
+            give 0;
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Clone
+// -----------------------------------------------------------------------------
+
+proc shared_owner_clone<T>(
+    value: SharedOwner<T>
+) -> SharedOwner<T> {
+    if compiler_raw_ptr_is_null(
+        value.inner
+    ) {
+        give compiler_shared_clone_failure<T>();
+    }
+
+    let inner =
+        compiler_raw_as_mut(
+            value.inner
+        );
+
+    if inner.generation
+        != value.generation
+    {
+        give compiler_shared_clone_failure<T>();
+    }
+
+    if not shared_inner.shared_inner_clone_strong(
+        inner
+    ) {
+        give compiler_shared_clone_failure<T>();
+    }
+
+    give SharedOwner<T> {
+        inner:
+            value.inner,
+
+        generation:
+            inner.generation,
+
+        revision:
+            inner.revision
+    };
+}
+
+proc shared_owner_try_clone<T>(
+    value: SharedOwner<T>
+) -> Option<SharedOwner<T>> {
+    if compiler_raw_ptr_is_null(
+        value.inner
+    ) {
+        give none<SharedOwner<T>>();
+    }
+
+    let inner =
+        compiler_raw_as_mut(
+            value.inner
+        );
+
+    if inner.generation
+        != value.generation
+    {
+        give none<SharedOwner<T>>();
+    }
+
+    if not shared_inner.shared_inner_clone_strong(
+        inner
+    ) {
+        give none<SharedOwner<T>>();
+    }
+
+    give some<SharedOwner<T>>(
+        SharedOwner<T> {
+            inner:
+                value.inner,
+
+            generation:
+                inner.generation,
+
+            revision:
+                inner.revision
+        }
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Read
+// -----------------------------------------------------------------------------
+
+proc shared_owner_get<T>(
+    value: ref SharedOwner<T>
+) -> ref T {
+    let result =
+        shared_owner_try_get(
+            value
+        );
+
+    pick result {
+        Some(item) {
+            give item;
+        }
+
+        None {
+            give compiler_shared_access_failure<T>();
+        }
+    }
+}
+
+proc shared_owner_try_get<T>(
+    value: ref SharedOwner<T>
+) -> Option<ref T> {
+    if not shared_owner_can_read(
+        value
+    ) {
+        give none<ref T>();
+    }
+
+    let inner =
+        shared_owner_inner(
+            value
+        );
+
+    pick inner {
+        Some(current) {
+            give shared_inner.shared_inner_get(
+                current
+            );
+        }
+
+        None {
+            give none<ref T>();
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Mutable access
+// -----------------------------------------------------------------------------
+
+proc shared_owner_get_mut<T>(
+    value: ref mut SharedOwner<T>
+) -> Option<ref mut T> {
+    if not shared_owner_can_write(
+        ref *value
+    ) {
+        give none<ref mut T>();
+    }
+
+    let inner =
+        shared_owner_inner_mut(
+            value
+        );
+
+    pick inner {
+        Some(current) {
+            give shared_inner.shared_inner_get_mut(
+                current
+            );
+        }
+
+        None {
+            give none<ref mut T>();
+        }
+    }
+}
+
+proc shared_owner_get_mut_unchecked<T>(
+    value: ref mut SharedOwner<T>
+) -> ref mut T {
+    let inner =
+        compiler_raw_as_mut(
+            value.inner
+        );
+
+    give ref mut inner.value;
+}
+
+// -----------------------------------------------------------------------------
+// Replace
+// -----------------------------------------------------------------------------
+
+proc shared_owner_replace<T>(
+    value: ref mut SharedOwner<T>,
+    item: T
+) -> bool {
+    if not shared_owner_can_write(
+        ref *value
+    ) {
+        give false;
+    }
+
+    let inner =
+        shared_owner_inner_mut(
+            value
+        );
+
+    pick inner {
+        Some(current) {
+            let result =
+                shared_inner.shared_inner_replace(
+                    current,
+                    item
+                );
+
+            if result {
+                set value.generation =
+                    current.generation;
+
+                set value.revision =
+                    current.revision;
+            }
+
+            give result;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Make mutable
+// -----------------------------------------------------------------------------
+
+proc shared_owner_make_mut<T>(
+    value: ref mut SharedOwner<T>
+) -> ref mut T {
+    let existing =
+        shared_owner_get_mut(
+            value
+        );
+
+    pick existing {
+        Some(item) {
+            give item;
+        }
+
+        None {}
+    }
+
+    let source =
+        shared_owner_get(
+            ref *value
+        );
+
+    let copied =
+        compiler_clone_value(
+            source
+        );
+
+    let replacement =
+        shared_owner_new(
+            copied
+        );
+
+    shared_owner_drop(
+        value
+    );
+
+    set *value =
+        replacement;
+
+    let result =
+        shared_owner_get_mut(
+            value
+        );
+
+    pick result {
+        Some(item) {
+            give item;
+        }
+
+        None {
+            give compiler_shared_mutable_access_failure<T>();
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Downgrade primitive
+// -----------------------------------------------------------------------------
+
+proc shared_owner_downgrade<T>(
+    value: ref SharedOwner<T>
+) -> bool {
+    if not shared_owner_is_alive(
+        value
+    ) {
+        give false;
+    }
+
+    let inner =
+        compiler_raw_as_mut(
+            value.inner
+        );
+
+    give shared_inner.shared_inner_downgrade(
+        inner
+    );
+}
+
+proc shared_owner_try_downgrade<T>(
+    value: ref SharedOwner<T>
+) -> bool {
+    give shared_owner_downgrade(
+        value
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Drop
+// -----------------------------------------------------------------------------
+
+proc shared_owner_drop<T>(
+    value: ref mut SharedOwner<T>
+) -> bool {
+    if compiler_raw_ptr_is_null(
+        value.inner
+    ) {
+        give false;
+    }
+
+    let inner =
+        compiler_raw_as_mut(
+            value.inner
+        );
+
+    if inner.generation
+        != value.generation
+    {
+        give false;
+    }
+
+    let result =
+        shared_inner.shared_inner_drop_strong(
+            inner
+        );
+
+    if not result {
+        give false;
+    }
+
+    set value.generation =
+        inner.generation;
+
+    set value.revision =
+        inner.revision;
+
+    set value.inner =
+        compiler_raw_null();
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Pointer identity
+// -----------------------------------------------------------------------------
+
+proc shared_owner_ptr_equal<T>(
+    left: ref SharedOwner<T>,
+    right: ref SharedOwner<T>
+) -> bool {
+    give compiler_raw_ptr_equal(
+        left.inner,
+        right.inner
+    );
+}
+
+proc shared_owner_same_allocation<T>(
+    left: ref SharedOwner<T>,
+    right: ref SharedOwner<T>
+) -> bool {
+    give shared_owner_ptr_equal(
+        left,
+        right
+    );
+}
+
+proc shared_owner_same_generation<T>(
+    left: ref SharedOwner<T>,
+    right: ref SharedOwner<T>
+) -> bool {
+    give left.generation
+        == right.generation;
+}
+
+proc shared_owner_identity_equal<T>(
+    left: ref SharedOwner<T>,
+    right: ref SharedOwner<T>
+) -> bool {
+    give shared_owner_same_allocation(
+        left,
+        right
+    )
+    and shared_owner_same_generation(
+        left,
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Identity
+// -----------------------------------------------------------------------------
+
+proc shared_owner_identity<T>(
+    value: ref SharedOwner<T>
+) -> SharedOwnerIdentity {
+    give SharedOwnerIdentity {
+        address:
+            compiler_raw_ptr_address(
+                value.inner
+            ),
+
+        generation:
+            value.generation
+    };
+}
+
+proc shared_owner_identity_eq(
+    left: SharedOwnerIdentity,
+    right: SharedOwnerIdentity
+) -> bool {
+    give left.address == right.address
+        and left.generation == right.generation;
+}
+
+// -----------------------------------------------------------------------------
+// Raw pointer
+// -----------------------------------------------------------------------------
+
+proc shared_owner_raw_inner<T>(
+    value: ref SharedOwner<T>
+) -> raw ref shared_inner.SharedInner<T> {
+    give value.inner;
+}
+
+proc shared_owner_value_ptr<T>(
+    value: ref SharedOwner<T>
+) -> raw ref T {
+    let item =
+        shared_owner_get(
+            value
+        );
+
+    give compiler_ref_as_raw(
+        item
+    );
+}
+
+proc shared_owner_value_ptr_mut<T>(
+    value: ref mut SharedOwner<T>
+) -> Option<raw ref T> {
+    let item =
+        shared_owner_get_mut(
+            value
+        );
+
+    pick item {
+        Some(current) {
+            give some<raw ref T>(
+                compiler_mut_ref_as_raw(
+                    current
+                )
+            );
+        }
+
+        None {
+            give none<raw ref T>();
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Core conversion
+// -----------------------------------------------------------------------------
+
+proc shared_owner_core_counts<T>(
+    value: ref SharedOwner<T>
+) -> shared_core.SharedCoreCounts {
+    give shared_core.shared_core_counts(
+        shared_owner_strong_count(
+            value
+        ),
+        shared_owner_weak_count(
+            value
+        )
+    );
+}
+
+proc shared_owner_core_profile<T>(
+    value: ref SharedOwner<T>
+) -> shared_core.SharedCoreProfile {
+    give shared_core.shared_core_profile(
+        shared_owner_core_counts(
+            value
+        ),
+        shared_core.SharedCoreMeta {
+            generation:
+                value.generation,
+
+            revision:
+                value.revision
+        }
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Count conversion
+// -----------------------------------------------------------------------------
+
+proc shared_owner_counts<T>(
+    value: ref SharedOwner<T>
+) -> shared_count.SharedCountPair {
+    let inner =
+        shared_owner_inner(
+            value
+        );
+
+    pick inner {
+        Some(current) {
+            give current.counts;
+        }
+
+        None {
+            give shared_count.shared_count_pair(
+                0,
+                0
+            );
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+proc shared_owner_validate<T>(
+    value: ref SharedOwner<T>
+) -> SharedOwnerValidation {
+    let pointer_valid =
+        not compiler_raw_ptr_is_null(
+            value.inner
+        );
+
+    if not pointer_valid {
+        give SharedOwnerValidation {
+            valid:
+                false,
+
+            pointer_valid:
+                false,
+
+            generation_valid:
+                false,
+
+            inner_valid:
+                false,
+
+            strong_valid:
+                false,
+
+            state_valid:
+                false,
+
+            access_valid:
+                false
+        };
+    }
+
+    let inner =
+        compiler_raw_as_ref(
+            value.inner
+        );
+
+    let generation_valid =
+        inner.generation
+            == value.generation;
+
+    let inner_valid =
+        shared_inner.shared_inner_is_valid(
+            inner
+        );
+
+    let strong =
+        shared_inner.shared_inner_strong_count(
+            inner
+        );
+
+    let strong_valid =
+        strong > 0;
+
+    let state =
+        shared_owner_state(
+            value
+        );
+
+    let state_valid =
+        state == SharedOwnerState.Alive
+        or state == SharedOwnerState.Unique
+        or state == SharedOwnerState.Shared;
+
+    let access =
+        shared_owner_access(
+            value
+        );
+
+    let access_valid =
+        if strong == 1 {
+            access == SharedOwnerAccess.ReadWrite
+        } else if strong > 1 {
+            access == SharedOwnerAccess.Read
+        } else {
+            access == SharedOwnerAccess.None
+        };
+
+    give SharedOwnerValidation {
+        valid:
+            pointer_valid
+            and generation_valid
+            and inner_valid
+            and strong_valid
+            and state_valid
+            and access_valid,
+
+        pointer_valid:
+            pointer_valid,
+
+        generation_valid:
+            generation_valid,
+
+        inner_valid:
+            inner_valid,
+
+        strong_valid:
+            strong_valid,
+
+        state_valid:
+            state_valid,
+
+        access_valid:
+            access_valid
+    };
+}
+
+proc shared_owner_invariant_holds<T>(
+    value: ref SharedOwner<T>
+) -> bool {
+    give shared_owner_validate(
+        value
+    ).valid;
+}
+
+// -----------------------------------------------------------------------------
+// Error mapping
+// -----------------------------------------------------------------------------
+
+proc shared_owner_error<T>(
+    value: ref SharedOwner<T>
+) -> shared_error.SharedError {
+    let validation =
+        shared_owner_validate(
+            value
+        );
+
+    if validation.valid {
+        give shared_error.shared_error_none();
+    }
+
+    if not validation.pointer_valid {
+        give shared_error.shared_error_null_pointer();
+    }
+
+    let inner =
+        compiler_raw_as_ref(
+            value.inner
+        );
+
+    if not validation.generation_valid {
+        give shared_error.shared_error_stale_reference(
+            inner.counts
+        );
+    }
+
+    if not validation.inner_valid {
+        give shared_inner.shared_inner_error(
+            inner
+        );
+    }
+
+    if not validation.strong_valid {
+        give shared_error.shared_error_invalid_strong_count(
+            inner.counts
+        );
+    }
+
+    if not validation.state_valid {
+        give shared_error.shared_error_invalid_state(
+            inner.counts
+        );
+    }
+
+    if not validation.access_valid {
+        give shared_error.shared_error_invalid_access(
+            inner.counts
+        );
+    }
+
+    give shared_error.shared_error_internal(
+        "unknown shared owner validation failure"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Profile
+// -----------------------------------------------------------------------------
+
+proc shared_owner_profile<T>(
+    value: ref SharedOwner<T>
+) -> SharedOwnerProfile {
+    let strong =
+        shared_owner_strong_count(
+            value
+        );
+
+    let weak =
+        shared_owner_weak_count(
+            value
+        );
+
+    let state =
+        shared_owner_state(
+            value
+        );
+
+    give SharedOwnerProfile {
+        strong:
+            strong,
+
+        weak:
+            weak,
+
+        state:
+            state,
+
+        access:
+            shared_owner_access(
+                value
+            ),
+
+        alive:
+            shared_owner_is_alive(
+                value
+            ),
+
+        unique:
+            state == SharedOwnerState.Unique,
+
+        shared:
+            state == SharedOwnerState.Shared,
+
+        released:
+            state == SharedOwnerState.Released,
+
+        stale:
+            state == SharedOwnerState.Stale,
+
+        valid:
+            shared_owner_is_valid(
+                value
+            ),
+
+        generation:
+            value.generation,
+
+        revision:
+            value.revision
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Snapshot
+// -----------------------------------------------------------------------------
+
+proc shared_owner_snapshot<T>(
+    value: ref SharedOwner<T>
+) -> SharedOwnerSnapshot {
+    give SharedOwnerSnapshot {
+        strong:
+            shared_owner_strong_count(
+                value
+            ),
+
+        weak:
+            shared_owner_weak_count(
+                value
+            ),
+
+        state:
+            shared_owner_state(
+                value
+            ),
+
+        generation:
+            value.generation,
+
+        revision:
+            value.revision
+    };
+}
+
+proc shared_owner_snapshot_equal(
+    left: SharedOwnerSnapshot,
+    right: SharedOwnerSnapshot
+) -> bool {
+    give left.strong == right.strong
+        and left.weak == right.weak
+        and left.state == right.state
+        and left.generation == right.generation
+        and left.revision == right.revision;
+}
+
+proc shared_owner_snapshot_changed(
+    left: SharedOwnerSnapshot,
+    right: SharedOwnerSnapshot
+) -> bool {
+    give not shared_owner_snapshot_equal(
+        left,
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Delta
+// -----------------------------------------------------------------------------
+
+proc shared_owner_usize_delta(
+    before: usize,
+    after: usize
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc shared_owner_u64_delta(
+    before: u64,
+    after: u64
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc shared_owner_delta(
+    before: SharedOwnerSnapshot,
+    after: SharedOwnerSnapshot
+) -> SharedOwnerDelta {
+    let strong =
+        shared_owner_usize_delta(
+            before.strong,
+            after.strong
+        );
+
+    let weak =
+        shared_owner_usize_delta(
+            before.weak,
+            after.weak
+        );
+
+    let generation =
+        shared_owner_u64_delta(
+            before.generation,
+            after.generation
+        );
+
+    let revision =
+        shared_owner_u64_delta(
+            before.revision,
+            after.revision
+        );
+
+    let state_changed =
+        before.state
+            != after.state;
+
+    give SharedOwnerDelta {
+        strong:
+            strong,
+
+        weak:
+            weak,
+
+        generation:
+            generation,
+
+        revision:
+            revision,
+
+        state_changed:
+            state_changed,
+
+        changed:
+            strong != 0
+            or weak != 0
+            or generation != 0
+            or revision != 0
+            or state_changed
+    };
+}
+
+proc shared_owner_delta_is_zero(
+    delta: SharedOwnerDelta
+) -> bool {
+    give not delta.changed;
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc shared_owner_statistics_empty()
+    -> SharedOwnerStatistics
+{
+    give SharedOwnerStatistics {
+        creations: 0,
+        creation_failures: 0,
+
+        clones: 0,
+        clone_failures: 0,
+
+        drops: 0,
+        drop_failures: 0,
+
+        reads: 0,
+        read_failures: 0,
+
+        mutable_reads: 0,
+        mutable_failures: 0,
+
+        replacements: 0,
+        replacement_failures: 0,
+
+        downgrades: 0,
+        downgrade_failures: 0,
+
+        refreshes: 0,
+        refresh_failures: 0,
+
+        validations: 0,
+        validation_failures: 0,
+
+        peak_strong: 1,
+        peak_weak: 0
+    };
+}
+
+proc shared_owner_statistics_update_peaks<T>(
+    statistics: ref mut SharedOwnerStatistics,
+    value: ref SharedOwner<T>
+) {
+    let strong =
+        shared_owner_strong_count(
+            value
+        );
+
+    let weak =
+        shared_owner_weak_count(
+            value
+        );
+
+    if strong > statistics.peak_strong {
+        set statistics.peak_strong =
+            strong;
+    }
+
+    if weak > statistics.peak_weak {
+        set statistics.peak_weak =
+            weak;
+    }
+}
+
+proc shared_owner_statistics_record_create<T>(
+    statistics: ref mut SharedOwnerStatistics,
+    value: ref SharedOwner<T>,
+    success: bool
+) {
+    if success {
+        set statistics.creations =
+            statistics.creations + 1;
+
+        shared_owner_statistics_update_peaks(
+            statistics,
+            value
+        );
+    } else {
+        set statistics.creation_failures =
+            statistics.creation_failures + 1;
+    }
+}
+
+proc shared_owner_statistics_record_clone<T>(
+    statistics: ref mut SharedOwnerStatistics,
+    value: ref SharedOwner<T>,
+    success: bool
+) {
+    if success {
+        set statistics.clones =
+            statistics.clones + 1;
+
+        shared_owner_statistics_update_peaks(
+            statistics,
+            value
+        );
+    } else {
+        set statistics.clone_failures =
+            statistics.clone_failures + 1;
+    }
+}
+
+proc shared_owner_statistics_record_drop(
+    statistics: ref mut SharedOwnerStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.drops =
+            statistics.drops + 1;
+    } else {
+        set statistics.drop_failures =
+            statistics.drop_failures + 1;
+    }
+}
+
+proc shared_owner_statistics_record_read(
+    statistics: ref mut SharedOwnerStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.reads =
+            statistics.reads + 1;
+    } else {
+        set statistics.read_failures =
+            statistics.read_failures + 1;
+    }
+}
+
+proc shared_owner_statistics_record_mutable(
+    statistics: ref mut SharedOwnerStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.mutable_reads =
+            statistics.mutable_reads + 1;
+    } else {
+        set statistics.mutable_failures =
+            statistics.mutable_failures + 1;
+    }
+}
+
+proc shared_owner_statistics_record_replace(
+    statistics: ref mut SharedOwnerStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.replacements =
+            statistics.replacements + 1;
+    } else {
+        set statistics.replacement_failures =
+            statistics.replacement_failures + 1;
+    }
+}
+
+proc shared_owner_statistics_record_downgrade<T>(
+    statistics: ref mut SharedOwnerStatistics,
+    value: ref SharedOwner<T>,
+    success: bool
+) {
+    if success {
+        set statistics.downgrades =
+            statistics.downgrades + 1;
+
+        shared_owner_statistics_update_peaks(
+            statistics,
+            value
+        );
+    } else {
+        set statistics.downgrade_failures =
+            statistics.downgrade_failures + 1;
+    }
+}
+
+proc shared_owner_statistics_record_refresh(
+    statistics: ref mut SharedOwnerStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.refreshes =
+            statistics.refreshes + 1;
+    } else {
+        set statistics.refresh_failures =
+            statistics.refresh_failures + 1;
+    }
+}
+
+proc shared_owner_statistics_record_validation(
+    statistics: ref mut SharedOwnerStatistics,
+    valid: bool
+) {
+    set statistics.validations =
+        statistics.validations + 1;
+
+    if not valid {
+        set statistics.validation_failures =
+            statistics.validation_failures + 1;
+    }
+}
+
+proc shared_owner_statistics_failures(
+    statistics: SharedOwnerStatistics
+) -> u64 {
+    give statistics.creation_failures
+        + statistics.clone_failures
+        + statistics.drop_failures
+        + statistics.read_failures
+        + statistics.mutable_failures
+        + statistics.replacement_failures
+        + statistics.downgrade_failures
+        + statistics.refresh_failures
+        + statistics.validation_failures;
+}
+
+proc shared_owner_statistics_total(
+    statistics: SharedOwnerStatistics
+) -> u64 {
+    give statistics.creations
+        + statistics.creation_failures
+        + statistics.clones
+        + statistics.clone_failures
+        + statistics.drops
+        + statistics.drop_failures
+        + statistics.reads
+        + statistics.read_failures
+        + statistics.mutable_reads
+        + statistics.mutable_failures
+        + statistics.replacements
+        + statistics.replacement_failures
+        + statistics.downgrades
+        + statistics.downgrade_failures
+        + statistics.refreshes
+        + statistics.refresh_failures
+        + statistics.validations
+        + statistics.validation_failures;
+}
+
+proc shared_owner_statistics_reset(
+    statistics: ref mut SharedOwnerStatistics
+) {
+    set *statistics =
+        shared_owner_statistics_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc shared_owner_state_name(
+    state: SharedOwnerState
+) -> string {
+    pick state {
+        SharedOwnerState.Alive {
+            give "alive";
+        }
+
+        SharedOwnerState.Unique {
+            give "unique";
+        }
+
+        SharedOwnerState.Shared {
+            give "shared";
+        }
+
+        SharedOwnerState.Released {
+            give "released";
+        }
+
+        SharedOwnerState.Stale {
+            give "stale";
+        }
+
+        SharedOwnerState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+proc shared_owner_access_name(
+    access: SharedOwnerAccess
+) -> string {
+    pick access {
+        SharedOwnerAccess.None {
+            give "none";
+        }
+
+        SharedOwnerAccess.Read {
+            give "read";
+        }
+
+        SharedOwnerAccess.ReadWrite {
+            give "read-write";
+        }
+    }
+
+    give "none";
+}
+
+proc shared_owner_operation_name(
+    operation: SharedOwnerOperation
+) -> string {
+    pick operation {
+        SharedOwnerOperation.None {
+            give "none";
+        }
+
+        SharedOwnerOperation.Create {
+            give "create";
+        }
+
+        SharedOwnerOperation.Clone {
+            give "clone";
+        }
+
+        SharedOwnerOperation.Drop {
+            give "drop";
+        }
+
+        SharedOwnerOperation.Get {
+            give "get";
+        }
+
+        SharedOwnerOperation.GetMut {
+            give "get-mut";
+        }
+
+        SharedOwnerOperation.Replace {
+            give "replace";
+        }
+
+        SharedOwnerOperation.Downgrade {
+            give "downgrade";
+        }
+
+        SharedOwnerOperation.Refresh {
+            give "refresh";
+        }
+
+        SharedOwnerOperation.Validate {
+            give "validate";
+        }
+    }
+
+    give "none";
+}
+
+// -----------------------------------------------------------------------------
+// Shared owner model
+// -----------------------------------------------------------------------------
+//
+// SharedOwner<T> represents one strong owner of a SharedInner<T> control block.
+//
+// Layout:
+//
+//     SharedOwner<T>
+//     +------------------------------+
+//     | inner pointer                |
+//     | generation snapshot          |
+//     | revision snapshot            |
+//     +---------------+--------------+
+//                     |
+//                     v
+//
+//     SharedInner<T>
+//     +------------------------------+
+//     | value: T                     |
+//     | strong                       |
+//     | weak                         |
+//     | value_alive                  |
+//     | allocation_alive             |
+//     +------------------------------+
+//
+// -----------------------------------------------------------------------------
+//
+// Creation:
+//
+//     shared_owner_new(value)
+//
+// gives:
+//
+//     strong = 1
+//     weak   = 0
+//
+// State:
+//
+//     Unique
+//
+// -----------------------------------------------------------------------------
+//
+// Clone:
+//
+//     let b = shared_owner_clone(a);
+//
+// causes:
+//
+//     strong++
+//
+// Both handles reference the same control block.
+//
+// Example:
+//
+//     a -> SharedInner<T> <- b
+//
+// strong = 2
+//
+// State:
+//
+//     Shared
+//
+// -----------------------------------------------------------------------------
+//
+// Strong drop:
+//
+//     shared_owner_drop(ref mut owner)
+//
+// causes:
+//
+//     strong--
+//
+// The owner itself becomes null/released.
+//
+// If another strong owner remains:
+//
+//     strong > 0
+//
+// value remains alive.
+//
+// -----------------------------------------------------------------------------
+//
+// Final strong drop:
+//
+//     strong: 1 -> 0
+//
+// then:
+//
+//     value T is destroyed
+//
+// If weak references exist:
+//
+//     strong = 0
+//     weak   > 0
+//
+// control block remains alive.
+//
+// If no weak references exist:
+//
+//     strong = 0
+//     weak   = 0
+//
+// control allocation is releasable.
+//
+// -----------------------------------------------------------------------------
+//
+// Access:
+//
+//     strong == 1
+//
+// gives:
+//
+//     ReadWrite
+//
+// therefore:
+//
+//     shared_owner_get_mut
+//     shared_owner_replace
+//
+// are allowed.
+//
+// When:
+//
+//     strong > 1
+//
+// access becomes:
+//
+//     Read
+//
+// mutable access is rejected.
+//
+// -----------------------------------------------------------------------------
+//
+// Copy-on-write:
+//
+//     shared_owner_make_mut
+//
+// when unique:
+//
+//     returns the existing T.
+//
+// when shared:
+//
+//     clone T
+//     create a new SharedOwner<T>
+//     drop one strong reference from the old control block
+//     replace the current owner
+//
+// Result:
+//
+//     old allocation
+//       strong--
+//
+//     new allocation
+//       strong = 1
+//
+// -----------------------------------------------------------------------------
+//
+// Downgrade:
+//
+//     SharedOwner<T>
+//          |
+//          | weak++
+//          v
+//
+//     Shared weak handle
+//
+// `owner.vitl` only performs the control-block-side downgrade operation.
+// Construction of the public weak wrapper belongs to the dedicated weak
+// module.
+//
+// -----------------------------------------------------------------------------
+//
+// Generation:
+//
+//     owner.generation
+//
+// is captured from:
+//
+//     inner.generation
+//
+// A mismatch means:
+//
+//     Stale
+//
+// This protects handles from observing a different lifetime generation.
+//
+// -----------------------------------------------------------------------------
+//
+// Revision:
+//
+//     revision tracks control-block mutation.
+//
+// It can be used for:
+//
+//     snapshots
+//     debugging
+//     change detection
+//     diagnostics
+//
+// A revision mismatch alone does not invalidate ownership.
+//
+// -----------------------------------------------------------------------------
+//
+// Identity:
+//
+//     pointer + generation
+//
+// forms the logical identity of an owner allocation.
+//
+// Pointer equality:
+//
+//     shared_owner_ptr_equal
+//
+// answers:
+//
+//     "same control block address?"
+//
+// Identity equality:
+//
+//     shared_owner_identity_equal
+//
+// answers:
+//
+//     "same control block and same lifetime generation?"
+//
+// -----------------------------------------------------------------------------
+//
+// Fundamental invariants:
+//
+//     valid owner
+//         => pointer != null
+//
+//     valid owner
+//         => generation == inner.generation
+//
+//     valid owner
+//         => inner valid
+//
+//     valid owner
+//         => strong > 0
+//
+//     strong == 1
+//         => unique
+//         => ReadWrite
+//
+//     strong > 1
+//         => shared
+//         => Read
+//
+//     strong == 0
+//         => owner cannot access value
+//
+// -----------------------------------------------------------------------------
+//
+// Module split:
+//
+//     core.vitl
+//         pure state machine
+//
+//     count.vitl
+//         strong/weak counter operations
+//
+//     error.vitl
+//         normalized failures
+//
+//     inner.vitl
+//         control block and managed value
+//
+//     owner.vitl
+//         strong owner handle
+//
+// Future/high-level modules can build:
+//
+//     Shared<T>
+//     SharedWeak<T>
+//     raw.vitl
+//     weak.vitl
+//     shared.vitl
+//
+// on top of this owner implementation.

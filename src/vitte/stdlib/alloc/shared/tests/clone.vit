@@ -1,0 +1,1567 @@
+use src/vitte/stdlib/alloc/shared/shared
+
+form Point {
+    x: int
+    y: int
+}
+
+form Pair {
+    left: int
+    right: int
+}
+
+// -----------------------------------------------------------------------------
+// Basic clone
+// -----------------------------------------------------------------------------
+
+proc test_clone_basic() -> bool {
+    let value = shared_new(42);
+    let copy = shared_clone(value);
+
+    give *shared_get(ref value) == 42
+        and *shared_get(ref copy) == 42;
+}
+
+proc test_clone_increments_strong() -> bool {
+    let value = shared_new(42);
+
+    if shared_strong_count(ref value) != 1 {
+        give false;
+    }
+
+    let copy = shared_clone(value);
+
+    give shared_strong_count(ref value) == 2
+        and shared_strong_count(ref copy) == 2;
+}
+
+proc test_clone_same_allocation() -> bool {
+    let value = shared_new(42);
+    let copy = shared_clone(value);
+
+    give shared_ptr_equal(
+        ref value,
+        ref copy
+    );
+}
+
+proc test_clone_same_identity() -> bool {
+    let value = shared_new(42);
+    let copy = shared_clone(value);
+
+    let left = shared_identity(
+        ref value
+    );
+
+    let right = shared_identity(
+        ref copy
+    );
+
+    give shared_identity_equal(
+        left,
+        right
+    );
+}
+
+proc test_clone_shared_state() -> bool {
+    let value = shared_new(42);
+    let copy = shared_clone(value);
+
+    give shared_is_shared(ref value)
+        and shared_is_shared(ref copy)
+        and not shared_is_unique(ref value)
+        and not shared_is_unique(ref copy);
+}
+
+proc test_try_clone() -> bool {
+    let value = shared_new(42);
+
+    let result = shared_try_clone(
+        value
+    );
+
+    pick result {
+        Some(copy) {
+            give shared_ptr_equal(
+                ref value,
+                ref copy
+            )
+            and shared_strong_count(ref value) == 2
+            and shared_strong_count(ref copy) == 2;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Primitive values
+// -----------------------------------------------------------------------------
+
+proc test_clone_zero() -> bool {
+    let value = shared_new(0);
+    let copy = shared_clone(value);
+
+    give *shared_get(ref value) == 0
+        and *shared_get(ref copy) == 0;
+}
+
+proc test_clone_negative() -> bool {
+    let value = shared_new(-42);
+    let copy = shared_clone(value);
+
+    give *shared_get(ref value) == -42
+        and *shared_get(ref copy) == -42;
+}
+
+proc test_clone_bool() -> bool {
+    let value = shared_new(true);
+    let copy = shared_clone(value);
+
+    give *shared_get(ref value)
+        and *shared_get(ref copy);
+}
+
+// -----------------------------------------------------------------------------
+// Structured values
+// -----------------------------------------------------------------------------
+
+proc test_clone_point() -> bool {
+    let value = shared_new(
+        Point {
+            x: 10
+            y: 20
+        }
+    );
+
+    let copy = shared_clone(
+        value
+    );
+
+    let first = shared_get(
+        ref value
+    );
+
+    let second = shared_get(
+        ref copy
+    );
+
+    give first.x == 10
+        and first.y == 20
+        and second.x == 10
+        and second.y == 20
+        and shared_ptr_equal(
+            ref value,
+            ref copy
+        );
+}
+
+proc test_clone_pair() -> bool {
+    let value = shared_new(
+        Pair {
+            left: 100
+            right: 200
+        }
+    );
+
+    let copy = shared_clone(
+        value
+    );
+
+    let first = shared_get(
+        ref value
+    );
+
+    let second = shared_get(
+        ref copy
+    );
+
+    give first.left == 100
+        and first.right == 200
+        and second.left == 100
+        and second.right == 200;
+}
+
+// -----------------------------------------------------------------------------
+// Multiple clones
+// -----------------------------------------------------------------------------
+
+proc test_two_clones() -> bool {
+    let value = shared_new(42);
+
+    let first = shared_clone(value);
+    let second = shared_clone(value);
+
+    give shared_strong_count(ref value) == 3
+        and shared_strong_count(ref first) == 3
+        and shared_strong_count(ref second) == 3;
+}
+
+proc test_three_clones() -> bool {
+    let value = shared_new(42);
+
+    let first = shared_clone(value);
+    let second = shared_clone(value);
+    let third = shared_clone(value);
+
+    give shared_strong_count(ref value) == 4
+        and shared_strong_count(ref first) == 4
+        and shared_strong_count(ref second) == 4
+        and shared_strong_count(ref third) == 4;
+}
+
+proc test_multiple_clone_identity() -> bool {
+    let value = shared_new(42);
+
+    let first = shared_clone(value);
+    let second = shared_clone(value);
+    let third = shared_clone(value);
+
+    give shared_ptr_equal(ref value, ref first)
+        and shared_ptr_equal(ref value, ref second)
+        and shared_ptr_equal(ref value, ref third)
+        and shared_ptr_equal(ref first, ref second)
+        and shared_ptr_equal(ref second, ref third);
+}
+
+// -----------------------------------------------------------------------------
+// Clone / drop
+// -----------------------------------------------------------------------------
+
+proc test_drop_clone() -> bool {
+    let value = shared_new(42);
+    let mut copy = shared_clone(value);
+
+    if shared_strong_count(ref value) != 2 {
+        give false;
+    }
+
+    if not shared_drop(
+        ref mut copy
+    ) {
+        give false;
+    }
+
+    give shared_strong_count(ref value) == 1
+        and shared_is_unique(ref value);
+}
+
+proc test_drop_one_of_many() -> bool {
+    let value = shared_new(42);
+
+    let mut first = shared_clone(value);
+    let second = shared_clone(value);
+    let third = shared_clone(value);
+
+    if shared_strong_count(ref value) != 4 {
+        give false;
+    }
+
+    if not shared_drop(
+        ref mut first
+    ) {
+        give false;
+    }
+
+    give shared_strong_count(ref value) == 3
+        and shared_strong_count(ref second) == 3
+        and shared_strong_count(ref third) == 3
+        and shared_is_shared(ref value);
+}
+
+proc test_drop_all_clones_restores_unique() -> bool {
+    let value = shared_new(42);
+
+    let mut first = shared_clone(value);
+    let mut second = shared_clone(value);
+    let mut third = shared_clone(value);
+
+    if not shared_drop(ref mut first) {
+        give false;
+    }
+
+    if not shared_drop(ref mut second) {
+        give false;
+    }
+
+    if not shared_drop(ref mut third) {
+        give false;
+    }
+
+    give shared_strong_count(ref value) == 1
+        and shared_is_unique(ref value)
+        and not shared_is_shared(ref value);
+}
+
+proc test_drop_order() -> bool {
+    let value = shared_new(42);
+
+    let mut first = shared_clone(value);
+    let mut second = shared_clone(value);
+    let mut third = shared_clone(value);
+
+    if not shared_drop(
+        ref mut second
+    ) {
+        give false;
+    }
+
+    if shared_strong_count(ref value) != 3 {
+        give false;
+    }
+
+    if not shared_drop(
+        ref mut first
+    ) {
+        give false;
+    }
+
+    if shared_strong_count(ref value) != 2 {
+        give false;
+    }
+
+    if not shared_drop(
+        ref mut third
+    ) {
+        give false;
+    }
+
+    give shared_strong_count(ref value) == 1
+        and shared_is_unique(ref value);
+}
+
+proc test_double_drop_clone_fails() -> bool {
+    let value = shared_new(42);
+    let mut copy = shared_clone(value);
+
+    let first = shared_drop(
+        ref mut copy
+    );
+
+    let second = shared_drop(
+        ref mut copy
+    );
+
+    give first
+        and not second
+        and shared_strong_count(ref value) == 1;
+}
+
+// -----------------------------------------------------------------------------
+// Mutable access
+// -----------------------------------------------------------------------------
+
+proc test_clone_denies_mutable_access() -> bool {
+    let mut value = shared_new(42);
+    let copy = shared_clone(value);
+
+    let result = shared_get_mut(
+        ref mut value
+    );
+
+    give is_none(result)
+        and shared_is_shared(ref value)
+        and *shared_get(ref copy) == 42;
+}
+
+proc test_drop_clone_restores_mutable_access() -> bool {
+    let mut value = shared_new(42);
+    let mut copy = shared_clone(value);
+
+    if not shared_drop(
+        ref mut copy
+    ) {
+        give false;
+    }
+
+    let result = shared_get_mut(
+        ref mut value
+    );
+
+    pick result {
+        Some(inner) {
+            set *inner = 84;
+
+            give *shared_get(ref value) == 84
+                and shared_is_unique(ref value);
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Make mut / copy-on-write
+// -----------------------------------------------------------------------------
+
+proc test_make_mut_unique_preserves_allocation() -> bool {
+    let mut value = shared_new(42);
+
+    let before = shared_identity(
+        ref value
+    );
+
+    let inner = shared_make_mut(
+        ref mut value
+    );
+
+    set *inner = 100;
+
+    let after = shared_identity(
+        ref value
+    );
+
+    give shared_identity_equal(
+        before,
+        after
+    )
+    and *shared_get(ref value) == 100
+    and shared_is_unique(ref value);
+}
+
+proc test_make_mut_shared_detaches() -> bool {
+    let mut value = shared_new(42);
+    let copy = shared_clone(value);
+
+    let before = shared_identity(
+        ref value
+    );
+
+    let inner = shared_make_mut(
+        ref mut value
+    );
+
+    set *inner = 100;
+
+    let after = shared_identity(
+        ref value
+    );
+
+    give not shared_identity_equal(
+        before,
+        after
+    )
+    and not shared_ptr_equal(
+        ref value,
+        ref copy
+    )
+    and *shared_get(ref value) == 100
+    and *shared_get(ref copy) == 42
+    and shared_is_unique(ref value)
+    and shared_is_unique(ref copy);
+}
+
+proc test_make_mut_with_many_clones() -> bool {
+    let mut value = shared_new(42);
+
+    let first = shared_clone(value);
+    let second = shared_clone(value);
+
+    if shared_strong_count(ref value) != 3 {
+        give false;
+    }
+
+    let inner = shared_make_mut(
+        ref mut value
+    );
+
+    set *inner = 99;
+
+    give *shared_get(ref value) == 99
+        and *shared_get(ref first) == 42
+        and *shared_get(ref second) == 42
+        and shared_strong_count(ref value) == 1
+        and shared_strong_count(ref first) == 2
+        and shared_strong_count(ref second) == 2;
+}
+
+proc test_make_mut_point_detaches() -> bool {
+    let mut value = shared_new(
+        Point {
+            x: 1
+            y: 2
+        }
+    );
+
+    let copy = shared_clone(value);
+
+    let point = shared_make_mut(
+        ref mut value
+    );
+
+    set point.x = 100;
+    set point.y = 200;
+
+    let old = shared_get(
+        ref copy
+    );
+
+    give point.x == 100
+        and point.y == 200
+        and old.x == 1
+        and old.y == 2
+        and not shared_ptr_equal(
+            ref value,
+            ref copy
+        );
+}
+
+// -----------------------------------------------------------------------------
+// Weak interaction
+// -----------------------------------------------------------------------------
+
+proc test_clone_preserves_weak_count() -> bool {
+    let value = shared_new(42);
+
+    let weak = shared_downgrade(
+        ref value
+    );
+
+    let before = shared_weak_count(
+        ref value
+    );
+
+    let copy = shared_clone(
+        value
+    );
+
+    give before == 1
+        and shared_weak_count(ref value) == 1
+        and shared_weak_count(ref copy) == 1
+        and shared_weak_weak_count(ref weak) == 1;
+}
+
+proc test_weak_observes_clone_count() -> bool {
+    let value = shared_new(42);
+
+    let weak = shared_downgrade(
+        ref value
+    );
+
+    let copy = shared_clone(
+        value
+    );
+
+    give shared_weak_strong_count(
+        ref weak
+    ) == 2
+    and shared_strong_count(ref copy) == 2;
+}
+
+proc test_drop_clone_visible_from_weak() -> bool {
+    let value = shared_new(42);
+
+    let weak = shared_downgrade(
+        ref value
+    );
+
+    let mut copy = shared_clone(
+        value
+    );
+
+    if shared_weak_strong_count(
+        ref weak
+    ) != 2 {
+        give false;
+    }
+
+    if not shared_drop(
+        ref mut copy
+    ) {
+        give false;
+    }
+
+    give shared_weak_strong_count(
+        ref weak
+    ) == 1
+    and not shared_weak_is_expired(
+        ref weak
+    );
+}
+
+proc test_upgrade_behaves_like_clone() -> bool {
+    let value = shared_new(42);
+
+    let weak = shared_downgrade(
+        ref value
+    );
+
+    let before = shared_strong_count(
+        ref value
+    );
+
+    let result = shared_upgrade(
+        ref weak
+    );
+
+    pick result {
+        Some(copy) {
+            give shared_strong_count(ref value)
+                    == before + 1
+                and shared_strong_count(ref copy)
+                    == before + 1
+                and shared_ptr_equal(
+                    ref value,
+                    ref copy
+                );
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Raw/value pointer identity
+// -----------------------------------------------------------------------------
+
+proc test_clone_value_ptr_identity() -> bool {
+    let value = shared_new(42);
+    let copy = shared_clone(value);
+
+    let first = shared_value_ptr(
+        ref value
+    );
+
+    let second = shared_value_ptr(
+        ref copy
+    );
+
+    give compiler_raw_ptr_equal(
+        first,
+        second
+    );
+}
+
+proc test_clone_raw_inner_identity() -> bool {
+    let value = shared_new(42);
+    let copy = shared_clone(value);
+
+    let first = shared_raw_inner(
+        ref value
+    );
+
+    let second = shared_raw_inner(
+        ref copy
+    );
+
+    give compiler_raw_ptr_equal(
+        first,
+        second
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Profiles
+// -----------------------------------------------------------------------------
+
+proc test_profile_after_clone() -> bool {
+    let value = shared_new(42);
+    let copy = shared_clone(value);
+
+    let profile = shared_profile(
+        ref value
+    );
+
+    give profile.strong == 2
+        and profile.weak == 0
+        and profile.shared
+        and not profile.unique
+        and profile.alive
+        and profile.valid
+        and shared_strong_count(ref copy) == 2;
+}
+
+proc test_profile_after_clone_drop() -> bool {
+    let value = shared_new(42);
+    let mut copy = shared_clone(value);
+
+    if not shared_drop(
+        ref mut copy
+    ) {
+        give false;
+    }
+
+    let profile = shared_profile(
+        ref value
+    );
+
+    give profile.strong == 1
+        and profile.unique
+        and not profile.shared
+        and profile.alive
+        and profile.valid;
+}
+
+// -----------------------------------------------------------------------------
+// Snapshots / deltas
+// -----------------------------------------------------------------------------
+
+proc test_clone_snapshot_changes() -> bool {
+    let value = shared_new(42);
+
+    let before = shared_snapshot(
+        ref value
+    );
+
+    let copy = shared_clone(
+        value
+    );
+
+    let after = shared_snapshot(
+        ref value
+    );
+
+    give shared_snapshot_changed(
+        before,
+        after
+    )
+    and shared_strong_count(ref copy) == 2;
+}
+
+proc test_clone_delta() -> bool {
+    let value = shared_new(42);
+
+    let before = shared_snapshot(
+        ref value
+    );
+
+    let copy = shared_clone(
+        value
+    );
+
+    let after = shared_snapshot(
+        ref value
+    );
+
+    let delta = shared_delta(
+        before,
+        after
+    );
+
+    give delta.changed
+        and delta.strong == 1
+        and delta.weak == 0
+        and delta.revision > 0
+        and shared_strong_count(ref copy) == 2;
+}
+
+proc test_drop_clone_delta() -> bool {
+    let value = shared_new(42);
+    let mut copy = shared_clone(value);
+
+    let before = shared_snapshot(
+        ref value
+    );
+
+    if not shared_drop(
+        ref mut copy
+    ) {
+        give false;
+    }
+
+    let after = shared_snapshot(
+        ref value
+    );
+
+    let delta = shared_delta(
+        before,
+        after
+    );
+
+    give delta.changed
+        and delta.strong == -1
+        and delta.weak == 0;
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+proc test_clone_validation() -> bool {
+    let value = shared_new(42);
+    let copy = shared_clone(value);
+
+    give shared_validate(ref value).valid
+        and shared_validate(ref copy).valid
+        and shared_invariant_holds(ref value)
+        and shared_invariant_holds(ref copy);
+}
+
+proc test_validation_after_clone_drop() -> bool {
+    let value = shared_new(42);
+    let mut copy = shared_clone(value);
+
+    if not shared_drop(
+        ref mut copy
+    ) {
+        give false;
+    }
+
+    give shared_validate(ref value).valid
+        and shared_invariant_holds(ref value)
+        and shared_is_unique(ref value);
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc test_statistics_clone() -> bool {
+    let value = shared_new(42);
+    let copy = shared_clone(value);
+
+    let mut statistics =
+        shared_statistics_empty();
+
+    shared_statistics_record_clone(
+        ref mut statistics,
+        ref value,
+        true
+    );
+
+    give statistics.clones == 1
+        and statistics.clone_failures == 0
+        and statistics.peak_strong == 2
+        and shared_strong_count(ref copy) == 2;
+}
+
+proc test_statistics_clone_failure() -> bool {
+    let value = shared_new(42);
+
+    let mut statistics =
+        shared_statistics_empty();
+
+    shared_statistics_record_clone(
+        ref mut statistics,
+        ref value,
+        false
+    );
+
+    give statistics.clones == 0
+        and statistics.clone_failures == 1
+        and shared_statistics_failures(
+            statistics
+        ) == 1;
+}
+
+proc test_statistics_many_clones() -> bool {
+    let value = shared_new(42);
+
+    let copies: [Shared<int>] = [];
+
+    let mut statistics =
+        shared_statistics_empty();
+
+    let index: usize = 0;
+
+    while index < 100 {
+        let copy = shared_clone(
+            value
+        );
+
+        shared_statistics_record_clone(
+            ref mut statistics,
+            ref value,
+            true
+        );
+
+        set copies =
+            copies + [copy];
+
+        set index = index + 1;
+    }
+
+    give statistics.clones == 100
+        and statistics.peak_strong == 101
+        and statistics.clone_failures == 0
+        and shared_strong_count(ref value) == 101;
+}
+
+// -----------------------------------------------------------------------------
+// Arrays of clones
+// -----------------------------------------------------------------------------
+
+proc test_many_clones() -> bool {
+    let value = shared_new(42);
+
+    let copies: [Shared<int>] = [];
+
+    let index: usize = 0;
+
+    while index < 256 {
+        set copies =
+            copies + [
+                shared_clone(
+                    value
+                )
+            ];
+
+        set index = index + 1;
+    }
+
+    if shared_strong_count(
+        ref value
+    ) != 257 {
+        give false;
+    }
+
+    let check: usize = 0;
+
+    while check < 256 {
+        if not shared_ptr_equal(
+            ref value,
+            ref copies[check]
+        ) {
+            give false;
+        }
+
+        if *shared_get(
+            ref copies[check]
+        ) != 42 {
+            give false;
+        }
+
+        if shared_strong_count(
+            ref copies[check]
+        ) != 257 {
+            give false;
+        }
+
+        set check = check + 1;
+    }
+
+    give true;
+}
+
+proc test_many_clones_drop_all() -> bool {
+    let value = shared_new(42);
+
+    let copies: [Shared<int>] = [];
+
+    let index: usize = 0;
+
+    while index < 256 {
+        set copies =
+            copies + [
+                shared_clone(
+                    value
+                )
+            ];
+
+        set index = index + 1;
+    }
+
+    if shared_strong_count(
+        ref value
+    ) != 257 {
+        give false;
+    }
+
+    let release: usize = 0;
+
+    while release < 256 {
+        if not shared_drop(
+            ref mut copies[release]
+        ) {
+            give false;
+        }
+
+        set release = release + 1;
+    }
+
+    give shared_strong_count(ref value) == 1
+        and shared_is_unique(ref value);
+}
+
+proc test_many_distinct_values() -> bool {
+    let roots: [Shared<int>] = [];
+    let copies: [Shared<int>] = [];
+
+    let index: usize = 0;
+
+    while index < 128 {
+        let value = shared_new(
+            index as int
+        );
+
+        let copy = shared_clone(
+            value
+        );
+
+        set roots =
+            roots + [value];
+
+        set copies =
+            copies + [copy];
+
+        set index = index + 1;
+    }
+
+    let check: usize = 0;
+
+    while check < 128 {
+        if *shared_get(
+            ref roots[check]
+        ) != check as int {
+            give false;
+        }
+
+        if *shared_get(
+            ref copies[check]
+        ) != check as int {
+            give false;
+        }
+
+        if not shared_ptr_equal(
+            ref roots[check],
+            ref copies[check]
+        ) {
+            give false;
+        }
+
+        if shared_strong_count(
+            ref roots[check]
+        ) != 2 {
+            give false;
+        }
+
+        set check = check + 1;
+    }
+
+    give true;
+}
+
+proc test_many_points() -> bool {
+    let roots: [Shared<Point>] = [];
+    let copies: [Shared<Point>] = [];
+
+    let index: usize = 0;
+
+    while index < 128 {
+        let value = shared_new(
+            Point {
+                x: index as int
+                y: (index as int) + 1
+            }
+        );
+
+        let copy = shared_clone(
+            value
+        );
+
+        set roots =
+            roots + [value];
+
+        set copies =
+            copies + [copy];
+
+        set index = index + 1;
+    }
+
+    let check: usize = 0;
+
+    while check < 128 {
+        let left = shared_get(
+            ref roots[check]
+        );
+
+        let right = shared_get(
+            ref copies[check]
+        );
+
+        if left.x != right.x {
+            give false;
+        }
+
+        if left.y != right.y {
+            give false;
+        }
+
+        if not shared_ptr_equal(
+            ref roots[check],
+            ref copies[check]
+        ) {
+            give false;
+        }
+
+        set check = check + 1;
+    }
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Stress
+// -----------------------------------------------------------------------------
+
+proc test_clone_drop_stress() -> bool {
+    let value = shared_new(42);
+
+    let cycle: usize = 0;
+
+    while cycle < 10000 {
+        let mut copy = shared_clone(
+            value
+        );
+
+        if shared_strong_count(
+            ref value
+        ) != 2 {
+            give false;
+        }
+
+        if not shared_ptr_equal(
+            ref value,
+            ref copy
+        ) {
+            give false;
+        }
+
+        if not shared_drop(
+            ref mut copy
+        ) {
+            give false;
+        }
+
+        if shared_strong_count(
+            ref value
+        ) != 1 {
+            give false;
+        }
+
+        if not shared_is_unique(
+            ref value
+        ) {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give shared_invariant_holds(
+        ref value
+    );
+}
+
+proc test_clone_burst_stress() -> bool {
+    let value = shared_new(42);
+
+    let cycle: usize = 0;
+
+    while cycle < 1000 {
+        let copies: [Shared<int>] = [];
+
+        let index: usize = 0;
+
+        while index < 100 {
+            set copies =
+                copies + [
+                    shared_clone(
+                        value
+                    )
+                ];
+
+            set index = index + 1;
+        }
+
+        if shared_strong_count(
+            ref value
+        ) != 101 {
+            give false;
+        }
+
+        let release: usize = 0;
+
+        while release < 100 {
+            if not shared_drop(
+                ref mut copies[release]
+            ) {
+                give false;
+            }
+
+            set release = release + 1;
+        }
+
+        if shared_strong_count(
+            ref value
+        ) != 1 {
+            give false;
+        }
+
+        if not shared_invariant_holds(
+            ref value
+        ) {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc test_clone_weak_stress() -> bool {
+    let value = shared_new(42);
+
+    let weak = shared_downgrade(
+        ref value
+    );
+
+    let cycle: usize = 0;
+
+    while cycle < 10000 {
+        let mut copy = shared_clone(
+            value
+        );
+
+        if shared_weak_strong_count(
+            ref weak
+        ) != 2 {
+            give false;
+        }
+
+        if shared_weak_weak_count(
+            ref weak
+        ) != 1 {
+            give false;
+        }
+
+        if not shared_drop(
+            ref mut copy
+        ) {
+            give false;
+        }
+
+        if shared_weak_strong_count(
+            ref weak
+        ) != 1 {
+            give false;
+        }
+
+        if shared_weak_is_expired(
+            ref weak
+        ) {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc test_clone_snapshot_stress() -> bool {
+    let value = shared_new(42);
+
+    let cycle: usize = 0;
+
+    while cycle < 10000 {
+        let before = shared_snapshot(
+            ref value
+        );
+
+        let mut copy = shared_clone(
+            value
+        );
+
+        let cloned = shared_snapshot(
+            ref value
+        );
+
+        let delta = shared_delta(
+            before,
+            cloned
+        );
+
+        if delta.strong != 1 {
+            give false;
+        }
+
+        if delta.weak != 0 {
+            give false;
+        }
+
+        if not shared_drop(
+            ref mut copy
+        ) {
+            give false;
+        }
+
+        let after = shared_snapshot(
+            ref value
+        );
+
+        if after.strong
+            != before.strong {
+            give false;
+        }
+
+        if after.weak
+            != before.weak {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc test_clone_validation_stress() -> bool {
+    let value = shared_new(42);
+
+    let cycle: usize = 0;
+
+    while cycle < 10000 {
+        let mut copy = shared_clone(
+            value
+        );
+
+        if not shared_validate(
+            ref value
+        ).valid {
+            give false;
+        }
+
+        if not shared_validate(
+            ref copy
+        ).valid {
+            give false;
+        }
+
+        if not shared_drop(
+            ref mut copy
+        ) {
+            give false;
+        }
+
+        if not shared_invariant_holds(
+            ref value
+        ) {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc test_try_clone_stress() -> bool {
+    let value = shared_new(42);
+
+    let cycle: usize = 0;
+
+    while cycle < 10000 {
+        let result = shared_try_clone(
+            value
+        );
+
+        pick result {
+            Some(copy) {
+                let mut temp = copy;
+
+                if shared_strong_count(
+                    ref value
+                ) != 2 {
+                    give false;
+                }
+
+                if not shared_drop(
+                    ref mut temp
+                ) {
+                    give false;
+                }
+            }
+
+            None {
+                give false;
+            }
+        }
+
+        if shared_strong_count(
+            ref value
+        ) != 1 {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc test_make_mut_stress() -> bool {
+    let cycle: usize = 0;
+
+    while cycle < 1000 {
+        let mut value = shared_new(
+            cycle as int
+        );
+
+        let copy = shared_clone(
+            value
+        );
+
+        let inner = shared_make_mut(
+            ref mut value
+        );
+
+        set *inner =
+            (cycle as int) + 1000;
+
+        if *shared_get(ref value)
+            != (cycle as int) + 1000 {
+            give false;
+        }
+
+        if *shared_get(ref copy)
+            != cycle as int {
+            give false;
+        }
+
+        if shared_ptr_equal(
+            ref value,
+            ref copy
+        ) {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Failure cases
+// -----------------------------------------------------------------------------
+
+proc test_try_clone_after_drop_fails() -> bool {
+    let mut value = shared_new(42);
+
+    if not shared_drop(
+        ref mut value
+    ) {
+        give false;
+    }
+
+    give is_none(
+        shared_try_clone(
+            value
+        )
+    );
+}
+
+proc test_clone_preserves_weak_after_drop() -> bool {
+    let value = shared_new(42);
+
+    let weak = shared_downgrade(
+        ref value
+    );
+
+    let mut copy = shared_clone(
+        value
+    );
+
+    if not shared_drop(
+        ref mut copy
+    ) {
+        give false;
+    }
+
+    give shared_strong_count(ref value) == 1
+        and shared_weak_count(ref value) == 1
+        and shared_weak_weak_count(ref weak) == 1
+        and not shared_weak_is_expired(ref weak);
+}
+
+// -----------------------------------------------------------------------------
+// Suite
+// -----------------------------------------------------------------------------
+
+proc run_clone_tests() -> bool {
+    give test_clone_basic()
+        and test_clone_increments_strong()
+        and test_clone_same_allocation()
+        and test_clone_same_identity()
+        and test_clone_shared_state()
+        and test_try_clone()
+
+        and test_clone_zero()
+        and test_clone_negative()
+        and test_clone_bool()
+
+        and test_clone_point()
+        and test_clone_pair()
+
+        and test_two_clones()
+        and test_three_clones()
+        and test_multiple_clone_identity()
+
+        and test_drop_clone()
+        and test_drop_one_of_many()
+        and test_drop_all_clones_restores_unique()
+        and test_drop_order()
+        and test_double_drop_clone_fails()
+
+        and test_clone_denies_mutable_access()
+        and test_drop_clone_restores_mutable_access()
+
+        and test_make_mut_unique_preserves_allocation()
+        and test_make_mut_shared_detaches()
+        and test_make_mut_with_many_clones()
+        and test_make_mut_point_detaches()
+
+        and test_clone_preserves_weak_count()
+        and test_weak_observes_clone_count()
+        and test_drop_clone_visible_from_weak()
+        and test_upgrade_behaves_like_clone()
+
+        and test_clone_value_ptr_identity()
+        and test_clone_raw_inner_identity()
+
+        and test_profile_after_clone()
+        and test_profile_after_clone_drop()
+
+        and test_clone_snapshot_changes()
+        and test_clone_delta()
+        and test_drop_clone_delta()
+
+        and test_clone_validation()
+        and test_validation_after_clone_drop()
+
+        and test_statistics_clone()
+        and test_statistics_clone_failure()
+        and test_statistics_many_clones()
+
+        and test_many_clones()
+        and test_many_clones_drop_all()
+        and test_many_distinct_values()
+        and test_many_points()
+
+        and test_clone_drop_stress()
+        and test_clone_burst_stress()
+        and test_clone_weak_stress()
+        and test_clone_snapshot_stress()
+        and test_clone_validation_stress()
+        and test_try_clone_stress()
+        and test_make_mut_stress()
+
+        and test_try_clone_after_drop_fails()
+        and test_clone_preserves_weak_after_drop();
+}
+
+proc main() -> int {
+    if run_clone_tests() {
+        give 0;
+    }
+
+    give 1;
+}
