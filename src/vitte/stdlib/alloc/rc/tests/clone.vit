@@ -1,0 +1,1175 @@
+use src/vitte/stdlib/alloc/rc/rc
+
+form Point {
+    x: int
+    y: int
+}
+
+proc test_clone_increments_strong() -> bool {
+    let value = rc_new(42);
+
+    let copy = rc_clone(
+        value
+    );
+
+    give rc_strong_count(ref value) == 2
+        and rc_strong_count(ref copy) == 2;
+}
+
+proc test_clone_same_allocation() -> bool {
+    let value = rc_new(42);
+
+    let copy = rc_clone(
+        value
+    );
+
+    give rc_ptr_equal(
+        ref value,
+        ref copy
+    );
+}
+
+proc test_clone_same_value() -> bool {
+    let value = rc_new(42);
+
+    let copy = rc_clone(
+        value
+    );
+
+    give *rc_get(ref value) == 42
+        and *rc_get(ref copy) == 42;
+}
+
+proc test_clone_shared_state() -> bool {
+    let value = rc_new(42);
+
+    let copy = rc_clone(
+        value
+    );
+
+    give rc_is_shared(ref value)
+        and rc_is_shared(ref copy)
+        and not rc_is_unique(ref value)
+        and not rc_is_unique(ref copy);
+}
+
+proc test_try_clone() -> bool {
+    let value = rc_new(42);
+
+    let result = rc_try_clone(
+        value
+    );
+
+    pick result {
+        Some(copy) {
+            give rc_ptr_equal(
+                ref value,
+                ref copy
+            )
+            and rc_strong_count(ref value) == 2
+            and rc_strong_count(ref copy) == 2;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_clone_point() -> bool {
+    let value = rc_new(
+        Point {
+            x: 10
+            y: 20
+        }
+    );
+
+    let copy = rc_clone(
+        value
+    );
+
+    let first = rc_get(
+        ref value
+    );
+
+    let second = rc_get(
+        ref copy
+    );
+
+    give first.x == 10
+        and first.y == 20
+        and second.x == 10
+        and second.y == 20
+        and rc_ptr_equal(
+            ref value,
+            ref copy
+        );
+}
+
+proc test_multiple_clones() -> bool {
+    let value = rc_new(42);
+
+    let copy1 = rc_clone(value);
+    let copy2 = rc_clone(value);
+    let copy3 = rc_clone(value);
+
+    give rc_strong_count(ref value) == 4
+        and rc_strong_count(ref copy1) == 4
+        and rc_strong_count(ref copy2) == 4
+        and rc_strong_count(ref copy3) == 4;
+}
+
+proc test_multiple_clones_identity() -> bool {
+    let value = rc_new(42);
+
+    let copy1 = rc_clone(value);
+    let copy2 = rc_clone(value);
+    let copy3 = rc_clone(value);
+
+    give rc_ptr_equal(ref value, ref copy1)
+        and rc_ptr_equal(ref value, ref copy2)
+        and rc_ptr_equal(ref value, ref copy3)
+        and rc_ptr_equal(ref copy1, ref copy2)
+        and rc_ptr_equal(ref copy2, ref copy3);
+}
+
+proc test_clone_disables_mutable_access() -> bool {
+    let mut value = rc_new(42);
+
+    let copy = rc_clone(
+        value
+    );
+
+    let mutable = rc_get_mut(
+        ref mut value
+    );
+
+    give is_none(mutable)
+        and rc_strong_count(ref value) == 2
+        and *rc_get(ref copy) == 42;
+}
+
+proc test_drop_clone_decrements_strong() -> bool {
+    let value = rc_new(42);
+
+    let mut copy = rc_clone(
+        value
+    );
+
+    if rc_strong_count(ref value) != 2 {
+        give false;
+    }
+
+    if not rc_drop(
+        ref mut copy
+    ) {
+        give false;
+    }
+
+    give rc_strong_count(ref value) == 1;
+}
+
+proc test_drop_clone_restores_unique() -> bool {
+    let value = rc_new(42);
+
+    let mut copy = rc_clone(
+        value
+    );
+
+    if not rc_drop(
+        ref mut copy
+    ) {
+        give false;
+    }
+
+    give rc_is_unique(ref value)
+        and not rc_is_shared(ref value);
+}
+
+proc test_drop_clone_restores_mutable_access() -> bool {
+    let mut value = rc_new(42);
+
+    let mut copy = rc_clone(
+        value
+    );
+
+    if not rc_drop(
+        ref mut copy
+    ) {
+        give false;
+    }
+
+    let result = rc_get_mut(
+        ref mut value
+    );
+
+    pick result {
+        Some(inner) {
+            set *inner = 84;
+
+            give *rc_get(ref value) == 84;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_drop_one_of_many() -> bool {
+    let value = rc_new(42);
+
+    let mut copy1 = rc_clone(value);
+    let copy2 = rc_clone(value);
+    let copy3 = rc_clone(value);
+
+    if rc_strong_count(ref value) != 4 {
+        give false;
+    }
+
+    if not rc_drop(
+        ref mut copy1
+    ) {
+        give false;
+    }
+
+    give rc_strong_count(ref value) == 3
+        and rc_strong_count(ref copy2) == 3
+        and rc_strong_count(ref copy3) == 3
+        and rc_is_shared(ref value);
+}
+
+proc test_drop_many_restores_unique() -> bool {
+    let value = rc_new(42);
+
+    let mut copy1 = rc_clone(value);
+    let mut copy2 = rc_clone(value);
+    let mut copy3 = rc_clone(value);
+
+    if not rc_drop(ref mut copy1) {
+        give false;
+    }
+
+    if not rc_drop(ref mut copy2) {
+        give false;
+    }
+
+    if not rc_drop(ref mut copy3) {
+        give false;
+    }
+
+    give rc_strong_count(ref value) == 1
+        and rc_is_unique(ref value);
+}
+
+proc test_clone_snapshot_change() -> bool {
+    let value = rc_new(42);
+
+    let before = rc_snapshot(
+        ref value
+    );
+
+    let copy = rc_clone(
+        value
+    );
+
+    let after = rc_snapshot(
+        ref value
+    );
+
+    give rc_snapshot_changed(
+        before,
+        after
+    )
+    and rc_strong_count(ref copy) == 2;
+}
+
+proc test_clone_delta() -> bool {
+    let value = rc_new(42);
+
+    let before = rc_snapshot(
+        ref value
+    );
+
+    let copy = rc_clone(
+        value
+    );
+
+    let after = rc_snapshot(
+        ref value
+    );
+
+    let delta = rc_delta(
+        before,
+        after
+    );
+
+    give delta.changed
+        and delta.strong == 1
+        and delta.weak == 0
+        and delta.revision > 0
+        and rc_strong_count(ref copy) == 2;
+}
+
+proc test_drop_clone_delta() -> bool {
+    let value = rc_new(42);
+
+    let mut copy = rc_clone(
+        value
+    );
+
+    let before = rc_snapshot(
+        ref value
+    );
+
+    if not rc_drop(
+        ref mut copy
+    ) {
+        give false;
+    }
+
+    let after = rc_snapshot(
+        ref value
+    );
+
+    let delta = rc_delta(
+        before,
+        after
+    );
+
+    give delta.changed
+        and delta.strong == -1
+        and delta.weak == 0;
+}
+
+proc test_clone_with_weak() -> bool {
+    let value = rc_new(42);
+
+    let weak = rc_downgrade(
+        ref value
+    );
+
+    let copy = rc_clone(
+        value
+    );
+
+    give rc_strong_count(ref value) == 2
+        and rc_weak_count(ref value) == 1
+        and rc_weak_strong_count(ref weak) == 2
+        and rc_strong_count(ref copy) == 2;
+}
+
+proc test_clone_does_not_change_weak_count() -> bool {
+    let value = rc_new(42);
+
+    let weak = rc_downgrade(
+        ref value
+    );
+
+    let before = rc_weak_count(
+        ref value
+    );
+
+    let copy = rc_clone(
+        value
+    );
+
+    give rc_weak_count(ref value) == before
+        and rc_weak_count(ref copy) == before
+        and rc_weak_weak_count(ref weak) == before;
+}
+
+proc test_upgrade_behaves_like_strong_clone() -> bool {
+    let value = rc_new(42);
+
+    let weak = rc_downgrade(
+        ref value
+    );
+
+    let before = rc_strong_count(
+        ref value
+    );
+
+    let result = rc_upgrade(
+        ref weak
+    );
+
+    pick result {
+        Some(copy) {
+            give rc_strong_count(ref value)
+                    == before + 1
+                and rc_strong_count(ref copy)
+                    == before + 1
+                and rc_ptr_equal(
+                    ref value,
+                    ref copy
+                );
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_clone_read_consistency() -> bool {
+    let value = rc_new(
+        Point {
+            x: 1
+            y: 2
+        }
+    );
+
+    let copy1 = rc_clone(value);
+    let copy2 = rc_clone(value);
+
+    let a = rc_get(ref value);
+    let b = rc_get(ref copy1);
+    let c = rc_get(ref copy2);
+
+    give a.x == b.x
+        and b.x == c.x
+        and a.y == b.y
+        and b.y == c.y;
+}
+
+proc test_clone_profile() -> bool {
+    let value = rc_new(42);
+
+    let copy = rc_clone(
+        value
+    );
+
+    let profile = rc_profile(
+        ref value
+    );
+
+    give profile.strong == 2
+        and profile.weak == 0
+        and profile.shared
+        and not profile.unique
+        and profile.alive
+        and profile.valid
+        and rc_strong_count(ref copy) == 2;
+}
+
+proc test_clone_validation() -> bool {
+    let value = rc_new(42);
+
+    let copy = rc_clone(
+        value
+    );
+
+    give rc_validate(ref value).valid
+        and rc_validate(ref copy).valid
+        and rc_invariant_holds(ref value)
+        and rc_invariant_holds(ref copy);
+}
+
+proc test_clone_raw_identity() -> bool {
+    let value = rc_new(42);
+
+    let copy = rc_clone(
+        value
+    );
+
+    let raw1 = rc_as_raw(
+        ref value
+    );
+
+    let raw2 = rc_as_raw(
+        ref copy
+    );
+
+    give rc_raw_same_allocation(
+        raw1,
+        raw2
+    );
+}
+
+proc test_clone_then_make_mut() -> bool {
+    let mut value = rc_new(42);
+
+    let copy = rc_clone(
+        value
+    );
+
+    let inner = rc_make_mut(
+        ref mut value
+    );
+
+    set *inner = 100;
+
+    give *rc_get(ref value) == 100
+        and *rc_get(ref copy) == 42
+        and not rc_ptr_equal(
+            ref value,
+            ref copy
+        );
+}
+
+proc test_make_mut_detaches_once() -> bool {
+    let mut value = rc_new(42);
+
+    let copy1 = rc_clone(value);
+    let copy2 = rc_clone(value);
+
+    let old_strong = rc_strong_count(
+        ref copy1
+    );
+
+    let inner = rc_make_mut(
+        ref mut value
+    );
+
+    set *inner = 99;
+
+    give old_strong == 3
+        and rc_strong_count(ref value) == 1
+        and rc_strong_count(ref copy1) == 2
+        and rc_strong_count(ref copy2) == 2
+        and *rc_get(ref value) == 99
+        and *rc_get(ref copy1) == 42
+        and *rc_get(ref copy2) == 42;
+}
+
+proc test_make_mut_unique_keeps_identity() -> bool {
+    let mut value = rc_new(42);
+
+    let before = rc_as_raw(
+        ref value
+    );
+
+    let inner = rc_make_mut(
+        ref mut value
+    );
+
+    set *inner = 50;
+
+    let after = rc_as_raw(
+        ref value
+    );
+
+    give rc_raw_same_allocation(
+        before,
+        after
+    )
+    and *rc_get(ref value) == 50;
+}
+
+proc test_clone_drop_order() -> bool {
+    let value = rc_new(42);
+
+    let mut first = rc_clone(value);
+    let mut second = rc_clone(value);
+    let mut third = rc_clone(value);
+
+    if not rc_drop(
+        ref mut second
+    ) {
+        give false;
+    }
+
+    if rc_strong_count(ref value) != 3 {
+        give false;
+    }
+
+    if not rc_drop(
+        ref mut first
+    ) {
+        give false;
+    }
+
+    if rc_strong_count(ref value) != 2 {
+        give false;
+    }
+
+    if not rc_drop(
+        ref mut third
+    ) {
+        give false;
+    }
+
+    give rc_strong_count(ref value) == 1
+        and rc_is_unique(ref value);
+}
+
+proc test_clone_many_then_drop_reverse() -> bool {
+    let value = rc_new(42);
+
+    let copies: [Rc<int>] = [];
+
+    let index: usize = 0;
+
+    while index < 128 {
+        set copies =
+            copies + [
+                rc_clone(value)
+            ];
+
+        set index = index + 1;
+    }
+
+    if rc_strong_count(ref value) != 129 {
+        give false;
+    }
+
+    let release: usize = 128;
+
+    while release > 0 {
+        let current =
+            release - 1;
+
+        if not rc_drop(
+            ref mut copies[current]
+        ) {
+            give false;
+        }
+
+        set release = release - 1;
+    }
+
+    give rc_strong_count(ref value) == 1
+        and rc_is_unique(ref value);
+}
+
+proc test_clone_many_identity() -> bool {
+    let value = rc_new(42);
+
+    let copies: [Rc<int>] = [];
+
+    let index: usize = 0;
+
+    while index < 256 {
+        let copy = rc_clone(
+            value
+        );
+
+        if not rc_ptr_equal(
+            ref value,
+            ref copy
+        ) {
+            give false;
+        }
+
+        set copies =
+            copies + [copy];
+
+        set index = index + 1;
+    }
+
+    give rc_strong_count(ref value) == 257;
+}
+
+proc test_clone_many_values() -> bool {
+    let roots: [Rc<int>] = [];
+    let copies: [Rc<int>] = [];
+
+    let index: usize = 0;
+
+    while index < 128 {
+        let root = rc_new(
+            index as int
+        );
+
+        let copy = rc_clone(
+            root
+        );
+
+        set roots =
+            roots + [root];
+
+        set copies =
+            copies + [copy];
+
+        set index = index + 1;
+    }
+
+    let check: usize = 0;
+
+    while check < 128 {
+        if *rc_get(ref roots[check])
+            != check as int
+        {
+            give false;
+        }
+
+        if *rc_get(ref copies[check])
+            != check as int
+        {
+            give false;
+        }
+
+        if not rc_ptr_equal(
+            ref roots[check],
+            ref copies[check]
+        ) {
+            give false;
+        }
+
+        if rc_strong_count(
+            ref roots[check]
+        ) != 2
+        {
+            give false;
+        }
+
+        set check = check + 1;
+    }
+
+    give true;
+}
+
+proc test_clone_many_points() -> bool {
+    let values: [Rc<Point>] = [];
+    let copies: [Rc<Point>] = [];
+
+    let index: usize = 0;
+
+    while index < 128 {
+        let value = rc_new(
+            Point {
+                x: index as int
+                y: (index as int) + 1
+            }
+        );
+
+        let copy = rc_clone(
+            value
+        );
+
+        set values =
+            values + [value];
+
+        set copies =
+            copies + [copy];
+
+        set index = index + 1;
+    }
+
+    let check: usize = 0;
+
+    while check < 128 {
+        let left = rc_get(
+            ref values[check]
+        );
+
+        let right = rc_get(
+            ref copies[check]
+        );
+
+        if left.x != right.x
+            or left.y != right.y
+        {
+            give false;
+        }
+
+        set check = check + 1;
+    }
+
+    give true;
+}
+
+proc test_clone_cycle_stress() -> bool {
+    let value = rc_new(42);
+
+    let cycle: usize = 0;
+
+    while cycle < 10000 {
+        let mut copy = rc_clone(
+            value
+        );
+
+        if rc_strong_count(ref value) != 2 {
+            give false;
+        }
+
+        if not rc_ptr_equal(
+            ref value,
+            ref copy
+        ) {
+            give false;
+        }
+
+        if not rc_drop(
+            ref mut copy
+        ) {
+            give false;
+        }
+
+        if rc_strong_count(ref value) != 1 {
+            give false;
+        }
+
+        if not rc_is_unique(
+            ref value
+        ) {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give rc_invariant_holds(
+        ref value
+    );
+}
+
+proc test_clone_burst_stress() -> bool {
+    let value = rc_new(42);
+
+    let cycle: usize = 0;
+
+    while cycle < 1000 {
+        let copies: [Rc<int>] = [];
+
+        let index: usize = 0;
+
+        while index < 100 {
+            set copies =
+                copies + [
+                    rc_clone(value)
+                ];
+
+            set index = index + 1;
+        }
+
+        if rc_strong_count(ref value) != 101 {
+            give false;
+        }
+
+        let release: usize = 0;
+
+        while release < 100 {
+            if not rc_drop(
+                ref mut copies[release]
+            ) {
+                give false;
+            }
+
+            set release = release + 1;
+        }
+
+        if rc_strong_count(ref value) != 1 {
+            give false;
+        }
+
+        if not rc_invariant_holds(
+            ref value
+        ) {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc test_clone_weak_stress() -> bool {
+    let value = rc_new(42);
+
+    let weak = rc_downgrade(
+        ref value
+    );
+
+    let cycle: usize = 0;
+
+    while cycle < 10000 {
+        let mut copy = rc_clone(
+            value
+        );
+
+        if rc_weak_strong_count(
+            ref weak
+        ) != 2
+        {
+            give false;
+        }
+
+        if not rc_drop(
+            ref mut copy
+        ) {
+            give false;
+        }
+
+        if rc_weak_strong_count(
+            ref weak
+        ) != 1
+        {
+            give false;
+        }
+
+        if rc_weak_is_expired(
+            ref weak
+        ) {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc test_clone_snapshot_stress() -> bool {
+    let value = rc_new(42);
+
+    let cycle: usize = 0;
+
+    while cycle < 10000 {
+        let before = rc_snapshot(
+            ref value
+        );
+
+        let mut copy = rc_clone(
+            value
+        );
+
+        let after_clone = rc_snapshot(
+            ref value
+        );
+
+        let clone_delta = rc_delta(
+            before,
+            after_clone
+        );
+
+        if clone_delta.strong != 1 {
+            give false;
+        }
+
+        if not rc_drop(
+            ref mut copy
+        ) {
+            give false;
+        }
+
+        let after_drop = rc_snapshot(
+            ref value
+        );
+
+        if after_drop.strong
+            != before.strong
+        {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc test_clone_validation_stress() -> bool {
+    let value = rc_new(42);
+
+    let cycle: usize = 0;
+
+    while cycle < 10000 {
+        let mut copy = rc_clone(
+            value
+        );
+
+        if not rc_validate(
+            ref value
+        ).valid
+        {
+            give false;
+        }
+
+        if not rc_validate(
+            ref copy
+        ).valid
+        {
+            give false;
+        }
+
+        if not rc_drop(
+            ref mut copy
+        ) {
+            give false;
+        }
+
+        if not rc_invariant_holds(
+            ref value
+        ) {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc test_clone_statistics() -> bool {
+    let value = rc_new(42);
+
+    let mut statistics =
+        rc_statistics_empty();
+
+    let copy = rc_clone(
+        value
+    );
+
+    rc_statistics_record_clone(
+        ref mut statistics,
+        ref value,
+        true
+    );
+
+    give statistics.strong_clones == 1
+        and statistics.peak_strong == 2
+        and statistics.failures == 0
+        and rc_strong_count(ref copy) == 2;
+}
+
+proc test_clone_statistics_failure() -> bool {
+    let mut statistics =
+        rc_statistics_empty();
+
+    rc_statistics_record_clone(
+        ref mut statistics,
+        ref rc_new(42),
+        false
+    );
+
+    give statistics.strong_clones == 0
+        and statistics.failures == 1;
+}
+
+proc test_clone_statistics_many() -> bool {
+    let value = rc_new(42);
+
+    let mut statistics =
+        rc_statistics_empty();
+
+    let copies: [Rc<int>] = [];
+
+    let index: usize = 0;
+
+    while index < 100 {
+        let copy = rc_clone(
+            value
+        );
+
+        rc_statistics_record_clone(
+            ref mut statistics,
+            ref value,
+            true
+        );
+
+        set copies =
+            copies + [copy];
+
+        set index = index + 1;
+    }
+
+    give statistics.strong_clones == 100
+        and statistics.peak_strong == 101
+        and statistics.failures == 0;
+}
+
+proc test_try_clone_after_drop_fails() -> bool {
+    let mut value = rc_new(42);
+
+    if not rc_drop(
+        ref mut value
+    ) {
+        give false;
+    }
+
+    give is_none(
+        rc_try_clone(
+            value
+        )
+    );
+}
+
+proc test_clone_preserves_weak_count_after_drop() -> bool {
+    let value = rc_new(42);
+
+    let weak = rc_downgrade(
+        ref value
+    );
+
+    let mut copy = rc_clone(
+        value
+    );
+
+    if not rc_drop(
+        ref mut copy
+    ) {
+        give false;
+    }
+
+    give rc_strong_count(ref value) == 1
+        and rc_weak_count(ref value) == 1
+        and rc_weak_weak_count(ref weak) == 1;
+}
+
+proc run_clone_tests() -> bool {
+    give test_clone_increments_strong()
+        and test_clone_same_allocation()
+        and test_clone_same_value()
+        and test_clone_shared_state()
+        and test_try_clone()
+
+        and test_clone_point()
+        and test_multiple_clones()
+        and test_multiple_clones_identity()
+
+        and test_clone_disables_mutable_access()
+        and test_drop_clone_decrements_strong()
+        and test_drop_clone_restores_unique()
+        and test_drop_clone_restores_mutable_access()
+
+        and test_drop_one_of_many()
+        and test_drop_many_restores_unique()
+
+        and test_clone_snapshot_change()
+        and test_clone_delta()
+        and test_drop_clone_delta()
+
+        and test_clone_with_weak()
+        and test_clone_does_not_change_weak_count()
+        and test_upgrade_behaves_like_strong_clone()
+
+        and test_clone_read_consistency()
+        and test_clone_profile()
+        and test_clone_validation()
+        and test_clone_raw_identity()
+
+        and test_clone_then_make_mut()
+        and test_make_mut_detaches_once()
+        and test_make_mut_unique_keeps_identity()
+
+        and test_clone_drop_order()
+
+        and test_clone_many_then_drop_reverse()
+        and test_clone_many_identity()
+        and test_clone_many_values()
+        and test_clone_many_points()
+
+        and test_clone_cycle_stress()
+        and test_clone_burst_stress()
+        and test_clone_weak_stress()
+        and test_clone_snapshot_stress()
+        and test_clone_validation_stress()
+
+        and test_clone_statistics()
+        and test_clone_statistics_failure()
+        and test_clone_statistics_many()
+
+        and test_try_clone_after_drop_fails()
+        and test_clone_preserves_weak_count_after_drop();
+}
+
+proc main() -> int {
+    if run_clone_tests() {
+        give 0;
+    }
+
+    give 1;
+}

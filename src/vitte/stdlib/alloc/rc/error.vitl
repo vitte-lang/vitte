@@ -1,0 +1,1611 @@
+space vitte/stdlib/alloc/rc/error
+
+export *
+
+use src/vitte/stdlib/alloc/rc/core as rc_core
+use src/vitte/stdlib/alloc/rc/count as rc_count
+
+pick RcErrorKind {
+    None,
+
+    InvalidRc,
+    InvalidState,
+    InvalidControlBlock,
+
+    InvalidStrongCount,
+    InvalidWeakCount,
+    CountOverflow,
+    CountUnderflow,
+
+    CloneFailed,
+    DropFailed,
+
+    UpgradeFailed,
+    DowngradeFailed,
+
+    ValueDropped,
+    AllocationReleased,
+
+    InvalidPointer,
+    NullPointer,
+    StaleReference,
+
+    NotUnique,
+    NotAlive,
+
+    InvalidAccess,
+    MutableAccessDenied,
+
+    RuntimeFailure,
+    Internal
+}
+
+pick RcErrorSeverity {
+    Note,
+    Warning,
+    Error,
+    Fatal
+}
+
+pick RcErrorDomain {
+    General,
+    Rc,
+    Count,
+    Strong,
+    Weak,
+    Upgrade,
+    Downgrade,
+    Access,
+    Pointer,
+    Runtime,
+    Internal
+}
+
+pick RcErrorOperation {
+    None,
+
+    New,
+
+    CloneStrong,
+    DropStrong,
+
+    CloneWeak,
+    DropWeak,
+
+    Upgrade,
+    Downgrade,
+
+    Get,
+    GetMut,
+
+    DropValue,
+    ReleaseAllocation,
+
+    Validate
+}
+
+form RcErrorContext {
+    operation: RcErrorOperation
+
+    state: rc_core.RcCoreState
+    ownership: rc_core.RcCoreOwnership
+    access: rc_core.RcCoreAccess
+
+    strong: usize
+    weak: usize
+
+    generation: u64
+    revision: u64
+}
+
+form RcError {
+    kind: RcErrorKind
+    severity: RcErrorSeverity
+    domain: RcErrorDomain
+
+    context: RcErrorContext
+
+    message: string
+}
+
+form RcErrorStatistics {
+    total: u64
+
+    notes: u64
+    warnings: u64
+    errors: u64
+    fatals: u64
+
+    rc_errors: u64
+    count_errors: u64
+    strong_errors: u64
+    weak_errors: u64
+    upgrade_errors: u64
+    downgrade_errors: u64
+    access_errors: u64
+    pointer_errors: u64
+    runtime_errors: u64
+    internal_errors: u64
+}
+
+// -----------------------------------------------------------------------------
+// Context
+// -----------------------------------------------------------------------------
+
+proc rc_error_context_empty()
+    -> RcErrorContext
+{
+    give RcErrorContext {
+        operation:
+            RcErrorOperation.None,
+
+        state:
+            rc_core.RcCoreState.Invalid,
+
+        ownership:
+            rc_core.RcCoreOwnership.Dead,
+
+        access:
+            rc_core.RcCoreAccess.None,
+
+        strong:
+            0,
+
+        weak:
+            0,
+
+        generation:
+            0,
+
+        revision:
+            0
+    };
+}
+
+proc rc_error_context_counts(
+    counts: rc_count.RcCountPair,
+    operation: RcErrorOperation
+) -> RcErrorContext {
+    let core =
+        rc_count.rc_count_core(
+            counts
+        );
+
+    give RcErrorContext {
+        operation:
+            operation,
+
+        state:
+            rc_core.rc_core_state(
+                core
+            ),
+
+        ownership:
+            rc_core.rc_core_ownership(
+                core
+            ),
+
+        access:
+            rc_core.rc_core_access(
+                core
+            ),
+
+        strong:
+            counts.strong.value,
+
+        weak:
+            counts.weak.value,
+
+        generation:
+            counts.strong.generation,
+
+        revision:
+            counts.strong.revision
+    };
+}
+
+proc rc_error_context_core(
+    profile: rc_core.RcCoreProfile,
+    operation: RcErrorOperation
+) -> RcErrorContext {
+    give RcErrorContext {
+        operation:
+            operation,
+
+        state:
+            profile.info.state,
+
+        ownership:
+            profile.info.ownership,
+
+        access:
+            profile.info.access,
+
+        strong:
+            profile.counts.strong,
+
+        weak:
+            profile.counts.weak,
+
+        generation:
+            profile.meta.generation,
+
+        revision:
+            profile.meta.revision
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Constructors
+// -----------------------------------------------------------------------------
+
+proc rc_error(
+    kind: RcErrorKind,
+    severity: RcErrorSeverity,
+    domain: RcErrorDomain,
+    context: RcErrorContext,
+    message: string
+) -> RcError {
+    give RcError {
+        kind:
+            kind,
+
+        severity:
+            severity,
+
+        domain:
+            domain,
+
+        context:
+            context,
+
+        message:
+            message
+    };
+}
+
+proc rc_error_none()
+    -> RcError
+{
+    give rc_error(
+        RcErrorKind.None,
+        RcErrorSeverity.Note,
+        RcErrorDomain.General,
+        rc_error_context_empty(),
+        ""
+    );
+}
+
+proc rc_error_simple(
+    kind: RcErrorKind,
+    message: string
+) -> RcError {
+    give rc_error(
+        kind,
+        RcErrorSeverity.Error,
+        rc_error_domain_for_kind(
+            kind
+        ),
+        rc_error_context_empty(),
+        message
+    );
+}
+
+proc rc_error_fatal(
+    kind: RcErrorKind,
+    message: string
+) -> RcError {
+    give rc_error(
+        kind,
+        RcErrorSeverity.Fatal,
+        rc_error_domain_for_kind(
+            kind
+        ),
+        rc_error_context_empty(),
+        message
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Rc errors
+// -----------------------------------------------------------------------------
+
+proc rc_error_invalid_rc(
+    counts: rc_count.RcCountPair
+) -> RcError {
+    give rc_error(
+        RcErrorKind.InvalidRc,
+        RcErrorSeverity.Fatal,
+        RcErrorDomain.Rc,
+        rc_error_context_counts(
+            counts,
+            RcErrorOperation.Validate
+        ),
+        "rc value is invalid"
+    );
+}
+
+proc rc_error_invalid_state(
+    counts: rc_count.RcCountPair
+) -> RcError {
+    give rc_error(
+        RcErrorKind.InvalidState,
+        RcErrorSeverity.Error,
+        RcErrorDomain.Rc,
+        rc_error_context_counts(
+            counts,
+            RcErrorOperation.Validate
+        ),
+        "rc state is invalid"
+    );
+}
+
+proc rc_error_invalid_control_block(
+    counts: rc_count.RcCountPair
+) -> RcError {
+    give rc_error(
+        RcErrorKind.InvalidControlBlock,
+        RcErrorSeverity.Fatal,
+        RcErrorDomain.Rc,
+        rc_error_context_counts(
+            counts,
+            RcErrorOperation.Validate
+        ),
+        "rc control block is invalid"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Count errors
+// -----------------------------------------------------------------------------
+
+proc rc_error_invalid_strong_count(
+    counts: rc_count.RcCountPair
+) -> RcError {
+    give rc_error(
+        RcErrorKind.InvalidStrongCount,
+        RcErrorSeverity.Fatal,
+        RcErrorDomain.Count,
+        rc_error_context_counts(
+            counts,
+            RcErrorOperation.Validate
+        ),
+        "rc strong count is invalid"
+    );
+}
+
+proc rc_error_invalid_weak_count(
+    counts: rc_count.RcCountPair
+) -> RcError {
+    give rc_error(
+        RcErrorKind.InvalidWeakCount,
+        RcErrorSeverity.Fatal,
+        RcErrorDomain.Count,
+        rc_error_context_counts(
+            counts,
+            RcErrorOperation.Validate
+        ),
+        "rc weak count is invalid"
+    );
+}
+
+proc rc_error_count_overflow(
+    counts: rc_count.RcCountPair,
+    operation: RcErrorOperation
+) -> RcError {
+    give rc_error(
+        RcErrorKind.CountOverflow,
+        RcErrorSeverity.Fatal,
+        RcErrorDomain.Count,
+        rc_error_context_counts(
+            counts,
+            operation
+        ),
+        "rc reference count overflow"
+    );
+}
+
+proc rc_error_count_underflow(
+    counts: rc_count.RcCountPair,
+    operation: RcErrorOperation
+) -> RcError {
+    give rc_error(
+        RcErrorKind.CountUnderflow,
+        RcErrorSeverity.Fatal,
+        RcErrorDomain.Count,
+        rc_error_context_counts(
+            counts,
+            operation
+        ),
+        "rc reference count underflow"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Strong errors
+// -----------------------------------------------------------------------------
+
+proc rc_error_clone_strong_failed(
+    counts: rc_count.RcCountPair
+) -> RcError {
+    give rc_error(
+        RcErrorKind.CloneFailed,
+        RcErrorSeverity.Error,
+        RcErrorDomain.Strong,
+        rc_error_context_counts(
+            counts,
+            RcErrorOperation.CloneStrong
+        ),
+        "rc strong clone failed"
+    );
+}
+
+proc rc_error_drop_strong_failed(
+    counts: rc_count.RcCountPair
+) -> RcError {
+    give rc_error(
+        RcErrorKind.DropFailed,
+        RcErrorSeverity.Error,
+        RcErrorDomain.Strong,
+        rc_error_context_counts(
+            counts,
+            RcErrorOperation.DropStrong
+        ),
+        "rc strong drop failed"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Weak errors
+// -----------------------------------------------------------------------------
+
+proc rc_error_clone_weak_failed(
+    counts: rc_count.RcCountPair
+) -> RcError {
+    give rc_error(
+        RcErrorKind.CloneFailed,
+        RcErrorSeverity.Error,
+        RcErrorDomain.Weak,
+        rc_error_context_counts(
+            counts,
+            RcErrorOperation.CloneWeak
+        ),
+        "rc weak clone failed"
+    );
+}
+
+proc rc_error_drop_weak_failed(
+    counts: rc_count.RcCountPair
+) -> RcError {
+    give rc_error(
+        RcErrorKind.DropFailed,
+        RcErrorSeverity.Error,
+        RcErrorDomain.Weak,
+        rc_error_context_counts(
+            counts,
+            RcErrorOperation.DropWeak
+        ),
+        "rc weak drop failed"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Upgrade / downgrade
+// -----------------------------------------------------------------------------
+
+proc rc_error_upgrade_failed(
+    counts: rc_count.RcCountPair
+) -> RcError {
+    give rc_error(
+        RcErrorKind.UpgradeFailed,
+        RcErrorSeverity.Error,
+        RcErrorDomain.Upgrade,
+        rc_error_context_counts(
+            counts,
+            RcErrorOperation.Upgrade
+        ),
+        "weak rc reference cannot be upgraded"
+    );
+}
+
+proc rc_error_downgrade_failed(
+    counts: rc_count.RcCountPair
+) -> RcError {
+    give rc_error(
+        RcErrorKind.DowngradeFailed,
+        RcErrorSeverity.Error,
+        RcErrorDomain.Downgrade,
+        rc_error_context_counts(
+            counts,
+            RcErrorOperation.Downgrade
+        ),
+        "rc reference cannot be downgraded"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Lifetime errors
+// -----------------------------------------------------------------------------
+
+proc rc_error_value_dropped(
+    counts: rc_count.RcCountPair
+) -> RcError {
+    give rc_error(
+        RcErrorKind.ValueDropped,
+        RcErrorSeverity.Error,
+        RcErrorDomain.Rc,
+        rc_error_context_counts(
+            counts,
+            RcErrorOperation.Get
+        ),
+        "rc managed value has already been dropped"
+    );
+}
+
+proc rc_error_allocation_released(
+    counts: rc_count.RcCountPair
+) -> RcError {
+    give rc_error(
+        RcErrorKind.AllocationReleased,
+        RcErrorSeverity.Error,
+        RcErrorDomain.Rc,
+        rc_error_context_counts(
+            counts,
+            RcErrorOperation.Get
+        ),
+        "rc control allocation has already been released"
+    );
+}
+
+proc rc_error_not_alive(
+    counts: rc_count.RcCountPair
+) -> RcError {
+    give rc_error(
+        RcErrorKind.NotAlive,
+        RcErrorSeverity.Error,
+        RcErrorDomain.Rc,
+        rc_error_context_counts(
+            counts,
+            RcErrorOperation.Get
+        ),
+        "rc managed value is not alive"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Access errors
+// -----------------------------------------------------------------------------
+
+proc rc_error_not_unique(
+    counts: rc_count.RcCountPair
+) -> RcError {
+    give rc_error(
+        RcErrorKind.NotUnique,
+        RcErrorSeverity.Error,
+        RcErrorDomain.Access,
+        rc_error_context_counts(
+            counts,
+            RcErrorOperation.GetMut
+        ),
+        "mutable rc access requires unique strong ownership"
+    );
+}
+
+proc rc_error_invalid_access(
+    counts: rc_count.RcCountPair
+) -> RcError {
+    give rc_error(
+        RcErrorKind.InvalidAccess,
+        RcErrorSeverity.Error,
+        RcErrorDomain.Access,
+        rc_error_context_counts(
+            counts,
+            RcErrorOperation.Get
+        ),
+        "rc access is invalid"
+    );
+}
+
+proc rc_error_mutable_access_denied(
+    counts: rc_count.RcCountPair
+) -> RcError {
+    give rc_error(
+        RcErrorKind.MutableAccessDenied,
+        RcErrorSeverity.Error,
+        RcErrorDomain.Access,
+        rc_error_context_counts(
+            counts,
+            RcErrorOperation.GetMut
+        ),
+        "mutable rc access denied"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Pointer errors
+// -----------------------------------------------------------------------------
+
+proc rc_error_invalid_pointer()
+    -> RcError
+{
+    give rc_error(
+        RcErrorKind.InvalidPointer,
+        RcErrorSeverity.Fatal,
+        RcErrorDomain.Pointer,
+        rc_error_context_empty(),
+        "rc pointer is invalid"
+    );
+}
+
+proc rc_error_null_pointer()
+    -> RcError
+{
+    give rc_error(
+        RcErrorKind.NullPointer,
+        RcErrorSeverity.Fatal,
+        RcErrorDomain.Pointer,
+        rc_error_context_empty(),
+        "rc pointer is null"
+    );
+}
+
+proc rc_error_stale_reference(
+    counts: rc_count.RcCountPair
+) -> RcError {
+    give rc_error(
+        RcErrorKind.StaleReference,
+        RcErrorSeverity.Error,
+        RcErrorDomain.Pointer,
+        rc_error_context_counts(
+            counts,
+            RcErrorOperation.Get
+        ),
+        "rc reference is stale"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Runtime / internal
+// -----------------------------------------------------------------------------
+
+proc rc_error_runtime(
+    message: string
+) -> RcError {
+    give rc_error(
+        RcErrorKind.RuntimeFailure,
+        RcErrorSeverity.Fatal,
+        RcErrorDomain.Runtime,
+        rc_error_context_empty(),
+        message
+    );
+}
+
+proc rc_error_internal(
+    message: string
+) -> RcError {
+    give rc_error(
+        RcErrorKind.Internal,
+        RcErrorSeverity.Fatal,
+        RcErrorDomain.Internal,
+        rc_error_context_empty(),
+        message
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Count checking
+// -----------------------------------------------------------------------------
+
+proc rc_error_for_strong_clone(
+    counts: rc_count.RcCountPair
+) -> RcError {
+    if counts.strong.value == 0 {
+        give rc_error_not_alive(
+            counts
+        );
+    }
+
+    if not rc_count.rc_count_can_increment(
+        counts.strong
+    ) {
+        give rc_error_count_overflow(
+            counts,
+            RcErrorOperation.CloneStrong
+        );
+    }
+
+    give rc_error_none();
+}
+
+proc rc_error_for_strong_drop(
+    counts: rc_count.RcCountPair
+) -> RcError {
+    if not rc_count.rc_count_can_decrement(
+        counts.strong
+    ) {
+        give rc_error_count_underflow(
+            counts,
+            RcErrorOperation.DropStrong
+        );
+    }
+
+    give rc_error_none();
+}
+
+proc rc_error_for_weak_clone(
+    counts: rc_count.RcCountPair
+) -> RcError {
+    if not rc_count.rc_count_can_increment(
+        counts.weak
+    ) {
+        give rc_error_count_overflow(
+            counts,
+            RcErrorOperation.CloneWeak
+        );
+    }
+
+    give rc_error_none();
+}
+
+proc rc_error_for_weak_drop(
+    counts: rc_count.RcCountPair
+) -> RcError {
+    if not rc_count.rc_count_can_decrement(
+        counts.weak
+    ) {
+        give rc_error_count_underflow(
+            counts,
+            RcErrorOperation.DropWeak
+        );
+    }
+
+    give rc_error_none();
+}
+
+// -----------------------------------------------------------------------------
+// Upgrade / downgrade checking
+// -----------------------------------------------------------------------------
+
+proc rc_error_for_upgrade(
+    counts: rc_count.RcCountPair
+) -> RcError {
+    if counts.weak.value == 0 {
+        give rc_error_upgrade_failed(
+            counts
+        );
+    }
+
+    if counts.strong.value == 0 {
+        give rc_error_value_dropped(
+            counts
+        );
+    }
+
+    if not rc_count.rc_count_can_increment(
+        counts.strong
+    ) {
+        give rc_error_count_overflow(
+            counts,
+            RcErrorOperation.Upgrade
+        );
+    }
+
+    give rc_error_none();
+}
+
+proc rc_error_for_downgrade(
+    counts: rc_count.RcCountPair
+) -> RcError {
+    if counts.strong.value == 0 {
+        give rc_error_not_alive(
+            counts
+        );
+    }
+
+    if not rc_count.rc_count_can_increment(
+        counts.weak
+    ) {
+        give rc_error_count_overflow(
+            counts,
+            RcErrorOperation.Downgrade
+        );
+    }
+
+    give rc_error_none();
+}
+
+// -----------------------------------------------------------------------------
+// Access checking
+// -----------------------------------------------------------------------------
+
+proc rc_error_for_read(
+    counts: rc_count.RcCountPair
+) -> RcError {
+    if not rc_count.rc_count_is_alive(
+        counts
+    ) {
+        give rc_error_not_alive(
+            counts
+        );
+    }
+
+    give rc_error_none();
+}
+
+proc rc_error_for_write(
+    counts: rc_count.RcCountPair
+) -> RcError {
+    if not rc_count.rc_count_is_alive(
+        counts
+    ) {
+        give rc_error_not_alive(
+            counts
+        );
+    }
+
+    if not rc_count.rc_count_strong_is_unique(
+        counts
+    ) {
+        give rc_error_not_unique(
+            counts
+        );
+    }
+
+    give rc_error_none();
+}
+
+// -----------------------------------------------------------------------------
+// Count validation mapping
+// -----------------------------------------------------------------------------
+
+proc rc_error_from_count_validation(
+    count: rc_count.RcCount,
+    validation: rc_count.RcCountValidation
+) -> RcError {
+    if validation.valid {
+        give rc_error_none();
+    }
+
+    if not validation.kind_valid {
+        give rc_error_internal(
+            "rc count kind is invalid"
+        );
+    }
+
+    if not validation.state_valid {
+        if count.kind
+            == rc_count.RcCountKind.Strong
+        {
+            give rc_error_simple(
+                RcErrorKind.InvalidStrongCount,
+                "rc strong counter state is invalid"
+            );
+        }
+
+        give rc_error_simple(
+            RcErrorKind.InvalidWeakCount,
+            "rc weak counter state is invalid"
+        );
+    }
+
+    if not validation.generation_valid {
+        give rc_error_internal(
+            "rc count generation metadata is invalid"
+        );
+    }
+
+    give rc_error_internal(
+        "unknown rc count validation failure"
+    );
+}
+
+proc rc_error_from_count_pair(
+    counts: rc_count.RcCountPair
+) -> RcError {
+    let strong =
+        rc_count.rc_count_validate(
+            counts.strong
+        );
+
+    if not strong.valid {
+        give rc_error_from_count_validation(
+            counts.strong,
+            strong
+        );
+    }
+
+    let weak =
+        rc_count.rc_count_validate(
+            counts.weak
+        );
+
+    if not weak.valid {
+        give rc_error_from_count_validation(
+            counts.weak,
+            weak
+        );
+    }
+
+    if not rc_count.rc_count_pair_valid(
+        counts
+    ) {
+        give rc_error_invalid_rc(
+            counts
+        );
+    }
+
+    give rc_error_none();
+}
+
+// -----------------------------------------------------------------------------
+// Core validation mapping
+// -----------------------------------------------------------------------------
+
+proc rc_error_from_core_validation(
+    profile: rc_core.RcCoreProfile,
+    validation: rc_core.RcCoreValidation
+) -> RcError {
+    if validation.valid {
+        give rc_error_none();
+    }
+
+    let context =
+        rc_error_context_core(
+            profile,
+            RcErrorOperation.Validate
+        );
+
+    if not validation.counts_valid {
+        give rc_error(
+            RcErrorKind.InvalidRc,
+            RcErrorSeverity.Fatal,
+            RcErrorDomain.Count,
+            context,
+            "rc reference counts are invalid"
+        );
+    }
+
+    if not validation.state_valid {
+        give rc_error(
+            RcErrorKind.InvalidState,
+            RcErrorSeverity.Error,
+            RcErrorDomain.Rc,
+            context,
+            "rc core state is invalid"
+        );
+    }
+
+    if not validation.ownership_valid {
+        give rc_error(
+            RcErrorKind.InvalidState,
+            RcErrorSeverity.Error,
+            RcErrorDomain.Rc,
+            context,
+            "rc ownership state is invalid"
+        );
+    }
+
+    if not validation.access_valid {
+        give rc_error(
+            RcErrorKind.InvalidAccess,
+            RcErrorSeverity.Error,
+            RcErrorDomain.Access,
+            context,
+            "rc access state is invalid"
+        );
+    }
+
+    if not validation.generation_valid {
+        give rc_error(
+            RcErrorKind.Internal,
+            RcErrorSeverity.Fatal,
+            RcErrorDomain.Internal,
+            context,
+            "rc generation metadata is invalid"
+        );
+    }
+
+    give rc_error_internal(
+        "unknown rc core validation failure"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Predicates
+// -----------------------------------------------------------------------------
+
+proc rc_error_is_none(
+    error: RcError
+) -> bool {
+    give error.kind
+        == RcErrorKind.None;
+}
+
+proc rc_error_is_warning(
+    error: RcError
+) -> bool {
+    give error.severity
+        == RcErrorSeverity.Warning;
+}
+
+proc rc_error_is_error(
+    error: RcError
+) -> bool {
+    give error.severity
+        == RcErrorSeverity.Error
+        or error.severity
+            == RcErrorSeverity.Fatal;
+}
+
+proc rc_error_is_fatal(
+    error: RcError
+) -> bool {
+    give error.severity
+        == RcErrorSeverity.Fatal;
+}
+
+proc rc_error_is_count(
+    error: RcError
+) -> bool {
+    give error.domain
+        == RcErrorDomain.Count;
+}
+
+proc rc_error_is_strong(
+    error: RcError
+) -> bool {
+    give error.domain
+        == RcErrorDomain.Strong;
+}
+
+proc rc_error_is_weak(
+    error: RcError
+) -> bool {
+    give error.domain
+        == RcErrorDomain.Weak;
+}
+
+proc rc_error_is_upgrade(
+    error: RcError
+) -> bool {
+    give error.domain
+        == RcErrorDomain.Upgrade;
+}
+
+proc rc_error_is_downgrade(
+    error: RcError
+) -> bool {
+    give error.domain
+        == RcErrorDomain.Downgrade;
+}
+
+proc rc_error_is_access(
+    error: RcError
+) -> bool {
+    give error.domain
+        == RcErrorDomain.Access;
+}
+
+proc rc_error_is_pointer(
+    error: RcError
+) -> bool {
+    give error.domain
+        == RcErrorDomain.Pointer;
+}
+
+proc rc_error_is_overflow(
+    error: RcError
+) -> bool {
+    give error.kind
+        == RcErrorKind.CountOverflow;
+}
+
+proc rc_error_is_underflow(
+    error: RcError
+) -> bool {
+    give error.kind
+        == RcErrorKind.CountUnderflow;
+}
+
+proc rc_error_is_stale(
+    error: RcError
+) -> bool {
+    give error.kind
+        == RcErrorKind.StaleReference;
+}
+
+// -----------------------------------------------------------------------------
+// Domain mapping
+// -----------------------------------------------------------------------------
+
+proc rc_error_domain_for_kind(
+    kind: RcErrorKind
+) -> RcErrorDomain {
+    pick kind {
+        RcErrorKind.None {
+            give RcErrorDomain.General;
+        }
+
+        RcErrorKind.InvalidRc
+        | RcErrorKind.InvalidState
+        | RcErrorKind.InvalidControlBlock
+        | RcErrorKind.ValueDropped
+        | RcErrorKind.AllocationReleased
+        | RcErrorKind.NotAlive {
+            give RcErrorDomain.Rc;
+        }
+
+        RcErrorKind.InvalidStrongCount
+        | RcErrorKind.InvalidWeakCount
+        | RcErrorKind.CountOverflow
+        | RcErrorKind.CountUnderflow {
+            give RcErrorDomain.Count;
+        }
+
+        RcErrorKind.CloneFailed
+        | RcErrorKind.DropFailed {
+            give RcErrorDomain.Strong;
+        }
+
+        RcErrorKind.UpgradeFailed {
+            give RcErrorDomain.Upgrade;
+        }
+
+        RcErrorKind.DowngradeFailed {
+            give RcErrorDomain.Downgrade;
+        }
+
+        RcErrorKind.NotUnique
+        | RcErrorKind.InvalidAccess
+        | RcErrorKind.MutableAccessDenied {
+            give RcErrorDomain.Access;
+        }
+
+        RcErrorKind.InvalidPointer
+        | RcErrorKind.NullPointer
+        | RcErrorKind.StaleReference {
+            give RcErrorDomain.Pointer;
+        }
+
+        RcErrorKind.RuntimeFailure {
+            give RcErrorDomain.Runtime;
+        }
+
+        RcErrorKind.Internal {
+            give RcErrorDomain.Internal;
+        }
+    }
+
+    give RcErrorDomain.Internal;
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc rc_error_statistics_empty()
+    -> RcErrorStatistics
+{
+    give RcErrorStatistics {
+        total: 0,
+
+        notes: 0,
+        warnings: 0,
+        errors: 0,
+        fatals: 0,
+
+        rc_errors: 0,
+        count_errors: 0,
+        strong_errors: 0,
+        weak_errors: 0,
+        upgrade_errors: 0,
+        downgrade_errors: 0,
+        access_errors: 0,
+        pointer_errors: 0,
+        runtime_errors: 0,
+        internal_errors: 0
+    };
+}
+
+proc rc_error_statistics_record(
+    statistics: ref mut RcErrorStatistics,
+    error: RcError
+) {
+    if rc_error_is_none(
+        error
+    ) {
+        give;
+    }
+
+    set statistics.total =
+        statistics.total + 1;
+
+    pick error.severity {
+        RcErrorSeverity.Note {
+            set statistics.notes =
+                statistics.notes + 1;
+        }
+
+        RcErrorSeverity.Warning {
+            set statistics.warnings =
+                statistics.warnings + 1;
+        }
+
+        RcErrorSeverity.Error {
+            set statistics.errors =
+                statistics.errors + 1;
+        }
+
+        RcErrorSeverity.Fatal {
+            set statistics.fatals =
+                statistics.fatals + 1;
+        }
+    }
+
+    pick error.domain {
+        RcErrorDomain.Rc {
+            set statistics.rc_errors =
+                statistics.rc_errors + 1;
+        }
+
+        RcErrorDomain.Count {
+            set statistics.count_errors =
+                statistics.count_errors + 1;
+        }
+
+        RcErrorDomain.Strong {
+            set statistics.strong_errors =
+                statistics.strong_errors + 1;
+        }
+
+        RcErrorDomain.Weak {
+            set statistics.weak_errors =
+                statistics.weak_errors + 1;
+        }
+
+        RcErrorDomain.Upgrade {
+            set statistics.upgrade_errors =
+                statistics.upgrade_errors + 1;
+        }
+
+        RcErrorDomain.Downgrade {
+            set statistics.downgrade_errors =
+                statistics.downgrade_errors + 1;
+        }
+
+        RcErrorDomain.Access {
+            set statistics.access_errors =
+                statistics.access_errors + 1;
+        }
+
+        RcErrorDomain.Pointer {
+            set statistics.pointer_errors =
+                statistics.pointer_errors + 1;
+        }
+
+        RcErrorDomain.Runtime {
+            set statistics.runtime_errors =
+                statistics.runtime_errors + 1;
+        }
+
+        RcErrorDomain.Internal {
+            set statistics.internal_errors =
+                statistics.internal_errors + 1;
+        }
+
+        RcErrorDomain.General {}
+    }
+}
+
+proc rc_error_statistics_reset(
+    statistics: ref mut RcErrorStatistics
+) {
+    set *statistics =
+        rc_error_statistics_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc rc_error_kind_name(
+    kind: RcErrorKind
+) -> string {
+    pick kind {
+        RcErrorKind.None {
+            give "none";
+        }
+
+        RcErrorKind.InvalidRc {
+            give "invalid-rc";
+        }
+
+        RcErrorKind.InvalidState {
+            give "invalid-state";
+        }
+
+        RcErrorKind.InvalidControlBlock {
+            give "invalid-control-block";
+        }
+
+        RcErrorKind.InvalidStrongCount {
+            give "invalid-strong-count";
+        }
+
+        RcErrorKind.InvalidWeakCount {
+            give "invalid-weak-count";
+        }
+
+        RcErrorKind.CountOverflow {
+            give "count-overflow";
+        }
+
+        RcErrorKind.CountUnderflow {
+            give "count-underflow";
+        }
+
+        RcErrorKind.CloneFailed {
+            give "clone-failed";
+        }
+
+        RcErrorKind.DropFailed {
+            give "drop-failed";
+        }
+
+        RcErrorKind.UpgradeFailed {
+            give "upgrade-failed";
+        }
+
+        RcErrorKind.DowngradeFailed {
+            give "downgrade-failed";
+        }
+
+        RcErrorKind.ValueDropped {
+            give "value-dropped";
+        }
+
+        RcErrorKind.AllocationReleased {
+            give "allocation-released";
+        }
+
+        RcErrorKind.InvalidPointer {
+            give "invalid-pointer";
+        }
+
+        RcErrorKind.NullPointer {
+            give "null-pointer";
+        }
+
+        RcErrorKind.StaleReference {
+            give "stale-reference";
+        }
+
+        RcErrorKind.NotUnique {
+            give "not-unique";
+        }
+
+        RcErrorKind.NotAlive {
+            give "not-alive";
+        }
+
+        RcErrorKind.InvalidAccess {
+            give "invalid-access";
+        }
+
+        RcErrorKind.MutableAccessDenied {
+            give "mutable-access-denied";
+        }
+
+        RcErrorKind.RuntimeFailure {
+            give "runtime-failure";
+        }
+
+        RcErrorKind.Internal {
+            give "internal";
+        }
+    }
+
+    give "internal";
+}
+
+proc rc_error_severity_name(
+    severity: RcErrorSeverity
+) -> string {
+    pick severity {
+        RcErrorSeverity.Note {
+            give "note";
+        }
+
+        RcErrorSeverity.Warning {
+            give "warning";
+        }
+
+        RcErrorSeverity.Error {
+            give "error";
+        }
+
+        RcErrorSeverity.Fatal {
+            give "fatal";
+        }
+    }
+
+    give "error";
+}
+
+proc rc_error_domain_name(
+    domain: RcErrorDomain
+) -> string {
+    pick domain {
+        RcErrorDomain.General {
+            give "general";
+        }
+
+        RcErrorDomain.Rc {
+            give "rc";
+        }
+
+        RcErrorDomain.Count {
+            give "count";
+        }
+
+        RcErrorDomain.Strong {
+            give "strong";
+        }
+
+        RcErrorDomain.Weak {
+            give "weak";
+        }
+
+        RcErrorDomain.Upgrade {
+            give "upgrade";
+        }
+
+        RcErrorDomain.Downgrade {
+            give "downgrade";
+        }
+
+        RcErrorDomain.Access {
+            give "access";
+        }
+
+        RcErrorDomain.Pointer {
+            give "pointer";
+        }
+
+        RcErrorDomain.Runtime {
+            give "runtime";
+        }
+
+        RcErrorDomain.Internal {
+            give "internal";
+        }
+    }
+
+    give "internal";
+}
+
+proc rc_error_operation_name(
+    operation: RcErrorOperation
+) -> string {
+    pick operation {
+        RcErrorOperation.None {
+            give "none";
+        }
+
+        RcErrorOperation.New {
+            give "new";
+        }
+
+        RcErrorOperation.CloneStrong {
+            give "clone-strong";
+        }
+
+        RcErrorOperation.DropStrong {
+            give "drop-strong";
+        }
+
+        RcErrorOperation.CloneWeak {
+            give "clone-weak";
+        }
+
+        RcErrorOperation.DropWeak {
+            give "drop-weak";
+        }
+
+        RcErrorOperation.Upgrade {
+            give "upgrade";
+        }
+
+        RcErrorOperation.Downgrade {
+            give "downgrade";
+        }
+
+        RcErrorOperation.Get {
+            give "get";
+        }
+
+        RcErrorOperation.GetMut {
+            give "get-mut";
+        }
+
+        RcErrorOperation.DropValue {
+            give "drop-value";
+        }
+
+        RcErrorOperation.ReleaseAllocation {
+            give "release-allocation";
+        }
+
+        RcErrorOperation.Validate {
+            give "validate";
+        }
+    }
+
+    give "none";
+}
+
+// -----------------------------------------------------------------------------
+// Error model
+// -----------------------------------------------------------------------------
+//
+// Rc errors:
+//
+//     counts
+//       |
+//       +-- overflow
+//       +-- underflow
+//       +-- invalid strong count
+//       +-- invalid weak count
+//
+//     strong
+//       |
+//       +-- clone failed
+//       +-- drop failed
+//
+//     weak
+//       |
+//       +-- clone failed
+//       +-- drop failed
+//
+//     upgrade
+//       |
+//       +-- value already dropped
+//       +-- no valid weak reference
+//
+//     access
+//       |
+//       +-- value dead
+//       +-- mutable access while shared
+//
+//     pointer
+//       |
+//       +-- null pointer
+//       +-- stale reference
+//       +-- released allocation
+//
+// Mutable access requires:
+//
+//     strong == 1
+//
+// Read access requires:
+//
+//     strong > 0
+//
+// Weak upgrade requires:
+//
+//     weak > 0
+//     strong > 0
+//
+// Value destruction occurs when:
+//
+//     strong -> 0
+//
+// Control allocation release occurs when:
+//
+//     strong == 0
+//     weak == 0
+//
+// Count overflow is treated as fatal because reference-count correctness can
+// no longer be guaranteed after an overflowing increment.
+//
+// Diagnostics rendering and localization remain outside this module.

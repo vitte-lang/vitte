@@ -1,0 +1,2339 @@
+space vitte/stdlib/alloc/rc/rc
+
+export *
+
+use src/vitte/stdlib/alloc/rc/core as rc_core
+use src/vitte/stdlib/alloc/rc/count as rc_count
+use src/vitte/stdlib/alloc/rc/error as rc_error
+use src/vitte/stdlib/alloc/rc/inner as rc_inner
+use src/vitte/stdlib/alloc/rc/raw as rc_raw
+use src/vitte/stdlib/alloc/allocator as alloc_allocator
+use src/vitte/stdlib/core/option as core_option
+
+pick RcState {
+    Alive,
+    WeakOnly,
+    Released,
+    Invalid
+}
+
+form Rc<T> {
+    inner: raw ref rc_inner.RcInner<T>
+
+    generation: u64
+    revision: u64
+}
+
+form RcWeak<T> {
+    inner: raw ref rc_inner.RcInner<T>
+
+    generation: u64
+    revision: u64
+}
+
+form RcProfile {
+    strong: usize
+    weak: usize
+
+    state: RcState
+
+    unique: bool
+    shared: bool
+
+    alive: bool
+    weak_only: bool
+    released: bool
+    valid: bool
+
+    generation: u64
+    revision: u64
+}
+
+form RcWeakProfile {
+    strong: usize
+    weak: usize
+
+    state: RcState
+
+    expired: bool
+    upgradeable: bool
+
+    alive: bool
+    released: bool
+    stale: bool
+    valid: bool
+
+    generation: u64
+    revision: u64
+}
+
+form RcValidation {
+    valid: bool
+
+    pointer_valid: bool
+    generation_valid: bool
+    inner_valid: bool
+    strong_valid: bool
+    state_valid: bool
+}
+
+form RcWeakValidation {
+    valid: bool
+
+    pointer_valid: bool
+    generation_valid: bool
+    inner_valid: bool
+    weak_valid: bool
+    state_valid: bool
+}
+
+form RcSnapshot {
+    strong: usize
+    weak: usize
+
+    state: RcState
+
+    generation: u64
+    revision: u64
+}
+
+form RcDelta {
+    strong: int
+    weak: int
+
+    generation: int
+    revision: int
+
+    state_changed: bool
+    changed: bool
+}
+
+form RcStatistics {
+    created: u64
+
+    strong_clones: u64
+    strong_drops: u64
+
+    weak_creations: u64
+    weak_clones: u64
+    weak_drops: u64
+
+    upgrades: u64
+    upgrade_failures: u64
+
+    reads: u64
+    writes: u64
+
+    replacements: u64
+
+    raw_conversions: u64
+
+    failures: u64
+
+    peak_strong: usize
+    peak_weak: usize
+}
+
+// -----------------------------------------------------------------------------
+// Construction
+// -----------------------------------------------------------------------------
+
+proc rc_new<T>(
+    value: T
+) -> Rc<T> {
+    let layout =
+        alloc_allocator.layout(
+            compiler_size_of<rc_inner.RcInner<T>>(),
+            compiler_align_of<rc_inner.RcInner<T>>()
+        );
+
+    let mut allocator =
+        alloc_allocator.allocator(
+            "rc",
+            alloc_allocator.GrowthPolicy.Exact
+        );
+
+    let allocation =
+        alloc_allocator.allocator_allocate(
+            ref mut allocator,
+            layout
+        );
+
+    if is_none(allocation) {
+        give compiler_rc_allocation_failure<T>();
+    }
+
+    let storage =
+        unwrap(allocation);
+
+    let ptr =
+        compiler_allocation_as_mut<rc_inner.RcInner<T>>(
+            storage
+        );
+
+    let inner =
+        rc_inner.rc_inner_new(
+            value,
+            storage
+        );
+
+    set *ptr =
+        inner;
+
+    give Rc<T> {
+        inner:
+            compiler_mut_ref_as_raw(
+                ptr
+            ),
+
+        generation:
+            ptr.generation,
+
+        revision:
+            ptr.revision
+    };
+}
+
+proc rc_try_new<T>(
+    value: T
+) -> Option<Rc<T>> {
+    let layout =
+        alloc_allocator.layout(
+            compiler_size_of<rc_inner.RcInner<T>>(),
+            compiler_align_of<rc_inner.RcInner<T>>()
+        );
+
+    let mut allocator =
+        alloc_allocator.allocator(
+            "rc",
+            alloc_allocator.GrowthPolicy.Exact
+        );
+
+    let allocation =
+        alloc_allocator.allocator_allocate(
+            ref mut allocator,
+            layout
+        );
+
+    if is_none(allocation) {
+        give none<Rc<T>>();
+    }
+
+    let storage =
+        unwrap(allocation);
+
+    let ptr =
+        compiler_allocation_as_mut<rc_inner.RcInner<T>>(
+            storage
+        );
+
+    set *ptr =
+        rc_inner.rc_inner_new(
+            value,
+            storage
+        );
+
+    give some<Rc<T>>(
+        Rc<T> {
+            inner:
+                compiler_mut_ref_as_raw(
+                    ptr
+                ),
+
+            generation:
+                ptr.generation,
+
+            revision:
+                ptr.revision
+        }
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Inner access
+// -----------------------------------------------------------------------------
+
+proc rc_inner_ref<T>(
+    value: ref Rc<T>
+) -> Option<ref rc_inner.RcInner<T>> {
+    if compiler_raw_ptr_is_null(
+        value.inner
+    ) {
+        give none<ref rc_inner.RcInner<T>>();
+    }
+
+    give some<ref rc_inner.RcInner<T>>(
+        compiler_raw_as_ref(
+            value.inner
+        )
+    );
+}
+
+proc rc_inner_mut<T>(
+    value: ref mut Rc<T>
+) -> Option<ref mut rc_inner.RcInner<T>> {
+    if compiler_raw_ptr_is_null(
+        value.inner
+    ) {
+        give none<ref mut rc_inner.RcInner<T>>();
+    }
+
+    give some<ref mut rc_inner.RcInner<T>>(
+        compiler_raw_as_mut(
+            value.inner
+        )
+    );
+}
+
+proc rc_weak_inner_ref<T>(
+    value: ref RcWeak<T>
+) -> Option<ref rc_inner.RcInner<T>> {
+    if compiler_raw_ptr_is_null(
+        value.inner
+    ) {
+        give none<ref rc_inner.RcInner<T>>();
+    }
+
+    give some<ref rc_inner.RcInner<T>>(
+        compiler_raw_as_ref(
+            value.inner
+        )
+    );
+}
+
+proc rc_weak_inner_mut<T>(
+    value: ref mut RcWeak<T>
+) -> Option<ref mut rc_inner.RcInner<T>> {
+    if compiler_raw_ptr_is_null(
+        value.inner
+    ) {
+        give none<ref mut rc_inner.RcInner<T>>();
+    }
+
+    give some<ref mut rc_inner.RcInner<T>>(
+        compiler_raw_as_mut(
+            value.inner
+        )
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Metadata refresh
+// -----------------------------------------------------------------------------
+
+proc rc_refresh<T>(
+    value: ref mut Rc<T>
+) -> bool {
+    let inner =
+        rc_inner_ref(
+            ref *value
+        );
+
+    pick inner {
+        Some(current) {
+            set value.generation =
+                current.generation;
+
+            set value.revision =
+                current.revision;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc rc_weak_refresh<T>(
+    value: ref mut RcWeak<T>
+) -> bool {
+    let inner =
+        rc_weak_inner_ref(
+            ref *value
+        );
+
+    pick inner {
+        Some(current) {
+            set value.generation =
+                current.generation;
+
+            set value.revision =
+                current.revision;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// State
+// -----------------------------------------------------------------------------
+
+proc rc_state<T>(
+    value: ref Rc<T>
+) -> RcState {
+    let inner =
+        rc_inner_ref(
+            value
+        );
+
+    pick inner {
+        Some(current) {
+            if current.generation
+                != value.generation
+            {
+                give RcState.Invalid;
+            }
+
+            pick rc_inner.rc_inner_state(
+                current
+            ) {
+                rc_inner.RcInnerState.Alive {
+                    give RcState.Alive;
+                }
+
+                rc_inner.RcInnerState.WeakOnly {
+                    give RcState.WeakOnly;
+                }
+
+                rc_inner.RcInnerState.Released {
+                    give RcState.Released;
+                }
+
+                rc_inner.RcInnerState.Invalid {
+                    give RcState.Invalid;
+                }
+            }
+        }
+
+        None {
+            give RcState.Invalid;
+        }
+    }
+
+    give RcState.Invalid;
+}
+
+proc rc_weak_state<T>(
+    value: ref RcWeak<T>
+) -> RcState {
+    let inner =
+        rc_weak_inner_ref(
+            value
+        );
+
+    pick inner {
+        Some(current) {
+            if current.generation
+                != value.generation
+            {
+                give RcState.Invalid;
+            }
+
+            pick rc_inner.rc_inner_state(
+                current
+            ) {
+                rc_inner.RcInnerState.Alive {
+                    give RcState.Alive;
+                }
+
+                rc_inner.RcInnerState.WeakOnly {
+                    give RcState.WeakOnly;
+                }
+
+                rc_inner.RcInnerState.Released {
+                    give RcState.Released;
+                }
+
+                rc_inner.RcInnerState.Invalid {
+                    give RcState.Invalid;
+                }
+            }
+        }
+
+        None {
+            give RcState.Invalid;
+        }
+    }
+
+    give RcState.Invalid;
+}
+
+// -----------------------------------------------------------------------------
+// Predicates
+// -----------------------------------------------------------------------------
+
+proc rc_is_alive<T>(
+    value: ref Rc<T>
+) -> bool {
+    give rc_state(value)
+        == RcState.Alive;
+}
+
+proc rc_is_unique<T>(
+    value: ref Rc<T>
+) -> bool {
+    let inner =
+        rc_inner_ref(
+            value
+        );
+
+    pick inner {
+        Some(current) {
+            give rc_inner.rc_inner_is_unique(
+                current
+            );
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc rc_is_shared<T>(
+    value: ref Rc<T>
+) -> bool {
+    let inner =
+        rc_inner_ref(
+            value
+        );
+
+    pick inner {
+        Some(current) {
+            give rc_inner.rc_inner_is_shared(
+                current
+            );
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc rc_is_released<T>(
+    value: ref Rc<T>
+) -> bool {
+    give rc_state(value)
+        == RcState.Released;
+}
+
+proc rc_is_valid<T>(
+    value: ref Rc<T>
+) -> bool {
+    give rc_state(value)
+        != RcState.Invalid;
+}
+
+proc rc_weak_is_expired<T>(
+    value: ref RcWeak<T>
+) -> bool {
+    let inner =
+        rc_weak_inner_ref(
+            value
+        );
+
+    pick inner {
+        Some(current) {
+            give not current.value_alive
+                or rc_inner.rc_inner_strong_count(
+                    current
+                ) == 0;
+        }
+
+        None {
+            give true;
+        }
+    }
+}
+
+proc rc_weak_is_valid<T>(
+    value: ref RcWeak<T>
+) -> bool {
+    give rc_weak_state(value)
+        != RcState.Invalid;
+}
+
+// -----------------------------------------------------------------------------
+// Counts
+// -----------------------------------------------------------------------------
+
+proc rc_strong_count<T>(
+    value: ref Rc<T>
+) -> usize {
+    let inner =
+        rc_inner_ref(
+            value
+        );
+
+    pick inner {
+        Some(current) {
+            give rc_inner.rc_inner_strong_count(
+                current
+            );
+        }
+
+        None {
+            give 0;
+        }
+    }
+}
+
+proc rc_weak_count<T>(
+    value: ref Rc<T>
+) -> usize {
+    let inner =
+        rc_inner_ref(
+            value
+        );
+
+    pick inner {
+        Some(current) {
+            give rc_inner.rc_inner_weak_count(
+                current
+            );
+        }
+
+        None {
+            give 0;
+        }
+    }
+}
+
+proc rc_weak_strong_count<T>(
+    value: ref RcWeak<T>
+) -> usize {
+    let inner =
+        rc_weak_inner_ref(
+            value
+        );
+
+    pick inner {
+        Some(current) {
+            give rc_inner.rc_inner_strong_count(
+                current
+            );
+        }
+
+        None {
+            give 0;
+        }
+    }
+}
+
+proc rc_weak_weak_count<T>(
+    value: ref RcWeak<T>
+) -> usize {
+    let inner =
+        rc_weak_inner_ref(
+            value
+        );
+
+    pick inner {
+        Some(current) {
+            give rc_inner.rc_inner_weak_count(
+                current
+            );
+        }
+
+        None {
+            give 0;
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Clone
+// -----------------------------------------------------------------------------
+
+proc rc_clone<T>(
+    value: Rc<T>
+) -> Rc<T> {
+    let inner =
+        compiler_raw_as_mut(
+            value.inner
+        );
+
+    if not rc_inner.rc_inner_clone_strong(
+        inner
+    ) {
+        give compiler_rc_clone_failure<T>();
+    }
+
+    give Rc<T> {
+        inner:
+            value.inner,
+
+        generation:
+            inner.generation,
+
+        revision:
+            inner.revision
+    };
+}
+
+proc rc_try_clone<T>(
+    value: Rc<T>
+) -> Option<Rc<T>> {
+    if compiler_raw_ptr_is_null(
+        value.inner
+    ) {
+        give none<Rc<T>>();
+    }
+
+    let inner =
+        compiler_raw_as_mut(
+            value.inner
+        );
+
+    if not rc_inner.rc_inner_clone_strong(
+        inner
+    ) {
+        give none<Rc<T>>();
+    }
+
+    give some<Rc<T>>(
+        Rc<T> {
+            inner:
+                value.inner,
+
+            generation:
+                inner.generation,
+
+            revision:
+                inner.revision
+        }
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Read access
+// -----------------------------------------------------------------------------
+
+proc rc_get<T>(
+    value: ref Rc<T>
+) -> ref T {
+    let inner =
+        rc_inner_ref(
+            value
+        );
+
+    pick inner {
+        Some(current) {
+            let result =
+                rc_inner.rc_inner_get(
+                    current
+                );
+
+            pick result {
+                Some(item) {
+                    give item;
+                }
+
+                None {
+                    give compiler_rc_access_failure<T>();
+                }
+            }
+        }
+
+        None {
+            give compiler_rc_access_failure<T>();
+        }
+    }
+}
+
+proc rc_try_get<T>(
+    value: ref Rc<T>
+) -> Option<ref T> {
+    let inner =
+        rc_inner_ref(
+            value
+        );
+
+    pick inner {
+        Some(current) {
+            give rc_inner.rc_inner_get(
+                current
+            );
+        }
+
+        None {
+            give none<ref T>();
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Mutable access
+// -----------------------------------------------------------------------------
+
+proc rc_get_mut<T>(
+    value: ref mut Rc<T>
+) -> Option<ref mut T> {
+    let inner =
+        rc_inner_mut(
+            value
+        );
+
+    pick inner {
+        Some(current) {
+            give rc_inner.rc_inner_get_mut(
+                current
+            );
+        }
+
+        None {
+            give none<ref mut T>();
+        }
+    }
+}
+
+proc rc_is_mutable<T>(
+    value: ref Rc<T>
+) -> bool {
+    give rc_is_unique(
+        value
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Replace
+// -----------------------------------------------------------------------------
+
+proc rc_replace<T>(
+    value: ref mut Rc<T>,
+    item: T
+) -> bool {
+    let inner =
+        rc_inner_mut(
+            value
+        );
+
+    pick inner {
+        Some(current) {
+            let result =
+                rc_inner.rc_inner_replace(
+                    current,
+                    item
+                );
+
+            if result {
+                rc_refresh(
+                    value
+                );
+            }
+
+            give result;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Make mutable
+// -----------------------------------------------------------------------------
+
+proc rc_make_mut<T>(
+    value: ref mut Rc<T>
+) -> ref mut T {
+    let existing =
+        rc_get_mut(
+            value
+        );
+
+    pick existing {
+        Some(item) {
+            give item;
+        }
+
+        None {}
+    }
+
+    let source =
+        rc_get(
+            ref *value
+        );
+
+    let copied =
+        compiler_clone_value(
+            source
+        );
+
+    let replacement =
+        rc_new(
+            copied
+        );
+
+    rc_drop(
+        value
+    );
+
+    set *value =
+        replacement;
+
+    let result =
+        rc_get_mut(
+            value
+        );
+
+    pick result {
+        Some(item) {
+            give item;
+        }
+
+        None {
+            give compiler_rc_mutable_access_failure<T>();
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Downgrade
+// -----------------------------------------------------------------------------
+
+proc rc_downgrade<T>(
+    value: ref Rc<T>
+) -> RcWeak<T> {
+    let inner =
+        compiler_raw_as_mut(
+            value.inner
+        );
+
+    if not rc_inner.rc_inner_downgrade(
+        inner
+    ) {
+        give compiler_rc_downgrade_failure<T>();
+    }
+
+    give RcWeak<T> {
+        inner:
+            value.inner,
+
+        generation:
+            inner.generation,
+
+        revision:
+            inner.revision
+    };
+}
+
+proc rc_try_downgrade<T>(
+    value: ref Rc<T>
+) -> Option<RcWeak<T>> {
+    if compiler_raw_ptr_is_null(
+        value.inner
+    ) {
+        give none<RcWeak<T>>();
+    }
+
+    let inner =
+        compiler_raw_as_mut(
+            value.inner
+        );
+
+    if not rc_inner.rc_inner_downgrade(
+        inner
+    ) {
+        give none<RcWeak<T>>();
+    }
+
+    give some<RcWeak<T>>(
+        RcWeak<T> {
+            inner:
+                value.inner,
+
+            generation:
+                inner.generation,
+
+            revision:
+                inner.revision
+        }
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Weak clone
+// -----------------------------------------------------------------------------
+
+proc rc_weak_clone<T>(
+    value: RcWeak<T>
+) -> RcWeak<T> {
+    let inner =
+        compiler_raw_as_mut(
+            value.inner
+        );
+
+    if not rc_inner.rc_inner_clone_weak(
+        inner
+    ) {
+        give compiler_rc_weak_clone_failure<T>();
+    }
+
+    give RcWeak<T> {
+        inner:
+            value.inner,
+
+        generation:
+            inner.generation,
+
+        revision:
+            inner.revision
+    };
+}
+
+proc rc_weak_try_clone<T>(
+    value: RcWeak<T>
+) -> Option<RcWeak<T>> {
+    if compiler_raw_ptr_is_null(
+        value.inner
+    ) {
+        give none<RcWeak<T>>();
+    }
+
+    let inner =
+        compiler_raw_as_mut(
+            value.inner
+        );
+
+    if not rc_inner.rc_inner_clone_weak(
+        inner
+    ) {
+        give none<RcWeak<T>>();
+    }
+
+    give some<RcWeak<T>>(
+        RcWeak<T> {
+            inner:
+                value.inner,
+
+            generation:
+                inner.generation,
+
+            revision:
+                inner.revision
+        }
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Weak upgrade
+// -----------------------------------------------------------------------------
+
+proc rc_upgrade<T>(
+    value: ref RcWeak<T>
+) -> Option<Rc<T>> {
+    if rc_weak_is_expired(
+        value
+    ) {
+        give none<Rc<T>>();
+    }
+
+    let inner =
+        compiler_raw_as_mut(
+            value.inner
+        );
+
+    if not rc_inner.rc_inner_upgrade(
+        inner
+    ) {
+        give none<Rc<T>>();
+    }
+
+    give some<Rc<T>>(
+        Rc<T> {
+            inner:
+                value.inner,
+
+            generation:
+                inner.generation,
+
+            revision:
+                inner.revision
+        }
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Drop
+// -----------------------------------------------------------------------------
+
+proc rc_drop<T>(
+    value: ref mut Rc<T>
+) -> bool {
+    if compiler_raw_ptr_is_null(
+        value.inner
+    ) {
+        give false;
+    }
+
+    let inner =
+        compiler_raw_as_mut(
+            value.inner
+        );
+
+    let result =
+        rc_inner.rc_inner_drop_strong(
+            inner
+        );
+
+    if not result {
+        give false;
+    }
+
+    set value.generation =
+        inner.generation;
+
+    set value.revision =
+        inner.revision;
+
+    set value.inner =
+        compiler_raw_null();
+
+    give true;
+}
+
+proc rc_weak_drop<T>(
+    value: ref mut RcWeak<T>
+) -> bool {
+    if compiler_raw_ptr_is_null(
+        value.inner
+    ) {
+        give false;
+    }
+
+    let inner =
+        compiler_raw_as_mut(
+            value.inner
+        );
+
+    let result =
+        rc_inner.rc_inner_drop_weak(
+            inner
+        );
+
+    if not result {
+        give false;
+    }
+
+    set value.generation =
+        inner.generation;
+
+    set value.revision =
+        inner.revision;
+
+    set value.inner =
+        compiler_raw_null();
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Pointer identity
+// -----------------------------------------------------------------------------
+
+proc rc_ptr_equal<T>(
+    left: ref Rc<T>,
+    right: ref Rc<T>
+) -> bool {
+    give compiler_raw_ptr_equal(
+        left.inner,
+        right.inner
+    );
+}
+
+proc rc_weak_ptr_equal<T>(
+    left: ref RcWeak<T>,
+    right: ref RcWeak<T>
+) -> bool {
+    give compiler_raw_ptr_equal(
+        left.inner,
+        right.inner
+    );
+}
+
+proc rc_ptr_eq_weak<T>(
+    strong: ref Rc<T>,
+    weak: ref RcWeak<T>
+) -> bool {
+    give compiler_raw_ptr_equal(
+        strong.inner,
+        weak.inner
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Raw conversion
+// -----------------------------------------------------------------------------
+
+proc rc_as_raw<T>(
+    value: ref Rc<T>
+) -> rc_raw.RcRaw<T> {
+    give rc_raw.RcRaw<T> {
+        ptr:
+            value.inner,
+
+        kind:
+            rc_raw.RcRawKind.Strong,
+
+        generation:
+            value.generation,
+
+        revision:
+            value.revision
+    };
+}
+
+proc rc_weak_as_raw<T>(
+    value: ref RcWeak<T>
+) -> rc_raw.RcRaw<T> {
+    give rc_raw.RcRaw<T> {
+        ptr:
+            value.inner,
+
+        kind:
+            rc_raw.RcRawKind.Weak,
+
+        generation:
+            value.generation,
+
+        revision:
+            value.revision
+    };
+}
+
+proc rc_from_raw<T>(
+    raw: rc_raw.RcRaw<T>
+) -> Option<Rc<T>> {
+    if raw.kind
+        != rc_raw.RcRawKind.Strong
+    {
+        give none<Rc<T>>();
+    }
+
+    if not rc_raw.rc_raw_is_valid(
+        raw
+    ) {
+        give none<Rc<T>>();
+    }
+
+    give some<Rc<T>>(
+        Rc<T> {
+            inner:
+                raw.ptr,
+
+            generation:
+                raw.generation,
+
+            revision:
+                raw.revision
+        }
+    );
+}
+
+proc rc_weak_from_raw<T>(
+    raw: rc_raw.RcRaw<T>
+) -> Option<RcWeak<T>> {
+    if raw.kind
+        != rc_raw.RcRawKind.Weak
+    {
+        give none<RcWeak<T>>();
+    }
+
+    if not rc_raw.rc_raw_is_valid(
+        raw
+    ) {
+        give none<RcWeak<T>>();
+    }
+
+    give some<RcWeak<T>>(
+        RcWeak<T> {
+            inner:
+                raw.ptr,
+
+            generation:
+                raw.generation,
+
+            revision:
+                raw.revision
+        }
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Value pointer
+// -----------------------------------------------------------------------------
+
+proc rc_value_ptr<T>(
+    value: ref Rc<T>
+) -> raw ref T {
+    let item =
+        rc_get(
+            value
+        );
+
+    give compiler_ref_as_raw(
+        item
+    );
+}
+
+proc rc_value_ptr_mut<T>(
+    value: ref mut Rc<T>
+) -> Option<raw ref T> {
+    let item =
+        rc_get_mut(
+            value
+        );
+
+    pick item {
+        Some(current) {
+            give some<raw ref T>(
+                compiler_mut_ref_as_raw(
+                    current
+                )
+            );
+        }
+
+        None {
+            give none<raw ref T>();
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+proc rc_validate<T>(
+    value: ref Rc<T>
+) -> RcValidation {
+    let pointer_valid =
+        not compiler_raw_ptr_is_null(
+            value.inner
+        );
+
+    if not pointer_valid {
+        give RcValidation {
+            valid: false,
+            pointer_valid: false,
+            generation_valid: false,
+            inner_valid: false,
+            strong_valid: false,
+            state_valid: false
+        };
+    }
+
+    let inner =
+        compiler_raw_as_ref(
+            value.inner
+        );
+
+    let generation_valid =
+        inner.generation
+            == value.generation;
+
+    let inner_valid =
+        rc_inner.rc_inner_is_valid(
+            inner
+        );
+
+    let strong_valid =
+        rc_inner.rc_inner_strong_count(
+            inner
+        ) > 0;
+
+    let state_valid =
+        rc_state(value)
+            == RcState.Alive;
+
+    give RcValidation {
+        valid:
+            pointer_valid
+            and generation_valid
+            and inner_valid
+            and strong_valid
+            and state_valid,
+
+        pointer_valid:
+            pointer_valid,
+
+        generation_valid:
+            generation_valid,
+
+        inner_valid:
+            inner_valid,
+
+        strong_valid:
+            strong_valid,
+
+        state_valid:
+            state_valid
+    };
+}
+
+proc rc_weak_validate<T>(
+    value: ref RcWeak<T>
+) -> RcWeakValidation {
+    let pointer_valid =
+        not compiler_raw_ptr_is_null(
+            value.inner
+        );
+
+    if not pointer_valid {
+        give RcWeakValidation {
+            valid: false,
+            pointer_valid: false,
+            generation_valid: false,
+            inner_valid: false,
+            weak_valid: false,
+            state_valid: false
+        };
+    }
+
+    let inner =
+        compiler_raw_as_ref(
+            value.inner
+        );
+
+    let generation_valid =
+        inner.generation
+            == value.generation;
+
+    let inner_valid =
+        rc_inner.rc_inner_is_valid(
+            inner
+        );
+
+    let weak_valid =
+        rc_inner.rc_inner_weak_count(
+            inner
+        ) > 0;
+
+    let state =
+        rc_weak_state(
+            value
+        );
+
+    let state_valid =
+        state == RcState.Alive
+        or state == RcState.WeakOnly;
+
+    give RcWeakValidation {
+        valid:
+            pointer_valid
+            and generation_valid
+            and inner_valid
+            and weak_valid
+            and state_valid,
+
+        pointer_valid:
+            pointer_valid,
+
+        generation_valid:
+            generation_valid,
+
+        inner_valid:
+            inner_valid,
+
+        weak_valid:
+            weak_valid,
+
+        state_valid:
+            state_valid
+    };
+}
+
+proc rc_invariant_holds<T>(
+    value: ref Rc<T>
+) -> bool {
+    give rc_validate(
+        value
+    ).valid;
+}
+
+proc rc_weak_invariant_holds<T>(
+    value: ref RcWeak<T>
+) -> bool {
+    give rc_weak_validate(
+        value
+    ).valid;
+}
+
+// -----------------------------------------------------------------------------
+// Error mapping
+// -----------------------------------------------------------------------------
+
+proc rc_error_for<T>(
+    value: ref Rc<T>
+) -> rc_error.RcError {
+    let validation =
+        rc_validate(
+            value
+        );
+
+    if validation.valid {
+        give rc_error.rc_error_none();
+    }
+
+    if not validation.pointer_valid {
+        give rc_error.rc_error_null_pointer();
+    }
+
+    let inner =
+        compiler_raw_as_ref(
+            value.inner
+        );
+
+    if not validation.generation_valid {
+        give rc_error.rc_error_stale_reference(
+            inner.counts
+        );
+    }
+
+    if not validation.inner_valid {
+        give rc_inner.rc_inner_error(
+            inner
+        );
+    }
+
+    if not validation.strong_valid {
+        give rc_error.rc_error_not_alive(
+            inner.counts
+        );
+    }
+
+    give rc_error.rc_error_invalid_rc(
+        inner.counts
+    );
+}
+
+proc rc_weak_error_for<T>(
+    value: ref RcWeak<T>
+) -> rc_error.RcError {
+    let validation =
+        rc_weak_validate(
+            value
+        );
+
+    if validation.valid {
+        give rc_error.rc_error_none();
+    }
+
+    if not validation.pointer_valid {
+        give rc_error.rc_error_null_pointer();
+    }
+
+    let inner =
+        compiler_raw_as_ref(
+            value.inner
+        );
+
+    if not validation.generation_valid {
+        give rc_error.rc_error_stale_reference(
+            inner.counts
+        );
+    }
+
+    if not validation.inner_valid {
+        give rc_inner.rc_inner_error(
+            inner
+        );
+    }
+
+    if not validation.weak_valid {
+        give rc_error.rc_error_clone_weak_failed(
+            inner.counts
+        );
+    }
+
+    give rc_error.rc_error_invalid_rc(
+        inner.counts
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Profile
+// -----------------------------------------------------------------------------
+
+proc rc_profile<T>(
+    value: ref Rc<T>
+) -> RcProfile {
+    let state =
+        rc_state(
+            value
+        );
+
+    let strong =
+        rc_strong_count(
+            value
+        );
+
+    let weak =
+        rc_weak_count(
+            value
+        );
+
+    give RcProfile {
+        strong:
+            strong,
+
+        weak:
+            weak,
+
+        state:
+            state,
+
+        unique:
+            strong == 1
+            and state == RcState.Alive,
+
+        shared:
+            strong > 1
+            and state == RcState.Alive,
+
+        alive:
+            state == RcState.Alive,
+
+        weak_only:
+            state == RcState.WeakOnly,
+
+        released:
+            state == RcState.Released,
+
+        valid:
+            rc_is_valid(
+                value
+            ),
+
+        generation:
+            value.generation,
+
+        revision:
+            value.revision
+    };
+}
+
+proc rc_weak_profile<T>(
+    value: ref RcWeak<T>
+) -> RcWeakProfile {
+    let state =
+        rc_weak_state(
+            value
+        );
+
+    let strong =
+        rc_weak_strong_count(
+            value
+        );
+
+    let weak =
+        rc_weak_weak_count(
+            value
+        );
+
+    give RcWeakProfile {
+        strong:
+            strong,
+
+        weak:
+            weak,
+
+        state:
+            state,
+
+        expired:
+            strong == 0,
+
+        upgradeable:
+            strong > 0
+            and weak > 0
+            and state == RcState.Alive,
+
+        alive:
+            state == RcState.Alive,
+
+        released:
+            state == RcState.Released,
+
+        stale:
+            state == RcState.Invalid,
+
+        valid:
+            rc_weak_is_valid(
+                value
+            ),
+
+        generation:
+            value.generation,
+
+        revision:
+            value.revision
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Snapshot
+// -----------------------------------------------------------------------------
+
+proc rc_snapshot<T>(
+    value: ref Rc<T>
+) -> RcSnapshot {
+    give RcSnapshot {
+        strong:
+            rc_strong_count(
+                value
+            ),
+
+        weak:
+            rc_weak_count(
+                value
+            ),
+
+        state:
+            rc_state(
+                value
+            ),
+
+        generation:
+            value.generation,
+
+        revision:
+            value.revision
+    };
+}
+
+proc rc_weak_snapshot<T>(
+    value: ref RcWeak<T>
+) -> RcSnapshot {
+    give RcSnapshot {
+        strong:
+            rc_weak_strong_count(
+                value
+            ),
+
+        weak:
+            rc_weak_weak_count(
+                value
+            ),
+
+        state:
+            rc_weak_state(
+                value
+            ),
+
+        generation:
+            value.generation,
+
+        revision:
+            value.revision
+    };
+}
+
+proc rc_snapshot_equal(
+    left: RcSnapshot,
+    right: RcSnapshot
+) -> bool {
+    give left.strong == right.strong
+        and left.weak == right.weak
+        and left.state == right.state
+        and left.generation == right.generation
+        and left.revision == right.revision;
+}
+
+proc rc_snapshot_changed(
+    left: RcSnapshot,
+    right: RcSnapshot
+) -> bool {
+    give not rc_snapshot_equal(
+        left,
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Delta
+// -----------------------------------------------------------------------------
+
+proc rc_usize_delta(
+    before: usize,
+    after: usize
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc rc_u64_delta(
+    before: u64,
+    after: u64
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc rc_delta(
+    before: RcSnapshot,
+    after: RcSnapshot
+) -> RcDelta {
+    let strong =
+        rc_usize_delta(
+            before.strong,
+            after.strong
+        );
+
+    let weak =
+        rc_usize_delta(
+            before.weak,
+            after.weak
+        );
+
+    let generation =
+        rc_u64_delta(
+            before.generation,
+            after.generation
+        );
+
+    let revision =
+        rc_u64_delta(
+            before.revision,
+            after.revision
+        );
+
+    let state_changed =
+        before.state
+            != after.state;
+
+    give RcDelta {
+        strong:
+            strong,
+
+        weak:
+            weak,
+
+        generation:
+            generation,
+
+        revision:
+            revision,
+
+        state_changed:
+            state_changed,
+
+        changed:
+            strong != 0
+            or weak != 0
+            or generation != 0
+            or revision != 0
+            or state_changed
+    };
+}
+
+proc rc_delta_is_zero(
+    delta: RcDelta
+) -> bool {
+    give not delta.changed;
+}
+
+// -----------------------------------------------------------------------------
+// Core conversion
+// -----------------------------------------------------------------------------
+
+proc rc_core_counts<T>(
+    value: ref Rc<T>
+) -> rc_core.RcCoreCounts {
+    give rc_core.rc_core_counts(
+        rc_strong_count(value),
+        rc_weak_count(value)
+    );
+}
+
+proc rc_core_profile<T>(
+    value: ref Rc<T>
+) -> rc_core.RcCoreProfile {
+    give rc_core.rc_core_profile(
+        rc_core_counts(
+            value
+        ),
+        rc_core.RcCoreMeta {
+            generation:
+                value.generation,
+
+            revision:
+                value.revision
+        }
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc rc_statistics_empty()
+    -> RcStatistics
+{
+    give RcStatistics {
+        created: 0,
+
+        strong_clones: 0,
+        strong_drops: 0,
+
+        weak_creations: 0,
+        weak_clones: 0,
+        weak_drops: 0,
+
+        upgrades: 0,
+        upgrade_failures: 0,
+
+        reads: 0,
+        writes: 0,
+
+        replacements: 0,
+
+        raw_conversions: 0,
+
+        failures: 0,
+
+        peak_strong: 1,
+        peak_weak: 0
+    };
+}
+
+proc rc_statistics_record_create(
+    statistics: ref mut RcStatistics
+) {
+    set statistics.created =
+        statistics.created + 1;
+}
+
+proc rc_statistics_record_clone<T>(
+    statistics: ref mut RcStatistics,
+    value: ref Rc<T>,
+    success: bool
+) {
+    if success {
+        set statistics.strong_clones =
+            statistics.strong_clones + 1;
+
+        let strong =
+            rc_strong_count(
+                value
+            );
+
+        if strong > statistics.peak_strong {
+            set statistics.peak_strong =
+                strong;
+        }
+    } else {
+        set statistics.failures =
+            statistics.failures + 1;
+    }
+}
+
+proc rc_statistics_record_drop(
+    statistics: ref mut RcStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.strong_drops =
+            statistics.strong_drops + 1;
+    } else {
+        set statistics.failures =
+            statistics.failures + 1;
+    }
+}
+
+proc rc_statistics_record_downgrade<T>(
+    statistics: ref mut RcStatistics,
+    value: ref Rc<T>,
+    success: bool
+) {
+    if success {
+        set statistics.weak_creations =
+            statistics.weak_creations + 1;
+
+        let weak =
+            rc_weak_count(
+                value
+            );
+
+        if weak > statistics.peak_weak {
+            set statistics.peak_weak =
+                weak;
+        }
+    } else {
+        set statistics.failures =
+            statistics.failures + 1;
+    }
+}
+
+proc rc_statistics_record_weak_clone<T>(
+    statistics: ref mut RcStatistics,
+    value: ref RcWeak<T>,
+    success: bool
+) {
+    if success {
+        set statistics.weak_clones =
+            statistics.weak_clones + 1;
+
+        let weak =
+            rc_weak_weak_count(
+                value
+            );
+
+        if weak > statistics.peak_weak {
+            set statistics.peak_weak =
+                weak;
+        }
+    } else {
+        set statistics.failures =
+            statistics.failures + 1;
+    }
+}
+
+proc rc_statistics_record_weak_drop(
+    statistics: ref mut RcStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.weak_drops =
+            statistics.weak_drops + 1;
+    } else {
+        set statistics.failures =
+            statistics.failures + 1;
+    }
+}
+
+proc rc_statistics_record_upgrade<T>(
+    statistics: ref mut RcStatistics,
+    value: ref RcWeak<T>,
+    success: bool
+) {
+    if success {
+        set statistics.upgrades =
+            statistics.upgrades + 1;
+
+        let strong =
+            rc_weak_strong_count(
+                value
+            );
+
+        if strong > statistics.peak_strong {
+            set statistics.peak_strong =
+                strong;
+        }
+    } else {
+        set statistics.upgrade_failures =
+            statistics.upgrade_failures + 1;
+
+        set statistics.failures =
+            statistics.failures + 1;
+    }
+}
+
+proc rc_statistics_record_read(
+    statistics: ref mut RcStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.reads =
+            statistics.reads + 1;
+    } else {
+        set statistics.failures =
+            statistics.failures + 1;
+    }
+}
+
+proc rc_statistics_record_write(
+    statistics: ref mut RcStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.writes =
+            statistics.writes + 1;
+    } else {
+        set statistics.failures =
+            statistics.failures + 1;
+    }
+}
+
+proc rc_statistics_record_replace(
+    statistics: ref mut RcStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.replacements =
+            statistics.replacements + 1;
+    } else {
+        set statistics.failures =
+            statistics.failures + 1;
+    }
+}
+
+proc rc_statistics_record_raw(
+    statistics: ref mut RcStatistics
+) {
+    set statistics.raw_conversions =
+        statistics.raw_conversions + 1;
+}
+
+proc rc_statistics_total(
+    statistics: RcStatistics
+) -> u64 {
+    give statistics.created
+        + statistics.strong_clones
+        + statistics.strong_drops
+        + statistics.weak_creations
+        + statistics.weak_clones
+        + statistics.weak_drops
+        + statistics.upgrades
+        + statistics.upgrade_failures
+        + statistics.reads
+        + statistics.writes
+        + statistics.replacements
+        + statistics.raw_conversions
+        + statistics.failures;
+}
+
+proc rc_statistics_reset(
+    statistics: ref mut RcStatistics
+) {
+    set *statistics =
+        rc_statistics_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc rc_state_name(
+    state: RcState
+) -> string {
+    pick state {
+        RcState.Alive {
+            give "alive";
+        }
+
+        RcState.WeakOnly {
+            give "weak-only";
+        }
+
+        RcState.Released {
+            give "released";
+        }
+
+        RcState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+// -----------------------------------------------------------------------------
+// Rc model
+// -----------------------------------------------------------------------------
+//
+// Public Rc<T>:
+//
+//     Rc<T>
+//       |
+//       v
+//
+//     RcInner<T>
+//     +-----------------------------+
+//     | value: T                    |
+//     | strong                      |
+//     | weak                        |
+//     | value_alive                 |
+//     | allocation_alive            |
+//     +-----------------------------+
+//
+// Creation:
+//
+//     rc_new(value)
+//
+//         strong = 1
+//         weak   = 0
+//
+// Clone:
+//
+//     let b = rc_clone(a)
+//
+//         strong++
+//
+// Downgrade:
+//
+//     let weak = rc_downgrade(ref a)
+//
+//         weak++
+//
+// Upgrade:
+//
+//     rc_upgrade(ref weak)
+//
+//         if strong > 0
+//             strong++
+//             Some(Rc)
+//         else
+//             None
+//
+// Strong drop:
+//
+//     strong--
+//
+// Final strong drop:
+//
+//     strong: 1 -> 0
+//
+//     T is destroyed.
+//
+// If weak references remain:
+//
+//     strong = 0
+//     weak   > 0
+//
+//     control block remains alive.
+//
+// Final weak drop:
+//
+//     strong = 0
+//     weak   = 0
+//
+//     control block allocation may be released.
+//
+// -----------------------------------------------------------------------------
+//
+// Unique mutable access:
+//
+//     strong == 1
+//
+// Shared access:
+//
+//     strong > 0
+//
+// Example:
+//
+//     let mut value = rc_new(42);
+//
+//     let item = rc_get_mut(
+//         ref mut value
+//     );
+//
+// Clone:
+//
+//     let copy = rc_clone(value);
+//
+// Now:
+//
+//     strong == 2
+//
+// and mutable access is denied.
+//
+// -----------------------------------------------------------------------------
+//
+// Weak references prevent cycles from keeping values alive:
+//
+//     Rc<A> -> Rc<B>
+//       ^        |
+//       |        |
+//       +--Weak--+
+//
+// A Weak reference does not contribute to strong ownership.
+//
+// -----------------------------------------------------------------------------
+//
+// Stale/reference protection:
+//
+//     Rc and RcWeak store:
+//
+//         control-block pointer
+//         generation snapshot
+//         revision snapshot
+//
+// If the control block generation changes:
+//
+//     handle generation != inner generation
+//
+// the reference is considered stale/invalid.
+//
+// -----------------------------------------------------------------------------
+//
+// Rc is single-threaded reference counting.
+//
+// It does not provide atomic reference count operations.
+//
+// For cross-thread shared ownership use:
+//
+//     alloc/arc
+//
+// Rc:
+//     non-atomic strong/weak counters
+//
+// Arc:
+//     atomic strong/weak counters
+//
+// -----------------------------------------------------------------------------
+//
+// Modules:
+//
+//     rc.vitl
+//         public Rc/RcWeak API
+//
+//     core.vitl
+//         pure lifecycle model
+//
+//     count.vitl
+//         concrete strong/weak counters
+//
+//     inner.vitl
+//         control block
+//
+//     raw.vitl
+//         raw pointer boundary
+//
+//     error.vitl
+//         error model
+//
+// Fundamental invariants:
+//
+//     strong > 0
+//         => value alive
+//
+//     strong == 0
+//         => value dropped
+//
+//     weak > 0
+//         may keep control block alive
+//
+//     strong == 0 && weak == 0
+//         => control block releasable
+//
+//     mutable access
+//         => strong == 1
+//
+//     upgrade weak
+//         => strong > 0
+//
+// Rc is intentionally non-atomic and optimized for local ownership graphs.

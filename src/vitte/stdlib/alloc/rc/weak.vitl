@@ -1,0 +1,1431 @@
+space vitte/stdlib/alloc/rc/weak
+
+export *
+
+use src/vitte/stdlib/alloc/rc/rc as rc
+use src/vitte/stdlib/alloc/rc/core as rc_core
+use src/vitte/stdlib/alloc/rc/count as rc_count
+use src/vitte/stdlib/alloc/rc/error as rc_error
+use src/vitte/stdlib/alloc/rc/inner as rc_inner
+use src/vitte/stdlib/alloc/rc/raw as rc_raw
+use src/vitte/stdlib/core/option as core_option
+
+pick RcWeakState {
+    Alive,
+    Expired,
+    WeakOnly,
+    Released,
+    Stale,
+    Invalid
+}
+
+pick RcWeakAccess {
+    None,
+    Upgrade
+}
+
+form RcWeak<T> {
+    value: rc.RcWeak<T>
+}
+
+form RcWeakProfile {
+    strong: usize
+    weak: usize
+
+    state: RcWeakState
+    access: RcWeakAccess
+
+    alive: bool
+    expired: bool
+    weak_only: bool
+    released: bool
+    stale: bool
+    upgradeable: bool
+    valid: bool
+
+    generation: u64
+    revision: u64
+}
+
+form RcWeakValidation {
+    valid: bool
+
+    rc_valid: bool
+    weak_count_valid: bool
+    generation_valid: bool
+    state_valid: bool
+    access_valid: bool
+}
+
+form RcWeakSnapshot {
+    strong: usize
+    weak: usize
+
+    state: RcWeakState
+
+    generation: u64
+    revision: u64
+}
+
+form RcWeakDelta {
+    strong: int
+    weak: int
+
+    generation: int
+    revision: int
+
+    state_changed: bool
+    changed: bool
+}
+
+form RcWeakStatistics {
+    creations: u64
+
+    clones: u64
+    clone_failures: u64
+
+    drops: u64
+    drop_failures: u64
+
+    upgrades: u64
+    upgrade_failures: u64
+
+    expiration_checks: u64
+
+    raw_conversions: u64
+
+    validations: u64
+    validation_failures: u64
+
+    peak_strong: usize
+    peak_weak: usize
+}
+
+// -----------------------------------------------------------------------------
+// Construction
+// -----------------------------------------------------------------------------
+
+proc rc_weak_from_rc<T>(
+    value: rc.RcWeak<T>
+) -> RcWeak<T> {
+    give RcWeak<T> {
+        value: value
+    };
+}
+
+proc rc_weak_from_strong<T>(
+    value: ref rc.Rc<T>
+) -> RcWeak<T> {
+    give RcWeak<T> {
+        value:
+            rc.rc_downgrade(
+                value
+            )
+    };
+}
+
+proc rc_weak_try_from_strong<T>(
+    value: ref rc.Rc<T>
+) -> Option<RcWeak<T>> {
+    let result =
+        rc.rc_try_downgrade(
+            value
+        );
+
+    pick result {
+        Some(weak) {
+            give some<RcWeak<T>>(
+                RcWeak<T> {
+                    value: weak
+                }
+            );
+        }
+
+        None {
+            give none<RcWeak<T>>();
+        }
+    }
+}
+
+proc rc_weak_into_rc<T>(
+    value: RcWeak<T>
+) -> rc.RcWeak<T> {
+    give value.value;
+}
+
+// -----------------------------------------------------------------------------
+// Accessors
+// -----------------------------------------------------------------------------
+
+proc rc_weak_rc<T>(
+    value: ref RcWeak<T>
+) -> ref rc.RcWeak<T> {
+    give ref value.value;
+}
+
+proc rc_weak_rc_mut<T>(
+    value: ref mut RcWeak<T>
+) -> ref mut rc.RcWeak<T> {
+    give ref mut value.value;
+}
+
+proc rc_weak_strong_count<T>(
+    value: ref RcWeak<T>
+) -> usize {
+    give rc.rc_weak_strong_count(
+        ref value.value
+    );
+}
+
+proc rc_weak_count<T>(
+    value: ref RcWeak<T>
+) -> usize {
+    give rc.rc_weak_weak_count(
+        ref value.value
+    );
+}
+
+proc rc_weak_generation<T>(
+    value: ref RcWeak<T>
+) -> u64 {
+    give value.value.generation;
+}
+
+proc rc_weak_revision<T>(
+    value: ref RcWeak<T>
+) -> u64 {
+    give value.value.revision;
+}
+
+// -----------------------------------------------------------------------------
+// State
+// -----------------------------------------------------------------------------
+
+proc rc_weak_state<T>(
+    value: ref RcWeak<T>
+) -> RcWeakState {
+    if compiler_raw_ptr_is_null(
+        value.value.inner
+    ) {
+        give RcWeakState.Released;
+    }
+
+    let validation =
+        rc.rc_weak_validate(
+            ref value.value
+        );
+
+    if not validation.pointer_valid {
+        give RcWeakState.Invalid;
+    }
+
+    if not validation.generation_valid {
+        give RcWeakState.Stale;
+    }
+
+    let strong =
+        rc_weak_strong_count(
+            value
+        );
+
+    let weak =
+        rc_weak_count(
+            value
+        );
+
+    if weak == 0 {
+        give RcWeakState.Released;
+    }
+
+    if strong > 0 {
+        give RcWeakState.Alive;
+    }
+
+    let base =
+        rc.rc_weak_state(
+            ref value.value
+        );
+
+    if base == rc.RcState.WeakOnly {
+        give RcWeakState.WeakOnly;
+    }
+
+    if strong == 0 {
+        give RcWeakState.Expired;
+    }
+
+    give RcWeakState.Invalid;
+}
+
+proc rc_weak_access<T>(
+    value: ref RcWeak<T>
+) -> RcWeakAccess {
+    let state =
+        rc_weak_state(
+            value
+        );
+
+    if state == RcWeakState.Alive {
+        give RcWeakAccess.Upgrade;
+    }
+
+    give RcWeakAccess.None;
+}
+
+// -----------------------------------------------------------------------------
+// Predicates
+// -----------------------------------------------------------------------------
+
+proc rc_weak_is_alive<T>(
+    value: ref RcWeak<T>
+) -> bool {
+    give rc_weak_state(value)
+        == RcWeakState.Alive;
+}
+
+proc rc_weak_is_expired<T>(
+    value: ref RcWeak<T>
+) -> bool {
+    let state =
+        rc_weak_state(
+            value
+        );
+
+    give state == RcWeakState.Expired
+        or state == RcWeakState.WeakOnly;
+}
+
+proc rc_weak_is_weak_only<T>(
+    value: ref RcWeak<T>
+) -> bool {
+    give rc_weak_state(value)
+        == RcWeakState.WeakOnly;
+}
+
+proc rc_weak_is_released<T>(
+    value: ref RcWeak<T>
+) -> bool {
+    give rc_weak_state(value)
+        == RcWeakState.Released;
+}
+
+proc rc_weak_is_stale<T>(
+    value: ref RcWeak<T>
+) -> bool {
+    give rc_weak_state(value)
+        == RcWeakState.Stale;
+}
+
+proc rc_weak_is_valid<T>(
+    value: ref RcWeak<T>
+) -> bool {
+    let state =
+        rc_weak_state(
+            value
+        );
+
+    give state != RcWeakState.Invalid
+        and state != RcWeakState.Stale
+        and state != RcWeakState.Released;
+}
+
+proc rc_weak_can_upgrade<T>(
+    value: ref RcWeak<T>
+) -> bool {
+    give rc_weak_access(value)
+        == RcWeakAccess.Upgrade;
+}
+
+// -----------------------------------------------------------------------------
+// Clone
+// -----------------------------------------------------------------------------
+
+proc rc_weak_clone<T>(
+    value: RcWeak<T>
+) -> RcWeak<T> {
+    give RcWeak<T> {
+        value:
+            rc.rc_weak_clone(
+                value.value
+            )
+    };
+}
+
+proc rc_weak_try_clone<T>(
+    value: RcWeak<T>
+) -> Option<RcWeak<T>> {
+    let result =
+        rc.rc_weak_try_clone(
+            value.value
+        );
+
+    pick result {
+        Some(copy) {
+            give some<RcWeak<T>>(
+                RcWeak<T> {
+                    value: copy
+                }
+            );
+        }
+
+        None {
+            give none<RcWeak<T>>();
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Upgrade
+// -----------------------------------------------------------------------------
+
+proc rc_weak_upgrade<T>(
+    value: ref RcWeak<T>
+) -> Option<rc.Rc<T>> {
+    give rc.rc_upgrade(
+        ref value.value
+    );
+}
+
+proc rc_weak_upgrade_strong<T>(
+    value: ref RcWeak<T>
+) -> Option<rc.Rc<T>> {
+    give rc_weak_upgrade(
+        value
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Expiration
+// -----------------------------------------------------------------------------
+
+proc rc_weak_expired<T>(
+    value: ref RcWeak<T>
+) -> bool {
+    give rc_weak_is_expired(
+        value
+    );
+}
+
+proc rc_weak_upgradeable<T>(
+    value: ref RcWeak<T>
+) -> bool {
+    give rc_weak_can_upgrade(
+        value
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Drop
+// -----------------------------------------------------------------------------
+
+proc rc_weak_drop<T>(
+    value: ref mut RcWeak<T>
+) -> bool {
+    give rc.rc_weak_drop(
+        ref mut value.value
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Pointer identity
+// -----------------------------------------------------------------------------
+
+proc rc_weak_ptr_equal<T>(
+    left: ref RcWeak<T>,
+    right: ref RcWeak<T>
+) -> bool {
+    give rc.rc_weak_ptr_equal(
+        ref left.value,
+        ref right.value
+    );
+}
+
+proc rc_weak_same_allocation<T>(
+    left: ref RcWeak<T>,
+    right: ref RcWeak<T>
+) -> bool {
+    give rc_weak_ptr_equal(
+        left,
+        right
+    );
+}
+
+proc rc_weak_ptr_equal_strong<T>(
+    weak: ref RcWeak<T>,
+    strong: ref rc.Rc<T>
+) -> bool {
+    give rc.rc_ptr_eq_weak(
+        strong,
+        ref weak.value
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Raw conversion
+// -----------------------------------------------------------------------------
+
+proc rc_weak_as_raw<T>(
+    value: ref RcWeak<T>
+) -> rc_raw.RcRaw<T> {
+    give rc.rc_weak_as_raw(
+        ref value.value
+    );
+}
+
+proc rc_weak_from_raw<T>(
+    raw: rc_raw.RcRaw<T>
+) -> Option<RcWeak<T>> {
+    let result =
+        rc.rc_weak_from_raw(
+            raw
+        );
+
+    pick result {
+        Some(value) {
+            give some<RcWeak<T>>(
+                RcWeak<T> {
+                    value: value
+                }
+            );
+        }
+
+        None {
+            give none<RcWeak<T>>();
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Refresh
+// -----------------------------------------------------------------------------
+
+proc rc_weak_refresh<T>(
+    value: ref mut RcWeak<T>
+) -> bool {
+    give rc.rc_weak_refresh(
+        ref mut value.value
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+proc rc_weak_validate<T>(
+    value: ref RcWeak<T>
+) -> RcWeakValidation {
+    let base =
+        rc.rc_weak_validate(
+            ref value.value
+        );
+
+    let rc_valid =
+        base.valid;
+
+    let weak_count =
+        rc_weak_count(
+            value
+        );
+
+    let weak_count_valid =
+        weak_count > 0;
+
+    let generation_valid =
+        base.generation_valid;
+
+    let state =
+        rc_weak_state(
+            value
+        );
+
+    let state_valid =
+        state == RcWeakState.Alive
+        or state == RcWeakState.Expired
+        or state == RcWeakState.WeakOnly;
+
+    let access =
+        rc_weak_access(
+            value
+        );
+
+    let access_valid =
+        if rc_weak_strong_count(value) > 0 {
+            access == RcWeakAccess.Upgrade
+        } else {
+            access == RcWeakAccess.None
+        };
+
+    give RcWeakValidation {
+        valid:
+            rc_valid
+            and weak_count_valid
+            and generation_valid
+            and state_valid
+            and access_valid,
+
+        rc_valid:
+            rc_valid,
+
+        weak_count_valid:
+            weak_count_valid,
+
+        generation_valid:
+            generation_valid,
+
+        state_valid:
+            state_valid,
+
+        access_valid:
+            access_valid
+    };
+}
+
+proc rc_weak_invariant_holds<T>(
+    value: ref RcWeak<T>
+) -> bool {
+    give rc_weak_validate(
+        value
+    ).valid;
+}
+
+// -----------------------------------------------------------------------------
+// Error
+// -----------------------------------------------------------------------------
+
+proc rc_weak_error<T>(
+    value: ref RcWeak<T>
+) -> rc_error.RcError {
+    let validation =
+        rc_weak_validate(
+            value
+        );
+
+    if validation.valid {
+        give rc_error.rc_error_none();
+    }
+
+    if not validation.rc_valid {
+        give rc.rc_weak_error_for(
+            ref value.value
+        );
+    }
+
+    if not validation.weak_count_valid {
+        let inner =
+            rc.rc_weak_inner_ref(
+                ref value.value
+            );
+
+        pick inner {
+            Some(current) {
+                give rc_error.rc_error_invalid_weak_count(
+                    current.counts
+                );
+            }
+
+            None {
+                give rc_error.rc_error_null_pointer();
+            }
+        }
+    }
+
+    if not validation.generation_valid {
+        let inner =
+            rc.rc_weak_inner_ref(
+                ref value.value
+            );
+
+        pick inner {
+            Some(current) {
+                give rc_error.rc_error_stale_reference(
+                    current.counts
+                );
+            }
+
+            None {
+                give rc_error.rc_error_invalid_pointer();
+            }
+        }
+    }
+
+    if not validation.state_valid {
+        let inner =
+            rc.rc_weak_inner_ref(
+                ref value.value
+            );
+
+        pick inner {
+            Some(current) {
+                give rc_error.rc_error_invalid_state(
+                    current.counts
+                );
+            }
+
+            None {
+                give rc_error.rc_error_invalid_pointer();
+            }
+        }
+    }
+
+    if not validation.access_valid {
+        let inner =
+            rc.rc_weak_inner_ref(
+                ref value.value
+            );
+
+        pick inner {
+            Some(current) {
+                give rc_error.rc_error_invalid_access(
+                    current.counts
+                );
+            }
+
+            None {
+                give rc_error.rc_error_invalid_pointer();
+            }
+        }
+    }
+
+    give rc_error.rc_error_internal(
+        "unknown rc weak validation failure"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Profile
+// -----------------------------------------------------------------------------
+
+proc rc_weak_profile<T>(
+    value: ref RcWeak<T>
+) -> RcWeakProfile {
+    let state =
+        rc_weak_state(
+            value
+        );
+
+    let strong =
+        rc_weak_strong_count(
+            value
+        );
+
+    let weak =
+        rc_weak_count(
+            value
+        );
+
+    give RcWeakProfile {
+        strong:
+            strong,
+
+        weak:
+            weak,
+
+        state:
+            state,
+
+        access:
+            rc_weak_access(
+                value
+            ),
+
+        alive:
+            state == RcWeakState.Alive,
+
+        expired:
+            state == RcWeakState.Expired
+            or state == RcWeakState.WeakOnly,
+
+        weak_only:
+            state == RcWeakState.WeakOnly,
+
+        released:
+            state == RcWeakState.Released,
+
+        stale:
+            state == RcWeakState.Stale,
+
+        upgradeable:
+            strong > 0
+            and weak > 0
+            and state == RcWeakState.Alive,
+
+        valid:
+            rc_weak_is_valid(
+                value
+            ),
+
+        generation:
+            rc_weak_generation(
+                value
+            ),
+
+        revision:
+            rc_weak_revision(
+                value
+            )
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Snapshot
+// -----------------------------------------------------------------------------
+
+proc rc_weak_snapshot<T>(
+    value: ref RcWeak<T>
+) -> RcWeakSnapshot {
+    give RcWeakSnapshot {
+        strong:
+            rc_weak_strong_count(
+                value
+            ),
+
+        weak:
+            rc_weak_count(
+                value
+            ),
+
+        state:
+            rc_weak_state(
+                value
+            ),
+
+        generation:
+            rc_weak_generation(
+                value
+            ),
+
+        revision:
+            rc_weak_revision(
+                value
+            )
+    };
+}
+
+proc rc_weak_snapshot_equal(
+    left: RcWeakSnapshot,
+    right: RcWeakSnapshot
+) -> bool {
+    give left.strong == right.strong
+        and left.weak == right.weak
+        and left.state == right.state
+        and left.generation == right.generation
+        and left.revision == right.revision;
+}
+
+proc rc_weak_snapshot_changed(
+    left: RcWeakSnapshot,
+    right: RcWeakSnapshot
+) -> bool {
+    give not rc_weak_snapshot_equal(
+        left,
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Delta
+// -----------------------------------------------------------------------------
+
+proc rc_weak_usize_delta(
+    before: usize,
+    after: usize
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc rc_weak_u64_delta(
+    before: u64,
+    after: u64
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc rc_weak_delta(
+    before: RcWeakSnapshot,
+    after: RcWeakSnapshot
+) -> RcWeakDelta {
+    let strong =
+        rc_weak_usize_delta(
+            before.strong,
+            after.strong
+        );
+
+    let weak =
+        rc_weak_usize_delta(
+            before.weak,
+            after.weak
+        );
+
+    let generation =
+        rc_weak_u64_delta(
+            before.generation,
+            after.generation
+        );
+
+    let revision =
+        rc_weak_u64_delta(
+            before.revision,
+            after.revision
+        );
+
+    let state_changed =
+        before.state != after.state;
+
+    give RcWeakDelta {
+        strong:
+            strong,
+
+        weak:
+            weak,
+
+        generation:
+            generation,
+
+        revision:
+            revision,
+
+        state_changed:
+            state_changed,
+
+        changed:
+            strong != 0
+            or weak != 0
+            or generation != 0
+            or revision != 0
+            or state_changed
+    };
+}
+
+proc rc_weak_delta_is_zero(
+    delta: RcWeakDelta
+) -> bool {
+    give not delta.changed;
+}
+
+// -----------------------------------------------------------------------------
+// Core conversion
+// -----------------------------------------------------------------------------
+
+proc rc_weak_core_counts<T>(
+    value: ref RcWeak<T>
+) -> rc_core.RcCoreCounts {
+    give rc_core.rc_core_counts(
+        rc_weak_strong_count(value),
+        rc_weak_count(value)
+    );
+}
+
+proc rc_weak_core_state<T>(
+    value: ref RcWeak<T>
+) -> rc_core.RcCoreState {
+    give rc_core.rc_core_state(
+        rc_weak_core_counts(
+            value
+        )
+    );
+}
+
+proc rc_weak_core_profile<T>(
+    value: ref RcWeak<T>
+) -> rc_core.RcCoreProfile {
+    give rc_core.rc_core_profile(
+        rc_weak_core_counts(
+            value
+        ),
+        rc_core.RcCoreMeta {
+            generation:
+                rc_weak_generation(
+                    value
+                ),
+
+            revision:
+                rc_weak_revision(
+                    value
+                )
+        }
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Count conversion
+// -----------------------------------------------------------------------------
+
+proc rc_weak_count_pair<T>(
+    value: ref RcWeak<T>
+) -> rc_count.RcCountPair {
+    let inner =
+        rc.rc_weak_inner_ref(
+            ref value.value
+        );
+
+    pick inner {
+        Some(current) {
+            give current.counts;
+        }
+
+        None {
+            give rc_count.rc_count_pair(
+                0,
+                0
+            );
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc rc_weak_statistics_empty()
+    -> RcWeakStatistics
+{
+    give RcWeakStatistics {
+        creations: 0,
+
+        clones: 0,
+        clone_failures: 0,
+
+        drops: 0,
+        drop_failures: 0,
+
+        upgrades: 0,
+        upgrade_failures: 0,
+
+        expiration_checks: 0,
+
+        raw_conversions: 0,
+
+        validations: 0,
+        validation_failures: 0,
+
+        peak_strong: 1,
+        peak_weak: 1
+    };
+}
+
+proc rc_weak_statistics_record_create<T>(
+    statistics: ref mut RcWeakStatistics,
+    value: ref RcWeak<T>
+) {
+    set statistics.creations =
+        statistics.creations + 1;
+
+    let strong =
+        rc_weak_strong_count(
+            value
+        );
+
+    let weak =
+        rc_weak_count(
+            value
+        );
+
+    if strong > statistics.peak_strong {
+        set statistics.peak_strong =
+            strong;
+    }
+
+    if weak > statistics.peak_weak {
+        set statistics.peak_weak =
+            weak;
+    }
+}
+
+proc rc_weak_statistics_record_clone<T>(
+    statistics: ref mut RcWeakStatistics,
+    value: ref RcWeak<T>,
+    success: bool
+) {
+    if success {
+        set statistics.clones =
+            statistics.clones + 1;
+
+        let weak =
+            rc_weak_count(
+                value
+            );
+
+        if weak > statistics.peak_weak {
+            set statistics.peak_weak =
+                weak;
+        }
+    } else {
+        set statistics.clone_failures =
+            statistics.clone_failures + 1;
+    }
+}
+
+proc rc_weak_statistics_record_drop(
+    statistics: ref mut RcWeakStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.drops =
+            statistics.drops + 1;
+    } else {
+        set statistics.drop_failures =
+            statistics.drop_failures + 1;
+    }
+}
+
+proc rc_weak_statistics_record_upgrade<T>(
+    statistics: ref mut RcWeakStatistics,
+    value: ref RcWeak<T>,
+    success: bool
+) {
+    if success {
+        set statistics.upgrades =
+            statistics.upgrades + 1;
+
+        let strong =
+            rc_weak_strong_count(
+                value
+            );
+
+        if strong > statistics.peak_strong {
+            set statistics.peak_strong =
+                strong;
+        }
+    } else {
+        set statistics.upgrade_failures =
+            statistics.upgrade_failures + 1;
+    }
+}
+
+proc rc_weak_statistics_record_expiration(
+    statistics: ref mut RcWeakStatistics
+) {
+    set statistics.expiration_checks =
+        statistics.expiration_checks + 1;
+}
+
+proc rc_weak_statistics_record_raw(
+    statistics: ref mut RcWeakStatistics
+) {
+    set statistics.raw_conversions =
+        statistics.raw_conversions + 1;
+}
+
+proc rc_weak_statistics_record_validation(
+    statistics: ref mut RcWeakStatistics,
+    valid: bool
+) {
+    set statistics.validations =
+        statistics.validations + 1;
+
+    if not valid {
+        set statistics.validation_failures =
+            statistics.validation_failures + 1;
+    }
+}
+
+proc rc_weak_statistics_total(
+    statistics: RcWeakStatistics
+) -> u64 {
+    give statistics.creations
+        + statistics.clones
+        + statistics.clone_failures
+        + statistics.drops
+        + statistics.drop_failures
+        + statistics.upgrades
+        + statistics.upgrade_failures
+        + statistics.expiration_checks
+        + statistics.raw_conversions
+        + statistics.validations
+        + statistics.validation_failures;
+}
+
+proc rc_weak_statistics_reset(
+    statistics: ref mut RcWeakStatistics
+) {
+    set *statistics =
+        rc_weak_statistics_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc rc_weak_state_name(
+    state: RcWeakState
+) -> string {
+    pick state {
+        RcWeakState.Alive {
+            give "alive";
+        }
+
+        RcWeakState.Expired {
+            give "expired";
+        }
+
+        RcWeakState.WeakOnly {
+            give "weak-only";
+        }
+
+        RcWeakState.Released {
+            give "released";
+        }
+
+        RcWeakState.Stale {
+            give "stale";
+        }
+
+        RcWeakState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+proc rc_weak_access_name(
+    access: RcWeakAccess
+) -> string {
+    pick access {
+        RcWeakAccess.None {
+            give "none";
+        }
+
+        RcWeakAccess.Upgrade {
+            give "upgrade";
+        }
+    }
+
+    give "none";
+}
+
+// -----------------------------------------------------------------------------
+// Weak Rc model
+// -----------------------------------------------------------------------------
+//
+// RcWeak<T> does not keep the managed value alive.
+//
+// It keeps only the Rc control block alive.
+//
+// Initial strong ownership:
+//
+//     strong = 1
+//     weak   = 0
+//
+// Downgrade:
+//
+//     Rc<T>
+//       |
+//       | downgrade
+//       v
+//
+//     RcWeak<T>
+//
+//     weak++
+//
+// -----------------------------------------------------------------------------
+//
+// While strong references exist:
+//
+//     strong > 0
+//     weak   > 0
+//
+// the weak reference is:
+//
+//     Alive
+//     Upgradeable
+//
+// Upgrade:
+//
+//     RcWeak<T>
+//        |
+//        | strong > 0
+//        v
+//
+//     Some(Rc<T>)
+//
+// This increments:
+//
+//     strong++
+//
+// -----------------------------------------------------------------------------
+//
+// Final strong drop:
+//
+//     strong: 1 -> 0
+//
+// The managed T is destroyed.
+//
+// Weak references may remain:
+//
+//     strong = 0
+//     weak   > 0
+//
+// State:
+//
+//     WeakOnly / Expired
+//
+// Upgrade now returns:
+//
+//     None
+//
+// The control block stays allocated so weak references can observe expiration.
+//
+// -----------------------------------------------------------------------------
+//
+// Final weak drop:
+//
+//     strong = 0
+//     weak: 1 -> 0
+//
+// The control block can then be released.
+//
+// -----------------------------------------------------------------------------
+//
+// Weak clone:
+//
+//     weak++
+//
+// Weak drop:
+//
+//     weak--
+//
+// Weak references never grant direct value access.
+//
+// There is deliberately no:
+//
+//     rc_weak_get
+//     rc_weak_get_mut
+//
+// A weak reference must first be upgraded:
+//
+//     let strong = rc_weak_upgrade(ref weak);
+//
+//     pick strong {
+//         Some(value) {
+//             ...
+//         }
+//
+//         None {
+//             // value expired
+//         }
+//     }
+//
+// -----------------------------------------------------------------------------
+//
+// Pointer identity:
+//
+//     weak references can test whether they refer to the same allocation:
+//
+//     rc_weak_ptr_equal(a, b)
+//
+// A weak and strong reference can also be compared:
+//
+//     rc_weak_ptr_equal_strong(
+//         ref weak,
+//         ref strong
+//     )
+//
+// -----------------------------------------------------------------------------
+//
+// Stale protection:
+//
+//     RcWeak stores:
+//
+//         control-block pointer
+//         generation
+//         revision
+//
+// If:
+//
+//     weak.generation != control.generation
+//
+// the weak reference is stale.
+//
+// -----------------------------------------------------------------------------
+//
+// Core invariants:
+//
+//     weak reference exists
+//         => weak > 0
+//
+//     upgradeable
+//         => strong > 0
+//
+//     expired
+//         => strong == 0
+//
+//     weak-only
+//         => strong == 0
+//            weak > 0
+//
+//     control block releasable
+//         => strong == 0
+//            weak == 0
+//
+// -----------------------------------------------------------------------------
+//
+// Weak references are the primary mechanism for breaking Rc ownership cycles:
+//
+//     Parent
+//       |
+//       | Rc
+//       v
+//     Child
+//       |
+//       | Weak
+//       v
+//     Parent
+//
+// Without Weak:
+//
+//     A -> Rc<B>
+//     B -> Rc<A>
+//
+// both strong counters can remain above zero forever.
+//
+// With Weak:
+//
+//     A -> Rc<B>
+//     B -> Weak<A>
+//
+// dropping external strong references can destroy both values.
+//
+// -----------------------------------------------------------------------------
+//
+// Module responsibilities:
+//
+//     weak.vitl
+//         explicit weak-reference API
+//
+//     strong.vitl
+//         explicit strong-reference API
+//
+//     rc.vitl
+//         public Rc/RcWeak API
+//
+//     inner.vitl
+//         concrete control block
+//
+//     count.vitl
+//         strong/weak counters
+//
+//     core.vitl
+//         pure lifecycle state
+//
+//     raw.vitl
+//         raw-pointer boundary
+//
+//     error.vitl
+//         diagnostics and failures

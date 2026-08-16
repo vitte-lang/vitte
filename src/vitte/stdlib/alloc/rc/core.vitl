@@ -1,0 +1,1415 @@
+space vitte/stdlib/alloc/rc/core
+
+export *
+
+const RC_CORE_MIN_STRONG: usize = 1;
+
+pick RcCoreState {
+    Alive,
+    WeakOnly,
+    Dropped,
+    Invalid
+}
+
+pick RcCoreOwnership {
+    Unique,
+    Shared,
+    Dead
+}
+
+pick RcCoreAccess {
+    None,
+    Read,
+    ReadWrite
+}
+
+pick RcCoreTransitionKind {
+    None,
+    CloneStrong,
+    DropStrong,
+    CloneWeak,
+    DropWeak,
+    UpgradeWeak,
+    DowngradeStrong,
+    DropValue,
+    ReleaseAllocation,
+    Touch,
+    Invalidate
+}
+
+pick RcCoreOrdering {
+    Less,
+    Equal,
+    Greater
+}
+
+form RcCoreCounts {
+    strong: usize
+    weak: usize
+}
+
+form RcCoreMeta {
+    generation: u64
+    revision: u64
+}
+
+form RcCoreInfo {
+    state: RcCoreState
+    ownership: RcCoreOwnership
+    access: RcCoreAccess
+
+    alive: bool
+    unique: bool
+    shared: bool
+    weak_only: bool
+    dropped: bool
+    valid: bool
+}
+
+form RcCoreProfile {
+    counts: RcCoreCounts
+    meta: RcCoreMeta
+    info: RcCoreInfo
+}
+
+form RcCoreSnapshot {
+    strong: usize
+    weak: usize
+
+    state: RcCoreState
+    ownership: RcCoreOwnership
+
+    generation: u64
+    revision: u64
+}
+
+form RcCoreDelta {
+    strong: int
+    weak: int
+
+    generation: int
+    revision: int
+
+    state_changed: bool
+    ownership_changed: bool
+    changed: bool
+}
+
+form RcCoreTransition {
+    before: RcCoreSnapshot
+    after: RcCoreSnapshot
+
+    kind: RcCoreTransitionKind
+
+    valid: bool
+}
+
+form RcCoreValidation {
+    valid: bool
+
+    counts_valid: bool
+    state_valid: bool
+    ownership_valid: bool
+    access_valid: bool
+    generation_valid: bool
+}
+
+form RcCoreStatistics {
+    strong_clones: u64
+    strong_drops: u64
+
+    weak_clones: u64
+    weak_drops: u64
+
+    upgrades: u64
+    downgrades: u64
+
+    value_drops: u64
+    allocation_releases: u64
+
+    touches: u64
+    invalidations: u64
+
+    peak_strong: usize
+    peak_weak: usize
+}
+
+// -----------------------------------------------------------------------------
+// Arithmetic
+// -----------------------------------------------------------------------------
+
+proc rc_core_add_overflows(
+    left: usize,
+    right: usize
+) -> bool {
+    give left > usize_max() - right;
+}
+
+// -----------------------------------------------------------------------------
+// Counts
+// -----------------------------------------------------------------------------
+
+proc rc_core_counts(
+    strong: usize,
+    weak: usize
+) -> RcCoreCounts {
+    give RcCoreCounts {
+        strong: strong,
+        weak: weak
+    };
+}
+
+proc rc_core_counts_new()
+    -> RcCoreCounts
+{
+    give RcCoreCounts {
+        strong: 1,
+        weak: 0
+    };
+}
+
+proc rc_core_counts_empty()
+    -> RcCoreCounts
+{
+    give RcCoreCounts {
+        strong: 0,
+        weak: 0
+    };
+}
+
+proc rc_core_strong(
+    counts: RcCoreCounts
+) -> usize {
+    give counts.strong;
+}
+
+proc rc_core_weak(
+    counts: RcCoreCounts
+) -> usize {
+    give counts.weak;
+}
+
+proc rc_core_total_refs(
+    counts: RcCoreCounts
+) -> usize {
+    if rc_core_add_overflows(
+        counts.strong,
+        counts.weak
+    ) {
+        give usize_max();
+    }
+
+    give counts.strong
+        + counts.weak;
+}
+
+proc rc_core_counts_valid(
+    counts: RcCoreCounts
+) -> bool {
+    give not rc_core_add_overflows(
+        counts.strong,
+        counts.weak
+    );
+}
+
+// -----------------------------------------------------------------------------
+// State
+// -----------------------------------------------------------------------------
+
+proc rc_core_state(
+    counts: RcCoreCounts
+) -> RcCoreState {
+    if not rc_core_counts_valid(
+        counts
+    ) {
+        give RcCoreState.Invalid;
+    }
+
+    if counts.strong > 0 {
+        give RcCoreState.Alive;
+    }
+
+    if counts.weak > 0 {
+        give RcCoreState.WeakOnly;
+    }
+
+    give RcCoreState.Dropped;
+}
+
+proc rc_core_ownership(
+    counts: RcCoreCounts
+) -> RcCoreOwnership {
+    if counts.strong == 0 {
+        give RcCoreOwnership.Dead;
+    }
+
+    if counts.strong == 1 {
+        give RcCoreOwnership.Unique;
+    }
+
+    give RcCoreOwnership.Shared;
+}
+
+proc rc_core_access(
+    counts: RcCoreCounts
+) -> RcCoreAccess {
+    if counts.strong == 0 {
+        give RcCoreAccess.None;
+    }
+
+    if counts.strong == 1 {
+        give RcCoreAccess.ReadWrite;
+    }
+
+    give RcCoreAccess.Read;
+}
+
+proc rc_core_info(
+    counts: RcCoreCounts
+) -> RcCoreInfo {
+    let state =
+        rc_core_state(
+            counts
+        );
+
+    let ownership =
+        rc_core_ownership(
+            counts
+        );
+
+    give RcCoreInfo {
+        state:
+            state,
+
+        ownership:
+            ownership,
+
+        access:
+            rc_core_access(
+                counts
+            ),
+
+        alive:
+            state == RcCoreState.Alive,
+
+        unique:
+            ownership == RcCoreOwnership.Unique,
+
+        shared:
+            ownership == RcCoreOwnership.Shared,
+
+        weak_only:
+            state == RcCoreState.WeakOnly,
+
+        dropped:
+            state == RcCoreState.Dropped,
+
+        valid:
+            state != RcCoreState.Invalid
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Predicates
+// -----------------------------------------------------------------------------
+
+proc rc_core_is_alive(
+    counts: RcCoreCounts
+) -> bool {
+    give counts.strong > 0;
+}
+
+proc rc_core_is_unique(
+    counts: RcCoreCounts
+) -> bool {
+    give counts.strong == 1;
+}
+
+proc rc_core_is_shared(
+    counts: RcCoreCounts
+) -> bool {
+    give counts.strong > 1;
+}
+
+proc rc_core_has_weak(
+    counts: RcCoreCounts
+) -> bool {
+    give counts.weak > 0;
+}
+
+proc rc_core_is_weak_only(
+    counts: RcCoreCounts
+) -> bool {
+    give counts.strong == 0
+        and counts.weak > 0;
+}
+
+proc rc_core_is_dropped(
+    counts: RcCoreCounts
+) -> bool {
+    give counts.strong == 0
+        and counts.weak == 0;
+}
+
+proc rc_core_can_read(
+    counts: RcCoreCounts
+) -> bool {
+    give counts.strong > 0;
+}
+
+proc rc_core_can_write(
+    counts: RcCoreCounts
+) -> bool {
+    give counts.strong == 1;
+}
+
+proc rc_core_can_upgrade(
+    counts: RcCoreCounts
+) -> bool {
+    give counts.strong > 0
+        and counts.weak > 0;
+}
+
+proc rc_core_should_drop_value(
+    before: RcCoreCounts,
+    after: RcCoreCounts
+) -> bool {
+    give before.strong > 0
+        and after.strong == 0;
+}
+
+proc rc_core_should_release_allocation(
+    counts: RcCoreCounts
+) -> bool {
+    give counts.strong == 0
+        and counts.weak == 0;
+}
+
+// -----------------------------------------------------------------------------
+// Metadata
+// -----------------------------------------------------------------------------
+
+proc rc_core_meta()
+    -> RcCoreMeta
+{
+    give RcCoreMeta {
+        generation: 1,
+        revision: 1
+    };
+}
+
+proc rc_core_meta_empty()
+    -> RcCoreMeta
+{
+    give RcCoreMeta {
+        generation: 0,
+        revision: 0
+    };
+}
+
+proc rc_core_touch(
+    meta: RcCoreMeta
+) -> RcCoreMeta {
+    let out = meta;
+
+    set out.revision =
+        out.revision + 1;
+
+    give out;
+}
+
+proc rc_core_advance_generation(
+    meta: RcCoreMeta
+) -> RcCoreMeta {
+    let out = meta;
+
+    set out.generation =
+        out.generation + 1;
+
+    set out.revision =
+        out.revision + 1;
+
+    give out;
+}
+
+// -----------------------------------------------------------------------------
+// Strong count operations
+// -----------------------------------------------------------------------------
+
+proc rc_core_clone_strong(
+    counts: RcCoreCounts
+) -> RcCoreCounts {
+    if counts.strong == 0 {
+        give counts;
+    }
+
+    if counts.strong == usize_max() {
+        give counts;
+    }
+
+    let out = counts;
+
+    set out.strong =
+        out.strong + 1;
+
+    give out;
+}
+
+proc rc_core_drop_strong(
+    counts: RcCoreCounts
+) -> RcCoreCounts {
+    if counts.strong == 0 {
+        give counts;
+    }
+
+    let out = counts;
+
+    set out.strong =
+        out.strong - 1;
+
+    give out;
+}
+
+// -----------------------------------------------------------------------------
+// Weak count operations
+// -----------------------------------------------------------------------------
+
+proc rc_core_clone_weak(
+    counts: RcCoreCounts
+) -> RcCoreCounts {
+    if counts.weak == usize_max() {
+        give counts;
+    }
+
+    let out = counts;
+
+    set out.weak =
+        out.weak + 1;
+
+    give out;
+}
+
+proc rc_core_drop_weak(
+    counts: RcCoreCounts
+) -> RcCoreCounts {
+    if counts.weak == 0 {
+        give counts;
+    }
+
+    let out = counts;
+
+    set out.weak =
+        out.weak - 1;
+
+    give out;
+}
+
+// -----------------------------------------------------------------------------
+// Upgrade / downgrade
+// -----------------------------------------------------------------------------
+
+proc rc_core_downgrade(
+    counts: RcCoreCounts
+) -> RcCoreCounts {
+    if counts.strong == 0 {
+        give counts;
+    }
+
+    give rc_core_clone_weak(
+        counts
+    );
+}
+
+proc rc_core_upgrade(
+    counts: RcCoreCounts
+) -> RcCoreCounts {
+    if counts.strong == 0 {
+        give counts;
+    }
+
+    if counts.weak == 0 {
+        give counts;
+    }
+
+    give rc_core_clone_strong(
+        counts
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Profile
+// -----------------------------------------------------------------------------
+
+proc rc_core_profile(
+    counts: RcCoreCounts,
+    meta: RcCoreMeta
+) -> RcCoreProfile {
+    give RcCoreProfile {
+        counts:
+            counts,
+
+        meta:
+            meta,
+
+        info:
+            rc_core_info(
+                counts
+            )
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Snapshot
+// -----------------------------------------------------------------------------
+
+proc rc_core_snapshot(
+    profile: RcCoreProfile
+) -> RcCoreSnapshot {
+    give RcCoreSnapshot {
+        strong:
+            profile.counts.strong,
+
+        weak:
+            profile.counts.weak,
+
+        state:
+            profile.info.state,
+
+        ownership:
+            profile.info.ownership,
+
+        generation:
+            profile.meta.generation,
+
+        revision:
+            profile.meta.revision
+    };
+}
+
+proc rc_core_snapshot_equal(
+    left: RcCoreSnapshot,
+    right: RcCoreSnapshot
+) -> bool {
+    give left.strong == right.strong
+        and left.weak == right.weak
+        and left.state == right.state
+        and left.ownership == right.ownership
+        and left.generation == right.generation
+        and left.revision == right.revision;
+}
+
+proc rc_core_snapshot_changed(
+    left: RcCoreSnapshot,
+    right: RcCoreSnapshot
+) -> bool {
+    give not rc_core_snapshot_equal(
+        left,
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Delta
+// -----------------------------------------------------------------------------
+
+proc rc_core_usize_delta(
+    before: usize,
+    after: usize
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc rc_core_u64_delta(
+    before: u64,
+    after: u64
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc rc_core_delta(
+    before: RcCoreSnapshot,
+    after: RcCoreSnapshot
+) -> RcCoreDelta {
+    let strong =
+        rc_core_usize_delta(
+            before.strong,
+            after.strong
+        );
+
+    let weak =
+        rc_core_usize_delta(
+            before.weak,
+            after.weak
+        );
+
+    let generation =
+        rc_core_u64_delta(
+            before.generation,
+            after.generation
+        );
+
+    let revision =
+        rc_core_u64_delta(
+            before.revision,
+            after.revision
+        );
+
+    let state_changed =
+        before.state != after.state;
+
+    let ownership_changed =
+        before.ownership
+            != after.ownership;
+
+    give RcCoreDelta {
+        strong:
+            strong,
+
+        weak:
+            weak,
+
+        generation:
+            generation,
+
+        revision:
+            revision,
+
+        state_changed:
+            state_changed,
+
+        ownership_changed:
+            ownership_changed,
+
+        changed:
+            strong != 0
+            or weak != 0
+            or generation != 0
+            or revision != 0
+            or state_changed
+            or ownership_changed
+    };
+}
+
+proc rc_core_delta_is_zero(
+    delta: RcCoreDelta
+) -> bool {
+    give not delta.changed;
+}
+
+// -----------------------------------------------------------------------------
+// Transition classification
+// -----------------------------------------------------------------------------
+
+proc rc_core_transition_kind(
+    before: RcCoreSnapshot,
+    after: RcCoreSnapshot
+) -> RcCoreTransitionKind {
+    if rc_core_snapshot_equal(
+        before,
+        after
+    ) {
+        give RcCoreTransitionKind.None;
+    }
+
+    if after.state == RcCoreState.Invalid {
+        give RcCoreTransitionKind.Invalidate;
+    }
+
+    if after.strong
+        == before.strong + 1
+        and after.weak == before.weak
+    {
+        give RcCoreTransitionKind.CloneStrong;
+    }
+
+    if before.strong
+        == after.strong + 1
+        and before.weak == after.weak
+    {
+        if before.strong == 1
+            and after.strong == 0
+        {
+            give RcCoreTransitionKind.DropValue;
+        }
+
+        give RcCoreTransitionKind.DropStrong;
+    }
+
+    if after.weak
+        == before.weak + 1
+        and after.strong == before.strong
+    {
+        give RcCoreTransitionKind.CloneWeak;
+    }
+
+    if before.weak
+        == after.weak + 1
+        and after.strong == before.strong
+    {
+        if after.strong == 0
+            and after.weak == 0
+        {
+            give RcCoreTransitionKind.ReleaseAllocation;
+        }
+
+        give RcCoreTransitionKind.DropWeak;
+    }
+
+    if after.revision > before.revision {
+        give RcCoreTransitionKind.Touch;
+    }
+
+    give RcCoreTransitionKind.None;
+}
+
+proc rc_core_transition_valid(
+    before: RcCoreSnapshot,
+    after: RcCoreSnapshot,
+    kind: RcCoreTransitionKind
+) -> bool {
+    pick kind {
+        RcCoreTransitionKind.None {
+            give rc_core_snapshot_equal(
+                before,
+                after
+            );
+        }
+
+        RcCoreTransitionKind.CloneStrong {
+            give before.strong > 0
+                and after.strong
+                    == before.strong + 1
+                and after.weak
+                    == before.weak;
+        }
+
+        RcCoreTransitionKind.DropStrong {
+            give before.strong > 1
+                and after.strong
+                    == before.strong - 1
+                and after.weak
+                    == before.weak;
+        }
+
+        RcCoreTransitionKind.CloneWeak {
+            give after.weak
+                == before.weak + 1
+                and after.strong
+                    == before.strong;
+        }
+
+        RcCoreTransitionKind.DropWeak {
+            give before.weak > 0
+                and after.weak
+                    == before.weak - 1
+                and after.strong
+                    == before.strong;
+        }
+
+        RcCoreTransitionKind.UpgradeWeak {
+            give before.strong > 0
+                and before.weak > 0
+                and after.strong
+                    == before.strong + 1;
+        }
+
+        RcCoreTransitionKind.DowngradeStrong {
+            give before.strong > 0
+                and after.weak
+                    == before.weak + 1;
+        }
+
+        RcCoreTransitionKind.DropValue {
+            give before.strong == 1
+                and after.strong == 0;
+        }
+
+        RcCoreTransitionKind.ReleaseAllocation {
+            give after.strong == 0
+                and after.weak == 0;
+        }
+
+        RcCoreTransitionKind.Touch {
+            give after.revision
+                > before.revision;
+        }
+
+        RcCoreTransitionKind.Invalidate {
+            give after.state
+                == RcCoreState.Invalid;
+        }
+    }
+
+    give false;
+}
+
+proc rc_core_transition(
+    before: RcCoreSnapshot,
+    after: RcCoreSnapshot
+) -> RcCoreTransition {
+    let kind =
+        rc_core_transition_kind(
+            before,
+            after
+        );
+
+    give RcCoreTransition {
+        before:
+            before,
+
+        after:
+            after,
+
+        kind:
+            kind,
+
+        valid:
+            rc_core_transition_valid(
+                before,
+                after,
+                kind
+            )
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+proc rc_core_state_valid(
+    profile: RcCoreProfile
+) -> bool {
+    pick profile.info.state {
+        RcCoreState.Alive {
+            give profile.counts.strong > 0;
+        }
+
+        RcCoreState.WeakOnly {
+            give profile.counts.strong == 0
+                and profile.counts.weak > 0;
+        }
+
+        RcCoreState.Dropped {
+            give profile.counts.strong == 0
+                and profile.counts.weak == 0;
+        }
+
+        RcCoreState.Invalid {
+            give false;
+        }
+    }
+
+    give false;
+}
+
+proc rc_core_ownership_valid(
+    profile: RcCoreProfile
+) -> bool {
+    pick profile.info.ownership {
+        RcCoreOwnership.Unique {
+            give profile.counts.strong == 1;
+        }
+
+        RcCoreOwnership.Shared {
+            give profile.counts.strong > 1;
+        }
+
+        RcCoreOwnership.Dead {
+            give profile.counts.strong == 0;
+        }
+    }
+
+    give false;
+}
+
+proc rc_core_access_valid(
+    profile: RcCoreProfile
+) -> bool {
+    give profile.info.access
+        == rc_core_access(
+            profile.counts
+        );
+}
+
+proc rc_core_validate(
+    profile: RcCoreProfile
+) -> RcCoreValidation {
+    let counts_valid =
+        rc_core_counts_valid(
+            profile.counts
+        );
+
+    let state_valid =
+        rc_core_state_valid(
+            profile
+        );
+
+    let ownership_valid =
+        rc_core_ownership_valid(
+            profile
+        );
+
+    let access_valid =
+        rc_core_access_valid(
+            profile
+        );
+
+    let generation_valid =
+        profile.meta.generation > 0
+        and profile.meta.revision > 0;
+
+    give RcCoreValidation {
+        valid:
+            counts_valid
+            and state_valid
+            and ownership_valid
+            and access_valid
+            and generation_valid,
+
+        counts_valid:
+            counts_valid,
+
+        state_valid:
+            state_valid,
+
+        ownership_valid:
+            ownership_valid,
+
+        access_valid:
+            access_valid,
+
+        generation_valid:
+            generation_valid
+    };
+}
+
+proc rc_core_invariant_holds(
+    profile: RcCoreProfile
+) -> bool {
+    give rc_core_validate(
+        profile
+    ).valid;
+}
+
+// -----------------------------------------------------------------------------
+// Comparisons
+// -----------------------------------------------------------------------------
+
+proc rc_core_compare_strong(
+    left: RcCoreCounts,
+    right: RcCoreCounts
+) -> RcCoreOrdering {
+    if left.strong < right.strong {
+        give RcCoreOrdering.Less;
+    }
+
+    if left.strong > right.strong {
+        give RcCoreOrdering.Greater;
+    }
+
+    give RcCoreOrdering.Equal;
+}
+
+proc rc_core_compare_weak(
+    left: RcCoreCounts,
+    right: RcCoreCounts
+) -> RcCoreOrdering {
+    if left.weak < right.weak {
+        give RcCoreOrdering.Less;
+    }
+
+    if left.weak > right.weak {
+        give RcCoreOrdering.Greater;
+    }
+
+    give RcCoreOrdering.Equal;
+}
+
+proc rc_core_counts_equal(
+    left: RcCoreCounts,
+    right: RcCoreCounts
+) -> bool {
+    give left.strong == right.strong
+        and left.weak == right.weak;
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc rc_core_statistics_empty()
+    -> RcCoreStatistics
+{
+    give RcCoreStatistics {
+        strong_clones: 0,
+        strong_drops: 0,
+
+        weak_clones: 0,
+        weak_drops: 0,
+
+        upgrades: 0,
+        downgrades: 0,
+
+        value_drops: 0,
+        allocation_releases: 0,
+
+        touches: 0,
+        invalidations: 0,
+
+        peak_strong: 0,
+        peak_weak: 0
+    };
+}
+
+proc rc_core_statistics_record(
+    statistics: ref mut RcCoreStatistics,
+    transition: RcCoreTransition
+) {
+    if not transition.valid {
+        set statistics.invalidations =
+            statistics.invalidations + 1;
+
+        give;
+    }
+
+    pick transition.kind {
+        RcCoreTransitionKind.CloneStrong {
+            set statistics.strong_clones =
+                statistics.strong_clones + 1;
+        }
+
+        RcCoreTransitionKind.DropStrong {
+            set statistics.strong_drops =
+                statistics.strong_drops + 1;
+        }
+
+        RcCoreTransitionKind.CloneWeak {
+            set statistics.weak_clones =
+                statistics.weak_clones + 1;
+        }
+
+        RcCoreTransitionKind.DropWeak {
+            set statistics.weak_drops =
+                statistics.weak_drops + 1;
+        }
+
+        RcCoreTransitionKind.UpgradeWeak {
+            set statistics.upgrades =
+                statistics.upgrades + 1;
+        }
+
+        RcCoreTransitionKind.DowngradeStrong {
+            set statistics.downgrades =
+                statistics.downgrades + 1;
+        }
+
+        RcCoreTransitionKind.DropValue {
+            set statistics.value_drops =
+                statistics.value_drops + 1;
+        }
+
+        RcCoreTransitionKind.ReleaseAllocation {
+            set statistics.allocation_releases =
+                statistics.allocation_releases + 1;
+        }
+
+        RcCoreTransitionKind.Touch {
+            set statistics.touches =
+                statistics.touches + 1;
+        }
+
+        RcCoreTransitionKind.Invalidate {
+            set statistics.invalidations =
+                statistics.invalidations + 1;
+        }
+
+        RcCoreTransitionKind.None {}
+    }
+
+    if transition.after.strong
+        > statistics.peak_strong
+    {
+        set statistics.peak_strong =
+            transition.after.strong;
+    }
+
+    if transition.after.weak
+        > statistics.peak_weak
+    {
+        set statistics.peak_weak =
+            transition.after.weak;
+    }
+}
+
+proc rc_core_statistics_total(
+    statistics: RcCoreStatistics
+) -> u64 {
+    give statistics.strong_clones
+        + statistics.strong_drops
+        + statistics.weak_clones
+        + statistics.weak_drops
+        + statistics.upgrades
+        + statistics.downgrades
+        + statistics.value_drops
+        + statistics.allocation_releases
+        + statistics.touches
+        + statistics.invalidations;
+}
+
+proc rc_core_statistics_reset(
+    statistics: ref mut RcCoreStatistics
+) {
+    set *statistics =
+        rc_core_statistics_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc rc_core_state_name(
+    state: RcCoreState
+) -> string {
+    pick state {
+        RcCoreState.Alive {
+            give "alive";
+        }
+
+        RcCoreState.WeakOnly {
+            give "weak-only";
+        }
+
+        RcCoreState.Dropped {
+            give "dropped";
+        }
+
+        RcCoreState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+proc rc_core_ownership_name(
+    ownership: RcCoreOwnership
+) -> string {
+    pick ownership {
+        RcCoreOwnership.Unique {
+            give "unique";
+        }
+
+        RcCoreOwnership.Shared {
+            give "shared";
+        }
+
+        RcCoreOwnership.Dead {
+            give "dead";
+        }
+    }
+
+    give "dead";
+}
+
+proc rc_core_access_name(
+    access: RcCoreAccess
+) -> string {
+    pick access {
+        RcCoreAccess.None {
+            give "none";
+        }
+
+        RcCoreAccess.Read {
+            give "read";
+        }
+
+        RcCoreAccess.ReadWrite {
+            give "read-write";
+        }
+    }
+
+    give "none";
+}
+
+proc rc_core_transition_name(
+    kind: RcCoreTransitionKind
+) -> string {
+    pick kind {
+        RcCoreTransitionKind.None {
+            give "none";
+        }
+
+        RcCoreTransitionKind.CloneStrong {
+            give "clone-strong";
+        }
+
+        RcCoreTransitionKind.DropStrong {
+            give "drop-strong";
+        }
+
+        RcCoreTransitionKind.CloneWeak {
+            give "clone-weak";
+        }
+
+        RcCoreTransitionKind.DropWeak {
+            give "drop-weak";
+        }
+
+        RcCoreTransitionKind.UpgradeWeak {
+            give "upgrade-weak";
+        }
+
+        RcCoreTransitionKind.DowngradeStrong {
+            give "downgrade-strong";
+        }
+
+        RcCoreTransitionKind.DropValue {
+            give "drop-value";
+        }
+
+        RcCoreTransitionKind.ReleaseAllocation {
+            give "release-allocation";
+        }
+
+        RcCoreTransitionKind.Touch {
+            give "touch";
+        }
+
+        RcCoreTransitionKind.Invalidate {
+            give "invalidate";
+        }
+    }
+
+    give "none";
+}
+
+// -----------------------------------------------------------------------------
+// Rc core model
+// -----------------------------------------------------------------------------
+//
+// Rc control block:
+//
+//     strong
+//     weak
+//
+// Initial state:
+//
+//     strong = 1
+//     weak   = 0
+//
+// Clone:
+//
+//     strong++
+//
+// Downgrade:
+//
+//     weak++
+//
+// Drop strong:
+//
+//     strong--
+//
+// When:
+//
+//     strong == 0
+//
+// the managed value is destroyed.
+//
+// The control block remains alive while:
+//
+//     weak > 0
+//
+// Therefore:
+//
+//     strong > 0
+//         Alive
+//
+//     strong == 0 && weak > 0
+//         WeakOnly
+//
+//     strong == 0 && weak == 0
+//         Dropped
+//
+// Ownership:
+//
+//     strong == 1
+//         Unique
+//
+//     strong > 1
+//         Shared
+//
+//     strong == 0
+//         Dead
+//
+// Mutable access:
+//
+//     strong == 1
+//
+// Shared read access:
+//
+//     strong > 0
+//
+// Allocation release:
+//
+//     strong == 0
+//     weak == 0
+//
+// Fundamental lifecycle:
+//
+//     Rc new
+//       strong = 1
+//
+//         |
+//         | clone
+//         v
+//
+//       strong > 1
+//
+//         |
+//         | drops
+//         v
+//
+//       strong = 1
+//
+//         |
+//         | final strong drop
+//         v
+//
+//       strong = 0
+//       destroy T
+//
+//         |
+//         | weak refs remain
+//         v
+//
+//       WeakOnly
+//
+//         |
+//         | final weak drop
+//         v
+//
+//       release control block
+//
+// This module contains only the pure reference-counting model.
+//
+// Concrete control-block storage belongs to `inner.vitl`.
+// Strong ownership belongs to `strong.vitl`.
+// Weak ownership belongs to `weak.vitl`.
+// Raw operations belong to `raw.vitl`.
+// Public Rc API belongs to `rc.vitl`.

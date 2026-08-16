@@ -1,0 +1,1269 @@
+use src/vitte/stdlib/alloc/rc/rc
+
+form Point {
+    x: int
+    y: int
+}
+
+proc test_new() -> bool {
+    let value = rc_new(42);
+
+    give rc_is_alive(ref value)
+        and rc_is_unique(ref value)
+        and not rc_is_shared(ref value)
+        and rc_strong_count(ref value) == 1
+        and rc_weak_count(ref value) == 0;
+}
+
+proc test_get() -> bool {
+    let value = rc_new(42);
+
+    give *rc_get(ref value) == 42;
+}
+
+proc test_try_get() -> bool {
+    let value = rc_new(42);
+
+    let result = rc_try_get(
+        ref value
+    );
+
+    pick result {
+        Some(inner) {
+            give *inner == 42;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_get_mut_unique() -> bool {
+    let mut value = rc_new(10);
+
+    let result = rc_get_mut(
+        ref mut value
+    );
+
+    pick result {
+        Some(inner) {
+            set *inner = 20;
+
+            give *rc_get(ref value) == 20;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_replace() -> bool {
+    let mut value = rc_new(10);
+
+    if not rc_replace(
+        ref mut value,
+        99
+    ) {
+        give false;
+    }
+
+    give *rc_get(ref value) == 99;
+}
+
+proc test_point() -> bool {
+    let value = rc_new(
+        Point {
+            x: 10
+            y: 20
+        }
+    );
+
+    let point = rc_get(
+        ref value
+    );
+
+    give point.x == 10
+        and point.y == 20;
+}
+
+proc test_point_mutation() -> bool {
+    let mut value = rc_new(
+        Point {
+            x: 1
+            y: 2
+        }
+    );
+
+    let result = rc_get_mut(
+        ref mut value
+    );
+
+    pick result {
+        Some(point) {
+            set point.x = 100;
+            set point.y = 200;
+
+            give point.x == 100
+                and point.y == 200;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_clone() -> bool {
+    let value = rc_new(42);
+
+    let copy = rc_clone(
+        value
+    );
+
+    give rc_ptr_equal(
+        ref value,
+        ref copy
+    )
+    and rc_strong_count(ref value) == 2
+    and rc_strong_count(ref copy) == 2
+    and rc_is_shared(ref value)
+    and rc_is_shared(ref copy);
+}
+
+proc test_try_clone() -> bool {
+    let value = rc_new(42);
+
+    let result = rc_try_clone(
+        value
+    );
+
+    pick result {
+        Some(copy) {
+            give rc_ptr_equal(
+                ref value,
+                ref copy
+            )
+            and rc_strong_count(ref value) == 2;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_mutable_denied_when_shared() -> bool {
+    let mut value = rc_new(42);
+
+    let copy = rc_clone(
+        value
+    );
+
+    if rc_strong_count(ref value) != 2 {
+        give false;
+    }
+
+    let result = rc_get_mut(
+        ref mut value
+    );
+
+    give is_none(result)
+        and *rc_get(ref copy) == 42;
+}
+
+proc test_drop_clone_restores_unique() -> bool {
+    let mut value = rc_new(42);
+
+    let mut copy = rc_clone(
+        value
+    );
+
+    if not rc_is_shared(
+        ref value
+    ) {
+        give false;
+    }
+
+    if not rc_drop(
+        ref mut copy
+    ) {
+        give false;
+    }
+
+    give rc_strong_count(ref value) == 1
+        and rc_is_unique(ref value);
+}
+
+proc test_mutable_after_clone_drop() -> bool {
+    let mut value = rc_new(42);
+
+    let mut copy = rc_clone(
+        value
+    );
+
+    if not rc_drop(
+        ref mut copy
+    ) {
+        give false;
+    }
+
+    let result = rc_get_mut(
+        ref mut value
+    );
+
+    pick result {
+        Some(inner) {
+            set *inner = 64;
+
+            give *inner == 64;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_downgrade() -> bool {
+    let value = rc_new(42);
+
+    let weak = rc_downgrade(
+        ref value
+    );
+
+    give rc_strong_count(ref value) == 1
+        and rc_weak_count(ref value) == 1
+        and not rc_weak_is_expired(
+            ref weak
+        );
+}
+
+proc test_try_downgrade() -> bool {
+    let value = rc_new(42);
+
+    let result = rc_try_downgrade(
+        ref value
+    );
+
+    pick result {
+        Some(weak) {
+            give rc_weak_weak_count(
+                ref weak
+            ) == 1
+            and rc_weak_strong_count(
+                ref weak
+            ) == 1;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_upgrade() -> bool {
+    let value = rc_new(42);
+
+    let weak = rc_downgrade(
+        ref value
+    );
+
+    let result = rc_upgrade(
+        ref weak
+    );
+
+    pick result {
+        Some(copy) {
+            give *rc_get(ref copy) == 42
+                and rc_strong_count(ref value) == 2;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_weak_clone() -> bool {
+    let value = rc_new(42);
+
+    let weak = rc_downgrade(
+        ref value
+    );
+
+    let copy = rc_weak_clone(
+        weak
+    );
+
+    give rc_weak_weak_count(ref weak) == 2
+        and rc_weak_weak_count(ref copy) == 2
+        and rc_weak_ptr_equal(
+            ref weak,
+            ref copy
+        );
+}
+
+proc test_weak_try_clone() -> bool {
+    let value = rc_new(42);
+
+    let weak = rc_downgrade(
+        ref value
+    );
+
+    let result = rc_weak_try_clone(
+        weak
+    );
+
+    pick result {
+        Some(copy) {
+            give rc_weak_weak_count(
+                ref copy
+            ) == 2;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_weak_ptr_matches_strong() -> bool {
+    let value = rc_new(42);
+
+    let weak = rc_downgrade(
+        ref value
+    );
+
+    give rc_ptr_eq_weak(
+        ref value,
+        ref weak
+    );
+}
+
+proc test_weak_expires_after_final_strong_drop() -> bool {
+    let mut value = rc_new(42);
+
+    let weak = rc_downgrade(
+        ref value
+    );
+
+    if not rc_drop(
+        ref mut value
+    ) {
+        give false;
+    }
+
+    give rc_weak_is_expired(
+        ref weak
+    )
+    and rc_weak_strong_count(
+        ref weak
+    ) == 0;
+}
+
+proc test_upgrade_expired_weak_fails() -> bool {
+    let mut value = rc_new(42);
+
+    let weak = rc_downgrade(
+        ref value
+    );
+
+    if not rc_drop(
+        ref mut value
+    ) {
+        give false;
+    }
+
+    give is_none(
+        rc_upgrade(
+            ref weak
+        )
+    );
+}
+
+proc test_weak_drop() -> bool {
+    let value = rc_new(42);
+
+    let mut weak = rc_downgrade(
+        ref value
+    );
+
+    if rc_weak_count(
+        ref value
+    ) != 1 {
+        give false;
+    }
+
+    give rc_weak_drop(
+        ref mut weak
+    )
+    and rc_weak_count(ref value) == 0;
+}
+
+proc test_double_strong_drop_fails() -> bool {
+    let mut value = rc_new(42);
+
+    let first = rc_drop(
+        ref mut value
+    );
+
+    let second = rc_drop(
+        ref mut value
+    );
+
+    give first
+        and not second;
+}
+
+proc test_double_weak_drop_fails() -> bool {
+    let value = rc_new(42);
+
+    let mut weak = rc_downgrade(
+        ref value
+    );
+
+    let first = rc_weak_drop(
+        ref mut weak
+    );
+
+    let second = rc_weak_drop(
+        ref mut weak
+    );
+
+    give first
+        and not second;
+}
+
+proc test_profile_unique() -> bool {
+    let value = rc_new(42);
+
+    let profile = rc_profile(
+        ref value
+    );
+
+    give profile.strong == 1
+        and profile.weak == 0
+        and profile.unique
+        and not profile.shared
+        and profile.alive
+        and profile.valid;
+}
+
+proc test_profile_shared() -> bool {
+    let value = rc_new(42);
+
+    let copy = rc_clone(
+        value
+    );
+
+    let profile = rc_profile(
+        ref value
+    );
+
+    give profile.strong == 2
+        and profile.shared
+        and not profile.unique
+        and profile.alive
+        and *rc_get(ref copy) == 42;
+}
+
+proc test_weak_profile_alive() -> bool {
+    let value = rc_new(42);
+
+    let weak = rc_downgrade(
+        ref value
+    );
+
+    let profile = rc_weak_profile(
+        ref weak
+    );
+
+    give profile.strong == 1
+        and profile.weak == 1
+        and profile.alive
+        and profile.upgradeable
+        and not profile.expired;
+}
+
+proc test_weak_profile_expired() -> bool {
+    let mut value = rc_new(42);
+
+    let weak = rc_downgrade(
+        ref value
+    );
+
+    if not rc_drop(
+        ref mut value
+    ) {
+        give false;
+    }
+
+    let profile = rc_weak_profile(
+        ref weak
+    );
+
+    give profile.strong == 0
+        and profile.weak == 1
+        and profile.expired
+        and not profile.upgradeable;
+}
+
+proc test_validate() -> bool {
+    let value = rc_new(42);
+
+    let validation = rc_validate(
+        ref value
+    );
+
+    give validation.valid
+        and validation.pointer_valid
+        and validation.generation_valid
+        and validation.inner_valid
+        and validation.strong_valid
+        and validation.state_valid;
+}
+
+proc test_weak_validate() -> bool {
+    let value = rc_new(42);
+
+    let weak = rc_downgrade(
+        ref value
+    );
+
+    let validation = rc_weak_validate(
+        ref weak
+    );
+
+    give validation.valid
+        and validation.pointer_valid
+        and validation.generation_valid
+        and validation.inner_valid
+        and validation.weak_valid
+        and validation.state_valid;
+}
+
+proc test_invariant() -> bool {
+    let value = rc_new(42);
+
+    give rc_invariant_holds(
+        ref value
+    );
+}
+
+proc test_weak_invariant() -> bool {
+    let value = rc_new(42);
+
+    let weak = rc_downgrade(
+        ref value
+    );
+
+    give rc_weak_invariant_holds(
+        ref weak
+    );
+}
+
+proc test_snapshot_equal() -> bool {
+    let value = rc_new(42);
+
+    let first = rc_snapshot(
+        ref value
+    );
+
+    let second = rc_snapshot(
+        ref value
+    );
+
+    give rc_snapshot_equal(
+        first,
+        second
+    );
+}
+
+proc test_snapshot_clone_changed() -> bool {
+    let value = rc_new(42);
+
+    let before = rc_snapshot(
+        ref value
+    );
+
+    let copy = rc_clone(
+        value
+    );
+
+    let after = rc_snapshot(
+        ref value
+    );
+
+    give rc_snapshot_changed(
+        before,
+        after
+    )
+    and rc_strong_count(ref copy) == 2;
+}
+
+proc test_delta_clone() -> bool {
+    let value = rc_new(42);
+
+    let before = rc_snapshot(
+        ref value
+    );
+
+    let copy = rc_clone(
+        value
+    );
+
+    let after = rc_snapshot(
+        ref value
+    );
+
+    let delta = rc_delta(
+        before,
+        after
+    );
+
+    give delta.changed
+        and delta.strong == 1
+        and delta.weak == 0
+        and rc_strong_count(ref copy) == 2;
+}
+
+proc test_delta_downgrade() -> bool {
+    let value = rc_new(42);
+
+    let before = rc_snapshot(
+        ref value
+    );
+
+    let weak = rc_downgrade(
+        ref value
+    );
+
+    let after = rc_snapshot(
+        ref value
+    );
+
+    let delta = rc_delta(
+        before,
+        after
+    );
+
+    give delta.changed
+        and delta.strong == 0
+        and delta.weak == 1
+        and rc_weak_weak_count(ref weak) == 1;
+}
+
+proc test_raw_conversion() -> bool {
+    let value = rc_new(42);
+
+    let raw = rc_as_raw(
+        ref value
+    );
+
+    give rc_raw_is_alive(raw)
+        and rc_raw_strong_count(raw) == 1
+        and rc_raw_weak_count(raw) == 0;
+}
+
+proc test_weak_raw_conversion() -> bool {
+    let value = rc_new(42);
+
+    let weak = rc_downgrade(
+        ref value
+    );
+
+    let raw = rc_weak_as_raw(
+        ref weak
+    );
+
+    give rc_raw_is_alive(raw)
+        and rc_raw_strong_count(raw) == 1
+        and rc_raw_weak_count(raw) == 1;
+}
+
+proc test_from_raw() -> bool {
+    let value = rc_new(42);
+
+    let raw = rc_as_raw(
+        ref value
+    );
+
+    let result = rc_from_raw(
+        raw
+    );
+
+    pick result {
+        Some(copy) {
+            give rc_ptr_equal(
+                ref value,
+                ref copy
+            );
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_weak_from_raw() -> bool {
+    let value = rc_new(42);
+
+    let weak = rc_downgrade(
+        ref value
+    );
+
+    let raw = rc_weak_as_raw(
+        ref weak
+    );
+
+    let result = rc_weak_from_raw(
+        raw
+    );
+
+    pick result {
+        Some(copy) {
+            give rc_weak_ptr_equal(
+                ref weak,
+                ref copy
+            );
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_value_ptr() -> bool {
+    let value = rc_new(42);
+
+    let ptr = rc_value_ptr(
+        ref value
+    );
+
+    give not compiler_raw_ptr_is_null(
+        ptr
+    );
+}
+
+proc test_value_ptr_mut_unique() -> bool {
+    let mut value = rc_new(42);
+
+    let result = rc_value_ptr_mut(
+        ref mut value
+    );
+
+    pick result {
+        Some(ptr) {
+            let inner =
+                compiler_raw_as_mut(
+                    ptr
+                );
+
+            set *inner = 84;
+
+            give *rc_get(ref value) == 84;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_state_name() -> bool {
+    give rc_state_name(
+        RcState.Alive
+    ) == "alive"
+        and rc_state_name(
+            RcState.WeakOnly
+        ) == "weak-only"
+        and rc_state_name(
+            RcState.Released
+        ) == "released"
+        and rc_state_name(
+            RcState.Invalid
+        ) == "invalid";
+}
+
+proc test_statistics_empty() -> bool {
+    let statistics =
+        rc_statistics_empty();
+
+    give statistics.created == 0
+        and statistics.strong_clones == 0
+        and statistics.strong_drops == 0
+        and statistics.weak_creations == 0
+        and statistics.weak_clones == 0
+        and statistics.weak_drops == 0
+        and statistics.upgrades == 0
+        and statistics.upgrade_failures == 0
+        and statistics.failures == 0;
+}
+
+proc test_statistics_create() -> bool {
+    let value = rc_new(42);
+
+    let mut statistics =
+        rc_statistics_empty();
+
+    rc_statistics_record_create(
+        ref mut statistics
+    );
+
+    give statistics.created == 1
+        and *rc_get(ref value) == 42;
+}
+
+proc test_statistics_clone() -> bool {
+    let value = rc_new(42);
+
+    let copy = rc_clone(
+        value
+    );
+
+    let mut statistics =
+        rc_statistics_empty();
+
+    rc_statistics_record_clone(
+        ref mut statistics,
+        ref value,
+        true
+    );
+
+    give statistics.strong_clones == 1
+        and statistics.peak_strong == 2
+        and rc_strong_count(ref copy) == 2;
+}
+
+proc test_statistics_drop() -> bool {
+    let mut statistics =
+        rc_statistics_empty();
+
+    rc_statistics_record_drop(
+        ref mut statistics,
+        true
+    );
+
+    give statistics.strong_drops == 1;
+}
+
+proc test_statistics_failure() -> bool {
+    let mut statistics =
+        rc_statistics_empty();
+
+    rc_statistics_record_drop(
+        ref mut statistics,
+        false
+    );
+
+    give statistics.failures == 1;
+}
+
+proc test_statistics_downgrade() -> bool {
+    let value = rc_new(42);
+
+    let weak = rc_downgrade(
+        ref value
+    );
+
+    let mut statistics =
+        rc_statistics_empty();
+
+    rc_statistics_record_downgrade(
+        ref mut statistics,
+        ref value,
+        true
+    );
+
+    give statistics.weak_creations == 1
+        and statistics.peak_weak == 1
+        and rc_weak_weak_count(ref weak) == 1;
+}
+
+proc test_statistics_upgrade() -> bool {
+    let value = rc_new(42);
+
+    let weak = rc_downgrade(
+        ref value
+    );
+
+    let result = rc_upgrade(
+        ref weak
+    );
+
+    let mut statistics =
+        rc_statistics_empty();
+
+    rc_statistics_record_upgrade(
+        ref mut statistics,
+        ref weak,
+        is_some(result)
+    );
+
+    give statistics.upgrades == 1
+        and statistics.upgrade_failures == 0;
+}
+
+proc test_statistics_raw() -> bool {
+    let mut statistics =
+        rc_statistics_empty();
+
+    rc_statistics_record_raw(
+        ref mut statistics
+    );
+
+    give statistics.raw_conversions == 1;
+}
+
+proc test_statistics_reset() -> bool {
+    let mut statistics =
+        rc_statistics_empty();
+
+    set statistics.created = 10;
+    set statistics.strong_clones = 20;
+    set statistics.strong_drops = 15;
+    set statistics.failures = 2;
+
+    rc_statistics_reset(
+        ref mut statistics
+    );
+
+    give statistics.created == 0
+        and statistics.strong_clones == 0
+        and statistics.strong_drops == 0
+        and statistics.failures == 0;
+}
+
+proc test_many_clone_drop_cycles() -> bool {
+    let mut value = rc_new(42);
+
+    let cycle: usize = 0;
+
+    while cycle < 10000 {
+        let mut copy = rc_clone(
+            value
+        );
+
+        if rc_strong_count(ref value) != 2 {
+            give false;
+        }
+
+        if not rc_drop(
+            ref mut copy
+        ) {
+            give false;
+        }
+
+        if rc_strong_count(ref value) != 1 {
+            give false;
+        }
+
+        if not rc_is_unique(
+            ref value
+        ) {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give rc_invariant_holds(
+        ref value
+    );
+}
+
+proc test_many_weak_cycles() -> bool {
+    let value = rc_new(42);
+
+    let cycle: usize = 0;
+
+    while cycle < 10000 {
+        let mut weak = rc_downgrade(
+            ref value
+        );
+
+        if rc_weak_count(ref value) != 1 {
+            give false;
+        }
+
+        if not rc_weak_drop(
+            ref mut weak
+        ) {
+            give false;
+        }
+
+        if rc_weak_count(ref value) != 0 {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give rc_strong_count(ref value) == 1;
+}
+
+proc test_many_upgrade_cycles() -> bool {
+    let value = rc_new(42);
+
+    let weak = rc_downgrade(
+        ref value
+    );
+
+    let cycle: usize = 0;
+
+    while cycle < 10000 {
+        let result = rc_upgrade(
+            ref weak
+        );
+
+        pick result {
+            Some(copy) {
+                let mut temp = copy;
+
+                if rc_strong_count(
+                    ref value
+                ) != 2 {
+                    give false;
+                }
+
+                if not rc_drop(
+                    ref mut temp
+                ) {
+                    give false;
+                }
+            }
+
+            None {
+                give false;
+            }
+        }
+
+        if rc_strong_count(
+            ref value
+        ) != 1 {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc test_many_values() -> bool {
+    let values: [Rc<int>] = [];
+
+    let index: usize = 0;
+
+    while index < 1000 {
+        set values =
+            values + [
+                rc_new(
+                    index as int
+                )
+            ];
+
+        set index = index + 1;
+    }
+
+    let check: usize = 0;
+
+    while check < 1000 {
+        if *rc_get(
+            ref values[check]
+        ) != check as int
+        {
+            give false;
+        }
+
+        if rc_strong_count(
+            ref values[check]
+        ) != 1
+        {
+            give false;
+        }
+
+        set check = check + 1;
+    }
+
+    give true;
+}
+
+proc test_many_points() -> bool {
+    let values: [Rc<Point>] = [];
+
+    let index: usize = 0;
+
+    while index < 1000 {
+        set values =
+            values + [
+                rc_new(
+                    Point {
+                        x: index as int
+                        y: (index as int) + 1
+                    }
+                )
+            ];
+
+        set index = index + 1;
+    }
+
+    let check: usize = 0;
+
+    while check < 1000 {
+        let point =
+            rc_get(
+                ref values[check]
+            );
+
+        if point.x != check as int {
+            give false;
+        }
+
+        if point.y
+            != (check as int) + 1
+        {
+            give false;
+        }
+
+        set check = check + 1;
+    }
+
+    give true;
+}
+
+proc test_shared_identity() -> bool {
+    let value = rc_new(42);
+
+    let copy1 = rc_clone(value);
+    let copy2 = rc_clone(value);
+    let copy3 = rc_clone(value);
+
+    give rc_strong_count(ref value) == 4
+        and rc_ptr_equal(ref value, ref copy1)
+        and rc_ptr_equal(ref value, ref copy2)
+        and rc_ptr_equal(ref value, ref copy3);
+}
+
+proc test_make_mut_unique() -> bool {
+    let mut value = rc_new(42);
+
+    let inner = rc_make_mut(
+        ref mut value
+    );
+
+    set *inner = 99;
+
+    give *rc_get(ref value) == 99
+        and rc_is_unique(ref value);
+}
+
+proc test_make_mut_shared_detaches() -> bool {
+    let mut value = rc_new(42);
+
+    let copy = rc_clone(
+        value
+    );
+
+    let item = rc_make_mut(
+        ref mut value
+    );
+
+    set *item = 100;
+
+    give *rc_get(ref value) == 100
+        and *rc_get(ref copy) == 42
+        and not rc_ptr_equal(
+            ref value,
+            ref copy
+        );
+}
+
+proc run_basic_tests() -> bool {
+    give test_new()
+        and test_get()
+        and test_try_get()
+        and test_get_mut_unique()
+        and test_replace()
+
+        and test_point()
+        and test_point_mutation()
+
+        and test_clone()
+        and test_try_clone()
+        and test_mutable_denied_when_shared()
+        and test_drop_clone_restores_unique()
+        and test_mutable_after_clone_drop()
+
+        and test_downgrade()
+        and test_try_downgrade()
+        and test_upgrade()
+        and test_weak_clone()
+        and test_weak_try_clone()
+        and test_weak_ptr_matches_strong()
+
+        and test_weak_expires_after_final_strong_drop()
+        and test_upgrade_expired_weak_fails()
+        and test_weak_drop()
+
+        and test_double_strong_drop_fails()
+        and test_double_weak_drop_fails()
+
+        and test_profile_unique()
+        and test_profile_shared()
+        and test_weak_profile_alive()
+        and test_weak_profile_expired()
+
+        and test_validate()
+        and test_weak_validate()
+        and test_invariant()
+        and test_weak_invariant()
+
+        and test_snapshot_equal()
+        and test_snapshot_clone_changed()
+        and test_delta_clone()
+        and test_delta_downgrade()
+
+        and test_raw_conversion()
+        and test_weak_raw_conversion()
+        and test_from_raw()
+        and test_weak_from_raw()
+
+        and test_value_ptr()
+        and test_value_ptr_mut_unique()
+
+        and test_state_name()
+
+        and test_statistics_empty()
+        and test_statistics_create()
+        and test_statistics_clone()
+        and test_statistics_drop()
+        and test_statistics_failure()
+        and test_statistics_downgrade()
+        and test_statistics_upgrade()
+        and test_statistics_raw()
+        and test_statistics_reset()
+
+        and test_many_clone_drop_cycles()
+        and test_many_weak_cycles()
+        and test_many_upgrade_cycles()
+        and test_many_values()
+        and test_many_points()
+
+        and test_shared_identity()
+
+        and test_make_mut_unique()
+        and test_make_mut_shared_detaches();
+}
+
+proc main() -> int {
+    if run_basic_tests() {
+        give 0;
+    }
+
+    give 1;
+}

@@ -1,0 +1,1436 @@
+space vitte/stdlib/alloc/rc/strong
+
+export *
+
+use src/vitte/stdlib/alloc/rc/rc as rc
+use src/vitte/stdlib/alloc/rc/core as rc_core
+use src/vitte/stdlib/alloc/rc/count as rc_count
+use src/vitte/stdlib/alloc/rc/error as rc_error
+use src/vitte/stdlib/alloc/rc/inner as rc_inner
+use src/vitte/stdlib/alloc/rc/raw as rc_raw
+use src/vitte/stdlib/core/option as core_option
+
+pick RcStrongState {
+    Alive,
+    Unique,
+    Shared,
+    Released,
+    Stale,
+    Invalid
+}
+
+pick RcStrongAccess {
+    None,
+    Read,
+    ReadWrite
+}
+
+form RcStrong<T> {
+    value: rc.Rc<T>
+}
+
+form RcStrongProfile {
+    strong: usize
+    weak: usize
+
+    state: RcStrongState
+    access: RcStrongAccess
+
+    alive: bool
+    unique: bool
+    shared: bool
+    released: bool
+    stale: bool
+    valid: bool
+
+    generation: u64
+    revision: u64
+}
+
+form RcStrongValidation {
+    valid: bool
+
+    rc_valid: bool
+    alive_valid: bool
+    count_valid: bool
+    generation_valid: bool
+    access_valid: bool
+}
+
+form RcStrongSnapshot {
+    strong: usize
+    weak: usize
+
+    state: RcStrongState
+
+    generation: u64
+    revision: u64
+}
+
+form RcStrongDelta {
+    strong: int
+    weak: int
+
+    generation: int
+    revision: int
+
+    state_changed: bool
+    changed: bool
+}
+
+form RcStrongStatistics {
+    creations: u64
+    clones: u64
+    clone_failures: u64
+
+    drops: u64
+    drop_failures: u64
+
+    reads: u64
+    read_failures: u64
+
+    mutable_reads: u64
+    mutable_failures: u64
+
+    replacements: u64
+    replacement_failures: u64
+
+    downgrades: u64
+    downgrade_failures: u64
+
+    raw_conversions: u64
+
+    validations: u64
+    validation_failures: u64
+
+    peak_strong: usize
+    peak_weak: usize
+}
+
+// -----------------------------------------------------------------------------
+// Construction
+// -----------------------------------------------------------------------------
+
+proc rc_strong_new<T>(
+    value: T
+) -> RcStrong<T> {
+    give RcStrong<T> {
+        value:
+            rc.rc_new(
+                value
+            )
+    };
+}
+
+proc rc_strong_try_new<T>(
+    value: T
+) -> Option<RcStrong<T>> {
+    let result =
+        rc.rc_try_new(
+            value
+        );
+
+    pick result {
+        Some(inner) {
+            give some<RcStrong<T>>(
+                RcStrong<T> {
+                    value:
+                        inner
+                }
+            );
+        }
+
+        None {
+            give none<RcStrong<T>>();
+        }
+    }
+}
+
+proc rc_strong_from_rc<T>(
+    value: rc.Rc<T>
+) -> RcStrong<T> {
+    give RcStrong<T> {
+        value:
+            value
+    };
+}
+
+proc rc_strong_into_rc<T>(
+    value: RcStrong<T>
+) -> rc.Rc<T> {
+    give value.value;
+}
+
+// -----------------------------------------------------------------------------
+// Accessors
+// -----------------------------------------------------------------------------
+
+proc rc_strong_rc<T>(
+    value: ref RcStrong<T>
+) -> ref rc.Rc<T> {
+    give ref value.value;
+}
+
+proc rc_strong_rc_mut<T>(
+    value: ref mut RcStrong<T>
+) -> ref mut rc.Rc<T> {
+    give ref mut value.value;
+}
+
+proc rc_strong_count<T>(
+    value: ref RcStrong<T>
+) -> usize {
+    give rc.rc_strong_count(
+        ref value.value
+    );
+}
+
+proc rc_strong_weak_count<T>(
+    value: ref RcStrong<T>
+) -> usize {
+    give rc.rc_weak_count(
+        ref value.value
+    );
+}
+
+proc rc_strong_generation<T>(
+    value: ref RcStrong<T>
+) -> u64 {
+    give value.value.generation;
+}
+
+proc rc_strong_revision<T>(
+    value: ref RcStrong<T>
+) -> u64 {
+    give value.value.revision;
+}
+
+// -----------------------------------------------------------------------------
+// State
+// -----------------------------------------------------------------------------
+
+proc rc_strong_state<T>(
+    value: ref RcStrong<T>
+) -> RcStrongState {
+    if compiler_raw_ptr_is_null(
+        value.value.inner
+    ) {
+        give RcStrongState.Released;
+    }
+
+    let validation =
+        rc.rc_validate(
+            ref value.value
+        );
+
+    if not validation.pointer_valid {
+        give RcStrongState.Invalid;
+    }
+
+    if not validation.generation_valid {
+        give RcStrongState.Stale;
+    }
+
+    if not validation.inner_valid {
+        give RcStrongState.Invalid;
+    }
+
+    if not validation.strong_valid {
+        give RcStrongState.Released;
+    }
+
+    let strong =
+        rc_strong_count(
+            value
+        );
+
+    if strong == 1 {
+        give RcStrongState.Unique;
+    }
+
+    if strong > 1 {
+        give RcStrongState.Shared;
+    }
+
+    if strong > 0 {
+        give RcStrongState.Alive;
+    }
+
+    give RcStrongState.Invalid;
+}
+
+proc rc_strong_access<T>(
+    value: ref RcStrong<T>
+) -> RcStrongAccess {
+    let state =
+        rc_strong_state(
+            value
+        );
+
+    pick state {
+        RcStrongState.Unique {
+            give RcStrongAccess.ReadWrite;
+        }
+
+        RcStrongState.Alive
+        | RcStrongState.Shared {
+            give RcStrongAccess.Read;
+        }
+
+        RcStrongState.Released
+        | RcStrongState.Stale
+        | RcStrongState.Invalid {
+            give RcStrongAccess.None;
+        }
+    }
+
+    give RcStrongAccess.None;
+}
+
+// -----------------------------------------------------------------------------
+// Predicates
+// -----------------------------------------------------------------------------
+
+proc rc_strong_is_alive<T>(
+    value: ref RcStrong<T>
+) -> bool {
+    let state =
+        rc_strong_state(
+            value
+        );
+
+    give state == RcStrongState.Alive
+        or state == RcStrongState.Unique
+        or state == RcStrongState.Shared;
+}
+
+proc rc_strong_is_unique<T>(
+    value: ref RcStrong<T>
+) -> bool {
+    give rc_strong_state(value)
+        == RcStrongState.Unique;
+}
+
+proc rc_strong_is_shared<T>(
+    value: ref RcStrong<T>
+) -> bool {
+    give rc_strong_state(value)
+        == RcStrongState.Shared;
+}
+
+proc rc_strong_is_released<T>(
+    value: ref RcStrong<T>
+) -> bool {
+    give rc_strong_state(value)
+        == RcStrongState.Released;
+}
+
+proc rc_strong_is_stale<T>(
+    value: ref RcStrong<T>
+) -> bool {
+    give rc_strong_state(value)
+        == RcStrongState.Stale;
+}
+
+proc rc_strong_is_valid<T>(
+    value: ref RcStrong<T>
+) -> bool {
+    let state =
+        rc_strong_state(
+            value
+        );
+
+    give state != RcStrongState.Invalid
+        and state != RcStrongState.Stale
+        and state != RcStrongState.Released;
+}
+
+proc rc_strong_can_read<T>(
+    value: ref RcStrong<T>
+) -> bool {
+    let access =
+        rc_strong_access(
+            value
+        );
+
+    give access == RcStrongAccess.Read
+        or access == RcStrongAccess.ReadWrite;
+}
+
+proc rc_strong_can_write<T>(
+    value: ref RcStrong<T>
+) -> bool {
+    give rc_strong_access(value)
+        == RcStrongAccess.ReadWrite;
+}
+
+// -----------------------------------------------------------------------------
+// Clone
+// -----------------------------------------------------------------------------
+
+proc rc_strong_clone<T>(
+    value: RcStrong<T>
+) -> RcStrong<T> {
+    give RcStrong<T> {
+        value:
+            rc.rc_clone(
+                value.value
+            )
+    };
+}
+
+proc rc_strong_try_clone<T>(
+    value: RcStrong<T>
+) -> Option<RcStrong<T>> {
+    let result =
+        rc.rc_try_clone(
+            value.value
+        );
+
+    pick result {
+        Some(copy) {
+            give some<RcStrong<T>>(
+                RcStrong<T> {
+                    value:
+                        copy
+                }
+            );
+        }
+
+        None {
+            give none<RcStrong<T>>();
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Read
+// -----------------------------------------------------------------------------
+
+proc rc_strong_get<T>(
+    value: ref RcStrong<T>
+) -> ref T {
+    give rc.rc_get(
+        ref value.value
+    );
+}
+
+proc rc_strong_try_get<T>(
+    value: ref RcStrong<T>
+) -> Option<ref T> {
+    give rc.rc_try_get(
+        ref value.value
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Mutable access
+// -----------------------------------------------------------------------------
+
+proc rc_strong_get_mut<T>(
+    value: ref mut RcStrong<T>
+) -> Option<ref mut T> {
+    give rc.rc_get_mut(
+        ref mut value.value
+    );
+}
+
+proc rc_strong_make_mut<T>(
+    value: ref mut RcStrong<T>
+) -> ref mut T {
+    give rc.rc_make_mut(
+        ref mut value.value
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Replace
+// -----------------------------------------------------------------------------
+
+proc rc_strong_replace<T>(
+    value: ref mut RcStrong<T>,
+    item: T
+) -> bool {
+    give rc.rc_replace(
+        ref mut value.value,
+        item
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Downgrade
+// -----------------------------------------------------------------------------
+
+proc rc_strong_downgrade<T>(
+    value: ref RcStrong<T>
+) -> rc.RcWeak<T> {
+    give rc.rc_downgrade(
+        ref value.value
+    );
+}
+
+proc rc_strong_try_downgrade<T>(
+    value: ref RcStrong<T>
+) -> Option<rc.RcWeak<T>> {
+    give rc.rc_try_downgrade(
+        ref value.value
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Drop
+// -----------------------------------------------------------------------------
+
+proc rc_strong_drop<T>(
+    value: ref mut RcStrong<T>
+) -> bool {
+    give rc.rc_drop(
+        ref mut value.value
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Pointer identity
+// -----------------------------------------------------------------------------
+
+proc rc_strong_ptr_equal<T>(
+    left: ref RcStrong<T>,
+    right: ref RcStrong<T>
+) -> bool {
+    give rc.rc_ptr_equal(
+        ref left.value,
+        ref right.value
+    );
+}
+
+proc rc_strong_same_allocation<T>(
+    left: ref RcStrong<T>,
+    right: ref RcStrong<T>
+) -> bool {
+    give rc_strong_ptr_equal(
+        left,
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Raw conversion
+// -----------------------------------------------------------------------------
+
+proc rc_strong_as_raw<T>(
+    value: ref RcStrong<T>
+) -> rc_raw.RcRaw<T> {
+    give rc.rc_as_raw(
+        ref value.value
+    );
+}
+
+proc rc_strong_from_raw<T>(
+    raw: rc_raw.RcRaw<T>
+) -> Option<RcStrong<T>> {
+    let result =
+        rc.rc_from_raw(
+            raw
+        );
+
+    pick result {
+        Some(value) {
+            give some<RcStrong<T>>(
+                RcStrong<T> {
+                    value:
+                        value
+                }
+            );
+        }
+
+        None {
+            give none<RcStrong<T>>();
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Value pointer
+// -----------------------------------------------------------------------------
+
+proc rc_strong_value_ptr<T>(
+    value: ref RcStrong<T>
+) -> raw ref T {
+    give rc.rc_value_ptr(
+        ref value.value
+    );
+}
+
+proc rc_strong_value_ptr_mut<T>(
+    value: ref mut RcStrong<T>
+) -> Option<raw ref T> {
+    give rc.rc_value_ptr_mut(
+        ref mut value.value
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Refresh
+// -----------------------------------------------------------------------------
+
+proc rc_strong_refresh<T>(
+    value: ref mut RcStrong<T>
+) -> bool {
+    give rc.rc_refresh(
+        ref mut value.value
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+proc rc_strong_validate<T>(
+    value: ref RcStrong<T>
+) -> RcStrongValidation {
+    let base =
+        rc.rc_validate(
+            ref value.value
+        );
+
+    let rc_valid =
+        base.valid;
+
+    let alive_valid =
+        rc.rc_is_alive(
+            ref value.value
+        );
+
+    let count_valid =
+        rc_strong_count(
+            value
+        ) > 0;
+
+    let generation_valid =
+        base.generation_valid;
+
+    let access =
+        rc_strong_access(
+            value
+        );
+
+    let access_valid =
+        if rc_strong_count(value) == 1 {
+            access == RcStrongAccess.ReadWrite
+        } else if rc_strong_count(value) > 1 {
+            access == RcStrongAccess.Read
+        } else {
+            access == RcStrongAccess.None
+        };
+
+    give RcStrongValidation {
+        valid:
+            rc_valid
+            and alive_valid
+            and count_valid
+            and generation_valid
+            and access_valid,
+
+        rc_valid:
+            rc_valid,
+
+        alive_valid:
+            alive_valid,
+
+        count_valid:
+            count_valid,
+
+        generation_valid:
+            generation_valid,
+
+        access_valid:
+            access_valid
+    };
+}
+
+proc rc_strong_invariant_holds<T>(
+    value: ref RcStrong<T>
+) -> bool {
+    give rc_strong_validate(
+        value
+    ).valid;
+}
+
+// -----------------------------------------------------------------------------
+// Error
+// -----------------------------------------------------------------------------
+
+proc rc_strong_error<T>(
+    value: ref RcStrong<T>
+) -> rc_error.RcError {
+    let validation =
+        rc_strong_validate(
+            value
+        );
+
+    if validation.valid {
+        give rc_error.rc_error_none();
+    }
+
+    if not validation.rc_valid {
+        give rc.rc_error_for(
+            ref value.value
+        );
+    }
+
+    if not validation.alive_valid {
+        let inner =
+            rc.rc_inner_ref(
+                ref value.value
+            );
+
+        pick inner {
+            Some(current) {
+                give rc_error.rc_error_not_alive(
+                    current.counts
+                );
+            }
+
+            None {
+                give rc_error.rc_error_null_pointer();
+            }
+        }
+    }
+
+    if not validation.count_valid {
+        let inner =
+            rc.rc_inner_ref(
+                ref value.value
+            );
+
+        pick inner {
+            Some(current) {
+                give rc_error.rc_error_invalid_strong_count(
+                    current.counts
+                );
+            }
+
+            None {
+                give rc_error.rc_error_null_pointer();
+            }
+        }
+    }
+
+    if not validation.generation_valid {
+        let inner =
+            rc.rc_inner_ref(
+                ref value.value
+            );
+
+        pick inner {
+            Some(current) {
+                give rc_error.rc_error_stale_reference(
+                    current.counts
+                );
+            }
+
+            None {
+                give rc_error.rc_error_invalid_pointer();
+            }
+        }
+    }
+
+    if not validation.access_valid {
+        let inner =
+            rc.rc_inner_ref(
+                ref value.value
+            );
+
+        pick inner {
+            Some(current) {
+                give rc_error.rc_error_invalid_access(
+                    current.counts
+                );
+            }
+
+            None {
+                give rc_error.rc_error_invalid_pointer();
+            }
+        }
+    }
+
+    give rc_error.rc_error_internal(
+        "unknown rc strong validation failure"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Profile
+// -----------------------------------------------------------------------------
+
+proc rc_strong_profile<T>(
+    value: ref RcStrong<T>
+) -> RcStrongProfile {
+    let strong =
+        rc_strong_count(
+            value
+        );
+
+    let weak =
+        rc_strong_weak_count(
+            value
+        );
+
+    let state =
+        rc_strong_state(
+            value
+        );
+
+    give RcStrongProfile {
+        strong:
+            strong,
+
+        weak:
+            weak,
+
+        state:
+            state,
+
+        access:
+            rc_strong_access(
+                value
+            ),
+
+        alive:
+            rc_strong_is_alive(
+                value
+            ),
+
+        unique:
+            state == RcStrongState.Unique,
+
+        shared:
+            state == RcStrongState.Shared,
+
+        released:
+            state == RcStrongState.Released,
+
+        stale:
+            state == RcStrongState.Stale,
+
+        valid:
+            rc_strong_is_valid(
+                value
+            ),
+
+        generation:
+            rc_strong_generation(
+                value
+            ),
+
+        revision:
+            rc_strong_revision(
+                value
+            )
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Snapshot
+// -----------------------------------------------------------------------------
+
+proc rc_strong_snapshot<T>(
+    value: ref RcStrong<T>
+) -> RcStrongSnapshot {
+    give RcStrongSnapshot {
+        strong:
+            rc_strong_count(
+                value
+            ),
+
+        weak:
+            rc_strong_weak_count(
+                value
+            ),
+
+        state:
+            rc_strong_state(
+                value
+            ),
+
+        generation:
+            rc_strong_generation(
+                value
+            ),
+
+        revision:
+            rc_strong_revision(
+                value
+            )
+    };
+}
+
+proc rc_strong_snapshot_equal(
+    left: RcStrongSnapshot,
+    right: RcStrongSnapshot
+) -> bool {
+    give left.strong == right.strong
+        and left.weak == right.weak
+        and left.state == right.state
+        and left.generation == right.generation
+        and left.revision == right.revision;
+}
+
+proc rc_strong_snapshot_changed(
+    left: RcStrongSnapshot,
+    right: RcStrongSnapshot
+) -> bool {
+    give not rc_strong_snapshot_equal(
+        left,
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Delta
+// -----------------------------------------------------------------------------
+
+proc rc_strong_usize_delta(
+    before: usize,
+    after: usize
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc rc_strong_u64_delta(
+    before: u64,
+    after: u64
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc rc_strong_delta(
+    before: RcStrongSnapshot,
+    after: RcStrongSnapshot
+) -> RcStrongDelta {
+    let strong =
+        rc_strong_usize_delta(
+            before.strong,
+            after.strong
+        );
+
+    let weak =
+        rc_strong_usize_delta(
+            before.weak,
+            after.weak
+        );
+
+    let generation =
+        rc_strong_u64_delta(
+            before.generation,
+            after.generation
+        );
+
+    let revision =
+        rc_strong_u64_delta(
+            before.revision,
+            after.revision
+        );
+
+    let state_changed =
+        before.state
+            != after.state;
+
+    give RcStrongDelta {
+        strong:
+            strong,
+
+        weak:
+            weak,
+
+        generation:
+            generation,
+
+        revision:
+            revision,
+
+        state_changed:
+            state_changed,
+
+        changed:
+            strong != 0
+            or weak != 0
+            or generation != 0
+            or revision != 0
+            or state_changed
+    };
+}
+
+proc rc_strong_delta_is_zero(
+    delta: RcStrongDelta
+) -> bool {
+    give not delta.changed;
+}
+
+// -----------------------------------------------------------------------------
+// Core conversion
+// -----------------------------------------------------------------------------
+
+proc rc_strong_core_counts<T>(
+    value: ref RcStrong<T>
+) -> rc_core.RcCoreCounts {
+    give rc_core.rc_core_counts(
+        rc_strong_count(value),
+        rc_strong_weak_count(value)
+    );
+}
+
+proc rc_strong_core_state<T>(
+    value: ref RcStrong<T>
+) -> rc_core.RcCoreState {
+    give rc_core.rc_core_state(
+        rc_strong_core_counts(
+            value
+        )
+    );
+}
+
+proc rc_strong_core_profile<T>(
+    value: ref RcStrong<T>
+) -> rc_core.RcCoreProfile {
+    give rc_core.rc_core_profile(
+        rc_strong_core_counts(
+            value
+        ),
+        rc_core.RcCoreMeta {
+            generation:
+                rc_strong_generation(
+                    value
+                ),
+
+            revision:
+                rc_strong_revision(
+                    value
+                )
+        }
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc rc_strong_statistics_empty()
+    -> RcStrongStatistics
+{
+    give RcStrongStatistics {
+        creations: 0,
+
+        clones: 0,
+        clone_failures: 0,
+
+        drops: 0,
+        drop_failures: 0,
+
+        reads: 0,
+        read_failures: 0,
+
+        mutable_reads: 0,
+        mutable_failures: 0,
+
+        replacements: 0,
+        replacement_failures: 0,
+
+        downgrades: 0,
+        downgrade_failures: 0,
+
+        raw_conversions: 0,
+
+        validations: 0,
+        validation_failures: 0,
+
+        peak_strong: 1,
+        peak_weak: 0
+    };
+}
+
+proc rc_strong_statistics_record_create<T>(
+    statistics: ref mut RcStrongStatistics,
+    value: ref RcStrong<T>
+) {
+    set statistics.creations =
+        statistics.creations + 1;
+
+    let strong =
+        rc_strong_count(
+            value
+        );
+
+    if strong > statistics.peak_strong {
+        set statistics.peak_strong =
+            strong;
+    }
+
+    let weak =
+        rc_strong_weak_count(
+            value
+        );
+
+    if weak > statistics.peak_weak {
+        set statistics.peak_weak =
+            weak;
+    }
+}
+
+proc rc_strong_statistics_record_clone<T>(
+    statistics: ref mut RcStrongStatistics,
+    value: ref RcStrong<T>,
+    success: bool
+) {
+    if success {
+        set statistics.clones =
+            statistics.clones + 1;
+
+        let strong =
+            rc_strong_count(
+                value
+            );
+
+        if strong > statistics.peak_strong {
+            set statistics.peak_strong =
+                strong;
+        }
+    } else {
+        set statistics.clone_failures =
+            statistics.clone_failures + 1;
+    }
+}
+
+proc rc_strong_statistics_record_drop(
+    statistics: ref mut RcStrongStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.drops =
+            statistics.drops + 1;
+    } else {
+        set statistics.drop_failures =
+            statistics.drop_failures + 1;
+    }
+}
+
+proc rc_strong_statistics_record_read(
+    statistics: ref mut RcStrongStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.reads =
+            statistics.reads + 1;
+    } else {
+        set statistics.read_failures =
+            statistics.read_failures + 1;
+    }
+}
+
+proc rc_strong_statistics_record_mutable(
+    statistics: ref mut RcStrongStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.mutable_reads =
+            statistics.mutable_reads + 1;
+    } else {
+        set statistics.mutable_failures =
+            statistics.mutable_failures + 1;
+    }
+}
+
+proc rc_strong_statistics_record_replace(
+    statistics: ref mut RcStrongStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.replacements =
+            statistics.replacements + 1;
+    } else {
+        set statistics.replacement_failures =
+            statistics.replacement_failures + 1;
+    }
+}
+
+proc rc_strong_statistics_record_downgrade<T>(
+    statistics: ref mut RcStrongStatistics,
+    value: ref RcStrong<T>,
+    success: bool
+) {
+    if success {
+        set statistics.downgrades =
+            statistics.downgrades + 1;
+
+        let weak =
+            rc_strong_weak_count(
+                value
+            );
+
+        if weak > statistics.peak_weak {
+            set statistics.peak_weak =
+                weak;
+        }
+    } else {
+        set statistics.downgrade_failures =
+            statistics.downgrade_failures + 1;
+    }
+}
+
+proc rc_strong_statistics_record_raw(
+    statistics: ref mut RcStrongStatistics
+) {
+    set statistics.raw_conversions =
+        statistics.raw_conversions + 1;
+}
+
+proc rc_strong_statistics_record_validation(
+    statistics: ref mut RcStrongStatistics,
+    valid: bool
+) {
+    set statistics.validations =
+        statistics.validations + 1;
+
+    if not valid {
+        set statistics.validation_failures =
+            statistics.validation_failures + 1;
+    }
+}
+
+proc rc_strong_statistics_total(
+    statistics: RcStrongStatistics
+) -> u64 {
+    give statistics.creations
+        + statistics.clones
+        + statistics.clone_failures
+        + statistics.drops
+        + statistics.drop_failures
+        + statistics.reads
+        + statistics.read_failures
+        + statistics.mutable_reads
+        + statistics.mutable_failures
+        + statistics.replacements
+        + statistics.replacement_failures
+        + statistics.downgrades
+        + statistics.downgrade_failures
+        + statistics.raw_conversions
+        + statistics.validations
+        + statistics.validation_failures;
+}
+
+proc rc_strong_statistics_reset(
+    statistics: ref mut RcStrongStatistics
+) {
+    set *statistics =
+        rc_strong_statistics_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc rc_strong_state_name(
+    state: RcStrongState
+) -> string {
+    pick state {
+        RcStrongState.Alive {
+            give "alive";
+        }
+
+        RcStrongState.Unique {
+            give "unique";
+        }
+
+        RcStrongState.Shared {
+            give "shared";
+        }
+
+        RcStrongState.Released {
+            give "released";
+        }
+
+        RcStrongState.Stale {
+            give "stale";
+        }
+
+        RcStrongState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+proc rc_strong_access_name(
+    access: RcStrongAccess
+) -> string {
+    pick access {
+        RcStrongAccess.None {
+            give "none";
+        }
+
+        RcStrongAccess.Read {
+            give "read";
+        }
+
+        RcStrongAccess.ReadWrite {
+            give "read-write";
+        }
+    }
+
+    give "none";
+}
+
+// -----------------------------------------------------------------------------
+// Strong Rc model
+// -----------------------------------------------------------------------------
+//
+// RcStrong<T> is the explicit strong-ownership layer over Rc<T>.
+//
+// Lifecycle:
+//
+//     rc_strong_new(value)
+//
+//         strong = 1
+//         weak   = 0
+//
+// Clone:
+//
+//     RcStrong
+//        |
+//        | clone
+//        v
+//
+//     strong++
+//
+// Drop:
+//
+//     strong--
+//
+// Final strong drop:
+//
+//     strong: 1 -> 0
+//
+//     managed value T is destroyed.
+//
+// If weak references remain:
+//
+//     control block survives
+//
+// If no weak references remain:
+//
+//     control block may be released.
+//
+// -----------------------------------------------------------------------------
+//
+// Access rules:
+//
+//     strong == 1
+//
+//         unique ownership
+//         read/write access
+//
+//     strong > 1
+//
+//         shared ownership
+//         read-only access
+//
+//     strong == 0
+//
+//         no access
+//
+// -----------------------------------------------------------------------------
+//
+// Downgrade:
+//
+//     RcStrong<T>
+//        |
+//        | rc_strong_downgrade
+//        v
+//
+//     RcWeak<T>
+//
+// This increments the weak counter without consuming strong ownership.
+//
+// -----------------------------------------------------------------------------
+//
+// Pointer identity:
+//
+//     two RcStrong values may own the same control block.
+//
+//     rc_strong_ptr_equal(a, b)
+//
+// tests identity, not value equality.
+//
+// -----------------------------------------------------------------------------
+//
+// Raw conversion:
+//
+//     RcStrong<T>
+//        |
+//        v
+//     RcRaw<T>
+//
+// Raw references are low-level and do not automatically express ownership.
+//
+// -----------------------------------------------------------------------------
+//
+// Strong ownership invariants:
+//
+//     strong > 0
+//
+//     control block alive
+//
+//     managed value alive
+//
+//     generation matches control block
+//
+//     strong == 1
+//         => mutable access permitted
+//
+//     strong > 1
+//         => mutable access denied
+//
+// -----------------------------------------------------------------------------
+//
+// Module responsibilities:
+//
+//     strong.vitl
+//         explicit strong-reference operations
+//
+//     rc.vitl
+//         public Rc/RcWeak ownership API
+//
+//     weak.vitl
+//         weak ownership operations
+//
+//     inner.vitl
+//         control block lifecycle
+//
+//     count.vitl
+//         strong/weak counters
+//
+//     core.vitl
+//         pure state model
+//
+//     raw.vitl
+//         unsafe/raw boundary
+//
+//     error.vitl
+//         diagnostics and failure classification

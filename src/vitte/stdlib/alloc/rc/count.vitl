@@ -1,0 +1,1125 @@
+space vitte/stdlib/alloc/rc/count
+
+export *
+
+use src/vitte/stdlib/alloc/rc/core as rc_core
+
+const RC_COUNT_MAX: usize = usize_max();
+
+pick RcCountKind {
+    Strong,
+    Weak
+}
+
+pick RcCountState {
+    Zero,
+    One,
+    Many,
+    Maximum,
+    Invalid
+}
+
+pick RcCountOperation {
+    None,
+    Increment,
+    Decrement,
+    Clone,
+    Drop,
+    Upgrade,
+    Downgrade
+}
+
+form RcCount {
+    value: usize
+    kind: RcCountKind
+
+    generation: u64
+    revision: u64
+}
+
+form RcCountPair {
+    strong: RcCount
+    weak: RcCount
+}
+
+form RcCountProfile {
+    value: usize
+    kind: RcCountKind
+    state: RcCountState
+
+    zero: bool
+    one: bool
+    many: bool
+    maximum: bool
+
+    incrementable: bool
+    decrementable: bool
+
+    valid: bool
+
+    generation: u64
+    revision: u64
+}
+
+form RcCountSnapshot {
+    value: usize
+    state: RcCountState
+
+    generation: u64
+    revision: u64
+}
+
+form RcCountDelta {
+    value: int
+    generation: int
+    revision: int
+
+    state_changed: bool
+    changed: bool
+}
+
+form RcCountValidation {
+    valid: bool
+
+    kind_valid: bool
+    state_valid: bool
+    generation_valid: bool
+}
+
+form RcCountStatistics {
+    increments: u64
+    decrements: u64
+
+    strong_increments: u64
+    strong_decrements: u64
+
+    weak_increments: u64
+    weak_decrements: u64
+
+    failures: u64
+
+    peak_strong: usize
+    peak_weak: usize
+}
+
+// -----------------------------------------------------------------------------
+// Construction
+// -----------------------------------------------------------------------------
+
+proc rc_count(
+    value: usize,
+    kind: RcCountKind
+) -> RcCount {
+    give RcCount {
+        value: value,
+        kind: kind,
+
+        generation: 1,
+        revision: 1
+    };
+}
+
+proc rc_count_strong_new()
+    -> RcCount
+{
+    give rc_count(
+        1,
+        RcCountKind.Strong
+    );
+}
+
+proc rc_count_weak_new()
+    -> RcCount
+{
+    give rc_count(
+        0,
+        RcCountKind.Weak
+    );
+}
+
+proc rc_count_pair_new()
+    -> RcCountPair
+{
+    give RcCountPair {
+        strong:
+            rc_count_strong_new(),
+
+        weak:
+            rc_count_weak_new()
+    };
+}
+
+proc rc_count_pair(
+    strong: usize,
+    weak: usize
+) -> RcCountPair {
+    give RcCountPair {
+        strong:
+            rc_count(
+                strong,
+                RcCountKind.Strong
+            ),
+
+        weak:
+            rc_count(
+                weak,
+                RcCountKind.Weak
+            )
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Accessors
+// -----------------------------------------------------------------------------
+
+proc rc_count_value(
+    count: RcCount
+) -> usize {
+    give count.value;
+}
+
+proc rc_count_generation(
+    count: RcCount
+) -> u64 {
+    give count.generation;
+}
+
+proc rc_count_revision(
+    count: RcCount
+) -> u64 {
+    give count.revision;
+}
+
+proc rc_count_pair_strong(
+    counts: RcCountPair
+) -> usize {
+    give counts.strong.value;
+}
+
+proc rc_count_pair_weak(
+    counts: RcCountPair
+) -> usize {
+    give counts.weak.value;
+}
+
+proc rc_count_pair_total(
+    counts: RcCountPair
+) -> usize {
+    if rc_count_add_overflows(
+        counts.strong.value,
+        counts.weak.value
+    ) {
+        give RC_COUNT_MAX;
+    }
+
+    give counts.strong.value
+        + counts.weak.value;
+}
+
+// -----------------------------------------------------------------------------
+// Arithmetic
+// -----------------------------------------------------------------------------
+
+proc rc_count_add_overflows(
+    left: usize,
+    right: usize
+) -> bool {
+    give left > RC_COUNT_MAX - right;
+}
+
+proc rc_count_can_increment(
+    count: RcCount
+) -> bool {
+    give count.value < RC_COUNT_MAX;
+}
+
+proc rc_count_can_decrement(
+    count: RcCount
+) -> bool {
+    give count.value > 0;
+}
+
+// -----------------------------------------------------------------------------
+// State
+// -----------------------------------------------------------------------------
+
+proc rc_count_state(
+    count: RcCount
+) -> RcCountState {
+    if count.value == 0 {
+        give RcCountState.Zero;
+    }
+
+    if count.value == 1 {
+        give RcCountState.One;
+    }
+
+    if count.value == RC_COUNT_MAX {
+        give RcCountState.Maximum;
+    }
+
+    if count.value > 1 {
+        give RcCountState.Many;
+    }
+
+    give RcCountState.Invalid;
+}
+
+proc rc_count_is_zero(
+    count: RcCount
+) -> bool {
+    give count.value == 0;
+}
+
+proc rc_count_is_one(
+    count: RcCount
+) -> bool {
+    give count.value == 1;
+}
+
+proc rc_count_is_many(
+    count: RcCount
+) -> bool {
+    give count.value > 1
+        and count.value < RC_COUNT_MAX;
+}
+
+proc rc_count_is_maximum(
+    count: RcCount
+) -> bool {
+    give count.value == RC_COUNT_MAX;
+}
+
+proc rc_count_is_strong(
+    count: RcCount
+) -> bool {
+    give count.kind
+        == RcCountKind.Strong;
+}
+
+proc rc_count_is_weak(
+    count: RcCount
+) -> bool {
+    give count.kind
+        == RcCountKind.Weak;
+}
+
+// -----------------------------------------------------------------------------
+// Increment
+// -----------------------------------------------------------------------------
+
+proc rc_count_increment(
+    count: ref mut RcCount
+) -> bool {
+    if not rc_count_can_increment(
+        *count
+    ) {
+        give false;
+    }
+
+    set count.value =
+        count.value + 1;
+
+    set count.revision =
+        count.revision + 1;
+
+    give true;
+}
+
+proc rc_count_increment_by(
+    count: ref mut RcCount,
+    amount: usize
+) -> bool {
+    if rc_count_add_overflows(
+        count.value,
+        amount
+    ) {
+        give false;
+    }
+
+    set count.value =
+        count.value + amount;
+
+    set count.revision =
+        count.revision + 1;
+
+    give true;
+}
+
+proc rc_count_clone(
+    count: ref mut RcCount
+) -> bool {
+    give rc_count_increment(
+        count
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Decrement
+// -----------------------------------------------------------------------------
+
+proc rc_count_decrement(
+    count: ref mut RcCount
+) -> bool {
+    if not rc_count_can_decrement(
+        *count
+    ) {
+        give false;
+    }
+
+    set count.value =
+        count.value - 1;
+
+    set count.revision =
+        count.revision + 1;
+
+    if count.value == 0 {
+        set count.generation =
+            count.generation + 1;
+    }
+
+    give true;
+}
+
+proc rc_count_decrement_by(
+    count: ref mut RcCount,
+    amount: usize
+) -> bool {
+    if amount > count.value {
+        give false;
+    }
+
+    set count.value =
+        count.value - amount;
+
+    set count.revision =
+        count.revision + 1;
+
+    if count.value == 0 {
+        set count.generation =
+            count.generation + 1;
+    }
+
+    give true;
+}
+
+proc rc_count_drop(
+    count: ref mut RcCount
+) -> bool {
+    give rc_count_decrement(
+        count
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Strong helpers
+// -----------------------------------------------------------------------------
+
+proc rc_count_strong_clone(
+    counts: ref mut RcCountPair
+) -> bool {
+    give rc_count_increment(
+        ref mut counts.strong
+    );
+}
+
+proc rc_count_strong_drop(
+    counts: ref mut RcCountPair
+) -> bool {
+    give rc_count_decrement(
+        ref mut counts.strong
+    );
+}
+
+proc rc_count_strong_is_unique(
+    counts: RcCountPair
+) -> bool {
+    give counts.strong.value == 1;
+}
+
+proc rc_count_strong_is_shared(
+    counts: RcCountPair
+) -> bool {
+    give counts.strong.value > 1;
+}
+
+proc rc_count_strong_is_alive(
+    counts: RcCountPair
+) -> bool {
+    give counts.strong.value > 0;
+}
+
+// -----------------------------------------------------------------------------
+// Weak helpers
+// -----------------------------------------------------------------------------
+
+proc rc_count_weak_clone(
+    counts: ref mut RcCountPair
+) -> bool {
+    give rc_count_increment(
+        ref mut counts.weak
+    );
+}
+
+proc rc_count_weak_drop(
+    counts: ref mut RcCountPair
+) -> bool {
+    give rc_count_decrement(
+        ref mut counts.weak
+    );
+}
+
+proc rc_count_has_weak(
+    counts: RcCountPair
+) -> bool {
+    give counts.weak.value > 0;
+}
+
+proc rc_count_is_weak_only(
+    counts: RcCountPair
+) -> bool {
+    give counts.strong.value == 0
+        and counts.weak.value > 0;
+}
+
+// -----------------------------------------------------------------------------
+// Downgrade / upgrade
+// -----------------------------------------------------------------------------
+
+proc rc_count_downgrade(
+    counts: ref mut RcCountPair
+) -> bool {
+    if counts.strong.value == 0 {
+        give false;
+    }
+
+    give rc_count_weak_clone(
+        counts
+    );
+}
+
+proc rc_count_can_upgrade(
+    counts: RcCountPair
+) -> bool {
+    give counts.strong.value > 0
+        and counts.weak.value > 0;
+}
+
+proc rc_count_upgrade(
+    counts: ref mut RcCountPair
+) -> bool {
+    if not rc_count_can_upgrade(
+        *counts
+    ) {
+        give false;
+    }
+
+    give rc_count_strong_clone(
+        counts
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Lifecycle predicates
+// -----------------------------------------------------------------------------
+
+proc rc_count_should_drop_value(
+    before: RcCountPair,
+    after: RcCountPair
+) -> bool {
+    give before.strong.value > 0
+        and after.strong.value == 0;
+}
+
+proc rc_count_should_release_control(
+    counts: RcCountPair
+) -> bool {
+    give counts.strong.value == 0
+        and counts.weak.value == 0;
+}
+
+proc rc_count_is_alive(
+    counts: RcCountPair
+) -> bool {
+    give counts.strong.value > 0;
+}
+
+proc rc_count_is_dead(
+    counts: RcCountPair
+) -> bool {
+    give counts.strong.value == 0
+        and counts.weak.value == 0;
+}
+
+// -----------------------------------------------------------------------------
+// Conversion to core
+// -----------------------------------------------------------------------------
+
+proc rc_count_core(
+    counts: RcCountPair
+) -> rc_core.RcCoreCounts {
+    give rc_core.rc_core_counts(
+        counts.strong.value,
+        counts.weak.value
+    );
+}
+
+proc rc_count_from_core(
+    counts: rc_core.RcCoreCounts
+) -> RcCountPair {
+    give rc_count_pair(
+        counts.strong,
+        counts.weak
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Profile
+// -----------------------------------------------------------------------------
+
+proc rc_count_profile(
+    count: RcCount
+) -> RcCountProfile {
+    let state =
+        rc_count_state(
+            count
+        );
+
+    give RcCountProfile {
+        value:
+            count.value,
+
+        kind:
+            count.kind,
+
+        state:
+            state,
+
+        zero:
+            state == RcCountState.Zero,
+
+        one:
+            state == RcCountState.One,
+
+        many:
+            state == RcCountState.Many,
+
+        maximum:
+            state == RcCountState.Maximum,
+
+        incrementable:
+            rc_count_can_increment(
+                count
+            ),
+
+        decrementable:
+            rc_count_can_decrement(
+                count
+            ),
+
+        valid:
+            state != RcCountState.Invalid,
+
+        generation:
+            count.generation,
+
+        revision:
+            count.revision
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Snapshot
+// -----------------------------------------------------------------------------
+
+proc rc_count_snapshot(
+    count: RcCount
+) -> RcCountSnapshot {
+    give RcCountSnapshot {
+        value:
+            count.value,
+
+        state:
+            rc_count_state(
+                count
+            ),
+
+        generation:
+            count.generation,
+
+        revision:
+            count.revision
+    };
+}
+
+proc rc_count_snapshot_equal(
+    left: RcCountSnapshot,
+    right: RcCountSnapshot
+) -> bool {
+    give left.value == right.value
+        and left.state == right.state
+        and left.generation == right.generation
+        and left.revision == right.revision;
+}
+
+proc rc_count_snapshot_changed(
+    left: RcCountSnapshot,
+    right: RcCountSnapshot
+) -> bool {
+    give not rc_count_snapshot_equal(
+        left,
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Delta
+// -----------------------------------------------------------------------------
+
+proc rc_count_usize_delta(
+    before: usize,
+    after: usize
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc rc_count_u64_delta(
+    before: u64,
+    after: u64
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc rc_count_delta(
+    before: RcCountSnapshot,
+    after: RcCountSnapshot
+) -> RcCountDelta {
+    let value =
+        rc_count_usize_delta(
+            before.value,
+            after.value
+        );
+
+    let generation =
+        rc_count_u64_delta(
+            before.generation,
+            after.generation
+        );
+
+    let revision =
+        rc_count_u64_delta(
+            before.revision,
+            after.revision
+        );
+
+    let state_changed =
+        before.state != after.state;
+
+    give RcCountDelta {
+        value:
+            value,
+
+        generation:
+            generation,
+
+        revision:
+            revision,
+
+        state_changed:
+            state_changed,
+
+        changed:
+            value != 0
+            or generation != 0
+            or revision != 0
+            or state_changed
+    };
+}
+
+proc rc_count_delta_is_zero(
+    delta: RcCountDelta
+) -> bool {
+    give not delta.changed;
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+proc rc_count_validate(
+    count: RcCount
+) -> RcCountValidation {
+    let kind_valid =
+        count.kind == RcCountKind.Strong
+        or count.kind == RcCountKind.Weak;
+
+    let state_valid =
+        rc_count_state(count)
+            != RcCountState.Invalid;
+
+    let generation_valid =
+        count.generation > 0
+        and count.revision > 0;
+
+    give RcCountValidation {
+        valid:
+            kind_valid
+            and state_valid
+            and generation_valid,
+
+        kind_valid:
+            kind_valid,
+
+        state_valid:
+            state_valid,
+
+        generation_valid:
+            generation_valid
+    };
+}
+
+proc rc_count_pair_valid(
+    counts: RcCountPair
+) -> bool {
+    give rc_count_validate(
+        counts.strong
+    ).valid
+    and rc_count_validate(
+        counts.weak
+    ).valid
+    and rc_core.rc_core_counts_valid(
+        rc_count_core(
+            counts
+        )
+    );
+}
+
+proc rc_count_invariant_holds(
+    counts: RcCountPair
+) -> bool {
+    give rc_count_pair_valid(
+        counts
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Comparison
+// -----------------------------------------------------------------------------
+
+proc rc_count_equal(
+    left: RcCount,
+    right: RcCount
+) -> bool {
+    give left.value == right.value
+        and left.kind == right.kind;
+}
+
+proc rc_count_pair_equal(
+    left: RcCountPair,
+    right: RcCountPair
+) -> bool {
+    give rc_count_equal(
+        left.strong,
+        right.strong
+    )
+    and rc_count_equal(
+        left.weak,
+        right.weak
+    );
+}
+
+proc rc_count_compare(
+    left: RcCount,
+    right: RcCount
+) -> rc_core.RcCoreOrdering {
+    if left.value < right.value {
+        give rc_core.RcCoreOrdering.Less;
+    }
+
+    if left.value > right.value {
+        give rc_core.RcCoreOrdering.Greater;
+    }
+
+    give rc_core.RcCoreOrdering.Equal;
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc rc_count_statistics_empty()
+    -> RcCountStatistics
+{
+    give RcCountStatistics {
+        increments: 0,
+        decrements: 0,
+
+        strong_increments: 0,
+        strong_decrements: 0,
+
+        weak_increments: 0,
+        weak_decrements: 0,
+
+        failures: 0,
+
+        peak_strong: 0,
+        peak_weak: 0
+    };
+}
+
+proc rc_count_statistics_record_increment(
+    statistics: ref mut RcCountStatistics,
+    count: RcCount,
+    success: bool
+) {
+    if not success {
+        set statistics.failures =
+            statistics.failures + 1;
+
+        give;
+    }
+
+    set statistics.increments =
+        statistics.increments + 1;
+
+    if count.kind == RcCountKind.Strong {
+        set statistics.strong_increments =
+            statistics.strong_increments + 1;
+
+        if count.value > statistics.peak_strong {
+            set statistics.peak_strong =
+                count.value;
+        }
+    } else {
+        set statistics.weak_increments =
+            statistics.weak_increments + 1;
+
+        if count.value > statistics.peak_weak {
+            set statistics.peak_weak =
+                count.value;
+        }
+    }
+}
+
+proc rc_count_statistics_record_decrement(
+    statistics: ref mut RcCountStatistics,
+    count: RcCount,
+    success: bool
+) {
+    if not success {
+        set statistics.failures =
+            statistics.failures + 1;
+
+        give;
+    }
+
+    set statistics.decrements =
+        statistics.decrements + 1;
+
+    if count.kind == RcCountKind.Strong {
+        set statistics.strong_decrements =
+            statistics.strong_decrements + 1;
+    } else {
+        set statistics.weak_decrements =
+            statistics.weak_decrements + 1;
+    }
+}
+
+proc rc_count_statistics_total(
+    statistics: RcCountStatistics
+) -> u64 {
+    give statistics.increments
+        + statistics.decrements
+        + statistics.failures;
+}
+
+proc rc_count_statistics_reset(
+    statistics: ref mut RcCountStatistics
+) {
+    set *statistics =
+        rc_count_statistics_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc rc_count_kind_name(
+    kind: RcCountKind
+) -> string {
+    pick kind {
+        RcCountKind.Strong {
+            give "strong";
+        }
+
+        RcCountKind.Weak {
+            give "weak";
+        }
+    }
+
+    give "strong";
+}
+
+proc rc_count_state_name(
+    state: RcCountState
+) -> string {
+    pick state {
+        RcCountState.Zero {
+            give "zero";
+        }
+
+        RcCountState.One {
+            give "one";
+        }
+
+        RcCountState.Many {
+            give "many";
+        }
+
+        RcCountState.Maximum {
+            give "maximum";
+        }
+
+        RcCountState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+proc rc_count_operation_name(
+    operation: RcCountOperation
+) -> string {
+    pick operation {
+        RcCountOperation.None {
+            give "none";
+        }
+
+        RcCountOperation.Increment {
+            give "increment";
+        }
+
+        RcCountOperation.Decrement {
+            give "decrement";
+        }
+
+        RcCountOperation.Clone {
+            give "clone";
+        }
+
+        RcCountOperation.Drop {
+            give "drop";
+        }
+
+        RcCountOperation.Upgrade {
+            give "upgrade";
+        }
+
+        RcCountOperation.Downgrade {
+            give "downgrade";
+        }
+    }
+
+    give "none";
+}
+
+// -----------------------------------------------------------------------------
+// Rc count model
+// -----------------------------------------------------------------------------
+//
+// Rc owns two reference counters:
+//
+//     strong
+//     weak
+//
+// Initial:
+//
+//     strong = 1
+//     weak   = 0
+//
+// Strong clone:
+//
+//     strong++
+//
+// Strong drop:
+//
+//     strong--
+//
+// When:
+//
+//     strong == 0
+//
+// the managed value must be destroyed.
+//
+// Weak creation:
+//
+//     weak++
+//
+// Weak drop:
+//
+//     weak--
+//
+// The control allocation may only be released when:
+//
+//     strong == 0
+//     weak   == 0
+//
+// Generation:
+//
+//     incremented when a counter reaches zero.
+//
+// Revision:
+//
+//     incremented on each count mutation.
+//
+// Overflow:
+//
+//     count == usize_max()
+//
+// prevents any further increment.
+//
+// Fundamental invariants:
+//
+//     strong <= usize_max()
+//
+//     weak <= usize_max()
+//
+//     strong + weak does not overflow
+//
+//     generation > 0
+//
+//     revision > 0
+//
+// This module owns concrete counter operations.
+//
+// Pure ownership/state semantics:
+//     core.vitl
+//
+// Control block:
+//     inner.vitl
+//
+// Strong references:
+//     strong.vitl
+//
+// Weak references:
+//     weak.vitl
+//
+// Public Rc API:
+//     rc.vitl
