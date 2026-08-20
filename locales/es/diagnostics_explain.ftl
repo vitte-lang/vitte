@@ -530,6 +530,132 @@ DRIVER_E_PIPELINE_FAILURE.step1 = Re-run the command with --help and verify path
 DRIVER_E_PIPELINE_FAILURE.fix = provide an existing input, writable output path, and supported target/profile
 DRIVER_E_PIPELINE_FAILURE.example = vitte check src/main.vit --lang en
 
+DRIVER_E_ANALYSIS_FRONTEND_INCOMPLETE.summary = analysis frontend incomplete.
+DRIVER_E_ANALYSIS_FRONTEND_INCOMPLETE.cause = The driver could not use the provided input, option, cache, output, or profile.
+DRIVER_E_ANALYSIS_FRONTEND_INCOMPLETE.step1 = Re-run the command with --help and verify paths and option values.
+DRIVER_E_ANALYSIS_FRONTEND_INCOMPLETE.fix = provide an existing input, writable output path, and supported target/profile
+DRIVER_E_ANALYSIS_FRONTEND_INCOMPLETE.example = vitte check src/main.vit --lang en
+
+DRIVER_E_ANALYSIS_INVALID.summary = analysis invalido.
+DRIVER_E_ANALYSIS_INVALID.cause = The driver could not use the provided input, option, cache, output, or profile.
+DRIVER_E_ANALYSIS_INVALID.step1 = Re-run the command with --help and verify paths and option values.
+DRIVER_E_ANALYSIS_INVALID.fix = provide an existing input, writable output path, and supported target/profile
+DRIVER_E_ANALYSIS_INVALID.example = vitte check src/main.vit --lang en
+
+DRIVER_E_BORROWCK_NOT_EXECUTED.summary = borrowck not executed.
+DRIVER_E_BORROWCK_NOT_EXECUTED.cause = The driver could not use the provided input, option, cache, output, or profile.
+DRIVER_E_BORROWCK_NOT_EXECUTED.step1 = Re-run the command with --help and verify paths and option values.
+DRIVER_E_BORROWCK_NOT_EXECUTED.fix = provide an existing input, writable output path, and supported target/profile
+DRIVER_E_BORROWCK_NOT_EXECUTED.example = vitte check src/main.vit --lang en
+
+DRIVER_E_CODEGEN_IR_INCOMPLETE.summary = generacion de codigo ir incomplete.
+DRIVER_E_CODEGEN_IR_INCOMPLETE.cause = The driver could not use the provided input, option, cache, output, or profile.
+DRIVER_E_CODEGEN_IR_INCOMPLETE.step1 = Re-run the command with --help and verify paths and option values.
+DRIVER_E_CODEGEN_IR_INCOMPLETE.fix = provide an existing input, writable output path, and supported target/profile
+DRIVER_E_CODEGEN_IR_INCOMPLETE.example = vitte check src/main.vit --lang en
+
+DRIVER_E_FRONTEND_INPUT_NOT_LOADED.summary = frontend entrada not loaded.
+DRIVER_E_FRONTEND_INPUT_NOT_LOADED.cause = The driver could not use the provided input, option, cache, output, or profile.
+DRIVER_E_FRONTEND_INPUT_NOT_LOADED.step1 = Re-run the command with --help and verify paths and option values.
+DRIVER_E_FRONTEND_INPUT_NOT_LOADED.fix = provide an existing input, writable output path, and supported target/profile
+DRIVER_E_FRONTEND_INPUT_NOT_LOADED.example = vitte check src/main.vit --lang en
+
+DRIVER_E_FRONTEND_INVALID.summary = frontend invalido.
+DRIVER_E_FRONTEND_INVALID.cause = The driver could not use the provided input, option, cache, output, or profile.
+DRIVER_E_FRONTEND_INVALID.step1 = Re-run the command with --help and verify paths and option values.
+DRIVER_E_FRONTEND_INVALID.fix = provide an existing input, writable output path, and supported target/profile
+DRIVER_E_FRONTEND_INVALID.example = vitte check src/main.vit --lang en
+
+DRIVER_E_INVALID_LINK_PROFILE.summary = link perfil invalido.
+DRIVER_E_INVALID_LINK_PROFILE.cause = The driver could not use the provided input, option, cache, output, or profile.
+DRIVER_E_INVALID_LINK_PROFILE.step1 = Re-run the command with --help and verify paths and option values.
+DRIVER_E_INVALID_LINK_PROFILE.fix = provide an existing input, writable output path, and supported target/profile
+DRIVER_E_INVALID_LINK_PROFILE.example = vitte check src/main.vit --lang en
+
+DRIVER_E_IR_INVALID.summary = ir invalido.
+DRIVER_E_IR_INVALID.cause = The driver could not use the provided input, option, cache, output, or profile.
+DRIVER_E_IR_INVALID.step1 = Re-run the command with --help and verify paths and option values.
+DRIVER_E_IR_INVALID.fix = provide an existing input, writable output path, and supported target/profile
+DRIVER_E_IR_INVALID.example = vitte check src/main.vit --lang en
+
+DRIVER_E_IR_MIR_INCOMPLETE.summary = ir mir incomplete.
+DRIVER_E_IR_MIR_INCOMPLETE.cause = The driver could not use the provided input, option, cache, output, or profile.
+DRIVER_E_IR_MIR_INCOMPLETE.step1 = Re-run the command with --help and verify paths and option values.
+DRIVER_E_IR_MIR_INCOMPLETE.fix = provide an existing input, writable output path, and supported target/profile
+DRIVER_E_IR_MIR_INCOMPLETE.example = vitte check src/main.vit --lang en
+
+DRIVER_E_LINK_CODEGEN_INCOMPLETE.summary = link generacion de codigo incomplete.
+DRIVER_E_LINK_CODEGEN_INCOMPLETE.cause = The driver could not use the provided input, option, cache, output, or profile.
+DRIVER_E_LINK_CODEGEN_INCOMPLETE.step1 = Re-run the command with --help and verify paths and option values.
+DRIVER_E_LINK_CODEGEN_INCOMPLETE.fix = provide an existing input, writable output path, and supported target/profile
+DRIVER_E_LINK_CODEGEN_INCOMPLETE.example = vitte check src/main.vit --lang en
+
+DRIVER_E_MIR_ANALYSIS_INCOMPLETE.summary = mir analysis incomplete.
+DRIVER_E_MIR_ANALYSIS_INCOMPLETE.cause = The driver could not use the provided input, option, cache, output, or profile.
+DRIVER_E_MIR_ANALYSIS_INCOMPLETE.step1 = Re-run the command with --help and verify paths and option values.
+DRIVER_E_MIR_ANALYSIS_INCOMPLETE.fix = provide an existing input, writable output path, and supported target/profile
+DRIVER_E_MIR_ANALYSIS_INCOMPLETE.example = vitte check src/main.vit --lang en
+
+DRIVER_E_MIR_ANALYSIS_INVALID.summary = mir analysis invalido.
+DRIVER_E_MIR_ANALYSIS_INVALID.cause = The driver could not use the provided input, option, cache, output, or profile.
+DRIVER_E_MIR_ANALYSIS_INVALID.step1 = Re-run the command with --help and verify paths and option values.
+DRIVER_E_MIR_ANALYSIS_INVALID.fix = provide an existing input, writable output path, and supported target/profile
+DRIVER_E_MIR_ANALYSIS_INVALID.example = vitte check src/main.vit --lang en
+
+DRIVER_E_MIR_INVALID.summary = mir invalido.
+DRIVER_E_MIR_INVALID.cause = The driver could not use the provided input, option, cache, output, or profile.
+DRIVER_E_MIR_INVALID.step1 = Re-run the command with --help and verify paths and option values.
+DRIVER_E_MIR_INVALID.fix = provide an existing input, writable output path, and supported target/profile
+DRIVER_E_MIR_INVALID.example = vitte check src/main.vit --lang en
+
+DRIVER_E_NO_INPUT.summary = no entrada.
+DRIVER_E_NO_INPUT.cause = The driver could not use the provided input, option, cache, output, or profile.
+DRIVER_E_NO_INPUT.step1 = Re-run the command with --help and verify paths and option values.
+DRIVER_E_NO_INPUT.fix = provide an existing input, writable output path, and supported target/profile
+DRIVER_E_NO_INPUT.example = vitte check src/main.vit --lang en
+
+DRIVER_E_PARSE_EMPTY_AST.summary = parse vacio ast.
+DRIVER_E_PARSE_EMPTY_AST.cause = The driver could not use the provided input, option, cache, output, or profile.
+DRIVER_E_PARSE_EMPTY_AST.step1 = Re-run the command with --help and verify paths and option values.
+DRIVER_E_PARSE_EMPTY_AST.fix = provide an existing input, writable output path, and supported target/profile
+DRIVER_E_PARSE_EMPTY_AST.example = vitte check src/main.vit --lang en
+
+DRIVER_E_PARSE_EMPTY_SOURCE.summary = parse vacio fuente.
+DRIVER_E_PARSE_EMPTY_SOURCE.cause = The driver could not use the provided input, option, cache, output, or profile.
+DRIVER_E_PARSE_EMPTY_SOURCE.step1 = Re-run the command with --help and verify paths and option values.
+DRIVER_E_PARSE_EMPTY_SOURCE.fix = provide an existing input, writable output path, and supported target/profile
+DRIVER_E_PARSE_EMPTY_SOURCE.example = vitte check src/main.vit --lang en
+
+DRIVER_E_RUN_LINK_INCOMPLETE.summary = run link incomplete.
+DRIVER_E_RUN_LINK_INCOMPLETE.cause = The driver could not use the provided input, option, cache, output, or profile.
+DRIVER_E_RUN_LINK_INCOMPLETE.step1 = Re-run the command with --help and verify paths and option values.
+DRIVER_E_RUN_LINK_INCOMPLETE.fix = provide an existing input, writable output path, and supported target/profile
+DRIVER_E_RUN_LINK_INCOMPLETE.example = vitte check src/main.vit --lang en
+
+DRIVER_E_RUN_PROCESS_FAILED.summary = run process fallido.
+DRIVER_E_RUN_PROCESS_FAILED.cause = The driver could not use the provided input, option, cache, output, or profile.
+DRIVER_E_RUN_PROCESS_FAILED.step1 = Re-run the command with --help and verify paths and option values.
+DRIVER_E_RUN_PROCESS_FAILED.fix = provide an existing input, writable output path, and supported target/profile
+DRIVER_E_RUN_PROCESS_FAILED.example = vitte check src/main.vit --lang en
+
+DRIVER_E_SEMA_NOT_EXECUTED.summary = sema not executed.
+DRIVER_E_SEMA_NOT_EXECUTED.cause = The driver could not use the provided input, option, cache, output, or profile.
+DRIVER_E_SEMA_NOT_EXECUTED.step1 = Re-run the command with --help and verify paths and option values.
+DRIVER_E_SEMA_NOT_EXECUTED.fix = provide an existing input, writable output path, and supported target/profile
+DRIVER_E_SEMA_NOT_EXECUTED.example = vitte check src/main.vit --lang en
+
+DRIVER_E_TYPECK_NOT_EXECUTED.summary = typeck not executed.
+DRIVER_E_TYPECK_NOT_EXECUTED.cause = The driver could not use the provided input, option, cache, output, or profile.
+DRIVER_E_TYPECK_NOT_EXECUTED.step1 = Re-run the command with --help and verify paths and option values.
+DRIVER_E_TYPECK_NOT_EXECUTED.fix = provide an existing input, writable output path, and supported target/profile
+DRIVER_E_TYPECK_NOT_EXECUTED.example = vitte check src/main.vit --lang en
+
+LINK_E_PERMISSION_DENIED.summary = permission denied.
+LINK_E_PERMISSION_DENIED.cause = The selected target, linker, ABI, object file, or native toolchain failed.
+LINK_E_PERMISSION_DENIED.step1 = Check the target triple and the first backend or linker note.
+LINK_E_PERMISSION_DENIED.fix = install the missing native tool, change target, or fix undefined symbols
+LINK_E_PERMISSION_DENIED.example = vitte build app.vit -o app
+
 LINK_E_OUTPUT_NOT_MATERIALIZED.summary = linker did not create the requested executable.
 LINK_E_OUTPUT_NOT_MATERIALIZED.cause = The selected target, linker, ABI, object file, or native toolchain failed.
 LINK_E_OUTPUT_NOT_MATERIALIZED.step1 = Check the target triple and the first backend or linker note.

@@ -7,7 +7,10 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CLI_SURFACE = ROOT / "bin" / "vitte"
+CLI_SURFACES = (
+    ROOT / "src" / "vitte" / "compiler" / "driver" / "compiler.vit",
+    ROOT / "src" / "vitte" / "compiler" / "driver" / "exit_status.vit",
+)
 EN_FTL = ROOT / "locales" / "en" / "diagnostics.ftl"
 
 CODE_RE = re.compile(r"\b(?:[A-Z][A-Z0-9]*_)+(?:E|W|F|I)_[A-Z0-9_]+\b|\bE[0-9]{4}\b|\bP[0-9A-Z_]+\b")
@@ -60,7 +63,7 @@ def ftl_codes(ftl_text: str) -> set[str]:
 
 
 def main() -> int:
-    cli_text = CLI_SURFACE.read_text(encoding="utf-8", errors="ignore")
+    cli_text = "\n".join(path.read_text(encoding="utf-8", errors="ignore") for path in CLI_SURFACES)
     ftl_text = EN_FTL.read_text(encoding="utf-8")
     emitted = emitted_cli_codes(cli_text)
     catalog = ftl_codes(ftl_text)
