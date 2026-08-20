@@ -212,7 +212,7 @@ vitte-lint:
 # Static analysis
 # ------------------------------------------------------------
 
-.PHONY: tidy vitte-source-audit vitte-legacy-text-audit vitte-compiler-purity-gate src-compiler-stdlib-gate compiler-entrypoint-gate resolver-root-independence-gate compiler-full-import-graph-gate module-import-resolution-stability stage1-compiler-gate stage2-project-gate selfhost-stage-compare-gate selfhost-stage0-gate selfhost-stage1-gate selfhost-stage2-gate selfhost-release-gate selfhost-full-gate selfhost-ci-regression-gate seed-free-normal-flow-gate seed-free-release-gate vitte-in-vitte-gate release-clean-selfhost-gate release-package-stdlib-gate compiler-snapshot-gate compiler-backend-surface-gate compiler-link-abi-gate seed-free-release-surface-gate release-binary-gate vitte-bootstrap-check bootstrap-native-snapshots compiler-real-native-gate compiler-test-suite-check-gate compiler-no-fallback-gate driver-native-json-surface-gate compiler-real-diagnostics-gate invalid-fixtures-contract-gate
+.PHONY: tidy vitte-source-audit vitte-legacy-text-audit vitte-compiler-purity-gate src-compiler-stdlib-gate compiler-entrypoint-gate resolver-root-independence-gate compiler-full-import-graph-gate module-import-resolution-stability symbol-scope-visibility-stability stage1-compiler-gate stage2-project-gate selfhost-stage-compare-gate selfhost-stage0-gate selfhost-stage1-gate selfhost-stage2-gate selfhost-release-gate selfhost-full-gate selfhost-ci-regression-gate seed-free-normal-flow-gate seed-free-release-gate vitte-in-vitte-gate release-clean-selfhost-gate release-package-stdlib-gate compiler-snapshot-gate compiler-backend-surface-gate compiler-link-abi-gate seed-free-release-surface-gate release-binary-gate vitte-bootstrap-check bootstrap-native-snapshots compiler-real-native-gate compiler-test-suite-check-gate compiler-no-fallback-gate driver-native-json-surface-gate compiler-real-diagnostics-gate invalid-fixtures-contract-gate
 tidy: vitte-source-audit vitte-legacy-text-audit
 
 vitte-source-audit:
@@ -266,6 +266,11 @@ module-import-resolution-stability: bootstrap-c17 resolver-root-independence-gat
 	@python3 tools/check_module_import_resolution_stability.py
 	@test -f target/reports/module_import_resolution_stability.json
 	@test -f target/reports/module_import_resolution_stability.md
+
+symbol-scope-visibility-stability: bootstrap-c17 module-import-resolution-stability
+	@python3 tools/check_symbol_scope_visibility_stability.py
+	@test -f target/reports/symbol_scope_visibility_stability.json
+	@test -f target/reports/symbol_scope_visibility_stability.md
 
 stage1-compiler-gate: compiler-entrypoint-gate bootstrap-c17
 	@tools/stage1_compiler_gate.sh
@@ -743,7 +748,7 @@ bootstrap-parity: bootstrap-chain
 	@python3 tools/bootstrap_real/bootstrap_real.py --verify-chain
 
 .PHONY: bootstrap-verify
-bootstrap-verify: vitte-in-vitte-gate bootstrap-compile-contract compiler-copy-path-gate resolver-root-independence-gate compiler-full-import-graph-gate module-import-resolution-stability
+bootstrap-verify: vitte-in-vitte-gate bootstrap-compile-contract compiler-copy-path-gate resolver-root-independence-gate compiler-full-import-graph-gate module-import-resolution-stability symbol-scope-visibility-stability
 	@bin/vitte --version
 	@bin/vitte check tests/bootstrap_native/main_proc.vit
 	@bin/vitte check tests/bootstrap_native/main_const_int.vit
