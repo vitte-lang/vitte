@@ -212,7 +212,7 @@ vitte-lint:
 # Static analysis
 # ------------------------------------------------------------
 
-.PHONY: tidy vitte-source-audit vitte-legacy-text-audit vitte-compiler-purity-gate src-compiler-stdlib-gate compiler-entrypoint-gate resolver-root-independence-gate compiler-full-import-graph-gate module-import-resolution-stability symbol-scope-visibility-stability hir-validation-stability name-resolution-stability sema-stability typeck-stability stage1-compiler-gate stage2-project-gate selfhost-stage-compare-gate selfhost-stage0-gate selfhost-stage1-gate selfhost-stage2-gate selfhost-release-gate selfhost-full-gate selfhost-ci-regression-gate seed-free-normal-flow-gate seed-free-release-gate vitte-in-vitte-gate release-clean-selfhost-gate release-package-stdlib-gate compiler-snapshot-gate compiler-backend-surface-gate compiler-link-abi-gate seed-free-release-surface-gate release-binary-gate vitte-bootstrap-check bootstrap-native-snapshots compiler-real-native-gate compiler-test-suite-check-gate compiler-no-fallback-gate driver-native-json-surface-gate compiler-real-diagnostics-gate invalid-fixtures-contract-gate
+.PHONY: tidy vitte-source-audit vitte-legacy-text-audit vitte-compiler-purity-gate src-compiler-stdlib-gate compiler-entrypoint-gate resolver-root-independence-gate compiler-full-import-graph-gate module-import-resolution-stability symbol-scope-visibility-stability hir-validation-stability name-resolution-stability sema-stability typeck-stability control-flow-stability stage1-compiler-gate stage2-project-gate selfhost-stage-compare-gate selfhost-stage0-gate selfhost-stage1-gate selfhost-stage2-gate selfhost-release-gate selfhost-full-gate selfhost-ci-regression-gate seed-free-normal-flow-gate seed-free-release-gate vitte-in-vitte-gate release-clean-selfhost-gate release-package-stdlib-gate compiler-snapshot-gate compiler-backend-surface-gate compiler-link-abi-gate seed-free-release-surface-gate release-binary-gate vitte-bootstrap-check bootstrap-native-snapshots compiler-real-native-gate compiler-test-suite-check-gate compiler-no-fallback-gate driver-native-json-surface-gate compiler-real-diagnostics-gate invalid-fixtures-contract-gate
 tidy: vitte-source-audit vitte-legacy-text-audit
 
 vitte-source-audit:
@@ -306,6 +306,14 @@ typeck-stability: bootstrap-c17 sema-stability
 	@python3 tools/check_typeck_diagnostic_contracts.py
 	@test -f target/reports/typeck_stability.json
 	@test -f target/reports/typeck_stability.md
+
+control-flow-stability: bootstrap-c17 typeck-stability
+	@$(VITTE_BOOTSTRAP) check src/vitte/compiler/middle/hir/control_flow.vit
+	@$(VITTE_BOOTSTRAP) check src/vitte/compiler/middle/dataflow/cfg.vit
+	@$(VITTE_BOOTSTRAP) check src/vitte/compiler/middle/dataflow/liveness.vit
+	@python3 tools/check_control_flow_stability.py
+	@test -f target/reports/control_flow_stability.json
+	@test -f target/reports/control_flow_stability.md
 
 stage1-compiler-gate: compiler-entrypoint-gate bootstrap-c17
 	@tools/stage1_compiler_gate.sh
