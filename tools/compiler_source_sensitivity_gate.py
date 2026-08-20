@@ -21,6 +21,7 @@ REPORT = ROOT / "target/reports/compiler_source_sensitivity.json"
 CANDIDATE = ROOT / "target/compiler-source-sensitivity/stage1-candidate"
 ORIGINAL_VERSION = 'const VERSION_TEXT: string = "vittec vitte-compiler 0.1.0"'
 PROBE_VERSION = 'const VERSION_TEXT: string = "vittec vitte-compiler source-sensitivity-probe"'
+DRIVER_PROVENANCE = b"COMPILER_DRIVER_SOURCE=src/vitte/compiler/driver/compiler.vit"
 FORBIDDEN_SYMBOLS = ("_command_build", "_copy_file", "_vitte_stage0_clone_self")
 
 
@@ -78,6 +79,11 @@ def main() -> int:
     evidence: dict[str, Any] = {
         "compiler_module_count": module_count,
         "compiler_source_sha256": source_tree_sha256(ROOT / "src/vitte/compiler"),
+        "driver": {
+            "path": DRIVER.as_posix(),
+            "source_sha256": sha256(ROOT / DRIVER),
+            "probe": "VERSION_TEXT",
+        },
     }
     if not failures:
         with tempfile.TemporaryDirectory(prefix="vitte-source-sensitivity-") as raw_tmp:
@@ -94,6 +100,7 @@ def main() -> int:
                 failures.append("driver sensitivity probe could not locate VERSION_TEXT")
             else:
                 probe_driver.write_text(perturbed_text, encoding="utf-8")
+                evidence["driver"]["perturbed_source_sha256"] = sha256(probe_driver)
 
             baseline_output = CANDIDATE
             perturbed_output = work / "perturbed-stage1"
@@ -115,6 +122,10 @@ def main() -> int:
 
             if baseline_output.is_file():
                 binary_data = baseline_output.read_bytes()
+                carries_driver_provenance = DRIVER_PROVENANCE in binary_data
+                evidence["baseline_carries_driver_provenance"] = carries_driver_provenance
+                if not carries_driver_provenance:
+                    failures.append("compiler candidate does not carry canonical driver source provenance")
                 forbidden = [symbol for symbol in FORBIDDEN_SYMBOLS if symbol.encode("ascii") in binary_data]
                 evidence["forbidden_copy_symbols"] = forbidden
                 if forbidden:
@@ -125,7 +136,7 @@ def main() -> int:
                 evidence["runtime_ready"] = runtime["exit_code"] == 0 and "vitte" in runtime["output_tail"].lower()
 
     payload = {
-        "schema": "vitte.compiler.source-sensitivity.v1",
+        "schema": "vitte.compiler.source-sensitivity.v2",
         "status": "fail" if failures else "pass",
         "scope": "C17 generic compilation of the complete Vitte compiler source closure",
         "runtime_selfhost_proven": bool(evidence.get("runtime_ready", False)),

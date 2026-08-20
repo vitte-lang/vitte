@@ -567,8 +567,14 @@ compiler-real-pipeline-audit:
 compiler-source-sensitivity-gate: bootstrap-c17
 	@python3 tools/compiler_source_sensitivity_gate.py
 
+.PHONY: driver-provenance-gate
+driver-provenance-gate: compiler-source-sensitivity-gate
+	@python3 tools/driver_provenance_gate.py
+	@test -f target/reports/driver_provenance_gate.json
+	@test -f target/reports/driver_provenance_gate.md
+
 .PHONY: stage0-rotation-readiness
-stage0-rotation-readiness: compiler-source-sensitivity-gate
+stage0-rotation-readiness: driver-provenance-gate
 	@python3 tools/stage0_rotation_readiness.py
 
 .PHONY: truth-triangle

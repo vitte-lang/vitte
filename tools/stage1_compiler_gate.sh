@@ -15,6 +15,7 @@ CHECK_LOG="$OUT_DIR/check.log"
 SYMBOL_LOG="$OUT_DIR/symbols.log"
 STRINGS_LOG="$OUT_DIR/strings.log"
 SRC="src/vitte/compiler/main.vit"
+DRIVER_PROVENANCE="COMPILER_DRIVER_SOURCE=src/vitte/compiler/driver/compiler.vit"
 
 fail() {
     mkdir -p "$REPORT_DIR"
@@ -94,6 +95,9 @@ fi
 if grep -Fq 'E_CLI_IO: cannot read' "$STRINGS_LOG"; then
     fail "stage1 binary contains obsolete E_CLI_IO output"
 fi
+if ! grep -Fq "$DRIVER_PROVENANCE" "$STRINGS_LOG"; then
+    fail "stage1 binary does not carry canonical driver source provenance"
+fi
 
 if ! "$OUT_BIN" --version > "$VERSION_LOG" 2>&1; then
     cat "$VERSION_LOG" >&2
@@ -120,6 +124,7 @@ cat > "$REPORT_JSON" <<EOF
   "status": "pass",
   "stage0": "$STAGE0",
   "entrypoint": "$SRC",
+  "driver_provenance": "$DRIVER_PROVENANCE",
   "output": "target/stage1/vitte",
   "version": "$version_text",
   "help_head": "$help_head",
@@ -130,6 +135,7 @@ EOF
 {
     printf 'stage1 compiler gate: pass\n'
     printf 'entrypoint: %s\n' "$SRC"
+    printf 'driver provenance: %s\n' "$DRIVER_PROVENANCE"
     printf 'output: target/stage1/vitte\n'
     printf 'version: %s\n' "$version_text"
     printf 'help: %s\n' "$help_head"
