@@ -171,16 +171,16 @@ proc is_keyword(text: string) -> bool {
 }
 
 proc keyword_kind(text: string) -> LiteralKind {
-  if is_keyword(text) {
-    give LiteralKind.Keyword;
-  }
-
   if text == "true" or text == "false" {
     give LiteralKind.Bool;
   }
 
   if text == "null" {
     give LiteralKind.Null;
+  }
+
+  if is_keyword(text) {
+    give LiteralKind.Keyword;
   }
 
   give LiteralKind.Identifier;
@@ -721,5 +721,8 @@ proc literals_selftest() -> bool {
     and c0.valid
     and i0.valid
     and i0.kind == LiteralKind.Keyword
+    and keyword_kind("true") == LiteralKind.Bool
+    and keyword_kind("false") == LiteralKind.Bool
+    and keyword_kind("null") == LiteralKind.Null
     and literal_summary(n0) != "";
 }

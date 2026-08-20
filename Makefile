@@ -562,6 +562,12 @@ compiler-path-typos:
 frontend-token-contract:
 	@tools/check_frontend_token_contract.sh
 
+.PHONY: lexer-token-stability
+lexer-token-stability:
+	@python3 tools/check_lexer_token_stability.py
+	@test -f target/reports/lexer_token_stability.json
+	@test -f target/reports/lexer_token_stability.md
+
 .PHONY: diagnostics-migration-gate
 diagnostics-migration-gate:
 	@tools/check_diagnostics_migration.sh
@@ -1153,8 +1159,8 @@ syntax-parser-diagnostics-max:
 	@test -f target/frontend/syntax_parser_diagnostics_max/snapshots/lsp.snapshot
 
 .PHONY: frontend-lexer-test
-frontend-lexer-test:
-	@bin/vitte check src/vitte/compiler/tests/lexer_tests.vit
+frontend-lexer-test: bootstrap-c17
+	@target/bootstrap-c17/vitte-bootstrap check src/vitte/compiler/tests/lexer_tests.vit
 	@python3 tools/lexer_ebnf_surface_check.py
 
 .PHONY: frontend-parser-test
@@ -1354,8 +1360,10 @@ release-readiness-28-58:
 	@python3 tools/release_readiness_28_58_check.py
 
 .PHONY: frontend-token-consistency
-frontend-token-consistency:
+frontend-token-consistency: bootstrap-c17 lexer-token-stability frontend-token-contract
 	@python3 tools/check_frontend_token_consistency.py
+	@test -f target/reports/frontend_token_consistency.json
+	@test -f target/reports/frontend_token_consistency.md
 
 .PHONY: grammar-docs
 grammar-docs:
