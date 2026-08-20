@@ -1200,10 +1200,19 @@ ast-stability:
 	@test -f target/reports/ast_stability.md
 
 .PHONY: hir-lowering-test
-hir-lowering-test:
-	@bin/vitte check src/vitte/compiler/tests/hir_tests.vit
+hir-lowering-test: bootstrap-c17 hir-stability
 	@python3 tools/ast_hir_lowering_audit.py
 	@python3 tools/hir_coverage_check.py
+
+.PHONY: hir-stability
+hir-stability: bootstrap-c17
+	@set -e; \
+	for src in src/vitte/compiler/middle/hir/*.vit src/vitte/compiler/middle/lower/hir_to_mir.vit; do \
+		target/bootstrap-c17/vitte-bootstrap check "$$src"; \
+	done
+	@python3 tools/check_hir_stability.py
+	@test -f target/reports/hir_stability.json
+	@test -f target/reports/hir_stability.md
 
 .PHONY: hir-coverage
 hir-coverage:
