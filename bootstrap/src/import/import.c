@@ -535,6 +535,43 @@ static bool vitte_import_resolve_search_paths(
     return false;
 }
 
+static bool vitte_import_resolve_ancestor_paths(
+    const vitte_import_request_t *request,
+    const vitte_import_path_t *module_path,
+    vitte_import_path_t *resolved
+) {
+    vitte_fs_path_t current;
+    vitte_fs_path_t parent;
+    vitte_import_path_t base;
+    vitte_import_path_t mod_candidate;
+    bool has_mod_candidate;
+    size_t depth;
+
+    if (request == NULL || request->importer_path == NULL ||
+        request->importer_path[0] == '\0' || module_path == NULL || resolved == NULL) {
+        return false;
+    }
+    if (vitte_fs_parent_path(request->importer_path, &current) != VITTE_STATUS_OK) {
+        return false;
+    }
+    has_mod_candidate = vitte_import_make_mod_candidate(module_path, &mod_candidate);
+    for (depth = 0u; depth < VITTE_IMPORT_MAX_DEPTH; depth++) {
+        if (!vitte_import_path_from_fs(&base, &current)) {
+            return false;
+        }
+        if (vitte_import_try_candidate(&base, module_path, resolved) ||
+            (has_mod_candidate && vitte_import_try_candidate(&base, &mod_candidate, resolved))) {
+            return true;
+        }
+        if (vitte_fs_parent_path(current.text, &parent) != VITTE_STATUS_OK ||
+            strcmp(parent.text, current.text) == 0) {
+            break;
+        }
+        current = parent;
+    }
+    return false;
+}
+
 vitte_status_t vitte_import_resolve(
     vitte_import_resolver_t *resolver,
     const vitte_import_request_t *request,
@@ -603,6 +640,8 @@ vitte_status_t vitte_import_resolve(
     if (request->relative && vitte_import_resolve_relative(request, &module_path, &resolved_path)) {
         /* resolved */
     } else if (vitte_import_resolve_search_paths(resolver, &module_path, &resolved_path)) {
+        /* resolved */
+    } else if (vitte_import_resolve_ancestor_paths(request, &module_path, &resolved_path)) {
         /* resolved */
     } else {
         resolver->stats.failed_count++;
