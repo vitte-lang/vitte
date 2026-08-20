@@ -1,16 +1,20 @@
 space vitte/compiler/middle/mir/dataflow
 
-use vitte/compiler/middle/mir.{
+use vitte/compiler/middle/mir/mir.{
   MirBlock,
   MirFunction,
   MirOperand,
   MirPlace,
+  MirRvalue,
   MirStatement,
   MirStatementKind,
   MirTerminator,
   MirTerminatorKind,
-  MirUnit
+  MirUnit,
+  mir_place_empty,
+  mir_terminator_return
 }
+use vitte/compiler/frontend/ast/node.{ ast_span_empty }
 
 export *
 
@@ -227,9 +231,11 @@ proc statement_facts(block_id: u64, stmt: MirStatement) -> [DataflowFact] {
   }
 
   let i: u64 = 0
+  let rvalue: MirRvalue = stmt.rvalue
 
-  while i < len(stmt.rvalue.operands) {
-    set facts = append_fact(facts, dataflow_fact(DataflowFactKind.Use, block_id, stmt.id, operand_value(stmt.rvalue.operands[i]), stmt.valid))
+  while i < len(rvalue.operands) {
+    let operand: MirOperand = rvalue.operands[i]
+    set facts = append_fact(facts, dataflow_fact(DataflowFactKind.Use, block_id, stmt.id, operand_value(operand), stmt.valid))
     set i = i + 1
   }
 
