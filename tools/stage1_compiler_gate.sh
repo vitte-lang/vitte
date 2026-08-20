@@ -114,7 +114,7 @@ cat > "$REPORT_JSON" <<EOF
 {
   "schema": "vitte.stage1.compiler.gate.v1",
   "status": "pass",
-  "stage0": "$STAGE0",
+  "stage0": "$BOOTSTRAP_COMPILER",
   "entrypoint": "$SRC",
   "driver_provenance": "$DRIVER_PROVENANCE",
   "output": "target/stage1/vitte",
