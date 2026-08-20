@@ -19,6 +19,7 @@ STRINGS_ARRAYS_SOURCE = ROOT / "tests" / "maximal_graph" / "strings_arrays.vit"
 STRUCTURES_VARIANTS_SOURCE = ROOT / "tests" / "maximal_graph" / "structures_variants.vit"
 MULTIFILE_SOURCE = ROOT / "tests" / "maximal_graph" / "imports" / "app.vit"
 DIAGNOSTIC_SOURCE = ROOT / "tests" / "diagnostics" / "negative" / "typeck" / "type_mismatch.vit"
+LINK_ERROR_SOURCE = ROOT / "tests" / "maximal_graph" / "link_error.vit"
 REPORT = ROOT / "target" / "reports" / "maximal_graph_stability.json"
 OUTPUT_DIR = ROOT / "target" / "reports" / "maximal_graph"
 
@@ -147,6 +148,19 @@ def main() -> int:
         failures.append("diagnostic output is missing VITTE_SEMA_E_ASSIGN")
     if not checks["diagnostic_source_span_present"]:
         failures.append("diagnostic output is missing the source span")
+
+    link_output = OUTPUT_DIR / "link_error"
+    link = run(
+        [str(BOOTSTRAP), "build", str(LINK_ERROR_SOURCE), "-o", str(link_output)],
+        env=env,
+    )
+    link_text = link.stdout + link.stderr
+    checks["link_error_rejected"] = link.returncode != 0 and not link_output.exists()
+    checks["link_error_reported"] = "Undefined symbols" in link_text and "VITTE_DRIVER_E_LINK" in link_text
+    if not checks["link_error_rejected"]:
+        failures.append("link-error program unexpectedly produced an executable")
+    if not checks["link_error_reported"]:
+        failures.append("linker failure did not expose the native linker and Vitte link diagnostics")
 
     first = OUTPUT_DIR / "maximal_graph_first"
     second = OUTPUT_DIR / "maximal_graph_second"
