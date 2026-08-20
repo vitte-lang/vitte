@@ -2,7 +2,7 @@ space vitte/compiler/analysis/modules/module_graph
 
 export *
 
-use vitte/compiler/frontend/source/span.{Span}
+use vitte/compiler/frontend/source/span.{FrontendSpan}
 use vitte/compiler/analysis/modules/module_database.{
     ModuleId,
     ModuleDatabase,
@@ -68,7 +68,7 @@ form ModuleGraphNode {
     id: ModuleId
     name: string
     canonical_path: string
-    span: Span
+    span: FrontendSpan
 
     state: ModuleGraphNodeState
     visit_state: ModuleGraphVisitState
@@ -85,7 +85,7 @@ form ModuleGraphError {
     module: string
     dependency: string
     message: string
-    span: Span
+    span: FrontendSpan
 }
 
 form ModuleGraphStatistics {
@@ -123,7 +123,7 @@ form ModuleGraphCycle {
     modules: [ModuleId]
     names: [string]
     edges: [ModuleEdgeId]
-    span: Span
+    span: FrontendSpan
 }
 
 form ModuleGraphAnalysis {
@@ -148,8 +148,8 @@ form ModuleGraphComponent {
     names: [string]
 }
 
-proc module_graph_empty_span() -> Span {
-    give Span {
+proc module_graph_empty_span() -> FrontendSpan {
+    give FrontendSpan {
         source: 0,
         start: 0,
         end: 0
@@ -188,7 +188,7 @@ proc module_graph_error(
     module: string,
     dependency: string,
     message: string,
-    span: Span
+    span: FrontendSpan
 ) -> ModuleGraphError {
     give ModuleGraphError {
         kind: kind,
@@ -205,7 +205,7 @@ proc module_graph_push_error(
     module: string,
     dependency: string,
     message: string,
-    span: Span
+    span: FrontendSpan
 ) {
     graph.errors = graph.errors + [
         module_graph_error(
@@ -222,7 +222,7 @@ proc module_graph_node(
     id: ModuleId,
     name: string,
     canonical_path: string,
-    span: Span,
+    span: FrontendSpan,
     generation: u64
 ) -> ModuleGraphNode {
     give ModuleGraphNode {
@@ -422,7 +422,7 @@ proc module_graph_add_node(
     id: ModuleId,
     name: string,
     canonical_path: string,
-    span: Span
+    span: FrontendSpan
 ) -> bool {
     if not module_id_is_valid(id)
         or len(name) == 0
@@ -491,7 +491,7 @@ proc module_graph_add_edge(
     source: ModuleId,
     target: ModuleId,
     kind: ModuleEdgeKind,
-    span: Span
+    span: FrontendSpan
 ) -> Option<ModuleEdgeId> {
     let source_index = module_graph_find_node_index(
         ref graph,
@@ -1078,7 +1078,7 @@ proc module_graph_build_cycle(
     start: usize,
     destination: ModuleId,
     closing_edge: ModuleEdgeId,
-    span: Span
+    span: FrontendSpan
 ) -> ModuleGraphCycle {
     set modules: [ModuleId] = [];
     set names: [string] = [];

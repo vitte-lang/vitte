@@ -2,7 +2,7 @@ space vitte/compiler/analysis/modules/module_cache
 
 export *
 
-use vitte/compiler/frontend/source/span.{Span}
+use vitte/compiler/frontend/source/span.{FrontendSpan}
 use vitte/compiler/analysis/modules/module_attributes.{
     ModuleAttributes,
     module_attributes_default
@@ -61,7 +61,7 @@ form CachedModule {
     name: string
     source_path: string
     source_text: string
-    span: Span
+    span: FrontendSpan
     attributes: ModuleAttributes
     dependencies: [CachedModuleDependency]
     fingerprint: ModuleFingerprint
@@ -81,7 +81,7 @@ form ModuleCacheError {
     kind: ModuleCacheErrorKind
     path: string
     message: string
-    span: Span
+    span: FrontendSpan
 }
 
 form ModuleCacheLookup {
@@ -113,8 +113,8 @@ form ModuleCache {
     statistics: ModuleCacheStatistics
 }
 
-proc empty_span() -> Span {
-    give Span {
+proc empty_span() -> FrontendSpan {
+    give FrontendSpan {
         source: 0,
         start: 0,
         end: 0
@@ -182,7 +182,7 @@ proc module_cache_error(
     kind: ModuleCacheErrorKind,
     path: string,
     message: string,
-    span: Span
+    span: FrontendSpan
 ) -> ModuleCacheError {
     give ModuleCacheError {
         kind: kind,
@@ -532,7 +532,7 @@ proc module_cache_complete_loading(
     key: ref ModuleCacheKey,
     name: string,
     source_text: string,
-    span: Span,
+    span: FrontendSpan,
     attributes: ModuleAttributes,
     dependencies: [CachedModuleDependency],
     fingerprint: ModuleFingerprint

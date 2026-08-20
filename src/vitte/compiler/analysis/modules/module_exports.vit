@@ -2,7 +2,7 @@ space vitte/compiler/analysis/modules/module_exports
 
 export *
 
-use vitte/compiler/frontend/source/span.{Span}
+use vitte/compiler/frontend/source/span.{FrontendSpan}
 use vitte/compiler/analysis/modules/module_database.{
     ModuleId,
     ModuleDatabase,
@@ -91,8 +91,8 @@ form ModuleExport {
 
     target: Option<ModuleExportTarget>
 
-    span: Span
-    declaration_span: Span
+    span: FrontendSpan
+    declaration_span: FrontendSpan
 
     enabled: bool
     reexported: bool
@@ -107,7 +107,7 @@ form ModuleExportError {
     module: string
     name: string
     message: string
-    span: Span
+    span: FrontendSpan
 }
 
 form ModuleExportStatistics {
@@ -152,8 +152,8 @@ form ModuleExportResolution {
     valid: bool
 }
 
-proc module_export_empty_span() -> Span {
-    give Span {
+proc module_export_empty_span() -> FrontendSpan {
+    give FrontendSpan {
         source: 0,
         start: 0,
         end: 0
@@ -231,7 +231,7 @@ proc module_export_error(
     module: string,
     name: string,
     message: string,
-    span: Span
+    span: FrontendSpan
 ) -> ModuleExportError {
     give ModuleExportError {
         kind: kind,
@@ -248,7 +248,7 @@ proc module_export_push_error(
     module: string,
     name: string,
     message: string,
-    span: Span
+    span: FrontendSpan
 ) {
     table.errors = table.errors + [
         module_export_error(
@@ -268,7 +268,7 @@ proc module_export_create(
     kind: ModuleExportKind,
     visibility: ModuleExportVisibility,
     origin: ModuleExportOrigin,
-    span: Span,
+    span: FrontendSpan,
     generation: u64
 ) -> ModuleExport {
     give ModuleExport {
@@ -307,7 +307,7 @@ proc module_export_create_reexport(
     kind: ModuleExportKind,
     visibility: ModuleExportVisibility,
     origin: ModuleExportOrigin,
-    span: Span,
+    span: FrontendSpan,
     generation: u64
 ) -> ModuleExport {
     give ModuleExport {
@@ -596,7 +596,7 @@ proc module_export_insert(
     kind: ModuleExportKind,
     visibility: ModuleExportVisibility,
     origin: ModuleExportOrigin,
-    span: Span
+    span: FrontendSpan
 ) -> Option<ModuleExportId> {
     if not module_id_is_valid(module) {
         module_export_push_error(
@@ -672,7 +672,7 @@ proc module_export_insert_reexport(
     kind: ModuleExportKind,
     visibility: ModuleExportVisibility,
     origin: ModuleExportOrigin,
-    span: Span
+    span: FrontendSpan
 ) -> Option<ModuleExportId> {
     if not module_id_is_valid(module)
         or not module_id_is_valid(target_module)

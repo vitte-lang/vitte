@@ -2,7 +2,7 @@ space vitte/compiler/analysis/modules/module_info
 
 export *
 
-use vitte/compiler/frontend/source/span.{Span}
+use vitte/compiler/frontend/source/span.{FrontendSpan}
 use vitte/compiler/analysis/modules/module_id.{
     ModuleId,
     ModuleIdKind,
@@ -100,8 +100,8 @@ form ModuleInfo {
 
     state: ModuleInfoState
 
-    declaration_span: Span
-    module_span: Span
+    declaration_span: FrontendSpan
+    module_span: FrontendSpan
 
     documentation: string
 
@@ -123,7 +123,7 @@ form ModuleInfoError {
     kind: ModuleInfoErrorKind
     module: string
     message: string
-    span: Span
+    span: FrontendSpan
 }
 
 form ModuleInfoStatistics {
@@ -157,8 +157,8 @@ form ModuleInfoTable {
     statistics: ModuleInfoStatistics
 }
 
-proc module_info_empty_span() -> Span {
-    give Span {
+proc module_info_empty_span() -> FrontendSpan {
+    give FrontendSpan {
         source: 0,
         start: 0,
         end: 0
@@ -269,7 +269,7 @@ proc module_info_error(
     kind: ModuleInfoErrorKind,
     module: string,
     message: string,
-    span: Span
+    span: FrontendSpan
 ) -> ModuleInfoError {
     give ModuleInfoError {
         kind: kind,
@@ -284,7 +284,7 @@ proc module_info_push_error(
     kind: ModuleInfoErrorKind,
     module: string,
     message: string,
-    span: Span
+    span: FrontendSpan
 ) {
     table.errors = table.errors + [
         module_info_error(
@@ -300,7 +300,7 @@ proc module_info_create(
     identifier: ModuleIdentifier,
     source: ModuleSourceInfo,
     attributes: ModuleAttributes,
-    declaration_span: Span,
+    declaration_span: FrontendSpan,
     generation: u64
 ) -> ModuleInfo {
     give ModuleInfo {
@@ -339,7 +339,7 @@ proc module_info_create_basic(
     namespace: string,
     name: string,
     canonical_path: string,
-    span: Span,
+    span: FrontendSpan,
     generation: u64
 ) -> ModuleInfo {
     let identifier = module_identifier(
@@ -999,7 +999,7 @@ proc module_info_mark_failed(
     table: ref mut ModuleInfoTable,
     id: ModuleId,
     message: string,
-    span: Span
+    span: FrontendSpan
 ) -> bool {
     let index = module_info_find_index(ref table, id);
 

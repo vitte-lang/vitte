@@ -2,7 +2,7 @@ space vitte/compiler/analysis/modules/module_node
 
 export *
 
-use vitte/compiler/frontend/source/span.{Span}
+use vitte/compiler/frontend/source/span.{FrontendSpan}
 
 use vitte/compiler/analysis/modules/module_database.{
     ModuleId,
@@ -72,7 +72,7 @@ form ModuleNode {
     state: ModuleNodeState
     visit_state: ModuleNodeVisitState
 
-    span: Span
+    span: FrontendSpan
 
     incoming: [ModuleEdgeId]
     outgoing: [ModuleEdgeId]
@@ -85,7 +85,7 @@ form ModuleNodeError {
     kind: ModuleNodeErrorKind
     module: string
     message: string
-    span: Span
+    span: FrontendSpan
 }
 
 form ModuleNodeStatistics {
@@ -107,8 +107,8 @@ form ModuleNodeResult {
     valid: bool
 }
 
-proc module_node_empty_span() -> Span {
-    give Span {
+proc module_node_empty_span() -> FrontendSpan {
+    give FrontendSpan {
         source: 0,
         start: 0,
         end: 0
@@ -128,7 +128,7 @@ proc module_node_error(
     kind: ModuleNodeErrorKind,
     module: string,
     message: string,
-    span: Span
+    span: FrontendSpan
 ) -> ModuleNodeError {
     give ModuleNodeError {
         kind: kind,
@@ -164,7 +164,7 @@ proc module_node_create(
     name: string,
     canonical_path: string,
     kind: ModuleNodeKind,
-    span: Span
+    span: FrontendSpan
 ) -> ModuleNode {
     give ModuleNode {
         id: id,

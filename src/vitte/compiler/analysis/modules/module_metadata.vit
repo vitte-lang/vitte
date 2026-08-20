@@ -2,7 +2,7 @@ space vitte/compiler/analysis/modules/module_metadata
 
 export *
 
-use vitte/compiler/frontend/source/span.{Span}
+use vitte/compiler/frontend/source/span.{FrontendSpan}
 use vitte/compiler/analysis/modules/module_id.{
     ModuleId,
     ModuleIdKind,
@@ -139,7 +139,7 @@ form ModuleMetadataDependency {
     optional: bool
     enabled: bool
 
-    span: Span
+    span: FrontendSpan
 }
 
 form ModuleMetadataSymbol {
@@ -160,7 +160,7 @@ form ModuleMetadataSymbol {
     size: usize
     alignment: usize
 
-    declaration_span: Span
+    declaration_span: FrontendSpan
 }
 
 form ModuleMetadataArtifact {
@@ -238,7 +238,7 @@ form ModuleMetadataError {
     module: string
     item: string
     message: string
-    span: Span
+    span: FrontendSpan
 }
 
 form ModuleMetadataStatistics {
@@ -278,8 +278,8 @@ form ModuleMetadataValidation {
     valid: bool
 }
 
-proc module_metadata_empty_span() -> Span {
-    give Span {
+proc module_metadata_empty_span() -> FrontendSpan {
+    give FrontendSpan {
         source: 0,
         start: 0,
         end: 0
@@ -457,7 +457,7 @@ proc module_metadata_error(
     module: string,
     item: string,
     message: string,
-    span: Span
+    span: FrontendSpan
 ) -> ModuleMetadataError {
     give ModuleMetadataError {
         kind: kind,
@@ -474,7 +474,7 @@ proc module_metadata_push_error(
     module: string,
     item: string,
     message: string,
-    span: Span
+    span: FrontendSpan
 ) {
     table.errors = table.errors + [
         module_metadata_error(
@@ -493,7 +493,7 @@ proc module_metadata_dependency(
     version: string,
     path: string,
     kind: ModuleMetadataDependencyKind,
-    span: Span
+    span: FrontendSpan
 ) -> ModuleMetadataDependency {
     give ModuleMetadataDependency {
         module: module,
@@ -522,7 +522,7 @@ proc module_metadata_symbol(
     kind: ModuleMetadataSymbolKind,
     visibility: ModuleMetadataVisibility,
     signature: string,
-    declaration_span: Span
+    declaration_span: FrontendSpan
 ) -> ModuleMetadataSymbol {
     give ModuleMetadataSymbol {
         name: name,
@@ -1133,7 +1133,7 @@ proc module_metadata_mark_failed(
     table: ref mut ModuleMetadataTable,
     module: ModuleId,
     message: string,
-    span: Span
+    span: FrontendSpan
 ) -> bool {
     let index = module_metadata_find_index(
         ref table,

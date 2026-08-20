@@ -3,7 +3,7 @@ space vitte/compiler/analysis/modules/module_resolver
 export *
 
 use vitte/compiler/frontend/source/span.{
-    Span
+    FrontendSpan
 }
 
 use vitte/compiler/analysis/modules/module_id.{
@@ -106,7 +106,7 @@ form ModuleResolverError {
     path: string
     message: string
 
-    span: Span
+    span: FrontendSpan
 }
 
 form ModuleResolution {
@@ -145,8 +145,8 @@ form ModuleResolver {
     statistics: ModuleResolverStatistics
 }
 
-proc module_resolver_empty_span() -> Span {
-    give Span {
+proc module_resolver_empty_span() -> FrontendSpan {
+    give FrontendSpan {
         source: 0,
         start: 0,
         end: 0
@@ -202,7 +202,7 @@ proc module_resolver_error(
     module: string,
     path: string,
     message: string,
-    span: Span
+    span: FrontendSpan
 ) -> ModuleResolverError {
     give ModuleResolverError {
         kind: kind,
@@ -346,7 +346,7 @@ proc module_resolver_lookup_name(
     registry: ref mut ModuleRegistry,
     database: ref ModuleDatabase,
     name: string,
-    span: Span
+    span: FrontendSpan
 ) -> ModuleResolution {
     resolver.state =
         ModuleResolverState.Resolving;
@@ -444,7 +444,7 @@ proc module_resolver_lookup_path(
     registry: ref mut ModuleRegistry,
     database: ref ModuleDatabase,
     path_text: string,
-    span: Span
+    span: FrontendSpan
 ) -> ModuleResolution {
     resolver.state =
         ModuleResolverState.Resolving;
@@ -726,7 +726,7 @@ proc module_resolver_resolve_relative(
     database: ref ModuleDatabase,
     current: ModuleId,
     relative: string,
-    span: Span
+    span: FrontendSpan
 ) -> ModuleResolution {
     if not resolver.config.allow_relative {
         let error =
@@ -860,7 +860,7 @@ proc module_resolver_resolve(
     registry: ref mut ModuleRegistry,
     database: ref ModuleDatabase,
     text: string,
-    span: Span
+    span: FrontendSpan
 ) -> ModuleResolution {
     if text == "" {
         let error =

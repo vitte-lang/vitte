@@ -2,7 +2,7 @@ space vitte/compiler/analysis/modules/module_edge
 
 export *
 
-use vitte/compiler/frontend/source/span.{Span}
+use vitte/compiler/frontend/source/span.{FrontendSpan}
 use vitte/compiler/analysis/modules/module_database.{
     ModuleId,
     ModuleDependencyId,
@@ -77,7 +77,7 @@ form ModuleEdge {
     kind: ModuleEdgeKind
     state: ModuleEdgeState
 
-    span: Span
+    span: FrontendSpan
 
     enabled: bool
     required: bool
@@ -94,7 +94,7 @@ form ModuleEdgeError {
     source: string
     target: string
     message: string
-    span: Span
+    span: FrontendSpan
 }
 
 form ModuleEdgeStatistics {
@@ -127,8 +127,8 @@ form ModuleEdgeEvaluationContext {
     profile: string
 }
 
-proc module_edge_empty_span() -> Span {
-    give Span {
+proc module_edge_empty_span() -> FrontendSpan {
+    give FrontendSpan {
         source: 0,
         start: 0,
         end: 0
@@ -218,7 +218,7 @@ proc module_edge_error(
     source: string,
     target: string,
     message: string,
-    span: Span
+    span: FrontendSpan
 ) -> ModuleEdgeError {
     give ModuleEdgeError {
         kind: kind,
@@ -235,7 +235,7 @@ proc module_edge_collection_push_error(
     source: string,
     target: string,
     message: string,
-    span: Span
+    span: FrontendSpan
 ) {
     collection.errors = collection.errors + [
         module_edge_error(
@@ -302,7 +302,7 @@ proc module_edge_create(
     source_name: string,
     target_name: string,
     kind: ModuleEdgeKind,
-    span: Span,
+    span: FrontendSpan,
     generation: u64
 ) -> ModuleEdge {
     give ModuleEdge {
@@ -570,7 +570,7 @@ proc module_edge_insert(
     source_name: string,
     target_name: string,
     kind: ModuleEdgeKind,
-    span: Span
+    span: FrontendSpan
 ) -> Option<ModuleEdgeId> {
     if not module_id_is_valid(source)
         or not module_id_is_valid(target)

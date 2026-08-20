@@ -2,7 +2,7 @@ space vitte/compiler/analysis/modules/module_parser
 
 export *
 
-use vitte/compiler/frontend/source/span.{Span}
+use vitte/compiler/frontend/source/span.{FrontendSpan}
 
 use vitte/compiler/analysis/modules/module_database.{
     ModuleId,
@@ -40,13 +40,13 @@ form ModuleParserItem {
     grouped: bool
     exported: bool
 
-    span: Span
+    span: FrontendSpan
 }
 
 form ModuleParserError {
     kind: ModuleParserErrorKind
     message: string
-    span: Span
+    span: FrontendSpan
 }
 
 form ModuleParserState {
@@ -75,8 +75,8 @@ form ModuleParserOutput {
     valid: bool
 }
 
-proc module_parser_empty_span() -> Span {
-    give Span {
+proc module_parser_empty_span() -> FrontendSpan {
+    give FrontendSpan {
         source: 0,
         start: 0,
         end: 0
@@ -94,7 +94,7 @@ proc module_parser_error_none() -> ModuleParserError {
 proc module_parser_error(
     kind: ModuleParserErrorKind,
     message: string,
-    span: Span
+    span: FrontendSpan
 ) -> ModuleParserError {
     give ModuleParserError {
         kind: kind,
@@ -111,7 +111,7 @@ proc module_parser_item(
     glob: bool,
     grouped: bool,
     exported: bool,
-    span: Span
+    span: FrontendSpan
 ) -> ModuleParserItem {
     give ModuleParserItem {
         kind: kind,
@@ -165,7 +165,7 @@ proc module_parser_push_error(
     output: ref mut ModuleParserOutput,
     kind: ModuleParserErrorKind,
     message: string,
-    span: Span
+    span: FrontendSpan
 ) {
     output.errors = output.errors + [
         module_parser_error(

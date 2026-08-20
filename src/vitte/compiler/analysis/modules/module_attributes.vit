@@ -2,7 +2,7 @@ space vitte/compiler/analysis/modules/module_attributes
 
 export *
 
-use vitte/compiler/frontend/source/span.{Span}
+use vitte/compiler/frontend/source/span.{FrontendSpan}
 use vitte/compiler/frontend/syntax/attribute.{
     Attribute,
     AttributeArgument,
@@ -53,20 +53,20 @@ form ModuleDeprecation {
     message: string
     since: string
     replacement: string
-    span: Span
+    span: FrontendSpan
 }
 
 form ModuleFeature {
     name: string
     enabled: bool
-    span: Span
+    span: FrontendSpan
 }
 
 form ModuleAttributeError {
     kind: ModuleAttributeErrorKind
     name: string
     message: string
-    span: Span
+    span: FrontendSpan
 }
 
 form ModuleAttributes {
@@ -98,8 +98,8 @@ form ModuleAttributes {
     errors: [ModuleAttributeError]
 }
 
-proc empty_span() -> Span {
-    give Span {
+proc empty_span() -> FrontendSpan {
+    give FrontendSpan {
         source: 0,
         start: 0,
         end: 0
@@ -235,7 +235,7 @@ proc module_attribute_error(
     kind: ModuleAttributeErrorKind,
     name: string,
     message: string,
-    span: Span
+    span: FrontendSpan
 ) -> ModuleAttributeError {
     give ModuleAttributeError {
         kind: kind,
@@ -250,7 +250,7 @@ proc module_attributes_push_error(
     kind: ModuleAttributeErrorKind,
     name: string,
     message: string,
-    span: Span
+    span: FrontendSpan
 ) {
     let error = module_attribute_error(kind, name, message, span);
     attributes.errors = attributes.errors + [error];

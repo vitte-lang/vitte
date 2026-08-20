@@ -3,7 +3,7 @@ space vitte/compiler/analysis/modules/module_manager
 export *
 
 use vitte/compiler/frontend/source/span.{
-    Span
+    FrontendSpan
 }
 
 use vitte/compiler/analysis/modules/module_attributes.{
@@ -118,7 +118,7 @@ form ModuleManagerError {
     dependency: string
     message: string
 
-    span: Span
+    span: FrontendSpan
 }
 
 form ModuleManagerStatistics {
@@ -160,8 +160,8 @@ form ModuleManager {
     statistics: ModuleManagerStatistics
 }
 
-proc module_manager_empty_span() -> Span {
-    give Span {
+proc module_manager_empty_span() -> FrontendSpan {
+    give FrontendSpan {
         source: 0,
         start: 0,
         end: 0
@@ -226,7 +226,7 @@ proc module_manager_error(
     module: string,
     dependency: string,
     message: string,
-    span: Span
+    span: FrontendSpan
 ) -> ModuleManagerError {
     give ModuleManagerError {
         kind: kind,
@@ -245,7 +245,7 @@ proc module_manager_push_error(
     module: string,
     dependency: string,
     message: string,
-    span: Span
+    span: FrontendSpan
 ) {
     manager.errors = manager.errors + [
         module_manager_error(
@@ -329,7 +329,7 @@ proc module_manager_add_module(
     manager: ref mut ModuleManager,
     name: string,
     canonical_path: string,
-    span: Span
+    span: FrontendSpan
 ) -> Option<ModuleId> {
     if name == "" or canonical_path == "" {
         module_manager_push_error(
@@ -392,7 +392,7 @@ proc module_manager_add_module_full(
     name: string,
     canonical_path: string,
     source_text: string,
-    span: Span,
+    span: FrontendSpan,
     attributes: ModuleAttributes
 ) -> Option<ModuleId> {
     if module_manager_module_limit_reached(
@@ -429,7 +429,7 @@ proc module_manager_add_source_module(
     name: string,
     canonical_path: string,
     source_text: string,
-    span: Span
+    span: FrontendSpan
 ) -> Option<ModuleId> {
     give module_manager_add_module_full(
         manager,
@@ -445,7 +445,7 @@ proc module_manager_add_dependency(
     manager: ref mut ModuleManager,
     module: ModuleId,
     target: ModuleId,
-    span: Span,
+    span: FrontendSpan,
     public: bool,
     optional: bool
 ) -> Option<ModuleDependencyId> {
@@ -513,7 +513,7 @@ proc module_manager_add_dependency_by_name(
     manager: ref mut ModuleManager,
     module: string,
     target: string,
-    span: Span,
+    span: FrontendSpan,
     public: bool,
     optional: bool
 ) -> Option<ModuleDependencyId> {
@@ -595,7 +595,7 @@ proc module_manager_mark_failed(
     manager: ref mut ModuleManager,
     id: ModuleId,
     message: string,
-    span: Span
+    span: FrontendSpan
 ) -> bool {
     manager.state = ModuleManagerState.Failed;
 

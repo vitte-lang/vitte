@@ -2,7 +2,7 @@ space vitte/compiler/analysis/modules/module_cycle
 
 export *
 
-use vitte/compiler/frontend/source/span.{Span}
+use vitte/compiler/frontend/source/span.{FrontendSpan}
 
 pick ModuleVisitState {
     Unvisited,
@@ -21,7 +21,7 @@ pick ModuleCycleErrorKind {
 
 form ModuleCycleDependency {
     module: string
-    span: Span
+    span: FrontendSpan
 }
 
 form ModuleCycleNode {
@@ -29,19 +29,19 @@ form ModuleCycleNode {
     path: string
     dependencies: [ModuleCycleDependency]
     state: ModuleVisitState
-    span: Span
+    span: FrontendSpan
 }
 
 form ModuleCycleEdge {
     source: string
     destination: string
-    span: Span
+    span: FrontendSpan
 }
 
 form ModuleCycle {
     modules: [string]
     edges: [ModuleCycleEdge]
-    span: Span
+    span: FrontendSpan
 }
 
 form ModuleCycleError {
@@ -49,7 +49,7 @@ form ModuleCycleError {
     module: string
     dependency: string
     message: string
-    span: Span
+    span: FrontendSpan
     cycle: Option<ModuleCycle>
 }
 
@@ -72,8 +72,8 @@ form ModuleCycleTraversal {
     errors: [ModuleCycleError]
 }
 
-proc empty_span() -> Span {
-    give Span {
+proc empty_span() -> FrontendSpan {
+    give FrontendSpan {
         source: 0,
         start: 0,
         end: 0
@@ -107,7 +107,7 @@ proc module_cycle_traversal_create() -> ModuleCycleTraversal {
 
 proc module_cycle_dependency(
     module: string,
-    span: Span
+    span: FrontendSpan
 ) -> ModuleCycleDependency {
     give ModuleCycleDependency {
         module: module,
@@ -118,7 +118,7 @@ proc module_cycle_dependency(
 proc module_cycle_edge(
     source: string,
     destination: string,
-    span: Span
+    span: FrontendSpan
 ) -> ModuleCycleEdge {
     give ModuleCycleEdge {
         source: source,
@@ -132,7 +132,7 @@ proc module_cycle_error(
     module: string,
     dependency: string,
     message: string,
-    span: Span
+    span: FrontendSpan
 ) -> ModuleCycleError {
     give ModuleCycleError {
         kind: kind,
@@ -149,7 +149,7 @@ proc module_cycle_error_with_cycle(
     module: string,
     dependency: string,
     message: string,
-    span: Span,
+    span: FrontendSpan,
     cycle: ModuleCycle
 ) -> ModuleCycleError {
     give ModuleCycleError {
@@ -165,7 +165,7 @@ proc module_cycle_error_with_cycle(
 proc module_cycle_node(
     name: string,
     path: string,
-    span: Span
+    span: FrontendSpan
 ) -> ModuleCycleNode {
     give ModuleCycleNode {
         name: name,
@@ -238,7 +238,7 @@ proc module_cycle_graph_add_module(
     graph: ref mut ModuleCycleGraph,
     name: string,
     path: string,
-    span: Span
+    span: FrontendSpan
 ) -> bool {
     if module_cycle_graph_contains(ref graph, name) {
         graph.errors = graph.errors + [
@@ -278,7 +278,7 @@ proc module_cycle_graph_add_dependency(
     graph: ref mut ModuleCycleGraph,
     module: string,
     dependency: string,
-    span: Span
+    span: FrontendSpan
 ) -> bool {
     let source_index = module_cycle_graph_find_index(
         ref graph,
@@ -396,7 +396,7 @@ proc module_cycle_build(
     stack: ref [string],
     start: usize,
     destination: string,
-    closing_span: Span
+    closing_span: FrontendSpan
 ) -> ModuleCycle {
     set modules: [string] = [];
     set edges: [ModuleCycleEdge] = [];

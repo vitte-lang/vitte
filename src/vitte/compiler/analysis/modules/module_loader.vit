@@ -2,7 +2,7 @@ space vitte/compiler/analysis/modules/module_loader
 
 export *
 
-use vitte/compiler/frontend/source/span.{Span}
+use vitte/compiler/frontend/source/span.{FrontendSpan}
 use vitte/compiler/analysis/modules/module_id.{
     ModuleId,
     ModuleIdKind,
@@ -132,7 +132,7 @@ form ModuleLoadRequest {
     origin: ModuleLoadOrigin
     state: ModuleLoadState
 
-    span: Span
+    span: FrontendSpan
 
     depth: usize
     optional: bool
@@ -163,7 +163,7 @@ form ModuleLoaderError {
     path: string
     message: string
 
-    span: Span
+    span: FrontendSpan
 
     request_id: usize
     optional: bool
@@ -239,8 +239,8 @@ form ModuleSourceProviderResult {
     error: string
 }
 
-proc module_loader_empty_span() -> Span {
-    give Span {
+proc module_loader_empty_span() -> FrontendSpan {
+    give FrontendSpan {
         source: 0,
         start: 0,
         end: 0
@@ -337,7 +337,7 @@ proc module_loader_error(
     module: string,
     path: string,
     message: string,
-    span: Span,
+    span: FrontendSpan,
     request_id: usize,
     optional: bool
 ) -> ModuleLoaderError {
@@ -361,7 +361,7 @@ proc module_loader_push_error(
     module: string,
     path: string,
     message: string,
-    span: Span,
+    span: FrontendSpan,
     request_id: usize,
     optional: bool
 ) {
@@ -866,7 +866,7 @@ proc module_loader_request(
     name: string,
     requested_path: string,
     origin: ModuleLoadOrigin,
-    span: Span,
+    span: FrontendSpan,
     depth: usize,
     optional: bool,
     synthetic: bool
@@ -983,7 +983,7 @@ proc module_loader_request_entry(
     loader: ref mut ModuleLoader,
     name: string,
     path: string,
-    span: Span
+    span: FrontendSpan
 ) -> Option<usize> {
     give module_loader_request(
         loader,
@@ -1004,7 +1004,7 @@ proc module_loader_request_dependency(
     parent: ModuleId,
     name: string,
     path: string,
-    span: Span,
+    span: FrontendSpan,
     depth: usize,
     optional: bool
 ) -> Option<usize> {
@@ -1025,7 +1025,7 @@ proc module_loader_request_dependency(
 proc module_loader_request_generated(
     loader: ref mut ModuleLoader,
     name: string,
-    span: Span
+    span: FrontendSpan
 ) -> Option<usize> {
     if not loader.configuration.allow_generated {
         module_loader_push_error(
@@ -1396,7 +1396,7 @@ proc module_loader_register_source(
         generated: source.generated
     };
 
-    info.module_span = Span {
+    info.module_span = FrontendSpan {
         source: source.source_id,
         start: 0,
         end: len(source.text)

@@ -2,7 +2,7 @@ space vitte/compiler/analysis/modules/module_database
 
 export *
 
-use vitte/compiler/frontend/source/span.{Span}
+use vitte/compiler/frontend/source/span.{FrontendSpan}
 use vitte/compiler/analysis/modules/module_attributes.{
     ModuleAttributes,
     module_attributes_default
@@ -53,7 +53,7 @@ form ModuleDatabaseDependency {
     target_id: ModuleId
     module_name: string
     target_name: string
-    span: Span
+    span: FrontendSpan
     public: bool
     optional: bool
 }
@@ -63,7 +63,7 @@ form ModuleDatabaseEntry {
     name: string
     canonical_path: string
     source_text: string
-    source_span: Span
+    source_span: FrontendSpan
     attributes: ModuleAttributes
     state: ModuleDatabaseEntryState
     dependencies: [ModuleDependencyId]
@@ -77,7 +77,7 @@ form ModuleDatabaseError {
     module: string
     dependency: string
     message: string
-    span: Span
+    span: FrontendSpan
 }
 
 form ModuleDatabaseStatistics {
@@ -112,8 +112,8 @@ form ModuleDatabaseAnalysis {
     valid: bool
 }
 
-proc module_database_empty_span() -> Span {
-    give Span {
+proc module_database_empty_span() -> FrontendSpan {
+    give FrontendSpan {
         source: 0,
         start: 0,
         end: 0
@@ -198,7 +198,7 @@ proc module_database_error(
     module: string,
     dependency: string,
     message: string,
-    span: Span
+    span: FrontendSpan
 ) -> ModuleDatabaseError {
     give ModuleDatabaseError {
         kind: kind,
@@ -215,7 +215,7 @@ proc module_database_push_error(
     module: string,
     dependency: string,
     message: string,
-    span: Span
+    span: FrontendSpan
 ) {
     database.errors = database.errors + [
         module_database_error(
@@ -487,7 +487,7 @@ proc module_database_insert(
     database: ref mut ModuleDatabase,
     name: string,
     canonical_path: string,
-    source_span: Span
+    source_span: FrontendSpan
 ) -> Option<ModuleId> {
     if len(name) == 0 or len(canonical_path) == 0 {
         module_database_push_error(
@@ -569,7 +569,7 @@ proc module_database_insert_full(
     name: string,
     canonical_path: string,
     source_text: string,
-    source_span: Span,
+    source_span: FrontendSpan,
     attributes: ModuleAttributes
 ) -> Option<ModuleId> {
     let id = module_database_insert(
@@ -626,7 +626,7 @@ proc module_database_set_source(
     database: ref mut ModuleDatabase,
     id: ModuleId,
     source_text: string,
-    source_span: Span
+    source_span: FrontendSpan
 ) -> bool {
     let index = module_database_find_index_by_id(ref database, id);
 
@@ -816,7 +816,7 @@ proc module_database_mark_failed(
     database: ref mut ModuleDatabase,
     id: ModuleId,
     message: string,
-    span: Span
+    span: FrontendSpan
 ) -> bool {
     let index = module_database_find_index_by_id(ref database, id);
 
@@ -877,7 +877,7 @@ proc module_database_add_dependency(
     database: ref mut ModuleDatabase,
     module_id: ModuleId,
     target_id: ModuleId,
-    span: Span,
+    span: FrontendSpan,
     public: bool,
     optional: bool
 ) -> Option<ModuleDependencyId> {
@@ -996,7 +996,7 @@ proc module_database_add_dependency_by_name(
     database: ref mut ModuleDatabase,
     module_name: string,
     target_name: string,
-    span: Span,
+    span: FrontendSpan,
     public: bool,
     optional: bool
 ) -> Option<ModuleDependencyId> {

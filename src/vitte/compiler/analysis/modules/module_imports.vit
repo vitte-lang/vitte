@@ -2,7 +2,7 @@ space vitte/compiler/analysis/modules/module_imports
 
 export *
 
-use vitte/compiler/frontend/source/span.{Span}
+use vitte/compiler/frontend/source/span.{FrontendSpan}
 use vitte/compiler/analysis/modules/module_id.{
     ModuleId,
     module_id_invalid,
@@ -112,9 +112,9 @@ form ModuleImport {
     resolved_export: ModuleExportId
     candidates: [ModuleExportId]
 
-    span: Span
-    path_span: Span
-    alias_span: Span
+    span: FrontendSpan
+    path_span: FrontendSpan
+    alias_span: FrontendSpan
 
     enabled: bool
     optional: bool
@@ -133,7 +133,7 @@ form ModuleImportError {
     path: string
     name: string
     message: string
-    span: Span
+    span: FrontendSpan
 }
 
 form ModuleImportStatistics {
@@ -190,8 +190,8 @@ form ModuleImportResolution {
     valid: bool
 }
 
-proc module_import_empty_span() -> Span {
-    give Span {
+proc module_import_empty_span() -> FrontendSpan {
+    give FrontendSpan {
         source: 0,
         start: 0,
         end: 0
@@ -307,7 +307,7 @@ proc module_import_error(
     path: string,
     name: string,
     message: string,
-    span: Span
+    span: FrontendSpan
 ) -> ModuleImportError {
     give ModuleImportError {
         kind: kind,
@@ -326,7 +326,7 @@ proc module_import_push_error(
     path: string,
     name: string,
     message: string,
-    span: Span
+    span: FrontendSpan
 ) {
     table.errors = table.errors + [
         module_import_error(
@@ -348,7 +348,7 @@ proc module_import_create(
     alias: string,
     kind: ModuleImportKind,
     visibility: ModuleImportVisibility,
-    span: Span,
+    span: FrontendSpan,
     generation: u64
 ) -> ModuleImport {
     give ModuleImport {
@@ -748,7 +748,7 @@ proc module_import_insert(
     alias: string,
     kind: ModuleImportKind,
     visibility: ModuleImportVisibility,
-    span: Span
+    span: FrontendSpan
 ) -> Option<ModuleImportId> {
     if not module_id_is_valid(module) {
         module_import_push_error(
@@ -877,7 +877,7 @@ proc module_import_insert_symbol(
     path: ModuleImportPath,
     alias: string,
     visibility: ModuleImportVisibility,
-    span: Span
+    span: FrontendSpan
 ) -> Option<ModuleImportId> {
     give module_import_insert(
         table,
@@ -900,7 +900,7 @@ proc module_import_insert_glob(
     module: ModuleId,
     path: ModuleImportPath,
     visibility: ModuleImportVisibility,
-    span: Span
+    span: FrontendSpan
 ) -> Option<ModuleImportId> {
     give module_import_insert(
         table,

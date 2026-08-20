@@ -3,7 +3,7 @@ space vitte/compiler/analysis/modules/module_visibility
 export *
 
 use vitte/compiler/frontend/source/span.{
-    Span
+    FrontendSpan
 }
 
 use vitte/compiler/analysis/modules/module_database.{
@@ -65,7 +65,7 @@ form ModuleVisibilityDecision {
     visibility: ModuleVisibilityKind
 
     message: string
-    span: Span
+    span: FrontendSpan
 }
 
 form ModuleVisibilityStatistics {
@@ -85,8 +85,8 @@ form ModuleVisibility {
     statistics: ModuleVisibilityStatistics
 }
 
-proc module_visibility_empty_span() -> Span {
-    give Span {
+proc module_visibility_empty_span() -> FrontendSpan {
+    give FrontendSpan {
         source: 0,
         start: 0,
         end: 0
@@ -165,7 +165,7 @@ proc module_visibility_decision(
     target: ModuleId,
     visibility: ModuleVisibilityKind,
     message: string,
-    span: Span
+    span: FrontendSpan
 ) -> ModuleVisibilityDecision {
     give ModuleVisibilityDecision {
         state: state,
@@ -186,7 +186,7 @@ proc module_visibility_allowed(
     target: ModuleId,
     visibility: ModuleVisibilityKind,
     reason: ModuleVisibilityReason,
-    span: Span
+    span: FrontendSpan
 ) -> ModuleVisibilityDecision {
     give module_visibility_decision(
         ModuleVisibilityState.Allowed,
@@ -205,7 +205,7 @@ proc module_visibility_denied(
     visibility: ModuleVisibilityKind,
     reason: ModuleVisibilityReason,
     message: string,
-    span: Span
+    span: FrontendSpan
 ) -> ModuleVisibilityDecision {
     give module_visibility_decision(
         ModuleVisibilityState.Denied,
@@ -224,7 +224,7 @@ proc module_visibility_invalid(
     visibility: ModuleVisibilityKind,
     reason: ModuleVisibilityReason,
     message: string,
-    span: Span
+    span: FrontendSpan
 ) -> ModuleVisibilityDecision {
     give module_visibility_decision(
         ModuleVisibilityState.Invalid,
@@ -243,7 +243,7 @@ proc module_visibility_unresolved(
     visibility: ModuleVisibilityKind,
     reason: ModuleVisibilityReason,
     message: string,
-    span: Span
+    span: FrontendSpan
 ) -> ModuleVisibilityDecision {
     give module_visibility_decision(
         ModuleVisibilityState.Unresolved,
@@ -494,7 +494,7 @@ proc module_visibility_check_modules(
     source: ModuleId,
     target: ModuleId,
     kind: ModuleVisibilityKind,
-    span: Span
+    span: FrontendSpan
 ) -> ModuleVisibilityDecision {
     if not module_id_is_valid(source) {
         let decision =

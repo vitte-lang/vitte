@@ -2,7 +2,7 @@ space vitte/compiler/analysis/modules/module_linkage
 
 export *
 
-use vitte/compiler/frontend/source/span.{Span}
+use vitte/compiler/frontend/source/span.{FrontendSpan}
 use vitte/compiler/analysis/modules/module_id.{
     ModuleId,
     module_id_invalid,
@@ -103,9 +103,9 @@ form ModuleLinkageSymbol {
 
     target: Option<ModuleLinkageTarget>
 
-    span: Span
-    declaration_span: Span
-    definition_span: Span
+    span: FrontendSpan
+    declaration_span: FrontendSpan
+    definition_span: FrontendSpan
 
     defined: bool
     referenced: bool
@@ -126,7 +126,7 @@ form ModuleLinkageError {
     module: string
     symbol: string
     message: string
-    span: Span
+    span: FrontendSpan
 }
 
 form ModuleLinkageStatistics {
@@ -187,8 +187,8 @@ form ModuleLinkageConfiguration {
     entry_point: string
 }
 
-proc module_linkage_empty_span() -> Span {
-    give Span {
+proc module_linkage_empty_span() -> FrontendSpan {
+    give FrontendSpan {
         source: 0,
         start: 0,
         end: 0
@@ -286,7 +286,7 @@ proc module_linkage_error(
     module: string,
     symbol: string,
     message: string,
-    span: Span
+    span: FrontendSpan
 ) -> ModuleLinkageError {
     give ModuleLinkageError {
         kind: kind,
@@ -303,7 +303,7 @@ proc module_linkage_push_error(
     module: string,
     symbol: string,
     message: string,
-    span: Span
+    span: FrontendSpan
 ) {
     table.errors = table.errors + [
         module_linkage_error(
@@ -324,7 +324,7 @@ proc module_linkage_symbol_create(
     symbol_kind: ModuleLinkageSymbolKind,
     linkage: ModuleLinkageKind,
     visibility: ModuleLinkageVisibility,
-    span: Span,
+    span: FrontendSpan,
     generation: u64
 ) -> ModuleLinkageSymbol {
     give ModuleLinkageSymbol {
@@ -634,7 +634,7 @@ proc module_linkage_insert(
     symbol_kind: ModuleLinkageSymbolKind,
     linkage: ModuleLinkageKind,
     visibility: ModuleLinkageVisibility,
-    span: Span
+    span: FrontendSpan
 ) -> Option<ModuleLinkageId> {
     if not module_id_is_valid(module) {
         module_linkage_push_error(
@@ -811,7 +811,7 @@ proc module_linkage_mark_failed(
 proc module_linkage_define(
     table: ref mut ModuleLinkageTable,
     id: ModuleLinkageId,
-    span: Span,
+    span: FrontendSpan,
     size: usize,
     alignment: usize
 ) -> bool {
