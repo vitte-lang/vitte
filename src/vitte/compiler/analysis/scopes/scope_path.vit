@@ -1,0 +1,847 @@
+space vitte/compiler/analysis/scopes/scope_path
+
+export *
+
+use vitte/compiler/analysis/scopes/scope_id.{
+    ScopeId
+}
+
+use vitte/compiler/analysis/scopes/scope_kind.{
+    ScopeKind
+}
+
+use vitte/compiler/analysis/scopes/scope_node.{
+    ScopeNode,
+    ScopeNodeTable,
+
+    scope_node_table_get,
+    scope_node_table_parent
+}
+
+pick ScopePathState {
+    Valid,
+    Partial,
+    Missing,
+    Cycle
+}
+
+form ScopePathSegment {
+    scope: ScopeId
+
+    kind: ScopeKind
+
+    depth: usize
+
+    owner: Option<DefId>
+    module: Option<ModuleId>
+}
+
+form ScopePath {
+    start: ScopeId
+    end: ScopeId
+
+    segments: [ScopePathSegment]
+
+    state: ScopePathState
+
+    absolute: bool
+}
+
+form ScopePathStatistics {
+    built: u64
+
+    valid: u64
+    partial: u64
+    missing: u64
+    cycles: u64
+
+    segments: u64
+
+    maximum_length: usize
+}
+
+form ScopePathBuilder {
+    statistics: ScopePathStatistics
+}
+
+proc scope_path_statistics_empty()
+    -> ScopePathStatistics
+{
+    give ScopePathStatistics {
+        built: 0,
+
+        valid: 0,
+        partial: 0,
+        missing: 0,
+        cycles: 0,
+
+        segments: 0,
+
+        maximum_length: 0
+    };
+}
+
+proc scope_path_builder_create()
+    -> ScopePathBuilder
+{
+    give ScopePathBuilder {
+        statistics:
+            scope_path_statistics_empty()
+    };
+}
+
+proc scope_path_segment(
+    node: ScopeNode
+) -> ScopePathSegment {
+    give ScopePathSegment {
+        scope:
+            node.id,
+
+        kind:
+            node.kind,
+
+        depth:
+            node.depth,
+
+        owner:
+            node.owner,
+
+        module:
+            node.module
+    };
+}
+
+proc scope_path_empty(
+    start: ScopeId,
+    end: ScopeId
+) -> ScopePath {
+    give ScopePath {
+        start: start,
+        end: end,
+
+        segments: [],
+
+        state:
+            ScopePathState.Missing,
+
+        absolute:
+            false
+    };
+}
+
+proc scope_path_single(
+    node: ScopeNode
+) -> ScopePath {
+    give ScopePath {
+        start:
+            node.id,
+
+        end:
+            node.id,
+
+        segments: [
+            scope_path_segment(
+                node
+            )
+        ],
+
+        state:
+            ScopePathState.Valid,
+
+        absolute:
+            node.parent == None
+    };
+}
+
+proc scope_path_length(
+    path: ref ScopePath
+) -> usize {
+    give len(path.segments);
+}
+
+proc scope_path_is_empty(
+    path: ref ScopePath
+) -> bool {
+    give len(path.segments) == 0;
+}
+
+proc scope_path_is_valid(
+    path: ref ScopePath
+) -> bool {
+    give path.state
+        == ScopePathState.Valid;
+}
+
+proc scope_path_is_absolute(
+    path: ref ScopePath
+) -> bool {
+    give path.absolute;
+}
+
+proc scope_path_first(
+    path: ref ScopePath
+) -> Option<ScopePathSegment> {
+    if len(path.segments) == 0 {
+        give None;
+    }
+
+    give Some(
+        path.segments[0]
+    );
+}
+
+proc scope_path_last(
+    path: ref ScopePath
+) -> Option<ScopePathSegment> {
+    if len(path.segments) == 0 {
+        give None;
+    }
+
+    give Some(
+        path.segments[
+            len(path.segments) - 1
+        ]
+    );
+}
+
+proc scope_path_contains(
+    path: ref ScopePath,
+    scope: ScopeId
+) -> bool {
+    for segment in path.segments {
+        if segment.scope == scope {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc scope_path_index_of(
+    path: ref ScopePath,
+    scope: ScopeId
+) -> Option<usize> {
+    let mut index: usize = 0;
+
+    while index < len(path.segments) {
+        if path.segments[index].scope
+            == scope
+        {
+            give Some(index);
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give None;
+}
+
+proc scope_path_push(
+    path: ref mut ScopePath,
+    segment: ScopePathSegment
+) {
+    set path.segments =
+        path.segments + [segment];
+}
+
+proc scope_path_prepend(
+    path: ref mut ScopePath,
+    segment: ScopePathSegment
+) {
+    let mut result:
+        [ScopePathSegment] = [segment];
+
+    for current in path.segments {
+        set result =
+            result + [current];
+    }
+
+    set path.segments =
+        result;
+}
+
+proc scope_path_reverse(
+    path: ScopePath
+) -> ScopePath {
+    let mut result =
+        path;
+
+    let mut segments:
+        [ScopePathSegment] = [];
+
+    let mut index =
+        len(path.segments);
+
+    while index > 0 {
+        set index =
+            index - 1;
+
+        set segments =
+            segments + [
+                path.segments[index]
+            ];
+    }
+
+    set result.segments =
+        segments;
+
+    let start =
+        result.start;
+
+    set result.start =
+        result.end;
+
+    set result.end =
+        start;
+
+    give result;
+}
+
+proc scope_path_root_to(
+    builder: ref mut ScopePathBuilder,
+    nodes: ref ScopeNodeTable,
+    scope: ScopeId
+) -> ScopePath {
+    set builder.statistics.built =
+        builder.statistics.built + 1;
+
+    let mut result =
+        scope_path_empty(
+            scope,
+            scope
+        );
+
+    let mut current =
+        Some(scope);
+
+    let mut visited:
+        [ScopeId] = [];
+
+    loop {
+        pick current {
+            None {
+                set result.state =
+                    ScopePathState.Missing;
+
+                set builder.statistics.missing =
+                    builder.statistics.missing + 1;
+
+                give result;
+            }
+
+            Some(current_scope) {
+                for seen in visited {
+                    if seen == current_scope {
+                        set result.state =
+                            ScopePathState.Cycle;
+
+                        set builder.statistics.cycles =
+                            builder.statistics.cycles + 1;
+
+                        give result;
+                    }
+                }
+
+                set visited =
+                    visited + [current_scope];
+
+                let node =
+                    scope_node_table_get(
+                        nodes,
+                        current_scope
+                    );
+
+                pick node {
+                    None {
+                        set result.state =
+                            ScopePathState.Partial;
+
+                        set builder.statistics.partial =
+                            builder.statistics.partial + 1;
+
+                        give result;
+                    }
+
+                    Some(value) {
+                        scope_path_prepend(
+                            ref mut result,
+                            scope_path_segment(
+                                value
+                            )
+                        );
+
+                        pick value.parent {
+                            None {
+                                set result.start =
+                                    value.id;
+
+                                set result.end =
+                                    scope;
+
+                                set result.state =
+                                    ScopePathState.Valid;
+
+                                set result.absolute =
+                                    true;
+
+                                set builder.statistics.valid =
+                                    builder.statistics.valid + 1;
+
+                                set builder.statistics.segments =
+                                    builder.statistics.segments
+                                    + len(result.segments);
+
+                                if len(result.segments)
+                                    > builder.statistics.maximum_length
+                                {
+                                    set builder.statistics.maximum_length =
+                                        len(result.segments);
+                                }
+
+                                give result;
+                            }
+
+                            Some(parent) {
+                                set current =
+                                    Some(parent);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    give result;
+}
+
+proc scope_path_between(
+    builder: ref mut ScopePathBuilder,
+    nodes: ref ScopeNodeTable,
+    ancestor: ScopeId,
+    child: ScopeId
+) -> ScopePath {
+    set builder.statistics.built =
+        builder.statistics.built + 1;
+
+    let mut result =
+        scope_path_empty(
+            ancestor,
+            child
+        );
+
+    let mut reverse_segments:
+        [ScopePathSegment] = [];
+
+    let mut current =
+        Some(child);
+
+    let mut visited:
+        [ScopeId] = [];
+
+    loop {
+        pick current {
+            None {
+                set result.state =
+                    ScopePathState.Missing;
+
+                set builder.statistics.missing =
+                    builder.statistics.missing + 1;
+
+                give result;
+            }
+
+            Some(current_scope) {
+                for seen in visited {
+                    if seen == current_scope {
+                        set result.state =
+                            ScopePathState.Cycle;
+
+                        set builder.statistics.cycles =
+                            builder.statistics.cycles + 1;
+
+                        give result;
+                    }
+                }
+
+                set visited =
+                    visited + [current_scope];
+
+                let node =
+                    scope_node_table_get(
+                        nodes,
+                        current_scope
+                    );
+
+                pick node {
+                    None {
+                        set result.state =
+                            ScopePathState.Partial;
+
+                        set builder.statistics.partial =
+                            builder.statistics.partial + 1;
+
+                        give result;
+                    }
+
+                    Some(value) {
+                        set reverse_segments =
+                            reverse_segments + [
+                                scope_path_segment(
+                                    value
+                                )
+                            ];
+
+                        if value.id == ancestor {
+                            let mut index =
+                                len(reverse_segments);
+
+                            while index > 0 {
+                                set index =
+                                    index - 1;
+
+                                set result.segments =
+                                    result.segments + [
+                                        reverse_segments[index]
+                                    ];
+                            }
+
+                            set result.state =
+                                ScopePathState.Valid;
+
+                            set builder.statistics.valid =
+                                builder.statistics.valid + 1;
+
+                            set builder.statistics.segments =
+                                builder.statistics.segments
+                                + len(result.segments);
+
+                            if len(result.segments)
+                                > builder.statistics.maximum_length
+                            {
+                                set builder.statistics.maximum_length =
+                                    len(result.segments);
+                            }
+
+                            give result;
+                        }
+
+                        set current =
+                            value.parent;
+                    }
+                }
+            }
+        }
+    }
+
+    give result;
+}
+
+proc scope_path_common_prefix(
+    left: ref ScopePath,
+    right: ref ScopePath
+) -> [ScopePathSegment] {
+    let mut result:
+        [ScopePathSegment] = [];
+
+    let count =
+        if len(left.segments)
+            < len(right.segments)
+        {
+            len(left.segments)
+        } else {
+            len(right.segments)
+        };
+
+    let mut index: usize = 0;
+
+    while index < count {
+        if left.segments[index].scope
+            != right.segments[index].scope
+        {
+            break;
+        }
+
+        set result =
+            result + [
+                left.segments[index]
+            ];
+
+        set index =
+            index + 1;
+    }
+
+    give result;
+}
+
+proc scope_path_common_ancestor(
+    left: ref ScopePath,
+    right: ref ScopePath
+) -> Option<ScopeId> {
+    let prefix =
+        scope_path_common_prefix(
+            left,
+            right
+        );
+
+    if len(prefix) == 0 {
+        give None;
+    }
+
+    give Some(
+        prefix[
+            len(prefix) - 1
+        ].scope
+    );
+}
+
+proc scope_path_relative(
+    builder: ref mut ScopePathBuilder,
+    nodes: ref ScopeNodeTable,
+    from: ScopeId,
+    to: ScopeId
+) -> ScopePath {
+    let from_path =
+        scope_path_root_to(
+            builder,
+            nodes,
+            from
+        );
+
+    let to_path =
+        scope_path_root_to(
+            builder,
+            nodes,
+            to
+        );
+
+    if not scope_path_is_valid(
+        ref from_path
+    )
+        or not scope_path_is_valid(
+            ref to_path
+        )
+    {
+        give scope_path_empty(
+            from,
+            to
+        );
+    }
+
+    let common =
+        scope_path_common_prefix(
+            ref from_path,
+            ref to_path
+        );
+
+    if len(common) == 0 {
+        give scope_path_empty(
+            from,
+            to
+        );
+    }
+
+    let ancestor =
+        common[
+            len(common) - 1
+        ].scope;
+
+    give scope_path_between(
+        builder,
+        nodes,
+        ancestor,
+        to
+    );
+}
+
+proc scope_path_find_kind(
+    path: ref ScopePath,
+    kind: ScopeKind
+) -> Option<ScopePathSegment> {
+    let mut index =
+        len(path.segments);
+
+    while index > 0 {
+        set index =
+            index - 1;
+
+        if path.segments[index].kind
+            == kind
+        {
+            give Some(
+                path.segments[index]
+            );
+        }
+    }
+
+    give None;
+}
+
+proc scope_path_find_module(
+    path: ref ScopePath
+) -> Option<ScopePathSegment> {
+    give scope_path_find_kind(
+        path,
+        ScopeKind.Module
+    );
+}
+
+proc scope_path_find_function(
+    path: ref ScopePath
+) -> Option<ScopePathSegment> {
+    let mut index =
+        len(path.segments);
+
+    while index > 0 {
+        set index =
+            index - 1;
+
+        let kind =
+            path.segments[index].kind;
+
+        if kind == ScopeKind.Procedure
+            or kind == ScopeKind.Method
+            or kind == ScopeKind.Closure
+            or kind == ScopeKind.Lambda
+        {
+            give Some(
+                path.segments[index]
+            );
+        }
+    }
+
+    give None;
+}
+
+proc scope_path_find_type(
+    path: ref ScopePath
+) -> Option<ScopePathSegment> {
+    let mut index =
+        len(path.segments);
+
+    while index > 0 {
+        set index =
+            index - 1;
+
+        let kind =
+            path.segments[index].kind;
+
+        if kind == ScopeKind.Type
+            or kind == ScopeKind.Trait
+            or kind == ScopeKind.Impl
+        {
+            give Some(
+                path.segments[index]
+            );
+        }
+    }
+
+    give None;
+}
+
+proc scope_path_validate(
+    path: ref ScopePath
+) -> bool {
+    if len(path.segments) == 0 {
+        give false;
+    }
+
+    if path.segments[0].scope
+        != path.start
+    {
+        give false;
+    }
+
+    if path.segments[
+        len(path.segments) - 1
+    ].scope
+        != path.end
+    {
+        give false;
+    }
+
+    let mut index: usize = 1;
+
+    while index < len(path.segments) {
+        if path.segments[index].depth
+            < path.segments[index - 1].depth
+        {
+            give false;
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give true;
+}
+
+proc scope_path_statistics(
+    builder: ref ScopePathBuilder
+) -> ScopePathStatistics {
+    give builder.statistics;
+}
+
+proc scope_path_reset_statistics(
+    builder: ref mut ScopePathBuilder
+) {
+    set builder.statistics =
+        scope_path_statistics_empty();
+}
+
+proc scope_path_state_name(
+    state: ScopePathState
+) -> string {
+    pick state {
+        ScopePathState.Valid {
+            give "valid";
+        }
+
+        ScopePathState.Partial {
+            give "partial";
+        }
+
+        ScopePathState.Missing {
+            give "missing";
+        }
+
+        ScopePathState.Cycle {
+            give "cycle";
+        }
+    }
+
+    give "missing";
+}
+
+// root
+//   |
+//   v
+// module
+//   |
+//   v
+// type / impl
+//   |
+//   v
+// procedure
+//   |
+//   v
+// block
+//   |
+//   v
+// loop
+//
+// ScopePath
+//   = chemin structurel entre ScopeId
+//
+// scope_parent.vit
+//   = navigation ascendante
+//
+// scope_child.vit
+//   = navigation descendante
+//
+// scope_path.vit
+//   = représentation d'un chemin complet
+//
+// resolution/path_resolution.vit
+//   = résolution des chemins écrits dans le code source

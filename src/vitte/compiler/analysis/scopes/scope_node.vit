@@ -1,0 +1,893 @@
+space vitte/compiler/analysis/scopes/scope_node
+
+export *
+
+use vitte/compiler/analysis/scopes/scope_id.{
+    ScopeId,
+    scope_id_is_valid
+}
+
+use vitte/compiler/analysis/scopes/scope_kind.{
+    ScopeKind
+}
+
+pick ScopeNodeState {
+    Created,
+    Active,
+    Closed,
+    Invalidated
+}
+
+form ScopeNode {
+    id: ScopeId
+
+    kind: ScopeKind
+    state: ScopeNodeState
+
+    parent: Option<ScopeId>
+
+    owner: Option<DefId>
+    node: Option<HirId>
+    type_id: Option<TypeId>
+    module: Option<ModuleId>
+
+    depth: usize
+
+    generation: u64
+    revision: u64
+}
+
+form ScopeNodeSet {
+    nodes: [ScopeNode]
+}
+
+form ScopeNodeStatistics {
+    created: u64
+    active: u64
+    closed: u64
+    invalidated: u64
+
+    lookups: u64
+    hits: u64
+    misses: u64
+
+    maximum_depth: usize
+}
+
+form ScopeNodeTable {
+    nodes: [ScopeNode]
+
+    generation: u64
+
+    statistics: ScopeNodeStatistics
+}
+
+proc scope_node_statistics_empty()
+    -> ScopeNodeStatistics
+{
+    give ScopeNodeStatistics {
+        created: 0,
+        active: 0,
+        closed: 0,
+        invalidated: 0,
+
+        lookups: 0,
+        hits: 0,
+        misses: 0,
+
+        maximum_depth: 0
+    };
+}
+
+proc scope_node_table_create()
+    -> ScopeNodeTable
+{
+    give ScopeNodeTable {
+        nodes: [],
+
+        generation: 1,
+
+        statistics:
+            scope_node_statistics_empty()
+    };
+}
+
+proc scope_node(
+    id: ScopeId,
+    kind: ScopeKind,
+    parent: Option<ScopeId>,
+    depth: usize
+) -> ScopeNode {
+    give ScopeNode {
+        id: id,
+
+        kind: kind,
+
+        state:
+            ScopeNodeState.Created,
+
+        parent: parent,
+
+        owner: None,
+        node: None,
+        type_id: None,
+        module: None,
+
+        depth: depth,
+
+        generation: 1,
+        revision: 1
+    };
+}
+
+proc scope_node_root(
+    id: ScopeId
+) -> ScopeNode {
+    give scope_node(
+        id,
+        ScopeKind.Root,
+        None,
+        0
+    );
+}
+
+proc scope_node_with_owner(
+    value: ScopeNode,
+    owner: DefId
+) -> ScopeNode {
+    let mut result =
+        value;
+
+    set result.owner =
+        Some(owner);
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_node_with_hir(
+    value: ScopeNode,
+    node: HirId
+) -> ScopeNode {
+    let mut result =
+        value;
+
+    set result.node =
+        Some(node);
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_node_with_type(
+    value: ScopeNode,
+    type_id: TypeId
+) -> ScopeNode {
+    let mut result =
+        value;
+
+    set result.type_id =
+        Some(type_id);
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_node_with_module(
+    value: ScopeNode,
+    module: ModuleId
+) -> ScopeNode {
+    let mut result =
+        value;
+
+    set result.module =
+        Some(module);
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_node_activate(
+    value: ref mut ScopeNode
+) {
+    if value.state
+        == ScopeNodeState.Invalidated
+    {
+        give;
+    }
+
+    set value.state =
+        ScopeNodeState.Active;
+
+    set value.revision =
+        value.revision + 1;
+}
+
+proc scope_node_close(
+    value: ref mut ScopeNode
+) {
+    if value.state
+        == ScopeNodeState.Invalidated
+    {
+        give;
+    }
+
+    set value.state =
+        ScopeNodeState.Closed;
+
+    set value.revision =
+        value.revision + 1;
+}
+
+proc scope_node_invalidate(
+    value: ref mut ScopeNode
+) {
+    set value.state =
+        ScopeNodeState.Invalidated;
+
+    set value.revision =
+        value.revision + 1;
+}
+
+proc scope_node_is_valid(
+    value: ScopeNode
+) -> bool {
+    give scope_id_is_valid(
+        value.id
+    )
+    and value.state
+        != ScopeNodeState.Invalidated;
+}
+
+proc scope_node_is_active(
+    value: ScopeNode
+) -> bool {
+    give value.state
+        == ScopeNodeState.Active;
+}
+
+proc scope_node_is_closed(
+    value: ScopeNode
+) -> bool {
+    give value.state
+        == ScopeNodeState.Closed;
+}
+
+proc scope_node_has_parent(
+    value: ScopeNode
+) -> bool {
+    pick value.parent {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_node_has_owner(
+    value: ScopeNode
+) -> bool {
+    pick value.owner {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_node_has_hir(
+    value: ScopeNode
+) -> bool {
+    pick value.node {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_node_has_type(
+    value: ScopeNode
+) -> bool {
+    pick value.type_id {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_node_has_module(
+    value: ScopeNode
+) -> bool {
+    pick value.module {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_node_set_create()
+    -> ScopeNodeSet
+{
+    give ScopeNodeSet {
+        nodes: []
+    };
+}
+
+proc scope_node_set_push(
+    set: ref mut ScopeNodeSet,
+    value: ScopeNode
+) {
+    set set.nodes =
+        set.nodes + [value];
+}
+
+proc scope_node_set_count(
+    set: ref ScopeNodeSet
+) -> usize {
+    give len(set.nodes);
+}
+
+proc scope_node_set_is_empty(
+    set: ref ScopeNodeSet
+) -> bool {
+    give len(set.nodes) == 0;
+}
+
+proc scope_node_table_find_index(
+    table: ref ScopeNodeTable,
+    id: ScopeId
+) -> Option<usize> {
+    let mut index: usize = 0;
+
+    while index < len(table.nodes) {
+        if table.nodes[index].id
+            == id
+        {
+            give Some(index);
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give None;
+}
+
+proc scope_node_table_contains(
+    table: ref ScopeNodeTable,
+    id: ScopeId
+) -> bool {
+    pick scope_node_table_find_index(
+        table,
+        id
+    ) {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_node_table_insert(
+    table: ref mut ScopeNodeTable,
+    value: ScopeNode
+) -> bool {
+    if not scope_id_is_valid(
+        value.id
+    ) {
+        give false;
+    }
+
+    if scope_node_table_contains(
+        ref table,
+        value.id
+    ) {
+        give false;
+    }
+
+    let mut result =
+        value;
+
+    set result.generation =
+        table.generation;
+
+    set table.nodes =
+        table.nodes + [result];
+
+    set table.statistics.created =
+        table.statistics.created + 1;
+
+    if result.depth
+        > table.statistics.maximum_depth
+    {
+        set table.statistics.maximum_depth =
+            result.depth;
+    }
+
+    give true;
+}
+
+proc scope_node_table_get(
+    table: ref mut ScopeNodeTable,
+    id: ScopeId
+) -> Option<ScopeNode> {
+    set table.statistics.lookups =
+        table.statistics.lookups + 1;
+
+    let index =
+        scope_node_table_find_index(
+            ref table,
+            id
+        );
+
+    pick index {
+        Some(value) {
+            set table.statistics.hits =
+                table.statistics.hits + 1;
+
+            give Some(
+                table.nodes[value]
+            );
+        }
+
+        None {
+            set table.statistics.misses =
+                table.statistics.misses + 1;
+
+            give None;
+        }
+    }
+}
+
+proc scope_node_table_get_mut(
+    table: ref mut ScopeNodeTable,
+    id: ScopeId
+) -> Option<ref mut ScopeNode> {
+    let index =
+        scope_node_table_find_index(
+            ref table,
+            id
+        );
+
+    pick index {
+        Some(value) {
+            give Some(
+                ref mut table.nodes[value]
+            );
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc scope_node_table_activate(
+    table: ref mut ScopeNodeTable,
+    id: ScopeId
+) -> bool {
+    let value =
+        scope_node_table_get_mut(
+            table,
+            id
+        );
+
+    pick value {
+        Some(node) {
+            if node.state
+                == ScopeNodeState.Active
+            {
+                give false;
+            }
+
+            scope_node_activate(
+                node
+            );
+
+            set table.statistics.active =
+                table.statistics.active + 1;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_node_table_close(
+    table: ref mut ScopeNodeTable,
+    id: ScopeId
+) -> bool {
+    let value =
+        scope_node_table_get_mut(
+            table,
+            id
+        );
+
+    pick value {
+        Some(node) {
+            if node.state
+                == ScopeNodeState.Closed
+            {
+                give false;
+            }
+
+            scope_node_close(
+                node
+            );
+
+            set table.statistics.closed =
+                table.statistics.closed + 1;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_node_table_invalidate(
+    table: ref mut ScopeNodeTable,
+    id: ScopeId
+) -> bool {
+    let value =
+        scope_node_table_get_mut(
+            table,
+            id
+        );
+
+    pick value {
+        Some(node) {
+            if node.state
+                == ScopeNodeState.Invalidated
+            {
+                give false;
+            }
+
+            scope_node_invalidate(
+                node
+            );
+
+            set table.statistics.invalidated =
+                table.statistics.invalidated + 1;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_node_table_parent(
+    table: ref ScopeNodeTable,
+    id: ScopeId
+) -> Option<ScopeId> {
+    let index =
+        scope_node_table_find_index(
+            table,
+            id
+        );
+
+    pick index {
+        Some(value) {
+            give table.nodes[value].parent;
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc scope_node_table_children(
+    table: ref ScopeNodeTable,
+    id: ScopeId
+) -> ScopeNodeSet {
+    let mut result =
+        scope_node_set_create();
+
+    for value in table.nodes {
+        pick value.parent {
+            Some(parent) {
+                if parent == id
+                    and scope_node_is_valid(
+                        value
+                    )
+                {
+                    scope_node_set_push(
+                        ref mut result,
+                        value
+                    );
+                }
+            }
+
+            None {}
+        }
+    }
+
+    give result;
+}
+
+proc scope_node_table_ancestors(
+    table: ref ScopeNodeTable,
+    id: ScopeId
+) -> [ScopeId] {
+    let mut result:
+        [ScopeId] = [];
+
+    let mut current =
+        scope_node_table_parent(
+            table,
+            id
+        );
+
+    loop {
+        pick current {
+            None {
+                break;
+            }
+
+            Some(parent) {
+                set result =
+                    result + [parent];
+
+                set current =
+                    scope_node_table_parent(
+                        table,
+                        parent
+                    );
+            }
+        }
+    }
+
+    give result;
+}
+
+proc scope_node_table_root(
+    table: ref ScopeNodeTable,
+    id: ScopeId
+) -> Option<ScopeNode> {
+    let mut current =
+        scope_node_table_find_index(
+            table,
+            id
+        );
+
+    loop {
+        pick current {
+            None {
+                give None;
+            }
+
+            Some(index) {
+                let value =
+                    table.nodes[index];
+
+                pick value.parent {
+                    None {
+                        give Some(value);
+                    }
+
+                    Some(parent) {
+                        set current =
+                            scope_node_table_find_index(
+                                table,
+                                parent
+                            );
+                    }
+                }
+            }
+        }
+    }
+
+    give None;
+}
+
+proc scope_node_table_find_owner(
+    table: ref ScopeNodeTable,
+    owner: DefId
+) -> Option<ScopeNode> {
+    for value in table.nodes {
+        pick value.owner {
+            Some(current) {
+                if current == owner
+                    and scope_node_is_valid(
+                        value
+                    )
+                {
+                    give Some(value);
+                }
+            }
+
+            None {}
+        }
+    }
+
+    give None;
+}
+
+proc scope_node_table_find_hir(
+    table: ref ScopeNodeTable,
+    hir: HirId
+) -> Option<ScopeNode> {
+    for value in table.nodes {
+        pick value.node {
+            Some(current) {
+                if current == hir
+                    and scope_node_is_valid(
+                        value
+                    )
+                {
+                    give Some(value);
+                }
+            }
+
+            None {}
+        }
+    }
+
+    give None;
+}
+
+proc scope_node_table_find_module(
+    table: ref ScopeNodeTable,
+    module: ModuleId
+) -> Option<ScopeNode> {
+    for value in table.nodes {
+        pick value.module {
+            Some(current) {
+                if current == module
+                    and scope_node_is_valid(
+                        value
+                    )
+                {
+                    give Some(value);
+                }
+            }
+
+            None {}
+        }
+    }
+
+    give None;
+}
+
+proc scope_node_table_depth(
+    table: ref ScopeNodeTable,
+    id: ScopeId
+) -> Option<usize> {
+    let index =
+        scope_node_table_find_index(
+            table,
+            id
+        );
+
+    pick index {
+        Some(value) {
+            give Some(
+                table.nodes[value].depth
+            );
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc scope_node_table_advance_generation(
+    table: ref mut ScopeNodeTable
+) -> u64 {
+    set table.generation =
+        table.generation + 1;
+
+    give table.generation;
+}
+
+proc scope_node_table_clear(
+    table: ref mut ScopeNodeTable
+) {
+    set table.nodes = [];
+
+    set table.generation =
+        table.generation + 1;
+}
+
+proc scope_node_table_statistics(
+    table: ref ScopeNodeTable
+) -> ScopeNodeStatistics {
+    give table.statistics;
+}
+
+proc scope_node_table_reset_statistics(
+    table: ref mut ScopeNodeTable
+) {
+    set table.statistics =
+        scope_node_statistics_empty();
+}
+
+proc scope_node_state_name(
+    state: ScopeNodeState
+) -> string {
+    pick state {
+        ScopeNodeState.Created {
+            give "created";
+        }
+
+        ScopeNodeState.Active {
+            give "active";
+        }
+
+        ScopeNodeState.Closed {
+            give "closed";
+        }
+
+        ScopeNodeState.Invalidated {
+            give "invalidated";
+        }
+    }
+
+    give "invalidated";
+}
+
+// Scope graph
+//
+//                ScopeNode(root)
+//                      |
+//          +-----------+-----------+
+//          |                       |
+//          v                       v
+//   ScopeNode(proc)          ScopeNode(type)
+//          |                       |
+//          v                       v
+//   ScopeNode(block)         ScopeNode(method)
+//          |
+//          v
+//   ScopeNode(loop)
+//
+// ScopeNode
+//    = canonical graph vertex
+//
+// ScopeEdge
+//    = typed relationship between vertices
+//
+// ScopeInfo
+//    = lightweight aggregated metadata/view
+//
+// ScopeBinding
+//    = names owned by a scope

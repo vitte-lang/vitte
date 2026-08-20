@@ -1,0 +1,547 @@
+space vitte/compiler/analysis/scopes/scope_kind
+
+export *
+
+pick ScopeKind {
+    Root,
+
+    Module,
+    Namespace,
+
+    Type,
+    Trait,
+    Impl,
+
+    Procedure,
+    Method,
+    Closure,
+    Lambda,
+
+    Block,
+
+    If,
+    Else,
+
+    Loop,
+    While,
+    For,
+
+    Match,
+    MatchArm,
+
+    Generic,
+
+    Comptime,
+    Unsafe,
+    Critical,
+    Defer,
+
+    Import,
+    Export,
+
+    Generated
+}
+
+proc scope_kind_is_root(
+    kind: ScopeKind
+) -> bool {
+    give kind
+        == ScopeKind.Root;
+}
+
+proc scope_kind_is_module_like(
+    kind: ScopeKind
+) -> bool {
+    give kind
+        == ScopeKind.Module
+        or kind
+        == ScopeKind.Namespace;
+}
+
+proc scope_kind_is_type_like(
+    kind: ScopeKind
+) -> bool {
+    give kind
+        == ScopeKind.Type
+        or kind
+        == ScopeKind.Trait
+        or kind
+        == ScopeKind.Impl;
+}
+
+proc scope_kind_is_function(
+    kind: ScopeKind
+) -> bool {
+    give kind
+        == ScopeKind.Procedure
+        or kind
+        == ScopeKind.Method
+        or kind
+        == ScopeKind.Closure
+        or kind
+        == ScopeKind.Lambda;
+}
+
+proc scope_kind_is_closure(
+    kind: ScopeKind
+) -> bool {
+    give kind
+        == ScopeKind.Closure
+        or kind
+        == ScopeKind.Lambda;
+}
+
+proc scope_kind_is_block(
+    kind: ScopeKind
+) -> bool {
+    give kind
+        == ScopeKind.Block
+        or kind
+        == ScopeKind.If
+        or kind
+        == ScopeKind.Else
+        or kind
+        == ScopeKind.Loop
+        or kind
+        == ScopeKind.While
+        or kind
+        == ScopeKind.For
+        or kind
+        == ScopeKind.Match
+        or kind
+        == ScopeKind.MatchArm
+        or kind
+        == ScopeKind.Comptime
+        or kind
+        == ScopeKind.Unsafe
+        or kind
+        == ScopeKind.Critical
+        or kind
+        == ScopeKind.Defer;
+}
+
+proc scope_kind_is_loop(
+    kind: ScopeKind
+) -> bool {
+    give kind
+        == ScopeKind.Loop
+        or kind
+        == ScopeKind.While
+        or kind
+        == ScopeKind.For;
+}
+
+proc scope_kind_is_branch(
+    kind: ScopeKind
+) -> bool {
+    give kind
+        == ScopeKind.If
+        or kind
+        == ScopeKind.Else
+        or kind
+        == ScopeKind.Match
+        or kind
+        == ScopeKind.MatchArm;
+}
+
+proc scope_kind_is_generic(
+    kind: ScopeKind
+) -> bool {
+    give kind
+        == ScopeKind.Generic;
+}
+
+proc scope_kind_is_comptime(
+    kind: ScopeKind
+) -> bool {
+    give kind
+        == ScopeKind.Comptime;
+}
+
+proc scope_kind_is_unsafe(
+    kind: ScopeKind
+) -> bool {
+    give kind
+        == ScopeKind.Unsafe;
+}
+
+proc scope_kind_is_generated(
+    kind: ScopeKind
+) -> bool {
+    give kind
+        == ScopeKind.Generated;
+}
+
+proc scope_kind_can_have_children(
+    kind: ScopeKind
+) -> bool {
+    pick kind {
+        ScopeKind.Root {
+            give true;
+        }
+
+        ScopeKind.Module {
+            give true;
+        }
+
+        ScopeKind.Namespace {
+            give true;
+        }
+
+        ScopeKind.Type {
+            give true;
+        }
+
+        ScopeKind.Trait {
+            give true;
+        }
+
+        ScopeKind.Impl {
+            give true;
+        }
+
+        ScopeKind.Procedure {
+            give true;
+        }
+
+        ScopeKind.Method {
+            give true;
+        }
+
+        ScopeKind.Closure {
+            give true;
+        }
+
+        ScopeKind.Lambda {
+            give true;
+        }
+
+        ScopeKind.Block {
+            give true;
+        }
+
+        ScopeKind.If {
+            give true;
+        }
+
+        ScopeKind.Else {
+            give true;
+        }
+
+        ScopeKind.Loop {
+            give true;
+        }
+
+        ScopeKind.While {
+            give true;
+        }
+
+        ScopeKind.For {
+            give true;
+        }
+
+        ScopeKind.Match {
+            give true;
+        }
+
+        ScopeKind.MatchArm {
+            give true;
+        }
+
+        ScopeKind.Generic {
+            give true;
+        }
+
+        ScopeKind.Comptime {
+            give true;
+        }
+
+        ScopeKind.Unsafe {
+            give true;
+        }
+
+        ScopeKind.Critical {
+            give true;
+        }
+
+        ScopeKind.Defer {
+            give true;
+        }
+
+        ScopeKind.Generated {
+            give true;
+        }
+
+        ScopeKind.Import {
+            give false;
+        }
+
+        ScopeKind.Export {
+            give false;
+        }
+    }
+
+    give false;
+}
+
+proc scope_kind_can_hold_bindings(
+    kind: ScopeKind
+) -> bool {
+    pick kind {
+        ScopeKind.Import {
+            give false;
+        }
+
+        ScopeKind.Export {
+            give false;
+        }
+
+        _ {
+            give true;
+        }
+    }
+}
+
+proc scope_kind_can_define_types(
+    kind: ScopeKind
+) -> bool {
+    give kind
+        == ScopeKind.Root
+        or kind
+        == ScopeKind.Module
+        or kind
+        == ScopeKind.Namespace
+        or kind
+        == ScopeKind.Type
+        or kind
+        == ScopeKind.Trait
+        or kind
+        == ScopeKind.Impl;
+}
+
+proc scope_kind_can_define_functions(
+    kind: ScopeKind
+) -> bool {
+    give kind
+        == ScopeKind.Root
+        or kind
+        == ScopeKind.Module
+        or kind
+        == ScopeKind.Namespace
+        or kind
+        == ScopeKind.Type
+        or kind
+        == ScopeKind.Trait
+        or kind
+        == ScopeKind.Impl;
+}
+
+proc scope_kind_can_have_generics(
+    kind: ScopeKind
+) -> bool {
+    give kind
+        == ScopeKind.Type
+        or kind
+        == ScopeKind.Trait
+        or kind
+        == ScopeKind.Impl
+        or kind
+        == ScopeKind.Procedure
+        or kind
+        == ScopeKind.Method
+        or kind
+        == ScopeKind.Closure
+        or kind
+        == ScopeKind.Lambda
+        or kind
+        == ScopeKind.Generic;
+}
+
+proc scope_kind_has_return_context(
+    kind: ScopeKind
+) -> bool {
+    give kind
+        == ScopeKind.Procedure
+        or kind
+        == ScopeKind.Method
+        or kind
+        == ScopeKind.Closure
+        or kind
+        == ScopeKind.Lambda;
+}
+
+proc scope_kind_has_break_context(
+    kind: ScopeKind
+) -> bool {
+    give kind
+        == ScopeKind.Loop
+        or kind
+        == ScopeKind.While
+        or kind
+        == ScopeKind.For;
+}
+
+proc scope_kind_has_continue_context(
+    kind: ScopeKind
+) -> bool {
+    give scope_kind_has_break_context(
+        kind
+    );
+}
+
+proc scope_kind_creates_lexical_boundary(
+    kind: ScopeKind
+) -> bool {
+    give kind
+        != ScopeKind.Import
+        and kind
+        != ScopeKind.Export;
+}
+
+proc scope_kind_name(
+    kind: ScopeKind
+) -> string {
+    pick kind {
+        ScopeKind.Root {
+            give "root";
+        }
+
+        ScopeKind.Module {
+            give "module";
+        }
+
+        ScopeKind.Namespace {
+            give "namespace";
+        }
+
+        ScopeKind.Type {
+            give "type";
+        }
+
+        ScopeKind.Trait {
+            give "trait";
+        }
+
+        ScopeKind.Impl {
+            give "impl";
+        }
+
+        ScopeKind.Procedure {
+            give "procedure";
+        }
+
+        ScopeKind.Method {
+            give "method";
+        }
+
+        ScopeKind.Closure {
+            give "closure";
+        }
+
+        ScopeKind.Lambda {
+            give "lambda";
+        }
+
+        ScopeKind.Block {
+            give "block";
+        }
+
+        ScopeKind.If {
+            give "if";
+        }
+
+        ScopeKind.Else {
+            give "else";
+        }
+
+        ScopeKind.Loop {
+            give "loop";
+        }
+
+        ScopeKind.While {
+            give "while";
+        }
+
+        ScopeKind.For {
+            give "for";
+        }
+
+        ScopeKind.Match {
+            give "match";
+        }
+
+        ScopeKind.MatchArm {
+            give "match-arm";
+        }
+
+        ScopeKind.Generic {
+            give "generic";
+        }
+
+        ScopeKind.Comptime {
+            give "comptime";
+        }
+
+        ScopeKind.Unsafe {
+            give "unsafe";
+        }
+
+        ScopeKind.Critical {
+            give "critical";
+        }
+
+        ScopeKind.Defer {
+            give "defer";
+        }
+
+        ScopeKind.Import {
+            give "import";
+        }
+
+        ScopeKind.Export {
+            give "export";
+        }
+
+        ScopeKind.Generated {
+            give "generated";
+        }
+    }
+
+    give "generated";
+}
+
+// ScopeKind
+//    |
+//    +-- structural
+//    |      +-- Root
+//    |      +-- Module
+//    |      +-- Namespace
+//    |
+//    +-- type scopes
+//    |      +-- Type
+//    |      +-- Trait
+//    |      +-- Impl
+//    |
+//    +-- callable scopes
+//    |      +-- Procedure
+//    |      +-- Method
+//    |      +-- Closure
+//    |      +-- Lambda
+//    |
+//    +-- lexical blocks
+//    |      +-- Block
+//    |      +-- If / Else
+//    |      +-- Loop / While / For
+//    |      +-- Match / MatchArm
+//    |
+//    +-- semantic scopes
+//    |      +-- Generic
+//    |      +-- Comptime
+//    |      +-- Unsafe
+//    |      +-- Critical
+//    |      +-- Defer
+//    |
+//    +-- synthetic views
+//           +-- Import
+//           +-- Export
+//           +-- Generated

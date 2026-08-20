@@ -1,0 +1,1378 @@
+space vitte/compiler/analysis/resolution/symbol_resolution
+
+export *
+
+use vitte/compiler/analysis/resolution/candidate.{
+    Candidate,
+    CandidateKind,
+    CandidateOrigin,
+    CandidateVisibility,
+    CandidateSet,
+
+    candidate_create,
+    candidate_mark_exact,
+    candidate_with_priority,
+    candidate_with_scope_depth,
+
+    candidate_set_create,
+    candidate_set_push,
+    candidate_set_resolve
+}
+
+use vitte/compiler/analysis/resolution/name_resolution.{
+    NameResolver,
+    NameResolution,
+    NameResolutionKind,
+    NameResolutionState,
+
+    name_resolver_resolve
+}
+
+use vitte/compiler/analysis/resolution/lookup.{
+    Lookup
+}
+
+pick SymbolResolutionKind {
+    Value,
+    Type,
+    Module,
+    Procedure,
+    Method,
+    Field,
+    Constant,
+    Generic,
+    Attribute,
+    Import,
+    Export,
+    Unknown
+}
+
+pick SymbolResolutionState {
+    Unresolved,
+    Resolved,
+    Missing,
+    Ambiguous,
+    Inaccessible,
+    Invalid
+}
+
+pick SymbolResolutionErrorKind {
+    None,
+    EmptyName,
+    InvalidScope,
+    InvalidSymbol,
+    SymbolNotFound,
+    AmbiguousSymbol,
+    InaccessibleSymbol,
+    InvalidDefinition
+}
+
+form SymbolResolutionError {
+    kind: SymbolResolutionErrorKind
+
+    name: string
+    scope: ScopeId
+
+    message: string
+}
+
+form SymbolDefinition {
+    id: SymbolId
+
+    name: string
+
+    definition: DefId
+
+    kind: SymbolResolutionKind
+
+    scope: ScopeId
+    depth: usize
+
+    visibility: CandidateVisibility
+    origin: CandidateOrigin
+
+    priority: usize
+
+    type_id: Option<TypeId>
+
+    synthetic: bool
+}
+
+form ResolvedSymbol {
+    symbol: Option<SymbolId>
+    definition: Option<DefId>
+    type_id: Option<TypeId>
+
+    candidate: Option<Candidate>
+    candidates: [Candidate]
+
+    name: string
+    scope: ScopeId
+
+    kind: SymbolResolutionKind
+    state: SymbolResolutionState
+
+    error: SymbolResolutionError
+
+    cached: bool
+    found: bool
+}
+
+form SymbolResolverConfig {
+    search_parents: bool
+    search_imports: bool
+    search_builtins: bool
+
+    allow_private: bool
+    allow_package: bool
+}
+
+form SymbolResolverStatistics {
+    resolutions: u64
+
+    resolved: u64
+    missing: u64
+    ambiguous: u64
+    inaccessible: u64
+    invalid: u64
+
+    candidates: u64
+
+    cache_hits: u64
+}
+
+form SymbolResolver {
+    config: SymbolResolverConfig
+
+    symbols: [SymbolDefinition]
+
+    statistics: SymbolResolverStatistics
+}
+
+proc symbol_resolver_config_default()
+    -> SymbolResolverConfig
+{
+    give SymbolResolverConfig {
+        search_parents: true,
+        search_imports: true,
+        search_builtins: true,
+
+        allow_private: false,
+        allow_package: false
+    };
+}
+
+proc symbol_resolver_statistics_empty()
+    -> SymbolResolverStatistics
+{
+    give SymbolResolverStatistics {
+        resolutions: 0,
+
+        resolved: 0,
+        missing: 0,
+        ambiguous: 0,
+        inaccessible: 0,
+        invalid: 0,
+
+        candidates: 0,
+
+        cache_hits: 0
+    };
+}
+
+proc symbol_resolver_create_with_config(
+    config: SymbolResolverConfig
+) -> SymbolResolver {
+    give SymbolResolver {
+        config: config,
+
+        symbols: [],
+
+        statistics:
+            symbol_resolver_statistics_empty()
+    };
+}
+
+proc symbol_resolver_create()
+    -> SymbolResolver
+{
+    give symbol_resolver_create_with_config(
+        symbol_resolver_config_default()
+    );
+}
+
+proc symbol_resolution_error_none()
+    -> SymbolResolutionError
+{
+    give SymbolResolutionError {
+        kind: SymbolResolutionErrorKind.None,
+
+        name: "",
+        scope: 0 as ScopeId,
+
+        message: ""
+    };
+}
+
+proc symbol_resolution_error(
+    kind: SymbolResolutionErrorKind,
+    name: string,
+    scope: ScopeId,
+    message: string
+) -> SymbolResolutionError {
+    give SymbolResolutionError {
+        kind: kind,
+
+        name: name,
+        scope: scope,
+
+        message: message
+    };
+}
+
+proc symbol_definition(
+    id: SymbolId,
+    name: string,
+    definition: DefId,
+    kind: SymbolResolutionKind,
+    scope: ScopeId,
+    visibility: CandidateVisibility,
+    origin: CandidateOrigin
+) -> SymbolDefinition {
+    give SymbolDefinition {
+        id: id,
+
+        name: name,
+
+        definition: definition,
+
+        kind: kind,
+
+        scope: scope,
+        depth: 0,
+
+        visibility: visibility,
+        origin: origin,
+
+        priority: 0,
+
+        type_id: None,
+
+        synthetic: false
+    };
+}
+
+proc symbol_definition_with_type(
+    symbol: SymbolDefinition,
+    type_id: TypeId
+) -> SymbolDefinition {
+    let mut result: SymbolDefinition =
+        symbol;
+
+    set result.type_id =
+        Some(type_id);
+
+    give result;
+}
+
+proc symbol_definition_with_priority(
+    symbol: SymbolDefinition,
+    priority: usize
+) -> SymbolDefinition {
+    let mut result: SymbolDefinition =
+        symbol;
+
+    set result.priority =
+        priority;
+
+    give result;
+}
+
+proc symbol_definition_with_depth(
+    symbol: SymbolDefinition,
+    depth: usize
+) -> SymbolDefinition {
+    let mut result: SymbolDefinition =
+        symbol;
+
+    set result.depth =
+        depth;
+
+    give result;
+}
+
+proc symbol_definition_mark_synthetic(
+    symbol: SymbolDefinition
+) -> SymbolDefinition {
+    let mut result: SymbolDefinition =
+        symbol;
+
+    set result.synthetic =
+        true;
+
+    give result;
+}
+
+proc symbol_resolver_register(
+    resolver: ref mut SymbolResolver,
+    symbol: SymbolDefinition
+) {
+    set resolver.symbols =
+        resolver.symbols + [symbol];
+}
+
+proc symbol_kind_candidate_kind(
+    kind: SymbolResolutionKind
+) -> CandidateKind {
+    pick kind {
+        SymbolResolutionKind.Value {
+            give CandidateKind.Global;
+        }
+
+        SymbolResolutionKind.Type {
+            give CandidateKind.Type;
+        }
+
+        SymbolResolutionKind.Module {
+            give CandidateKind.Module;
+        }
+
+        SymbolResolutionKind.Procedure {
+            give CandidateKind.Procedure;
+        }
+
+        SymbolResolutionKind.Method {
+            give CandidateKind.Method;
+        }
+
+        SymbolResolutionKind.Field {
+            give CandidateKind.Field;
+        }
+
+        SymbolResolutionKind.Constant {
+            give CandidateKind.Constant;
+        }
+
+        SymbolResolutionKind.Generic {
+            give CandidateKind.Generic;
+        }
+
+        SymbolResolutionKind.Attribute {
+            give CandidateKind.Attribute;
+        }
+
+        SymbolResolutionKind.Import {
+            give CandidateKind.Import;
+        }
+
+        SymbolResolutionKind.Export {
+            give CandidateKind.Export;
+        }
+
+        SymbolResolutionKind.Unknown {
+            give CandidateKind.Unknown;
+        }
+    }
+
+    give CandidateKind.Unknown;
+}
+
+proc symbol_kind_name_resolution_kind(
+    kind: SymbolResolutionKind
+) -> NameResolutionKind {
+    pick kind {
+        SymbolResolutionKind.Value {
+            give NameResolutionKind.Value;
+        }
+
+        SymbolResolutionKind.Type {
+            give NameResolutionKind.Type;
+        }
+
+        SymbolResolutionKind.Module {
+            give NameResolutionKind.Module;
+        }
+
+        SymbolResolutionKind.Procedure {
+            give NameResolutionKind.Procedure;
+        }
+
+        SymbolResolutionKind.Method {
+            give NameResolutionKind.Method;
+        }
+
+        SymbolResolutionKind.Field {
+            give NameResolutionKind.Field;
+        }
+
+        SymbolResolutionKind.Constant {
+            give NameResolutionKind.Constant;
+        }
+
+        SymbolResolutionKind.Generic {
+            give NameResolutionKind.Generic;
+        }
+
+        SymbolResolutionKind.Attribute {
+            give NameResolutionKind.Attribute;
+        }
+
+        SymbolResolutionKind.Import {
+            give NameResolutionKind.Import;
+        }
+
+        SymbolResolutionKind.Export {
+            give NameResolutionKind.Export;
+        }
+
+        SymbolResolutionKind.Unknown {
+            give NameResolutionKind.Any;
+        }
+    }
+
+    give NameResolutionKind.Any;
+}
+
+proc symbol_candidate(
+    symbol: SymbolDefinition,
+    requested: string
+) -> Candidate {
+    let mut candidate =
+        candidate_create(
+            symbol.name,
+            symbol_kind_candidate_kind(
+                symbol.kind
+            ),
+            symbol.origin,
+            symbol.visibility,
+            Some(symbol.definition)
+        );
+
+    set candidate =
+        candidate_with_scope_depth(
+            candidate,
+            symbol.depth
+        );
+
+    set candidate =
+        candidate_with_priority(
+            candidate,
+            symbol.priority
+        );
+
+    if symbol.name == requested {
+        set candidate =
+            candidate_mark_exact(
+                candidate
+            );
+    }
+
+    set candidate.synthetic =
+        symbol.synthetic;
+
+    give candidate;
+}
+
+proc symbol_visibility_allowed(
+    resolver: ref SymbolResolver,
+    visibility: CandidateVisibility
+) -> bool {
+    pick visibility {
+        CandidateVisibility.Public {
+            give true;
+        }
+
+        CandidateVisibility.Package {
+            give resolver.config.allow_package
+                or resolver.config.allow_private;
+        }
+
+        CandidateVisibility.Private {
+            give resolver.config.allow_private;
+        }
+    }
+
+    give false;
+}
+
+proc symbol_resolver_find_by_id(
+    resolver: ref SymbolResolver,
+    id: SymbolId
+) -> Option<SymbolDefinition> {
+    for symbol in resolver.symbols {
+        if symbol.id == id {
+            give Some(symbol);
+        }
+    }
+
+    give None;
+}
+
+proc symbol_resolver_find_by_definition(
+    resolver: ref SymbolResolver,
+    definition: DefId
+) -> Option<SymbolDefinition> {
+    for symbol in resolver.symbols {
+        if symbol.definition == definition {
+            give Some(symbol);
+        }
+    }
+
+    give None;
+}
+
+proc symbol_resolver_collect(
+    resolver: ref mut SymbolResolver,
+    scope: ScopeId,
+    name: string,
+    kind: SymbolResolutionKind
+) -> CandidateSet {
+    let mut candidates =
+        candidate_set_create();
+
+    for symbol in resolver.symbols {
+        if symbol.name != name {
+            continue;
+        }
+
+        if kind != SymbolResolutionKind.Unknown
+            and symbol.kind != kind
+        {
+            continue;
+        }
+
+        if symbol.scope != scope {
+            continue;
+        }
+
+        candidate_set_push(
+            ref mut candidates,
+            symbol_candidate(
+                symbol,
+                name
+            )
+        );
+
+        set resolver.statistics.candidates =
+            resolver.statistics.candidates + 1;
+    }
+
+    give candidates;
+}
+
+proc symbol_resolution_missing(
+    scope: ScopeId,
+    name: string,
+    kind: SymbolResolutionKind
+) -> ResolvedSymbol {
+    give ResolvedSymbol {
+        symbol: None,
+        definition: None,
+        type_id: None,
+
+        candidate: None,
+        candidates: [],
+
+        name: name,
+        scope: scope,
+
+        kind: kind,
+
+        state:
+            SymbolResolutionState.Missing,
+
+        error:
+            symbol_resolution_error(
+                SymbolResolutionErrorKind.SymbolNotFound,
+                name,
+                scope,
+                "symbol was not found"
+            ),
+
+        cached: false,
+        found: false
+    };
+}
+
+proc symbol_resolution_ambiguous(
+    scope: ScopeId,
+    name: string,
+    kind: SymbolResolutionKind,
+    candidates: [Candidate]
+) -> ResolvedSymbol {
+    give ResolvedSymbol {
+        symbol: None,
+        definition: None,
+        type_id: None,
+
+        candidate: None,
+        candidates: candidates,
+
+        name: name,
+        scope: scope,
+
+        kind: kind,
+
+        state:
+            SymbolResolutionState.Ambiguous,
+
+        error:
+            symbol_resolution_error(
+                SymbolResolutionErrorKind.AmbiguousSymbol,
+                name,
+                scope,
+                "symbol resolution is ambiguous"
+            ),
+
+        cached: false,
+        found: false
+    };
+}
+
+proc symbol_resolution_inaccessible(
+    symbol: SymbolDefinition,
+    candidate: Candidate
+) -> ResolvedSymbol {
+    give ResolvedSymbol {
+        symbol:
+            Some(symbol.id),
+
+        definition:
+            Some(symbol.definition),
+
+        type_id:
+            symbol.type_id,
+
+        candidate:
+            Some(candidate),
+
+        candidates:
+            [candidate],
+
+        name:
+            symbol.name,
+
+        scope:
+            symbol.scope,
+
+        kind:
+            symbol.kind,
+
+        state:
+            SymbolResolutionState.Inaccessible,
+
+        error:
+            symbol_resolution_error(
+                SymbolResolutionErrorKind.InaccessibleSymbol,
+                symbol.name,
+                symbol.scope,
+                "symbol is not visible from this context"
+            ),
+
+        cached:
+            false,
+
+        found:
+            false
+    };
+}
+
+proc symbol_resolution_resolved(
+    symbol: SymbolDefinition,
+    candidate: Candidate,
+    cached: bool
+) -> ResolvedSymbol {
+    give ResolvedSymbol {
+        symbol:
+            Some(symbol.id),
+
+        definition:
+            Some(symbol.definition),
+
+        type_id:
+            symbol.type_id,
+
+        candidate:
+            Some(candidate),
+
+        candidates:
+            [candidate],
+
+        name:
+            symbol.name,
+
+        scope:
+            symbol.scope,
+
+        kind:
+            symbol.kind,
+
+        state:
+            SymbolResolutionState.Resolved,
+
+        error:
+            symbol_resolution_error_none(),
+
+        cached:
+            cached,
+
+        found:
+            true
+    };
+}
+
+proc symbol_resolution_invalid(
+    scope: ScopeId,
+    name: string,
+    kind: SymbolResolutionKind,
+    error_kind: SymbolResolutionErrorKind,
+    message: string
+) -> ResolvedSymbol {
+    give ResolvedSymbol {
+        symbol: None,
+        definition: None,
+        type_id: None,
+
+        candidate: None,
+        candidates: [],
+
+        name: name,
+        scope: scope,
+
+        kind: kind,
+
+        state:
+            SymbolResolutionState.Invalid,
+
+        error:
+            symbol_resolution_error(
+                error_kind,
+                name,
+                scope,
+                message
+            ),
+
+        cached:
+            false,
+
+        found:
+            false
+    };
+}
+
+proc symbol_resolver_record(
+    resolver: ref mut SymbolResolver,
+    result: ResolvedSymbol
+) {
+    set resolver.statistics.resolutions =
+        resolver.statistics.resolutions + 1;
+
+    pick result.state {
+        SymbolResolutionState.Resolved {
+            set resolver.statistics.resolved =
+                resolver.statistics.resolved + 1;
+        }
+
+        SymbolResolutionState.Missing {
+            set resolver.statistics.missing =
+                resolver.statistics.missing + 1;
+        }
+
+        SymbolResolutionState.Ambiguous {
+            set resolver.statistics.ambiguous =
+                resolver.statistics.ambiguous + 1;
+        }
+
+        SymbolResolutionState.Inaccessible {
+            set resolver.statistics.inaccessible =
+                resolver.statistics.inaccessible + 1;
+        }
+
+        SymbolResolutionState.Invalid {
+            set resolver.statistics.invalid =
+                resolver.statistics.invalid + 1;
+        }
+
+        SymbolResolutionState.Unresolved {}
+    }
+
+    if result.cached {
+        set resolver.statistics.cache_hits =
+            resolver.statistics.cache_hits + 1;
+    }
+}
+
+proc symbol_resolver_resolve_local(
+    resolver: ref mut SymbolResolver,
+    scope: ScopeId,
+    name: string,
+    kind: SymbolResolutionKind
+) -> ResolvedSymbol {
+    if name == "" {
+        let result =
+            symbol_resolution_invalid(
+                scope,
+                name,
+                kind,
+                SymbolResolutionErrorKind.EmptyName,
+                "symbol name is empty"
+            );
+
+        symbol_resolver_record(
+            resolver,
+            result
+        );
+
+        give result;
+    }
+
+    let mut candidates =
+        symbol_resolver_collect(
+            resolver,
+            scope,
+            name,
+            kind
+        );
+
+    if len(candidates.candidates) == 0 {
+        let result =
+            symbol_resolution_missing(
+                scope,
+                name,
+                kind
+            );
+
+        symbol_resolver_record(
+            resolver,
+            result
+        );
+
+        give result;
+    }
+
+    let selected =
+        candidate_set_resolve(
+            ref mut candidates
+        );
+
+    if candidates.ambiguous {
+        let result =
+            symbol_resolution_ambiguous(
+                scope,
+                name,
+                kind,
+                candidates.candidates
+            );
+
+        symbol_resolver_record(
+            resolver,
+            result
+        );
+
+        give result;
+    }
+
+    pick selected {
+        Some(candidate) {
+            pick candidate.definition {
+                None {
+                    let result =
+                        symbol_resolution_invalid(
+                            scope,
+                            name,
+                            kind,
+                            SymbolResolutionErrorKind.InvalidDefinition,
+                            "resolved symbol candidate has no definition"
+                        );
+
+                    symbol_resolver_record(
+                        resolver,
+                        result
+                    );
+
+                    give result;
+                }
+
+                Some(definition) {
+                    let symbol =
+                        symbol_resolver_find_by_definition(
+                            ref resolver,
+                            definition
+                        );
+
+                    pick symbol {
+                        None {
+                            let result =
+                                symbol_resolution_invalid(
+                                    scope,
+                                    name,
+                                    kind,
+                                    SymbolResolutionErrorKind.InvalidSymbol,
+                                    "resolved definition has no symbol"
+                                );
+
+                            symbol_resolver_record(
+                                resolver,
+                                result
+                            );
+
+                            give result;
+                        }
+
+                        Some(value) {
+                            if not symbol_visibility_allowed(
+                                ref resolver,
+                                value.visibility
+                            ) {
+                                let result =
+                                    symbol_resolution_inaccessible(
+                                        value,
+                                        candidate
+                                    );
+
+                                symbol_resolver_record(
+                                    resolver,
+                                    result
+                                );
+
+                                give result;
+                            }
+
+                            let result =
+                                symbol_resolution_resolved(
+                                    value,
+                                    candidate,
+                                    false
+                                );
+
+                            symbol_resolver_record(
+                                resolver,
+                                result
+                            );
+
+                            give result;
+                        }
+                    }
+                }
+            }
+        }
+
+        None {
+            let result =
+                symbol_resolution_missing(
+                    scope,
+                    name,
+                    kind
+                );
+
+            symbol_resolver_record(
+                resolver,
+                result
+            );
+
+            give result;
+        }
+    }
+}
+
+proc symbol_resolver_from_name_resolution(
+    resolver: ref mut SymbolResolver,
+    result: NameResolution
+) -> ResolvedSymbol {
+    pick result.state {
+        NameResolutionState.Resolved {
+            pick result.definition {
+                None {
+                    give symbol_resolution_invalid(
+                        result.scope,
+                        result.name,
+                        SymbolResolutionKind.Unknown,
+                        SymbolResolutionErrorKind.InvalidDefinition,
+                        "name resolution returned no definition"
+                    );
+                }
+
+                Some(definition) {
+                    let symbol =
+                        symbol_resolver_find_by_definition(
+                            ref resolver,
+                            definition
+                        );
+
+                    pick symbol {
+                        Some(value) {
+                            let candidate =
+                                pick result.candidate {
+                                    Some(existing) {
+                                        existing
+                                    }
+
+                                    None {
+                                        symbol_candidate(
+                                            value,
+                                            result.name
+                                        )
+                                    }
+                                };
+
+                            give symbol_resolution_resolved(
+                                value,
+                                candidate,
+                                result.cached
+                            );
+                        }
+
+                        None {
+                            give symbol_resolution_invalid(
+                                result.scope,
+                                result.name,
+                                SymbolResolutionKind.Unknown,
+                                SymbolResolutionErrorKind.InvalidSymbol,
+                                "definition resolved by name has no registered symbol"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        NameResolutionState.Missing {
+            give symbol_resolution_missing(
+                result.scope,
+                result.name,
+                SymbolResolutionKind.Unknown
+            );
+        }
+
+        NameResolutionState.Ambiguous {
+            give symbol_resolution_ambiguous(
+                result.scope,
+                result.name,
+                SymbolResolutionKind.Unknown,
+                []
+            );
+        }
+
+        NameResolutionState.Invalid {
+            give symbol_resolution_invalid(
+                result.scope,
+                result.name,
+                SymbolResolutionKind.Unknown,
+                SymbolResolutionErrorKind.InvalidSymbol,
+                "name resolution failed"
+            );
+        }
+
+        NameResolutionState.Unresolved {
+            give symbol_resolution_invalid(
+                result.scope,
+                result.name,
+                SymbolResolutionKind.Unknown,
+                SymbolResolutionErrorKind.InvalidSymbol,
+                "name was not resolved"
+            );
+        }
+    }
+
+    give symbol_resolution_invalid(
+        result.scope,
+        result.name,
+        SymbolResolutionKind.Unknown,
+        SymbolResolutionErrorKind.InvalidSymbol,
+        "invalid name resolution state"
+    );
+}
+
+proc symbol_resolver_resolve(
+    resolver: ref mut SymbolResolver,
+    names: ref mut NameResolver,
+    lookup: ref mut Lookup,
+    scope: ScopeId,
+    name: string,
+    kind: SymbolResolutionKind
+) -> ResolvedSymbol {
+    if name == "" {
+        let result =
+            symbol_resolution_invalid(
+                scope,
+                name,
+                kind,
+                SymbolResolutionErrorKind.EmptyName,
+                "symbol name is empty"
+            );
+
+        symbol_resolver_record(
+            resolver,
+            result
+        );
+
+        give result;
+    }
+
+    let name_result =
+        name_resolver_resolve(
+            names,
+            lookup,
+            scope,
+            name,
+            symbol_kind_name_resolution_kind(
+                kind
+            )
+        );
+
+    let result =
+        symbol_resolver_from_name_resolution(
+            resolver,
+            name_result
+        );
+
+    symbol_resolver_record(
+        resolver,
+        result
+    );
+
+    give result;
+}
+
+proc symbol_resolver_resolve_value(
+    resolver: ref mut SymbolResolver,
+    names: ref mut NameResolver,
+    lookup: ref mut Lookup,
+    scope: ScopeId,
+    name: string
+) -> ResolvedSymbol {
+    give symbol_resolver_resolve(
+        resolver,
+        names,
+        lookup,
+        scope,
+        name,
+        SymbolResolutionKind.Value
+    );
+}
+
+proc symbol_resolver_resolve_type(
+    resolver: ref mut SymbolResolver,
+    names: ref mut NameResolver,
+    lookup: ref mut Lookup,
+    scope: ScopeId,
+    name: string
+) -> ResolvedSymbol {
+    give symbol_resolver_resolve(
+        resolver,
+        names,
+        lookup,
+        scope,
+        name,
+        SymbolResolutionKind.Type
+    );
+}
+
+proc symbol_resolver_resolve_procedure(
+    resolver: ref mut SymbolResolver,
+    names: ref mut NameResolver,
+    lookup: ref mut Lookup,
+    scope: ScopeId,
+    name: string
+) -> ResolvedSymbol {
+    give symbol_resolver_resolve(
+        resolver,
+        names,
+        lookup,
+        scope,
+        name,
+        SymbolResolutionKind.Procedure
+    );
+}
+
+proc symbol_resolver_resolve_constant(
+    resolver: ref mut SymbolResolver,
+    names: ref mut NameResolver,
+    lookup: ref mut Lookup,
+    scope: ScopeId,
+    name: string
+) -> ResolvedSymbol {
+    give symbol_resolver_resolve(
+        resolver,
+        names,
+        lookup,
+        scope,
+        name,
+        SymbolResolutionKind.Constant
+    );
+}
+
+proc symbol_resolver_resolve_generic(
+    resolver: ref mut SymbolResolver,
+    names: ref mut NameResolver,
+    lookup: ref mut Lookup,
+    scope: ScopeId,
+    name: string
+) -> ResolvedSymbol {
+    give symbol_resolver_resolve(
+        resolver,
+        names,
+        lookup,
+        scope,
+        name,
+        SymbolResolutionKind.Generic
+    );
+}
+
+proc symbol_resolution_is_resolved(
+    result: ResolvedSymbol
+) -> bool {
+    give result.state
+        == SymbolResolutionState.Resolved
+        and result.found;
+}
+
+proc symbol_resolution_has_symbol(
+    result: ResolvedSymbol
+) -> bool {
+    pick result.symbol {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc symbol_resolution_has_definition(
+    result: ResolvedSymbol
+) -> bool {
+    pick result.definition {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc symbol_resolution_has_type(
+    result: ResolvedSymbol
+) -> bool {
+    pick result.type_id {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc symbol_resolution_has_error(
+    result: ResolvedSymbol
+) -> bool {
+    give result.error.kind
+        != SymbolResolutionErrorKind.None;
+}
+
+proc symbol_resolver_statistics(
+    resolver: ref SymbolResolver
+) -> SymbolResolverStatistics {
+    give resolver.statistics;
+}
+
+proc symbol_resolver_reset_statistics(
+    resolver: ref mut SymbolResolver
+) {
+    set resolver.statistics =
+        symbol_resolver_statistics_empty();
+}
+
+proc symbol_resolution_kind_name(
+    kind: SymbolResolutionKind
+) -> string {
+    pick kind {
+        SymbolResolutionKind.Value {
+            give "value";
+        }
+
+        SymbolResolutionKind.Type {
+            give "type";
+        }
+
+        SymbolResolutionKind.Module {
+            give "module";
+        }
+
+        SymbolResolutionKind.Procedure {
+            give "procedure";
+        }
+
+        SymbolResolutionKind.Method {
+            give "method";
+        }
+
+        SymbolResolutionKind.Field {
+            give "field";
+        }
+
+        SymbolResolutionKind.Constant {
+            give "constant";
+        }
+
+        SymbolResolutionKind.Generic {
+            give "generic";
+        }
+
+        SymbolResolutionKind.Attribute {
+            give "attribute";
+        }
+
+        SymbolResolutionKind.Import {
+            give "import";
+        }
+
+        SymbolResolutionKind.Export {
+            give "export";
+        }
+
+        SymbolResolutionKind.Unknown {
+            give "unknown";
+        }
+    }
+
+    give "unknown";
+}
+
+proc symbol_resolution_state_name(
+    state: SymbolResolutionState
+) -> string {
+    pick state {
+        SymbolResolutionState.Unresolved {
+            give "unresolved";
+        }
+
+        SymbolResolutionState.Resolved {
+            give "resolved";
+        }
+
+        SymbolResolutionState.Missing {
+            give "missing";
+        }
+
+        SymbolResolutionState.Ambiguous {
+            give "ambiguous";
+        }
+
+        SymbolResolutionState.Inaccessible {
+            give "inaccessible";
+        }
+
+        SymbolResolutionState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}

@@ -1,0 +1,855 @@
+space vitte/compiler/analysis/scopes/scope_child
+
+export *
+
+pick ScopeChildKind {
+    Lexical,
+    Procedure,
+    Method,
+    Block,
+    Loop,
+    Match,
+    MatchArm,
+    Generic,
+    Trait,
+    Impl,
+    Namespace,
+    Module,
+    Generated
+}
+
+pick ScopeChildState {
+    Active,
+    Closed,
+    Invalidated
+}
+
+form ScopeChild {
+    parent: ScopeId
+    child: ScopeId
+
+    kind: ScopeChildKind
+    state: ScopeChildState
+
+    depth: usize
+
+    generation: u64
+    revision: u64
+}
+
+form ScopeChildSet {
+    children: [ScopeChild]
+}
+
+form ScopeChildStatistics {
+    relations: u64
+    lookups: u64
+
+    hits: u64
+    misses: u64
+
+    invalidated: u64
+
+    maximum_depth: usize
+}
+
+form ScopeChildTable {
+    relations: [ScopeChild]
+
+    generation: u64
+
+    statistics: ScopeChildStatistics
+}
+
+proc scope_child_statistics_empty()
+    -> ScopeChildStatistics
+{
+    give ScopeChildStatistics {
+        relations: 0,
+        lookups: 0,
+
+        hits: 0,
+        misses: 0,
+
+        invalidated: 0,
+
+        maximum_depth: 0
+    };
+}
+
+proc scope_child_table_create()
+    -> ScopeChildTable
+{
+    give ScopeChildTable {
+        relations: [],
+
+        generation: 1,
+
+        statistics:
+            scope_child_statistics_empty()
+    };
+}
+
+proc scope_child(
+    parent: ScopeId,
+    child: ScopeId,
+    kind: ScopeChildKind,
+    depth: usize
+) -> ScopeChild {
+    give ScopeChild {
+        parent: parent,
+        child: child,
+
+        kind: kind,
+
+        state:
+            ScopeChildState.Active,
+
+        depth: depth,
+
+        generation: 1,
+        revision: 1
+    };
+}
+
+proc scope_child_is_active(
+    relation: ScopeChild
+) -> bool {
+    give relation.state
+        == ScopeChildState.Active;
+}
+
+proc scope_child_is_closed(
+    relation: ScopeChild
+) -> bool {
+    give relation.state
+        == ScopeChildState.Closed;
+}
+
+proc scope_child_is_invalidated(
+    relation: ScopeChild
+) -> bool {
+    give relation.state
+        == ScopeChildState.Invalidated;
+}
+
+proc scope_child_close(
+    relation: ref mut ScopeChild
+) {
+    if relation.state
+        == ScopeChildState.Invalidated
+    {
+        give;
+    }
+
+    set relation.state =
+        ScopeChildState.Closed;
+
+    set relation.revision =
+        relation.revision + 1;
+}
+
+proc scope_child_reopen(
+    relation: ref mut ScopeChild
+) {
+    if relation.state
+        == ScopeChildState.Invalidated
+    {
+        give;
+    }
+
+    set relation.state =
+        ScopeChildState.Active;
+
+    set relation.revision =
+        relation.revision + 1;
+}
+
+proc scope_child_invalidate(
+    relation: ref mut ScopeChild
+) {
+    set relation.state =
+        ScopeChildState.Invalidated;
+
+    set relation.revision =
+        relation.revision + 1;
+}
+
+proc scope_child_set_create()
+    -> ScopeChildSet
+{
+    give ScopeChildSet {
+        children: []
+    };
+}
+
+proc scope_child_set_push(
+    set: ref mut ScopeChildSet,
+    relation: ScopeChild
+) {
+    set set.children =
+        set.children + [relation];
+}
+
+proc scope_child_set_count(
+    set: ref ScopeChildSet
+) -> usize {
+    give len(set.children);
+}
+
+proc scope_child_set_is_empty(
+    set: ref ScopeChildSet
+) -> bool {
+    give len(set.children) == 0;
+}
+
+proc scope_child_relation_equal(
+    left: ScopeChild,
+    right: ScopeChild
+) -> bool {
+    give left.parent == right.parent
+        and left.child == right.child;
+}
+
+proc scope_child_table_contains(
+    table: ref ScopeChildTable,
+    parent: ScopeId,
+    child: ScopeId
+) -> bool {
+    for relation in table.relations {
+        if relation.parent == parent
+            and relation.child == child
+            and relation.state
+                != ScopeChildState.Invalidated
+        {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc scope_child_table_insert(
+    table: ref mut ScopeChildTable,
+    relation: ScopeChild
+) -> bool {
+    if relation.parent == relation.child {
+        give false;
+    }
+
+    if scope_child_table_contains(
+        ref table,
+        relation.parent,
+        relation.child
+    ) {
+        give false;
+    }
+
+    let mut value =
+        relation;
+
+    set value.generation =
+        table.generation;
+
+    set table.relations =
+        table.relations + [value];
+
+    set table.statistics.relations =
+        table.statistics.relations + 1;
+
+    if value.depth
+        > table.statistics.maximum_depth
+    {
+        set table.statistics.maximum_depth =
+            value.depth;
+    }
+
+    give true;
+}
+
+proc scope_child_table_add(
+    table: ref mut ScopeChildTable,
+    parent: ScopeId,
+    child: ScopeId,
+    kind: ScopeChildKind,
+    depth: usize
+) -> bool {
+    give scope_child_table_insert(
+        table,
+        scope_child(
+            parent,
+            child,
+            kind,
+            depth
+        )
+    );
+}
+
+proc scope_child_table_find(
+    table: ref mut ScopeChildTable,
+    parent: ScopeId,
+    child: ScopeId
+) -> Option<ScopeChild> {
+    set table.statistics.lookups =
+        table.statistics.lookups + 1;
+
+    for relation in table.relations {
+        if relation.parent == parent
+            and relation.child == child
+            and relation.state
+                != ScopeChildState.Invalidated
+        {
+            set table.statistics.hits =
+                table.statistics.hits + 1;
+
+            give Some(relation);
+        }
+    }
+
+    set table.statistics.misses =
+        table.statistics.misses + 1;
+
+    give None;
+}
+
+proc scope_child_table_children(
+    table: ref ScopeChildTable,
+    parent: ScopeId
+) -> ScopeChildSet {
+    let mut result =
+        scope_child_set_create();
+
+    for relation in table.relations {
+        if relation.parent == parent
+            and relation.state
+                != ScopeChildState.Invalidated
+        {
+            scope_child_set_push(
+                ref mut result,
+                relation
+            );
+        }
+    }
+
+    give result;
+}
+
+proc scope_child_table_active_children(
+    table: ref ScopeChildTable,
+    parent: ScopeId
+) -> ScopeChildSet {
+    let mut result =
+        scope_child_set_create();
+
+    for relation in table.relations {
+        if relation.parent == parent
+            and relation.state
+                == ScopeChildState.Active
+        {
+            scope_child_set_push(
+                ref mut result,
+                relation
+            );
+        }
+    }
+
+    give result;
+}
+
+proc scope_child_table_parent(
+    table: ref ScopeChildTable,
+    child: ScopeId
+) -> Option<ScopeId> {
+    for relation in table.relations {
+        if relation.child == child
+            and relation.state
+                != ScopeChildState.Invalidated
+        {
+            give Some(
+                relation.parent
+            );
+        }
+    }
+
+    give None;
+}
+
+proc scope_child_table_has_parent(
+    table: ref ScopeChildTable,
+    child: ScopeId
+) -> bool {
+    pick scope_child_table_parent(
+        table,
+        child
+    ) {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_child_table_is_direct_child(
+    table: ref ScopeChildTable,
+    parent: ScopeId,
+    child: ScopeId
+) -> bool {
+    give scope_child_table_contains(
+        table,
+        parent,
+        child
+    );
+}
+
+proc scope_child_table_is_descendant(
+    table: ref ScopeChildTable,
+    ancestor: ScopeId,
+    child: ScopeId
+) -> bool {
+    if ancestor == child {
+        give true;
+    }
+
+    let mut current =
+        scope_child_table_parent(
+            table,
+            child
+        );
+
+    loop {
+        pick current {
+            None {
+                give false;
+            }
+
+            Some(parent) {
+                if parent == ancestor {
+                    give true;
+                }
+
+                set current =
+                    scope_child_table_parent(
+                        table,
+                        parent
+                    );
+            }
+        }
+    }
+
+    give false;
+}
+
+proc scope_child_table_root(
+    table: ref ScopeChildTable,
+    child: ScopeId
+) -> ScopeId {
+    let mut current =
+        child;
+
+    loop {
+        let parent =
+            scope_child_table_parent(
+                table,
+                current
+            );
+
+        pick parent {
+            None {
+                give current;
+            }
+
+            Some(value) {
+                set current =
+                    value;
+            }
+        }
+    }
+
+    give current;
+}
+
+proc scope_child_table_ancestors(
+    table: ref ScopeChildTable,
+    child: ScopeId
+) -> [ScopeId] {
+    let mut result:
+        [ScopeId] = [];
+
+    let mut current =
+        scope_child_table_parent(
+            table,
+            child
+        );
+
+    loop {
+        pick current {
+            None {
+                break;
+            }
+
+            Some(parent) {
+                set result =
+                    result + [parent];
+
+                set current =
+                    scope_child_table_parent(
+                        table,
+                        parent
+                    );
+            }
+        }
+    }
+
+    give result;
+}
+
+proc scope_child_table_descendants(
+    table: ref ScopeChildTable,
+    parent: ScopeId
+) -> [ScopeId] {
+    let mut result:
+        [ScopeId] = [];
+
+    let mut queue:
+        [ScopeId] = [parent];
+
+    let mut index: usize = 0;
+
+    while index < len(queue) {
+        let current =
+            queue[index];
+
+        let children =
+            scope_child_table_children(
+                table,
+                current
+            );
+
+        for relation in children.children {
+            set result =
+                result + [
+                    relation.child
+                ];
+
+            set queue =
+                queue + [
+                    relation.child
+                ];
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give result;
+}
+
+proc scope_child_table_depth(
+    table: ref ScopeChildTable,
+    scope: ScopeId
+) -> usize {
+    let mut depth: usize = 0;
+
+    let mut current =
+        scope_child_table_parent(
+            table,
+            scope
+        );
+
+    loop {
+        pick current {
+            None {
+                break;
+            }
+
+            Some(parent) {
+                set depth =
+                    depth + 1;
+
+                set current =
+                    scope_child_table_parent(
+                        table,
+                        parent
+                    );
+            }
+        }
+    }
+
+    give depth;
+}
+
+proc scope_child_table_common_ancestor(
+    table: ref ScopeChildTable,
+    left: ScopeId,
+    right: ScopeId
+) -> Option<ScopeId> {
+    if left == right {
+        give Some(left);
+    }
+
+    let left_ancestors =
+        scope_child_table_ancestors(
+            table,
+            left
+        );
+
+    let right_ancestors =
+        scope_child_table_ancestors(
+            table,
+            right
+        );
+
+    for left_scope in left_ancestors {
+        for right_scope in right_ancestors {
+            if left_scope
+                == right_scope
+            {
+                give Some(
+                    left_scope
+                );
+            }
+        }
+    }
+
+    give None;
+}
+
+proc scope_child_table_invalidate(
+    table: ref mut ScopeChildTable,
+    parent: ScopeId,
+    child: ScopeId
+) -> bool {
+    let mut index: usize = 0;
+
+    while index < len(table.relations) {
+        if table.relations[index].parent
+            == parent
+            and table.relations[index].child
+                == child
+        {
+            if table.relations[index].state
+                == ScopeChildState.Invalidated
+            {
+                give false;
+            }
+
+            scope_child_invalidate(
+                ref mut table.relations[index]
+            );
+
+            set table.statistics.invalidated =
+                table.statistics.invalidated + 1;
+
+            give true;
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give false;
+}
+
+proc scope_child_table_invalidate_parent(
+    table: ref mut ScopeChildTable,
+    parent: ScopeId
+) -> usize {
+    let mut count: usize = 0;
+
+    let mut index: usize = 0;
+
+    while index < len(table.relations) {
+        if table.relations[index].parent
+            == parent
+            and table.relations[index].state
+                != ScopeChildState.Invalidated
+        {
+            scope_child_invalidate(
+                ref mut table.relations[index]
+            );
+
+            set count =
+                count + 1;
+        }
+
+        set index =
+            index + 1;
+    }
+
+    set table.statistics.invalidated =
+        table.statistics.invalidated
+        + count;
+
+    give count;
+}
+
+proc scope_child_table_invalidate_tree(
+    table: ref mut ScopeChildTable,
+    root: ScopeId
+) -> usize {
+    let descendants =
+        scope_child_table_descendants(
+            ref table,
+            root
+        );
+
+    let mut count: usize = 0;
+
+    for child in descendants {
+        let parent =
+            scope_child_table_parent(
+                ref table,
+                child
+            );
+
+        pick parent {
+            Some(parent_scope) {
+                if scope_child_table_invalidate(
+                    table,
+                    parent_scope,
+                    child
+                ) {
+                    set count =
+                        count + 1;
+                }
+            }
+
+            None {}
+        }
+    }
+
+    give count;
+}
+
+proc scope_child_table_advance_generation(
+    table: ref mut ScopeChildTable
+) -> u64 {
+    set table.generation =
+        table.generation + 1;
+
+    give table.generation;
+}
+
+proc scope_child_table_clear(
+    table: ref mut ScopeChildTable
+) {
+    set table.relations = [];
+
+    set table.generation =
+        table.generation + 1;
+}
+
+proc scope_child_table_statistics(
+    table: ref ScopeChildTable
+) -> ScopeChildStatistics {
+    give table.statistics;
+}
+
+proc scope_child_table_reset_statistics(
+    table: ref mut ScopeChildTable
+) {
+    set table.statistics =
+        scope_child_statistics_empty();
+}
+
+proc scope_child_kind_name(
+    kind: ScopeChildKind
+) -> string {
+    pick kind {
+        ScopeChildKind.Lexical {
+            give "lexical";
+        }
+
+        ScopeChildKind.Procedure {
+            give "procedure";
+        }
+
+        ScopeChildKind.Method {
+            give "method";
+        }
+
+        ScopeChildKind.Block {
+            give "block";
+        }
+
+        ScopeChildKind.Loop {
+            give "loop";
+        }
+
+        ScopeChildKind.Match {
+            give "match";
+        }
+
+        ScopeChildKind.MatchArm {
+            give "match-arm";
+        }
+
+        ScopeChildKind.Generic {
+            give "generic";
+        }
+
+        ScopeChildKind.Trait {
+            give "trait";
+        }
+
+        ScopeChildKind.Impl {
+            give "impl";
+        }
+
+        ScopeChildKind.Namespace {
+            give "namespace";
+        }
+
+        ScopeChildKind.Module {
+            give "module";
+        }
+
+        ScopeChildKind.Generated {
+            give "generated";
+        }
+    }
+
+    give "lexical";
+}
+
+proc scope_child_state_name(
+    state: ScopeChildState
+) -> string {
+    pick state {
+        ScopeChildState.Active {
+            give "active";
+        }
+
+        ScopeChildState.Closed {
+            give "closed";
+        }
+
+        ScopeChildState.Invalidated {
+            give "invalidated";
+        }
+    }
+
+    give "invalidated";
+}
+
+// ScopeBuilder
+//     |
+//     +-- ScopeId parent
+//     |      |
+//     |      +-- ScopeId child
+//     |      |      |
+//     |      |      +-- ScopeId grandchild
+//     |      |
+//     |      +-- ScopeId child
+//     |
+//     +-- scope_child.vit
+//            |
+//            +-- parent()
+//            +-- children()
+//            +-- ancestors()
+//            +-- descendants()
+//            +-- common_ancestor()
+//            +-- invalidate_tree()

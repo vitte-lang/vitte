@@ -1,0 +1,841 @@
+space vitte/compiler/analysis/resolution/resolution_context
+
+export *
+
+use vitte/compiler/analysis/modules/module_database.{
+    ModuleId,
+    module_id_invalid,
+    module_id_is_valid
+}
+
+use vitte/compiler/analysis/modules/module_namespace.{
+    ModuleNamespace,
+    module_namespace_root,
+    module_namespace_is_valid
+}
+
+pick ResolutionContextKind {
+    Module,
+    Procedure,
+    Method,
+    Trait,
+    Impl,
+    Type,
+    Constant,
+    Static,
+    Global,
+    Comptime,
+    Test,
+    Unknown
+}
+
+pick ResolutionContextState {
+    Created,
+    Active,
+    Suspended,
+    Failed
+}
+
+pick ResolutionAccessMode {
+    Normal,
+    Private,
+    Package,
+    Unsafe,
+    Compiler
+}
+
+form ResolutionContextConfig {
+    search_parents: bool
+    search_imports: bool
+    search_builtins: bool
+    search_prelude: bool
+
+    allow_private: bool
+    allow_package: bool
+
+    allow_generated: bool
+    allow_external: bool
+
+    max_scope_depth: usize
+    max_path_depth: usize
+}
+
+form ResolutionFrame {
+    kind: ResolutionContextKind
+
+    module: ModuleId
+    scope: ScopeId
+
+    namespace: ModuleNamespace
+
+    owner: Option<DefId>
+    type_id: Option<TypeId>
+
+    depth: usize
+}
+
+form ResolutionContextStatistics {
+    pushes: u64
+    pops: u64
+
+    scope_changes: u64
+    module_changes: u64
+
+    lookups: u64
+    failures: u64
+
+    max_depth: usize
+}
+
+form ResolutionContext {
+    config: ResolutionContextConfig
+
+    state: ResolutionContextState
+    access: ResolutionAccessMode
+
+    module: ModuleId
+    scope: ScopeId
+
+    namespace: ModuleNamespace
+
+    owner: Option<DefId>
+    type_id: Option<TypeId>
+
+    frames: [ResolutionFrame]
+
+    generation: u64
+    revision: u64
+
+    statistics: ResolutionContextStatistics
+}
+
+proc resolution_context_config_default()
+    -> ResolutionContextConfig
+{
+    give ResolutionContextConfig {
+        search_parents: true,
+        search_imports: true,
+        search_builtins: true,
+        search_prelude: true,
+
+        allow_private: false,
+        allow_package: false,
+
+        allow_generated: true,
+        allow_external: true,
+
+        max_scope_depth: 256,
+        max_path_depth: 128
+    };
+}
+
+proc resolution_context_statistics_empty()
+    -> ResolutionContextStatistics
+{
+    give ResolutionContextStatistics {
+        pushes: 0,
+        pops: 0,
+
+        scope_changes: 0,
+        module_changes: 0,
+
+        lookups: 0,
+        failures: 0,
+
+        max_depth: 0
+    };
+}
+
+proc resolution_context_create_with_config(
+    config: ResolutionContextConfig
+) -> ResolutionContext {
+    give ResolutionContext {
+        config: config,
+
+        state:
+            ResolutionContextState.Created,
+
+        access:
+            ResolutionAccessMode.Normal,
+
+        module:
+            module_id_invalid(),
+
+        scope:
+            0 as ScopeId,
+
+        namespace:
+            module_namespace_root(),
+
+        owner:
+            None,
+
+        type_id:
+            None,
+
+        frames:
+            [],
+
+        generation:
+            1,
+
+        revision:
+            1,
+
+        statistics:
+            resolution_context_statistics_empty()
+    };
+}
+
+proc resolution_context_create()
+    -> ResolutionContext
+{
+    give resolution_context_create_with_config(
+        resolution_context_config_default()
+    );
+}
+
+proc resolution_frame(
+    kind: ResolutionContextKind,
+    module: ModuleId,
+    scope: ScopeId,
+    namespace: ModuleNamespace,
+    owner: Option<DefId>,
+    type_id: Option<TypeId>,
+    depth: usize
+) -> ResolutionFrame {
+    give ResolutionFrame {
+        kind: kind,
+
+        module: module,
+        scope: scope,
+
+        namespace: namespace,
+
+        owner: owner,
+        type_id: type_id,
+
+        depth: depth
+    };
+}
+
+proc resolution_context_depth(
+    context: ref ResolutionContext
+) -> usize {
+    give len(context.frames);
+}
+
+proc resolution_context_is_active(
+    context: ref ResolutionContext
+) -> bool {
+    give context.state
+        == ResolutionContextState.Active;
+}
+
+proc resolution_context_has_module(
+    context: ref ResolutionContext
+) -> bool {
+    give module_id_is_valid(
+        context.module
+    );
+}
+
+proc resolution_context_has_owner(
+    context: ref ResolutionContext
+) -> bool {
+    pick context.owner {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc resolution_context_has_type(
+    context: ref ResolutionContext
+) -> bool {
+    pick context.type_id {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc resolution_context_activate(
+    context: ref mut ResolutionContext
+) {
+    set context.state =
+        ResolutionContextState.Active;
+
+    set context.revision =
+        context.revision + 1;
+}
+
+proc resolution_context_suspend(
+    context: ref mut ResolutionContext
+) {
+    set context.state =
+        ResolutionContextState.Suspended;
+
+    set context.revision =
+        context.revision + 1;
+}
+
+proc resolution_context_fail(
+    context: ref mut ResolutionContext
+) {
+    set context.state =
+        ResolutionContextState.Failed;
+
+    set context.statistics.failures =
+        context.statistics.failures + 1;
+
+    set context.revision =
+        context.revision + 1;
+}
+
+proc resolution_context_set_module(
+    context: ref mut ResolutionContext,
+    module: ModuleId
+) -> bool {
+    if not module_id_is_valid(module) {
+        set context.statistics.failures =
+            context.statistics.failures + 1;
+
+        give false;
+    }
+
+    if context.module != module {
+        set context.statistics.module_changes =
+            context.statistics.module_changes + 1;
+    }
+
+    set context.module = module;
+
+    set context.revision =
+        context.revision + 1;
+
+    give true;
+}
+
+proc resolution_context_set_scope(
+    context: ref mut ResolutionContext,
+    scope: ScopeId
+) {
+    if context.scope != scope {
+        set context.statistics.scope_changes =
+            context.statistics.scope_changes + 1;
+    }
+
+    set context.scope = scope;
+
+    set context.revision =
+        context.revision + 1;
+}
+
+proc resolution_context_set_namespace(
+    context: ref mut ResolutionContext,
+    namespace: ModuleNamespace
+) -> bool {
+    if not module_namespace_is_valid(
+        namespace
+    ) {
+        set context.statistics.failures =
+            context.statistics.failures + 1;
+
+        give false;
+    }
+
+    set context.namespace =
+        namespace;
+
+    set context.revision =
+        context.revision + 1;
+
+    give true;
+}
+
+proc resolution_context_set_owner(
+    context: ref mut ResolutionContext,
+    owner: DefId
+) {
+    set context.owner =
+        Some(owner);
+
+    set context.revision =
+        context.revision + 1;
+}
+
+proc resolution_context_clear_owner(
+    context: ref mut ResolutionContext
+) {
+    set context.owner = None;
+
+    set context.revision =
+        context.revision + 1;
+}
+
+proc resolution_context_set_type(
+    context: ref mut ResolutionContext,
+    type_id: TypeId
+) {
+    set context.type_id =
+        Some(type_id);
+
+    set context.revision =
+        context.revision + 1;
+}
+
+proc resolution_context_clear_type(
+    context: ref mut ResolutionContext
+) {
+    set context.type_id = None;
+
+    set context.revision =
+        context.revision + 1;
+}
+
+proc resolution_context_set_access(
+    context: ref mut ResolutionContext,
+    access: ResolutionAccessMode
+) {
+    set context.access = access;
+
+    set context.revision =
+        context.revision + 1;
+}
+
+proc resolution_context_allow_private(
+    context: ref ResolutionContext
+) -> bool {
+    if context.config.allow_private {
+        give true;
+    }
+
+    give context.access
+        == ResolutionAccessMode.Private
+        or context.access
+        == ResolutionAccessMode.Unsafe
+        or context.access
+        == ResolutionAccessMode.Compiler;
+}
+
+proc resolution_context_allow_package(
+    context: ref ResolutionContext
+) -> bool {
+    if resolution_context_allow_private(
+        context
+    ) {
+        give true;
+    }
+
+    if context.config.allow_package {
+        give true;
+    }
+
+    give context.access
+        == ResolutionAccessMode.Package;
+}
+
+proc resolution_context_push(
+    context: ref mut ResolutionContext,
+    kind: ResolutionContextKind
+) -> bool {
+    let depth =
+        resolution_context_depth(
+            ref context
+        );
+
+    if depth
+        >= context.config.max_scope_depth
+    {
+        resolution_context_fail(
+            context
+        );
+
+        give false;
+    }
+
+    let frame =
+        resolution_frame(
+            kind,
+            context.module,
+            context.scope,
+            context.namespace,
+            context.owner,
+            context.type_id,
+            depth
+        );
+
+    set context.frames =
+        context.frames + [frame];
+
+    set context.statistics.pushes =
+        context.statistics.pushes + 1;
+
+    if len(context.frames)
+        > context.statistics.max_depth
+    {
+        set context.statistics.max_depth =
+            len(context.frames);
+    }
+
+    set context.state =
+        ResolutionContextState.Active;
+
+    set context.revision =
+        context.revision + 1;
+
+    give true;
+}
+
+proc resolution_context_push_scope(
+    context: ref mut ResolutionContext,
+    kind: ResolutionContextKind,
+    scope: ScopeId
+) -> bool {
+    if not resolution_context_push(
+        context,
+        kind
+    ) {
+        give false;
+    }
+
+    resolution_context_set_scope(
+        context,
+        scope
+    );
+
+    give true;
+}
+
+proc resolution_context_push_owner(
+    context: ref mut ResolutionContext,
+    kind: ResolutionContextKind,
+    scope: ScopeId,
+    owner: DefId
+) -> bool {
+    if not resolution_context_push_scope(
+        context,
+        kind,
+        scope
+    ) {
+        give false;
+    }
+
+    resolution_context_set_owner(
+        context,
+        owner
+    );
+
+    give true;
+}
+
+proc resolution_context_push_type(
+    context: ref mut ResolutionContext,
+    kind: ResolutionContextKind,
+    scope: ScopeId,
+    owner: DefId,
+    type_id: TypeId
+) -> bool {
+    if not resolution_context_push_owner(
+        context,
+        kind,
+        scope,
+        owner
+    ) {
+        give false;
+    }
+
+    resolution_context_set_type(
+        context,
+        type_id
+    );
+
+    give true;
+}
+
+proc resolution_context_pop(
+    context: ref mut ResolutionContext
+) -> bool {
+    if len(context.frames) == 0 {
+        set context.statistics.failures =
+            context.statistics.failures + 1;
+
+        give false;
+    }
+
+    let index =
+        len(context.frames) - 1;
+
+    let frame =
+        context.frames[index];
+
+    let mut output:
+        [ResolutionFrame] = [];
+
+    let mut current: usize = 0;
+
+    while current < index {
+        set output =
+            output + [
+                context.frames[current]
+            ];
+
+        set current =
+            current + 1;
+    }
+
+    set context.frames = output;
+
+    set context.module =
+        frame.module;
+
+    set context.scope =
+        frame.scope;
+
+    set context.namespace =
+        frame.namespace;
+
+    set context.owner =
+        frame.owner;
+
+    set context.type_id =
+        frame.type_id;
+
+    set context.statistics.pops =
+        context.statistics.pops + 1;
+
+    set context.revision =
+        context.revision + 1;
+
+    if len(context.frames) == 0 {
+        set context.state =
+            ResolutionContextState.Created;
+    } else {
+        set context.state =
+            ResolutionContextState.Active;
+    }
+
+    give true;
+}
+
+proc resolution_context_current_frame(
+    context: ref ResolutionContext
+) -> Option<ResolutionFrame> {
+    if len(context.frames) == 0 {
+        give None;
+    }
+
+    give Some(
+        context.frames[
+            len(context.frames) - 1
+        ]
+    );
+}
+
+proc resolution_context_parent_frame(
+    context: ref ResolutionContext
+) -> Option<ResolutionFrame> {
+    if len(context.frames) < 2 {
+        give None;
+    }
+
+    give Some(
+        context.frames[
+            len(context.frames) - 2
+        ]
+    );
+}
+
+proc resolution_context_record_lookup(
+    context: ref mut ResolutionContext
+) {
+    set context.statistics.lookups =
+        context.statistics.lookups + 1;
+}
+
+proc resolution_context_record_failure(
+    context: ref mut ResolutionContext
+) {
+    set context.statistics.failures =
+        context.statistics.failures + 1;
+}
+
+proc resolution_context_advance_generation(
+    context: ref mut ResolutionContext
+) -> u64 {
+    set context.generation =
+        context.generation + 1;
+
+    set context.revision =
+        context.revision + 1;
+
+    give context.generation;
+}
+
+proc resolution_context_same_generation(
+    context: ref ResolutionContext,
+    generation: u64
+) -> bool {
+    give context.generation
+        == generation;
+}
+
+proc resolution_context_reset(
+    context: ref mut ResolutionContext
+) {
+    set context.state =
+        ResolutionContextState.Created;
+
+    set context.access =
+        ResolutionAccessMode.Normal;
+
+    set context.module =
+        module_id_invalid();
+
+    set context.scope =
+        0 as ScopeId;
+
+    set context.namespace =
+        module_namespace_root();
+
+    set context.owner = None;
+    set context.type_id = None;
+
+    set context.frames = [];
+
+    set context.generation =
+        context.generation + 1;
+
+    set context.revision =
+        context.revision + 1;
+}
+
+proc resolution_context_reset_statistics(
+    context: ref mut ResolutionContext
+) {
+    set context.statistics =
+        resolution_context_statistics_empty();
+}
+
+proc resolution_context_statistics(
+    context: ref ResolutionContext
+) -> ResolutionContextStatistics {
+    give context.statistics;
+}
+
+proc resolution_context_kind_name(
+    kind: ResolutionContextKind
+) -> string {
+    pick kind {
+        ResolutionContextKind.Module {
+            give "module";
+        }
+
+        ResolutionContextKind.Procedure {
+            give "procedure";
+        }
+
+        ResolutionContextKind.Method {
+            give "method";
+        }
+
+        ResolutionContextKind.Trait {
+            give "trait";
+        }
+
+        ResolutionContextKind.Impl {
+            give "impl";
+        }
+
+        ResolutionContextKind.Type {
+            give "type";
+        }
+
+        ResolutionContextKind.Constant {
+            give "constant";
+        }
+
+        ResolutionContextKind.Static {
+            give "static";
+        }
+
+        ResolutionContextKind.Global {
+            give "global";
+        }
+
+        ResolutionContextKind.Comptime {
+            give "comptime";
+        }
+
+        ResolutionContextKind.Test {
+            give "test";
+        }
+
+        ResolutionContextKind.Unknown {
+            give "unknown";
+        }
+    }
+
+    give "unknown";
+}
+
+proc resolution_context_state_name(
+    state: ResolutionContextState
+) -> string {
+    pick state {
+        ResolutionContextState.Created {
+            give "created";
+        }
+
+        ResolutionContextState.Active {
+            give "active";
+        }
+
+        ResolutionContextState.Suspended {
+            give "suspended";
+        }
+
+        ResolutionContextState.Failed {
+            give "failed";
+        }
+    }
+
+    give "failed";
+}
+
+proc resolution_access_mode_name(
+    mode: ResolutionAccessMode
+) -> string {
+    pick mode {
+        ResolutionAccessMode.Normal {
+            give "normal";
+        }
+
+        ResolutionAccessMode.Private {
+            give "private";
+        }
+
+        ResolutionAccessMode.Package {
+            give "package";
+        }
+
+        ResolutionAccessMode.Unsafe {
+            give "unsafe";
+        }
+
+        ResolutionAccessMode.Compiler {
+            give "compiler";
+        }
+    }
+
+    give "normal";
+}

@@ -1,0 +1,502 @@
+space vitte/compiler/analysis/resolution/visibility_resolution
+
+export *
+
+use vitte/compiler/analysis/resolution/candidate.{
+    CandidateVisibility
+}
+
+pick VisibilityScopeKind {
+    Public,
+    Package,
+    Module,
+    Super,
+    Private
+}
+
+pick VisibilityResolutionState {
+    Allowed,
+    Denied,
+    Invalid
+}
+
+pick VisibilityResolutionErrorKind {
+    None,
+    InvalidOwner,
+    InvalidRequester,
+    PrivateAccess,
+    PackageAccess,
+    ModuleAccess,
+    SuperAccess,
+    InvalidVisibility
+}
+
+form VisibilityContext {
+    requester_module: Option<ModuleId>
+    requester_scope: Option<ScopeId>
+
+    owner_module: Option<ModuleId>
+    owner_scope: Option<ScopeId>
+
+    same_package: bool
+    same_module: bool
+    descendant_scope: bool
+}
+
+form VisibilityRule {
+    visibility: CandidateVisibility
+    scope_kind: VisibilityScopeKind
+}
+
+form VisibilityResolutionError {
+    kind: VisibilityResolutionErrorKind
+
+    message: string
+}
+
+form VisibilityResolution {
+    allowed: bool
+
+    state: VisibilityResolutionState
+
+    visibility: CandidateVisibility
+
+    error: VisibilityResolutionError
+}
+
+form VisibilityResolverConfig {
+    private_within_module: bool
+    package_within_package: bool
+    super_allows_descendants: bool
+}
+
+form VisibilityResolverStatistics {
+    checks: u64
+
+    allowed: u64
+    denied: u64
+    invalid: u64
+
+    public_checks: u64
+    package_checks: u64
+    private_checks: u64
+}
+
+form VisibilityResolver {
+    config: VisibilityResolverConfig
+
+    statistics: VisibilityResolverStatistics
+}
+
+proc visibility_resolver_config_default()
+    -> VisibilityResolverConfig
+{
+    give VisibilityResolverConfig {
+        private_within_module: true,
+        package_within_package: true,
+        super_allows_descendants: true
+    };
+}
+
+proc visibility_resolver_statistics_empty()
+    -> VisibilityResolverStatistics
+{
+    give VisibilityResolverStatistics {
+        checks: 0,
+
+        allowed: 0,
+        denied: 0,
+        invalid: 0,
+
+        public_checks: 0,
+        package_checks: 0,
+        private_checks: 0
+    };
+}
+
+proc visibility_resolver_create_with_config(
+    config: VisibilityResolverConfig
+) -> VisibilityResolver {
+    give VisibilityResolver {
+        config: config,
+
+        statistics:
+            visibility_resolver_statistics_empty()
+    };
+}
+
+proc visibility_resolver_create()
+    -> VisibilityResolver
+{
+    give visibility_resolver_create_with_config(
+        visibility_resolver_config_default()
+    );
+}
+
+proc visibility_context(
+    requester_module: Option<ModuleId>,
+    requester_scope: Option<ScopeId>,
+    owner_module: Option<ModuleId>,
+    owner_scope: Option<ScopeId>
+) -> VisibilityContext {
+    give VisibilityContext {
+        requester_module: requester_module,
+        requester_scope: requester_scope,
+
+        owner_module: owner_module,
+        owner_scope: owner_scope,
+
+        same_package: false,
+        same_module: false,
+        descendant_scope: false
+    };
+}
+
+proc visibility_context_with_same_package(
+    context: VisibilityContext,
+    same_package: bool
+) -> VisibilityContext {
+    let mut result = context;
+
+    set result.same_package =
+        same_package;
+
+    give result;
+}
+
+proc visibility_context_with_same_module(
+    context: VisibilityContext,
+    same_module: bool
+) -> VisibilityContext {
+    let mut result = context;
+
+    set result.same_module =
+        same_module;
+
+    give result;
+}
+
+proc visibility_context_with_descendant_scope(
+    context: VisibilityContext,
+    descendant_scope: bool
+) -> VisibilityContext {
+    let mut result = context;
+
+    set result.descendant_scope =
+        descendant_scope;
+
+    give result;
+}
+
+proc visibility_resolution_error_none()
+    -> VisibilityResolutionError
+{
+    give VisibilityResolutionError {
+        kind:
+            VisibilityResolutionErrorKind.None,
+
+        message:
+            ""
+    };
+}
+
+proc visibility_resolution_error(
+    kind: VisibilityResolutionErrorKind,
+    message: string
+) -> VisibilityResolutionError {
+    give VisibilityResolutionError {
+        kind: kind,
+        message: message
+    };
+}
+
+proc visibility_resolution_allowed(
+    visibility: CandidateVisibility
+) -> VisibilityResolution {
+    give VisibilityResolution {
+        allowed: true,
+
+        state:
+            VisibilityResolutionState.Allowed,
+
+        visibility:
+            visibility,
+
+        error:
+            visibility_resolution_error_none()
+    };
+}
+
+proc visibility_resolution_denied(
+    visibility: CandidateVisibility,
+    kind: VisibilityResolutionErrorKind,
+    message: string
+) -> VisibilityResolution {
+    give VisibilityResolution {
+        allowed: false,
+
+        state:
+            VisibilityResolutionState.Denied,
+
+        visibility:
+            visibility,
+
+        error:
+            visibility_resolution_error(
+                kind,
+                message
+            )
+    };
+}
+
+proc visibility_resolution_invalid(
+    visibility: CandidateVisibility,
+    message: string
+) -> VisibilityResolution {
+    give VisibilityResolution {
+        allowed: false,
+
+        state:
+            VisibilityResolutionState.Invalid,
+
+        visibility:
+            visibility,
+
+        error:
+            visibility_resolution_error(
+                VisibilityResolutionErrorKind.InvalidVisibility,
+                message
+            )
+    };
+}
+
+proc visibility_rule(
+    visibility: CandidateVisibility
+) -> VisibilityRule {
+    let scope_kind =
+        pick visibility {
+            CandidateVisibility.Public {
+                VisibilityScopeKind.Public
+            }
+
+            CandidateVisibility.Package {
+                VisibilityScopeKind.Package
+            }
+
+            CandidateVisibility.Private {
+                VisibilityScopeKind.Private
+            }
+        };
+
+    give VisibilityRule {
+        visibility: visibility,
+        scope_kind: scope_kind
+    };
+}
+
+proc visibility_resolver_check_public(
+    resolver: ref mut VisibilityResolver
+) -> VisibilityResolution {
+    set resolver.statistics.public_checks =
+        resolver.statistics.public_checks + 1;
+
+    give visibility_resolution_allowed(
+        CandidateVisibility.Public
+    );
+}
+
+proc visibility_resolver_check_package(
+    resolver: ref mut VisibilityResolver,
+    context: VisibilityContext
+) -> VisibilityResolution {
+    set resolver.statistics.package_checks =
+        resolver.statistics.package_checks + 1;
+
+    if resolver.config.package_within_package
+        and context.same_package
+    {
+        give visibility_resolution_allowed(
+            CandidateVisibility.Package
+        );
+    }
+
+    give visibility_resolution_denied(
+        CandidateVisibility.Package,
+        VisibilityResolutionErrorKind.PackageAccess,
+        "symbol is visible only inside its package"
+    );
+}
+
+proc visibility_resolver_check_private(
+    resolver: ref mut VisibilityResolver,
+    context: VisibilityContext
+) -> VisibilityResolution {
+    set resolver.statistics.private_checks =
+        resolver.statistics.private_checks + 1;
+
+    if resolver.config.private_within_module
+        and context.same_module
+    {
+        give visibility_resolution_allowed(
+            CandidateVisibility.Private
+        );
+    }
+
+    if context.descendant_scope {
+        give visibility_resolution_allowed(
+            CandidateVisibility.Private
+        );
+    }
+
+    give visibility_resolution_denied(
+        CandidateVisibility.Private,
+        VisibilityResolutionErrorKind.PrivateAccess,
+        "symbol is private to its declaring scope or module"
+    );
+}
+
+proc visibility_resolver_check(
+    resolver: ref mut VisibilityResolver,
+    visibility: CandidateVisibility,
+    context: VisibilityContext
+) -> VisibilityResolution {
+    set resolver.statistics.checks =
+        resolver.statistics.checks + 1;
+
+    let result =
+        pick visibility {
+            CandidateVisibility.Public {
+                visibility_resolver_check_public(
+                    resolver
+                )
+            }
+
+            CandidateVisibility.Package {
+                visibility_resolver_check_package(
+                    resolver,
+                    context
+                )
+            }
+
+            CandidateVisibility.Private {
+                visibility_resolver_check_private(
+                    resolver,
+                    context
+                )
+            }
+        };
+
+    pick result.state {
+        VisibilityResolutionState.Allowed {
+            set resolver.statistics.allowed =
+                resolver.statistics.allowed + 1;
+        }
+
+        VisibilityResolutionState.Denied {
+            set resolver.statistics.denied =
+                resolver.statistics.denied + 1;
+        }
+
+        VisibilityResolutionState.Invalid {
+            set resolver.statistics.invalid =
+                resolver.statistics.invalid + 1;
+        }
+    }
+
+    give result;
+}
+
+proc visibility_resolver_check_rule(
+    resolver: ref mut VisibilityResolver,
+    rule: VisibilityRule,
+    context: VisibilityContext
+) -> VisibilityResolution {
+    give visibility_resolver_check(
+        resolver,
+        rule.visibility,
+        context
+    );
+}
+
+proc visibility_resolution_is_allowed(
+    result: VisibilityResolution
+) -> bool {
+    give result.allowed
+        and result.state
+        == VisibilityResolutionState.Allowed;
+}
+
+proc visibility_resolution_is_denied(
+    result: VisibilityResolution
+) -> bool {
+    give result.state
+        == VisibilityResolutionState.Denied;
+}
+
+proc visibility_resolution_has_error(
+    result: VisibilityResolution
+) -> bool {
+    give result.error.kind
+        != VisibilityResolutionErrorKind.None;
+}
+
+proc visibility_resolver_statistics(
+    resolver: ref VisibilityResolver
+) -> VisibilityResolverStatistics {
+    give resolver.statistics;
+}
+
+proc visibility_resolver_reset_statistics(
+    resolver: ref mut VisibilityResolver
+) {
+    set resolver.statistics =
+        visibility_resolver_statistics_empty();
+}
+
+proc visibility_scope_kind_name(
+    kind: VisibilityScopeKind
+) -> string {
+    pick kind {
+        VisibilityScopeKind.Public {
+            give "public";
+        }
+
+        VisibilityScopeKind.Package {
+            give "package";
+        }
+
+        VisibilityScopeKind.Module {
+            give "module";
+        }
+
+        VisibilityScopeKind.Super {
+            give "super";
+        }
+
+        VisibilityScopeKind.Private {
+            give "private";
+        }
+    }
+
+    give "private";
+}
+
+proc visibility_resolution_state_name(
+    state: VisibilityResolutionState
+) -> string {
+    pick state {
+        VisibilityResolutionState.Allowed {
+            give "allowed";
+        }
+
+        VisibilityResolutionState.Denied {
+            give "denied";
+        }
+
+        VisibilityResolutionState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}

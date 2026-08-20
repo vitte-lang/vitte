@@ -1,0 +1,1062 @@
+space vitte/compiler/analysis/resolution/resolver_graph
+
+export *
+
+pick ResolverGraphNodeKind {
+    Name,
+    Module,
+    Namespace,
+    Path,
+    Import,
+    Export,
+    Constant,
+    Field,
+    Method,
+    Generic,
+    Attribute,
+    Overload,
+    Scope,
+    Definition,
+    Type
+}
+
+pick ResolverGraphNodeState {
+    Unresolved,
+    Resolving,
+    Resolved,
+    Invalidated,
+    Failed
+}
+
+pick ResolverGraphEdgeKind {
+    DependsOn,
+    ResolvesThrough,
+    Imports,
+    Exports,
+    References,
+    RequiresType,
+    RequiresScope,
+    RequiresDefinition,
+    CandidateOf
+}
+
+form ResolverGraphNodeId {
+    value: u64
+}
+
+form ResolverGraphEdgeId {
+    value: u64
+}
+
+form ResolverGraphNode {
+    id: ResolverGraphNodeId
+
+    kind: ResolverGraphNodeKind
+    state: ResolverGraphNodeState
+
+    name: string
+
+    definition: Option<DefId>
+    type_id: Option<TypeId>
+    scope: Option<ScopeId>
+
+    generation: u64
+    revision: u64
+
+    synthetic: bool
+}
+
+form ResolverGraphEdge {
+    id: ResolverGraphEdgeId
+
+    from: ResolverGraphNodeId
+    to: ResolverGraphNodeId
+
+    kind: ResolverGraphEdgeKind
+
+    active: bool
+
+    generation: u64
+}
+
+form ResolverGraphCycle {
+    nodes: [ResolverGraphNodeId]
+    edges: [ResolverGraphEdgeId]
+
+    valid: bool
+}
+
+form ResolverGraphStatistics {
+    nodes: usize
+    edges: usize
+
+    resolved: usize
+    unresolved: usize
+    invalidated: usize
+    failed: usize
+
+    cycles: usize
+
+    generation: u64
+}
+
+form ResolverGraph {
+    nodes: [ResolverGraphNode]
+    edges: [ResolverGraphEdge]
+
+    next_node_id: u64
+    next_edge_id: u64
+
+    generation: u64
+    revision: u64
+}
+
+proc resolver_graph_node_id_invalid()
+    -> ResolverGraphNodeId
+{
+    give ResolverGraphNodeId {
+        value: 0
+    };
+}
+
+proc resolver_graph_edge_id_invalid()
+    -> ResolverGraphEdgeId
+{
+    give ResolverGraphEdgeId {
+        value: 0
+    };
+}
+
+proc resolver_graph_node_id_is_valid(
+    id: ResolverGraphNodeId
+) -> bool {
+    give id.value != 0;
+}
+
+proc resolver_graph_edge_id_is_valid(
+    id: ResolverGraphEdgeId
+) -> bool {
+    give id.value != 0;
+}
+
+proc resolver_graph_node_id_equal(
+    left: ResolverGraphNodeId,
+    right: ResolverGraphNodeId
+) -> bool {
+    give left.value == right.value;
+}
+
+proc resolver_graph_edge_id_equal(
+    left: ResolverGraphEdgeId,
+    right: ResolverGraphEdgeId
+) -> bool {
+    give left.value == right.value;
+}
+
+proc resolver_graph_create()
+    -> ResolverGraph
+{
+    give ResolverGraph {
+        nodes: [],
+        edges: [],
+
+        next_node_id: 1,
+        next_edge_id: 1,
+
+        generation: 1,
+        revision: 1
+    };
+}
+
+proc resolver_graph_node(
+    id: ResolverGraphNodeId,
+    kind: ResolverGraphNodeKind,
+    name: string,
+    generation: u64
+) -> ResolverGraphNode {
+    give ResolverGraphNode {
+        id: id,
+
+        kind: kind,
+        state:
+            ResolverGraphNodeState.Unresolved,
+
+        name: name,
+
+        definition: None,
+        type_id: None,
+        scope: None,
+
+        generation: generation,
+        revision: 1,
+
+        synthetic: false
+    };
+}
+
+proc resolver_graph_edge(
+    id: ResolverGraphEdgeId,
+    from: ResolverGraphNodeId,
+    to: ResolverGraphNodeId,
+    kind: ResolverGraphEdgeKind,
+    generation: u64
+) -> ResolverGraphEdge {
+    give ResolverGraphEdge {
+        id: id,
+
+        from: from,
+        to: to,
+
+        kind: kind,
+
+        active: true,
+
+        generation: generation
+    };
+}
+
+proc resolver_graph_add_node(
+    graph: ref mut ResolverGraph,
+    kind: ResolverGraphNodeKind,
+    name: string
+) -> ResolverGraphNodeId {
+    let id =
+        ResolverGraphNodeId {
+            value: graph.next_node_id
+        };
+
+    set graph.next_node_id =
+        graph.next_node_id + 1;
+
+    set graph.nodes =
+        graph.nodes + [
+            resolver_graph_node(
+                id,
+                kind,
+                name,
+                graph.generation
+            )
+        ];
+
+    set graph.revision =
+        graph.revision + 1;
+
+    give id;
+}
+
+proc resolver_graph_find_node_index(
+    graph: ref ResolverGraph,
+    id: ResolverGraphNodeId
+) -> Option<usize> {
+    let mut index: usize = 0;
+
+    while index < len(graph.nodes) {
+        if resolver_graph_node_id_equal(
+            graph.nodes[index].id,
+            id
+        ) {
+            give Some(index);
+        }
+
+        set index = index + 1;
+    }
+
+    give None;
+}
+
+proc resolver_graph_find_edge_index(
+    graph: ref ResolverGraph,
+    id: ResolverGraphEdgeId
+) -> Option<usize> {
+    let mut index: usize = 0;
+
+    while index < len(graph.edges) {
+        if resolver_graph_edge_id_equal(
+            graph.edges[index].id,
+            id
+        ) {
+            give Some(index);
+        }
+
+        set index = index + 1;
+    }
+
+    give None;
+}
+
+proc resolver_graph_get_node(
+    graph: ref ResolverGraph,
+    id: ResolverGraphNodeId
+) -> Option<ResolverGraphNode> {
+    let index =
+        resolver_graph_find_node_index(
+            graph,
+            id
+        );
+
+    pick index {
+        Some(value) {
+            give Some(
+                graph.nodes[value]
+            );
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc resolver_graph_get_node_mut(
+    graph: ref mut ResolverGraph,
+    id: ResolverGraphNodeId
+) -> Option<ref mut ResolverGraphNode> {
+    let index =
+        resolver_graph_find_node_index(
+            ref graph,
+            id
+        );
+
+    pick index {
+        Some(value) {
+            give Some(
+                ref mut graph.nodes[value]
+            );
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc resolver_graph_has_edge(
+    graph: ref ResolverGraph,
+    from: ResolverGraphNodeId,
+    to: ResolverGraphNodeId,
+    kind: ResolverGraphEdgeKind
+) -> bool {
+    for edge in graph.edges {
+        if edge.active
+            and resolver_graph_node_id_equal(
+                edge.from,
+                from
+            )
+            and resolver_graph_node_id_equal(
+                edge.to,
+                to
+            )
+            and edge.kind == kind
+        {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc resolver_graph_add_edge(
+    graph: ref mut ResolverGraph,
+    from: ResolverGraphNodeId,
+    to: ResolverGraphNodeId,
+    kind: ResolverGraphEdgeKind
+) -> ResolverGraphEdgeId {
+    if not resolver_graph_node_id_is_valid(from)
+        or not resolver_graph_node_id_is_valid(to)
+    {
+        give resolver_graph_edge_id_invalid();
+    }
+
+    if resolver_graph_has_edge(
+        ref graph,
+        from,
+        to,
+        kind
+    ) {
+        for edge in graph.edges {
+            if edge.active
+                and resolver_graph_node_id_equal(
+                    edge.from,
+                    from
+                )
+                and resolver_graph_node_id_equal(
+                    edge.to,
+                    to
+                )
+                and edge.kind == kind
+            {
+                give edge.id;
+            }
+        }
+    }
+
+    let id =
+        ResolverGraphEdgeId {
+            value: graph.next_edge_id
+        };
+
+    set graph.next_edge_id =
+        graph.next_edge_id + 1;
+
+    set graph.edges =
+        graph.edges + [
+            resolver_graph_edge(
+                id,
+                from,
+                to,
+                kind,
+                graph.generation
+            )
+        ];
+
+    set graph.revision =
+        graph.revision + 1;
+
+    give id;
+}
+
+proc resolver_graph_set_definition(
+    graph: ref mut ResolverGraph,
+    id: ResolverGraphNodeId,
+    definition: DefId
+) -> bool {
+    let node =
+        resolver_graph_get_node_mut(
+            graph,
+            id
+        );
+
+    pick node {
+        Some(value) {
+            set value.definition =
+                Some(definition);
+
+            set value.revision =
+                value.revision + 1;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc resolver_graph_set_type(
+    graph: ref mut ResolverGraph,
+    id: ResolverGraphNodeId,
+    type_id: TypeId
+) -> bool {
+    let node =
+        resolver_graph_get_node_mut(
+            graph,
+            id
+        );
+
+    pick node {
+        Some(value) {
+            set value.type_id =
+                Some(type_id);
+
+            set value.revision =
+                value.revision + 1;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc resolver_graph_set_scope(
+    graph: ref mut ResolverGraph,
+    id: ResolverGraphNodeId,
+    scope: ScopeId
+) -> bool {
+    let node =
+        resolver_graph_get_node_mut(
+            graph,
+            id
+        );
+
+    pick node {
+        Some(value) {
+            set value.scope =
+                Some(scope);
+
+            set value.revision =
+                value.revision + 1;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc resolver_graph_set_state(
+    graph: ref mut ResolverGraph,
+    id: ResolverGraphNodeId,
+    state: ResolverGraphNodeState
+) -> bool {
+    let node =
+        resolver_graph_get_node_mut(
+            graph,
+            id
+        );
+
+    pick node {
+        Some(value) {
+            set value.state = state;
+
+            set value.revision =
+                value.revision + 1;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc resolver_graph_mark_resolving(
+    graph: ref mut ResolverGraph,
+    id: ResolverGraphNodeId
+) -> bool {
+    give resolver_graph_set_state(
+        graph,
+        id,
+        ResolverGraphNodeState.Resolving
+    );
+}
+
+proc resolver_graph_mark_resolved(
+    graph: ref mut ResolverGraph,
+    id: ResolverGraphNodeId
+) -> bool {
+    give resolver_graph_set_state(
+        graph,
+        id,
+        ResolverGraphNodeState.Resolved
+    );
+}
+
+proc resolver_graph_mark_failed(
+    graph: ref mut ResolverGraph,
+    id: ResolverGraphNodeId
+) -> bool {
+    give resolver_graph_set_state(
+        graph,
+        id,
+        ResolverGraphNodeState.Failed
+    );
+}
+
+proc resolver_graph_dependencies(
+    graph: ref ResolverGraph,
+    id: ResolverGraphNodeId
+) -> [ResolverGraphNodeId] {
+    let mut output:
+        [ResolverGraphNodeId] = [];
+
+    for edge in graph.edges {
+        if edge.active
+            and resolver_graph_node_id_equal(
+                edge.from,
+                id
+            )
+        {
+            set output =
+                output + [edge.to];
+        }
+    }
+
+    give output;
+}
+
+proc resolver_graph_dependents(
+    graph: ref ResolverGraph,
+    id: ResolverGraphNodeId
+) -> [ResolverGraphNodeId] {
+    let mut output:
+        [ResolverGraphNodeId] = [];
+
+    for edge in graph.edges {
+        if edge.active
+            and resolver_graph_node_id_equal(
+                edge.to,
+                id
+            )
+        {
+            set output =
+                output + [edge.from];
+        }
+    }
+
+    give output;
+}
+
+proc resolver_graph_contains_node(
+    nodes: [ResolverGraphNodeId],
+    id: ResolverGraphNodeId
+) -> bool {
+    for node in nodes {
+        if resolver_graph_node_id_equal(
+            node,
+            id
+        ) {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc resolver_graph_detect_cycle_visit(
+    graph: ref ResolverGraph,
+    current: ResolverGraphNodeId,
+    visited: ref mut [ResolverGraphNodeId],
+    stack: ref mut [ResolverGraphNodeId]
+) -> Option<ResolverGraphCycle> {
+    if resolver_graph_contains_node(
+        *stack,
+        current
+    ) {
+        give Some(
+            ResolverGraphCycle {
+                nodes: *stack,
+                edges: [],
+                valid: true
+            }
+        );
+    }
+
+    if resolver_graph_contains_node(
+        *visited,
+        current
+    ) {
+        give None;
+    }
+
+    set visited =
+        *visited + [current];
+
+    set stack =
+        *stack + [current];
+
+    let dependencies =
+        resolver_graph_dependencies(
+            graph,
+            current
+        );
+
+    for dependency in dependencies {
+        let cycle =
+            resolver_graph_detect_cycle_visit(
+                graph,
+                dependency,
+                visited,
+                stack
+            );
+
+        pick cycle {
+            Some(value) {
+                give Some(value);
+            }
+
+            None {}
+        }
+    }
+
+    let mut next_stack:
+        [ResolverGraphNodeId] = [];
+
+    let mut index: usize = 0;
+
+    while index + 1 < len(*stack) {
+        set next_stack =
+            next_stack + [
+                (*stack)[index]
+            ];
+
+        set index =
+            index + 1;
+    }
+
+    set stack = next_stack;
+
+    give None;
+}
+
+proc resolver_graph_detect_cycle(
+    graph: ref ResolverGraph
+) -> Option<ResolverGraphCycle> {
+    let mut visited:
+        [ResolverGraphNodeId] = [];
+
+    for node in graph.nodes {
+        let mut stack:
+            [ResolverGraphNodeId] = [];
+
+        let cycle =
+            resolver_graph_detect_cycle_visit(
+                graph,
+                node.id,
+                ref mut visited,
+                ref mut stack
+            );
+
+        pick cycle {
+            Some(value) {
+                give Some(value);
+            }
+
+            None {}
+        }
+    }
+
+    give None;
+}
+
+proc resolver_graph_has_cycle(
+    graph: ref ResolverGraph
+) -> bool {
+    pick resolver_graph_detect_cycle(graph) {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc resolver_graph_invalidate_node(
+    graph: ref mut ResolverGraph,
+    id: ResolverGraphNodeId
+) -> bool {
+    let node =
+        resolver_graph_get_node_mut(
+            graph,
+            id
+        );
+
+    pick node {
+        Some(value) {
+            if value.state
+                == ResolverGraphNodeState.Invalidated
+            {
+                give false;
+            }
+
+            set value.state =
+                ResolverGraphNodeState.Invalidated;
+
+            set value.revision =
+                value.revision + 1;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc resolver_graph_invalidate_dependents(
+    graph: ref mut ResolverGraph,
+    id: ResolverGraphNodeId
+) -> usize {
+    let mut queue:
+        [ResolverGraphNodeId] =
+        [id];
+
+    let mut visited:
+        [ResolverGraphNodeId] = [];
+
+    let mut count: usize = 0;
+    let mut index: usize = 0;
+
+    while index < len(queue) {
+        let current =
+            queue[index];
+
+        if resolver_graph_contains_node(
+            visited,
+            current
+        ) {
+            set index = index + 1;
+            continue;
+        }
+
+        set visited =
+            visited + [current];
+
+        if resolver_graph_invalidate_node(
+            graph,
+            current
+        ) {
+            set count = count + 1;
+        }
+
+        let dependents =
+            resolver_graph_dependents(
+                ref graph,
+                current
+            );
+
+        for dependent in dependents {
+            if not resolver_graph_contains_node(
+                visited,
+                dependent
+            ) {
+                set queue =
+                    queue + [dependent];
+            }
+        }
+
+        set index = index + 1;
+    }
+
+    if count > 0 {
+        set graph.revision =
+            graph.revision + 1;
+    }
+
+    give count;
+}
+
+proc resolver_graph_disable_edge(
+    graph: ref mut ResolverGraph,
+    id: ResolverGraphEdgeId
+) -> bool {
+    let index =
+        resolver_graph_find_edge_index(
+            ref graph,
+            id
+        );
+
+    pick index {
+        Some(value) {
+            if not graph.edges[value].active {
+                give false;
+            }
+
+            set graph.edges[value].active =
+                false;
+
+            set graph.revision =
+                graph.revision + 1;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc resolver_graph_advance_generation(
+    graph: ref mut ResolverGraph
+) -> u64 {
+    set graph.generation =
+        graph.generation + 1;
+
+    set graph.revision =
+        graph.revision + 1;
+
+    give graph.generation;
+}
+
+proc resolver_graph_clear(
+    graph: ref mut ResolverGraph
+) {
+    set graph.nodes = [];
+    set graph.edges = [];
+
+    set graph.next_node_id = 1;
+    set graph.next_edge_id = 1;
+
+    set graph.generation =
+        graph.generation + 1;
+
+    set graph.revision =
+        graph.revision + 1;
+}
+
+proc resolver_graph_statistics(
+    graph: ref ResolverGraph
+) -> ResolverGraphStatistics {
+    let mut statistics =
+        ResolverGraphStatistics {
+            nodes: len(graph.nodes),
+            edges: len(graph.edges),
+
+            resolved: 0,
+            unresolved: 0,
+            invalidated: 0,
+            failed: 0,
+
+            cycles: 0,
+
+            generation:
+                graph.generation
+        };
+
+    for node in graph.nodes {
+        pick node.state {
+            ResolverGraphNodeState.Resolved {
+                set statistics.resolved =
+                    statistics.resolved + 1;
+            }
+
+            ResolverGraphNodeState.Unresolved {
+                set statistics.unresolved =
+                    statistics.unresolved + 1;
+            }
+
+            ResolverGraphNodeState.Resolving {
+                set statistics.unresolved =
+                    statistics.unresolved + 1;
+            }
+
+            ResolverGraphNodeState.Invalidated {
+                set statistics.invalidated =
+                    statistics.invalidated + 1;
+            }
+
+            ResolverGraphNodeState.Failed {
+                set statistics.failed =
+                    statistics.failed + 1;
+            }
+        }
+    }
+
+    if resolver_graph_has_cycle(graph) {
+        set statistics.cycles = 1;
+    }
+
+    give statistics;
+}
+
+proc resolver_graph_node_kind_name(
+    kind: ResolverGraphNodeKind
+) -> string {
+    pick kind {
+        ResolverGraphNodeKind.Name {
+            give "name";
+        }
+
+        ResolverGraphNodeKind.Module {
+            give "module";
+        }
+
+        ResolverGraphNodeKind.Namespace {
+            give "namespace";
+        }
+
+        ResolverGraphNodeKind.Path {
+            give "path";
+        }
+
+        ResolverGraphNodeKind.Import {
+            give "import";
+        }
+
+        ResolverGraphNodeKind.Export {
+            give "export";
+        }
+
+        ResolverGraphNodeKind.Constant {
+            give "constant";
+        }
+
+        ResolverGraphNodeKind.Field {
+            give "field";
+        }
+
+        ResolverGraphNodeKind.Method {
+            give "method";
+        }
+
+        ResolverGraphNodeKind.Generic {
+            give "generic";
+        }
+
+        ResolverGraphNodeKind.Attribute {
+            give "attribute";
+        }
+
+        ResolverGraphNodeKind.Overload {
+            give "overload";
+        }
+
+        ResolverGraphNodeKind.Scope {
+            give "scope";
+        }
+
+        ResolverGraphNodeKind.Definition {
+            give "definition";
+        }
+
+        ResolverGraphNodeKind.Type {
+            give "type";
+        }
+    }
+
+    give "name";
+}
+
+proc resolver_graph_edge_kind_name(
+    kind: ResolverGraphEdgeKind
+) -> string {
+    pick kind {
+        ResolverGraphEdgeKind.DependsOn {
+            give "depends-on";
+        }
+
+        ResolverGraphEdgeKind.ResolvesThrough {
+            give "resolves-through";
+        }
+
+        ResolverGraphEdgeKind.Imports {
+            give "imports";
+        }
+
+        ResolverGraphEdgeKind.Exports {
+            give "exports";
+        }
+
+        ResolverGraphEdgeKind.References {
+            give "references";
+        }
+
+        ResolverGraphEdgeKind.RequiresType {
+            give "requires-type";
+        }
+
+        ResolverGraphEdgeKind.RequiresScope {
+            give "requires-scope";
+        }
+
+        ResolverGraphEdgeKind.RequiresDefinition {
+            give "requires-definition";
+        }
+
+        ResolverGraphEdgeKind.CandidateOf {
+            give "candidate-of";
+        }
+    }
+
+    give "depends-on";
+}

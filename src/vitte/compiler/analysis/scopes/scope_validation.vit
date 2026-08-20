@@ -1,0 +1,1349 @@
+space vitte/compiler/analysis/scopes/scope_validation
+
+export *
+
+use vitte/compiler/analysis/scopes/scope_id.{
+    ScopeId,
+    scope_id_is_valid
+}
+
+use vitte/compiler/analysis/scopes/scope_kind.{
+    ScopeKind,
+    scope_kind_can_have_children
+}
+
+use vitte/compiler/analysis/scopes/scope_node.{
+    ScopeNode,
+    ScopeNodeState
+}
+
+use vitte/compiler/analysis/scopes/scope_table.{
+    ScopeTable,
+
+    scope_table_root,
+    scope_table_contains,
+    scope_table_contains_active,
+    scope_table_parent,
+    scope_table_children,
+    scope_table_depth,
+    scope_table_validate
+}
+
+use vitte/compiler/analysis/scopes/scope_registry.{
+    ScopeRegistry,
+    ScopeRegistryEntryState
+}
+
+use vitte/compiler/analysis/scopes/scope_binding.{
+    ScopeBindingTable,
+    ScopeBindingState
+}
+
+use vitte/compiler/analysis/scopes/scope_symbol.{
+    ScopeSymbolTable,
+    ScopeSymbolState
+}
+
+use vitte/compiler/analysis/scopes/scope_import.{
+    ScopeImportTable,
+    ScopeImportState
+}
+
+use vitte/compiler/analysis/scopes/scope_export.{
+    ScopeExportTable,
+    ScopeExportState
+}
+
+use vitte/compiler/analysis/scopes/scope_generic.{
+    ScopeGenericTable,
+    ScopeGenericState
+}
+
+use vitte/compiler/analysis/scopes/scope_function.{
+    ScopeFunctionTable,
+    ScopeFunctionState
+}
+
+use vitte/compiler/analysis/scopes/scope_pattern.{
+    ScopePatternTable,
+    ScopePatternState
+}
+
+use vitte/compiler/analysis/scopes/scope_edge.{
+    ScopeEdgeTable,
+    ScopeEdgeState
+}
+
+pick ScopeValidationSeverity {
+    Note,
+    Warning,
+    Error,
+    Fatal
+}
+
+pick ScopeValidationCode {
+    MissingRoot,
+    InvalidScopeId,
+
+    MissingParent,
+    InvalidParent,
+    ParentCycle,
+    InvalidDepth,
+
+    InvalidChildKind,
+
+    RegistryMissingScope,
+    RegistryMismatch,
+
+    BindingInvalidScope,
+    SymbolInvalidScope,
+
+    ImportInvalidScope,
+    ExportInvalidScope,
+
+    GenericInvalidScope,
+    FunctionInvalidScope,
+    PatternInvalidScope,
+
+    EdgeInvalidSource,
+    EdgeInvalidTarget,
+
+    DanglingDefinition,
+    DanglingSymbol,
+
+    InvalidState,
+
+    Internal
+}
+
+form ScopeValidationIssue {
+    code: ScopeValidationCode
+
+    severity: ScopeValidationSeverity
+
+    scope: Option<ScopeId>
+    related_scope: Option<ScopeId>
+
+    message: string
+}
+
+form ScopeValidationResult {
+    valid: bool
+
+    issues: [ScopeValidationIssue]
+
+    notes: usize
+    warnings: usize
+    errors: usize
+    fatals: usize
+
+    checked_scopes: usize
+    checked_bindings: usize
+    checked_symbols: usize
+    checked_edges: usize
+}
+
+form ScopeValidator {
+    strict: bool
+
+    maximum_depth: usize
+}
+
+proc scope_validator_create()
+    -> ScopeValidator
+{
+    give ScopeValidator {
+        strict: true,
+
+        maximum_depth: 4096
+    };
+}
+
+proc scope_validator_relaxed()
+    -> ScopeValidator
+{
+    give ScopeValidator {
+        strict: false,
+
+        maximum_depth: 4096
+    };
+}
+
+proc scope_validation_result_create()
+    -> ScopeValidationResult
+{
+    give ScopeValidationResult {
+        valid: true,
+
+        issues: [],
+
+        notes: 0,
+        warnings: 0,
+        errors: 0,
+        fatals: 0,
+
+        checked_scopes: 0,
+        checked_bindings: 0,
+        checked_symbols: 0,
+        checked_edges: 0
+    };
+}
+
+proc scope_validation_issue(
+    code: ScopeValidationCode,
+    severity: ScopeValidationSeverity,
+    scope: Option<ScopeId>,
+    related_scope: Option<ScopeId>,
+    message: string
+) -> ScopeValidationIssue {
+    give ScopeValidationIssue {
+        code: code,
+
+        severity: severity,
+
+        scope: scope,
+        related_scope: related_scope,
+
+        message: message
+    };
+}
+
+proc scope_validation_emit(
+    result: ref mut ScopeValidationResult,
+    issue: ScopeValidationIssue
+) {
+    set result.issues =
+        result.issues + [issue];
+
+    pick issue.severity {
+        ScopeValidationSeverity.Note {
+            set result.notes =
+                result.notes + 1;
+        }
+
+        ScopeValidationSeverity.Warning {
+            set result.warnings =
+                result.warnings + 1;
+        }
+
+        ScopeValidationSeverity.Error {
+            set result.errors =
+                result.errors + 1;
+
+            set result.valid =
+                false;
+        }
+
+        ScopeValidationSeverity.Fatal {
+            set result.fatals =
+                result.fatals + 1;
+
+            set result.valid =
+                false;
+        }
+    }
+}
+
+proc scope_validation_error(
+    result: ref mut ScopeValidationResult,
+    code: ScopeValidationCode,
+    scope: Option<ScopeId>,
+    related_scope: Option<ScopeId>,
+    message: string
+) {
+    scope_validation_emit(
+        result,
+
+        scope_validation_issue(
+            code,
+            ScopeValidationSeverity.Error,
+            scope,
+            related_scope,
+            message
+        )
+    );
+}
+
+proc scope_validation_fatal(
+    result: ref mut ScopeValidationResult,
+    code: ScopeValidationCode,
+    scope: Option<ScopeId>,
+    related_scope: Option<ScopeId>,
+    message: string
+) {
+    scope_validation_emit(
+        result,
+
+        scope_validation_issue(
+            code,
+            ScopeValidationSeverity.Fatal,
+            scope,
+            related_scope,
+            message
+        )
+    );
+}
+
+proc scope_validation_warning(
+    result: ref mut ScopeValidationResult,
+    code: ScopeValidationCode,
+    scope: Option<ScopeId>,
+    related_scope: Option<ScopeId>,
+    message: string
+) {
+    scope_validation_emit(
+        result,
+
+        scope_validation_issue(
+            code,
+            ScopeValidationSeverity.Warning,
+            scope,
+            related_scope,
+            message
+        )
+    );
+}
+
+proc scope_validation_contains_id(
+    values: ref [ScopeId],
+    scope: ScopeId
+) -> bool {
+    for value in values {
+        if value == scope {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc scope_validation_check_root(
+    table: ref ScopeTable,
+    result: ref mut ScopeValidationResult
+) {
+    let root =
+        scope_table_root(
+            table
+        );
+
+    pick root {
+        None {
+            scope_validation_fatal(
+                result,
+
+                ScopeValidationCode.MissingRoot,
+
+                None,
+                None,
+
+                "scope table has no root scope"
+            );
+        }
+
+        Some(scope) {
+            if not scope_id_is_valid(
+                scope
+            ) {
+                scope_validation_fatal(
+                    result,
+
+                    ScopeValidationCode.InvalidScopeId,
+
+                    Some(scope),
+                    None,
+
+                    "root scope id is invalid"
+                );
+
+                give;
+            }
+
+            let parent =
+                scope_table_parent(
+                    table,
+                    scope
+                );
+
+            pick parent {
+                Some(value) {
+                    scope_validation_error(
+                        result,
+
+                        ScopeValidationCode.InvalidParent,
+
+                        Some(scope),
+                        Some(value),
+
+                        "root scope cannot have a parent"
+                    );
+                }
+
+                None {}
+            }
+        }
+    }
+}
+
+proc scope_validation_check_scope_parent(
+    validator: ref ScopeValidator,
+    table: ref ScopeTable,
+    node: ScopeNode,
+    result: ref mut ScopeValidationResult
+) {
+    if node.state
+        == ScopeNodeState.Invalidated
+    {
+        give;
+    }
+
+    if not scope_id_is_valid(
+        node.id
+    ) {
+        scope_validation_error(
+            result,
+
+            ScopeValidationCode.InvalidScopeId,
+
+            Some(node.id),
+            None,
+
+            "scope contains an invalid ScopeId"
+        );
+
+        give;
+    }
+
+    pick node.parent {
+        None {
+            let root =
+                scope_table_root(
+                    table
+                );
+
+            pick root {
+                Some(root_scope) {
+                    if node.id != root_scope {
+                        scope_validation_error(
+                            result,
+
+                            ScopeValidationCode.MissingParent,
+
+                            Some(node.id),
+                            None,
+
+                            "non-root scope has no parent"
+                        );
+                    }
+                }
+
+                None {}
+            }
+        }
+
+        Some(parent) {
+            if parent == node.id {
+                scope_validation_fatal(
+                    result,
+
+                    ScopeValidationCode.ParentCycle,
+
+                    Some(node.id),
+                    Some(parent),
+
+                    "scope is its own parent"
+                );
+
+                give;
+            }
+
+            if not scope_table_contains(
+                table,
+                parent
+            ) {
+                scope_validation_error(
+                    result,
+
+                    ScopeValidationCode.MissingParent,
+
+                    Some(node.id),
+                    Some(parent),
+
+                    "scope parent does not exist"
+                );
+
+                give;
+            }
+
+            let parent_depth =
+                scope_table_depth(
+                    table,
+                    parent
+                );
+
+            pick parent_depth {
+                Some(depth) {
+                    if node.depth
+                        != depth + 1
+                    {
+                        scope_validation_error(
+                            result,
+
+                            ScopeValidationCode.InvalidDepth,
+
+                            Some(node.id),
+                            Some(parent),
+
+                            "scope depth does not match parent depth"
+                        );
+                    }
+                }
+
+                None {
+                    scope_validation_error(
+                        result,
+
+                        ScopeValidationCode.InvalidDepth,
+
+                        Some(node.id),
+                        Some(parent),
+
+                        "cannot determine parent depth"
+                    );
+                }
+            }
+        }
+    }
+
+    if node.depth
+        > validator.maximum_depth
+    {
+        scope_validation_error(
+            result,
+
+            ScopeValidationCode.InvalidDepth,
+
+            Some(node.id),
+            node.parent,
+
+            "scope exceeds maximum nesting depth"
+        );
+    }
+}
+
+proc scope_validation_check_cycles(
+    table: ref ScopeTable,
+    scope: ScopeId,
+    result: ref mut ScopeValidationResult
+) {
+    let mut visited:
+        [ScopeId] = [];
+
+    let mut current:
+        Option<ScopeId> =
+        Some(scope);
+
+    loop {
+        pick current {
+            None {
+                give;
+            }
+
+            Some(value) {
+                if scope_validation_contains_id(
+                    ref visited,
+                    value
+                ) {
+                    scope_validation_fatal(
+                        result,
+
+                        ScopeValidationCode.ParentCycle,
+
+                        Some(scope),
+                        Some(value),
+
+                        "cycle detected in scope parent chain"
+                    );
+
+                    give;
+                }
+
+                set visited =
+                    visited + [value];
+
+                set current =
+                    scope_table_parent(
+                        table,
+                        value
+                    );
+            }
+        }
+    }
+}
+
+proc scope_validation_check_nodes(
+    validator: ref ScopeValidator,
+    table: ref ScopeTable,
+    result: ref mut ScopeValidationResult
+) {
+    for node in table.nodes {
+        if node.state
+            == ScopeNodeState.Invalidated
+        {
+            continue;
+        }
+
+        set result.checked_scopes =
+            result.checked_scopes + 1;
+
+        scope_validation_check_scope_parent(
+            validator,
+            table,
+            node,
+            result
+        );
+
+        scope_validation_check_cycles(
+            table,
+            node.id,
+            result
+        );
+
+        let children =
+            scope_table_children(
+                table,
+                node.id
+            );
+
+        if len(children) > 0
+            and not scope_kind_can_have_children(
+                node.kind
+            )
+        {
+            scope_validation_error(
+                result,
+
+                ScopeValidationCode.InvalidChildKind,
+
+                Some(node.id),
+                None,
+
+                "scope kind cannot contain child scopes"
+            );
+        }
+    }
+}
+
+proc scope_validation_check_registry(
+    table: ref ScopeTable,
+    registry: ref ScopeRegistry,
+    result: ref mut ScopeValidationResult
+) {
+    for entry in registry.entries {
+        if entry.state
+            == ScopeRegistryEntryState.Invalidated
+        {
+            continue;
+        }
+
+        if not scope_table_contains_active(
+            table,
+            entry.scope
+        ) {
+            scope_validation_error(
+                result,
+
+                ScopeValidationCode.RegistryMissingScope,
+
+                Some(entry.scope),
+                None,
+
+                "registry references a missing scope"
+            );
+        }
+    }
+}
+
+proc scope_validation_check_bindings(
+    table: ref ScopeTable,
+    bindings: ref ScopeBindingTable,
+    result: ref mut ScopeValidationResult
+) {
+    for binding in bindings.bindings {
+        if binding.state
+            == ScopeBindingState.Invalidated
+        {
+            continue;
+        }
+
+        set result.checked_bindings =
+            result.checked_bindings + 1;
+
+        if not scope_table_contains_active(
+            table,
+            binding.scope
+        ) {
+            scope_validation_error(
+                result,
+
+                ScopeValidationCode.BindingInvalidScope,
+
+                Some(binding.scope),
+                None,
+
+                "binding references an invalid scope"
+            );
+        }
+    }
+}
+
+proc scope_validation_check_symbols(
+    table: ref ScopeTable,
+    symbols: ref ScopeSymbolTable,
+    result: ref mut ScopeValidationResult
+) {
+    for symbol in symbols.symbols {
+        if symbol.state
+            == ScopeSymbolState.Invalidated
+        {
+            continue;
+        }
+
+        set result.checked_symbols =
+            result.checked_symbols + 1;
+
+        if not scope_table_contains_active(
+            table,
+            symbol.scope
+        ) {
+            scope_validation_error(
+                result,
+
+                ScopeValidationCode.SymbolInvalidScope,
+
+                Some(symbol.scope),
+                None,
+
+                "symbol references an invalid scope"
+            );
+        }
+    }
+}
+
+proc scope_validation_check_imports(
+    table: ref ScopeTable,
+    imports: ref ScopeImportTable,
+    result: ref mut ScopeValidationResult
+) {
+    for value in imports.imports {
+        if value.state
+            == ScopeImportState.Invalidated
+        {
+            continue;
+        }
+
+        if not scope_table_contains_active(
+            table,
+            value.scope
+        ) {
+            scope_validation_error(
+                result,
+
+                ScopeValidationCode.ImportInvalidScope,
+
+                Some(value.scope),
+                value.source_scope,
+
+                "import belongs to an invalid scope"
+            );
+        }
+
+        pick value.source_scope {
+            Some(source) {
+                if not scope_table_contains_active(
+                    table,
+                    source
+                ) {
+                    scope_validation_error(
+                        result,
+
+                        ScopeValidationCode.ImportInvalidScope,
+
+                        Some(value.scope),
+                        Some(source),
+
+                        "import references an invalid source scope"
+                    );
+                }
+            }
+
+            None {}
+        }
+    }
+}
+
+proc scope_validation_check_exports(
+    table: ref ScopeTable,
+    exports: ref ScopeExportTable,
+    result: ref mut ScopeValidationResult
+) {
+    for value in exports.exports {
+        if value.state
+            == ScopeExportState.Invalidated
+        {
+            continue;
+        }
+
+        if not scope_table_contains_active(
+            table,
+            value.scope
+        ) {
+            scope_validation_error(
+                result,
+
+                ScopeValidationCode.ExportInvalidScope,
+
+                Some(value.scope),
+                Some(value.source_scope),
+
+                "export belongs to an invalid scope"
+            );
+        }
+
+        if not scope_table_contains_active(
+            table,
+            value.source_scope
+        ) {
+            scope_validation_error(
+                result,
+
+                ScopeValidationCode.ExportInvalidScope,
+
+                Some(value.scope),
+                Some(value.source_scope),
+
+                "export references an invalid source scope"
+            );
+        }
+    }
+}
+
+proc scope_validation_check_generics(
+    table: ref ScopeTable,
+    generics: ref ScopeGenericTable,
+    result: ref mut ScopeValidationResult
+) {
+    for environment in generics.environments {
+        if not scope_table_contains_active(
+            table,
+            environment.scope
+        ) {
+            scope_validation_error(
+                result,
+
+                ScopeValidationCode.GenericInvalidScope,
+
+                Some(environment.scope),
+                environment.parent,
+
+                "generic environment belongs to an invalid scope"
+            );
+        }
+
+        pick environment.parent {
+            Some(parent) {
+                if not scope_table_contains_active(
+                    table,
+                    parent
+                ) {
+                    scope_validation_error(
+                        result,
+
+                        ScopeValidationCode.GenericInvalidScope,
+
+                        Some(environment.scope),
+                        Some(parent),
+
+                        "generic environment has an invalid parent"
+                    );
+                }
+            }
+
+            None {}
+        }
+
+        for parameter in environment.parameters {
+            if parameter.state
+                == ScopeGenericState.Invalidated
+            {
+                continue;
+            }
+
+            if parameter.scope
+                != environment.scope
+            {
+                scope_validation_error(
+                    result,
+
+                    ScopeValidationCode.GenericInvalidScope,
+
+                    Some(parameter.scope),
+                    Some(environment.scope),
+
+                    "generic parameter scope differs from its environment"
+                );
+            }
+        }
+    }
+}
+
+proc scope_validation_check_functions(
+    table: ref ScopeTable,
+    functions: ref ScopeFunctionTable,
+    result: ref mut ScopeValidationResult
+) {
+    for function in functions.functions {
+        if function.state
+            == ScopeFunctionState.Invalidated
+        {
+            continue;
+        }
+
+        if not scope_table_contains_active(
+            table,
+            function.scope
+        ) {
+            scope_validation_error(
+                result,
+
+                ScopeValidationCode.FunctionInvalidScope,
+
+                Some(function.scope),
+                None,
+
+                "function scope does not exist"
+            );
+        }
+
+        if not scope_table_contains_active(
+            table,
+            function.body_scope
+        ) {
+            scope_validation_error(
+                result,
+
+                ScopeValidationCode.FunctionInvalidScope,
+
+                Some(function.body_scope),
+                Some(function.scope),
+
+                "function body scope does not exist"
+            );
+        }
+
+        pick function.parent_scope {
+            Some(parent) {
+                if not scope_table_contains_active(
+                    table,
+                    parent
+                ) {
+                    scope_validation_error(
+                        result,
+
+                        ScopeValidationCode.FunctionInvalidScope,
+
+                        Some(function.scope),
+                        Some(parent),
+
+                        "function references an invalid parent scope"
+                    );
+                }
+            }
+
+            None {}
+        }
+    }
+}
+
+proc scope_validation_check_patterns(
+    table: ref ScopeTable,
+    patterns: ref ScopePatternTable,
+    result: ref mut ScopeValidationResult
+) {
+    for pattern in patterns.patterns {
+        if pattern.state
+            == ScopePatternState.Invalidated
+        {
+            continue;
+        }
+
+        if not scope_table_contains_active(
+            table,
+            pattern.scope
+        ) {
+            scope_validation_error(
+                result,
+
+                ScopeValidationCode.PatternInvalidScope,
+
+                Some(pattern.scope),
+                None,
+
+                "pattern references an invalid scope"
+            );
+        }
+
+        for binding in pattern.bindings {
+            if binding.scope
+                != pattern.scope
+            {
+                scope_validation_error(
+                    result,
+
+                    ScopeValidationCode.PatternInvalidScope,
+
+                    Some(binding.scope),
+                    Some(pattern.scope),
+
+                    "pattern binding belongs to another scope"
+                );
+            }
+        }
+    }
+}
+
+proc scope_validation_check_edges(
+    table: ref ScopeTable,
+    edges: ref ScopeEdgeTable,
+    result: ref mut ScopeValidationResult
+) {
+    for edge in edges.edges {
+        if edge.state
+            == ScopeEdgeState.Invalidated
+        {
+            continue;
+        }
+
+        set result.checked_edges =
+            result.checked_edges + 1;
+
+        if not scope_table_contains_active(
+            table,
+            edge.source
+        ) {
+            scope_validation_error(
+                result,
+
+                ScopeValidationCode.EdgeInvalidSource,
+
+                Some(edge.source),
+                Some(edge.target),
+
+                "scope edge source does not exist"
+            );
+        }
+
+        if not scope_table_contains_active(
+            table,
+            edge.target
+        ) {
+            scope_validation_error(
+                result,
+
+                ScopeValidationCode.EdgeInvalidTarget,
+
+                Some(edge.source),
+                Some(edge.target),
+
+                "scope edge target does not exist"
+            );
+        }
+    }
+}
+
+proc scope_validate_all(
+    validator: ref ScopeValidator,
+
+    table: ref ScopeTable,
+    registry: ref ScopeRegistry,
+
+    bindings: ref ScopeBindingTable,
+    symbols: ref ScopeSymbolTable,
+
+    imports: ref ScopeImportTable,
+    exports: ref ScopeExportTable,
+
+    generics: ref ScopeGenericTable,
+    functions: ref ScopeFunctionTable,
+    patterns: ref ScopePatternTable,
+
+    edges: ref ScopeEdgeTable
+) -> ScopeValidationResult {
+    let mut result =
+        scope_validation_result_create();
+
+    scope_validation_check_root(
+        table,
+        ref mut result
+    );
+
+    if not scope_table_validate(
+        table
+    ) {
+        scope_validation_fatal(
+            ref mut result,
+
+            ScopeValidationCode.Internal,
+
+            None,
+            None,
+
+            "scope table structural validation failed"
+        );
+    }
+
+    scope_validation_check_nodes(
+        validator,
+        table,
+        ref mut result
+    );
+
+    scope_validation_check_registry(
+        table,
+        registry,
+        ref mut result
+    );
+
+    scope_validation_check_bindings(
+        table,
+        bindings,
+        ref mut result
+    );
+
+    scope_validation_check_symbols(
+        table,
+        symbols,
+        ref mut result
+    );
+
+    scope_validation_check_imports(
+        table,
+        imports,
+        ref mut result
+    );
+
+    scope_validation_check_exports(
+        table,
+        exports,
+        ref mut result
+    );
+
+    scope_validation_check_generics(
+        table,
+        generics,
+        ref mut result
+    );
+
+    scope_validation_check_functions(
+        table,
+        functions,
+        ref mut result
+    );
+
+    scope_validation_check_patterns(
+        table,
+        patterns,
+        ref mut result
+    );
+
+    scope_validation_check_edges(
+        table,
+        edges,
+        ref mut result
+    );
+
+    if validator.strict
+        and result.warnings > 0
+    {
+        set result.valid =
+            false;
+    }
+
+    give result;
+}
+
+proc scope_validation_has_errors(
+    result: ref ScopeValidationResult
+) -> bool {
+    give result.errors > 0
+        or result.fatals > 0;
+}
+
+proc scope_validation_has_fatal(
+    result: ref ScopeValidationResult
+) -> bool {
+    give result.fatals > 0;
+}
+
+proc scope_validation_issue_count(
+    result: ref ScopeValidationResult
+) -> usize {
+    give len(result.issues);
+}
+
+proc scope_validation_code_name(
+    code: ScopeValidationCode
+) -> string {
+    pick code {
+        ScopeValidationCode.MissingRoot {
+            give "SCOPE_V001";
+        }
+
+        ScopeValidationCode.InvalidScopeId {
+            give "SCOPE_V002";
+        }
+
+        ScopeValidationCode.MissingParent {
+            give "SCOPE_V003";
+        }
+
+        ScopeValidationCode.InvalidParent {
+            give "SCOPE_V004";
+        }
+
+        ScopeValidationCode.ParentCycle {
+            give "SCOPE_V005";
+        }
+
+        ScopeValidationCode.InvalidDepth {
+            give "SCOPE_V006";
+        }
+
+        ScopeValidationCode.InvalidChildKind {
+            give "SCOPE_V007";
+        }
+
+        ScopeValidationCode.RegistryMissingScope {
+            give "SCOPE_V008";
+        }
+
+        ScopeValidationCode.RegistryMismatch {
+            give "SCOPE_V009";
+        }
+
+        ScopeValidationCode.BindingInvalidScope {
+            give "SCOPE_V010";
+        }
+
+        ScopeValidationCode.SymbolInvalidScope {
+            give "SCOPE_V011";
+        }
+
+        ScopeValidationCode.ImportInvalidScope {
+            give "SCOPE_V012";
+        }
+
+        ScopeValidationCode.ExportInvalidScope {
+            give "SCOPE_V013";
+        }
+
+        ScopeValidationCode.GenericInvalidScope {
+            give "SCOPE_V014";
+        }
+
+        ScopeValidationCode.FunctionInvalidScope {
+            give "SCOPE_V015";
+        }
+
+        ScopeValidationCode.PatternInvalidScope {
+            give "SCOPE_V016";
+        }
+
+        ScopeValidationCode.EdgeInvalidSource {
+            give "SCOPE_V017";
+        }
+
+        ScopeValidationCode.EdgeInvalidTarget {
+            give "SCOPE_V018";
+        }
+
+        ScopeValidationCode.DanglingDefinition {
+            give "SCOPE_V019";
+        }
+
+        ScopeValidationCode.DanglingSymbol {
+            give "SCOPE_V020";
+        }
+
+        ScopeValidationCode.InvalidState {
+            give "SCOPE_V021";
+        }
+
+        ScopeValidationCode.Internal {
+            give "SCOPE_V999";
+        }
+    }
+
+    give "SCOPE_V999";
+}
+
+proc scope_validation_severity_name(
+    severity: ScopeValidationSeverity
+) -> string {
+    pick severity {
+        ScopeValidationSeverity.Note {
+            give "note";
+        }
+
+        ScopeValidationSeverity.Warning {
+            give "warning";
+        }
+
+        ScopeValidationSeverity.Error {
+            give "error";
+        }
+
+        ScopeValidationSeverity.Fatal {
+            give "fatal";
+        }
+    }
+
+    give "error";
+}
+
+// ScopeManager
+//     |
+//     v
+// ScopeTable
+// Registry
+// Bindings
+// Symbols
+// Imports
+// Exports
+// Generics
+// Functions
+// Patterns
+// Edges
+//     |
+//     v
+// scope_validation.vit
+//     |
+//     +-- ScopeId integrity
+//     +-- unique root
+//     +-- valid parents
+//     +-- no parent cycles
+//     +-- correct depth
+//     +-- valid bindings
+//     +-- valid symbols
+//     +-- valid imports/exports
+//     +-- valid generic environments
+//     +-- valid function scopes
+//     +-- valid pattern scopes
+//     +-- valid graph edges
+//     |
+//     v
+// ScopeValidationResult
+//     |
+//     +-- notes
+//     +-- warnings
+//     +-- errors
+//     +-- fatals

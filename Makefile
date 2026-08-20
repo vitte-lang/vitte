@@ -634,7 +634,7 @@ bootstrap-help:
 	@echo "  3) make build"
 	@echo "  seed bootstrap targets are retired and resolve to the Vitte-in-Vitte gate"
 
-.PHONY: bootstrap-trust-root bootstrap-chain bootstrap-seed-root-check bootstrap-max-gate toolchain-stages-gate toolchain-stage012-gate
+.PHONY: bootstrap-trust-root bootstrap-chain bootstrap-seed-root-check bootstrap-compile-contract bootstrap-max-gate toolchain-stages-gate toolchain-stage012-gate
 bootstrap-trust-root:
 	@python3 tools/bootstrap_real/stage0_trust.py
 
@@ -645,6 +645,11 @@ bootstrap-trust-tests:
 
 bootstrap-chain:
 	@python3 tools/bootstrap_real/bootstrap_chain.py --offline
+
+bootstrap-compile-contract:
+	@python3 tools/bootstrap_compile_contract.py
+	@test -f target/reports/bootstrap_compile_contract.json
+	@test -f target/reports/bootstrap_compile_contract.md
 
 toolchain-stages-gate: bootstrap-all
 	@$(MAKE) --no-print-directory toolchain-stage012-gate
@@ -704,7 +709,7 @@ bootstrap-parity: bootstrap-chain
 	@python3 tools/bootstrap_real/bootstrap_real.py --verify-chain
 
 .PHONY: bootstrap-verify
-bootstrap-verify: vitte-in-vitte-gate
+bootstrap-verify: vitte-in-vitte-gate bootstrap-compile-contract
 	@bin/vitte --version
 	@bin/vitte check tests/bootstrap_native/main_proc.vit
 	@bin/vitte check tests/bootstrap_native/main_const_int.vit

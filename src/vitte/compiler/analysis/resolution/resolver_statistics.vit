@@ -1,0 +1,884 @@
+space vitte/compiler/analysis/resolution/resolver_statistics
+
+export *
+
+use vitte/compiler/analysis/resolution/resolver_state.{
+    ResolverState,
+    ResolverStateStatistics,
+    resolver_state_statistics
+}
+
+use vitte/compiler/analysis/resolution/resolver_stack.{
+    ResolverStack,
+    ResolverStackStatistics,
+    resolver_stack_statistics
+}
+
+use vitte/compiler/analysis/resolution/resolver_graph.{
+    ResolverGraph,
+    ResolverGraphStatistics,
+    resolver_graph_statistics
+}
+
+use vitte/compiler/analysis/resolution/resolution_context.{
+    ResolutionContext,
+    ResolutionContextStatistics,
+    resolution_context_statistics
+}
+
+use vitte/compiler/analysis/resolution/lookup.{
+    Lookup,
+    LookupStatistics,
+    lookup_statistics
+}
+
+use vitte/compiler/analysis/resolution/lookup_cache.{
+    LookupCache,
+    LookupCacheStatistics,
+    lookup_cache_statistics
+}
+
+use vitte/compiler/analysis/resolution/name_resolution.{
+    NameResolver,
+    NameResolverStatistics,
+    name_resolver_statistics
+}
+
+use vitte/compiler/analysis/resolution/module_resolution.{
+    ModuleResolver,
+    ModuleResolutionStatistics,
+    module_resolver_statistics
+}
+
+use vitte/compiler/analysis/resolution/namespace_resolution.{
+    NamespaceResolver,
+    NamespaceResolverStatistics,
+    namespace_resolver_statistics
+}
+
+use vitte/compiler/analysis/resolution/path_resolution.{
+    PathResolver,
+    PathResolverStatistics,
+    path_resolver_statistics
+}
+
+use vitte/compiler/analysis/resolution/import_resolution.{
+    ImportResolver,
+    ImportResolverStatistics,
+    import_resolver_statistics
+}
+
+use vitte/compiler/analysis/resolution/export_resolution.{
+    ExportResolver,
+    ExportResolverStatistics,
+    export_resolver_statistics
+}
+
+use vitte/compiler/analysis/resolution/constant_resolution.{
+    ConstantResolver,
+    ConstantResolverStatistics,
+    constant_resolver_statistics
+}
+
+use vitte/compiler/analysis/resolution/field_resolution.{
+    FieldResolver,
+    FieldResolverStatistics,
+    field_resolver_statistics
+}
+
+use vitte/compiler/analysis/resolution/method_resolution.{
+    MethodResolver,
+    MethodResolverStatistics,
+    method_resolver_statistics
+}
+
+use vitte/compiler/analysis/resolution/generic_resolution.{
+    GenericResolver,
+    GenericResolverStatistics,
+    generic_resolver_statistics
+}
+
+use vitte/compiler/analysis/resolution/overload_resolution.{
+    OverloadResolver,
+    OverloadResolverStatistics,
+    overload_resolver_statistics
+}
+
+pick ResolverStatisticsHealth {
+    Empty,
+    Healthy,
+    Warning,
+    Degraded,
+    Failed
+}
+
+form ResolverStatisticsTotals {
+    resolutions: u64
+
+    resolved: u64
+    missing: u64
+    ambiguous: u64
+    inaccessible: u64
+    invalid: u64
+    failed: u64
+
+    cache_hits: u64
+    cache_misses: u64
+
+    candidates: u64
+
+    graph_nodes: usize
+    graph_edges: usize
+
+    stack_depth_max: usize
+}
+
+form ResolverStatisticsRates {
+    success_rate: f64
+    failure_rate: f64
+
+    cache_hit_rate: f64
+
+    ambiguity_rate: f64
+    missing_rate: f64
+}
+
+form ResolverStatisticsSnapshot {
+    generation: u64
+
+    totals: ResolverStatisticsTotals
+    rates: ResolverStatisticsRates
+
+    state: ResolverStateStatistics
+
+    stack: ResolverStackStatistics
+    graph: ResolverGraphStatistics
+    context: ResolutionContextStatistics
+
+    lookup: LookupStatistics
+    cache: LookupCacheStatistics
+
+    names: NameResolverStatistics
+    modules: ModuleResolutionStatistics
+    namespaces: NamespaceResolverStatistics
+    paths: PathResolverStatistics
+
+    imports: ImportResolverStatistics
+    exports: ExportResolverStatistics
+
+    constants: ConstantResolverStatistics
+    fields: FieldResolverStatistics
+    methods: MethodResolverStatistics
+    generics: GenericResolverStatistics
+    overloads: OverloadResolverStatistics
+
+    health: ResolverStatisticsHealth
+}
+
+form ResolverStatisticsHistory {
+    snapshots: [ResolverStatisticsSnapshot]
+
+    max_snapshots: usize
+}
+
+proc resolver_statistics_totals_empty()
+    -> ResolverStatisticsTotals
+{
+    give ResolverStatisticsTotals {
+        resolutions: 0,
+
+        resolved: 0,
+        missing: 0,
+        ambiguous: 0,
+        inaccessible: 0,
+        invalid: 0,
+        failed: 0,
+
+        cache_hits: 0,
+        cache_misses: 0,
+
+        candidates: 0,
+
+        graph_nodes: 0,
+        graph_edges: 0,
+
+        stack_depth_max: 0
+    };
+}
+
+proc resolver_statistics_rates_empty()
+    -> ResolverStatisticsRates
+{
+    give ResolverStatisticsRates {
+        success_rate: 0.0,
+        failure_rate: 0.0,
+
+        cache_hit_rate: 0.0,
+
+        ambiguity_rate: 0.0,
+        missing_rate: 0.0
+    };
+}
+
+proc resolver_statistics_ratio(
+    value: u64,
+    total: u64
+) -> f64 {
+    if total == 0 {
+        give 0.0;
+    }
+
+    give
+        (value as f64)
+        / (total as f64);
+}
+
+proc resolver_statistics_percent(
+    value: u64,
+    total: u64
+) -> f64 {
+    give
+        resolver_statistics_ratio(
+            value,
+            total
+        ) * 100.0;
+}
+
+proc resolver_statistics_compute_rates(
+    totals: ResolverStatisticsTotals
+) -> ResolverStatisticsRates {
+    let cache_total: u64 =
+        totals.cache_hits
+        + totals.cache_misses;
+
+    give ResolverStatisticsRates {
+        success_rate:
+            resolver_statistics_percent(
+                totals.resolved,
+                totals.resolutions
+            ),
+
+        failure_rate:
+            resolver_statistics_percent(
+                totals.failed
+                    + totals.invalid,
+                totals.resolutions
+            ),
+
+        cache_hit_rate:
+            resolver_statistics_percent(
+                totals.cache_hits,
+                cache_total
+            ),
+
+        ambiguity_rate:
+            resolver_statistics_percent(
+                totals.ambiguous,
+                totals.resolutions
+            ),
+
+        missing_rate:
+            resolver_statistics_percent(
+                totals.missing,
+                totals.resolutions
+            )
+    };
+}
+
+proc resolver_statistics_health(
+    totals: ResolverStatisticsTotals
+) -> ResolverStatisticsHealth {
+    if totals.resolutions == 0 {
+        give ResolverStatisticsHealth.Empty;
+    }
+
+    if totals.failed > 0
+        or totals.invalid > 0
+    {
+        give ResolverStatisticsHealth.Failed;
+    }
+
+    let ambiguous_rate =
+        resolver_statistics_percent(
+            totals.ambiguous,
+            totals.resolutions
+        );
+
+    let missing_rate =
+        resolver_statistics_percent(
+            totals.missing,
+            totals.resolutions
+        );
+
+    if ambiguous_rate >= 10.0
+        or missing_rate >= 25.0
+    {
+        give ResolverStatisticsHealth.Degraded;
+    }
+
+    if totals.ambiguous > 0
+        or totals.missing > 0
+        or totals.inaccessible > 0
+    {
+        give ResolverStatisticsHealth.Warning;
+    }
+
+    give ResolverStatisticsHealth.Healthy;
+}
+
+proc resolver_statistics_collect_totals(
+    lookup_stats: LookupStatistics,
+    cache_stats: LookupCacheStatistics,
+    graph_stats: ResolverGraphStatistics,
+    stack_stats: ResolverStackStatistics,
+
+    name_stats: NameResolverStatistics,
+    module_stats: ModuleResolutionStatistics,
+    namespace_stats: NamespaceResolverStatistics,
+    path_stats: PathResolverStatistics,
+
+    import_stats: ImportResolverStatistics,
+    export_stats: ExportResolverStatistics,
+
+    constant_stats: ConstantResolverStatistics,
+    field_stats: FieldResolverStatistics,
+    method_stats: MethodResolverStatistics,
+    generic_stats: GenericResolverStatistics,
+    overload_stats: OverloadResolverStatistics
+) -> ResolverStatisticsTotals {
+    let mut totals =
+        resolver_statistics_totals_empty();
+
+    set totals.resolutions =
+        name_stats.resolutions
+        + module_stats.resolutions
+        + namespace_stats.resolutions
+        + path_stats.resolutions
+        + import_stats.resolutions
+        + export_stats.resolutions
+        + constant_stats.resolutions
+        + field_stats.resolutions
+        + method_stats.resolutions
+        + generic_stats.parameter_resolutions
+        + generic_stats.argument_resolutions
+        + overload_stats.resolutions;
+
+    set totals.resolved =
+        name_stats.resolved
+        + module_stats.resolved
+        + namespace_stats.resolved
+        + path_stats.resolved
+        + import_stats.resolved
+        + export_stats.resolved
+        + constant_stats.resolved
+        + field_stats.resolved
+        + method_stats.resolved
+        + generic_stats.resolved
+        + overload_stats.resolved;
+
+    set totals.missing =
+        name_stats.missing
+        + module_stats.missing
+        + namespace_stats.missing
+        + path_stats.missing
+        + import_stats.missing_modules
+        + import_stats.missing_symbols
+        + export_stats.missing
+        + constant_stats.missing
+        + field_stats.missing
+        + method_stats.missing
+        + generic_stats.missing
+        + overload_stats.missing;
+
+    set totals.ambiguous =
+        name_stats.ambiguous
+        + module_stats.ambiguous
+        + namespace_stats.ambiguous
+        + path_stats.ambiguous
+        + import_stats.ambiguous
+        + export_stats.ambiguous
+        + constant_stats.ambiguous
+        + field_stats.ambiguous
+        + method_stats.ambiguous
+        + generic_stats.ambiguous
+        + overload_stats.ambiguous;
+
+    set totals.inaccessible =
+        import_stats.private_symbols
+        + export_stats.inaccessible
+        + constant_stats.inaccessible
+        + field_stats.inaccessible
+        + method_stats.inaccessible;
+
+    set totals.invalid =
+        name_stats.invalid
+        + module_stats.invalid
+        + namespace_stats.invalid
+        + path_stats.invalid
+        + constant_stats.invalid
+        + field_stats.invalid
+        + method_stats.invalid
+        + generic_stats.invalid;
+
+    set totals.failed =
+        import_stats.failed
+        + graph_stats.failed;
+
+    set totals.cache_hits =
+        cache_stats.hits;
+
+    set totals.cache_misses =
+        cache_stats.misses;
+
+    set totals.candidates =
+        namespace_stats.candidates
+        + overload_stats.candidates_checked;
+
+    set totals.graph_nodes =
+        graph_stats.nodes;
+
+    set totals.graph_edges =
+        graph_stats.edges;
+
+    set totals.stack_depth_max =
+        stack_stats.maximum_depth;
+
+    give totals;
+}
+
+proc resolver_statistics_snapshot(
+    generation: u64,
+    state: ref ResolverState,
+    lookup: ref Lookup,
+
+    names: ref NameResolver,
+    modules: ref ModuleResolver,
+    namespaces: ref NamespaceResolver,
+    paths: ref PathResolver,
+
+    imports: ref ImportResolver,
+    exports: ref ExportResolver,
+
+    constants: ref ConstantResolver,
+    fields: ref FieldResolver,
+    methods: ref MethodResolver,
+    generics: ref GenericResolver,
+    overloads: ref OverloadResolver
+) -> ResolverStatisticsSnapshot {
+    let state_stats =
+        resolver_state_statistics(
+            state
+        );
+
+    let stack_stats =
+        resolver_stack_statistics(
+            ref state.stack
+        );
+
+    let graph_stats =
+        resolver_graph_statistics(
+            ref state.graph
+        );
+
+    let context_stats =
+        resolution_context_statistics(
+            ref state.context
+        );
+
+    let lookup_stats =
+        lookup_statistics(
+            lookup
+        );
+
+    let cache_stats =
+        lookup_cache_statistics(
+            ref lookup.cache
+        );
+
+    let name_stats =
+        name_resolver_statistics(
+            names
+        );
+
+    let module_stats =
+        module_resolver_statistics(
+            modules
+        );
+
+    let namespace_stats =
+        namespace_resolver_statistics(
+            namespaces
+        );
+
+    let path_stats =
+        path_resolver_statistics(
+            paths
+        );
+
+    let import_stats =
+        import_resolver_statistics(
+            imports
+        );
+
+    let export_stats =
+        export_resolver_statistics(
+            exports
+        );
+
+    let constant_stats =
+        constant_resolver_statistics(
+            constants
+        );
+
+    let field_stats =
+        field_resolver_statistics(
+            fields
+        );
+
+    let method_stats =
+        method_resolver_statistics(
+            methods
+        );
+
+    let generic_stats =
+        generic_resolver_statistics(
+            generics
+        );
+
+    let overload_stats =
+        overload_resolver_statistics(
+            overloads
+        );
+
+    let totals =
+        resolver_statistics_collect_totals(
+            lookup_stats,
+            cache_stats,
+            graph_stats,
+            stack_stats,
+
+            name_stats,
+            module_stats,
+            namespace_stats,
+            path_stats,
+
+            import_stats,
+            export_stats,
+
+            constant_stats,
+            field_stats,
+            method_stats,
+            generic_stats,
+            overload_stats
+        );
+
+    give ResolverStatisticsSnapshot {
+        generation: generation,
+
+        totals: totals,
+
+        rates:
+            resolver_statistics_compute_rates(
+                totals
+            ),
+
+        state:
+            state_stats,
+
+        stack:
+            stack_stats,
+
+        graph:
+            graph_stats,
+
+        context:
+            context_stats,
+
+        lookup:
+            lookup_stats,
+
+        cache:
+            cache_stats,
+
+        names:
+            name_stats,
+
+        modules:
+            module_stats,
+
+        namespaces:
+            namespace_stats,
+
+        paths:
+            path_stats,
+
+        imports:
+            import_stats,
+
+        exports:
+            export_stats,
+
+        constants:
+            constant_stats,
+
+        fields:
+            field_stats,
+
+        methods:
+            method_stats,
+
+        generics:
+            generic_stats,
+
+        overloads:
+            overload_stats,
+
+        health:
+            resolver_statistics_health(
+                totals
+            )
+    };
+}
+
+proc resolver_statistics_history_create(
+    max_snapshots: usize
+) -> ResolverStatisticsHistory {
+    give ResolverStatisticsHistory {
+        snapshots: [],
+        max_snapshots: max_snapshots
+    };
+}
+
+proc resolver_statistics_history_default()
+    -> ResolverStatisticsHistory
+{
+    give resolver_statistics_history_create(
+        64
+    );
+}
+
+proc resolver_statistics_history_push(
+    history: ref mut ResolverStatisticsHistory,
+    snapshot: ResolverStatisticsSnapshot
+) {
+    if history.max_snapshots == 0 {
+        give;
+    }
+
+    if len(history.snapshots)
+        < history.max_snapshots
+    {
+        set history.snapshots =
+            history.snapshots
+            + [snapshot];
+
+        give;
+    }
+
+    let mut output:
+        [ResolverStatisticsSnapshot] = [];
+
+    let mut index: usize = 1;
+
+    while index < len(history.snapshots) {
+        set output =
+            output
+            + [
+                history.snapshots[index]
+            ];
+
+        set index =
+            index + 1;
+    }
+
+    set output =
+        output + [snapshot];
+
+    set history.snapshots =
+        output;
+}
+
+proc resolver_statistics_history_latest(
+    history: ref ResolverStatisticsHistory
+) -> Option<ResolverStatisticsSnapshot> {
+    if len(history.snapshots) == 0 {
+        give None;
+    }
+
+    give Some(
+        history.snapshots[
+            len(history.snapshots) - 1
+        ]
+    );
+}
+
+proc resolver_statistics_history_first(
+    history: ref ResolverStatisticsHistory
+) -> Option<ResolverStatisticsSnapshot> {
+    if len(history.snapshots) == 0 {
+        give None;
+    }
+
+    give Some(
+        history.snapshots[0]
+    );
+}
+
+proc resolver_statistics_history_count(
+    history: ref ResolverStatisticsHistory
+) -> usize {
+    give len(history.snapshots);
+}
+
+proc resolver_statistics_history_clear(
+    history: ref mut ResolverStatisticsHistory
+) {
+    set history.snapshots = [];
+}
+
+proc resolver_statistics_delta_u64(
+    current: u64,
+    previous: u64
+) -> i64 {
+    give
+        (current as i64)
+        - (previous as i64);
+}
+
+proc resolver_statistics_delta_usize(
+    current: usize,
+    previous: usize
+) -> isize {
+    give
+        (current as isize)
+        - (previous as isize);
+}
+
+form ResolverStatisticsDelta {
+    resolutions: i64
+    resolved: i64
+    missing: i64
+    ambiguous: i64
+    failed: i64
+
+    cache_hits: i64
+    cache_misses: i64
+
+    graph_nodes: isize
+    graph_edges: isize
+}
+
+proc resolver_statistics_delta(
+    previous: ResolverStatisticsSnapshot,
+    current: ResolverStatisticsSnapshot
+) -> ResolverStatisticsDelta {
+    give ResolverStatisticsDelta {
+        resolutions:
+            resolver_statistics_delta_u64(
+                current.totals.resolutions,
+                previous.totals.resolutions
+            ),
+
+        resolved:
+            resolver_statistics_delta_u64(
+                current.totals.resolved,
+                previous.totals.resolved
+            ),
+
+        missing:
+            resolver_statistics_delta_u64(
+                current.totals.missing,
+                previous.totals.missing
+            ),
+
+        ambiguous:
+            resolver_statistics_delta_u64(
+                current.totals.ambiguous,
+                previous.totals.ambiguous
+            ),
+
+        failed:
+            resolver_statistics_delta_u64(
+                current.totals.failed,
+                previous.totals.failed
+            ),
+
+        cache_hits:
+            resolver_statistics_delta_u64(
+                current.totals.cache_hits,
+                previous.totals.cache_hits
+            ),
+
+        cache_misses:
+            resolver_statistics_delta_u64(
+                current.totals.cache_misses,
+                previous.totals.cache_misses
+            ),
+
+        graph_nodes:
+            resolver_statistics_delta_usize(
+                current.totals.graph_nodes,
+                previous.totals.graph_nodes
+            ),
+
+        graph_edges:
+            resolver_statistics_delta_usize(
+                current.totals.graph_edges,
+                previous.totals.graph_edges
+            )
+    };
+}
+
+proc resolver_statistics_is_empty(
+    snapshot: ResolverStatisticsSnapshot
+) -> bool {
+    give snapshot.totals.resolutions == 0;
+}
+
+proc resolver_statistics_has_failures(
+    snapshot: ResolverStatisticsSnapshot
+) -> bool {
+    give snapshot.totals.failed > 0
+        or snapshot.totals.invalid > 0;
+}
+
+proc resolver_statistics_has_ambiguities(
+    snapshot: ResolverStatisticsSnapshot
+) -> bool {
+    give snapshot.totals.ambiguous > 0;
+}
+
+proc resolver_statistics_cache_effective(
+    snapshot: ResolverStatisticsSnapshot
+) -> bool {
+    give snapshot.totals.cache_hits
+        > snapshot.totals.cache_misses;
+}
+
+proc resolver_statistics_health_name(
+    health: ResolverStatisticsHealth
+) -> string {
+    pick health {
+        ResolverStatisticsHealth.Empty {
+            give "empty";
+        }
+
+        ResolverStatisticsHealth.Healthy {
+            give "healthy";
+        }
+
+        ResolverStatisticsHealth.Warning {
+            give "warning";
+        }
+
+        ResolverStatisticsHealth.Degraded {
+            give "degraded";
+        }
+
+        ResolverStatisticsHealth.Failed {
+            give "failed";
+        }
+    }
+
+    give "failed";
+}

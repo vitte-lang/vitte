@@ -1,0 +1,1030 @@
+space vitte/compiler/analysis/resolution/resolver
+
+export *
+
+use vitte/compiler/analysis/modules/module_database.{
+    ModuleId,
+    ModuleDatabase,
+    module_id_invalid,
+    module_id_is_valid
+}
+
+use vitte/compiler/analysis/resolution/resolution_context.{
+    ResolutionContext,
+    resolution_context_create,
+    resolution_context_set_module,
+    resolution_context_set_scope,
+    resolution_context_record_lookup,
+    resolution_context_record_failure
+}
+
+use vitte/compiler/analysis/resolution/resolver_state.{
+    ResolverState,
+    ResolverStatePhase,
+    ResolverStateStatus,
+
+    resolver_state_create,
+    resolver_state_begin,
+    resolver_state_finish,
+    resolver_state_set_phase,
+    resolver_state_begin_resolution,
+    resolver_state_complete_resolution,
+    resolver_state_fail_resolution,
+    resolver_state_should_stop
+}
+
+use vitte/compiler/analysis/resolution/resolver_stack.{
+    ResolverStackFrameKind
+}
+
+use vitte/compiler/analysis/resolution/resolver_graph.{
+    ResolverGraphNodeKind
+}
+
+use vitte/compiler/analysis/resolution/lookup_cache.{
+    LookupCache,
+    lookup_cache_create,
+    lookup_cache_clear,
+    lookup_cache_advance_generation
+}
+
+use vitte/compiler/analysis/resolution/lookup.{
+    Lookup,
+    LookupScope,
+    LookupSymbol,
+
+    lookup_create,
+    lookup_register_scope,
+    lookup_register_symbol
+}
+
+use vitte/compiler/analysis/resolution/name_resolution.{
+    NameResolver,
+    NameResolution,
+    NameResolutionKind,
+
+    name_resolver_create,
+    name_resolver_resolve
+}
+
+use vitte/compiler/analysis/resolution/module_resolution.{
+    ModuleResolver,
+    ResolvedModule,
+
+    module_resolver_create,
+    module_resolver_resolve_name,
+    module_resolver_resolve_path,
+    module_resolver_resolve_relative
+}
+
+use vitte/compiler/analysis/resolution/namespace_resolution.{
+    NamespaceResolver,
+    ResolvedNamespace,
+
+    namespace_resolver_create,
+    namespace_resolver_resolve_name,
+    namespace_resolver_resolve_qualified
+}
+
+use vitte/compiler/analysis/resolution/path_resolution.{
+    PathResolver,
+    PathResolution,
+
+    path_resolver_create,
+    path_resolver_resolve_auto
+}
+
+use vitte/compiler/analysis/resolution/scope_resolution.{
+    ScopeResolver,
+    ScopeResolution,
+    ScopeDefinition,
+
+    scope_resolver_create,
+    scope_resolver_register,
+    scope_resolver_resolve
+}
+
+use vitte/compiler/analysis/resolution/symbol_resolution.{
+    SymbolResolver,
+    ResolvedSymbol,
+    SymbolResolutionKind,
+
+    symbol_resolver_create,
+    symbol_resolver_register,
+    symbol_resolver_resolve
+}
+
+use vitte/compiler/analysis/resolution/visibility_resolution.{
+    VisibilityResolver,
+    VisibilityContext,
+    VisibilityResolution,
+
+    visibility_resolver_create,
+    visibility_resolver_check
+}
+
+use vitte/compiler/analysis/resolution/constant_resolution.{
+    ConstantResolver,
+    ConstantResolution,
+
+    constant_resolver_create,
+    constant_resolver_resolve
+}
+
+use vitte/compiler/analysis/resolution/field_resolution.{
+    FieldResolver,
+    ResolvedField,
+
+    field_resolver_create,
+    field_resolver_resolve
+}
+
+use vitte/compiler/analysis/resolution/method_resolution.{
+    MethodResolver,
+    ResolvedMethod,
+
+    method_resolver_create,
+    method_resolver_resolve_exact,
+    method_resolver_resolve_with_deref_chain
+}
+
+use vitte/compiler/analysis/resolution/generic_resolution.{
+    GenericResolver,
+
+    generic_resolver_create
+}
+
+use vitte/compiler/analysis/resolution/trait_resolution.{
+    TraitResolver,
+    TraitResolution,
+
+    trait_resolver_create,
+    trait_resolver_resolve_simple
+}
+
+use vitte/compiler/analysis/resolution/overload_resolution.{
+    OverloadResolver,
+    OverloadArgument,
+    OverloadResolution,
+
+    overload_resolver_create,
+    overload_resolver_resolve
+}
+
+pick ResolverStatus {
+    Created,
+    Ready,
+    Resolving,
+    Complete,
+    Failed
+}
+
+form ResolverConfig {
+    enable_cache: bool
+
+    track_state: bool
+
+    resolve_visibility: bool
+    resolve_traits: bool
+    resolve_overloads: bool
+
+    fail_fast: bool
+}
+
+form ResolverStatistics {
+    resolutions: u64
+
+    names: u64
+    modules: u64
+    namespaces: u64
+    paths: u64
+    symbols: u64
+
+    constants: u64
+    fields: u64
+    methods: u64
+    traits: u64
+    overloads: u64
+
+    resolved: u64
+    failed: u64
+}
+
+form Resolver {
+    config: ResolverConfig
+
+    status: ResolverStatus
+
+    context: ResolutionContext
+    state: ResolverState
+
+    lookup: Lookup
+
+    scopes: ScopeResolver
+    names: NameResolver
+    symbols: SymbolResolver
+
+    modules: ModuleResolver
+    namespaces: NamespaceResolver
+    paths: PathResolver
+
+    visibility: VisibilityResolver
+
+    constants: ConstantResolver
+    fields: FieldResolver
+    methods: MethodResolver
+    generics: GenericResolver
+    traits: TraitResolver
+    overloads: OverloadResolver
+
+    generation: u64
+
+    statistics: ResolverStatistics
+}
+
+proc resolver_config_default()
+    -> ResolverConfig
+{
+    give ResolverConfig {
+        enable_cache: true,
+
+        track_state: true,
+
+        resolve_visibility: true,
+        resolve_traits: true,
+        resolve_overloads: true,
+
+        fail_fast: false
+    };
+}
+
+proc resolver_statistics_empty()
+    -> ResolverStatistics
+{
+    give ResolverStatistics {
+        resolutions: 0,
+
+        names: 0,
+        modules: 0,
+        namespaces: 0,
+        paths: 0,
+        symbols: 0,
+
+        constants: 0,
+        fields: 0,
+        methods: 0,
+        traits: 0,
+        overloads: 0,
+
+        resolved: 0,
+        failed: 0
+    };
+}
+
+proc resolver_create_with_config(
+    config: ResolverConfig
+) -> Resolver {
+    let cache =
+        lookup_cache_create();
+
+    give Resolver {
+        config: config,
+
+        status:
+            ResolverStatus.Ready,
+
+        context:
+            resolution_context_create(),
+
+        state:
+            resolver_state_create(),
+
+        lookup:
+            lookup_create(cache),
+
+        scopes:
+            scope_resolver_create(),
+
+        names:
+            name_resolver_create(),
+
+        symbols:
+            symbol_resolver_create(),
+
+        modules:
+            module_resolver_create(),
+
+        namespaces:
+            namespace_resolver_create(),
+
+        paths:
+            path_resolver_create(),
+
+        visibility:
+            visibility_resolver_create(),
+
+        constants:
+            constant_resolver_create(),
+
+        fields:
+            field_resolver_create(),
+
+        methods:
+            method_resolver_create(),
+
+        generics:
+            generic_resolver_create(),
+
+        traits:
+            trait_resolver_create(),
+
+        overloads:
+            overload_resolver_create(),
+
+        generation:
+            1,
+
+        statistics:
+            resolver_statistics_empty()
+    };
+}
+
+proc resolver_create()
+    -> Resolver
+{
+    give resolver_create_with_config(
+        resolver_config_default()
+    );
+}
+
+proc resolver_begin(
+    resolver: ref mut Resolver,
+    module: ModuleId,
+    scope: ScopeId
+) -> bool {
+    if not module_id_is_valid(module) {
+        set resolver.status =
+            ResolverStatus.Failed;
+
+        set resolver.statistics.failed =
+            resolver.statistics.failed + 1;
+
+        give false;
+    }
+
+    if not resolution_context_set_module(
+        ref mut resolver.context,
+        module
+    ) {
+        set resolver.status =
+            ResolverStatus.Failed;
+
+        give false;
+    }
+
+    resolution_context_set_scope(
+        ref mut resolver.context,
+        scope
+    );
+
+    if resolver.config.track_state {
+        if not resolver_state_begin(
+            ref mut resolver.state,
+            module,
+            scope
+        ) {
+            set resolver.status =
+                ResolverStatus.Failed;
+
+            give false;
+        }
+    }
+
+    set resolver.status =
+        ResolverStatus.Resolving;
+
+    give true;
+}
+
+proc resolver_finish(
+    resolver: ref mut Resolver
+) -> bool {
+    if resolver.config.track_state {
+        if not resolver_state_finish(
+            ref mut resolver.state
+        ) {
+            set resolver.status =
+                ResolverStatus.Failed;
+
+            give false;
+        }
+    }
+
+    set resolver.status =
+        ResolverStatus.Complete;
+
+    give true;
+}
+
+proc resolver_record(
+    resolver: ref mut Resolver,
+    success: bool
+) {
+    set resolver.statistics.resolutions =
+        resolver.statistics.resolutions + 1;
+
+    if success {
+        set resolver.statistics.resolved =
+            resolver.statistics.resolved + 1;
+    } else {
+        set resolver.statistics.failed =
+            resolver.statistics.failed + 1;
+
+        resolution_context_record_failure(
+            ref mut resolver.context
+        );
+    }
+}
+
+proc resolver_register_scope(
+    resolver: ref mut Resolver,
+    scope: ScopeDefinition
+) -> bool {
+    let error =
+        scope_resolver_register(
+            ref mut resolver.scopes,
+            scope
+        );
+
+    give error.kind
+        == ScopeResolutionErrorKind.None;
+}
+
+proc resolver_register_lookup_scope(
+    resolver: ref mut Resolver,
+    scope: LookupScope
+) {
+    lookup_register_scope(
+        ref mut resolver.lookup,
+        scope
+    );
+}
+
+proc resolver_register_lookup_symbol(
+    resolver: ref mut Resolver,
+    symbol: LookupSymbol
+) -> bool {
+    give lookup_register_symbol(
+        ref mut resolver.lookup,
+        symbol
+    );
+}
+
+proc resolver_resolve_name(
+    resolver: ref mut Resolver,
+    scope: ScopeId,
+    name: string,
+    kind: NameResolutionKind
+) -> NameResolution {
+    set resolver.statistics.names =
+        resolver.statistics.names + 1;
+
+    resolution_context_record_lookup(
+        ref mut resolver.context
+    );
+
+    if resolver.config.track_state {
+        resolver_state_set_phase(
+            ref mut resolver.state,
+            ResolverStatePhase.Names
+        );
+
+        if not resolver_state_begin_resolution(
+            ref mut resolver.state,
+            ResolverStackFrameKind.Name,
+            ResolverGraphNodeKind.Name,
+            name,
+            Some(scope),
+            None,
+            None
+        ) {
+            let result =
+                name_resolution_invalid(
+                    scope,
+                    name,
+                    kind,
+                    NameResolutionErrorKind.InvalidScope,
+                    "could not begin name resolution"
+                );
+
+            resolver_record(
+                resolver,
+                false
+            );
+
+            give result;
+        }
+    }
+
+    let result =
+        name_resolver_resolve(
+            ref mut resolver.names,
+            ref mut resolver.lookup,
+            scope,
+            name,
+            kind
+        );
+
+    if resolver.config.track_state {
+        resolver_state_complete_resolution(
+            ref mut resolver.state,
+            result.found
+        );
+    }
+
+    resolver_record(
+        resolver,
+        result.found
+    );
+
+    give result;
+}
+
+proc resolver_resolve_symbol(
+    resolver: ref mut Resolver,
+    scope: ScopeId,
+    name: string,
+    kind: SymbolResolutionKind
+) -> ResolvedSymbol {
+    set resolver.statistics.symbols =
+        resolver.statistics.symbols + 1;
+
+    let result =
+        symbol_resolver_resolve(
+            ref mut resolver.symbols,
+            ref mut resolver.names,
+            ref mut resolver.lookup,
+            scope,
+            name,
+            kind
+        );
+
+    resolver_record(
+        resolver,
+        result.found
+    );
+
+    give result;
+}
+
+proc resolver_resolve_module_name(
+    resolver: ref mut Resolver,
+    database: ref ModuleDatabase,
+    name: string
+) -> ResolvedModule {
+    set resolver.statistics.modules =
+        resolver.statistics.modules + 1;
+
+    let result =
+        module_resolver_resolve_name(
+            ref mut resolver.modules,
+            database,
+            name
+        );
+
+    resolver_record(
+        resolver,
+        result.found
+    );
+
+    give result;
+}
+
+proc resolver_resolve_module_path(
+    resolver: ref mut Resolver,
+    database: ref ModuleDatabase,
+    path: string
+) -> ResolvedModule {
+    set resolver.statistics.modules =
+        resolver.statistics.modules + 1;
+
+    let result =
+        module_resolver_resolve_path(
+            ref mut resolver.modules,
+            database,
+            path
+        );
+
+    resolver_record(
+        resolver,
+        result.found
+    );
+
+    give result;
+}
+
+proc resolver_resolve_namespace(
+    resolver: ref mut Resolver,
+    name: string
+) -> ResolvedNamespace {
+    set resolver.statistics.namespaces =
+        resolver.statistics.namespaces + 1;
+
+    let result =
+        namespace_resolver_resolve_name(
+            ref mut resolver.namespaces,
+            name
+        );
+
+    resolver_record(
+        resolver,
+        result.found
+    );
+
+    give result;
+}
+
+proc resolver_resolve_namespace_qualified(
+    resolver: ref mut Resolver,
+    name: string
+) -> ResolvedNamespace {
+    set resolver.statistics.namespaces =
+        resolver.statistics.namespaces + 1;
+
+    let result =
+        namespace_resolver_resolve_qualified(
+            ref mut resolver.namespaces,
+            name
+        );
+
+    resolver_record(
+        resolver,
+        result.found
+    );
+
+    give result;
+}
+
+proc resolver_resolve_path(
+    resolver: ref mut Resolver,
+    database: ref ModuleDatabase,
+    scope: ScopeId,
+    path: string
+) -> PathResolution {
+    set resolver.statistics.paths =
+        resolver.statistics.paths + 1;
+
+    if resolver.config.track_state {
+        resolver_state_set_phase(
+            ref mut resolver.state,
+            ResolverStatePhase.Paths
+        );
+    }
+
+    let result =
+        path_resolver_resolve_auto(
+            ref mut resolver.paths,
+            ref mut resolver.modules,
+            ref mut resolver.namespaces,
+            ref mut resolver.names,
+            ref mut resolver.lookup,
+            database,
+            scope,
+            path
+        );
+
+    resolver_record(
+        resolver,
+        result.found
+    );
+
+    give result;
+}
+
+proc resolver_resolve_constant(
+    resolver: ref mut Resolver,
+    name: string,
+    allow_private: bool,
+    allow_package: bool
+) -> ConstantResolution {
+    set resolver.statistics.constants =
+        resolver.statistics.constants + 1;
+
+    let result =
+        constant_resolver_resolve(
+            ref mut resolver.constants,
+            name,
+            allow_private,
+            allow_package
+        );
+
+    resolver_record(
+        resolver,
+        result.found
+    );
+
+    give result;
+}
+
+proc resolver_resolve_field(
+    resolver: ref mut Resolver,
+    owner: TypeId,
+    name: string,
+    allow_private: bool,
+    allow_package: bool
+) -> ResolvedField {
+    set resolver.statistics.fields =
+        resolver.statistics.fields + 1;
+
+    if resolver.config.track_state {
+        resolver_state_set_phase(
+            ref mut resolver.state,
+            ResolverStatePhase.Members
+        );
+    }
+
+    let result =
+        field_resolver_resolve(
+            ref mut resolver.fields,
+            owner,
+            name,
+            allow_private,
+            allow_package
+        );
+
+    resolver_record(
+        resolver,
+        result.found
+    );
+
+    give result;
+}
+
+proc resolver_resolve_method(
+    resolver: ref mut Resolver,
+    receiver: TypeId,
+    name: string,
+    mutable: bool,
+    owned: bool
+) -> ResolvedMethod {
+    set resolver.statistics.methods =
+        resolver.statistics.methods + 1;
+
+    if resolver.config.track_state {
+        resolver_state_set_phase(
+            ref mut resolver.state,
+            ResolverStatePhase.Members
+        );
+    }
+
+    let result =
+        method_resolver_resolve_exact(
+            ref mut resolver.methods,
+            receiver,
+            name,
+            mutable,
+            owned
+        );
+
+    resolver_record(
+        resolver,
+        result.found
+    );
+
+    give result;
+}
+
+proc resolver_resolve_method_with_deref(
+    resolver: ref mut Resolver,
+    receiver: TypeId,
+    deref_types: [TypeId],
+    name: string,
+    mutable: bool,
+    owned: bool
+) -> ResolvedMethod {
+    set resolver.statistics.methods =
+        resolver.statistics.methods + 1;
+
+    let result =
+        method_resolver_resolve_with_deref_chain(
+            ref mut resolver.methods,
+            receiver,
+            deref_types,
+            name,
+            mutable,
+            owned
+        );
+
+    resolver_record(
+        resolver,
+        result.found
+    );
+
+    give result;
+}
+
+proc resolver_resolve_trait(
+    resolver: ref mut Resolver,
+    trait_definition: DefId,
+    subject_type: TypeId
+) -> TraitResolution {
+    set resolver.statistics.traits =
+        resolver.statistics.traits + 1;
+
+    if not resolver.config.resolve_traits {
+        let result =
+            trait_resolution_invalid(
+                Some(trait_definition),
+                subject_type,
+                TraitResolutionErrorKind.InvalidTrait,
+                "trait resolution is disabled"
+            );
+
+        resolver_record(
+            resolver,
+            false
+        );
+
+        give result;
+    }
+
+    if resolver.config.track_state {
+        resolver_state_set_phase(
+            ref mut resolver.state,
+            ResolverStatePhase.Types
+        );
+    }
+
+    let result =
+        trait_resolver_resolve_simple(
+            ref mut resolver.traits,
+            trait_definition,
+            subject_type
+        );
+
+    resolver_record(
+        resolver,
+        result.found
+    );
+
+    give result;
+}
+
+proc resolver_resolve_overload(
+    resolver: ref mut Resolver,
+    name: string,
+    arguments: [OverloadArgument]
+) -> OverloadResolution {
+    set resolver.statistics.overloads =
+        resolver.statistics.overloads + 1;
+
+    if not resolver.config.resolve_overloads {
+        let result =
+            overload_resolution_invalid(
+                name,
+                "overload resolution is disabled"
+            );
+
+        resolver_record(
+            resolver,
+            false
+        );
+
+        give result;
+    }
+
+    if resolver.config.track_state {
+        resolver_state_set_phase(
+            ref mut resolver.state,
+            ResolverStatePhase.Overloads
+        );
+    }
+
+    let result =
+        overload_resolver_resolve(
+            ref mut resolver.overloads,
+            name,
+            arguments
+        );
+
+    resolver_record(
+        resolver,
+        result.found
+    );
+
+    give result;
+}
+
+proc resolver_check_visibility(
+    resolver: ref mut Resolver,
+    visibility: CandidateVisibility,
+    context: VisibilityContext
+) -> VisibilityResolution {
+    if not resolver.config.resolve_visibility {
+        give visibility_resolution_allowed(
+            visibility
+        );
+    }
+
+    give visibility_resolver_check(
+        ref mut resolver.visibility,
+        visibility,
+        context
+    );
+}
+
+proc resolver_resolve_scope(
+    resolver: ref mut Resolver,
+    scope: ScopeId
+) -> ScopeResolution {
+    give scope_resolver_resolve(
+        ref mut resolver.scopes,
+        scope
+    );
+}
+
+proc resolver_invalidate(
+    resolver: ref mut Resolver
+) {
+    set resolver.generation =
+        resolver.generation + 1;
+
+    lookup_cache_advance_generation(
+        ref mut resolver.lookup.cache
+    );
+
+    set resolver.status =
+        ResolverStatus.Ready;
+}
+
+proc resolver_clear_cache(
+    resolver: ref mut Resolver
+) {
+    lookup_cache_clear(
+        ref mut resolver.lookup.cache
+    );
+}
+
+proc resolver_reset_statistics(
+    resolver: ref mut Resolver
+) {
+    set resolver.statistics =
+        resolver_statistics_empty();
+}
+
+proc resolver_statistics(
+    resolver: ref Resolver
+) -> ResolverStatistics {
+    give resolver.statistics;
+}
+
+proc resolver_is_ready(
+    resolver: ref Resolver
+) -> bool {
+    give resolver.status
+        == ResolverStatus.Ready
+        or resolver.status
+        == ResolverStatus.Complete;
+}
+
+proc resolver_is_resolving(
+    resolver: ref Resolver
+) -> bool {
+    give resolver.status
+        == ResolverStatus.Resolving;
+}
+
+proc resolver_has_failed(
+    resolver: ref Resolver
+) -> bool {
+    give resolver.status
+        == ResolverStatus.Failed;
+}
+
+proc resolver_status_name(
+    status: ResolverStatus
+) -> string {
+    pick status {
+        ResolverStatus.Created {
+            give "created";
+        }
+
+        ResolverStatus.Ready {
+            give "ready";
+        }
+
+        ResolverStatus.Resolving {
+            give "resolving";
+        }
+
+        ResolverStatus.Complete {
+            give "complete";
+        }
+
+        ResolverStatus.Failed {
+            give "failed";
+        }
+    }
+
+    give "failed";
+}

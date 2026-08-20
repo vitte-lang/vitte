@@ -1,0 +1,806 @@
+space vitte/compiler/analysis/resolution/resolution_result
+
+export *
+
+use vitte/compiler/analysis/modules/module_database.{
+    ModuleId,
+    module_id_invalid,
+    module_id_is_valid
+}
+
+use vitte/compiler/analysis/resolution/candidate.{
+    Candidate
+}
+
+pick ResolutionResultKind {
+    Unknown,
+    Name,
+    Module,
+    Namespace,
+    Path,
+    Import,
+    Export,
+    Constant,
+    Field,
+    Method,
+    Generic,
+    Attribute,
+    Overload
+}
+
+pick ResolutionResultState {
+    Unresolved,
+    Resolving,
+    Resolved,
+    Missing,
+    Ambiguous,
+    Inaccessible,
+    Invalid,
+    Failed
+}
+
+pick ResolutionFailureKind {
+    None,
+
+    EmptyInput,
+    InvalidContext,
+    InvalidScope,
+    InvalidModule,
+
+    NotFound,
+    Ambiguous,
+    Inaccessible,
+
+    TypeMismatch,
+    ArityMismatch,
+    ConstraintFailure,
+
+    InvalidDefinition,
+    Internal
+}
+
+form ResolutionFailure {
+    kind: ResolutionFailureKind
+
+    subject: string
+    message: string
+}
+
+form ResolutionValue {
+    definition: Option<DefId>
+    type_id: Option<TypeId>
+    module: Option<ModuleId>
+    symbol: Option<SymbolId>
+}
+
+form ResolutionResult {
+    kind: ResolutionResultKind
+    state: ResolutionResultState
+
+    subject: string
+
+    value: ResolutionValue
+
+    candidate: Option<Candidate>
+    candidates: [Candidate]
+
+    failures: [ResolutionFailure]
+
+    generation: u64
+
+    cached: bool
+    synthetic: bool
+
+    valid: bool
+}
+
+form ResolutionResultStatistics {
+    total: usize
+
+    resolved: usize
+    missing: usize
+    ambiguous: usize
+    inaccessible: usize
+    invalid: usize
+    failed: usize
+}
+
+proc resolution_failure_none()
+    -> ResolutionFailure
+{
+    give ResolutionFailure {
+        kind: ResolutionFailureKind.None,
+        subject: "",
+        message: ""
+    };
+}
+
+proc resolution_failure(
+    kind: ResolutionFailureKind,
+    subject: string,
+    message: string
+) -> ResolutionFailure {
+    give ResolutionFailure {
+        kind: kind,
+        subject: subject,
+        message: message
+    };
+}
+
+proc resolution_value_empty()
+    -> ResolutionValue
+{
+    give ResolutionValue {
+        definition: None,
+        type_id: None,
+        module: None,
+        symbol: None
+    };
+}
+
+proc resolution_value_definition(
+    definition: DefId
+) -> ResolutionValue {
+    give ResolutionValue {
+        definition:
+            Some(definition),
+
+        type_id:
+            None,
+
+        module:
+            None,
+
+        symbol:
+            None
+    };
+}
+
+proc resolution_value_typed(
+    definition: DefId,
+    type_id: TypeId
+) -> ResolutionValue {
+    give ResolutionValue {
+        definition:
+            Some(definition),
+
+        type_id:
+            Some(type_id),
+
+        module:
+            None,
+
+        symbol:
+            None
+    };
+}
+
+proc resolution_value_module(
+    module: ModuleId
+) -> ResolutionValue {
+    give ResolutionValue {
+        definition: None,
+        type_id: None,
+
+        module:
+            Some(module),
+
+        symbol:
+            None
+    };
+}
+
+proc resolution_value_symbol(
+    definition: DefId,
+    symbol: SymbolId
+) -> ResolutionValue {
+    give ResolutionValue {
+        definition:
+            Some(definition),
+
+        type_id:
+            None,
+
+        module:
+            None,
+
+        symbol:
+            Some(symbol)
+    };
+}
+
+proc resolution_result_create(
+    kind: ResolutionResultKind,
+    subject: string
+) -> ResolutionResult {
+    give ResolutionResult {
+        kind: kind,
+
+        state:
+            ResolutionResultState.Unresolved,
+
+        subject:
+            subject,
+
+        value:
+            resolution_value_empty(),
+
+        candidate:
+            None,
+
+        candidates:
+            [],
+
+        failures:
+            [],
+
+        generation:
+            0,
+
+        cached:
+            false,
+
+        synthetic:
+            false,
+
+        valid:
+            false
+    };
+}
+
+proc resolution_result_resolving(
+    kind: ResolutionResultKind,
+    subject: string
+) -> ResolutionResult {
+    let mut result =
+        resolution_result_create(
+            kind,
+            subject
+        );
+
+    set result.state =
+        ResolutionResultState.Resolving;
+
+    give result;
+}
+
+proc resolution_result_resolved(
+    kind: ResolutionResultKind,
+    subject: string,
+    value: ResolutionValue
+) -> ResolutionResult {
+    let mut result =
+        resolution_result_create(
+            kind,
+            subject
+        );
+
+    set result.state =
+        ResolutionResultState.Resolved;
+
+    set result.value =
+        value;
+
+    set result.valid =
+        true;
+
+    give result;
+}
+
+proc resolution_result_resolved_candidate(
+    kind: ResolutionResultKind,
+    subject: string,
+    value: ResolutionValue,
+    candidate: Candidate
+) -> ResolutionResult {
+    let mut result =
+        resolution_result_resolved(
+            kind,
+            subject,
+            value
+        );
+
+    set result.candidate =
+        Some(candidate);
+
+    set result.candidates =
+        [candidate];
+
+    give result;
+}
+
+proc resolution_result_missing(
+    kind: ResolutionResultKind,
+    subject: string
+) -> ResolutionResult {
+    let mut result =
+        resolution_result_create(
+            kind,
+            subject
+        );
+
+    set result.state =
+        ResolutionResultState.Missing;
+
+    set result.failures =
+        [
+            resolution_failure(
+                ResolutionFailureKind.NotFound,
+                subject,
+                "resolution target was not found"
+            )
+        ];
+
+    give result;
+}
+
+proc resolution_result_ambiguous(
+    kind: ResolutionResultKind,
+    subject: string,
+    candidates: [Candidate]
+) -> ResolutionResult {
+    let mut result =
+        resolution_result_create(
+            kind,
+            subject
+        );
+
+    set result.state =
+        ResolutionResultState.Ambiguous;
+
+    set result.candidates =
+        candidates;
+
+    set result.failures =
+        [
+            resolution_failure(
+                ResolutionFailureKind.Ambiguous,
+                subject,
+                "resolution produced multiple equally valid candidates"
+            )
+        ];
+
+    give result;
+}
+
+proc resolution_result_inaccessible(
+    kind: ResolutionResultKind,
+    subject: string,
+    candidate: Option<Candidate>
+) -> ResolutionResult {
+    let mut result =
+        resolution_result_create(
+            kind,
+            subject
+        );
+
+    set result.state =
+        ResolutionResultState.Inaccessible;
+
+    set result.candidate =
+        candidate;
+
+    set result.failures =
+        [
+            resolution_failure(
+                ResolutionFailureKind.Inaccessible,
+                subject,
+                "resolution target is not accessible from this context"
+            )
+        ];
+
+    give result;
+}
+
+proc resolution_result_invalid(
+    kind: ResolutionResultKind,
+    subject: string,
+    failure_kind: ResolutionFailureKind,
+    message: string
+) -> ResolutionResult {
+    let mut result =
+        resolution_result_create(
+            kind,
+            subject
+        );
+
+    set result.state =
+        ResolutionResultState.Invalid;
+
+    set result.failures =
+        [
+            resolution_failure(
+                failure_kind,
+                subject,
+                message
+            )
+        ];
+
+    give result;
+}
+
+proc resolution_result_failed(
+    kind: ResolutionResultKind,
+    subject: string,
+    message: string
+) -> ResolutionResult {
+    let mut result =
+        resolution_result_create(
+            kind,
+            subject
+        );
+
+    set result.state =
+        ResolutionResultState.Failed;
+
+    set result.failures =
+        [
+            resolution_failure(
+                ResolutionFailureKind.Internal,
+                subject,
+                message
+            )
+        ];
+
+    give result;
+}
+
+proc resolution_result_push_failure(
+    result: ref mut ResolutionResult,
+    failure: ResolutionFailure
+) {
+    set result.failures =
+        result.failures + [failure];
+
+    if failure.kind
+        != ResolutionFailureKind.None
+    {
+        set result.valid =
+            false;
+    }
+}
+
+proc resolution_result_set_candidate(
+    result: ref mut ResolutionResult,
+    candidate: Candidate
+) {
+    set result.candidate =
+        Some(candidate);
+}
+
+proc resolution_result_set_candidates(
+    result: ref mut ResolutionResult,
+    candidates: [Candidate]
+) {
+    set result.candidates =
+        candidates;
+}
+
+proc resolution_result_set_definition(
+    result: ref mut ResolutionResult,
+    definition: DefId
+) {
+    set result.value.definition =
+        Some(definition);
+}
+
+proc resolution_result_set_type(
+    result: ref mut ResolutionResult,
+    type_id: TypeId
+) {
+    set result.value.type_id =
+        Some(type_id);
+}
+
+proc resolution_result_set_module(
+    result: ref mut ResolutionResult,
+    module: ModuleId
+) {
+    set result.value.module =
+        Some(module);
+}
+
+proc resolution_result_set_symbol(
+    result: ref mut ResolutionResult,
+    symbol: SymbolId
+) {
+    set result.value.symbol =
+        Some(symbol);
+}
+
+proc resolution_result_mark_cached(
+    result: ref mut ResolutionResult
+) {
+    set result.cached =
+        true;
+}
+
+proc resolution_result_mark_synthetic(
+    result: ref mut ResolutionResult
+) {
+    set result.synthetic =
+        true;
+}
+
+proc resolution_result_set_generation(
+    result: ref mut ResolutionResult,
+    generation: u64
+) {
+    set result.generation =
+        generation;
+}
+
+proc resolution_result_has_definition(
+    result: ResolutionResult
+) -> bool {
+    pick result.value.definition {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc resolution_result_has_type(
+    result: ResolutionResult
+) -> bool {
+    pick result.value.type_id {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc resolution_result_has_module(
+    result: ResolutionResult
+) -> bool {
+    pick result.value.module {
+        Some(value) {
+            give module_id_is_valid(
+                value
+            );
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc resolution_result_has_symbol(
+    result: ResolutionResult
+) -> bool {
+    pick result.value.symbol {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc resolution_result_is_resolved(
+    result: ResolutionResult
+) -> bool {
+    give result.state
+        == ResolutionResultState.Resolved
+        and result.valid;
+}
+
+proc resolution_result_is_missing(
+    result: ResolutionResult
+) -> bool {
+    give result.state
+        == ResolutionResultState.Missing;
+}
+
+proc resolution_result_is_ambiguous(
+    result: ResolutionResult
+) -> bool {
+    give result.state
+        == ResolutionResultState.Ambiguous;
+}
+
+proc resolution_result_is_inaccessible(
+    result: ResolutionResult
+) -> bool {
+    give result.state
+        == ResolutionResultState.Inaccessible;
+}
+
+proc resolution_result_has_error(
+    result: ResolutionResult
+) -> bool {
+    give result.state
+        == ResolutionResultState.Invalid
+        or result.state
+        == ResolutionResultState.Failed
+        or result.state
+        == ResolutionResultState.Ambiguous
+        or result.state
+        == ResolutionResultState.Inaccessible;
+}
+
+proc resolution_result_failure_count(
+    result: ResolutionResult
+) -> usize {
+    give len(result.failures);
+}
+
+proc resolution_result_candidate_count(
+    result: ResolutionResult
+) -> usize {
+    give len(result.candidates);
+}
+
+proc resolution_result_statistics_empty()
+    -> ResolutionResultStatistics
+{
+    give ResolutionResultStatistics {
+        total: 0,
+
+        resolved: 0,
+        missing: 0,
+        ambiguous: 0,
+        inaccessible: 0,
+        invalid: 0,
+        failed: 0
+    };
+}
+
+proc resolution_result_statistics(
+    results: [ResolutionResult]
+) -> ResolutionResultStatistics {
+    let mut statistics =
+        resolution_result_statistics_empty();
+
+    statistics.total =
+        len(results);
+
+    for result in results {
+        pick result.state {
+            ResolutionResultState.Resolved {
+                set statistics.resolved =
+                    statistics.resolved + 1;
+            }
+
+            ResolutionResultState.Missing {
+                set statistics.missing =
+                    statistics.missing + 1;
+            }
+
+            ResolutionResultState.Ambiguous {
+                set statistics.ambiguous =
+                    statistics.ambiguous + 1;
+            }
+
+            ResolutionResultState.Inaccessible {
+                set statistics.inaccessible =
+                    statistics.inaccessible + 1;
+            }
+
+            ResolutionResultState.Invalid {
+                set statistics.invalid =
+                    statistics.invalid + 1;
+            }
+
+            ResolutionResultState.Failed {
+                set statistics.failed =
+                    statistics.failed + 1;
+            }
+
+            _ {}
+        }
+    }
+
+    give statistics;
+}
+
+proc resolution_result_kind_name(
+    kind: ResolutionResultKind
+) -> string {
+    pick kind {
+        ResolutionResultKind.Unknown {
+            give "unknown";
+        }
+
+        ResolutionResultKind.Name {
+            give "name";
+        }
+
+        ResolutionResultKind.Module {
+            give "module";
+        }
+
+        ResolutionResultKind.Namespace {
+            give "namespace";
+        }
+
+        ResolutionResultKind.Path {
+            give "path";
+        }
+
+        ResolutionResultKind.Import {
+            give "import";
+        }
+
+        ResolutionResultKind.Export {
+            give "export";
+        }
+
+        ResolutionResultKind.Constant {
+            give "constant";
+        }
+
+        ResolutionResultKind.Field {
+            give "field";
+        }
+
+        ResolutionResultKind.Method {
+            give "method";
+        }
+
+        ResolutionResultKind.Generic {
+            give "generic";
+        }
+
+        ResolutionResultKind.Attribute {
+            give "attribute";
+        }
+
+        ResolutionResultKind.Overload {
+            give "overload";
+        }
+    }
+
+    give "unknown";
+}
+
+proc resolution_result_state_name(
+    state: ResolutionResultState
+) -> string {
+    pick state {
+        ResolutionResultState.Unresolved {
+            give "unresolved";
+        }
+
+        ResolutionResultState.Resolving {
+            give "resolving";
+        }
+
+        ResolutionResultState.Resolved {
+            give "resolved";
+        }
+
+        ResolutionResultState.Missing {
+            give "missing";
+        }
+
+        ResolutionResultState.Ambiguous {
+            give "ambiguous";
+        }
+
+        ResolutionResultState.Inaccessible {
+            give "inaccessible";
+        }
+
+        ResolutionResultState.Invalid {
+            give "invalid";
+        }
+
+        ResolutionResultState.Failed {
+            give "failed";
+        }
+    }
+
+    give "failed";
+}

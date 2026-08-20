@@ -1,0 +1,814 @@
+space vitte/compiler/analysis/scopes/scope_pattern
+
+export *
+
+use vitte/compiler/analysis/scopes/scope_id.{
+    ScopeId
+}
+
+use vitte/compiler/analysis/scopes/scope_binding.{
+    ScopeBinding,
+    ScopeBindingKind,
+    ScopeBindingState,
+    ScopeBindingTable,
+    ScopeBindingErrorKind,
+
+    scope_binding,
+    scope_binding_table_insert
+}
+
+pick ScopePatternKind {
+    Name,
+    MutableName,
+    Ignore,
+    Tuple,
+    Record,
+    Variant,
+    Array,
+    Rest,
+    Or,
+    Literal,
+    Generated
+}
+
+pick ScopePatternState {
+    Created,
+    Bound,
+    Resolved,
+    Invalidated
+}
+
+pick ScopePatternBindingMode {
+    Value,
+    Mutable,
+    Borrow,
+    BorrowMut,
+    Move
+}
+
+form ScopePatternBinding {
+    name: string
+
+    scope: ScopeId
+
+    symbol: Option<SymbolId>
+    definition: Option<DefId>
+    type_id: Option<TypeId>
+
+    mode: ScopePatternBindingMode
+
+    mutable: bool
+
+    index: usize
+}
+
+form ScopePattern {
+    scope: ScopeId
+
+    node: Option<HirId>
+
+    kind: ScopePatternKind
+    state: ScopePatternState
+
+    bindings: [ScopePatternBinding]
+
+    children: [usize]
+
+    generation: u64
+    revision: u64
+}
+
+form ScopePatternStatistics {
+    patterns: u64
+    bindings: u64
+
+    names: u64
+    ignored: u64
+    tuples: u64
+    records: u64
+    variants: u64
+    alternatives: u64
+
+    resolved: u64
+    invalidated: u64
+}
+
+form ScopePatternTable {
+    patterns: [ScopePattern]
+
+    generation: u64
+
+    statistics: ScopePatternStatistics
+}
+
+proc scope_pattern_statistics_empty()
+    -> ScopePatternStatistics
+{
+    give ScopePatternStatistics {
+        patterns: 0,
+        bindings: 0,
+
+        names: 0,
+        ignored: 0,
+        tuples: 0,
+        records: 0,
+        variants: 0,
+        alternatives: 0,
+
+        resolved: 0,
+        invalidated: 0
+    };
+}
+
+proc scope_pattern_table_create()
+    -> ScopePatternTable
+{
+    give ScopePatternTable {
+        patterns: [],
+
+        generation: 1,
+
+        statistics:
+            scope_pattern_statistics_empty()
+    };
+}
+
+proc scope_pattern(
+    scope: ScopeId,
+    kind: ScopePatternKind
+) -> ScopePattern {
+    give ScopePattern {
+        scope: scope,
+
+        node: None,
+
+        kind: kind,
+
+        state:
+            ScopePatternState.Created,
+
+        bindings: [],
+
+        children: [],
+
+        generation: 1,
+        revision: 1
+    };
+}
+
+proc scope_pattern_with_node(
+    pattern: ScopePattern,
+    node: HirId
+) -> ScopePattern {
+    let mut result =
+        pattern;
+
+    set result.node =
+        Some(node);
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_pattern_binding(
+    scope: ScopeId,
+    name: string,
+    index: usize,
+    mode: ScopePatternBindingMode
+) -> ScopePatternBinding {
+    give ScopePatternBinding {
+        name: name,
+
+        scope: scope,
+
+        symbol: None,
+        definition: None,
+        type_id: None,
+
+        mode: mode,
+
+        mutable:
+            mode == ScopePatternBindingMode.Mutable
+            or mode == ScopePatternBindingMode.BorrowMut,
+
+        index: index
+    };
+}
+
+proc scope_pattern_binding_with_symbol(
+    binding: ScopePatternBinding,
+    symbol: SymbolId
+) -> ScopePatternBinding {
+    let mut result =
+        binding;
+
+    set result.symbol =
+        Some(symbol);
+
+    give result;
+}
+
+proc scope_pattern_binding_with_definition(
+    binding: ScopePatternBinding,
+    definition: DefId
+) -> ScopePatternBinding {
+    let mut result =
+        binding;
+
+    set result.definition =
+        Some(definition);
+
+    give result;
+}
+
+proc scope_pattern_binding_with_type(
+    binding: ScopePatternBinding,
+    type_id: TypeId
+) -> ScopePatternBinding {
+    let mut result =
+        binding;
+
+    set result.type_id =
+        Some(type_id);
+
+    give result;
+}
+
+proc scope_pattern_add_binding(
+    pattern: ref mut ScopePattern,
+    binding: ScopePatternBinding
+) -> bool {
+    for current in pattern.bindings {
+        if current.name == binding.name {
+            give false;
+        }
+    }
+
+    set pattern.bindings =
+        pattern.bindings + [binding];
+
+    set pattern.revision =
+        pattern.revision + 1;
+
+    give true;
+}
+
+proc scope_pattern_add_child(
+    pattern: ref mut ScopePattern,
+    child: usize
+) {
+    set pattern.children =
+        pattern.children + [child];
+
+    set pattern.revision =
+        pattern.revision + 1;
+}
+
+proc scope_pattern_mark_bound(
+    pattern: ref mut ScopePattern
+) {
+    if pattern.state
+        == ScopePatternState.Invalidated
+    {
+        give;
+    }
+
+    set pattern.state =
+        ScopePatternState.Bound;
+
+    set pattern.revision =
+        pattern.revision + 1;
+}
+
+proc scope_pattern_mark_resolved(
+    pattern: ref mut ScopePattern
+) {
+    if pattern.state
+        == ScopePatternState.Invalidated
+    {
+        give;
+    }
+
+    set pattern.state =
+        ScopePatternState.Resolved;
+
+    set pattern.revision =
+        pattern.revision + 1;
+}
+
+proc scope_pattern_invalidate(
+    pattern: ref mut ScopePattern
+) {
+    set pattern.state =
+        ScopePatternState.Invalidated;
+
+    set pattern.revision =
+        pattern.revision + 1;
+}
+
+proc scope_pattern_is_active(
+    pattern: ScopePattern
+) -> bool {
+    give pattern.state
+        != ScopePatternState.Invalidated;
+}
+
+proc scope_pattern_binding_count(
+    pattern: ref ScopePattern
+) -> usize {
+    give len(pattern.bindings);
+}
+
+proc scope_pattern_has_bindings(
+    pattern: ref ScopePattern
+) -> bool {
+    give len(pattern.bindings) > 0;
+}
+
+proc scope_pattern_find_binding(
+    pattern: ref ScopePattern,
+    name: string
+) -> Option<ScopePatternBinding> {
+    for binding in pattern.bindings {
+        if binding.name == name {
+            give Some(binding);
+        }
+    }
+
+    give None;
+}
+
+proc scope_pattern_binding_to_scope_binding(
+    binding: ScopePatternBinding
+) -> ScopeBinding {
+    let mut result =
+        scope_binding(
+            binding.name,
+            binding.scope,
+            ScopeBindingKind.Local
+        );
+
+    set result.symbol =
+        binding.symbol;
+
+    set result.definition =
+        binding.definition;
+
+    set result.type_id =
+        binding.type_id;
+
+    set result.mutable =
+        binding.mutable;
+
+    set result.state =
+        ScopeBindingState.Defined;
+
+    give result;
+}
+
+proc scope_pattern_bind(
+    bindings: ref mut ScopeBindingTable,
+    pattern: ref ScopePattern
+) -> bool {
+    for binding in pattern.bindings {
+        let error =
+            scope_binding_table_insert(
+                bindings,
+                scope_pattern_binding_to_scope_binding(
+                    binding
+                )
+            );
+
+        if error.kind
+            != ScopeBindingErrorKind.None
+        {
+            give false;
+        }
+    }
+
+    give true;
+}
+
+proc scope_pattern_table_record_kind(
+    table: ref mut ScopePatternTable,
+    kind: ScopePatternKind
+) {
+    pick kind {
+        ScopePatternKind.Name
+        | ScopePatternKind.MutableName {
+            set table.statistics.names =
+                table.statistics.names + 1;
+        }
+
+        ScopePatternKind.Ignore {
+            set table.statistics.ignored =
+                table.statistics.ignored + 1;
+        }
+
+        ScopePatternKind.Tuple {
+            set table.statistics.tuples =
+                table.statistics.tuples + 1;
+        }
+
+        ScopePatternKind.Record {
+            set table.statistics.records =
+                table.statistics.records + 1;
+        }
+
+        ScopePatternKind.Variant {
+            set table.statistics.variants =
+                table.statistics.variants + 1;
+        }
+
+        ScopePatternKind.Or {
+            set table.statistics.alternatives =
+                table.statistics.alternatives + 1;
+        }
+
+        _ {}
+    }
+}
+
+proc scope_pattern_table_insert(
+    table: ref mut ScopePatternTable,
+    pattern: ScopePattern
+) -> usize {
+    let mut value =
+        pattern;
+
+    set value.generation =
+        table.generation;
+
+    let index =
+        len(table.patterns);
+
+    set table.patterns =
+        table.patterns + [value];
+
+    set table.statistics.patterns =
+        table.statistics.patterns + 1;
+
+    set table.statistics.bindings =
+        table.statistics.bindings
+        + len(value.bindings);
+
+    scope_pattern_table_record_kind(
+        table,
+        value.kind
+    );
+
+    give index;
+}
+
+proc scope_pattern_table_get(
+    table: ref ScopePatternTable,
+    index: usize
+) -> Option<ScopePattern> {
+    if index >= len(table.patterns) {
+        give None;
+    }
+
+    give Some(
+        table.patterns[index]
+    );
+}
+
+proc scope_pattern_table_get_mut(
+    table: ref mut ScopePatternTable,
+    index: usize
+) -> Option<ref mut ScopePattern> {
+    if index >= len(table.patterns) {
+        give None;
+    }
+
+    give Some(
+        ref mut table.patterns[index]
+    );
+}
+
+proc scope_pattern_table_find_hir(
+    table: ref ScopePatternTable,
+    node: HirId
+) -> Option<usize> {
+    let mut index: usize = 0;
+
+    while index < len(table.patterns) {
+        pick table.patterns[index].node {
+            Some(current) {
+                if current == node
+                    and scope_pattern_is_active(
+                        table.patterns[index]
+                    )
+                {
+                    give Some(index);
+                }
+            }
+
+            None {}
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give None;
+}
+
+proc scope_pattern_table_for_scope(
+    table: ref ScopePatternTable,
+    scope: ScopeId
+) -> [ScopePattern] {
+    let mut result:
+        [ScopePattern] = [];
+
+    for pattern in table.patterns {
+        if pattern.scope == scope
+            and scope_pattern_is_active(
+                pattern
+            )
+        {
+            set result =
+                result + [pattern];
+        }
+    }
+
+    give result;
+}
+
+proc scope_pattern_table_bind_scope(
+    table: ref ScopePatternTable,
+    bindings: ref mut ScopeBindingTable,
+    scope: ScopeId
+) -> bool {
+    for pattern in table.patterns {
+        if pattern.scope != scope
+            or not scope_pattern_is_active(
+                pattern
+            )
+        {
+            continue;
+        }
+
+        if not scope_pattern_bind(
+            bindings,
+            ref pattern
+        ) {
+            give false;
+        }
+    }
+
+    give true;
+}
+
+proc scope_pattern_table_mark_resolved(
+    table: ref mut ScopePatternTable,
+    index: usize
+) -> bool {
+    let pattern =
+        scope_pattern_table_get_mut(
+            table,
+            index
+        );
+
+    pick pattern {
+        Some(value) {
+            if value.state
+                == ScopePatternState.Invalidated
+            {
+                give false;
+            }
+
+            scope_pattern_mark_resolved(
+                value
+            );
+
+            set table.statistics.resolved =
+                table.statistics.resolved + 1;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_pattern_table_invalidate(
+    table: ref mut ScopePatternTable,
+    index: usize
+) -> bool {
+    let pattern =
+        scope_pattern_table_get_mut(
+            table,
+            index
+        );
+
+    pick pattern {
+        Some(value) {
+            if value.state
+                == ScopePatternState.Invalidated
+            {
+                give false;
+            }
+
+            scope_pattern_invalidate(
+                value
+            );
+
+            set table.statistics.invalidated =
+                table.statistics.invalidated + 1;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_pattern_table_invalidate_scope(
+    table: ref mut ScopePatternTable,
+    scope: ScopeId
+) -> usize {
+    let mut count: usize = 0;
+    let mut index: usize = 0;
+
+    while index < len(table.patterns) {
+        if table.patterns[index].scope
+            == scope
+            and table.patterns[index].state
+                != ScopePatternState.Invalidated
+        {
+            scope_pattern_invalidate(
+                ref mut table.patterns[index]
+            );
+
+            set count =
+                count + 1;
+        }
+
+        set index =
+            index + 1;
+    }
+
+    set table.statistics.invalidated =
+        table.statistics.invalidated
+        + count;
+
+    give count;
+}
+
+proc scope_pattern_table_advance_generation(
+    table: ref mut ScopePatternTable
+) -> u64 {
+    set table.generation =
+        table.generation + 1;
+
+    give table.generation;
+}
+
+proc scope_pattern_table_clear(
+    table: ref mut ScopePatternTable
+) {
+    set table.patterns = [];
+
+    set table.generation =
+        table.generation + 1;
+}
+
+proc scope_pattern_table_statistics(
+    table: ref ScopePatternTable
+) -> ScopePatternStatistics {
+    give table.statistics;
+}
+
+proc scope_pattern_table_reset_statistics(
+    table: ref mut ScopePatternTable
+) {
+    set table.statistics =
+        scope_pattern_statistics_empty();
+}
+
+proc scope_pattern_kind_name(
+    kind: ScopePatternKind
+) -> string {
+    pick kind {
+        ScopePatternKind.Name {
+            give "name";
+        }
+
+        ScopePatternKind.MutableName {
+            give "mutable-name";
+        }
+
+        ScopePatternKind.Ignore {
+            give "ignore";
+        }
+
+        ScopePatternKind.Tuple {
+            give "tuple";
+        }
+
+        ScopePatternKind.Record {
+            give "record";
+        }
+
+        ScopePatternKind.Variant {
+            give "variant";
+        }
+
+        ScopePatternKind.Array {
+            give "array";
+        }
+
+        ScopePatternKind.Rest {
+            give "rest";
+        }
+
+        ScopePatternKind.Or {
+            give "or";
+        }
+
+        ScopePatternKind.Literal {
+            give "literal";
+        }
+
+        ScopePatternKind.Generated {
+            give "generated";
+        }
+    }
+
+    give "generated";
+}
+
+proc scope_pattern_binding_mode_name(
+    mode: ScopePatternBindingMode
+) -> string {
+    pick mode {
+        ScopePatternBindingMode.Value {
+            give "value";
+        }
+
+        ScopePatternBindingMode.Mutable {
+            give "mutable";
+        }
+
+        ScopePatternBindingMode.Borrow {
+            give "borrow";
+        }
+
+        ScopePatternBindingMode.BorrowMut {
+            give "borrow-mut";
+        }
+
+        ScopePatternBindingMode.Move {
+            give "move";
+        }
+    }
+
+    give "value";
+}
+
+// let (x, y) = point
+//      |  |
+//      |  +---- ScopePatternBinding("y")
+//      |
+//      +------- ScopePatternBinding("x")
+//
+// match value {
+//     Some(x) {
+//          |
+//          +---- binding x visible only in this arm scope
+//     }
+// }
+//
+// pattern HIR
+//     |
+//     v
+// ScopePattern
+//     |
+//     +-- nested patterns
+//     +-- bindings
+//     +-- binding modes
+//     |
+//     v
+// ScopeBindingTable
+//     |
+//     v
+// lexical lookup
+//
+// scope_pattern.vit
+//     = which names a pattern introduces
+//
+// frontend/HIR pattern representation
+//     = actual pattern syntax and structure
+//
+// typeck
+//     = checks pattern/type compatibility
+//
+// borrowck
+//     = validates borrow/move semantics

@@ -1,0 +1,1067 @@
+space vitte/compiler/analysis/scopes/scope_function
+
+export *
+
+use vitte/compiler/analysis/scopes/scope_binding.{
+    ScopeBinding,
+    ScopeBindingKind,
+    ScopeBindingState,
+    ScopeBindingTable,
+
+    scope_binding,
+    scope_binding_table_insert,
+    scope_binding_table_find_exact
+}
+
+use vitte/compiler/analysis/scopes/scope_frame.{
+    ScopeFrameKind
+}
+
+pick ScopeFunctionKind {
+    Procedure,
+    Method,
+    Closure,
+    Lambda,
+    Extern,
+    Intrinsic,
+    Generated
+}
+
+pick ScopeFunctionState {
+    Created,
+    Building,
+    Ready,
+    Invalidated
+}
+
+pick ScopeParameterMode {
+    Value,
+    Mutable,
+    Owned,
+    Borrow,
+    Move,
+    SelfValue,
+    SelfRef,
+    SelfMut
+}
+
+form ScopeFunctionParameter {
+    name: string
+
+    symbol: Option<SymbolId>
+    definition: Option<DefId>
+    type_id: Option<TypeId>
+
+    mode: ScopeParameterMode
+
+    index: usize
+
+    mutable: bool
+}
+
+form ScopeFunctionGeneric {
+    name: string
+
+    definition: DefId
+
+    type_id: Option<TypeId>
+
+    index: usize
+}
+
+form ScopeFunctionCapture {
+    name: string
+
+    source_scope: ScopeId
+
+    symbol: SymbolId
+    definition: Option<DefId>
+    type_id: Option<TypeId>
+
+    mutable: bool
+    moved: bool
+}
+
+form ScopeFunction {
+    definition: DefId
+
+    scope: ScopeId
+    body_scope: ScopeId
+
+    parent_scope: Option<ScopeId>
+
+    kind: ScopeFunctionKind
+    state: ScopeFunctionState
+
+    parameters: [ScopeFunctionParameter]
+    generics: [ScopeFunctionGeneric]
+    captures: [ScopeFunctionCapture]
+
+    return_type: Option<TypeId>
+
+    has_self: bool
+    variadic: bool
+    async: bool
+    unsafe: bool
+
+    generation: u64
+    revision: u64
+}
+
+form ScopeFunctionStatistics {
+    functions: u64
+
+    parameters: u64
+    generics: u64
+    captures: u64
+
+    methods: u64
+    closures: u64
+
+    invalidated: u64
+}
+
+form ScopeFunctionTable {
+    functions: [ScopeFunction]
+
+    generation: u64
+
+    statistics: ScopeFunctionStatistics
+}
+
+proc scope_function_statistics_empty()
+    -> ScopeFunctionStatistics
+{
+    give ScopeFunctionStatistics {
+        functions: 0,
+
+        parameters: 0,
+        generics: 0,
+        captures: 0,
+
+        methods: 0,
+        closures: 0,
+
+        invalidated: 0
+    };
+}
+
+proc scope_function_table_create()
+    -> ScopeFunctionTable
+{
+    give ScopeFunctionTable {
+        functions: [],
+
+        generation: 1,
+
+        statistics:
+            scope_function_statistics_empty()
+    };
+}
+
+proc scope_function(
+    definition: DefId,
+    scope: ScopeId,
+    body_scope: ScopeId,
+    parent_scope: Option<ScopeId>,
+    kind: ScopeFunctionKind
+) -> ScopeFunction {
+    give ScopeFunction {
+        definition: definition,
+
+        scope: scope,
+        body_scope: body_scope,
+
+        parent_scope: parent_scope,
+
+        kind: kind,
+
+        state:
+            ScopeFunctionState.Created,
+
+        parameters: [],
+        generics: [],
+        captures: [],
+
+        return_type: None,
+
+        has_self: false,
+        variadic: false,
+        async: false,
+        unsafe: false,
+
+        generation: 1,
+        revision: 1
+    };
+}
+
+proc scope_function_parameter(
+    name: string,
+    index: usize,
+    mode: ScopeParameterMode
+) -> ScopeFunctionParameter {
+    give ScopeFunctionParameter {
+        name: name,
+
+        symbol: None,
+        definition: None,
+        type_id: None,
+
+        mode: mode,
+
+        index: index,
+
+        mutable:
+            mode == ScopeParameterMode.Mutable
+            or mode == ScopeParameterMode.SelfMut
+    };
+}
+
+proc scope_function_parameter_with_symbol(
+    parameter: ScopeFunctionParameter,
+    symbol: SymbolId
+) -> ScopeFunctionParameter {
+    let mut result =
+        parameter;
+
+    set result.symbol =
+        Some(symbol);
+
+    give result;
+}
+
+proc scope_function_parameter_with_definition(
+    parameter: ScopeFunctionParameter,
+    definition: DefId
+) -> ScopeFunctionParameter {
+    let mut result =
+        parameter;
+
+    set result.definition =
+        Some(definition);
+
+    give result;
+}
+
+proc scope_function_parameter_with_type(
+    parameter: ScopeFunctionParameter,
+    type_id: TypeId
+) -> ScopeFunctionParameter {
+    let mut result =
+        parameter;
+
+    set result.type_id =
+        Some(type_id);
+
+    give result;
+}
+
+proc scope_function_generic(
+    name: string,
+    definition: DefId,
+    index: usize
+) -> ScopeFunctionGeneric {
+    give ScopeFunctionGeneric {
+        name: name,
+
+        definition: definition,
+
+        type_id: None,
+
+        index: index
+    };
+}
+
+proc scope_function_generic_with_type(
+    generic: ScopeFunctionGeneric,
+    type_id: TypeId
+) -> ScopeFunctionGeneric {
+    let mut result =
+        generic;
+
+    set result.type_id =
+        Some(type_id);
+
+    give result;
+}
+
+proc scope_function_capture(
+    name: string,
+    source_scope: ScopeId,
+    symbol: SymbolId
+) -> ScopeFunctionCapture {
+    give ScopeFunctionCapture {
+        name: name,
+
+        source_scope: source_scope,
+
+        symbol: symbol,
+
+        definition: None,
+        type_id: None,
+
+        mutable: false,
+        moved: false
+    };
+}
+
+proc scope_function_capture_with_definition(
+    capture: ScopeFunctionCapture,
+    definition: DefId
+) -> ScopeFunctionCapture {
+    let mut result =
+        capture;
+
+    set result.definition =
+        Some(definition);
+
+    give result;
+}
+
+proc scope_function_capture_with_type(
+    capture: ScopeFunctionCapture,
+    type_id: TypeId
+) -> ScopeFunctionCapture {
+    let mut result =
+        capture;
+
+    set result.type_id =
+        Some(type_id);
+
+    give result;
+}
+
+proc scope_function_capture_mark_mutable(
+    capture: ScopeFunctionCapture
+) -> ScopeFunctionCapture {
+    let mut result =
+        capture;
+
+    set result.mutable =
+        true;
+
+    give result;
+}
+
+proc scope_function_capture_mark_moved(
+    capture: ScopeFunctionCapture
+) -> ScopeFunctionCapture {
+    let mut result =
+        capture;
+
+    set result.moved =
+        true;
+
+    give result;
+}
+
+proc scope_function_begin(
+    function: ref mut ScopeFunction
+) {
+    if function.state
+        == ScopeFunctionState.Invalidated
+    {
+        give;
+    }
+
+    set function.state =
+        ScopeFunctionState.Building;
+
+    set function.revision =
+        function.revision + 1;
+}
+
+proc scope_function_finish(
+    function: ref mut ScopeFunction
+) {
+    if function.state
+        == ScopeFunctionState.Invalidated
+    {
+        give;
+    }
+
+    set function.state =
+        ScopeFunctionState.Ready;
+
+    set function.revision =
+        function.revision + 1;
+}
+
+proc scope_function_invalidate(
+    function: ref mut ScopeFunction
+) {
+    set function.state =
+        ScopeFunctionState.Invalidated;
+
+    set function.revision =
+        function.revision + 1;
+}
+
+proc scope_function_with_return_type(
+    function: ScopeFunction,
+    type_id: TypeId
+) -> ScopeFunction {
+    let mut result =
+        function;
+
+    set result.return_type =
+        Some(type_id);
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_function_mark_variadic(
+    function: ScopeFunction
+) -> ScopeFunction {
+    let mut result =
+        function;
+
+    set result.variadic =
+        true;
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_function_mark_async(
+    function: ScopeFunction
+) -> ScopeFunction {
+    let mut result =
+        function;
+
+    set result.async =
+        true;
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_function_mark_unsafe(
+    function: ScopeFunction
+) -> ScopeFunction {
+    let mut result =
+        function;
+
+    set result.unsafe =
+        true;
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_function_parameter_exists(
+    function: ref ScopeFunction,
+    name: string
+) -> bool {
+    for parameter in function.parameters {
+        if parameter.name == name {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc scope_function_generic_exists(
+    function: ref ScopeFunction,
+    name: string
+) -> bool {
+    for generic in function.generics {
+        if generic.name == name {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc scope_function_capture_exists(
+    function: ref ScopeFunction,
+    symbol: SymbolId
+) -> bool {
+    for capture in function.captures {
+        if capture.symbol == symbol {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc scope_function_add_parameter(
+    function: ref mut ScopeFunction,
+    parameter: ScopeFunctionParameter
+) -> bool {
+    if scope_function_parameter_exists(
+        ref function,
+        parameter.name
+    ) {
+        give false;
+    }
+
+    set function.parameters =
+        function.parameters + [parameter];
+
+    pick parameter.mode {
+        ScopeParameterMode.SelfValue
+        | ScopeParameterMode.SelfRef
+        | ScopeParameterMode.SelfMut {
+            set function.has_self =
+                true;
+        }
+
+        _ {}
+    }
+
+    set function.revision =
+        function.revision + 1;
+
+    give true;
+}
+
+proc scope_function_add_generic(
+    function: ref mut ScopeFunction,
+    generic: ScopeFunctionGeneric
+) -> bool {
+    if scope_function_generic_exists(
+        ref function,
+        generic.name
+    ) {
+        give false;
+    }
+
+    set function.generics =
+        function.generics + [generic];
+
+    set function.revision =
+        function.revision + 1;
+
+    give true;
+}
+
+proc scope_function_add_capture(
+    function: ref mut ScopeFunction,
+    capture: ScopeFunctionCapture
+) -> bool {
+    if scope_function_capture_exists(
+        ref function,
+        capture.symbol
+    ) {
+        give false;
+    }
+
+    set function.captures =
+        function.captures + [capture];
+
+    set function.revision =
+        function.revision + 1;
+
+    give true;
+}
+
+proc scope_function_bind_parameter(
+    bindings: ref mut ScopeBindingTable,
+    function: ref ScopeFunction,
+    parameter: ScopeFunctionParameter
+) -> bool {
+    let kind =
+        if parameter.mode
+            == ScopeParameterMode.SelfValue
+            or parameter.mode
+            == ScopeParameterMode.SelfRef
+            or parameter.mode
+            == ScopeParameterMode.SelfMut
+        {
+            ScopeBindingKind.Parameter
+        } else {
+            ScopeBindingKind.Parameter
+        };
+
+    let mut binding =
+        scope_binding(
+            parameter.name,
+            function.scope,
+            kind
+        );
+
+    set binding.symbol =
+        parameter.symbol;
+
+    set binding.definition =
+        parameter.definition;
+
+    set binding.type_id =
+        parameter.type_id;
+
+    set binding.mutable =
+        parameter.mutable;
+
+    set binding.state =
+        ScopeBindingState.Defined;
+
+    let error =
+        scope_binding_table_insert(
+            bindings,
+            binding
+        );
+
+    give error.kind
+        == ScopeBindingErrorKind.None;
+}
+
+proc scope_function_bind_generic(
+    bindings: ref mut ScopeBindingTable,
+    function: ref ScopeFunction,
+    generic: ScopeFunctionGeneric
+) -> bool {
+    let mut binding =
+        scope_binding(
+            generic.name,
+            function.scope,
+            ScopeBindingKind.Generic
+        );
+
+    set binding.definition =
+        Some(generic.definition);
+
+    set binding.type_id =
+        generic.type_id;
+
+    set binding.state =
+        ScopeBindingState.Defined;
+
+    let error =
+        scope_binding_table_insert(
+            bindings,
+            binding
+        );
+
+    give error.kind
+        == ScopeBindingErrorKind.None;
+}
+
+proc scope_function_bind_all(
+    bindings: ref mut ScopeBindingTable,
+    function: ref ScopeFunction
+) -> bool {
+    for generic in function.generics {
+        if not scope_function_bind_generic(
+            bindings,
+            function,
+            generic
+        ) {
+            give false;
+        }
+    }
+
+    for parameter in function.parameters {
+        if not scope_function_bind_parameter(
+            bindings,
+            function,
+            parameter
+        ) {
+            give false;
+        }
+    }
+
+    give true;
+}
+
+proc scope_function_find_parameter(
+    function: ref ScopeFunction,
+    name: string
+) -> Option<ScopeFunctionParameter> {
+    for parameter in function.parameters {
+        if parameter.name == name {
+            give Some(parameter);
+        }
+    }
+
+    give None;
+}
+
+proc scope_function_find_generic(
+    function: ref ScopeFunction,
+    name: string
+) -> Option<ScopeFunctionGeneric> {
+    for generic in function.generics {
+        if generic.name == name {
+            give Some(generic);
+        }
+    }
+
+    give None;
+}
+
+proc scope_function_find_capture(
+    function: ref ScopeFunction,
+    symbol: SymbolId
+) -> Option<ScopeFunctionCapture> {
+    for capture in function.captures {
+        if capture.symbol == symbol {
+            give Some(capture);
+        }
+    }
+
+    give None;
+}
+
+proc scope_function_parameter_count(
+    function: ref ScopeFunction
+) -> usize {
+    give len(function.parameters);
+}
+
+proc scope_function_generic_count(
+    function: ref ScopeFunction
+) -> usize {
+    give len(function.generics);
+}
+
+proc scope_function_capture_count(
+    function: ref ScopeFunction
+) -> usize {
+    give len(function.captures);
+}
+
+proc scope_function_is_method(
+    function: ref ScopeFunction
+) -> bool {
+    give function.kind
+        == ScopeFunctionKind.Method;
+}
+
+proc scope_function_is_closure(
+    function: ref ScopeFunction
+) -> bool {
+    give function.kind
+        == ScopeFunctionKind.Closure
+        or function.kind
+        == ScopeFunctionKind.Lambda;
+}
+
+proc scope_function_is_ready(
+    function: ref ScopeFunction
+) -> bool {
+    give function.state
+        == ScopeFunctionState.Ready;
+}
+
+proc scope_function_has_return_type(
+    function: ref ScopeFunction
+) -> bool {
+    pick function.return_type {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_function_table_contains(
+    table: ref ScopeFunctionTable,
+    definition: DefId
+) -> bool {
+    for function in table.functions {
+        if function.definition == definition
+            and function.state
+                != ScopeFunctionState.Invalidated
+        {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc scope_function_table_insert(
+    table: ref mut ScopeFunctionTable,
+    function: ScopeFunction
+) -> bool {
+    if scope_function_table_contains(
+        ref table,
+        function.definition
+    ) {
+        give false;
+    }
+
+    let mut value =
+        function;
+
+    set value.generation =
+        table.generation;
+
+    set table.functions =
+        table.functions + [value];
+
+    set table.statistics.functions =
+        table.statistics.functions + 1;
+
+    set table.statistics.parameters =
+        table.statistics.parameters
+        + len(value.parameters);
+
+    set table.statistics.generics =
+        table.statistics.generics
+        + len(value.generics);
+
+    set table.statistics.captures =
+        table.statistics.captures
+        + len(value.captures);
+
+    if value.kind
+        == ScopeFunctionKind.Method
+    {
+        set table.statistics.methods =
+            table.statistics.methods + 1;
+    }
+
+    if value.kind
+        == ScopeFunctionKind.Closure
+        or value.kind
+        == ScopeFunctionKind.Lambda
+    {
+        set table.statistics.closures =
+            table.statistics.closures + 1;
+    }
+
+    give true;
+}
+
+proc scope_function_table_find(
+    table: ref ScopeFunctionTable,
+    definition: DefId
+) -> Option<ScopeFunction> {
+    for function in table.functions {
+        if function.definition == definition
+            and function.state
+                != ScopeFunctionState.Invalidated
+        {
+            give Some(function);
+        }
+    }
+
+    give None;
+}
+
+proc scope_function_table_find_by_scope(
+    table: ref ScopeFunctionTable,
+    scope: ScopeId
+) -> Option<ScopeFunction> {
+    for function in table.functions {
+        if function.scope == scope
+            or function.body_scope == scope
+        {
+            if function.state
+                != ScopeFunctionState.Invalidated
+            {
+                give Some(function);
+            }
+        }
+    }
+
+    give None;
+}
+
+proc scope_function_table_invalidate(
+    table: ref mut ScopeFunctionTable,
+    definition: DefId
+) -> bool {
+    let mut index: usize = 0;
+
+    while index < len(table.functions) {
+        if table.functions[index].definition
+            == definition
+        {
+            if table.functions[index].state
+                == ScopeFunctionState.Invalidated
+            {
+                give false;
+            }
+
+            scope_function_invalidate(
+                ref mut table.functions[index]
+            );
+
+            set table.statistics.invalidated =
+                table.statistics.invalidated + 1;
+
+            give true;
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give false;
+}
+
+proc scope_function_table_advance_generation(
+    table: ref mut ScopeFunctionTable
+) -> u64 {
+    set table.generation =
+        table.generation + 1;
+
+    give table.generation;
+}
+
+proc scope_function_table_clear(
+    table: ref mut ScopeFunctionTable
+) {
+    set table.functions = [];
+
+    set table.generation =
+        table.generation + 1;
+}
+
+proc scope_function_table_statistics(
+    table: ref ScopeFunctionTable
+) -> ScopeFunctionStatistics {
+    give table.statistics;
+}
+
+proc scope_function_table_reset_statistics(
+    table: ref mut ScopeFunctionTable
+) {
+    set table.statistics =
+        scope_function_statistics_empty();
+}
+
+proc scope_function_kind_name(
+    kind: ScopeFunctionKind
+) -> string {
+    pick kind {
+        ScopeFunctionKind.Procedure {
+            give "procedure";
+        }
+
+        ScopeFunctionKind.Method {
+            give "method";
+        }
+
+        ScopeFunctionKind.Closure {
+            give "closure";
+        }
+
+        ScopeFunctionKind.Lambda {
+            give "lambda";
+        }
+
+        ScopeFunctionKind.Extern {
+            give "extern";
+        }
+
+        ScopeFunctionKind.Intrinsic {
+            give "intrinsic";
+        }
+
+        ScopeFunctionKind.Generated {
+            give "generated";
+        }
+    }
+
+    give "procedure";
+}
+
+proc scope_function_state_name(
+    state: ScopeFunctionState
+) -> string {
+    pick state {
+        ScopeFunctionState.Created {
+            give "created";
+        }
+
+        ScopeFunctionState.Building {
+            give "building";
+        }
+
+        ScopeFunctionState.Ready {
+            give "ready";
+        }
+
+        ScopeFunctionState.Invalidated {
+            give "invalidated";
+        }
+    }
+
+    give "invalidated";
+}
+
+proc scope_parameter_mode_name(
+    mode: ScopeParameterMode
+) -> string {
+    pick mode {
+        ScopeParameterMode.Value {
+            give "value";
+        }
+
+        ScopeParameterMode.Mutable {
+            give "mutable";
+        }
+
+        ScopeParameterMode.Owned {
+            give "owned";
+        }
+
+        ScopeParameterMode.Borrow {
+            give "borrow";
+        }
+
+        ScopeParameterMode.Move {
+            give "move";
+        }
+
+        ScopeParameterMode.SelfValue {
+            give "self";
+        }
+
+        ScopeParameterMode.SelfRef {
+            give "self-ref";
+        }
+
+        ScopeParameterMode.SelfMut {
+            give "self-mut";
+        }
+    }
+
+    give "value";
+}
+
+// proc declaration
+//       |
+//       v
+// ScopeFunction
+//       |
+//       +-- function ScopeId
+//       +-- body ScopeId
+//       +-- parent ScopeId
+//       |
+//       +-- generic parameters
+//       |
+//       +-- parameters
+//       |      |
+//       |      +-- self
+//       |      +-- value
+//       |      +-- mut
+//       |      +-- owned
+//       |      +-- borrow
+//       |      +-- move
+//       |
+//       +-- return TypeId
+//       |
+//       +-- closure captures
+//       |
+//       v
+// ScopeBindingTable

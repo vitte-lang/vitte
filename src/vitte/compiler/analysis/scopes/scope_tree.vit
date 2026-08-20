@@ -1,0 +1,918 @@
+space vitte/compiler/analysis/scopes/scope_tree
+
+export *
+
+use vitte/compiler/analysis/scopes/scope_id.{
+    ScopeId
+}
+
+use vitte/compiler/analysis/scopes/scope_kind.{
+    ScopeKind
+}
+
+use vitte/compiler/analysis/scopes/scope_node.{
+    ScopeNode,
+    ScopeNodeState
+}
+
+use vitte/compiler/analysis/scopes/scope_table.{
+    ScopeTable,
+
+    scope_table_root,
+    scope_table_get,
+    scope_table_parent,
+    scope_table_children,
+    scope_table_depth,
+    scope_table_kind,
+    scope_table_contains_active
+}
+
+pick ScopeTreeTraversal {
+    PreOrder,
+    PostOrder,
+    BreadthFirst
+}
+
+pick ScopeTreeState {
+    Valid,
+    MissingRoot,
+    InvalidParent,
+    Cycle
+}
+
+form ScopeTreeEntry {
+    scope: ScopeId
+
+    parent: Option<ScopeId>
+
+    kind: ScopeKind
+
+    depth: usize
+
+    child_count: usize
+}
+
+form ScopeTreePath {
+    scopes: [ScopeId]
+}
+
+form ScopeTreeStatistics {
+    traversals: u64
+
+    nodes_visited: u64
+
+    roots: u64
+    leaves: u64
+
+    ancestor_queries: u64
+    descendant_queries: u64
+
+    maximum_depth: usize
+    maximum_children: usize
+
+    cycles: u64
+}
+
+form ScopeTree {
+    state: ScopeTreeState
+
+    statistics: ScopeTreeStatistics
+}
+
+proc scope_tree_statistics_empty()
+    -> ScopeTreeStatistics
+{
+    give ScopeTreeStatistics {
+        traversals: 0,
+
+        nodes_visited: 0,
+
+        roots: 0,
+        leaves: 0,
+
+        ancestor_queries: 0,
+        descendant_queries: 0,
+
+        maximum_depth: 0,
+        maximum_children: 0,
+
+        cycles: 0
+    };
+}
+
+proc scope_tree_create()
+    -> ScopeTree
+{
+    give ScopeTree {
+        state:
+            ScopeTreeState.Valid,
+
+        statistics:
+            scope_tree_statistics_empty()
+    };
+}
+
+proc scope_tree_entry(
+    table: ref ScopeTable,
+    scope: ScopeId
+) -> Option<ScopeTreeEntry> {
+    let node =
+        scope_table_get(
+            table,
+            scope
+        );
+
+    pick node {
+        None {
+            give None;
+        }
+
+        Some(value) {
+            let children =
+                scope_table_children(
+                    table,
+                    scope
+                );
+
+            give Some(
+                ScopeTreeEntry {
+                    scope:
+                        scope,
+
+                    parent:
+                        value.parent,
+
+                    kind:
+                        value.kind,
+
+                    depth:
+                        value.depth,
+
+                    child_count:
+                        len(children)
+                }
+            );
+        }
+    }
+}
+
+proc scope_tree_root(
+    table: ref ScopeTable
+) -> Option<ScopeId> {
+    give scope_table_root(
+        table
+    );
+}
+
+proc scope_tree_parent(
+    table: ref ScopeTable,
+    scope: ScopeId
+) -> Option<ScopeId> {
+    give scope_table_parent(
+        table,
+        scope
+    );
+}
+
+proc scope_tree_children(
+    table: ref ScopeTable,
+    scope: ScopeId
+) -> [ScopeId] {
+    give scope_table_children(
+        table,
+        scope
+    );
+}
+
+proc scope_tree_has_children(
+    table: ref ScopeTable,
+    scope: ScopeId
+) -> bool {
+    give len(
+        scope_table_children(
+            table,
+            scope
+        )
+    ) > 0;
+}
+
+proc scope_tree_is_leaf(
+    table: ref ScopeTable,
+    scope: ScopeId
+) -> bool {
+    give len(
+        scope_table_children(
+            table,
+            scope
+        )
+    ) == 0;
+}
+
+proc scope_tree_is_root(
+    table: ref ScopeTable,
+    scope: ScopeId
+) -> bool {
+    pick scope_table_root(
+        table
+    ) {
+        Some(root) {
+            give root == scope;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_tree_depth(
+    table: ref ScopeTable,
+    scope: ScopeId
+) -> Option<usize> {
+    give scope_table_depth(
+        table,
+        scope
+    );
+}
+
+proc scope_tree_ancestors(
+    tree: ref mut ScopeTree,
+    table: ref ScopeTable,
+    scope: ScopeId
+) -> [ScopeId] {
+    set tree.statistics.ancestor_queries =
+        tree.statistics.ancestor_queries + 1;
+
+    let mut result:
+        [ScopeId] = [];
+
+    let mut visited:
+        [ScopeId] = [];
+
+    let mut current =
+        scope_table_parent(
+            table,
+            scope
+        );
+
+    loop {
+        pick current {
+            None {
+                break;
+            }
+
+            Some(value) {
+                for seen in visited {
+                    if seen == value {
+                        set tree.state =
+                            ScopeTreeState.Cycle;
+
+                        set tree.statistics.cycles =
+                            tree.statistics.cycles + 1;
+
+                        give result;
+                    }
+                }
+
+                set visited =
+                    visited + [value];
+
+                set result =
+                    result + [value];
+
+                set current =
+                    scope_table_parent(
+                        table,
+                        value
+                    );
+            }
+        }
+    }
+
+    give result;
+}
+
+proc scope_tree_is_ancestor(
+    tree: ref mut ScopeTree,
+    table: ref ScopeTable,
+    ancestor: ScopeId,
+    child: ScopeId
+) -> bool {
+    if ancestor == child {
+        give true;
+    }
+
+    let ancestors =
+        scope_tree_ancestors(
+            tree,
+            table,
+            child
+        );
+
+    for current in ancestors {
+        if current == ancestor {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc scope_tree_descendants(
+    tree: ref mut ScopeTree,
+    table: ref ScopeTable,
+    scope: ScopeId
+) -> [ScopeId] {
+    set tree.statistics.descendant_queries =
+        tree.statistics.descendant_queries + 1;
+
+    let mut result:
+        [ScopeId] = [];
+
+    let mut queue:
+        [ScopeId] = [];
+
+    let children =
+        scope_table_children(
+            table,
+            scope
+        );
+
+    for child in children {
+        set queue =
+            queue + [child];
+    }
+
+    let mut index: usize = 0;
+
+    while index < len(queue) {
+        let current =
+            queue[index];
+
+        set result =
+            result + [current];
+
+        let descendants =
+            scope_table_children(
+                table,
+                current
+            );
+
+        for child in descendants {
+            let mut seen =
+                false;
+
+            for existing in result {
+                if existing == child {
+                    set seen =
+                        true;
+
+                    break;
+                }
+            }
+
+            if not seen {
+                set queue =
+                    queue + [child];
+            }
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give result;
+}
+
+proc scope_tree_is_descendant(
+    tree: ref mut ScopeTree,
+    table: ref ScopeTable,
+    child: ScopeId,
+    ancestor: ScopeId
+) -> bool {
+    give scope_tree_is_ancestor(
+        tree,
+        table,
+        ancestor,
+        child
+    );
+}
+
+proc scope_tree_subtree_size(
+    tree: ref mut ScopeTree,
+    table: ref ScopeTable,
+    scope: ScopeId
+) -> usize {
+    give len(
+        scope_tree_descendants(
+            tree,
+            table,
+            scope
+        )
+    ) + 1;
+}
+
+proc scope_tree_path_to_root(
+    tree: ref mut ScopeTree,
+    table: ref ScopeTable,
+    scope: ScopeId
+) -> ScopeTreePath {
+    let mut scopes:
+        [ScopeId] = [scope];
+
+    let ancestors =
+        scope_tree_ancestors(
+            tree,
+            table,
+            scope
+        );
+
+    for ancestor in ancestors {
+        set scopes =
+            scopes + [ancestor];
+    }
+
+    give ScopeTreePath {
+        scopes: scopes
+    };
+}
+
+proc scope_tree_path_from_root(
+    tree: ref mut ScopeTree,
+    table: ref ScopeTable,
+    scope: ScopeId
+) -> ScopeTreePath {
+    let reverse =
+        scope_tree_path_to_root(
+            tree,
+            table,
+            scope
+        );
+
+    let mut result:
+        [ScopeId] = [];
+
+    let mut index =
+        len(reverse.scopes);
+
+    while index > 0 {
+        set index =
+            index - 1;
+
+        set result =
+            result + [
+                reverse.scopes[index]
+            ];
+    }
+
+    give ScopeTreePath {
+        scopes: result
+    };
+}
+
+proc scope_tree_nearest_common_ancestor(
+    tree: ref mut ScopeTree,
+    table: ref ScopeTable,
+    left: ScopeId,
+    right: ScopeId
+) -> Option<ScopeId> {
+    if left == right {
+        give Some(left);
+    }
+
+    let left_path =
+        scope_tree_path_from_root(
+            tree,
+            table,
+            left
+        );
+
+    let right_path =
+        scope_tree_path_from_root(
+            tree,
+            table,
+            right
+        );
+
+    let count =
+        if len(left_path.scopes)
+            < len(right_path.scopes)
+        {
+            len(left_path.scopes)
+        } else {
+            len(right_path.scopes)
+        };
+
+    let mut result:
+        Option<ScopeId> = None;
+
+    let mut index: usize = 0;
+
+    while index < count {
+        if left_path.scopes[index]
+            != right_path.scopes[index]
+        {
+            break;
+        }
+
+        set result =
+            Some(
+                left_path.scopes[index]
+            );
+
+        set index =
+            index + 1;
+    }
+
+    give result;
+}
+
+proc scope_tree_preorder_visit(
+    tree: ref mut ScopeTree,
+    table: ref ScopeTable,
+    scope: ScopeId,
+    result: ref mut [ScopeId]
+) {
+    set result =
+        result + [scope];
+
+    set tree.statistics.nodes_visited =
+        tree.statistics.nodes_visited + 1;
+
+    let children =
+        scope_table_children(
+            table,
+            scope
+        );
+
+    if len(children)
+        > tree.statistics.maximum_children
+    {
+        set tree.statistics.maximum_children =
+            len(children);
+    }
+
+    if len(children) == 0 {
+        set tree.statistics.leaves =
+            tree.statistics.leaves + 1;
+    }
+
+    let depth =
+        scope_table_depth(
+            table,
+            scope
+        );
+
+    pick depth {
+        Some(value) {
+            if value
+                > tree.statistics.maximum_depth
+            {
+                set tree.statistics.maximum_depth =
+                    value;
+            }
+        }
+
+        None {}
+    }
+
+    for child in children {
+        scope_tree_preorder_visit(
+            tree,
+            table,
+            child,
+            result
+        );
+    }
+}
+
+proc scope_tree_postorder_visit(
+    tree: ref mut ScopeTree,
+    table: ref ScopeTable,
+    scope: ScopeId,
+    result: ref mut [ScopeId]
+) {
+    let children =
+        scope_table_children(
+            table,
+            scope
+        );
+
+    for child in children {
+        scope_tree_postorder_visit(
+            tree,
+            table,
+            child,
+            result
+        );
+    }
+
+    set result =
+        result + [scope];
+
+    set tree.statistics.nodes_visited =
+        tree.statistics.nodes_visited + 1;
+}
+
+proc scope_tree_breadth_first(
+    tree: ref mut ScopeTree,
+    table: ref ScopeTable,
+    root: ScopeId
+) -> [ScopeId] {
+    let mut result:
+        [ScopeId] = [];
+
+    let mut queue:
+        [ScopeId] = [root];
+
+    let mut index: usize = 0;
+
+    while index < len(queue) {
+        let current =
+            queue[index];
+
+        set result =
+            result + [current];
+
+        set tree.statistics.nodes_visited =
+            tree.statistics.nodes_visited + 1;
+
+        let children =
+            scope_table_children(
+                table,
+                current
+            );
+
+        for child in children {
+            set queue =
+                queue + [child];
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give result;
+}
+
+proc scope_tree_traverse(
+    tree: ref mut ScopeTree,
+    table: ref ScopeTable,
+    root: ScopeId,
+    traversal: ScopeTreeTraversal
+) -> [ScopeId] {
+    set tree.statistics.traversals =
+        tree.statistics.traversals + 1;
+
+    let mut result:
+        [ScopeId] = [];
+
+    pick traversal {
+        ScopeTreeTraversal.PreOrder {
+            scope_tree_preorder_visit(
+                tree,
+                table,
+                root,
+                ref mut result
+            );
+        }
+
+        ScopeTreeTraversal.PostOrder {
+            scope_tree_postorder_visit(
+                tree,
+                table,
+                root,
+                ref mut result
+            );
+        }
+
+        ScopeTreeTraversal.BreadthFirst {
+            give scope_tree_breadth_first(
+                tree,
+                table,
+                root
+            );
+        }
+    }
+
+    give result;
+}
+
+proc scope_tree_find_kind(
+    tree: ref mut ScopeTree,
+    table: ref ScopeTable,
+    root: ScopeId,
+    kind: ScopeKind
+) -> [ScopeId] {
+    let scopes =
+        scope_tree_traverse(
+            tree,
+            table,
+            root,
+            ScopeTreeTraversal.PreOrder
+        );
+
+    let mut result:
+        [ScopeId] = [];
+
+    for scope in scopes {
+        let current =
+            scope_table_kind(
+                table,
+                scope
+            );
+
+        pick current {
+            Some(value) {
+                if value == kind {
+                    set result =
+                        result + [scope];
+                }
+            }
+
+            None {}
+        }
+    }
+
+    give result;
+}
+
+proc scope_tree_leaves(
+    tree: ref mut ScopeTree,
+    table: ref ScopeTable,
+    root: ScopeId
+) -> [ScopeId] {
+    let scopes =
+        scope_tree_traverse(
+            tree,
+            table,
+            root,
+            ScopeTreeTraversal.PreOrder
+        );
+
+    let mut result:
+        [ScopeId] = [];
+
+    for scope in scopes {
+        if scope_tree_is_leaf(
+            table,
+            scope
+        ) {
+            set result =
+                result + [scope];
+        }
+    }
+
+    give result;
+}
+
+proc scope_tree_validate(
+    tree: ref mut ScopeTree,
+    table: ref ScopeTable
+) -> bool {
+    let root =
+        scope_table_root(
+            table
+        );
+
+    pick root {
+        None {
+            set tree.state =
+                ScopeTreeState.MissingRoot;
+
+            give false;
+        }
+
+        Some(root_scope) {
+            set tree.statistics.roots =
+                tree.statistics.roots + 1;
+
+            let scopes =
+                scope_tree_traverse(
+                    tree,
+                    table,
+                    root_scope,
+                    ScopeTreeTraversal.PreOrder
+                );
+
+            for scope in scopes {
+                if not scope_table_contains_active(
+                    table,
+                    scope
+                ) {
+                    set tree.state =
+                        ScopeTreeState.InvalidParent;
+
+                    give false;
+                }
+
+                let parent =
+                    scope_table_parent(
+                        table,
+                        scope
+                    );
+
+                pick parent {
+                    Some(value) {
+                        if not scope_table_contains_active(
+                            table,
+                            value
+                        ) {
+                            set tree.state =
+                                ScopeTreeState.InvalidParent;
+
+                            give false;
+                        }
+                    }
+
+                    None {
+                        if scope != root_scope {
+                            set tree.state =
+                                ScopeTreeState.InvalidParent;
+
+                            give false;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    set tree.state =
+        ScopeTreeState.Valid;
+
+    give true;
+}
+
+proc scope_tree_statistics(
+    tree: ref ScopeTree
+) -> ScopeTreeStatistics {
+    give tree.statistics;
+}
+
+proc scope_tree_reset_statistics(
+    tree: ref mut ScopeTree
+) {
+    set tree.statistics =
+        scope_tree_statistics_empty();
+}
+
+proc scope_tree_state_name(
+    state: ScopeTreeState
+) -> string {
+    pick state {
+        ScopeTreeState.Valid {
+            give "valid";
+        }
+
+        ScopeTreeState.MissingRoot {
+            give "missing-root";
+        }
+
+        ScopeTreeState.InvalidParent {
+            give "invalid-parent";
+        }
+
+        ScopeTreeState.Cycle {
+            give "cycle";
+        }
+    }
+
+    give "invalid-parent";
+}
+
+// ScopeTable
+//     |
+//     v
+// ScopeTree
+//
+// root
+//  |
+//  +-- module
+//  |    |
+//  |    +-- type
+//  |    |    |
+//  |    |    +-- method
+//  |    |
+//  |    +-- procedure
+//  |         |
+//  |         +-- block
+//  |              |
+//  |              +-- loop
+//  |
+//  +-- module
+//
+// scope_tree.vit
+//     = navigation / traversal / structural queries
+//
+// scope_table.vit
+//     = canonical ScopeNode storage
+//
+// scope_child.vit
+//     = explicit parent-child relation cache
+//
+// scope_path.vit
+//     = concrete paths between scopes
+//
+// scope_parent.vit
+//     = specialized upward queries

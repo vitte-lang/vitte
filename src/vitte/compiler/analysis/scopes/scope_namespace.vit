@@ -1,0 +1,866 @@
+space vitte/compiler/analysis/scopes/scope_namespace
+
+export *
+
+use vitte/compiler/analysis/scopes/scope_id.{
+    ScopeId
+}
+
+use vitte/compiler/analysis/scopes/scope_binding.{
+    ScopeBinding,
+    ScopeBindingKind,
+    ScopeBindingState,
+    ScopeBindingTable,
+    ScopeBindingErrorKind,
+
+    scope_binding,
+    scope_binding_table_insert,
+    scope_binding_table_find_exact
+}
+
+pick ScopeNamespaceKind {
+    Value,
+    Type,
+    Trait,
+    Module,
+    Macro,
+    Generic,
+    Mixed
+}
+
+pick ScopeNamespaceState {
+    Created,
+    Active,
+    Resolved,
+    Invalidated
+}
+
+form ScopeNamespace {
+    scope: ScopeId
+
+    name: string
+
+    kind: ScopeNamespaceKind
+    state: ScopeNamespaceState
+
+    parent: Option<ScopeId>
+
+    module: Option<ModuleId>
+    owner: Option<DefId>
+
+    generation: u64
+    revision: u64
+}
+
+form ScopeNamespaceSet {
+    namespaces: [ScopeNamespace]
+}
+
+form ScopeNamespaceStatistics {
+    created: u64
+
+    value_namespaces: u64
+    type_namespaces: u64
+    trait_namespaces: u64
+    module_namespaces: u64
+    macro_namespaces: u64
+    generic_namespaces: u64
+
+    lookups: u64
+    hits: u64
+    misses: u64
+
+    invalidated: u64
+}
+
+form ScopeNamespaceTable {
+    namespaces: [ScopeNamespace]
+
+    generation: u64
+
+    statistics: ScopeNamespaceStatistics
+}
+
+proc scope_namespace_statistics_empty()
+    -> ScopeNamespaceStatistics
+{
+    give ScopeNamespaceStatistics {
+        created: 0,
+
+        value_namespaces: 0,
+        type_namespaces: 0,
+        trait_namespaces: 0,
+        module_namespaces: 0,
+        macro_namespaces: 0,
+        generic_namespaces: 0,
+
+        lookups: 0,
+        hits: 0,
+        misses: 0,
+
+        invalidated: 0
+    };
+}
+
+proc scope_namespace_table_create()
+    -> ScopeNamespaceTable
+{
+    give ScopeNamespaceTable {
+        namespaces: [],
+
+        generation: 1,
+
+        statistics:
+            scope_namespace_statistics_empty()
+    };
+}
+
+proc scope_namespace(
+    scope: ScopeId,
+    name: string,
+    kind: ScopeNamespaceKind
+) -> ScopeNamespace {
+    give ScopeNamespace {
+        scope: scope,
+
+        name: name,
+
+        kind: kind,
+
+        state:
+            ScopeNamespaceState.Created,
+
+        parent: None,
+
+        module: None,
+        owner: None,
+
+        generation: 1,
+        revision: 1
+    };
+}
+
+proc scope_namespace_with_parent(
+    value: ScopeNamespace,
+    parent: ScopeId
+) -> ScopeNamespace {
+    let mut result =
+        value;
+
+    set result.parent =
+        Some(parent);
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_namespace_with_module(
+    value: ScopeNamespace,
+    module: ModuleId
+) -> ScopeNamespace {
+    let mut result =
+        value;
+
+    set result.module =
+        Some(module);
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_namespace_with_owner(
+    value: ScopeNamespace,
+    owner: DefId
+) -> ScopeNamespace {
+    let mut result =
+        value;
+
+    set result.owner =
+        Some(owner);
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_namespace_activate(
+    value: ref mut ScopeNamespace
+) {
+    if value.state
+        == ScopeNamespaceState.Invalidated
+    {
+        give;
+    }
+
+    set value.state =
+        ScopeNamespaceState.Active;
+
+    set value.revision =
+        value.revision + 1;
+}
+
+proc scope_namespace_mark_resolved(
+    value: ref mut ScopeNamespace
+) {
+    if value.state
+        == ScopeNamespaceState.Invalidated
+    {
+        give;
+    }
+
+    set value.state =
+        ScopeNamespaceState.Resolved;
+
+    set value.revision =
+        value.revision + 1;
+}
+
+proc scope_namespace_invalidate(
+    value: ref mut ScopeNamespace
+) {
+    set value.state =
+        ScopeNamespaceState.Invalidated;
+
+    set value.revision =
+        value.revision + 1;
+}
+
+proc scope_namespace_is_active(
+    value: ScopeNamespace
+) -> bool {
+    give value.state
+        != ScopeNamespaceState.Invalidated;
+}
+
+proc scope_namespace_is_resolved(
+    value: ScopeNamespace
+) -> bool {
+    give value.state
+        == ScopeNamespaceState.Resolved;
+}
+
+proc scope_namespace_has_parent(
+    value: ScopeNamespace
+) -> bool {
+    pick value.parent {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_namespace_has_module(
+    value: ScopeNamespace
+) -> bool {
+    pick value.module {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_namespace_has_owner(
+    value: ScopeNamespace
+) -> bool {
+    pick value.owner {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_namespace_set_create()
+    -> ScopeNamespaceSet
+{
+    give ScopeNamespaceSet {
+        namespaces: []
+    };
+}
+
+proc scope_namespace_set_push(
+    set: ref mut ScopeNamespaceSet,
+    value: ScopeNamespace
+) {
+    set set.namespaces =
+        set.namespaces + [value];
+}
+
+proc scope_namespace_set_count(
+    set: ref ScopeNamespaceSet
+) -> usize {
+    give len(set.namespaces);
+}
+
+proc scope_namespace_set_is_empty(
+    set: ref ScopeNamespaceSet
+) -> bool {
+    give len(set.namespaces) == 0;
+}
+
+proc scope_namespace_table_contains(
+    table: ref ScopeNamespaceTable,
+    scope: ScopeId,
+    kind: ScopeNamespaceKind
+) -> bool {
+    for value in table.namespaces {
+        if value.scope == scope
+            and value.kind == kind
+            and scope_namespace_is_active(
+                value
+            )
+        {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc scope_namespace_table_record_kind(
+    table: ref mut ScopeNamespaceTable,
+    kind: ScopeNamespaceKind
+) {
+    pick kind {
+        ScopeNamespaceKind.Value {
+            set table.statistics.value_namespaces =
+                table.statistics.value_namespaces + 1;
+        }
+
+        ScopeNamespaceKind.Type {
+            set table.statistics.type_namespaces =
+                table.statistics.type_namespaces + 1;
+        }
+
+        ScopeNamespaceKind.Trait {
+            set table.statistics.trait_namespaces =
+                table.statistics.trait_namespaces + 1;
+        }
+
+        ScopeNamespaceKind.Module {
+            set table.statistics.module_namespaces =
+                table.statistics.module_namespaces + 1;
+        }
+
+        ScopeNamespaceKind.Macro {
+            set table.statistics.macro_namespaces =
+                table.statistics.macro_namespaces + 1;
+        }
+
+        ScopeNamespaceKind.Generic {
+            set table.statistics.generic_namespaces =
+                table.statistics.generic_namespaces + 1;
+        }
+
+        ScopeNamespaceKind.Mixed {}
+    }
+}
+
+proc scope_namespace_table_insert(
+    table: ref mut ScopeNamespaceTable,
+    value: ScopeNamespace
+) -> bool {
+    if scope_namespace_table_contains(
+        ref table,
+        value.scope,
+        value.kind
+    ) {
+        give false;
+    }
+
+    let mut result =
+        value;
+
+    set result.generation =
+        table.generation;
+
+    set table.namespaces =
+        table.namespaces + [result];
+
+    set table.statistics.created =
+        table.statistics.created + 1;
+
+    scope_namespace_table_record_kind(
+        table,
+        result.kind
+    );
+
+    give true;
+}
+
+proc scope_namespace_table_find(
+    table: ref mut ScopeNamespaceTable,
+    scope: ScopeId,
+    kind: ScopeNamespaceKind
+) -> Option<ScopeNamespace> {
+    set table.statistics.lookups =
+        table.statistics.lookups + 1;
+
+    for value in table.namespaces {
+        if value.scope == scope
+            and value.kind == kind
+            and scope_namespace_is_active(
+                value
+            )
+        {
+            set table.statistics.hits =
+                table.statistics.hits + 1;
+
+            give Some(value);
+        }
+    }
+
+    set table.statistics.misses =
+        table.statistics.misses + 1;
+
+    give None;
+}
+
+proc scope_namespace_table_find_named(
+    table: ref ScopeNamespaceTable,
+    name: string,
+    kind: ScopeNamespaceKind
+) -> Option<ScopeNamespace> {
+    for value in table.namespaces {
+        if value.name == name
+            and value.kind == kind
+            and scope_namespace_is_active(
+                value
+            )
+        {
+            give Some(value);
+        }
+    }
+
+    give None;
+}
+
+proc scope_namespace_table_for_scope(
+    table: ref ScopeNamespaceTable,
+    scope: ScopeId
+) -> ScopeNamespaceSet {
+    let mut result =
+        scope_namespace_set_create();
+
+    for value in table.namespaces {
+        if value.scope == scope
+            and scope_namespace_is_active(
+                value
+            )
+        {
+            scope_namespace_set_push(
+                ref mut result,
+                value
+            );
+        }
+    }
+
+    give result;
+}
+
+proc scope_namespace_binding_matches(
+    binding: ScopeBinding,
+    kind: ScopeNamespaceKind
+) -> bool {
+    pick kind {
+        ScopeNamespaceKind.Value {
+            give binding.kind
+                == ScopeBindingKind.Local
+                or binding.kind
+                == ScopeBindingKind.Parameter
+                or binding.kind
+                == ScopeBindingKind.Constant
+                or binding.kind
+                == ScopeBindingKind.Static
+                or binding.kind
+                == ScopeBindingKind.Global
+                or binding.kind
+                == ScopeBindingKind.Procedure
+                or binding.kind
+                == ScopeBindingKind.Method;
+        }
+
+        ScopeNamespaceKind.Type {
+            give binding.kind
+                == ScopeBindingKind.Type;
+        }
+
+        ScopeNamespaceKind.Trait {
+            give binding.kind
+                == ScopeBindingKind.Trait;
+        }
+
+        ScopeNamespaceKind.Module {
+            give binding.kind
+                == ScopeBindingKind.Module
+                or binding.kind
+                == ScopeBindingKind.Namespace;
+        }
+
+        ScopeNamespaceKind.Generic {
+            give binding.kind
+                == ScopeBindingKind.Generic;
+        }
+
+        ScopeNamespaceKind.Macro {
+            give false;
+        }
+
+        ScopeNamespaceKind.Mixed {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc scope_namespace_lookup_binding(
+    bindings: ref ScopeBindingTable,
+    scope: ScopeId,
+    name: string,
+    kind: ScopeNamespaceKind
+) -> Option<ScopeBinding> {
+    let binding =
+        scope_binding_table_find_exact(
+            bindings,
+            scope,
+            name
+        );
+
+    pick binding {
+        Some(value) {
+            if scope_namespace_binding_matches(
+                value,
+                kind
+            ) {
+                give Some(value);
+            }
+
+            give None;
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc scope_namespace_bind(
+    bindings: ref mut ScopeBindingTable,
+    namespace: ScopeNamespace,
+    definition: Option<DefId>,
+    symbol: Option<SymbolId>
+) -> bool {
+    let mut binding =
+        scope_binding(
+            namespace.name,
+            namespace.scope,
+            ScopeBindingKind.Namespace
+        );
+
+    set binding.definition =
+        definition;
+
+    set binding.symbol =
+        symbol;
+
+    set binding.state =
+        ScopeBindingState.Defined;
+
+    let error =
+        scope_binding_table_insert(
+            bindings,
+            binding
+        );
+
+    give error.kind
+        == ScopeBindingErrorKind.None;
+}
+
+proc scope_namespace_table_parent(
+    table: ref ScopeNamespaceTable,
+    scope: ScopeId,
+    kind: ScopeNamespaceKind
+) -> Option<ScopeNamespace> {
+    for value in table.namespaces {
+        if value.scope != scope
+            or value.kind != kind
+        {
+            continue;
+        }
+
+        pick value.parent {
+            None {
+                give None;
+            }
+
+            Some(parent_scope) {
+                for candidate in table.namespaces {
+                    if candidate.scope
+                        == parent_scope
+                        and candidate.kind
+                            == kind
+                        and scope_namespace_is_active(
+                            candidate
+                        )
+                    {
+                        give Some(candidate);
+                    }
+                }
+            }
+        }
+    }
+
+    give None;
+}
+
+proc scope_namespace_table_root(
+    table: ref ScopeNamespaceTable,
+    scope: ScopeId,
+    kind: ScopeNamespaceKind
+) -> Option<ScopeNamespace> {
+    let mut current:
+        Option<ScopeNamespace> = None;
+
+    for value in table.namespaces {
+        if value.scope == scope
+            and value.kind == kind
+            and scope_namespace_is_active(
+                value
+            )
+        {
+            set current =
+                Some(value);
+
+            break;
+        }
+    }
+
+    loop {
+        pick current {
+            None {
+                give None;
+            }
+
+            Some(value) {
+                pick value.parent {
+                    None {
+                        give Some(value);
+                    }
+
+                    Some(parent_scope) {
+                        set current =
+                            scope_namespace_table_find(
+                                table,
+                                parent_scope,
+                                kind
+                            );
+                    }
+                }
+            }
+        }
+    }
+
+    give None;
+}
+
+proc scope_namespace_table_invalidate(
+    table: ref mut ScopeNamespaceTable,
+    scope: ScopeId,
+    kind: ScopeNamespaceKind
+) -> bool {
+    let mut index: usize = 0;
+
+    while index < len(table.namespaces) {
+        if table.namespaces[index].scope
+            == scope
+            and table.namespaces[index].kind
+                == kind
+        {
+            if table.namespaces[index].state
+                == ScopeNamespaceState.Invalidated
+            {
+                give false;
+            }
+
+            scope_namespace_invalidate(
+                ref mut table.namespaces[index]
+            );
+
+            set table.statistics.invalidated =
+                table.statistics.invalidated + 1;
+
+            give true;
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give false;
+}
+
+proc scope_namespace_table_invalidate_scope(
+    table: ref mut ScopeNamespaceTable,
+    scope: ScopeId
+) -> usize {
+    let mut count: usize = 0;
+    let mut index: usize = 0;
+
+    while index < len(table.namespaces) {
+        if table.namespaces[index].scope
+            == scope
+            and table.namespaces[index].state
+                != ScopeNamespaceState.Invalidated
+        {
+            scope_namespace_invalidate(
+                ref mut table.namespaces[index]
+            );
+
+            set count =
+                count + 1;
+        }
+
+        set index =
+            index + 1;
+    }
+
+    set table.statistics.invalidated =
+        table.statistics.invalidated
+        + count;
+
+    give count;
+}
+
+proc scope_namespace_table_advance_generation(
+    table: ref mut ScopeNamespaceTable
+) -> u64 {
+    set table.generation =
+        table.generation + 1;
+
+    give table.generation;
+}
+
+proc scope_namespace_table_clear(
+    table: ref mut ScopeNamespaceTable
+) {
+    set table.namespaces = [];
+
+    set table.generation =
+        table.generation + 1;
+}
+
+proc scope_namespace_table_statistics(
+    table: ref ScopeNamespaceTable
+) -> ScopeNamespaceStatistics {
+    give table.statistics;
+}
+
+proc scope_namespace_table_reset_statistics(
+    table: ref mut ScopeNamespaceTable
+) {
+    set table.statistics =
+        scope_namespace_statistics_empty();
+}
+
+proc scope_namespace_kind_name(
+    kind: ScopeNamespaceKind
+) -> string {
+    pick kind {
+        ScopeNamespaceKind.Value {
+            give "value";
+        }
+
+        ScopeNamespaceKind.Type {
+            give "type";
+        }
+
+        ScopeNamespaceKind.Trait {
+            give "trait";
+        }
+
+        ScopeNamespaceKind.Module {
+            give "module";
+        }
+
+        ScopeNamespaceKind.Macro {
+            give "macro";
+        }
+
+        ScopeNamespaceKind.Generic {
+            give "generic";
+        }
+
+        ScopeNamespaceKind.Mixed {
+            give "mixed";
+        }
+    }
+
+    give "mixed";
+}
+
+proc scope_namespace_state_name(
+    state: ScopeNamespaceState
+) -> string {
+    pick state {
+        ScopeNamespaceState.Created {
+            give "created";
+        }
+
+        ScopeNamespaceState.Active {
+            give "active";
+        }
+
+        ScopeNamespaceState.Resolved {
+            give "resolved";
+        }
+
+        ScopeNamespaceState.Invalidated {
+            give "invalidated";
+        }
+    }
+
+    give "invalidated";
+}
+
+// ScopeId
+//    |
+//    +-- value namespace
+//    |      +-- locals
+//    |      +-- constants
+//    |      +-- procedures
+//    |
+//    +-- type namespace
+//    |      +-- forms
+//    |      +-- classes
+//    |      +-- aliases
+//    |
+//    +-- trait namespace
+//    |
+//    +-- module namespace
+//    |
+//    +-- generic namespace
+//           +-- T
+//           +-- const N
+//           +-- comptime X
+//
+// scope_namespace.vit
+//      |
+//      v
+// namespace_resolution.vit

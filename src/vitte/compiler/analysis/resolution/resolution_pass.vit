@@ -1,0 +1,874 @@
+space vitte/compiler/analysis/resolution/resolution_pass
+
+export *
+
+use vitte/compiler/analysis/modules/module_database.{
+    ModuleId,
+    ModuleDatabase,
+    module_id_invalid,
+    module_id_is_valid
+}
+
+use vitte/compiler/analysis/modules/module_imports.{
+    ModuleImportTable,
+    ModuleImportResolution
+}
+
+use vitte/compiler/analysis/modules/module_exports.{
+    ModuleExportTable
+}
+
+use vitte/compiler/analysis/resolution/resolution_context.{
+    ResolutionContext,
+    ResolutionContextKind,
+    ResolutionContextState,
+
+    resolution_context_create,
+    resolution_context_activate,
+    resolution_context_fail,
+    resolution_context_set_module,
+    resolution_context_set_scope,
+    resolution_context_record_lookup,
+    resolution_context_record_failure,
+    resolution_context_advance_generation,
+    resolution_context_reset
+}
+
+use vitte/compiler/analysis/resolution/lookup_cache.{
+    LookupCache,
+
+    lookup_cache_create,
+    lookup_cache_advance_generation,
+    lookup_cache_clear
+}
+
+use vitte/compiler/analysis/resolution/lookup.{
+    Lookup,
+    LookupScope,
+    LookupSymbol,
+
+    lookup_create,
+    lookup_register_scope,
+    lookup_register_symbol,
+    lookup_reset_statistics
+}
+
+use vitte/compiler/analysis/resolution/name_resolution.{
+    NameResolver,
+    NameResolution,
+    NameResolutionKind,
+
+    name_resolver_create,
+    name_resolver_resolve,
+    name_resolver_reset_statistics
+}
+
+use vitte/compiler/analysis/resolution/module_resolution.{
+    ModuleResolver,
+    ResolvedModule,
+
+    module_resolver_create,
+    module_resolver_resolve_name,
+    module_resolver_resolve_path,
+    module_resolver_reset_statistics
+}
+
+use vitte/compiler/analysis/resolution/namespace_resolution.{
+    NamespaceResolver,
+    ResolvedNamespace,
+
+    namespace_resolver_create,
+    namespace_resolver_reset_statistics
+}
+
+use vitte/compiler/analysis/resolution/path_resolution.{
+    PathResolver,
+    PathResolution,
+
+    path_resolver_create,
+    path_resolver_resolve_auto,
+    path_resolver_reset_statistics
+}
+
+use vitte/compiler/analysis/resolution/import_resolution.{
+    ImportResolver,
+
+    import_resolver_create,
+    import_resolver_resolve_all,
+    import_resolver_reset_statistics
+}
+
+use vitte/compiler/analysis/resolution/export_resolution.{
+    ExportResolver,
+
+    export_resolver_create,
+    export_resolver_reset_statistics
+}
+
+use vitte/compiler/analysis/resolution/constant_resolution.{
+    ConstantResolver,
+
+    constant_resolver_create,
+    constant_resolver_reset_statistics
+}
+
+use vitte/compiler/analysis/resolution/field_resolution.{
+    FieldResolver,
+
+    field_resolver_create,
+    field_resolver_reset_statistics
+}
+
+use vitte/compiler/analysis/resolution/method_resolution.{
+    MethodResolver,
+
+    method_resolver_create,
+    method_resolver_reset_statistics
+}
+
+use vitte/compiler/analysis/resolution/generic_resolution.{
+    GenericResolver,
+
+    generic_resolver_create,
+    generic_resolver_reset_statistics
+}
+
+use vitte/compiler/analysis/resolution/attribute_resolution.{
+    AttributeResolver,
+
+    attribute_resolver_create,
+    attribute_resolver_reset
+}
+
+use vitte/compiler/analysis/resolution/overload_resolution.{
+    OverloadResolver,
+
+    overload_resolver_create,
+    overload_resolver_reset_statistics
+}
+
+pick ResolutionPassState {
+    Created,
+    Preparing,
+    Imports,
+    Names,
+    Paths,
+    Members,
+    Complete,
+    Failed
+}
+
+pick ResolutionPassErrorKind {
+    None,
+    InvalidModule,
+    InvalidScope,
+    ImportFailure,
+    NameFailure,
+    PathFailure,
+    InternalFailure
+}
+
+form ResolutionPassError {
+    kind: ResolutionPassErrorKind
+
+    module: ModuleId
+
+    message: string
+}
+
+form ResolutionPassConfig {
+    resolve_imports: bool
+    resolve_names: bool
+    resolve_paths: bool
+    resolve_members: bool
+
+    fail_fast: bool
+
+    invalidate_cache_before_run: bool
+}
+
+form ResolutionPassStatistics {
+    runs: u64
+
+    modules: u64
+
+    imports: u64
+    names: u64
+    paths: u64
+    members: u64
+
+    resolved: u64
+    failed: u64
+}
+
+form ResolutionPassResult {
+    state: ResolutionPassState
+
+    errors: [ResolutionPassError]
+
+    resolved: usize
+    failed: usize
+
+    valid: bool
+}
+
+form ResolutionPass {
+    config: ResolutionPassConfig
+
+    state: ResolutionPassState
+
+    context: ResolutionContext
+
+    lookup: Lookup
+
+    names: NameResolver
+    modules: ModuleResolver
+    namespaces: NamespaceResolver
+    paths: PathResolver
+
+    imports: ImportResolver
+    exports: ExportResolver
+
+    constants: ConstantResolver
+    fields: FieldResolver
+    methods: MethodResolver
+    generics: GenericResolver
+    attributes: AttributeResolver
+    overloads: OverloadResolver
+
+    generation: u64
+
+    statistics: ResolutionPassStatistics
+}
+
+proc resolution_pass_config_default()
+    -> ResolutionPassConfig
+{
+    give ResolutionPassConfig {
+        resolve_imports: true,
+        resolve_names: true,
+        resolve_paths: true,
+        resolve_members: true,
+
+        fail_fast: false,
+
+        invalidate_cache_before_run: false
+    };
+}
+
+proc resolution_pass_statistics_empty()
+    -> ResolutionPassStatistics
+{
+    give ResolutionPassStatistics {
+        runs: 0,
+
+        modules: 0,
+
+        imports: 0,
+        names: 0,
+        paths: 0,
+        members: 0,
+
+        resolved: 0,
+        failed: 0
+    };
+}
+
+proc resolution_pass_error(
+    kind: ResolutionPassErrorKind,
+    module: ModuleId,
+    message: string
+) -> ResolutionPassError {
+    give ResolutionPassError {
+        kind: kind,
+        module: module,
+        message: message
+    };
+}
+
+proc resolution_pass_result()
+    -> ResolutionPassResult
+{
+    give ResolutionPassResult {
+        state:
+            ResolutionPassState.Created,
+
+        errors: [],
+
+        resolved: 0,
+        failed: 0,
+
+        valid: true
+    };
+}
+
+proc resolution_pass_create_with_config(
+    config: ResolutionPassConfig
+) -> ResolutionPass {
+    let cache: LookupCache =
+        lookup_cache_create();
+
+    give ResolutionPass {
+        config: config,
+
+        state:
+            ResolutionPassState.Created,
+
+        context:
+            resolution_context_create(),
+
+        lookup:
+            lookup_create(cache),
+
+        names:
+            name_resolver_create(),
+
+        modules:
+            module_resolver_create(),
+
+        namespaces:
+            namespace_resolver_create(),
+
+        paths:
+            path_resolver_create(),
+
+        imports:
+            import_resolver_create(),
+
+        exports:
+            export_resolver_create(),
+
+        constants:
+            constant_resolver_create(),
+
+        fields:
+            field_resolver_create(),
+
+        methods:
+            method_resolver_create(),
+
+        generics:
+            generic_resolver_create(),
+
+        attributes:
+            attribute_resolver_create(),
+
+        overloads:
+            overload_resolver_create(),
+
+        generation: 1,
+
+        statistics:
+            resolution_pass_statistics_empty()
+    };
+}
+
+proc resolution_pass_create()
+    -> ResolutionPass
+{
+    give resolution_pass_create_with_config(
+        resolution_pass_config_default()
+    );
+}
+
+proc resolution_pass_push_error(
+    result: ref mut ResolutionPassResult,
+    error: ResolutionPassError
+) {
+    set result.errors =
+        result.errors + [error];
+
+    set result.failed =
+        result.failed + 1;
+
+    set result.valid = false;
+}
+
+proc resolution_pass_should_stop(
+    pass: ref ResolutionPass,
+    result: ref ResolutionPassResult
+) -> bool {
+    give pass.config.fail_fast
+        and not result.valid;
+}
+
+proc resolution_pass_prepare(
+    pass: ref mut ResolutionPass,
+    module: ModuleId,
+    scope: ScopeId,
+    result: ref mut ResolutionPassResult
+) -> bool {
+    set pass.state =
+        ResolutionPassState.Preparing;
+
+    set result.state =
+        ResolutionPassState.Preparing;
+
+    if not module_id_is_valid(module) {
+        resolution_pass_push_error(
+            result,
+            resolution_pass_error(
+                ResolutionPassErrorKind.InvalidModule,
+                module,
+                "resolution pass received invalid module id"
+            )
+        );
+
+        set pass.state =
+            ResolutionPassState.Failed;
+
+        give false;
+    }
+
+    if pass.config.invalidate_cache_before_run {
+        lookup_cache_advance_generation(
+            ref mut pass.lookup.cache
+        );
+    }
+
+    resolution_context_reset(
+        ref mut pass.context
+    );
+
+    resolution_context_activate(
+        ref mut pass.context
+    );
+
+    if not resolution_context_set_module(
+        ref mut pass.context,
+        module
+    ) {
+        resolution_pass_push_error(
+            result,
+            resolution_pass_error(
+                ResolutionPassErrorKind.InvalidModule,
+                module,
+                "could not set resolution module"
+            )
+        );
+
+        set pass.state =
+            ResolutionPassState.Failed;
+
+        give false;
+    }
+
+    resolution_context_set_scope(
+        ref mut pass.context,
+        scope
+    );
+
+    set pass.generation =
+        pass.generation + 1;
+
+    resolution_context_advance_generation(
+        ref mut pass.context
+    );
+
+    set pass.statistics.modules =
+        pass.statistics.modules + 1;
+
+    give true;
+}
+
+proc resolution_pass_resolve_imports(
+    pass: ref mut ResolutionPass,
+    database: ref ModuleDatabase,
+    imports: ref mut ModuleImportTable,
+    exports: ref ModuleExportTable,
+    result: ref mut ResolutionPassResult
+) {
+    if not pass.config.resolve_imports {
+        give;
+    }
+
+    set pass.state =
+        ResolutionPassState.Imports;
+
+    set result.state =
+        ResolutionPassState.Imports;
+
+    let resolution:
+        ModuleImportResolution =
+        import_resolver_resolve_all(
+            ref mut pass.imports,
+            database,
+            exports,
+            imports
+        );
+
+    set pass.statistics.imports =
+        pass.statistics.imports
+        + len(resolution.imports);
+
+    set result.resolved =
+        result.resolved
+        + resolution.resolved;
+
+    if not resolution.valid {
+        set pass.statistics.failed =
+            pass.statistics.failed
+            + resolution.failed;
+
+        resolution_pass_push_error(
+            result,
+            resolution_pass_error(
+                ResolutionPassErrorKind.ImportFailure,
+                pass.context.module,
+                "one or more imports could not be resolved"
+            )
+        );
+    }
+}
+
+proc resolution_pass_resolve_name(
+    pass: ref mut ResolutionPass,
+    scope: ScopeId,
+    name: string,
+    kind: NameResolutionKind
+) -> NameResolution {
+    resolution_context_record_lookup(
+        ref mut pass.context
+    );
+
+    set pass.statistics.names =
+        pass.statistics.names + 1;
+
+    let result =
+        name_resolver_resolve(
+            ref mut pass.names,
+            ref mut pass.lookup,
+            scope,
+            name,
+            kind
+        );
+
+    if result.found {
+        set pass.statistics.resolved =
+            pass.statistics.resolved + 1;
+    } else {
+        set pass.statistics.failed =
+            pass.statistics.failed + 1;
+
+        resolution_context_record_failure(
+            ref mut pass.context
+        );
+    }
+
+    give result;
+}
+
+proc resolution_pass_resolve_path(
+    pass: ref mut ResolutionPass,
+    database: ref ModuleDatabase,
+    scope: ScopeId,
+    text: string
+) -> PathResolution {
+    resolution_context_record_lookup(
+        ref mut pass.context
+    );
+
+    set pass.statistics.paths =
+        pass.statistics.paths + 1;
+
+    let result =
+        path_resolver_resolve_auto(
+            ref mut pass.paths,
+            ref mut pass.modules,
+            ref mut pass.namespaces,
+            ref mut pass.names,
+            ref mut pass.lookup,
+            database,
+            scope,
+            text
+        );
+
+    if result.found {
+        set pass.statistics.resolved =
+            pass.statistics.resolved + 1;
+    } else {
+        set pass.statistics.failed =
+            pass.statistics.failed + 1;
+
+        resolution_context_record_failure(
+            ref mut pass.context
+        );
+    }
+
+    give result;
+}
+
+proc resolution_pass_register_scope(
+    pass: ref mut ResolutionPass,
+    scope: LookupScope
+) {
+    lookup_register_scope(
+        ref mut pass.lookup,
+        scope
+    );
+}
+
+proc resolution_pass_register_symbol(
+    pass: ref mut ResolutionPass,
+    symbol: LookupSymbol
+) -> bool {
+    give lookup_register_symbol(
+        ref mut pass.lookup,
+        symbol
+    );
+}
+
+proc resolution_pass_run(
+    pass: ref mut ResolutionPass,
+    database: ref ModuleDatabase,
+    imports: ref mut ModuleImportTable,
+    exports: ref ModuleExportTable,
+    module: ModuleId,
+    root_scope: ScopeId
+) -> ResolutionPassResult {
+    let mut result =
+        resolution_pass_result();
+
+    set pass.statistics.runs =
+        pass.statistics.runs + 1;
+
+    if not resolution_pass_prepare(
+        pass,
+        module,
+        root_scope,
+        ref mut result
+    ) {
+        set result.state =
+            ResolutionPassState.Failed;
+
+        give result;
+    }
+
+    resolution_pass_resolve_imports(
+        pass,
+        database,
+        imports,
+        exports,
+        ref mut result
+    );
+
+    if resolution_pass_should_stop(
+        ref pass,
+        ref result
+    ) {
+        set pass.state =
+            ResolutionPassState.Failed;
+
+        set result.state =
+            ResolutionPassState.Failed;
+
+        give result;
+    }
+
+    if pass.config.resolve_names {
+        set pass.state =
+            ResolutionPassState.Names;
+
+        set result.state =
+            ResolutionPassState.Names;
+    }
+
+    if pass.config.resolve_paths {
+        set pass.state =
+            ResolutionPassState.Paths;
+
+        set result.state =
+            ResolutionPassState.Paths;
+    }
+
+    if pass.config.resolve_members {
+        set pass.state =
+            ResolutionPassState.Members;
+
+        set result.state =
+            ResolutionPassState.Members;
+    }
+
+    if result.valid {
+        set pass.state =
+            ResolutionPassState.Complete;
+
+        set result.state =
+            ResolutionPassState.Complete;
+    } else {
+        set pass.state =
+            ResolutionPassState.Failed;
+
+        set result.state =
+            ResolutionPassState.Failed;
+    }
+
+    give result;
+}
+
+proc resolution_pass_invalidate(
+    pass: ref mut ResolutionPass
+) {
+    set pass.generation =
+        pass.generation + 1;
+
+    lookup_cache_advance_generation(
+        ref mut pass.lookup.cache
+    );
+
+    resolution_context_advance_generation(
+        ref mut pass.context
+    );
+
+    set pass.state =
+        ResolutionPassState.Created;
+}
+
+proc resolution_pass_clear_cache(
+    pass: ref mut ResolutionPass
+) {
+    lookup_cache_clear(
+        ref mut pass.lookup.cache
+    );
+
+    set pass.generation =
+        pass.generation + 1;
+}
+
+proc resolution_pass_reset_statistics(
+    pass: ref mut ResolutionPass
+) {
+    set pass.statistics =
+        resolution_pass_statistics_empty();
+
+    lookup_reset_statistics(
+        ref mut pass.lookup
+    );
+
+    name_resolver_reset_statistics(
+        ref mut pass.names
+    );
+
+    module_resolver_reset_statistics(
+        ref mut pass.modules
+    );
+
+    namespace_resolver_reset_statistics(
+        ref mut pass.namespaces
+    );
+
+    path_resolver_reset_statistics(
+        ref mut pass.paths
+    );
+
+    import_resolver_reset_statistics(
+        ref mut pass.imports
+    );
+
+    export_resolver_reset_statistics(
+        ref mut pass.exports
+    );
+
+    constant_resolver_reset_statistics(
+        ref mut pass.constants
+    );
+
+    field_resolver_reset_statistics(
+        ref mut pass.fields
+    );
+
+    method_resolver_reset_statistics(
+        ref mut pass.methods
+    );
+
+    generic_resolver_reset_statistics(
+        ref mut pass.generics
+    );
+
+    attribute_resolver_reset(
+        ref mut pass.attributes
+    );
+
+    overload_resolver_reset_statistics(
+        ref mut pass.overloads
+    );
+}
+
+proc resolution_pass_reset(
+    pass: ref mut ResolutionPass
+) {
+    resolution_context_reset(
+        ref mut pass.context
+    );
+
+    resolution_pass_clear_cache(
+        pass
+    );
+
+    resolution_pass_reset_statistics(
+        pass
+    );
+
+    set pass.state =
+        ResolutionPassState.Created;
+}
+
+proc resolution_pass_is_complete(
+    pass: ref ResolutionPass
+) -> bool {
+    give pass.state
+        == ResolutionPassState.Complete;
+}
+
+proc resolution_pass_has_failed(
+    pass: ref ResolutionPass
+) -> bool {
+    give pass.state
+        == ResolutionPassState.Failed;
+}
+
+proc resolution_pass_statistics(
+    pass: ref ResolutionPass
+) -> ResolutionPassStatistics {
+    give pass.statistics;
+}
+
+proc resolution_pass_state_name(
+    state: ResolutionPassState
+) -> string {
+    pick state {
+        ResolutionPassState.Created {
+            give "created";
+        }
+
+        ResolutionPassState.Preparing {
+            give "preparing";
+        }
+
+        ResolutionPassState.Imports {
+            give "imports";
+        }
+
+        ResolutionPassState.Names {
+            give "names";
+        }
+
+        ResolutionPassState.Paths {
+            give "paths";
+        }
+
+        ResolutionPassState.Members {
+            give "members";
+        }
+
+        ResolutionPassState.Complete {
+            give "complete";
+        }
+
+        ResolutionPassState.Failed {
+            give "failed";
+        }
+    }
+
+    give "failed";
+}

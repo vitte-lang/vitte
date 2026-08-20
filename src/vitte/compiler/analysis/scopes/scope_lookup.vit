@@ -1,0 +1,1165 @@
+space vitte/compiler/analysis/scopes/scope_lookup
+
+export *
+
+use vitte/compiler/analysis/scopes/scope_id.{
+    ScopeId
+}
+
+use vitte/compiler/analysis/scopes/scope_binding.{
+    ScopeBinding,
+    ScopeBindingKind,
+    ScopeBindingTable,
+
+    scope_binding_is_active,
+    scope_binding_table_find_exact
+}
+
+use vitte/compiler/analysis/scopes/scope_child.{
+    ScopeChildTable,
+
+    scope_child_table_parent
+}
+
+use vitte/compiler/analysis/scopes/scope_import.{
+    ScopeImport,
+    ScopeImportTable,
+
+    scope_import_is_active
+}
+
+use vitte/compiler/analysis/scopes/scope_generic.{
+    ScopeGenericParameter,
+    ScopeGenericTable,
+
+    scope_generic_table_lookup_local
+}
+
+pick ScopeLookupKind {
+    Any,
+    Value,
+    Type,
+    Function,
+    Constant,
+    Module,
+    Generic,
+    Import
+}
+
+pick ScopeLookupSource {
+    Binding,
+    Generic,
+    Import
+}
+
+pick ScopeLookupState {
+    Found,
+    Missing,
+    Ambiguous
+}
+
+form ScopeLookupCandidate {
+    source: ScopeLookupSource
+
+    scope: ScopeId
+    depth: usize
+
+    name: string
+
+    binding: Option<ScopeBinding>
+    generic: Option<ScopeGenericParameter>
+    import: Option<ScopeImport>
+
+    priority: usize
+}
+
+form ScopeLookupResult {
+    state: ScopeLookupState
+
+    name: string
+
+    start_scope: ScopeId
+    resolved_scope: Option<ScopeId>
+
+    candidate: Option<ScopeLookupCandidate>
+    candidates: [ScopeLookupCandidate]
+
+    searched_scopes: [ScopeId]
+}
+
+form ScopeLookupConfig {
+    search_parents: bool
+
+    include_bindings: bool
+    include_generics: bool
+    include_imports: bool
+
+    stop_at_first_scope: bool
+}
+
+form ScopeLookupStatistics {
+    lookups: u64
+
+    scopes_visited: u64
+
+    candidates: u64
+
+    hits: u64
+    misses: u64
+    ambiguous: u64
+
+    parent_walks: u64
+
+    maximum_depth: usize
+}
+
+form ScopeLookup {
+    config: ScopeLookupConfig
+
+    statistics: ScopeLookupStatistics
+}
+
+proc scope_lookup_config_default()
+    -> ScopeLookupConfig
+{
+    give ScopeLookupConfig {
+        search_parents: true,
+
+        include_bindings: true,
+        include_generics: true,
+        include_imports: true,
+
+        stop_at_first_scope: true
+    };
+}
+
+proc scope_lookup_statistics_empty()
+    -> ScopeLookupStatistics
+{
+    give ScopeLookupStatistics {
+        lookups: 0,
+
+        scopes_visited: 0,
+
+        candidates: 0,
+
+        hits: 0,
+        misses: 0,
+        ambiguous: 0,
+
+        parent_walks: 0,
+
+        maximum_depth: 0
+    };
+}
+
+proc scope_lookup_create_with_config(
+    config: ScopeLookupConfig
+) -> ScopeLookup {
+    give ScopeLookup {
+        config: config,
+
+        statistics:
+            scope_lookup_statistics_empty()
+    };
+}
+
+proc scope_lookup_create()
+    -> ScopeLookup
+{
+    give scope_lookup_create_with_config(
+        scope_lookup_config_default()
+    );
+}
+
+proc scope_lookup_candidate_binding(
+    scope: ScopeId,
+    depth: usize,
+    binding: ScopeBinding
+) -> ScopeLookupCandidate {
+    give ScopeLookupCandidate {
+        source:
+            ScopeLookupSource.Binding,
+
+        scope: scope,
+        depth: depth,
+
+        name:
+            binding.name,
+
+        binding:
+            Some(binding),
+
+        generic:
+            None,
+
+        import:
+            None,
+
+        priority:
+            binding.priority
+    };
+}
+
+proc scope_lookup_candidate_generic(
+    scope: ScopeId,
+    depth: usize,
+    generic: ScopeGenericParameter
+) -> ScopeLookupCandidate {
+    give ScopeLookupCandidate {
+        source:
+            ScopeLookupSource.Generic,
+
+        scope: scope,
+        depth: depth,
+
+        name:
+            generic.name,
+
+        binding:
+            None,
+
+        generic:
+            Some(generic),
+
+        import:
+            None,
+
+        priority:
+            0
+    };
+}
+
+proc scope_lookup_candidate_import(
+    scope: ScopeId,
+    depth: usize,
+    value: ScopeImport
+) -> ScopeLookupCandidate {
+    give ScopeLookupCandidate {
+        source:
+            ScopeLookupSource.Import,
+
+        scope: scope,
+        depth: depth,
+
+        name:
+            value.name,
+
+        binding:
+            None,
+
+        generic:
+            None,
+
+        import:
+            Some(value),
+
+        priority:
+            value.priority
+    };
+}
+
+proc scope_lookup_result_missing(
+    name: string,
+    start_scope: ScopeId,
+    searched_scopes: [ScopeId]
+) -> ScopeLookupResult {
+    give ScopeLookupResult {
+        state:
+            ScopeLookupState.Missing,
+
+        name: name,
+
+        start_scope:
+            start_scope,
+
+        resolved_scope:
+            None,
+
+        candidate:
+            None,
+
+        candidates:
+            [],
+
+        searched_scopes:
+            searched_scopes
+    };
+}
+
+proc scope_lookup_result_found(
+    name: string,
+    start_scope: ScopeId,
+    candidate: ScopeLookupCandidate,
+    searched_scopes: [ScopeId]
+) -> ScopeLookupResult {
+    give ScopeLookupResult {
+        state:
+            ScopeLookupState.Found,
+
+        name: name,
+
+        start_scope:
+            start_scope,
+
+        resolved_scope:
+            Some(candidate.scope),
+
+        candidate:
+            Some(candidate),
+
+        candidates:
+            [candidate],
+
+        searched_scopes:
+            searched_scopes
+    };
+}
+
+proc scope_lookup_result_ambiguous(
+    name: string,
+    start_scope: ScopeId,
+    candidates: [ScopeLookupCandidate],
+    searched_scopes: [ScopeId]
+) -> ScopeLookupResult {
+    give ScopeLookupResult {
+        state:
+            ScopeLookupState.Ambiguous,
+
+        name: name,
+
+        start_scope:
+            start_scope,
+
+        resolved_scope:
+            None,
+
+        candidate:
+            None,
+
+        candidates:
+            candidates,
+
+        searched_scopes:
+            searched_scopes
+    };
+}
+
+proc scope_lookup_binding_matches_kind(
+    binding: ScopeBinding,
+    kind: ScopeLookupKind
+) -> bool {
+    if kind == ScopeLookupKind.Any {
+        give true;
+    }
+
+    pick kind {
+        ScopeLookupKind.Value {
+            give binding.kind
+                == ScopeBindingKind.Local
+                or binding.kind
+                == ScopeBindingKind.Parameter
+                or binding.kind
+                == ScopeBindingKind.Static
+                or binding.kind
+                == ScopeBindingKind.Global;
+        }
+
+        ScopeLookupKind.Type {
+            give binding.kind
+                == ScopeBindingKind.Type
+                or binding.kind
+                == ScopeBindingKind.Trait;
+        }
+
+        ScopeLookupKind.Function {
+            give binding.kind
+                == ScopeBindingKind.Procedure
+                or binding.kind
+                == ScopeBindingKind.Method;
+        }
+
+        ScopeLookupKind.Constant {
+            give binding.kind
+                == ScopeBindingKind.Constant;
+        }
+
+        ScopeLookupKind.Module {
+            give binding.kind
+                == ScopeBindingKind.Module
+                or binding.kind
+                == ScopeBindingKind.Namespace;
+        }
+
+        ScopeLookupKind.Generic {
+            give binding.kind
+                == ScopeBindingKind.Generic;
+        }
+
+        ScopeLookupKind.Import {
+            give binding.kind
+                == ScopeBindingKind.Import;
+        }
+
+        ScopeLookupKind.Any {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc scope_lookup_import_matches_kind(
+    value: ScopeImport,
+    kind: ScopeLookupKind
+) -> bool {
+    if kind == ScopeLookupKind.Any
+        or kind == ScopeLookupKind.Import
+    {
+        give true;
+    }
+
+    pick kind {
+        ScopeLookupKind.Value {
+            give value.binding_kind
+                == ScopeBindingKind.Local
+                or value.binding_kind
+                == ScopeBindingKind.Parameter
+                or value.binding_kind
+                == ScopeBindingKind.Static
+                or value.binding_kind
+                == ScopeBindingKind.Global;
+        }
+
+        ScopeLookupKind.Type {
+            give value.binding_kind
+                == ScopeBindingKind.Type
+                or value.binding_kind
+                == ScopeBindingKind.Trait;
+        }
+
+        ScopeLookupKind.Function {
+            give value.binding_kind
+                == ScopeBindingKind.Procedure
+                or value.binding_kind
+                == ScopeBindingKind.Method;
+        }
+
+        ScopeLookupKind.Constant {
+            give value.binding_kind
+                == ScopeBindingKind.Constant;
+        }
+
+        ScopeLookupKind.Module {
+            give value.binding_kind
+                == ScopeBindingKind.Module
+                or value.binding_kind
+                == ScopeBindingKind.Namespace;
+        }
+
+        ScopeLookupKind.Generic {
+            give value.binding_kind
+                == ScopeBindingKind.Generic;
+        }
+
+        ScopeLookupKind.Import {
+            give true;
+        }
+
+        ScopeLookupKind.Any {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc scope_lookup_candidates_in_scope(
+    lookup: ref mut ScopeLookup,
+    bindings: ref ScopeBindingTable,
+    generics: ref ScopeGenericTable,
+    imports: ref ScopeImportTable,
+    scope: ScopeId,
+    depth: usize,
+    name: string,
+    kind: ScopeLookupKind
+) -> [ScopeLookupCandidate] {
+    let mut result:
+        [ScopeLookupCandidate] = [];
+
+    if lookup.config.include_bindings {
+        let binding =
+            scope_binding_table_find_exact(
+                bindings,
+                scope,
+                name
+            );
+
+        pick binding {
+            Some(value) {
+                if scope_binding_is_active(
+                    value
+                )
+                    and scope_lookup_binding_matches_kind(
+                        value,
+                        kind
+                    )
+                {
+                    set result =
+                        result + [
+                            scope_lookup_candidate_binding(
+                                scope,
+                                depth,
+                                value
+                            )
+                        ];
+                }
+            }
+
+            None {}
+        }
+    }
+
+    if lookup.config.include_generics
+        and (
+            kind == ScopeLookupKind.Any
+            or kind == ScopeLookupKind.Generic
+            or kind == ScopeLookupKind.Type
+        )
+    {
+        let generic =
+            scope_generic_table_lookup_local(
+                generics,
+                scope,
+                name
+            );
+
+        pick generic {
+            Some(value) {
+                set result =
+                    result + [
+                        scope_lookup_candidate_generic(
+                            scope,
+                            depth,
+                            value
+                        )
+                    ];
+            }
+
+            None {}
+        }
+    }
+
+    if lookup.config.include_imports {
+        for value in imports.imports {
+            if value.scope != scope
+                or value.name != name
+                or not scope_import_is_active(
+                    value
+                )
+            {
+                continue;
+            }
+
+            if not scope_lookup_import_matches_kind(
+                value,
+                kind
+            ) {
+                continue;
+            }
+
+            set result =
+                result + [
+                    scope_lookup_candidate_import(
+                        scope,
+                        depth,
+                        value
+                    )
+                ];
+        }
+    }
+
+    set lookup.statistics.candidates =
+        lookup.statistics.candidates
+        + len(result);
+
+    give result;
+}
+
+proc scope_lookup_best_candidate(
+    candidates: [ScopeLookupCandidate]
+) -> Option<ScopeLookupCandidate> {
+    if len(candidates) == 0 {
+        give None;
+    }
+
+    let mut best =
+        candidates[0];
+
+    let mut index: usize = 1;
+
+    while index < len(candidates) {
+        let current =
+            candidates[index];
+
+        if current.priority
+            > best.priority
+        {
+            set best =
+                current;
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give Some(best);
+}
+
+proc scope_lookup_has_priority_ambiguity(
+    candidates: [ScopeLookupCandidate]
+) -> bool {
+    if len(candidates) < 2 {
+        give false;
+    }
+
+    let best =
+        scope_lookup_best_candidate(
+            candidates
+        );
+
+    pick best {
+        None {
+            give false;
+        }
+
+        Some(value) {
+            let mut count: usize = 0;
+
+            for candidate in candidates {
+                if candidate.priority
+                    == value.priority
+                {
+                    set count =
+                        count + 1;
+                }
+            }
+
+            give count > 1;
+        }
+    }
+}
+
+proc scope_lookup_name(
+    lookup: ref mut ScopeLookup,
+    bindings: ref ScopeBindingTable,
+    generics: ref ScopeGenericTable,
+    imports: ref ScopeImportTable,
+    children: ref ScopeChildTable,
+    start_scope: ScopeId,
+    name: string,
+    kind: ScopeLookupKind
+) -> ScopeLookupResult {
+    set lookup.statistics.lookups =
+        lookup.statistics.lookups + 1;
+
+    let mut searched_scopes:
+        [ScopeId] = [];
+
+    let mut current:
+        Option<ScopeId> =
+        Some(start_scope);
+
+    let mut depth: usize = 0;
+
+    loop {
+        pick current {
+            None {
+                set lookup.statistics.misses =
+                    lookup.statistics.misses + 1;
+
+                give scope_lookup_result_missing(
+                    name,
+                    start_scope,
+                    searched_scopes
+                );
+            }
+
+            Some(scope) {
+                set searched_scopes =
+                    searched_scopes + [scope];
+
+                set lookup.statistics.scopes_visited =
+                    lookup.statistics.scopes_visited + 1;
+
+                if depth
+                    > lookup.statistics.maximum_depth
+                {
+                    set lookup.statistics.maximum_depth =
+                        depth;
+                }
+
+                let candidates =
+                    scope_lookup_candidates_in_scope(
+                        lookup,
+                        bindings,
+                        generics,
+                        imports,
+                        scope,
+                        depth,
+                        name,
+                        kind
+                    );
+
+                if len(candidates) > 0 {
+                    if scope_lookup_has_priority_ambiguity(
+                        candidates
+                    ) {
+                        set lookup.statistics.ambiguous =
+                            lookup.statistics.ambiguous + 1;
+
+                        give scope_lookup_result_ambiguous(
+                            name,
+                            start_scope,
+                            candidates,
+                            searched_scopes
+                        );
+                    }
+
+                    let best =
+                        scope_lookup_best_candidate(
+                            candidates
+                        );
+
+                    pick best {
+                        Some(candidate) {
+                            set lookup.statistics.hits =
+                                lookup.statistics.hits + 1;
+
+                            give scope_lookup_result_found(
+                                name,
+                                start_scope,
+                                candidate,
+                                searched_scopes
+                            );
+                        }
+
+                        None {}
+                    }
+                }
+
+                if not lookup.config.search_parents {
+                    set lookup.statistics.misses =
+                        lookup.statistics.misses + 1;
+
+                    give scope_lookup_result_missing(
+                        name,
+                        start_scope,
+                        searched_scopes
+                    );
+                }
+
+                set current =
+                    scope_child_table_parent(
+                        children,
+                        scope
+                    );
+
+                set lookup.statistics.parent_walks =
+                    lookup.statistics.parent_walks + 1;
+
+                set depth =
+                    depth + 1;
+            }
+        }
+    }
+
+    give scope_lookup_result_missing(
+        name,
+        start_scope,
+        searched_scopes
+    );
+}
+
+proc scope_lookup_any(
+    lookup: ref mut ScopeLookup,
+    bindings: ref ScopeBindingTable,
+    generics: ref ScopeGenericTable,
+    imports: ref ScopeImportTable,
+    children: ref ScopeChildTable,
+    scope: ScopeId,
+    name: string
+) -> ScopeLookupResult {
+    give scope_lookup_name(
+        lookup,
+        bindings,
+        generics,
+        imports,
+        children,
+        scope,
+        name,
+        ScopeLookupKind.Any
+    );
+}
+
+proc scope_lookup_value(
+    lookup: ref mut ScopeLookup,
+    bindings: ref ScopeBindingTable,
+    generics: ref ScopeGenericTable,
+    imports: ref ScopeImportTable,
+    children: ref ScopeChildTable,
+    scope: ScopeId,
+    name: string
+) -> ScopeLookupResult {
+    give scope_lookup_name(
+        lookup,
+        bindings,
+        generics,
+        imports,
+        children,
+        scope,
+        name,
+        ScopeLookupKind.Value
+    );
+}
+
+proc scope_lookup_type(
+    lookup: ref mut ScopeLookup,
+    bindings: ref ScopeBindingTable,
+    generics: ref ScopeGenericTable,
+    imports: ref ScopeImportTable,
+    children: ref ScopeChildTable,
+    scope: ScopeId,
+    name: string
+) -> ScopeLookupResult {
+    give scope_lookup_name(
+        lookup,
+        bindings,
+        generics,
+        imports,
+        children,
+        scope,
+        name,
+        ScopeLookupKind.Type
+    );
+}
+
+proc scope_lookup_function(
+    lookup: ref mut ScopeLookup,
+    bindings: ref ScopeBindingTable,
+    generics: ref ScopeGenericTable,
+    imports: ref ScopeImportTable,
+    children: ref ScopeChildTable,
+    scope: ScopeId,
+    name: string
+) -> ScopeLookupResult {
+    give scope_lookup_name(
+        lookup,
+        bindings,
+        generics,
+        imports,
+        children,
+        scope,
+        name,
+        ScopeLookupKind.Function
+    );
+}
+
+proc scope_lookup_constant(
+    lookup: ref mut ScopeLookup,
+    bindings: ref ScopeBindingTable,
+    generics: ref ScopeGenericTable,
+    imports: ref ScopeImportTable,
+    children: ref ScopeChildTable,
+    scope: ScopeId,
+    name: string
+) -> ScopeLookupResult {
+    give scope_lookup_name(
+        lookup,
+        bindings,
+        generics,
+        imports,
+        children,
+        scope,
+        name,
+        ScopeLookupKind.Constant
+    );
+}
+
+proc scope_lookup_module(
+    lookup: ref mut ScopeLookup,
+    bindings: ref ScopeBindingTable,
+    generics: ref ScopeGenericTable,
+    imports: ref ScopeImportTable,
+    children: ref ScopeChildTable,
+    scope: ScopeId,
+    name: string
+) -> ScopeLookupResult {
+    give scope_lookup_name(
+        lookup,
+        bindings,
+        generics,
+        imports,
+        children,
+        scope,
+        name,
+        ScopeLookupKind.Module
+    );
+}
+
+proc scope_lookup_generic(
+    lookup: ref mut ScopeLookup,
+    bindings: ref ScopeBindingTable,
+    generics: ref ScopeGenericTable,
+    imports: ref ScopeImportTable,
+    children: ref ScopeChildTable,
+    scope: ScopeId,
+    name: string
+) -> ScopeLookupResult {
+    give scope_lookup_name(
+        lookup,
+        bindings,
+        generics,
+        imports,
+        children,
+        scope,
+        name,
+        ScopeLookupKind.Generic
+    );
+}
+
+proc scope_lookup_import(
+    lookup: ref mut ScopeLookup,
+    bindings: ref ScopeBindingTable,
+    generics: ref ScopeGenericTable,
+    imports: ref ScopeImportTable,
+    children: ref ScopeChildTable,
+    scope: ScopeId,
+    name: string
+) -> ScopeLookupResult {
+    give scope_lookup_name(
+        lookup,
+        bindings,
+        generics,
+        imports,
+        children,
+        scope,
+        name,
+        ScopeLookupKind.Import
+    );
+}
+
+proc scope_lookup_result_is_found(
+    result: ScopeLookupResult
+) -> bool {
+    give result.state
+        == ScopeLookupState.Found;
+}
+
+proc scope_lookup_result_is_missing(
+    result: ScopeLookupResult
+) -> bool {
+    give result.state
+        == ScopeLookupState.Missing;
+}
+
+proc scope_lookup_result_is_ambiguous(
+    result: ScopeLookupResult
+) -> bool {
+    give result.state
+        == ScopeLookupState.Ambiguous;
+}
+
+proc scope_lookup_result_definition(
+    result: ScopeLookupResult
+) -> Option<DefId> {
+    pick result.candidate {
+        None {
+            give None;
+        }
+
+        Some(candidate) {
+            pick candidate.source {
+                ScopeLookupSource.Binding {
+                    pick candidate.binding {
+                        Some(value) {
+                            give value.definition;
+                        }
+
+                        None {
+                            give None;
+                        }
+                    }
+                }
+
+                ScopeLookupSource.Generic {
+                    pick candidate.generic {
+                        Some(value) {
+                            give Some(
+                                value.definition
+                            );
+                        }
+
+                        None {
+                            give None;
+                        }
+                    }
+                }
+
+                ScopeLookupSource.Import {
+                    pick candidate.import {
+                        Some(value) {
+                            give value.definition;
+                        }
+
+                        None {
+                            give None;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    give None;
+}
+
+proc scope_lookup_result_symbol(
+    result: ScopeLookupResult
+) -> Option<SymbolId> {
+    pick result.candidate {
+        None {
+            give None;
+        }
+
+        Some(candidate) {
+            pick candidate.source {
+                ScopeLookupSource.Binding {
+                    pick candidate.binding {
+                        Some(value) {
+                            give value.symbol;
+                        }
+
+                        None {
+                            give None;
+                        }
+                    }
+                }
+
+                ScopeLookupSource.Import {
+                    pick candidate.import {
+                        Some(value) {
+                            give value.symbol;
+                        }
+
+                        None {
+                            give None;
+                        }
+                    }
+                }
+
+                ScopeLookupSource.Generic {
+                    give None;
+                }
+            }
+        }
+    }
+
+    give None;
+}
+
+proc scope_lookup_result_type(
+    result: ScopeLookupResult
+) -> Option<TypeId> {
+    pick result.candidate {
+        None {
+            give None;
+        }
+
+        Some(candidate) {
+            pick candidate.source {
+                ScopeLookupSource.Binding {
+                    pick candidate.binding {
+                        Some(value) {
+                            give value.type_id;
+                        }
+
+                        None {
+                            give None;
+                        }
+                    }
+                }
+
+                ScopeLookupSource.Generic {
+                    pick candidate.generic {
+                        Some(value) {
+                            give value.type_id;
+                        }
+
+                        None {
+                            give None;
+                        }
+                    }
+                }
+
+                ScopeLookupSource.Import {
+                    pick candidate.import {
+                        Some(value) {
+                            give value.type_id;
+                        }
+
+                        None {
+                            give None;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    give None;
+}
+
+proc scope_lookup_reset_statistics(
+    lookup: ref mut ScopeLookup
+) {
+    set lookup.statistics =
+        scope_lookup_statistics_empty();
+}
+
+proc scope_lookup_statistics(
+    lookup: ref ScopeLookup
+) -> ScopeLookupStatistics {
+    give lookup.statistics;
+}
+
+// lexical lookup
+//
+// current ScopeId
+//      |
+//      v
+// bindings / generics / imports
+//      |
+//      +-- found unique candidate
+//      |       |
+//      |       v
+//      |   ScopeLookupResult.Found
+//      |
+//      +-- several equivalent candidates
+//      |       |
+//      |       v
+//      |   ScopeLookupResult.Ambiguous
+//      |
+//      +-- nothing found
+//              |
+//              v
+//          parent scope
+//              |
+//              v
+//          repeat lookup
+//
+// scope_lookup.vit
+//     = lexical scope traversal
+//
+// resolution/lookup.vit
+//     = higher-level semantic lookup and candidate resolution

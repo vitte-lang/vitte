@@ -1,0 +1,877 @@
+space vitte/compiler/analysis/scopes/scope_symbol
+
+export *
+
+use vitte/compiler/analysis/scopes/scope_id.{
+    ScopeId,
+    scope_id_is_valid
+}
+
+pick ScopeSymbolKind {
+    Local,
+    Parameter,
+    Constant,
+    Static,
+    Global,
+
+    Procedure,
+    Method,
+
+    Type,
+    Trait,
+    Module,
+    Namespace,
+
+    Generic,
+    Import,
+
+    Field,
+    Variant,
+
+    Generated
+}
+
+pick ScopeSymbolState {
+    Declared,
+    Defined,
+    Resolved,
+    Invalidated
+}
+
+form ScopeSymbol {
+    symbol: SymbolId
+
+    scope: ScopeId
+
+    name: string
+
+    kind: ScopeSymbolKind
+    state: ScopeSymbolState
+
+    definition: Option<DefId>
+    type_id: Option<TypeId>
+    hir: Option<HirId>
+
+    mutable: bool
+
+    generation: u64
+    revision: u64
+}
+
+form ScopeSymbolSet {
+    symbols: [ScopeSymbol]
+}
+
+form ScopeSymbolStatistics {
+    registered: u64
+
+    locals: u64
+    parameters: u64
+    functions: u64
+    types: u64
+    modules: u64
+    generics: u64
+
+    lookups: u64
+    hits: u64
+    misses: u64
+
+    resolved: u64
+    invalidated: u64
+}
+
+form ScopeSymbolTable {
+    symbols: [ScopeSymbol]
+
+    generation: u64
+
+    statistics: ScopeSymbolStatistics
+}
+
+proc scope_symbol_statistics_empty()
+    -> ScopeSymbolStatistics
+{
+    give ScopeSymbolStatistics {
+        registered: 0,
+
+        locals: 0,
+        parameters: 0,
+        functions: 0,
+        types: 0,
+        modules: 0,
+        generics: 0,
+
+        lookups: 0,
+        hits: 0,
+        misses: 0,
+
+        resolved: 0,
+        invalidated: 0
+    };
+}
+
+proc scope_symbol_table_create()
+    -> ScopeSymbolTable
+{
+    give ScopeSymbolTable {
+        symbols: [],
+
+        generation: 1,
+
+        statistics:
+            scope_symbol_statistics_empty()
+    };
+}
+
+proc scope_symbol(
+    symbol: SymbolId,
+    scope: ScopeId,
+    name: string,
+    kind: ScopeSymbolKind
+) -> ScopeSymbol {
+    give ScopeSymbol {
+        symbol: symbol,
+
+        scope: scope,
+
+        name: name,
+
+        kind: kind,
+
+        state:
+            ScopeSymbolState.Declared,
+
+        definition: None,
+        type_id: None,
+        hir: None,
+
+        mutable: false,
+
+        generation: 1,
+        revision: 1
+    };
+}
+
+proc scope_symbol_with_definition(
+    value: ScopeSymbol,
+    definition: DefId
+) -> ScopeSymbol {
+    let mut result =
+        value;
+
+    set result.definition =
+        Some(definition);
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_symbol_with_type(
+    value: ScopeSymbol,
+    type_id: TypeId
+) -> ScopeSymbol {
+    let mut result =
+        value;
+
+    set result.type_id =
+        Some(type_id);
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_symbol_with_hir(
+    value: ScopeSymbol,
+    hir: HirId
+) -> ScopeSymbol {
+    let mut result =
+        value;
+
+    set result.hir =
+        Some(hir);
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_symbol_mark_mutable(
+    value: ScopeSymbol
+) -> ScopeSymbol {
+    let mut result =
+        value;
+
+    set result.mutable =
+        true;
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_symbol_mark_defined(
+    value: ref mut ScopeSymbol
+) {
+    if value.state
+        == ScopeSymbolState.Invalidated
+    {
+        give;
+    }
+
+    set value.state =
+        ScopeSymbolState.Defined;
+
+    set value.revision =
+        value.revision + 1;
+}
+
+proc scope_symbol_mark_resolved(
+    value: ref mut ScopeSymbol
+) {
+    if value.state
+        == ScopeSymbolState.Invalidated
+    {
+        give;
+    }
+
+    set value.state =
+        ScopeSymbolState.Resolved;
+
+    set value.revision =
+        value.revision + 1;
+}
+
+proc scope_symbol_invalidate(
+    value: ref mut ScopeSymbol
+) {
+    set value.state =
+        ScopeSymbolState.Invalidated;
+
+    set value.revision =
+        value.revision + 1;
+}
+
+proc scope_symbol_is_active(
+    value: ScopeSymbol
+) -> bool {
+    give value.state
+        != ScopeSymbolState.Invalidated;
+}
+
+proc scope_symbol_is_resolved(
+    value: ScopeSymbol
+) -> bool {
+    give value.state
+        == ScopeSymbolState.Resolved;
+}
+
+proc scope_symbol_has_definition(
+    value: ScopeSymbol
+) -> bool {
+    pick value.definition {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_symbol_has_type(
+    value: ScopeSymbol
+) -> bool {
+    pick value.type_id {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_symbol_set_create()
+    -> ScopeSymbolSet
+{
+    give ScopeSymbolSet {
+        symbols: []
+    };
+}
+
+proc scope_symbol_set_push(
+    set: ref mut ScopeSymbolSet,
+    value: ScopeSymbol
+) {
+    set set.symbols =
+        set.symbols + [value];
+}
+
+proc scope_symbol_set_count(
+    set: ref ScopeSymbolSet
+) -> usize {
+    give len(set.symbols);
+}
+
+proc scope_symbol_table_contains(
+    table: ref ScopeSymbolTable,
+    symbol: SymbolId
+) -> bool {
+    for value in table.symbols {
+        if value.symbol == symbol
+            and scope_symbol_is_active(
+                value
+            )
+        {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc scope_symbol_table_record_kind(
+    table: ref mut ScopeSymbolTable,
+    kind: ScopeSymbolKind
+) {
+    pick kind {
+        ScopeSymbolKind.Local {
+            set table.statistics.locals =
+                table.statistics.locals + 1;
+        }
+
+        ScopeSymbolKind.Parameter {
+            set table.statistics.parameters =
+                table.statistics.parameters + 1;
+        }
+
+        ScopeSymbolKind.Procedure
+        | ScopeSymbolKind.Method {
+            set table.statistics.functions =
+                table.statistics.functions + 1;
+        }
+
+        ScopeSymbolKind.Type
+        | ScopeSymbolKind.Trait {
+            set table.statistics.types =
+                table.statistics.types + 1;
+        }
+
+        ScopeSymbolKind.Module
+        | ScopeSymbolKind.Namespace {
+            set table.statistics.modules =
+                table.statistics.modules + 1;
+        }
+
+        ScopeSymbolKind.Generic {
+            set table.statistics.generics =
+                table.statistics.generics + 1;
+        }
+
+        _ {}
+    }
+}
+
+proc scope_symbol_table_insert(
+    table: ref mut ScopeSymbolTable,
+    value: ScopeSymbol
+) -> bool {
+    if not scope_id_is_valid(
+        value.scope
+    ) {
+        give false;
+    }
+
+    if scope_symbol_table_contains(
+        ref table,
+        value.symbol
+    ) {
+        give false;
+    }
+
+    let mut result =
+        value;
+
+    set result.generation =
+        table.generation;
+
+    set table.symbols =
+        table.symbols + [result];
+
+    set table.statistics.registered =
+        table.statistics.registered + 1;
+
+    scope_symbol_table_record_kind(
+        table,
+        result.kind
+    );
+
+    give true;
+}
+
+proc scope_symbol_table_find(
+    table: ref mut ScopeSymbolTable,
+    symbol: SymbolId
+) -> Option<ScopeSymbol> {
+    set table.statistics.lookups =
+        table.statistics.lookups + 1;
+
+    for value in table.symbols {
+        if value.symbol == symbol
+            and scope_symbol_is_active(
+                value
+            )
+        {
+            set table.statistics.hits =
+                table.statistics.hits + 1;
+
+            give Some(value);
+        }
+    }
+
+    set table.statistics.misses =
+        table.statistics.misses + 1;
+
+    give None;
+}
+
+proc scope_symbol_table_find_name(
+    table: ref ScopeSymbolTable,
+    scope: ScopeId,
+    name: string
+) -> Option<ScopeSymbol> {
+    for value in table.symbols {
+        if value.scope == scope
+            and value.name == name
+            and scope_symbol_is_active(
+                value
+            )
+        {
+            give Some(value);
+        }
+    }
+
+    give None;
+}
+
+proc scope_symbol_table_symbols_for_scope(
+    table: ref ScopeSymbolTable,
+    scope: ScopeId
+) -> ScopeSymbolSet {
+    let mut result =
+        scope_symbol_set_create();
+
+    for value in table.symbols {
+        if value.scope == scope
+            and scope_symbol_is_active(
+                value
+            )
+        {
+            scope_symbol_set_push(
+                ref mut result,
+                value
+            );
+        }
+    }
+
+    give result;
+}
+
+proc scope_symbol_table_find_definition(
+    table: ref ScopeSymbolTable,
+    definition: DefId
+) -> Option<ScopeSymbol> {
+    for value in table.symbols {
+        pick value.definition {
+            Some(current) {
+                if current == definition
+                    and scope_symbol_is_active(
+                        value
+                    )
+                {
+                    give Some(value);
+                }
+            }
+
+            None {}
+        }
+    }
+
+    give None;
+}
+
+proc scope_symbol_table_find_hir(
+    table: ref ScopeSymbolTable,
+    hir: HirId
+) -> Option<ScopeSymbol> {
+    for value in table.symbols {
+        pick value.hir {
+            Some(current) {
+                if current == hir
+                    and scope_symbol_is_active(
+                        value
+                    )
+                {
+                    give Some(value);
+                }
+            }
+
+            None {}
+        }
+    }
+
+    give None;
+}
+
+proc scope_symbol_table_scope_of(
+    table: ref mut ScopeSymbolTable,
+    symbol: SymbolId
+) -> Option<ScopeId> {
+    let result =
+        scope_symbol_table_find(
+            table,
+            symbol
+        );
+
+    pick result {
+        Some(value) {
+            give Some(value.scope);
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc scope_symbol_table_definition_of(
+    table: ref mut ScopeSymbolTable,
+    symbol: SymbolId
+) -> Option<DefId> {
+    let result =
+        scope_symbol_table_find(
+            table,
+            symbol
+        );
+
+    pick result {
+        Some(value) {
+            give value.definition;
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc scope_symbol_table_type_of(
+    table: ref mut ScopeSymbolTable,
+    symbol: SymbolId
+) -> Option<TypeId> {
+    let result =
+        scope_symbol_table_find(
+            table,
+            symbol
+        );
+
+    pick result {
+        Some(value) {
+            give value.type_id;
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc scope_symbol_table_update_type(
+    table: ref mut ScopeSymbolTable,
+    symbol: SymbolId,
+    type_id: TypeId
+) -> bool {
+    let mut index: usize = 0;
+
+    while index < len(table.symbols) {
+        if table.symbols[index].symbol
+            == symbol
+            and scope_symbol_is_active(
+                table.symbols[index]
+            )
+        {
+            set table.symbols[index].type_id =
+                Some(type_id);
+
+            set table.symbols[index].revision =
+                table.symbols[index].revision + 1;
+
+            give true;
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give false;
+}
+
+proc scope_symbol_table_mark_resolved(
+    table: ref mut ScopeSymbolTable,
+    symbol: SymbolId
+) -> bool {
+    let mut index: usize = 0;
+
+    while index < len(table.symbols) {
+        if table.symbols[index].symbol
+            == symbol
+        {
+            if table.symbols[index].state
+                == ScopeSymbolState.Invalidated
+            {
+                give false;
+            }
+
+            scope_symbol_mark_resolved(
+                ref mut table.symbols[index]
+            );
+
+            set table.statistics.resolved =
+                table.statistics.resolved + 1;
+
+            give true;
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give false;
+}
+
+proc scope_symbol_table_invalidate(
+    table: ref mut ScopeSymbolTable,
+    symbol: SymbolId
+) -> bool {
+    let mut index: usize = 0;
+
+    while index < len(table.symbols) {
+        if table.symbols[index].symbol
+            == symbol
+        {
+            if table.symbols[index].state
+                == ScopeSymbolState.Invalidated
+            {
+                give false;
+            }
+
+            scope_symbol_invalidate(
+                ref mut table.symbols[index]
+            );
+
+            set table.statistics.invalidated =
+                table.statistics.invalidated + 1;
+
+            give true;
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give false;
+}
+
+proc scope_symbol_table_invalidate_scope(
+    table: ref mut ScopeSymbolTable,
+    scope: ScopeId
+) -> usize {
+    let mut count: usize = 0;
+    let mut index: usize = 0;
+
+    while index < len(table.symbols) {
+        if table.symbols[index].scope
+            == scope
+            and table.symbols[index].state
+                != ScopeSymbolState.Invalidated
+        {
+            scope_symbol_invalidate(
+                ref mut table.symbols[index]
+            );
+
+            set count =
+                count + 1;
+        }
+
+        set index =
+            index + 1;
+    }
+
+    set table.statistics.invalidated =
+        table.statistics.invalidated
+        + count;
+
+    give count;
+}
+
+proc scope_symbol_table_advance_generation(
+    table: ref mut ScopeSymbolTable
+) -> u64 {
+    set table.generation =
+        table.generation + 1;
+
+    give table.generation;
+}
+
+proc scope_symbol_table_clear(
+    table: ref mut ScopeSymbolTable
+) {
+    set table.symbols = [];
+
+    set table.generation =
+        table.generation + 1;
+}
+
+proc scope_symbol_table_statistics(
+    table: ref ScopeSymbolTable
+) -> ScopeSymbolStatistics {
+    give table.statistics;
+}
+
+proc scope_symbol_table_reset_statistics(
+    table: ref mut ScopeSymbolTable
+) {
+    set table.statistics =
+        scope_symbol_statistics_empty();
+}
+
+proc scope_symbol_kind_name(
+    kind: ScopeSymbolKind
+) -> string {
+    pick kind {
+        ScopeSymbolKind.Local {
+            give "local";
+        }
+
+        ScopeSymbolKind.Parameter {
+            give "parameter";
+        }
+
+        ScopeSymbolKind.Constant {
+            give "constant";
+        }
+
+        ScopeSymbolKind.Static {
+            give "static";
+        }
+
+        ScopeSymbolKind.Global {
+            give "global";
+        }
+
+        ScopeSymbolKind.Procedure {
+            give "procedure";
+        }
+
+        ScopeSymbolKind.Method {
+            give "method";
+        }
+
+        ScopeSymbolKind.Type {
+            give "type";
+        }
+
+        ScopeSymbolKind.Trait {
+            give "trait";
+        }
+
+        ScopeSymbolKind.Module {
+            give "module";
+        }
+
+        ScopeSymbolKind.Namespace {
+            give "namespace";
+        }
+
+        ScopeSymbolKind.Generic {
+            give "generic";
+        }
+
+        ScopeSymbolKind.Import {
+            give "import";
+        }
+
+        ScopeSymbolKind.Field {
+            give "field";
+        }
+
+        ScopeSymbolKind.Variant {
+            give "variant";
+        }
+
+        ScopeSymbolKind.Generated {
+            give "generated";
+        }
+    }
+
+    give "generated";
+}
+
+proc scope_symbol_state_name(
+    state: ScopeSymbolState
+) -> string {
+    pick state {
+        ScopeSymbolState.Declared {
+            give "declared";
+        }
+
+        ScopeSymbolState.Defined {
+            give "defined";
+        }
+
+        ScopeSymbolState.Resolved {
+            give "resolved";
+        }
+
+        ScopeSymbolState.Invalidated {
+            give "invalidated";
+        }
+    }
+
+    give "invalidated";
+}
+
+// SymbolId
+//    |
+//    v
+// ScopeSymbol
+//    |
+//    +-- ScopeId
+//    +-- name
+//    +-- kind
+//    +-- DefId
+//    +-- TypeId
+//    +-- HirId
+//    |
+//    v
+// ScopeSymbolTable
+//
+// scope_symbol.vit
+//     = SymbolId <-> lexical scope ownership
+//
+// scope_binding.vit
+//     = name -> declaration visible in one scope
+//
+// scope_registry.vit
+//     = compiler entity IDs -> ScopeId
+//
+// symbol_resolution.vit
+//     = semantic symbol resolution

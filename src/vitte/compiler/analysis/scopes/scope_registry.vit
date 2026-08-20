@@ -1,0 +1,1027 @@
+space vitte/compiler/analysis/scopes/scope_registry
+
+export *
+
+use vitte/compiler/analysis/scopes/scope_id.{
+    ScopeId,
+    scope_id_is_valid
+}
+
+use vitte/compiler/analysis/scopes/scope_kind.{
+    ScopeKind
+}
+
+use vitte/compiler/analysis/scopes/scope_node.{
+    ScopeNode
+}
+
+pick ScopeRegistryEntryState {
+    Active,
+    Invalidated
+}
+
+form ScopeRegistryEntry {
+    scope: ScopeId
+
+    kind: ScopeKind
+
+    owner: Option<DefId>
+    hir: Option<HirId>
+    module: Option<ModuleId>
+    type_id: Option<TypeId>
+
+    name: string
+
+    state: ScopeRegistryEntryState
+
+    generation: u64
+    revision: u64
+}
+
+form ScopeRegistrySet {
+    entries: [ScopeRegistryEntry]
+}
+
+form ScopeRegistryStatistics {
+    registered: u64
+
+    lookups: u64
+    hits: u64
+    misses: u64
+
+    duplicate_scopes: u64
+    duplicate_owners: u64
+
+    invalidated: u64
+}
+
+form ScopeRegistry {
+    entries: [ScopeRegistryEntry]
+
+    generation: u64
+
+    statistics: ScopeRegistryStatistics
+}
+
+proc scope_registry_statistics_empty()
+    -> ScopeRegistryStatistics
+{
+    give ScopeRegistryStatistics {
+        registered: 0,
+
+        lookups: 0,
+        hits: 0,
+        misses: 0,
+
+        duplicate_scopes: 0,
+        duplicate_owners: 0,
+
+        invalidated: 0
+    };
+}
+
+proc scope_registry_create()
+    -> ScopeRegistry
+{
+    give ScopeRegistry {
+        entries: [],
+
+        generation: 1,
+
+        statistics:
+            scope_registry_statistics_empty()
+    };
+}
+
+proc scope_registry_entry(
+    scope: ScopeId,
+    kind: ScopeKind
+) -> ScopeRegistryEntry {
+    give ScopeRegistryEntry {
+        scope: scope,
+
+        kind: kind,
+
+        owner: None,
+        hir: None,
+        module: None,
+        type_id: None,
+
+        name: "",
+
+        state:
+            ScopeRegistryEntryState.Active,
+
+        generation: 1,
+        revision: 1
+    };
+}
+
+proc scope_registry_entry_from_node(
+    node: ScopeNode
+) -> ScopeRegistryEntry {
+    give ScopeRegistryEntry {
+        scope:
+            node.id,
+
+        kind:
+            node.kind,
+
+        owner:
+            node.owner,
+
+        hir:
+            node.node,
+
+        module:
+            node.module,
+
+        type_id:
+            node.type_id,
+
+        name:
+            "",
+
+        state:
+            ScopeRegistryEntryState.Active,
+
+        generation:
+            node.generation,
+
+        revision:
+            node.revision
+    };
+}
+
+proc scope_registry_entry_with_name(
+    entry: ScopeRegistryEntry,
+    name: string
+) -> ScopeRegistryEntry {
+    let mut result =
+        entry;
+
+    set result.name =
+        name;
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_registry_entry_with_owner(
+    entry: ScopeRegistryEntry,
+    owner: DefId
+) -> ScopeRegistryEntry {
+    let mut result =
+        entry;
+
+    set result.owner =
+        Some(owner);
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_registry_entry_with_hir(
+    entry: ScopeRegistryEntry,
+    hir: HirId
+) -> ScopeRegistryEntry {
+    let mut result =
+        entry;
+
+    set result.hir =
+        Some(hir);
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_registry_entry_with_module(
+    entry: ScopeRegistryEntry,
+    module: ModuleId
+) -> ScopeRegistryEntry {
+    let mut result =
+        entry;
+
+    set result.module =
+        Some(module);
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_registry_entry_with_type(
+    entry: ScopeRegistryEntry,
+    type_id: TypeId
+) -> ScopeRegistryEntry {
+    let mut result =
+        entry;
+
+    set result.type_id =
+        Some(type_id);
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_registry_entry_is_active(
+    entry: ScopeRegistryEntry
+) -> bool {
+    give entry.state
+        == ScopeRegistryEntryState.Active;
+}
+
+proc scope_registry_entry_invalidate(
+    entry: ref mut ScopeRegistryEntry
+) {
+    set entry.state =
+        ScopeRegistryEntryState.Invalidated;
+
+    set entry.revision =
+        entry.revision + 1;
+}
+
+proc scope_registry_set_create()
+    -> ScopeRegistrySet
+{
+    give ScopeRegistrySet {
+        entries: []
+    };
+}
+
+proc scope_registry_set_push(
+    set: ref mut ScopeRegistrySet,
+    entry: ScopeRegistryEntry
+) {
+    set set.entries =
+        set.entries + [entry];
+}
+
+proc scope_registry_set_count(
+    set: ref ScopeRegistrySet
+) -> usize {
+    give len(set.entries);
+}
+
+proc scope_registry_set_is_empty(
+    set: ref ScopeRegistrySet
+) -> bool {
+    give len(set.entries) == 0;
+}
+
+proc scope_registry_contains(
+    registry: ref ScopeRegistry,
+    scope: ScopeId
+) -> bool {
+    for entry in registry.entries {
+        if entry.scope == scope
+            and scope_registry_entry_is_active(
+                entry
+            )
+        {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc scope_registry_contains_owner(
+    registry: ref ScopeRegistry,
+    owner: DefId
+) -> bool {
+    for entry in registry.entries {
+        pick entry.owner {
+            Some(current) {
+                if current == owner
+                    and scope_registry_entry_is_active(
+                        entry
+                    )
+                {
+                    give true;
+                }
+            }
+
+            None {}
+        }
+    }
+
+    give false;
+}
+
+proc scope_registry_register(
+    registry: ref mut ScopeRegistry,
+    entry: ScopeRegistryEntry
+) -> bool {
+    if not scope_id_is_valid(
+        entry.scope
+    ) {
+        give false;
+    }
+
+    if scope_registry_contains(
+        ref registry,
+        entry.scope
+    ) {
+        set registry.statistics.duplicate_scopes =
+            registry.statistics.duplicate_scopes + 1;
+
+        give false;
+    }
+
+    pick entry.owner {
+        Some(owner) {
+            if scope_registry_contains_owner(
+                ref registry,
+                owner
+            ) {
+                set registry.statistics.duplicate_owners =
+                    registry.statistics.duplicate_owners + 1;
+
+                give false;
+            }
+        }
+
+        None {}
+    }
+
+    let mut value =
+        entry;
+
+    set value.generation =
+        registry.generation;
+
+    set registry.entries =
+        registry.entries + [value];
+
+    set registry.statistics.registered =
+        registry.statistics.registered + 1;
+
+    give true;
+}
+
+proc scope_registry_register_node(
+    registry: ref mut ScopeRegistry,
+    node: ScopeNode
+) -> bool {
+    give scope_registry_register(
+        registry,
+        scope_registry_entry_from_node(
+            node
+        )
+    );
+}
+
+proc scope_registry_find(
+    registry: ref mut ScopeRegistry,
+    scope: ScopeId
+) -> Option<ScopeRegistryEntry> {
+    set registry.statistics.lookups =
+        registry.statistics.lookups + 1;
+
+    for entry in registry.entries {
+        if entry.scope == scope
+            and scope_registry_entry_is_active(
+                entry
+            )
+        {
+            set registry.statistics.hits =
+                registry.statistics.hits + 1;
+
+            give Some(entry);
+        }
+    }
+
+    set registry.statistics.misses =
+        registry.statistics.misses + 1;
+
+    give None;
+}
+
+proc scope_registry_find_owner(
+    registry: ref mut ScopeRegistry,
+    owner: DefId
+) -> Option<ScopeRegistryEntry> {
+    set registry.statistics.lookups =
+        registry.statistics.lookups + 1;
+
+    for entry in registry.entries {
+        pick entry.owner {
+            Some(current) {
+                if current == owner
+                    and scope_registry_entry_is_active(
+                        entry
+                    )
+                {
+                    set registry.statistics.hits =
+                        registry.statistics.hits + 1;
+
+                    give Some(entry);
+                }
+            }
+
+            None {}
+        }
+    }
+
+    set registry.statistics.misses =
+        registry.statistics.misses + 1;
+
+    give None;
+}
+
+proc scope_registry_find_hir(
+    registry: ref mut ScopeRegistry,
+    hir: HirId
+) -> Option<ScopeRegistryEntry> {
+    set registry.statistics.lookups =
+        registry.statistics.lookups + 1;
+
+    for entry in registry.entries {
+        pick entry.hir {
+            Some(current) {
+                if current == hir
+                    and scope_registry_entry_is_active(
+                        entry
+                    )
+                {
+                    set registry.statistics.hits =
+                        registry.statistics.hits + 1;
+
+                    give Some(entry);
+                }
+            }
+
+            None {}
+        }
+    }
+
+    set registry.statistics.misses =
+        registry.statistics.misses + 1;
+
+    give None;
+}
+
+proc scope_registry_find_module(
+    registry: ref mut ScopeRegistry,
+    module: ModuleId
+) -> Option<ScopeRegistryEntry> {
+    set registry.statistics.lookups =
+        registry.statistics.lookups + 1;
+
+    for entry in registry.entries {
+        pick entry.module {
+            Some(current) {
+                if current == module
+                    and scope_registry_entry_is_active(
+                        entry
+                    )
+                {
+                    set registry.statistics.hits =
+                        registry.statistics.hits + 1;
+
+                    give Some(entry);
+                }
+            }
+
+            None {}
+        }
+    }
+
+    set registry.statistics.misses =
+        registry.statistics.misses + 1;
+
+    give None;
+}
+
+proc scope_registry_find_type(
+    registry: ref mut ScopeRegistry,
+    type_id: TypeId
+) -> Option<ScopeRegistryEntry> {
+    set registry.statistics.lookups =
+        registry.statistics.lookups + 1;
+
+    for entry in registry.entries {
+        pick entry.type_id {
+            Some(current) {
+                if current == type_id
+                    and scope_registry_entry_is_active(
+                        entry
+                    )
+                {
+                    set registry.statistics.hits =
+                        registry.statistics.hits + 1;
+
+                    give Some(entry);
+                }
+            }
+
+            None {}
+        }
+    }
+
+    set registry.statistics.misses =
+        registry.statistics.misses + 1;
+
+    give None;
+}
+
+proc scope_registry_find_name(
+    registry: ref ScopeRegistry,
+    name: string
+) -> ScopeRegistrySet {
+    let mut result =
+        scope_registry_set_create();
+
+    for entry in registry.entries {
+        if entry.name == name
+            and scope_registry_entry_is_active(
+                entry
+            )
+        {
+            scope_registry_set_push(
+                ref mut result,
+                entry
+            );
+        }
+    }
+
+    give result;
+}
+
+proc scope_registry_find_kind(
+    registry: ref ScopeRegistry,
+    kind: ScopeKind
+) -> ScopeRegistrySet {
+    let mut result =
+        scope_registry_set_create();
+
+    for entry in registry.entries {
+        if entry.kind == kind
+            and scope_registry_entry_is_active(
+                entry
+            )
+        {
+            scope_registry_set_push(
+                ref mut result,
+                entry
+            );
+        }
+    }
+
+    give result;
+}
+
+proc scope_registry_scope_for_owner(
+    registry: ref mut ScopeRegistry,
+    owner: DefId
+) -> Option<ScopeId> {
+    let result =
+        scope_registry_find_owner(
+            registry,
+            owner
+        );
+
+    pick result {
+        Some(entry) {
+            give Some(entry.scope);
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc scope_registry_scope_for_hir(
+    registry: ref mut ScopeRegistry,
+    hir: HirId
+) -> Option<ScopeId> {
+    let result =
+        scope_registry_find_hir(
+            registry,
+            hir
+        );
+
+    pick result {
+        Some(entry) {
+            give Some(entry.scope);
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc scope_registry_scope_for_module(
+    registry: ref mut ScopeRegistry,
+    module: ModuleId
+) -> Option<ScopeId> {
+    let result =
+        scope_registry_find_module(
+            registry,
+            module
+        );
+
+    pick result {
+        Some(entry) {
+            give Some(entry.scope);
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc scope_registry_scope_for_type(
+    registry: ref mut ScopeRegistry,
+    type_id: TypeId
+) -> Option<ScopeId> {
+    let result =
+        scope_registry_find_type(
+            registry,
+            type_id
+        );
+
+    pick result {
+        Some(entry) {
+            give Some(entry.scope);
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc scope_registry_update_owner(
+    registry: ref mut ScopeRegistry,
+    scope: ScopeId,
+    owner: DefId
+) -> bool {
+    let mut index: usize = 0;
+
+    while index < len(registry.entries) {
+        if registry.entries[index].scope
+            == scope
+            and scope_registry_entry_is_active(
+                registry.entries[index]
+            )
+        {
+            set registry.entries[index].owner =
+                Some(owner);
+
+            set registry.entries[index].revision =
+                registry.entries[index].revision + 1;
+
+            give true;
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give false;
+}
+
+proc scope_registry_update_hir(
+    registry: ref mut ScopeRegistry,
+    scope: ScopeId,
+    hir: HirId
+) -> bool {
+    let mut index: usize = 0;
+
+    while index < len(registry.entries) {
+        if registry.entries[index].scope
+            == scope
+            and scope_registry_entry_is_active(
+                registry.entries[index]
+            )
+        {
+            set registry.entries[index].hir =
+                Some(hir);
+
+            set registry.entries[index].revision =
+                registry.entries[index].revision + 1;
+
+            give true;
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give false;
+}
+
+proc scope_registry_update_module(
+    registry: ref mut ScopeRegistry,
+    scope: ScopeId,
+    module: ModuleId
+) -> bool {
+    let mut index: usize = 0;
+
+    while index < len(registry.entries) {
+        if registry.entries[index].scope
+            == scope
+            and scope_registry_entry_is_active(
+                registry.entries[index]
+            )
+        {
+            set registry.entries[index].module =
+                Some(module);
+
+            set registry.entries[index].revision =
+                registry.entries[index].revision + 1;
+
+            give true;
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give false;
+}
+
+proc scope_registry_update_type(
+    registry: ref mut ScopeRegistry,
+    scope: ScopeId,
+    type_id: TypeId
+) -> bool {
+    let mut index: usize = 0;
+
+    while index < len(registry.entries) {
+        if registry.entries[index].scope
+            == scope
+            and scope_registry_entry_is_active(
+                registry.entries[index]
+            )
+        {
+            set registry.entries[index].type_id =
+                Some(type_id);
+
+            set registry.entries[index].revision =
+                registry.entries[index].revision + 1;
+
+            give true;
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give false;
+}
+
+proc scope_registry_update_name(
+    registry: ref mut ScopeRegistry,
+    scope: ScopeId,
+    name: string
+) -> bool {
+    let mut index: usize = 0;
+
+    while index < len(registry.entries) {
+        if registry.entries[index].scope
+            == scope
+            and scope_registry_entry_is_active(
+                registry.entries[index]
+            )
+        {
+            set registry.entries[index].name =
+                name;
+
+            set registry.entries[index].revision =
+                registry.entries[index].revision + 1;
+
+            give true;
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give false;
+}
+
+proc scope_registry_invalidate(
+    registry: ref mut ScopeRegistry,
+    scope: ScopeId
+) -> bool {
+    let mut index: usize = 0;
+
+    while index < len(registry.entries) {
+        if registry.entries[index].scope
+            == scope
+        {
+            if registry.entries[index].state
+                == ScopeRegistryEntryState.Invalidated
+            {
+                give false;
+            }
+
+            scope_registry_entry_invalidate(
+                ref mut registry.entries[index]
+            );
+
+            set registry.statistics.invalidated =
+                registry.statistics.invalidated + 1;
+
+            give true;
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give false;
+}
+
+proc scope_registry_invalidate_owner(
+    registry: ref mut ScopeRegistry,
+    owner: DefId
+) -> bool {
+    let mut index: usize = 0;
+
+    while index < len(registry.entries) {
+        pick registry.entries[index].owner {
+            Some(current) {
+                if current == owner {
+                    if registry.entries[index].state
+                        == ScopeRegistryEntryState.Invalidated
+                    {
+                        give false;
+                    }
+
+                    scope_registry_entry_invalidate(
+                        ref mut registry.entries[index]
+                    );
+
+                    set registry.statistics.invalidated =
+                        registry.statistics.invalidated + 1;
+
+                    give true;
+                }
+            }
+
+            None {}
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give false;
+}
+
+proc scope_registry_active_entries(
+    registry: ref ScopeRegistry
+) -> ScopeRegistrySet {
+    let mut result =
+        scope_registry_set_create();
+
+    for entry in registry.entries {
+        if scope_registry_entry_is_active(
+            entry
+        ) {
+            scope_registry_set_push(
+                ref mut result,
+                entry
+            );
+        }
+    }
+
+    give result;
+}
+
+proc scope_registry_count(
+    registry: ref ScopeRegistry
+) -> usize {
+    give len(registry.entries);
+}
+
+proc scope_registry_active_count(
+    registry: ref ScopeRegistry
+) -> usize {
+    let mut count: usize = 0;
+
+    for entry in registry.entries {
+        if scope_registry_entry_is_active(
+            entry
+        ) {
+            set count =
+                count + 1;
+        }
+    }
+
+    give count;
+}
+
+proc scope_registry_advance_generation(
+    registry: ref mut ScopeRegistry
+) -> u64 {
+    set registry.generation =
+        registry.generation + 1;
+
+    give registry.generation;
+}
+
+proc scope_registry_clear(
+    registry: ref mut ScopeRegistry
+) {
+    set registry.entries = [];
+
+    set registry.generation =
+        registry.generation + 1;
+}
+
+proc scope_registry_statistics(
+    registry: ref ScopeRegistry
+) -> ScopeRegistryStatistics {
+    give registry.statistics;
+}
+
+proc scope_registry_reset_statistics(
+    registry: ref mut ScopeRegistry
+) {
+    set registry.statistics =
+        scope_registry_statistics_empty();
+}
+
+proc scope_registry_entry_state_name(
+    state: ScopeRegistryEntryState
+) -> string {
+    pick state {
+        ScopeRegistryEntryState.Active {
+            give "active";
+        }
+
+        ScopeRegistryEntryState.Invalidated {
+            give "invalidated";
+        }
+    }
+
+    give "invalidated";
+}
+
+// compiler entities
+//
+// DefId -----------+
+// HirId -----------+
+// ModuleId --------+
+// TypeId ----------+
+//                  |
+//                  v
+//            ScopeRegistry
+//                  |
+//                  v
+//               ScopeId
+//                  |
+//                  v
+//              ScopeNode
+//
+// Examples:
+//
+// DefId(proc foo)
+//      |
+//      v
+// ScopeRegistry
+//      |
+//      v
+// ScopeId 42
+//
+// HirId(block)
+//      |
+//      v
+// ScopeRegistry
+//      |
+//      v
+// ScopeId 47
+//
+// ModuleId(core.math)
+//      |
+//      v
+// ScopeRegistry
+//      |
+//      v
+// ScopeId 3
+//
+// scope_registry.vit
+//     = cross-index between compiler IDs and ScopeId
+//
+// scope_node.vit
+//     = persistent scope graph nodes
+//
+// scope_manager.vit
+//     = owns and orchestrates the registry and all scope tables

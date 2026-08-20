@@ -1,0 +1,1032 @@
+space vitte/compiler/analysis/scopes/scope_info
+
+export *
+
+use vitte/compiler/analysis/scopes/scope_id.{
+    ScopeId,
+    scope_id_is_valid
+}
+
+pick ScopeInfoKind {
+    Root,
+    Module,
+    Namespace,
+    Type,
+    Trait,
+    Impl,
+    Procedure,
+    Method,
+    Block,
+    Loop,
+    Match,
+    MatchArm,
+    Generic,
+    Comptime,
+    Unsafe,
+    Critical,
+    Generated
+}
+
+pick ScopeInfoState {
+    Created,
+    Active,
+    Closed,
+    Invalidated
+}
+
+form ScopeInfoCounts {
+    bindings: usize
+    imports: usize
+    exports: usize
+    generics: usize
+    children: usize
+    edges: usize
+}
+
+form ScopeInfo {
+    id: ScopeId
+
+    parent: Option<ScopeId>
+
+    owner: Option<DefId>
+    node: Option<HirId>
+    type_id: Option<TypeId>
+    module: Option<ModuleId>
+
+    kind: ScopeInfoKind
+    state: ScopeInfoState
+
+    depth: usize
+
+    counts: ScopeInfoCounts
+
+    generation: u64
+    revision: u64
+}
+
+form ScopeInfoStatistics {
+    created: u64
+    lookups: u64
+
+    hits: u64
+    misses: u64
+
+    active: u64
+    closed: u64
+    invalidated: u64
+
+    maximum_depth: usize
+}
+
+form ScopeInfoTable {
+    scopes: [ScopeInfo]
+
+    generation: u64
+
+    statistics: ScopeInfoStatistics
+}
+
+proc scope_info_counts_empty()
+    -> ScopeInfoCounts
+{
+    give ScopeInfoCounts {
+        bindings: 0,
+        imports: 0,
+        exports: 0,
+        generics: 0,
+        children: 0,
+        edges: 0
+    };
+}
+
+proc scope_info_statistics_empty()
+    -> ScopeInfoStatistics
+{
+    give ScopeInfoStatistics {
+        created: 0,
+        lookups: 0,
+
+        hits: 0,
+        misses: 0,
+
+        active: 0,
+        closed: 0,
+        invalidated: 0,
+
+        maximum_depth: 0
+    };
+}
+
+proc scope_info_table_create()
+    -> ScopeInfoTable
+{
+    give ScopeInfoTable {
+        scopes: [],
+
+        generation: 1,
+
+        statistics:
+            scope_info_statistics_empty()
+    };
+}
+
+proc scope_info(
+    id: ScopeId,
+    parent: Option<ScopeId>,
+    kind: ScopeInfoKind,
+    depth: usize
+) -> ScopeInfo {
+    give ScopeInfo {
+        id: id,
+
+        parent: parent,
+
+        owner: None,
+        node: None,
+        type_id: None,
+        module: None,
+
+        kind: kind,
+
+        state:
+            ScopeInfoState.Created,
+
+        depth: depth,
+
+        counts:
+            scope_info_counts_empty(),
+
+        generation: 1,
+        revision: 1
+    };
+}
+
+proc scope_info_root(
+    id: ScopeId
+) -> ScopeInfo {
+    give scope_info(
+        id,
+        None,
+        ScopeInfoKind.Root,
+        0
+    );
+}
+
+proc scope_info_with_owner(
+    info: ScopeInfo,
+    owner: DefId
+) -> ScopeInfo {
+    let mut result =
+        info;
+
+    set result.owner =
+        Some(owner);
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_info_with_node(
+    info: ScopeInfo,
+    node: HirId
+) -> ScopeInfo {
+    let mut result =
+        info;
+
+    set result.node =
+        Some(node);
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_info_with_type(
+    info: ScopeInfo,
+    type_id: TypeId
+) -> ScopeInfo {
+    let mut result =
+        info;
+
+    set result.type_id =
+        Some(type_id);
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_info_with_module(
+    info: ScopeInfo,
+    module: ModuleId
+) -> ScopeInfo {
+    let mut result =
+        info;
+
+    set result.module =
+        Some(module);
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_info_activate(
+    info: ref mut ScopeInfo
+) {
+    if info.state
+        == ScopeInfoState.Invalidated
+    {
+        give;
+    }
+
+    set info.state =
+        ScopeInfoState.Active;
+
+    set info.revision =
+        info.revision + 1;
+}
+
+proc scope_info_close(
+    info: ref mut ScopeInfo
+) {
+    if info.state
+        == ScopeInfoState.Invalidated
+    {
+        give;
+    }
+
+    set info.state =
+        ScopeInfoState.Closed;
+
+    set info.revision =
+        info.revision + 1;
+}
+
+proc scope_info_invalidate(
+    info: ref mut ScopeInfo
+) {
+    set info.state =
+        ScopeInfoState.Invalidated;
+
+    set info.revision =
+        info.revision + 1;
+}
+
+proc scope_info_is_valid(
+    info: ScopeInfo
+) -> bool {
+    give scope_id_is_valid(
+        info.id
+    )
+    and info.state
+        != ScopeInfoState.Invalidated;
+}
+
+proc scope_info_is_active(
+    info: ScopeInfo
+) -> bool {
+    give info.state
+        == ScopeInfoState.Active;
+}
+
+proc scope_info_has_parent(
+    info: ScopeInfo
+) -> bool {
+    pick info.parent {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_info_has_owner(
+    info: ScopeInfo
+) -> bool {
+    pick info.owner {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_info_has_node(
+    info: ScopeInfo
+) -> bool {
+    pick info.node {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_info_has_type(
+    info: ScopeInfo
+) -> bool {
+    pick info.type_id {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_info_has_module(
+    info: ScopeInfo
+) -> bool {
+    pick info.module {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_info_set_binding_count(
+    info: ref mut ScopeInfo,
+    count: usize
+) {
+    set info.counts.bindings =
+        count;
+
+    set info.revision =
+        info.revision + 1;
+}
+
+proc scope_info_set_import_count(
+    info: ref mut ScopeInfo,
+    count: usize
+) {
+    set info.counts.imports =
+        count;
+
+    set info.revision =
+        info.revision + 1;
+}
+
+proc scope_info_set_export_count(
+    info: ref mut ScopeInfo,
+    count: usize
+) {
+    set info.counts.exports =
+        count;
+
+    set info.revision =
+        info.revision + 1;
+}
+
+proc scope_info_set_generic_count(
+    info: ref mut ScopeInfo,
+    count: usize
+) {
+    set info.counts.generics =
+        count;
+
+    set info.revision =
+        info.revision + 1;
+}
+
+proc scope_info_set_child_count(
+    info: ref mut ScopeInfo,
+    count: usize
+) {
+    set info.counts.children =
+        count;
+
+    set info.revision =
+        info.revision + 1;
+}
+
+proc scope_info_set_edge_count(
+    info: ref mut ScopeInfo,
+    count: usize
+) {
+    set info.counts.edges =
+        count;
+
+    set info.revision =
+        info.revision + 1;
+}
+
+proc scope_info_table_find_index(
+    table: ref ScopeInfoTable,
+    id: ScopeId
+) -> Option<usize> {
+    let mut index: usize = 0;
+
+    while index < len(table.scopes) {
+        if table.scopes[index].id
+            == id
+        {
+            give Some(index);
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give None;
+}
+
+proc scope_info_table_contains(
+    table: ref ScopeInfoTable,
+    id: ScopeId
+) -> bool {
+    pick scope_info_table_find_index(
+        table,
+        id
+    ) {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_info_table_insert(
+    table: ref mut ScopeInfoTable,
+    info: ScopeInfo
+) -> bool {
+    if not scope_id_is_valid(
+        info.id
+    ) {
+        give false;
+    }
+
+    if scope_info_table_contains(
+        ref table,
+        info.id
+    ) {
+        give false;
+    }
+
+    let mut value =
+        info;
+
+    set value.generation =
+        table.generation;
+
+    set table.scopes =
+        table.scopes + [value];
+
+    set table.statistics.created =
+        table.statistics.created + 1;
+
+    if value.depth
+        > table.statistics.maximum_depth
+    {
+        set table.statistics.maximum_depth =
+            value.depth;
+    }
+
+    give true;
+}
+
+proc scope_info_table_get(
+    table: ref mut ScopeInfoTable,
+    id: ScopeId
+) -> Option<ScopeInfo> {
+    set table.statistics.lookups =
+        table.statistics.lookups + 1;
+
+    let index =
+        scope_info_table_find_index(
+            ref table,
+            id
+        );
+
+    pick index {
+        Some(value) {
+            set table.statistics.hits =
+                table.statistics.hits + 1;
+
+            give Some(
+                table.scopes[value]
+            );
+        }
+
+        None {
+            set table.statistics.misses =
+                table.statistics.misses + 1;
+
+            give None;
+        }
+    }
+}
+
+proc scope_info_table_get_mut(
+    table: ref mut ScopeInfoTable,
+    id: ScopeId
+) -> Option<ref mut ScopeInfo> {
+    let index =
+        scope_info_table_find_index(
+            ref table,
+            id
+        );
+
+    pick index {
+        Some(value) {
+            give Some(
+                ref mut table.scopes[value]
+            );
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc scope_info_table_activate(
+    table: ref mut ScopeInfoTable,
+    id: ScopeId
+) -> bool {
+    let info =
+        scope_info_table_get_mut(
+            table,
+            id
+        );
+
+    pick info {
+        Some(value) {
+            if value.state
+                == ScopeInfoState.Active
+            {
+                give false;
+            }
+
+            scope_info_activate(
+                value
+            );
+
+            set table.statistics.active =
+                table.statistics.active + 1;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_info_table_close(
+    table: ref mut ScopeInfoTable,
+    id: ScopeId
+) -> bool {
+    let info =
+        scope_info_table_get_mut(
+            table,
+            id
+        );
+
+    pick info {
+        Some(value) {
+            if value.state
+                == ScopeInfoState.Closed
+            {
+                give false;
+            }
+
+            scope_info_close(
+                value
+            );
+
+            set table.statistics.closed =
+                table.statistics.closed + 1;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_info_table_invalidate(
+    table: ref mut ScopeInfoTable,
+    id: ScopeId
+) -> bool {
+    let info =
+        scope_info_table_get_mut(
+            table,
+            id
+        );
+
+    pick info {
+        Some(value) {
+            if value.state
+                == ScopeInfoState.Invalidated
+            {
+                give false;
+            }
+
+            scope_info_invalidate(
+                value
+            );
+
+            set table.statistics.invalidated =
+                table.statistics.invalidated + 1;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_info_table_parent(
+    table: ref ScopeInfoTable,
+    id: ScopeId
+) -> Option<ScopeId> {
+    let index =
+        scope_info_table_find_index(
+            table,
+            id
+        );
+
+    pick index {
+        Some(value) {
+            give table.scopes[value].parent;
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc scope_info_table_depth(
+    table: ref ScopeInfoTable,
+    id: ScopeId
+) -> Option<usize> {
+    let index =
+        scope_info_table_find_index(
+            table,
+            id
+        );
+
+    pick index {
+        Some(value) {
+            give Some(
+                table.scopes[value].depth
+            );
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc scope_info_table_owner(
+    table: ref ScopeInfoTable,
+    id: ScopeId
+) -> Option<DefId> {
+    let index =
+        scope_info_table_find_index(
+            table,
+            id
+        );
+
+    pick index {
+        Some(value) {
+            give table.scopes[value].owner;
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc scope_info_table_module(
+    table: ref ScopeInfoTable,
+    id: ScopeId
+) -> Option<ModuleId> {
+    let index =
+        scope_info_table_find_index(
+            table,
+            id
+        );
+
+    pick index {
+        Some(value) {
+            give table.scopes[value].module;
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc scope_info_table_root(
+    table: ref ScopeInfoTable,
+    id: ScopeId
+) -> Option<ScopeInfo> {
+    let mut current =
+        Some(id);
+
+    loop {
+        pick current {
+            None {
+                give None;
+            }
+
+            Some(scope) {
+                let index =
+                    scope_info_table_find_index(
+                        table,
+                        scope
+                    );
+
+                pick index {
+                    None {
+                        give None;
+                    }
+
+                    Some(value) {
+                        let info =
+                            table.scopes[value];
+
+                        pick info.parent {
+                            None {
+                                give Some(info);
+                            }
+
+                            Some(parent) {
+                                set current =
+                                    Some(parent);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    give None;
+}
+
+proc scope_info_table_ancestors(
+    table: ref ScopeInfoTable,
+    id: ScopeId
+) -> [ScopeId] {
+    let mut result:
+        [ScopeId] = [];
+
+    let mut current =
+        scope_info_table_parent(
+            table,
+            id
+        );
+
+    loop {
+        pick current {
+            None {
+                break;
+            }
+
+            Some(parent) {
+                set result =
+                    result + [parent];
+
+                set current =
+                    scope_info_table_parent(
+                        table,
+                        parent
+                    );
+            }
+        }
+    }
+
+    give result;
+}
+
+proc scope_info_table_update_counts(
+    table: ref mut ScopeInfoTable,
+    id: ScopeId,
+    counts: ScopeInfoCounts
+) -> bool {
+    let info =
+        scope_info_table_get_mut(
+            table,
+            id
+        );
+
+    pick info {
+        Some(value) {
+            set value.counts =
+                counts;
+
+            set value.revision =
+                value.revision + 1;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_info_table_advance_generation(
+    table: ref mut ScopeInfoTable
+) -> u64 {
+    set table.generation =
+        table.generation + 1;
+
+    give table.generation;
+}
+
+proc scope_info_table_clear(
+    table: ref mut ScopeInfoTable
+) {
+    set table.scopes = [];
+
+    set table.generation =
+        table.generation + 1;
+}
+
+proc scope_info_table_statistics(
+    table: ref ScopeInfoTable
+) -> ScopeInfoStatistics {
+    give table.statistics;
+}
+
+proc scope_info_table_reset_statistics(
+    table: ref mut ScopeInfoTable
+) {
+    set table.statistics =
+        scope_info_statistics_empty();
+}
+
+proc scope_info_kind_name(
+    kind: ScopeInfoKind
+) -> string {
+    pick kind {
+        ScopeInfoKind.Root {
+            give "root";
+        }
+
+        ScopeInfoKind.Module {
+            give "module";
+        }
+
+        ScopeInfoKind.Namespace {
+            give "namespace";
+        }
+
+        ScopeInfoKind.Type {
+            give "type";
+        }
+
+        ScopeInfoKind.Trait {
+            give "trait";
+        }
+
+        ScopeInfoKind.Impl {
+            give "impl";
+        }
+
+        ScopeInfoKind.Procedure {
+            give "procedure";
+        }
+
+        ScopeInfoKind.Method {
+            give "method";
+        }
+
+        ScopeInfoKind.Block {
+            give "block";
+        }
+
+        ScopeInfoKind.Loop {
+            give "loop";
+        }
+
+        ScopeInfoKind.Match {
+            give "match";
+        }
+
+        ScopeInfoKind.MatchArm {
+            give "match-arm";
+        }
+
+        ScopeInfoKind.Generic {
+            give "generic";
+        }
+
+        ScopeInfoKind.Comptime {
+            give "comptime";
+        }
+
+        ScopeInfoKind.Unsafe {
+            give "unsafe";
+        }
+
+        ScopeInfoKind.Critical {
+            give "critical";
+        }
+
+        ScopeInfoKind.Generated {
+            give "generated";
+        }
+    }
+
+    give "block";
+}
+
+proc scope_info_state_name(
+    state: ScopeInfoState
+) -> string {
+    pick state {
+        ScopeInfoState.Created {
+            give "created";
+        }
+
+        ScopeInfoState.Active {
+            give "active";
+        }
+
+        ScopeInfoState.Closed {
+            give "closed";
+        }
+
+        ScopeInfoState.Invalidated {
+            give "invalidated";
+        }
+    }
+
+    give "invalidated";
+}
+
+// ScopeInfo
+//    |
+//    +-- ScopeId
+//    +-- parent ScopeId
+//    +-- owner DefId
+//    +-- HirId
+//    +-- TypeId
+//    +-- ModuleId
+//    +-- kind / state
+//    +-- depth
+//    |
+//    +-- counts
+//           |
+//           +-- bindings
+//           +-- imports
+//           +-- exports
+//           +-- generics
+//           +-- children
+//           +-- edges
+//
+// scope_info.vit
+//     = lightweight summary of one scope
+//
+// scope_binding.vit
+//     = actual bindings
+//
+// scope_import.vit
+//     = actual imports
+//
+// scope_export.vit
+//     = actual exports
+//
+// scope_generic.vit
+//     = actual generic environment
+//
+// scope_child.vit / scope_edge.vit
+//     = actual relationships

@@ -1,0 +1,1367 @@
+space vitte/compiler/analysis/scopes/scope_import
+
+export *
+
+use vitte/compiler/analysis/scopes/scope_id.{
+    ScopeId
+}
+
+use vitte/compiler/analysis/scopes/scope_binding.{
+    ScopeBinding,
+    ScopeBindingKind,
+    ScopeBindingState,
+    ScopeBindingVisibility,
+    ScopeBindingTable,
+    ScopeBindingErrorKind,
+
+    scope_binding,
+    scope_binding_table_insert
+}
+
+use vitte/compiler/analysis/scopes/scope_export.{
+    ScopeExport,
+    ScopeExportSet,
+    ScopeExportTable,
+
+    scope_export_is_visible,
+    scope_export_table_visible_exports
+}
+
+pick ScopeImportKind {
+    Direct,
+    Alias,
+    Group,
+    Glob,
+    Reexport,
+    Generated
+}
+
+pick ScopeImportState {
+    Declared,
+    Resolving,
+    Resolved,
+    Ambiguous,
+    Missing,
+    Invalidated
+}
+
+pick ScopeImportErrorKind {
+    None,
+    EmptyName,
+    InvalidScope,
+    InvalidSource,
+    ImportNotFound,
+    DuplicateImport,
+    AmbiguousImport,
+    PrivateImport,
+    ImportCycle,
+    InvalidState
+}
+
+form ScopeImportError {
+    kind: ScopeImportErrorKind
+
+    scope: ScopeId
+
+    name: string
+    source_path: string
+
+    message: string
+}
+
+form ScopeImport {
+    scope: ScopeId
+
+    source_scope: Option<ScopeId>
+    source_module: Option<ModuleId>
+
+    source_path: string
+    source_name: string
+
+    name: string
+
+    symbol: Option<SymbolId>
+    definition: Option<DefId>
+    type_id: Option<TypeId>
+
+    binding_kind: ScopeBindingKind
+    visibility: ScopeBindingVisibility
+
+    kind: ScopeImportKind
+    state: ScopeImportState
+
+    reexport: bool
+
+    priority: usize
+
+    generation: u64
+    revision: u64
+}
+
+form ScopeImportSet {
+    imports: [ScopeImport]
+}
+
+form ScopeImportStatistics {
+    inserted: u64
+
+    direct: u64
+    aliases: u64
+    groups: u64
+    globs: u64
+    reexports: u64
+
+    resolved: u64
+    missing: u64
+    ambiguous: u64
+
+    lookups: u64
+    hits: u64
+    misses: u64
+
+    duplicates: u64
+    private_rejected: u64
+    invalidated: u64
+}
+
+form ScopeImportTable {
+    imports: [ScopeImport]
+
+    generation: u64
+
+    statistics: ScopeImportStatistics
+}
+
+proc scope_import_statistics_empty()
+    -> ScopeImportStatistics
+{
+    give ScopeImportStatistics {
+        inserted: 0,
+
+        direct: 0,
+        aliases: 0,
+        groups: 0,
+        globs: 0,
+        reexports: 0,
+
+        resolved: 0,
+        missing: 0,
+        ambiguous: 0,
+
+        lookups: 0,
+        hits: 0,
+        misses: 0,
+
+        duplicates: 0,
+        private_rejected: 0,
+        invalidated: 0
+    };
+}
+
+proc scope_import_table_create()
+    -> ScopeImportTable
+{
+    give ScopeImportTable {
+        imports: [],
+
+        generation: 1,
+
+        statistics:
+            scope_import_statistics_empty()
+    };
+}
+
+proc scope_import_error_none()
+    -> ScopeImportError
+{
+    give ScopeImportError {
+        kind:
+            ScopeImportErrorKind.None,
+
+        scope:
+            0 as ScopeId,
+
+        name:
+            "",
+
+        source_path:
+            "",
+
+        message:
+            ""
+    };
+}
+
+proc scope_import_error(
+    kind: ScopeImportErrorKind,
+    scope: ScopeId,
+    name: string,
+    source_path: string,
+    message: string
+) -> ScopeImportError {
+    give ScopeImportError {
+        kind: kind,
+
+        scope: scope,
+
+        name: name,
+        source_path: source_path,
+
+        message: message
+    };
+}
+
+proc scope_import(
+    scope: ScopeId,
+    source_path: string,
+    source_name: string,
+    kind: ScopeImportKind
+) -> ScopeImport {
+    give ScopeImport {
+        scope: scope,
+
+        source_scope: None,
+        source_module: None,
+
+        source_path: source_path,
+        source_name: source_name,
+
+        name: source_name,
+
+        symbol: None,
+        definition: None,
+        type_id: None,
+
+        binding_kind:
+            ScopeBindingKind.Import,
+
+        visibility:
+            ScopeBindingVisibility.Private,
+
+        kind: kind,
+
+        state:
+            ScopeImportState.Declared,
+
+        reexport: false,
+
+        priority: 0,
+
+        generation: 1,
+        revision: 1
+    };
+}
+
+proc scope_import_direct(
+    scope: ScopeId,
+    source_path: string,
+    name: string
+) -> ScopeImport {
+    give scope_import(
+        scope,
+        source_path,
+        name,
+        ScopeImportKind.Direct
+    );
+}
+
+proc scope_import_glob(
+    scope: ScopeId,
+    source_path: string
+) -> ScopeImport {
+    give scope_import(
+        scope,
+        source_path,
+        "*",
+        ScopeImportKind.Glob
+    );
+}
+
+proc scope_import_with_alias(
+    value: ScopeImport,
+    alias: string
+) -> ScopeImport {
+    let mut result =
+        value;
+
+    set result.name =
+        alias;
+
+    set result.kind =
+        ScopeImportKind.Alias;
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_import_with_source_scope(
+    value: ScopeImport,
+    source_scope: ScopeId
+) -> ScopeImport {
+    let mut result =
+        value;
+
+    set result.source_scope =
+        Some(source_scope);
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_import_with_source_module(
+    value: ScopeImport,
+    source_module: ModuleId
+) -> ScopeImport {
+    let mut result =
+        value;
+
+    set result.source_module =
+        Some(source_module);
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_import_with_symbol(
+    value: ScopeImport,
+    symbol: SymbolId
+) -> ScopeImport {
+    let mut result =
+        value;
+
+    set result.symbol =
+        Some(symbol);
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_import_with_definition(
+    value: ScopeImport,
+    definition: DefId
+) -> ScopeImport {
+    let mut result =
+        value;
+
+    set result.definition =
+        Some(definition);
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_import_with_type(
+    value: ScopeImport,
+    type_id: TypeId
+) -> ScopeImport {
+    let mut result =
+        value;
+
+    set result.type_id =
+        Some(type_id);
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_import_with_visibility(
+    value: ScopeImport,
+    visibility: ScopeBindingVisibility
+) -> ScopeImport {
+    let mut result =
+        value;
+
+    set result.visibility =
+        visibility;
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_import_with_priority(
+    value: ScopeImport,
+    priority: usize
+) -> ScopeImport {
+    let mut result =
+        value;
+
+    set result.priority =
+        priority;
+
+    give result;
+}
+
+proc scope_import_mark_reexport(
+    value: ScopeImport
+) -> ScopeImport {
+    let mut result =
+        value;
+
+    set result.reexport =
+        true;
+
+    set result.kind =
+        ScopeImportKind.Reexport;
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_import_begin_resolution(
+    value: ref mut ScopeImport
+) {
+    if value.state
+        == ScopeImportState.Invalidated
+    {
+        give;
+    }
+
+    set value.state =
+        ScopeImportState.Resolving;
+
+    set value.revision =
+        value.revision + 1;
+}
+
+proc scope_import_mark_resolved(
+    value: ref mut ScopeImport
+) {
+    if value.state
+        == ScopeImportState.Invalidated
+    {
+        give;
+    }
+
+    set value.state =
+        ScopeImportState.Resolved;
+
+    set value.revision =
+        value.revision + 1;
+}
+
+proc scope_import_mark_missing(
+    value: ref mut ScopeImport
+) {
+    if value.state
+        == ScopeImportState.Invalidated
+    {
+        give;
+    }
+
+    set value.state =
+        ScopeImportState.Missing;
+
+    set value.revision =
+        value.revision + 1;
+}
+
+proc scope_import_mark_ambiguous(
+    value: ref mut ScopeImport
+) {
+    if value.state
+        == ScopeImportState.Invalidated
+    {
+        give;
+    }
+
+    set value.state =
+        ScopeImportState.Ambiguous;
+
+    set value.revision =
+        value.revision + 1;
+}
+
+proc scope_import_invalidate(
+    value: ref mut ScopeImport
+) {
+    set value.state =
+        ScopeImportState.Invalidated;
+
+    set value.revision =
+        value.revision + 1;
+}
+
+proc scope_import_is_active(
+    value: ScopeImport
+) -> bool {
+    give value.state
+        != ScopeImportState.Invalidated;
+}
+
+proc scope_import_is_resolved(
+    value: ScopeImport
+) -> bool {
+    give value.state
+        == ScopeImportState.Resolved;
+}
+
+proc scope_import_is_glob(
+    value: ScopeImport
+) -> bool {
+    give value.kind
+        == ScopeImportKind.Glob;
+}
+
+proc scope_import_has_symbol(
+    value: ScopeImport
+) -> bool {
+    pick value.symbol {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_import_has_definition(
+    value: ScopeImport
+) -> bool {
+    pick value.definition {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_import_set_create()
+    -> ScopeImportSet
+{
+    give ScopeImportSet {
+        imports: []
+    };
+}
+
+proc scope_import_set_push(
+    set: ref mut ScopeImportSet,
+    value: ScopeImport
+) {
+    set set.imports =
+        set.imports + [value];
+}
+
+proc scope_import_set_count(
+    set: ref ScopeImportSet
+) -> usize {
+    give len(set.imports);
+}
+
+proc scope_import_set_is_empty(
+    set: ref ScopeImportSet
+) -> bool {
+    give len(set.imports) == 0;
+}
+
+proc scope_import_table_contains(
+    table: ref ScopeImportTable,
+    scope: ScopeId,
+    name: string
+) -> bool {
+    for value in table.imports {
+        if value.scope == scope
+            and value.name == name
+            and scope_import_is_active(
+                value
+            )
+        {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc scope_import_table_record_kind(
+    table: ref mut ScopeImportTable,
+    kind: ScopeImportKind
+) {
+    pick kind {
+        ScopeImportKind.Direct {
+            set table.statistics.direct =
+                table.statistics.direct + 1;
+        }
+
+        ScopeImportKind.Alias {
+            set table.statistics.aliases =
+                table.statistics.aliases + 1;
+        }
+
+        ScopeImportKind.Group {
+            set table.statistics.groups =
+                table.statistics.groups + 1;
+        }
+
+        ScopeImportKind.Glob {
+            set table.statistics.globs =
+                table.statistics.globs + 1;
+        }
+
+        ScopeImportKind.Reexport {
+            set table.statistics.reexports =
+                table.statistics.reexports + 1;
+        }
+
+        ScopeImportKind.Generated {}
+    }
+}
+
+proc scope_import_table_insert(
+    table: ref mut ScopeImportTable,
+    value: ScopeImport
+) -> ScopeImportError {
+    if value.name == "" {
+        give scope_import_error(
+            ScopeImportErrorKind.EmptyName,
+            value.scope,
+            value.name,
+            value.source_path,
+            "import name is empty"
+        );
+    }
+
+    if scope_import_table_contains(
+        ref table,
+        value.scope,
+        value.name
+    ) {
+        set table.statistics.duplicates =
+            table.statistics.duplicates + 1;
+
+        give scope_import_error(
+            ScopeImportErrorKind.DuplicateImport,
+            value.scope,
+            value.name,
+            value.source_path,
+            "import already exists in this scope"
+        );
+    }
+
+    let mut result =
+        value;
+
+    set result.generation =
+        table.generation;
+
+    set table.imports =
+        table.imports + [result];
+
+    set table.statistics.inserted =
+        table.statistics.inserted + 1;
+
+    scope_import_table_record_kind(
+        table,
+        result.kind
+    );
+
+    give scope_import_error_none();
+}
+
+proc scope_import_from_export(
+    scope: ScopeId,
+    value: ScopeExport
+) -> ScopeImport {
+    let mut result =
+        scope_import(
+            scope,
+            "",
+            value.name,
+            ScopeImportKind.Direct
+        );
+
+    set result.source_scope =
+        Some(value.scope);
+
+    set result.source_name =
+        value.name;
+
+    set result.symbol =
+        value.symbol;
+
+    set result.definition =
+        value.definition;
+
+    set result.type_id =
+        value.type_id;
+
+    set result.binding_kind =
+        value.binding_kind;
+
+    set result.visibility =
+        value.visibility;
+
+    set result.state =
+        ScopeImportState.Resolved;
+
+    give result;
+}
+
+proc scope_import_table_import_export(
+    table: ref mut ScopeImportTable,
+    scope: ScopeId,
+    value: ScopeExport
+) -> ScopeImportError {
+    if not scope_export_is_visible(
+        value
+    ) {
+        set table.statistics.private_rejected =
+            table.statistics.private_rejected + 1;
+
+        give scope_import_error(
+            ScopeImportErrorKind.PrivateImport,
+            scope,
+            value.name,
+            "",
+            "export is not visible from this scope"
+        );
+    }
+
+    give scope_import_table_insert(
+        table,
+        scope_import_from_export(
+            scope,
+            value
+        )
+    );
+}
+
+proc scope_import_table_import_alias(
+    table: ref mut ScopeImportTable,
+    scope: ScopeId,
+    value: ScopeExport,
+    alias: string
+) -> ScopeImportError {
+    let import =
+        scope_import_with_alias(
+            scope_import_from_export(
+                scope,
+                value
+            ),
+            alias
+        );
+
+    give scope_import_table_insert(
+        table,
+        import
+    );
+}
+
+proc scope_import_table_import_glob(
+    table: ref mut ScopeImportTable,
+    exports: ref ScopeExportTable,
+    target_scope: ScopeId,
+    source_scope: ScopeId
+) -> usize {
+    let values =
+        scope_export_table_visible_exports(
+            exports,
+            source_scope
+        );
+
+    let mut count: usize = 0;
+
+    for value in values.exports {
+        let mut import =
+            scope_import_from_export(
+                target_scope,
+                value
+            );
+
+        set import.kind =
+            ScopeImportKind.Glob;
+
+        let error =
+            scope_import_table_insert(
+                table,
+                import
+            );
+
+        if error.kind
+            == ScopeImportErrorKind.None
+        {
+            set count =
+                count + 1;
+        }
+    }
+
+    give count;
+}
+
+proc scope_import_table_find(
+    table: ref mut ScopeImportTable,
+    scope: ScopeId,
+    name: string
+) -> Option<ScopeImport> {
+    set table.statistics.lookups =
+        table.statistics.lookups + 1;
+
+    let mut found:
+        Option<ScopeImport> = None;
+
+    for value in table.imports {
+        if value.scope != scope
+            or value.name != name
+            or not scope_import_is_active(
+                value
+            )
+        {
+            continue;
+        }
+
+        pick found {
+            None {
+                set found =
+                    Some(value);
+            }
+
+            Some(_) {
+                set table.statistics.ambiguous =
+                    table.statistics.ambiguous + 1;
+
+                set table.statistics.misses =
+                    table.statistics.misses + 1;
+
+                give None;
+            }
+        }
+    }
+
+    pick found {
+        Some(value) {
+            set table.statistics.hits =
+                table.statistics.hits + 1;
+
+            give Some(value);
+        }
+
+        None {
+            set table.statistics.misses =
+                table.statistics.misses + 1;
+
+            give None;
+        }
+    }
+}
+
+proc scope_import_table_imports(
+    table: ref ScopeImportTable,
+    scope: ScopeId
+) -> ScopeImportSet {
+    let mut result =
+        scope_import_set_create();
+
+    for value in table.imports {
+        if value.scope == scope
+            and scope_import_is_active(
+                value
+            )
+        {
+            scope_import_set_push(
+                ref mut result,
+                value
+            );
+        }
+    }
+
+    give result;
+}
+
+proc scope_import_table_resolved_imports(
+    table: ref ScopeImportTable,
+    scope: ScopeId
+) -> ScopeImportSet {
+    let mut result =
+        scope_import_set_create();
+
+    for value in table.imports {
+        if value.scope == scope
+            and value.state
+                == ScopeImportState.Resolved
+        {
+            scope_import_set_push(
+                ref mut result,
+                value
+            );
+        }
+    }
+
+    give result;
+}
+
+proc scope_import_table_find_definition(
+    table: ref ScopeImportTable,
+    definition: DefId
+) -> Option<ScopeImport> {
+    for value in table.imports {
+        pick value.definition {
+            Some(current) {
+                if current == definition
+                    and scope_import_is_active(
+                        value
+                    )
+                {
+                    give Some(value);
+                }
+            }
+
+            None {}
+        }
+    }
+
+    give None;
+}
+
+proc scope_import_table_find_symbol(
+    table: ref ScopeImportTable,
+    symbol: SymbolId
+) -> Option<ScopeImport> {
+    for value in table.imports {
+        pick value.symbol {
+            Some(current) {
+                if current == symbol
+                    and scope_import_is_active(
+                        value
+                    )
+                {
+                    give Some(value);
+                }
+            }
+
+            None {}
+        }
+    }
+
+    give None;
+}
+
+proc scope_import_to_binding(
+    value: ScopeImport
+) -> ScopeBinding {
+    let mut binding =
+        scope_binding(
+            value.name,
+            value.scope,
+            ScopeBindingKind.Import
+        );
+
+    set binding.symbol =
+        value.symbol;
+
+    set binding.definition =
+        value.definition;
+
+    set binding.type_id =
+        value.type_id;
+
+    set binding.visibility =
+        value.visibility;
+
+    set binding.priority =
+        value.priority;
+
+    set binding.generation =
+        value.generation;
+
+    set binding.state =
+        ScopeBindingState.Imported;
+
+    give binding;
+}
+
+proc scope_import_bind(
+    bindings: ref mut ScopeBindingTable,
+    value: ScopeImport
+) -> bool {
+    if not scope_import_is_resolved(
+        value
+    ) {
+        give false;
+    }
+
+    let error =
+        scope_binding_table_insert(
+            bindings,
+            scope_import_to_binding(
+                value
+            )
+        );
+
+    give error.kind
+        == ScopeBindingErrorKind.None;
+}
+
+proc scope_import_bind_scope(
+    imports: ref ScopeImportTable,
+    bindings: ref mut ScopeBindingTable,
+    scope: ScopeId
+) -> usize {
+    let mut count: usize = 0;
+
+    for value in imports.imports {
+        if value.scope != scope
+            or not scope_import_is_resolved(
+                value
+            )
+        {
+            continue;
+        }
+
+        if scope_import_bind(
+            bindings,
+            value
+        ) {
+            set count =
+                count + 1;
+        }
+    }
+
+    give count;
+}
+
+proc scope_import_table_mark_resolved(
+    table: ref mut ScopeImportTable,
+    scope: ScopeId,
+    name: string
+) -> bool {
+    let mut index: usize = 0;
+
+    while index < len(table.imports) {
+        if table.imports[index].scope
+            == scope
+            and table.imports[index].name
+                == name
+        {
+            scope_import_mark_resolved(
+                ref mut table.imports[index]
+            );
+
+            set table.statistics.resolved =
+                table.statistics.resolved + 1;
+
+            give true;
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give false;
+}
+
+proc scope_import_table_mark_missing(
+    table: ref mut ScopeImportTable,
+    scope: ScopeId,
+    name: string
+) -> bool {
+    let mut index: usize = 0;
+
+    while index < len(table.imports) {
+        if table.imports[index].scope
+            == scope
+            and table.imports[index].name
+                == name
+        {
+            scope_import_mark_missing(
+                ref mut table.imports[index]
+            );
+
+            set table.statistics.missing =
+                table.statistics.missing + 1;
+
+            give true;
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give false;
+}
+
+proc scope_import_table_mark_ambiguous(
+    table: ref mut ScopeImportTable,
+    scope: ScopeId,
+    name: string
+) -> bool {
+    let mut index: usize = 0;
+
+    while index < len(table.imports) {
+        if table.imports[index].scope
+            == scope
+            and table.imports[index].name
+                == name
+        {
+            scope_import_mark_ambiguous(
+                ref mut table.imports[index]
+            );
+
+            set table.statistics.ambiguous =
+                table.statistics.ambiguous + 1;
+
+            give true;
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give false;
+}
+
+proc scope_import_table_invalidate(
+    table: ref mut ScopeImportTable,
+    scope: ScopeId,
+    name: string
+) -> bool {
+    let mut index: usize = 0;
+
+    while index < len(table.imports) {
+        if table.imports[index].scope
+            == scope
+            and table.imports[index].name
+                == name
+        {
+            if table.imports[index].state
+                == ScopeImportState.Invalidated
+            {
+                give false;
+            }
+
+            scope_import_invalidate(
+                ref mut table.imports[index]
+            );
+
+            set table.statistics.invalidated =
+                table.statistics.invalidated + 1;
+
+            give true;
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give false;
+}
+
+proc scope_import_table_invalidate_scope(
+    table: ref mut ScopeImportTable,
+    scope: ScopeId
+) -> usize {
+    let mut count: usize = 0;
+    let mut index: usize = 0;
+
+    while index < len(table.imports) {
+        if table.imports[index].scope
+            == scope
+            and table.imports[index].state
+                != ScopeImportState.Invalidated
+        {
+            scope_import_invalidate(
+                ref mut table.imports[index]
+            );
+
+            set count =
+                count + 1;
+        }
+
+        set index =
+            index + 1;
+    }
+
+    set table.statistics.invalidated =
+        table.statistics.invalidated
+        + count;
+
+    give count;
+}
+
+proc scope_import_table_invalidate_source_scope(
+    table: ref mut ScopeImportTable,
+    source_scope: ScopeId
+) -> usize {
+    let mut count: usize = 0;
+    let mut index: usize = 0;
+
+    while index < len(table.imports) {
+        pick table.imports[index].source_scope {
+            Some(current) {
+                if current == source_scope
+                    and table.imports[index].state
+                        != ScopeImportState.Invalidated
+                {
+                    scope_import_invalidate(
+                        ref mut table.imports[index]
+                    );
+
+                    set count =
+                        count + 1;
+                }
+            }
+
+            None {}
+        }
+
+        set index =
+            index + 1;
+    }
+
+    set table.statistics.invalidated =
+        table.statistics.invalidated
+        + count;
+
+    give count;
+}
+
+proc scope_import_table_advance_generation(
+    table: ref mut ScopeImportTable
+) -> u64 {
+    set table.generation =
+        table.generation + 1;
+
+    give table.generation;
+}
+
+proc scope_import_table_clear(
+    table: ref mut ScopeImportTable
+) {
+    set table.imports = [];
+
+    set table.generation =
+        table.generation + 1;
+}
+
+proc scope_import_table_statistics(
+    table: ref ScopeImportTable
+) -> ScopeImportStatistics {
+    give table.statistics;
+}
+
+proc scope_import_table_reset_statistics(
+    table: ref mut ScopeImportTable
+) {
+    set table.statistics =
+        scope_import_statistics_empty();
+}
+
+proc scope_import_kind_name(
+    kind: ScopeImportKind
+) -> string {
+    pick kind {
+        ScopeImportKind.Direct {
+            give "direct";
+        }
+
+        ScopeImportKind.Alias {
+            give "alias";
+        }
+
+        ScopeImportKind.Group {
+            give "group";
+        }
+
+        ScopeImportKind.Glob {
+            give "glob";
+        }
+
+        ScopeImportKind.Reexport {
+            give "reexport";
+        }
+
+        ScopeImportKind.Generated {
+            give "generated";
+        }
+    }
+
+    give "direct";
+}
+
+proc scope_import_state_name(
+    state: ScopeImportState
+) -> string {
+    pick state {
+        ScopeImportState.Declared {
+            give "declared";
+        }
+
+        ScopeImportState.Resolving {
+            give "resolving";
+        }
+
+        ScopeImportState.Resolved {
+            give "resolved";
+        }
+
+        ScopeImportState.Ambiguous {
+            give "ambiguous";
+        }
+
+        ScopeImportState.Missing {
+            give "missing";
+        }
+
+        ScopeImportState.Invalidated {
+            give "invalidated";
+        }
+    }
+
+    give "invalidated";
+}
+
+// use core/math.Sqrt
+//          |
+//          v
+// import_resolution.vit
+//          |
+//          v
+// source module / export
+//          |
+//          v
+// ScopeImport
+//          |
+//          +-- source_path
+//          +-- source_scope
+//          +-- source_module
+//          +-- source_name
+//          +-- local name / alias
+//          +-- DefId
+//          +-- SymbolId
+//          |
+//          v
+// ScopeImportTable
+//          |
+//          v
+// ScopeBinding
+//          |
+//          v
+// visible during lexical lookup
+//
+// scope_import.vit
+//     = imports présents dans un scope
+//
+// import_resolution.vit
+//     = trouve réellement la cible de l'import
+//
+// scope_export.vit
+//     = vue exportable du scope source

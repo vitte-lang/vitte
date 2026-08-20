@@ -1,0 +1,1030 @@
+space vitte/compiler/analysis/scopes/scope_export
+
+export *
+
+use vitte/compiler/analysis/scopes/scope_binding.{
+    ScopeBinding,
+    ScopeBindingKind,
+    ScopeBindingState,
+    ScopeBindingVisibility,
+    ScopeBindingTable,
+
+    scope_binding_is_active
+}
+
+pick ScopeExportKind {
+    Direct,
+    Reexport,
+    Alias,
+    Glob,
+    Generated
+}
+
+pick ScopeExportState {
+    Active,
+    Hidden,
+    Shadowed,
+    Invalidated
+}
+
+pick ScopeExportErrorKind {
+    None,
+    EmptyName,
+    InvalidScope,
+    InvalidBinding,
+    PrivateBinding,
+    DuplicateExport,
+    ExportNotFound
+}
+
+form ScopeExportError {
+    kind: ScopeExportErrorKind
+
+    scope: ScopeId
+
+    name: string
+
+    message: string
+}
+
+form ScopeExport {
+    scope: ScopeId
+
+    name: string
+    source_name: string
+
+    symbol: Option<SymbolId>
+    definition: Option<DefId>
+    type_id: Option<TypeId>
+
+    binding_kind: ScopeBindingKind
+    visibility: ScopeBindingVisibility
+
+    kind: ScopeExportKind
+    state: ScopeExportState
+
+    source_scope: ScopeId
+
+    priority: usize
+
+    generation: u64
+    revision: u64
+}
+
+form ScopeExportSet {
+    exports: [ScopeExport]
+}
+
+form ScopeExportStatistics {
+    inserted: u64
+
+    direct: u64
+    reexports: u64
+    aliases: u64
+    globs: u64
+
+    lookups: u64
+    hits: u64
+    misses: u64
+
+    duplicates: u64
+    private_rejected: u64
+    invalidated: u64
+}
+
+form ScopeExportTable {
+    exports: [ScopeExport]
+
+    generation: u64
+
+    statistics: ScopeExportStatistics
+}
+
+proc scope_export_statistics_empty()
+    -> ScopeExportStatistics
+{
+    give ScopeExportStatistics {
+        inserted: 0,
+
+        direct: 0,
+        reexports: 0,
+        aliases: 0,
+        globs: 0,
+
+        lookups: 0,
+        hits: 0,
+        misses: 0,
+
+        duplicates: 0,
+        private_rejected: 0,
+        invalidated: 0
+    };
+}
+
+proc scope_export_table_create()
+    -> ScopeExportTable
+{
+    give ScopeExportTable {
+        exports: [],
+
+        generation: 1,
+
+        statistics:
+            scope_export_statistics_empty()
+    };
+}
+
+proc scope_export_error_none()
+    -> ScopeExportError
+{
+    give ScopeExportError {
+        kind:
+            ScopeExportErrorKind.None,
+
+        scope:
+            0 as ScopeId,
+
+        name:
+            "",
+
+        message:
+            ""
+    };
+}
+
+proc scope_export_error(
+    kind: ScopeExportErrorKind,
+    scope: ScopeId,
+    name: string,
+    message: string
+) -> ScopeExportError {
+    give ScopeExportError {
+        kind: kind,
+
+        scope: scope,
+
+        name: name,
+
+        message: message
+    };
+}
+
+proc scope_export(
+    scope: ScopeId,
+    name: string,
+    source_name: string,
+    source_scope: ScopeId,
+    binding_kind: ScopeBindingKind,
+    visibility: ScopeBindingVisibility,
+    kind: ScopeExportKind
+) -> ScopeExport {
+    give ScopeExport {
+        scope: scope,
+
+        name: name,
+        source_name: source_name,
+
+        symbol: None,
+        definition: None,
+        type_id: None,
+
+        binding_kind:
+            binding_kind,
+
+        visibility:
+            visibility,
+
+        kind:
+            kind,
+
+        state:
+            ScopeExportState.Active,
+
+        source_scope:
+            source_scope,
+
+        priority:
+            0,
+
+        generation:
+            1,
+
+        revision:
+            1
+    };
+}
+
+proc scope_export_from_binding(
+    target_scope: ScopeId,
+    binding: ScopeBinding
+) -> ScopeExport {
+    give ScopeExport {
+        scope:
+            target_scope,
+
+        name:
+            binding.name,
+
+        source_name:
+            binding.name,
+
+        symbol:
+            binding.symbol,
+
+        definition:
+            binding.definition,
+
+        type_id:
+            binding.type_id,
+
+        binding_kind:
+            binding.kind,
+
+        visibility:
+            binding.visibility,
+
+        kind:
+            ScopeExportKind.Direct,
+
+        state:
+            ScopeExportState.Active,
+
+        source_scope:
+            binding.scope,
+
+        priority:
+            binding.priority,
+
+        generation:
+            binding.generation,
+
+        revision:
+            binding.revision
+    };
+}
+
+proc scope_export_with_alias(
+    value: ScopeExport,
+    alias: string
+) -> ScopeExport {
+    let mut result =
+        value;
+
+    set result.name =
+        alias;
+
+    set result.kind =
+        ScopeExportKind.Alias;
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_export_mark_reexport(
+    value: ScopeExport
+) -> ScopeExport {
+    let mut result =
+        value;
+
+    set result.kind =
+        ScopeExportKind.Reexport;
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_export_mark_glob(
+    value: ScopeExport
+) -> ScopeExport {
+    let mut result =
+        value;
+
+    set result.kind =
+        ScopeExportKind.Glob;
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_export_mark_generated(
+    value: ScopeExport
+) -> ScopeExport {
+    let mut result =
+        value;
+
+    set result.kind =
+        ScopeExportKind.Generated;
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_export_with_priority(
+    value: ScopeExport,
+    priority: usize
+) -> ScopeExport {
+    let mut result =
+        value;
+
+    set result.priority =
+        priority;
+
+    give result;
+}
+
+proc scope_export_hide(
+    value: ref mut ScopeExport
+) {
+    if value.state
+        == ScopeExportState.Invalidated
+    {
+        give;
+    }
+
+    set value.state =
+        ScopeExportState.Hidden;
+
+    set value.revision =
+        value.revision + 1;
+}
+
+proc scope_export_shadow(
+    value: ref mut ScopeExport
+) {
+    if value.state
+        == ScopeExportState.Invalidated
+    {
+        give;
+    }
+
+    set value.state =
+        ScopeExportState.Shadowed;
+
+    set value.revision =
+        value.revision + 1;
+}
+
+proc scope_export_invalidate(
+    value: ref mut ScopeExport
+) {
+    set value.state =
+        ScopeExportState.Invalidated;
+
+    set value.revision =
+        value.revision + 1;
+}
+
+proc scope_export_is_active(
+    value: ScopeExport
+) -> bool {
+    give value.state
+        == ScopeExportState.Active;
+}
+
+proc scope_export_is_visible(
+    value: ScopeExport
+) -> bool {
+    give value.state
+            == ScopeExportState.Active
+        and value.visibility
+            != ScopeBindingVisibility.Private;
+}
+
+proc scope_export_has_symbol(
+    value: ScopeExport
+) -> bool {
+    pick value.symbol {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_export_has_definition(
+    value: ScopeExport
+) -> bool {
+    pick value.definition {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_export_set_create()
+    -> ScopeExportSet
+{
+    give ScopeExportSet {
+        exports: []
+    };
+}
+
+proc scope_export_set_push(
+    set: ref mut ScopeExportSet,
+    value: ScopeExport
+) {
+    set set.exports =
+        set.exports + [value];
+}
+
+proc scope_export_set_count(
+    set: ref ScopeExportSet
+) -> usize {
+    give len(set.exports);
+}
+
+proc scope_export_set_is_empty(
+    set: ref ScopeExportSet
+) -> bool {
+    give len(set.exports) == 0;
+}
+
+proc scope_export_table_contains(
+    table: ref ScopeExportTable,
+    scope: ScopeId,
+    name: string
+) -> bool {
+    for value in table.exports {
+        if value.scope == scope
+            and value.name == name
+            and value.state
+                != ScopeExportState.Invalidated
+        {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc scope_export_table_record_kind(
+    table: ref mut ScopeExportTable,
+    kind: ScopeExportKind
+) {
+    pick kind {
+        ScopeExportKind.Direct {
+            set table.statistics.direct =
+                table.statistics.direct + 1;
+        }
+
+        ScopeExportKind.Reexport {
+            set table.statistics.reexports =
+                table.statistics.reexports + 1;
+        }
+
+        ScopeExportKind.Alias {
+            set table.statistics.aliases =
+                table.statistics.aliases + 1;
+        }
+
+        ScopeExportKind.Glob {
+            set table.statistics.globs =
+                table.statistics.globs + 1;
+        }
+
+        ScopeExportKind.Generated {}
+    }
+}
+
+proc scope_export_table_insert(
+    table: ref mut ScopeExportTable,
+    value: ScopeExport
+) -> ScopeExportError {
+    if value.name == "" {
+        give scope_export_error(
+            ScopeExportErrorKind.EmptyName,
+            value.scope,
+            value.name,
+            "export name is empty"
+        );
+    }
+
+    if value.visibility
+        == ScopeBindingVisibility.Private
+    {
+        set table.statistics.private_rejected =
+            table.statistics.private_rejected + 1;
+
+        give scope_export_error(
+            ScopeExportErrorKind.PrivateBinding,
+            value.scope,
+            value.name,
+            "private binding cannot be exported"
+        );
+    }
+
+    if scope_export_table_contains(
+        ref table,
+        value.scope,
+        value.name
+    ) {
+        set table.statistics.duplicates =
+            table.statistics.duplicates + 1;
+
+        give scope_export_error(
+            ScopeExportErrorKind.DuplicateExport,
+            value.scope,
+            value.name,
+            "export already exists in this scope"
+        );
+    }
+
+    let mut result =
+        value;
+
+    set result.generation =
+        table.generation;
+
+    set table.exports =
+        table.exports + [result];
+
+    set table.statistics.inserted =
+        table.statistics.inserted + 1;
+
+    scope_export_table_record_kind(
+        table,
+        result.kind
+    );
+
+    give scope_export_error_none();
+}
+
+proc scope_export_table_export_binding(
+    table: ref mut ScopeExportTable,
+    target_scope: ScopeId,
+    binding: ScopeBinding
+) -> ScopeExportError {
+    if not scope_binding_is_active(
+        binding
+    ) {
+        give scope_export_error(
+            ScopeExportErrorKind.InvalidBinding,
+            target_scope,
+            binding.name,
+            "binding is not active"
+        );
+    }
+
+    give scope_export_table_insert(
+        table,
+        scope_export_from_binding(
+            target_scope,
+            binding
+        )
+    );
+}
+
+proc scope_export_table_export_alias(
+    table: ref mut ScopeExportTable,
+    target_scope: ScopeId,
+    binding: ScopeBinding,
+    alias: string
+) -> ScopeExportError {
+    let value =
+        scope_export_with_alias(
+            scope_export_from_binding(
+                target_scope,
+                binding
+            ),
+            alias
+        );
+
+    give scope_export_table_insert(
+        table,
+        value
+    );
+}
+
+proc scope_export_table_reexport(
+    table: ref mut ScopeExportTable,
+    target_scope: ScopeId,
+    value: ScopeExport
+) -> ScopeExportError {
+    let mut result =
+        scope_export_mark_reexport(
+            value
+        );
+
+    set result.scope =
+        target_scope;
+
+    give scope_export_table_insert(
+        table,
+        result
+    );
+}
+
+proc scope_export_table_find(
+    table: ref mut ScopeExportTable,
+    scope: ScopeId,
+    name: string
+) -> Option<ScopeExport> {
+    set table.statistics.lookups =
+        table.statistics.lookups + 1;
+
+    for value in table.exports {
+        if value.scope == scope
+            and value.name == name
+            and scope_export_is_active(
+                value
+            )
+        {
+            set table.statistics.hits =
+                table.statistics.hits + 1;
+
+            give Some(value);
+        }
+    }
+
+    set table.statistics.misses =
+        table.statistics.misses + 1;
+
+    give None;
+}
+
+proc scope_export_table_exports(
+    table: ref ScopeExportTable,
+    scope: ScopeId
+) -> ScopeExportSet {
+    let mut result =
+        scope_export_set_create();
+
+    for value in table.exports {
+        if value.scope == scope
+            and scope_export_is_active(
+                value
+            )
+        {
+            scope_export_set_push(
+                ref mut result,
+                value
+            );
+        }
+    }
+
+    give result;
+}
+
+proc scope_export_table_visible_exports(
+    table: ref ScopeExportTable,
+    scope: ScopeId
+) -> ScopeExportSet {
+    let mut result =
+        scope_export_set_create();
+
+    for value in table.exports {
+        if value.scope == scope
+            and scope_export_is_visible(
+                value
+            )
+        {
+            scope_export_set_push(
+                ref mut result,
+                value
+            );
+        }
+    }
+
+    give result;
+}
+
+proc scope_export_table_build_from_bindings(
+    table: ref mut ScopeExportTable,
+    bindings: ref ScopeBindingTable,
+    scope: ScopeId
+) -> usize {
+    let mut count: usize = 0;
+
+    for binding in bindings.bindings {
+        if binding.scope != scope {
+            continue;
+        }
+
+        if not scope_binding_is_active(
+            binding
+        ) {
+            continue;
+        }
+
+        if binding.visibility
+            == ScopeBindingVisibility.Private
+        {
+            continue;
+        }
+
+        let error =
+            scope_export_table_export_binding(
+                table,
+                scope,
+                binding
+            );
+
+        if error.kind
+            == ScopeExportErrorKind.None
+        {
+            set count =
+                count + 1;
+        }
+    }
+
+    give count;
+}
+
+proc scope_export_table_glob_from_scope(
+    table: ref mut ScopeExportTable,
+    target_scope: ScopeId,
+    source_scope: ScopeId
+) -> usize {
+    let source =
+        scope_export_table_visible_exports(
+            ref table,
+            source_scope
+        );
+
+    let mut count: usize = 0;
+
+    for export in source.exports {
+        let mut value =
+            export;
+
+        set value.scope =
+            target_scope;
+
+        set value.source_scope =
+            source_scope;
+
+        set value.kind =
+            ScopeExportKind.Glob;
+
+        let error =
+            scope_export_table_insert(
+                table,
+                value
+            );
+
+        if error.kind
+            == ScopeExportErrorKind.None
+        {
+            set count =
+                count + 1;
+        }
+    }
+
+    give count;
+}
+
+proc scope_export_table_find_definition(
+    table: ref ScopeExportTable,
+    definition: DefId
+) -> Option<ScopeExport> {
+    for value in table.exports {
+        pick value.definition {
+            Some(current) {
+                if current == definition
+                    and scope_export_is_active(
+                        value
+                    )
+                {
+                    give Some(value);
+                }
+            }
+
+            None {}
+        }
+    }
+
+    give None;
+}
+
+proc scope_export_table_find_symbol(
+    table: ref ScopeExportTable,
+    symbol: SymbolId
+) -> Option<ScopeExport> {
+    for value in table.exports {
+        pick value.symbol {
+            Some(current) {
+                if current == symbol
+                    and scope_export_is_active(
+                        value
+                    )
+                {
+                    give Some(value);
+                }
+            }
+
+            None {}
+        }
+    }
+
+    give None;
+}
+
+proc scope_export_table_invalidate(
+    table: ref mut ScopeExportTable,
+    scope: ScopeId,
+    name: string
+) -> bool {
+    let mut index: usize = 0;
+
+    while index < len(table.exports) {
+        if table.exports[index].scope
+            == scope
+            and table.exports[index].name
+                == name
+        {
+            if table.exports[index].state
+                == ScopeExportState.Invalidated
+            {
+                give false;
+            }
+
+            scope_export_invalidate(
+                ref mut table.exports[index]
+            );
+
+            set table.statistics.invalidated =
+                table.statistics.invalidated + 1;
+
+            give true;
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give false;
+}
+
+proc scope_export_table_invalidate_scope(
+    table: ref mut ScopeExportTable,
+    scope: ScopeId
+) -> usize {
+    let mut count: usize = 0;
+    let mut index: usize = 0;
+
+    while index < len(table.exports) {
+        if table.exports[index].scope
+            == scope
+            and table.exports[index].state
+                != ScopeExportState.Invalidated
+        {
+            scope_export_invalidate(
+                ref mut table.exports[index]
+            );
+
+            set count =
+                count + 1;
+        }
+
+        set index =
+            index + 1;
+    }
+
+    set table.statistics.invalidated =
+        table.statistics.invalidated
+        + count;
+
+    give count;
+}
+
+proc scope_export_table_hide(
+    table: ref mut ScopeExportTable,
+    scope: ScopeId,
+    name: string
+) -> bool {
+    let mut index: usize = 0;
+
+    while index < len(table.exports) {
+        if table.exports[index].scope
+            == scope
+            and table.exports[index].name
+                == name
+        {
+            scope_export_hide(
+                ref mut table.exports[index]
+            );
+
+            give true;
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give false;
+}
+
+proc scope_export_table_advance_generation(
+    table: ref mut ScopeExportTable
+) -> u64 {
+    set table.generation =
+        table.generation + 1;
+
+    give table.generation;
+}
+
+proc scope_export_table_clear(
+    table: ref mut ScopeExportTable
+) {
+    set table.exports = [];
+
+    set table.generation =
+        table.generation + 1;
+}
+
+proc scope_export_table_statistics(
+    table: ref ScopeExportTable
+) -> ScopeExportStatistics {
+    give table.statistics;
+}
+
+proc scope_export_table_reset_statistics(
+    table: ref mut ScopeExportTable
+) {
+    set table.statistics =
+        scope_export_statistics_empty();
+}
+
+proc scope_export_kind_name(
+    kind: ScopeExportKind
+) -> string {
+    pick kind {
+        ScopeExportKind.Direct {
+            give "direct";
+        }
+
+        ScopeExportKind.Reexport {
+            give "reexport";
+        }
+
+        ScopeExportKind.Alias {
+            give "alias";
+        }
+
+        ScopeExportKind.Glob {
+            give "glob";
+        }
+
+        ScopeExportKind.Generated {
+            give "generated";
+        }
+    }
+
+    give "direct";
+}
+
+proc scope_export_state_name(
+    state: ScopeExportState
+) -> string {
+    pick state {
+        ScopeExportState.Active {
+            give "active";
+        }
+
+        ScopeExportState.Hidden {
+            give "hidden";
+        }
+
+        ScopeExportState.Shadowed {
+            give "shadowed";
+        }
+
+        ScopeExportState.Invalidated {
+            give "invalidated";
+        }
+    }
+
+    give "invalidated";
+}
+
+// ScopeBindingTable
+//        |
+//        | bindings publics/package/module
+//        v
+// ScopeExportTable
+//        |
+//        +-- direct
+//        +-- alias
+//        +-- glob
+//        +-- reexport
+//        |
+//        v
+// export_resolution.vit
+//        |
+//        v
+// vue publique du module

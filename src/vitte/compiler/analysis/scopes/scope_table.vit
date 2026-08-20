@@ -1,0 +1,1217 @@
+space vitte/compiler/analysis/scopes/scope_table
+
+export *
+
+use vitte/compiler/analysis/scopes/scope_id.{
+    ScopeId,
+    ScopeIdAllocator,
+
+    scope_id_allocator_create,
+    scope_id_allocator_allocate,
+
+    scope_id_is_valid
+}
+
+use vitte/compiler/analysis/scopes/scope_kind.{
+    ScopeKind
+}
+
+use vitte/compiler/analysis/scopes/scope_node.{
+    ScopeNode,
+    ScopeNodeState,
+
+    scope_node,
+    scope_node_activate,
+    scope_node_close,
+    scope_node_invalidate,
+    scope_node_is_active
+}
+
+pick ScopeTableErrorKind {
+    None,
+    InvalidScope,
+    InvalidParent,
+    DuplicateScope,
+    ScopeNotFound,
+    ParentNotFound,
+    Cycle,
+    InvalidState
+}
+
+form ScopeTableError {
+    kind: ScopeTableErrorKind
+
+    scope: Option<ScopeId>
+    parent: Option<ScopeId>
+
+    message: string
+}
+
+form ScopeTableStatistics {
+    created: u64
+    inserted: u64
+
+    lookups: u64
+    hits: u64
+    misses: u64
+
+    activated: u64
+    closed: u64
+    invalidated: u64
+
+    parent_lookups: u64
+
+    maximum_depth: usize
+}
+
+form ScopeTable {
+    nodes: [ScopeNode]
+
+    ids: ScopeIdAllocator
+
+    root: Option<ScopeId>
+
+    generation: u64
+
+    statistics: ScopeTableStatistics
+}
+
+proc scope_table_statistics_empty()
+    -> ScopeTableStatistics
+{
+    give ScopeTableStatistics {
+        created: 0,
+        inserted: 0,
+
+        lookups: 0,
+        hits: 0,
+        misses: 0,
+
+        activated: 0,
+        closed: 0,
+        invalidated: 0,
+
+        parent_lookups: 0,
+
+        maximum_depth: 0
+    };
+}
+
+proc scope_table_create()
+    -> ScopeTable
+{
+    give ScopeTable {
+        nodes: [],
+
+        ids:
+            scope_id_allocator_create(),
+
+        root:
+            None,
+
+        generation:
+            1,
+
+        statistics:
+            scope_table_statistics_empty()
+    };
+}
+
+proc scope_table_error_none()
+    -> ScopeTableError
+{
+    give ScopeTableError {
+        kind:
+            ScopeTableErrorKind.None,
+
+        scope:
+            None,
+
+        parent:
+            None,
+
+        message:
+            ""
+    };
+}
+
+proc scope_table_error(
+    kind: ScopeTableErrorKind,
+    scope: Option<ScopeId>,
+    parent: Option<ScopeId>,
+    message: string
+) -> ScopeTableError {
+    give ScopeTableError {
+        kind: kind,
+
+        scope: scope,
+        parent: parent,
+
+        message: message
+    };
+}
+
+proc scope_table_count(
+    table: ref ScopeTable
+) -> usize {
+    give len(table.nodes);
+}
+
+proc scope_table_is_empty(
+    table: ref ScopeTable
+) -> bool {
+    give len(table.nodes) == 0;
+}
+
+proc scope_table_find_index(
+    table: ref ScopeTable,
+    scope: ScopeId
+) -> Option<usize> {
+    let mut index: usize = 0;
+
+    while index < len(table.nodes) {
+        if table.nodes[index].id
+            == scope
+        {
+            give Some(index);
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give None;
+}
+
+proc scope_table_contains(
+    table: ref ScopeTable,
+    scope: ScopeId
+) -> bool {
+    pick scope_table_find_index(
+        table,
+        scope
+    ) {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_table_contains_active(
+    table: ref ScopeTable,
+    scope: ScopeId
+) -> bool {
+    let index =
+        scope_table_find_index(
+            table,
+            scope
+        );
+
+    pick index {
+        Some(value) {
+            give table.nodes[value].state
+                != ScopeNodeState.Invalidated;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_table_insert(
+    table: ref mut ScopeTable,
+    node: ScopeNode
+) -> ScopeTableError {
+    if not scope_id_is_valid(
+        node.id
+    ) {
+        give scope_table_error(
+            ScopeTableErrorKind.InvalidScope,
+            Some(node.id),
+            node.parent,
+            "scope id is invalid"
+        );
+    }
+
+    if scope_table_contains(
+        ref table,
+        node.id
+    ) {
+        give scope_table_error(
+            ScopeTableErrorKind.DuplicateScope,
+            Some(node.id),
+            node.parent,
+            "scope already exists"
+        );
+    }
+
+    pick node.parent {
+        Some(parent) {
+            if not scope_table_contains_active(
+                ref table,
+                parent
+            ) {
+                give scope_table_error(
+                    ScopeTableErrorKind.ParentNotFound,
+                    Some(node.id),
+                    Some(parent),
+                    "scope parent does not exist"
+                );
+            }
+
+            if parent == node.id {
+                give scope_table_error(
+                    ScopeTableErrorKind.Cycle,
+                    Some(node.id),
+                    Some(parent),
+                    "scope cannot be its own parent"
+                );
+            }
+        }
+
+        None {}
+    }
+
+    let mut value =
+        node;
+
+    set value.generation =
+        table.generation;
+
+    set table.nodes =
+        table.nodes + [value];
+
+    set table.statistics.inserted =
+        table.statistics.inserted + 1;
+
+    if value.depth
+        > table.statistics.maximum_depth
+    {
+        set table.statistics.maximum_depth =
+            value.depth;
+    }
+
+    give scope_table_error_none();
+}
+
+proc scope_table_allocate_id(
+    table: ref mut ScopeTable
+) -> ScopeId {
+    give scope_id_allocator_allocate(
+        ref mut table.ids
+    );
+}
+
+proc scope_table_create_root(
+    table: ref mut ScopeTable
+) -> Option<ScopeId> {
+    pick table.root {
+        Some(scope) {
+            give Some(scope);
+        }
+
+        None {}
+    }
+
+    let id =
+        scope_table_allocate_id(
+            table
+        );
+
+    let mut node =
+        scope_node(
+            id,
+            ScopeKind.Root,
+            None,
+            0
+        );
+
+    scope_node_activate(
+        ref mut node
+    );
+
+    let error =
+        scope_table_insert(
+            table,
+            node
+        );
+
+    if error.kind
+        != ScopeTableErrorKind.None
+    {
+        give None;
+    }
+
+    set table.root =
+        Some(id);
+
+    set table.statistics.created =
+        table.statistics.created + 1;
+
+    give Some(id);
+}
+
+proc scope_table_create_scope(
+    table: ref mut ScopeTable,
+    parent: ScopeId,
+    kind: ScopeKind
+) -> Option<ScopeId> {
+    let parent_index =
+        scope_table_find_index(
+            ref table,
+            parent
+        );
+
+    let depth =
+        pick parent_index {
+            None {
+                give None;
+            }
+
+            Some(index) {
+                table.nodes[index].depth + 1
+            }
+        };
+
+    let id =
+        scope_table_allocate_id(
+            table
+        );
+
+    let mut node =
+        scope_node(
+            id,
+            kind,
+            Some(parent),
+            depth
+        );
+
+    scope_node_activate(
+        ref mut node
+    );
+
+    let error =
+        scope_table_insert(
+            table,
+            node
+        );
+
+    if error.kind
+        != ScopeTableErrorKind.None
+    {
+        give None;
+    }
+
+    set table.statistics.created =
+        table.statistics.created + 1;
+
+    give Some(id);
+}
+
+proc scope_table_get(
+    table: ref mut ScopeTable,
+    scope: ScopeId
+) -> Option<ScopeNode> {
+    set table.statistics.lookups =
+        table.statistics.lookups + 1;
+
+    let index =
+        scope_table_find_index(
+            ref table,
+            scope
+        );
+
+    pick index {
+        Some(value) {
+            set table.statistics.hits =
+                table.statistics.hits + 1;
+
+            give Some(
+                table.nodes[value]
+            );
+        }
+
+        None {
+            set table.statistics.misses =
+                table.statistics.misses + 1;
+
+            give None;
+        }
+    }
+}
+
+proc scope_table_get_mut(
+    table: ref mut ScopeTable,
+    scope: ScopeId
+) -> Option<ref mut ScopeNode> {
+    let index =
+        scope_table_find_index(
+            ref table,
+            scope
+        );
+
+    pick index {
+        Some(value) {
+            give Some(
+                ref mut table.nodes[value]
+            );
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc scope_table_root(
+    table: ref ScopeTable
+) -> Option<ScopeId> {
+    give table.root;
+}
+
+proc scope_table_parent(
+    table: ref mut ScopeTable,
+    scope: ScopeId
+) -> Option<ScopeId> {
+    set table.statistics.parent_lookups =
+        table.statistics.parent_lookups + 1;
+
+    let index =
+        scope_table_find_index(
+            ref table,
+            scope
+        );
+
+    pick index {
+        Some(value) {
+            give table.nodes[value].parent;
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc scope_table_depth(
+    table: ref ScopeTable,
+    scope: ScopeId
+) -> Option<usize> {
+    let index =
+        scope_table_find_index(
+            table,
+            scope
+        );
+
+    pick index {
+        Some(value) {
+            give Some(
+                table.nodes[value].depth
+            );
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc scope_table_kind(
+    table: ref ScopeTable,
+    scope: ScopeId
+) -> Option<ScopeKind> {
+    let index =
+        scope_table_find_index(
+            table,
+            scope
+        );
+
+    pick index {
+        Some(value) {
+            give Some(
+                table.nodes[value].kind
+            );
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc scope_table_children(
+    table: ref ScopeTable,
+    parent: ScopeId
+) -> [ScopeId] {
+    let mut result:
+        [ScopeId] = [];
+
+    for node in table.nodes {
+        if node.state
+            == ScopeNodeState.Invalidated
+        {
+            continue;
+        }
+
+        pick node.parent {
+            Some(value) {
+                if value == parent {
+                    set result =
+                        result + [
+                            node.id
+                        ];
+                }
+            }
+
+            None {}
+        }
+    }
+
+    give result;
+}
+
+proc scope_table_ancestors(
+    table: ref ScopeTable,
+    scope: ScopeId
+) -> [ScopeId] {
+    let mut result:
+        [ScopeId] = [];
+
+    let mut current =
+        scope;
+
+    loop {
+        let index =
+            scope_table_find_index(
+                table,
+                current
+            );
+
+        pick index {
+            None {
+                break;
+            }
+
+            Some(value) {
+                pick table.nodes[value].parent {
+                    None {
+                        break;
+                    }
+
+                    Some(parent) {
+                        set result =
+                            result + [
+                                parent
+                            ];
+
+                        set current =
+                            parent;
+                    }
+                }
+            }
+        }
+    }
+
+    give result;
+}
+
+proc scope_table_is_ancestor(
+    table: ref ScopeTable,
+    ancestor: ScopeId,
+    child: ScopeId
+) -> bool {
+    if ancestor == child {
+        give true;
+    }
+
+    let ancestors =
+        scope_table_ancestors(
+            table,
+            child
+        );
+
+    for scope in ancestors {
+        if scope == ancestor {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc scope_table_is_descendant(
+    table: ref ScopeTable,
+    child: ScopeId,
+    ancestor: ScopeId
+) -> bool {
+    give scope_table_is_ancestor(
+        table,
+        ancestor,
+        child
+    );
+}
+
+proc scope_table_would_cycle(
+    table: ref ScopeTable,
+    scope: ScopeId,
+    parent: ScopeId
+) -> bool {
+    if scope == parent {
+        give true;
+    }
+
+    give scope_table_is_ancestor(
+        table,
+        scope,
+        parent
+    );
+}
+
+proc scope_table_set_parent(
+    table: ref mut ScopeTable,
+    scope: ScopeId,
+    parent: ScopeId
+) -> ScopeTableError {
+    if not scope_table_contains_active(
+        ref table,
+        scope
+    ) {
+        give scope_table_error(
+            ScopeTableErrorKind.ScopeNotFound,
+            Some(scope),
+            Some(parent),
+            "scope does not exist"
+        );
+    }
+
+    if not scope_table_contains_active(
+        ref table,
+        parent
+    ) {
+        give scope_table_error(
+            ScopeTableErrorKind.ParentNotFound,
+            Some(scope),
+            Some(parent),
+            "scope parent does not exist"
+        );
+    }
+
+    if scope_table_would_cycle(
+        ref table,
+        scope,
+        parent
+    ) {
+        give scope_table_error(
+            ScopeTableErrorKind.Cycle,
+            Some(scope),
+            Some(parent),
+            "scope parent would create a cycle"
+        );
+    }
+
+    let index =
+        scope_table_find_index(
+            ref table,
+            scope
+        );
+
+    pick index {
+        None {
+            give scope_table_error(
+                ScopeTableErrorKind.ScopeNotFound,
+                Some(scope),
+                Some(parent),
+                "scope does not exist"
+            );
+        }
+
+        Some(value) {
+            let parent_depth =
+                scope_table_depth(
+                    ref table,
+                    parent
+                );
+
+            pick parent_depth {
+                None {
+                    give scope_table_error(
+                        ScopeTableErrorKind.ParentNotFound,
+                        Some(scope),
+                        Some(parent),
+                        "scope parent does not exist"
+                    );
+                }
+
+                Some(depth) {
+                    set table.nodes[value].parent =
+                        Some(parent);
+
+                    set table.nodes[value].depth =
+                        depth + 1;
+
+                    set table.nodes[value].revision =
+                        table.nodes[value].revision + 1;
+
+                    give scope_table_error_none();
+                }
+            }
+        }
+    }
+}
+
+proc scope_table_activate(
+    table: ref mut ScopeTable,
+    scope: ScopeId
+) -> bool {
+    let node =
+        scope_table_get_mut(
+            table,
+            scope
+        );
+
+    pick node {
+        None {
+            give false;
+        }
+
+        Some(value) {
+            if value.state
+                == ScopeNodeState.Invalidated
+            {
+                give false;
+            }
+
+            if value.state
+                == ScopeNodeState.Active
+            {
+                give true;
+            }
+
+            scope_node_activate(
+                value
+            );
+
+            set table.statistics.activated =
+                table.statistics.activated + 1;
+
+            give true;
+        }
+    }
+}
+
+proc scope_table_close(
+    table: ref mut ScopeTable,
+    scope: ScopeId
+) -> bool {
+    let node =
+        scope_table_get_mut(
+            table,
+            scope
+        );
+
+    pick node {
+        None {
+            give false;
+        }
+
+        Some(value) {
+            if value.state
+                == ScopeNodeState.Invalidated
+            {
+                give false;
+            }
+
+            if value.state
+                == ScopeNodeState.Closed
+            {
+                give true;
+            }
+
+            scope_node_close(
+                value
+            );
+
+            set table.statistics.closed =
+                table.statistics.closed + 1;
+
+            give true;
+        }
+    }
+}
+
+proc scope_table_invalidate(
+    table: ref mut ScopeTable,
+    scope: ScopeId
+) -> bool {
+    let node =
+        scope_table_get_mut(
+            table,
+            scope
+        );
+
+    pick node {
+        None {
+            give false;
+        }
+
+        Some(value) {
+            if value.state
+                == ScopeNodeState.Invalidated
+            {
+                give false;
+            }
+
+            scope_node_invalidate(
+                value
+            );
+
+            set table.statistics.invalidated =
+                table.statistics.invalidated + 1;
+
+            give true;
+        }
+    }
+}
+
+proc scope_table_invalidate_tree(
+    table: ref mut ScopeTable,
+    scope: ScopeId
+) -> usize {
+    let children =
+        scope_table_children(
+            ref table,
+            scope
+        );
+
+    let mut count: usize = 0;
+
+    for child in children {
+        set count =
+            count
+            + scope_table_invalidate_tree(
+                table,
+                child
+            );
+    }
+
+    if scope_table_invalidate(
+        table,
+        scope
+    ) {
+        set count =
+            count + 1;
+    }
+
+    give count;
+}
+
+proc scope_table_find_owner(
+    table: ref ScopeTable,
+    owner: DefId
+) -> Option<ScopeId> {
+    for node in table.nodes {
+        if node.state
+            == ScopeNodeState.Invalidated
+        {
+            continue;
+        }
+
+        pick node.owner {
+            Some(current) {
+                if current == owner {
+                    give Some(node.id);
+                }
+            }
+
+            None {}
+        }
+    }
+
+    give None;
+}
+
+proc scope_table_find_hir(
+    table: ref ScopeTable,
+    hir: HirId
+) -> Option<ScopeId> {
+    for node in table.nodes {
+        if node.state
+            == ScopeNodeState.Invalidated
+        {
+            continue;
+        }
+
+        pick node.node {
+            Some(current) {
+                if current == hir {
+                    give Some(node.id);
+                }
+            }
+
+            None {}
+        }
+    }
+
+    give None;
+}
+
+proc scope_table_find_module(
+    table: ref ScopeTable,
+    module: ModuleId
+) -> Option<ScopeId> {
+    for node in table.nodes {
+        if node.state
+            == ScopeNodeState.Invalidated
+        {
+            continue;
+        }
+
+        pick node.module {
+            Some(current) {
+                if current == module {
+                    give Some(node.id);
+                }
+            }
+
+            None {}
+        }
+    }
+
+    give None;
+}
+
+proc scope_table_find_type(
+    table: ref ScopeTable,
+    type_id: TypeId
+) -> Option<ScopeId> {
+    for node in table.nodes {
+        if node.state
+            == ScopeNodeState.Invalidated
+        {
+            continue;
+        }
+
+        pick node.type_id {
+            Some(current) {
+                if current == type_id {
+                    give Some(node.id);
+                }
+            }
+
+            None {}
+        }
+    }
+
+    give None;
+}
+
+proc scope_table_active_scopes(
+    table: ref ScopeTable
+) -> [ScopeId] {
+    let mut result:
+        [ScopeId] = [];
+
+    for node in table.nodes {
+        if scope_node_is_active(
+            node
+        ) {
+            set result =
+                result + [
+                    node.id
+                ];
+        }
+    }
+
+    give result;
+}
+
+proc scope_table_scopes_of_kind(
+    table: ref ScopeTable,
+    kind: ScopeKind
+) -> [ScopeId] {
+    let mut result:
+        [ScopeId] = [];
+
+    for node in table.nodes {
+        if node.kind == kind
+            and node.state
+                != ScopeNodeState.Invalidated
+        {
+            set result =
+                result + [
+                    node.id
+                ];
+        }
+    }
+
+    give result;
+}
+
+proc scope_table_validate(
+    table: ref ScopeTable
+) -> bool {
+    for node in table.nodes {
+        if not scope_id_is_valid(
+            node.id
+        ) {
+            give false;
+        }
+
+        pick node.parent {
+            Some(parent) {
+                if parent == node.id {
+                    give false;
+                }
+
+                if not scope_table_contains(
+                    table,
+                    parent
+                ) {
+                    give false;
+                }
+
+                if scope_table_would_cycle(
+                    table,
+                    node.id,
+                    parent
+                ) {
+                    give false;
+                }
+            }
+
+            None {}
+        }
+    }
+
+    give true;
+}
+
+proc scope_table_advance_generation(
+    table: ref mut ScopeTable
+) -> u64 {
+    set table.generation =
+        table.generation + 1;
+
+    give table.generation;
+}
+
+proc scope_table_clear(
+    table: ref mut ScopeTable
+) {
+    set table.nodes = [];
+
+    set table.ids =
+        scope_id_allocator_create();
+
+    set table.root =
+        None;
+
+    set table.generation =
+        table.generation + 1;
+}
+
+proc scope_table_reset(
+    table: ref mut ScopeTable
+) {
+    scope_table_clear(
+        table
+    );
+
+    set table.statistics =
+        scope_table_statistics_empty();
+}
+
+proc scope_table_statistics(
+    table: ref ScopeTable
+) -> ScopeTableStatistics {
+    give table.statistics;
+}
+
+proc scope_table_reset_statistics(
+    table: ref mut ScopeTable
+) {
+    set table.statistics =
+        scope_table_statistics_empty();
+}
+
+proc scope_table_error_kind_name(
+    kind: ScopeTableErrorKind
+) -> string {
+    pick kind {
+        ScopeTableErrorKind.None {
+            give "none";
+        }
+
+        ScopeTableErrorKind.InvalidScope {
+            give "invalid-scope";
+        }
+
+        ScopeTableErrorKind.InvalidParent {
+            give "invalid-parent";
+        }
+
+        ScopeTableErrorKind.DuplicateScope {
+            give "duplicate-scope";
+        }
+
+        ScopeTableErrorKind.ScopeNotFound {
+            give "scope-not-found";
+        }
+
+        ScopeTableErrorKind.ParentNotFound {
+            give "parent-not-found";
+        }
+
+        ScopeTableErrorKind.Cycle {
+            give "cycle";
+        }
+
+        ScopeTableErrorKind.InvalidState {
+            give "invalid-state";
+        }
+    }
+
+    give "invalid-state";
+}
+
+// ScopeTable
+//    |
+//    +-- ScopeIdAllocator
+//    |
+//    +-- ScopeNode(root)
+//    |       |
+//    |       +-- ScopeNode(module)
+//    |               |
+//    |               +-- ScopeNode(proc)
+//    |                       |
+//    |                       +-- ScopeNode(block)
+//    |                               |
+//    |                               +-- ScopeNode(loop)
+//    |
+//    +-- get(ScopeId)
+//    +-- parent(ScopeId)
+//    +-- children(ScopeId)
+//    +-- ancestors(ScopeId)
+//    +-- create_scope()
+//    +-- activate()
+//    +-- close()
+//    +-- invalidate()
+//    +-- invalidate_tree()
+//    +-- validate()
+//
+// scope_table.vit
+//     = canonical persistent ScopeNode storage
+//
+// scope_registry.vit
+//     = DefId/HirId/ModuleId/TypeId -> ScopeId indexes
+//
+// scope_manager.vit
+//     = orchestration of all scope subsystems
+//
+// scope_stack.vit
+//     = current lexical traversal stack

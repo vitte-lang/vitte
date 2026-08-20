@@ -1,0 +1,218 @@
+space vitte/compiler/analysis/scopes/scope_id
+
+export *
+
+type ScopeId = u64
+
+const SCOPE_ID_INVALID: ScopeId = 0
+const SCOPE_ID_ROOT: ScopeId = 1
+
+form ScopeIdAllocator {
+    next: ScopeId
+}
+
+proc scope_id_invalid()
+    -> ScopeId
+{
+    give SCOPE_ID_INVALID;
+}
+
+proc scope_id_root()
+    -> ScopeId
+{
+    give SCOPE_ID_ROOT;
+}
+
+proc scope_id(
+    value: u64
+) -> ScopeId {
+    give value as ScopeId;
+}
+
+proc scope_id_value(
+    id: ScopeId
+) -> u64 {
+    give id as u64;
+}
+
+proc scope_id_is_valid(
+    id: ScopeId
+) -> bool {
+    give id != SCOPE_ID_INVALID;
+}
+
+proc scope_id_is_invalid(
+    id: ScopeId
+) -> bool {
+    give id == SCOPE_ID_INVALID;
+}
+
+proc scope_id_is_root(
+    id: ScopeId
+) -> bool {
+    give id == SCOPE_ID_ROOT;
+}
+
+proc scope_id_equal(
+    left: ScopeId,
+    right: ScopeId
+) -> bool {
+    give left == right;
+}
+
+proc scope_id_not_equal(
+    left: ScopeId,
+    right: ScopeId
+) -> bool {
+    give left != right;
+}
+
+proc scope_id_less(
+    left: ScopeId,
+    right: ScopeId
+) -> bool {
+    give left < right;
+}
+
+proc scope_id_compare(
+    left: ScopeId,
+    right: ScopeId
+) -> int {
+    if left < right {
+        give -1;
+    }
+
+    if left > right {
+        give 1;
+    }
+
+    give 0;
+}
+
+proc scope_id_allocator_create()
+    -> ScopeIdAllocator
+{
+    give ScopeIdAllocator {
+        next: SCOPE_ID_ROOT + 1
+    };
+}
+
+proc scope_id_allocator_create_from(
+    first: ScopeId
+) -> ScopeIdAllocator {
+    let next =
+        if first <= SCOPE_ID_ROOT {
+            SCOPE_ID_ROOT + 1
+        } else {
+            first
+        };
+
+    give ScopeIdAllocator {
+        next: next
+    };
+}
+
+proc scope_id_allocator_peek(
+    allocator: ref ScopeIdAllocator
+) -> ScopeId {
+    give allocator.next;
+}
+
+proc scope_id_allocator_allocate(
+    allocator: ref mut ScopeIdAllocator
+) -> ScopeId {
+    let id =
+        allocator.next;
+
+    set allocator.next =
+        allocator.next + 1;
+
+    give id;
+}
+
+proc scope_id_allocator_allocate_many(
+    allocator: ref mut ScopeIdAllocator,
+    count: usize
+) -> [ScopeId] {
+    let mut result:
+        [ScopeId] = [];
+
+    let mut index: usize = 0;
+
+    while index < count {
+        set result =
+            result + [
+                scope_id_allocator_allocate(
+                    allocator
+                )
+            ];
+
+        set index =
+            index + 1;
+    }
+
+    give result;
+}
+
+proc scope_id_allocator_reset(
+    allocator: ref mut ScopeIdAllocator
+) {
+    set allocator.next =
+        SCOPE_ID_ROOT + 1;
+}
+
+proc scope_id_allocator_reset_from(
+    allocator: ref mut ScopeIdAllocator,
+    first: ScopeId
+) {
+    if first <= SCOPE_ID_ROOT {
+        set allocator.next =
+            SCOPE_ID_ROOT + 1;
+
+        give;
+    }
+
+    set allocator.next =
+        first;
+}
+
+proc scope_id_allocator_reserve_until(
+    allocator: ref mut ScopeIdAllocator,
+    id: ScopeId
+) {
+    if id >= allocator.next {
+        set allocator.next =
+            id + 1;
+    }
+}
+
+proc scope_id_next(
+    id: ScopeId
+) -> ScopeId {
+    give id + 1;
+}
+
+// ScopeId
+//   |
+//   +-- 0 = invalid
+//   +-- 1 = root
+//   +-- 2..N = compiler-created scopes
+//   |
+//   v
+// ScopeIdAllocator
+//   |
+//   +-- monotonic allocation
+//   +-- deterministic IDs
+//   +-- no reuse inside one scope generation
+//
+// Used by:
+//   scope_binding.vit
+//   scope_block.vit
+//   scope_builder.vit
+//   scope_child.vit
+//   scope_context.vit
+//   scope_edge.vit
+//   scope_export.vit
+//   scope_frame.vit
+//   scope_function.vit
+//   scope_generic.vit

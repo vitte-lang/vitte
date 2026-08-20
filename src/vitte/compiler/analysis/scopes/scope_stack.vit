@@ -1,0 +1,557 @@
+space vitte/compiler/analysis/scopes/scope_stack
+
+export *
+
+use vitte/compiler/analysis/scopes/scope_id.{
+    ScopeId,
+    scope_id_is_valid
+}
+
+form ScopeStackStatistics {
+    pushes: u64
+    pops: u64
+
+    peeks: u64
+
+    underflows: u64
+    duplicates: u64
+
+    maximum_depth: usize
+}
+
+form ScopeStack {
+    scopes: [ScopeId]
+
+    generation: u64
+
+    statistics: ScopeStackStatistics
+}
+
+proc scope_stack_statistics_empty()
+    -> ScopeStackStatistics
+{
+    give ScopeStackStatistics {
+        pushes: 0,
+        pops: 0,
+
+        peeks: 0,
+
+        underflows: 0,
+        duplicates: 0,
+
+        maximum_depth: 0
+    };
+}
+
+proc scope_stack_create()
+    -> ScopeStack
+{
+    give ScopeStack {
+        scopes: [],
+
+        generation: 1,
+
+        statistics:
+            scope_stack_statistics_empty()
+    };
+}
+
+proc scope_stack_depth(
+    stack: ref ScopeStack
+) -> usize {
+    give len(stack.scopes);
+}
+
+proc scope_stack_is_empty(
+    stack: ref ScopeStack
+) -> bool {
+    give len(stack.scopes) == 0;
+}
+
+proc scope_stack_contains(
+    stack: ref ScopeStack,
+    scope: ScopeId
+) -> bool {
+    for current in stack.scopes {
+        if current == scope {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc scope_stack_push(
+    stack: ref mut ScopeStack,
+    scope: ScopeId
+) -> bool {
+    if not scope_id_is_valid(
+        scope
+    ) {
+        give false;
+    }
+
+    if scope_stack_contains(
+        ref stack,
+        scope
+    ) {
+        set stack.statistics.duplicates =
+            stack.statistics.duplicates + 1;
+
+        give false;
+    }
+
+    set stack.scopes =
+        stack.scopes + [scope];
+
+    set stack.statistics.pushes =
+        stack.statistics.pushes + 1;
+
+    let depth =
+        len(stack.scopes);
+
+    if depth
+        > stack.statistics.maximum_depth
+    {
+        set stack.statistics.maximum_depth =
+            depth;
+    }
+
+    give true;
+}
+
+proc scope_stack_pop(
+    stack: ref mut ScopeStack
+) -> Option<ScopeId> {
+    if len(stack.scopes) == 0 {
+        set stack.statistics.underflows =
+            stack.statistics.underflows + 1;
+
+        give None;
+    }
+
+    let last =
+        len(stack.scopes) - 1;
+
+    let scope =
+        stack.scopes[last];
+
+    let mut result:
+        [ScopeId] = [];
+
+    let mut index: usize = 0;
+
+    while index < last {
+        set result =
+            result + [
+                stack.scopes[index]
+            ];
+
+        set index =
+            index + 1;
+    }
+
+    set stack.scopes =
+        result;
+
+    set stack.statistics.pops =
+        stack.statistics.pops + 1;
+
+    give Some(scope);
+}
+
+proc scope_stack_peek(
+    stack: ref mut ScopeStack
+) -> Option<ScopeId> {
+    set stack.statistics.peeks =
+        stack.statistics.peeks + 1;
+
+    if len(stack.scopes) == 0 {
+        give None;
+    }
+
+    give Some(
+        stack.scopes[
+            len(stack.scopes) - 1
+        ]
+    );
+}
+
+proc scope_stack_current(
+    stack: ref ScopeStack
+) -> Option<ScopeId> {
+    if len(stack.scopes) == 0 {
+        give None;
+    }
+
+    give Some(
+        stack.scopes[
+            len(stack.scopes) - 1
+        ]
+    );
+}
+
+proc scope_stack_parent(
+    stack: ref ScopeStack
+) -> Option<ScopeId> {
+    if len(stack.scopes) < 2 {
+        give None;
+    }
+
+    give Some(
+        stack.scopes[
+            len(stack.scopes) - 2
+        ]
+    );
+}
+
+proc scope_stack_root(
+    stack: ref ScopeStack
+) -> Option<ScopeId> {
+    if len(stack.scopes) == 0 {
+        give None;
+    }
+
+    give Some(
+        stack.scopes[0]
+    );
+}
+
+proc scope_stack_at(
+    stack: ref ScopeStack,
+    index: usize
+) -> Option<ScopeId> {
+    if index >= len(stack.scopes) {
+        give None;
+    }
+
+    give Some(
+        stack.scopes[index]
+    );
+}
+
+proc scope_stack_from_top(
+    stack: ref ScopeStack,
+    offset: usize
+) -> Option<ScopeId> {
+    if offset >= len(stack.scopes) {
+        give None;
+    }
+
+    let index =
+        len(stack.scopes)
+        - 1
+        - offset;
+
+    give Some(
+        stack.scopes[index]
+    );
+}
+
+proc scope_stack_index_of(
+    stack: ref ScopeStack,
+    scope: ScopeId
+) -> Option<usize> {
+    let mut index: usize = 0;
+
+    while index < len(stack.scopes) {
+        if stack.scopes[index]
+            == scope
+        {
+            give Some(index);
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give None;
+}
+
+proc scope_stack_distance_from_top(
+    stack: ref ScopeStack,
+    scope: ScopeId
+) -> Option<usize> {
+    let index =
+        scope_stack_index_of(
+            stack,
+            scope
+        );
+
+    pick index {
+        Some(value) {
+            give Some(
+                len(stack.scopes)
+                - 1
+                - value
+            );
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc scope_stack_truncate(
+    stack: ref mut ScopeStack,
+    depth: usize
+) -> bool {
+    if depth > len(stack.scopes) {
+        give false;
+    }
+
+    if depth == len(stack.scopes) {
+        give true;
+    }
+
+    let removed =
+        len(stack.scopes) - depth;
+
+    let mut result:
+        [ScopeId] = [];
+
+    let mut index: usize = 0;
+
+    while index < depth {
+        set result =
+            result + [
+                stack.scopes[index]
+            ];
+
+        set index =
+            index + 1;
+    }
+
+    set stack.scopes =
+        result;
+
+    set stack.statistics.pops =
+        stack.statistics.pops
+        + removed;
+
+    give true;
+}
+
+proc scope_stack_pop_until(
+    stack: ref mut ScopeStack,
+    scope: ScopeId
+) -> bool {
+    let index =
+        scope_stack_index_of(
+            ref stack,
+            scope
+        );
+
+    pick index {
+        None {
+            give false;
+        }
+
+        Some(value) {
+            give scope_stack_truncate(
+                stack,
+                value + 1
+            );
+        }
+    }
+}
+
+proc scope_stack_leave(
+    stack: ref mut ScopeStack,
+    expected: ScopeId
+) -> bool {
+    let current =
+        scope_stack_current(
+            ref stack
+        );
+
+    pick current {
+        None {
+            set stack.statistics.underflows =
+                stack.statistics.underflows + 1;
+
+            give false;
+        }
+
+        Some(scope) {
+            if scope != expected {
+                give false;
+            }
+
+            scope_stack_pop(
+                stack
+            );
+
+            give true;
+        }
+    }
+}
+
+proc scope_stack_copy(
+    stack: ref ScopeStack
+) -> [ScopeId] {
+    let mut result:
+        [ScopeId] = [];
+
+    for scope in stack.scopes {
+        set result =
+            result + [scope];
+    }
+
+    give result;
+}
+
+proc scope_stack_reverse(
+    stack: ref ScopeStack
+) -> [ScopeId] {
+    let mut result:
+        [ScopeId] = [];
+
+    let mut index =
+        len(stack.scopes);
+
+    while index > 0 {
+        set index =
+            index - 1;
+
+        set result =
+            result + [
+                stack.scopes[index]
+            ];
+    }
+
+    give result;
+}
+
+proc scope_stack_validate(
+    stack: ref ScopeStack
+) -> bool {
+    let mut index: usize = 0;
+
+    while index < len(stack.scopes) {
+        if not scope_id_is_valid(
+            stack.scopes[index]
+        ) {
+            give false;
+        }
+
+        let mut other =
+            index + 1;
+
+        while other < len(stack.scopes) {
+            if stack.scopes[index]
+                == stack.scopes[other]
+            {
+                give false;
+            }
+
+            set other =
+                other + 1;
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give true;
+}
+
+proc scope_stack_advance_generation(
+    stack: ref mut ScopeStack
+) -> u64 {
+    set stack.generation =
+        stack.generation + 1;
+
+    give stack.generation;
+}
+
+proc scope_stack_clear(
+    stack: ref mut ScopeStack
+) {
+    set stack.scopes = [];
+
+    set stack.generation =
+        stack.generation + 1;
+}
+
+proc scope_stack_reset(
+    stack: ref mut ScopeStack
+) {
+    scope_stack_clear(
+        stack
+    );
+
+    set stack.statistics =
+        scope_stack_statistics_empty();
+}
+
+proc scope_stack_statistics(
+    stack: ref ScopeStack
+) -> ScopeStackStatistics {
+    give stack.statistics;
+}
+
+proc scope_stack_reset_statistics(
+    stack: ref mut ScopeStack
+) {
+    set stack.statistics =
+        scope_stack_statistics_empty();
+}
+
+// HIR traversal
+//
+// root
+//  |
+//  +-- push ScopeId(root)
+//  |
+//  v
+// procedure
+//  |
+//  +-- push ScopeId(proc)
+//  |
+//  v
+// block
+//  |
+//  +-- push ScopeId(block)
+//  |
+//  v
+// loop
+//  |
+//  +-- push ScopeId(loop)
+//
+// stack:
+//
+// [
+//     root,
+//     procedure,
+//     block,
+//     loop
+// ]
+//
+// current()
+//     -> loop
+//
+// parent()
+//     -> block
+//
+// root()
+//     -> root
+//
+// leave loop
+//     -> pop()
+//
+// leave block
+//     -> pop()
+//
+// scope_stack.vit
+//     = lightweight ScopeId stack
+//
+// scope_frame.vit
+//     = richer stack entries with owner/HIR/type metadata
+//
+// scope_context.vit
+//     = semantic current traversal context
+//
+// scope_manager.vit
+//     = orchestration of the complete scope subsystem

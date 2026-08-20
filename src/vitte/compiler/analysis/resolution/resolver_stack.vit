@@ -1,0 +1,851 @@
+space vitte/compiler/analysis/resolution/resolver_stack
+
+export *
+
+pick ResolverStackFrameKind {
+    Name,
+    Module,
+    Namespace,
+    Path,
+    Import,
+    Export,
+    Constant,
+    Field,
+    Method,
+    Generic,
+    Attribute,
+    Overload,
+    Definition,
+    Type
+}
+
+pick ResolverStackFrameState {
+    Pending,
+    Resolving,
+    Resolved,
+    Failed
+}
+
+pick ResolverStackErrorKind {
+    None,
+    Empty,
+    Overflow,
+    RecursiveResolution,
+    InvalidFrame,
+    InvalidPop
+}
+
+form ResolverStackFrame {
+    kind: ResolverStackFrameKind
+    state: ResolverStackFrameState
+
+    subject: string
+
+    scope: Option<ScopeId>
+    definition: Option<DefId>
+    type_id: Option<TypeId>
+
+    depth: usize
+
+    generation: u64
+}
+
+form ResolverStackError {
+    kind: ResolverStackErrorKind
+
+    subject: string
+    depth: usize
+
+    message: string
+}
+
+form ResolverStackStatistics {
+    pushes: u64
+    pops: u64
+
+    maximum_depth: usize
+
+    recursive_hits: u64
+    overflows: u64
+    failures: u64
+}
+
+form ResolverStack {
+    frames: [ResolverStackFrame]
+
+    max_depth: usize
+
+    generation: u64
+
+    statistics: ResolverStackStatistics
+}
+
+proc resolver_stack_statistics_empty()
+    -> ResolverStackStatistics
+{
+    give ResolverStackStatistics {
+        pushes: 0,
+        pops: 0,
+
+        maximum_depth: 0,
+
+        recursive_hits: 0,
+        overflows: 0,
+        failures: 0
+    };
+}
+
+proc resolver_stack_create_with_limit(
+    max_depth: usize
+) -> ResolverStack {
+    give ResolverStack {
+        frames: [],
+
+        max_depth: max_depth,
+
+        generation: 1,
+
+        statistics:
+            resolver_stack_statistics_empty()
+    };
+}
+
+proc resolver_stack_create()
+    -> ResolverStack
+{
+    give resolver_stack_create_with_limit(
+        256
+    );
+}
+
+proc resolver_stack_frame(
+    kind: ResolverStackFrameKind,
+    subject: string
+) -> ResolverStackFrame {
+    give ResolverStackFrame {
+        kind: kind,
+
+        state:
+            ResolverStackFrameState.Pending,
+
+        subject:
+            subject,
+
+        scope:
+            None,
+
+        definition:
+            None,
+
+        type_id:
+            None,
+
+        depth:
+            0,
+
+        generation:
+            0
+    };
+}
+
+proc resolver_stack_frame_with_scope(
+    frame: ResolverStackFrame,
+    scope: ScopeId
+) -> ResolverStackFrame {
+    let mut result:
+        ResolverStackFrame =
+        frame;
+
+    set result.scope =
+        Some(scope);
+
+    give result;
+}
+
+proc resolver_stack_frame_with_definition(
+    frame: ResolverStackFrame,
+    definition: DefId
+) -> ResolverStackFrame {
+    let mut result:
+        ResolverStackFrame =
+        frame;
+
+    set result.definition =
+        Some(definition);
+
+    give result;
+}
+
+proc resolver_stack_frame_with_type(
+    frame: ResolverStackFrame,
+    type_id: TypeId
+) -> ResolverStackFrame {
+    let mut result:
+        ResolverStackFrame =
+        frame;
+
+    set result.type_id =
+        Some(type_id);
+
+    give result;
+}
+
+proc resolver_stack_error_none()
+    -> ResolverStackError
+{
+    give ResolverStackError {
+        kind:
+            ResolverStackErrorKind.None,
+
+        subject:
+            "",
+
+        depth:
+            0,
+
+        message:
+            ""
+    };
+}
+
+proc resolver_stack_error(
+    kind: ResolverStackErrorKind,
+    subject: string,
+    depth: usize,
+    message: string
+) -> ResolverStackError {
+    give ResolverStackError {
+        kind: kind,
+
+        subject: subject,
+        depth: depth,
+
+        message: message
+    };
+}
+
+proc resolver_stack_depth(
+    stack: ref ResolverStack
+) -> usize {
+    give len(stack.frames);
+}
+
+proc resolver_stack_is_empty(
+    stack: ref ResolverStack
+) -> bool {
+    give len(stack.frames) == 0;
+}
+
+proc resolver_stack_is_full(
+    stack: ref ResolverStack
+) -> bool {
+    give stack.max_depth > 0
+        and len(stack.frames)
+        >= stack.max_depth;
+}
+
+proc resolver_stack_frame_same_target(
+    left: ResolverStackFrame,
+    right: ResolverStackFrame
+) -> bool {
+    if left.kind != right.kind {
+        give false;
+    }
+
+    if left.subject != right.subject {
+        give false;
+    }
+
+    pick left.scope {
+        Some(left_scope) {
+            pick right.scope {
+                Some(right_scope) {
+                    if left_scope
+                        != right_scope
+                    {
+                        give false;
+                    }
+                }
+
+                None {
+                    give false;
+                }
+            }
+        }
+
+        None {}
+    }
+
+    pick left.definition {
+        Some(left_definition) {
+            pick right.definition {
+                Some(right_definition) {
+                    if left_definition
+                        != right_definition
+                    {
+                        give false;
+                    }
+                }
+
+                None {
+                    give false;
+                }
+            }
+        }
+
+        None {}
+    }
+
+    pick left.type_id {
+        Some(left_type) {
+            pick right.type_id {
+                Some(right_type) {
+                    if left_type
+                        != right_type
+                    {
+                        give false;
+                    }
+                }
+
+                None {
+                    give false;
+                }
+            }
+        }
+
+        None {}
+    }
+
+    give true;
+}
+
+proc resolver_stack_contains(
+    stack: ref ResolverStack,
+    frame: ResolverStackFrame
+) -> bool {
+    for current in stack.frames {
+        if current.state
+            == ResolverStackFrameState.Resolving
+            and resolver_stack_frame_same_target(
+                current,
+                frame
+            )
+        {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc resolver_stack_find(
+    stack: ref ResolverStack,
+    frame: ResolverStackFrame
+) -> Option<usize> {
+    let mut index: usize = 0;
+
+    while index < len(stack.frames) {
+        if resolver_stack_frame_same_target(
+            stack.frames[index],
+            frame
+        ) {
+            give Some(index);
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give None;
+}
+
+proc resolver_stack_push(
+    stack: ref mut ResolverStack,
+    frame: ResolverStackFrame
+) -> ResolverStackError {
+    if resolver_stack_is_full(
+        ref stack
+    ) {
+        set stack.statistics.overflows =
+            stack.statistics.overflows + 1;
+
+        set stack.statistics.failures =
+            stack.statistics.failures + 1;
+
+        give resolver_stack_error(
+            ResolverStackErrorKind.Overflow,
+            frame.subject,
+            len(stack.frames),
+            "resolver stack depth limit exceeded"
+        );
+    }
+
+    if resolver_stack_contains(
+        ref stack,
+        frame
+    ) {
+        set stack.statistics.recursive_hits =
+            stack.statistics.recursive_hits + 1;
+
+        set stack.statistics.failures =
+            stack.statistics.failures + 1;
+
+        give resolver_stack_error(
+            ResolverStackErrorKind.RecursiveResolution,
+            frame.subject,
+            len(stack.frames),
+            "recursive resolution detected"
+        );
+    }
+
+    let mut value:
+        ResolverStackFrame =
+        frame;
+
+    set value.depth =
+        len(stack.frames);
+
+    set value.generation =
+        stack.generation;
+
+    set value.state =
+        ResolverStackFrameState.Resolving;
+
+    set stack.frames =
+        stack.frames + [value];
+
+    set stack.statistics.pushes =
+        stack.statistics.pushes + 1;
+
+    if len(stack.frames)
+        > stack.statistics.maximum_depth
+    {
+        set stack.statistics.maximum_depth =
+            len(stack.frames);
+    }
+
+    give resolver_stack_error_none();
+}
+
+proc resolver_stack_pop(
+    stack: ref mut ResolverStack
+) -> Option<ResolverStackFrame> {
+    if len(stack.frames) == 0 {
+        set stack.statistics.failures =
+            stack.statistics.failures + 1;
+
+        give None;
+    }
+
+    let index: usize =
+        len(stack.frames) - 1;
+
+    let frame =
+        stack.frames[index];
+
+    let mut output:
+        [ResolverStackFrame] = [];
+
+    let mut current: usize = 0;
+
+    while current < index {
+        set output =
+            output + [
+                stack.frames[current]
+            ];
+
+        set current =
+            current + 1;
+    }
+
+    set stack.frames =
+        output;
+
+    set stack.statistics.pops =
+        stack.statistics.pops + 1;
+
+    give Some(frame);
+}
+
+proc resolver_stack_top(
+    stack: ref ResolverStack
+) -> Option<ResolverStackFrame> {
+    if len(stack.frames) == 0 {
+        give None;
+    }
+
+    give Some(
+        stack.frames[
+            len(stack.frames) - 1
+        ]
+    );
+}
+
+proc resolver_stack_parent(
+    stack: ref ResolverStack
+) -> Option<ResolverStackFrame> {
+    if len(stack.frames) < 2 {
+        give None;
+    }
+
+    give Some(
+        stack.frames[
+            len(stack.frames) - 2
+        ]
+    );
+}
+
+proc resolver_stack_mark_top_resolved(
+    stack: ref mut ResolverStack
+) -> bool {
+    if len(stack.frames) == 0 {
+        give false;
+    }
+
+    let index =
+        len(stack.frames) - 1;
+
+    set stack.frames[index].state =
+        ResolverStackFrameState.Resolved;
+
+    give true;
+}
+
+proc resolver_stack_mark_top_failed(
+    stack: ref mut ResolverStack
+) -> bool {
+    if len(stack.frames) == 0 {
+        give false;
+    }
+
+    let index =
+        len(stack.frames) - 1;
+
+    set stack.frames[index].state =
+        ResolverStackFrameState.Failed;
+
+    set stack.statistics.failures =
+        stack.statistics.failures + 1;
+
+    give true;
+}
+
+proc resolver_stack_enter(
+    stack: ref mut ResolverStack,
+    kind: ResolverStackFrameKind,
+    subject: string
+) -> ResolverStackError {
+    give resolver_stack_push(
+        stack,
+        resolver_stack_frame(
+            kind,
+            subject
+        )
+    );
+}
+
+proc resolver_stack_enter_scope(
+    stack: ref mut ResolverStack,
+    kind: ResolverStackFrameKind,
+    subject: string,
+    scope: ScopeId
+) -> ResolverStackError {
+    let frame =
+        resolver_stack_frame_with_scope(
+            resolver_stack_frame(
+                kind,
+                subject
+            ),
+            scope
+        );
+
+    give resolver_stack_push(
+        stack,
+        frame
+    );
+}
+
+proc resolver_stack_enter_definition(
+    stack: ref mut ResolverStack,
+    kind: ResolverStackFrameKind,
+    subject: string,
+    definition: DefId
+) -> ResolverStackError {
+    let frame =
+        resolver_stack_frame_with_definition(
+            resolver_stack_frame(
+                kind,
+                subject
+            ),
+            definition
+        );
+
+    give resolver_stack_push(
+        stack,
+        frame
+    );
+}
+
+proc resolver_stack_enter_type(
+    stack: ref mut ResolverStack,
+    kind: ResolverStackFrameKind,
+    subject: string,
+    type_id: TypeId
+) -> ResolverStackError {
+    let frame =
+        resolver_stack_frame_with_type(
+            resolver_stack_frame(
+                kind,
+                subject
+            ),
+            type_id
+        );
+
+    give resolver_stack_push(
+        stack,
+        frame
+    );
+}
+
+proc resolver_stack_leave(
+    stack: ref mut ResolverStack,
+    success: bool
+) -> bool {
+    if len(stack.frames) == 0 {
+        set stack.statistics.failures =
+            stack.statistics.failures + 1;
+
+        give false;
+    }
+
+    if success {
+        resolver_stack_mark_top_resolved(
+            stack
+        );
+    } else {
+        resolver_stack_mark_top_failed(
+            stack
+        );
+    }
+
+    pick resolver_stack_pop(stack) {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc resolver_stack_trace(
+    stack: ref ResolverStack
+) -> [string] {
+    let mut output: [string] = [];
+
+    for frame in stack.frames {
+        set output =
+            output + [
+                frame.subject
+            ];
+    }
+
+    give output;
+}
+
+proc resolver_stack_cycle_trace(
+    stack: ref ResolverStack,
+    frame: ResolverStackFrame
+) -> [string] {
+    let mut output: [string] = [];
+
+    let start =
+        resolver_stack_find(
+            stack,
+            frame
+        );
+
+    pick start {
+        None {
+            give output;
+        }
+
+        Some(index) {
+            let mut current: usize =
+                index;
+
+            while current
+                < len(stack.frames)
+            {
+                set output =
+                    output + [
+                        stack.frames[
+                            current
+                        ].subject
+                    ];
+
+                set current =
+                    current + 1;
+            }
+
+            set output =
+                output + [
+                    frame.subject
+                ];
+        }
+    }
+
+    give output;
+}
+
+proc resolver_stack_advance_generation(
+    stack: ref mut ResolverStack
+) -> u64 {
+    set stack.generation =
+        stack.generation + 1;
+
+    give stack.generation;
+}
+
+proc resolver_stack_clear(
+    stack: ref mut ResolverStack
+) {
+    set stack.frames = [];
+
+    set stack.generation =
+        stack.generation + 1;
+}
+
+proc resolver_stack_reset_statistics(
+    stack: ref mut ResolverStack
+) {
+    set stack.statistics =
+        resolver_stack_statistics_empty();
+}
+
+proc resolver_stack_statistics(
+    stack: ref ResolverStack
+) -> ResolverStackStatistics {
+    give stack.statistics;
+}
+
+proc resolver_stack_frame_kind_name(
+    kind: ResolverStackFrameKind
+) -> string {
+    pick kind {
+        ResolverStackFrameKind.Name {
+            give "name";
+        }
+
+        ResolverStackFrameKind.Module {
+            give "module";
+        }
+
+        ResolverStackFrameKind.Namespace {
+            give "namespace";
+        }
+
+        ResolverStackFrameKind.Path {
+            give "path";
+        }
+
+        ResolverStackFrameKind.Import {
+            give "import";
+        }
+
+        ResolverStackFrameKind.Export {
+            give "export";
+        }
+
+        ResolverStackFrameKind.Constant {
+            give "constant";
+        }
+
+        ResolverStackFrameKind.Field {
+            give "field";
+        }
+
+        ResolverStackFrameKind.Method {
+            give "method";
+        }
+
+        ResolverStackFrameKind.Generic {
+            give "generic";
+        }
+
+        ResolverStackFrameKind.Attribute {
+            give "attribute";
+        }
+
+        ResolverStackFrameKind.Overload {
+            give "overload";
+        }
+
+        ResolverStackFrameKind.Definition {
+            give "definition";
+        }
+
+        ResolverStackFrameKind.Type {
+            give "type";
+        }
+    }
+
+    give "name";
+}
+
+proc resolver_stack_frame_state_name(
+    state: ResolverStackFrameState
+) -> string {
+    pick state {
+        ResolverStackFrameState.Pending {
+            give "pending";
+        }
+
+        ResolverStackFrameState.Resolving {
+            give "resolving";
+        }
+
+        ResolverStackFrameState.Resolved {
+            give "resolved";
+        }
+
+        ResolverStackFrameState.Failed {
+            give "failed";
+        }
+    }
+
+    give "failed";
+}
+
+proc resolver_stack_error_kind_name(
+    kind: ResolverStackErrorKind
+) -> string {
+    pick kind {
+        ResolverStackErrorKind.None {
+            give "none";
+        }
+
+        ResolverStackErrorKind.Empty {
+            give "empty";
+        }
+
+        ResolverStackErrorKind.Overflow {
+            give "overflow";
+        }
+
+        ResolverStackErrorKind.RecursiveResolution {
+            give "recursive-resolution";
+        }
+
+        ResolverStackErrorKind.InvalidFrame {
+            give "invalid-frame";
+        }
+
+        ResolverStackErrorKind.InvalidPop {
+            give "invalid-pop";
+        }
+    }
+
+    give "invalid-frame";
+}

@@ -1,0 +1,1044 @@
+space vitte/compiler/analysis/scopes/scope_manager
+
+export *
+
+use vitte/compiler/analysis/scopes/scope_id.{
+    ScopeId,
+    ScopeIdAllocator,
+
+    scope_id_allocator_create,
+    scope_id_allocator_allocate
+}
+
+use vitte/compiler/analysis/scopes/scope_kind.{
+    ScopeKind
+}
+
+use vitte/compiler/analysis/scopes/scope_info.{
+    ScopeInfo,
+    ScopeInfoTable,
+
+    scope_info,
+    scope_info_table_create,
+    scope_info_table_insert,
+    scope_info_table_activate,
+    scope_info_table_close,
+    scope_info_table_invalidate
+}
+
+use vitte/compiler/analysis/scopes/scope_block.{
+    ScopeBlockTable,
+
+    scope_block_table_create
+}
+
+use vitte/compiler/analysis/scopes/scope_child.{
+    ScopeChildTable,
+
+    scope_child_table_create,
+    scope_child_table_add,
+    scope_child_table_parent,
+    scope_child_table_invalidate_tree
+}
+
+use vitte/compiler/analysis/scopes/scope_edge.{
+    ScopeEdgeTable,
+    ScopeEdgeKind,
+
+    scope_edge_table_create,
+    scope_edge_table_add_checked,
+    scope_edge_table_invalidate_scope
+}
+
+use vitte/compiler/analysis/scopes/scope_binding.{
+    ScopeBinding,
+    ScopeBindingKind,
+    ScopeBindingError,
+    ScopeBindingTable,
+
+    scope_binding,
+    scope_binding_error_none,
+    scope_binding_table_create,
+    scope_binding_table_register_scope,
+    scope_binding_table_insert,
+    scope_binding_table_find_exact,
+    scope_binding_table_invalidate_scope
+}
+
+use vitte/compiler/analysis/scopes/scope_import.{
+    ScopeImport,
+    ScopeImportError,
+    ScopeImportTable,
+
+    scope_import_table_create,
+    scope_import_table_insert,
+    scope_import_table_invalidate_scope
+}
+
+use vitte/compiler/analysis/scopes/scope_export.{
+    ScopeExport,
+    ScopeExportError,
+    ScopeExportTable,
+
+    scope_export_table_create,
+    scope_export_table_insert,
+    scope_export_table_invalidate_scope
+}
+
+use vitte/compiler/analysis/scopes/scope_generic.{
+    ScopeGenericEnvironment,
+    ScopeGenericParameter,
+    ScopeGenericTable,
+
+    scope_generic_table_create,
+    scope_generic_table_create_environment,
+    scope_generic_table_add_parameter,
+    scope_generic_table_invalidate_scope
+}
+
+use vitte/compiler/analysis/scopes/scope_function.{
+    ScopeFunction,
+    ScopeFunctionTable,
+
+    scope_function_table_create,
+    scope_function_table_insert,
+    scope_function_table_invalidate
+}
+
+use vitte/compiler/analysis/scopes/scope_context.{
+    ScopeContext,
+
+    scope_context_create,
+    scope_context_activate,
+    scope_context_push,
+    scope_context_pop,
+    scope_context_current_scope
+}
+
+use vitte/compiler/analysis/scopes/scope_lookup.{
+    ScopeLookup,
+    ScopeLookupKind,
+    ScopeLookupResult,
+
+    scope_lookup_create,
+    scope_lookup_name
+}
+
+pick ScopeManagerState {
+    Created,
+    Building,
+    Ready,
+    Invalidated,
+    Failed
+}
+
+pick ScopeManagerErrorKind {
+    None,
+    InvalidScope,
+    InvalidParent,
+    DuplicateScope,
+    NoCurrentScope,
+    BindingFailure,
+    ImportFailure,
+    ExportFailure,
+    GenericFailure,
+    FunctionFailure,
+    Cycle,
+    Internal
+}
+
+form ScopeManagerError {
+    kind: ScopeManagerErrorKind
+
+    scope: Option<ScopeId>
+    parent: Option<ScopeId>
+
+    name: string
+
+    message: string
+}
+
+form ScopeManagerStatistics {
+    scopes_created: u64
+    scopes_closed: u64
+
+    bindings: u64
+    imports: u64
+    exports: u64
+    generics: u64
+    functions: u64
+    edges: u64
+
+    lookups: u64
+
+    invalidations: u64
+
+    failures: u64
+}
+
+form ScopeManager {
+    state: ScopeManagerState
+
+    ids: ScopeIdAllocator
+
+    infos: ScopeInfoTable
+    blocks: ScopeBlockTable
+
+    children: ScopeChildTable
+    edges: ScopeEdgeTable
+
+    bindings: ScopeBindingTable
+
+    imports: ScopeImportTable
+    exports: ScopeExportTable
+
+    generics: ScopeGenericTable
+    functions: ScopeFunctionTable
+
+    context: ScopeContext
+    lookup: ScopeLookup
+
+    generation: u64
+
+    statistics: ScopeManagerStatistics
+}
+
+proc scope_manager_statistics_empty()
+    -> ScopeManagerStatistics
+{
+    give ScopeManagerStatistics {
+        scopes_created: 0,
+        scopes_closed: 0,
+
+        bindings: 0,
+        imports: 0,
+        exports: 0,
+        generics: 0,
+        functions: 0,
+        edges: 0,
+
+        lookups: 0,
+
+        invalidations: 0,
+
+        failures: 0
+    };
+}
+
+proc scope_manager_error_none()
+    -> ScopeManagerError
+{
+    give ScopeManagerError {
+        kind:
+            ScopeManagerErrorKind.None,
+
+        scope:
+            None,
+
+        parent:
+            None,
+
+        name:
+            "",
+
+        message:
+            ""
+    };
+}
+
+proc scope_manager_error(
+    kind: ScopeManagerErrorKind,
+    scope: Option<ScopeId>,
+    parent: Option<ScopeId>,
+    name: string,
+    message: string
+) -> ScopeManagerError {
+    give ScopeManagerError {
+        kind: kind,
+
+        scope: scope,
+        parent: parent,
+
+        name: name,
+
+        message: message
+    };
+}
+
+proc scope_manager_create()
+    -> ScopeManager
+{
+    give ScopeManager {
+        state:
+            ScopeManagerState.Created,
+
+        ids:
+            scope_id_allocator_create(),
+
+        infos:
+            scope_info_table_create(),
+
+        blocks:
+            scope_block_table_create(),
+
+        children:
+            scope_child_table_create(),
+
+        edges:
+            scope_edge_table_create(),
+
+        bindings:
+            scope_binding_table_create(),
+
+        imports:
+            scope_import_table_create(),
+
+        exports:
+            scope_export_table_create(),
+
+        generics:
+            scope_generic_table_create(),
+
+        functions:
+            scope_function_table_create(),
+
+        context:
+            scope_context_create(),
+
+        lookup:
+            scope_lookup_create(),
+
+        generation:
+            1,
+
+        statistics:
+            scope_manager_statistics_empty()
+    };
+}
+
+proc scope_manager_begin(
+    manager: ref mut ScopeManager
+) {
+    set manager.state =
+        ScopeManagerState.Building;
+
+    scope_context_activate(
+        ref mut manager.context
+    );
+}
+
+proc scope_manager_current_scope(
+    manager: ref ScopeManager
+) -> Option<ScopeId> {
+    give scope_context_current_scope(
+        ref manager.context
+    );
+}
+
+proc scope_manager_has_current_scope(
+    manager: ref ScopeManager
+) -> bool {
+    pick scope_manager_current_scope(
+        manager
+    ) {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_manager_create_scope(
+    manager: ref mut ScopeManager,
+    kind: ScopeKind,
+    parent: Option<ScopeId>
+) -> Option<ScopeId> {
+    let id =
+        scope_id_allocator_allocate(
+            ref mut manager.ids
+        );
+
+    let depth =
+        pick parent {
+            Some(parent_scope) {
+                let parent_info =
+                    scope_info_table_get(
+                        ref mut manager.infos,
+                        parent_scope
+                    );
+
+                pick parent_info {
+                    Some(value) {
+                        value.depth + 1
+                    }
+
+                    None {
+                        set manager.statistics.failures =
+                            manager.statistics.failures + 1;
+
+                        give None;
+                    }
+                }
+            }
+
+            None {
+                0
+            }
+        };
+
+    let info =
+        scope_info(
+            id,
+            parent,
+            kind,
+            depth
+        );
+
+    if not scope_info_table_insert(
+        ref mut manager.infos,
+        info
+    ) {
+        set manager.statistics.failures =
+            manager.statistics.failures + 1;
+
+        give None;
+    }
+
+    scope_binding_table_register_scope(
+        ref mut manager.bindings,
+        id
+    );
+
+    scope_generic_table_create_environment(
+        ref mut manager.generics,
+        id,
+        parent
+    );
+
+    pick parent {
+        Some(parent_scope) {
+            if not scope_child_table_add(
+                ref mut manager.children,
+                parent_scope,
+                id,
+                ScopeChildKind.Lexical,
+                depth
+            ) {
+                set manager.statistics.failures =
+                    manager.statistics.failures + 1;
+
+                give None;
+            }
+
+            if scope_edge_table_add_checked(
+                ref mut manager.edges,
+                id,
+                parent_scope,
+                ScopeEdgeKind.Parent
+            ) {
+                set manager.statistics.edges =
+                    manager.statistics.edges + 1;
+            }
+        }
+
+        None {}
+    }
+
+    scope_info_table_activate(
+        ref mut manager.infos,
+        id
+    );
+
+    set manager.statistics.scopes_created =
+        manager.statistics.scopes_created + 1;
+
+    give Some(id);
+}
+
+proc scope_manager_create_root(
+    manager: ref mut ScopeManager,
+    kind: ScopeKind
+) -> Option<ScopeId> {
+    give scope_manager_create_scope(
+        manager,
+        kind,
+        None
+    );
+}
+
+proc scope_manager_enter_scope(
+    manager: ref mut ScopeManager,
+    kind: ScopeKind
+) -> Option<ScopeId> {
+    let parent =
+        scope_manager_current_scope(
+            ref manager
+        );
+
+    let scope =
+        scope_manager_create_scope(
+            manager,
+            kind,
+            parent
+        );
+
+    pick scope {
+        Some(id) {
+            scope_context_push(
+                ref mut manager.context,
+                id
+            );
+
+            give Some(id);
+        }
+
+        None {
+            set manager.state =
+                ScopeManagerState.Failed;
+
+            give None;
+        }
+    }
+}
+
+proc scope_manager_leave_scope(
+    manager: ref mut ScopeManager
+) -> Option<ScopeId> {
+    let current =
+        scope_manager_current_scope(
+            ref manager
+        );
+
+    pick current {
+        None {
+            set manager.statistics.failures =
+                manager.statistics.failures + 1;
+
+            give None;
+        }
+
+        Some(scope) {
+            scope_info_table_close(
+                ref mut manager.infos,
+                scope
+            );
+
+            scope_context_pop(
+                ref mut manager.context
+            );
+
+            set manager.statistics.scopes_closed =
+                manager.statistics.scopes_closed + 1;
+
+            give Some(scope);
+        }
+    }
+}
+
+proc scope_manager_bind(
+    manager: ref mut ScopeManager,
+    binding: ScopeBinding
+) -> ScopeBindingError {
+    let error =
+        scope_binding_table_insert(
+            ref mut manager.bindings,
+            binding
+        );
+
+    if error.kind
+        == ScopeBindingErrorKind.None
+    {
+        set manager.statistics.bindings =
+            manager.statistics.bindings + 1;
+    } else {
+        set manager.statistics.failures =
+            manager.statistics.failures + 1;
+    }
+
+    give error;
+}
+
+proc scope_manager_bind_name(
+    manager: ref mut ScopeManager,
+    name: string,
+    kind: ScopeBindingKind
+) -> ScopeBindingError {
+    let current =
+        scope_manager_current_scope(
+            ref manager
+        );
+
+    pick current {
+        None {
+            give ScopeBindingError {
+                kind:
+                    ScopeBindingErrorKind.InvalidScope,
+
+                name:
+                    name,
+
+                scope:
+                    0 as ScopeId,
+
+                message:
+                    "no active scope"
+            };
+        }
+
+        Some(scope) {
+            give scope_manager_bind(
+                manager,
+                scope_binding(
+                    name,
+                    scope,
+                    kind
+                )
+            );
+        }
+    }
+}
+
+proc scope_manager_add_import(
+    manager: ref mut ScopeManager,
+    value: ScopeImport
+) -> ScopeImportError {
+    let error =
+        scope_import_table_insert(
+            ref mut manager.imports,
+            value
+        );
+
+    if error.kind
+        == ScopeImportErrorKind.None
+    {
+        set manager.statistics.imports =
+            manager.statistics.imports + 1;
+    } else {
+        set manager.statistics.failures =
+            manager.statistics.failures + 1;
+    }
+
+    give error;
+}
+
+proc scope_manager_add_export(
+    manager: ref mut ScopeManager,
+    value: ScopeExport
+) -> ScopeExportError {
+    let error =
+        scope_export_table_insert(
+            ref mut manager.exports,
+            value
+        );
+
+    if error.kind
+        == ScopeExportErrorKind.None
+    {
+        set manager.statistics.exports =
+            manager.statistics.exports + 1;
+    } else {
+        set manager.statistics.failures =
+            manager.statistics.failures + 1;
+    }
+
+    give error;
+}
+
+proc scope_manager_add_generic(
+    manager: ref mut ScopeManager,
+    scope: ScopeId,
+    parameter: ScopeGenericParameter
+) -> bool {
+    if not scope_generic_table_add_parameter(
+        ref mut manager.generics,
+        scope,
+        parameter
+    ) {
+        set manager.statistics.failures =
+            manager.statistics.failures + 1;
+
+        give false;
+    }
+
+    set manager.statistics.generics =
+        manager.statistics.generics + 1;
+
+    give true;
+}
+
+proc scope_manager_add_function(
+    manager: ref mut ScopeManager,
+    function: ScopeFunction
+) -> bool {
+    if not scope_function_table_insert(
+        ref mut manager.functions,
+        function
+    ) {
+        set manager.statistics.failures =
+            manager.statistics.failures + 1;
+
+        give false;
+    }
+
+    set manager.statistics.functions =
+        manager.statistics.functions + 1;
+
+    give true;
+}
+
+proc scope_manager_add_edge(
+    manager: ref mut ScopeManager,
+    source: ScopeId,
+    target: ScopeId,
+    kind: ScopeEdgeKind
+) -> bool {
+    if not scope_edge_table_add_checked(
+        ref mut manager.edges,
+        source,
+        target,
+        kind
+    ) {
+        set manager.statistics.failures =
+            manager.statistics.failures + 1;
+
+        give false;
+    }
+
+    set manager.statistics.edges =
+        manager.statistics.edges + 1;
+
+    give true;
+}
+
+proc scope_manager_lookup(
+    manager: ref mut ScopeManager,
+    scope: ScopeId,
+    name: string,
+    kind: ScopeLookupKind
+) -> ScopeLookupResult {
+    set manager.statistics.lookups =
+        manager.statistics.lookups + 1;
+
+    give scope_lookup_name(
+        ref mut manager.lookup,
+
+        ref manager.bindings,
+        ref manager.generics,
+        ref manager.imports,
+        ref manager.children,
+
+        scope,
+        name,
+        kind
+    );
+}
+
+proc scope_manager_lookup_current(
+    manager: ref mut ScopeManager,
+    name: string,
+    kind: ScopeLookupKind
+) -> Option<ScopeLookupResult> {
+    let current =
+        scope_manager_current_scope(
+            ref manager
+        );
+
+    pick current {
+        Some(scope) {
+            give Some(
+                scope_manager_lookup(
+                    manager,
+                    scope,
+                    name,
+                    kind
+                )
+            );
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc scope_manager_parent(
+    manager: ref ScopeManager,
+    scope: ScopeId
+) -> Option<ScopeId> {
+    give scope_child_table_parent(
+        ref manager.children,
+        scope
+    );
+}
+
+proc scope_manager_invalidate_scope(
+    manager: ref mut ScopeManager,
+    scope: ScopeId
+) -> usize {
+    let mut count: usize = 0;
+
+    if scope_info_table_invalidate(
+        ref mut manager.infos,
+        scope
+    ) {
+        set count =
+            count + 1;
+    }
+
+    set count =
+        count
+        + scope_binding_table_invalidate_scope(
+            ref mut manager.bindings,
+            scope
+        );
+
+    set count =
+        count
+        + scope_import_table_invalidate_scope(
+            ref mut manager.imports,
+            scope
+        );
+
+    set count =
+        count
+        + scope_export_table_invalidate_scope(
+            ref mut manager.exports,
+            scope
+        );
+
+    set count =
+        count
+        + scope_generic_table_invalidate_scope(
+            ref mut manager.generics,
+            scope
+        );
+
+    set count =
+        count
+        + scope_edge_table_invalidate_scope(
+            ref mut manager.edges,
+            scope
+        );
+
+    set count =
+        count
+        + scope_child_table_invalidate_tree(
+            ref mut manager.children,
+            scope
+        );
+
+    set manager.statistics.invalidations =
+        manager.statistics.invalidations
+        + count;
+
+    give count;
+}
+
+proc scope_manager_finish(
+    manager: ref mut ScopeManager
+) -> bool {
+    while scope_manager_has_current_scope(
+        ref manager
+    ) {
+        scope_manager_leave_scope(
+            manager
+        );
+    }
+
+    if manager.state
+        == ScopeManagerState.Failed
+    {
+        give false;
+    }
+
+    set manager.state =
+        ScopeManagerState.Ready;
+
+    give true;
+}
+
+proc scope_manager_advance_generation(
+    manager: ref mut ScopeManager
+) -> u64 {
+    set manager.generation =
+        manager.generation + 1;
+
+    set manager.infos.generation =
+        manager.generation;
+
+    set manager.blocks.generation =
+        manager.generation;
+
+    set manager.children.generation =
+        manager.generation;
+
+    set manager.edges.generation =
+        manager.generation;
+
+    set manager.bindings.generation =
+        manager.generation;
+
+    set manager.imports.generation =
+        manager.generation;
+
+    set manager.exports.generation =
+        manager.generation;
+
+    set manager.generics.generation =
+        manager.generation;
+
+    set manager.functions.generation =
+        manager.generation;
+
+    give manager.generation;
+}
+
+proc scope_manager_reset(
+    manager: ref mut ScopeManager
+) {
+    let generation =
+        manager.generation + 1;
+
+    set manager.ids =
+        scope_id_allocator_create();
+
+    set manager.infos =
+        scope_info_table_create();
+
+    set manager.blocks =
+        scope_block_table_create();
+
+    set manager.children =
+        scope_child_table_create();
+
+    set manager.edges =
+        scope_edge_table_create();
+
+    set manager.bindings =
+        scope_binding_table_create();
+
+    set manager.imports =
+        scope_import_table_create();
+
+    set manager.exports =
+        scope_export_table_create();
+
+    set manager.generics =
+        scope_generic_table_create();
+
+    set manager.functions =
+        scope_function_table_create();
+
+    set manager.context =
+        scope_context_create();
+
+    set manager.lookup =
+        scope_lookup_create();
+
+    set manager.generation =
+        generation;
+
+    set manager.state =
+        ScopeManagerState.Created;
+}
+
+proc scope_manager_statistics(
+    manager: ref ScopeManager
+) -> ScopeManagerStatistics {
+    give manager.statistics;
+}
+
+proc scope_manager_reset_statistics(
+    manager: ref mut ScopeManager
+) {
+    set manager.statistics =
+        scope_manager_statistics_empty();
+}
+
+proc scope_manager_state_name(
+    state: ScopeManagerState
+) -> string {
+    pick state {
+        ScopeManagerState.Created {
+            give "created";
+        }
+
+        ScopeManagerState.Building {
+            give "building";
+        }
+
+        ScopeManagerState.Ready {
+            give "ready";
+        }
+
+        ScopeManagerState.Invalidated {
+            give "invalidated";
+        }
+
+        ScopeManagerState.Failed {
+            give "failed";
+        }
+    }
+
+    give "failed";
+}
+
+// HIR traversal
+//      |
+//      v
+// ScopeManager
+//      |
+//      +-- ScopeIdAllocator
+//      |
+//      +-- ScopeInfoTable
+//      +-- ScopeBlockTable
+//      |
+//      +-- ScopeChildTable
+//      +-- ScopeEdgeTable
+//      |
+//      +-- ScopeBindingTable
+//      |
+//      +-- ScopeImportTable
+//      +-- ScopeExportTable
+//      |
+//      +-- ScopeGenericTable
+//      +-- ScopeFunctionTable
+//      |
+//      +-- ScopeContext
+//      +-- ScopeLookup
+//      |
+//      v
+// canonical scope subsystem
+//
+// enter scope
+//      |
+//      +-- allocate ScopeId
+//      +-- create ScopeInfo
+//      +-- register parent relation
+//      +-- create generic environment
+//      +-- register binding scope
+//      +-- push context
+//
+// declarations
+//      |
+//      +-- bindings
+//      +-- imports
+//      +-- exports
+//      +-- generics
+//      +-- functions
+//
+// lookup
+//      |
+//      +-- current scope
+//      +-- bindings
+//      +-- generics
+//      +-- imports
+//      +-- parent traversal
+//
+// leave scope
+//      |
+//      +-- close ScopeInfo
+//      +-- pop context

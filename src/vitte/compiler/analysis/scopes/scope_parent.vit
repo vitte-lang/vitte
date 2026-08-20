@@ -1,0 +1,753 @@
+space vitte/compiler/analysis/scopes/scope_parent
+
+export *
+
+use vitte/compiler/analysis/scopes/scope_id.{
+    ScopeId
+}
+
+use vitte/compiler/analysis/scopes/scope_kind.{
+    ScopeKind
+}
+
+use vitte/compiler/analysis/scopes/scope_node.{
+    ScopeNode,
+    ScopeNodeTable,
+
+    scope_node_table_get,
+    scope_node_table_parent
+}
+
+pick ScopeParentState {
+    Found,
+    Root,
+    Missing,
+    Cycle
+}
+
+form ScopeParentResult {
+    state: ScopeParentState
+
+    scope: ScopeId
+
+    parent: Option<ScopeId>
+
+    distance: usize
+}
+
+form ScopeParentPath {
+    start: ScopeId
+
+    parents: [ScopeId]
+
+    root: Option<ScopeId>
+
+    cycle: bool
+}
+
+form ScopeParentStatistics {
+    lookups: u64
+
+    hits: u64
+    misses: u64
+
+    traversals: u64
+    cycles: u64
+
+    maximum_distance: usize
+}
+
+form ScopeParentResolver {
+    statistics: ScopeParentStatistics
+}
+
+proc scope_parent_statistics_empty()
+    -> ScopeParentStatistics
+{
+    give ScopeParentStatistics {
+        lookups: 0,
+
+        hits: 0,
+        misses: 0,
+
+        traversals: 0,
+        cycles: 0,
+
+        maximum_distance: 0
+    };
+}
+
+proc scope_parent_resolver_create()
+    -> ScopeParentResolver
+{
+    give ScopeParentResolver {
+        statistics:
+            scope_parent_statistics_empty()
+    };
+}
+
+proc scope_parent_result_found(
+    scope: ScopeId,
+    parent: ScopeId,
+    distance: usize
+) -> ScopeParentResult {
+    give ScopeParentResult {
+        state:
+            ScopeParentState.Found,
+
+        scope:
+            scope,
+
+        parent:
+            Some(parent),
+
+        distance:
+            distance
+    };
+}
+
+proc scope_parent_result_root(
+    scope: ScopeId
+) -> ScopeParentResult {
+    give ScopeParentResult {
+        state:
+            ScopeParentState.Root,
+
+        scope:
+            scope,
+
+        parent:
+            None,
+
+        distance:
+            0
+    };
+}
+
+proc scope_parent_result_missing(
+    scope: ScopeId
+) -> ScopeParentResult {
+    give ScopeParentResult {
+        state:
+            ScopeParentState.Missing,
+
+        scope:
+            scope,
+
+        parent:
+            None,
+
+        distance:
+            0
+    };
+}
+
+proc scope_parent_result_cycle(
+    scope: ScopeId,
+    distance: usize
+) -> ScopeParentResult {
+    give ScopeParentResult {
+        state:
+            ScopeParentState.Cycle,
+
+        scope:
+            scope,
+
+        parent:
+            None,
+
+        distance:
+            distance
+    };
+}
+
+proc scope_parent_direct(
+    resolver: ref mut ScopeParentResolver,
+    nodes: ref ScopeNodeTable,
+    scope: ScopeId
+) -> ScopeParentResult {
+    set resolver.statistics.lookups =
+        resolver.statistics.lookups + 1;
+
+    let node =
+        scope_node_table_get(
+            nodes,
+            scope
+        );
+
+    pick node {
+        None {
+            set resolver.statistics.misses =
+                resolver.statistics.misses + 1;
+
+            give scope_parent_result_missing(
+                scope
+            );
+        }
+
+        Some(value) {
+            pick value.parent {
+                None {
+                    set resolver.statistics.hits =
+                        resolver.statistics.hits + 1;
+
+                    give scope_parent_result_root(
+                        scope
+                    );
+                }
+
+                Some(parent) {
+                    set resolver.statistics.hits =
+                        resolver.statistics.hits + 1;
+
+                    give scope_parent_result_found(
+                        scope,
+                        parent,
+                        1
+                    );
+                }
+            }
+        }
+    }
+}
+
+proc scope_parent_has_parent(
+    nodes: ref ScopeNodeTable,
+    scope: ScopeId
+) -> bool {
+    pick scope_node_table_parent(
+        nodes,
+        scope
+    ) {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_parent_path(
+    resolver: ref mut ScopeParentResolver,
+    nodes: ref ScopeNodeTable,
+    start: ScopeId
+) -> ScopeParentPath {
+    let mut parents:
+        [ScopeId] = [];
+
+    let mut visited:
+        [ScopeId] = [];
+
+    let mut current =
+        start;
+
+    let mut root:
+        Option<ScopeId> = None;
+
+    let mut cycle =
+        false;
+
+    loop {
+        let mut already_visited =
+            false;
+
+        for value in visited {
+            if value == current {
+                set already_visited =
+                    true;
+
+                break;
+            }
+        }
+
+        if already_visited {
+            set cycle =
+                true;
+
+            set resolver.statistics.cycles =
+                resolver.statistics.cycles + 1;
+
+            break;
+        }
+
+        set visited =
+            visited + [current];
+
+        let parent =
+            scope_node_table_parent(
+                nodes,
+                current
+            );
+
+        pick parent {
+            None {
+                set root =
+                    Some(current);
+
+                break;
+            }
+
+            Some(value) {
+                set parents =
+                    parents + [value];
+
+                set resolver.statistics.traversals =
+                    resolver.statistics.traversals + 1;
+
+                set current =
+                    value;
+            }
+        }
+    }
+
+    if len(parents)
+        > resolver.statistics.maximum_distance
+    {
+        set resolver.statistics.maximum_distance =
+            len(parents);
+    }
+
+    give ScopeParentPath {
+        start:
+            start,
+
+        parents:
+            parents,
+
+        root:
+            root,
+
+        cycle:
+            cycle
+    };
+}
+
+proc scope_parent_ancestors(
+    resolver: ref mut ScopeParentResolver,
+    nodes: ref ScopeNodeTable,
+    scope: ScopeId
+) -> [ScopeId] {
+    give scope_parent_path(
+        resolver,
+        nodes,
+        scope
+    ).parents;
+}
+
+proc scope_parent_root(
+    resolver: ref mut ScopeParentResolver,
+    nodes: ref ScopeNodeTable,
+    scope: ScopeId
+) -> Option<ScopeId> {
+    let path =
+        scope_parent_path(
+            resolver,
+            nodes,
+            scope
+        );
+
+    if path.cycle {
+        give None;
+    }
+
+    give path.root;
+}
+
+proc scope_parent_distance(
+    resolver: ref mut ScopeParentResolver,
+    nodes: ref ScopeNodeTable,
+    child: ScopeId,
+    ancestor: ScopeId
+) -> Option<usize> {
+    if child == ancestor {
+        give Some(0);
+    }
+
+    let path =
+        scope_parent_path(
+            resolver,
+            nodes,
+            child
+        );
+
+    if path.cycle {
+        give None;
+    }
+
+    let mut index: usize = 0;
+
+    while index < len(path.parents) {
+        if path.parents[index]
+            == ancestor
+        {
+            give Some(
+                index + 1
+            );
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give None;
+}
+
+proc scope_parent_is_ancestor(
+    resolver: ref mut ScopeParentResolver,
+    nodes: ref ScopeNodeTable,
+    ancestor: ScopeId,
+    child: ScopeId
+) -> bool {
+    pick scope_parent_distance(
+        resolver,
+        nodes,
+        child,
+        ancestor
+    ) {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_parent_is_descendant(
+    resolver: ref mut ScopeParentResolver,
+    nodes: ref ScopeNodeTable,
+    child: ScopeId,
+    ancestor: ScopeId
+) -> bool {
+    give scope_parent_is_ancestor(
+        resolver,
+        nodes,
+        ancestor,
+        child
+    );
+}
+
+proc scope_parent_find_kind(
+    resolver: ref mut ScopeParentResolver,
+    nodes: ref ScopeNodeTable,
+    scope: ScopeId,
+    kind: ScopeKind
+) -> Option<ScopeNode> {
+    let path =
+        scope_parent_path(
+            resolver,
+            nodes,
+            scope
+        );
+
+    if path.cycle {
+        give None;
+    }
+
+    for parent in path.parents {
+        let node =
+            scope_node_table_get(
+                nodes,
+                parent
+            );
+
+        pick node {
+            Some(value) {
+                if value.kind == kind {
+                    give Some(value);
+                }
+            }
+
+            None {}
+        }
+    }
+
+    give None;
+}
+
+proc scope_parent_find_function(
+    resolver: ref mut ScopeParentResolver,
+    nodes: ref ScopeNodeTable,
+    scope: ScopeId
+) -> Option<ScopeNode> {
+    let path =
+        scope_parent_path(
+            resolver,
+            nodes,
+            scope
+        );
+
+    if path.cycle {
+        give None;
+    }
+
+    for parent in path.parents {
+        let node =
+            scope_node_table_get(
+                nodes,
+                parent
+            );
+
+        pick node {
+            Some(value) {
+                if value.kind
+                    == ScopeKind.Procedure
+                    or value.kind
+                    == ScopeKind.Method
+                    or value.kind
+                    == ScopeKind.Closure
+                    or value.kind
+                    == ScopeKind.Lambda
+                {
+                    give Some(value);
+                }
+            }
+
+            None {}
+        }
+    }
+
+    give None;
+}
+
+proc scope_parent_find_module(
+    resolver: ref mut ScopeParentResolver,
+    nodes: ref ScopeNodeTable,
+    scope: ScopeId
+) -> Option<ScopeNode> {
+    give scope_parent_find_kind(
+        resolver,
+        nodes,
+        scope,
+        ScopeKind.Module
+    );
+}
+
+proc scope_parent_find_type(
+    resolver: ref mut ScopeParentResolver,
+    nodes: ref ScopeNodeTable,
+    scope: ScopeId
+) -> Option<ScopeNode> {
+    let path =
+        scope_parent_path(
+            resolver,
+            nodes,
+            scope
+        );
+
+    if path.cycle {
+        give None;
+    }
+
+    for parent in path.parents {
+        let node =
+            scope_node_table_get(
+                nodes,
+                parent
+            );
+
+        pick node {
+            Some(value) {
+                if value.kind
+                    == ScopeKind.Type
+                    or value.kind
+                    == ScopeKind.Trait
+                    or value.kind
+                    == ScopeKind.Impl
+                {
+                    give Some(value);
+                }
+            }
+
+            None {}
+        }
+    }
+
+    give None;
+}
+
+proc scope_parent_find_loop(
+    resolver: ref mut ScopeParentResolver,
+    nodes: ref ScopeNodeTable,
+    scope: ScopeId
+) -> Option<ScopeNode> {
+    let path =
+        scope_parent_path(
+            resolver,
+            nodes,
+            scope
+        );
+
+    if path.cycle {
+        give None;
+    }
+
+    for parent in path.parents {
+        let node =
+            scope_node_table_get(
+                nodes,
+                parent
+            );
+
+        pick node {
+            Some(value) {
+                if value.kind
+                    == ScopeKind.Loop
+                    or value.kind
+                    == ScopeKind.While
+                    or value.kind
+                    == ScopeKind.For
+                {
+                    give Some(value);
+                }
+            }
+
+            None {}
+        }
+    }
+
+    give None;
+}
+
+proc scope_parent_nearest_common(
+    resolver: ref mut ScopeParentResolver,
+    nodes: ref ScopeNodeTable,
+    left: ScopeId,
+    right: ScopeId
+) -> Option<ScopeId> {
+    if left == right {
+        give Some(left);
+    }
+
+    let left_path =
+        scope_parent_path(
+            resolver,
+            nodes,
+            left
+        );
+
+    let right_path =
+        scope_parent_path(
+            resolver,
+            nodes,
+            right
+        );
+
+    if left_path.cycle
+        or right_path.cycle
+    {
+        give None;
+    }
+
+    let mut left_scopes:
+        [ScopeId] = [left];
+
+    set left_scopes =
+        left_scopes
+        + left_path.parents;
+
+    let mut right_scopes:
+        [ScopeId] = [right];
+
+    set right_scopes =
+        right_scopes
+        + right_path.parents;
+
+    for left_scope in left_scopes {
+        for right_scope in right_scopes {
+            if left_scope == right_scope {
+                give Some(left_scope);
+            }
+        }
+    }
+
+    give None;
+}
+
+proc scope_parent_validate(
+    resolver: ref mut ScopeParentResolver,
+    nodes: ref ScopeNodeTable,
+    scope: ScopeId
+) -> bool {
+    let path =
+        scope_parent_path(
+            resolver,
+            nodes,
+            scope
+        );
+
+    give not path.cycle;
+}
+
+proc scope_parent_statistics(
+    resolver: ref ScopeParentResolver
+) -> ScopeParentStatistics {
+    give resolver.statistics;
+}
+
+proc scope_parent_reset_statistics(
+    resolver: ref mut ScopeParentResolver
+) {
+    set resolver.statistics =
+        scope_parent_statistics_empty();
+}
+
+proc scope_parent_state_name(
+    state: ScopeParentState
+) -> string {
+    pick state {
+        ScopeParentState.Found {
+            give "found";
+        }
+
+        ScopeParentState.Root {
+            give "root";
+        }
+
+        ScopeParentState.Missing {
+            give "missing";
+        }
+
+        ScopeParentState.Cycle {
+            give "cycle";
+        }
+    }
+
+    give "missing";
+}
+
+// current scope
+//      |
+//      v
+// parent
+//      |
+//      v
+// parent
+//      |
+//      v
+// root
+//
+// scope_parent.vit
+//      |
+//      +-- direct parent
+//      +-- ancestor list
+//      +-- root
+//      +-- ancestor distance
+//      +-- nearest common ancestor
+//      +-- nearest function
+//      +-- nearest module
+//      +-- nearest type
+//      +-- nearest loop
+//      +-- cycle validation
+//
+// scope_node.vit
+//      = canonical nodes
+//
+// scope_child.vit
+//      = downward navigation
+//
+// scope_parent.vit
+//      = upward navigation

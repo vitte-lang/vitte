@@ -1,0 +1,902 @@
+space vitte/compiler/analysis/scopes/scope_visibility
+
+export *
+
+use vitte/compiler/analysis/scopes/scope_id.{
+    ScopeId
+}
+
+use vitte/compiler/analysis/scopes/scope_kind.{
+    ScopeKind
+}
+
+use vitte/compiler/analysis/scopes/scope_table.{
+    ScopeTable,
+
+    scope_table_contains_active,
+    scope_table_parent,
+    scope_table_is_ancestor,
+    scope_table_find_module
+}
+
+pick ScopeVisibility {
+    Private,
+    Parent,
+    Module,
+    Package,
+    Public
+}
+
+pick ScopeVisibilityState {
+    Allowed,
+    Denied,
+    InvalidSource,
+    InvalidTarget
+}
+
+form ScopeVisibilityResult {
+    state: ScopeVisibilityState
+
+    visibility: ScopeVisibility
+
+    source_scope: ScopeId
+    target_scope: ScopeId
+
+    owner_scope: Option<ScopeId>
+
+    reason: string
+}
+
+form ScopeVisibilityStatistics {
+    checks: u64
+
+    allowed: u64
+    denied: u64
+
+    private_checks: u64
+    parent_checks: u64
+    module_checks: u64
+    package_checks: u64
+    public_checks: u64
+
+    invalid_scopes: u64
+}
+
+form ScopeVisibilityContext {
+    statistics: ScopeVisibilityStatistics
+}
+
+proc scope_visibility_statistics_empty()
+    -> ScopeVisibilityStatistics
+{
+    give ScopeVisibilityStatistics {
+        checks: 0,
+
+        allowed: 0,
+        denied: 0,
+
+        private_checks: 0,
+        parent_checks: 0,
+        module_checks: 0,
+        package_checks: 0,
+        public_checks: 0,
+
+        invalid_scopes: 0
+    };
+}
+
+proc scope_visibility_context_create()
+    -> ScopeVisibilityContext
+{
+    give ScopeVisibilityContext {
+        statistics:
+            scope_visibility_statistics_empty()
+    };
+}
+
+proc scope_visibility_result(
+    state: ScopeVisibilityState,
+    visibility: ScopeVisibility,
+    source_scope: ScopeId,
+    target_scope: ScopeId,
+    owner_scope: Option<ScopeId>,
+    reason: string
+) -> ScopeVisibilityResult {
+    give ScopeVisibilityResult {
+        state: state,
+
+        visibility: visibility,
+
+        source_scope: source_scope,
+        target_scope: target_scope,
+
+        owner_scope: owner_scope,
+
+        reason: reason
+    };
+}
+
+proc scope_visibility_allowed(
+    visibility: ScopeVisibility,
+    source_scope: ScopeId,
+    target_scope: ScopeId,
+    owner_scope: Option<ScopeId>,
+    reason: string
+) -> ScopeVisibilityResult {
+    give scope_visibility_result(
+        ScopeVisibilityState.Allowed,
+        visibility,
+        source_scope,
+        target_scope,
+        owner_scope,
+        reason
+    );
+}
+
+proc scope_visibility_denied(
+    visibility: ScopeVisibility,
+    source_scope: ScopeId,
+    target_scope: ScopeId,
+    owner_scope: Option<ScopeId>,
+    reason: string
+) -> ScopeVisibilityResult {
+    give scope_visibility_result(
+        ScopeVisibilityState.Denied,
+        visibility,
+        source_scope,
+        target_scope,
+        owner_scope,
+        reason
+    );
+}
+
+proc scope_visibility_record_kind(
+    context: ref mut ScopeVisibilityContext,
+    visibility: ScopeVisibility
+) {
+    pick visibility {
+        ScopeVisibility.Private {
+            set context.statistics.private_checks =
+                context.statistics.private_checks + 1;
+        }
+
+        ScopeVisibility.Parent {
+            set context.statistics.parent_checks =
+                context.statistics.parent_checks + 1;
+        }
+
+        ScopeVisibility.Module {
+            set context.statistics.module_checks =
+                context.statistics.module_checks + 1;
+        }
+
+        ScopeVisibility.Package {
+            set context.statistics.package_checks =
+                context.statistics.package_checks + 1;
+        }
+
+        ScopeVisibility.Public {
+            set context.statistics.public_checks =
+                context.statistics.public_checks + 1;
+        }
+    }
+}
+
+proc scope_visibility_record_result(
+    context: ref mut ScopeVisibilityContext,
+    result: ScopeVisibilityResult
+) {
+    pick result.state {
+        ScopeVisibilityState.Allowed {
+            set context.statistics.allowed =
+                context.statistics.allowed + 1;
+        }
+
+        ScopeVisibilityState.Denied {
+            set context.statistics.denied =
+                context.statistics.denied + 1;
+        }
+
+        ScopeVisibilityState.InvalidSource
+        | ScopeVisibilityState.InvalidTarget {
+            set context.statistics.invalid_scopes =
+                context.statistics.invalid_scopes + 1;
+        }
+    }
+}
+
+proc scope_visibility_same_scope(
+    source_scope: ScopeId,
+    target_scope: ScopeId
+) -> bool {
+    give source_scope == target_scope;
+}
+
+proc scope_visibility_same_module(
+    table: ref ScopeTable,
+    source_scope: ScopeId,
+    target_scope: ScopeId
+) -> bool {
+    let source_module =
+        scope_table_find_module(
+            table,
+            source_scope
+        );
+
+    let target_module =
+        scope_table_find_module(
+            table,
+            target_scope
+        );
+
+    pick source_module {
+        None {
+            give false;
+        }
+
+        Some(source) {
+            pick target_module {
+                None {
+                    give false;
+                }
+
+                Some(target) {
+                    give source == target;
+                }
+            }
+        }
+    }
+
+    give false;
+}
+
+proc scope_visibility_is_child_of(
+    table: ref ScopeTable,
+    child: ScopeId,
+    parent: ScopeId
+) -> bool {
+    let value =
+        scope_table_parent(
+            table,
+            child
+        );
+
+    pick value {
+        Some(current) {
+            give current == parent;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_visibility_private(
+    table: ref ScopeTable,
+    owner_scope: ScopeId,
+    source_scope: ScopeId,
+    target_scope: ScopeId
+) -> bool {
+    if source_scope == owner_scope
+        or target_scope == owner_scope
+    {
+        give true;
+    }
+
+    if scope_table_is_ancestor(
+        table,
+        owner_scope,
+        target_scope
+    ) {
+        give true;
+    }
+
+    give false;
+}
+
+proc scope_visibility_parent(
+    table: ref ScopeTable,
+    owner_scope: ScopeId,
+    target_scope: ScopeId
+) -> bool {
+    if owner_scope == target_scope {
+        give true;
+    }
+
+    let parent =
+        scope_table_parent(
+            table,
+            owner_scope
+        );
+
+    pick parent {
+        None {
+            give false;
+        }
+
+        Some(value) {
+            if target_scope == value {
+                give true;
+            }
+
+            give scope_table_is_ancestor(
+                table,
+                value,
+                target_scope
+            );
+        }
+    }
+
+    give false;
+}
+
+proc scope_visibility_module(
+    table: ref ScopeTable,
+    owner_scope: ScopeId,
+    target_scope: ScopeId
+) -> bool {
+    give scope_visibility_same_module(
+        table,
+        owner_scope,
+        target_scope
+    );
+}
+
+proc scope_visibility_package(
+    table: ref ScopeTable,
+    owner_scope: ScopeId,
+    target_scope: ScopeId
+) -> bool {
+    /*
+     * Pour l'instant, la couche scopes ne connaît pas directement PackageId.
+     *
+     * Tant que PackageId n'est pas stocké dans ScopeNode ou ScopeModule,
+     * on considère qu'un package est au minimum limité au même arbre
+     * de module racine.
+     */
+
+    let owner_module =
+        scope_table_find_module(
+            table,
+            owner_scope
+        );
+
+    let target_module =
+        scope_table_find_module(
+            table,
+            target_scope
+        );
+
+    pick owner_module {
+        None {
+            give false;
+        }
+
+        Some(owner) {
+            pick target_module {
+                None {
+                    give false;
+                }
+
+                Some(target) {
+                    /*
+                     * Cette comparaison devra être remplacée par
+                     * PackageId lorsque le système package sera relié.
+                     */
+                    give owner == target
+                        or scope_table_is_ancestor(
+                            table,
+                            owner,
+                            target
+                        )
+                        or scope_table_is_ancestor(
+                            table,
+                            target,
+                            owner
+                        );
+                }
+            }
+        }
+    }
+
+    give false;
+}
+
+proc scope_visibility_check(
+    context: ref mut ScopeVisibilityContext,
+    table: ref ScopeTable,
+
+    visibility: ScopeVisibility,
+
+    owner_scope: ScopeId,
+    source_scope: ScopeId,
+    target_scope: ScopeId
+) -> ScopeVisibilityResult {
+    set context.statistics.checks =
+        context.statistics.checks + 1;
+
+    scope_visibility_record_kind(
+        context,
+        visibility
+    );
+
+    if not scope_table_contains_active(
+        table,
+        source_scope
+    ) {
+        let result =
+            scope_visibility_result(
+                ScopeVisibilityState.InvalidSource,
+
+                visibility,
+
+                source_scope,
+                target_scope,
+
+                Some(owner_scope),
+
+                "source scope does not exist"
+            );
+
+        scope_visibility_record_result(
+            context,
+            result
+        );
+
+        give result;
+    }
+
+    if not scope_table_contains_active(
+        table,
+        target_scope
+    ) {
+        let result =
+            scope_visibility_result(
+                ScopeVisibilityState.InvalidTarget,
+
+                visibility,
+
+                source_scope,
+                target_scope,
+
+                Some(owner_scope),
+
+                "target scope does not exist"
+            );
+
+        scope_visibility_record_result(
+            context,
+            result
+        );
+
+        give result;
+    }
+
+    if not scope_table_contains_active(
+        table,
+        owner_scope
+    ) {
+        let result =
+            scope_visibility_result(
+                ScopeVisibilityState.InvalidSource,
+
+                visibility,
+
+                source_scope,
+                target_scope,
+
+                Some(owner_scope),
+
+                "visibility owner scope does not exist"
+            );
+
+        scope_visibility_record_result(
+            context,
+            result
+        );
+
+        give result;
+    }
+
+    let allowed =
+        pick visibility {
+            ScopeVisibility.Private {
+                scope_visibility_private(
+                    table,
+                    owner_scope,
+                    source_scope,
+                    target_scope
+                )
+            }
+
+            ScopeVisibility.Parent {
+                scope_visibility_parent(
+                    table,
+                    owner_scope,
+                    target_scope
+                )
+            }
+
+            ScopeVisibility.Module {
+                scope_visibility_module(
+                    table,
+                    owner_scope,
+                    target_scope
+                )
+            }
+
+            ScopeVisibility.Package {
+                scope_visibility_package(
+                    table,
+                    owner_scope,
+                    target_scope
+                )
+            }
+
+            ScopeVisibility.Public {
+                true
+            }
+        };
+
+    let result =
+        if allowed {
+            scope_visibility_allowed(
+                visibility,
+
+                source_scope,
+                target_scope,
+
+                Some(owner_scope),
+
+                "scope visibility allows access"
+            )
+        } else {
+            scope_visibility_denied(
+                visibility,
+
+                source_scope,
+                target_scope,
+
+                Some(owner_scope),
+
+                "scope visibility denies access"
+            )
+        };
+
+    scope_visibility_record_result(
+        context,
+        result
+    );
+
+    give result;
+}
+
+proc scope_visibility_can_access(
+    context: ref mut ScopeVisibilityContext,
+    table: ref ScopeTable,
+
+    visibility: ScopeVisibility,
+
+    owner_scope: ScopeId,
+    from_scope: ScopeId
+) -> bool {
+    let result =
+        scope_visibility_check(
+            context,
+            table,
+
+            visibility,
+
+            owner_scope,
+            from_scope,
+            owner_scope
+        );
+
+    give result.state
+        == ScopeVisibilityState.Allowed;
+}
+
+proc scope_visibility_can_access_private(
+    table: ref ScopeTable,
+    owner_scope: ScopeId,
+    from_scope: ScopeId
+) -> bool {
+    give scope_visibility_private(
+        table,
+        owner_scope,
+        from_scope,
+        from_scope
+    );
+}
+
+proc scope_visibility_can_access_module(
+    table: ref ScopeTable,
+    owner_scope: ScopeId,
+    from_scope: ScopeId
+) -> bool {
+    give scope_visibility_module(
+        table,
+        owner_scope,
+        from_scope
+    );
+}
+
+proc scope_visibility_can_access_public(
+    owner_scope: ScopeId,
+    from_scope: ScopeId
+) -> bool {
+    give true;
+}
+
+proc scope_visibility_is_more_restrictive(
+    left: ScopeVisibility,
+    right: ScopeVisibility
+) -> bool {
+    give scope_visibility_rank(left)
+        < scope_visibility_rank(right);
+}
+
+proc scope_visibility_is_at_least(
+    value: ScopeVisibility,
+    minimum: ScopeVisibility
+) -> bool {
+    give scope_visibility_rank(value)
+        >= scope_visibility_rank(minimum);
+}
+
+proc scope_visibility_rank(
+    visibility: ScopeVisibility
+) -> usize {
+    pick visibility {
+        ScopeVisibility.Private {
+            give 0;
+        }
+
+        ScopeVisibility.Parent {
+            give 1;
+        }
+
+        ScopeVisibility.Module {
+            give 2;
+        }
+
+        ScopeVisibility.Package {
+            give 3;
+        }
+
+        ScopeVisibility.Public {
+            give 4;
+        }
+    }
+
+    give 0;
+}
+
+proc scope_visibility_min(
+    left: ScopeVisibility,
+    right: ScopeVisibility
+) -> ScopeVisibility {
+    if scope_visibility_rank(left)
+        <= scope_visibility_rank(right)
+    {
+        give left;
+    }
+
+    give right;
+}
+
+proc scope_visibility_max(
+    left: ScopeVisibility,
+    right: ScopeVisibility
+) -> ScopeVisibility {
+    if scope_visibility_rank(left)
+        >= scope_visibility_rank(right)
+    {
+        give left;
+    }
+
+    give right;
+}
+
+proc scope_visibility_default()
+    -> ScopeVisibility
+{
+    give ScopeVisibility.Private;
+}
+
+proc scope_visibility_default_for_kind(
+    kind: ScopeKind
+) -> ScopeVisibility {
+    pick kind {
+        ScopeKind.Root {
+            give ScopeVisibility.Public;
+        }
+
+        ScopeKind.Module {
+            give ScopeVisibility.Module;
+        }
+
+        ScopeKind.Namespace {
+            give ScopeVisibility.Module;
+        }
+
+        ScopeKind.Type {
+            give ScopeVisibility.Private;
+        }
+
+        ScopeKind.Trait {
+            give ScopeVisibility.Public;
+        }
+
+        ScopeKind.Impl {
+            give ScopeVisibility.Private;
+        }
+
+        ScopeKind.Procedure {
+            give ScopeVisibility.Private;
+        }
+
+        ScopeKind.Method {
+            give ScopeVisibility.Private;
+        }
+
+        ScopeKind.Closure
+        | ScopeKind.Lambda
+        | ScopeKind.Block
+        | ScopeKind.If
+        | ScopeKind.Else
+        | ScopeKind.Loop
+        | ScopeKind.While
+        | ScopeKind.For
+        | ScopeKind.Match
+        | ScopeKind.MatchArm
+        | ScopeKind.Generic
+        | ScopeKind.Comptime
+        | ScopeKind.Unsafe
+        | ScopeKind.Critical
+        | ScopeKind.Defer {
+            give ScopeVisibility.Private;
+        }
+
+        ScopeKind.Import
+        | ScopeKind.Export {
+            give ScopeVisibility.Module;
+        }
+
+        ScopeKind.Generated {
+            give ScopeVisibility.Private;
+        }
+    }
+
+    give ScopeVisibility.Private;
+}
+
+proc scope_visibility_is_exportable(
+    visibility: ScopeVisibility
+) -> bool {
+    give visibility
+        == ScopeVisibility.Module
+        or visibility
+        == ScopeVisibility.Package
+        or visibility
+        == ScopeVisibility.Public;
+}
+
+proc scope_visibility_is_public(
+    visibility: ScopeVisibility
+) -> bool {
+    give visibility
+        == ScopeVisibility.Public;
+}
+
+proc scope_visibility_is_private(
+    visibility: ScopeVisibility
+) -> bool {
+    give visibility
+        == ScopeVisibility.Private;
+}
+
+proc scope_visibility_statistics(
+    context: ref ScopeVisibilityContext
+) -> ScopeVisibilityStatistics {
+    give context.statistics;
+}
+
+proc scope_visibility_reset_statistics(
+    context: ref mut ScopeVisibilityContext
+) {
+    set context.statistics =
+        scope_visibility_statistics_empty();
+}
+
+proc scope_visibility_name(
+    visibility: ScopeVisibility
+) -> string {
+    pick visibility {
+        ScopeVisibility.Private {
+            give "private";
+        }
+
+        ScopeVisibility.Parent {
+            give "parent";
+        }
+
+        ScopeVisibility.Module {
+            give "module";
+        }
+
+        ScopeVisibility.Package {
+            give "package";
+        }
+
+        ScopeVisibility.Public {
+            give "public";
+        }
+    }
+
+    give "private";
+}
+
+proc scope_visibility_state_name(
+    state: ScopeVisibilityState
+) -> string {
+    pick state {
+        ScopeVisibilityState.Allowed {
+            give "allowed";
+        }
+
+        ScopeVisibilityState.Denied {
+            give "denied";
+        }
+
+        ScopeVisibilityState.InvalidSource {
+            give "invalid-source";
+        }
+
+        ScopeVisibilityState.InvalidTarget {
+            give "invalid-target";
+        }
+    }
+
+    give "denied";
+}
+
+// declaration scope
+//       |
+//       v
+// ScopeVisibility
+//       |
+//       +-- Private
+//       +-- Parent
+//       +-- Module
+//       +-- Package
+//       +-- Public
+//       |
+//       v
+// from ScopeId
+//       |
+//       v
+// scope_visibility_check()
+//       |
+//       +-- same scope ?
+//       +-- descendant ?
+//       +-- same module ?
+//       +-- same package ?
+//       +-- public ?
+//       |
+//       v
+// Allowed / Denied
+//
+// scope_visibility.vit
+//     = lexical visibility rules between ScopeId
+//
+// visibility_resolution.vit
+//     = applies visibility rules to resolved symbols,
+//       definitions, paths, imports and exports
+//
+// scope_export.vit
+//     = determines what may leave a scope
+//
+// scope_import.vit
+//     = determines what becomes locally visible

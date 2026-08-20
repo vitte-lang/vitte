@@ -1,0 +1,878 @@
+space vitte/compiler/analysis/scopes/scope_block
+
+export *
+
+pick ScopeBlockKind {
+    Plain,
+    Procedure,
+    Method,
+    If,
+    Else,
+    Loop,
+    While,
+    For,
+    Match,
+    MatchArm,
+    Unsafe,
+    Comptime,
+    Critical,
+    Defer,
+    Generated
+}
+
+pick ScopeBlockState {
+    Created,
+    Active,
+    Closed,
+    Invalidated
+}
+
+form ScopeBlock {
+    scope: ScopeId
+
+    parent: Option<ScopeId>
+
+    owner: Option<DefId>
+    node: Option<HirId>
+
+    kind: ScopeBlockKind
+    state: ScopeBlockState
+
+    depth: usize
+
+    children: [ScopeId]
+
+    generation: u64
+    revision: u64
+}
+
+form ScopeBlockStatistics {
+    created: u64
+    activated: u64
+    closed: u64
+    invalidated: u64
+
+    children_added: u64
+
+    maximum_depth: usize
+}
+
+form ScopeBlockTable {
+    blocks: [ScopeBlock]
+
+    generation: u64
+
+    statistics: ScopeBlockStatistics
+}
+
+proc scope_block_statistics_empty()
+    -> ScopeBlockStatistics
+{
+    give ScopeBlockStatistics {
+        created: 0,
+        activated: 0,
+        closed: 0,
+        invalidated: 0,
+
+        children_added: 0,
+
+        maximum_depth: 0
+    };
+}
+
+proc scope_block_table_create()
+    -> ScopeBlockTable
+{
+    give ScopeBlockTable {
+        blocks: [],
+
+        generation: 1,
+
+        statistics:
+            scope_block_statistics_empty()
+    };
+}
+
+proc scope_block(
+    scope: ScopeId,
+    parent: Option<ScopeId>,
+    kind: ScopeBlockKind,
+    depth: usize
+) -> ScopeBlock {
+    give ScopeBlock {
+        scope: scope,
+
+        parent: parent,
+
+        owner: None,
+        node: None,
+
+        kind: kind,
+
+        state:
+            ScopeBlockState.Created,
+
+        depth: depth,
+
+        children: [],
+
+        generation: 1,
+        revision: 1
+    };
+}
+
+proc scope_block_root(
+    scope: ScopeId
+) -> ScopeBlock {
+    give scope_block(
+        scope,
+        None,
+        ScopeBlockKind.Plain,
+        0
+    );
+}
+
+proc scope_block_child(
+    scope: ScopeId,
+    parent: ScopeId,
+    kind: ScopeBlockKind,
+    depth: usize
+) -> ScopeBlock {
+    give scope_block(
+        scope,
+        Some(parent),
+        kind,
+        depth
+    );
+}
+
+proc scope_block_with_owner(
+    block: ScopeBlock,
+    owner: DefId
+) -> ScopeBlock {
+    let mut result =
+        block;
+
+    set result.owner =
+        Some(owner);
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_block_with_node(
+    block: ScopeBlock,
+    node: HirId
+) -> ScopeBlock {
+    let mut result =
+        block;
+
+    set result.node =
+        Some(node);
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_block_activate(
+    block: ref mut ScopeBlock
+) {
+    set block.state =
+        ScopeBlockState.Active;
+
+    set block.revision =
+        block.revision + 1;
+}
+
+proc scope_block_close(
+    block: ref mut ScopeBlock
+) {
+    set block.state =
+        ScopeBlockState.Closed;
+
+    set block.revision =
+        block.revision + 1;
+}
+
+proc scope_block_invalidate(
+    block: ref mut ScopeBlock
+) {
+    set block.state =
+        ScopeBlockState.Invalidated;
+
+    set block.revision =
+        block.revision + 1;
+}
+
+proc scope_block_is_active(
+    block: ref ScopeBlock
+) -> bool {
+    give block.state
+        == ScopeBlockState.Active;
+}
+
+proc scope_block_is_closed(
+    block: ref ScopeBlock
+) -> bool {
+    give block.state
+        == ScopeBlockState.Closed;
+}
+
+proc scope_block_is_invalidated(
+    block: ref ScopeBlock
+) -> bool {
+    give block.state
+        == ScopeBlockState.Invalidated;
+}
+
+proc scope_block_has_parent(
+    block: ref ScopeBlock
+) -> bool {
+    pick block.parent {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_block_has_owner(
+    block: ref ScopeBlock
+) -> bool {
+    pick block.owner {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_block_has_node(
+    block: ref ScopeBlock
+) -> bool {
+    pick block.node {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_block_add_child(
+    block: ref mut ScopeBlock,
+    child: ScopeId
+) -> bool {
+    for current in block.children {
+        if current == child {
+            give false;
+        }
+    }
+
+    set block.children =
+        block.children + [child];
+
+    set block.revision =
+        block.revision + 1;
+
+    give true;
+}
+
+proc scope_block_has_child(
+    block: ref ScopeBlock,
+    child: ScopeId
+) -> bool {
+    for current in block.children {
+        if current == child {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc scope_block_child_count(
+    block: ref ScopeBlock
+) -> usize {
+    give len(block.children);
+}
+
+proc scope_block_table_find_index(
+    table: ref ScopeBlockTable,
+    scope: ScopeId
+) -> Option<usize> {
+    let mut index: usize = 0;
+
+    while index < len(table.blocks) {
+        if table.blocks[index].scope
+            == scope
+        {
+            give Some(index);
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give None;
+}
+
+proc scope_block_table_contains(
+    table: ref ScopeBlockTable,
+    scope: ScopeId
+) -> bool {
+    pick scope_block_table_find_index(
+        table,
+        scope
+    ) {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_block_table_get(
+    table: ref ScopeBlockTable,
+    scope: ScopeId
+) -> Option<ScopeBlock> {
+    let index =
+        scope_block_table_find_index(
+            table,
+            scope
+        );
+
+    pick index {
+        Some(value) {
+            give Some(
+                table.blocks[value]
+            );
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc scope_block_table_get_mut(
+    table: ref mut ScopeBlockTable,
+    scope: ScopeId
+) -> Option<ref mut ScopeBlock> {
+    let index =
+        scope_block_table_find_index(
+            ref table,
+            scope
+        );
+
+    pick index {
+        Some(value) {
+            give Some(
+                ref mut table.blocks[value]
+            );
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc scope_block_table_insert(
+    table: ref mut ScopeBlockTable,
+    block: ScopeBlock
+) -> bool {
+    if scope_block_table_contains(
+        ref table,
+        block.scope
+    ) {
+        give false;
+    }
+
+    let mut value =
+        block;
+
+    set value.generation =
+        table.generation;
+
+    set table.blocks =
+        table.blocks + [value];
+
+    set table.statistics.created =
+        table.statistics.created + 1;
+
+    if value.depth
+        > table.statistics.maximum_depth
+    {
+        set table.statistics.maximum_depth =
+            value.depth;
+    }
+
+    pick value.parent {
+        Some(parent) {
+            let parent_block =
+                scope_block_table_get_mut(
+                    table,
+                    parent
+                );
+
+            pick parent_block {
+                Some(current) {
+                    if scope_block_add_child(
+                        current,
+                        value.scope
+                    ) {
+                        set table.statistics.children_added =
+                            table.statistics.children_added + 1;
+                    }
+                }
+
+                None {}
+            }
+        }
+
+        None {}
+    }
+
+    give true;
+}
+
+proc scope_block_table_create_child(
+    table: ref mut ScopeBlockTable,
+    scope: ScopeId,
+    parent: ScopeId,
+    kind: ScopeBlockKind
+) -> bool {
+    let parent_block =
+        scope_block_table_get(
+            ref table,
+            parent
+        );
+
+    pick parent_block {
+        None {
+            give false;
+        }
+
+        Some(value) {
+            let child =
+                scope_block_child(
+                    scope,
+                    parent,
+                    kind,
+                    value.depth + 1
+                );
+
+            give scope_block_table_insert(
+                table,
+                child
+            );
+        }
+    }
+}
+
+proc scope_block_table_activate(
+    table: ref mut ScopeBlockTable,
+    scope: ScopeId
+) -> bool {
+    let block =
+        scope_block_table_get_mut(
+            table,
+            scope
+        );
+
+    pick block {
+        Some(value) {
+            scope_block_activate(value);
+
+            set table.statistics.activated =
+                table.statistics.activated + 1;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_block_table_close(
+    table: ref mut ScopeBlockTable,
+    scope: ScopeId
+) -> bool {
+    let block =
+        scope_block_table_get_mut(
+            table,
+            scope
+        );
+
+    pick block {
+        Some(value) {
+            if value.state
+                == ScopeBlockState.Closed
+            {
+                give false;
+            }
+
+            scope_block_close(value);
+
+            set table.statistics.closed =
+                table.statistics.closed + 1;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_block_table_invalidate(
+    table: ref mut ScopeBlockTable,
+    scope: ScopeId
+) -> bool {
+    let block =
+        scope_block_table_get_mut(
+            table,
+            scope
+        );
+
+    pick block {
+        Some(value) {
+            if value.state
+                == ScopeBlockState.Invalidated
+            {
+                give false;
+            }
+
+            scope_block_invalidate(value);
+
+            set table.statistics.invalidated =
+                table.statistics.invalidated + 1;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_block_table_children(
+    table: ref ScopeBlockTable,
+    scope: ScopeId
+) -> [ScopeBlock] {
+    let mut result:
+        [ScopeBlock] = [];
+
+    let block =
+        scope_block_table_get(
+            table,
+            scope
+        );
+
+    pick block {
+        None {
+            give result;
+        }
+
+        Some(value) {
+            for child in value.children {
+                let child_block =
+                    scope_block_table_get(
+                        table,
+                        child
+                    );
+
+                pick child_block {
+                    Some(current) {
+                        set result =
+                            result + [current];
+                    }
+
+                    None {}
+                }
+            }
+        }
+    }
+
+    give result;
+}
+
+proc scope_block_table_descendants(
+    table: ref ScopeBlockTable,
+    scope: ScopeId
+) -> [ScopeBlock] {
+    let mut result:
+        [ScopeBlock] = [];
+
+    let mut queue:
+        [ScopeId] = [scope];
+
+    let mut index: usize = 0;
+
+    while index < len(queue) {
+        let current =
+            queue[index];
+
+        let children =
+            scope_block_table_children(
+                table,
+                current
+            );
+
+        for child in children {
+            set result =
+                result + [child];
+
+            set queue =
+                queue + [child.scope];
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give result;
+}
+
+proc scope_block_table_invalidate_tree(
+    table: ref mut ScopeBlockTable,
+    scope: ScopeId
+) -> usize {
+    let descendants =
+        scope_block_table_descendants(
+            ref table,
+            scope
+        );
+
+    let mut count: usize = 0;
+
+    if scope_block_table_invalidate(
+        table,
+        scope
+    ) {
+        set count = count + 1;
+    }
+
+    for block in descendants {
+        if scope_block_table_invalidate(
+            table,
+            block.scope
+        ) {
+            set count = count + 1;
+        }
+    }
+
+    give count;
+}
+
+proc scope_block_table_parent(
+    table: ref ScopeBlockTable,
+    scope: ScopeId
+) -> Option<ScopeBlock> {
+    let block =
+        scope_block_table_get(
+            table,
+            scope
+        );
+
+    pick block {
+        Some(value) {
+            pick value.parent {
+                Some(parent) {
+                    give scope_block_table_get(
+                        table,
+                        parent
+                    );
+                }
+
+                None {
+                    give None;
+                }
+            }
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc scope_block_table_root(
+    table: ref ScopeBlockTable,
+    scope: ScopeId
+) -> Option<ScopeBlock> {
+    let mut current =
+        scope_block_table_get(
+            table,
+            scope
+        );
+
+    loop {
+        pick current {
+            None {
+                give None;
+            }
+
+            Some(value) {
+                pick value.parent {
+                    None {
+                        give Some(value);
+                    }
+
+                    Some(parent) {
+                        set current =
+                            scope_block_table_get(
+                                table,
+                                parent
+                            );
+                    }
+                }
+            }
+        }
+    }
+
+    give None;
+}
+
+proc scope_block_table_advance_generation(
+    table: ref mut ScopeBlockTable
+) -> u64 {
+    set table.generation =
+        table.generation + 1;
+
+    give table.generation;
+}
+
+proc scope_block_table_clear(
+    table: ref mut ScopeBlockTable
+) {
+    set table.blocks = [];
+
+    set table.generation =
+        table.generation + 1;
+}
+
+proc scope_block_table_statistics(
+    table: ref ScopeBlockTable
+) -> ScopeBlockStatistics {
+    give table.statistics;
+}
+
+proc scope_block_table_reset_statistics(
+    table: ref mut ScopeBlockTable
+) {
+    set table.statistics =
+        scope_block_statistics_empty();
+}
+
+proc scope_block_kind_name(
+    kind: ScopeBlockKind
+) -> string {
+    pick kind {
+        ScopeBlockKind.Plain {
+            give "plain";
+        }
+
+        ScopeBlockKind.Procedure {
+            give "procedure";
+        }
+
+        ScopeBlockKind.Method {
+            give "method";
+        }
+
+        ScopeBlockKind.If {
+            give "if";
+        }
+
+        ScopeBlockKind.Else {
+            give "else";
+        }
+
+        ScopeBlockKind.Loop {
+            give "loop";
+        }
+
+        ScopeBlockKind.While {
+            give "while";
+        }
+
+        ScopeBlockKind.For {
+            give "for";
+        }
+
+        ScopeBlockKind.Match {
+            give "match";
+        }
+
+        ScopeBlockKind.MatchArm {
+            give "match-arm";
+        }
+
+        ScopeBlockKind.Unsafe {
+            give "unsafe";
+        }
+
+        ScopeBlockKind.Comptime {
+            give "comptime";
+        }
+
+        ScopeBlockKind.Critical {
+            give "critical";
+        }
+
+        ScopeBlockKind.Defer {
+            give "defer";
+        }
+
+        ScopeBlockKind.Generated {
+            give "generated";
+        }
+    }
+
+    give "plain";
+}
+
+proc scope_block_state_name(
+    state: ScopeBlockState
+) -> string {
+    pick state {
+        ScopeBlockState.Created {
+            give "created";
+        }
+
+        ScopeBlockState.Active {
+            give "active";
+        }
+
+        ScopeBlockState.Closed {
+            give "closed";
+        }
+
+        ScopeBlockState.Invalidated {
+            give "invalidated";
+        }
+    }
+
+    give "invalidated";
+}

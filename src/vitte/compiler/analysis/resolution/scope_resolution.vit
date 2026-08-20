@@ -1,0 +1,1203 @@
+space vitte/compiler/analysis/resolution/scope_resolution
+
+export *
+
+use vitte/compiler/analysis/resolution/candidate.{
+    CandidateVisibility
+}
+
+pick ScopeResolutionKind {
+    Root,
+    Module,
+    Namespace,
+    Procedure,
+    Method,
+    Type,
+    Trait,
+    Impl,
+    Block,
+    Loop,
+    Match,
+    Comptime,
+    Generated
+}
+
+pick ScopeResolutionState {
+    Active,
+    Closed,
+    Invalidated
+}
+
+pick ScopeResolutionErrorKind {
+    None,
+    InvalidScope,
+    MissingScope,
+    InvalidParent,
+    DuplicateScope,
+    Cycle,
+    DepthLimit,
+    ClosedScope
+}
+
+form ScopeResolutionError {
+    kind: ScopeResolutionErrorKind
+
+    scope: ScopeId
+    parent: Option<ScopeId>
+
+    message: string
+}
+
+form ScopeDefinition {
+    id: ScopeId
+
+    kind: ScopeResolutionKind
+    state: ScopeResolutionState
+
+    parent: Option<ScopeId>
+
+    owner: Option<DefId>
+    module: Option<ModuleId>
+
+    depth: usize
+
+    visibility: CandidateVisibility
+
+    generated: bool
+
+    generation: u64
+    revision: u64
+}
+
+form ScopeResolution {
+    scope: Option<ScopeDefinition>
+
+    path: [ScopeId]
+
+    error: ScopeResolutionError
+
+    found: bool
+}
+
+form ScopeResolverConfig {
+    max_depth: usize
+
+    allow_closed: bool
+    allow_invalidated: bool
+}
+
+form ScopeResolverStatistics {
+    resolutions: u64
+
+    resolved: u64
+    missing: u64
+    invalid: u64
+
+    parent_walks: u64
+    ancestor_checks: u64
+
+    maximum_depth: usize
+}
+
+form ScopeResolver {
+    config: ScopeResolverConfig
+
+    scopes: [ScopeDefinition]
+
+    generation: u64
+
+    statistics: ScopeResolverStatistics
+}
+
+proc scope_resolver_config_default()
+    -> ScopeResolverConfig
+{
+    give ScopeResolverConfig {
+        max_depth: 256,
+
+        allow_closed: true,
+        allow_invalidated: false
+    };
+}
+
+proc scope_resolver_statistics_empty()
+    -> ScopeResolverStatistics
+{
+    give ScopeResolverStatistics {
+        resolutions: 0,
+
+        resolved: 0,
+        missing: 0,
+        invalid: 0,
+
+        parent_walks: 0,
+        ancestor_checks: 0,
+
+        maximum_depth: 0
+    };
+}
+
+proc scope_resolver_create_with_config(
+    config: ScopeResolverConfig
+) -> ScopeResolver {
+    give ScopeResolver {
+        config: config,
+
+        scopes: [],
+
+        generation: 1,
+
+        statistics:
+            scope_resolver_statistics_empty()
+    };
+}
+
+proc scope_resolver_create()
+    -> ScopeResolver
+{
+    give scope_resolver_create_with_config(
+        scope_resolver_config_default()
+    );
+}
+
+proc scope_resolution_error_none()
+    -> ScopeResolutionError
+{
+    give ScopeResolutionError {
+        kind:
+            ScopeResolutionErrorKind.None,
+
+        scope:
+            0 as ScopeId,
+
+        parent:
+            None,
+
+        message:
+            ""
+    };
+}
+
+proc scope_resolution_error(
+    kind: ScopeResolutionErrorKind,
+    scope: ScopeId,
+    parent: Option<ScopeId>,
+    message: string
+) -> ScopeResolutionError {
+    give ScopeResolutionError {
+        kind: kind,
+
+        scope: scope,
+        parent: parent,
+
+        message: message
+    };
+}
+
+proc scope_definition(
+    id: ScopeId,
+    kind: ScopeResolutionKind,
+    parent: Option<ScopeId>,
+    owner: Option<DefId>,
+    module: Option<ModuleId>,
+    depth: usize
+) -> ScopeDefinition {
+    give ScopeDefinition {
+        id: id,
+
+        kind: kind,
+        state:
+            ScopeResolutionState.Active,
+
+        parent: parent,
+
+        owner: owner,
+        module: module,
+
+        depth: depth,
+
+        visibility:
+            CandidateVisibility.Private,
+
+        generated:
+            false,
+
+        generation:
+            1,
+
+        revision:
+            1
+    };
+}
+
+proc scope_definition_root(
+    id: ScopeId,
+    module: Option<ModuleId>
+) -> ScopeDefinition {
+    give ScopeDefinition {
+        id: id,
+
+        kind:
+            ScopeResolutionKind.Root,
+
+        state:
+            ScopeResolutionState.Active,
+
+        parent:
+            None,
+
+        owner:
+            None,
+
+        module:
+            module,
+
+        depth:
+            0,
+
+        visibility:
+            CandidateVisibility.Public,
+
+        generated:
+            false,
+
+        generation:
+            1,
+
+        revision:
+            1
+    };
+}
+
+proc scope_definition_mark_generated(
+    scope: ScopeDefinition
+) -> ScopeDefinition {
+    let mut result: ScopeDefinition =
+        scope;
+
+    set result.generated = true;
+
+    give result;
+}
+
+proc scope_definition_with_visibility(
+    scope: ScopeDefinition,
+    visibility: CandidateVisibility
+) -> ScopeDefinition {
+    let mut result: ScopeDefinition =
+        scope;
+
+    set result.visibility =
+        visibility;
+
+    give result;
+}
+
+proc scope_resolver_find_index(
+    resolver: ref ScopeResolver,
+    id: ScopeId
+) -> Option<usize> {
+    let mut index: usize = 0;
+
+    while index < len(resolver.scopes) {
+        if resolver.scopes[index].id
+            == id
+        {
+            give Some(index);
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give None;
+}
+
+proc scope_resolver_get(
+    resolver: ref ScopeResolver,
+    id: ScopeId
+) -> Option<ScopeDefinition> {
+    let index =
+        scope_resolver_find_index(
+            resolver,
+            id
+        );
+
+    pick index {
+        Some(value) {
+            give Some(
+                resolver.scopes[value]
+            );
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc scope_resolver_get_mut(
+    resolver: ref mut ScopeResolver,
+    id: ScopeId
+) -> Option<ref mut ScopeDefinition> {
+    let index =
+        scope_resolver_find_index(
+            ref resolver,
+            id
+        );
+
+    pick index {
+        Some(value) {
+            give Some(
+                ref mut resolver.scopes[value]
+            );
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc scope_resolver_contains(
+    resolver: ref ScopeResolver,
+    id: ScopeId
+) -> bool {
+    give scope_resolver_find_index(
+        resolver,
+        id
+    ) != None;
+}
+
+proc scope_resolver_parent_exists(
+    resolver: ref ScopeResolver,
+    parent: Option<ScopeId>
+) -> bool {
+    pick parent {
+        None {
+            give true;
+        }
+
+        Some(id) {
+            give scope_resolver_contains(
+                resolver,
+                id
+            );
+        }
+    }
+}
+
+proc scope_resolver_register(
+    resolver: ref mut ScopeResolver,
+    scope: ScopeDefinition
+) -> ScopeResolutionError {
+    if scope_resolver_contains(
+        ref resolver,
+        scope.id
+    ) {
+        give scope_resolution_error(
+            ScopeResolutionErrorKind.DuplicateScope,
+            scope.id,
+            scope.parent,
+            "scope is already registered"
+        );
+    }
+
+    if not scope_resolver_parent_exists(
+        ref resolver,
+        scope.parent
+    ) {
+        give scope_resolution_error(
+            ScopeResolutionErrorKind.InvalidParent,
+            scope.id,
+            scope.parent,
+            "scope parent does not exist"
+        );
+    }
+
+    if scope.depth
+        > resolver.config.max_depth
+    {
+        give scope_resolution_error(
+            ScopeResolutionErrorKind.DepthLimit,
+            scope.id,
+            scope.parent,
+            "scope depth exceeds resolver limit"
+        );
+    }
+
+    set resolver.scopes =
+        resolver.scopes + [scope];
+
+    if scope.depth
+        > resolver.statistics.maximum_depth
+    {
+        set resolver.statistics.maximum_depth =
+            scope.depth;
+    }
+
+    give scope_resolution_error_none();
+}
+
+proc scope_resolver_create_child(
+    resolver: ref mut ScopeResolver,
+    id: ScopeId,
+    parent: ScopeId,
+    kind: ScopeResolutionKind,
+    owner: Option<DefId>
+) -> ScopeResolutionError {
+    let parent_scope =
+        scope_resolver_get(
+            ref resolver,
+            parent
+        );
+
+    pick parent_scope {
+        None {
+            give scope_resolution_error(
+                ScopeResolutionErrorKind.InvalidParent,
+                id,
+                Some(parent),
+                "parent scope does not exist"
+            );
+        }
+
+        Some(value) {
+            if value.depth + 1
+                > resolver.config.max_depth
+            {
+                give scope_resolution_error(
+                    ScopeResolutionErrorKind.DepthLimit,
+                    id,
+                    Some(parent),
+                    "scope depth exceeds resolver limit"
+                );
+            }
+
+            let child =
+                scope_definition(
+                    id,
+                    kind,
+                    Some(parent),
+                    owner,
+                    value.module,
+                    value.depth + 1
+                );
+
+            give scope_resolver_register(
+                resolver,
+                child
+            );
+        }
+    }
+}
+
+proc scope_resolver_scope_available(
+    resolver: ref ScopeResolver,
+    scope: ScopeDefinition
+) -> bool {
+    pick scope.state {
+        ScopeResolutionState.Active {
+            give true;
+        }
+
+        ScopeResolutionState.Closed {
+            give resolver.config.allow_closed;
+        }
+
+        ScopeResolutionState.Invalidated {
+            give resolver.config.allow_invalidated;
+        }
+    }
+
+    give false;
+}
+
+proc scope_resolution_missing(
+    id: ScopeId
+) -> ScopeResolution {
+    give ScopeResolution {
+        scope:
+            None,
+
+        path:
+            [],
+
+        error:
+            scope_resolution_error(
+                ScopeResolutionErrorKind.MissingScope,
+                id,
+                None,
+                "scope was not found"
+            ),
+
+        found:
+            false
+    };
+}
+
+proc scope_resolution_invalid(
+    id: ScopeId,
+    error: ScopeResolutionError
+) -> ScopeResolution {
+    give ScopeResolution {
+        scope:
+            None,
+
+        path:
+            [],
+
+        error:
+            error,
+
+        found:
+            false
+    };
+}
+
+proc scope_resolution_resolved(
+    scope: ScopeDefinition,
+    path: [ScopeId]
+) -> ScopeResolution {
+    give ScopeResolution {
+        scope:
+            Some(scope),
+
+        path:
+            path,
+
+        error:
+            scope_resolution_error_none(),
+
+        found:
+            true
+    };
+}
+
+proc scope_resolver_record(
+    resolver: ref mut ScopeResolver,
+    result: ScopeResolution
+) {
+    set resolver.statistics.resolutions =
+        resolver.statistics.resolutions + 1;
+
+    if result.found {
+        set resolver.statistics.resolved =
+            resolver.statistics.resolved + 1;
+
+        give;
+    }
+
+    if result.error.kind
+        == ScopeResolutionErrorKind.MissingScope
+    {
+        set resolver.statistics.missing =
+            resolver.statistics.missing + 1;
+    } else {
+        set resolver.statistics.invalid =
+            resolver.statistics.invalid + 1;
+    }
+}
+
+proc scope_resolver_resolve(
+    resolver: ref mut ScopeResolver,
+    id: ScopeId
+) -> ScopeResolution {
+    let scope =
+        scope_resolver_get(
+            ref resolver,
+            id
+        );
+
+    pick scope {
+        None {
+            let result =
+                scope_resolution_missing(id);
+
+            scope_resolver_record(
+                resolver,
+                result
+            );
+
+            give result;
+        }
+
+        Some(value) {
+            if not scope_resolver_scope_available(
+                ref resolver,
+                value
+            ) {
+                let result =
+                    scope_resolution_invalid(
+                        id,
+                        scope_resolution_error(
+                            ScopeResolutionErrorKind.ClosedScope,
+                            id,
+                            value.parent,
+                            "scope is not available"
+                        )
+                    );
+
+                scope_resolver_record(
+                    resolver,
+                    result
+                );
+
+                give result;
+            }
+
+            let result =
+                scope_resolution_resolved(
+                    value,
+                    [id]
+                );
+
+            scope_resolver_record(
+                resolver,
+                result
+            );
+
+            give result;
+        }
+    }
+}
+
+proc scope_resolver_parent(
+    resolver: ref mut ScopeResolver,
+    id: ScopeId
+) -> ScopeResolution {
+    set resolver.statistics.parent_walks =
+        resolver.statistics.parent_walks + 1;
+
+    let scope =
+        scope_resolver_get(
+            ref resolver,
+            id
+        );
+
+    pick scope {
+        None {
+            let result =
+                scope_resolution_missing(id);
+
+            scope_resolver_record(
+                resolver,
+                result
+            );
+
+            give result;
+        }
+
+        Some(value) {
+            pick value.parent {
+                None {
+                    let result =
+                        scope_resolution_missing(id);
+
+                    scope_resolver_record(
+                        resolver,
+                        result
+                    );
+
+                    give result;
+                }
+
+                Some(parent) {
+                    give scope_resolver_resolve(
+                        resolver,
+                        parent
+                    );
+                }
+            }
+        }
+    }
+}
+
+proc scope_resolver_root(
+    resolver: ref mut ScopeResolver,
+    id: ScopeId
+) -> ScopeResolution {
+    let mut current =
+        scope_resolver_get(
+            ref resolver,
+            id
+        );
+
+    let mut path: [ScopeId] = [];
+
+    let mut depth: usize = 0;
+
+    loop {
+        if depth > resolver.config.max_depth {
+            let result =
+                scope_resolution_invalid(
+                    id,
+                    scope_resolution_error(
+                        ScopeResolutionErrorKind.DepthLimit,
+                        id,
+                        None,
+                        "scope parent chain exceeds depth limit"
+                    )
+                );
+
+            scope_resolver_record(
+                resolver,
+                result
+            );
+
+            give result;
+        }
+
+        pick current {
+            None {
+                let result =
+                    scope_resolution_missing(id);
+
+                scope_resolver_record(
+                    resolver,
+                    result
+                );
+
+                give result;
+            }
+
+            Some(scope) {
+                set path =
+                    path + [scope.id];
+
+                pick scope.parent {
+                    None {
+                        let result =
+                            scope_resolution_resolved(
+                                scope,
+                                path
+                            );
+
+                        scope_resolver_record(
+                            resolver,
+                            result
+                        );
+
+                        give result;
+                    }
+
+                    Some(parent) {
+                        set resolver.statistics.parent_walks =
+                            resolver.statistics.parent_walks + 1;
+
+                        set current =
+                            scope_resolver_get(
+                                ref resolver,
+                                parent
+                            );
+                    }
+                }
+            }
+        }
+
+        set depth =
+            depth + 1;
+    }
+
+    give scope_resolution_missing(id);
+}
+
+proc scope_resolver_ancestor_path(
+    resolver: ref ScopeResolver,
+    id: ScopeId
+) -> [ScopeId] {
+    let mut path: [ScopeId] = [];
+
+    let mut current =
+        scope_resolver_get(
+            resolver,
+            id
+        );
+
+    let mut depth: usize = 0;
+
+    while depth <= resolver.config.max_depth {
+        pick current {
+            None {
+                break;
+            }
+
+            Some(scope) {
+                set path =
+                    path + [scope.id];
+
+                pick scope.parent {
+                    None {
+                        break;
+                    }
+
+                    Some(parent) {
+                        set current =
+                            scope_resolver_get(
+                                resolver,
+                                parent
+                            );
+                    }
+                }
+            }
+        }
+
+        set depth =
+            depth + 1;
+    }
+
+    give path;
+}
+
+proc scope_resolver_is_ancestor(
+    resolver: ref mut ScopeResolver,
+    ancestor: ScopeId,
+    child: ScopeId
+) -> bool {
+    set resolver.statistics.ancestor_checks =
+        resolver.statistics.ancestor_checks + 1;
+
+    if ancestor == child {
+        give true;
+    }
+
+    let path =
+        scope_resolver_ancestor_path(
+            ref resolver,
+            child
+        );
+
+    for id in path {
+        if id == ancestor {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc scope_resolver_is_parent(
+    resolver: ref ScopeResolver,
+    parent: ScopeId,
+    child: ScopeId
+) -> bool {
+    let scope =
+        scope_resolver_get(
+            resolver,
+            child
+        );
+
+    pick scope {
+        Some(value) {
+            pick value.parent {
+                Some(id) {
+                    give id == parent;
+                }
+
+                None {
+                    give false;
+                }
+            }
+        }
+
+        None {
+            give false;
+        }
+    }
+
+    give false;
+}
+
+proc scope_resolver_common_ancestor(
+    resolver: ref ScopeResolver,
+    left: ScopeId,
+    right: ScopeId
+) -> Option<ScopeId> {
+    let left_path =
+        scope_resolver_ancestor_path(
+            resolver,
+            left
+        );
+
+    let right_path =
+        scope_resolver_ancestor_path(
+            resolver,
+            right
+        );
+
+    for left_scope in left_path {
+        for right_scope in right_path {
+            if left_scope == right_scope {
+                give Some(left_scope);
+            }
+        }
+    }
+
+    give None;
+}
+
+proc scope_resolver_children(
+    resolver: ref ScopeResolver,
+    parent: ScopeId
+) -> [ScopeDefinition] {
+    let mut output:
+        [ScopeDefinition] = [];
+
+    for scope in resolver.scopes {
+        pick scope.parent {
+            Some(id) {
+                if id == parent {
+                    set output =
+                        output + [scope];
+                }
+            }
+
+            None {}
+        }
+    }
+
+    give output;
+}
+
+proc scope_resolver_descendants(
+    resolver: ref mut ScopeResolver,
+    parent: ScopeId
+) -> [ScopeDefinition] {
+    let mut output:
+        [ScopeDefinition] = [];
+
+    for scope in resolver.scopes {
+        if scope.id == parent {
+            continue;
+        }
+
+        if scope_resolver_is_ancestor(
+            resolver,
+            parent,
+            scope.id
+        ) {
+            set output =
+                output + [scope];
+        }
+    }
+
+    give output;
+}
+
+proc scope_resolver_close(
+    resolver: ref mut ScopeResolver,
+    id: ScopeId
+) -> bool {
+    let scope =
+        scope_resolver_get_mut(
+            resolver,
+            id
+        );
+
+    pick scope {
+        Some(value) {
+            set value.state =
+                ScopeResolutionState.Closed;
+
+            set value.revision =
+                value.revision + 1;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_resolver_reopen(
+    resolver: ref mut ScopeResolver,
+    id: ScopeId
+) -> bool {
+    let scope =
+        scope_resolver_get_mut(
+            resolver,
+            id
+        );
+
+    pick scope {
+        Some(value) {
+            set value.state =
+                ScopeResolutionState.Active;
+
+            set value.revision =
+                value.revision + 1;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_resolver_invalidate(
+    resolver: ref mut ScopeResolver,
+    id: ScopeId
+) -> bool {
+    let scope =
+        scope_resolver_get_mut(
+            resolver,
+            id
+        );
+
+    pick scope {
+        Some(value) {
+            set value.state =
+                ScopeResolutionState.Invalidated;
+
+            set value.revision =
+                value.revision + 1;
+
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_resolver_invalidate_tree(
+    resolver: ref mut ScopeResolver,
+    root: ScopeId
+) -> usize {
+    let mut count: usize = 0;
+
+    if scope_resolver_invalidate(
+        resolver,
+        root
+    ) {
+        set count = count + 1;
+    }
+
+    let descendants =
+        scope_resolver_descendants(
+            resolver,
+            root
+        );
+
+    for scope in descendants {
+        if scope_resolver_invalidate(
+            resolver,
+            scope.id
+        ) {
+            set count = count + 1;
+        }
+    }
+
+    give count;
+}
+
+proc scope_resolver_advance_generation(
+    resolver: ref mut ScopeResolver
+) -> u64 {
+    set resolver.generation =
+        resolver.generation + 1;
+
+    give resolver.generation;
+}
+
+proc scope_resolver_clear(
+    resolver: ref mut ScopeResolver
+) {
+    set resolver.scopes = [];
+
+    set resolver.generation =
+        resolver.generation + 1;
+}
+
+proc scope_resolver_statistics(
+    resolver: ref ScopeResolver
+) -> ScopeResolverStatistics {
+    give resolver.statistics;
+}
+
+proc scope_resolver_reset_statistics(
+    resolver: ref mut ScopeResolver
+) {
+    set resolver.statistics =
+        scope_resolver_statistics_empty();
+}
+
+proc scope_resolution_is_resolved(
+    result: ScopeResolution
+) -> bool {
+    give result.found
+        and result.error.kind
+        == ScopeResolutionErrorKind.None;
+}
+
+proc scope_resolution_has_error(
+    result: ScopeResolution
+) -> bool {
+    give result.error.kind
+        != ScopeResolutionErrorKind.None;
+}
+
+proc scope_resolution_kind_name(
+    kind: ScopeResolutionKind
+) -> string {
+    pick kind {
+        ScopeResolutionKind.Root {
+            give "root";
+        }
+
+        ScopeResolutionKind.Module {
+            give "module";
+        }
+
+        ScopeResolutionKind.Namespace {
+            give "namespace";
+        }
+
+        ScopeResolutionKind.Procedure {
+            give "procedure";
+        }
+
+        ScopeResolutionKind.Method {
+            give "method";
+        }
+
+        ScopeResolutionKind.Type {
+            give "type";
+        }
+
+        ScopeResolutionKind.Trait {
+            give "trait";
+        }
+
+        ScopeResolutionKind.Impl {
+            give "impl";
+        }
+
+        ScopeResolutionKind.Block {
+            give "block";
+        }
+
+        ScopeResolutionKind.Loop {
+            give "loop";
+        }
+
+        ScopeResolutionKind.Match {
+            give "match";
+        }
+
+        ScopeResolutionKind.Comptime {
+            give "comptime";
+        }
+
+        ScopeResolutionKind.Generated {
+            give "generated";
+        }
+    }
+
+    give "block";
+}

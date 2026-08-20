@@ -1,0 +1,440 @@
+space vitte/compiler/analysis/scopes/scope
+
+export *
+
+use vitte/compiler/analysis/scopes/scope_id.*
+use vitte/compiler/analysis/scopes/scope_kind.*
+use vitte/compiler/analysis/scopes/scope_node.*
+use vitte/compiler/analysis/scopes/scope_table.*
+
+use vitte/compiler/analysis/scopes/scope_binding.*
+use vitte/compiler/analysis/scopes/scope_symbol.*
+
+use vitte/compiler/analysis/scopes/scope_block.*
+use vitte/compiler/analysis/scopes/scope_child.*
+use vitte/compiler/analysis/scopes/scope_parent.*
+use vitte/compiler/analysis/scopes/scope_edge.*
+use vitte/compiler/analysis/scopes/scope_tree.*
+use vitte/compiler/analysis/scopes/scope_path.*
+
+use vitte/compiler/analysis/scopes/scope_stack.*
+use vitte/compiler/analysis/scopes/scope_frame.*
+use vitte/compiler/analysis/scopes/scope_context.*
+
+use vitte/compiler/analysis/scopes/scope_generic.*
+use vitte/compiler/analysis/scopes/scope_function.*
+use vitte/compiler/analysis/scopes/scope_pattern.*
+
+use vitte/compiler/analysis/scopes/scope_import.*
+use vitte/compiler/analysis/scopes/scope_export.*
+use vitte/compiler/analysis/scopes/scope_module.*
+use vitte/compiler/analysis/scopes/scope_namespace.*
+use vitte/compiler/analysis/scopes/scope_visibility.*
+
+use vitte/compiler/analysis/scopes/scope_lookup.*
+use vitte/compiler/analysis/scopes/scope_registry.*
+
+use vitte/compiler/analysis/scopes/scope_validation.*
+use vitte/compiler/analysis/scopes/scope_statistics.*
+
+use vitte/compiler/analysis/scopes/scope_manager.*
+
+form ScopeSubsystem {
+    manager: ScopeManager
+
+    validator: ScopeValidator
+    visibility: ScopeVisibilityContext
+
+    tree: ScopeTree
+    parent: ScopeParentResolver
+    path: ScopePathBuilder
+
+    generation: u64
+}
+
+proc scope_subsystem_create()
+    -> ScopeSubsystem
+{
+    give ScopeSubsystem {
+        manager:
+            scope_manager_create(),
+
+        validator:
+            scope_validator_create(),
+
+        visibility:
+            scope_visibility_context_create(),
+
+        tree:
+            scope_tree_create(),
+
+        parent:
+            scope_parent_resolver_create(),
+
+        path:
+            scope_path_builder_create(),
+
+        generation:
+            1
+    };
+}
+
+proc scope_subsystem_begin(
+    scopes: ref mut ScopeSubsystem
+) {
+    scope_manager_begin(
+        ref mut scopes.manager
+    );
+}
+
+proc scope_subsystem_create_root(
+    scopes: ref mut ScopeSubsystem
+) -> Option<ScopeId> {
+    give scope_manager_create_root(
+        ref mut scopes.manager,
+        ScopeKind.Root
+    );
+}
+
+proc scope_subsystem_enter(
+    scopes: ref mut ScopeSubsystem,
+    kind: ScopeKind
+) -> Option<ScopeId> {
+    give scope_manager_enter_scope(
+        ref mut scopes.manager,
+        kind
+    );
+}
+
+proc scope_subsystem_leave(
+    scopes: ref mut ScopeSubsystem
+) -> Option<ScopeId> {
+    give scope_manager_leave_scope(
+        ref mut scopes.manager
+    );
+}
+
+proc scope_subsystem_current(
+    scopes: ref ScopeSubsystem
+) -> Option<ScopeId> {
+    give scope_manager_current_scope(
+        ref scopes.manager
+    );
+}
+
+proc scope_subsystem_bind(
+    scopes: ref mut ScopeSubsystem,
+    binding: ScopeBinding
+) -> ScopeBindingError {
+    give scope_manager_bind(
+        ref mut scopes.manager,
+        binding
+    );
+}
+
+proc scope_subsystem_bind_name(
+    scopes: ref mut ScopeSubsystem,
+    name: string,
+    kind: ScopeBindingKind
+) -> ScopeBindingError {
+    give scope_manager_bind_name(
+        ref mut scopes.manager,
+        name,
+        kind
+    );
+}
+
+proc scope_subsystem_lookup(
+    scopes: ref mut ScopeSubsystem,
+    scope: ScopeId,
+    name: string,
+    kind: ScopeLookupKind
+) -> ScopeLookupResult {
+    give scope_manager_lookup(
+        ref mut scopes.manager,
+        scope,
+        name,
+        kind
+    );
+}
+
+proc scope_subsystem_lookup_current(
+    scopes: ref mut ScopeSubsystem,
+    name: string,
+    kind: ScopeLookupKind
+) -> Option<ScopeLookupResult> {
+    give scope_manager_lookup_current(
+        ref mut scopes.manager,
+        name,
+        kind
+    );
+}
+
+proc scope_subsystem_parent(
+    scopes: ref mut ScopeSubsystem,
+    scope: ScopeId
+) -> ScopeParentResult {
+    give scope_parent_direct(
+        ref mut scopes.parent,
+        ref scopes.manager.table,
+        scope
+    );
+}
+
+proc scope_subsystem_root_path(
+    scopes: ref mut ScopeSubsystem,
+    scope: ScopeId
+) -> ScopePath {
+    give scope_path_root_to(
+        ref mut scopes.path,
+        ref scopes.manager.table,
+        scope
+    );
+}
+
+proc scope_subsystem_children(
+    scopes: ref ScopeSubsystem,
+    scope: ScopeId
+) -> [ScopeId] {
+    give scope_tree_children(
+        ref scopes.manager.table,
+        scope
+    );
+}
+
+proc scope_subsystem_descendants(
+    scopes: ref mut ScopeSubsystem,
+    scope: ScopeId
+) -> [ScopeId] {
+    give scope_tree_descendants(
+        ref mut scopes.tree,
+        ref scopes.manager.table,
+        scope
+    );
+}
+
+proc scope_subsystem_visibility(
+    scopes: ref mut ScopeSubsystem,
+    visibility: ScopeVisibility,
+    owner_scope: ScopeId,
+    from_scope: ScopeId
+) -> bool {
+    give scope_visibility_can_access(
+        ref mut scopes.visibility,
+
+        ref scopes.manager.table,
+
+        visibility,
+
+        owner_scope,
+        from_scope
+    );
+}
+
+proc scope_subsystem_add_import(
+    scopes: ref mut ScopeSubsystem,
+    value: ScopeImport
+) -> ScopeImportError {
+    give scope_manager_add_import(
+        ref mut scopes.manager,
+        value
+    );
+}
+
+proc scope_subsystem_add_export(
+    scopes: ref mut ScopeSubsystem,
+    value: ScopeExport
+) -> ScopeExportError {
+    give scope_manager_add_export(
+        ref mut scopes.manager,
+        value
+    );
+}
+
+proc scope_subsystem_add_generic(
+    scopes: ref mut ScopeSubsystem,
+    scope: ScopeId,
+    parameter: ScopeGenericParameter
+) -> bool {
+    give scope_manager_add_generic(
+        ref mut scopes.manager,
+        scope,
+        parameter
+    );
+}
+
+proc scope_subsystem_add_function(
+    scopes: ref mut ScopeSubsystem,
+    function: ScopeFunction
+) -> bool {
+    give scope_manager_add_function(
+        ref mut scopes.manager,
+        function
+    );
+}
+
+proc scope_subsystem_add_pattern(
+    scopes: ref mut ScopeSubsystem,
+    pattern: ScopePattern
+) -> usize {
+    give scope_pattern_table_insert(
+        ref mut scopes.manager.patterns,
+        pattern
+    );
+}
+
+proc scope_subsystem_register_symbol(
+    scopes: ref mut ScopeSubsystem,
+    symbol: ScopeSymbol
+) -> bool {
+    give scope_symbol_table_insert(
+        ref mut scopes.manager.symbols,
+        symbol
+    );
+}
+
+proc scope_subsystem_validate(
+    scopes: ref ScopeSubsystem
+) -> ScopeValidationResult {
+    give scope_validate_all(
+        ref scopes.validator,
+
+        ref scopes.manager.table,
+        ref scopes.manager.registry,
+
+        ref scopes.manager.bindings,
+        ref scopes.manager.symbols,
+
+        ref scopes.manager.imports,
+        ref scopes.manager.exports,
+
+        ref scopes.manager.generics,
+        ref scopes.manager.functions,
+        ref scopes.manager.patterns,
+
+        ref scopes.manager.edges
+    );
+}
+
+proc scope_subsystem_finish(
+    scopes: ref mut ScopeSubsystem
+) -> bool {
+    if not scope_manager_finish(
+        ref mut scopes.manager
+    ) {
+        give false;
+    }
+
+    let validation =
+        scope_subsystem_validate(
+            ref scopes
+        );
+
+    give validation.valid;
+}
+
+proc scope_subsystem_invalidate(
+    scopes: ref mut ScopeSubsystem,
+    scope: ScopeId
+) -> usize {
+    give scope_manager_invalidate_scope(
+        ref mut scopes.manager,
+        scope
+    );
+}
+
+proc scope_subsystem_advance_generation(
+    scopes: ref mut ScopeSubsystem
+) -> u64 {
+    set scopes.generation =
+        scopes.generation + 1;
+
+    scope_manager_advance_generation(
+        ref mut scopes.manager
+    );
+
+    give scopes.generation;
+}
+
+proc scope_subsystem_reset(
+    scopes: ref mut ScopeSubsystem
+) {
+    scope_manager_reset(
+        ref mut scopes.manager
+    );
+
+    set scopes.validator =
+        scope_validator_create();
+
+    set scopes.visibility =
+        scope_visibility_context_create();
+
+    set scopes.tree =
+        scope_tree_create();
+
+    set scopes.parent =
+        scope_parent_resolver_create();
+
+    set scopes.path =
+        scope_path_builder_create();
+
+    set scopes.generation =
+        scopes.generation + 1;
+}
+
+// Public scope subsystem
+//
+//                    scope.vit
+//                        |
+//                        v
+//                 ScopeSubsystem
+//                        |
+//          +-------------+-------------+
+//          |             |             |
+//          v             v             v
+//     ScopeManager   validation    navigation
+//          |             |             |
+//          |             |       tree / path / parent
+//          |
+//          +-- ScopeTable
+//          +-- ScopeRegistry
+//          +-- ScopeBindingTable
+//          +-- ScopeSymbolTable
+//          +-- ScopeImportTable
+//          +-- ScopeExportTable
+//          +-- ScopeGenericTable
+//          +-- ScopeFunctionTable
+//          +-- ScopePatternTable
+//          +-- ScopeEdgeTable
+//          +-- ScopeContext
+//          +-- ScopeLookup
+//
+// External compiler passes:
+//
+// HIR
+//  |
+//  v
+// scope_subsystem_begin()
+//  |
+//  +-- enter()
+//  +-- bind()
+//  +-- add_import()
+//  +-- add_export()
+//  +-- add_generic()
+//  +-- add_function()
+//  +-- leave()
+//  |
+//  v
+// scope_subsystem_finish()
+//  |
+//  +-- close scopes
+//  +-- validate structure
+//  |
+//  v
+// resolution
+//  |
+//  v
+// typeck
+//  |
+//  v
+// borrowck

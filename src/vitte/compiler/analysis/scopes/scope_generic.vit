@@ -1,0 +1,913 @@
+space vitte/compiler/analysis/scopes/scope_generic
+
+export *
+
+use vitte/compiler/analysis/scopes/scope_binding.{
+    ScopeBinding,
+    ScopeBindingKind,
+    ScopeBindingState,
+    ScopeBindingTable,
+    ScopeBindingErrorKind,
+
+    scope_binding,
+    scope_binding_table_insert
+}
+
+pick ScopeGenericKind {
+    Type,
+    Const,
+    Comptime
+}
+
+pick ScopeGenericState {
+    Declared,
+    Bound,
+    Resolved,
+    Invalidated
+}
+
+form ScopeGenericConstraint {
+    trait_definition: Option<DefId>
+
+    left_type: Option<TypeId>
+    right_type: Option<TypeId>
+
+    expression: Option<HirId>
+}
+
+form ScopeGenericParameter {
+    name: string
+
+    definition: DefId
+
+    scope: ScopeId
+
+    kind: ScopeGenericKind
+    state: ScopeGenericState
+
+    index: usize
+
+    type_id: Option<TypeId>
+
+    default_type: Option<TypeId>
+    default_value: Option<HirId>
+
+    constraints: [ScopeGenericConstraint]
+
+    generation: u64
+    revision: u64
+}
+
+form ScopeGenericEnvironment {
+    scope: ScopeId
+
+    parent: Option<ScopeId>
+
+    parameters: [ScopeGenericParameter]
+
+    generation: u64
+    revision: u64
+}
+
+form ScopeGenericStatistics {
+    environments: u64
+
+    parameters: u64
+    type_parameters: u64
+    const_parameters: u64
+    comptime_parameters: u64
+
+    constraints: u64
+
+    lookups: u64
+    hits: u64
+    misses: u64
+
+    invalidated: u64
+}
+
+form ScopeGenericTable {
+    environments: [ScopeGenericEnvironment]
+
+    generation: u64
+
+    statistics: ScopeGenericStatistics
+}
+
+proc scope_generic_statistics_empty()
+    -> ScopeGenericStatistics
+{
+    give ScopeGenericStatistics {
+        environments: 0,
+
+        parameters: 0,
+        type_parameters: 0,
+        const_parameters: 0,
+        comptime_parameters: 0,
+
+        constraints: 0,
+
+        lookups: 0,
+        hits: 0,
+        misses: 0,
+
+        invalidated: 0
+    };
+}
+
+proc scope_generic_table_create()
+    -> ScopeGenericTable
+{
+    give ScopeGenericTable {
+        environments: [],
+
+        generation: 1,
+
+        statistics:
+            scope_generic_statistics_empty()
+    };
+}
+
+proc scope_generic_constraint()
+    -> ScopeGenericConstraint
+{
+    give ScopeGenericConstraint {
+        trait_definition: None,
+
+        left_type: None,
+        right_type: None,
+
+        expression: None
+    };
+}
+
+proc scope_generic_constraint_trait(
+    trait_definition: DefId
+) -> ScopeGenericConstraint {
+    let mut result =
+        scope_generic_constraint();
+
+    set result.trait_definition =
+        Some(trait_definition);
+
+    give result;
+}
+
+proc scope_generic_constraint_types(
+    left: TypeId,
+    right: TypeId
+) -> ScopeGenericConstraint {
+    let mut result =
+        scope_generic_constraint();
+
+    set result.left_type =
+        Some(left);
+
+    set result.right_type =
+        Some(right);
+
+    give result;
+}
+
+proc scope_generic_constraint_expression(
+    expression: HirId
+) -> ScopeGenericConstraint {
+    let mut result =
+        scope_generic_constraint();
+
+    set result.expression =
+        Some(expression);
+
+    give result;
+}
+
+proc scope_generic_parameter(
+    name: string,
+    definition: DefId,
+    scope: ScopeId,
+    kind: ScopeGenericKind,
+    index: usize
+) -> ScopeGenericParameter {
+    give ScopeGenericParameter {
+        name: name,
+
+        definition: definition,
+
+        scope: scope,
+
+        kind: kind,
+
+        state:
+            ScopeGenericState.Declared,
+
+        index: index,
+
+        type_id: None,
+
+        default_type: None,
+        default_value: None,
+
+        constraints: [],
+
+        generation: 1,
+        revision: 1
+    };
+}
+
+proc scope_generic_parameter_with_type(
+    parameter: ScopeGenericParameter,
+    type_id: TypeId
+) -> ScopeGenericParameter {
+    let mut result =
+        parameter;
+
+    set result.type_id =
+        Some(type_id);
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_generic_parameter_with_default_type(
+    parameter: ScopeGenericParameter,
+    type_id: TypeId
+) -> ScopeGenericParameter {
+    let mut result =
+        parameter;
+
+    set result.default_type =
+        Some(type_id);
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_generic_parameter_with_default_value(
+    parameter: ScopeGenericParameter,
+    value: HirId
+) -> ScopeGenericParameter {
+    let mut result =
+        parameter;
+
+    set result.default_value =
+        Some(value);
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_generic_parameter_add_constraint(
+    parameter: ScopeGenericParameter,
+    constraint: ScopeGenericConstraint
+) -> ScopeGenericParameter {
+    let mut result =
+        parameter;
+
+    set result.constraints =
+        result.constraints + [constraint];
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_generic_parameter_mark_bound(
+    parameter: ref mut ScopeGenericParameter
+) {
+    if parameter.state
+        == ScopeGenericState.Invalidated
+    {
+        give;
+    }
+
+    set parameter.state =
+        ScopeGenericState.Bound;
+
+    set parameter.revision =
+        parameter.revision + 1;
+}
+
+proc scope_generic_parameter_mark_resolved(
+    parameter: ref mut ScopeGenericParameter
+) {
+    if parameter.state
+        == ScopeGenericState.Invalidated
+    {
+        give;
+    }
+
+    set parameter.state =
+        ScopeGenericState.Resolved;
+
+    set parameter.revision =
+        parameter.revision + 1;
+}
+
+proc scope_generic_parameter_invalidate(
+    parameter: ref mut ScopeGenericParameter
+) {
+    set parameter.state =
+        ScopeGenericState.Invalidated;
+
+    set parameter.revision =
+        parameter.revision + 1;
+}
+
+proc scope_generic_parameter_is_active(
+    parameter: ScopeGenericParameter
+) -> bool {
+    give parameter.state
+        != ScopeGenericState.Invalidated;
+}
+
+proc scope_generic_environment(
+    scope: ScopeId,
+    parent: Option<ScopeId>
+) -> ScopeGenericEnvironment {
+    give ScopeGenericEnvironment {
+        scope: scope,
+
+        parent: parent,
+
+        parameters: [],
+
+        generation: 1,
+        revision: 1
+    };
+}
+
+proc scope_generic_environment_contains(
+    environment: ref ScopeGenericEnvironment,
+    name: string
+) -> bool {
+    for parameter in environment.parameters {
+        if parameter.name == name
+            and scope_generic_parameter_is_active(
+                parameter
+            )
+        {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc scope_generic_environment_add(
+    environment: ref mut ScopeGenericEnvironment,
+    parameter: ScopeGenericParameter
+) -> bool {
+    if scope_generic_environment_contains(
+        ref environment,
+        parameter.name
+    ) {
+        give false;
+    }
+
+    set environment.parameters =
+        environment.parameters
+        + [parameter];
+
+    set environment.revision =
+        environment.revision + 1;
+
+    give true;
+}
+
+proc scope_generic_environment_find(
+    environment: ref ScopeGenericEnvironment,
+    name: string
+) -> Option<ScopeGenericParameter> {
+    for parameter in environment.parameters {
+        if parameter.name == name
+            and scope_generic_parameter_is_active(
+                parameter
+            )
+        {
+            give Some(parameter);
+        }
+    }
+
+    give None;
+}
+
+proc scope_generic_environment_parameter_count(
+    environment: ref ScopeGenericEnvironment
+) -> usize {
+    give len(environment.parameters);
+}
+
+proc scope_generic_table_find_environment_index(
+    table: ref ScopeGenericTable,
+    scope: ScopeId
+) -> Option<usize> {
+    let mut index: usize = 0;
+
+    while index < len(table.environments) {
+        if table.environments[index].scope
+            == scope
+        {
+            give Some(index);
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give None;
+}
+
+proc scope_generic_table_has_environment(
+    table: ref ScopeGenericTable,
+    scope: ScopeId
+) -> bool {
+    pick scope_generic_table_find_environment_index(
+        table,
+        scope
+    ) {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_generic_table_register_environment(
+    table: ref mut ScopeGenericTable,
+    environment: ScopeGenericEnvironment
+) -> bool {
+    if scope_generic_table_has_environment(
+        ref table,
+        environment.scope
+    ) {
+        give false;
+    }
+
+    let mut value =
+        environment;
+
+    set value.generation =
+        table.generation;
+
+    set table.environments =
+        table.environments + [value];
+
+    set table.statistics.environments =
+        table.statistics.environments + 1;
+
+    give true;
+}
+
+proc scope_generic_table_create_environment(
+    table: ref mut ScopeGenericTable,
+    scope: ScopeId,
+    parent: Option<ScopeId>
+) -> bool {
+    give scope_generic_table_register_environment(
+        table,
+        scope_generic_environment(
+            scope,
+            parent
+        )
+    );
+}
+
+proc scope_generic_table_add_parameter(
+    table: ref mut ScopeGenericTable,
+    scope: ScopeId,
+    parameter: ScopeGenericParameter
+) -> bool {
+    let index =
+        scope_generic_table_find_environment_index(
+            ref table,
+            scope
+        );
+
+    pick index {
+        None {
+            give false;
+        }
+
+        Some(value) {
+            if not scope_generic_environment_add(
+                ref mut table.environments[value],
+                parameter
+            ) {
+                give false;
+            }
+
+            set table.statistics.parameters =
+                table.statistics.parameters + 1;
+
+            set table.statistics.constraints =
+                table.statistics.constraints
+                + len(parameter.constraints);
+
+            pick parameter.kind {
+                ScopeGenericKind.Type {
+                    set table.statistics.type_parameters =
+                        table.statistics.type_parameters + 1;
+                }
+
+                ScopeGenericKind.Const {
+                    set table.statistics.const_parameters =
+                        table.statistics.const_parameters + 1;
+                }
+
+                ScopeGenericKind.Comptime {
+                    set table.statistics.comptime_parameters =
+                        table.statistics.comptime_parameters + 1;
+                }
+            }
+
+            give true;
+        }
+    }
+}
+
+proc scope_generic_table_lookup_local(
+    table: ref ScopeGenericTable,
+    scope: ScopeId,
+    name: string
+) -> Option<ScopeGenericParameter> {
+    let index =
+        scope_generic_table_find_environment_index(
+            table,
+            scope
+        );
+
+    pick index {
+        Some(value) {
+            give scope_generic_environment_find(
+                ref table.environments[value],
+                name
+            );
+        }
+
+        None {
+            give None;
+        }
+    }
+}
+
+proc scope_generic_table_lookup(
+    table: ref mut ScopeGenericTable,
+    scope: ScopeId,
+    name: string
+) -> Option<ScopeGenericParameter> {
+    set table.statistics.lookups =
+        table.statistics.lookups + 1;
+
+    let mut current =
+        Some(scope);
+
+    loop {
+        pick current {
+            None {
+                set table.statistics.misses =
+                    table.statistics.misses + 1;
+
+                give None;
+            }
+
+            Some(current_scope) {
+                let index =
+                    scope_generic_table_find_environment_index(
+                        ref table,
+                        current_scope
+                    );
+
+                pick index {
+                    None {
+                        set current = None;
+                    }
+
+                    Some(value) {
+                        let result =
+                            scope_generic_environment_find(
+                                ref table.environments[value],
+                                name
+                            );
+
+                        pick result {
+                            Some(parameter) {
+                                set table.statistics.hits =
+                                    table.statistics.hits + 1;
+
+                                give Some(parameter);
+                            }
+
+                            None {
+                                set current =
+                                    table.environments[value].parent;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    give None;
+}
+
+proc scope_generic_table_bind_parameter(
+    bindings: ref mut ScopeBindingTable,
+    parameter: ScopeGenericParameter
+) -> bool {
+    let mut binding =
+        scope_binding(
+            parameter.name,
+            parameter.scope,
+            ScopeBindingKind.Generic
+        );
+
+    set binding.definition =
+        Some(parameter.definition);
+
+    set binding.type_id =
+        parameter.type_id;
+
+    set binding.state =
+        ScopeBindingState.Defined;
+
+    let error =
+        scope_binding_table_insert(
+            bindings,
+            binding
+        );
+
+    give error.kind
+        == ScopeBindingErrorKind.None;
+}
+
+proc scope_generic_table_bind_environment(
+    table: ref ScopeGenericTable,
+    bindings: ref mut ScopeBindingTable,
+    scope: ScopeId
+) -> bool {
+    let index =
+        scope_generic_table_find_environment_index(
+            table,
+            scope
+        );
+
+    pick index {
+        None {
+            give false;
+        }
+
+        Some(value) {
+            for parameter in table.environments[value].parameters {
+                if not scope_generic_table_bind_parameter(
+                    bindings,
+                    parameter
+                ) {
+                    give false;
+                }
+            }
+        }
+    }
+
+    give true;
+}
+
+proc scope_generic_table_find_definition(
+    table: ref ScopeGenericTable,
+    definition: DefId
+) -> Option<ScopeGenericParameter> {
+    for environment in table.environments {
+        for parameter in environment.parameters {
+            if parameter.definition
+                == definition
+                and scope_generic_parameter_is_active(
+                    parameter
+                )
+            {
+                give Some(parameter);
+            }
+        }
+    }
+
+    give None;
+}
+
+proc scope_generic_table_invalidate_scope(
+    table: ref mut ScopeGenericTable,
+    scope: ScopeId
+) -> usize {
+    let index =
+        scope_generic_table_find_environment_index(
+            ref table,
+            scope
+        );
+
+    pick index {
+        None {
+            give 0;
+        }
+
+        Some(value) {
+            let mut count: usize = 0;
+            let mut parameter_index: usize = 0;
+
+            while parameter_index
+                < len(table.environments[value].parameters)
+            {
+                if table.environments[value]
+                        .parameters[parameter_index]
+                        .state
+                    != ScopeGenericState.Invalidated
+                {
+                    scope_generic_parameter_invalidate(
+                        ref mut table.environments[value]
+                            .parameters[parameter_index]
+                    );
+
+                    set count =
+                        count + 1;
+                }
+
+                set parameter_index =
+                    parameter_index + 1;
+            }
+
+            set table.environments[value].revision =
+                table.environments[value].revision + 1;
+
+            set table.statistics.invalidated =
+                table.statistics.invalidated + count;
+
+            give count;
+        }
+    }
+}
+
+proc scope_generic_table_invalidate_definition(
+    table: ref mut ScopeGenericTable,
+    definition: DefId
+) -> bool {
+    let mut environment_index: usize = 0;
+
+    while environment_index
+        < len(table.environments)
+    {
+        let mut parameter_index: usize = 0;
+
+        while parameter_index
+            < len(
+                table.environments[
+                    environment_index
+                ].parameters
+            )
+        {
+            if table.environments[
+                    environment_index
+                ].parameters[
+                    parameter_index
+                ].definition
+                == definition
+            {
+                if table.environments[
+                        environment_index
+                    ].parameters[
+                        parameter_index
+                    ].state
+                    == ScopeGenericState.Invalidated
+                {
+                    give false;
+                }
+
+                scope_generic_parameter_invalidate(
+                    ref mut table.environments[
+                        environment_index
+                    ].parameters[
+                        parameter_index
+                    ]
+                );
+
+                set table.statistics.invalidated =
+                    table.statistics.invalidated + 1;
+
+                give true;
+            }
+
+            set parameter_index =
+                parameter_index + 1;
+        }
+
+        set environment_index =
+            environment_index + 1;
+    }
+
+    give false;
+}
+
+proc scope_generic_table_advance_generation(
+    table: ref mut ScopeGenericTable
+) -> u64 {
+    set table.generation =
+        table.generation + 1;
+
+    give table.generation;
+}
+
+proc scope_generic_table_clear(
+    table: ref mut ScopeGenericTable
+) {
+    set table.environments = [];
+
+    set table.generation =
+        table.generation + 1;
+}
+
+proc scope_generic_table_statistics(
+    table: ref ScopeGenericTable
+) -> ScopeGenericStatistics {
+    give table.statistics;
+}
+
+proc scope_generic_table_reset_statistics(
+    table: ref mut ScopeGenericTable
+) {
+    set table.statistics =
+        scope_generic_statistics_empty();
+}
+
+proc scope_generic_kind_name(
+    kind: ScopeGenericKind
+) -> string {
+    pick kind {
+        ScopeGenericKind.Type {
+            give "type";
+        }
+
+        ScopeGenericKind.Const {
+            give "const";
+        }
+
+        ScopeGenericKind.Comptime {
+            give "comptime";
+        }
+    }
+
+    give "type";
+}
+
+proc scope_generic_state_name(
+    state: ScopeGenericState
+) -> string {
+    pick state {
+        ScopeGenericState.Declared {
+            give "declared";
+        }
+
+        ScopeGenericState.Bound {
+            give "bound";
+        }
+
+        ScopeGenericState.Resolved {
+            give "resolved";
+        }
+
+        ScopeGenericState.Invalidated {
+            give "invalidated";
+        }
+    }
+
+    give "invalidated";
+}
+
+// Generic declaration
+//
+// proc convert[T, const N: usize](...)
+//              |          |
+//              |          +-- ScopeGenericKind.Const
+//              |
+//              +-- ScopeGenericKind.Type
+//
+// scope
+//   |
+//   v
+// ScopeGenericEnvironment
+//   |
+//   +-- T
+//   +-- N
+//   |
+//   +-- parent generic environment
+//   |
+//   v
+// ScopeBindingTable
+//   |
+//   v
+// generic_resolution.vit

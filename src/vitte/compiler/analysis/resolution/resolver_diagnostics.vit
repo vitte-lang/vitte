@@ -1,0 +1,977 @@
+space vitte/compiler/analysis/resolution/resolver_diagnostics
+
+export *
+
+use vitte/compiler/infrastructure/diagnostics/diagnostic.{
+    InfrastructureDiagnostic,
+    DiagnosticSeverity,
+    DiagnosticPhase,
+    DiagnosticLabelKind,
+    DiagnosticSuggestionKind,
+    SourceSpan,
+
+    span_empty,
+    diagnostic_create,
+    diagnostic_label,
+    diagnostic_note,
+    diagnostic_help,
+    diagnostic_suggestion
+}
+
+use vitte/compiler/analysis/resolution/resolution_result.{
+    ResolutionResult,
+    ResolutionResultKind,
+    ResolutionResultState,
+    ResolutionFailure,
+    ResolutionFailureKind
+}
+
+pick ResolverDiagnosticKind {
+    NameNotFound,
+    ModuleNotFound,
+    NamespaceNotFound,
+    PathNotFound,
+
+    ImportNotFound,
+    ExportNotFound,
+
+    ConstantNotFound,
+    FieldNotFound,
+    MethodNotFound,
+    GenericNotFound,
+
+    AmbiguousName,
+    AmbiguousModule,
+    AmbiguousNamespace,
+    AmbiguousPath,
+    AmbiguousMethod,
+    AmbiguousOverload,
+
+    PrivateSymbol,
+    PackageSymbol,
+
+    InvalidPath,
+    InvalidScope,
+    InvalidModule,
+
+    ArityMismatch,
+    TypeMismatch,
+    ConstraintFailure,
+
+    Internal
+}
+
+form ResolverDiagnosticContext {
+    subject: string
+
+    span: SourceSpan
+
+    module_name: string
+    namespace_name: string
+
+    expected: string
+    found: string
+
+    candidates: [string]
+}
+
+form ResolverDiagnosticReport {
+    diagnostics: [InfrastructureDiagnostic]
+
+    errors: usize
+    warnings: usize
+
+    valid: bool
+}
+
+proc resolver_diagnostic_context(
+    subject: string,
+    span: SourceSpan
+) -> ResolverDiagnosticContext {
+    give ResolverDiagnosticContext {
+        subject: subject,
+
+        span: span,
+
+        module_name: "",
+        namespace_name: "",
+
+        expected: "",
+        found: "",
+
+        candidates: []
+    };
+}
+
+proc resolver_diagnostic_report_create()
+    -> ResolverDiagnosticReport
+{
+    give ResolverDiagnosticReport {
+        diagnostics: [],
+
+        errors: 0,
+        warnings: 0,
+
+        valid: true
+    };
+}
+
+proc resolver_diagnostic_code(
+    kind: ResolverDiagnosticKind
+) -> string {
+    pick kind {
+        ResolverDiagnosticKind.NameNotFound {
+            give "RESOLVE_E001";
+        }
+
+        ResolverDiagnosticKind.ModuleNotFound {
+            give "RESOLVE_E002";
+        }
+
+        ResolverDiagnosticKind.NamespaceNotFound {
+            give "RESOLVE_E003";
+        }
+
+        ResolverDiagnosticKind.PathNotFound {
+            give "RESOLVE_E004";
+        }
+
+        ResolverDiagnosticKind.ImportNotFound {
+            give "RESOLVE_E005";
+        }
+
+        ResolverDiagnosticKind.ExportNotFound {
+            give "RESOLVE_E006";
+        }
+
+        ResolverDiagnosticKind.ConstantNotFound {
+            give "RESOLVE_E007";
+        }
+
+        ResolverDiagnosticKind.FieldNotFound {
+            give "RESOLVE_E008";
+        }
+
+        ResolverDiagnosticKind.MethodNotFound {
+            give "RESOLVE_E009";
+        }
+
+        ResolverDiagnosticKind.GenericNotFound {
+            give "RESOLVE_E010";
+        }
+
+        ResolverDiagnosticKind.AmbiguousName {
+            give "RESOLVE_E020";
+        }
+
+        ResolverDiagnosticKind.AmbiguousModule {
+            give "RESOLVE_E021";
+        }
+
+        ResolverDiagnosticKind.AmbiguousNamespace {
+            give "RESOLVE_E022";
+        }
+
+        ResolverDiagnosticKind.AmbiguousPath {
+            give "RESOLVE_E023";
+        }
+
+        ResolverDiagnosticKind.AmbiguousMethod {
+            give "RESOLVE_E024";
+        }
+
+        ResolverDiagnosticKind.AmbiguousOverload {
+            give "RESOLVE_E025";
+        }
+
+        ResolverDiagnosticKind.PrivateSymbol {
+            give "RESOLVE_E030";
+        }
+
+        ResolverDiagnosticKind.PackageSymbol {
+            give "RESOLVE_E031";
+        }
+
+        ResolverDiagnosticKind.InvalidPath {
+            give "RESOLVE_E040";
+        }
+
+        ResolverDiagnosticKind.InvalidScope {
+            give "RESOLVE_E041";
+        }
+
+        ResolverDiagnosticKind.InvalidModule {
+            give "RESOLVE_E042";
+        }
+
+        ResolverDiagnosticKind.ArityMismatch {
+            give "RESOLVE_E050";
+        }
+
+        ResolverDiagnosticKind.TypeMismatch {
+            give "RESOLVE_E051";
+        }
+
+        ResolverDiagnosticKind.ConstraintFailure {
+            give "RESOLVE_E052";
+        }
+
+        ResolverDiagnosticKind.Internal {
+            give "RESOLVE_E999";
+        }
+    }
+
+    give "RESOLVE_E999";
+}
+
+proc resolver_diagnostic_phase(
+    kind: ResolverDiagnosticKind
+) -> DiagnosticPhase {
+    pick kind {
+        ResolverDiagnosticKind.ModuleNotFound {
+            give DiagnosticPhase.ModuleResolution;
+        }
+
+        ResolverDiagnosticKind.NamespaceNotFound {
+            give DiagnosticPhase.ModuleResolution;
+        }
+
+        ResolverDiagnosticKind.PathNotFound {
+            give DiagnosticPhase.ModuleResolution;
+        }
+
+        ResolverDiagnosticKind.InvalidPath {
+            give DiagnosticPhase.ModuleResolution;
+        }
+
+        ResolverDiagnosticKind.InvalidModule {
+            give DiagnosticPhase.ModuleResolution;
+        }
+
+        _ {
+            give DiagnosticPhase.SymbolResolution;
+        }
+    }
+}
+
+proc resolver_diagnostic_title(
+    kind: ResolverDiagnosticKind
+) -> string {
+    pick kind {
+        ResolverDiagnosticKind.NameNotFound {
+            give "name not found";
+        }
+
+        ResolverDiagnosticKind.ModuleNotFound {
+            give "module not found";
+        }
+
+        ResolverDiagnosticKind.NamespaceNotFound {
+            give "namespace not found";
+        }
+
+        ResolverDiagnosticKind.PathNotFound {
+            give "path not found";
+        }
+
+        ResolverDiagnosticKind.ImportNotFound {
+            give "import could not be resolved";
+        }
+
+        ResolverDiagnosticKind.ExportNotFound {
+            give "export could not be resolved";
+        }
+
+        ResolverDiagnosticKind.ConstantNotFound {
+            give "constant not found";
+        }
+
+        ResolverDiagnosticKind.FieldNotFound {
+            give "field not found";
+        }
+
+        ResolverDiagnosticKind.MethodNotFound {
+            give "method not found";
+        }
+
+        ResolverDiagnosticKind.GenericNotFound {
+            give "generic parameter not found";
+        }
+
+        ResolverDiagnosticKind.AmbiguousName {
+            give "ambiguous name";
+        }
+
+        ResolverDiagnosticKind.AmbiguousModule {
+            give "ambiguous module";
+        }
+
+        ResolverDiagnosticKind.AmbiguousNamespace {
+            give "ambiguous namespace";
+        }
+
+        ResolverDiagnosticKind.AmbiguousPath {
+            give "ambiguous path";
+        }
+
+        ResolverDiagnosticKind.AmbiguousMethod {
+            give "ambiguous method";
+        }
+
+        ResolverDiagnosticKind.AmbiguousOverload {
+            give "ambiguous overload";
+        }
+
+        ResolverDiagnosticKind.PrivateSymbol {
+            give "private symbol is not accessible";
+        }
+
+        ResolverDiagnosticKind.PackageSymbol {
+            give "package symbol is not accessible";
+        }
+
+        ResolverDiagnosticKind.InvalidPath {
+            give "invalid path";
+        }
+
+        ResolverDiagnosticKind.InvalidScope {
+            give "invalid resolution scope";
+        }
+
+        ResolverDiagnosticKind.InvalidModule {
+            give "invalid module";
+        }
+
+        ResolverDiagnosticKind.ArityMismatch {
+            give "argument count mismatch";
+        }
+
+        ResolverDiagnosticKind.TypeMismatch {
+            give "resolution type mismatch";
+        }
+
+        ResolverDiagnosticKind.ConstraintFailure {
+            give "generic constraint is not satisfied";
+        }
+
+        ResolverDiagnosticKind.Internal {
+            give "internal resolution error";
+        }
+    }
+
+    give "resolution error";
+}
+
+proc resolver_diagnostic_message(
+    kind: ResolverDiagnosticKind,
+    context: ResolverDiagnosticContext
+) -> string {
+    pick kind {
+        ResolverDiagnosticKind.NameNotFound {
+            give "cannot resolve name `" + context.subject + "`";
+        }
+
+        ResolverDiagnosticKind.ModuleNotFound {
+            give "cannot resolve module `" + context.subject + "`";
+        }
+
+        ResolverDiagnosticKind.NamespaceNotFound {
+            give "cannot resolve namespace `" + context.subject + "`";
+        }
+
+        ResolverDiagnosticKind.PathNotFound {
+            give "cannot resolve path `" + context.subject + "`";
+        }
+
+        ResolverDiagnosticKind.ImportNotFound {
+            give "cannot resolve import `" + context.subject + "`";
+        }
+
+        ResolverDiagnosticKind.ExportNotFound {
+            give "cannot resolve export `" + context.subject + "`";
+        }
+
+        ResolverDiagnosticKind.ConstantNotFound {
+            give "cannot resolve constant `" + context.subject + "`";
+        }
+
+        ResolverDiagnosticKind.FieldNotFound {
+            give "cannot resolve field `" + context.subject + "`";
+        }
+
+        ResolverDiagnosticKind.MethodNotFound {
+            give "cannot resolve method `" + context.subject + "`";
+        }
+
+        ResolverDiagnosticKind.GenericNotFound {
+            give "cannot resolve generic parameter `" + context.subject + "`";
+        }
+
+        ResolverDiagnosticKind.AmbiguousName {
+            give "name `" + context.subject + "` refers to multiple candidates";
+        }
+
+        ResolverDiagnosticKind.AmbiguousModule {
+            give "module `" + context.subject + "` is ambiguous";
+        }
+
+        ResolverDiagnosticKind.AmbiguousNamespace {
+            give "namespace `" + context.subject + "` is ambiguous";
+        }
+
+        ResolverDiagnosticKind.AmbiguousPath {
+            give "path `" + context.subject + "` is ambiguous";
+        }
+
+        ResolverDiagnosticKind.AmbiguousMethod {
+            give "method `" + context.subject + "` has multiple applicable candidates";
+        }
+
+        ResolverDiagnosticKind.AmbiguousOverload {
+            give "call to `" + context.subject + "` matches multiple overloads";
+        }
+
+        ResolverDiagnosticKind.PrivateSymbol {
+            give "symbol `" + context.subject + "` is private";
+        }
+
+        ResolverDiagnosticKind.PackageSymbol {
+            give "symbol `" + context.subject + "` is restricted to its package";
+        }
+
+        ResolverDiagnosticKind.InvalidPath {
+            give "path `" + context.subject + "` is invalid";
+        }
+
+        ResolverDiagnosticKind.InvalidScope {
+            give "resolution started from an invalid scope";
+        }
+
+        ResolverDiagnosticKind.InvalidModule {
+            give "resolution started from an invalid module";
+        }
+
+        ResolverDiagnosticKind.ArityMismatch {
+            give "incorrect number of arguments while resolving `" + context.subject + "`";
+        }
+
+        ResolverDiagnosticKind.TypeMismatch {
+            give "argument types do not match `" + context.subject + "`";
+        }
+
+        ResolverDiagnosticKind.ConstraintFailure {
+            give "generic constraints are not satisfied for `" + context.subject + "`";
+        }
+
+        ResolverDiagnosticKind.Internal {
+            give "resolution failed because of an internal compiler state";
+        }
+    }
+
+    give "resolution failed";
+}
+
+proc resolver_diagnostic_help_text(
+    kind: ResolverDiagnosticKind,
+    context: ResolverDiagnosticContext
+) -> string {
+    pick kind {
+        ResolverDiagnosticKind.NameNotFound {
+            give "check the spelling, imports and scope containing this name";
+        }
+
+        ResolverDiagnosticKind.ModuleNotFound {
+            give "check the module path and ensure the module is registered";
+        }
+
+        ResolverDiagnosticKind.NamespaceNotFound {
+            give "check the qualified namespace path";
+        }
+
+        ResolverDiagnosticKind.PathNotFound {
+            give "check each component of the path from left to right";
+        }
+
+        ResolverDiagnosticKind.ImportNotFound {
+            give "check that the imported module and symbol are exported";
+        }
+
+        ResolverDiagnosticKind.ExportNotFound {
+            give "check that the target declaration exists and is exported";
+        }
+
+        ResolverDiagnosticKind.FieldNotFound {
+            give "check the receiver type and the field name";
+        }
+
+        ResolverDiagnosticKind.MethodNotFound {
+            give "check the receiver type, imported traits and method name";
+        }
+
+        ResolverDiagnosticKind.AmbiguousName {
+            give "qualify the name to select one declaration explicitly";
+        }
+
+        ResolverDiagnosticKind.AmbiguousModule {
+            give "use the canonical module path";
+        }
+
+        ResolverDiagnosticKind.AmbiguousNamespace {
+            give "use the complete qualified namespace name";
+        }
+
+        ResolverDiagnosticKind.AmbiguousPath {
+            give "make the path explicit enough to select one target";
+        }
+
+        ResolverDiagnosticKind.AmbiguousMethod {
+            give "use a qualified method or make the receiver type more specific";
+        }
+
+        ResolverDiagnosticKind.AmbiguousOverload {
+            give "add explicit argument types or select the intended overload";
+        }
+
+        ResolverDiagnosticKind.PrivateSymbol {
+            give "export the symbol or access it from its declaring module";
+        }
+
+        ResolverDiagnosticKind.PackageSymbol {
+            give "access the symbol from the same package or make it public";
+        }
+
+        ResolverDiagnosticKind.ArityMismatch {
+            give "check the expected parameter count";
+        }
+
+        ResolverDiagnosticKind.TypeMismatch {
+            if context.expected != "" and context.found != "" {
+                give "expected `" + context.expected + "`, found `" + context.found + "`";
+            }
+
+            give "check the expected parameter types";
+        }
+
+        ResolverDiagnosticKind.ConstraintFailure {
+            give "check the generic bounds and where constraints";
+        }
+
+        ResolverDiagnosticKind.Internal {
+            give "preserve a minimal reproduction and report this compiler failure";
+        }
+
+        _ {
+            give "check the referenced declaration and current resolution context";
+        }
+    }
+}
+
+proc resolver_diagnostic_candidate_note(
+    context: ResolverDiagnosticContext
+) -> string {
+    if len(context.candidates) == 0 {
+        give "";
+    }
+
+    let mut message: string =
+        "candidates: ";
+
+    let mut index: usize = 0;
+
+    while index < len(context.candidates) {
+        if index > 0 {
+            set message =
+                message + ", ";
+        }
+
+        set message =
+            message + context.candidates[index];
+
+        set index =
+            index + 1;
+    }
+
+    give message;
+}
+
+proc resolver_diagnostic_create(
+    kind: ResolverDiagnosticKind,
+    context: ResolverDiagnosticContext
+) -> InfrastructureDiagnostic {
+    let code: string =
+        resolver_diagnostic_code(kind);
+
+    let phase: DiagnosticPhase =
+        resolver_diagnostic_phase(kind);
+
+    let title: string =
+        resolver_diagnostic_title(kind);
+
+    let message: string =
+        resolver_diagnostic_message(
+            kind,
+            context
+        );
+
+    let mut diagnostic =
+        diagnostic_create(
+            code,
+            phase,
+            DiagnosticSeverity.Error,
+            title,
+            message,
+            context.span
+        );
+
+    if context.span.valid {
+        set diagnostic.labels =
+            diagnostic.labels + [
+                diagnostic_label(
+                    DiagnosticLabelKind.Primary,
+                    message,
+                    context.span
+                )
+            ];
+    }
+
+    let help: string =
+        resolver_diagnostic_help_text(
+            kind,
+            context
+        );
+
+    if help != "" {
+        set diagnostic.helps =
+            diagnostic.helps + [
+                diagnostic_help(help)
+            ];
+    }
+
+    let candidate_note: string =
+        resolver_diagnostic_candidate_note(
+            context
+        );
+
+    if candidate_note != "" {
+        set diagnostic.notes =
+            diagnostic.notes + [
+                diagnostic_note(
+                    candidate_note
+                )
+            ];
+    }
+
+    if context.module_name != "" {
+        set diagnostic.notes =
+            diagnostic.notes + [
+                diagnostic_note(
+                    "module: "
+                    + context.module_name
+                )
+            ];
+    }
+
+    if context.namespace_name != "" {
+        set diagnostic.notes =
+            diagnostic.notes + [
+                diagnostic_note(
+                    "namespace: "
+                    + context.namespace_name
+                )
+            ];
+    }
+
+    give diagnostic;
+}
+
+proc resolver_diagnostic_missing_name(
+    name: string,
+    span: SourceSpan
+) -> InfrastructureDiagnostic {
+    give resolver_diagnostic_create(
+        ResolverDiagnosticKind.NameNotFound,
+        resolver_diagnostic_context(
+            name,
+            span
+        )
+    );
+}
+
+proc resolver_diagnostic_missing_module(
+    name: string,
+    span: SourceSpan
+) -> InfrastructureDiagnostic {
+    give resolver_diagnostic_create(
+        ResolverDiagnosticKind.ModuleNotFound,
+        resolver_diagnostic_context(
+            name,
+            span
+        )
+    );
+}
+
+proc resolver_diagnostic_missing_field(
+    name: string,
+    span: SourceSpan
+) -> InfrastructureDiagnostic {
+    give resolver_diagnostic_create(
+        ResolverDiagnosticKind.FieldNotFound,
+        resolver_diagnostic_context(
+            name,
+            span
+        )
+    );
+}
+
+proc resolver_diagnostic_missing_method(
+    name: string,
+    span: SourceSpan
+) -> InfrastructureDiagnostic {
+    give resolver_diagnostic_create(
+        ResolverDiagnosticKind.MethodNotFound,
+        resolver_diagnostic_context(
+            name,
+            span
+        )
+    );
+}
+
+proc resolver_diagnostic_ambiguous(
+    name: string,
+    candidates: [string],
+    span: SourceSpan
+) -> InfrastructureDiagnostic {
+    let mut context =
+        resolver_diagnostic_context(
+            name,
+            span
+        );
+
+    set context.candidates =
+        candidates;
+
+    give resolver_diagnostic_create(
+        ResolverDiagnosticKind.AmbiguousName,
+        context
+    );
+}
+
+proc resolver_diagnostic_type_mismatch(
+    name: string,
+    expected: string,
+    found: string,
+    span: SourceSpan
+) -> InfrastructureDiagnostic {
+    let mut context =
+        resolver_diagnostic_context(
+            name,
+            span
+        );
+
+    set context.expected =
+        expected;
+
+    set context.found =
+        found;
+
+    give resolver_diagnostic_create(
+        ResolverDiagnosticKind.TypeMismatch,
+        context
+    );
+}
+
+proc resolver_diagnostic_kind_from_result(
+    result: ResolutionResult
+) -> ResolverDiagnosticKind {
+    pick result.state {
+        ResolutionResultState.Missing {
+            pick result.kind {
+                ResolutionResultKind.Module {
+                    give ResolverDiagnosticKind.ModuleNotFound;
+                }
+
+                ResolutionResultKind.Namespace {
+                    give ResolverDiagnosticKind.NamespaceNotFound;
+                }
+
+                ResolutionResultKind.Path {
+                    give ResolverDiagnosticKind.PathNotFound;
+                }
+
+                ResolutionResultKind.Import {
+                    give ResolverDiagnosticKind.ImportNotFound;
+                }
+
+                ResolutionResultKind.Export {
+                    give ResolverDiagnosticKind.ExportNotFound;
+                }
+
+                ResolutionResultKind.Constant {
+                    give ResolverDiagnosticKind.ConstantNotFound;
+                }
+
+                ResolutionResultKind.Field {
+                    give ResolverDiagnosticKind.FieldNotFound;
+                }
+
+                ResolutionResultKind.Method {
+                    give ResolverDiagnosticKind.MethodNotFound;
+                }
+
+                ResolutionResultKind.Generic {
+                    give ResolverDiagnosticKind.GenericNotFound;
+                }
+
+                _ {
+                    give ResolverDiagnosticKind.NameNotFound;
+                }
+            }
+        }
+
+        ResolutionResultState.Ambiguous {
+            pick result.kind {
+                ResolutionResultKind.Module {
+                    give ResolverDiagnosticKind.AmbiguousModule;
+                }
+
+                ResolutionResultKind.Namespace {
+                    give ResolverDiagnosticKind.AmbiguousNamespace;
+                }
+
+                ResolutionResultKind.Path {
+                    give ResolverDiagnosticKind.AmbiguousPath;
+                }
+
+                ResolutionResultKind.Method {
+                    give ResolverDiagnosticKind.AmbiguousMethod;
+                }
+
+                ResolutionResultKind.Overload {
+                    give ResolverDiagnosticKind.AmbiguousOverload;
+                }
+
+                _ {
+                    give ResolverDiagnosticKind.AmbiguousName;
+                }
+            }
+        }
+
+        ResolutionResultState.Inaccessible {
+            give ResolverDiagnosticKind.PrivateSymbol;
+        }
+
+        ResolutionResultState.Invalid {
+            give ResolverDiagnosticKind.Internal;
+        }
+
+        ResolutionResultState.Failed {
+            give ResolverDiagnosticKind.Internal;
+        }
+
+        _ {
+            give ResolverDiagnosticKind.Internal;
+        }
+    }
+}
+
+proc resolver_diagnostic_from_result(
+    result: ResolutionResult,
+    span: SourceSpan
+) -> Option<InfrastructureDiagnostic> {
+    if result.state
+        == ResolutionResultState.Resolved
+    {
+        give None;
+    }
+
+    if result.state
+        == ResolutionResultState.Unresolved
+        or result.state
+        == ResolutionResultState.Resolving
+    {
+        give None;
+    }
+
+    let context =
+        resolver_diagnostic_context(
+            result.subject,
+            span
+        );
+
+    give Some(
+        resolver_diagnostic_create(
+            resolver_diagnostic_kind_from_result(
+                result
+            ),
+            context
+        )
+    );
+}
+
+proc resolver_diagnostic_report_push(
+    report: ref mut ResolverDiagnosticReport,
+    diagnostic: InfrastructureDiagnostic
+) {
+    set report.diagnostics =
+        report.diagnostics + [diagnostic];
+
+    if diagnostic.severity
+        == DiagnosticSeverity.Warning
+    {
+        set report.warnings =
+            report.warnings + 1;
+    }
+
+    if diagnostic.severity
+        == DiagnosticSeverity.Error
+        or diagnostic.severity
+        == DiagnosticSeverity.Fatal
+    {
+        set report.errors =
+            report.errors + 1;
+
+        set report.valid = false;
+    }
+}
+
+proc resolver_diagnostic_report_from_results(
+    results: [ResolutionResult],
+    span: SourceSpan
+) -> ResolverDiagnosticReport {
+    let mut report =
+        resolver_diagnostic_report_create();
+
+    for result in results {
+        let diagnostic =
+            resolver_diagnostic_from_result(
+                result,
+                span
+            );
+
+        pick diagnostic {
+            Some(value) {
+                resolver_diagnostic_report_push(
+                    ref mut report,
+                    value
+                );
+            }
+
+            None {}
+        }
+    }
+
+    give report;
+}
+
+proc resolver_diagnostic_report_has_errors(
+    report: ref ResolverDiagnosticReport
+) -> bool {
+    give report.errors > 0;
+}
+
+proc resolver_diagnostic_report_is_valid(
+    report: ref ResolverDiagnosticReport
+) -> bool {
+    give report.valid
+        and report.errors == 0;
+}

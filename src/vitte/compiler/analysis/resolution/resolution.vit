@@ -1,0 +1,589 @@
+space vitte/compiler/analysis/resolution/resolution
+
+export *
+
+use vitte/compiler/analysis/resolution/attribute_resolution.*
+use vitte/compiler/analysis/resolution/candidate.*
+use vitte/compiler/analysis/resolution/constant_resolution.*
+use vitte/compiler/analysis/resolution/export_resolution.*
+use vitte/compiler/analysis/resolution/field_resolution.*
+use vitte/compiler/analysis/resolution/generic_resolution.*
+use vitte/compiler/analysis/resolution/import_resolution.*
+use vitte/compiler/analysis/resolution/lookup.*
+use vitte/compiler/analysis/resolution/lookup_cache.*
+use vitte/compiler/analysis/resolution/method_resolution.*
+use vitte/compiler/analysis/resolution/module_resolution.*
+use vitte/compiler/analysis/resolution/name_resolution.*
+use vitte/compiler/analysis/resolution/namespace_resolution.*
+use vitte/compiler/analysis/resolution/overload_resolution.*
+use vitte/compiler/analysis/resolution/path_resolution.*
+use vitte/compiler/analysis/resolution/resolution_context.*
+use vitte/compiler/analysis/resolution/resolution_pass.*
+use vitte/compiler/analysis/resolution/resolution_result.*
+
+use vitte/compiler/analysis/modules/module_database.{
+    ModuleId,
+    ModuleDatabase,
+    module_id_invalid,
+    module_id_is_valid
+}
+
+use vitte/compiler/analysis/modules/module_imports.{
+    ModuleImportTable
+}
+
+use vitte/compiler/analysis/modules/module_exports.{
+    ModuleExportTable
+}
+
+pick ResolutionSystemState {
+    Created,
+    Ready,
+    Running,
+    Complete,
+    Failed
+}
+
+form ResolutionSystemConfig {
+    pass: ResolutionPassConfig
+    context: ResolutionContextConfig
+
+    cache_enabled: bool
+}
+
+form ResolutionSystemStatistics {
+    runs: u64
+    lookups: u64
+    failures: u64
+
+    generation: u64
+}
+
+form ResolutionSystem {
+    config: ResolutionSystemConfig
+
+    state: ResolutionSystemState
+
+    pass: ResolutionPass
+
+    statistics: ResolutionSystemStatistics
+}
+
+proc resolution_system_config_default()
+    -> ResolutionSystemConfig
+{
+    give ResolutionSystemConfig {
+        pass:
+            resolution_pass_config_default(),
+
+        context:
+            resolution_context_config_default(),
+
+        cache_enabled:
+            true
+    };
+}
+
+proc resolution_system_statistics_empty()
+    -> ResolutionSystemStatistics
+{
+    give ResolutionSystemStatistics {
+        runs: 0,
+        lookups: 0,
+        failures: 0,
+
+        generation: 1
+    };
+}
+
+proc resolution_system_create_with_config(
+    config: ResolutionSystemConfig
+) -> ResolutionSystem {
+    let mut pass =
+        resolution_pass_create_with_config(
+            config.pass
+        );
+
+    set pass.context.config =
+        config.context;
+
+    if not config.cache_enabled {
+        lookup_cache_disable(
+            ref mut pass.lookup.cache
+        );
+    }
+
+    give ResolutionSystem {
+        config: config,
+
+        state:
+            ResolutionSystemState.Ready,
+
+        pass: pass,
+
+        statistics:
+            resolution_system_statistics_empty()
+    };
+}
+
+proc resolution_system_create()
+    -> ResolutionSystem
+{
+    give resolution_system_create_with_config(
+        resolution_system_config_default()
+    );
+}
+
+proc resolution_system_context(
+    system: ref ResolutionSystem
+) -> ref ResolutionContext {
+    give ref system.pass.context;
+}
+
+proc resolution_system_context_mut(
+    system: ref mut ResolutionSystem
+) -> ref mut ResolutionContext {
+    give ref mut system.pass.context;
+}
+
+proc resolution_system_lookup(
+    system: ref ResolutionSystem
+) -> ref Lookup {
+    give ref system.pass.lookup;
+}
+
+proc resolution_system_lookup_mut(
+    system: ref mut ResolutionSystem
+) -> ref mut Lookup {
+    give ref mut system.pass.lookup;
+}
+
+proc resolution_system_set_module(
+    system: ref mut ResolutionSystem,
+    module: ModuleId
+) -> bool {
+    if not module_id_is_valid(module) {
+        set system.statistics.failures =
+            system.statistics.failures + 1;
+
+        give false;
+    }
+
+    give resolution_context_set_module(
+        ref mut system.pass.context,
+        module
+    );
+}
+
+proc resolution_system_set_scope(
+    system: ref mut ResolutionSystem,
+    scope: ScopeId
+) {
+    resolution_context_set_scope(
+        ref mut system.pass.context,
+        scope
+    );
+}
+
+proc resolution_system_register_scope(
+    system: ref mut ResolutionSystem,
+    scope: LookupScope
+) {
+    resolution_pass_register_scope(
+        ref mut system.pass,
+        scope
+    );
+}
+
+proc resolution_system_register_symbol(
+    system: ref mut ResolutionSystem,
+    symbol: LookupSymbol
+) -> bool {
+    give resolution_pass_register_symbol(
+        ref mut system.pass,
+        symbol
+    );
+}
+
+proc resolution_system_resolve_name(
+    system: ref mut ResolutionSystem,
+    scope: ScopeId,
+    name: string,
+    kind: NameResolutionKind
+) -> NameResolution {
+    set system.statistics.lookups =
+        system.statistics.lookups + 1;
+
+    let result =
+        resolution_pass_resolve_name(
+            ref mut system.pass,
+            scope,
+            name,
+            kind
+        );
+
+    if not result.found {
+        set system.statistics.failures =
+            system.statistics.failures + 1;
+    }
+
+    give result;
+}
+
+proc resolution_system_resolve_any(
+    system: ref mut ResolutionSystem,
+    scope: ScopeId,
+    name: string
+) -> NameResolution {
+    give resolution_system_resolve_name(
+        system,
+        scope,
+        name,
+        NameResolutionKind.Any
+    );
+}
+
+proc resolution_system_resolve_value(
+    system: ref mut ResolutionSystem,
+    scope: ScopeId,
+    name: string
+) -> NameResolution {
+    give resolution_system_resolve_name(
+        system,
+        scope,
+        name,
+        NameResolutionKind.Value
+    );
+}
+
+proc resolution_system_resolve_type(
+    system: ref mut ResolutionSystem,
+    scope: ScopeId,
+    name: string
+) -> NameResolution {
+    give resolution_system_resolve_name(
+        system,
+        scope,
+        name,
+        NameResolutionKind.Type
+    );
+}
+
+proc resolution_system_resolve_module_name(
+    system: ref mut ResolutionSystem,
+    database: ref ModuleDatabase,
+    name: string
+) -> ResolvedModule {
+    set system.statistics.lookups =
+        system.statistics.lookups + 1;
+
+    let result =
+        module_resolver_resolve_name(
+            ref mut system.pass.modules,
+            database,
+            name
+        );
+
+    if not result.found {
+        set system.statistics.failures =
+            system.statistics.failures + 1;
+    }
+
+    give result;
+}
+
+proc resolution_system_resolve_module_path(
+    system: ref mut ResolutionSystem,
+    database: ref ModuleDatabase,
+    path: string
+) -> ResolvedModule {
+    set system.statistics.lookups =
+        system.statistics.lookups + 1;
+
+    let result =
+        module_resolver_resolve_path(
+            ref mut system.pass.modules,
+            database,
+            path
+        );
+
+    if not result.found {
+        set system.statistics.failures =
+            system.statistics.failures + 1;
+    }
+
+    give result;
+}
+
+proc resolution_system_resolve_path(
+    system: ref mut ResolutionSystem,
+    database: ref ModuleDatabase,
+    scope: ScopeId,
+    path: string
+) -> PathResolution {
+    set system.statistics.lookups =
+        system.statistics.lookups + 1;
+
+    let result =
+        resolution_pass_resolve_path(
+            ref mut system.pass,
+            database,
+            scope,
+            path
+        );
+
+    if not result.found {
+        set system.statistics.failures =
+            system.statistics.failures + 1;
+    }
+
+    give result;
+}
+
+proc resolution_system_resolve_field(
+    system: ref mut ResolutionSystem,
+    owner: TypeId,
+    name: string,
+    allow_private: bool,
+    allow_package: bool
+) -> ResolvedField {
+    set system.statistics.lookups =
+        system.statistics.lookups + 1;
+
+    let result =
+        field_resolver_resolve(
+            ref mut system.pass.fields,
+            owner,
+            name,
+            allow_private,
+            allow_package
+        );
+
+    if not result.found {
+        set system.statistics.failures =
+            system.statistics.failures + 1;
+    }
+
+    give result;
+}
+
+proc resolution_system_resolve_method(
+    system: ref mut ResolutionSystem,
+    receiver: TypeId,
+    name: string,
+    mutable: bool,
+    owned: bool
+) -> ResolvedMethod {
+    set system.statistics.lookups =
+        system.statistics.lookups + 1;
+
+    let result =
+        method_resolver_resolve_exact(
+            ref mut system.pass.methods,
+            receiver,
+            name,
+            mutable,
+            owned
+        );
+
+    if not result.found {
+        set system.statistics.failures =
+            system.statistics.failures + 1;
+    }
+
+    give result;
+}
+
+proc resolution_system_resolve_constant(
+    system: ref mut ResolutionSystem,
+    name: string,
+    allow_private: bool,
+    allow_package: bool
+) -> ConstantResolution {
+    set system.statistics.lookups =
+        system.statistics.lookups + 1;
+
+    let result =
+        constant_resolver_resolve(
+            ref mut system.pass.constants,
+            name,
+            allow_private,
+            allow_package
+        );
+
+    if not result.found {
+        set system.statistics.failures =
+            system.statistics.failures + 1;
+    }
+
+    give result;
+}
+
+proc resolution_system_resolve_generic(
+    system: ref mut ResolutionSystem,
+    name: string
+) -> GenericParameterResolution {
+    set system.statistics.lookups =
+        system.statistics.lookups + 1;
+
+    let result =
+        generic_resolver_resolve_parameter(
+            ref mut system.pass.generics,
+            name
+        );
+
+    if not result.found {
+        set system.statistics.failures =
+            system.statistics.failures + 1;
+    }
+
+    give result;
+}
+
+proc resolution_system_resolve_overload(
+    system: ref mut ResolutionSystem,
+    name: string,
+    arguments: [OverloadArgument]
+) -> OverloadResolution {
+    set system.statistics.lookups =
+        system.statistics.lookups + 1;
+
+    let result =
+        overload_resolver_resolve(
+            ref mut system.pass.overloads,
+            name,
+            arguments
+        );
+
+    if not result.found {
+        set system.statistics.failures =
+            system.statistics.failures + 1;
+    }
+
+    give result;
+}
+
+proc resolution_system_run(
+    system: ref mut ResolutionSystem,
+    database: ref ModuleDatabase,
+    imports: ref mut ModuleImportTable,
+    exports: ref ModuleExportTable,
+    module: ModuleId,
+    root_scope: ScopeId
+) -> ResolutionPassResult {
+    set system.state =
+        ResolutionSystemState.Running;
+
+    set system.statistics.runs =
+        system.statistics.runs + 1;
+
+    let result =
+        resolution_pass_run(
+            ref mut system.pass,
+            database,
+            imports,
+            exports,
+            module,
+            root_scope
+        );
+
+    if result.valid {
+        set system.state =
+            ResolutionSystemState.Complete;
+    } else {
+        set system.state =
+            ResolutionSystemState.Failed;
+
+        set system.statistics.failures =
+            system.statistics.failures
+            + result.failed;
+    }
+
+    give result;
+}
+
+proc resolution_system_invalidate(
+    system: ref mut ResolutionSystem
+) {
+    resolution_pass_invalidate(
+        ref mut system.pass
+    );
+
+    set system.statistics.generation =
+        system.statistics.generation + 1;
+
+    set system.state =
+        ResolutionSystemState.Ready;
+}
+
+proc resolution_system_clear_cache(
+    system: ref mut ResolutionSystem
+) {
+    resolution_pass_clear_cache(
+        ref mut system.pass
+    );
+}
+
+proc resolution_system_reset(
+    system: ref mut ResolutionSystem
+) {
+    resolution_pass_reset(
+        ref mut system.pass
+    );
+
+    set system.state =
+        ResolutionSystemState.Ready;
+
+    set system.statistics =
+        resolution_system_statistics_empty();
+}
+
+proc resolution_system_is_ready(
+    system: ref ResolutionSystem
+) -> bool {
+    give system.state
+        == ResolutionSystemState.Ready
+        or system.state
+        == ResolutionSystemState.Complete;
+}
+
+proc resolution_system_has_failed(
+    system: ref ResolutionSystem
+) -> bool {
+    give system.state
+        == ResolutionSystemState.Failed;
+}
+
+proc resolution_system_statistics(
+    system: ref ResolutionSystem
+) -> ResolutionSystemStatistics {
+    give system.statistics;
+}
+
+proc resolution_system_state_name(
+    state: ResolutionSystemState
+) -> string {
+    pick state {
+        ResolutionSystemState.Created {
+            give "created";
+        }
+
+        ResolutionSystemState.Ready {
+            give "ready";
+        }
+
+        ResolutionSystemState.Running {
+            give "running";
+        }
+
+        ResolutionSystemState.Complete {
+            give "complete";
+        }
+
+        ResolutionSystemState.Failed {
+            give "failed";
+        }
+    }
+
+    give "failed";
+}

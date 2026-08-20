@@ -1,0 +1,958 @@
+space vitte/compiler/analysis/resolution/validation
+
+export *
+
+use vitte/compiler/analysis/resolution/resolution_result.{
+    ResolutionResult,
+    ResolutionResultState,
+    ResolutionResultKind,
+    ResolutionFailureKind,
+
+    resolution_result_is_resolved,
+    resolution_result_has_definition,
+    resolution_result_has_module,
+    resolution_result_has_error
+}
+
+use vitte/compiler/analysis/resolution/resolver_state.{
+    ResolverState,
+    ResolverStateStatus,
+
+    resolver_state_has_errors,
+    resolver_state_has_fatal_error,
+    resolver_state_is_complete,
+    resolver_state_has_failed
+}
+
+use vitte/compiler/analysis/resolution/resolver_graph.{
+    ResolverGraph,
+    ResolverGraphNodeState,
+
+    resolver_graph_has_cycle,
+    resolver_graph_statistics
+}
+
+use vitte/compiler/analysis/resolution/resolver_stack.{
+    ResolverStack,
+
+    resolver_stack_depth,
+    resolver_stack_is_empty
+}
+
+use vitte/compiler/analysis/resolution/scope_resolution.{
+    ScopeResolver,
+    ScopeResolutionState
+}
+
+pick ResolutionValidationSeverity {
+    Note,
+    Warning,
+    Error,
+    Fatal
+}
+
+pick ResolutionValidationKind {
+    InvalidResult,
+    UnresolvedResult,
+
+    MissingDefinition,
+    MissingModule,
+
+    AmbiguousResult,
+    InaccessibleResult,
+
+    InvalidScope,
+    InvalidScopeParent,
+    ScopeCycle,
+
+    ResolverStackNotEmpty,
+    ResolverGraphCycle,
+    ResolverGraphUnresolvedNode,
+
+    ResolverStateIncomplete,
+    ResolverStateFailed,
+
+    GenerationMismatch,
+
+    Internal
+}
+
+form ResolutionValidationIssue {
+    kind: ResolutionValidationKind
+    severity: ResolutionValidationSeverity
+
+    subject: string
+
+    index: usize
+
+    message: string
+}
+
+form ResolutionValidationConfig {
+    allow_missing: bool
+    allow_ambiguous: bool
+    allow_inaccessible: bool
+
+    require_definitions: bool
+    require_modules: bool
+
+    require_empty_stack: bool
+    reject_graph_cycles: bool
+    reject_unresolved_graph_nodes: bool
+
+    require_complete_state: bool
+
+    fail_fast: bool
+}
+
+form ResolutionValidationStatistics {
+    validations: u64
+
+    results_checked: u64
+    scopes_checked: u64
+    graph_nodes_checked: u64
+
+    notes: u64
+    warnings: u64
+    errors: u64
+    fatals: u64
+}
+
+form ResolutionValidationReport {
+    issues: [ResolutionValidationIssue]
+
+    statistics: ResolutionValidationStatistics
+
+    valid: bool
+}
+
+form ResolutionValidator {
+    config: ResolutionValidationConfig
+
+    statistics: ResolutionValidationStatistics
+}
+
+proc resolution_validation_config_default()
+    -> ResolutionValidationConfig
+{
+    give ResolutionValidationConfig {
+        allow_missing: false,
+        allow_ambiguous: false,
+        allow_inaccessible: false,
+
+        require_definitions: true,
+        require_modules: true,
+
+        require_empty_stack: true,
+        reject_graph_cycles: true,
+        reject_unresolved_graph_nodes: true,
+
+        require_complete_state: true,
+
+        fail_fast: false
+    };
+}
+
+proc resolution_validation_statistics_empty()
+    -> ResolutionValidationStatistics
+{
+    give ResolutionValidationStatistics {
+        validations: 0,
+
+        results_checked: 0,
+        scopes_checked: 0,
+        graph_nodes_checked: 0,
+
+        notes: 0,
+        warnings: 0,
+        errors: 0,
+        fatals: 0
+    };
+}
+
+proc resolution_validator_create_with_config(
+    config: ResolutionValidationConfig
+) -> ResolutionValidator {
+    give ResolutionValidator {
+        config: config,
+
+        statistics:
+            resolution_validation_statistics_empty()
+    };
+}
+
+proc resolution_validator_create()
+    -> ResolutionValidator
+{
+    give resolution_validator_create_with_config(
+        resolution_validation_config_default()
+    );
+}
+
+proc resolution_validation_issue(
+    kind: ResolutionValidationKind,
+    severity: ResolutionValidationSeverity,
+    subject: string,
+    index: usize,
+    message: string
+) -> ResolutionValidationIssue {
+    give ResolutionValidationIssue {
+        kind: kind,
+        severity: severity,
+
+        subject: subject,
+
+        index: index,
+
+        message: message
+    };
+}
+
+proc resolution_validation_report_create()
+    -> ResolutionValidationReport
+{
+    give ResolutionValidationReport {
+        issues: [],
+
+        statistics:
+            resolution_validation_statistics_empty(),
+
+        valid: true
+    };
+}
+
+proc resolution_validation_issue_is_error(
+    issue: ResolutionValidationIssue
+) -> bool {
+    give issue.severity
+        == ResolutionValidationSeverity.Error
+        or issue.severity
+        == ResolutionValidationSeverity.Fatal;
+}
+
+proc resolution_validation_report_push(
+    report: ref mut ResolutionValidationReport,
+    issue: ResolutionValidationIssue
+) {
+    set report.issues =
+        report.issues + [issue];
+
+    pick issue.severity {
+        ResolutionValidationSeverity.Note {
+            set report.statistics.notes =
+                report.statistics.notes + 1;
+        }
+
+        ResolutionValidationSeverity.Warning {
+            set report.statistics.warnings =
+                report.statistics.warnings + 1;
+        }
+
+        ResolutionValidationSeverity.Error {
+            set report.statistics.errors =
+                report.statistics.errors + 1;
+
+            set report.valid = false;
+        }
+
+        ResolutionValidationSeverity.Fatal {
+            set report.statistics.fatals =
+                report.statistics.fatals + 1;
+
+            set report.valid = false;
+        }
+    }
+}
+
+proc resolution_validator_should_stop(
+    validator: ref ResolutionValidator,
+    report: ref ResolutionValidationReport
+) -> bool {
+    give validator.config.fail_fast
+        and not report.valid;
+}
+
+proc resolution_validator_validate_result(
+    validator: ref mut ResolutionValidator,
+    result: ResolutionResult,
+    index: usize,
+    report: ref mut ResolutionValidationReport
+) {
+    set validator.statistics.results_checked =
+        validator.statistics.results_checked + 1;
+
+    set report.statistics.results_checked =
+        report.statistics.results_checked + 1;
+
+    pick result.state {
+        ResolutionResultState.Unresolved {
+            resolution_validation_report_push(
+                report,
+                resolution_validation_issue(
+                    ResolutionValidationKind.UnresolvedResult,
+                    ResolutionValidationSeverity.Error,
+                    result.subject,
+                    index,
+                    "resolution result is still unresolved"
+                )
+            );
+
+            give;
+        }
+
+        ResolutionResultState.Resolving {
+            resolution_validation_report_push(
+                report,
+                resolution_validation_issue(
+                    ResolutionValidationKind.UnresolvedResult,
+                    ResolutionValidationSeverity.Error,
+                    result.subject,
+                    index,
+                    "resolution result is still being resolved"
+                )
+            );
+
+            give;
+        }
+
+        ResolutionResultState.Missing {
+            if not validator.config.allow_missing {
+                resolution_validation_report_push(
+                    report,
+                    resolution_validation_issue(
+                        ResolutionValidationKind.InvalidResult,
+                        ResolutionValidationSeverity.Error,
+                        result.subject,
+                        index,
+                        "resolution target is missing"
+                    )
+                );
+            }
+
+            give;
+        }
+
+        ResolutionResultState.Ambiguous {
+            if not validator.config.allow_ambiguous {
+                resolution_validation_report_push(
+                    report,
+                    resolution_validation_issue(
+                        ResolutionValidationKind.AmbiguousResult,
+                        ResolutionValidationSeverity.Error,
+                        result.subject,
+                        index,
+                        "resolution result is ambiguous"
+                    )
+                );
+            }
+
+            give;
+        }
+
+        ResolutionResultState.Inaccessible {
+            if not validator.config.allow_inaccessible {
+                resolution_validation_report_push(
+                    report,
+                    resolution_validation_issue(
+                        ResolutionValidationKind.InaccessibleResult,
+                        ResolutionValidationSeverity.Error,
+                        result.subject,
+                        index,
+                        "resolution target is inaccessible"
+                    )
+                );
+            }
+
+            give;
+        }
+
+        ResolutionResultState.Invalid {
+            resolution_validation_report_push(
+                report,
+                resolution_validation_issue(
+                    ResolutionValidationKind.InvalidResult,
+                    ResolutionValidationSeverity.Error,
+                    result.subject,
+                    index,
+                    "resolution result is invalid"
+                )
+            );
+
+            give;
+        }
+
+        ResolutionResultState.Failed {
+            resolution_validation_report_push(
+                report,
+                resolution_validation_issue(
+                    ResolutionValidationKind.InvalidResult,
+                    ResolutionValidationSeverity.Fatal,
+                    result.subject,
+                    index,
+                    "resolution failed"
+                )
+            );
+
+            give;
+        }
+
+        ResolutionResultState.Resolved {}
+    }
+
+    if not result.valid {
+        resolution_validation_report_push(
+            report,
+            resolution_validation_issue(
+                ResolutionValidationKind.InvalidResult,
+                ResolutionValidationSeverity.Error,
+                result.subject,
+                index,
+                "resolved result is marked invalid"
+            )
+        );
+
+        give;
+    }
+
+    if validator.config.require_definitions {
+        pick result.kind {
+            ResolutionResultKind.Name
+            | ResolutionResultKind.Constant
+            | ResolutionResultKind.Field
+            | ResolutionResultKind.Method
+            | ResolutionResultKind.Generic
+            | ResolutionResultKind.Attribute
+            | ResolutionResultKind.Overload
+            | ResolutionResultKind.Export {
+                if not resolution_result_has_definition(
+                    result
+                ) {
+                    resolution_validation_report_push(
+                        report,
+                        resolution_validation_issue(
+                            ResolutionValidationKind.MissingDefinition,
+                            ResolutionValidationSeverity.Error,
+                            result.subject,
+                            index,
+                            "resolved target has no definition id"
+                        )
+                    );
+                }
+            }
+
+            _ {}
+        }
+    }
+
+    if validator.config.require_modules {
+        if result.kind
+            == ResolutionResultKind.Module
+            and not resolution_result_has_module(
+                result
+            )
+        {
+            resolution_validation_report_push(
+                report,
+                resolution_validation_issue(
+                    ResolutionValidationKind.MissingModule,
+                    ResolutionValidationSeverity.Error,
+                    result.subject,
+                    index,
+                    "resolved module has no module id"
+                )
+            );
+        }
+    }
+}
+
+proc resolution_validator_validate_results(
+    validator: ref mut ResolutionValidator,
+    results: [ResolutionResult],
+    report: ref mut ResolutionValidationReport
+) {
+    let mut index: usize = 0;
+
+    while index < len(results) {
+        resolution_validator_validate_result(
+            validator,
+            results[index],
+            index,
+            report
+        );
+
+        if resolution_validator_should_stop(
+            ref validator,
+            ref report
+        ) {
+            give;
+        }
+
+        set index = index + 1;
+    }
+}
+
+proc resolution_validator_validate_stack(
+    validator: ref mut ResolutionValidator,
+    stack: ref ResolverStack,
+    report: ref mut ResolutionValidationReport
+) {
+    if not validator.config.require_empty_stack {
+        give;
+    }
+
+    if not resolver_stack_is_empty(stack) {
+        resolution_validation_report_push(
+            report,
+            resolution_validation_issue(
+                ResolutionValidationKind.ResolverStackNotEmpty,
+                ResolutionValidationSeverity.Fatal,
+                "",
+                resolver_stack_depth(stack),
+                "resolver stack is not empty after resolution"
+            )
+        );
+    }
+}
+
+proc resolution_validator_validate_graph(
+    validator: ref mut ResolutionValidator,
+    graph: ref ResolverGraph,
+    report: ref mut ResolutionValidationReport
+) {
+    if validator.config.reject_graph_cycles
+        and resolver_graph_has_cycle(graph)
+    {
+        resolution_validation_report_push(
+            report,
+            resolution_validation_issue(
+                ResolutionValidationKind.ResolverGraphCycle,
+                ResolutionValidationSeverity.Fatal,
+                "",
+                0,
+                "resolver dependency graph contains a cycle"
+            )
+        );
+
+        if resolution_validator_should_stop(
+            ref validator,
+            ref report
+        ) {
+            give;
+        }
+    }
+
+    if not validator.config.reject_unresolved_graph_nodes {
+        give;
+    }
+
+    let mut index: usize = 0;
+
+    while index < len(graph.nodes) {
+        let node =
+            graph.nodes[index];
+
+        set validator.statistics.graph_nodes_checked =
+            validator.statistics.graph_nodes_checked + 1;
+
+        set report.statistics.graph_nodes_checked =
+            report.statistics.graph_nodes_checked + 1;
+
+        if node.state
+            == ResolverGraphNodeState.Unresolved
+            or node.state
+            == ResolverGraphNodeState.Resolving
+        {
+            resolution_validation_report_push(
+                report,
+                resolution_validation_issue(
+                    ResolutionValidationKind.ResolverGraphUnresolvedNode,
+                    ResolutionValidationSeverity.Error,
+                    node.name,
+                    index,
+                    "resolver graph contains an unresolved node"
+                )
+            );
+
+            if resolution_validator_should_stop(
+                ref validator,
+                ref report
+            ) {
+                give;
+            }
+        }
+
+        set index = index + 1;
+    }
+}
+
+proc resolution_validator_validate_scopes(
+    validator: ref mut ResolutionValidator,
+    scopes: ref ScopeResolver,
+    report: ref mut ResolutionValidationReport
+) {
+    for scope in scopes.scopes {
+        set validator.statistics.scopes_checked =
+            validator.statistics.scopes_checked + 1;
+
+        set report.statistics.scopes_checked =
+            report.statistics.scopes_checked + 1;
+
+        if scope.state
+            == ScopeResolutionState.Invalidated
+            and not scopes.config.allow_invalidated
+        {
+            resolution_validation_report_push(
+                report,
+                resolution_validation_issue(
+                    ResolutionValidationKind.InvalidScope,
+                    ResolutionValidationSeverity.Error,
+                    "",
+                    scope.depth,
+                    "invalidated scope remains visible after resolution"
+                )
+            );
+
+            if resolution_validator_should_stop(
+                ref validator,
+                ref report
+            ) {
+                give;
+            }
+        }
+
+        pick scope.parent {
+            None {}
+
+            Some(parent) {
+                if not scope_resolver_contains(
+                    scopes,
+                    parent
+                ) {
+                    resolution_validation_report_push(
+                        report,
+                        resolution_validation_issue(
+                            ResolutionValidationKind.InvalidScopeParent,
+                            ResolutionValidationSeverity.Fatal,
+                            "",
+                            scope.depth,
+                            "scope references an unknown parent"
+                        )
+                    );
+
+                    if resolution_validator_should_stop(
+                        ref validator,
+                        ref report
+                    ) {
+                        give;
+                    }
+                }
+
+                if parent == scope.id {
+                    resolution_validation_report_push(
+                        report,
+                        resolution_validation_issue(
+                            ResolutionValidationKind.ScopeCycle,
+                            ResolutionValidationSeverity.Fatal,
+                            "",
+                            scope.depth,
+                            "scope cannot be its own parent"
+                        )
+                    );
+                }
+            }
+        }
+    }
+}
+
+proc resolution_validator_validate_state(
+    validator: ref mut ResolutionValidator,
+    state: ref ResolverState,
+    report: ref mut ResolutionValidationReport
+) {
+    if resolver_state_has_failed(state)
+        or resolver_state_has_fatal_error(state)
+    {
+        resolution_validation_report_push(
+            report,
+            resolution_validation_issue(
+                ResolutionValidationKind.ResolverStateFailed,
+                ResolutionValidationSeverity.Fatal,
+                "",
+                0,
+                "resolver state reports a fatal failure"
+            )
+        );
+
+        give;
+    }
+
+    if validator.config.require_complete_state
+        and not resolver_state_is_complete(state)
+    {
+        resolution_validation_report_push(
+            report,
+            resolution_validation_issue(
+                ResolutionValidationKind.ResolverStateIncomplete,
+                ResolutionValidationSeverity.Error,
+                "",
+                0,
+                "resolver state is not complete"
+            )
+        );
+    }
+}
+
+proc resolution_validator_validate_generation(
+    expected: u64,
+    result: ResolutionResult,
+    index: usize,
+    report: ref mut ResolutionValidationReport
+) {
+    if result.generation == 0 {
+        give;
+    }
+
+    if result.generation != expected {
+        resolution_validation_report_push(
+            report,
+            resolution_validation_issue(
+                ResolutionValidationKind.GenerationMismatch,
+                ResolutionValidationSeverity.Error,
+                result.subject,
+                index,
+                "resolution result belongs to another generation"
+            )
+        );
+    }
+}
+
+proc resolution_validator_validate_generations(
+    expected: u64,
+    results: [ResolutionResult],
+    report: ref mut ResolutionValidationReport
+) {
+    let mut index: usize = 0;
+
+    while index < len(results) {
+        resolution_validator_validate_generation(
+            expected,
+            results[index],
+            index,
+            report
+        );
+
+        set index = index + 1;
+    }
+}
+
+proc resolution_validator_validate_all(
+    validator: ref mut ResolutionValidator,
+    state: ref ResolverState,
+    scopes: ref ScopeResolver,
+    results: [ResolutionResult]
+) -> ResolutionValidationReport {
+    let mut report =
+        resolution_validation_report_create();
+
+    set validator.statistics.validations =
+        validator.statistics.validations + 1;
+
+    set report.statistics.validations =
+        report.statistics.validations + 1;
+
+    resolution_validator_validate_state(
+        validator,
+        state,
+        ref mut report
+    );
+
+    if resolution_validator_should_stop(
+        ref validator,
+        ref report
+    ) {
+        give report;
+    }
+
+    resolution_validator_validate_stack(
+        validator,
+        ref state.stack,
+        ref mut report
+    );
+
+    if resolution_validator_should_stop(
+        ref validator,
+        ref report
+    ) {
+        give report;
+    }
+
+    resolution_validator_validate_graph(
+        validator,
+        ref state.graph,
+        ref mut report
+    );
+
+    if resolution_validator_should_stop(
+        ref validator,
+        ref report
+    ) {
+        give report;
+    }
+
+    resolution_validator_validate_scopes(
+        validator,
+        scopes,
+        ref mut report
+    );
+
+    if resolution_validator_should_stop(
+        ref validator,
+        ref report
+    ) {
+        give report;
+    }
+
+    resolution_validator_validate_results(
+        validator,
+        results,
+        ref mut report
+    );
+
+    resolution_validator_validate_generations(
+        state.generation,
+        results,
+        ref mut report
+    );
+
+    give report;
+}
+
+proc resolution_validation_report_is_valid(
+    report: ref ResolutionValidationReport
+) -> bool {
+    give report.valid
+        and report.statistics.errors == 0
+        and report.statistics.fatals == 0;
+}
+
+proc resolution_validation_report_has_errors(
+    report: ref ResolutionValidationReport
+) -> bool {
+    give report.statistics.errors > 0
+        or report.statistics.fatals > 0;
+}
+
+proc resolution_validation_report_issue_count(
+    report: ref ResolutionValidationReport
+) -> usize {
+    give len(report.issues);
+}
+
+proc resolution_validator_statistics(
+    validator: ref ResolutionValidator
+) -> ResolutionValidationStatistics {
+    give validator.statistics;
+}
+
+proc resolution_validator_reset_statistics(
+    validator: ref mut ResolutionValidator
+) {
+    set validator.statistics =
+        resolution_validation_statistics_empty();
+}
+
+proc resolution_validation_kind_name(
+    kind: ResolutionValidationKind
+) -> string {
+    pick kind {
+        ResolutionValidationKind.InvalidResult {
+            give "invalid-result";
+        }
+
+        ResolutionValidationKind.UnresolvedResult {
+            give "unresolved-result";
+        }
+
+        ResolutionValidationKind.MissingDefinition {
+            give "missing-definition";
+        }
+
+        ResolutionValidationKind.MissingModule {
+            give "missing-module";
+        }
+
+        ResolutionValidationKind.AmbiguousResult {
+            give "ambiguous-result";
+        }
+
+        ResolutionValidationKind.InaccessibleResult {
+            give "inaccessible-result";
+        }
+
+        ResolutionValidationKind.InvalidScope {
+            give "invalid-scope";
+        }
+
+        ResolutionValidationKind.InvalidScopeParent {
+            give "invalid-scope-parent";
+        }
+
+        ResolutionValidationKind.ScopeCycle {
+            give "scope-cycle";
+        }
+
+        ResolutionValidationKind.ResolverStackNotEmpty {
+            give "resolver-stack-not-empty";
+        }
+
+        ResolutionValidationKind.ResolverGraphCycle {
+            give "resolver-graph-cycle";
+        }
+
+        ResolutionValidationKind.ResolverGraphUnresolvedNode {
+            give "resolver-graph-unresolved-node";
+        }
+
+        ResolutionValidationKind.ResolverStateIncomplete {
+            give "resolver-state-incomplete";
+        }
+
+        ResolutionValidationKind.ResolverStateFailed {
+            give "resolver-state-failed";
+        }
+
+        ResolutionValidationKind.GenerationMismatch {
+            give "generation-mismatch";
+        }
+
+        ResolutionValidationKind.Internal {
+            give "internal";
+        }
+    }
+
+    give "internal";
+}
+
+proc resolution_validation_severity_name(
+    severity: ResolutionValidationSeverity
+) -> string {
+    pick severity {
+        ResolutionValidationSeverity.Note {
+            give "note";
+        }
+
+        ResolutionValidationSeverity.Warning {
+            give "warning";
+        }
+
+        ResolutionValidationSeverity.Error {
+            give "error";
+        }
+
+        ResolutionValidationSeverity.Fatal {
+            give "fatal";
+        }
+    }
+
+    give "error";
+}

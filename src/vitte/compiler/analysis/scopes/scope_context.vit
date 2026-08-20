@@ -1,0 +1,702 @@
+space vitte/compiler/analysis/scopes/scope_context
+
+export *
+
+pick ScopeContextState {
+    Created,
+    Active,
+    Suspended,
+    Complete,
+    Failed
+}
+
+pick ScopeContextOwnerKind {
+    None,
+    Module,
+    Procedure,
+    Method,
+    Type,
+    Trait,
+    Impl,
+    Block,
+    Loop,
+    MatchArm,
+    Comptime
+}
+
+form ScopeContextFrame {
+    scope: ScopeId
+
+    owner: Option<DefId>
+    owner_kind: ScopeContextOwnerKind
+
+    node: Option<HirId>
+    type_id: Option<TypeId>
+
+    depth: usize
+}
+
+form ScopeContextStatistics {
+    pushes: u64
+    pops: u64
+
+    scope_changes: u64
+    owner_changes: u64
+
+    maximum_depth: usize
+}
+
+form ScopeContext {
+    state: ScopeContextState
+
+    current_scope: Option<ScopeId>
+    root_scope: Option<ScopeId>
+
+    current_owner: Option<DefId>
+    current_owner_kind: ScopeContextOwnerKind
+
+    current_node: Option<HirId>
+    current_type: Option<TypeId>
+
+    frames: [ScopeContextFrame]
+
+    generation: u64
+    revision: u64
+
+    statistics: ScopeContextStatistics
+}
+
+proc scope_context_statistics_empty()
+    -> ScopeContextStatistics
+{
+    give ScopeContextStatistics {
+        pushes: 0,
+        pops: 0,
+
+        scope_changes: 0,
+        owner_changes: 0,
+
+        maximum_depth: 0
+    };
+}
+
+proc scope_context_create()
+    -> ScopeContext
+{
+    give ScopeContext {
+        state:
+            ScopeContextState.Created,
+
+        current_scope:
+            None,
+
+        root_scope:
+            None,
+
+        current_owner:
+            None,
+
+        current_owner_kind:
+            ScopeContextOwnerKind.None,
+
+        current_node:
+            None,
+
+        current_type:
+            None,
+
+        frames:
+            [],
+
+        generation:
+            1,
+
+        revision:
+            1,
+
+        statistics:
+            scope_context_statistics_empty()
+    };
+}
+
+proc scope_context_frame(
+    scope: ScopeId,
+    owner: Option<DefId>,
+    owner_kind: ScopeContextOwnerKind,
+    node: Option<HirId>,
+    type_id: Option<TypeId>,
+    depth: usize
+) -> ScopeContextFrame {
+    give ScopeContextFrame {
+        scope: scope,
+
+        owner: owner,
+        owner_kind: owner_kind,
+
+        node: node,
+        type_id: type_id,
+
+        depth: depth
+    };
+}
+
+proc scope_context_activate(
+    context: ref mut ScopeContext
+) {
+    set context.state =
+        ScopeContextState.Active;
+
+    set context.revision =
+        context.revision + 1;
+}
+
+proc scope_context_suspend(
+    context: ref mut ScopeContext
+) {
+    if context.state
+        != ScopeContextState.Active
+    {
+        give;
+    }
+
+    set context.state =
+        ScopeContextState.Suspended;
+
+    set context.revision =
+        context.revision + 1;
+}
+
+proc scope_context_resume(
+    context: ref mut ScopeContext
+) {
+    if context.state
+        != ScopeContextState.Suspended
+    {
+        give;
+    }
+
+    set context.state =
+        ScopeContextState.Active;
+
+    set context.revision =
+        context.revision + 1;
+}
+
+proc scope_context_complete(
+    context: ref mut ScopeContext
+) {
+    set context.state =
+        ScopeContextState.Complete;
+
+    set context.revision =
+        context.revision + 1;
+}
+
+proc scope_context_fail(
+    context: ref mut ScopeContext
+) {
+    set context.state =
+        ScopeContextState.Failed;
+
+    set context.revision =
+        context.revision + 1;
+}
+
+proc scope_context_depth(
+    context: ref ScopeContext
+) -> usize {
+    give len(context.frames);
+}
+
+proc scope_context_is_empty(
+    context: ref ScopeContext
+) -> bool {
+    give len(context.frames) == 0;
+}
+
+proc scope_context_has_scope(
+    context: ref ScopeContext
+) -> bool {
+    pick context.current_scope {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_context_has_owner(
+    context: ref ScopeContext
+) -> bool {
+    pick context.current_owner {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_context_set_root(
+    context: ref mut ScopeContext,
+    scope: ScopeId
+) {
+    set context.root_scope =
+        Some(scope);
+
+    set context.current_scope =
+        Some(scope);
+
+    set context.statistics.scope_changes =
+        context.statistics.scope_changes + 1;
+
+    set context.revision =
+        context.revision + 1;
+}
+
+proc scope_context_set_scope(
+    context: ref mut ScopeContext,
+    scope: ScopeId
+) {
+    set context.current_scope =
+        Some(scope);
+
+    set context.statistics.scope_changes =
+        context.statistics.scope_changes + 1;
+
+    set context.revision =
+        context.revision + 1;
+}
+
+proc scope_context_clear_scope(
+    context: ref mut ScopeContext
+) {
+    set context.current_scope =
+        None;
+
+    set context.revision =
+        context.revision + 1;
+}
+
+proc scope_context_set_owner(
+    context: ref mut ScopeContext,
+    owner: DefId,
+    kind: ScopeContextOwnerKind
+) {
+    set context.current_owner =
+        Some(owner);
+
+    set context.current_owner_kind =
+        kind;
+
+    set context.statistics.owner_changes =
+        context.statistics.owner_changes + 1;
+
+    set context.revision =
+        context.revision + 1;
+}
+
+proc scope_context_clear_owner(
+    context: ref mut ScopeContext
+) {
+    set context.current_owner =
+        None;
+
+    set context.current_owner_kind =
+        ScopeContextOwnerKind.None;
+
+    set context.revision =
+        context.revision + 1;
+}
+
+proc scope_context_set_node(
+    context: ref mut ScopeContext,
+    node: HirId
+) {
+    set context.current_node =
+        Some(node);
+
+    set context.revision =
+        context.revision + 1;
+}
+
+proc scope_context_clear_node(
+    context: ref mut ScopeContext
+) {
+    set context.current_node =
+        None;
+
+    set context.revision =
+        context.revision + 1;
+}
+
+proc scope_context_set_type(
+    context: ref mut ScopeContext,
+    type_id: TypeId
+) {
+    set context.current_type =
+        Some(type_id);
+
+    set context.revision =
+        context.revision + 1;
+}
+
+proc scope_context_clear_type(
+    context: ref mut ScopeContext
+) {
+    set context.current_type =
+        None;
+
+    set context.revision =
+        context.revision + 1;
+}
+
+proc scope_context_push(
+    context: ref mut ScopeContext,
+    scope: ScopeId
+) {
+    let frame =
+        scope_context_frame(
+            scope,
+            context.current_owner,
+            context.current_owner_kind,
+            context.current_node,
+            context.current_type,
+            len(context.frames)
+        );
+
+    set context.frames =
+        context.frames + [frame];
+
+    set context.current_scope =
+        Some(scope);
+
+    set context.statistics.pushes =
+        context.statistics.pushes + 1;
+
+    set context.statistics.scope_changes =
+        context.statistics.scope_changes + 1;
+
+    if len(context.frames)
+        > context.statistics.maximum_depth
+    {
+        set context.statistics.maximum_depth =
+            len(context.frames);
+    }
+
+    set context.revision =
+        context.revision + 1;
+}
+
+proc scope_context_push_with_owner(
+    context: ref mut ScopeContext,
+    scope: ScopeId,
+    owner: DefId,
+    kind: ScopeContextOwnerKind
+) {
+    set context.current_owner =
+        Some(owner);
+
+    set context.current_owner_kind =
+        kind;
+
+    scope_context_push(
+        context,
+        scope
+    );
+
+    set context.statistics.owner_changes =
+        context.statistics.owner_changes + 1;
+}
+
+proc scope_context_pop(
+    context: ref mut ScopeContext
+) -> Option<ScopeContextFrame> {
+    if len(context.frames) == 0 {
+        give None;
+    }
+
+    let index =
+        len(context.frames) - 1;
+
+    let frame =
+        context.frames[index];
+
+    let mut output:
+        [ScopeContextFrame] = [];
+
+    let mut current: usize = 0;
+
+    while current < index {
+        set output =
+            output + [
+                context.frames[current]
+            ];
+
+        set current =
+            current + 1;
+    }
+
+    set context.frames =
+        output;
+
+    set context.statistics.pops =
+        context.statistics.pops + 1;
+
+    if len(context.frames) == 0 {
+        set context.current_scope =
+            context.root_scope;
+
+        set context.current_owner =
+            None;
+
+        set context.current_owner_kind =
+            ScopeContextOwnerKind.None;
+
+        set context.current_node =
+            None;
+
+        set context.current_type =
+            None;
+    } else {
+        let parent =
+            context.frames[
+                len(context.frames) - 1
+            ];
+
+        set context.current_scope =
+            Some(parent.scope);
+
+        set context.current_owner =
+            parent.owner;
+
+        set context.current_owner_kind =
+            parent.owner_kind;
+
+        set context.current_node =
+            parent.node;
+
+        set context.current_type =
+            parent.type_id;
+    }
+
+    set context.revision =
+        context.revision + 1;
+
+    give Some(frame);
+}
+
+proc scope_context_top(
+    context: ref ScopeContext
+) -> Option<ScopeContextFrame> {
+    if len(context.frames) == 0 {
+        give None;
+    }
+
+    give Some(
+        context.frames[
+            len(context.frames) - 1
+        ]
+    );
+}
+
+proc scope_context_parent(
+    context: ref ScopeContext
+) -> Option<ScopeContextFrame> {
+    if len(context.frames) < 2 {
+        give None;
+    }
+
+    give Some(
+        context.frames[
+            len(context.frames) - 2
+        ]
+    );
+}
+
+proc scope_context_current_scope(
+    context: ref ScopeContext
+) -> Option<ScopeId> {
+    give context.current_scope;
+}
+
+proc scope_context_current_owner(
+    context: ref ScopeContext
+) -> Option<DefId> {
+    give context.current_owner;
+}
+
+proc scope_context_current_node(
+    context: ref ScopeContext
+) -> Option<HirId> {
+    give context.current_node;
+}
+
+proc scope_context_current_type(
+    context: ref ScopeContext
+) -> Option<TypeId> {
+    give context.current_type;
+}
+
+proc scope_context_advance_generation(
+    context: ref mut ScopeContext
+) -> u64 {
+    set context.generation =
+        context.generation + 1;
+
+    set context.revision =
+        context.revision + 1;
+
+    give context.generation;
+}
+
+proc scope_context_reset(
+    context: ref mut ScopeContext
+) {
+    set context.state =
+        ScopeContextState.Created;
+
+    set context.current_scope =
+        None;
+
+    set context.root_scope =
+        None;
+
+    set context.current_owner =
+        None;
+
+    set context.current_owner_kind =
+        ScopeContextOwnerKind.None;
+
+    set context.current_node =
+        None;
+
+    set context.current_type =
+        None;
+
+    set context.frames =
+        [];
+
+    set context.generation =
+        context.generation + 1;
+
+    set context.revision =
+        context.revision + 1;
+}
+
+proc scope_context_statistics(
+    context: ref ScopeContext
+) -> ScopeContextStatistics {
+    give context.statistics;
+}
+
+proc scope_context_reset_statistics(
+    context: ref mut ScopeContext
+) {
+    set context.statistics =
+        scope_context_statistics_empty();
+}
+
+proc scope_context_state_name(
+    state: ScopeContextState
+) -> string {
+    pick state {
+        ScopeContextState.Created {
+            give "created";
+        }
+
+        ScopeContextState.Active {
+            give "active";
+        }
+
+        ScopeContextState.Suspended {
+            give "suspended";
+        }
+
+        ScopeContextState.Complete {
+            give "complete";
+        }
+
+        ScopeContextState.Failed {
+            give "failed";
+        }
+    }
+
+    give "failed";
+}
+
+proc scope_context_owner_kind_name(
+    kind: ScopeContextOwnerKind
+) -> string {
+    pick kind {
+        ScopeContextOwnerKind.None {
+            give "none";
+        }
+
+        ScopeContextOwnerKind.Module {
+            give "module";
+        }
+
+        ScopeContextOwnerKind.Procedure {
+            give "procedure";
+        }
+
+        ScopeContextOwnerKind.Method {
+            give "method";
+        }
+
+        ScopeContextOwnerKind.Type {
+            give "type";
+        }
+
+        ScopeContextOwnerKind.Trait {
+            give "trait";
+        }
+
+        ScopeContextOwnerKind.Impl {
+            give "impl";
+        }
+
+        ScopeContextOwnerKind.Block {
+            give "block";
+        }
+
+        ScopeContextOwnerKind.Loop {
+            give "loop";
+        }
+
+        ScopeContextOwnerKind.MatchArm {
+            give "match-arm";
+        }
+
+        ScopeContextOwnerKind.Comptime {
+            give "comptime";
+        }
+    }
+
+    give "none";
+}
+
+// HIR traversal
+//     |
+//     +-- ScopeBuilder creates ScopeId
+//     |
+//     +-- ScopeContext enters ScopeId
+//     |       |
+//     |       +-- current owner
+//     |       +-- current HIR node
+//     |       +-- current TypeId
+//     |
+//     +-- nested block
+//     |       |
+//     |       +-- push frame
+//     |
+//     +-- leave block
+//             |
+//             +-- pop frame
+//             +-- restore parent context

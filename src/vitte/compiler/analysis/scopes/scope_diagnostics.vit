@@ -1,0 +1,847 @@
+space vitte/compiler/analysis/scopes/scope_diagnostics
+
+export *
+
+use vitte/compiler/analysis/scopes/scope_binding.{
+    ScopeBindingError,
+    ScopeBindingErrorKind
+}
+
+use vitte/compiler/analysis/scopes/scope_builder.{
+    ScopeBuilderError,
+    ScopeBuilderErrorKind
+}
+
+pick ScopeDiagnosticLevel {
+    Note,
+    Warning,
+    Error,
+    Fatal
+}
+
+pick ScopeDiagnosticCode {
+    DuplicateBinding,
+    EmptyBindingName,
+
+    InvalidScope,
+    InvalidParent,
+    DuplicateScope,
+
+    ScopeDepthLimit,
+    ScopeStackUnderflow,
+
+    InvalidBuilderState,
+
+    ScopeCycle,
+
+    InvalidBinding,
+    InvalidDefinition,
+
+    Internal
+}
+
+form ScopeDiagnosticLabel {
+    message: string
+
+    span: Option<Span>
+
+    primary: bool
+}
+
+form ScopeDiagnosticFix {
+    message: string
+
+    replacement: string
+
+    span: Option<Span>
+}
+
+form ScopeDiagnostic {
+    code: ScopeDiagnosticCode
+    level: ScopeDiagnosticLevel
+
+    message: string
+
+    scope: Option<ScopeId>
+    parent: Option<ScopeId>
+
+    name: string
+
+    span: Option<Span>
+
+    labels: [ScopeDiagnosticLabel]
+
+    notes: [string]
+    help: [string]
+
+    fixes: [ScopeDiagnosticFix]
+}
+
+form ScopeDiagnosticStatistics {
+    emitted: u64
+
+    notes: u64
+    warnings: u64
+    errors: u64
+    fatals: u64
+}
+
+form ScopeDiagnostics {
+    diagnostics: [ScopeDiagnostic]
+
+    statistics: ScopeDiagnosticStatistics
+}
+
+proc scope_diagnostic_statistics_empty()
+    -> ScopeDiagnosticStatistics
+{
+    give ScopeDiagnosticStatistics {
+        emitted: 0,
+
+        notes: 0,
+        warnings: 0,
+        errors: 0,
+        fatals: 0
+    };
+}
+
+proc scope_diagnostics_create()
+    -> ScopeDiagnostics
+{
+    give ScopeDiagnostics {
+        diagnostics: [],
+
+        statistics:
+            scope_diagnostic_statistics_empty()
+    };
+}
+
+proc scope_diagnostic(
+    code: ScopeDiagnosticCode,
+    level: ScopeDiagnosticLevel,
+    message: string
+) -> ScopeDiagnostic {
+    give ScopeDiagnostic {
+        code: code,
+        level: level,
+
+        message: message,
+
+        scope: None,
+        parent: None,
+
+        name: "",
+
+        span: None,
+
+        labels: [],
+
+        notes: [],
+        help: [],
+
+        fixes: []
+    };
+}
+
+proc scope_diagnostic_with_scope(
+    diagnostic: ScopeDiagnostic,
+    scope: ScopeId
+) -> ScopeDiagnostic {
+    let mut result =
+        diagnostic;
+
+    set result.scope =
+        Some(scope);
+
+    give result;
+}
+
+proc scope_diagnostic_with_parent(
+    diagnostic: ScopeDiagnostic,
+    parent: ScopeId
+) -> ScopeDiagnostic {
+    let mut result =
+        diagnostic;
+
+    set result.parent =
+        Some(parent);
+
+    give result;
+}
+
+proc scope_diagnostic_with_name(
+    diagnostic: ScopeDiagnostic,
+    name: string
+) -> ScopeDiagnostic {
+    let mut result =
+        diagnostic;
+
+    set result.name =
+        name;
+
+    give result;
+}
+
+proc scope_diagnostic_with_span(
+    diagnostic: ScopeDiagnostic,
+    span: Span
+) -> ScopeDiagnostic {
+    let mut result =
+        diagnostic;
+
+    set result.span =
+        Some(span);
+
+    give result;
+}
+
+proc scope_diagnostic_add_label(
+    diagnostic: ScopeDiagnostic,
+    message: string,
+    span: Option<Span>,
+    primary: bool
+) -> ScopeDiagnostic {
+    let mut result =
+        diagnostic;
+
+    set result.labels =
+        result.labels + [
+            ScopeDiagnosticLabel {
+                message: message,
+
+                span: span,
+
+                primary: primary
+            }
+        ];
+
+    give result;
+}
+
+proc scope_diagnostic_add_note(
+    diagnostic: ScopeDiagnostic,
+    note: string
+) -> ScopeDiagnostic {
+    let mut result =
+        diagnostic;
+
+    set result.notes =
+        result.notes + [note];
+
+    give result;
+}
+
+proc scope_diagnostic_add_help(
+    diagnostic: ScopeDiagnostic,
+    help: string
+) -> ScopeDiagnostic {
+    let mut result =
+        diagnostic;
+
+    set result.help =
+        result.help + [help];
+
+    give result;
+}
+
+proc scope_diagnostic_add_fix(
+    diagnostic: ScopeDiagnostic,
+    message: string,
+    replacement: string,
+    span: Option<Span>
+) -> ScopeDiagnostic {
+    let mut result =
+        diagnostic;
+
+    set result.fixes =
+        result.fixes + [
+            ScopeDiagnosticFix {
+                message: message,
+
+                replacement: replacement,
+
+                span: span
+            }
+        ];
+
+    give result;
+}
+
+proc scope_diagnostics_emit(
+    diagnostics: ref mut ScopeDiagnostics,
+    diagnostic: ScopeDiagnostic
+) {
+    set diagnostics.diagnostics =
+        diagnostics.diagnostics
+        + [diagnostic];
+
+    set diagnostics.statistics.emitted =
+        diagnostics.statistics.emitted + 1;
+
+    pick diagnostic.level {
+        ScopeDiagnosticLevel.Note {
+            set diagnostics.statistics.notes =
+                diagnostics.statistics.notes + 1;
+        }
+
+        ScopeDiagnosticLevel.Warning {
+            set diagnostics.statistics.warnings =
+                diagnostics.statistics.warnings + 1;
+        }
+
+        ScopeDiagnosticLevel.Error {
+            set diagnostics.statistics.errors =
+                diagnostics.statistics.errors + 1;
+        }
+
+        ScopeDiagnosticLevel.Fatal {
+            set diagnostics.statistics.fatals =
+                diagnostics.statistics.fatals + 1;
+        }
+    }
+}
+
+proc scope_diagnostic_from_binding_error(
+    error: ScopeBindingError
+) -> ScopeDiagnostic {
+    let diagnostic =
+        pick error.kind {
+            ScopeBindingErrorKind.None {
+                scope_diagnostic(
+                    ScopeDiagnosticCode.Internal,
+                    ScopeDiagnosticLevel.Note,
+                    "no scope binding error"
+                )
+            }
+
+            ScopeBindingErrorKind.EmptyName {
+                scope_diagnostic(
+                    ScopeDiagnosticCode.EmptyBindingName,
+                    ScopeDiagnosticLevel.Error,
+                    "scope binding name cannot be empty"
+                )
+            }
+
+            ScopeBindingErrorKind.InvalidScope {
+                scope_diagnostic(
+                    ScopeDiagnosticCode.InvalidScope,
+                    ScopeDiagnosticLevel.Error,
+                    "binding refers to an invalid scope"
+                )
+            }
+
+            ScopeBindingErrorKind.InvalidDefinition {
+                scope_diagnostic(
+                    ScopeDiagnosticCode.InvalidDefinition,
+                    ScopeDiagnosticLevel.Error,
+                    "binding refers to an invalid definition"
+                )
+            }
+
+            ScopeBindingErrorKind.DuplicateBinding {
+                scope_diagnostic(
+                    ScopeDiagnosticCode.DuplicateBinding,
+                    ScopeDiagnosticLevel.Error,
+                    "name is already bound in this scope"
+                )
+            }
+
+            ScopeBindingErrorKind.BindingNotFound {
+                scope_diagnostic(
+                    ScopeDiagnosticCode.InvalidBinding,
+                    ScopeDiagnosticLevel.Error,
+                    "scope binding was not found"
+                )
+            }
+
+            ScopeBindingErrorKind.InvalidState {
+                scope_diagnostic(
+                    ScopeDiagnosticCode.InvalidBinding,
+                    ScopeDiagnosticLevel.Error,
+                    "scope binding is in an invalid state"
+                )
+            }
+        };
+
+    let mut result =
+        scope_diagnostic_with_scope(
+            diagnostic,
+            error.scope
+        );
+
+    set result =
+        scope_diagnostic_with_name(
+            result,
+            error.name
+        );
+
+    if error.message != "" {
+        set result =
+            scope_diagnostic_add_note(
+                result,
+                error.message
+            );
+    }
+
+    if error.kind
+        == ScopeBindingErrorKind.DuplicateBinding
+    {
+        set result =
+            scope_diagnostic_add_help(
+                result,
+                "rename the declaration or remove the duplicate binding"
+            );
+    }
+
+    give result;
+}
+
+proc scope_diagnostic_from_builder_error(
+    error: ScopeBuilderError
+) -> ScopeDiagnostic {
+    let diagnostic =
+        pick error.kind {
+            ScopeBuilderErrorKind.None {
+                scope_diagnostic(
+                    ScopeDiagnosticCode.Internal,
+                    ScopeDiagnosticLevel.Note,
+                    "no scope builder error"
+                )
+            }
+
+            ScopeBuilderErrorKind.InvalidScope {
+                scope_diagnostic(
+                    ScopeDiagnosticCode.InvalidScope,
+                    ScopeDiagnosticLevel.Error,
+                    "scope builder references an invalid scope"
+                )
+            }
+
+            ScopeBuilderErrorKind.InvalidParent {
+                scope_diagnostic(
+                    ScopeDiagnosticCode.InvalidParent,
+                    ScopeDiagnosticLevel.Error,
+                    "scope parent is invalid"
+                )
+            }
+
+            ScopeBuilderErrorKind.DuplicateScope {
+                scope_diagnostic(
+                    ScopeDiagnosticCode.DuplicateScope,
+                    ScopeDiagnosticLevel.Error,
+                    "scope has already been registered"
+                )
+            }
+
+            ScopeBuilderErrorKind.DuplicateBinding {
+                scope_diagnostic(
+                    ScopeDiagnosticCode.DuplicateBinding,
+                    ScopeDiagnosticLevel.Error,
+                    "duplicate binding detected while building scope"
+                )
+            }
+
+            ScopeBuilderErrorKind.EmptyStack {
+                scope_diagnostic(
+                    ScopeDiagnosticCode.ScopeStackUnderflow,
+                    ScopeDiagnosticLevel.Fatal,
+                    "scope stack is empty"
+                )
+            }
+
+            ScopeBuilderErrorKind.DepthLimit {
+                scope_diagnostic(
+                    ScopeDiagnosticCode.ScopeDepthLimit,
+                    ScopeDiagnosticLevel.Error,
+                    "maximum scope nesting depth exceeded"
+                )
+            }
+
+            ScopeBuilderErrorKind.InvalidState {
+                scope_diagnostic(
+                    ScopeDiagnosticCode.InvalidBuilderState,
+                    ScopeDiagnosticLevel.Fatal,
+                    "scope builder is in an invalid state"
+                )
+            }
+
+            ScopeBuilderErrorKind.Internal {
+                scope_diagnostic(
+                    ScopeDiagnosticCode.Internal,
+                    ScopeDiagnosticLevel.Fatal,
+                    "internal scope builder failure"
+                )
+            }
+        };
+
+    let mut result =
+        diagnostic;
+
+    pick error.scope {
+        Some(scope) {
+            set result =
+                scope_diagnostic_with_scope(
+                    result,
+                    scope
+                );
+        }
+
+        None {}
+    }
+
+    pick error.parent {
+        Some(parent) {
+            set result =
+                scope_diagnostic_with_parent(
+                    result,
+                    parent
+                );
+        }
+
+        None {}
+    }
+
+    if error.name != "" {
+        set result =
+            scope_diagnostic_with_name(
+                result,
+                error.name
+            );
+    }
+
+    if error.message != "" {
+        set result =
+            scope_diagnostic_add_note(
+                result,
+                error.message
+            );
+    }
+
+    give result;
+}
+
+proc scope_diagnostics_emit_binding_error(
+    diagnostics: ref mut ScopeDiagnostics,
+    error: ScopeBindingError
+) {
+    if error.kind
+        == ScopeBindingErrorKind.None
+    {
+        give;
+    }
+
+    scope_diagnostics_emit(
+        diagnostics,
+        scope_diagnostic_from_binding_error(
+            error
+        )
+    );
+}
+
+proc scope_diagnostics_emit_builder_error(
+    diagnostics: ref mut ScopeDiagnostics,
+    error: ScopeBuilderError
+) {
+    if error.kind
+        == ScopeBuilderErrorKind.None
+    {
+        give;
+    }
+
+    scope_diagnostics_emit(
+        diagnostics,
+        scope_diagnostic_from_builder_error(
+            error
+        )
+    );
+}
+
+proc scope_diagnostics_duplicate_binding(
+    diagnostics: ref mut ScopeDiagnostics,
+    scope: ScopeId,
+    name: string,
+    span: Option<Span>
+) {
+    let mut diagnostic =
+        scope_diagnostic(
+            ScopeDiagnosticCode.DuplicateBinding,
+            ScopeDiagnosticLevel.Error,
+            "name is already declared in this scope"
+        );
+
+    set diagnostic =
+        scope_diagnostic_with_scope(
+            diagnostic,
+            scope
+        );
+
+    set diagnostic =
+        scope_diagnostic_with_name(
+            diagnostic,
+            name
+        );
+
+    pick span {
+        Some(value) {
+            set diagnostic =
+                scope_diagnostic_with_span(
+                    diagnostic,
+                    value
+                );
+
+            set diagnostic =
+                scope_diagnostic_add_label(
+                    diagnostic,
+                    "duplicate declaration",
+                    Some(value),
+                    true
+                );
+        }
+
+        None {}
+    }
+
+    set diagnostic =
+        scope_diagnostic_add_help(
+            diagnostic,
+            "choose another name or remove the previous declaration"
+        );
+
+    scope_diagnostics_emit(
+        diagnostics,
+        diagnostic
+    );
+}
+
+proc scope_diagnostics_invalid_parent(
+    diagnostics: ref mut ScopeDiagnostics,
+    scope: ScopeId,
+    parent: ScopeId
+) {
+    let mut diagnostic =
+        scope_diagnostic(
+            ScopeDiagnosticCode.InvalidParent,
+            ScopeDiagnosticLevel.Fatal,
+            "scope references an invalid parent"
+        );
+
+    set diagnostic =
+        scope_diagnostic_with_scope(
+            diagnostic,
+            scope
+        );
+
+    set diagnostic =
+        scope_diagnostic_with_parent(
+            diagnostic,
+            parent
+        );
+
+    scope_diagnostics_emit(
+        diagnostics,
+        diagnostic
+    );
+}
+
+proc scope_diagnostics_cycle(
+    diagnostics: ref mut ScopeDiagnostics,
+    scope: ScopeId
+) {
+    let mut diagnostic =
+        scope_diagnostic(
+            ScopeDiagnosticCode.ScopeCycle,
+            ScopeDiagnosticLevel.Fatal,
+            "scope hierarchy contains a cycle"
+        );
+
+    set diagnostic =
+        scope_diagnostic_with_scope(
+            diagnostic,
+            scope
+        );
+
+    set diagnostic =
+        scope_diagnostic_add_note(
+            diagnostic,
+            "a scope cannot be an ancestor of itself"
+        );
+
+    scope_diagnostics_emit(
+        diagnostics,
+        diagnostic
+    );
+}
+
+proc scope_diagnostics_depth_limit(
+    diagnostics: ref mut ScopeDiagnostics,
+    scope: Option<ScopeId>
+) {
+    let mut diagnostic =
+        scope_diagnostic(
+            ScopeDiagnosticCode.ScopeDepthLimit,
+            ScopeDiagnosticLevel.Error,
+            "scope nesting depth limit exceeded"
+        );
+
+    pick scope {
+        Some(value) {
+            set diagnostic =
+                scope_diagnostic_with_scope(
+                    diagnostic,
+                    value
+                );
+        }
+
+        None {}
+    }
+
+    set diagnostic =
+        scope_diagnostic_add_help(
+            diagnostic,
+            "reduce deeply nested lexical blocks"
+        );
+
+    scope_diagnostics_emit(
+        diagnostics,
+        diagnostic
+    );
+}
+
+proc scope_diagnostics_has_errors(
+    diagnostics: ref ScopeDiagnostics
+) -> bool {
+    give diagnostics.statistics.errors > 0
+        or diagnostics.statistics.fatals > 0;
+}
+
+proc scope_diagnostics_has_fatal(
+    diagnostics: ref ScopeDiagnostics
+) -> bool {
+    give diagnostics.statistics.fatals > 0;
+}
+
+proc scope_diagnostics_count(
+    diagnostics: ref ScopeDiagnostics
+) -> usize {
+    give len(diagnostics.diagnostics);
+}
+
+proc scope_diagnostics_clear(
+    diagnostics: ref mut ScopeDiagnostics
+) {
+    set diagnostics.diagnostics = [];
+}
+
+proc scope_diagnostics_statistics(
+    diagnostics: ref ScopeDiagnostics
+) -> ScopeDiagnosticStatistics {
+    give diagnostics.statistics;
+}
+
+proc scope_diagnostics_reset_statistics(
+    diagnostics: ref mut ScopeDiagnostics
+) {
+    set diagnostics.statistics =
+        scope_diagnostic_statistics_empty();
+}
+
+proc scope_diagnostic_code_name(
+    code: ScopeDiagnosticCode
+) -> string {
+    pick code {
+        ScopeDiagnosticCode.DuplicateBinding {
+            give "SCOPE_E001";
+        }
+
+        ScopeDiagnosticCode.EmptyBindingName {
+            give "SCOPE_E002";
+        }
+
+        ScopeDiagnosticCode.InvalidScope {
+            give "SCOPE_E003";
+        }
+
+        ScopeDiagnosticCode.InvalidParent {
+            give "SCOPE_E004";
+        }
+
+        ScopeDiagnosticCode.DuplicateScope {
+            give "SCOPE_E005";
+        }
+
+        ScopeDiagnosticCode.ScopeDepthLimit {
+            give "SCOPE_E006";
+        }
+
+        ScopeDiagnosticCode.ScopeStackUnderflow {
+            give "SCOPE_E007";
+        }
+
+        ScopeDiagnosticCode.InvalidBuilderState {
+            give "SCOPE_E008";
+        }
+
+        ScopeDiagnosticCode.ScopeCycle {
+            give "SCOPE_E009";
+        }
+
+        ScopeDiagnosticCode.InvalidBinding {
+            give "SCOPE_E010";
+        }
+
+        ScopeDiagnosticCode.InvalidDefinition {
+            give "SCOPE_E011";
+        }
+
+        ScopeDiagnosticCode.Internal {
+            give "SCOPE_E999";
+        }
+    }
+
+    give "SCOPE_E999";
+}
+
+proc scope_diagnostic_level_name(
+    level: ScopeDiagnosticLevel
+) -> string {
+    pick level {
+        ScopeDiagnosticLevel.Note {
+            give "note";
+        }
+
+        ScopeDiagnosticLevel.Warning {
+            give "warning";
+        }
+
+        ScopeDiagnosticLevel.Error {
+            give "error";
+        }
+
+        ScopeDiagnosticLevel.Fatal {
+            give "fatal";
+        }
+    }
+
+    give "error";
+}
+
+// scope_binding / scope_builder / scope validation
+//                     |
+//                     v
+//           ScopeBindingError
+//           ScopeBuilderError
+//                     |
+//                     v
+//          scope_diagnostics.vit
+//                     |
+//                     v
+//            ScopeDiagnostic
+//                     |
+//          +----------+----------+
+//          |          |          |
+//          v          v          v
+//        code       labels      help
+//        span       notes       fix-it
+//                     |
+//                     v
+//          compiler diagnostics

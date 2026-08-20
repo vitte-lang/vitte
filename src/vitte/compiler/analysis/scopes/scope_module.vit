@@ -1,0 +1,829 @@
+space vitte/compiler/analysis/scopes/scope_module
+
+export *
+
+use vitte/compiler/analysis/scopes/scope_id.{
+    ScopeId
+}
+
+use vitte/compiler/analysis/scopes/scope_kind.{
+    ScopeKind
+}
+
+use vitte/compiler/analysis/scopes/scope_import.{
+    ScopeImport,
+    ScopeImportTable,
+
+    scope_import_table_imports
+}
+
+use vitte/compiler/analysis/scopes/scope_export.{
+    ScopeExport,
+    ScopeExportTable,
+
+    scope_export_table_visible_exports
+}
+
+pick ScopeModuleState {
+    Created,
+    Loading,
+    Loaded,
+    Resolving,
+    Resolved,
+    Invalidated
+}
+
+form ScopeModule {
+    module: ModuleId
+
+    scope: ScopeId
+
+    parent_module: Option<ModuleId>
+    parent_scope: Option<ScopeId>
+
+    name: string
+    path: string
+
+    state: ScopeModuleState
+
+    root: bool
+
+    generation: u64
+    revision: u64
+}
+
+form ScopeModuleStatistics {
+    modules: u64
+
+    roots: u64
+
+    loaded: u64
+    resolved: u64
+
+    lookups: u64
+    hits: u64
+    misses: u64
+
+    invalidated: u64
+}
+
+form ScopeModuleTable {
+    modules: [ScopeModule]
+
+    generation: u64
+
+    statistics: ScopeModuleStatistics
+}
+
+proc scope_module_statistics_empty()
+    -> ScopeModuleStatistics
+{
+    give ScopeModuleStatistics {
+        modules: 0,
+
+        roots: 0,
+
+        loaded: 0,
+        resolved: 0,
+
+        lookups: 0,
+        hits: 0,
+        misses: 0,
+
+        invalidated: 0
+    };
+}
+
+proc scope_module_table_create()
+    -> ScopeModuleTable
+{
+    give ScopeModuleTable {
+        modules: [],
+
+        generation: 1,
+
+        statistics:
+            scope_module_statistics_empty()
+    };
+}
+
+proc scope_module(
+    module: ModuleId,
+    scope: ScopeId,
+    name: string,
+    path: string
+) -> ScopeModule {
+    give ScopeModule {
+        module: module,
+
+        scope: scope,
+
+        parent_module: None,
+        parent_scope: None,
+
+        name: name,
+        path: path,
+
+        state:
+            ScopeModuleState.Created,
+
+        root: false,
+
+        generation: 1,
+        revision: 1
+    };
+}
+
+proc scope_module_root(
+    module: ModuleId,
+    scope: ScopeId,
+    name: string,
+    path: string
+) -> ScopeModule {
+    let mut result =
+        scope_module(
+            module,
+            scope,
+            name,
+            path
+        );
+
+    set result.root =
+        true;
+
+    give result;
+}
+
+proc scope_module_with_parent(
+    value: ScopeModule,
+    parent_module: ModuleId,
+    parent_scope: ScopeId
+) -> ScopeModule {
+    let mut result =
+        value;
+
+    set result.parent_module =
+        Some(parent_module);
+
+    set result.parent_scope =
+        Some(parent_scope);
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_module_begin_loading(
+    value: ref mut ScopeModule
+) {
+    if value.state
+        == ScopeModuleState.Invalidated
+    {
+        give;
+    }
+
+    set value.state =
+        ScopeModuleState.Loading;
+
+    set value.revision =
+        value.revision + 1;
+}
+
+proc scope_module_mark_loaded(
+    value: ref mut ScopeModule
+) {
+    if value.state
+        == ScopeModuleState.Invalidated
+    {
+        give;
+    }
+
+    set value.state =
+        ScopeModuleState.Loaded;
+
+    set value.revision =
+        value.revision + 1;
+}
+
+proc scope_module_begin_resolution(
+    value: ref mut ScopeModule
+) {
+    if value.state
+        == ScopeModuleState.Invalidated
+    {
+        give;
+    }
+
+    set value.state =
+        ScopeModuleState.Resolving;
+
+    set value.revision =
+        value.revision + 1;
+}
+
+proc scope_module_mark_resolved(
+    value: ref mut ScopeModule
+) {
+    if value.state
+        == ScopeModuleState.Invalidated
+    {
+        give;
+    }
+
+    set value.state =
+        ScopeModuleState.Resolved;
+
+    set value.revision =
+        value.revision + 1;
+}
+
+proc scope_module_invalidate(
+    value: ref mut ScopeModule
+) {
+    set value.state =
+        ScopeModuleState.Invalidated;
+
+    set value.revision =
+        value.revision + 1;
+}
+
+proc scope_module_is_root(
+    value: ScopeModule
+) -> bool {
+    give value.root;
+}
+
+proc scope_module_is_loaded(
+    value: ScopeModule
+) -> bool {
+    give value.state
+        == ScopeModuleState.Loaded
+        or value.state
+        == ScopeModuleState.Resolving
+        or value.state
+        == ScopeModuleState.Resolved;
+}
+
+proc scope_module_is_resolved(
+    value: ScopeModule
+) -> bool {
+    give value.state
+        == ScopeModuleState.Resolved;
+}
+
+proc scope_module_is_active(
+    value: ScopeModule
+) -> bool {
+    give value.state
+        != ScopeModuleState.Invalidated;
+}
+
+proc scope_module_has_parent(
+    value: ScopeModule
+) -> bool {
+    pick value.parent_module {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_module_table_contains(
+    table: ref ScopeModuleTable,
+    module: ModuleId
+) -> bool {
+    for value in table.modules {
+        if value.module == module
+            and scope_module_is_active(
+                value
+            )
+        {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc scope_module_table_contains_scope(
+    table: ref ScopeModuleTable,
+    scope: ScopeId
+) -> bool {
+    for value in table.modules {
+        if value.scope == scope
+            and scope_module_is_active(
+                value
+            )
+        {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc scope_module_table_insert(
+    table: ref mut ScopeModuleTable,
+    value: ScopeModule
+) -> bool {
+    if scope_module_table_contains(
+        ref table,
+        value.module
+    ) {
+        give false;
+    }
+
+    if scope_module_table_contains_scope(
+        ref table,
+        value.scope
+    ) {
+        give false;
+    }
+
+    let mut result =
+        value;
+
+    set result.generation =
+        table.generation;
+
+    set table.modules =
+        table.modules + [result];
+
+    set table.statistics.modules =
+        table.statistics.modules + 1;
+
+    if result.root {
+        set table.statistics.roots =
+            table.statistics.roots + 1;
+    }
+
+    give true;
+}
+
+proc scope_module_table_find(
+    table: ref mut ScopeModuleTable,
+    module: ModuleId
+) -> Option<ScopeModule> {
+    set table.statistics.lookups =
+        table.statistics.lookups + 1;
+
+    for value in table.modules {
+        if value.module == module
+            and scope_module_is_active(
+                value
+            )
+        {
+            set table.statistics.hits =
+                table.statistics.hits + 1;
+
+            give Some(value);
+        }
+    }
+
+    set table.statistics.misses =
+        table.statistics.misses + 1;
+
+    give None;
+}
+
+proc scope_module_table_find_by_scope(
+    table: ref ScopeModuleTable,
+    scope: ScopeId
+) -> Option<ScopeModule> {
+    for value in table.modules {
+        if value.scope == scope
+            and scope_module_is_active(
+                value
+            )
+        {
+            give Some(value);
+        }
+    }
+
+    give None;
+}
+
+proc scope_module_table_find_by_name(
+    table: ref ScopeModuleTable,
+    name: string
+) -> Option<ScopeModule> {
+    for value in table.modules {
+        if value.name == name
+            and scope_module_is_active(
+                value
+            )
+        {
+            give Some(value);
+        }
+    }
+
+    give None;
+}
+
+proc scope_module_table_find_by_path(
+    table: ref ScopeModuleTable,
+    path: string
+) -> Option<ScopeModule> {
+    for value in table.modules {
+        if value.path == path
+            and scope_module_is_active(
+                value
+            )
+        {
+            give Some(value);
+        }
+    }
+
+    give None;
+}
+
+proc scope_module_table_parent(
+    table: ref ScopeModuleTable,
+    module: ModuleId
+) -> Option<ScopeModule> {
+    for value in table.modules {
+        if value.module != module {
+            continue;
+        }
+
+        pick value.parent_module {
+            Some(parent) {
+                for candidate in table.modules {
+                    if candidate.module == parent
+                        and scope_module_is_active(
+                            candidate
+                        )
+                    {
+                        give Some(candidate);
+                    }
+                }
+            }
+
+            None {
+                give None;
+            }
+        }
+    }
+
+    give None;
+}
+
+proc scope_module_table_children(
+    table: ref ScopeModuleTable,
+    module: ModuleId
+) -> [ScopeModule] {
+    let mut result:
+        [ScopeModule] = [];
+
+    for value in table.modules {
+        pick value.parent_module {
+            Some(parent) {
+                if parent == module
+                    and scope_module_is_active(
+                        value
+                    )
+                {
+                    set result =
+                        result + [value];
+                }
+            }
+
+            None {}
+        }
+    }
+
+    give result;
+}
+
+proc scope_module_table_root(
+    table: ref ScopeModuleTable,
+    module: ModuleId
+) -> Option<ScopeModule> {
+    let mut current:
+        Option<ScopeModule> = None;
+
+    for value in table.modules {
+        if value.module == module
+            and scope_module_is_active(
+                value
+            )
+        {
+            set current =
+                Some(value);
+
+            break;
+        }
+    }
+
+    loop {
+        pick current {
+            None {
+                give None;
+            }
+
+            Some(value) {
+                if value.root {
+                    give Some(value);
+                }
+
+                pick value.parent_module {
+                    None {
+                        give Some(value);
+                    }
+
+                    Some(parent) {
+                        set current =
+                            scope_module_table_find(
+                                table,
+                                parent
+                            );
+                    }
+                }
+            }
+        }
+    }
+
+    give None;
+}
+
+proc scope_module_table_imports(
+    table: ref ScopeModuleTable,
+    imports: ref ScopeImportTable,
+    module: ModuleId
+) -> [ScopeImport] {
+    let found =
+        scope_module_table_find(
+            table,
+            module
+        );
+
+    pick found {
+        None {
+            give [];
+        }
+
+        Some(value) {
+            let set =
+                scope_import_table_imports(
+                    imports,
+                    value.scope
+                );
+
+            give set.imports;
+        }
+    }
+}
+
+proc scope_module_table_exports(
+    table: ref ScopeModuleTable,
+    exports: ref ScopeExportTable,
+    module: ModuleId
+) -> [ScopeExport] {
+    let found =
+        scope_module_table_find(
+            table,
+            module
+        );
+
+    pick found {
+        None {
+            give [];
+        }
+
+        Some(value) {
+            let set =
+                scope_export_table_visible_exports(
+                    exports,
+                    value.scope
+                );
+
+            give set.exports;
+        }
+    }
+}
+
+proc scope_module_table_mark_loaded(
+    table: ref mut ScopeModuleTable,
+    module: ModuleId
+) -> bool {
+    let mut index: usize = 0;
+
+    while index < len(table.modules) {
+        if table.modules[index].module
+            == module
+        {
+            if table.modules[index].state
+                == ScopeModuleState.Invalidated
+            {
+                give false;
+            }
+
+            scope_module_mark_loaded(
+                ref mut table.modules[index]
+            );
+
+            set table.statistics.loaded =
+                table.statistics.loaded + 1;
+
+            give true;
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give false;
+}
+
+proc scope_module_table_mark_resolved(
+    table: ref mut ScopeModuleTable,
+    module: ModuleId
+) -> bool {
+    let mut index: usize = 0;
+
+    while index < len(table.modules) {
+        if table.modules[index].module
+            == module
+        {
+            if table.modules[index].state
+                == ScopeModuleState.Invalidated
+            {
+                give false;
+            }
+
+            scope_module_mark_resolved(
+                ref mut table.modules[index]
+            );
+
+            set table.statistics.resolved =
+                table.statistics.resolved + 1;
+
+            give true;
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give false;
+}
+
+proc scope_module_table_invalidate(
+    table: ref mut ScopeModuleTable,
+    module: ModuleId
+) -> bool {
+    let mut index: usize = 0;
+
+    while index < len(table.modules) {
+        if table.modules[index].module
+            == module
+        {
+            if table.modules[index].state
+                == ScopeModuleState.Invalidated
+            {
+                give false;
+            }
+
+            scope_module_invalidate(
+                ref mut table.modules[index]
+            );
+
+            set table.statistics.invalidated =
+                table.statistics.invalidated + 1;
+
+            give true;
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give false;
+}
+
+proc scope_module_table_invalidate_scope(
+    table: ref mut ScopeModuleTable,
+    scope: ScopeId
+) -> bool {
+    let mut index: usize = 0;
+
+    while index < len(table.modules) {
+        if table.modules[index].scope
+            == scope
+        {
+            if table.modules[index].state
+                == ScopeModuleState.Invalidated
+            {
+                give false;
+            }
+
+            scope_module_invalidate(
+                ref mut table.modules[index]
+            );
+
+            set table.statistics.invalidated =
+                table.statistics.invalidated + 1;
+
+            give true;
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give false;
+}
+
+proc scope_module_table_advance_generation(
+    table: ref mut ScopeModuleTable
+) -> u64 {
+    set table.generation =
+        table.generation + 1;
+
+    give table.generation;
+}
+
+proc scope_module_table_clear(
+    table: ref mut ScopeModuleTable
+) {
+    set table.modules = [];
+
+    set table.generation =
+        table.generation + 1;
+}
+
+proc scope_module_table_statistics(
+    table: ref ScopeModuleTable
+) -> ScopeModuleStatistics {
+    give table.statistics;
+}
+
+proc scope_module_table_reset_statistics(
+    table: ref mut ScopeModuleTable
+) {
+    set table.statistics =
+        scope_module_statistics_empty();
+}
+
+proc scope_module_state_name(
+    state: ScopeModuleState
+) -> string {
+    pick state {
+        ScopeModuleState.Created {
+            give "created";
+        }
+
+        ScopeModuleState.Loading {
+            give "loading";
+        }
+
+        ScopeModuleState.Loaded {
+            give "loaded";
+        }
+
+        ScopeModuleState.Resolving {
+            give "resolving";
+        }
+
+        ScopeModuleState.Resolved {
+            give "resolved";
+        }
+
+        ScopeModuleState.Invalidated {
+            give "invalidated";
+        }
+    }
+
+    give "invalidated";
+}
+
+// module source
+//      |
+//      v
+// ModuleId
+//      |
+//      v
+// ScopeModule
+//      |
+//      +-- ScopeId
+//      +-- parent module
+//      +-- parent scope
+//      +-- name
+//      +-- path
+//      +-- state
+//      |
+//      +----------+----------+
+//      |                     |
+//      v                     v
+// ScopeImportTable     ScopeExportTable
+//      |                     |
+//      v                     v
+// imports visibles       API visible
+//      |
+//      v
+// module_resolution.vit

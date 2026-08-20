@@ -1,0 +1,1644 @@
+space vitte/compiler/analysis/resolution/trait_resolution
+
+export *
+
+use vitte/compiler/analysis/resolution/candidate.{
+    Candidate,
+    CandidateKind,
+    CandidateOrigin,
+    CandidateVisibility,
+    CandidateSet,
+
+    candidate_create,
+    candidate_mark_exact,
+    candidate_with_priority,
+    candidate_with_scope_depth,
+
+    candidate_set_create,
+    candidate_set_push,
+    candidate_set_resolve
+}
+
+pick TraitResolutionState {
+    Unresolved,
+    Resolved,
+    Missing,
+    Ambiguous,
+    ConstraintFailure,
+    Invalid
+}
+
+pick TraitResolutionErrorKind {
+    None,
+
+    EmptyName,
+    InvalidTrait,
+    InvalidType,
+
+    TraitNotFound,
+    ImplNotFound,
+    AmbiguousImpl,
+
+    NegativeImpl,
+    ConstraintFailure,
+
+    RecursiveRequirement,
+    InvalidDefinition
+}
+
+pick TraitImplKind {
+    Explicit,
+    Blanket,
+    Derived,
+    Builtin,
+    Negative
+}
+
+form TraitDefinition {
+    name: string
+    definition: DefId
+
+    generic_arity: usize
+
+    priority: usize
+    scope_depth: usize
+
+    visibility: CandidateVisibility
+
+    synthetic: bool
+}
+
+form TraitConstraint {
+    trait_definition: DefId
+
+    subject_type: TypeId
+
+    arguments: [TypeId]
+}
+
+form TraitImplDefinition {
+    definition: DefId
+
+    trait_definition: DefId
+    target_type: TypeId
+
+    kind: TraitImplKind
+
+    generic_arity: usize
+
+    constraints: [TraitConstraint]
+
+    priority: usize
+    scope_depth: usize
+
+    enabled: bool
+    synthetic: bool
+}
+
+form TraitObligation {
+    trait_definition: DefId
+    subject_type: TypeId
+
+    arguments: [TypeId]
+
+    depth: usize
+}
+
+form TraitResolutionError {
+    kind: TraitResolutionErrorKind
+
+    trait_definition: Option<DefId>
+    subject_type: Option<TypeId>
+
+    message: string
+}
+
+form TraitImplCandidate {
+    implementation: TraitImplDefinition
+    candidate: Candidate
+
+    constraints_satisfied: bool
+
+    score: usize
+}
+
+form TraitResolution {
+    trait_definition: Option<DefId>
+    subject_type: TypeId
+
+    implementation: Option<DefId>
+
+    candidate: Option<TraitImplCandidate>
+    candidates: [TraitImplCandidate]
+
+    state: TraitResolutionState
+
+    error: TraitResolutionError
+
+    found: bool
+}
+
+form TraitResolverConfig {
+    allow_blanket: bool
+    allow_derived: bool
+    allow_builtin: bool
+
+    check_constraints: bool
+
+    max_obligation_depth: usize
+}
+
+form TraitResolverStatistics {
+    resolutions: u64
+
+    resolved: u64
+    missing: u64
+    ambiguous: u64
+    constraint_failures: u64
+    invalid: u64
+
+    candidates_checked: u64
+    obligations_checked: u64
+
+    explicit_impls: u64
+    blanket_impls: u64
+    derived_impls: u64
+    builtin_impls: u64
+
+    maximum_obligation_depth: usize
+}
+
+form TraitResolver {
+    config: TraitResolverConfig
+
+    traits: [TraitDefinition]
+    implementations: [TraitImplDefinition]
+
+    obligations: [TraitObligation]
+
+    statistics: TraitResolverStatistics
+}
+
+proc trait_resolver_config_default()
+    -> TraitResolverConfig
+{
+    give TraitResolverConfig {
+        allow_blanket: true,
+        allow_derived: true,
+        allow_builtin: true,
+
+        check_constraints: true,
+
+        max_obligation_depth: 128
+    };
+}
+
+proc trait_resolver_statistics_empty()
+    -> TraitResolverStatistics
+{
+    give TraitResolverStatistics {
+        resolutions: 0,
+
+        resolved: 0,
+        missing: 0,
+        ambiguous: 0,
+        constraint_failures: 0,
+        invalid: 0,
+
+        candidates_checked: 0,
+        obligations_checked: 0,
+
+        explicit_impls: 0,
+        blanket_impls: 0,
+        derived_impls: 0,
+        builtin_impls: 0,
+
+        maximum_obligation_depth: 0
+    };
+}
+
+proc trait_resolver_create_with_config(
+    config: TraitResolverConfig
+) -> TraitResolver {
+    give TraitResolver {
+        config: config,
+
+        traits: [],
+        implementations: [],
+
+        obligations: [],
+
+        statistics:
+            trait_resolver_statistics_empty()
+    };
+}
+
+proc trait_resolver_create()
+    -> TraitResolver
+{
+    give trait_resolver_create_with_config(
+        trait_resolver_config_default()
+    );
+}
+
+proc trait_resolution_error_none()
+    -> TraitResolutionError
+{
+    give TraitResolutionError {
+        kind:
+            TraitResolutionErrorKind.None,
+
+        trait_definition:
+            None,
+
+        subject_type:
+            None,
+
+        message:
+            ""
+    };
+}
+
+proc trait_resolution_error(
+    kind: TraitResolutionErrorKind,
+    trait_definition: Option<DefId>,
+    subject_type: Option<TypeId>,
+    message: string
+) -> TraitResolutionError {
+    give TraitResolutionError {
+        kind: kind,
+
+        trait_definition:
+            trait_definition,
+
+        subject_type:
+            subject_type,
+
+        message:
+            message
+    };
+}
+
+proc trait_definition(
+    name: string,
+    definition: DefId,
+    visibility: CandidateVisibility
+) -> TraitDefinition {
+    give TraitDefinition {
+        name: name,
+        definition: definition,
+
+        generic_arity: 0,
+
+        priority: 0,
+        scope_depth: 0,
+
+        visibility: visibility,
+
+        synthetic: false
+    };
+}
+
+proc trait_definition_with_generic_arity(
+    trait: TraitDefinition,
+    arity: usize
+) -> TraitDefinition {
+    let mut result: TraitDefinition =
+        trait;
+
+    set result.generic_arity =
+        arity;
+
+    give result;
+}
+
+proc trait_definition_with_priority(
+    trait: TraitDefinition,
+    priority: usize
+) -> TraitDefinition {
+    let mut result: TraitDefinition =
+        trait;
+
+    set result.priority =
+        priority;
+
+    give result;
+}
+
+proc trait_definition_with_scope_depth(
+    trait: TraitDefinition,
+    depth: usize
+) -> TraitDefinition {
+    let mut result: TraitDefinition =
+        trait;
+
+    set result.scope_depth =
+        depth;
+
+    give result;
+}
+
+proc trait_definition_mark_synthetic(
+    trait: TraitDefinition
+) -> TraitDefinition {
+    let mut result: TraitDefinition =
+        trait;
+
+    set result.synthetic =
+        true;
+
+    give result;
+}
+
+proc trait_impl_definition(
+    definition: DefId,
+    trait_definition: DefId,
+    target_type: TypeId,
+    kind: TraitImplKind
+) -> TraitImplDefinition {
+    give TraitImplDefinition {
+        definition: definition,
+
+        trait_definition:
+            trait_definition,
+
+        target_type:
+            target_type,
+
+        kind:
+            kind,
+
+        generic_arity:
+            0,
+
+        constraints:
+            [],
+
+        priority:
+            0,
+
+        scope_depth:
+            0,
+
+        enabled:
+            true,
+
+        synthetic:
+            false
+    };
+}
+
+proc trait_impl_with_constraint(
+    implementation: TraitImplDefinition,
+    constraint: TraitConstraint
+) -> TraitImplDefinition {
+    let mut result: TraitImplDefinition =
+        implementation;
+
+    set result.constraints =
+        result.constraints + [constraint];
+
+    give result;
+}
+
+proc trait_impl_with_priority(
+    implementation: TraitImplDefinition,
+    priority: usize
+) -> TraitImplDefinition {
+    let mut result: TraitImplDefinition =
+        implementation;
+
+    set result.priority =
+        priority;
+
+    give result;
+}
+
+proc trait_impl_with_scope_depth(
+    implementation: TraitImplDefinition,
+    depth: usize
+) -> TraitImplDefinition {
+    let mut result: TraitImplDefinition =
+        implementation;
+
+    set result.scope_depth =
+        depth;
+
+    give result;
+}
+
+proc trait_impl_disable(
+    implementation: TraitImplDefinition
+) -> TraitImplDefinition {
+    let mut result: TraitImplDefinition =
+        implementation;
+
+    set result.enabled =
+        false;
+
+    give result;
+}
+
+proc trait_impl_mark_synthetic(
+    implementation: TraitImplDefinition
+) -> TraitImplDefinition {
+    let mut result: TraitImplDefinition =
+        implementation;
+
+    set result.synthetic =
+        true;
+
+    give result;
+}
+
+proc trait_constraint(
+    trait_definition: DefId,
+    subject_type: TypeId
+) -> TraitConstraint {
+    give TraitConstraint {
+        trait_definition:
+            trait_definition,
+
+        subject_type:
+            subject_type,
+
+        arguments:
+            []
+    };
+}
+
+proc trait_obligation(
+    trait_definition: DefId,
+    subject_type: TypeId,
+    arguments: [TypeId],
+    depth: usize
+) -> TraitObligation {
+    give TraitObligation {
+        trait_definition:
+            trait_definition,
+
+        subject_type:
+            subject_type,
+
+        arguments:
+            arguments,
+
+        depth:
+            depth
+    };
+}
+
+proc trait_resolver_register_trait(
+    resolver: ref mut TraitResolver,
+    trait: TraitDefinition
+) -> bool {
+    for existing in resolver.traits {
+        if existing.definition
+            == trait.definition
+        {
+            give false;
+        }
+    }
+
+    set resolver.traits =
+        resolver.traits + [trait];
+
+    give true;
+}
+
+proc trait_resolver_register_impl(
+    resolver: ref mut TraitResolver,
+    implementation: TraitImplDefinition
+) -> bool {
+    for existing in resolver.implementations {
+        if existing.definition
+            == implementation.definition
+        {
+            give false;
+        }
+    }
+
+    set resolver.implementations =
+        resolver.implementations
+        + [implementation];
+
+    give true;
+}
+
+proc trait_resolver_find_trait(
+    resolver: ref TraitResolver,
+    definition: DefId
+) -> Option<TraitDefinition> {
+    for trait in resolver.traits {
+        if trait.definition == definition {
+            give Some(trait);
+        }
+    }
+
+    give None;
+}
+
+proc trait_resolver_find_trait_by_name(
+    resolver: ref TraitResolver,
+    name: string
+) -> Option<TraitDefinition> {
+    for trait in resolver.traits {
+        if trait.name == name {
+            give Some(trait);
+        }
+    }
+
+    give None;
+}
+
+proc trait_resolver_impl_kind_enabled(
+    resolver: ref TraitResolver,
+    kind: TraitImplKind
+) -> bool {
+    pick kind {
+        TraitImplKind.Explicit {
+            give true;
+        }
+
+        TraitImplKind.Blanket {
+            give resolver.config.allow_blanket;
+        }
+
+        TraitImplKind.Derived {
+            give resolver.config.allow_derived;
+        }
+
+        TraitImplKind.Builtin {
+            give resolver.config.allow_builtin;
+        }
+
+        TraitImplKind.Negative {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc trait_impl_kind_priority(
+    kind: TraitImplKind
+) -> usize {
+    pick kind {
+        TraitImplKind.Explicit {
+            give 500;
+        }
+
+        TraitImplKind.Derived {
+            give 400;
+        }
+
+        TraitImplKind.Builtin {
+            give 300;
+        }
+
+        TraitImplKind.Blanket {
+            give 200;
+        }
+
+        TraitImplKind.Negative {
+            give 1000;
+        }
+    }
+
+    give 0;
+}
+
+proc trait_impl_matches_type(
+    implementation: TraitImplDefinition,
+    subject_type: TypeId
+) -> bool {
+    if implementation.target_type
+        == subject_type
+    {
+        give true;
+    }
+
+    if implementation.kind
+        == TraitImplKind.Blanket
+    {
+        give true;
+    }
+
+    give false;
+}
+
+proc trait_impl_candidate(
+    implementation: TraitImplDefinition,
+    name: string
+) -> TraitImplCandidate {
+    let mut candidate =
+        candidate_create(
+            name,
+            CandidateKind.Trait,
+            CandidateOrigin.Impl,
+            CandidateVisibility.Public,
+            Some(implementation.definition)
+        );
+
+    set candidate =
+        candidate_mark_exact(candidate);
+
+    set candidate =
+        candidate_with_scope_depth(
+            candidate,
+            implementation.scope_depth
+        );
+
+    let score =
+        trait_impl_kind_priority(
+            implementation.kind
+        ) + implementation.priority;
+
+    set candidate =
+        candidate_with_priority(
+            candidate,
+            score
+        );
+
+    set candidate.synthetic =
+        implementation.synthetic;
+
+    give TraitImplCandidate {
+        implementation:
+            implementation,
+
+        candidate:
+            candidate,
+
+        constraints_satisfied:
+            len(implementation.constraints) == 0,
+
+        score:
+            score
+    };
+}
+
+proc trait_resolver_obligation_active(
+    resolver: ref TraitResolver,
+    obligation: TraitObligation
+) -> bool {
+    for active in resolver.obligations {
+        if active.trait_definition
+            == obligation.trait_definition
+            and active.subject_type
+            == obligation.subject_type
+        {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc trait_resolver_push_obligation(
+    resolver: ref mut TraitResolver,
+    obligation: TraitObligation
+) -> bool {
+    if obligation.depth
+        >= resolver.config.max_obligation_depth
+    {
+        give false;
+    }
+
+    if trait_resolver_obligation_active(
+        ref resolver,
+        obligation
+    ) {
+        give false;
+    }
+
+    set resolver.obligations =
+        resolver.obligations + [obligation];
+
+    set resolver.statistics.obligations_checked =
+        resolver.statistics.obligations_checked + 1;
+
+    if obligation.depth
+        > resolver.statistics.maximum_obligation_depth
+    {
+        set resolver.statistics.maximum_obligation_depth =
+            obligation.depth;
+    }
+
+    give true;
+}
+
+proc trait_resolver_pop_obligation(
+    resolver: ref mut TraitResolver
+) {
+    if len(resolver.obligations) == 0 {
+        give;
+    }
+
+    let end =
+        len(resolver.obligations) - 1;
+
+    let mut output: [TraitObligation] = [];
+
+    let mut index: usize = 0;
+
+    while index < end {
+        set output =
+            output + [
+                resolver.obligations[index]
+            ];
+
+        set index =
+            index + 1;
+    }
+
+    set resolver.obligations =
+        output;
+}
+
+proc trait_resolver_constraint_satisfied(
+    resolver: ref mut TraitResolver,
+    constraint: TraitConstraint,
+    depth: usize
+) -> bool {
+    let result =
+        trait_resolver_resolve(
+            resolver,
+            constraint.trait_definition,
+            constraint.subject_type,
+            constraint.arguments,
+            depth + 1
+        );
+
+    give result.state
+        == TraitResolutionState.Resolved;
+}
+
+proc trait_resolver_constraints_satisfied(
+    resolver: ref mut TraitResolver,
+    implementation: TraitImplDefinition,
+    depth: usize
+) -> bool {
+    if not resolver.config.check_constraints {
+        give true;
+    }
+
+    for constraint in implementation.constraints {
+        if not trait_resolver_constraint_satisfied(
+            resolver,
+            constraint,
+            depth
+        ) {
+            give false;
+        }
+    }
+
+    give true;
+}
+
+proc trait_resolver_collect(
+    resolver: ref mut TraitResolver,
+    trait: TraitDefinition,
+    subject_type: TypeId,
+    depth: usize
+) -> [TraitImplCandidate] {
+    let mut output:
+        [TraitImplCandidate] = [];
+
+    for implementation in resolver.implementations {
+        if not implementation.enabled {
+            continue;
+        }
+
+        if implementation.trait_definition
+            != trait.definition
+        {
+            continue;
+        }
+
+        if not trait_resolver_impl_kind_enabled(
+            ref resolver,
+            implementation.kind
+        ) {
+            continue;
+        }
+
+        if not trait_impl_matches_type(
+            implementation,
+            subject_type
+        ) {
+            continue;
+        }
+
+        set resolver.statistics.candidates_checked =
+            resolver.statistics.candidates_checked + 1;
+
+        let mut candidate =
+            trait_impl_candidate(
+                implementation,
+                trait.name
+            );
+
+        if implementation.kind
+            != TraitImplKind.Negative
+        {
+            set candidate.constraints_satisfied =
+                trait_resolver_constraints_satisfied(
+                    resolver,
+                    implementation,
+                    depth
+                );
+        }
+
+        set output =
+            output + [candidate];
+
+        pick implementation.kind {
+            TraitImplKind.Explicit {
+                set resolver.statistics.explicit_impls =
+                    resolver.statistics.explicit_impls + 1;
+            }
+
+            TraitImplKind.Blanket {
+                set resolver.statistics.blanket_impls =
+                    resolver.statistics.blanket_impls + 1;
+            }
+
+            TraitImplKind.Derived {
+                set resolver.statistics.derived_impls =
+                    resolver.statistics.derived_impls + 1;
+            }
+
+            TraitImplKind.Builtin {
+                set resolver.statistics.builtin_impls =
+                    resolver.statistics.builtin_impls + 1;
+            }
+
+            TraitImplKind.Negative {}
+        }
+    }
+
+    give output;
+}
+
+proc trait_resolution_missing(
+    trait_definition: DefId,
+    subject_type: TypeId
+) -> TraitResolution {
+    give TraitResolution {
+        trait_definition:
+            Some(trait_definition),
+
+        subject_type:
+            subject_type,
+
+        implementation:
+            None,
+
+        candidate:
+            None,
+
+        candidates:
+            [],
+
+        state:
+            TraitResolutionState.Missing,
+
+        error:
+            trait_resolution_error(
+                TraitResolutionErrorKind.ImplNotFound,
+                Some(trait_definition),
+                Some(subject_type),
+                "no implementation satisfies the trait obligation"
+            ),
+
+        found:
+            false
+    };
+}
+
+proc trait_resolution_ambiguous(
+    trait_definition: DefId,
+    subject_type: TypeId,
+    candidates: [TraitImplCandidate]
+) -> TraitResolution {
+    give TraitResolution {
+        trait_definition:
+            Some(trait_definition),
+
+        subject_type:
+            subject_type,
+
+        implementation:
+            None,
+
+        candidate:
+            None,
+
+        candidates:
+            candidates,
+
+        state:
+            TraitResolutionState.Ambiguous,
+
+        error:
+            trait_resolution_error(
+                TraitResolutionErrorKind.AmbiguousImpl,
+                Some(trait_definition),
+                Some(subject_type),
+                "multiple trait implementations are equally applicable"
+            ),
+
+        found:
+            false
+    };
+}
+
+proc trait_resolution_constraint_failure(
+    trait_definition: DefId,
+    subject_type: TypeId,
+    candidates: [TraitImplCandidate]
+) -> TraitResolution {
+    give TraitResolution {
+        trait_definition:
+            Some(trait_definition),
+
+        subject_type:
+            subject_type,
+
+        implementation:
+            None,
+
+        candidate:
+            None,
+
+        candidates:
+            candidates,
+
+        state:
+            TraitResolutionState.ConstraintFailure,
+
+        error:
+            trait_resolution_error(
+                TraitResolutionErrorKind.ConstraintFailure,
+                Some(trait_definition),
+                Some(subject_type),
+                "trait implementation constraints are not satisfied"
+            ),
+
+        found:
+            false
+    };
+}
+
+proc trait_resolution_negative(
+    trait_definition: DefId,
+    subject_type: TypeId,
+    candidate: TraitImplCandidate
+) -> TraitResolution {
+    give TraitResolution {
+        trait_definition:
+            Some(trait_definition),
+
+        subject_type:
+            subject_type,
+
+        implementation:
+            Some(candidate.implementation.definition),
+
+        candidate:
+            Some(candidate),
+
+        candidates:
+            [candidate],
+
+        state:
+            TraitResolutionState.ConstraintFailure,
+
+        error:
+            trait_resolution_error(
+                TraitResolutionErrorKind.NegativeImpl,
+                Some(trait_definition),
+                Some(subject_type),
+                "trait is explicitly not implemented for this type"
+            ),
+
+        found:
+            false
+    };
+}
+
+proc trait_resolution_resolved(
+    trait_definition: DefId,
+    subject_type: TypeId,
+    candidate: TraitImplCandidate,
+    candidates: [TraitImplCandidate]
+) -> TraitResolution {
+    give TraitResolution {
+        trait_definition:
+            Some(trait_definition),
+
+        subject_type:
+            subject_type,
+
+        implementation:
+            Some(
+                candidate.implementation.definition
+            ),
+
+        candidate:
+            Some(candidate),
+
+        candidates:
+            candidates,
+
+        state:
+            TraitResolutionState.Resolved,
+
+        error:
+            trait_resolution_error_none(),
+
+        found:
+            true
+    };
+}
+
+proc trait_resolution_invalid(
+    trait_definition: Option<DefId>,
+    subject_type: TypeId,
+    kind: TraitResolutionErrorKind,
+    message: string
+) -> TraitResolution {
+    give TraitResolution {
+        trait_definition:
+            trait_definition,
+
+        subject_type:
+            subject_type,
+
+        implementation:
+            None,
+
+        candidate:
+            None,
+
+        candidates:
+            [],
+
+        state:
+            TraitResolutionState.Invalid,
+
+        error:
+            trait_resolution_error(
+                kind,
+                trait_definition,
+                Some(subject_type),
+                message
+            ),
+
+        found:
+            false
+    };
+}
+
+proc trait_impl_candidates_valid(
+    candidates: [TraitImplCandidate]
+) -> [TraitImplCandidate] {
+    let mut output:
+        [TraitImplCandidate] = [];
+
+    for candidate in candidates {
+        if candidate.implementation.kind
+            == TraitImplKind.Negative
+        {
+            continue;
+        }
+
+        if not candidate.constraints_satisfied {
+            continue;
+        }
+
+        set output =
+            output + [candidate];
+    }
+
+    give output;
+}
+
+proc trait_impl_find_negative(
+    candidates: [TraitImplCandidate]
+) -> Option<TraitImplCandidate> {
+    for candidate in candidates {
+        if candidate.implementation.kind
+            == TraitImplKind.Negative
+        {
+            give Some(candidate);
+        }
+    }
+
+    give None;
+}
+
+proc trait_impl_candidates_to_set(
+    candidates: [TraitImplCandidate]
+) -> CandidateSet {
+    let mut set =
+        candidate_set_create();
+
+    for candidate in candidates {
+        candidate_set_push(
+            ref mut set,
+            candidate.candidate
+        );
+    }
+
+    give set;
+}
+
+proc trait_impl_find_from_candidate(
+    candidates: [TraitImplCandidate],
+    candidate: Candidate
+) -> Option<TraitImplCandidate> {
+    pick candidate.definition {
+        None {
+            give None;
+        }
+
+        Some(definition) {
+            for current in candidates {
+                if current.implementation.definition
+                    == definition
+                {
+                    give Some(current);
+                }
+            }
+        }
+    }
+
+    give None;
+}
+
+proc trait_resolver_record(
+    resolver: ref mut TraitResolver,
+    result: TraitResolution
+) {
+    set resolver.statistics.resolutions =
+        resolver.statistics.resolutions + 1;
+
+    pick result.state {
+        TraitResolutionState.Resolved {
+            set resolver.statistics.resolved =
+                resolver.statistics.resolved + 1;
+        }
+
+        TraitResolutionState.Missing {
+            set resolver.statistics.missing =
+                resolver.statistics.missing + 1;
+        }
+
+        TraitResolutionState.Ambiguous {
+            set resolver.statistics.ambiguous =
+                resolver.statistics.ambiguous + 1;
+        }
+
+        TraitResolutionState.ConstraintFailure {
+            set resolver.statistics.constraint_failures =
+                resolver.statistics.constraint_failures + 1;
+        }
+
+        TraitResolutionState.Invalid {
+            set resolver.statistics.invalid =
+                resolver.statistics.invalid + 1;
+        }
+
+        TraitResolutionState.Unresolved {}
+    }
+}
+
+proc trait_resolver_resolve(
+    resolver: ref mut TraitResolver,
+    trait_definition: DefId,
+    subject_type: TypeId,
+    arguments: [TypeId],
+    depth: usize
+) -> TraitResolution {
+    let trait =
+        trait_resolver_find_trait(
+            ref resolver,
+            trait_definition
+        );
+
+    pick trait {
+        None {
+            let result =
+                trait_resolution_invalid(
+                    Some(trait_definition),
+                    subject_type,
+                    TraitResolutionErrorKind.InvalidTrait,
+                    "trait definition is not registered"
+                );
+
+            trait_resolver_record(
+                resolver,
+                result
+            );
+
+            give result;
+        }
+
+        Some(definition) {
+            let obligation =
+                trait_obligation(
+                    trait_definition,
+                    subject_type,
+                    arguments,
+                    depth
+                );
+
+            if not trait_resolver_push_obligation(
+                resolver,
+                obligation
+            ) {
+                let result =
+                    trait_resolution_invalid(
+                        Some(trait_definition),
+                        subject_type,
+                        TraitResolutionErrorKind.RecursiveRequirement,
+                        "recursive trait requirement detected"
+                    );
+
+                trait_resolver_record(
+                    resolver,
+                    result
+                );
+
+                give result;
+            }
+
+            let candidates =
+                trait_resolver_collect(
+                    resolver,
+                    definition,
+                    subject_type,
+                    depth
+                );
+
+            let negative =
+                trait_impl_find_negative(
+                    candidates
+                );
+
+            pick negative {
+                Some(candidate) {
+                    trait_resolver_pop_obligation(
+                        resolver
+                    );
+
+                    let result =
+                        trait_resolution_negative(
+                            trait_definition,
+                            subject_type,
+                            candidate
+                        );
+
+                    trait_resolver_record(
+                        resolver,
+                        result
+                    );
+
+                    give result;
+                }
+
+                None {}
+            }
+
+            let valid =
+                trait_impl_candidates_valid(
+                    candidates
+                );
+
+            if len(valid) == 0 {
+                trait_resolver_pop_obligation(
+                    resolver
+                );
+
+                let result =
+                    if len(candidates) == 0 {
+                        trait_resolution_missing(
+                            trait_definition,
+                            subject_type
+                        )
+                    } else {
+                        trait_resolution_constraint_failure(
+                            trait_definition,
+                            subject_type,
+                            candidates
+                        )
+                    };
+
+                trait_resolver_record(
+                    resolver,
+                    result
+                );
+
+                give result;
+            }
+
+            let mut set =
+                trait_impl_candidates_to_set(
+                    valid
+                );
+
+            let selected =
+                candidate_set_resolve(
+                    ref mut set
+                );
+
+            if set.ambiguous {
+                trait_resolver_pop_obligation(
+                    resolver
+                );
+
+                let result =
+                    trait_resolution_ambiguous(
+                        trait_definition,
+                        subject_type,
+                        valid
+                    );
+
+                trait_resolver_record(
+                    resolver,
+                    result
+                );
+
+                give result;
+            }
+
+            pick selected {
+                Some(candidate) {
+                    let implementation =
+                        trait_impl_find_from_candidate(
+                            valid,
+                            candidate
+                        );
+
+                    pick implementation {
+                        Some(value) {
+                            trait_resolver_pop_obligation(
+                                resolver
+                            );
+
+                            let result =
+                                trait_resolution_resolved(
+                                    trait_definition,
+                                    subject_type,
+                                    value,
+                                    valid
+                                );
+
+                            trait_resolver_record(
+                                resolver,
+                                result
+                            );
+
+                            give result;
+                        }
+
+                        None {}
+                    }
+                }
+
+                None {}
+            }
+
+            trait_resolver_pop_obligation(
+                resolver
+            );
+
+            let result =
+                trait_resolution_missing(
+                    trait_definition,
+                    subject_type
+                );
+
+            trait_resolver_record(
+                resolver,
+                result
+            );
+
+            give result;
+        }
+    }
+}
+
+proc trait_resolver_resolve_simple(
+    resolver: ref mut TraitResolver,
+    trait_definition: DefId,
+    subject_type: TypeId
+) -> TraitResolution {
+    give trait_resolver_resolve(
+        resolver,
+        trait_definition,
+        subject_type,
+        [],
+        0
+    );
+}
+
+proc trait_resolver_resolve_name(
+    resolver: ref mut TraitResolver,
+    name: string,
+    subject_type: TypeId
+) -> TraitResolution {
+    if name == "" {
+        let result =
+            trait_resolution_invalid(
+                None,
+                subject_type,
+                TraitResolutionErrorKind.EmptyName,
+                "trait name is empty"
+            );
+
+        trait_resolver_record(
+            resolver,
+            result
+        );
+
+        give result;
+    }
+
+    let trait =
+        trait_resolver_find_trait_by_name(
+            ref resolver,
+            name
+        );
+
+    pick trait {
+        Some(value) {
+            give trait_resolver_resolve_simple(
+                resolver,
+                value.definition,
+                subject_type
+            );
+        }
+
+        None {
+            let result =
+                trait_resolution_invalid(
+                    None,
+                    subject_type,
+                    TraitResolutionErrorKind.TraitNotFound,
+                    "trait was not found"
+                );
+
+            trait_resolver_record(
+                resolver,
+                result
+            );
+
+            give result;
+        }
+    }
+}
+
+proc trait_resolver_implements(
+    resolver: ref mut TraitResolver,
+    subject_type: TypeId,
+    trait_definition: DefId
+) -> bool {
+    let result =
+        trait_resolver_resolve_simple(
+            resolver,
+            trait_definition,
+            subject_type
+        );
+
+    give result.state
+        == TraitResolutionState.Resolved;
+}
+
+proc trait_resolver_impls_for_trait(
+    resolver: ref TraitResolver,
+    trait_definition: DefId
+) -> [TraitImplDefinition] {
+    let mut output:
+        [TraitImplDefinition] = [];
+
+    for implementation in resolver.implementations {
+        if implementation.trait_definition
+            == trait_definition
+        {
+            set output =
+                output + [implementation];
+        }
+    }
+
+    give output;
+}
+
+proc trait_resolver_impls_for_type(
+    resolver: ref TraitResolver,
+    subject_type: TypeId
+) -> [TraitImplDefinition] {
+    let mut output:
+        [TraitImplDefinition] = [];
+
+    for implementation in resolver.implementations {
+        if implementation.target_type
+            == subject_type
+        {
+            set output =
+                output + [implementation];
+        }
+    }
+
+    give output;
+}
+
+proc trait_resolution_is_resolved(
+    result: TraitResolution
+) -> bool {
+    give result.state
+        == TraitResolutionState.Resolved
+        and result.found;
+}
+
+proc trait_resolution_has_error(
+    result: TraitResolution
+) -> bool {
+    give result.error.kind
+        != TraitResolutionErrorKind.None;
+}
+
+proc trait_resolver_statistics(
+    resolver: ref TraitResolver
+) -> TraitResolverStatistics {
+    give resolver.statistics;
+}
+
+proc trait_resolver_reset_statistics(
+    resolver: ref mut TraitResolver
+) {
+    set resolver.statistics =
+        trait_resolver_statistics_empty();
+}
+
+proc trait_impl_kind_name(
+    kind: TraitImplKind
+) -> string {
+    pick kind {
+        TraitImplKind.Explicit {
+            give "explicit";
+        }
+
+        TraitImplKind.Blanket {
+            give "blanket";
+        }
+
+        TraitImplKind.Derived {
+            give "derived";
+        }
+
+        TraitImplKind.Builtin {
+            give "builtin";
+        }
+
+        TraitImplKind.Negative {
+            give "negative";
+        }
+    }
+
+    give "explicit";
+}
+
+proc trait_resolution_state_name(
+    state: TraitResolutionState
+) -> string {
+    pick state {
+        TraitResolutionState.Unresolved {
+            give "unresolved";
+        }
+
+        TraitResolutionState.Resolved {
+            give "resolved";
+        }
+
+        TraitResolutionState.Missing {
+            give "missing";
+        }
+
+        TraitResolutionState.Ambiguous {
+            give "ambiguous";
+        }
+
+        TraitResolutionState.ConstraintFailure {
+            give "constraint-failure";
+        }
+
+        TraitResolutionState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}

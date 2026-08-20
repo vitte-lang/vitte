@@ -1,0 +1,830 @@
+space vitte/compiler/analysis/scopes/scope_statistics
+
+export *
+
+use vitte/compiler/analysis/scopes/scope_binding.{
+    ScopeBindingStatistics
+}
+
+use vitte/compiler/analysis/scopes/scope_block.{
+    ScopeBlockStatistics
+}
+
+use vitte/compiler/analysis/scopes/scope_child.{
+    ScopeChildStatistics
+}
+
+use vitte/compiler/analysis/scopes/scope_context.{
+    ScopeContextStatistics
+}
+
+use vitte/compiler/analysis/scopes/scope_edge.{
+    ScopeEdgeStatistics
+}
+
+use vitte/compiler/analysis/scopes/scope_export.{
+    ScopeExportStatistics
+}
+
+use vitte/compiler/analysis/scopes/scope_function.{
+    ScopeFunctionStatistics
+}
+
+use vitte/compiler/analysis/scopes/scope_generic.{
+    ScopeGenericStatistics
+}
+
+use vitte/compiler/analysis/scopes/scope_import.{
+    ScopeImportStatistics
+}
+
+use vitte/compiler/analysis/scopes/scope_info.{
+    ScopeInfoStatistics
+}
+
+use vitte/compiler/analysis/scopes/scope_lookup.{
+    ScopeLookupStatistics
+}
+
+use vitte/compiler/analysis/scopes/scope_manager.{
+    ScopeManagerStatistics
+}
+
+use vitte/compiler/analysis/scopes/scope_module.{
+    ScopeModuleStatistics
+}
+
+use vitte/compiler/analysis/scopes/scope_namespace.{
+    ScopeNamespaceStatistics
+}
+
+use vitte/compiler/analysis/scopes/scope_node.{
+    ScopeNodeStatistics
+}
+
+use vitte/compiler/analysis/scopes/scope_parent.{
+    ScopeParentStatistics
+}
+
+use vitte/compiler/analysis/scopes/scope_path.{
+    ScopePathStatistics
+}
+
+use vitte/compiler/analysis/scopes/scope_pattern.{
+    ScopePatternStatistics
+}
+
+use vitte/compiler/analysis/scopes/scope_registry.{
+    ScopeRegistryStatistics
+}
+
+use vitte/compiler/analysis/scopes/scope_stack.{
+    ScopeStackStatistics
+}
+
+form ScopeStatisticsTotals {
+    scopes: u64
+
+    bindings: u64
+
+    imports: u64
+    exports: u64
+
+    generics: u64
+    functions: u64
+
+    patterns: u64
+
+    edges: u64
+    child_relations: u64
+
+    modules: u64
+    namespaces: u64
+
+    lookups: u64
+    lookup_hits: u64
+    lookup_misses: u64
+    lookup_ambiguous: u64
+
+    invalidated: u64
+
+    maximum_depth: usize
+}
+
+form ScopeStatisticsActivity {
+    pushes: u64
+    pops: u64
+
+    created: u64
+    closed: u64
+
+    resolved: u64
+
+    lookups: u64
+
+    invalidations: u64
+}
+
+form ScopeStatisticsSnapshot {
+    totals: ScopeStatisticsTotals
+    activity: ScopeStatisticsActivity
+
+    binding: ScopeBindingStatistics
+    block: ScopeBlockStatistics
+    child: ScopeChildStatistics
+    context: ScopeContextStatistics
+    edge: ScopeEdgeStatistics
+    export: ScopeExportStatistics
+    function: ScopeFunctionStatistics
+    generic: ScopeGenericStatistics
+    import: ScopeImportStatistics
+    info: ScopeInfoStatistics
+    lookup: ScopeLookupStatistics
+    manager: ScopeManagerStatistics
+    module: ScopeModuleStatistics
+    namespace: ScopeNamespaceStatistics
+    node: ScopeNodeStatistics
+    parent: ScopeParentStatistics
+    path: ScopePathStatistics
+    pattern: ScopePatternStatistics
+    registry: ScopeRegistryStatistics
+    stack: ScopeStackStatistics
+
+    generation: u64
+}
+
+proc scope_statistics_totals_empty()
+    -> ScopeStatisticsTotals
+{
+    give ScopeStatisticsTotals {
+        scopes: 0,
+
+        bindings: 0,
+
+        imports: 0,
+        exports: 0,
+
+        generics: 0,
+        functions: 0,
+
+        patterns: 0,
+
+        edges: 0,
+        child_relations: 0,
+
+        modules: 0,
+        namespaces: 0,
+
+        lookups: 0,
+        lookup_hits: 0,
+        lookup_misses: 0,
+        lookup_ambiguous: 0,
+
+        invalidated: 0,
+
+        maximum_depth: 0
+    };
+}
+
+proc scope_statistics_activity_empty()
+    -> ScopeStatisticsActivity
+{
+    give ScopeStatisticsActivity {
+        pushes: 0,
+        pops: 0,
+
+        created: 0,
+        closed: 0,
+
+        resolved: 0,
+
+        lookups: 0,
+
+        invalidations: 0
+    };
+}
+
+proc scope_statistics_snapshot(
+    binding: ScopeBindingStatistics,
+    block: ScopeBlockStatistics,
+    child: ScopeChildStatistics,
+    context: ScopeContextStatistics,
+    edge: ScopeEdgeStatistics,
+    export: ScopeExportStatistics,
+    function: ScopeFunctionStatistics,
+    generic: ScopeGenericStatistics,
+    import: ScopeImportStatistics,
+    info: ScopeInfoStatistics,
+    lookup: ScopeLookupStatistics,
+    manager: ScopeManagerStatistics,
+    module: ScopeModuleStatistics,
+    namespace: ScopeNamespaceStatistics,
+    node: ScopeNodeStatistics,
+    parent: ScopeParentStatistics,
+    path: ScopePathStatistics,
+    pattern: ScopePatternStatistics,
+    registry: ScopeRegistryStatistics,
+    stack: ScopeStackStatistics,
+    generation: u64
+) -> ScopeStatisticsSnapshot {
+    let mut result =
+        ScopeStatisticsSnapshot {
+            totals:
+                scope_statistics_totals_empty(),
+
+            activity:
+                scope_statistics_activity_empty(),
+
+            binding:
+                binding,
+
+            block:
+                block,
+
+            child:
+                child,
+
+            context:
+                context,
+
+            edge:
+                edge,
+
+            export:
+                export,
+
+            function:
+                function,
+
+            generic:
+                generic,
+
+            import:
+                import,
+
+            info:
+                info,
+
+            lookup:
+                lookup,
+
+            manager:
+                manager,
+
+            module:
+                module,
+
+            namespace:
+                namespace,
+
+            node:
+                node,
+
+            parent:
+                parent,
+
+            path:
+                path,
+
+            pattern:
+                pattern,
+
+            registry:
+                registry,
+
+            stack:
+                stack,
+
+            generation:
+                generation
+        };
+
+    set result.totals.scopes =
+        info.created;
+
+    set result.totals.bindings =
+        manager.bindings;
+
+    set result.totals.imports =
+        manager.imports;
+
+    set result.totals.exports =
+        manager.exports;
+
+    set result.totals.generics =
+        manager.generics;
+
+    set result.totals.functions =
+        manager.functions;
+
+    set result.totals.patterns =
+        pattern.patterns;
+
+    set result.totals.edges =
+        edge.inserted;
+
+    set result.totals.child_relations =
+        child.relations;
+
+    set result.totals.modules =
+        module.modules;
+
+    set result.totals.namespaces =
+        namespace.created;
+
+    set result.totals.lookups =
+        lookup.lookups;
+
+    set result.totals.lookup_hits =
+        lookup.hits;
+
+    set result.totals.lookup_misses =
+        lookup.misses;
+
+    set result.totals.lookup_ambiguous =
+        lookup.ambiguous;
+
+    set result.totals.invalidated =
+        manager.invalidations;
+
+    set result.totals.maximum_depth =
+        scope_statistics_maximum_depth(
+            block.maximum_depth,
+            child.maximum_depth,
+            context.maximum_depth,
+            info.maximum_depth,
+            lookup.maximum_depth,
+            node.maximum_depth,
+            parent.maximum_distance,
+            path.maximum_length,
+            stack.maximum_depth
+        );
+
+    set result.activity.pushes =
+        context.pushes
+        + stack.pushes;
+
+    set result.activity.pops =
+        context.pops
+        + stack.pops;
+
+    set result.activity.created =
+        manager.scopes_created;
+
+    set result.activity.closed =
+        manager.scopes_closed;
+
+    set result.activity.resolved =
+        generic.hits
+        + import.resolved
+        + module.resolved
+        + pattern.resolved;
+
+    set result.activity.lookups =
+        lookup.lookups
+        + registry.lookups
+        + parent.lookups;
+
+    set result.activity.invalidations =
+        manager.invalidations;
+
+    give result;
+}
+
+proc scope_statistics_maximum_depth(
+    block_depth: usize,
+    child_depth: usize,
+    context_depth: usize,
+    info_depth: usize,
+    lookup_depth: usize,
+    node_depth: usize,
+    parent_depth: usize,
+    path_depth: usize,
+    stack_depth: usize
+) -> usize {
+    let mut result =
+        block_depth;
+
+    if child_depth > result {
+        set result =
+            child_depth;
+    }
+
+    if context_depth > result {
+        set result =
+            context_depth;
+    }
+
+    if info_depth > result {
+        set result =
+            info_depth;
+    }
+
+    if lookup_depth > result {
+        set result =
+            lookup_depth;
+    }
+
+    if node_depth > result {
+        set result =
+            node_depth;
+    }
+
+    if parent_depth > result {
+        set result =
+            parent_depth;
+    }
+
+    if path_depth > result {
+        set result =
+            path_depth;
+    }
+
+    if stack_depth > result {
+        set result =
+            stack_depth;
+    }
+
+    give result;
+}
+
+proc scope_statistics_lookup_success_rate(
+    statistics: ref ScopeStatisticsSnapshot
+) -> f64 {
+    let total =
+        statistics.totals.lookup_hits
+        + statistics.totals.lookup_misses
+        + statistics.totals.lookup_ambiguous;
+
+    if total == 0 {
+        give 0.0;
+    }
+
+    give (
+        statistics.totals.lookup_hits as f64
+        /
+        total as f64
+    );
+}
+
+proc scope_statistics_lookup_miss_rate(
+    statistics: ref ScopeStatisticsSnapshot
+) -> f64 {
+    let total =
+        statistics.totals.lookup_hits
+        + statistics.totals.lookup_misses
+        + statistics.totals.lookup_ambiguous;
+
+    if total == 0 {
+        give 0.0;
+    }
+
+    give (
+        statistics.totals.lookup_misses as f64
+        /
+        total as f64
+    );
+}
+
+proc scope_statistics_lookup_ambiguity_rate(
+    statistics: ref ScopeStatisticsSnapshot
+) -> f64 {
+    let total =
+        statistics.totals.lookup_hits
+        + statistics.totals.lookup_misses
+        + statistics.totals.lookup_ambiguous;
+
+    if total == 0 {
+        give 0.0;
+    }
+
+    give (
+        statistics.totals.lookup_ambiguous as f64
+        /
+        total as f64
+    );
+}
+
+proc scope_statistics_average_bindings_per_scope(
+    statistics: ref ScopeStatisticsSnapshot
+) -> f64 {
+    if statistics.totals.scopes == 0 {
+        give 0.0;
+    }
+
+    give (
+        statistics.totals.bindings as f64
+        /
+        statistics.totals.scopes as f64
+    );
+}
+
+proc scope_statistics_average_edges_per_scope(
+    statistics: ref ScopeStatisticsSnapshot
+) -> f64 {
+    if statistics.totals.scopes == 0 {
+        give 0.0;
+    }
+
+    give (
+        statistics.totals.edges as f64
+        /
+        statistics.totals.scopes as f64
+    );
+}
+
+proc scope_statistics_invalidated_ratio(
+    statistics: ref ScopeStatisticsSnapshot
+) -> f64 {
+    if statistics.totals.scopes == 0 {
+        give 0.0;
+    }
+
+    give (
+        statistics.totals.invalidated as f64
+        /
+        statistics.totals.scopes as f64
+    );
+}
+
+proc scope_statistics_has_activity(
+    statistics: ref ScopeStatisticsSnapshot
+) -> bool {
+    give statistics.activity.created > 0
+        or statistics.activity.lookups > 0
+        or statistics.activity.pushes > 0
+        or statistics.activity.invalidations > 0;
+}
+
+proc scope_statistics_is_empty(
+    statistics: ref ScopeStatisticsSnapshot
+) -> bool {
+    give statistics.totals.scopes == 0
+        and statistics.totals.bindings == 0
+        and statistics.totals.imports == 0
+        and statistics.totals.exports == 0
+        and statistics.totals.generics == 0
+        and statistics.totals.functions == 0;
+}
+
+proc scope_statistics_validate(
+    statistics: ref ScopeStatisticsSnapshot
+) -> bool {
+    if statistics.totals.lookup_hits
+        + statistics.totals.lookup_misses
+        + statistics.totals.lookup_ambiguous
+        > statistics.totals.lookups
+    {
+        give false;
+    }
+
+    if statistics.activity.closed
+        > statistics.activity.created
+    {
+        give false;
+    }
+
+    if statistics.activity.pops
+        > statistics.activity.pushes
+    {
+        give false;
+    }
+
+    give true;
+}
+
+proc scope_statistics_difference_u64(
+    current: u64,
+    previous: u64
+) -> u64 {
+    if current < previous {
+        give 0;
+    }
+
+    give current - previous;
+}
+
+proc scope_statistics_difference_usize(
+    current: usize,
+    previous: usize
+) -> usize {
+    if current < previous {
+        give 0;
+    }
+
+    give current - previous;
+}
+
+proc scope_statistics_delta(
+    previous: ref ScopeStatisticsSnapshot,
+    current: ref ScopeStatisticsSnapshot
+) -> ScopeStatisticsTotals {
+    give ScopeStatisticsTotals {
+        scopes:
+            scope_statistics_difference_u64(
+                current.totals.scopes,
+                previous.totals.scopes
+            ),
+
+        bindings:
+            scope_statistics_difference_u64(
+                current.totals.bindings,
+                previous.totals.bindings
+            ),
+
+        imports:
+            scope_statistics_difference_u64(
+                current.totals.imports,
+                previous.totals.imports
+            ),
+
+        exports:
+            scope_statistics_difference_u64(
+                current.totals.exports,
+                previous.totals.exports
+            ),
+
+        generics:
+            scope_statistics_difference_u64(
+                current.totals.generics,
+                previous.totals.generics
+            ),
+
+        functions:
+            scope_statistics_difference_u64(
+                current.totals.functions,
+                previous.totals.functions
+            ),
+
+        patterns:
+            scope_statistics_difference_u64(
+                current.totals.patterns,
+                previous.totals.patterns
+            ),
+
+        edges:
+            scope_statistics_difference_u64(
+                current.totals.edges,
+                previous.totals.edges
+            ),
+
+        child_relations:
+            scope_statistics_difference_u64(
+                current.totals.child_relations,
+                previous.totals.child_relations
+            ),
+
+        modules:
+            scope_statistics_difference_u64(
+                current.totals.modules,
+                previous.totals.modules
+            ),
+
+        namespaces:
+            scope_statistics_difference_u64(
+                current.totals.namespaces,
+                previous.totals.namespaces
+            ),
+
+        lookups:
+            scope_statistics_difference_u64(
+                current.totals.lookups,
+                previous.totals.lookups
+            ),
+
+        lookup_hits:
+            scope_statistics_difference_u64(
+                current.totals.lookup_hits,
+                previous.totals.lookup_hits
+            ),
+
+        lookup_misses:
+            scope_statistics_difference_u64(
+                current.totals.lookup_misses,
+                previous.totals.lookup_misses
+            ),
+
+        lookup_ambiguous:
+            scope_statistics_difference_u64(
+                current.totals.lookup_ambiguous,
+                previous.totals.lookup_ambiguous
+            ),
+
+        invalidated:
+            scope_statistics_difference_u64(
+                current.totals.invalidated,
+                previous.totals.invalidated
+            ),
+
+        maximum_depth:
+            scope_statistics_difference_usize(
+                current.totals.maximum_depth,
+                previous.totals.maximum_depth
+            )
+    };
+}
+
+proc scope_statistics_totals_add(
+    left: ScopeStatisticsTotals,
+    right: ScopeStatisticsTotals
+) -> ScopeStatisticsTotals {
+    give ScopeStatisticsTotals {
+        scopes:
+            left.scopes + right.scopes,
+
+        bindings:
+            left.bindings + right.bindings,
+
+        imports:
+            left.imports + right.imports,
+
+        exports:
+            left.exports + right.exports,
+
+        generics:
+            left.generics + right.generics,
+
+        functions:
+            left.functions + right.functions,
+
+        patterns:
+            left.patterns + right.patterns,
+
+        edges:
+            left.edges + right.edges,
+
+        child_relations:
+            left.child_relations
+            + right.child_relations,
+
+        modules:
+            left.modules + right.modules,
+
+        namespaces:
+            left.namespaces + right.namespaces,
+
+        lookups:
+            left.lookups + right.lookups,
+
+        lookup_hits:
+            left.lookup_hits
+            + right.lookup_hits,
+
+        lookup_misses:
+            left.lookup_misses
+            + right.lookup_misses,
+
+        lookup_ambiguous:
+            left.lookup_ambiguous
+            + right.lookup_ambiguous,
+
+        invalidated:
+            left.invalidated
+            + right.invalidated,
+
+        maximum_depth:
+            if left.maximum_depth
+                > right.maximum_depth
+            {
+                left.maximum_depth
+            } else {
+                right.maximum_depth
+            }
+    };
+}
+
+proc scope_statistics_summary(
+    statistics: ref ScopeStatisticsSnapshot
+) -> string {
+    give
+        "scope statistics";
+}
+
+// ScopeManager / specialized tables
+//              |
+//              +-- binding statistics
+//              +-- block statistics
+//              +-- child statistics
+//              +-- edge statistics
+//              +-- import/export statistics
+//              +-- generic statistics
+//              +-- function statistics
+//              +-- lookup statistics
+//              +-- registry statistics
+//              +-- stack/context statistics
+//              |
+//              v
+//     ScopeStatisticsSnapshot
+//              |
+//              +-- global totals
+//              +-- activity
+//              +-- lookup rates
+//              +-- averages
+//              +-- validation
+//              +-- snapshot delta
+//
+// scope_statistics.vit
+//     = aggregation and observation only
+//
+// scope_manager.vit
+//     = owns and mutates the scope subsystem

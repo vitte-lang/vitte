@@ -1,0 +1,1071 @@
+space vitte/compiler/analysis/scopes/scope_builder
+
+export *
+
+use vitte/compiler/analysis/scopes/scope_binding.{
+    ScopeBinding,
+    ScopeBindingKind,
+    ScopeBindingError,
+    ScopeBindingErrorKind,
+    ScopeBindingTable,
+
+    scope_binding,
+    scope_binding_error_none,
+    scope_binding_table_create,
+    scope_binding_table_register_scope,
+    scope_binding_table_insert,
+    scope_binding_table_insert_or_shadow,
+    scope_binding_table_invalidate_scope
+}
+
+use vitte/compiler/analysis/scopes/scope_block.{
+    ScopeBlock,
+    ScopeBlockKind,
+    ScopeBlockState,
+    ScopeBlockTable,
+
+    scope_block,
+    scope_block_table_create,
+    scope_block_table_insert,
+    scope_block_table_get,
+    scope_block_table_activate,
+    scope_block_table_close,
+    scope_block_table_invalidate_tree
+}
+
+pick ScopeBuilderState {
+    Created,
+    Building,
+    Complete,
+    Failed
+}
+
+pick ScopeBuilderErrorKind {
+    None,
+    InvalidScope,
+    InvalidParent,
+    DuplicateScope,
+    DuplicateBinding,
+    EmptyStack,
+    DepthLimit,
+    InvalidState,
+    Internal
+}
+
+form ScopeBuilderError {
+    kind: ScopeBuilderErrorKind
+
+    scope: Option<ScopeId>
+    parent: Option<ScopeId>
+
+    name: string
+    message: string
+}
+
+form ScopeBuilderConfig {
+    max_depth: usize
+
+    allow_shadowing: bool
+    track_blocks: bool
+}
+
+form ScopeBuilderStatistics {
+    scopes_created: u64
+    scopes_closed: u64
+
+    bindings_created: u64
+    bindings_failed: u64
+
+    pushes: u64
+    pops: u64
+
+    invalidations: u64
+
+    maximum_depth: usize
+}
+
+form ScopeBuilder {
+    config: ScopeBuilderConfig
+
+    state: ScopeBuilderState
+
+    blocks: ScopeBlockTable
+    bindings: ScopeBindingTable
+
+    stack: [ScopeId]
+
+    next_scope_id: u64
+
+    generation: u64
+
+    statistics: ScopeBuilderStatistics
+}
+
+proc scope_builder_config_default()
+    -> ScopeBuilderConfig
+{
+    give ScopeBuilderConfig {
+        max_depth: 256,
+
+        allow_shadowing: true,
+        track_blocks: true
+    };
+}
+
+proc scope_builder_statistics_empty()
+    -> ScopeBuilderStatistics
+{
+    give ScopeBuilderStatistics {
+        scopes_created: 0,
+        scopes_closed: 0,
+
+        bindings_created: 0,
+        bindings_failed: 0,
+
+        pushes: 0,
+        pops: 0,
+
+        invalidations: 0,
+
+        maximum_depth: 0
+    };
+}
+
+proc scope_builder_error_none()
+    -> ScopeBuilderError
+{
+    give ScopeBuilderError {
+        kind:
+            ScopeBuilderErrorKind.None,
+
+        scope:
+            None,
+
+        parent:
+            None,
+
+        name:
+            "",
+
+        message:
+            ""
+    };
+}
+
+proc scope_builder_error(
+    kind: ScopeBuilderErrorKind,
+    scope: Option<ScopeId>,
+    parent: Option<ScopeId>,
+    name: string,
+    message: string
+) -> ScopeBuilderError {
+    give ScopeBuilderError {
+        kind: kind,
+
+        scope: scope,
+        parent: parent,
+
+        name: name,
+        message: message
+    };
+}
+
+proc scope_builder_create_with_config(
+    config: ScopeBuilderConfig
+) -> ScopeBuilder {
+    give ScopeBuilder {
+        config: config,
+
+        state:
+            ScopeBuilderState.Created,
+
+        blocks:
+            scope_block_table_create(),
+
+        bindings:
+            scope_binding_table_create(),
+
+        stack: [],
+
+        next_scope_id: 1,
+
+        generation: 1,
+
+        statistics:
+            scope_builder_statistics_empty()
+    };
+}
+
+proc scope_builder_create()
+    -> ScopeBuilder
+{
+    give scope_builder_create_with_config(
+        scope_builder_config_default()
+    );
+}
+
+proc scope_builder_allocate_id(
+    builder: ref mut ScopeBuilder
+) -> ScopeId {
+    let id =
+        builder.next_scope_id as ScopeId;
+
+    set builder.next_scope_id =
+        builder.next_scope_id + 1;
+
+    give id;
+}
+
+proc scope_builder_depth(
+    builder: ref ScopeBuilder
+) -> usize {
+    give len(builder.stack);
+}
+
+proc scope_builder_is_empty(
+    builder: ref ScopeBuilder
+) -> bool {
+    give len(builder.stack) == 0;
+}
+
+proc scope_builder_current(
+    builder: ref ScopeBuilder
+) -> Option<ScopeId> {
+    if len(builder.stack) == 0 {
+        give None;
+    }
+
+    give Some(
+        builder.stack[
+            len(builder.stack) - 1
+        ]
+    );
+}
+
+proc scope_builder_parent(
+    builder: ref ScopeBuilder
+) -> Option<ScopeId> {
+    if len(builder.stack) < 2 {
+        give None;
+    }
+
+    give Some(
+        builder.stack[
+            len(builder.stack) - 2
+        ]
+    );
+}
+
+proc scope_builder_push(
+    builder: ref mut ScopeBuilder,
+    scope: ScopeId
+) -> ScopeBuilderError {
+    if len(builder.stack)
+        >= builder.config.max_depth
+    {
+        set builder.state =
+            ScopeBuilderState.Failed;
+
+        give scope_builder_error(
+            ScopeBuilderErrorKind.DepthLimit,
+            Some(scope),
+            scope_builder_current(
+                ref builder
+            ),
+            "",
+            "scope nesting depth limit exceeded"
+        );
+    }
+
+    set builder.stack =
+        builder.stack + [scope];
+
+    set builder.statistics.pushes =
+        builder.statistics.pushes + 1;
+
+    let depth =
+        len(builder.stack);
+
+    if depth
+        > builder.statistics.maximum_depth
+    {
+        set builder.statistics.maximum_depth =
+            depth;
+    }
+
+    give scope_builder_error_none();
+}
+
+proc scope_builder_pop(
+    builder: ref mut ScopeBuilder
+) -> Option<ScopeId> {
+    if len(builder.stack) == 0 {
+        give None;
+    }
+
+    let last =
+        len(builder.stack) - 1;
+
+    let scope =
+        builder.stack[last];
+
+    let mut output:
+        [ScopeId] = [];
+
+    let mut index: usize = 0;
+
+    while index < last {
+        set output =
+            output + [
+                builder.stack[index]
+            ];
+
+        set index =
+            index + 1;
+    }
+
+    set builder.stack =
+        output;
+
+    set builder.statistics.pops =
+        builder.statistics.pops + 1;
+
+    give Some(scope);
+}
+
+proc scope_builder_begin(
+    builder: ref mut ScopeBuilder
+) {
+    set builder.state =
+        ScopeBuilderState.Building;
+}
+
+proc scope_builder_create_root(
+    builder: ref mut ScopeBuilder,
+    kind: ScopeBlockKind
+) -> Option<ScopeId> {
+    if not scope_builder_is_empty(
+        ref builder
+    ) {
+        give None;
+    }
+
+    let scope =
+        scope_builder_allocate_id(
+            builder
+        );
+
+    let block =
+        scope_block(
+            scope,
+            None,
+            kind,
+            0
+        );
+
+    if builder.config.track_blocks {
+        if not scope_block_table_insert(
+            ref mut builder.blocks,
+            block
+        ) {
+            set builder.state =
+                ScopeBuilderState.Failed;
+
+            give None;
+        }
+
+        scope_block_table_activate(
+            ref mut builder.blocks,
+            scope
+        );
+    }
+
+    scope_binding_table_register_scope(
+        ref mut builder.bindings,
+        scope
+    );
+
+    let error =
+        scope_builder_push(
+            builder,
+            scope
+        );
+
+    if error.kind
+        != ScopeBuilderErrorKind.None
+    {
+        give None;
+    }
+
+    set builder.statistics.scopes_created =
+        builder.statistics.scopes_created + 1;
+
+    give Some(scope);
+}
+
+proc scope_builder_create_child(
+    builder: ref mut ScopeBuilder,
+    kind: ScopeBlockKind
+) -> Option<ScopeId> {
+    let parent =
+        scope_builder_current(
+            ref builder
+        );
+
+    pick parent {
+        None {
+            give None;
+        }
+
+        Some(parent_scope) {
+            let depth =
+                len(builder.stack);
+
+            if depth
+                >= builder.config.max_depth
+            {
+                set builder.state =
+                    ScopeBuilderState.Failed;
+
+                give None;
+            }
+
+            let scope =
+                scope_builder_allocate_id(
+                    builder
+                );
+
+            let block =
+                scope_block(
+                    scope,
+                    Some(parent_scope),
+                    kind,
+                    depth
+                );
+
+            if builder.config.track_blocks {
+                if not scope_block_table_insert(
+                    ref mut builder.blocks,
+                    block
+                ) {
+                    set builder.state =
+                        ScopeBuilderState.Failed;
+
+                    give None;
+                }
+
+                scope_block_table_activate(
+                    ref mut builder.blocks,
+                    scope
+                );
+            }
+
+            scope_binding_table_register_scope(
+                ref mut builder.bindings,
+                scope
+            );
+
+            let error =
+                scope_builder_push(
+                    builder,
+                    scope
+                );
+
+            if error.kind
+                != ScopeBuilderErrorKind.None
+            {
+                give None;
+            }
+
+            set builder.statistics.scopes_created =
+                builder.statistics.scopes_created + 1;
+
+            give Some(scope);
+        }
+    }
+}
+
+proc scope_builder_enter(
+    builder: ref mut ScopeBuilder,
+    kind: ScopeBlockKind
+) -> Option<ScopeId> {
+    if scope_builder_is_empty(
+        ref builder
+    ) {
+        give scope_builder_create_root(
+            builder,
+            kind
+        );
+    }
+
+    give scope_builder_create_child(
+        builder,
+        kind
+    );
+}
+
+proc scope_builder_leave(
+    builder: ref mut ScopeBuilder
+) -> Option<ScopeId> {
+    let current =
+        scope_builder_current(
+            ref builder
+        );
+
+    pick current {
+        None {
+            give None;
+        }
+
+        Some(scope) {
+            if builder.config.track_blocks {
+                scope_block_table_close(
+                    ref mut builder.blocks,
+                    scope
+                );
+            }
+
+            set builder.statistics.scopes_closed =
+                builder.statistics.scopes_closed + 1;
+
+            give scope_builder_pop(
+                builder
+            );
+        }
+    }
+}
+
+proc scope_builder_make_binding(
+    builder: ref ScopeBuilder,
+    name: string,
+    kind: ScopeBindingKind
+) -> Option<ScopeBinding> {
+    let current =
+        scope_builder_current(
+            builder
+        );
+
+    pick current {
+        None {
+            give None;
+        }
+
+        Some(scope) {
+            let mut binding =
+                scope_binding(
+                    name,
+                    scope,
+                    kind
+                );
+
+            set binding.depth =
+                len(builder.stack) - 1;
+
+            set binding.generation =
+                builder.generation;
+
+            give Some(binding);
+        }
+    }
+}
+
+proc scope_builder_bind(
+    builder: ref mut ScopeBuilder,
+    binding: ScopeBinding
+) -> ScopeBindingError {
+    let error =
+        if builder.config.allow_shadowing {
+            scope_binding_table_insert_or_shadow(
+                ref mut builder.bindings,
+                binding
+            )
+        } else {
+            scope_binding_table_insert(
+                ref mut builder.bindings,
+                binding
+            )
+        };
+
+    if error.kind
+        == ScopeBindingErrorKind.None
+    {
+        set builder.statistics.bindings_created =
+            builder.statistics.bindings_created + 1;
+    } else {
+        set builder.statistics.bindings_failed =
+            builder.statistics.bindings_failed + 1;
+    }
+
+    give error;
+}
+
+proc scope_builder_bind_name(
+    builder: ref mut ScopeBuilder,
+    name: string,
+    kind: ScopeBindingKind
+) -> ScopeBindingError {
+    let binding =
+        scope_builder_make_binding(
+            ref builder,
+            name,
+            kind
+        );
+
+    pick binding {
+        None {
+            set builder.statistics.bindings_failed =
+                builder.statistics.bindings_failed + 1;
+
+            give scope_binding_error(
+                ScopeBindingErrorKind.InvalidScope,
+                name,
+                0 as ScopeId,
+                "no active scope"
+            );
+        }
+
+        Some(value) {
+            give scope_builder_bind(
+                builder,
+                value
+            );
+        }
+    }
+}
+
+proc scope_builder_bind_definition(
+    builder: ref mut ScopeBuilder,
+    name: string,
+    kind: ScopeBindingKind,
+    definition: DefId
+) -> ScopeBindingError {
+    let binding =
+        scope_builder_make_binding(
+            ref builder,
+            name,
+            kind
+        );
+
+    pick binding {
+        None {
+            give scope_binding_error(
+                ScopeBindingErrorKind.InvalidScope,
+                name,
+                0 as ScopeId,
+                "no active scope"
+            );
+        }
+
+        Some(value) {
+            let mut result =
+                value;
+
+            set result.definition =
+                Some(definition);
+
+            set result.state =
+                ScopeBindingState.Defined;
+
+            give scope_builder_bind(
+                builder,
+                result
+            );
+        }
+    }
+}
+
+proc scope_builder_bind_symbol(
+    builder: ref mut ScopeBuilder,
+    name: string,
+    kind: ScopeBindingKind,
+    symbol: SymbolId,
+    definition: Option<DefId>,
+    type_id: Option<TypeId>
+) -> ScopeBindingError {
+    let binding =
+        scope_builder_make_binding(
+            ref builder,
+            name,
+            kind
+        );
+
+    pick binding {
+        None {
+            give scope_binding_error(
+                ScopeBindingErrorKind.InvalidScope,
+                name,
+                0 as ScopeId,
+                "no active scope"
+            );
+        }
+
+        Some(value) {
+            let mut result =
+                value;
+
+            set result.symbol =
+                Some(symbol);
+
+            set result.definition =
+                definition;
+
+            set result.type_id =
+                type_id;
+
+            set result.state =
+                ScopeBindingState.Defined;
+
+            give scope_builder_bind(
+                builder,
+                result
+            );
+        }
+    }
+}
+
+proc scope_builder_bind_local(
+    builder: ref mut ScopeBuilder,
+    name: string,
+    symbol: SymbolId,
+    type_id: Option<TypeId>,
+    mutable: bool
+) -> ScopeBindingError {
+    let binding =
+        scope_builder_make_binding(
+            ref builder,
+            name,
+            ScopeBindingKind.Local
+        );
+
+    pick binding {
+        None {
+            give scope_binding_error(
+                ScopeBindingErrorKind.InvalidScope,
+                name,
+                0 as ScopeId,
+                "no active scope"
+            );
+        }
+
+        Some(value) {
+            let mut result =
+                value;
+
+            set result.symbol =
+                Some(symbol);
+
+            set result.type_id =
+                type_id;
+
+            set result.mutable =
+                mutable;
+
+            set result.state =
+                ScopeBindingState.Defined;
+
+            give scope_builder_bind(
+                builder,
+                result
+            );
+        }
+    }
+}
+
+proc scope_builder_bind_parameter(
+    builder: ref mut ScopeBuilder,
+    name: string,
+    symbol: SymbolId,
+    type_id: Option<TypeId>,
+    mutable: bool
+) -> ScopeBindingError {
+    let binding =
+        scope_builder_make_binding(
+            ref builder,
+            name,
+            ScopeBindingKind.Parameter
+        );
+
+    pick binding {
+        None {
+            give scope_binding_error(
+                ScopeBindingErrorKind.InvalidScope,
+                name,
+                0 as ScopeId,
+                "no active scope"
+            );
+        }
+
+        Some(value) {
+            let mut result =
+                value;
+
+            set result.symbol =
+                Some(symbol);
+
+            set result.type_id =
+                type_id;
+
+            set result.mutable =
+                mutable;
+
+            set result.state =
+                ScopeBindingState.Defined;
+
+            give scope_builder_bind(
+                builder,
+                result
+            );
+        }
+    }
+}
+
+proc scope_builder_bind_generic(
+    builder: ref mut ScopeBuilder,
+    name: string,
+    definition: DefId
+) -> ScopeBindingError {
+    give scope_builder_bind_definition(
+        builder,
+        name,
+        ScopeBindingKind.Generic,
+        definition
+    );
+}
+
+proc scope_builder_bind_type(
+    builder: ref mut ScopeBuilder,
+    name: string,
+    definition: DefId,
+    type_id: TypeId
+) -> ScopeBindingError {
+    let binding =
+        scope_builder_make_binding(
+            ref builder,
+            name,
+            ScopeBindingKind.Type
+        );
+
+    pick binding {
+        None {
+            give scope_binding_error(
+                ScopeBindingErrorKind.InvalidScope,
+                name,
+                0 as ScopeId,
+                "no active scope"
+            );
+        }
+
+        Some(value) {
+            let mut result =
+                value;
+
+            set result.definition =
+                Some(definition);
+
+            set result.type_id =
+                Some(type_id);
+
+            set result.state =
+                ScopeBindingState.Defined;
+
+            give scope_builder_bind(
+                builder,
+                result
+            );
+        }
+    }
+}
+
+proc scope_builder_bind_procedure(
+    builder: ref mut ScopeBuilder,
+    name: string,
+    definition: DefId
+) -> ScopeBindingError {
+    give scope_builder_bind_definition(
+        builder,
+        name,
+        ScopeBindingKind.Procedure,
+        definition
+    );
+}
+
+proc scope_builder_bind_constant(
+    builder: ref mut ScopeBuilder,
+    name: string,
+    definition: DefId,
+    type_id: Option<TypeId>
+) -> ScopeBindingError {
+    let binding =
+        scope_builder_make_binding(
+            ref builder,
+            name,
+            ScopeBindingKind.Constant
+        );
+
+    pick binding {
+        None {
+            give scope_binding_error(
+                ScopeBindingErrorKind.InvalidScope,
+                name,
+                0 as ScopeId,
+                "no active scope"
+            );
+        }
+
+        Some(value) {
+            let mut result =
+                value;
+
+            set result.definition =
+                Some(definition);
+
+            set result.type_id =
+                type_id;
+
+            set result.state =
+                ScopeBindingState.Defined;
+
+            give scope_builder_bind(
+                builder,
+                result
+            );
+        }
+    }
+}
+
+proc scope_builder_invalidate_current(
+    builder: ref mut ScopeBuilder
+) -> usize {
+    let current =
+        scope_builder_current(
+            ref builder
+        );
+
+    pick current {
+        None {
+            give 0;
+        }
+
+        Some(scope) {
+            let bindings =
+                scope_binding_table_invalidate_scope(
+                    ref mut builder.bindings,
+                    scope
+                );
+
+            let mut blocks: usize = 0;
+
+            if builder.config.track_blocks {
+                set blocks =
+                    scope_block_table_invalidate_tree(
+                        ref mut builder.blocks,
+                        scope
+                    );
+            }
+
+            let count =
+                bindings + blocks;
+
+            set builder.statistics.invalidations =
+                builder.statistics.invalidations
+                + count;
+
+            give count;
+        }
+    }
+}
+
+proc scope_builder_finish(
+    builder: ref mut ScopeBuilder
+) -> bool {
+    while not scope_builder_is_empty(
+        ref builder
+    ) {
+        scope_builder_leave(
+            builder
+        );
+    }
+
+    if builder.state
+        == ScopeBuilderState.Failed
+    {
+        give false;
+    }
+
+    set builder.state =
+        ScopeBuilderState.Complete;
+
+    give true;
+}
+
+proc scope_builder_advance_generation(
+    builder: ref mut ScopeBuilder
+) -> u64 {
+    set builder.generation =
+        builder.generation + 1;
+
+    set builder.blocks.generation =
+        builder.blocks.generation + 1;
+
+    set builder.bindings.generation =
+        builder.bindings.generation + 1;
+
+    give builder.generation;
+}
+
+proc scope_builder_reset(
+    builder: ref mut ScopeBuilder
+) {
+    set builder.blocks =
+        scope_block_table_create();
+
+    set builder.bindings =
+        scope_binding_table_create();
+
+    set builder.stack = [];
+
+    set builder.next_scope_id = 1;
+
+    set builder.generation =
+        builder.generation + 1;
+
+    set builder.state =
+        ScopeBuilderState.Created;
+}
+
+proc scope_builder_statistics(
+    builder: ref ScopeBuilder
+) -> ScopeBuilderStatistics {
+    give builder.statistics;
+}
+
+proc scope_builder_reset_statistics(
+    builder: ref mut ScopeBuilder
+) {
+    set builder.statistics =
+        scope_builder_statistics_empty();
+}
+
+proc scope_builder_state_name(
+    state: ScopeBuilderState
+) -> string {
+    pick state {
+        ScopeBuilderState.Created {
+            give "created";
+        }
+
+        ScopeBuilderState.Building {
+            give "building";
+        }
+
+        ScopeBuilderState.Complete {
+            give "complete";
+        }
+
+        ScopeBuilderState.Failed {
+            give "failed";
+        }
+    }
+
+    give "failed";
+}

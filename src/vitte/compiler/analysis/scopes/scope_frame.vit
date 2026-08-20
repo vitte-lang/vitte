@@ -1,0 +1,676 @@
+space vitte/compiler/analysis/scopes/scope_frame
+
+export *
+
+pick ScopeFrameKind {
+    Root,
+    Module,
+    Procedure,
+    Method,
+    Type,
+    Trait,
+    Impl,
+    Block,
+    Loop,
+    Match,
+    MatchArm,
+    Generic,
+    Comptime,
+    Unsafe,
+    Critical,
+    Defer,
+    Generated
+}
+
+pick ScopeFrameState {
+    Created,
+    Active,
+    Suspended,
+    Closed,
+    Invalidated
+}
+
+form ScopeFrame {
+    scope: ScopeId
+
+    parent: Option<ScopeId>
+
+    owner: Option<DefId>
+    node: Option<HirId>
+    type_id: Option<TypeId>
+
+    kind: ScopeFrameKind
+    state: ScopeFrameState
+
+    depth: usize
+
+    generation: u64
+    revision: u64
+}
+
+form ScopeFrameStack {
+    frames: [ScopeFrame]
+
+    generation: u64
+}
+
+form ScopeFrameStatistics {
+    created: u64
+    pushes: u64
+    pops: u64
+
+    activated: u64
+    suspended: u64
+    resumed: u64
+    closed: u64
+    invalidated: u64
+
+    maximum_depth: usize
+}
+
+proc scope_frame_statistics_empty()
+    -> ScopeFrameStatistics
+{
+    give ScopeFrameStatistics {
+        created: 0,
+        pushes: 0,
+        pops: 0,
+
+        activated: 0,
+        suspended: 0,
+        resumed: 0,
+        closed: 0,
+        invalidated: 0,
+
+        maximum_depth: 0
+    };
+}
+
+proc scope_frame(
+    scope: ScopeId,
+    parent: Option<ScopeId>,
+    kind: ScopeFrameKind,
+    depth: usize
+) -> ScopeFrame {
+    give ScopeFrame {
+        scope: scope,
+
+        parent: parent,
+
+        owner: None,
+        node: None,
+        type_id: None,
+
+        kind: kind,
+
+        state:
+            ScopeFrameState.Created,
+
+        depth: depth,
+
+        generation: 1,
+        revision: 1
+    };
+}
+
+proc scope_frame_root(
+    scope: ScopeId
+) -> ScopeFrame {
+    give scope_frame(
+        scope,
+        None,
+        ScopeFrameKind.Root,
+        0
+    );
+}
+
+proc scope_frame_child(
+    scope: ScopeId,
+    parent: ScopeId,
+    kind: ScopeFrameKind,
+    depth: usize
+) -> ScopeFrame {
+    give scope_frame(
+        scope,
+        Some(parent),
+        kind,
+        depth
+    );
+}
+
+proc scope_frame_with_owner(
+    frame: ScopeFrame,
+    owner: DefId
+) -> ScopeFrame {
+    let mut result =
+        frame;
+
+    set result.owner =
+        Some(owner);
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_frame_with_node(
+    frame: ScopeFrame,
+    node: HirId
+) -> ScopeFrame {
+    let mut result =
+        frame;
+
+    set result.node =
+        Some(node);
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_frame_with_type(
+    frame: ScopeFrame,
+    type_id: TypeId
+) -> ScopeFrame {
+    let mut result =
+        frame;
+
+    set result.type_id =
+        Some(type_id);
+
+    set result.revision =
+        result.revision + 1;
+
+    give result;
+}
+
+proc scope_frame_activate(
+    frame: ref mut ScopeFrame
+) {
+    if frame.state
+        == ScopeFrameState.Invalidated
+    {
+        give;
+    }
+
+    set frame.state =
+        ScopeFrameState.Active;
+
+    set frame.revision =
+        frame.revision + 1;
+}
+
+proc scope_frame_suspend(
+    frame: ref mut ScopeFrame
+) {
+    if frame.state
+        != ScopeFrameState.Active
+    {
+        give;
+    }
+
+    set frame.state =
+        ScopeFrameState.Suspended;
+
+    set frame.revision =
+        frame.revision + 1;
+}
+
+proc scope_frame_resume(
+    frame: ref mut ScopeFrame
+) {
+    if frame.state
+        != ScopeFrameState.Suspended
+    {
+        give;
+    }
+
+    set frame.state =
+        ScopeFrameState.Active;
+
+    set frame.revision =
+        frame.revision + 1;
+}
+
+proc scope_frame_close(
+    frame: ref mut ScopeFrame
+) {
+    if frame.state
+        == ScopeFrameState.Invalidated
+    {
+        give;
+    }
+
+    set frame.state =
+        ScopeFrameState.Closed;
+
+    set frame.revision =
+        frame.revision + 1;
+}
+
+proc scope_frame_invalidate(
+    frame: ref mut ScopeFrame
+) {
+    set frame.state =
+        ScopeFrameState.Invalidated;
+
+    set frame.revision =
+        frame.revision + 1;
+}
+
+proc scope_frame_is_active(
+    frame: ScopeFrame
+) -> bool {
+    give frame.state
+        == ScopeFrameState.Active;
+}
+
+proc scope_frame_is_closed(
+    frame: ScopeFrame
+) -> bool {
+    give frame.state
+        == ScopeFrameState.Closed;
+}
+
+proc scope_frame_is_invalidated(
+    frame: ScopeFrame
+) -> bool {
+    give frame.state
+        == ScopeFrameState.Invalidated;
+}
+
+proc scope_frame_has_parent(
+    frame: ScopeFrame
+) -> bool {
+    pick frame.parent {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_frame_has_owner(
+    frame: ScopeFrame
+) -> bool {
+    pick frame.owner {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_frame_has_node(
+    frame: ScopeFrame
+) -> bool {
+    pick frame.node {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_frame_has_type(
+    frame: ScopeFrame
+) -> bool {
+    pick frame.type_id {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_frame_stack_create()
+    -> ScopeFrameStack
+{
+    give ScopeFrameStack {
+        frames: [],
+
+        generation: 1
+    };
+}
+
+proc scope_frame_stack_depth(
+    stack: ref ScopeFrameStack
+) -> usize {
+    give len(stack.frames);
+}
+
+proc scope_frame_stack_is_empty(
+    stack: ref ScopeFrameStack
+) -> bool {
+    give len(stack.frames) == 0;
+}
+
+proc scope_frame_stack_top(
+    stack: ref ScopeFrameStack
+) -> Option<ScopeFrame> {
+    if len(stack.frames) == 0 {
+        give None;
+    }
+
+    give Some(
+        stack.frames[
+            len(stack.frames) - 1
+        ]
+    );
+}
+
+proc scope_frame_stack_parent(
+    stack: ref ScopeFrameStack
+) -> Option<ScopeFrame> {
+    if len(stack.frames) < 2 {
+        give None;
+    }
+
+    give Some(
+        stack.frames[
+            len(stack.frames) - 2
+        ]
+    );
+}
+
+proc scope_frame_stack_push(
+    stack: ref mut ScopeFrameStack,
+    frame: ScopeFrame
+) {
+    let mut value =
+        frame;
+
+    set value.generation =
+        stack.generation;
+
+    scope_frame_activate(
+        ref mut value
+    );
+
+    set stack.frames =
+        stack.frames + [value];
+}
+
+proc scope_frame_stack_pop(
+    stack: ref mut ScopeFrameStack
+) -> Option<ScopeFrame> {
+    if len(stack.frames) == 0 {
+        give None;
+    }
+
+    let last =
+        len(stack.frames) - 1;
+
+    let mut frame =
+        stack.frames[last];
+
+    scope_frame_close(
+        ref mut frame
+    );
+
+    let mut output:
+        [ScopeFrame] = [];
+
+    let mut index: usize = 0;
+
+    while index < last {
+        set output =
+            output + [
+                stack.frames[index]
+            ];
+
+        set index =
+            index + 1;
+    }
+
+    set stack.frames =
+        output;
+
+    give Some(frame);
+}
+
+proc scope_frame_stack_find(
+    stack: ref ScopeFrameStack,
+    scope: ScopeId
+) -> Option<ScopeFrame> {
+    let mut index =
+        len(stack.frames);
+
+    while index > 0 {
+        set index =
+            index - 1;
+
+        if stack.frames[index].scope
+            == scope
+        {
+            give Some(
+                stack.frames[index]
+            );
+        }
+    }
+
+    give None;
+}
+
+proc scope_frame_stack_contains(
+    stack: ref ScopeFrameStack,
+    scope: ScopeId
+) -> bool {
+    pick scope_frame_stack_find(
+        stack,
+        scope
+    ) {
+        Some(_) {
+            give true;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc scope_frame_stack_scopes(
+    stack: ref ScopeFrameStack
+) -> [ScopeId] {
+    let mut result:
+        [ScopeId] = [];
+
+    for frame in stack.frames {
+        set result =
+            result + [
+                frame.scope
+            ];
+    }
+
+    give result;
+}
+
+proc scope_frame_stack_invalidate(
+    stack: ref mut ScopeFrameStack,
+    scope: ScopeId
+) -> bool {
+    let mut index: usize = 0;
+
+    while index < len(stack.frames) {
+        if stack.frames[index].scope
+            == scope
+        {
+            if stack.frames[index].state
+                == ScopeFrameState.Invalidated
+            {
+                give false;
+            }
+
+            scope_frame_invalidate(
+                ref mut stack.frames[index]
+            );
+
+            give true;
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give false;
+}
+
+proc scope_frame_stack_advance_generation(
+    stack: ref mut ScopeFrameStack
+) -> u64 {
+    set stack.generation =
+        stack.generation + 1;
+
+    give stack.generation;
+}
+
+proc scope_frame_stack_clear(
+    stack: ref mut ScopeFrameStack
+) {
+    set stack.frames = [];
+
+    set stack.generation =
+        stack.generation + 1;
+}
+
+proc scope_frame_kind_name(
+    kind: ScopeFrameKind
+) -> string {
+    pick kind {
+        ScopeFrameKind.Root {
+            give "root";
+        }
+
+        ScopeFrameKind.Module {
+            give "module";
+        }
+
+        ScopeFrameKind.Procedure {
+            give "procedure";
+        }
+
+        ScopeFrameKind.Method {
+            give "method";
+        }
+
+        ScopeFrameKind.Type {
+            give "type";
+        }
+
+        ScopeFrameKind.Trait {
+            give "trait";
+        }
+
+        ScopeFrameKind.Impl {
+            give "impl";
+        }
+
+        ScopeFrameKind.Block {
+            give "block";
+        }
+
+        ScopeFrameKind.Loop {
+            give "loop";
+        }
+
+        ScopeFrameKind.Match {
+            give "match";
+        }
+
+        ScopeFrameKind.MatchArm {
+            give "match-arm";
+        }
+
+        ScopeFrameKind.Generic {
+            give "generic";
+        }
+
+        ScopeFrameKind.Comptime {
+            give "comptime";
+        }
+
+        ScopeFrameKind.Unsafe {
+            give "unsafe";
+        }
+
+        ScopeFrameKind.Critical {
+            give "critical";
+        }
+
+        ScopeFrameKind.Defer {
+            give "defer";
+        }
+
+        ScopeFrameKind.Generated {
+            give "generated";
+        }
+    }
+
+    give "block";
+}
+
+proc scope_frame_state_name(
+    state: ScopeFrameState
+) -> string {
+    pick state {
+        ScopeFrameState.Created {
+            give "created";
+        }
+
+        ScopeFrameState.Active {
+            give "active";
+        }
+
+        ScopeFrameState.Suspended {
+            give "suspended";
+        }
+
+        ScopeFrameState.Closed {
+            give "closed";
+        }
+
+        ScopeFrameState.Invalidated {
+            give "invalidated";
+        }
+    }
+
+    give "invalidated";
+}
+
+// HIR traversal
+//      |
+//      v
+// ScopeBuilder
+//      |
+//      v
+// ScopeFrame
+//      |
+//      +-- ScopeId
+//      +-- parent
+//      +-- owner DefId
+//      +-- HirId
+//      +-- TypeId
+//      +-- depth
+//      |
+//      v
+// ScopeFrameStack
+//      |
+//      +-- push on enter
+//      +-- top = current frame
+//      +-- parent = enclosing frame
+//      +-- pop on leave

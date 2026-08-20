@@ -1,0 +1,935 @@
+space vitte/compiler/analysis/scopes/scope_edge
+
+export *
+
+pick ScopeEdgeKind {
+    Parent,
+    Child,
+    Import,
+    Export,
+    Capture,
+    Owner,
+    Generic,
+    Trait,
+    Impl,
+    Namespace,
+    Generated,
+    Dependency
+}
+
+pick ScopeEdgeState {
+    Active,
+    Disabled,
+    Invalidated
+}
+
+form ScopeEdge {
+    source: ScopeId
+    target: ScopeId
+
+    kind: ScopeEdgeKind
+    state: ScopeEdgeState
+
+    priority: usize
+
+    generation: u64
+    revision: u64
+}
+
+form ScopeEdgeSet {
+    edges: [ScopeEdge]
+}
+
+form ScopeEdgeStatistics {
+    inserted: u64
+    lookups: u64
+
+    hits: u64
+    misses: u64
+
+    invalidated: u64
+
+    parent_edges: u64
+    import_edges: u64
+    capture_edges: u64
+    dependency_edges: u64
+}
+
+form ScopeEdgeTable {
+    edges: [ScopeEdge]
+
+    generation: u64
+
+    statistics: ScopeEdgeStatistics
+}
+
+proc scope_edge_statistics_empty()
+    -> ScopeEdgeStatistics
+{
+    give ScopeEdgeStatistics {
+        inserted: 0,
+        lookups: 0,
+
+        hits: 0,
+        misses: 0,
+
+        invalidated: 0,
+
+        parent_edges: 0,
+        import_edges: 0,
+        capture_edges: 0,
+        dependency_edges: 0
+    };
+}
+
+proc scope_edge_table_create()
+    -> ScopeEdgeTable
+{
+    give ScopeEdgeTable {
+        edges: [],
+
+        generation: 1,
+
+        statistics:
+            scope_edge_statistics_empty()
+    };
+}
+
+proc scope_edge(
+    source: ScopeId,
+    target: ScopeId,
+    kind: ScopeEdgeKind
+) -> ScopeEdge {
+    give ScopeEdge {
+        source: source,
+        target: target,
+
+        kind: kind,
+
+        state:
+            ScopeEdgeState.Active,
+
+        priority: 0,
+
+        generation: 1,
+        revision: 1
+    };
+}
+
+proc scope_edge_with_priority(
+    edge: ScopeEdge,
+    priority: usize
+) -> ScopeEdge {
+    let mut result =
+        edge;
+
+    set result.priority =
+        priority;
+
+    give result;
+}
+
+proc scope_edge_is_active(
+    edge: ScopeEdge
+) -> bool {
+    give edge.state
+        == ScopeEdgeState.Active;
+}
+
+proc scope_edge_is_disabled(
+    edge: ScopeEdge
+) -> bool {
+    give edge.state
+        == ScopeEdgeState.Disabled;
+}
+
+proc scope_edge_is_invalidated(
+    edge: ScopeEdge
+) -> bool {
+    give edge.state
+        == ScopeEdgeState.Invalidated;
+}
+
+proc scope_edge_disable(
+    edge: ref mut ScopeEdge
+) {
+    if edge.state
+        == ScopeEdgeState.Invalidated
+    {
+        give;
+    }
+
+    set edge.state =
+        ScopeEdgeState.Disabled;
+
+    set edge.revision =
+        edge.revision + 1;
+}
+
+proc scope_edge_enable(
+    edge: ref mut ScopeEdge
+) {
+    if edge.state
+        == ScopeEdgeState.Invalidated
+    {
+        give;
+    }
+
+    set edge.state =
+        ScopeEdgeState.Active;
+
+    set edge.revision =
+        edge.revision + 1;
+}
+
+proc scope_edge_invalidate(
+    edge: ref mut ScopeEdge
+) {
+    set edge.state =
+        ScopeEdgeState.Invalidated;
+
+    set edge.revision =
+        edge.revision + 1;
+}
+
+proc scope_edge_set_create()
+    -> ScopeEdgeSet
+{
+    give ScopeEdgeSet {
+        edges: []
+    };
+}
+
+proc scope_edge_set_push(
+    set: ref mut ScopeEdgeSet,
+    edge: ScopeEdge
+) {
+    set set.edges =
+        set.edges + [edge];
+}
+
+proc scope_edge_set_count(
+    set: ref ScopeEdgeSet
+) -> usize {
+    give len(set.edges);
+}
+
+proc scope_edge_set_is_empty(
+    set: ref ScopeEdgeSet
+) -> bool {
+    give len(set.edges) == 0;
+}
+
+proc scope_edge_equal(
+    left: ScopeEdge,
+    right: ScopeEdge
+) -> bool {
+    give left.source == right.source
+        and left.target == right.target
+        and left.kind == right.kind;
+}
+
+proc scope_edge_table_contains(
+    table: ref ScopeEdgeTable,
+    source: ScopeId,
+    target: ScopeId,
+    kind: ScopeEdgeKind
+) -> bool {
+    for edge in table.edges {
+        if edge.source == source
+            and edge.target == target
+            and edge.kind == kind
+            and edge.state
+                != ScopeEdgeState.Invalidated
+        {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc scope_edge_table_record_kind(
+    table: ref mut ScopeEdgeTable,
+    kind: ScopeEdgeKind
+) {
+    pick kind {
+        ScopeEdgeKind.Parent {
+            set table.statistics.parent_edges =
+                table.statistics.parent_edges + 1;
+        }
+
+        ScopeEdgeKind.Import {
+            set table.statistics.import_edges =
+                table.statistics.import_edges + 1;
+        }
+
+        ScopeEdgeKind.Capture {
+            set table.statistics.capture_edges =
+                table.statistics.capture_edges + 1;
+        }
+
+        ScopeEdgeKind.Dependency {
+            set table.statistics.dependency_edges =
+                table.statistics.dependency_edges + 1;
+        }
+
+        _ {}
+    }
+}
+
+proc scope_edge_table_insert(
+    table: ref mut ScopeEdgeTable,
+    edge: ScopeEdge
+) -> bool {
+    if edge.source == edge.target
+        and edge.kind == ScopeEdgeKind.Parent
+    {
+        give false;
+    }
+
+    if scope_edge_table_contains(
+        ref table,
+        edge.source,
+        edge.target,
+        edge.kind
+    ) {
+        give false;
+    }
+
+    let mut value =
+        edge;
+
+    set value.generation =
+        table.generation;
+
+    set table.edges =
+        table.edges + [value];
+
+    set table.statistics.inserted =
+        table.statistics.inserted + 1;
+
+    scope_edge_table_record_kind(
+        table,
+        value.kind
+    );
+
+    give true;
+}
+
+proc scope_edge_table_add(
+    table: ref mut ScopeEdgeTable,
+    source: ScopeId,
+    target: ScopeId,
+    kind: ScopeEdgeKind
+) -> bool {
+    give scope_edge_table_insert(
+        table,
+        scope_edge(
+            source,
+            target,
+            kind
+        )
+    );
+}
+
+proc scope_edge_table_find(
+    table: ref mut ScopeEdgeTable,
+    source: ScopeId,
+    target: ScopeId,
+    kind: ScopeEdgeKind
+) -> Option<ScopeEdge> {
+    set table.statistics.lookups =
+        table.statistics.lookups + 1;
+
+    for edge in table.edges {
+        if edge.source == source
+            and edge.target == target
+            and edge.kind == kind
+            and edge.state
+                != ScopeEdgeState.Invalidated
+        {
+            set table.statistics.hits =
+                table.statistics.hits + 1;
+
+            give Some(edge);
+        }
+    }
+
+    set table.statistics.misses =
+        table.statistics.misses + 1;
+
+    give None;
+}
+
+proc scope_edge_table_from(
+    table: ref ScopeEdgeTable,
+    source: ScopeId
+) -> ScopeEdgeSet {
+    let mut result =
+        scope_edge_set_create();
+
+    for edge in table.edges {
+        if edge.source == source
+            and edge.state
+                != ScopeEdgeState.Invalidated
+        {
+            scope_edge_set_push(
+                ref mut result,
+                edge
+            );
+        }
+    }
+
+    give result;
+}
+
+proc scope_edge_table_to(
+    table: ref ScopeEdgeTable,
+    target: ScopeId
+) -> ScopeEdgeSet {
+    let mut result =
+        scope_edge_set_create();
+
+    for edge in table.edges {
+        if edge.target == target
+            and edge.state
+                != ScopeEdgeState.Invalidated
+        {
+            scope_edge_set_push(
+                ref mut result,
+                edge
+            );
+        }
+    }
+
+    give result;
+}
+
+proc scope_edge_table_from_kind(
+    table: ref ScopeEdgeTable,
+    source: ScopeId,
+    kind: ScopeEdgeKind
+) -> ScopeEdgeSet {
+    let mut result =
+        scope_edge_set_create();
+
+    for edge in table.edges {
+        if edge.source == source
+            and edge.kind == kind
+            and edge.state
+                != ScopeEdgeState.Invalidated
+        {
+            scope_edge_set_push(
+                ref mut result,
+                edge
+            );
+        }
+    }
+
+    give result;
+}
+
+proc scope_edge_table_to_kind(
+    table: ref ScopeEdgeTable,
+    target: ScopeId,
+    kind: ScopeEdgeKind
+) -> ScopeEdgeSet {
+    let mut result =
+        scope_edge_set_create();
+
+    for edge in table.edges {
+        if edge.target == target
+            and edge.kind == kind
+            and edge.state
+                != ScopeEdgeState.Invalidated
+        {
+            scope_edge_set_push(
+                ref mut result,
+                edge
+            );
+        }
+    }
+
+    give result;
+}
+
+proc scope_edge_table_parent(
+    table: ref ScopeEdgeTable,
+    scope: ScopeId
+) -> Option<ScopeId> {
+    for edge in table.edges {
+        if edge.source == scope
+            and edge.kind
+                == ScopeEdgeKind.Parent
+            and edge.state
+                == ScopeEdgeState.Active
+        {
+            give Some(
+                edge.target
+            );
+        }
+    }
+
+    give None;
+}
+
+proc scope_edge_table_children(
+    table: ref ScopeEdgeTable,
+    scope: ScopeId
+) -> [ScopeId] {
+    let mut result:
+        [ScopeId] = [];
+
+    for edge in table.edges {
+        if edge.target == scope
+            and edge.kind
+                == ScopeEdgeKind.Parent
+            and edge.state
+                == ScopeEdgeState.Active
+        {
+            set result =
+                result + [
+                    edge.source
+                ];
+        }
+    }
+
+    give result;
+}
+
+proc scope_edge_table_dependencies(
+    table: ref ScopeEdgeTable,
+    scope: ScopeId
+) -> [ScopeId] {
+    let mut result:
+        [ScopeId] = [];
+
+    for edge in table.edges {
+        if edge.source == scope
+            and edge.kind
+                == ScopeEdgeKind.Dependency
+            and edge.state
+                == ScopeEdgeState.Active
+        {
+            set result =
+                result + [
+                    edge.target
+                ];
+        }
+    }
+
+    give result;
+}
+
+proc scope_edge_table_imports(
+    table: ref ScopeEdgeTable,
+    scope: ScopeId
+) -> [ScopeId] {
+    let mut result:
+        [ScopeId] = [];
+
+    for edge in table.edges {
+        if edge.source == scope
+            and edge.kind
+                == ScopeEdgeKind.Import
+            and edge.state
+                == ScopeEdgeState.Active
+        {
+            set result =
+                result + [
+                    edge.target
+                ];
+        }
+    }
+
+    give result;
+}
+
+proc scope_edge_table_captures(
+    table: ref ScopeEdgeTable,
+    scope: ScopeId
+) -> [ScopeId] {
+    let mut result:
+        [ScopeId] = [];
+
+    for edge in table.edges {
+        if edge.source == scope
+            and edge.kind
+                == ScopeEdgeKind.Capture
+            and edge.state
+                == ScopeEdgeState.Active
+        {
+            set result =
+                result + [
+                    edge.target
+                ];
+        }
+    }
+
+    give result;
+}
+
+proc scope_edge_table_reachable(
+    table: ref ScopeEdgeTable,
+    source: ScopeId,
+    target: ScopeId,
+    kind: ScopeEdgeKind
+) -> bool {
+    if source == target {
+        give true;
+    }
+
+    let mut queue:
+        [ScopeId] = [source];
+
+    let mut visited:
+        [ScopeId] = [];
+
+    let mut index: usize = 0;
+
+    while index < len(queue) {
+        let current =
+            queue[index];
+
+        let mut already_visited =
+            false;
+
+        for value in visited {
+            if value == current {
+                set already_visited =
+                    true;
+
+                break;
+            }
+        }
+
+        if already_visited {
+            set index =
+                index + 1;
+
+            continue;
+        }
+
+        set visited =
+            visited + [current];
+
+        let edges =
+            scope_edge_table_from_kind(
+                table,
+                current,
+                kind
+            );
+
+        for edge in edges.edges {
+            if edge.target == target {
+                give true;
+            }
+
+            set queue =
+                queue + [
+                    edge.target
+                ];
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give false;
+}
+
+proc scope_edge_table_would_cycle(
+    table: ref ScopeEdgeTable,
+    source: ScopeId,
+    target: ScopeId,
+    kind: ScopeEdgeKind
+) -> bool {
+    if source == target {
+        give true;
+    }
+
+    give scope_edge_table_reachable(
+        table,
+        target,
+        source,
+        kind
+    );
+}
+
+proc scope_edge_table_add_checked(
+    table: ref mut ScopeEdgeTable,
+    source: ScopeId,
+    target: ScopeId,
+    kind: ScopeEdgeKind
+) -> bool {
+    if scope_edge_table_would_cycle(
+        ref table,
+        source,
+        target,
+        kind
+    ) {
+        give false;
+    }
+
+    give scope_edge_table_add(
+        table,
+        source,
+        target,
+        kind
+    );
+}
+
+proc scope_edge_table_invalidate(
+    table: ref mut ScopeEdgeTable,
+    source: ScopeId,
+    target: ScopeId,
+    kind: ScopeEdgeKind
+) -> bool {
+    let mut index: usize = 0;
+
+    while index < len(table.edges) {
+        if table.edges[index].source
+            == source
+            and table.edges[index].target
+                == target
+            and table.edges[index].kind
+                == kind
+        {
+            if table.edges[index].state
+                == ScopeEdgeState.Invalidated
+            {
+                give false;
+            }
+
+            scope_edge_invalidate(
+                ref mut table.edges[index]
+            );
+
+            set table.statistics.invalidated =
+                table.statistics.invalidated + 1;
+
+            give true;
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give false;
+}
+
+proc scope_edge_table_invalidate_scope(
+    table: ref mut ScopeEdgeTable,
+    scope: ScopeId
+) -> usize {
+    let mut count: usize = 0;
+    let mut index: usize = 0;
+
+    while index < len(table.edges) {
+        if table.edges[index].source == scope
+            or table.edges[index].target == scope
+        {
+            if table.edges[index].state
+                != ScopeEdgeState.Invalidated
+            {
+                scope_edge_invalidate(
+                    ref mut table.edges[index]
+                );
+
+                set count =
+                    count + 1;
+            }
+        }
+
+        set index =
+            index + 1;
+    }
+
+    set table.statistics.invalidated =
+        table.statistics.invalidated
+        + count;
+
+    give count;
+}
+
+proc scope_edge_table_disable_kind(
+    table: ref mut ScopeEdgeTable,
+    kind: ScopeEdgeKind
+) -> usize {
+    let mut count: usize = 0;
+    let mut index: usize = 0;
+
+    while index < len(table.edges) {
+        if table.edges[index].kind == kind
+            and table.edges[index].state
+                == ScopeEdgeState.Active
+        {
+            scope_edge_disable(
+                ref mut table.edges[index]
+            );
+
+            set count =
+                count + 1;
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give count;
+}
+
+proc scope_edge_table_enable_kind(
+    table: ref mut ScopeEdgeTable,
+    kind: ScopeEdgeKind
+) -> usize {
+    let mut count: usize = 0;
+    let mut index: usize = 0;
+
+    while index < len(table.edges) {
+        if table.edges[index].kind == kind
+            and table.edges[index].state
+                == ScopeEdgeState.Disabled
+        {
+            scope_edge_enable(
+                ref mut table.edges[index]
+            );
+
+            set count =
+                count + 1;
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give count;
+}
+
+proc scope_edge_table_advance_generation(
+    table: ref mut ScopeEdgeTable
+) -> u64 {
+    set table.generation =
+        table.generation + 1;
+
+    give table.generation;
+}
+
+proc scope_edge_table_clear(
+    table: ref mut ScopeEdgeTable
+) {
+    set table.edges = [];
+
+    set table.generation =
+        table.generation + 1;
+}
+
+proc scope_edge_table_statistics(
+    table: ref ScopeEdgeTable
+) -> ScopeEdgeStatistics {
+    give table.statistics;
+}
+
+proc scope_edge_table_reset_statistics(
+    table: ref mut ScopeEdgeTable
+) {
+    set table.statistics =
+        scope_edge_statistics_empty();
+}
+
+proc scope_edge_kind_name(
+    kind: ScopeEdgeKind
+) -> string {
+    pick kind {
+        ScopeEdgeKind.Parent {
+            give "parent";
+        }
+
+        ScopeEdgeKind.Child {
+            give "child";
+        }
+
+        ScopeEdgeKind.Import {
+            give "import";
+        }
+
+        ScopeEdgeKind.Export {
+            give "export";
+        }
+
+        ScopeEdgeKind.Capture {
+            give "capture";
+        }
+
+        ScopeEdgeKind.Owner {
+            give "owner";
+        }
+
+        ScopeEdgeKind.Generic {
+            give "generic";
+        }
+
+        ScopeEdgeKind.Trait {
+            give "trait";
+        }
+
+        ScopeEdgeKind.Impl {
+            give "impl";
+        }
+
+        ScopeEdgeKind.Namespace {
+            give "namespace";
+        }
+
+        ScopeEdgeKind.Generated {
+            give "generated";
+        }
+
+        ScopeEdgeKind.Dependency {
+            give "dependency";
+        }
+    }
+
+    give "dependency";
+}
+
+proc scope_edge_state_name(
+    state: ScopeEdgeState
+) -> string {
+    pick state {
+        ScopeEdgeState.Active {
+            give "active";
+        }
+
+        ScopeEdgeState.Disabled {
+            give "disabled";
+        }
+
+        ScopeEdgeState.Invalidated {
+            give "invalidated";
+        }
+    }
+
+    give "invalidated";
+}
+
+// Scope graph
+//
+// Scope A
+//   |
+//   +-- Parent -----> Scope Root
+//   |
+//   +-- Import -----> Scope Module B
+//   |
+//   +-- Capture ----> Scope Outer
+//   |
+//   +-- Generic ----> Scope Generic[T]
+//   |
+//   +-- Dependency -> Scope C
+//
+// scope_child.vit
+//     = lexical parent/child hierarchy
+//
+// scope_edge.vit
+//     = general typed relationships between scopes

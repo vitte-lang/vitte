@@ -1,0 +1,1024 @@
+space vitte/compiler/analysis/resolution/resolver_state
+
+export *
+
+use vitte/compiler/analysis/modules/module_database.{
+    ModuleId,
+    module_id_invalid,
+    module_id_is_valid
+}
+
+use vitte/compiler/analysis/resolution/resolution_context.{
+    ResolutionContext,
+    ResolutionContextState,
+
+    resolution_context_create,
+    resolution_context_activate,
+    resolution_context_suspend,
+    resolution_context_fail,
+    resolution_context_reset,
+    resolution_context_advance_generation
+}
+
+use vitte/compiler/analysis/resolution/resolver_stack.{
+    ResolverStack,
+    ResolverStackFrame,
+    ResolverStackFrameKind,
+    ResolverStackError,
+    ResolverStackErrorKind,
+
+    resolver_stack_create,
+    resolver_stack_push,
+    resolver_stack_pop,
+    resolver_stack_depth,
+    resolver_stack_clear,
+    resolver_stack_advance_generation
+}
+
+use vitte/compiler/analysis/resolution/resolver_graph.{
+    ResolverGraph,
+    ResolverGraphNodeId,
+    ResolverGraphNodeKind,
+    ResolverGraphNodeState,
+
+    resolver_graph_create,
+    resolver_graph_add_node,
+    resolver_graph_mark_resolving,
+    resolver_graph_mark_resolved,
+    resolver_graph_mark_failed,
+    resolver_graph_invalidate_dependents,
+    resolver_graph_advance_generation,
+    resolver_graph_clear
+}
+
+pick ResolverStatePhase {
+    Created,
+    Preparing,
+    Imports,
+    Names,
+    Paths,
+    Types,
+    Members,
+    Generics,
+    Overloads,
+    Finalizing,
+    Complete,
+    Failed
+}
+
+pick ResolverStateStatus {
+    Idle,
+    Running,
+    Suspended,
+    Complete,
+    Failed
+}
+
+pick ResolverStateErrorKind {
+    None,
+    InvalidModule,
+    InvalidScope,
+    StackOverflow,
+    RecursiveResolution,
+    GraphCycle,
+    InvalidTransition,
+    ResolutionFailure,
+    Internal
+}
+
+form ResolverStateError {
+    kind: ResolverStateErrorKind
+
+    subject: string
+    message: string
+
+    module: ModuleId
+    scope: Option<ScopeId>
+
+    fatal: bool
+}
+
+form ResolverStateConfig {
+    max_stack_depth: usize
+
+    track_graph: bool
+    track_stack: bool
+
+    fail_fast: bool
+
+    incremental: bool
+}
+
+form ResolverStateStatistics {
+    runs: u64
+
+    resolutions_started: u64
+    resolutions_completed: u64
+    resolutions_failed: u64
+
+    graph_nodes: u64
+
+    stack_pushes: u64
+    stack_pops: u64
+
+    invalidations: u64
+
+    errors: u64
+
+    maximum_stack_depth: usize
+}
+
+form ResolverState {
+    config: ResolverStateConfig
+
+    status: ResolverStateStatus
+    phase: ResolverStatePhase
+
+    context: ResolutionContext
+    stack: ResolverStack
+    graph: ResolverGraph
+
+    current_module: ModuleId
+    current_scope: Option<ScopeId>
+
+    current_node: Option<ResolverGraphNodeId>
+
+    errors: [ResolverStateError]
+
+    generation: u64
+    revision: u64
+
+    statistics: ResolverStateStatistics
+}
+
+proc resolver_state_config_default()
+    -> ResolverStateConfig
+{
+    give ResolverStateConfig {
+        max_stack_depth: 256,
+
+        track_graph: true,
+        track_stack: true,
+
+        fail_fast: false,
+
+        incremental: true
+    };
+}
+
+proc resolver_state_statistics_empty()
+    -> ResolverStateStatistics
+{
+    give ResolverStateStatistics {
+        runs: 0,
+
+        resolutions_started: 0,
+        resolutions_completed: 0,
+        resolutions_failed: 0,
+
+        graph_nodes: 0,
+
+        stack_pushes: 0,
+        stack_pops: 0,
+
+        invalidations: 0,
+
+        errors: 0,
+
+        maximum_stack_depth: 0
+    };
+}
+
+proc resolver_state_create_with_config(
+    config: ResolverStateConfig
+) -> ResolverState {
+    give ResolverState {
+        config: config,
+
+        status:
+            ResolverStateStatus.Idle,
+
+        phase:
+            ResolverStatePhase.Created,
+
+        context:
+            resolution_context_create(),
+
+        stack:
+            resolver_stack_create(),
+
+        graph:
+            resolver_graph_create(),
+
+        current_module:
+            module_id_invalid(),
+
+        current_scope:
+            None,
+
+        current_node:
+            None,
+
+        errors:
+            [],
+
+        generation:
+            1,
+
+        revision:
+            1,
+
+        statistics:
+            resolver_state_statistics_empty()
+    };
+}
+
+proc resolver_state_create()
+    -> ResolverState
+{
+    give resolver_state_create_with_config(
+        resolver_state_config_default()
+    );
+}
+
+proc resolver_state_error(
+    kind: ResolverStateErrorKind,
+    subject: string,
+    message: string,
+    module: ModuleId,
+    scope: Option<ScopeId>,
+    fatal: bool
+) -> ResolverStateError {
+    give ResolverStateError {
+        kind: kind,
+
+        subject: subject,
+        message: message,
+
+        module: module,
+        scope: scope,
+
+        fatal: fatal
+    };
+}
+
+proc resolver_state_push_error(
+    state: ref mut ResolverState,
+    error: ResolverStateError
+) {
+    set state.errors =
+        state.errors + [error];
+
+    set state.statistics.errors =
+        state.statistics.errors + 1;
+
+    set state.revision =
+        state.revision + 1;
+
+    if error.fatal {
+        set state.status =
+            ResolverStateStatus.Failed;
+
+        set state.phase =
+            ResolverStatePhase.Failed;
+
+        resolution_context_fail(
+            ref mut state.context
+        );
+    }
+}
+
+proc resolver_state_has_errors(
+    state: ref ResolverState
+) -> bool {
+    give len(state.errors) != 0;
+}
+
+proc resolver_state_has_fatal_error(
+    state: ref ResolverState
+) -> bool {
+    for error in state.errors {
+        if error.fatal {
+            give true;
+        }
+    }
+
+    give false;
+}
+
+proc resolver_state_should_stop(
+    state: ref ResolverState
+) -> bool {
+    if state.status
+        == ResolverStateStatus.Failed
+    {
+        give true;
+    }
+
+    if state.config.fail_fast
+        and resolver_state_has_errors(state)
+    {
+        give true;
+    }
+
+    give false;
+}
+
+proc resolver_state_set_phase(
+    state: ref mut ResolverState,
+    phase: ResolverStatePhase
+) {
+    set state.phase = phase;
+
+    set state.revision =
+        state.revision + 1;
+}
+
+proc resolver_state_begin(
+    state: ref mut ResolverState,
+    module: ModuleId,
+    scope: ScopeId
+) -> bool {
+    if not module_id_is_valid(module) {
+        resolver_state_push_error(
+            state,
+            resolver_state_error(
+                ResolverStateErrorKind.InvalidModule,
+                "",
+                "resolver received invalid module id",
+                module,
+                Some(scope),
+                true
+            )
+        );
+
+        give false;
+    }
+
+    set state.current_module =
+        module;
+
+    set state.current_scope =
+        Some(scope);
+
+    set state.current_node =
+        None;
+
+    set state.status =
+        ResolverStateStatus.Running;
+
+    set state.phase =
+        ResolverStatePhase.Preparing;
+
+    set state.statistics.runs =
+        state.statistics.runs + 1;
+
+    set state.revision =
+        state.revision + 1;
+
+    resolution_context_activate(
+        ref mut state.context
+    );
+
+    give true;
+}
+
+proc resolver_state_suspend(
+    state: ref mut ResolverState
+) {
+    if state.status
+        != ResolverStateStatus.Running
+    {
+        give;
+    }
+
+    set state.status =
+        ResolverStateStatus.Suspended;
+
+    resolution_context_suspend(
+        ref mut state.context
+    );
+
+    set state.revision =
+        state.revision + 1;
+}
+
+proc resolver_state_resume(
+    state: ref mut ResolverState
+) {
+    if state.status
+        != ResolverStateStatus.Suspended
+    {
+        give;
+    }
+
+    set state.status =
+        ResolverStateStatus.Running;
+
+    resolution_context_activate(
+        ref mut state.context
+    );
+
+    set state.revision =
+        state.revision + 1;
+}
+
+proc resolver_state_finish(
+    state: ref mut ResolverState
+) -> bool {
+    if resolver_state_has_fatal_error(
+        ref state
+    ) {
+        set state.status =
+            ResolverStateStatus.Failed;
+
+        set state.phase =
+            ResolverStatePhase.Failed;
+
+        give false;
+    }
+
+    if resolver_stack_depth(
+        ref state.stack
+    ) != 0
+    {
+        resolver_state_push_error(
+            state,
+            resolver_state_error(
+                ResolverStateErrorKind.Internal,
+                "",
+                "resolver stack is not empty at end of resolution",
+                state.current_module,
+                state.current_scope,
+                true
+            )
+        );
+
+        give false;
+    }
+
+    set state.phase =
+        ResolverStatePhase.Complete;
+
+    set state.status =
+        ResolverStateStatus.Complete;
+
+    set state.current_node =
+        None;
+
+    set state.revision =
+        state.revision + 1;
+
+    give true;
+}
+
+proc resolver_state_frame(
+    kind: ResolverStackFrameKind,
+    subject: string,
+    scope: Option<ScopeId>,
+    definition: Option<DefId>,
+    type_id: Option<TypeId>
+) -> ResolverStackFrame {
+    give ResolverStackFrame {
+        kind: kind,
+
+        state:
+            ResolverStackFrameState.Pending,
+
+        subject:
+            subject,
+
+        scope:
+            scope,
+
+        definition:
+            definition,
+
+        type_id:
+            type_id,
+
+        depth:
+            0,
+
+        generation:
+            0
+    };
+}
+
+proc resolver_state_begin_resolution(
+    state: ref mut ResolverState,
+    stack_kind: ResolverStackFrameKind,
+    graph_kind: ResolverGraphNodeKind,
+    subject: string,
+    scope: Option<ScopeId>,
+    definition: Option<DefId>,
+    type_id: Option<TypeId>
+) -> bool {
+    if resolver_state_should_stop(
+        ref state
+    ) {
+        give false;
+    }
+
+    if state.status
+        != ResolverStateStatus.Running
+    {
+        resolver_state_push_error(
+            state,
+            resolver_state_error(
+                ResolverStateErrorKind.InvalidTransition,
+                subject,
+                "resolution started while resolver is not running",
+                state.current_module,
+                scope,
+                true
+            )
+        );
+
+        give false;
+    }
+
+    if state.config.track_stack {
+        let frame =
+            resolver_state_frame(
+                stack_kind,
+                subject,
+                scope,
+                definition,
+                type_id
+            );
+
+        let stack_error =
+            resolver_stack_push(
+                ref mut state.stack,
+                frame
+            );
+
+        if stack_error.kind
+            != ResolverStackErrorKind.None
+        {
+            let kind =
+                if stack_error.kind
+                    == ResolverStackErrorKind.RecursiveResolution
+                {
+                    ResolverStateErrorKind.RecursiveResolution
+                } else {
+                    ResolverStateErrorKind.StackOverflow
+                };
+
+            resolver_state_push_error(
+                state,
+                resolver_state_error(
+                    kind,
+                    subject,
+                    stack_error.message,
+                    state.current_module,
+                    scope,
+                    true
+                )
+            );
+
+            give false;
+        }
+
+        set state.statistics.stack_pushes =
+            state.statistics.stack_pushes + 1;
+
+        let depth =
+            resolver_stack_depth(
+                ref state.stack
+            );
+
+        if depth
+            > state.statistics.maximum_stack_depth
+        {
+            set state.statistics.maximum_stack_depth =
+                depth;
+        }
+    }
+
+    if state.config.track_graph {
+        let node =
+            resolver_graph_add_node(
+                ref mut state.graph,
+                graph_kind,
+                subject
+            );
+
+        resolver_graph_mark_resolving(
+            ref mut state.graph,
+            node
+        );
+
+        set state.current_node =
+            Some(node);
+
+        set state.statistics.graph_nodes =
+            state.statistics.graph_nodes + 1;
+    }
+
+    set state.statistics.resolutions_started =
+        state.statistics.resolutions_started + 1;
+
+    set state.revision =
+        state.revision + 1;
+
+    give true;
+}
+
+proc resolver_state_complete_resolution(
+    state: ref mut ResolverState,
+    success: bool
+) -> bool {
+    pick state.current_node {
+        Some(node) {
+            if success {
+                resolver_graph_mark_resolved(
+                    ref mut state.graph,
+                    node
+                );
+            } else {
+                resolver_graph_mark_failed(
+                    ref mut state.graph,
+                    node
+                );
+            }
+        }
+
+        None {}
+    }
+
+    if state.config.track_stack {
+        let frame =
+            resolver_stack_pop(
+                ref mut state.stack
+            );
+
+        pick frame {
+            Some(_) {
+                set state.statistics.stack_pops =
+                    state.statistics.stack_pops + 1;
+            }
+
+            None {
+                resolver_state_push_error(
+                    state,
+                    resolver_state_error(
+                        ResolverStateErrorKind.Internal,
+                        "",
+                        "resolver stack underflow",
+                        state.current_module,
+                        state.current_scope,
+                        true
+                    )
+                );
+
+                give false;
+            }
+        }
+    }
+
+    if success {
+        set state.statistics.resolutions_completed =
+            state.statistics.resolutions_completed + 1;
+    } else {
+        set state.statistics.resolutions_failed =
+            state.statistics.resolutions_failed + 1;
+    }
+
+    set state.current_node =
+        None;
+
+    set state.revision =
+        state.revision + 1;
+
+    give success;
+}
+
+proc resolver_state_fail_resolution(
+    state: ref mut ResolverState,
+    subject: string,
+    message: string
+) {
+    resolver_state_complete_resolution(
+        state,
+        false
+    );
+
+    resolver_state_push_error(
+        state,
+        resolver_state_error(
+            ResolverStateErrorKind.ResolutionFailure,
+            subject,
+            message,
+            state.current_module,
+            state.current_scope,
+            false
+        )
+    );
+}
+
+proc resolver_state_set_scope(
+    state: ref mut ResolverState,
+    scope: ScopeId
+) {
+    set state.current_scope =
+        Some(scope);
+
+    set state.revision =
+        state.revision + 1;
+}
+
+proc resolver_state_clear_scope(
+    state: ref mut ResolverState
+) {
+    set state.current_scope =
+        None;
+
+    set state.revision =
+        state.revision + 1;
+}
+
+proc resolver_state_invalidate_node(
+    state: ref mut ResolverState,
+    node: ResolverGraphNodeId
+) -> usize {
+    if not state.config.incremental
+        or not state.config.track_graph
+    {
+        give 0;
+    }
+
+    let count =
+        resolver_graph_invalidate_dependents(
+            ref mut state.graph,
+            node
+        );
+
+    set state.statistics.invalidations =
+        state.statistics.invalidations
+        + count;
+
+    set state.revision =
+        state.revision + 1;
+
+    give count;
+}
+
+proc resolver_state_advance_generation(
+    state: ref mut ResolverState
+) -> u64 {
+    set state.generation =
+        state.generation + 1;
+
+    resolution_context_advance_generation(
+        ref mut state.context
+    );
+
+    resolver_stack_advance_generation(
+        ref mut state.stack
+    );
+
+    resolver_graph_advance_generation(
+        ref mut state.graph
+    );
+
+    set state.revision =
+        state.revision + 1;
+
+    give state.generation;
+}
+
+proc resolver_state_reset_run(
+    state: ref mut ResolverState
+) {
+    resolver_stack_clear(
+        ref mut state.stack
+    );
+
+    set state.current_module =
+        module_id_invalid();
+
+    set state.current_scope =
+        None;
+
+    set state.current_node =
+        None;
+
+    set state.errors = [];
+
+    set state.status =
+        ResolverStateStatus.Idle;
+
+    set state.phase =
+        ResolverStatePhase.Created;
+
+    resolution_context_reset(
+        ref mut state.context
+    );
+
+    resolver_state_advance_generation(
+        state
+    );
+}
+
+proc resolver_state_clear(
+    state: ref mut ResolverState
+) {
+    resolver_stack_clear(
+        ref mut state.stack
+    );
+
+    resolver_graph_clear(
+        ref mut state.graph
+    );
+
+    resolution_context_reset(
+        ref mut state.context
+    );
+
+    set state.current_module =
+        module_id_invalid();
+
+    set state.current_scope =
+        None;
+
+    set state.current_node =
+        None;
+
+    set state.errors = [];
+
+    set state.status =
+        ResolverStateStatus.Idle;
+
+    set state.phase =
+        ResolverStatePhase.Created;
+
+    set state.generation =
+        state.generation + 1;
+
+    set state.revision =
+        state.revision + 1;
+}
+
+proc resolver_state_reset_statistics(
+    state: ref mut ResolverState
+) {
+    set state.statistics =
+        resolver_state_statistics_empty();
+}
+
+proc resolver_state_statistics(
+    state: ref ResolverState
+) -> ResolverStateStatistics {
+    give state.statistics;
+}
+
+proc resolver_state_is_running(
+    state: ref ResolverState
+) -> bool {
+    give state.status
+        == ResolverStateStatus.Running;
+}
+
+proc resolver_state_is_complete(
+    state: ref ResolverState
+) -> bool {
+    give state.status
+        == ResolverStateStatus.Complete;
+}
+
+proc resolver_state_has_failed(
+    state: ref ResolverState
+) -> bool {
+    give state.status
+        == ResolverStateStatus.Failed;
+}
+
+proc resolver_state_phase_name(
+    phase: ResolverStatePhase
+) -> string {
+    pick phase {
+        ResolverStatePhase.Created {
+            give "created";
+        }
+
+        ResolverStatePhase.Preparing {
+            give "preparing";
+        }
+
+        ResolverStatePhase.Imports {
+            give "imports";
+        }
+
+        ResolverStatePhase.Names {
+            give "names";
+        }
+
+        ResolverStatePhase.Paths {
+            give "paths";
+        }
+
+        ResolverStatePhase.Types {
+            give "types";
+        }
+
+        ResolverStatePhase.Members {
+            give "members";
+        }
+
+        ResolverStatePhase.Generics {
+            give "generics";
+        }
+
+        ResolverStatePhase.Overloads {
+            give "overloads";
+        }
+
+        ResolverStatePhase.Finalizing {
+            give "finalizing";
+        }
+
+        ResolverStatePhase.Complete {
+            give "complete";
+        }
+
+        ResolverStatePhase.Failed {
+            give "failed";
+        }
+    }
+
+    give "failed";
+}
+
+proc resolver_state_status_name(
+    status: ResolverStateStatus
+) -> string {
+    pick status {
+        ResolverStateStatus.Idle {
+            give "idle";
+        }
+
+        ResolverStateStatus.Running {
+            give "running";
+        }
+
+        ResolverStateStatus.Suspended {
+            give "suspended";
+        }
+
+        ResolverStateStatus.Complete {
+            give "complete";
+        }
+
+        ResolverStateStatus.Failed {
+            give "failed";
+        }
+    }
+
+    give "failed";
+}
+
+proc resolver_state_error_kind_name(
+    kind: ResolverStateErrorKind
+) -> string {
+    pick kind {
+        ResolverStateErrorKind.None {
+            give "none";
+        }
+
+        ResolverStateErrorKind.InvalidModule {
+            give "invalid-module";
+        }
+
+        ResolverStateErrorKind.InvalidScope {
+            give "invalid-scope";
+        }
+
+        ResolverStateErrorKind.StackOverflow {
+            give "stack-overflow";
+        }
+
+        ResolverStateErrorKind.RecursiveResolution {
+            give "recursive-resolution";
+        }
+
+        ResolverStateErrorKind.GraphCycle {
+            give "graph-cycle";
+        }
+
+        ResolverStateErrorKind.InvalidTransition {
+            give "invalid-transition";
+        }
+
+        ResolverStateErrorKind.ResolutionFailure {
+            give "resolution-failure";
+        }
+
+        ResolverStateErrorKind.Internal {
+            give "internal";
+        }
+    }
+
+    give "internal";
+}
