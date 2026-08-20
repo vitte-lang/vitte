@@ -2917,6 +2917,13 @@ native-object-determinism-gate:
 	@python3 tools/native_object_determinism_test.py
 
 
+.PHONY: native-object-generation-stability
+native-object-generation-stability: native-object-determinism-gate
+	@python3 tools/check_native_object_generation_stability.py
+	@python3 tools/backend_native_object_audit.py
+	@python3 tools/backend_object_structure_audit.py
+
+
 .PHONY: backend-native-object-audit
 backend-native-object-audit: native-object-determinism-gate
 	@python3 tools/backend_native_object_audit.py
