@@ -17,6 +17,7 @@ SOURCE = ROOT / "tests" / "maximal_graph" / "maximal_graph.vit"
 CONSTANTS_SOURCE = ROOT / "tests" / "maximal_graph" / "constants_complex.vit"
 STRINGS_ARRAYS_SOURCE = ROOT / "tests" / "maximal_graph" / "strings_arrays.vit"
 STRUCTURES_VARIANTS_SOURCE = ROOT / "tests" / "maximal_graph" / "structures_variants.vit"
+MULTIFILE_SOURCE = ROOT / "tests" / "maximal_graph" / "imports" / "app.vit"
 REPORT = ROOT / "target" / "reports" / "maximal_graph_stability.json"
 OUTPUT_DIR = ROOT / "target" / "reports" / "maximal_graph"
 
@@ -113,6 +114,26 @@ def main() -> int:
             failures.append(f"structures and variants exited with {structures_run.returncode}")
     else:
         checks["structures_variants_execution"] = False
+
+    imports_check = run([str(BOOTSTRAP), "check", str(MULTIFILE_SOURCE)], env=env)
+    checks["module_imports_check"] = imports_check.returncode == 0
+    if imports_check.returncode != 0:
+        failures.append("module imports check failed: " + imports_check.stderr.strip())
+    multifile_output = OUTPUT_DIR / "multifile_imports"
+    imports_build = run(
+        [str(BOOTSTRAP), "build", str(MULTIFILE_SOURCE), "-o", str(multifile_output)],
+        env=env,
+    )
+    checks["module_imports_build"] = imports_build.returncode == 0 and multifile_output.is_file()
+    if not checks["module_imports_build"]:
+        failures.append("module imports build failed: " + imports_build.stderr.strip())
+    if multifile_output.is_file():
+        imports_run = run([str(multifile_output)], env=env)
+        checks["module_imports_execution"] = imports_run.returncode == 0
+        if imports_run.returncode != 0:
+            failures.append(f"module imports exited with {imports_run.returncode}")
+    else:
+        checks["module_imports_execution"] = False
 
     first = OUTPUT_DIR / "maximal_graph_first"
     second = OUTPUT_DIR / "maximal_graph_second"
