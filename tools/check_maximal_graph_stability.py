@@ -18,6 +18,7 @@ CONSTANTS_SOURCE = ROOT / "tests" / "maximal_graph" / "constants_complex.vit"
 STRINGS_ARRAYS_SOURCE = ROOT / "tests" / "maximal_graph" / "strings_arrays.vit"
 STRUCTURES_VARIANTS_SOURCE = ROOT / "tests" / "maximal_graph" / "structures_variants.vit"
 MULTIFILE_SOURCE = ROOT / "tests" / "maximal_graph" / "imports" / "app.vit"
+DIAGNOSTIC_SOURCE = ROOT / "tests" / "diagnostics" / "negative" / "typeck" / "type_mismatch.vit"
 REPORT = ROOT / "target" / "reports" / "maximal_graph_stability.json"
 OUTPUT_DIR = ROOT / "target" / "reports" / "maximal_graph"
 
@@ -134,6 +135,18 @@ def main() -> int:
             failures.append(f"module imports exited with {imports_run.returncode}")
     else:
         checks["module_imports_execution"] = False
+
+    diagnostic = run([str(BOOTSTRAP), "check", str(DIAGNOSTIC_SOURCE)], env=env)
+    diagnostic_output = diagnostic.stdout + diagnostic.stderr
+    checks["diagnostic_program_rejected"] = diagnostic.returncode != 0
+    checks["diagnostic_code_present"] = "VITTE_SEMA_E_ASSIGN" in diagnostic_output
+    checks["diagnostic_source_span_present"] = "type_mismatch.vit:5" in diagnostic_output
+    if diagnostic.returncode == 0:
+        failures.append("diagnostic program unexpectedly passed")
+    if not checks["diagnostic_code_present"]:
+        failures.append("diagnostic output is missing VITTE_SEMA_E_ASSIGN")
+    if not checks["diagnostic_source_span_present"]:
+        failures.append("diagnostic output is missing the source span")
 
     first = OUTPUT_DIR / "maximal_graph_first"
     second = OUTPUT_DIR / "maximal_graph_second"
