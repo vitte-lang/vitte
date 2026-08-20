@@ -114,6 +114,7 @@ ALLOWED_DYNAMIC_PRODUCERS = {
     "src/vitte/compiler/infrastructure/diagnostics/diagnostic.vit",
     "src/vitte/compiler/infrastructure/diagnostics/emitter.vit",
     "src/vitte/compiler/infrastructure/session/diagnostics.vit",
+    "src/vitte/compiler/analysis/resolution/resolver_diagnostics.vit",
     "src/vitte/compiler/analysis/sema/errors.vit",
     "src/vitte/compiler/analysis/typeck/errors.vit",
     "src/vitte/compiler/analysis/borrowck/mod.vit",

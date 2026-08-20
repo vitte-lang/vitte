@@ -1067,9 +1067,9 @@ grammar-check:
 	@python3 docs/book/grammar/scripts/sync_precedence.py --check
 
 .PHONY: grammar-test
-grammar-test:
+grammar-test: bootstrap-c17
 	@python3 docs/book/grammar/scripts/validate_examples.py
-	@python3 tools/parser_precedence_property_test.py
+	@VITTE_BIN="$(CURDIR)/target/bootstrap-c17/vitte-bootstrap" python3 tools/parser_precedence_property_test.py
 
 .PHONY: grammar-test-portable
 grammar-test-portable:
@@ -1095,9 +1095,9 @@ driver-report-runtime-test:
 	@python3 tools/driver_report_runtime_test.py
 
 .PHONY: core-language-test
-core-language-test:
+core-language-test: bootstrap-c17
 	@python3 docs/book/grammar/scripts/validate_examples.py --strict-core --manifest tests/grammar/core_manifest.txt
-	@python3 tools/parser_precedence_property_test.py
+	@VITTE_BIN="$(CURDIR)/target/bootstrap-c17/vitte-bootstrap" python3 tools/parser_precedence_property_test.py
 
 .PHONY: core-language-test-portable
 core-language-test-portable:
@@ -1113,8 +1113,14 @@ grammar-test-update:
 	@python3 docs/book/grammar/scripts/validate_examples.py --update-snapshots
 
 .PHONY: parser-recovery-golden
-parser-recovery-golden:
+parser-recovery-golden: parser-recovery-stability
 	@python3 docs/book/grammar/scripts/validate_examples.py --strict-core --manifest tests/grammar/recovery_manifest.txt
+
+.PHONY: parser-recovery-stability
+parser-recovery-stability:
+	@python3 tools/check_parser_recovery_stability.py
+	@test -f target/reports/parser_recovery_stability.json
+	@test -f target/reports/parser_recovery_stability.md
 
 .PHONY: parser-recovery-golden-portable
 parser-recovery-golden-portable:
@@ -1164,8 +1170,10 @@ frontend-lexer-test: bootstrap-c17
 	@python3 tools/lexer_ebnf_surface_check.py
 
 .PHONY: frontend-parser-test
-frontend-parser-test: grammar-test grammar-coverage lexer-parser-coverage-100 syntax-parser-diagnostics-max
-	@bin/vitte check src/vitte/compiler/tests/parser_tests.vit
+frontend-parser-test: bootstrap-c17 parser-recovery-stability grammar-test grammar-coverage lexer-parser-coverage-100 syntax-parser-diagnostics-max
+	@target/bootstrap-c17/vitte-bootstrap check src/vitte/compiler/frontend/parse/recovery.vit
+	@target/bootstrap-c17/vitte-bootstrap check src/vitte/compiler/frontend/parse/parser.vit
+	@target/bootstrap-c17/vitte-bootstrap check src/vitte/compiler/frontend/grammar_alignment_checker.vit
 
 .PHONY: frontend-ast-test
 frontend-ast-test:

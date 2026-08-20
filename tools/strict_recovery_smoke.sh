@@ -2,14 +2,14 @@
 set -eu
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-BIN="${BIN:-$ROOT_DIR/bin/vitte}"
-SRC="${SRC:-$ROOT_DIR/tests/diag_snapshots/composite_type_arity.vit}"
+BIN="${BIN:-$ROOT_DIR/target/bootstrap-c17/vitte-bootstrap}"
+SRC="${SRC:-$ROOT_DIR/tests/diagnostics/frontend/parser/recovery-no-cascade.vit}"
 
-[ -x "$BIN" ] || { echo "[strict-recovery-smoke][error] missing binary: $BIN" >&2; exit 1; }
+[ -x "$BIN" ] || { echo "[strict-recovery-smoke][error] missing source bootstrap compiler: $BIN; run: make bootstrap-c17" >&2; exit 1; }
 [ -f "$SRC" ] || { echo "[strict-recovery-smoke][error] missing source: $SRC" >&2; exit 1; }
 
 set +e
-out="$($BIN check --stage parse --lang=en "$SRC" 2>&1)"
+out="$($BIN check "$SRC" 2>&1)"
 rc=$?
 set -e
 
