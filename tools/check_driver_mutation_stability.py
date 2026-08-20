@@ -69,6 +69,40 @@ def main() -> int:
         if not checks["parser_mutation_diagnostic"]:
             failures.append("illegal lexer mutation did not produce parser recovery diagnostics")
 
+    with tempfile.TemporaryDirectory(prefix="vitte-backend-mutation-") as directory:
+        workspace = Path(directory)
+        build_env = os.environ.copy()
+        build_env["VITTE_C17_GENERIC_COMPILER"] = "1"
+        for label, expected in (("baseline", 0), ("mutated", 1)):
+            source = workspace / f"{label}.vit"
+            output = workspace / label
+            source.write_text(f"proc main() -> int {{ give {expected}; }}\n", encoding="utf-8")
+            build = subprocess.run(
+                [str(BOOTSTRAP), "build", str(source), "-o", str(output)],
+                cwd=ROOT,
+                env=build_env,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            execution = subprocess.run(
+                [str(output)],
+                cwd=ROOT,
+                env=build_env,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            ) if output.is_file() else None
+            checks[f"backend_{label}_build"] = build.returncode == 0 and output.is_file()
+            checks[f"backend_{label}_execution"] = execution is not None and execution.returncode == expected
+            if not checks[f"backend_{label}_build"]:
+                failures.append(f"backend {label} mutation build failed")
+            if not checks[f"backend_{label}_execution"]:
+                actual = execution.returncode if execution is not None else "missing"
+                failures.append(f"backend {label} mutation returned {actual}, expected {expected}")
+
     payload = {
         "schema": "vitte.compiler.driver_mutation_stability",
         "schema_version": "1.0.0",
