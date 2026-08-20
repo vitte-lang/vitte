@@ -8,6 +8,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 
@@ -24,10 +25,15 @@ REPORT = ROOT / "target" / "reports" / "maximal_graph_stability.json"
 OUTPUT_DIR = ROOT / "target" / "reports" / "maximal_graph"
 
 
-def run(command: list[str], *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+def run(
+    command: list[str],
+    *,
+    env: dict[str, str] | None = None,
+    cwd: Path = ROOT,
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         command,
-        cwd=ROOT,
+        cwd=cwd,
         env=env,
         text=True,
         stdout=subprocess.PIPE,
@@ -57,6 +63,31 @@ def main() -> int:
     checks["absolute_source_path"] = check.returncode == 0
     if relative_check.returncode != 0:
         failures.append("relative source path check failed: " + relative_check.stderr.strip())
+
+    with tempfile.TemporaryDirectory(prefix="vitte-maximal-outside-") as outside_dir:
+        outside = Path(outside_dir)
+        outside_source = SOURCE
+        outside_check = run(
+            [str(BOOTSTRAP), "check", str(outside_source)],
+            env=env,
+            cwd=outside,
+        )
+        outside_output = outside / "maximal_graph_outside"
+        outside_build = run(
+            [str(BOOTSTRAP), "build", str(outside_source), "-o", str(outside_output)],
+            env=env,
+            cwd=outside,
+        )
+        outside_run = run([str(outside_output)], env=env, cwd=outside) if outside_output.is_file() else None
+        checks["outside_root_check"] = outside_check.returncode == 0
+        checks["outside_root_build"] = outside_build.returncode == 0 and outside_output.is_file()
+        checks["outside_root_execution"] = outside_run is not None and outside_run.returncode == 0
+        if not checks["outside_root_check"]:
+            failures.append("outside-root check failed: " + outside_check.stderr.strip())
+        if not checks["outside_root_build"]:
+            failures.append("outside-root build failed: " + outside_build.stderr.strip())
+        if outside_run is not None and outside_run.returncode != 0:
+            failures.append(f"outside-root executable exited with {outside_run.returncode}")
 
     constants_check = run([str(BOOTSTRAP), "check", str(CONSTANTS_SOURCE)], env=env)
     checks["constants_complex_check"] = constants_check.returncode == 0
