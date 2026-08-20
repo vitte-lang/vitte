@@ -544,17 +544,37 @@ proc runtime_summary() -> RuntimeSummary {
 
 proc runtime_selftest() -> bool {
   let summary: RuntimeSummary = runtime_summary()
-  give runtime_ready()
-    and summary.manifest.version == "max-1"
-    and summary.health.ready
-    and summary.health.abi_ready
-    and summary.health.io_ready
-    and summary.health.process_ready
-    and summary.health.net_ready
-    and alloc() == 0
-    and dealloc() == 0
-    and regex_compile() == 0
-    and db_open() == 0
+  if not runtime_ready() {
+    give false
+  }
+  if summary.manifest.version != "max-1" {
+    give false
+  }
+  if not summary.health.ready {
+    give false
+  }
+  if not summary.health.abi_ready {
+    give false
+  }
+  if not summary.health.io_ready {
+    give false
+  }
+  if not summary.health.process_ready {
+    give false
+  }
+  if not summary.health.net_ready {
+    give false
+  }
+  if alloc() != 0 {
+    give false
+  }
+  if dealloc() != 0 {
+    give false
+  }
+  if regex_compile() != 0 {
+    give false
+  }
+  give db_open() == 0
 }
 
 export *

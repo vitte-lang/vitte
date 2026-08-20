@@ -1750,6 +1750,14 @@ runtime-abi-contract:
 	@test -f target/runtime_stdlib_real/real_checks.json
 	@test -f target/reports/runtime_stdlib_real.md
 
+.PHONY: vitte-runtime-stability
+vitte-runtime-stability: bootstrap-c17 runtime-stdlib-real
+	@$(VITTE_BOOTSTRAP) check src/vitte/stdlib/runtime.vitl
+	@$(VITTE_BOOTSTRAP) check src/vitte/stdlib/io/host_runtime.vitl
+	@python3 tools/runtime_abi_contract.py
+	@python3 tools/check_vitte_runtime_surface_stability.py
+	@test -f target/reports/vitte_runtime_surface_stability.json
+
 .PHONY: selfhost-completion-audit
 selfhost-completion-audit:
 	@python3 tools/selfhost_completion_audit.py
