@@ -807,7 +807,7 @@ toolchain-stages-gate: bootstrap-all
 toolchain-stage012-gate: bootstrap-all
 	@python3 tools/toolchain_stage012_gate.py
 
-bootstrap-max-gate: bootstrap-all bootstrap-verify build-fluent-diagnostics-gate diagnostics-locales-lint diagnostics-ftl-check bootstrap-native-fast-contract bootstrap-trust-tests vitte-source-audit toolchain-stages-gate
+bootstrap-max-gate: bootstrap-all bootstrap-verify maximal-graph-stability driver-mutation-stability lexer-parser-mutation-stability backend-mutation-stability stage-provenance-stability build-fluent-diagnostics-gate diagnostics-locales-lint diagnostics-ftl-check bootstrap-native-fast-contract bootstrap-trust-tests vitte-source-audit toolchain-stages-gate
 	@python3 tools/generate_bootstrap_fluent_table.py --check
 	@python3 tools/generate_frontend_fluent_bridge.py --check
 	@python3 tools/bootstrap_max_gate.py
