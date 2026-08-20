@@ -212,7 +212,7 @@ vitte-lint:
 # Static analysis
 # ------------------------------------------------------------
 
-.PHONY: tidy vitte-source-audit vitte-legacy-text-audit vitte-compiler-purity-gate src-compiler-stdlib-gate compiler-entrypoint-gate resolver-root-independence-gate compiler-full-import-graph-gate module-import-resolution-stability symbol-scope-visibility-stability hir-validation-stability name-resolution-stability sema-stability typeck-stability control-flow-stability borrowck-stability const-eval-stability hir-to-mir-stability mir-stability structured-diagnostics-stability diagnostic-output-stability stage1-compiler-gate stage2-project-gate selfhost-stage-compare-gate selfhost-stage0-gate selfhost-stage1-gate selfhost-stage2-gate selfhost-release-gate selfhost-full-gate selfhost-ci-regression-gate seed-free-normal-flow-gate seed-free-release-gate vitte-in-vitte-gate release-clean-selfhost-gate release-package-stdlib-gate compiler-snapshot-gate compiler-backend-surface-gate compiler-link-abi-gate seed-free-release-surface-gate release-binary-gate vitte-bootstrap-check bootstrap-native-snapshots compiler-real-native-gate compiler-test-suite-check-gate compiler-no-fallback-gate driver-native-json-surface-gate compiler-real-diagnostics-gate invalid-fixtures-contract-gate
+.PHONY: tidy vitte-source-audit vitte-legacy-text-audit vitte-compiler-purity-gate src-compiler-stdlib-gate compiler-entrypoint-gate resolver-root-independence-gate compiler-full-import-graph-gate module-import-resolution-stability symbol-scope-visibility-stability hir-validation-stability name-resolution-stability sema-stability typeck-stability control-flow-stability borrowck-stability const-eval-stability hir-to-mir-stability mir-stability structured-diagnostics-stability diagnostic-output-stability error-snapshots-stability stage1-compiler-gate stage2-project-gate selfhost-stage-compare-gate selfhost-stage0-gate selfhost-stage1-gate selfhost-stage2-gate selfhost-release-gate selfhost-full-gate selfhost-ci-regression-gate seed-free-normal-flow-gate seed-free-release-gate vitte-in-vitte-gate release-clean-selfhost-gate release-package-stdlib-gate compiler-snapshot-gate compiler-backend-surface-gate compiler-link-abi-gate seed-free-release-surface-gate release-binary-gate vitte-bootstrap-check bootstrap-native-snapshots compiler-real-native-gate compiler-test-suite-check-gate compiler-no-fallback-gate driver-native-json-surface-gate compiler-real-diagnostics-gate invalid-fixtures-contract-gate
 tidy: vitte-source-audit vitte-legacy-text-audit
 
 vitte-source-audit:
@@ -374,6 +374,13 @@ diagnostic-output-stability: bootstrap-c17 structured-diagnostics-stability
 	@python3 tools/generate_frontend_fluent_bridge.py --check
 	@test -f target/reports/diagnostic_output_stability.json
 	@test -f target/reports/diagnostic_output_stability.md
+
+error-snapshots-stability: bootstrap-c17 diagnostic-output-stability
+	@python3 tools/mir_coverage_check.py --snapshots
+	@python3 tools/check_parser_diagnostic_snapshots.py
+	@python3 tools/check_error_snapshots_stability.py
+	@test -f target/reports/error_snapshots_stability.json
+	@test -f target/reports/error_snapshots_stability.md
 
 stage1-compiler-gate: compiler-entrypoint-gate bootstrap-c17
 	@tools/stage1_compiler_gate.sh
