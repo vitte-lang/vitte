@@ -99,6 +99,13 @@ def iter_vit_files(repo: Path, roots: list[str], tracked_only: bool) -> list[Pat
     return sorted(dedup, key=lambda p: p.relative_to(repo).as_posix())
 
 
+def read_text_or_skip(path: Path) -> str | None:
+    try:
+        return path.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        return None
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Forbid legacy self-leaf imports (/<pkg>/<pkg>) in tests/examples"
@@ -185,7 +192,10 @@ def main() -> int:
     for file in iter_vit_files(repo, args.roots, args.tracked_only):
         scanned += 1
         rel = file.relative_to(repo).as_posix()
-        for i, line in enumerate(file.read_text(encoding="utf-8").splitlines(), start=1):
+        text = read_text_or_skip(file)
+        if text is None:
+            continue
+        for i, line in enumerate(text.splitlines(), start=1):
             m = IMPORT_RE.match(line)
             if not m:
                 continue
