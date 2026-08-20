@@ -520,6 +520,19 @@ proc expected_text_message_for_code(state: ParserState, text: string, code: stri
   give context + " needs `" + text + "` here before " + token_display(current_token(state));
 }
 
+proc expect_statement_end(state: ParserState, code: string) -> ParserState {
+  if at_text(state, ";") {
+    give advance(state);
+  }
+  if is_eof(state) or at_text(state, "}") {
+    give state;
+  }
+  if state.index > 0 and current_token(state).line > state.tokens[state.index - 1].line {
+    give state;
+  }
+  give parser_state_with_structured_diag(state, code, expected_text_message_for_code(state, ";", code));
+}
+
 proc is_expr_recovery_boundary(state: ParserState) -> bool {
   if is_eof(state) {
     give true;
@@ -1078,7 +1091,7 @@ proc parse_match_expr(state: ParserState) -> ParserState {
     if at_text(current, "=>") {
       set current = advance(current);
       set current = parse_expr(current);
-      set current = expect_text(current, ";", "PMATCH003");
+      set current = expect_statement_end(current, "PMATCH003");
     } else {
       set current = parse_block(current);
     }
@@ -1088,7 +1101,7 @@ proc parse_match_expr(state: ParserState) -> ParserState {
     if at_text(current, "=>") {
       set current = advance(current);
       set current = parse_expr(current);
-      set current = expect_text(current, ";", "PMATCH004");
+      set current = expect_statement_end(current, "PMATCH004");
     } else {
       set current = parse_block(current);
     }
@@ -1289,7 +1302,7 @@ proc parse_stmt(state: ParserState) -> ParserState {
     }
     let assigned: ParserState = expect_text(typed, assign_op_eq(), "PSTMT002");
     let exprd: ParserState = parse_expr(assigned);
-    give expect_text(exprd, ";", "PSTMT003");
+    give expect_statement_end(exprd, "PSTMT003");
   }
   if at_text(current, "let") {
     let walk: ParserState = advance(current);
@@ -1304,14 +1317,14 @@ proc parse_stmt(state: ParserState) -> ParserState {
     }
     let assigned: ParserState = expect_text(typed, assign_op_eq(), "PSTMT004");
     let exprd: ParserState = parse_expr(assigned);
-    give expect_text(exprd, ";", "PSTMT005");
+    give expect_statement_end(exprd, "PSTMT005");
   }
   if at_text(current, "set") {
     let walk: ParserState = advance(current);
     let target: ParserState = parse_unary_expr(walk);
     if at_text(target, assign_op_eq()) or at_text(target, assign_op_add()) or at_text(target, assign_op_sub()) or at_text(target, assign_op_mul()) or at_text(target, assign_op_div()) or at_text(target, assign_op_mod()) or at_text(target, assign_op_and()) or at_text(target, assign_op_or()) or at_text(target, assign_op_xor()) or at_text(target, assign_op_shl()) or at_text(target, assign_op_shr()) {
       let exprd: ParserState = parse_expr(advance(target));
-      give expect_text(exprd, ";", "PSTMT006");
+      give expect_statement_end(exprd, "PSTMT006");
     }
     give parser_state_with_structured_diag(target, "PSTMT007", "assignment statement is missing an assignment operator such as `=` or `+=` before " + token_display(current_token(target)));
   }
@@ -1321,25 +1334,25 @@ proc parse_stmt(state: ParserState) -> ParserState {
     if not at_text(exprd, ";") {
       set exprd = parse_expr(exprd);
     }
-    give expect_text(exprd, ";", "PSTMT008");
+    give expect_statement_end(exprd, "PSTMT008");
   }
   if at_text(current, "try") {
     let exprd: ParserState = parse_expr(advance(current));
-    give expect_text(exprd, ";", "PSTMT009");
+    give expect_statement_end(exprd, "PSTMT009");
   }
   if at_text(current, "defer") {
     give parse_block(advance(current));
   }
   if at_text(current, "asm") {
     let walk: ParserState = skip_balanced(advance(current), "(", ")", "PSTMT010");
-    give expect_text(walk, ";", "PSTMT011");
+    give expect_statement_end(walk, "PSTMT011");
   }
   if at_text(current, "unsafe") {
     give parse_block(advance(current));
   }
   if at_text(current, "emit") or at_text(current, "panic") {
     let exprd: ParserState = parse_expr(advance(current));
-    give expect_text(exprd, ";", "PSTMT012");
+    give expect_statement_end(exprd, "PSTMT012");
   }
   if at_text(current, "assert") {
     let walk: ParserState = parse_expr(advance(current));
@@ -1347,10 +1360,10 @@ proc parse_stmt(state: ParserState) -> ParserState {
     if at_text(with_more, ",") {
       set with_more = parse_expr(advance(with_more));
     }
-    give expect_text(with_more, ";", "PSTMT013");
+    give expect_statement_end(with_more, "PSTMT013");
   }
   if at_text(current, "unreachable") or at_text(current, "continue") {
-    give expect_text(advance(current), ";", "PSTMT014");
+    give expect_statement_end(advance(current), "PSTMT014");
   }
   if at_text(current, "break") {
     let walk: ParserState = advance(current);
@@ -1358,7 +1371,7 @@ proc parse_stmt(state: ParserState) -> ParserState {
     if not at_text(exprd, ";") {
       set exprd = parse_expr(exprd);
     }
-    give expect_text(exprd, ";", "PSTMT015");
+    give expect_statement_end(exprd, "PSTMT015");
   }
   if at_text(current, "if") {
     give parse_if_expr(current);
@@ -1412,7 +1425,7 @@ proc parse_stmt(state: ParserState) -> ParserState {
     give parse_block(advance(current));
   }
   let exprd: ParserState = parse_expr(current);
-  give expect_text(exprd, ";", "PSTMT018");
+  give expect_statement_end(exprd, "PSTMT018");
 }
 
 proc parse_block(state: ParserState) -> ParserState {
