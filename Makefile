@@ -2856,6 +2856,12 @@ vitte-native-backend-stability: bootstrap-c17 vitte-emit-gate native-object-dete
 	@python3 tools/backend_native_toolchain_audit.py
 
 
+.PHONY: c17-separation-stability
+c17-separation-stability: bootstrap-c17 compiler-copy-path-gate
+	@python3 tools/bootstrap_src_alignment_gate.py
+	@python3 tools/check_c17_separation_stability.py
+
+
 .PHONY: llvm-backend-gate
 llvm-backend-gate:
 	@bin/vitte check src/vitte/compiler/tests/llvm_tests.vit
