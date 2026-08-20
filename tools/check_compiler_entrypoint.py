@@ -22,6 +22,13 @@ ENTRYPOINT_SPACE = "vitte/compiler/main"
 
 SPACE_RE = re.compile(r"^\s*space\s+([^\s;]+)", re.MULTILINE)
 USE_START_RE = re.compile(r"^\s*(?:use|import)\s+(.+)")
+MAIN_PROC_RE = re.compile(
+    r"\bproc\s+main\s*\(\s*args\s*:\s*list\s*\[\s*string\s*\]\s*\)\s*->\s*int\s*\{"
+)
+ICE_BOUNDARY_CALL_RE = re.compile(r"\brun_cli_main_with_ice_boundary\s*\(\s*args\s*\)")
+ICE_BOUNDARY_ASSIGN_RE = re.compile(
+    r"\blet\s+code\s*:\s*int\s*=\s*run_cli_main_with_ice_boundary\s*\(\s*args\s*\)\s*;"
+)
 FORBIDDEN_IMPORT_PREFIXES = (
     "bootstrap/",
     "seed/",
@@ -133,6 +140,114 @@ def import_base(spec: str) -> str:
     return base
 
 
+def mask_non_code(text: str) -> str:
+    masked = list(text)
+    index = 0
+    state = "code"
+    while index < len(text):
+        if state == "code":
+            if text.startswith("<<<", index):
+                masked[index:index + 3] = "   "
+                index += 3
+                state = "block-comment"
+                continue
+            if text.startswith("//", index):
+                masked[index:index + 2] = "  "
+                index += 2
+                state = "line-comment"
+                continue
+            if text[index] == '"':
+                masked[index] = " "
+                index += 1
+                state = "string"
+                continue
+            index += 1
+            continue
+        if state == "block-comment":
+            if text.startswith(">>>", index):
+                masked[index:index + 3] = "   "
+                index += 3
+                state = "code"
+            else:
+                if text[index] != "\n":
+                    masked[index] = " "
+                index += 1
+            continue
+        if state == "line-comment":
+            if text[index] == "\n":
+                state = "code"
+            else:
+                masked[index] = " "
+            index += 1
+            continue
+        if text[index] == "\\" and index + 1 < len(text):
+            masked[index:index + 2] = "  "
+            index += 2
+        elif text[index] == '"':
+            masked[index] = " "
+            index += 1
+            state = "code"
+        else:
+            if text[index] != "\n":
+                masked[index] = " "
+            index += 1
+    return "".join(masked)
+
+
+def main_procedure_bodies(text: str) -> list[str]:
+    code = mask_non_code(text)
+    bodies: list[str] = []
+    for match in MAIN_PROC_RE.finditer(code):
+        opening = code.find("{", match.start(), match.end())
+        depth = 0
+        for index in range(opening, len(code)):
+            if code[index] == "{":
+                depth += 1
+            elif code[index] == "}":
+                depth -= 1
+                if depth == 0:
+                    bodies.append(code[opening + 1:index])
+                    break
+    return bodies
+
+
+def validate_runtime_entry_text(text: str) -> tuple[dict[str, object], list[str]]:
+    errors: list[str] = []
+    imports = iter_imports(text)
+    imports_boundary = any(
+        import_base(spec) == "vitte/compiler/driver/compiler"
+        and re.search(r"\brun_cli_main_with_ice_boundary\b", spec)
+        for spec in imports
+    )
+    bodies = main_procedure_bodies(text)
+    body = bodies[0] if len(bodies) == 1 else ""
+    calls_in_main = len(ICE_BOUNDARY_CALL_RE.findall(body))
+    calls_total = len(ICE_BOUNDARY_CALL_RE.findall(mask_non_code(text)))
+    assigns_code = bool(ICE_BOUNDARY_ASSIGN_RE.search(body))
+    returns_code = bool(re.search(r"\bgive\s+code\s*;", body))
+    if not imports_boundary:
+        errors.append("main.vit must import run_cli_main_with_ice_boundary from the canonical driver")
+    if len(bodies) != 1:
+        errors.append(f"main.vit must define exactly one canonical main(args) procedure, found {len(bodies)}")
+    if calls_in_main != 1:
+        errors.append(f"main(args) must call run_cli_main_with_ice_boundary(args) exactly once, found {calls_in_main}")
+    if calls_total != calls_in_main:
+        errors.append("run_cli_main_with_ice_boundary(args) must not be called outside main(args)")
+    if not assigns_code:
+        errors.append("main(args) must store the ICE-boundary result in the integer code variable")
+    if not returns_code:
+        errors.append("main(args) must return the ICE-boundary result with give code")
+    evidence: dict[str, object] = {
+        "imports_boundary": imports_boundary,
+        "main_procedure_count": len(bodies),
+        "calls_in_main": calls_in_main,
+        "calls_total": calls_total,
+        "assigns_code": assigns_code,
+        "returns_code": returns_code,
+    }
+    return evidence, errors
+
+
 def validate_module_manifest(errors: list[str]) -> set[str]:
     try:
         data = load_json(MODULE_MANIFEST)
@@ -231,6 +346,8 @@ def validate_entrypoint_source(errors: list[str]) -> None:
     for literal in required_literals:
         if literal not in text:
             errors.append(f"{rel(ENTRYPOINT)} missing canonical literal: {literal}")
+    _evidence, runtime_errors = validate_runtime_entry_text(text)
+    errors.extend(f"{rel(ENTRYPOINT)} {error}" for error in runtime_errors)
 
 
 def validate_no_bootstrap_imports(errors: list[str]) -> None:
@@ -249,13 +366,14 @@ def write_reports(errors: list[str]) -> None:
     REPORT_JSON.parent.mkdir(parents=True, exist_ok=True)
     status = "fail" if errors else "ok"
     report = {
-        "schema": "vitte.compiler.entrypoint.report.v1",
+        "schema": "vitte.compiler.entrypoint.report.v2",
         "status": status,
         "entrypoint": rel(ENTRYPOINT),
         "manifest": rel(MODULE_MANIFEST),
         "entrypoint_manifest": rel(ENTRYPOINT_MANIFEST),
         "module_count": len(compiler_sources()),
         "bootstrap_import_policy": "forbidden",
+        "runtime_entry": validate_runtime_entry_text(read_text(ENTRYPOINT))[0] if ENTRYPOINT.is_file() else {},
         "errors": errors,
     }
     REPORT_JSON.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")

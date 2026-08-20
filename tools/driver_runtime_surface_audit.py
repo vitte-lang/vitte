@@ -19,7 +19,7 @@ def read(rel: str) -> str:
 
 def main() -> int:
     required_checks: list[tuple[str, str, str]] = [
-        ("src/vitte/compiler/main.vit", "run_cli_main_with_ice_boundary", "public compiler entry must route through driver runtime core"),
+        ("src/vitte/compiler/main.vit", "let code: int = run_cli_main_with_ice_boundary(args);", "public compiler entry must call the driver ICE boundary and retain its result"),
         ("src/vitte/compiler/driver/compiler.vit", "proc run_cli_main_with_ice_boundary(", "driver runtime core must expose panic-boundary CLI entry"),
         ("src/vitte/compiler/driver/compiler.vit", "proc parse_cli_request(", "driver runtime core must keep CLI request normalization"),
         ("src/vitte/compiler/driver/compiler.vit", "proc compile_source(", "driver runtime core must keep source compilation entry"),

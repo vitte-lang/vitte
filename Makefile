@@ -247,6 +247,7 @@ src-compiler-stdlib-gate:
 	@python3 tools/src_compiler_stdlib_gate.py
 
 compiler-entrypoint-gate:
+	@python3 tools/test_compiler_entrypoint_contract.py
 	@python3 tools/check_compiler_entrypoint.py
 	@test -f target/reports/compiler_entrypoint_gate.json
 	@test -f target/reports/compiler_entrypoint_gate.md
