@@ -89,13 +89,17 @@ def main() -> int:
         strings_run = run([str(strings_output)], env=env)
         checks["strings_arrays_execution"] = strings_run.returncode == 0
         checks["strings_arrays_output"] = "vitte" in strings_run.stdout
+        checks["strings_arrays_stderr_empty"] = strings_run.stderr == ""
         if strings_run.returncode != 0:
             failures.append(f"strings and arrays exited with {strings_run.returncode}")
         if not checks["strings_arrays_output"]:
             failures.append("strings and arrays output is missing `vitte`")
+        if not checks["strings_arrays_stderr_empty"]:
+            failures.append("strings and arrays wrote unexpected data to stderr")
     else:
         checks["strings_arrays_execution"] = False
         checks["strings_arrays_output"] = False
+        checks["strings_arrays_stderr_empty"] = False
 
     structures_check = run([str(BOOTSTRAP), "check", str(STRUCTURES_VARIANTS_SOURCE)], env=env)
     checks["structures_variants_check"] = structures_check.returncode == 0
@@ -179,13 +183,17 @@ def main() -> int:
         checks["expected_graph_output"] = all(
             marker in execution.stdout for marker in ("nodes", "alpha", "beta", "gamma", "edges")
         )
+        checks["native_stderr_empty"] = execution.stderr == ""
         if execution.returncode != 0:
             failures.append(f"maximal graph exited with {execution.returncode}")
         if not checks["expected_graph_output"]:
             failures.append("maximal graph output is missing expected graph markers")
+        if not checks["native_stderr_empty"]:
+            failures.append("maximal graph wrote unexpected data to stderr")
     else:
         checks["native_execution"] = False
         checks["expected_graph_output"] = False
+        checks["native_stderr_empty"] = False
 
     first_c = first.with_suffix(first.suffix + ".c")
     second_c = second.with_suffix(second.suffix + ".c")
