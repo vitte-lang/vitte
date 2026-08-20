@@ -1,0 +1,1591 @@
+space vitte/stdlib/alloc/boxed/alloc
+
+export *
+
+use src/vitte/stdlib/alloc/allocator as alloc_allocator
+use src/vitte/stdlib/core/option as core_option
+
+// -----------------------------------------------------------------------------
+// Constants
+// -----------------------------------------------------------------------------
+
+const BOX_ALLOC_MIN_ALIGN: usize = 1;
+const BOX_ALLOC_MIN_SIZE: usize = 1;
+
+// -----------------------------------------------------------------------------
+// Allocation kind
+// -----------------------------------------------------------------------------
+
+pick BoxAllocationKind {
+    Value,
+    Zeroed,
+    Array,
+    Slice,
+    Copy,
+    Raw,
+    Internal
+}
+
+pick BoxAllocationState {
+    Ready,
+    Allocated,
+    Released,
+    Failed,
+    Invalid
+}
+
+pick BoxAllocationFailure {
+    None,
+
+    InvalidSize,
+    InvalidAlignment,
+    InvalidLayout,
+
+    Overflow,
+    OutOfMemory,
+
+    InvalidPointer,
+    AlreadyReleased,
+
+    RuntimeFailure
+}
+
+// -----------------------------------------------------------------------------
+// Request
+// -----------------------------------------------------------------------------
+
+form BoxAllocationRequest {
+    kind: BoxAllocationKind
+
+    size: usize
+    align: usize
+    count: usize
+
+    zeroed: bool
+}
+
+form BoxAllocationResult {
+    request: BoxAllocationRequest
+
+    allocation: Option<alloc_allocator.Allocation>
+
+    state: BoxAllocationState
+    failure: BoxAllocationFailure
+
+    bytes: usize
+
+    success: bool
+}
+
+form BoxAllocationProfile {
+    requests: u64
+    successes: u64
+    failures: u64
+
+    bytes_requested: usize
+    bytes_allocated: usize
+    bytes_failed: usize
+
+    smallest_request: usize
+    largest_request: usize
+
+    value_allocations: u64
+    array_allocations: u64
+    zeroed_allocations: u64
+    raw_allocations: u64
+}
+
+form BoxAllocationLimits {
+    max_size: usize
+    max_align: usize
+    max_count: usize
+
+    allow_zero_size: bool
+}
+
+form BoxAllocationValidation {
+    valid: bool
+
+    size_valid: bool
+    align_valid: bool
+    count_valid: bool
+    overflow_safe: bool
+    layout_valid: bool
+}
+
+form BoxAllocationSnapshot {
+    live_bytes: usize
+    reserved_bytes: usize
+
+    allocation_count: u64
+    failure_count: u64
+}
+
+form BoxAllocationDelta {
+    live_bytes: int
+    reserved_bytes: int
+
+    allocations: int
+    failures: int
+}
+
+// -----------------------------------------------------------------------------
+// Request constructors
+// -----------------------------------------------------------------------------
+
+proc box_allocation_request(
+    kind: BoxAllocationKind,
+    size: usize,
+    align: usize,
+    count: usize,
+    zeroed: bool
+) -> BoxAllocationRequest {
+    give BoxAllocationRequest {
+        kind: kind,
+
+        size: size,
+        align: align,
+        count: count,
+
+        zeroed: zeroed
+    };
+}
+
+proc box_allocation_request_value<T>()
+    -> BoxAllocationRequest
+{
+    give box_allocation_request(
+        BoxAllocationKind.Value,
+        compiler_size_of<T>(),
+        compiler_align_of<T>(),
+        1,
+        false
+    );
+}
+
+proc box_allocation_request_zeroed<T>()
+    -> BoxAllocationRequest
+{
+    give box_allocation_request(
+        BoxAllocationKind.Zeroed,
+        compiler_size_of<T>(),
+        compiler_align_of<T>(),
+        1,
+        true
+    );
+}
+
+proc box_allocation_request_array<T>(
+    count: usize
+) -> BoxAllocationRequest {
+    give box_allocation_request(
+        BoxAllocationKind.Array,
+        compiler_size_of<T>(),
+        compiler_align_of<T>(),
+        count,
+        false
+    );
+}
+
+proc box_allocation_request_raw(
+    size: usize,
+    align: usize
+) -> BoxAllocationRequest {
+    give box_allocation_request(
+        BoxAllocationKind.Raw,
+        size,
+        align,
+        1,
+        false
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Limits
+// -----------------------------------------------------------------------------
+
+proc box_allocation_limits_default()
+    -> BoxAllocationLimits
+{
+    give BoxAllocationLimits {
+        max_size:
+            usize_max(),
+
+        max_align:
+            usize_max(),
+
+        max_count:
+            usize_max(),
+
+        allow_zero_size:
+            false
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Arithmetic safety
+// -----------------------------------------------------------------------------
+
+proc box_allocation_add_overflows(
+    left: usize,
+    right: usize
+) -> bool {
+    give left > usize_max() - right;
+}
+
+proc box_allocation_mul_overflows(
+    left: usize,
+    right: usize
+) -> bool {
+    if left == 0
+        or right == 0
+    {
+        give false;
+    }
+
+    give left > usize_max() / right;
+}
+
+proc box_allocation_array_size(
+    item_size: usize,
+    count: usize
+) -> Option<usize> {
+    if box_allocation_mul_overflows(
+        item_size,
+        count
+    ) {
+        give none<usize>();
+    }
+
+    give some<usize>(
+        item_size * count
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Alignment
+// -----------------------------------------------------------------------------
+
+proc box_allocation_alignment_valid(
+    align: usize
+) -> bool {
+    if align < BOX_ALLOC_MIN_ALIGN {
+        give false;
+    }
+
+    give compiler_is_power_of_two(
+        align
+    );
+}
+
+proc box_allocation_align_up(
+    value: usize,
+    align: usize
+) -> Option<usize> {
+    if not box_allocation_alignment_valid(
+        align
+    ) {
+        give none<usize>();
+    }
+
+    let remainder =
+        value % align;
+
+    if remainder == 0 {
+        give some<usize>(
+            value
+        );
+    }
+
+    let padding =
+        align - remainder;
+
+    if box_allocation_add_overflows(
+        value,
+        padding
+    ) {
+        give none<usize>();
+    }
+
+    give some<usize>(
+        value + padding
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Layout
+// -----------------------------------------------------------------------------
+
+proc box_allocation_layout(
+    request: BoxAllocationRequest
+) -> Option<alloc_allocator.AllocationLayout> {
+    if box_allocation_mul_overflows(
+        request.size,
+        request.count
+    ) {
+        give none<alloc_allocator.AllocationLayout>();
+    }
+
+    let total =
+        request.size
+        * request.count;
+
+    let layout_value =
+        alloc_allocator.layout(
+            total,
+            request.align
+        );
+
+    if not alloc_allocator.layout_is_valid(
+        layout_value
+    ) {
+        give none<alloc_allocator.AllocationLayout>();
+    }
+
+    give some<alloc_allocator.AllocationLayout>(
+        layout_value
+    );
+}
+
+proc box_allocation_layout_of<T>()
+    -> alloc_allocator.AllocationLayout
+{
+    give alloc_allocator.layout(
+        compiler_size_of<T>(),
+        compiler_align_of<T>()
+    );
+}
+
+proc box_allocation_array_layout<T>(
+    count: usize
+) -> Option<alloc_allocator.AllocationLayout> {
+    let item =
+        box_allocation_layout_of<T>();
+
+    give alloc_allocator.layout_array(
+        item,
+        count
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+proc box_allocation_size_valid(
+    size: usize,
+    limits: BoxAllocationLimits
+) -> bool {
+    if size == 0
+        and not limits.allow_zero_size
+    {
+        give false;
+    }
+
+    give size <= limits.max_size;
+}
+
+proc box_allocation_count_valid(
+    count: usize,
+    limits: BoxAllocationLimits
+) -> bool {
+    if count == 0 {
+        give false;
+    }
+
+    give count <= limits.max_count;
+}
+
+proc box_allocation_validate(
+    request: BoxAllocationRequest,
+    limits: BoxAllocationLimits
+) -> BoxAllocationValidation {
+    let size_valid =
+        box_allocation_size_valid(
+            request.size,
+            limits
+        );
+
+    let align_valid =
+        box_allocation_alignment_valid(
+            request.align
+        )
+        and request.align
+            <= limits.max_align;
+
+    let count_valid =
+        box_allocation_count_valid(
+            request.count,
+            limits
+        );
+
+    let overflow_safe =
+        not box_allocation_mul_overflows(
+            request.size,
+            request.count
+        );
+
+    let layout_valid =
+        overflow_safe
+        and is_some<alloc_allocator.AllocationLayout>(
+            box_allocation_layout(
+                request
+            )
+        );
+
+    give BoxAllocationValidation {
+        valid:
+            size_valid
+            and align_valid
+            and count_valid
+            and overflow_safe
+            and layout_valid,
+
+        size_valid:
+            size_valid,
+
+        align_valid:
+            align_valid,
+
+        count_valid:
+            count_valid,
+
+        overflow_safe:
+            overflow_safe,
+
+        layout_valid:
+            layout_valid
+    };
+}
+
+proc box_allocation_request_valid(
+    request: BoxAllocationRequest
+) -> bool {
+    give box_allocation_validate(
+        request,
+        box_allocation_limits_default()
+    ).valid;
+}
+
+// -----------------------------------------------------------------------------
+// Result constructors
+// -----------------------------------------------------------------------------
+
+proc box_allocation_result_success(
+    request: BoxAllocationRequest,
+    allocation: alloc_allocator.Allocation,
+    bytes: usize
+) -> BoxAllocationResult {
+    give BoxAllocationResult {
+        request:
+            request,
+
+        allocation:
+            some<alloc_allocator.Allocation>(
+                allocation
+            ),
+
+        state:
+            BoxAllocationState.Allocated,
+
+        failure:
+            BoxAllocationFailure.None,
+
+        bytes:
+            bytes,
+
+        success:
+            true
+    };
+}
+
+proc box_allocation_result_failure(
+    request: BoxAllocationRequest,
+    failure: BoxAllocationFailure
+) -> BoxAllocationResult {
+    give BoxAllocationResult {
+        request:
+            request,
+
+        allocation:
+            none<alloc_allocator.Allocation>(),
+
+        state:
+            BoxAllocationState.Failed,
+
+        failure:
+            failure,
+
+        bytes:
+            0,
+
+        success:
+            false
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Core allocation
+// -----------------------------------------------------------------------------
+
+proc box_allocate_layout(
+    allocator: ref mut alloc_allocator.Allocator,
+    layout_value: alloc_allocator.AllocationLayout
+) -> Option<alloc_allocator.Allocation> {
+    if not alloc_allocator.layout_is_valid(
+        layout_value
+    ) {
+        alloc_allocator.allocator_record_failure(
+            allocator
+        );
+
+        give none<alloc_allocator.Allocation>();
+    }
+
+    let allocation =
+        alloc_allocator.allocator_allocate(
+            allocator,
+            layout_value
+        );
+
+    if is_none<alloc_allocator.Allocation>(
+        allocation
+    ) {
+        alloc_allocator.allocator_record_failure(
+            allocator
+        );
+
+        give none<alloc_allocator.Allocation>();
+    }
+
+    give allocation;
+}
+
+proc box_allocate_request(
+    allocator: ref mut alloc_allocator.Allocator,
+    request: BoxAllocationRequest
+) -> BoxAllocationResult {
+    let validation =
+        box_allocation_validate(
+            request,
+            box_allocation_limits_default()
+        );
+
+    if not validation.size_valid {
+        give box_allocation_result_failure(
+            request,
+            BoxAllocationFailure.InvalidSize
+        );
+    }
+
+    if not validation.align_valid {
+        give box_allocation_result_failure(
+            request,
+            BoxAllocationFailure.InvalidAlignment
+        );
+    }
+
+    if not validation.count_valid {
+        give box_allocation_result_failure(
+            request,
+            BoxAllocationFailure.InvalidLayout
+        );
+    }
+
+    if not validation.overflow_safe {
+        give box_allocation_result_failure(
+            request,
+            BoxAllocationFailure.Overflow
+        );
+    }
+
+    if not validation.layout_valid {
+        give box_allocation_result_failure(
+            request,
+            BoxAllocationFailure.InvalidLayout
+        );
+    }
+
+    let layout_value =
+        unwrap<alloc_allocator.AllocationLayout>(
+            box_allocation_layout(
+                request
+            )
+        );
+
+    let allocation =
+        box_allocate_layout(
+            allocator,
+            layout_value
+        );
+
+    if is_none<alloc_allocator.Allocation>(
+        allocation
+    ) {
+        give box_allocation_result_failure(
+            request,
+            BoxAllocationFailure.OutOfMemory
+        );
+    }
+
+    let out =
+        unwrap<alloc_allocator.Allocation>(
+            allocation
+        );
+
+    if request.zeroed {
+        compiler_allocation_zero(
+            out.ptr,
+            layout_value.size
+        );
+    }
+
+    give box_allocation_result_success(
+        request,
+        out,
+        layout_value.size
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Typed allocation
+// -----------------------------------------------------------------------------
+
+proc box_allocate<T>(
+    allocator: ref mut alloc_allocator.Allocator
+) -> Option<alloc_allocator.Allocation> {
+    give box_allocate_layout(
+        allocator,
+        box_allocation_layout_of<T>()
+    );
+}
+
+proc box_allocate_zeroed<T>(
+    allocator: ref mut alloc_allocator.Allocator
+) -> Option<alloc_allocator.Allocation> {
+    let request =
+        box_allocation_request_zeroed<T>();
+
+    let result =
+        box_allocate_request(
+            allocator,
+            request
+        );
+
+    give result.allocation;
+}
+
+proc box_allocate_array<T>(
+    allocator: ref mut alloc_allocator.Allocator,
+    count: usize
+) -> Option<alloc_allocator.Allocation> {
+    let layout_value =
+        box_allocation_array_layout<T>(
+            count
+        );
+
+    if is_none<alloc_allocator.AllocationLayout>(
+        layout_value
+    ) {
+        alloc_allocator.allocator_record_failure(
+            allocator
+        );
+
+        give none<alloc_allocator.Allocation>();
+    }
+
+    give box_allocate_layout(
+        allocator,
+        unwrap<alloc_allocator.AllocationLayout>(
+            layout_value
+        )
+    );
+}
+
+proc box_allocate_zeroed_array<T>(
+    allocator: ref mut alloc_allocator.Allocator,
+    count: usize
+) -> Option<alloc_allocator.Allocation> {
+    let request =
+        box_allocation_request(
+            BoxAllocationKind.Array,
+            compiler_size_of<T>(),
+            compiler_align_of<T>(),
+            count,
+            true
+        );
+
+    let result =
+        box_allocate_request(
+            allocator,
+            request
+        );
+
+    give result.allocation;
+}
+
+// -----------------------------------------------------------------------------
+// Raw allocation
+// -----------------------------------------------------------------------------
+
+proc box_allocate_bytes(
+    allocator: ref mut alloc_allocator.Allocator,
+    size: usize,
+    align: usize
+) -> Option<alloc_allocator.Allocation> {
+    give box_allocate_layout(
+        allocator,
+        alloc_allocator.layout(
+            size,
+            align
+        )
+    );
+}
+
+proc box_allocate_zeroed_bytes(
+    allocator: ref mut alloc_allocator.Allocator,
+    size: usize,
+    align: usize
+) -> Option<alloc_allocator.Allocation> {
+    let request =
+        box_allocation_request(
+            BoxAllocationKind.Zeroed,
+            size,
+            align,
+            1,
+            true
+        );
+
+    let result =
+        box_allocate_request(
+            allocator,
+            request
+        );
+
+    give result.allocation;
+}
+
+// -----------------------------------------------------------------------------
+// Value construction
+// -----------------------------------------------------------------------------
+
+proc box_emplace<T>(
+    allocator: ref mut alloc_allocator.Allocator,
+    value: T
+) -> Option<ref mut T> {
+    let allocation =
+        box_allocate<T>(
+            allocator
+        );
+
+    if is_none<alloc_allocator.Allocation>(
+        allocation
+    ) {
+        give none<ref mut T>();
+    }
+
+    let memory =
+        unwrap<alloc_allocator.Allocation>(
+            allocation
+        );
+
+    let target =
+        compiler_allocation_as_mut<T>(
+            memory
+        );
+
+    set *target =
+        value;
+
+    give some<ref mut T>(
+        target
+    );
+}
+
+proc box_copy<T>(
+    allocator: ref mut alloc_allocator.Allocator,
+    source: ref T
+) -> Option<ref mut T> {
+    let allocation =
+        box_allocate<T>(
+            allocator
+        );
+
+    if is_none<alloc_allocator.Allocation>(
+        allocation
+    ) {
+        give none<ref mut T>();
+    }
+
+    let memory =
+        unwrap<alloc_allocator.Allocation>(
+            allocation
+        );
+
+    let target =
+        compiler_allocation_as_mut<T>(
+            memory
+        );
+
+    compiler_copy_value<T>(
+        target,
+        source
+    );
+
+    give some<ref mut T>(
+        target
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Arrays
+// -----------------------------------------------------------------------------
+
+proc box_copy_array<T>(
+    allocator: ref mut alloc_allocator.Allocator,
+    source: ref [T],
+    count: usize
+) -> Option<alloc_allocator.Allocation> {
+    if count == 0 {
+        give none<alloc_allocator.Allocation>();
+    }
+
+    let allocation =
+        box_allocate_array<T>(
+            allocator,
+            count
+        );
+
+    if is_none<alloc_allocator.Allocation>(
+        allocation
+    ) {
+        give none<alloc_allocator.Allocation>();
+    }
+
+    let out =
+        unwrap<alloc_allocator.Allocation>(
+            allocation
+        );
+
+    compiler_copy_array<T>(
+        compiler_allocation_as_mut<T>(
+            out
+        ),
+        source,
+        count
+    );
+
+    give some<alloc_allocator.Allocation>(
+        out
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Deallocation
+// -----------------------------------------------------------------------------
+
+proc box_deallocate(
+    allocator: ref mut alloc_allocator.Allocator,
+    allocation: alloc_allocator.Allocation
+) -> bool {
+    if not alloc_allocator.layout_is_valid(
+        allocation.layout
+    ) {
+        give false;
+    }
+
+    compiler_allocator_deallocate(
+        allocator,
+        allocation.ptr,
+        allocation.layout.size,
+        allocation.layout.align
+    );
+
+    alloc_allocator.allocator_record_deallocation(
+        allocator,
+        allocation.layout
+    );
+
+    give true;
+}
+
+proc box_deallocate_value<T>(
+    allocator: ref mut alloc_allocator.Allocator,
+    allocation: alloc_allocator.Allocation
+) -> bool {
+    compiler_drop_in_place<T>(
+        compiler_allocation_as_mut<T>(
+            allocation
+        )
+    );
+
+    give box_deallocate(
+        allocator,
+        allocation
+    );
+}
+
+proc box_deallocate_array<T>(
+    allocator: ref mut alloc_allocator.Allocator,
+    allocation: alloc_allocator.Allocation,
+    count: usize
+) -> bool {
+    let index: usize = 0;
+
+    while index < count {
+        let item =
+            compiler_allocation_element_mut<T>(
+                allocation,
+                index
+            );
+
+        compiler_drop_in_place<T>(
+            item
+        );
+
+        set index =
+            index + 1;
+    }
+
+    give box_deallocate(
+        allocator,
+        allocation
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Reallocation
+// -----------------------------------------------------------------------------
+
+proc box_reallocate(
+    allocator: ref mut alloc_allocator.Allocator,
+    allocation: alloc_allocator.Allocation,
+    new_size: usize,
+    new_align: usize
+) -> Option<alloc_allocator.Allocation> {
+    if new_size == 0 {
+        give none<alloc_allocator.Allocation>();
+    }
+
+    if not box_allocation_alignment_valid(
+        new_align
+    ) {
+        give none<alloc_allocator.Allocation>();
+    }
+
+    let new_layout =
+        alloc_allocator.layout(
+            new_size,
+            new_align
+        );
+
+    if not alloc_allocator.layout_is_valid(
+        new_layout
+    ) {
+        give none<alloc_allocator.Allocation>();
+    }
+
+    let result =
+        compiler_allocator_reallocate(
+            allocator,
+            allocation,
+            new_layout
+        );
+
+    give result;
+}
+
+proc box_grow(
+    allocator: ref mut alloc_allocator.Allocator,
+    allocation: alloc_allocator.Allocation,
+    new_size: usize
+) -> Option<alloc_allocator.Allocation> {
+    if new_size <= allocation.layout.size {
+        give some<alloc_allocator.Allocation>(
+            allocation
+        );
+    }
+
+    give box_reallocate(
+        allocator,
+        allocation,
+        new_size,
+        allocation.layout.align
+    );
+}
+
+proc box_shrink(
+    allocator: ref mut alloc_allocator.Allocator,
+    allocation: alloc_allocator.Allocation,
+    new_size: usize
+) -> Option<alloc_allocator.Allocation> {
+    if new_size == 0 {
+        give none<alloc_allocator.Allocation>();
+    }
+
+    if new_size >= allocation.layout.size {
+        give some<alloc_allocator.Allocation>(
+            allocation
+        );
+    }
+
+    give box_reallocate(
+        allocator,
+        allocation,
+        new_size,
+        allocation.layout.align
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Allocation inspection
+// -----------------------------------------------------------------------------
+
+proc box_allocation_size(
+    allocation: alloc_allocator.Allocation
+) -> usize {
+    give allocation.layout.size;
+}
+
+proc box_allocation_align(
+    allocation: alloc_allocator.Allocation
+) -> usize {
+    give allocation.layout.align;
+}
+
+proc box_allocation_is_valid(
+    allocation: alloc_allocator.Allocation
+) -> bool {
+    give alloc_allocator.layout_is_valid(
+        allocation.layout
+    )
+    and not compiler_raw_ptr_is_null(
+        allocation.ptr
+    );
+}
+
+proc box_allocation_ptr_equal(
+    left: alloc_allocator.Allocation,
+    right: alloc_allocator.Allocation
+) -> bool {
+    give compiler_raw_ptr_eq(
+        left.ptr,
+        right.ptr
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Snapshot
+// -----------------------------------------------------------------------------
+
+proc box_allocation_snapshot(
+    allocator: alloc_allocator.Allocator
+) -> BoxAllocationSnapshot {
+    give BoxAllocationSnapshot {
+        live_bytes:
+            alloc_allocator.allocator_live_bytes(
+                allocator
+            ),
+
+        reserved_bytes:
+            alloc_allocator.allocator_reserved_bytes(
+                allocator
+            ),
+
+        allocation_count:
+            allocator.stats.allocation_count,
+
+        failure_count:
+            allocator.stats.failure_count
+    };
+}
+
+proc box_allocation_snapshot_equal(
+    left: BoxAllocationSnapshot,
+    right: BoxAllocationSnapshot
+) -> bool {
+    give left.live_bytes
+        == right.live_bytes
+        and left.reserved_bytes
+            == right.reserved_bytes
+        and left.allocation_count
+            == right.allocation_count
+        and left.failure_count
+            == right.failure_count;
+}
+
+proc box_allocation_snapshot_changed(
+    left: BoxAllocationSnapshot,
+    right: BoxAllocationSnapshot
+) -> bool {
+    give not box_allocation_snapshot_equal(
+        left,
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Delta
+// -----------------------------------------------------------------------------
+
+proc box_allocation_usize_delta(
+    before: usize,
+    after: usize
+) -> int {
+    if after > before {
+        give (
+            after - before
+        ) as int;
+    }
+
+    if after < before {
+        give -(
+            (
+                before - after
+            ) as int
+        );
+    }
+
+    give 0;
+}
+
+proc box_allocation_u64_delta(
+    before: u64,
+    after: u64
+) -> int {
+    if after > before {
+        give (
+            after - before
+        ) as int;
+    }
+
+    if after < before {
+        give -(
+            (
+                before - after
+            ) as int
+        );
+    }
+
+    give 0;
+}
+
+proc box_allocation_delta(
+    before: BoxAllocationSnapshot,
+    after: BoxAllocationSnapshot
+) -> BoxAllocationDelta {
+    give BoxAllocationDelta {
+        live_bytes:
+            box_allocation_usize_delta(
+                before.live_bytes,
+                after.live_bytes
+            ),
+
+        reserved_bytes:
+            box_allocation_usize_delta(
+                before.reserved_bytes,
+                after.reserved_bytes
+            ),
+
+        allocations:
+            box_allocation_u64_delta(
+                before.allocation_count,
+                after.allocation_count
+            ),
+
+        failures:
+            box_allocation_u64_delta(
+                before.failure_count,
+                after.failure_count
+            )
+    };
+}
+
+proc box_allocation_delta_is_zero(
+    delta: BoxAllocationDelta
+) -> bool {
+    give delta.live_bytes == 0
+        and delta.reserved_bytes == 0
+        and delta.allocations == 0
+        and delta.failures == 0;
+}
+
+// -----------------------------------------------------------------------------
+// Profile
+// -----------------------------------------------------------------------------
+
+proc box_allocation_profile_empty()
+    -> BoxAllocationProfile
+{
+    give BoxAllocationProfile {
+        requests: 0,
+        successes: 0,
+        failures: 0,
+
+        bytes_requested: 0,
+        bytes_allocated: 0,
+        bytes_failed: 0,
+
+        smallest_request: 0,
+        largest_request: 0,
+
+        value_allocations: 0,
+        array_allocations: 0,
+        zeroed_allocations: 0,
+        raw_allocations: 0
+    };
+}
+
+proc box_allocation_profile_record_request(
+    profile: ref mut BoxAllocationProfile,
+    request: BoxAllocationRequest
+) {
+    let bytes =
+        if box_allocation_mul_overflows(
+            request.size,
+            request.count
+        ) {
+            0
+        } else {
+            request.size
+            * request.count
+        };
+
+    set profile.requests =
+        profile.requests + 1;
+
+    set profile.bytes_requested =
+        profile.bytes_requested + bytes;
+
+    if profile.smallest_request == 0
+        or bytes < profile.smallest_request
+    {
+        set profile.smallest_request =
+            bytes;
+    }
+
+    if bytes > profile.largest_request {
+        set profile.largest_request =
+            bytes;
+    }
+
+    pick request.kind {
+        BoxAllocationKind.Value {
+            set profile.value_allocations =
+                profile.value_allocations + 1;
+        }
+
+        BoxAllocationKind.Array
+        | BoxAllocationKind.Slice {
+            set profile.array_allocations =
+                profile.array_allocations + 1;
+        }
+
+        BoxAllocationKind.Zeroed {
+            set profile.zeroed_allocations =
+                profile.zeroed_allocations + 1;
+        }
+
+        BoxAllocationKind.Raw {
+            set profile.raw_allocations =
+                profile.raw_allocations + 1;
+        }
+
+        _ {}
+    }
+}
+
+proc box_allocation_profile_record_result(
+    profile: ref mut BoxAllocationProfile,
+    result: BoxAllocationResult
+) {
+    if result.success {
+        set profile.successes =
+            profile.successes + 1;
+
+        set profile.bytes_allocated =
+            profile.bytes_allocated
+            + result.bytes;
+    } else {
+        set profile.failures =
+            profile.failures + 1;
+
+        let bytes =
+            if box_allocation_mul_overflows(
+                result.request.size,
+                result.request.count
+            ) {
+                0
+            } else {
+                result.request.size
+                * result.request.count
+            };
+
+        set profile.bytes_failed =
+            profile.bytes_failed
+            + bytes;
+    }
+}
+
+proc box_allocation_profile_success_rate(
+    profile: BoxAllocationProfile
+) -> f64 {
+    if profile.requests == 0 {
+        give 1.0;
+    }
+
+    give (
+        profile.successes as f64
+    ) / (
+        profile.requests as f64
+    );
+}
+
+proc box_allocation_profile_failure_rate(
+    profile: BoxAllocationProfile
+) -> f64 {
+    if profile.requests == 0 {
+        give 0.0;
+    }
+
+    give (
+        profile.failures as f64
+    ) / (
+        profile.requests as f64
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Result predicates
+// -----------------------------------------------------------------------------
+
+proc box_allocation_result_is_success(
+    result: BoxAllocationResult
+) -> bool {
+    give result.success;
+}
+
+proc box_allocation_result_is_failure(
+    result: BoxAllocationResult
+) -> bool {
+    give not result.success;
+}
+
+proc box_allocation_result_has_allocation(
+    result: BoxAllocationResult
+) -> bool {
+    give is_some<alloc_allocator.Allocation>(
+        result.allocation
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Failure helpers
+// -----------------------------------------------------------------------------
+
+proc box_allocation_failure_is_none(
+    failure: BoxAllocationFailure
+) -> bool {
+    give failure == BoxAllocationFailure.None;
+}
+
+proc box_allocation_failure_is_memory(
+    failure: BoxAllocationFailure
+) -> bool {
+    give failure == BoxAllocationFailure.OutOfMemory;
+}
+
+proc box_allocation_failure_is_layout(
+    failure: BoxAllocationFailure
+) -> bool {
+    give failure == BoxAllocationFailure.InvalidLayout
+        or failure == BoxAllocationFailure.InvalidSize
+        or failure == BoxAllocationFailure.InvalidAlignment;
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc box_allocation_kind_name(
+    kind: BoxAllocationKind
+) -> string {
+    pick kind {
+        BoxAllocationKind.Value {
+            give "value";
+        }
+
+        BoxAllocationKind.Zeroed {
+            give "zeroed";
+        }
+
+        BoxAllocationKind.Array {
+            give "array";
+        }
+
+        BoxAllocationKind.Slice {
+            give "slice";
+        }
+
+        BoxAllocationKind.Copy {
+            give "copy";
+        }
+
+        BoxAllocationKind.Raw {
+            give "raw";
+        }
+
+        BoxAllocationKind.Internal {
+            give "internal";
+        }
+    }
+
+    give "internal";
+}
+
+proc box_allocation_state_name(
+    state: BoxAllocationState
+) -> string {
+    pick state {
+        BoxAllocationState.Ready {
+            give "ready";
+        }
+
+        BoxAllocationState.Allocated {
+            give "allocated";
+        }
+
+        BoxAllocationState.Released {
+            give "released";
+        }
+
+        BoxAllocationState.Failed {
+            give "failed";
+        }
+
+        BoxAllocationState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+proc box_allocation_failure_name(
+    failure: BoxAllocationFailure
+) -> string {
+    pick failure {
+        BoxAllocationFailure.None {
+            give "none";
+        }
+
+        BoxAllocationFailure.InvalidSize {
+            give "invalid-size";
+        }
+
+        BoxAllocationFailure.InvalidAlignment {
+            give "invalid-alignment";
+        }
+
+        BoxAllocationFailure.InvalidLayout {
+            give "invalid-layout";
+        }
+
+        BoxAllocationFailure.Overflow {
+            give "overflow";
+        }
+
+        BoxAllocationFailure.OutOfMemory {
+            give "out-of-memory";
+        }
+
+        BoxAllocationFailure.InvalidPointer {
+            give "invalid-pointer";
+        }
+
+        BoxAllocationFailure.AlreadyReleased {
+            give "already-released";
+        }
+
+        BoxAllocationFailure.RuntimeFailure {
+            give "runtime-failure";
+        }
+    }
+
+    give "runtime-failure";
+}
+
+// -----------------------------------------------------------------------------
+// Box allocation model
+// -----------------------------------------------------------------------------
+//
+// Box allocation:
+//
+//     T
+//     |
+//     v
+// +------------------+
+// | heap allocation  |
+// |------------------|
+// | value T          |
+// +------------------+
+//        ^
+//        |
+//      Box<T>
+//
+// Creation:
+//
+//     request
+//       |
+//       +-- size
+//       +-- align
+//       +-- count
+//       |
+//       v
+//     validate
+//       |
+//       v
+//     AllocationLayout
+//       |
+//       v
+//     allocator
+//       |
+//       v
+//     allocation
+//       |
+//       v
+//     initialize T
+//
+// Destruction:
+//
+//     Box<T>
+//       |
+//       v
+//     drop(T)
+//       |
+//       v
+//     deallocate
+//
+// Unlike Arena allocations, Box allocations are individually owned and
+// individually released.
+//
+// Core invariants:
+//
+//     exactly one owning Box<T>
+//
+//     allocation.size >= sizeof(T)
+//
+//     allocation alignment satisfies alignof(T)
+//
+//     dropping Box<T> destroys T exactly once
+//
+//     allocation memory is released exactly once
+//
+// Reallocation helpers are intended for internal boxed buffers and dynamic
+// boxed storage. Normal Box<T> values generally keep a fixed allocation.
+//
+// This module owns allocation mechanics.
+//
+// Box ownership semantics belong to `boxed.vitl` / `box.vitl`.
+// Raw pointer conversion belongs to `raw.vitl`.
+// Internal layout/state belongs to `core.vitl` / `inner.vitl`.

@@ -1,0 +1,1243 @@
+space vitte/stdlib/alloc/pool/block
+
+export *
+
+use src/vitte/stdlib/alloc/pool/alloc as pool_alloc
+use src/vitte/stdlib/alloc/allocator as alloc_allocator
+use src/vitte/stdlib/core/option as core_option
+
+pick PoolBlockState {
+    Empty,
+    Partial,
+    Full,
+    Released,
+    Invalid
+}
+
+pick PoolBlockSlotState {
+    Free,
+    Allocated,
+    Invalid
+}
+
+form PoolBlock {
+    allocation: alloc_allocator.Allocation
+    layout: pool_alloc.PoolAllocationLayout
+
+    allocated: usize
+    free: usize
+
+    next_hint: usize
+
+    active: bool
+
+    generation: u64
+    revision: u64
+}
+
+form PoolBlockSlot {
+    index: usize
+    offset: usize
+
+    state: PoolBlockSlotState
+
+    generation: u64
+    revision: u64
+}
+
+form PoolBlockProfile {
+    capacity: usize
+    allocated: usize
+    free: usize
+
+    slot_size: usize
+    slot_align: usize
+
+    utilization: f64
+
+    state: PoolBlockState
+
+    empty: bool
+    partial: bool
+    full: bool
+    active: bool
+    released: bool
+    valid: bool
+
+    generation: u64
+    revision: u64
+}
+
+form PoolBlockValidation {
+    valid: bool
+
+    allocation_valid: bool
+    layout_valid: bool
+    accounting_valid: bool
+    state_valid: bool
+    hint_valid: bool
+}
+
+form PoolBlockSnapshot {
+    allocated: usize
+    free: usize
+
+    capacity: usize
+
+    next_hint: usize
+
+    state: PoolBlockState
+
+    generation: u64
+    revision: u64
+}
+
+form PoolBlockDelta {
+    allocated: int
+    free: int
+
+    generation: int
+    revision: int
+
+    state_changed: bool
+    changed: bool
+}
+
+form PoolBlockStatistics {
+    allocations: u64
+    releases: u64
+    failures: u64
+
+    scans: u64
+    scan_steps: u64
+
+    resets: u64
+
+    peak_allocated: usize
+}
+
+// -----------------------------------------------------------------------------
+// Construction
+// -----------------------------------------------------------------------------
+
+proc pool_block_new(
+    allocation: alloc_allocator.Allocation,
+    layout: pool_alloc.PoolAllocationLayout
+) -> PoolBlock {
+    give PoolBlock {
+        allocation: allocation,
+        layout: layout,
+
+        allocated: 0,
+        free: layout.slot_count,
+
+        next_hint: 0,
+
+        active: true,
+
+        generation: 1,
+        revision: 1
+    };
+}
+
+proc pool_block_from_layout(
+    allocation: alloc_allocator.Allocation,
+    slot_size: usize,
+    slot_align: usize,
+    slot_count: usize
+) -> PoolBlock {
+    give pool_block_new(
+        allocation,
+        pool_alloc.pool_allocation_layout(
+            slot_size,
+            slot_align,
+            slot_count
+        )
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Basic accessors
+// -----------------------------------------------------------------------------
+
+proc pool_block_capacity(
+    block: PoolBlock
+) -> usize {
+    give block.layout.slot_count;
+}
+
+proc pool_block_slot_size(
+    block: PoolBlock
+) -> usize {
+    give block.layout.slot_size;
+}
+
+proc pool_block_slot_align(
+    block: PoolBlock
+) -> usize {
+    give block.layout.slot_align;
+}
+
+proc pool_block_allocated(
+    block: PoolBlock
+) -> usize {
+    give block.allocated;
+}
+
+proc pool_block_free(
+    block: PoolBlock
+) -> usize {
+    give block.free;
+}
+
+proc pool_block_generation(
+    block: PoolBlock
+) -> u64 {
+    give block.generation;
+}
+
+proc pool_block_revision(
+    block: PoolBlock
+) -> u64 {
+    give block.revision;
+}
+
+// -----------------------------------------------------------------------------
+// State
+// -----------------------------------------------------------------------------
+
+proc pool_block_state(
+    block: PoolBlock
+) -> PoolBlockState {
+    if not block.active {
+        give PoolBlockState.Released;
+    }
+
+    if not pool_alloc.pool_allocation_layout_valid(
+        block.layout
+    ) {
+        give PoolBlockState.Invalid;
+    }
+
+    if block.allocated > block.layout.slot_count {
+        give PoolBlockState.Invalid;
+    }
+
+    if block.free > block.layout.slot_count {
+        give PoolBlockState.Invalid;
+    }
+
+    if block.allocated + block.free
+        != block.layout.slot_count
+    {
+        give PoolBlockState.Invalid;
+    }
+
+    if block.allocated == 0 {
+        give PoolBlockState.Empty;
+    }
+
+    if block.free == 0 {
+        give PoolBlockState.Full;
+    }
+
+    give PoolBlockState.Partial;
+}
+
+proc pool_block_is_empty(
+    block: PoolBlock
+) -> bool {
+    give pool_block_state(block)
+        == PoolBlockState.Empty;
+}
+
+proc pool_block_is_partial(
+    block: PoolBlock
+) -> bool {
+    give pool_block_state(block)
+        == PoolBlockState.Partial;
+}
+
+proc pool_block_is_full(
+    block: PoolBlock
+) -> bool {
+    give pool_block_state(block)
+        == PoolBlockState.Full;
+}
+
+proc pool_block_is_released(
+    block: PoolBlock
+) -> bool {
+    give pool_block_state(block)
+        == PoolBlockState.Released;
+}
+
+proc pool_block_is_active(
+    block: PoolBlock
+) -> bool {
+    give block.active;
+}
+
+// -----------------------------------------------------------------------------
+// Slot helpers
+// -----------------------------------------------------------------------------
+
+proc pool_block_slot(
+    block: PoolBlock,
+    index: usize
+) -> Option<PoolBlockSlot> {
+    if index >= block.layout.slot_count {
+        give none<PoolBlockSlot>();
+    }
+
+    let offset =
+        pool_alloc.pool_allocation_slot_offset(
+            block.layout,
+            index
+        );
+
+    if is_none(offset) {
+        give none<PoolBlockSlot>();
+    }
+
+    give some<PoolBlockSlot>(
+        PoolBlockSlot {
+            index: index,
+            offset: unwrap(offset),
+
+            state: PoolBlockSlotState.Free,
+
+            generation: 1,
+            revision: 1
+        }
+    );
+}
+
+proc pool_block_slot_ptr(
+    block: PoolBlock,
+    index: usize
+) -> Option<raw ref u8> {
+    let offset =
+        pool_alloc.pool_allocation_slot_offset(
+            block.layout,
+            index
+        );
+
+    if is_none(offset) {
+        give none<raw ref u8>();
+    }
+
+    let base =
+        compiler_allocation_as_raw_u8(
+            block.allocation
+        );
+
+    give some<raw ref u8>(
+        compiler_raw_ptr_add(
+            base,
+            unwrap(offset)
+        )
+    );
+}
+
+proc pool_block_slot_valid(
+    block: PoolBlock,
+    index: usize
+) -> bool {
+    give index < block.layout.slot_count;
+}
+
+// -----------------------------------------------------------------------------
+// Accounting
+// -----------------------------------------------------------------------------
+
+proc pool_block_can_allocate(
+    block: PoolBlock
+) -> bool {
+    give block.active
+        and block.free > 0
+        and pool_block_state(block)
+            != PoolBlockState.Invalid;
+}
+
+proc pool_block_can_release_slot(
+    block: PoolBlock
+) -> bool {
+    give block.active
+        and block.allocated > 0;
+}
+
+proc pool_block_record_allocate(
+    block: ref mut PoolBlock
+) -> bool {
+    if not pool_block_can_allocate(
+        *block
+    ) {
+        give false;
+    }
+
+    set block.allocated =
+        block.allocated + 1;
+
+    set block.free =
+        block.free - 1;
+
+    set block.revision =
+        block.revision + 1;
+
+    give true;
+}
+
+proc pool_block_record_release(
+    block: ref mut PoolBlock
+) -> bool {
+    if not pool_block_can_release_slot(
+        *block
+    ) {
+        give false;
+    }
+
+    set block.allocated =
+        block.allocated - 1;
+
+    set block.free =
+        block.free + 1;
+
+    set block.revision =
+        block.revision + 1;
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Hint management
+// -----------------------------------------------------------------------------
+
+proc pool_block_hint(
+    block: PoolBlock
+) -> usize {
+    give block.next_hint;
+}
+
+proc pool_block_hint_valid(
+    block: PoolBlock
+) -> bool {
+    if block.layout.slot_count == 0 {
+        give false;
+    }
+
+    give block.next_hint
+        < block.layout.slot_count;
+}
+
+proc pool_block_set_hint(
+    block: ref mut PoolBlock,
+    index: usize
+) -> bool {
+    if index >= block.layout.slot_count {
+        give false;
+    }
+
+    set block.next_hint =
+        index;
+
+    set block.revision =
+        block.revision + 1;
+
+    give true;
+}
+
+proc pool_block_advance_hint(
+    block: ref mut PoolBlock
+) {
+    if block.layout.slot_count == 0 {
+        give;
+    }
+
+    set block.next_hint =
+        block.next_hint + 1;
+
+    if block.next_hint
+        >= block.layout.slot_count
+    {
+        set block.next_hint = 0;
+    }
+
+    set block.revision =
+        block.revision + 1;
+}
+
+// -----------------------------------------------------------------------------
+// Allocation
+// -----------------------------------------------------------------------------
+
+proc pool_block_allocate_slot(
+    block: ref mut PoolBlock,
+    slot: ref mut pool_alloc.PoolAllocationSlot,
+    request: pool_alloc.PoolAllocationRequest
+) -> pool_alloc.PoolAllocationResult {
+    if not block.active {
+        give pool_alloc.pool_allocation_result_failure(
+            request,
+            pool_alloc.PoolAllocationFailure.InvalidPointer
+        );
+    }
+
+    if block.free == 0 {
+        give pool_alloc.pool_allocation_result_failure(
+            request,
+            pool_alloc.PoolAllocationFailure.Exhausted
+        );
+    }
+
+    let base =
+        compiler_allocation_as_raw_u8(
+            block.allocation
+        );
+
+    let result =
+        pool_alloc.pool_allocate_slot(
+            base,
+            block.layout,
+            slot,
+            request
+        );
+
+    if result.success {
+        if not pool_block_record_allocate(
+            block
+        ) {
+            give pool_alloc.pool_allocation_result_failure(
+                request,
+                pool_alloc.PoolAllocationFailure.RuntimeFailure
+            );
+        }
+
+        set block.next_hint =
+            result.slot + 1;
+
+        if block.next_hint
+            >= block.layout.slot_count
+        {
+            set block.next_hint = 0;
+        }
+    }
+
+    give result;
+}
+
+proc pool_block_allocate<T>(
+    block: ref mut PoolBlock,
+    slot: ref mut pool_alloc.PoolAllocationSlot
+) -> Option<alloc_allocator.Allocation> {
+    give pool_block_allocate_slot(
+        block,
+        slot,
+        pool_alloc.pool_allocation_request_value<T>()
+    ).allocation;
+}
+
+proc pool_block_allocate_zeroed<T>(
+    block: ref mut PoolBlock,
+    slot: ref mut pool_alloc.PoolAllocationSlot
+) -> Option<alloc_allocator.Allocation> {
+    let request =
+        pool_alloc.pool_allocation_request(
+            pool_alloc.PoolAllocationKind.Zeroed,
+            compiler_size_of<T>(),
+            compiler_align_of<T>(),
+            true
+        );
+
+    give pool_block_allocate_slot(
+        block,
+        slot,
+        request
+    ).allocation;
+}
+
+proc pool_block_emplace<T>(
+    block: ref mut PoolBlock,
+    slot: ref mut pool_alloc.PoolAllocationSlot,
+    value: T
+) -> Option<ref mut T> {
+    let allocation =
+        pool_block_allocate<T>(
+            block,
+            slot
+        );
+
+    if is_none(allocation) {
+        give none<ref mut T>();
+    }
+
+    let target =
+        compiler_allocation_as_mut<T>(
+            unwrap(allocation)
+        );
+
+    set *target = value;
+
+    give some<ref mut T>(
+        target
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Release slot
+// -----------------------------------------------------------------------------
+
+proc pool_block_release_slot(
+    block: ref mut PoolBlock,
+    slot: ref mut pool_alloc.PoolAllocationSlot
+) -> bool {
+    if not block.active {
+        give false;
+    }
+
+    if not slot.allocated {
+        give false;
+    }
+
+    if not pool_alloc.pool_release_slot(
+        slot
+    ) {
+        give false;
+    }
+
+    if not pool_block_record_release(
+        block
+    ) {
+        give false;
+    }
+
+    set block.next_hint =
+        slot.index;
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Utilization
+// -----------------------------------------------------------------------------
+
+proc pool_block_utilization(
+    block: PoolBlock
+) -> f64 {
+    if block.layout.slot_count == 0 {
+        give 0.0;
+    }
+
+    give (
+        block.allocated as f64
+    ) / (
+        block.layout.slot_count as f64
+    );
+}
+
+proc pool_block_free_ratio(
+    block: PoolBlock
+) -> f64 {
+    if block.layout.slot_count == 0 {
+        give 0.0;
+    }
+
+    give (
+        block.free as f64
+    ) / (
+        block.layout.slot_count as f64
+    );
+}
+
+proc pool_block_used_percent(
+    block: PoolBlock
+) -> f64 {
+    give pool_block_utilization(
+        block
+    ) * 100.0;
+}
+
+proc pool_block_free_percent(
+    block: PoolBlock
+) -> f64 {
+    give pool_block_free_ratio(
+        block
+    ) * 100.0;
+}
+
+// -----------------------------------------------------------------------------
+// Reset
+// -----------------------------------------------------------------------------
+
+proc pool_block_reset(
+    block: ref mut PoolBlock
+) {
+    if not block.active {
+        give;
+    }
+
+    set block.allocated = 0;
+    set block.free = block.layout.slot_count;
+    set block.next_hint = 0;
+
+    set block.generation =
+        block.generation + 1;
+
+    set block.revision =
+        block.revision + 1;
+}
+
+// -----------------------------------------------------------------------------
+// Release
+// -----------------------------------------------------------------------------
+
+proc pool_block_release(
+    block: ref mut PoolBlock
+) -> bool {
+    if not block.active {
+        give false;
+    }
+
+    set block.active = false;
+
+    set block.allocated = 0;
+    set block.free = block.layout.slot_count;
+    set block.next_hint = 0;
+
+    set block.generation =
+        block.generation + 1;
+
+    set block.revision =
+        block.revision + 1;
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Profile
+// -----------------------------------------------------------------------------
+
+proc pool_block_profile(
+    block: PoolBlock
+) -> PoolBlockProfile {
+    let state =
+        pool_block_state(
+            block
+        );
+
+    give PoolBlockProfile {
+        capacity:
+            block.layout.slot_count,
+
+        allocated:
+            block.allocated,
+
+        free:
+            block.free,
+
+        slot_size:
+            block.layout.slot_size,
+
+        slot_align:
+            block.layout.slot_align,
+
+        utilization:
+            pool_block_utilization(
+                block
+            ),
+
+        state:
+            state,
+
+        empty:
+            state == PoolBlockState.Empty,
+
+        partial:
+            state == PoolBlockState.Partial,
+
+        full:
+            state == PoolBlockState.Full,
+
+        active:
+            block.active,
+
+        released:
+            state == PoolBlockState.Released,
+
+        valid:
+            state != PoolBlockState.Invalid,
+
+        generation:
+            block.generation,
+
+        revision:
+            block.revision
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+proc pool_block_allocation_valid(
+    block: PoolBlock
+) -> bool {
+    give alloc_allocator.layout_is_valid(
+        block.allocation.layout
+    );
+}
+
+proc pool_block_layout_valid(
+    block: PoolBlock
+) -> bool {
+    give pool_alloc.pool_allocation_layout_valid(
+        block.layout
+    )
+    and block.allocation.layout.size
+        >= pool_alloc.pool_allocation_layout_capacity(
+            block.layout
+        );
+}
+
+proc pool_block_accounting_valid(
+    block: PoolBlock
+) -> bool {
+    give block.allocated
+        <= block.layout.slot_count
+        and block.free
+            <= block.layout.slot_count
+        and block.allocated
+            + block.free
+            == block.layout.slot_count;
+}
+
+proc pool_block_state_valid(
+    block: PoolBlock
+) -> bool {
+    let state =
+        pool_block_state(
+            block
+        );
+
+    give state != PoolBlockState.Invalid;
+}
+
+proc pool_block_validate(
+    block: PoolBlock
+) -> PoolBlockValidation {
+    let allocation_valid =
+        if block.active {
+            pool_block_allocation_valid(
+                block
+            )
+        } else {
+            true
+        };
+
+    let layout_valid =
+        pool_block_layout_valid(
+            block
+        );
+
+    let accounting_valid =
+        pool_block_accounting_valid(
+            block
+        );
+
+    let state_valid =
+        pool_block_state_valid(
+            block
+        );
+
+    let hint_valid =
+        if block.layout.slot_count == 0 {
+            false
+        } else {
+            block.next_hint
+                < block.layout.slot_count
+        };
+
+    give PoolBlockValidation {
+        valid:
+            allocation_valid
+            and layout_valid
+            and accounting_valid
+            and state_valid
+            and hint_valid,
+
+        allocation_valid:
+            allocation_valid,
+
+        layout_valid:
+            layout_valid,
+
+        accounting_valid:
+            accounting_valid,
+
+        state_valid:
+            state_valid,
+
+        hint_valid:
+            hint_valid
+    };
+}
+
+proc pool_block_is_valid(
+    block: PoolBlock
+) -> bool {
+    give pool_block_validate(
+        block
+    ).valid;
+}
+
+proc pool_block_invariant_holds(
+    block: PoolBlock
+) -> bool {
+    give pool_block_is_valid(
+        block
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Snapshot
+// -----------------------------------------------------------------------------
+
+proc pool_block_snapshot(
+    block: PoolBlock
+) -> PoolBlockSnapshot {
+    give PoolBlockSnapshot {
+        allocated:
+            block.allocated,
+
+        free:
+            block.free,
+
+        capacity:
+            block.layout.slot_count,
+
+        next_hint:
+            block.next_hint,
+
+        state:
+            pool_block_state(
+                block
+            ),
+
+        generation:
+            block.generation,
+
+        revision:
+            block.revision
+    };
+}
+
+proc pool_block_snapshot_equal(
+    left: PoolBlockSnapshot,
+    right: PoolBlockSnapshot
+) -> bool {
+    give left.allocated == right.allocated
+        and left.free == right.free
+        and left.capacity == right.capacity
+        and left.next_hint == right.next_hint
+        and left.state == right.state
+        and left.generation == right.generation
+        and left.revision == right.revision;
+}
+
+proc pool_block_snapshot_changed(
+    left: PoolBlockSnapshot,
+    right: PoolBlockSnapshot
+) -> bool {
+    give not pool_block_snapshot_equal(
+        left,
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Delta
+// -----------------------------------------------------------------------------
+
+proc pool_block_usize_delta(
+    before: usize,
+    after: usize
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc pool_block_u64_delta(
+    before: u64,
+    after: u64
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc pool_block_delta(
+    before: PoolBlockSnapshot,
+    after: PoolBlockSnapshot
+) -> PoolBlockDelta {
+    let allocated =
+        pool_block_usize_delta(
+            before.allocated,
+            after.allocated
+        );
+
+    let free =
+        pool_block_usize_delta(
+            before.free,
+            after.free
+        );
+
+    let generation =
+        pool_block_u64_delta(
+            before.generation,
+            after.generation
+        );
+
+    let revision =
+        pool_block_u64_delta(
+            before.revision,
+            after.revision
+        );
+
+    let state_changed =
+        before.state != after.state;
+
+    give PoolBlockDelta {
+        allocated:
+            allocated,
+
+        free:
+            free,
+
+        generation:
+            generation,
+
+        revision:
+            revision,
+
+        state_changed:
+            state_changed,
+
+        changed:
+            allocated != 0
+            or free != 0
+            or generation != 0
+            or revision != 0
+            or state_changed
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc pool_block_statistics_empty()
+    -> PoolBlockStatistics
+{
+    give PoolBlockStatistics {
+        allocations: 0,
+        releases: 0,
+        failures: 0,
+
+        scans: 0,
+        scan_steps: 0,
+
+        resets: 0,
+
+        peak_allocated: 0
+    };
+}
+
+proc pool_block_statistics_record_allocate(
+    statistics: ref mut PoolBlockStatistics,
+    block: PoolBlock,
+    success: bool
+) {
+    if success {
+        set statistics.allocations =
+            statistics.allocations + 1;
+
+        if block.allocated
+            > statistics.peak_allocated
+        {
+            set statistics.peak_allocated =
+                block.allocated;
+        }
+    } else {
+        set statistics.failures =
+            statistics.failures + 1;
+    }
+}
+
+proc pool_block_statistics_record_release(
+    statistics: ref mut PoolBlockStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.releases =
+            statistics.releases + 1;
+    } else {
+        set statistics.failures =
+            statistics.failures + 1;
+    }
+}
+
+proc pool_block_statistics_record_scan(
+    statistics: ref mut PoolBlockStatistics,
+    steps: usize
+) {
+    set statistics.scans =
+        statistics.scans + 1;
+
+    set statistics.scan_steps =
+        statistics.scan_steps
+        + steps;
+}
+
+proc pool_block_statistics_total(
+    statistics: PoolBlockStatistics
+) -> u64 {
+    give statistics.allocations
+        + statistics.releases
+        + statistics.failures
+        + statistics.scans
+        + statistics.resets;
+}
+
+proc pool_block_statistics_reset(
+    statistics: ref mut PoolBlockStatistics
+) {
+    set *statistics =
+        pool_block_statistics_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc pool_block_state_name(
+    state: PoolBlockState
+) -> string {
+    pick state {
+        PoolBlockState.Empty {
+            give "empty";
+        }
+
+        PoolBlockState.Partial {
+            give "partial";
+        }
+
+        PoolBlockState.Full {
+            give "full";
+        }
+
+        PoolBlockState.Released {
+            give "released";
+        }
+
+        PoolBlockState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+proc pool_block_slot_state_name(
+    state: PoolBlockSlotState
+) -> string {
+    pick state {
+        PoolBlockSlotState.Free {
+            give "free";
+        }
+
+        PoolBlockSlotState.Allocated {
+            give "allocated";
+        }
+
+        PoolBlockSlotState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+// -----------------------------------------------------------------------------
+// Model
+// -----------------------------------------------------------------------------
+//
+// PoolBlock
+//
+// +------+------+------+------+------+
+// |  0   |  1   |  2   |  3   | ... |
+// +------+------+------+------+------+
+//
+// All slots share:
+//
+//     slot_size
+//     slot_align
+//
+// Accounting:
+//
+//     allocated + free = slot_count
+//
+// States:
+//
+//     Empty
+//         allocated == 0
+//
+//     Partial
+//         0 < allocated < slot_count
+//
+//     Full
+//         allocated == slot_count
+//
+//     Released
+//         block inactive
+//
+// Allocation:
+//
+//     free slot
+//         |
+//         v
+//     mark allocated
+//         |
+//         v
+//     allocated++
+//     free--
+//
+// Release:
+//
+//     allocated slot
+//         |
+//         v
+//     mark free
+//         |
+//         v
+//     allocated--
+//     free++
+//
+// Unlike bump allocation, released slots can be reused individually.
+//
+// `block.vitl` owns one pool backing region and its accounting.
+// `alloc.vitl` owns slot geometry and slot allocation primitives.
+// `pool.vitl` owns free-slot discovery and the public pool API.
+// `core.vitl` owns pure state and invariant modeling.

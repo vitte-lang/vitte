@@ -1,0 +1,1492 @@
+use src/vitte/stdlib/alloc/boxed
+use src/vitte/stdlib/alloc/boxed/alloc
+
+form Point {
+    x: int
+    y: int
+}
+
+form User {
+    id: int
+    name: string
+    active: bool
+}
+
+proc test_request_raw() -> bool {
+    let request = box_allocation_request_raw(
+        64,
+        8
+    );
+
+    give request.size == 64
+        and request.align == 8
+        and request.count == 1
+        and not request.zeroed;
+}
+
+proc test_request_raw_valid() -> bool {
+    let request = box_allocation_request_raw(
+        64,
+        8
+    );
+
+    give box_allocation_request_valid(
+        request
+    );
+}
+
+proc test_request_invalid_align_zero() -> bool {
+    let request = box_allocation_request_raw(
+        64,
+        0
+    );
+
+    give not box_allocation_request_valid(
+        request
+    );
+}
+
+proc test_request_invalid_align_three() -> bool {
+    let request = box_allocation_request_raw(
+        64,
+        3
+    );
+
+    give not box_allocation_request_valid(
+        request
+    );
+}
+
+proc test_alignment_one() -> bool {
+    give box_allocation_alignment_valid(1);
+}
+
+proc test_alignment_two() -> bool {
+    give box_allocation_alignment_valid(2);
+}
+
+proc test_alignment_four() -> bool {
+    give box_allocation_alignment_valid(4);
+}
+
+proc test_alignment_eight() -> bool {
+    give box_allocation_alignment_valid(8);
+}
+
+proc test_alignment_sixteen() -> bool {
+    give box_allocation_alignment_valid(16);
+}
+
+proc test_alignment_thirty_two() -> bool {
+    give box_allocation_alignment_valid(32);
+}
+
+proc test_alignment_invalid_zero() -> bool {
+    give not box_allocation_alignment_valid(0);
+}
+
+proc test_alignment_invalid_three() -> bool {
+    give not box_allocation_alignment_valid(3);
+}
+
+proc test_alignment_invalid_six() -> bool {
+    give not box_allocation_alignment_valid(6);
+}
+
+proc test_mul_zero() -> bool {
+    give not box_allocation_mul_overflows(
+        0,
+        1000
+    );
+}
+
+proc test_mul_normal() -> bool {
+    give not box_allocation_mul_overflows(
+        64,
+        16
+    );
+}
+
+proc test_add_normal() -> bool {
+    give not box_allocation_add_overflows(
+        64,
+        128
+    );
+}
+
+proc test_array_size() -> bool {
+    let result = box_allocation_array_size(
+        8,
+        10
+    );
+
+    pick result {
+        Some(size) {
+            give size == 80;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_array_size_zero() -> bool {
+    let result = box_allocation_array_size(
+        8,
+        0
+    );
+
+    pick result {
+        Some(size) {
+            give size == 0;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_align_up_already_aligned() -> bool {
+    let result = box_allocation_align_up(
+        16,
+        8
+    );
+
+    pick result {
+        Some(value) {
+            give value == 16;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_align_up() -> bool {
+    let result = box_allocation_align_up(
+        17,
+        8
+    );
+
+    pick result {
+        Some(value) {
+            give value == 24;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_align_up_32() -> bool {
+    let result = box_allocation_align_up(
+        33,
+        32
+    );
+
+    pick result {
+        Some(value) {
+            give value == 64;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_align_up_invalid() -> bool {
+    let result = box_allocation_align_up(
+        64,
+        0
+    );
+
+    give is_none(result);
+}
+
+proc test_limits_default() -> bool {
+    let limits = box_allocation_limits_default();
+
+    give limits.max_size > 0
+        and limits.max_align > 0
+        and limits.max_count > 0
+        and not limits.allow_zero_size;
+}
+
+proc test_allocate_raw_bytes() -> bool {
+    let mut allocator = box_allocator();
+
+    let result = box_allocate_bytes(
+        ref mut allocator,
+        64,
+        8
+    );
+
+    pick result {
+        Some(allocation) {
+            give allocation.layout.size == 64
+                and allocation.layout.align == 8;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_allocate_one_byte() -> bool {
+    let mut allocator = box_allocator();
+
+    let result = box_allocate_bytes(
+        ref mut allocator,
+        1,
+        1
+    );
+
+    pick result {
+        Some(allocation) {
+            give allocation.layout.size == 1;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_allocate_128_bytes() -> bool {
+    let mut allocator = box_allocator();
+
+    let result = box_allocate_bytes(
+        ref mut allocator,
+        128,
+        16
+    );
+
+    pick result {
+        Some(allocation) {
+            give allocation.layout.size == 128
+                and allocation.layout.align == 16;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_allocate_large() -> bool {
+    let mut allocator = box_allocator();
+
+    let result = box_allocate_bytes(
+        ref mut allocator,
+        65536,
+        16
+    );
+
+    give is_some(result);
+}
+
+proc test_allocate_multiple() -> bool {
+    let mut allocator = box_allocator();
+
+    let first = box_allocate_bytes(
+        ref mut allocator,
+        32,
+        8
+    );
+
+    let second = box_allocate_bytes(
+        ref mut allocator,
+        64,
+        8
+    );
+
+    let third = box_allocate_bytes(
+        ref mut allocator,
+        128,
+        8
+    );
+
+    give is_some(first)
+        and is_some(second)
+        and is_some(third);
+}
+
+proc test_allocate_zeroed_bytes() -> bool {
+    let mut allocator = box_allocator();
+
+    let result = box_allocate_zeroed_bytes(
+        ref mut allocator,
+        128,
+        8
+    );
+
+    pick result {
+        Some(allocation) {
+            give allocation.layout.size == 128
+                and allocation.layout.align == 8;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_allocate_request() -> bool {
+    let mut allocator = box_allocator();
+
+    let request = box_allocation_request_raw(
+        256,
+        8
+    );
+
+    let result = box_allocate_request(
+        ref mut allocator,
+        request
+    );
+
+    give result.success
+        and result.bytes == 256
+        and box_allocation_result_is_success(
+            result
+        )
+        and box_allocation_result_has_allocation(
+            result
+        );
+}
+
+proc test_allocate_request_invalid_alignment() -> bool {
+    let mut allocator = box_allocator();
+
+    let request = box_allocation_request_raw(
+        64,
+        3
+    );
+
+    let result = box_allocate_request(
+        ref mut allocator,
+        request
+    );
+
+    give not result.success
+        and box_allocation_result_is_failure(
+            result
+        );
+}
+
+proc test_result_success() -> bool {
+    let mut allocator = box_allocator();
+
+    let request = box_allocation_request_raw(
+        32,
+        8
+    );
+
+    let result = box_allocate_request(
+        ref mut allocator,
+        request
+    );
+
+    give box_allocation_result_is_success(
+        result
+    );
+}
+
+proc test_result_failure() -> bool {
+    let mut allocator = box_allocator();
+
+    let request = box_allocation_request_raw(
+        32,
+        0
+    );
+
+    let result = box_allocate_request(
+        ref mut allocator,
+        request
+    );
+
+    give box_allocation_result_is_failure(
+        result
+    );
+}
+
+proc test_box_new_int() -> bool {
+    let value = box_new(42);
+
+    give *box_get(ref value) == 42;
+}
+
+proc test_box_new_negative() -> bool {
+    let value = box_new(-42);
+
+    give *box_get(ref value) == -42;
+}
+
+proc test_box_new_bool() -> bool {
+    let value = box_new(true);
+
+    give *box_get(ref value);
+}
+
+proc test_box_new_string() -> bool {
+    let value = box_new("Vitte");
+
+    give *box_get(ref value) == "Vitte";
+}
+
+proc test_box_new_point() -> bool {
+    let value = box_new(
+        Point {
+            x: 10
+            y: 20
+        }
+    );
+
+    let point = box_get(ref value);
+
+    give point.x == 10
+        and point.y == 20;
+}
+
+proc test_box_new_user() -> bool {
+    let value = box_new(
+        User {
+            id: 7
+            name: "Vincent"
+            active: true
+        }
+    );
+
+    let user = box_get(ref value);
+
+    give user.id == 7
+        and user.name == "Vincent"
+        and user.active;
+}
+
+proc test_box_try_new() -> bool {
+    let result = box_try_new(42);
+
+    pick result {
+        Some(value) {
+            give *box_get(ref value) == 42;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_box_get_mut() -> bool {
+    let mut value = box_new(10);
+
+    let inner = box_get_mut(
+        ref mut value
+    );
+
+    set *inner = 20;
+
+    give *box_get(ref value) == 20;
+}
+
+proc test_box_get_mut_point() -> bool {
+    let mut value = box_new(
+        Point {
+            x: 1
+            y: 2
+        }
+    );
+
+    let point = box_get_mut(
+        ref mut value
+    );
+
+    set point.x = 100;
+    set point.y = 200;
+
+    give box_get(ref value).x == 100
+        and box_get(ref value).y == 200;
+}
+
+proc test_box_replace() -> bool {
+    let mut value = box_new(10);
+
+    let old = box_replace(
+        ref mut value,
+        20
+    );
+
+    give old == 10
+        and *box_get(ref value) == 20;
+}
+
+proc test_box_set() -> bool {
+    let mut value = box_new(10);
+
+    box_set(
+        ref mut value,
+        99
+    );
+
+    give *box_get(ref value) == 99;
+}
+
+proc test_box_swap() -> bool {
+    let mut first = box_new(10);
+    let mut second = box_new(20);
+
+    box_swap(
+        ref mut first,
+        ref mut second
+    );
+
+    give *box_get(ref first) == 20
+        and *box_get(ref second) == 10;
+}
+
+proc test_box_ptr_different() -> bool {
+    let first = box_new(42);
+    let second = box_new(42);
+
+    give box_ptr_ne(
+        first,
+        second
+    );
+}
+
+proc test_box_values_equal() -> bool {
+    let first = box_new(42);
+    let second = box_new(42);
+
+    give box_value_eq(
+        ref first,
+        ref second
+    );
+}
+
+proc test_box_values_different() -> bool {
+    let first = box_new(42);
+    let second = box_new(43);
+
+    give box_value_ne(
+        ref first,
+        ref second
+    );
+}
+
+proc test_box_size() -> bool {
+    let value = box_new(42);
+
+    give box_size(value) > 0;
+}
+
+proc test_box_align() -> bool {
+    let value = box_new(42);
+
+    give box_align(value) > 0;
+}
+
+proc test_box_valid() -> bool {
+    let value = box_new(42);
+
+    give box_is_valid(value)
+        and box_is_alive(value)
+        and box_is_owned(value);
+}
+
+proc test_box_readable_writable() -> bool {
+    let value = box_new(42);
+
+    give box_can_read(value)
+        and box_can_write(value);
+}
+
+proc test_box_profile() -> bool {
+    let value = box_new(42);
+    let profile = box_profile(value);
+
+    give profile.alive
+        and profile.owned
+        and profile.readable
+        and profile.writable
+        and profile.valid;
+}
+
+proc test_box_validation() -> bool {
+    let value = box_new(42);
+    let validation = box_validate(value);
+
+    give validation.valid
+        and validation.allocation_valid
+        and validation.state_valid
+        and validation.pointer_valid
+        and validation.layout_valid
+        and validation.ownership_valid;
+}
+
+proc test_box_invariant() -> bool {
+    let value = box_new(42);
+
+    give box_invariant_holds(
+        value
+    );
+}
+
+proc test_snapshot_initial() -> bool {
+    let value = box_new(42);
+    let snapshot = box_snapshot(value);
+
+    give snapshot.size > 0
+        and snapshot.align > 0
+        and snapshot.generation >= 1
+        and snapshot.revision >= 1;
+}
+
+proc test_snapshot_equal() -> bool {
+    let value = box_new(42);
+
+    let first = box_snapshot(value);
+    let second = box_snapshot(value);
+
+    give box_snapshot_equal(
+        first,
+        second
+    );
+}
+
+proc test_snapshot_after_mutation() -> bool {
+    let mut value = box_new(42);
+
+    let before = box_snapshot(value);
+
+    box_set(
+        ref mut value,
+        100
+    );
+
+    give box_snapshot_changed(
+        before,
+        value
+    );
+}
+
+proc test_box_revision_after_set() -> bool {
+    let mut value = box_new(42);
+
+    let before = box_revision(value);
+
+    box_set(
+        ref mut value,
+        100
+    );
+
+    give box_revision(value) > before;
+}
+
+proc test_box_touch() -> bool {
+    let mut value = box_new(42);
+
+    let before = box_revision(value);
+
+    box_touch(
+        ref mut value
+    );
+
+    give box_revision(value) > before;
+}
+
+proc test_box_advance_generation() -> bool {
+    let mut value = box_new(42);
+
+    let before = box_generation(value);
+
+    let after = box_advance_generation(
+        ref mut value
+    );
+
+    give after > before
+        and box_generation(value) == after;
+}
+
+proc test_box_clone_value() -> bool {
+    let first = box_new(42);
+    let second = box_clone(ref first);
+
+    give *box_get(ref first) == 42
+        and *box_get(ref second) == 42
+        and box_ptr_ne(first, second);
+}
+
+proc test_box_clone_string() -> bool {
+    let first = box_new("Vitte");
+    let second = box_clone(ref first);
+
+    give *box_get(ref second) == "Vitte"
+        and box_ptr_ne(first, second);
+}
+
+proc test_box_clone_point() -> bool {
+    let first = box_new(
+        Point {
+            x: 4
+            y: 8
+        }
+    );
+
+    let second = box_clone(
+        ref first
+    );
+
+    give box_get(ref second).x == 4
+        and box_get(ref second).y == 8
+        and box_ptr_ne(first, second);
+}
+
+proc test_box_try_clone() -> bool {
+    let first = box_new(42);
+
+    let result = box_try_clone(
+        ref first
+    );
+
+    pick result {
+        Some(second) {
+            give *box_get(ref second) == 42
+                and box_ptr_ne(first, second);
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_snapshot_allocation_before() -> bool {
+    let allocator = box_allocator();
+
+    let snapshot = box_allocation_snapshot(
+        allocator
+    );
+
+    give snapshot.live_bytes == 0;
+}
+
+proc test_snapshot_allocation_changes() -> bool {
+    let mut allocator = box_allocator();
+
+    let before = box_allocation_snapshot(
+        allocator
+    );
+
+    let result = box_allocate_bytes(
+        ref mut allocator,
+        128,
+        8
+    );
+
+    if is_none(result) {
+        give false;
+    }
+
+    let after = box_allocation_snapshot(
+        allocator
+    );
+
+    give box_allocation_snapshot_changed(
+        before,
+        after
+    );
+}
+
+proc test_allocation_delta() -> bool {
+    let mut allocator = box_allocator();
+
+    let before = box_allocation_snapshot(
+        allocator
+    );
+
+    let result = box_allocate_bytes(
+        ref mut allocator,
+        128,
+        8
+    );
+
+    if is_none(result) {
+        give false;
+    }
+
+    let after = box_allocation_snapshot(
+        allocator
+    );
+
+    let delta = box_allocation_delta(
+        before,
+        after
+    );
+
+    give not box_allocation_delta_is_zero(
+        delta
+    );
+}
+
+proc test_allocation_size() -> bool {
+    let mut allocator = box_allocator();
+
+    let result = box_allocate_bytes(
+        ref mut allocator,
+        128,
+        16
+    );
+
+    pick result {
+        Some(allocation) {
+            give box_allocation_size(
+                allocation
+            ) == 128;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_allocation_align() -> bool {
+    let mut allocator = box_allocator();
+
+    let result = box_allocate_bytes(
+        ref mut allocator,
+        128,
+        16
+    );
+
+    pick result {
+        Some(allocation) {
+            give box_allocation_align(
+                allocation
+            ) == 16;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_allocation_valid() -> bool {
+    let mut allocator = box_allocator();
+
+    let result = box_allocate_bytes(
+        ref mut allocator,
+        64,
+        8
+    );
+
+    pick result {
+        Some(allocation) {
+            give box_allocation_is_valid(
+                allocation
+            );
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_allocations_have_different_pointers() -> bool {
+    let mut allocator = box_allocator();
+
+    let first = box_allocate_bytes(
+        ref mut allocator,
+        64,
+        8
+    );
+
+    let second = box_allocate_bytes(
+        ref mut allocator,
+        64,
+        8
+    );
+
+    pick first {
+        Some(a) {
+            pick second {
+                Some(b) {
+                    give not box_allocation_ptr_equal(
+                        a,
+                        b
+                    );
+                }
+
+                None {
+                    give false;
+                }
+            }
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_profile_empty() -> bool {
+    let profile = box_allocation_profile_empty();
+
+    give profile.requests == 0
+        and profile.successes == 0
+        and profile.failures == 0
+        and profile.bytes_requested == 0
+        and profile.bytes_allocated == 0
+        and profile.bytes_failed == 0;
+}
+
+proc test_profile_request() -> bool {
+    let mut profile = box_allocation_profile_empty();
+
+    let request = box_allocation_request_raw(
+        64,
+        8
+    );
+
+    box_allocation_profile_record_request(
+        ref mut profile,
+        request
+    );
+
+    give profile.requests == 1
+        and profile.bytes_requested == 64
+        and profile.raw_allocations == 1;
+}
+
+proc test_profile_multiple_requests() -> bool {
+    let mut profile = box_allocation_profile_empty();
+
+    let first = box_allocation_request_raw(
+        32,
+        8
+    );
+
+    let second = box_allocation_request_raw(
+        128,
+        8
+    );
+
+    box_allocation_profile_record_request(
+        ref mut profile,
+        first
+    );
+
+    box_allocation_profile_record_request(
+        ref mut profile,
+        second
+    );
+
+    give profile.requests == 2
+        and profile.bytes_requested == 160
+        and profile.smallest_request == 32
+        and profile.largest_request == 128;
+}
+
+proc test_profile_success_rate_empty() -> bool {
+    let profile = box_allocation_profile_empty();
+
+    give box_allocation_profile_success_rate(
+        profile
+    ) == 1.0;
+}
+
+proc test_profile_failure_rate_empty() -> bool {
+    let profile = box_allocation_profile_empty();
+
+    give box_allocation_profile_failure_rate(
+        profile
+    ) == 0.0;
+}
+
+proc test_failure_none() -> bool {
+    give box_allocation_failure_is_none(
+        BoxAllocationFailure.None
+    );
+}
+
+proc test_failure_memory() -> bool {
+    give box_allocation_failure_is_memory(
+        BoxAllocationFailure.OutOfMemory
+    );
+}
+
+proc test_failure_layout() -> bool {
+    give box_allocation_failure_is_layout(
+        BoxAllocationFailure.InvalidLayout
+    )
+    and box_allocation_failure_is_layout(
+        BoxAllocationFailure.InvalidSize
+    )
+    and box_allocation_failure_is_layout(
+        BoxAllocationFailure.InvalidAlignment
+    );
+}
+
+proc test_deallocate() -> bool {
+    let mut allocator = box_allocator();
+
+    let result = box_allocate_bytes(
+        ref mut allocator,
+        64,
+        8
+    );
+
+    pick result {
+        Some(allocation) {
+            give box_deallocate(
+                ref mut allocator,
+                allocation
+            );
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_allocate_deallocate_many() -> bool {
+    let mut allocator = box_allocator();
+    let index: usize = 0;
+
+    while index < 1000 {
+        let result = box_allocate_bytes(
+            ref mut allocator,
+            64,
+            8
+        );
+
+        pick result {
+            Some(allocation) {
+                if not box_deallocate(
+                    ref mut allocator,
+                    allocation
+                ) {
+                    give false;
+                }
+            }
+
+            None {
+                give false;
+            }
+        }
+
+        set index = index + 1;
+    }
+
+    give true;
+}
+
+proc test_box_release() -> bool {
+    let mut value = box_new(42);
+
+    give box_release(
+        ref mut value
+    )
+    and box_is_released(value);
+}
+
+proc test_box_release_twice() -> bool {
+    let mut value = box_new(42);
+
+    let first = box_release(
+        ref mut value
+    );
+
+    let second = box_release(
+        ref mut value
+    );
+
+    give first
+        and not second;
+}
+
+proc test_box_state_after_release() -> bool {
+    let mut value = box_new(42);
+
+    if not box_release(
+        ref mut value
+    ) {
+        give false;
+    }
+
+    give box_is_released(value)
+        and not box_is_alive(value)
+        and not box_is_owned(value);
+}
+
+proc test_many_boxes() -> bool {
+    let first = box_new(1);
+    let second = box_new(2);
+    let third = box_new(3);
+    let fourth = box_new(4);
+    let fifth = box_new(5);
+
+    give *box_get(ref first) == 1
+        and *box_get(ref second) == 2
+        and *box_get(ref third) == 3
+        and *box_get(ref fourth) == 4
+        and *box_get(ref fifth) == 5;
+}
+
+proc test_many_box_mutations() -> bool {
+    let mut value = box_new(0);
+    let index: int = 0;
+
+    while index < 1000 {
+        box_set(
+            ref mut value,
+            index
+        );
+
+        if *box_get(ref value) != index {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give box_is_valid(value);
+}
+
+proc test_many_box_replace() -> bool {
+    let mut value = box_new(0);
+    let index: int = 1;
+
+    while index < 1000 {
+        let old = box_replace(
+            ref mut value,
+            index
+        );
+
+        if old != index - 1 {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give *box_get(ref value) == 999;
+}
+
+proc test_many_independent_boxes() -> bool {
+    let mut a = box_new(1);
+    let mut b = box_new(2);
+
+    let index: int = 0;
+
+    while index < 1000 {
+        box_set(
+            ref mut a,
+            index
+        );
+
+        box_set(
+            ref mut b,
+            index * 2
+        );
+
+        if *box_get(ref a) != index {
+            give false;
+        }
+
+        if *box_get(ref b) != index * 2 {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give box_ptr_ne(a, b);
+}
+
+proc test_clone_independent_mutation() -> bool {
+    let mut first = box_new(
+        Point {
+            x: 1
+            y: 2
+        }
+    );
+
+    let second = box_clone(
+        ref first
+    );
+
+    let point = box_get_mut(
+        ref mut first
+    );
+
+    set point.x = 100;
+
+    give box_get(ref first).x == 100
+        and box_get(ref second).x == 1
+        and box_ptr_ne(first, second);
+}
+
+proc test_allocation_kind_names() -> bool {
+    give box_allocation_kind_name(
+        BoxAllocationKind.Value
+    ) == "value"
+        and box_allocation_kind_name(
+            BoxAllocationKind.Zeroed
+        ) == "zeroed"
+        and box_allocation_kind_name(
+            BoxAllocationKind.Array
+        ) == "array"
+        and box_allocation_kind_name(
+            BoxAllocationKind.Raw
+        ) == "raw";
+}
+
+proc test_allocation_state_names() -> bool {
+    give box_allocation_state_name(
+        BoxAllocationState.Ready
+    ) == "ready"
+        and box_allocation_state_name(
+            BoxAllocationState.Allocated
+        ) == "allocated"
+        and box_allocation_state_name(
+            BoxAllocationState.Released
+        ) == "released"
+        and box_allocation_state_name(
+            BoxAllocationState.Failed
+        ) == "failed";
+}
+
+proc test_allocation_failure_names() -> bool {
+    give box_allocation_failure_name(
+        BoxAllocationFailure.None
+    ) == "none"
+        and box_allocation_failure_name(
+            BoxAllocationFailure.InvalidSize
+        ) == "invalid-size"
+        and box_allocation_failure_name(
+            BoxAllocationFailure.OutOfMemory
+        ) == "out-of-memory";
+}
+
+proc test_stress_raw_allocations() -> bool {
+    let mut allocator = box_allocator();
+    let index: usize = 0;
+
+    while index < 5000 {
+        let result = box_allocate_bytes(
+            ref mut allocator,
+            32,
+            8
+        );
+
+        if is_none(result) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give true;
+}
+
+proc test_stress_boxes() -> bool {
+    let index: int = 0;
+
+    while index < 5000 {
+        let value = box_new(index);
+
+        if *box_get(ref value) != index {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give true;
+}
+
+proc test_stress_box_clone() -> bool {
+    let source = box_new(42);
+    let index: usize = 0;
+
+    while index < 1000 {
+        let clone = box_clone(
+            ref source
+        );
+
+        if *box_get(ref clone) != 42 {
+            give false;
+        }
+
+        if not box_ptr_ne(
+            source,
+            clone
+        ) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give true;
+}
+
+proc test_stress_allocate_release() -> bool {
+    let index: usize = 0;
+
+    while index < 5000 {
+        let mut value = box_new(42);
+
+        if not box_release(
+            ref mut value
+        ) {
+            give false;
+        }
+
+        if not box_is_released(value) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give true;
+}
+
+proc run_alloc_tests() -> bool {
+    give test_request_raw()
+        and test_request_raw_valid()
+        and test_request_invalid_align_zero()
+        and test_request_invalid_align_three()
+
+        and test_alignment_one()
+        and test_alignment_two()
+        and test_alignment_four()
+        and test_alignment_eight()
+        and test_alignment_sixteen()
+        and test_alignment_thirty_two()
+        and test_alignment_invalid_zero()
+        and test_alignment_invalid_three()
+        and test_alignment_invalid_six()
+
+        and test_mul_zero()
+        and test_mul_normal()
+        and test_add_normal()
+        and test_array_size()
+        and test_array_size_zero()
+        and test_align_up_already_aligned()
+        and test_align_up()
+        and test_align_up_32()
+        and test_align_up_invalid()
+        and test_limits_default()
+
+        and test_allocate_raw_bytes()
+        and test_allocate_one_byte()
+        and test_allocate_128_bytes()
+        and test_allocate_large()
+        and test_allocate_multiple()
+        and test_allocate_zeroed_bytes()
+
+        and test_allocate_request()
+        and test_allocate_request_invalid_alignment()
+        and test_result_success()
+        and test_result_failure()
+
+        and test_box_new_int()
+        and test_box_new_negative()
+        and test_box_new_bool()
+        and test_box_new_string()
+        and test_box_new_point()
+        and test_box_new_user()
+        and test_box_try_new()
+
+        and test_box_get_mut()
+        and test_box_get_mut_point()
+        and test_box_replace()
+        and test_box_set()
+        and test_box_swap()
+
+        and test_box_ptr_different()
+        and test_box_values_equal()
+        and test_box_values_different()
+
+        and test_box_size()
+        and test_box_align()
+        and test_box_valid()
+        and test_box_readable_writable()
+        and test_box_profile()
+        and test_box_validation()
+        and test_box_invariant()
+
+        and test_snapshot_initial()
+        and test_snapshot_equal()
+        and test_snapshot_after_mutation()
+        and test_box_revision_after_set()
+        and test_box_touch()
+        and test_box_advance_generation()
+
+        and test_box_clone_value()
+        and test_box_clone_string()
+        and test_box_clone_point()
+        and test_box_try_clone()
+        and test_clone_independent_mutation()
+
+        and test_snapshot_allocation_before()
+        and test_snapshot_allocation_changes()
+        and test_allocation_delta()
+        and test_allocation_size()
+        and test_allocation_align()
+        and test_allocation_valid()
+        and test_allocations_have_different_pointers()
+
+        and test_profile_empty()
+        and test_profile_request()
+        and test_profile_multiple_requests()
+        and test_profile_success_rate_empty()
+        and test_profile_failure_rate_empty()
+
+        and test_failure_none()
+        and test_failure_memory()
+        and test_failure_layout()
+
+        and test_deallocate()
+        and test_allocate_deallocate_many()
+
+        and test_box_release()
+        and test_box_release_twice()
+        and test_box_state_after_release()
+
+        and test_many_boxes()
+        and test_many_box_mutations()
+        and test_many_box_replace()
+        and test_many_independent_boxes()
+
+        and test_allocation_kind_names()
+        and test_allocation_state_names()
+        and test_allocation_failure_names()
+
+        and test_stress_raw_allocations()
+        and test_stress_boxes()
+        and test_stress_box_clone()
+        and test_stress_allocate_release();
+}
+
+proc main() -> int {
+    if run_alloc_tests() {
+        give 0;
+    }
+
+    give 1;
+}

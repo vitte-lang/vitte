@@ -286,9 +286,7 @@ proc render_header(ctx: RenderContext, diagnostic: Diagnostic) -> string {
         set text = text + "[" + diagnostic.code + "]";
     }
 
-    if false {
-        set text = text + " " + phase_name(diagnostic.phase);
-    }
+    set text = text + " " + phase_name(diagnostic.phase);
 
     set text = text + ": " + diagnostic.message;
 
@@ -388,7 +386,7 @@ proc source_gutter_width(diagnostic: Diagnostic) -> u64 {
 
 proc render_source_line(ctx: RenderContext, source: SourceFile, span: SourceSpan, width: u64) -> string {
     let line: SourceLine = source_line_at(source, span.start_line);
-    let line_number: string = span.start_line as string;
+    let line_number: string = to_string(span.start_line);
     let number: string = pad_left(line_number, width);
     give number + render_separator(ctx) + line.text;
 }
@@ -623,12 +621,12 @@ proc render_contract_span_text(span: SourceSpan) -> string {
     if span.end_line == span.start_line and span.end_column == span.start_column {
         give start;
     }
-    give start + "-" + (span.end_line as string) + ":" + (span.end_column as string);
+    give start + "-" + to_string(span.end_line) + ":" + to_string(span.end_column);
 }
 
 proc render_fluent_contract_fields(ctx: RenderContext, diagnostic: Diagnostic) -> string {
     let span_text: string = render_contract_span_text(diagnostic.span);
-    let id: string = diagnostic.code + ":" + diagnostic.span.file + ":" + (diagnostic.span.start_line as string) + ":" + (diagnostic.span.start_column as string);
+    let id: string = diagnostic.code + ":" + diagnostic.span.file + ":" + to_string(diagnostic.span.start_line) + ":" + to_string(diagnostic.span.start_column);
     let out: string = "  = code: " + diagnostic.code;
     set out = append_line(out, "  = id: " + id);
     set out = append_line(out, "  = category: " + phase_name(diagnostic.phase));

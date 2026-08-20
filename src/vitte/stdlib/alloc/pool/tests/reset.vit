@@ -1,0 +1,1340 @@
+use src/vitte/stdlib/alloc/pool
+use src/vitte/stdlib/alloc/pool/reset
+
+proc test_reset_empty() -> bool {
+    let mut pool = pool_new_for(
+        "reset-empty",
+        16
+    );
+
+    let result = pool_reset_all(
+        ref mut pool
+    );
+
+    give result.success
+        and result.mode == PoolResetMode.Reset
+        and result.state == PoolResetState.Applied
+        and result.released_slots == 0
+        and pool_is_empty(pool)
+        and pool_allocated(pool) == 0
+        and pool_free_count(pool) == 16;
+}
+
+proc test_reset_partial() -> bool {
+    let mut pool = pool_new_for(
+        "reset-partial",
+        16
+    );
+
+    let index: usize = 0;
+
+    while index < 8 {
+        if is_none(
+            pool_emplace(
+                ref mut pool,
+                index as int
+            )
+        ) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    let result = pool_reset_all(
+        ref mut pool
+    );
+
+    give result.success
+        and result.state == PoolResetState.Applied
+        and result.released_slots == 8
+        and pool_allocated(pool) == 0
+        and pool_free_count(pool) == 16
+        and pool_is_empty(pool);
+}
+
+proc test_reset_full() -> bool {
+    let mut pool = pool_new_for(
+        "reset-full",
+        8
+    );
+
+    let index: usize = 0;
+
+    while index < 8 {
+        if is_none(
+            pool_emplace(
+                ref mut pool,
+                index as int
+            )
+        ) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    if not pool_is_full(pool) {
+        give false;
+    }
+
+    let result = pool_reset_all(
+        ref mut pool
+    );
+
+    give result.success
+        and result.released_slots == 8
+        and pool_is_empty(pool)
+        and pool_free_count(pool) == 8;
+}
+
+proc test_reset_changes_generation() -> bool {
+    let mut pool = pool_new_for(
+        "reset-generation",
+        16
+    );
+
+    let before = pool_generation(
+        pool
+    );
+
+    let result = pool_reset_all(
+        ref mut pool
+    );
+
+    give result.success
+        and result.generation_changed
+        and pool_generation(pool) > before;
+}
+
+proc test_reset_changes_revision() -> bool {
+    let mut pool = pool_new_for(
+        "reset-revision",
+        16
+    );
+
+    let before = pool_revision(
+        pool
+    );
+
+    let result = pool_reset_all(
+        ref mut pool
+    );
+
+    give result.success
+        and result.revision_changed
+        and pool_revision(pool) > before;
+}
+
+proc test_reset_invalidates_handle() -> bool {
+    let mut pool = pool_new_for(
+        "reset-handle",
+        16
+    );
+
+    let handle = pool_emplace_handle(
+        ref mut pool,
+        42
+    );
+
+    pick handle {
+        Some(value) {
+            if not pool_handle_valid(
+                pool,
+                value
+            ) {
+                give false;
+            }
+
+            let result = pool_reset_all(
+                ref mut pool
+            );
+
+            give result.success
+                and pool_reset_invalidates_handles(
+                    result
+                )
+                and not pool_handle_valid(
+                    pool,
+                    value
+                );
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_reset_clears_allocations() -> bool {
+    let mut pool = pool_new_for(
+        "reset-clears",
+        32
+    );
+
+    let index: usize = 0;
+
+    while index < 20 {
+        if is_none(
+            pool_emplace(
+                ref mut pool,
+                index as int
+            )
+        ) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    let result = pool_reset_all(
+        ref mut pool
+    );
+
+    give result.success
+        and pool_reset_clears_allocations(
+            result
+        )
+        and pool_reset_restores_capacity(
+            result
+        );
+}
+
+proc test_reset_snapshot_changed() -> bool {
+    let mut pool = pool_new_for(
+        "reset-snapshot",
+        16
+    );
+
+    if is_none(
+        pool_emplace(
+            ref mut pool,
+            42
+        )
+    ) {
+        give false;
+    }
+
+    let before = pool_reset_snapshot(
+        pool
+    );
+
+    let result = pool_reset_all(
+        ref mut pool
+    );
+
+    let after = pool_reset_snapshot(
+        pool
+    );
+
+    give result.success
+        and pool_reset_snapshot_changed(
+            before,
+            after
+        );
+}
+
+proc test_reset_result_valid() -> bool {
+    let mut pool = pool_new_for(
+        "reset-result-valid",
+        16
+    );
+
+    if is_none(
+        pool_emplace(
+            ref mut pool,
+            42
+        )
+    ) {
+        give false;
+    }
+
+    let result = pool_reset_all(
+        ref mut pool
+    );
+
+    give pool_reset_result_valid(
+        result
+    );
+}
+
+proc test_reset_if_not_empty_empty() -> bool {
+    let mut pool = pool_new_for(
+        "reset-if-empty",
+        16
+    );
+
+    let result = pool_reset_if_not_empty(
+        ref mut pool
+    );
+
+    give result.success
+        and result.state == PoolResetState.Skipped
+        and result.failure == PoolResetFailure.AlreadyEmpty
+        and not pool_reset_changed(result);
+}
+
+proc test_reset_if_not_empty_partial() -> bool {
+    let mut pool = pool_new_for(
+        "reset-if-partial",
+        16
+    );
+
+    if is_none(
+        pool_emplace(
+            ref mut pool,
+            42
+        )
+    ) {
+        give false;
+    }
+
+    let result = pool_reset_if_not_empty(
+        ref mut pool
+    );
+
+    give result.success
+        and result.state == PoolResetState.Applied
+        and pool_is_empty(pool);
+}
+
+proc test_force_reset() -> bool {
+    let mut pool = pool_new_for(
+        "reset-force",
+        16
+    );
+
+    let index: usize = 0;
+
+    while index < 10 {
+        if is_none(
+            pool_emplace(
+                ref mut pool,
+                index as int
+            )
+        ) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    let result = pool_reset_force(
+        ref mut pool
+    );
+
+    give result.success
+        and pool_is_empty(pool)
+        and pool_allocated(pool) == 0
+        and pool_free_count(pool) == 16;
+}
+
+proc test_release() -> bool {
+    let mut pool = pool_new_for(
+        "reset-release",
+        16
+    );
+
+    if is_none(
+        pool_emplace(
+            ref mut pool,
+            42
+        )
+    ) {
+        give false;
+    }
+
+    let result = pool_release_all(
+        ref mut pool
+    );
+
+    give result.success
+        and result.mode == PoolResetMode.Release
+        and result.state == PoolResetState.Applied
+        and pool_is_released(pool);
+}
+
+proc test_release_empty() -> bool {
+    let mut pool = pool_new_for(
+        "release-empty",
+        16
+    );
+
+    let result = pool_release_all(
+        ref mut pool
+    );
+
+    give result.success
+        and pool_is_released(pool);
+}
+
+proc test_release_partial() -> bool {
+    let mut pool = pool_new_for(
+        "release-partial",
+        16
+    );
+
+    let index: usize = 0;
+
+    while index < 6 {
+        if is_none(
+            pool_emplace(
+                ref mut pool,
+                index as int
+            )
+        ) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    let result = pool_release_all(
+        ref mut pool
+    );
+
+    give result.success
+        and result.released_slots == 6
+        and pool_is_released(pool);
+}
+
+proc test_release_changes_generation() -> bool {
+    let mut pool = pool_new_for(
+        "release-generation",
+        16
+    );
+
+    let before = pool_generation(
+        pool
+    );
+
+    let result = pool_release_all(
+        ref mut pool
+    );
+
+    give result.success
+        and result.generation_changed
+        and pool_generation(pool) > before;
+}
+
+proc test_release_changes_revision() -> bool {
+    let mut pool = pool_new_for(
+        "release-revision",
+        16
+    );
+
+    let before = pool_revision(
+        pool
+    );
+
+    let result = pool_release_all(
+        ref mut pool
+    );
+
+    give result.success
+        and result.revision_changed
+        and pool_revision(pool) > before;
+}
+
+proc test_release_twice() -> bool {
+    let mut pool = pool_new_for(
+        "release-twice",
+        16
+    );
+
+    let first = pool_release_all(
+        ref mut pool
+    );
+
+    let second = pool_release_all(
+        ref mut pool
+    );
+
+    give first.success
+        and second.success
+        and second.state == PoolResetState.Skipped
+        and second.failure == PoolResetFailure.AlreadyReleased;
+}
+
+proc test_release_if_active() -> bool {
+    let mut pool = pool_new_for(
+        "release-if-active",
+        16
+    );
+
+    let result = pool_release_if_active(
+        ref mut pool
+    );
+
+    give result.success
+        and pool_is_released(pool);
+}
+
+proc test_release_if_active_twice() -> bool {
+    let mut pool = pool_new_for(
+        "release-if-active-twice",
+        16
+    );
+
+    let first = pool_release_if_active(
+        ref mut pool
+    );
+
+    let second = pool_release_if_active(
+        ref mut pool
+    );
+
+    give first.success
+        and second.success
+        and second.state == PoolResetState.Skipped;
+}
+
+proc test_reset_after_release() -> bool {
+    let mut pool = pool_new_for(
+        "reset-after-release",
+        16
+    );
+
+    let release = pool_release_all(
+        ref mut pool
+    );
+
+    if not release.success {
+        give false;
+    }
+
+    let reset = pool_reset_all(
+        ref mut pool
+    );
+
+    give not reset.success
+        and reset.failure == PoolResetFailure.AlreadyReleased;
+}
+
+proc test_force_reset_after_release() -> bool {
+    let mut pool = pool_new_for(
+        "force-after-release",
+        16
+    );
+
+    let release = pool_release_all(
+        ref mut pool
+    );
+
+    if not release.success {
+        give false;
+    }
+
+    let result = pool_reset_force(
+        ref mut pool
+    );
+
+    give not result.success
+        and result.failure == PoolResetFailure.AlreadyReleased;
+}
+
+proc test_result_predicates_reset() -> bool {
+    let mut pool = pool_new_for(
+        "result-reset",
+        16
+    );
+
+    let result = pool_reset_all(
+        ref mut pool
+    );
+
+    give pool_reset_succeeded(result)
+        and not pool_reset_failed(result)
+        and pool_reset_was_applied(result)
+        and not pool_reset_was_skipped(result)
+        and pool_reset_is_reset(result)
+        and not pool_reset_is_release(result);
+}
+
+proc test_result_predicates_skip() -> bool {
+    let mut pool = pool_new_for(
+        "result-skip",
+        16
+    );
+
+    let result = pool_reset_if_not_empty(
+        ref mut pool
+    );
+
+    give pool_reset_succeeded(result)
+        and pool_reset_was_skipped(result)
+        and not pool_reset_was_applied(result);
+}
+
+proc test_result_predicates_release() -> bool {
+    let mut pool = pool_new_for(
+        "result-release",
+        16
+    );
+
+    let result = pool_release_all(
+        ref mut pool
+    );
+
+    give pool_reset_succeeded(result)
+        and pool_reset_is_release(result)
+        and not pool_reset_is_reset(result);
+}
+
+proc test_released_slots() -> bool {
+    let mut pool = pool_new_for(
+        "released-slots",
+        32
+    );
+
+    let index: usize = 0;
+
+    while index < 12 {
+        if is_none(
+            pool_emplace(
+                ref mut pool,
+                index as int
+            )
+        ) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    let result = pool_reset_all(
+        ref mut pool
+    );
+
+    give pool_reset_released_slots(
+        result
+    ) == 12;
+}
+
+proc test_reset_error_none() -> bool {
+    let mut pool = pool_new_for(
+        "error-none",
+        16
+    );
+
+    let result = pool_reset_all(
+        ref mut pool
+    );
+
+    let error = pool_reset_error(
+        result
+    );
+
+    give pool_error_is_none(
+        error
+    );
+}
+
+proc test_reset_error_released() -> bool {
+    let mut pool = pool_new_for(
+        "error-released",
+        16
+    );
+
+    let release = pool_release_all(
+        ref mut pool
+    );
+
+    if not release.success {
+        give false;
+    }
+
+    let result = pool_reset_all(
+        ref mut pool
+    );
+
+    let error = pool_reset_error(
+        result
+    );
+
+    give not pool_error_is_none(
+        error
+    );
+}
+
+proc test_core_transition_reset() -> bool {
+    let mut pool = pool_new_for(
+        "core-reset",
+        16
+    );
+
+    let result = pool_reset_all(
+        ref mut pool
+    );
+
+    give pool_reset_core_transition(
+        result
+    ) == PoolCoreTransitionKind.Reset;
+}
+
+proc test_core_transition_release() -> bool {
+    let mut pool = pool_new_for(
+        "core-release",
+        16
+    );
+
+    let result = pool_release_all(
+        ref mut pool
+    );
+
+    give pool_reset_core_transition(
+        result
+    ) == PoolCoreTransitionKind.ReleasePool;
+}
+
+proc test_core_transition_skipped() -> bool {
+    let mut pool = pool_new_for(
+        "core-skipped",
+        16
+    );
+
+    let result = pool_reset_if_not_empty(
+        ref mut pool
+    );
+
+    give pool_reset_core_transition(
+        result
+    ) == PoolCoreTransitionKind.None;
+}
+
+proc test_validation() -> bool {
+    let pool = pool_new_for(
+        "reset-validation",
+        16
+    );
+
+    let validation = pool_reset_validate(
+        pool
+    );
+
+    give validation.valid
+        and validation.pool_valid
+        and validation.state_valid
+        and validation.accounting_valid;
+}
+
+proc test_statistics_empty() -> bool {
+    let statistics =
+        pool_reset_statistics_empty();
+
+    give statistics.reset_attempts == 0
+        and statistics.reset_successes == 0
+        and statistics.reset_failures == 0
+        and statistics.release_attempts == 0
+        and statistics.release_successes == 0
+        and statistics.release_failures == 0
+        and statistics.skipped == 0
+        and statistics.slots_reclaimed == 0;
+}
+
+proc test_statistics_reset_success() -> bool {
+    let mut pool = pool_new_for(
+        "stats-reset",
+        16
+    );
+
+    let index: usize = 0;
+
+    while index < 5 {
+        if is_none(
+            pool_emplace(
+                ref mut pool,
+                index as int
+            )
+        ) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    let result = pool_reset_all(
+        ref mut pool
+    );
+
+    let mut statistics =
+        pool_reset_statistics_empty();
+
+    pool_reset_statistics_record(
+        ref mut statistics,
+        result
+    );
+
+    give statistics.reset_attempts == 1
+        and statistics.reset_successes == 1
+        and statistics.reset_failures == 0
+        and statistics.slots_reclaimed == 5;
+}
+
+proc test_statistics_release_success() -> bool {
+    let mut pool = pool_new_for(
+        "stats-release",
+        16
+    );
+
+    let result = pool_release_all(
+        ref mut pool
+    );
+
+    let mut statistics =
+        pool_reset_statistics_empty();
+
+    pool_reset_statistics_record(
+        ref mut statistics,
+        result
+    );
+
+    give statistics.release_attempts == 1
+        and statistics.release_successes == 1
+        and statistics.release_failures == 0;
+}
+
+proc test_statistics_skip() -> bool {
+    let mut pool = pool_new_for(
+        "stats-skip",
+        16
+    );
+
+    let result = pool_reset_if_not_empty(
+        ref mut pool
+    );
+
+    let mut statistics =
+        pool_reset_statistics_empty();
+
+    pool_reset_statistics_record(
+        ref mut statistics,
+        result
+    );
+
+    give statistics.reset_attempts == 1
+        and statistics.reset_successes == 1
+        and statistics.skipped == 1;
+}
+
+proc test_statistics_failure() -> bool {
+    let mut pool = pool_new_for(
+        "stats-failure",
+        16
+    );
+
+    let release = pool_release_all(
+        ref mut pool
+    );
+
+    if not release.success {
+        give false;
+    }
+
+    let result = pool_reset_all(
+        ref mut pool
+    );
+
+    let mut statistics =
+        pool_reset_statistics_empty();
+
+    pool_reset_statistics_record(
+        ref mut statistics,
+        result
+    );
+
+    give statistics.reset_attempts == 1
+        and statistics.reset_successes == 0
+        and statistics.reset_failures == 1;
+}
+
+proc test_statistics_total() -> bool {
+    let mut pool = pool_new_for(
+        "stats-total",
+        16
+    );
+
+    let reset = pool_reset_all(
+        ref mut pool
+    );
+
+    let release = pool_release_all(
+        ref mut pool
+    );
+
+    let mut statistics =
+        pool_reset_statistics_empty();
+
+    pool_reset_statistics_record(
+        ref mut statistics,
+        reset
+    );
+
+    pool_reset_statistics_record(
+        ref mut statistics,
+        release
+    );
+
+    give pool_reset_statistics_total(
+        statistics
+    ) == 2
+        and pool_reset_statistics_success_count(
+            statistics
+        ) == 2
+        and pool_reset_statistics_failure_count(
+            statistics
+        ) == 0;
+}
+
+proc test_statistics_reset_function() -> bool {
+    let mut statistics =
+        pool_reset_statistics_empty();
+
+    set statistics.reset_attempts = 10;
+    set statistics.reset_successes = 8;
+    set statistics.reset_failures = 2;
+    set statistics.release_attempts = 4;
+    set statistics.slots_reclaimed = 128;
+
+    pool_reset_statistics_reset(
+        ref mut statistics
+    );
+
+    give statistics.reset_attempts == 0
+        and statistics.reset_successes == 0
+        and statistics.reset_failures == 0
+        and statistics.release_attempts == 0
+        and statistics.slots_reclaimed == 0;
+}
+
+proc test_mode_names() -> bool {
+    give pool_reset_mode_name(
+        PoolResetMode.Reset
+    ) == "reset"
+        and pool_reset_mode_name(
+            PoolResetMode.Release
+        ) == "release";
+}
+
+proc test_state_names() -> bool {
+    give pool_reset_state_name(
+        PoolResetState.Ready
+    ) == "ready"
+        and pool_reset_state_name(
+            PoolResetState.Applied
+        ) == "applied"
+        and pool_reset_state_name(
+            PoolResetState.Skipped
+        ) == "skipped"
+        and pool_reset_state_name(
+            PoolResetState.Failed
+        ) == "failed"
+        and pool_reset_state_name(
+            PoolResetState.Invalid
+        ) == "invalid";
+}
+
+proc test_failure_names() -> bool {
+    give pool_reset_failure_name(
+        PoolResetFailure.None
+    ) == "none"
+        and pool_reset_failure_name(
+            PoolResetFailure.InvalidPool
+        ) == "invalid-pool"
+        and pool_reset_failure_name(
+            PoolResetFailure.InvalidState
+        ) == "invalid-state"
+        and pool_reset_failure_name(
+            PoolResetFailure.AlreadyEmpty
+        ) == "already-empty"
+        and pool_reset_failure_name(
+            PoolResetFailure.AlreadyReleased
+        ) == "already-released"
+        and pool_reset_failure_name(
+            PoolResetFailure.ResetFailed
+        ) == "reset-failed"
+        and pool_reset_failure_name(
+            PoolResetFailure.ReleaseFailed
+        ) == "release-failed";
+}
+
+proc test_reuse_after_reset() -> bool {
+    let mut pool = pool_new_for(
+        "reuse-after-reset",
+        32
+    );
+
+    let index: usize = 0;
+
+    while index < 32 {
+        if is_none(
+            pool_emplace(
+                ref mut pool,
+                index as int
+            )
+        ) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    if not pool_is_full(pool) {
+        give false;
+    }
+
+    let result = pool_reset_all(
+        ref mut pool
+    );
+
+    if not result.success {
+        give false;
+    }
+
+    give is_some(
+        pool_emplace(
+            ref mut pool,
+            42
+        )
+    )
+    and pool_allocated(pool) == 1
+    and pool_free_count(pool) == 31;
+}
+
+proc test_old_handles_after_many_resets() -> bool {
+    let mut pool = pool_new_for(
+        "old-handles",
+        16
+    );
+
+    let handle = pool_emplace_handle(
+        ref mut pool,
+        42
+    );
+
+    pick handle {
+        Some(old_handle) {
+            let cycle: usize = 0;
+
+            while cycle < 1000 {
+                let result = pool_reset_all(
+                    ref mut pool
+                );
+
+                if not result.success {
+                    give false;
+                }
+
+                set cycle = cycle + 1;
+            }
+
+            give not pool_handle_valid(
+                pool,
+                old_handle
+            );
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_many_reset_cycles() -> bool {
+    let mut pool = pool_new_for(
+        "many-reset-cycles",
+        64
+    );
+
+    let cycle: usize = 0;
+
+    while cycle < 5000 {
+        let index: usize = 0;
+
+        while index < 48 {
+            if is_none(
+                pool_emplace(
+                    ref mut pool,
+                    index as int
+                )
+            ) {
+                give false;
+            }
+
+            set index = index + 1;
+        }
+
+        let result = pool_reset_all(
+            ref mut pool
+        );
+
+        if not result.success {
+            give false;
+        }
+
+        if result.released_slots != 48 {
+            give false;
+        }
+
+        if not pool_is_empty(pool)
+            or not pool_invariant_holds(pool)
+        {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc test_many_full_reset_cycles() -> bool {
+    let mut pool = pool_new_for(
+        "many-full-reset",
+        64
+    );
+
+    let cycle: usize = 0;
+
+    while cycle < 2000 {
+        let index: usize = 0;
+
+        while index < 64 {
+            if is_none(
+                pool_emplace(
+                    ref mut pool,
+                    index as int
+                )
+            ) {
+                give false;
+            }
+
+            set index = index + 1;
+        }
+
+        if not pool_is_full(pool) {
+            give false;
+        }
+
+        let result = pool_reset_all(
+            ref mut pool
+        );
+
+        if not result.success
+            or result.released_slots != 64
+        {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give pool_is_empty(pool)
+        and pool_invariant_holds(pool);
+}
+
+proc test_many_reset_result_validation() -> bool {
+    let mut pool = pool_new_for(
+        "many-result-validation",
+        32
+    );
+
+    let cycle: usize = 0;
+
+    while cycle < 5000 {
+        if is_none(
+            pool_emplace(
+                ref mut pool,
+                cycle as int
+            )
+        ) {
+            give false;
+        }
+
+        let result = pool_reset_all(
+            ref mut pool
+        );
+
+        if not pool_reset_result_valid(
+            result
+        ) {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc test_statistics_stress() -> bool {
+    let mut pool = pool_new_for(
+        "statistics-stress",
+        32
+    );
+
+    let mut statistics =
+        pool_reset_statistics_empty();
+
+    let cycle: usize = 0;
+
+    while cycle < 1000 {
+        let index: usize = 0;
+
+        while index < 16 {
+            if is_none(
+                pool_emplace(
+                    ref mut pool,
+                    index as int
+                )
+            ) {
+                give false;
+            }
+
+            set index = index + 1;
+        }
+
+        let result = pool_reset_all(
+            ref mut pool
+        );
+
+        pool_reset_statistics_record(
+            ref mut statistics,
+            result
+        );
+
+        set cycle = cycle + 1;
+    }
+
+    give statistics.reset_attempts == 1000
+        and statistics.reset_successes == 1000
+        and statistics.reset_failures == 0
+        and statistics.slots_reclaimed == 16000;
+}
+
+proc test_snapshot_stress() -> bool {
+    let mut pool = pool_new_for(
+        "snapshot-stress",
+        32
+    );
+
+    let cycle: usize = 0;
+
+    while cycle < 1000 {
+        let before = pool_reset_snapshot(
+            pool
+        );
+
+        if is_none(
+            pool_emplace(
+                ref mut pool,
+                cycle as int
+            )
+        ) {
+            give false;
+        }
+
+        let result = pool_reset_all(
+            ref mut pool
+        );
+
+        if not result.success {
+            give false;
+        }
+
+        let after = pool_reset_snapshot(
+            pool
+        );
+
+        if before.allocated != after.allocated {
+            give false;
+        }
+
+        if after.generation <= before.generation {
+            give false;
+        }
+
+        if pool_reset_snapshot_equal(
+            before,
+            after
+        ) {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc run_reset_tests() -> bool {
+    give test_reset_empty()
+        and test_reset_partial()
+        and test_reset_full()
+
+        and test_reset_changes_generation()
+        and test_reset_changes_revision()
+        and test_reset_invalidates_handle()
+        and test_reset_clears_allocations()
+        and test_reset_snapshot_changed()
+        and test_reset_result_valid()
+
+        and test_reset_if_not_empty_empty()
+        and test_reset_if_not_empty_partial()
+        and test_force_reset()
+
+        and test_release()
+        and test_release_empty()
+        and test_release_partial()
+        and test_release_changes_generation()
+        and test_release_changes_revision()
+        and test_release_twice()
+        and test_release_if_active()
+        and test_release_if_active_twice()
+
+        and test_reset_after_release()
+        and test_force_reset_after_release()
+
+        and test_result_predicates_reset()
+        and test_result_predicates_skip()
+        and test_result_predicates_release()
+        and test_released_slots()
+
+        and test_reset_error_none()
+        and test_reset_error_released()
+
+        and test_core_transition_reset()
+        and test_core_transition_release()
+        and test_core_transition_skipped()
+
+        and test_validation()
+
+        and test_statistics_empty()
+        and test_statistics_reset_success()
+        and test_statistics_release_success()
+        and test_statistics_skip()
+        and test_statistics_failure()
+        and test_statistics_total()
+        and test_statistics_reset_function()
+
+        and test_mode_names()
+        and test_state_names()
+        and test_failure_names()
+
+        and test_reuse_after_reset()
+        and test_old_handles_after_many_resets()
+
+        and test_many_reset_cycles()
+        and test_many_full_reset_cycles()
+        and test_many_reset_result_validation()
+        and test_statistics_stress()
+        and test_snapshot_stress();
+}
+
+proc main() -> int {
+    if run_reset_tests() {
+        give 0;
+    }
+
+    give 1;
+}

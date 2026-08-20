@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "src" / "vitte" / "compiler" / "infrastructure" / "diagnostics" / "fluent_catalog.vit"
 OUT_DIR = OUT.parent
 CORE_CODES = ROOT / "tests" / "diag_snapshots" / "core_diagnostic_codes.txt"
+RUNTIME_LOCALES = ("en", "fr", "es")
 sys.path.insert(0, str(ROOT / "tools"))
 from diagnostics_locales import SUPPORTED_DIAGNOSTIC_LOCALES, supported_locale_codes
 from diagnostic_catalog_data import public_diagnostic_codes
@@ -186,26 +187,8 @@ def render() -> str:
         lines.append(f"proc fluent_catalog_fields_{fn_suffix}(code: string) -> FluentDiagnosticFields {{")
         for code in codes:
             message = locale_maps[locale].get(code, "")
-            explain = explain_maps[locale]
-            summary = explain.get(f"{code}.summary", "")
-            cause = explain.get(f"{code}.cause", "")
-            help_text = explain.get(f"{code}.step1", "")
-            fix = explain.get(f"{code}.fix", "")
-            example = explain.get(f"{code}.example", "")
             lines.append(f'    if code == "{code}" {{')
-            lines.append(
-                '        give fluent_diagnostic_fields('
-                f'"{vitte_escape(message)}", '
-                f'"{vitte_escape(summary)}", '
-                f'"{vitte_escape(cause)}", '
-                f'"{vitte_escape(cause)}", '
-                f'"{vitte_escape(help_text)}", '
-                f'"{vitte_escape(fix)}", '
-                f'"{vitte_escape(example)}", '
-                f'"{vitte_escape(summary)}", '
-                f'"{vitte_escape(fix)}"'
-                ');'
-            )
+            lines.append(f'        give fluent_compact_fields("{vitte_escape(message)}");')
             lines.append("    }")
             lines.append("")
         lines.append("    give fluent_diagnostic_fields_empty();")
@@ -216,7 +199,7 @@ def render() -> str:
         "    let normalized: string = fluent_catalog_normalize_locale(locale);",
         "",
     ])
-    for locale in supported_locale_codes():
+    for locale in RUNTIME_LOCALES:
         lines.extend([
             f'    if normalized == "{locale}" {{',
             f"        give fluent_catalog_fields_{symbol_for_locale(locale)}(code);",
@@ -224,7 +207,7 @@ def render() -> str:
             "",
         ])
     lines.extend([
-        "    give fluent_diagnostic_fields_empty();",
+        "    give fluent_catalog_fields_en(code);",
         "}",
         "",
         "proc fluent_catalog_lookup(locale: string, code: string) -> string {",
@@ -310,7 +293,7 @@ def render_split() -> dict[Path, str]:
     main_lines = generated[:first_locale_start] + generated[dispatcher_start:]
     import_lines = [
         f"use vitte/compiler/infrastructure/diagnostics/fluent_catalog_{symbol_for_locale(locale)}.{{ fluent_catalog_fields_{symbol_for_locale(locale)} }}"
-        for locale in locale_codes
+        for locale in RUNTIME_LOCALES
     ]
     export_index = main_lines.index("export *") + 1
     main_lines[export_index:export_index] = ["", *import_lines]
@@ -358,6 +341,23 @@ def render_split() -> dict[Path, str]:
             "",
             "proc fluent_diagnostic_fields_empty() -> FluentDiagnosticFields {",
             "    give fluent_diagnostic_fields(\"\", \"\", \"\", \"\", \"\", \"\", \"\", \"\", \"\");",
+            "}",
+            "",
+            "proc fluent_compact_fields(message: string) -> FluentDiagnosticFields {",
+            "    if message == \"\" {",
+            "        give fluent_diagnostic_fields_empty();",
+            "    }",
+            "    give fluent_diagnostic_fields(",
+            "        message,",
+            "        message,",
+            "        message,",
+            "        \"the compiler rejected this operation\",",
+            "        \"inspect the reported span and command arguments\",",
+            "        \"repair the reported compiler contract\",",
+            "        \"vitte check src/main.vit\",",
+            "        message,",
+            "        \"repair the reported compiler contract\"",
+            "    );",
             "}",
             "",
             *generated[start:end],

@@ -1,0 +1,1145 @@
+use src/vitte/stdlib/alloc/pool
+
+form Point {
+    x: int
+    y: int
+}
+
+proc test_empty_pool() -> bool {
+    let pool = pool_new_for(
+        "basic-empty",
+        16
+    );
+
+    give pool_is_empty(pool)
+        and not pool_is_partial(pool)
+        and not pool_is_full(pool)
+        and pool_allocated(pool) == 0
+        and pool_free_count(pool) == 16
+        and pool_is_valid(pool);
+}
+
+proc test_single_allocation() -> bool {
+    let mut pool = pool_new_for(
+        "basic-single",
+        16
+    );
+
+    let value = pool_emplace(
+        ref mut pool,
+        42
+    );
+
+    pick value {
+        Some(inner) {
+            give *inner == 42
+                and pool_allocated(pool) == 1
+                and pool_free_count(pool) == 15
+                and pool_is_partial(pool);
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_multiple_allocations() -> bool {
+    let mut pool = pool_new_for(
+        "basic-multiple",
+        16
+    );
+
+    let first = pool_emplace(
+        ref mut pool,
+        10
+    );
+
+    let second = pool_emplace(
+        ref mut pool,
+        20
+    );
+
+    let third = pool_emplace(
+        ref mut pool,
+        30
+    );
+
+    give is_some(first)
+        and is_some(second)
+        and is_some(third)
+        and pool_allocated(pool) == 3
+        and pool_free_count(pool) == 13;
+}
+
+proc test_point() -> bool {
+    let mut pool = pool_new_for(
+        "basic-point",
+        16
+    );
+
+    let value = pool_emplace(
+        ref mut pool,
+        Point {
+            x: 10
+            y: 20
+        }
+    );
+
+    pick value {
+        Some(point) {
+            give point.x == 10
+                and point.y == 20;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_point_mutation() -> bool {
+    let mut pool = pool_new_for(
+        "basic-point-mut",
+        16
+    );
+
+    let value = pool_emplace(
+        ref mut pool,
+        Point {
+            x: 1
+            y: 2
+        }
+    );
+
+    pick value {
+        Some(point) {
+            set point.x = 100;
+            set point.y = 200;
+
+            give point.x == 100
+                and point.y == 200;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_handle() -> bool {
+    let mut pool = pool_new_for(
+        "basic-handle",
+        16
+    );
+
+    let result = pool_emplace_handle(
+        ref mut pool,
+        42
+    );
+
+    pick result {
+        Some(handle) {
+            give pool_handle_valid(
+                pool,
+                handle
+            );
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_handle_get() -> bool {
+    let mut pool = pool_new_for(
+        "basic-get",
+        16
+    );
+
+    let result = pool_emplace_handle(
+        ref mut pool,
+        42
+    );
+
+    pick result {
+        Some(handle) {
+            let value = pool_get(
+                ref pool,
+                handle
+            );
+
+            pick value {
+                Some(inner) {
+                    give *inner == 42;
+                }
+
+                None {
+                    give false;
+                }
+            }
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_handle_get_mut() -> bool {
+    let mut pool = pool_new_for(
+        "basic-get-mut",
+        16
+    );
+
+    let result = pool_emplace_handle(
+        ref mut pool,
+        Point {
+            x: 1
+            y: 2
+        }
+    );
+
+    pick result {
+        Some(handle) {
+            let value = pool_get_mut(
+                ref mut pool,
+                handle
+            );
+
+            pick value {
+                Some(point) {
+                    set point.x = 10;
+                    set point.y = 20;
+
+                    give point.x == 10
+                        and point.y == 20;
+                }
+
+                None {
+                    give false;
+                }
+            }
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_release() -> bool {
+    let mut pool = pool_new_for(
+        "basic-release",
+        16
+    );
+
+    let result = pool_emplace_handle(
+        ref mut pool,
+        42
+    );
+
+    pick result {
+        Some(handle) {
+            if not pool_release_handle(
+                ref mut pool,
+                handle
+            ) {
+                give false;
+            }
+
+            give pool_is_empty(pool)
+                and pool_allocated(pool) == 0
+                and pool_free_count(pool) == 16;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_handle_invalid_after_release() -> bool {
+    let mut pool = pool_new_for(
+        "basic-stale",
+        16
+    );
+
+    let result = pool_emplace_handle(
+        ref mut pool,
+        42
+    );
+
+    pick result {
+        Some(handle) {
+            if not pool_release_handle(
+                ref mut pool,
+                handle
+            ) {
+                give false;
+            }
+
+            give not pool_handle_valid(
+                pool,
+                handle
+            );
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_reuse_slot() -> bool {
+    let mut pool = pool_new_for(
+        "basic-reuse",
+        1
+    );
+
+    let first = pool_emplace_handle(
+        ref mut pool,
+        10
+    );
+
+    pick first {
+        Some(old_handle) {
+            if not pool_release_handle(
+                ref mut pool,
+                old_handle
+            ) {
+                give false;
+            }
+
+            let second = pool_emplace_handle(
+                ref mut pool,
+                20
+            );
+
+            pick second {
+                Some(new_handle) {
+                    give new_handle.index
+                            == old_handle.index
+                        and new_handle.generation
+                            != old_handle.generation
+                        and not pool_handle_valid(
+                            pool,
+                            old_handle
+                        )
+                        and pool_handle_valid(
+                            pool,
+                            new_handle
+                        );
+                }
+
+                None {
+                    give false;
+                }
+            }
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_full_pool() -> bool {
+    let mut pool = pool_new_for(
+        "basic-full",
+        4
+    );
+
+    let index: usize = 0;
+
+    while index < 4 {
+        if is_none(
+            pool_emplace(
+                ref mut pool,
+                index as int
+            )
+        ) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give pool_is_full(pool)
+        and pool_allocated(pool) == 4
+        and pool_free_count(pool) == 0
+        and not pool_can_allocate(pool);
+}
+
+proc test_full_rejects_allocation() -> bool {
+    let mut pool = pool_new_for(
+        "basic-full-reject",
+        2
+    );
+
+    if is_none(
+        pool_emplace(
+            ref mut pool,
+            1
+        )
+    ) {
+        give false;
+    }
+
+    if is_none(
+        pool_emplace(
+            ref mut pool,
+            2
+        )
+    ) {
+        give false;
+    }
+
+    give is_none(
+        pool_emplace(
+            ref mut pool,
+            3
+        )
+    );
+}
+
+proc test_reset() -> bool {
+    let mut pool = pool_new_for(
+        "basic-reset",
+        16
+    );
+
+    let index: usize = 0;
+
+    while index < 10 {
+        if is_none(
+            pool_emplace(
+                ref mut pool,
+                index as int
+            )
+        ) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    pool_reset(
+        ref mut pool
+    );
+
+    give pool_is_empty(pool)
+        and pool_allocated(pool) == 0
+        and pool_free_count(pool) == 16
+        and pool_is_valid(pool);
+}
+
+proc test_reset_invalidates_handle() -> bool {
+    let mut pool = pool_new_for(
+        "basic-reset-handle",
+        16
+    );
+
+    let result = pool_emplace_handle(
+        ref mut pool,
+        42
+    );
+
+    pick result {
+        Some(handle) {
+            pool_reset(
+                ref mut pool
+            );
+
+            give not pool_handle_valid(
+                pool,
+                handle
+            );
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_reset_reuse() -> bool {
+    let mut pool = pool_new_for(
+        "basic-reset-reuse",
+        4
+    );
+
+    let index: usize = 0;
+
+    while index < 4 {
+        if is_none(
+            pool_emplace(
+                ref mut pool,
+                index as int
+            )
+        ) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    if not pool_is_full(pool) {
+        give false;
+    }
+
+    pool_reset(
+        ref mut pool
+    );
+
+    give is_some(
+        pool_emplace(
+            ref mut pool,
+            42
+        )
+    );
+}
+
+proc test_accounting() -> bool {
+    let mut pool = pool_new_for(
+        "basic-accounting",
+        32
+    );
+
+    let index: usize = 0;
+
+    while index < 12 {
+        if is_none(
+            pool_emplace(
+                ref mut pool,
+                index as int
+            )
+        ) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give pool_allocated(pool)
+            + pool_free_count(pool)
+            == pool_capacity(pool)
+        and pool_accounting_valid(pool);
+}
+
+proc test_utilization_empty() -> bool {
+    let pool = pool_new_for(
+        "basic-util-empty",
+        10
+    );
+
+    give pool_utilization(pool) == 0.0
+        and pool_free_ratio(pool) == 1.0;
+}
+
+proc test_utilization_half() -> bool {
+    let mut pool = pool_new_for(
+        "basic-util-half",
+        10
+    );
+
+    let index: usize = 0;
+
+    while index < 5 {
+        if is_none(
+            pool_emplace(
+                ref mut pool,
+                index as int
+            )
+        ) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give pool_utilization(pool) == 0.5
+        and pool_free_ratio(pool) == 0.5;
+}
+
+proc test_profile_empty() -> bool {
+    let pool = pool_new_for(
+        "basic-profile-empty",
+        16
+    );
+
+    let profile = pool_profile(
+        pool
+    );
+
+    give profile.empty
+        and not profile.partial
+        and not profile.full
+        and not profile.released
+        and profile.valid
+        and profile.allocated == 0
+        and profile.free == 16;
+}
+
+proc test_profile_partial() -> bool {
+    let mut pool = pool_new_for(
+        "basic-profile-partial",
+        16
+    );
+
+    if is_none(
+        pool_emplace(
+            ref mut pool,
+            42
+        )
+    ) {
+        give false;
+    }
+
+    let profile = pool_profile(
+        pool
+    );
+
+    give profile.partial
+        and not profile.empty
+        and not profile.full
+        and profile.allocated == 1
+        and profile.free == 15
+        and profile.valid;
+}
+
+proc test_validation() -> bool {
+    let pool = pool_new_for(
+        "basic-validation",
+        16
+    );
+
+    let validation = pool_validate(
+        pool
+    );
+
+    give validation.valid
+        and validation.block_valid
+        and validation.free_list_valid
+        and validation.accounting_valid
+        and validation.state_valid
+        and validation.generation_valid;
+}
+
+proc test_invariant_after_allocation() -> bool {
+    let mut pool = pool_new_for(
+        "basic-invariant",
+        16
+    );
+
+    if is_none(
+        pool_emplace(
+            ref mut pool,
+            42
+        )
+    ) {
+        give false;
+    }
+
+    give pool_invariant_holds(
+        pool
+    );
+}
+
+proc test_snapshot_equal() -> bool {
+    let pool = pool_new_for(
+        "basic-snapshot-equal",
+        16
+    );
+
+    let first = pool_snapshot(
+        pool
+    );
+
+    let second = pool_snapshot(
+        pool
+    );
+
+    give pool_snapshot_equal(
+        first,
+        second
+    );
+}
+
+proc test_snapshot_changes() -> bool {
+    let mut pool = pool_new_for(
+        "basic-snapshot-change",
+        16
+    );
+
+    let before = pool_snapshot(
+        pool
+    );
+
+    if is_none(
+        pool_emplace(
+            ref mut pool,
+            42
+        )
+    ) {
+        give false;
+    }
+
+    let after = pool_snapshot(
+        pool
+    );
+
+    give pool_snapshot_changed(
+        before,
+        after
+    );
+}
+
+proc test_delta_allocate() -> bool {
+    let mut pool = pool_new_for(
+        "basic-delta-allocate",
+        16
+    );
+
+    let before = pool_snapshot(
+        pool
+    );
+
+    if is_none(
+        pool_emplace(
+            ref mut pool,
+            42
+        )
+    ) {
+        give false;
+    }
+
+    let after = pool_snapshot(
+        pool
+    );
+
+    let delta = pool_delta(
+        before,
+        after
+    );
+
+    give delta.changed
+        and delta.allocated == 1
+        and delta.free == -1
+        and delta.revision > 0;
+}
+
+proc test_delta_release() -> bool {
+    let mut pool = pool_new_for(
+        "basic-delta-release",
+        16
+    );
+
+    let result = pool_emplace_handle(
+        ref mut pool,
+        42
+    );
+
+    pick result {
+        Some(handle) {
+            let before = pool_snapshot(
+                pool
+            );
+
+            if not pool_release_handle(
+                ref mut pool,
+                handle
+            ) {
+                give false;
+            }
+
+            let after = pool_snapshot(
+                pool
+            );
+
+            let delta = pool_delta(
+                before,
+                after
+            );
+
+            give delta.changed
+                and delta.allocated == -1
+                and delta.free == 1;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_release_pool() -> bool {
+    let mut pool = pool_new_for(
+        "basic-release-pool",
+        16
+    );
+
+    give pool_release(
+        ref mut pool
+    )
+    and pool_is_released(pool);
+}
+
+proc test_release_pool_twice() -> bool {
+    let mut pool = pool_new_for(
+        "basic-release-twice",
+        16
+    );
+
+    let first = pool_release(
+        ref mut pool
+    );
+
+    let second = pool_release(
+        ref mut pool
+    );
+
+    give first
+        and not second;
+}
+
+proc test_allocate_after_release_fails() -> bool {
+    let mut pool = pool_new_for(
+        "basic-after-release",
+        16
+    );
+
+    if not pool_release(
+        ref mut pool
+    ) {
+        give false;
+    }
+
+    give is_none(
+        pool_emplace(
+            ref mut pool,
+            42
+        )
+    );
+}
+
+proc test_touch() -> bool {
+    let mut pool = pool_new_for(
+        "basic-touch",
+        16
+    );
+
+    let before = pool_revision(
+        pool
+    );
+
+    pool_touch(
+        ref mut pool
+    );
+
+    give pool_revision(pool) > before;
+}
+
+proc test_generation() -> bool {
+    let mut pool = pool_new_for(
+        "basic-generation",
+        16
+    );
+
+    let before = pool_generation(
+        pool
+    );
+
+    let after = pool_advance_generation(
+        ref mut pool
+    );
+
+    give after > before
+        and pool_generation(pool) == after;
+}
+
+proc test_state_names() -> bool {
+    give pool_state_name(
+        PoolState.Empty
+    ) == "empty"
+        and pool_state_name(
+            PoolState.Partial
+        ) == "partial"
+        and pool_state_name(
+            PoolState.Full
+        ) == "full"
+        and pool_state_name(
+            PoolState.Released
+        ) == "released"
+        and pool_state_name(
+            PoolState.Invalid
+        ) == "invalid";
+}
+
+proc test_many_allocate_release() -> bool {
+    let mut pool = pool_new_for(
+        "basic-cycles",
+        32
+    );
+
+    let cycle: usize = 0;
+
+    while cycle < 5000 {
+        let result = pool_emplace_handle(
+            ref mut pool,
+            cycle as int
+        );
+
+        pick result {
+            Some(handle) {
+                if not pool_handle_valid(
+                    pool,
+                    handle
+                ) {
+                    give false;
+                }
+
+                if not pool_release_handle(
+                    ref mut pool,
+                    handle
+                ) {
+                    give false;
+                }
+            }
+
+            None {
+                give false;
+            }
+        }
+
+        if not pool_is_empty(pool)
+            or not pool_invariant_holds(pool)
+        {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc test_many_reset_cycles() -> bool {
+    let mut pool = pool_new_for(
+        "basic-reset-cycles",
+        64
+    );
+
+    let cycle: usize = 0;
+
+    while cycle < 1000 {
+        let index: usize = 0;
+
+        while index < 64 {
+            if is_none(
+                pool_emplace(
+                    ref mut pool,
+                    index as int
+                )
+            ) {
+                give false;
+            }
+
+            set index = index + 1;
+        }
+
+        if not pool_is_full(pool) {
+            give false;
+        }
+
+        pool_reset(
+            ref mut pool
+        );
+
+        if not pool_is_empty(pool)
+            or not pool_invariant_holds(pool)
+        {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc test_many_live_handles() -> bool {
+    let mut pool = pool_new_for(
+        "basic-live-handles",
+        128
+    );
+
+    let handles: [PoolHandle] = [];
+
+    let index: usize = 0;
+
+    while index < 100 {
+        let result = pool_emplace_handle(
+            ref mut pool,
+            index as int
+        );
+
+        pick result {
+            Some(handle) {
+                set handles =
+                    handles + [handle];
+            }
+
+            None {
+                give false;
+            }
+        }
+
+        set index = index + 1;
+    }
+
+    let check: usize = 0;
+
+    while check < 100 {
+        if not pool_handle_valid(
+            pool,
+            handles[check]
+        ) {
+            give false;
+        }
+
+        let value = pool_get(
+            ref pool,
+            handles[check]
+        );
+
+        pick value {
+            Some(inner) {
+                if *inner != check as int {
+                    give false;
+                }
+            }
+
+            None {
+                give false;
+            }
+        }
+
+        set check = check + 1;
+    }
+
+    give pool_allocated(pool) == 100
+        and pool_free_count(pool) == 28;
+}
+
+proc test_release_many_handles() -> bool {
+    let mut pool = pool_new_for(
+        "basic-release-many",
+        64
+    );
+
+    let handles: [PoolHandle] = [];
+
+    let index: usize = 0;
+
+    while index < 64 {
+        let result = pool_emplace_handle(
+            ref mut pool,
+            index as int
+        );
+
+        pick result {
+            Some(handle) {
+                set handles =
+                    handles + [handle];
+            }
+
+            None {
+                give false;
+            }
+        }
+
+        set index = index + 1;
+    }
+
+    let release_index: usize = 0;
+
+    while release_index < 64 {
+        if not pool_release_handle(
+            ref mut pool,
+            handles[release_index]
+        ) {
+            give false;
+        }
+
+        set release_index =
+            release_index + 1;
+    }
+
+    give pool_is_empty(pool)
+        and pool_allocated(pool) == 0
+        and pool_free_count(pool) == 64
+        and pool_invariant_holds(pool);
+}
+
+proc run_basic_tests() -> bool {
+    give test_empty_pool()
+        and test_single_allocation()
+        and test_multiple_allocations()
+        and test_point()
+        and test_point_mutation()
+
+        and test_handle()
+        and test_handle_get()
+        and test_handle_get_mut()
+
+        and test_release()
+        and test_handle_invalid_after_release()
+        and test_reuse_slot()
+
+        and test_full_pool()
+        and test_full_rejects_allocation()
+
+        and test_reset()
+        and test_reset_invalidates_handle()
+        and test_reset_reuse()
+
+        and test_accounting()
+
+        and test_utilization_empty()
+        and test_utilization_half()
+
+        and test_profile_empty()
+        and test_profile_partial()
+
+        and test_validation()
+        and test_invariant_after_allocation()
+
+        and test_snapshot_equal()
+        and test_snapshot_changes()
+        and test_delta_allocate()
+        and test_delta_release()
+
+        and test_release_pool()
+        and test_release_pool_twice()
+        and test_allocate_after_release_fails()
+
+        and test_touch()
+        and test_generation()
+
+        and test_state_names()
+
+        and test_many_allocate_release()
+        and test_many_reset_cycles()
+        and test_many_live_handles()
+        and test_release_many_handles();
+}
+
+proc main() -> int {
+    if run_basic_tests() {
+        give 0;
+    }
+
+    give 1;
+}

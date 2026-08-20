@@ -1,0 +1,1138 @@
+space vitte/stdlib/alloc/arena/error
+
+export *
+
+use src/vitte/stdlib/alloc/arena/core as arena_core
+
+pick ArenaErrorKind {
+    None,
+
+    InvalidArena,
+    InvalidState,
+
+    InvalidBlock,
+    InvalidBlockSize,
+    InvalidBlockIndex,
+
+    InvalidLayout,
+    InvalidSize,
+    InvalidAlignment,
+    InvalidCount,
+
+    AllocationFailed,
+    OutOfMemory,
+    Overflow,
+    Underflow,
+
+    InvalidMark,
+    MarkGenerationMismatch,
+    RewindFailed,
+
+    ResetFailed,
+    ReleaseFailed,
+
+    CapacityExceeded,
+    LimitExceeded,
+
+    RuntimeFailure,
+    Internal
+}
+
+pick ArenaErrorSeverity {
+    Note,
+    Warning,
+    Error,
+    Fatal
+}
+
+pick ArenaErrorDomain {
+    General,
+    Arena,
+    Block,
+    Allocation,
+    Mark,
+    Rewind,
+    Reset,
+    Runtime,
+    Internal
+}
+
+pick ArenaErrorOperation {
+    None,
+
+    New,
+    Allocate,
+    AllocateArray,
+    AllocateBytes,
+    AllocateAligned,
+
+    Mark,
+    Rewind,
+
+    Reset,
+    Drop,
+
+    Validate
+}
+
+form ArenaErrorContext {
+    operation: ArenaErrorOperation
+
+    allocated: usize
+    capacity: usize
+    block_count: usize
+    block_size: usize
+
+    requested_size: usize
+    requested_align: usize
+    requested_count: usize
+
+    generation: u64
+}
+
+form ArenaError {
+    kind: ArenaErrorKind
+    severity: ArenaErrorSeverity
+    domain: ArenaErrorDomain
+
+    context: ArenaErrorContext
+
+    message: string
+}
+
+form ArenaErrorStatistics {
+    total: u64
+
+    notes: u64
+    warnings: u64
+    errors: u64
+    fatals: u64
+
+    arena: u64
+    block: u64
+    allocation: u64
+    mark: u64
+    rewind: u64
+    reset: u64
+    runtime: u64
+    internal: u64
+}
+
+proc arena_error_context_empty() -> ArenaErrorContext {
+    give ArenaErrorContext {
+        operation: ArenaErrorOperation.None,
+
+        allocated: 0,
+        capacity: 0,
+        block_count: 0,
+        block_size: 0,
+
+        requested_size: 0,
+        requested_align: 0,
+        requested_count: 0,
+
+        generation: 0
+    };
+}
+
+proc arena_error_context(
+    operation: ArenaErrorOperation,
+    allocated: usize,
+    capacity: usize,
+    block_count: usize,
+    block_size: usize
+) -> ArenaErrorContext {
+    give ArenaErrorContext {
+        operation: operation,
+
+        allocated: allocated,
+        capacity: capacity,
+        block_count: block_count,
+        block_size: block_size,
+
+        requested_size: 0,
+        requested_align: 0,
+        requested_count: 0,
+
+        generation: 0
+    };
+}
+
+proc arena_error_context_request(
+    operation: ArenaErrorOperation,
+    size: usize,
+    align: usize,
+    count: usize
+) -> ArenaErrorContext {
+    give ArenaErrorContext {
+        operation: operation,
+
+        allocated: 0,
+        capacity: 0,
+        block_count: 0,
+        block_size: 0,
+
+        requested_size: size,
+        requested_align: align,
+        requested_count: count,
+
+        generation: 0
+    };
+}
+
+proc arena_error_context_generation(
+    context: ArenaErrorContext,
+    generation: u64
+) -> ArenaErrorContext {
+    let out = context;
+
+    set out.generation = generation;
+
+    give out;
+}
+
+proc arena_error(
+    kind: ArenaErrorKind,
+    severity: ArenaErrorSeverity,
+    domain: ArenaErrorDomain,
+    context: ArenaErrorContext,
+    message: string
+) -> ArenaError {
+    give ArenaError {
+        kind: kind,
+        severity: severity,
+        domain: domain,
+        context: context,
+        message: message
+    };
+}
+
+proc arena_error_none() -> ArenaError {
+    give arena_error(
+        ArenaErrorKind.None,
+        ArenaErrorSeverity.Note,
+        ArenaErrorDomain.General,
+        arena_error_context_empty(),
+        ""
+    );
+}
+
+proc arena_error_simple(
+    kind: ArenaErrorKind,
+    message: string
+) -> ArenaError {
+    give arena_error(
+        kind,
+        ArenaErrorSeverity.Error,
+        arena_error_domain_for_kind(kind),
+        arena_error_context_empty(),
+        message
+    );
+}
+
+proc arena_error_fatal(
+    kind: ArenaErrorKind,
+    message: string
+) -> ArenaError {
+    give arena_error(
+        kind,
+        ArenaErrorSeverity.Fatal,
+        arena_error_domain_for_kind(kind),
+        arena_error_context_empty(),
+        message
+    );
+}
+
+proc arena_error_invalid_arena(
+    allocated: usize,
+    capacity: usize,
+    block_count: usize,
+    block_size: usize
+) -> ArenaError {
+    give arena_error(
+        ArenaErrorKind.InvalidArena,
+        ArenaErrorSeverity.Fatal,
+        ArenaErrorDomain.Arena,
+        arena_error_context(
+            ArenaErrorOperation.Validate,
+            allocated,
+            capacity,
+            block_count,
+            block_size
+        ),
+        "arena is invalid"
+    );
+}
+
+proc arena_error_invalid_state(
+    allocated: usize,
+    capacity: usize
+) -> ArenaError {
+    give arena_error(
+        ArenaErrorKind.InvalidState,
+        ArenaErrorSeverity.Fatal,
+        ArenaErrorDomain.Arena,
+        arena_error_context(
+            ArenaErrorOperation.Validate,
+            allocated,
+            capacity,
+            0,
+            0
+        ),
+        "arena state is invalid"
+    );
+}
+
+proc arena_error_invalid_block(
+    index: usize
+) -> ArenaError {
+    give arena_error(
+        ArenaErrorKind.InvalidBlock,
+        ArenaErrorSeverity.Error,
+        ArenaErrorDomain.Block,
+        arena_error_context(
+            ArenaErrorOperation.Validate,
+            0,
+            0,
+            index,
+            0
+        ),
+        "arena block is invalid"
+    );
+}
+
+proc arena_error_invalid_block_size(
+    size: usize
+) -> ArenaError {
+    give arena_error(
+        ArenaErrorKind.InvalidBlockSize,
+        ArenaErrorSeverity.Error,
+        ArenaErrorDomain.Block,
+        arena_error_context(
+            ArenaErrorOperation.New,
+            0,
+            0,
+            0,
+            size
+        ),
+        "arena block size is invalid"
+    );
+}
+
+proc arena_error_invalid_block_index(
+    index: usize,
+    count: usize
+) -> ArenaError {
+    give arena_error(
+        ArenaErrorKind.InvalidBlockIndex,
+        ArenaErrorSeverity.Error,
+        ArenaErrorDomain.Block,
+        arena_error_context(
+            ArenaErrorOperation.Validate,
+            0,
+            0,
+            count,
+            index
+        ),
+        "arena block index is out of range"
+    );
+}
+
+proc arena_error_invalid_layout(
+    size: usize,
+    align: usize
+) -> ArenaError {
+    give arena_error(
+        ArenaErrorKind.InvalidLayout,
+        ArenaErrorSeverity.Error,
+        ArenaErrorDomain.Allocation,
+        arena_error_context_request(
+            ArenaErrorOperation.Allocate,
+            size,
+            align,
+            1
+        ),
+        "arena allocation layout is invalid"
+    );
+}
+
+proc arena_error_invalid_size(
+    size: usize
+) -> ArenaError {
+    give arena_error(
+        ArenaErrorKind.InvalidSize,
+        ArenaErrorSeverity.Error,
+        ArenaErrorDomain.Allocation,
+        arena_error_context_request(
+            ArenaErrorOperation.AllocateBytes,
+            size,
+            0,
+            1
+        ),
+        "arena allocation size is invalid"
+    );
+}
+
+proc arena_error_invalid_alignment(
+    align: usize
+) -> ArenaError {
+    give arena_error(
+        ArenaErrorKind.InvalidAlignment,
+        ArenaErrorSeverity.Error,
+        ArenaErrorDomain.Allocation,
+        arena_error_context_request(
+            ArenaErrorOperation.AllocateAligned,
+            0,
+            align,
+            1
+        ),
+        "arena allocation alignment is invalid"
+    );
+}
+
+proc arena_error_invalid_count(
+    count: usize
+) -> ArenaError {
+    give arena_error(
+        ArenaErrorKind.InvalidCount,
+        ArenaErrorSeverity.Error,
+        ArenaErrorDomain.Allocation,
+        arena_error_context_request(
+            ArenaErrorOperation.AllocateArray,
+            0,
+            0,
+            count
+        ),
+        "arena allocation count is invalid"
+    );
+}
+
+proc arena_error_allocation_failed(
+    size: usize,
+    align: usize
+) -> ArenaError {
+    give arena_error(
+        ArenaErrorKind.AllocationFailed,
+        ArenaErrorSeverity.Error,
+        ArenaErrorDomain.Allocation,
+        arena_error_context_request(
+            ArenaErrorOperation.Allocate,
+            size,
+            align,
+            1
+        ),
+        "arena allocation failed"
+    );
+}
+
+proc arena_error_out_of_memory(
+    size: usize,
+    align: usize
+) -> ArenaError {
+    give arena_error(
+        ArenaErrorKind.OutOfMemory,
+        ArenaErrorSeverity.Fatal,
+        ArenaErrorDomain.Allocation,
+        arena_error_context_request(
+            ArenaErrorOperation.Allocate,
+            size,
+            align,
+            1
+        ),
+        "arena allocator is out of memory"
+    );
+}
+
+proc arena_error_overflow(
+    size: usize,
+    count: usize
+) -> ArenaError {
+    give arena_error(
+        ArenaErrorKind.Overflow,
+        ArenaErrorSeverity.Error,
+        ArenaErrorDomain.Allocation,
+        arena_error_context_request(
+            ArenaErrorOperation.AllocateArray,
+            size,
+            0,
+            count
+        ),
+        "arena allocation size overflow"
+    );
+}
+
+proc arena_error_underflow() -> ArenaError {
+    give arena_error(
+        ArenaErrorKind.Underflow,
+        ArenaErrorSeverity.Fatal,
+        ArenaErrorDomain.Allocation,
+        arena_error_context_empty(),
+        "arena allocation accounting underflow"
+    );
+}
+
+proc arena_error_capacity_exceeded(
+    requested: usize,
+    capacity: usize
+) -> ArenaError {
+    let context = arena_error_context_request(
+        ArenaErrorOperation.Allocate,
+        requested,
+        0,
+        1
+    );
+
+    let out = context;
+
+    set out.capacity = capacity;
+
+    give arena_error(
+        ArenaErrorKind.CapacityExceeded,
+        ArenaErrorSeverity.Error,
+        ArenaErrorDomain.Allocation,
+        out,
+        "arena capacity exceeded"
+    );
+}
+
+proc arena_error_limit_exceeded(
+    requested: usize
+) -> ArenaError {
+    give arena_error(
+        ArenaErrorKind.LimitExceeded,
+        ArenaErrorSeverity.Error,
+        ArenaErrorDomain.Allocation,
+        arena_error_context_request(
+            ArenaErrorOperation.Allocate,
+            requested,
+            0,
+            1
+        ),
+        "arena allocation limit exceeded"
+    );
+}
+
+proc arena_error_invalid_mark(
+    allocated: usize,
+    block_count: usize
+) -> ArenaError {
+    give arena_error(
+        ArenaErrorKind.InvalidMark,
+        ArenaErrorSeverity.Error,
+        ArenaErrorDomain.Mark,
+        arena_error_context(
+            ArenaErrorOperation.Mark,
+            allocated,
+            0,
+            block_count,
+            0
+        ),
+        "arena mark is invalid"
+    );
+}
+
+proc arena_error_mark_generation_mismatch(
+    current: u64,
+    mark: u64
+) -> ArenaError {
+    let context = arena_error_context_empty();
+    let out = context;
+
+    set out.operation = ArenaErrorOperation.Rewind;
+    set out.generation = mark;
+
+    give arena_error(
+        ArenaErrorKind.MarkGenerationMismatch,
+        ArenaErrorSeverity.Error,
+        ArenaErrorDomain.Mark,
+        out,
+        "arena mark belongs to another generation"
+    );
+}
+
+proc arena_error_rewind_failed(
+    allocated: usize,
+    block_count: usize
+) -> ArenaError {
+    give arena_error(
+        ArenaErrorKind.RewindFailed,
+        ArenaErrorSeverity.Error,
+        ArenaErrorDomain.Rewind,
+        arena_error_context(
+            ArenaErrorOperation.Rewind,
+            allocated,
+            0,
+            block_count,
+            0
+        ),
+        "arena rewind failed"
+    );
+}
+
+proc arena_error_reset_failed() -> ArenaError {
+    give arena_error(
+        ArenaErrorKind.ResetFailed,
+        ArenaErrorSeverity.Error,
+        ArenaErrorDomain.Reset,
+        arena_error_context_empty(),
+        "arena reset failed"
+    );
+}
+
+proc arena_error_release_failed() -> ArenaError {
+    give arena_error(
+        ArenaErrorKind.ReleaseFailed,
+        ArenaErrorSeverity.Error,
+        ArenaErrorDomain.Reset,
+        arena_error_context_empty(),
+        "arena release failed"
+    );
+}
+
+proc arena_error_runtime_failure(
+    message: string
+) -> ArenaError {
+    give arena_error(
+        ArenaErrorKind.RuntimeFailure,
+        ArenaErrorSeverity.Fatal,
+        ArenaErrorDomain.Runtime,
+        arena_error_context_empty(),
+        message
+    );
+}
+
+proc arena_error_internal(
+    message: string
+) -> ArenaError {
+    give arena_error(
+        ArenaErrorKind.Internal,
+        ArenaErrorSeverity.Fatal,
+        ArenaErrorDomain.Internal,
+        arena_error_context_empty(),
+        message
+    );
+}
+
+proc arena_error_from_core_validation(
+    profile: arena_core.ArenaCoreProfile,
+    validation: arena_core.ArenaCoreValidation
+) -> ArenaError {
+    if validation.valid {
+        give arena_error_none();
+    }
+
+    if not validation.allocation_valid {
+        give arena_error_invalid_state(
+            profile.usage.allocated,
+            profile.usage.capacity
+        );
+    }
+
+    if not validation.capacity_valid {
+        give arena_error_capacity_exceeded(
+            profile.usage.allocated,
+            profile.usage.capacity
+        );
+    }
+
+    if not validation.block_valid {
+        give arena_error_invalid_block_size(
+            profile.blocks.block_size
+        );
+    }
+
+    if not validation.state_valid {
+        give arena_error_invalid_state(
+            profile.usage.allocated,
+            profile.usage.capacity
+        );
+    }
+
+    if not validation.limits_valid {
+        give arena_error_limit_exceeded(
+            profile.usage.allocated
+        );
+    }
+
+    give arena_error_internal(
+        "unknown arena validation failure"
+    );
+}
+
+proc arena_error_is_none(
+    error: ArenaError
+) -> bool {
+    give error.kind == ArenaErrorKind.None;
+}
+
+proc arena_error_is_error(
+    error: ArenaError
+) -> bool {
+    give error.severity == ArenaErrorSeverity.Error
+        or error.severity == ArenaErrorSeverity.Fatal;
+}
+
+proc arena_error_is_fatal(
+    error: ArenaError
+) -> bool {
+    give error.severity == ArenaErrorSeverity.Fatal;
+}
+
+proc arena_error_is_warning(
+    error: ArenaError
+) -> bool {
+    give error.severity == ArenaErrorSeverity.Warning;
+}
+
+proc arena_error_is_allocation(
+    error: ArenaError
+) -> bool {
+    give error.domain == ArenaErrorDomain.Allocation;
+}
+
+proc arena_error_is_block(
+    error: ArenaError
+) -> bool {
+    give error.domain == ArenaErrorDomain.Block;
+}
+
+proc arena_error_is_mark(
+    error: ArenaError
+) -> bool {
+    give error.domain == ArenaErrorDomain.Mark;
+}
+
+proc arena_error_is_rewind(
+    error: ArenaError
+) -> bool {
+    give error.domain == ArenaErrorDomain.Rewind;
+}
+
+proc arena_error_is_internal(
+    error: ArenaError
+) -> bool {
+    give error.domain == ArenaErrorDomain.Internal;
+}
+
+proc arena_error_domain_for_kind(
+    kind: ArenaErrorKind
+) -> ArenaErrorDomain {
+    pick kind {
+        ArenaErrorKind.InvalidArena
+        | ArenaErrorKind.InvalidState {
+            give ArenaErrorDomain.Arena;
+        }
+
+        ArenaErrorKind.InvalidBlock
+        | ArenaErrorKind.InvalidBlockSize
+        | ArenaErrorKind.InvalidBlockIndex {
+            give ArenaErrorDomain.Block;
+        }
+
+        ArenaErrorKind.InvalidLayout
+        | ArenaErrorKind.InvalidSize
+        | ArenaErrorKind.InvalidAlignment
+        | ArenaErrorKind.InvalidCount
+        | ArenaErrorKind.AllocationFailed
+        | ArenaErrorKind.OutOfMemory
+        | ArenaErrorKind.Overflow
+        | ArenaErrorKind.Underflow
+        | ArenaErrorKind.CapacityExceeded
+        | ArenaErrorKind.LimitExceeded {
+            give ArenaErrorDomain.Allocation;
+        }
+
+        ArenaErrorKind.InvalidMark
+        | ArenaErrorKind.MarkGenerationMismatch {
+            give ArenaErrorDomain.Mark;
+        }
+
+        ArenaErrorKind.RewindFailed {
+            give ArenaErrorDomain.Rewind;
+        }
+
+        ArenaErrorKind.ResetFailed
+        | ArenaErrorKind.ReleaseFailed {
+            give ArenaErrorDomain.Reset;
+        }
+
+        ArenaErrorKind.RuntimeFailure {
+            give ArenaErrorDomain.Runtime;
+        }
+
+        ArenaErrorKind.Internal {
+            give ArenaErrorDomain.Internal;
+        }
+
+        ArenaErrorKind.None {
+            give ArenaErrorDomain.General;
+        }
+    }
+
+    give ArenaErrorDomain.Internal;
+}
+
+proc arena_error_statistics_empty() -> ArenaErrorStatistics {
+    give ArenaErrorStatistics {
+        total: 0,
+
+        notes: 0,
+        warnings: 0,
+        errors: 0,
+        fatals: 0,
+
+        arena: 0,
+        block: 0,
+        allocation: 0,
+        mark: 0,
+        rewind: 0,
+        reset: 0,
+        runtime: 0,
+        internal: 0
+    };
+}
+
+proc arena_error_statistics_record(
+    statistics: ref mut ArenaErrorStatistics,
+    error: ArenaError
+) {
+    if arena_error_is_none(error) {
+        give;
+    }
+
+    set statistics.total =
+        statistics.total + 1;
+
+    pick error.severity {
+        ArenaErrorSeverity.Note {
+            set statistics.notes =
+                statistics.notes + 1;
+        }
+
+        ArenaErrorSeverity.Warning {
+            set statistics.warnings =
+                statistics.warnings + 1;
+        }
+
+        ArenaErrorSeverity.Error {
+            set statistics.errors =
+                statistics.errors + 1;
+        }
+
+        ArenaErrorSeverity.Fatal {
+            set statistics.fatals =
+                statistics.fatals + 1;
+        }
+    }
+
+    pick error.domain {
+        ArenaErrorDomain.Arena {
+            set statistics.arena =
+                statistics.arena + 1;
+        }
+
+        ArenaErrorDomain.Block {
+            set statistics.block =
+                statistics.block + 1;
+        }
+
+        ArenaErrorDomain.Allocation {
+            set statistics.allocation =
+                statistics.allocation + 1;
+        }
+
+        ArenaErrorDomain.Mark {
+            set statistics.mark =
+                statistics.mark + 1;
+        }
+
+        ArenaErrorDomain.Rewind {
+            set statistics.rewind =
+                statistics.rewind + 1;
+        }
+
+        ArenaErrorDomain.Reset {
+            set statistics.reset =
+                statistics.reset + 1;
+        }
+
+        ArenaErrorDomain.Runtime {
+            set statistics.runtime =
+                statistics.runtime + 1;
+        }
+
+        ArenaErrorDomain.Internal {
+            set statistics.internal =
+                statistics.internal + 1;
+        }
+
+        ArenaErrorDomain.General {}
+    }
+}
+
+proc arena_error_statistics_reset(
+    statistics: ref mut ArenaErrorStatistics
+) {
+    set *statistics =
+        arena_error_statistics_empty();
+}
+
+proc arena_error_kind_name(
+    kind: ArenaErrorKind
+) -> string {
+    pick kind {
+        ArenaErrorKind.None {
+            give "none";
+        }
+
+        ArenaErrorKind.InvalidArena {
+            give "invalid-arena";
+        }
+
+        ArenaErrorKind.InvalidState {
+            give "invalid-state";
+        }
+
+        ArenaErrorKind.InvalidBlock {
+            give "invalid-block";
+        }
+
+        ArenaErrorKind.InvalidBlockSize {
+            give "invalid-block-size";
+        }
+
+        ArenaErrorKind.InvalidBlockIndex {
+            give "invalid-block-index";
+        }
+
+        ArenaErrorKind.InvalidLayout {
+            give "invalid-layout";
+        }
+
+        ArenaErrorKind.InvalidSize {
+            give "invalid-size";
+        }
+
+        ArenaErrorKind.InvalidAlignment {
+            give "invalid-alignment";
+        }
+
+        ArenaErrorKind.InvalidCount {
+            give "invalid-count";
+        }
+
+        ArenaErrorKind.AllocationFailed {
+            give "allocation-failed";
+        }
+
+        ArenaErrorKind.OutOfMemory {
+            give "out-of-memory";
+        }
+
+        ArenaErrorKind.Overflow {
+            give "overflow";
+        }
+
+        ArenaErrorKind.Underflow {
+            give "underflow";
+        }
+
+        ArenaErrorKind.InvalidMark {
+            give "invalid-mark";
+        }
+
+        ArenaErrorKind.MarkGenerationMismatch {
+            give "mark-generation-mismatch";
+        }
+
+        ArenaErrorKind.RewindFailed {
+            give "rewind-failed";
+        }
+
+        ArenaErrorKind.ResetFailed {
+            give "reset-failed";
+        }
+
+        ArenaErrorKind.ReleaseFailed {
+            give "release-failed";
+        }
+
+        ArenaErrorKind.CapacityExceeded {
+            give "capacity-exceeded";
+        }
+
+        ArenaErrorKind.LimitExceeded {
+            give "limit-exceeded";
+        }
+
+        ArenaErrorKind.RuntimeFailure {
+            give "runtime-failure";
+        }
+
+        ArenaErrorKind.Internal {
+            give "internal";
+        }
+    }
+
+    give "internal";
+}
+
+proc arena_error_severity_name(
+    severity: ArenaErrorSeverity
+) -> string {
+    pick severity {
+        ArenaErrorSeverity.Note {
+            give "note";
+        }
+
+        ArenaErrorSeverity.Warning {
+            give "warning";
+        }
+
+        ArenaErrorSeverity.Error {
+            give "error";
+        }
+
+        ArenaErrorSeverity.Fatal {
+            give "fatal";
+        }
+    }
+
+    give "error";
+}
+
+proc arena_error_domain_name(
+    domain: ArenaErrorDomain
+) -> string {
+    pick domain {
+        ArenaErrorDomain.General {
+            give "general";
+        }
+
+        ArenaErrorDomain.Arena {
+            give "arena";
+        }
+
+        ArenaErrorDomain.Block {
+            give "block";
+        }
+
+        ArenaErrorDomain.Allocation {
+            give "allocation";
+        }
+
+        ArenaErrorDomain.Mark {
+            give "mark";
+        }
+
+        ArenaErrorDomain.Rewind {
+            give "rewind";
+        }
+
+        ArenaErrorDomain.Reset {
+            give "reset";
+        }
+
+        ArenaErrorDomain.Runtime {
+            give "runtime";
+        }
+
+        ArenaErrorDomain.Internal {
+            give "internal";
+        }
+    }
+
+    give "internal";
+}
+
+proc arena_error_operation_name(
+    operation: ArenaErrorOperation
+) -> string {
+    pick operation {
+        ArenaErrorOperation.None {
+            give "none";
+        }
+
+        ArenaErrorOperation.New {
+            give "new";
+        }
+
+        ArenaErrorOperation.Allocate {
+            give "allocate";
+        }
+
+        ArenaErrorOperation.AllocateArray {
+            give "allocate-array";
+        }
+
+        ArenaErrorOperation.AllocateBytes {
+            give "allocate-bytes";
+        }
+
+        ArenaErrorOperation.AllocateAligned {
+            give "allocate-aligned";
+        }
+
+        ArenaErrorOperation.Mark {
+            give "mark";
+        }
+
+        ArenaErrorOperation.Rewind {
+            give "rewind";
+        }
+
+        ArenaErrorOperation.Reset {
+            give "reset";
+        }
+
+        ArenaErrorOperation.Drop {
+            give "drop";
+        }
+
+        ArenaErrorOperation.Validate {
+            give "validate";
+        }
+    }
+
+    give "none";
+}
+
+// -----------------------------------------------------------------------------
+// Error model
+// -----------------------------------------------------------------------------
+//
+// arena/error.vitl
+//
+//     arena
+//       |
+//       +-- invalid state
+//       +-- invalid arena
+//
+//     blocks
+//       |
+//       +-- invalid block
+//       +-- invalid size
+//       +-- invalid index
+//
+//     allocation
+//       |
+//       +-- invalid layout
+//       +-- invalid size
+//       +-- invalid alignment
+//       +-- invalid count
+//       +-- overflow
+//       +-- out of memory
+//       +-- capacity exceeded
+//
+//     marks
+//       |
+//       +-- invalid mark
+//       +-- generation mismatch
+//
+//     lifecycle
+//       |
+//       +-- rewind failure
+//       +-- reset failure
+//       +-- release failure
+//
+// Diagnostic rendering and localization should stay outside this module.

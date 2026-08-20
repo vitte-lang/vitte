@@ -82,7 +82,7 @@ def main() -> int:
         actual = en.get(code)
         if actual != expected:
             failures.append(f"{EN_FTL.relative_to(ROOT)} missing {code} = {expected!r}")
-        if re.search(rf'if code == "{re.escape(code)}"\s*\{{\s*give fluent_diagnostic_fields\(', catalog) is None:
+        if re.search(rf'if code == "{re.escape(code)}"\s*\{{\s*give fluent_(?:diagnostic|compact)_fields\(', catalog) is None:
             failures.append(f"{CATALOG.relative_to(ROOT)} missing generated lookup for {code}")
 
     for path, needles in SURFACE_NEEDLES.items():

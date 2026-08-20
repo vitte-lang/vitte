@@ -2,6 +2,19 @@ space vitte/compiler/middle/lower
 
 export *
 
+proc ir_number_text(value: u64) -> string {
+    if value == 0 {
+        give "0";
+    }
+    let digit: u64 = value % 10;
+    let digit_text: string = if digit == 0 { "0" } elif digit == 1 { "1" } elif digit == 2 { "2" } elif digit == 3 { "3" } elif digit == 4 { "4" } elif digit == 5 { "5" } elif digit == 6 { "6" } elif digit == 7 { "7" } elif digit == 8 { "8" } else { "9" };
+    let prefix: u64 = value / 10 as u64;
+    if prefix == 0 {
+        give digit_text;
+    }
+    give ir_number_text(prefix) + digit_text;
+}
+
 proc join(values: [string], separator: string) -> string {
     let out: string = "";
     let i: u64 = 0;
@@ -61,7 +74,7 @@ use vitte/compiler/backend/ir/ir.{
     value_place,
     value_reference,
 }
-use vitte/compiler/middle/hir/hir.{ HirItem, HirItemKind, HirNominalMember, HirNominalMemberKind }
+use vitte/compiler/middle/hir/hir.{ HirExprKind, HirItem, HirItemKind, HirNominalMember, HirNominalMemberKind }
 use vitte/compiler/middle/mir/mir.{ MirBlock, MirFunction, MirOperand, MirRvalue, MirRvalueKind, MirStatement, MirStatementKind, MirTerminator, MirTerminatorKind, MirUnit }
 
 proc ir_visibility_for_function(name: string) -> IrVisibility {
@@ -153,7 +166,50 @@ proc ir_function_is_external_from_hir(items: [HirItem], function_name: string) -
     give false;
 }
 
-proc ir_value_from_operand(id: u64, operand: MirOperand) -> IrValue {
+proc hir_const_literal_text(items: [HirItem], name: string) -> string {
+    let i: u64 = 0;
+    while i < len(items) {
+        if items[i].kind == HirItemKind.Const
+            and items[i].name == name
+            and items[i].expr.valid
+            and items[i].expr.constant
+            and items[i].expr.text != ""
+            and (items[i].expr.kind == HirExprKind.Int
+                or items[i].expr.kind == HirExprKind.Float
+                or items[i].expr.kind == HirExprKind.Bool
+                or items[i].expr.kind == HirExprKind.String
+                or items[i].expr.kind == HirExprKind.Char) {
+            give items[i].expr.text;
+        }
+        set i = i + 1;
+    }
+    give "";
+}
+
+proc hir_const_literal_type(items: [HirItem], name: string, fallback: string) -> string {
+    let i: u64 = 0;
+    while i < len(items) {
+        if items[i].kind == HirItemKind.Const and items[i].name == name {
+            if items[i].annotation_text != "" {
+                give items[i].annotation_text;
+            }
+            if items[i].expr.inferred_type != "" and items[i].expr.inferred_type != "unknown" {
+                give items[i].expr.inferred_type;
+            }
+            give fallback;
+        }
+        set i = i + 1;
+    }
+    give fallback;
+}
+
+proc ir_value_from_operand_with_hir(id: u64, operand: MirOperand, typed_hir_items: [HirItem]) -> IrValue {
+    if operand.text != "" {
+        let resolved_const: string = hir_const_literal_text(typed_hir_items, operand.text);
+        if resolved_const != "" {
+            give value_constant(id, resolved_const, hir_const_literal_type(typed_hir_items, operand.text, operand.ty));
+        }
+    }
     if operand.place.valid {
         let place_text: string = operand.place.local + operand.place.projection;
         give value_place(id, operand.place.local, place_text, operand.ty);
@@ -162,6 +218,10 @@ proc ir_value_from_operand(id: u64, operand: MirOperand) -> IrValue {
         give value_constant(id, operand.text, operand.ty);
     }
     give value_constant(id, "<invalid>", operand.ty);
+}
+
+proc ir_value_from_operand(id: u64, operand: MirOperand) -> IrValue {
+    give ir_value_from_operand_with_hir(id, operand, []);
 }
 
 proc operand_is_borrowed_param(fn0: MirFunction, operand: MirOperand) -> bool {
@@ -178,7 +238,7 @@ proc operand_is_borrowed_param(fn0: MirFunction, operand: MirOperand) -> bool {
     give false;
 }
 
-proc ir_call_arg_value_from_operand(id: u64, operand: MirOperand, borrowed: bool, mutable: bool, fn0: MirFunction) -> IrValue {
+proc ir_call_arg_value_from_operand(id: u64, operand: MirOperand, borrowed: bool, mutable: bool, fn0: MirFunction, typed_hir_items: [HirItem]) -> IrValue {
     if borrowed and operand.place.valid and operand.place.local != "" {
         let place_text: string = operand.place.local + operand.place.projection;
         if operand_is_borrowed_param(fn0, operand) {
@@ -186,7 +246,7 @@ proc ir_call_arg_value_from_operand(id: u64, operand: MirOperand, borrowed: bool
         }
         give value_reference(id, operand.place.local, place_text, operand.ty, mutable, false);
     }
-    give ir_value_from_operand(id, operand);
+    give ir_value_from_operand_with_hir(id, operand, typed_hir_items);
 }
 
 proc ir_instruction_kind_from_rvalue(rvalue: MirRvalue) -> IrInstructionKind {
@@ -299,26 +359,31 @@ proc call_param_mutable_for_rvalue(rvalue: MirRvalue, functions: [MirFunction], 
     give ir_param_mutable(mir_function_params_by_name(functions, target), arg_index);
 }
 
-proc ir_args_from_rvalue(statement_id: u64, rvalue: MirRvalue, call_arg_start: u64, functions: [MirFunction], fn0: MirFunction) -> [IrValue] {
+proc ir_args_from_rvalue(statement_id: u64, rvalue: MirRvalue, call_arg_start: u64, functions: [MirFunction], fn0: MirFunction, typed_hir_items: [HirItem]) -> [IrValue] {
     let args: [IrValue] = [];
     let i: u64 = 0;
     while i < len(rvalue.operands) {
         let arg_index: u64 = if i >= call_arg_start { i - call_arg_start } else { 0 };
         let borrowed: bool = i >= call_arg_start and call_param_borrowed_for_rvalue(rvalue, functions, arg_index);
         let mutable: bool = i >= call_arg_start and call_param_mutable_for_rvalue(rvalue, functions, arg_index);
-        set args = args + [ir_call_arg_value_from_operand(statement_id + i + 1, rvalue.operands[i], borrowed, mutable, fn0)];
+        set args = args + [ir_call_arg_value_from_operand(statement_id + i + 1, rvalue.operands[i], borrowed, mutable, fn0, typed_hir_items)];
         set i = i + 1;
     }
     let aggregate: bool = rvalue.kind == MirRvalueKind.Aggregate or rvalue.kind == MirRvalueKind.Tuple or rvalue.kind == MirRvalueKind.Array or rvalue.kind == MirRvalueKind.Struct;
     if len(args) == 0 and rvalue.text != "" and not aggregate {
+        let resolved_const: string = hir_const_literal_text(typed_hir_items, rvalue.text);
+        if resolved_const != "" {
+            set args = [value_constant(statement_id + 1, resolved_const, hir_const_literal_type(typed_hir_items, rvalue.text, rvalue.ty))];
+            give args;
+        }
         set args = [value_constant(statement_id + 1, rvalue.text, "unknown")];
     }
     give args;
 }
 
-proc ir_instruction_from_mir(statement: MirStatement, functions: [MirFunction], fn0: MirFunction) -> IrInstruction {
+proc ir_instruction_from_mir(statement: MirStatement, functions: [MirFunction], fn0: MirFunction, typed_hir_items: [HirItem]) -> IrInstruction {
     let call_arg_start: u64 = if statement.rvalue.kind == MirRvalueKind.Call { call_arg_start_for_rvalue(statement.rvalue) } else { 0 };
-    let args: [IrValue] = ir_args_from_rvalue(statement.id, statement.rvalue, call_arg_start, functions, fn0);
+    let args: [IrValue] = ir_args_from_rvalue(statement.id, statement.rvalue, call_arg_start, functions, fn0, typed_hir_items);
     if statement.kind == MirStatementKind.Return {
         give instruction_create(
             statement.id,
@@ -379,10 +444,10 @@ proc return_rvalue_requires_materialization(rvalue: MirRvalue) -> bool {
     give rvalue.kind != MirRvalueKind.Use and rvalue.kind != MirRvalueKind.Copy and rvalue.kind != MirRvalueKind.Move;
 }
 
-proc materialized_return_instruction(statement: MirStatement, functions: [MirFunction], fn0: MirFunction) -> IrInstruction {
+proc materialized_return_instruction(statement: MirStatement, functions: [MirFunction], fn0: MirFunction, typed_hir_items: [HirItem]) -> IrInstruction {
     let call_arg_start: u64 = if statement.rvalue.kind == MirRvalueKind.Call { call_arg_start_for_rvalue(statement.rvalue) } else { 0 };
-    let args: [IrValue] = ir_args_from_rvalue(statement.id, statement.rvalue, call_arg_start, functions, fn0);
-    let temp_name: string = "__return_value_" + (statement.id as string);
+    let args: [IrValue] = ir_args_from_rvalue(statement.id, statement.rvalue, call_arg_start, functions, fn0, typed_hir_items);
+    let temp_name: string = "__return_value_" + ir_number_text(statement.id);
     let instruction0: IrInstruction = instruction_create(
         statement.id,
         ir_instruction_kind_from_rvalue(statement.rvalue),
@@ -410,28 +475,28 @@ proc return_instruction_from_value(statement: MirStatement, value: IrValue) -> I
     );
 }
 
-proc ir_terminator_from_mir(term: MirTerminator) -> IrInstruction {
+proc ir_terminator_from_mir(term: MirTerminator, typed_hir_items: [HirItem]) -> IrInstruction {
     if term.kind == MirTerminatorKind.Goto {
         give terminator_jump(term.target_block);
     }
     if term.kind == MirTerminatorKind.Branch {
-        give terminator_branch(ir_value_from_operand(0, term.condition), term.target_block, term.else_block);
+        give terminator_branch(ir_value_from_operand_with_hir(0, term.condition, typed_hir_items), term.target_block, term.else_block);
     }
     if term.kind == MirTerminatorKind.Switch {
-        give terminator_switch(ir_value_from_operand(0, term.condition), term.switch_values, term.switch_targets, term.else_block);
+        give terminator_switch(ir_value_from_operand_with_hir(0, term.condition, typed_hir_items), term.switch_values, term.switch_targets, term.else_block);
     }
     give terminator_return();
 }
 
-proc lower_mir_block(block: MirBlock, fn0: MirFunction, functions: [MirFunction]) -> IrBlock {
-    let block_id_text: string = block.id as string;
+proc lower_mir_block(block: MirBlock, fn0: MirFunction, functions: [MirFunction], typed_hir_items: [HirItem]) -> IrBlock {
+    let block_id_text: string = ir_number_text(block.id);
     let block_name: string = fn0.name + "_bb" + block_id_text;
     let ir_block: IrBlock = block_create(block.id, block_name);
     let i: u64 = 0;
     let built: IrBlock = ir_block;
     while i < len(block.statements) {
         if block.statements[i].kind == MirStatementKind.Return and return_rvalue_requires_materialization(block.statements[i].rvalue) {
-            let materialized: IrInstruction = materialized_return_instruction(block.statements[i], functions, fn0);
+            let materialized: IrInstruction = materialized_return_instruction(block.statements[i], functions, fn0, typed_hir_items);
             if materialized.kind == IrInstructionKind.Call {
                 let j: u64 = materialized.call_arg_start;
                 while j < len(materialized.args) {
@@ -446,7 +511,7 @@ proc lower_mir_block(block: MirBlock, fn0: MirFunction, functions: [MirFunction]
             set i = i + 1;
             continue;
         }
-        let instruction0: IrInstruction = ir_instruction_from_mir(block.statements[i], functions, fn0);
+        let instruction0: IrInstruction = ir_instruction_from_mir(block.statements[i], functions, fn0, typed_hir_items);
         if instruction0.kind == IrInstructionKind.Call {
             let j: u64 = instruction0.call_arg_start;
             while j < len(instruction0.args) {
@@ -459,7 +524,7 @@ proc lower_mir_block(block: MirBlock, fn0: MirFunction, functions: [MirFunction]
         set built = block_add_instruction(built, instruction0);
         set i = i + 1;
     }
-    give block_set_terminator(built, ir_terminator_from_mir(block.terminator));
+    give block_set_terminator(built, ir_terminator_from_mir(block.terminator, typed_hir_items));
 }
 
 proc lower_mir_function(module_name: string, fn0: MirFunction, functions: [MirFunction], typed_hir_items: [HirItem], exported_names: [string]) -> IrFunction {
@@ -504,7 +569,7 @@ proc lower_mir_function(module_name: string, fn0: MirFunction, functions: [MirFu
     let i: u64 = 0;
     let built: IrFunction = with_sig;
     while i < len(fn0.blocks) {
-        set built = function_add_block(built, lower_mir_block(fn0.blocks[i], fn0, functions));
+        set built = function_add_block(built, lower_mir_block(fn0.blocks[i], fn0, functions, typed_hir_items));
         set i = i + 1;
     }
     give built;

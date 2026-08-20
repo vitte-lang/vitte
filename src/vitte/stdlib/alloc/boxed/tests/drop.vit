@@ -1,0 +1,960 @@
+use src/vitte/stdlib/alloc/boxed
+use src/vitte/stdlib/alloc/boxed/drop
+
+form Point {
+    x: int
+    y: int
+}
+
+proc test_drop_basic() -> bool {
+    let mut value = box_new(42);
+
+    let result = box_drop(
+        ref mut value
+    );
+
+    give result.success
+        and result.state == BoxDropState.Dropped
+        and result.kind == BoxDropKind.ValueAndAllocation
+        and result.value_dropped
+        and result.memory_released
+        and box_is_released(value);
+}
+
+proc test_drop_string() -> bool {
+    let mut value = box_new("Vitte");
+
+    let result = box_drop(
+        ref mut value
+    );
+
+    give result.success
+        and result.value_dropped
+        and result.memory_released
+        and box_is_released(value);
+}
+
+proc test_drop_form() -> bool {
+    let mut value = box_new(
+        Point {
+            x: 10
+            y: 20
+        }
+    );
+
+    let result = box_drop(
+        ref mut value
+    );
+
+    give result.success
+        and result.value_dropped
+        and result.memory_released
+        and box_is_released(value);
+}
+
+proc test_drop_changes_state() -> bool {
+    let mut value = box_new(42);
+
+    let result = box_drop(
+        ref mut value
+    );
+
+    give result.success
+        and box_state(value) == BoxState.Released;
+}
+
+proc test_drop_changes_generation() -> bool {
+    let mut value = box_new(42);
+
+    let before = box_generation(value);
+
+    let result = box_drop(
+        ref mut value
+    );
+
+    give result.success
+        and box_generation(value) > before;
+}
+
+proc test_drop_changes_revision() -> bool {
+    let mut value = box_new(42);
+
+    let before = box_revision(value);
+
+    let result = box_drop(
+        ref mut value
+    );
+
+    give result.success
+        and box_revision(value) > before;
+}
+
+proc test_drop_snapshot_changes() -> bool {
+    let mut value = box_new(42);
+
+    let before = box_drop_snapshot(value);
+
+    let result = box_drop(
+        ref mut value
+    );
+
+    let after = box_drop_snapshot(value);
+
+    give result.success
+        and box_drop_snapshot_changed(
+            before,
+            after
+        );
+}
+
+proc test_drop_snapshot_equal_before() -> bool {
+    let value = box_new(42);
+
+    let first = box_drop_snapshot(value);
+    let second = box_drop_snapshot(value);
+
+    give box_drop_snapshot_equal(
+        first,
+        second
+    );
+}
+
+proc test_drop_result_valid() -> bool {
+    let mut value = box_new(42);
+
+    let result = box_drop(
+        ref mut value
+    );
+
+    give box_drop_result_valid(
+        result
+    );
+}
+
+proc test_drop_succeeded() -> bool {
+    let mut value = box_new(42);
+
+    let result = box_drop(
+        ref mut value
+    );
+
+    give box_drop_succeeded(result)
+        and not box_drop_failed(result);
+}
+
+proc test_drop_fully_completed() -> bool {
+    let mut value = box_new(42);
+
+    let result = box_drop(
+        ref mut value
+    );
+
+    give box_drop_fully_completed(
+        result
+    );
+}
+
+proc test_drop_changed() -> bool {
+    let mut value = box_new(42);
+
+    let result = box_drop(
+        ref mut value
+    );
+
+    give box_drop_changed(
+        result
+    );
+}
+
+proc test_drop_value_only() -> bool {
+    let mut value = box_new(42);
+
+    let result = box_drop_value(
+        ref mut value
+    );
+
+    give result.success
+        and result.kind == BoxDropKind.Value
+        and result.value_dropped
+        and not result.memory_released;
+}
+
+proc test_drop_value_result_valid() -> bool {
+    let mut value = box_new(42);
+
+    let result = box_drop_value(
+        ref mut value
+    );
+
+    give box_drop_result_valid(
+        result
+    );
+}
+
+proc test_release_allocation_only() -> bool {
+    let mut value = box_new(42);
+
+    let result = box_release_allocation(
+        ref mut value
+    );
+
+    give result.success
+        and result.kind == BoxDropKind.Allocation
+        and not result.value_dropped
+        and result.memory_released
+        and box_is_released(value);
+}
+
+proc test_release_allocation_result_valid() -> bool {
+    let mut value = box_new(42);
+
+    let result = box_release_allocation(
+        ref mut value
+    );
+
+    give box_drop_result_valid(
+        result
+    );
+}
+
+proc test_drop_twice() -> bool {
+    let mut value = box_new(42);
+
+    let first = box_drop(
+        ref mut value
+    );
+
+    let second = box_drop(
+        ref mut value
+    );
+
+    give first.success
+        and second.success
+        and second.state == BoxDropState.Skipped
+        and second.failure == BoxDropFailure.AlreadyReleased;
+}
+
+proc test_drop_twice_skipped() -> bool {
+    let mut value = box_new(42);
+
+    let first = box_drop(
+        ref mut value
+    );
+
+    if not first.success {
+        give false;
+    }
+
+    let second = box_drop(
+        ref mut value
+    );
+
+    give box_drop_was_skipped(
+        second
+    );
+}
+
+proc test_drop_if_alive() -> bool {
+    let mut value = box_new(42);
+
+    let result = box_drop_if_alive(
+        ref mut value
+    );
+
+    give result.success
+        and result.state == BoxDropState.Dropped;
+}
+
+proc test_drop_if_alive_released() -> bool {
+    let mut value = box_new(42);
+
+    let first = box_drop_if_alive(
+        ref mut value
+    );
+
+    let second = box_drop_if_alive(
+        ref mut value
+    );
+
+    give first.success
+        and second.success
+        and second.state == BoxDropState.Skipped;
+}
+
+proc test_try_drop() -> bool {
+    let mut value = box_new(42);
+
+    give box_try_drop(
+        ref mut value
+    )
+    and box_is_released(value);
+}
+
+proc test_move_then_drop_source() -> bool {
+    let mut source = box_new(42);
+
+    let destination = box_move(
+        ref mut source
+    );
+
+    let result = box_drop(
+        ref mut source
+    );
+
+    give box_is_valid(destination)
+        and result.success
+        and result.state == BoxDropState.Skipped
+        and result.failure == BoxDropFailure.AlreadyMoved;
+}
+
+proc test_move_then_drop_destination() -> bool {
+    let mut source = box_new(42);
+
+    let mut destination = box_move(
+        ref mut source
+    );
+
+    let result = box_drop(
+        ref mut destination
+    );
+
+    give result.success
+        and box_is_released(destination)
+        and box_is_moved(source);
+}
+
+proc test_move_preserves_single_drop() -> bool {
+    let mut source = box_new(
+        Point {
+            x: 1
+            y: 2
+        }
+    );
+
+    let mut destination = box_move(
+        ref mut source
+    );
+
+    let source_result = box_drop(
+        ref mut source
+    );
+
+    let destination_result = box_drop(
+        ref mut destination
+    );
+
+    give source_result.state == BoxDropState.Skipped
+        and destination_result.state == BoxDropState.Dropped
+        and destination_result.value_dropped
+        and destination_result.memory_released;
+}
+
+proc test_forget() -> bool {
+    let mut value = box_new(42);
+
+    let result = box_forget(
+        ref mut value
+    );
+
+    give result.success
+        and result.kind == BoxDropKind.Forget
+        and not result.value_dropped
+        and not result.memory_released
+        and box_is_moved(value);
+}
+
+proc test_forget_changed() -> bool {
+    let mut value = box_new(42);
+
+    let result = box_forget(
+        ref mut value
+    );
+
+    give box_drop_changed(
+        result
+    );
+}
+
+proc test_forget_then_drop() -> bool {
+    let mut value = box_new(42);
+
+    let forget = box_forget(
+        ref mut value
+    );
+
+    let drop = box_drop(
+        ref mut value
+    );
+
+    give forget.success
+        and drop.success
+        and drop.state == BoxDropState.Skipped
+        and drop.failure == BoxDropFailure.AlreadyMoved;
+}
+
+proc test_validation_alive() -> bool {
+    let value = box_new(42);
+
+    let validation = box_drop_validate(
+        value
+    );
+
+    give validation.valid
+        and validation.state_valid
+        and validation.allocation_valid
+        and validation.ownership_valid
+        and validation.droppable;
+}
+
+proc test_can_drop() -> bool {
+    let value = box_new(42);
+
+    give box_can_drop(
+        value
+    );
+}
+
+proc test_cannot_drop_after_release() -> bool {
+    let mut value = box_new(42);
+
+    let result = box_drop(
+        ref mut value
+    );
+
+    if not result.success {
+        give false;
+    }
+
+    give not box_can_drop(
+        value
+    );
+}
+
+proc test_core_transition_drop() -> bool {
+    let mut value = box_new(42);
+
+    let result = box_drop(
+        ref mut value
+    );
+
+    give box_drop_core_transition(
+        result
+    ) == BoxCoreTransitionKind.Release;
+}
+
+proc test_core_transition_forget() -> bool {
+    let mut value = box_new(42);
+
+    let result = box_forget(
+        ref mut value
+    );
+
+    give box_drop_core_transition(
+        result
+    ) == BoxCoreTransitionKind.Move;
+}
+
+proc test_core_transition_value_only() -> bool {
+    let mut value = box_new(42);
+
+    let result = box_drop_value(
+        ref mut value
+    );
+
+    give box_drop_core_transition(
+        result
+    ) == BoxCoreTransitionKind.Write;
+}
+
+proc test_statistics_empty() -> bool {
+    let statistics = box_drop_statistics_empty();
+
+    give statistics.attempts == 0
+        and statistics.successes == 0
+        and statistics.failures == 0
+        and statistics.skipped == 0
+        and statistics.values_dropped == 0
+        and statistics.allocations_released == 0;
+}
+
+proc test_statistics_drop() -> bool {
+    let mut value = box_new(42);
+    let mut statistics = box_drop_statistics_empty();
+
+    let result = box_drop(
+        ref mut value
+    );
+
+    box_drop_statistics_record(
+        ref mut statistics,
+        result
+    );
+
+    give statistics.attempts == 1
+        and statistics.successes == 1
+        and statistics.values_dropped == 1
+        and statistics.allocations_released == 1;
+}
+
+proc test_statistics_skipped_release() -> bool {
+    let mut value = box_new(42);
+    let mut statistics = box_drop_statistics_empty();
+
+    let first = box_drop(
+        ref mut value
+    );
+
+    box_drop_statistics_record(
+        ref mut statistics,
+        first
+    );
+
+    let second = box_drop(
+        ref mut value
+    );
+
+    box_drop_statistics_record(
+        ref mut statistics,
+        second
+    );
+
+    give statistics.attempts == 2
+        and statistics.successes == 1
+        and statistics.skipped == 1
+        and statistics.released_rejections == 1;
+}
+
+proc test_statistics_skipped_move() -> bool {
+    let mut source = box_new(42);
+    let destination = box_move(
+        ref mut source
+    );
+
+    let mut statistics = box_drop_statistics_empty();
+
+    let result = box_drop(
+        ref mut source
+    );
+
+    box_drop_statistics_record(
+        ref mut statistics,
+        result
+    );
+
+    give box_is_valid(destination)
+        and statistics.attempts == 1
+        and statistics.skipped == 1
+        and statistics.moved_rejections == 1;
+}
+
+proc test_statistics_total() -> bool {
+    let mut value = box_new(42);
+    let mut statistics = box_drop_statistics_empty();
+
+    let result = box_drop(
+        ref mut value
+    );
+
+    box_drop_statistics_record(
+        ref mut statistics,
+        result
+    );
+
+    give box_drop_statistics_total(
+        statistics
+    ) == 1;
+}
+
+proc test_statistics_reset() -> bool {
+    let mut statistics = box_drop_statistics_empty();
+
+    set statistics.attempts = 10;
+    set statistics.successes = 8;
+    set statistics.failures = 2;
+
+    box_drop_statistics_reset(
+        ref mut statistics
+    );
+
+    give statistics.attempts == 0
+        and statistics.successes == 0
+        and statistics.failures == 0;
+}
+
+proc test_state_names() -> bool {
+    give box_drop_state_name(
+        BoxDropState.Ready
+    ) == "ready"
+        and box_drop_state_name(
+            BoxDropState.Dropped
+        ) == "dropped"
+        and box_drop_state_name(
+            BoxDropState.Skipped
+        ) == "skipped"
+        and box_drop_state_name(
+            BoxDropState.Failed
+        ) == "failed"
+        and box_drop_state_name(
+            BoxDropState.Invalid
+        ) == "invalid";
+}
+
+proc test_kind_names() -> bool {
+    give box_drop_kind_name(
+        BoxDropKind.Value
+    ) == "value"
+        and box_drop_kind_name(
+            BoxDropKind.Allocation
+        ) == "allocation"
+        and box_drop_kind_name(
+            BoxDropKind.ValueAndAllocation
+        ) == "value-and-allocation"
+        and box_drop_kind_name(
+            BoxDropKind.Forget
+        ) == "forget";
+}
+
+proc test_failure_names() -> bool {
+    give box_drop_failure_name(
+        BoxDropFailure.None
+    ) == "none"
+        and box_drop_failure_name(
+            BoxDropFailure.AlreadyMoved
+        ) == "already-moved"
+        and box_drop_failure_name(
+            BoxDropFailure.AlreadyReleased
+        ) == "already-released"
+        and box_drop_failure_name(
+            BoxDropFailure.DeallocationFailed
+        ) == "deallocation-failed";
+}
+
+proc test_many_drops() -> bool {
+    let index: usize = 0;
+
+    while index < 5000 {
+        let mut value = box_new(42);
+
+        let result = box_drop(
+            ref mut value
+        );
+
+        if not result.success {
+            give false;
+        }
+
+        if not box_is_released(value) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give true;
+}
+
+proc test_many_form_drops() -> bool {
+    let index: int = 0;
+
+    while index < 2000 {
+        let mut value = box_new(
+            Point {
+                x: index
+                y: index + 1
+            }
+        );
+
+        let result = box_drop(
+            ref mut value
+        );
+
+        if not box_drop_fully_completed(result) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give true;
+}
+
+proc test_many_move_drop_cycles() -> bool {
+    let index: usize = 0;
+
+    while index < 2000 {
+        let mut source = box_new(42);
+
+        let mut destination = box_move(
+            ref mut source
+        );
+
+        let source_drop = box_drop(
+            ref mut source
+        );
+
+        if not source_drop.success
+            or not box_drop_was_skipped(source_drop)
+        {
+            give false;
+        }
+
+        let destination_drop = box_drop(
+            ref mut destination
+        );
+
+        if not box_drop_fully_completed(
+            destination_drop
+        ) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give true;
+}
+
+proc test_many_forget_cycles() -> bool {
+    let index: usize = 0;
+
+    while index < 1000 {
+        let mut value = box_new(42);
+
+        let result = box_forget(
+            ref mut value
+        );
+
+        if not result.success {
+            give false;
+        }
+
+        if not box_is_moved(value) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give true;
+}
+
+proc test_statistics_stress() -> bool {
+    let mut statistics = box_drop_statistics_empty();
+
+    let index: usize = 0;
+
+    while index < 1000 {
+        let mut value = box_new(42);
+
+        let result = box_drop(
+            ref mut value
+        );
+
+        box_drop_statistics_record(
+            ref mut statistics,
+            result
+        );
+
+        set index = index + 1;
+    }
+
+    give statistics.attempts == 1000
+        and statistics.successes == 1000
+        and statistics.values_dropped == 1000
+        and statistics.allocations_released == 1000
+        and statistics.failures == 0;
+}
+
+proc test_snapshot_stress() -> bool {
+    let index: usize = 0;
+
+    while index < 1000 {
+        let mut value = box_new(42);
+
+        let before = box_drop_snapshot(
+            value
+        );
+
+        let result = box_drop(
+            ref mut value
+        );
+
+        let after = box_drop_snapshot(
+            value
+        );
+
+        if not result.success {
+            give false;
+        }
+
+        if not box_drop_snapshot_changed(
+            before,
+            after
+        ) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give true;
+}
+
+proc test_drop_after_mutation() -> bool {
+    let mut value = box_new(
+        Point {
+            x: 1
+            y: 2
+        }
+    );
+
+    let point = box_get_mut(
+        ref mut value
+    );
+
+    set point.x = 100;
+    set point.y = 200;
+
+    let result = box_drop(
+        ref mut value
+    );
+
+    give box_drop_fully_completed(
+        result
+    );
+}
+
+proc test_drop_after_replace() -> bool {
+    let mut value = box_new(10);
+
+    let old = box_replace(
+        ref mut value,
+        20
+    );
+
+    if old != 10 {
+        give false;
+    }
+
+    give box_drop_fully_completed(
+        box_drop(
+            ref mut value
+        )
+    );
+}
+
+proc test_drop_after_clone() -> bool {
+    let mut first = box_new(42);
+    let mut second = box_clone(
+        ref first
+    );
+
+    let first_result = box_drop(
+        ref mut first
+    );
+
+    if not first_result.success {
+        give false;
+    }
+
+    give *box_get(ref second) == 42
+        and box_drop_fully_completed(
+            box_drop(
+                ref mut second
+            )
+        );
+}
+
+proc test_independent_drop() -> bool {
+    let mut first = box_new(1);
+    let mut second = box_new(2);
+
+    let first_result = box_drop(
+        ref mut first
+    );
+
+    if not first_result.success {
+        give false;
+    }
+
+    give box_is_released(first)
+        and box_is_valid(second)
+        and *box_get(ref second) == 2;
+}
+
+proc run_drop_tests() -> bool {
+    give test_drop_basic()
+        and test_drop_string()
+        and test_drop_form()
+
+        and test_drop_changes_state()
+        and test_drop_changes_generation()
+        and test_drop_changes_revision()
+
+        and test_drop_snapshot_changes()
+        and test_drop_snapshot_equal_before()
+
+        and test_drop_result_valid()
+        and test_drop_succeeded()
+        and test_drop_fully_completed()
+        and test_drop_changed()
+
+        and test_drop_value_only()
+        and test_drop_value_result_valid()
+
+        and test_release_allocation_only()
+        and test_release_allocation_result_valid()
+
+        and test_drop_twice()
+        and test_drop_twice_skipped()
+        and test_drop_if_alive()
+        and test_drop_if_alive_released()
+        and test_try_drop()
+
+        and test_move_then_drop_source()
+        and test_move_then_drop_destination()
+        and test_move_preserves_single_drop()
+
+        and test_forget()
+        and test_forget_changed()
+        and test_forget_then_drop()
+
+        and test_validation_alive()
+        and test_can_drop()
+        and test_cannot_drop_after_release()
+
+        and test_core_transition_drop()
+        and test_core_transition_forget()
+        and test_core_transition_value_only()
+
+        and test_statistics_empty()
+        and test_statistics_drop()
+        and test_statistics_skipped_release()
+        and test_statistics_skipped_move()
+        and test_statistics_total()
+        and test_statistics_reset()
+
+        and test_state_names()
+        and test_kind_names()
+        and test_failure_names()
+
+        and test_drop_after_mutation()
+        and test_drop_after_replace()
+        and test_drop_after_clone()
+        and test_independent_drop()
+
+        and test_many_drops()
+        and test_many_form_drops()
+        and test_many_move_drop_cycles()
+        and test_many_forget_cycles()
+        and test_statistics_stress()
+        and test_snapshot_stress();
+}
+
+proc main() -> int {
+    if run_drop_tests() {
+        give 0;
+    }
+
+    give 1;
+}

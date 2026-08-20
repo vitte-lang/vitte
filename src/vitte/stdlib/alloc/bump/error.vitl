@@ -1,0 +1,1397 @@
+space vitte/stdlib/alloc/bump/error
+
+export *
+
+use src/vitte/stdlib/alloc/bump/bump as bump
+use src/vitte/stdlib/alloc/bump/core as bump_core
+
+pick BumpErrorKind {
+    None,
+
+    InvalidBump,
+    InvalidState,
+    InvalidBlock,
+
+    InvalidRequest,
+    InvalidSize,
+    InvalidAlignment,
+    InvalidLayout,
+
+    Overflow,
+    CapacityExceeded,
+    Exhausted,
+    OutOfMemory,
+
+    InvalidMark,
+    MarkGenerationMismatch,
+    InvalidRewind,
+    RewindFailed,
+
+    ResetFailed,
+    ReleaseFailed,
+    AlreadyReleased,
+
+    InvalidPointer,
+    RuntimeFailure,
+    Internal
+}
+
+pick BumpErrorSeverity {
+    Note,
+    Warning,
+    Error,
+    Fatal
+}
+
+pick BumpErrorDomain {
+    General,
+    Bump,
+    Allocation,
+    Mark,
+    Rewind,
+    Reset,
+    Release,
+    Runtime,
+    Internal
+}
+
+pick BumpErrorOperation {
+    None,
+
+    New,
+    Allocate,
+    AllocateBytes,
+    AllocateValue,
+    AllocateArray,
+    AllocateZeroed,
+
+    Mark,
+    Rewind,
+    Reset,
+    Release,
+
+    Validate
+}
+
+form BumpErrorContext {
+    operation: BumpErrorOperation
+
+    state: bump.BumpState
+
+    used: usize
+    capacity: usize
+    remaining: usize
+
+    requested_size: usize
+    requested_align: usize
+    requested_count: usize
+
+    mark_offset: usize
+
+    generation: u64
+    revision: u64
+}
+
+form BumpError {
+    kind: BumpErrorKind
+    severity: BumpErrorSeverity
+    domain: BumpErrorDomain
+
+    context: BumpErrorContext
+
+    message: string
+}
+
+form BumpErrorStatistics {
+    total: u64
+
+    notes: u64
+    warnings: u64
+    errors: u64
+    fatals: u64
+
+    bump_errors: u64
+    allocation_errors: u64
+    mark_errors: u64
+    rewind_errors: u64
+    reset_errors: u64
+    release_errors: u64
+    runtime_errors: u64
+    internal_errors: u64
+}
+
+// -----------------------------------------------------------------------------
+// Context
+// -----------------------------------------------------------------------------
+
+proc bump_error_context_empty()
+    -> BumpErrorContext
+{
+    give BumpErrorContext {
+        operation:
+            BumpErrorOperation.None,
+
+        state:
+            bump.BumpState.Invalid,
+
+        used:
+            0,
+
+        capacity:
+            0,
+
+        remaining:
+            0,
+
+        requested_size:
+            0,
+
+        requested_align:
+            0,
+
+        requested_count:
+            0,
+
+        mark_offset:
+            0,
+
+        generation:
+            0,
+
+        revision:
+            0
+    };
+}
+
+proc bump_error_context_from_bump(
+    value: bump.Bump,
+    operation: BumpErrorOperation
+) -> BumpErrorContext {
+    give BumpErrorContext {
+        operation:
+            operation,
+
+        state:
+            bump.bump_state(value),
+
+        used:
+            bump.bump_used(value),
+
+        capacity:
+            bump.bump_capacity(value),
+
+        remaining:
+            bump.bump_remaining(value),
+
+        requested_size:
+            0,
+
+        requested_align:
+            0,
+
+        requested_count:
+            0,
+
+        mark_offset:
+            0,
+
+        generation:
+            bump.bump_generation(value),
+
+        revision:
+            bump.bump_revision(value)
+    };
+}
+
+proc bump_error_context_request(
+    value: bump.Bump,
+    operation: BumpErrorOperation,
+    size: usize,
+    align: usize,
+    count: usize
+) -> BumpErrorContext {
+    let context =
+        bump_error_context_from_bump(
+            value,
+            operation
+        );
+
+    set context.requested_size =
+        size;
+
+    set context.requested_align =
+        align;
+
+    set context.requested_count =
+        count;
+
+    give context;
+}
+
+proc bump_error_context_mark(
+    value: bump.Bump,
+    operation: BumpErrorOperation,
+    mark: bump.BumpMark
+) -> BumpErrorContext {
+    let context =
+        bump_error_context_from_bump(
+            value,
+            operation
+        );
+
+    set context.mark_offset =
+        mark.offset;
+
+    give context;
+}
+
+// -----------------------------------------------------------------------------
+// Constructors
+// -----------------------------------------------------------------------------
+
+proc bump_error(
+    kind: BumpErrorKind,
+    severity: BumpErrorSeverity,
+    domain: BumpErrorDomain,
+    context: BumpErrorContext,
+    message: string
+) -> BumpError {
+    give BumpError {
+        kind:
+            kind,
+
+        severity:
+            severity,
+
+        domain:
+            domain,
+
+        context:
+            context,
+
+        message:
+            message
+    };
+}
+
+proc bump_error_none()
+    -> BumpError
+{
+    give bump_error(
+        BumpErrorKind.None,
+        BumpErrorSeverity.Note,
+        BumpErrorDomain.General,
+        bump_error_context_empty(),
+        ""
+    );
+}
+
+proc bump_error_simple(
+    kind: BumpErrorKind,
+    message: string
+) -> BumpError {
+    give bump_error(
+        kind,
+        BumpErrorSeverity.Error,
+        bump_error_domain_for_kind(
+            kind
+        ),
+        bump_error_context_empty(),
+        message
+    );
+}
+
+proc bump_error_fatal(
+    kind: BumpErrorKind,
+    message: string
+) -> BumpError {
+    give bump_error(
+        kind,
+        BumpErrorSeverity.Fatal,
+        bump_error_domain_for_kind(
+            kind
+        ),
+        bump_error_context_empty(),
+        message
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Bump errors
+// -----------------------------------------------------------------------------
+
+proc bump_error_invalid_bump(
+    value: bump.Bump
+) -> BumpError {
+    give bump_error(
+        BumpErrorKind.InvalidBump,
+        BumpErrorSeverity.Fatal,
+        BumpErrorDomain.Bump,
+        bump_error_context_from_bump(
+            value,
+            BumpErrorOperation.Validate
+        ),
+        "bump allocator is invalid"
+    );
+}
+
+proc bump_error_invalid_state(
+    value: bump.Bump
+) -> BumpError {
+    give bump_error(
+        BumpErrorKind.InvalidState,
+        BumpErrorSeverity.Error,
+        BumpErrorDomain.Bump,
+        bump_error_context_from_bump(
+            value,
+            BumpErrorOperation.Validate
+        ),
+        "bump allocator state is invalid"
+    );
+}
+
+proc bump_error_invalid_block(
+    value: bump.Bump
+) -> BumpError {
+    give bump_error(
+        BumpErrorKind.InvalidBlock,
+        BumpErrorSeverity.Fatal,
+        BumpErrorDomain.Bump,
+        bump_error_context_from_bump(
+            value,
+            BumpErrorOperation.Validate
+        ),
+        "bump backing block is invalid"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Allocation errors
+// -----------------------------------------------------------------------------
+
+proc bump_error_invalid_request(
+    value: bump.Bump,
+    size: usize,
+    align: usize,
+    count: usize
+) -> BumpError {
+    give bump_error(
+        BumpErrorKind.InvalidRequest,
+        BumpErrorSeverity.Error,
+        BumpErrorDomain.Allocation,
+        bump_error_context_request(
+            value,
+            BumpErrorOperation.Allocate,
+            size,
+            align,
+            count
+        ),
+        "bump allocation request is invalid"
+    );
+}
+
+proc bump_error_invalid_size(
+    value: bump.Bump,
+    size: usize
+) -> BumpError {
+    give bump_error(
+        BumpErrorKind.InvalidSize,
+        BumpErrorSeverity.Error,
+        BumpErrorDomain.Allocation,
+        bump_error_context_request(
+            value,
+            BumpErrorOperation.AllocateBytes,
+            size,
+            0,
+            1
+        ),
+        "bump allocation size is invalid"
+    );
+}
+
+proc bump_error_invalid_alignment(
+    value: bump.Bump,
+    align: usize
+) -> BumpError {
+    give bump_error(
+        BumpErrorKind.InvalidAlignment,
+        BumpErrorSeverity.Error,
+        BumpErrorDomain.Allocation,
+        bump_error_context_request(
+            value,
+            BumpErrorOperation.AllocateBytes,
+            0,
+            align,
+            1
+        ),
+        "bump allocation alignment is invalid"
+    );
+}
+
+proc bump_error_invalid_layout(
+    value: bump.Bump,
+    size: usize,
+    align: usize
+) -> BumpError {
+    give bump_error(
+        BumpErrorKind.InvalidLayout,
+        BumpErrorSeverity.Error,
+        BumpErrorDomain.Allocation,
+        bump_error_context_request(
+            value,
+            BumpErrorOperation.Allocate,
+            size,
+            align,
+            1
+        ),
+        "bump allocation layout is invalid"
+    );
+}
+
+proc bump_error_overflow(
+    value: bump.Bump,
+    size: usize,
+    count: usize
+) -> BumpError {
+    give bump_error(
+        BumpErrorKind.Overflow,
+        BumpErrorSeverity.Error,
+        BumpErrorDomain.Allocation,
+        bump_error_context_request(
+            value,
+            BumpErrorOperation.AllocateArray,
+            size,
+            0,
+            count
+        ),
+        "bump allocation size overflow"
+    );
+}
+
+proc bump_error_capacity_exceeded(
+    value: bump.Bump,
+    size: usize,
+    align: usize
+) -> BumpError {
+    give bump_error(
+        BumpErrorKind.CapacityExceeded,
+        BumpErrorSeverity.Error,
+        BumpErrorDomain.Allocation,
+        bump_error_context_request(
+            value,
+            BumpErrorOperation.Allocate,
+            size,
+            align,
+            1
+        ),
+        "bump allocation exceeds remaining capacity"
+    );
+}
+
+proc bump_error_exhausted(
+    value: bump.Bump
+) -> BumpError {
+    give bump_error(
+        BumpErrorKind.Exhausted,
+        BumpErrorSeverity.Error,
+        BumpErrorDomain.Allocation,
+        bump_error_context_from_bump(
+            value,
+            BumpErrorOperation.Allocate
+        ),
+        "bump allocator is exhausted"
+    );
+}
+
+proc bump_error_out_of_memory(
+    value: bump.Bump,
+    size: usize,
+    align: usize
+) -> BumpError {
+    give bump_error(
+        BumpErrorKind.OutOfMemory,
+        BumpErrorSeverity.Fatal,
+        BumpErrorDomain.Allocation,
+        bump_error_context_request(
+            value,
+            BumpErrorOperation.Allocate,
+            size,
+            align,
+            1
+        ),
+        "bump allocator is out of memory"
+    );
+}
+
+proc bump_error_invalid_pointer(
+    value: bump.Bump
+) -> BumpError {
+    give bump_error(
+        BumpErrorKind.InvalidPointer,
+        BumpErrorSeverity.Fatal,
+        BumpErrorDomain.Allocation,
+        bump_error_context_from_bump(
+            value,
+            BumpErrorOperation.Allocate
+        ),
+        "bump allocator backing pointer is invalid"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Mark errors
+// -----------------------------------------------------------------------------
+
+proc bump_error_invalid_mark(
+    value: bump.Bump,
+    mark: bump.BumpMark
+) -> BumpError {
+    give bump_error(
+        BumpErrorKind.InvalidMark,
+        BumpErrorSeverity.Error,
+        BumpErrorDomain.Mark,
+        bump_error_context_mark(
+            value,
+            BumpErrorOperation.Mark,
+            mark
+        ),
+        "bump mark is invalid"
+    );
+}
+
+proc bump_error_mark_generation_mismatch(
+    value: bump.Bump,
+    mark: bump.BumpMark
+) -> BumpError {
+    give bump_error(
+        BumpErrorKind.MarkGenerationMismatch,
+        BumpErrorSeverity.Error,
+        BumpErrorDomain.Mark,
+        bump_error_context_mark(
+            value,
+            BumpErrorOperation.Rewind,
+            mark
+        ),
+        "bump mark belongs to another generation"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Rewind errors
+// -----------------------------------------------------------------------------
+
+proc bump_error_invalid_rewind(
+    value: bump.Bump,
+    offset: usize
+) -> BumpError {
+    let context =
+        bump_error_context_from_bump(
+            value,
+            BumpErrorOperation.Rewind
+        );
+
+    set context.mark_offset =
+        offset;
+
+    give bump_error(
+        BumpErrorKind.InvalidRewind,
+        BumpErrorSeverity.Error,
+        BumpErrorDomain.Rewind,
+        context,
+        "bump rewind offset is invalid"
+    );
+}
+
+proc bump_error_rewind_failed(
+    value: bump.Bump,
+    mark: bump.BumpMark
+) -> BumpError {
+    give bump_error(
+        BumpErrorKind.RewindFailed,
+        BumpErrorSeverity.Error,
+        BumpErrorDomain.Rewind,
+        bump_error_context_mark(
+            value,
+            BumpErrorOperation.Rewind,
+            mark
+        ),
+        "bump rewind failed"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Reset / release errors
+// -----------------------------------------------------------------------------
+
+proc bump_error_reset_failed(
+    value: bump.Bump
+) -> BumpError {
+    give bump_error(
+        BumpErrorKind.ResetFailed,
+        BumpErrorSeverity.Error,
+        BumpErrorDomain.Reset,
+        bump_error_context_from_bump(
+            value,
+            BumpErrorOperation.Reset
+        ),
+        "bump reset failed"
+    );
+}
+
+proc bump_error_release_failed(
+    value: bump.Bump
+) -> BumpError {
+    give bump_error(
+        BumpErrorKind.ReleaseFailed,
+        BumpErrorSeverity.Error,
+        BumpErrorDomain.Release,
+        bump_error_context_from_bump(
+            value,
+            BumpErrorOperation.Release
+        ),
+        "bump release failed"
+    );
+}
+
+proc bump_error_already_released(
+    value: bump.Bump
+) -> BumpError {
+    give bump_error(
+        BumpErrorKind.AlreadyReleased,
+        BumpErrorSeverity.Warning,
+        BumpErrorDomain.Release,
+        bump_error_context_from_bump(
+            value,
+            BumpErrorOperation.Release
+        ),
+        "bump allocator is already released"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Runtime / internal
+// -----------------------------------------------------------------------------
+
+proc bump_error_runtime(
+    message: string
+) -> BumpError {
+    give bump_error(
+        BumpErrorKind.RuntimeFailure,
+        BumpErrorSeverity.Fatal,
+        BumpErrorDomain.Runtime,
+        bump_error_context_empty(),
+        message
+    );
+}
+
+proc bump_error_internal(
+    message: string
+) -> BumpError {
+    give bump_error(
+        BumpErrorKind.Internal,
+        BumpErrorSeverity.Fatal,
+        BumpErrorDomain.Internal,
+        bump_error_context_empty(),
+        message
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Validation mapping
+// -----------------------------------------------------------------------------
+
+proc bump_error_from_validation(
+    value: bump.Bump,
+    validation: bump.BumpValidation
+) -> BumpError {
+    if validation.valid {
+        give bump_error_none();
+    }
+
+    if not validation.block_valid {
+        give bump_error_invalid_block(
+            value
+        );
+    }
+
+    if not validation.state_valid {
+        give bump_error_invalid_state(
+            value
+        );
+    }
+
+    if not validation.accounting_valid {
+        give bump_error_invalid_bump(
+            value
+        );
+    }
+
+    if not validation.generation_valid {
+        give bump_error_internal(
+            "bump generation metadata is invalid"
+        );
+    }
+
+    give bump_error_internal(
+        "unknown bump validation failure"
+    );
+}
+
+proc bump_error_from_core_validation(
+    profile: bump_core.BumpCoreProfile,
+    validation: bump_core.BumpCoreValidation
+) -> BumpError {
+    if validation.valid {
+        give bump_error_none();
+    }
+
+    if not validation.layout_valid {
+        give bump_error_simple(
+            BumpErrorKind.InvalidLayout,
+            "bump core layout is invalid"
+        );
+    }
+
+    if not validation.usage_valid {
+        give bump_error_simple(
+            BumpErrorKind.InvalidState,
+            "bump core usage accounting is invalid"
+        );
+    }
+
+    if not validation.state_valid {
+        give bump_error_simple(
+            BumpErrorKind.InvalidState,
+            "bump core state is invalid"
+        );
+    }
+
+    if not validation.access_valid {
+        give bump_error_simple(
+            BumpErrorKind.InvalidState,
+            "bump core access state is invalid"
+        );
+    }
+
+    if not validation.generation_valid {
+        give bump_error_internal(
+            "bump core generation metadata is invalid"
+        );
+    }
+
+    give bump_error_internal(
+        "unknown bump core validation failure"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Mark checking
+// -----------------------------------------------------------------------------
+
+proc bump_error_for_mark(
+    value: bump.Bump,
+    mark: bump.BumpMark
+) -> BumpError {
+    if mark.generation
+        != bump.bump_generation(value)
+    {
+        give bump_error_mark_generation_mismatch(
+            value,
+            mark
+        );
+    }
+
+    if mark.offset > bump.bump_used(value) {
+        give bump_error_invalid_mark(
+            value,
+            mark
+        );
+    }
+
+    give bump_error_none();
+}
+
+// -----------------------------------------------------------------------------
+// Allocation checking
+// -----------------------------------------------------------------------------
+
+proc bump_error_for_allocation(
+    value: bump.Bump,
+    size: usize,
+    align: usize
+) -> BumpError {
+    if bump.bump_is_released(value) {
+        give bump_error_already_released(
+            value
+        );
+    }
+
+    if size == 0 {
+        give bump_error_invalid_size(
+            value,
+            size
+        );
+    }
+
+    if align == 0 {
+        give bump_error_invalid_alignment(
+            value,
+            align
+        );
+    }
+
+    if not compiler_is_power_of_two(
+        align
+    ) {
+        give bump_error_invalid_alignment(
+            value,
+            align
+        );
+    }
+
+    if bump.bump_is_full(value) {
+        give bump_error_exhausted(
+            value
+        );
+    }
+
+    if not bump.bump_can_fit(
+        value,
+        size,
+        align
+    ) {
+        give bump_error_capacity_exceeded(
+            value,
+            size,
+            align
+        );
+    }
+
+    give bump_error_none();
+}
+
+// -----------------------------------------------------------------------------
+// Predicates
+// -----------------------------------------------------------------------------
+
+proc bump_error_is_none(
+    error: BumpError
+) -> bool {
+    give error.kind
+        == BumpErrorKind.None;
+}
+
+proc bump_error_is_error(
+    error: BumpError
+) -> bool {
+    give error.severity
+        == BumpErrorSeverity.Error
+        or error.severity
+            == BumpErrorSeverity.Fatal;
+}
+
+proc bump_error_is_fatal(
+    error: BumpError
+) -> bool {
+    give error.severity
+        == BumpErrorSeverity.Fatal;
+}
+
+proc bump_error_is_warning(
+    error: BumpError
+) -> bool {
+    give error.severity
+        == BumpErrorSeverity.Warning;
+}
+
+proc bump_error_is_allocation(
+    error: BumpError
+) -> bool {
+    give error.domain
+        == BumpErrorDomain.Allocation;
+}
+
+proc bump_error_is_mark(
+    error: BumpError
+) -> bool {
+    give error.domain
+        == BumpErrorDomain.Mark;
+}
+
+proc bump_error_is_rewind(
+    error: BumpError
+) -> bool {
+    give error.domain
+        == BumpErrorDomain.Rewind;
+}
+
+proc bump_error_is_reset(
+    error: BumpError
+) -> bool {
+    give error.domain
+        == BumpErrorDomain.Reset;
+}
+
+proc bump_error_is_release(
+    error: BumpError
+) -> bool {
+    give error.domain
+        == BumpErrorDomain.Release;
+}
+
+proc bump_error_is_capacity(
+    error: BumpError
+) -> bool {
+    give error.kind
+        == BumpErrorKind.CapacityExceeded
+        or error.kind
+            == BumpErrorKind.Exhausted;
+}
+
+// -----------------------------------------------------------------------------
+// Domain mapping
+// -----------------------------------------------------------------------------
+
+proc bump_error_domain_for_kind(
+    kind: BumpErrorKind
+) -> BumpErrorDomain {
+    pick kind {
+        BumpErrorKind.None {
+            give BumpErrorDomain.General;
+        }
+
+        BumpErrorKind.InvalidBump
+        | BumpErrorKind.InvalidState
+        | BumpErrorKind.InvalidBlock {
+            give BumpErrorDomain.Bump;
+        }
+
+        BumpErrorKind.InvalidRequest
+        | BumpErrorKind.InvalidSize
+        | BumpErrorKind.InvalidAlignment
+        | BumpErrorKind.InvalidLayout
+        | BumpErrorKind.Overflow
+        | BumpErrorKind.CapacityExceeded
+        | BumpErrorKind.Exhausted
+        | BumpErrorKind.OutOfMemory
+        | BumpErrorKind.InvalidPointer {
+            give BumpErrorDomain.Allocation;
+        }
+
+        BumpErrorKind.InvalidMark
+        | BumpErrorKind.MarkGenerationMismatch {
+            give BumpErrorDomain.Mark;
+        }
+
+        BumpErrorKind.InvalidRewind
+        | BumpErrorKind.RewindFailed {
+            give BumpErrorDomain.Rewind;
+        }
+
+        BumpErrorKind.ResetFailed {
+            give BumpErrorDomain.Reset;
+        }
+
+        BumpErrorKind.ReleaseFailed
+        | BumpErrorKind.AlreadyReleased {
+            give BumpErrorDomain.Release;
+        }
+
+        BumpErrorKind.RuntimeFailure {
+            give BumpErrorDomain.Runtime;
+        }
+
+        BumpErrorKind.Internal {
+            give BumpErrorDomain.Internal;
+        }
+    }
+
+    give BumpErrorDomain.Internal;
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc bump_error_statistics_empty()
+    -> BumpErrorStatistics
+{
+    give BumpErrorStatistics {
+        total: 0,
+
+        notes: 0,
+        warnings: 0,
+        errors: 0,
+        fatals: 0,
+
+        bump_errors: 0,
+        allocation_errors: 0,
+        mark_errors: 0,
+        rewind_errors: 0,
+        reset_errors: 0,
+        release_errors: 0,
+        runtime_errors: 0,
+        internal_errors: 0
+    };
+}
+
+proc bump_error_statistics_record(
+    statistics: ref mut BumpErrorStatistics,
+    error: BumpError
+) {
+    if bump_error_is_none(error) {
+        give;
+    }
+
+    set statistics.total =
+        statistics.total + 1;
+
+    pick error.severity {
+        BumpErrorSeverity.Note {
+            set statistics.notes =
+                statistics.notes + 1;
+        }
+
+        BumpErrorSeverity.Warning {
+            set statistics.warnings =
+                statistics.warnings + 1;
+        }
+
+        BumpErrorSeverity.Error {
+            set statistics.errors =
+                statistics.errors + 1;
+        }
+
+        BumpErrorSeverity.Fatal {
+            set statistics.fatals =
+                statistics.fatals + 1;
+        }
+    }
+
+    pick error.domain {
+        BumpErrorDomain.Bump {
+            set statistics.bump_errors =
+                statistics.bump_errors + 1;
+        }
+
+        BumpErrorDomain.Allocation {
+            set statistics.allocation_errors =
+                statistics.allocation_errors + 1;
+        }
+
+        BumpErrorDomain.Mark {
+            set statistics.mark_errors =
+                statistics.mark_errors + 1;
+        }
+
+        BumpErrorDomain.Rewind {
+            set statistics.rewind_errors =
+                statistics.rewind_errors + 1;
+        }
+
+        BumpErrorDomain.Reset {
+            set statistics.reset_errors =
+                statistics.reset_errors + 1;
+        }
+
+        BumpErrorDomain.Release {
+            set statistics.release_errors =
+                statistics.release_errors + 1;
+        }
+
+        BumpErrorDomain.Runtime {
+            set statistics.runtime_errors =
+                statistics.runtime_errors + 1;
+        }
+
+        BumpErrorDomain.Internal {
+            set statistics.internal_errors =
+                statistics.internal_errors + 1;
+        }
+
+        BumpErrorDomain.General {}
+    }
+}
+
+proc bump_error_statistics_reset(
+    statistics: ref mut BumpErrorStatistics
+) {
+    set *statistics =
+        bump_error_statistics_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc bump_error_kind_name(
+    kind: BumpErrorKind
+) -> string {
+    pick kind {
+        BumpErrorKind.None {
+            give "none";
+        }
+
+        BumpErrorKind.InvalidBump {
+            give "invalid-bump";
+        }
+
+        BumpErrorKind.InvalidState {
+            give "invalid-state";
+        }
+
+        BumpErrorKind.InvalidBlock {
+            give "invalid-block";
+        }
+
+        BumpErrorKind.InvalidRequest {
+            give "invalid-request";
+        }
+
+        BumpErrorKind.InvalidSize {
+            give "invalid-size";
+        }
+
+        BumpErrorKind.InvalidAlignment {
+            give "invalid-alignment";
+        }
+
+        BumpErrorKind.InvalidLayout {
+            give "invalid-layout";
+        }
+
+        BumpErrorKind.Overflow {
+            give "overflow";
+        }
+
+        BumpErrorKind.CapacityExceeded {
+            give "capacity-exceeded";
+        }
+
+        BumpErrorKind.Exhausted {
+            give "exhausted";
+        }
+
+        BumpErrorKind.OutOfMemory {
+            give "out-of-memory";
+        }
+
+        BumpErrorKind.InvalidMark {
+            give "invalid-mark";
+        }
+
+        BumpErrorKind.MarkGenerationMismatch {
+            give "mark-generation-mismatch";
+        }
+
+        BumpErrorKind.InvalidRewind {
+            give "invalid-rewind";
+        }
+
+        BumpErrorKind.RewindFailed {
+            give "rewind-failed";
+        }
+
+        BumpErrorKind.ResetFailed {
+            give "reset-failed";
+        }
+
+        BumpErrorKind.ReleaseFailed {
+            give "release-failed";
+        }
+
+        BumpErrorKind.AlreadyReleased {
+            give "already-released";
+        }
+
+        BumpErrorKind.InvalidPointer {
+            give "invalid-pointer";
+        }
+
+        BumpErrorKind.RuntimeFailure {
+            give "runtime-failure";
+        }
+
+        BumpErrorKind.Internal {
+            give "internal";
+        }
+    }
+
+    give "internal";
+}
+
+proc bump_error_severity_name(
+    severity: BumpErrorSeverity
+) -> string {
+    pick severity {
+        BumpErrorSeverity.Note {
+            give "note";
+        }
+
+        BumpErrorSeverity.Warning {
+            give "warning";
+        }
+
+        BumpErrorSeverity.Error {
+            give "error";
+        }
+
+        BumpErrorSeverity.Fatal {
+            give "fatal";
+        }
+    }
+
+    give "error";
+}
+
+proc bump_error_domain_name(
+    domain: BumpErrorDomain
+) -> string {
+    pick domain {
+        BumpErrorDomain.General {
+            give "general";
+        }
+
+        BumpErrorDomain.Bump {
+            give "bump";
+        }
+
+        BumpErrorDomain.Allocation {
+            give "allocation";
+        }
+
+        BumpErrorDomain.Mark {
+            give "mark";
+        }
+
+        BumpErrorDomain.Rewind {
+            give "rewind";
+        }
+
+        BumpErrorDomain.Reset {
+            give "reset";
+        }
+
+        BumpErrorDomain.Release {
+            give "release";
+        }
+
+        BumpErrorDomain.Runtime {
+            give "runtime";
+        }
+
+        BumpErrorDomain.Internal {
+            give "internal";
+        }
+    }
+
+    give "internal";
+}
+
+proc bump_error_operation_name(
+    operation: BumpErrorOperation
+) -> string {
+    pick operation {
+        BumpErrorOperation.None {
+            give "none";
+        }
+
+        BumpErrorOperation.New {
+            give "new";
+        }
+
+        BumpErrorOperation.Allocate {
+            give "allocate";
+        }
+
+        BumpErrorOperation.AllocateBytes {
+            give "allocate-bytes";
+        }
+
+        BumpErrorOperation.AllocateValue {
+            give "allocate-value";
+        }
+
+        BumpErrorOperation.AllocateArray {
+            give "allocate-array";
+        }
+
+        BumpErrorOperation.AllocateZeroed {
+            give "allocate-zeroed";
+        }
+
+        BumpErrorOperation.Mark {
+            give "mark";
+        }
+
+        BumpErrorOperation.Rewind {
+            give "rewind";
+        }
+
+        BumpErrorOperation.Reset {
+            give "reset";
+        }
+
+        BumpErrorOperation.Release {
+            give "release";
+        }
+
+        BumpErrorOperation.Validate {
+            give "validate";
+        }
+    }
+
+    give "none";
+}
+
+// -----------------------------------------------------------------------------
+// Error model
+// -----------------------------------------------------------------------------
+//
+// Bump errors:
+//
+//     allocator
+//       |
+//       +-- invalid state
+//       +-- invalid block
+//       +-- invalid accounting
+//
+//     allocation
+//       |
+//       +-- invalid size
+//       +-- invalid alignment
+//       +-- overflow
+//       +-- capacity exceeded
+//       +-- exhausted
+//
+//     mark
+//       |
+//       +-- invalid offset
+//       +-- generation mismatch
+//
+//     rewind
+//       |
+//       +-- forward rewind
+//       +-- invalid mark
+//
+//     lifecycle
+//       |
+//       +-- reset failure
+//       +-- duplicate release
+//
+// Bump-specific invariant:
+//
+//     allocation failure caused by insufficient capacity is normal.
+//
+// Unlike a general heap allocator, the bump allocator does not grow
+// automatically:
+//
+//     capacity exceeded
+//
+// means:
+//
+//     reset
+//     rewind
+//     or create a larger bump allocator.
+//
+// Diagnostics rendering and localization stay outside this module.

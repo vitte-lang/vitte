@@ -1,0 +1,2085 @@
+use src/vitte/stdlib/alloc/arena
+use src/vitte/stdlib/alloc/arena/alloc
+
+form Point {
+    x: int
+    y: int
+}
+
+form User {
+    id: int
+    active: bool
+}
+
+proc test_arena_new() -> bool {
+    let arena = arena_new(
+        "test",
+        4096
+    );
+
+    give arena_is_valid(arena)
+        and arena_is_empty(arena)
+        and arena_allocated(arena) == 0
+        and arena_default_block_size(arena) == 4096;
+}
+
+proc test_arena_default() -> bool {
+    let arena = arena_default(
+        "default"
+    );
+
+    give arena_is_valid(arena)
+        and arena_default_block_size(arena) == 4096;
+}
+
+proc test_allocate_bytes() -> bool {
+    let mut arena = arena_default(
+        "bytes"
+    );
+
+    let result = arena_allocate_bytes(
+        ref mut arena,
+        64
+    );
+
+    pick result {
+        Some(allocation) {
+            give allocation.layout.size == 64
+                and arena_allocated(arena) >= 64;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_allocate_bytes_small() -> bool {
+    let mut arena = arena_default(
+        "small"
+    );
+
+    let result = arena_allocate_bytes(
+        ref mut arena,
+        1
+    );
+
+    pick result {
+        Some(allocation) {
+            give allocation.layout.size == 1;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_allocate_bytes_large() -> bool {
+    let mut arena = arena_default(
+        "large"
+    );
+
+    let result = arena_allocate_bytes(
+        ref mut arena,
+        8192
+    );
+
+    pick result {
+        Some(allocation) {
+            give allocation.layout.size == 8192
+                and arena_allocated(arena) >= 8192;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_allocate_aligned() -> bool {
+    let mut arena = arena_default(
+        "aligned"
+    );
+
+    let result = arena_allocate_bytes_aligned(
+        ref mut arena,
+        128,
+        16
+    );
+
+    pick result {
+        Some(allocation) {
+            give allocation.layout.size == 128
+                and allocation.layout.align == 16;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_allocate_alignment_8() -> bool {
+    let mut arena = arena_default(
+        "align8"
+    );
+
+    let result = arena_allocate_bytes_aligned(
+        ref mut arena,
+        32,
+        8
+    );
+
+    pick result {
+        Some(allocation) {
+            give allocation.layout.align == 8;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_allocate_alignment_32() -> bool {
+    let mut arena = arena_default(
+        "align32"
+    );
+
+    let result = arena_allocate_bytes_aligned(
+        ref mut arena,
+        64,
+        32
+    );
+
+    pick result {
+        Some(allocation) {
+            give allocation.layout.align == 32;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_allocate_multiple_bytes() -> bool {
+    let mut arena = arena_default(
+        "multiple"
+    );
+
+    let first = arena_allocate_bytes(
+        ref mut arena,
+        32
+    );
+
+    let second = arena_allocate_bytes(
+        ref mut arena,
+        64
+    );
+
+    let third = arena_allocate_bytes(
+        ref mut arena,
+        128
+    );
+
+    give is_some(first)
+        and is_some(second)
+        and is_some(third)
+        and arena_allocated(arena) >= 224;
+}
+
+proc test_allocate_int() -> bool {
+    let mut arena = arena_default(
+        "int"
+    );
+
+    let result = arena_allocate(
+        ref mut arena
+    );
+
+    give is_some(result)
+        and arena_allocated(arena) > 0;
+}
+
+proc test_allocate_point() -> bool {
+    let mut arena = arena_default(
+        "point"
+    );
+
+    let result = arena_allocate(
+        ref mut arena
+    );
+
+    give is_some(result)
+        and arena_allocated(arena) > 0;
+}
+
+proc test_allocate_array() -> bool {
+    let mut arena = arena_default(
+        "array"
+    );
+
+    let result = arena_allocate_array(
+        ref mut arena,
+        16
+    );
+
+    give is_some(result)
+        and arena_allocated(arena) > 0;
+}
+
+proc test_allocate_many() -> bool {
+    let mut arena = arena_default(
+        "many"
+    );
+
+    let result = arena_allocate_many(
+        ref mut arena,
+        32
+    );
+
+    give is_some(result)
+        and arena_allocated(arena) > 0;
+}
+
+proc test_allocate_zeroed() -> bool {
+    let mut arena = arena_default(
+        "zeroed"
+    );
+
+    let result = arena_allocate_zeroed(
+        ref mut arena,
+        128,
+        8
+    );
+
+    give is_some(result)
+        and arena_allocated(arena) >= 128;
+}
+
+proc test_allocate_zeroed_type() -> bool {
+    let mut arena = arena_default(
+        "zero-type"
+    );
+
+    let result = arena_allocate_zeroed_type(
+        ref mut arena
+    );
+
+    give is_some(result)
+        and arena_allocated(arena) > 0;
+}
+
+proc test_allocate_zeroed_array() -> bool {
+    let mut arena = arena_default(
+        "zero-array"
+    );
+
+    let result = arena_allocate_zeroed_array(
+        ref mut arena,
+        16
+    );
+
+    give is_some(result)
+        and arena_allocated(arena) > 0;
+}
+
+proc test_emplace_int() -> bool {
+    let mut arena = arena_default(
+        "emplace-int"
+    );
+
+    let result = arena_emplace(
+        ref mut arena,
+        42
+    );
+
+    pick result {
+        Some(value) {
+            give *value == 42;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_emplace_negative_int() -> bool {
+    let mut arena = arena_default(
+        "negative"
+    );
+
+    let result = arena_emplace(
+        ref mut arena,
+        -42
+    );
+
+    pick result {
+        Some(value) {
+            give *value == -42;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_emplace_bool() -> bool {
+    let mut arena = arena_default(
+        "bool"
+    );
+
+    let result = arena_emplace(
+        ref mut arena,
+        true
+    );
+
+    pick result {
+        Some(value) {
+            give *value;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_emplace_point() -> bool {
+    let mut arena = arena_default(
+        "point"
+    );
+
+    let result = arena_emplace(
+        ref mut arena,
+        Point {
+            x: 10
+            y: 20
+        }
+    );
+
+    pick result {
+        Some(point) {
+            give point.x == 10
+                and point.y == 20;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_emplace_point_mutate() -> bool {
+    let mut arena = arena_default(
+        "point-mut"
+    );
+
+    let result = arena_emplace(
+        ref mut arena,
+        Point {
+            x: 1
+            y: 2
+        }
+    );
+
+    pick result {
+        Some(point) {
+            set point.x = 100;
+            set point.y = 200;
+
+            give point.x == 100
+                and point.y == 200;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_emplace_user() -> bool {
+    let mut arena = arena_default(
+        "user"
+    );
+
+    let result = arena_emplace(
+        ref mut arena,
+        User {
+            id: 7
+            active: true
+        }
+    );
+
+    pick result {
+        Some(user) {
+            give user.id == 7
+                and user.active;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_multiple_emplace() -> bool {
+    let mut arena = arena_default(
+        "multi-emplace"
+    );
+
+    let first = arena_emplace(
+        ref mut arena,
+        1
+    );
+
+    let second = arena_emplace(
+        ref mut arena,
+        2
+    );
+
+    let third = arena_emplace(
+        ref mut arena,
+        3
+    );
+
+    pick first {
+        Some(a) {
+            pick second {
+                Some(b) {
+                    pick third {
+                        Some(c) {
+                            give *a == 1
+                                and *b == 2
+                                and *c == 3;
+                        }
+
+                        None {
+                            give false;
+                        }
+                    }
+                }
+
+                None {
+                    give false;
+                }
+            }
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_allocation_increases_allocated() -> bool {
+    let mut arena = arena_default(
+        "increase"
+    );
+
+    let before = arena_allocated(
+        arena
+    );
+
+    let result = arena_allocate_bytes(
+        ref mut arena,
+        128
+    );
+
+    let after = arena_allocated(
+        arena
+    );
+
+    give is_some(result)
+        and after > before;
+}
+
+proc test_two_allocations_increase_allocated() -> bool {
+    let mut arena = arena_default(
+        "increase-two"
+    );
+
+    let before = arena_allocated(arena);
+
+    let first = arena_allocate_bytes(
+        ref mut arena,
+        64
+    );
+
+    let middle = arena_allocated(arena);
+
+    let second = arena_allocate_bytes(
+        ref mut arena,
+        64
+    );
+
+    let after = arena_allocated(arena);
+
+    give is_some(first)
+        and is_some(second)
+        and middle > before
+        and after > middle;
+}
+
+proc test_arena_becomes_nonempty() -> bool {
+    let mut arena = arena_default(
+        "nonempty"
+    );
+
+    let result = arena_allocate_bytes(
+        ref mut arena,
+        16
+    );
+
+    give is_some(result)
+        and not arena_is_empty(arena);
+}
+
+proc test_arena_stays_valid_after_allocation() -> bool {
+    let mut arena = arena_default(
+        "valid"
+    );
+
+    let result = arena_allocate_bytes(
+        ref mut arena,
+        256
+    );
+
+    give is_some(result)
+        and arena_is_valid(arena);
+}
+
+proc test_arena_profile_after_allocation() -> bool {
+    let mut arena = arena_default(
+        "profile"
+    );
+
+    let result = arena_allocate_bytes(
+        ref mut arena,
+        256
+    );
+
+    if is_none(result) {
+        give false;
+    }
+
+    let profile = arena_profile(
+        arena
+    );
+
+    give profile.allocated >= 256
+        and not profile.empty
+        and profile.active
+        and profile.valid;
+}
+
+proc test_allocation_snapshot_before() -> bool {
+    let arena = arena_default(
+        "snapshot"
+    );
+
+    let snapshot = arena_allocation_snapshot(
+        arena
+    );
+
+    give snapshot.allocated == 0;
+}
+
+proc test_allocation_snapshot_change() -> bool {
+    let mut arena = arena_default(
+        "snapshot-change"
+    );
+
+    let before = arena_allocation_snapshot(
+        arena
+    );
+
+    let result = arena_allocate_bytes(
+        ref mut arena,
+        64
+    );
+
+    if is_none(result) {
+        give false;
+    }
+
+    let after = arena_allocation_snapshot(
+        arena
+    );
+
+    give arena_allocation_snapshot_changed(
+        before,
+        after
+    );
+}
+
+proc test_allocation_snapshot_not_equal() -> bool {
+    let mut arena = arena_default(
+        "snapshot-ne"
+    );
+
+    let before = arena_allocation_snapshot(
+        arena
+    );
+
+    let result = arena_allocate_bytes(
+        ref mut arena,
+        32
+    );
+
+    if is_none(result) {
+        give false;
+    }
+
+    let after = arena_allocation_snapshot(
+        arena
+    );
+
+    give not arena_allocation_snapshot_equal(
+        before,
+        after
+    );
+}
+
+proc test_allocation_delta() -> bool {
+    let mut arena = arena_default(
+        "delta"
+    );
+
+    let before = arena_allocation_snapshot(
+        arena
+    );
+
+    let result = arena_allocate_bytes(
+        ref mut arena,
+        128
+    );
+
+    if is_none(result) {
+        give false;
+    }
+
+    let after = arena_allocation_snapshot(
+        arena
+    );
+
+    let delta = arena_allocation_delta(
+        before,
+        after
+    );
+
+    give delta.allocated > 0;
+}
+
+proc test_allocation_delta_not_zero() -> bool {
+    let mut arena = arena_default(
+        "delta-nonzero"
+    );
+
+    let before = arena_allocation_snapshot(
+        arena
+    );
+
+    let result = arena_allocate_bytes(
+        ref mut arena,
+        64
+    );
+
+    if is_none(result) {
+        give false;
+    }
+
+    let after = arena_allocation_snapshot(
+        arena
+    );
+
+    let delta = arena_allocation_delta(
+        before,
+        after
+    );
+
+    give not arena_allocation_delta_is_zero(
+        delta
+    );
+}
+
+proc test_request_bytes() -> bool {
+    let request = arena_allocation_request_bytes(
+        64,
+        8
+    );
+
+    give request.size == 64
+        and request.align == 8
+        and request.count == 1
+        and not request.zeroed;
+}
+
+proc test_request_aligned() -> bool {
+    let request = arena_allocation_request_aligned(
+        128,
+        32
+    );
+
+    give request.size == 128
+        and request.align == 32
+        and request.count == 1;
+}
+
+proc test_request_zeroed() -> bool {
+    let request = arena_allocation_request_zeroed(
+        128,
+        16
+    );
+
+    give request.size == 128
+        and request.align == 16
+        and request.zeroed;
+}
+
+proc test_request_valid() -> bool {
+    let request = arena_allocation_request_bytes(
+        64,
+        8
+    );
+
+    give arena_allocation_request_valid(
+        request
+    );
+}
+
+proc test_request_invalid_alignment_zero() -> bool {
+    let request = arena_allocation_request_bytes(
+        64,
+        0
+    );
+
+    give not arena_allocation_request_valid(
+        request
+    );
+}
+
+proc test_request_invalid_alignment_three() -> bool {
+    let request = arena_allocation_request_bytes(
+        64,
+        3
+    );
+
+    give not arena_allocation_request_valid(
+        request
+    );
+}
+
+proc test_alignment_valid_one() -> bool {
+    give arena_allocation_alignment_valid(
+        1
+    );
+}
+
+proc test_alignment_valid_two() -> bool {
+    give arena_allocation_alignment_valid(
+        2
+    );
+}
+
+proc test_alignment_valid_four() -> bool {
+    give arena_allocation_alignment_valid(
+        4
+    );
+}
+
+proc test_alignment_valid_eight() -> bool {
+    give arena_allocation_alignment_valid(
+        8
+    );
+}
+
+proc test_alignment_valid_sixteen() -> bool {
+    give arena_allocation_alignment_valid(
+        16
+    );
+}
+
+proc test_alignment_invalid_zero() -> bool {
+    give not arena_allocation_alignment_valid(
+        0
+    );
+}
+
+proc test_alignment_invalid_three() -> bool {
+    give not arena_allocation_alignment_valid(
+        3
+    );
+}
+
+proc test_alignment_invalid_six() -> bool {
+    give not arena_allocation_alignment_valid(
+        6
+    );
+}
+
+proc test_mul_no_overflow() -> bool {
+    give not arena_allocation_mul_overflows(
+        16,
+        16
+    );
+}
+
+proc test_mul_zero_no_overflow() -> bool {
+    give not arena_allocation_mul_overflows(
+        0,
+        100
+    );
+}
+
+proc test_array_size() -> bool {
+    let result = arena_allocation_array_size(
+        8,
+        10
+    );
+
+    pick result {
+        Some(size) {
+            give size == 80;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_array_size_zero_count() -> bool {
+    let result = arena_allocation_array_size(
+        8,
+        0
+    );
+
+    pick result {
+        Some(size) {
+            give size == 0;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_round_up_already_aligned() -> bool {
+    let result = arena_allocation_round_up(
+        16,
+        8
+    );
+
+    pick result {
+        Some(value) {
+            give value == 16;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_round_up_alignment() -> bool {
+    let result = arena_allocation_round_up(
+        17,
+        8
+    );
+
+    pick result {
+        Some(value) {
+            give value == 24;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_round_up_invalid_align() -> bool {
+    let result = arena_allocation_round_up(
+        16,
+        0
+    );
+
+    give is_none(result);
+}
+
+proc test_allocate_request() -> bool {
+    let mut arena = arena_default(
+        "request"
+    );
+
+    let request = arena_allocation_request_bytes(
+        128,
+        8
+    );
+
+    let result = arena_allocate_request(
+        ref mut arena,
+        request
+    );
+
+    give arena_allocation_result_is_success(
+        result
+    )
+    and arena_allocation_result_has_allocation(
+        result
+    )
+    and result.bytes == 128;
+}
+
+proc test_allocate_zeroed_request() -> bool {
+    let mut arena = arena_default(
+        "request-zero"
+    );
+
+    let request = arena_allocation_request_zeroed(
+        128,
+        8
+    );
+
+    let result = arena_allocate_request(
+        ref mut arena,
+        request
+    );
+
+    give result.success
+        and result.bytes == 128;
+}
+
+proc test_allocate_invalid_request() -> bool {
+    let mut arena = arena_default(
+        "invalid"
+    );
+
+    let request = arena_allocation_request_bytes(
+        64,
+        3
+    );
+
+    let result = arena_allocate_request(
+        ref mut arena,
+        request
+    );
+
+    give arena_allocation_result_is_failure(
+        result
+    )
+    and not result.success;
+}
+
+proc test_result_success_predicate() -> bool {
+    let mut arena = arena_default(
+        "result-success"
+    );
+
+    let request = arena_allocation_request_bytes(
+        32,
+        8
+    );
+
+    let result = arena_allocate_request(
+        ref mut arena,
+        request
+    );
+
+    give arena_allocation_result_is_success(
+        result
+    );
+}
+
+proc test_result_failure_predicate() -> bool {
+    let mut arena = arena_default(
+        "result-failure"
+    );
+
+    let request = arena_allocation_request_bytes(
+        32,
+        0
+    );
+
+    let result = arena_allocate_request(
+        ref mut arena,
+        request
+    );
+
+    give arena_allocation_result_is_failure(
+        result
+    );
+}
+
+proc test_profile_empty() -> bool {
+    let profile = arena_allocation_profile_empty();
+
+    give profile.request_count == 0
+        and profile.success_count == 0
+        and profile.failure_count == 0
+        and profile.requested_bytes == 0
+        and profile.allocated_bytes == 0;
+}
+
+proc test_profile_record_request() -> bool {
+    let mut profile = arena_allocation_profile_empty();
+
+    let request = arena_allocation_request_bytes(
+        64,
+        8
+    );
+
+    arena_allocation_profile_record_request(
+        ref mut profile,
+        request
+    );
+
+    give profile.request_count == 1
+        and profile.requested_bytes == 64
+        and profile.byte_allocations == 1;
+}
+
+proc test_profile_record_two_requests() -> bool {
+    let mut profile = arena_allocation_profile_empty();
+
+    let first = arena_allocation_request_bytes(
+        64,
+        8
+    );
+
+    let second = arena_allocation_request_bytes(
+        128,
+        8
+    );
+
+    arena_allocation_profile_record_request(
+        ref mut profile,
+        first
+    );
+
+    arena_allocation_profile_record_request(
+        ref mut profile,
+        second
+    );
+
+    give profile.request_count == 2
+        and profile.requested_bytes == 192
+        and profile.largest_request == 128
+        and profile.smallest_request == 64;
+}
+
+proc test_profile_success_rate_empty() -> bool {
+    let profile = arena_allocation_profile_empty();
+
+    give arena_allocation_profile_success_rate(
+        profile
+    ) == 1.0;
+}
+
+proc test_profile_failure_rate_empty() -> bool {
+    let profile = arena_allocation_profile_empty();
+
+    give arena_allocation_profile_failure_rate(
+        profile
+    ) == 0.0;
+}
+
+proc test_arena_allocation_used() -> bool {
+    let mut arena = arena_default(
+        "used"
+    );
+
+    let result = arena_allocate_bytes(
+        ref mut arena,
+        100
+    );
+
+    give is_some(result)
+        and arena_allocation_used(arena) >= 100;
+}
+
+proc test_arena_allocation_reserved() -> bool {
+    let mut arena = arena_default(
+        "reserved"
+    );
+
+    let result = arena_allocate_bytes(
+        ref mut arena,
+        100
+    );
+
+    give is_some(result)
+        and arena_allocation_reserved(arena) >= 100;
+}
+
+proc test_arena_allocation_live() -> bool {
+    let mut arena = arena_default(
+        "live"
+    );
+
+    let result = arena_allocate_bytes(
+        ref mut arena,
+        100
+    );
+
+    give is_some(result)
+        and arena_allocation_live(arena) >= 100;
+}
+
+proc test_arena_allocation_overhead() -> bool {
+    let mut arena = arena_default(
+        "overhead"
+    );
+
+    let result = arena_allocate_bytes(
+        ref mut arena,
+        32
+    );
+
+    give is_some(result)
+        and arena_allocation_overhead(arena) >= 0;
+}
+
+proc test_arena_utilization_empty() -> bool {
+    let arena = arena_default(
+        "util-empty"
+    );
+
+    give arena_allocation_utilization(
+        arena
+    ) == 0.0;
+}
+
+proc test_arena_utilization_after_alloc() -> bool {
+    let mut arena = arena_default(
+        "util"
+    );
+
+    let result = arena_allocate_bytes(
+        ref mut arena,
+        128
+    );
+
+    give is_some(result)
+        and arena_allocation_utilization(arena) > 0.0;
+}
+
+proc test_allocation_possible() -> bool {
+    let arena = arena_default(
+        "possible"
+    );
+
+    let request = arena_allocation_request_bytes(
+        32,
+        8
+    );
+
+    give arena_allocation_is_possible(
+        arena,
+        request
+    );
+}
+
+proc test_allocation_would_fit_default_block() -> bool {
+    let arena = arena_default(
+        "fit-default"
+    );
+
+    let request = arena_allocation_request_bytes(
+        128,
+        8
+    );
+
+    give arena_allocation_would_fit_default_block(
+        arena,
+        request
+    );
+}
+
+proc test_allocation_larger_than_default_block() -> bool {
+    let arena = arena_default(
+        "fit-large"
+    );
+
+    let request = arena_allocation_request_bytes(
+        8192,
+        8
+    );
+
+    give not arena_allocation_would_fit_default_block(
+        arena,
+        request
+    );
+}
+
+proc test_next_block_size_small() -> bool {
+    let arena = arena_default(
+        "next-small"
+    );
+
+    let request = arena_allocation_request_bytes(
+        128,
+        8
+    );
+
+    give arena_allocation_next_block_size(
+        arena,
+        request
+    ) >= 128;
+}
+
+proc test_next_block_size_large() -> bool {
+    let arena = arena_default(
+        "next-large"
+    );
+
+    let request = arena_allocation_request_bytes(
+        8192,
+        8
+    );
+
+    give arena_allocation_next_block_size(
+        arena,
+        request
+    ) >= 8192;
+}
+
+proc test_mark_before_allocation() -> bool {
+    let arena = arena_default(
+        "mark"
+    );
+
+    let mark = arena_mark(
+        arena
+    );
+
+    give mark.allocated == 0
+        and arena_mark_is_valid(
+            arena,
+            mark
+        );
+}
+
+proc test_mark_after_allocation() -> bool {
+    let mut arena = arena_default(
+        "mark-after"
+    );
+
+    let result = arena_allocate_bytes(
+        ref mut arena,
+        128
+    );
+
+    if is_none(result) {
+        give false;
+    }
+
+    let mark = arena_mark(
+        arena
+    );
+
+    give mark.allocated >= 128
+        and arena_mark_is_valid(
+            arena,
+            mark
+        );
+}
+
+proc test_rewind_restores_allocated() -> bool {
+    let mut arena = arena_default(
+        "rewind"
+    );
+
+    let first = arena_allocate_bytes(
+        ref mut arena,
+        64
+    );
+
+    if is_none(first) {
+        give false;
+    }
+
+    let mark = arena_mark(
+        arena
+    );
+
+    let second = arena_allocate_bytes(
+        ref mut arena,
+        128
+    );
+
+    if is_none(second) {
+        give false;
+    }
+
+    let success = arena_rewind(
+        ref mut arena,
+        mark
+    );
+
+    give success
+        and arena_allocated(arena) == mark.allocated;
+}
+
+proc test_bytes_until_mark() -> bool {
+    let mut arena = arena_default(
+        "mark-bytes"
+    );
+
+    let first = arena_allocate_bytes(
+        ref mut arena,
+        64
+    );
+
+    if is_none(first) {
+        give false;
+    }
+
+    let mark = arena_mark(
+        arena
+    );
+
+    let second = arena_allocate_bytes(
+        ref mut arena,
+        128
+    );
+
+    if is_none(second) {
+        give false;
+    }
+
+    give arena_bytes_until_mark(
+        arena,
+        mark
+    ) >= 128;
+}
+
+proc test_reset_clears_allocated() -> bool {
+    let mut arena = arena_default(
+        "reset"
+    );
+
+    let first = arena_allocate_bytes(
+        ref mut arena,
+        64
+    );
+
+    let second = arena_allocate_bytes(
+        ref mut arena,
+        128
+    );
+
+    if is_none(first)
+        or is_none(second)
+    {
+        give false;
+    }
+
+    arena_reset(
+        ref mut arena
+    );
+
+    give arena_allocated(arena) == 0
+        and arena_is_empty(arena);
+}
+
+proc test_reset_reusable() -> bool {
+    let mut arena = arena_default(
+        "reset-reuse"
+    );
+
+    let first = arena_allocate_bytes(
+        ref mut arena,
+        64
+    );
+
+    if is_none(first) {
+        give false;
+    }
+
+    arena_reset(
+        ref mut arena
+    );
+
+    let second = arena_allocate_bytes(
+        ref mut arena,
+        64
+    );
+
+    give is_some(second)
+        and arena_allocated(arena) >= 64;
+}
+
+proc test_many_small_allocations() -> bool {
+    let mut arena = arena_default(
+        "many-small"
+    );
+
+    let index: usize = 0;
+
+    while index < 100 {
+        let result = arena_allocate_bytes(
+            ref mut arena,
+            8
+        );
+
+        if is_none(result) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give arena_allocated(arena) >= 800;
+}
+
+proc test_many_medium_allocations() -> bool {
+    let mut arena = arena_default(
+        "many-medium"
+    );
+
+    let index: usize = 0;
+
+    while index < 32 {
+        let result = arena_allocate_bytes(
+            ref mut arena,
+            128
+        );
+
+        if is_none(result) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give arena_allocated(arena) >= 4096;
+}
+
+proc test_mixed_allocations() -> bool {
+    let mut arena = arena_default(
+        "mixed"
+    );
+
+    let a = arena_allocate_bytes(
+        ref mut arena,
+        8
+    );
+
+    let b = arena_allocate_bytes_aligned(
+        ref mut arena,
+        64,
+        16
+    );
+
+    let c = arena_emplace(
+        ref mut arena,
+        42
+    );
+
+    let d = arena_emplace(
+        ref mut arena,
+        Point {
+            x: 1
+            y: 2
+        }
+    );
+
+    give is_some(a)
+        and is_some(b)
+        and is_some(c)
+        and is_some(d)
+        and arena_allocated(arena) > 0
+        and arena_is_valid(arena);
+}
+
+proc test_large_allocation_does_not_break_arena() -> bool {
+    let mut arena = arena_default(
+        "large-valid"
+    );
+
+    let result = arena_allocate_bytes(
+        ref mut arena,
+        16384
+    );
+
+    give is_some(result)
+        and arena_is_valid(arena);
+}
+
+proc test_multiple_marks() -> bool {
+    let mut arena = arena_default(
+        "multi-mark"
+    );
+
+    let first = arena_mark(
+        arena
+    );
+
+    let a = arena_allocate_bytes(
+        ref mut arena,
+        64
+    );
+
+    if is_none(a) {
+        give false;
+    }
+
+    let second = arena_mark(
+        arena
+    );
+
+    let b = arena_allocate_bytes(
+        ref mut arena,
+        128
+    );
+
+    if is_none(b) {
+        give false;
+    }
+
+    give arena_mark_is_valid(arena, first)
+        and arena_mark_is_valid(arena, second)
+        and second.allocated > first.allocated;
+}
+
+proc test_rewind_second_mark() -> bool {
+    let mut arena = arena_default(
+        "rewind-second"
+    );
+
+    let first = arena_allocate_bytes(
+        ref mut arena,
+        64
+    );
+
+    if is_none(first) {
+        give false;
+    }
+
+    let mark = arena_mark(
+        arena
+    );
+
+    let second = arena_allocate_bytes(
+        ref mut arena,
+        128
+    );
+
+    let third = arena_allocate_bytes(
+        ref mut arena,
+        256
+    );
+
+    if is_none(second)
+        or is_none(third)
+    {
+        give false;
+    }
+
+    give arena_rewind(
+        ref mut arena,
+        mark
+    )
+    and arena_allocated(arena) == mark.allocated;
+}
+
+proc test_profile_after_many_allocations() -> bool {
+    let mut arena = arena_default(
+        "profile-many"
+    );
+
+    let index: usize = 0;
+
+    while index < 20 {
+        let result = arena_allocate_bytes(
+            ref mut arena,
+            64
+        );
+
+        if is_none(result) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    let profile = arena_profile(
+        arena
+    );
+
+    give profile.allocated >= 1280
+        and profile.valid
+        and profile.active;
+}
+
+proc test_default_block_size_preserved() -> bool {
+    let mut arena = arena_new(
+        "size",
+        8192
+    );
+
+    let result = arena_allocate_bytes(
+        ref mut arena,
+        128
+    );
+
+    give is_some(result)
+        and arena_default_block_size(arena) == 8192;
+}
+
+proc test_custom_small_block() -> bool {
+    let mut arena = arena_new(
+        "small-block",
+        256
+    );
+
+    let result = arena_allocate_bytes(
+        ref mut arena,
+        128
+    );
+
+    give is_some(result)
+        and arena_default_block_size(arena) == 256;
+}
+
+proc test_custom_large_block() -> bool {
+    let mut arena = arena_new(
+        "large-block",
+        16384
+    );
+
+    let result = arena_allocate_bytes(
+        ref mut arena,
+        4096
+    );
+
+    give is_some(result)
+        and arena_is_valid(arena);
+}
+
+proc test_allocation_result_bytes() -> bool {
+    let mut arena = arena_default(
+        "result-bytes"
+    );
+
+    let request = arena_allocation_request_bytes(
+        512,
+        8
+    );
+
+    let result = arena_allocate_request(
+        ref mut arena,
+        request
+    );
+
+    give result.success
+        and result.bytes == 512;
+}
+
+proc test_allocation_result_failure_zero_align() -> bool {
+    let mut arena = arena_default(
+        "bad-align"
+    );
+
+    let request = arena_allocation_request_bytes(
+        64,
+        0
+    );
+
+    let result = arena_allocate_request(
+        ref mut arena,
+        request
+    );
+
+    give not result.success;
+}
+
+proc test_alloc_after_rewind() -> bool {
+    let mut arena = arena_default(
+        "alloc-after-rewind"
+    );
+
+    let first = arena_allocate_bytes(
+        ref mut arena,
+        64
+    );
+
+    if is_none(first) {
+        give false;
+    }
+
+    let mark = arena_mark(
+        arena
+    );
+
+    let second = arena_allocate_bytes(
+        ref mut arena,
+        128
+    );
+
+    if is_none(second) {
+        give false;
+    }
+
+    if not arena_rewind(
+        ref mut arena,
+        mark
+    ) {
+        give false;
+    }
+
+    let third = arena_allocate_bytes(
+        ref mut arena,
+        256
+    );
+
+    give is_some(third)
+        and arena_is_valid(arena);
+}
+
+proc test_repeated_reset_and_allocate() -> bool {
+    let mut arena = arena_default(
+        "repeat-reset"
+    );
+
+    let round: usize = 0;
+
+    while round < 10 {
+        let result = arena_allocate_bytes(
+            ref mut arena,
+            128
+        );
+
+        if is_none(result) {
+            give false;
+        }
+
+        arena_reset(
+            ref mut arena
+        );
+
+        if not arena_is_empty(arena) {
+            give false;
+        }
+
+        set round = round + 1;
+    }
+
+    give arena_is_valid(arena);
+}
+
+proc test_emplace_after_reset() -> bool {
+    let mut arena = arena_default(
+        "emplace-reset"
+    );
+
+    let first = arena_emplace(
+        ref mut arena,
+        10
+    );
+
+    if is_none(first) {
+        give false;
+    }
+
+    arena_reset(
+        ref mut arena
+    );
+
+    let second = arena_emplace(
+        ref mut arena,
+        20
+    );
+
+    pick second {
+        Some(value) {
+            give *value == 20;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_allocated_monotonic_without_reset() -> bool {
+    let mut arena = arena_default(
+        "monotonic"
+    );
+
+    let first_before = arena_allocated(
+        arena
+    );
+
+    let first = arena_allocate_bytes(
+        ref mut arena,
+        32
+    );
+
+    let first_after = arena_allocated(
+        arena
+    );
+
+    let second = arena_allocate_bytes(
+        ref mut arena,
+        64
+    );
+
+    let second_after = arena_allocated(
+        arena
+    );
+
+    give is_some(first)
+        and is_some(second)
+        and first_after > first_before
+        and second_after > first_after;
+}
+
+proc test_snapshot_after_reset() -> bool {
+    let mut arena = arena_default(
+        "snapshot-reset"
+    );
+
+    let result = arena_allocate_bytes(
+        ref mut arena,
+        128
+    );
+
+    if is_none(result) {
+        give false;
+    }
+
+    let before = arena_allocation_snapshot(
+        arena
+    );
+
+    arena_reset(
+        ref mut arena
+    );
+
+    let after = arena_allocation_snapshot(
+        arena
+    );
+
+    give before.allocated > 0
+        and after.allocated == 0
+        and arena_allocation_snapshot_changed(
+            before,
+            after
+        );
+}
+
+proc test_zeroed_then_emplace() -> bool {
+    let mut arena = arena_default(
+        "zero-emplace"
+    );
+
+    let first = arena_allocate_zeroed(
+        ref mut arena,
+        64,
+        8
+    );
+
+    let second = arena_emplace(
+        ref mut arena,
+        42
+    );
+
+    give is_some(first)
+        and is_some(second)
+        and arena_is_valid(arena);
+}
+
+proc test_many_point_emplace() -> bool {
+    let mut arena = arena_default(
+        "points"
+    );
+
+    let index: int = 0;
+
+    while index < 50 {
+        let result = arena_emplace(
+            ref mut arena,
+            Point {
+                x: index
+                y: index + 1
+            }
+        );
+
+        if is_none(result) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give arena_is_valid(arena)
+        and arena_allocated(arena) > 0;
+}
+
+proc test_allocation_possible_after_reset() -> bool {
+    let mut arena = arena_default(
+        "possible-reset"
+    );
+
+    let first = arena_allocate_bytes(
+        ref mut arena,
+        64
+    );
+
+    if is_none(first) {
+        give false;
+    }
+
+    arena_reset(
+        ref mut arena
+    );
+
+    let request = arena_allocation_request_bytes(
+        64,
+        8
+    );
+
+    give arena_allocation_is_possible(
+        arena,
+        request
+    );
+}
+
+proc run_alloc_tests() -> bool {
+    give test_arena_new()
+        and test_arena_default()
+
+        and test_allocate_bytes()
+        and test_allocate_bytes_small()
+        and test_allocate_bytes_large()
+        and test_allocate_aligned()
+        and test_allocate_alignment_8()
+        and test_allocate_alignment_32()
+        and test_allocate_multiple_bytes()
+
+        and test_allocate_int()
+        and test_allocate_point()
+        and test_allocate_array()
+        and test_allocate_many()
+
+        and test_allocate_zeroed()
+        and test_allocate_zeroed_type()
+        and test_allocate_zeroed_array()
+
+        and test_emplace_int()
+        and test_emplace_negative_int()
+        and test_emplace_bool()
+        and test_emplace_point()
+        and test_emplace_point_mutate()
+        and test_emplace_user()
+        and test_multiple_emplace()
+
+        and test_allocation_increases_allocated()
+        and test_two_allocations_increase_allocated()
+        and test_arena_becomes_nonempty()
+        and test_arena_stays_valid_after_allocation()
+        and test_arena_profile_after_allocation()
+
+        and test_allocation_snapshot_before()
+        and test_allocation_snapshot_change()
+        and test_allocation_snapshot_not_equal()
+        and test_allocation_delta()
+        and test_allocation_delta_not_zero()
+
+        and test_request_bytes()
+        and test_request_aligned()
+        and test_request_zeroed()
+        and test_request_valid()
+        and test_request_invalid_alignment_zero()
+        and test_request_invalid_alignment_three()
+
+        and test_alignment_valid_one()
+        and test_alignment_valid_two()
+        and test_alignment_valid_four()
+        and test_alignment_valid_eight()
+        and test_alignment_valid_sixteen()
+        and test_alignment_invalid_zero()
+        and test_alignment_invalid_three()
+        and test_alignment_invalid_six()
+
+        and test_mul_no_overflow()
+        and test_mul_zero_no_overflow()
+        and test_array_size()
+        and test_array_size_zero_count()
+        and test_round_up_already_aligned()
+        and test_round_up_alignment()
+        and test_round_up_invalid_align()
+
+        and test_allocate_request()
+        and test_allocate_zeroed_request()
+        and test_allocate_invalid_request()
+        and test_result_success_predicate()
+        and test_result_failure_predicate()
+
+        and test_profile_empty()
+        and test_profile_record_request()
+        and test_profile_record_two_requests()
+        and test_profile_success_rate_empty()
+        and test_profile_failure_rate_empty()
+
+        and test_arena_allocation_used()
+        and test_arena_allocation_reserved()
+        and test_arena_allocation_live()
+        and test_arena_allocation_overhead()
+        and test_arena_utilization_empty()
+        and test_arena_utilization_after_alloc()
+
+        and test_allocation_possible()
+        and test_allocation_would_fit_default_block()
+        and test_allocation_larger_than_default_block()
+        and test_next_block_size_small()
+        and test_next_block_size_large()
+
+        and test_mark_before_allocation()
+        and test_mark_after_allocation()
+        and test_rewind_restores_allocated()
+        and test_bytes_until_mark()
+        and test_reset_clears_allocated()
+        and test_reset_reusable()
+
+        and test_many_small_allocations()
+        and test_many_medium_allocations()
+        and test_mixed_allocations()
+        and test_large_allocation_does_not_break_arena()
+
+        and test_multiple_marks()
+        and test_rewind_second_mark()
+        and test_profile_after_many_allocations()
+
+        and test_default_block_size_preserved()
+        and test_custom_small_block()
+        and test_custom_large_block()
+
+        and test_allocation_result_bytes()
+        and test_allocation_result_failure_zero_align()
+
+        and test_alloc_after_rewind()
+        and test_repeated_reset_and_allocate()
+        and test_emplace_after_reset()
+        and test_allocated_monotonic_without_reset()
+        and test_snapshot_after_reset()
+        and test_zeroed_then_emplace()
+        and test_many_point_emplace()
+        and test_allocation_possible_after_reset();
+}
+
+proc main() -> int {
+    if run_alloc_tests() {
+        give 0;
+    }
+
+    give 1;
+}

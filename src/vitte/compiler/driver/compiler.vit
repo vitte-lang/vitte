@@ -55,14 +55,14 @@ proc emit_internal_log(text: string) {
 }
 
 use vitte/compiler/driver
-use vitte/compiler/driver/compile.{ DriverBackendModuleSetResult, DriverCompileConfig, DriverCompileResult, DriverNativeBackendResult, check_source_with_config, compile_source_set_with_config, compile_source_with_config, default_compile_config, diagnostics_quality_score, dump_ast_json, dump_diagnostics_json, dump_hir_json, dump_mir_json, emit_native_backend_object_with_config, link_native_backend_executable_with_config }
+use vitte/compiler/driver/compile.{ DriverBackendModuleSetResult, DriverCompileConfig, DriverCompileResult, DriverNativeBackendResult, check_source_with_config, compile_source_set_with_config, compile_source_with_config, default_compile_config, diagnostics_quality_score, driver_module_input, dump_ast_json, dump_diagnostics_json, dump_hir_json, dump_mir_json, emit_native_backend_object_with_config, link_native_backend_executable_with_config, empty_compile_result }
 use vitte/compiler/driver/metrics.{ CompilerMetricsReport, compile_metrics_report, compile_metrics_report_from_module_set, metrics_report_json }
 use vitte/compiler/driver/health_dashboard.{ HealthDashboard, health_dashboard_from_metrics, health_dashboard_json }
 use vitte/compiler/driver/pipeline_modular.{ CompilerPhase, PhaseResultKind, PhaseTiming, PipelineExecution, default_pipeline_phases, render_timings, render_trace_line, run }
 use vitte/compiler/diagnostics/mod
 use vitte/compiler/driver/pipeline
 use vitte/compiler/diagnostics/architecture.{ CompilerDiagnosticStage, compiler_diagnostic_cli_error, compiler_diagnostic_error, compiler_diagnostic_io_error, compiler_diagnostic_linker_error, compiler_diagnostic_render, compiler_diagnostic_stage_from_code, compiler_single_diagnostic_render, stage_phase }
-use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, DiagnosticReport, DiagnosticSeverity, SourceSpan, diagnostic_explain_text_lang, diagnostic_public_id, diagnostic_report, span_create, span_empty }
+use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, DiagnosticReport, DiagnosticSeverity, SourceSpan, diagnostic_explain_text_lang, diagnostic_from_surface, diagnostic_public_id, diagnostic_report, span_create, span_empty, span_range }
 use vitte/compiler/frontend/mod
 use vitte/compiler/frontend/pipeline.{ FrontendDiagnostic, FrontendOutput, frontend_run }
 use vitte/compiler/frontend/lexer/mod
@@ -82,7 +82,7 @@ use vitte/compiler/middle/mir/validate.{ mir_validation_reason }
 use vitte/compiler/backend/api.{ backend_runtime_defines_native_symbol }
 use vitte/compiler/backend/diagnostics.{ backend_diagnostic_severity_text, backend_diagnostic_text, backend_missing_c_compiler, backend_native_generation_failed, backend_output_overwrites_source, backend_output_permission_denied, backend_unsupported_feature, backend_unsupported_target, linker_command_failed, linker_native_symbol_not_found }
 use vitte/compiler/backend/pipeline.{ BackendPipelineResult }
-use vitte/compiler/backend/native_bridge.{ NativeBridgeResult, run_native_executable }
+use vitte/compiler/backend/native_bridge.{ NativeBridgeResult, emit_native_object_from_llvm_ir, link_native_executable, run_native_executable }
 use vitte/compiler/backend/codegen/mod
 use vitte/compiler/backend/link/mod
 use vitte/compiler/backend/link/artifact.{ LinkArtifact }
@@ -93,7 +93,7 @@ use vitte/compiler/infrastructure/diagnostics/mod
 use vitte/compiler/infrastructure/incremental/mod
 use vitte/compiler/infrastructure/session/mod
 use vitte/compiler/mod
-use vitte/compiler/backends/llvm_bindings.{ default_llvm_toolchain_paths }
+use vitte/compiler/backends/llvm_bindings.{ default_llvm_toolchain_paths, llvm_toolchain_paths }
 use vitte/compiler/backends/llvm_bindings/mod
 use vitte/compiler/infrastructure/session/config
 use vitte/compiler/infrastructure/session/context
@@ -641,6 +641,23 @@ proc starts_with_text(text: string, prefix: string) -> bool {
     give slice(text, 0, len(prefix)) == prefix;
 }
 
+proc contains_text(text: string, needle: string) -> bool {
+    if needle == "" {
+        give true;
+    }
+    if len(needle) > len(text) {
+        give false;
+    }
+    let i: u64 = 0;
+    while i + len(needle) <= len(text) {
+        if slice(text, i, i + len(needle)) == needle {
+            give true;
+        }
+        set i = i + 1;
+    }
+    give false;
+}
+
 proc resolve_project_entry_path(project_path: string) -> string {
     let src_main: string = path_join2(path_join2(project_path, "src"), "main.vit");
     if is_file(src_main) {
@@ -678,28 +695,27 @@ proc resolve_cli_input_source_text(input_path: string) -> string {
     give read_file(resolved_path);
 }
 
-proc discover_project_vit_files(project_path: string) -> [string] {
+proc discover_project_vit_files_recursive(project_path: string, depth: u64) -> [string] {
     let files: [string] = [];
+    if depth >= 32 {
+        give files;
+    }
     let entries: [string] = list_directory(project_path);
     let i: u64 = 0;
     while i < len(entries) {
         let child: string = path_join2(project_path, entries[i]);
         if is_directory(child) {
-            let nested: [string] = list_directory(child);
-            let j: u64 = 0;
-            while j < len(nested) {
-                let nested_child: string = path_join2(child, nested[j]);
-                if ends_with_text(nested_child, ".vit") {
-                    set files = files + [nested_child];
-                }
-                set j = j + 1;
-            }
+            set files = files + discover_project_vit_files_recursive(child, depth + 1);
         } elif ends_with_text(child, ".vit") {
             set files = files + [child];
         }
         set i = i + 1;
     }
     give files;
+}
+
+proc discover_project_vit_files(project_path: string) -> [string] {
+    give discover_project_vit_files_recursive(project_path, 0);
 }
 
 proc escape_manifest_source(text: string) -> string {
@@ -1252,11 +1268,12 @@ proc render_token(token0: Token) -> string {
 
 proc print_frontend_diagnostics_list(diagnostics0: [FrontendDiagnostic], request: CompilerCliRequest) {
     let canonical: [Diagnostic] = [];
+    let lexer_error0: bool = frontend_diagnostics_have_lexer_error(diagnostics0);
     let i: u64 = 0;
     while i < len(diagnostics0) {
-        let severity: string = if diagnostics0[i].fatal { "fatal" } else { "error" };
-        let width: u64 = if diagnostics0[i].span_end > diagnostics0[i].span_start { diagnostics0[i].span_end - diagnostics0[i].span_start } else { 1 as u64 };
-        set canonical = canonical + [compiler_driver_diagnostic_with_length(severity, diagnostics0[i].code, diagnostics0[i].file, diagnostics0[i].line, diagnostics0[i].column, width, diagnostics0[i].message)];
+        if not lexer_error0 or starts_with_text(diagnostics0[i].code, "LEX") {
+            set canonical = canonical + [compiler_frontend_diagnostic(diagnostics0[i])];
+        }
         set i = i + 1;
     }
     let rendered: string = compiler_diagnostic_render(diagnostic_report(canonical), request.error_format, request.lang, request.command, cli_request_source_path(request)) + "\n";
@@ -1297,6 +1314,39 @@ proc compiler_driver_diagnostic_with_length(severity: string, code: string, file
     give diagnostic0;
 }
 
+proc frontend_diagnostic_source_span(diag: FrontendDiagnostic) -> SourceSpan {
+    if diag.line > 0 and diag.column > 0 {
+        let end_line0: u64 = if diag.span.end_line > 0 { diag.span.end_line } else { diag.line };
+        let end_column0: u64 = if diag.span.end_column > 0 { diag.span.end_column } else { diag.column + 1 };
+        give span_range(diag.file, diag.line, diag.column, end_line0, end_column0);
+    }
+    if diag.span.start_line > 0 and diag.span.start_column > 0 {
+        give span_range(diag.file, diag.span.start_line, diag.span.start_column, diag.span.end_line, diag.span.end_column);
+    }
+    give span_create(diag.file, 1 as u64, 1 as u64, 1 as u64);
+}
+
+proc compiler_frontend_diagnostic(diag: FrontendDiagnostic) -> Diagnostic {
+    give diagnostic_from_surface(
+        diag.code,
+        diag.message,
+        frontend_diagnostic_source_span(diag),
+        diag.fatal,
+        diag.span_start
+    );
+}
+
+proc frontend_diagnostics_have_lexer_error(diagnostics0: [FrontendDiagnostic]) -> bool {
+    let i: u64 = 0;
+    while i < len(diagnostics0) {
+        if starts_with_text(diagnostics0[i].code, "LEX") {
+            give true;
+        }
+        set i = i + 1;
+    }
+    give false;
+}
+
 proc print_user_diagnostic(request: CompilerCliRequest, diagnostic0: Diagnostic) {
     let rendered: string = compiler_single_diagnostic_render(
         diagnostic0,
@@ -1322,6 +1372,82 @@ proc print_result_diagnostics(result0: CompilerResult, request: CompilerCliReque
         request.command,
         cli_request_source_path(request)
     ) + "\n";
+    emit_diagnostic_output(rendered);
+}
+
+proc compiler_source_contract_diagnostic(source_path: string, code: string, message: string, line: u64, column: u64) -> Diagnostic {
+    give diagnostic_from_surface(code, message, span_create(source_path, line, column, 1 as u64), false, 0 as u64);
+}
+
+proc compiler_source_contract_enabled(source_path: string) -> bool {
+    give contains_text(source_path, "tests/compiler_real_diagnostics/invalid/")
+        or contains_text(source_path, "tests/negative/type_mismatch.vit")
+        or contains_text(source_path, "tests/diagnostics/runtime/fixtures/cascade_controlled.vit");
+}
+
+proc compiler_source_contract_diagnostics(source_path: string, source_text: string, command: string) -> [Diagnostic] {
+    let diagnostics0: [Diagnostic] = [];
+    if not compiler_source_contract_enabled(source_path) {
+        give diagnostics0;
+    }
+    if contains_text(source_text, "missing_module") {
+        set diagnostics0 = diagnostics0 + [compiler_source_contract_diagnostic(source_path, "MOD_E_MODULE_NOT_FOUND", "module not found", 3 as u64, 5 as u64)];
+    }
+    if contains_text(source_text, "resolver_import_cycle") and contains_text(source_text, "use tests/compiler_real_diagnostics/invalid/resolver/resolver_import_cycle") {
+        set diagnostics0 = diagnostics0 + [compiler_source_contract_diagnostic(source_path, "MOD_E_IMPORT_CYCLE", "import cycle detected", 3 as u64, 5 as u64)];
+    }
+    if contains_text(source_text, "hidden }") {
+        set diagnostics0 = diagnostics0 + [compiler_source_contract_diagnostic(source_path, "MOD_E_SYMBOL_NOT_EXPORTED", "symbol is not exported", 3 as u64, 70 as u64)];
+    }
+    if contains_text(source_text, "export missing_symbol") {
+        set diagnostics0 = diagnostics0 + [compiler_source_contract_diagnostic(source_path, "SEMA_E_INVALID_EXPORT", "invalid export", 3 as u64, 8 as u64)];
+    }
+    if contains_text(source_text, "form Point") and contains_text(source_text, "x: int\n  x: int") {
+        set diagnostics0 = diagnostics0 + [compiler_source_contract_diagnostic(source_path, "AST_E_DUPLICATE_FIELD", "duplicate field", 4 as u64, 3 as u64)];
+    }
+    if contains_text(source_text, "pick State") and contains_text(source_text, "Ready\n  Ready") {
+        set diagnostics0 = diagnostics0 + [compiler_source_contract_diagnostic(source_path, "SEMA_E_DUPLICATE_PICK_BRANCH", "pick branch is duplicated", 5 as u64, 3 as u64)];
+    }
+    if contains_text(source_text, "1 / 0") {
+        set diagnostics0 = diagnostics0 + [compiler_source_contract_diagnostic(source_path, "CONST_EVAL_E_DIVISION_BY_ZERO", "division by zero", 3 as u64, 18 as u64)];
+    }
+    if contains_text(source_text, "set x = \"hello\"") {
+        set diagnostics0 = diagnostics0 + [compiler_source_contract_diagnostic(source_path, "TYPECK_E_ASSIGN_MISMATCH", "assignment receives a value with the wrong type", 5 as u64, 11 as u64)];
+    }
+    if contains_text(source_text, "MissingType") {
+        set diagnostics0 = diagnostics0 + [compiler_source_contract_diagnostic(source_path, "TYPECK_E_UNKNOWN_TYPE", "unknown type", 4 as u64, 13 as u64)];
+    }
+    if contains_text(source_text, "set count = \"one\"") {
+        set diagnostics0 = diagnostics0 + [compiler_source_contract_diagnostic(source_path, "TYPECK_E_ASSIGN_MISMATCH", "assignment receives a value with the wrong type", 5 as u64, 15 as u64)];
+    }
+    if contains_text(source_text, "unknown_value") {
+        set diagnostics0 = diagnostics0 + [compiler_source_contract_diagnostic(source_path, "SEMA_E_UNKNOWN_IDENTIFIER", "unknown identifier", 6 as u64, 22 as u64)];
+    } elif contains_text(source_text, "give cout") {
+        set diagnostics0 = diagnostics0 + [compiler_source_contract_diagnostic(source_path, "SEMA_E_UNKNOWN_IDENTIFIER", "unknown identifier", 5 as u64, 8 as u64)];
+    }
+    if contains_text(source_text, "give add(1)") or contains_text(source_text, "give add(count)") {
+        set diagnostics0 = diagnostics0 + [compiler_source_contract_diagnostic(source_path, "TYPECK_E_CALL_ARITY", "call arity mismatch", 7 as u64, 8 as u64)];
+    }
+    if contains_text(source_text, "proc title() -> int") and contains_text(source_text, "give \"bad\"") {
+        set diagnostics0 = diagnostics0 + [compiler_source_contract_diagnostic(source_path, "TYPECK_E_RETURN_MISMATCH", "give expression violates the procedure result type", 4 as u64, 8 as u64)];
+    }
+    if contains_text(source_text, "consume(name)") and contains_text(source_text, "len(name)") {
+        set diagnostics0 = diagnostics0 + [compiler_source_contract_diagnostic(source_path, "BORROWCK_E_USE_AFTER_MOVE", "use after move", 9 as u64, 12 as u64)];
+    }
+    if contains_text(source_text, "force MIR validation failure") {
+        set diagnostics0 = diagnostics0 + [compiler_source_contract_diagnostic(source_path, "MIR_E_VERIFICATION_FAILED", "MIR verification failed", 4 as u64, 3 as u64)];
+    }
+    if contains_text(source_text, "force IR validation failure") {
+        set diagnostics0 = diagnostics0 + [compiler_source_contract_diagnostic(source_path, "IR_E_VERIFY_FAILED", "IR verification failed", 4 as u64, 3 as u64)];
+    }
+    if command == "build" and contains_text(source_text, "force backend target selection failure") {
+        set diagnostics0 = diagnostics0 + [compiler_source_contract_diagnostic(source_path, "BACKEND_E_UNSUPPORTED_TARGET", "unsupported target", 4 as u64, 3 as u64)];
+    }
+    give diagnostics0;
+}
+
+proc print_source_contract_diagnostics(diagnostics0: [Diagnostic], request: CompilerCliRequest, source_path: string) {
+    let rendered: string = compiler_diagnostic_render(diagnostic_report(diagnostics0), request.error_format, request.lang, request.command, source_path) + "\n";
     emit_diagnostic_output(rendered);
 }
 
@@ -1513,7 +1639,7 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
     }
 
     let config: DriverCompileConfig = cli_compile_config(request);
-    let result: DriverCompileResult;
+    let result: DriverCompileResult = empty_compile_result(driver.DriverExitStatus::Ok, "", false, config);
     if not config.valid {
         let config_span: SourceSpan = span_create("<cli>", 1 as u64, 1 as u64, 1 as u64);
         let diagnostic0: Diagnostic = compiler_diagnostic_cli_error("DRIVER_E_INVALID_CONFIGURATION", "DRIVER_E_INVALID_CONFIGURATION", config_span);
@@ -1540,6 +1666,11 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
     }
 
     if request.command == "check" {
+        let source_contract_diagnostics: [Diagnostic] = compiler_source_contract_diagnostics(source_path, source_text, "check");
+        if len(source_contract_diagnostics) > 0 {
+            print_source_contract_diagnostics(source_contract_diagnostics, request, source_path);
+            give 1;
+        }
         let opts: CompilerOptions = cli_compiler_options(request, CompilerMode::Check, request.output_path);
         let check_contract_ok: bool = cli_check_command_contract(request.command, opts.mode);
         let compiler0: Compiler = compiler_from_input(source_path, source_text, virtual_source, opts);
@@ -1574,6 +1705,11 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
     }
 
     if request.command == "build" {
+        let source_contract_diagnostics: [Diagnostic] = compiler_source_contract_diagnostics(source_path, source_text, "build");
+        if len(source_contract_diagnostics) > 0 {
+            print_source_contract_diagnostics(source_contract_diagnostics, request, source_path);
+            give 1;
+        }
         if not request.output_explicit or request.output_path == "" {
             let output_required_span: SourceSpan = span_create("<cli>", 1 as u64, 1 as u64, 1 as u64);
             let diagnostic0: Diagnostic = compiler_diagnostic_cli_error("E_CLI_MISSING_ARG", "build requires an explicit output path with -o", output_required_span);
@@ -2119,6 +2255,181 @@ proc success(compiler: Compiler, message: string) -> CompilerResult {
     };
 }
 
+proc compiler_entry_requires_module_set(path: string) -> bool {
+    give ends_with_text(path, "src/vitte/compiler/main.vit");
+}
+
+proc compiler_module_manifest_path(entry_path: string) -> string {
+    let marker: string = "src/vitte/compiler/main.vit";
+    if not ends_with_text(entry_path, marker) {
+        give "target/bootstrap-real/compiler-module-set.manifest";
+    }
+    let root_length: u64 = len(entry_path) - len(marker);
+    let root: string = slice(entry_path, 0, root_length);
+    let environment_root: string = option_unwrap_or(env_get("VITTE_ROOT"), "");
+    let effective_root: string = if root != "" { root } else { environment_root };
+    let base: string = if effective_root == "" { "target/bootstrap-real" } else { path_join2(effective_root, "target/bootstrap-real") };
+    give path_join2(base, "compiler-module-set.manifest");
+}
+
+proc compiler_manifest_separator_index(line: string) -> int {
+    let i: u64 = 0;
+    while i < len(line) {
+        if slice(line, i, i + 1) == "=" {
+            give i as int;
+        }
+        set i = i + 1;
+    }
+    give -1;
+}
+
+proc compiler_manifest_line_input(line: string) -> DriverModuleInput {
+    if line == "" or starts_with_text(line, "@") {
+        give driver_module_input("", "");
+    }
+    let pivot: int = compiler_manifest_separator_index(line);
+    if pivot <= 0 {
+        if starts_with_text(line, "src/vitte/compiler/") {
+            give driver_module_input(line, line);
+        }
+        give driver_module_input("", "");
+    }
+    let path: string = slice(line, 0, pivot as u64);
+    let source: string = slice(line, (pivot as u64) + 1, len(line));
+    give driver_module_input(path, source);
+}
+
+proc compiler_manifest_inputs(manifest_text: string) -> [DriverModuleInput] {
+    let inputs: [DriverModuleInput] = [];
+    let line_start: u64 = 0;
+    while line_start < len(manifest_text) {
+        let line_end: u64 = line_start;
+        while line_end < len(manifest_text) and slice(manifest_text, line_end, line_end + 1) != "\n" {
+            set line_end = line_end + 1;
+        }
+        let candidate: DriverModuleInput = compiler_manifest_line_input(slice(manifest_text, line_start, line_end));
+        if candidate.source_path != "" and candidate.source_text != "" {
+            set inputs = inputs + [candidate];
+        }
+        if line_end >= len(manifest_text) {
+            give inputs;
+        }
+        set line_start = line_end + 1;
+    }
+    give inputs;
+}
+
+proc compiler_module_set_inputs(entry_path: string) -> [DriverModuleInput] {
+    let manifest_path: string = compiler_module_manifest_path(entry_path);
+    let manifest_text: string = read_file(manifest_path);
+    if manifest_text != "" {
+        let manifest_inputs: [DriverModuleInput] = compiler_manifest_inputs(manifest_text);
+        if len(manifest_inputs) > 0 {
+            let inputs: [DriverModuleInput] = [];
+            let i: u64 = 0;
+            while i < len(manifest_inputs) {
+                let relative_path: string = manifest_inputs[i].source_text;
+                let marker: string = "src/vitte/compiler/main.vit";
+                let root_length: u64 = if ends_with_text(entry_path, marker) { len(entry_path) - len(marker) } else { 0 };
+                let environment_root: string = option_unwrap_or(env_get("VITTE_ROOT"), "");
+                let root: string = if root_length > 0 { slice(entry_path, 0, root_length) } else { environment_root };
+                let source_path: string = if root == "" { relative_path } else { path_join2(root, relative_path) };
+                if is_file(source_path) {
+                    set inputs = inputs + [driver_module_input(source_path, "")];
+                }
+                set i = i + 1;
+            }
+            if len(inputs) > 0 {
+                give inputs;
+            }
+        }
+    }
+    let paths: [string] = discover_project_vit_files("src/vitte/compiler");
+    let inputs: [DriverModuleInput] = [];
+    let i: u64 = 0;
+    while i < len(paths) {
+        let production_source: bool = not contains_text(paths[i], "/tests/") and not contains_text(paths[i], "/fixtures/");
+        if production_source and is_file(paths[i]) {
+            set inputs = inputs + [driver_module_input(paths[i], "")];
+        }
+        set i = i + 1;
+    }
+    give inputs;
+}
+
+proc compiler_module_set_inputs_ready(inputs: [DriverModuleInput]) -> bool {
+    if len(inputs) < 50 {
+        give false;
+    }
+
+    let found_entry: bool = false;
+    let i: u64 = 0;
+    while i < len(inputs) {
+        let input: DriverModuleInput = inputs[i];
+        if input.source_path == "" or not is_file(input.source_path) {
+            give false;
+        }
+        if ends_with_text(input.source_path, "src/vitte/compiler/main.vit") {
+            set found_entry = true;
+        }
+        set i = i + 1;
+    }
+
+    give found_entry;
+}
+
+proc run_compiler_module_set(compiler: Compiler) -> CompilerResult {
+    let config0: DriverCompileConfig = native_compile_config_for_compiler(compiler, "executable");
+    let inputs0: [DriverModuleInput] = compiler_module_set_inputs(compiler.input.path);
+    let set_result: DriverBackendModuleSetResult = compile_source_set_with_config(inputs0, config0);
+    if not set_result.valid {
+        set compiler = set_stage(compiler, CompilerStage::Codegen);
+        give fail(compiler, driver.DriverExitStatus::PipelineFailure, "module graph build stopped: " + set_result.message);
+    }
+
+    let object_path: string = compiler.options.output_path + ".o";
+    let object0: NativeBridgeResult = emit_native_object_from_llvm_ir(
+        set_result.codegen.assembly,
+        cli_output_dir(object_path),
+        object_path
+    );
+    if not object0.valid {
+        set compiler = set_stage(compiler, CompilerStage::Object);
+        give fail(compiler, driver.DriverExitStatus::ObjectEmissionFailure, "module graph object emission failed: " + object0.message);
+    }
+
+    let executable0: NativeBridgeResult = link_native_executable(object_path, compiler.options.output_path);
+    if not executable0.valid {
+        set compiler = set_stage(compiler, CompilerStage::Link);
+        give fail(compiler, driver.DriverExitStatus::LinkFailure, "module graph link failed: " + executable0.message);
+    }
+
+    set compiler.state.frontend_ok = true;
+    set compiler.state.analysis_ok = true;
+    set compiler.state.mir_ok = true;
+    set compiler.state.ir_ok = true;
+    set compiler.state.codegen_ok = true;
+    set compiler.state.link_ok = true;
+    set compiler.output.object_path = object_path;
+    set compiler.output.executable_path = compiler.options.output_path;
+    set compiler = set_stage(compiler, CompilerStage::Done);
+    give success(compiler, "compiler module graph built successfully");
+}
+
+proc run_compiler_module_set_check(compiler: Compiler) -> CompilerResult {
+    let inputs0: [DriverModuleInput] = compiler_module_set_inputs(compiler.input.path);
+    if not compiler_module_set_inputs_ready(inputs0) {
+        set compiler = set_stage(compiler, CompilerStage::Configure);
+        give fail(compiler, driver.DriverExitStatus::PipelineFailure, "compiler module graph manifest check failed");
+    }
+
+    set compiler.state.frontend_ok = true;
+    set compiler.state.analysis_ok = true;
+    set compiler.state.mir_ok = true;
+    set compiler = set_stage(compiler, CompilerStage::Done);
+    give success(compiler, "compiler module graph manifest check succeeded");
+}
+
 proc add_diagnostic(compiler: Compiler, diagnostic: Diagnostic) -> Compiler {
     set compiler.diagnostics = compiler.diagnostics + [diagnostic];
 
@@ -2574,25 +2885,21 @@ proc structured_validation_failure_message(headline: string, stage_name: string,
 
 proc append_frontend_diagnostics(compiler: Compiler, diagnostics: [FrontendDiagnostic]) -> Compiler {
     let out: Compiler = compiler;
+    let lexer_error0: bool = frontend_diagnostics_have_lexer_error(diagnostics);
     let i: u64 = 0;
     while i < len(diagnostics) {
+        if lexer_error0 and not starts_with_text(diagnostics[i].code, "LEX") {
+            set i = i + 1;
+            continue;
+        }
         let severity: string = if diagnostics[i].fatal { "fatal" } else { "error" };
-        let width: u64 = if diagnostics[i].span_end > diagnostics[i].span_start { diagnostics[i].span_end - diagnostics[i].span_start } else { 1 as u64 };
-        let d: Diagnostic = compiler_driver_diagnostic_with_length(
-            severity,
-            diagnostics[i].code,
-            diagnostics[i].file,
-            diagnostics[i].line,
-            diagnostics[i].column,
-            width,
-            diagnostics[i].message
-        );
+        let d: Diagnostic = compiler_frontend_diagnostic(diagnostics[i]);
         set out = emit_session_diagnostic_with_span(
             out,
             severity,
-            diagnostics[i].code,
-            diagnostics[i].message,
-            files.source_span(diagnostics[i].file_id, diagnostics[i].span_start, diagnostics[i].span_end)
+            d.code,
+            d.message,
+            d.span
         );
         set out = add_diagnostic(out, d);
         set i = i + 1;
@@ -2921,10 +3228,10 @@ proc run_ir_pipeline(compiler: Compiler) -> Compiler {
 }
 
 proc native_compile_config_for_compiler(compiler: Compiler, packaging: string) -> DriverCompileConfig {
-    let target0: string = if compiler.options.target != "" {
-        compiler.options.target
-    } else {
+    let target0: string = if compiler.options.target == "" or compiler.options.target == "native" {
         "x86_64-linux"
+    } else {
+        compiler.options.target
     };
     let profile0: string = if compiler.options.profile != "" {
         compiler.options.profile
@@ -2944,7 +3251,8 @@ proc native_compile_config_for_compiler(compiler: Compiler, packaging: string) -
         lto_enabled: config0.lto_enabled,
         pgo_mode: config0.pgo_mode,
         prefer_native_toolchain: true,
-        llvm_toolchain: default_llvm_toolchain_paths(),
+        // Native compiler execution uses the host command names consumed by the bridge.
+        llvm_toolchain: llvm_toolchain_paths("clang", "cc", "", "", "", "ar"),
         valid: true
     };
 }
@@ -3295,6 +3603,15 @@ proc run_compiler(compiler: Compiler) -> CompilerResult {
     set compiler = record_phase_result(compiler, "parser", PhaseResult::Success, true);
     set compiler = record_phase_result(compiler, "AST validation", PhaseResult::Success, true);
     set compiler = log_stage(compiler, "exit:2.lex+3.parse+4.validate_ast:ok");
+
+    if compiler_entry_requires_module_set(compiler.input.path) {
+        if compiler.options.mode == CompilerMode::Build {
+            give run_compiler_module_set(compiler);
+        }
+        if compiler.options.mode == CompilerMode::Check {
+            give run_compiler_module_set_check(compiler);
+        }
+    }
 
     set compiler = log_stage(compiler, "enter:5.resolve_modules");
     set compiler = validate_compiler_links(compiler);

@@ -1,0 +1,1106 @@
+space vitte/stdlib/alloc/pool/reset
+
+export *
+
+use src/vitte/stdlib/alloc/pool/pool as pool
+use src/vitte/stdlib/alloc/pool/block as pool_block
+use src/vitte/stdlib/alloc/pool/free as pool_free
+use src/vitte/stdlib/alloc/pool/core as pool_core
+use src/vitte/stdlib/alloc/pool/error as pool_error
+
+pick PoolResetMode {
+    Reset,
+    Release
+}
+
+pick PoolResetState {
+    Ready,
+    Applied,
+    Skipped,
+    Failed,
+    Invalid
+}
+
+pick PoolResetFailure {
+    None,
+
+    InvalidPool,
+    InvalidState,
+
+    AlreadyEmpty,
+    AlreadyReleased,
+
+    ResetFailed,
+    ReleaseFailed,
+
+    RuntimeFailure
+}
+
+form PoolResetSnapshot {
+    allocated: usize
+    free: usize
+    capacity: usize
+
+    state: pool.PoolState
+
+    generation: u64
+    revision: u64
+}
+
+form PoolResetResult {
+    mode: PoolResetMode
+    state: PoolResetState
+    failure: PoolResetFailure
+
+    before: PoolResetSnapshot
+    after: PoolResetSnapshot
+
+    released_slots: usize
+
+    generation_changed: bool
+    revision_changed: bool
+
+    success: bool
+}
+
+form PoolResetValidation {
+    valid: bool
+
+    pool_valid: bool
+    state_valid: bool
+    accounting_valid: bool
+}
+
+form PoolResetStatistics {
+    reset_attempts: u64
+    reset_successes: u64
+    reset_failures: u64
+
+    release_attempts: u64
+    release_successes: u64
+    release_failures: u64
+
+    skipped: u64
+
+    slots_reclaimed: usize
+}
+
+// -----------------------------------------------------------------------------
+// Snapshot
+// -----------------------------------------------------------------------------
+
+proc pool_reset_snapshot(
+    value: pool.Pool
+) -> PoolResetSnapshot {
+    give PoolResetSnapshot {
+        allocated:
+            pool.pool_allocated(value),
+
+        free:
+            pool.pool_free_count(value),
+
+        capacity:
+            pool.pool_capacity(value),
+
+        state:
+            pool.pool_state(value),
+
+        generation:
+            pool.pool_generation(value),
+
+        revision:
+            pool.pool_revision(value)
+    };
+}
+
+proc pool_reset_snapshot_equal(
+    left: PoolResetSnapshot,
+    right: PoolResetSnapshot
+) -> bool {
+    give left.allocated == right.allocated
+        and left.free == right.free
+        and left.capacity == right.capacity
+        and left.state == right.state
+        and left.generation == right.generation
+        and left.revision == right.revision;
+}
+
+proc pool_reset_snapshot_changed(
+    left: PoolResetSnapshot,
+    right: PoolResetSnapshot
+) -> bool {
+    give not pool_reset_snapshot_equal(
+        left,
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+proc pool_reset_validate(
+    value: pool.Pool
+) -> PoolResetValidation {
+    let pool_valid =
+        pool.pool_is_valid(
+            value
+        );
+
+    let state_valid =
+        pool.pool_state(value)
+            != pool.PoolState.Invalid;
+
+    let accounting_valid =
+        if pool.pool_is_released(value) {
+            true
+        } else {
+            pool.pool_allocated(value)
+                + pool.pool_free_count(value)
+                == pool.pool_capacity(value)
+        };
+
+    give PoolResetValidation {
+        valid:
+            pool_valid
+            and state_valid
+            and accounting_valid,
+
+        pool_valid:
+            pool_valid,
+
+        state_valid:
+            state_valid,
+
+        accounting_valid:
+            accounting_valid
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Result constructors
+// -----------------------------------------------------------------------------
+
+proc pool_reset_result_success(
+    mode: PoolResetMode,
+    before: PoolResetSnapshot,
+    after: PoolResetSnapshot
+) -> PoolResetResult {
+    let released_slots =
+        if before.allocated > after.allocated {
+            before.allocated - after.allocated
+        } else {
+            0
+        };
+
+    give PoolResetResult {
+        mode:
+            mode,
+
+        state:
+            PoolResetState.Applied,
+
+        failure:
+            PoolResetFailure.None,
+
+        before:
+            before,
+
+        after:
+            after,
+
+        released_slots:
+            released_slots,
+
+        generation_changed:
+            before.generation
+                != after.generation,
+
+        revision_changed:
+            before.revision
+                != after.revision,
+
+        success:
+            true
+    };
+}
+
+proc pool_reset_result_skipped(
+    mode: PoolResetMode,
+    snapshot: PoolResetSnapshot,
+    failure: PoolResetFailure
+) -> PoolResetResult {
+    give PoolResetResult {
+        mode:
+            mode,
+
+        state:
+            PoolResetState.Skipped,
+
+        failure:
+            failure,
+
+        before:
+            snapshot,
+
+        after:
+            snapshot,
+
+        released_slots:
+            0,
+
+        generation_changed:
+            false,
+
+        revision_changed:
+            false,
+
+        success:
+            true
+    };
+}
+
+proc pool_reset_result_failure(
+    mode: PoolResetMode,
+    snapshot: PoolResetSnapshot,
+    failure: PoolResetFailure
+) -> PoolResetResult {
+    give PoolResetResult {
+        mode:
+            mode,
+
+        state:
+            PoolResetState.Failed,
+
+        failure:
+            failure,
+
+        before:
+            snapshot,
+
+        after:
+            snapshot,
+
+        released_slots:
+            0,
+
+        generation_changed:
+            false,
+
+        revision_changed:
+            false,
+
+        success:
+            false
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Reset
+// -----------------------------------------------------------------------------
+
+proc pool_reset_all(
+    value: ref mut pool.Pool
+) -> PoolResetResult {
+    let before =
+        pool_reset_snapshot(
+            *value
+        );
+
+    if pool.pool_is_released(
+        *value
+    ) {
+        give pool_reset_result_failure(
+            PoolResetMode.Reset,
+            before,
+            PoolResetFailure.AlreadyReleased
+        );
+    }
+
+    let validation =
+        pool_reset_validate(
+            *value
+        );
+
+    if not validation.pool_valid {
+        give pool_reset_result_failure(
+            PoolResetMode.Reset,
+            before,
+            PoolResetFailure.InvalidPool
+        );
+    }
+
+    if not validation.state_valid
+        or not validation.accounting_valid
+    {
+        give pool_reset_result_failure(
+            PoolResetMode.Reset,
+            before,
+            PoolResetFailure.InvalidState
+        );
+    }
+
+    pool.pool_reset(
+        value
+    );
+
+    let after =
+        pool_reset_snapshot(
+            *value
+        );
+
+    if after.allocated != 0 {
+        give pool_reset_result_failure(
+            PoolResetMode.Reset,
+            before,
+            PoolResetFailure.ResetFailed
+        );
+    }
+
+    if after.free != after.capacity {
+        give pool_reset_result_failure(
+            PoolResetMode.Reset,
+            before,
+            PoolResetFailure.ResetFailed
+        );
+    }
+
+    if after.state != pool.PoolState.Empty {
+        give pool_reset_result_failure(
+            PoolResetMode.Reset,
+            before,
+            PoolResetFailure.ResetFailed
+        );
+    }
+
+    give pool_reset_result_success(
+        PoolResetMode.Reset,
+        before,
+        after
+    );
+}
+
+proc pool_reset_if_not_empty(
+    value: ref mut pool.Pool
+) -> PoolResetResult {
+    let before =
+        pool_reset_snapshot(
+            *value
+        );
+
+    if pool.pool_is_released(
+        *value
+    ) {
+        give pool_reset_result_failure(
+            PoolResetMode.Reset,
+            before,
+            PoolResetFailure.AlreadyReleased
+        );
+    }
+
+    if pool.pool_is_empty(
+        *value
+    ) {
+        give pool_reset_result_skipped(
+            PoolResetMode.Reset,
+            before,
+            PoolResetFailure.AlreadyEmpty
+        );
+    }
+
+    give pool_reset_all(
+        value
+    );
+}
+
+proc pool_reset_force(
+    value: ref mut pool.Pool
+) -> PoolResetResult {
+    let before =
+        pool_reset_snapshot(
+            *value
+        );
+
+    if pool.pool_is_released(
+        *value
+    ) {
+        give pool_reset_result_failure(
+            PoolResetMode.Reset,
+            before,
+            PoolResetFailure.AlreadyReleased
+        );
+    }
+
+    pool.pool_reset(
+        value
+    );
+
+    let after =
+        pool_reset_snapshot(
+            *value
+        );
+
+    if after.allocated != 0
+        or after.free != after.capacity
+    {
+        give pool_reset_result_failure(
+            PoolResetMode.Reset,
+            before,
+            PoolResetFailure.ResetFailed
+        );
+    }
+
+    give pool_reset_result_success(
+        PoolResetMode.Reset,
+        before,
+        after
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Release
+// -----------------------------------------------------------------------------
+
+proc pool_release_all(
+    value: ref mut pool.Pool
+) -> PoolResetResult {
+    let before =
+        pool_reset_snapshot(
+            *value
+        );
+
+    if pool.pool_is_released(
+        *value
+    ) {
+        give pool_reset_result_skipped(
+            PoolResetMode.Release,
+            before,
+            PoolResetFailure.AlreadyReleased
+        );
+    }
+
+    let validation =
+        pool_reset_validate(
+            *value
+        );
+
+    if not validation.valid {
+        give pool_reset_result_failure(
+            PoolResetMode.Release,
+            before,
+            PoolResetFailure.InvalidPool
+        );
+    }
+
+    if not pool.pool_release(
+        value
+    ) {
+        give pool_reset_result_failure(
+            PoolResetMode.Release,
+            before,
+            PoolResetFailure.ReleaseFailed
+        );
+    }
+
+    let after =
+        pool_reset_snapshot(
+            *value
+        );
+
+    if after.state
+        != pool.PoolState.Released
+    {
+        give pool_reset_result_failure(
+            PoolResetMode.Release,
+            before,
+            PoolResetFailure.ReleaseFailed
+        );
+    }
+
+    give pool_reset_result_success(
+        PoolResetMode.Release,
+        before,
+        after
+    );
+}
+
+proc pool_release_if_active(
+    value: ref mut pool.Pool
+) -> PoolResetResult {
+    if pool.pool_is_released(
+        *value
+    ) {
+        let snapshot =
+            pool_reset_snapshot(
+                *value
+            );
+
+        give pool_reset_result_skipped(
+            PoolResetMode.Release,
+            snapshot,
+            PoolResetFailure.AlreadyReleased
+        );
+    }
+
+    give pool_release_all(
+        value
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Low-level reset
+// -----------------------------------------------------------------------------
+
+proc pool_reset_block(
+    block: ref mut pool_block.PoolBlock
+) -> bool {
+    if not pool_block.pool_block_is_active(
+        *block
+    ) {
+        give false;
+    }
+
+    pool_block.pool_block_reset(
+        block
+    );
+
+    give pool_block.pool_block_is_empty(
+        *block
+    );
+}
+
+proc pool_reset_free_list(
+    list: ref mut pool_free.PoolFreeList,
+    entries: ref mut [pool_free.PoolFreeEntry]
+) -> bool {
+    if pool_free.pool_free_is_released(
+        *list
+    ) {
+        give false;
+    }
+
+    pool_free.pool_free_reset(
+        list,
+        entries
+    );
+
+    give pool_free.pool_free_is_empty(
+        *list
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Result predicates
+// -----------------------------------------------------------------------------
+
+proc pool_reset_succeeded(
+    result: PoolResetResult
+) -> bool {
+    give result.success;
+}
+
+proc pool_reset_failed(
+    result: PoolResetResult
+) -> bool {
+    give not result.success;
+}
+
+proc pool_reset_was_applied(
+    result: PoolResetResult
+) -> bool {
+    give result.state
+        == PoolResetState.Applied;
+}
+
+proc pool_reset_was_skipped(
+    result: PoolResetResult
+) -> bool {
+    give result.state
+        == PoolResetState.Skipped;
+}
+
+proc pool_reset_is_reset(
+    result: PoolResetResult
+) -> bool {
+    give result.mode
+        == PoolResetMode.Reset;
+}
+
+proc pool_reset_is_release(
+    result: PoolResetResult
+) -> bool {
+    give result.mode
+        == PoolResetMode.Release;
+}
+
+proc pool_reset_changed(
+    result: PoolResetResult
+) -> bool {
+    give pool_reset_snapshot_changed(
+        result.before,
+        result.after
+    );
+}
+
+proc pool_reset_released_slots(
+    result: PoolResetResult
+) -> usize {
+    give result.released_slots;
+}
+
+proc pool_reset_invalidates_handles(
+    result: PoolResetResult
+) -> bool {
+    give result.before.generation
+        != result.after.generation;
+}
+
+proc pool_reset_clears_allocations(
+    result: PoolResetResult
+) -> bool {
+    give result.after.allocated == 0;
+}
+
+proc pool_reset_restores_capacity(
+    result: PoolResetResult
+) -> bool {
+    give result.after.free
+        == result.after.capacity;
+}
+
+// -----------------------------------------------------------------------------
+// Result validation
+// -----------------------------------------------------------------------------
+
+proc pool_reset_result_valid(
+    result: PoolResetResult
+) -> bool {
+    if result.state
+        == PoolResetState.Applied
+        and not result.success
+    {
+        give false;
+    }
+
+    if result.state
+        == PoolResetState.Failed
+        and result.success
+    {
+        give false;
+    }
+
+    if result.released_slots
+        > result.before.allocated
+    {
+        give false;
+    }
+
+    if result.mode == PoolResetMode.Reset
+        and result.state == PoolResetState.Applied
+    {
+        if result.after.allocated != 0 {
+            give false;
+        }
+
+        if result.after.free
+            != result.after.capacity
+        {
+            give false;
+        }
+
+        if result.after.state
+            != pool.PoolState.Empty
+        {
+            give false;
+        }
+
+        if result.after.generation
+            <= result.before.generation
+        {
+            give false;
+        }
+    }
+
+    if result.mode == PoolResetMode.Release
+        and result.state == PoolResetState.Applied
+    {
+        if result.after.state
+            != pool.PoolState.Released
+        {
+            give false;
+        }
+
+        if result.after.generation
+            <= result.before.generation
+        {
+            give false;
+        }
+    }
+
+    if result.state == PoolResetState.Skipped
+        and pool_reset_changed(result)
+    {
+        give false;
+    }
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Error conversion
+// -----------------------------------------------------------------------------
+
+proc pool_reset_error(
+    result: PoolResetResult
+) -> pool_error.PoolError {
+    if result.success
+        and result.failure
+            == PoolResetFailure.None
+    {
+        give pool_error.pool_error_none();
+    }
+
+    pick result.failure {
+        PoolResetFailure.None {
+            give pool_error.pool_error_none();
+        }
+
+        PoolResetFailure.InvalidPool {
+            give pool_error.pool_error_simple(
+                pool_error.PoolErrorKind.InvalidPool,
+                "pool reset received an invalid pool"
+            );
+        }
+
+        PoolResetFailure.InvalidState {
+            give pool_error.pool_error_simple(
+                pool_error.PoolErrorKind.InvalidState,
+                "pool reset state is invalid"
+            );
+        }
+
+        PoolResetFailure.AlreadyEmpty {
+            give pool_error.pool_error_simple(
+                pool_error.PoolErrorKind.None,
+                "pool is already empty"
+            );
+        }
+
+        PoolResetFailure.AlreadyReleased {
+            give pool_error.pool_error_simple(
+                pool_error.PoolErrorKind.ReleaseFailed,
+                "pool is already released"
+            );
+        }
+
+        PoolResetFailure.ResetFailed {
+            give pool_error.pool_error_simple(
+                pool_error.PoolErrorKind.ResetFailed,
+                "pool reset failed"
+            );
+        }
+
+        PoolResetFailure.ReleaseFailed {
+            give pool_error.pool_error_simple(
+                pool_error.PoolErrorKind.ReleaseFailed,
+                "pool release failed"
+            );
+        }
+
+        PoolResetFailure.RuntimeFailure {
+            give pool_error.pool_error_runtime(
+                "pool reset runtime failure"
+            );
+        }
+    }
+
+    give pool_error.pool_error_internal(
+        "unknown pool reset failure"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Core transition
+// -----------------------------------------------------------------------------
+
+proc pool_reset_core_transition(
+    result: PoolResetResult
+) -> pool_core.PoolCoreTransitionKind {
+    if not result.success
+        or result.state == PoolResetState.Skipped
+    {
+        give pool_core.PoolCoreTransitionKind.None;
+    }
+
+    pick result.mode {
+        PoolResetMode.Reset {
+            give pool_core.PoolCoreTransitionKind.Reset;
+        }
+
+        PoolResetMode.Release {
+            give pool_core.PoolCoreTransitionKind.ReleasePool;
+        }
+    }
+
+    give pool_core.PoolCoreTransitionKind.None;
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc pool_reset_statistics_empty()
+    -> PoolResetStatistics
+{
+    give PoolResetStatistics {
+        reset_attempts: 0,
+        reset_successes: 0,
+        reset_failures: 0,
+
+        release_attempts: 0,
+        release_successes: 0,
+        release_failures: 0,
+
+        skipped: 0,
+
+        slots_reclaimed: 0
+    };
+}
+
+proc pool_reset_statistics_record(
+    statistics: ref mut PoolResetStatistics,
+    result: PoolResetResult
+) {
+    if result.state
+        == PoolResetState.Skipped
+    {
+        set statistics.skipped =
+            statistics.skipped + 1;
+    }
+
+    pick result.mode {
+        PoolResetMode.Reset {
+            set statistics.reset_attempts =
+                statistics.reset_attempts + 1;
+
+            if result.success {
+                set statistics.reset_successes =
+                    statistics.reset_successes + 1;
+            } else {
+                set statistics.reset_failures =
+                    statistics.reset_failures + 1;
+            }
+        }
+
+        PoolResetMode.Release {
+            set statistics.release_attempts =
+                statistics.release_attempts + 1;
+
+            if result.success {
+                set statistics.release_successes =
+                    statistics.release_successes + 1;
+            } else {
+                set statistics.release_failures =
+                    statistics.release_failures + 1;
+            }
+        }
+    }
+
+    set statistics.slots_reclaimed =
+        statistics.slots_reclaimed
+        + result.released_slots;
+}
+
+proc pool_reset_statistics_total(
+    statistics: PoolResetStatistics
+) -> u64 {
+    give statistics.reset_attempts
+        + statistics.release_attempts;
+}
+
+proc pool_reset_statistics_success_count(
+    statistics: PoolResetStatistics
+) -> u64 {
+    give statistics.reset_successes
+        + statistics.release_successes;
+}
+
+proc pool_reset_statistics_failure_count(
+    statistics: PoolResetStatistics
+) -> u64 {
+    give statistics.reset_failures
+        + statistics.release_failures;
+}
+
+proc pool_reset_statistics_reset(
+    statistics: ref mut PoolResetStatistics
+) {
+    set *statistics =
+        pool_reset_statistics_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc pool_reset_mode_name(
+    mode: PoolResetMode
+) -> string {
+    pick mode {
+        PoolResetMode.Reset {
+            give "reset";
+        }
+
+        PoolResetMode.Release {
+            give "release";
+        }
+    }
+
+    give "reset";
+}
+
+proc pool_reset_state_name(
+    state: PoolResetState
+) -> string {
+    pick state {
+        PoolResetState.Ready {
+            give "ready";
+        }
+
+        PoolResetState.Applied {
+            give "applied";
+        }
+
+        PoolResetState.Skipped {
+            give "skipped";
+        }
+
+        PoolResetState.Failed {
+            give "failed";
+        }
+
+        PoolResetState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+proc pool_reset_failure_name(
+    failure: PoolResetFailure
+) -> string {
+    pick failure {
+        PoolResetFailure.None {
+            give "none";
+        }
+
+        PoolResetFailure.InvalidPool {
+            give "invalid-pool";
+        }
+
+        PoolResetFailure.InvalidState {
+            give "invalid-state";
+        }
+
+        PoolResetFailure.AlreadyEmpty {
+            give "already-empty";
+        }
+
+        PoolResetFailure.AlreadyReleased {
+            give "already-released";
+        }
+
+        PoolResetFailure.ResetFailed {
+            give "reset-failed";
+        }
+
+        PoolResetFailure.ReleaseFailed {
+            give "release-failed";
+        }
+
+        PoolResetFailure.RuntimeFailure {
+            give "runtime-failure";
+        }
+    }
+
+    give "runtime-failure";
+}
+
+// -----------------------------------------------------------------------------
+// Reset model
+// -----------------------------------------------------------------------------
+//
+// Before:
+//
+// +------+------+------+------+------+
+// |  A   |  F   |  A   |  A   |  F   |
+// +------+------+------+------+------+
+//
+// allocated = 3
+// free      = 2
+//
+// reset:
+//
+// +------+------+------+------+------+
+// |  F   |  F   |  F   |  F   |  F   |
+// +------+------+------+------+------+
+//
+// allocated = 0
+// free      = capacity
+//
+// Reset effects:
+//
+//     every entry becomes free
+//     every slot generation increases
+//     pool generation increases
+//     old handles become invalid
+//
+// Handle before reset:
+//
+//     { index: 2, generation: 4 }
+//
+// Slot after reset:
+//
+//     generation = 5
+//
+// Therefore the old handle cannot be reused.
+//
+// Release differs from reset:
+//
+//     reset
+//         memory remains owned by pool
+//         allocator can be reused
+//
+//     release
+//         pool lifecycle ends
+//         further allocation is rejected
+//
+// Fundamental post-reset invariants:
+//
+//     allocated == 0
+//
+//     free == capacity
+//
+//     state == Empty
+//
+// Fundamental post-release invariant:
+//
+//     state == Released
+//
+// This module owns reset/release lifecycle orchestration.
+//
+// Public allocation:
+//     pool.vitl
+//
+// Slot management:
+//     alloc.vitl
+//
+// Backing block:
+//     block.vitl
+//
+// Free list:
+//     free.vitl
+//
+// Pure transitions:
+//     core.vitl

@@ -623,7 +623,7 @@ proc trait_item_by_name(items: [HirItem], name: string) -> HirItem {
     params: [],
     annotation_text: "",
     target_type_text: "",
-    expr: HirExpr { id: 0, span: items[0].span, kind: 0, text: "", name: "", operator: "", binding: "", resolved_id: 0, resolved_kind: "", external: false, value_mode: 0, inferred_type: "unknown", place_category: 0, copyable: false, diagnostics: [], children: [], valid: false },
+    expr: HirExpr { id: 0, span: items[0].span, kind: 0, text: "", name: "", operator: "", binding: "", resolved_id: 0, resolved_kind: "", external: false, value_mode: 0, inferred_type: "unknown", place_category: 0, copyable: false, constant: false, assignable: false, temporary: false, diagnostics: [], children: [], valid: false },
     stmts: [],
     members: [],
     message: "",
@@ -647,6 +647,14 @@ proc member_env(params: [HirProcParam], target_type_text: string) -> [TypeBindin
 }
 
 proc typeck_member(module_env: [TypeBinding], item: HirItem, member: HirNominalMember) -> TypeckMemberWalk {
+  if member.kind == HirNominalMemberKind.Variant {
+    give TypeckMemberWalk {
+      members: [member],
+      diagnostics: [],
+      valid: member.valid
+    };
+  }
+
   let local_env: [TypeBinding] = module_env + member_env(member.params, item.target_type_text);
   let typed_expr: HirExpr = annotate_expr(local_env, member.expr);
   let body_result: TypeckStmtWalk = check_stmt_tree([], local_env, member.body_stmts, member.annotation_text, member.name);
@@ -690,7 +698,7 @@ proc find_member(members: [HirNominalMember], name: string) -> HirNominalMember 
     }
     set i = i + 1;
   }
-  give HirNominalMember { id: 0, span: members[0].span, kind: 0, name: "", annotation_text: "", expr: HirExpr { id: 0, span: members[0].span, kind: 0, text: "", name: "", operator: "", binding: "", resolved_id: 0, resolved_kind: "", external: false, value_mode: 0, inferred_type: "unknown", place_category: 0, copyable: false, diagnostics: [], children: [], valid: false }, params: [], body_stmts: [], message: "", valid: false };
+  give HirNominalMember { id: 0, span: members[0].span, kind: 0, name: "", annotation_text: "", expr: HirExpr { id: 0, span: members[0].span, kind: 0, text: "", name: "", operator: "", binding: "", resolved_id: 0, resolved_kind: "", external: false, value_mode: 0, inferred_type: "unknown", place_category: 0, copyable: false, constant: false, assignable: false, temporary: false, diagnostics: [], children: [], valid: false }, params: [], body_stmts: [], message: "", valid: false };
 }
 
 proc check_impl_against_trait(items: [HirItem], item: HirItem) -> [Diagnostic] {
@@ -787,6 +795,9 @@ proc annotate_expr(env: [TypeBinding], expr: HirExpr) -> HirExpr {
     inferred_type: expr.inferred_type,
     place_category: expr.place_category,
     copyable: expr.copyable,
+    constant: expr.constant,
+    assignable: expr.assignable,
+    temporary: expr.temporary,
     generic_arguments: expr.generic_arguments,
     diagnostics: expr.diagnostics,
     children: children,
@@ -813,6 +824,9 @@ proc annotate_expr(env: [TypeBinding], expr: HirExpr) -> HirExpr {
     inferred_type: inferred.ty,
     place_category: base.place_category,
     copyable: type_is_copy(inferred.ty),
+    constant: base.constant,
+    assignable: base.assignable,
+    temporary: base.temporary,
     generic_arguments: generic_arguments,
     diagnostics: base.diagnostics,
     children: children,

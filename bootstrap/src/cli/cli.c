@@ -251,16 +251,33 @@ static char *vitte_cli_shell_quote(const char *text) {
 }
 
 static int vitte_cli_run_executable(const char *path) {
+    char *owned_path = NULL;
+    const char *run_path = path;
     char *quoted;
     int status;
 
-    quoted = vitte_cli_shell_quote(path);
+    if (path != NULL && path[0] != '\0' && strchr(path, '/') == NULL) {
+        size_t length = strlen(path);
+        owned_path = (char *)malloc(length + 3u);
+        if (owned_path == NULL) {
+            fputs("vitte-bootstrap: out of memory preparing run path\n", stderr);
+            return VITTE_CLI_EXIT_INTERNAL;
+        }
+        owned_path[0] = '.';
+        owned_path[1] = '/';
+        memcpy(owned_path + 2u, path, length + 1u);
+        run_path = owned_path;
+    }
+
+    quoted = vitte_cli_shell_quote(run_path);
     if (quoted == NULL) {
+        free(owned_path);
         fputs("vitte-bootstrap: out of memory preparing run command\n", stderr);
         return VITTE_CLI_EXIT_INTERNAL;
     }
     status = system(quoted);
     free(quoted);
+    free(owned_path);
     return status == 0 ? VITTE_CLI_EXIT_OK : VITTE_CLI_EXIT_ERROR;
 }
 

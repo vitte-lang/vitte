@@ -1,0 +1,1520 @@
+use src/vitte/stdlib/alloc/pool
+
+form Point {
+    x: int
+    y: int
+}
+
+form Pair {
+    left: int
+    right: int
+}
+
+proc stress_allocate_release() -> bool {
+    let mut pool = pool_new_for(
+        "stress-alloc-release",
+        256
+    );
+
+    let cycle: usize = 0;
+
+    while cycle < 10000 {
+        let result = pool_emplace_handle(
+            ref mut pool,
+            cycle as int
+        );
+
+        pick result {
+            Some(handle) {
+                if not pool_handle_valid(
+                    pool,
+                    handle
+                ) {
+                    give false;
+                }
+
+                if not pool_release_handle(
+                    ref mut pool,
+                    handle
+                ) {
+                    give false;
+                }
+            }
+
+            None {
+                give false;
+            }
+        }
+
+        if not pool_is_empty(pool) {
+            give false;
+        }
+
+        if not pool_invariant_holds(pool) {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc stress_fill_reset() -> bool {
+    let mut pool = pool_new_for(
+        "stress-fill-reset",
+        256
+    );
+
+    let cycle: usize = 0;
+
+    while cycle < 2000 {
+        let index: usize = 0;
+
+        while index < 256 {
+            if is_none(
+                pool_emplace(
+                    ref mut pool,
+                    index as int
+                )
+            ) {
+                give false;
+            }
+
+            set index = index + 1;
+        }
+
+        if not pool_is_full(pool) {
+            give false;
+        }
+
+        if pool_allocated(pool) != 256 {
+            give false;
+        }
+
+        if pool_free_count(pool) != 0 {
+            give false;
+        }
+
+        pool_reset(
+            ref mut pool
+        );
+
+        if not pool_is_empty(pool) {
+            give false;
+        }
+
+        if pool_allocated(pool) != 0 {
+            give false;
+        }
+
+        if pool_free_count(pool) != 256 {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give pool_invariant_holds(pool);
+}
+
+proc stress_partial_reset() -> bool {
+    let mut pool = pool_new_for(
+        "stress-partial-reset",
+        256
+    );
+
+    let cycle: usize = 0;
+
+    while cycle < 5000 {
+        let index: usize = 0;
+
+        while index < 128 {
+            if is_none(
+                pool_emplace(
+                    ref mut pool,
+                    index as int
+                )
+            ) {
+                give false;
+            }
+
+            set index = index + 1;
+        }
+
+        if pool_allocated(pool) != 128 {
+            give false;
+        }
+
+        if pool_free_count(pool) != 128 {
+            give false;
+        }
+
+        pool_reset(
+            ref mut pool
+        );
+
+        if not pool_is_empty(pool) {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc stress_handles() -> bool {
+    let mut pool = pool_new_for(
+        "stress-handles",
+        512
+    );
+
+    let handles: [PoolHandle] = [];
+
+    let index: usize = 0;
+
+    while index < 500 {
+        let result = pool_emplace_handle(
+            ref mut pool,
+            index as int
+        );
+
+        pick result {
+            Some(handle) {
+                set handles =
+                    handles + [handle];
+            }
+
+            None {
+                give false;
+            }
+        }
+
+        set index = index + 1;
+    }
+
+    let check: usize = 0;
+
+    while check < 500 {
+        if not pool_handle_valid(
+            pool,
+            handles[check]
+        ) {
+            give false;
+        }
+
+        let value = pool_get(
+            ref pool,
+            handles[check]
+        );
+
+        pick value {
+            Some(inner) {
+                if *inner != check as int {
+                    give false;
+                }
+            }
+
+            None {
+                give false;
+            }
+        }
+
+        set check = check + 1;
+    }
+
+    give pool_allocated(pool) == 500
+        and pool_free_count(pool) == 12
+        and pool_invariant_holds(pool);
+}
+
+proc stress_release_handles() -> bool {
+    let mut pool = pool_new_for(
+        "stress-release-handles",
+        512
+    );
+
+    let handles: [PoolHandle] = [];
+
+    let index: usize = 0;
+
+    while index < 512 {
+        let result = pool_emplace_handle(
+            ref mut pool,
+            index as int
+        );
+
+        pick result {
+            Some(handle) {
+                set handles =
+                    handles + [handle];
+            }
+
+            None {
+                give false;
+            }
+        }
+
+        set index = index + 1;
+    }
+
+    if not pool_is_full(pool) {
+        give false;
+    }
+
+    let release_index: usize = 0;
+
+    while release_index < 512 {
+        if not pool_release_handle(
+            ref mut pool,
+            handles[release_index]
+        ) {
+            give false;
+        }
+
+        if pool_handle_valid(
+            pool,
+            handles[release_index]
+        ) {
+            give false;
+        }
+
+        set release_index =
+            release_index + 1;
+    }
+
+    give pool_is_empty(pool)
+        and pool_allocated(pool) == 0
+        and pool_free_count(pool) == 512
+        and pool_invariant_holds(pool);
+}
+
+proc stress_stale_handles() -> bool {
+    let mut pool = pool_new_for(
+        "stress-stale",
+        1
+    );
+
+    let cycle: usize = 0;
+
+    while cycle < 10000 {
+        let first = pool_emplace_handle(
+            ref mut pool,
+            cycle as int
+        );
+
+        pick first {
+            Some(old_handle) {
+                if not pool_release_handle(
+                    ref mut pool,
+                    old_handle
+                ) {
+                    give false;
+                }
+
+                if pool_handle_valid(
+                    pool,
+                    old_handle
+                ) {
+                    give false;
+                }
+
+                let second = pool_emplace_handle(
+                    ref mut pool,
+                    cycle as int
+                );
+
+                pick second {
+                    Some(new_handle) {
+                        if new_handle.index
+                            != old_handle.index
+                        {
+                            give false;
+                        }
+
+                        if new_handle.generation
+                            == old_handle.generation
+                        {
+                            give false;
+                        }
+
+                        if pool_handle_valid(
+                            pool,
+                            old_handle
+                        ) {
+                            give false;
+                        }
+
+                        if not pool_release_handle(
+                            ref mut pool,
+                            new_handle
+                        ) {
+                            give false;
+                        }
+                    }
+
+                    None {
+                        give false;
+                    }
+                }
+            }
+
+            None {
+                give false;
+            }
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc stress_reset_invalidates_handles() -> bool {
+    let mut pool = pool_new_for(
+        "stress-reset-handles",
+        128
+    );
+
+    let cycle: usize = 0;
+
+    while cycle < 5000 {
+        let handle = pool_emplace_handle(
+            ref mut pool,
+            cycle as int
+        );
+
+        pick handle {
+            Some(value) {
+                if not pool_handle_valid(
+                    pool,
+                    value
+                ) {
+                    give false;
+                }
+
+                pool_reset(
+                    ref mut pool
+                );
+
+                if pool_handle_valid(
+                    pool,
+                    value
+                ) {
+                    give false;
+                }
+            }
+
+            None {
+                give false;
+            }
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give pool_is_empty(pool)
+        and pool_invariant_holds(pool);
+}
+
+proc stress_point_values() -> bool {
+    let mut pool = pool_new_for(
+        "stress-point",
+        1024
+    );
+
+    let handles: [PoolHandle] = [];
+
+    let index: usize = 0;
+
+    while index < 1000 {
+        let result = pool_emplace_handle(
+            ref mut pool,
+            Point {
+                x: index as int
+                y: (index as int) + 1
+            }
+        );
+
+        pick result {
+            Some(handle) {
+                set handles =
+                    handles + [handle];
+            }
+
+            None {
+                give false;
+            }
+        }
+
+        set index = index + 1;
+    }
+
+    let check: usize = 0;
+
+    while check < 1000 {
+        let value = pool_get(
+            ref pool,
+            handles[check]
+        );
+
+        pick value {
+            Some(point) {
+                if point.x != check as int {
+                    give false;
+                }
+
+                if point.y != (check as int) + 1 {
+                    give false;
+                }
+            }
+
+            None {
+                give false;
+            }
+        }
+
+        set check = check + 1;
+    }
+
+    give pool_invariant_holds(pool);
+}
+
+proc stress_mutation() -> bool {
+    let mut pool = pool_new_for(
+        "stress-mutation",
+        1024
+    );
+
+    let handles: [PoolHandle] = [];
+
+    let index: usize = 0;
+
+    while index < 1000 {
+        let result = pool_emplace_handle(
+            ref mut pool,
+            Pair {
+                left: index as int
+                right: (index as int) * 2
+            }
+        );
+
+        pick result {
+            Some(handle) {
+                set handles =
+                    handles + [handle];
+            }
+
+            None {
+                give false;
+            }
+        }
+
+        set index = index + 1;
+    }
+
+    let mutate: usize = 0;
+
+    while mutate < 1000 {
+        let value = pool_get_mut(
+            ref mut pool,
+            handles[mutate]
+        );
+
+        pick value {
+            Some(pair) {
+                set pair.left =
+                    pair.left + 10;
+
+                set pair.right =
+                    pair.right + 20;
+            }
+
+            None {
+                give false;
+            }
+        }
+
+        set mutate = mutate + 1;
+    }
+
+    let check: usize = 0;
+
+    while check < 1000 {
+        let value = pool_get(
+            ref pool,
+            handles[check]
+        );
+
+        pick value {
+            Some(pair) {
+                if pair.left
+                    != (check as int) + 10
+                {
+                    give false;
+                }
+
+                if pair.right
+                    != (check as int) * 2 + 20
+                {
+                    give false;
+                }
+            }
+
+            None {
+                give false;
+            }
+        }
+
+        set check = check + 1;
+    }
+
+    give true;
+}
+
+proc stress_accounting() -> bool {
+    let mut pool = pool_new_for(
+        "stress-accounting",
+        512
+    );
+
+    let cycle: usize = 0;
+
+    while cycle < 5000 {
+        let count: usize = 0;
+
+        while count < 400 {
+            if is_none(
+                pool_emplace(
+                    ref mut pool,
+                    count as int
+                )
+            ) {
+                give false;
+            }
+
+            if pool_allocated(pool)
+                + pool_free_count(pool)
+                != pool_capacity(pool)
+            {
+                give false;
+            }
+
+            if not pool_accounting_valid(
+                pool
+            ) {
+                give false;
+            }
+
+            set count = count + 1;
+        }
+
+        pool_reset(
+            ref mut pool
+        );
+
+        if pool_allocated(pool)
+            + pool_free_count(pool)
+            != pool_capacity(pool)
+        {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc stress_snapshot_allocate() -> bool {
+    let mut pool = pool_new_for(
+        "stress-snapshot-allocate",
+        512
+    );
+
+    let cycle: usize = 0;
+
+    while cycle < 10000 {
+        let before = pool_snapshot(
+            pool
+        );
+
+        let handle = pool_emplace_handle(
+            ref mut pool,
+            cycle as int
+        );
+
+        pick handle {
+            Some(value) {
+                let after = pool_snapshot(
+                    pool
+                );
+
+                if not pool_snapshot_changed(
+                    before,
+                    after
+                ) {
+                    give false;
+                }
+
+                let delta = pool_delta(
+                    before,
+                    after
+                );
+
+                if not delta.changed {
+                    give false;
+                }
+
+                if delta.allocated != 1 {
+                    give false;
+                }
+
+                if delta.free != -1 {
+                    give false;
+                }
+
+                if not pool_release_handle(
+                    ref mut pool,
+                    value
+                ) {
+                    give false;
+                }
+            }
+
+            None {
+                give false;
+            }
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc stress_snapshot_release() -> bool {
+    let mut pool = pool_new_for(
+        "stress-snapshot-release",
+        128
+    );
+
+    let cycle: usize = 0;
+
+    while cycle < 10000 {
+        let result = pool_emplace_handle(
+            ref mut pool,
+            cycle as int
+        );
+
+        pick result {
+            Some(handle) {
+                let before = pool_snapshot(
+                    pool
+                );
+
+                if not pool_release_handle(
+                    ref mut pool,
+                    handle
+                ) {
+                    give false;
+                }
+
+                let after = pool_snapshot(
+                    pool
+                );
+
+                let delta = pool_delta(
+                    before,
+                    after
+                );
+
+                if delta.allocated != -1 {
+                    give false;
+                }
+
+                if delta.free != 1 {
+                    give false;
+                }
+
+                if not delta.changed {
+                    give false;
+                }
+            }
+
+            None {
+                give false;
+            }
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc stress_snapshot_reset() -> bool {
+    let mut pool = pool_new_for(
+        "stress-snapshot-reset",
+        128
+    );
+
+    let cycle: usize = 0;
+
+    while cycle < 5000 {
+        let index: usize = 0;
+
+        while index < 64 {
+            if is_none(
+                pool_emplace(
+                    ref mut pool,
+                    index as int
+                )
+            ) {
+                give false;
+            }
+
+            set index = index + 1;
+        }
+
+        let before = pool_snapshot(
+            pool
+        );
+
+        pool_reset(
+            ref mut pool
+        );
+
+        let after = pool_snapshot(
+            pool
+        );
+
+        if pool_snapshot_equal(
+            before,
+            after
+        ) {
+            give false;
+        }
+
+        let delta = pool_delta(
+            before,
+            after
+        );
+
+        if delta.allocated >= 0 {
+            give false;
+        }
+
+        if delta.free <= 0 {
+            give false;
+        }
+
+        if delta.generation <= 0 {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc stress_generation() -> bool {
+    let mut pool = pool_new_for(
+        "stress-generation",
+        32
+    );
+
+    let previous =
+        pool_generation(pool);
+
+    let cycle: usize = 0;
+
+    while cycle < 10000 {
+        pool_reset(
+            ref mut pool
+        );
+
+        let current =
+            pool_generation(pool);
+
+        if current <= previous {
+            give false;
+        }
+
+        set previous = current;
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc stress_revision() -> bool {
+    let mut pool = pool_new_for(
+        "stress-revision",
+        512
+    );
+
+    let previous =
+        pool_revision(pool);
+
+    let cycle: usize = 0;
+
+    while cycle < 10000 {
+        let handle = pool_emplace_handle(
+            ref mut pool,
+            cycle as int
+        );
+
+        pick handle {
+            Some(value) {
+                let current =
+                    pool_revision(pool);
+
+                if current <= previous {
+                    give false;
+                }
+
+                set previous = current;
+
+                if not pool_release_handle(
+                    ref mut pool,
+                    value
+                ) {
+                    give false;
+                }
+
+                let released_revision =
+                    pool_revision(pool);
+
+                if released_revision <= previous {
+                    give false;
+                }
+
+                set previous =
+                    released_revision;
+            }
+
+            None {
+                give false;
+            }
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc stress_validation() -> bool {
+    let mut pool = pool_new_for(
+        "stress-validation",
+        512
+    );
+
+    let cycle: usize = 0;
+
+    while cycle < 10000 {
+        let handle = pool_emplace_handle(
+            ref mut pool,
+            cycle as int
+        );
+
+        pick handle {
+            Some(value) {
+                let validation =
+                    pool_validate(pool);
+
+                if not validation.valid {
+                    give false;
+                }
+
+                if not validation.block_valid {
+                    give false;
+                }
+
+                if not validation.free_list_valid {
+                    give false;
+                }
+
+                if not validation.accounting_valid {
+                    give false;
+                }
+
+                if not validation.state_valid {
+                    give false;
+                }
+
+                if not validation.generation_valid {
+                    give false;
+                }
+
+                if not pool_release_handle(
+                    ref mut pool,
+                    value
+                ) {
+                    give false;
+                }
+            }
+
+            None {
+                give false;
+            }
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc stress_utilization() -> bool {
+    let mut pool = pool_new_for(
+        "stress-utilization",
+        100
+    );
+
+    let index: usize = 0;
+
+    while index < 100 {
+        if is_none(
+            pool_emplace(
+                ref mut pool,
+                index as int
+            )
+        ) {
+            give false;
+        }
+
+        let utilization =
+            pool_utilization(pool);
+
+        let free_ratio =
+            pool_free_ratio(pool);
+
+        if utilization < 0.0
+            or utilization > 1.0
+        {
+            give false;
+        }
+
+        if free_ratio < 0.0
+            or free_ratio > 1.0
+        {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give pool_utilization(pool) == 1.0
+        and pool_free_ratio(pool) == 0.0
+        and pool_is_full(pool);
+}
+
+proc stress_exhaustion() -> bool {
+    let mut pool = pool_new_for(
+        "stress-exhaustion",
+        64
+    );
+
+    let index: usize = 0;
+
+    while index < 64 {
+        if is_none(
+            pool_emplace(
+                ref mut pool,
+                index as int
+            )
+        ) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    if not pool_is_full(pool) {
+        give false;
+    }
+
+    let failure: usize = 0;
+
+    while failure < 10000 {
+        if is_some(
+            pool_emplace(
+                ref mut pool,
+                42
+            )
+        ) {
+            give false;
+        }
+
+        if not pool_is_full(pool) {
+            give false;
+        }
+
+        set failure = failure + 1;
+    }
+
+    give true;
+}
+
+proc stress_reuse_exhausted_pool() -> bool {
+    let mut pool = pool_new_for(
+        "stress-exhausted-reuse",
+        64
+    );
+
+    let cycle: usize = 0;
+
+    while cycle < 5000 {
+        let handles: [PoolHandle] = [];
+
+        let index: usize = 0;
+
+        while index < 64 {
+            let result = pool_emplace_handle(
+                ref mut pool,
+                index as int
+            );
+
+            pick result {
+                Some(handle) {
+                    set handles =
+                        handles + [handle];
+                }
+
+                None {
+                    give false;
+                }
+            }
+
+            set index = index + 1;
+        }
+
+        if not pool_is_full(pool) {
+            give false;
+        }
+
+        let release_index: usize = 0;
+
+        while release_index < 64 {
+            if not pool_release_handle(
+                ref mut pool,
+                handles[release_index]
+            ) {
+                give false;
+            }
+
+            set release_index =
+                release_index + 1;
+        }
+
+        if not pool_is_empty(pool) {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc stress_interleaved_slots() -> bool {
+    let mut pool = pool_new_for(
+        "stress-interleaved",
+        256
+    );
+
+    let handles: [PoolHandle] = [];
+
+    let index: usize = 0;
+
+    while index < 256 {
+        let result = pool_emplace_handle(
+            ref mut pool,
+            index as int
+        );
+
+        pick result {
+            Some(handle) {
+                set handles =
+                    handles + [handle];
+            }
+
+            None {
+                give false;
+            }
+        }
+
+        set index = index + 1;
+    }
+
+    let release_index: usize = 0;
+
+    while release_index < 256 {
+        if release_index % 2 == 0 {
+            if not pool_release_handle(
+                ref mut pool,
+                handles[release_index]
+            ) {
+                give false;
+            }
+        }
+
+        set release_index =
+            release_index + 1;
+    }
+
+    if pool_allocated(pool) != 128 {
+        give false;
+    }
+
+    let refill: usize = 0;
+
+    while refill < 128 {
+        if is_none(
+            pool_emplace(
+                ref mut pool,
+                refill as int
+            )
+        ) {
+            give false;
+        }
+
+        set refill = refill + 1;
+    }
+
+    give pool_is_full(pool)
+        and pool_allocated(pool) == 256
+        and pool_free_count(pool) == 0;
+}
+
+proc stress_multiple_pools() -> bool {
+    let mut first = pool_new_for(
+        "stress-first",
+        128
+    );
+
+    let mut second = pool_new_for(
+        "stress-second",
+        256
+    );
+
+    let mut third = pool_new_for(
+        "stress-third",
+        512
+    );
+
+    let index: usize = 0;
+
+    while index < 100 {
+        if is_none(
+            pool_emplace(
+                ref mut first,
+                index as int
+            )
+        ) {
+            give false;
+        }
+
+        if is_none(
+            pool_emplace(
+                ref mut second,
+                index as int
+            )
+        ) {
+            give false;
+        }
+
+        if is_none(
+            pool_emplace(
+                ref mut third,
+                index as int
+            )
+        ) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give pool_allocated(first) == 100
+        and pool_allocated(second) == 100
+        and pool_allocated(third) == 100
+        and pool_free_count(first) == 28
+        and pool_free_count(second) == 156
+        and pool_free_count(third) == 412
+        and pool_invariant_holds(first)
+        and pool_invariant_holds(second)
+        and pool_invariant_holds(third);
+}
+
+proc stress_release_pool() -> bool {
+    let mut pool = pool_new_for(
+        "stress-release-pool",
+        256
+    );
+
+    let index: usize = 0;
+
+    while index < 200 {
+        if is_none(
+            pool_emplace(
+                ref mut pool,
+                index as int
+            )
+        ) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give pool_release(
+        ref mut pool
+    )
+    and pool_is_released(pool);
+}
+
+proc stress_release_rejects_allocation() -> bool {
+    let mut pool = pool_new_for(
+        "stress-release-reject",
+        64
+    );
+
+    if not pool_release(
+        ref mut pool
+    ) {
+        give false;
+    }
+
+    let index: usize = 0;
+
+    while index < 10000 {
+        if is_some(
+            pool_emplace(
+                ref mut pool,
+                index as int
+            )
+        ) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give pool_is_released(pool);
+}
+
+proc stress_profile() -> bool {
+    let mut pool = pool_new_for(
+        "stress-profile",
+        512
+    );
+
+    let index: usize = 0;
+
+    while index < 500 {
+        if is_none(
+            pool_emplace(
+                ref mut pool,
+                index as int
+            )
+        ) {
+            give false;
+        }
+
+        let profile =
+            pool_profile(pool);
+
+        if not profile.valid {
+            give false;
+        }
+
+        if profile.allocated
+            + profile.free
+            != profile.capacity
+        {
+            give false;
+        }
+
+        if profile.capacity != 512 {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give true;
+}
+
+proc stress_statistics() -> bool {
+    let mut pool = pool_new_for(
+        "stress-statistics",
+        128
+    );
+
+    let mut statistics =
+        pool_statistics_empty();
+
+    let cycle: usize = 0;
+
+    while cycle < 10000 {
+        let result = pool_emplace_handle(
+            ref mut pool,
+            cycle as int
+        );
+
+        pick result {
+            Some(handle) {
+                pool_statistics_record_allocation(
+                    ref mut statistics,
+                    pool,
+                    true
+                );
+
+                let released =
+                    pool_release_handle(
+                        ref mut pool,
+                        handle
+                    );
+
+                pool_statistics_record_release(
+                    ref mut statistics,
+                    released
+                );
+
+                if not released {
+                    give false;
+                }
+            }
+
+            None {
+                pool_statistics_record_allocation(
+                    ref mut statistics,
+                    pool,
+                    false
+                );
+
+                give false;
+            }
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give statistics.allocations == 10000
+        and statistics.allocation_failures == 0
+        and statistics.releases == 10000
+        and statistics.release_failures == 0
+        and statistics.peak_allocated >= 1;
+}
+
+proc stress_touch() -> bool {
+    let mut pool = pool_new_for(
+        "stress-touch",
+        16
+    );
+
+    let previous =
+        pool_revision(pool);
+
+    let index: usize = 0;
+
+    while index < 10000 {
+        pool_touch(
+            ref mut pool
+        );
+
+        let current =
+            pool_revision(pool);
+
+        if current <= previous {
+            give false;
+        }
+
+        set previous = current;
+        set index = index + 1;
+    }
+
+    give true;
+}
+
+proc stress_advance_generation() -> bool {
+    let mut pool = pool_new_for(
+        "stress-advance-generation",
+        16
+    );
+
+    let previous =
+        pool_generation(pool);
+
+    let index: usize = 0;
+
+    while index < 10000 {
+        let current =
+            pool_advance_generation(
+                ref mut pool
+            );
+
+        if current <= previous {
+            give false;
+        }
+
+        set previous = current;
+        set index = index + 1;
+    }
+
+    give true;
+}
+
+proc run_stress_tests() -> bool {
+    give stress_allocate_release()
+        and stress_fill_reset()
+        and stress_partial_reset()
+
+        and stress_handles()
+        and stress_release_handles()
+        and stress_stale_handles()
+        and stress_reset_invalidates_handles()
+
+        and stress_point_values()
+        and stress_mutation()
+
+        and stress_accounting()
+
+        and stress_snapshot_allocate()
+        and stress_snapshot_release()
+        and stress_snapshot_reset()
+
+        and stress_generation()
+        and stress_revision()
+        and stress_validation()
+
+        and stress_utilization()
+
+        and stress_exhaustion()
+        and stress_reuse_exhausted_pool()
+        and stress_interleaved_slots()
+
+        and stress_multiple_pools()
+
+        and stress_release_pool()
+        and stress_release_rejects_allocation()
+
+        and stress_profile()
+        and stress_statistics()
+
+        and stress_touch()
+        and stress_advance_generation();
+}
+
+proc main() -> int {
+    if run_stress_tests() {
+        give 0;
+    }
+
+    give 1;
+}

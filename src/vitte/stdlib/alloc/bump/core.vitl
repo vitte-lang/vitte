@@ -1,0 +1,1194 @@
+space vitte/stdlib/alloc/bump/core
+
+export *
+
+const BUMP_CORE_MIN_CAPACITY: usize = 1;
+const BUMP_CORE_MIN_ALIGN: usize = 1;
+
+pick BumpCoreState {
+    Empty,
+    Active,
+    Full,
+    Released,
+    Invalid
+}
+
+pick BumpCoreAccess {
+    None,
+    Read,
+    ReadWrite
+}
+
+pick BumpCoreTransitionKind {
+    None,
+    Allocate,
+    Rewind,
+    Reset,
+    Release,
+    Touch,
+    Invalidate
+}
+
+pick BumpCoreOrdering {
+    Less,
+    Equal,
+    Greater
+}
+
+form BumpCoreLayout {
+    capacity: usize
+    align: usize
+}
+
+form BumpCoreUsage {
+    used: usize
+    capacity: usize
+    remaining: usize
+}
+
+form BumpCoreMeta {
+    generation: u64
+    revision: u64
+}
+
+form BumpCoreInfo {
+    state: BumpCoreState
+    access: BumpCoreAccess
+
+    empty: bool
+    active: bool
+    full: bool
+    released: bool
+    valid: bool
+}
+
+form BumpCoreProfile {
+    layout: BumpCoreLayout
+    usage: BumpCoreUsage
+    meta: BumpCoreMeta
+    info: BumpCoreInfo
+
+    utilization: f64
+}
+
+form BumpCoreSnapshot {
+    used: usize
+    capacity: usize
+
+    state: BumpCoreState
+
+    generation: u64
+    revision: u64
+}
+
+form BumpCoreDelta {
+    used: int
+    capacity: int
+
+    generation: int
+    revision: int
+
+    state_changed: bool
+    changed: bool
+}
+
+form BumpCoreTransition {
+    before: BumpCoreSnapshot
+    after: BumpCoreSnapshot
+
+    kind: BumpCoreTransitionKind
+
+    valid: bool
+}
+
+form BumpCoreValidation {
+    valid: bool
+
+    layout_valid: bool
+    usage_valid: bool
+    state_valid: bool
+    access_valid: bool
+    generation_valid: bool
+}
+
+form BumpCoreLimits {
+    max_capacity: usize
+    max_align: usize
+}
+
+form BumpCoreStatistics {
+    allocations: u64
+    rewinds: u64
+    resets: u64
+    releases: u64
+
+    touches: u64
+    invalidations: u64
+    validations: u64
+}
+
+// -----------------------------------------------------------------------------
+// Layout
+// -----------------------------------------------------------------------------
+
+proc bump_core_layout(
+    capacity: usize,
+    align: usize
+) -> BumpCoreLayout {
+    give BumpCoreLayout {
+        capacity: capacity,
+        align: align
+    };
+}
+
+proc bump_core_layout_default(
+    capacity: usize
+) -> BumpCoreLayout {
+    give BumpCoreLayout {
+        capacity: capacity,
+        align: 8
+    };
+}
+
+proc bump_core_alignment_valid(
+    align: usize
+) -> bool {
+    if align < BUMP_CORE_MIN_ALIGN {
+        give false;
+    }
+
+    give compiler_is_power_of_two(
+        align
+    );
+}
+
+proc bump_core_capacity_valid(
+    capacity: usize
+) -> bool {
+    give capacity >= BUMP_CORE_MIN_CAPACITY;
+}
+
+proc bump_core_layout_valid(
+    layout: BumpCoreLayout
+) -> bool {
+    give bump_core_capacity_valid(
+        layout.capacity
+    )
+    and bump_core_alignment_valid(
+        layout.align
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Limits
+// -----------------------------------------------------------------------------
+
+proc bump_core_limits_default()
+    -> BumpCoreLimits
+{
+    give BumpCoreLimits {
+        max_capacity: usize_max(),
+        max_align: usize_max()
+    };
+}
+
+proc bump_core_layout_within_limits(
+    layout: BumpCoreLayout,
+    limits: BumpCoreLimits
+) -> bool {
+    give layout.capacity <= limits.max_capacity
+        and layout.align <= limits.max_align;
+}
+
+// -----------------------------------------------------------------------------
+// Usage
+// -----------------------------------------------------------------------------
+
+proc bump_core_usage(
+    used: usize,
+    capacity: usize
+) -> BumpCoreUsage {
+    let remaining =
+        if used >= capacity {
+            0
+        } else {
+            capacity - used
+        };
+
+    give BumpCoreUsage {
+        used: used,
+        capacity: capacity,
+        remaining: remaining
+    };
+}
+
+proc bump_core_usage_empty(
+    capacity: usize
+) -> BumpCoreUsage {
+    give BumpCoreUsage {
+        used: 0,
+        capacity: capacity,
+        remaining: capacity
+    };
+}
+
+proc bump_core_usage_valid(
+    usage: BumpCoreUsage
+) -> bool {
+    if usage.used > usage.capacity {
+        give false;
+    }
+
+    give usage.remaining
+        == usage.capacity - usage.used;
+}
+
+proc bump_core_remaining(
+    usage: BumpCoreUsage
+) -> usize {
+    if usage.used >= usage.capacity {
+        give 0;
+    }
+
+    give usage.capacity
+        - usage.used;
+}
+
+proc bump_core_utilization(
+    usage: BumpCoreUsage
+) -> f64 {
+    if usage.capacity == 0 {
+        give 0.0;
+    }
+
+    give (
+        usage.used as f64
+    ) / (
+        usage.capacity as f64
+    );
+}
+
+// -----------------------------------------------------------------------------
+// State
+// -----------------------------------------------------------------------------
+
+proc bump_core_state(
+    usage: BumpCoreUsage,
+    released: bool
+) -> BumpCoreState {
+    if released {
+        give BumpCoreState.Released;
+    }
+
+    if not bump_core_usage_valid(
+        usage
+    ) {
+        give BumpCoreState.Invalid;
+    }
+
+    if usage.used == 0 {
+        give BumpCoreState.Empty;
+    }
+
+    if usage.used == usage.capacity {
+        give BumpCoreState.Full;
+    }
+
+    give BumpCoreState.Active;
+}
+
+proc bump_core_access(
+    state: BumpCoreState
+) -> BumpCoreAccess {
+    pick state {
+        BumpCoreState.Empty
+        | BumpCoreState.Active {
+            give BumpCoreAccess.ReadWrite;
+        }
+
+        BumpCoreState.Full {
+            give BumpCoreAccess.Read;
+        }
+
+        BumpCoreState.Released
+        | BumpCoreState.Invalid {
+            give BumpCoreAccess.None;
+        }
+    }
+
+    give BumpCoreAccess.None;
+}
+
+proc bump_core_info(
+    state: BumpCoreState
+) -> BumpCoreInfo {
+    give BumpCoreInfo {
+        state: state,
+
+        access:
+            bump_core_access(
+                state
+            ),
+
+        empty:
+            state == BumpCoreState.Empty,
+
+        active:
+            state == BumpCoreState.Empty
+            or state == BumpCoreState.Active,
+
+        full:
+            state == BumpCoreState.Full,
+
+        released:
+            state == BumpCoreState.Released,
+
+        valid:
+            state != BumpCoreState.Invalid
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Predicates
+// -----------------------------------------------------------------------------
+
+proc bump_core_is_empty(
+    state: BumpCoreState
+) -> bool {
+    give state == BumpCoreState.Empty;
+}
+
+proc bump_core_is_active(
+    state: BumpCoreState
+) -> bool {
+    give state == BumpCoreState.Empty
+        or state == BumpCoreState.Active;
+}
+
+proc bump_core_is_full(
+    state: BumpCoreState
+) -> bool {
+    give state == BumpCoreState.Full;
+}
+
+proc bump_core_is_released(
+    state: BumpCoreState
+) -> bool {
+    give state == BumpCoreState.Released;
+}
+
+proc bump_core_can_allocate(
+    state: BumpCoreState
+) -> bool {
+    give state == BumpCoreState.Empty
+        or state == BumpCoreState.Active;
+}
+
+proc bump_core_can_rewind(
+    state: BumpCoreState
+) -> bool {
+    give state == BumpCoreState.Active
+        or state == BumpCoreState.Full;
+}
+
+proc bump_core_can_reset(
+    state: BumpCoreState
+) -> bool {
+    give state != BumpCoreState.Released
+        and state != BumpCoreState.Invalid;
+}
+
+proc bump_core_can_release(
+    state: BumpCoreState
+) -> bool {
+    give state != BumpCoreState.Released
+        and state != BumpCoreState.Invalid;
+}
+
+// -----------------------------------------------------------------------------
+// Meta
+// -----------------------------------------------------------------------------
+
+proc bump_core_meta()
+    -> BumpCoreMeta
+{
+    give BumpCoreMeta {
+        generation: 1,
+        revision: 1
+    };
+}
+
+proc bump_core_meta_empty()
+    -> BumpCoreMeta
+{
+    give BumpCoreMeta {
+        generation: 0,
+        revision: 0
+    };
+}
+
+proc bump_core_touch(
+    meta: BumpCoreMeta
+) -> BumpCoreMeta {
+    let out = meta;
+
+    set out.revision =
+        out.revision + 1;
+
+    give out;
+}
+
+proc bump_core_advance_generation(
+    meta: BumpCoreMeta
+) -> BumpCoreMeta {
+    let out = meta;
+
+    set out.generation =
+        out.generation + 1;
+
+    set out.revision =
+        out.revision + 1;
+
+    give out;
+}
+
+// -----------------------------------------------------------------------------
+// Allocation arithmetic
+// -----------------------------------------------------------------------------
+
+proc bump_core_add_overflows(
+    left: usize,
+    right: usize
+) -> bool {
+    give left > usize_max() - right;
+}
+
+proc bump_core_can_advance(
+    usage: BumpCoreUsage,
+    bytes: usize
+) -> bool {
+    if bump_core_add_overflows(
+        usage.used,
+        bytes
+    ) {
+        give false;
+    }
+
+    give usage.used + bytes
+        <= usage.capacity;
+}
+
+proc bump_core_advance(
+    usage: BumpCoreUsage,
+    bytes: usize
+) -> BumpCoreUsage {
+    if not bump_core_can_advance(
+        usage,
+        bytes
+    ) {
+        give usage;
+    }
+
+    give bump_core_usage(
+        usage.used + bytes,
+        usage.capacity
+    );
+}
+
+proc bump_core_rewind(
+    usage: BumpCoreUsage,
+    offset: usize
+) -> BumpCoreUsage {
+    if offset > usage.used {
+        give usage;
+    }
+
+    give bump_core_usage(
+        offset,
+        usage.capacity
+    );
+}
+
+proc bump_core_reset_usage(
+    usage: BumpCoreUsage
+) -> BumpCoreUsage {
+    give bump_core_usage_empty(
+        usage.capacity
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Profile
+// -----------------------------------------------------------------------------
+
+proc bump_core_profile(
+    layout: BumpCoreLayout,
+    usage: BumpCoreUsage,
+    meta: BumpCoreMeta,
+    released: bool
+) -> BumpCoreProfile {
+    let state =
+        bump_core_state(
+            usage,
+            released
+        );
+
+    give BumpCoreProfile {
+        layout: layout,
+        usage: usage,
+        meta: meta,
+
+        info:
+            bump_core_info(
+                state
+            ),
+
+        utilization:
+            bump_core_utilization(
+                usage
+            )
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Snapshot
+// -----------------------------------------------------------------------------
+
+proc bump_core_snapshot(
+    profile: BumpCoreProfile
+) -> BumpCoreSnapshot {
+    give BumpCoreSnapshot {
+        used:
+            profile.usage.used,
+
+        capacity:
+            profile.usage.capacity,
+
+        state:
+            profile.info.state,
+
+        generation:
+            profile.meta.generation,
+
+        revision:
+            profile.meta.revision
+    };
+}
+
+proc bump_core_snapshot_equal(
+    left: BumpCoreSnapshot,
+    right: BumpCoreSnapshot
+) -> bool {
+    give left.used == right.used
+        and left.capacity == right.capacity
+        and left.state == right.state
+        and left.generation == right.generation
+        and left.revision == right.revision;
+}
+
+proc bump_core_snapshot_changed(
+    left: BumpCoreSnapshot,
+    right: BumpCoreSnapshot
+) -> bool {
+    give not bump_core_snapshot_equal(
+        left,
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Delta
+// -----------------------------------------------------------------------------
+
+proc bump_core_usize_delta(
+    before: usize,
+    after: usize
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc bump_core_u64_delta(
+    before: u64,
+    after: u64
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc bump_core_delta(
+    before: BumpCoreSnapshot,
+    after: BumpCoreSnapshot
+) -> BumpCoreDelta {
+    let used =
+        bump_core_usize_delta(
+            before.used,
+            after.used
+        );
+
+    let capacity =
+        bump_core_usize_delta(
+            before.capacity,
+            after.capacity
+        );
+
+    let generation =
+        bump_core_u64_delta(
+            before.generation,
+            after.generation
+        );
+
+    let revision =
+        bump_core_u64_delta(
+            before.revision,
+            after.revision
+        );
+
+    let state_changed =
+        before.state != after.state;
+
+    give BumpCoreDelta {
+        used: used,
+        capacity: capacity,
+
+        generation: generation,
+        revision: revision,
+
+        state_changed: state_changed,
+
+        changed:
+            used != 0
+            or capacity != 0
+            or generation != 0
+            or revision != 0
+            or state_changed
+    };
+}
+
+proc bump_core_delta_is_zero(
+    delta: BumpCoreDelta
+) -> bool {
+    give not delta.changed;
+}
+
+// -----------------------------------------------------------------------------
+// Transition classification
+// -----------------------------------------------------------------------------
+
+proc bump_core_transition_kind(
+    before: BumpCoreSnapshot,
+    after: BumpCoreSnapshot
+) -> BumpCoreTransitionKind {
+    if bump_core_snapshot_equal(
+        before,
+        after
+    ) {
+        give BumpCoreTransitionKind.None;
+    }
+
+    if after.state == BumpCoreState.Invalid {
+        give BumpCoreTransitionKind.Invalidate;
+    }
+
+    if after.state == BumpCoreState.Released
+        and before.state != BumpCoreState.Released
+    {
+        give BumpCoreTransitionKind.Release;
+    }
+
+    if after.generation > before.generation
+        and after.used == 0
+    {
+        give BumpCoreTransitionKind.Reset;
+    }
+
+    if after.used < before.used
+        and after.generation == before.generation
+    {
+        give BumpCoreTransitionKind.Rewind;
+    }
+
+    if after.used > before.used {
+        give BumpCoreTransitionKind.Allocate;
+    }
+
+    if after.revision > before.revision {
+        give BumpCoreTransitionKind.Touch;
+    }
+
+    give BumpCoreTransitionKind.None;
+}
+
+proc bump_core_transition_valid(
+    before: BumpCoreSnapshot,
+    after: BumpCoreSnapshot,
+    kind: BumpCoreTransitionKind
+) -> bool {
+    pick kind {
+        BumpCoreTransitionKind.None {
+            give bump_core_snapshot_equal(
+                before,
+                after
+            );
+        }
+
+        BumpCoreTransitionKind.Allocate {
+            give after.used > before.used
+                and after.used <= after.capacity
+                and after.generation == before.generation;
+        }
+
+        BumpCoreTransitionKind.Rewind {
+            give after.used <= before.used
+                and after.generation == before.generation;
+        }
+
+        BumpCoreTransitionKind.Reset {
+            give after.used == 0
+                and after.generation > before.generation;
+        }
+
+        BumpCoreTransitionKind.Release {
+            give after.state
+                == BumpCoreState.Released
+                and after.generation
+                    > before.generation;
+        }
+
+        BumpCoreTransitionKind.Touch {
+            give after.revision > before.revision;
+        }
+
+        BumpCoreTransitionKind.Invalidate {
+            give after.state
+                == BumpCoreState.Invalid;
+        }
+    }
+
+    give false;
+}
+
+proc bump_core_transition(
+    before: BumpCoreSnapshot,
+    after: BumpCoreSnapshot
+) -> BumpCoreTransition {
+    let kind =
+        bump_core_transition_kind(
+            before,
+            after
+        );
+
+    give BumpCoreTransition {
+        before: before,
+        after: after,
+
+        kind: kind,
+
+        valid:
+            bump_core_transition_valid(
+                before,
+                after,
+                kind
+            )
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+proc bump_core_state_valid(
+    profile: BumpCoreProfile
+) -> bool {
+    pick profile.info.state {
+        BumpCoreState.Empty {
+            give profile.usage.used == 0;
+        }
+
+        BumpCoreState.Active {
+            give profile.usage.used > 0
+                and profile.usage.used
+                    < profile.usage.capacity;
+        }
+
+        BumpCoreState.Full {
+            give profile.usage.capacity > 0
+                and profile.usage.used
+                    == profile.usage.capacity;
+        }
+
+        BumpCoreState.Released {
+            give not profile.info.active;
+        }
+
+        BumpCoreState.Invalid {
+            give false;
+        }
+    }
+
+    give false;
+}
+
+proc bump_core_access_valid(
+    profile: BumpCoreProfile
+) -> bool {
+    give profile.info.access
+        == bump_core_access(
+            profile.info.state
+        );
+}
+
+proc bump_core_validate(
+    profile: BumpCoreProfile,
+    limits: BumpCoreLimits
+) -> BumpCoreValidation {
+    let layout_valid =
+        bump_core_layout_valid(
+            profile.layout
+        )
+        and bump_core_layout_within_limits(
+            profile.layout,
+            limits
+        );
+
+    let usage_valid =
+        bump_core_usage_valid(
+            profile.usage
+        )
+        and profile.usage.capacity
+            == profile.layout.capacity;
+
+    let state_valid =
+        bump_core_state_valid(
+            profile
+        );
+
+    let access_valid =
+        bump_core_access_valid(
+            profile
+        );
+
+    let generation_valid =
+        profile.meta.generation > 0
+        and profile.meta.revision > 0;
+
+    give BumpCoreValidation {
+        valid:
+            layout_valid
+            and usage_valid
+            and state_valid
+            and access_valid
+            and generation_valid,
+
+        layout_valid: layout_valid,
+        usage_valid: usage_valid,
+        state_valid: state_valid,
+        access_valid: access_valid,
+        generation_valid: generation_valid
+    };
+}
+
+proc bump_core_invariant_holds(
+    profile: BumpCoreProfile
+) -> bool {
+    give bump_core_validate(
+        profile,
+        bump_core_limits_default()
+    ).valid;
+}
+
+// -----------------------------------------------------------------------------
+// Comparisons
+// -----------------------------------------------------------------------------
+
+proc bump_core_compare_used(
+    left: BumpCoreUsage,
+    right: BumpCoreUsage
+) -> BumpCoreOrdering {
+    if left.used < right.used {
+        give BumpCoreOrdering.Less;
+    }
+
+    if left.used > right.used {
+        give BumpCoreOrdering.Greater;
+    }
+
+    give BumpCoreOrdering.Equal;
+}
+
+proc bump_core_compare_capacity(
+    left: BumpCoreUsage,
+    right: BumpCoreUsage
+) -> BumpCoreOrdering {
+    if left.capacity < right.capacity {
+        give BumpCoreOrdering.Less;
+    }
+
+    if left.capacity > right.capacity {
+        give BumpCoreOrdering.Greater;
+    }
+
+    give BumpCoreOrdering.Equal;
+}
+
+proc bump_core_usage_equal(
+    left: BumpCoreUsage,
+    right: BumpCoreUsage
+) -> bool {
+    give left.used == right.used
+        and left.capacity == right.capacity
+        and left.remaining == right.remaining;
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc bump_core_statistics_empty()
+    -> BumpCoreStatistics
+{
+    give BumpCoreStatistics {
+        allocations: 0,
+        rewinds: 0,
+        resets: 0,
+        releases: 0,
+
+        touches: 0,
+        invalidations: 0,
+        validations: 0
+    };
+}
+
+proc bump_core_statistics_record(
+    statistics: ref mut BumpCoreStatistics,
+    transition: BumpCoreTransition
+) {
+    if not transition.valid {
+        set statistics.invalidations =
+            statistics.invalidations + 1;
+
+        give;
+    }
+
+    pick transition.kind {
+        BumpCoreTransitionKind.Allocate {
+            set statistics.allocations =
+                statistics.allocations + 1;
+        }
+
+        BumpCoreTransitionKind.Rewind {
+            set statistics.rewinds =
+                statistics.rewinds + 1;
+        }
+
+        BumpCoreTransitionKind.Reset {
+            set statistics.resets =
+                statistics.resets + 1;
+        }
+
+        BumpCoreTransitionKind.Release {
+            set statistics.releases =
+                statistics.releases + 1;
+        }
+
+        BumpCoreTransitionKind.Touch {
+            set statistics.touches =
+                statistics.touches + 1;
+        }
+
+        BumpCoreTransitionKind.Invalidate {
+            set statistics.invalidations =
+                statistics.invalidations + 1;
+        }
+
+        BumpCoreTransitionKind.None {}
+    }
+}
+
+proc bump_core_statistics_total(
+    statistics: BumpCoreStatistics
+) -> u64 {
+    give statistics.allocations
+        + statistics.rewinds
+        + statistics.resets
+        + statistics.releases
+        + statistics.touches
+        + statistics.invalidations
+        + statistics.validations;
+}
+
+proc bump_core_statistics_reset(
+    statistics: ref mut BumpCoreStatistics
+) {
+    set *statistics =
+        bump_core_statistics_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc bump_core_state_name(
+    state: BumpCoreState
+) -> string {
+    pick state {
+        BumpCoreState.Empty {
+            give "empty";
+        }
+
+        BumpCoreState.Active {
+            give "active";
+        }
+
+        BumpCoreState.Full {
+            give "full";
+        }
+
+        BumpCoreState.Released {
+            give "released";
+        }
+
+        BumpCoreState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+proc bump_core_access_name(
+    access: BumpCoreAccess
+) -> string {
+    pick access {
+        BumpCoreAccess.None {
+            give "none";
+        }
+
+        BumpCoreAccess.Read {
+            give "read";
+        }
+
+        BumpCoreAccess.ReadWrite {
+            give "read-write";
+        }
+    }
+
+    give "none";
+}
+
+proc bump_core_transition_name(
+    kind: BumpCoreTransitionKind
+) -> string {
+    pick kind {
+        BumpCoreTransitionKind.None {
+            give "none";
+        }
+
+        BumpCoreTransitionKind.Allocate {
+            give "allocate";
+        }
+
+        BumpCoreTransitionKind.Rewind {
+            give "rewind";
+        }
+
+        BumpCoreTransitionKind.Reset {
+            give "reset";
+        }
+
+        BumpCoreTransitionKind.Release {
+            give "release";
+        }
+
+        BumpCoreTransitionKind.Touch {
+            give "touch";
+        }
+
+        BumpCoreTransitionKind.Invalidate {
+            give "invalidate";
+        }
+    }
+
+    give "none";
+}
+
+// -----------------------------------------------------------------------------
+// Bump core model
+// -----------------------------------------------------------------------------
+//
+// Memory:
+//
+// +------------------------------------------------------+
+// | used                                | remaining       |
+// +------------------------------------------------------+
+// ^                                     ^               ^
+// 0                                   cursor         capacity
+//
+// Invariants:
+//
+//     used <= capacity
+//
+//     remaining = capacity - used
+//
+// Allocation:
+//
+//     used increases monotonically.
+//
+// Rewind:
+//
+//     used decreases
+//     generation is preserved
+//
+// Reset:
+//
+//     used = 0
+//     generation increases
+//
+// Release:
+//
+//     state = Released
+//     no further allocation is permitted
+//
+// States:
+//
+//     Empty
+//       used == 0
+//
+//     Active
+//       0 < used < capacity
+//
+//     Full
+//       used == capacity
+//
+//     Released
+//       allocator lifecycle ended
+//
+// This module contains only the pure bump allocator model:
+//
+//     layout
+//     accounting
+//     lifecycle states
+//     transitions
+//     snapshots
+//     deltas
+//     validation
+//     statistics
+//
+// Allocation geometry belongs to `alloc.vitl`.
+// Backing memory belongs to `block.vitl`.
+// Public allocator API belongs to `bump.vitl`.
+// Mark/reset helpers belong to `reset.vitl`.

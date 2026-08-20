@@ -1,0 +1,1438 @@
+space vitte/stdlib/alloc/boxed/boxed
+
+export *
+
+use src/vitte/stdlib/alloc/boxed/alloc as box_alloc
+use src/vitte/stdlib/alloc/allocator as alloc_allocator
+use src/vitte/stdlib/core/option as core_option
+
+// -----------------------------------------------------------------------------
+// Box states
+// -----------------------------------------------------------------------------
+
+pick BoxState {
+    Valid,
+    Moved,
+    Released,
+    Invalid
+}
+
+pick BoxOwnership {
+    Owned,
+    Moved,
+    Released
+}
+
+pick BoxAccessState {
+    ReadWrite,
+    ReadOnly,
+    Invalid
+}
+
+// -----------------------------------------------------------------------------
+// Box
+// -----------------------------------------------------------------------------
+
+form Box<T> {
+    allocation: alloc_allocator.Allocation
+
+    state: BoxState
+
+    generation: u64
+    revision: u64
+}
+
+form BoxProfile {
+    size: usize
+    align: usize
+
+    state: BoxState
+    ownership: BoxOwnership
+
+    alive: bool
+    owned: bool
+    moved: bool
+    released: bool
+
+    readable: bool
+    writable: bool
+
+    valid: bool
+
+    generation: u64
+    revision: u64
+}
+
+form BoxValidation {
+    valid: bool
+
+    allocation_valid: bool
+    state_valid: bool
+    pointer_valid: bool
+    layout_valid: bool
+    ownership_valid: bool
+}
+
+form BoxSnapshot {
+    size: usize
+    align: usize
+
+    state: BoxState
+
+    generation: u64
+    revision: u64
+}
+
+form BoxDelta {
+    generation: int
+    revision: int
+
+    changed: bool
+}
+
+form BoxStatistics {
+    created: u64
+    destroyed: u64
+
+    reads: u64
+    writes: u64
+
+    replacements: u64
+    moves: u64
+
+    raw_reads: u64
+
+    validations: u64
+    failures: u64
+}
+
+// -----------------------------------------------------------------------------
+// Allocator
+// -----------------------------------------------------------------------------
+
+proc box_allocator()
+    -> alloc_allocator.Allocator
+{
+    give alloc_allocator.allocator(
+        "boxed",
+        alloc_allocator.GrowthPolicy.Exact
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Construction
+// -----------------------------------------------------------------------------
+
+proc box_new<T>(
+    value: T
+) -> Box<T> {
+    let allocator =
+        box_allocator();
+
+    let allocation =
+        box_alloc.box_allocate<T>(
+            ref mut allocator
+        );
+
+    if is_none<alloc_allocator.Allocation>(
+        allocation
+    ) {
+        give compiler_box_allocation_failure<T>();
+    }
+
+    let memory =
+        unwrap<alloc_allocator.Allocation>(
+            allocation
+        );
+
+    let target =
+        compiler_allocation_as_mut<T>(
+            memory
+        );
+
+    set *target =
+        value;
+
+    give Box<T> {
+        allocation:
+            memory,
+
+        state:
+            BoxState.Valid,
+
+        generation:
+            1,
+
+        revision:
+            1
+    };
+}
+
+proc box_try_new<T>(
+    value: T
+) -> Option<Box<T>> {
+    let allocator =
+        box_allocator();
+
+    let allocation =
+        box_alloc.box_allocate<T>(
+            ref mut allocator
+        );
+
+    if is_none<alloc_allocator.Allocation>(
+        allocation
+    ) {
+        give none<Box<T>>();
+    }
+
+    let memory =
+        unwrap<alloc_allocator.Allocation>(
+            allocation
+        );
+
+    let target =
+        compiler_allocation_as_mut<T>(
+            memory
+        );
+
+    set *target =
+        value;
+
+    give some<Box<T>>(
+        Box<T> {
+            allocation:
+                memory,
+
+            state:
+                BoxState.Valid,
+
+            generation:
+                1,
+
+            revision:
+                1
+        }
+    );
+}
+
+proc box_new_zeroed<T>()
+    -> Option<Box<T>>
+{
+    let allocator =
+        box_allocator();
+
+    let allocation =
+        box_alloc.box_allocate_zeroed<T>(
+            ref mut allocator
+        );
+
+    if is_none<alloc_allocator.Allocation>(
+        allocation
+    ) {
+        give none<Box<T>>();
+    }
+
+    give some<Box<T>>(
+        Box<T> {
+            allocation:
+                unwrap<alloc_allocator.Allocation>(
+                    allocation
+                ),
+
+            state:
+                BoxState.Valid,
+
+            generation:
+                1,
+
+            revision:
+                1
+        }
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Basic access
+// -----------------------------------------------------------------------------
+
+proc box_get<T>(
+    value: ref Box<T>
+) -> ref T {
+    give compiler_allocation_as_ref<T>(
+        value.allocation
+    );
+}
+
+proc box_get_mut<T>(
+    value: ref mut Box<T>
+) -> ref mut T {
+    give compiler_allocation_as_mut<T>(
+        value.allocation
+    );
+}
+
+proc box_value<T>(
+    value: ref Box<T>
+) -> ref T {
+    give box_get<T>(
+        value
+    );
+}
+
+proc box_value_mut<T>(
+    value: ref mut Box<T>
+) -> ref mut T {
+    give box_get_mut<T>(
+        value
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Dereference helpers
+// -----------------------------------------------------------------------------
+
+proc box_deref<T>(
+    value: ref Box<T>
+) -> ref T {
+    give box_get<T>(
+        value
+    );
+}
+
+proc box_deref_mut<T>(
+    value: ref mut Box<T>
+) -> ref mut T {
+    give box_get_mut<T>(
+        value
+    );
+}
+
+// -----------------------------------------------------------------------------
+// State
+// -----------------------------------------------------------------------------
+
+proc box_state<T>(
+    value: Box<T>
+) -> BoxState {
+    give value.state;
+}
+
+proc box_is_valid<T>(
+    value: Box<T>
+) -> bool {
+    give value.state
+        == BoxState.Valid
+        and box_alloc.box_allocation_is_valid(
+            value.allocation
+        );
+}
+
+proc box_is_alive<T>(
+    value: Box<T>
+) -> bool {
+    give value.state
+        == BoxState.Valid;
+}
+
+proc box_is_moved<T>(
+    value: Box<T>
+) -> bool {
+    give value.state
+        == BoxState.Moved;
+}
+
+proc box_is_released<T>(
+    value: Box<T>
+) -> bool {
+    give value.state
+        == BoxState.Released;
+}
+
+proc box_is_owned<T>(
+    value: Box<T>
+) -> bool {
+    give value.state
+        == BoxState.Valid;
+}
+
+proc box_can_read<T>(
+    value: Box<T>
+) -> bool {
+    give value.state
+        == BoxState.Valid;
+}
+
+proc box_can_write<T>(
+    value: Box<T>
+) -> bool {
+    give value.state
+        == BoxState.Valid;
+}
+
+// -----------------------------------------------------------------------------
+// Ownership
+// -----------------------------------------------------------------------------
+
+proc box_ownership<T>(
+    value: Box<T>
+) -> BoxOwnership {
+    pick value.state {
+        BoxState.Valid {
+            give BoxOwnership.Owned;
+        }
+
+        BoxState.Moved {
+            give BoxOwnership.Moved;
+        }
+
+        BoxState.Released {
+            give BoxOwnership.Released;
+        }
+
+        BoxState.Invalid {
+            give BoxOwnership.Released;
+        }
+    }
+
+    give BoxOwnership.Released;
+}
+
+proc box_access_state<T>(
+    value: Box<T>
+) -> BoxAccessState {
+    if not box_is_valid<T>(
+        value
+    ) {
+        give BoxAccessState.Invalid;
+    }
+
+    give BoxAccessState.ReadWrite;
+}
+
+// -----------------------------------------------------------------------------
+// Layout
+// -----------------------------------------------------------------------------
+
+proc box_size<T>(
+    value: Box<T>
+) -> usize {
+    give value.allocation.layout.size;
+}
+
+proc box_align<T>(
+    value: Box<T>
+) -> usize {
+    give value.allocation.layout.align;
+}
+
+proc box_layout<T>(
+    value: Box<T>
+) -> alloc_allocator.AllocationLayout {
+    give value.allocation.layout;
+}
+
+// -----------------------------------------------------------------------------
+// Replace
+// -----------------------------------------------------------------------------
+
+proc box_replace<T>(
+    value: ref mut Box<T>,
+    replacement: T
+) -> T {
+    let target =
+        box_get_mut<T>(
+            value
+        );
+
+    let old =
+        *target;
+
+    set *target =
+        replacement;
+
+    set value.revision =
+        value.revision + 1;
+
+    give old;
+}
+
+proc box_set<T>(
+    value: ref mut Box<T>,
+    replacement: T
+) {
+    let target =
+        box_get_mut<T>(
+            value
+        );
+
+    compiler_drop_in_place<T>(
+        target
+    );
+
+    set *target =
+        replacement;
+
+    set value.revision =
+        value.revision + 1;
+}
+
+// -----------------------------------------------------------------------------
+// Swap
+// -----------------------------------------------------------------------------
+
+proc box_swap<T>(
+    left: ref mut Box<T>,
+    right: ref mut Box<T>
+) {
+    let left_value =
+        box_get_mut<T>(
+            left
+        );
+
+    let right_value =
+        box_get_mut<T>(
+            right
+        );
+
+    compiler_swap<T>(
+        left_value,
+        right_value
+    );
+
+    set left.revision =
+        left.revision + 1;
+
+    set right.revision =
+        right.revision + 1;
+}
+
+// -----------------------------------------------------------------------------
+// Move
+// -----------------------------------------------------------------------------
+
+proc box_move<T>(
+    source: ref mut Box<T>
+) -> Box<T> {
+    if not box_is_valid<T>(
+        *source
+    ) {
+        give compiler_box_invalid_move<T>();
+    }
+
+    let out =
+        Box<T> {
+            allocation:
+                source.allocation,
+
+            state:
+                BoxState.Valid,
+
+            generation:
+                source.generation,
+
+            revision:
+                source.revision + 1
+        };
+
+    set source.state =
+        BoxState.Moved;
+
+    set source.revision =
+        source.revision + 1;
+
+    give out;
+}
+
+proc box_try_move<T>(
+    source: ref mut Box<T>
+) -> Option<Box<T>> {
+    if not box_is_valid<T>(
+        *source
+    ) {
+        give none<Box<T>>();
+    }
+
+    give some<Box<T>>(
+        box_move<T>(
+            source
+        )
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Into inner
+// -----------------------------------------------------------------------------
+
+proc box_into_inner<T>(
+    value: Box<T>
+) -> T {
+    give compiler_box_into_inner<T>(
+        value
+    );
+}
+
+proc box_try_into_inner<T>(
+    value: Box<T>
+) -> Option<T> {
+    if not box_is_valid<T>(
+        value
+    ) {
+        give none<T>();
+    }
+
+    give some<T>(
+        compiler_box_into_inner<T>(
+            value
+        )
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Clone value into new box
+// -----------------------------------------------------------------------------
+
+proc box_clone<T>(
+    value: ref Box<T>
+) -> Box<T> {
+    let cloned =
+        compiler_clone<T>(
+            box_get<T>(
+                value
+            )
+        );
+
+    give box_new<T>(
+        cloned
+    );
+}
+
+proc box_try_clone<T>(
+    value: ref Box<T>
+) -> Option<Box<T>> {
+    if not box_is_valid<T>(
+        *value
+    ) {
+        give none<Box<T>>();
+    }
+
+    let cloned =
+        compiler_clone<T>(
+            box_get<T>(
+                value
+            )
+        );
+
+    give box_try_new<T>(
+        cloned
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Pointer identity
+// -----------------------------------------------------------------------------
+
+proc box_ptr_eq<T>(
+    left: Box<T>,
+    right: Box<T>
+) -> bool {
+    give box_alloc.box_allocation_ptr_equal(
+        left.allocation,
+        right.allocation
+    );
+}
+
+proc box_ptr_ne<T>(
+    left: Box<T>,
+    right: Box<T>
+) -> bool {
+    give not box_ptr_eq<T>(
+        left,
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Value equality
+// -----------------------------------------------------------------------------
+
+proc box_value_eq<T>(
+    left: ref Box<T>,
+    right: ref Box<T>
+) -> bool {
+    give compiler_eq<T>(
+        box_get<T>(
+            left
+        ),
+        box_get<T>(
+            right
+        )
+    );
+}
+
+proc box_value_ne<T>(
+    left: ref Box<T>,
+    right: ref Box<T>
+) -> bool {
+    give not box_value_eq<T>(
+        left,
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Raw pointer access
+// -----------------------------------------------------------------------------
+
+proc box_as_raw<T>(
+    value: ref Box<T>
+) -> raw ref T {
+    give compiler_allocation_as_raw<T>(
+        value.allocation
+    );
+}
+
+proc box_as_raw_mut<T>(
+    value: ref mut Box<T>
+) -> raw ref mut T {
+    give compiler_allocation_as_raw_mut<T>(
+        value.allocation
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Release
+// -----------------------------------------------------------------------------
+
+proc box_release<T>(
+    value: ref mut Box<T>
+) -> bool {
+    if value.state
+        != BoxState.Valid
+    {
+        give false;
+    }
+
+    let allocator =
+        box_allocator();
+
+    compiler_drop_in_place<T>(
+        box_get_mut<T>(
+            value
+        )
+    );
+
+    if not box_alloc.box_deallocate(
+        ref mut allocator,
+        value.allocation
+    ) {
+        give false;
+    }
+
+    set value.state =
+        BoxState.Released;
+
+    set value.generation =
+        value.generation + 1;
+
+    set value.revision =
+        value.revision + 1;
+
+    give true;
+}
+
+proc box_drop<T>(
+    value: ref mut Box<T>
+) {
+    box_release<T>(
+        value
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Forget
+// -----------------------------------------------------------------------------
+
+proc box_forget<T>(
+    value: ref mut Box<T>
+) {
+    if value.state
+        != BoxState.Valid
+    {
+        give;
+    }
+
+    compiler_forget_allocation(
+        value.allocation
+    );
+
+    set value.state =
+        BoxState.Moved;
+
+    set value.revision =
+        value.revision + 1;
+}
+
+// -----------------------------------------------------------------------------
+// Generation / revision
+// -----------------------------------------------------------------------------
+
+proc box_generation<T>(
+    value: Box<T>
+) -> u64 {
+    give value.generation;
+}
+
+proc box_revision<T>(
+    value: Box<T>
+) -> u64 {
+    give value.revision;
+}
+
+proc box_touch<T>(
+    value: ref mut Box<T>
+) {
+    set value.revision =
+        value.revision + 1;
+}
+
+proc box_advance_generation<T>(
+    value: ref mut Box<T>
+) -> u64 {
+    set value.generation =
+        value.generation + 1;
+
+    set value.revision =
+        value.revision + 1;
+
+    give value.generation;
+}
+
+// -----------------------------------------------------------------------------
+// Profile
+// -----------------------------------------------------------------------------
+
+proc box_profile<T>(
+    value: Box<T>
+) -> BoxProfile {
+    let valid =
+        box_is_valid<T>(
+            value
+        );
+
+    give BoxProfile {
+        size:
+            box_size<T>(
+                value
+            ),
+
+        align:
+            box_align<T>(
+                value
+            ),
+
+        state:
+            value.state,
+
+        ownership:
+            box_ownership<T>(
+                value
+            ),
+
+        alive:
+            value.state
+                == BoxState.Valid,
+
+        owned:
+            value.state
+                == BoxState.Valid,
+
+        moved:
+            value.state
+                == BoxState.Moved,
+
+        released:
+            value.state
+                == BoxState.Released,
+
+        readable:
+            valid,
+
+        writable:
+            valid,
+
+        valid:
+            valid,
+
+        generation:
+            value.generation,
+
+        revision:
+            value.revision
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Snapshot
+// -----------------------------------------------------------------------------
+
+proc box_snapshot<T>(
+    value: Box<T>
+) -> BoxSnapshot {
+    give BoxSnapshot {
+        size:
+            box_size<T>(
+                value
+            ),
+
+        align:
+            box_align<T>(
+                value
+            ),
+
+        state:
+            value.state,
+
+        generation:
+            value.generation,
+
+        revision:
+            value.revision
+    };
+}
+
+proc box_snapshot_equal(
+    left: BoxSnapshot,
+    right: BoxSnapshot
+) -> bool {
+    give left.size == right.size
+        and left.align == right.align
+        and left.state == right.state
+        and left.generation == right.generation
+        and left.revision == right.revision;
+}
+
+proc box_snapshot_changed<T>(
+    snapshot: BoxSnapshot,
+    value: Box<T>
+) -> bool {
+    give not box_snapshot_equal(
+        snapshot,
+        box_snapshot<T>(
+            value
+        )
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Delta
+// -----------------------------------------------------------------------------
+
+proc box_u64_delta(
+    before: u64,
+    after: u64
+) -> int {
+    if after > before {
+        give (
+            after - before
+        ) as int;
+    }
+
+    if after < before {
+        give -(
+            (
+                before - after
+            ) as int
+        );
+    }
+
+    give 0;
+}
+
+proc box_delta(
+    before: BoxSnapshot,
+    after: BoxSnapshot
+) -> BoxDelta {
+    let generation =
+        box_u64_delta(
+            before.generation,
+            after.generation
+        );
+
+    let revision =
+        box_u64_delta(
+            before.revision,
+            after.revision
+        );
+
+    give BoxDelta {
+        generation:
+            generation,
+
+        revision:
+            revision,
+
+        changed:
+            generation != 0
+            or revision != 0
+            or before.state != after.state
+            or before.size != after.size
+            or before.align != after.align
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+proc box_state_valid<T>(
+    value: Box<T>
+) -> bool {
+    pick value.state {
+        BoxState.Valid {
+            give box_alloc.box_allocation_is_valid(
+                value.allocation
+            );
+        }
+
+        BoxState.Moved {
+            give true;
+        }
+
+        BoxState.Released {
+            give true;
+        }
+
+        BoxState.Invalid {
+            give false;
+        }
+    }
+
+    give false;
+}
+
+proc box_layout_valid<T>(
+    value: Box<T>
+) -> bool {
+    if value.state
+        != BoxState.Valid
+    {
+        give true;
+    }
+
+    if value.allocation.layout.size
+        < compiler_size_of<T>()
+    {
+        give false;
+    }
+
+    give value.allocation.layout.align
+        >= compiler_align_of<T>();
+}
+
+proc box_pointer_valid<T>(
+    value: Box<T>
+) -> bool {
+    if value.state
+        != BoxState.Valid
+    {
+        give true;
+    }
+
+    give not compiler_raw_ptr_is_null(
+        value.allocation.ptr
+    );
+}
+
+proc box_ownership_valid<T>(
+    value: Box<T>
+) -> bool {
+    pick value.state {
+        BoxState.Valid {
+            give box_ownership<T>(
+                value
+            ) == BoxOwnership.Owned;
+        }
+
+        BoxState.Moved {
+            give box_ownership<T>(
+                value
+            ) == BoxOwnership.Moved;
+        }
+
+        BoxState.Released {
+            give box_ownership<T>(
+                value
+            ) == BoxOwnership.Released;
+        }
+
+        BoxState.Invalid {
+            give false;
+        }
+    }
+
+    give false;
+}
+
+proc box_validate<T>(
+    value: Box<T>
+) -> BoxValidation {
+    let allocation_valid =
+        if value.state == BoxState.Valid {
+            box_alloc.box_allocation_is_valid(
+                value.allocation
+            )
+        } else {
+            true
+        };
+
+    let state_valid =
+        box_state_valid<T>(
+            value
+        );
+
+    let pointer_valid =
+        box_pointer_valid<T>(
+            value
+        );
+
+    let layout_valid =
+        box_layout_valid<T>(
+            value
+        );
+
+    let ownership_valid =
+        box_ownership_valid<T>(
+            value
+        );
+
+    give BoxValidation {
+        valid:
+            allocation_valid
+            and state_valid
+            and pointer_valid
+            and layout_valid
+            and ownership_valid,
+
+        allocation_valid:
+            allocation_valid,
+
+        state_valid:
+            state_valid,
+
+        pointer_valid:
+            pointer_valid,
+
+        layout_valid:
+            layout_valid,
+
+        ownership_valid:
+            ownership_valid
+    };
+}
+
+proc box_invariant_holds<T>(
+    value: Box<T>
+) -> bool {
+    give box_validate<T>(
+        value
+    ).valid;
+}
+
+// -----------------------------------------------------------------------------
+// Profile validation
+// -----------------------------------------------------------------------------
+
+proc box_profile_valid(
+    profile: BoxProfile
+) -> bool {
+    if profile.alive
+        != (
+            profile.state
+            == BoxState.Valid
+        )
+    {
+        give false;
+    }
+
+    if profile.owned
+        != (
+            profile.ownership
+            == BoxOwnership.Owned
+        )
+    {
+        give false;
+    }
+
+    if profile.moved
+        != (
+            profile.state
+            == BoxState.Moved
+        )
+    {
+        give false;
+    }
+
+    if profile.released
+        != (
+            profile.state
+            == BoxState.Released
+        )
+    {
+        give false;
+    }
+
+    if profile.readable
+        and not profile.alive
+    {
+        give false;
+    }
+
+    if profile.writable
+        and not profile.alive
+    {
+        give false;
+    }
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc box_statistics_empty()
+    -> BoxStatistics
+{
+    give BoxStatistics {
+        created:
+            0,
+
+        destroyed:
+            0,
+
+        reads:
+            0,
+
+        writes:
+            0,
+
+        replacements:
+            0,
+
+        moves:
+            0,
+
+        raw_reads:
+            0,
+
+        validations:
+            0,
+
+        failures:
+            0
+    };
+}
+
+proc box_statistics_total(
+    statistics: BoxStatistics
+) -> u64 {
+    give statistics.created
+        + statistics.destroyed
+        + statistics.reads
+        + statistics.writes
+        + statistics.replacements
+        + statistics.moves
+        + statistics.raw_reads
+        + statistics.validations
+        + statistics.failures;
+}
+
+proc box_statistics_reset(
+    statistics: ref mut BoxStatistics
+) {
+    set *statistics =
+        box_statistics_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc box_state_name(
+    state: BoxState
+) -> string {
+    pick state {
+        BoxState.Valid {
+            give "valid";
+        }
+
+        BoxState.Moved {
+            give "moved";
+        }
+
+        BoxState.Released {
+            give "released";
+        }
+
+        BoxState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+proc box_ownership_name(
+    ownership: BoxOwnership
+) -> string {
+    pick ownership {
+        BoxOwnership.Owned {
+            give "owned";
+        }
+
+        BoxOwnership.Moved {
+            give "moved";
+        }
+
+        BoxOwnership.Released {
+            give "released";
+        }
+    }
+
+    give "released";
+}
+
+proc box_access_state_name(
+    state: BoxAccessState
+) -> string {
+    pick state {
+        BoxAccessState.ReadWrite {
+            give "read-write";
+        }
+
+        BoxAccessState.ReadOnly {
+            give "read-only";
+        }
+
+        BoxAccessState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+// -----------------------------------------------------------------------------
+// Box model
+// -----------------------------------------------------------------------------
+//
+// Box<T>
+//
+//          unique owner
+//              |
+//              v
+//       +--------------+
+//       | heap memory  |
+//       |--------------|
+//       |      T       |
+//       +--------------+
+//
+// Ownership:
+//
+//     Box<T>
+//        |
+//        +-- exactly one owner
+//        |
+//        +-- mutable access possible
+//        |
+//        +-- moving transfers ownership
+//        |
+//        +-- drop destroys T
+//        |
+//        +-- allocation released
+//
+// Move:
+//
+//     source
+//       |
+//       | box_move
+//       v
+//     destination
+//
+//     source.state = Moved
+//     destination.state = Valid
+//
+// Replace:
+//
+//     Box<T>
+//       |
+//       +-- old T returned
+//       |
+//       +-- new T stored
+//
+// Drop:
+//
+//     Box<T>
+//       |
+//       v
+//     drop(T)
+//       |
+//       v
+//     deallocate
+//       |
+//       v
+//     Released
+//
+// Clone:
+//
+//     Box<T> A
+//        |
+//        | clone T
+//        v
+//     Box<T> B
+//
+// Cloning a Box does NOT share the allocation.
+//
+//     A ---> allocation A
+//
+//     B ---> allocation B
+//
+// This differs fundamentally from Arc:
+//
+//     Box  = unique ownership
+//
+//     Arc  = shared ownership
+//
+// Invariants:
+//
+//     Valid:
+//         pointer != null
+//         allocation layout valid
+//         size >= sizeof(T)
+//         align >= alignof(T)
+//         exactly one logical owner
+//
+//     Moved:
+//         source must no longer access or release T
+//
+//     Released:
+//         T already destroyed
+//         allocation already released
+//
+// `boxed.vitl` is the main Box ownership layer.
+//
+// Allocation mechanics:
+//
+//     alloc.vitl
+//
+// Raw ownership conversion:
+//
+//     raw.vitl
+//
+// Internal representation:
+//
+//     inner.vitl
+//
+// Core invariants:
+//
+//     core.vitl

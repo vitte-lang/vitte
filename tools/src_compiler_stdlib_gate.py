@@ -22,6 +22,7 @@ REQUIRED_STDLIB_INDEXES = [
 ]
 NEGATIVE_FIXTURE_MARKERS = (
     "/tests/diagnostics/",
+    "/src/vitte/compiler/tests/fixtures/",
 )
 
 
@@ -55,6 +56,10 @@ def module_path_for_file(path: Path) -> str:
 
 
 def allowed_spaces_for_file(path: Path) -> set[str]:
+    if path.is_relative_to(ROOT / "src/vitte/compiler/tests/fixtures"):
+        declared = parse_space(path)
+        if declared:
+            return {declared}
     if path.is_relative_to(ROOT / "src/vitte/stdlib"):
         exact = path.relative_to(SRC).with_suffix("").as_posix()
         if path.name == "mod.vit":
@@ -111,6 +116,8 @@ def import_candidates(spec: str) -> list[Path]:
     spec = spec.strip()
     spec = spec.split("{", 1)[0].strip()
     spec = spec.split(" as ", 1)[0].strip()
+    if spec.endswith(".*"):
+        spec = spec[:-2]
     spec = spec.rstrip(".")
     if not spec:
         return []

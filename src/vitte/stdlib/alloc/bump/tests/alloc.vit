@@ -1,0 +1,1754 @@
+use src/vitte/stdlib/alloc/bump
+use src/vitte/stdlib/alloc/bump/alloc
+
+form Point {
+    x: int
+    y: int
+}
+
+proc test_default() -> bool {
+    let bump = bump_default("alloc-default");
+
+    give bump_capacity(bump) == BUMP_DEFAULT_CAPACITY
+        and bump_used(bump) == 0
+        and bump_remaining(bump) == BUMP_DEFAULT_CAPACITY
+        and bump_is_empty(bump)
+        and bump_is_valid(bump);
+}
+
+proc test_custom_capacity() -> bool {
+    let bump = bump_new(
+        "alloc-custom",
+        8192
+    );
+
+    give bump_capacity(bump) == 8192
+        and bump_used(bump) == 0
+        and bump_remaining(bump) == 8192;
+}
+
+proc test_allocate_bytes() -> bool {
+    let mut bump = bump_default(
+        "alloc-bytes"
+    );
+
+    let result = bump_alloc_bytes(
+        ref mut bump,
+        64,
+        8
+    );
+
+    give is_some(result)
+        and bump_used(bump) >= 64
+        and bump_is_valid(bump);
+}
+
+proc test_allocate_one_byte() -> bool {
+    let mut bump = bump_default(
+        "alloc-one"
+    );
+
+    let result = bump_alloc_bytes(
+        ref mut bump,
+        1,
+        1
+    );
+
+    give is_some(result)
+        and bump_used(bump) >= 1;
+}
+
+proc test_allocate_aligned() -> bool {
+    let mut bump = bump_default(
+        "alloc-aligned"
+    );
+
+    let first = bump_alloc_bytes(
+        ref mut bump,
+        1,
+        1
+    );
+
+    let second = bump_alloc_bytes(
+        ref mut bump,
+        16,
+        16
+    );
+
+    give is_some(first)
+        and is_some(second)
+        and bump_used(bump) >= 17;
+}
+
+proc test_allocate_zeroed() -> bool {
+    let mut bump = bump_default(
+        "alloc-zeroed"
+    );
+
+    let result = bump_alloc_zeroed(
+        ref mut bump,
+        128,
+        8
+    );
+
+    give is_some(result)
+        and bump_used(bump) >= 128;
+}
+
+proc test_multiple_allocations() -> bool {
+    let mut bump = bump_default(
+        "alloc-multiple"
+    );
+
+    let first = bump_alloc_bytes(
+        ref mut bump,
+        32,
+        8
+    );
+
+    let second = bump_alloc_bytes(
+        ref mut bump,
+        64,
+        8
+    );
+
+    let third = bump_alloc_bytes(
+        ref mut bump,
+        128,
+        8
+    );
+
+    give is_some(first)
+        and is_some(second)
+        and is_some(third)
+        and bump_used(bump) >= 224;
+}
+
+proc test_used_increases() -> bool {
+    let mut bump = bump_default(
+        "alloc-used"
+    );
+
+    let before = bump_used(bump);
+
+    let result = bump_alloc_bytes(
+        ref mut bump,
+        64,
+        8
+    );
+
+    let after = bump_used(bump);
+
+    give is_some(result)
+        and after > before;
+}
+
+proc test_remaining_decreases() -> bool {
+    let mut bump = bump_default(
+        "alloc-remaining"
+    );
+
+    let before = bump_remaining(bump);
+
+    let result = bump_alloc_bytes(
+        ref mut bump,
+        64,
+        8
+    );
+
+    let after = bump_remaining(bump);
+
+    give is_some(result)
+        and after < before;
+}
+
+proc test_accounting() -> bool {
+    let mut bump = bump_default(
+        "alloc-accounting"
+    );
+
+    let result = bump_alloc_bytes(
+        ref mut bump,
+        256,
+        8
+    );
+
+    if is_none(result) {
+        give false;
+    }
+
+    give bump_used(bump)
+        + bump_remaining(bump)
+        == bump_capacity(bump);
+}
+
+proc test_exact_capacity() -> bool {
+    let mut bump = bump_new(
+        "alloc-exact",
+        64
+    );
+
+    let result = bump_alloc_bytes(
+        ref mut bump,
+        64,
+        1
+    );
+
+    give is_some(result)
+        and bump_used(bump) == 64
+        and bump_remaining(bump) == 0
+        and bump_is_full(bump);
+}
+
+proc test_capacity_exceeded() -> bool {
+    let mut bump = bump_new(
+        "alloc-overflow-capacity",
+        64
+    );
+
+    let first = bump_alloc_bytes(
+        ref mut bump,
+        64,
+        1
+    );
+
+    let second = bump_alloc_bytes(
+        ref mut bump,
+        1,
+        1
+    );
+
+    give is_some(first)
+        and is_none(second)
+        and bump_is_full(bump);
+}
+
+proc test_too_large() -> bool {
+    let mut bump = bump_new(
+        "alloc-too-large",
+        64
+    );
+
+    let result = bump_alloc_bytes(
+        ref mut bump,
+        128,
+        8
+    );
+
+    give is_none(result)
+        and bump_used(bump) == 0;
+}
+
+proc test_invalid_alignment_zero() -> bool {
+    let mut bump = bump_default(
+        "alloc-align-zero"
+    );
+
+    let result = bump_alloc_bytes(
+        ref mut bump,
+        64,
+        0
+    );
+
+    give is_none(result);
+}
+
+proc test_invalid_alignment_three() -> bool {
+    let mut bump = bump_default(
+        "alloc-align-three"
+    );
+
+    let result = bump_alloc_bytes(
+        ref mut bump,
+        64,
+        3
+    );
+
+    give is_none(result);
+}
+
+proc test_can_fit() -> bool {
+    let bump = bump_default(
+        "alloc-fit"
+    );
+
+    give bump_can_fit(
+        bump,
+        64,
+        8
+    );
+}
+
+proc test_cannot_fit() -> bool {
+    let bump = bump_new(
+        "alloc-no-fit",
+        64
+    );
+
+    give not bump_can_fit(
+        bump,
+        128,
+        8
+    );
+}
+
+proc test_request_bytes() -> bool {
+    let request = bump_allocation_request_bytes(
+        64,
+        8
+    );
+
+    give request.kind == BumpAllocationKind.Bytes
+        and request.size == 64
+        and request.align == 8
+        and request.count == 1
+        and not request.zeroed;
+}
+
+proc test_request_zeroed() -> bool {
+    let request = bump_allocation_request_zeroed(
+        64,
+        8
+    );
+
+    give request.kind == BumpAllocationKind.Zeroed
+        and request.size == 64
+        and request.align == 8
+        and request.count == 1
+        and request.zeroed;
+}
+
+proc test_request_aligned() -> bool {
+    let request = bump_allocation_request_aligned(
+        64,
+        32
+    );
+
+    give request.kind == BumpAllocationKind.Aligned
+        and request.size == 64
+        and request.align == 32;
+}
+
+proc test_alignment_valid() -> bool {
+    give bump_allocation_alignment_valid(1)
+        and bump_allocation_alignment_valid(2)
+        and bump_allocation_alignment_valid(4)
+        and bump_allocation_alignment_valid(8)
+        and bump_allocation_alignment_valid(16)
+        and bump_allocation_alignment_valid(32)
+        and bump_allocation_alignment_valid(64);
+}
+
+proc test_alignment_invalid() -> bool {
+    give not bump_allocation_alignment_valid(0)
+        and not bump_allocation_alignment_valid(3)
+        and not bump_allocation_alignment_valid(6)
+        and not bump_allocation_alignment_valid(12);
+}
+
+proc test_align_up_aligned() -> bool {
+    let result = bump_allocation_align_up(
+        16,
+        8
+    );
+
+    pick result {
+        Some(value) {
+            give value == 16;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_align_up_unaligned() -> bool {
+    let result = bump_allocation_align_up(
+        17,
+        8
+    );
+
+    pick result {
+        Some(value) {
+            give value == 24;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_align_up_large() -> bool {
+    let result = bump_allocation_align_up(
+        65,
+        64
+    );
+
+    pick result {
+        Some(value) {
+            give value == 128;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_align_up_invalid() -> bool {
+    let result = bump_allocation_align_up(
+        64,
+        3
+    );
+
+    give is_none(result);
+}
+
+proc test_padding_zero() -> bool {
+    let result = bump_allocation_padding(
+        16,
+        8
+    );
+
+    pick result {
+        Some(value) {
+            give value == 0;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_padding() -> bool {
+    let result = bump_allocation_padding(
+        17,
+        8
+    );
+
+    pick result {
+        Some(value) {
+            give value == 7;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_array_size() -> bool {
+    let result = bump_allocation_array_size(
+        8,
+        16
+    );
+
+    pick result {
+        Some(size) {
+            give size == 128;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_mul_no_overflow() -> bool {
+    give not bump_allocation_mul_overflows(
+        64,
+        1024
+    );
+}
+
+proc test_add_no_overflow() -> bool {
+    give not bump_allocation_add_overflows(
+        64,
+        128
+    );
+}
+
+proc test_cursor_empty() -> bool {
+    let cursor = bump_allocation_cursor(
+        0,
+        4096
+    );
+
+    give bump_allocation_cursor_valid(cursor)
+        and bump_allocation_cursor_empty(cursor)
+        and not bump_allocation_cursor_full(cursor)
+        and bump_allocation_cursor_remaining(cursor) == 4096;
+}
+
+proc test_cursor_partial() -> bool {
+    let cursor = bump_allocation_cursor(
+        1024,
+        4096
+    );
+
+    give bump_allocation_cursor_valid(cursor)
+        and bump_allocation_cursor_remaining(cursor) == 3072;
+}
+
+proc test_cursor_full() -> bool {
+    let cursor = bump_allocation_cursor(
+        4096,
+        4096
+    );
+
+    give bump_allocation_cursor_valid(cursor)
+        and bump_allocation_cursor_full(cursor)
+        and bump_allocation_cursor_remaining(cursor) == 0;
+}
+
+proc test_cursor_invalid() -> bool {
+    let cursor = bump_allocation_cursor(
+        5000,
+        4096
+    );
+
+    give not bump_allocation_cursor_valid(
+        cursor
+    );
+}
+
+proc test_plan_basic() -> bool {
+    let cursor = bump_allocation_cursor(
+        0,
+        4096
+    );
+
+    let plan = bump_allocation_plan(
+        cursor,
+        64,
+        8
+    );
+
+    give plan.valid
+        and plan.offset == 0
+        and plan.aligned_offset == 0
+        and plan.padding == 0
+        and plan.size == 64
+        and plan.end == 64;
+}
+
+proc test_plan_alignment() -> bool {
+    let cursor = bump_allocation_cursor(
+        1,
+        4096
+    );
+
+    let plan = bump_allocation_plan(
+        cursor,
+        16,
+        16
+    );
+
+    give plan.valid
+        and plan.aligned_offset == 16
+        and plan.padding == 15
+        and plan.end == 32;
+}
+
+proc test_plan_too_large() -> bool {
+    let cursor = bump_allocation_cursor(
+        0,
+        64
+    );
+
+    let plan = bump_allocation_plan(
+        cursor,
+        128,
+        8
+    );
+
+    give not plan.valid;
+}
+
+proc test_plan_exact() -> bool {
+    let cursor = bump_allocation_cursor(
+        0,
+        64
+    );
+
+    let plan = bump_allocation_plan(
+        cursor,
+        64,
+        1
+    );
+
+    give plan.valid
+        and plan.end == 64;
+}
+
+proc test_request_validation() -> bool {
+    let cursor = bump_allocation_cursor(
+        0,
+        4096
+    );
+
+    let request = bump_allocation_request_bytes(
+        64,
+        8
+    );
+
+    give bump_allocation_request_valid(
+        cursor,
+        request
+    );
+}
+
+proc test_request_validation_capacity() -> bool {
+    let cursor = bump_allocation_cursor(
+        0,
+        64
+    );
+
+    let request = bump_allocation_request_bytes(
+        128,
+        8
+    );
+
+    give not bump_allocation_request_valid(
+        cursor,
+        request
+    );
+}
+
+proc test_emplace_int() -> bool {
+    let mut bump = bump_default(
+        "emplace-int"
+    );
+
+    let result = bump_emplace(
+        ref mut bump,
+        42
+    );
+
+    pick result {
+        Some(value) {
+            give *value == 42;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_emplace_negative() -> bool {
+    let mut bump = bump_default(
+        "emplace-negative"
+    );
+
+    let result = bump_emplace(
+        ref mut bump,
+        -42
+    );
+
+    pick result {
+        Some(value) {
+            give *value == -42;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_emplace_bool() -> bool {
+    let mut bump = bump_default(
+        "emplace-bool"
+    );
+
+    let result = bump_emplace(
+        ref mut bump,
+        true
+    );
+
+    pick result {
+        Some(value) {
+            give *value;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_emplace_string() -> bool {
+    let mut bump = bump_default(
+        "emplace-string"
+    );
+
+    let result = bump_emplace(
+        ref mut bump,
+        "Vitte"
+    );
+
+    pick result {
+        Some(value) {
+            give *value == "Vitte";
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_emplace_point() -> bool {
+    let mut bump = bump_default(
+        "emplace-point"
+    );
+
+    let result = bump_emplace(
+        ref mut bump,
+        Point {
+            x: 10
+            y: 20
+        }
+    );
+
+    pick result {
+        Some(point) {
+            give point.x == 10
+                and point.y == 20;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_emplace_mutation() -> bool {
+    let mut bump = bump_default(
+        "emplace-mut"
+    );
+
+    let result = bump_emplace(
+        ref mut bump,
+        Point {
+            x: 1
+            y: 2
+        }
+    );
+
+    pick result {
+        Some(point) {
+            set point.x = 100;
+            set point.y = 200;
+
+            give point.x == 100
+                and point.y == 200;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_copy_int() -> bool {
+    let mut bump = bump_default(
+        "copy-int"
+    );
+
+    let source = 42;
+
+    let result = bump_copy(
+        ref mut bump,
+        ref source
+    );
+
+    pick result {
+        Some(value) {
+            give *value == 42;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_copy_point() -> bool {
+    let mut bump = bump_default(
+        "copy-point"
+    );
+
+    let source = Point {
+        x: 10
+        y: 20
+    };
+
+    let result = bump_copy(
+        ref mut bump,
+        ref source
+    );
+
+    pick result {
+        Some(point) {
+            give point.x == 10
+                and point.y == 20;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_mark_after_alloc() -> bool {
+    let mut bump = bump_default(
+        "mark"
+    );
+
+    let result = bump_alloc_bytes(
+        ref mut bump,
+        64,
+        8
+    );
+
+    if is_none(result) {
+        give false;
+    }
+
+    let mark = bump_mark(bump);
+
+    give mark.offset == bump_used(bump)
+        and mark.generation == bump_generation(bump);
+}
+
+proc test_mark_valid() -> bool {
+    let bump = bump_default(
+        "mark-valid"
+    );
+
+    let mark = bump_mark(bump);
+
+    give bump_mark_is_valid(
+        bump,
+        mark
+    );
+}
+
+proc test_bytes_since_mark() -> bool {
+    let mut bump = bump_default(
+        "bytes-since"
+    );
+
+    let mark = bump_mark(bump);
+
+    let result = bump_alloc_bytes(
+        ref mut bump,
+        128,
+        8
+    );
+
+    if is_none(result) {
+        give false;
+    }
+
+    give bump_bytes_since_mark(
+        bump,
+        mark
+    ) >= 128;
+}
+
+proc test_rewind() -> bool {
+    let mut bump = bump_default(
+        "rewind"
+    );
+
+    let first = bump_alloc_bytes(
+        ref mut bump,
+        64,
+        8
+    );
+
+    if is_none(first) {
+        give false;
+    }
+
+    let mark = bump_mark(bump);
+
+    let second = bump_alloc_bytes(
+        ref mut bump,
+        128,
+        8
+    );
+
+    if is_none(second) {
+        give false;
+    }
+
+    give bump_rewind(
+        ref mut bump,
+        mark
+    )
+    and bump_used(bump) == mark.offset;
+}
+
+proc test_rewind_all() -> bool {
+    let mut bump = bump_default(
+        "rewind-all"
+    );
+
+    let result = bump_alloc_bytes(
+        ref mut bump,
+        512,
+        8
+    );
+
+    if is_none(result) {
+        give false;
+    }
+
+    give bump_rewind_all(
+        ref mut bump
+    )
+    and bump_used(bump) == 0
+    and bump_is_empty(bump);
+}
+
+proc test_reset() -> bool {
+    let mut bump = bump_default(
+        "reset"
+    );
+
+    let allocation = bump_alloc_bytes(
+        ref mut bump,
+        512,
+        8
+    );
+
+    if is_none(allocation) {
+        give false;
+    }
+
+    let generation =
+        bump_generation(bump);
+
+    bump_reset(
+        ref mut bump
+    );
+
+    give bump_used(bump) == 0
+        and bump_is_empty(bump)
+        and bump_generation(bump) > generation;
+}
+
+proc test_old_mark_invalid_after_reset() -> bool {
+    let mut bump = bump_default(
+        "mark-reset"
+    );
+
+    let mark = bump_mark(bump);
+
+    bump_reset(
+        ref mut bump
+    );
+
+    give not bump_mark_is_valid(
+        bump,
+        mark
+    );
+}
+
+proc test_profile_empty() -> bool {
+    let bump = bump_default(
+        "profile-empty"
+    );
+
+    let profile = bump_profile(
+        bump
+    );
+
+    give profile.used == 0
+        and profile.capacity == BUMP_DEFAULT_CAPACITY
+        and profile.remaining == BUMP_DEFAULT_CAPACITY
+        and profile.empty
+        and profile.active
+        and not profile.full
+        and not profile.released
+        and profile.valid;
+}
+
+proc test_profile_active() -> bool {
+    let mut bump = bump_default(
+        "profile-active"
+    );
+
+    let result = bump_alloc_bytes(
+        ref mut bump,
+        64,
+        8
+    );
+
+    if is_none(result) {
+        give false;
+    }
+
+    let profile = bump_profile(
+        bump
+    );
+
+    give profile.used > 0
+        and not profile.empty
+        and profile.active
+        and profile.valid;
+}
+
+proc test_utilization_empty() -> bool {
+    let bump = bump_default(
+        "util-empty"
+    );
+
+    give bump_utilization(bump) == 0.0;
+}
+
+proc test_utilization_after_alloc() -> bool {
+    let mut bump = bump_new(
+        "util-active",
+        1024
+    );
+
+    let result = bump_alloc_bytes(
+        ref mut bump,
+        512,
+        1
+    );
+
+    if is_none(result) {
+        give false;
+    }
+
+    give bump_utilization(bump) == 0.5;
+}
+
+proc test_remaining_ratio() -> bool {
+    let mut bump = bump_new(
+        "remaining-ratio",
+        1024
+    );
+
+    let result = bump_alloc_bytes(
+        ref mut bump,
+        512,
+        1
+    );
+
+    if is_none(result) {
+        give false;
+    }
+
+    give bump_remaining_ratio(bump) == 0.5;
+}
+
+proc test_validation_empty() -> bool {
+    let bump = bump_default(
+        "validation-empty"
+    );
+
+    let validation = bump_validate(
+        bump
+    );
+
+    give validation.valid
+        and validation.block_valid
+        and validation.state_valid
+        and validation.generation_valid
+        and validation.accounting_valid;
+}
+
+proc test_validation_active() -> bool {
+    let mut bump = bump_default(
+        "validation-active"
+    );
+
+    let result = bump_alloc_bytes(
+        ref mut bump,
+        64,
+        8
+    );
+
+    if is_none(result) {
+        give false;
+    }
+
+    give bump_validate(bump).valid
+        and bump_invariant_holds(bump);
+}
+
+proc test_snapshot_equal() -> bool {
+    let bump = bump_default(
+        "snapshot-equal"
+    );
+
+    let first = bump_snapshot(bump);
+    let second = bump_snapshot(bump);
+
+    give bump_snapshot_equal(
+        first,
+        second
+    );
+}
+
+proc test_snapshot_changes_after_alloc() -> bool {
+    let mut bump = bump_default(
+        "snapshot-change"
+    );
+
+    let before = bump_snapshot(
+        bump
+    );
+
+    let result = bump_alloc_bytes(
+        ref mut bump,
+        64,
+        8
+    );
+
+    if is_none(result) {
+        give false;
+    }
+
+    let after = bump_snapshot(
+        bump
+    );
+
+    give bump_snapshot_changed(
+        before,
+        after
+    );
+}
+
+proc test_delta_after_alloc() -> bool {
+    let mut bump = bump_default(
+        "delta"
+    );
+
+    let before = bump_snapshot(
+        bump
+    );
+
+    let result = bump_alloc_bytes(
+        ref mut bump,
+        64,
+        8
+    );
+
+    if is_none(result) {
+        give false;
+    }
+
+    let after = bump_snapshot(
+        bump
+    );
+
+    let delta = bump_delta(
+        before,
+        after
+    );
+
+    give delta.changed
+        and delta.used > 0
+        and delta.revision > 0;
+}
+
+proc test_touch() -> bool {
+    let mut bump = bump_default(
+        "touch"
+    );
+
+    let before = bump_revision(
+        bump
+    );
+
+    bump_touch(
+        ref mut bump
+    );
+
+    give bump_revision(bump) > before;
+}
+
+proc test_advance_generation() -> bool {
+    let mut bump = bump_default(
+        "generation"
+    );
+
+    let before = bump_generation(
+        bump
+    );
+
+    let after = bump_advance_generation(
+        ref mut bump
+    );
+
+    give after > before
+        and bump_generation(bump) == after;
+}
+
+proc test_release() -> bool {
+    let mut bump = bump_default(
+        "release"
+    );
+
+    give bump_release(
+        ref mut bump
+    )
+    and bump_is_released(bump);
+}
+
+proc test_release_twice() -> bool {
+    let mut bump = bump_default(
+        "release-twice"
+    );
+
+    let first = bump_release(
+        ref mut bump
+    );
+
+    let second = bump_release(
+        ref mut bump
+    );
+
+    give first
+        and not second;
+}
+
+proc test_allocate_after_release_fails() -> bool {
+    let mut bump = bump_default(
+        "release-alloc"
+    );
+
+    if not bump_release(
+        ref mut bump
+    ) {
+        give false;
+    }
+
+    give is_none(
+        bump_alloc_bytes(
+            ref mut bump,
+            64,
+            8
+        )
+    );
+}
+
+proc test_statistics_empty() -> bool {
+    let statistics =
+        bump_statistics_empty();
+
+    give statistics.allocations == 0
+        and statistics.failures == 0
+        and statistics.bytes_allocated == 0
+        and statistics.bytes_padding == 0
+        and statistics.marks == 0
+        and statistics.rewinds == 0
+        and statistics.resets == 0
+        and statistics.releases == 0;
+}
+
+proc test_statistics_total_empty() -> bool {
+    give bump_statistics_total_operations(
+        bump_statistics_empty()
+    ) == 0;
+}
+
+proc test_allocation_profile_empty() -> bool {
+    let profile =
+        bump_allocation_profile_empty();
+
+    give profile.requests == 0
+        and profile.successes == 0
+        and profile.failures == 0
+        and profile.bytes_requested == 0
+        and profile.bytes_allocated == 0
+        and profile.bytes_padding == 0
+        and profile.bytes_failed == 0;
+}
+
+proc test_allocation_profile_request() -> bool {
+    let mut profile =
+        bump_allocation_profile_empty();
+
+    let request =
+        bump_allocation_request_bytes(
+            64,
+            8
+        );
+
+    bump_allocation_profile_record_request(
+        ref mut profile,
+        request
+    );
+
+    give profile.requests == 1
+        and profile.bytes_requested == 64
+        and profile.byte_allocations == 1;
+}
+
+proc test_allocation_kind_names() -> bool {
+    give bump_allocation_kind_name(
+        BumpAllocationKind.Bytes
+    ) == "bytes"
+        and bump_allocation_kind_name(
+            BumpAllocationKind.Value
+        ) == "value"
+        and bump_allocation_kind_name(
+            BumpAllocationKind.Array
+        ) == "array"
+        and bump_allocation_kind_name(
+            BumpAllocationKind.Zeroed
+        ) == "zeroed"
+        and bump_allocation_kind_name(
+            BumpAllocationKind.Aligned
+        ) == "aligned";
+}
+
+proc test_allocation_state_names() -> bool {
+    give bump_allocation_state_name(
+        BumpAllocationState.Ready
+    ) == "ready"
+        and bump_allocation_state_name(
+            BumpAllocationState.Allocated
+        ) == "allocated"
+        and bump_allocation_state_name(
+            BumpAllocationState.Failed
+        ) == "failed"
+        and bump_allocation_state_name(
+            BumpAllocationState.Exhausted
+        ) == "exhausted";
+}
+
+proc test_allocation_failure_names() -> bool {
+    give bump_allocation_failure_name(
+        BumpAllocationFailure.None
+    ) == "none"
+        and bump_allocation_failure_name(
+            BumpAllocationFailure.InvalidSize
+        ) == "invalid-size"
+        and bump_allocation_failure_name(
+            BumpAllocationFailure.InvalidAlignment
+        ) == "invalid-alignment"
+        and bump_allocation_failure_name(
+            BumpAllocationFailure.CapacityExceeded
+        ) == "capacity-exceeded"
+        and bump_allocation_failure_name(
+            BumpAllocationFailure.Overflow
+        ) == "overflow";
+}
+
+proc test_state_names() -> bool {
+    give bump_state_name(
+        BumpState.Empty
+    ) == "empty"
+        and bump_state_name(
+            BumpState.Active
+        ) == "active"
+        and bump_state_name(
+            BumpState.Full
+        ) == "full"
+        and bump_state_name(
+            BumpState.Released
+        ) == "released"
+        and bump_state_name(
+            BumpState.Invalid
+        ) == "invalid";
+}
+
+proc test_many_small_allocations() -> bool {
+    let mut bump = bump_new(
+        "many-small",
+        65536
+    );
+
+    let index: usize = 0;
+
+    while index < 1000 {
+        let result = bump_alloc_bytes(
+            ref mut bump,
+            16,
+            8
+        );
+
+        if is_none(result) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give bump_used(bump) >= 16000
+        and bump_is_valid(bump);
+}
+
+proc test_many_tiny_allocations() -> bool {
+    let mut bump = bump_new(
+        "many-tiny",
+        65536
+    );
+
+    let index: usize = 0;
+
+    while index < 10000 {
+        let result = bump_alloc_bytes(
+            ref mut bump,
+            1,
+            1
+        );
+
+        if is_none(result) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give bump_used(bump) == 10000;
+}
+
+proc test_many_emplace() -> bool {
+    let mut bump = bump_new(
+        "many-emplace",
+        65536
+    );
+
+    let index: int = 0;
+
+    while index < 5000 {
+        let result = bump_emplace(
+            ref mut bump,
+            index
+        );
+
+        pick result {
+            Some(value) {
+                if *value != index {
+                    give false;
+                }
+            }
+
+            None {
+                give false;
+            }
+        }
+
+        set index = index + 1;
+    }
+
+    give bump_is_valid(bump);
+}
+
+proc test_many_point_emplace() -> bool {
+    let mut bump = bump_new(
+        "many-point",
+        131072
+    );
+
+    let index: int = 0;
+
+    while index < 5000 {
+        let result = bump_emplace(
+            ref mut bump,
+            Point {
+                x: index
+                y: index + 1
+            }
+        );
+
+        pick result {
+            Some(point) {
+                if point.x != index
+                    or point.y != index + 1
+                {
+                    give false;
+                }
+            }
+
+            None {
+                give false;
+            }
+        }
+
+        set index = index + 1;
+    }
+
+    give bump_is_valid(bump);
+}
+
+proc test_allocate_reset_cycles() -> bool {
+    let mut bump = bump_new(
+        "reset-cycles",
+        4096
+    );
+
+    let cycle: usize = 0;
+
+    while cycle < 1000 {
+        let index: usize = 0;
+
+        while index < 32 {
+            let result = bump_alloc_bytes(
+                ref mut bump,
+                64,
+                8
+            );
+
+            if is_none(result) {
+                give false;
+            }
+
+            set index = index + 1;
+        }
+
+        bump_reset(
+            ref mut bump
+        );
+
+        if not bump_is_empty(bump)
+            or not bump_is_valid(bump)
+        {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc test_allocate_rewind_cycles() -> bool {
+    let mut bump = bump_new(
+        "rewind-cycles",
+        4096
+    );
+
+    let cycle: usize = 0;
+
+    while cycle < 1000 {
+        let mark = bump_mark(
+            bump
+        );
+
+        let index: usize = 0;
+
+        while index < 16 {
+            let result = bump_alloc_bytes(
+                ref mut bump,
+                64,
+                8
+            );
+
+            if is_none(result) {
+                give false;
+            }
+
+            set index = index + 1;
+        }
+
+        if not bump_rewind(
+            ref mut bump,
+            mark
+        ) {
+            give false;
+        }
+
+        if bump_used(bump)
+            != mark.offset
+        {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give bump_is_valid(bump);
+}
+
+proc test_alignment_stress() -> bool {
+    let mut bump = bump_new(
+        "align-stress",
+        262144
+    );
+
+    let index: usize = 0;
+
+    while index < 1000 {
+        let a = bump_alloc_bytes(
+            ref mut bump,
+            1,
+            1
+        );
+
+        let b = bump_alloc_bytes(
+            ref mut bump,
+            2,
+            2
+        );
+
+        let c = bump_alloc_bytes(
+            ref mut bump,
+            4,
+            4
+        );
+
+        let d = bump_alloc_bytes(
+            ref mut bump,
+            8,
+            8
+        );
+
+        let e = bump_alloc_bytes(
+            ref mut bump,
+            16,
+            16
+        );
+
+        let f = bump_alloc_bytes(
+            ref mut bump,
+            32,
+            32
+        );
+
+        if is_none(a)
+            or is_none(b)
+            or is_none(c)
+            or is_none(d)
+            or is_none(e)
+            or is_none(f)
+        {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give bump_is_valid(bump);
+}
+
+proc run_alloc_tests() -> bool {
+    give test_default()
+        and test_custom_capacity()
+
+        and test_allocate_bytes()
+        and test_allocate_one_byte()
+        and test_allocate_aligned()
+        and test_allocate_zeroed()
+        and test_multiple_allocations()
+
+        and test_used_increases()
+        and test_remaining_decreases()
+        and test_accounting()
+        and test_exact_capacity()
+        and test_capacity_exceeded()
+        and test_too_large()
+        and test_invalid_alignment_zero()
+        and test_invalid_alignment_three()
+
+        and test_can_fit()
+        and test_cannot_fit()
+
+        and test_request_bytes()
+        and test_request_zeroed()
+        and test_request_aligned()
+
+        and test_alignment_valid()
+        and test_alignment_invalid()
+        and test_align_up_aligned()
+        and test_align_up_unaligned()
+        and test_align_up_large()
+        and test_align_up_invalid()
+        and test_padding_zero()
+        and test_padding()
+
+        and test_array_size()
+        and test_mul_no_overflow()
+        and test_add_no_overflow()
+
+        and test_cursor_empty()
+        and test_cursor_partial()
+        and test_cursor_full()
+        and test_cursor_invalid()
+
+        and test_plan_basic()
+        and test_plan_alignment()
+        and test_plan_too_large()
+        and test_plan_exact()
+
+        and test_request_validation()
+        and test_request_validation_capacity()
+
+        and test_emplace_int()
+        and test_emplace_negative()
+        and test_emplace_bool()
+        and test_emplace_string()
+        and test_emplace_point()
+        and test_emplace_mutation()
+
+        and test_copy_int()
+        and test_copy_point()
+
+        and test_mark_after_alloc()
+        and test_mark_valid()
+        and test_bytes_since_mark()
+        and test_rewind()
+        and test_rewind_all()
+        and test_reset()
+        and test_old_mark_invalid_after_reset()
+
+        and test_profile_empty()
+        and test_profile_active()
+        and test_utilization_empty()
+        and test_utilization_after_alloc()
+        and test_remaining_ratio()
+
+        and test_validation_empty()
+        and test_validation_active()
+
+        and test_snapshot_equal()
+        and test_snapshot_changes_after_alloc()
+        and test_delta_after_alloc()
+
+        and test_touch()
+        and test_advance_generation()
+
+        and test_release()
+        and test_release_twice()
+        and test_allocate_after_release_fails()
+
+        and test_statistics_empty()
+        and test_statistics_total_empty()
+        and test_allocation_profile_empty()
+        and test_allocation_profile_request()
+
+        and test_allocation_kind_names()
+        and test_allocation_state_names()
+        and test_allocation_failure_names()
+        and test_state_names()
+
+        and test_many_small_allocations()
+        and test_many_tiny_allocations()
+        and test_many_emplace()
+        and test_many_point_emplace()
+        and test_allocate_reset_cycles()
+        and test_allocate_rewind_cycles()
+        and test_alignment_stress();
+}
+
+proc main() -> int {
+    if run_alloc_tests() {
+        give 0;
+    }
+
+    give 1;
+}

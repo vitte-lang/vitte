@@ -1,0 +1,1581 @@
+use src/vitte/stdlib/alloc/bump
+use src/vitte/stdlib/alloc/bump/reset
+
+proc test_mark_empty() -> bool {
+    let bump = bump_default("reset-mark-empty");
+
+    let mark = bump_reset_mark(
+        bump
+    );
+
+    give mark.offset == 0
+        and mark.generation == bump_generation(bump)
+        and bump_reset_mark_is_valid(
+            bump,
+            mark
+        );
+}
+
+proc test_mark_after_alloc() -> bool {
+    let mut bump = bump_default("reset-mark");
+
+    let allocation = bump_alloc_bytes(
+        ref mut bump,
+        128,
+        8
+    );
+
+    if is_none(allocation) {
+        give false;
+    }
+
+    let mark = bump_reset_mark(
+        bump
+    );
+
+    give mark.offset == bump_used(bump)
+        and bump_reset_mark_is_valid(
+            bump,
+            mark
+        );
+}
+
+proc test_rewind_basic() -> bool {
+    let mut bump = bump_default("reset-rewind");
+
+    let first = bump_alloc_bytes(
+        ref mut bump,
+        64,
+        8
+    );
+
+    if is_none(first) {
+        give false;
+    }
+
+    let mark = bump_reset_mark(
+        bump
+    );
+
+    let second = bump_alloc_bytes(
+        ref mut bump,
+        128,
+        8
+    );
+
+    if is_none(second) {
+        give false;
+    }
+
+    let result = bump_rewind_to_mark(
+        ref mut bump,
+        mark
+    );
+
+    give result.success
+        and result.state == BumpResetState.Applied
+        and result.mode == BumpResetMode.Rewind
+        and bump_used(bump) == mark.offset;
+}
+
+proc test_rewind_reclaimed() -> bool {
+    let mut bump = bump_default("reset-reclaimed");
+
+    let mark = bump_reset_mark(
+        bump
+    );
+
+    let allocation = bump_alloc_bytes(
+        ref mut bump,
+        256,
+        8
+    );
+
+    if is_none(allocation) {
+        give false;
+    }
+
+    let result = bump_rewind_to_mark(
+        ref mut bump,
+        mark
+    );
+
+    give result.success
+        and result.reclaimed >= 256
+        and bump_reset_reclaimed(result) >= 256;
+}
+
+proc test_rewind_preserves_generation() -> bool {
+    let mut bump = bump_default("reset-rewind-generation");
+
+    let mark = bump_reset_mark(
+        bump
+    );
+
+    let generation = bump_generation(
+        bump
+    );
+
+    let allocation = bump_alloc_bytes(
+        ref mut bump,
+        128,
+        8
+    );
+
+    if is_none(allocation) {
+        give false;
+    }
+
+    let result = bump_rewind_to_mark(
+        ref mut bump,
+        mark
+    );
+
+    give result.success
+        and bump_generation(bump) == generation
+        and bump_reset_preserves_generation(
+            result
+        );
+}
+
+proc test_rewind_changes_revision() -> bool {
+    let mut bump = bump_default("reset-rewind-revision");
+
+    let mark = bump_reset_mark(
+        bump
+    );
+
+    let allocation = bump_alloc_bytes(
+        ref mut bump,
+        128,
+        8
+    );
+
+    if is_none(allocation) {
+        give false;
+    }
+
+    let before = bump_revision(
+        bump
+    );
+
+    let result = bump_rewind_to_mark(
+        ref mut bump,
+        mark
+    );
+
+    give result.success
+        and bump_revision(bump) > before
+        and result.revision_changed;
+}
+
+proc test_rewind_same_offset_skipped() -> bool {
+    let mut bump = bump_default("reset-rewind-same");
+
+    let mark = bump_reset_mark(
+        bump
+    );
+
+    let result = bump_rewind_to_mark(
+        ref mut bump,
+        mark
+    );
+
+    give result.success
+        and result.state == BumpResetState.Skipped
+        and not bump_reset_changed(result)
+        and result.reclaimed == 0;
+}
+
+proc test_rewind_to_offset() -> bool {
+    let mut bump = bump_default("reset-offset");
+
+    let first = bump_alloc_bytes(
+        ref mut bump,
+        64,
+        8
+    );
+
+    if is_none(first) {
+        give false;
+    }
+
+    let offset = bump_used(
+        bump
+    );
+
+    let second = bump_alloc_bytes(
+        ref mut bump,
+        128,
+        8
+    );
+
+    if is_none(second) {
+        give false;
+    }
+
+    let result = bump_rewind_to_offset(
+        ref mut bump,
+        offset
+    );
+
+    give result.success
+        and bump_used(bump) == offset;
+}
+
+proc test_rewind_invalid_offset() -> bool {
+    let mut bump = bump_default("reset-invalid-offset");
+
+    let result = bump_rewind_to_offset(
+        ref mut bump,
+        128
+    );
+
+    give not result.success
+        and result.failure == BumpResetFailure.InvalidOffset;
+}
+
+proc test_rewind_all() -> bool {
+    let mut bump = bump_default("reset-all");
+
+    let allocation = bump_alloc_bytes(
+        ref mut bump,
+        512,
+        8
+    );
+
+    if is_none(allocation) {
+        give false;
+    }
+
+    let result = bump_rewind_all(
+        ref mut bump
+    );
+
+    give result.success
+        and bump_reset_is_rewind(result)
+        and bump_reset_clears_used(result)
+        and bump_used(bump) == 0
+        and bump_is_empty(bump);
+}
+
+proc test_rewind_if_valid() -> bool {
+    let mut bump = bump_default("reset-if-valid");
+
+    let mark = bump_reset_mark(
+        bump
+    );
+
+    let allocation = bump_alloc_bytes(
+        ref mut bump,
+        128,
+        8
+    );
+
+    if is_none(allocation) {
+        give false;
+    }
+
+    give bump_rewind_if_valid(
+        ref mut bump,
+        mark
+    );
+}
+
+proc test_reset_basic() -> bool {
+    let mut bump = bump_default("reset-basic");
+
+    let allocation = bump_alloc_bytes(
+        ref mut bump,
+        512,
+        8
+    );
+
+    if is_none(allocation) {
+        give false;
+    }
+
+    let result = bump_reset_default(
+        ref mut bump
+    );
+
+    give result.success
+        and result.mode == BumpResetMode.Reset
+        and result.state == BumpResetState.Applied
+        and bump_reset_clears_used(result)
+        and bump_is_empty(bump);
+}
+
+proc test_reset_reclaims_all() -> bool {
+    let mut bump = bump_default("reset-reclaim-all");
+
+    let allocation = bump_alloc_bytes(
+        ref mut bump,
+        512,
+        8
+    );
+
+    if is_none(allocation) {
+        give false;
+    }
+
+    let used = bump_used(
+        bump
+    );
+
+    let result = bump_reset_default(
+        ref mut bump
+    );
+
+    give result.success
+        and result.reclaimed == used
+        and bump_used(bump) == 0;
+}
+
+proc test_reset_changes_generation() -> bool {
+    let mut bump = bump_default("reset-generation");
+
+    let before = bump_generation(
+        bump
+    );
+
+    let result = bump_reset_default(
+        ref mut bump
+    );
+
+    give result.success
+        and bump_generation(bump) > before
+        and result.generation_changed
+        and bump_reset_invalidates_marks(
+            result
+        );
+}
+
+proc test_reset_changes_revision() -> bool {
+    let mut bump = bump_default("reset-revision");
+
+    let before = bump_revision(
+        bump
+    );
+
+    let result = bump_reset_default(
+        ref mut bump
+    );
+
+    give result.success
+        and bump_revision(bump) > before
+        and result.revision_changed;
+}
+
+proc test_reset_empty() -> bool {
+    let mut bump = bump_default("reset-empty");
+
+    let result = bump_reset_default(
+        ref mut bump
+    );
+
+    give result.success
+        and result.state == BumpResetState.Applied
+        and bump_is_empty(bump)
+        and result.reclaimed == 0;
+}
+
+proc test_reset_if_not_empty_empty() -> bool {
+    let mut bump = bump_default("reset-if-empty");
+
+    let result = bump_reset_if_not_empty(
+        ref mut bump
+    );
+
+    give result.success
+        and result.state == BumpResetState.Skipped
+        and not bump_reset_changed(result);
+}
+
+proc test_reset_if_not_empty_active() -> bool {
+    let mut bump = bump_default("reset-if-active");
+
+    let allocation = bump_alloc_bytes(
+        ref mut bump,
+        128,
+        8
+    );
+
+    if is_none(allocation) {
+        give false;
+    }
+
+    let result = bump_reset_if_not_empty(
+        ref mut bump
+    );
+
+    give result.success
+        and result.state == BumpResetState.Applied
+        and bump_is_empty(bump);
+}
+
+proc test_mark_invalid_after_reset() -> bool {
+    let mut bump = bump_default("reset-invalidates-mark");
+
+    let mark = bump_reset_mark(
+        bump
+    );
+
+    let result = bump_reset_default(
+        ref mut bump
+    );
+
+    give result.success
+        and not bump_reset_mark_is_valid(
+            bump,
+            mark
+        );
+}
+
+proc test_old_mark_generation_mismatch() -> bool {
+    let mut bump = bump_default("reset-generation-mismatch");
+
+    let mark = bump_reset_mark(
+        bump
+    );
+
+    bump_reset_default(
+        ref mut bump
+    );
+
+    let result = bump_rewind_to_mark(
+        ref mut bump,
+        mark
+    );
+
+    give not result.success
+        and result.failure == BumpResetFailure.GenerationMismatch;
+}
+
+proc test_mark_error_valid() -> bool {
+    let bump = bump_default("reset-mark-error-none");
+
+    let mark = bump_reset_mark(
+        bump
+    );
+
+    let error = bump_reset_mark_error(
+        bump,
+        mark
+    );
+
+    give bump_error_is_none(
+        error
+    );
+}
+
+proc test_mark_error_after_reset() -> bool {
+    let mut bump = bump_default("reset-mark-error");
+
+    let mark = bump_reset_mark(
+        bump
+    );
+
+    bump_reset_default(
+        ref mut bump
+    );
+
+    let error = bump_reset_mark_error(
+        bump,
+        mark
+    );
+
+    give not bump_error_is_none(
+        error
+    );
+}
+
+proc test_release() -> bool {
+    let mut bump = bump_default("reset-release");
+
+    let allocation = bump_alloc_bytes(
+        ref mut bump,
+        256,
+        8
+    );
+
+    if is_none(allocation) {
+        give false;
+    }
+
+    let result = bump_release_all(
+        ref mut bump
+    );
+
+    give result.success
+        and result.mode == BumpResetMode.Release
+        and result.state == BumpResetState.Applied
+        and bump_is_released(bump);
+}
+
+proc test_release_reclaims_used() -> bool {
+    let mut bump = bump_default("reset-release-reclaim");
+
+    let allocation = bump_alloc_bytes(
+        ref mut bump,
+        256,
+        8
+    );
+
+    if is_none(allocation) {
+        give false;
+    }
+
+    let used = bump_used(
+        bump
+    );
+
+    let result = bump_release_all(
+        ref mut bump
+    );
+
+    give result.success
+        and result.reclaimed == used;
+}
+
+proc test_release_changes_generation() -> bool {
+    let mut bump = bump_default("reset-release-generation");
+
+    let before = bump_generation(
+        bump
+    );
+
+    let result = bump_release_all(
+        ref mut bump
+    );
+
+    give result.success
+        and bump_generation(bump) > before
+        and result.generation_changed;
+}
+
+proc test_release_twice() -> bool {
+    let mut bump = bump_default("reset-release-twice");
+
+    let first = bump_release_all(
+        ref mut bump
+    );
+
+    let second = bump_release_all(
+        ref mut bump
+    );
+
+    give first.success
+        and second.success
+        and second.state == BumpResetState.Skipped
+        and second.failure == BumpResetFailure.AlreadyReleased;
+}
+
+proc test_release_if_active() -> bool {
+    let mut bump = bump_default("reset-release-active");
+
+    let result = bump_release_if_active(
+        ref mut bump
+    );
+
+    give result.success
+        and bump_is_released(bump);
+}
+
+proc test_release_if_active_twice() -> bool {
+    let mut bump = bump_default("reset-release-if-twice");
+
+    let first = bump_release_if_active(
+        ref mut bump
+    );
+
+    let second = bump_release_if_active(
+        ref mut bump
+    );
+
+    give first.success
+        and second.success
+        and second.state == BumpResetState.Skipped;
+}
+
+proc test_reset_after_release_fails() -> bool {
+    let mut bump = bump_default("reset-after-release");
+
+    let release = bump_release_all(
+        ref mut bump
+    );
+
+    if not release.success {
+        give false;
+    }
+
+    let result = bump_reset_default(
+        ref mut bump
+    );
+
+    give not result.success
+        and result.failure == BumpResetFailure.AlreadyReleased;
+}
+
+proc test_rewind_after_release_fails() -> bool {
+    let mut bump = bump_default("rewind-after-release");
+
+    let mark = bump_reset_mark(
+        bump
+    );
+
+    let release = bump_release_all(
+        ref mut bump
+    );
+
+    if not release.success {
+        give false;
+    }
+
+    let result = bump_rewind_to_mark(
+        ref mut bump,
+        mark
+    );
+
+    give not result.success
+        and result.failure == BumpResetFailure.AlreadyReleased;
+}
+
+proc test_result_success_predicates() -> bool {
+    let mut bump = bump_default("reset-predicates");
+
+    let result = bump_reset_default(
+        ref mut bump
+    );
+
+    give bump_reset_succeeded(result)
+        and not bump_reset_failed(result)
+        and bump_reset_was_applied(result)
+        and not bump_reset_was_skipped(result);
+}
+
+proc test_result_skipped_predicates() -> bool {
+    let mut bump = bump_default("reset-skipped");
+
+    let result = bump_reset_if_not_empty(
+        ref mut bump
+    );
+
+    give bump_reset_succeeded(result)
+        and bump_reset_was_skipped(result)
+        and not bump_reset_was_applied(result);
+}
+
+proc test_result_mode_rewind() -> bool {
+    let mut bump = bump_default("reset-mode-rewind");
+
+    let mark = bump_reset_mark(
+        bump
+    );
+
+    let result = bump_rewind_to_mark(
+        ref mut bump,
+        mark
+    );
+
+    give bump_reset_is_rewind(
+        result
+    );
+}
+
+proc test_result_mode_reset() -> bool {
+    let mut bump = bump_default("reset-mode-reset");
+
+    let result = bump_reset_default(
+        ref mut bump
+    );
+
+    give bump_reset_is_reset(
+        result
+    );
+}
+
+proc test_result_mode_release() -> bool {
+    let mut bump = bump_default("reset-mode-release");
+
+    let result = bump_release_all(
+        ref mut bump
+    );
+
+    give bump_reset_is_release(
+        result
+    );
+}
+
+proc test_result_validation_rewind() -> bool {
+    let mut bump = bump_default("reset-valid-rewind");
+
+    let mark = bump_reset_mark(
+        bump
+    );
+
+    let allocation = bump_alloc_bytes(
+        ref mut bump,
+        128,
+        8
+    );
+
+    if is_none(allocation) {
+        give false;
+    }
+
+    let result = bump_rewind_to_mark(
+        ref mut bump,
+        mark
+    );
+
+    give bump_reset_result_valid(
+        result
+    );
+}
+
+proc test_result_validation_reset() -> bool {
+    let mut bump = bump_default("reset-valid-reset");
+
+    let result = bump_reset_default(
+        ref mut bump
+    );
+
+    give bump_reset_result_valid(
+        result
+    );
+}
+
+proc test_result_validation_release() -> bool {
+    let mut bump = bump_default("reset-valid-release");
+
+    let result = bump_release_all(
+        ref mut bump
+    );
+
+    give bump_reset_result_valid(
+        result
+    );
+}
+
+proc test_error_none() -> bool {
+    let mut bump = bump_default("reset-error-none");
+
+    let result = bump_reset_default(
+        ref mut bump
+    );
+
+    let error = bump_reset_error(
+        result
+    );
+
+    give bump_error_is_none(
+        error
+    );
+}
+
+proc test_error_generation_mismatch() -> bool {
+    let mut bump = bump_default("reset-error-generation");
+
+    let mark = bump_reset_mark(
+        bump
+    );
+
+    bump_reset_default(
+        ref mut bump
+    );
+
+    let result = bump_rewind_to_mark(
+        ref mut bump,
+        mark
+    );
+
+    let error = bump_reset_error(
+        result
+    );
+
+    give not bump_error_is_none(error)
+        and bump_error_is_mark(error);
+}
+
+proc test_core_transition_rewind() -> bool {
+    let mut bump = bump_default("reset-core-rewind");
+
+    let mark = bump_reset_mark(
+        bump
+    );
+
+    let allocation = bump_alloc_bytes(
+        ref mut bump,
+        128,
+        8
+    );
+
+    if is_none(allocation) {
+        give false;
+    }
+
+    let result = bump_rewind_to_mark(
+        ref mut bump,
+        mark
+    );
+
+    give bump_reset_core_transition(
+        result
+    ) == BumpCoreTransitionKind.Rewind;
+}
+
+proc test_core_transition_reset() -> bool {
+    let mut bump = bump_default("reset-core-reset");
+
+    let result = bump_reset_default(
+        ref mut bump
+    );
+
+    give bump_reset_core_transition(
+        result
+    ) == BumpCoreTransitionKind.Reset;
+}
+
+proc test_core_transition_release() -> bool {
+    let mut bump = bump_default("reset-core-release");
+
+    let result = bump_release_all(
+        ref mut bump
+    );
+
+    give bump_reset_core_transition(
+        result
+    ) == BumpCoreTransitionKind.Release;
+}
+
+proc test_statistics_empty() -> bool {
+    let statistics = bump_reset_statistics_empty();
+
+    give statistics.rewind_attempts == 0
+        and statistics.rewind_successes == 0
+        and statistics.rewind_failures == 0
+        and statistics.resets == 0
+        and statistics.releases == 0
+        and statistics.skipped == 0
+        and statistics.bytes_reclaimed == 0;
+}
+
+proc test_statistics_rewind_success() -> bool {
+    let mut bump = bump_default("reset-stats-rewind");
+
+    let mark = bump_reset_mark(
+        bump
+    );
+
+    let allocation = bump_alloc_bytes(
+        ref mut bump,
+        128,
+        8
+    );
+
+    if is_none(allocation) {
+        give false;
+    }
+
+    let result = bump_rewind_to_mark(
+        ref mut bump,
+        mark
+    );
+
+    let mut statistics = bump_reset_statistics_empty();
+
+    bump_reset_statistics_record(
+        ref mut statistics,
+        result
+    );
+
+    give statistics.rewind_attempts == 1
+        and statistics.rewind_successes == 1
+        and statistics.rewind_failures == 0
+        and statistics.bytes_reclaimed >= 128;
+}
+
+proc test_statistics_rewind_failure() -> bool {
+    let mut bump = bump_default("reset-stats-failure");
+
+    let result = bump_rewind_to_offset(
+        ref mut bump,
+        128
+    );
+
+    let mut statistics = bump_reset_statistics_empty();
+
+    bump_reset_statistics_record(
+        ref mut statistics,
+        result
+    );
+
+    give statistics.rewind_attempts == 1
+        and statistics.rewind_successes == 0
+        and statistics.rewind_failures == 1;
+}
+
+proc test_statistics_reset() -> bool {
+    let mut bump = bump_default("reset-stats-reset");
+
+    let allocation = bump_alloc_bytes(
+        ref mut bump,
+        128,
+        8
+    );
+
+    if is_none(allocation) {
+        give false;
+    }
+
+    let result = bump_reset_default(
+        ref mut bump
+    );
+
+    let mut statistics = bump_reset_statistics_empty();
+
+    bump_reset_statistics_record(
+        ref mut statistics,
+        result
+    );
+
+    give statistics.resets == 1
+        and statistics.bytes_reclaimed >= 128;
+}
+
+proc test_statistics_release() -> bool {
+    let mut bump = bump_default("reset-stats-release");
+
+    let result = bump_release_all(
+        ref mut bump
+    );
+
+    let mut statistics = bump_reset_statistics_empty();
+
+    bump_reset_statistics_record(
+        ref mut statistics,
+        result
+    );
+
+    give statistics.releases == 1;
+}
+
+proc test_statistics_skipped() -> bool {
+    let mut bump = bump_default("reset-stats-skipped");
+
+    let result = bump_reset_if_not_empty(
+        ref mut bump
+    );
+
+    let mut statistics = bump_reset_statistics_empty();
+
+    bump_reset_statistics_record(
+        ref mut statistics,
+        result
+    );
+
+    give statistics.skipped == 1;
+}
+
+proc test_statistics_totals() -> bool {
+    let mut bump = bump_default("reset-stats-total");
+
+    let result = bump_reset_default(
+        ref mut bump
+    );
+
+    let mut statistics = bump_reset_statistics_empty();
+
+    bump_reset_statistics_record(
+        ref mut statistics,
+        result
+    );
+
+    give bump_reset_statistics_total(
+        statistics
+    ) == 1
+        and bump_reset_statistics_success_count(
+            statistics
+        ) == 1
+        and bump_reset_statistics_failure_count(
+            statistics
+        ) == 0;
+}
+
+proc test_statistics_reset_function() -> bool {
+    let mut statistics = bump_reset_statistics_empty();
+
+    set statistics.rewind_attempts = 10;
+    set statistics.rewind_successes = 8;
+    set statistics.rewind_failures = 2;
+    set statistics.resets = 5;
+    set statistics.bytes_reclaimed = 4096;
+
+    bump_reset_statistics_reset(
+        ref mut statistics
+    );
+
+    give statistics.rewind_attempts == 0
+        and statistics.rewind_successes == 0
+        and statistics.rewind_failures == 0
+        and statistics.resets == 0
+        and statistics.bytes_reclaimed == 0;
+}
+
+proc test_mode_names() -> bool {
+    give bump_reset_mode_name(
+        BumpResetMode.Rewind
+    ) == "rewind"
+        and bump_reset_mode_name(
+            BumpResetMode.Reset
+        ) == "reset"
+        and bump_reset_mode_name(
+            BumpResetMode.Release
+        ) == "release";
+}
+
+proc test_state_names() -> bool {
+    give bump_reset_state_name(
+        BumpResetState.Ready
+    ) == "ready"
+        and bump_reset_state_name(
+            BumpResetState.Applied
+        ) == "applied"
+        and bump_reset_state_name(
+            BumpResetState.Skipped
+        ) == "skipped"
+        and bump_reset_state_name(
+            BumpResetState.Failed
+        ) == "failed"
+        and bump_reset_state_name(
+            BumpResetState.Invalid
+        ) == "invalid";
+}
+
+proc test_failure_names() -> bool {
+    give bump_reset_failure_name(
+        BumpResetFailure.None
+    ) == "none"
+        and bump_reset_failure_name(
+            BumpResetFailure.InvalidBump
+        ) == "invalid-bump"
+        and bump_reset_failure_name(
+            BumpResetFailure.InvalidMark
+        ) == "invalid-mark"
+        and bump_reset_failure_name(
+            BumpResetFailure.InvalidOffset
+        ) == "invalid-offset"
+        and bump_reset_failure_name(
+            BumpResetFailure.GenerationMismatch
+        ) == "generation-mismatch"
+        and bump_reset_failure_name(
+            BumpResetFailure.AlreadyReleased
+        ) == "already-released"
+        and bump_reset_failure_name(
+            BumpResetFailure.RewindFailed
+        ) == "rewind-failed"
+        and bump_reset_failure_name(
+            BumpResetFailure.ResetFailed
+        ) == "reset-failed"
+        and bump_reset_failure_name(
+            BumpResetFailure.ReleaseFailed
+        ) == "release-failed";
+}
+
+proc test_nested_marks() -> bool {
+    let mut bump = bump_new(
+        "reset-nested",
+        8192
+    );
+
+    let root = bump_reset_mark(
+        bump
+    );
+
+    let first = bump_alloc_bytes(
+        ref mut bump,
+        128,
+        8
+    );
+
+    if is_none(first) {
+        give false;
+    }
+
+    let middle = bump_reset_mark(
+        bump
+    );
+
+    let second = bump_alloc_bytes(
+        ref mut bump,
+        256,
+        8
+    );
+
+    if is_none(second) {
+        give false;
+    }
+
+    let inner = bump_reset_mark(
+        bump
+    );
+
+    let third = bump_alloc_bytes(
+        ref mut bump,
+        512,
+        8
+    );
+
+    if is_none(third) {
+        give false;
+    }
+
+    let first_rewind = bump_rewind_to_mark(
+        ref mut bump,
+        inner
+    );
+
+    if not first_rewind.success {
+        give false;
+    }
+
+    let second_rewind = bump_rewind_to_mark(
+        ref mut bump,
+        middle
+    );
+
+    if not second_rewind.success {
+        give false;
+    }
+
+    let third_rewind = bump_rewind_to_mark(
+        ref mut bump,
+        root
+    );
+
+    give third_rewind.success
+        and bump_used(bump) == 0;
+}
+
+proc test_rewind_reallocate() -> bool {
+    let mut bump = bump_default("reset-reallocate");
+
+    let mark = bump_reset_mark(
+        bump
+    );
+
+    let first = bump_alloc_bytes(
+        ref mut bump,
+        256,
+        8
+    );
+
+    if is_none(first) {
+        give false;
+    }
+
+    let rewind = bump_rewind_to_mark(
+        ref mut bump,
+        mark
+    );
+
+    if not rewind.success {
+        give false;
+    }
+
+    let second = bump_alloc_bytes(
+        ref mut bump,
+        256,
+        8
+    );
+
+    give is_some(second)
+        and bump_is_valid(bump);
+}
+
+proc test_reset_reallocate() -> bool {
+    let mut bump = bump_default("reset-reuse");
+
+    let first = bump_alloc_bytes(
+        ref mut bump,
+        512,
+        8
+    );
+
+    if is_none(first) {
+        give false;
+    }
+
+    let reset = bump_reset_default(
+        ref mut bump
+    );
+
+    if not reset.success {
+        give false;
+    }
+
+    let second = bump_alloc_bytes(
+        ref mut bump,
+        512,
+        8
+    );
+
+    give is_some(second)
+        and bump_is_valid(bump);
+}
+
+proc test_many_rewind_cycles() -> bool {
+    let mut bump = bump_new(
+        "reset-many-rewind",
+        8192
+    );
+
+    let cycle: usize = 0;
+
+    while cycle < 1000 {
+        let mark = bump_reset_mark(
+            bump
+        );
+
+        let index: usize = 0;
+
+        while index < 32 {
+            let allocation = bump_alloc_bytes(
+                ref mut bump,
+                64,
+                8
+            );
+
+            if is_none(allocation) {
+                give false;
+            }
+
+            set index = index + 1;
+        }
+
+        let result = bump_rewind_to_mark(
+            ref mut bump,
+            mark
+        );
+
+        if not result.success {
+            give false;
+        }
+
+        if bump_used(bump) != mark.offset {
+            give false;
+        }
+
+        if not bump_reset_result_valid(result) {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give bump_is_valid(bump);
+}
+
+proc test_many_reset_cycles() -> bool {
+    let mut bump = bump_new(
+        "reset-many-reset",
+        8192
+    );
+
+    let cycle: usize = 0;
+
+    while cycle < 1000 {
+        let index: usize = 0;
+
+        while index < 64 {
+            let allocation = bump_alloc_bytes(
+                ref mut bump,
+                64,
+                8
+            );
+
+            if is_none(allocation) {
+                give false;
+            }
+
+            set index = index + 1;
+        }
+
+        let result = bump_reset_default(
+            ref mut bump
+        );
+
+        if not result.success {
+            give false;
+        }
+
+        if not bump_is_empty(bump) {
+            give false;
+        }
+
+        if not bump_reset_result_valid(result) {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give bump_is_valid(bump);
+}
+
+proc test_many_mark_invalidations() -> bool {
+    let mut bump = bump_default("reset-many-invalid");
+
+    let cycle: usize = 0;
+
+    while cycle < 1000 {
+        let mark = bump_reset_mark(
+            bump
+        );
+
+        let reset = bump_reset_default(
+            ref mut bump
+        );
+
+        if not reset.success {
+            give false;
+        }
+
+        if bump_reset_mark_is_valid(
+            bump,
+            mark
+        ) {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc test_statistics_stress() -> bool {
+    let mut bump = bump_new(
+        "reset-statistics-stress",
+        4096
+    );
+
+    let mut statistics =
+        bump_reset_statistics_empty();
+
+    let cycle: usize = 0;
+
+    while cycle < 1000 {
+        let mark = bump_reset_mark(
+            bump
+        );
+
+        let allocation = bump_alloc_bytes(
+            ref mut bump,
+            64,
+            8
+        );
+
+        if is_none(allocation) {
+            give false;
+        }
+
+        let result = bump_rewind_to_mark(
+            ref mut bump,
+            mark
+        );
+
+        bump_reset_statistics_record(
+            ref mut statistics,
+            result
+        );
+
+        set cycle = cycle + 1;
+    }
+
+    give statistics.rewind_attempts == 1000
+        and statistics.rewind_successes == 1000
+        and statistics.rewind_failures == 0
+        and statistics.bytes_reclaimed >= 64000;
+}
+
+proc test_reset_statistics_stress() -> bool {
+    let mut bump = bump_new(
+        "reset-reset-statistics",
+        4096
+    );
+
+    let mut statistics =
+        bump_reset_statistics_empty();
+
+    let cycle: usize = 0;
+
+    while cycle < 1000 {
+        let allocation = bump_alloc_bytes(
+            ref mut bump,
+            128,
+            8
+        );
+
+        if is_none(allocation) {
+            give false;
+        }
+
+        let result = bump_reset_default(
+            ref mut bump
+        );
+
+        bump_reset_statistics_record(
+            ref mut statistics,
+            result
+        );
+
+        set cycle = cycle + 1;
+    }
+
+    give statistics.resets == 1000
+        and statistics.bytes_reclaimed >= 128000;
+}
+
+proc test_snapshot_stress() -> bool {
+    let mut bump = bump_new(
+        "reset-snapshot-stress",
+        4096
+    );
+
+    let cycle: usize = 0;
+
+    while cycle < 1000 {
+        let before = bump_reset_snapshot(
+            bump
+        );
+
+        let allocation = bump_alloc_bytes(
+            ref mut bump,
+            64,
+            8
+        );
+
+        if is_none(allocation) {
+            give false;
+        }
+
+        let reset = bump_reset_default(
+            ref mut bump
+        );
+
+        if not reset.success {
+            give false;
+        }
+
+        let after = bump_reset_snapshot(
+            bump
+        );
+
+        if bump_reset_snapshot_equal(
+            before,
+            after
+        ) {
+            give false;
+        }
+
+        if before.used != after.used {
+            give false;
+        }
+
+        if after.generation <= before.generation {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc run_reset_tests() -> bool {
+    give test_mark_empty()
+        and test_mark_after_alloc()
+
+        and test_rewind_basic()
+        and test_rewind_reclaimed()
+        and test_rewind_preserves_generation()
+        and test_rewind_changes_revision()
+        and test_rewind_same_offset_skipped()
+        and test_rewind_to_offset()
+        and test_rewind_invalid_offset()
+        and test_rewind_all()
+        and test_rewind_if_valid()
+
+        and test_reset_basic()
+        and test_reset_reclaims_all()
+        and test_reset_changes_generation()
+        and test_reset_changes_revision()
+        and test_reset_empty()
+        and test_reset_if_not_empty_empty()
+        and test_reset_if_not_empty_active()
+
+        and test_mark_invalid_after_reset()
+        and test_old_mark_generation_mismatch()
+        and test_mark_error_valid()
+        and test_mark_error_after_reset()
+
+        and test_release()
+        and test_release_reclaims_used()
+        and test_release_changes_generation()
+        and test_release_twice()
+        and test_release_if_active()
+        and test_release_if_active_twice()
+        and test_reset_after_release_fails()
+        and test_rewind_after_release_fails()
+
+        and test_result_success_predicates()
+        and test_result_skipped_predicates()
+        and test_result_mode_rewind()
+        and test_result_mode_reset()
+        and test_result_mode_release()
+
+        and test_result_validation_rewind()
+        and test_result_validation_reset()
+        and test_result_validation_release()
+
+        and test_error_none()
+        and test_error_generation_mismatch()
+
+        and test_core_transition_rewind()
+        and test_core_transition_reset()
+        and test_core_transition_release()
+
+        and test_statistics_empty()
+        and test_statistics_rewind_success()
+        and test_statistics_rewind_failure()
+        and test_statistics_reset()
+        and test_statistics_release()
+        and test_statistics_skipped()
+        and test_statistics_totals()
+        and test_statistics_reset_function()
+
+        and test_mode_names()
+        and test_state_names()
+        and test_failure_names()
+
+        and test_nested_marks()
+        and test_rewind_reallocate()
+        and test_reset_reallocate()
+
+        and test_many_rewind_cycles()
+        and test_many_reset_cycles()
+        and test_many_mark_invalidations()
+        and test_statistics_stress()
+        and test_reset_statistics_stress()
+        and test_snapshot_stress();
+}
+
+proc main() -> int {
+    if run_reset_tests() {
+        give 0;
+    }
+
+    give 1;
+}

@@ -1,0 +1,1352 @@
+use src/vitte/stdlib/alloc/arena
+use src/vitte/stdlib/alloc/arena/reset
+
+form Point {
+    x: int
+    y: int
+}
+
+proc test_many_tiny_allocations() -> bool {
+    let mut arena = arena_default("stress-tiny");
+
+    let index: usize = 0;
+
+    while index < 10000 {
+        let result = arena_alloc_bytes(
+            ref mut arena,
+            1,
+            1
+        );
+
+        if is_none(result) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give arena_allocated(arena) >= 10000
+        and arena_is_valid(arena);
+}
+
+proc test_many_small_allocations() -> bool {
+    let mut arena = arena_default("stress-small");
+
+    let index: usize = 0;
+
+    while index < 5000 {
+        let result = arena_alloc_bytes(
+            ref mut arena,
+            16,
+            8
+        );
+
+        if is_none(result) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give arena_allocated(arena) >= 80000
+        and arena_is_valid(arena);
+}
+
+proc test_many_medium_allocations() -> bool {
+    let mut arena = arena_default("stress-medium");
+
+    let index: usize = 0;
+
+    while index < 2000 {
+        let result = arena_alloc_bytes(
+            ref mut arena,
+            128,
+            16
+        );
+
+        if is_none(result) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give arena_allocated(arena) >= 256000
+        and arena_is_valid(arena);
+}
+
+proc test_many_large_allocations() -> bool {
+    let mut arena = arena_default("stress-large");
+
+    let index: usize = 0;
+
+    while index < 256 {
+        let result = arena_alloc_bytes(
+            ref mut arena,
+            8192,
+            16
+        );
+
+        if is_none(result) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give arena_allocated(arena) >= 2097152
+        and arena_is_valid(arena);
+}
+
+proc test_variable_size_allocations() -> bool {
+    let mut arena = arena_default("stress-variable");
+
+    let index: usize = 1;
+
+    while index <= 4096 {
+        let result = arena_alloc_bytes(
+            ref mut arena,
+            index,
+            8
+        );
+
+        if is_none(result) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give arena_is_valid(arena)
+        and arena_allocated(arena) > 0;
+}
+
+proc test_alignment_stress() -> bool {
+    let mut arena = arena_default("stress-align");
+
+    let index: usize = 0;
+
+    while index < 1000 {
+        let a = arena_alloc_bytes(
+            ref mut arena,
+            3,
+            1
+        );
+
+        let b = arena_alloc_bytes(
+            ref mut arena,
+            5,
+            2
+        );
+
+        let c = arena_alloc_bytes(
+            ref mut arena,
+            9,
+            4
+        );
+
+        let d = arena_alloc_bytes(
+            ref mut arena,
+            17,
+            8
+        );
+
+        let e = arena_alloc_bytes(
+            ref mut arena,
+            33,
+            16
+        );
+
+        let f = arena_alloc_bytes(
+            ref mut arena,
+            65,
+            32
+        );
+
+        if is_none(a)
+            or is_none(b)
+            or is_none(c)
+            or is_none(d)
+            or is_none(e)
+            or is_none(f)
+        {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give arena_is_valid(arena);
+}
+
+proc test_emplace_stress() -> bool {
+    let mut arena = arena_default("stress-emplace");
+
+    let index: int = 0;
+
+    while index < 10000 {
+        let result = arena_emplace(
+            ref mut arena,
+            index
+        );
+
+        pick result {
+            Some(value) {
+                if *value != index {
+                    give false;
+                }
+            }
+
+            None {
+                give false;
+            }
+        }
+
+        set index = index + 1;
+    }
+
+    give arena_is_valid(arena);
+}
+
+proc test_form_emplace_stress() -> bool {
+    let mut arena = arena_default("stress-form");
+
+    let index: int = 0;
+
+    while index < 5000 {
+        let result = arena_emplace(
+            ref mut arena,
+            Point {
+                x: index
+                y: index + 1
+            }
+        );
+
+        pick result {
+            Some(point) {
+                if point.x != index
+                    or point.y != index + 1
+                {
+                    give false;
+                }
+            }
+
+            None {
+                give false;
+            }
+        }
+
+        set index = index + 1;
+    }
+
+    give arena_is_valid(arena);
+}
+
+proc test_mark_rewind_stress() -> bool {
+    let mut arena = arena_default("stress-rewind");
+
+    let cycle: usize = 0;
+
+    while cycle < 1000 {
+        let mark = arena_mark(arena);
+
+        let index: usize = 0;
+
+        while index < 32 {
+            let result = arena_alloc_bytes(
+                ref mut arena,
+                64,
+                8
+            );
+
+            if is_none(result) {
+                give false;
+            }
+
+            set index = index + 1;
+        }
+
+        if not arena_rewind(
+            ref mut arena,
+            mark
+        ) {
+            give false;
+        }
+
+        if arena_allocated(arena)
+            != mark.allocated
+        {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give arena_is_valid(arena);
+}
+
+proc test_nested_mark_stress() -> bool {
+    let mut arena = arena_default("stress-nested-mark");
+
+    let cycle: usize = 0;
+
+    while cycle < 500 {
+        let root = arena_mark(arena);
+
+        let first = arena_alloc_bytes(
+            ref mut arena,
+            64,
+            8
+        );
+
+        if is_none(first) {
+            give false;
+        }
+
+        let middle = arena_mark(arena);
+
+        let second = arena_alloc_bytes(
+            ref mut arena,
+            128,
+            8
+        );
+
+        if is_none(second) {
+            give false;
+        }
+
+        let inner = arena_mark(arena);
+
+        let third = arena_alloc_bytes(
+            ref mut arena,
+            256,
+            8
+        );
+
+        if is_none(third) {
+            give false;
+        }
+
+        if not arena_rewind(
+            ref mut arena,
+            inner
+        ) {
+            give false;
+        }
+
+        if not arena_rewind(
+            ref mut arena,
+            middle
+        ) {
+            give false;
+        }
+
+        if not arena_rewind(
+            ref mut arena,
+            root
+        ) {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give arena_is_empty(arena)
+        and arena_is_valid(arena);
+}
+
+proc test_reset_stress() -> bool {
+    let mut arena = arena_default("stress-reset");
+
+    let cycle: usize = 0;
+
+    while cycle < 1000 {
+        let index: usize = 0;
+
+        while index < 64 {
+            let result = arena_alloc_bytes(
+                ref mut arena,
+                32,
+                8
+            );
+
+            if is_none(result) {
+                give false;
+            }
+
+            set index = index + 1;
+        }
+
+        arena_reset(
+            ref mut arena
+        );
+
+        if not arena_is_empty(arena)
+            or not arena_is_valid(arena)
+        {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc test_reset_keep_capacity_stress() -> bool {
+    let mut arena = arena_default("stress-keep-capacity");
+
+    let cycle: usize = 0;
+
+    while cycle < 1000 {
+        let index: usize = 0;
+
+        while index < 64 {
+            let result = arena_alloc_bytes(
+                ref mut arena,
+                64,
+                8
+            );
+
+            if is_none(result) {
+                give false;
+            }
+
+            set index = index + 1;
+        }
+
+        let result = arena_reset_keep_capacity(
+            ref mut arena
+        );
+
+        if not result.success
+            or not arena_is_empty(arena)
+            or not arena_is_valid(arena)
+        {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc test_repeated_large_reset() -> bool {
+    let mut arena = arena_default("stress-large-reset");
+
+    let cycle: usize = 0;
+
+    while cycle < 100 {
+        let index: usize = 0;
+
+        while index < 64 {
+            let result = arena_alloc_bytes(
+                ref mut arena,
+                8192,
+                16
+            );
+
+            if is_none(result) {
+                give false;
+            }
+
+            set index = index + 1;
+        }
+
+        arena_reset(
+            ref mut arena
+        );
+
+        if not arena_is_empty(arena) {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give arena_is_valid(arena);
+}
+
+proc test_generation_stress() -> bool {
+    let mut arena = arena_default("stress-generation");
+
+    let previous = arena_generation(arena);
+    let cycle: usize = 0;
+
+    while cycle < 1000 {
+        arena_reset(
+            ref mut arena
+        );
+
+        let current = arena_generation(arena);
+
+        if current <= previous {
+            give false;
+        }
+
+        set previous = current;
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc test_revision_stress() -> bool {
+    let mut arena = arena_default("stress-revision");
+
+    let previous = arena_revision(arena);
+    let index: usize = 0;
+
+    while index < 5000 {
+        let result = arena_alloc_bytes(
+            ref mut arena,
+            8,
+            8
+        );
+
+        if is_none(result) {
+            give false;
+        }
+
+        let current = arena_revision(arena);
+
+        if current <= previous {
+            give false;
+        }
+
+        set previous = current;
+        set index = index + 1;
+    }
+
+    give true;
+}
+
+proc test_snapshot_stress() -> bool {
+    let mut arena = arena_default("stress-snapshot");
+
+    let index: usize = 0;
+
+    while index < 1000 {
+        let before = arena_profile(arena);
+
+        let result = arena_alloc_bytes(
+            ref mut arena,
+            16,
+            8
+        );
+
+        if is_none(result) {
+            give false;
+        }
+
+        let after = arena_profile(arena);
+
+        if after.allocated <= before.allocated {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give arena_is_valid(arena);
+}
+
+proc test_rewind_snapshot_stress() -> bool {
+    let mut arena = arena_default("stress-rewind-snapshot");
+
+    let cycle: usize = 0;
+
+    while cycle < 500 {
+        let before = arena_profile(arena);
+        let mark = arena_mark(arena);
+
+        let index: usize = 0;
+
+        while index < 16 {
+            let result = arena_alloc_bytes(
+                ref mut arena,
+                64,
+                8
+            );
+
+            if is_none(result) {
+                give false;
+            }
+
+            set index = index + 1;
+        }
+
+        if not arena_rewind(
+            ref mut arena,
+            mark
+        ) {
+            give false;
+        }
+
+        let after = arena_profile(arena);
+
+        if after.allocated != before.allocated {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give arena_is_valid(arena);
+}
+
+proc test_multiple_arenas() -> bool {
+    let mut first = arena_default("stress-a");
+    let mut second = arena_default("stress-b");
+    let mut third = arena_default("stress-c");
+
+    let index: usize = 0;
+
+    while index < 1000 {
+        let a = arena_alloc_bytes(
+            ref mut first,
+            16,
+            8
+        );
+
+        let b = arena_alloc_bytes(
+            ref mut second,
+            32,
+            8
+        );
+
+        let c = arena_alloc_bytes(
+            ref mut third,
+            64,
+            8
+        );
+
+        if is_none(a)
+            or is_none(b)
+            or is_none(c)
+        {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give arena_is_valid(first)
+        and arena_is_valid(second)
+        and arena_is_valid(third)
+        and arena_allocated(first) >= 16000
+        and arena_allocated(second) >= 32000
+        and arena_allocated(third) >= 64000;
+}
+
+proc test_independent_resets() -> bool {
+    let mut first = arena_default("stress-reset-a");
+    let mut second = arena_default("stress-reset-b");
+
+    let index: usize = 0;
+
+    while index < 100 {
+        let a = arena_alloc_bytes(
+            ref mut first,
+            64,
+            8
+        );
+
+        let b = arena_alloc_bytes(
+            ref mut second,
+            64,
+            8
+        );
+
+        if is_none(a)
+            or is_none(b)
+        {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    let second_before =
+        arena_allocated(second);
+
+    arena_reset(
+        ref mut first
+    );
+
+    give arena_is_empty(first)
+        and arena_allocated(second)
+            == second_before
+        and arena_is_valid(second);
+}
+
+proc test_mixed_size_cycle() -> bool {
+    let mut arena = arena_default("stress-mixed-cycle");
+
+    let cycle: usize = 0;
+
+    while cycle < 500 {
+        let a = arena_alloc_bytes(
+            ref mut arena,
+            1,
+            1
+        );
+
+        let b = arena_alloc_bytes(
+            ref mut arena,
+            7,
+            2
+        );
+
+        let c = arena_alloc_bytes(
+            ref mut arena,
+            31,
+            4
+        );
+
+        let d = arena_alloc_bytes(
+            ref mut arena,
+            127,
+            8
+        );
+
+        let e = arena_alloc_bytes(
+            ref mut arena,
+            1023,
+            16
+        );
+
+        let f = arena_alloc_bytes(
+            ref mut arena,
+            4097,
+            32
+        );
+
+        if is_none(a)
+            or is_none(b)
+            or is_none(c)
+            or is_none(d)
+            or is_none(e)
+            or is_none(f)
+        {
+            give false;
+        }
+
+        if not arena_is_valid(arena) {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc test_mark_generation_after_many_resets() -> bool {
+    let mut arena = arena_default("stress-old-mark");
+
+    let old = arena_mark(arena);
+
+    let index: usize = 0;
+
+    while index < 100 {
+        arena_reset(
+            ref mut arena
+        );
+
+        set index = index + 1;
+    }
+
+    give not arena_mark_is_valid(
+        arena,
+        old
+    );
+}
+
+proc test_reset_result_stress() -> bool {
+    let mut arena = arena_default("stress-reset-result");
+
+    let cycle: usize = 0;
+
+    while cycle < 500 {
+        let index: usize = 0;
+
+        while index < 32 {
+            let allocation = arena_alloc_bytes(
+                ref mut arena,
+                32,
+                8
+            );
+
+            if is_none(allocation) {
+                give false;
+            }
+
+            set index = index + 1;
+        }
+
+        let result = arena_reset_default(
+            ref mut arena
+        );
+
+        if not result.success
+            or not arena_reset_result_valid(result)
+            or not arena_reset_clears_allocated(result)
+        {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give arena_is_valid(arena);
+}
+
+proc test_rewind_result_stress() -> bool {
+    let mut arena = arena_default("stress-rewind-result");
+
+    let cycle: usize = 0;
+
+    while cycle < 500 {
+        let mark = arena_mark(arena);
+
+        let index: usize = 0;
+
+        while index < 16 {
+            let allocation = arena_alloc_bytes(
+                ref mut arena,
+                64,
+                8
+            );
+
+            if is_none(allocation) {
+                give false;
+            }
+
+            set index = index + 1;
+        }
+
+        let result = arena_rewind_to_mark(
+            ref mut arena,
+            mark
+        );
+
+        if not result.success
+            or not arena_reset_result_valid(result)
+            or not arena_reset_is_rewind(result)
+        {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc test_reset_statistics_stress() -> bool {
+    let mut arena = arena_default("stress-reset-stats");
+    let mut statistics = arena_reset_statistics_empty();
+
+    let cycle: usize = 0;
+
+    while cycle < 1000 {
+        let allocation = arena_alloc_bytes(
+            ref mut arena,
+            128,
+            8
+        );
+
+        if is_none(allocation) {
+            give false;
+        }
+
+        let result = arena_reset_default(
+            ref mut arena
+        );
+
+        arena_reset_statistics_record(
+            ref mut statistics,
+            result
+        );
+
+        set cycle = cycle + 1;
+    }
+
+    give statistics.resets == 1000
+        and statistics.bytes_reclaimed >= 128000
+        and arena_reset_statistics_failure_count(
+            statistics
+        ) == 0;
+}
+
+proc test_rewind_statistics_stress() -> bool {
+    let mut arena = arena_default("stress-rewind-stats");
+    let mut statistics = arena_reset_statistics_empty();
+
+    let cycle: usize = 0;
+
+    while cycle < 1000 {
+        let mark = arena_mark(arena);
+
+        let allocation = arena_alloc_bytes(
+            ref mut arena,
+            64,
+            8
+        );
+
+        if is_none(allocation) {
+            give false;
+        }
+
+        let result = arena_rewind_to_mark(
+            ref mut arena,
+            mark
+        );
+
+        arena_reset_statistics_record(
+            ref mut statistics,
+            result
+        );
+
+        set cycle = cycle + 1;
+    }
+
+    give statistics.rewind_attempts == 1000
+        and statistics.rewind_successes == 1000
+        and statistics.rewind_failures == 0;
+}
+
+proc test_custom_small_block_stress() -> bool {
+    let mut arena = arena_new(
+        "stress-small-block",
+        64
+    );
+
+    let index: usize = 0;
+
+    while index < 5000 {
+        let result = arena_alloc_bytes(
+            ref mut arena,
+            32,
+            8
+        );
+
+        if is_none(result) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give arena_is_valid(arena)
+        and arena_allocated(arena) >= 160000;
+}
+
+proc test_custom_large_block_stress() -> bool {
+    let mut arena = arena_new(
+        "stress-large-block",
+        65536
+    );
+
+    let index: usize = 0;
+
+    while index < 1000 {
+        let result = arena_alloc_bytes(
+            ref mut arena,
+            4096,
+            16
+        );
+
+        if is_none(result) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give arena_is_valid(arena)
+        and arena_allocated(arena) >= 4096000;
+}
+
+proc test_exact_growth_stress() -> bool {
+    let mut arena = arena_new_with_growth(
+        "stress-exact",
+        4096,
+        ArenaGrowthMode.Exact
+    );
+
+    let index: usize = 1;
+
+    while index <= 1000 {
+        let result = arena_alloc_bytes(
+            ref mut arena,
+            index,
+            8
+        );
+
+        if is_none(result) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give arena_is_valid(arena);
+}
+
+proc test_fixed_growth_stress() -> bool {
+    let mut arena = arena_new_with_growth(
+        "stress-fixed",
+        1024,
+        ArenaGrowthMode.Fixed
+    );
+
+    let index: usize = 0;
+
+    while index < 2000 {
+        let result = arena_alloc_bytes(
+            ref mut arena,
+            256,
+            8
+        );
+
+        if is_none(result) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give arena_is_valid(arena);
+}
+
+proc test_geometric_growth_stress() -> bool {
+    let mut arena = arena_new_with_growth(
+        "stress-geometric",
+        256,
+        ArenaGrowthMode.Geometric
+    );
+
+    let index: usize = 0;
+
+    while index < 5000 {
+        let result = arena_alloc_bytes(
+            ref mut arena,
+            128,
+            8
+        );
+
+        if is_none(result) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give arena_is_valid(arena);
+}
+
+proc test_long_lived_mark() -> bool {
+    let mut arena = arena_default("stress-long-mark");
+
+    let root = arena_mark(arena);
+
+    let index: usize = 0;
+
+    while index < 10000 {
+        let allocation = arena_alloc_bytes(
+            ref mut arena,
+            16,
+            8
+        );
+
+        if is_none(allocation) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    let result = arena_rewind_to_mark(
+        ref mut arena,
+        root
+    );
+
+    give result.success
+        and arena_allocated(arena) == 0
+        and arena_is_valid(arena);
+}
+
+proc test_interleaved_marks() -> bool {
+    let mut arena = arena_default("stress-interleaved");
+
+    let cycle: usize = 0;
+
+    while cycle < 1000 {
+        let root = arena_mark(arena);
+
+        let a = arena_alloc_bytes(
+            ref mut arena,
+            16,
+            8
+        );
+
+        if is_none(a) {
+            give false;
+        }
+
+        let middle = arena_mark(arena);
+
+        let b = arena_alloc_bytes(
+            ref mut arena,
+            32,
+            8
+        );
+
+        if is_none(b) {
+            give false;
+        }
+
+        if not arena_rewind(
+            ref mut arena,
+            middle
+        ) {
+            give false;
+        }
+
+        let c = arena_alloc_bytes(
+            ref mut arena,
+            64,
+            8
+        );
+
+        if is_none(c) {
+            give false;
+        }
+
+        if not arena_rewind(
+            ref mut arena,
+            root
+        ) {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give arena_is_empty(arena)
+        and arena_is_valid(arena);
+}
+
+proc test_profile_valid_during_stress() -> bool {
+    let mut arena = arena_default("stress-profile-valid");
+
+    let index: usize = 0;
+
+    while index < 5000 {
+        let allocation = arena_alloc_bytes(
+            ref mut arena,
+            24,
+            8
+        );
+
+        if is_none(allocation) {
+            give false;
+        }
+
+        if not arena_profile(arena).valid {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give true;
+}
+
+proc test_reset_after_large_pressure() -> bool {
+    let mut arena = arena_default("stress-pressure-reset");
+
+    let index: usize = 0;
+
+    while index < 1000 {
+        let allocation = arena_alloc_bytes(
+            ref mut arena,
+            4096,
+            16
+        );
+
+        if is_none(allocation) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    let before = arena_allocated(arena);
+
+    let result = arena_reset_default(
+        ref mut arena
+    );
+
+    give before >= 4096000
+        and result.success
+        and result.reclaimed >= 4096000
+        and arena_is_empty(arena)
+        and arena_is_valid(arena);
+}
+
+proc test_keep_capacity_after_pressure() -> bool {
+    let mut arena = arena_default("stress-pressure-keep");
+
+    let index: usize = 0;
+
+    while index < 1000 {
+        let allocation = arena_alloc_bytes(
+            ref mut arena,
+            1024,
+            16
+        );
+
+        if is_none(allocation) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    let blocks = arena_block_count(arena);
+
+    let result = arena_reset_keep_capacity(
+        ref mut arena
+    );
+
+    give result.success
+        and arena_is_empty(arena)
+        and arena_block_count(arena) == blocks
+        and arena_is_valid(arena);
+}
+
+proc test_stress_reuse_keep_capacity() -> bool {
+    let mut arena = arena_default("stress-reuse-keep");
+
+    let cycle: usize = 0;
+
+    while cycle < 500 {
+        let index: usize = 0;
+
+        while index < 128 {
+            let allocation = arena_alloc_bytes(
+                ref mut arena,
+                32,
+                8
+            );
+
+            if is_none(allocation) {
+                give false;
+            }
+
+            set index = index + 1;
+        }
+
+        let reset = arena_reset_keep_capacity(
+            ref mut arena
+        );
+
+        if not reset.success {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give arena_is_valid(arena)
+        and arena_is_empty(arena);
+}
+
+proc test_release_after_pressure() -> bool {
+    let mut arena = arena_default("stress-release");
+
+    let index: usize = 0;
+
+    while index < 1000 {
+        let allocation = arena_alloc_bytes(
+            ref mut arena,
+            128,
+            8
+        );
+
+        if is_none(allocation) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    let result = arena_release(
+        ref mut arena
+    );
+
+    give result.success
+        and arena_is_released(arena)
+        and arena_allocated(arena) == 0;
+}
+
+proc run_stress_tests() -> bool {
+    give test_many_tiny_allocations()
+        and test_many_small_allocations()
+        and test_many_medium_allocations()
+        and test_many_large_allocations()
+        and test_variable_size_allocations()
+        and test_alignment_stress()
+
+        and test_emplace_stress()
+        and test_form_emplace_stress()
+
+        and test_mark_rewind_stress()
+        and test_nested_mark_stress()
+        and test_repeated_rewind()
+        and test_long_lived_mark()
+        and test_interleaved_marks()
+
+        and test_reset_stress()
+        and test_reset_keep_capacity_stress()
+        and test_repeated_large_reset()
+        and test_stress_reuse_keep_capacity()
+
+        and test_generation_stress()
+        and test_revision_stress()
+        and test_snapshot_stress()
+        and test_rewind_snapshot_stress()
+
+        and test_multiple_arenas()
+        and test_independent_resets()
+        and test_mixed_size_cycle()
+        and test_mark_generation_after_many_resets()
+
+        and test_reset_result_stress()
+        and test_rewind_result_stress()
+        and test_reset_statistics_stress()
+        and test_rewind_statistics_stress()
+
+        and test_custom_small_block_stress()
+        and test_custom_large_block_stress()
+        and test_exact_growth_stress()
+        and test_fixed_growth_stress()
+        and test_geometric_growth_stress()
+
+        and test_profile_valid_during_stress()
+        and test_reset_after_large_pressure()
+        and test_keep_capacity_after_pressure()
+        and test_release_after_pressure();
+}
+
+proc main() -> int {
+    if run_stress_tests() {
+        give 0;
+    }
+
+    give 1;
+}

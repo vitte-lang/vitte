@@ -1,5 +1,6 @@
 #include "translation_unit.h"
 
+#include <dirent.h>
 #include <string.h>
 
 static void vitte_c17_translation_unit_set_error(
@@ -133,6 +134,14 @@ vitte_status_t vitte_c17_translation_unit_emit_prelude(
         if (status != VITTE_STATUS_OK) {
             return status;
         }
+        status = vitte_c17_write_string(writer, "#include <dirent.h>");
+        if (status != VITTE_STATUS_OK) {
+            return status;
+        }
+        status = vitte_c17_write_newline(writer);
+        if (status != VITTE_STATUS_OK) {
+            return status;
+        }
         status = vitte_c17_write_string(writer, "#include <sys/wait.h>");
         if (status != VITTE_STATUS_OK) return status;
         status = vitte_c17_write_newline(writer);
@@ -161,7 +170,12 @@ vitte_status_t vitte_c17_translation_unit_emit_prelude(
         if (status != VITTE_STATUS_OK) return status;
         status = vitte_c17_write_newline(writer);
         if (status != VITTE_STATUS_OK) return status;
+        status = vitte_c17_write_string(writer, "static int64_t vitte_string_find(const char *text, const char *needle) { const char *match; if (text == NULL) text = \"\"; if (needle == NULL) needle = \"\"; if (needle[0] == '\\0') return 0; match = strstr(text, needle); return match == NULL ? -1 : (int64_t)(match - text); }");
+        if (status != VITTE_STATUS_OK) return status;
+        status = vitte_c17_write_newline(writer);
+        if (status != VITTE_STATUS_OK) return status;
         status = vitte_c17_write_string(writer, "static char *vitte_string_concat(const char *left, const char *right) { size_t left_length; size_t right_length; char *out; if (left == NULL) left = \"\"; if (right == NULL) right = \"\"; left_length = strlen(left); right_length = strlen(right); out = (char *)malloc(left_length + right_length + 1u); if (out == NULL) abort(); memcpy(out, left, left_length); memcpy(out + left_length, right, right_length + 1u); return out; }");
+        if (status == VITTE_STATUS_OK) status = vitte_c17_write_string(writer, "static char *vitte_string_from_i64(int64_t value) { char buffer[64]; int written; char *out; written = snprintf(buffer, sizeof(buffer), \"%lld\", (long long)value); if (written < 0) return \"\"; out = (char *)malloc((size_t)written + 1u); if (out == NULL) abort(); memcpy(out, buffer, (size_t)written + 1u); return out; }");
         if (status != VITTE_STATUS_OK) return status;
         status = vitte_c17_write_newline(writer);
         if (status != VITTE_STATUS_OK) return status;
@@ -277,6 +291,14 @@ vitte_status_t vitte_c17_translation_unit_emit_prelude(
         if (status != VITTE_STATUS_OK) return status;
         status = vitte_c17_write_newline(writer);
         if (status != VITTE_STATUS_OK) return status;
+        status = vitte_c17_write_string(writer, "static int vitte_c17_compare_directory_items(const void *left, const void *right) { const vitte_value *a = (const vitte_value *)left; const vitte_value *b = (const vitte_value *)right; return strcmp(a->string != NULL ? a->string : \"\", b->string != NULL ? b->string : \"\"); }");
+        if (status != VITTE_STATUS_OK) return status;
+        status = vitte_c17_write_newline(writer);
+        if (status != VITTE_STATUS_OK) return status;
+        status = vitte_c17_write_string(writer, "static vitte_aggregate *vitte_c17_host_list_directory(const char *path) { DIR *directory; struct dirent *entry; vitte_aggregate *out = vitte_aggregate_new(); if (path == NULL || out == NULL) return out; directory = opendir(path); if (directory == NULL) return out; while ((entry = readdir(directory)) != NULL) { size_t length; char *name; if (strcmp(entry->d_name, \".\") == 0 || strcmp(entry->d_name, \"..\") == 0) continue; length = strlen(entry->d_name); name = (char *)malloc(length + 1u); if (name == NULL) abort(); memcpy(name, entry->d_name, length + 1u); vitte_aggregate_append_string(out, name); } closedir(directory); if (out->count > 1u) qsort(out->items, out->count, sizeof(vitte_value), vitte_c17_compare_directory_items); return out; }");
+        if (status != VITTE_STATUS_OK) return status;
+        status = vitte_c17_write_newline(writer);
+        if (status != VITTE_STATUS_OK) return status;
         status = vitte_c17_write_string(writer, "static void vitte_aggregate_append_aggregate(vitte_aggregate *value, vitte_aggregate *item) { if (value == NULL) return; vitte_aggregate_reserve_items(value, value->count + 1u); value->items[value->count].kind = VITTE_VALUE_AGGREGATE; value->items[value->count++].aggregate = item; }");
         if (status != VITTE_STATUS_OK) return status;
         status = vitte_c17_write_newline(writer);
@@ -333,7 +355,7 @@ vitte_status_t vitte_c17_translation_unit_emit_prelude(
         if (status != VITTE_STATUS_OK) return status;
         status = vitte_c17_write_newline(writer);
         if (status != VITTE_STATUS_OK) return status;
-        status = vitte_c17_write_string(writer, "static vitte_aggregate *vitte_aggregate_concat(vitte_aggregate *left, vitte_aggregate *right) { size_t i; vitte_aggregate *out = vitte_aggregate_new(); if (left != NULL) { vitte_aggregate_reserve_items(out, left->count); for (i = 0u; i < left->count; i++) out->items[out->count++] = left->items[i]; vitte_aggregate_reserve_fields(out, left->field_count); for (i = 0u; i < left->field_count; i++) out->fields[out->field_count++] = left->fields[i]; } if (right != NULL) { vitte_aggregate_reserve_items(out, out->count + right->count); for (i = 0u; i < right->count; i++) out->items[out->count++] = right->items[i]; for (i = 0u; i < right->field_count; i++) { vitte_value *field = vitte_aggregate_field(out, right->fields[i].name, true); if (field != NULL) *field = right->fields[i].value; } } return out; }");
+        status = vitte_c17_write_string(writer, "static vitte_aggregate *vitte_aggregate_concat(vitte_aggregate *left, vitte_aggregate *right) { size_t i; vitte_aggregate *out = left != NULL ? left : vitte_aggregate_new(); if (out == NULL) abort(); if (right != NULL) { vitte_aggregate_reserve_items(out, out->count + right->count); for (i = 0u; i < right->count; i++) out->items[out->count++] = right->items[i]; for (i = 0u; i < right->field_count; i++) { vitte_value *field = vitte_aggregate_field(out, right->fields[i].name, true); if (field != NULL) *field = right->fields[i].value; } } return out; }");
         if (status != VITTE_STATUS_OK) return status;
         status = vitte_c17_write_newline(writer);
         if (status != VITTE_STATUS_OK) return status;

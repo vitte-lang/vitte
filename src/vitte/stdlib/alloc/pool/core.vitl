@@ -1,0 +1,1594 @@
+space vitte/stdlib/alloc/pool/core
+
+export *
+
+const POOL_CORE_MIN_SLOT_SIZE: usize = 1;
+const POOL_CORE_MIN_ALIGN: usize = 1;
+const POOL_CORE_MIN_SLOTS: usize = 1;
+
+pick PoolCoreState {
+    Empty,
+    Partial,
+    Full,
+    Released,
+    Invalid
+}
+
+pick PoolCoreAccess {
+    None,
+    Read,
+    ReadWrite
+}
+
+pick PoolCoreSlotState {
+    Free,
+    Allocated,
+    Invalid
+}
+
+pick PoolCoreTransitionKind {
+    None,
+    Allocate,
+    ReleaseSlot,
+    Reset,
+    ReleasePool,
+    Touch,
+    Invalidate
+}
+
+pick PoolCoreOrdering {
+    Less,
+    Equal,
+    Greater
+}
+
+form PoolCoreLayout {
+    slot_size: usize
+    slot_align: usize
+    slot_count: usize
+}
+
+form PoolCoreUsage {
+    allocated: usize
+    free: usize
+    capacity: usize
+}
+
+form PoolCoreMeta {
+    generation: u64
+    revision: u64
+}
+
+form PoolCoreInfo {
+    state: PoolCoreState
+    access: PoolCoreAccess
+
+    empty: bool
+    partial: bool
+    full: bool
+    released: bool
+    valid: bool
+}
+
+form PoolCoreSlotInfo {
+    index: usize
+    state: PoolCoreSlotState
+
+    generation: u64
+    revision: u64
+}
+
+form PoolCoreProfile {
+    layout: PoolCoreLayout
+    usage: PoolCoreUsage
+    meta: PoolCoreMeta
+    info: PoolCoreInfo
+
+    utilization: f64
+    free_ratio: f64
+}
+
+form PoolCoreSnapshot {
+    allocated: usize
+    free: usize
+    capacity: usize
+
+    state: PoolCoreState
+
+    generation: u64
+    revision: u64
+}
+
+form PoolCoreDelta {
+    allocated: int
+    free: int
+    capacity: int
+
+    generation: int
+    revision: int
+
+    state_changed: bool
+    changed: bool
+}
+
+form PoolCoreTransition {
+    before: PoolCoreSnapshot
+    after: PoolCoreSnapshot
+
+    kind: PoolCoreTransitionKind
+    valid: bool
+}
+
+form PoolCoreValidation {
+    valid: bool
+
+    layout_valid: bool
+    usage_valid: bool
+    state_valid: bool
+    access_valid: bool
+    generation_valid: bool
+}
+
+form PoolCoreLimits {
+    max_slot_size: usize
+    max_slot_align: usize
+    max_slot_count: usize
+    max_capacity: usize
+}
+
+form PoolCoreStatistics {
+    allocations: u64
+    releases: u64
+
+    resets: u64
+    pool_releases: u64
+
+    touches: u64
+    invalidations: u64
+    validations: u64
+
+    peak_allocated: usize
+}
+
+// -----------------------------------------------------------------------------
+// Arithmetic
+// -----------------------------------------------------------------------------
+
+proc pool_core_add_overflows(
+    left: usize,
+    right: usize
+) -> bool {
+    give left > usize_max() - right;
+}
+
+proc pool_core_mul_overflows(
+    left: usize,
+    right: usize
+) -> bool {
+    if left == 0
+        or right == 0
+    {
+        give false;
+    }
+
+    give left > usize_max() / right;
+}
+
+// -----------------------------------------------------------------------------
+// Layout
+// -----------------------------------------------------------------------------
+
+proc pool_core_layout(
+    slot_size: usize,
+    slot_align: usize,
+    slot_count: usize
+) -> PoolCoreLayout {
+    give PoolCoreLayout {
+        slot_size: slot_size,
+        slot_align: slot_align,
+        slot_count: slot_count
+    };
+}
+
+proc pool_core_layout_of<T>(
+    slot_count: usize
+) -> PoolCoreLayout {
+    give PoolCoreLayout {
+        slot_size:
+            compiler_size_of<T>(),
+
+        slot_align:
+            compiler_align_of<T>(),
+
+        slot_count:
+            slot_count
+    };
+}
+
+proc pool_core_alignment_valid(
+    align: usize
+) -> bool {
+    if align < POOL_CORE_MIN_ALIGN {
+        give false;
+    }
+
+    give compiler_is_power_of_two(
+        align
+    );
+}
+
+proc pool_core_slot_size_valid(
+    size: usize
+) -> bool {
+    give size >= POOL_CORE_MIN_SLOT_SIZE;
+}
+
+proc pool_core_slot_count_valid(
+    count: usize
+) -> bool {
+    give count >= POOL_CORE_MIN_SLOTS;
+}
+
+proc pool_core_layout_capacity(
+    layout: PoolCoreLayout
+) -> usize {
+    if pool_core_mul_overflows(
+        layout.slot_size,
+        layout.slot_count
+    ) {
+        give 0;
+    }
+
+    give layout.slot_size
+        * layout.slot_count;
+}
+
+proc pool_core_layout_valid(
+    layout: PoolCoreLayout
+) -> bool {
+    give pool_core_slot_size_valid(
+        layout.slot_size
+    )
+    and pool_core_alignment_valid(
+        layout.slot_align
+    )
+    and pool_core_slot_count_valid(
+        layout.slot_count
+    )
+    and not pool_core_mul_overflows(
+        layout.slot_size,
+        layout.slot_count
+    );
+}
+
+proc pool_core_layout_fits<T>(
+    layout: PoolCoreLayout
+) -> bool {
+    give layout.slot_size
+        >= compiler_size_of<T>()
+        and layout.slot_align
+            >= compiler_align_of<T>();
+}
+
+// -----------------------------------------------------------------------------
+// Limits
+// -----------------------------------------------------------------------------
+
+proc pool_core_limits_default()
+    -> PoolCoreLimits
+{
+    give PoolCoreLimits {
+        max_slot_size:
+            usize_max(),
+
+        max_slot_align:
+            usize_max(),
+
+        max_slot_count:
+            usize_max(),
+
+        max_capacity:
+            usize_max()
+    };
+}
+
+proc pool_core_layout_within_limits(
+    layout: PoolCoreLayout,
+    limits: PoolCoreLimits
+) -> bool {
+    let capacity =
+        pool_core_layout_capacity(
+            layout
+        );
+
+    give layout.slot_size
+        <= limits.max_slot_size
+        and layout.slot_align
+            <= limits.max_slot_align
+        and layout.slot_count
+            <= limits.max_slot_count
+        and capacity
+            <= limits.max_capacity;
+}
+
+// -----------------------------------------------------------------------------
+// Usage
+// -----------------------------------------------------------------------------
+
+proc pool_core_usage(
+    allocated: usize,
+    capacity: usize
+) -> PoolCoreUsage {
+    let free =
+        if allocated >= capacity {
+            0
+        } else {
+            capacity - allocated
+        };
+
+    give PoolCoreUsage {
+        allocated:
+            allocated,
+
+        free:
+            free,
+
+        capacity:
+            capacity
+    };
+}
+
+proc pool_core_usage_empty(
+    capacity: usize
+) -> PoolCoreUsage {
+    give PoolCoreUsage {
+        allocated: 0,
+        free: capacity,
+        capacity: capacity
+    };
+}
+
+proc pool_core_usage_full(
+    capacity: usize
+) -> PoolCoreUsage {
+    give PoolCoreUsage {
+        allocated: capacity,
+        free: 0,
+        capacity: capacity
+    };
+}
+
+proc pool_core_usage_valid(
+    usage: PoolCoreUsage
+) -> bool {
+    if usage.allocated > usage.capacity {
+        give false;
+    }
+
+    if usage.free > usage.capacity {
+        give false;
+    }
+
+    if pool_core_add_overflows(
+        usage.allocated,
+        usage.free
+    ) {
+        give false;
+    }
+
+    give usage.allocated
+        + usage.free
+        == usage.capacity;
+}
+
+proc pool_core_used(
+    usage: PoolCoreUsage
+) -> usize {
+    give usage.allocated;
+}
+
+proc pool_core_free(
+    usage: PoolCoreUsage
+) -> usize {
+    give usage.free;
+}
+
+proc pool_core_capacity(
+    usage: PoolCoreUsage
+) -> usize {
+    give usage.capacity;
+}
+
+proc pool_core_utilization(
+    usage: PoolCoreUsage
+) -> f64 {
+    if usage.capacity == 0 {
+        give 0.0;
+    }
+
+    give (
+        usage.allocated as f64
+    ) / (
+        usage.capacity as f64
+    );
+}
+
+proc pool_core_free_ratio(
+    usage: PoolCoreUsage
+) -> f64 {
+    if usage.capacity == 0 {
+        give 0.0;
+    }
+
+    give (
+        usage.free as f64
+    ) / (
+        usage.capacity as f64
+    );
+}
+
+// -----------------------------------------------------------------------------
+// State
+// -----------------------------------------------------------------------------
+
+proc pool_core_state(
+    usage: PoolCoreUsage,
+    released: bool
+) -> PoolCoreState {
+    if released {
+        give PoolCoreState.Released;
+    }
+
+    if not pool_core_usage_valid(
+        usage
+    ) {
+        give PoolCoreState.Invalid;
+    }
+
+    if usage.capacity == 0 {
+        give PoolCoreState.Invalid;
+    }
+
+    if usage.allocated == 0 {
+        give PoolCoreState.Empty;
+    }
+
+    if usage.free == 0 {
+        give PoolCoreState.Full;
+    }
+
+    give PoolCoreState.Partial;
+}
+
+proc pool_core_access(
+    state: PoolCoreState
+) -> PoolCoreAccess {
+    pick state {
+        PoolCoreState.Empty
+        | PoolCoreState.Partial {
+            give PoolCoreAccess.ReadWrite;
+        }
+
+        PoolCoreState.Full {
+            give PoolCoreAccess.Read;
+        }
+
+        PoolCoreState.Released
+        | PoolCoreState.Invalid {
+            give PoolCoreAccess.None;
+        }
+    }
+
+    give PoolCoreAccess.None;
+}
+
+proc pool_core_info(
+    state: PoolCoreState
+) -> PoolCoreInfo {
+    give PoolCoreInfo {
+        state:
+            state,
+
+        access:
+            pool_core_access(
+                state
+            ),
+
+        empty:
+            state == PoolCoreState.Empty,
+
+        partial:
+            state == PoolCoreState.Partial,
+
+        full:
+            state == PoolCoreState.Full,
+
+        released:
+            state == PoolCoreState.Released,
+
+        valid:
+            state != PoolCoreState.Invalid
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Predicates
+// -----------------------------------------------------------------------------
+
+proc pool_core_is_empty(
+    state: PoolCoreState
+) -> bool {
+    give state == PoolCoreState.Empty;
+}
+
+proc pool_core_is_partial(
+    state: PoolCoreState
+) -> bool {
+    give state == PoolCoreState.Partial;
+}
+
+proc pool_core_is_full(
+    state: PoolCoreState
+) -> bool {
+    give state == PoolCoreState.Full;
+}
+
+proc pool_core_is_released(
+    state: PoolCoreState
+) -> bool {
+    give state == PoolCoreState.Released;
+}
+
+proc pool_core_can_allocate(
+    state: PoolCoreState
+) -> bool {
+    give state == PoolCoreState.Empty
+        or state == PoolCoreState.Partial;
+}
+
+proc pool_core_can_release_slot(
+    state: PoolCoreState
+) -> bool {
+    give state == PoolCoreState.Partial
+        or state == PoolCoreState.Full;
+}
+
+proc pool_core_can_reset(
+    state: PoolCoreState
+) -> bool {
+    give state != PoolCoreState.Released
+        and state != PoolCoreState.Invalid;
+}
+
+proc pool_core_can_release_pool(
+    state: PoolCoreState
+) -> bool {
+    give state != PoolCoreState.Released
+        and state != PoolCoreState.Invalid;
+}
+
+// -----------------------------------------------------------------------------
+// Meta
+// -----------------------------------------------------------------------------
+
+proc pool_core_meta()
+    -> PoolCoreMeta
+{
+    give PoolCoreMeta {
+        generation: 1,
+        revision: 1
+    };
+}
+
+proc pool_core_meta_empty()
+    -> PoolCoreMeta
+{
+    give PoolCoreMeta {
+        generation: 0,
+        revision: 0
+    };
+}
+
+proc pool_core_touch(
+    meta: PoolCoreMeta
+) -> PoolCoreMeta {
+    let out = meta;
+
+    set out.revision =
+        out.revision + 1;
+
+    give out;
+}
+
+proc pool_core_advance_generation(
+    meta: PoolCoreMeta
+) -> PoolCoreMeta {
+    let out = meta;
+
+    set out.generation =
+        out.generation + 1;
+
+    set out.revision =
+        out.revision + 1;
+
+    give out;
+}
+
+// -----------------------------------------------------------------------------
+// Slot model
+// -----------------------------------------------------------------------------
+
+proc pool_core_slot(
+    index: usize
+) -> PoolCoreSlotInfo {
+    give PoolCoreSlotInfo {
+        index:
+            index,
+
+        state:
+            PoolCoreSlotState.Free,
+
+        generation:
+            1,
+
+        revision:
+            1
+    };
+}
+
+proc pool_core_slot_is_free(
+    slot: PoolCoreSlotInfo
+) -> bool {
+    give slot.state
+        == PoolCoreSlotState.Free;
+}
+
+proc pool_core_slot_is_allocated(
+    slot: PoolCoreSlotInfo
+) -> bool {
+    give slot.state
+        == PoolCoreSlotState.Allocated;
+}
+
+proc pool_core_slot_valid(
+    slot: PoolCoreSlotInfo,
+    capacity: usize
+) -> bool {
+    give slot.index < capacity
+        and slot.state
+            != PoolCoreSlotState.Invalid
+        and slot.generation > 0
+        and slot.revision > 0;
+}
+
+proc pool_core_slot_allocate(
+    slot: PoolCoreSlotInfo
+) -> PoolCoreSlotInfo {
+    if slot.state
+        != PoolCoreSlotState.Free
+    {
+        give slot;
+    }
+
+    let out = slot;
+
+    set out.state =
+        PoolCoreSlotState.Allocated;
+
+    set out.revision =
+        out.revision + 1;
+
+    give out;
+}
+
+proc pool_core_slot_release(
+    slot: PoolCoreSlotInfo
+) -> PoolCoreSlotInfo {
+    if slot.state
+        != PoolCoreSlotState.Allocated
+    {
+        give slot;
+    }
+
+    let out = slot;
+
+    set out.state =
+        PoolCoreSlotState.Free;
+
+    set out.generation =
+        out.generation + 1;
+
+    set out.revision =
+        out.revision + 1;
+
+    give out;
+}
+
+// -----------------------------------------------------------------------------
+// Pure usage transitions
+// -----------------------------------------------------------------------------
+
+proc pool_core_allocate(
+    usage: PoolCoreUsage
+) -> PoolCoreUsage {
+    if usage.free == 0 {
+        give usage;
+    }
+
+    give PoolCoreUsage {
+        allocated:
+            usage.allocated + 1,
+
+        free:
+            usage.free - 1,
+
+        capacity:
+            usage.capacity
+    };
+}
+
+proc pool_core_release_slot(
+    usage: PoolCoreUsage
+) -> PoolCoreUsage {
+    if usage.allocated == 0 {
+        give usage;
+    }
+
+    give PoolCoreUsage {
+        allocated:
+            usage.allocated - 1,
+
+        free:
+            usage.free + 1,
+
+        capacity:
+            usage.capacity
+    };
+}
+
+proc pool_core_reset_usage(
+    usage: PoolCoreUsage
+) -> PoolCoreUsage {
+    give pool_core_usage_empty(
+        usage.capacity
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Profile
+// -----------------------------------------------------------------------------
+
+proc pool_core_profile(
+    layout: PoolCoreLayout,
+    usage: PoolCoreUsage,
+    meta: PoolCoreMeta,
+    released: bool
+) -> PoolCoreProfile {
+    let state =
+        pool_core_state(
+            usage,
+            released
+        );
+
+    give PoolCoreProfile {
+        layout:
+            layout,
+
+        usage:
+            usage,
+
+        meta:
+            meta,
+
+        info:
+            pool_core_info(
+                state
+            ),
+
+        utilization:
+            pool_core_utilization(
+                usage
+            ),
+
+        free_ratio:
+            pool_core_free_ratio(
+                usage
+            )
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Snapshot
+// -----------------------------------------------------------------------------
+
+proc pool_core_snapshot(
+    profile: PoolCoreProfile
+) -> PoolCoreSnapshot {
+    give PoolCoreSnapshot {
+        allocated:
+            profile.usage.allocated,
+
+        free:
+            profile.usage.free,
+
+        capacity:
+            profile.usage.capacity,
+
+        state:
+            profile.info.state,
+
+        generation:
+            profile.meta.generation,
+
+        revision:
+            profile.meta.revision
+    };
+}
+
+proc pool_core_snapshot_equal(
+    left: PoolCoreSnapshot,
+    right: PoolCoreSnapshot
+) -> bool {
+    give left.allocated == right.allocated
+        and left.free == right.free
+        and left.capacity == right.capacity
+        and left.state == right.state
+        and left.generation == right.generation
+        and left.revision == right.revision;
+}
+
+proc pool_core_snapshot_changed(
+    left: PoolCoreSnapshot,
+    right: PoolCoreSnapshot
+) -> bool {
+    give not pool_core_snapshot_equal(
+        left,
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Delta
+// -----------------------------------------------------------------------------
+
+proc pool_core_usize_delta(
+    before: usize,
+    after: usize
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc pool_core_u64_delta(
+    before: u64,
+    after: u64
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc pool_core_delta(
+    before: PoolCoreSnapshot,
+    after: PoolCoreSnapshot
+) -> PoolCoreDelta {
+    let allocated =
+        pool_core_usize_delta(
+            before.allocated,
+            after.allocated
+        );
+
+    let free =
+        pool_core_usize_delta(
+            before.free,
+            after.free
+        );
+
+    let capacity =
+        pool_core_usize_delta(
+            before.capacity,
+            after.capacity
+        );
+
+    let generation =
+        pool_core_u64_delta(
+            before.generation,
+            after.generation
+        );
+
+    let revision =
+        pool_core_u64_delta(
+            before.revision,
+            after.revision
+        );
+
+    let state_changed =
+        before.state != after.state;
+
+    give PoolCoreDelta {
+        allocated:
+            allocated,
+
+        free:
+            free,
+
+        capacity:
+            capacity,
+
+        generation:
+            generation,
+
+        revision:
+            revision,
+
+        state_changed:
+            state_changed,
+
+        changed:
+            allocated != 0
+            or free != 0
+            or capacity != 0
+            or generation != 0
+            or revision != 0
+            or state_changed
+    };
+}
+
+proc pool_core_delta_is_zero(
+    delta: PoolCoreDelta
+) -> bool {
+    give not delta.changed;
+}
+
+// -----------------------------------------------------------------------------
+// Transition classification
+// -----------------------------------------------------------------------------
+
+proc pool_core_transition_kind(
+    before: PoolCoreSnapshot,
+    after: PoolCoreSnapshot
+) -> PoolCoreTransitionKind {
+    if pool_core_snapshot_equal(
+        before,
+        after
+    ) {
+        give PoolCoreTransitionKind.None;
+    }
+
+    if after.state == PoolCoreState.Invalid {
+        give PoolCoreTransitionKind.Invalidate;
+    }
+
+    if after.state == PoolCoreState.Released
+        and before.state != PoolCoreState.Released
+    {
+        give PoolCoreTransitionKind.ReleasePool;
+    }
+
+    if after.generation > before.generation
+        and after.allocated == 0
+        and after.free == after.capacity
+    {
+        give PoolCoreTransitionKind.Reset;
+    }
+
+    if after.allocated
+        == before.allocated + 1
+        and after.free + 1
+            == before.free
+    {
+        give PoolCoreTransitionKind.Allocate;
+    }
+
+    if before.allocated
+        == after.allocated + 1
+        and before.free + 1
+            == after.free
+    {
+        give PoolCoreTransitionKind.ReleaseSlot;
+    }
+
+    if after.revision > before.revision {
+        give PoolCoreTransitionKind.Touch;
+    }
+
+    give PoolCoreTransitionKind.None;
+}
+
+proc pool_core_transition_valid(
+    before: PoolCoreSnapshot,
+    after: PoolCoreSnapshot,
+    kind: PoolCoreTransitionKind
+) -> bool {
+    pick kind {
+        PoolCoreTransitionKind.None {
+            give pool_core_snapshot_equal(
+                before,
+                after
+            );
+        }
+
+        PoolCoreTransitionKind.Allocate {
+            give after.allocated
+                == before.allocated + 1
+                and after.free + 1
+                    == before.free
+                and after.capacity
+                    == before.capacity
+                and after.generation
+                    == before.generation;
+        }
+
+        PoolCoreTransitionKind.ReleaseSlot {
+            give before.allocated
+                == after.allocated + 1
+                and before.free + 1
+                    == after.free
+                and after.capacity
+                    == before.capacity
+                and after.generation
+                    == before.generation;
+        }
+
+        PoolCoreTransitionKind.Reset {
+            give after.allocated == 0
+                and after.free == after.capacity
+                and after.generation
+                    > before.generation;
+        }
+
+        PoolCoreTransitionKind.ReleasePool {
+            give after.state
+                == PoolCoreState.Released
+                and after.generation
+                    > before.generation;
+        }
+
+        PoolCoreTransitionKind.Touch {
+            give after.revision
+                > before.revision;
+        }
+
+        PoolCoreTransitionKind.Invalidate {
+            give after.state
+                == PoolCoreState.Invalid;
+        }
+    }
+
+    give false;
+}
+
+proc pool_core_transition(
+    before: PoolCoreSnapshot,
+    after: PoolCoreSnapshot
+) -> PoolCoreTransition {
+    let kind =
+        pool_core_transition_kind(
+            before,
+            after
+        );
+
+    give PoolCoreTransition {
+        before:
+            before,
+
+        after:
+            after,
+
+        kind:
+            kind,
+
+        valid:
+            pool_core_transition_valid(
+                before,
+                after,
+                kind
+            )
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+proc pool_core_state_valid(
+    profile: PoolCoreProfile
+) -> bool {
+    pick profile.info.state {
+        PoolCoreState.Empty {
+            give profile.usage.allocated == 0
+                and profile.usage.free
+                    == profile.usage.capacity;
+        }
+
+        PoolCoreState.Partial {
+            give profile.usage.allocated > 0
+                and profile.usage.free > 0
+                and profile.usage.allocated
+                    < profile.usage.capacity;
+        }
+
+        PoolCoreState.Full {
+            give profile.usage.free == 0
+                and profile.usage.allocated
+                    == profile.usage.capacity;
+        }
+
+        PoolCoreState.Released {
+            give not profile.info.empty
+                and not profile.info.partial
+                and not profile.info.full;
+        }
+
+        PoolCoreState.Invalid {
+            give false;
+        }
+    }
+
+    give false;
+}
+
+proc pool_core_access_valid(
+    profile: PoolCoreProfile
+) -> bool {
+    give profile.info.access
+        == pool_core_access(
+            profile.info.state
+        );
+}
+
+proc pool_core_validate(
+    profile: PoolCoreProfile,
+    limits: PoolCoreLimits
+) -> PoolCoreValidation {
+    let layout_valid =
+        pool_core_layout_valid(
+            profile.layout
+        )
+        and pool_core_layout_within_limits(
+            profile.layout,
+            limits
+        );
+
+    let usage_valid =
+        pool_core_usage_valid(
+            profile.usage
+        )
+        and profile.usage.capacity
+            == profile.layout.slot_count;
+
+    let state_valid =
+        pool_core_state_valid(
+            profile
+        );
+
+    let access_valid =
+        pool_core_access_valid(
+            profile
+        );
+
+    let generation_valid =
+        profile.meta.generation > 0
+        and profile.meta.revision > 0;
+
+    give PoolCoreValidation {
+        valid:
+            layout_valid
+            and usage_valid
+            and state_valid
+            and access_valid
+            and generation_valid,
+
+        layout_valid:
+            layout_valid,
+
+        usage_valid:
+            usage_valid,
+
+        state_valid:
+            state_valid,
+
+        access_valid:
+            access_valid,
+
+        generation_valid:
+            generation_valid
+    };
+}
+
+proc pool_core_invariant_holds(
+    profile: PoolCoreProfile
+) -> bool {
+    give pool_core_validate(
+        profile,
+        pool_core_limits_default()
+    ).valid;
+}
+
+// -----------------------------------------------------------------------------
+// Comparisons
+// -----------------------------------------------------------------------------
+
+proc pool_core_compare_allocated(
+    left: PoolCoreUsage,
+    right: PoolCoreUsage
+) -> PoolCoreOrdering {
+    if left.allocated < right.allocated {
+        give PoolCoreOrdering.Less;
+    }
+
+    if left.allocated > right.allocated {
+        give PoolCoreOrdering.Greater;
+    }
+
+    give PoolCoreOrdering.Equal;
+}
+
+proc pool_core_compare_free(
+    left: PoolCoreUsage,
+    right: PoolCoreUsage
+) -> PoolCoreOrdering {
+    if left.free < right.free {
+        give PoolCoreOrdering.Less;
+    }
+
+    if left.free > right.free {
+        give PoolCoreOrdering.Greater;
+    }
+
+    give PoolCoreOrdering.Equal;
+}
+
+proc pool_core_compare_capacity(
+    left: PoolCoreLayout,
+    right: PoolCoreLayout
+) -> PoolCoreOrdering {
+    let left_capacity =
+        pool_core_layout_capacity(
+            left
+        );
+
+    let right_capacity =
+        pool_core_layout_capacity(
+            right
+        );
+
+    if left_capacity < right_capacity {
+        give PoolCoreOrdering.Less;
+    }
+
+    if left_capacity > right_capacity {
+        give PoolCoreOrdering.Greater;
+    }
+
+    give PoolCoreOrdering.Equal;
+}
+
+proc pool_core_usage_equal(
+    left: PoolCoreUsage,
+    right: PoolCoreUsage
+) -> bool {
+    give left.allocated == right.allocated
+        and left.free == right.free
+        and left.capacity == right.capacity;
+}
+
+proc pool_core_layout_equal(
+    left: PoolCoreLayout,
+    right: PoolCoreLayout
+) -> bool {
+    give left.slot_size == right.slot_size
+        and left.slot_align == right.slot_align
+        and left.slot_count == right.slot_count;
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc pool_core_statistics_empty()
+    -> PoolCoreStatistics
+{
+    give PoolCoreStatistics {
+        allocations: 0,
+        releases: 0,
+
+        resets: 0,
+        pool_releases: 0,
+
+        touches: 0,
+        invalidations: 0,
+        validations: 0,
+
+        peak_allocated: 0
+    };
+}
+
+proc pool_core_statistics_record(
+    statistics: ref mut PoolCoreStatistics,
+    transition: PoolCoreTransition
+) {
+    if not transition.valid {
+        set statistics.invalidations =
+            statistics.invalidations + 1;
+
+        give;
+    }
+
+    pick transition.kind {
+        PoolCoreTransitionKind.Allocate {
+            set statistics.allocations =
+                statistics.allocations + 1;
+
+            if transition.after.allocated
+                > statistics.peak_allocated
+            {
+                set statistics.peak_allocated =
+                    transition.after.allocated;
+            }
+        }
+
+        PoolCoreTransitionKind.ReleaseSlot {
+            set statistics.releases =
+                statistics.releases + 1;
+        }
+
+        PoolCoreTransitionKind.Reset {
+            set statistics.resets =
+                statistics.resets + 1;
+        }
+
+        PoolCoreTransitionKind.ReleasePool {
+            set statistics.pool_releases =
+                statistics.pool_releases + 1;
+        }
+
+        PoolCoreTransitionKind.Touch {
+            set statistics.touches =
+                statistics.touches + 1;
+        }
+
+        PoolCoreTransitionKind.Invalidate {
+            set statistics.invalidations =
+                statistics.invalidations + 1;
+        }
+
+        PoolCoreTransitionKind.None {}
+    }
+}
+
+proc pool_core_statistics_total(
+    statistics: PoolCoreStatistics
+) -> u64 {
+    give statistics.allocations
+        + statistics.releases
+        + statistics.resets
+        + statistics.pool_releases
+        + statistics.touches
+        + statistics.invalidations
+        + statistics.validations;
+}
+
+proc pool_core_statistics_reset(
+    statistics: ref mut PoolCoreStatistics
+) {
+    set *statistics =
+        pool_core_statistics_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc pool_core_state_name(
+    state: PoolCoreState
+) -> string {
+    pick state {
+        PoolCoreState.Empty {
+            give "empty";
+        }
+
+        PoolCoreState.Partial {
+            give "partial";
+        }
+
+        PoolCoreState.Full {
+            give "full";
+        }
+
+        PoolCoreState.Released {
+            give "released";
+        }
+
+        PoolCoreState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+proc pool_core_access_name(
+    access: PoolCoreAccess
+) -> string {
+    pick access {
+        PoolCoreAccess.None {
+            give "none";
+        }
+
+        PoolCoreAccess.Read {
+            give "read";
+        }
+
+        PoolCoreAccess.ReadWrite {
+            give "read-write";
+        }
+    }
+
+    give "none";
+}
+
+proc pool_core_slot_state_name(
+    state: PoolCoreSlotState
+) -> string {
+    pick state {
+        PoolCoreSlotState.Free {
+            give "free";
+        }
+
+        PoolCoreSlotState.Allocated {
+            give "allocated";
+        }
+
+        PoolCoreSlotState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+proc pool_core_transition_name(
+    kind: PoolCoreTransitionKind
+) -> string {
+    pick kind {
+        PoolCoreTransitionKind.None {
+            give "none";
+        }
+
+        PoolCoreTransitionKind.Allocate {
+            give "allocate";
+        }
+
+        PoolCoreTransitionKind.ReleaseSlot {
+            give "release-slot";
+        }
+
+        PoolCoreTransitionKind.Reset {
+            give "reset";
+        }
+
+        PoolCoreTransitionKind.ReleasePool {
+            give "release-pool";
+        }
+
+        PoolCoreTransitionKind.Touch {
+            give "touch";
+        }
+
+        PoolCoreTransitionKind.Invalidate {
+            give "invalidate";
+        }
+    }
+
+    give "none";
+}
+
+// -----------------------------------------------------------------------------
+// Core model
+// -----------------------------------------------------------------------------
+//
+// Pool layout:
+//
+// +------+------+------+------+------+
+// |slot 0|slot 1|slot 2|slot 3| ...  |
+// +------+------+------+------+------+
+//
+// Every slot:
+//
+//     fixed size
+//     fixed alignment
+//
+// Pool accounting:
+//
+//     allocated + free = capacity
+//
+// States:
+//
+//     Empty
+//         allocated = 0
+//
+//     Partial
+//         allocated > 0
+//         free > 0
+//
+//     Full
+//         free = 0
+//
+//     Released
+//         pool lifecycle ended
+//
+// Allocation:
+//
+//     Free -> Allocated
+//
+//     allocated++
+//     free--
+//
+// Slot release:
+//
+//     Allocated -> Free
+//
+//     allocated--
+//     free++
+//
+// Slot generation:
+//
+//     allocation
+//         revision++
+//
+//     release
+//         generation++
+//         revision++
+//
+// Reset:
+//
+//     allocated = 0
+//     free = capacity
+//     generation++
+//
+// Pool release:
+//
+//     state = Released
+//     generation++
+//
+// Fundamental invariants:
+//
+//     slot_size > 0
+//
+//     slot_align is power of two
+//
+//     slot_count > 0
+//
+//     allocated <= capacity
+//
+//     free <= capacity
+//
+//     allocated + free = capacity
+//
+// This module contains the pure pool model.
+//
+// Slot geometry and concrete allocation:
+//     alloc.vitl
+//
+// Backing memory/accounting:
+//     block.vitl
+//
+// Public pool API/free-slot management:
+//     pool.vitl
+//
+// Raw views:
+//     raw.vitl

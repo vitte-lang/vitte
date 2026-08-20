@@ -1,0 +1,1323 @@
+space vitte/stdlib/alloc/arena/arena
+
+export *
+
+use src/vitte/stdlib/alloc/allocator as alloc_allocator
+use src/vitte/stdlib/alloc/vec as alloc_vec
+use src/vitte/stdlib/core/option as core_option
+
+// -----------------------------------------------------------------------------
+// Arena state
+// -----------------------------------------------------------------------------
+
+pick ArenaState {
+    Ready,
+    Active,
+    Empty,
+    Released,
+    Invalid
+}
+
+pick ArenaGrowthMode {
+    Fixed,
+    Geometric,
+    Exact
+}
+
+pick ArenaOperation {
+    None,
+    Allocate,
+    AllocateArray,
+    AllocateBytes,
+    Mark,
+    Rewind,
+    Reset,
+    Drop
+}
+
+// -----------------------------------------------------------------------------
+// Blocks
+// -----------------------------------------------------------------------------
+
+form ArenaBlock {
+    allocation: alloc_allocator.Allocation
+
+    used: usize
+    capacity: usize
+
+    index: usize
+
+    active: bool
+}
+
+form ArenaBlockProfile {
+    index: usize
+
+    used: usize
+    capacity: usize
+    remaining: usize
+
+    utilization: f64
+
+    empty: bool
+    full: bool
+    active: bool
+}
+
+// -----------------------------------------------------------------------------
+// Marks
+// -----------------------------------------------------------------------------
+
+form ArenaMark {
+    block_count: usize
+    allocated: usize
+
+    generation: u64
+}
+
+form ArenaMarkProfile {
+    block_count: usize
+    allocated: usize
+
+    generation: u64
+
+    valid: bool
+}
+
+// -----------------------------------------------------------------------------
+// Arena
+// -----------------------------------------------------------------------------
+
+form Arena {
+    allocator: alloc_allocator.Allocator
+
+    block_size: usize
+    blocks: Vec<ArenaBlock>
+
+    allocated: usize
+
+    state: ArenaState
+    growth: ArenaGrowthMode
+
+    generation: u64
+    revision: u64
+}
+
+form ArenaProfile {
+    block_size: usize
+    block_count: usize
+
+    allocated: usize
+
+    allocator_live: usize
+    allocator_reserved: usize
+
+    free_capacity: usize
+
+    utilization: f64
+
+    empty: bool
+    active: bool
+    valid: bool
+
+    generation: u64
+    revision: u64
+}
+
+form ArenaStatistics {
+    allocations: u64
+    allocation_failures: u64
+
+    bytes_requested: usize
+    bytes_allocated: usize
+
+    marks: u64
+    rewinds: u64
+    rewind_failures: u64
+
+    resets: u64
+    drops: u64
+
+    blocks_created: u64
+}
+
+form ArenaValidation {
+    valid: bool
+
+    allocator_valid: bool
+    block_size_valid: bool
+    blocks_valid: bool
+    allocated_valid: bool
+    state_valid: bool
+}
+
+// -----------------------------------------------------------------------------
+// Block constructors
+// -----------------------------------------------------------------------------
+
+proc arena_block(
+    allocation: alloc_allocator.Allocation
+) -> ArenaBlock {
+    give ArenaBlock {
+        allocation:
+            allocation,
+
+        used:
+            0,
+
+        capacity:
+            allocation.layout.size,
+
+        index:
+            0,
+
+        active:
+            true
+    };
+}
+
+proc arena_block_with_index(
+    allocation: alloc_allocator.Allocation,
+    index: usize
+) -> ArenaBlock {
+    give ArenaBlock {
+        allocation:
+            allocation,
+
+        used:
+            0,
+
+        capacity:
+            allocation.layout.size,
+
+        index:
+            index,
+
+        active:
+            true
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Construction
+// -----------------------------------------------------------------------------
+
+proc arena_new(
+    name: string,
+    block_size: usize
+) -> Arena {
+    give Arena {
+        allocator:
+            alloc_allocator.allocator(
+                name,
+                alloc_allocator.GrowthPolicy.Geometric
+            ),
+
+        block_size:
+            block_size,
+
+        blocks:
+            vec_new<ArenaBlock>(),
+
+        allocated:
+            0,
+
+        state:
+            ArenaState.Empty,
+
+        growth:
+            ArenaGrowthMode.Geometric,
+
+        generation:
+            1,
+
+        revision:
+            1
+    };
+}
+
+proc arena_new_with_growth(
+    name: string,
+    block_size: usize,
+    growth: ArenaGrowthMode
+) -> Arena {
+    let value =
+        arena_new(
+            name,
+            block_size
+        );
+
+    set value.growth =
+        growth;
+
+    give value;
+}
+
+proc arena_default(
+    name: string
+) -> Arena {
+    give arena_new(
+        name,
+        4096
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Basic access
+// -----------------------------------------------------------------------------
+
+proc arena_allocated(
+    value: Arena
+) -> usize {
+    give value.allocated;
+}
+
+proc arena_block_count(
+    value: Arena
+) -> usize {
+    give vec_len<ArenaBlock>(
+        value.blocks
+    );
+}
+
+proc arena_default_block_size(
+    value: Arena
+) -> usize {
+    give value.block_size;
+}
+
+proc arena_generation(
+    value: Arena
+) -> u64 {
+    give value.generation;
+}
+
+proc arena_revision(
+    value: Arena
+) -> u64 {
+    give value.revision;
+}
+
+proc arena_state(
+    value: Arena
+) -> ArenaState {
+    give value.state;
+}
+
+// -----------------------------------------------------------------------------
+// State predicates
+// -----------------------------------------------------------------------------
+
+proc arena_is_empty(
+    value: Arena
+) -> bool {
+    give value.allocated == 0;
+}
+
+proc arena_is_active(
+    value: Arena
+) -> bool {
+    give value.state
+        == ArenaState.Active
+        or value.state
+        == ArenaState.Empty;
+}
+
+proc arena_is_released(
+    value: Arena
+) -> bool {
+    give value.state
+        == ArenaState.Released;
+}
+
+proc arena_has_blocks(
+    value: Arena
+) -> bool {
+    give arena_block_count(
+        value
+    ) > 0;
+}
+
+// -----------------------------------------------------------------------------
+// Block helpers
+// -----------------------------------------------------------------------------
+
+proc arena_block_remaining(
+    block: ArenaBlock
+) -> usize {
+    if block.used >= block.capacity {
+        give 0;
+    }
+
+    give block.capacity
+        - block.used;
+}
+
+proc arena_block_is_empty(
+    block: ArenaBlock
+) -> bool {
+    give block.used == 0;
+}
+
+proc arena_block_is_full(
+    block: ArenaBlock
+) -> bool {
+    give block.used >= block.capacity;
+}
+
+proc arena_block_has_space(
+    block: ArenaBlock
+) -> bool {
+    give arena_block_remaining(
+        block
+    ) > 0;
+}
+
+proc arena_block_utilization(
+    block: ArenaBlock
+) -> f64 {
+    if block.capacity == 0 {
+        give 0.0;
+    }
+
+    give (
+        block.used as f64
+    ) / (
+        block.capacity as f64
+    );
+}
+
+proc arena_block_profile(
+    block: ArenaBlock
+) -> ArenaBlockProfile {
+    give ArenaBlockProfile {
+        index:
+            block.index,
+
+        used:
+            block.used,
+
+        capacity:
+            block.capacity,
+
+        remaining:
+            arena_block_remaining(
+                block
+            ),
+
+        utilization:
+            arena_block_utilization(
+                block
+            ),
+
+        empty:
+            arena_block_is_empty(
+                block
+            ),
+
+        full:
+            arena_block_is_full(
+                block
+            ),
+
+        active:
+            block.active
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Capacity
+// -----------------------------------------------------------------------------
+
+proc arena_capacity(
+    value: Arena
+) -> usize {
+    let total: usize = 0;
+    let index: usize = 0;
+
+    while index < arena_block_count(value) {
+        let block =
+            vec_get<ArenaBlock>(
+                value.blocks,
+                index
+            );
+
+        set total =
+            total + block.capacity;
+
+        set index =
+            index + 1;
+    }
+
+    give total;
+}
+
+proc arena_free_capacity(
+    value: Arena
+) -> usize {
+    let total =
+        arena_capacity(
+            value
+        );
+
+    if total <= value.allocated {
+        give 0;
+    }
+
+    give total
+        - value.allocated;
+}
+
+proc arena_utilization(
+    value: Arena
+) -> f64 {
+    let capacity =
+        arena_capacity(
+            value
+        );
+
+    if capacity == 0 {
+        give 0.0;
+    }
+
+    give (
+        value.allocated as f64
+    ) / (
+        capacity as f64
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Fit
+// -----------------------------------------------------------------------------
+
+proc arena_can_fit_in_block(
+    block: ArenaBlock,
+    layout_value: alloc_allocator.AllocationLayout
+) -> bool {
+    if not alloc_allocator.layout_is_valid(
+        layout_value
+    ) {
+        give false;
+    }
+
+    give arena_block_remaining(
+        block
+    ) >= layout_value.size;
+}
+
+proc arena_would_allocate(
+    value: Arena,
+    layout_value: alloc_allocator.AllocationLayout
+) -> bool {
+    if not alloc_allocator.layout_is_valid(
+        layout_value
+    ) {
+        give false;
+    }
+
+    give arena_next_block_size(
+        value,
+        layout_value.size
+    ) >= layout_value.size;
+}
+
+// -----------------------------------------------------------------------------
+// Growth
+// -----------------------------------------------------------------------------
+
+proc arena_next_block_size(
+    value: Arena,
+    required: usize
+) -> usize {
+    if required == 0 {
+        give value.block_size;
+    }
+
+    pick value.growth {
+        ArenaGrowthMode.Fixed {
+            if required > value.block_size {
+                give required;
+            }
+
+            give value.block_size;
+        }
+
+        ArenaGrowthMode.Exact {
+            give required;
+        }
+
+        ArenaGrowthMode.Geometric {
+            let next =
+                value.block_size;
+
+            if next < required {
+                set next =
+                    required;
+            }
+
+            give next;
+        }
+    }
+
+    give required;
+}
+
+// -----------------------------------------------------------------------------
+// Allocation
+// -----------------------------------------------------------------------------
+
+proc arena_alloc_layout(
+    value: ref mut Arena,
+    layout_value: alloc_allocator.AllocationLayout
+) -> Option<alloc_allocator.Allocation> {
+    if not arena_is_active(
+        *value
+    ) {
+        give none<alloc_allocator.Allocation>();
+    }
+
+    if not alloc_allocator.layout_is_valid(
+        layout_value
+    ) {
+        alloc_allocator.allocator_record_failure(
+            &mut ((*value).allocator)
+        );
+
+        give none<alloc_allocator.Allocation>();
+    }
+
+    let allocation =
+        compiler_arena_allocate(
+            value,
+            layout_value.size,
+            layout_value.align
+        );
+
+    if is_none<alloc_allocator.Allocation>(
+        allocation
+    ) {
+        alloc_allocator.allocator_record_failure(
+            &mut ((*value).allocator)
+        );
+
+        give none<alloc_allocator.Allocation>();
+    }
+
+    let out =
+        unwrap<alloc_allocator.Allocation>(
+            allocation
+        );
+
+    set (*value).allocated =
+        (*value).allocated
+        + layout_value.size;
+
+    set (*value).state =
+        ArenaState.Active;
+
+    set (*value).revision =
+        (*value).revision + 1;
+
+    alloc_allocator.allocator_record_success(
+        &mut ((*value).allocator),
+        layout_value
+    );
+
+    give some<alloc_allocator.Allocation>(
+        out
+    );
+}
+
+proc arena_alloc_bytes(
+    value: ref mut Arena,
+    size: usize,
+    align: usize
+) -> Option<alloc_allocator.Allocation> {
+    give arena_alloc_layout(
+        value,
+        alloc_allocator.layout(
+            size,
+            align
+        )
+    );
+}
+
+proc arena_alloc<T>(
+    value: ref mut Arena
+) -> Option<alloc_allocator.Allocation> {
+    give arena_alloc_layout(
+        value,
+        alloc_allocator.layout(
+            compiler_size_of<T>(),
+            compiler_align_of<T>()
+        )
+    );
+}
+
+proc arena_alloc_array<T>(
+    value: ref mut Arena,
+    count: usize
+) -> Option<alloc_allocator.Allocation> {
+    let item_layout =
+        alloc_allocator.layout(
+            compiler_size_of<T>(),
+            compiler_align_of<T>()
+        );
+
+    let array_layout =
+        alloc_allocator.layout_array(
+            item_layout,
+            count
+        );
+
+    if is_none<alloc_allocator.AllocationLayout>(
+        array_layout
+    ) {
+        alloc_allocator.allocator_record_failure(
+            &mut ((*value).allocator)
+        );
+
+        give none<alloc_allocator.Allocation>();
+    }
+
+    give arena_alloc_layout(
+        value,
+        unwrap<alloc_allocator.AllocationLayout>(
+            array_layout
+        )
+    );
+}
+
+proc arena_alloc_many<T>(
+    value: ref mut Arena,
+    count: usize
+) -> Option<alloc_allocator.Allocation> {
+    give arena_alloc_array<T>(
+        value,
+        count
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Typed emplacement
+// -----------------------------------------------------------------------------
+
+proc arena_emplace<T>(
+    value: ref mut Arena,
+    item: T
+) -> Option<ref mut T> {
+    let allocation =
+        arena_alloc<T>(
+            value
+        );
+
+    if is_none<alloc_allocator.Allocation>(
+        allocation
+    ) {
+        give none<ref mut T>();
+    }
+
+    let memory =
+        unwrap<alloc_allocator.Allocation>(
+            allocation
+        );
+
+    let target =
+        compiler_allocation_as_mut<T>(
+            memory
+        );
+
+    set *target =
+        item;
+
+    give some<ref mut T>(
+        target
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Marks
+// -----------------------------------------------------------------------------
+
+proc arena_mark(
+    value: Arena
+) -> ArenaMark {
+    give ArenaMark {
+        block_count:
+            arena_block_count(
+                value
+            ),
+
+        allocated:
+            value.allocated,
+
+        generation:
+            value.generation
+    };
+}
+
+proc arena_mark_is_valid(
+    value: Arena,
+    mark: ArenaMark
+) -> bool {
+    if mark.generation
+        != value.generation
+    {
+        give false;
+    }
+
+    give mark.block_count
+        <= arena_block_count(
+            value
+        )
+        and mark.allocated
+            <= value.allocated;
+}
+
+proc arena_mark_profile(
+    value: Arena,
+    mark: ArenaMark
+) -> ArenaMarkProfile {
+    give ArenaMarkProfile {
+        block_count:
+            mark.block_count,
+
+        allocated:
+            mark.allocated,
+
+        generation:
+            mark.generation,
+
+        valid:
+            arena_mark_is_valid(
+                value,
+                mark
+            )
+    };
+}
+
+proc arena_bytes_until_mark(
+    value: Arena,
+    mark: ArenaMark
+) -> usize {
+    if not arena_mark_is_valid(
+        value,
+        mark
+    ) {
+        give 0;
+    }
+
+    give value.allocated
+        - mark.allocated;
+}
+
+// -----------------------------------------------------------------------------
+// Rewind
+// -----------------------------------------------------------------------------
+
+proc arena_rewind(
+    value: ref mut Arena,
+    mark: ArenaMark
+) -> bool {
+    if not arena_mark_is_valid(
+        *value,
+        mark
+    ) {
+        give false;
+    }
+
+    compiler_arena_rewind(
+        value,
+        mark.block_count,
+        mark.allocated
+    );
+
+    set (*value).allocated =
+        mark.allocated;
+
+    set (*value).revision =
+        (*value).revision + 1;
+
+    if (*value).allocated == 0 {
+        set (*value).state =
+            ArenaState.Empty;
+    } else {
+        set (*value).state =
+            ArenaState.Active;
+    }
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Reset
+// -----------------------------------------------------------------------------
+
+proc arena_reset(
+    value: ref mut Arena
+) {
+    compiler_arena_reset(
+        value
+    );
+
+    set (*value).blocks =
+        vec_new<ArenaBlock>();
+
+    set (*value).allocated =
+        0;
+
+    set (*value).allocator.stats.live_bytes =
+        0;
+
+    set (*value).state =
+        ArenaState.Empty;
+
+    set (*value).generation =
+        (*value).generation + 1;
+
+    set (*value).revision =
+        (*value).revision + 1;
+}
+
+// -----------------------------------------------------------------------------
+// Drop
+// -----------------------------------------------------------------------------
+
+proc arena_drop(
+    value: ref mut Arena
+) {
+    compiler_arena_reset(
+        value
+    );
+
+    set (*value).blocks =
+        vec_new<ArenaBlock>();
+
+    set (*value).allocated =
+        0;
+
+    set (*value).allocator.stats.live_bytes =
+        0;
+
+    set (*value).allocator.stats.reserved_bytes =
+        0;
+
+    set (*value).allocator.stats.allocation_count =
+        0;
+
+    set (*value).state =
+        ArenaState.Released;
+
+    set (*value).generation =
+        (*value).generation + 1;
+
+    set (*value).revision =
+        (*value).revision + 1;
+}
+
+// -----------------------------------------------------------------------------
+// Profile
+// -----------------------------------------------------------------------------
+
+proc arena_profile(
+    value: Arena
+) -> ArenaProfile {
+    let reserved =
+        alloc_allocator.allocator_reserved_bytes(
+            value.allocator
+        );
+
+    let live =
+        alloc_allocator.allocator_live_bytes(
+            value.allocator
+        );
+
+    give ArenaProfile {
+        block_size:
+            value.block_size,
+
+        block_count:
+            arena_block_count(
+                value
+            ),
+
+        allocated:
+            value.allocated,
+
+        allocator_live:
+            live,
+
+        allocator_reserved:
+            reserved,
+
+        free_capacity:
+            arena_free_capacity(
+                value
+            ),
+
+        utilization:
+            arena_utilization(
+                value
+            ),
+
+        empty:
+            arena_is_empty(
+                value
+            ),
+
+        active:
+            arena_is_active(
+                value
+            ),
+
+        valid:
+            arena_is_valid(
+                value
+            ),
+
+        generation:
+            value.generation,
+
+        revision:
+            value.revision
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+proc arena_blocks_valid(
+    value: Arena
+) -> bool {
+    let index: usize = 0;
+
+    while index < arena_block_count(value) {
+        let block =
+            vec_get<ArenaBlock>(
+                value.blocks,
+                index
+            );
+
+        if block.used > block.capacity {
+            give false;
+        }
+
+        if block.capacity
+            != block.allocation.layout.size
+        {
+            give false;
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give true;
+}
+
+proc arena_allocated_valid(
+    value: Arena
+) -> bool {
+    give value.allocated
+        <= arena_capacity(
+            value
+        )
+        or arena_block_count(value) == 0;
+}
+
+proc arena_state_valid(
+    value: Arena
+) -> bool {
+    pick value.state {
+        ArenaState.Empty {
+            give value.allocated == 0;
+        }
+
+        ArenaState.Active {
+            give value.allocated > 0;
+        }
+
+        ArenaState.Released {
+            give value.allocated == 0
+                and arena_block_count(value) == 0;
+        }
+
+        ArenaState.Ready {
+            give true;
+        }
+
+        ArenaState.Invalid {
+            give false;
+        }
+    }
+
+    give false;
+}
+
+proc arena_validate(
+    value: Arena
+) -> ArenaValidation {
+    let allocator_valid =
+        alloc_allocator.allocator_contract(
+            value.allocator
+        ).valid;
+
+    let block_size_valid =
+        value.block_size > 0;
+
+    let blocks_valid =
+        arena_blocks_valid(
+            value
+        );
+
+    let allocated_valid =
+        arena_allocated_valid(
+            value
+        );
+
+    let state_valid =
+        arena_state_valid(
+            value
+        );
+
+    give ArenaValidation {
+        valid:
+            allocator_valid
+            and block_size_valid
+            and blocks_valid
+            and allocated_valid
+            and state_valid,
+
+        allocator_valid:
+            allocator_valid,
+
+        block_size_valid:
+            block_size_valid,
+
+        blocks_valid:
+            blocks_valid,
+
+        allocated_valid:
+            allocated_valid,
+
+        state_valid:
+            state_valid
+    };
+}
+
+proc arena_is_valid(
+    value: Arena
+) -> bool {
+    give arena_validate(
+        value
+    ).valid;
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc arena_statistics_empty()
+    -> ArenaStatistics
+{
+    give ArenaStatistics {
+        allocations: 0,
+        allocation_failures: 0,
+
+        bytes_requested: 0,
+        bytes_allocated: 0,
+
+        marks: 0,
+        rewinds: 0,
+        rewind_failures: 0,
+
+        resets: 0,
+        drops: 0,
+
+        blocks_created: 0
+    };
+}
+
+proc arena_statistics_total_operations(
+    statistics: ArenaStatistics
+) -> u64 {
+    give statistics.allocations
+        + statistics.allocation_failures
+        + statistics.marks
+        + statistics.rewinds
+        + statistics.rewind_failures
+        + statistics.resets
+        + statistics.drops;
+}
+
+proc arena_statistics_reset(
+    statistics: ref mut ArenaStatistics
+) {
+    set *statistics =
+        arena_statistics_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Revision helpers
+// -----------------------------------------------------------------------------
+
+proc arena_touch(
+    value: ref mut Arena
+) {
+    set (*value).revision =
+        (*value).revision + 1;
+}
+
+proc arena_advance_generation(
+    value: ref mut Arena
+) -> u64 {
+    set (*value).generation =
+        (*value).generation + 1;
+
+    set (*value).revision =
+        (*value).revision + 1;
+
+    give (*value).generation;
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc arena_state_name(
+    state: ArenaState
+) -> string {
+    pick state {
+        ArenaState.Ready {
+            give "ready";
+        }
+
+        ArenaState.Active {
+            give "active";
+        }
+
+        ArenaState.Empty {
+            give "empty";
+        }
+
+        ArenaState.Released {
+            give "released";
+        }
+
+        ArenaState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+proc arena_growth_mode_name(
+    mode: ArenaGrowthMode
+) -> string {
+    pick mode {
+        ArenaGrowthMode.Fixed {
+            give "fixed";
+        }
+
+        ArenaGrowthMode.Geometric {
+            give "geometric";
+        }
+
+        ArenaGrowthMode.Exact {
+            give "exact";
+        }
+    }
+
+    give "geometric";
+}
+
+// -----------------------------------------------------------------------------
+// Arena model
+// -----------------------------------------------------------------------------
+//
+// Arena
+//   |
+//   +-- allocator
+//   |
+//   +-- blocks
+//   |     |
+//   |     +-- ArenaBlock
+//   |     +-- ArenaBlock
+//   |     +-- ArenaBlock
+//   |
+//   +-- allocated
+//   +-- block_size
+//   +-- generation
+//   +-- revision
+//
+// Allocation:
+//
+//     arena_alloc()
+//          |
+//          v
+//     current block
+//          |
+//      space available?
+//        /       \
+//      yes       no
+//       |         |
+//       v         v
+//     bump     new block
+//       |         |
+//       +----+----+
+//            |
+//            v
+//        Allocation
+//
+// Arena semantics:
+//
+//     allocate
+//        |
+//        v
+//     allocate
+//        |
+//        v
+//      mark
+//        |
+//        v
+//     allocate
+//        |
+//        v
+//     allocate
+//        |
+//        +---- rewind(mark)
+//        |
+//        +---- reset()
+//        |
+//        +---- drop()
+//
+// Rewind:
+//
+//     allocations after mark become invalid
+//
+// Reset:
+//
+//     all arena allocations become invalid
+//     arena remains reusable
+//
+// Drop:
+//
+//     all allocations become invalid
+//     arena enters Released state
+//
+// Important:
+//
+// Arena allocation is monotonic.
+//
+// Individual objects are normally not freed separately.
+// Memory is reclaimed in groups through:
+//
+//     rewind
+//     reset
+//     drop
+//
+// The physical allocation strategy remains implemented by
+// compiler/runtime primitives.

@@ -1,0 +1,1324 @@
+use src/vitte/stdlib/alloc/bump
+
+form Point {
+    x: int
+    y: int
+}
+
+form Pair {
+    left: int
+    right: int
+}
+
+proc stress_small_allocations() -> bool {
+    let mut bump = bump_new(
+        "stress-small",
+        1048576
+    );
+
+    let index: usize = 0;
+
+    while index < 50000 {
+        let allocation = bump_alloc_bytes(
+            ref mut bump,
+            8,
+            8
+        );
+
+        if is_none(allocation) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give bump_is_valid(bump)
+        and bump_used(bump) > 0;
+}
+
+proc stress_tiny_allocations() -> bool {
+    let mut bump = bump_new(
+        "stress-tiny",
+        1048576
+    );
+
+    let index: usize = 0;
+
+    while index < 100000 {
+        let allocation = bump_alloc_bytes(
+            ref mut bump,
+            1,
+            1
+        );
+
+        if is_none(allocation) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give bump_used(bump) == 100000
+        and bump_invariant_holds(bump);
+}
+
+proc stress_mixed_sizes() -> bool {
+    let mut bump = bump_new(
+        "stress-mixed",
+        4194304
+    );
+
+    let index: usize = 0;
+
+    while index < 10000 {
+        let a = bump_alloc_bytes(
+            ref mut bump,
+            1,
+            1
+        );
+
+        let b = bump_alloc_bytes(
+            ref mut bump,
+            8,
+            8
+        );
+
+        let c = bump_alloc_bytes(
+            ref mut bump,
+            32,
+            8
+        );
+
+        let d = bump_alloc_bytes(
+            ref mut bump,
+            64,
+            16
+        );
+
+        let e = bump_alloc_bytes(
+            ref mut bump,
+            128,
+            32
+        );
+
+        if is_none(a)
+            or is_none(b)
+            or is_none(c)
+            or is_none(d)
+            or is_none(e)
+        {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give bump_is_valid(bump);
+}
+
+proc stress_alignment() -> bool {
+    let mut bump = bump_new(
+        "stress-alignment",
+        4194304
+    );
+
+    let index: usize = 0;
+
+    while index < 10000 {
+        let a = bump_alloc_bytes(
+            ref mut bump,
+            1,
+            1
+        );
+
+        let b = bump_alloc_bytes(
+            ref mut bump,
+            2,
+            2
+        );
+
+        let c = bump_alloc_bytes(
+            ref mut bump,
+            4,
+            4
+        );
+
+        let d = bump_alloc_bytes(
+            ref mut bump,
+            8,
+            8
+        );
+
+        let e = bump_alloc_bytes(
+            ref mut bump,
+            16,
+            16
+        );
+
+        let f = bump_alloc_bytes(
+            ref mut bump,
+            32,
+            32
+        );
+
+        let g = bump_alloc_bytes(
+            ref mut bump,
+            64,
+            64
+        );
+
+        if is_none(a)
+            or is_none(b)
+            or is_none(c)
+            or is_none(d)
+            or is_none(e)
+            or is_none(f)
+            or is_none(g)
+        {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give bump_invariant_holds(bump);
+}
+
+proc stress_emplace_int() -> bool {
+    let mut bump = bump_new(
+        "stress-int",
+        2097152
+    );
+
+    let index: int = 0;
+
+    while index < 100000 {
+        let value = bump_emplace(
+            ref mut bump,
+            index
+        );
+
+        pick value {
+            Some(inner) {
+                if *inner != index {
+                    give false;
+                }
+            }
+
+            None {
+                give false;
+            }
+        }
+
+        set index = index + 1;
+    }
+
+    give bump_is_valid(bump);
+}
+
+proc stress_emplace_point() -> bool {
+    let mut bump = bump_new(
+        "stress-point",
+        4194304
+    );
+
+    let index: int = 0;
+
+    while index < 50000 {
+        let value = bump_emplace(
+            ref mut bump,
+            Point {
+                x: index
+                y: index + 1
+            }
+        );
+
+        pick value {
+            Some(point) {
+                if point.x != index {
+                    give false;
+                }
+
+                if point.y != index + 1 {
+                    give false;
+                }
+            }
+
+            None {
+                give false;
+            }
+        }
+
+        set index = index + 1;
+    }
+
+    give bump_is_valid(bump);
+}
+
+proc stress_emplace_pair_mutation() -> bool {
+    let mut bump = bump_new(
+        "stress-pair",
+        4194304
+    );
+
+    let index: int = 0;
+
+    while index < 50000 {
+        let value = bump_emplace(
+            ref mut bump,
+            Pair {
+                left: index
+                right: index * 2
+            }
+        );
+
+        pick value {
+            Some(pair) {
+                set pair.left = pair.left + 1;
+                set pair.right = pair.right + 2;
+
+                if pair.left != index + 1 {
+                    give false;
+                }
+
+                if pair.right != index * 2 + 2 {
+                    give false;
+                }
+            }
+
+            None {
+                give false;
+            }
+        }
+
+        set index = index + 1;
+    }
+
+    give bump_invariant_holds(bump);
+}
+
+proc stress_copy() -> bool {
+    let mut bump = bump_new(
+        "stress-copy",
+        2097152
+    );
+
+    let source = Point {
+        x: 10
+        y: 20
+    };
+
+    let index: usize = 0;
+
+    while index < 50000 {
+        let copy = bump_copy(
+            ref mut bump,
+            ref source
+        );
+
+        pick copy {
+            Some(point) {
+                if point.x != 10
+                    or point.y != 20
+                {
+                    give false;
+                }
+            }
+
+            None {
+                give false;
+            }
+        }
+
+        set index = index + 1;
+    }
+
+    give true;
+}
+
+proc stress_reset_cycles() -> bool {
+    let mut bump = bump_new(
+        "stress-reset",
+        65536
+    );
+
+    let cycle: usize = 0;
+
+    while cycle < 10000 {
+        let index: usize = 0;
+
+        while index < 128 {
+            let allocation = bump_alloc_bytes(
+                ref mut bump,
+                64,
+                8
+            );
+
+            if is_none(allocation) {
+                give false;
+            }
+
+            set index = index + 1;
+        }
+
+        bump_reset(
+            ref mut bump
+        );
+
+        if not bump_is_empty(bump) {
+            give false;
+        }
+
+        if bump_used(bump) != 0 {
+            give false;
+        }
+
+        if not bump_invariant_holds(bump) {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc stress_rewind_cycles() -> bool {
+    let mut bump = bump_new(
+        "stress-rewind",
+        65536
+    );
+
+    let cycle: usize = 0;
+
+    while cycle < 10000 {
+        let mark = bump_mark(
+            bump
+        );
+
+        let index: usize = 0;
+
+        while index < 128 {
+            let allocation = bump_alloc_bytes(
+                ref mut bump,
+                64,
+                8
+            );
+
+            if is_none(allocation) {
+                give false;
+            }
+
+            set index = index + 1;
+        }
+
+        if not bump_rewind(
+            ref mut bump,
+            mark
+        ) {
+            give false;
+        }
+
+        if bump_used(bump) != mark.offset {
+            give false;
+        }
+
+        if not bump_mark_is_valid(
+            bump,
+            mark
+        ) {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give bump_invariant_holds(bump);
+}
+
+proc stress_nested_marks() -> bool {
+    let mut bump = bump_new(
+        "stress-nested",
+        65536
+    );
+
+    let cycle: usize = 0;
+
+    while cycle < 5000 {
+        let root = bump_mark(
+            bump
+        );
+
+        let a = bump_alloc_bytes(
+            ref mut bump,
+            256,
+            8
+        );
+
+        if is_none(a) {
+            give false;
+        }
+
+        let middle = bump_mark(
+            bump
+        );
+
+        let b = bump_alloc_bytes(
+            ref mut bump,
+            512,
+            16
+        );
+
+        if is_none(b) {
+            give false;
+        }
+
+        let inner = bump_mark(
+            bump
+        );
+
+        let c = bump_alloc_bytes(
+            ref mut bump,
+            1024,
+            32
+        );
+
+        if is_none(c) {
+            give false;
+        }
+
+        if not bump_rewind(
+            ref mut bump,
+            inner
+        ) {
+            give false;
+        }
+
+        if not bump_rewind(
+            ref mut bump,
+            middle
+        ) {
+            give false;
+        }
+
+        if not bump_rewind(
+            ref mut bump,
+            root
+        ) {
+            give false;
+        }
+
+        if bump_used(bump) != root.offset {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc stress_reset_generation() -> bool {
+    let mut bump = bump_new(
+        "stress-generation",
+        4096
+    );
+
+    let previous = bump_generation(
+        bump
+    );
+
+    let index: usize = 0;
+
+    while index < 10000 {
+        bump_reset(
+            ref mut bump
+        );
+
+        let current = bump_generation(
+            bump
+        );
+
+        if current <= previous {
+            give false;
+        }
+
+        set previous = current;
+        set index = index + 1;
+    }
+
+    give true;
+}
+
+proc stress_revision() -> bool {
+    let mut bump = bump_new(
+        "stress-revision",
+        1048576
+    );
+
+    let previous = bump_revision(
+        bump
+    );
+
+    let index: usize = 0;
+
+    while index < 10000 {
+        let allocation = bump_alloc_bytes(
+            ref mut bump,
+            8,
+            8
+        );
+
+        if is_none(allocation) {
+            give false;
+        }
+
+        let current = bump_revision(
+            bump
+        );
+
+        if current <= previous {
+            give false;
+        }
+
+        set previous = current;
+        set index = index + 1;
+    }
+
+    give true;
+}
+
+proc stress_snapshot_alloc() -> bool {
+    let mut bump = bump_new(
+        "stress-snapshot",
+        1048576
+    );
+
+    let index: usize = 0;
+
+    while index < 10000 {
+        let before = bump_snapshot(
+            bump
+        );
+
+        let allocation = bump_alloc_bytes(
+            ref mut bump,
+            16,
+            8
+        );
+
+        if is_none(allocation) {
+            give false;
+        }
+
+        let after = bump_snapshot(
+            bump
+        );
+
+        if not bump_snapshot_changed(
+            before,
+            after
+        ) {
+            give false;
+        }
+
+        let delta = bump_delta(
+            before,
+            after
+        );
+
+        if not delta.changed {
+            give false;
+        }
+
+        if delta.used <= 0 {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give true;
+}
+
+proc stress_snapshot_reset() -> bool {
+    let mut bump = bump_new(
+        "stress-snapshot-reset",
+        4096
+    );
+
+    let cycle: usize = 0;
+
+    while cycle < 5000 {
+        let allocation = bump_alloc_bytes(
+            ref mut bump,
+            512,
+            8
+        );
+
+        if is_none(allocation) {
+            give false;
+        }
+
+        let before = bump_snapshot(
+            bump
+        );
+
+        bump_reset(
+            ref mut bump
+        );
+
+        let after = bump_snapshot(
+            bump
+        );
+
+        let delta = bump_delta(
+            before,
+            after
+        );
+
+        if not delta.changed {
+            give false;
+        }
+
+        if delta.used >= 0 {
+            give false;
+        }
+
+        if delta.generation <= 0 {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc stress_validation() -> bool {
+    let mut bump = bump_new(
+        "stress-validation",
+        1048576
+    );
+
+    let index: usize = 0;
+
+    while index < 10000 {
+        let allocation = bump_alloc_bytes(
+            ref mut bump,
+            16,
+            8
+        );
+
+        if is_none(allocation) {
+            give false;
+        }
+
+        let validation = bump_validate(
+            bump
+        );
+
+        if not validation.valid {
+            give false;
+        }
+
+        if not validation.block_valid {
+            give false;
+        }
+
+        if not validation.state_valid {
+            give false;
+        }
+
+        if not validation.generation_valid {
+            give false;
+        }
+
+        if not validation.accounting_valid {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give true;
+}
+
+proc stress_accounting() -> bool {
+    let mut bump = bump_new(
+        "stress-accounting",
+        1048576
+    );
+
+    let index: usize = 0;
+
+    while index < 10000 {
+        let allocation = bump_alloc_bytes(
+            ref mut bump,
+            32,
+            8
+        );
+
+        if is_none(allocation) {
+            give false;
+        }
+
+        if bump_used(bump)
+            + bump_remaining(bump)
+            != bump_capacity(bump)
+        {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give true;
+}
+
+proc stress_fill_to_capacity() -> bool {
+    let mut bump = bump_new(
+        "stress-fill",
+        65536
+    );
+
+    let index: usize = 0;
+
+    while index < 1024 {
+        let allocation = bump_alloc_bytes(
+            ref mut bump,
+            64,
+            1
+        );
+
+        if is_none(allocation) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give bump_is_full(bump)
+        and bump_used(bump) == 65536
+        and bump_remaining(bump) == 0;
+}
+
+proc stress_fail_after_full() -> bool {
+    let mut bump = bump_new(
+        "stress-full-failure",
+        4096
+    );
+
+    let index: usize = 0;
+
+    while index < 64 {
+        let allocation = bump_alloc_bytes(
+            ref mut bump,
+            64,
+            1
+        );
+
+        if is_none(allocation) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    if not bump_is_full(bump) {
+        give false;
+    }
+
+    let failures: usize = 0;
+
+    while failures < 1000 {
+        let allocation = bump_alloc_bytes(
+            ref mut bump,
+            1,
+            1
+        );
+
+        if is_some(allocation) {
+            give false;
+        }
+
+        set failures = failures + 1;
+    }
+
+    give bump_is_full(bump);
+}
+
+proc stress_full_reset_reuse() -> bool {
+    let mut bump = bump_new(
+        "stress-full-reset",
+        4096
+    );
+
+    let cycle: usize = 0;
+
+    while cycle < 5000 {
+        let index: usize = 0;
+
+        while index < 64 {
+            let allocation = bump_alloc_bytes(
+                ref mut bump,
+                64,
+                1
+            );
+
+            if is_none(allocation) {
+                give false;
+            }
+
+            set index = index + 1;
+        }
+
+        if not bump_is_full(bump) {
+            give false;
+        }
+
+        bump_reset(
+            ref mut bump
+        );
+
+        if not bump_is_empty(bump) {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc stress_large_alloc_reset() -> bool {
+    let mut bump = bump_new(
+        "stress-large",
+        1048576
+    );
+
+    let cycle: usize = 0;
+
+    while cycle < 1000 {
+        let allocation = bump_alloc_bytes(
+            ref mut bump,
+            524288,
+            64
+        );
+
+        if is_none(allocation) {
+            give false;
+        }
+
+        bump_reset(
+            ref mut bump
+        );
+
+        if bump_used(bump) != 0 {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc stress_mixed_rewind_reset() -> bool {
+    let mut bump = bump_new(
+        "stress-mixed-rewind-reset",
+        65536
+    );
+
+    let cycle: usize = 0;
+
+    while cycle < 5000 {
+        let root = bump_mark(
+            bump
+        );
+
+        let first = bump_alloc_bytes(
+            ref mut bump,
+            1024,
+            8
+        );
+
+        if is_none(first) {
+            give false;
+        }
+
+        let middle = bump_mark(
+            bump
+        );
+
+        let second = bump_alloc_bytes(
+            ref mut bump,
+            2048,
+            16
+        );
+
+        if is_none(second) {
+            give false;
+        }
+
+        if not bump_rewind(
+            ref mut bump,
+            middle
+        ) {
+            give false;
+        }
+
+        let third = bump_alloc_bytes(
+            ref mut bump,
+            512,
+            32
+        );
+
+        if is_none(third) {
+            give false;
+        }
+
+        if not bump_rewind(
+            ref mut bump,
+            root
+        ) {
+            give false;
+        }
+
+        bump_reset(
+            ref mut bump
+        );
+
+        if not bump_is_empty(bump) {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc stress_mark_invalidation() -> bool {
+    let mut bump = bump_new(
+        "stress-mark-invalid",
+        4096
+    );
+
+    let cycle: usize = 0;
+
+    while cycle < 10000 {
+        let mark = bump_mark(
+            bump
+        );
+
+        bump_reset(
+            ref mut bump
+        );
+
+        if bump_mark_is_valid(
+            bump,
+            mark
+        ) {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc stress_many_independent_bumps() -> bool {
+    let mut a = bump_new(
+        "stress-a",
+        65536
+    );
+
+    let mut b = bump_new(
+        "stress-b",
+        65536
+    );
+
+    let mut c = bump_new(
+        "stress-c",
+        65536
+    );
+
+    let index: usize = 0;
+
+    while index < 1000 {
+        if is_none(
+            bump_alloc_bytes(
+                ref mut a,
+                16,
+                8
+            )
+        ) {
+            give false;
+        }
+
+        if is_none(
+            bump_alloc_bytes(
+                ref mut b,
+                32,
+                8
+            )
+        ) {
+            give false;
+        }
+
+        if is_none(
+            bump_alloc_bytes(
+                ref mut c,
+                48,
+                8
+            )
+        ) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give bump_used(a) != bump_used(b)
+        and bump_used(b) != bump_used(c)
+        and bump_is_valid(a)
+        and bump_is_valid(b)
+        and bump_is_valid(c);
+}
+
+proc stress_release() -> bool {
+    let mut bump = bump_new(
+        "stress-release",
+        65536
+    );
+
+    let index: usize = 0;
+
+    while index < 1000 {
+        let allocation = bump_alloc_bytes(
+            ref mut bump,
+            32,
+            8
+        );
+
+        if is_none(allocation) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give bump_release(
+        ref mut bump
+    )
+    and bump_is_released(bump);
+}
+
+proc stress_release_reject_allocations() -> bool {
+    let mut bump = bump_new(
+        "stress-release-reject",
+        4096
+    );
+
+    if not bump_release(
+        ref mut bump
+    ) {
+        give false;
+    }
+
+    let index: usize = 0;
+
+    while index < 10000 {
+        let allocation = bump_alloc_bytes(
+            ref mut bump,
+            8,
+            8
+        );
+
+        if is_some(allocation) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give bump_is_released(bump);
+}
+
+proc stress_create_release_cycles() -> bool {
+    let cycle: usize = 0;
+
+    while cycle < 5000 {
+        let mut bump = bump_new(
+            "stress-cycle",
+            4096
+        );
+
+        let index: usize = 0;
+
+        while index < 32 {
+            let allocation = bump_alloc_bytes(
+                ref mut bump,
+                64,
+                8
+            );
+
+            if is_none(allocation) {
+                give false;
+            }
+
+            set index = index + 1;
+        }
+
+        if not bump_release(
+            ref mut bump
+        ) {
+            give false;
+        }
+
+        if not bump_is_released(bump) {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc stress_profile() -> bool {
+    let mut bump = bump_new(
+        "stress-profile",
+        1048576
+    );
+
+    let index: usize = 0;
+
+    while index < 10000 {
+        let allocation = bump_alloc_bytes(
+            ref mut bump,
+            32,
+            8
+        );
+
+        if is_none(allocation) {
+            give false;
+        }
+
+        let profile = bump_profile(
+            bump
+        );
+
+        if not profile.valid {
+            give false;
+        }
+
+        if profile.used
+            + profile.remaining
+            != profile.capacity
+        {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give true;
+}
+
+proc stress_utilization() -> bool {
+    let mut bump = bump_new(
+        "stress-utilization",
+        100000
+    );
+
+    let index: usize = 0;
+
+    while index < 100 {
+        let allocation = bump_alloc_bytes(
+            ref mut bump,
+            1000,
+            1
+        );
+
+        if is_none(allocation) {
+            give false;
+        }
+
+        let utilization = bump_utilization(
+            bump
+        );
+
+        if utilization < 0.0
+            or utilization > 1.0
+        {
+            give false;
+        }
+
+        let remaining = bump_remaining_ratio(
+            bump
+        );
+
+        if remaining < 0.0
+            or remaining > 1.0
+        {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give bump_is_full(bump);
+}
+
+proc run_stress_tests() -> bool {
+    give stress_small_allocations()
+        and stress_tiny_allocations()
+        and stress_mixed_sizes()
+        and stress_alignment()
+
+        and stress_emplace_int()
+        and stress_emplace_point()
+        and stress_emplace_pair_mutation()
+        and stress_copy()
+
+        and stress_reset_cycles()
+        and stress_rewind_cycles()
+        and stress_nested_marks()
+
+        and stress_reset_generation()
+        and stress_revision()
+
+        and stress_snapshot_alloc()
+        and stress_snapshot_reset()
+
+        and stress_validation()
+        and stress_accounting()
+
+        and stress_fill_to_capacity()
+        and stress_fail_after_full()
+        and stress_full_reset_reuse()
+
+        and stress_large_alloc_reset()
+        and stress_mixed_rewind_reset()
+        and stress_mark_invalidation()
+
+        and stress_many_independent_bumps()
+
+        and stress_release()
+        and stress_release_reject_allocations()
+        and stress_create_release_cycles()
+
+        and stress_profile()
+        and stress_utilization();
+}
+
+proc main() -> int {
+    if run_stress_tests() {
+        give 0;
+    }
+
+    give 1;
+}

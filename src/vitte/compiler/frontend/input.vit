@@ -93,6 +93,19 @@ proc input_stats(input: FrontendInput) -> FrontendInputStats {
 }
 
 proc normalize_input(input: FrontendInput) -> FrontendInput {
+    let scan: u64 = 0;
+    let has_carriage_return: bool = false;
+    while scan < len(input.text) {
+        if slice(input.text, scan, scan + 1) == "\r" {
+            set has_carriage_return = true;
+            break;
+        }
+        set scan = scan + 1;
+    }
+    if not has_carriage_return {
+        give input;
+    }
+
     let normalized: string = "";
     let i: u64 = 0;
     while i < len(input.text) {

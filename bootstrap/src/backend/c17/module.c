@@ -188,6 +188,7 @@ static const char *vitte_c17_host_intrinsic_helper(const vitte_ir_function_t *fu
     if (strcmp(name, "vitte_host_file_exists") == 0) return "vitte_c17_host_file_exists";
     if (strcmp(name, "vitte_host_is_file") == 0) return "vitte_c17_host_is_file";
     if (strcmp(name, "vitte_host_is_directory") == 0) return "vitte_c17_host_is_directory";
+    if (strcmp(name, "vitte_host_list_directory") == 0) return "vitte_c17_host_list_directory";
     if (strcmp(name, "vitte_host_mkdir_all") == 0) return "vitte_c17_host_mkdir_all";
     if (strcmp(name, "vitte_host_system") == 0) return "vitte_c17_host_system";
     if (strcmp(name, "vitte_host_emit_llvm_object") == 0) return "vitte_c17_host_emit_llvm_object";
@@ -409,7 +410,13 @@ static bool vitte_c17_ir_builtin_supported(const char *name) {
         strcmp(name, "panic") == 0 ||
         strcmp(name, "assert") == 0 ||
         strcmp(name, "len") == 0 ||
-        strcmp(name, "slice") == 0);
+        strcmp(name, "slice") == 0 ||
+        strcmp(name, "find") == 0 ||
+        strcmp(name, "to_string") == 0 ||
+        strcmp(name, "to_string_int") == 0 ||
+        strcmp(name, "to_string_i64") == 0 ||
+        strcmp(name, "to_string_u64") == 0 ||
+        strcmp(name, "to_string_usize") == 0);
 }
 
 static vitte_status_t vitte_c17_emit_ir_builtin_call(
@@ -525,6 +532,47 @@ static vitte_status_t vitte_c17_emit_ir_builtin_call(
         }
         return vitte_c17_emit_statement_line_end(writer);
     }
+    if (strcmp(name, "find") == 0) {
+        if (instruction->result == NULL || instruction->operand_count < 3u) {
+            return vitte_c17_emit_statement_line_end(writer);
+        }
+        status = vitte_c17_emit_ir_value_ref(module, writer, instruction->result);
+        if (status != VITTE_STATUS_OK) return status;
+        status = vitte_c17_write_string(writer, " = ");
+        if (status != VITTE_STATUS_OK) return status;
+        if (instruction->operands[1] != NULL && instruction->operands[1]->type != NULL &&
+            instruction->operands[1]->type->kind == VITTE_IR_TYPE_STRING_PTR) {
+            status = vitte_c17_write_string(writer, "vitte_string_find(");
+            if (status != VITTE_STATUS_OK) return status;
+            status = vitte_c17_emit_ir_value_ref(module, writer, instruction->operands[1]);
+            if (status != VITTE_STATUS_OK) return status;
+            status = vitte_c17_write_string(writer, ", ");
+            if (status != VITTE_STATUS_OK) return status;
+            status = vitte_c17_emit_ir_value_ref(module, writer, instruction->operands[2]);
+            if (status != VITTE_STATUS_OK) return status;
+            status = vitte_c17_write_char(writer, ')');
+        } else {
+            status = vitte_c17_write_string(writer, "0");
+        }
+        if (status != VITTE_STATUS_OK) return status;
+        return vitte_c17_emit_statement_line_end(writer);
+    }
+    if (strcmp(name, "to_string") == 0 || strcmp(name, "to_string_int") == 0 ||
+        strcmp(name, "to_string_i64") == 0 || strcmp(name, "to_string_u64") == 0 ||
+        strcmp(name, "to_string_usize") == 0) {
+        if (instruction->result == NULL || instruction->result->type == NULL || instruction->result->type->kind == VITTE_IR_TYPE_VOID || argument == NULL) {
+            return vitte_c17_emit_statement_line_end(writer);
+        }
+        status = vitte_c17_emit_ir_value_ref(module, writer, instruction->result);
+        if (status != VITTE_STATUS_OK) return status;
+        status = vitte_c17_write_string(writer, " = vitte_string_from_i64((int64_t)(");
+        if (status != VITTE_STATUS_OK) return status;
+        status = vitte_c17_emit_ir_value_ref(module, writer, argument);
+        if (status != VITTE_STATUS_OK) return status;
+        status = vitte_c17_write_string(writer, "))");
+        if (status != VITTE_STATUS_OK) return status;
+        return vitte_c17_emit_statement_line_end(writer);
+    }
     if (strcmp(name, "slice") == 0) {
         if (instruction->operand_count <= 1u ||
             instruction->operands[1] == NULL ||
@@ -631,6 +679,21 @@ static vitte_status_t vitte_c17_emit_ir_call(
     }
     if (callee != NULL && callee->kind == VITTE_IR_VALUE_FUNCTION_REF && callee->as.function == NULL) {
         if (assign_result) {
+            if (instruction->result->type->kind == VITTE_IR_TYPE_STRING_PTR && instruction->operand_count > 1u &&
+                instruction->operands[1] != NULL && instruction->operands[1]->type != NULL &&
+                (instruction->operands[1]->type->kind == VITTE_IR_TYPE_I32 ||
+                 instruction->operands[1]->type->kind == VITTE_IR_TYPE_I64 ||
+                 instruction->operands[1]->type->kind == VITTE_IR_TYPE_USIZE)) {
+                status = vitte_c17_emit_ir_value_ref(module, writer, instruction->result);
+                if (status != VITTE_STATUS_OK) return status;
+                status = vitte_c17_write_string(writer, " = vitte_string_from_i64((int64_t)(");
+                if (status != VITTE_STATUS_OK) return status;
+                status = vitte_c17_emit_ir_value_ref(module, writer, instruction->operands[1]);
+                if (status != VITTE_STATUS_OK) return status;
+                status = vitte_c17_write_string(writer, "))");
+                if (status != VITTE_STATUS_OK) return status;
+                return vitte_c17_emit_statement_line_end(writer);
+            }
             status = vitte_c17_emit_ir_value_ref(module, writer, instruction->result);
             if (status != VITTE_STATUS_OK) {
                 return status;

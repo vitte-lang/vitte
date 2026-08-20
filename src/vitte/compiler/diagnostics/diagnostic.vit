@@ -825,14 +825,14 @@ proc diagnostic_suggestion_public_score(errors_removed: u64, new_errors: u64, er
 
 proc diagnostic_net_score(errors_removed: u64, new_errors: u64) -> string {
     if errors_removed >= new_errors {
-        give "+" + ((errors_removed - new_errors) as string);
+        give "+" + to_string(errors_removed - new_errors);
     }
 
-    give "-" + ((new_errors - errors_removed) as string);
+    give "-" + to_string(new_errors - errors_removed);
 }
 
 proc diagnostic_span_fingerprint(span: SourceSpan) -> string {
-    give span.file + ":" + (span.start_line as string) + ":" + (span.start_column as string) + ":" + (span.end_line as string) + ":" + (span.end_column as string);
+    give span.file + ":" + to_string(span.start_line) + ":" + to_string(span.start_column) + ":" + to_string(span.end_line) + ":" + to_string(span.end_column);
 }
 
 proc diagnostic_suggestion_structural_fingerprint(suggestion: DiagnosticSuggestion) -> string {
@@ -2175,7 +2175,7 @@ proc diagnostic_default_invalid_example(phase: DiagnosticPhase, code: string) ->
 }
 
 proc diagnostic_primary_key(code: string, span: SourceSpan) -> string {
-    give code + "@" + span.file + ":" + span.start_line as string + ":" + span.start_column as string;
+    give code + "@" + span.file + ":" + to_string(span.start_line) + ":" + to_string(span.start_column);
 }
 
 proc diagnostic_phase_can_recover(phase: DiagnosticPhase) -> bool {
@@ -2614,7 +2614,7 @@ proc diagnostic_public_id(diagnostic: Diagnostic) -> string {
     let file: string = if diagnostic.span.file != "" { diagnostic.span.file } else { "<cli>" };
     let line: u64 = if diagnostic.span.start_line > 0 { diagnostic.span.start_line } else { 1 as u64 };
     let column: u64 = if diagnostic.span.start_column > 0 { diagnostic.span.start_column } else { 1 as u64 };
-    give diagnostic.code + ":" + file + ":" + (line as string) + ":" + (column as string);
+    give diagnostic.code + ":" + file + ":" + to_string(line) + ":" + to_string(column);
 }
 
 proc diagnostic_localized(diagnostic: Diagnostic, lang: string) -> Diagnostic {
@@ -3921,8 +3921,8 @@ proc span_location_text(span: SourceSpan) -> string {
         give "<unknown>";
     }
 
-    let start_line: string = span.start_line as string;
-    let start_column: string = span.start_column as string;
+    let start_line: string = to_string(span.start_line);
+    let start_column: string = to_string(span.start_column);
     give span.file + ":" + start_line + ":" + start_column;
 }
 
@@ -4667,23 +4667,40 @@ proc lexer_documentation_from_code(code: string) -> string {
     give "docs://language/lexer";
 }
 
+proc diagnostic_public_surface_code(code: string) -> string {
+    if code == "LEX0002" {
+        give "LEX_E_INVALID_CHAR";
+    }
+    if code == "PBLOCK002" or code == "P000_UNBALANCED" {
+        give "PARSE_E_UNCLOSED_BLOCK";
+    }
+    if code == "PLIST_COMMA" {
+        give "PARSE_E_PARAMETER_COLON_EXPECTED";
+    }
+    give code;
+}
+
 proc diagnostic_from_surface(code: string, message: string, span: SourceSpan, fatal: bool, byte_offset: u64) -> Diagnostic {
-    let phase: DiagnosticPhase = phase_from_code(code);
+    let public_code: string = diagnostic_public_surface_code(code);
+    let phase: DiagnosticPhase = phase_from_code(public_code);
     let severity: DiagnosticSeverity = if fatal {
         DiagnosticSeverity.Fatal
     } else {
-        severity_from_code(code)
+        severity_from_code(public_code)
     };
-    let diag0: Diagnostic = diagnostic_create(code, phase, severity, message, span);
+    let diag0: Diagnostic = diagnostic_create(public_code, phase, severity, message, span);
     let diag1: Diagnostic = diag0;
+    if public_code != code {
+        set diag1.pipeline_context = diag1.pipeline_context + ["internal_code=" + code];
+    }
 
     if phase == DiagnosticPhase.Lexer {
-        let diag2: Diagnostic = diagnostic_with_rule(diag1, lexer_rule_from_code(code));
-        let diag3: Diagnostic = diagnostic_with_explanation(diag2, lexer_explanation_from_surface(code, message));
+        let diag2: Diagnostic = diagnostic_with_rule(diag1, lexer_rule_from_code(public_code));
+        let diag3: Diagnostic = diagnostic_with_explanation(diag2, lexer_explanation_from_surface(public_code, message));
         let diag4: Diagnostic = diagnostic_with_technical_note(diag3, "Detected during tokenization before parsing. Source offsets are tracked in bytes.");
-        let diag5: Diagnostic = diagnostic_with_documentation(diag4, lexer_documentation_from_code(code));
+        let diag5: Diagnostic = diagnostic_with_documentation(diag4, lexer_documentation_from_code(public_code));
         let diag6: Diagnostic = diagnostic_with_root_cause(diag5, "lexer could not form a valid token from the source bytes at this location");
-        let diag7: Diagnostic = diagnostic_with_probable_fix(diag6, lexer_probable_fix_from_surface(code, message));
+        let diag7: Diagnostic = diagnostic_with_probable_fix(diag6, lexer_probable_fix_from_surface(public_code, message));
         let diag9: Diagnostic = diagnostic_with_note(diag7, "detected by the lexer before parser recovery");
 
         if byte_offset > 0 {
@@ -4734,6 +4751,46 @@ proc diagnostic_from_surface(code: string, message: string, span: SourceSpan, fa
 }
 
 proc phase_from_code(code: string) -> DiagnosticPhase {
+    if code == "LEX_E_INVALID_CHAR" {
+        give DiagnosticPhase.Lexer;
+    }
+
+    if code == "PARSE_E_UNCLOSED_BLOCK" or code == "PARSE_E_PARAMETER_COLON_EXPECTED" {
+        give DiagnosticPhase.Parser;
+    }
+
+    if code == "AST_E_DUPLICATE_FIELD" {
+        give DiagnosticPhase.Ast;
+    }
+
+    if code == "MOD_E_MODULE_NOT_FOUND" or code == "MOD_E_IMPORT_CYCLE" or code == "MOD_E_SYMBOL_NOT_EXPORTED" {
+        give DiagnosticPhase.Sema;
+    }
+
+    if code == "SEMA_E_DUPLICATE_PICK_BRANCH" or code == "SEMA_E_INVALID_EXPORT" or code == "SEMA_E_UNKNOWN_IDENTIFIER" or code == "CONST_EVAL_E_DIVISION_BY_ZERO" {
+        give DiagnosticPhase.Sema;
+    }
+
+    if code == "TYPECK_E_ASSIGN_MISMATCH" or code == "TYPECK_E_CALL_ARITY" or code == "TYPECK_E_RETURN_MISMATCH" or code == "TYPECK_E_UNKNOWN_TYPE" {
+        give DiagnosticPhase.Typeck;
+    }
+
+    if code == "BORROWCK_E_USE_AFTER_MOVE" {
+        give DiagnosticPhase.Borrowck;
+    }
+
+    if code == "MIR_E_VERIFICATION_FAILED" {
+        give DiagnosticPhase.Mir;
+    }
+
+    if code == "IR_E_VERIFY_FAILED" {
+        give DiagnosticPhase.Ir;
+    }
+
+    if code == "BACKEND_E_UNSUPPORTED_TARGET" {
+        give DiagnosticPhase.Backend;
+    }
+
     if starts_with(code, "E_CLI_") {
         give DiagnosticPhase.Cli;
     }

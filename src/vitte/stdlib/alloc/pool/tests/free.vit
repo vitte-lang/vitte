@@ -1,0 +1,1376 @@
+use src/vitte/stdlib/alloc/pool/free
+
+proc test_entry_free() -> bool {
+    let entry = pool_free_entry(0);
+
+    give pool_free_entry_is_free(entry)
+        and not pool_free_entry_is_allocated(entry)
+        and entry.index == 0;
+}
+
+proc test_entry_allocate() -> bool {
+    let mut entry = pool_free_entry(2);
+
+    give pool_free_entry_allocate(
+        ref mut entry
+    )
+    and pool_free_entry_is_allocated(entry)
+    and not pool_free_entry_is_free(entry);
+}
+
+proc test_entry_allocate_twice() -> bool {
+    let mut entry = pool_free_entry(1);
+
+    let first = pool_free_entry_allocate(
+        ref mut entry
+    );
+
+    let second = pool_free_entry_allocate(
+        ref mut entry
+    );
+
+    give first
+        and not second;
+}
+
+proc test_entry_release() -> bool {
+    let mut entry = pool_free_entry(3);
+
+    if not pool_free_entry_allocate(
+        ref mut entry
+    ) {
+        give false;
+    }
+
+    let generation =
+        entry.generation;
+
+    give pool_free_entry_release(
+        ref mut entry
+    )
+    and pool_free_entry_is_free(entry)
+    and entry.generation > generation;
+}
+
+proc test_entry_release_free() -> bool {
+    let mut entry = pool_free_entry(3);
+
+    give not pool_free_entry_release(
+        ref mut entry
+    );
+}
+
+proc test_list_default() -> bool {
+    let list = pool_free_list_default(16);
+
+    give pool_free_capacity(list) == 16
+        and pool_free_count(list) == 16
+        and pool_free_allocated_count(list) == 0
+        and pool_free_is_empty(list)
+        and pool_free_is_available(list)
+        and pool_free_is_valid(list);
+}
+
+proc test_list_strategy() -> bool {
+    let list = pool_free_list(
+        16,
+        PoolFreeStrategy.FirstFit
+    );
+
+    give list.strategy == PoolFreeStrategy.FirstFit
+        and pool_free_strategy_name(
+            list.strategy
+        ) == "first-fit";
+}
+
+proc test_index_valid() -> bool {
+    let list = pool_free_list_default(8);
+
+    give pool_free_index_valid(list, 0)
+        and pool_free_index_valid(list, 7)
+        and not pool_free_index_valid(list, 8);
+}
+
+proc test_next_index() -> bool {
+    let list = pool_free_list_default(8);
+
+    give pool_free_next_index(list, 0) == 1
+        and pool_free_next_index(list, 7) == 0;
+}
+
+proc test_previous_index() -> bool {
+    let list = pool_free_list_default(8);
+
+    give pool_free_previous_index(list, 1) == 0
+        and pool_free_previous_index(list, 0) == 7;
+}
+
+proc test_hint() -> bool {
+    let mut list = pool_free_list_default(8);
+
+    give pool_free_set_hint(
+        ref mut list,
+        4
+    )
+    and pool_free_hint(list) == 4;
+}
+
+proc test_invalid_hint() -> bool {
+    let mut list = pool_free_list_default(8);
+
+    give not pool_free_set_hint(
+        ref mut list,
+        8
+    );
+}
+
+proc test_advance_hint() -> bool {
+    let mut list = pool_free_list_default(4);
+
+    pool_free_set_hint(
+        ref mut list,
+        3
+    );
+
+    pool_free_advance_hint(
+        ref mut list
+    );
+
+    give pool_free_hint(list) == 0;
+}
+
+proc test_find_first() -> bool {
+    let list = pool_free_list(
+        4,
+        PoolFreeStrategy.FirstFit
+    );
+
+    let entries: [PoolFreeEntry] = [
+        pool_free_entry(0),
+        pool_free_entry(1),
+        pool_free_entry(2),
+        pool_free_entry(3)
+    ];
+
+    let result = pool_free_find_first(
+        list,
+        ref entries
+    );
+
+    pick result {
+        Some(index) {
+            give index == 0;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_find_first_after_allocate() -> bool {
+    let list = pool_free_list(
+        4,
+        PoolFreeStrategy.FirstFit
+    );
+
+    let mut entries: [PoolFreeEntry] = [
+        pool_free_entry(0),
+        pool_free_entry(1),
+        pool_free_entry(2),
+        pool_free_entry(3)
+    ];
+
+    pool_free_entry_allocate(
+        ref mut entries[0]
+    );
+
+    let result = pool_free_find_first(
+        list,
+        ref entries
+    );
+
+    pick result {
+        Some(index) {
+            give index == 1;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_find_next() -> bool {
+    let mut list = pool_free_list(
+        4,
+        PoolFreeStrategy.NextFit
+    );
+
+    let mut entries: [PoolFreeEntry] = [
+        pool_free_entry(0),
+        pool_free_entry(1),
+        pool_free_entry(2),
+        pool_free_entry(3)
+    ];
+
+    pool_free_entry_allocate(
+        ref mut entries[0]
+    );
+
+    pool_free_entry_allocate(
+        ref mut entries[1]
+    );
+
+    pool_free_set_hint(
+        ref mut list,
+        1
+    );
+
+    let result = pool_free_find_next(
+        list,
+        ref entries
+    );
+
+    pick result {
+        Some(index) {
+            give index == 2;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_find_lifo() -> bool {
+    let list = pool_free_list(
+        4,
+        PoolFreeStrategy.Lifo
+    );
+
+    let entries: [PoolFreeEntry] = [
+        pool_free_entry(0),
+        pool_free_entry(1),
+        pool_free_entry(2),
+        pool_free_entry(3)
+    ];
+
+    let result = pool_free_find_lifo(
+        list,
+        ref entries
+    );
+
+    pick result {
+        Some(index) {
+            give index == 3;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_find_fifo() -> bool {
+    let list = pool_free_list(
+        4,
+        PoolFreeStrategy.Fifo
+    );
+
+    let entries: [PoolFreeEntry] = [
+        pool_free_entry(0),
+        pool_free_entry(1),
+        pool_free_entry(2),
+        pool_free_entry(3)
+    ];
+
+    let result = pool_free_find_fifo(
+        list,
+        ref entries
+    );
+
+    pick result {
+        Some(index) {
+            give index == 0;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_allocate() -> bool {
+    let mut list = pool_free_list_default(4);
+
+    let mut entries: [PoolFreeEntry] = [
+        pool_free_entry(0),
+        pool_free_entry(1),
+        pool_free_entry(2),
+        pool_free_entry(3)
+    ];
+
+    let result = pool_free_allocate(
+        ref mut list,
+        ref mut entries
+    );
+
+    pick result {
+        Some(index) {
+            give index == 0
+                and pool_free_count(list) == 3
+                and pool_free_allocated_count(list) == 1
+                and pool_free_entry_is_allocated(
+                    entries[index]
+                );
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_allocate_multiple() -> bool {
+    let mut list = pool_free_list_default(8);
+
+    let mut entries: [PoolFreeEntry] = [
+        pool_free_entry(0),
+        pool_free_entry(1),
+        pool_free_entry(2),
+        pool_free_entry(3),
+        pool_free_entry(4),
+        pool_free_entry(5),
+        pool_free_entry(6),
+        pool_free_entry(7)
+    ];
+
+    let index: usize = 0;
+
+    while index < 6 {
+        if is_none(
+            pool_free_allocate(
+                ref mut list,
+                ref mut entries
+            )
+        ) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give pool_free_count(list) == 2
+        and pool_free_allocated_count(list) == 6
+        and pool_free_state(list)
+            == PoolFreeState.Available;
+}
+
+proc test_exhaust() -> bool {
+    let mut list = pool_free_list_default(4);
+
+    let mut entries: [PoolFreeEntry] = [
+        pool_free_entry(0),
+        pool_free_entry(1),
+        pool_free_entry(2),
+        pool_free_entry(3)
+    ];
+
+    let index: usize = 0;
+
+    while index < 4 {
+        if is_none(
+            pool_free_allocate(
+                ref mut list,
+                ref mut entries
+            )
+        ) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give pool_free_is_exhausted(list)
+        and pool_free_count(list) == 0
+        and pool_free_allocated_count(list) == 4
+        and is_none(
+            pool_free_allocate(
+                ref mut list,
+                ref mut entries
+            )
+        );
+}
+
+proc test_release() -> bool {
+    let mut list = pool_free_list_default(4);
+
+    let mut entries: [PoolFreeEntry] = [
+        pool_free_entry(0),
+        pool_free_entry(1),
+        pool_free_entry(2),
+        pool_free_entry(3)
+    ];
+
+    let result = pool_free_allocate(
+        ref mut list,
+        ref mut entries
+    );
+
+    pick result {
+        Some(index) {
+            give pool_free_release(
+                ref mut list,
+                ref mut entries,
+                index
+            )
+            and pool_free_count(list) == 4
+            and pool_free_allocated_count(list) == 0
+            and pool_free_entry_is_free(
+                entries[index]
+            );
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_release_twice() -> bool {
+    let mut list = pool_free_list_default(4);
+
+    let mut entries: [PoolFreeEntry] = [
+        pool_free_entry(0),
+        pool_free_entry(1),
+        pool_free_entry(2),
+        pool_free_entry(3)
+    ];
+
+    let result = pool_free_allocate(
+        ref mut list,
+        ref mut entries
+    );
+
+    pick result {
+        Some(index) {
+            let first = pool_free_release(
+                ref mut list,
+                ref mut entries,
+                index
+            );
+
+            let second = pool_free_release(
+                ref mut list,
+                ref mut entries,
+                index
+            );
+
+            give first
+                and not second;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_release_invalid_index() -> bool {
+    let mut list = pool_free_list_default(4);
+
+    let mut entries: [PoolFreeEntry] = [
+        pool_free_entry(0),
+        pool_free_entry(1),
+        pool_free_entry(2),
+        pool_free_entry(3)
+    ];
+
+    give not pool_free_release(
+        ref mut list,
+        ref mut entries,
+        10
+    );
+}
+
+proc test_reuse() -> bool {
+    let mut list = pool_free_list_default(1);
+
+    let mut entries: [PoolFreeEntry] = [
+        pool_free_entry(0)
+    ];
+
+    let first = pool_free_allocate(
+        ref mut list,
+        ref mut entries
+    );
+
+    pick first {
+        Some(old_index) {
+            let old_generation =
+                entries[old_index].generation;
+
+            if not pool_free_release(
+                ref mut list,
+                ref mut entries,
+                old_index
+            ) {
+                give false;
+            }
+
+            let second = pool_free_allocate(
+                ref mut list,
+                ref mut entries
+            );
+
+            pick second {
+                Some(new_index) {
+                    give new_index == old_index
+                        and entries[new_index].generation
+                            > old_generation
+                        and pool_free_entry_is_allocated(
+                            entries[new_index]
+                        );
+                }
+
+                None {
+                    give false;
+                }
+            }
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_reset() -> bool {
+    let mut list = pool_free_list_default(8);
+
+    let mut entries: [PoolFreeEntry] = [
+        pool_free_entry(0),
+        pool_free_entry(1),
+        pool_free_entry(2),
+        pool_free_entry(3),
+        pool_free_entry(4),
+        pool_free_entry(5),
+        pool_free_entry(6),
+        pool_free_entry(7)
+    ];
+
+    let index: usize = 0;
+
+    while index < 6 {
+        if is_none(
+            pool_free_allocate(
+                ref mut list,
+                ref mut entries
+            )
+        ) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    let generation =
+        list.generation;
+
+    pool_free_reset(
+        ref mut list,
+        ref mut entries
+    );
+
+    give pool_free_is_empty(list)
+        and pool_free_count(list) == 8
+        and pool_free_allocated_count(list) == 0
+        and list.generation > generation;
+}
+
+proc test_reset_entries() -> bool {
+    let mut list = pool_free_list_default(4);
+
+    let mut entries: [PoolFreeEntry] = [
+        pool_free_entry(0),
+        pool_free_entry(1),
+        pool_free_entry(2),
+        pool_free_entry(3)
+    ];
+
+    let index: usize = 0;
+
+    while index < 4 {
+        if is_none(
+            pool_free_allocate(
+                ref mut list,
+                ref mut entries
+            )
+        ) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    pool_free_reset(
+        ref mut list,
+        ref mut entries
+    );
+
+    let check: usize = 0;
+
+    while check < 4 {
+        if not pool_free_entry_is_free(
+            entries[check]
+        ) {
+            give false;
+        }
+
+        set check = check + 1;
+    }
+
+    give true;
+}
+
+proc test_release_list() -> bool {
+    let mut list = pool_free_list_default(8);
+
+    give pool_free_release_list(
+        ref mut list
+    )
+    and pool_free_is_released(list);
+}
+
+proc test_release_list_twice() -> bool {
+    let mut list = pool_free_list_default(8);
+
+    let first = pool_free_release_list(
+        ref mut list
+    );
+
+    let second = pool_free_release_list(
+        ref mut list
+    );
+
+    give first
+        and not second;
+}
+
+proc test_validation() -> bool {
+    let list = pool_free_list_default(16);
+
+    let validation = pool_free_validate(
+        list
+    );
+
+    give validation.valid
+        and validation.capacity_valid
+        and validation.accounting_valid
+        and validation.head_valid
+        and validation.tail_valid
+        and validation.hint_valid
+        and validation.state_valid;
+}
+
+proc test_invariant() -> bool {
+    let list = pool_free_list_default(16);
+
+    give pool_free_invariant_holds(
+        list
+    );
+}
+
+proc test_profile_empty() -> bool {
+    let list = pool_free_list_default(16);
+
+    let profile = pool_free_profile(
+        list
+    );
+
+    give profile.capacity == 16
+        and profile.free == 16
+        and profile.allocated == 0
+        and profile.empty
+        and profile.available
+        and not profile.exhausted
+        and not profile.released
+        and profile.valid;
+}
+
+proc test_profile_partial() -> bool {
+    let mut list = pool_free_list_default(4);
+
+    let mut entries: [PoolFreeEntry] = [
+        pool_free_entry(0),
+        pool_free_entry(1),
+        pool_free_entry(2),
+        pool_free_entry(3)
+    ];
+
+    if is_none(
+        pool_free_allocate(
+            ref mut list,
+            ref mut entries
+        )
+    ) {
+        give false;
+    }
+
+    let profile = pool_free_profile(
+        list
+    );
+
+    give profile.free == 3
+        and profile.allocated == 1
+        and profile.available
+        and not profile.empty;
+}
+
+proc test_profile_exhausted() -> bool {
+    let mut list = pool_free_list_default(2);
+
+    let mut entries: [PoolFreeEntry] = [
+        pool_free_entry(0),
+        pool_free_entry(1)
+    ];
+
+    if is_none(
+        pool_free_allocate(
+            ref mut list,
+            ref mut entries
+        )
+    ) {
+        give false;
+    }
+
+    if is_none(
+        pool_free_allocate(
+            ref mut list,
+            ref mut entries
+        )
+    ) {
+        give false;
+    }
+
+    let profile = pool_free_profile(
+        list
+    );
+
+    give profile.exhausted
+        and profile.free == 0
+        and profile.allocated == 2;
+}
+
+proc test_snapshot_equal() -> bool {
+    let list = pool_free_list_default(8);
+
+    let first = pool_free_snapshot(
+        list
+    );
+
+    let second = pool_free_snapshot(
+        list
+    );
+
+    give pool_free_snapshot_equal(
+        first,
+        second
+    );
+}
+
+proc test_snapshot_allocate_changed() -> bool {
+    let mut list = pool_free_list_default(8);
+
+    let mut entries: [PoolFreeEntry] = [
+        pool_free_entry(0),
+        pool_free_entry(1),
+        pool_free_entry(2),
+        pool_free_entry(3),
+        pool_free_entry(4),
+        pool_free_entry(5),
+        pool_free_entry(6),
+        pool_free_entry(7)
+    ];
+
+    let before = pool_free_snapshot(
+        list
+    );
+
+    if is_none(
+        pool_free_allocate(
+            ref mut list,
+            ref mut entries
+        )
+    ) {
+        give false;
+    }
+
+    let after = pool_free_snapshot(
+        list
+    );
+
+    give pool_free_snapshot_changed(
+        before,
+        after
+    );
+}
+
+proc test_delta_allocate() -> bool {
+    let mut list = pool_free_list_default(8);
+
+    let mut entries: [PoolFreeEntry] = [
+        pool_free_entry(0),
+        pool_free_entry(1),
+        pool_free_entry(2),
+        pool_free_entry(3),
+        pool_free_entry(4),
+        pool_free_entry(5),
+        pool_free_entry(6),
+        pool_free_entry(7)
+    ];
+
+    let before = pool_free_snapshot(
+        list
+    );
+
+    if is_none(
+        pool_free_allocate(
+            ref mut list,
+            ref mut entries
+        )
+    ) {
+        give false;
+    }
+
+    let after = pool_free_snapshot(
+        list
+    );
+
+    let delta = pool_free_delta(
+        before,
+        after
+    );
+
+    give delta.changed
+        and delta.free == -1
+        and delta.revision > 0;
+}
+
+proc test_delta_release() -> bool {
+    let mut list = pool_free_list_default(8);
+
+    let mut entries: [PoolFreeEntry] = [
+        pool_free_entry(0),
+        pool_free_entry(1),
+        pool_free_entry(2),
+        pool_free_entry(3),
+        pool_free_entry(4),
+        pool_free_entry(5),
+        pool_free_entry(6),
+        pool_free_entry(7)
+    ];
+
+    let result = pool_free_allocate(
+        ref mut list,
+        ref mut entries
+    );
+
+    pick result {
+        Some(index) {
+            let before = pool_free_snapshot(
+                list
+            );
+
+            if not pool_free_release(
+                ref mut list,
+                ref mut entries,
+                index
+            ) {
+                give false;
+            }
+
+            let after = pool_free_snapshot(
+                list
+            );
+
+            let delta = pool_free_delta(
+                before,
+                after
+            );
+
+            give delta.changed
+                and delta.free == 1;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_error_none() -> bool {
+    let list = pool_free_list_default(8);
+
+    let error = pool_free_error(
+        list
+    );
+
+    give pool_error_is_none(
+        error
+    );
+}
+
+proc test_core_state_empty() -> bool {
+    let list = pool_free_list_default(8);
+
+    give pool_free_core_state(
+        list
+    ) == PoolCoreState.Empty;
+}
+
+proc test_core_state_partial() -> bool {
+    let mut list = pool_free_list_default(4);
+
+    let mut entries: [PoolFreeEntry] = [
+        pool_free_entry(0),
+        pool_free_entry(1),
+        pool_free_entry(2),
+        pool_free_entry(3)
+    ];
+
+    if is_none(
+        pool_free_allocate(
+            ref mut list,
+            ref mut entries
+        )
+    ) {
+        give false;
+    }
+
+    give pool_free_core_state(
+        list
+    ) == PoolCoreState.Partial;
+}
+
+proc test_core_state_full() -> bool {
+    let mut list = pool_free_list_default(1);
+
+    let mut entries: [PoolFreeEntry] = [
+        pool_free_entry(0)
+    ];
+
+    if is_none(
+        pool_free_allocate(
+            ref mut list,
+            ref mut entries
+        )
+    ) {
+        give false;
+    }
+
+    give pool_free_core_state(
+        list
+    ) == PoolCoreState.Full;
+}
+
+proc test_statistics_empty() -> bool {
+    let statistics =
+        pool_free_statistics_empty();
+
+    give statistics.searches == 0
+        and statistics.hits == 0
+        and statistics.misses == 0
+        and statistics.allocations == 0
+        and statistics.releases == 0
+        and statistics.scan_steps == 0
+        and statistics.resets == 0;
+}
+
+proc test_statistics_search_hit() -> bool {
+    let mut statistics =
+        pool_free_statistics_empty();
+
+    pool_free_statistics_record_search(
+        ref mut statistics,
+        true,
+        4
+    );
+
+    give statistics.searches == 1
+        and statistics.hits == 1
+        and statistics.misses == 0
+        and statistics.scan_steps == 4;
+}
+
+proc test_statistics_search_miss() -> bool {
+    let mut statistics =
+        pool_free_statistics_empty();
+
+    pool_free_statistics_record_search(
+        ref mut statistics,
+        false,
+        8
+    );
+
+    give statistics.searches == 1
+        and statistics.hits == 0
+        and statistics.misses == 1
+        and statistics.scan_steps == 8;
+}
+
+proc test_statistics_average_scan() -> bool {
+    let mut statistics =
+        pool_free_statistics_empty();
+
+    pool_free_statistics_record_search(
+        ref mut statistics,
+        true,
+        4
+    );
+
+    pool_free_statistics_record_search(
+        ref mut statistics,
+        true,
+        8
+    );
+
+    give pool_free_statistics_average_scan(
+        statistics
+    ) == 6.0;
+}
+
+proc test_statistics_reset() -> bool {
+    let mut statistics =
+        pool_free_statistics_empty();
+
+    set statistics.searches = 10;
+    set statistics.hits = 8;
+    set statistics.misses = 2;
+    set statistics.allocations = 8;
+
+    pool_free_statistics_reset(
+        ref mut statistics
+    );
+
+    give statistics.searches == 0
+        and statistics.hits == 0
+        and statistics.misses == 0
+        and statistics.allocations == 0;
+}
+
+proc test_state_names() -> bool {
+    give pool_free_state_name(
+        PoolFreeState.Empty
+    ) == "empty"
+        and pool_free_state_name(
+            PoolFreeState.Available
+        ) == "available"
+        and pool_free_state_name(
+            PoolFreeState.Exhausted
+        ) == "exhausted"
+        and pool_free_state_name(
+            PoolFreeState.Released
+        ) == "released"
+        and pool_free_state_name(
+            PoolFreeState.Invalid
+        ) == "invalid";
+}
+
+proc test_strategy_names() -> bool {
+    give pool_free_strategy_name(
+        PoolFreeStrategy.FirstFit
+    ) == "first-fit"
+        and pool_free_strategy_name(
+            PoolFreeStrategy.NextFit
+        ) == "next-fit"
+        and pool_free_strategy_name(
+            PoolFreeStrategy.Lifo
+        ) == "lifo"
+        and pool_free_strategy_name(
+            PoolFreeStrategy.Fifo
+        ) == "fifo";
+}
+
+proc test_many_allocate_release_cycles() -> bool {
+    let mut list = pool_free_list_default(64);
+
+    let mut entries: [PoolFreeEntry] = [];
+
+    let build: usize = 0;
+
+    while build < 64 {
+        set entries =
+            entries + [
+                pool_free_entry(build)
+            ];
+
+        set build = build + 1;
+    }
+
+    let cycle: usize = 0;
+
+    while cycle < 10000 {
+        let result = pool_free_allocate(
+            ref mut list,
+            ref mut entries
+        );
+
+        pick result {
+            Some(index) {
+                if not pool_free_release(
+                    ref mut list,
+                    ref mut entries,
+                    index
+                ) {
+                    give false;
+                }
+            }
+
+            None {
+                give false;
+            }
+        }
+
+        if not pool_free_is_empty(list) {
+            give false;
+        }
+
+        if not pool_free_invariant_holds(list) {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give true;
+}
+
+proc test_many_full_reset_cycles() -> bool {
+    let mut list = pool_free_list_default(64);
+
+    let mut entries: [PoolFreeEntry] = [];
+
+    let build: usize = 0;
+
+    while build < 64 {
+        set entries =
+            entries + [
+                pool_free_entry(build)
+            ];
+
+        set build = build + 1;
+    }
+
+    let cycle: usize = 0;
+
+    while cycle < 1000 {
+        let index: usize = 0;
+
+        while index < 64 {
+            if is_none(
+                pool_free_allocate(
+                    ref mut list,
+                    ref mut entries
+                )
+            ) {
+                give false;
+            }
+
+            set index = index + 1;
+        }
+
+        if not pool_free_is_exhausted(
+            list
+        ) {
+            give false;
+        }
+
+        pool_free_reset(
+            ref mut list,
+            ref mut entries
+        );
+
+        if not pool_free_is_empty(
+            list
+        ) {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give pool_free_is_valid(list);
+}
+
+proc test_reuse_generation_stress() -> bool {
+    let mut list = pool_free_list_default(1);
+
+    let mut entries: [PoolFreeEntry] = [
+        pool_free_entry(0)
+    ];
+
+    let generation =
+        entries[0].generation;
+
+    let cycle: usize = 0;
+
+    while cycle < 10000 {
+        let result = pool_free_allocate(
+            ref mut list,
+            ref mut entries
+        );
+
+        if is_none(result) {
+            give false;
+        }
+
+        if not pool_free_release(
+            ref mut list,
+            ref mut entries,
+            0
+        ) {
+            give false;
+        }
+
+        set cycle = cycle + 1;
+    }
+
+    give entries[0].generation
+        > generation;
+}
+
+proc test_accounting_stress() -> bool {
+    let mut list = pool_free_list_default(128);
+
+    let mut entries: [PoolFreeEntry] = [];
+
+    let build: usize = 0;
+
+    while build < 128 {
+        set entries =
+            entries + [
+                pool_free_entry(build)
+            ];
+
+        set build = build + 1;
+    }
+
+    let cycle: usize = 0;
+
+    while cycle < 1000 {
+        let count: usize = 0;
+
+        while count < 100 {
+            if is_none(
+                pool_free_allocate(
+                    ref mut list,
+                    ref mut entries
+                )
+            ) {
+                give false;
+            }
+
+            if pool_free_count(list)
+                + pool_free_allocated_count(list)
+                != pool_free_capacity(list)
+            {
+                give false;
+            }
+
+            set count = count + 1;
+        }
+
+        pool_free_reset(
+            ref mut list,
+            ref mut entries
+        );
+
+        set cycle = cycle + 1;
+    }
+
+    give pool_free_invariant_holds(
+        list
+    );
+}
+
+proc run_free_tests() -> bool {
+    give test_entry_free()
+        and test_entry_allocate()
+        and test_entry_allocate_twice()
+        and test_entry_release()
+        and test_entry_release_free()
+
+        and test_list_default()
+        and test_list_strategy()
+
+        and test_index_valid()
+        and test_next_index()
+        and test_previous_index()
+
+        and test_hint()
+        and test_invalid_hint()
+        and test_advance_hint()
+
+        and test_find_first()
+        and test_find_first_after_allocate()
+        and test_find_next()
+        and test_find_lifo()
+        and test_find_fifo()
+
+        and test_allocate()
+        and test_allocate_multiple()
+        and test_exhaust()
+
+        and test_release()
+        and test_release_twice()
+        and test_release_invalid_index()
+        and test_reuse()
+
+        and test_reset()
+        and test_reset_entries()
+
+        and test_release_list()
+        and test_release_list_twice()
+
+        and test_validation()
+        and test_invariant()
+
+        and test_profile_empty()
+        and test_profile_partial()
+        and test_profile_exhausted()
+
+        and test_snapshot_equal()
+        and test_snapshot_allocate_changed()
+        and test_delta_allocate()
+        and test_delta_release()
+
+        and test_error_none()
+
+        and test_core_state_empty()
+        and test_core_state_partial()
+        and test_core_state_full()
+
+        and test_statistics_empty()
+        and test_statistics_search_hit()
+        and test_statistics_search_miss()
+        and test_statistics_average_scan()
+        and test_statistics_reset()
+
+        and test_state_names()
+        and test_strategy_names()
+
+        and test_many_allocate_release_cycles()
+        and test_many_full_reset_cycles()
+        and test_reuse_generation_stress()
+        and test_accounting_stress();
+}
+
+proc main() -> int {
+    if run_free_tests() {
+        give 0;
+    }
+
+    give 1;
+}

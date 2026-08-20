@@ -1,0 +1,1335 @@
+space vitte/stdlib/alloc/arena/chunk
+
+export *
+
+use src/vitte/stdlib/alloc/arena/arena as arena
+use src/vitte/stdlib/alloc/arena/block as arena_block
+use src/vitte/stdlib/alloc/allocator as alloc_allocator
+use src/vitte/stdlib/alloc/vec as alloc_vec
+use src/vitte/stdlib/core/option as core_option
+
+// -----------------------------------------------------------------------------
+// Chunk states
+// -----------------------------------------------------------------------------
+
+pick ArenaChunkState {
+    Empty,
+    Partial,
+    Full,
+    Released,
+    Invalid
+}
+
+pick ArenaChunkGrowth {
+    Fixed,
+    Geometric,
+    Exact
+}
+
+pick ArenaChunkFit {
+    FitsCurrent,
+    FitsExisting,
+    NeedsNewBlock,
+    Invalid
+}
+
+// -----------------------------------------------------------------------------
+// Chunk structures
+// -----------------------------------------------------------------------------
+
+form ArenaChunk {
+    blocks: Vec<arena.ArenaBlock>
+
+    block_size: usize
+    current_block: usize
+
+    allocated: usize
+    capacity: usize
+
+    growth: ArenaChunkGrowth
+
+    active: bool
+
+    generation: u64
+    revision: u64
+}
+
+form ArenaChunkProfile {
+    block_count: usize
+    current_block: usize
+
+    allocated: usize
+    capacity: usize
+    remaining: usize
+
+    utilization: f64
+
+    state: ArenaChunkState
+
+    empty: bool
+    full: bool
+    active: bool
+    valid: bool
+
+    generation: u64
+    revision: u64
+}
+
+form ArenaChunkValidation {
+    valid: bool
+
+    block_size_valid: bool
+    current_block_valid: bool
+    blocks_valid: bool
+    allocated_valid: bool
+    capacity_valid: bool
+    state_valid: bool
+}
+
+form ArenaChunkStatistics {
+    blocks_created: u64
+    block_switches: u64
+
+    allocations: u64
+    allocation_failures: u64
+
+    bytes_allocated: usize
+    bytes_padding: usize
+
+    resets: u64
+    releases: u64
+}
+
+// -----------------------------------------------------------------------------
+// Constructors
+// -----------------------------------------------------------------------------
+
+proc arena_chunk_new(
+    block_size: usize
+) -> ArenaChunk {
+    give ArenaChunk {
+        blocks:
+            vec_new<arena.ArenaBlock>(),
+
+        block_size:
+            block_size,
+
+        current_block:
+            0,
+
+        allocated:
+            0,
+
+        capacity:
+            0,
+
+        growth:
+            ArenaChunkGrowth.Geometric,
+
+        active:
+            true,
+
+        generation:
+            1,
+
+        revision:
+            1
+    };
+}
+
+proc arena_chunk_new_with_growth(
+    block_size: usize,
+    growth: ArenaChunkGrowth
+) -> ArenaChunk {
+    let value =
+        arena_chunk_new(
+            block_size
+        );
+
+    set value.growth =
+        growth;
+
+    give value;
+}
+
+// -----------------------------------------------------------------------------
+// Basic access
+// -----------------------------------------------------------------------------
+
+proc arena_chunk_block_count(
+    value: ArenaChunk
+) -> usize {
+    give vec_len<arena.ArenaBlock>(
+        value.blocks
+    );
+}
+
+proc arena_chunk_allocated(
+    value: ArenaChunk
+) -> usize {
+    give value.allocated;
+}
+
+proc arena_chunk_capacity(
+    value: ArenaChunk
+) -> usize {
+    give value.capacity;
+}
+
+proc arena_chunk_remaining(
+    value: ArenaChunk
+) -> usize {
+    if value.allocated >= value.capacity {
+        give 0;
+    }
+
+    give value.capacity
+        - value.allocated;
+}
+
+proc arena_chunk_generation(
+    value: ArenaChunk
+) -> u64 {
+    give value.generation;
+}
+
+proc arena_chunk_revision(
+    value: ArenaChunk
+) -> u64 {
+    give value.revision;
+}
+
+// -----------------------------------------------------------------------------
+// Predicates
+// -----------------------------------------------------------------------------
+
+proc arena_chunk_is_empty(
+    value: ArenaChunk
+) -> bool {
+    give value.allocated == 0;
+}
+
+proc arena_chunk_is_active(
+    value: ArenaChunk
+) -> bool {
+    give value.active;
+}
+
+proc arena_chunk_has_blocks(
+    value: ArenaChunk
+) -> bool {
+    give arena_chunk_block_count(
+        value
+    ) > 0;
+}
+
+proc arena_chunk_is_full(
+    value: ArenaChunk
+) -> bool {
+    give value.capacity > 0
+        and value.allocated >= value.capacity;
+}
+
+// -----------------------------------------------------------------------------
+// State
+// -----------------------------------------------------------------------------
+
+proc arena_chunk_state(
+    value: ArenaChunk
+) -> ArenaChunkState {
+    if not value.active {
+        give ArenaChunkState.Released;
+    }
+
+    if value.block_size == 0 {
+        give ArenaChunkState.Invalid;
+    }
+
+    if value.allocated > value.capacity {
+        give ArenaChunkState.Invalid;
+    }
+
+    if value.allocated == 0 {
+        give ArenaChunkState.Empty;
+    }
+
+    if value.allocated == value.capacity {
+        give ArenaChunkState.Full;
+    }
+
+    give ArenaChunkState.Partial;
+}
+
+// -----------------------------------------------------------------------------
+// Current block
+// -----------------------------------------------------------------------------
+
+proc arena_chunk_current_block_valid(
+    value: ArenaChunk
+) -> bool {
+    let count =
+        arena_chunk_block_count(
+            value
+        );
+
+    if count == 0 {
+        give value.current_block == 0;
+    }
+
+    give value.current_block < count;
+}
+
+proc arena_chunk_current(
+    value: ArenaChunk
+) -> Option<arena.ArenaBlock> {
+    if not arena_chunk_has_blocks(
+        value
+    ) {
+        give none<arena.ArenaBlock>();
+    }
+
+    if not arena_chunk_current_block_valid(
+        value
+    ) {
+        give none<arena.ArenaBlock>();
+    }
+
+    give some<arena.ArenaBlock>(
+        vec_get<arena.ArenaBlock>(
+            value.blocks,
+            value.current_block
+        )
+    );
+}
+
+proc arena_chunk_current_remaining(
+    value: ArenaChunk
+) -> usize {
+    let current =
+        arena_chunk_current(
+            value
+        );
+
+    if is_none<arena.ArenaBlock>(
+        current
+    ) {
+        give 0;
+    }
+
+    give arena_block.arena_block_remaining(
+        unwrap<arena.ArenaBlock>(
+            current
+        )
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Growth
+// -----------------------------------------------------------------------------
+
+proc arena_chunk_next_block_size(
+    value: ArenaChunk,
+    required: usize
+) -> usize {
+    if required == 0 {
+        give value.block_size;
+    }
+
+    pick value.growth {
+        ArenaChunkGrowth.Fixed {
+            if required > value.block_size {
+                give required;
+            }
+
+            give value.block_size;
+        }
+
+        ArenaChunkGrowth.Exact {
+            give required;
+        }
+
+        ArenaChunkGrowth.Geometric {
+            let next =
+                value.block_size;
+
+            let count =
+                arena_chunk_block_count(
+                    value
+                );
+
+            if count > 0 {
+                let factor =
+                    count + 1;
+
+                if value.block_size
+                    <= usize_max() / factor
+                {
+                    set next =
+                        value.block_size
+                        * factor;
+                }
+            }
+
+            if next < required {
+                set next =
+                    required;
+            }
+
+            give next;
+        }
+    }
+
+    give required;
+}
+
+// -----------------------------------------------------------------------------
+// Block search
+// -----------------------------------------------------------------------------
+
+proc arena_chunk_find_fit(
+    value: ArenaChunk,
+    size: usize,
+    align: usize
+) -> Option<usize> {
+    let count =
+        arena_chunk_block_count(
+            value
+        );
+
+    let index: usize = 0;
+
+    while index < count {
+        let block =
+            vec_get<arena.ArenaBlock>(
+                value.blocks,
+                index
+            );
+
+        if arena_block.arena_block_can_fit(
+            block,
+            size,
+            align
+        ) {
+            give some<usize>(
+                index
+            );
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give none<usize>();
+}
+
+proc arena_chunk_fit(
+    value: ArenaChunk,
+    size: usize,
+    align: usize
+) -> ArenaChunkFit {
+    if not value.active
+        or size == 0
+        or align == 0
+    {
+        give ArenaChunkFit.Invalid;
+    }
+
+    let current =
+        arena_chunk_current(
+            value
+        );
+
+    if is_some<arena.ArenaBlock>(
+        current
+    ) {
+        let block =
+            unwrap<arena.ArenaBlock>(
+                current
+            );
+
+        if arena_block.arena_block_can_fit(
+            block,
+            size,
+            align
+        ) {
+            give ArenaChunkFit.FitsCurrent;
+        }
+    }
+
+    let fit =
+        arena_chunk_find_fit(
+            value,
+            size,
+            align
+        );
+
+    if is_some<usize>(fit) {
+        give ArenaChunkFit.FitsExisting;
+    }
+
+    give ArenaChunkFit.NeedsNewBlock;
+}
+
+// -----------------------------------------------------------------------------
+// Add block
+// -----------------------------------------------------------------------------
+
+proc arena_chunk_push_block(
+    value: ref mut ArenaChunk,
+    block: arena.ArenaBlock
+) -> bool {
+    if not (*value).active {
+        give false;
+    }
+
+    if not arena_block.arena_block_is_valid(
+        block
+    ) {
+        give false;
+    }
+
+    let index =
+        arena_chunk_block_count(
+            *value
+        );
+
+    let current =
+        block;
+
+    set current.index =
+        index;
+
+    vec_push<arena.ArenaBlock>(
+        &mut ((*value).blocks),
+        current
+    );
+
+    set (*value).capacity =
+        (*value).capacity
+        + current.capacity;
+
+    set (*value).current_block =
+        index;
+
+    set (*value).revision =
+        (*value).revision + 1;
+
+    give true;
+}
+
+proc arena_chunk_create_block(
+    value: ref mut ArenaChunk,
+    allocator: ref mut alloc_allocator.Allocator,
+    required: usize,
+    align: usize
+) -> bool {
+    if not (*value).active {
+        give false;
+    }
+
+    let size =
+        arena_chunk_next_block_size(
+            *value,
+            required
+        );
+
+    let layout_value =
+        alloc_allocator.layout(
+            size,
+            align
+        );
+
+    if not alloc_allocator.layout_is_valid(
+        layout_value
+    ) {
+        give false;
+    }
+
+    let allocation =
+        alloc_allocator.allocator_allocate(
+            allocator,
+            layout_value
+        );
+
+    if is_none<alloc_allocator.Allocation>(
+        allocation
+    ) {
+        give false;
+    }
+
+    let block =
+        arena_block.arena_block_new(
+            unwrap<alloc_allocator.Allocation>(
+                allocation
+            ),
+            arena_chunk_block_count(
+                *value
+            )
+        );
+
+    give arena_chunk_push_block(
+        value,
+        block
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Block selection
+// -----------------------------------------------------------------------------
+
+proc arena_chunk_select_block(
+    value: ref mut ArenaChunk,
+    index: usize
+) -> bool {
+    if index >= arena_chunk_block_count(
+        *value
+    ) {
+        give false;
+    }
+
+    set (*value).current_block =
+        index;
+
+    set (*value).revision =
+        (*value).revision + 1;
+
+    give true;
+}
+
+proc arena_chunk_select_fit(
+    value: ref mut ArenaChunk,
+    size: usize,
+    align: usize
+) -> bool {
+    let fit =
+        arena_chunk_find_fit(
+            *value,
+            size,
+            align
+        );
+
+    if is_none<usize>(fit) {
+        give false;
+    }
+
+    give arena_chunk_select_block(
+        value,
+        unwrap<usize>(
+            fit
+        )
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Allocation
+// -----------------------------------------------------------------------------
+
+proc arena_chunk_allocate(
+    value: ref mut ArenaChunk,
+    allocator: ref mut alloc_allocator.Allocator,
+    size: usize,
+    align: usize
+) -> Option<arena_block.ArenaBlockAllocation> {
+    if size == 0
+        or align == 0
+        or not (*value).active
+    {
+        give none<arena_block.ArenaBlockAllocation>();
+    }
+
+    let fit =
+        arena_chunk_fit(
+            *value,
+            size,
+            align
+        );
+
+    pick fit {
+        ArenaChunkFit.Invalid {
+            give none<arena_block.ArenaBlockAllocation>();
+        }
+
+        ArenaChunkFit.FitsExisting {
+            if not arena_chunk_select_fit(
+                value,
+                size,
+                align
+            ) {
+                give none<arena_block.ArenaBlockAllocation>();
+            }
+        }
+
+        ArenaChunkFit.NeedsNewBlock {
+            if not arena_chunk_create_block(
+                value,
+                allocator,
+                size,
+                align
+            ) {
+                give none<arena_block.ArenaBlockAllocation>();
+            }
+        }
+
+        ArenaChunkFit.FitsCurrent {}
+    }
+
+    let block =
+        vec_get_mut<arena.ArenaBlock>(
+            &mut ((*value).blocks),
+            (*value).current_block
+        );
+
+    let allocation =
+        arena_block.arena_block_allocate(
+            block,
+            size,
+            align
+        );
+
+    if is_none<arena_block.ArenaBlockAllocation>(
+        allocation
+    ) {
+        give none<arena_block.ArenaBlockAllocation>();
+    }
+
+    let result =
+        unwrap<arena_block.ArenaBlockAllocation>(
+            allocation
+        );
+
+    set (*value).allocated =
+        (*value).allocated
+        + result.size
+        + result.padding;
+
+    set (*value).revision =
+        (*value).revision + 1;
+
+    give some<arena_block.ArenaBlockAllocation>(
+        result
+    );
+}
+
+proc arena_chunk_allocate_layout(
+    value: ref mut ArenaChunk,
+    allocator: ref mut alloc_allocator.Allocator,
+    layout_value: alloc_allocator.AllocationLayout
+) -> Option<arena_block.ArenaBlockAllocation> {
+    if not alloc_allocator.layout_is_valid(
+        layout_value
+    ) {
+        give none<arena_block.ArenaBlockAllocation>();
+    }
+
+    give arena_chunk_allocate(
+        value,
+        allocator,
+        layout_value.size,
+        layout_value.align
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Capacity aggregation
+// -----------------------------------------------------------------------------
+
+proc arena_chunk_recalculate_capacity(
+    value: ref mut ArenaChunk
+) -> usize {
+    let total: usize = 0;
+    let index: usize = 0;
+
+    while index < arena_chunk_block_count(
+        *value
+    ) {
+        let block =
+            vec_get<arena.ArenaBlock>(
+                (*value).blocks,
+                index
+            );
+
+        set total =
+            total + block.capacity;
+
+        set index =
+            index + 1;
+    }
+
+    set (*value).capacity =
+        total;
+
+    give total;
+}
+
+proc arena_chunk_recalculate_allocated(
+    value: ref mut ArenaChunk
+) -> usize {
+    let total: usize = 0;
+    let index: usize = 0;
+
+    while index < arena_chunk_block_count(
+        *value
+    ) {
+        let block =
+            vec_get<arena.ArenaBlock>(
+                (*value).blocks,
+                index
+            );
+
+        set total =
+            total + block.used;
+
+        set index =
+            index + 1;
+    }
+
+    set (*value).allocated =
+        total;
+
+    give total;
+}
+
+// -----------------------------------------------------------------------------
+// Reset
+// -----------------------------------------------------------------------------
+
+proc arena_chunk_reset(
+    value: ref mut ArenaChunk
+) {
+    let index: usize = 0;
+
+    while index < arena_chunk_block_count(
+        *value
+    ) {
+        let block =
+            vec_get_mut<arena.ArenaBlock>(
+                &mut ((*value).blocks),
+                index
+            );
+
+        arena_block.arena_block_reset(
+            block
+        );
+
+        set index =
+            index + 1;
+    }
+
+    set (*value).allocated = 0;
+    set (*value).current_block = 0;
+
+    set (*value).generation =
+        (*value).generation + 1;
+
+    set (*value).revision =
+        (*value).revision + 1;
+}
+
+// -----------------------------------------------------------------------------
+// Release
+// -----------------------------------------------------------------------------
+
+proc arena_chunk_release(
+    value: ref mut ArenaChunk
+) {
+    let index: usize = 0;
+
+    while index < arena_chunk_block_count(
+        *value
+    ) {
+        let block =
+            vec_get_mut<arena.ArenaBlock>(
+                &mut ((*value).blocks),
+                index
+            );
+
+        arena_block.arena_block_release(
+            block
+        );
+
+        set index =
+            index + 1;
+    }
+
+    set (*value).allocated = 0;
+    set (*value).capacity = 0;
+    set (*value).current_block = 0;
+
+    set (*value).active = false;
+
+    set (*value).generation =
+        (*value).generation + 1;
+
+    set (*value).revision =
+        (*value).revision + 1;
+}
+
+// -----------------------------------------------------------------------------
+// Reactivation
+// -----------------------------------------------------------------------------
+
+proc arena_chunk_activate(
+    value: ref mut ArenaChunk
+) {
+    set (*value).active = true;
+
+    set (*value).revision =
+        (*value).revision + 1;
+}
+
+// -----------------------------------------------------------------------------
+// Utilization
+// -----------------------------------------------------------------------------
+
+proc arena_chunk_utilization(
+    value: ArenaChunk
+) -> f64 {
+    if value.capacity == 0 {
+        give 0.0;
+    }
+
+    give (
+        value.allocated as f64
+    ) / (
+        value.capacity as f64
+    );
+}
+
+proc arena_chunk_remaining_ratio(
+    value: ArenaChunk
+) -> f64 {
+    if value.capacity == 0 {
+        give 0.0;
+    }
+
+    give (
+        arena_chunk_remaining(value)
+        as f64
+    ) / (
+        value.capacity as f64
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Profile
+// -----------------------------------------------------------------------------
+
+proc arena_chunk_profile(
+    value: ArenaChunk
+) -> ArenaChunkProfile {
+    let state =
+        arena_chunk_state(
+            value
+        );
+
+    give ArenaChunkProfile {
+        block_count:
+            arena_chunk_block_count(
+                value
+            ),
+
+        current_block:
+            value.current_block,
+
+        allocated:
+            value.allocated,
+
+        capacity:
+            value.capacity,
+
+        remaining:
+            arena_chunk_remaining(
+                value
+            ),
+
+        utilization:
+            arena_chunk_utilization(
+                value
+            ),
+
+        state:
+            state,
+
+        empty:
+            state == ArenaChunkState.Empty,
+
+        full:
+            state == ArenaChunkState.Full,
+
+        active:
+            value.active,
+
+        valid:
+            state != ArenaChunkState.Invalid,
+
+        generation:
+            value.generation,
+
+        revision:
+            value.revision
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+proc arena_chunk_blocks_valid(
+    value: ArenaChunk
+) -> bool {
+    let index: usize = 0;
+
+    while index < arena_chunk_block_count(
+        value
+    ) {
+        let block =
+            vec_get<arena.ArenaBlock>(
+                value.blocks,
+                index
+            );
+
+        if not arena_block.arena_block_is_valid(
+            block
+        ) {
+            give false;
+        }
+
+        if block.index != index {
+            give false;
+        }
+
+        set index =
+            index + 1;
+    }
+
+    give true;
+}
+
+proc arena_chunk_allocated_valid(
+    value: ArenaChunk
+) -> bool {
+    give value.allocated
+        <= value.capacity;
+}
+
+proc arena_chunk_capacity_valid(
+    value: ArenaChunk
+) -> bool {
+    let total: usize = 0;
+    let index: usize = 0;
+
+    while index < arena_chunk_block_count(
+        value
+    ) {
+        let block =
+            vec_get<arena.ArenaBlock>(
+                value.blocks,
+                index
+            );
+
+        set total =
+            total + block.capacity;
+
+        set index =
+            index + 1;
+    }
+
+    give total == value.capacity;
+}
+
+proc arena_chunk_state_valid(
+    value: ArenaChunk
+) -> bool {
+    let state =
+        arena_chunk_state(
+            value
+        );
+
+    pick state {
+        ArenaChunkState.Empty {
+            give value.allocated == 0
+                and value.active;
+        }
+
+        ArenaChunkState.Partial {
+            give value.allocated > 0
+                and value.allocated < value.capacity
+                and value.active;
+        }
+
+        ArenaChunkState.Full {
+            give value.allocated == value.capacity
+                and value.capacity > 0
+                and value.active;
+        }
+
+        ArenaChunkState.Released {
+            give not value.active;
+        }
+
+        ArenaChunkState.Invalid {
+            give false;
+        }
+    }
+
+    give false;
+}
+
+proc arena_chunk_validate(
+    value: ArenaChunk
+) -> ArenaChunkValidation {
+    let block_size_valid =
+        value.block_size > 0;
+
+    let current_block_valid =
+        arena_chunk_current_block_valid(
+            value
+        );
+
+    let blocks_valid =
+        arena_chunk_blocks_valid(
+            value
+        );
+
+    let allocated_valid =
+        arena_chunk_allocated_valid(
+            value
+        );
+
+    let capacity_valid =
+        arena_chunk_capacity_valid(
+            value
+        );
+
+    let state_valid =
+        arena_chunk_state_valid(
+            value
+        );
+
+    give ArenaChunkValidation {
+        valid:
+            block_size_valid
+            and current_block_valid
+            and blocks_valid
+            and allocated_valid
+            and capacity_valid
+            and state_valid,
+
+        block_size_valid:
+            block_size_valid,
+
+        current_block_valid:
+            current_block_valid,
+
+        blocks_valid:
+            blocks_valid,
+
+        allocated_valid:
+            allocated_valid,
+
+        capacity_valid:
+            capacity_valid,
+
+        state_valid:
+            state_valid
+    };
+}
+
+proc arena_chunk_is_valid(
+    value: ArenaChunk
+) -> bool {
+    give arena_chunk_validate(
+        value
+    ).valid;
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc arena_chunk_statistics_empty()
+    -> ArenaChunkStatistics
+{
+    give ArenaChunkStatistics {
+        blocks_created: 0,
+        block_switches: 0,
+
+        allocations: 0,
+        allocation_failures: 0,
+
+        bytes_allocated: 0,
+        bytes_padding: 0,
+
+        resets: 0,
+        releases: 0
+    };
+}
+
+proc arena_chunk_statistics_record_allocation(
+    statistics: ref mut ArenaChunkStatistics,
+    allocation: arena_block.ArenaBlockAllocation
+) {
+    if allocation.valid {
+        set statistics.allocations =
+            statistics.allocations + 1;
+
+        set statistics.bytes_allocated =
+            statistics.bytes_allocated
+            + allocation.size;
+
+        set statistics.bytes_padding =
+            statistics.bytes_padding
+            + allocation.padding;
+    } else {
+        set statistics.allocation_failures =
+            statistics.allocation_failures + 1;
+    }
+}
+
+proc arena_chunk_statistics_total_bytes(
+    statistics: ArenaChunkStatistics
+) -> usize {
+    give statistics.bytes_allocated
+        + statistics.bytes_padding;
+}
+
+proc arena_chunk_statistics_reset(
+    statistics: ref mut ArenaChunkStatistics
+) {
+    set *statistics =
+        arena_chunk_statistics_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc arena_chunk_state_name(
+    state: ArenaChunkState
+) -> string {
+    pick state {
+        ArenaChunkState.Empty {
+            give "empty";
+        }
+
+        ArenaChunkState.Partial {
+            give "partial";
+        }
+
+        ArenaChunkState.Full {
+            give "full";
+        }
+
+        ArenaChunkState.Released {
+            give "released";
+        }
+
+        ArenaChunkState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+proc arena_chunk_growth_name(
+    growth: ArenaChunkGrowth
+) -> string {
+    pick growth {
+        ArenaChunkGrowth.Fixed {
+            give "fixed";
+        }
+
+        ArenaChunkGrowth.Geometric {
+            give "geometric";
+        }
+
+        ArenaChunkGrowth.Exact {
+            give "exact";
+        }
+    }
+
+    give "geometric";
+}
+
+proc arena_chunk_fit_name(
+    fit: ArenaChunkFit
+) -> string {
+    pick fit {
+        ArenaChunkFit.FitsCurrent {
+            give "fits-current";
+        }
+
+        ArenaChunkFit.FitsExisting {
+            give "fits-existing";
+        }
+
+        ArenaChunkFit.NeedsNewBlock {
+            give "needs-new-block";
+        }
+
+        ArenaChunkFit.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+// -----------------------------------------------------------------------------
+// Chunk model
+// -----------------------------------------------------------------------------
+//
+// ArenaChunk
+//    |
+//    +-- block 0
+//    |     |
+//    |     +-- used
+//    |     +-- capacity
+//    |
+//    +-- block 1
+//    |
+//    +-- block 2  <-- current
+//    |
+//    +-- ...
+//
+// Allocation:
+//
+// request
+//    |
+//    v
+// current block fits?
+//    |
+//   yes -----------------> allocate
+//    |
+//    no
+//    |
+//    v
+// another block fits?
+//    |
+//   yes -----------------> select block -> allocate
+//    |
+//    no
+//    |
+//    v
+// create new block
+//    |
+//    v
+// allocate
+//
+// Chunk responsibilities:
+//
+//     block collection
+//     current block selection
+//     block growth
+//     aggregate capacity
+//     aggregate usage
+//     block search
+//     block creation
+//     reset/release
+//
+// A block manages offsets inside one allocation.
+//
+// A chunk manages multiple blocks.
+//
+// The arena layer manages the global allocator and user-facing lifecycle.

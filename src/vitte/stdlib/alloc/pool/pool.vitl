@@ -1,0 +1,1570 @@
+space vitte/stdlib/alloc/pool/pool
+
+export *
+
+use src/vitte/stdlib/alloc/pool/alloc as pool_alloc
+use src/vitte/stdlib/alloc/pool/block as pool_block
+use src/vitte/stdlib/alloc/pool/core as pool_core
+use src/vitte/stdlib/alloc/pool/error as pool_error
+use src/vitte/stdlib/alloc/pool/free as pool_free
+use src/vitte/stdlib/alloc/allocator as alloc_allocator
+use src/vitte/stdlib/core/option as core_option
+
+const POOL_DEFAULT_SLOTS: usize = 256;
+const POOL_DEFAULT_ALIGN: usize = 8;
+
+pick PoolState {
+    Empty,
+    Partial,
+    Full,
+    Released,
+    Invalid
+}
+
+form Pool {
+    block: pool_block.PoolBlock
+
+    free_list: pool_free.PoolFreeList
+    entries: [pool_free.PoolFreeEntry]
+
+    name: string
+
+    state: PoolState
+
+    generation: u64
+    revision: u64
+}
+
+form PoolHandle {
+    index: usize
+    generation: u64
+}
+
+form PoolProfile {
+    name: string
+
+    slot_size: usize
+    slot_align: usize
+    capacity: usize
+
+    allocated: usize
+    free: usize
+
+    utilization: f64
+    free_ratio: f64
+
+    state: PoolState
+
+    empty: bool
+    partial: bool
+    full: bool
+    released: bool
+    valid: bool
+
+    generation: u64
+    revision: u64
+}
+
+form PoolValidation {
+    valid: bool
+
+    block_valid: bool
+    free_list_valid: bool
+    accounting_valid: bool
+    state_valid: bool
+    generation_valid: bool
+}
+
+form PoolSnapshot {
+    allocated: usize
+    free: usize
+    capacity: usize
+
+    state: PoolState
+
+    generation: u64
+    revision: u64
+}
+
+form PoolDelta {
+    allocated: int
+    free: int
+
+    generation: int
+    revision: int
+
+    state_changed: bool
+    changed: bool
+}
+
+form PoolStatistics {
+    allocations: u64
+    allocation_failures: u64
+
+    releases: u64
+    release_failures: u64
+
+    resets: u64
+
+    scans: u64
+    scan_steps: u64
+
+    peak_allocated: usize
+}
+
+// -----------------------------------------------------------------------------
+// Construction
+// -----------------------------------------------------------------------------
+
+proc pool_new(
+    name: string,
+    slot_size: usize,
+    slot_align: usize,
+    slot_count: usize
+) -> Pool {
+    let layout =
+        pool_alloc.pool_allocation_layout(
+            slot_size,
+            slot_align,
+            slot_count
+        );
+
+    if not pool_alloc.pool_allocation_layout_valid(
+        layout
+    ) {
+        give compiler_pool_allocation_failure();
+    }
+
+    let capacity =
+        pool_alloc.pool_allocation_layout_capacity(
+            layout
+        );
+
+    let allocator =
+        alloc_allocator.allocator(
+            name,
+            alloc_allocator.GrowthPolicy.Exact
+        );
+
+    let backing_layout =
+        alloc_allocator.layout(
+            capacity,
+            slot_align
+        );
+
+    let allocation =
+        alloc_allocator.allocator_allocate(
+            ref mut allocator,
+            backing_layout
+        );
+
+    if is_none(allocation) {
+        give compiler_pool_allocation_failure();
+    }
+
+    let block =
+        pool_block.pool_block_new(
+            unwrap(allocation),
+            layout
+        );
+
+    let free_list =
+        pool_free.pool_free_list_default(
+            slot_count
+        );
+
+    let entries: [pool_free.PoolFreeEntry] = [];
+
+    let index: usize = 0;
+
+    while index < slot_count {
+        set entries =
+            entries + [
+                pool_free.pool_free_entry(
+                    index
+                )
+            ];
+
+        set index = index + 1;
+    }
+
+    give Pool {
+        block:
+            block,
+
+        free_list:
+            free_list,
+
+        entries:
+            entries,
+
+        name:
+            name,
+
+        state:
+            PoolState.Empty,
+
+        generation:
+            1,
+
+        revision:
+            1
+    };
+}
+
+proc pool_new_for<T>(
+    name: string,
+    slot_count: usize
+) -> Pool {
+    give pool_new(
+        name,
+        compiler_size_of<T>(),
+        compiler_align_of<T>(),
+        slot_count
+    );
+}
+
+proc pool_default_for<T>(
+    name: string
+) -> Pool {
+    give pool_new_for<T>(
+        name,
+        POOL_DEFAULT_SLOTS
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Accessors
+// -----------------------------------------------------------------------------
+
+proc pool_name(
+    value: Pool
+) -> string {
+    give value.name;
+}
+
+proc pool_slot_size(
+    value: Pool
+) -> usize {
+    give value.block.layout.slot_size;
+}
+
+proc pool_slot_align(
+    value: Pool
+) -> usize {
+    give value.block.layout.slot_align;
+}
+
+proc pool_capacity(
+    value: Pool
+) -> usize {
+    give value.block.layout.slot_count;
+}
+
+proc pool_allocated(
+    value: Pool
+) -> usize {
+    give value.block.allocated;
+}
+
+proc pool_free_count(
+    value: Pool
+) -> usize {
+    give value.block.free;
+}
+
+proc pool_generation(
+    value: Pool
+) -> u64 {
+    give value.generation;
+}
+
+proc pool_revision(
+    value: Pool
+) -> u64 {
+    give value.revision;
+}
+
+// -----------------------------------------------------------------------------
+// State
+// -----------------------------------------------------------------------------
+
+proc pool_state(
+    value: Pool
+) -> PoolState {
+    if value.state == PoolState.Released {
+        give PoolState.Released;
+    }
+
+    if not pool_block.pool_block_is_valid(
+        value.block
+    ) {
+        give PoolState.Invalid;
+    }
+
+    if not pool_free.pool_free_is_valid(
+        value.free_list
+    ) {
+        give PoolState.Invalid;
+    }
+
+    if pool_allocated(value) == 0 {
+        give PoolState.Empty;
+    }
+
+    if pool_free_count(value) == 0 {
+        give PoolState.Full;
+    }
+
+    give PoolState.Partial;
+}
+
+proc pool_is_empty(
+    value: Pool
+) -> bool {
+    give pool_state(value)
+        == PoolState.Empty;
+}
+
+proc pool_is_partial(
+    value: Pool
+) -> bool {
+    give pool_state(value)
+        == PoolState.Partial;
+}
+
+proc pool_is_full(
+    value: Pool
+) -> bool {
+    give pool_state(value)
+        == PoolState.Full;
+}
+
+proc pool_is_released(
+    value: Pool
+) -> bool {
+    give pool_state(value)
+        == PoolState.Released;
+}
+
+proc pool_is_valid(
+    value: Pool
+) -> bool {
+    give pool_state(value)
+        != PoolState.Invalid;
+}
+
+proc pool_can_allocate(
+    value: Pool
+) -> bool {
+    let state =
+        pool_state(
+            value
+        );
+
+    give state == PoolState.Empty
+        or state == PoolState.Partial;
+}
+
+proc pool_can_release(
+    value: Pool
+) -> bool {
+    let state =
+        pool_state(
+            value
+        );
+
+    give state == PoolState.Partial
+        or state == PoolState.Full;
+}
+
+// -----------------------------------------------------------------------------
+// Handle
+// -----------------------------------------------------------------------------
+
+proc pool_handle(
+    index: usize,
+    generation: u64
+) -> PoolHandle {
+    give PoolHandle {
+        index:
+            index,
+
+        generation:
+            generation
+    };
+}
+
+proc pool_handle_valid(
+    value: Pool,
+    handle: PoolHandle
+) -> bool {
+    if handle.index >= pool_capacity(value) {
+        give false;
+    }
+
+    let entry =
+        value.entries[handle.index];
+
+    give not entry.free
+        and entry.generation
+            == handle.generation;
+}
+
+proc pool_handle_index(
+    handle: PoolHandle
+) -> usize {
+    give handle.index;
+}
+
+// -----------------------------------------------------------------------------
+// Slot discovery
+// -----------------------------------------------------------------------------
+
+proc pool_find_free_slot(
+    value: Pool
+) -> Option<usize> {
+    give pool_free.pool_free_find(
+        value.free_list,
+        ref value.entries
+    );
+}
+
+proc pool_has_free_slot(
+    value: Pool
+) -> bool {
+    give is_some(
+        pool_find_free_slot(
+            value
+        )
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Allocation request
+// -----------------------------------------------------------------------------
+
+proc pool_allocate_request(
+    value: ref mut Pool,
+    request: pool_alloc.PoolAllocationRequest
+) -> pool_alloc.PoolAllocationResult {
+    if not pool_can_allocate(
+        *value
+    ) {
+        give pool_alloc.pool_allocation_result_failure(
+            request,
+            pool_alloc.PoolAllocationFailure.Exhausted
+        );
+    }
+
+    let index =
+        pool_free.pool_free_allocate(
+            ref mut value.free_list,
+            ref mut value.entries
+        );
+
+    if is_none(index) {
+        give pool_alloc.pool_allocation_result_failure(
+            request,
+            pool_alloc.PoolAllocationFailure.Exhausted
+        );
+    }
+
+    let slot_index =
+        unwrap(index);
+
+    let mut slot =
+        pool_alloc.pool_allocation_slot(
+            value.block.layout,
+            slot_index
+        );
+
+    set slot.allocated = false;
+
+    let result =
+        pool_block.pool_block_allocate_slot(
+            ref mut value.block,
+            ref mut slot,
+            request
+        );
+
+    if not result.success {
+        pool_free.pool_free_release(
+            ref mut value.free_list,
+            ref mut value.entries,
+            slot_index
+        );
+
+        give result;
+    }
+
+    set value.state =
+        if pool_free_count(*value) == 0 {
+            PoolState.Full
+        } else {
+            PoolState.Partial
+        };
+
+    set value.revision =
+        value.revision + 1;
+
+    give result;
+}
+
+// -----------------------------------------------------------------------------
+// Raw allocation
+// -----------------------------------------------------------------------------
+
+proc pool_alloc_bytes(
+    value: ref mut Pool,
+    size: usize,
+    align: usize
+) -> Option<alloc_allocator.Allocation> {
+    give pool_allocate_request(
+        value,
+        pool_alloc.pool_allocation_request_raw(
+            size,
+            align
+        )
+    ).allocation;
+}
+
+proc pool_alloc_zeroed_bytes(
+    value: ref mut Pool,
+    size: usize,
+    align: usize
+) -> Option<alloc_allocator.Allocation> {
+    give pool_allocate_request(
+        value,
+        pool_alloc.pool_allocation_request_zeroed(
+            size,
+            align
+        )
+    ).allocation;
+}
+
+// -----------------------------------------------------------------------------
+// Typed allocation
+// -----------------------------------------------------------------------------
+
+proc pool_alloc<T>(
+    value: ref mut Pool
+) -> Option<alloc_allocator.Allocation> {
+    give pool_allocate_request(
+        value,
+        pool_alloc.pool_allocation_request_value<T>()
+    ).allocation;
+}
+
+proc pool_emplace<T>(
+    value: ref mut Pool,
+    item: T
+) -> Option<ref mut T> {
+    let allocation =
+        pool_alloc<T>(
+            value
+        );
+
+    if is_none(allocation) {
+        give none<ref mut T>();
+    }
+
+    let target =
+        compiler_allocation_as_mut<T>(
+            unwrap(allocation)
+        );
+
+    set *target = item;
+
+    give some<ref mut T>(
+        target
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Allocation with handle
+// -----------------------------------------------------------------------------
+
+proc pool_alloc_handle<T>(
+    value: ref mut Pool
+) -> Option<PoolHandle> {
+    let request =
+        pool_alloc.pool_allocation_request_value<T>();
+
+    let result =
+        pool_allocate_request(
+            value,
+            request
+        );
+
+    if not result.success {
+        give none<PoolHandle>();
+    }
+
+    let entry =
+        value.entries[result.slot];
+
+    give some<PoolHandle>(
+        pool_handle(
+            result.slot,
+            entry.generation
+        )
+    );
+}
+
+proc pool_emplace_handle<T>(
+    value: ref mut Pool,
+    item: T
+) -> Option<PoolHandle> {
+    let request =
+        pool_alloc.pool_allocation_request_value<T>();
+
+    let result =
+        pool_allocate_request(
+            value,
+            request
+        );
+
+    if not result.success {
+        give none<PoolHandle>();
+    }
+
+    let allocation =
+        result.allocation;
+
+    if is_none(allocation) {
+        give none<PoolHandle>();
+    }
+
+    let target =
+        compiler_allocation_as_mut<T>(
+            unwrap(allocation)
+        );
+
+    set *target = item;
+
+    let entry =
+        value.entries[result.slot];
+
+    give some<PoolHandle>(
+        pool_handle(
+            result.slot,
+            entry.generation
+        )
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Get slot
+// -----------------------------------------------------------------------------
+
+proc pool_get<T>(
+    value: ref Pool,
+    handle: PoolHandle
+) -> Option<ref T> {
+    if not pool_handle_valid(
+        *value,
+        handle
+    ) {
+        give none<ref T>();
+    }
+
+    let ptr =
+        pool_block.pool_block_slot_ptr(
+            value.block,
+            handle.index
+        );
+
+    if is_none(ptr) {
+        give none<ref T>();
+    }
+
+    give some<ref T>(
+        compiler_raw_as_ref<T>(
+            unwrap(ptr)
+        )
+    );
+}
+
+proc pool_get_mut<T>(
+    value: ref mut Pool,
+    handle: PoolHandle
+) -> Option<ref mut T> {
+    if not pool_handle_valid(
+        *value,
+        handle
+    ) {
+        give none<ref mut T>();
+    }
+
+    let ptr =
+        pool_block.pool_block_slot_ptr(
+            value.block,
+            handle.index
+        );
+
+    if is_none(ptr) {
+        give none<ref mut T>();
+    }
+
+    give some<ref mut T>(
+        compiler_raw_as_mut<T>(
+            unwrap(ptr)
+        )
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Release
+// -----------------------------------------------------------------------------
+
+proc pool_release_handle(
+    value: ref mut Pool,
+    handle: PoolHandle
+) -> bool {
+    if not pool_handle_valid(
+        *value,
+        handle
+    ) {
+        give false;
+    }
+
+    let index =
+        handle.index;
+
+    if not pool_free.pool_free_release(
+        ref mut value.free_list,
+        ref mut value.entries,
+        index
+    ) {
+        give false;
+    }
+
+    if not pool_block.pool_block_record_release(
+        ref mut value.block
+    ) {
+        give false;
+    }
+
+    set value.state =
+        if pool_allocated(*value) == 0 {
+            PoolState.Empty
+        } else {
+            PoolState.Partial
+        };
+
+    set value.revision =
+        value.revision + 1;
+
+    give true;
+}
+
+proc pool_release_index(
+    value: ref mut Pool,
+    index: usize
+) -> bool {
+    if index >= pool_capacity(
+        *value
+    ) {
+        give false;
+    }
+
+    let entry =
+        value.entries[index];
+
+    if entry.free {
+        give false;
+    }
+
+    give pool_release_handle(
+        value,
+        pool_handle(
+            index,
+            entry.generation
+        )
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Drop value + release
+// -----------------------------------------------------------------------------
+
+proc pool_drop<T>(
+    value: ref mut Pool,
+    handle: PoolHandle
+) -> bool {
+    let target =
+        pool_get_mut<T>(
+            value,
+            handle
+        );
+
+    if is_none(target) {
+        give false;
+    }
+
+    compiler_drop_in_place<T>(
+        unwrap(target)
+    );
+
+    give pool_release_handle(
+        value,
+        handle
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Reset
+// -----------------------------------------------------------------------------
+
+proc pool_reset(
+    value: ref mut Pool
+) {
+    if pool_is_released(
+        *value
+    ) {
+        give;
+    }
+
+    pool_free.pool_free_reset(
+        ref mut value.free_list,
+        ref mut value.entries
+    );
+
+    pool_block.pool_block_reset(
+        ref mut value.block
+    );
+
+    set value.state =
+        PoolState.Empty;
+
+    set value.generation =
+        value.generation + 1;
+
+    set value.revision =
+        value.revision + 1;
+}
+
+// -----------------------------------------------------------------------------
+// Release pool
+// -----------------------------------------------------------------------------
+
+proc pool_release(
+    value: ref mut Pool
+) -> bool {
+    if pool_is_released(
+        *value
+    ) {
+        give false;
+    }
+
+    pool_free.pool_free_release_list(
+        ref mut value.free_list
+    );
+
+    pool_block.pool_block_release(
+        ref mut value.block
+    );
+
+    set value.state =
+        PoolState.Released;
+
+    set value.generation =
+        value.generation + 1;
+
+    set value.revision =
+        value.revision + 1;
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Utilization
+// -----------------------------------------------------------------------------
+
+proc pool_utilization(
+    value: Pool
+) -> f64 {
+    if pool_capacity(value) == 0 {
+        give 0.0;
+    }
+
+    give (
+        pool_allocated(value) as f64
+    ) / (
+        pool_capacity(value) as f64
+    );
+}
+
+proc pool_free_ratio(
+    value: Pool
+) -> f64 {
+    if pool_capacity(value) == 0 {
+        give 0.0;
+    }
+
+    give (
+        pool_free_count(value) as f64
+    ) / (
+        pool_capacity(value) as f64
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Profile
+// -----------------------------------------------------------------------------
+
+proc pool_profile(
+    value: Pool
+) -> PoolProfile {
+    let state =
+        pool_state(
+            value
+        );
+
+    give PoolProfile {
+        name:
+            value.name,
+
+        slot_size:
+            pool_slot_size(value),
+
+        slot_align:
+            pool_slot_align(value),
+
+        capacity:
+            pool_capacity(value),
+
+        allocated:
+            pool_allocated(value),
+
+        free:
+            pool_free_count(value),
+
+        utilization:
+            pool_utilization(value),
+
+        free_ratio:
+            pool_free_ratio(value),
+
+        state:
+            state,
+
+        empty:
+            state == PoolState.Empty,
+
+        partial:
+            state == PoolState.Partial,
+
+        full:
+            state == PoolState.Full,
+
+        released:
+            state == PoolState.Released,
+
+        valid:
+            state != PoolState.Invalid,
+
+        generation:
+            value.generation,
+
+        revision:
+            value.revision
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+proc pool_accounting_valid(
+    value: Pool
+) -> bool {
+    give pool_allocated(value)
+        + pool_free_count(value)
+        == pool_capacity(value)
+        and pool_free_count(value)
+            == value.free_list.free_count;
+}
+
+proc pool_state_valid(
+    value: Pool
+) -> bool {
+    let state =
+        pool_state(
+            value
+        );
+
+    pick state {
+        PoolState.Empty {
+            give pool_allocated(value) == 0
+                and pool_free_count(value)
+                    == pool_capacity(value);
+        }
+
+        PoolState.Partial {
+            give pool_allocated(value) > 0
+                and pool_free_count(value) > 0;
+        }
+
+        PoolState.Full {
+            give pool_allocated(value)
+                == pool_capacity(value)
+                and pool_free_count(value) == 0;
+        }
+
+        PoolState.Released {
+            give value.state
+                == PoolState.Released;
+        }
+
+        PoolState.Invalid {
+            give false;
+        }
+    }
+
+    give false;
+}
+
+proc pool_validate(
+    value: Pool
+) -> PoolValidation {
+    let block_valid =
+        if pool_is_released(value) {
+            true
+        } else {
+            pool_block.pool_block_is_valid(
+                value.block
+            )
+        };
+
+    let free_list_valid =
+        if pool_is_released(value) {
+            true
+        } else {
+            pool_free.pool_free_is_valid(
+                value.free_list
+            )
+        };
+
+    let accounting_valid =
+        if pool_is_released(value) {
+            true
+        } else {
+            pool_accounting_valid(
+                value
+            )
+        };
+
+    let state_valid =
+        pool_state_valid(
+            value
+        );
+
+    let generation_valid =
+        value.generation > 0
+        and value.revision > 0;
+
+    give PoolValidation {
+        valid:
+            block_valid
+            and free_list_valid
+            and accounting_valid
+            and state_valid
+            and generation_valid,
+
+        block_valid:
+            block_valid,
+
+        free_list_valid:
+            free_list_valid,
+
+        accounting_valid:
+            accounting_valid,
+
+        state_valid:
+            state_valid,
+
+        generation_valid:
+            generation_valid
+    };
+}
+
+proc pool_invariant_holds(
+    value: Pool
+) -> bool {
+    give pool_validate(
+        value
+    ).valid;
+}
+
+// -----------------------------------------------------------------------------
+// Snapshot
+// -----------------------------------------------------------------------------
+
+proc pool_snapshot(
+    value: Pool
+) -> PoolSnapshot {
+    give PoolSnapshot {
+        allocated:
+            pool_allocated(value),
+
+        free:
+            pool_free_count(value),
+
+        capacity:
+            pool_capacity(value),
+
+        state:
+            pool_state(value),
+
+        generation:
+            value.generation,
+
+        revision:
+            value.revision
+    };
+}
+
+proc pool_snapshot_equal(
+    left: PoolSnapshot,
+    right: PoolSnapshot
+) -> bool {
+    give left.allocated == right.allocated
+        and left.free == right.free
+        and left.capacity == right.capacity
+        and left.state == right.state
+        and left.generation == right.generation
+        and left.revision == right.revision;
+}
+
+proc pool_snapshot_changed(
+    left: PoolSnapshot,
+    right: PoolSnapshot
+) -> bool {
+    give not pool_snapshot_equal(
+        left,
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Delta
+// -----------------------------------------------------------------------------
+
+proc pool_usize_delta(
+    before: usize,
+    after: usize
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc pool_u64_delta(
+    before: u64,
+    after: u64
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc pool_delta(
+    before: PoolSnapshot,
+    after: PoolSnapshot
+) -> PoolDelta {
+    let allocated =
+        pool_usize_delta(
+            before.allocated,
+            after.allocated
+        );
+
+    let free =
+        pool_usize_delta(
+            before.free,
+            after.free
+        );
+
+    let generation =
+        pool_u64_delta(
+            before.generation,
+            after.generation
+        );
+
+    let revision =
+        pool_u64_delta(
+            before.revision,
+            after.revision
+        );
+
+    let state_changed =
+        before.state != after.state;
+
+    give PoolDelta {
+        allocated:
+            allocated,
+
+        free:
+            free,
+
+        generation:
+            generation,
+
+        revision:
+            revision,
+
+        state_changed:
+            state_changed,
+
+        changed:
+            allocated != 0
+            or free != 0
+            or generation != 0
+            or revision != 0
+            or state_changed
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Error helpers
+// -----------------------------------------------------------------------------
+
+proc pool_error_for(
+    value: Pool
+) -> pool_error.PoolError {
+    let validation =
+        pool_validate(
+            value
+        );
+
+    if validation.valid {
+        give pool_error.pool_error_none();
+    }
+
+    if not validation.block_valid {
+        give pool_error.pool_error_invalid_block(
+            value.block
+        );
+    }
+
+    if not validation.free_list_valid {
+        give pool_error.pool_error_simple(
+            pool_error.PoolErrorKind.InvalidState,
+            "pool free list is invalid"
+        );
+    }
+
+    if not validation.accounting_valid {
+        give pool_error.pool_error_invalid_state(
+            value.block
+        );
+    }
+
+    if not validation.state_valid {
+        give pool_error.pool_error_invalid_state(
+            value.block
+        );
+    }
+
+    give pool_error.pool_error_internal(
+        "unknown pool validation failure"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Core mapping
+// -----------------------------------------------------------------------------
+
+proc pool_core_state(
+    value: Pool
+) -> pool_core.PoolCoreState {
+    pick pool_state(value) {
+        PoolState.Empty {
+            give pool_core.PoolCoreState.Empty;
+        }
+
+        PoolState.Partial {
+            give pool_core.PoolCoreState.Partial;
+        }
+
+        PoolState.Full {
+            give pool_core.PoolCoreState.Full;
+        }
+
+        PoolState.Released {
+            give pool_core.PoolCoreState.Released;
+        }
+
+        PoolState.Invalid {
+            give pool_core.PoolCoreState.Invalid;
+        }
+    }
+
+    give pool_core.PoolCoreState.Invalid;
+}
+
+// -----------------------------------------------------------------------------
+// Revision
+// -----------------------------------------------------------------------------
+
+proc pool_touch(
+    value: ref mut Pool
+) {
+    set value.revision =
+        value.revision + 1;
+}
+
+proc pool_advance_generation(
+    value: ref mut Pool
+) -> u64 {
+    set value.generation =
+        value.generation + 1;
+
+    set value.revision =
+        value.revision + 1;
+
+    give value.generation;
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc pool_statistics_empty()
+    -> PoolStatistics
+{
+    give PoolStatistics {
+        allocations: 0,
+        allocation_failures: 0,
+
+        releases: 0,
+        release_failures: 0,
+
+        resets: 0,
+
+        scans: 0,
+        scan_steps: 0,
+
+        peak_allocated: 0
+    };
+}
+
+proc pool_statistics_record_allocation(
+    statistics: ref mut PoolStatistics,
+    value: Pool,
+    success: bool
+) {
+    if success {
+        set statistics.allocations =
+            statistics.allocations + 1;
+
+        if pool_allocated(value)
+            > statistics.peak_allocated
+        {
+            set statistics.peak_allocated =
+                pool_allocated(value);
+        }
+    } else {
+        set statistics.allocation_failures =
+            statistics.allocation_failures + 1;
+    }
+}
+
+proc pool_statistics_record_release(
+    statistics: ref mut PoolStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.releases =
+            statistics.releases + 1;
+    } else {
+        set statistics.release_failures =
+            statistics.release_failures + 1;
+    }
+}
+
+proc pool_statistics_record_scan(
+    statistics: ref mut PoolStatistics,
+    steps: usize
+) {
+    set statistics.scans =
+        statistics.scans + 1;
+
+    set statistics.scan_steps =
+        statistics.scan_steps + steps;
+}
+
+proc pool_statistics_average_scan(
+    statistics: PoolStatistics
+) -> f64 {
+    if statistics.scans == 0 {
+        give 0.0;
+    }
+
+    give (
+        statistics.scan_steps as f64
+    ) / (
+        statistics.scans as f64
+    );
+}
+
+proc pool_statistics_total(
+    statistics: PoolStatistics
+) -> u64 {
+    give statistics.allocations
+        + statistics.allocation_failures
+        + statistics.releases
+        + statistics.release_failures
+        + statistics.resets
+        + statistics.scans;
+}
+
+proc pool_statistics_reset(
+    statistics: ref mut PoolStatistics
+) {
+    set *statistics =
+        pool_statistics_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc pool_state_name(
+    state: PoolState
+) -> string {
+    pick state {
+        PoolState.Empty {
+            give "empty";
+        }
+
+        PoolState.Partial {
+            give "partial";
+        }
+
+        PoolState.Full {
+            give "full";
+        }
+
+        PoolState.Released {
+            give "released";
+        }
+
+        PoolState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+// -----------------------------------------------------------------------------
+// Pool model
+// -----------------------------------------------------------------------------
+//
+// Pool:
+//
+//     +------+------+------+------+------+
+//     |slot 0|slot 1|slot 2|slot 3| ...  |
+//     +------+------+------+------+------+
+//
+// Allocation:
+//
+//     free-list
+//         |
+//         v
+//     choose free slot
+//         |
+//         v
+//     mark entry allocated
+//         |
+//         v
+//     return slot address
+//
+// Handle:
+//
+//     PoolHandle {
+//         index
+//         generation
+//     }
+//
+// The generation protects against stale handles:
+//
+//     allocate slot 4
+//         generation = 1
+//
+//     release slot 4
+//         generation = 2
+//
+//     old handle:
+//         { index: 4, generation: 1 }
+//
+//     => invalid
+//
+// Reuse:
+//
+//     Free -> Allocated -> Free -> Allocated
+//
+// Pool accounting:
+//
+//     allocated + free = capacity
+//
+// States:
+//
+//     Empty
+//         allocated == 0
+//
+//     Partial
+//         allocated > 0
+//         free > 0
+//
+//     Full
+//         free == 0
+//
+//     Released
+//         allocator lifecycle ended
+//
+// Reset:
+//
+//     all slots become free
+//     pool generation++
+//     slot generations++
+//
+// Unlike Bump:
+//
+//     Pool supports individual release.
+//
+// Unlike a general heap:
+//
+//     all allocations have one fixed maximum slot size.
+//
+// Public API:
+//     pool.vitl
+//
+// Slot geometry:
+//     alloc.vitl
+//
+// Backing block:
+//     block.vitl
+//
+// Free-slot discovery:
+//     free.vitl
+//
+// Pure model:
+//     core.vitl
+//
+// Diagnostics:
+//     error.vitl

@@ -18,7 +18,7 @@ use vitte/compiler/middle/hir/hir.{ HirExpr, HirItem, HirItemKind, HirStmt, HirU
 use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
 use vitte/compiler/middle/lower/hir_to_mir.{ lower_hir_to_mir }
 use vitte/compiler/middle/lower/mir_to_ir.{ lower_mir_as_ir_module }
-use vitte/compiler/middle/mir/mir.{ MirUnit, mir_module_empty }
+use vitte/compiler/middle/mir/mir.{ MirFunction, MirUnit, mir_module_empty }
 use vitte/compiler/middle/mir/validate.{ mir_validation_reason, validate_mir }
 use vitte/compiler/backend/codegen.{ CodegenResult, run_codegen_llvm_with_profile, run_codegen_x86_64_with_profile }
 use vitte/compiler/backend/ir/ir.{ IrFunction, IrInstructionKind, IrModule, IrModuleKind, IrTarget, IrUnit, IrUnitState, function_name_by_id, ir_validation_reason, target_from_name, unit_add_module, unit_empty, unit_is_valid, unit_set_entry, unit_with_source_path, unit_with_state, verify_unit }
@@ -138,8 +138,8 @@ proc json_status(valid: bool) -> string {
 }
 
 proc json_source_object(path: string, source_bytes: u64, source_lines: u64) -> string {
-    let bytes_text: string = source_bytes as string;
-    let lines_text: string = source_lines as string;
+    let bytes_text: string = to_string(source_bytes);
+    let lines_text: string = to_string(source_lines);
     let out: string = "{\"path\":\"" + json_escape(path) + "\"";
     set out = out + ",\"bytes\":" + bytes_text;
     set out = out + ",\"lines\":" + lines_text;
@@ -147,14 +147,14 @@ proc json_source_object(path: string, source_bytes: u64, source_lines: u64) -> s
 }
 
 proc json_ast_summary(fe: FrontendOutput) -> string {
-    let token_count: string = fe.token_count as string;
-    let toplevel_count: string = fe.toplevel_count as string;
-    let stmt_count: string = fe.stmt_count as string;
-    let expr_count: string = fe.expr_count as string;
-    let type_count: string = fe.type_count as string;
-    let pattern_count: string = fe.pattern_count as string;
-    let diagnostics_total: string = fe.diagnostics_total as string;
-    let diagnostics_capped: string = fe.diagnostics_capped as string;
+    let token_count: string = to_string(fe.token_count);
+    let toplevel_count: string = to_string(fe.toplevel_count);
+    let stmt_count: string = to_string(fe.stmt_count);
+    let expr_count: string = to_string(fe.expr_count);
+    let type_count: string = to_string(fe.type_count);
+    let pattern_count: string = to_string(fe.pattern_count);
+    let diagnostics_total: string = to_string(fe.diagnostics_total);
+    let diagnostics_capped: string = to_string(fe.diagnostics_capped);
     let out: string = "{\"token_count\":" + token_count;
     set out = out + ",\"toplevel_count\":" + toplevel_count;
     set out = out + ",\"stmt_count\":" + stmt_count;
@@ -176,12 +176,12 @@ proc first_hir_item_name(hir0: HirUnit) -> string {
 }
 
 proc json_hir_summary(hir0: HirUnit) -> string {
-    let node_count: string = hir0.node_count as string;
-    let item_count: string = hir0.item_count as string;
-    let stmt_count: string = hir0.stmt_count as string;
-    let expr_count: string = hir0.expr_count as string;
-    let symbol_count: string = hir0.symbol_count as string;
-    let scope_count: string = hir0.scope_count as string;
+    let node_count: string = to_string(hir0.node_count);
+    let item_count: string = to_string(hir0.item_count);
+    let stmt_count: string = to_string(hir0.stmt_count);
+    let expr_count: string = to_string(hir0.expr_count);
+    let symbol_count: string = to_string(hir0.symbol_count);
+    let scope_count: string = to_string(hir0.scope_count);
     let out: string = "{\"node_count\":" + node_count;
     set out = out + ",\"item_count\":" + item_count;
     set out = out + ",\"stmt_count\":" + stmt_count;
@@ -192,6 +192,10 @@ proc json_hir_summary(hir0: HirUnit) -> string {
 }
 
 proc first_mir_function_name(mir0: MirUnit) -> string {
+    if len(mir0.module.functions) > 0 {
+        let function0: MirFunction = mir0.module.functions[0];
+        give function0.name;
+    }
     give "";
 }
 
@@ -217,9 +221,9 @@ proc first_mir_temporary_count(mir0: MirUnit) -> u64 {
 }
 
 proc json_mir_summary(mir0: MirUnit) -> string {
-    let function_count: string = mir0.function_count as string;
-    let block_count: string = mir0.block_count as string;
-    let instruction_count: string = mir0.instruction_count as string;
+    let function_count: string = to_string(mir0.function_count);
+    let block_count: string = to_string(mir0.block_count);
+    let instruction_count: string = to_string(mir0.instruction_count);
     let out: string = "{\"function_count\":" + function_count;
     set out = out + ",\"block_count\":" + block_count;
     set out = out + ",\"instruction_count\":" + instruction_count;
@@ -2000,17 +2004,17 @@ proc dump_ast_json(source_path: string, source_text: string) -> string {
     let artifacts: DriverAnalysisArtifacts = analyze_source(source_path, source_text);
     let fe: FrontendOutput = artifacts.frontend;
     let valid_text: string = if fe.valid { "true" } else { "false" };
-    let token_count: string = fe.token_count as string;
-    let toplevel_count: string = fe.toplevel_count as string;
-    let stmt_count: string = fe.stmt_count as string;
-    let expr_count: string = fe.expr_count as string;
-    let type_count: string = fe.type_count as string;
-    let pattern_count: string = fe.pattern_count as string;
+    let token_count: string = to_string(fe.token_count);
+    let toplevel_count: string = to_string(fe.toplevel_count);
+    let stmt_count: string = to_string(fe.stmt_count);
+    let expr_count: string = to_string(fe.expr_count);
+    let type_count: string = to_string(fe.type_count);
+    let pattern_count: string = to_string(fe.pattern_count);
     let status_text: string = json_status(fe.valid);
     let source_json: string = json_source_object(fe.source_path, fe.statistics.source_bytes, fe.statistics.source_lines);
     let summary_json: string = json_ast_summary(fe);
-    let diagnostics_total: string = fe.diagnostics_total as string;
-    let diagnostics_capped: string = fe.diagnostics_capped as string;
+    let diagnostics_total: string = to_string(fe.diagnostics_total);
+    let diagnostics_capped: string = to_string(fe.diagnostics_capped);
     let ast_json: string = "{\"kind\":\"native-structural\"";
     set ast_json = ast_json + ",\"grammar_version\":\"" + json_escape(fe.grammar_version) + "\"";
     set ast_json = ast_json + ",\"diagnostics_total\":" + diagnostics_total;
@@ -2042,16 +2046,16 @@ proc dump_hir_json(source_path: string, source_text: string) -> string {
     let fe: FrontendOutput = artifacts.frontend;
     let hir0: HirUnit = artifacts.typed_hir;
     let valid_text: string = if hir0.valid { "true" } else { "false" };
-    let node_count: string = hir0.node_count as string;
-    let item_count: string = hir0.item_count as string;
-    let stmt_count: string = hir0.stmt_count as string;
-    let expr_count: string = hir0.expr_count as string;
-    let symbol_count: string = hir0.symbol_count as string;
-    let scope_count: string = hir0.scope_count as string;
+    let node_count: string = to_string(hir0.node_count);
+    let item_count: string = to_string(hir0.item_count);
+    let stmt_count: string = to_string(hir0.stmt_count);
+    let expr_count: string = to_string(hir0.expr_count);
+    let symbol_count: string = to_string(hir0.symbol_count);
+    let scope_count: string = to_string(hir0.scope_count);
     let status_text: string = json_status(hir0.valid);
     let source_json: string = json_source_object(hir0.source_path, fe.statistics.source_bytes, fe.statistics.source_lines);
     let summary_json: string = json_hir_summary(hir0);
-    let dependency_count: string = hir0.module.dependency_count as string;
+    let dependency_count: string = to_string(hir0.module.dependency_count);
     let hir_json: string = "{\"kind\":\"native-typed\"";
     set hir_json = hir_json + ",\"module_name\":\"" + json_escape(hir0.module.name) + "\"";
     set hir_json = hir_json + ",\"dependency_count\":" + dependency_count;
@@ -2082,16 +2086,16 @@ proc dump_mir_json(source_path: string, source_text: string) -> string {
     let fe: FrontendOutput = artifacts.frontend;
     let mir0: MirUnit = artifacts.mir;
     let valid_text: string = if mir0.valid { "true" } else { "false" };
-    let function_count: string = mir0.function_count as string;
-    let block_count: string = mir0.block_count as string;
-    let instruction_count: string = mir0.instruction_count as string;
+    let function_count: string = to_string(mir0.function_count);
+    let block_count: string = to_string(mir0.block_count);
+    let instruction_count: string = to_string(mir0.instruction_count);
     let lowered_text: string = if mir0.lowered { "true" } else { "false" };
     let status_text: string = json_status(mir0.valid);
     let source_json: string = json_source_object(mir0.source_path, fe.statistics.source_bytes, fe.statistics.source_lines);
     let summary_json: string = json_mir_summary(mir0);
-    let entry_block: string = first_mir_entry_block(mir0) as string;
-    let local_count: string = first_mir_local_count(mir0) as string;
-    let temporary_count: string = first_mir_temporary_count(mir0) as string;
+    let entry_block: string = to_string(first_mir_entry_block(mir0));
+    let local_count: string = to_string(first_mir_local_count(mir0));
+    let temporary_count: string = to_string(first_mir_temporary_count(mir0));
     let validation_reason: string = mir_validation_reason(mir0);
     let mir_json: string = "{\"kind\":\"native-lowered\"";
     set mir_json = mir_json + ",\"module_name\":\"" + json_escape(mir0.module.name) + "\"";
@@ -2482,8 +2486,8 @@ proc dump_diagnostics_json(source_path: string, source_text: string) -> string {
     };
     let text_output0: string = render_report(primary_report0, text_config0);
     let artifacts_valid: string = if artifacts.valid { "true" } else { "false" };
-    let frontend_diagnostic_count: string = len(fe.diagnostics) as string;
-    let analysis_diagnostic_count: string = len(analysis.diagnostics) as string;
+    let frontend_diagnostic_count: string = to_string(len(fe.diagnostics));
+    let analysis_diagnostic_count: string = to_string(len(analysis.diagnostics));
     let sema_ok: string = if analysis.sema_ok { "true" } else { "false" };
     let typeck_ok: string = if analysis.typeck_ok { "true" } else { "false" };
     let borrowck_ok: string = if analysis.borrowck_ok { "true" } else { "false" };

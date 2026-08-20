@@ -1,0 +1,863 @@
+use src/vitte/stdlib/alloc/arc
+use src/vitte/stdlib/alloc/arc/raw
+
+form Point {
+    x: int
+    y: int
+}
+
+proc test_into_raw() -> bool {
+    let value = arc_new(42);
+    let raw = arc_into_raw(value);
+
+    give arc_raw_is_valid(raw);
+}
+
+proc test_into_raw_not_null() -> bool {
+    let value = arc_new(42);
+    let raw = arc_into_raw(value);
+
+    give not arc_raw_is_null(raw);
+}
+
+proc test_into_raw_owned() -> bool {
+    let value = arc_new(42);
+    let raw = arc_into_raw(value);
+
+    give arc_raw_is_owned(raw);
+}
+
+proc test_as_raw_borrowed() -> bool {
+    let value = arc_new(42);
+    let raw = arc_as_raw(ref value);
+
+    give arc_raw_is_valid(raw)
+        and arc_raw_is_borrowed(raw);
+}
+
+proc test_as_raw_keeps_arc_alive() -> bool {
+    let value = arc_new(42);
+    let raw = arc_as_raw(ref value);
+
+    give arc_raw_is_valid(raw)
+        and *arc_get(ref value) == 42;
+}
+
+proc test_from_raw() -> bool {
+    let value = arc_new(42);
+    let raw = arc_into_raw(value);
+
+    let result = arc_from_raw(raw);
+
+    pick result {
+        Some(restored) {
+            give *arc_get(ref restored) == 42;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_from_raw_string() -> bool {
+    let value = arc_new("Vitte");
+    let raw = arc_into_raw(value);
+
+    let result = arc_from_raw(raw);
+
+    pick result {
+        Some(restored) {
+            give *arc_get(ref restored) == "Vitte";
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_from_raw_form() -> bool {
+    let value = arc_new(
+        Point {
+            x: 10
+            y: 20
+        }
+    );
+
+    let raw = arc_into_raw(value);
+
+    let result = arc_from_raw(raw);
+
+    pick result {
+        Some(restored) {
+            let point = arc_get(ref restored);
+
+            give point.x == 10
+                and point.y == 20;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_raw_reconstruct() -> bool {
+    let value = arc_new(42);
+    let mut raw = arc_into_raw(value);
+
+    let result =
+        arc_raw_reconstruct(
+            ref mut raw
+        );
+
+    pick result {
+        Some(restored) {
+            give *arc_get(ref restored) == 42
+                and arc_raw_is_consumed(raw);
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_raw_reconstruct_once() -> bool {
+    let value = arc_new(42);
+    let mut raw = arc_into_raw(value);
+
+    let first =
+        arc_raw_reconstruct(
+            ref mut raw
+        );
+
+    let second =
+        arc_raw_reconstruct(
+            ref mut raw
+        );
+
+    pick first {
+        Some(restored) {
+            pick second {
+                Some(_) {
+                    give false;
+                }
+
+                None {
+                    give *arc_get(ref restored) == 42;
+                }
+            }
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_consumed_cannot_reconstruct() -> bool {
+    let value = arc_new(42);
+    let mut raw = arc_into_raw(value);
+
+    let first =
+        arc_raw_reconstruct(
+            ref mut raw
+        );
+
+    give arc_raw_is_consumed(raw)
+        and not arc_raw_can_reconstruct(raw);
+}
+
+proc test_as_raw_cannot_reconstruct_ownership() -> bool {
+    let value = arc_new(42);
+    let raw = arc_as_raw(ref value);
+
+    give not arc_raw_can_reconstruct(raw);
+}
+
+proc test_raw_read() -> bool {
+    let value = arc_new(42);
+    let raw = arc_as_raw(ref value);
+
+    let result = arc_raw_as_ref(raw);
+
+    pick result {
+        Some(inner) {
+            give *inner == 42;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_raw_read_string() -> bool {
+    let value = arc_new("hello");
+    let raw = arc_as_raw(ref value);
+
+    let result = arc_raw_as_ref(raw);
+
+    pick result {
+        Some(inner) {
+            give *inner == "hello";
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_raw_read_form() -> bool {
+    let value = arc_new(
+        Point {
+            x: 4
+            y: 8
+        }
+    );
+
+    let raw = arc_as_raw(ref value);
+    let result = arc_raw_as_ref(raw);
+
+    pick result {
+        Some(point) {
+            give point.x == 4
+                and point.y == 8;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_raw_ptr_identity_clone() -> bool {
+    let first = arc_new(42);
+    let second = arc_clone(first);
+
+    let left = arc_as_raw(ref first);
+    let right = arc_as_raw(ref second);
+
+    give arc_raw_ptr_eq(
+        left,
+        right
+    );
+}
+
+proc test_raw_ptr_identity_separate() -> bool {
+    let first = arc_new(42);
+    let second = arc_new(42);
+
+    let left = arc_as_raw(ref first);
+    let right = arc_as_raw(ref second);
+
+    give arc_raw_ptr_ne(
+        left,
+        right
+    );
+}
+
+proc test_raw_same_allocation_clone() -> bool {
+    let first = arc_new(42);
+    let second = arc_clone(first);
+
+    let left = arc_as_raw(ref first);
+    let right = arc_as_raw(ref second);
+
+    give arc_raw_same_allocation(
+        left,
+        right
+    );
+}
+
+proc test_raw_strong_count() -> bool {
+    let first = arc_new(42);
+    let second = arc_clone(first);
+
+    let raw = arc_as_raw(ref first);
+
+    give arc_raw_strong_count(raw) == 2;
+}
+
+proc test_raw_weak_count_zero() -> bool {
+    let value = arc_new(42);
+    let raw = arc_as_raw(ref value);
+
+    give arc_raw_weak_count(raw) == 0;
+}
+
+proc test_raw_weak_count_after_downgrade() -> bool {
+    let value = arc_new(42);
+    let weak = arc_downgrade(value);
+
+    let raw = arc_as_raw(ref value);
+
+    give arc_raw_weak_count(raw) == 1;
+}
+
+proc test_raw_profile() -> bool {
+    let value = arc_new(42);
+    let raw = arc_as_raw(ref value);
+    let profile = arc_raw_profile(raw);
+
+    give profile.valid
+        and not profile.null
+        and not profile.consumed
+        and not profile.released
+        and profile.strong == 1;
+}
+
+proc test_raw_profile_shared() -> bool {
+    let first = arc_new(42);
+    let second = arc_clone(first);
+
+    let raw = arc_as_raw(ref first);
+    let profile = arc_raw_profile(raw);
+
+    give profile.valid
+        and profile.strong == 2;
+}
+
+proc test_raw_profile_observed() -> bool {
+    let value = arc_new(42);
+    let weak = arc_downgrade(value);
+
+    let raw = arc_as_raw(ref value);
+    let profile = arc_raw_profile(raw);
+
+    give profile.strong == 1
+        and profile.weak == 1;
+}
+
+proc test_raw_validation() -> bool {
+    let value = arc_new(42);
+    let raw = arc_as_raw(ref value);
+
+    let validation =
+        arc_raw_validate(raw);
+
+    give validation.valid
+        and validation.pointer_valid
+        and validation.state_valid
+        and validation.ownership_valid
+        and validation.counts_valid;
+}
+
+proc test_raw_invariant() -> bool {
+    let value = arc_new(42);
+    let raw = arc_as_raw(ref value);
+
+    give arc_raw_invariant_holds(raw);
+}
+
+proc test_clone_into_raw() -> bool {
+    let value = arc_new(42);
+
+    let raw =
+        arc_clone_into_raw(value);
+
+    give arc_raw_is_valid(raw)
+        and arc_raw_strong_count(raw) == 2;
+}
+
+proc test_clone_into_raw_reconstruct() -> bool {
+    let value = arc_new(42);
+
+    let mut raw =
+        arc_clone_into_raw(value);
+
+    let restored =
+        arc_raw_reconstruct(
+            ref mut raw
+        );
+
+    pick restored {
+        Some(result) {
+            give *arc_get(ref result) == 42
+                and arc_strong_count(result) == 2;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_raw_generation() -> bool {
+    let value = arc_new(42);
+    let raw = arc_into_raw(value);
+
+    give arc_raw_generation(raw) >= 1;
+}
+
+proc test_raw_revision() -> bool {
+    let value = arc_new(42);
+    let raw = arc_into_raw(value);
+
+    give arc_raw_revision(raw) >= 1;
+}
+
+proc test_raw_touch() -> bool {
+    let value = arc_new(42);
+    let mut raw = arc_into_raw(value);
+
+    let before =
+        arc_raw_revision(raw);
+
+    arc_raw_touch(
+        ref mut raw
+    );
+
+    give arc_raw_revision(raw) > before;
+}
+
+proc test_raw_advance_generation() -> bool {
+    let value = arc_new(42);
+    let mut raw = arc_into_raw(value);
+
+    let before =
+        arc_raw_generation(raw);
+
+    let after =
+        arc_raw_advance_generation(
+            ref mut raw
+        );
+
+    give after > before
+        and arc_raw_generation(raw) == after;
+}
+
+proc test_raw_release() -> bool {
+    let value = arc_new(42);
+    let mut raw = arc_into_raw(value);
+
+    let released =
+        arc_raw_release(
+            ref mut raw
+        );
+
+    give released
+        and arc_raw_is_released(raw);
+}
+
+proc test_raw_release_borrowed_fails() -> bool {
+    let value = arc_new(42);
+    let mut raw = arc_as_raw(ref value);
+
+    let released =
+        arc_raw_release(
+            ref mut raw
+        );
+
+    give not released
+        and *arc_get(ref value) == 42;
+}
+
+proc test_raw_release_once() -> bool {
+    let value = arc_new(42);
+    let mut raw = arc_into_raw(value);
+
+    let first =
+        arc_raw_release(
+            ref mut raw
+        );
+
+    let second =
+        arc_raw_release(
+            ref mut raw
+        );
+
+    give first
+        and not second;
+}
+
+proc test_weak_into_raw() -> bool {
+    let value = arc_new(42);
+    let weak = arc_downgrade(value);
+
+    let raw =
+        arc_weak_into_raw(weak);
+
+    give arc_weak_raw_is_valid(raw);
+}
+
+proc test_weak_as_raw() -> bool {
+    let value = arc_new(42);
+    let weak = arc_downgrade(value);
+
+    let raw =
+        arc_weak_as_raw(ref weak);
+
+    give arc_weak_raw_is_valid(raw);
+}
+
+proc test_weak_from_raw() -> bool {
+    let value = arc_new(42);
+    let weak = arc_downgrade(value);
+    let raw = arc_weak_into_raw(weak);
+
+    let result =
+        arc_weak_from_raw(raw);
+
+    pick result {
+        Some(restored) {
+            give arc_weak_can_upgrade(restored);
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_weak_raw_reconstruct() -> bool {
+    let value = arc_new(42);
+    let weak = arc_downgrade(value);
+
+    let mut raw =
+        arc_weak_into_raw(weak);
+
+    let result =
+        arc_weak_raw_reconstruct(
+            ref mut raw
+        );
+
+    pick result {
+        Some(restored) {
+            give arc_weak_can_upgrade(restored)
+                and arc_weak_raw_is_consumed(raw);
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_weak_raw_reconstruct_once() -> bool {
+    let value = arc_new(42);
+    let weak = arc_downgrade(value);
+
+    let mut raw =
+        arc_weak_into_raw(weak);
+
+    let first =
+        arc_weak_raw_reconstruct(
+            ref mut raw
+        );
+
+    let second =
+        arc_weak_raw_reconstruct(
+            ref mut raw
+        );
+
+    pick first {
+        Some(restored) {
+            pick second {
+                Some(_) {
+                    give false;
+                }
+
+                None {
+                    give arc_weak_can_upgrade(restored);
+                }
+            }
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_weak_raw_upgrade_after_restore() -> bool {
+    let value = arc_new(42);
+    let weak = arc_downgrade(value);
+
+    let mut raw =
+        arc_weak_into_raw(weak);
+
+    let restored =
+        arc_weak_raw_reconstruct(
+            ref mut raw
+        );
+
+    pick restored {
+        Some(observer) {
+            let upgraded =
+                arc_weak_upgrade(observer);
+
+            pick upgraded {
+                Some(shared) {
+                    give *arc_get(ref shared) == 42;
+                }
+
+                None {
+                    give false;
+                }
+            }
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_weak_raw_release() -> bool {
+    let value = arc_new(42);
+    let weak = arc_downgrade(value);
+
+    let mut raw =
+        arc_weak_into_raw(weak);
+
+    give arc_weak_raw_release(
+        ref mut raw
+    );
+}
+
+proc test_weak_raw_release_borrowed_fails() -> bool {
+    let value = arc_new(42);
+    let weak = arc_downgrade(value);
+
+    let mut raw =
+        arc_weak_as_raw(ref weak);
+
+    give not arc_weak_raw_release(
+        ref mut raw
+    );
+}
+
+proc test_raw_arc_clone_identity() -> bool {
+    let first = arc_new(42);
+    let second = arc_clone(first);
+
+    let first_raw =
+        arc_as_raw(ref first);
+
+    let second_raw =
+        arc_as_raw(ref second);
+
+    give arc_raw_ptr_eq(
+        first_raw,
+        second_raw
+    )
+    and arc_ptr_eq(
+        first,
+        second
+    );
+}
+
+proc test_raw_after_make_mut_detaches() -> bool {
+    let mut first = arc_new(10);
+    let second = arc_clone(first);
+
+    let before_first =
+        arc_as_raw(ref first);
+
+    let before_second =
+        arc_as_raw(ref second);
+
+    let inner =
+        arc_make_mut(
+            ref mut first
+        );
+
+    set *inner = 20;
+
+    let after_first =
+        arc_as_raw(ref first);
+
+    let after_second =
+        arc_as_raw(ref second);
+
+    give arc_raw_ptr_eq(
+        before_first,
+        before_second
+    )
+    and not arc_raw_ptr_eq(
+        after_first,
+        after_second
+    )
+    and *arc_get(ref first) == 20
+    and *arc_get(ref second) == 10;
+}
+
+proc test_raw_separate_forms() -> bool {
+    let first = arc_new(
+        Point {
+            x: 1
+            y: 2
+        }
+    );
+
+    let second = arc_new(
+        Point {
+            x: 1
+            y: 2
+        }
+    );
+
+    let first_raw =
+        arc_as_raw(ref first);
+
+    let second_raw =
+        arc_as_raw(ref second);
+
+    give arc_raw_ptr_ne(
+        first_raw,
+        second_raw
+    );
+}
+
+proc test_raw_error_valid() -> bool {
+    let value = arc_new(42);
+    let raw = arc_as_raw(ref value);
+
+    let error =
+        arc_raw_error(raw);
+
+    give arc_error_is_none(error);
+}
+
+proc test_raw_profile_after_touch() -> bool {
+    let value = arc_new(42);
+    let mut raw = arc_into_raw(value);
+
+    let before =
+        arc_raw_profile(raw);
+
+    arc_raw_touch(
+        ref mut raw
+    );
+
+    let after =
+        arc_raw_profile(raw);
+
+    give after.revision > before.revision
+        and after.generation == before.generation;
+}
+
+proc test_raw_profile_after_generation() -> bool {
+    let value = arc_new(42);
+    let mut raw = arc_into_raw(value);
+
+    let before =
+        arc_raw_profile(raw);
+
+    arc_raw_advance_generation(
+        ref mut raw
+    );
+
+    let after =
+        arc_raw_profile(raw);
+
+    give after.generation > before.generation
+        and after.revision > before.revision;
+}
+
+proc test_raw_reconstruct_preserves_value() -> bool {
+    let value = arc_new(
+        Point {
+            x: 100
+            y: 200
+        }
+    );
+
+    let mut raw =
+        arc_into_raw(value);
+
+    let result =
+        arc_raw_reconstruct(
+            ref mut raw
+        );
+
+    pick result {
+        Some(restored) {
+            give arc_get(ref restored).x == 100
+                and arc_get(ref restored).y == 200;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc run_raw_tests() -> bool {
+    give test_into_raw()
+        and test_into_raw_not_null()
+        and test_into_raw_owned()
+
+        and test_as_raw_borrowed()
+        and test_as_raw_keeps_arc_alive()
+
+        and test_from_raw()
+        and test_from_raw_string()
+        and test_from_raw_form()
+
+        and test_raw_reconstruct()
+        and test_raw_reconstruct_once()
+        and test_consumed_cannot_reconstruct()
+        and test_as_raw_cannot_reconstruct_ownership()
+
+        and test_raw_read()
+        and test_raw_read_string()
+        and test_raw_read_form()
+
+        and test_raw_ptr_identity_clone()
+        and test_raw_ptr_identity_separate()
+        and test_raw_same_allocation_clone()
+
+        and test_raw_strong_count()
+        and test_raw_weak_count_zero()
+        and test_raw_weak_count_after_downgrade()
+
+        and test_raw_profile()
+        and test_raw_profile_shared()
+        and test_raw_profile_observed()
+
+        and test_raw_validation()
+        and test_raw_invariant()
+
+        and test_clone_into_raw()
+        and test_clone_into_raw_reconstruct()
+
+        and test_raw_generation()
+        and test_raw_revision()
+        and test_raw_touch()
+        and test_raw_advance_generation()
+
+        and test_raw_release()
+        and test_raw_release_borrowed_fails()
+        and test_raw_release_once()
+
+        and test_weak_into_raw()
+        and test_weak_as_raw()
+        and test_weak_from_raw()
+        and test_weak_raw_reconstruct()
+        and test_weak_raw_reconstruct_once()
+        and test_weak_raw_upgrade_after_restore()
+        and test_weak_raw_release()
+        and test_weak_raw_release_borrowed_fails()
+
+        and test_raw_arc_clone_identity()
+        and test_raw_after_make_mut_detaches()
+        and test_raw_separate_forms()
+
+        and test_raw_error_valid()
+        and test_raw_profile_after_touch()
+        and test_raw_profile_after_generation()
+        and test_raw_reconstruct_preserves_value();
+}
+
+proc main() -> int {
+    if run_raw_tests() {
+        give 0;
+    }
+
+    give 1;
+}

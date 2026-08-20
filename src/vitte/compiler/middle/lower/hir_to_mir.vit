@@ -226,7 +226,54 @@ proc mir_params_from_item(item: HirItem) -> [MirFunctionParam] {
   give out;
 }
 
-proc mir_operand_from_expr(expr: HirExpr) -> MirOperand {
+proc hir_const_literal_text(items: [HirItem], name: string) -> string {
+  let i: u64 = 0;
+  while i < len(items) {
+    if items[i].kind == HirItemKind.Const
+      and items[i].name == name
+      and items[i].expr.valid
+      and items[i].expr.constant
+      and items[i].expr.text != ""
+      and (items[i].expr.kind == HirExprKind.Int
+        or items[i].expr.kind == HirExprKind.Float
+        or items[i].expr.kind == HirExprKind.Bool
+        or items[i].expr.kind == HirExprKind.String
+        or items[i].expr.kind == HirExprKind.Char) {
+      give items[i].expr.text;
+    }
+    set i = i + 1;
+  }
+  give "";
+}
+
+proc hir_const_literal_type(items: [HirItem], name: string, fallback: string) -> string {
+  let i: u64 = 0;
+  while i < len(items) {
+    if items[i].kind == HirItemKind.Const and items[i].name == name {
+      if items[i].annotation_text != "" {
+        give items[i].annotation_text;
+      }
+      if items[i].expr.inferred_type != "" and items[i].expr.inferred_type != "unknown" {
+        give items[i].expr.inferred_type;
+      }
+      give fallback;
+    }
+    set i = i + 1;
+  }
+  give fallback;
+}
+
+proc hir_expr_const_lookup_name(expr: HirExpr) -> string {
+  if expr.text != "" {
+    give expr.text;
+  }
+  if expr.name != "" {
+    give expr.name;
+  }
+  give expr.binding;
+}
+
+proc mir_operand_from_expr_with_items(expr: HirExpr, items: [HirItem]) -> MirOperand {
   let place: MirPlace = mir_place_empty();
   let constant: bool = expr.kind == HirExprKind.Int
     or expr.kind == HirExprKind.Float
@@ -234,6 +281,20 @@ proc mir_operand_from_expr(expr: HirExpr) -> MirOperand {
     or expr.kind == HirExprKind.String
     or expr.kind == HirExprKind.Char;
   let text: string = expr.text;
+  let const_name: string = hir_expr_const_lookup_name(expr);
+  if const_name != "" {
+    let resolved_const: string = hir_const_literal_text(items, const_name);
+    if resolved_const != "" {
+      give MirOperand {
+        text: resolved_const,
+        place: mir_place_empty(),
+        ty: hir_const_literal_type(items, const_name, expr.inferred_type),
+        constant: true,
+        move: false,
+        valid: expr.valid
+      };
+    }
+  }
   if expr.kind == HirExprKind.Call {
     set text = mir_temporary_name(expr);
     set place = mir_place_from_name(text);
@@ -248,6 +309,10 @@ proc mir_operand_from_expr(expr: HirExpr) -> MirOperand {
     move: false,
     valid: expr.valid
   };
+}
+
+proc mir_operand_from_expr(expr: HirExpr) -> MirOperand {
+  give mir_operand_from_expr_with_items(expr, []);
 }
 
 proc member_name(expr: HirExpr) -> string {
@@ -319,29 +384,29 @@ proc find_impl_method_symbol(items: [HirItem], owner_type: string, member: strin
   give "";
 }
 
-proc mir_call_operands(expr: HirExpr) -> [MirOperand] {
+proc mir_call_operands(expr: HirExpr, items: [HirItem]) -> [MirOperand] {
   let out: [MirOperand] = [];
   if is_variant_constructor_call(expr) {
     let i: u64 = 1;
     while i < len(expr.children) {
-      set out = out + [mir_operand_from_expr(expr.children[i])];
+      set out = out + [mir_operand_from_expr_with_items(expr.children[i], items)];
       set i = i + 1;
     }
     give out;
   }
   if is_method_dispatch_call(expr) {
     let callee: HirExpr = expr.children[0];
-    set out = out + [mir_operand_from_expr(callee.children[0])];
+    set out = out + [mir_operand_from_expr_with_items(callee.children[0], items)];
     let i: u64 = 1;
     while i < len(expr.children) {
-      set out = out + [mir_operand_from_expr(expr.children[i])];
+      set out = out + [mir_operand_from_expr_with_items(expr.children[i], items)];
       set i = i + 1;
     }
     give out;
   }
   let i: u64 = 0;
   while i < len(expr.children) {
-    set out = out + [mir_operand_from_expr(expr.children[i])];
+    set out = out + [mir_operand_from_expr_with_items(expr.children[i], items)];
     set i = i + 1;
   }
   give out;
@@ -398,14 +463,14 @@ proc mir_rvalue_from_expr(expr: HirExpr, items: [HirItem]) -> MirRvalue {
     set kind = MirRvalueKind.Tuple;
   }
 
-  let operands: [MirOperand] = if kind == MirRvalueKind.Call { mir_call_operands(expr) } else { [] };
+  let operands: [MirOperand] = if kind == MirRvalueKind.Call { mir_call_operands(expr, items) } else { [] };
   let i: u64 = 0;
   while kind != MirRvalueKind.Call and i < len(expr.children) {
-    set operands = operands + [mir_operand_from_expr(expr.children[i])];
+    set operands = operands + [mir_operand_from_expr_with_items(expr.children[i], items)];
     set i = i + 1;
   }
   if len(operands) == 0 {
-    set operands = [mir_operand_from_expr(expr)];
+    set operands = [mir_operand_from_expr_with_items(expr, items)];
   }
 
   give MirRvalue {
@@ -564,7 +629,7 @@ proc build_stmt_sequence(hir_stmts: [HirStmt], items: [HirItem], fallthrough_blo
     if stmt.kind == HirStmtKind.If {
       let then_seq: MirSequence = build_stmt_sequence(stmt.then_stmts, items, current_entry, next_id + 1);
       let else_seq: MirSequence = build_stmt_sequence(stmt.else_stmts, items, current_entry, then_seq.next_block_id);
-      let condition: MirOperand = mir_operand_from_expr(stmt.expr);
+      let condition: MirOperand = mir_operand_from_expr_with_items(stmt.expr, items);
       let condition_statements: [MirStatement] = mir_call_prelude(stmt.expr, items, true);
       let branch: MirBlock = mir_block_with_span(
         next_id,
@@ -594,7 +659,7 @@ proc build_stmt_sequence(hir_stmts: [HirStmt], items: [HirItem], fallthrough_blo
     if stmt.kind == HirStmtKind.While {
       let header_id: u64 = next_id;
       let body_seq: MirSequence = build_stmt_sequence(stmt.then_stmts, items, header_id, header_id + 1);
-      let condition: MirOperand = mir_operand_from_expr(stmt.expr);
+      let condition: MirOperand = mir_operand_from_expr_with_items(stmt.expr, items);
       let condition_statements: [MirStatement] = mir_call_prelude(stmt.expr, items, true);
       let header: MirBlock = mir_block_with_span(
         header_id,

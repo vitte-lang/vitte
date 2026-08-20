@@ -30,6 +30,7 @@ ALLOWED_DIAGNOSTIC_OUTPUT_PROCS = {
     "print_analysis_diagnostics_list",
     "print_user_diagnostic",
     "print_result_diagnostics",
+    "print_source_contract_diagnostics",
 }
 
 REQUIRED_CONSTRUCTORS = (
@@ -158,7 +159,7 @@ def source_findings() -> list[str]:
     return findings
 
 
-def runtime_findings() -> list[str]:
+def runtime_findings(require_artifacts: bool) -> list[str]:
     findings: list[str] = []
     for relative in (
         Path("bin/vitte"),
@@ -169,7 +170,8 @@ def runtime_findings() -> list[str]:
     ):
         path = ROOT / relative
         if not path.exists():
-            findings.append(f"{relative}: runtime compiler artifact is missing")
+            if require_artifacts:
+                findings.append(f"{relative}: runtime compiler artifact is missing")
             continue
         data = path.read_bytes()
         if b"[vitte][error]" in data:
@@ -182,11 +184,16 @@ def runtime_findings() -> list[str]:
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--runtime", action="store_true", help="also inspect release compiler artifacts")
+    parser.add_argument(
+        "--require-runtime-artifacts",
+        action="store_true",
+        help="fail when a runtime compiler artifact is missing",
+    )
     args = parser.parse_args()
 
     findings = source_findings()
     if args.runtime:
-        findings.extend(runtime_findings())
+        findings.extend(runtime_findings(args.require_runtime_artifacts))
     if findings:
         for finding in findings:
             print(f"[no-direct-user-errors][error] {finding}", file=sys.stderr)

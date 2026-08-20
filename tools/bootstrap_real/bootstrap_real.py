@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import argparse
+from collections import deque
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -22,6 +24,7 @@ STAGE2_OUT = ROOT / "target/stage2/vitte"
 RELEASE_OUT = ROOT / "target/release/vitte"
 REPORT_JSON = ROOT / "target/reports/bootstrap_real_gate.json"
 REPORT_MD = ROOT / "target/reports/bootstrap_real_gate.md"
+COMPILER_MODULE_MANIFEST = OUT_DIR / "compiler-module-set.manifest"
 
 TRUSTED_STAGE0 = OUT_DIR / "stage0/vitte"
 REQUIRED_ENTRY_MARKERS = (
@@ -51,6 +54,52 @@ def rel(path: Path) -> str:
 
 def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+USE_RE = re.compile(r"^\s*(?:use|import)\s+([A-Za-z0-9_/-]+(?:\.[A-Za-z0-9_/-]+)*)", re.MULTILINE)
+
+
+def prepare_compiler_module_manifest() -> None:
+    source_root = ROOT / "src"
+    compiler_root = source_root / "vitte/compiler"
+    sources = sorted(path for path in compiler_root.rglob("*.vit") if path.is_file())
+    primary_by_path = {path: path.relative_to(source_root).with_suffix("").as_posix() for path in sources}
+    alias_to_primary: dict[str, str] = {}
+    path_by_primary: dict[str, Path] = {}
+    for path, primary in primary_by_path.items():
+        path_by_primary[primary] = path
+        alias_to_primary[primary] = primary
+        if path.name == "mod.vit":
+            alias_to_primary[path.parent.relative_to(source_root).as_posix()] = primary
+
+    graph: dict[str, set[str]] = {}
+    for path, primary in primary_by_path.items():
+        imports = {raw.replace(".", "/") for raw in USE_RE.findall(path.read_text(encoding="utf-8", errors="replace"))}
+        graph[primary] = {
+            alias_to_primary[imported]
+            for imported in imports
+            if imported.startswith("vitte/compiler") and imported in alias_to_primary
+        }
+
+    entry = "vitte/compiler/main"
+    reachable: set[str] = set()
+    pending = deque([entry])
+    while pending:
+        current = pending.popleft()
+        if current in reachable:
+            continue
+        reachable.add(current)
+        pending.extend(graph.get(current, set()) - reachable)
+
+    lines = ["@backend=llvm", "@target=x86_64-linux", "@native-llvm=true", "@clang=clang", "@ar=ar"]
+    for primary in sorted(reachable):
+        path = path_by_primary.get(primary)
+        if path is None or "/tests/" in path.as_posix() or "/fixtures/" in path.as_posix():
+            continue
+        if path.read_text(encoding="utf-8", errors="replace"):
+            lines.append(path.relative_to(ROOT).as_posix())
+    COMPILER_MODULE_MANIFEST.parent.mkdir(parents=True, exist_ok=True)
+    COMPILER_MODULE_MANIFEST.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def is_under(path: Path, parent: Path) -> bool:
@@ -185,9 +234,12 @@ def binary_artifact(path: Path) -> dict[str, object] | None:
 
 def build_from_stage0(stage0: Path, out: Path) -> list[dict[str, object]]:
     out.parent.mkdir(parents=True, exist_ok=True)
+    prepare_compiler_module_manifest()
     env = os.environ.copy()
     env.pop("BOOTSTRAP_FULL_COMPILER", None)
     env.pop("VITTE_BOOTSTRAP_ALLOW_FULL_COMPILER_BRIDGE", None)
+    env["VITTE_ROOT"] = str(ROOT)
+    env["VITTE_C17_GENERIC_COMPILER"] = "1"
     command = bootstrap_build_command(stage0, out)
     completed = subprocess.run(
         command,
@@ -208,9 +260,12 @@ def build_from_stage0(stage0: Path, out: Path) -> list[dict[str, object]]:
 
 def build_with_command(out: Path, command: list[str]) -> list[dict[str, object]]:
     out.parent.mkdir(parents=True, exist_ok=True)
+    prepare_compiler_module_manifest()
     env = os.environ.copy()
     env.pop("BOOTSTRAP_FULL_COMPILER", None)
     env.pop("VITTE_BOOTSTRAP_ALLOW_FULL_COMPILER_BRIDGE", None)
+    env["VITTE_ROOT"] = str(ROOT)
+    env["VITTE_C17_GENERIC_COMPILER"] = "1"
     completed = subprocess.run(
         command,
         cwd=ROOT,

@@ -1,0 +1,1657 @@
+space vitte/stdlib/alloc/arc/weak
+
+export *
+
+use src/vitte/stdlib/core/option as core_option
+use src/vitte/stdlib/alloc/arc/arc as arc
+use src/vitte/stdlib/alloc/arc/core as arc_core
+use src/vitte/stdlib/alloc/arc/count as arc_count
+use src/vitte/stdlib/alloc/arc/error as arc_error
+
+// -----------------------------------------------------------------------------
+// Weak states
+// -----------------------------------------------------------------------------
+
+pick ArcWeakState {
+    Invalid,
+    Alive,
+    Expired,
+    WeakOnly,
+    Saturated
+}
+
+pick ArcWeakOrdering {
+    Less,
+    Equal,
+    Greater
+}
+
+pick ArcWeakTransitionKind {
+    None,
+    Create,
+    Clone,
+    Drop,
+    Upgrade,
+    UpgradeFailed,
+    Saturate,
+    DestroyAllocation,
+    Invalid
+}
+
+pick ArcWeakRelation {
+    SameAllocation,
+    DifferentAllocation
+}
+
+// -----------------------------------------------------------------------------
+// Weak profiles
+// -----------------------------------------------------------------------------
+
+form ArcWeakProfile {
+    strong: usize
+    weak: usize
+    total: usize
+
+    state: ArcWeakState
+
+    alive: bool
+    expired: bool
+
+    observed: bool
+    weak_only: bool
+
+    can_upgrade: bool
+
+    valid: bool
+}
+
+form ArcWeakSnapshot {
+    strong: usize
+    weak: usize
+    total: usize
+
+    state: ArcWeakState
+
+    generation: u64
+}
+
+form ArcWeakDelta {
+    strong: int
+    weak: int
+    total: int
+}
+
+form ArcWeakTransition {
+    before: ArcWeakSnapshot
+    after: ArcWeakSnapshot
+
+    delta: ArcWeakDelta
+
+    kind: ArcWeakTransitionKind
+
+    valid: bool
+}
+
+form ArcWeakComparison {
+    same_allocation: bool
+
+    same_strong_count: bool
+    same_weak_count: bool
+
+    left_more_alive: bool
+    right_more_alive: bool
+
+    left_more_observed: bool
+    right_more_observed: bool
+}
+
+form ArcWeakValidation {
+    valid: bool
+
+    strong_valid: bool
+    weak_valid: bool
+    state_valid: bool
+    lifetime_valid: bool
+    upgrade_valid: bool
+}
+
+form ArcWeakStatistics {
+    creations: u64
+    clones: u64
+    drops: u64
+
+    upgrades: u64
+    upgrade_failures: u64
+
+    strong_reads: u64
+    weak_reads: u64
+
+    expired_checks: u64
+    upgrade_checks: u64
+
+    pointer_comparisons: u64
+
+    snapshots: u64
+    validations: u64
+
+    saturation_failures: u64
+    invalid_transitions: u64
+}
+
+// -----------------------------------------------------------------------------
+// Basic operations
+// -----------------------------------------------------------------------------
+
+proc arc_weak_clone<T>(
+    value: arc.ArcWeak<T>
+) -> arc.ArcWeak<T> {
+    give compiler_arc_weak_clone<T>(
+        value
+    );
+}
+
+proc arc_weak_clone_ref<T>(
+    value: ref arc.ArcWeak<T>
+) -> arc.ArcWeak<T> {
+    give compiler_arc_weak_clone<T>(
+        *value
+    );
+}
+
+proc arc_weak_try_clone<T>(
+    value: arc.ArcWeak<T>
+) -> Option<arc.ArcWeak<T>> {
+    if not arc_weak_can_clone<T>(
+        value
+    ) {
+        give None;
+    }
+
+    give Some(
+        arc_weak_clone<T>(
+            value
+        )
+    );
+}
+
+proc arc_weak_clone_many<T>(
+    value: arc.ArcWeak<T>,
+    count: usize
+) -> arc.ArcWeak<T> {
+    let out =
+        value;
+
+    let index: usize =
+        0;
+
+    while index < count {
+        set out =
+            arc_weak_clone<T>(
+                out
+            );
+
+        set index =
+            index + 1;
+    }
+
+    give out;
+}
+
+// -----------------------------------------------------------------------------
+// Strong / weak counts
+// -----------------------------------------------------------------------------
+
+proc arc_weak_strong_count<T>(
+    value: arc.ArcWeak<T>
+) -> usize {
+    give compiler_arc_weak_strong_count<T>(
+        value
+    );
+}
+
+proc arc_weak_weak_count<T>(
+    value: arc.ArcWeak<T>
+) -> usize {
+    give compiler_arc_weak_weak_count<T>(
+        value
+    );
+}
+
+proc arc_weak_total_count<T>(
+    value: arc.ArcWeak<T>
+) -> usize {
+    let strong =
+        arc_weak_strong_count<T>(
+            value
+        );
+
+    let weak =
+        arc_weak_weak_count<T>(
+            value
+        );
+
+    if strong > arc_count.ARC_COUNT_MAX - weak {
+        give arc_count.ARC_COUNT_MAX;
+    }
+
+    give strong + weak;
+}
+
+proc arc_weak_counts<T>(
+    value: arc.ArcWeak<T>
+) -> arc_count.ArcCounts {
+    give arc_count.ArcCounts {
+        strong:
+            arc_weak_strong_count<T>(
+                value
+            ),
+
+        weak:
+            arc_weak_weak_count<T>(
+                value
+            )
+    };
+}
+
+// -----------------------------------------------------------------------------
+// State
+// -----------------------------------------------------------------------------
+
+proc arc_weak_state_from_counts(
+    strong: usize,
+    weak: usize
+) -> ArcWeakState {
+    if strong == arc_count.ARC_COUNT_MAX
+        or weak == arc_count.ARC_COUNT_MAX
+    {
+        give ArcWeakState.Saturated;
+    }
+
+    if strong > 0 {
+        give ArcWeakState.Alive;
+    }
+
+    if strong == 0
+        and weak > 0
+    {
+        give ArcWeakState.WeakOnly;
+    }
+
+    if strong == 0
+        and weak == 0
+    {
+        give ArcWeakState.Expired;
+    }
+
+    give ArcWeakState.Invalid;
+}
+
+proc arc_weak_state<T>(
+    value: arc.ArcWeak<T>
+) -> ArcWeakState {
+    give arc_weak_state_from_counts(
+        arc_weak_strong_count<T>(
+            value
+        ),
+        arc_weak_weak_count<T>(
+            value
+        )
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Lifetime predicates
+// -----------------------------------------------------------------------------
+
+proc arc_weak_is_alive<T>(
+    value: arc.ArcWeak<T>
+) -> bool {
+    give arc_weak_strong_count<T>(
+        value
+    ) > 0;
+}
+
+proc arc_weak_is_expired<T>(
+    value: arc.ArcWeak<T>
+) -> bool {
+    give arc_weak_strong_count<T>(
+        value
+    ) == 0;
+}
+
+proc arc_weak_is_weak_only<T>(
+    value: arc.ArcWeak<T>
+) -> bool {
+    give arc_weak_strong_count<T>(
+        value
+    ) == 0
+    and arc_weak_weak_count<T>(
+        value
+    ) > 0;
+}
+
+proc arc_weak_is_empty<T>(
+    value: arc.ArcWeak<T>
+) -> bool {
+    give arc_weak_strong_count<T>(
+        value
+    ) == 0
+    and arc_weak_weak_count<T>(
+        value
+    ) == 0;
+}
+
+proc arc_weak_has_observers<T>(
+    value: arc.ArcWeak<T>
+) -> bool {
+    give arc_weak_weak_count<T>(
+        value
+    ) > 0;
+}
+
+proc arc_weak_is_saturated<T>(
+    value: arc.ArcWeak<T>
+) -> bool {
+    give arc_weak_strong_count<T>(
+        value
+    ) == arc_count.ARC_COUNT_MAX
+    or arc_weak_weak_count<T>(
+        value
+    ) == arc_count.ARC_COUNT_MAX;
+}
+
+// -----------------------------------------------------------------------------
+// Upgrade
+// -----------------------------------------------------------------------------
+
+proc arc_weak_can_upgrade<T>(
+    value: arc.ArcWeak<T>
+) -> bool {
+    let strong =
+        arc_weak_strong_count<T>(
+            value
+        );
+
+    give strong > 0
+        and strong < arc_count.ARC_COUNT_MAX;
+}
+
+proc arc_weak_upgrade<T>(
+    value: arc.ArcWeak<T>
+) -> Option<arc.Arc<T>> {
+    give compiler_arc_weak_upgrade<T>(
+        value
+    );
+}
+
+proc arc_weak_try_upgrade<T>(
+    value: arc.ArcWeak<T>
+) -> Option<arc.Arc<T>> {
+    if not arc_weak_can_upgrade<T>(
+        value
+    ) {
+        give None;
+    }
+
+    give arc_weak_upgrade<T>(
+        value
+    );
+}
+
+proc arc_weak_upgrade_or_none<T>(
+    value: arc.ArcWeak<T>
+) -> Option<arc.Arc<T>> {
+    give arc_weak_try_upgrade<T>(
+        value
+    );
+}
+
+proc arc_weak_upgrade_is_possible<T>(
+    value: arc.ArcWeak<T>
+) -> bool {
+    give arc_weak_can_upgrade<T>(
+        value
+    );
+}
+
+proc arc_weak_upgrade_failed<T>(
+    value: arc.ArcWeak<T>
+) -> bool {
+    give not arc_weak_can_upgrade<T>(
+        value
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Downgrade helpers
+// -----------------------------------------------------------------------------
+
+proc arc_weak_from_arc<T>(
+    value: arc.Arc<T>
+) -> arc.ArcWeak<T> {
+    give arc.arc_downgrade<T>(
+        value
+    );
+}
+
+proc arc_weak_create<T>(
+    value: arc.Arc<T>
+) -> arc.ArcWeak<T> {
+    give arc_weak_from_arc<T>(
+        value
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Clone capacity
+// -----------------------------------------------------------------------------
+
+proc arc_weak_can_clone<T>(
+    value: arc.ArcWeak<T>
+) -> bool {
+    give arc_weak_weak_count<T>(
+        value
+    ) < arc_count.ARC_COUNT_MAX;
+}
+
+proc arc_weak_clone_capacity<T>(
+    value: arc.ArcWeak<T>
+) -> usize {
+    let weak =
+        arc_weak_weak_count<T>(
+            value
+        );
+
+    if weak >= arc_count.ARC_COUNT_MAX {
+        give 0;
+    }
+
+    give arc_count.ARC_COUNT_MAX - weak;
+}
+
+// -----------------------------------------------------------------------------
+// Pointer identity
+// -----------------------------------------------------------------------------
+
+proc arc_weak_ptr_eq<T>(
+    left: arc.ArcWeak<T>,
+    right: arc.ArcWeak<T>
+) -> bool {
+    give compiler_arc_weak_ptr_eq<T>(
+        left,
+        right
+    );
+}
+
+proc arc_weak_ptr_ne<T>(
+    left: arc.ArcWeak<T>,
+    right: arc.ArcWeak<T>
+) -> bool {
+    give not arc_weak_ptr_eq<T>(
+        left,
+        right
+    );
+}
+
+proc arc_weak_same_allocation<T>(
+    left: arc.ArcWeak<T>,
+    right: arc.ArcWeak<T>
+) -> bool {
+    give arc_weak_ptr_eq<T>(
+        left,
+        right
+    );
+}
+
+proc arc_weak_different_allocation<T>(
+    left: arc.ArcWeak<T>,
+    right: arc.ArcWeak<T>
+) -> bool {
+    give not arc_weak_same_allocation<T>(
+        left,
+        right
+    );
+}
+
+proc arc_weak_relation<T>(
+    left: arc.ArcWeak<T>,
+    right: arc.ArcWeak<T>
+) -> ArcWeakRelation {
+    if arc_weak_ptr_eq<T>(
+        left,
+        right
+    ) {
+        give ArcWeakRelation.SameAllocation;
+    }
+
+    give ArcWeakRelation.DifferentAllocation;
+}
+
+// -----------------------------------------------------------------------------
+// Arc / Weak identity
+// -----------------------------------------------------------------------------
+
+proc arc_weak_points_to_arc<T>(
+    weak: arc.ArcWeak<T>,
+    strong: arc.Arc<T>
+) -> bool {
+    give compiler_arc_weak_ptr_eq_arc<T>(
+        weak,
+        strong
+    );
+}
+
+proc arc_weak_same_owner<T>(
+    weak: arc.ArcWeak<T>,
+    strong: arc.Arc<T>
+) -> bool {
+    give arc_weak_points_to_arc<T>(
+        weak,
+        strong
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Profile
+// -----------------------------------------------------------------------------
+
+proc arc_weak_profile<T>(
+    value: arc.ArcWeak<T>
+) -> ArcWeakProfile {
+    let strong =
+        arc_weak_strong_count<T>(
+            value
+        );
+
+    let weak =
+        arc_weak_weak_count<T>(
+            value
+        );
+
+    let state =
+        arc_weak_state_from_counts(
+            strong,
+            weak
+        );
+
+    give ArcWeakProfile {
+        strong:
+            strong,
+
+        weak:
+            weak,
+
+        total:
+            if strong > arc_count.ARC_COUNT_MAX - weak {
+                arc_count.ARC_COUNT_MAX
+            } else {
+                strong + weak
+            },
+
+        state:
+            state,
+
+        alive:
+            strong > 0,
+
+        expired:
+            strong == 0,
+
+        observed:
+            weak > 0,
+
+        weak_only:
+            strong == 0
+            and weak > 0,
+
+        can_upgrade:
+            strong > 0
+            and strong < arc_count.ARC_COUNT_MAX,
+
+        valid:
+            state != ArcWeakState.Invalid
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Profile predicates
+// -----------------------------------------------------------------------------
+
+proc arc_weak_profile_is_alive(
+    profile: ArcWeakProfile
+) -> bool {
+    give profile.alive;
+}
+
+proc arc_weak_profile_is_expired(
+    profile: ArcWeakProfile
+) -> bool {
+    give profile.expired;
+}
+
+proc arc_weak_profile_can_upgrade(
+    profile: ArcWeakProfile
+) -> bool {
+    give profile.can_upgrade;
+}
+
+proc arc_weak_profile_is_weak_only(
+    profile: ArcWeakProfile
+) -> bool {
+    give profile.weak_only;
+}
+
+proc arc_weak_profile_is_saturated(
+    profile: ArcWeakProfile
+) -> bool {
+    give profile.state
+        == ArcWeakState.Saturated;
+}
+
+// -----------------------------------------------------------------------------
+// Snapshot
+// -----------------------------------------------------------------------------
+
+proc arc_weak_snapshot<T>(
+    value: arc.ArcWeak<T>
+) -> ArcWeakSnapshot {
+    let strong =
+        arc_weak_strong_count<T>(
+            value
+        );
+
+    let weak =
+        arc_weak_weak_count<T>(
+            value
+        );
+
+    give ArcWeakSnapshot {
+        strong:
+            strong,
+
+        weak:
+            weak,
+
+        total:
+            if strong > arc_count.ARC_COUNT_MAX - weak {
+                arc_count.ARC_COUNT_MAX
+            } else {
+                strong + weak
+            },
+
+        state:
+            arc_weak_state_from_counts(
+                strong,
+                weak
+            ),
+
+        generation:
+            1
+    };
+}
+
+proc arc_weak_snapshot_equal(
+    left: ArcWeakSnapshot,
+    right: ArcWeakSnapshot
+) -> bool {
+    give left.strong == right.strong
+        and left.weak == right.weak
+        and left.total == right.total
+        and left.state == right.state;
+}
+
+proc arc_weak_snapshot_not_equal(
+    left: ArcWeakSnapshot,
+    right: ArcWeakSnapshot
+) -> bool {
+    give not arc_weak_snapshot_equal(
+        left,
+        right
+    );
+}
+
+proc arc_weak_snapshot_changed<T>(
+    before: ArcWeakSnapshot,
+    value: arc.ArcWeak<T>
+) -> bool {
+    give arc_weak_snapshot_not_equal(
+        before,
+        arc_weak_snapshot<T>(
+            value
+        )
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Delta
+// -----------------------------------------------------------------------------
+
+proc arc_weak_usize_delta(
+    before: usize,
+    after: usize
+) -> int {
+    if after > before {
+        give (
+            after - before
+        ) as int;
+    }
+
+    if after < before {
+        give -(
+            (
+                before - after
+            ) as int
+        );
+    }
+
+    give 0;
+}
+
+proc arc_weak_delta(
+    before: ArcWeakSnapshot,
+    after: ArcWeakSnapshot
+) -> ArcWeakDelta {
+    let strong =
+        arc_weak_usize_delta(
+            before.strong,
+            after.strong
+        );
+
+    let weak =
+        arc_weak_usize_delta(
+            before.weak,
+            after.weak
+        );
+
+    give ArcWeakDelta {
+        strong:
+            strong,
+
+        weak:
+            weak,
+
+        total:
+            strong + weak
+    };
+}
+
+proc arc_weak_delta_is_zero(
+    delta: ArcWeakDelta
+) -> bool {
+    give delta.strong == 0
+        and delta.weak == 0;
+}
+
+proc arc_weak_delta_changed(
+    delta: ArcWeakDelta
+) -> bool {
+    give not arc_weak_delta_is_zero(
+        delta
+    );
+}
+
+proc arc_weak_delta_strong_increased(
+    delta: ArcWeakDelta
+) -> bool {
+    give delta.strong > 0;
+}
+
+proc arc_weak_delta_strong_decreased(
+    delta: ArcWeakDelta
+) -> bool {
+    give delta.strong < 0;
+}
+
+proc arc_weak_delta_weak_increased(
+    delta: ArcWeakDelta
+) -> bool {
+    give delta.weak > 0;
+}
+
+proc arc_weak_delta_weak_decreased(
+    delta: ArcWeakDelta
+) -> bool {
+    give delta.weak < 0;
+}
+
+// -----------------------------------------------------------------------------
+// Transition classification
+// -----------------------------------------------------------------------------
+
+proc arc_weak_transition_kind(
+    before: ArcWeakSnapshot,
+    after: ArcWeakSnapshot
+) -> ArcWeakTransitionKind {
+    let delta =
+        arc_weak_delta(
+            before,
+            after
+        );
+
+    if arc_weak_delta_is_zero(
+        delta
+    ) {
+        give ArcWeakTransitionKind.None;
+    }
+
+    if before.weak == 0
+        and after.weak == 1
+        and delta.strong == 0
+    {
+        give ArcWeakTransitionKind.Create;
+    }
+
+    if delta.weak == 1
+        and delta.strong == 0
+    {
+        if after.weak == arc_count.ARC_COUNT_MAX {
+            give ArcWeakTransitionKind.Saturate;
+        }
+
+        give ArcWeakTransitionKind.Clone;
+    }
+
+    if delta.weak == -1
+        and delta.strong == 0
+    {
+        if after.strong == 0
+            and after.weak == 0
+        {
+            give ArcWeakTransitionKind.DestroyAllocation;
+        }
+
+        give ArcWeakTransitionKind.Drop;
+    }
+
+    if delta.strong == 1
+        and delta.weak == 0
+    {
+        give ArcWeakTransitionKind.Upgrade;
+    }
+
+    if before.strong == 0
+        and after.strong == 0
+    {
+        give ArcWeakTransitionKind.UpgradeFailed;
+    }
+
+    give ArcWeakTransitionKind.Invalid;
+}
+
+proc arc_weak_transition(
+    before: ArcWeakSnapshot,
+    after: ArcWeakSnapshot
+) -> ArcWeakTransition {
+    let kind =
+        arc_weak_transition_kind(
+            before,
+            after
+        );
+
+    give ArcWeakTransition {
+        before:
+            before,
+
+        after:
+            after,
+
+        delta:
+            arc_weak_delta(
+                before,
+                after
+            ),
+
+        kind:
+            kind,
+
+        valid:
+            kind != ArcWeakTransitionKind.Invalid
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Transition predicates
+// -----------------------------------------------------------------------------
+
+proc arc_weak_transition_is_clone(
+    transition: ArcWeakTransition
+) -> bool {
+    give transition.kind
+        == ArcWeakTransitionKind.Clone;
+}
+
+proc arc_weak_transition_is_drop(
+    transition: ArcWeakTransition
+) -> bool {
+    give transition.kind
+        == ArcWeakTransitionKind.Drop;
+}
+
+proc arc_weak_transition_is_upgrade(
+    transition: ArcWeakTransition
+) -> bool {
+    give transition.kind
+        == ArcWeakTransitionKind.Upgrade;
+}
+
+proc arc_weak_transition_upgrade_failed(
+    transition: ArcWeakTransition
+) -> bool {
+    give transition.kind
+        == ArcWeakTransitionKind.UpgradeFailed;
+}
+
+proc arc_weak_transition_destroys_allocation(
+    transition: ArcWeakTransition
+) -> bool {
+    give transition.after.strong == 0
+        and transition.after.weak == 0
+        and (
+            transition.before.strong > 0
+            or transition.before.weak > 0
+        );
+}
+
+// -----------------------------------------------------------------------------
+// Comparisons
+// -----------------------------------------------------------------------------
+
+proc arc_weak_compare_strong<T>(
+    left: arc.ArcWeak<T>,
+    right: arc.ArcWeak<T>
+) -> ArcWeakOrdering {
+    let left_count =
+        arc_weak_strong_count<T>(
+            left
+        );
+
+    let right_count =
+        arc_weak_strong_count<T>(
+            right
+        );
+
+    if left_count < right_count {
+        give ArcWeakOrdering.Less;
+    }
+
+    if left_count > right_count {
+        give ArcWeakOrdering.Greater;
+    }
+
+    give ArcWeakOrdering.Equal;
+}
+
+proc arc_weak_compare_weak<T>(
+    left: arc.ArcWeak<T>,
+    right: arc.ArcWeak<T>
+) -> ArcWeakOrdering {
+    let left_count =
+        arc_weak_weak_count<T>(
+            left
+        );
+
+    let right_count =
+        arc_weak_weak_count<T>(
+            right
+        );
+
+    if left_count < right_count {
+        give ArcWeakOrdering.Less;
+    }
+
+    if left_count > right_count {
+        give ArcWeakOrdering.Greater;
+    }
+
+    give ArcWeakOrdering.Equal;
+}
+
+proc arc_weak_same_strong_count<T>(
+    left: arc.ArcWeak<T>,
+    right: arc.ArcWeak<T>
+) -> bool {
+    give arc_weak_strong_count<T>(
+        left
+    )
+    == arc_weak_strong_count<T>(
+        right
+    );
+}
+
+proc arc_weak_same_weak_count<T>(
+    left: arc.ArcWeak<T>,
+    right: arc.ArcWeak<T>
+) -> bool {
+    give arc_weak_weak_count<T>(
+        left
+    )
+    == arc_weak_weak_count<T>(
+        right
+    );
+}
+
+proc arc_weak_same_counts<T>(
+    left: arc.ArcWeak<T>,
+    right: arc.ArcWeak<T>
+) -> bool {
+    give arc_weak_same_strong_count<T>(
+        left,
+        right
+    )
+    and arc_weak_same_weak_count<T>(
+        left,
+        right
+    );
+}
+
+proc arc_weak_more_observed<T>(
+    left: arc.ArcWeak<T>,
+    right: arc.ArcWeak<T>
+) -> bool {
+    give arc_weak_weak_count<T>(
+        left
+    )
+    > arc_weak_weak_count<T>(
+        right
+    );
+}
+
+proc arc_weak_less_observed<T>(
+    left: arc.ArcWeak<T>,
+    right: arc.ArcWeak<T>
+) -> bool {
+    give arc_weak_weak_count<T>(
+        left
+    )
+    < arc_weak_weak_count<T>(
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Complete comparison
+// -----------------------------------------------------------------------------
+
+proc arc_weak_compare<T>(
+    left: arc.ArcWeak<T>,
+    right: arc.ArcWeak<T>
+) -> ArcWeakComparison {
+    let left_strong =
+        arc_weak_strong_count<T>(
+            left
+        );
+
+    let right_strong =
+        arc_weak_strong_count<T>(
+            right
+        );
+
+    let left_weak =
+        arc_weak_weak_count<T>(
+            left
+        );
+
+    let right_weak =
+        arc_weak_weak_count<T>(
+            right
+        );
+
+    give ArcWeakComparison {
+        same_allocation:
+            arc_weak_ptr_eq<T>(
+                left,
+                right
+            ),
+
+        same_strong_count:
+            left_strong == right_strong,
+
+        same_weak_count:
+            left_weak == right_weak,
+
+        left_more_alive:
+            left_strong > right_strong,
+
+        right_more_alive:
+            right_strong > left_strong,
+
+        left_more_observed:
+            left_weak > right_weak,
+
+        right_more_observed:
+            right_weak > left_weak
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Profile validation
+// -----------------------------------------------------------------------------
+
+proc arc_weak_profile_valid(
+    profile: ArcWeakProfile
+) -> bool {
+    if profile.alive
+        != (profile.strong > 0)
+    {
+        give false;
+    }
+
+    if profile.expired
+        != (profile.strong == 0)
+    {
+        give false;
+    }
+
+    if profile.observed
+        != (profile.weak > 0)
+    {
+        give false;
+    }
+
+    if profile.weak_only
+        != (
+            profile.strong == 0
+            and profile.weak > 0
+        )
+    {
+        give false;
+    }
+
+    if profile.can_upgrade
+        != (
+            profile.strong > 0
+            and profile.strong < arc_count.ARC_COUNT_MAX
+        )
+    {
+        give false;
+    }
+
+    if profile.total
+        != (
+            if profile.strong
+                > arc_count.ARC_COUNT_MAX - profile.weak
+            {
+                arc_count.ARC_COUNT_MAX
+            } else {
+                profile.strong + profile.weak
+            }
+        )
+    {
+        give false;
+    }
+
+    if profile.alive
+        and profile.expired
+    {
+        give false;
+    }
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Complete validation
+// -----------------------------------------------------------------------------
+
+proc arc_weak_validate<T>(
+    value: arc.ArcWeak<T>
+) -> ArcWeakValidation {
+    let profile =
+        arc_weak_profile<T>(
+            value
+        );
+
+    let strong_valid =
+        profile.strong
+            <= arc_count.ARC_COUNT_MAX;
+
+    let weak_valid =
+        profile.weak
+            <= arc_count.ARC_COUNT_MAX;
+
+    let state_valid =
+        profile.state
+            == arc_weak_state_from_counts(
+                profile.strong,
+                profile.weak
+            );
+
+    let lifetime_valid =
+        profile.alive
+            != profile.expired;
+
+    let upgrade_valid =
+        profile.can_upgrade
+            == (
+                profile.strong > 0
+                and profile.strong
+                    < arc_count.ARC_COUNT_MAX
+            );
+
+    give ArcWeakValidation {
+        valid:
+            strong_valid
+            and weak_valid
+            and state_valid
+            and lifetime_valid
+            and upgrade_valid
+            and arc_weak_profile_valid(
+                profile
+            ),
+
+        strong_valid:
+            strong_valid,
+
+        weak_valid:
+            weak_valid,
+
+        state_valid:
+            state_valid,
+
+        lifetime_valid:
+            lifetime_valid,
+
+        upgrade_valid:
+            upgrade_valid
+    };
+}
+
+proc arc_weak_invariant_holds<T>(
+    value: arc.ArcWeak<T>
+) -> bool {
+    give arc_weak_validate<T>(
+        value
+    ).valid;
+}
+
+// -----------------------------------------------------------------------------
+// Errors
+// -----------------------------------------------------------------------------
+
+proc arc_weak_error<T>(
+    value: arc.ArcWeak<T>
+) -> arc_error.ArcError {
+    let strong =
+        arc_weak_strong_count<T>(
+            value
+        );
+
+    let weak =
+        arc_weak_weak_count<T>(
+            value
+        );
+
+    if strong > arc_count.ARC_COUNT_MAX {
+        give arc_error.arc_error_invalid_strong_count(
+            strong,
+            weak
+        );
+    }
+
+    if weak > arc_count.ARC_COUNT_MAX {
+        give arc_error.arc_error_invalid_weak_count(
+            strong,
+            weak
+        );
+    }
+
+    if weak == arc_count.ARC_COUNT_MAX {
+        give arc_error.arc_error_count_saturated(
+            strong,
+            weak
+        );
+    }
+
+    if not arc_weak_invariant_holds<T>(
+        value
+    ) {
+        give arc_error.arc_error_invalid_invariant(
+            strong,
+            weak
+        );
+    }
+
+    give arc_error.arc_error_none();
+}
+
+proc arc_weak_upgrade_error<T>(
+    value: arc.ArcWeak<T>
+) -> arc_error.ArcError {
+    let strong =
+        arc_weak_strong_count<T>(
+            value
+        );
+
+    let weak =
+        arc_weak_weak_count<T>(
+            value
+        );
+
+    if strong == 0 {
+        give arc_error.arc_error_weak_expired(
+            strong,
+            weak
+        );
+    }
+
+    if strong == arc_count.ARC_COUNT_MAX {
+        give arc_error.arc_error_count_saturated(
+            strong,
+            weak
+        );
+    }
+
+    give arc_error.arc_error_none();
+}
+
+proc arc_weak_clone_error<T>(
+    value: arc.ArcWeak<T>
+) -> arc_error.ArcError {
+    let strong =
+        arc_weak_strong_count<T>(
+            value
+        );
+
+    let weak =
+        arc_weak_weak_count<T>(
+            value
+        );
+
+    if weak == arc_count.ARC_COUNT_MAX {
+        give arc_error.arc_error_count_saturated(
+            strong,
+            weak
+        );
+    }
+
+    give arc_error.arc_error_none();
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc arc_weak_statistics_empty()
+    -> ArcWeakStatistics
+{
+    give ArcWeakStatistics {
+        creations: 0,
+        clones: 0,
+        drops: 0,
+
+        upgrades: 0,
+        upgrade_failures: 0,
+
+        strong_reads: 0,
+        weak_reads: 0,
+
+        expired_checks: 0,
+        upgrade_checks: 0,
+
+        pointer_comparisons: 0,
+
+        snapshots: 0,
+        validations: 0,
+
+        saturation_failures: 0,
+        invalid_transitions: 0
+    };
+}
+
+proc arc_weak_statistics_total(
+    statistics: ArcWeakStatistics
+) -> u64 {
+    give statistics.creations
+        + statistics.clones
+        + statistics.drops
+        + statistics.upgrades
+        + statistics.upgrade_failures
+        + statistics.strong_reads
+        + statistics.weak_reads
+        + statistics.expired_checks
+        + statistics.upgrade_checks
+        + statistics.pointer_comparisons
+        + statistics.snapshots
+        + statistics.validations
+        + statistics.saturation_failures
+        + statistics.invalid_transitions;
+}
+
+proc arc_weak_statistics_record_transition(
+    statistics: ref mut ArcWeakStatistics,
+    transition: ArcWeakTransition
+) {
+    if not transition.valid {
+        set statistics.invalid_transitions =
+            statistics.invalid_transitions + 1;
+
+        give;
+    }
+
+    pick transition.kind {
+        ArcWeakTransitionKind.Create {
+            set statistics.creations =
+                statistics.creations + 1;
+        }
+
+        ArcWeakTransitionKind.Clone {
+            set statistics.clones =
+                statistics.clones + 1;
+        }
+
+        ArcWeakTransitionKind.Drop {
+            set statistics.drops =
+                statistics.drops + 1;
+        }
+
+        ArcWeakTransitionKind.Upgrade {
+            set statistics.upgrades =
+                statistics.upgrades + 1;
+        }
+
+        ArcWeakTransitionKind.UpgradeFailed {
+            set statistics.upgrade_failures =
+                statistics.upgrade_failures + 1;
+        }
+
+        ArcWeakTransitionKind.Saturate {
+            set statistics.saturation_failures =
+                statistics.saturation_failures + 1;
+        }
+
+        _ {}
+    }
+}
+
+proc arc_weak_statistics_reset(
+    statistics: ref mut ArcWeakStatistics
+) {
+    set *statistics =
+        arc_weak_statistics_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc arc_weak_state_name(
+    state: ArcWeakState
+) -> string {
+    pick state {
+        ArcWeakState.Invalid {
+            give "invalid";
+        }
+
+        ArcWeakState.Alive {
+            give "alive";
+        }
+
+        ArcWeakState.Expired {
+            give "expired";
+        }
+
+        ArcWeakState.WeakOnly {
+            give "weak-only";
+        }
+
+        ArcWeakState.Saturated {
+            give "saturated";
+        }
+    }
+
+    give "invalid";
+}
+
+proc arc_weak_transition_name(
+    kind: ArcWeakTransitionKind
+) -> string {
+    pick kind {
+        ArcWeakTransitionKind.None {
+            give "none";
+        }
+
+        ArcWeakTransitionKind.Create {
+            give "create";
+        }
+
+        ArcWeakTransitionKind.Clone {
+            give "clone";
+        }
+
+        ArcWeakTransitionKind.Drop {
+            give "drop";
+        }
+
+        ArcWeakTransitionKind.Upgrade {
+            give "upgrade";
+        }
+
+        ArcWeakTransitionKind.UpgradeFailed {
+            give "upgrade-failed";
+        }
+
+        ArcWeakTransitionKind.Saturate {
+            give "saturate";
+        }
+
+        ArcWeakTransitionKind.DestroyAllocation {
+            give "destroy-allocation";
+        }
+
+        ArcWeakTransitionKind.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+proc arc_weak_ordering_name(
+    ordering: ArcWeakOrdering
+) -> string {
+    pick ordering {
+        ArcWeakOrdering.Less {
+            give "less";
+        }
+
+        ArcWeakOrdering.Equal {
+            give "equal";
+        }
+
+        ArcWeakOrdering.Greater {
+            give "greater";
+        }
+    }
+
+    give "equal";
+}
+
+proc arc_weak_relation_name(
+    relation: ArcWeakRelation
+) -> string {
+    pick relation {
+        ArcWeakRelation.SameAllocation {
+            give "same-allocation";
+        }
+
+        ArcWeakRelation.DifferentAllocation {
+            give "different-allocation";
+        }
+    }
+
+    give "different-allocation";
+}
+
+// -----------------------------------------------------------------------------
+// Weak ownership model
+// -----------------------------------------------------------------------------
+//
+// Arc<T>
+//    |
+//    +-- downgrade()
+//           |
+//           v
+//       ArcWeak<T>
+//           |
+//           +-- does not keep T alive
+//           +-- keeps the control block alive
+//           +-- can be cloned
+//           +-- can attempt upgrade
+//
+// Strong count:
+//
+//     strong > 0
+//         |
+//         +-- value T is alive
+//         +-- weak upgrade may succeed
+//
+//     strong == 0
+//         |
+//         +-- T is destroyed
+//         +-- weak references become expired
+//
+// Weak count:
+//
+//     weak > 0
+//         |
+//         +-- control block remains allocated
+//
+//     strong == 0
+//     weak   == 0
+//         |
+//         +-- control block may be destroyed
+//
+// Downgrade:
+//
+//     Arc<T>
+//        |
+//        +-- weak += 1
+//        |
+//        v
+//     ArcWeak<T>
+//
+// Weak clone:
+//
+//     weak += 1
+//
+// Weak drop:
+//
+//     weak -= 1
+//
+// Upgrade:
+//
+//     if strong > 0:
+//         strong += 1
+//         return Some(Arc<T>)
+//
+//     otherwise:
+//         return None
+//
+// Important:
+//
+// ArcWeak<T> never owns T directly.
+// It owns only the right to observe the Arc control block.
+//
+// Actual atomic increments/decrements remain implemented by runtime/compiler
+// primitives. This module provides the complete high-level weak-reference API,
+// state model, snapshots, comparisons, validation, transitions and errors.

@@ -20,7 +20,8 @@ BOOTSTRAP = ROOT / "target/bootstrap-c17/vitte-bootstrap"
 REPORT_JSON = ROOT / "target/reports/compiler_full_import_graph_gate.json"
 REPORT_MD = ROOT / "target/reports/compiler_full_import_graph_gate.md"
 
-EXPECTED_MODULES = 971
+# Generated compiler sources, including locale catalog shards and test fixtures.
+EXPECTED_MODULES = 988
 USE_RE = re.compile(
     r"^\s*(?:use|import)\s+([A-Za-z0-9_/-]+(?:\.[A-Za-z0-9_/-]+)*)",
     re.MULTILINE,

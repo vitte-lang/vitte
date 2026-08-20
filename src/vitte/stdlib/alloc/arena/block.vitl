@@ -1,0 +1,1092 @@
+space vitte/stdlib/alloc/arena/block
+
+export *
+
+use src/vitte/stdlib/alloc/arena/arena as arena
+use src/vitte/stdlib/alloc/allocator as alloc_allocator
+use src/vitte/stdlib/core/option as core_option
+
+// -----------------------------------------------------------------------------
+// Block states
+// -----------------------------------------------------------------------------
+
+pick ArenaBlockState {
+    Empty,
+    Partial,
+    Full,
+    Released,
+    Invalid
+}
+
+pick ArenaBlockFit {
+    Fits,
+    NeedsAlignment,
+    TooSmall,
+    Invalid
+}
+
+pick ArenaBlockOrdering {
+    Less,
+    Equal,
+    Greater
+}
+
+// -----------------------------------------------------------------------------
+// Profiles
+// -----------------------------------------------------------------------------
+
+form ArenaBlockLayout {
+    capacity: usize
+    used: usize
+    remaining: usize
+
+    alignment: usize
+}
+
+form ArenaBlockProfile {
+    index: usize
+
+    used: usize
+    capacity: usize
+    remaining: usize
+
+    utilization: f64
+
+    state: ArenaBlockState
+
+    empty: bool
+    partial: bool
+    full: bool
+    active: bool
+
+    valid: bool
+}
+
+form ArenaBlockAllocation {
+    offset: usize
+    size: usize
+    align: usize
+
+    padding: usize
+    end: usize
+
+    valid: bool
+}
+
+form ArenaBlockValidation {
+    valid: bool
+
+    allocation_valid: bool
+    bounds_valid: bool
+    used_valid: bool
+    state_valid: bool
+}
+
+form ArenaBlockStatistics {
+    allocation_attempts: u64
+    allocation_successes: u64
+    allocation_failures: u64
+
+    bytes_requested: usize
+    bytes_used: usize
+    bytes_padding: usize
+
+    resets: u64
+    releases: u64
+}
+
+// -----------------------------------------------------------------------------
+// Constructors
+// -----------------------------------------------------------------------------
+
+proc arena_block_new(
+    allocation: alloc_allocator.Allocation,
+    index: usize
+) -> arena.ArenaBlock {
+    give arena.ArenaBlock {
+        allocation: allocation,
+
+        used: 0,
+        capacity: allocation.layout.size,
+
+        index: index,
+
+        active: true
+    };
+}
+
+proc arena_block_from_allocation(
+    allocation: alloc_allocator.Allocation
+) -> arena.ArenaBlock {
+    give arena_block_new(
+        allocation,
+        0
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Accessors
+// -----------------------------------------------------------------------------
+
+proc arena_block_index(
+    block: arena.ArenaBlock
+) -> usize {
+    give block.index;
+}
+
+proc arena_block_used(
+    block: arena.ArenaBlock
+) -> usize {
+    give block.used;
+}
+
+proc arena_block_capacity(
+    block: arena.ArenaBlock
+) -> usize {
+    give block.capacity;
+}
+
+proc arena_block_remaining(
+    block: arena.ArenaBlock
+) -> usize {
+    if block.used >= block.capacity {
+        give 0;
+    }
+
+    give block.capacity - block.used;
+}
+
+proc arena_block_alignment(
+    block: arena.ArenaBlock
+) -> usize {
+    give block.allocation.layout.align;
+}
+
+// -----------------------------------------------------------------------------
+// State predicates
+// -----------------------------------------------------------------------------
+
+proc arena_block_is_empty(
+    block: arena.ArenaBlock
+) -> bool {
+    give block.used == 0
+        and block.active;
+}
+
+proc arena_block_is_partial(
+    block: arena.ArenaBlock
+) -> bool {
+    give block.used > 0
+        and block.used < block.capacity
+        and block.active;
+}
+
+proc arena_block_is_full(
+    block: arena.ArenaBlock
+) -> bool {
+    give block.used >= block.capacity
+        and block.active;
+}
+
+proc arena_block_is_active(
+    block: arena.ArenaBlock
+) -> bool {
+    give block.active;
+}
+
+proc arena_block_is_released(
+    block: arena.ArenaBlock
+) -> bool {
+    give not block.active;
+}
+
+proc arena_block_has_space(
+    block: arena.ArenaBlock
+) -> bool {
+    give block.active
+        and arena_block_remaining(block) > 0;
+}
+
+// -----------------------------------------------------------------------------
+// State classification
+// -----------------------------------------------------------------------------
+
+proc arena_block_state(
+    block: arena.ArenaBlock
+) -> ArenaBlockState {
+    if not block.active {
+        give ArenaBlockState.Released;
+    }
+
+    if block.capacity == 0 {
+        give ArenaBlockState.Invalid;
+    }
+
+    if block.used > block.capacity {
+        give ArenaBlockState.Invalid;
+    }
+
+    if block.used == 0 {
+        give ArenaBlockState.Empty;
+    }
+
+    if block.used == block.capacity {
+        give ArenaBlockState.Full;
+    }
+
+    give ArenaBlockState.Partial;
+}
+
+// -----------------------------------------------------------------------------
+// Alignment helpers
+// -----------------------------------------------------------------------------
+
+proc arena_block_alignment_valid(
+    align: usize
+) -> bool {
+    if align == 0 {
+        give false;
+    }
+
+    give compiler_is_power_of_two(
+        align
+    );
+}
+
+proc arena_block_align_up(
+    value: usize,
+    align: usize
+) -> Option<usize> {
+    if not arena_block_alignment_valid(
+        align
+    ) {
+        give none<usize>();
+    }
+
+    let remainder =
+        value % align;
+
+    if remainder == 0 {
+        give some<usize>(
+            value
+        );
+    }
+
+    let padding =
+        align - remainder;
+
+    if value > usize_max() - padding {
+        give none<usize>();
+    }
+
+    give some<usize>(
+        value + padding
+    );
+}
+
+proc arena_block_padding_for(
+    block: arena.ArenaBlock,
+    align: usize
+) -> Option<usize> {
+    let aligned =
+        arena_block_align_up(
+            block.used,
+            align
+        );
+
+    if is_none<usize>(aligned) {
+        give none<usize>();
+    }
+
+    let offset =
+        unwrap<usize>(aligned);
+
+    if offset < block.used {
+        give none<usize>();
+    }
+
+    give some<usize>(
+        offset - block.used
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Fit
+// -----------------------------------------------------------------------------
+
+proc arena_block_fit(
+    block: arena.ArenaBlock,
+    size: usize,
+    align: usize
+) -> ArenaBlockFit {
+    if not block.active {
+        give ArenaBlockFit.Invalid;
+    }
+
+    if size == 0 {
+        give ArenaBlockFit.Invalid;
+    }
+
+    if not arena_block_alignment_valid(
+        align
+    ) {
+        give ArenaBlockFit.Invalid;
+    }
+
+    let aligned =
+        arena_block_align_up(
+            block.used,
+            align
+        );
+
+    if is_none<usize>(aligned) {
+        give ArenaBlockFit.Invalid;
+    }
+
+    let start =
+        unwrap<usize>(aligned);
+
+    if start > block.capacity {
+        give ArenaBlockFit.TooSmall;
+    }
+
+    if size > block.capacity - start {
+        give ArenaBlockFit.TooSmall;
+    }
+
+    if start != block.used {
+        give ArenaBlockFit.NeedsAlignment;
+    }
+
+    give ArenaBlockFit.Fits;
+}
+
+proc arena_block_can_fit(
+    block: arena.ArenaBlock,
+    size: usize,
+    align: usize
+) -> bool {
+    let fit =
+        arena_block_fit(
+            block,
+            size,
+            align
+        );
+
+    give fit == ArenaBlockFit.Fits
+        or fit == ArenaBlockFit.NeedsAlignment;
+}
+
+proc arena_block_can_fit_layout(
+    block: arena.ArenaBlock,
+    layout_value: alloc_allocator.AllocationLayout
+) -> bool {
+    if not alloc_allocator.layout_is_valid(
+        layout_value
+    ) {
+        give false;
+    }
+
+    give arena_block_can_fit(
+        block,
+        layout_value.size,
+        layout_value.align
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Allocation planning
+// -----------------------------------------------------------------------------
+
+proc arena_block_plan(
+    block: arena.ArenaBlock,
+    size: usize,
+    align: usize
+) -> ArenaBlockAllocation {
+    let invalid =
+        ArenaBlockAllocation {
+            offset: 0,
+            size: size,
+            align: align,
+            padding: 0,
+            end: 0,
+            valid: false
+        };
+
+    if not arena_block_can_fit(
+        block,
+        size,
+        align
+    ) {
+        give invalid;
+    }
+
+    let aligned =
+        arena_block_align_up(
+            block.used,
+            align
+        );
+
+    if is_none<usize>(aligned) {
+        give invalid;
+    }
+
+    let offset =
+        unwrap<usize>(aligned);
+
+    if offset > usize_max() - size {
+        give invalid;
+    }
+
+    give ArenaBlockAllocation {
+        offset: offset,
+
+        size: size,
+        align: align,
+
+        padding: offset - block.used,
+
+        end: offset + size,
+
+        valid: true
+    };
+}
+
+proc arena_block_plan_layout(
+    block: arena.ArenaBlock,
+    layout_value: alloc_allocator.AllocationLayout
+) -> ArenaBlockAllocation {
+    if not alloc_allocator.layout_is_valid(
+        layout_value
+    ) {
+        give ArenaBlockAllocation {
+            offset: 0,
+            size: layout_value.size,
+            align: layout_value.align,
+            padding: 0,
+            end: 0,
+            valid: false
+        };
+    }
+
+    give arena_block_plan(
+        block,
+        layout_value.size,
+        layout_value.align
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Commit allocation
+// -----------------------------------------------------------------------------
+
+proc arena_block_commit(
+    block: ref mut arena.ArenaBlock,
+    allocation: ArenaBlockAllocation
+) -> bool {
+    if not allocation.valid {
+        give false;
+    }
+
+    if not (*block).active {
+        give false;
+    }
+
+    if allocation.end > (*block).capacity {
+        give false;
+    }
+
+    if allocation.offset < (*block).used {
+        give false;
+    }
+
+    set (*block).used =
+        allocation.end;
+
+    give true;
+}
+
+proc arena_block_allocate(
+    block: ref mut arena.ArenaBlock,
+    size: usize,
+    align: usize
+) -> Option<ArenaBlockAllocation> {
+    let planned =
+        arena_block_plan(
+            *block,
+            size,
+            align
+        );
+
+    if not planned.valid {
+        give none<ArenaBlockAllocation>();
+    }
+
+    if not arena_block_commit(
+        block,
+        planned
+    ) {
+        give none<ArenaBlockAllocation>();
+    }
+
+    give some<ArenaBlockAllocation>(
+        planned
+    );
+}
+
+proc arena_block_allocate_layout(
+    block: ref mut arena.ArenaBlock,
+    layout_value: alloc_allocator.AllocationLayout
+) -> Option<ArenaBlockAllocation> {
+    give arena_block_allocate(
+        block,
+        layout_value.size,
+        layout_value.align
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Offset helpers
+// -----------------------------------------------------------------------------
+
+proc arena_block_current_offset(
+    block: arena.ArenaBlock
+) -> usize {
+    give block.used;
+}
+
+proc arena_block_next_offset(
+    block: arena.ArenaBlock,
+    align: usize
+) -> Option<usize> {
+    give arena_block_align_up(
+        block.used,
+        align
+    );
+}
+
+proc arena_block_offset_valid(
+    block: arena.ArenaBlock,
+    offset: usize
+) -> bool {
+    give offset <= block.capacity;
+}
+
+proc arena_block_range_valid(
+    block: arena.ArenaBlock,
+    offset: usize,
+    size: usize
+) -> bool {
+    if offset > block.capacity {
+        give false;
+    }
+
+    give size <= block.capacity - offset;
+}
+
+// -----------------------------------------------------------------------------
+// Usage
+// -----------------------------------------------------------------------------
+
+proc arena_block_utilization(
+    block: arena.ArenaBlock
+) -> f64 {
+    if block.capacity == 0 {
+        give 0.0;
+    }
+
+    give (
+        block.used as f64
+    ) / (
+        block.capacity as f64
+    );
+}
+
+proc arena_block_remaining_ratio(
+    block: arena.ArenaBlock
+) -> f64 {
+    if block.capacity == 0 {
+        give 0.0;
+    }
+
+    give (
+        arena_block_remaining(block)
+        as f64
+    ) / (
+        block.capacity as f64
+    );
+}
+
+proc arena_block_used_percent(
+    block: arena.ArenaBlock
+) -> f64 {
+    give arena_block_utilization(
+        block
+    ) * 100.0;
+}
+
+proc arena_block_remaining_percent(
+    block: arena.ArenaBlock
+) -> f64 {
+    give arena_block_remaining_ratio(
+        block
+    ) * 100.0;
+}
+
+// -----------------------------------------------------------------------------
+// Reset / release
+// -----------------------------------------------------------------------------
+
+proc arena_block_reset(
+    block: ref mut arena.ArenaBlock
+) {
+    if not (*block).active {
+        give;
+    }
+
+    set (*block).used = 0;
+}
+
+proc arena_block_rewind_to(
+    block: ref mut arena.ArenaBlock,
+    used: usize
+) -> bool {
+    if not (*block).active {
+        give false;
+    }
+
+    if used > (*block).used {
+        give false;
+    }
+
+    set (*block).used = used;
+
+    give true;
+}
+
+proc arena_block_release(
+    block: ref mut arena.ArenaBlock
+) {
+    set (*block).used = 0;
+    set (*block).active = false;
+}
+
+proc arena_block_activate(
+    block: ref mut arena.ArenaBlock
+) {
+    set (*block).active = true;
+}
+
+// -----------------------------------------------------------------------------
+// Profile
+// -----------------------------------------------------------------------------
+
+proc arena_block_profile(
+    block: arena.ArenaBlock
+) -> ArenaBlockProfile {
+    let state =
+        arena_block_state(
+            block
+        );
+
+    give ArenaBlockProfile {
+        index: block.index,
+
+        used: block.used,
+        capacity: block.capacity,
+        remaining:
+            arena_block_remaining(
+                block
+            ),
+
+        utilization:
+            arena_block_utilization(
+                block
+            ),
+
+        state: state,
+
+        empty:
+            state == ArenaBlockState.Empty,
+
+        partial:
+            state == ArenaBlockState.Partial,
+
+        full:
+            state == ArenaBlockState.Full,
+
+        active:
+            block.active,
+
+        valid:
+            state != ArenaBlockState.Invalid
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+proc arena_block_allocation_valid(
+    block: arena.ArenaBlock
+) -> bool {
+    give alloc_allocator.layout_is_valid(
+        block.allocation.layout
+    );
+}
+
+proc arena_block_bounds_valid(
+    block: arena.ArenaBlock
+) -> bool {
+    give block.used <= block.capacity;
+}
+
+proc arena_block_capacity_valid(
+    block: arena.ArenaBlock
+) -> bool {
+    give block.capacity
+        == block.allocation.layout.size;
+}
+
+proc arena_block_state_valid(
+    block: arena.ArenaBlock
+) -> bool {
+    let state =
+        arena_block_state(
+            block
+        );
+
+    pick state {
+        ArenaBlockState.Empty {
+            give block.used == 0
+                and block.active;
+        }
+
+        ArenaBlockState.Partial {
+            give block.used > 0
+                and block.used < block.capacity
+                and block.active;
+        }
+
+        ArenaBlockState.Full {
+            give block.used == block.capacity
+                and block.active;
+        }
+
+        ArenaBlockState.Released {
+            give not block.active;
+        }
+
+        ArenaBlockState.Invalid {
+            give false;
+        }
+    }
+
+    give false;
+}
+
+proc arena_block_validate(
+    block: arena.ArenaBlock
+) -> ArenaBlockValidation {
+    let allocation_valid =
+        arena_block_allocation_valid(
+            block
+        );
+
+    let bounds_valid =
+        arena_block_bounds_valid(
+            block
+        );
+
+    let used_valid =
+        arena_block_capacity_valid(
+            block
+        );
+
+    let state_valid =
+        arena_block_state_valid(
+            block
+        );
+
+    give ArenaBlockValidation {
+        valid:
+            allocation_valid
+            and bounds_valid
+            and used_valid
+            and state_valid,
+
+        allocation_valid:
+            allocation_valid,
+
+        bounds_valid:
+            bounds_valid,
+
+        used_valid:
+            used_valid,
+
+        state_valid:
+            state_valid
+    };
+}
+
+proc arena_block_is_valid(
+    block: arena.ArenaBlock
+) -> bool {
+    give arena_block_validate(
+        block
+    ).valid;
+}
+
+// -----------------------------------------------------------------------------
+// Comparisons
+// -----------------------------------------------------------------------------
+
+proc arena_block_compare_capacity(
+    left: arena.ArenaBlock,
+    right: arena.ArenaBlock
+) -> ArenaBlockOrdering {
+    if left.capacity < right.capacity {
+        give ArenaBlockOrdering.Less;
+    }
+
+    if left.capacity > right.capacity {
+        give ArenaBlockOrdering.Greater;
+    }
+
+    give ArenaBlockOrdering.Equal;
+}
+
+proc arena_block_compare_used(
+    left: arena.ArenaBlock,
+    right: arena.ArenaBlock
+) -> ArenaBlockOrdering {
+    if left.used < right.used {
+        give ArenaBlockOrdering.Less;
+    }
+
+    if left.used > right.used {
+        give ArenaBlockOrdering.Greater;
+    }
+
+    give ArenaBlockOrdering.Equal;
+}
+
+proc arena_block_compare_remaining(
+    left: arena.ArenaBlock,
+    right: arena.ArenaBlock
+) -> ArenaBlockOrdering {
+    let left_remaining =
+        arena_block_remaining(
+            left
+        );
+
+    let right_remaining =
+        arena_block_remaining(
+            right
+        );
+
+    if left_remaining < right_remaining {
+        give ArenaBlockOrdering.Less;
+    }
+
+    if left_remaining > right_remaining {
+        give ArenaBlockOrdering.Greater;
+    }
+
+    give ArenaBlockOrdering.Equal;
+}
+
+proc arena_block_same_capacity(
+    left: arena.ArenaBlock,
+    right: arena.ArenaBlock
+) -> bool {
+    give left.capacity == right.capacity;
+}
+
+proc arena_block_same_usage(
+    left: arena.ArenaBlock,
+    right: arena.ArenaBlock
+) -> bool {
+    give left.used == right.used;
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc arena_block_statistics_empty()
+    -> ArenaBlockStatistics
+{
+    give ArenaBlockStatistics {
+        allocation_attempts: 0,
+        allocation_successes: 0,
+        allocation_failures: 0,
+
+        bytes_requested: 0,
+        bytes_used: 0,
+        bytes_padding: 0,
+
+        resets: 0,
+        releases: 0
+    };
+}
+
+proc arena_block_statistics_record_allocation(
+    statistics: ref mut ArenaBlockStatistics,
+    allocation: ArenaBlockAllocation
+) {
+    set statistics.allocation_attempts =
+        statistics.allocation_attempts + 1;
+
+    set statistics.bytes_requested =
+        statistics.bytes_requested
+        + allocation.size;
+
+    if allocation.valid {
+        set statistics.allocation_successes =
+            statistics.allocation_successes + 1;
+
+        set statistics.bytes_used =
+            statistics.bytes_used
+            + allocation.size;
+
+        set statistics.bytes_padding =
+            statistics.bytes_padding
+            + allocation.padding;
+    } else {
+        set statistics.allocation_failures =
+            statistics.allocation_failures + 1;
+    }
+}
+
+proc arena_block_statistics_total_bytes(
+    statistics: ArenaBlockStatistics
+) -> usize {
+    give statistics.bytes_used
+        + statistics.bytes_padding;
+}
+
+proc arena_block_statistics_reset(
+    statistics: ref mut ArenaBlockStatistics
+) {
+    set *statistics =
+        arena_block_statistics_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc arena_block_state_name(
+    state: ArenaBlockState
+) -> string {
+    pick state {
+        ArenaBlockState.Empty {
+            give "empty";
+        }
+
+        ArenaBlockState.Partial {
+            give "partial";
+        }
+
+        ArenaBlockState.Full {
+            give "full";
+        }
+
+        ArenaBlockState.Released {
+            give "released";
+        }
+
+        ArenaBlockState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+proc arena_block_fit_name(
+    fit: ArenaBlockFit
+) -> string {
+    pick fit {
+        ArenaBlockFit.Fits {
+            give "fits";
+        }
+
+        ArenaBlockFit.NeedsAlignment {
+            give "needs-alignment";
+        }
+
+        ArenaBlockFit.TooSmall {
+            give "too-small";
+        }
+
+        ArenaBlockFit.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+// -----------------------------------------------------------------------------
+// Block model
+// -----------------------------------------------------------------------------
+//
+// ArenaBlock
+//
+// +----------------------------------------------------+
+// | allocated block                                   |
+// +----------------------------------------------------+
+// | used bytes       | padding | new allocation | free |
+// +----------------------------------------------------+
+// ^                  ^         ^                ^      ^
+// 0                 used     aligned           end   capacity
+//
+// Allocation:
+//
+//     current used
+//          |
+//          v
+//     align_up()
+//          |
+//          +-- padding
+//          |
+//          v
+//       offset
+//          |
+//          +-- size
+//          |
+//          v
+//         end
+//
+// Valid allocation:
+//
+//     offset >= used
+//     end <= capacity
+//
+// After commit:
+//
+//     used = end
+//
+// States:
+//
+//     used == 0
+//        |
+//        +-- Empty
+//
+//     0 < used < capacity
+//        |
+//        +-- Partial
+//
+//     used == capacity
+//        |
+//        +-- Full
+//
+//     active == false
+//        |
+//        +-- Released
+//
+// `block.vitl` manages local allocation geometry inside a single arena block.
+// Creation of new blocks belongs to the arena/chunk layer.
+// Global rewind/reset belongs to `reset.vitl`.

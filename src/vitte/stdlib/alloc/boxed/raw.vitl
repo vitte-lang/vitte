@@ -1,0 +1,1471 @@
+space vitte/stdlib/alloc/boxed/raw
+
+export *
+
+use src/vitte/stdlib/alloc/boxed/boxed as boxed
+use src/vitte/stdlib/alloc/boxed/alloc as box_alloc
+use src/vitte/stdlib/alloc/boxed/core as box_core
+use src/vitte/stdlib/alloc/boxed/error as box_error
+use src/vitte/stdlib/alloc/allocator as alloc_allocator
+use src/vitte/stdlib/core/option as core_option
+
+pick BoxRawState {
+    Borrowed,
+    Owned,
+    Consumed,
+    Released,
+    Invalid
+}
+
+pick BoxRawOwnership {
+    None,
+    Borrowed,
+    Owned,
+    Transferred,
+    Released
+}
+
+pick BoxRawAccess {
+    None,
+    Read,
+    ReadWrite
+}
+
+pick BoxRawKind {
+    Shared,
+    Mutable,
+    Owned
+}
+
+pick BoxRawFailure {
+    None,
+    InvalidBox,
+    InvalidPointer,
+    InvalidLayout,
+    InvalidState,
+    InvalidOwnership,
+    AlreadyConsumed,
+    AlreadyReleased,
+    ReconstructionFailed,
+    ReleaseFailed,
+    RuntimeFailure
+}
+
+form BoxRaw<T> {
+    ptr: raw ref T
+
+    layout: alloc_allocator.AllocationLayout
+
+    state: BoxRawState
+    ownership: BoxRawOwnership
+    kind: BoxRawKind
+
+    generation: u64
+    revision: u64
+}
+
+form BoxRawProfile {
+    size: usize
+    align: usize
+
+    state: BoxRawState
+    ownership: BoxRawOwnership
+    kind: BoxRawKind
+
+    borrowed: bool
+    owned: bool
+    consumed: bool
+    released: bool
+
+    readable: bool
+    writable: bool
+    reconstructable: bool
+    releasable: bool
+
+    valid: bool
+
+    generation: u64
+    revision: u64
+}
+
+form BoxRawValidation {
+    valid: bool
+
+    pointer_valid: bool
+    layout_valid: bool
+    state_valid: bool
+    ownership_valid: bool
+    access_valid: bool
+}
+
+form BoxRawSnapshot {
+    size: usize
+    align: usize
+
+    state: BoxRawState
+    ownership: BoxRawOwnership
+
+    generation: u64
+    revision: u64
+}
+
+form BoxRawDelta {
+    generation: int
+    revision: int
+
+    state_changed: bool
+    ownership_changed: bool
+    layout_changed: bool
+
+    changed: bool
+}
+
+form BoxRawResult<T> {
+    value: Option<BoxRaw<T>>
+
+    failure: BoxRawFailure
+
+    success: bool
+}
+
+form BoxRawStatistics {
+    borrowed_views: u64
+    mutable_views: u64
+    ownership_transfers: u64
+
+    reconstructions: u64
+    reconstruction_failures: u64
+
+    releases: u64
+    release_failures: u64
+
+    validations: u64
+}
+
+// -----------------------------------------------------------------------------
+// Construction
+// -----------------------------------------------------------------------------
+
+proc box_raw_borrowed<T>(
+    ptr: raw ref T,
+    layout_value: alloc_allocator.AllocationLayout
+) -> BoxRaw<T> {
+    give BoxRaw<T> {
+        ptr:
+            ptr,
+
+        layout:
+            layout_value,
+
+        state:
+            BoxRawState.Borrowed,
+
+        ownership:
+            BoxRawOwnership.Borrowed,
+
+        kind:
+            BoxRawKind.Shared,
+
+        generation:
+            1,
+
+        revision:
+            1
+    };
+}
+
+proc box_raw_borrowed_mut<T>(
+    ptr: raw ref T,
+    layout_value: alloc_allocator.AllocationLayout
+) -> BoxRaw<T> {
+    give BoxRaw<T> {
+        ptr:
+            ptr,
+
+        layout:
+            layout_value,
+
+        state:
+            BoxRawState.Borrowed,
+
+        ownership:
+            BoxRawOwnership.Borrowed,
+
+        kind:
+            BoxRawKind.Mutable,
+
+        generation:
+            1,
+
+        revision:
+            1
+    };
+}
+
+proc box_raw_owned<T>(
+    ptr: raw ref T,
+    layout_value: alloc_allocator.AllocationLayout
+) -> BoxRaw<T> {
+    give BoxRaw<T> {
+        ptr:
+            ptr,
+
+        layout:
+            layout_value,
+
+        state:
+            BoxRawState.Owned,
+
+        ownership:
+            BoxRawOwnership.Owned,
+
+        kind:
+            BoxRawKind.Owned,
+
+        generation:
+            1,
+
+        revision:
+            1
+    };
+}
+
+// -----------------------------------------------------------------------------
+// From Box
+// -----------------------------------------------------------------------------
+
+proc box_as_raw<T>(
+    value: ref boxed.Box<T>
+) -> BoxRaw<T> {
+    give box_raw_borrowed<T>(
+        boxed.box_as_raw<T>(
+            value
+        ),
+        value.allocation.layout
+    );
+}
+
+proc box_as_raw_mut<T>(
+    value: ref mut boxed.Box<T>
+) -> BoxRaw<T> {
+    give box_raw_borrowed_mut<T>(
+        boxed.box_as_raw_mut<T>(
+            value
+        ),
+        value.allocation.layout
+    );
+}
+
+proc box_into_raw<T>(
+    value: ref mut boxed.Box<T>
+) -> Option<BoxRaw<T>> {
+    if not boxed.box_is_valid<T>(
+        *value
+    ) {
+        give none<BoxRaw<T>>();
+    }
+
+    let pointer =
+        boxed.box_as_raw<T>(
+            value
+        );
+
+    let layout_value =
+        value.allocation.layout;
+
+    set value.state =
+        boxed.BoxState.Moved;
+
+    set value.revision =
+        value.revision + 1;
+
+    give some<BoxRaw<T>>(
+        box_raw_owned<T>(
+            pointer,
+            layout_value
+        )
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Raw access
+// -----------------------------------------------------------------------------
+
+proc box_raw_ptr<T>(
+    value: BoxRaw<T>
+) -> raw ref T {
+    give value.ptr;
+}
+
+proc box_raw_size<T>(
+    value: BoxRaw<T>
+) -> usize {
+    give value.layout.size;
+}
+
+proc box_raw_align<T>(
+    value: BoxRaw<T>
+) -> usize {
+    give value.layout.align;
+}
+
+proc box_raw_layout<T>(
+    value: BoxRaw<T>
+) -> alloc_allocator.AllocationLayout {
+    give value.layout;
+}
+
+proc box_raw_state<T>(
+    value: BoxRaw<T>
+) -> BoxRawState {
+    give value.state;
+}
+
+proc box_raw_ownership<T>(
+    value: BoxRaw<T>
+) -> BoxRawOwnership {
+    give value.ownership;
+}
+
+proc box_raw_kind<T>(
+    value: BoxRaw<T>
+) -> BoxRawKind {
+    give value.kind;
+}
+
+// -----------------------------------------------------------------------------
+// Predicates
+// -----------------------------------------------------------------------------
+
+proc box_raw_is_borrowed<T>(
+    value: BoxRaw<T>
+) -> bool {
+    give value.state
+        == BoxRawState.Borrowed;
+}
+
+proc box_raw_is_owned<T>(
+    value: BoxRaw<T>
+) -> bool {
+    give value.state
+        == BoxRawState.Owned
+        and value.ownership
+            == BoxRawOwnership.Owned;
+}
+
+proc box_raw_is_consumed<T>(
+    value: BoxRaw<T>
+) -> bool {
+    give value.state
+        == BoxRawState.Consumed;
+}
+
+proc box_raw_is_released<T>(
+    value: BoxRaw<T>
+) -> bool {
+    give value.state
+        == BoxRawState.Released;
+}
+
+proc box_raw_is_null<T>(
+    value: BoxRaw<T>
+) -> bool {
+    give compiler_raw_ptr_is_null(
+        value.ptr
+    );
+}
+
+proc box_raw_can_read<T>(
+    value: BoxRaw<T>
+) -> bool {
+    give value.state
+        == BoxRawState.Borrowed
+        or value.state
+            == BoxRawState.Owned;
+}
+
+proc box_raw_can_write<T>(
+    value: BoxRaw<T>
+) -> bool {
+    give (
+        value.state
+            == BoxRawState.Borrowed
+        and value.kind
+            == BoxRawKind.Mutable
+    )
+    or (
+        value.state
+            == BoxRawState.Owned
+    );
+}
+
+proc box_raw_can_reconstruct<T>(
+    value: BoxRaw<T>
+) -> bool {
+    give value.state
+        == BoxRawState.Owned
+        and value.ownership
+            == BoxRawOwnership.Owned;
+}
+
+proc box_raw_can_release<T>(
+    value: BoxRaw<T>
+) -> bool {
+    give box_raw_can_reconstruct<T>(
+        value
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Safe reference recovery
+// -----------------------------------------------------------------------------
+
+proc box_raw_as_ref<T>(
+    value: BoxRaw<T>
+) -> Option<ref T> {
+    if not box_raw_can_read<T>(
+        value
+    ) {
+        give none<ref T>();
+    }
+
+    if box_raw_is_null<T>(
+        value
+    ) {
+        give none<ref T>();
+    }
+
+    give some<ref T>(
+        compiler_raw_as_ref<T>(
+            value.ptr
+        )
+    );
+}
+
+proc box_raw_as_mut<T>(
+    value: ref mut BoxRaw<T>
+) -> Option<ref mut T> {
+    if not box_raw_can_write<T>(
+        *value
+    ) {
+        give none<ref mut T>();
+    }
+
+    if box_raw_is_null<T>(
+        *value
+    ) {
+        give none<ref mut T>();
+    }
+
+    give some<ref mut T>(
+        compiler_raw_as_mut<T>(
+            value.ptr
+        )
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Reconstruction
+// -----------------------------------------------------------------------------
+
+proc box_from_raw<T>(
+    value: BoxRaw<T>
+) -> Option<boxed.Box<T>> {
+    if not box_raw_can_reconstruct<T>(
+        value
+    ) {
+        give none<boxed.Box<T>>();
+    }
+
+    if not box_raw_is_valid<T>(
+        value
+    ) {
+        give none<boxed.Box<T>>();
+    }
+
+    let allocation =
+        alloc_allocator.Allocation {
+            ptr:
+                compiler_raw_ptr_to_void(
+                    value.ptr
+                ),
+
+            layout:
+                value.layout
+        };
+
+    give some<boxed.Box<T>>(
+        boxed.Box<T> {
+            allocation:
+                allocation,
+
+            state:
+                boxed.BoxState.Valid,
+
+            generation:
+                value.generation,
+
+            revision:
+                value.revision + 1
+        }
+    );
+}
+
+proc box_raw_reconstruct<T>(
+    value: ref mut BoxRaw<T>
+) -> Option<boxed.Box<T>> {
+    if not box_raw_can_reconstruct<T>(
+        *value
+    ) {
+        give none<boxed.Box<T>>();
+    }
+
+    let result =
+        box_from_raw<T>(
+            *value
+        );
+
+    if is_none<boxed.Box<T>>(
+        result
+    ) {
+        give none<boxed.Box<T>>();
+    }
+
+    set value.state =
+        BoxRawState.Consumed;
+
+    set value.ownership =
+        BoxRawOwnership.Transferred;
+
+    set value.revision =
+        value.revision + 1;
+
+    give result;
+}
+
+// -----------------------------------------------------------------------------
+// Release
+// -----------------------------------------------------------------------------
+
+proc box_raw_release<T>(
+    value: ref mut BoxRaw<T>
+) -> bool {
+    if not box_raw_can_release<T>(
+        *value
+    ) {
+        give false;
+    }
+
+    if box_raw_is_null<T>(
+        *value
+    ) {
+        give false;
+    }
+
+    let allocation =
+        alloc_allocator.Allocation {
+            ptr:
+                compiler_raw_ptr_to_void(
+                    value.ptr
+                ),
+
+            layout:
+                value.layout
+        };
+
+    let allocator =
+        boxed.box_allocator();
+
+    compiler_drop_in_place<T>(
+        compiler_raw_as_mut<T>(
+            value.ptr
+        )
+    );
+
+    if not box_alloc.box_deallocate(
+        ref mut allocator,
+        allocation
+    ) {
+        give false;
+    }
+
+    set value.state =
+        BoxRawState.Released;
+
+    set value.ownership =
+        BoxRawOwnership.Released;
+
+    set value.generation =
+        value.generation + 1;
+
+    set value.revision =
+        value.revision + 1;
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Forget
+// -----------------------------------------------------------------------------
+
+proc box_raw_forget<T>(
+    value: ref mut BoxRaw<T>
+) -> bool {
+    if value.state
+        != BoxRawState.Owned
+    {
+        give false;
+    }
+
+    compiler_forget_raw(
+        value.ptr
+    );
+
+    set value.state =
+        BoxRawState.Consumed;
+
+    set value.ownership =
+        BoxRawOwnership.Transferred;
+
+    set value.revision =
+        value.revision + 1;
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Identity
+// -----------------------------------------------------------------------------
+
+proc box_raw_ptr_eq<T>(
+    left: BoxRaw<T>,
+    right: BoxRaw<T>
+) -> bool {
+    give compiler_raw_ptr_eq(
+        left.ptr,
+        right.ptr
+    );
+}
+
+proc box_raw_ptr_ne<T>(
+    left: BoxRaw<T>,
+    right: BoxRaw<T>
+) -> bool {
+    give not box_raw_ptr_eq<T>(
+        left,
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Generation / revision
+// -----------------------------------------------------------------------------
+
+proc box_raw_generation<T>(
+    value: BoxRaw<T>
+) -> u64 {
+    give value.generation;
+}
+
+proc box_raw_revision<T>(
+    value: BoxRaw<T>
+) -> u64 {
+    give value.revision;
+}
+
+proc box_raw_touch<T>(
+    value: ref mut BoxRaw<T>
+) {
+    set value.revision =
+        value.revision + 1;
+}
+
+proc box_raw_advance_generation<T>(
+    value: ref mut BoxRaw<T>
+) -> u64 {
+    set value.generation =
+        value.generation + 1;
+
+    set value.revision =
+        value.revision + 1;
+
+    give value.generation;
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+proc box_raw_pointer_valid<T>(
+    value: BoxRaw<T>
+) -> bool {
+    give not compiler_raw_ptr_is_null(
+        value.ptr
+    );
+}
+
+proc box_raw_layout_valid<T>(
+    value: BoxRaw<T>
+) -> bool {
+    give alloc_allocator.layout_is_valid(
+        value.layout
+    )
+    and value.layout.size
+        >= compiler_size_of<T>()
+    and value.layout.align
+        >= compiler_align_of<T>();
+}
+
+proc box_raw_state_valid<T>(
+    value: BoxRaw<T>
+) -> bool {
+    pick value.state {
+        BoxRawState.Borrowed {
+            give value.ownership
+                == BoxRawOwnership.Borrowed;
+        }
+
+        BoxRawState.Owned {
+            give value.ownership
+                == BoxRawOwnership.Owned;
+        }
+
+        BoxRawState.Consumed {
+            give value.ownership
+                == BoxRawOwnership.Transferred;
+        }
+
+        BoxRawState.Released {
+            give value.ownership
+                == BoxRawOwnership.Released;
+        }
+
+        BoxRawState.Invalid {
+            give false;
+        }
+    }
+
+    give false;
+}
+
+proc box_raw_ownership_valid<T>(
+    value: BoxRaw<T>
+) -> bool {
+    pick value.state {
+        BoxRawState.Borrowed {
+            give value.ownership
+                == BoxRawOwnership.Borrowed;
+        }
+
+        BoxRawState.Owned {
+            give value.ownership
+                == BoxRawOwnership.Owned;
+        }
+
+        BoxRawState.Consumed {
+            give value.ownership
+                == BoxRawOwnership.Transferred;
+        }
+
+        BoxRawState.Released {
+            give value.ownership
+                == BoxRawOwnership.Released;
+        }
+
+        BoxRawState.Invalid {
+            give false;
+        }
+    }
+
+    give false;
+}
+
+proc box_raw_access_valid<T>(
+    value: BoxRaw<T>
+) -> bool {
+    if value.state
+        == BoxRawState.Consumed
+        or value.state
+            == BoxRawState.Released
+    {
+        give not box_raw_can_read<T>(
+            value
+        )
+        and not box_raw_can_write<T>(
+            value
+        );
+    }
+
+    give true;
+}
+
+proc box_raw_validate<T>(
+    value: BoxRaw<T>
+) -> BoxRawValidation {
+    let pointer_valid =
+        if value.state
+            == BoxRawState.Consumed
+            or value.state
+                == BoxRawState.Released
+        {
+            true
+        } else {
+            box_raw_pointer_valid<T>(
+                value
+            )
+        };
+
+    let layout_valid =
+        box_raw_layout_valid<T>(
+            value
+        );
+
+    let state_valid =
+        box_raw_state_valid<T>(
+            value
+        );
+
+    let ownership_valid =
+        box_raw_ownership_valid<T>(
+            value
+        );
+
+    let access_valid =
+        box_raw_access_valid<T>(
+            value
+        );
+
+    give BoxRawValidation {
+        valid:
+            pointer_valid
+            and layout_valid
+            and state_valid
+            and ownership_valid
+            and access_valid,
+
+        pointer_valid:
+            pointer_valid,
+
+        layout_valid:
+            layout_valid,
+
+        state_valid:
+            state_valid,
+
+        ownership_valid:
+            ownership_valid,
+
+        access_valid:
+            access_valid
+    };
+}
+
+proc box_raw_is_valid<T>(
+    value: BoxRaw<T>
+) -> bool {
+    give box_raw_validate<T>(
+        value
+    ).valid;
+}
+
+proc box_raw_invariant_holds<T>(
+    value: BoxRaw<T>
+) -> bool {
+    give box_raw_is_valid<T>(
+        value
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Profile
+// -----------------------------------------------------------------------------
+
+proc box_raw_profile<T>(
+    value: BoxRaw<T>
+) -> BoxRawProfile {
+    give BoxRawProfile {
+        size:
+            value.layout.size,
+
+        align:
+            value.layout.align,
+
+        state:
+            value.state,
+
+        ownership:
+            value.ownership,
+
+        kind:
+            value.kind,
+
+        borrowed:
+            value.state
+                == BoxRawState.Borrowed,
+
+        owned:
+            value.state
+                == BoxRawState.Owned,
+
+        consumed:
+            value.state
+                == BoxRawState.Consumed,
+
+        released:
+            value.state
+                == BoxRawState.Released,
+
+        readable:
+            box_raw_can_read<T>(
+                value
+            ),
+
+        writable:
+            box_raw_can_write<T>(
+                value
+            ),
+
+        reconstructable:
+            box_raw_can_reconstruct<T>(
+                value
+            ),
+
+        releasable:
+            box_raw_can_release<T>(
+                value
+            ),
+
+        valid:
+            box_raw_is_valid<T>(
+                value
+            ),
+
+        generation:
+            value.generation,
+
+        revision:
+            value.revision
+    };
+}
+
+proc box_raw_profile_valid(
+    profile: BoxRawProfile
+) -> bool {
+    if profile.borrowed
+        != (
+            profile.state
+            == BoxRawState.Borrowed
+        )
+    {
+        give false;
+    }
+
+    if profile.owned
+        != (
+            profile.state
+            == BoxRawState.Owned
+        )
+    {
+        give false;
+    }
+
+    if profile.consumed
+        != (
+            profile.state
+            == BoxRawState.Consumed
+        )
+    {
+        give false;
+    }
+
+    if profile.released
+        != (
+            profile.state
+            == BoxRawState.Released
+        )
+    {
+        give false;
+    }
+
+    if profile.reconstructable
+        and not profile.owned
+    {
+        give false;
+    }
+
+    if profile.releasable
+        and not profile.owned
+    {
+        give false;
+    }
+
+    give profile.valid;
+}
+
+// -----------------------------------------------------------------------------
+// Snapshot
+// -----------------------------------------------------------------------------
+
+proc box_raw_snapshot<T>(
+    value: BoxRaw<T>
+) -> BoxRawSnapshot {
+    give BoxRawSnapshot {
+        size:
+            value.layout.size,
+
+        align:
+            value.layout.align,
+
+        state:
+            value.state,
+
+        ownership:
+            value.ownership,
+
+        generation:
+            value.generation,
+
+        revision:
+            value.revision
+    };
+}
+
+proc box_raw_snapshot_equal(
+    left: BoxRawSnapshot,
+    right: BoxRawSnapshot
+) -> bool {
+    give left.size == right.size
+        and left.align == right.align
+        and left.state == right.state
+        and left.ownership == right.ownership
+        and left.generation == right.generation
+        and left.revision == right.revision;
+}
+
+proc box_raw_snapshot_changed(
+    left: BoxRawSnapshot,
+    right: BoxRawSnapshot
+) -> bool {
+    give not box_raw_snapshot_equal(
+        left,
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Delta
+// -----------------------------------------------------------------------------
+
+proc box_raw_u64_delta(
+    before: u64,
+    after: u64
+) -> int {
+    if after > before {
+        give (
+            after - before
+        ) as int;
+    }
+
+    if after < before {
+        give -(
+            (
+                before - after
+            ) as int
+        );
+    }
+
+    give 0;
+}
+
+proc box_raw_delta(
+    before: BoxRawSnapshot,
+    after: BoxRawSnapshot
+) -> BoxRawDelta {
+    let generation =
+        box_raw_u64_delta(
+            before.generation,
+            after.generation
+        );
+
+    let revision =
+        box_raw_u64_delta(
+            before.revision,
+            after.revision
+        );
+
+    let state_changed =
+        before.state
+            != after.state;
+
+    let ownership_changed =
+        before.ownership
+            != after.ownership;
+
+    let layout_changed =
+        before.size
+            != after.size
+        or before.align
+            != after.align;
+
+    give BoxRawDelta {
+        generation:
+            generation,
+
+        revision:
+            revision,
+
+        state_changed:
+            state_changed,
+
+        ownership_changed:
+            ownership_changed,
+
+        layout_changed:
+            layout_changed,
+
+        changed:
+            generation != 0
+            or revision != 0
+            or state_changed
+            or ownership_changed
+            or layout_changed
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Error helpers
+// -----------------------------------------------------------------------------
+
+proc box_raw_error<T>(
+    value: BoxRaw<T>
+) -> box_error.BoxError {
+    let validation =
+        box_raw_validate<T>(
+            value
+        );
+
+    if validation.valid {
+        give box_error.box_error_none();
+    }
+
+    if not validation.pointer_valid {
+        give box_error.box_error_simple(
+            box_error.BoxErrorKind.InvalidPointer,
+            "box raw pointer is invalid"
+        );
+    }
+
+    if not validation.layout_valid {
+        give box_error.box_error_invalid_layout(
+            value.layout.size,
+            value.layout.align
+        );
+    }
+
+    if not validation.ownership_valid {
+        give box_error.box_error_simple(
+            box_error.BoxErrorKind.RawOwnershipViolation,
+            "box raw ownership is invalid"
+        );
+    }
+
+    give box_error.box_error_simple(
+        box_error.BoxErrorKind.RawConversionFailed,
+        "box raw state is invalid"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Core mapping
+// -----------------------------------------------------------------------------
+
+proc box_raw_core_state<T>(
+    value: BoxRaw<T>
+) -> box_core.BoxCoreState {
+    pick value.state {
+        BoxRawState.Borrowed {
+            give box_core.BoxCoreState.Alive;
+        }
+
+        BoxRawState.Owned {
+            give box_core.BoxCoreState.Alive;
+        }
+
+        BoxRawState.Consumed {
+            give box_core.BoxCoreState.Moved;
+        }
+
+        BoxRawState.Released {
+            give box_core.BoxCoreState.Released;
+        }
+
+        BoxRawState.Invalid {
+            give box_core.BoxCoreState.Invalid;
+        }
+    }
+
+    give box_core.BoxCoreState.Invalid;
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc box_raw_statistics_empty()
+    -> BoxRawStatistics
+{
+    give BoxRawStatistics {
+        borrowed_views: 0,
+        mutable_views: 0,
+        ownership_transfers: 0,
+
+        reconstructions: 0,
+        reconstruction_failures: 0,
+
+        releases: 0,
+        release_failures: 0,
+
+        validations: 0
+    };
+}
+
+proc box_raw_statistics_total(
+    statistics: BoxRawStatistics
+) -> u64 {
+    give statistics.borrowed_views
+        + statistics.mutable_views
+        + statistics.ownership_transfers
+        + statistics.reconstructions
+        + statistics.reconstruction_failures
+        + statistics.releases
+        + statistics.release_failures
+        + statistics.validations;
+}
+
+proc box_raw_statistics_reset(
+    statistics: ref mut BoxRawStatistics
+) {
+    set *statistics =
+        box_raw_statistics_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc box_raw_state_name(
+    state: BoxRawState
+) -> string {
+    pick state {
+        BoxRawState.Borrowed {
+            give "borrowed";
+        }
+
+        BoxRawState.Owned {
+            give "owned";
+        }
+
+        BoxRawState.Consumed {
+            give "consumed";
+        }
+
+        BoxRawState.Released {
+            give "released";
+        }
+
+        BoxRawState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+proc box_raw_ownership_name(
+    ownership: BoxRawOwnership
+) -> string {
+    pick ownership {
+        BoxRawOwnership.None {
+            give "none";
+        }
+
+        BoxRawOwnership.Borrowed {
+            give "borrowed";
+        }
+
+        BoxRawOwnership.Owned {
+            give "owned";
+        }
+
+        BoxRawOwnership.Transferred {
+            give "transferred";
+        }
+
+        BoxRawOwnership.Released {
+            give "released";
+        }
+    }
+
+    give "none";
+}
+
+proc box_raw_kind_name(
+    kind: BoxRawKind
+) -> string {
+    pick kind {
+        BoxRawKind.Shared {
+            give "shared";
+        }
+
+        BoxRawKind.Mutable {
+            give "mutable";
+        }
+
+        BoxRawKind.Owned {
+            give "owned";
+        }
+    }
+
+    give "shared";
+}
+
+proc box_raw_failure_name(
+    failure: BoxRawFailure
+) -> string {
+    pick failure {
+        BoxRawFailure.None {
+            give "none";
+        }
+
+        BoxRawFailure.InvalidBox {
+            give "invalid-box";
+        }
+
+        BoxRawFailure.InvalidPointer {
+            give "invalid-pointer";
+        }
+
+        BoxRawFailure.InvalidLayout {
+            give "invalid-layout";
+        }
+
+        BoxRawFailure.InvalidState {
+            give "invalid-state";
+        }
+
+        BoxRawFailure.InvalidOwnership {
+            give "invalid-ownership";
+        }
+
+        BoxRawFailure.AlreadyConsumed {
+            give "already-consumed";
+        }
+
+        BoxRawFailure.AlreadyReleased {
+            give "already-released";
+        }
+
+        BoxRawFailure.ReconstructionFailed {
+            give "reconstruction-failed";
+        }
+
+        BoxRawFailure.ReleaseFailed {
+            give "release-failed";
+        }
+
+        BoxRawFailure.RuntimeFailure {
+            give "runtime-failure";
+        }
+    }
+
+    give "runtime-failure";
+}
+
+// -----------------------------------------------------------------------------
+// Raw ownership model
+// -----------------------------------------------------------------------------
+//
+// Borrowed:
+//
+//     Box<T>
+//       |
+//       +----> BoxRaw<T>
+//               state     = Borrowed
+//               ownership = Borrowed
+//
+// The Box remains owner.
+//
+// Raw view must NOT:
+//
+//     deallocate
+//     reconstruct ownership
+//
+//
+// Owned transfer:
+//
+//     Box<T>
+//       |
+//       | box_into_raw
+//       v
+//     BoxRaw<T>
+//       |
+//       +-- state     = Owned
+//       +-- ownership = Owned
+//
+// Original Box becomes Moved.
+//
+// From that point exactly one operation may consume ownership:
+//
+//     box_raw_reconstruct
+//
+// or:
+//
+//     box_raw_release
+//
+// Reconstruction:
+//
+//     BoxRaw<T>: Owned
+//          |
+//          | reconstruct
+//          v
+//       Box<T>
+//
+// Raw state becomes:
+//
+//     Consumed
+//
+// Release:
+//
+//     BoxRaw<T>: Owned
+//          |
+//          +-- drop T
+//          +-- free allocation
+//          |
+//          v
+//       Released
+//
+// Invariants:
+//
+//     Borrowed
+//         cannot reconstruct
+//         cannot release
+//
+//     Owned
+//         can reconstruct exactly once
+//         can release exactly once
+//
+//     Consumed
+//         cannot read
+//         cannot write
+//         cannot reconstruct
+//         cannot release
+//
+//     Released
+//         memory already freed
+//
+// `raw.vitl` is the ownership-transfer boundary for Box<T>.
+//
+// Normal Box ownership belongs to `boxed.vitl`.
+// Allocation mechanics belong to `alloc.vitl`.
+// Destruction lifecycle belongs to `drop.vitl`.
+// Internal representation belongs to `inner.vitl`.

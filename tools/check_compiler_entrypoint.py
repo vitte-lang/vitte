@@ -69,6 +69,10 @@ def module_path_for_file(path: Path) -> str:
 
 
 def allowed_spaces_for_file(path: Path) -> set[str]:
+    if path.is_relative_to(COMPILER_ROOT / "tests" / "fixtures"):
+        declared = parse_space(path)
+        if declared:
+            return {declared}
     exact = path.relative_to(ROOT / "src").with_suffix("").as_posix()
     parent = path.parent.relative_to(ROOT / "src").as_posix()
     if path.name == "mod.vit":

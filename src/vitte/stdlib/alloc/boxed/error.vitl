@@ -1,0 +1,1443 @@
+space vitte/stdlib/alloc/boxed/error
+
+export *
+
+use src/vitte/stdlib/alloc/boxed/boxed as boxed
+use src/vitte/stdlib/alloc/boxed/core as box_core
+
+pick BoxErrorKind {
+    None,
+
+    InvalidBox,
+    InvalidState,
+    InvalidOwnership,
+
+    InvalidAllocation,
+    InvalidPointer,
+    InvalidLayout,
+    InvalidSize,
+    InvalidAlignment,
+
+    AllocationFailed,
+    OutOfMemory,
+    Overflow,
+
+    AlreadyMoved,
+    AlreadyReleased,
+
+    MoveFailed,
+    ReadAfterMove,
+    WriteAfterMove,
+
+    ReadAfterRelease,
+    WriteAfterRelease,
+
+    DropFailed,
+    DeallocationFailed,
+
+    RawConversionFailed,
+    RawOwnershipViolation,
+
+    RuntimeFailure,
+    Internal
+}
+
+pick BoxErrorSeverity {
+    Note,
+    Warning,
+    Error,
+    Fatal
+}
+
+pick BoxErrorDomain {
+    General,
+    Ownership,
+    Allocation,
+    Access,
+    Move,
+    Drop,
+    Raw,
+    Runtime,
+    Internal
+}
+
+pick BoxErrorOperation {
+    None,
+
+    New,
+    Allocate,
+    Read,
+    Write,
+    Replace,
+    Move,
+    IntoInner,
+
+    Drop,
+    Release,
+
+    IntoRaw,
+    FromRaw,
+
+    Validate
+}
+
+form BoxErrorContext {
+    operation: BoxErrorOperation
+
+    state: boxed.BoxState
+
+    size: usize
+    align: usize
+
+    generation: u64
+    revision: u64
+}
+
+form BoxError {
+    kind: BoxErrorKind
+    severity: BoxErrorSeverity
+    domain: BoxErrorDomain
+
+    context: BoxErrorContext
+
+    message: string
+}
+
+form BoxErrorStatistics {
+    total: u64
+
+    notes: u64
+    warnings: u64
+    errors: u64
+    fatals: u64
+
+    ownership: u64
+    allocation: u64
+    access: u64
+    move_errors: u64
+    drop_errors: u64
+    raw_errors: u64
+    runtime: u64
+    internal: u64
+}
+
+// -----------------------------------------------------------------------------
+// Context
+// -----------------------------------------------------------------------------
+
+proc box_error_context_empty() -> BoxErrorContext {
+    give BoxErrorContext {
+        operation:
+            BoxErrorOperation.None,
+
+        state:
+            boxed.BoxState.Invalid,
+
+        size:
+            0,
+
+        align:
+            0,
+
+        generation:
+            0,
+
+        revision:
+            0
+    };
+}
+
+proc box_error_context(
+    operation: BoxErrorOperation,
+    state: boxed.BoxState,
+    size: usize,
+    align: usize,
+    generation: u64,
+    revision: u64
+) -> BoxErrorContext {
+    give BoxErrorContext {
+        operation:
+            operation,
+
+        state:
+            state,
+
+        size:
+            size,
+
+        align:
+            align,
+
+        generation:
+            generation,
+
+        revision:
+            revision
+    };
+}
+
+proc box_error_context_from_box<T>(
+    value: boxed.Box<T>,
+    operation: BoxErrorOperation
+) -> BoxErrorContext {
+    give BoxErrorContext {
+        operation:
+            operation,
+
+        state:
+            value.state,
+
+        size:
+            value.allocation.layout.size,
+
+        align:
+            value.allocation.layout.align,
+
+        generation:
+            value.generation,
+
+        revision:
+            value.revision
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Constructors
+// -----------------------------------------------------------------------------
+
+proc box_error(
+    kind: BoxErrorKind,
+    severity: BoxErrorSeverity,
+    domain: BoxErrorDomain,
+    context: BoxErrorContext,
+    message: string
+) -> BoxError {
+    give BoxError {
+        kind:
+            kind,
+
+        severity:
+            severity,
+
+        domain:
+            domain,
+
+        context:
+            context,
+
+        message:
+            message
+    };
+}
+
+proc box_error_none() -> BoxError {
+    give box_error(
+        BoxErrorKind.None,
+        BoxErrorSeverity.Note,
+        BoxErrorDomain.General,
+        box_error_context_empty(),
+        ""
+    );
+}
+
+proc box_error_simple(
+    kind: BoxErrorKind,
+    message: string
+) -> BoxError {
+    give box_error(
+        kind,
+        BoxErrorSeverity.Error,
+        box_error_domain_for_kind(kind),
+        box_error_context_empty(),
+        message
+    );
+}
+
+proc box_error_fatal(
+    kind: BoxErrorKind,
+    message: string
+) -> BoxError {
+    give box_error(
+        kind,
+        BoxErrorSeverity.Fatal,
+        box_error_domain_for_kind(kind),
+        box_error_context_empty(),
+        message
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Ownership errors
+// -----------------------------------------------------------------------------
+
+proc box_error_invalid_box<T>(
+    value: boxed.Box<T>
+) -> BoxError {
+    give box_error(
+        BoxErrorKind.InvalidBox,
+        BoxErrorSeverity.Fatal,
+        BoxErrorDomain.Ownership,
+        box_error_context_from_box(
+            value,
+            BoxErrorOperation.Validate
+        ),
+        "box is invalid"
+    );
+}
+
+proc box_error_invalid_state<T>(
+    value: boxed.Box<T>
+) -> BoxError {
+    give box_error(
+        BoxErrorKind.InvalidState,
+        BoxErrorSeverity.Error,
+        BoxErrorDomain.Ownership,
+        box_error_context_from_box(
+            value,
+            BoxErrorOperation.Validate
+        ),
+        "box state is invalid"
+    );
+}
+
+proc box_error_invalid_ownership<T>(
+    value: boxed.Box<T>
+) -> BoxError {
+    give box_error(
+        BoxErrorKind.InvalidOwnership,
+        BoxErrorSeverity.Fatal,
+        BoxErrorDomain.Ownership,
+        box_error_context_from_box(
+            value,
+            BoxErrorOperation.Validate
+        ),
+        "box ownership invariant is invalid"
+    );
+}
+
+proc box_error_already_moved<T>(
+    value: boxed.Box<T>
+) -> BoxError {
+    give box_error(
+        BoxErrorKind.AlreadyMoved,
+        BoxErrorSeverity.Error,
+        BoxErrorDomain.Move,
+        box_error_context_from_box(
+            value,
+            BoxErrorOperation.Move
+        ),
+        "box ownership was already moved"
+    );
+}
+
+proc box_error_already_released<T>(
+    value: boxed.Box<T>
+) -> BoxError {
+    give box_error(
+        BoxErrorKind.AlreadyReleased,
+        BoxErrorSeverity.Error,
+        BoxErrorDomain.Drop,
+        box_error_context_from_box(
+            value,
+            BoxErrorOperation.Release
+        ),
+        "box was already released"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Allocation errors
+// -----------------------------------------------------------------------------
+
+proc box_error_invalid_allocation<T>(
+    value: boxed.Box<T>
+) -> BoxError {
+    give box_error(
+        BoxErrorKind.InvalidAllocation,
+        BoxErrorSeverity.Fatal,
+        BoxErrorDomain.Allocation,
+        box_error_context_from_box(
+            value,
+            BoxErrorOperation.Validate
+        ),
+        "box allocation is invalid"
+    );
+}
+
+proc box_error_invalid_pointer<T>(
+    value: boxed.Box<T>
+) -> BoxError {
+    give box_error(
+        BoxErrorKind.InvalidPointer,
+        BoxErrorSeverity.Fatal,
+        BoxErrorDomain.Allocation,
+        box_error_context_from_box(
+            value,
+            BoxErrorOperation.Validate
+        ),
+        "box pointer is invalid"
+    );
+}
+
+proc box_error_invalid_layout(
+    size: usize,
+    align: usize
+) -> BoxError {
+    give box_error(
+        BoxErrorKind.InvalidLayout,
+        BoxErrorSeverity.Error,
+        BoxErrorDomain.Allocation,
+        box_error_context(
+            BoxErrorOperation.Allocate,
+            boxed.BoxState.Invalid,
+            size,
+            align,
+            0,
+            0
+        ),
+        "box allocation layout is invalid"
+    );
+}
+
+proc box_error_invalid_size(
+    size: usize
+) -> BoxError {
+    give box_error(
+        BoxErrorKind.InvalidSize,
+        BoxErrorSeverity.Error,
+        BoxErrorDomain.Allocation,
+        box_error_context(
+            BoxErrorOperation.Allocate,
+            boxed.BoxState.Invalid,
+            size,
+            0,
+            0,
+            0
+        ),
+        "box allocation size is invalid"
+    );
+}
+
+proc box_error_invalid_alignment(
+    align: usize
+) -> BoxError {
+    give box_error(
+        BoxErrorKind.InvalidAlignment,
+        BoxErrorSeverity.Error,
+        BoxErrorDomain.Allocation,
+        box_error_context(
+            BoxErrorOperation.Allocate,
+            boxed.BoxState.Invalid,
+            0,
+            align,
+            0,
+            0
+        ),
+        "box allocation alignment is invalid"
+    );
+}
+
+proc box_error_allocation_failed(
+    size: usize,
+    align: usize
+) -> BoxError {
+    give box_error(
+        BoxErrorKind.AllocationFailed,
+        BoxErrorSeverity.Error,
+        BoxErrorDomain.Allocation,
+        box_error_context(
+            BoxErrorOperation.Allocate,
+            boxed.BoxState.Invalid,
+            size,
+            align,
+            0,
+            0
+        ),
+        "box allocation failed"
+    );
+}
+
+proc box_error_out_of_memory(
+    size: usize,
+    align: usize
+) -> BoxError {
+    give box_error(
+        BoxErrorKind.OutOfMemory,
+        BoxErrorSeverity.Fatal,
+        BoxErrorDomain.Allocation,
+        box_error_context(
+            BoxErrorOperation.Allocate,
+            boxed.BoxState.Invalid,
+            size,
+            align,
+            0,
+            0
+        ),
+        "box allocator is out of memory"
+    );
+}
+
+proc box_error_overflow(
+    size: usize
+) -> BoxError {
+    give box_error(
+        BoxErrorKind.Overflow,
+        BoxErrorSeverity.Error,
+        BoxErrorDomain.Allocation,
+        box_error_context(
+            BoxErrorOperation.Allocate,
+            boxed.BoxState.Invalid,
+            size,
+            0,
+            0,
+            0
+        ),
+        "box allocation size overflow"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Access errors
+// -----------------------------------------------------------------------------
+
+proc box_error_read_after_move<T>(
+    value: boxed.Box<T>
+) -> BoxError {
+    give box_error(
+        BoxErrorKind.ReadAfterMove,
+        BoxErrorSeverity.Fatal,
+        BoxErrorDomain.Access,
+        box_error_context_from_box(
+            value,
+            BoxErrorOperation.Read
+        ),
+        "cannot read a moved box"
+    );
+}
+
+proc box_error_write_after_move<T>(
+    value: boxed.Box<T>
+) -> BoxError {
+    give box_error(
+        BoxErrorKind.WriteAfterMove,
+        BoxErrorSeverity.Fatal,
+        BoxErrorDomain.Access,
+        box_error_context_from_box(
+            value,
+            BoxErrorOperation.Write
+        ),
+        "cannot write a moved box"
+    );
+}
+
+proc box_error_read_after_release<T>(
+    value: boxed.Box<T>
+) -> BoxError {
+    give box_error(
+        BoxErrorKind.ReadAfterRelease,
+        BoxErrorSeverity.Fatal,
+        BoxErrorDomain.Access,
+        box_error_context_from_box(
+            value,
+            BoxErrorOperation.Read
+        ),
+        "cannot read a released box"
+    );
+}
+
+proc box_error_write_after_release<T>(
+    value: boxed.Box<T>
+) -> BoxError {
+    give box_error(
+        BoxErrorKind.WriteAfterRelease,
+        BoxErrorSeverity.Fatal,
+        BoxErrorDomain.Access,
+        box_error_context_from_box(
+            value,
+            BoxErrorOperation.Write
+        ),
+        "cannot write a released box"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Move errors
+// -----------------------------------------------------------------------------
+
+proc box_error_move_failed<T>(
+    value: boxed.Box<T>
+) -> BoxError {
+    give box_error(
+        BoxErrorKind.MoveFailed,
+        BoxErrorSeverity.Error,
+        BoxErrorDomain.Move,
+        box_error_context_from_box(
+            value,
+            BoxErrorOperation.Move
+        ),
+        "box ownership move failed"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Drop errors
+// -----------------------------------------------------------------------------
+
+proc box_error_drop_failed<T>(
+    value: boxed.Box<T>
+) -> BoxError {
+    give box_error(
+        BoxErrorKind.DropFailed,
+        BoxErrorSeverity.Fatal,
+        BoxErrorDomain.Drop,
+        box_error_context_from_box(
+            value,
+            BoxErrorOperation.Drop
+        ),
+        "box value drop failed"
+    );
+}
+
+proc box_error_deallocation_failed<T>(
+    value: boxed.Box<T>
+) -> BoxError {
+    give box_error(
+        BoxErrorKind.DeallocationFailed,
+        BoxErrorSeverity.Fatal,
+        BoxErrorDomain.Drop,
+        box_error_context_from_box(
+            value,
+            BoxErrorOperation.Release
+        ),
+        "box allocation deallocation failed"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Raw errors
+// -----------------------------------------------------------------------------
+
+proc box_error_raw_conversion_failed<T>(
+    value: boxed.Box<T>
+) -> BoxError {
+    give box_error(
+        BoxErrorKind.RawConversionFailed,
+        BoxErrorSeverity.Error,
+        BoxErrorDomain.Raw,
+        box_error_context_from_box(
+            value,
+            BoxErrorOperation.IntoRaw
+        ),
+        "box raw pointer conversion failed"
+    );
+}
+
+proc box_error_raw_ownership_violation(
+    size: usize,
+    align: usize
+) -> BoxError {
+    give box_error(
+        BoxErrorKind.RawOwnershipViolation,
+        BoxErrorSeverity.Fatal,
+        BoxErrorDomain.Raw,
+        box_error_context(
+            BoxErrorOperation.FromRaw,
+            boxed.BoxState.Invalid,
+            size,
+            align,
+            0,
+            0
+        ),
+        "box raw ownership invariant violated"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Runtime / internal
+// -----------------------------------------------------------------------------
+
+proc box_error_runtime(
+    message: string
+) -> BoxError {
+    give box_error(
+        BoxErrorKind.RuntimeFailure,
+        BoxErrorSeverity.Fatal,
+        BoxErrorDomain.Runtime,
+        box_error_context_empty(),
+        message
+    );
+}
+
+proc box_error_internal(
+    message: string
+) -> BoxError {
+    give box_error(
+        BoxErrorKind.Internal,
+        BoxErrorSeverity.Fatal,
+        BoxErrorDomain.Internal,
+        box_error_context_empty(),
+        message
+    );
+}
+
+// -----------------------------------------------------------------------------
+// From validation
+// -----------------------------------------------------------------------------
+
+proc box_error_from_validation<T>(
+    value: boxed.Box<T>,
+    validation: boxed.BoxValidation
+) -> BoxError {
+    if validation.valid {
+        give box_error_none();
+    }
+
+    if not validation.pointer_valid {
+        give box_error_invalid_pointer(
+            value
+        );
+    }
+
+    if not validation.layout_valid {
+        give box_error_invalid_layout(
+            value.allocation.layout.size,
+            value.allocation.layout.align
+        );
+    }
+
+    if not validation.allocation_valid {
+        give box_error_invalid_allocation(
+            value
+        );
+    }
+
+    if not validation.ownership_valid {
+        give box_error_invalid_ownership(
+            value
+        );
+    }
+
+    if not validation.state_valid {
+        give box_error_invalid_state(
+            value
+        );
+    }
+
+    give box_error_internal(
+        "unknown box validation failure"
+    );
+}
+
+proc box_error_from_core_validation(
+    profile: box_core.BoxCoreProfile,
+    validation: box_core.BoxCoreValidation
+) -> BoxError {
+    if validation.valid {
+        give box_error_none();
+    }
+
+    if not validation.layout_valid {
+        give box_error_invalid_layout(
+            profile.meta.layout.size,
+            profile.meta.layout.align
+        );
+    }
+
+    if not validation.state_valid {
+        give box_error_simple(
+            BoxErrorKind.InvalidState,
+            "box core state is invalid"
+        );
+    }
+
+    if not validation.ownership_valid {
+        give box_error_simple(
+            BoxErrorKind.InvalidOwnership,
+            "box core ownership is invalid"
+        );
+    }
+
+    if not validation.access_valid {
+        give box_error_simple(
+            BoxErrorKind.InvalidState,
+            "box core access state is invalid"
+        );
+    }
+
+    give box_error_internal(
+        "unknown box core validation failure"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Access checking
+// -----------------------------------------------------------------------------
+
+proc box_error_for_read<T>(
+    value: boxed.Box<T>
+) -> BoxError {
+    pick value.state {
+        boxed.BoxState.Valid {
+            give box_error_none();
+        }
+
+        boxed.BoxState.Moved {
+            give box_error_read_after_move(
+                value
+            );
+        }
+
+        boxed.BoxState.Released {
+            give box_error_read_after_release(
+                value
+            );
+        }
+
+        boxed.BoxState.Invalid {
+            give box_error_invalid_box(
+                value
+            );
+        }
+    }
+
+    give box_error_invalid_box(
+        value
+    );
+}
+
+proc box_error_for_write<T>(
+    value: boxed.Box<T>
+) -> BoxError {
+    pick value.state {
+        boxed.BoxState.Valid {
+            give box_error_none();
+        }
+
+        boxed.BoxState.Moved {
+            give box_error_write_after_move(
+                value
+            );
+        }
+
+        boxed.BoxState.Released {
+            give box_error_write_after_release(
+                value
+            );
+        }
+
+        boxed.BoxState.Invalid {
+            give box_error_invalid_box(
+                value
+            );
+        }
+    }
+
+    give box_error_invalid_box(
+        value
+    );
+}
+
+proc box_error_for_move<T>(
+    value: boxed.Box<T>
+) -> BoxError {
+    pick value.state {
+        boxed.BoxState.Valid {
+            give box_error_none();
+        }
+
+        boxed.BoxState.Moved {
+            give box_error_already_moved(
+                value
+            );
+        }
+
+        boxed.BoxState.Released {
+            give box_error_already_released(
+                value
+            );
+        }
+
+        boxed.BoxState.Invalid {
+            give box_error_invalid_box(
+                value
+            );
+        }
+    }
+
+    give box_error_move_failed(
+        value
+    );
+}
+
+proc box_error_for_drop<T>(
+    value: boxed.Box<T>
+) -> BoxError {
+    pick value.state {
+        boxed.BoxState.Valid {
+            give box_error_none();
+        }
+
+        boxed.BoxState.Moved {
+            give box_error_already_moved(
+                value
+            );
+        }
+
+        boxed.BoxState.Released {
+            give box_error_already_released(
+                value
+            );
+        }
+
+        boxed.BoxState.Invalid {
+            give box_error_invalid_box(
+                value
+            );
+        }
+    }
+
+    give box_error_drop_failed(
+        value
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Predicates
+// -----------------------------------------------------------------------------
+
+proc box_error_is_none(
+    error: BoxError
+) -> bool {
+    give error.kind
+        == BoxErrorKind.None;
+}
+
+proc box_error_is_error(
+    error: BoxError
+) -> bool {
+    give error.severity
+        == BoxErrorSeverity.Error
+        or error.severity
+            == BoxErrorSeverity.Fatal;
+}
+
+proc box_error_is_fatal(
+    error: BoxError
+) -> bool {
+    give error.severity
+        == BoxErrorSeverity.Fatal;
+}
+
+proc box_error_is_warning(
+    error: BoxError
+) -> bool {
+    give error.severity
+        == BoxErrorSeverity.Warning;
+}
+
+proc box_error_is_ownership(
+    error: BoxError
+) -> bool {
+    give error.domain
+        == BoxErrorDomain.Ownership;
+}
+
+proc box_error_is_allocation(
+    error: BoxError
+) -> bool {
+    give error.domain
+        == BoxErrorDomain.Allocation;
+}
+
+proc box_error_is_access(
+    error: BoxError
+) -> bool {
+    give error.domain
+        == BoxErrorDomain.Access;
+}
+
+proc box_error_is_move(
+    error: BoxError
+) -> bool {
+    give error.domain
+        == BoxErrorDomain.Move;
+}
+
+proc box_error_is_drop(
+    error: BoxError
+) -> bool {
+    give error.domain
+        == BoxErrorDomain.Drop;
+}
+
+proc box_error_is_raw(
+    error: BoxError
+) -> bool {
+    give error.domain
+        == BoxErrorDomain.Raw;
+}
+
+// -----------------------------------------------------------------------------
+// Domain mapping
+// -----------------------------------------------------------------------------
+
+proc box_error_domain_for_kind(
+    kind: BoxErrorKind
+) -> BoxErrorDomain {
+    pick kind {
+        BoxErrorKind.None {
+            give BoxErrorDomain.General;
+        }
+
+        BoxErrorKind.InvalidBox
+        | BoxErrorKind.InvalidState
+        | BoxErrorKind.InvalidOwnership {
+            give BoxErrorDomain.Ownership;
+        }
+
+        BoxErrorKind.InvalidAllocation
+        | BoxErrorKind.InvalidPointer
+        | BoxErrorKind.InvalidLayout
+        | BoxErrorKind.InvalidSize
+        | BoxErrorKind.InvalidAlignment
+        | BoxErrorKind.AllocationFailed
+        | BoxErrorKind.OutOfMemory
+        | BoxErrorKind.Overflow {
+            give BoxErrorDomain.Allocation;
+        }
+
+        BoxErrorKind.ReadAfterMove
+        | BoxErrorKind.WriteAfterMove
+        | BoxErrorKind.ReadAfterRelease
+        | BoxErrorKind.WriteAfterRelease {
+            give BoxErrorDomain.Access;
+        }
+
+        BoxErrorKind.AlreadyMoved
+        | BoxErrorKind.MoveFailed {
+            give BoxErrorDomain.Move;
+        }
+
+        BoxErrorKind.AlreadyReleased
+        | BoxErrorKind.DropFailed
+        | BoxErrorKind.DeallocationFailed {
+            give BoxErrorDomain.Drop;
+        }
+
+        BoxErrorKind.RawConversionFailed
+        | BoxErrorKind.RawOwnershipViolation {
+            give BoxErrorDomain.Raw;
+        }
+
+        BoxErrorKind.RuntimeFailure {
+            give BoxErrorDomain.Runtime;
+        }
+
+        BoxErrorKind.Internal {
+            give BoxErrorDomain.Internal;
+        }
+    }
+
+    give BoxErrorDomain.Internal;
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc box_error_statistics_empty()
+    -> BoxErrorStatistics
+{
+    give BoxErrorStatistics {
+        total: 0,
+
+        notes: 0,
+        warnings: 0,
+        errors: 0,
+        fatals: 0,
+
+        ownership: 0,
+        allocation: 0,
+        access: 0,
+        move_errors: 0,
+        drop_errors: 0,
+        raw_errors: 0,
+        runtime: 0,
+        internal: 0
+    };
+}
+
+proc box_error_statistics_record(
+    statistics: ref mut BoxErrorStatistics,
+    error: BoxError
+) {
+    if box_error_is_none(
+        error
+    ) {
+        give;
+    }
+
+    set statistics.total =
+        statistics.total + 1;
+
+    pick error.severity {
+        BoxErrorSeverity.Note {
+            set statistics.notes =
+                statistics.notes + 1;
+        }
+
+        BoxErrorSeverity.Warning {
+            set statistics.warnings =
+                statistics.warnings + 1;
+        }
+
+        BoxErrorSeverity.Error {
+            set statistics.errors =
+                statistics.errors + 1;
+        }
+
+        BoxErrorSeverity.Fatal {
+            set statistics.fatals =
+                statistics.fatals + 1;
+        }
+    }
+
+    pick error.domain {
+        BoxErrorDomain.Ownership {
+            set statistics.ownership =
+                statistics.ownership + 1;
+        }
+
+        BoxErrorDomain.Allocation {
+            set statistics.allocation =
+                statistics.allocation + 1;
+        }
+
+        BoxErrorDomain.Access {
+            set statistics.access =
+                statistics.access + 1;
+        }
+
+        BoxErrorDomain.Move {
+            set statistics.move_errors =
+                statistics.move_errors + 1;
+        }
+
+        BoxErrorDomain.Drop {
+            set statistics.drop_errors =
+                statistics.drop_errors + 1;
+        }
+
+        BoxErrorDomain.Raw {
+            set statistics.raw_errors =
+                statistics.raw_errors + 1;
+        }
+
+        BoxErrorDomain.Runtime {
+            set statistics.runtime =
+                statistics.runtime + 1;
+        }
+
+        BoxErrorDomain.Internal {
+            set statistics.internal =
+                statistics.internal + 1;
+        }
+
+        BoxErrorDomain.General {}
+    }
+}
+
+proc box_error_statistics_reset(
+    statistics: ref mut BoxErrorStatistics
+) {
+    set *statistics =
+        box_error_statistics_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc box_error_kind_name(
+    kind: BoxErrorKind
+) -> string {
+    pick kind {
+        BoxErrorKind.None {
+            give "none";
+        }
+
+        BoxErrorKind.InvalidBox {
+            give "invalid-box";
+        }
+
+        BoxErrorKind.InvalidState {
+            give "invalid-state";
+        }
+
+        BoxErrorKind.InvalidOwnership {
+            give "invalid-ownership";
+        }
+
+        BoxErrorKind.InvalidAllocation {
+            give "invalid-allocation";
+        }
+
+        BoxErrorKind.InvalidPointer {
+            give "invalid-pointer";
+        }
+
+        BoxErrorKind.InvalidLayout {
+            give "invalid-layout";
+        }
+
+        BoxErrorKind.InvalidSize {
+            give "invalid-size";
+        }
+
+        BoxErrorKind.InvalidAlignment {
+            give "invalid-alignment";
+        }
+
+        BoxErrorKind.AllocationFailed {
+            give "allocation-failed";
+        }
+
+        BoxErrorKind.OutOfMemory {
+            give "out-of-memory";
+        }
+
+        BoxErrorKind.Overflow {
+            give "overflow";
+        }
+
+        BoxErrorKind.AlreadyMoved {
+            give "already-moved";
+        }
+
+        BoxErrorKind.AlreadyReleased {
+            give "already-released";
+        }
+
+        BoxErrorKind.MoveFailed {
+            give "move-failed";
+        }
+
+        BoxErrorKind.ReadAfterMove {
+            give "read-after-move";
+        }
+
+        BoxErrorKind.WriteAfterMove {
+            give "write-after-move";
+        }
+
+        BoxErrorKind.ReadAfterRelease {
+            give "read-after-release";
+        }
+
+        BoxErrorKind.WriteAfterRelease {
+            give "write-after-release";
+        }
+
+        BoxErrorKind.DropFailed {
+            give "drop-failed";
+        }
+
+        BoxErrorKind.DeallocationFailed {
+            give "deallocation-failed";
+        }
+
+        BoxErrorKind.RawConversionFailed {
+            give "raw-conversion-failed";
+        }
+
+        BoxErrorKind.RawOwnershipViolation {
+            give "raw-ownership-violation";
+        }
+
+        BoxErrorKind.RuntimeFailure {
+            give "runtime-failure";
+        }
+
+        BoxErrorKind.Internal {
+            give "internal";
+        }
+    }
+
+    give "internal";
+}
+
+proc box_error_severity_name(
+    severity: BoxErrorSeverity
+) -> string {
+    pick severity {
+        BoxErrorSeverity.Note {
+            give "note";
+        }
+
+        BoxErrorSeverity.Warning {
+            give "warning";
+        }
+
+        BoxErrorSeverity.Error {
+            give "error";
+        }
+
+        BoxErrorSeverity.Fatal {
+            give "fatal";
+        }
+    }
+
+    give "error";
+}
+
+proc box_error_domain_name(
+    domain: BoxErrorDomain
+) -> string {
+    pick domain {
+        BoxErrorDomain.General {
+            give "general";
+        }
+
+        BoxErrorDomain.Ownership {
+            give "ownership";
+        }
+
+        BoxErrorDomain.Allocation {
+            give "allocation";
+        }
+
+        BoxErrorDomain.Access {
+            give "access";
+        }
+
+        BoxErrorDomain.Move {
+            give "move";
+        }
+
+        BoxErrorDomain.Drop {
+            give "drop";
+        }
+
+        BoxErrorDomain.Raw {
+            give "raw";
+        }
+
+        BoxErrorDomain.Runtime {
+            give "runtime";
+        }
+
+        BoxErrorDomain.Internal {
+            give "internal";
+        }
+    }
+
+    give "internal";
+}
+
+proc box_error_operation_name(
+    operation: BoxErrorOperation
+) -> string {
+    pick operation {
+        BoxErrorOperation.None {
+            give "none";
+        }
+
+        BoxErrorOperation.New {
+            give "new";
+        }
+
+        BoxErrorOperation.Allocate {
+            give "allocate";
+        }
+
+        BoxErrorOperation.Read {
+            give "read";
+        }
+
+        BoxErrorOperation.Write {
+            give "write";
+        }
+
+        BoxErrorOperation.Replace {
+            give "replace";
+        }
+
+        BoxErrorOperation.Move {
+            give "move";
+        }
+
+        BoxErrorOperation.IntoInner {
+            give "into-inner";
+        }
+
+        BoxErrorOperation.Drop {
+            give "drop";
+        }
+
+        BoxErrorOperation.Release {
+            give "release";
+        }
+
+        BoxErrorOperation.IntoRaw {
+            give "into-raw";
+        }
+
+        BoxErrorOperation.FromRaw {
+            give "from-raw";
+        }
+
+        BoxErrorOperation.Validate {
+            give "validate";
+        }
+    }
+
+    give "none";
+}
+
+// -----------------------------------------------------------------------------
+// Error model
+// -----------------------------------------------------------------------------
+//
+// Box errors are grouped by subsystem:
+//
+//     ownership
+//         invalid box
+//         moved value
+//         released value
+//
+//     allocation
+//         invalid layout
+//         invalid pointer
+//         overflow
+//         out of memory
+//
+//     access
+//         read after move
+//         write after move
+//         read after release
+//         write after release
+//
+//     move
+//         duplicate move
+//         move failure
+//
+//     drop
+//         duplicate release
+//         destructor failure
+//         deallocation failure
+//
+//     raw
+//         invalid ownership transfer
+//         invalid reconstruction
+//
+// A Box must follow:
+//
+//     Valid
+//       |
+//       +-- read/write
+//       +-- move ------> Moved
+//       +-- drop ------> Released
+//
+// Moved and Released states cannot be dereferenced.
+//
+// Diagnostics rendering/localization should remain outside this module.

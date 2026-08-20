@@ -1,0 +1,1735 @@
+space vitte/stdlib/alloc/pool/error
+
+export *
+
+use src/vitte/stdlib/alloc/pool/alloc as pool_alloc
+use src/vitte/stdlib/alloc/pool/block as pool_block
+use src/vitte/stdlib/alloc/pool/core as pool_core
+
+pick PoolErrorKind {
+    None,
+
+    InvalidPool,
+    InvalidState,
+    InvalidBlock,
+
+    InvalidLayout,
+    InvalidSize,
+    InvalidAlignment,
+    InvalidCapacity,
+
+    InvalidRequest,
+    SlotTooSmall,
+
+    InvalidSlot,
+    InvalidSlotIndex,
+    InvalidSlotState,
+
+    SlotAlreadyAllocated,
+    SlotAlreadyReleased,
+
+    PoolExhausted,
+    CapacityExceeded,
+    OutOfMemory,
+
+    InvalidPointer,
+
+    AllocationFailed,
+    ReleaseFailed,
+    ResetFailed,
+
+    GenerationMismatch,
+
+    RuntimeFailure,
+    Internal
+}
+
+pick PoolErrorSeverity {
+    Note,
+    Warning,
+    Error,
+    Fatal
+}
+
+pick PoolErrorDomain {
+    General,
+    Pool,
+    Layout,
+    Allocation,
+    Slot,
+    Release,
+    Reset,
+    Runtime,
+    Internal
+}
+
+pick PoolErrorOperation {
+    None,
+
+    New,
+
+    Allocate,
+    AllocateValue,
+    AllocateZeroed,
+
+    GetSlot,
+    ValidateSlot,
+
+    ReleaseSlot,
+    Reset,
+    ReleasePool,
+
+    Validate
+}
+
+form PoolErrorContext {
+    operation: PoolErrorOperation
+
+    state: pool_core.PoolCoreState
+
+    slot_index: usize
+
+    slot_size: usize
+    slot_align: usize
+    slot_count: usize
+
+    requested_size: usize
+    requested_align: usize
+
+    allocated: usize
+    free: usize
+
+    generation: u64
+    revision: u64
+}
+
+form PoolError {
+    kind: PoolErrorKind
+    severity: PoolErrorSeverity
+    domain: PoolErrorDomain
+
+    context: PoolErrorContext
+
+    message: string
+}
+
+form PoolErrorStatistics {
+    total: u64
+
+    notes: u64
+    warnings: u64
+    errors: u64
+    fatals: u64
+
+    pool_errors: u64
+    layout_errors: u64
+    allocation_errors: u64
+    slot_errors: u64
+    release_errors: u64
+    reset_errors: u64
+    runtime_errors: u64
+    internal_errors: u64
+}
+
+// -----------------------------------------------------------------------------
+// Context
+// -----------------------------------------------------------------------------
+
+proc pool_error_context_empty()
+    -> PoolErrorContext
+{
+    give PoolErrorContext {
+        operation:
+            PoolErrorOperation.None,
+
+        state:
+            pool_core.PoolCoreState.Invalid,
+
+        slot_index:
+            0,
+
+        slot_size:
+            0,
+
+        slot_align:
+            0,
+
+        slot_count:
+            0,
+
+        requested_size:
+            0,
+
+        requested_align:
+            0,
+
+        allocated:
+            0,
+
+        free:
+            0,
+
+        generation:
+            0,
+
+        revision:
+            0
+    };
+}
+
+proc pool_error_context_layout(
+    layout: pool_alloc.PoolAllocationLayout,
+    operation: PoolErrorOperation
+) -> PoolErrorContext {
+    give PoolErrorContext {
+        operation:
+            operation,
+
+        state:
+            pool_core.PoolCoreState.Empty,
+
+        slot_index:
+            0,
+
+        slot_size:
+            layout.slot_size,
+
+        slot_align:
+            layout.slot_align,
+
+        slot_count:
+            layout.slot_count,
+
+        requested_size:
+            0,
+
+        requested_align:
+            0,
+
+        allocated:
+            0,
+
+        free:
+            layout.slot_count,
+
+        generation:
+            0,
+
+        revision:
+            0
+    };
+}
+
+proc pool_error_context_block(
+    block: pool_block.PoolBlock,
+    operation: PoolErrorOperation
+) -> PoolErrorContext {
+    let state = pool_block.pool_block_state(
+        block
+    );
+
+    let core_state =
+        if state == pool_block.PoolBlockState.Empty {
+            pool_core.PoolCoreState.Empty
+        } else if state == pool_block.PoolBlockState.Partial {
+            pool_core.PoolCoreState.Partial
+        } else if state == pool_block.PoolBlockState.Full {
+            pool_core.PoolCoreState.Full
+        } else if state == pool_block.PoolBlockState.Released {
+            pool_core.PoolCoreState.Released
+        } else {
+            pool_core.PoolCoreState.Invalid
+        };
+
+    give PoolErrorContext {
+        operation:
+            operation,
+
+        state:
+            core_state,
+
+        slot_index:
+            0,
+
+        slot_size:
+            block.layout.slot_size,
+
+        slot_align:
+            block.layout.slot_align,
+
+        slot_count:
+            block.layout.slot_count,
+
+        requested_size:
+            0,
+
+        requested_align:
+            0,
+
+        allocated:
+            block.allocated,
+
+        free:
+            block.free,
+
+        generation:
+            block.generation,
+
+        revision:
+            block.revision
+    };
+}
+
+proc pool_error_context_request(
+    block: pool_block.PoolBlock,
+    request: pool_alloc.PoolAllocationRequest,
+    operation: PoolErrorOperation
+) -> PoolErrorContext {
+    let context =
+        pool_error_context_block(
+            block,
+            operation
+        );
+
+    set context.requested_size =
+        request.size;
+
+    set context.requested_align =
+        request.align;
+
+    give context;
+}
+
+proc pool_error_context_slot(
+    block: pool_block.PoolBlock,
+    index: usize,
+    operation: PoolErrorOperation
+) -> PoolErrorContext {
+    let context =
+        pool_error_context_block(
+            block,
+            operation
+        );
+
+    set context.slot_index =
+        index;
+
+    give context;
+}
+
+// -----------------------------------------------------------------------------
+// Constructors
+// -----------------------------------------------------------------------------
+
+proc pool_error(
+    kind: PoolErrorKind,
+    severity: PoolErrorSeverity,
+    domain: PoolErrorDomain,
+    context: PoolErrorContext,
+    message: string
+) -> PoolError {
+    give PoolError {
+        kind:
+            kind,
+
+        severity:
+            severity,
+
+        domain:
+            domain,
+
+        context:
+            context,
+
+        message:
+            message
+    };
+}
+
+proc pool_error_none()
+    -> PoolError
+{
+    give pool_error(
+        PoolErrorKind.None,
+        PoolErrorSeverity.Note,
+        PoolErrorDomain.General,
+        pool_error_context_empty(),
+        ""
+    );
+}
+
+proc pool_error_simple(
+    kind: PoolErrorKind,
+    message: string
+) -> PoolError {
+    give pool_error(
+        kind,
+        PoolErrorSeverity.Error,
+        pool_error_domain_for_kind(
+            kind
+        ),
+        pool_error_context_empty(),
+        message
+    );
+}
+
+proc pool_error_fatal(
+    kind: PoolErrorKind,
+    message: string
+) -> PoolError {
+    give pool_error(
+        kind,
+        PoolErrorSeverity.Fatal,
+        pool_error_domain_for_kind(
+            kind
+        ),
+        pool_error_context_empty(),
+        message
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Pool state errors
+// -----------------------------------------------------------------------------
+
+proc pool_error_invalid_pool(
+    block: pool_block.PoolBlock
+) -> PoolError {
+    give pool_error(
+        PoolErrorKind.InvalidPool,
+        PoolErrorSeverity.Fatal,
+        PoolErrorDomain.Pool,
+        pool_error_context_block(
+            block,
+            PoolErrorOperation.Validate
+        ),
+        "pool allocator is invalid"
+    );
+}
+
+proc pool_error_invalid_state(
+    block: pool_block.PoolBlock
+) -> PoolError {
+    give pool_error(
+        PoolErrorKind.InvalidState,
+        PoolErrorSeverity.Error,
+        PoolErrorDomain.Pool,
+        pool_error_context_block(
+            block,
+            PoolErrorOperation.Validate
+        ),
+        "pool allocator state is invalid"
+    );
+}
+
+proc pool_error_invalid_block(
+    block: pool_block.PoolBlock
+) -> PoolError {
+    give pool_error(
+        PoolErrorKind.InvalidBlock,
+        PoolErrorSeverity.Fatal,
+        PoolErrorDomain.Pool,
+        pool_error_context_block(
+            block,
+            PoolErrorOperation.Validate
+        ),
+        "pool backing block is invalid"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Layout errors
+// -----------------------------------------------------------------------------
+
+proc pool_error_invalid_layout(
+    layout: pool_alloc.PoolAllocationLayout
+) -> PoolError {
+    give pool_error(
+        PoolErrorKind.InvalidLayout,
+        PoolErrorSeverity.Error,
+        PoolErrorDomain.Layout,
+        pool_error_context_layout(
+            layout,
+            PoolErrorOperation.New
+        ),
+        "pool allocation layout is invalid"
+    );
+}
+
+proc pool_error_invalid_size(
+    size: usize
+) -> PoolError {
+    let context =
+        pool_error_context_empty();
+
+    set context.requested_size =
+        size;
+
+    give pool_error(
+        PoolErrorKind.InvalidSize,
+        PoolErrorSeverity.Error,
+        PoolErrorDomain.Layout,
+        context,
+        "pool allocation size is invalid"
+    );
+}
+
+proc pool_error_invalid_alignment(
+    align: usize
+) -> PoolError {
+    let context =
+        pool_error_context_empty();
+
+    set context.requested_align =
+        align;
+
+    give pool_error(
+        PoolErrorKind.InvalidAlignment,
+        PoolErrorSeverity.Error,
+        PoolErrorDomain.Layout,
+        context,
+        "pool allocation alignment is invalid"
+    );
+}
+
+proc pool_error_invalid_capacity(
+    capacity: usize
+) -> PoolError {
+    let context =
+        pool_error_context_empty();
+
+    set context.slot_count =
+        capacity;
+
+    give pool_error(
+        PoolErrorKind.InvalidCapacity,
+        PoolErrorSeverity.Error,
+        PoolErrorDomain.Layout,
+        context,
+        "pool capacity is invalid"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Allocation request errors
+// -----------------------------------------------------------------------------
+
+proc pool_error_invalid_request(
+    block: pool_block.PoolBlock,
+    request: pool_alloc.PoolAllocationRequest
+) -> PoolError {
+    give pool_error(
+        PoolErrorKind.InvalidRequest,
+        PoolErrorSeverity.Error,
+        PoolErrorDomain.Allocation,
+        pool_error_context_request(
+            block,
+            request,
+            PoolErrorOperation.Allocate
+        ),
+        "pool allocation request is invalid"
+    );
+}
+
+proc pool_error_slot_too_small(
+    block: pool_block.PoolBlock,
+    request: pool_alloc.PoolAllocationRequest
+) -> PoolError {
+    give pool_error(
+        PoolErrorKind.SlotTooSmall,
+        PoolErrorSeverity.Error,
+        PoolErrorDomain.Allocation,
+        pool_error_context_request(
+            block,
+            request,
+            PoolErrorOperation.Allocate
+        ),
+        "pool slot is too small for allocation request"
+    );
+}
+
+proc pool_error_exhausted(
+    block: pool_block.PoolBlock
+) -> PoolError {
+    give pool_error(
+        PoolErrorKind.PoolExhausted,
+        PoolErrorSeverity.Error,
+        PoolErrorDomain.Allocation,
+        pool_error_context_block(
+            block,
+            PoolErrorOperation.Allocate
+        ),
+        "pool allocator has no free slots"
+    );
+}
+
+proc pool_error_capacity_exceeded(
+    block: pool_block.PoolBlock
+) -> PoolError {
+    give pool_error(
+        PoolErrorKind.CapacityExceeded,
+        PoolErrorSeverity.Error,
+        PoolErrorDomain.Allocation,
+        pool_error_context_block(
+            block,
+            PoolErrorOperation.Allocate
+        ),
+        "pool allocation capacity exceeded"
+    );
+}
+
+proc pool_error_out_of_memory(
+    layout: pool_alloc.PoolAllocationLayout
+) -> PoolError {
+    give pool_error(
+        PoolErrorKind.OutOfMemory,
+        PoolErrorSeverity.Fatal,
+        PoolErrorDomain.Allocation,
+        pool_error_context_layout(
+            layout,
+            PoolErrorOperation.New
+        ),
+        "pool backing allocation failed"
+    );
+}
+
+proc pool_error_allocation_failed(
+    block: pool_block.PoolBlock,
+    request: pool_alloc.PoolAllocationRequest
+) -> PoolError {
+    give pool_error(
+        PoolErrorKind.AllocationFailed,
+        PoolErrorSeverity.Error,
+        PoolErrorDomain.Allocation,
+        pool_error_context_request(
+            block,
+            request,
+            PoolErrorOperation.Allocate
+        ),
+        "pool slot allocation failed"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Slot errors
+// -----------------------------------------------------------------------------
+
+proc pool_error_invalid_slot(
+    block: pool_block.PoolBlock,
+    index: usize
+) -> PoolError {
+    give pool_error(
+        PoolErrorKind.InvalidSlot,
+        PoolErrorSeverity.Error,
+        PoolErrorDomain.Slot,
+        pool_error_context_slot(
+            block,
+            index,
+            PoolErrorOperation.ValidateSlot
+        ),
+        "pool slot is invalid"
+    );
+}
+
+proc pool_error_invalid_slot_index(
+    block: pool_block.PoolBlock,
+    index: usize
+) -> PoolError {
+    give pool_error(
+        PoolErrorKind.InvalidSlotIndex,
+        PoolErrorSeverity.Error,
+        PoolErrorDomain.Slot,
+        pool_error_context_slot(
+            block,
+            index,
+            PoolErrorOperation.GetSlot
+        ),
+        "pool slot index is out of bounds"
+    );
+}
+
+proc pool_error_invalid_slot_state(
+    block: pool_block.PoolBlock,
+    index: usize
+) -> PoolError {
+    give pool_error(
+        PoolErrorKind.InvalidSlotState,
+        PoolErrorSeverity.Error,
+        PoolErrorDomain.Slot,
+        pool_error_context_slot(
+            block,
+            index,
+            PoolErrorOperation.ValidateSlot
+        ),
+        "pool slot state is invalid"
+    );
+}
+
+proc pool_error_slot_already_allocated(
+    block: pool_block.PoolBlock,
+    index: usize
+) -> PoolError {
+    give pool_error(
+        PoolErrorKind.SlotAlreadyAllocated,
+        PoolErrorSeverity.Error,
+        PoolErrorDomain.Slot,
+        pool_error_context_slot(
+            block,
+            index,
+            PoolErrorOperation.Allocate
+        ),
+        "pool slot is already allocated"
+    );
+}
+
+proc pool_error_slot_already_released(
+    block: pool_block.PoolBlock,
+    index: usize
+) -> PoolError {
+    give pool_error(
+        PoolErrorKind.SlotAlreadyReleased,
+        PoolErrorSeverity.Warning,
+        PoolErrorDomain.Release,
+        pool_error_context_slot(
+            block,
+            index,
+            PoolErrorOperation.ReleaseSlot
+        ),
+        "pool slot is already free"
+    );
+}
+
+proc pool_error_generation_mismatch(
+    block: pool_block.PoolBlock,
+    index: usize
+) -> PoolError {
+    give pool_error(
+        PoolErrorKind.GenerationMismatch,
+        PoolErrorSeverity.Error,
+        PoolErrorDomain.Slot,
+        pool_error_context_slot(
+            block,
+            index,
+            PoolErrorOperation.ValidateSlot
+        ),
+        "pool slot generation does not match"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Pointer errors
+// -----------------------------------------------------------------------------
+
+proc pool_error_invalid_pointer(
+    block: pool_block.PoolBlock,
+    index: usize
+) -> PoolError {
+    give pool_error(
+        PoolErrorKind.InvalidPointer,
+        PoolErrorSeverity.Fatal,
+        PoolErrorDomain.Slot,
+        pool_error_context_slot(
+            block,
+            index,
+            PoolErrorOperation.GetSlot
+        ),
+        "pool slot pointer is invalid"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Release errors
+// -----------------------------------------------------------------------------
+
+proc pool_error_release_failed(
+    block: pool_block.PoolBlock,
+    index: usize
+) -> PoolError {
+    give pool_error(
+        PoolErrorKind.ReleaseFailed,
+        PoolErrorSeverity.Error,
+        PoolErrorDomain.Release,
+        pool_error_context_slot(
+            block,
+            index,
+            PoolErrorOperation.ReleaseSlot
+        ),
+        "pool slot release failed"
+    );
+}
+
+proc pool_error_pool_release_failed(
+    block: pool_block.PoolBlock
+) -> PoolError {
+    give pool_error(
+        PoolErrorKind.ReleaseFailed,
+        PoolErrorSeverity.Error,
+        PoolErrorDomain.Release,
+        pool_error_context_block(
+            block,
+            PoolErrorOperation.ReleasePool
+        ),
+        "pool release failed"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Reset errors
+// -----------------------------------------------------------------------------
+
+proc pool_error_reset_failed(
+    block: pool_block.PoolBlock
+) -> PoolError {
+    give pool_error(
+        PoolErrorKind.ResetFailed,
+        PoolErrorSeverity.Error,
+        PoolErrorDomain.Reset,
+        pool_error_context_block(
+            block,
+            PoolErrorOperation.Reset
+        ),
+        "pool reset failed"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Runtime
+// -----------------------------------------------------------------------------
+
+proc pool_error_runtime(
+    message: string
+) -> PoolError {
+    give pool_error(
+        PoolErrorKind.RuntimeFailure,
+        PoolErrorSeverity.Fatal,
+        PoolErrorDomain.Runtime,
+        pool_error_context_empty(),
+        message
+    );
+}
+
+proc pool_error_internal(
+    message: string
+) -> PoolError {
+    give pool_error(
+        PoolErrorKind.Internal,
+        PoolErrorSeverity.Fatal,
+        PoolErrorDomain.Internal,
+        pool_error_context_empty(),
+        message
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Allocation failure mapping
+// -----------------------------------------------------------------------------
+
+proc pool_error_from_allocation_failure(
+    block: pool_block.PoolBlock,
+    request: pool_alloc.PoolAllocationRequest,
+    failure: pool_alloc.PoolAllocationFailure
+) -> PoolError {
+    pick failure {
+        pool_alloc.PoolAllocationFailure.None {
+            give pool_error_none();
+        }
+
+        pool_alloc.PoolAllocationFailure.InvalidSize {
+            give pool_error_invalid_size(
+                request.size
+            );
+        }
+
+        pool_alloc.PoolAllocationFailure.InvalidAlignment {
+            give pool_error_invalid_alignment(
+                request.align
+            );
+        }
+
+        pool_alloc.PoolAllocationFailure.InvalidLayout {
+            give pool_error_invalid_request(
+                block,
+                request
+            );
+        }
+
+        pool_alloc.PoolAllocationFailure.SlotTooSmall {
+            give pool_error_slot_too_small(
+                block,
+                request
+            );
+        }
+
+        pool_alloc.PoolAllocationFailure.CapacityExceeded {
+            give pool_error_capacity_exceeded(
+                block
+            );
+        }
+
+        pool_alloc.PoolAllocationFailure.Exhausted {
+            give pool_error_exhausted(
+                block
+            );
+        }
+
+        pool_alloc.PoolAllocationFailure.InvalidIndex {
+            give pool_error_invalid_slot_index(
+                block,
+                0
+            );
+        }
+
+        pool_alloc.PoolAllocationFailure.InvalidPointer {
+            give pool_error_invalid_pointer(
+                block,
+                0
+            );
+        }
+
+        pool_alloc.PoolAllocationFailure.AlreadyAllocated {
+            give pool_error_slot_already_allocated(
+                block,
+                0
+            );
+        }
+
+        pool_alloc.PoolAllocationFailure.AlreadyReleased {
+            give pool_error_slot_already_released(
+                block,
+                0
+            );
+        }
+
+        pool_alloc.PoolAllocationFailure.OutOfMemory {
+            give pool_error_out_of_memory(
+                block.layout
+            );
+        }
+
+        pool_alloc.PoolAllocationFailure.RuntimeFailure {
+            give pool_error_runtime(
+                "pool allocation runtime failure"
+            );
+        }
+    }
+
+    give pool_error_internal(
+        "unknown pool allocation failure"
+    );
+}
+
+proc pool_error_from_allocation_result(
+    block: pool_block.PoolBlock,
+    result: pool_alloc.PoolAllocationResult
+) -> PoolError {
+    if result.success {
+        give pool_error_none();
+    }
+
+    let error =
+        pool_error_from_allocation_failure(
+            block,
+            result.request,
+            result.failure
+        );
+
+    set error.context.slot_index =
+        result.slot;
+
+    give error;
+}
+
+// -----------------------------------------------------------------------------
+// Block validation mapping
+// -----------------------------------------------------------------------------
+
+proc pool_error_from_block_validation(
+    block: pool_block.PoolBlock,
+    validation: pool_block.PoolBlockValidation
+) -> PoolError {
+    if validation.valid {
+        give pool_error_none();
+    }
+
+    if not validation.allocation_valid {
+        give pool_error_invalid_block(
+            block
+        );
+    }
+
+    if not validation.layout_valid {
+        give pool_error_invalid_layout(
+            block.layout
+        );
+    }
+
+    if not validation.accounting_valid {
+        give pool_error_invalid_state(
+            block
+        );
+    }
+
+    if not validation.state_valid {
+        give pool_error_invalid_state(
+            block
+        );
+    }
+
+    if not validation.hint_valid {
+        give pool_error_internal(
+            "pool allocation hint is invalid"
+        );
+    }
+
+    give pool_error_internal(
+        "unknown pool block validation failure"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Core validation mapping
+// -----------------------------------------------------------------------------
+
+proc pool_error_from_core_validation(
+    profile: pool_core.PoolCoreProfile,
+    validation: pool_core.PoolCoreValidation
+) -> PoolError {
+    if validation.valid {
+        give pool_error_none();
+    }
+
+    if not validation.layout_valid {
+        give pool_error_simple(
+            PoolErrorKind.InvalidLayout,
+            "pool core layout is invalid"
+        );
+    }
+
+    if not validation.usage_valid {
+        give pool_error_simple(
+            PoolErrorKind.InvalidState,
+            "pool core accounting is invalid"
+        );
+    }
+
+    if not validation.state_valid {
+        give pool_error_simple(
+            PoolErrorKind.InvalidState,
+            "pool core state is invalid"
+        );
+    }
+
+    if not validation.access_valid {
+        give pool_error_simple(
+            PoolErrorKind.InvalidState,
+            "pool core access state is invalid"
+        );
+    }
+
+    if not validation.generation_valid {
+        give pool_error_internal(
+            "pool core generation metadata is invalid"
+        );
+    }
+
+    give pool_error_internal(
+        "unknown pool core validation failure"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Allocation checking
+// -----------------------------------------------------------------------------
+
+proc pool_error_for_request(
+    block: pool_block.PoolBlock,
+    request: pool_alloc.PoolAllocationRequest
+) -> PoolError {
+    if not pool_block.pool_block_is_active(
+        block
+    ) {
+        give pool_error_invalid_state(
+            block
+        );
+    }
+
+    if request.size == 0 {
+        give pool_error_invalid_size(
+            request.size
+        );
+    }
+
+    if not pool_alloc.pool_allocation_alignment_valid(
+        request.align
+    ) {
+        give pool_error_invalid_alignment(
+            request.align
+        );
+    }
+
+    if request.size > block.layout.slot_size {
+        give pool_error_slot_too_small(
+            block,
+            request
+        );
+    }
+
+    if request.align > block.layout.slot_align {
+        give pool_error_invalid_alignment(
+            request.align
+        );
+    }
+
+    if pool_block.pool_block_is_full(
+        block
+    ) {
+        give pool_error_exhausted(
+            block
+        );
+    }
+
+    give pool_error_none();
+}
+
+// -----------------------------------------------------------------------------
+// Slot checking
+// -----------------------------------------------------------------------------
+
+proc pool_error_for_slot(
+    block: pool_block.PoolBlock,
+    slot: pool_alloc.PoolAllocationSlot
+) -> PoolError {
+    if slot.index >= block.layout.slot_count {
+        give pool_error_invalid_slot_index(
+            block,
+            slot.index
+        );
+    }
+
+    if slot.offset >= block.allocation.layout.size {
+        give pool_error_invalid_slot(
+            block,
+            slot.index
+        );
+    }
+
+    give pool_error_none();
+}
+
+proc pool_error_for_allocate_slot(
+    block: pool_block.PoolBlock,
+    slot: pool_alloc.PoolAllocationSlot
+) -> PoolError {
+    let error =
+        pool_error_for_slot(
+            block,
+            slot
+        );
+
+    if not pool_error_is_none(error) {
+        give error;
+    }
+
+    if slot.allocated {
+        give pool_error_slot_already_allocated(
+            block,
+            slot.index
+        );
+    }
+
+    if pool_block.pool_block_is_full(
+        block
+    ) {
+        give pool_error_exhausted(
+            block
+        );
+    }
+
+    give pool_error_none();
+}
+
+proc pool_error_for_release_slot(
+    block: pool_block.PoolBlock,
+    slot: pool_alloc.PoolAllocationSlot
+) -> PoolError {
+    let error =
+        pool_error_for_slot(
+            block,
+            slot
+        );
+
+    if not pool_error_is_none(error) {
+        give error;
+    }
+
+    if not slot.allocated {
+        give pool_error_slot_already_released(
+            block,
+            slot.index
+        );
+    }
+
+    give pool_error_none();
+}
+
+// -----------------------------------------------------------------------------
+// Predicates
+// -----------------------------------------------------------------------------
+
+proc pool_error_is_none(
+    error: PoolError
+) -> bool {
+    give error.kind
+        == PoolErrorKind.None;
+}
+
+proc pool_error_is_warning(
+    error: PoolError
+) -> bool {
+    give error.severity
+        == PoolErrorSeverity.Warning;
+}
+
+proc pool_error_is_error(
+    error: PoolError
+) -> bool {
+    give error.severity
+        == PoolErrorSeverity.Error
+        or error.severity
+            == PoolErrorSeverity.Fatal;
+}
+
+proc pool_error_is_fatal(
+    error: PoolError
+) -> bool {
+    give error.severity
+        == PoolErrorSeverity.Fatal;
+}
+
+proc pool_error_is_pool(
+    error: PoolError
+) -> bool {
+    give error.domain
+        == PoolErrorDomain.Pool;
+}
+
+proc pool_error_is_layout(
+    error: PoolError
+) -> bool {
+    give error.domain
+        == PoolErrorDomain.Layout;
+}
+
+proc pool_error_is_allocation(
+    error: PoolError
+) -> bool {
+    give error.domain
+        == PoolErrorDomain.Allocation;
+}
+
+proc pool_error_is_slot(
+    error: PoolError
+) -> bool {
+    give error.domain
+        == PoolErrorDomain.Slot;
+}
+
+proc pool_error_is_release(
+    error: PoolError
+) -> bool {
+    give error.domain
+        == PoolErrorDomain.Release;
+}
+
+proc pool_error_is_reset(
+    error: PoolError
+) -> bool {
+    give error.domain
+        == PoolErrorDomain.Reset;
+}
+
+proc pool_error_is_exhaustion(
+    error: PoolError
+) -> bool {
+    give error.kind
+        == PoolErrorKind.PoolExhausted
+        or error.kind
+            == PoolErrorKind.CapacityExceeded;
+}
+
+// -----------------------------------------------------------------------------
+// Domain mapping
+// -----------------------------------------------------------------------------
+
+proc pool_error_domain_for_kind(
+    kind: PoolErrorKind
+) -> PoolErrorDomain {
+    pick kind {
+        PoolErrorKind.None {
+            give PoolErrorDomain.General;
+        }
+
+        PoolErrorKind.InvalidPool
+        | PoolErrorKind.InvalidState
+        | PoolErrorKind.InvalidBlock {
+            give PoolErrorDomain.Pool;
+        }
+
+        PoolErrorKind.InvalidLayout
+        | PoolErrorKind.InvalidSize
+        | PoolErrorKind.InvalidAlignment
+        | PoolErrorKind.InvalidCapacity {
+            give PoolErrorDomain.Layout;
+        }
+
+        PoolErrorKind.InvalidRequest
+        | PoolErrorKind.SlotTooSmall
+        | PoolErrorKind.PoolExhausted
+        | PoolErrorKind.CapacityExceeded
+        | PoolErrorKind.OutOfMemory
+        | PoolErrorKind.AllocationFailed {
+            give PoolErrorDomain.Allocation;
+        }
+
+        PoolErrorKind.InvalidSlot
+        | PoolErrorKind.InvalidSlotIndex
+        | PoolErrorKind.InvalidSlotState
+        | PoolErrorKind.SlotAlreadyAllocated
+        | PoolErrorKind.InvalidPointer
+        | PoolErrorKind.GenerationMismatch {
+            give PoolErrorDomain.Slot;
+        }
+
+        PoolErrorKind.SlotAlreadyReleased
+        | PoolErrorKind.ReleaseFailed {
+            give PoolErrorDomain.Release;
+        }
+
+        PoolErrorKind.ResetFailed {
+            give PoolErrorDomain.Reset;
+        }
+
+        PoolErrorKind.RuntimeFailure {
+            give PoolErrorDomain.Runtime;
+        }
+
+        PoolErrorKind.Internal {
+            give PoolErrorDomain.Internal;
+        }
+    }
+
+    give PoolErrorDomain.Internal;
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc pool_error_statistics_empty()
+    -> PoolErrorStatistics
+{
+    give PoolErrorStatistics {
+        total: 0,
+
+        notes: 0,
+        warnings: 0,
+        errors: 0,
+        fatals: 0,
+
+        pool_errors: 0,
+        layout_errors: 0,
+        allocation_errors: 0,
+        slot_errors: 0,
+        release_errors: 0,
+        reset_errors: 0,
+        runtime_errors: 0,
+        internal_errors: 0
+    };
+}
+
+proc pool_error_statistics_record(
+    statistics: ref mut PoolErrorStatistics,
+    error: PoolError
+) {
+    if pool_error_is_none(
+        error
+    ) {
+        give;
+    }
+
+    set statistics.total =
+        statistics.total + 1;
+
+    pick error.severity {
+        PoolErrorSeverity.Note {
+            set statistics.notes =
+                statistics.notes + 1;
+        }
+
+        PoolErrorSeverity.Warning {
+            set statistics.warnings =
+                statistics.warnings + 1;
+        }
+
+        PoolErrorSeverity.Error {
+            set statistics.errors =
+                statistics.errors + 1;
+        }
+
+        PoolErrorSeverity.Fatal {
+            set statistics.fatals =
+                statistics.fatals + 1;
+        }
+    }
+
+    pick error.domain {
+        PoolErrorDomain.Pool {
+            set statistics.pool_errors =
+                statistics.pool_errors + 1;
+        }
+
+        PoolErrorDomain.Layout {
+            set statistics.layout_errors =
+                statistics.layout_errors + 1;
+        }
+
+        PoolErrorDomain.Allocation {
+            set statistics.allocation_errors =
+                statistics.allocation_errors + 1;
+        }
+
+        PoolErrorDomain.Slot {
+            set statistics.slot_errors =
+                statistics.slot_errors + 1;
+        }
+
+        PoolErrorDomain.Release {
+            set statistics.release_errors =
+                statistics.release_errors + 1;
+        }
+
+        PoolErrorDomain.Reset {
+            set statistics.reset_errors =
+                statistics.reset_errors + 1;
+        }
+
+        PoolErrorDomain.Runtime {
+            set statistics.runtime_errors =
+                statistics.runtime_errors + 1;
+        }
+
+        PoolErrorDomain.Internal {
+            set statistics.internal_errors =
+                statistics.internal_errors + 1;
+        }
+
+        PoolErrorDomain.General {}
+    }
+}
+
+proc pool_error_statistics_total(
+    statistics: PoolErrorStatistics
+) -> u64 {
+    give statistics.total;
+}
+
+proc pool_error_statistics_reset(
+    statistics: ref mut PoolErrorStatistics
+) {
+    set *statistics =
+        pool_error_statistics_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc pool_error_kind_name(
+    kind: PoolErrorKind
+) -> string {
+    pick kind {
+        PoolErrorKind.None {
+            give "none";
+        }
+
+        PoolErrorKind.InvalidPool {
+            give "invalid-pool";
+        }
+
+        PoolErrorKind.InvalidState {
+            give "invalid-state";
+        }
+
+        PoolErrorKind.InvalidBlock {
+            give "invalid-block";
+        }
+
+        PoolErrorKind.InvalidLayout {
+            give "invalid-layout";
+        }
+
+        PoolErrorKind.InvalidSize {
+            give "invalid-size";
+        }
+
+        PoolErrorKind.InvalidAlignment {
+            give "invalid-alignment";
+        }
+
+        PoolErrorKind.InvalidCapacity {
+            give "invalid-capacity";
+        }
+
+        PoolErrorKind.InvalidRequest {
+            give "invalid-request";
+        }
+
+        PoolErrorKind.SlotTooSmall {
+            give "slot-too-small";
+        }
+
+        PoolErrorKind.InvalidSlot {
+            give "invalid-slot";
+        }
+
+        PoolErrorKind.InvalidSlotIndex {
+            give "invalid-slot-index";
+        }
+
+        PoolErrorKind.InvalidSlotState {
+            give "invalid-slot-state";
+        }
+
+        PoolErrorKind.SlotAlreadyAllocated {
+            give "slot-already-allocated";
+        }
+
+        PoolErrorKind.SlotAlreadyReleased {
+            give "slot-already-released";
+        }
+
+        PoolErrorKind.PoolExhausted {
+            give "pool-exhausted";
+        }
+
+        PoolErrorKind.CapacityExceeded {
+            give "capacity-exceeded";
+        }
+
+        PoolErrorKind.OutOfMemory {
+            give "out-of-memory";
+        }
+
+        PoolErrorKind.InvalidPointer {
+            give "invalid-pointer";
+        }
+
+        PoolErrorKind.AllocationFailed {
+            give "allocation-failed";
+        }
+
+        PoolErrorKind.ReleaseFailed {
+            give "release-failed";
+        }
+
+        PoolErrorKind.ResetFailed {
+            give "reset-failed";
+        }
+
+        PoolErrorKind.GenerationMismatch {
+            give "generation-mismatch";
+        }
+
+        PoolErrorKind.RuntimeFailure {
+            give "runtime-failure";
+        }
+
+        PoolErrorKind.Internal {
+            give "internal";
+        }
+    }
+
+    give "internal";
+}
+
+proc pool_error_severity_name(
+    severity: PoolErrorSeverity
+) -> string {
+    pick severity {
+        PoolErrorSeverity.Note {
+            give "note";
+        }
+
+        PoolErrorSeverity.Warning {
+            give "warning";
+        }
+
+        PoolErrorSeverity.Error {
+            give "error";
+        }
+
+        PoolErrorSeverity.Fatal {
+            give "fatal";
+        }
+    }
+
+    give "error";
+}
+
+proc pool_error_domain_name(
+    domain: PoolErrorDomain
+) -> string {
+    pick domain {
+        PoolErrorDomain.General {
+            give "general";
+        }
+
+        PoolErrorDomain.Pool {
+            give "pool";
+        }
+
+        PoolErrorDomain.Layout {
+            give "layout";
+        }
+
+        PoolErrorDomain.Allocation {
+            give "allocation";
+        }
+
+        PoolErrorDomain.Slot {
+            give "slot";
+        }
+
+        PoolErrorDomain.Release {
+            give "release";
+        }
+
+        PoolErrorDomain.Reset {
+            give "reset";
+        }
+
+        PoolErrorDomain.Runtime {
+            give "runtime";
+        }
+
+        PoolErrorDomain.Internal {
+            give "internal";
+        }
+    }
+
+    give "internal";
+}
+
+proc pool_error_operation_name(
+    operation: PoolErrorOperation
+) -> string {
+    pick operation {
+        PoolErrorOperation.None {
+            give "none";
+        }
+
+        PoolErrorOperation.New {
+            give "new";
+        }
+
+        PoolErrorOperation.Allocate {
+            give "allocate";
+        }
+
+        PoolErrorOperation.AllocateValue {
+            give "allocate-value";
+        }
+
+        PoolErrorOperation.AllocateZeroed {
+            give "allocate-zeroed";
+        }
+
+        PoolErrorOperation.GetSlot {
+            give "get-slot";
+        }
+
+        PoolErrorOperation.ValidateSlot {
+            give "validate-slot";
+        }
+
+        PoolErrorOperation.ReleaseSlot {
+            give "release-slot";
+        }
+
+        PoolErrorOperation.Reset {
+            give "reset";
+        }
+
+        PoolErrorOperation.ReleasePool {
+            give "release-pool";
+        }
+
+        PoolErrorOperation.Validate {
+            give "validate";
+        }
+    }
+
+    give "none";
+}
+
+// -----------------------------------------------------------------------------
+// Error model
+// -----------------------------------------------------------------------------
+//
+// Pool errors are grouped into:
+//
+//     pool
+//         invalid global state
+//         invalid backing block
+//
+//     layout
+//         invalid slot size
+//         invalid alignment
+//         invalid slot count
+//
+//     allocation
+//         invalid request
+//         slot too small
+//         exhaustion
+//         backing allocation failure
+//
+//     slot
+//         invalid index
+//         invalid state
+//         duplicate allocation
+//         stale generation
+//
+//     release
+//         duplicate release
+//         release failure
+//
+//     reset
+//         reset failure
+//
+// Pool exhaustion is normally recoverable:
+//
+//     PoolExhausted
+//
+// means every fixed slot is currently allocated.
+//
+// Recovery may be:
+//
+//     release one slot
+//     reset pool
+//     create a larger pool
+//
+// Fundamental slot lifecycle:
+//
+//     Free
+//       |
+//       | allocate
+//       v
+//     Allocated
+//       |
+//       | release
+//       v
+//     Free
+//
+// Generation increments on release to help detect stale slot handles.
+//
+// Error rendering/localization stays outside this module.

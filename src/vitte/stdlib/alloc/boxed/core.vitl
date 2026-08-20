@@ -1,0 +1,1488 @@
+space vitte/stdlib/alloc/boxed/core
+
+export *
+
+use src/vitte/stdlib/alloc/allocator as alloc_allocator
+
+const BOX_CORE_MIN_ALIGN: usize = 1;
+const BOX_CORE_MIN_SIZE: usize = 1;
+
+pick BoxCoreState {
+    Uninitialized,
+    Alive,
+    Moved,
+    Released,
+    Invalid
+}
+
+pick BoxCoreOwnership {
+    None,
+    Unique,
+    Transferred,
+    Released
+}
+
+pick BoxCoreAccess {
+    None,
+    Read,
+    ReadWrite
+}
+
+pick BoxCoreTransitionKind {
+    None,
+    Create,
+    Read,
+    Write,
+    Replace,
+    Move,
+    Release,
+    Invalidate
+}
+
+pick BoxCoreOrdering {
+    Less,
+    Equal,
+    Greater
+}
+
+form BoxCoreLayout {
+    size: usize
+    align: usize
+}
+
+form BoxCoreMeta {
+    layout: BoxCoreLayout
+
+    generation: u64
+    revision: u64
+}
+
+form BoxCoreStateInfo {
+    state: BoxCoreState
+    ownership: BoxCoreOwnership
+    access: BoxCoreAccess
+
+    alive: bool
+    moved: bool
+    released: bool
+    valid: bool
+}
+
+form BoxCoreProfile {
+    meta: BoxCoreMeta
+    info: BoxCoreStateInfo
+
+    readable: bool
+    writable: bool
+
+    unique: bool
+    initialized: bool
+}
+
+form BoxCoreSnapshot {
+    layout: BoxCoreLayout
+
+    state: BoxCoreState
+    ownership: BoxCoreOwnership
+
+    generation: u64
+    revision: u64
+}
+
+form BoxCoreDelta {
+    generation: int
+    revision: int
+
+    state_changed: bool
+    ownership_changed: bool
+    layout_changed: bool
+
+    changed: bool
+}
+
+form BoxCoreTransition {
+    before: BoxCoreSnapshot
+    after: BoxCoreSnapshot
+
+    kind: BoxCoreTransitionKind
+
+    valid: bool
+}
+
+form BoxCoreValidation {
+    valid: bool
+
+    layout_valid: bool
+    state_valid: bool
+    ownership_valid: bool
+    access_valid: bool
+    generation_valid: bool
+}
+
+form BoxCoreLimits {
+    max_size: usize
+    max_align: usize
+}
+
+form BoxCoreStatistics {
+    creates: u64
+    reads: u64
+    writes: u64
+    replacements: u64
+
+    moves: u64
+    releases: u64
+
+    invalidations: u64
+    validations: u64
+}
+
+// -----------------------------------------------------------------------------
+// Layout
+// -----------------------------------------------------------------------------
+
+proc box_core_layout(
+    size: usize,
+    align: usize
+) -> BoxCoreLayout {
+    give BoxCoreLayout {
+        size: size,
+        align: align
+    };
+}
+
+proc box_core_layout_of<T>()
+    -> BoxCoreLayout
+{
+    give BoxCoreLayout {
+        size:
+            compiler_size_of<T>(),
+
+        align:
+            compiler_align_of<T>()
+    };
+}
+
+proc box_core_layout_from_allocator(
+    layout_value: alloc_allocator.AllocationLayout
+) -> BoxCoreLayout {
+    give BoxCoreLayout {
+        size:
+            layout_value.size,
+
+        align:
+            layout_value.align
+    };
+}
+
+proc box_core_layout_to_allocator(
+    layout_value: BoxCoreLayout
+) -> alloc_allocator.AllocationLayout {
+    give alloc_allocator.layout(
+        layout_value.size,
+        layout_value.align
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Layout validation
+// -----------------------------------------------------------------------------
+
+proc box_core_alignment_valid(
+    align: usize
+) -> bool {
+    if align < BOX_CORE_MIN_ALIGN {
+        give false;
+    }
+
+    give compiler_is_power_of_two(
+        align
+    );
+}
+
+proc box_core_size_valid(
+    size: usize
+) -> bool {
+    give size >= BOX_CORE_MIN_SIZE;
+}
+
+proc box_core_layout_valid(
+    layout_value: BoxCoreLayout
+) -> bool {
+    give box_core_size_valid(
+        layout_value.size
+    )
+    and box_core_alignment_valid(
+        layout_value.align
+    );
+}
+
+proc box_core_layout_fits<T>(
+    layout_value: BoxCoreLayout
+) -> bool {
+    give layout_value.size
+        >= compiler_size_of<T>()
+        and layout_value.align
+            >= compiler_align_of<T>();
+}
+
+// -----------------------------------------------------------------------------
+// Limits
+// -----------------------------------------------------------------------------
+
+proc box_core_limits_default()
+    -> BoxCoreLimits
+{
+    give BoxCoreLimits {
+        max_size:
+            usize_max(),
+
+        max_align:
+            usize_max()
+    };
+}
+
+proc box_core_layout_within_limits(
+    layout_value: BoxCoreLayout,
+    limits: BoxCoreLimits
+) -> bool {
+    give layout_value.size
+        <= limits.max_size
+        and layout_value.align
+            <= limits.max_align;
+}
+
+// -----------------------------------------------------------------------------
+// Meta
+// -----------------------------------------------------------------------------
+
+proc box_core_meta(
+    layout_value: BoxCoreLayout
+) -> BoxCoreMeta {
+    give BoxCoreMeta {
+        layout:
+            layout_value,
+
+        generation:
+            1,
+
+        revision:
+            1
+    };
+}
+
+proc box_core_meta_empty()
+    -> BoxCoreMeta
+{
+    give BoxCoreMeta {
+        layout:
+            BoxCoreLayout {
+                size: 0,
+                align: 0
+            },
+
+        generation:
+            0,
+
+        revision:
+            0
+    };
+}
+
+// -----------------------------------------------------------------------------
+// State
+// -----------------------------------------------------------------------------
+
+proc box_core_state_info(
+    state: BoxCoreState
+) -> BoxCoreStateInfo {
+    pick state {
+        BoxCoreState.Uninitialized {
+            give BoxCoreStateInfo {
+                state:
+                    state,
+
+                ownership:
+                    BoxCoreOwnership.None,
+
+                access:
+                    BoxCoreAccess.None,
+
+                alive:
+                    false,
+
+                moved:
+                    false,
+
+                released:
+                    false,
+
+                valid:
+                    true
+            };
+        }
+
+        BoxCoreState.Alive {
+            give BoxCoreStateInfo {
+                state:
+                    state,
+
+                ownership:
+                    BoxCoreOwnership.Unique,
+
+                access:
+                    BoxCoreAccess.ReadWrite,
+
+                alive:
+                    true,
+
+                moved:
+                    false,
+
+                released:
+                    false,
+
+                valid:
+                    true
+            };
+        }
+
+        BoxCoreState.Moved {
+            give BoxCoreStateInfo {
+                state:
+                    state,
+
+                ownership:
+                    BoxCoreOwnership.Transferred,
+
+                access:
+                    BoxCoreAccess.None,
+
+                alive:
+                    false,
+
+                moved:
+                    true,
+
+                released:
+                    false,
+
+                valid:
+                    true
+            };
+        }
+
+        BoxCoreState.Released {
+            give BoxCoreStateInfo {
+                state:
+                    state,
+
+                ownership:
+                    BoxCoreOwnership.Released,
+
+                access:
+                    BoxCoreAccess.None,
+
+                alive:
+                    false,
+
+                moved:
+                    false,
+
+                released:
+                    true,
+
+                valid:
+                    true
+            };
+        }
+
+        BoxCoreState.Invalid {
+            give BoxCoreStateInfo {
+                state:
+                    state,
+
+                ownership:
+                    BoxCoreOwnership.None,
+
+                access:
+                    BoxCoreAccess.None,
+
+                alive:
+                    false,
+
+                moved:
+                    false,
+
+                released:
+                    false,
+
+                valid:
+                    false
+            };
+        }
+    }
+
+    give BoxCoreStateInfo {
+        state:
+            BoxCoreState.Invalid,
+
+        ownership:
+            BoxCoreOwnership.None,
+
+        access:
+            BoxCoreAccess.None,
+
+        alive:
+            false,
+
+        moved:
+            false,
+
+        released:
+            false,
+
+        valid:
+            false
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Predicates
+// -----------------------------------------------------------------------------
+
+proc box_core_is_alive(
+    state: BoxCoreState
+) -> bool {
+    give state == BoxCoreState.Alive;
+}
+
+proc box_core_is_moved(
+    state: BoxCoreState
+) -> bool {
+    give state == BoxCoreState.Moved;
+}
+
+proc box_core_is_released(
+    state: BoxCoreState
+) -> bool {
+    give state == BoxCoreState.Released;
+}
+
+proc box_core_is_initialized(
+    state: BoxCoreState
+) -> bool {
+    give state != BoxCoreState.Uninitialized
+        and state != BoxCoreState.Invalid;
+}
+
+proc box_core_is_unique(
+    state: BoxCoreState
+) -> bool {
+    give state == BoxCoreState.Alive;
+}
+
+proc box_core_can_read(
+    state: BoxCoreState
+) -> bool {
+    give state == BoxCoreState.Alive;
+}
+
+proc box_core_can_write(
+    state: BoxCoreState
+) -> bool {
+    give state == BoxCoreState.Alive;
+}
+
+proc box_core_can_move(
+    state: BoxCoreState
+) -> bool {
+    give state == BoxCoreState.Alive;
+}
+
+proc box_core_can_release(
+    state: BoxCoreState
+) -> bool {
+    give state == BoxCoreState.Alive;
+}
+
+// -----------------------------------------------------------------------------
+// Access
+// -----------------------------------------------------------------------------
+
+proc box_core_access(
+    state: BoxCoreState
+) -> BoxCoreAccess {
+    pick state {
+        BoxCoreState.Alive {
+            give BoxCoreAccess.ReadWrite;
+        }
+
+        _ {
+            give BoxCoreAccess.None;
+        }
+    }
+}
+
+proc box_core_ownership(
+    state: BoxCoreState
+) -> BoxCoreOwnership {
+    pick state {
+        BoxCoreState.Alive {
+            give BoxCoreOwnership.Unique;
+        }
+
+        BoxCoreState.Moved {
+            give BoxCoreOwnership.Transferred;
+        }
+
+        BoxCoreState.Released {
+            give BoxCoreOwnership.Released;
+        }
+
+        _ {
+            give BoxCoreOwnership.None;
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Profile
+// -----------------------------------------------------------------------------
+
+proc box_core_profile(
+    meta: BoxCoreMeta,
+    state: BoxCoreState
+) -> BoxCoreProfile {
+    let info =
+        box_core_state_info(
+            state
+        );
+
+    give BoxCoreProfile {
+        meta:
+            meta,
+
+        info:
+            info,
+
+        readable:
+            box_core_can_read(
+                state
+            ),
+
+        writable:
+            box_core_can_write(
+                state
+            ),
+
+        unique:
+            box_core_is_unique(
+                state
+            ),
+
+        initialized:
+            box_core_is_initialized(
+                state
+            )
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Snapshot
+// -----------------------------------------------------------------------------
+
+proc box_core_snapshot(
+    meta: BoxCoreMeta,
+    state: BoxCoreState
+) -> BoxCoreSnapshot {
+    give BoxCoreSnapshot {
+        layout:
+            meta.layout,
+
+        state:
+            state,
+
+        ownership:
+            box_core_ownership(
+                state
+            ),
+
+        generation:
+            meta.generation,
+
+        revision:
+            meta.revision
+    };
+}
+
+proc box_core_snapshot_equal(
+    left: BoxCoreSnapshot,
+    right: BoxCoreSnapshot
+) -> bool {
+    give left.layout.size
+        == right.layout.size
+        and left.layout.align
+            == right.layout.align
+        and left.state
+            == right.state
+        and left.ownership
+            == right.ownership
+        and left.generation
+            == right.generation
+        and left.revision
+            == right.revision;
+}
+
+proc box_core_snapshot_changed(
+    left: BoxCoreSnapshot,
+    right: BoxCoreSnapshot
+) -> bool {
+    give not box_core_snapshot_equal(
+        left,
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Delta
+// -----------------------------------------------------------------------------
+
+proc box_core_u64_delta(
+    before: u64,
+    after: u64
+) -> int {
+    if after > before {
+        give (
+            after - before
+        ) as int;
+    }
+
+    if after < before {
+        give -(
+            (
+                before - after
+            ) as int
+        );
+    }
+
+    give 0;
+}
+
+proc box_core_delta(
+    before: BoxCoreSnapshot,
+    after: BoxCoreSnapshot
+) -> BoxCoreDelta {
+    let generation =
+        box_core_u64_delta(
+            before.generation,
+            after.generation
+        );
+
+    let revision =
+        box_core_u64_delta(
+            before.revision,
+            after.revision
+        );
+
+    let state_changed =
+        before.state
+            != after.state;
+
+    let ownership_changed =
+        before.ownership
+            != after.ownership;
+
+    let layout_changed =
+        before.layout.size
+            != after.layout.size
+        or before.layout.align
+            != after.layout.align;
+
+    give BoxCoreDelta {
+        generation:
+            generation,
+
+        revision:
+            revision,
+
+        state_changed:
+            state_changed,
+
+        ownership_changed:
+            ownership_changed,
+
+        layout_changed:
+            layout_changed,
+
+        changed:
+            generation != 0
+            or revision != 0
+            or state_changed
+            or ownership_changed
+            or layout_changed
+    };
+}
+
+proc box_core_delta_is_zero(
+    delta: BoxCoreDelta
+) -> bool {
+    give not delta.changed;
+}
+
+// -----------------------------------------------------------------------------
+// Pure transitions
+// -----------------------------------------------------------------------------
+
+proc box_core_create(
+    meta: BoxCoreMeta
+) -> BoxCoreSnapshot {
+    give BoxCoreSnapshot {
+        layout:
+            meta.layout,
+
+        state:
+            BoxCoreState.Alive,
+
+        ownership:
+            BoxCoreOwnership.Unique,
+
+        generation:
+            meta.generation,
+
+        revision:
+            meta.revision
+    };
+}
+
+proc box_core_move(
+    snapshot: BoxCoreSnapshot
+) -> BoxCoreSnapshot {
+    let out =
+        snapshot;
+
+    set out.state =
+        BoxCoreState.Moved;
+
+    set out.ownership =
+        BoxCoreOwnership.Transferred;
+
+    set out.revision =
+        out.revision + 1;
+
+    give out;
+}
+
+proc box_core_release(
+    snapshot: BoxCoreSnapshot
+) -> BoxCoreSnapshot {
+    let out =
+        snapshot;
+
+    set out.state =
+        BoxCoreState.Released;
+
+    set out.ownership =
+        BoxCoreOwnership.Released;
+
+    set out.generation =
+        out.generation + 1;
+
+    set out.revision =
+        out.revision + 1;
+
+    give out;
+}
+
+proc box_core_touch(
+    snapshot: BoxCoreSnapshot
+) -> BoxCoreSnapshot {
+    let out =
+        snapshot;
+
+    set out.revision =
+        out.revision + 1;
+
+    give out;
+}
+
+proc box_core_invalidate(
+    snapshot: BoxCoreSnapshot
+) -> BoxCoreSnapshot {
+    let out =
+        snapshot;
+
+    set out.state =
+        BoxCoreState.Invalid;
+
+    set out.ownership =
+        BoxCoreOwnership.None;
+
+    set out.revision =
+        out.revision + 1;
+
+    give out;
+}
+
+// -----------------------------------------------------------------------------
+// Transition classification
+// -----------------------------------------------------------------------------
+
+proc box_core_transition_kind(
+    before: BoxCoreSnapshot,
+    after: BoxCoreSnapshot
+) -> BoxCoreTransitionKind {
+    if box_core_snapshot_equal(
+        before,
+        after
+    ) {
+        give BoxCoreTransitionKind.None;
+    }
+
+    if before.state
+        == BoxCoreState.Uninitialized
+        and after.state
+            == BoxCoreState.Alive
+    {
+        give BoxCoreTransitionKind.Create;
+    }
+
+    if before.state
+        == BoxCoreState.Alive
+        and after.state
+            == BoxCoreState.Alive
+        and after.revision
+            > before.revision
+    {
+        give BoxCoreTransitionKind.Write;
+    }
+
+    if before.state
+        == BoxCoreState.Alive
+        and after.state
+            == BoxCoreState.Moved
+    {
+        give BoxCoreTransitionKind.Move;
+    }
+
+    if before.state
+        == BoxCoreState.Alive
+        and after.state
+            == BoxCoreState.Released
+    {
+        give BoxCoreTransitionKind.Release;
+    }
+
+    if after.state
+        == BoxCoreState.Invalid
+    {
+        give BoxCoreTransitionKind.Invalidate;
+    }
+
+    give BoxCoreTransitionKind.None;
+}
+
+proc box_core_transition(
+    before: BoxCoreSnapshot,
+    after: BoxCoreSnapshot
+) -> BoxCoreTransition {
+    let kind =
+        box_core_transition_kind(
+            before,
+            after
+        );
+
+    give BoxCoreTransition {
+        before:
+            before,
+
+        after:
+            after,
+
+        kind:
+            kind,
+
+        valid:
+            box_core_transition_valid(
+                before,
+                after,
+                kind
+            )
+    };
+}
+
+proc box_core_transition_valid(
+    before: BoxCoreSnapshot,
+    after: BoxCoreSnapshot,
+    kind: BoxCoreTransitionKind
+) -> bool {
+    pick kind {
+        BoxCoreTransitionKind.None {
+            give box_core_snapshot_equal(
+                before,
+                after
+            );
+        }
+
+        BoxCoreTransitionKind.Create {
+            give before.state
+                == BoxCoreState.Uninitialized
+                and after.state
+                    == BoxCoreState.Alive;
+        }
+
+        BoxCoreTransitionKind.Read {
+            give before.state
+                == BoxCoreState.Alive
+                and after.state
+                    == BoxCoreState.Alive;
+        }
+
+        BoxCoreTransitionKind.Write
+        | BoxCoreTransitionKind.Replace {
+            give before.state
+                == BoxCoreState.Alive
+                and after.state
+                    == BoxCoreState.Alive
+                and after.revision
+                    > before.revision;
+        }
+
+        BoxCoreTransitionKind.Move {
+            give before.state
+                == BoxCoreState.Alive
+                and after.state
+                    == BoxCoreState.Moved;
+        }
+
+        BoxCoreTransitionKind.Release {
+            give before.state
+                == BoxCoreState.Alive
+                and after.state
+                    == BoxCoreState.Released;
+        }
+
+        BoxCoreTransitionKind.Invalidate {
+            give after.state
+                == BoxCoreState.Invalid;
+        }
+    }
+
+    give false;
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+proc box_core_state_valid(
+    state: BoxCoreState
+) -> bool {
+    give state != BoxCoreState.Invalid;
+}
+
+proc box_core_ownership_valid(
+    state: BoxCoreState,
+    ownership: BoxCoreOwnership
+) -> bool {
+    pick state {
+        BoxCoreState.Uninitialized {
+            give ownership
+                == BoxCoreOwnership.None;
+        }
+
+        BoxCoreState.Alive {
+            give ownership
+                == BoxCoreOwnership.Unique;
+        }
+
+        BoxCoreState.Moved {
+            give ownership
+                == BoxCoreOwnership.Transferred;
+        }
+
+        BoxCoreState.Released {
+            give ownership
+                == BoxCoreOwnership.Released;
+        }
+
+        BoxCoreState.Invalid {
+            give false;
+        }
+    }
+
+    give false;
+}
+
+proc box_core_access_valid(
+    state: BoxCoreState,
+    access: BoxCoreAccess
+) -> bool {
+    if state == BoxCoreState.Alive {
+        give access
+            == BoxCoreAccess.ReadWrite
+            or access
+                == BoxCoreAccess.Read;
+    }
+
+    give access == BoxCoreAccess.None;
+}
+
+proc box_core_generation_valid(
+    snapshot: BoxCoreSnapshot
+) -> bool {
+    if snapshot.state
+        == BoxCoreState.Uninitialized
+    {
+        give snapshot.generation == 0;
+    }
+
+    give snapshot.generation > 0;
+}
+
+proc box_core_snapshot_valid(
+    snapshot: BoxCoreSnapshot
+) -> bool {
+    if not box_core_layout_valid(
+        snapshot.layout
+    )
+        and snapshot.state
+            != BoxCoreState.Uninitialized
+    {
+        give false;
+    }
+
+    if not box_core_state_valid(
+        snapshot.state
+    ) {
+        give false;
+    }
+
+    if not box_core_ownership_valid(
+        snapshot.state,
+        snapshot.ownership
+    ) {
+        give false;
+    }
+
+    give box_core_generation_valid(
+        snapshot
+    );
+}
+
+proc box_core_validate(
+    profile: BoxCoreProfile,
+    limits: BoxCoreLimits
+) -> BoxCoreValidation {
+    let layout_valid =
+        if profile.info.state
+            == BoxCoreState.Uninitialized
+        {
+            true
+        } else {
+            box_core_layout_valid(
+                profile.meta.layout
+            )
+            and box_core_layout_within_limits(
+                profile.meta.layout,
+                limits
+            )
+        };
+
+    let state_valid =
+        box_core_state_valid(
+            profile.info.state
+        );
+
+    let ownership_valid =
+        box_core_ownership_valid(
+            profile.info.state,
+            profile.info.ownership
+        );
+
+    let access_valid =
+        box_core_access_valid(
+            profile.info.state,
+            profile.info.access
+        );
+
+    let generation_valid =
+        if profile.info.state
+            == BoxCoreState.Uninitialized
+        {
+            profile.meta.generation == 0
+        } else {
+            profile.meta.generation > 0
+        };
+
+    give BoxCoreValidation {
+        valid:
+            layout_valid
+            and state_valid
+            and ownership_valid
+            and access_valid
+            and generation_valid,
+
+        layout_valid:
+            layout_valid,
+
+        state_valid:
+            state_valid,
+
+        ownership_valid:
+            ownership_valid,
+
+        access_valid:
+            access_valid,
+
+        generation_valid:
+            generation_valid
+    };
+}
+
+proc box_core_invariant_holds(
+    profile: BoxCoreProfile
+) -> bool {
+    give box_core_validate(
+        profile,
+        box_core_limits_default()
+    ).valid;
+}
+
+// -----------------------------------------------------------------------------
+// Comparisons
+// -----------------------------------------------------------------------------
+
+proc box_core_compare_size(
+    left: BoxCoreLayout,
+    right: BoxCoreLayout
+) -> BoxCoreOrdering {
+    if left.size < right.size {
+        give BoxCoreOrdering.Less;
+    }
+
+    if left.size > right.size {
+        give BoxCoreOrdering.Greater;
+    }
+
+    give BoxCoreOrdering.Equal;
+}
+
+proc box_core_compare_align(
+    left: BoxCoreLayout,
+    right: BoxCoreLayout
+) -> BoxCoreOrdering {
+    if left.align < right.align {
+        give BoxCoreOrdering.Less;
+    }
+
+    if left.align > right.align {
+        give BoxCoreOrdering.Greater;
+    }
+
+    give BoxCoreOrdering.Equal;
+}
+
+proc box_core_layout_equal(
+    left: BoxCoreLayout,
+    right: BoxCoreLayout
+) -> bool {
+    give left.size == right.size
+        and left.align == right.align;
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc box_core_statistics_empty()
+    -> BoxCoreStatistics
+{
+    give BoxCoreStatistics {
+        creates: 0,
+        reads: 0,
+        writes: 0,
+        replacements: 0,
+
+        moves: 0,
+        releases: 0,
+
+        invalidations: 0,
+        validations: 0
+    };
+}
+
+proc box_core_statistics_record(
+    statistics: ref mut BoxCoreStatistics,
+    transition: BoxCoreTransition
+) {
+    if not transition.valid {
+        set statistics.invalidations =
+            statistics.invalidations + 1;
+
+        give;
+    }
+
+    pick transition.kind {
+        BoxCoreTransitionKind.Create {
+            set statistics.creates =
+                statistics.creates + 1;
+        }
+
+        BoxCoreTransitionKind.Read {
+            set statistics.reads =
+                statistics.reads + 1;
+        }
+
+        BoxCoreTransitionKind.Write {
+            set statistics.writes =
+                statistics.writes + 1;
+        }
+
+        BoxCoreTransitionKind.Replace {
+            set statistics.replacements =
+                statistics.replacements + 1;
+        }
+
+        BoxCoreTransitionKind.Move {
+            set statistics.moves =
+                statistics.moves + 1;
+        }
+
+        BoxCoreTransitionKind.Release {
+            set statistics.releases =
+                statistics.releases + 1;
+        }
+
+        BoxCoreTransitionKind.Invalidate {
+            set statistics.invalidations =
+                statistics.invalidations + 1;
+        }
+
+        BoxCoreTransitionKind.None {}
+    }
+}
+
+proc box_core_statistics_total(
+    statistics: BoxCoreStatistics
+) -> u64 {
+    give statistics.creates
+        + statistics.reads
+        + statistics.writes
+        + statistics.replacements
+        + statistics.moves
+        + statistics.releases
+        + statistics.invalidations
+        + statistics.validations;
+}
+
+proc box_core_statistics_reset(
+    statistics: ref mut BoxCoreStatistics
+) {
+    set *statistics =
+        box_core_statistics_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc box_core_state_name(
+    state: BoxCoreState
+) -> string {
+    pick state {
+        BoxCoreState.Uninitialized {
+            give "uninitialized";
+        }
+
+        BoxCoreState.Alive {
+            give "alive";
+        }
+
+        BoxCoreState.Moved {
+            give "moved";
+        }
+
+        BoxCoreState.Released {
+            give "released";
+        }
+
+        BoxCoreState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+proc box_core_ownership_name(
+    ownership: BoxCoreOwnership
+) -> string {
+    pick ownership {
+        BoxCoreOwnership.None {
+            give "none";
+        }
+
+        BoxCoreOwnership.Unique {
+            give "unique";
+        }
+
+        BoxCoreOwnership.Transferred {
+            give "transferred";
+        }
+
+        BoxCoreOwnership.Released {
+            give "released";
+        }
+    }
+
+    give "none";
+}
+
+proc box_core_access_name(
+    access: BoxCoreAccess
+) -> string {
+    pick access {
+        BoxCoreAccess.None {
+            give "none";
+        }
+
+        BoxCoreAccess.Read {
+            give "read";
+        }
+
+        BoxCoreAccess.ReadWrite {
+            give "read-write";
+        }
+    }
+
+    give "none";
+}
+
+proc box_core_transition_name(
+    kind: BoxCoreTransitionKind
+) -> string {
+    pick kind {
+        BoxCoreTransitionKind.None {
+            give "none";
+        }
+
+        BoxCoreTransitionKind.Create {
+            give "create";
+        }
+
+        BoxCoreTransitionKind.Read {
+            give "read";
+        }
+
+        BoxCoreTransitionKind.Write {
+            give "write";
+        }
+
+        BoxCoreTransitionKind.Replace {
+            give "replace";
+        }
+
+        BoxCoreTransitionKind.Move {
+            give "move";
+        }
+
+        BoxCoreTransitionKind.Release {
+            give "release";
+        }
+
+        BoxCoreTransitionKind.Invalidate {
+            give "invalidate";
+        }
+    }
+
+    give "none";
+}
+
+// -----------------------------------------------------------------------------
+// Box core model
+// -----------------------------------------------------------------------------
+//
+// Box<T>
+//    |
+//    +-- exactly one owner
+//    |
+//    +-- allocation layout
+//    |      |
+//    |      +-- size
+//    |      +-- alignment
+//    |
+//    +-- lifecycle
+//
+// Lifecycle:
+//
+//     Uninitialized
+//          |
+//          | create
+//          v
+//        Alive
+//       /     \
+//      /       \
+//   move      release
+//    |           |
+//    v           v
+//  Moved      Released
+//
+// Alive:
+//
+//     ownership = Unique
+//     access    = ReadWrite
+//
+// Moved:
+//
+//     ownership = Transferred
+//     access    = None
+//
+// Released:
+//
+//     ownership = Released
+//     access    = None
+//
+// Fundamental invariant:
+//
+//     Box<T> is uniquely owned.
+//
+// There is no strong/weak counter like Arc.
+// Moving transfers ownership instead of sharing it.
+//
+// Valid move:
+//
+//     source: Alive
+//        |
+//        +-- ownership transferred
+//        |
+//        v
+//     source: Moved
+//
+// Destination receives the original allocation.
+//
+// Valid release:
+//
+//     Alive
+//       |
+//       +-- drop(T)
+//       +-- deallocate
+//       |
+//       v
+//     Released
+//
+// `core.vitl` contains only:
+//
+//     lifecycle model
+//     ownership model
+//     access rules
+//     layouts
+//     profiles
+//     snapshots
+//     transitions
+//     validation
+//     statistics
+//
+// Heap allocation belongs to `alloc.vitl`.
+// Main user-facing Box implementation belongs to `boxed.vitl`.
+// Raw pointer conversion belongs to `raw.vitl`.

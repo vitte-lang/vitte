@@ -137,6 +137,17 @@ proc test_llvm_ir_emission_uses_canonical_ir() -> bool {
     and find(result.ir_text, "define i64 @main()") >= 0;
 }
 
+proc test_llvm_emits_a_c_main_wrapper_for_vitte_args() -> bool {
+  let ir: IrUnit = build_verified_ir("llvm_c_main_wrapper.vit", "proc main(args: list[string]) -> int { give 0; }\n");
+  let result: LlvmBindingResult = emit_llvm_ir_from_ir(ir);
+  give unit_is_valid(ir)
+    and result.valid
+    and find(result.ir_text, "define i64 @vitte_entry_main(i64 %args)") >= 0
+    and find(result.ir_text, "define i32 @main(i32 %argc, i8** %argv)") >= 0
+    and find(result.ir_text, "call i64 @vitte_entry_main(i64 %vitte_entry_arg)") >= 0
+    and find(result.ir_text, "ret i32 %vitte_entry_exit") >= 0;
+}
+
 proc test_llvm_object_bundle_records_sections_symbols_and_profile_diagnostics() -> bool {
   let ir: IrUnit = build_verified_ir("llvm_object_profile.vit", "proc helper() -> int { give 1; }\nproc main() -> int { give helper(); }\n");
   let options: LlvmBuildOptions = llvm_build_options("aarch64-linux", "Oz", "shared-library", true, false, true, true, "instrument", false);
@@ -194,6 +205,7 @@ proc run_all_tests() -> int {
   if not test_llvm_surface_helpers_describe_canonical_adapter() { set failures = failures + 1; }
   if not test_llvm_toolchain_status_covers_packaging_modes() { set failures = failures + 1; }
   if not test_llvm_ir_emission_uses_canonical_ir() { set failures = failures + 1; }
+  if not test_llvm_emits_a_c_main_wrapper_for_vitte_args() { set failures = failures + 1; }
   if not test_llvm_object_bundle_records_sections_symbols_and_profile_diagnostics() { set failures = failures + 1; }
   if not test_llvm_native_toolchain_failures_are_explicit() { set failures = failures + 1; }
   if not test_llvm_invalid_inputs_are_rejected_before_object_bundle() { set failures = failures + 1; }

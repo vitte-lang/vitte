@@ -1,0 +1,1442 @@
+space vitte/stdlib/alloc/bump/alloc
+
+export *
+
+use src/vitte/stdlib/alloc/allocator as alloc_allocator
+use src/vitte/stdlib/core/option as core_option
+
+const BUMP_ALLOC_MIN_ALIGN: usize = 1;
+const BUMP_ALLOC_MIN_SIZE: usize = 1;
+
+pick BumpAllocationKind {
+    Bytes,
+    Value,
+    Array,
+    Zeroed,
+    Aligned,
+    Copy,
+    Internal
+}
+
+pick BumpAllocationState {
+    Ready,
+    Allocated,
+    Failed,
+    Exhausted,
+    Invalid
+}
+
+pick BumpAllocationFailure {
+    None,
+    InvalidSize,
+    InvalidAlignment,
+    InvalidLayout,
+    Overflow,
+    CapacityExceeded,
+    OutOfMemory,
+    InvalidPointer,
+    RuntimeFailure
+}
+
+form BumpAllocationRequest {
+    kind: BumpAllocationKind
+
+    size: usize
+    align: usize
+    count: usize
+
+    zeroed: bool
+}
+
+form BumpAllocationResult {
+    request: BumpAllocationRequest
+
+    allocation: Option<alloc_allocator.Allocation>
+
+    state: BumpAllocationState
+    failure: BumpAllocationFailure
+
+    offset: usize
+    padding: usize
+    bytes: usize
+
+    success: bool
+}
+
+form BumpAllocationCursor {
+    offset: usize
+    capacity: usize
+}
+
+form BumpAllocationPlan {
+    offset: usize
+    aligned_offset: usize
+
+    padding: usize
+    size: usize
+    end: usize
+
+    valid: bool
+}
+
+form BumpAllocationLimits {
+    max_size: usize
+    max_align: usize
+    max_count: usize
+
+    allow_zero_size: bool
+}
+
+form BumpAllocationValidation {
+    valid: bool
+
+    size_valid: bool
+    align_valid: bool
+    count_valid: bool
+    overflow_safe: bool
+    capacity_valid: bool
+}
+
+form BumpAllocationProfile {
+    requests: u64
+    successes: u64
+    failures: u64
+
+    bytes_requested: usize
+    bytes_allocated: usize
+    bytes_padding: usize
+    bytes_failed: usize
+
+    smallest_request: usize
+    largest_request: usize
+
+    value_allocations: u64
+    array_allocations: u64
+    byte_allocations: u64
+    zeroed_allocations: u64
+}
+
+form BumpAllocationSnapshot {
+    offset: usize
+    capacity: usize
+    remaining: usize
+}
+
+form BumpAllocationDelta {
+    offset: int
+    remaining: int
+}
+
+// -----------------------------------------------------------------------------
+// Request
+// -----------------------------------------------------------------------------
+
+proc bump_allocation_request(
+    kind: BumpAllocationKind,
+    size: usize,
+    align: usize,
+    count: usize,
+    zeroed: bool
+) -> BumpAllocationRequest {
+    give BumpAllocationRequest {
+        kind: kind,
+        size: size,
+        align: align,
+        count: count,
+        zeroed: zeroed
+    };
+}
+
+proc bump_allocation_request_bytes(
+    size: usize,
+    align: usize
+) -> BumpAllocationRequest {
+    give bump_allocation_request(
+        BumpAllocationKind.Bytes,
+        size,
+        align,
+        1,
+        false
+    );
+}
+
+proc bump_allocation_request_aligned(
+    size: usize,
+    align: usize
+) -> BumpAllocationRequest {
+    give bump_allocation_request(
+        BumpAllocationKind.Aligned,
+        size,
+        align,
+        1,
+        false
+    );
+}
+
+proc bump_allocation_request_zeroed(
+    size: usize,
+    align: usize
+) -> BumpAllocationRequest {
+    give bump_allocation_request(
+        BumpAllocationKind.Zeroed,
+        size,
+        align,
+        1,
+        true
+    );
+}
+
+proc bump_allocation_request_value<T>()
+    -> BumpAllocationRequest
+{
+    give bump_allocation_request(
+        BumpAllocationKind.Value,
+        compiler_size_of<T>(),
+        compiler_align_of<T>(),
+        1,
+        false
+    );
+}
+
+proc bump_allocation_request_array<T>(
+    count: usize
+) -> BumpAllocationRequest {
+    give bump_allocation_request(
+        BumpAllocationKind.Array,
+        compiler_size_of<T>(),
+        compiler_align_of<T>(),
+        count,
+        false
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Limits
+// -----------------------------------------------------------------------------
+
+proc bump_allocation_limits_default()
+    -> BumpAllocationLimits
+{
+    give BumpAllocationLimits {
+        max_size: usize_max(),
+        max_align: usize_max(),
+        max_count: usize_max(),
+        allow_zero_size: false
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Arithmetic
+// -----------------------------------------------------------------------------
+
+proc bump_allocation_add_overflows(
+    left: usize,
+    right: usize
+) -> bool {
+    give left > usize_max() - right;
+}
+
+proc bump_allocation_mul_overflows(
+    left: usize,
+    right: usize
+) -> bool {
+    if left == 0
+        or right == 0
+    {
+        give false;
+    }
+
+    give left > usize_max() / right;
+}
+
+proc bump_allocation_array_size(
+    item_size: usize,
+    count: usize
+) -> Option<usize> {
+    if bump_allocation_mul_overflows(
+        item_size,
+        count
+    ) {
+        give none<usize>();
+    }
+
+    give some<usize>(
+        item_size * count
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Alignment
+// -----------------------------------------------------------------------------
+
+proc bump_allocation_alignment_valid(
+    align: usize
+) -> bool {
+    if align < BUMP_ALLOC_MIN_ALIGN {
+        give false;
+    }
+
+    give compiler_is_power_of_two(
+        align
+    );
+}
+
+proc bump_allocation_align_up(
+    value: usize,
+    align: usize
+) -> Option<usize> {
+    if not bump_allocation_alignment_valid(
+        align
+    ) {
+        give none<usize>();
+    }
+
+    let remainder =
+        value % align;
+
+    if remainder == 0 {
+        give some<usize>(
+            value
+        );
+    }
+
+    let padding =
+        align - remainder;
+
+    if bump_allocation_add_overflows(
+        value,
+        padding
+    ) {
+        give none<usize>();
+    }
+
+    give some<usize>(
+        value + padding
+    );
+}
+
+proc bump_allocation_padding(
+    value: usize,
+    align: usize
+) -> Option<usize> {
+    let aligned =
+        bump_allocation_align_up(
+            value,
+            align
+        );
+
+    if is_none<usize>(aligned) {
+        give none<usize>();
+    }
+
+    give some<usize>(
+        unwrap<usize>(aligned) - value
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Cursor
+// -----------------------------------------------------------------------------
+
+proc bump_allocation_cursor(
+    offset: usize,
+    capacity: usize
+) -> BumpAllocationCursor {
+    give BumpAllocationCursor {
+        offset: offset,
+        capacity: capacity
+    };
+}
+
+proc bump_allocation_cursor_remaining(
+    cursor: BumpAllocationCursor
+) -> usize {
+    if cursor.offset >= cursor.capacity {
+        give 0;
+    }
+
+    give cursor.capacity
+        - cursor.offset;
+}
+
+proc bump_allocation_cursor_valid(
+    cursor: BumpAllocationCursor
+) -> bool {
+    give cursor.offset
+        <= cursor.capacity;
+}
+
+proc bump_allocation_cursor_empty(
+    cursor: BumpAllocationCursor
+) -> bool {
+    give cursor.offset == 0;
+}
+
+proc bump_allocation_cursor_full(
+    cursor: BumpAllocationCursor
+) -> bool {
+    give cursor.offset
+        >= cursor.capacity;
+}
+
+// -----------------------------------------------------------------------------
+// Planning
+// -----------------------------------------------------------------------------
+
+proc bump_allocation_plan(
+    cursor: BumpAllocationCursor,
+    size: usize,
+    align: usize
+) -> BumpAllocationPlan {
+    let invalid =
+        BumpAllocationPlan {
+            offset: cursor.offset,
+            aligned_offset: cursor.offset,
+            padding: 0,
+            size: size,
+            end: cursor.offset,
+            valid: false
+        };
+
+    if size == 0 {
+        give invalid;
+    }
+
+    if not bump_allocation_alignment_valid(
+        align
+    ) {
+        give invalid;
+    }
+
+    let aligned =
+        bump_allocation_align_up(
+            cursor.offset,
+            align
+        );
+
+    if is_none<usize>(aligned) {
+        give invalid;
+    }
+
+    let aligned_offset =
+        unwrap<usize>(aligned);
+
+    if aligned_offset > cursor.capacity {
+        give invalid;
+    }
+
+    if size > cursor.capacity - aligned_offset {
+        give invalid;
+    }
+
+    if bump_allocation_add_overflows(
+        aligned_offset,
+        size
+    ) {
+        give invalid;
+    }
+
+    give BumpAllocationPlan {
+        offset: cursor.offset,
+        aligned_offset: aligned_offset,
+        padding: aligned_offset - cursor.offset,
+        size: size,
+        end: aligned_offset + size,
+        valid: true
+    };
+}
+
+proc bump_allocation_plan_request(
+    cursor: BumpAllocationCursor,
+    request: BumpAllocationRequest
+) -> BumpAllocationPlan {
+    if bump_allocation_mul_overflows(
+        request.size,
+        request.count
+    ) {
+        give BumpAllocationPlan {
+            offset: cursor.offset,
+            aligned_offset: cursor.offset,
+            padding: 0,
+            size: 0,
+            end: cursor.offset,
+            valid: false
+        };
+    }
+
+    give bump_allocation_plan(
+        cursor,
+        request.size * request.count,
+        request.align
+    );
+}
+
+proc bump_allocation_can_fit(
+    cursor: BumpAllocationCursor,
+    size: usize,
+    align: usize
+) -> bool {
+    give bump_allocation_plan(
+        cursor,
+        size,
+        align
+    ).valid;
+}
+
+proc bump_allocation_can_fit_request(
+    cursor: BumpAllocationCursor,
+    request: BumpAllocationRequest
+) -> bool {
+    give bump_allocation_plan_request(
+        cursor,
+        request
+    ).valid;
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+proc bump_allocation_validate(
+    cursor: BumpAllocationCursor,
+    request: BumpAllocationRequest,
+    limits: BumpAllocationLimits
+) -> BumpAllocationValidation {
+    let size_valid =
+        if request.size == 0
+            and not limits.allow_zero_size
+        {
+            false
+        } else {
+            request.size <= limits.max_size
+        };
+
+    let align_valid =
+        bump_allocation_alignment_valid(
+            request.align
+        )
+        and request.align <= limits.max_align;
+
+    let count_valid =
+        request.count > 0
+        and request.count <= limits.max_count;
+
+    let overflow_safe =
+        not bump_allocation_mul_overflows(
+            request.size,
+            request.count
+        );
+
+    let capacity_valid =
+        overflow_safe
+        and bump_allocation_can_fit_request(
+            cursor,
+            request
+        );
+
+    give BumpAllocationValidation {
+        valid:
+            size_valid
+            and align_valid
+            and count_valid
+            and overflow_safe
+            and capacity_valid,
+
+        size_valid: size_valid,
+        align_valid: align_valid,
+        count_valid: count_valid,
+        overflow_safe: overflow_safe,
+        capacity_valid: capacity_valid
+    };
+}
+
+proc bump_allocation_request_valid(
+    cursor: BumpAllocationCursor,
+    request: BumpAllocationRequest
+) -> bool {
+    give bump_allocation_validate(
+        cursor,
+        request,
+        bump_allocation_limits_default()
+    ).valid;
+}
+
+// -----------------------------------------------------------------------------
+// Result
+// -----------------------------------------------------------------------------
+
+proc bump_allocation_result_success(
+    request: BumpAllocationRequest,
+    allocation: alloc_allocator.Allocation,
+    plan: BumpAllocationPlan
+) -> BumpAllocationResult {
+    give BumpAllocationResult {
+        request: request,
+
+        allocation:
+            some<alloc_allocator.Allocation>(
+                allocation
+            ),
+
+        state:
+            BumpAllocationState.Allocated,
+
+        failure:
+            BumpAllocationFailure.None,
+
+        offset:
+            plan.aligned_offset,
+
+        padding:
+            plan.padding,
+
+        bytes:
+            plan.size,
+
+        success:
+            true
+    };
+}
+
+proc bump_allocation_result_failure(
+    request: BumpAllocationRequest,
+    failure: BumpAllocationFailure
+) -> BumpAllocationResult {
+    give BumpAllocationResult {
+        request: request,
+
+        allocation:
+            none<alloc_allocator.Allocation>(),
+
+        state:
+            BumpAllocationState.Failed,
+
+        failure:
+            failure,
+
+        offset:
+            0,
+
+        padding:
+            0,
+
+        bytes:
+            0,
+
+        success:
+            false
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Core bump allocation
+// -----------------------------------------------------------------------------
+
+proc bump_allocate_request(
+    base: raw ref u8,
+    cursor: ref mut BumpAllocationCursor,
+    request: BumpAllocationRequest
+) -> BumpAllocationResult {
+    let validation =
+        bump_allocation_validate(
+            *cursor,
+            request,
+            bump_allocation_limits_default()
+        );
+
+    if not validation.size_valid {
+        give bump_allocation_result_failure(
+            request,
+            BumpAllocationFailure.InvalidSize
+        );
+    }
+
+    if not validation.align_valid {
+        give bump_allocation_result_failure(
+            request,
+            BumpAllocationFailure.InvalidAlignment
+        );
+    }
+
+    if not validation.count_valid {
+        give bump_allocation_result_failure(
+            request,
+            BumpAllocationFailure.InvalidLayout
+        );
+    }
+
+    if not validation.overflow_safe {
+        give bump_allocation_result_failure(
+            request,
+            BumpAllocationFailure.Overflow
+        );
+    }
+
+    if not validation.capacity_valid {
+        give bump_allocation_result_failure(
+            request,
+            BumpAllocationFailure.CapacityExceeded
+        );
+    }
+
+    let plan =
+        bump_allocation_plan_request(
+            *cursor,
+            request
+        );
+
+    if not plan.valid {
+        give bump_allocation_result_failure(
+            request,
+            BumpAllocationFailure.InvalidLayout
+        );
+    }
+
+    let ptr =
+        compiler_raw_ptr_add(
+            base,
+            plan.aligned_offset
+        );
+
+    if compiler_raw_ptr_is_null(ptr) {
+        give bump_allocation_result_failure(
+            request,
+            BumpAllocationFailure.InvalidPointer
+        );
+    }
+
+    let allocation =
+        alloc_allocator.Allocation {
+            ptr:
+                compiler_raw_ptr_to_void(ptr),
+
+            layout:
+                alloc_allocator.layout(
+                    plan.size,
+                    request.align
+                )
+        };
+
+    if request.zeroed {
+        compiler_allocation_zero(
+            allocation.ptr,
+            plan.size
+        );
+    }
+
+    set cursor.offset =
+        plan.end;
+
+    give bump_allocation_result_success(
+        request,
+        allocation,
+        plan
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Raw bytes
+// -----------------------------------------------------------------------------
+
+proc bump_allocate_bytes(
+    base: raw ref u8,
+    cursor: ref mut BumpAllocationCursor,
+    size: usize,
+    align: usize
+) -> Option<alloc_allocator.Allocation> {
+    let result =
+        bump_allocate_request(
+            base,
+            cursor,
+            bump_allocation_request_bytes(
+                size,
+                align
+            )
+        );
+
+    give result.allocation;
+}
+
+proc bump_allocate_zeroed_bytes(
+    base: raw ref u8,
+    cursor: ref mut BumpAllocationCursor,
+    size: usize,
+    align: usize
+) -> Option<alloc_allocator.Allocation> {
+    let result =
+        bump_allocate_request(
+            base,
+            cursor,
+            bump_allocation_request_zeroed(
+                size,
+                align
+            )
+        );
+
+    give result.allocation;
+}
+
+// -----------------------------------------------------------------------------
+// Typed allocation
+// -----------------------------------------------------------------------------
+
+proc bump_allocate<T>(
+    base: raw ref u8,
+    cursor: ref mut BumpAllocationCursor
+) -> Option<alloc_allocator.Allocation> {
+    let result =
+        bump_allocate_request(
+            base,
+            cursor,
+            bump_allocation_request_value<T>()
+        );
+
+    give result.allocation;
+}
+
+proc bump_allocate_array<T>(
+    base: raw ref u8,
+    cursor: ref mut BumpAllocationCursor,
+    count: usize
+) -> Option<alloc_allocator.Allocation> {
+    let result =
+        bump_allocate_request(
+            base,
+            cursor,
+            bump_allocation_request_array<T>(
+                count
+            )
+        );
+
+    give result.allocation;
+}
+
+proc bump_allocate_zeroed<T>(
+    base: raw ref u8,
+    cursor: ref mut BumpAllocationCursor
+) -> Option<alloc_allocator.Allocation> {
+    let request =
+        bump_allocation_request(
+            BumpAllocationKind.Zeroed,
+            compiler_size_of<T>(),
+            compiler_align_of<T>(),
+            1,
+            true
+        );
+
+    give bump_allocate_request(
+        base,
+        cursor,
+        request
+    ).allocation;
+}
+
+// -----------------------------------------------------------------------------
+// Emplace / copy
+// -----------------------------------------------------------------------------
+
+proc bump_emplace<T>(
+    base: raw ref u8,
+    cursor: ref mut BumpAllocationCursor,
+    value: T
+) -> Option<ref mut T> {
+    let allocation =
+        bump_allocate<T>(
+            base,
+            cursor
+        );
+
+    if is_none<alloc_allocator.Allocation>(
+        allocation
+    ) {
+        give none<ref mut T>();
+    }
+
+    let target =
+        compiler_allocation_as_mut<T>(
+            unwrap<alloc_allocator.Allocation>(
+                allocation
+            )
+        );
+
+    set *target =
+        value;
+
+    give some<ref mut T>(
+        target
+    );
+}
+
+proc bump_copy<T>(
+    base: raw ref u8,
+    cursor: ref mut BumpAllocationCursor,
+    source: ref T
+) -> Option<ref mut T> {
+    let allocation =
+        bump_allocate<T>(
+            base,
+            cursor
+        );
+
+    if is_none<alloc_allocator.Allocation>(
+        allocation
+    ) {
+        give none<ref mut T>();
+    }
+
+    let target =
+        compiler_allocation_as_mut<T>(
+            unwrap<alloc_allocator.Allocation>(
+                allocation
+            )
+        );
+
+    compiler_copy_value<T>(
+        target,
+        source
+    );
+
+    give some<ref mut T>(
+        target
+    );
+}
+
+proc bump_copy_array<T>(
+    base: raw ref u8,
+    cursor: ref mut BumpAllocationCursor,
+    source: ref [T],
+    count: usize
+) -> Option<alloc_allocator.Allocation> {
+    let allocation =
+        bump_allocate_array<T>(
+            base,
+            cursor,
+            count
+        );
+
+    if is_none<alloc_allocator.Allocation>(
+        allocation
+    ) {
+        give none<alloc_allocator.Allocation>();
+    }
+
+    let out =
+        unwrap<alloc_allocator.Allocation>(
+            allocation
+        );
+
+    compiler_copy_array<T>(
+        compiler_allocation_as_mut<T>(
+            out
+        ),
+        source,
+        count
+    );
+
+    give some<alloc_allocator.Allocation>(
+        out
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Cursor mutation
+// -----------------------------------------------------------------------------
+
+proc bump_allocation_commit(
+    cursor: ref mut BumpAllocationCursor,
+    plan: BumpAllocationPlan
+) -> bool {
+    if not plan.valid {
+        give false;
+    }
+
+    if plan.end > cursor.capacity {
+        give false;
+    }
+
+    if plan.aligned_offset < cursor.offset {
+        give false;
+    }
+
+    set cursor.offset =
+        plan.end;
+
+    give true;
+}
+
+proc bump_allocation_reset(
+    cursor: ref mut BumpAllocationCursor
+) {
+    set cursor.offset = 0;
+}
+
+proc bump_allocation_rewind(
+    cursor: ref mut BumpAllocationCursor,
+    offset: usize
+) -> bool {
+    if offset > cursor.offset {
+        give false;
+    }
+
+    set cursor.offset =
+        offset;
+
+    give true;
+}
+
+proc bump_allocation_advance(
+    cursor: ref mut BumpAllocationCursor,
+    bytes: usize
+) -> bool {
+    if bytes > bump_allocation_cursor_remaining(
+        *cursor
+    ) {
+        give false;
+    }
+
+    set cursor.offset =
+        cursor.offset + bytes;
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Snapshot
+// -----------------------------------------------------------------------------
+
+proc bump_allocation_snapshot(
+    cursor: BumpAllocationCursor
+) -> BumpAllocationSnapshot {
+    give BumpAllocationSnapshot {
+        offset:
+            cursor.offset,
+
+        capacity:
+            cursor.capacity,
+
+        remaining:
+            bump_allocation_cursor_remaining(
+                cursor
+            )
+    };
+}
+
+proc bump_allocation_snapshot_equal(
+    left: BumpAllocationSnapshot,
+    right: BumpAllocationSnapshot
+) -> bool {
+    give left.offset == right.offset
+        and left.capacity == right.capacity
+        and left.remaining == right.remaining;
+}
+
+proc bump_allocation_snapshot_changed(
+    left: BumpAllocationSnapshot,
+    right: BumpAllocationSnapshot
+) -> bool {
+    give not bump_allocation_snapshot_equal(
+        left,
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Delta
+// -----------------------------------------------------------------------------
+
+proc bump_allocation_usize_delta(
+    before: usize,
+    after: usize
+) -> int {
+    if after > before {
+        give (
+            after - before
+        ) as int;
+    }
+
+    if after < before {
+        give -(
+            (
+                before - after
+            ) as int
+        );
+    }
+
+    give 0;
+}
+
+proc bump_allocation_delta(
+    before: BumpAllocationSnapshot,
+    after: BumpAllocationSnapshot
+) -> BumpAllocationDelta {
+    give BumpAllocationDelta {
+        offset:
+            bump_allocation_usize_delta(
+                before.offset,
+                after.offset
+            ),
+
+        remaining:
+            bump_allocation_usize_delta(
+                before.remaining,
+                after.remaining
+            )
+    };
+}
+
+proc bump_allocation_delta_is_zero(
+    delta: BumpAllocationDelta
+) -> bool {
+    give delta.offset == 0
+        and delta.remaining == 0;
+}
+
+// -----------------------------------------------------------------------------
+// Profile
+// -----------------------------------------------------------------------------
+
+proc bump_allocation_profile_empty()
+    -> BumpAllocationProfile
+{
+    give BumpAllocationProfile {
+        requests: 0,
+        successes: 0,
+        failures: 0,
+
+        bytes_requested: 0,
+        bytes_allocated: 0,
+        bytes_padding: 0,
+        bytes_failed: 0,
+
+        smallest_request: 0,
+        largest_request: 0,
+
+        value_allocations: 0,
+        array_allocations: 0,
+        byte_allocations: 0,
+        zeroed_allocations: 0
+    };
+}
+
+proc bump_allocation_profile_record_request(
+    profile: ref mut BumpAllocationProfile,
+    request: BumpAllocationRequest
+) {
+    let bytes =
+        if bump_allocation_mul_overflows(
+            request.size,
+            request.count
+        ) {
+            0
+        } else {
+            request.size * request.count
+        };
+
+    set profile.requests =
+        profile.requests + 1;
+
+    set profile.bytes_requested =
+        profile.bytes_requested + bytes;
+
+    if profile.smallest_request == 0
+        or bytes < profile.smallest_request
+    {
+        set profile.smallest_request =
+            bytes;
+    }
+
+    if bytes > profile.largest_request {
+        set profile.largest_request =
+            bytes;
+    }
+
+    pick request.kind {
+        BumpAllocationKind.Value {
+            set profile.value_allocations =
+                profile.value_allocations + 1;
+        }
+
+        BumpAllocationKind.Array {
+            set profile.array_allocations =
+                profile.array_allocations + 1;
+        }
+
+        BumpAllocationKind.Bytes
+        | BumpAllocationKind.Aligned {
+            set profile.byte_allocations =
+                profile.byte_allocations + 1;
+        }
+
+        BumpAllocationKind.Zeroed {
+            set profile.zeroed_allocations =
+                profile.zeroed_allocations + 1;
+        }
+
+        _ {}
+    }
+}
+
+proc bump_allocation_profile_record_result(
+    profile: ref mut BumpAllocationProfile,
+    result: BumpAllocationResult
+) {
+    if result.success {
+        set profile.successes =
+            profile.successes + 1;
+
+        set profile.bytes_allocated =
+            profile.bytes_allocated
+            + result.bytes;
+
+        set profile.bytes_padding =
+            profile.bytes_padding
+            + result.padding;
+    } else {
+        set profile.failures =
+            profile.failures + 1;
+
+        let bytes =
+            if bump_allocation_mul_overflows(
+                result.request.size,
+                result.request.count
+            ) {
+                0
+            } else {
+                result.request.size
+                * result.request.count
+            };
+
+        set profile.bytes_failed =
+            profile.bytes_failed
+            + bytes;
+    }
+}
+
+proc bump_allocation_profile_success_rate(
+    profile: BumpAllocationProfile
+) -> f64 {
+    if profile.requests == 0 {
+        give 1.0;
+    }
+
+    give (
+        profile.successes as f64
+    ) / (
+        profile.requests as f64
+    );
+}
+
+proc bump_allocation_profile_failure_rate(
+    profile: BumpAllocationProfile
+) -> f64 {
+    if profile.requests == 0 {
+        give 0.0;
+    }
+
+    give (
+        profile.failures as f64
+    ) / (
+        profile.requests as f64
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Result predicates
+// -----------------------------------------------------------------------------
+
+proc bump_allocation_result_is_success(
+    result: BumpAllocationResult
+) -> bool {
+    give result.success;
+}
+
+proc bump_allocation_result_is_failure(
+    result: BumpAllocationResult
+) -> bool {
+    give not result.success;
+}
+
+proc bump_allocation_result_has_allocation(
+    result: BumpAllocationResult
+) -> bool {
+    give is_some<alloc_allocator.Allocation>(
+        result.allocation
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc bump_allocation_kind_name(
+    kind: BumpAllocationKind
+) -> string {
+    pick kind {
+        BumpAllocationKind.Bytes {
+            give "bytes";
+        }
+
+        BumpAllocationKind.Value {
+            give "value";
+        }
+
+        BumpAllocationKind.Array {
+            give "array";
+        }
+
+        BumpAllocationKind.Zeroed {
+            give "zeroed";
+        }
+
+        BumpAllocationKind.Aligned {
+            give "aligned";
+        }
+
+        BumpAllocationKind.Copy {
+            give "copy";
+        }
+
+        BumpAllocationKind.Internal {
+            give "internal";
+        }
+    }
+
+    give "internal";
+}
+
+proc bump_allocation_state_name(
+    state: BumpAllocationState
+) -> string {
+    pick state {
+        BumpAllocationState.Ready {
+            give "ready";
+        }
+
+        BumpAllocationState.Allocated {
+            give "allocated";
+        }
+
+        BumpAllocationState.Failed {
+            give "failed";
+        }
+
+        BumpAllocationState.Exhausted {
+            give "exhausted";
+        }
+
+        BumpAllocationState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+proc bump_allocation_failure_name(
+    failure: BumpAllocationFailure
+) -> string {
+    pick failure {
+        BumpAllocationFailure.None {
+            give "none";
+        }
+
+        BumpAllocationFailure.InvalidSize {
+            give "invalid-size";
+        }
+
+        BumpAllocationFailure.InvalidAlignment {
+            give "invalid-alignment";
+        }
+
+        BumpAllocationFailure.InvalidLayout {
+            give "invalid-layout";
+        }
+
+        BumpAllocationFailure.Overflow {
+            give "overflow";
+        }
+
+        BumpAllocationFailure.CapacityExceeded {
+            give "capacity-exceeded";
+        }
+
+        BumpAllocationFailure.OutOfMemory {
+            give "out-of-memory";
+        }
+
+        BumpAllocationFailure.InvalidPointer {
+            give "invalid-pointer";
+        }
+
+        BumpAllocationFailure.RuntimeFailure {
+            give "runtime-failure";
+        }
+    }
+
+    give "runtime-failure";
+}
+
+// -----------------------------------------------------------------------------
+// Bump allocation model
+// -----------------------------------------------------------------------------
+//
+// memory:
+//
+// +---------------------------------------------------+
+// | used          | padding | allocation | free       |
+// +---------------------------------------------------+
+// ^               ^         ^          ^             ^
+// 0             offset    aligned      end         capacity
+//
+// allocation:
+//
+//     current offset
+//          |
+//          v
+//       align_up
+//          |
+//          +-- padding
+//          |
+//          v
+//     aligned offset
+//          |
+//          +-- size
+//          |
+//          v
+//         end
+//
+// commit:
+//
+//     cursor.offset = end
+//
+// bump allocation is monotonic:
+//
+//     allocate
+//     allocate
+//     allocate
+//     allocate
+//
+// Individual allocations are not freed.
+//
+// Reclamation happens by:
+//
+//     rewind(offset)
+//
+// or:
+//
+//     reset()
+//
+// Core invariant:
+//
+//     0 <= offset <= capacity
+//
+// and every committed allocation satisfies:
+//
+//     aligned_offset >= previous offset
+//     end <= capacity
+//
+// This module owns allocation geometry and cursor movement.
+//
+// High-level allocator lifecycle belongs to `bump.vitl`.
+// State and invariants belong to `core.vitl`.
+// Reset/mark logic belongs to `reset.vitl`.

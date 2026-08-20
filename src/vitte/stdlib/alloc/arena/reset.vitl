@@ -1,0 +1,871 @@
+space vitte/stdlib/alloc/arena/reset
+
+export *
+
+use src/vitte/stdlib/alloc/arena/arena as arena
+use src/vitte/stdlib/alloc/arena/error as arena_error
+use src/vitte/stdlib/alloc/vec as alloc_vec
+
+pick ArenaResetMode {
+    Rewind,
+    Reset,
+    Release
+}
+
+pick ArenaResetState {
+    Ready,
+    Applied,
+    Failed,
+    Invalid
+}
+
+form ArenaResetSnapshot {
+    allocated: usize
+    block_count: usize
+    generation: u64
+    revision: u64
+}
+
+form ArenaResetResult {
+    mode: ArenaResetMode
+    state: ArenaResetState
+
+    before: ArenaResetSnapshot
+    after: ArenaResetSnapshot
+
+    reclaimed: usize
+    removed_blocks: usize
+
+    success: bool
+}
+
+form ArenaResetStatistics {
+    rewind_attempts: u64
+    rewind_successes: u64
+    rewind_failures: u64
+
+    resets: u64
+    releases: u64
+
+    bytes_reclaimed: usize
+    blocks_removed: usize
+}
+
+proc arena_reset_snapshot(
+    value: arena.Arena
+) -> ArenaResetSnapshot {
+    give ArenaResetSnapshot {
+        allocated:
+            arena.arena_allocated(value),
+
+        block_count:
+            arena.arena_block_count(value),
+
+        generation:
+            arena.arena_generation(value),
+
+        revision:
+            arena.arena_revision(value)
+    };
+}
+
+proc arena_reset_snapshot_equal(
+    left: ArenaResetSnapshot,
+    right: ArenaResetSnapshot
+) -> bool {
+    give left.allocated == right.allocated
+        and left.block_count == right.block_count
+        and left.generation == right.generation
+        and left.revision == right.revision;
+}
+
+proc arena_reset_snapshot_changed(
+    left: ArenaResetSnapshot,
+    right: ArenaResetSnapshot
+) -> bool {
+    give not arena_reset_snapshot_equal(
+        left,
+        right
+    );
+}
+
+proc arena_reset_usize_delta(
+    before: usize,
+    after: usize
+) -> usize {
+    if before <= after {
+        give 0;
+    }
+
+    give before - after;
+}
+
+proc arena_reset_removed_blocks(
+    before: ArenaResetSnapshot,
+    after: ArenaResetSnapshot
+) -> usize {
+    give arena_reset_usize_delta(
+        before.block_count,
+        after.block_count
+    );
+}
+
+proc arena_reset_reclaimed_bytes(
+    before: ArenaResetSnapshot,
+    after: ArenaResetSnapshot
+) -> usize {
+    give arena_reset_usize_delta(
+        before.allocated,
+        after.allocated
+    );
+}
+
+proc arena_reset_result(
+    mode: ArenaResetMode,
+    state: ArenaResetState,
+    before: ArenaResetSnapshot,
+    after: ArenaResetSnapshot,
+    success: bool
+) -> ArenaResetResult {
+    give ArenaResetResult {
+        mode:
+            mode,
+
+        state:
+            state,
+
+        before:
+            before,
+
+        after:
+            after,
+
+        reclaimed:
+            arena_reset_reclaimed_bytes(
+                before,
+                after
+            ),
+
+        removed_blocks:
+            arena_reset_removed_blocks(
+                before,
+                after
+            ),
+
+        success:
+            success
+    };
+}
+
+proc arena_reset_result_failed(
+    mode: ArenaResetMode,
+    snapshot: ArenaResetSnapshot
+) -> ArenaResetResult {
+    give ArenaResetResult {
+        mode:
+            mode,
+
+        state:
+            ArenaResetState.Failed,
+
+        before:
+            snapshot,
+
+        after:
+            snapshot,
+
+        reclaimed:
+            0,
+
+        removed_blocks:
+            0,
+
+        success:
+            false
+    };
+}
+
+proc arena_mark_valid(
+    value: arena.Arena,
+    mark: arena.ArenaMark
+) -> bool {
+    give arena.arena_mark_is_valid(
+        value,
+        mark
+    );
+}
+
+proc arena_mark_same_generation(
+    value: arena.Arena,
+    mark: arena.ArenaMark
+) -> bool {
+    give value.generation
+        == mark.generation;
+}
+
+proc arena_mark_block_valid(
+    value: arena.Arena,
+    mark: arena.ArenaMark
+) -> bool {
+    give mark.block_count
+        <= arena.arena_block_count(
+            value
+        );
+}
+
+proc arena_mark_allocated_valid(
+    value: arena.Arena,
+    mark: arena.ArenaMark
+) -> bool {
+    give mark.allocated
+        <= value.allocated;
+}
+
+proc arena_mark_rewindable(
+    value: arena.Arena,
+    mark: arena.ArenaMark
+) -> bool {
+    give arena_mark_same_generation(
+        value,
+        mark
+    )
+    and arena_mark_block_valid(
+        value,
+        mark
+    )
+    and arena_mark_allocated_valid(
+        value,
+        mark
+    );
+}
+
+proc arena_rewind_to_mark(
+    value: ref mut arena.Arena,
+    mark: arena.ArenaMark
+) -> ArenaResetResult {
+    let before =
+        arena_reset_snapshot(
+            *value
+        );
+
+    if not arena_mark_rewindable(
+        *value,
+        mark
+    ) {
+        give arena_reset_result_failed(
+            ArenaResetMode.Rewind,
+            before
+        );
+    }
+
+    let success =
+        arena.arena_rewind(
+            value,
+            mark
+        );
+
+    if not success {
+        give arena_reset_result_failed(
+            ArenaResetMode.Rewind,
+            before
+        );
+    }
+
+    let after =
+        arena_reset_snapshot(
+            *value
+        );
+
+    give arena_reset_result(
+        ArenaResetMode.Rewind,
+        ArenaResetState.Applied,
+        before,
+        after,
+        true
+    );
+}
+
+proc arena_rewind_if_valid(
+    value: ref mut arena.Arena,
+    mark: arena.ArenaMark
+) -> bool {
+    let result =
+        arena_rewind_to_mark(
+            value,
+            mark
+        );
+
+    give result.success;
+}
+
+proc arena_rewind_all(
+    value: ref mut arena.Arena
+) -> ArenaResetResult {
+    let before =
+        arena_reset_snapshot(
+            *value
+        );
+
+    let mark =
+        arena.ArenaMark {
+            block_count: 0,
+            allocated: 0,
+            generation: (*value).generation
+        };
+
+    if not arena.arena_rewind(
+        value,
+        mark
+    ) {
+        give arena_reset_result_failed(
+            ArenaResetMode.Rewind,
+            before
+        );
+    }
+
+    let after =
+        arena_reset_snapshot(
+            *value
+        );
+
+    give arena_reset_result(
+        ArenaResetMode.Rewind,
+        ArenaResetState.Applied,
+        before,
+        after,
+        true
+    );
+}
+
+proc arena_reset_keep_capacity(
+    value: ref mut arena.Arena
+) -> ArenaResetResult {
+    let before =
+        arena_reset_snapshot(
+            *value
+        );
+
+    let index: usize = 0;
+
+    while index < arena.arena_block_count(
+        *value
+    ) {
+        let block =
+            vec_get_mut<arena.ArenaBlock>(
+                &mut ((*value).blocks),
+                index
+            );
+
+        set block.used = 0;
+        set block.active = true;
+
+        set index =
+            index + 1;
+    }
+
+    set (*value).allocated = 0;
+
+    set (*value).allocator.stats.live_bytes =
+        0;
+
+    set (*value).state =
+        arena.ArenaState.Empty;
+
+    set (*value).generation =
+        (*value).generation + 1;
+
+    set (*value).revision =
+        (*value).revision + 1;
+
+    let after =
+        arena_reset_snapshot(
+            *value
+        );
+
+    give arena_reset_result(
+        ArenaResetMode.Reset,
+        ArenaResetState.Applied,
+        before,
+        after,
+        true
+    );
+}
+
+proc arena_reset_clear_blocks(
+    value: ref mut arena.Arena
+) -> ArenaResetResult {
+    let before =
+        arena_reset_snapshot(
+            *value
+        );
+
+    arena.arena_reset(
+        value
+    );
+
+    let after =
+        arena_reset_snapshot(
+            *value
+        );
+
+    give arena_reset_result(
+        ArenaResetMode.Reset,
+        ArenaResetState.Applied,
+        before,
+        after,
+        true
+    );
+}
+
+proc arena_reset_default(
+    value: ref mut arena.Arena
+) -> ArenaResetResult {
+    give arena_reset_clear_blocks(
+        value
+    );
+}
+
+proc arena_reset_if_not_empty(
+    value: ref mut arena.Arena
+) -> ArenaResetResult {
+    let before =
+        arena_reset_snapshot(
+            *value
+        );
+
+    if arena.arena_is_empty(
+        *value
+    ) {
+        give arena_reset_result(
+            ArenaResetMode.Reset,
+            ArenaResetState.Ready,
+            before,
+            before,
+            true
+        );
+    }
+
+    give arena_reset_default(
+        value
+    );
+}
+
+proc arena_release(
+    value: ref mut arena.Arena
+) -> ArenaResetResult {
+    let before =
+        arena_reset_snapshot(
+            *value
+        );
+
+    arena.arena_drop(
+        value
+    );
+
+    let after =
+        arena_reset_snapshot(
+            *value
+        );
+
+    give arena_reset_result(
+        ArenaResetMode.Release,
+        ArenaResetState.Applied,
+        before,
+        after,
+        true
+    );
+}
+
+proc arena_release_if_active(
+    value: ref mut arena.Arena
+) -> ArenaResetResult {
+    let before =
+        arena_reset_snapshot(
+            *value
+        );
+
+    if arena.arena_is_released(
+        *value
+    ) {
+        give arena_reset_result(
+            ArenaResetMode.Release,
+            ArenaResetState.Ready,
+            before,
+            before,
+            true
+        );
+    }
+
+    give arena_release(
+        value
+    );
+}
+
+proc arena_reset_reclaimed(
+    result: ArenaResetResult
+) -> usize {
+    give result.reclaimed;
+}
+
+proc arena_reset_blocks_removed(
+    result: ArenaResetResult
+) -> usize {
+    give result.removed_blocks;
+}
+
+proc arena_reset_succeeded(
+    result: ArenaResetResult
+) -> bool {
+    give result.success;
+}
+
+proc arena_reset_failed(
+    result: ArenaResetResult
+) -> bool {
+    give not result.success;
+}
+
+proc arena_reset_changed(
+    result: ArenaResetResult
+) -> bool {
+    give arena_reset_snapshot_changed(
+        result.before,
+        result.after
+    );
+}
+
+proc arena_reset_is_rewind(
+    result: ArenaResetResult
+) -> bool {
+    give result.mode
+        == ArenaResetMode.Rewind;
+}
+
+proc arena_reset_is_reset(
+    result: ArenaResetResult
+) -> bool {
+    give result.mode
+        == ArenaResetMode.Reset;
+}
+
+proc arena_reset_is_release(
+    result: ArenaResetResult
+) -> bool {
+    give result.mode
+        == ArenaResetMode.Release;
+}
+
+proc arena_reset_invalidates_marks(
+    result: ArenaResetResult
+) -> bool {
+    give result.after.generation
+        != result.before.generation;
+}
+
+proc arena_reset_preserves_generation(
+    result: ArenaResetResult
+) -> bool {
+    give result.after.generation
+        == result.before.generation;
+}
+
+proc arena_reset_preserves_blocks(
+    result: ArenaResetResult
+) -> bool {
+    give result.before.block_count
+        == result.after.block_count;
+}
+
+proc arena_reset_clears_allocated(
+    result: ArenaResetResult
+) -> bool {
+    give result.after.allocated == 0;
+}
+
+proc arena_reset_result_valid(
+    result: ArenaResetResult
+) -> bool {
+    if not result.success {
+        give result.state
+            == ArenaResetState.Failed
+            or result.state
+            == ArenaResetState.Invalid;
+    }
+
+    if result.reclaimed
+        != arena_reset_reclaimed_bytes(
+            result.before,
+            result.after
+        )
+    {
+        give false;
+    }
+
+    if result.removed_blocks
+        != arena_reset_removed_blocks(
+            result.before,
+            result.after
+        )
+    {
+        give false;
+    }
+
+    give true;
+}
+
+proc arena_reset_error_for_mark(
+    value: arena.Arena,
+    mark: arena.ArenaMark
+) -> arena_error.ArenaError {
+    if mark.generation != value.generation {
+        give arena_error.arena_error_mark_generation_mismatch(
+            value.generation,
+            mark.generation
+        );
+    }
+
+    if mark.block_count
+        > arena.arena_block_count(value)
+        or mark.allocated
+        > value.allocated
+    {
+        give arena_error.arena_error_invalid_mark(
+            mark.allocated,
+            mark.block_count
+        );
+    }
+
+    give arena_error.arena_error_none();
+}
+
+proc arena_reset_error(
+    result: ArenaResetResult
+) -> arena_error.ArenaError {
+    if result.success {
+        give arena_error.arena_error_none();
+    }
+
+    pick result.mode {
+        ArenaResetMode.Rewind {
+            give arena_error.arena_error_rewind_failed(
+                result.before.allocated,
+                result.before.block_count
+            );
+        }
+
+        ArenaResetMode.Reset {
+            give arena_error.arena_error_reset_failed();
+        }
+
+        ArenaResetMode.Release {
+            give arena_error.arena_error_release_failed();
+        }
+    }
+
+    give arena_error.arena_error_internal(
+        "unknown arena reset failure"
+    );
+}
+
+proc arena_reset_statistics_empty()
+    -> ArenaResetStatistics
+{
+    give ArenaResetStatistics {
+        rewind_attempts: 0,
+        rewind_successes: 0,
+        rewind_failures: 0,
+
+        resets: 0,
+        releases: 0,
+
+        bytes_reclaimed: 0,
+        blocks_removed: 0
+    };
+}
+
+proc arena_reset_statistics_record(
+    statistics: ref mut ArenaResetStatistics,
+    result: ArenaResetResult
+) {
+    pick result.mode {
+        ArenaResetMode.Rewind {
+            set statistics.rewind_attempts =
+                statistics.rewind_attempts + 1;
+
+            if result.success {
+                set statistics.rewind_successes =
+                    statistics.rewind_successes + 1;
+            } else {
+                set statistics.rewind_failures =
+                    statistics.rewind_failures + 1;
+            }
+        }
+
+        ArenaResetMode.Reset {
+            if result.success {
+                set statistics.resets =
+                    statistics.resets + 1;
+            }
+        }
+
+        ArenaResetMode.Release {
+            if result.success {
+                set statistics.releases =
+                    statistics.releases + 1;
+            }
+        }
+    }
+
+    if result.success {
+        set statistics.bytes_reclaimed =
+            statistics.bytes_reclaimed
+            + result.reclaimed;
+
+        set statistics.blocks_removed =
+            statistics.blocks_removed
+            + result.removed_blocks;
+    }
+}
+
+proc arena_reset_statistics_total(
+    statistics: ArenaResetStatistics
+) -> u64 {
+    give statistics.rewind_attempts
+        + statistics.resets
+        + statistics.releases;
+}
+
+proc arena_reset_statistics_success_count(
+    statistics: ArenaResetStatistics
+) -> u64 {
+    give statistics.rewind_successes
+        + statistics.resets
+        + statistics.releases;
+}
+
+proc arena_reset_statistics_failure_count(
+    statistics: ArenaResetStatistics
+) -> u64 {
+    give statistics.rewind_failures;
+}
+
+proc arena_reset_statistics_reset(
+    statistics: ref mut ArenaResetStatistics
+) {
+    set *statistics =
+        arena_reset_statistics_empty();
+}
+
+proc arena_reset_mode_name(
+    mode: ArenaResetMode
+) -> string {
+    pick mode {
+        ArenaResetMode.Rewind {
+            give "rewind";
+        }
+
+        ArenaResetMode.Reset {
+            give "reset";
+        }
+
+        ArenaResetMode.Release {
+            give "release";
+        }
+    }
+
+    give "reset";
+}
+
+proc arena_reset_state_name(
+    state: ArenaResetState
+) -> string {
+    pick state {
+        ArenaResetState.Ready {
+            give "ready";
+        }
+
+        ArenaResetState.Applied {
+            give "applied";
+        }
+
+        ArenaResetState.Failed {
+            give "failed";
+        }
+
+        ArenaResetState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+// -----------------------------------------------------------------------------
+// Arena lifecycle
+// -----------------------------------------------------------------------------
+//
+// mark:
+//
+//     Arena
+//       |
+//       +-- allocated = N
+//       +-- blocks    = B
+//       +-- generation = G
+//              |
+//              v
+//          ArenaMark
+//
+//
+// rewind:
+//
+//     allocate A
+//     allocate B
+//     mark M
+//     allocate C
+//     allocate D
+//          |
+//          | rewind(M)
+//          v
+//     C and D invalidated
+//     A and B retained
+//
+//
+// reset:
+//
+//     all allocations invalidated
+//
+//     allocated = 0
+//
+// Depending on reset mode:
+//
+//     reset_keep_capacity
+//         blocks retained
+//         used offsets reset
+//
+//     reset_clear_blocks
+//         block collection cleared
+//
+//
+// generation:
+//
+//     rewind
+//         generation preserved
+//
+//     reset
+//         generation incremented
+//
+//     release
+//         generation incremented
+//
+// This ensures marks from a previous reset generation cannot be reused.
+//
+// release:
+//
+//     all allocations invalidated
+//     all blocks released
+//     allocator statistics cleared
+//     arena enters Released state
+//
+// This module owns rewind/reset/release semantics.
+// Allocation mechanics remain in `alloc.vitl`.
+// Block-local geometry remains in `block.vitl`.

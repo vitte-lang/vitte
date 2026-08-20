@@ -1,0 +1,1390 @@
+space vitte/stdlib/alloc/boxed/inner
+
+export *
+
+use src/vitte/stdlib/alloc/boxed/core as box_core
+use src/vitte/stdlib/alloc/boxed/alloc as box_alloc
+use src/vitte/stdlib/alloc/allocator as alloc_allocator
+
+pick BoxInnerState {
+    Empty,
+    Initialized,
+    Moved,
+    Released,
+    Invalid
+}
+
+pick BoxInnerStorageKind {
+    Value,
+    Raw,
+    Zeroed,
+    External
+}
+
+form BoxInner<T> {
+    allocation: alloc_allocator.Allocation
+
+    state: BoxInnerState
+    storage: BoxInnerStorageKind
+
+    initialized: bool
+    owns_allocation: bool
+
+    generation: u64
+    revision: u64
+}
+
+form BoxInnerProfile {
+    size: usize
+    align: usize
+
+    state: BoxInnerState
+    storage: BoxInnerStorageKind
+
+    initialized: bool
+    owns_allocation: bool
+
+    readable: bool
+    writable: bool
+    releasable: bool
+
+    valid: bool
+
+    generation: u64
+    revision: u64
+}
+
+form BoxInnerValidation {
+    valid: bool
+
+    allocation_valid: bool
+    layout_valid: bool
+    state_valid: bool
+    initialization_valid: bool
+    ownership_valid: bool
+}
+
+form BoxInnerSnapshot {
+    size: usize
+    align: usize
+
+    state: BoxInnerState
+    storage: BoxInnerStorageKind
+
+    initialized: bool
+    owns_allocation: bool
+
+    generation: u64
+    revision: u64
+}
+
+form BoxInnerDelta {
+    generation: int
+    revision: int
+
+    state_changed: bool
+    storage_changed: bool
+    initialization_changed: bool
+    ownership_changed: bool
+
+    changed: bool
+}
+
+form BoxInnerStatistics {
+    created: u64
+    initialized: u64
+
+    reads: u64
+    writes: u64
+
+    moves: u64
+    releases: u64
+
+    raw_conversions: u64
+
+    validations: u64
+    failures: u64
+}
+
+// -----------------------------------------------------------------------------
+// Construction
+// -----------------------------------------------------------------------------
+
+proc box_inner_from_allocation<T>(
+    allocation: alloc_allocator.Allocation
+) -> BoxInner<T> {
+    give BoxInner<T> {
+        allocation:
+            allocation,
+
+        state:
+            BoxInnerState.Empty,
+
+        storage:
+            BoxInnerStorageKind.Value,
+
+        initialized:
+            false,
+
+        owns_allocation:
+            true,
+
+        generation:
+            1,
+
+        revision:
+            1
+    };
+}
+
+proc box_inner_new<T>(
+    allocation: alloc_allocator.Allocation,
+    value: T
+) -> BoxInner<T> {
+    let inner =
+        box_inner_from_allocation<T>(
+            allocation
+        );
+
+    let target =
+        compiler_allocation_as_mut<T>(
+            allocation
+        );
+
+    set *target =
+        value;
+
+    set inner.state =
+        BoxInnerState.Initialized;
+
+    set inner.initialized =
+        true;
+
+    set inner.revision =
+        inner.revision + 1;
+
+    give inner;
+}
+
+proc box_inner_zeroed<T>(
+    allocation: alloc_allocator.Allocation
+) -> BoxInner<T> {
+    compiler_allocation_zero(
+        allocation.ptr,
+        allocation.layout.size
+    );
+
+    give BoxInner<T> {
+        allocation:
+            allocation,
+
+        state:
+            BoxInnerState.Initialized,
+
+        storage:
+            BoxInnerStorageKind.Zeroed,
+
+        initialized:
+            true,
+
+        owns_allocation:
+            true,
+
+        generation:
+            1,
+
+        revision:
+            1
+    };
+}
+
+proc box_inner_external<T>(
+    allocation: alloc_allocator.Allocation,
+    initialized: bool
+) -> BoxInner<T> {
+    give BoxInner<T> {
+        allocation:
+            allocation,
+
+        state:
+            if initialized {
+                BoxInnerState.Initialized
+            } else {
+                BoxInnerState.Empty
+            },
+
+        storage:
+            BoxInnerStorageKind.External,
+
+        initialized:
+            initialized,
+
+        owns_allocation:
+            false,
+
+        generation:
+            1,
+
+        revision:
+            1
+    };
+}
+
+// -----------------------------------------------------------------------------
+// State
+// -----------------------------------------------------------------------------
+
+proc box_inner_state<T>(
+    value: BoxInner<T>
+) -> BoxInnerState {
+    give value.state;
+}
+
+proc box_inner_is_empty<T>(
+    value: BoxInner<T>
+) -> bool {
+    give value.state
+        == BoxInnerState.Empty;
+}
+
+proc box_inner_is_initialized<T>(
+    value: BoxInner<T>
+) -> bool {
+    give value.state
+        == BoxInnerState.Initialized
+        and value.initialized;
+}
+
+proc box_inner_is_moved<T>(
+    value: BoxInner<T>
+) -> bool {
+    give value.state
+        == BoxInnerState.Moved;
+}
+
+proc box_inner_is_released<T>(
+    value: BoxInner<T>
+) -> bool {
+    give value.state
+        == BoxInnerState.Released;
+}
+
+proc box_inner_is_valid<T>(
+    value: BoxInner<T>
+) -> bool {
+    give box_inner_validate<T>(
+        value
+    ).valid;
+}
+
+// -----------------------------------------------------------------------------
+// Access
+// -----------------------------------------------------------------------------
+
+proc box_inner_can_read<T>(
+    value: BoxInner<T>
+) -> bool {
+    give value.state
+        == BoxInnerState.Initialized
+        and value.initialized;
+}
+
+proc box_inner_can_write<T>(
+    value: BoxInner<T>
+) -> bool {
+    give box_inner_can_read<T>(
+        value
+    );
+}
+
+proc box_inner_can_release<T>(
+    value: BoxInner<T>
+) -> bool {
+    give value.owns_allocation
+        and value.state
+            != BoxInnerState.Released
+        and value.state
+            != BoxInnerState.Moved;
+}
+
+proc box_inner_get<T>(
+    value: ref BoxInner<T>
+) -> ref T {
+    give compiler_allocation_as_ref<T>(
+        value.allocation
+    );
+}
+
+proc box_inner_get_mut<T>(
+    value: ref mut BoxInner<T>
+) -> ref mut T {
+    give compiler_allocation_as_mut<T>(
+        value.allocation
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Initialization
+// -----------------------------------------------------------------------------
+
+proc box_inner_initialize<T>(
+    value: ref mut BoxInner<T>,
+    item: T
+) -> bool {
+    if value.state
+        == BoxInnerState.Released
+        or value.state
+            == BoxInnerState.Moved
+    {
+        give false;
+    }
+
+    if value.initialized {
+        give false;
+    }
+
+    let target =
+        compiler_allocation_as_mut<T>(
+            value.allocation
+        );
+
+    set *target =
+        item;
+
+    set value.initialized =
+        true;
+
+    set value.state =
+        BoxInnerState.Initialized;
+
+    set value.revision =
+        value.revision + 1;
+
+    give true;
+}
+
+proc box_inner_initialize_zeroed<T>(
+    value: ref mut BoxInner<T>
+) -> bool {
+    if value.state
+        == BoxInnerState.Released
+        or value.state
+            == BoxInnerState.Moved
+    {
+        give false;
+    }
+
+    if value.initialized {
+        give false;
+    }
+
+    compiler_allocation_zero(
+        value.allocation.ptr,
+        value.allocation.layout.size
+    );
+
+    set value.initialized =
+        true;
+
+    set value.storage =
+        BoxInnerStorageKind.Zeroed;
+
+    set value.state =
+        BoxInnerState.Initialized;
+
+    set value.revision =
+        value.revision + 1;
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Replace
+// -----------------------------------------------------------------------------
+
+proc box_inner_replace<T>(
+    value: ref mut BoxInner<T>,
+    replacement: T
+) -> Option<T> {
+    if not box_inner_can_write<T>(
+        *value
+    ) {
+        give none<T>();
+    }
+
+    let target =
+        box_inner_get_mut<T>(
+            value
+        );
+
+    let old =
+        *target;
+
+    set *target =
+        replacement;
+
+    set value.revision =
+        value.revision + 1;
+
+    give some<T>(
+        old
+    );
+}
+
+proc box_inner_set<T>(
+    value: ref mut BoxInner<T>,
+    replacement: T
+) -> bool {
+    if not box_inner_can_write<T>(
+        *value
+    ) {
+        give false;
+    }
+
+    let target =
+        box_inner_get_mut<T>(
+            value
+        );
+
+    compiler_drop_in_place<T>(
+        target
+    );
+
+    set *target =
+        replacement;
+
+    set value.revision =
+        value.revision + 1;
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Move
+// -----------------------------------------------------------------------------
+
+proc box_inner_move<T>(
+    source: ref mut BoxInner<T>
+) -> Option<BoxInner<T>> {
+    if source.state
+        != BoxInnerState.Initialized
+    {
+        give none<BoxInner<T>>();
+    }
+
+    let out =
+        BoxInner<T> {
+            allocation:
+                source.allocation,
+
+            state:
+                BoxInnerState.Initialized,
+
+            storage:
+                source.storage,
+
+            initialized:
+                source.initialized,
+
+            owns_allocation:
+                source.owns_allocation,
+
+            generation:
+                source.generation,
+
+            revision:
+                source.revision + 1
+        };
+
+    set source.state =
+        BoxInnerState.Moved;
+
+    set source.initialized =
+        false;
+
+    set source.owns_allocation =
+        false;
+
+    set source.revision =
+        source.revision + 1;
+
+    give some<BoxInner<T>>(
+        out
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Ownership transfer
+// -----------------------------------------------------------------------------
+
+proc box_inner_take_allocation<T>(
+    value: ref mut BoxInner<T>
+) -> Option<alloc_allocator.Allocation> {
+    if not value.owns_allocation {
+        give none<alloc_allocator.Allocation>();
+    }
+
+    if value.state
+        == BoxInnerState.Released
+    {
+        give none<alloc_allocator.Allocation>();
+    }
+
+    let allocation =
+        value.allocation;
+
+    set value.owns_allocation =
+        false;
+
+    set value.state =
+        BoxInnerState.Moved;
+
+    set value.initialized =
+        false;
+
+    set value.revision =
+        value.revision + 1;
+
+    give some<alloc_allocator.Allocation>(
+        allocation
+    );
+}
+
+proc box_inner_give_ownership<T>(
+    value: ref mut BoxInner<T>
+) -> bool {
+    if value.state
+        == BoxInnerState.Released
+    {
+        give false;
+    }
+
+    set value.owns_allocation =
+        true;
+
+    set value.revision =
+        value.revision + 1;
+
+    give true;
+}
+
+proc box_inner_remove_ownership<T>(
+    value: ref mut BoxInner<T>
+) {
+    set value.owns_allocation =
+        false;
+
+    set value.revision =
+        value.revision + 1;
+}
+
+// -----------------------------------------------------------------------------
+// Raw representation
+// -----------------------------------------------------------------------------
+
+proc box_inner_as_raw<T>(
+    value: ref BoxInner<T>
+) -> raw ref T {
+    give compiler_allocation_as_raw<T>(
+        value.allocation
+    );
+}
+
+proc box_inner_as_raw_mut<T>(
+    value: ref mut BoxInner<T>
+) -> raw ref mut T {
+    give compiler_allocation_as_raw_mut<T>(
+        value.allocation
+    );
+}
+
+proc box_inner_into_raw<T>(
+    value: ref mut BoxInner<T>
+) -> raw ref T {
+    let pointer =
+        compiler_allocation_as_raw<T>(
+            value.allocation
+        );
+
+    set value.storage =
+        BoxInnerStorageKind.Raw;
+
+    set value.owns_allocation =
+        false;
+
+    set value.initialized =
+        false;
+
+    set value.state =
+        BoxInnerState.Moved;
+
+    set value.revision =
+        value.revision + 1;
+
+    give pointer;
+}
+
+// -----------------------------------------------------------------------------
+// Layout
+// -----------------------------------------------------------------------------
+
+proc box_inner_size<T>(
+    value: BoxInner<T>
+) -> usize {
+    give value.allocation.layout.size;
+}
+
+proc box_inner_align<T>(
+    value: BoxInner<T>
+) -> usize {
+    give value.allocation.layout.align;
+}
+
+proc box_inner_layout<T>(
+    value: BoxInner<T>
+) -> alloc_allocator.AllocationLayout {
+    give value.allocation.layout;
+}
+
+proc box_inner_layout_matches<T>(
+    value: BoxInner<T>
+) -> bool {
+    give value.allocation.layout.size
+        >= compiler_size_of<T>()
+        and value.allocation.layout.align
+            >= compiler_align_of<T>();
+}
+
+// -----------------------------------------------------------------------------
+// Drop value
+// -----------------------------------------------------------------------------
+
+proc box_inner_drop_value<T>(
+    value: ref mut BoxInner<T>
+) -> bool {
+    if not value.initialized {
+        give false;
+    }
+
+    if value.state
+        != BoxInnerState.Initialized
+    {
+        give false;
+    }
+
+    compiler_drop_in_place<T>(
+        box_inner_get_mut<T>(
+            value
+        )
+    );
+
+    set value.initialized =
+        false;
+
+    set value.state =
+        BoxInnerState.Empty;
+
+    set value.revision =
+        value.revision + 1;
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Release allocation
+// -----------------------------------------------------------------------------
+
+proc box_inner_release<T>(
+    value: ref mut BoxInner<T>,
+    allocator: ref mut alloc_allocator.Allocator
+) -> bool {
+    if not box_inner_can_release<T>(
+        *value
+    ) {
+        give false;
+    }
+
+    if value.initialized {
+        compiler_drop_in_place<T>(
+            box_inner_get_mut<T>(
+                value
+            )
+        );
+    }
+
+    if not box_alloc.box_deallocate(
+        allocator,
+        value.allocation
+    ) {
+        give false;
+    }
+
+    set value.initialized =
+        false;
+
+    set value.owns_allocation =
+        false;
+
+    set value.state =
+        BoxInnerState.Released;
+
+    set value.generation =
+        value.generation + 1;
+
+    set value.revision =
+        value.revision + 1;
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Forget
+// -----------------------------------------------------------------------------
+
+proc box_inner_forget<T>(
+    value: ref mut BoxInner<T>
+) {
+    if value.state
+        == BoxInnerState.Released
+    {
+        give;
+    }
+
+    compiler_forget_allocation(
+        value.allocation
+    );
+
+    set value.initialized =
+        false;
+
+    set value.owns_allocation =
+        false;
+
+    set value.state =
+        BoxInnerState.Moved;
+
+    set value.revision =
+        value.revision + 1;
+}
+
+// -----------------------------------------------------------------------------
+// Generation / revision
+// -----------------------------------------------------------------------------
+
+proc box_inner_generation<T>(
+    value: BoxInner<T>
+) -> u64 {
+    give value.generation;
+}
+
+proc box_inner_revision<T>(
+    value: BoxInner<T>
+) -> u64 {
+    give value.revision;
+}
+
+proc box_inner_touch<T>(
+    value: ref mut BoxInner<T>
+) {
+    set value.revision =
+        value.revision + 1;
+}
+
+proc box_inner_advance_generation<T>(
+    value: ref mut BoxInner<T>
+) -> u64 {
+    set value.generation =
+        value.generation + 1;
+
+    set value.revision =
+        value.revision + 1;
+
+    give value.generation;
+}
+
+// -----------------------------------------------------------------------------
+// Profile
+// -----------------------------------------------------------------------------
+
+proc box_inner_profile<T>(
+    value: BoxInner<T>
+) -> BoxInnerProfile {
+    let valid =
+        box_inner_is_valid<T>(
+            value
+        );
+
+    give BoxInnerProfile {
+        size:
+            value.allocation.layout.size,
+
+        align:
+            value.allocation.layout.align,
+
+        state:
+            value.state,
+
+        storage:
+            value.storage,
+
+        initialized:
+            value.initialized,
+
+        owns_allocation:
+            value.owns_allocation,
+
+        readable:
+            box_inner_can_read<T>(
+                value
+            ),
+
+        writable:
+            box_inner_can_write<T>(
+                value
+            ),
+
+        releasable:
+            box_inner_can_release<T>(
+                value
+            ),
+
+        valid:
+            valid,
+
+        generation:
+            value.generation,
+
+        revision:
+            value.revision
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Snapshot
+// -----------------------------------------------------------------------------
+
+proc box_inner_snapshot<T>(
+    value: BoxInner<T>
+) -> BoxInnerSnapshot {
+    give BoxInnerSnapshot {
+        size:
+            value.allocation.layout.size,
+
+        align:
+            value.allocation.layout.align,
+
+        state:
+            value.state,
+
+        storage:
+            value.storage,
+
+        initialized:
+            value.initialized,
+
+        owns_allocation:
+            value.owns_allocation,
+
+        generation:
+            value.generation,
+
+        revision:
+            value.revision
+    };
+}
+
+proc box_inner_snapshot_equal(
+    left: BoxInnerSnapshot,
+    right: BoxInnerSnapshot
+) -> bool {
+    give left.size == right.size
+        and left.align == right.align
+        and left.state == right.state
+        and left.storage == right.storage
+        and left.initialized == right.initialized
+        and left.owns_allocation == right.owns_allocation
+        and left.generation == right.generation
+        and left.revision == right.revision;
+}
+
+proc box_inner_snapshot_changed(
+    left: BoxInnerSnapshot,
+    right: BoxInnerSnapshot
+) -> bool {
+    give not box_inner_snapshot_equal(
+        left,
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Delta
+// -----------------------------------------------------------------------------
+
+proc box_inner_u64_delta(
+    before: u64,
+    after: u64
+) -> int {
+    if after > before {
+        give (
+            after - before
+        ) as int;
+    }
+
+    if after < before {
+        give -(
+            (
+                before - after
+            ) as int
+        );
+    }
+
+    give 0;
+}
+
+proc box_inner_delta(
+    before: BoxInnerSnapshot,
+    after: BoxInnerSnapshot
+) -> BoxInnerDelta {
+    let generation =
+        box_inner_u64_delta(
+            before.generation,
+            after.generation
+        );
+
+    let revision =
+        box_inner_u64_delta(
+            before.revision,
+            after.revision
+        );
+
+    let state_changed =
+        before.state
+            != after.state;
+
+    let storage_changed =
+        before.storage
+            != after.storage;
+
+    let initialization_changed =
+        before.initialized
+            != after.initialized;
+
+    let ownership_changed =
+        before.owns_allocation
+            != after.owns_allocation;
+
+    give BoxInnerDelta {
+        generation:
+            generation,
+
+        revision:
+            revision,
+
+        state_changed:
+            state_changed,
+
+        storage_changed:
+            storage_changed,
+
+        initialization_changed:
+            initialization_changed,
+
+        ownership_changed:
+            ownership_changed,
+
+        changed:
+            generation != 0
+            or revision != 0
+            or state_changed
+            or storage_changed
+            or initialization_changed
+            or ownership_changed
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+proc box_inner_state_valid<T>(
+    value: BoxInner<T>
+) -> bool {
+    pick value.state {
+        BoxInnerState.Empty {
+            give not value.initialized;
+        }
+
+        BoxInnerState.Initialized {
+            give value.initialized;
+        }
+
+        BoxInnerState.Moved {
+            give not value.owns_allocation
+                and not value.initialized;
+        }
+
+        BoxInnerState.Released {
+            give not value.owns_allocation
+                and not value.initialized;
+        }
+
+        BoxInnerState.Invalid {
+            give false;
+        }
+    }
+
+    give false;
+}
+
+proc box_inner_initialization_valid<T>(
+    value: BoxInner<T>
+) -> bool {
+    if value.initialized {
+        give value.state
+            == BoxInnerState.Initialized;
+    }
+
+    give value.state
+        != BoxInnerState.Initialized;
+}
+
+proc box_inner_ownership_valid<T>(
+    value: BoxInner<T>
+) -> bool {
+    if value.state
+        == BoxInnerState.Moved
+        or value.state
+            == BoxInnerState.Released
+    {
+        give not value.owns_allocation;
+    }
+
+    give true;
+}
+
+proc box_inner_validate<T>(
+    value: BoxInner<T>
+) -> BoxInnerValidation {
+    let allocation_valid =
+        if value.state
+            == BoxInnerState.Moved
+            or value.state
+                == BoxInnerState.Released
+        {
+            true
+        } else {
+            box_alloc.box_allocation_is_valid(
+                value.allocation
+            )
+        };
+
+    let layout_valid =
+        if value.state
+            == BoxInnerState.Moved
+            or value.state
+                == BoxInnerState.Released
+        {
+            true
+        } else {
+            box_inner_layout_matches<T>(
+                value
+            )
+        };
+
+    let state_valid =
+        box_inner_state_valid<T>(
+            value
+        );
+
+    let initialization_valid =
+        box_inner_initialization_valid<T>(
+            value
+        );
+
+    let ownership_valid =
+        box_inner_ownership_valid<T>(
+            value
+        );
+
+    give BoxInnerValidation {
+        valid:
+            allocation_valid
+            and layout_valid
+            and state_valid
+            and initialization_valid
+            and ownership_valid,
+
+        allocation_valid:
+            allocation_valid,
+
+        layout_valid:
+            layout_valid,
+
+        state_valid:
+            state_valid,
+
+        initialization_valid:
+            initialization_valid,
+
+        ownership_valid:
+            ownership_valid
+    };
+}
+
+proc box_inner_invariant_holds<T>(
+    value: BoxInner<T>
+) -> bool {
+    give box_inner_validate<T>(
+        value
+    ).valid;
+}
+
+// -----------------------------------------------------------------------------
+// Core conversion
+// -----------------------------------------------------------------------------
+
+proc box_inner_core_state<T>(
+    value: BoxInner<T>
+) -> box_core.BoxCoreState {
+    pick value.state {
+        BoxInnerState.Empty {
+            give box_core.BoxCoreState.Uninitialized;
+        }
+
+        BoxInnerState.Initialized {
+            give box_core.BoxCoreState.Alive;
+        }
+
+        BoxInnerState.Moved {
+            give box_core.BoxCoreState.Moved;
+        }
+
+        BoxInnerState.Released {
+            give box_core.BoxCoreState.Released;
+        }
+
+        BoxInnerState.Invalid {
+            give box_core.BoxCoreState.Invalid;
+        }
+    }
+
+    give box_core.BoxCoreState.Invalid;
+}
+
+proc box_inner_core_meta<T>(
+    value: BoxInner<T>
+) -> box_core.BoxCoreMeta {
+    give box_core.BoxCoreMeta {
+        layout:
+            box_core.BoxCoreLayout {
+                size:
+                    value.allocation.layout.size,
+
+                align:
+                    value.allocation.layout.align
+            },
+
+        generation:
+            value.generation,
+
+        revision:
+            value.revision
+    };
+}
+
+proc box_inner_core_profile<T>(
+    value: BoxInner<T>
+) -> box_core.BoxCoreProfile {
+    give box_core.box_core_profile(
+        box_inner_core_meta<T>(
+            value
+        ),
+        box_inner_core_state<T>(
+            value
+        )
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc box_inner_statistics_empty()
+    -> BoxInnerStatistics
+{
+    give BoxInnerStatistics {
+        created: 0,
+        initialized: 0,
+
+        reads: 0,
+        writes: 0,
+
+        moves: 0,
+        releases: 0,
+
+        raw_conversions: 0,
+
+        validations: 0,
+        failures: 0
+    };
+}
+
+proc box_inner_statistics_total(
+    statistics: BoxInnerStatistics
+) -> u64 {
+    give statistics.created
+        + statistics.initialized
+        + statistics.reads
+        + statistics.writes
+        + statistics.moves
+        + statistics.releases
+        + statistics.raw_conversions
+        + statistics.validations
+        + statistics.failures;
+}
+
+proc box_inner_statistics_reset(
+    statistics: ref mut BoxInnerStatistics
+) {
+    set *statistics =
+        box_inner_statistics_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc box_inner_state_name(
+    state: BoxInnerState
+) -> string {
+    pick state {
+        BoxInnerState.Empty {
+            give "empty";
+        }
+
+        BoxInnerState.Initialized {
+            give "initialized";
+        }
+
+        BoxInnerState.Moved {
+            give "moved";
+        }
+
+        BoxInnerState.Released {
+            give "released";
+        }
+
+        BoxInnerState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+proc box_inner_storage_kind_name(
+    storage: BoxInnerStorageKind
+) -> string {
+    pick storage {
+        BoxInnerStorageKind.Value {
+            give "value";
+        }
+
+        BoxInnerStorageKind.Raw {
+            give "raw";
+        }
+
+        BoxInnerStorageKind.Zeroed {
+            give "zeroed";
+        }
+
+        BoxInnerStorageKind.External {
+            give "external";
+        }
+    }
+
+    give "value";
+}
+
+// -----------------------------------------------------------------------------
+// Inner model
+// -----------------------------------------------------------------------------
+//
+// BoxInner<T>
+//      |
+//      +-- Allocation
+//      |
+//      +-- initialized
+//      |
+//      +-- owns_allocation
+//      |
+//      +-- lifecycle
+//
+//               +---------+
+//               |  Empty  |
+//               +----+----+
+//                    |
+//               initialize
+//                    |
+//                    v
+//             +-------------+
+//             | Initialized |
+//             +------+------+
+//                    |
+//            +-------+-------+
+//            |               |
+//           move           release
+//            |               |
+//            v               v
+//        +-------+       +----------+
+//        | Moved |       | Released |
+//        +-------+       +----------+
+//
+// Empty:
+//
+//     allocation exists
+//     T is not initialized
+//
+// Initialized:
+//
+//     allocation exists
+//     T is initialized
+//     read/write allowed
+//
+// Moved:
+//
+//     ownership transferred
+//     source cannot access T
+//     source cannot release allocation
+//
+// Released:
+//
+//     T destroyed
+//     allocation released
+//
+// External:
+//
+//     BoxInner references storage that it does not necessarily own.
+//
+// Raw:
+//
+//     ownership has been transferred to raw representation.
+//
+// Fundamental invariants:
+//
+//     initialized => state == Initialized
+//
+//     Moved => owns_allocation == false
+//
+//     Released => owns_allocation == false
+//
+//     Released => initialized == false
+//
+// `inner.vitl` owns the internal storage representation.
+//
+// `boxed.vitl` provides the public Box<T> API.
+// `core.vitl` provides the pure lifecycle model.
+// `alloc.vitl` provides allocation mechanics.
+// `drop.vitl` provides destruction lifecycle.
+// `raw.vitl` provides raw ownership conversion.

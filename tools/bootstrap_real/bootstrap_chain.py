@@ -10,6 +10,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from bootstrap_real import prepare_compiler_module_manifest
 from stage0_trust import DEFAULT_MANIFEST, ROOT, TrustError, host_tuple, load_manifest, select_entry, verify_entry
 
 
@@ -112,6 +113,7 @@ def main(argv: list[str] | None = None) -> int:
     env = os.environ.copy()
     env.pop("BOOTSTRAP_FULL_COMPILER", None)
     env.pop("VITTE_BOOTSTRAP_ALLOW_FULL_COMPILER_BRIDGE", None)
+    env["VITTE_ROOT"] = str(ROOT)
     if args.offline:
         env.update({"VITTE_OFFLINE": "1", "GIT_TERMINAL_PROMPT": "0", "PIP_NO_INDEX": "1", "CARGO_NET_OFFLINE": "true"})
     try:
@@ -136,6 +138,7 @@ def main(argv: list[str] | None = None) -> int:
         errors.append(f"missing source bootstrap compiler: {SOURCE_BOOTSTRAP.relative_to(ROOT)}")
     if not errors:
         env["VITTE_C17_GENERIC_COMPILER"] = "1"
+        prepare_compiler_module_manifest()
         BOOTSTRAP_COMPILER.unlink(missing_ok=True)
         bootstrap_result = run(source_bootstrap_build_command(), env)
         commands.append(bootstrap_result)

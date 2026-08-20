@@ -20,7 +20,9 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 CORPUS = ROOT / "tests" / "compiler_real_diagnostics" / "corpus.vitte.json"
-BIN = ROOT / "bin" / "vitte"
+BIN = Path(os.environ.get("VITTE_COMPILER", str(ROOT / "bin" / "vitte"))).expanduser()
+if not BIN.is_absolute():
+    BIN = ROOT / BIN
 REPORT_DIR = ROOT / "target" / "reports" / "compiler_real_diagnostics"
 REPORT_JSON = REPORT_DIR / "coverage.json"
 REPORT_MD = REPORT_DIR / "coverage.md"
@@ -78,7 +80,10 @@ VALID_CASCADE_POLICIES = {"none", "suppress-derived", "mark-derived"}
 
 
 def rel(path: Path) -> str:
-    return path.relative_to(ROOT).as_posix()
+    try:
+        return path.relative_to(ROOT).as_posix()
+    except ValueError:
+        return str(path)
 
 
 def load_json(path: Path) -> Any:
@@ -147,7 +152,7 @@ def run_command(
     combined = proc.stdout + proc.stderr
     return {
         "argv": [
-            "bin/vitte",
+            rel(BIN),
             command_name,
             *(["--diagnostics-json"] if diagnostics_json else []),
             *(["--diagnostics-lsp"] if diagnostics_lsp else []),

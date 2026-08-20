@@ -11,7 +11,9 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
-BIN = ROOT / "bin" / "vitte"
+BIN = Path(os.environ.get("VITTE_COMPILER", str(ROOT / "bin" / "vitte"))).expanduser()
+if not BIN.is_absolute():
+    BIN = ROOT / BIN
 REPORT_DIR = ROOT / "target" / "reports" / "compiler_diagnostics_runtime_matrix"
 REPORT_JSON = REPORT_DIR / "coverage.json"
 REPORT_MD = REPORT_DIR / "coverage.md"
@@ -111,7 +113,10 @@ TEXT_MARKERS = (
 
 
 def rel(path: Path) -> str:
-    return path.relative_to(ROOT).as_posix()
+    try:
+        return path.relative_to(ROOT).as_posix()
+    except ValueError:
+        return str(path)
 
 
 def parse_ftl(path: Path) -> dict[str, str]:
@@ -171,7 +176,7 @@ def run(case: dict[str, Any], surface: str) -> dict[str, Any]:
         check=False,
     )
     return {
-        "argv": ["bin/vitte", *command_for(case, surface)[1:]],
+        "argv": [rel(BIN), *command_for(case, surface)[1:]],
         "exit_code": proc.returncode,
         "stdout": proc.stdout,
         "stderr": proc.stderr,

@@ -1,7 +1,16 @@
 space vitte/compiler/backends/llvm_bindings
 
 proc string(value: u64) -> string {
-  give value as string;
+  if value == 0 {
+    give "0";
+  }
+  let digit: u64 = value % 10;
+  let digit_text: string = if digit == 0 { "0" } elif digit == 1 { "1" } elif digit == 2 { "2" } elif digit == 3 { "3" } elif digit == 4 { "4" } elif digit == 5 { "5" } elif digit == 6 { "6" } elif digit == 7 { "7" } elif digit == 8 { "8" } else { "9" };
+  let prefix: u64 = value / 10 as u64;
+  if prefix == 0 {
+    give digit_text;
+  }
+  give string(prefix) + digit_text;
 }
 
 proc contains(text: string, needle: string) -> bool {
@@ -121,6 +130,11 @@ form LlvmBindingResult {
   module_count: u64
   function_count: u64
   valid: bool
+}
+
+form LlvmStringGlobalSet {
+  names: [string]
+  lines: [string]
 }
 
 proc supported_opt_levels() -> string {
@@ -264,16 +278,7 @@ proc llvm_operand_text(instruction: IrInstruction) -> string {
     give "0";
   }
   let value = instruction.args[0];
-  if value.constant != "" {
-    give value.constant;
-  }
-  if value.name != "" {
-    give "%" + value.name;
-  }
-  if value.text != "" {
-    give value.text;
-  }
-  give "0";
+  give llvm_value_text(value);
 }
 
 proc llvm_type_for_param(type_name: string, borrowed: bool) -> string {
@@ -345,7 +350,181 @@ proc llvm_type_for_name(module0: IrModule, type_name: string, borrowed: bool) ->
   give base;
 }
 
+proc llvm_is_string_literal(text: string) -> bool {
+  if len(text) < 2 {
+    give false;
+  }
+  give slice(text, 0, 1) == "\"" and slice(text, len(text) - 1, len(text)) == "\"";
+}
+
+proc llvm_string_payload(literal: string) -> string {
+  if not llvm_is_string_literal(literal) {
+    give literal;
+  }
+  give slice(literal, 1, len(literal) - 1);
+}
+
+proc llvm_string_global_name(value: IrValue) -> string {
+  give "@.vitte.str." + string(value.id);
+}
+
+proc llvm_known_escape_size(next: string) -> u64 {
+  if next == "n" or next == "r" or next == "t" or next == "\"" or next == "\\" or next == "0" {
+    give 1;
+  }
+  give 2;
+}
+
+proc llvm_string_payload_size(payload: string) -> u64 {
+  let size: u64 = 0;
+  let i: u64 = 0;
+  while i < len(payload) {
+    let ch: string = slice(payload, i, i + 1);
+    if ch == "\\" and i + 1 < len(payload) {
+      let next: string = slice(payload, i + 1, i + 2);
+      set size = size + llvm_known_escape_size(next);
+      set i = i + 2;
+      continue;
+    }
+    set size = size + 1;
+    set i = i + 1;
+  }
+  give size;
+}
+
+proc llvm_escape_sequence_text(next: string) -> string {
+  if next == "n" {
+    give "\\0A";
+  }
+  if next == "r" {
+    give "\\0D";
+  }
+  if next == "t" {
+    give "\\09";
+  }
+  if next == "\"" {
+    give "\\22";
+  }
+  if next == "\\" {
+    give "\\5C";
+  }
+  if next == "0" {
+    give "\\00";
+  }
+  give "\\5C" + next;
+}
+
+proc llvm_c_string_payload(payload: string) -> string {
+  let out: string = "";
+  let i: u64 = 0;
+  while i < len(payload) {
+    let ch: string = slice(payload, i, i + 1);
+    if ch == "\\" and i + 1 < len(payload) {
+      set out = out + llvm_escape_sequence_text(slice(payload, i + 1, i + 2));
+      set i = i + 2;
+      continue;
+    }
+    if ch == "\"" {
+      set out = out + "\\22";
+    } elif ch == "\\" {
+      set out = out + "\\5C";
+    } else {
+      set out = out + ch;
+    }
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc llvm_string_literal_size(literal: string) -> u64 {
+  give llvm_string_payload_size(llvm_string_payload(literal)) + 1;
+}
+
+proc llvm_string_pointer_expr(value: IrValue) -> string {
+  let size_text: string = string(llvm_string_literal_size(value.constant));
+  let name: string = llvm_string_global_name(value);
+  give "getelementptr inbounds ([" + size_text + " x i8], [" + size_text + " x i8]* " + name + ", i64 0, i64 0)";
+}
+
+proc llvm_string_global_line(value: IrValue) -> string {
+  let payload: string = llvm_string_payload(value.constant);
+  let size_text: string = string(llvm_string_literal_size(value.constant));
+  give llvm_string_global_name(value) + " = private unnamed_addr constant [" + size_text + " x i8] c\"" + llvm_c_string_payload(payload) + "\\00\", align 1";
+}
+
+proc llvm_string_global_set_empty() -> LlvmStringGlobalSet {
+  give LlvmStringGlobalSet { names: [], lines: [] };
+}
+
+proc llvm_string_global_seen(names: [string], name: string) -> bool {
+  let i: u64 = 0;
+  while i < len(names) {
+    if names[i] == name {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc llvm_string_global_set_add_value(set0: LlvmStringGlobalSet, value: IrValue) -> LlvmStringGlobalSet {
+  if value.type_name != "string" or not llvm_is_string_literal(value.constant) {
+    give set0;
+  }
+  let name: string = llvm_string_global_name(value);
+  if llvm_string_global_seen(set0.names, name) {
+    give set0;
+  }
+  give LlvmStringGlobalSet {
+    names: set0.names + [name],
+    lines: set0.lines + [llvm_string_global_line(value)]
+  };
+}
+
+proc llvm_string_globals_for_instruction(set0: LlvmStringGlobalSet, instruction: IrInstruction) -> LlvmStringGlobalSet {
+  let built: LlvmStringGlobalSet = set0;
+  let i: u64 = 0;
+  while i < len(instruction.args) {
+    set built = llvm_string_global_set_add_value(built, instruction.args[i]);
+    set i = i + 1;
+  }
+  give built;
+}
+
+proc llvm_string_globals_for_block(set0: LlvmStringGlobalSet, block: IrBlock) -> LlvmStringGlobalSet {
+  let built: LlvmStringGlobalSet = set0;
+  let i: u64 = 0;
+  while i < len(block.instructions) {
+    set built = llvm_string_globals_for_instruction(built, block.instructions[i]);
+    set i = i + 1;
+  }
+  give llvm_string_globals_for_instruction(built, block.terminator);
+}
+
+proc llvm_string_globals_for_function(set0: LlvmStringGlobalSet, fn0: IrFunction) -> LlvmStringGlobalSet {
+  let built: LlvmStringGlobalSet = set0;
+  let i: u64 = 0;
+  while i < len(fn0.blocks) {
+    set built = llvm_string_globals_for_block(built, fn0.blocks[i]);
+    set i = i + 1;
+  }
+  give built;
+}
+
+proc llvm_string_globals_for_module(module0: IrModule) -> [string] {
+  let built: LlvmStringGlobalSet = llvm_string_global_set_empty();
+  let i: u64 = 0;
+  while i < len(module0.functions) {
+    set built = llvm_string_globals_for_function(built, module0.functions[i]);
+    set i = i + 1;
+  }
+  give built.lines;
+}
+
 proc llvm_value_text(value: IrValue) -> string {
+  if value.type_name == "string" and llvm_is_string_literal(value.constant) {
+    give llvm_string_pointer_expr(value);
+  }
   if value.constant != "" {
     give value.constant;
   }
@@ -393,16 +572,7 @@ proc llvm_rhs_text(instruction: IrInstruction) -> string {
     give "0";
   }
   let value = instruction.args[1];
-  if value.constant != "" {
-    give value.constant;
-  }
-  if value.name != "" {
-    give "%" + value.name;
-  }
-  if value.text != "" {
-    give value.text;
-  }
-  give "0";
+  give llvm_value_text(value);
 }
 
 proc llvm_impl_method_symbol_name(trait_name: string, target_type: string, method_name: string) -> string {
@@ -874,9 +1044,16 @@ proc llvm_function_params_text(module0: IrModule, fn0: IrFunction, include_names
   give params_text;
 }
 
+proc llvm_function_symbol(fn0: IrFunction) -> string {
+  if fn0.name == "main" and len(fn0.params) > 0 {
+    give "vitte_entry_main";
+  }
+  give llvm_sanitize_type_name(fn0.name);
+}
+
 proc emit_llvm_function(module0: IrModule, fn0: IrFunction) -> [string] {
   let return_ty: string = llvm_type_for_name(module0, fn0.return_type, false);
-  let symbol: string = llvm_sanitize_type_name(fn0.name);
+  let symbol: string = llvm_function_symbol(fn0);
   if fn0.linkage == IrLinkage.External or fn0.linkage == IrLinkage.Imported {
     give ["declare " + return_ty + " @" + symbol + "(" + llvm_function_params_text(module0, fn0, false) + ")", ""];
   }
@@ -889,6 +1066,47 @@ proc emit_llvm_function(module0: IrModule, fn0: IrFunction) -> [string] {
   give lines + ["}", ""];
 }
 
+proc emit_llvm_c_main_wrapper(module0: IrModule, fn0: IrFunction) -> [string] {
+  let return_ty: string = llvm_type_for_name(module0, fn0.return_type, false);
+  let lines: [string] = [
+    "define i32 @main(i32 %argc, i8** %argv) {"
+  ];
+  if len(fn0.params) == 0 {
+    if return_ty == "void" {
+      give lines + [
+        "  call void @vitte_entry_main()",
+        "  ret i32 0",
+        "}",
+        ""
+      ];
+    }
+    set lines = lines + ["  %vitte_entry_result = call " + return_ty + " @vitte_entry_main()"];
+  } else {
+    let first_ty: string = llvm_type_for_name(module0, fn0.params[0].type_name, fn0.params[0].borrowed);
+    if first_ty == "i32" {
+      set lines = lines + ["  %vitte_entry_result = call i32 @vitte_entry_main(i32 %argc)"];
+    } elif first_ty == "i64" {
+      set lines = lines + [
+        "  %vitte_entry_arg = zext i32 %argc to i64",
+        "  %vitte_entry_result = call i64 @vitte_entry_main(i64 %vitte_entry_arg)"
+      ];
+    } else {
+      set lines = lines + ["  %vitte_entry_result = call " + first_ty + " @vitte_entry_main(" + first_ty + " zeroinitializer)"];
+    }
+  }
+  if return_ty == "i32" {
+    set lines = lines + ["  ret i32 %vitte_entry_result"];
+  } elif return_ty == "i64" {
+    set lines = lines + [
+      "  %vitte_entry_exit = trunc i64 %vitte_entry_result to i32",
+      "  ret i32 %vitte_entry_exit"
+    ];
+  } else {
+    set lines = lines + ["  ret i32 0"];
+  }
+  give lines + ["}", ""];
+}
+
 proc emit_llvm_module(module0: IrModule) -> [string] {
   let lines: [string] = [
     "; module " + module0.name,
@@ -897,6 +1115,10 @@ proc emit_llvm_module(module0: IrModule) -> [string] {
     "",
     "%VitteAggregate = type { i64, i8* }"
   ];
+  let string_globals: [string] = llvm_string_globals_for_module(module0);
+  if len(string_globals) > 0 {
+    set lines = lines + string_globals;
+  }
   let n: u64 = 0;
   while n < len(module0.nominal_types) {
     let nominal = module0.nominal_types[n];
@@ -910,9 +1132,16 @@ proc emit_llvm_module(module0: IrModule) -> [string] {
   }
   set lines = lines + [""];
   let i: u64 = 0;
+  let entry_index: u64 = len(module0.functions);
   while i < len(module0.functions) {
     set lines = lines + emit_llvm_function(module0, module0.functions[i]);
+    if module0.functions[i].name == "main" and len(module0.functions[i].params) > 0 {
+      set entry_index = i;
+    }
     set i = i + 1;
+  }
+  if entry_index < len(module0.functions) {
+    set lines = lines + emit_llvm_c_main_wrapper(module0, module0.functions[entry_index]);
   }
   give lines;
 }

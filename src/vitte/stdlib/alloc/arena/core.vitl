@@ -1,0 +1,1251 @@
+space vitte/stdlib/alloc/arena/core
+
+export *
+
+use src/vitte/stdlib/alloc/allocator as alloc_allocator
+
+// -----------------------------------------------------------------------------
+// Constants
+// -----------------------------------------------------------------------------
+
+const ARENA_DEFAULT_BLOCK_SIZE: usize = 4096;
+const ARENA_MIN_BLOCK_SIZE: usize = 1;
+const ARENA_MIN_ALIGN: usize = 1;
+
+// -----------------------------------------------------------------------------
+// Core states
+// -----------------------------------------------------------------------------
+
+pick ArenaCoreState {
+    Empty,
+    Active,
+    Full,
+    Released,
+    Invalid
+}
+
+pick ArenaCoreGrowth {
+    Fixed,
+    Geometric,
+    Exact
+}
+
+pick ArenaCoreFit {
+    Fits,
+    NeedsBlock,
+    Invalid
+}
+
+pick ArenaCoreOrdering {
+    Less,
+    Equal,
+    Greater
+}
+
+// -----------------------------------------------------------------------------
+// Core counters
+// -----------------------------------------------------------------------------
+
+form ArenaCoreUsage {
+    allocated: usize
+    capacity: usize
+    reserved: usize
+    live: usize
+}
+
+form ArenaCoreBlockInfo {
+    block_count: usize
+    block_size: usize
+    current_block: usize
+}
+
+form ArenaCoreFlags {
+    empty: bool
+    active: bool
+    full: bool
+    released: bool
+    valid: bool
+}
+
+form ArenaCoreProfile {
+    usage: ArenaCoreUsage
+    blocks: ArenaCoreBlockInfo
+
+    state: ArenaCoreState
+    growth: ArenaCoreGrowth
+
+    remaining: usize
+    utilization: f64
+
+    flags: ArenaCoreFlags
+
+    generation: u64
+    revision: u64
+}
+
+form ArenaCoreLimits {
+    max_allocated: usize
+    max_capacity: usize
+    max_blocks: usize
+    max_block_size: usize
+}
+
+form ArenaCoreValidation {
+    valid: bool
+
+    allocation_valid: bool
+    capacity_valid: bool
+    reserved_valid: bool
+    block_valid: bool
+    state_valid: bool
+    limits_valid: bool
+}
+
+form ArenaCoreDelta {
+    allocated: int
+    capacity: int
+    reserved: int
+    live: int
+    blocks: int
+}
+
+form ArenaCoreStatistics {
+    profiles: u64
+    validations: u64
+
+    allocations: u64
+    failures: u64
+
+    blocks_created: u64
+
+    resets: u64
+    rewinds: u64
+    releases: u64
+}
+
+// -----------------------------------------------------------------------------
+// Constructors
+// -----------------------------------------------------------------------------
+
+proc arena_core_usage(
+    allocated: usize,
+    capacity: usize,
+    reserved: usize,
+    live: usize
+) -> ArenaCoreUsage {
+    give ArenaCoreUsage {
+        allocated: allocated,
+        capacity: capacity,
+        reserved: reserved,
+        live: live
+    };
+}
+
+proc arena_core_usage_empty()
+    -> ArenaCoreUsage
+{
+    give ArenaCoreUsage {
+        allocated: 0,
+        capacity: 0,
+        reserved: 0,
+        live: 0
+    };
+}
+
+proc arena_core_block_info(
+    block_count: usize,
+    block_size: usize,
+    current_block: usize
+) -> ArenaCoreBlockInfo {
+    give ArenaCoreBlockInfo {
+        block_count: block_count,
+        block_size: block_size,
+        current_block: current_block
+    };
+}
+
+proc arena_core_limits_default()
+    -> ArenaCoreLimits
+{
+    give ArenaCoreLimits {
+        max_allocated: usize_max(),
+        max_capacity: usize_max(),
+        max_blocks: usize_max(),
+        max_block_size: usize_max()
+    };
+}
+
+proc arena_core_statistics_empty()
+    -> ArenaCoreStatistics
+{
+    give ArenaCoreStatistics {
+        profiles: 0,
+        validations: 0,
+
+        allocations: 0,
+        failures: 0,
+
+        blocks_created: 0,
+
+        resets: 0,
+        rewinds: 0,
+        releases: 0
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Basic usage
+// -----------------------------------------------------------------------------
+
+proc arena_core_allocated(
+    usage: ArenaCoreUsage
+) -> usize {
+    give usage.allocated;
+}
+
+proc arena_core_capacity(
+    usage: ArenaCoreUsage
+) -> usize {
+    give usage.capacity;
+}
+
+proc arena_core_reserved(
+    usage: ArenaCoreUsage
+) -> usize {
+    give usage.reserved;
+}
+
+proc arena_core_live(
+    usage: ArenaCoreUsage
+) -> usize {
+    give usage.live;
+}
+
+proc arena_core_remaining(
+    usage: ArenaCoreUsage
+) -> usize {
+    if usage.allocated >= usage.capacity {
+        give 0;
+    }
+
+    give usage.capacity
+        - usage.allocated;
+}
+
+proc arena_core_overhead(
+    usage: ArenaCoreUsage
+) -> usize {
+    if usage.reserved <= usage.live {
+        give 0;
+    }
+
+    give usage.reserved
+        - usage.live;
+}
+
+proc arena_core_utilization(
+    usage: ArenaCoreUsage
+) -> f64 {
+    if usage.capacity == 0 {
+        give 0.0;
+    }
+
+    give (
+        usage.allocated as f64
+    ) / (
+        usage.capacity as f64
+    );
+}
+
+proc arena_core_reserved_utilization(
+    usage: ArenaCoreUsage
+) -> f64 {
+    if usage.reserved == 0 {
+        give 0.0;
+    }
+
+    give (
+        usage.live as f64
+    ) / (
+        usage.reserved as f64
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Predicates
+// -----------------------------------------------------------------------------
+
+proc arena_core_is_empty(
+    usage: ArenaCoreUsage
+) -> bool {
+    give usage.allocated == 0;
+}
+
+proc arena_core_is_full(
+    usage: ArenaCoreUsage
+) -> bool {
+    give usage.capacity > 0
+        and usage.allocated >= usage.capacity;
+}
+
+proc arena_core_has_capacity(
+    usage: ArenaCoreUsage
+) -> bool {
+    give arena_core_remaining(
+        usage
+    ) > 0;
+}
+
+proc arena_core_has_reserved(
+    usage: ArenaCoreUsage
+) -> bool {
+    give usage.reserved > 0;
+}
+
+proc arena_core_has_live(
+    usage: ArenaCoreUsage
+) -> bool {
+    give usage.live > 0;
+}
+
+// -----------------------------------------------------------------------------
+// State
+// -----------------------------------------------------------------------------
+
+proc arena_core_state(
+    usage: ArenaCoreUsage,
+    released: bool
+) -> ArenaCoreState {
+    if released {
+        give ArenaCoreState.Released;
+    }
+
+    if usage.allocated > usage.capacity
+        and usage.capacity > 0
+    {
+        give ArenaCoreState.Invalid;
+    }
+
+    if usage.allocated == 0 {
+        give ArenaCoreState.Empty;
+    }
+
+    if usage.capacity > 0
+        and usage.allocated >= usage.capacity
+    {
+        give ArenaCoreState.Full;
+    }
+
+    give ArenaCoreState.Active;
+}
+
+proc arena_core_flags(
+    usage: ArenaCoreUsage,
+    released: bool
+) -> ArenaCoreFlags {
+    let state =
+        arena_core_state(
+            usage,
+            released
+        );
+
+    give ArenaCoreFlags {
+        empty:
+            state == ArenaCoreState.Empty,
+
+        active:
+            state == ArenaCoreState.Active
+            or state == ArenaCoreState.Empty,
+
+        full:
+            state == ArenaCoreState.Full,
+
+        released:
+            state == ArenaCoreState.Released,
+
+        valid:
+            state != ArenaCoreState.Invalid
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Block geometry
+// -----------------------------------------------------------------------------
+
+proc arena_core_block_count_valid(
+    info: ArenaCoreBlockInfo
+) -> bool {
+    if info.block_count == 0 {
+        give info.current_block == 0;
+    }
+
+    give info.current_block
+        < info.block_count;
+}
+
+proc arena_core_block_size_valid(
+    info: ArenaCoreBlockInfo
+) -> bool {
+    give info.block_size
+        >= ARENA_MIN_BLOCK_SIZE;
+}
+
+proc arena_core_next_block_size(
+    current: usize,
+    required: usize,
+    growth: ArenaCoreGrowth,
+    block_count: usize
+) -> usize {
+    if required == 0 {
+        give current;
+    }
+
+    pick growth {
+        ArenaCoreGrowth.Fixed {
+            if required > current {
+                give required;
+            }
+
+            give current;
+        }
+
+        ArenaCoreGrowth.Exact {
+            give required;
+        }
+
+        ArenaCoreGrowth.Geometric {
+            let next =
+                current;
+
+            if block_count > 0
+                and current
+                    <= usize_max() / 2
+            {
+                set next =
+                    current * 2;
+            }
+
+            if next < required {
+                set next =
+                    required;
+            }
+
+            give next;
+        }
+    }
+
+    give required;
+}
+
+// -----------------------------------------------------------------------------
+// Fit
+// -----------------------------------------------------------------------------
+
+proc arena_core_can_fit(
+    usage: ArenaCoreUsage,
+    required: usize
+) -> bool {
+    give arena_core_remaining(
+        usage
+    ) >= required;
+}
+
+proc arena_core_fit(
+    usage: ArenaCoreUsage,
+    required: usize
+) -> ArenaCoreFit {
+    if required == 0 {
+        give ArenaCoreFit.Invalid;
+    }
+
+    if arena_core_can_fit(
+        usage,
+        required
+    ) {
+        give ArenaCoreFit.Fits;
+    }
+
+    give ArenaCoreFit.NeedsBlock;
+}
+
+// -----------------------------------------------------------------------------
+// Alignment
+// -----------------------------------------------------------------------------
+
+proc arena_core_alignment_valid(
+    align: usize
+) -> bool {
+    if align < ARENA_MIN_ALIGN {
+        give false;
+    }
+
+    give compiler_is_power_of_two(
+        align
+    );
+}
+
+proc arena_core_align_up(
+    value: usize,
+    align: usize
+) -> usize {
+    if not arena_core_alignment_valid(
+        align
+    ) {
+        give value;
+    }
+
+    let remainder =
+        value % align;
+
+    if remainder == 0 {
+        give value;
+    }
+
+    let padding =
+        align - remainder;
+
+    if value > usize_max() - padding {
+        give value;
+    }
+
+    give value + padding;
+}
+
+proc arena_core_padding(
+    value: usize,
+    align: usize
+) -> usize {
+    let aligned =
+        arena_core_align_up(
+            value,
+            align
+        );
+
+    if aligned < value {
+        give 0;
+    }
+
+    give aligned - value;
+}
+
+// -----------------------------------------------------------------------------
+// Arithmetic safety
+// -----------------------------------------------------------------------------
+
+proc arena_core_add_overflows(
+    left: usize,
+    right: usize
+) -> bool {
+    give left > usize_max() - right;
+}
+
+proc arena_core_mul_overflows(
+    left: usize,
+    right: usize
+) -> bool {
+    if left == 0
+        or right == 0
+    {
+        give false;
+    }
+
+    give left > usize_max() / right;
+}
+
+proc arena_core_can_add(
+    left: usize,
+    right: usize
+) -> bool {
+    give not arena_core_add_overflows(
+        left,
+        right
+    );
+}
+
+proc arena_core_can_multiply(
+    left: usize,
+    right: usize
+) -> bool {
+    give not arena_core_mul_overflows(
+        left,
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Pure usage transforms
+// -----------------------------------------------------------------------------
+
+proc arena_core_add_allocation(
+    usage: ArenaCoreUsage,
+    bytes: usize
+) -> ArenaCoreUsage {
+    if arena_core_add_overflows(
+        usage.allocated,
+        bytes
+    ) {
+        give usage;
+    }
+
+    let out =
+        usage;
+
+    set out.allocated =
+        out.allocated + bytes;
+
+    set out.live =
+        out.live + bytes;
+
+    give out;
+}
+
+proc arena_core_add_capacity(
+    usage: ArenaCoreUsage,
+    bytes: usize
+) -> ArenaCoreUsage {
+    if arena_core_add_overflows(
+        usage.capacity,
+        bytes
+    ) {
+        give usage;
+    }
+
+    let out =
+        usage;
+
+    set out.capacity =
+        out.capacity + bytes;
+
+    give out;
+}
+
+proc arena_core_add_reserved(
+    usage: ArenaCoreUsage,
+    bytes: usize
+) -> ArenaCoreUsage {
+    if arena_core_add_overflows(
+        usage.reserved,
+        bytes
+    ) {
+        give usage;
+    }
+
+    let out =
+        usage;
+
+    set out.reserved =
+        out.reserved + bytes;
+
+    give out;
+}
+
+proc arena_core_reset_usage(
+    usage: ArenaCoreUsage
+) -> ArenaCoreUsage {
+    let out =
+        usage;
+
+    set out.allocated = 0;
+    set out.live = 0;
+
+    give out;
+}
+
+proc arena_core_release_usage(
+    usage: ArenaCoreUsage
+) -> ArenaCoreUsage {
+    give arena_core_usage_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Comparisons
+// -----------------------------------------------------------------------------
+
+proc arena_core_compare_allocated(
+    left: ArenaCoreUsage,
+    right: ArenaCoreUsage
+) -> ArenaCoreOrdering {
+    if left.allocated < right.allocated {
+        give ArenaCoreOrdering.Less;
+    }
+
+    if left.allocated > right.allocated {
+        give ArenaCoreOrdering.Greater;
+    }
+
+    give ArenaCoreOrdering.Equal;
+}
+
+proc arena_core_compare_capacity(
+    left: ArenaCoreUsage,
+    right: ArenaCoreUsage
+) -> ArenaCoreOrdering {
+    if left.capacity < right.capacity {
+        give ArenaCoreOrdering.Less;
+    }
+
+    if left.capacity > right.capacity {
+        give ArenaCoreOrdering.Greater;
+    }
+
+    give ArenaCoreOrdering.Equal;
+}
+
+proc arena_core_usage_equal(
+    left: ArenaCoreUsage,
+    right: ArenaCoreUsage
+) -> bool {
+    give left.allocated == right.allocated
+        and left.capacity == right.capacity
+        and left.reserved == right.reserved
+        and left.live == right.live;
+}
+
+// -----------------------------------------------------------------------------
+// Delta
+// -----------------------------------------------------------------------------
+
+proc arena_core_usize_delta(
+    before: usize,
+    after: usize
+) -> int {
+    if after > before {
+        give (
+            after - before
+        ) as int;
+    }
+
+    if after < before {
+        give -(
+            (
+                before - after
+            ) as int
+        );
+    }
+
+    give 0;
+}
+
+proc arena_core_delta(
+    before: ArenaCoreProfile,
+    after: ArenaCoreProfile
+) -> ArenaCoreDelta {
+    give ArenaCoreDelta {
+        allocated:
+            arena_core_usize_delta(
+                before.usage.allocated,
+                after.usage.allocated
+            ),
+
+        capacity:
+            arena_core_usize_delta(
+                before.usage.capacity,
+                after.usage.capacity
+            ),
+
+        reserved:
+            arena_core_usize_delta(
+                before.usage.reserved,
+                after.usage.reserved
+            ),
+
+        live:
+            arena_core_usize_delta(
+                before.usage.live,
+                after.usage.live
+            ),
+
+        blocks:
+            arena_core_usize_delta(
+                before.blocks.block_count,
+                after.blocks.block_count
+            )
+    };
+}
+
+proc arena_core_delta_is_zero(
+    delta: ArenaCoreDelta
+) -> bool {
+    give delta.allocated == 0
+        and delta.capacity == 0
+        and delta.reserved == 0
+        and delta.live == 0
+        and delta.blocks == 0;
+}
+
+// -----------------------------------------------------------------------------
+// Profile
+// -----------------------------------------------------------------------------
+
+proc arena_core_profile(
+    usage: ArenaCoreUsage,
+    blocks: ArenaCoreBlockInfo,
+    growth: ArenaCoreGrowth,
+    released: bool,
+    generation: u64,
+    revision: u64
+) -> ArenaCoreProfile {
+    let state =
+        arena_core_state(
+            usage,
+            released
+        );
+
+    give ArenaCoreProfile {
+        usage:
+            usage,
+
+        blocks:
+            blocks,
+
+        state:
+            state,
+
+        growth:
+            growth,
+
+        remaining:
+            arena_core_remaining(
+                usage
+            ),
+
+        utilization:
+            arena_core_utilization(
+                usage
+            ),
+
+        flags:
+            arena_core_flags(
+                usage,
+                released
+            ),
+
+        generation:
+            generation,
+
+        revision:
+            revision
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Limits
+// -----------------------------------------------------------------------------
+
+proc arena_core_within_limits(
+    profile: ArenaCoreProfile,
+    limits: ArenaCoreLimits
+) -> bool {
+    if profile.usage.allocated
+        > limits.max_allocated
+    {
+        give false;
+    }
+
+    if profile.usage.capacity
+        > limits.max_capacity
+    {
+        give false;
+    }
+
+    if profile.blocks.block_count
+        > limits.max_blocks
+    {
+        give false;
+    }
+
+    if profile.blocks.block_size
+        > limits.max_block_size
+    {
+        give false;
+    }
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+proc arena_core_usage_valid(
+    usage: ArenaCoreUsage
+) -> bool {
+    if usage.capacity > 0
+        and usage.allocated > usage.capacity
+    {
+        give false;
+    }
+
+    if usage.reserved > 0
+        and usage.live > usage.reserved
+    {
+        give false;
+    }
+
+    give true;
+}
+
+proc arena_core_state_valid(
+    profile: ArenaCoreProfile
+) -> bool {
+    pick profile.state {
+        ArenaCoreState.Empty {
+            give profile.usage.allocated == 0
+                and not profile.flags.released;
+        }
+
+        ArenaCoreState.Active {
+            give profile.usage.allocated > 0
+                and not profile.flags.released;
+        }
+
+        ArenaCoreState.Full {
+            give profile.usage.capacity > 0
+                and profile.usage.allocated
+                    >= profile.usage.capacity;
+        }
+
+        ArenaCoreState.Released {
+            give profile.flags.released;
+        }
+
+        ArenaCoreState.Invalid {
+            give false;
+        }
+    }
+
+    give false;
+}
+
+proc arena_core_flags_valid(
+    profile: ArenaCoreProfile
+) -> bool {
+    if profile.flags.empty
+        != (
+            profile.state
+            == ArenaCoreState.Empty
+        )
+    {
+        give false;
+    }
+
+    if profile.flags.full
+        != (
+            profile.state
+            == ArenaCoreState.Full
+        )
+    {
+        give false;
+    }
+
+    if profile.flags.released
+        != (
+            profile.state
+            == ArenaCoreState.Released
+        )
+    {
+        give false;
+    }
+
+    if profile.flags.valid
+        != (
+            profile.state
+            != ArenaCoreState.Invalid
+        )
+    {
+        give false;
+    }
+
+    give true;
+}
+
+proc arena_core_profile_valid(
+    profile: ArenaCoreProfile
+) -> bool {
+    if not arena_core_usage_valid(
+        profile.usage
+    ) {
+        give false;
+    }
+
+    if not arena_core_block_count_valid(
+        profile.blocks
+    ) {
+        give false;
+    }
+
+    if not arena_core_block_size_valid(
+        profile.blocks
+    ) {
+        give false;
+    }
+
+    if profile.remaining
+        != arena_core_remaining(
+            profile.usage
+        )
+    {
+        give false;
+    }
+
+    if not arena_core_state_valid(
+        profile
+    ) {
+        give false;
+    }
+
+    if not arena_core_flags_valid(
+        profile
+    ) {
+        give false;
+    }
+
+    give true;
+}
+
+proc arena_core_validate(
+    profile: ArenaCoreProfile,
+    limits: ArenaCoreLimits
+) -> ArenaCoreValidation {
+    let allocation_valid =
+        profile.usage.allocated
+            <= profile.usage.capacity
+        or profile.usage.capacity == 0;
+
+    let capacity_valid =
+        profile.usage.capacity
+            <= limits.max_capacity;
+
+    let reserved_valid =
+        profile.usage.live
+            <= profile.usage.reserved
+        or profile.usage.reserved == 0;
+
+    let block_valid =
+        arena_core_block_count_valid(
+            profile.blocks
+        )
+        and arena_core_block_size_valid(
+            profile.blocks
+        );
+
+    let state_valid =
+        arena_core_state_valid(
+            profile
+        );
+
+    let limits_valid =
+        arena_core_within_limits(
+            profile,
+            limits
+        );
+
+    give ArenaCoreValidation {
+        valid:
+            allocation_valid
+            and capacity_valid
+            and reserved_valid
+            and block_valid
+            and state_valid
+            and limits_valid
+            and arena_core_profile_valid(
+                profile
+            ),
+
+        allocation_valid:
+            allocation_valid,
+
+        capacity_valid:
+            capacity_valid,
+
+        reserved_valid:
+            reserved_valid,
+
+        block_valid:
+            block_valid,
+
+        state_valid:
+            state_valid,
+
+        limits_valid:
+            limits_valid
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc arena_core_statistics_total(
+    statistics: ArenaCoreStatistics
+) -> u64 {
+    give statistics.profiles
+        + statistics.validations
+        + statistics.allocations
+        + statistics.failures
+        + statistics.blocks_created
+        + statistics.resets
+        + statistics.rewinds
+        + statistics.releases;
+}
+
+proc arena_core_statistics_reset(
+    statistics: ref mut ArenaCoreStatistics
+) {
+    set *statistics =
+        arena_core_statistics_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc arena_core_state_name(
+    state: ArenaCoreState
+) -> string {
+    pick state {
+        ArenaCoreState.Empty {
+            give "empty";
+        }
+
+        ArenaCoreState.Active {
+            give "active";
+        }
+
+        ArenaCoreState.Full {
+            give "full";
+        }
+
+        ArenaCoreState.Released {
+            give "released";
+        }
+
+        ArenaCoreState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+proc arena_core_growth_name(
+    growth: ArenaCoreGrowth
+) -> string {
+    pick growth {
+        ArenaCoreGrowth.Fixed {
+            give "fixed";
+        }
+
+        ArenaCoreGrowth.Geometric {
+            give "geometric";
+        }
+
+        ArenaCoreGrowth.Exact {
+            give "exact";
+        }
+    }
+
+    give "geometric";
+}
+
+proc arena_core_fit_name(
+    fit: ArenaCoreFit
+) -> string {
+    pick fit {
+        ArenaCoreFit.Fits {
+            give "fits";
+        }
+
+        ArenaCoreFit.NeedsBlock {
+            give "needs-block";
+        }
+
+        ArenaCoreFit.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+// -----------------------------------------------------------------------------
+// Arena core model
+// -----------------------------------------------------------------------------
+//
+// ArenaCoreUsage
+//
+//     allocated
+//         bytes consumed by arena users
+//
+//     capacity
+//         bytes available across arena blocks
+//
+//     live
+//         bytes considered live by allocator statistics
+//
+//     reserved
+//         bytes reserved from underlying allocator
+//
+// Relations:
+//
+//     allocated <= capacity
+//
+//     live <= reserved
+//
+// Arena:
+//
+//     +--------------------------------------+
+//     | block 0                              |
+//     +--------------------------------------+
+//     | block 1                              |
+//     +--------------------------------------+
+//     | block 2                              |
+//     +--------------------------------------+
+//
+//                    |
+//                    v
+//
+//             ArenaCoreUsage
+//
+// Growth:
+//
+//     Fixed
+//       same default block size
+//
+//     Geometric
+//       increase block size progressively
+//
+//     Exact
+//       allocate exactly required size
+//
+// Lifecycle:
+//
+//     Empty
+//       |
+//       | allocate
+//       v
+//     Active
+//       |
+//       | capacity exhausted
+//       v
+//     Full
+//
+//     Active/Full
+//       |
+//       | reset
+//       v
+//     Empty
+//
+//     *
+//       |
+//       | drop/release
+//       v
+//     Released
+//
+// `core.vitl` contains only common arena state, arithmetic, growth,
+// classification, profiles and validation.
+//
+// Physical allocation belongs to `alloc.vitl`.
+// Local block geometry belongs to `block.vitl`.
+// Multi-block management belongs to `chunk.vitl`.
+// Reset/rewind lifecycle belongs to `reset.vitl`.

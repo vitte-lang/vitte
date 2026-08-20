@@ -1,0 +1,682 @@
+use src/vitte/stdlib/alloc/arc
+
+form Point {
+    x: int
+    y: int
+}
+
+proc test_downgrade_creates_weak() -> bool {
+    let value = arc_new(42);
+    let weak = arc_downgrade(value);
+
+    give arc_weak_count(value) == 1
+        and arc_weak_weak_count(weak) == 1;
+}
+
+proc test_downgrade_preserves_strong() -> bool {
+    let value = arc_new(42);
+    let weak = arc_downgrade(value);
+
+    give arc_strong_count(value) == 1
+        and arc_weak_strong_count(weak) == 1;
+}
+
+proc test_weak_alive() -> bool {
+    let value = arc_new(42);
+    let weak = arc_downgrade(value);
+
+    give arc_weak_is_alive(weak)
+        and not arc_weak_is_expired(weak);
+}
+
+proc test_weak_can_upgrade() -> bool {
+    let value = arc_new(42);
+    let weak = arc_downgrade(value);
+
+    give arc_weak_can_upgrade(weak);
+}
+
+proc test_upgrade_value() -> bool {
+    let value = arc_new(42);
+    let weak = arc_downgrade(value);
+
+    let result = arc_weak_upgrade(weak);
+
+    pick result {
+        Some(upgraded) {
+            give *arc_get(ref upgraded) == 42;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_upgrade_string() -> bool {
+    let value = arc_new("Vitte");
+    let weak = arc_downgrade(value);
+
+    let result = arc_weak_upgrade(weak);
+
+    pick result {
+        Some(upgraded) {
+            give *arc_get(ref upgraded) == "Vitte";
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_upgrade_form() -> bool {
+    let value = arc_new(
+        Point {
+            x: 10
+            y: 20
+        }
+    );
+
+    let weak = arc_downgrade(value);
+    let result = arc_weak_upgrade(weak);
+
+    pick result {
+        Some(upgraded) {
+            let point = arc_get(ref upgraded);
+
+            give point.x == 10
+                and point.y == 20;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_upgrade_same_allocation() -> bool {
+    let value = arc_new(42);
+    let weak = arc_downgrade(value);
+
+    let result = arc_weak_upgrade(weak);
+
+    pick result {
+        Some(upgraded) {
+            give arc_ptr_eq(
+                value,
+                upgraded
+            );
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_upgrade_increments_strong() -> bool {
+    let value = arc_new(42);
+    let weak = arc_downgrade(value);
+
+    let result = arc_weak_upgrade(weak);
+
+    pick result {
+        Some(upgraded) {
+            give arc_strong_count(value) == 2
+                and arc_strong_count(upgraded) == 2;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_upgrade_preserves_weak() -> bool {
+    let value = arc_new(42);
+    let weak = arc_downgrade(value);
+
+    let before = arc_weak_count(value);
+    let result = arc_weak_upgrade(weak);
+
+    pick result {
+        Some(upgraded) {
+            give arc_weak_count(upgraded) == before;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_two_downgrades() -> bool {
+    let value = arc_new(42);
+
+    let first = arc_downgrade(value);
+    let second = arc_downgrade(value);
+
+    give arc_weak_count(value) == 2
+        and arc_weak_weak_count(first) == 2
+        and arc_weak_weak_count(second) == 2;
+}
+
+proc test_three_downgrades() -> bool {
+    let value = arc_new(42);
+
+    let first = arc_downgrade(value);
+    let second = arc_downgrade(value);
+    let third = arc_downgrade(value);
+
+    give arc_weak_count(value) == 3
+        and arc_weak_weak_count(first) == 3
+        and arc_weak_weak_count(second) == 3
+        and arc_weak_weak_count(third) == 3;
+}
+
+proc test_weak_clone() -> bool {
+    let value = arc_new(42);
+    let first = arc_downgrade(value);
+    let second = arc_weak_clone(first);
+
+    give arc_weak_weak_count(first) == 2
+        and arc_weak_weak_count(second) == 2;
+}
+
+proc test_weak_clone_preserves_strong() -> bool {
+    let value = arc_new(42);
+    let first = arc_downgrade(value);
+    let second = arc_weak_clone(first);
+
+    give arc_weak_strong_count(first) == 1
+        and arc_weak_strong_count(second) == 1;
+}
+
+proc test_weak_clone_many_zero() -> bool {
+    let value = arc_new(42);
+    let weak = arc_downgrade(value);
+
+    let result = arc_weak_clone_many(
+        weak,
+        0
+    );
+
+    give arc_weak_weak_count(result) == 1;
+}
+
+proc test_weak_clone_many_one() -> bool {
+    let value = arc_new(42);
+    let weak = arc_downgrade(value);
+
+    let result = arc_weak_clone_many(
+        weak,
+        1
+    );
+
+    give arc_weak_weak_count(result) == 2;
+}
+
+proc test_weak_clone_many_five() -> bool {
+    let value = arc_new(42);
+    let weak = arc_downgrade(value);
+
+    let result = arc_weak_clone_many(
+        weak,
+        5
+    );
+
+    give arc_weak_weak_count(result) == 6;
+}
+
+proc test_weak_ptr_eq_clone() -> bool {
+    let value = arc_new(42);
+    let first = arc_downgrade(value);
+    let second = arc_weak_clone(first);
+
+    give arc_weak_ptr_eq(
+        first,
+        second
+    );
+}
+
+proc test_weak_ptr_ne_separate() -> bool {
+    let first_arc = arc_new(42);
+    let second_arc = arc_new(42);
+
+    let first = arc_downgrade(first_arc);
+    let second = arc_downgrade(second_arc);
+
+    give arc_weak_ptr_ne(
+        first,
+        second
+    );
+}
+
+proc test_weak_points_to_arc() -> bool {
+    let value = arc_new(42);
+    let weak = arc_downgrade(value);
+
+    give arc_weak_points_to_arc(
+        weak,
+        value
+    );
+}
+
+proc test_weak_not_points_to_other_arc() -> bool {
+    let first = arc_new(42);
+    let second = arc_new(42);
+
+    let weak = arc_downgrade(first);
+
+    give not arc_weak_points_to_arc(
+        weak,
+        second
+    );
+}
+
+proc test_weak_profile_alive() -> bool {
+    let value = arc_new(42);
+    let weak = arc_downgrade(value);
+
+    let profile = arc_weak_profile(weak);
+
+    give profile.strong == 1
+        and profile.weak == 1
+        and profile.alive
+        and not profile.expired
+        and profile.observed
+        and not profile.weak_only
+        and profile.can_upgrade
+        and profile.valid;
+}
+
+proc test_weak_state_alive() -> bool {
+    let value = arc_new(42);
+    let weak = arc_downgrade(value);
+
+    give arc_weak_state(weak)
+        == ArcWeakState.Alive;
+}
+
+proc test_weak_snapshot() -> bool {
+    let value = arc_new(42);
+    let weak = arc_downgrade(value);
+
+    let snapshot = arc_weak_snapshot(weak);
+
+    give snapshot.strong == 1
+        and snapshot.weak == 1
+        and snapshot.total == 2;
+}
+
+proc test_weak_snapshot_clone_changed() -> bool {
+    let value = arc_new(42);
+    let weak = arc_downgrade(value);
+
+    let before = arc_weak_snapshot(weak);
+    let second = arc_weak_clone(weak);
+
+    give arc_weak_snapshot_changed(
+        before,
+        second
+    );
+}
+
+proc test_weak_snapshot_upgrade_changed() -> bool {
+    let value = arc_new(42);
+    let weak = arc_downgrade(value);
+
+    let before = arc_weak_snapshot(weak);
+    let result = arc_weak_upgrade(weak);
+
+    pick result {
+        Some(upgraded) {
+            let after = arc_weak_snapshot(weak);
+
+            give not arc_weak_snapshot_equal(
+                before,
+                after
+            )
+            and arc_strong_count(upgraded) == 2;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_weak_delta_clone() -> bool {
+    let value = arc_new(42);
+    let weak = arc_downgrade(value);
+
+    let before = arc_weak_snapshot(weak);
+    let second = arc_weak_clone(weak);
+    let after = arc_weak_snapshot(second);
+
+    let delta = arc_weak_delta(
+        before,
+        after
+    );
+
+    give delta.strong == 0
+        and delta.weak == 1
+        and delta.total == 1;
+}
+
+proc test_weak_delta_upgrade() -> bool {
+    let value = arc_new(42);
+    let weak = arc_downgrade(value);
+
+    let before = arc_weak_snapshot(weak);
+    let result = arc_weak_upgrade(weak);
+
+    pick result {
+        Some(_) {
+            let after = arc_weak_snapshot(weak);
+
+            let delta = arc_weak_delta(
+                before,
+                after
+            );
+
+            give delta.strong == 1
+                and delta.weak == 0;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_weak_same_counts() -> bool {
+    let value = arc_new(42);
+    let first = arc_downgrade(value);
+    let second = arc_weak_clone(first);
+
+    give arc_weak_same_counts(
+        first,
+        second
+    );
+}
+
+proc test_weak_same_allocation() -> bool {
+    let value = arc_new(42);
+    let first = arc_downgrade(value);
+    let second = arc_weak_clone(first);
+
+    give arc_weak_same_allocation(
+        first,
+        second
+    );
+}
+
+proc test_weak_different_allocation() -> bool {
+    let first_arc = arc_new(42);
+    let second_arc = arc_new(42);
+
+    let first = arc_downgrade(first_arc);
+    let second = arc_downgrade(second_arc);
+
+    give arc_weak_different_allocation(
+        first,
+        second
+    );
+}
+
+proc test_weak_compare_same() -> bool {
+    let value = arc_new(42);
+    let first = arc_downgrade(value);
+    let second = arc_weak_clone(first);
+
+    let comparison = arc_weak_compare(
+        first,
+        second
+    );
+
+    give comparison.same_allocation
+        and comparison.same_strong_count
+        and comparison.same_weak_count;
+}
+
+proc test_weak_upgrade_twice() -> bool {
+    let value = arc_new(42);
+    let weak = arc_downgrade(value);
+
+    let first = arc_weak_upgrade(weak);
+    let second = arc_weak_upgrade(weak);
+
+    pick first {
+        Some(a) {
+            pick second {
+                Some(b) {
+                    give arc_strong_count(value) == 3
+                        and arc_ptr_eq(value, a)
+                        and arc_ptr_eq(value, b);
+                }
+
+                None {
+                    give false;
+                }
+            }
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_weak_upgrade_after_clone() -> bool {
+    let first = arc_new(42);
+    let second = arc_clone(first);
+    let weak = arc_downgrade(first);
+
+    let result = arc_weak_upgrade(weak);
+
+    pick result {
+        Some(upgraded) {
+            give arc_strong_count(upgraded) == 3
+                and arc_ptr_eq(second, upgraded);
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_weak_with_make_mut() -> bool {
+    let mut first = arc_new(10);
+    let second = arc_clone(first);
+    let weak = arc_downgrade(second);
+
+    let inner = arc_make_mut(
+        ref mut first
+    );
+
+    set *inner = 20;
+
+    let upgraded = arc_weak_upgrade(weak);
+
+    pick upgraded {
+        Some(original) {
+            give *arc_get(ref first) == 20
+                and *arc_get(ref second) == 10
+                and *arc_get(ref original) == 10;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_weak_profile_valid() -> bool {
+    let value = arc_new(42);
+    let weak = arc_downgrade(value);
+
+    give arc_weak_profile_valid(
+        arc_weak_profile(weak)
+    );
+}
+
+proc test_weak_invariant() -> bool {
+    let value = arc_new(42);
+    let weak = arc_downgrade(value);
+
+    give arc_weak_invariant_holds(weak);
+}
+
+proc test_weak_upgrade_error_none() -> bool {
+    let value = arc_new(42);
+    let weak = arc_downgrade(value);
+
+    let error = arc_weak_upgrade_error(weak);
+
+    give arc_error_is_none(error);
+}
+
+proc test_weak_clone_error_none() -> bool {
+    let value = arc_new(42);
+    let weak = arc_downgrade(value);
+
+    let error = arc_weak_clone_error(weak);
+
+    give arc_error_is_none(error);
+}
+
+proc test_weak_form_clone() -> bool {
+    let value = arc_new(
+        Point {
+            x: 5
+            y: 8
+        }
+    );
+
+    let first = arc_downgrade(value);
+    let second = arc_weak_clone(first);
+
+    let result = arc_weak_upgrade(second);
+
+    pick result {
+        Some(upgraded) {
+            give arc_get(ref upgraded).x == 5
+                and arc_get(ref upgraded).y == 8;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_multiple_weak_and_strong() -> bool {
+    let first = arc_new(42);
+    let second = arc_clone(first);
+    let third = arc_clone(first);
+
+    let weak1 = arc_downgrade(first);
+    let weak2 = arc_downgrade(second);
+    let weak3 = arc_downgrade(third);
+
+    give arc_strong_count(first) == 3
+        and arc_weak_count(first) == 3
+        and arc_weak_strong_count(weak1) == 3
+        and arc_weak_strong_count(weak2) == 3
+        and arc_weak_strong_count(weak3) == 3;
+}
+
+proc test_multiple_weak_upgrade() -> bool {
+    let value = arc_new(42);
+
+    let weak1 = arc_downgrade(value);
+    let weak2 = arc_downgrade(value);
+
+    let first = arc_weak_upgrade(weak1);
+    let second = arc_weak_upgrade(weak2);
+
+    pick first {
+        Some(a) {
+            pick second {
+                Some(b) {
+                    give arc_strong_count(value) == 3
+                        and arc_ptr_eq(value, a)
+                        and arc_ptr_eq(value, b);
+                }
+
+                None {
+                    give false;
+                }
+            }
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc run_weak_tests() -> bool {
+    give test_downgrade_creates_weak()
+        and test_downgrade_preserves_strong()
+        and test_weak_alive()
+        and test_weak_can_upgrade()
+        and test_upgrade_value()
+        and test_upgrade_string()
+        and test_upgrade_form()
+        and test_upgrade_same_allocation()
+        and test_upgrade_increments_strong()
+        and test_upgrade_preserves_weak()
+
+        and test_two_downgrades()
+        and test_three_downgrades()
+
+        and test_weak_clone()
+        and test_weak_clone_preserves_strong()
+        and test_weak_clone_many_zero()
+        and test_weak_clone_many_one()
+        and test_weak_clone_many_five()
+
+        and test_weak_ptr_eq_clone()
+        and test_weak_ptr_ne_separate()
+        and test_weak_points_to_arc()
+        and test_weak_not_points_to_other_arc()
+
+        and test_weak_profile_alive()
+        and test_weak_state_alive()
+        and test_weak_snapshot()
+        and test_weak_snapshot_clone_changed()
+        and test_weak_snapshot_upgrade_changed()
+
+        and test_weak_delta_clone()
+        and test_weak_delta_upgrade()
+
+        and test_weak_same_counts()
+        and test_weak_same_allocation()
+        and test_weak_different_allocation()
+        and test_weak_compare_same()
+
+        and test_weak_upgrade_twice()
+        and test_weak_upgrade_after_clone()
+        and test_weak_with_make_mut()
+
+        and test_weak_profile_valid()
+        and test_weak_invariant()
+        and test_weak_upgrade_error_none()
+        and test_weak_clone_error_none()
+
+        and test_weak_form_clone()
+        and test_multiple_weak_and_strong()
+        and test_multiple_weak_upgrade();
+}
+
+proc main() -> int {
+    if run_weak_tests() {
+        give 0;
+    }
+
+    give 1;
+}

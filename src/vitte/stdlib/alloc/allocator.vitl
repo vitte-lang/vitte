@@ -4,341 +4,1674 @@ export *
 
 use src/vitte/stdlib/core/option as core_option
 
-pick AllocErrorKind {
-    OutOfMemory
-    InvalidLayout
-    CapacityOverflow
-    UnsupportedAlignment
-}
-
 pick GrowthPolicy {
-    Exact
+    Exact,
+    Double,
     Geometric
-    Page
 }
 
-form AllocationLayout {
+pick AllocationState {
+    Empty,
+    Allocated,
+    Released,
+    Invalid
+}
+
+form Layout {
     size: usize
     align: usize
 }
 
 form Allocation {
-    address: usize
-    layout: AllocationLayout
-}
+    ptr: raw ref u8
 
-form AllocStats {
-    live_bytes: usize
-    reserved_bytes: usize
-    allocation_count: usize
-    failure_count: usize
-}
+    size: usize
+    align: usize
 
-form AllocError {
-    kind: AllocErrorKind
-    requested: AllocationLayout
+    state: AllocationState
+
+    generation: u64
+    revision: u64
 }
 
 form Allocator {
     name: string
-    stats: AllocStats
-    policy: GrowthPolicy
+    growth: GrowthPolicy
+
+    allocations: u64
+    reallocations: u64
+    deallocations: u64
+    failures: u64
+
+    bytes_allocated: u64
+    bytes_reallocated: u64
+    bytes_deallocated: u64
+
+    live_allocations: u64
+    live_bytes: u64
+
+    peak_allocations: u64
+    peak_bytes: u64
 }
 
-form AllocatorContract {
+form AllocationProfile {
+    size: usize
+    align: usize
+
+    state: AllocationState
+
+    empty: bool
+    allocated: bool
+    released: bool
+    valid: bool
+
+    generation: u64
+    revision: u64
+}
+
+form AllocationValidation {
+    valid: bool
+
+    pointer_valid: bool
+    size_valid: bool
+    align_valid: bool
+    state_valid: bool
+    generation_valid: bool
+}
+
+form AllocatorProfile {
     name: string
-    policy: GrowthPolicy
-    live_bytes: usize
-    reserved_bytes: usize
-    remaining_bytes: usize
-    allocation_count: usize
-    failure_count: usize
-    valid: bool
+    growth: GrowthPolicy
+
+    allocations: u64
+    reallocations: u64
+    deallocations: u64
+    failures: u64
+
+    live_allocations: u64
+    live_bytes: u64
+
+    peak_allocations: u64
+    peak_bytes: u64
 }
 
-form AllocationPlan {
-    requested: AllocationLayout
-    padded: AllocationLayout
-    next_capacity: usize
-    valid: bool
+form AllocationSnapshot {
+    address: usize
+
+    size: usize
+    align: usize
+
+    state: AllocationState
+
+    generation: u64
+    revision: u64
 }
 
-proc layout(size: usize, align: usize) -> AllocationLayout {
-    give AllocationLayout { size: size, align: align };
+form AllocationDelta {
+    address: int
+    size: int
+    align: int
+
+    generation: int
+    revision: int
+
+    state_changed: bool
+    changed: bool
 }
 
-proc layout_empty() -> AllocationLayout {
-    give AllocationLayout { size: 0, align: 1 };
-}
+// -----------------------------------------------------------------------------
+// Layout
+// -----------------------------------------------------------------------------
 
-proc layout_is_power_of_two(value: usize) -> bool {
-    give value != 0 and (value & (value - 1)) == 0;
-}
-
-proc layout_is_valid(value: AllocationLayout) -> bool {
-    give layout_is_power_of_two(value.align);
-}
-
-proc layout_array(element: AllocationLayout, count: usize) -> Option<AllocationLayout> {
-    if count != 0 and element.size > (compiler_usize_max() / count) {
-        give none<AllocationLayout>();
-    }
-    give some<AllocationLayout>(AllocationLayout { size: element.size * count, align: element.align });
-}
-
-proc layout_pad_to_align(value: AllocationLayout) -> AllocationLayout {
-    if value.align == 0 {
-        give value;
-    }
-    let remainder: usize = value.size % value.align;
-    if remainder == 0 {
-        give value;
-    }
-    give AllocationLayout { size: value.size + (value.align - remainder), align: value.align };
-}
-
-proc layout_extend(left: AllocationLayout, right: AllocationLayout) -> Option<AllocationLayout> {
-    if not layout_is_valid(left) or not layout_is_valid(right) {
-        give none<AllocationLayout>();
-    }
-    let padded: AllocationLayout = layout_pad_to_align(left);
-    if right.size > compiler_usize_max() - padded.size {
-        give none<AllocationLayout>();
-    }
-    let align: usize = left.align;
-    if right.align > align {
-        set align = right.align;
-    }
-    give some<AllocationLayout>(AllocationLayout { size: padded.size + right.size, align: align });
-}
-
-proc alloc_stats_empty() -> AllocStats {
-    give AllocStats { live_bytes: 0, reserved_bytes: 0, allocation_count: 0, failure_count: 0 };
-}
-
-proc allocator(name: string, policy: GrowthPolicy) -> Allocator {
-    give Allocator { name: name, stats: alloc_stats_empty(), policy: policy };
-}
-
-proc allocator_live_bytes(value: Allocator) -> usize { give value.stats.live_bytes; }
-proc allocator_reserved_bytes(value: Allocator) -> usize { give value.stats.reserved_bytes; }
-proc allocator_allocation_count(value: Allocator) -> usize { give value.stats.allocation_count; }
-proc allocator_failure_count(value: Allocator) -> usize { give value.stats.failure_count; }
-
-proc allocator_remaining(value: Allocator) -> usize {
-    if value.stats.reserved_bytes < value.stats.live_bytes {
-        let empty: usize = 0;
-        give empty;
-    }
-    give value.stats.reserved_bytes - value.stats.live_bytes;
-}
-
-proc allocator_can_fit(value: Allocator, amount: usize) -> bool {
-    give allocator_remaining(value) >= amount;
-}
-
-proc allocator_record_success(value: ref mut Allocator, layout_value: AllocationLayout) {
-    set (*value).stats.live_bytes = (*value).stats.live_bytes + layout_value.size;
-    if (*value).stats.live_bytes > (*value).stats.reserved_bytes {
-        set (*value).stats.reserved_bytes = (*value).stats.live_bytes;
-    }
-    set (*value).stats.allocation_count = (*value).stats.allocation_count + 1;
-}
-
-proc allocator_record_failure(value: ref mut Allocator) {
-    set (*value).stats.failure_count = (*value).stats.failure_count + 1;
-}
-
-proc alloc_error(kind: AllocErrorKind, requested: AllocationLayout) -> AllocError {
-    give AllocError { kind: kind, requested: requested };
-}
-
-proc allocation_null() -> Allocation {
-    give Allocation { address: 0, layout: layout_empty() };
-}
-
-proc allocation_is_null(value: Allocation) -> bool {
-    give value.address == 0;
-}
-
-proc allocation_end(value: Allocation) -> usize {
-    give value.address + value.layout.size;
-}
-
-proc allocation_contains(value: Allocation, address: usize) -> bool {
-    give address >= value.address and address < allocation_end(value);
-}
-
-proc next_capacity(current: usize, required: usize, policy: GrowthPolicy) -> Option<usize> {
-    if required <= current {
-        give some<usize>(current);
-    }
-    if policy == GrowthPolicy.Exact {
-        give some<usize>(required);
-    }
-    if policy == GrowthPolicy.Page {
-        give page_capacity(required);
-    }
-    give geometric_capacity(current, required);
-}
-
-proc geometric_capacity(current: usize, required: usize) -> Option<usize> {
-    let next: usize = current;
-    if next == 0 {
-        let minimum: usize = 4;
-        set next = minimum;
-    }
-    while next < required {
-        if next > compiler_usize_max() / 2 {
-            give none<usize>();
-        }
-        set next = next * 2;
-    }
-    give some<usize>(next);
-}
-
-proc page_capacity(required: usize) -> Option<usize> {
-    let page: usize = 4096;
-    if required > compiler_usize_max() - page {
-        give none<usize>();
-    }
-    let pages: usize = (required + page - 1) / page;
-    give some<usize>(pages * page);
-}
-
-proc try_allocate(value: ref mut Allocator, request: AllocationLayout) -> Option<Allocation> {
-    if not layout_is_valid(request) {
-        allocator_record_failure(value);
-        give none<Allocation>();
-    }
-    let address: usize = compiler_allocator_allocate((*value).name, request.size, request.align);
-    if address == 0 {
-        allocator_record_failure(value);
-        give none<Allocation>();
-    }
-    allocator_record_success(value, request);
-    give some<Allocation>(Allocation { address: address, layout: request });
-}
-
-proc deallocate(value: ref mut Allocator, allocation: Allocation) {
-    if allocation_is_null(allocation) {
-        give;
-    }
-    compiler_allocator_deallocate((*value).name, allocation.address, allocation.layout.size, allocation.layout.align);
-    if allocation.layout.size <= (*value).stats.live_bytes {
-        set (*value).stats.live_bytes = (*value).stats.live_bytes - allocation.layout.size;
-    } else {
-        let empty: usize = 0;
-        set (*value).stats.live_bytes = empty;
-    }
-}
-
-proc alloc_error_kind_name(kind: AllocErrorKind) -> string {
-    if kind == AllocErrorKind.OutOfMemory {
-        give "out-of-memory";
-    }
-    if kind == AllocErrorKind.InvalidLayout {
-        give "invalid-layout";
-    }
-    if kind == AllocErrorKind.CapacityOverflow {
-        give "capacity-overflow";
-    }
-    give "unsupported-alignment";
-}
-
-proc growth_policy_name(policy: GrowthPolicy) -> string {
-    if policy == GrowthPolicy.Exact {
-        give "exact";
-    }
-    if policy == GrowthPolicy.Page {
-        give "page";
-    }
-    give "geometric";
-}
-
-proc layout_for<T>() -> AllocationLayout {
-    give layout(compiler_size_of<T>(), compiler_align_of<T>());
-}
-
-proc layout_is_empty(value: AllocationLayout) -> bool {
-    give value.size == 0;
-}
-
-proc layout_has_supported_alignment(value: AllocationLayout) -> bool {
-    give layout_is_power_of_two(value.align);
-}
-
-proc layout_checked(size: usize, align: usize) -> Option<AllocationLayout> {
-    let out: AllocationLayout = layout(size, align);
-    if not layout_is_valid(out) {
-        give none<AllocationLayout>();
-    }
-    give some<AllocationLayout>(out);
-}
-
-proc layout_array_for<T>(count: usize) -> Option<AllocationLayout> {
-    give layout_array(layout_for<T>(), count);
-}
-
-proc allocation_size(value: Allocation) -> usize {
-    give value.layout.size;
-}
-
-proc allocation_align(value: Allocation) -> usize {
-    give value.layout.align;
-}
-
-proc allocation_range_is_valid(value: Allocation) -> bool {
-    if allocation_is_null(value) {
-        give value.layout.size == 0;
-    }
-    give allocation_end(value) >= value.address and layout_is_valid(value.layout);
-}
-
-proc allocation_overlaps(left: Allocation, right: Allocation) -> bool {
-    if allocation_is_null(left) or allocation_is_null(right) {
-        give false;
-    }
-    give left.address < allocation_end(right) and right.address < allocation_end(left);
-}
-
-proc allocator_contract(value: Allocator) -> AllocatorContract {
-    give AllocatorContract {
-        name: value.name,
-        policy: value.policy,
-        live_bytes: value.stats.live_bytes,
-        reserved_bytes: value.stats.reserved_bytes,
-        remaining_bytes: allocator_remaining(value),
-        allocation_count: value.stats.allocation_count,
-        failure_count: value.stats.failure_count,
-        valid: value.name != "" and value.stats.reserved_bytes >= value.stats.live_bytes
+proc layout(
+    size: usize,
+    align: usize
+) -> Layout {
+    give Layout {
+        size: size,
+        align: align
     };
 }
 
-proc allocator_is_healthy(value: Allocator) -> bool {
-    give allocator_contract(value).valid and value.stats.failure_count == 0;
+proc layout_for<T>() -> Layout {
+    give Layout {
+        size: compiler_size_of<T>(),
+        align: compiler_align_of<T>()
+    };
 }
 
-proc allocator_has_failures(value: Allocator) -> bool {
-    give value.stats.failure_count > 0;
-}
-
-proc allocator_reset_failures(value: ref mut Allocator) {
-    set (*value).stats.failure_count = 0;
-}
-
-proc allocator_plan(value: Allocator, request: AllocationLayout) -> AllocationPlan {
-    if not layout_is_valid(request) {
-        give AllocationPlan { requested: request, padded: request, next_capacity: 0, valid: false };
+proc layout_is_valid(
+    value: Layout
+) -> bool {
+    if value.size == 0 {
+        give false;
     }
-    let padded: AllocationLayout = layout_pad_to_align(request);
-    let next = next_capacity(value.stats.reserved_bytes, value.stats.live_bytes + padded.size, value.policy);
-    if is_none<usize>(next) {
-        give AllocationPlan { requested: request, padded: padded, next_capacity: 0, valid: false };
+
+    if value.align == 0 {
+        give false;
     }
-    give AllocationPlan { requested: request, padded: padded, next_capacity: unwrap<usize>(next), valid: true };
+
+    give (value.align & (value.align - 1)) == 0;
 }
 
-proc allocator_can_allocate(value: Allocator, request: AllocationLayout) -> bool {
-    give allocator_plan(value, request).valid;
+proc layout_fits(
+    allocation: ref Allocation,
+    expected: Layout
+) -> bool {
+    give allocation.size >= expected.size
+        and allocation.align >= expected.align;
 }
+
+// -----------------------------------------------------------------------------
+// Allocation construction
+// -----------------------------------------------------------------------------
+
+proc allocation_empty()
+    -> Allocation
+{
+    give Allocation {
+        ptr:
+            compiler_raw_null(),
+
+        size:
+            0,
+
+        align:
+            1,
+
+        state:
+            AllocationState.Empty,
+
+        generation:
+            1,
+
+        revision:
+            1
+    };
+}
+
+proc allocation_from_raw(
+    ptr: raw ref u8,
+    size: usize,
+    align: usize
+) -> Allocation {
+    give Allocation {
+        ptr:
+            ptr,
+
+        size:
+            size,
+
+        align:
+            align,
+
+        state:
+            AllocationState.Allocated,
+
+        generation:
+            1,
+
+        revision:
+            1
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Allocation access
+// -----------------------------------------------------------------------------
+
+proc allocation_ptr(
+    value: ref Allocation
+) -> raw ref u8 {
+    if value.state != AllocationState.Allocated {
+        give compiler_raw_null();
+    }
+
+    give value.ptr;
+}
+
+proc allocation_ptr_mut(
+    value: ref mut Allocation
+) -> raw ref u8 {
+    if value.state != AllocationState.Allocated {
+        give compiler_raw_null();
+    }
+
+    give value.ptr;
+}
+
+proc allocation_size(
+    value: ref Allocation
+) -> usize {
+    give value.size;
+}
+
+proc allocation_align(
+    value: ref Allocation
+) -> usize {
+    give value.align;
+}
+
+proc allocation_generation(
+    value: ref Allocation
+) -> u64 {
+    give value.generation;
+}
+
+proc allocation_revision(
+    value: ref Allocation
+) -> u64 {
+    give value.revision;
+}
+
+proc allocation_address(
+    value: ref Allocation
+) -> usize {
+    give compiler_raw_ptr_address(
+        value.ptr
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Allocation predicates
+// -----------------------------------------------------------------------------
+
+proc allocation_is_empty(
+    value: ref Allocation
+) -> bool {
+    give value.state
+        == AllocationState.Empty;
+}
+
+proc allocation_is_allocated(
+    value: ref Allocation
+) -> bool {
+    give value.state
+        == AllocationState.Allocated;
+}
+
+proc allocation_is_released(
+    value: ref Allocation
+) -> bool {
+    give value.state
+        == AllocationState.Released;
+}
+
+proc allocation_is_null(
+    value: ref Allocation
+) -> bool {
+    give compiler_raw_ptr_is_null(
+        value.ptr
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Allocation typed views
+// -----------------------------------------------------------------------------
+
+proc allocation_as<T>(
+    value: ref Allocation
+) -> Option<ref T> {
+    if not allocation_is_allocated(
+        value
+    ) {
+        give none<ref T>();
+    }
+
+    if value.size < compiler_size_of<T>() {
+        give none<ref T>();
+    }
+
+    if value.align < compiler_align_of<T>() {
+        give none<ref T>();
+    }
+
+    if compiler_raw_ptr_is_null(
+        value.ptr
+    ) {
+        give none<ref T>();
+    }
+
+    give some<ref T>(
+        compiler_raw_as_ref(
+            compiler_raw_cast<T>(
+                value.ptr
+            )
+        )
+    );
+}
+
+proc allocation_as_mut<T>(
+    value: ref mut Allocation
+) -> Option<ref mut T> {
+    if not allocation_is_allocated(
+        ref *value
+    ) {
+        give none<ref mut T>();
+    }
+
+    if value.size < compiler_size_of<T>() {
+        give none<ref mut T>();
+    }
+
+    if value.align < compiler_align_of<T>() {
+        give none<ref mut T>();
+    }
+
+    if compiler_raw_ptr_is_null(
+        value.ptr
+    ) {
+        give none<ref mut T>();
+    }
+
+    give some<ref mut T>(
+        compiler_raw_as_mut(
+            compiler_raw_cast<T>(
+                value.ptr
+            )
+        )
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Allocation validation
+// -----------------------------------------------------------------------------
+
+proc allocation_validate(
+    value: ref Allocation
+) -> AllocationValidation {
+    let state_valid =
+        value.state == AllocationState.Empty
+        or value.state == AllocationState.Allocated
+        or value.state == AllocationState.Released;
+
+    let size_valid =
+        if value.state == AllocationState.Allocated {
+            value.size > 0
+        } else {
+            value.size == 0
+        };
+
+    let align_valid =
+        value.align > 0
+        and (value.align & (value.align - 1)) == 0;
+
+    let pointer_valid =
+        if value.state == AllocationState.Allocated {
+            not compiler_raw_ptr_is_null(
+                value.ptr
+            )
+        } else {
+            compiler_raw_ptr_is_null(
+                value.ptr
+            )
+        };
+
+    let generation_valid =
+        value.generation > 0
+        and value.revision > 0;
+
+    give AllocationValidation {
+        valid:
+            state_valid
+            and size_valid
+            and align_valid
+            and pointer_valid
+            and generation_valid,
+
+        pointer_valid:
+            pointer_valid,
+
+        size_valid:
+            size_valid,
+
+        align_valid:
+            align_valid,
+
+        state_valid:
+            state_valid,
+
+        generation_valid:
+            generation_valid
+    };
+}
+
+proc allocation_is_valid(
+    value: ref Allocation
+) -> bool {
+    give allocation_validate(
+        value
+    ).valid;
+}
+
+proc allocation_invariant_holds(
+    value: ref Allocation
+) -> bool {
+    give allocation_is_valid(
+        value
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Allocator construction
+// -----------------------------------------------------------------------------
+
+proc allocator(
+    name: string,
+    growth: GrowthPolicy
+) -> Allocator {
+    give Allocator {
+        name:
+            name,
+
+        growth:
+            growth,
+
+        allocations:
+            0,
+
+        reallocations:
+            0,
+
+        deallocations:
+            0,
+
+        failures:
+            0,
+
+        bytes_allocated:
+            0,
+
+        bytes_reallocated:
+            0,
+
+        bytes_deallocated:
+            0,
+
+        live_allocations:
+            0,
+
+        live_bytes:
+            0,
+
+        peak_allocations:
+            0,
+
+        peak_bytes:
+            0
+    };
+}
+
+proc allocator_default()
+    -> Allocator
+{
+    give allocator(
+        "default",
+        GrowthPolicy.Geometric
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Growth
+// -----------------------------------------------------------------------------
+
+proc allocator_growth_size(
+    policy: GrowthPolicy,
+    current: usize,
+    required: usize
+) -> usize {
+    if required <= current {
+        give current;
+    }
+
+    pick policy {
+        GrowthPolicy.Exact {
+            give required;
+        }
+
+        GrowthPolicy.Double {
+            if current == 0 {
+                give required;
+            }
+
+            let doubled =
+                if current > usize_max() / 2 {
+                    usize_max()
+                } else {
+                    current * 2
+                };
+
+            if doubled < required {
+                give required;
+            }
+
+            give doubled;
+        }
+
+        GrowthPolicy.Geometric {
+            if current == 0 {
+                give required;
+            }
+
+            let half =
+                current / 2;
+
+            let grown =
+                if current > usize_max() - half {
+                    usize_max()
+                } else {
+                    current + half
+                };
+
+            if grown < required {
+                give required;
+            }
+
+            give grown;
+        }
+    }
+
+    give required;
+}
+
+// -----------------------------------------------------------------------------
+// Allocate
+// -----------------------------------------------------------------------------
+
+proc allocator_allocate(
+    allocator: ref mut Allocator,
+    requested: Layout
+) -> Option<Allocation> {
+    if not layout_is_valid(
+        requested
+    ) {
+        set allocator.failures =
+            allocator.failures + 1;
+
+        give none<Allocation>();
+    }
+
+    let ptr =
+        compiler_allocate(
+            requested.size,
+            requested.align
+        );
+
+    if compiler_raw_ptr_is_null(
+        ptr
+    ) {
+        set allocator.failures =
+            allocator.failures + 1;
+
+        give none<Allocation>();
+    }
+
+    let allocation =
+        allocation_from_raw(
+            ptr,
+            requested.size,
+            requested.align
+        );
+
+    set allocator.allocations =
+        allocator.allocations + 1;
+
+    set allocator.bytes_allocated =
+        allocator.bytes_allocated
+        + requested.size as u64;
+
+    set allocator.live_allocations =
+        allocator.live_allocations + 1;
+
+    set allocator.live_bytes =
+        allocator.live_bytes
+        + requested.size as u64;
+
+    if allocator.live_allocations
+        > allocator.peak_allocations
+    {
+        set allocator.peak_allocations =
+            allocator.live_allocations;
+    }
+
+    if allocator.live_bytes
+        > allocator.peak_bytes
+    {
+        set allocator.peak_bytes =
+            allocator.live_bytes;
+    }
+
+    give some<Allocation>(
+        allocation
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Allocate zeroed
+// -----------------------------------------------------------------------------
+
+proc allocator_allocate_zeroed(
+    allocator: ref mut Allocator,
+    requested: Layout
+) -> Option<Allocation> {
+    let result =
+        allocator_allocate(
+            allocator,
+            requested
+        );
+
+    pick result {
+        Some(allocation) {
+            compiler_memory_zero(
+                allocation.ptr,
+                allocation.size
+            );
+
+            give some<Allocation>(
+                allocation
+            );
+        }
+
+        None {
+            give none<Allocation>();
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Reallocate
+// -----------------------------------------------------------------------------
+
+proc allocator_reallocate(
+    allocator: ref mut Allocator,
+    allocation: Allocation,
+    old_layout: Layout,
+    new_layout: Layout
+) -> Option<Allocation> {
+    if not layout_is_valid(
+        old_layout
+    ) {
+        set allocator.failures =
+            allocator.failures + 1;
+
+        give none<Allocation>();
+    }
+
+    if not layout_is_valid(
+        new_layout
+    ) {
+        set allocator.failures =
+            allocator.failures + 1;
+
+        give none<Allocation>();
+    }
+
+    if allocation.state
+        != AllocationState.Allocated
+    {
+        set allocator.failures =
+            allocator.failures + 1;
+
+        give none<Allocation>();
+    }
+
+    if compiler_raw_ptr_is_null(
+        allocation.ptr
+    ) {
+        set allocator.failures =
+            allocator.failures + 1;
+
+        give none<Allocation>();
+    }
+
+    let ptr =
+        compiler_reallocate(
+            allocation.ptr,
+            old_layout.size,
+            old_layout.align,
+            new_layout.size,
+            new_layout.align
+        );
+
+    if compiler_raw_ptr_is_null(
+        ptr
+    ) {
+        set allocator.failures =
+            allocator.failures + 1;
+
+        give none<Allocation>();
+    }
+
+    let next =
+        Allocation {
+            ptr:
+                ptr,
+
+            size:
+                new_layout.size,
+
+            align:
+                new_layout.align,
+
+            state:
+                AllocationState.Allocated,
+
+            generation:
+                allocation.generation + 1,
+
+            revision:
+                allocation.revision + 1
+        };
+
+    set allocator.reallocations =
+        allocator.reallocations + 1;
+
+    set allocator.bytes_reallocated =
+        allocator.bytes_reallocated
+        + new_layout.size as u64;
+
+    if new_layout.size > old_layout.size {
+        set allocator.live_bytes =
+            allocator.live_bytes
+            + (new_layout.size - old_layout.size) as u64;
+    } else {
+        set allocator.live_bytes =
+            allocator.live_bytes
+            - (old_layout.size - new_layout.size) as u64;
+    }
+
+    if allocator.live_bytes
+        > allocator.peak_bytes
+    {
+        set allocator.peak_bytes =
+            allocator.live_bytes;
+    }
+
+    give some<Allocation>(
+        next
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Grow
+// -----------------------------------------------------------------------------
+
+proc allocator_grow(
+    allocator: ref mut Allocator,
+    allocation: Allocation,
+    required: usize
+) -> Option<Allocation> {
+    if allocation.state
+        != AllocationState.Allocated
+    {
+        give none<Allocation>();
+    }
+
+    if required <= allocation.size {
+        give some<Allocation>(
+            allocation
+        );
+    }
+
+    let next_size =
+        allocator_growth_size(
+            allocator.growth,
+            allocation.size,
+            required
+        );
+
+    give allocator_reallocate(
+        allocator,
+        allocation,
+        layout(
+            allocation.size,
+            allocation.align
+        ),
+        layout(
+            next_size,
+            allocation.align
+        )
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Deallocate
+// -----------------------------------------------------------------------------
+
+proc allocator_deallocate(
+    allocator: ref mut Allocator,
+    allocation: Allocation,
+    expected: Layout
+) -> bool {
+    if allocation.state
+        != AllocationState.Allocated
+    {
+        set allocator.failures =
+            allocator.failures + 1;
+
+        give false;
+    }
+
+    if compiler_raw_ptr_is_null(
+        allocation.ptr
+    ) {
+        set allocator.failures =
+            allocator.failures + 1;
+
+        give false;
+    }
+
+    if allocation.size != expected.size
+        or allocation.align != expected.align
+    {
+        set allocator.failures =
+            allocator.failures + 1;
+
+        give false;
+    }
+
+    compiler_deallocate(
+        allocation.ptr,
+        expected.size,
+        expected.align
+    );
+
+    set allocator.deallocations =
+        allocator.deallocations + 1;
+
+    set allocator.bytes_deallocated =
+        allocator.bytes_deallocated
+        + expected.size as u64;
+
+    if allocator.live_allocations > 0 {
+        set allocator.live_allocations =
+            allocator.live_allocations - 1;
+    }
+
+    if allocator.live_bytes
+        >= expected.size as u64
+    {
+        set allocator.live_bytes =
+            allocator.live_bytes
+            - expected.size as u64;
+    } else {
+        set allocator.live_bytes =
+            0;
+    }
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Deallocate convenience
+// -----------------------------------------------------------------------------
+
+proc allocator_release(
+    allocator: ref mut Allocator,
+    allocation: ref mut Allocation
+) -> bool {
+    if allocation.state
+        != AllocationState.Allocated
+    {
+        give false;
+    }
+
+    let expected =
+        layout(
+            allocation.size,
+            allocation.align
+        );
+
+    if not allocator_deallocate(
+        allocator,
+        *allocation,
+        expected
+    ) {
+        give false;
+    }
+
+    set allocation.ptr =
+        compiler_raw_null();
+
+    set allocation.size =
+        0;
+
+    set allocation.align =
+        1;
+
+    set allocation.state =
+        AllocationState.Released;
+
+    set allocation.generation =
+        allocation.generation + 1;
+
+    set allocation.revision =
+        allocation.revision + 1;
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Typed allocation
+// -----------------------------------------------------------------------------
+
+proc allocator_allocate_for<T>(
+    allocator: ref mut Allocator
+) -> Option<Allocation> {
+    give allocator_allocate(
+        allocator,
+        layout_for<T>()
+    );
+}
+
+proc allocator_allocate_zeroed_for<T>(
+    allocator: ref mut Allocator
+) -> Option<Allocation> {
+    give allocator_allocate_zeroed(
+        allocator,
+        layout_for<T>()
+    );
+}
+
+proc allocator_deallocate_for<T>(
+    allocator: ref mut Allocator,
+    allocation: Allocation
+) -> bool {
+    give allocator_deallocate(
+        allocator,
+        allocation,
+        layout_for<T>()
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Store typed value
+// -----------------------------------------------------------------------------
+
+proc allocator_new<T>(
+    allocator: ref mut Allocator,
+    value: T
+) -> Option<Allocation> {
+    let result =
+        allocator_allocate_for<T>(
+            allocator
+        );
+
+    pick result {
+        Some(allocation) {
+            let ptr =
+                compiler_allocation_as_mut<T>(
+                    allocation
+                );
+
+            set *ptr =
+                value;
+
+            give some<Allocation>(
+                allocation
+            );
+        }
+
+        None {
+            give none<Allocation>();
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Drop typed allocation
+// -----------------------------------------------------------------------------
+
+proc allocator_drop<T>(
+    allocator: ref mut Allocator,
+    allocation: ref mut Allocation
+) -> bool {
+    let value =
+        allocation_as_mut<T>(
+            allocation
+        );
+
+    pick value {
+        Some(current) {
+            compiler_drop_in_place<T>(
+                current
+            );
+        }
+
+        None {
+            give false;
+        }
+    }
+
+    give allocator_release(
+        allocator,
+        allocation
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Copy
+// -----------------------------------------------------------------------------
+
+proc allocator_copy(
+    destination: ref mut Allocation,
+    source: ref Allocation,
+    count: usize
+) -> bool {
+    if not allocation_is_allocated(
+        source
+    ) {
+        give false;
+    }
+
+    if not allocation_is_allocated(
+        ref *destination
+    ) {
+        give false;
+    }
+
+    if count > source.size
+        or count > destination.size
+    {
+        give false;
+    }
+
+    compiler_memory_copy(
+        destination.ptr,
+        source.ptr,
+        count
+    );
+
+    set destination.revision =
+        destination.revision + 1;
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Move bytes
+// -----------------------------------------------------------------------------
+
+proc allocator_move(
+    destination: ref mut Allocation,
+    source: ref Allocation,
+    count: usize
+) -> bool {
+    if not allocation_is_allocated(
+        source
+    ) {
+        give false;
+    }
+
+    if not allocation_is_allocated(
+        ref *destination
+    ) {
+        give false;
+    }
+
+    if count > source.size
+        or count > destination.size
+    {
+        give false;
+    }
+
+    compiler_memory_move(
+        destination.ptr,
+        source.ptr,
+        count
+    );
+
+    set destination.revision =
+        destination.revision + 1;
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Zero
+// -----------------------------------------------------------------------------
+
+proc allocator_zero(
+    allocation: ref mut Allocation
+) -> bool {
+    if not allocation_is_allocated(
+        ref *allocation
+    ) {
+        give false;
+    }
+
+    compiler_memory_zero(
+        allocation.ptr,
+        allocation.size
+    );
+
+    set allocation.revision =
+        allocation.revision + 1;
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Fill
+// -----------------------------------------------------------------------------
+
+proc allocator_fill(
+    allocation: ref mut Allocation,
+    byte: u8
+) -> bool {
+    if not allocation_is_allocated(
+        ref *allocation
+    ) {
+        give false;
+    }
+
+    compiler_memory_fill(
+        allocation.ptr,
+        byte,
+        allocation.size
+    );
+
+    set allocation.revision =
+        allocation.revision + 1;
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Profile
+// -----------------------------------------------------------------------------
+
+proc allocation_profile(
+    value: ref Allocation
+) -> AllocationProfile {
+    give AllocationProfile {
+        size:
+            value.size,
+
+        align:
+            value.align,
+
+        state:
+            value.state,
+
+        empty:
+            allocation_is_empty(
+                value
+            ),
+
+        allocated:
+            allocation_is_allocated(
+                value
+            ),
+
+        released:
+            allocation_is_released(
+                value
+            ),
+
+        valid:
+            allocation_is_valid(
+                value
+            ),
+
+        generation:
+            value.generation,
+
+        revision:
+            value.revision
+    };
+}
+
+proc allocator_profile(
+    value: ref Allocator
+) -> AllocatorProfile {
+    give AllocatorProfile {
+        name:
+            value.name,
+
+        growth:
+            value.growth,
+
+        allocations:
+            value.allocations,
+
+        reallocations:
+            value.reallocations,
+
+        deallocations:
+            value.deallocations,
+
+        failures:
+            value.failures,
+
+        live_allocations:
+            value.live_allocations,
+
+        live_bytes:
+            value.live_bytes,
+
+        peak_allocations:
+            value.peak_allocations,
+
+        peak_bytes:
+            value.peak_bytes
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Snapshot
+// -----------------------------------------------------------------------------
+
+proc allocation_snapshot(
+    value: ref Allocation
+) -> AllocationSnapshot {
+    give AllocationSnapshot {
+        address:
+            allocation_address(
+                value
+            ),
+
+        size:
+            value.size,
+
+        align:
+            value.align,
+
+        state:
+            value.state,
+
+        generation:
+            value.generation,
+
+        revision:
+            value.revision
+    };
+}
+
+proc allocation_snapshot_equal(
+    left: AllocationSnapshot,
+    right: AllocationSnapshot
+) -> bool {
+    give left.address == right.address
+        and left.size == right.size
+        and left.align == right.align
+        and left.state == right.state
+        and left.generation == right.generation
+        and left.revision == right.revision;
+}
+
+proc allocation_snapshot_changed(
+    left: AllocationSnapshot,
+    right: AllocationSnapshot
+) -> bool {
+    give not allocation_snapshot_equal(
+        left,
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Delta
+// -----------------------------------------------------------------------------
+
+proc allocator_usize_delta(
+    before: usize,
+    after: usize
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc allocator_u64_delta(
+    before: u64,
+    after: u64
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc allocation_delta(
+    before: AllocationSnapshot,
+    after: AllocationSnapshot
+) -> AllocationDelta {
+    let address =
+        allocator_usize_delta(
+            before.address,
+            after.address
+        );
+
+    let size =
+        allocator_usize_delta(
+            before.size,
+            after.size
+        );
+
+    let align =
+        allocator_usize_delta(
+            before.align,
+            after.align
+        );
+
+    let generation =
+        allocator_u64_delta(
+            before.generation,
+            after.generation
+        );
+
+    let revision =
+        allocator_u64_delta(
+            before.revision,
+            after.revision
+        );
+
+    let state_changed =
+        before.state
+            != after.state;
+
+    give AllocationDelta {
+        address:
+            address,
+
+        size:
+            size,
+
+        align:
+            align,
+
+        generation:
+            generation,
+
+        revision:
+            revision,
+
+        state_changed:
+            state_changed,
+
+        changed:
+            address != 0
+            or size != 0
+            or align != 0
+            or generation != 0
+            or revision != 0
+            or state_changed
+    };
+}
+
+proc allocation_delta_is_zero(
+    delta: AllocationDelta
+) -> bool {
+    give not delta.changed;
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc allocator_reset_statistics(
+    allocator: ref mut Allocator
+) {
+    set allocator.allocations = 0;
+    set allocator.reallocations = 0;
+    set allocator.deallocations = 0;
+    set allocator.failures = 0;
+
+    set allocator.bytes_allocated = 0;
+    set allocator.bytes_reallocated = 0;
+    set allocator.bytes_deallocated = 0;
+
+    set allocator.peak_allocations =
+        allocator.live_allocations;
+
+    set allocator.peak_bytes =
+        allocator.live_bytes;
+}
+
+proc allocator_total_operations(
+    allocator: ref Allocator
+) -> u64 {
+    give allocator.allocations
+        + allocator.reallocations
+        + allocator.deallocations
+        + allocator.failures;
+}
+
+proc allocator_has_leaks(
+    allocator: ref Allocator
+) -> bool {
+    give allocator.live_allocations > 0
+        or allocator.live_bytes > 0;
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc growth_policy_name(
+    policy: GrowthPolicy
+) -> string {
+    pick policy {
+        GrowthPolicy.Exact {
+            give "exact";
+        }
+
+        GrowthPolicy.Double {
+            give "double";
+        }
+
+        GrowthPolicy.Geometric {
+            give "geometric";
+        }
+    }
+
+    give "exact";
+}
+
+proc allocation_state_name(
+    state: AllocationState
+) -> string {
+    pick state {
+        AllocationState.Empty {
+            give "empty";
+        }
+
+        AllocationState.Allocated {
+            give "allocated";
+        }
+
+        AllocationState.Released {
+            give "released";
+        }
+
+        AllocationState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+// -----------------------------------------------------------------------------
+// Allocator model
+// -----------------------------------------------------------------------------
+//
+// `allocator.vitl` provides the common low-level allocation abstraction used by:
+//
+//     alloc/boxed
+//     alloc/arena
+//     alloc/bump
+//     alloc/pool
+//     alloc/rc
+//     alloc/arc
+//     alloc/shared
+//     alloc/unique
+//
+// The allocator operates on:
+//
+//     Layout {
+//         size
+//         align
+//     }
+//
+// and returns:
+//
+//     Allocation {
+//         ptr
+//         size
+//         align
+//         state
+//         generation
+//         revision
+//     }
+//
+// -----------------------------------------------------------------------------
+//
+// Allocation:
+//
+//     allocator_allocate
+//
+// performs:
+//
+//     compiler_allocate(size, align)
+//
+// -----------------------------------------------------------------------------
+//
+// Reallocation:
+//
+//     allocator_reallocate
+//
+// performs:
+//
+//     compiler_reallocate(...)
+//
+// and advances:
+//
+//     generation
+//     revision
+//
+// because the backing address may change.
+//
+// -----------------------------------------------------------------------------
+//
+// Release:
+//
+//     allocator_deallocate
+//
+// performs:
+//
+//     compiler_deallocate(...)
+//
+// `allocator_release` additionally turns the descriptor into:
+//
+//     Released
+//
+// -----------------------------------------------------------------------------
+//
+// Growth policies:
+//
+//     Exact
+//
+//         requested capacity exactly
+//
+//     Double
+//
+//         approximately 2x current capacity
+//
+//     Geometric
+//
+//         approximately 1.5x current capacity
+//
+// -----------------------------------------------------------------------------
+//
+// Typed helpers:
+//
+//     layout_for<T>()
+//
+//     allocator_allocate_for<T>()
+//
+//     allocation_as<T>()
+//
+//     allocation_as_mut<T>()
+//
+//     allocator_new<T>()
+//
+//     allocator_drop<T>()
+//
+// -----------------------------------------------------------------------------
+//
+// Memory primitives:
+//
+//     allocator_copy
+//     allocator_move
+//     allocator_zero
+//     allocator_fill
+//
+// -----------------------------------------------------------------------------
+//
+// Statistics:
+//
+//     allocations
+//     reallocations
+//     deallocations
+//     failures
+//
+//     bytes_allocated
+//     bytes_reallocated
+//     bytes_deallocated
+//
+//     live_allocations
+//     live_bytes
+//
+//     peak_allocations
+//     peak_bytes
+//
+// -----------------------------------------------------------------------------
+//
+// Fundamental invariants:
+//
+//     Allocated
+//         => ptr != null
+//         => size > 0
+//
+//     Empty
+//         => ptr == null
+//         => size == 0
+//
+//     Released
+//         => ptr == null
+//         => size == 0
+//
+//     align > 0
+//
+//     align is a power of two
+//
+//     generation > 0
+//
+//     revision > 0
+//
+// -----------------------------------------------------------------------------
+//
+// This module intentionally owns no high-level lifetime semantics.
+//
+// Ownership models such as:
+//
+//     Boxed
+//     Rc
+//     Arc
+//     Shared
+//     Unique
+//
+// build their own destruction and aliasing rules on top of this allocator.

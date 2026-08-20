@@ -1,0 +1,1118 @@
+space vitte/stdlib/alloc/arc/strong
+
+export *
+
+use src/vitte/stdlib/core/option as core_option
+use src/vitte/stdlib/alloc/arc/arc as arc
+use src/vitte/stdlib/alloc/arc/core as arc_core
+use src/vitte/stdlib/alloc/arc/count as arc_count
+use src/vitte/stdlib/alloc/arc/error as arc_error
+
+// -----------------------------------------------------------------------------
+// Strong ownership states
+// -----------------------------------------------------------------------------
+
+pick ArcStrongState {
+    Invalid,
+    Unique,
+    Shared,
+    Saturated
+}
+
+pick ArcStrongTransitionKind {
+    None,
+    Create,
+    Clone,
+    Drop,
+    Upgrade,
+    Saturate,
+    DestroyValue,
+    Invalid
+}
+
+pick ArcStrongOrdering {
+    Less,
+    Equal,
+    Greater
+}
+
+// -----------------------------------------------------------------------------
+// Strong reference model
+// -----------------------------------------------------------------------------
+
+form ArcStrongProfile {
+    strong: usize
+    weak: usize
+
+    state: ArcStrongState
+
+    alive: bool
+    unique: bool
+    shared: bool
+    observed: bool
+
+    mutable: bool
+    unwrappable: bool
+
+    valid: bool
+}
+
+form ArcStrongSnapshot {
+    strong: usize
+    weak: usize
+
+    state: ArcStrongState
+
+    generation: u64
+}
+
+form ArcStrongDelta {
+    before: usize
+    after: usize
+    delta: int
+}
+
+form ArcStrongTransition {
+    before: ArcStrongSnapshot
+    after: ArcStrongSnapshot
+
+    kind: ArcStrongTransitionKind
+
+    delta: ArcStrongDelta
+
+    valid: bool
+}
+
+form ArcStrongValidation {
+    valid: bool
+
+    count_valid: bool
+    state_valid: bool
+    ownership_valid: bool
+    mutation_valid: bool
+}
+
+form ArcStrongStatistics {
+    reads: u64
+
+    clones: u64
+    upgrades: u64
+    drops: u64
+
+    unique_checks: u64
+    shared_checks: u64
+
+    mutable_checks: u64
+    unwrap_checks: u64
+
+    snapshots: u64
+    validations: u64
+
+    saturation_failures: u64
+    invalid_transitions: u64
+}
+
+// -----------------------------------------------------------------------------
+// State classification
+// -----------------------------------------------------------------------------
+
+proc arc_strong_state_from_count(
+    strong: usize
+) -> ArcStrongState {
+    if strong == 0 {
+        give ArcStrongState.Invalid;
+    }
+
+    if strong == arc_count.ARC_COUNT_MAX {
+        give ArcStrongState.Saturated;
+    }
+
+    if strong == 1 {
+        give ArcStrongState.Unique;
+    }
+
+    give ArcStrongState.Shared;
+}
+
+proc arc_strong_state<T>(
+    value: arc.Arc<T>
+) -> ArcStrongState {
+    give arc_strong_state_from_count(
+        arc.arc_strong_count<T>(
+            value
+        )
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Basic access
+// -----------------------------------------------------------------------------
+
+proc arc_strong_count<T>(
+    value: arc.Arc<T>
+) -> usize {
+    give arc.arc_strong_count<T>(
+        value
+    );
+}
+
+proc arc_strong_weak_count<T>(
+    value: arc.Arc<T>
+) -> usize {
+    give arc.arc_weak_count<T>(
+        value
+    );
+}
+
+proc arc_strong_total_count<T>(
+    value: arc.Arc<T>
+) -> usize {
+    give arc_strong_count<T>(
+        value
+    )
+    + arc_strong_weak_count<T>(
+        value
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Predicates
+// -----------------------------------------------------------------------------
+
+proc arc_strong_is_alive<T>(
+    value: arc.Arc<T>
+) -> bool {
+    give arc_strong_count<T>(
+        value
+    ) > 0;
+}
+
+proc arc_strong_is_unique<T>(
+    value: arc.Arc<T>
+) -> bool {
+    give arc_strong_count<T>(
+        value
+    ) == 1;
+}
+
+proc arc_strong_is_shared<T>(
+    value: arc.Arc<T>
+) -> bool {
+    give arc_strong_count<T>(
+        value
+    ) > 1;
+}
+
+proc arc_strong_is_saturated<T>(
+    value: arc.Arc<T>
+) -> bool {
+    give arc_strong_count<T>(
+        value
+    ) == arc_count.ARC_COUNT_MAX;
+}
+
+proc arc_strong_has_weak<T>(
+    value: arc.Arc<T>
+) -> bool {
+    give arc_strong_weak_count<T>(
+        value
+    ) > 0;
+}
+
+proc arc_strong_is_unobserved<T>(
+    value: arc.Arc<T>
+) -> bool {
+    give arc_strong_weak_count<T>(
+        value
+    ) == 0;
+}
+
+proc arc_strong_is_exclusive<T>(
+    value: arc.Arc<T>
+) -> bool {
+    give arc_strong_is_unique<T>(
+        value
+    )
+    and arc_strong_is_unobserved<T>(
+        value
+    );
+}
+
+proc arc_strong_can_clone<T>(
+    value: arc.Arc<T>
+) -> bool {
+    let strong =
+        arc_strong_count<T>(
+            value
+        );
+
+    give strong > 0
+        and strong < arc_count.ARC_COUNT_MAX;
+}
+
+proc arc_strong_can_get_mut<T>(
+    value: arc.Arc<T>
+) -> bool {
+    give arc_strong_is_unique<T>(
+        value
+    );
+}
+
+proc arc_strong_can_make_mut<T>(
+    value: arc.Arc<T>
+) -> bool {
+    give arc_strong_is_alive<T>(
+        value
+    );
+}
+
+proc arc_strong_can_unwrap<T>(
+    value: arc.Arc<T>
+) -> bool {
+    give arc_strong_is_unique<T>(
+        value
+    );
+}
+
+proc arc_strong_requires_copy_on_write<T>(
+    value: arc.Arc<T>
+) -> bool {
+    give arc_strong_is_shared<T>(
+        value
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Clone operations
+// -----------------------------------------------------------------------------
+
+proc arc_strong_clone<T>(
+    value: arc.Arc<T>
+) -> arc.Arc<T> {
+    give arc.arc_clone<T>(
+        value
+    );
+}
+
+proc arc_strong_clone_ref<T>(
+    value: ref arc.Arc<T>
+) -> arc.Arc<T> {
+    give arc.arc_clone<T>(
+        *value
+    );
+}
+
+proc arc_strong_clone_many<T>(
+    value: arc.Arc<T>,
+    count: usize
+) -> arc.Arc<T> {
+    give arc.arc_clone_many<T>(
+        value,
+        count
+    );
+}
+
+proc arc_strong_share<T>(
+    value: arc.Arc<T>
+) -> arc.Arc<T> {
+    give arc_strong_clone<T>(
+        value
+    );
+}
+
+proc arc_strong_try_clone<T>(
+    value: arc.Arc<T>
+) -> Option<arc.Arc<T>> {
+    if not arc_strong_can_clone<T>(
+        value
+    ) {
+        give None;
+    }
+
+    give Some(
+        arc_strong_clone<T>(
+            value
+        )
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Read / mutable access
+// -----------------------------------------------------------------------------
+
+proc arc_strong_get<T>(
+    value: ref arc.Arc<T>
+) -> ref T {
+    give arc.arc_get<T>(
+        value
+    );
+}
+
+proc arc_strong_get_mut<T>(
+    value: ref mut arc.Arc<T>
+) -> Option<ref mut T> {
+    give arc.arc_get_mut<T>(
+        value
+    );
+}
+
+proc arc_strong_make_mut<T>(
+    value: ref mut arc.Arc<T>
+) -> ref mut T {
+    give arc.arc_make_mut<T>(
+        value
+    );
+}
+
+proc arc_strong_get_or_make_mut<T>(
+    value: ref mut arc.Arc<T>
+) -> ref mut T {
+    give arc.arc_get_or_make_mut<T>(
+        value
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Unwrap
+// -----------------------------------------------------------------------------
+
+proc arc_strong_try_unwrap<T>(
+    value: arc.Arc<T>
+) -> Option<T> {
+    give arc.arc_try_unwrap<T>(
+        value
+    );
+}
+
+proc arc_strong_try_into_inner<T>(
+    value: arc.Arc<T>
+) -> Option<T> {
+    give arc_strong_try_unwrap<T>(
+        value
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Profile
+// -----------------------------------------------------------------------------
+
+proc arc_strong_profile<T>(
+    value: arc.Arc<T>
+) -> ArcStrongProfile {
+    let strong =
+        arc_strong_count<T>(
+            value
+        );
+
+    let weak =
+        arc_strong_weak_count<T>(
+            value
+        );
+
+    let state =
+        arc_strong_state_from_count(
+            strong
+        );
+
+    give ArcStrongProfile {
+        strong:
+            strong,
+
+        weak:
+            weak,
+
+        state:
+            state,
+
+        alive:
+            strong > 0,
+
+        unique:
+            strong == 1,
+
+        shared:
+            strong > 1,
+
+        observed:
+            weak > 0,
+
+        mutable:
+            strong == 1,
+
+        unwrappable:
+            strong == 1,
+
+        valid:
+            state != ArcStrongState.Invalid
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Snapshot
+// -----------------------------------------------------------------------------
+
+proc arc_strong_snapshot<T>(
+    value: arc.Arc<T>
+) -> ArcStrongSnapshot {
+    give ArcStrongSnapshot {
+        strong:
+            arc_strong_count<T>(
+                value
+            ),
+
+        weak:
+            arc_strong_weak_count<T>(
+                value
+            ),
+
+        state:
+            arc_strong_state<T>(
+                value
+            ),
+
+        generation:
+            1
+    };
+}
+
+proc arc_strong_snapshot_equal(
+    left: ArcStrongSnapshot,
+    right: ArcStrongSnapshot
+) -> bool {
+    give left.strong == right.strong
+        and left.weak == right.weak
+        and left.state == right.state;
+}
+
+proc arc_strong_snapshot_changed<T>(
+    snapshot: ArcStrongSnapshot,
+    value: arc.Arc<T>
+) -> bool {
+    give not arc_strong_snapshot_equal(
+        snapshot,
+        arc_strong_snapshot<T>(
+            value
+        )
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Delta
+// -----------------------------------------------------------------------------
+
+proc arc_strong_delta(
+    before: usize,
+    after: usize
+) -> ArcStrongDelta {
+    let delta: int = 0;
+
+    if after > before {
+        set delta =
+            (
+                after - before
+            ) as int;
+    }
+
+    if after < before {
+        set delta =
+            -(
+                (
+                    before - after
+                ) as int
+            );
+    }
+
+    give ArcStrongDelta {
+        before:
+            before,
+
+        after:
+            after,
+
+        delta:
+            delta
+    };
+}
+
+proc arc_strong_snapshot_delta(
+    before: ArcStrongSnapshot,
+    after: ArcStrongSnapshot
+) -> ArcStrongDelta {
+    give arc_strong_delta(
+        before.strong,
+        after.strong
+    );
+}
+
+proc arc_strong_delta_is_zero(
+    delta: ArcStrongDelta
+) -> bool {
+    give delta.delta == 0;
+}
+
+proc arc_strong_delta_increased(
+    delta: ArcStrongDelta
+) -> bool {
+    give delta.delta > 0;
+}
+
+proc arc_strong_delta_decreased(
+    delta: ArcStrongDelta
+) -> bool {
+    give delta.delta < 0;
+}
+
+// -----------------------------------------------------------------------------
+// Transition classification
+// -----------------------------------------------------------------------------
+
+proc arc_strong_transition_kind(
+    before: ArcStrongSnapshot,
+    after: ArcStrongSnapshot
+) -> ArcStrongTransitionKind {
+    let delta =
+        arc_strong_snapshot_delta(
+            before,
+            after
+        );
+
+    if delta.delta == 0 {
+        give ArcStrongTransitionKind.None;
+    }
+
+    if before.strong == 0
+        and after.strong == 1
+    {
+        give ArcStrongTransitionKind.Create;
+    }
+
+    if delta.delta == 1 {
+        if after.strong == arc_count.ARC_COUNT_MAX {
+            give ArcStrongTransitionKind.Saturate;
+        }
+
+        give ArcStrongTransitionKind.Clone;
+    }
+
+    if delta.delta == -1 {
+        if after.strong == 0 {
+            give ArcStrongTransitionKind.DestroyValue;
+        }
+
+        give ArcStrongTransitionKind.Drop;
+    }
+
+    give ArcStrongTransitionKind.Invalid;
+}
+
+proc arc_strong_transition(
+    before: ArcStrongSnapshot,
+    after: ArcStrongSnapshot
+) -> ArcStrongTransition {
+    let kind =
+        arc_strong_transition_kind(
+            before,
+            after
+        );
+
+    give ArcStrongTransition {
+        before:
+            before,
+
+        after:
+            after,
+
+        kind:
+            kind,
+
+        delta:
+            arc_strong_snapshot_delta(
+                before,
+                after
+            ),
+
+        valid:
+            kind != ArcStrongTransitionKind.Invalid
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Comparisons
+// -----------------------------------------------------------------------------
+
+proc arc_strong_compare<T>(
+    left: arc.Arc<T>,
+    right: arc.Arc<T>
+) -> ArcStrongOrdering {
+    let left_count =
+        arc_strong_count<T>(
+            left
+        );
+
+    let right_count =
+        arc_strong_count<T>(
+            right
+        );
+
+    if left_count < right_count {
+        give ArcStrongOrdering.Less;
+    }
+
+    if left_count > right_count {
+        give ArcStrongOrdering.Greater;
+    }
+
+    give ArcStrongOrdering.Equal;
+}
+
+proc arc_strong_same_count<T>(
+    left: arc.Arc<T>,
+    right: arc.Arc<T>
+) -> bool {
+    give arc_strong_count<T>(
+        left
+    )
+    == arc_strong_count<T>(
+        right
+    );
+}
+
+proc arc_strong_more_shared<T>(
+    left: arc.Arc<T>,
+    right: arc.Arc<T>
+) -> bool {
+    give arc_strong_count<T>(
+        left
+    )
+    > arc_strong_count<T>(
+        right
+    );
+}
+
+proc arc_strong_less_shared<T>(
+    left: arc.Arc<T>,
+    right: arc.Arc<T>
+) -> bool {
+    give arc_strong_count<T>(
+        left
+    )
+    < arc_strong_count<T>(
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+proc arc_strong_profile_valid(
+    profile: ArcStrongProfile
+) -> bool {
+    if profile.alive
+        != (profile.strong > 0)
+    {
+        give false;
+    }
+
+    if profile.unique
+        != (profile.strong == 1)
+    {
+        give false;
+    }
+
+    if profile.shared
+        != (profile.strong > 1)
+    {
+        give false;
+    }
+
+    if profile.observed
+        != (profile.weak > 0)
+    {
+        give false;
+    }
+
+    if profile.mutable
+        != profile.unique
+    {
+        give false;
+    }
+
+    if profile.unwrappable
+        != profile.unique
+    {
+        give false;
+    }
+
+    if profile.unique
+        and profile.shared
+    {
+        give false;
+    }
+
+    if profile.valid
+        != (
+            profile.state
+            != ArcStrongState.Invalid
+        )
+    {
+        give false;
+    }
+
+    give true;
+}
+
+proc arc_strong_validate<T>(
+    value: arc.Arc<T>
+) -> ArcStrongValidation {
+    let profile =
+        arc_strong_profile<T>(
+            value
+        );
+
+    let count_valid =
+        profile.strong > 0
+        and profile.strong
+            <= arc_count.ARC_COUNT_MAX;
+
+    let state_valid =
+        profile.state
+            == arc_strong_state_from_count(
+                profile.strong
+            );
+
+    let ownership_valid =
+        profile.unique
+            != profile.shared;
+
+    let mutation_valid =
+        profile.mutable
+            == (profile.strong == 1);
+
+    give ArcStrongValidation {
+        valid:
+            count_valid
+            and state_valid
+            and ownership_valid
+            and mutation_valid
+            and arc_strong_profile_valid(
+                profile
+            ),
+
+        count_valid:
+            count_valid,
+
+        state_valid:
+            state_valid,
+
+        ownership_valid:
+            ownership_valid,
+
+        mutation_valid:
+            mutation_valid
+    };
+}
+
+proc arc_strong_invariant_holds<T>(
+    value: arc.Arc<T>
+) -> bool {
+    give arc_strong_validate<T>(
+        value
+    ).valid;
+}
+
+// -----------------------------------------------------------------------------
+// Errors
+// -----------------------------------------------------------------------------
+
+proc arc_strong_error<T>(
+    value: arc.Arc<T>
+) -> arc_error.ArcError {
+    let strong =
+        arc_strong_count<T>(
+            value
+        );
+
+    let weak =
+        arc_strong_weak_count<T>(
+            value
+        );
+
+    if strong == 0 {
+        give arc_error.arc_error_invalid_strong_count(
+            strong,
+            weak
+        );
+    }
+
+    if strong == arc_count.ARC_COUNT_MAX {
+        give arc_error.arc_error_count_saturated(
+            strong,
+            weak
+        );
+    }
+
+    let validation =
+        arc_strong_validate<T>(
+            value
+        );
+
+    if not validation.valid {
+        give arc_error.arc_error_invalid_invariant(
+            strong,
+            weak
+        );
+    }
+
+    give arc_error.arc_error_none();
+}
+
+proc arc_strong_mutation_error<T>(
+    value: arc.Arc<T>
+) -> arc_error.ArcError {
+    let strong =
+        arc_strong_count<T>(
+            value
+        );
+
+    let weak =
+        arc_strong_weak_count<T>(
+            value
+        );
+
+    if strong == 1 {
+        give arc_error.arc_error_none();
+    }
+
+    if strong > 1 {
+        give arc_error.arc_error_cannot_get_mut(
+            strong,
+            weak
+        );
+    }
+
+    give arc_error.arc_error_invalid_strong_count(
+        strong,
+        weak
+    );
+}
+
+proc arc_strong_unwrap_error<T>(
+    value: arc.Arc<T>
+) -> arc_error.ArcError {
+    let strong =
+        arc_strong_count<T>(
+            value
+        );
+
+    let weak =
+        arc_strong_weak_count<T>(
+            value
+        );
+
+    if strong == 1 {
+        give arc_error.arc_error_none();
+    }
+
+    give arc_error.arc_error_cannot_unwrap(
+        strong,
+        weak
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc arc_strong_statistics_empty()
+    -> ArcStrongStatistics
+{
+    give ArcStrongStatistics {
+        reads: 0,
+
+        clones: 0,
+        upgrades: 0,
+        drops: 0,
+
+        unique_checks: 0,
+        shared_checks: 0,
+
+        mutable_checks: 0,
+        unwrap_checks: 0,
+
+        snapshots: 0,
+        validations: 0,
+
+        saturation_failures: 0,
+        invalid_transitions: 0
+    };
+}
+
+proc arc_strong_statistics_total(
+    statistics: ArcStrongStatistics
+) -> u64 {
+    give statistics.reads
+        + statistics.clones
+        + statistics.upgrades
+        + statistics.drops
+        + statistics.unique_checks
+        + statistics.shared_checks
+        + statistics.mutable_checks
+        + statistics.unwrap_checks
+        + statistics.snapshots
+        + statistics.validations
+        + statistics.saturation_failures
+        + statistics.invalid_transitions;
+}
+
+proc arc_strong_statistics_reset(
+    statistics: ref mut ArcStrongStatistics
+) {
+    set *statistics =
+        arc_strong_statistics_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc arc_strong_state_name(
+    state: ArcStrongState
+) -> string {
+    pick state {
+        ArcStrongState.Invalid {
+            give "invalid";
+        }
+
+        ArcStrongState.Unique {
+            give "unique";
+        }
+
+        ArcStrongState.Shared {
+            give "shared";
+        }
+
+        ArcStrongState.Saturated {
+            give "saturated";
+        }
+    }
+
+    give "invalid";
+}
+
+proc arc_strong_transition_name(
+    kind: ArcStrongTransitionKind
+) -> string {
+    pick kind {
+        ArcStrongTransitionKind.None {
+            give "none";
+        }
+
+        ArcStrongTransitionKind.Create {
+            give "create";
+        }
+
+        ArcStrongTransitionKind.Clone {
+            give "clone";
+        }
+
+        ArcStrongTransitionKind.Drop {
+            give "drop";
+        }
+
+        ArcStrongTransitionKind.Upgrade {
+            give "upgrade";
+        }
+
+        ArcStrongTransitionKind.Saturate {
+            give "saturate";
+        }
+
+        ArcStrongTransitionKind.DestroyValue {
+            give "destroy-value";
+        }
+
+        ArcStrongTransitionKind.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+proc arc_strong_ordering_name(
+    ordering: ArcStrongOrdering
+) -> string {
+    pick ordering {
+        ArcStrongOrdering.Less {
+            give "less";
+        }
+
+        ArcStrongOrdering.Equal {
+            give "equal";
+        }
+
+        ArcStrongOrdering.Greater {
+            give "greater";
+        }
+    }
+
+    give "equal";
+}
+
+// -----------------------------------------------------------------------------
+// Strong ownership model
+// -----------------------------------------------------------------------------
+//
+// Arc<T>
+//    |
+//    +-- strong = 1
+//    |      |
+//    |      +-- unique
+//    |      +-- direct mutable access
+//    |      +-- try_unwrap possible
+//    |
+//    +-- strong > 1
+//    |      |
+//    |      +-- shared
+//    |      +-- immutable access
+//    |      +-- make_mut uses copy-on-write semantics
+//    |
+//    +-- strong == 0
+//           |
+//           +-- value expired
+//           +-- only weak handles may remain
+//
+// Clone:
+//
+//     strong N
+//        |
+//        +-- arc_clone()
+//        |
+//        v
+//     strong N + 1
+//
+// Drop:
+//
+//     strong N
+//        |
+//        +-- drop
+//        |
+//        v
+//     strong N - 1
+//
+//     if N - 1 == 0:
+//         T is destroyed
+//
+// Upgrade from ArcWeak:
+//
+//     strong > 0
+//        |
+//        +-- upgrade
+//        |
+//        v
+//     strong += 1
+//
+// The actual atomic strong-counter operations remain runtime/compiler
+// primitives. This module defines the high-level strong-reference API,
+// classification, validation and diagnostics.

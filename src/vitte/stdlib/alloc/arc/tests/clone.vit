@@ -1,0 +1,677 @@
+use src/vitte/stdlib/alloc/arc
+
+form Point {
+    x: int
+    y: int
+}
+
+proc test_clone_increments_count() -> bool {
+    let first = arc_new(42);
+    let second = arc_clone(first);
+
+    give arc_strong_count(first) == 2
+        and arc_strong_count(second) == 2;
+}
+
+proc test_clone_preserves_value() -> bool {
+    let first = arc_new(42);
+    let second = arc_clone(first);
+
+    give *arc_get(ref first) == 42
+        and *arc_get(ref second) == 42;
+}
+
+proc test_clone_same_allocation() -> bool {
+    let first = arc_new(42);
+    let second = arc_clone(first);
+
+    give arc_ptr_eq(
+        first,
+        second
+    );
+}
+
+proc test_clone_is_shared() -> bool {
+    let first = arc_new(42);
+    let second = arc_clone(first);
+
+    give arc_is_shared(first)
+        and arc_is_shared(second)
+        and not arc_is_unique(first)
+        and not arc_is_unique(second);
+}
+
+proc test_clone_preserves_weak_count() -> bool {
+    let first = arc_new(42);
+
+    let before =
+        arc_weak_count(first);
+
+    let second =
+        arc_clone(first);
+
+    give arc_weak_count(first) == before
+        and arc_weak_count(second) == before;
+}
+
+proc test_clone_once() -> bool {
+    let first = arc_new(1);
+    let second = arc_clone(first);
+
+    give arc_strong_count(second) == 2;
+}
+
+proc test_clone_twice() -> bool {
+    let first = arc_new(1);
+    let second = arc_clone(first);
+    let third = arc_clone(first);
+
+    give arc_strong_count(first) == 3
+        and arc_strong_count(second) == 3
+        and arc_strong_count(third) == 3;
+}
+
+proc test_clone_three_times() -> bool {
+    let first = arc_new(1);
+    let second = arc_clone(first);
+    let third = arc_clone(first);
+    let fourth = arc_clone(first);
+
+    give arc_strong_count(first) == 4
+        and arc_strong_count(second) == 4
+        and arc_strong_count(third) == 4
+        and arc_strong_count(fourth) == 4;
+}
+
+proc test_clone_chain() -> bool {
+    let first = arc_new(10);
+    let second = arc_clone(first);
+    let third = arc_clone(second);
+    let fourth = arc_clone(third);
+
+    give arc_strong_count(first) == 4
+        and arc_strong_count(second) == 4
+        and arc_strong_count(third) == 4
+        and arc_strong_count(fourth) == 4;
+}
+
+proc test_clone_many_zero() -> bool {
+    let value = arc_new(42);
+    let result = arc_clone_many(value, 0);
+
+    give arc_strong_count(result) == 1
+        and arc_ptr_eq(value, result);
+}
+
+proc test_clone_many_one() -> bool {
+    let value = arc_new(42);
+    let result = arc_clone_many(value, 1);
+
+    give arc_strong_count(result) == 2;
+}
+
+proc test_clone_many_two() -> bool {
+    let value = arc_new(42);
+    let result = arc_clone_many(value, 2);
+
+    give arc_strong_count(result) == 3;
+}
+
+proc test_clone_many_five() -> bool {
+    let value = arc_new(42);
+    let result = arc_clone_many(value, 5);
+
+    give arc_strong_count(result) == 6;
+}
+
+proc test_clone_many_ten() -> bool {
+    let value = arc_new(42);
+    let result = arc_clone_many(value, 10);
+
+    give arc_strong_count(result) == 11;
+}
+
+proc test_share_alias() -> bool {
+    let first = arc_new(42);
+    let second = arc_share(first);
+
+    give arc_ptr_eq(first, second)
+        and arc_strong_count(first) == 2;
+}
+
+proc test_share_many() -> bool {
+    let first = arc_new(42);
+    let second = arc_share_many(first, 4);
+
+    give arc_strong_count(second) == 5;
+}
+
+proc test_clone_int() -> bool {
+    let first = arc_new(100);
+    let second = arc_clone(first);
+
+    give *arc_get(ref second) == 100;
+}
+
+proc test_clone_negative_int() -> bool {
+    let first = arc_new(-100);
+    let second = arc_clone(first);
+
+    give *arc_get(ref second) == -100;
+}
+
+proc test_clone_bool() -> bool {
+    let first = arc_new(true);
+    let second = arc_clone(first);
+
+    give *arc_get(ref second);
+}
+
+proc test_clone_string() -> bool {
+    let first = arc_new("Vitte");
+    let second = arc_clone(first);
+
+    give *arc_get(ref second) == "Vitte";
+}
+
+proc test_clone_empty_string() -> bool {
+    let first = arc_new("");
+    let second = arc_clone(first);
+
+    give *arc_get(ref second) == "";
+}
+
+proc test_clone_form() -> bool {
+    let first = arc_new(
+        Point {
+            x: 10
+            y: 20
+        }
+    );
+
+    let second = arc_clone(first);
+
+    give arc_get(ref second).x == 10
+        and arc_get(ref second).y == 20;
+}
+
+proc test_clone_form_same_allocation() -> bool {
+    let first = arc_new(
+        Point {
+            x: 1
+            y: 2
+        }
+    );
+
+    let second = arc_clone(first);
+
+    give arc_ptr_eq(first, second);
+}
+
+proc test_clone_disables_get_mut() -> bool {
+    let mut first = arc_new(42);
+    let second = arc_clone(first);
+
+    let result =
+        arc_get_mut(
+            ref mut first
+        );
+
+    pick result {
+        Some(_) {
+            give false;
+        }
+
+        None {
+            give arc_strong_count(second) == 2;
+        }
+    }
+}
+
+proc test_clone_requires_copy_on_write() -> bool {
+    let first = arc_new(42);
+    let second = arc_clone(first);
+
+    give arc_requires_copy_on_write(first)
+        and arc_requires_copy_on_write(second);
+}
+
+proc test_clone_make_mut_detaches() -> bool {
+    let mut first = arc_new(10);
+    let second = arc_clone(first);
+
+    let inner =
+        arc_make_mut(
+            ref mut first
+        );
+
+    set *inner = 20;
+
+    give *arc_get(ref first) == 20
+        and *arc_get(ref second) == 10
+        and not arc_ptr_eq(
+            first,
+            second
+        );
+}
+
+proc test_clone_make_mut_preserves_second() -> bool {
+    let mut first = arc_new("before");
+    let second = arc_clone(first);
+
+    let inner =
+        arc_make_mut(
+            ref mut first
+        );
+
+    set *inner = "after";
+
+    give *arc_get(ref first) == "after"
+        and *arc_get(ref second) == "before";
+}
+
+proc test_clone_make_mut_form() -> bool {
+    let mut first = arc_new(
+        Point {
+            x: 1
+            y: 2
+        }
+    );
+
+    let second = arc_clone(first);
+
+    let point =
+        arc_make_mut(
+            ref mut first
+        );
+
+    set point.x = 100;
+    set point.y = 200;
+
+    give arc_get(ref first).x == 100
+        and arc_get(ref first).y == 200
+        and arc_get(ref second).x == 1
+        and arc_get(ref second).y == 2;
+}
+
+proc test_clone_profile_before_after() -> bool {
+    let first = arc_new(42);
+
+    let before =
+        arc_profile(first);
+
+    let second =
+        arc_clone(first);
+
+    let after =
+        arc_profile(second);
+
+    give before.strong == 1
+        and before.unique
+        and not before.shared
+        and after.strong == 2
+        and not after.unique
+        and after.shared;
+}
+
+proc test_clone_snapshot_change() -> bool {
+    let first = arc_new(42);
+    let snapshot = arc_snapshot(first);
+    let second = arc_clone(first);
+
+    give arc_snapshot_changed(
+        snapshot,
+        second
+    );
+}
+
+proc test_clone_snapshot_strong_delta() -> bool {
+    let first = arc_new(42);
+    let snapshot = arc_snapshot(first);
+    let second = arc_clone(first);
+
+    give arc_strong_delta(
+        snapshot,
+        second
+    ) == 1;
+}
+
+proc test_clone_snapshot_weak_delta() -> bool {
+    let first = arc_new(42);
+    let snapshot = arc_snapshot(first);
+    let second = arc_clone(first);
+
+    give arc_weak_delta(
+        snapshot,
+        second
+    ) == 0;
+}
+
+proc test_clone_same_counts_between_handles() -> bool {
+    let first = arc_new(42);
+    let second = arc_clone(first);
+
+    give arc_same_counts(
+        first,
+        second
+    );
+}
+
+proc test_clone_same_strong_count_between_handles() -> bool {
+    let first = arc_new(42);
+    let second = arc_clone(first);
+
+    give arc_same_strong_count(
+        first,
+        second
+    );
+}
+
+proc test_clone_same_weak_count_between_handles() -> bool {
+    let first = arc_new(42);
+    let second = arc_clone(first);
+
+    give arc_same_weak_count(
+        first,
+        second
+    );
+}
+
+proc test_clone_relation_same_allocation() -> bool {
+    let first = arc_new(42);
+    let second = arc_clone(first);
+
+    give arc_same_allocation(
+        first,
+        second
+    );
+}
+
+proc test_clone_vs_new_relation() -> bool {
+    let first = arc_new(42);
+    let clone = arc_clone(first);
+    let separate = arc_new(42);
+
+    give arc_same_allocation(
+        first,
+        clone
+    )
+    and arc_different_allocation(
+        first,
+        separate
+    )
+    and arc_different_allocation(
+        clone,
+        separate
+    );
+}
+
+proc test_clone_with_one_weak() -> bool {
+    let first = arc_new(42);
+    let weak = arc_downgrade(first);
+    let second = arc_clone(first);
+
+    give arc_strong_count(first) == 2
+        and arc_weak_count(first) == 1
+        and arc_weak_strong_count(weak) == 2
+        and arc_strong_count(second) == 2;
+}
+
+proc test_clone_with_two_weak() -> bool {
+    let first = arc_new(42);
+
+    let weak1 =
+        arc_downgrade(first);
+
+    let weak2 =
+        arc_downgrade(first);
+
+    let second =
+        arc_clone(first);
+
+    give arc_strong_count(second) == 2
+        and arc_weak_count(second) == 2
+        and arc_weak_strong_count(weak1) == 2
+        and arc_weak_strong_count(weak2) == 2;
+}
+
+proc test_clone_after_upgrade() -> bool {
+    let first = arc_new(42);
+    let weak = arc_downgrade(first);
+
+    let upgraded =
+        arc_weak_upgrade(weak);
+
+    pick upgraded {
+        Some(second) {
+            let third =
+                arc_clone(second);
+
+            give arc_strong_count(first) == 3
+                and arc_strong_count(second) == 3
+                and arc_strong_count(third) == 3;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_clone_profile_valid() -> bool {
+    let first = arc_new(42);
+    let second = arc_clone(first);
+
+    give arc_profile(second).valid;
+}
+
+proc test_clone_invariant() -> bool {
+    let first = arc_new(42);
+    let second = arc_clone(first);
+
+    give arc_invariant_holds(first)
+        and arc_invariant_holds(second);
+}
+
+proc test_clone_many_invariant() -> bool {
+    let first = arc_new(42);
+    let result = arc_clone_many(first, 8);
+
+    give arc_strong_count(result) == 9
+        and arc_invariant_holds(result);
+}
+
+proc test_clone_does_not_change_weak() -> bool {
+    let first = arc_new(42);
+    let weak = arc_downgrade(first);
+
+    let weak_before =
+        arc_weak_count(first);
+
+    let second =
+        arc_clone(first);
+
+    give arc_weak_count(second) == weak_before
+        and arc_weak_count(first) == weak_before;
+}
+
+proc test_clone_of_clone_same_pointer() -> bool {
+    let first = arc_new(42);
+    let second = arc_clone(first);
+    let third = arc_clone(second);
+
+    give arc_ptr_eq(first, second)
+        and arc_ptr_eq(second, third)
+        and arc_ptr_eq(first, third);
+}
+
+proc test_clone_of_clone_value() -> bool {
+    let first = arc_new("abc");
+    let second = arc_clone(first);
+    let third = arc_clone(second);
+
+    give *arc_get(ref first) == "abc"
+        and *arc_get(ref second) == "abc"
+        and *arc_get(ref third) == "abc";
+}
+
+proc test_clone_many_form() -> bool {
+    let first = arc_new(
+        Point {
+            x: 5
+            y: 9
+        }
+    );
+
+    let shared =
+        arc_clone_many(
+            first,
+            3
+        );
+
+    give arc_strong_count(shared) == 4
+        and arc_get(ref shared).x == 5
+        and arc_get(ref shared).y == 9;
+}
+
+proc test_clone_then_make_mut_counts() -> bool {
+    let mut first = arc_new(42);
+    let second = arc_clone(first);
+
+    let inner =
+        arc_make_mut(
+            ref mut first
+        );
+
+    set *inner = 100;
+
+    give arc_strong_count(first) == 1
+        and arc_strong_count(second) == 1
+        and not arc_ptr_eq(
+            first,
+            second
+        );
+}
+
+proc test_clone_then_make_mut_weak() -> bool {
+    let mut first = arc_new(42);
+    let second = arc_clone(first);
+    let weak = arc_downgrade(second);
+
+    let inner =
+        arc_make_mut(
+            ref mut first
+        );
+
+    set *inner = 100;
+
+    give *arc_get(ref first) == 100
+        and *arc_get(ref second) == 42
+        and arc_weak_can_upgrade(weak);
+}
+
+proc test_clone_separate_values_equal_but_not_same() -> bool {
+    let first = arc_new(7);
+    let second = arc_new(7);
+    let third = arc_clone(first);
+
+    give *arc_get(ref first)
+        == *arc_get(ref second)
+        and not arc_ptr_eq(
+            first,
+            second
+        )
+        and arc_ptr_eq(
+            first,
+            third
+        );
+}
+
+proc test_clone_large_chain() -> bool {
+    let first = arc_new(1);
+    let second = arc_clone(first);
+    let third = arc_clone(second);
+    let fourth = arc_clone(third);
+    let fifth = arc_clone(fourth);
+    let sixth = arc_clone(fifth);
+    let seventh = arc_clone(sixth);
+    let eighth = arc_clone(seventh);
+
+    give arc_strong_count(first) == 8
+        and arc_strong_count(eighth) == 8
+        and arc_ptr_eq(first, eighth);
+}
+
+proc run_clone_tests() -> bool {
+    give test_clone_increments_count()
+        and test_clone_preserves_value()
+        and test_clone_same_allocation()
+        and test_clone_is_shared()
+        and test_clone_preserves_weak_count()
+
+        and test_clone_once()
+        and test_clone_twice()
+        and test_clone_three_times()
+        and test_clone_chain()
+
+        and test_clone_many_zero()
+        and test_clone_many_one()
+        and test_clone_many_two()
+        and test_clone_many_five()
+        and test_clone_many_ten()
+
+        and test_share_alias()
+        and test_share_many()
+
+        and test_clone_int()
+        and test_clone_negative_int()
+        and test_clone_bool()
+        and test_clone_string()
+        and test_clone_empty_string()
+        and test_clone_form()
+        and test_clone_form_same_allocation()
+
+        and test_clone_disables_get_mut()
+        and test_clone_requires_copy_on_write()
+        and test_clone_make_mut_detaches()
+        and test_clone_make_mut_preserves_second()
+        and test_clone_make_mut_form()
+
+        and test_clone_profile_before_after()
+        and test_clone_snapshot_change()
+        and test_clone_snapshot_strong_delta()
+        and test_clone_snapshot_weak_delta()
+
+        and test_clone_same_counts_between_handles()
+        and test_clone_same_strong_count_between_handles()
+        and test_clone_same_weak_count_between_handles()
+
+        and test_clone_relation_same_allocation()
+        and test_clone_vs_new_relation()
+
+        and test_clone_with_one_weak()
+        and test_clone_with_two_weak()
+        and test_clone_after_upgrade()
+
+        and test_clone_profile_valid()
+        and test_clone_invariant()
+        and test_clone_many_invariant()
+        and test_clone_does_not_change_weak()
+
+        and test_clone_of_clone_same_pointer()
+        and test_clone_of_clone_value()
+        and test_clone_many_form()
+
+        and test_clone_then_make_mut_counts()
+        and test_clone_then_make_mut_weak()
+        and test_clone_separate_values_equal_but_not_same()
+        and test_clone_large_chain();
+}
+
+proc main() -> int {
+    if run_clone_tests() {
+        give 0;
+    }
+
+    give 1;
+}

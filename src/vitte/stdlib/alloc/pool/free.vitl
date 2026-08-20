@@ -1,0 +1,1424 @@
+space vitte/stdlib/alloc/pool/free
+
+export *
+
+use src/vitte/stdlib/alloc/pool/alloc as pool_alloc
+use src/vitte/stdlib/alloc/pool/block as pool_block
+use src/vitte/stdlib/alloc/pool/core as pool_core
+use src/vitte/stdlib/alloc/pool/error as pool_error
+use src/vitte/stdlib/core/option as core_option
+
+pick PoolFreeState {
+    Empty,
+    Available,
+    Exhausted,
+    Released,
+    Invalid
+}
+
+pick PoolFreeStrategy {
+    FirstFit,
+    NextFit,
+    Lifo,
+    Fifo
+}
+
+form PoolFreeEntry {
+    index: usize
+
+    free: bool
+
+    generation: u64
+    revision: u64
+}
+
+form PoolFreeList {
+    capacity: usize
+    free_count: usize
+
+    head: usize
+    tail: usize
+    next_hint: usize
+
+    strategy: PoolFreeStrategy
+
+    active: bool
+
+    generation: u64
+    revision: u64
+}
+
+form PoolFreeProfile {
+    capacity: usize
+    free: usize
+    allocated: usize
+
+    head: usize
+    tail: usize
+    next_hint: usize
+
+    strategy: PoolFreeStrategy
+    state: PoolFreeState
+
+    empty: bool
+    available: bool
+    exhausted: bool
+    released: bool
+
+    valid: bool
+
+    generation: u64
+    revision: u64
+}
+
+form PoolFreeValidation {
+    valid: bool
+
+    capacity_valid: bool
+    accounting_valid: bool
+    head_valid: bool
+    tail_valid: bool
+    hint_valid: bool
+    state_valid: bool
+}
+
+form PoolFreeSnapshot {
+    capacity: usize
+    free: usize
+
+    head: usize
+    tail: usize
+    next_hint: usize
+
+    state: PoolFreeState
+
+    generation: u64
+    revision: u64
+}
+
+form PoolFreeDelta {
+    free: int
+
+    head: int
+    tail: int
+    next_hint: int
+
+    generation: int
+    revision: int
+
+    state_changed: bool
+    changed: bool
+}
+
+form PoolFreeStatistics {
+    searches: u64
+    hits: u64
+    misses: u64
+
+    allocations: u64
+    releases: u64
+
+    scan_steps: u64
+
+    resets: u64
+}
+
+// -----------------------------------------------------------------------------
+// Entry
+// -----------------------------------------------------------------------------
+
+proc pool_free_entry(
+    index: usize
+) -> PoolFreeEntry {
+    give PoolFreeEntry {
+        index: index,
+
+        free: true,
+
+        generation: 1,
+        revision: 1
+    };
+}
+
+proc pool_free_entry_is_free(
+    entry: PoolFreeEntry
+) -> bool {
+    give entry.free;
+}
+
+proc pool_free_entry_is_allocated(
+    entry: PoolFreeEntry
+) -> bool {
+    give not entry.free;
+}
+
+proc pool_free_entry_allocate(
+    entry: ref mut PoolFreeEntry
+) -> bool {
+    if not entry.free {
+        give false;
+    }
+
+    set entry.free = false;
+
+    set entry.revision =
+        entry.revision + 1;
+
+    give true;
+}
+
+proc pool_free_entry_release(
+    entry: ref mut PoolFreeEntry
+) -> bool {
+    if entry.free {
+        give false;
+    }
+
+    set entry.free = true;
+
+    set entry.generation =
+        entry.generation + 1;
+
+    set entry.revision =
+        entry.revision + 1;
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Free list construction
+// -----------------------------------------------------------------------------
+
+proc pool_free_list(
+    capacity: usize,
+    strategy: PoolFreeStrategy
+) -> PoolFreeList {
+    give PoolFreeList {
+        capacity: capacity,
+        free_count: capacity,
+
+        head: 0,
+
+        tail:
+            if capacity == 0 {
+                0
+            } else {
+                capacity - 1
+            },
+
+        next_hint: 0,
+
+        strategy: strategy,
+
+        active: true,
+
+        generation: 1,
+        revision: 1
+    };
+}
+
+proc pool_free_list_default(
+    capacity: usize
+) -> PoolFreeList {
+    give pool_free_list(
+        capacity,
+        PoolFreeStrategy.NextFit
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Accessors
+// -----------------------------------------------------------------------------
+
+proc pool_free_capacity(
+    list: PoolFreeList
+) -> usize {
+    give list.capacity;
+}
+
+proc pool_free_count(
+    list: PoolFreeList
+) -> usize {
+    give list.free_count;
+}
+
+proc pool_free_allocated_count(
+    list: PoolFreeList
+) -> usize {
+    if list.free_count > list.capacity {
+        give 0;
+    }
+
+    give list.capacity
+        - list.free_count;
+}
+
+proc pool_free_head(
+    list: PoolFreeList
+) -> usize {
+    give list.head;
+}
+
+proc pool_free_tail(
+    list: PoolFreeList
+) -> usize {
+    give list.tail;
+}
+
+proc pool_free_hint(
+    list: PoolFreeList
+) -> usize {
+    give list.next_hint;
+}
+
+// -----------------------------------------------------------------------------
+// State
+// -----------------------------------------------------------------------------
+
+proc pool_free_state(
+    list: PoolFreeList
+) -> PoolFreeState {
+    if not list.active {
+        give PoolFreeState.Released;
+    }
+
+    if list.capacity == 0 {
+        give PoolFreeState.Invalid;
+    }
+
+    if list.free_count > list.capacity {
+        give PoolFreeState.Invalid;
+    }
+
+    if list.free_count == list.capacity {
+        give PoolFreeState.Empty;
+    }
+
+    if list.free_count == 0 {
+        give PoolFreeState.Exhausted;
+    }
+
+    give PoolFreeState.Available;
+}
+
+proc pool_free_is_empty(
+    list: PoolFreeList
+) -> bool {
+    give pool_free_state(list)
+        == PoolFreeState.Empty;
+}
+
+proc pool_free_is_available(
+    list: PoolFreeList
+) -> bool {
+    let state =
+        pool_free_state(
+            list
+        );
+
+    give state == PoolFreeState.Empty
+        or state == PoolFreeState.Available;
+}
+
+proc pool_free_is_exhausted(
+    list: PoolFreeList
+) -> bool {
+    give pool_free_state(list)
+        == PoolFreeState.Exhausted;
+}
+
+proc pool_free_is_released(
+    list: PoolFreeList
+) -> bool {
+    give pool_free_state(list)
+        == PoolFreeState.Released;
+}
+
+// -----------------------------------------------------------------------------
+// Index helpers
+// -----------------------------------------------------------------------------
+
+proc pool_free_index_valid(
+    list: PoolFreeList,
+    index: usize
+) -> bool {
+    give index < list.capacity;
+}
+
+proc pool_free_next_index(
+    list: PoolFreeList,
+    index: usize
+) -> usize {
+    if list.capacity == 0 {
+        give 0;
+    }
+
+    let next = index + 1;
+
+    if next >= list.capacity {
+        give 0;
+    }
+
+    give next;
+}
+
+proc pool_free_previous_index(
+    list: PoolFreeList,
+    index: usize
+) -> usize {
+    if list.capacity == 0 {
+        give 0;
+    }
+
+    if index == 0 {
+        give list.capacity - 1;
+    }
+
+    give index - 1;
+}
+
+// -----------------------------------------------------------------------------
+// Hint management
+// -----------------------------------------------------------------------------
+
+proc pool_free_set_hint(
+    list: ref mut PoolFreeList,
+    index: usize
+) -> bool {
+    if not pool_free_index_valid(
+        *list,
+        index
+    ) {
+        give false;
+    }
+
+    set list.next_hint =
+        index;
+
+    set list.revision =
+        list.revision + 1;
+
+    give true;
+}
+
+proc pool_free_advance_hint(
+    list: ref mut PoolFreeList
+) {
+    if list.capacity == 0 {
+        give;
+    }
+
+    set list.next_hint =
+        pool_free_next_index(
+            *list,
+            list.next_hint
+        );
+
+    set list.revision =
+        list.revision + 1;
+}
+
+// -----------------------------------------------------------------------------
+// Search
+// -----------------------------------------------------------------------------
+
+proc pool_free_find_first(
+    list: PoolFreeList,
+    entries: ref [PoolFreeEntry]
+) -> Option<usize> {
+    if not pool_free_is_available(
+        list
+    ) {
+        give none<usize>();
+    }
+
+    let index: usize = 0;
+
+    while index < list.capacity {
+        if entries[index].free {
+            give some<usize>(
+                index
+            );
+        }
+
+        set index = index + 1;
+    }
+
+    give none<usize>();
+}
+
+proc pool_free_find_next(
+    list: PoolFreeList,
+    entries: ref [PoolFreeEntry]
+) -> Option<usize> {
+    if not pool_free_is_available(
+        list
+    ) {
+        give none<usize>();
+    }
+
+    let index = list.next_hint;
+    let scanned: usize = 0;
+
+    while scanned < list.capacity {
+        if entries[index].free {
+            give some<usize>(
+                index
+            );
+        }
+
+        set index =
+            pool_free_next_index(
+                list,
+                index
+            );
+
+        set scanned =
+            scanned + 1;
+    }
+
+    give none<usize>();
+}
+
+proc pool_free_find_lifo(
+    list: PoolFreeList,
+    entries: ref [PoolFreeEntry]
+) -> Option<usize> {
+    if not pool_free_is_available(
+        list
+    ) {
+        give none<usize>();
+    }
+
+    let index = list.tail;
+    let scanned: usize = 0;
+
+    while scanned < list.capacity {
+        if entries[index].free {
+            give some<usize>(
+                index
+            );
+        }
+
+        set index =
+            pool_free_previous_index(
+                list,
+                index
+            );
+
+        set scanned =
+            scanned + 1;
+    }
+
+    give none<usize>();
+}
+
+proc pool_free_find_fifo(
+    list: PoolFreeList,
+    entries: ref [PoolFreeEntry]
+) -> Option<usize> {
+    if not pool_free_is_available(
+        list
+    ) {
+        give none<usize>();
+    }
+
+    let index = list.head;
+    let scanned: usize = 0;
+
+    while scanned < list.capacity {
+        if entries[index].free {
+            give some<usize>(
+                index
+            );
+        }
+
+        set index =
+            pool_free_next_index(
+                list,
+                index
+            );
+
+        set scanned =
+            scanned + 1;
+    }
+
+    give none<usize>();
+}
+
+proc pool_free_find(
+    list: PoolFreeList,
+    entries: ref [PoolFreeEntry]
+) -> Option<usize> {
+    pick list.strategy {
+        PoolFreeStrategy.FirstFit {
+            give pool_free_find_first(
+                list,
+                entries
+            );
+        }
+
+        PoolFreeStrategy.NextFit {
+            give pool_free_find_next(
+                list,
+                entries
+            );
+        }
+
+        PoolFreeStrategy.Lifo {
+            give pool_free_find_lifo(
+                list,
+                entries
+            );
+        }
+
+        PoolFreeStrategy.Fifo {
+            give pool_free_find_fifo(
+                list,
+                entries
+            );
+        }
+    }
+
+    give none<usize>();
+}
+
+// -----------------------------------------------------------------------------
+// Allocation accounting
+// -----------------------------------------------------------------------------
+
+proc pool_free_record_allocate(
+    list: ref mut PoolFreeList,
+    index: usize
+) -> bool {
+    if not list.active {
+        give false;
+    }
+
+    if not pool_free_index_valid(
+        *list,
+        index
+    ) {
+        give false;
+    }
+
+    if list.free_count == 0 {
+        give false;
+    }
+
+    set list.free_count =
+        list.free_count - 1;
+
+    set list.next_hint =
+        pool_free_next_index(
+            *list,
+            index
+        );
+
+    set list.head =
+        list.next_hint;
+
+    set list.revision =
+        list.revision + 1;
+
+    give true;
+}
+
+proc pool_free_record_release(
+    list: ref mut PoolFreeList,
+    index: usize
+) -> bool {
+    if not list.active {
+        give false;
+    }
+
+    if not pool_free_index_valid(
+        *list,
+        index
+    ) {
+        give false;
+    }
+
+    if list.free_count
+        >= list.capacity
+    {
+        give false;
+    }
+
+    set list.free_count =
+        list.free_count + 1;
+
+    set list.head =
+        index;
+
+    set list.tail =
+        index;
+
+    set list.next_hint =
+        index;
+
+    set list.revision =
+        list.revision + 1;
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Entry allocation
+// -----------------------------------------------------------------------------
+
+proc pool_free_allocate(
+    list: ref mut PoolFreeList,
+    entries: ref mut [PoolFreeEntry]
+) -> Option<usize> {
+    let index =
+        pool_free_find(
+            *list,
+            entries
+        );
+
+    if is_none(index) {
+        give none<usize>();
+    }
+
+    let slot =
+        unwrap(index);
+
+    if not pool_free_entry_allocate(
+        ref mut entries[slot]
+    ) {
+        give none<usize>();
+    }
+
+    if not pool_free_record_allocate(
+        list,
+        slot
+    ) {
+        pool_free_entry_release(
+            ref mut entries[slot]
+        );
+
+        give none<usize>();
+    }
+
+    give some<usize>(
+        slot
+    );
+}
+
+proc pool_free_release(
+    list: ref mut PoolFreeList,
+    entries: ref mut [PoolFreeEntry],
+    index: usize
+) -> bool {
+    if not pool_free_index_valid(
+        *list,
+        index
+    ) {
+        give false;
+    }
+
+    if not pool_free_entry_release(
+        ref mut entries[index]
+    ) {
+        give false;
+    }
+
+    if not pool_free_record_release(
+        list,
+        index
+    ) {
+        give false;
+    }
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Reset
+// -----------------------------------------------------------------------------
+
+proc pool_free_reset(
+    list: ref mut PoolFreeList,
+    entries: ref mut [PoolFreeEntry]
+) {
+    if not list.active {
+        give;
+    }
+
+    let index: usize = 0;
+
+    while index < list.capacity {
+        set entries[index].free =
+            true;
+
+        set entries[index].generation =
+            entries[index].generation + 1;
+
+        set entries[index].revision =
+            entries[index].revision + 1;
+
+        set index = index + 1;
+    }
+
+    set list.free_count =
+        list.capacity;
+
+    set list.head = 0;
+
+    set list.tail =
+        if list.capacity == 0 {
+            0
+        } else {
+            list.capacity - 1
+        };
+
+    set list.next_hint = 0;
+
+    set list.generation =
+        list.generation + 1;
+
+    set list.revision =
+        list.revision + 1;
+}
+
+// -----------------------------------------------------------------------------
+// Release
+// -----------------------------------------------------------------------------
+
+proc pool_free_release_list(
+    list: ref mut PoolFreeList
+) -> bool {
+    if not list.active {
+        give false;
+    }
+
+    set list.active = false;
+
+    set list.free_count = 0;
+
+    set list.head = 0;
+    set list.tail = 0;
+    set list.next_hint = 0;
+
+    set list.generation =
+        list.generation + 1;
+
+    set list.revision =
+        list.revision + 1;
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+proc pool_free_validate(
+    list: PoolFreeList
+) -> PoolFreeValidation {
+    let capacity_valid =
+        list.capacity > 0;
+
+    let accounting_valid =
+        list.free_count
+            <= list.capacity;
+
+    let head_valid =
+        if list.capacity == 0 {
+            false
+        } else {
+            list.head < list.capacity
+        };
+
+    let tail_valid =
+        if list.capacity == 0 {
+            false
+        } else {
+            list.tail < list.capacity
+        };
+
+    let hint_valid =
+        if list.capacity == 0 {
+            false
+        } else {
+            list.next_hint
+                < list.capacity
+        };
+
+    let state_valid =
+        pool_free_state(list)
+            != PoolFreeState.Invalid;
+
+    give PoolFreeValidation {
+        valid:
+            capacity_valid
+            and accounting_valid
+            and head_valid
+            and tail_valid
+            and hint_valid
+            and state_valid,
+
+        capacity_valid:
+            capacity_valid,
+
+        accounting_valid:
+            accounting_valid,
+
+        head_valid:
+            head_valid,
+
+        tail_valid:
+            tail_valid,
+
+        hint_valid:
+            hint_valid,
+
+        state_valid:
+            state_valid
+    };
+}
+
+proc pool_free_is_valid(
+    list: PoolFreeList
+) -> bool {
+    give pool_free_validate(
+        list
+    ).valid;
+}
+
+proc pool_free_invariant_holds(
+    list: PoolFreeList
+) -> bool {
+    give pool_free_is_valid(
+        list
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Profile
+// -----------------------------------------------------------------------------
+
+proc pool_free_profile(
+    list: PoolFreeList
+) -> PoolFreeProfile {
+    let state =
+        pool_free_state(
+            list
+        );
+
+    give PoolFreeProfile {
+        capacity:
+            list.capacity,
+
+        free:
+            list.free_count,
+
+        allocated:
+            pool_free_allocated_count(
+                list
+            ),
+
+        head:
+            list.head,
+
+        tail:
+            list.tail,
+
+        next_hint:
+            list.next_hint,
+
+        strategy:
+            list.strategy,
+
+        state:
+            state,
+
+        empty:
+            state == PoolFreeState.Empty,
+
+        available:
+            state == PoolFreeState.Empty
+            or state == PoolFreeState.Available,
+
+        exhausted:
+            state == PoolFreeState.Exhausted,
+
+        released:
+            state == PoolFreeState.Released,
+
+        valid:
+            state != PoolFreeState.Invalid,
+
+        generation:
+            list.generation,
+
+        revision:
+            list.revision
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Snapshot
+// -----------------------------------------------------------------------------
+
+proc pool_free_snapshot(
+    list: PoolFreeList
+) -> PoolFreeSnapshot {
+    give PoolFreeSnapshot {
+        capacity:
+            list.capacity,
+
+        free:
+            list.free_count,
+
+        head:
+            list.head,
+
+        tail:
+            list.tail,
+
+        next_hint:
+            list.next_hint,
+
+        state:
+            pool_free_state(
+                list
+            ),
+
+        generation:
+            list.generation,
+
+        revision:
+            list.revision
+    };
+}
+
+proc pool_free_snapshot_equal(
+    left: PoolFreeSnapshot,
+    right: PoolFreeSnapshot
+) -> bool {
+    give left.capacity == right.capacity
+        and left.free == right.free
+        and left.head == right.head
+        and left.tail == right.tail
+        and left.next_hint == right.next_hint
+        and left.state == right.state
+        and left.generation == right.generation
+        and left.revision == right.revision;
+}
+
+proc pool_free_snapshot_changed(
+    left: PoolFreeSnapshot,
+    right: PoolFreeSnapshot
+) -> bool {
+    give not pool_free_snapshot_equal(
+        left,
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Delta
+// -----------------------------------------------------------------------------
+
+proc pool_free_usize_delta(
+    before: usize,
+    after: usize
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc pool_free_u64_delta(
+    before: u64,
+    after: u64
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc pool_free_delta(
+    before: PoolFreeSnapshot,
+    after: PoolFreeSnapshot
+) -> PoolFreeDelta {
+    let free =
+        pool_free_usize_delta(
+            before.free,
+            after.free
+        );
+
+    let head =
+        pool_free_usize_delta(
+            before.head,
+            after.head
+        );
+
+    let tail =
+        pool_free_usize_delta(
+            before.tail,
+            after.tail
+        );
+
+    let next_hint =
+        pool_free_usize_delta(
+            before.next_hint,
+            after.next_hint
+        );
+
+    let generation =
+        pool_free_u64_delta(
+            before.generation,
+            after.generation
+        );
+
+    let revision =
+        pool_free_u64_delta(
+            before.revision,
+            after.revision
+        );
+
+    let state_changed =
+        before.state
+            != after.state;
+
+    give PoolFreeDelta {
+        free:
+            free,
+
+        head:
+            head,
+
+        tail:
+            tail,
+
+        next_hint:
+            next_hint,
+
+        generation:
+            generation,
+
+        revision:
+            revision,
+
+        state_changed:
+            state_changed,
+
+        changed:
+            free != 0
+            or head != 0
+            or tail != 0
+            or next_hint != 0
+            or generation != 0
+            or revision != 0
+            or state_changed
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Error helpers
+// -----------------------------------------------------------------------------
+
+proc pool_free_error(
+    list: PoolFreeList
+) -> pool_error.PoolError {
+    let validation =
+        pool_free_validate(
+            list
+        );
+
+    if validation.valid {
+        give pool_error.pool_error_none();
+    }
+
+    if not validation.capacity_valid {
+        give pool_error.pool_error_simple(
+            pool_error.PoolErrorKind.InvalidCapacity,
+            "pool free list capacity is invalid"
+        );
+    }
+
+    if not validation.accounting_valid {
+        give pool_error.pool_error_simple(
+            pool_error.PoolErrorKind.InvalidState,
+            "pool free list accounting is invalid"
+        );
+    }
+
+    if not validation.head_valid
+        or not validation.tail_valid
+        or not validation.hint_valid
+    {
+        give pool_error.pool_error_internal(
+            "pool free list index metadata is invalid"
+        );
+    }
+
+    give pool_error.pool_error_internal(
+        "unknown pool free list validation failure"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Core mapping
+// -----------------------------------------------------------------------------
+
+proc pool_free_core_state(
+    list: PoolFreeList
+) -> pool_core.PoolCoreState {
+    pick pool_free_state(list) {
+        PoolFreeState.Empty {
+            give pool_core.PoolCoreState.Empty;
+        }
+
+        PoolFreeState.Available {
+            give pool_core.PoolCoreState.Partial;
+        }
+
+        PoolFreeState.Exhausted {
+            give pool_core.PoolCoreState.Full;
+        }
+
+        PoolFreeState.Released {
+            give pool_core.PoolCoreState.Released;
+        }
+
+        PoolFreeState.Invalid {
+            give pool_core.PoolCoreState.Invalid;
+        }
+    }
+
+    give pool_core.PoolCoreState.Invalid;
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc pool_free_statistics_empty()
+    -> PoolFreeStatistics
+{
+    give PoolFreeStatistics {
+        searches: 0,
+        hits: 0,
+        misses: 0,
+
+        allocations: 0,
+        releases: 0,
+
+        scan_steps: 0,
+
+        resets: 0
+    };
+}
+
+proc pool_free_statistics_record_search(
+    statistics: ref mut PoolFreeStatistics,
+    found: bool,
+    steps: usize
+) {
+    set statistics.searches =
+        statistics.searches + 1;
+
+    set statistics.scan_steps =
+        statistics.scan_steps + steps;
+
+    if found {
+        set statistics.hits =
+            statistics.hits + 1;
+    } else {
+        set statistics.misses =
+            statistics.misses + 1;
+    }
+}
+
+proc pool_free_statistics_record_allocate(
+    statistics: ref mut PoolFreeStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.allocations =
+            statistics.allocations + 1;
+    } else {
+        set statistics.misses =
+            statistics.misses + 1;
+    }
+}
+
+proc pool_free_statistics_record_release(
+    statistics: ref mut PoolFreeStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.releases =
+            statistics.releases + 1;
+    }
+}
+
+proc pool_free_statistics_average_scan(
+    statistics: PoolFreeStatistics
+) -> f64 {
+    if statistics.searches == 0 {
+        give 0.0;
+    }
+
+    give (
+        statistics.scan_steps as f64
+    ) / (
+        statistics.searches as f64
+    );
+}
+
+proc pool_free_statistics_total(
+    statistics: PoolFreeStatistics
+) -> u64 {
+    give statistics.searches
+        + statistics.allocations
+        + statistics.releases
+        + statistics.resets;
+}
+
+proc pool_free_statistics_reset(
+    statistics: ref mut PoolFreeStatistics
+) {
+    set *statistics =
+        pool_free_statistics_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc pool_free_state_name(
+    state: PoolFreeState
+) -> string {
+    pick state {
+        PoolFreeState.Empty {
+            give "empty";
+        }
+
+        PoolFreeState.Available {
+            give "available";
+        }
+
+        PoolFreeState.Exhausted {
+            give "exhausted";
+        }
+
+        PoolFreeState.Released {
+            give "released";
+        }
+
+        PoolFreeState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+proc pool_free_strategy_name(
+    strategy: PoolFreeStrategy
+) -> string {
+    pick strategy {
+        PoolFreeStrategy.FirstFit {
+            give "first-fit";
+        }
+
+        PoolFreeStrategy.NextFit {
+            give "next-fit";
+        }
+
+        PoolFreeStrategy.Lifo {
+            give "lifo";
+        }
+
+        PoolFreeStrategy.Fifo {
+            give "fifo";
+        }
+    }
+
+    give "next-fit";
+}
+
+// -----------------------------------------------------------------------------
+// Free-list model
+// -----------------------------------------------------------------------------
+//
+// slots:
+//
+//     0   1   2   3   4   5
+//
+//     F   A   F   A   F   A
+//
+// F = free
+// A = allocated
+//
+// The free manager answers:
+//
+//     "which slot should be allocated next?"
+//
+// Strategies:
+//
+//     FirstFit
+//         scan from slot 0
+//
+//     NextFit
+//         scan from last hint
+//
+//     Lifo
+//         prefer recently released/high-end slot
+//
+//     Fifo
+//         prefer oldest free/front slot
+//
+// Allocation:
+//
+//     find free index
+//          |
+//          v
+//     entry.free = false
+//          |
+//          v
+//     free_count--
+//
+// Release:
+//
+//     entry.free = true
+//          |
+//          v
+//     free_count++
+//          |
+//          v
+//     generation++
+//
+// Fundamental invariants:
+//
+//     free_count <= capacity
+//
+//     allocated = capacity - free_count
+//
+//     head < capacity
+//     tail < capacity
+//     next_hint < capacity
+//
+// This module manages only free-slot discovery and reuse.
+//
+// Slot memory geometry belongs to `alloc.vitl`.
+// Backing allocation/accounting belongs to `block.vitl`.
+// Pure lifecycle modeling belongs to `core.vitl`.
+// Public allocator orchestration belongs to `pool.vitl`.

@@ -1,0 +1,1296 @@
+use src/vitte/stdlib/alloc/boxed
+
+form Point {
+    x: int
+    y: int
+}
+
+form User {
+    id: int
+    name: string
+    active: bool
+}
+
+proc test_new_int() -> bool {
+    let value = box_new(42);
+
+    give *box_get(ref value) == 42;
+}
+
+proc test_new_zero() -> bool {
+    let value = box_new(0);
+
+    give *box_get(ref value) == 0;
+}
+
+proc test_new_negative() -> bool {
+    let value = box_new(-42);
+
+    give *box_get(ref value) == -42;
+}
+
+proc test_new_bool_true() -> bool {
+    let value = box_new(true);
+
+    give *box_get(ref value);
+}
+
+proc test_new_bool_false() -> bool {
+    let value = box_new(false);
+
+    give not *box_get(ref value);
+}
+
+proc test_new_string() -> bool {
+    let value = box_new("Vitte");
+
+    give *box_get(ref value) == "Vitte";
+}
+
+proc test_new_empty_string() -> bool {
+    let value = box_new("");
+
+    give *box_get(ref value) == "";
+}
+
+proc test_new_point() -> bool {
+    let value = box_new(
+        Point {
+            x: 10
+            y: 20
+        }
+    );
+
+    let point = box_get(ref value);
+
+    give point.x == 10
+        and point.y == 20;
+}
+
+proc test_new_user() -> bool {
+    let value = box_new(
+        User {
+            id: 1
+            name: "Vincent"
+            active: true
+        }
+    );
+
+    let user = box_get(ref value);
+
+    give user.id == 1
+        and user.name == "Vincent"
+        and user.active;
+}
+
+proc test_try_new_int() -> bool {
+    let result = box_try_new(42);
+
+    pick result {
+        Some(value) {
+            give *box_get(ref value) == 42;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_try_new_string() -> bool {
+    let result = box_try_new("Vitte");
+
+    pick result {
+        Some(value) {
+            give *box_get(ref value) == "Vitte";
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_get() -> bool {
+    let value = box_new(123);
+
+    let inner = box_get(
+        ref value
+    );
+
+    give *inner == 123;
+}
+
+proc test_value_alias() -> bool {
+    let value = box_new(123);
+
+    give *box_value(ref value) == 123;
+}
+
+proc test_deref() -> bool {
+    let value = box_new(123);
+
+    give *box_deref(ref value) == 123;
+}
+
+proc test_get_point() -> bool {
+    let value = box_new(
+        Point {
+            x: 4
+            y: 8
+        }
+    );
+
+    let point = box_get(ref value);
+
+    give point.x == 4
+        and point.y == 8;
+}
+
+proc test_get_mut() -> bool {
+    let mut value = box_new(10);
+
+    let inner = box_get_mut(
+        ref mut value
+    );
+
+    set *inner = 20;
+
+    give *box_get(ref value) == 20;
+}
+
+proc test_value_mut() -> bool {
+    let mut value = box_new(10);
+
+    let inner = box_value_mut(
+        ref mut value
+    );
+
+    set *inner = 30;
+
+    give *box_get(ref value) == 30;
+}
+
+proc test_deref_mut() -> bool {
+    let mut value = box_new(10);
+
+    let inner = box_deref_mut(
+        ref mut value
+    );
+
+    set *inner = 40;
+
+    give *box_get(ref value) == 40;
+}
+
+proc test_mutate_point() -> bool {
+    let mut value = box_new(
+        Point {
+            x: 1
+            y: 2
+        }
+    );
+
+    let point = box_get_mut(
+        ref mut value
+    );
+
+    set point.x = 100;
+    set point.y = 200;
+
+    give box_get(ref value).x == 100
+        and box_get(ref value).y == 200;
+}
+
+proc test_mutate_user() -> bool {
+    let mut value = box_new(
+        User {
+            id: 1
+            name: "before"
+            active: false
+        }
+    );
+
+    let user = box_get_mut(
+        ref mut value
+    );
+
+    set user.id = 2;
+    set user.name = "after";
+    set user.active = true;
+
+    let result = box_get(ref value);
+
+    give result.id == 2
+        and result.name == "after"
+        and result.active;
+}
+
+proc test_replace_int() -> bool {
+    let mut value = box_new(10);
+
+    let old = box_replace(
+        ref mut value,
+        20
+    );
+
+    give old == 10
+        and *box_get(ref value) == 20;
+}
+
+proc test_replace_string() -> bool {
+    let mut value = box_new("before");
+
+    let old = box_replace(
+        ref mut value,
+        "after"
+    );
+
+    give old == "before"
+        and *box_get(ref value) == "after";
+}
+
+proc test_replace_point() -> bool {
+    let mut value = box_new(
+        Point {
+            x: 1
+            y: 2
+        }
+    );
+
+    let old = box_replace(
+        ref mut value,
+        Point {
+            x: 10
+            y: 20
+        }
+    );
+
+    give old.x == 1
+        and old.y == 2
+        and box_get(ref value).x == 10
+        and box_get(ref value).y == 20;
+}
+
+proc test_set_int() -> bool {
+    let mut value = box_new(1);
+
+    box_set(
+        ref mut value,
+        99
+    );
+
+    give *box_get(ref value) == 99;
+}
+
+proc test_set_string() -> bool {
+    let mut value = box_new("a");
+
+    box_set(
+        ref mut value,
+        "b"
+    );
+
+    give *box_get(ref value) == "b";
+}
+
+proc test_set_point() -> bool {
+    let mut value = box_new(
+        Point {
+            x: 1
+            y: 2
+        }
+    );
+
+    box_set(
+        ref mut value,
+        Point {
+            x: 3
+            y: 4
+        }
+    );
+
+    give box_get(ref value).x == 3
+        and box_get(ref value).y == 4;
+}
+
+proc test_swap_int() -> bool {
+    let mut first = box_new(10);
+    let mut second = box_new(20);
+
+    box_swap(
+        ref mut first,
+        ref mut second
+    );
+
+    give *box_get(ref first) == 20
+        and *box_get(ref second) == 10;
+}
+
+proc test_swap_string() -> bool {
+    let mut first = box_new("a");
+    let mut second = box_new("b");
+
+    box_swap(
+        ref mut first,
+        ref mut second
+    );
+
+    give *box_get(ref first) == "b"
+        and *box_get(ref second) == "a";
+}
+
+proc test_swap_point() -> bool {
+    let mut first = box_new(
+        Point {
+            x: 1
+            y: 2
+        }
+    );
+
+    let mut second = box_new(
+        Point {
+            x: 10
+            y: 20
+        }
+    );
+
+    box_swap(
+        ref mut first,
+        ref mut second
+    );
+
+    give box_get(ref first).x == 10
+        and box_get(ref first).y == 20
+        and box_get(ref second).x == 1
+        and box_get(ref second).y == 2;
+}
+
+proc test_is_valid() -> bool {
+    let value = box_new(42);
+
+    give box_is_valid(value);
+}
+
+proc test_is_alive() -> bool {
+    let value = box_new(42);
+
+    give box_is_alive(value);
+}
+
+proc test_is_owned() -> bool {
+    let value = box_new(42);
+
+    give box_is_owned(value);
+}
+
+proc test_not_moved() -> bool {
+    let value = box_new(42);
+
+    give not box_is_moved(value);
+}
+
+proc test_not_released() -> bool {
+    let value = box_new(42);
+
+    give not box_is_released(value);
+}
+
+proc test_can_read() -> bool {
+    let value = box_new(42);
+
+    give box_can_read(value);
+}
+
+proc test_can_write() -> bool {
+    let value = box_new(42);
+
+    give box_can_write(value);
+}
+
+proc test_state_valid() -> bool {
+    let value = box_new(42);
+
+    give box_state(value)
+        == BoxState.Valid;
+}
+
+proc test_ownership() -> bool {
+    let value = box_new(42);
+
+    give box_ownership(value)
+        == BoxOwnership.Owned;
+}
+
+proc test_access_state() -> bool {
+    let value = box_new(42);
+
+    give box_access_state(value)
+        == BoxAccessState.ReadWrite;
+}
+
+proc test_size() -> bool {
+    let value = box_new(42);
+
+    give box_size(value) > 0;
+}
+
+proc test_align() -> bool {
+    let value = box_new(42);
+
+    give box_align(value) > 0;
+}
+
+proc test_layout() -> bool {
+    let value = box_new(42);
+    let layout = box_layout(value);
+
+    give layout.size > 0
+        and layout.align > 0;
+}
+
+proc test_clone_int() -> bool {
+    let first = box_new(42);
+    let second = box_clone(ref first);
+
+    give *box_get(ref first) == 42
+        and *box_get(ref second) == 42;
+}
+
+proc test_clone_string() -> bool {
+    let first = box_new("Vitte");
+    let second = box_clone(ref first);
+
+    give *box_get(ref second) == "Vitte";
+}
+
+proc test_clone_point() -> bool {
+    let first = box_new(
+        Point {
+            x: 10
+            y: 20
+        }
+    );
+
+    let second = box_clone(
+        ref first
+    );
+
+    give box_get(ref second).x == 10
+        and box_get(ref second).y == 20;
+}
+
+proc test_clone_has_different_allocation() -> bool {
+    let first = box_new(42);
+    let second = box_clone(ref first);
+
+    give box_ptr_ne(
+        first,
+        second
+    );
+}
+
+proc test_clone_independent_mutation() -> bool {
+    let mut first = box_new(
+        Point {
+            x: 1
+            y: 2
+        }
+    );
+
+    let second = box_clone(
+        ref first
+    );
+
+    let point = box_get_mut(
+        ref mut first
+    );
+
+    set point.x = 100;
+
+    give box_get(ref first).x == 100
+        and box_get(ref second).x == 1;
+}
+
+proc test_try_clone() -> bool {
+    let first = box_new(42);
+
+    let result = box_try_clone(
+        ref first
+    );
+
+    pick result {
+        Some(second) {
+            give *box_get(ref second) == 42
+                and box_ptr_ne(
+                    first,
+                    second
+                );
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_pointer_inequality() -> bool {
+    let first = box_new(42);
+    let second = box_new(42);
+
+    give box_ptr_ne(
+        first,
+        second
+    );
+}
+
+proc test_value_equality() -> bool {
+    let first = box_new(42);
+    let second = box_new(42);
+
+    give box_value_eq(
+        ref first,
+        ref second
+    );
+}
+
+proc test_value_inequality() -> bool {
+    let first = box_new(42);
+    let second = box_new(43);
+
+    give box_value_ne(
+        ref first,
+        ref second
+    );
+}
+
+proc test_string_value_equality() -> bool {
+    let first = box_new("Vitte");
+    let second = box_new("Vitte");
+
+    give box_value_eq(
+        ref first,
+        ref second
+    );
+}
+
+proc test_string_value_inequality() -> bool {
+    let first = box_new("Vitte");
+    let second = box_new("Other");
+
+    give box_value_ne(
+        ref first,
+        ref second
+    );
+}
+
+proc test_move() -> bool {
+    let mut source = box_new(42);
+
+    let destination = box_move(
+        ref mut source
+    );
+
+    give box_is_moved(source)
+        and box_is_valid(destination)
+        and *box_get(ref destination) == 42;
+}
+
+proc test_move_preserves_value() -> bool {
+    let mut source = box_new(
+        Point {
+            x: 10
+            y: 20
+        }
+    );
+
+    let destination = box_move(
+        ref mut source
+    );
+
+    give box_get(ref destination).x == 10
+        and box_get(ref destination).y == 20;
+}
+
+proc test_move_changes_source_state() -> bool {
+    let mut source = box_new(42);
+
+    let destination = box_move(
+        ref mut source
+    );
+
+    give box_state(source) == BoxState.Moved
+        and box_state(destination) == BoxState.Valid;
+}
+
+proc test_move_preserves_generation() -> bool {
+    let mut source = box_new(42);
+
+    let before = box_generation(source);
+
+    let destination = box_move(
+        ref mut source
+    );
+
+    give box_generation(destination)
+        == before;
+}
+
+proc test_try_move() -> bool {
+    let mut source = box_new(42);
+
+    let result = box_try_move(
+        ref mut source
+    );
+
+    pick result {
+        Some(destination) {
+            give box_is_moved(source)
+                and *box_get(ref destination) == 42;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_into_inner() -> bool {
+    let value = box_new(42);
+
+    let inner = box_into_inner(value);
+
+    give inner == 42;
+}
+
+proc test_into_inner_string() -> bool {
+    let value = box_new("Vitte");
+
+    give box_into_inner(value)
+        == "Vitte";
+}
+
+proc test_into_inner_point() -> bool {
+    let value = box_new(
+        Point {
+            x: 1
+            y: 2
+        }
+    );
+
+    let point = box_into_inner(value);
+
+    give point.x == 1
+        and point.y == 2;
+}
+
+proc test_try_into_inner() -> bool {
+    let value = box_new(42);
+
+    let result = box_try_into_inner(
+        value
+    );
+
+    pick result {
+        Some(inner) {
+            give inner == 42;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_profile() -> bool {
+    let value = box_new(42);
+
+    let profile = box_profile(
+        value
+    );
+
+    give profile.size > 0
+        and profile.align > 0
+        and profile.alive
+        and profile.owned
+        and not profile.moved
+        and not profile.released
+        and profile.readable
+        and profile.writable
+        and profile.valid;
+}
+
+proc test_profile_valid() -> bool {
+    let value = box_new(42);
+
+    give box_profile_valid(
+        box_profile(value)
+    );
+}
+
+proc test_validation() -> bool {
+    let value = box_new(42);
+
+    let validation = box_validate(
+        value
+    );
+
+    give validation.valid
+        and validation.allocation_valid
+        and validation.state_valid
+        and validation.pointer_valid
+        and validation.layout_valid
+        and validation.ownership_valid;
+}
+
+proc test_invariant() -> bool {
+    let value = box_new(42);
+
+    give box_invariant_holds(
+        value
+    );
+}
+
+proc test_snapshot() -> bool {
+    let value = box_new(42);
+
+    let snapshot = box_snapshot(
+        value
+    );
+
+    give snapshot.size > 0
+        and snapshot.align > 0
+        and snapshot.state == BoxState.Valid
+        and snapshot.generation >= 1
+        and snapshot.revision >= 1;
+}
+
+proc test_snapshot_equal() -> bool {
+    let value = box_new(42);
+
+    let first = box_snapshot(value);
+    let second = box_snapshot(value);
+
+    give box_snapshot_equal(
+        first,
+        second
+    );
+}
+
+proc test_snapshot_changed_after_set() -> bool {
+    let mut value = box_new(42);
+
+    let snapshot = box_snapshot(
+        value
+    );
+
+    box_set(
+        ref mut value,
+        100
+    );
+
+    give box_snapshot_changed(
+        snapshot,
+        value
+    );
+}
+
+proc test_delta_after_set() -> bool {
+    let mut value = box_new(42);
+
+    let before = box_snapshot(value);
+
+    box_set(
+        ref mut value,
+        100
+    );
+
+    let after = box_snapshot(value);
+
+    let delta = box_delta(
+        before,
+        after
+    );
+
+    give delta.changed
+        and delta.revision > 0;
+}
+
+proc test_revision() -> bool {
+    let value = box_new(42);
+
+    give box_revision(value) >= 1;
+}
+
+proc test_generation() -> bool {
+    let value = box_new(42);
+
+    give box_generation(value) >= 1;
+}
+
+proc test_touch() -> bool {
+    let mut value = box_new(42);
+
+    let before = box_revision(value);
+
+    box_touch(
+        ref mut value
+    );
+
+    give box_revision(value) > before;
+}
+
+proc test_advance_generation() -> bool {
+    let mut value = box_new(42);
+
+    let before = box_generation(value);
+
+    let after = box_advance_generation(
+        ref mut value
+    );
+
+    give after > before
+        and box_generation(value) == after;
+}
+
+proc test_release() -> bool {
+    let mut value = box_new(42);
+
+    give box_release(
+        ref mut value
+    )
+    and box_is_released(value);
+}
+
+proc test_release_state() -> bool {
+    let mut value = box_new(42);
+
+    if not box_release(
+        ref mut value
+    ) {
+        give false;
+    }
+
+    give box_state(value) == BoxState.Released
+        and not box_is_alive(value)
+        and not box_is_owned(value);
+}
+
+proc test_release_changes_generation() -> bool {
+    let mut value = box_new(42);
+
+    let before = box_generation(value);
+
+    if not box_release(
+        ref mut value
+    ) {
+        give false;
+    }
+
+    give box_generation(value) > before;
+}
+
+proc test_release_changes_revision() -> bool {
+    let mut value = box_new(42);
+
+    let before = box_revision(value);
+
+    if not box_release(
+        ref mut value
+    ) {
+        give false;
+    }
+
+    give box_revision(value) > before;
+}
+
+proc test_release_twice() -> bool {
+    let mut value = box_new(42);
+
+    let first = box_release(
+        ref mut value
+    );
+
+    let second = box_release(
+        ref mut value
+    );
+
+    give first
+        and not second;
+}
+
+proc test_statistics_empty() -> bool {
+    let statistics = box_statistics_empty();
+
+    give statistics.created == 0
+        and statistics.destroyed == 0
+        and statistics.reads == 0
+        and statistics.writes == 0
+        and statistics.replacements == 0
+        and statistics.moves == 0
+        and statistics.raw_reads == 0
+        and statistics.validations == 0
+        and statistics.failures == 0;
+}
+
+proc test_statistics_total_empty() -> bool {
+    let statistics = box_statistics_empty();
+
+    give box_statistics_total(
+        statistics
+    ) == 0;
+}
+
+proc test_statistics_reset() -> bool {
+    let mut statistics = box_statistics_empty();
+
+    set statistics.created = 10;
+    set statistics.reads = 20;
+
+    box_statistics_reset(
+        ref mut statistics
+    );
+
+    give statistics.created == 0
+        and statistics.reads == 0;
+}
+
+proc test_state_names() -> bool {
+    give box_state_name(
+        BoxState.Valid
+    ) == "valid"
+        and box_state_name(
+            BoxState.Moved
+        ) == "moved"
+        and box_state_name(
+            BoxState.Released
+        ) == "released"
+        and box_state_name(
+            BoxState.Invalid
+        ) == "invalid";
+}
+
+proc test_ownership_names() -> bool {
+    give box_ownership_name(
+        BoxOwnership.Owned
+    ) == "owned"
+        and box_ownership_name(
+            BoxOwnership.Moved
+        ) == "moved"
+        and box_ownership_name(
+            BoxOwnership.Released
+        ) == "released";
+}
+
+proc test_access_names() -> bool {
+    give box_access_state_name(
+        BoxAccessState.ReadWrite
+    ) == "read-write"
+        and box_access_state_name(
+            BoxAccessState.ReadOnly
+        ) == "read-only"
+        and box_access_state_name(
+            BoxAccessState.Invalid
+        ) == "invalid";
+}
+
+proc test_many_boxes() -> bool {
+    let first = box_new(1);
+    let second = box_new(2);
+    let third = box_new(3);
+    let fourth = box_new(4);
+    let fifth = box_new(5);
+
+    give *box_get(ref first) == 1
+        and *box_get(ref second) == 2
+        and *box_get(ref third) == 3
+        and *box_get(ref fourth) == 4
+        and *box_get(ref fifth) == 5;
+}
+
+proc test_many_mutations() -> bool {
+    let mut value = box_new(0);
+
+    let index: int = 1;
+
+    while index <= 1000 {
+        box_set(
+            ref mut value,
+            index
+        );
+
+        if *box_get(ref value)
+            != index
+        {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give box_is_valid(value);
+}
+
+proc test_many_replacements() -> bool {
+    let mut value = box_new(0);
+
+    let index: int = 1;
+
+    while index <= 1000 {
+        let previous = box_replace(
+            ref mut value,
+            index
+        );
+
+        if previous != index - 1 {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give *box_get(ref value) == 1000;
+}
+
+proc test_many_swaps() -> bool {
+    let mut first = box_new(1);
+    let mut second = box_new(2);
+
+    let index: usize = 0;
+
+    while index < 1000 {
+        box_swap(
+            ref mut first,
+            ref mut second
+        );
+
+        set index = index + 1;
+    }
+
+    give *box_get(ref first) == 1
+        and *box_get(ref second) == 2;
+}
+
+proc test_many_clones() -> bool {
+    let source = box_new(42);
+
+    let index: usize = 0;
+
+    while index < 1000 {
+        let clone = box_clone(
+            ref source
+        );
+
+        if *box_get(ref clone) != 42 {
+            give false;
+        }
+
+        if not box_ptr_ne(
+            source,
+            clone
+        ) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give box_is_valid(source);
+}
+
+proc test_many_create_release() -> bool {
+    let index: usize = 0;
+
+    while index < 1000 {
+        let mut value = box_new(42);
+
+        if not box_release(
+            ref mut value
+        ) {
+            give false;
+        }
+
+        if not box_is_released(
+            value
+        ) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give true;
+}
+
+proc test_independent_boxes() -> bool {
+    let mut first = box_new(1);
+    let mut second = box_new(2);
+
+    box_set(
+        ref mut first,
+        100
+    );
+
+    give *box_get(ref first) == 100
+        and *box_get(ref second) == 2
+        and box_ptr_ne(
+            first,
+            second
+        );
+}
+
+proc test_independent_clones() -> bool {
+    let source = box_new(
+        Point {
+            x: 1
+            y: 2
+        }
+    );
+
+    let mut first = box_clone(
+        ref source
+    );
+
+    let mut second = box_clone(
+        ref source
+    );
+
+    let a = box_get_mut(
+        ref mut first
+    );
+
+    let b = box_get_mut(
+        ref mut second
+    );
+
+    set a.x = 10;
+    set b.x = 20;
+
+    give box_get(ref source).x == 1
+        and box_get(ref first).x == 10
+        and box_get(ref second).x == 20;
+}
+
+proc run_basic_tests() -> bool {
+    give test_new_int()
+        and test_new_zero()
+        and test_new_negative()
+        and test_new_bool_true()
+        and test_new_bool_false()
+        and test_new_string()
+        and test_new_empty_string()
+        and test_new_point()
+        and test_new_user()
+
+        and test_try_new_int()
+        and test_try_new_string()
+
+        and test_get()
+        and test_value_alias()
+        and test_deref()
+        and test_get_point()
+
+        and test_get_mut()
+        and test_value_mut()
+        and test_deref_mut()
+        and test_mutate_point()
+        and test_mutate_user()
+
+        and test_replace_int()
+        and test_replace_string()
+        and test_replace_point()
+
+        and test_set_int()
+        and test_set_string()
+        and test_set_point()
+
+        and test_swap_int()
+        and test_swap_string()
+        and test_swap_point()
+
+        and test_is_valid()
+        and test_is_alive()
+        and test_is_owned()
+        and test_not_moved()
+        and test_not_released()
+        and test_can_read()
+        and test_can_write()
+        and test_state_valid()
+        and test_ownership()
+        and test_access_state()
+
+        and test_size()
+        and test_align()
+        and test_layout()
+
+        and test_clone_int()
+        and test_clone_string()
+        and test_clone_point()
+        and test_clone_has_different_allocation()
+        and test_clone_independent_mutation()
+        and test_try_clone()
+
+        and test_pointer_inequality()
+        and test_value_equality()
+        and test_value_inequality()
+        and test_string_value_equality()
+        and test_string_value_inequality()
+
+        and test_move()
+        and test_move_preserves_value()
+        and test_move_changes_source_state()
+        and test_move_preserves_generation()
+        and test_try_move()
+
+        and test_into_inner()
+        and test_into_inner_string()
+        and test_into_inner_point()
+        and test_try_into_inner()
+
+        and test_profile()
+        and test_profile_valid()
+        and test_validation()
+        and test_invariant()
+
+        and test_snapshot()
+        and test_snapshot_equal()
+        and test_snapshot_changed_after_set()
+        and test_delta_after_set()
+
+        and test_revision()
+        and test_generation()
+        and test_touch()
+        and test_advance_generation()
+
+        and test_release()
+        and test_release_state()
+        and test_release_changes_generation()
+        and test_release_changes_revision()
+        and test_release_twice()
+
+        and test_statistics_empty()
+        and test_statistics_total_empty()
+        and test_statistics_reset()
+
+        and test_state_names()
+        and test_ownership_names()
+        and test_access_names()
+
+        and test_many_boxes()
+        and test_many_mutations()
+        and test_many_replacements()
+        and test_many_swaps()
+        and test_many_clones()
+        and test_many_create_release()
+
+        and test_independent_boxes()
+        and test_independent_clones();
+}
+
+proc main() -> int {
+    if run_basic_tests() {
+        give 0;
+    }
+
+    give 1;
+}

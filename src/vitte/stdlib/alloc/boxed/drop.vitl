@@ -1,0 +1,1015 @@
+space vitte/stdlib/alloc/boxed/drop
+
+export *
+
+use src/vitte/stdlib/alloc/boxed/boxed as boxed
+use src/vitte/stdlib/alloc/boxed/alloc as box_alloc
+use src/vitte/stdlib/alloc/boxed/core as box_core
+use src/vitte/stdlib/alloc/allocator as alloc_allocator
+
+pick BoxDropState {
+    Ready,
+    Dropped,
+    Skipped,
+    Failed,
+    Invalid
+}
+
+pick BoxDropKind {
+    Value,
+    Allocation,
+    ValueAndAllocation,
+    Forget
+}
+
+pick BoxDropFailure {
+    None,
+    InvalidBox,
+    AlreadyMoved,
+    AlreadyReleased,
+    InvalidAllocation,
+    DropFailed,
+    DeallocationFailed,
+    RuntimeFailure
+}
+
+form BoxDropSnapshot {
+    state: boxed.BoxState
+
+    size: usize
+    align: usize
+
+    generation: u64
+    revision: u64
+}
+
+form BoxDropResult {
+    kind: BoxDropKind
+
+    state: BoxDropState
+    failure: BoxDropFailure
+
+    before: BoxDropSnapshot
+    after: BoxDropSnapshot
+
+    value_dropped: bool
+    memory_released: bool
+
+    success: bool
+}
+
+form BoxDropValidation {
+    valid: bool
+
+    state_valid: bool
+    allocation_valid: bool
+    ownership_valid: bool
+    droppable: bool
+}
+
+form BoxDropStatistics {
+    attempts: u64
+    successes: u64
+    failures: u64
+    skipped: u64
+
+    values_dropped: u64
+    allocations_released: u64
+
+    moved_rejections: u64
+    released_rejections: u64
+    invalid_rejections: u64
+}
+
+// -----------------------------------------------------------------------------
+// Snapshot
+// -----------------------------------------------------------------------------
+
+proc box_drop_snapshot<T>(
+    value: boxed.Box<T>
+) -> BoxDropSnapshot {
+    give BoxDropSnapshot {
+        state:
+            value.state,
+
+        size:
+            value.allocation.layout.size,
+
+        align:
+            value.allocation.layout.align,
+
+        generation:
+            value.generation,
+
+        revision:
+            value.revision
+    };
+}
+
+proc box_drop_snapshot_equal(
+    left: BoxDropSnapshot,
+    right: BoxDropSnapshot
+) -> bool {
+    give left.state == right.state
+        and left.size == right.size
+        and left.align == right.align
+        and left.generation == right.generation
+        and left.revision == right.revision;
+}
+
+proc box_drop_snapshot_changed(
+    left: BoxDropSnapshot,
+    right: BoxDropSnapshot
+) -> bool {
+    give not box_drop_snapshot_equal(
+        left,
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+proc box_drop_validate<T>(
+    value: boxed.Box<T>
+) -> BoxDropValidation {
+    let state_valid =
+        value.state
+            != boxed.BoxState.Invalid;
+
+    let allocation_valid =
+        if value.state
+            == boxed.BoxState.Valid
+        {
+            box_alloc.box_allocation_is_valid(
+                value.allocation
+            )
+        } else {
+            true
+        };
+
+    let ownership_valid =
+        boxed.box_ownership<T>(
+            value
+        )
+        == boxed.BoxOwnership.Owned
+        or value.state
+            != boxed.BoxState.Valid;
+
+    let droppable =
+        value.state
+            == boxed.BoxState.Valid;
+
+    give BoxDropValidation {
+        valid:
+            state_valid
+            and allocation_valid
+            and ownership_valid,
+
+        state_valid:
+            state_valid,
+
+        allocation_valid:
+            allocation_valid,
+
+        ownership_valid:
+            ownership_valid,
+
+        droppable:
+            droppable
+    };
+}
+
+proc box_can_drop<T>(
+    value: boxed.Box<T>
+) -> bool {
+    give box_drop_validate<T>(
+        value
+    ).droppable;
+}
+
+// -----------------------------------------------------------------------------
+// Result constructors
+// -----------------------------------------------------------------------------
+
+proc box_drop_result_success(
+    kind: BoxDropKind,
+    before: BoxDropSnapshot,
+    after: BoxDropSnapshot,
+    value_dropped: bool,
+    memory_released: bool
+) -> BoxDropResult {
+    give BoxDropResult {
+        kind:
+            kind,
+
+        state:
+            BoxDropState.Dropped,
+
+        failure:
+            BoxDropFailure.None,
+
+        before:
+            before,
+
+        after:
+            after,
+
+        value_dropped:
+            value_dropped,
+
+        memory_released:
+            memory_released,
+
+        success:
+            true
+    };
+}
+
+proc box_drop_result_failure(
+    kind: BoxDropKind,
+    snapshot: BoxDropSnapshot,
+    failure: BoxDropFailure
+) -> BoxDropResult {
+    give BoxDropResult {
+        kind:
+            kind,
+
+        state:
+            BoxDropState.Failed,
+
+        failure:
+            failure,
+
+        before:
+            snapshot,
+
+        after:
+            snapshot,
+
+        value_dropped:
+            false,
+
+        memory_released:
+            false,
+
+        success:
+            false
+    };
+}
+
+proc box_drop_result_skipped(
+    kind: BoxDropKind,
+    snapshot: BoxDropSnapshot,
+    failure: BoxDropFailure
+) -> BoxDropResult {
+    give BoxDropResult {
+        kind:
+            kind,
+
+        state:
+            BoxDropState.Skipped,
+
+        failure:
+            failure,
+
+        before:
+            snapshot,
+
+        after:
+            snapshot,
+
+        value_dropped:
+            false,
+
+        memory_released:
+            false,
+
+        success:
+            true
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Drop value only
+// -----------------------------------------------------------------------------
+
+proc box_drop_value<T>(
+    value: ref mut boxed.Box<T>
+) -> BoxDropResult {
+    let before =
+        box_drop_snapshot<T>(
+            *value
+        );
+
+    if value.state
+        == boxed.BoxState.Moved
+    {
+        give box_drop_result_skipped(
+            BoxDropKind.Value,
+            before,
+            BoxDropFailure.AlreadyMoved
+        );
+    }
+
+    if value.state
+        == boxed.BoxState.Released
+    {
+        give box_drop_result_skipped(
+            BoxDropKind.Value,
+            before,
+            BoxDropFailure.AlreadyReleased
+        );
+    }
+
+    if not box_can_drop<T>(
+        *value
+    ) {
+        give box_drop_result_failure(
+            BoxDropKind.Value,
+            before,
+            BoxDropFailure.InvalidBox
+        );
+    }
+
+    compiler_drop_in_place<T>(
+        boxed.box_get_mut<T>(
+            value
+        )
+    );
+
+    set value.revision =
+        value.revision + 1;
+
+    let after =
+        box_drop_snapshot<T>(
+            *value
+        );
+
+    give box_drop_result_success(
+        BoxDropKind.Value,
+        before,
+        after,
+        true,
+        false
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Release allocation only
+// -----------------------------------------------------------------------------
+
+proc box_release_allocation<T>(
+    value: ref mut boxed.Box<T>
+) -> BoxDropResult {
+    let before =
+        box_drop_snapshot<T>(
+            *value
+        );
+
+    if value.state
+        == boxed.BoxState.Moved
+    {
+        give box_drop_result_skipped(
+            BoxDropKind.Allocation,
+            before,
+            BoxDropFailure.AlreadyMoved
+        );
+    }
+
+    if value.state
+        == boxed.BoxState.Released
+    {
+        give box_drop_result_skipped(
+            BoxDropKind.Allocation,
+            before,
+            BoxDropFailure.AlreadyReleased
+        );
+    }
+
+    if not box_alloc.box_allocation_is_valid(
+        value.allocation
+    ) {
+        give box_drop_result_failure(
+            BoxDropKind.Allocation,
+            before,
+            BoxDropFailure.InvalidAllocation
+        );
+    }
+
+    let allocator =
+        boxed.box_allocator();
+
+    if not box_alloc.box_deallocate(
+        ref mut allocator,
+        value.allocation
+    ) {
+        give box_drop_result_failure(
+            BoxDropKind.Allocation,
+            before,
+            BoxDropFailure.DeallocationFailed
+        );
+    }
+
+    set value.state =
+        boxed.BoxState.Released;
+
+    set value.generation =
+        value.generation + 1;
+
+    set value.revision =
+        value.revision + 1;
+
+    let after =
+        box_drop_snapshot<T>(
+            *value
+        );
+
+    give box_drop_result_success(
+        BoxDropKind.Allocation,
+        before,
+        after,
+        false,
+        true
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Full drop
+// -----------------------------------------------------------------------------
+
+proc box_drop<T>(
+    value: ref mut boxed.Box<T>
+) -> BoxDropResult {
+    let before =
+        box_drop_snapshot<T>(
+            *value
+        );
+
+    if value.state
+        == boxed.BoxState.Moved
+    {
+        give box_drop_result_skipped(
+            BoxDropKind.ValueAndAllocation,
+            before,
+            BoxDropFailure.AlreadyMoved
+        );
+    }
+
+    if value.state
+        == boxed.BoxState.Released
+    {
+        give box_drop_result_skipped(
+            BoxDropKind.ValueAndAllocation,
+            before,
+            BoxDropFailure.AlreadyReleased
+        );
+    }
+
+    let validation =
+        box_drop_validate<T>(
+            *value
+        );
+
+    if not validation.valid {
+        give box_drop_result_failure(
+            BoxDropKind.ValueAndAllocation,
+            before,
+            BoxDropFailure.InvalidBox
+        );
+    }
+
+    compiler_drop_in_place<T>(
+        boxed.box_get_mut<T>(
+            value
+        )
+    );
+
+    let allocator =
+        boxed.box_allocator();
+
+    if not box_alloc.box_deallocate(
+        ref mut allocator,
+        value.allocation
+    ) {
+        give box_drop_result_failure(
+            BoxDropKind.ValueAndAllocation,
+            before,
+            BoxDropFailure.DeallocationFailed
+        );
+    }
+
+    set value.state =
+        boxed.BoxState.Released;
+
+    set value.generation =
+        value.generation + 1;
+
+    set value.revision =
+        value.revision + 1;
+
+    let after =
+        box_drop_snapshot<T>(
+            *value
+        );
+
+    give box_drop_result_success(
+        BoxDropKind.ValueAndAllocation,
+        before,
+        after,
+        true,
+        true
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Try drop
+// -----------------------------------------------------------------------------
+
+proc box_try_drop<T>(
+    value: ref mut boxed.Box<T>
+) -> bool {
+    give box_drop<T>(
+        value
+    ).success;
+}
+
+proc box_drop_if_alive<T>(
+    value: ref mut boxed.Box<T>
+) -> BoxDropResult {
+    if value.state
+        != boxed.BoxState.Valid
+    {
+        give box_drop_result_skipped(
+            BoxDropKind.ValueAndAllocation,
+            box_drop_snapshot<T>(*value),
+            if value.state == boxed.BoxState.Moved {
+                BoxDropFailure.AlreadyMoved
+            } else {
+                BoxDropFailure.AlreadyReleased
+            }
+        );
+    }
+
+    give box_drop<T>(
+        value
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Forget
+// -----------------------------------------------------------------------------
+
+proc box_forget<T>(
+    value: ref mut boxed.Box<T>
+) -> BoxDropResult {
+    let before =
+        box_drop_snapshot<T>(
+            *value
+        );
+
+    if value.state
+        != boxed.BoxState.Valid
+    {
+        give box_drop_result_skipped(
+            BoxDropKind.Forget,
+            before,
+            if value.state == boxed.BoxState.Moved {
+                BoxDropFailure.AlreadyMoved
+            } else {
+                BoxDropFailure.AlreadyReleased
+            }
+        );
+    }
+
+    compiler_forget_allocation(
+        value.allocation
+    );
+
+    set value.state =
+        boxed.BoxState.Moved;
+
+    set value.revision =
+        value.revision + 1;
+
+    let after =
+        box_drop_snapshot<T>(
+            *value
+        );
+
+    give box_drop_result_success(
+        BoxDropKind.Forget,
+        before,
+        after,
+        false,
+        false
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Result predicates
+// -----------------------------------------------------------------------------
+
+proc box_drop_succeeded(
+    result: BoxDropResult
+) -> bool {
+    give result.success;
+}
+
+proc box_drop_failed(
+    result: BoxDropResult
+) -> bool {
+    give not result.success;
+}
+
+proc box_drop_was_skipped(
+    result: BoxDropResult
+) -> bool {
+    give result.state
+        == BoxDropState.Skipped;
+}
+
+proc box_drop_value_was_dropped(
+    result: BoxDropResult
+) -> bool {
+    give result.value_dropped;
+}
+
+proc box_drop_memory_was_released(
+    result: BoxDropResult
+) -> bool {
+    give result.memory_released;
+}
+
+proc box_drop_fully_completed(
+    result: BoxDropResult
+) -> bool {
+    give result.success
+        and result.value_dropped
+        and result.memory_released;
+}
+
+proc box_drop_changed(
+    result: BoxDropResult
+) -> bool {
+    give box_drop_snapshot_changed(
+        result.before,
+        result.after
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Result validation
+// -----------------------------------------------------------------------------
+
+proc box_drop_result_valid(
+    result: BoxDropResult
+) -> bool {
+    if result.state
+        == BoxDropState.Dropped
+    {
+        if not result.success {
+            give false;
+        }
+    }
+
+    if result.state
+        == BoxDropState.Failed
+    {
+        if result.success {
+            give false;
+        }
+    }
+
+    if result.kind
+        == BoxDropKind.ValueAndAllocation
+        and result.success
+        and result.state
+            == BoxDropState.Dropped
+    {
+        give result.value_dropped
+            and result.memory_released;
+    }
+
+    if result.kind
+        == BoxDropKind.Value
+        and result.success
+        and result.state
+            == BoxDropState.Dropped
+    {
+        give result.value_dropped
+            and not result.memory_released;
+    }
+
+    if result.kind
+        == BoxDropKind.Allocation
+        and result.success
+        and result.state
+            == BoxDropState.Dropped
+    {
+        give not result.value_dropped
+            and result.memory_released;
+    }
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Core transition
+// -----------------------------------------------------------------------------
+
+proc box_drop_core_transition(
+    result: BoxDropResult
+) -> box_core.BoxCoreTransitionKind {
+    if not result.success {
+        give box_core.BoxCoreTransitionKind.None;
+    }
+
+    if result.state
+        == BoxDropState.Skipped
+    {
+        give box_core.BoxCoreTransitionKind.None;
+    }
+
+    pick result.kind {
+        BoxDropKind.Value {
+            give box_core.BoxCoreTransitionKind.Write;
+        }
+
+        BoxDropKind.Allocation {
+            give box_core.BoxCoreTransitionKind.Release;
+        }
+
+        BoxDropKind.ValueAndAllocation {
+            give box_core.BoxCoreTransitionKind.Release;
+        }
+
+        BoxDropKind.Forget {
+            give box_core.BoxCoreTransitionKind.Move;
+        }
+    }
+
+    give box_core.BoxCoreTransitionKind.None;
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc box_drop_statistics_empty()
+    -> BoxDropStatistics
+{
+    give BoxDropStatistics {
+        attempts: 0,
+        successes: 0,
+        failures: 0,
+        skipped: 0,
+
+        values_dropped: 0,
+        allocations_released: 0,
+
+        moved_rejections: 0,
+        released_rejections: 0,
+        invalid_rejections: 0
+    };
+}
+
+proc box_drop_statistics_record(
+    statistics: ref mut BoxDropStatistics,
+    result: BoxDropResult
+) {
+    set statistics.attempts =
+        statistics.attempts + 1;
+
+    if result.state
+        == BoxDropState.Skipped
+    {
+        set statistics.skipped =
+            statistics.skipped + 1;
+    } else if result.success {
+        set statistics.successes =
+            statistics.successes + 1;
+    } else {
+        set statistics.failures =
+            statistics.failures + 1;
+    }
+
+    if result.value_dropped {
+        set statistics.values_dropped =
+            statistics.values_dropped + 1;
+    }
+
+    if result.memory_released {
+        set statistics.allocations_released =
+            statistics.allocations_released + 1;
+    }
+
+    pick result.failure {
+        BoxDropFailure.AlreadyMoved {
+            set statistics.moved_rejections =
+                statistics.moved_rejections + 1;
+        }
+
+        BoxDropFailure.AlreadyReleased {
+            set statistics.released_rejections =
+                statistics.released_rejections + 1;
+        }
+
+        BoxDropFailure.InvalidBox
+        | BoxDropFailure.InvalidAllocation {
+            set statistics.invalid_rejections =
+                statistics.invalid_rejections + 1;
+        }
+
+        _ {}
+    }
+}
+
+proc box_drop_statistics_total(
+    statistics: BoxDropStatistics
+) -> u64 {
+    give statistics.attempts;
+}
+
+proc box_drop_statistics_reset(
+    statistics: ref mut BoxDropStatistics
+) {
+    set *statistics =
+        box_drop_statistics_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc box_drop_state_name(
+    state: BoxDropState
+) -> string {
+    pick state {
+        BoxDropState.Ready {
+            give "ready";
+        }
+
+        BoxDropState.Dropped {
+            give "dropped";
+        }
+
+        BoxDropState.Skipped {
+            give "skipped";
+        }
+
+        BoxDropState.Failed {
+            give "failed";
+        }
+
+        BoxDropState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+proc box_drop_kind_name(
+    kind: BoxDropKind
+) -> string {
+    pick kind {
+        BoxDropKind.Value {
+            give "value";
+        }
+
+        BoxDropKind.Allocation {
+            give "allocation";
+        }
+
+        BoxDropKind.ValueAndAllocation {
+            give "value-and-allocation";
+        }
+
+        BoxDropKind.Forget {
+            give "forget";
+        }
+    }
+
+    give "value-and-allocation";
+}
+
+proc box_drop_failure_name(
+    failure: BoxDropFailure
+) -> string {
+    pick failure {
+        BoxDropFailure.None {
+            give "none";
+        }
+
+        BoxDropFailure.InvalidBox {
+            give "invalid-box";
+        }
+
+        BoxDropFailure.AlreadyMoved {
+            give "already-moved";
+        }
+
+        BoxDropFailure.AlreadyReleased {
+            give "already-released";
+        }
+
+        BoxDropFailure.InvalidAllocation {
+            give "invalid-allocation";
+        }
+
+        BoxDropFailure.DropFailed {
+            give "drop-failed";
+        }
+
+        BoxDropFailure.DeallocationFailed {
+            give "deallocation-failed";
+        }
+
+        BoxDropFailure.RuntimeFailure {
+            give "runtime-failure";
+        }
+    }
+
+    give "runtime-failure";
+}
+
+// -----------------------------------------------------------------------------
+// Drop model
+// -----------------------------------------------------------------------------
+//
+// Box<T>
+//    |
+//    v
+// +---------------------+
+// | heap allocation     |
+// |---------------------|
+// | T                   |
+// +---------------------+
+//
+// Normal destruction:
+//
+//     Box<T>
+//       |
+//       | 1. drop T
+//       v
+//     destructor(T)
+//       |
+//       | 2. release allocation
+//       v
+//     allocator
+//       |
+//       v
+//     Released
+//
+// Required invariant:
+//
+//     T is destroyed exactly once
+//     allocation is released exactly once
+//
+// Moved Box:
+//
+//     source --move--> destination
+//
+//     source.state = Moved
+//
+// The moved source MUST NOT:
+//
+//     drop T
+//     free allocation
+//     read T
+//     write T
+//
+// Forget:
+//
+//     Box<T>
+//        |
+//        | forget
+//        v
+//     ownership intentionally abandoned
+//
+// Forget performs neither:
+//
+//     drop(T)
+//     deallocate
+//
+// It therefore intentionally leaks the owned allocation and is intended only
+// for low-level ownership transfer / runtime / FFI use.
+//
+// Separation:
+//
+//     drop.vitl
+//         destruction lifecycle
+//
+//     alloc.vitl
+//         allocation/deallocation primitives
+//
+//     boxed.vitl
+//         Box<T> public ownership API
+//
+//     core.vitl
+//         pure ownership/state model
+//
+//     raw.vitl
+//         raw pointer ownership transfer

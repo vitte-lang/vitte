@@ -1,0 +1,1165 @@
+space vitte/stdlib/alloc/bump/bump
+
+export *
+
+use src/vitte/stdlib/alloc/bump/alloc as bump_alloc
+use src/vitte/stdlib/alloc/bump/block as bump_block
+use src/vitte/stdlib/alloc/allocator as alloc_allocator
+use src/vitte/stdlib/core/option as core_option
+
+const BUMP_DEFAULT_CAPACITY: usize = 4096;
+const BUMP_DEFAULT_ALIGN: usize = 8;
+
+pick BumpState {
+    Empty,
+    Active,
+    Full,
+    Released,
+    Invalid
+}
+
+form Bump {
+    block: bump_block.BumpBlock
+
+    name: string
+
+    state: BumpState
+
+    generation: u64
+    revision: u64
+}
+
+form BumpMark {
+    offset: usize
+    generation: u64
+}
+
+form BumpProfile {
+    name: string
+
+    used: usize
+    capacity: usize
+    remaining: usize
+
+    utilization: f64
+
+    state: BumpState
+
+    empty: bool
+    active: bool
+    full: bool
+    released: bool
+    valid: bool
+
+    generation: u64
+    revision: u64
+}
+
+form BumpValidation {
+    valid: bool
+
+    block_valid: bool
+    state_valid: bool
+    generation_valid: bool
+    accounting_valid: bool
+}
+
+form BumpSnapshot {
+    used: usize
+    capacity: usize
+
+    state: BumpState
+
+    generation: u64
+    revision: u64
+}
+
+form BumpDelta {
+    used: int
+    generation: int
+    revision: int
+
+    state_changed: bool
+    changed: bool
+}
+
+form BumpStatistics {
+    allocations: u64
+    failures: u64
+
+    bytes_allocated: usize
+    bytes_padding: usize
+
+    marks: u64
+    rewinds: u64
+    resets: u64
+    releases: u64
+}
+
+// -----------------------------------------------------------------------------
+// Construction
+// -----------------------------------------------------------------------------
+
+proc bump_new(
+    name: string,
+    capacity: usize
+) -> Bump {
+    let allocator =
+        alloc_allocator.allocator(
+            name,
+            alloc_allocator.GrowthPolicy.Exact
+        );
+
+    let layout_value =
+        alloc_allocator.layout(
+            capacity,
+            BUMP_DEFAULT_ALIGN
+        );
+
+    let allocation =
+        alloc_allocator.allocator_allocate(
+            ref mut allocator,
+            layout_value
+        );
+
+    if is_none<alloc_allocator.Allocation>(
+        allocation
+    ) {
+        give compiler_bump_allocation_failure();
+    }
+
+    let block =
+        bump_block.bump_block_new(
+            unwrap<alloc_allocator.Allocation>(
+                allocation
+            ),
+            0
+        );
+
+    give Bump {
+        block: block,
+        name: name,
+
+        state: BumpState.Empty,
+
+        generation: 1,
+        revision: 1
+    };
+}
+
+proc bump_default(
+    name: string
+) -> Bump {
+    give bump_new(
+        name,
+        BUMP_DEFAULT_CAPACITY
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Accessors
+// -----------------------------------------------------------------------------
+
+proc bump_name(
+    value: Bump
+) -> string {
+    give value.name;
+}
+
+proc bump_used(
+    value: Bump
+) -> usize {
+    give bump_block.bump_block_used(
+        value.block
+    );
+}
+
+proc bump_capacity(
+    value: Bump
+) -> usize {
+    give bump_block.bump_block_capacity(
+        value.block
+    );
+}
+
+proc bump_remaining(
+    value: Bump
+) -> usize {
+    give bump_block.bump_block_remaining(
+        value.block
+    );
+}
+
+proc bump_generation(
+    value: Bump
+) -> u64 {
+    give value.generation;
+}
+
+proc bump_revision(
+    value: Bump
+) -> u64 {
+    give value.revision;
+}
+
+// -----------------------------------------------------------------------------
+// State
+// -----------------------------------------------------------------------------
+
+proc bump_state(
+    value: Bump
+) -> BumpState {
+    if value.state == BumpState.Released {
+        give BumpState.Released;
+    }
+
+    if not bump_block.bump_block_is_valid(
+        value.block
+    ) {
+        give BumpState.Invalid;
+    }
+
+    if bump_used(value) == 0 {
+        give BumpState.Empty;
+    }
+
+    if bump_remaining(value) == 0 {
+        give BumpState.Full;
+    }
+
+    give BumpState.Active;
+}
+
+proc bump_is_empty(
+    value: Bump
+) -> bool {
+    give bump_state(value)
+        == BumpState.Empty;
+}
+
+proc bump_is_active(
+    value: Bump
+) -> bool {
+    let state = bump_state(value);
+
+    give state == BumpState.Empty
+        or state == BumpState.Active;
+}
+
+proc bump_is_full(
+    value: Bump
+) -> bool {
+    give bump_state(value)
+        == BumpState.Full;
+}
+
+proc bump_is_released(
+    value: Bump
+) -> bool {
+    give bump_state(value)
+        == BumpState.Released;
+}
+
+proc bump_is_valid(
+    value: Bump
+) -> bool {
+    give bump_state(value)
+        != BumpState.Invalid;
+}
+
+// -----------------------------------------------------------------------------
+// Allocation
+// -----------------------------------------------------------------------------
+
+proc bump_alloc_request(
+    value: ref mut Bump,
+    request: bump_alloc.BumpAllocationRequest
+) -> bump_alloc.BumpAllocationResult {
+    if (*value).state == BumpState.Released {
+        give bump_alloc.bump_allocation_result_failure(
+            request,
+            bump_alloc.BumpAllocationFailure.InvalidPointer
+        );
+    }
+
+    let result =
+        bump_block.bump_block_allocate_request(
+            &mut ((*value).block),
+            request
+        );
+
+    if result.success {
+        set (*value).state =
+            if bump_block.bump_block_is_full(
+                (*value).block
+            ) {
+                BumpState.Full
+            } else {
+                BumpState.Active
+            };
+
+        set (*value).revision =
+            (*value).revision + 1;
+    }
+
+    give result;
+}
+
+proc bump_alloc_bytes(
+    value: ref mut Bump,
+    size: usize,
+    align: usize
+) -> Option<alloc_allocator.Allocation> {
+    let result =
+        bump_alloc_request(
+            value,
+            bump_alloc.bump_allocation_request_bytes(
+                size,
+                align
+            )
+        );
+
+    give result.allocation;
+}
+
+proc bump_alloc_zeroed(
+    value: ref mut Bump,
+    size: usize,
+    align: usize
+) -> Option<alloc_allocator.Allocation> {
+    let result =
+        bump_alloc_request(
+            value,
+            bump_alloc.bump_allocation_request_zeroed(
+                size,
+                align
+            )
+        );
+
+    give result.allocation;
+}
+
+proc bump_alloc_value<T>(
+    value: ref mut Bump
+) -> Option<alloc_allocator.Allocation> {
+    let result =
+        bump_alloc_request(
+            value,
+            bump_alloc.bump_allocation_request_value<T>()
+        );
+
+    give result.allocation;
+}
+
+proc bump_alloc_array<T>(
+    value: ref mut Bump,
+    count: usize
+) -> Option<alloc_allocator.Allocation> {
+    let result =
+        bump_alloc_request(
+            value,
+            bump_alloc.bump_allocation_request_array<T>(
+                count
+            )
+        );
+
+    give result.allocation;
+}
+
+// -----------------------------------------------------------------------------
+// Emplace
+// -----------------------------------------------------------------------------
+
+proc bump_emplace<T>(
+    value: ref mut Bump,
+    item: T
+) -> Option<ref mut T> {
+    let allocation =
+        bump_alloc_value<T>(
+            value
+        );
+
+    if is_none<alloc_allocator.Allocation>(
+        allocation
+    ) {
+        give none<ref mut T>();
+    }
+
+    let target =
+        compiler_allocation_as_mut<T>(
+            unwrap<alloc_allocator.Allocation>(
+                allocation
+            )
+        );
+
+    set *target = item;
+
+    give some<ref mut T>(
+        target
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Copy
+// -----------------------------------------------------------------------------
+
+proc bump_copy<T>(
+    value: ref mut Bump,
+    source: ref T
+) -> Option<ref mut T> {
+    let allocation =
+        bump_alloc_value<T>(
+            value
+        );
+
+    if is_none<alloc_allocator.Allocation>(
+        allocation
+    ) {
+        give none<ref mut T>();
+    }
+
+    let target =
+        compiler_allocation_as_mut<T>(
+            unwrap<alloc_allocator.Allocation>(
+                allocation
+            )
+        );
+
+    compiler_copy_value<T>(
+        target,
+        source
+    );
+
+    give some<ref mut T>(
+        target
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Fit checks
+// -----------------------------------------------------------------------------
+
+proc bump_can_fit(
+    value: Bump,
+    size: usize,
+    align: usize
+) -> bool {
+    give bump_block.bump_block_can_fit(
+        value.block,
+        size,
+        align
+    );
+}
+
+proc bump_can_fit_request(
+    value: Bump,
+    request: bump_alloc.BumpAllocationRequest
+) -> bool {
+    give bump_block.bump_block_can_fit_request(
+        value.block,
+        request
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Marks
+// -----------------------------------------------------------------------------
+
+proc bump_mark(
+    value: Bump
+) -> BumpMark {
+    give BumpMark {
+        offset:
+            bump_used(value),
+
+        generation:
+            value.generation
+    };
+}
+
+proc bump_mark_is_valid(
+    value: Bump,
+    mark: BumpMark
+) -> bool {
+    give mark.generation
+        == value.generation
+        and mark.offset
+            <= bump_used(value);
+}
+
+proc bump_bytes_since_mark(
+    value: Bump,
+    mark: BumpMark
+) -> usize {
+    if not bump_mark_is_valid(
+        value,
+        mark
+    ) {
+        give 0;
+    }
+
+    give bump_used(value)
+        - mark.offset;
+}
+
+// -----------------------------------------------------------------------------
+// Rewind
+// -----------------------------------------------------------------------------
+
+proc bump_rewind(
+    value: ref mut Bump,
+    mark: BumpMark
+) -> bool {
+    if not bump_mark_is_valid(
+        *value,
+        mark
+    ) {
+        give false;
+    }
+
+    if not bump_block.bump_block_rewind(
+        &mut ((*value).block),
+        mark.offset
+    ) {
+        give false;
+    }
+
+    set (*value).state =
+        if mark.offset == 0 {
+            BumpState.Empty
+        } else {
+            BumpState.Active
+        };
+
+    set (*value).revision =
+        (*value).revision + 1;
+
+    give true;
+}
+
+proc bump_rewind_to(
+    value: ref mut Bump,
+    offset: usize
+) -> bool {
+    if offset > bump_used(
+        *value
+    ) {
+        give false;
+    }
+
+    if not bump_block.bump_block_rewind(
+        &mut ((*value).block),
+        offset
+    ) {
+        give false;
+    }
+
+    set (*value).state =
+        if offset == 0 {
+            BumpState.Empty
+        } else {
+            BumpState.Active
+        };
+
+    set (*value).revision =
+        (*value).revision + 1;
+
+    give true;
+}
+
+proc bump_rewind_all(
+    value: ref mut Bump
+) -> bool {
+    give bump_rewind_to(
+        value,
+        0
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Reset
+// -----------------------------------------------------------------------------
+
+proc bump_reset(
+    value: ref mut Bump
+) {
+    if (*value).state
+        == BumpState.Released
+    {
+        give;
+    }
+
+    bump_block.bump_block_reset(
+        &mut ((*value).block)
+    );
+
+    set (*value).state =
+        BumpState.Empty;
+
+    set (*value).generation =
+        (*value).generation + 1;
+
+    set (*value).revision =
+        (*value).revision + 1;
+}
+
+// -----------------------------------------------------------------------------
+// Release
+// -----------------------------------------------------------------------------
+
+proc bump_release(
+    value: ref mut Bump
+) -> bool {
+    if (*value).state
+        == BumpState.Released
+    {
+        give false;
+    }
+
+    bump_block.bump_block_release(
+        &mut ((*value).block)
+    );
+
+    set (*value).state =
+        BumpState.Released;
+
+    set (*value).generation =
+        (*value).generation + 1;
+
+    set (*value).revision =
+        (*value).revision + 1;
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Utilization
+// -----------------------------------------------------------------------------
+
+proc bump_utilization(
+    value: Bump
+) -> f64 {
+    if bump_capacity(value) == 0 {
+        give 0.0;
+    }
+
+    give (
+        bump_used(value) as f64
+    ) / (
+        bump_capacity(value) as f64
+    );
+}
+
+proc bump_remaining_ratio(
+    value: Bump
+) -> f64 {
+    if bump_capacity(value) == 0 {
+        give 0.0;
+    }
+
+    give (
+        bump_remaining(value) as f64
+    ) / (
+        bump_capacity(value) as f64
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Profile
+// -----------------------------------------------------------------------------
+
+proc bump_profile(
+    value: Bump
+) -> BumpProfile {
+    let state =
+        bump_state(
+            value
+        );
+
+    give BumpProfile {
+        name:
+            value.name,
+
+        used:
+            bump_used(
+                value
+            ),
+
+        capacity:
+            bump_capacity(
+                value
+            ),
+
+        remaining:
+            bump_remaining(
+                value
+            ),
+
+        utilization:
+            bump_utilization(
+                value
+            ),
+
+        state:
+            state,
+
+        empty:
+            state == BumpState.Empty,
+
+        active:
+            state == BumpState.Empty
+            or state == BumpState.Active,
+
+        full:
+            state == BumpState.Full,
+
+        released:
+            state == BumpState.Released,
+
+        valid:
+            state != BumpState.Invalid,
+
+        generation:
+            value.generation,
+
+        revision:
+            value.revision
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+proc bump_state_valid(
+    value: Bump
+) -> bool {
+    let state =
+        bump_state(
+            value
+        );
+
+    pick state {
+        BumpState.Empty {
+            give bump_used(value) == 0
+                and not value.state
+                    == BumpState.Released;
+        }
+
+        BumpState.Active {
+            give bump_used(value) > 0
+                and bump_remaining(value) > 0;
+        }
+
+        BumpState.Full {
+            give bump_remaining(value) == 0
+                and bump_capacity(value) > 0;
+        }
+
+        BumpState.Released {
+            give value.state
+                == BumpState.Released;
+        }
+
+        BumpState.Invalid {
+            give false;
+        }
+    }
+
+    give false;
+}
+
+proc bump_validate(
+    value: Bump
+) -> BumpValidation {
+    let block_valid =
+        if value.state == BumpState.Released {
+            true
+        } else {
+            bump_block.bump_block_is_valid(
+                value.block
+            )
+        };
+
+    let state_valid =
+        bump_state_valid(
+            value
+        );
+
+    let generation_valid =
+        value.generation > 0;
+
+    let accounting_valid =
+        bump_used(value)
+            <= bump_capacity(value);
+
+    give BumpValidation {
+        valid:
+            block_valid
+            and state_valid
+            and generation_valid
+            and accounting_valid,
+
+        block_valid:
+            block_valid,
+
+        state_valid:
+            state_valid,
+
+        generation_valid:
+            generation_valid,
+
+        accounting_valid:
+            accounting_valid
+    };
+}
+
+proc bump_invariant_holds(
+    value: Bump
+) -> bool {
+    give bump_validate(
+        value
+    ).valid;
+}
+
+// -----------------------------------------------------------------------------
+// Snapshot
+// -----------------------------------------------------------------------------
+
+proc bump_snapshot(
+    value: Bump
+) -> BumpSnapshot {
+    give BumpSnapshot {
+        used:
+            bump_used(
+                value
+            ),
+
+        capacity:
+            bump_capacity(
+                value
+            ),
+
+        state:
+            bump_state(
+                value
+            ),
+
+        generation:
+            value.generation,
+
+        revision:
+            value.revision
+    };
+}
+
+proc bump_snapshot_equal(
+    left: BumpSnapshot,
+    right: BumpSnapshot
+) -> bool {
+    give left.used == right.used
+        and left.capacity == right.capacity
+        and left.state == right.state
+        and left.generation == right.generation
+        and left.revision == right.revision;
+}
+
+proc bump_snapshot_changed(
+    left: BumpSnapshot,
+    right: BumpSnapshot
+) -> bool {
+    give not bump_snapshot_equal(
+        left,
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Delta
+// -----------------------------------------------------------------------------
+
+proc bump_usize_delta(
+    before: usize,
+    after: usize
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc bump_u64_delta(
+    before: u64,
+    after: u64
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc bump_delta(
+    before: BumpSnapshot,
+    after: BumpSnapshot
+) -> BumpDelta {
+    let used =
+        bump_usize_delta(
+            before.used,
+            after.used
+        );
+
+    let generation =
+        bump_u64_delta(
+            before.generation,
+            after.generation
+        );
+
+    let revision =
+        bump_u64_delta(
+            before.revision,
+            after.revision
+        );
+
+    let state_changed =
+        before.state != after.state;
+
+    give BumpDelta {
+        used:
+            used,
+
+        generation:
+            generation,
+
+        revision:
+            revision,
+
+        state_changed:
+            state_changed,
+
+        changed:
+            used != 0
+            or generation != 0
+            or revision != 0
+            or state_changed
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Revision
+// -----------------------------------------------------------------------------
+
+proc bump_touch(
+    value: ref mut Bump
+) {
+    set (*value).revision =
+        (*value).revision + 1;
+}
+
+proc bump_advance_generation(
+    value: ref mut Bump
+) -> u64 {
+    set (*value).generation =
+        (*value).generation + 1;
+
+    set (*value).revision =
+        (*value).revision + 1;
+
+    give (*value).generation;
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc bump_statistics_empty()
+    -> BumpStatistics
+{
+    give BumpStatistics {
+        allocations: 0,
+        failures: 0,
+
+        bytes_allocated: 0,
+        bytes_padding: 0,
+
+        marks: 0,
+        rewinds: 0,
+        resets: 0,
+        releases: 0
+    };
+}
+
+proc bump_statistics_record_allocation(
+    statistics: ref mut BumpStatistics,
+    result: bump_alloc.BumpAllocationResult
+) {
+    if result.success {
+        set statistics.allocations =
+            statistics.allocations + 1;
+
+        set statistics.bytes_allocated =
+            statistics.bytes_allocated
+            + result.bytes;
+
+        set statistics.bytes_padding =
+            statistics.bytes_padding
+            + result.padding;
+    } else {
+        set statistics.failures =
+            statistics.failures + 1;
+    }
+}
+
+proc bump_statistics_total_operations(
+    statistics: BumpStatistics
+) -> u64 {
+    give statistics.allocations
+        + statistics.failures
+        + statistics.marks
+        + statistics.rewinds
+        + statistics.resets
+        + statistics.releases;
+}
+
+proc bump_statistics_reset(
+    statistics: ref mut BumpStatistics
+) {
+    set *statistics =
+        bump_statistics_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc bump_state_name(
+    state: BumpState
+) -> string {
+    pick state {
+        BumpState.Empty {
+            give "empty";
+        }
+
+        BumpState.Active {
+            give "active";
+        }
+
+        BumpState.Full {
+            give "full";
+        }
+
+        BumpState.Released {
+            give "released";
+        }
+
+        BumpState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+// -----------------------------------------------------------------------------
+// Model
+// -----------------------------------------------------------------------------
+//
+// Bump
+//
+// +------------------------------------------------------+
+// | one contiguous backing allocation                    |
+// +------------------------------------------------------+
+// | allocated bytes                 | remaining bytes     |
+// +------------------------------------------------------+
+// ^                                 ^                    ^
+// 0                               cursor              capacity
+//
+// Allocation:
+//
+//     request
+//        |
+//        v
+//     align cursor
+//        |
+//        v
+//     return memory
+//        |
+//        v
+//     cursor moves forward
+//
+// There is no per-allocation free.
+//
+// Memory reclamation:
+//
+//     mark
+//       |
+//       +-- save current offset
+//
+//     rewind(mark)
+//       |
+//       +-- cursor returns to mark.offset
+//
+//     reset()
+//       |
+//       +-- cursor = 0
+//       +-- generation++
+//
+// Marks are valid only for their generation.
+//
+// Lifecycle:
+//
+//     Empty
+//       |
+//       | allocate
+//       v
+//     Active
+//       |
+//       | capacity exhausted
+//       v
+//     Full
+//
+//     Active / Full
+//       |
+//       | reset
+//       v
+//     Empty
+//
+//     *
+//       |
+//       | release
+//       v
+//     Released
+//
+// Bump is intentionally simpler than Arena:
+//
+//     Bump
+//         one backing block
+//         monotonic cursor
+//
+//     Arena
+//         potentially many blocks
+//         growth policy
+//         more complex reclamation
+//
+// `bump.vitl` is the main high-level bump allocator API.
+//
+// Allocation geometry:
+//     alloc.vitl
+//
+// Backing memory:
+//     block.vitl
+//
+// Reset / rewind semantics:
+//     reset.vitl
+//
+// Core invariants:
+//     core.vitl

@@ -6,7 +6,7 @@ SRC="$ROOT_DIR/src/vitte/compiler/main.vit"
 AST_SRC="$ROOT_DIR/tests/bootstrap_native/main_proc.vit"
 OUT_DIR="$ROOT_DIR/target/driver-native-json-surface"
 
-DRIVER_BIN="/bin/vitte"
+DRIVER_BIN="${DRIVER_BIN:-$ROOT_DIR/bin/vitte}"
 [ -x "$DRIVER_BIN" ] || {
     printf "[driver-native-json-surface-gate][error] missing seed compiler: %s\n" "$DRIVER_BIN" >&2
     exit 1

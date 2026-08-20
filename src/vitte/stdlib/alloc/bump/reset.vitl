@@ -1,0 +1,1250 @@
+space vitte/stdlib/alloc/bump/reset
+
+export *
+
+use src/vitte/stdlib/alloc/bump/bump as bump
+use src/vitte/stdlib/alloc/bump/block as bump_block
+use src/vitte/stdlib/alloc/bump/core as bump_core
+use src/vitte/stdlib/alloc/bump/error as bump_error
+
+pick BumpResetMode {
+    Rewind,
+    Reset,
+    Release
+}
+
+pick BumpResetState {
+    Ready,
+    Applied,
+    Skipped,
+    Failed,
+    Invalid
+}
+
+pick BumpResetFailure {
+    None,
+
+    InvalidBump,
+    InvalidMark,
+    InvalidOffset,
+    GenerationMismatch,
+
+    AlreadyReleased,
+
+    RewindFailed,
+    ResetFailed,
+    ReleaseFailed,
+
+    RuntimeFailure
+}
+
+form BumpResetSnapshot {
+    used: usize
+    capacity: usize
+
+    state: bump.BumpState
+
+    generation: u64
+    revision: u64
+}
+
+form BumpResetResult {
+    mode: BumpResetMode
+    state: BumpResetState
+    failure: BumpResetFailure
+
+    before: BumpResetSnapshot
+    after: BumpResetSnapshot
+
+    reclaimed: usize
+
+    generation_changed: bool
+    revision_changed: bool
+
+    success: bool
+}
+
+form BumpResetValidation {
+    valid: bool
+
+    bump_valid: bool
+    mark_valid: bool
+    generation_valid: bool
+    offset_valid: bool
+}
+
+form BumpResetStatistics {
+    rewind_attempts: u64
+    rewind_successes: u64
+    rewind_failures: u64
+
+    resets: u64
+    releases: u64
+
+    skipped: u64
+
+    bytes_reclaimed: usize
+}
+
+// -----------------------------------------------------------------------------
+// Snapshot
+// -----------------------------------------------------------------------------
+
+proc bump_reset_snapshot(
+    value: bump.Bump
+) -> BumpResetSnapshot {
+    give BumpResetSnapshot {
+        used:
+            bump.bump_used(value),
+
+        capacity:
+            bump.bump_capacity(value),
+
+        state:
+            bump.bump_state(value),
+
+        generation:
+            bump.bump_generation(value),
+
+        revision:
+            bump.bump_revision(value)
+    };
+}
+
+proc bump_reset_snapshot_equal(
+    left: BumpResetSnapshot,
+    right: BumpResetSnapshot
+) -> bool {
+    give left.used == right.used
+        and left.capacity == right.capacity
+        and left.state == right.state
+        and left.generation == right.generation
+        and left.revision == right.revision;
+}
+
+proc bump_reset_snapshot_changed(
+    left: BumpResetSnapshot,
+    right: BumpResetSnapshot
+) -> bool {
+    give not bump_reset_snapshot_equal(
+        left,
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+proc bump_reset_validate_mark(
+    value: bump.Bump,
+    mark: bump.BumpMark
+) -> BumpResetValidation {
+    let bump_valid =
+        bump.bump_is_valid(value);
+
+    let generation_valid =
+        mark.generation
+            == bump.bump_generation(value);
+
+    let offset_valid =
+        mark.offset
+            <= bump.bump_used(value);
+
+    let mark_valid =
+        generation_valid
+        and offset_valid;
+
+    give BumpResetValidation {
+        valid:
+            bump_valid
+            and mark_valid,
+
+        bump_valid:
+            bump_valid,
+
+        mark_valid:
+            mark_valid,
+
+        generation_valid:
+            generation_valid,
+
+        offset_valid:
+            offset_valid
+    };
+}
+
+proc bump_reset_validate_offset(
+    value: bump.Bump,
+    offset: usize
+) -> BumpResetValidation {
+    let bump_valid =
+        bump.bump_is_valid(value);
+
+    let offset_valid =
+        offset <= bump.bump_used(value);
+
+    give BumpResetValidation {
+        valid:
+            bump_valid
+            and offset_valid,
+
+        bump_valid:
+            bump_valid,
+
+        mark_valid:
+            true,
+
+        generation_valid:
+            true,
+
+        offset_valid:
+            offset_valid
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Result constructors
+// -----------------------------------------------------------------------------
+
+proc bump_reset_result_success(
+    mode: BumpResetMode,
+    before: BumpResetSnapshot,
+    after: BumpResetSnapshot
+) -> BumpResetResult {
+    let reclaimed =
+        if before.used > after.used {
+            before.used - after.used
+        } else {
+            0
+        };
+
+    give BumpResetResult {
+        mode:
+            mode,
+
+        state:
+            BumpResetState.Applied,
+
+        failure:
+            BumpResetFailure.None,
+
+        before:
+            before,
+
+        after:
+            after,
+
+        reclaimed:
+            reclaimed,
+
+        generation_changed:
+            before.generation
+                != after.generation,
+
+        revision_changed:
+            before.revision
+                != after.revision,
+
+        success:
+            true
+    };
+}
+
+proc bump_reset_result_skipped(
+    mode: BumpResetMode,
+    snapshot: BumpResetSnapshot,
+    failure: BumpResetFailure
+) -> BumpResetResult {
+    give BumpResetResult {
+        mode:
+            mode,
+
+        state:
+            BumpResetState.Skipped,
+
+        failure:
+            failure,
+
+        before:
+            snapshot,
+
+        after:
+            snapshot,
+
+        reclaimed:
+            0,
+
+        generation_changed:
+            false,
+
+        revision_changed:
+            false,
+
+        success:
+            true
+    };
+}
+
+proc bump_reset_result_failure(
+    mode: BumpResetMode,
+    snapshot: BumpResetSnapshot,
+    failure: BumpResetFailure
+) -> BumpResetResult {
+    give BumpResetResult {
+        mode:
+            mode,
+
+        state:
+            BumpResetState.Failed,
+
+        failure:
+            failure,
+
+        before:
+            snapshot,
+
+        after:
+            snapshot,
+
+        reclaimed:
+            0,
+
+        generation_changed:
+            false,
+
+        revision_changed:
+            false,
+
+        success:
+            false
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Mark helpers
+// -----------------------------------------------------------------------------
+
+proc bump_reset_mark(
+    value: bump.Bump
+) -> bump.BumpMark {
+    give bump.bump_mark(
+        value
+    );
+}
+
+proc bump_reset_mark_is_valid(
+    value: bump.Bump,
+    mark: bump.BumpMark
+) -> bool {
+    give bump_reset_validate_mark(
+        value,
+        mark
+    ).valid;
+}
+
+proc bump_reset_mark_error(
+    value: bump.Bump,
+    mark: bump.BumpMark
+) -> bump_error.BumpError {
+    let validation =
+        bump_reset_validate_mark(
+            value,
+            mark
+        );
+
+    if validation.valid {
+        give bump_error.bump_error_none();
+    }
+
+    if not validation.bump_valid {
+        give bump_error.bump_error_invalid_bump(
+            value
+        );
+    }
+
+    if not validation.generation_valid {
+        give bump_error.bump_error_mark_generation_mismatch(
+            value,
+            mark
+        );
+    }
+
+    if not validation.offset_valid {
+        give bump_error.bump_error_invalid_mark(
+            value,
+            mark
+        );
+    }
+
+    give bump_error.bump_error_invalid_mark(
+        value,
+        mark
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Rewind
+// -----------------------------------------------------------------------------
+
+proc bump_rewind_to_mark(
+    value: ref mut bump.Bump,
+    mark: bump.BumpMark
+) -> BumpResetResult {
+    let before =
+        bump_reset_snapshot(
+            *value
+        );
+
+    if bump.bump_is_released(*value) {
+        give bump_reset_result_failure(
+            BumpResetMode.Rewind,
+            before,
+            BumpResetFailure.AlreadyReleased
+        );
+    }
+
+    let validation =
+        bump_reset_validate_mark(
+            *value,
+            mark
+        );
+
+    if not validation.bump_valid {
+        give bump_reset_result_failure(
+            BumpResetMode.Rewind,
+            before,
+            BumpResetFailure.InvalidBump
+        );
+    }
+
+    if not validation.generation_valid {
+        give bump_reset_result_failure(
+            BumpResetMode.Rewind,
+            before,
+            BumpResetFailure.GenerationMismatch
+        );
+    }
+
+    if not validation.offset_valid {
+        give bump_reset_result_failure(
+            BumpResetMode.Rewind,
+            before,
+            BumpResetFailure.InvalidMark
+        );
+    }
+
+    if before.used == mark.offset {
+        give bump_reset_result_skipped(
+            BumpResetMode.Rewind,
+            before,
+            BumpResetFailure.None
+        );
+    }
+
+    if not bump.bump_rewind(
+        value,
+        mark
+    ) {
+        give bump_reset_result_failure(
+            BumpResetMode.Rewind,
+            before,
+            BumpResetFailure.RewindFailed
+        );
+    }
+
+    let after =
+        bump_reset_snapshot(
+            *value
+        );
+
+    give bump_reset_result_success(
+        BumpResetMode.Rewind,
+        before,
+        after
+    );
+}
+
+proc bump_rewind_to_offset(
+    value: ref mut bump.Bump,
+    offset: usize
+) -> BumpResetResult {
+    let before =
+        bump_reset_snapshot(
+            *value
+        );
+
+    if bump.bump_is_released(*value) {
+        give bump_reset_result_failure(
+            BumpResetMode.Rewind,
+            before,
+            BumpResetFailure.AlreadyReleased
+        );
+    }
+
+    let validation =
+        bump_reset_validate_offset(
+            *value,
+            offset
+        );
+
+    if not validation.bump_valid {
+        give bump_reset_result_failure(
+            BumpResetMode.Rewind,
+            before,
+            BumpResetFailure.InvalidBump
+        );
+    }
+
+    if not validation.offset_valid {
+        give bump_reset_result_failure(
+            BumpResetMode.Rewind,
+            before,
+            BumpResetFailure.InvalidOffset
+        );
+    }
+
+    if before.used == offset {
+        give bump_reset_result_skipped(
+            BumpResetMode.Rewind,
+            before,
+            BumpResetFailure.None
+        );
+    }
+
+    if not bump.bump_rewind_to(
+        value,
+        offset
+    ) {
+        give bump_reset_result_failure(
+            BumpResetMode.Rewind,
+            before,
+            BumpResetFailure.RewindFailed
+        );
+    }
+
+    give bump_reset_result_success(
+        BumpResetMode.Rewind,
+        before,
+        bump_reset_snapshot(*value)
+    );
+}
+
+proc bump_rewind_all(
+    value: ref mut bump.Bump
+) -> BumpResetResult {
+    give bump_rewind_to_offset(
+        value,
+        0
+    );
+}
+
+proc bump_rewind_if_valid(
+    value: ref mut bump.Bump,
+    mark: bump.BumpMark
+) -> bool {
+    if not bump_reset_mark_is_valid(
+        *value,
+        mark
+    ) {
+        give false;
+    }
+
+    give bump_rewind_to_mark(
+        value,
+        mark
+    ).success;
+}
+
+// -----------------------------------------------------------------------------
+// Reset
+// -----------------------------------------------------------------------------
+
+proc bump_reset_default(
+    value: ref mut bump.Bump
+) -> BumpResetResult {
+    let before =
+        bump_reset_snapshot(
+            *value
+        );
+
+    if bump.bump_is_released(*value) {
+        give bump_reset_result_failure(
+            BumpResetMode.Reset,
+            before,
+            BumpResetFailure.AlreadyReleased
+        );
+    }
+
+    if bump.bump_is_empty(*value) {
+        bump.bump_reset(
+            value
+        );
+
+        give bump_reset_result_success(
+            BumpResetMode.Reset,
+            before,
+            bump_reset_snapshot(*value)
+        );
+    }
+
+    bump.bump_reset(
+        value
+    );
+
+    let after =
+        bump_reset_snapshot(
+            *value
+        );
+
+    if not bump.bump_is_empty(*value) {
+        give bump_reset_result_failure(
+            BumpResetMode.Reset,
+            before,
+            BumpResetFailure.ResetFailed
+        );
+    }
+
+    give bump_reset_result_success(
+        BumpResetMode.Reset,
+        before,
+        after
+    );
+}
+
+proc bump_reset_if_not_empty(
+    value: ref mut bump.Bump
+) -> BumpResetResult {
+    let before =
+        bump_reset_snapshot(
+            *value
+        );
+
+    if bump.bump_is_released(*value) {
+        give bump_reset_result_failure(
+            BumpResetMode.Reset,
+            before,
+            BumpResetFailure.AlreadyReleased
+        );
+    }
+
+    if bump.bump_is_empty(*value) {
+        give bump_reset_result_skipped(
+            BumpResetMode.Reset,
+            before,
+            BumpResetFailure.None
+        );
+    }
+
+    give bump_reset_default(
+        value
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Release
+// -----------------------------------------------------------------------------
+
+proc bump_release_all(
+    value: ref mut bump.Bump
+) -> BumpResetResult {
+    let before =
+        bump_reset_snapshot(
+            *value
+        );
+
+    if bump.bump_is_released(*value) {
+        give bump_reset_result_skipped(
+            BumpResetMode.Release,
+            before,
+            BumpResetFailure.AlreadyReleased
+        );
+    }
+
+    if not bump.bump_release(
+        value
+    ) {
+        give bump_reset_result_failure(
+            BumpResetMode.Release,
+            before,
+            BumpResetFailure.ReleaseFailed
+        );
+    }
+
+    let after =
+        bump_reset_snapshot(
+            *value
+        );
+
+    give bump_reset_result_success(
+        BumpResetMode.Release,
+        before,
+        after
+    );
+}
+
+proc bump_release_if_active(
+    value: ref mut bump.Bump
+) -> BumpResetResult {
+    if bump.bump_is_released(*value) {
+        let snapshot =
+            bump_reset_snapshot(
+                *value
+            );
+
+        give bump_reset_result_skipped(
+            BumpResetMode.Release,
+            snapshot,
+            BumpResetFailure.AlreadyReleased
+        );
+    }
+
+    give bump_release_all(
+        value
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Result helpers
+// -----------------------------------------------------------------------------
+
+proc bump_reset_succeeded(
+    result: BumpResetResult
+) -> bool {
+    give result.success;
+}
+
+proc bump_reset_failed(
+    result: BumpResetResult
+) -> bool {
+    give not result.success;
+}
+
+proc bump_reset_was_applied(
+    result: BumpResetResult
+) -> bool {
+    give result.state
+        == BumpResetState.Applied;
+}
+
+proc bump_reset_was_skipped(
+    result: BumpResetResult
+) -> bool {
+    give result.state
+        == BumpResetState.Skipped;
+}
+
+proc bump_reset_is_rewind(
+    result: BumpResetResult
+) -> bool {
+    give result.mode
+        == BumpResetMode.Rewind;
+}
+
+proc bump_reset_is_reset(
+    result: BumpResetResult
+) -> bool {
+    give result.mode
+        == BumpResetMode.Reset;
+}
+
+proc bump_reset_is_release(
+    result: BumpResetResult
+) -> bool {
+    give result.mode
+        == BumpResetMode.Release;
+}
+
+proc bump_reset_reclaimed(
+    result: BumpResetResult
+) -> usize {
+    give result.reclaimed;
+}
+
+proc bump_reset_changed(
+    result: BumpResetResult
+) -> bool {
+    give bump_reset_snapshot_changed(
+        result.before,
+        result.after
+    );
+}
+
+proc bump_reset_preserves_generation(
+    result: BumpResetResult
+) -> bool {
+    give result.before.generation
+        == result.after.generation;
+}
+
+proc bump_reset_invalidates_marks(
+    result: BumpResetResult
+) -> bool {
+    give result.after.generation
+        != result.before.generation;
+}
+
+proc bump_reset_clears_used(
+    result: BumpResetResult
+) -> bool {
+    give result.after.used == 0;
+}
+
+// -----------------------------------------------------------------------------
+// Result validation
+// -----------------------------------------------------------------------------
+
+proc bump_reset_result_valid(
+    result: BumpResetResult
+) -> bool {
+    if result.state
+        == BumpResetState.Applied
+        and not result.success
+    {
+        give false;
+    }
+
+    if result.state
+        == BumpResetState.Failed
+        and result.success
+    {
+        give false;
+    }
+
+    if result.reclaimed
+        > result.before.used
+    {
+        give false;
+    }
+
+    if result.mode
+        == BumpResetMode.Rewind
+        and result.state
+            == BumpResetState.Applied
+    {
+        if result.after.used
+            > result.before.used
+        {
+            give false;
+        }
+
+        if result.after.generation
+            != result.before.generation
+        {
+            give false;
+        }
+    }
+
+    if result.mode
+        == BumpResetMode.Reset
+        and result.state
+            == BumpResetState.Applied
+    {
+        if result.after.used != 0 {
+            give false;
+        }
+
+        if result.after.generation
+            <= result.before.generation
+        {
+            give false;
+        }
+    }
+
+    if result.mode
+        == BumpResetMode.Release
+        and result.state
+            == BumpResetState.Applied
+    {
+        if result.after.state
+            != bump.BumpState.Released
+        {
+            give false;
+        }
+    }
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Error conversion
+// -----------------------------------------------------------------------------
+
+proc bump_reset_error(
+    result: BumpResetResult
+) -> bump_error.BumpError {
+    if result.success
+        and result.failure
+            == BumpResetFailure.None
+    {
+        give bump_error.bump_error_none();
+    }
+
+    pick result.failure {
+        BumpResetFailure.None {
+            give bump_error.bump_error_none();
+        }
+
+        BumpResetFailure.InvalidBump {
+            give bump_error.bump_error_simple(
+                bump_error.BumpErrorKind.InvalidBump,
+                "bump reset received an invalid allocator"
+            );
+        }
+
+        BumpResetFailure.InvalidMark {
+            give bump_error.bump_error_simple(
+                bump_error.BumpErrorKind.InvalidMark,
+                "bump reset mark is invalid"
+            );
+        }
+
+        BumpResetFailure.InvalidOffset {
+            give bump_error.bump_error_simple(
+                bump_error.BumpErrorKind.InvalidRewind,
+                "bump rewind offset is invalid"
+            );
+        }
+
+        BumpResetFailure.GenerationMismatch {
+            give bump_error.bump_error_simple(
+                bump_error.BumpErrorKind.MarkGenerationMismatch,
+                "bump mark generation does not match"
+            );
+        }
+
+        BumpResetFailure.AlreadyReleased {
+            give bump_error.bump_error_simple(
+                bump_error.BumpErrorKind.AlreadyReleased,
+                "bump allocator is already released"
+            );
+        }
+
+        BumpResetFailure.RewindFailed {
+            give bump_error.bump_error_simple(
+                bump_error.BumpErrorKind.RewindFailed,
+                "bump rewind failed"
+            );
+        }
+
+        BumpResetFailure.ResetFailed {
+            give bump_error.bump_error_simple(
+                bump_error.BumpErrorKind.ResetFailed,
+                "bump reset failed"
+            );
+        }
+
+        BumpResetFailure.ReleaseFailed {
+            give bump_error.bump_error_simple(
+                bump_error.BumpErrorKind.ReleaseFailed,
+                "bump release failed"
+            );
+        }
+
+        BumpResetFailure.RuntimeFailure {
+            give bump_error.bump_error_runtime(
+                "bump reset runtime failure"
+            );
+        }
+    }
+
+    give bump_error.bump_error_internal(
+        "unknown bump reset failure"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Core transition mapping
+// -----------------------------------------------------------------------------
+
+proc bump_reset_core_transition(
+    result: BumpResetResult
+) -> bump_core.BumpCoreTransitionKind {
+    if not result.success
+        or result.state
+            == BumpResetState.Skipped
+    {
+        give bump_core.BumpCoreTransitionKind.None;
+    }
+
+    pick result.mode {
+        BumpResetMode.Rewind {
+            give bump_core.BumpCoreTransitionKind.Rewind;
+        }
+
+        BumpResetMode.Reset {
+            give bump_core.BumpCoreTransitionKind.Reset;
+        }
+
+        BumpResetMode.Release {
+            give bump_core.BumpCoreTransitionKind.Release;
+        }
+    }
+
+    give bump_core.BumpCoreTransitionKind.None;
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc bump_reset_statistics_empty()
+    -> BumpResetStatistics
+{
+    give BumpResetStatistics {
+        rewind_attempts: 0,
+        rewind_successes: 0,
+        rewind_failures: 0,
+
+        resets: 0,
+        releases: 0,
+
+        skipped: 0,
+
+        bytes_reclaimed: 0
+    };
+}
+
+proc bump_reset_statistics_record(
+    statistics: ref mut BumpResetStatistics,
+    result: BumpResetResult
+) {
+    if result.state
+        == BumpResetState.Skipped
+    {
+        set statistics.skipped =
+            statistics.skipped + 1;
+    }
+
+    pick result.mode {
+        BumpResetMode.Rewind {
+            set statistics.rewind_attempts =
+                statistics.rewind_attempts + 1;
+
+            if result.success {
+                set statistics.rewind_successes =
+                    statistics.rewind_successes + 1;
+            } else {
+                set statistics.rewind_failures =
+                    statistics.rewind_failures + 1;
+            }
+        }
+
+        BumpResetMode.Reset {
+            if result.success {
+                set statistics.resets =
+                    statistics.resets + 1;
+            }
+        }
+
+        BumpResetMode.Release {
+            if result.success {
+                set statistics.releases =
+                    statistics.releases + 1;
+            }
+        }
+    }
+
+    set statistics.bytes_reclaimed =
+        statistics.bytes_reclaimed
+        + result.reclaimed;
+}
+
+proc bump_reset_statistics_total(
+    statistics: BumpResetStatistics
+) -> u64 {
+    give statistics.rewind_attempts
+        + statistics.resets
+        + statistics.releases;
+}
+
+proc bump_reset_statistics_success_count(
+    statistics: BumpResetStatistics
+) -> u64 {
+    give statistics.rewind_successes
+        + statistics.resets
+        + statistics.releases;
+}
+
+proc bump_reset_statistics_failure_count(
+    statistics: BumpResetStatistics
+) -> u64 {
+    give statistics.rewind_failures;
+}
+
+proc bump_reset_statistics_reset(
+    statistics: ref mut BumpResetStatistics
+) {
+    set *statistics =
+        bump_reset_statistics_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc bump_reset_mode_name(
+    mode: BumpResetMode
+) -> string {
+    pick mode {
+        BumpResetMode.Rewind {
+            give "rewind";
+        }
+
+        BumpResetMode.Reset {
+            give "reset";
+        }
+
+        BumpResetMode.Release {
+            give "release";
+        }
+    }
+
+    give "reset";
+}
+
+proc bump_reset_state_name(
+    state: BumpResetState
+) -> string {
+    pick state {
+        BumpResetState.Ready {
+            give "ready";
+        }
+
+        BumpResetState.Applied {
+            give "applied";
+        }
+
+        BumpResetState.Skipped {
+            give "skipped";
+        }
+
+        BumpResetState.Failed {
+            give "failed";
+        }
+
+        BumpResetState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+proc bump_reset_failure_name(
+    failure: BumpResetFailure
+) -> string {
+    pick failure {
+        BumpResetFailure.None {
+            give "none";
+        }
+
+        BumpResetFailure.InvalidBump {
+            give "invalid-bump";
+        }
+
+        BumpResetFailure.InvalidMark {
+            give "invalid-mark";
+        }
+
+        BumpResetFailure.InvalidOffset {
+            give "invalid-offset";
+        }
+
+        BumpResetFailure.GenerationMismatch {
+            give "generation-mismatch";
+        }
+
+        BumpResetFailure.AlreadyReleased {
+            give "already-released";
+        }
+
+        BumpResetFailure.RewindFailed {
+            give "rewind-failed";
+        }
+
+        BumpResetFailure.ResetFailed {
+            give "reset-failed";
+        }
+
+        BumpResetFailure.ReleaseFailed {
+            give "release-failed";
+        }
+
+        BumpResetFailure.RuntimeFailure {
+            give "runtime-failure";
+        }
+    }
+
+    give "runtime-failure";
+}
+
+// -----------------------------------------------------------------------------
+// Reset model
+// -----------------------------------------------------------------------------
+//
+// Mark:
+//
+//     cursor = 512
+//
+//     mark {
+//         offset     = 512
+//         generation = 3
+//     }
+//
+// Later:
+//
+//     cursor = 2048
+//
+// Rewind:
+//
+//     rewind(mark)
+//
+//     cursor = 512
+//
+//     generation remains 3
+//
+// Therefore older marks from the same generation may remain valid if their
+// offsets are still reachable.
+//
+// Reset:
+//
+//     cursor = 0
+//     generation++
+//
+// All previous marks become invalid:
+//
+//     old mark generation != current generation
+//
+// Release:
+//
+//     state = Released
+//     cursor no longer usable
+//
+// Main difference:
+//
+//     rewind
+//         partial reclamation
+//         preserves generation
+//
+//     reset
+//         complete reclamation
+//         changes generation
+//
+//     release
+//         terminates allocator lifecycle
+//
+// This module owns:
+//
+//     marks
+//     mark validation
+//     rewind operations
+//     reset operations
+//     release lifecycle
+//     reset statistics
+//     reset diagnostics mapping
+//
+// Allocation belongs to `alloc.vitl`.
+// Backing memory belongs to `block.vitl`.
+// Public allocator operations belong to `bump.vitl`.
+// Pure state invariants belong to `core.vitl`.

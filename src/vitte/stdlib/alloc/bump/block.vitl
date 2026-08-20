@@ -1,0 +1,1068 @@
+space vitte/stdlib/alloc/bump/block
+
+export *
+
+use src/vitte/stdlib/alloc/bump/alloc as bump_alloc
+use src/vitte/stdlib/alloc/allocator as alloc_allocator
+use src/vitte/stdlib/core/option as core_option
+
+pick BumpBlockState {
+    Empty,
+    Partial,
+    Full,
+    Released,
+    Invalid
+}
+
+pick BumpBlockFit {
+    Fits,
+    NeedsAlignment,
+    TooSmall,
+    Invalid
+}
+
+form BumpBlock {
+    allocation: alloc_allocator.Allocation
+
+    cursor: bump_alloc.BumpAllocationCursor
+
+    index: usize
+
+    active: bool
+
+    generation: u64
+    revision: u64
+}
+
+form BumpBlockProfile {
+    index: usize
+
+    used: usize
+    capacity: usize
+    remaining: usize
+
+    utilization: f64
+
+    state: BumpBlockState
+
+    empty: bool
+    partial: bool
+    full: bool
+    active: bool
+
+    valid: bool
+
+    generation: u64
+    revision: u64
+}
+
+form BumpBlockValidation {
+    valid: bool
+
+    allocation_valid: bool
+    cursor_valid: bool
+    state_valid: bool
+    active_valid: bool
+}
+
+form BumpBlockSnapshot {
+    index: usize
+
+    offset: usize
+    capacity: usize
+
+    state: BumpBlockState
+
+    generation: u64
+    revision: u64
+}
+
+form BumpBlockDelta {
+    offset: int
+    generation: int
+    revision: int
+
+    state_changed: bool
+    changed: bool
+}
+
+form BumpBlockStatistics {
+    allocations: u64
+    failures: u64
+
+    bytes_allocated: usize
+    bytes_padding: usize
+
+    rewinds: u64
+    resets: u64
+    releases: u64
+}
+
+// -----------------------------------------------------------------------------
+// Construction
+// -----------------------------------------------------------------------------
+
+proc bump_block_new(
+    allocation: alloc_allocator.Allocation,
+    index: usize
+) -> BumpBlock {
+    give BumpBlock {
+        allocation: allocation,
+
+        cursor:
+            bump_alloc.bump_allocation_cursor(
+                0,
+                allocation.layout.size
+            ),
+
+        index: index,
+
+        active: true,
+
+        generation: 1,
+        revision: 1
+    };
+}
+
+proc bump_block_from_allocation(
+    allocation: alloc_allocator.Allocation
+) -> BumpBlock {
+    give bump_block_new(
+        allocation,
+        0
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Accessors
+// -----------------------------------------------------------------------------
+
+proc bump_block_index(
+    block: BumpBlock
+) -> usize {
+    give block.index;
+}
+
+proc bump_block_used(
+    block: BumpBlock
+) -> usize {
+    give block.cursor.offset;
+}
+
+proc bump_block_capacity(
+    block: BumpBlock
+) -> usize {
+    give block.cursor.capacity;
+}
+
+proc bump_block_remaining(
+    block: BumpBlock
+) -> usize {
+    give bump_alloc.bump_allocation_cursor_remaining(
+        block.cursor
+    );
+}
+
+proc bump_block_generation(
+    block: BumpBlock
+) -> u64 {
+    give block.generation;
+}
+
+proc bump_block_revision(
+    block: BumpBlock
+) -> u64 {
+    give block.revision;
+}
+
+// -----------------------------------------------------------------------------
+// State
+// -----------------------------------------------------------------------------
+
+proc bump_block_is_empty(
+    block: BumpBlock
+) -> bool {
+    give block.active
+        and block.cursor.offset == 0;
+}
+
+proc bump_block_is_partial(
+    block: BumpBlock
+) -> bool {
+    give block.active
+        and block.cursor.offset > 0
+        and block.cursor.offset < block.cursor.capacity;
+}
+
+proc bump_block_is_full(
+    block: BumpBlock
+) -> bool {
+    give block.active
+        and block.cursor.capacity > 0
+        and block.cursor.offset >= block.cursor.capacity;
+}
+
+proc bump_block_is_active(
+    block: BumpBlock
+) -> bool {
+    give block.active;
+}
+
+proc bump_block_is_released(
+    block: BumpBlock
+) -> bool {
+    give not block.active;
+}
+
+proc bump_block_state(
+    block: BumpBlock
+) -> BumpBlockState {
+    if not block.active {
+        give BumpBlockState.Released;
+    }
+
+    if not bump_alloc.bump_allocation_cursor_valid(
+        block.cursor
+    ) {
+        give BumpBlockState.Invalid;
+    }
+
+    if block.cursor.capacity == 0 {
+        give BumpBlockState.Invalid;
+    }
+
+    if block.cursor.offset == 0 {
+        give BumpBlockState.Empty;
+    }
+
+    if block.cursor.offset
+        >= block.cursor.capacity
+    {
+        give BumpBlockState.Full;
+    }
+
+    give BumpBlockState.Partial;
+}
+
+// -----------------------------------------------------------------------------
+// Fit
+// -----------------------------------------------------------------------------
+
+proc bump_block_fit(
+    block: BumpBlock,
+    size: usize,
+    align: usize
+) -> BumpBlockFit {
+    if not block.active {
+        give BumpBlockFit.Invalid;
+    }
+
+    if size == 0
+        or not bump_alloc.bump_allocation_alignment_valid(
+            align
+        )
+    {
+        give BumpBlockFit.Invalid;
+    }
+
+    let plan =
+        bump_alloc.bump_allocation_plan(
+            block.cursor,
+            size,
+            align
+        );
+
+    if not plan.valid {
+        give BumpBlockFit.TooSmall;
+    }
+
+    if plan.padding > 0 {
+        give BumpBlockFit.NeedsAlignment;
+    }
+
+    give BumpBlockFit.Fits;
+}
+
+proc bump_block_can_fit(
+    block: BumpBlock,
+    size: usize,
+    align: usize
+) -> bool {
+    let fit =
+        bump_block_fit(
+            block,
+            size,
+            align
+        );
+
+    give fit == BumpBlockFit.Fits
+        or fit == BumpBlockFit.NeedsAlignment;
+}
+
+proc bump_block_can_fit_request(
+    block: BumpBlock,
+    request: bump_alloc.BumpAllocationRequest
+) -> bool {
+    give bump_alloc.bump_allocation_can_fit_request(
+        block.cursor,
+        request
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Planning
+// -----------------------------------------------------------------------------
+
+proc bump_block_plan(
+    block: BumpBlock,
+    size: usize,
+    align: usize
+) -> bump_alloc.BumpAllocationPlan {
+    give bump_alloc.bump_allocation_plan(
+        block.cursor,
+        size,
+        align
+    );
+}
+
+proc bump_block_plan_request(
+    block: BumpBlock,
+    request: bump_alloc.BumpAllocationRequest
+) -> bump_alloc.BumpAllocationPlan {
+    give bump_alloc.bump_allocation_plan_request(
+        block.cursor,
+        request
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Allocation
+// -----------------------------------------------------------------------------
+
+proc bump_block_allocate_request(
+    block: ref mut BumpBlock,
+    request: bump_alloc.BumpAllocationRequest
+) -> bump_alloc.BumpAllocationResult {
+    if not (*block).active {
+        give bump_alloc.bump_allocation_result_failure(
+            request,
+            bump_alloc.BumpAllocationFailure.InvalidPointer
+        );
+    }
+
+    let base =
+        compiler_allocation_as_raw_u8(
+            (*block).allocation
+        );
+
+    let result =
+        bump_alloc.bump_allocate_request(
+            base,
+            &mut ((*block).cursor),
+            request
+        );
+
+    if result.success {
+        set (*block).revision =
+            (*block).revision + 1;
+    }
+
+    give result;
+}
+
+proc bump_block_allocate_bytes(
+    block: ref mut BumpBlock,
+    size: usize,
+    align: usize
+) -> Option<alloc_allocator.Allocation> {
+    let result =
+        bump_block_allocate_request(
+            block,
+            bump_alloc.bump_allocation_request_bytes(
+                size,
+                align
+            )
+        );
+
+    give result.allocation;
+}
+
+proc bump_block_allocate_zeroed(
+    block: ref mut BumpBlock,
+    size: usize,
+    align: usize
+) -> Option<alloc_allocator.Allocation> {
+    let result =
+        bump_block_allocate_request(
+            block,
+            bump_alloc.bump_allocation_request_zeroed(
+                size,
+                align
+            )
+        );
+
+    give result.allocation;
+}
+
+// -----------------------------------------------------------------------------
+// Typed allocation
+// -----------------------------------------------------------------------------
+
+proc bump_block_allocate<T>(
+    block: ref mut BumpBlock
+) -> Option<alloc_allocator.Allocation> {
+    let result =
+        bump_block_allocate_request(
+            block,
+            bump_alloc.bump_allocation_request_value<T>()
+        );
+
+    give result.allocation;
+}
+
+proc bump_block_allocate_array<T>(
+    block: ref mut BumpBlock,
+    count: usize
+) -> Option<alloc_allocator.Allocation> {
+    let result =
+        bump_block_allocate_request(
+            block,
+            bump_alloc.bump_allocation_request_array<T>(
+                count
+            )
+        );
+
+    give result.allocation;
+}
+
+proc bump_block_emplace<T>(
+    block: ref mut BumpBlock,
+    value: T
+) -> Option<ref mut T> {
+    let allocation =
+        bump_block_allocate<T>(
+            block
+        );
+
+    if is_none<alloc_allocator.Allocation>(
+        allocation
+    ) {
+        give none<ref mut T>();
+    }
+
+    let target =
+        compiler_allocation_as_mut<T>(
+            unwrap<alloc_allocator.Allocation>(
+                allocation
+            )
+        );
+
+    set *target = value;
+
+    give some<ref mut T>(
+        target
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Rewind
+// -----------------------------------------------------------------------------
+
+proc bump_block_rewind(
+    block: ref mut BumpBlock,
+    offset: usize
+) -> bool {
+    if not (*block).active {
+        give false;
+    }
+
+    if not bump_alloc.bump_allocation_rewind(
+        &mut ((*block).cursor),
+        offset
+    ) {
+        give false;
+    }
+
+    set (*block).revision =
+        (*block).revision + 1;
+
+    give true;
+}
+
+proc bump_block_rewind_all(
+    block: ref mut BumpBlock
+) -> bool {
+    give bump_block_rewind(
+        block,
+        0
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Reset
+// -----------------------------------------------------------------------------
+
+proc bump_block_reset(
+    block: ref mut BumpBlock
+) {
+    if not (*block).active {
+        give;
+    }
+
+    bump_alloc.bump_allocation_reset(
+        &mut ((*block).cursor)
+    );
+
+    set (*block).generation =
+        (*block).generation + 1;
+
+    set (*block).revision =
+        (*block).revision + 1;
+}
+
+// -----------------------------------------------------------------------------
+// Release
+// -----------------------------------------------------------------------------
+
+proc bump_block_release(
+    block: ref mut BumpBlock
+) {
+    set (*block).cursor.offset = 0;
+
+    set (*block).active = false;
+
+    set (*block).generation =
+        (*block).generation + 1;
+
+    set (*block).revision =
+        (*block).revision + 1;
+}
+
+proc bump_block_activate(
+    block: ref mut BumpBlock
+) {
+    if (*block).active {
+        give;
+    }
+
+    set (*block).active = true;
+
+    set (*block).revision =
+        (*block).revision + 1;
+}
+
+// -----------------------------------------------------------------------------
+// Utilization
+// -----------------------------------------------------------------------------
+
+proc bump_block_utilization(
+    block: BumpBlock
+) -> f64 {
+    if block.cursor.capacity == 0 {
+        give 0.0;
+    }
+
+    give (
+        block.cursor.offset as f64
+    ) / (
+        block.cursor.capacity as f64
+    );
+}
+
+proc bump_block_remaining_ratio(
+    block: BumpBlock
+) -> f64 {
+    if block.cursor.capacity == 0 {
+        give 0.0;
+    }
+
+    give (
+        bump_block_remaining(block) as f64
+    ) / (
+        block.cursor.capacity as f64
+    );
+}
+
+proc bump_block_used_percent(
+    block: BumpBlock
+) -> f64 {
+    give bump_block_utilization(
+        block
+    ) * 100.0;
+}
+
+proc bump_block_remaining_percent(
+    block: BumpBlock
+) -> f64 {
+    give bump_block_remaining_ratio(
+        block
+    ) * 100.0;
+}
+
+// -----------------------------------------------------------------------------
+// Profile
+// -----------------------------------------------------------------------------
+
+proc bump_block_profile(
+    block: BumpBlock
+) -> BumpBlockProfile {
+    let state =
+        bump_block_state(
+            block
+        );
+
+    give BumpBlockProfile {
+        index:
+            block.index,
+
+        used:
+            block.cursor.offset,
+
+        capacity:
+            block.cursor.capacity,
+
+        remaining:
+            bump_block_remaining(
+                block
+            ),
+
+        utilization:
+            bump_block_utilization(
+                block
+            ),
+
+        state:
+            state,
+
+        empty:
+            state == BumpBlockState.Empty,
+
+        partial:
+            state == BumpBlockState.Partial,
+
+        full:
+            state == BumpBlockState.Full,
+
+        active:
+            block.active,
+
+        valid:
+            state != BumpBlockState.Invalid,
+
+        generation:
+            block.generation,
+
+        revision:
+            block.revision
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+proc bump_block_allocation_valid(
+    block: BumpBlock
+) -> bool {
+    give alloc_allocator.layout_is_valid(
+        block.allocation.layout
+    );
+}
+
+proc bump_block_cursor_valid(
+    block: BumpBlock
+) -> bool {
+    give bump_alloc.bump_allocation_cursor_valid(
+        block.cursor
+    )
+    and block.cursor.capacity
+        == block.allocation.layout.size;
+}
+
+proc bump_block_state_valid(
+    block: BumpBlock
+) -> bool {
+    let state =
+        bump_block_state(
+            block
+        );
+
+    pick state {
+        BumpBlockState.Empty {
+            give block.active
+                and block.cursor.offset == 0;
+        }
+
+        BumpBlockState.Partial {
+            give block.active
+                and block.cursor.offset > 0
+                and block.cursor.offset
+                    < block.cursor.capacity;
+        }
+
+        BumpBlockState.Full {
+            give block.active
+                and block.cursor.capacity > 0
+                and block.cursor.offset
+                    == block.cursor.capacity;
+        }
+
+        BumpBlockState.Released {
+            give not block.active;
+        }
+
+        BumpBlockState.Invalid {
+            give false;
+        }
+    }
+
+    give false;
+}
+
+proc bump_block_validate(
+    block: BumpBlock
+) -> BumpBlockValidation {
+    let allocation_valid =
+        bump_block_allocation_valid(
+            block
+        );
+
+    let cursor_valid =
+        bump_block_cursor_valid(
+            block
+        );
+
+    let state_valid =
+        bump_block_state_valid(
+            block
+        );
+
+    let active_valid =
+        if block.active {
+            block.cursor.capacity > 0
+        } else {
+            true
+        };
+
+    give BumpBlockValidation {
+        valid:
+            allocation_valid
+            and cursor_valid
+            and state_valid
+            and active_valid,
+
+        allocation_valid:
+            allocation_valid,
+
+        cursor_valid:
+            cursor_valid,
+
+        state_valid:
+            state_valid,
+
+        active_valid:
+            active_valid
+    };
+}
+
+proc bump_block_is_valid(
+    block: BumpBlock
+) -> bool {
+    give bump_block_validate(
+        block
+    ).valid;
+}
+
+// -----------------------------------------------------------------------------
+// Snapshot
+// -----------------------------------------------------------------------------
+
+proc bump_block_snapshot(
+    block: BumpBlock
+) -> BumpBlockSnapshot {
+    give BumpBlockSnapshot {
+        index:
+            block.index,
+
+        offset:
+            block.cursor.offset,
+
+        capacity:
+            block.cursor.capacity,
+
+        state:
+            bump_block_state(
+                block
+            ),
+
+        generation:
+            block.generation,
+
+        revision:
+            block.revision
+    };
+}
+
+proc bump_block_snapshot_equal(
+    left: BumpBlockSnapshot,
+    right: BumpBlockSnapshot
+) -> bool {
+    give left.index == right.index
+        and left.offset == right.offset
+        and left.capacity == right.capacity
+        and left.state == right.state
+        and left.generation == right.generation
+        and left.revision == right.revision;
+}
+
+proc bump_block_snapshot_changed(
+    left: BumpBlockSnapshot,
+    right: BumpBlockSnapshot
+) -> bool {
+    give not bump_block_snapshot_equal(
+        left,
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Delta
+// -----------------------------------------------------------------------------
+
+proc bump_block_usize_delta(
+    before: usize,
+    after: usize
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc bump_block_u64_delta(
+    before: u64,
+    after: u64
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc bump_block_delta(
+    before: BumpBlockSnapshot,
+    after: BumpBlockSnapshot
+) -> BumpBlockDelta {
+    let offset =
+        bump_block_usize_delta(
+            before.offset,
+            after.offset
+        );
+
+    let generation =
+        bump_block_u64_delta(
+            before.generation,
+            after.generation
+        );
+
+    let revision =
+        bump_block_u64_delta(
+            before.revision,
+            after.revision
+        );
+
+    let state_changed =
+        before.state != after.state;
+
+    give BumpBlockDelta {
+        offset:
+            offset,
+
+        generation:
+            generation,
+
+        revision:
+            revision,
+
+        state_changed:
+            state_changed,
+
+        changed:
+            offset != 0
+            or generation != 0
+            or revision != 0
+            or state_changed
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc bump_block_statistics_empty()
+    -> BumpBlockStatistics
+{
+    give BumpBlockStatistics {
+        allocations: 0,
+        failures: 0,
+
+        bytes_allocated: 0,
+        bytes_padding: 0,
+
+        rewinds: 0,
+        resets: 0,
+        releases: 0
+    };
+}
+
+proc bump_block_statistics_record_allocation(
+    statistics: ref mut BumpBlockStatistics,
+    result: bump_alloc.BumpAllocationResult
+) {
+    if result.success {
+        set statistics.allocations =
+            statistics.allocations + 1;
+
+        set statistics.bytes_allocated =
+            statistics.bytes_allocated
+            + result.bytes;
+
+        set statistics.bytes_padding =
+            statistics.bytes_padding
+            + result.padding;
+    } else {
+        set statistics.failures =
+            statistics.failures + 1;
+    }
+}
+
+proc bump_block_statistics_total_operations(
+    statistics: BumpBlockStatistics
+) -> u64 {
+    give statistics.allocations
+        + statistics.failures
+        + statistics.rewinds
+        + statistics.resets
+        + statistics.releases;
+}
+
+proc bump_block_statistics_reset(
+    statistics: ref mut BumpBlockStatistics
+) {
+    set *statistics =
+        bump_block_statistics_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc bump_block_state_name(
+    state: BumpBlockState
+) -> string {
+    pick state {
+        BumpBlockState.Empty {
+            give "empty";
+        }
+
+        BumpBlockState.Partial {
+            give "partial";
+        }
+
+        BumpBlockState.Full {
+            give "full";
+        }
+
+        BumpBlockState.Released {
+            give "released";
+        }
+
+        BumpBlockState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+proc bump_block_fit_name(
+    fit: BumpBlockFit
+) -> string {
+    pick fit {
+        BumpBlockFit.Fits {
+            give "fits";
+        }
+
+        BumpBlockFit.NeedsAlignment {
+            give "needs-alignment";
+        }
+
+        BumpBlockFit.TooSmall {
+            give "too-small";
+        }
+
+        BumpBlockFit.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+// -----------------------------------------------------------------------------
+// Model
+// -----------------------------------------------------------------------------
+//
+// BumpBlock
+//
+// +------------------------------------------------------+
+// | backing allocation                                   |
+// +------------------------------------------------------+
+// | used        | padding | next allocation | free        |
+// +------------------------------------------------------+
+// ^             ^         ^               ^              ^
+// 0           cursor    aligned           end         capacity
+//
+// Allocation:
+//
+//     cursor
+//       |
+//       v
+//     align
+//       |
+//       v
+//     allocate
+//       |
+//       v
+//     cursor = end
+//
+// Rewind:
+//
+//     cursor = previous_offset
+//
+// Reset:
+//
+//     cursor = 0
+//     generation++
+//
+// Release:
+//
+//     active = false
+//
+// Unlike a general-purpose allocator, an individual allocation is never freed
+// from a bump block. Memory is reclaimed by rewinding or resetting the block.
+//
+// `block.vitl` owns one backing region.
+// `alloc.vitl` owns allocation geometry.
+// `bump.vitl` owns the global bump allocator.
+// `reset.vitl` owns marks, rewinds and reset semantics.

@@ -1,0 +1,1595 @@
+space vitte/stdlib/alloc/arena/alloc
+
+export *
+
+use src/vitte/stdlib/alloc/arena as arena
+use src/vitte/stdlib/alloc/allocator as alloc_allocator
+use src/vitte/stdlib/core/option as core_option
+
+// -----------------------------------------------------------------------------
+// Constants
+// -----------------------------------------------------------------------------
+
+const ARENA_ALLOC_DEFAULT_ALIGN: usize = 1;
+const ARENA_ALLOC_MIN_ALIGN: usize = 1;
+const ARENA_ALLOC_ZERO_SIZE: usize = 0;
+
+// -----------------------------------------------------------------------------
+// Allocation kinds
+// -----------------------------------------------------------------------------
+
+pick ArenaAllocationKind {
+    Bytes,
+    Object,
+    Array,
+    Aligned,
+    Zeroed,
+    Copy,
+    String,
+    Internal
+}
+
+pick ArenaAllocationState {
+    Ready,
+    Success,
+    Failed,
+    Invalid,
+    Overflow
+}
+
+pick ArenaAllocationFailure {
+    None,
+    InvalidLayout,
+    InvalidSize,
+    InvalidAlignment,
+    Overflow,
+    OutOfMemory,
+    ArenaInvalid,
+    RuntimeFailure
+}
+
+// -----------------------------------------------------------------------------
+// Allocation request
+// -----------------------------------------------------------------------------
+
+form ArenaAllocationRequest {
+    kind: ArenaAllocationKind
+
+    size: usize
+    align: usize
+    count: usize
+
+    zeroed: bool
+}
+
+form ArenaAllocationResult {
+    state: ArenaAllocationState
+    failure: ArenaAllocationFailure
+
+    request: ArenaAllocationRequest
+
+    allocation: Option<alloc_allocator.Allocation>
+
+    bytes: usize
+
+    success: bool
+}
+
+form ArenaAllocationProfile {
+    request_count: u64
+    success_count: u64
+    failure_count: u64
+
+    requested_bytes: usize
+    allocated_bytes: usize
+    failed_bytes: usize
+
+    largest_request: usize
+    smallest_request: usize
+
+    object_allocations: u64
+    array_allocations: u64
+    byte_allocations: u64
+    aligned_allocations: u64
+    zeroed_allocations: u64
+}
+
+form ArenaAllocationLimits {
+    maximum_size: usize
+    maximum_align: usize
+    maximum_count: usize
+
+    allow_zero_size: bool
+}
+
+form ArenaAllocationValidation {
+    valid: bool
+
+    size_valid: bool
+    align_valid: bool
+    count_valid: bool
+    overflow_safe: bool
+}
+
+form ArenaAllocationSnapshot {
+    allocated: usize
+    block_count: usize
+
+    allocator_live: usize
+    allocator_reserved: usize
+}
+
+form ArenaAllocationDelta {
+    allocated: int
+    blocks: int
+
+    allocator_live: int
+    allocator_reserved: int
+}
+
+// -----------------------------------------------------------------------------
+// Request constructors
+// -----------------------------------------------------------------------------
+
+proc arena_allocation_request(
+    kind: ArenaAllocationKind,
+    size: usize,
+    align: usize,
+    count: usize,
+    zeroed: bool
+) -> ArenaAllocationRequest {
+    give ArenaAllocationRequest {
+        kind: kind,
+
+        size: size,
+        align: align,
+        count: count,
+
+        zeroed: zeroed
+    };
+}
+
+proc arena_allocation_request_bytes(
+    size: usize,
+    align: usize
+) -> ArenaAllocationRequest {
+    give arena_allocation_request(
+        ArenaAllocationKind.Bytes,
+        size,
+        align,
+        1,
+        false
+    );
+}
+
+proc arena_allocation_request_aligned(
+    size: usize,
+    align: usize
+) -> ArenaAllocationRequest {
+    give arena_allocation_request(
+        ArenaAllocationKind.Aligned,
+        size,
+        align,
+        1,
+        false
+    );
+}
+
+proc arena_allocation_request_zeroed(
+    size: usize,
+    align: usize
+) -> ArenaAllocationRequest {
+    give arena_allocation_request(
+        ArenaAllocationKind.Zeroed,
+        size,
+        align,
+        1,
+        true
+    );
+}
+
+proc arena_allocation_request_object<T>()
+    -> ArenaAllocationRequest
+{
+    give arena_allocation_request(
+        ArenaAllocationKind.Object,
+        compiler_size_of<T>(),
+        compiler_align_of<T>(),
+        1,
+        false
+    );
+}
+
+proc arena_allocation_request_array<T>(
+    count: usize
+) -> ArenaAllocationRequest {
+    give arena_allocation_request(
+        ArenaAllocationKind.Array,
+        compiler_size_of<T>(),
+        compiler_align_of<T>(),
+        count,
+        false
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Limits
+// -----------------------------------------------------------------------------
+
+proc arena_allocation_limits_default()
+    -> ArenaAllocationLimits
+{
+    give ArenaAllocationLimits {
+        maximum_size:
+            usize_max(),
+
+        maximum_align:
+            usize_max(),
+
+        maximum_count:
+            usize_max(),
+
+        allow_zero_size:
+            false
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Layout helpers
+// -----------------------------------------------------------------------------
+
+proc arena_allocation_layout(
+    request: ArenaAllocationRequest
+) -> alloc_allocator.AllocationLayout {
+    give alloc_allocator.layout(
+        request.size,
+        request.align
+    );
+}
+
+proc arena_allocation_item_layout<T>()
+    -> alloc_allocator.AllocationLayout
+{
+    give alloc_allocator.layout(
+        compiler_size_of<T>(),
+        compiler_align_of<T>()
+    );
+}
+
+proc arena_allocation_array_layout<T>(
+    count: usize
+) -> Option<alloc_allocator.AllocationLayout> {
+    let item =
+        arena_allocation_item_layout<T>();
+
+    give alloc_allocator.layout_array(
+        item,
+        count
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Arithmetic
+// -----------------------------------------------------------------------------
+
+proc arena_allocation_mul_overflows(
+    left: usize,
+    right: usize
+) -> bool {
+    if left == 0
+        or right == 0
+    {
+        give false;
+    }
+
+    give left > usize_max() / right;
+}
+
+proc arena_allocation_add_overflows(
+    left: usize,
+    right: usize
+) -> bool {
+    give left > usize_max() - right;
+}
+
+proc arena_allocation_array_size(
+    item_size: usize,
+    count: usize
+) -> Option<usize> {
+    if arena_allocation_mul_overflows(
+        item_size,
+        count
+    ) {
+        give none<usize>();
+    }
+
+    give some<usize>(
+        item_size * count
+    );
+}
+
+proc arena_allocation_round_up(
+    value: usize,
+    align: usize
+) -> Option<usize> {
+    if align == 0 {
+        give none<usize>();
+    }
+
+    let remainder =
+        value % align;
+
+    if remainder == 0 {
+        give some<usize>(value);
+    }
+
+    let padding =
+        align - remainder;
+
+    if arena_allocation_add_overflows(
+        value,
+        padding
+    ) {
+        give none<usize>();
+    }
+
+    give some<usize>(
+        value + padding
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+proc arena_allocation_alignment_valid(
+    align: usize
+) -> bool {
+    if align == 0 {
+        give false;
+    }
+
+    give compiler_is_power_of_two(
+        align
+    );
+}
+
+proc arena_allocation_size_valid(
+    size: usize,
+    limits: ArenaAllocationLimits
+) -> bool {
+    if size == 0
+        and not limits.allow_zero_size
+    {
+        give false;
+    }
+
+    give size <= limits.maximum_size;
+}
+
+proc arena_allocation_count_valid(
+    count: usize,
+    limits: ArenaAllocationLimits
+) -> bool {
+    give count <= limits.maximum_count;
+}
+
+proc arena_allocation_validate(
+    request: ArenaAllocationRequest,
+    limits: ArenaAllocationLimits
+) -> ArenaAllocationValidation {
+    let size_valid =
+        arena_allocation_size_valid(
+            request.size,
+            limits
+        );
+
+    let align_valid =
+        arena_allocation_alignment_valid(
+            request.align
+        )
+        and request.align
+            <= limits.maximum_align;
+
+    let count_valid =
+        arena_allocation_count_valid(
+            request.count,
+            limits
+        );
+
+    let overflow_safe =
+        not arena_allocation_mul_overflows(
+            request.size,
+            request.count
+        );
+
+    give ArenaAllocationValidation {
+        valid:
+            size_valid
+            and align_valid
+            and count_valid
+            and overflow_safe,
+
+        size_valid:
+            size_valid,
+
+        align_valid:
+            align_valid,
+
+        count_valid:
+            count_valid,
+
+        overflow_safe:
+            overflow_safe
+    };
+}
+
+proc arena_allocation_request_valid(
+    request: ArenaAllocationRequest
+) -> bool {
+    give arena_allocation_validate(
+        request,
+        arena_allocation_limits_default()
+    ).valid;
+}
+
+// -----------------------------------------------------------------------------
+// Result constructors
+// -----------------------------------------------------------------------------
+
+proc arena_allocation_result_success(
+    request: ArenaAllocationRequest,
+    allocation: alloc_allocator.Allocation,
+    bytes: usize
+) -> ArenaAllocationResult {
+    give ArenaAllocationResult {
+        state:
+            ArenaAllocationState.Success,
+
+        failure:
+            ArenaAllocationFailure.None,
+
+        request:
+            request,
+
+        allocation:
+            some<alloc_allocator.Allocation>(
+                allocation
+            ),
+
+        bytes:
+            bytes,
+
+        success:
+            true
+    };
+}
+
+proc arena_allocation_result_failure(
+    request: ArenaAllocationRequest,
+    failure: ArenaAllocationFailure
+) -> ArenaAllocationResult {
+    give ArenaAllocationResult {
+        state:
+            ArenaAllocationState.Failed,
+
+        failure:
+            failure,
+
+        request:
+            request,
+
+        allocation:
+            none<alloc_allocator.Allocation>(),
+
+        bytes:
+            0,
+
+        success:
+            false
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Core allocation
+// -----------------------------------------------------------------------------
+
+proc arena_allocate_layout(
+    value: ref mut arena.Arena,
+    layout_value: alloc_allocator.AllocationLayout
+) -> Option<alloc_allocator.Allocation> {
+    if not alloc_allocator.layout_is_valid(
+        layout_value
+    ) {
+        alloc_allocator.allocator_record_failure(
+            &mut ((*value).allocator)
+        );
+
+        give none<alloc_allocator.Allocation>();
+    }
+
+    let allocation =
+        compiler_arena_allocate(
+            value,
+            layout_value.size,
+            layout_value.align
+        );
+
+    if is_none<alloc_allocator.Allocation>(
+        allocation
+    ) {
+        alloc_allocator.allocator_record_failure(
+            &mut ((*value).allocator)
+        );
+
+        give none<alloc_allocator.Allocation>();
+    }
+
+    let out =
+        unwrap<alloc_allocator.Allocation>(
+            allocation
+        );
+
+    set (*value).allocated =
+        (*value).allocated
+        + layout_value.size;
+
+    alloc_allocator.allocator_record_success(
+        &mut ((*value).allocator),
+        layout_value
+    );
+
+    give some<alloc_allocator.Allocation>(
+        out
+    );
+}
+
+proc arena_allocate_request(
+    value: ref mut arena.Arena,
+    request: ArenaAllocationRequest
+) -> ArenaAllocationResult {
+    let validation =
+        arena_allocation_validate(
+            request,
+            arena_allocation_limits_default()
+        );
+
+    if not validation.size_valid {
+        give arena_allocation_result_failure(
+            request,
+            ArenaAllocationFailure.InvalidSize
+        );
+    }
+
+    if not validation.align_valid {
+        give arena_allocation_result_failure(
+            request,
+            ArenaAllocationFailure.InvalidAlignment
+        );
+    }
+
+    if not validation.count_valid {
+        give arena_allocation_result_failure(
+            request,
+            ArenaAllocationFailure.InvalidLayout
+        );
+    }
+
+    if not validation.overflow_safe {
+        give arena_allocation_result_failure(
+            request,
+            ArenaAllocationFailure.Overflow
+        );
+    }
+
+    let total =
+        request.size
+        * request.count;
+
+    let layout_value =
+        alloc_allocator.layout(
+            total,
+            request.align
+        );
+
+    let result =
+        arena_allocate_layout(
+            value,
+            layout_value
+        );
+
+    if is_none<alloc_allocator.Allocation>(
+        result
+    ) {
+        give arena_allocation_result_failure(
+            request,
+            ArenaAllocationFailure.OutOfMemory
+        );
+    }
+
+    let allocation =
+        unwrap<alloc_allocator.Allocation>(
+            result
+        );
+
+    if request.zeroed {
+        compiler_allocation_zero(
+            allocation.ptr,
+            total
+        );
+    }
+
+    give arena_allocation_result_success(
+        request,
+        allocation,
+        total
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Byte allocations
+// -----------------------------------------------------------------------------
+
+proc arena_allocate_bytes(
+    value: ref mut arena.Arena,
+    size: usize
+) -> Option<alloc_allocator.Allocation> {
+    give arena_allocate_layout(
+        value,
+        alloc_allocator.layout(
+            size,
+            ARENA_ALLOC_DEFAULT_ALIGN
+        )
+    );
+}
+
+proc arena_allocate_bytes_aligned(
+    value: ref mut arena.Arena,
+    size: usize,
+    align: usize
+) -> Option<alloc_allocator.Allocation> {
+    give arena_allocate_layout(
+        value,
+        alloc_allocator.layout(
+            size,
+            align
+        )
+    );
+}
+
+proc arena_allocate_zeroed(
+    value: ref mut arena.Arena,
+    size: usize,
+    align: usize
+) -> Option<alloc_allocator.Allocation> {
+    let request =
+        arena_allocation_request_zeroed(
+            size,
+            align
+        );
+
+    let result =
+        arena_allocate_request(
+            value,
+            request
+        );
+
+    give result.allocation;
+}
+
+// -----------------------------------------------------------------------------
+// Typed allocations
+// -----------------------------------------------------------------------------
+
+proc arena_allocate<T>(
+    value: ref mut arena.Arena
+) -> Option<alloc_allocator.Allocation> {
+    give arena_allocate_layout(
+        value,
+        alloc_allocator.layout(
+            compiler_size_of<T>(),
+            compiler_align_of<T>()
+        )
+    );
+}
+
+proc arena_allocate_zeroed_type<T>(
+    value: ref mut arena.Arena
+) -> Option<alloc_allocator.Allocation> {
+    give arena_allocate_zeroed(
+        value,
+        compiler_size_of<T>(),
+        compiler_align_of<T>()
+    );
+}
+
+proc arena_allocate_array<T>(
+    value: ref mut arena.Arena,
+    count: usize
+) -> Option<alloc_allocator.Allocation> {
+    let item_layout =
+        arena_allocation_item_layout<T>();
+
+    let array_layout =
+        alloc_allocator.layout_array(
+            item_layout,
+            count
+        );
+
+    if is_none<alloc_allocator.AllocationLayout>(
+        array_layout
+    ) {
+        alloc_allocator.allocator_record_failure(
+            &mut ((*value).allocator)
+        );
+
+        give none<alloc_allocator.Allocation>();
+    }
+
+    give arena_allocate_layout(
+        value,
+        unwrap<alloc_allocator.AllocationLayout>(
+            array_layout
+        )
+    );
+}
+
+proc arena_allocate_many<T>(
+    value: ref mut arena.Arena,
+    count: usize
+) -> Option<alloc_allocator.Allocation> {
+    give arena_allocate_array<T>(
+        value,
+        count
+    );
+}
+
+proc arena_allocate_zeroed_array<T>(
+    value: ref mut arena.Arena,
+    count: usize
+) -> Option<alloc_allocator.Allocation> {
+    let size =
+        arena_allocation_array_size(
+            compiler_size_of<T>(),
+            count
+        );
+
+    if is_none<usize>(size) {
+        give none<alloc_allocator.Allocation>();
+    }
+
+    give arena_allocate_zeroed(
+        value,
+        unwrap<usize>(size),
+        compiler_align_of<T>()
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Value construction
+// -----------------------------------------------------------------------------
+
+proc arena_emplace<T>(
+    value: ref mut arena.Arena,
+    item: T
+) -> Option<ref mut T> {
+    let allocation =
+        arena_allocate<T>(
+            value
+        );
+
+    if is_none<alloc_allocator.Allocation>(
+        allocation
+    ) {
+        give none<ref mut T>();
+    }
+
+    let memory =
+        unwrap<alloc_allocator.Allocation>(
+            allocation
+        );
+
+    let target =
+        compiler_allocation_as_mut<T>(
+            memory
+        );
+
+    set *target =
+        item;
+
+    give some<ref mut T>(
+        target
+    );
+}
+
+proc arena_copy<T>(
+    value: ref mut arena.Arena,
+    source: ref T
+) -> Option<ref mut T> {
+    let allocation =
+        arena_allocate<T>(
+            value
+        );
+
+    if is_none<alloc_allocator.Allocation>(
+        allocation
+    ) {
+        give none<ref mut T>();
+    }
+
+    let memory =
+        unwrap<alloc_allocator.Allocation>(
+            allocation
+        );
+
+    let target =
+        compiler_allocation_as_mut<T>(
+            memory
+        );
+
+    compiler_copy_value<T>(
+        target,
+        source
+    );
+
+    give some<ref mut T>(
+        target
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Slice / array construction
+// -----------------------------------------------------------------------------
+
+proc arena_copy_array<T>(
+    value: ref mut arena.Arena,
+    source: ref [T],
+    count: usize
+) -> Option<ref mut T> {
+    if count == 0 {
+        give none<ref mut T>();
+    }
+
+    let allocation =
+        arena_allocate_array<T>(
+            value,
+            count
+        );
+
+    if is_none<alloc_allocator.Allocation>(
+        allocation
+    ) {
+        give none<ref mut T>();
+    }
+
+    let memory =
+        unwrap<alloc_allocator.Allocation>(
+            allocation
+        );
+
+    let target =
+        compiler_allocation_as_mut<T>(
+            memory
+        );
+
+    compiler_copy_array<T>(
+        target,
+        source,
+        count
+    );
+
+    give some<ref mut T>(
+        target
+    );
+}
+
+// -----------------------------------------------------------------------------
+// String / byte copy
+// -----------------------------------------------------------------------------
+
+proc arena_copy_bytes(
+    value: ref mut arena.Arena,
+    source: ref [u8],
+    count: usize
+) -> Option<alloc_allocator.Allocation> {
+    if count == 0 {
+        give none<alloc_allocator.Allocation>();
+    }
+
+    let allocation =
+        arena_allocate_bytes(
+            value,
+            count
+        );
+
+    if is_none<alloc_allocator.Allocation>(
+        allocation
+    ) {
+        give none<alloc_allocator.Allocation>();
+    }
+
+    let out =
+        unwrap<alloc_allocator.Allocation>(
+            allocation
+        );
+
+    compiler_copy_bytes(
+        out.ptr,
+        source,
+        count
+    );
+
+    give some<alloc_allocator.Allocation>(
+        out
+    );
+}
+
+proc arena_copy_string(
+    value: ref mut arena.Arena,
+    source: string
+) -> Option<alloc_allocator.Allocation> {
+    let size =
+        compiler_string_byte_len(
+            source
+        );
+
+    let allocation =
+        arena_allocate_bytes(
+            value,
+            size + 1
+        );
+
+    if is_none<alloc_allocator.Allocation>(
+        allocation
+    ) {
+        give none<alloc_allocator.Allocation>();
+    }
+
+    let out =
+        unwrap<alloc_allocator.Allocation>(
+            allocation
+        );
+
+    compiler_copy_string(
+        out.ptr,
+        source
+    );
+
+    compiler_write_u8(
+        out.ptr,
+        size,
+        0
+    );
+
+    give some<alloc_allocator.Allocation>(
+        out
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Capacity / fit
+// -----------------------------------------------------------------------------
+
+proc arena_allocation_can_fit_block(
+    block: arena.ArenaBlock,
+    request: ArenaAllocationRequest
+) -> bool {
+    if not arena_allocation_request_valid(
+        request
+    ) {
+        give false;
+    }
+
+    let required =
+        request.size
+        * request.count;
+
+    give arena.arena_block_remaining(
+        block
+    ) >= required;
+}
+
+proc arena_allocation_required_bytes(
+    request: ArenaAllocationRequest
+) -> Option<usize> {
+    give arena_allocation_array_size(
+        request.size,
+        request.count
+    );
+}
+
+proc arena_allocation_next_block_size(
+    value: arena.Arena,
+    request: ArenaAllocationRequest
+) -> usize {
+    let required =
+        arena_allocation_required_bytes(
+            request
+        );
+
+    if is_none<usize>(required) {
+        give 0;
+    }
+
+    give arena.arena_next_block_size(
+        value,
+        unwrap<usize>(required)
+    );
+}
+
+proc arena_allocation_would_fit_default_block(
+    value: arena.Arena,
+    request: ArenaAllocationRequest
+) -> bool {
+    let required =
+        arena_allocation_required_bytes(
+            request
+        );
+
+    if is_none<usize>(required) {
+        give false;
+    }
+
+    give unwrap<usize>(required)
+        <= value.block_size;
+}
+
+// -----------------------------------------------------------------------------
+// Snapshot
+// -----------------------------------------------------------------------------
+
+proc arena_allocation_snapshot(
+    value: arena.Arena
+) -> ArenaAllocationSnapshot {
+    give ArenaAllocationSnapshot {
+        allocated:
+            value.allocated,
+
+        block_count:
+            arena.arena_block_count(
+                value
+            ),
+
+        allocator_live:
+            alloc_allocator.allocator_live_bytes(
+                value.allocator
+            ),
+
+        allocator_reserved:
+            alloc_allocator.allocator_reserved_bytes(
+                value.allocator
+            )
+    };
+}
+
+proc arena_allocation_snapshot_equal(
+    left: ArenaAllocationSnapshot,
+    right: ArenaAllocationSnapshot
+) -> bool {
+    give left.allocated
+        == right.allocated
+        and left.block_count
+            == right.block_count
+        and left.allocator_live
+            == right.allocator_live
+        and left.allocator_reserved
+            == right.allocator_reserved;
+}
+
+proc arena_allocation_snapshot_changed(
+    left: ArenaAllocationSnapshot,
+    right: ArenaAllocationSnapshot
+) -> bool {
+    give not arena_allocation_snapshot_equal(
+        left,
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Delta
+// -----------------------------------------------------------------------------
+
+proc arena_allocation_usize_delta(
+    before: usize,
+    after: usize
+) -> int {
+    if after > before {
+        give (
+            after - before
+        ) as int;
+    }
+
+    if after < before {
+        give -(
+            (
+                before - after
+            ) as int
+        );
+    }
+
+    give 0;
+}
+
+proc arena_allocation_delta(
+    before: ArenaAllocationSnapshot,
+    after: ArenaAllocationSnapshot
+) -> ArenaAllocationDelta {
+    give ArenaAllocationDelta {
+        allocated:
+            arena_allocation_usize_delta(
+                before.allocated,
+                after.allocated
+            ),
+
+        blocks:
+            arena_allocation_usize_delta(
+                before.block_count,
+                after.block_count
+            ),
+
+        allocator_live:
+            arena_allocation_usize_delta(
+                before.allocator_live,
+                after.allocator_live
+            ),
+
+        allocator_reserved:
+            arena_allocation_usize_delta(
+                before.allocator_reserved,
+                after.allocator_reserved
+            )
+    };
+}
+
+proc arena_allocation_delta_is_zero(
+    delta: ArenaAllocationDelta
+) -> bool {
+    give delta.allocated == 0
+        and delta.blocks == 0
+        and delta.allocator_live == 0
+        and delta.allocator_reserved == 0;
+}
+
+// -----------------------------------------------------------------------------
+// Profile statistics
+// -----------------------------------------------------------------------------
+
+proc arena_allocation_profile_empty()
+    -> ArenaAllocationProfile
+{
+    give ArenaAllocationProfile {
+        request_count: 0,
+        success_count: 0,
+        failure_count: 0,
+
+        requested_bytes: 0,
+        allocated_bytes: 0,
+        failed_bytes: 0,
+
+        largest_request: 0,
+        smallest_request: 0,
+
+        object_allocations: 0,
+        array_allocations: 0,
+        byte_allocations: 0,
+        aligned_allocations: 0,
+        zeroed_allocations: 0
+    };
+}
+
+proc arena_allocation_profile_record_request(
+    profile: ref mut ArenaAllocationProfile,
+    request: ArenaAllocationRequest
+) {
+    let bytes =
+        if arena_allocation_mul_overflows(
+            request.size,
+            request.count
+        ) {
+            0
+        } else {
+            request.size
+            * request.count
+        };
+
+    set profile.request_count =
+        profile.request_count + 1;
+
+    set profile.requested_bytes =
+        profile.requested_bytes + bytes;
+
+    if profile.largest_request < bytes {
+        set profile.largest_request =
+            bytes;
+    }
+
+    if profile.smallest_request == 0
+        or bytes < profile.smallest_request
+    {
+        set profile.smallest_request =
+            bytes;
+    }
+
+    pick request.kind {
+        ArenaAllocationKind.Object {
+            set profile.object_allocations =
+                profile.object_allocations + 1;
+        }
+
+        ArenaAllocationKind.Array {
+            set profile.array_allocations =
+                profile.array_allocations + 1;
+        }
+
+        ArenaAllocationKind.Bytes {
+            set profile.byte_allocations =
+                profile.byte_allocations + 1;
+        }
+
+        ArenaAllocationKind.Aligned {
+            set profile.aligned_allocations =
+                profile.aligned_allocations + 1;
+        }
+
+        ArenaAllocationKind.Zeroed {
+            set profile.zeroed_allocations =
+                profile.zeroed_allocations + 1;
+        }
+
+        _ {}
+    }
+}
+
+proc arena_allocation_profile_record_result(
+    profile: ref mut ArenaAllocationProfile,
+    result: ArenaAllocationResult
+) {
+    if result.success {
+        set profile.success_count =
+            profile.success_count + 1;
+
+        set profile.allocated_bytes =
+            profile.allocated_bytes
+            + result.bytes;
+    } else {
+        set profile.failure_count =
+            profile.failure_count + 1;
+
+        let bytes =
+            if arena_allocation_mul_overflows(
+                result.request.size,
+                result.request.count
+            ) {
+                0
+            } else {
+                result.request.size
+                * result.request.count
+            };
+
+        set profile.failed_bytes =
+            profile.failed_bytes
+            + bytes;
+    }
+}
+
+proc arena_allocation_profile_success_rate(
+    profile: ArenaAllocationProfile
+) -> f64 {
+    if profile.request_count == 0 {
+        give 1.0;
+    }
+
+    give (
+        profile.success_count as f64
+    ) / (
+        profile.request_count as f64
+    );
+}
+
+proc arena_allocation_profile_failure_rate(
+    profile: ArenaAllocationProfile
+) -> f64 {
+    if profile.request_count == 0 {
+        give 0.0;
+    }
+
+    give (
+        profile.failure_count as f64
+    ) / (
+        profile.request_count as f64
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Arena state helpers
+// -----------------------------------------------------------------------------
+
+proc arena_allocation_is_possible(
+    value: arena.Arena,
+    request: ArenaAllocationRequest
+) -> bool {
+    if not arena.arena_is_valid(
+        value
+    ) {
+        give false;
+    }
+
+    give arena_allocation_request_valid(
+        request
+    );
+}
+
+proc arena_allocation_used(
+    value: arena.Arena
+) -> usize {
+    give value.allocated;
+}
+
+proc arena_allocation_reserved(
+    value: arena.Arena
+) -> usize {
+    give alloc_allocator.allocator_reserved_bytes(
+        value.allocator
+    );
+}
+
+proc arena_allocation_live(
+    value: arena.Arena
+) -> usize {
+    give alloc_allocator.allocator_live_bytes(
+        value.allocator
+    );
+}
+
+proc arena_allocation_overhead(
+    value: arena.Arena
+) -> usize {
+    let reserved =
+        arena_allocation_reserved(
+            value
+        );
+
+    let live =
+        arena_allocation_live(
+            value
+        );
+
+    if reserved < live {
+        give 0;
+    }
+
+    give reserved - live;
+}
+
+proc arena_allocation_utilization(
+    value: arena.Arena
+) -> f64 {
+    let reserved =
+        arena_allocation_reserved(
+            value
+        );
+
+    if reserved == 0 {
+        give 0.0;
+    }
+
+    give (
+        arena_allocation_live(value)
+        as f64
+    ) / (
+        reserved as f64
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Result predicates
+// -----------------------------------------------------------------------------
+
+proc arena_allocation_result_is_success(
+    result: ArenaAllocationResult
+) -> bool {
+    give result.success;
+}
+
+proc arena_allocation_result_is_failure(
+    result: ArenaAllocationResult
+) -> bool {
+    give not result.success;
+}
+
+proc arena_allocation_result_has_allocation(
+    result: ArenaAllocationResult
+) -> bool {
+    give is_some<alloc_allocator.Allocation>(
+        result.allocation
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc arena_allocation_kind_name(
+    kind: ArenaAllocationKind
+) -> string {
+    pick kind {
+        ArenaAllocationKind.Bytes {
+            give "bytes";
+        }
+
+        ArenaAllocationKind.Object {
+            give "object";
+        }
+
+        ArenaAllocationKind.Array {
+            give "array";
+        }
+
+        ArenaAllocationKind.Aligned {
+            give "aligned";
+        }
+
+        ArenaAllocationKind.Zeroed {
+            give "zeroed";
+        }
+
+        ArenaAllocationKind.Copy {
+            give "copy";
+        }
+
+        ArenaAllocationKind.String {
+            give "string";
+        }
+
+        ArenaAllocationKind.Internal {
+            give "internal";
+        }
+    }
+
+    give "internal";
+}
+
+proc arena_allocation_state_name(
+    state: ArenaAllocationState
+) -> string {
+    pick state {
+        ArenaAllocationState.Ready {
+            give "ready";
+        }
+
+        ArenaAllocationState.Success {
+            give "success";
+        }
+
+        ArenaAllocationState.Failed {
+            give "failed";
+        }
+
+        ArenaAllocationState.Invalid {
+            give "invalid";
+        }
+
+        ArenaAllocationState.Overflow {
+            give "overflow";
+        }
+    }
+
+    give "invalid";
+}
+
+proc arena_allocation_failure_name(
+    failure: ArenaAllocationFailure
+) -> string {
+    pick failure {
+        ArenaAllocationFailure.None {
+            give "none";
+        }
+
+        ArenaAllocationFailure.InvalidLayout {
+            give "invalid-layout";
+        }
+
+        ArenaAllocationFailure.InvalidSize {
+            give "invalid-size";
+        }
+
+        ArenaAllocationFailure.InvalidAlignment {
+            give "invalid-alignment";
+        }
+
+        ArenaAllocationFailure.Overflow {
+            give "overflow";
+        }
+
+        ArenaAllocationFailure.OutOfMemory {
+            give "out-of-memory";
+        }
+
+        ArenaAllocationFailure.ArenaInvalid {
+            give "arena-invalid";
+        }
+
+        ArenaAllocationFailure.RuntimeFailure {
+            give "runtime-failure";
+        }
+    }
+
+    give "runtime-failure";
+}
+
+// -----------------------------------------------------------------------------
+// Allocation model
+// -----------------------------------------------------------------------------
+//
+// Arena
+//   |
+//   +-- allocation request
+//   |      |
+//   |      +-- size
+//   |      +-- alignment
+//   |      +-- count
+//   |      +-- kind
+//   |
+//   +-- validate
+//   |      |
+//   |      +-- size
+//   |      +-- alignment
+//   |      +-- multiplication overflow
+//   |
+//   +-- arena_allocate_layout
+//   |      |
+//   |      v
+//   |   compiler_arena_allocate
+//   |
+//   +-- success
+//          |
+//          +-- Arena.allocated += size
+//          +-- allocator statistics updated
+//
+// Typed:
+//
+//     arena_allocate<T>()
+//
+// Arrays:
+//
+//     arena_allocate_array<T>(count)
+//
+// Raw bytes:
+//
+//     arena_allocate_bytes(size)
+//
+// Aligned:
+//
+//     arena_allocate_bytes_aligned(size, align)
+//
+// Zeroed:
+//
+//     arena_allocate_zeroed(size, align)
+//
+// Construct value:
+//
+//     arena_emplace(arena, value)
+//
+// Arena allocations are monotonic.
+//
+// Individual allocations are not normally freed separately:
+//
+//     allocate
+//        |
+//        v
+//     allocate
+//        |
+//        v
+//     allocate
+//        |
+//        +------> rewind(mark)
+//        |
+//        +------> reset()
+//        |
+//        +------> drop()
+//
+// `alloc.vitl` is responsible for allocation mechanics.
+// Block lifecycle belongs in `block.vitl`.
+// Chunk management belongs in `chunk.vitl`.
+// Rewind/reset semantics belong in `reset.vitl`.

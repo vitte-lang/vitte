@@ -1,0 +1,3083 @@
+use src/vitte/stdlib/alloc/boxed
+use src/vitte/stdlib/alloc/boxed/raw
+
+form Point {
+    x: int
+    y: int
+}
+
+form User {
+    id: int
+    name: string
+    active: bool
+}
+
+// -----------------------------------------------------------------------------
+// Borrowed raw views
+// -----------------------------------------------------------------------------
+
+proc test_as_raw_basic() -> bool {
+    let value = box_new(42);
+
+    let raw = box_as_raw(
+        ref value
+    );
+
+    give box_raw_is_borrowed(raw)
+        and not box_raw_is_owned(raw)
+        and not box_raw_is_consumed(raw)
+        and not box_raw_is_released(raw)
+        and box_raw_can_read(raw)
+        and not box_raw_can_reconstruct(raw)
+        and not box_raw_can_release(raw);
+}
+
+proc test_as_raw_int_read() -> bool {
+    let value = box_new(42);
+
+    let raw = box_as_raw(
+        ref value
+    );
+
+    let result = box_raw_as_ref(raw);
+
+    pick result {
+        Some(inner) {
+            give *inner == 42;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_as_raw_negative_int() -> bool {
+    let value = box_new(-42);
+
+    let raw = box_as_raw(
+        ref value
+    );
+
+    let result = box_raw_as_ref(raw);
+
+    pick result {
+        Some(inner) {
+            give *inner == -42;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_as_raw_bool() -> bool {
+    let value = box_new(true);
+
+    let raw = box_as_raw(
+        ref value
+    );
+
+    let result = box_raw_as_ref(raw);
+
+    pick result {
+        Some(inner) {
+            give *inner;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_as_raw_string() -> bool {
+    let value = box_new("Vitte");
+
+    let raw = box_as_raw(
+        ref value
+    );
+
+    let result = box_raw_as_ref(raw);
+
+    pick result {
+        Some(inner) {
+            give *inner == "Vitte";
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_as_raw_point() -> bool {
+    let value = box_new(
+        Point {
+            x: 10
+            y: 20
+        }
+    );
+
+    let raw = box_as_raw(
+        ref value
+    );
+
+    let result = box_raw_as_ref(raw);
+
+    pick result {
+        Some(point) {
+            give point.x == 10
+                and point.y == 20;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_as_raw_user() -> bool {
+    let value = box_new(
+        User {
+            id: 7
+            name: "Vincent"
+            active: true
+        }
+    );
+
+    let raw = box_as_raw(
+        ref value
+    );
+
+    let result = box_raw_as_ref(raw);
+
+    pick result {
+        Some(user) {
+            give user.id == 7
+                and user.name == "Vincent"
+                and user.active;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_borrowed_keeps_box_alive() -> bool {
+    let value = box_new(42);
+
+    let raw = box_as_raw(
+        ref value
+    );
+
+    give box_raw_is_valid(raw)
+        and box_is_valid(value)
+        and *box_get(ref value) == 42;
+}
+
+proc test_borrowed_layout() -> bool {
+    let value = box_new(42);
+
+    let raw = box_as_raw(
+        ref value
+    );
+
+    give box_raw_size(raw) == box_size(value)
+        and box_raw_align(raw) == box_align(value);
+}
+
+proc test_borrowed_kind_shared() -> bool {
+    let value = box_new(42);
+
+    let raw = box_as_raw(
+        ref value
+    );
+
+    give box_raw_kind(raw)
+        == BoxRawKind.Shared;
+}
+
+proc test_borrowed_ownership() -> bool {
+    let value = box_new(42);
+
+    let raw = box_as_raw(
+        ref value
+    );
+
+    give box_raw_ownership(raw)
+        == BoxRawOwnership.Borrowed;
+}
+
+proc test_borrowed_state() -> bool {
+    let value = box_new(42);
+
+    let raw = box_as_raw(
+        ref value
+    );
+
+    give box_raw_state(raw)
+        == BoxRawState.Borrowed;
+}
+
+// -----------------------------------------------------------------------------
+// Mutable raw views
+// -----------------------------------------------------------------------------
+
+proc test_as_raw_mut_basic() -> bool {
+    let mut value = box_new(42);
+
+    let raw = box_as_raw_mut(
+        ref mut value
+    );
+
+    give box_raw_is_borrowed(raw)
+        and box_raw_kind(raw)
+            == BoxRawKind.Mutable
+        and box_raw_can_read(raw)
+        and box_raw_can_write(raw)
+        and not box_raw_can_reconstruct(raw);
+}
+
+proc test_as_raw_mut_write_int() -> bool {
+    let mut value = box_new(10);
+
+    let mut raw = box_as_raw_mut(
+        ref mut value
+    );
+
+    let result = box_raw_as_mut(
+        ref mut raw
+    );
+
+    pick result {
+        Some(inner) {
+            set *inner = 20;
+
+            give *box_get(ref value) == 20;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_as_raw_mut_write_point() -> bool {
+    let mut value = box_new(
+        Point {
+            x: 1
+            y: 2
+        }
+    );
+
+    let mut raw = box_as_raw_mut(
+        ref mut value
+    );
+
+    let result = box_raw_as_mut(
+        ref mut raw
+    );
+
+    pick result {
+        Some(point) {
+            set point.x = 100;
+            set point.y = 200;
+
+            give box_get(ref value).x == 100
+                and box_get(ref value).y == 200;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_as_raw_mut_write_user() -> bool {
+    let mut value = box_new(
+        User {
+            id: 1
+            name: "before"
+            active: false
+        }
+    );
+
+    let mut raw = box_as_raw_mut(
+        ref mut value
+    );
+
+    let result = box_raw_as_mut(
+        ref mut raw
+    );
+
+    pick result {
+        Some(user) {
+            set user.id = 2;
+            set user.name = "after";
+            set user.active = true;
+
+            let current = box_get(
+                ref value
+            );
+
+            give current.id == 2
+                and current.name == "after"
+                and current.active;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_shared_raw_not_writable() -> bool {
+    let value = box_new(42);
+
+    let raw = box_as_raw(
+        ref value
+    );
+
+    give not box_raw_can_write(raw);
+}
+
+proc test_mut_raw_writable() -> bool {
+    let mut value = box_new(42);
+
+    let raw = box_as_raw_mut(
+        ref mut value
+    );
+
+    give box_raw_can_write(raw);
+}
+
+// -----------------------------------------------------------------------------
+// Owned raw transfer
+// -----------------------------------------------------------------------------
+
+proc test_into_raw_basic() -> bool {
+    let mut value = box_new(42);
+
+    let result = box_into_raw(
+        ref mut value
+    );
+
+    pick result {
+        Some(raw) {
+            give box_is_moved(value)
+                and box_raw_is_owned(raw)
+                and box_raw_can_read(raw)
+                and box_raw_can_write(raw)
+                and box_raw_can_reconstruct(raw)
+                and box_raw_can_release(raw);
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_into_raw_state() -> bool {
+    let mut value = box_new(42);
+
+    let result = box_into_raw(
+        ref mut value
+    );
+
+    pick result {
+        Some(raw) {
+            give box_raw_state(raw)
+                == BoxRawState.Owned;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_into_raw_ownership() -> bool {
+    let mut value = box_new(42);
+
+    let result = box_into_raw(
+        ref mut value
+    );
+
+    pick result {
+        Some(raw) {
+            give box_raw_ownership(raw)
+                == BoxRawOwnership.Owned;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_into_raw_kind() -> bool {
+    let mut value = box_new(42);
+
+    let result = box_into_raw(
+        ref mut value
+    );
+
+    pick result {
+        Some(raw) {
+            give box_raw_kind(raw)
+                == BoxRawKind.Owned;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_into_raw_preserves_value() -> bool {
+    let mut value = box_new(42);
+
+    let result = box_into_raw(
+        ref mut value
+    );
+
+    pick result {
+        Some(raw) {
+            let inner = box_raw_as_ref(raw);
+
+            pick inner {
+                Some(data) {
+                    give *data == 42;
+                }
+
+                None {
+                    give false;
+                }
+            }
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_into_raw_preserves_string() -> bool {
+    let mut value = box_new("Vitte");
+
+    let result = box_into_raw(
+        ref mut value
+    );
+
+    pick result {
+        Some(raw) {
+            let inner = box_raw_as_ref(raw);
+
+            pick inner {
+                Some(data) {
+                    give *data == "Vitte";
+                }
+
+                None {
+                    give false;
+                }
+            }
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_into_raw_preserves_point() -> bool {
+    let mut value = box_new(
+        Point {
+            x: 4
+            y: 8
+        }
+    );
+
+    let result = box_into_raw(
+        ref mut value
+    );
+
+    pick result {
+        Some(raw) {
+            let inner = box_raw_as_ref(raw);
+
+            pick inner {
+                Some(point) {
+                    give point.x == 4
+                        and point.y == 8;
+                }
+
+                None {
+                    give false;
+                }
+            }
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_into_raw_layout_preserved() -> bool {
+    let mut value = box_new(42);
+
+    let size = box_size(value);
+    let align = box_align(value);
+
+    let result = box_into_raw(
+        ref mut value
+    );
+
+    pick result {
+        Some(raw) {
+            give box_raw_size(raw) == size
+                and box_raw_align(raw) == align;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Owned raw mutation
+// -----------------------------------------------------------------------------
+
+proc test_owned_raw_mutate() -> bool {
+    let mut value = box_new(10);
+
+    let result = box_into_raw(
+        ref mut value
+    );
+
+    pick result {
+        Some(raw_value) {
+            let mut raw = raw_value;
+
+            let inner = box_raw_as_mut(
+                ref mut raw
+            );
+
+            pick inner {
+                Some(data) {
+                    set *data = 20;
+
+                    let read = box_raw_as_ref(raw);
+
+                    pick read {
+                        Some(after) {
+                            give *after == 20;
+                        }
+
+                        None {
+                            give false;
+                        }
+                    }
+                }
+
+                None {
+                    give false;
+                }
+            }
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_owned_raw_mutate_point() -> bool {
+    let mut value = box_new(
+        Point {
+            x: 1
+            y: 2
+        }
+    );
+
+    let result = box_into_raw(
+        ref mut value
+    );
+
+    pick result {
+        Some(raw_value) {
+            let mut raw = raw_value;
+
+            let inner = box_raw_as_mut(
+                ref mut raw
+            );
+
+            pick inner {
+                Some(point) {
+                    set point.x = 50;
+                    set point.y = 60;
+
+                    let read = box_raw_as_ref(raw);
+
+                    pick read {
+                        Some(after) {
+                            give after.x == 50
+                                and after.y == 60;
+                        }
+
+                        None {
+                            give false;
+                        }
+                    }
+                }
+
+                None {
+                    give false;
+                }
+            }
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Reconstruction
+// -----------------------------------------------------------------------------
+
+proc test_from_raw() -> bool {
+    let mut value = box_new(42);
+
+    let raw_result = box_into_raw(
+        ref mut value
+    );
+
+    pick raw_result {
+        Some(raw) {
+            let reconstructed = box_from_raw(
+                raw
+            );
+
+            pick reconstructed {
+                Some(boxed_value) {
+                    give *box_get(
+                        ref boxed_value
+                    ) == 42;
+                }
+
+                None {
+                    give false;
+                }
+            }
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_from_raw_string() -> bool {
+    let mut value = box_new("Vitte");
+
+    let raw_result = box_into_raw(
+        ref mut value
+    );
+
+    pick raw_result {
+        Some(raw) {
+            let reconstructed = box_from_raw(
+                raw
+            );
+
+            pick reconstructed {
+                Some(boxed_value) {
+                    give *box_get(
+                        ref boxed_value
+                    ) == "Vitte";
+                }
+
+                None {
+                    give false;
+                }
+            }
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_from_raw_point() -> bool {
+    let mut value = box_new(
+        Point {
+            x: 10
+            y: 20
+        }
+    );
+
+    let raw_result = box_into_raw(
+        ref mut value
+    );
+
+    pick raw_result {
+        Some(raw) {
+            let reconstructed = box_from_raw(
+                raw
+            );
+
+            pick reconstructed {
+                Some(boxed_value) {
+                    let point = box_get(
+                        ref boxed_value
+                    );
+
+                    give point.x == 10
+                        and point.y == 20;
+                }
+
+                None {
+                    give false;
+                }
+            }
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_raw_reconstruct() -> bool {
+    let mut value = box_new(42);
+
+    let raw_result = box_into_raw(
+        ref mut value
+    );
+
+    pick raw_result {
+        Some(raw_value) {
+            let mut raw = raw_value;
+
+            let reconstructed =
+                box_raw_reconstruct(
+                    ref mut raw
+                );
+
+            pick reconstructed {
+                Some(boxed_value) {
+                    give *box_get(
+                        ref boxed_value
+                    ) == 42
+                        and box_raw_is_consumed(raw)
+                        and not box_raw_can_read(raw)
+                        and not box_raw_can_write(raw)
+                        and not box_raw_can_reconstruct(raw)
+                        and not box_raw_can_release(raw);
+                }
+
+                None {
+                    give false;
+                }
+            }
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_raw_reconstruct_point() -> bool {
+    let mut value = box_new(
+        Point {
+            x: 8
+            y: 16
+        }
+    );
+
+    let raw_result = box_into_raw(
+        ref mut value
+    );
+
+    pick raw_result {
+        Some(raw_value) {
+            let mut raw = raw_value;
+
+            let reconstructed =
+                box_raw_reconstruct(
+                    ref mut raw
+                );
+
+            pick reconstructed {
+                Some(boxed_value) {
+                    let point = box_get(
+                        ref boxed_value
+                    );
+
+                    give point.x == 8
+                        and point.y == 16
+                        and box_raw_is_consumed(raw);
+                }
+
+                None {
+                    give false;
+                }
+            }
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_raw_reconstruct_once() -> bool {
+    let mut value = box_new(42);
+
+    let raw_result = box_into_raw(
+        ref mut value
+    );
+
+    pick raw_result {
+        Some(raw_value) {
+            let mut raw = raw_value;
+
+            let first = box_raw_reconstruct(
+                ref mut raw
+            );
+
+            let second = box_raw_reconstruct(
+                ref mut raw
+            );
+
+            pick first {
+                Some(boxed_value) {
+                    give is_none(second)
+                        and *box_get(
+                            ref boxed_value
+                        ) == 42;
+                }
+
+                None {
+                    give false;
+                }
+            }
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_consumed_raw_cannot_read() -> bool {
+    let mut value = box_new(42);
+
+    let raw_result = box_into_raw(
+        ref mut value
+    );
+
+    pick raw_result {
+        Some(raw_value) {
+            let mut raw = raw_value;
+
+            let reconstructed =
+                box_raw_reconstruct(
+                    ref mut raw
+                );
+
+            if is_none(reconstructed) {
+                give false;
+            }
+
+            give not box_raw_can_read(raw)
+                and is_none(
+                    box_raw_as_ref(raw)
+                );
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_consumed_raw_cannot_write() -> bool {
+    let mut value = box_new(42);
+
+    let raw_result = box_into_raw(
+        ref mut value
+    );
+
+    pick raw_result {
+        Some(raw_value) {
+            let mut raw = raw_value;
+
+            let reconstructed =
+                box_raw_reconstruct(
+                    ref mut raw
+                );
+
+            if is_none(reconstructed) {
+                give false;
+            }
+
+            give not box_raw_can_write(raw)
+                and is_none(
+                    box_raw_as_mut(
+                        ref mut raw
+                    )
+                );
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_consumed_raw_cannot_reconstruct() -> bool {
+    let mut value = box_new(42);
+
+    let raw_result = box_into_raw(
+        ref mut value
+    );
+
+    pick raw_result {
+        Some(raw_value) {
+            let mut raw = raw_value;
+
+            let first = box_raw_reconstruct(
+                ref mut raw
+            );
+
+            if is_none(first) {
+                give false;
+            }
+
+            give not box_raw_can_reconstruct(raw);
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Borrowed reconstruction rejection
+// -----------------------------------------------------------------------------
+
+proc test_borrowed_cannot_reconstruct() -> bool {
+    let value = box_new(42);
+
+    let raw = box_as_raw(
+        ref value
+    );
+
+    give not box_raw_can_reconstruct(raw)
+        and is_none(
+            box_from_raw(raw)
+        );
+}
+
+proc test_mut_borrowed_cannot_reconstruct() -> bool {
+    let mut value = box_new(42);
+
+    let raw = box_as_raw_mut(
+        ref mut value
+    );
+
+    give not box_raw_can_reconstruct(raw)
+        and is_none(
+            box_from_raw(raw)
+        );
+}
+
+// -----------------------------------------------------------------------------
+// Raw release
+// -----------------------------------------------------------------------------
+
+proc test_raw_release() -> bool {
+    let mut value = box_new(42);
+
+    let raw_result = box_into_raw(
+        ref mut value
+    );
+
+    pick raw_result {
+        Some(raw_value) {
+            let mut raw = raw_value;
+
+            let released = box_raw_release(
+                ref mut raw
+            );
+
+            give released
+                and box_raw_is_released(raw)
+                and not box_raw_can_read(raw)
+                and not box_raw_can_write(raw)
+                and not box_raw_can_reconstruct(raw)
+                and not box_raw_can_release(raw);
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_raw_release_string() -> bool {
+    let mut value = box_new("Vitte");
+
+    let raw_result = box_into_raw(
+        ref mut value
+    );
+
+    pick raw_result {
+        Some(raw_value) {
+            let mut raw = raw_value;
+
+            give box_raw_release(
+                ref mut raw
+            )
+            and box_raw_is_released(raw);
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_raw_release_point() -> bool {
+    let mut value = box_new(
+        Point {
+            x: 1
+            y: 2
+        }
+    );
+
+    let raw_result = box_into_raw(
+        ref mut value
+    );
+
+    pick raw_result {
+        Some(raw_value) {
+            let mut raw = raw_value;
+
+            give box_raw_release(
+                ref mut raw
+            )
+            and box_raw_is_released(raw);
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_raw_release_once() -> bool {
+    let mut value = box_new(42);
+
+    let raw_result = box_into_raw(
+        ref mut value
+    );
+
+    pick raw_result {
+        Some(raw_value) {
+            let mut raw = raw_value;
+
+            let first = box_raw_release(
+                ref mut raw
+            );
+
+            let second = box_raw_release(
+                ref mut raw
+            );
+
+            give first
+                and not second;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_borrowed_cannot_release() -> bool {
+    let value = box_new(42);
+
+    let raw_value = box_as_raw(
+        ref value
+    );
+
+    let mut raw = raw_value;
+
+    give not box_raw_release(
+        ref mut raw
+    )
+    and box_is_valid(value)
+    and *box_get(ref value) == 42;
+}
+
+proc test_mut_borrowed_cannot_release() -> bool {
+    let mut value = box_new(42);
+
+    let raw_value = box_as_raw_mut(
+        ref mut value
+    );
+
+    let mut raw = raw_value;
+
+    give not box_raw_release(
+        ref mut raw
+    )
+    and box_is_valid(value);
+}
+
+// -----------------------------------------------------------------------------
+// Forget
+// -----------------------------------------------------------------------------
+
+proc test_raw_forget() -> bool {
+    let mut value = box_new(42);
+
+    let raw_result = box_into_raw(
+        ref mut value
+    );
+
+    pick raw_result {
+        Some(raw_value) {
+            let mut raw = raw_value;
+
+            give box_raw_forget(
+                ref mut raw
+            )
+            and box_raw_is_consumed(raw)
+            and not box_raw_can_reconstruct(raw);
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_borrowed_raw_forget_fails() -> bool {
+    let value = box_new(42);
+
+    let raw_value = box_as_raw(
+        ref value
+    );
+
+    let mut raw = raw_value;
+
+    give not box_raw_forget(
+        ref mut raw
+    );
+}
+
+proc test_raw_forget_once() -> bool {
+    let mut value = box_new(42);
+
+    let raw_result = box_into_raw(
+        ref mut value
+    );
+
+    pick raw_result {
+        Some(raw_value) {
+            let mut raw = raw_value;
+
+            let first = box_raw_forget(
+                ref mut raw
+            );
+
+            let second = box_raw_forget(
+                ref mut raw
+            );
+
+            give first
+                and not second;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Identity
+// -----------------------------------------------------------------------------
+
+proc test_raw_ptr_eq_same_box() -> bool {
+    let value = box_new(42);
+
+    let first = box_as_raw(
+        ref value
+    );
+
+    let second = box_as_raw(
+        ref value
+    );
+
+    give box_raw_ptr_eq(
+        first,
+        second
+    );
+}
+
+proc test_raw_ptr_ne_different_boxes() -> bool {
+    let first_box = box_new(42);
+    let second_box = box_new(42);
+
+    let first = box_as_raw(
+        ref first_box
+    );
+
+    let second = box_as_raw(
+        ref second_box
+    );
+
+    give box_raw_ptr_ne(
+        first,
+        second
+    );
+}
+
+proc test_raw_ptr_eq_mut_and_shared_same_box() -> bool {
+    let mut value = box_new(42);
+
+    let shared = box_as_raw(
+        ref value
+    );
+
+    let mutable = box_as_raw_mut(
+        ref mut value
+    );
+
+    give box_raw_ptr_eq(
+        shared,
+        mutable
+    );
+}
+
+proc test_clone_has_different_raw_pointer() -> bool {
+    let first = box_new(42);
+    let second = box_clone(
+        ref first
+    );
+
+    let first_raw = box_as_raw(
+        ref first
+    );
+
+    let second_raw = box_as_raw(
+        ref second
+    );
+
+    give box_raw_ptr_ne(
+        first_raw,
+        second_raw
+    );
+}
+
+proc test_move_raw_identity() -> bool {
+    let mut value = box_new(42);
+
+    let before = box_as_raw(
+        ref value
+    );
+
+    let result = box_into_raw(
+        ref mut value
+    );
+
+    pick result {
+        Some(after) {
+            give box_raw_ptr_eq(
+                before,
+                after
+            );
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_reconstruct_identity() -> bool {
+    let mut value = box_new(42);
+
+    let raw_result = box_into_raw(
+        ref mut value
+    );
+
+    pick raw_result {
+        Some(raw_value) {
+            let before = raw_value;
+            let mut raw = raw_value;
+
+            let result = box_raw_reconstruct(
+                ref mut raw
+            );
+
+            pick result {
+                Some(boxed_value) {
+                    let after = box_as_raw(
+                        ref boxed_value
+                    );
+
+                    give box_raw_ptr_eq(
+                        before,
+                        after
+                    );
+                }
+
+                None {
+                    give false;
+                }
+            }
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+proc test_raw_validation_borrowed() -> bool {
+    let value = box_new(42);
+
+    let raw = box_as_raw(
+        ref value
+    );
+
+    let validation = box_raw_validate(
+        raw
+    );
+
+    give validation.valid
+        and validation.pointer_valid
+        and validation.layout_valid
+        and validation.state_valid
+        and validation.ownership_valid
+        and validation.access_valid;
+}
+
+proc test_raw_validation_mut_borrowed() -> bool {
+    let mut value = box_new(42);
+
+    let raw = box_as_raw_mut(
+        ref mut value
+    );
+
+    give box_raw_validate(raw).valid;
+}
+
+proc test_raw_validation_owned() -> bool {
+    let mut value = box_new(42);
+
+    let result = box_into_raw(
+        ref mut value
+    );
+
+    pick result {
+        Some(raw) {
+            give box_raw_validate(raw).valid;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_raw_validation_consumed() -> bool {
+    let mut value = box_new(42);
+
+    let result = box_into_raw(
+        ref mut value
+    );
+
+    pick result {
+        Some(raw_value) {
+            let mut raw = raw_value;
+
+            let reconstructed = box_raw_reconstruct(
+                ref mut raw
+            );
+
+            if is_none(reconstructed) {
+                give false;
+            }
+
+            give box_raw_validate(raw).valid;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_raw_validation_released() -> bool {
+    let mut value = box_new(42);
+
+    let result = box_into_raw(
+        ref mut value
+    );
+
+    pick result {
+        Some(raw_value) {
+            let mut raw = raw_value;
+
+            if not box_raw_release(
+                ref mut raw
+            ) {
+                give false;
+            }
+
+            give box_raw_validate(raw).valid;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_raw_invariant_borrowed() -> bool {
+    let value = box_new(42);
+
+    let raw = box_as_raw(
+        ref value
+    );
+
+    give box_raw_invariant_holds(
+        raw
+    );
+}
+
+proc test_raw_invariant_owned() -> bool {
+    let mut value = box_new(42);
+
+    let result = box_into_raw(
+        ref mut value
+    );
+
+    pick result {
+        Some(raw) {
+            give box_raw_invariant_holds(
+                raw
+            );
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Profile
+// -----------------------------------------------------------------------------
+
+proc test_raw_profile_borrowed() -> bool {
+    let value = box_new(42);
+
+    let raw = box_as_raw(
+        ref value
+    );
+
+    let profile = box_raw_profile(
+        raw
+    );
+
+    give profile.borrowed
+        and not profile.owned
+        and not profile.consumed
+        and not profile.released
+        and profile.readable
+        and not profile.writable
+        and not profile.reconstructable
+        and not profile.releasable
+        and profile.valid;
+}
+
+proc test_raw_profile_mutable() -> bool {
+    let mut value = box_new(42);
+
+    let raw = box_as_raw_mut(
+        ref mut value
+    );
+
+    let profile = box_raw_profile(
+        raw
+    );
+
+    give profile.borrowed
+        and profile.readable
+        and profile.writable
+        and not profile.reconstructable
+        and profile.valid;
+}
+
+proc test_raw_profile_owned() -> bool {
+    let mut value = box_new(42);
+
+    let result = box_into_raw(
+        ref mut value
+    );
+
+    pick result {
+        Some(raw) {
+            let profile = box_raw_profile(
+                raw
+            );
+
+            give profile.owned
+                and profile.readable
+                and profile.writable
+                and profile.reconstructable
+                and profile.releasable
+                and profile.valid;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_raw_profile_consumed() -> bool {
+    let mut value = box_new(42);
+
+    let result = box_into_raw(
+        ref mut value
+    );
+
+    pick result {
+        Some(raw_value) {
+            let mut raw = raw_value;
+
+            let reconstructed = box_raw_reconstruct(
+                ref mut raw
+            );
+
+            if is_none(reconstructed) {
+                give false;
+            }
+
+            let profile = box_raw_profile(
+                raw
+            );
+
+            give profile.consumed
+                and not profile.readable
+                and not profile.writable
+                and not profile.reconstructable
+                and not profile.releasable
+                and profile.valid;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_raw_profile_released() -> bool {
+    let mut value = box_new(42);
+
+    let result = box_into_raw(
+        ref mut value
+    );
+
+    pick result {
+        Some(raw_value) {
+            let mut raw = raw_value;
+
+            if not box_raw_release(
+                ref mut raw
+            ) {
+                give false;
+            }
+
+            let profile = box_raw_profile(
+                raw
+            );
+
+            give profile.released
+                and not profile.readable
+                and not profile.writable
+                and not profile.reconstructable
+                and not profile.releasable
+                and profile.valid;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_profile_validation() -> bool {
+    let mut value = box_new(42);
+
+    let result = box_into_raw(
+        ref mut value
+    );
+
+    pick result {
+        Some(raw) {
+            give box_raw_profile_valid(
+                box_raw_profile(raw)
+            );
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Snapshot
+// -----------------------------------------------------------------------------
+
+proc test_raw_snapshot_equal() -> bool {
+    let value = box_new(42);
+
+    let raw = box_as_raw(
+        ref value
+    );
+
+    let first = box_raw_snapshot(
+        raw
+    );
+
+    let second = box_raw_snapshot(
+        raw
+    );
+
+    give box_raw_snapshot_equal(
+        first,
+        second
+    );
+}
+
+proc test_raw_snapshot_touch_changes() -> bool {
+    let value = box_new(42);
+
+    let raw_value = box_as_raw(
+        ref value
+    );
+
+    let mut raw = raw_value;
+
+    let before = box_raw_snapshot(
+        raw
+    );
+
+    box_raw_touch(
+        ref mut raw
+    );
+
+    let after = box_raw_snapshot(
+        raw
+    );
+
+    give box_raw_snapshot_changed(
+        before,
+        after
+    );
+}
+
+proc test_raw_snapshot_reconstruct_changes() -> bool {
+    let mut value = box_new(42);
+
+    let result = box_into_raw(
+        ref mut value
+    );
+
+    pick result {
+        Some(raw_value) {
+            let mut raw = raw_value;
+
+            let before = box_raw_snapshot(
+                raw
+            );
+
+            let reconstructed = box_raw_reconstruct(
+                ref mut raw
+            );
+
+            if is_none(reconstructed) {
+                give false;
+            }
+
+            let after = box_raw_snapshot(
+                raw
+            );
+
+            give box_raw_snapshot_changed(
+                before,
+                after
+            );
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_raw_snapshot_release_changes() -> bool {
+    let mut value = box_new(42);
+
+    let result = box_into_raw(
+        ref mut value
+    );
+
+    pick result {
+        Some(raw_value) {
+            let mut raw = raw_value;
+
+            let before = box_raw_snapshot(
+                raw
+            );
+
+            if not box_raw_release(
+                ref mut raw
+            ) {
+                give false;
+            }
+
+            let after = box_raw_snapshot(
+                raw
+            );
+
+            give box_raw_snapshot_changed(
+                before,
+                after
+            );
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Delta / revision / generation
+// -----------------------------------------------------------------------------
+
+proc test_raw_delta_touch() -> bool {
+    let value = box_new(42);
+
+    let raw_value = box_as_raw(
+        ref value
+    );
+
+    let mut raw = raw_value;
+
+    let before = box_raw_snapshot(
+        raw
+    );
+
+    box_raw_touch(
+        ref mut raw
+    );
+
+    let after = box_raw_snapshot(
+        raw
+    );
+
+    let delta = box_raw_delta(
+        before,
+        after
+    );
+
+    give delta.changed
+        and delta.revision > 0
+        and not delta.state_changed
+        and not delta.ownership_changed;
+}
+
+proc test_raw_delta_reconstruct() -> bool {
+    let mut value = box_new(42);
+
+    let result = box_into_raw(
+        ref mut value
+    );
+
+    pick result {
+        Some(raw_value) {
+            let mut raw = raw_value;
+
+            let before = box_raw_snapshot(
+                raw
+            );
+
+            let reconstructed = box_raw_reconstruct(
+                ref mut raw
+            );
+
+            if is_none(reconstructed) {
+                give false;
+            }
+
+            let after = box_raw_snapshot(
+                raw
+            );
+
+            let delta = box_raw_delta(
+                before,
+                after
+            );
+
+            give delta.changed
+                and delta.state_changed
+                and delta.ownership_changed
+                and delta.revision > 0;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_raw_delta_release() -> bool {
+    let mut value = box_new(42);
+
+    let result = box_into_raw(
+        ref mut value
+    );
+
+    pick result {
+        Some(raw_value) {
+            let mut raw = raw_value;
+
+            let before = box_raw_snapshot(
+                raw
+            );
+
+            if not box_raw_release(
+                ref mut raw
+            ) {
+                give false;
+            }
+
+            let after = box_raw_snapshot(
+                raw
+            );
+
+            let delta = box_raw_delta(
+                before,
+                after
+            );
+
+            give delta.changed
+                and delta.state_changed
+                and delta.ownership_changed
+                and delta.generation > 0
+                and delta.revision > 0;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_raw_generation_initial() -> bool {
+    let value = box_new(42);
+
+    let raw = box_as_raw(
+        ref value
+    );
+
+    give box_raw_generation(raw) >= 1;
+}
+
+proc test_raw_revision_initial() -> bool {
+    let value = box_new(42);
+
+    let raw = box_as_raw(
+        ref value
+    );
+
+    give box_raw_revision(raw) >= 1;
+}
+
+proc test_raw_touch() -> bool {
+    let value = box_new(42);
+
+    let raw_value = box_as_raw(
+        ref value
+    );
+
+    let mut raw = raw_value;
+
+    let before = box_raw_revision(
+        raw
+    );
+
+    box_raw_touch(
+        ref mut raw
+    );
+
+    give box_raw_revision(raw) > before;
+}
+
+proc test_raw_advance_generation() -> bool {
+    let value = box_new(42);
+
+    let raw_value = box_as_raw(
+        ref value
+    );
+
+    let mut raw = raw_value;
+
+    let before = box_raw_generation(
+        raw
+    );
+
+    let after = box_raw_advance_generation(
+        ref mut raw
+    );
+
+    give after > before
+        and box_raw_generation(raw) == after;
+}
+
+// -----------------------------------------------------------------------------
+// Error helpers
+// -----------------------------------------------------------------------------
+
+proc test_raw_error_borrowed_none() -> bool {
+    let value = box_new(42);
+
+    let raw = box_as_raw(
+        ref value
+    );
+
+    let error = box_raw_error(
+        raw
+    );
+
+    give box_error_is_none(error);
+}
+
+proc test_raw_error_owned_none() -> bool {
+    let mut value = box_new(42);
+
+    let result = box_into_raw(
+        ref mut value
+    );
+
+    pick result {
+        Some(raw) {
+            give box_error_is_none(
+                box_raw_error(raw)
+            );
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Core mapping
+// -----------------------------------------------------------------------------
+
+proc test_raw_core_state_borrowed() -> bool {
+    let value = box_new(42);
+
+    let raw = box_as_raw(
+        ref value
+    );
+
+    give box_raw_core_state(raw)
+        == BoxCoreState.Alive;
+}
+
+proc test_raw_core_state_owned() -> bool {
+    let mut value = box_new(42);
+
+    let result = box_into_raw(
+        ref mut value
+    );
+
+    pick result {
+        Some(raw) {
+            give box_raw_core_state(raw)
+                == BoxCoreState.Alive;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_raw_core_state_consumed() -> bool {
+    let mut value = box_new(42);
+
+    let result = box_into_raw(
+        ref mut value
+    );
+
+    pick result {
+        Some(raw_value) {
+            let mut raw = raw_value;
+
+            let reconstructed = box_raw_reconstruct(
+                ref mut raw
+            );
+
+            if is_none(reconstructed) {
+                give false;
+            }
+
+            give box_raw_core_state(raw)
+                == BoxCoreState.Moved;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_raw_core_state_released() -> bool {
+    let mut value = box_new(42);
+
+    let result = box_into_raw(
+        ref mut value
+    );
+
+    pick result {
+        Some(raw_value) {
+            let mut raw = raw_value;
+
+            if not box_raw_release(
+                ref mut raw
+            ) {
+                give false;
+            }
+
+            give box_raw_core_state(raw)
+                == BoxCoreState.Released;
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc test_raw_state_names() -> bool {
+    give box_raw_state_name(
+        BoxRawState.Borrowed
+    ) == "borrowed"
+        and box_raw_state_name(
+            BoxRawState.Owned
+        ) == "owned"
+        and box_raw_state_name(
+            BoxRawState.Consumed
+        ) == "consumed"
+        and box_raw_state_name(
+            BoxRawState.Released
+        ) == "released"
+        and box_raw_state_name(
+            BoxRawState.Invalid
+        ) == "invalid";
+}
+
+proc test_raw_ownership_names() -> bool {
+    give box_raw_ownership_name(
+        BoxRawOwnership.None
+    ) == "none"
+        and box_raw_ownership_name(
+            BoxRawOwnership.Borrowed
+        ) == "borrowed"
+        and box_raw_ownership_name(
+            BoxRawOwnership.Owned
+        ) == "owned"
+        and box_raw_ownership_name(
+            BoxRawOwnership.Transferred
+        ) == "transferred"
+        and box_raw_ownership_name(
+            BoxRawOwnership.Released
+        ) == "released";
+}
+
+proc test_raw_kind_names() -> bool {
+    give box_raw_kind_name(
+        BoxRawKind.Shared
+    ) == "shared"
+        and box_raw_kind_name(
+            BoxRawKind.Mutable
+        ) == "mutable"
+        and box_raw_kind_name(
+            BoxRawKind.Owned
+        ) == "owned";
+}
+
+proc test_raw_failure_names() -> bool {
+    give box_raw_failure_name(
+        BoxRawFailure.None
+    ) == "none"
+        and box_raw_failure_name(
+            BoxRawFailure.InvalidBox
+        ) == "invalid-box"
+        and box_raw_failure_name(
+            BoxRawFailure.InvalidPointer
+        ) == "invalid-pointer"
+        and box_raw_failure_name(
+            BoxRawFailure.InvalidLayout
+        ) == "invalid-layout"
+        and box_raw_failure_name(
+            BoxRawFailure.InvalidOwnership
+        ) == "invalid-ownership"
+        and box_raw_failure_name(
+            BoxRawFailure.AlreadyConsumed
+        ) == "already-consumed"
+        and box_raw_failure_name(
+            BoxRawFailure.AlreadyReleased
+        ) == "already-released"
+        and box_raw_failure_name(
+            BoxRawFailure.ReconstructionFailed
+        ) == "reconstruction-failed"
+        and box_raw_failure_name(
+            BoxRawFailure.ReleaseFailed
+        ) == "release-failed";
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc test_raw_statistics_empty() -> bool {
+    let statistics = box_raw_statistics_empty();
+
+    give statistics.borrowed_views == 0
+        and statistics.mutable_views == 0
+        and statistics.ownership_transfers == 0
+        and statistics.reconstructions == 0
+        and statistics.reconstruction_failures == 0
+        and statistics.releases == 0
+        and statistics.release_failures == 0
+        and statistics.validations == 0;
+}
+
+proc test_raw_statistics_total_empty() -> bool {
+    let statistics = box_raw_statistics_empty();
+
+    give box_raw_statistics_total(
+        statistics
+    ) == 0;
+}
+
+proc test_raw_statistics_reset() -> bool {
+    let mut statistics = box_raw_statistics_empty();
+
+    set statistics.borrowed_views = 10;
+    set statistics.ownership_transfers = 5;
+    set statistics.reconstructions = 2;
+
+    box_raw_statistics_reset(
+        ref mut statistics
+    );
+
+    give statistics.borrowed_views == 0
+        and statistics.ownership_transfers == 0
+        and statistics.reconstructions == 0;
+}
+
+// -----------------------------------------------------------------------------
+// Multiple boxes / independence
+// -----------------------------------------------------------------------------
+
+proc test_multiple_raw_borrowed_independent() -> bool {
+    let first = box_new(1);
+    let second = box_new(2);
+    let third = box_new(3);
+
+    let first_raw = box_as_raw(
+        ref first
+    );
+
+    let second_raw = box_as_raw(
+        ref second
+    );
+
+    let third_raw = box_as_raw(
+        ref third
+    );
+
+    give box_raw_ptr_ne(
+        first_raw,
+        second_raw
+    )
+    and box_raw_ptr_ne(
+        second_raw,
+        third_raw
+    )
+    and box_raw_ptr_ne(
+        first_raw,
+        third_raw
+    );
+}
+
+proc test_multiple_raw_values() -> bool {
+    let first = box_new(10);
+    let second = box_new(20);
+    let third = box_new(30);
+
+    let first_raw = box_as_raw(
+        ref first
+    );
+
+    let second_raw = box_as_raw(
+        ref second
+    );
+
+    let third_raw = box_as_raw(
+        ref third
+    );
+
+    let a = box_raw_as_ref(first_raw);
+    let b = box_raw_as_ref(second_raw);
+    let c = box_raw_as_ref(third_raw);
+
+    pick a {
+        Some(av) {
+            pick b {
+                Some(bv) {
+                    pick c {
+                        Some(cv) {
+                            give *av == 10
+                                and *bv == 20
+                                and *cv == 30;
+                        }
+
+                        None {
+                            give false;
+                        }
+                    }
+                }
+
+                None {
+                    give false;
+                }
+            }
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_raw_mutation_independence() -> bool {
+    let mut first = box_new(1);
+    let mut second = box_new(2);
+
+    let first_raw_value = box_as_raw_mut(
+        ref mut first
+    );
+
+    let mut first_raw = first_raw_value;
+
+    let first_inner = box_raw_as_mut(
+        ref mut first_raw
+    );
+
+    pick first_inner {
+        Some(value) {
+            set *value = 100;
+        }
+
+        None {
+            give false;
+        }
+    }
+
+    give *box_get(ref first) == 100
+        and *box_get(ref second) == 2;
+}
+
+// -----------------------------------------------------------------------------
+// Reconstruction / clone independence
+// -----------------------------------------------------------------------------
+
+proc test_reconstruct_then_mutate() -> bool {
+    let mut original = box_new(
+        Point {
+            x: 1
+            y: 2
+        }
+    );
+
+    let raw_result = box_into_raw(
+        ref mut original
+    );
+
+    pick raw_result {
+        Some(raw_value) {
+            let mut raw = raw_value;
+
+            let result = box_raw_reconstruct(
+                ref mut raw
+            );
+
+            pick result {
+                Some(boxed_value) {
+                    let mut restored = boxed_value;
+
+                    let point = box_get_mut(
+                        ref mut restored
+                    );
+
+                    set point.x = 100;
+
+                    give box_get(ref restored).x == 100
+                        and box_raw_is_consumed(raw);
+                }
+
+                None {
+                    give false;
+                }
+            }
+        }
+
+        None {
+            give false;
+        }
+    }
+}
+
+proc test_clone_raw_identity_separate() -> bool {
+    let first = box_new(
+        Point {
+            x: 1
+            y: 2
+        }
+    );
+
+    let second = box_clone(
+        ref first
+    );
+
+    let left = box_as_raw(
+        ref first
+    );
+
+    let right = box_as_raw(
+        ref second
+    );
+
+    give box_raw_ptr_ne(
+        left,
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Stress borrowed
+// -----------------------------------------------------------------------------
+
+proc test_stress_borrowed_views() -> bool {
+    let value = box_new(42);
+
+    let index: usize = 0;
+
+    while index < 10000 {
+        let raw = box_as_raw(
+            ref value
+        );
+
+        if not box_raw_is_valid(raw) {
+            give false;
+        }
+
+        let result = box_raw_as_ref(raw);
+
+        pick result {
+            Some(inner) {
+                if *inner != 42 {
+                    give false;
+                }
+            }
+
+            None {
+                give false;
+            }
+        }
+
+        set index = index + 1;
+    }
+
+    give box_is_valid(value);
+}
+
+proc test_stress_mutable_views() -> bool {
+    let mut value = box_new(0);
+
+    let index: int = 0;
+
+    while index < 5000 {
+        let raw_value = box_as_raw_mut(
+            ref mut value
+        );
+
+        let mut raw = raw_value;
+
+        let result = box_raw_as_mut(
+            ref mut raw
+        );
+
+        pick result {
+            Some(inner) {
+                set *inner = index;
+            }
+
+            None {
+                give false;
+            }
+        }
+
+        if *box_get(ref value) != index {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give box_is_valid(value);
+}
+
+// -----------------------------------------------------------------------------
+// Stress ownership transfer
+// -----------------------------------------------------------------------------
+
+proc test_stress_into_raw_reconstruct() -> bool {
+    let index: int = 0;
+
+    while index < 5000 {
+        let mut value = box_new(index);
+
+        let raw_result = box_into_raw(
+            ref mut value
+        );
+
+        pick raw_result {
+            Some(raw_value) {
+                let mut raw = raw_value;
+
+                let reconstructed =
+                    box_raw_reconstruct(
+                        ref mut raw
+                    );
+
+                pick reconstructed {
+                    Some(restored) {
+                        if *box_get(ref restored)
+                            != index
+                        {
+                            give false;
+                        }
+
+                        if not box_raw_is_consumed(
+                            raw
+                        ) {
+                            give false;
+                        }
+                    }
+
+                    None {
+                        give false;
+                    }
+                }
+            }
+
+            None {
+                give false;
+            }
+        }
+
+        set index = index + 1;
+    }
+
+    give true;
+}
+
+proc test_stress_into_raw_release() -> bool {
+    let index: usize = 0;
+
+    while index < 5000 {
+        let mut value = box_new(42);
+
+        let raw_result = box_into_raw(
+            ref mut value
+        );
+
+        pick raw_result {
+            Some(raw_value) {
+                let mut raw = raw_value;
+
+                if not box_raw_release(
+                    ref mut raw
+                ) {
+                    give false;
+                }
+
+                if not box_raw_is_released(
+                    raw
+                ) {
+                    give false;
+                }
+            }
+
+            None {
+                give false;
+            }
+        }
+
+        set index = index + 1;
+    }
+
+    give true;
+}
+
+proc test_stress_raw_mutate_reconstruct() -> bool {
+    let index: int = 0;
+
+    while index < 3000 {
+        let mut value = box_new(index);
+
+        let raw_result = box_into_raw(
+            ref mut value
+        );
+
+        pick raw_result {
+            Some(raw_value) {
+                let mut raw = raw_value;
+
+                let inner = box_raw_as_mut(
+                    ref mut raw
+                );
+
+                pick inner {
+                    Some(data) {
+                        set *data = index + 1;
+                    }
+
+                    None {
+                        give false;
+                    }
+                }
+
+                let restored =
+                    box_raw_reconstruct(
+                        ref mut raw
+                    );
+
+                pick restored {
+                    Some(boxed_value) {
+                        if *box_get(
+                            ref boxed_value
+                        ) != index + 1
+                        {
+                            give false;
+                        }
+                    }
+
+                    None {
+                        give false;
+                    }
+                }
+            }
+
+            None {
+                give false;
+            }
+        }
+
+        set index = index + 1;
+    }
+
+    give true;
+}
+
+proc test_stress_point_reconstruct() -> bool {
+    let index: int = 0;
+
+    while index < 2000 {
+        let mut value = box_new(
+            Point {
+                x: index
+                y: index + 1
+            }
+        );
+
+        let raw_result = box_into_raw(
+            ref mut value
+        );
+
+        pick raw_result {
+            Some(raw_value) {
+                let mut raw = raw_value;
+
+                let restored =
+                    box_raw_reconstruct(
+                        ref mut raw
+                    );
+
+                pick restored {
+                    Some(boxed_value) {
+                        let point = box_get(
+                            ref boxed_value
+                        );
+
+                        if point.x != index
+                            or point.y != index + 1
+                        {
+                            give false;
+                        }
+                    }
+
+                    None {
+                        give false;
+                    }
+                }
+            }
+
+            None {
+                give false;
+            }
+        }
+
+        set index = index + 1;
+    }
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Stress snapshot / revision
+// -----------------------------------------------------------------------------
+
+proc test_stress_raw_touch() -> bool {
+    let value = box_new(42);
+
+    let raw_value = box_as_raw(
+        ref value
+    );
+
+    let mut raw = raw_value;
+
+    let previous = box_raw_revision(
+        raw
+    );
+
+    let index: usize = 0;
+
+    while index < 5000 {
+        box_raw_touch(
+            ref mut raw
+        );
+
+        let current =
+            box_raw_revision(raw);
+
+        if current <= previous {
+            give false;
+        }
+
+        set previous = current;
+        set index = index + 1;
+    }
+
+    give true;
+}
+
+proc test_stress_raw_generation() -> bool {
+    let value = box_new(42);
+
+    let raw_value = box_as_raw(
+        ref value
+    );
+
+    let mut raw = raw_value;
+
+    let previous =
+        box_raw_generation(raw);
+
+    let index: usize = 0;
+
+    while index < 1000 {
+        let current =
+            box_raw_advance_generation(
+                ref mut raw
+            );
+
+        if current <= previous {
+            give false;
+        }
+
+        set previous = current;
+        set index = index + 1;
+    }
+
+    give true;
+}
+
+proc test_stress_validation() -> bool {
+    let value = box_new(42);
+
+    let index: usize = 0;
+
+    while index < 5000 {
+        let raw = box_as_raw(
+            ref value
+        );
+
+        if not box_raw_validate(raw).valid {
+            give false;
+        }
+
+        if not box_raw_invariant_holds(raw) {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give true;
+}
+
+proc test_stress_profiles() -> bool {
+    let value = box_new(42);
+
+    let index: usize = 0;
+
+    while index < 5000 {
+        let raw = box_as_raw(
+            ref value
+        );
+
+        let profile = box_raw_profile(
+            raw
+        );
+
+        if not profile.valid
+            or not profile.borrowed
+            or not profile.readable
+        {
+            give false;
+        }
+
+        set index = index + 1;
+    }
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Mixed lifecycle stress
+// -----------------------------------------------------------------------------
+
+proc test_stress_mixed_raw_lifecycle() -> bool {
+    let index: usize = 0;
+
+    while index < 3000 {
+        let mut value = box_new(42);
+
+        if index % 2 == 0 {
+            let raw_result = box_into_raw(
+                ref mut value
+            );
+
+            pick raw_result {
+                Some(raw_value) {
+                    let mut raw = raw_value;
+
+                    let restored =
+                        box_raw_reconstruct(
+                            ref mut raw
+                        );
+
+                    if is_none(restored) {
+                        give false;
+                    }
+
+                    if not box_raw_is_consumed(raw) {
+                        give false;
+                    }
+                }
+
+                None {
+                    give false;
+                }
+            }
+        } else {
+            let raw_result = box_into_raw(
+                ref mut value
+            );
+
+            pick raw_result {
+                Some(raw_value) {
+                    let mut raw = raw_value;
+
+                    if not box_raw_release(
+                        ref mut raw
+                    ) {
+                        give false;
+                    }
+
+                    if not box_raw_is_released(raw) {
+                        give false;
+                    }
+                }
+
+                None {
+                    give false;
+                }
+            }
+        }
+
+        set index = index + 1;
+    }
+
+    give true;
+}
+
+proc test_stress_multiple_raw_boxes() -> bool {
+    let index: int = 0;
+
+    while index < 3000 {
+        let first = box_new(index);
+        let second = box_new(index + 1);
+
+        let first_raw = box_as_raw(
+            ref first
+        );
+
+        let second_raw = box_as_raw(
+            ref second
+        );
+
+        if not box_raw_ptr_ne(
+            first_raw,
+            second_raw
+        ) {
+            give false;
+        }
+
+        let a = box_raw_as_ref(
+            first_raw
+        );
+
+        let b = box_raw_as_ref(
+            second_raw
+        );
+
+        pick a {
+            Some(av) {
+                pick b {
+                    Some(bv) {
+                        if *av != index
+                            or *bv != index + 1
+                        {
+                            give false;
+                        }
+                    }
+
+                    None {
+                        give false;
+                    }
+                }
+            }
+
+            None {
+                give false;
+            }
+        }
+
+        set index = index + 1;
+    }
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Full suite
+// -----------------------------------------------------------------------------
+
+proc run_raw_tests() -> bool {
+    give test_as_raw_basic()
+        and test_as_raw_int_read()
+        and test_as_raw_negative_int()
+        and test_as_raw_bool()
+        and test_as_raw_string()
+        and test_as_raw_point()
+        and test_as_raw_user()
+        and test_borrowed_keeps_box_alive()
+        and test_borrowed_layout()
+        and test_borrowed_kind_shared()
+        and test_borrowed_ownership()
+        and test_borrowed_state()
+
+        and test_as_raw_mut_basic()
+        and test_as_raw_mut_write_int()
+        and test_as_raw_mut_write_point()
+        and test_as_raw_mut_write_user()
+        and test_shared_raw_not_writable()
+        and test_mut_raw_writable()
+
+        and test_into_raw_basic()
+        and test_into_raw_state()
+        and test_into_raw_ownership()
+        and test_into_raw_kind()
+        and test_into_raw_preserves_value()
+        and test_into_raw_preserves_string()
+        and test_into_raw_preserves_point()
+        and test_into_raw_layout_preserved()
+
+        and test_owned_raw_mutate()
+        and test_owned_raw_mutate_point()
+
+        and test_from_raw()
+        and test_from_raw_string()
+        and test_from_raw_point()
+        and test_raw_reconstruct()
+        and test_raw_reconstruct_point()
+        and test_raw_reconstruct_once()
+        and test_consumed_raw_cannot_read()
+        and test_consumed_raw_cannot_write()
+        and test_consumed_raw_cannot_reconstruct()
+
+        and test_borrowed_cannot_reconstruct()
+        and test_mut_borrowed_cannot_reconstruct()
+
+        and test_raw_release()
+        and test_raw_release_string()
+        and test_raw_release_point()
+        and test_raw_release_once()
+        and test_borrowed_cannot_release()
+        and test_mut_borrowed_cannot_release()
+
+        and test_raw_forget()
+        and test_borrowed_raw_forget_fails()
+        and test_raw_forget_once()
+
+        and test_raw_ptr_eq_same_box()
+        and test_raw_ptr_ne_different_boxes()
+        and test_raw_ptr_eq_mut_and_shared_same_box()
+        and test_clone_has_different_raw_pointer()
+        and test_move_raw_identity()
+        and test_reconstruct_identity()
+
+        and test_raw_validation_borrowed()
+        and test_raw_validation_mut_borrowed()
+        and test_raw_validation_owned()
+        and test_raw_validation_consumed()
+        and test_raw_validation_released()
+        and test_raw_invariant_borrowed()
+        and test_raw_invariant_owned()
+
+        and test_raw_profile_borrowed()
+        and test_raw_profile_mutable()
+        and test_raw_profile_owned()
+        and test_raw_profile_consumed()
+        and test_raw_profile_released()
+        and test_profile_validation()
+
+        and test_raw_snapshot_equal()
+        and test_raw_snapshot_touch_changes()
+        and test_raw_snapshot_reconstruct_changes()
+        and test_raw_snapshot_release_changes()
+
+        and test_raw_delta_touch()
+        and test_raw_delta_reconstruct()
+        and test_raw_delta_release()
+
+        and test_raw_generation_initial()
+        and test_raw_revision_initial()
+        and test_raw_touch()
+        and test_raw_advance_generation()
+
+        and test_raw_error_borrowed_none()
+        and test_raw_error_owned_none()
+
+        and test_raw_core_state_borrowed()
+        and test_raw_core_state_owned()
+        and test_raw_core_state_consumed()
+        and test_raw_core_state_released()
+
+        and test_raw_state_names()
+        and test_raw_ownership_names()
+        and test_raw_kind_names()
+        and test_raw_failure_names()
+
+        and test_raw_statistics_empty()
+        and test_raw_statistics_total_empty()
+        and test_raw_statistics_reset()
+
+        and test_multiple_raw_borrowed_independent()
+        and test_multiple_raw_values()
+        and test_raw_mutation_independence()
+        and test_reconstruct_then_mutate()
+        and test_clone_raw_identity_separate()
+
+        and test_stress_borrowed_views()
+        and test_stress_mutable_views()
+        and test_stress_into_raw_reconstruct()
+        and test_stress_into_raw_release()
+        and test_stress_raw_mutate_reconstruct()
+        and test_stress_point_reconstruct()
+        and test_stress_raw_touch()
+        and test_stress_raw_generation()
+        and test_stress_validation()
+        and test_stress_profiles()
+        and test_stress_mixed_raw_lifecycle()
+        and test_stress_multiple_raw_boxes();
+}
+
+proc main() -> int {
+    if run_raw_tests() {
+        give 0;
+    }
+
+    give 1;
+}

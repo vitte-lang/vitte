@@ -1,0 +1,1230 @@
+space vitte/stdlib/alloc/bump/raw
+
+export *
+
+use src/vitte/stdlib/alloc/bump/bump as bump
+use src/vitte/stdlib/alloc/bump/block as bump_block
+use src/vitte/stdlib/alloc/bump/alloc as bump_alloc
+use src/vitte/stdlib/alloc/bump/error as bump_error
+use src/vitte/stdlib/alloc/allocator as alloc_allocator
+use src/vitte/stdlib/core/option as core_option
+
+pick BumpRawState {
+    Borrowed,
+    Mutable,
+    Consumed,
+    Released,
+    Invalid
+}
+
+pick BumpRawKind {
+    Base,
+    Cursor,
+    Allocation,
+    Slice
+}
+
+pick BumpRawAccess {
+    None,
+    Read,
+    ReadWrite
+}
+
+form BumpRaw {
+    base: raw ref u8
+
+    capacity: usize
+    offset: usize
+
+    state: BumpRawState
+    kind: BumpRawKind
+
+    generation: u64
+    revision: u64
+}
+
+form BumpRawProfile {
+    capacity: usize
+    offset: usize
+    remaining: usize
+
+    state: BumpRawState
+    kind: BumpRawKind
+
+    readable: bool
+    writable: bool
+    consumed: bool
+    released: bool
+
+    valid: bool
+
+    generation: u64
+    revision: u64
+}
+
+form BumpRawValidation {
+    valid: bool
+
+    pointer_valid: bool
+    capacity_valid: bool
+    offset_valid: bool
+    state_valid: bool
+    access_valid: bool
+}
+
+form BumpRawSnapshot {
+    capacity: usize
+    offset: usize
+
+    state: BumpRawState
+
+    generation: u64
+    revision: u64
+}
+
+form BumpRawDelta {
+    offset: int
+    generation: int
+    revision: int
+
+    state_changed: bool
+    changed: bool
+}
+
+form BumpRawStatistics {
+    borrowed: u64
+    mutable: u64
+
+    reads: u64
+    writes: u64
+
+    allocations: u64
+    failures: u64
+
+    consumes: u64
+    releases: u64
+
+    validations: u64
+}
+
+// -----------------------------------------------------------------------------
+// Construction
+// -----------------------------------------------------------------------------
+
+proc bump_raw(
+    base: raw ref u8,
+    capacity: usize,
+    offset: usize,
+    state: BumpRawState,
+    kind: BumpRawKind,
+    generation: u64,
+    revision: u64
+) -> BumpRaw {
+    give BumpRaw {
+        base: base,
+
+        capacity: capacity,
+        offset: offset,
+
+        state: state,
+        kind: kind,
+
+        generation: generation,
+        revision: revision
+    };
+}
+
+proc bump_raw_from_bump(
+    value: ref bump.Bump
+) -> BumpRaw {
+    give bump_raw(
+        compiler_allocation_as_raw_u8(
+            value.block.allocation
+        ),
+        bump.bump_capacity(*value),
+        bump.bump_used(*value),
+        BumpRawState.Borrowed,
+        BumpRawKind.Base,
+        bump.bump_generation(*value),
+        bump.bump_revision(*value)
+    );
+}
+
+proc bump_raw_from_bump_mut(
+    value: ref mut bump.Bump
+) -> BumpRaw {
+    give bump_raw(
+        compiler_allocation_as_raw_u8(
+            value.block.allocation
+        ),
+        bump.bump_capacity(*value),
+        bump.bump_used(*value),
+        BumpRawState.Mutable,
+        BumpRawKind.Cursor,
+        bump.bump_generation(*value),
+        bump.bump_revision(*value)
+    );
+}
+
+proc bump_raw_from_block(
+    block: ref bump_block.BumpBlock
+) -> BumpRaw {
+    give bump_raw(
+        compiler_allocation_as_raw_u8(
+            block.allocation
+        ),
+        bump_block.bump_block_capacity(*block),
+        bump_block.bump_block_used(*block),
+        BumpRawState.Borrowed,
+        BumpRawKind.Base,
+        bump_block.bump_block_generation(*block),
+        bump_block.bump_block_revision(*block)
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Accessors
+// -----------------------------------------------------------------------------
+
+proc bump_raw_base(
+    value: BumpRaw
+) -> raw ref u8 {
+    give value.base;
+}
+
+proc bump_raw_capacity(
+    value: BumpRaw
+) -> usize {
+    give value.capacity;
+}
+
+proc bump_raw_offset(
+    value: BumpRaw
+) -> usize {
+    give value.offset;
+}
+
+proc bump_raw_remaining(
+    value: BumpRaw
+) -> usize {
+    if value.offset >= value.capacity {
+        give 0;
+    }
+
+    give value.capacity - value.offset;
+}
+
+proc bump_raw_generation(
+    value: BumpRaw
+) -> u64 {
+    give value.generation;
+}
+
+proc bump_raw_revision(
+    value: BumpRaw
+) -> u64 {
+    give value.revision;
+}
+
+// -----------------------------------------------------------------------------
+// State
+// -----------------------------------------------------------------------------
+
+proc bump_raw_is_borrowed(
+    value: BumpRaw
+) -> bool {
+    give value.state == BumpRawState.Borrowed;
+}
+
+proc bump_raw_is_mutable(
+    value: BumpRaw
+) -> bool {
+    give value.state == BumpRawState.Mutable;
+}
+
+proc bump_raw_is_consumed(
+    value: BumpRaw
+) -> bool {
+    give value.state == BumpRawState.Consumed;
+}
+
+proc bump_raw_is_released(
+    value: BumpRaw
+) -> bool {
+    give value.state == BumpRawState.Released;
+}
+
+proc bump_raw_can_read(
+    value: BumpRaw
+) -> bool {
+    give value.state == BumpRawState.Borrowed
+        or value.state == BumpRawState.Mutable;
+}
+
+proc bump_raw_can_write(
+    value: BumpRaw
+) -> bool {
+    give value.state == BumpRawState.Mutable;
+}
+
+proc bump_raw_access(
+    value: BumpRaw
+) -> BumpRawAccess {
+    if value.state == BumpRawState.Mutable {
+        give BumpRawAccess.ReadWrite;
+    }
+
+    if value.state == BumpRawState.Borrowed {
+        give BumpRawAccess.Read;
+    }
+
+    give BumpRawAccess.None;
+}
+
+// -----------------------------------------------------------------------------
+// Pointer access
+// -----------------------------------------------------------------------------
+
+proc bump_raw_ptr(
+    value: BumpRaw
+) -> raw ref u8 {
+    give value.base;
+}
+
+proc bump_raw_cursor_ptr(
+    value: BumpRaw
+) -> raw ref u8 {
+    give compiler_raw_ptr_add(
+        value.base,
+        value.offset
+    );
+}
+
+proc bump_raw_ptr_at(
+    value: BumpRaw,
+    offset: usize
+) -> Option<raw ref u8> {
+    if offset > value.capacity {
+        give none<raw ref u8>();
+    }
+
+    give some<raw ref u8>(
+        compiler_raw_ptr_add(
+            value.base,
+            offset
+        )
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Typed views
+// -----------------------------------------------------------------------------
+
+proc bump_raw_as_ref<T>(
+    value: BumpRaw,
+    offset: usize
+) -> Option<ref T> {
+    if not bump_raw_can_read(value) {
+        give none<ref T>();
+    }
+
+    if offset > value.capacity {
+        give none<ref T>();
+    }
+
+    if compiler_size_of<T>()
+        > value.capacity - offset
+    {
+        give none<ref T>();
+    }
+
+    let ptr =
+        compiler_raw_ptr_add(
+            value.base,
+            offset
+        );
+
+    if compiler_raw_ptr_is_null(ptr) {
+        give none<ref T>();
+    }
+
+    give some<ref T>(
+        compiler_raw_as_ref<T>(
+            ptr
+        )
+    );
+}
+
+proc bump_raw_as_mut<T>(
+    value: ref mut BumpRaw,
+    offset: usize
+) -> Option<ref mut T> {
+    if not bump_raw_can_write(*value) {
+        give none<ref mut T>();
+    }
+
+    if offset > value.capacity {
+        give none<ref mut T>();
+    }
+
+    if compiler_size_of<T>()
+        > value.capacity - offset
+    {
+        give none<ref mut T>();
+    }
+
+    let ptr =
+        compiler_raw_ptr_add(
+            value.base,
+            offset
+        );
+
+    if compiler_raw_ptr_is_null(ptr) {
+        give none<ref mut T>();
+    }
+
+    give some<ref mut T>(
+        compiler_raw_as_mut<T>(
+            ptr
+        )
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Allocation planning
+// -----------------------------------------------------------------------------
+
+proc bump_raw_cursor(
+    value: BumpRaw
+) -> bump_alloc.BumpAllocationCursor {
+    give bump_alloc.bump_allocation_cursor(
+        value.offset,
+        value.capacity
+    );
+}
+
+proc bump_raw_plan(
+    value: BumpRaw,
+    size: usize,
+    align: usize
+) -> bump_alloc.BumpAllocationPlan {
+    give bump_alloc.bump_allocation_plan(
+        bump_raw_cursor(value),
+        size,
+        align
+    );
+}
+
+proc bump_raw_can_fit(
+    value: BumpRaw,
+    size: usize,
+    align: usize
+) -> bool {
+    give bump_raw_plan(
+        value,
+        size,
+        align
+    ).valid;
+}
+
+// -----------------------------------------------------------------------------
+// Raw allocation
+// -----------------------------------------------------------------------------
+
+proc bump_raw_allocate_request(
+    value: ref mut BumpRaw,
+    request: bump_alloc.BumpAllocationRequest
+) -> bump_alloc.BumpAllocationResult {
+    if not bump_raw_can_write(*value) {
+        give bump_alloc.bump_allocation_result_failure(
+            request,
+            bump_alloc.BumpAllocationFailure.InvalidPointer
+        );
+    }
+
+    let cursor =
+        bump_alloc.bump_allocation_cursor(
+            value.offset,
+            value.capacity
+        );
+
+    let result =
+        bump_alloc.bump_allocate_request(
+            value.base,
+            ref mut cursor,
+            request
+        );
+
+    if result.success {
+        set value.offset =
+            cursor.offset;
+
+        set value.revision =
+            value.revision + 1;
+    }
+
+    give result;
+}
+
+proc bump_raw_allocate_bytes(
+    value: ref mut BumpRaw,
+    size: usize,
+    align: usize
+) -> Option<alloc_allocator.Allocation> {
+    give bump_raw_allocate_request(
+        value,
+        bump_alloc.bump_allocation_request_bytes(
+            size,
+            align
+        )
+    ).allocation;
+}
+
+proc bump_raw_allocate_zeroed(
+    value: ref mut BumpRaw,
+    size: usize,
+    align: usize
+) -> Option<alloc_allocator.Allocation> {
+    give bump_raw_allocate_request(
+        value,
+        bump_alloc.bump_allocation_request_zeroed(
+            size,
+            align
+        )
+    ).allocation;
+}
+
+proc bump_raw_allocate<T>(
+    value: ref mut BumpRaw
+) -> Option<alloc_allocator.Allocation> {
+    give bump_raw_allocate_request(
+        value,
+        bump_alloc.bump_allocation_request_value<T>()
+    ).allocation;
+}
+
+proc bump_raw_allocate_array<T>(
+    value: ref mut BumpRaw,
+    count: usize
+) -> Option<alloc_allocator.Allocation> {
+    give bump_raw_allocate_request(
+        value,
+        bump_alloc.bump_allocation_request_array<T>(
+            count
+        )
+    ).allocation;
+}
+
+// -----------------------------------------------------------------------------
+// Emplace
+// -----------------------------------------------------------------------------
+
+proc bump_raw_emplace<T>(
+    value: ref mut BumpRaw,
+    item: T
+) -> Option<ref mut T> {
+    let allocation =
+        bump_raw_allocate<T>(
+            value
+        );
+
+    if is_none<alloc_allocator.Allocation>(
+        allocation
+    ) {
+        give none<ref mut T>();
+    }
+
+    let target =
+        compiler_allocation_as_mut<T>(
+            unwrap<alloc_allocator.Allocation>(
+                allocation
+            )
+        );
+
+    set *target = item;
+
+    give some<ref mut T>(
+        target
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Rewind
+// -----------------------------------------------------------------------------
+
+proc bump_raw_rewind(
+    value: ref mut BumpRaw,
+    offset: usize
+) -> bool {
+    if not bump_raw_can_write(*value) {
+        give false;
+    }
+
+    if offset > value.offset {
+        give false;
+    }
+
+    set value.offset = offset;
+
+    set value.revision =
+        value.revision + 1;
+
+    give true;
+}
+
+proc bump_raw_rewind_all(
+    value: ref mut BumpRaw
+) -> bool {
+    give bump_raw_rewind(
+        value,
+        0
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Reset
+// -----------------------------------------------------------------------------
+
+proc bump_raw_reset(
+    value: ref mut BumpRaw
+) -> bool {
+    if not bump_raw_can_write(*value) {
+        give false;
+    }
+
+    set value.offset = 0;
+
+    set value.generation =
+        value.generation + 1;
+
+    set value.revision =
+        value.revision + 1;
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Consume
+// -----------------------------------------------------------------------------
+
+proc bump_raw_consume(
+    value: ref mut BumpRaw
+) -> bool {
+    if value.state == BumpRawState.Consumed
+        or value.state == BumpRawState.Released
+    {
+        give false;
+    }
+
+    set value.state =
+        BumpRawState.Consumed;
+
+    set value.revision =
+        value.revision + 1;
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Release marker
+// -----------------------------------------------------------------------------
+
+proc bump_raw_release(
+    value: ref mut BumpRaw
+) -> bool {
+    if value.state == BumpRawState.Released {
+        give false;
+    }
+
+    set value.state =
+        BumpRawState.Released;
+
+    set value.offset = 0;
+
+    set value.generation =
+        value.generation + 1;
+
+    set value.revision =
+        value.revision + 1;
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Identity
+// -----------------------------------------------------------------------------
+
+proc bump_raw_ptr_eq(
+    left: BumpRaw,
+    right: BumpRaw
+) -> bool {
+    give compiler_raw_ptr_eq(
+        left.base,
+        right.base
+    );
+}
+
+proc bump_raw_ptr_ne(
+    left: BumpRaw,
+    right: BumpRaw
+) -> bool {
+    give not bump_raw_ptr_eq(
+        left,
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+proc bump_raw_pointer_valid(
+    value: BumpRaw
+) -> bool {
+    if value.state == BumpRawState.Consumed
+        or value.state == BumpRawState.Released
+    {
+        give true;
+    }
+
+    give not compiler_raw_ptr_is_null(
+        value.base
+    );
+}
+
+proc bump_raw_capacity_valid(
+    value: BumpRaw
+) -> bool {
+    give value.capacity > 0;
+}
+
+proc bump_raw_offset_valid(
+    value: BumpRaw
+) -> bool {
+    give value.offset <= value.capacity;
+}
+
+proc bump_raw_state_valid(
+    value: BumpRaw
+) -> bool {
+    give value.state != BumpRawState.Invalid;
+}
+
+proc bump_raw_access_valid(
+    value: BumpRaw
+) -> bool {
+    if value.state == BumpRawState.Consumed
+        or value.state == BumpRawState.Released
+    {
+        give not bump_raw_can_read(value)
+            and not bump_raw_can_write(value);
+    }
+
+    if value.state == BumpRawState.Borrowed {
+        give bump_raw_can_read(value)
+            and not bump_raw_can_write(value);
+    }
+
+    if value.state == BumpRawState.Mutable {
+        give bump_raw_can_read(value)
+            and bump_raw_can_write(value);
+    }
+
+    give true;
+}
+
+proc bump_raw_validate(
+    value: BumpRaw
+) -> BumpRawValidation {
+    let pointer_valid =
+        bump_raw_pointer_valid(
+            value
+        );
+
+    let capacity_valid =
+        bump_raw_capacity_valid(
+            value
+        );
+
+    let offset_valid =
+        bump_raw_offset_valid(
+            value
+        );
+
+    let state_valid =
+        bump_raw_state_valid(
+            value
+        );
+
+    let access_valid =
+        bump_raw_access_valid(
+            value
+        );
+
+    give BumpRawValidation {
+        valid:
+            pointer_valid
+            and capacity_valid
+            and offset_valid
+            and state_valid
+            and access_valid,
+
+        pointer_valid:
+            pointer_valid,
+
+        capacity_valid:
+            capacity_valid,
+
+        offset_valid:
+            offset_valid,
+
+        state_valid:
+            state_valid,
+
+        access_valid:
+            access_valid
+    };
+}
+
+proc bump_raw_is_valid(
+    value: BumpRaw
+) -> bool {
+    give bump_raw_validate(
+        value
+    ).valid;
+}
+
+proc bump_raw_invariant_holds(
+    value: BumpRaw
+) -> bool {
+    give bump_raw_is_valid(
+        value
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Profile
+// -----------------------------------------------------------------------------
+
+proc bump_raw_profile(
+    value: BumpRaw
+) -> BumpRawProfile {
+    give BumpRawProfile {
+        capacity:
+            value.capacity,
+
+        offset:
+            value.offset,
+
+        remaining:
+            bump_raw_remaining(
+                value
+            ),
+
+        state:
+            value.state,
+
+        kind:
+            value.kind,
+
+        readable:
+            bump_raw_can_read(
+                value
+            ),
+
+        writable:
+            bump_raw_can_write(
+                value
+            ),
+
+        consumed:
+            value.state
+                == BumpRawState.Consumed,
+
+        released:
+            value.state
+                == BumpRawState.Released,
+
+        valid:
+            bump_raw_is_valid(
+                value
+            ),
+
+        generation:
+            value.generation,
+
+        revision:
+            value.revision
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Snapshot
+// -----------------------------------------------------------------------------
+
+proc bump_raw_snapshot(
+    value: BumpRaw
+) -> BumpRawSnapshot {
+    give BumpRawSnapshot {
+        capacity:
+            value.capacity,
+
+        offset:
+            value.offset,
+
+        state:
+            value.state,
+
+        generation:
+            value.generation,
+
+        revision:
+            value.revision
+    };
+}
+
+proc bump_raw_snapshot_equal(
+    left: BumpRawSnapshot,
+    right: BumpRawSnapshot
+) -> bool {
+    give left.capacity == right.capacity
+        and left.offset == right.offset
+        and left.state == right.state
+        and left.generation == right.generation
+        and left.revision == right.revision;
+}
+
+proc bump_raw_snapshot_changed(
+    left: BumpRawSnapshot,
+    right: BumpRawSnapshot
+) -> bool {
+    give not bump_raw_snapshot_equal(
+        left,
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Delta
+// -----------------------------------------------------------------------------
+
+proc bump_raw_usize_delta(
+    before: usize,
+    after: usize
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc bump_raw_u64_delta(
+    before: u64,
+    after: u64
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc bump_raw_delta(
+    before: BumpRawSnapshot,
+    after: BumpRawSnapshot
+) -> BumpRawDelta {
+    let offset =
+        bump_raw_usize_delta(
+            before.offset,
+            after.offset
+        );
+
+    let generation =
+        bump_raw_u64_delta(
+            before.generation,
+            after.generation
+        );
+
+    let revision =
+        bump_raw_u64_delta(
+            before.revision,
+            after.revision
+        );
+
+    let state_changed =
+        before.state != after.state;
+
+    give BumpRawDelta {
+        offset:
+            offset,
+
+        generation:
+            generation,
+
+        revision:
+            revision,
+
+        state_changed:
+            state_changed,
+
+        changed:
+            offset != 0
+            or generation != 0
+            or revision != 0
+            or state_changed
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Error mapping
+// -----------------------------------------------------------------------------
+
+proc bump_raw_error(
+    value: BumpRaw
+) -> bump_error.BumpError {
+    let validation =
+        bump_raw_validate(
+            value
+        );
+
+    if validation.valid {
+        give bump_error.bump_error_none();
+    }
+
+    if not validation.pointer_valid {
+        give bump_error.bump_error_simple(
+            bump_error.BumpErrorKind.InvalidPointer,
+            "bump raw pointer is invalid"
+        );
+    }
+
+    if not validation.capacity_valid {
+        give bump_error.bump_error_simple(
+            bump_error.BumpErrorKind.InvalidSize,
+            "bump raw capacity is invalid"
+        );
+    }
+
+    if not validation.offset_valid {
+        give bump_error.bump_error_simple(
+            bump_error.BumpErrorKind.InvalidState,
+            "bump raw offset exceeds capacity"
+        );
+    }
+
+    if not validation.state_valid {
+        give bump_error.bump_error_simple(
+            bump_error.BumpErrorKind.InvalidState,
+            "bump raw state is invalid"
+        );
+    }
+
+    give bump_error.bump_error_internal(
+        "unknown bump raw validation failure"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc bump_raw_statistics_empty()
+    -> BumpRawStatistics
+{
+    give BumpRawStatistics {
+        borrowed: 0,
+        mutable: 0,
+
+        reads: 0,
+        writes: 0,
+
+        allocations: 0,
+        failures: 0,
+
+        consumes: 0,
+        releases: 0,
+
+        validations: 0
+    };
+}
+
+proc bump_raw_statistics_total(
+    statistics: BumpRawStatistics
+) -> u64 {
+    give statistics.borrowed
+        + statistics.mutable
+        + statistics.reads
+        + statistics.writes
+        + statistics.allocations
+        + statistics.failures
+        + statistics.consumes
+        + statistics.releases
+        + statistics.validations;
+}
+
+proc bump_raw_statistics_reset(
+    statistics: ref mut BumpRawStatistics
+) {
+    set *statistics =
+        bump_raw_statistics_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc bump_raw_state_name(
+    state: BumpRawState
+) -> string {
+    pick state {
+        BumpRawState.Borrowed {
+            give "borrowed";
+        }
+
+        BumpRawState.Mutable {
+            give "mutable";
+        }
+
+        BumpRawState.Consumed {
+            give "consumed";
+        }
+
+        BumpRawState.Released {
+            give "released";
+        }
+
+        BumpRawState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+proc bump_raw_kind_name(
+    kind: BumpRawKind
+) -> string {
+    pick kind {
+        BumpRawKind.Base {
+            give "base";
+        }
+
+        BumpRawKind.Cursor {
+            give "cursor";
+        }
+
+        BumpRawKind.Allocation {
+            give "allocation";
+        }
+
+        BumpRawKind.Slice {
+            give "slice";
+        }
+    }
+
+    give "base";
+}
+
+proc bump_raw_access_name(
+    access: BumpRawAccess
+) -> string {
+    pick access {
+        BumpRawAccess.None {
+            give "none";
+        }
+
+        BumpRawAccess.Read {
+            give "read";
+        }
+
+        BumpRawAccess.ReadWrite {
+            give "read-write";
+        }
+    }
+
+    give "none";
+}
+
+// -----------------------------------------------------------------------------
+// Raw bump model
+// -----------------------------------------------------------------------------
+//
+// Bump:
+//
+//     +---------------------------------------------+
+//     | backing block                               |
+//     +---------------------------------------------+
+//     ^                     ^                       ^
+//     base                cursor                 capacity
+//
+// Borrowed raw:
+//
+//     Bump
+//       |
+//       +---- BumpRaw
+//
+//     read access only
+//     allocator keeps ownership
+//
+// Mutable raw:
+//
+//     Bump
+//       |
+//       +---- BumpRaw
+//
+//     read/write access
+//     cursor may advance or rewind
+//     allocation still belongs to Bump
+//
+// Raw allocation:
+//
+//     base + aligned_offset
+//            |
+//            v
+//         allocation
+//
+// No raw view owns the backing block.
+//
+// Therefore:
+//
+//     bump_raw_release()
+//
+// only invalidates/releases the raw handle itself.
+// It does NOT free the backing allocation.
+//
+// Actual memory release remains the responsibility of:
+//
+//     bump_release()
+//
+// Core invariants:
+//
+//     base != null while active
+//
+//     offset <= capacity
+//
+//     Borrowed:
+//         read only
+//
+//     Mutable:
+//         read/write
+//
+//     Consumed:
+//         no access
+//
+//     Released:
+//         no access
+//
+// `raw.vitl` is the low-level pointer view.
+//
+// Allocation geometry belongs to `alloc.vitl`.
+// Backing storage belongs to `block.vitl`.
+// Public ownership belongs to `bump.vitl`.

@@ -2,7 +2,7 @@
 set -eu
 
 ROOT_DIR="${ROOT_DIR:-$(cd "$(dirname "$0")/.." && pwd)}"
-BIN="${BIN:-$ROOT_DIR/bin/vittec}"
+BIN="${BIN:-${VITTE_COMPILER:-$ROOT_DIR/bin/vittec}}"
 SRC_ROOT="$ROOT_DIR/src/vitte/compiler"
 REPORT_DIR="$ROOT_DIR/target/reports/compiler_compile_all"
 BUILD_OUT_DIR="$REPORT_DIR/build_native_out"
@@ -50,8 +50,18 @@ has_bootstrap_literal_main() {
   ' "$f"
 }
 
+is_release_native_entrypoint() {
+  case "${1#$ROOT_DIR/}" in
+    src/vitte/compiler/main.vit|src/vitte/compiler/driver/compiler.vit) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 is_bootstrap_entrypoint() {
   f="$1"
+  if is_release_native_entrypoint "$f"; then
+    return 0
+  fi
   case "$f" in
     */src/vitte/compiler/tests/*) return 1 ;;
   esac
@@ -86,7 +96,7 @@ for f in $(eval "$FILE_LIST_CMD" | sort); do
 
   if is_bootstrap_entrypoint "$f"; then
     out="$BUILD_OUT_DIR/${count}.sh"
-    if "$BIN" build-native --src "$f" --out "$out" >"$REPORT_DIR/build.${count}.out" 2>"$REPORT_DIR/build.${count}.err"; then
+    if "$BIN" build "$f" -o "$out" >"$REPORT_DIR/build.${count}.out" 2>"$REPORT_DIR/build.${count}.err"; then
       build_ok=$((build_ok + 1))
       printf '%s\n' "${f#$ROOT_DIR/}" >> "$BUILD_OK"
     else

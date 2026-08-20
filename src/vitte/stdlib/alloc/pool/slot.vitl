@@ -1,0 +1,1253 @@
+space vitte/stdlib/alloc/pool/slot
+
+export *
+
+use src/vitte/stdlib/alloc/pool/alloc as pool_alloc
+use src/vitte/stdlib/alloc/pool/core as pool_core
+use src/vitte/stdlib/alloc/pool/error as pool_error
+use src/vitte/stdlib/core/option as core_option
+
+pick PoolSlotState {
+    Free,
+    Allocated,
+    Released,
+    Invalid
+}
+
+pick PoolSlotAccess {
+    None,
+    Read,
+    ReadWrite
+}
+
+form PoolSlot {
+    index: usize
+    offset: usize
+
+    size: usize
+    align: usize
+
+    state: PoolSlotState
+
+    generation: u64
+    revision: u64
+}
+
+form PoolSlotHandle {
+    index: usize
+    generation: u64
+}
+
+form PoolSlotProfile {
+    index: usize
+    offset: usize
+
+    size: usize
+    align: usize
+
+    state: PoolSlotState
+    access: PoolSlotAccess
+
+    free: bool
+    allocated: bool
+    released: bool
+    valid: bool
+
+    generation: u64
+    revision: u64
+}
+
+form PoolSlotValidation {
+    valid: bool
+
+    index_valid: bool
+    offset_valid: bool
+    size_valid: bool
+    align_valid: bool
+
+    state_valid: bool
+    generation_valid: bool
+}
+
+form PoolSlotSnapshot {
+    index: usize
+
+    state: PoolSlotState
+
+    generation: u64
+    revision: u64
+}
+
+form PoolSlotDelta {
+    generation: int
+    revision: int
+
+    state_changed: bool
+    changed: bool
+}
+
+form PoolSlotStatistics {
+    allocations: u64
+    releases: u64
+
+    reads: u64
+    writes: u64
+
+    validation_checks: u64
+    failures: u64
+}
+
+// -----------------------------------------------------------------------------
+// Construction
+// -----------------------------------------------------------------------------
+
+proc pool_slot(
+    layout: pool_alloc.PoolAllocationLayout,
+    index: usize
+) -> PoolSlot {
+    let offset =
+        pool_alloc.pool_allocation_slot_offset(
+            layout,
+            index
+        );
+
+    give PoolSlot {
+        index:
+            index,
+
+        offset:
+            if is_some(offset) {
+                unwrap(offset)
+            } else {
+                0
+            },
+
+        size:
+            layout.slot_size,
+
+        align:
+            layout.slot_align,
+
+        state:
+            if is_some(offset) {
+                PoolSlotState.Free
+            } else {
+                PoolSlotState.Invalid
+            },
+
+        generation:
+            1,
+
+        revision:
+            1
+    };
+}
+
+proc pool_slot_from_allocation_slot(
+    layout: pool_alloc.PoolAllocationLayout,
+    value: pool_alloc.PoolAllocationSlot
+) -> PoolSlot {
+    give PoolSlot {
+        index:
+            value.index,
+
+        offset:
+            value.offset,
+
+        size:
+            layout.slot_size,
+
+        align:
+            layout.slot_align,
+
+        state:
+            if value.allocated {
+                PoolSlotState.Allocated
+            } else {
+                PoolSlotState.Free
+            },
+
+        generation:
+            value.generation,
+
+        revision:
+            value.revision
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Handle
+// -----------------------------------------------------------------------------
+
+proc pool_slot_handle(
+    slot: PoolSlot
+) -> PoolSlotHandle {
+    give PoolSlotHandle {
+        index:
+            slot.index,
+
+        generation:
+            slot.generation
+    };
+}
+
+proc pool_slot_handle_from(
+    index: usize,
+    generation: u64
+) -> PoolSlotHandle {
+    give PoolSlotHandle {
+        index: index,
+        generation: generation
+    };
+}
+
+proc pool_slot_handle_matches(
+    slot: PoolSlot,
+    handle: PoolSlotHandle
+) -> bool {
+    give slot.index == handle.index
+        and slot.generation == handle.generation;
+}
+
+proc pool_slot_handle_valid(
+    slot: PoolSlot,
+    handle: PoolSlotHandle
+) -> bool {
+    give pool_slot_handle_matches(
+        slot,
+        handle
+    )
+    and slot.state
+        == PoolSlotState.Allocated;
+}
+
+// -----------------------------------------------------------------------------
+// Accessors
+// -----------------------------------------------------------------------------
+
+proc pool_slot_index(
+    slot: PoolSlot
+) -> usize {
+    give slot.index;
+}
+
+proc pool_slot_offset(
+    slot: PoolSlot
+) -> usize {
+    give slot.offset;
+}
+
+proc pool_slot_size(
+    slot: PoolSlot
+) -> usize {
+    give slot.size;
+}
+
+proc pool_slot_align(
+    slot: PoolSlot
+) -> usize {
+    give slot.align;
+}
+
+proc pool_slot_generation(
+    slot: PoolSlot
+) -> u64 {
+    give slot.generation;
+}
+
+proc pool_slot_revision(
+    slot: PoolSlot
+) -> u64 {
+    give slot.revision;
+}
+
+// -----------------------------------------------------------------------------
+// State
+// -----------------------------------------------------------------------------
+
+proc pool_slot_is_free(
+    slot: PoolSlot
+) -> bool {
+    give slot.state
+        == PoolSlotState.Free;
+}
+
+proc pool_slot_is_allocated(
+    slot: PoolSlot
+) -> bool {
+    give slot.state
+        == PoolSlotState.Allocated;
+}
+
+proc pool_slot_is_released(
+    slot: PoolSlot
+) -> bool {
+    give slot.state
+        == PoolSlotState.Released;
+}
+
+proc pool_slot_is_valid(
+    slot: PoolSlot
+) -> bool {
+    give slot.state
+        != PoolSlotState.Invalid;
+}
+
+proc pool_slot_access(
+    slot: PoolSlot
+) -> PoolSlotAccess {
+    pick slot.state {
+        PoolSlotState.Free {
+            give PoolSlotAccess.None;
+        }
+
+        PoolSlotState.Allocated {
+            give PoolSlotAccess.ReadWrite;
+        }
+
+        PoolSlotState.Released
+        | PoolSlotState.Invalid {
+            give PoolSlotAccess.None;
+        }
+    }
+
+    give PoolSlotAccess.None;
+}
+
+proc pool_slot_can_read(
+    slot: PoolSlot
+) -> bool {
+    give pool_slot_access(slot)
+        == PoolSlotAccess.Read
+        or pool_slot_access(slot)
+            == PoolSlotAccess.ReadWrite;
+}
+
+proc pool_slot_can_write(
+    slot: PoolSlot
+) -> bool {
+    give pool_slot_access(slot)
+        == PoolSlotAccess.ReadWrite;
+}
+
+// -----------------------------------------------------------------------------
+// Fit
+// -----------------------------------------------------------------------------
+
+proc pool_slot_fits(
+    slot: PoolSlot,
+    size: usize,
+    align: usize
+) -> bool {
+    if not pool_slot_is_free(
+        slot
+    ) {
+        give false;
+    }
+
+    if size == 0
+        or size > slot.size
+    {
+        give false;
+    }
+
+    if not pool_alloc.pool_allocation_alignment_valid(
+        align
+    ) {
+        give false;
+    }
+
+    give align <= slot.align;
+}
+
+proc pool_slot_fits_request(
+    slot: PoolSlot,
+    request: pool_alloc.PoolAllocationRequest
+) -> bool {
+    give pool_slot_fits(
+        slot,
+        request.size,
+        request.align
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Allocation lifecycle
+// -----------------------------------------------------------------------------
+
+proc pool_slot_allocate(
+    slot: ref mut PoolSlot
+) -> bool {
+    if slot.state
+        != PoolSlotState.Free
+    {
+        give false;
+    }
+
+    set slot.state =
+        PoolSlotState.Allocated;
+
+    set slot.revision =
+        slot.revision + 1;
+
+    give true;
+}
+
+proc pool_slot_release(
+    slot: ref mut PoolSlot
+) -> bool {
+    if slot.state
+        != PoolSlotState.Allocated
+    {
+        give false;
+    }
+
+    set slot.state =
+        PoolSlotState.Free;
+
+    set slot.generation =
+        slot.generation + 1;
+
+    set slot.revision =
+        slot.revision + 1;
+
+    give true;
+}
+
+proc pool_slot_invalidate(
+    slot: ref mut PoolSlot
+) {
+    set slot.state =
+        PoolSlotState.Invalid;
+
+    set slot.generation =
+        slot.generation + 1;
+
+    set slot.revision =
+        slot.revision + 1;
+}
+
+proc pool_slot_mark_released(
+    slot: ref mut PoolSlot
+) {
+    set slot.state =
+        PoolSlotState.Released;
+
+    set slot.generation =
+        slot.generation + 1;
+
+    set slot.revision =
+        slot.revision + 1;
+}
+
+// -----------------------------------------------------------------------------
+// Reset
+// -----------------------------------------------------------------------------
+
+proc pool_slot_reset(
+    slot: ref mut PoolSlot
+) {
+    set slot.state =
+        PoolSlotState.Free;
+
+    set slot.generation =
+        slot.generation + 1;
+
+    set slot.revision =
+        slot.revision + 1;
+}
+
+// -----------------------------------------------------------------------------
+// Pointer geometry
+// -----------------------------------------------------------------------------
+
+proc pool_slot_ptr(
+    base: raw ref u8,
+    slot: PoolSlot
+) -> Option<raw ref u8> {
+    if not pool_slot_is_valid(
+        slot
+    ) {
+        give none<raw ref u8>();
+    }
+
+    if compiler_raw_ptr_is_null(
+        base
+    ) {
+        give none<raw ref u8>();
+    }
+
+    give some<raw ref u8>(
+        compiler_raw_ptr_add(
+            base,
+            slot.offset
+        )
+    );
+}
+
+proc pool_slot_as_ref<T>(
+    base: raw ref u8,
+    slot: PoolSlot
+) -> Option<ref T> {
+    if not pool_slot_can_read(
+        slot
+    ) {
+        give none<ref T>();
+    }
+
+    if compiler_size_of<T>()
+        > slot.size
+    {
+        give none<ref T>();
+    }
+
+    if compiler_align_of<T>()
+        > slot.align
+    {
+        give none<ref T>();
+    }
+
+    let ptr =
+        pool_slot_ptr(
+            base,
+            slot
+        );
+
+    if is_none(ptr) {
+        give none<ref T>();
+    }
+
+    give some<ref T>(
+        compiler_raw_as_ref<T>(
+            unwrap(ptr)
+        )
+    );
+}
+
+proc pool_slot_as_mut<T>(
+    base: raw ref u8,
+    slot: ref mut PoolSlot
+) -> Option<ref mut T> {
+    if not pool_slot_can_write(
+        *slot
+    ) {
+        give none<ref mut T>();
+    }
+
+    if compiler_size_of<T>()
+        > slot.size
+    {
+        give none<ref mut T>();
+    }
+
+    if compiler_align_of<T>()
+        > slot.align
+    {
+        give none<ref mut T>();
+    }
+
+    let ptr =
+        pool_slot_ptr(
+            base,
+            *slot
+        );
+
+    if is_none(ptr) {
+        give none<ref mut T>();
+    }
+
+    give some<ref mut T>(
+        compiler_raw_as_mut<T>(
+            unwrap(ptr)
+        )
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Value operations
+// -----------------------------------------------------------------------------
+
+proc pool_slot_write<T>(
+    base: raw ref u8,
+    slot: ref mut PoolSlot,
+    value: T
+) -> bool {
+    let target =
+        pool_slot_as_mut<T>(
+            base,
+            slot
+        );
+
+    if is_none(target) {
+        give false;
+    }
+
+    set *unwrap(target) =
+        value;
+
+    set slot.revision =
+        slot.revision + 1;
+
+    give true;
+}
+
+proc pool_slot_copy<T>(
+    base: raw ref u8,
+    slot: ref mut PoolSlot,
+    source: ref T
+) -> bool {
+    let target =
+        pool_slot_as_mut<T>(
+            base,
+            slot
+        );
+
+    if is_none(target) {
+        give false;
+    }
+
+    compiler_copy_value<T>(
+        unwrap(target),
+        source
+    );
+
+    set slot.revision =
+        slot.revision + 1;
+
+    give true;
+}
+
+proc pool_slot_zero(
+    base: raw ref u8,
+    slot: ref mut PoolSlot
+) -> bool {
+    if not pool_slot_can_write(
+        *slot
+    ) {
+        give false;
+    }
+
+    let ptr =
+        pool_slot_ptr(
+            base,
+            *slot
+        );
+
+    if is_none(ptr) {
+        give false;
+    }
+
+    compiler_memory_zero(
+        unwrap(ptr),
+        slot.size
+    );
+
+    set slot.revision =
+        slot.revision + 1;
+
+    give true;
+}
+
+proc pool_slot_drop<T>(
+    base: raw ref u8,
+    slot: ref mut PoolSlot
+) -> bool {
+    let value =
+        pool_slot_as_mut<T>(
+            base,
+            slot
+        );
+
+    if is_none(value) {
+        give false;
+    }
+
+    compiler_drop_in_place<T>(
+        unwrap(value)
+    );
+
+    give pool_slot_release(
+        slot
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+proc pool_slot_validate(
+    slot: PoolSlot,
+    layout: pool_alloc.PoolAllocationLayout
+) -> PoolSlotValidation {
+    let index_valid =
+        slot.index
+            < layout.slot_count;
+
+    let offset_result =
+        pool_alloc.pool_allocation_slot_offset(
+            layout,
+            slot.index
+        );
+
+    let offset_valid =
+        is_some(offset_result)
+        and slot.offset
+            == unwrap(offset_result);
+
+    let size_valid =
+        slot.size
+            == layout.slot_size
+        and slot.size > 0;
+
+    let align_valid =
+        slot.align
+            == layout.slot_align
+        and pool_alloc.pool_allocation_alignment_valid(
+            slot.align
+        );
+
+    let state_valid =
+        slot.state
+            != PoolSlotState.Invalid;
+
+    let generation_valid =
+        slot.generation > 0
+        and slot.revision > 0;
+
+    give PoolSlotValidation {
+        valid:
+            index_valid
+            and offset_valid
+            and size_valid
+            and align_valid
+            and state_valid
+            and generation_valid,
+
+        index_valid:
+            index_valid,
+
+        offset_valid:
+            offset_valid,
+
+        size_valid:
+            size_valid,
+
+        align_valid:
+            align_valid,
+
+        state_valid:
+            state_valid,
+
+        generation_valid:
+            generation_valid
+    };
+}
+
+proc pool_slot_invariant_holds(
+    slot: PoolSlot,
+    layout: pool_alloc.PoolAllocationLayout
+) -> bool {
+    give pool_slot_validate(
+        slot,
+        layout
+    ).valid;
+}
+
+// -----------------------------------------------------------------------------
+// Profile
+// -----------------------------------------------------------------------------
+
+proc pool_slot_profile(
+    slot: PoolSlot
+) -> PoolSlotProfile {
+    give PoolSlotProfile {
+        index:
+            slot.index,
+
+        offset:
+            slot.offset,
+
+        size:
+            slot.size,
+
+        align:
+            slot.align,
+
+        state:
+            slot.state,
+
+        access:
+            pool_slot_access(
+                slot
+            ),
+
+        free:
+            pool_slot_is_free(
+                slot
+            ),
+
+        allocated:
+            pool_slot_is_allocated(
+                slot
+            ),
+
+        released:
+            pool_slot_is_released(
+                slot
+            ),
+
+        valid:
+            pool_slot_is_valid(
+                slot
+            ),
+
+        generation:
+            slot.generation,
+
+        revision:
+            slot.revision
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Snapshot
+// -----------------------------------------------------------------------------
+
+proc pool_slot_snapshot(
+    slot: PoolSlot
+) -> PoolSlotSnapshot {
+    give PoolSlotSnapshot {
+        index:
+            slot.index,
+
+        state:
+            slot.state,
+
+        generation:
+            slot.generation,
+
+        revision:
+            slot.revision
+    };
+}
+
+proc pool_slot_snapshot_equal(
+    left: PoolSlotSnapshot,
+    right: PoolSlotSnapshot
+) -> bool {
+    give left.index == right.index
+        and left.state == right.state
+        and left.generation == right.generation
+        and left.revision == right.revision;
+}
+
+proc pool_slot_snapshot_changed(
+    left: PoolSlotSnapshot,
+    right: PoolSlotSnapshot
+) -> bool {
+    give not pool_slot_snapshot_equal(
+        left,
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Delta
+// -----------------------------------------------------------------------------
+
+proc pool_slot_u64_delta(
+    before: u64,
+    after: u64
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc pool_slot_delta(
+    before: PoolSlotSnapshot,
+    after: PoolSlotSnapshot
+) -> PoolSlotDelta {
+    let generation =
+        pool_slot_u64_delta(
+            before.generation,
+            after.generation
+        );
+
+    let revision =
+        pool_slot_u64_delta(
+            before.revision,
+            after.revision
+        );
+
+    let state_changed =
+        before.state != after.state;
+
+    give PoolSlotDelta {
+        generation:
+            generation,
+
+        revision:
+            revision,
+
+        state_changed:
+            state_changed,
+
+        changed:
+            generation != 0
+            or revision != 0
+            or state_changed
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Error mapping
+// -----------------------------------------------------------------------------
+
+proc pool_slot_error(
+    slot: PoolSlot,
+    layout: pool_alloc.PoolAllocationLayout
+) -> pool_error.PoolError {
+    let validation =
+        pool_slot_validate(
+            slot,
+            layout
+        );
+
+    if validation.valid {
+        give pool_error.pool_error_none();
+    }
+
+    if not validation.index_valid {
+        give pool_error.pool_error_simple(
+            pool_error.PoolErrorKind.InvalidSlotIndex,
+            "pool slot index is invalid"
+        );
+    }
+
+    if not validation.offset_valid {
+        give pool_error.pool_error_simple(
+            pool_error.PoolErrorKind.InvalidSlot,
+            "pool slot offset is invalid"
+        );
+    }
+
+    if not validation.size_valid {
+        give pool_error.pool_error_simple(
+            pool_error.PoolErrorKind.InvalidSize,
+            "pool slot size is invalid"
+        );
+    }
+
+    if not validation.align_valid {
+        give pool_error.pool_error_simple(
+            pool_error.PoolErrorKind.InvalidAlignment,
+            "pool slot alignment is invalid"
+        );
+    }
+
+    if not validation.state_valid {
+        give pool_error.pool_error_simple(
+            pool_error.PoolErrorKind.InvalidSlotState,
+            "pool slot state is invalid"
+        );
+    }
+
+    if not validation.generation_valid {
+        give pool_error.pool_error_simple(
+            pool_error.PoolErrorKind.GenerationMismatch,
+            "pool slot generation metadata is invalid"
+        );
+    }
+
+    give pool_error.pool_error_internal(
+        "unknown pool slot validation failure"
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Core mapping
+// -----------------------------------------------------------------------------
+
+proc pool_slot_core_state(
+    slot: PoolSlot
+) -> pool_core.PoolCoreSlotState {
+    pick slot.state {
+        PoolSlotState.Free {
+            give pool_core.PoolCoreSlotState.Free;
+        }
+
+        PoolSlotState.Allocated {
+            give pool_core.PoolCoreSlotState.Allocated;
+        }
+
+        PoolSlotState.Released
+        | PoolSlotState.Invalid {
+            give pool_core.PoolCoreSlotState.Invalid;
+        }
+    }
+
+    give pool_core.PoolCoreSlotState.Invalid;
+}
+
+proc pool_slot_core_info(
+    slot: PoolSlot
+) -> pool_core.PoolCoreSlotInfo {
+    give pool_core.PoolCoreSlotInfo {
+        index:
+            slot.index,
+
+        state:
+            pool_slot_core_state(
+                slot
+            ),
+
+        generation:
+            slot.generation,
+
+        revision:
+            slot.revision
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Statistics
+// -----------------------------------------------------------------------------
+
+proc pool_slot_statistics_empty()
+    -> PoolSlotStatistics
+{
+    give PoolSlotStatistics {
+        allocations: 0,
+        releases: 0,
+
+        reads: 0,
+        writes: 0,
+
+        validation_checks: 0,
+        failures: 0
+    };
+}
+
+proc pool_slot_statistics_record_allocate(
+    statistics: ref mut PoolSlotStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.allocations =
+            statistics.allocations + 1;
+    } else {
+        set statistics.failures =
+            statistics.failures + 1;
+    }
+}
+
+proc pool_slot_statistics_record_release(
+    statistics: ref mut PoolSlotStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.releases =
+            statistics.releases + 1;
+    } else {
+        set statistics.failures =
+            statistics.failures + 1;
+    }
+}
+
+proc pool_slot_statistics_record_read(
+    statistics: ref mut PoolSlotStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.reads =
+            statistics.reads + 1;
+    } else {
+        set statistics.failures =
+            statistics.failures + 1;
+    }
+}
+
+proc pool_slot_statistics_record_write(
+    statistics: ref mut PoolSlotStatistics,
+    success: bool
+) {
+    if success {
+        set statistics.writes =
+            statistics.writes + 1;
+    } else {
+        set statistics.failures =
+            statistics.failures + 1;
+    }
+}
+
+proc pool_slot_statistics_record_validation(
+    statistics: ref mut PoolSlotStatistics,
+    valid: bool
+) {
+    set statistics.validation_checks =
+        statistics.validation_checks + 1;
+
+    if not valid {
+        set statistics.failures =
+            statistics.failures + 1;
+    }
+}
+
+proc pool_slot_statistics_total(
+    statistics: PoolSlotStatistics
+) -> u64 {
+    give statistics.allocations
+        + statistics.releases
+        + statistics.reads
+        + statistics.writes
+        + statistics.validation_checks
+        + statistics.failures;
+}
+
+proc pool_slot_statistics_reset(
+    statistics: ref mut PoolSlotStatistics
+) {
+    set *statistics =
+        pool_slot_statistics_empty();
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc pool_slot_state_name(
+    state: PoolSlotState
+) -> string {
+    pick state {
+        PoolSlotState.Free {
+            give "free";
+        }
+
+        PoolSlotState.Allocated {
+            give "allocated";
+        }
+
+        PoolSlotState.Released {
+            give "released";
+        }
+
+        PoolSlotState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+proc pool_slot_access_name(
+    access: PoolSlotAccess
+) -> string {
+    pick access {
+        PoolSlotAccess.None {
+            give "none";
+        }
+
+        PoolSlotAccess.Read {
+            give "read";
+        }
+
+        PoolSlotAccess.ReadWrite {
+            give "read-write";
+        }
+    }
+
+    give "none";
+}
+
+// -----------------------------------------------------------------------------
+// Slot model
+// -----------------------------------------------------------------------------
+//
+// Pool memory:
+//
+// +------+------+------+------+------+
+// |slot 0|slot 1|slot 2|slot 3| ...  |
+// +------+------+------+------+------+
+//
+// Slot address:
+//
+//     base + slot.offset
+//
+// where:
+//
+//     slot.offset = slot.index * slot_size
+//
+// Lifecycle:
+//
+//     Free
+//       |
+//       | allocate
+//       v
+//     Allocated
+//       |
+//       | release
+//       v
+//     Free
+//
+// Generation changes on release:
+//
+//     handle {
+//         index
+//         generation
+//     }
+//
+// This makes stale handles detectable.
+//
+// Example:
+//
+//     slot generation = 4
+//
+//     handle = { index: 8, generation: 4 }
+//
+// release:
+//
+//     slot generation = 5
+//
+// old handle generation 4 != 5
+//
+//     => stale
+//
+// Reset also advances generation.
+//
+// Fundamental invariants:
+//
+//     index < slot_count
+//
+//     offset == index * slot_size
+//
+//     size == layout.slot_size
+//
+//     align == layout.slot_align
+//
+//     generation > 0
+//
+//     revision > 0
+//
+// `slot.vitl` models individual pool slots.
+//
+// Slot allocation geometry:
+//     alloc.vitl
+//
+// Free-slot discovery:
+//     free.vitl
+//
+// Backing storage:
+//     block.vitl
+//
+// Global allocator API:
+//     pool.vitl
+//
+// Reset lifecycle:
+//     reset.vitl

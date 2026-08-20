@@ -1,0 +1,1240 @@
+space vitte/stdlib/alloc/pool/alloc
+
+export *
+
+use src/vitte/stdlib/alloc/allocator as alloc_allocator
+use src/vitte/stdlib/core/option as core_option
+
+const POOL_ALLOC_MIN_ALIGN: usize = 1;
+const POOL_ALLOC_MIN_SLOT_SIZE: usize = 1;
+
+pick PoolAllocationKind {
+    Slot,
+    Value,
+    Zeroed,
+    Raw,
+    Internal
+}
+
+pick PoolAllocationState {
+    Ready,
+    Allocated,
+    Released,
+    Exhausted,
+    Failed,
+    Invalid
+}
+
+pick PoolAllocationFailure {
+    None,
+
+    InvalidSize,
+    InvalidAlignment,
+    InvalidLayout,
+
+    SlotTooSmall,
+    CapacityExceeded,
+    Exhausted,
+
+    InvalidIndex,
+    InvalidPointer,
+
+    AlreadyAllocated,
+    AlreadyReleased,
+
+    OutOfMemory,
+    RuntimeFailure
+}
+
+form PoolAllocationLayout {
+    slot_size: usize
+    slot_align: usize
+    slot_count: usize
+}
+
+form PoolAllocationRequest {
+    kind: PoolAllocationKind
+
+    size: usize
+    align: usize
+
+    zeroed: bool
+}
+
+form PoolAllocationSlot {
+    index: usize
+
+    offset: usize
+
+    allocated: bool
+
+    generation: u64
+    revision: u64
+}
+
+form PoolAllocationResult {
+    request: PoolAllocationRequest
+
+    allocation: Option<alloc_allocator.Allocation>
+
+    slot: usize
+
+    state: PoolAllocationState
+    failure: PoolAllocationFailure
+
+    success: bool
+}
+
+form PoolAllocationValidation {
+    valid: bool
+
+    size_valid: bool
+    align_valid: bool
+    layout_valid: bool
+    slot_valid: bool
+}
+
+form PoolAllocationProfile {
+    requests: u64
+    successes: u64
+    failures: u64
+
+    allocations: u64
+    releases: u64
+
+    bytes_requested: usize
+    bytes_allocated: usize
+
+    highest_slot: usize
+
+    exhaustion_count: u64
+}
+
+form PoolAllocationSnapshot {
+    capacity: usize
+
+    allocated: usize
+    free: usize
+
+    revision: u64
+}
+
+form PoolAllocationDelta {
+    allocated: int
+    free: int
+    revision: int
+
+    changed: bool
+}
+
+// -----------------------------------------------------------------------------
+// Layout
+// -----------------------------------------------------------------------------
+
+proc pool_allocation_layout(
+    slot_size: usize,
+    slot_align: usize,
+    slot_count: usize
+) -> PoolAllocationLayout {
+    give PoolAllocationLayout {
+        slot_size: slot_size,
+        slot_align: slot_align,
+        slot_count: slot_count
+    };
+}
+
+proc pool_allocation_layout_of<T>(
+    slot_count: usize
+) -> PoolAllocationLayout {
+    give pool_allocation_layout(
+        compiler_size_of<T>(),
+        compiler_align_of<T>(),
+        slot_count
+    );
+}
+
+proc pool_allocation_layout_capacity(
+    layout: PoolAllocationLayout
+) -> usize {
+    if pool_allocation_mul_overflows(
+        layout.slot_size,
+        layout.slot_count
+    ) {
+        give 0;
+    }
+
+    give layout.slot_size
+        * layout.slot_count;
+}
+
+proc pool_allocation_layout_valid(
+    layout: PoolAllocationLayout
+) -> bool {
+    if layout.slot_size < POOL_ALLOC_MIN_SLOT_SIZE {
+        give false;
+    }
+
+    if layout.slot_count == 0 {
+        give false;
+    }
+
+    if not pool_allocation_alignment_valid(
+        layout.slot_align
+    ) {
+        give false;
+    }
+
+    give not pool_allocation_mul_overflows(
+        layout.slot_size,
+        layout.slot_count
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Request
+// -----------------------------------------------------------------------------
+
+proc pool_allocation_request(
+    kind: PoolAllocationKind,
+    size: usize,
+    align: usize,
+    zeroed: bool
+) -> PoolAllocationRequest {
+    give PoolAllocationRequest {
+        kind: kind,
+        size: size,
+        align: align,
+        zeroed: zeroed
+    };
+}
+
+proc pool_allocation_request_raw(
+    size: usize,
+    align: usize
+) -> PoolAllocationRequest {
+    give pool_allocation_request(
+        PoolAllocationKind.Raw,
+        size,
+        align,
+        false
+    );
+}
+
+proc pool_allocation_request_zeroed(
+    size: usize,
+    align: usize
+) -> PoolAllocationRequest {
+    give pool_allocation_request(
+        PoolAllocationKind.Zeroed,
+        size,
+        align,
+        true
+    );
+}
+
+proc pool_allocation_request_value<T>()
+    -> PoolAllocationRequest
+{
+    give pool_allocation_request(
+        PoolAllocationKind.Value,
+        compiler_size_of<T>(),
+        compiler_align_of<T>(),
+        false
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Arithmetic
+// -----------------------------------------------------------------------------
+
+proc pool_allocation_add_overflows(
+    left: usize,
+    right: usize
+) -> bool {
+    give left > usize_max() - right;
+}
+
+proc pool_allocation_mul_overflows(
+    left: usize,
+    right: usize
+) -> bool {
+    if left == 0
+        or right == 0
+    {
+        give false;
+    }
+
+    give left > usize_max() / right;
+}
+
+// -----------------------------------------------------------------------------
+// Alignment
+// -----------------------------------------------------------------------------
+
+proc pool_allocation_alignment_valid(
+    align: usize
+) -> bool {
+    if align < POOL_ALLOC_MIN_ALIGN {
+        give false;
+    }
+
+    give compiler_is_power_of_two(
+        align
+    );
+}
+
+proc pool_allocation_align_up(
+    value: usize,
+    align: usize
+) -> Option<usize> {
+    if not pool_allocation_alignment_valid(
+        align
+    ) {
+        give none<usize>();
+    }
+
+    let remainder =
+        value % align;
+
+    if remainder == 0 {
+        give some<usize>(
+            value
+        );
+    }
+
+    let padding =
+        align - remainder;
+
+    if pool_allocation_add_overflows(
+        value,
+        padding
+    ) {
+        give none<usize>();
+    }
+
+    give some<usize>(
+        value + padding
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Slot geometry
+// -----------------------------------------------------------------------------
+
+proc pool_allocation_slot_offset(
+    layout: PoolAllocationLayout,
+    index: usize
+) -> Option<usize> {
+    if index >= layout.slot_count {
+        give none<usize>();
+    }
+
+    if pool_allocation_mul_overflows(
+        layout.slot_size,
+        index
+    ) {
+        give none<usize>();
+    }
+
+    give some<usize>(
+        layout.slot_size * index
+    );
+}
+
+proc pool_allocation_slot_valid(
+    layout: PoolAllocationLayout,
+    index: usize
+) -> bool {
+    give index < layout.slot_count;
+}
+
+proc pool_allocation_request_fits(
+    layout: PoolAllocationLayout,
+    request: PoolAllocationRequest
+) -> bool {
+    if request.size == 0 {
+        give false;
+    }
+
+    if request.size > layout.slot_size {
+        give false;
+    }
+
+    if request.align > layout.slot_align {
+        give false;
+    }
+
+    give pool_allocation_alignment_valid(
+        request.align
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Validation
+// -----------------------------------------------------------------------------
+
+proc pool_allocation_validate_request(
+    layout: PoolAllocationLayout,
+    request: PoolAllocationRequest
+) -> PoolAllocationValidation {
+    let size_valid =
+        request.size > 0
+        and request.size <= layout.slot_size;
+
+    let align_valid =
+        pool_allocation_alignment_valid(
+            request.align
+        )
+        and request.align <= layout.slot_align;
+
+    let layout_valid =
+        pool_allocation_layout_valid(
+            layout
+        );
+
+    give PoolAllocationValidation {
+        valid:
+            size_valid
+            and align_valid
+            and layout_valid,
+
+        size_valid:
+            size_valid,
+
+        align_valid:
+            align_valid,
+
+        layout_valid:
+            layout_valid,
+
+        slot_valid:
+            true
+    };
+}
+
+proc pool_allocation_request_valid(
+    layout: PoolAllocationLayout,
+    request: PoolAllocationRequest
+) -> bool {
+    give pool_allocation_validate_request(
+        layout,
+        request
+    ).valid;
+}
+
+// -----------------------------------------------------------------------------
+// Slot construction
+// -----------------------------------------------------------------------------
+
+proc pool_allocation_slot(
+    layout: PoolAllocationLayout,
+    index: usize
+) -> PoolAllocationSlot {
+    let offset =
+        pool_allocation_slot_offset(
+            layout,
+            index
+        );
+
+    give PoolAllocationSlot {
+        index:
+            index,
+
+        offset:
+            if is_some<usize>(offset) {
+                unwrap<usize>(offset)
+            } else {
+                0
+            },
+
+        allocated:
+            false,
+
+        generation:
+            1,
+
+        revision:
+            1
+    };
+}
+
+proc pool_allocation_slot_is_free(
+    slot: PoolAllocationSlot
+) -> bool {
+    give not slot.allocated;
+}
+
+proc pool_allocation_slot_is_allocated(
+    slot: PoolAllocationSlot
+) -> bool {
+    give slot.allocated;
+}
+
+proc pool_allocation_slot_allocate(
+    slot: ref mut PoolAllocationSlot
+) -> bool {
+    if slot.allocated {
+        give false;
+    }
+
+    set slot.allocated =
+        true;
+
+    set slot.revision =
+        slot.revision + 1;
+
+    give true;
+}
+
+proc pool_allocation_slot_release(
+    slot: ref mut PoolAllocationSlot
+) -> bool {
+    if not slot.allocated {
+        give false;
+    }
+
+    set slot.allocated =
+        false;
+
+    set slot.generation =
+        slot.generation + 1;
+
+    set slot.revision =
+        slot.revision + 1;
+
+    give true;
+}
+
+// -----------------------------------------------------------------------------
+// Result
+// -----------------------------------------------------------------------------
+
+proc pool_allocation_result_success(
+    request: PoolAllocationRequest,
+    allocation: alloc_allocator.Allocation,
+    slot: usize
+) -> PoolAllocationResult {
+    give PoolAllocationResult {
+        request:
+            request,
+
+        allocation:
+            some<alloc_allocator.Allocation>(
+                allocation
+            ),
+
+        slot:
+            slot,
+
+        state:
+            PoolAllocationState.Allocated,
+
+        failure:
+            PoolAllocationFailure.None,
+
+        success:
+            true
+    };
+}
+
+proc pool_allocation_result_failure(
+    request: PoolAllocationRequest,
+    failure: PoolAllocationFailure
+) -> PoolAllocationResult {
+    give PoolAllocationResult {
+        request:
+            request,
+
+        allocation:
+            none<alloc_allocator.Allocation>(),
+
+        slot:
+            0,
+
+        state:
+            if failure == PoolAllocationFailure.Exhausted {
+                PoolAllocationState.Exhausted
+            } else {
+                PoolAllocationState.Failed
+            },
+
+        failure:
+            failure,
+
+        success:
+            false
+    };
+}
+
+// -----------------------------------------------------------------------------
+// Allocation from slot
+// -----------------------------------------------------------------------------
+
+proc pool_allocate_slot(
+    base: raw ref u8,
+    layout: PoolAllocationLayout,
+    slot: ref mut PoolAllocationSlot,
+    request: PoolAllocationRequest
+) -> PoolAllocationResult {
+    if not pool_allocation_request_valid(
+        layout,
+        request
+    ) {
+        if request.size == 0 {
+            give pool_allocation_result_failure(
+                request,
+                PoolAllocationFailure.InvalidSize
+            );
+        }
+
+        if request.size > layout.slot_size {
+            give pool_allocation_result_failure(
+                request,
+                PoolAllocationFailure.SlotTooSmall
+            );
+        }
+
+        if not pool_allocation_alignment_valid(
+            request.align
+        ) {
+            give pool_allocation_result_failure(
+                request,
+                PoolAllocationFailure.InvalidAlignment
+            );
+        }
+
+        give pool_allocation_result_failure(
+            request,
+            PoolAllocationFailure.InvalidLayout
+        );
+    }
+
+    if slot.index >= layout.slot_count {
+        give pool_allocation_result_failure(
+            request,
+            PoolAllocationFailure.InvalidIndex
+        );
+    }
+
+    if slot.allocated {
+        give pool_allocation_result_failure(
+            request,
+            PoolAllocationFailure.AlreadyAllocated
+        );
+    }
+
+    let offset =
+        pool_allocation_slot_offset(
+            layout,
+            slot.index
+        );
+
+    if is_none<usize>(offset) {
+        give pool_allocation_result_failure(
+            request,
+            PoolAllocationFailure.InvalidIndex
+        );
+    }
+
+    let ptr =
+        compiler_raw_ptr_add(
+            base,
+            unwrap<usize>(offset)
+        );
+
+    if compiler_raw_ptr_is_null(ptr) {
+        give pool_allocation_result_failure(
+            request,
+            PoolAllocationFailure.InvalidPointer
+        );
+    }
+
+    let allocation =
+        alloc_allocator.Allocation {
+            ptr:
+                compiler_raw_ptr_to_void(
+                    ptr
+                ),
+
+            layout:
+                alloc_allocator.layout(
+                    request.size,
+                    request.align
+                )
+        };
+
+    if request.zeroed {
+        compiler_allocation_zero(
+            allocation.ptr,
+            request.size
+        );
+    }
+
+    if not pool_allocation_slot_allocate(
+        slot
+    ) {
+        give pool_allocation_result_failure(
+            request,
+            PoolAllocationFailure.AlreadyAllocated
+        );
+    }
+
+    give pool_allocation_result_success(
+        request,
+        allocation,
+        slot.index
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Typed allocation
+// -----------------------------------------------------------------------------
+
+proc pool_allocate<T>(
+    base: raw ref u8,
+    layout: PoolAllocationLayout,
+    slot: ref mut PoolAllocationSlot
+) -> Option<alloc_allocator.Allocation> {
+    give pool_allocate_slot(
+        base,
+        layout,
+        slot,
+        pool_allocation_request_value<T>()
+    ).allocation;
+}
+
+proc pool_allocate_zeroed<T>(
+    base: raw ref u8,
+    layout: PoolAllocationLayout,
+    slot: ref mut PoolAllocationSlot
+) -> Option<alloc_allocator.Allocation> {
+    let request =
+        pool_allocation_request(
+            PoolAllocationKind.Zeroed,
+            compiler_size_of<T>(),
+            compiler_align_of<T>(),
+            true
+        );
+
+    give pool_allocate_slot(
+        base,
+        layout,
+        slot,
+        request
+    ).allocation;
+}
+
+proc pool_emplace<T>(
+    base: raw ref u8,
+    layout: PoolAllocationLayout,
+    slot: ref mut PoolAllocationSlot,
+    value: T
+) -> Option<ref mut T> {
+    let allocation =
+        pool_allocate<T>(
+            base,
+            layout,
+            slot
+        );
+
+    if is_none<alloc_allocator.Allocation>(
+        allocation
+    ) {
+        give none<ref mut T>();
+    }
+
+    let target =
+        compiler_allocation_as_mut<T>(
+            unwrap<alloc_allocator.Allocation>(
+                allocation
+            )
+        );
+
+    set *target =
+        value;
+
+    give some<ref mut T>(
+        target
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Slot release
+// -----------------------------------------------------------------------------
+
+proc pool_release_slot(
+    slot: ref mut PoolAllocationSlot
+) -> bool {
+    give pool_allocation_slot_release(
+        slot
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Snapshot helpers
+// -----------------------------------------------------------------------------
+
+proc pool_allocation_snapshot(
+    allocated: usize,
+    capacity: usize,
+    revision: u64
+) -> PoolAllocationSnapshot {
+    give PoolAllocationSnapshot {
+        capacity:
+            capacity,
+
+        allocated:
+            allocated,
+
+        free:
+            if allocated >= capacity {
+                0
+            } else {
+                capacity - allocated
+            },
+
+        revision:
+            revision
+    };
+}
+
+proc pool_allocation_snapshot_equal(
+    left: PoolAllocationSnapshot,
+    right: PoolAllocationSnapshot
+) -> bool {
+    give left.capacity == right.capacity
+        and left.allocated == right.allocated
+        and left.free == right.free
+        and left.revision == right.revision;
+}
+
+proc pool_allocation_snapshot_changed(
+    left: PoolAllocationSnapshot,
+    right: PoolAllocationSnapshot
+) -> bool {
+    give not pool_allocation_snapshot_equal(
+        left,
+        right
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Delta
+// -----------------------------------------------------------------------------
+
+proc pool_allocation_usize_delta(
+    before: usize,
+    after: usize
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc pool_allocation_u64_delta(
+    before: u64,
+    after: u64
+) -> int {
+    if after > before {
+        give (after - before) as int;
+    }
+
+    if after < before {
+        give -((before - after) as int);
+    }
+
+    give 0;
+}
+
+proc pool_allocation_delta(
+    before: PoolAllocationSnapshot,
+    after: PoolAllocationSnapshot
+) -> PoolAllocationDelta {
+    let allocated =
+        pool_allocation_usize_delta(
+            before.allocated,
+            after.allocated
+        );
+
+    let free =
+        pool_allocation_usize_delta(
+            before.free,
+            after.free
+        );
+
+    let revision =
+        pool_allocation_u64_delta(
+            before.revision,
+            after.revision
+        );
+
+    give PoolAllocationDelta {
+        allocated:
+            allocated,
+
+        free:
+            free,
+
+        revision:
+            revision,
+
+        changed:
+            allocated != 0
+            or free != 0
+            or revision != 0
+    };
+}
+
+proc pool_allocation_delta_is_zero(
+    delta: PoolAllocationDelta
+) -> bool {
+    give not delta.changed;
+}
+
+// -----------------------------------------------------------------------------
+// Profile
+// -----------------------------------------------------------------------------
+
+proc pool_allocation_profile_empty()
+    -> PoolAllocationProfile
+{
+    give PoolAllocationProfile {
+        requests: 0,
+        successes: 0,
+        failures: 0,
+
+        allocations: 0,
+        releases: 0,
+
+        bytes_requested: 0,
+        bytes_allocated: 0,
+
+        highest_slot: 0,
+
+        exhaustion_count: 0
+    };
+}
+
+proc pool_allocation_profile_record_request(
+    profile: ref mut PoolAllocationProfile,
+    request: PoolAllocationRequest
+) {
+    set profile.requests =
+        profile.requests + 1;
+
+    set profile.bytes_requested =
+        profile.bytes_requested
+        + request.size;
+}
+
+proc pool_allocation_profile_record_result(
+    profile: ref mut PoolAllocationProfile,
+    result: PoolAllocationResult
+) {
+    if result.success {
+        set profile.successes =
+            profile.successes + 1;
+
+        set profile.allocations =
+            profile.allocations + 1;
+
+        set profile.bytes_allocated =
+            profile.bytes_allocated
+            + result.request.size;
+
+        if result.slot > profile.highest_slot {
+            set profile.highest_slot =
+                result.slot;
+        }
+    } else {
+        set profile.failures =
+            profile.failures + 1;
+
+        if result.failure
+            == PoolAllocationFailure.Exhausted
+        {
+            set profile.exhaustion_count =
+                profile.exhaustion_count + 1;
+        }
+    }
+}
+
+proc pool_allocation_profile_record_release(
+    profile: ref mut PoolAllocationProfile
+) {
+    set profile.releases =
+        profile.releases + 1;
+}
+
+proc pool_allocation_profile_success_rate(
+    profile: PoolAllocationProfile
+) -> f64 {
+    if profile.requests == 0 {
+        give 1.0;
+    }
+
+    give (
+        profile.successes as f64
+    ) / (
+        profile.requests as f64
+    );
+}
+
+proc pool_allocation_profile_failure_rate(
+    profile: PoolAllocationProfile
+) -> f64 {
+    if profile.requests == 0 {
+        give 0.0;
+    }
+
+    give (
+        profile.failures as f64
+    ) / (
+        profile.requests as f64
+    );
+}
+
+// -----------------------------------------------------------------------------
+// Result predicates
+// -----------------------------------------------------------------------------
+
+proc pool_allocation_result_is_success(
+    result: PoolAllocationResult
+) -> bool {
+    give result.success;
+}
+
+proc pool_allocation_result_is_failure(
+    result: PoolAllocationResult
+) -> bool {
+    give not result.success;
+}
+
+proc pool_allocation_result_has_allocation(
+    result: PoolAllocationResult
+) -> bool {
+    give is_some<alloc_allocator.Allocation>(
+        result.allocation
+    );
+}
+
+proc pool_allocation_failure_is_none(
+    failure: PoolAllocationFailure
+) -> bool {
+    give failure
+        == PoolAllocationFailure.None;
+}
+
+proc pool_allocation_failure_is_capacity(
+    failure: PoolAllocationFailure
+) -> bool {
+    give failure
+        == PoolAllocationFailure.CapacityExceeded
+        or failure
+            == PoolAllocationFailure.Exhausted;
+}
+
+proc pool_allocation_failure_is_layout(
+    failure: PoolAllocationFailure
+) -> bool {
+    give failure
+        == PoolAllocationFailure.InvalidSize
+        or failure
+            == PoolAllocationFailure.InvalidAlignment
+        or failure
+            == PoolAllocationFailure.InvalidLayout
+        or failure
+            == PoolAllocationFailure.SlotTooSmall;
+}
+
+// -----------------------------------------------------------------------------
+// Names
+// -----------------------------------------------------------------------------
+
+proc pool_allocation_kind_name(
+    kind: PoolAllocationKind
+) -> string {
+    pick kind {
+        PoolAllocationKind.Slot {
+            give "slot";
+        }
+
+        PoolAllocationKind.Value {
+            give "value";
+        }
+
+        PoolAllocationKind.Zeroed {
+            give "zeroed";
+        }
+
+        PoolAllocationKind.Raw {
+            give "raw";
+        }
+
+        PoolAllocationKind.Internal {
+            give "internal";
+        }
+    }
+
+    give "internal";
+}
+
+proc pool_allocation_state_name(
+    state: PoolAllocationState
+) -> string {
+    pick state {
+        PoolAllocationState.Ready {
+            give "ready";
+        }
+
+        PoolAllocationState.Allocated {
+            give "allocated";
+        }
+
+        PoolAllocationState.Released {
+            give "released";
+        }
+
+        PoolAllocationState.Exhausted {
+            give "exhausted";
+        }
+
+        PoolAllocationState.Failed {
+            give "failed";
+        }
+
+        PoolAllocationState.Invalid {
+            give "invalid";
+        }
+    }
+
+    give "invalid";
+}
+
+proc pool_allocation_failure_name(
+    failure: PoolAllocationFailure
+) -> string {
+    pick failure {
+        PoolAllocationFailure.None {
+            give "none";
+        }
+
+        PoolAllocationFailure.InvalidSize {
+            give "invalid-size";
+        }
+
+        PoolAllocationFailure.InvalidAlignment {
+            give "invalid-alignment";
+        }
+
+        PoolAllocationFailure.InvalidLayout {
+            give "invalid-layout";
+        }
+
+        PoolAllocationFailure.SlotTooSmall {
+            give "slot-too-small";
+        }
+
+        PoolAllocationFailure.CapacityExceeded {
+            give "capacity-exceeded";
+        }
+
+        PoolAllocationFailure.Exhausted {
+            give "exhausted";
+        }
+
+        PoolAllocationFailure.InvalidIndex {
+            give "invalid-index";
+        }
+
+        PoolAllocationFailure.InvalidPointer {
+            give "invalid-pointer";
+        }
+
+        PoolAllocationFailure.AlreadyAllocated {
+            give "already-allocated";
+        }
+
+        PoolAllocationFailure.AlreadyReleased {
+            give "already-released";
+        }
+
+        PoolAllocationFailure.OutOfMemory {
+            give "out-of-memory";
+        }
+
+        PoolAllocationFailure.RuntimeFailure {
+            give "runtime-failure";
+        }
+    }
+
+    give "runtime-failure";
+}
+
+// -----------------------------------------------------------------------------
+// Pool allocation model
+// -----------------------------------------------------------------------------
+//
+// backing memory:
+//
+// +------+------+------+------+------+
+// |slot 0|slot 1|slot 2|slot 3| ...  |
+// +------+------+------+------+------+
+//
+// Every slot:
+//
+//     same size
+//     same alignment
+//     fixed index
+//
+// Address:
+//
+//     ptr = base + index * slot_size
+//
+// Allocation:
+//
+//     find free slot
+//         |
+//         v
+//     mark allocated
+//         |
+//         v
+//     return slot address
+//
+// Release:
+//
+//     allocated slot
+//         |
+//         v
+//     mark free
+//         |
+//         v
+//     generation++
+//
+// Unlike bump allocation:
+//
+//     Pool supports individual slot reuse.
+//
+// Unlike heap allocation:
+//
+//     Pool does not resize individual allocations.
+//
+// Core invariant:
+//
+//     request.size <= slot_size
+//
+//     request.align <= slot_align
+//
+//     index < slot_count
+//
+// `alloc.vitl` owns slot geometry and per-slot allocation primitives.
+//
+// Global free-list/index management belongs to `pool.vitl`.
+// Pool state/invariants belong to `core.vitl`.
+// Raw views belong to `raw.vitl`.
