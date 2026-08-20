@@ -4,7 +4,7 @@ set -eu
 ROOT_DIR="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
 OUT_DIR="$ROOT_DIR/target/stage1"
 OUT_BIN="$OUT_DIR/vitte"
-STAGE0="${VITTE_STAGE0:-$ROOT_DIR/target/bootstrap-real/vitte}"
+BOOTSTRAP_COMPILER="${VITTE_BOOTSTRAP_COMPILER:-$ROOT_DIR/target/bootstrap-c17/vitte-bootstrap}"
 REPORT_DIR="$ROOT_DIR/target/reports"
 REPORT_TXT="$REPORT_DIR/stage1_compiler_gate.txt"
 REPORT_JSON="$REPORT_DIR/stage1_compiler_gate.json"
@@ -41,33 +41,25 @@ EOF
 mkdir -p "$OUT_DIR" "$REPORT_DIR"
 cd "$ROOT_DIR"
 
-if [ ! -x "$STAGE0" ]; then
-    # A clean checkout may have the signed platform stage0 but not the
-    # materialized bootstrap compiler.  Materialize it through the canonical
-    # bootstrap driver before declaring the stage1 gate broken.
-    TRUST_ROOT="$ROOT_DIR/target/bootstrap-real/stage0/vitte"
-    if [ -x "$TRUST_ROOT" ]; then
-        if ! python3 "$ROOT_DIR/tools/bootstrap_real/bootstrap_real.py" --stage0 "$TRUST_ROOT" >/dev/null 2>&1; then
-            fail "unable to materialize Vitte stage0 compiler: $STAGE0 (run: python3 tools/bootstrap_real/bootstrap_real.py --stage0 $TRUST_ROOT)"
-        fi
-    fi
-fi
-[ -x "$STAGE0" ] || fail "missing Vitte stage0 compiler: $STAGE0; install a signed platform stage0 with: make bootstrap-chain"
+[ -x "$BOOTSTRAP_COMPILER" ] || fail "missing source-compiling bootstrap compiler: $BOOTSTRAP_COMPILER; run: make bootstrap-c17"
 [ -f "$SRC" ] || fail "missing compiler entrypoint: $SRC"
-case "$STAGE0" in
+case "$BOOTSTRAP_COMPILER" in
     */bin/vittec0|*/toolchain/seed/*|*/vittec0.seed)
-        fail "stage0 must be a Vitte compiler, not seed/bootstrap: $STAGE0"
+        fail "bootstrap compiler must not use a retired seed path: $BOOTSTRAP_COMPILER"
         ;;
 esac
-if [ "$(LC_ALL=C head -c 2 "$STAGE0" 2>/dev/null || true)" = "#!" ]; then
-    fail "stage0 must be a native Vitte compiler artifact, not a script: $STAGE0"
+if [ "$(LC_ALL=C head -c 2 "$BOOTSTRAP_COMPILER" 2>/dev/null || true)" = "#!" ]; then
+    fail "bootstrap compiler must be a native artifact, not a script: $BOOTSTRAP_COMPILER"
+fi
+if LC_ALL=C grep -a -F 'vitte_stage0_clone_self' "$BOOTSTRAP_COMPILER" >/dev/null 2>&1; then
+    fail "bootstrap compiler contains the retired self-copy implementation"
 fi
 
 rm -f "$OUT_BIN"
 
-if ! VITTE_ROOT="$ROOT_DIR" VITTE_COMPILER="$STAGE0" "$STAGE0" build "$SRC" -o "$OUT_BIN" > "$BUILD_LOG" 2>&1; then
+if ! VITTE_C17_GENERIC_COMPILER=1 VITTE_ROOT="$ROOT_DIR" VITTE_COMPILER="$BOOTSTRAP_COMPILER" "$BOOTSTRAP_COMPILER" build "$SRC" -o "$OUT_BIN" > "$BUILD_LOG" 2>&1; then
     cat "$BUILD_LOG" >&2
-    fail "$STAGE0 build src/vitte/compiler/main.vit -o target/stage1/vitte failed"
+    fail "$BOOTSTRAP_COMPILER build src/vitte/compiler/main.vit -o target/stage1/vitte failed"
 fi
 
 [ -f "$OUT_BIN" ] || fail "stage1 binary was not created"
@@ -78,8 +70,8 @@ if ! nm "$OUT_BIN" > "$SYMBOL_LOG" 2>/dev/null; then
 fi
 if { grep -Fq '_command_build' "$SYMBOL_LOG" && grep -Fq '_copy_file' "$SYMBOL_LOG"; } || \
    grep -Fq '_vitte_stage0_clone_self' "$SYMBOL_LOG"; then
-    if cmp -s "$STAGE0" "$OUT_BIN"; then
-        fail "stage1 is a byte-for-byte stage0 copy and still contains the self-copy dispatcher"
+    if cmp -s "$BOOTSTRAP_COMPILER" "$OUT_BIN"; then
+        fail "stage1 is a byte-for-byte bootstrap compiler copy and still contains the self-copy dispatcher"
     fi
     fail "stage1 build path still contains the self-copy dispatcher"
 fi

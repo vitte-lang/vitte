@@ -165,6 +165,12 @@ def build_compilers(failures: list[str], comparisons: list[dict[str, Any]]) -> d
         out = OUT / name / "vitte"
         out.parent.mkdir(parents=True, exist_ok=True)
         outputs[name] = out
+        if not stage.is_file():
+            failures.append(f"missing {name}: {stage.relative_to(ROOT)}")
+            continue
+        if b"vitte_stage0_clone_self" in stage.read_bytes():
+            failures.append(f"refusing to execute {name} because it contains the retired self-copy implementation")
+            continue
         result = run(stage, ["build", ENTRYPOINT, "-o", str(out.relative_to(ROOT))])
         results[name] = result
         if result["exit_code"] != 0:

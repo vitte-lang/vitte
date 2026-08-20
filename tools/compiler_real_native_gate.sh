@@ -13,6 +13,10 @@ DRIVER_BIN="${DRIVER_BIN:-$ROOT_DIR/target/release/vitte}"
     printf "[compiler-real-native-gate][error] missing release compiler: %s\n" "$DRIVER_BIN" >&2
     exit 1
 }
+if LC_ALL=C grep -a -F "vitte_stage0_clone_self" "$DRIVER_BIN" >/dev/null 2>&1; then
+    printf "[compiler-real-native-gate][error] refusing to execute compiler with retired self-copy implementation: %s\n" "$DRIVER_BIN" >&2
+    exit 1
+fi
 
 mkdir -p "$OUT_DIR"
 rm -f "$OUT_BIN" "$OUT_BIN.bootstrap-bridge" "$OUT_LOG" "$PROBE_BIN" "$PROBE_BIN.bootstrap-bridge"

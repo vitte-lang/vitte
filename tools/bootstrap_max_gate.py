@@ -23,6 +23,7 @@ WORK = ROOT / "target/bootstrap-max"
 VALID = WORK / "valid.vit"
 HELLO = ROOT / "tests/pipeline/hello_world.vit"
 COMPILER_ENTRY = ROOT / "src/vitte/compiler/main.vit"
+SOURCE_BOOTSTRAP = ROOT / "target/bootstrap-c17/vitte-bootstrap"
 
 STAGES = {
     "signed_stage0": ROOT / "toolchain/bootstrap/stage0/macos-arm64/vitte",
@@ -419,7 +420,10 @@ def check_clean_room_and_copy(errors: list[str]) -> dict[str, Any]:
     clean.mkdir(parents=True, exist_ok=True)
     clean_stage = clean / "stage1"
     user_binary = clean / "hello"
-    result_stage = run([str(STAGES["trusted_stage0"]), "build", str(COMPILER_ENTRY.relative_to(ROOT)), "-o", str(clean_stage.relative_to(ROOT))])
+    result_stage = run(
+        [str(SOURCE_BOOTSTRAP), "build", str(COMPILER_ENTRY.relative_to(ROOT)), "-o", str(clean_stage.relative_to(ROOT))],
+        {"VITTE_C17_GENERIC_COMPILER": "1"},
+    )
     validate = run([sys.executable, "tools/bootstrap_real/bootstrap_real.py", "--candidate", str(clean_stage.relative_to(ROOT))])
     result_user = run([str(STAGES["stage2"]), "build", str(HELLO.relative_to(ROOT)), "-o", str(user_binary.relative_to(ROOT))])
     failures: list[str] = []

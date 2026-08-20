@@ -239,6 +239,9 @@ def validate_stage_build(stage_name: str, failures: list[str], commands: list[di
     if not os.access(stage, os.X_OK):
         failures.append(f"{stage_name} is not executable: {rel(stage)}")
         return
+    if b"vitte_stage0_clone_self" in stage.read_bytes():
+        failures.append(f"refusing to execute {stage_name} because it contains the retired self-copy implementation")
+        return
     out = OUT_DIR / stage_name / "vitte"
     out.parent.mkdir(parents=True, exist_ok=True)
     result = run(stage, ["build", ENTRYPOINT, "-o", rel(out)], with_root=stage_name != "release")

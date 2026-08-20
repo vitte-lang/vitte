@@ -157,7 +157,14 @@ The gate accepts only a native candidate aligned with
 Each required marker is checked independently for stage0 sources, installed
 stage0 binaries, and bootstrap candidates.
 
-The only accepted stage0 path is `target/bootstrap-real/stage0/vitte`.
+The signed stage0 is installed at `target/bootstrap-real/stage0/vitte` as
+verified trust evidence and is never executed as a compiler. The canonical
+bootstrap compiler is compiled from `src/vitte/compiler/main.vit` by
+`target/bootstrap-c17/vitte-bootstrap`; stage1 then consumes that source-built
+compiler.
+
+The only accepted legacy stage0 validation path is
+`target/bootstrap-real/stage0/vitte`.
 `--install-stage0` validates a source binary as a real native Vitte compiler
 before copying it there. The copy is staged under `target/bootstrap-real/stage0/`
 and atomically replaces the trusted stage0 only after validation. The installed

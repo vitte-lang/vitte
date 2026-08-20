@@ -251,7 +251,7 @@ compiler-entrypoint-gate:
 	@test -f target/reports/compiler_entrypoint_gate.json
 	@test -f target/reports/compiler_entrypoint_gate.md
 
-stage1-compiler-gate: compiler-entrypoint-gate
+stage1-compiler-gate: compiler-entrypoint-gate bootstrap-c17
 	@tools/stage1_compiler_gate.sh
 	@test -x target/stage1/vitte
 	@test -f target/reports/stage1_compiler_gate.json
@@ -573,6 +573,12 @@ driver-provenance-gate: compiler-source-sensitivity-gate
 	@test -f target/reports/driver_provenance_gate.json
 	@test -f target/reports/driver_provenance_gate.md
 
+.PHONY: compiler-copy-path-gate
+compiler-copy-path-gate: bootstrap-c17
+	@python3 tools/compiler_copy_path_gate.py
+	@test -f target/reports/compiler_copy_path_gate.json
+	@test -f target/reports/compiler_copy_path_gate.md
+
 .PHONY: stage0-rotation-readiness
 stage0-rotation-readiness: driver-provenance-gate
 	@python3 tools/stage0_rotation_readiness.py
@@ -649,7 +655,7 @@ bootstrap-trust-tests:
 	@python3 tools/bootstrap_real/test_stage0_trust.py
 	@python3 tools/bootstrap_real/test_bootstrap_real.py
 
-bootstrap-chain:
+bootstrap-chain: bootstrap-c17
 	@python3 tools/bootstrap_real/bootstrap_chain.py --offline
 
 bootstrap-compile-contract:
@@ -715,7 +721,7 @@ bootstrap-parity: bootstrap-chain
 	@python3 tools/bootstrap_real/bootstrap_real.py --verify-chain
 
 .PHONY: bootstrap-verify
-bootstrap-verify: vitte-in-vitte-gate bootstrap-compile-contract
+bootstrap-verify: vitte-in-vitte-gate bootstrap-compile-contract compiler-copy-path-gate
 	@bin/vitte --version
 	@bin/vitte check tests/bootstrap_native/main_proc.vit
 	@bin/vitte check tests/bootstrap_native/main_const_int.vit

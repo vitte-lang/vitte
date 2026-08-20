@@ -15,6 +15,7 @@ from stage0_trust import DEFAULT_MANIFEST, ROOT, TrustError, host_tuple, load_ma
 
 BOOTSTRAP_REAL = ROOT / "tools/bootstrap_real/bootstrap_real.py"
 TRUSTED_STAGE0 = ROOT / "target/bootstrap-real/stage0/vitte"
+SOURCE_BOOTSTRAP = ROOT / "target/bootstrap-c17/vitte-bootstrap"
 BOOTSTRAP_COMPILER = ROOT / "target/bootstrap-real/vitte"
 STAGE1 = ROOT / "target/stage1/vitte"
 STAGE2 = ROOT / "target/stage2/vitte"
@@ -58,6 +59,29 @@ def native_without_copy_markers(path: Path) -> list[str]:
     return errors
 
 
+def install_verified_trust_artifact(source: Path) -> None:
+    TRUSTED_STAGE0.parent.mkdir(parents=True, exist_ok=True)
+    temporary = TRUSTED_STAGE0.with_suffix(".installing")
+    temporary.unlink(missing_ok=True)
+    try:
+        shutil.copy2(source, temporary)
+        temporary.chmod(temporary.stat().st_mode | 0o755)
+        temporary.replace(TRUSTED_STAGE0)
+    except OSError:
+        temporary.unlink(missing_ok=True)
+        raise
+
+
+def source_bootstrap_build_command() -> list[str]:
+    return [
+        str(SOURCE_BOOTSTRAP),
+        "build",
+        ENTRYPOINTS[0].relative_to(ROOT).as_posix(),
+        "-o",
+        str(BOOTSTRAP_COMPILER),
+    ]
+
+
 def write_report(payload: dict[str, object]) -> None:
     REPORT_JSON.parent.mkdir(parents=True, exist_ok=True)
     REPORT_JSON.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -82,7 +106,7 @@ def main(argv: list[str] | None = None) -> int:
     commands: list[dict[str, object]] = []
     errors: list[str] = []
     payload: dict[str, object] = {
-        "schema": "vitte.bootstrap.chain.v1", "status": "fail", "strategy": "signed-native-stage0-per-platform",
+        "schema": "vitte.bootstrap.chain.v2", "status": "fail", "strategy": "signed-trust-root+c17-source-bootstrap",
         "offline": args.offline, "commands": commands, "errors": errors, "hashes": {},
     }
     env = os.environ.copy()
@@ -96,21 +120,35 @@ def main(argv: list[str] | None = None) -> int:
         trust = verify_entry(entry, os_name)
         payload["trust"] = trust
         artifact = ROOT / str(trust["artifact"])
-    except TrustError as exc:
+        install_verified_trust_artifact(artifact)
+        payload["trusted_stage0"] = {
+            "path": TRUSTED_STAGE0.relative_to(ROOT).as_posix(),
+            "sha256": sha256(TRUSTED_STAGE0),
+            "executed_as_compiler": False,
+        }
+    except (TrustError, OSError) as exc:
         errors.append(str(exc))
         write_report(payload)
         print(f"[bootstrap-chain][error] {exc}", file=sys.stderr)
         return 1
 
+    if not SOURCE_BOOTSTRAP.is_file() or not os.access(SOURCE_BOOTSTRAP, os.X_OK):
+        errors.append(f"missing source bootstrap compiler: {SOURCE_BOOTSTRAP.relative_to(ROOT)}")
+    if not errors:
+        env["VITTE_C17_GENERIC_COMPILER"] = "1"
+        BOOTSTRAP_COMPILER.unlink(missing_ok=True)
+        bootstrap_result = run(source_bootstrap_build_command(), env)
+        commands.append(bootstrap_result)
+        if bootstrap_result["exit_code"] != 0:
+            errors.append("C17 source bootstrap failed to compile src/vitte/compiler/main.vit")
+
     phases = [
-        [sys.executable, str(BOOTSTRAP_REAL), "--install-stage0", str(artifact)],
-        [sys.executable, str(BOOTSTRAP_REAL), "--stage0", str(TRUSTED_STAGE0)],
         [sys.executable, str(BOOTSTRAP_REAL), "--stage1"],
         [sys.executable, str(BOOTSTRAP_REAL), "--stage2"],
         [sys.executable, str(BOOTSTRAP_REAL), "--release"],
         [sys.executable, str(BOOTSTRAP_REAL), "--verify-chain"],
     ]
-    for command in phases:
+    for command in phases if not errors else []:
         result = run(command, env)
         commands.append(result)
         if result["exit_code"] != 0:
@@ -118,7 +156,7 @@ def main(argv: list[str] | None = None) -> int:
             break
 
     if not errors:
-        for path in (TRUSTED_STAGE0, BOOTSTRAP_COMPILER, STAGE1, STAGE2, RELEASE):
+        for path in (BOOTSTRAP_COMPILER, STAGE1, STAGE2, RELEASE):
             errors.extend(native_without_copy_markers(path))
     hashes: dict[str, str] = {}
     if not errors:
@@ -129,7 +167,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if not errors:
         reproducibility_phases = [
-            [sys.executable, str(BOOTSTRAP_REAL), "--stage0", str(TRUSTED_STAGE0)],
+            source_bootstrap_build_command(),
             [sys.executable, str(BOOTSTRAP_REAL), "--stage1"],
             [sys.executable, str(BOOTSTRAP_REAL), "--stage2"],
             [sys.executable, str(BOOTSTRAP_REAL), "--release"],

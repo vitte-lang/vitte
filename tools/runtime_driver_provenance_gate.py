@@ -110,65 +110,66 @@ def main() -> int:
                 "runtime build path contains self-copy implementation symbols: " + ", ".join(copy_symbols)
             )
 
-        with tempfile.TemporaryDirectory(prefix="vitte-provenance-") as directory:
-            output = Path(directory) / "vitte"
-            build = run([str(BIN), "build", str(ENTRY.relative_to(ROOT)), "-o", str(output)])
-            evidence["build"] = build
-            if build["exit_code"] != 0:
-                failures.append("canonical compiler entry build failed during provenance probe")
-            elif not output.is_file():
-                failures.append("canonical compiler entry build did not materialize an artifact")
-            else:
-                input_hash = sha256(BIN)
-                output_hash = sha256(output)
-                evidence["input_sha256"] = input_hash
-                evidence["output_sha256"] = output_hash
-                evidence["byte_identical"] = input_hash == output_hash
-                if input_hash == output_hash and copy_symbols:
-                    failures.append(
-                        "building src/vitte/compiler/main.vit reproduces bin/vitte byte-for-byte through the self-copy path"
-                    )
+        if copy_symbols:
+            evidence["compilation_probe_skipped"] = "compiler rejected before build because self-copy symbols are present"
+        else:
+            with tempfile.TemporaryDirectory(prefix="vitte-provenance-") as directory:
+                output = Path(directory) / "vitte"
+                build = run([str(BIN), "build", str(ENTRY.relative_to(ROOT)), "-o", str(output)])
+                evidence["build"] = build
+                if build["exit_code"] != 0:
+                    failures.append("canonical compiler entry build failed during provenance probe")
+                elif not output.is_file():
+                    failures.append("canonical compiler entry build did not materialize an artifact")
+                else:
+                    input_hash = sha256(BIN)
+                    output_hash = sha256(output)
+                    evidence["input_sha256"] = input_hash
+                    evidence["output_sha256"] = output_hash
+                    evidence["byte_identical"] = input_hash == output_hash
+                    if input_hash == output_hash:
+                        failures.append("building src/vitte/compiler/main.vit reproduced bin/vitte byte-for-byte")
 
-            probe_project = Path(directory)
-            probe_root = probe_project / "src/vitte/compiler"
-            shutil.copytree(ROOT / "src/vitte", probe_project / "src/vitte")
-            probe_entry = probe_root / "main.vit"
-            probe_driver = probe_root / "driver/compiler.vit"
-            probe_output = Path(directory) / "compiler-provenance"
-            baseline_build = run(
-                [str(BIN), "build", str(probe_entry), "-o", str(probe_output)],
-                cwd=probe_project,
-            )
-            evidence["source_sensitivity_baseline_build"] = baseline_build
-            baseline_hash = sha256(probe_output) if baseline_build["exit_code"] == 0 and probe_output.is_file() else ""
-            driver_text = probe_driver.read_text(encoding="utf-8")
-            perturbed_text = driver_text.replace(
-                'const VERSION_TEXT: string = "vittec vitte-compiler 0.1.0"',
-                'const VERSION_TEXT: string = "vittec vitte-compiler provenance-probe"',
-                1,
-            )
-            if perturbed_text == driver_text:
-                failures.append("compiler source sensitivity probe could not locate VERSION_TEXT")
-            else:
-                probe_driver.write_text(perturbed_text, encoding="utf-8")
-                probe_output.unlink(missing_ok=True)
-                perturbed_build = run(
+                probe_project = Path(directory)
+                probe_root = probe_project / "src/vitte/compiler"
+                shutil.copytree(ROOT / "src/vitte", probe_project / "src/vitte")
+                probe_entry = probe_root / "main.vit"
+                probe_driver = probe_root / "driver/compiler.vit"
+                probe_output = Path(directory) / "compiler-provenance"
+                baseline_build = run(
                     [str(BIN), "build", str(probe_entry), "-o", str(probe_output)],
                     cwd=probe_project,
                 )
-                evidence["source_sensitivity_perturbed_build"] = perturbed_build
-                perturbed_hash = sha256(probe_output) if perturbed_build["exit_code"] == 0 and probe_output.is_file() else ""
-                evidence["source_sensitivity"] = {
-                    "baseline_sha256": baseline_hash,
-                    "perturbed_sha256": perturbed_hash,
-                    "output_changed": bool(baseline_hash and perturbed_hash and baseline_hash != perturbed_hash),
-                }
-                if not baseline_hash:
-                    failures.append("compiler source sensitivity baseline did not materialize an artifact")
-                if not perturbed_hash:
-                    failures.append("modified compiler source did not materialize an artifact")
-                if baseline_hash and perturbed_hash and baseline_hash == perturbed_hash:
-                    failures.append("modifying compiler.vit does not change the rebuilt artifact")
+                evidence["source_sensitivity_baseline_build"] = baseline_build
+                baseline_hash = sha256(probe_output) if baseline_build["exit_code"] == 0 and probe_output.is_file() else ""
+                driver_text = probe_driver.read_text(encoding="utf-8")
+                perturbed_text = driver_text.replace(
+                    'const VERSION_TEXT: string = "vittec vitte-compiler 0.1.0"',
+                    'const VERSION_TEXT: string = "vittec vitte-compiler provenance-probe"',
+                    1,
+                )
+                if perturbed_text == driver_text:
+                    failures.append("compiler source sensitivity probe could not locate VERSION_TEXT")
+                else:
+                    probe_driver.write_text(perturbed_text, encoding="utf-8")
+                    probe_output.unlink(missing_ok=True)
+                    perturbed_build = run(
+                        [str(BIN), "build", str(probe_entry), "-o", str(probe_output)],
+                        cwd=probe_project,
+                    )
+                    evidence["source_sensitivity_perturbed_build"] = perturbed_build
+                    perturbed_hash = sha256(probe_output) if perturbed_build["exit_code"] == 0 and probe_output.is_file() else ""
+                    evidence["source_sensitivity"] = {
+                        "baseline_sha256": baseline_hash,
+                        "perturbed_sha256": perturbed_hash,
+                        "output_changed": bool(baseline_hash and perturbed_hash and baseline_hash != perturbed_hash),
+                    }
+                    if not baseline_hash:
+                        failures.append("compiler source sensitivity baseline did not materialize an artifact")
+                    if not perturbed_hash:
+                        failures.append("modified compiler source did not materialize an artifact")
+                    if baseline_hash and perturbed_hash and baseline_hash == perturbed_hash:
+                        failures.append("modifying compiler.vit does not change the rebuilt artifact")
 
     report = {
         "schema": "vitte.runtime-driver-provenance.v1",

@@ -141,6 +141,9 @@ def ensure_stage_binaries(failures: list[str], comparisons: list[dict[str, Any]]
     if not os.access(STAGE1, os.X_OK):
         failures.append("target/stage1/vitte is not executable")
         return
+    if b"vitte_stage0_clone_self" in STAGE1.read_bytes():
+        failures.append("refusing to execute stage1 because it contains the retired self-copy implementation")
+        return
     validate_compiler_provenance(STAGE1, failures)
     OUT.mkdir(parents=True, exist_ok=True)
     build = run(STAGE1, ["build", ENTRYPOINT, "-o", str(STAGE2.relative_to(ROOT))])

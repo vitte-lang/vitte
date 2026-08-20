@@ -250,6 +250,8 @@ def main() -> int:
         failures.append("missing target/stage2/vitte")
     elif not os.access(STAGE2, os.X_OK):
         failures.append("target/stage2/vitte is not executable")
+    elif b"vitte_stage0_clone_self" in STAGE2.read_bytes():
+        failures.append("refusing to execute stage2 because it contains the retired self-copy implementation")
     else:
         RELEASE.parent.mkdir(parents=True, exist_ok=True)
         RELEASE.unlink(missing_ok=True)

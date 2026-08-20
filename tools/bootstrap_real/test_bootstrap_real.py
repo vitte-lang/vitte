@@ -34,12 +34,16 @@ def test_output_path_must_stay_under_artifact_root() -> None:
 def test_stage1_gate_uses_verified_bootstrap_compiler() -> None:
     text = STAGE1_GATE.read_text(encoding="utf-8")
     assert_true(
-        'STAGE0="${VITTE_STAGE0:-$ROOT_DIR/target/bootstrap-real/vitte}"' in text,
-        "stage1 must start from the verified bootstrap compiler",
+        'BOOTSTRAP_COMPILER="${VITTE_BOOTSTRAP_COMPILER:-$ROOT_DIR/target/bootstrap-c17/vitte-bootstrap}"' in text,
+        "stage1 must start from the source-compiling C17 bootstrap compiler",
     )
     assert_true(
-        'STAGE0="${VITTE_STAGE0:-$ROOT_DIR/target/release/vitte}"' not in text,
+        'BOOTSTRAP_COMPILER="${VITTE_BOOTSTRAP_COMPILER:-$ROOT_DIR/target/release/vitte}"' not in text,
         "stage1 must not start from its eventual release output",
+    )
+    assert_true(
+        'bootstrap_real.py" --stage0' not in text,
+        "stage1 gate must not materialize a compiler by executing the signed self-copy stage0",
     )
 
 

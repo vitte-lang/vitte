@@ -198,6 +198,8 @@ def main() -> int:
 
     if not STAGE1.is_file():
         failures.append("missing stage1 compiler: target/stage1/vitte")
+    elif b"vitte_stage0_clone_self" in STAGE1.read_bytes():
+        failures.append("refusing to execute stage1 because it contains the retired self-copy implementation")
     else:
         STAGE2.parent.mkdir(parents=True, exist_ok=True)
         STAGE2.unlink(missing_ok=True)

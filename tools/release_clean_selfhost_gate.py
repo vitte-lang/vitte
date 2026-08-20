@@ -184,6 +184,10 @@ def main() -> int:
         failures.append("missing executable target/release/vitte")
         write_reports("fail", results, comparisons, {"status": "not-run", "reason": "missing release binary"}, failures)
         return 1
+    if b"vitte_stage0_clone_self" in RELEASE.read_bytes():
+        failures.append("refusing to execute release because it contains the retired self-copy implementation")
+        write_reports("fail", results, comparisons, {"status": "not-run", "reason": "self-copy compiler rejected"}, failures)
+        return 1
 
     SELF.parent.mkdir(parents=True, exist_ok=True)
     require_ok([str(RELEASE), "--version"], RELEASE, results, failures)
