@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 BOOTSTRAP = ROOT / "target" / "bootstrap-c17" / "vitte-bootstrap"
 SOURCE = ROOT / "tests" / "maximal_graph" / "maximal_graph.vit"
 CONSTANTS_SOURCE = ROOT / "tests" / "maximal_graph" / "constants_complex.vit"
+STRINGS_ARRAYS_SOURCE = ROOT / "tests" / "maximal_graph" / "strings_arrays.vit"
 REPORT = ROOT / "target" / "reports" / "maximal_graph_stability.json"
 OUTPUT_DIR = ROOT / "target" / "reports" / "maximal_graph"
 
@@ -67,6 +68,30 @@ def main() -> int:
             failures.append(f"constants and complex functions exited with {constants_run.returncode}")
     else:
         checks["constants_complex_execution"] = False
+
+    strings_check = run([str(BOOTSTRAP), "check", str(STRINGS_ARRAYS_SOURCE)], env=env)
+    checks["strings_arrays_check"] = strings_check.returncode == 0
+    if strings_check.returncode != 0:
+        failures.append("strings and arrays check failed: " + strings_check.stderr.strip())
+    strings_output = OUTPUT_DIR / "strings_arrays"
+    strings_build = run(
+        [str(BOOTSTRAP), "build", str(STRINGS_ARRAYS_SOURCE), "-o", str(strings_output)],
+        env=env,
+    )
+    checks["strings_arrays_build"] = strings_build.returncode == 0 and strings_output.is_file()
+    if not checks["strings_arrays_build"]:
+        failures.append("strings and arrays build failed: " + strings_build.stderr.strip())
+    if strings_output.is_file():
+        strings_run = run([str(strings_output)], env=env)
+        checks["strings_arrays_execution"] = strings_run.returncode == 0
+        checks["strings_arrays_output"] = "vitte" in strings_run.stdout
+        if strings_run.returncode != 0:
+            failures.append(f"strings and arrays exited with {strings_run.returncode}")
+        if not checks["strings_arrays_output"]:
+            failures.append("strings and arrays output is missing `vitte`")
+    else:
+        checks["strings_arrays_execution"] = False
+        checks["strings_arrays_output"] = False
 
     first = OUTPUT_DIR / "maximal_graph_first"
     second = OUTPUT_DIR / "maximal_graph_second"
