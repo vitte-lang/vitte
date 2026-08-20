@@ -3,20 +3,19 @@ space vitte/compiler/analysis/borrowck/lifetimes
 export *
 
 use vitte/compiler/analysis/borrowck/errors.{
-    BorrowDiagnostic,
     BorrowErrorKind,
     BorrowPhase,
-    BorrowSeverity,
-    BorrowSpan,
     diagnostic_create,
     diagnostic_full,
-    merge_diagnostics,
+    merge_borrow_diagnostics,
     span_create
 }
+use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, DiagnosticSeverity }
 use vitte/compiler/analysis/borrowck/regions.{
     RegionConstraintKind,
     RegionSolution,
     add_constraint,
+    close_region,
     constraint_create,
     ensure_region,
     solve_regions
@@ -71,7 +70,7 @@ form LifetimeEdge {
 form LifetimeResult {
     facts: [LifetimeFact]
     edges: [LifetimeEdge]
-    diagnostics: [BorrowDiagnostic]
+    diagnostics: [Diagnostic]
     regions: RegionSolution
     valid: bool
 }
@@ -190,11 +189,11 @@ proc add_temporal_ownership_fact(result: LifetimeResult, window: TemporalOwnersh
     );
 }
 
-proc lifetime_result_with_diag(result: LifetimeResult, diagnostic: BorrowDiagnostic) -> LifetimeResult {
+proc lifetime_result_with_diag(result: LifetimeResult, diagnostic: Diagnostic) -> LifetimeResult {
     give LifetimeResult {
         facts: result.facts,
         edges: result.edges,
-        diagnostics: merge_diagnostics(result.diagnostics, [diagnostic]),
+        diagnostics: merge_borrow_diagnostics(result.diagnostics, [diagnostic]),
         regions: result.regions,
         valid: false
     };
@@ -374,13 +373,13 @@ proc add_returned_local_diagnostic(result: LifetimeResult, file: string, line: u
         set labels = labels + [alias];
     }
 
-    let diagnostic: BorrowDiagnostic = diagnostic_create(kind, file, line, message, labels, suggestion, true);
+    let diagnostic: Diagnostic = diagnostic_create(kind, file, line, message, labels, suggestion, true);
 
     give lifetime_result_with_diag(result, diagnostic);
 }
 
 proc add_lifetime_too_short_diagnostic(result: LifetimeResult, file: string, line: u64, region_name: string, required_region: string) -> LifetimeResult {
-    let diagnostic: BorrowDiagnostic = diagnostic_full(BorrowErrorKind.LifetimeTooShort, BorrowSeverity.Error, BorrowPhase.RegionCheck, "borrow may outlive its owner", ["borrow must remain valid here", "owner must stay alive for this use"], "extend the owner lifetime or keep the reference inside the owner scope", span_create(file, line, 1, 1), 0);
+    let diagnostic: Diagnostic = diagnostic_full(BorrowErrorKind.LifetimeTooShort, DiagnosticSeverity.Error, BorrowPhase.RegionCheck, "borrow may outlive its owner", ["borrow must remain valid here", "owner must stay alive for this use"], "extend the owner lifetime or keep the reference inside the owner scope", span_create(file, line, 1, 1), 0);
 
     give lifetime_result_with_diag(result, diagnostic);
 }
@@ -388,7 +387,7 @@ proc add_lifetime_too_short_diagnostic(result: LifetimeResult, file: string, lin
 proc add_dangling_reference_diagnostic(result: LifetimeResult, file: string, fact: LifetimeFact) -> LifetimeResult {
     let alias_text: string = if fact.alias != "" { fact.alias } else { fact.region_name };
     let owner_text: string = if fact.owner != "" { fact.owner } else { fact.owner_region };
-    let diagnostic: BorrowDiagnostic = diagnostic_create(
+    let diagnostic: Diagnostic = diagnostic_create(
         BorrowErrorKind.DanglingReference,
         file,
         fact.line,

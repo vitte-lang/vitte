@@ -10,6 +10,7 @@ use vitte/compiler/analysis/borrowck/errors.{
   borrow_error_shared_borrow_conflict_story,
   borrow_error_assign_while_borrowed_story,
   borrow_error_use_after_move_story,
+  borrow_error_use_after_move,
   diagnostic_create,
   diagnostics_has_fatal
 }
@@ -916,7 +917,7 @@ proc handle_move_binding(result: BorrowCheckResult, metadata: BorrowMetadata, so
       line,
       previous_line,
       "until `" + source + "` is reinitialized",
-      previous_line
+      0 as u64
     ));
   }
   if shared_borrow_count_place(current0.ownership, source) > 0 or is_mutably_borrowed_place(current0.ownership, source) {
@@ -1313,37 +1314,32 @@ proc operand_local(operand: MirOperand) -> string {
   give "";
 }
 
-proc handle_use_local(result: BorrowCheckResult, source_path: string, local: string, line: u64) -> BorrowCheckResult {
+proc handle_use_local(result: BorrowCheckResult, source_path: string, local: string, line_no: u64) -> BorrowCheckResult {
   if local == "" {
     give result;
   }
-  let ownership0: OwnershipTable = ensure_place_declared(result.ownership, local, line);
+  let ownership0: OwnershipTable = ensure_place_declared(result.ownership, local, line_no as int);
   let current: BorrowCheckResult = replace_ownership(result, ownership0);
   if not has_local(current.ownership, local) {
     give current;
   }
+  let previous_move: MoveEvent = last_event_for(current.moves, local);
+  let previous_line: u64 = if previous_move.valid { previous_move.line } else { 0 as u64 };
   if is_moved_place(current.ownership, local) {
-    let previous_move: MoveEvent = last_event_for(current.moves, local);
-    let previous_line: u64 = if previous_move.valid { previous_move.line } else { line };
-    give add_diag(current, borrow_error_use_after_move_story(
-      source_path,
-      local,
-      line,
-      previous_line,
-      "until `" + local + "` is reinitialized",
-      previous_line
-    ));
+    give add_diag(current, borrow_error_use_after_move(source_path, line_no as int, previous_line as int));
   }
-  give replace_moves(current, tracker_record_use(current.moves, local, line));
+  give replace_moves(current, tracker_record_use(current.moves, local, line_no as int));
 }
 
 proc call_target_name(stmt: MirStatement) -> string {
   if stmt.rvalue.kind != MirRvalueKind.Call {
     give "";
   }
-  if len(stmt.rvalue.operands) > 0 and stmt.rvalue.operator != "variant-ctor" and stmt.rvalue.operator != "method-dispatch" {
-    if stmt.rvalue.operands[0].place.valid and stmt.rvalue.operands[0].place.local != "" {
-      give stmt.rvalue.operands[0].place.local;
+  let operands: [MirOperand] = stmt.rvalue.operands;
+  if len(operands) > 0 and stmt.rvalue.operator != "variant-ctor" and stmt.rvalue.operator != "method-dispatch" {
+    let operand: MirOperand = operands[0];
+    if operand.place.valid and operand.place.local != "" {
+      give operand.place.local;
     }
   }
   let open0: int = find(stmt.rvalue.text, "(");
@@ -1373,9 +1369,11 @@ proc apply_call_signature(result: BorrowCheckResult, metadata: BorrowMetadata, s
   let params_for_call: [BorrowFunctionParam] = if len(fn_params) > 0 { fn_params } else { fallback_info.params };
   if len(params_for_call) == 0 {
     let current0: BorrowCheckResult = result;
+    let operands: [MirOperand] = stmt.rvalue.operands;
     let i0: u64 = call_argument_start_index(stmt);
-    while i0 < len(stmt.rvalue.operands) {
-      set current0 = handle_use_local(current0, source_path, operand_place_name(stmt.rvalue.operands[i0]), stmt.span.start_line);
+    while i0 < len(operands) {
+      let operand: MirOperand = operands[i0];
+      set current0 = handle_use_local(current0, source_path, operand_place_name(operand), stmt.span.start_line);
       set i0 = i0 + 1;
     }
     let target0: string = mir_place_name(stmt.place);
@@ -1389,11 +1387,13 @@ proc apply_call_signature(result: BorrowCheckResult, metadata: BorrowMetadata, s
   }
 
   let current: BorrowCheckResult = result;
+  let operands: [MirOperand] = stmt.rvalue.operands;
   let arg_start: u64 = call_argument_start_index(stmt);
   let arg_index: u64 = arg_start;
   let param_index: u64 = 0;
-  while arg_index < len(stmt.rvalue.operands) {
-    let local: string = operand_place_name(stmt.rvalue.operands[arg_index]);
+  while arg_index < len(operands) {
+    let argument: MirOperand = operands[arg_index];
+    let local: string = operand_place_name(argument);
     if local == "" {
       set arg_index = arg_index + 1;
       set param_index = param_index + 1;
@@ -1404,12 +1404,12 @@ proc apply_call_signature(result: BorrowCheckResult, metadata: BorrowMetadata, s
     if param0.variadic {
       set current = handle_use_local(current, source_path, local, stmt.span.start_line);
     } elif param0.borrowed {
-      let alias: string = "__call_borrow_" + string(stmt.id) + "_" + string(param_index);
+      let alias: string = "__call_borrow_" + (stmt.id as string) + "_" + (param_index as string);
       set current = handle_borrow_binding(current, metadata, source_path, alias, local, param0.mutable, stmt.span.start_line);
     } elif type_is_copy(param0.type_name) {
       set current = handle_use_local(current, source_path, local, stmt.span.start_line);
     } else {
-      let alias: string = "__call_move_" + string(stmt.id) + "_" + string(param_index);
+      let alias: string = "__call_move_" + (stmt.id as string) + "_" + (param_index as string);
       set current = handle_move_binding(current, metadata, source_path, alias, local, stmt.span.start_line);
     }
     set arg_index = arg_index + 1;
@@ -1433,10 +1433,12 @@ proc execute_mir_statement(result: BorrowCheckResult, metadata: BorrowMetadata, 
       give apply_call_signature(current, metadata, source_path, functions, stmt);
     }
     let target: string = mir_place_name(stmt.place);
+    let operands: [MirOperand] = stmt.rvalue.operands;
     if stmt.rvalue.kind == MirRvalueKind.BorrowShared or stmt.rvalue.kind == MirRvalueKind.BorrowMut {
       let owner: string = "";
-      if len(stmt.rvalue.operands) > 0 {
-        set owner = operand_place_name(stmt.rvalue.operands[0]);
+      if len(operands) > 0 {
+        let operand: MirOperand = operands[0];
+        set owner = operand_place_name(operand);
       } else {
         set owner = parse_borrow_owner(stmt.rvalue.text);
       }
@@ -1445,8 +1447,9 @@ proc execute_mir_statement(result: BorrowCheckResult, metadata: BorrowMetadata, 
 
     if stmt.rvalue.kind == MirRvalueKind.Use {
       let source: string = "";
-      if len(stmt.rvalue.operands) > 0 {
-        set source = operand_place_name(stmt.rvalue.operands[0]);
+      if len(operands) > 0 {
+        let operand: MirOperand = operands[0];
+        set source = operand_place_name(operand);
       } else {
         set source = place_name(place_from_text(stmt.rvalue.text));
       }
@@ -1462,10 +1465,12 @@ proc execute_mir_statement(result: BorrowCheckResult, metadata: BorrowMetadata, 
       }
     }
 
-    let current0: BorrowCheckResult = current;
-    let i: u64 = 0;
-    while i < len(stmt.rvalue.operands) {
-      set current0 = handle_use_local(current0, source_path, operand_place_name(stmt.rvalue.operands[i]), line_no);
+  let current0: BorrowCheckResult = current;
+  let operands: [MirOperand] = stmt.rvalue.operands;
+  let i: u64 = 0;
+  while i < len(operands) {
+      let operand: MirOperand = operands[i];
+      set current0 = handle_use_local(current0, source_path, operand_place_name(operand), line_no);
       set i = i + 1;
     }
     let ownership0: OwnershipTable = mark_reinitialized(current0.ownership, target, line_no);
@@ -1481,9 +1486,11 @@ proc execute_mir_statement(result: BorrowCheckResult, metadata: BorrowMetadata, 
 
   if stmt.kind == MirStatementKind.Assert {
     let current0: BorrowCheckResult = current;
+    let operands: [MirOperand] = stmt.rvalue.operands;
     let i: u64 = 0;
-    while i < len(stmt.rvalue.operands) {
-      set current0 = handle_use_local(current0, source_path, operand_place_name(stmt.rvalue.operands[i]), line_no);
+    while i < len(operands) {
+      let operand: MirOperand = operands[i];
+      set current0 = handle_use_local(current0, source_path, operand_place_name(operand), line_no);
       set i = i + 1;
     }
     give current0;
@@ -1569,8 +1576,9 @@ proc close_known_regions(result: BorrowCheckResult, metadata: BorrowMetadata, fn
   }
 
   i = 0;
-  while i < len(result.ownership.locals) {
-    let local: LocalState = result.ownership.locals[i];
+  let locals: [LocalState] = result.ownership.locals;
+  while i < len(locals) {
+    let local: LocalState = locals[i];
     let region_end: u64 = local.last_line + 1;
     let scope_end: u64 = metadata_scope_end(metadata, local.name);
     if scope_end != 18446744073709551615 and scope_end > region_end {
@@ -1615,7 +1623,8 @@ proc borrow_check_mir_function(source_path: string, metadata: BorrowMetadata, fu
   }
 
   while len(worklist) > 0 {
-    let block_id: u64 = worklist[0];
+    let first_index: u64 = 0;
+    let block_id: u64 = fn0.entry_block;
     set worklist = pop_queue(worklist);
     let block: MirBlock = find_block(fn0.blocks, block_id);
     if not block.valid {
