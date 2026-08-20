@@ -52,6 +52,12 @@ def main() -> int:
     if check.returncode != 0:
         failures.append("maximal graph source check failed: " + check.stderr.strip())
 
+    relative_check = run([str(BOOTSTRAP), "check", str(SOURCE.relative_to(ROOT))], env=env)
+    checks["relative_source_path"] = relative_check.returncode == 0
+    checks["absolute_source_path"] = check.returncode == 0
+    if relative_check.returncode != 0:
+        failures.append("relative source path check failed: " + relative_check.stderr.strip())
+
     constants_check = run([str(BOOTSTRAP), "check", str(CONSTANTS_SOURCE)], env=env)
     checks["constants_complex_check"] = constants_check.returncode == 0
     if constants_check.returncode != 0:
