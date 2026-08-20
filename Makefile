@@ -212,7 +212,7 @@ vitte-lint:
 # Static analysis
 # ------------------------------------------------------------
 
-.PHONY: tidy vitte-source-audit vitte-legacy-text-audit vitte-compiler-purity-gate src-compiler-stdlib-gate compiler-entrypoint-gate resolver-root-independence-gate compiler-full-import-graph-gate module-import-resolution-stability symbol-scope-visibility-stability stage1-compiler-gate stage2-project-gate selfhost-stage-compare-gate selfhost-stage0-gate selfhost-stage1-gate selfhost-stage2-gate selfhost-release-gate selfhost-full-gate selfhost-ci-regression-gate seed-free-normal-flow-gate seed-free-release-gate vitte-in-vitte-gate release-clean-selfhost-gate release-package-stdlib-gate compiler-snapshot-gate compiler-backend-surface-gate compiler-link-abi-gate seed-free-release-surface-gate release-binary-gate vitte-bootstrap-check bootstrap-native-snapshots compiler-real-native-gate compiler-test-suite-check-gate compiler-no-fallback-gate driver-native-json-surface-gate compiler-real-diagnostics-gate invalid-fixtures-contract-gate
+.PHONY: tidy vitte-source-audit vitte-legacy-text-audit vitte-compiler-purity-gate src-compiler-stdlib-gate compiler-entrypoint-gate resolver-root-independence-gate compiler-full-import-graph-gate module-import-resolution-stability symbol-scope-visibility-stability hir-validation-stability stage1-compiler-gate stage2-project-gate selfhost-stage-compare-gate selfhost-stage0-gate selfhost-stage1-gate selfhost-stage2-gate selfhost-release-gate selfhost-full-gate selfhost-ci-regression-gate seed-free-normal-flow-gate seed-free-release-gate vitte-in-vitte-gate release-clean-selfhost-gate release-package-stdlib-gate compiler-snapshot-gate compiler-backend-surface-gate compiler-link-abi-gate seed-free-release-surface-gate release-binary-gate vitte-bootstrap-check bootstrap-native-snapshots compiler-real-native-gate compiler-test-suite-check-gate compiler-no-fallback-gate driver-native-json-surface-gate compiler-real-diagnostics-gate invalid-fixtures-contract-gate
 tidy: vitte-source-audit vitte-legacy-text-audit
 
 vitte-source-audit:
@@ -271,6 +271,13 @@ symbol-scope-visibility-stability: bootstrap-c17 module-import-resolution-stabil
 	@python3 tools/check_symbol_scope_visibility_stability.py
 	@test -f target/reports/symbol_scope_visibility_stability.json
 	@test -f target/reports/symbol_scope_visibility_stability.md
+
+hir-validation-stability: bootstrap-c17 hir-stability
+	@$(VITTE_BOOTSTRAP) check src/vitte/compiler/middle/hir/validate.vit
+	@$(VITTE_BOOTSTRAP) check src/vitte/compiler/middle/pipeline.vit
+	@python3 tools/check_hir_validation_stability.py
+	@test -f target/reports/hir_validation_stability.json
+	@test -f target/reports/hir_validation_stability.md
 
 stage1-compiler-gate: compiler-entrypoint-gate bootstrap-c17
 	@tools/stage1_compiler_gate.sh
@@ -1200,7 +1207,7 @@ ast-stability:
 	@test -f target/reports/ast_stability.md
 
 .PHONY: hir-lowering-test
-hir-lowering-test: bootstrap-c17 hir-stability
+hir-lowering-test: bootstrap-c17 hir-validation-stability
 	@python3 tools/ast_hir_lowering_audit.py
 	@python3 tools/hir_coverage_check.py
 
