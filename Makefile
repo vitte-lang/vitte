@@ -1176,9 +1176,18 @@ frontend-parser-test: bootstrap-c17 parser-recovery-stability grammar-test gramm
 	@target/bootstrap-c17/vitte-bootstrap check src/vitte/compiler/frontend/grammar_alignment_checker.vit
 
 .PHONY: frontend-ast-test
-frontend-ast-test:
-	@bin/vitte check src/vitte/compiler/tests/ast_tests.vit
+frontend-ast-test: bootstrap-c17 ast-stability
+	@set -e; \
+	for src in src/vitte/compiler/frontend/ast/*.vit; do \
+		target/bootstrap-c17/vitte-bootstrap check "$$src"; \
+	done
 	@python3 tools/ast_coverage_gate.py
+
+.PHONY: ast-stability
+ast-stability:
+	@python3 tools/check_ast_stability.py
+	@test -f target/reports/ast_stability.json
+	@test -f target/reports/ast_stability.md
 
 .PHONY: hir-lowering-test
 hir-lowering-test:
