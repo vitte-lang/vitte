@@ -7,6 +7,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 
@@ -52,6 +53,21 @@ def main() -> int:
         failures.append("unknown driver command was accepted")
     if not checks["unknown_command_diagnostic"]:
         failures.append("unknown driver command did not produce a diagnostic")
+
+    with tempfile.TemporaryDirectory(prefix="vitte-lexer-parser-mutation-") as directory:
+        mutated = Path(directory) / "invalid-token.vit"
+        mutated.write_text("proc main() -> int { give @; }\n", encoding="utf-8")
+        syntax = invoke(["check", str(mutated)])
+        syntax_output = syntax.stdout + syntax.stderr
+        checks["lexer_mutation_rejected"] = syntax.returncode != 0
+        checks["lexer_mutation_diagnostic"] = "VITTE_LEXER_E_TOKEN" in syntax_output
+        checks["parser_mutation_diagnostic"] = "VITTE_PARSER_E_EXPR" in syntax_output
+        if not checks["lexer_mutation_rejected"]:
+            failures.append("illegal lexer mutation was accepted")
+        if not checks["lexer_mutation_diagnostic"]:
+            failures.append("illegal lexer mutation did not produce a lexer diagnostic")
+        if not checks["parser_mutation_diagnostic"]:
+            failures.append("illegal lexer mutation did not produce parser recovery diagnostics")
 
     payload = {
         "schema": "vitte.compiler.driver_mutation_stability",

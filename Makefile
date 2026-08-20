@@ -1768,6 +1768,11 @@ driver-mutation-stability: bootstrap-c17
 	@python3 tools/check_driver_mutation_stability.py
 	@test -f target/reports/driver_mutation_stability.json
 
+.PHONY: lexer-parser-mutation-stability
+lexer-parser-mutation-stability: bootstrap-c17
+	@python3 tools/check_driver_mutation_stability.py
+	@test -f target/reports/driver_mutation_stability.json
+
 .PHONY: selfhost-completion-audit
 selfhost-completion-audit:
 	@python3 tools/selfhost_completion_audit.py
