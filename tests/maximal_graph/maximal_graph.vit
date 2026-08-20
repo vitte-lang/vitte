@@ -1,0 +1,210 @@
+space demo.graph
+
+export *
+
+form Node {
+    id: usize,
+    name: string,
+    weight: int,
+}
+
+form Edge {
+    from: usize,
+    to: usize,
+    cost: int,
+}
+
+form Graph {
+    nodes: [Node],
+    edges: [Edge],
+}
+
+pick Lookup {
+    case Found,
+    case Missing,
+}
+
+pick GraphError {
+    case MissingNode(id: usize),
+    case DuplicateNode(id: usize),
+    case InvalidEdge(from: usize, to: usize),
+}
+
+proc node_new(id: usize, name: string, weight: int) -> Node {
+    give Node {
+        id: id,
+        name: name,
+        weight: weight,
+    };
+}
+
+proc edge_new(from: usize, to: usize, cost: int) -> Edge {
+    give Edge {
+        from: from,
+        to: to,
+        cost: cost,
+    };
+}
+
+proc graph_new() -> Graph {
+    give Graph {
+        nodes: [],
+        edges: [],
+    };
+}
+
+proc graph_find_node(graph: ref Graph, id: usize) -> Lookup {
+    let i: usize = 0;
+
+    while i < len(graph.nodes) {
+        if graph.nodes[i].id == id {
+            give Found;
+        }
+        set i = i + 1;
+    }
+
+    give Missing;
+}
+
+proc graph_contains_node(graph: ref Graph, id: usize) -> bool {
+    let i: usize = 0;
+    while i < len(graph.nodes) {
+        if graph.nodes[i].id == id {
+            give true;
+        }
+        set i = i + 1;
+    }
+    give false;
+}
+
+proc graph_add_node(graph: ref mut Graph, node: Node) -> bool {
+    if graph_contains_node(graph, node.id) {
+        give false;
+    }
+    set graph.nodes = graph.nodes + [node];
+    give true;
+}
+
+proc graph_add_edge(graph: ref mut Graph, edge: Edge) -> bool {
+    if not graph_contains_node(graph, edge.from) {
+        give false;
+    }
+    if not graph_contains_node(graph, edge.to) {
+        give false;
+    }
+    if edge.from == edge.to {
+        give false;
+    }
+    set graph.edges = graph.edges + [edge];
+    give true;
+}
+
+proc graph_degree(graph: ref Graph, node_id: usize) -> usize {
+    let degree: usize = 0;
+    let i: usize = 0;
+
+    while i < len(graph.edges) {
+        if graph.edges[i].from == node_id or graph.edges[i].to == node_id {
+            set degree = degree + 1;
+        }
+        set i = i + 1;
+    }
+
+    give degree;
+}
+
+proc graph_total_cost(graph: ref Graph) -> int {
+    let total: int = 0;
+    let i: usize = 0;
+
+    while i < len(graph.edges) {
+        set total = total + graph.edges[i].cost;
+        set i = i + 1;
+    }
+
+    give total;
+}
+
+proc graph_heaviest_node(graph: ref Graph) -> Lookup {
+    if len(graph.nodes) == 0 {
+        give Missing;
+    }
+
+    let best: usize = 0;
+    let i: usize = 1;
+    while i < len(graph.nodes) {
+        if graph.nodes[i].weight > graph.nodes[best].weight {
+            set best = i;
+        }
+        set i = i + 1;
+    }
+
+    give Found;
+}
+
+proc graph_print(graph: ref Graph) -> void {
+    print("nodes");
+    let i: usize = 0;
+    while i < len(graph.nodes) {
+        print(graph.nodes[i].name);
+        set i = i + 1;
+    }
+    print("edges");
+    set i = 0;
+    while i < len(graph.edges) {
+        print("edge");
+        set i = i + 1;
+    }
+}
+
+proc build_demo_graph() -> Graph {
+    let mut graph: Graph = graph_new();
+    if not graph_add_node(ref mut graph, node_new(1, "alpha", 1.5)) {
+        give graph;
+    }
+    if not graph_add_node(ref mut graph, node_new(2, "beta", 4.0)) {
+        give graph;
+    }
+    if not graph_add_node(ref mut graph, node_new(3, "gamma", 2.5)) {
+        give graph;
+    }
+    graph_add_edge(ref mut graph, edge_new(1, 2, 3.25));
+    graph_add_edge(ref mut graph, edge_new(2, 3, 1.75));
+    give graph;
+}
+
+proc main() -> int {
+    let mut graph: Graph = build_demo_graph();
+    graph_print(ref graph);
+    graph_total_cost(ref graph);
+    graph_degree(ref graph, 2);
+
+    match graph_find_node(ref graph, 2) {
+        case Found {
+            print(graph.nodes[1].name);
+        }
+        case Missing {
+            print("missing");
+            give 1;
+        }
+    }
+
+    match graph_heaviest_node(ref graph) {
+        case Found {
+            print(graph.nodes[1].name);
+        }
+        case Missing {
+            print("empty");
+            give 1;
+        }
+    }
+
+    if graph_add_node(ref mut graph, node_new(2, "duplicate", 9.0)) {
+        give 1;
+    }
+    if graph_add_edge(ref mut graph, edge_new(9, 1, 1.0)) {
+        give 1;
+    }
+
+    give 0;
+}
