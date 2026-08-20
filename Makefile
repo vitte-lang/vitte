@@ -2847,6 +2847,15 @@ vitte-emit-gate:
 	@test -f target/reports/vitte_emit_coverage.md
 
 
+.PHONY: vitte-native-backend-stability
+vitte-native-backend-stability: bootstrap-c17 vitte-emit-gate native-object-determinism-gate
+	@python3 tools/check_native_vitte_backend_stability.py
+	@python3 tools/backend_surface_audit.py
+	@python3 tools/backend_native_object_audit.py
+	@python3 tools/backend_object_structure_audit.py
+	@python3 tools/backend_native_toolchain_audit.py
+
+
 .PHONY: llvm-backend-gate
 llvm-backend-gate:
 	@bin/vitte check src/vitte/compiler/tests/llvm_tests.vit

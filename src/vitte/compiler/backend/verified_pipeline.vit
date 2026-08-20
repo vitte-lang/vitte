@@ -22,17 +22,33 @@ proc append_violation(items: [string], enabled: bool, message: string) -> [strin
 }
 
 proc check_mir_backend_invariants(result: BackendPipelineResult) -> bool {
-  give result.ir_unit.valid and result.codegen.instruction_selected and result.codegen.registers_allocated;
+  if not result.ir_unit.valid {
+    give false;
+  }
+  if not result.codegen.instruction_selected {
+    give false;
+  }
+  give result.codegen.registers_allocated;
 }
 
 proc check_abi_assertions(result: BackendPipelineResult) -> bool {
-  let target_ok: bool = result.ir_unit.target.triple.arch != "" and result.ir_unit.target.triple.os != "";
+  let arch: string = result.ir_unit.target.triple.arch;
+  let os: string = result.ir_unit.target.triple.os;
+  let target_ok: bool = arch != "" and os != "";
   let format_ok: bool = result.codegen.object_format != "";
-  give target_ok and format_ok;
+  if not target_ok {
+    give false;
+  }
+  give format_ok;
 }
 
 proc check_stack_safety(result: BackendPipelineResult) -> bool {
-  give result.ir_unit.target.pointer_width >= 32 and result.ir_unit.target.data_layout != "";
+  let pointer_width: u64 = result.ir_unit.target.pointer_width;
+  let data_layout: string = result.ir_unit.target.data_layout;
+  if pointer_width < 32 {
+    give false;
+  }
+  give data_layout != "";
 }
 
 proc check_control_flow_verification(result: BackendPipelineResult) -> bool {
@@ -40,7 +56,10 @@ proc check_control_flow_verification(result: BackendPipelineResult) -> bool {
 }
 
 proc check_object_validation(result: BackendPipelineResult) -> bool {
-  give result.codegen.object_ready and artifact_is_valid(result.artifact);
+  if not result.codegen.object_ready {
+    give false;
+  }
+  give artifact_is_valid(result.artifact);
 }
 
 proc verify_backend_pipeline(result: BackendPipelineResult) -> BackendVerificationReport {
