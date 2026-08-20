@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -44,6 +45,47 @@ def run(
 
 def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def reproducible_artifact_hash(path: Path) -> str:
+    """Ignore only macOS's host-generated ad-hoc signature when hashing Mach-O."""
+    if sys.platform != "darwin":
+        return sha256(path)
+    with tempfile.NamedTemporaryFile(prefix="vitte-artifact-", delete=False) as handle:
+        normalized = Path(handle.name)
+    try:
+        shutil.copyfile(path, normalized)
+        stripped = subprocess.run(
+            ["codesign", "--remove-signature", str(normalized)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        if stripped.returncode != 0:
+            return sha256(path)
+        data = bytearray(normalized.read_bytes())
+        # LC_UUID is a 64-bit Mach-O load command. Its value is link-instance
+        # metadata and is excluded from the reproducible artifact identity.
+        if len(data) >= 32 and data[:4] == b"\xcf\xfa\xed\xfe":
+            command_count = int.from_bytes(data[16:20], "little")
+            command_size = int.from_bytes(data[20:24], "little")
+            cursor = 32
+            end = min(len(data), cursor + command_size)
+            for _ in range(command_count):
+                if cursor + 8 > end:
+                    break
+                command = int.from_bytes(data[cursor:cursor + 4], "little")
+                size = int.from_bytes(data[cursor + 4:cursor + 8], "little")
+                if command == 0x1B and size >= 24 and cursor + 24 <= len(data):
+                    data[cursor + 8:cursor + 24] = b"\0" * 16
+                    break
+                if size < 8:
+                    break
+                cursor += size
+            normalized.write_bytes(data)
+        return sha256(normalized)
+    finally:
+        normalized.unlink(missing_ok=True)
 
 
 def main() -> int:
@@ -237,6 +279,13 @@ def main() -> int:
     checks["deterministic_lowered_source"] = first_c.is_file() and second_c.is_file() and sha256(first_c) == sha256(second_c)
     if not checks["deterministic_lowered_source"]:
         failures.append("repeated maximal graph builds produced different lowered C sources")
+    checks["deterministic_native_artifact"] = (
+        first.is_file()
+        and second.is_file()
+        and reproducible_artifact_hash(first) == reproducible_artifact_hash(second)
+    )
+    if not checks["deterministic_native_artifact"]:
+        failures.append("repeated maximal graph builds produced different native artifact hashes")
 
     payload = {
         "schema": "vitte.compiler.maximal_graph_stability",
