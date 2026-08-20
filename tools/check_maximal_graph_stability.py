@@ -16,6 +16,7 @@ BOOTSTRAP = ROOT / "target" / "bootstrap-c17" / "vitte-bootstrap"
 SOURCE = ROOT / "tests" / "maximal_graph" / "maximal_graph.vit"
 CONSTANTS_SOURCE = ROOT / "tests" / "maximal_graph" / "constants_complex.vit"
 STRINGS_ARRAYS_SOURCE = ROOT / "tests" / "maximal_graph" / "strings_arrays.vit"
+STRUCTURES_VARIANTS_SOURCE = ROOT / "tests" / "maximal_graph" / "structures_variants.vit"
 REPORT = ROOT / "target" / "reports" / "maximal_graph_stability.json"
 OUTPUT_DIR = ROOT / "target" / "reports" / "maximal_graph"
 
@@ -92,6 +93,26 @@ def main() -> int:
     else:
         checks["strings_arrays_execution"] = False
         checks["strings_arrays_output"] = False
+
+    structures_check = run([str(BOOTSTRAP), "check", str(STRUCTURES_VARIANTS_SOURCE)], env=env)
+    checks["structures_variants_check"] = structures_check.returncode == 0
+    if structures_check.returncode != 0:
+        failures.append("structures and variants check failed: " + structures_check.stderr.strip())
+    structures_output = OUTPUT_DIR / "structures_variants"
+    structures_build = run(
+        [str(BOOTSTRAP), "build", str(STRUCTURES_VARIANTS_SOURCE), "-o", str(structures_output)],
+        env=env,
+    )
+    checks["structures_variants_build"] = structures_build.returncode == 0 and structures_output.is_file()
+    if not checks["structures_variants_build"]:
+        failures.append("structures and variants build failed: " + structures_build.stderr.strip())
+    if structures_output.is_file():
+        structures_run = run([str(structures_output)], env=env)
+        checks["structures_variants_execution"] = structures_run.returncode == 0
+        if structures_run.returncode != 0:
+            failures.append(f"structures and variants exited with {structures_run.returncode}")
+    else:
+        checks["structures_variants_execution"] = False
 
     first = OUTPUT_DIR / "maximal_graph_first"
     second = OUTPUT_DIR / "maximal_graph_second"
