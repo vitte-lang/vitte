@@ -1689,7 +1689,7 @@ proc token_text(tokens: [Token], start: u64, end: u64) -> string {
     set out = out + tokens[i].lexeme;
     set i = i + 1;
   }
-  give trim(out);
+  give out;
 }
 
 proc find_token_text(tokens: [Token], start: u64, end: u64, text: string) -> int {
@@ -2089,6 +2089,9 @@ proc parse_ast_generic_param_list(source_name: string, tokens: [Token], start: u
 
 proc parse_ast_param_list(source_name: string, tokens: [Token], start: u64, end: u64) -> [AstParam] {
   let out: [AstParam] = [];
+  if start < end and find_top_level_token(tokens, start, end, ",") < 0 {
+    give [parse_ast_param_from_tokens(source_name, tokens, start, end)];
+  }
   let parts: [TokenRange] = split_top_level_ranges(tokens, start, end, ",");
   let i: u64 = 0;
   while i < len(parts) {
@@ -2319,14 +2322,30 @@ proc parse_ast_param_from_tokens(source_name: string, tokens: [Token], start: u6
   let mode: string = trim(token_text(tokens, bounds.start, cursor));
   let colon: int = find_top_level_token(tokens, cursor, bounds.end, ":");
   let eq: int = find_top_level_token(tokens, cursor, bounds.end, assign_op_eq());
-  let pattern_end: u64 = if colon >= 0 { colon as u64 } elif eq >= 0 { eq as u64 } else { bounds.end };
+  let mut pattern_end: u64 = bounds.end;
+  if colon >= 0 {
+    set pattern_end = colon as u64;
+  } elif eq >= 0 {
+    set pattern_end = eq as u64;
+  }
   let annotation: AstTypeExpr = ast_type_empty();
   if colon >= 0 {
-    let annotation_end: u64 = if eq >= 0 and eq > colon { eq as u64 } else { bounds.end };
+    let mut annotation_end: u64 = bounds.end;
+    if eq >= 0 and eq > colon {
+      set annotation_end = eq as u64;
+    }
     set annotation = parse_ast_type_from_tokens(source_name, tokens, colon as u64 + 1, annotation_end);
   }
-  let default_value: AstExpr = if eq >= 0 and eq as u64 + 1 < bounds.end { parse_ast_expr_from_tokens(source_name, tokens, eq as u64 + 1, bounds.end) } else { ast_expr_unknown(0, ast_span_empty(), "") };
-  let pattern: AstPattern = if variadic { ast_pattern(range_id(3, bounds.start, bounds.end), span_from_tokens(source_name, tokens, bounds.start, bounds.end), "...", false) } else { parse_ast_pattern_from_tokens(source_name, tokens, cursor, pattern_end) };
+  let mut default_value: AstExpr = ast_expr_unknown(0, ast_span_empty(), "");
+  if eq >= 0 and eq as u64 + 1 < bounds.end {
+    set default_value = parse_ast_expr_from_tokens(source_name, tokens, eq as u64 + 1, bounds.end);
+  }
+  let mut pattern: AstPattern = ast_pattern_empty();
+  if variadic {
+    set pattern = ast_pattern(range_id(3, bounds.start, bounds.end), span_from_tokens(source_name, tokens, bounds.start, bounds.end), "...", false);
+  } else {
+    set pattern = parse_ast_pattern_from_tokens(source_name, tokens, cursor, pattern_end);
+  }
   give ast_param(range_id(7, bounds.start, bounds.end), span_from_tokens(source_name, tokens, bounds.start, bounds.end), pattern, annotation, default_value, mode, variadic);
 }
 
@@ -2452,7 +2471,8 @@ proc collect_item_prefix(tokens: [Token], index: u64) -> AstItemPrefix {
       }
       continue;
     }
-    if is_proc_modifier(tokens[current].lexeme) {
+    let const_proc_modifier: bool = tokens[current].lexeme == "const" and current + 1 < len(tokens) and tokens[current + 1].lexeme == "proc";
+    if is_proc_modifier(tokens[current].lexeme) and (tokens[current].lexeme != "const" or const_proc_modifier) {
       set modifiers = modifiers + [tokens[current].lexeme];
       set current = current + 1;
       continue;
@@ -3698,11 +3718,10 @@ proc build_ast_module(source_name: string, tokens: [Token]) -> AstModule {
         set annotation = parse_ast_type_from_tokens(source_name, tokens, arrow as u64 + 1, open as u64);
       }
       let type_params: [AstTypeExpr] = parse_item_type_params(source_name, tokens, actual + 1, open as u64);
-      let generic_params: [AstGenericParam] = if actual + 2 < open as u64 and tokens[actual + 2].lexeme == "[" {
-        parse_ast_generic_param_list(source_name, tokens, actual + 3, find_matching(tokens, actual + 2, "[", "]") as u64)
-      } else {
-        []
-      };
+      let mut generic_params: [AstGenericParam] = [];
+      if len(type_params) > 0 {
+        set generic_params = parse_ast_generic_param_list(source_name, tokens, actual + 3, find_matching(tokens, actual + 2, "[", "]") as u64);
+      }
       let abi: string = prefix_abi(prefix.modifiers);
       let signature: AstProcSignature = parse_ast_proc_signature_from_tokens(source_name, tokens, actual, open as u64, abi);
       set items = items + [ast_item_typed(range_id(5, prefix.start, close as u64 + 1), span_from_tokens(source_name, tokens, prefix.start, close as u64 + 1), AstItemKind.Proc, name, prefix.attributes, "", prefix.visibility, prefix.modifiers, abi, ast_expr_unknown(range_id(1, actual, actual + 1), span_from_tokens(source_name, tokens, actual, actual + 1), ""), stmts, annotation, ast_type_empty(), type_params, generic_params, signature, [], "")];

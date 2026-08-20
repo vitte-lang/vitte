@@ -15,7 +15,7 @@ proc join(values: [string], separator: string) -> string {
   give out;
 }
 
-use vitte/compiler/analysis/typeck/errors.{ TypeckResult, add_unique_diag, typeck_assignment_mismatch, typeck_condition_type, typeck_conflicting_impl, typeck_constraint_cycle, typeck_diag, typeck_give_missing_path, typeck_give_value_in_unit_proc, typeck_invalid_hir_result, typeck_let_inference_failed, typeck_non_exhaustive_match, typeck_result, typeck_return_mismatch, typeck_set_immutable, typeck_unknown_type }
+use vitte/compiler/analysis/typeck/errors.{ ExprTypeResult, TypeckResult, add_unique_diag, expr_result, typeck_assignment_mismatch, typeck_condition_type, typeck_conflicting_impl, typeck_constraint_cycle, typeck_diag, typeck_give_missing_path, typeck_give_value_in_unit_proc, typeck_invalid_hir_result, typeck_let_inference_failed, typeck_non_exhaustive_match, typeck_result, typeck_return_mismatch, typeck_set_immutable, typeck_unknown_type }
 use vitte/compiler/analysis/typeck/infer.{ TypeBinding, constrained_generic_type_binding, env_get, env_has, env_index, env_set, expression_types_compatible, function_param_types, function_return_type, infer_expr_type, param_type_binding, resolved_call_generic_arguments, split_function_signature_types, trait_impl_binding_name, type_identifier_index }
 use vitte/compiler/analysis/typeck/traits.{ type_is_copy, type_is_known, type_is_truthy }
 use vitte/compiler/diagnostics/diagnostic.{ Diagnostic }
@@ -949,8 +949,12 @@ proc check_module(diagnostics: [Diagnostic], env: [TypeBinding], hir: HirUnit) -
       ));
     }
 
-    let item_result = infer_expr_type(module_env, item.expr);
-    let typed_item_expr: HirExpr = annotate_expr(module_env, item.expr);
+    let mut item_result: ExprTypeResult = infer_expr_type(module_env, item.expr);
+    let mut typed_item_expr: HirExpr = annotate_expr(module_env, item.expr);
+    if not item.expr.valid {
+      set item_result = expr_result("unit", [], true);
+      set typed_item_expr = item.expr;
+    }
     set out = out + item_result.diagnostics;
     if item.kind == HirItemKind.Const and item.name != "" {
       set module_env = env_set(module_env, item.name, item_result.ty);
