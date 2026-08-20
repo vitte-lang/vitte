@@ -774,6 +774,9 @@ proc test_real_pipeline_json_dumps() -> bool {
     and find(diag_json, "\"rule\": \"assignment type compatibility\"") >= 0
     and find(diag_json, "\"subject_symbol\": \"x\"") >= 0
     and find(diag_json, "\"documentation_url\": \"docs://language/type-system/assignment-compatibility\"") >= 0
+    and find(diag_json, "\"error_count\":,") < 0
+    and find(diag_json, "\"start_line\":,") < 0
+    and find(diag_json, "\"start_line\":1") >= 0
     and find(diag_json, "\"text_output\":") >= 0
     and find(ast_json, "bootstrap-json-v1") < 0
     and find(ast_json, "ast-json-missing") < 0;
@@ -889,6 +892,7 @@ proc test_runtime_surface_dispatch_prefers_pipeline_json() -> bool {
   let mir_report: CliReportResult = main_driver_surface_report_json("check", "--dump-mir-json", "pipeline_dispatch_mir.vit", source_text);
   let diag_report: CliReportResult = main_driver_surface_report_json("check", "--diagnostics-json", "pipeline_dispatch_diag.vit", source_text);
   let lsp_report: CliReportResult = main_driver_surface_report_json("check", "--diagnostics-lsp", "pipeline_dispatch_lsp.vit", source_text);
+  let lsp_invalid_report: CliReportResult = main_driver_surface_report_json("check", "--diagnostics-lsp", "pipeline_dispatch_lsp_invalid.vit", "proc main() -> int { let x = ; }\n");
   let unsupported_report: CliReportResult = main_driver_surface_report_json("check", "--unknown-flag", "pipeline_dispatch_fallback.vit", source_text);
   give find(ast_report.report_json, "\"schema\":\"vitte.compiler.surface\"") >= 0
     and find(ast_report.report_json, "\"schema_version\":\"1.0.0\"") >= 0
@@ -908,6 +912,8 @@ proc test_runtime_surface_dispatch_prefers_pipeline_json() -> bool {
     and find(lsp_report.report_json, "\"jsonrpc\": \"2.0\"") >= 0
     and find(lsp_report.report_json, "\"method\": \"textDocument/publishDiagnostics\"") >= 0
     and find(lsp_report.report_json, "\"diagnostics\": []") >= 0
+    and find(lsp_invalid_report.report_json, "\"line\": 0") >= 0
+    and find(lsp_invalid_report.report_json, "\"character\": 0") >= 0
     and unsupported_report.code == 1
     and find(unsupported_report.report_json, "\"code\":\"E_DRIVER_SURFACE_UNAVAILABLE\"") >= 0;
 }

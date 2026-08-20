@@ -782,22 +782,34 @@ proc collect_module_symbols_with_imports(hir: HirUnit, imported_symbols: [SemaSy
     let collectable_item: bool = item.kind != HirItemKind.Space and item.kind != HirItemKind.Use and item.kind != HirItemKind.Export;
     if item.kind == HirItemKind.Use {
       let imported: SemaModuleImport = module_import_from_use(item.name);
-      if imported.valid and imported.alias != "" and symbol_index(symbols, imported.alias) < 0 {
-        set symbols = symbols + [sema_symbol_full(
-          next_symbol_id,
-          imported.alias,
-          imported.module_path,
-          SemaSymbolKind.Module,
-          SemaSymbolState.Imported,
-          0,
-          false,
-          SemaVisibility.Public,
-          imported.module_path,
-          "",
-          item.span.start_line,
-          item.span.start_column
-        )];
-        set next_symbol_id = next_symbol_id + 1;
+      if imported.valid and imported.alias != "" {
+        if symbol_index(symbols, imported.alias) >= 0 {
+          set diagnostics = sema_add_diag(diagnostics, sema_diagnostic(
+            "SEMA_E_DUPLICATE_ITEM",
+            DiagnosticSeverity.Error,
+            "duplicate import alias `" + imported.alias + "` in module scope",
+            [imported.alias, imported.module_path],
+            "rename one of the conflicting import aliases",
+            item.span,
+            true
+          ));
+        } else {
+          set symbols = symbols + [sema_symbol_full(
+            next_symbol_id,
+            imported.alias,
+            imported.module_path,
+            SemaSymbolKind.Module,
+            SemaSymbolState.Imported,
+            0,
+            false,
+            SemaVisibility.Public,
+            imported.module_path,
+            "",
+            item.span.start_line,
+            item.span.start_column
+          )];
+          set next_symbol_id = next_symbol_id + 1;
+        }
       }
     }
     if item.name != "" and collectable_item {

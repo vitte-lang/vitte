@@ -11,6 +11,7 @@ use vitte/compiler/driver/compile.{ DriverModuleSetArtifacts, analyze_source_set
 use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, DiagnosticPhase, DiagnosticSeverity, sema_code_after_give, sema_mutable_never_modified, sema_set_immutable_binding, span_create, typeck_form_duplicate_field, typeck_pick_duplicate_branch }
 use vitte/compiler/frontend/ast.node.{ ast_span, ast_span_empty }
 use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
+use vitte/stdlib/io/fileops.{ read_file }
 use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
 
 const VERSION_TEXT: string = "analysis sema tests 0.1.0"
@@ -568,6 +569,9 @@ proc test_sema_import_order_and_forms() -> bool {
     and absolute.valid
     and grouped.valid
     and not grouped.import_all
+    and len(grouped.names) == 2
+    and grouped.names[0] == "one"
+    and grouped.names[1] == "two"
     and relative.valid;
 }
 
@@ -631,6 +635,22 @@ proc test_sema_import_collision_and_cycle_contracts() -> bool {
     and len(cycle_diag.notes) >= 3;
 }
 
+proc test_sema_import_cycle_graph_reports_precise_span() -> bool {
+  let left: string = "space cycle/left;\nuse cycle/right { * };\nproc left() -> int { give right(); }\n";
+  let right: string = "space cycle/right;\nuse cycle/left { * };\nproc right() -> int { give left(); }\n";
+  let cycle: DriverModuleSetArtifacts = analyze_source_set([
+    driver_module_input("cycle_left.vit", left),
+    driver_module_input("cycle_right.vit", right)
+  ]);
+  let diagnostic = cycle.modules[0].analysis.diagnostics[0];
+  give not cycle.valid
+    and diagnostic.code == "MOD_E_IMPORT_CYCLE"
+    and diagnostic.span.file == "cycle_left.vit"
+    and diagnostic.span.start_line == 2
+    and diagnostic.span.start_column > 0
+    and find(diagnostic.message, "cycle/left -> cycle/right -> cycle/left") >= 0;
+}
+
 proc test_sema_visibility_internal_package_external_and_exports() -> bool {
   let source: string =
     "space demo/visibility;\n" +
@@ -678,6 +698,25 @@ proc test_sema_private_and_public_access_from_other_module() -> bool {
     and public_call.resolved_kind == "import"
     and public_call.binding == "visible"
     and private_diag.code == "RES0070";
+}
+
+proc test_sema_real_two_file_modules() -> bool {
+  let core_path: string = "src/vitte/compiler/tests/fixtures/intermodule/core.vit";
+  let app_path: string = "src/vitte/compiler/tests/fixtures/intermodule/app.vit";
+  let core_source: string = read_file(core_path);
+  let app_source: string = read_file(app_path);
+  let artifacts: DriverModuleSetArtifacts = analyze_source_set([
+    driver_module_input(core_path, core_source),
+    driver_module_input(app_path, app_source)
+  ]);
+  let app_call = artifacts.modules[1].resolved_hir.module.items[2].stmts[0].expr.children[0];
+  give core_source != ""
+    and app_source != ""
+    and artifacts.valid
+    and len(artifacts.modules[0].imports) == 0
+    and artifacts.modules[1].imports[0] == "tests/intermodule/core"
+    and app_call.resolved_kind == "import"
+    and app_call.resolved_id > 0;
 }
 
 proc test_sema_explicit_export_missing_import_warning_policy() -> bool {
@@ -931,10 +970,16 @@ proc run_all_tests() -> int {
   if not test_sema_import_collision_and_cycle_contracts() {
     set failures = failures + 1;
   }
+  if not test_sema_import_cycle_graph_reports_precise_span() {
+    set failures = failures + 1;
+  }
   if not test_sema_visibility_internal_package_external_and_exports() {
     set failures = failures + 1;
   }
   if not test_sema_private_and_public_access_from_other_module() {
+    set failures = failures + 1;
+  }
+  if not test_sema_real_two_file_modules() {
     set failures = failures + 1;
   }
   if not test_sema_explicit_export_missing_import_warning_policy() {

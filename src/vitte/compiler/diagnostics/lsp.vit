@@ -275,8 +275,8 @@ proc diagnostic_data_with_canonical_context(diagnostic: Diagnostic, context: Lsp
     let strategy_data: string = "strategy" + lsp_eq() + diagnostic_correction_strategy(diagnostic.phase, diagnostic.code);
     let recovery_data: string = "recovery_scope" + lsp_eq() + diagnostic_recovery_scope(diagnostic.phase, diagnostic.code);
     let confidence_data: string = "confidence" + lsp_eq() + diagnostic_confidence(diagnostic.phase, diagnostic.code);
-    let quality_data: string = "quality" + lsp_eq() + (diagnostic_quality_score(diagnostic) as string);
-    let fixes_data: string = "fixes" + lsp_eq() + (len(diagnostic_fix_plans(diagnostic)) as string);
+    let quality_data: string = "quality" + lsp_eq() + to_string(diagnostic_quality_score(diagnostic));
+    let fixes_data: string = "fixes" + lsp_eq() + to_string(len(diagnostic_fix_plans(diagnostic)));
     let pipeline_data: string = "pipeline_failed_at" + lsp_eq() + context.pipeline_failed_at;
     let failure_data: string = "pipeline_failure_reason" + lsp_eq() + context.pipeline_failure_reason;
     let validation_data: string = "validation_reason" + lsp_eq() + context.validation_reason;
@@ -478,7 +478,7 @@ proc lsp_report_code_actions(report: DiagnosticReport) -> [LspCodeAction] {
 
 proc lsp_code_action_summary(action: LspCodeAction) -> string {
     let disabled: string = if action.disabled { " disabled=" + action.disabled_reason } else { "" };
-    give action.kind + ": " + action.title + " [" + action.applicability + "] strategy=" + action.strategy + " score=" + (action.score as string) + disabled;
+    give action.kind + ": " + action.title + " [" + action.applicability + "] strategy=" + action.strategy + " score=" + to_string(action.score) + disabled;
 }
 
 proc lsp_severity_name(severity: LspDiagnosticSeverity) -> string {
@@ -538,7 +538,7 @@ proc lsp_diagnostic_summary(diagnostic: LspDiagnostic) -> string {
 }
 
 proc lsp_publish_summary(params: LspPublishDiagnosticsParams) -> string {
-    let diagnostic_count: string = len(params.diagnostics) as string;
+    let diagnostic_count: string = to_string(len(params.diagnostics));
     let summary: string = "published " + diagnostic_count + " diagnostic(s) to " + params.uri;
     give summary;
 }
@@ -558,8 +558,8 @@ proc lsp_severity_number(severity: DiagnosticSeverity) -> string {
 
 proc lsp_position_json(position: LspPosition) -> string {
     give json_object([
-        json_key_value("line", position.line as string),
-        json_key_value("character", position.character as string)
+        json_key_value("line", to_string(position.line)),
+        json_key_value("character", to_string(position.character))
     ]);
 }
 
@@ -617,7 +617,7 @@ proc lsp_code_action_title(diagnostic: Diagnostic) -> string {
 proc lsp_diagnostic_data_json(diagnostic: Diagnostic) -> string {
     give json_object([
         json_key_value("code", json_quote(diagnostic.code)),
-        json_key_value("id", json_quote(diagnostic.code + ":" + diagnostic.span.file + ":" + (diagnostic.span.start_line as string) + ":" + (diagnostic.span.start_column as string))),
+        json_key_value("id", json_quote(diagnostic.code + ":" + diagnostic.span.file + ":" + to_string(diagnostic.span.start_line) + ":" + to_string(diagnostic.span.start_column))),
         json_key_value("category", json_quote(phase_name(diagnostic.phase))),
         json_key_value("severity", json_quote(severity_name(diagnostic.severity))),
         json_key_value("fluent_key", json_quote(diagnostic.code)),
@@ -637,7 +637,7 @@ proc lsp_tags_json(values: [LspDiagnosticTag]) -> string {
     let encoded: [string] = [];
     let i: u64 = 0;
     while i < len(values) {
-        set encoded = encoded + [values[i].value as string];
+        set encoded = encoded + [to_string(values[i].value)];
         set i = i + 1;
     }
     give json_array(encoded);

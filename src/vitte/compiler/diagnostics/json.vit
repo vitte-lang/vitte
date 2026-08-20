@@ -172,11 +172,11 @@ proc json_optional_string(value: string) -> string {
 proc json_source_span(span: SourceSpan) -> string {
     give json_object([
         json_key_value("file", json_quote(span.file)),
-        json_key_value("start_line", span.start_line as string),
-        json_key_value("start_column", span.start_column as string),
-        json_key_value("end_line", span.end_line as string),
-        json_key_value("end_column", span.end_column as string),
-        json_key_value("length", span.length as string),
+        json_key_value("start_line", to_string(span.start_line)),
+        json_key_value("start_column", to_string(span.start_column)),
+        json_key_value("end_line", to_string(span.end_line)),
+        json_key_value("end_column", to_string(span.end_column)),
+        json_key_value("length", to_string(span.length)),
         json_key_value("valid", json_bool(span.valid))
     ]);
 }
@@ -390,7 +390,7 @@ proc json_suggestion(suggestion: DiagnosticSuggestion) -> string {
 
         json_key_value(
             "score",
-            suggestion.public_score as string
+            to_string(suggestion.public_score)
         ),
 
         json_key_value(
@@ -402,12 +402,12 @@ proc json_suggestion(suggestion: DiagnosticSuggestion) -> string {
 
         json_key_value(
             "errors_removed",
-            suggestion.errors_removed as string
+            to_string(suggestion.errors_removed)
         ),
 
         json_key_value(
             "new_errors",
-            suggestion.new_errors as string
+            to_string(suggestion.new_errors)
         ),
 
         json_key_value(
@@ -468,17 +468,17 @@ proc json_suggestion(suggestion: DiagnosticSuggestion) -> string {
 
         json_key_value(
             "counterfactual_rank",
-            suggestion.counterfactual_rank as string
+            to_string(suggestion.counterfactual_rank)
         ),
 
         json_key_value(
             "counterfactual_errors_removed",
-            suggestion.counterfactual_errors_removed as string
+            to_string(suggestion.counterfactual_errors_removed)
         ),
 
         json_key_value(
             "counterfactual_total_errors",
-            suggestion.counterfactual_total_errors as string
+            to_string(suggestion.counterfactual_total_errors)
         ),
 
         json_key_value(
@@ -519,12 +519,12 @@ proc json_suggestions(suggestions: [DiagnosticSuggestion]) -> string {
 
 proc json_quality(quality: DiagnosticQuality) -> string {
     give json_object([
-        json_key_value("score", quality.score as string),
-        json_key_value("span_score", quality.span_score as string),
-        json_key_value("context_score", quality.context_score as string),
-        json_key_value("fix_score", quality.fix_score as string),
-        json_key_value("stability_score", quality.stability_score as string),
-        json_key_value("cascade_score", quality.cascade_score as string),
+        json_key_value("score", to_string(quality.score)),
+        json_key_value("span_score", to_string(quality.span_score)),
+        json_key_value("context_score", to_string(quality.context_score)),
+        json_key_value("fix_score", to_string(quality.fix_score)),
+        json_key_value("stability_score", to_string(quality.stability_score)),
+        json_key_value("cascade_score", to_string(quality.cascade_score)),
         json_key_value("valid", json_bool(quality.valid))
     ]);
 }
@@ -559,11 +559,11 @@ proc json_fixes(plans: [DiagnosticFixPlan]) -> string {
 }
 
 proc json_diagnostic_id(diagnostic: Diagnostic) -> string {
-    give diagnostic.code + ":" + diagnostic.span.file + ":" + (diagnostic.span.start_line as string) + ":" + (diagnostic.span.start_column as string);
+    give diagnostic.code + ":" + diagnostic.span.file + ":" + to_string(diagnostic.span.start_line) + ":" + to_string(diagnostic.span.start_column);
 }
 
 proc json_diagnostic_location(diagnostic: Diagnostic) -> string {
-    give diagnostic.span.file + ":" + (diagnostic.span.start_line as string) + ":" + (diagnostic.span.start_column as string);
+    give diagnostic.span.file + ":" + to_string(diagnostic.span.start_line) + ":" + to_string(diagnostic.span.start_column);
 }
 
 proc json_diagnostic_help_text(diagnostic: Diagnostic) -> string {
@@ -696,7 +696,7 @@ proc json_diagnostic(diagnostic: Diagnostic) -> string {
 
         json_key_value(
             "file_id",
-            diagnostic.file_id as string
+            to_string(diagnostic.file_id)
         ),
 
         json_key_value(
@@ -1052,37 +1052,37 @@ proc json_report(report: DiagnosticReport) -> string {
 
         json_key_value(
             "error_count",
-            report.error_count as string
+            to_string(report.error_count)
         ),
 
         json_key_value(
             "warning_count",
-            report.warning_count as string
+            to_string(report.warning_count)
         ),
 
         json_key_value(
             "fatal_count",
-            report.fatal_count as string
+            to_string(report.fatal_count)
         ),
 
         json_key_value(
             "root_count",
-            report.root_count as string
+            to_string(report.root_count)
         ),
 
         json_key_value(
             "cascade_count",
-            report.cascade_count as string
+            to_string(report.cascade_count)
         ),
 
         json_key_value(
             "suppressed_cascade_count",
-            report.suppressed_cascade_count as string
+            to_string(report.suppressed_cascade_count)
         ),
 
         json_key_value(
             "duplicate_count",
-            report.duplicate_count as string
+            to_string(report.duplicate_count)
         ),
 
         json_key_value(
@@ -1092,16 +1092,16 @@ proc json_report(report: DiagnosticReport) -> string {
 
         json_key_value(
             "quality_score",
-            report.quality_score as string
+            to_string(report.quality_score)
         ),
 
         json_key_value(
             "causality",
             json_object([
-                json_key_value("root_count", report.root_count as string),
-                json_key_value("cascade_count", report.cascade_count as string),
-                json_key_value("suppressed_cascade_count", report.suppressed_cascade_count as string),
-                json_key_value("duplicate_count", report.duplicate_count as string),
+                json_key_value("root_count", to_string(report.root_count)),
+                json_key_value("cascade_count", to_string(report.cascade_count)),
+                json_key_value("suppressed_cascade_count", to_string(report.suppressed_cascade_count)),
+                json_key_value("duplicate_count", to_string(report.duplicate_count)),
                 json_key_value("recovery_possible", json_bool(report.recovery_possible))
             ])
         ),
@@ -1122,14 +1122,14 @@ proc json_envelope(envelope: DiagnosticEnvelope) -> string {
         json_key_value("producer", json_quote(envelope.producer)),
         json_key_value("command", json_quote(envelope.command)),
         json_key_value("source", json_quote(envelope.source)),
-        json_key_value("quality_score", envelope.report.quality_score as string),
+        json_key_value("quality_score", to_string(envelope.report.quality_score)),
         json_key_value(
             "causality",
             json_object([
-                json_key_value("root_count", envelope.report.root_count as string),
-                json_key_value("cascade_count", envelope.report.cascade_count as string),
-                json_key_value("suppressed_cascade_count", envelope.report.suppressed_cascade_count as string),
-                json_key_value("duplicate_count", envelope.report.duplicate_count as string),
+                json_key_value("root_count", to_string(envelope.report.root_count)),
+                json_key_value("cascade_count", to_string(envelope.report.cascade_count)),
+                json_key_value("suppressed_cascade_count", to_string(envelope.report.suppressed_cascade_count)),
+                json_key_value("duplicate_count", to_string(envelope.report.duplicate_count)),
                 json_key_value("recovery_possible", json_bool(envelope.report.recovery_possible))
             ])
         ),
@@ -1148,14 +1148,14 @@ proc json_report_envelope_with_canonical_context(report: DiagnosticReport, produ
         json_key_value("pipeline_failed_at", json_quote(pipeline_failed_at)),
         json_key_value("pipeline_failure_reason", json_quote(pipeline_failure_reason)),
         json_key_value("validation_reason", json_quote(validation_reason)),
-        json_key_value("quality_score", report.quality_score as string),
+        json_key_value("quality_score", to_string(report.quality_score)),
         json_key_value(
             "causality",
             json_object([
-                json_key_value("root_count", report.root_count as string),
-                json_key_value("cascade_count", report.cascade_count as string),
-                json_key_value("suppressed_cascade_count", report.suppressed_cascade_count as string),
-                json_key_value("duplicate_count", report.duplicate_count as string),
+                json_key_value("root_count", to_string(report.root_count)),
+                json_key_value("cascade_count", to_string(report.cascade_count)),
+                json_key_value("suppressed_cascade_count", to_string(report.suppressed_cascade_count)),
+                json_key_value("duplicate_count", to_string(report.duplicate_count)),
                 json_key_value("recovery_possible", json_bool(report.recovery_possible))
             ])
         ),
@@ -1214,12 +1214,12 @@ proc json_compact_diagnostic(diagnostic: Diagnostic) -> string {
 
         json_key_value(
             "line",
-            diagnostic.span.start_line as string
+            to_string(diagnostic.span.start_line)
         ),
 
         json_key_value(
             "column",
-            diagnostic.span.start_column as string
+            to_string(diagnostic.span.start_column)
         )
     ]);
 }
@@ -1251,17 +1251,17 @@ proc json_summary(report: DiagnosticReport) -> string {
     give json_object([
         json_key_value(
             "errors",
-            report.error_count as string
+            to_string(report.error_count)
         ),
 
         json_key_value(
             "warnings",
-            report.warning_count as string
+            to_string(report.warning_count)
         ),
 
         json_key_value(
             "fatals",
-            report.fatal_count as string
+            to_string(report.fatal_count)
         ),
 
         json_key_value(

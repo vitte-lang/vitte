@@ -14,6 +14,7 @@ TEXT = ROOT / "src/vitte/compiler/diagnostics/render.vit"
 JSON = ROOT / "src/vitte/compiler/diagnostics/json.vit"
 LSP = ROOT / "src/vitte/compiler/diagnostics/lsp.vit"
 FLUENT = ROOT / "src/vitte/compiler/infrastructure/diagnostics/fluent_catalog.vit"
+FLUENT_SOURCES = (FLUENT, *sorted(FLUENT.parent.glob("fluent_catalog_*.vit")))
 REPORT_DIR = ROOT / "target/reports"
 REPORT = REPORT_DIR / "diagnostic_output_stability.json"
 MARKDOWN = REPORT_DIR / "diagnostic_output_stability.md"
@@ -33,7 +34,7 @@ def main() -> int:
     text = TEXT.read_text(encoding="utf-8")
     json_text = JSON.read_text(encoding="utf-8")
     lsp = LSP.read_text(encoding="utf-8")
-    fluent = FLUENT.read_text(encoding="utf-8")
+    fluent = "\n".join(path.read_text(encoding="utf-8") for path in FLUENT_SOURCES)
     driver_codes = sorted(set(re.findall(r'"((?:[A-Z][A-Z0-9]*_)+(?:E|W|I)_[A-Z0-9_]+)"', driver_text)))
     if not driver_codes:
         failures.append("driver has no structured diagnostic codes")

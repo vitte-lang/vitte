@@ -2,10 +2,10 @@ space vitte/compiler/driver
 
 export *
 
-use vitte/compiler/frontend/pipeline.{ FrontendDiagnostic, FrontendOutput, frontend_run }
+use vitte/compiler/frontend/pipeline.{ FrontendDiagnostic, FrontendMacroState, FrontendOutput, FrontendStatistics, frontend_run }
 use vitte/compiler/analysis/pipeline.{ AnalysisOutput, analysis_run_prechecked }
 use vitte/compiler/analysis/report.{ AnalysisDiagnostic, analysis_diagnostic_with_span, analysis_diagnostics_as_report, ast_span_length }
-use vitte/compiler/analysis/sema/modules.{ SemaModuleImport, module_import_from_use, imported_symbols_from_summary, summarize_module_hir }
+use vitte/compiler/analysis/sema/modules.{ SemaModuleExportSymbol, SemaModuleImport, SemaModuleSummary, module_import_from_use, imported_symbols_from_summary, summarize_module_hir }
 use vitte/compiler/analysis/sema/resolver.{ SemaResult, run_sema_hir, run_sema_hir_with_imports }
 use vitte/compiler/analysis/sema/errors.{ sema_nearby_symbol }
 use vitte/compiler/analysis/sema/scopes.{ SemaSymbol, SemaSymbolKind, SemaSymbolState, SemaVisibility, sema_symbol_full }
@@ -29,8 +29,10 @@ use vitte/compiler/backend/pipeline.{ BackendPipelineResult, compile_to_valid_ir
 use vitte/compiler/backends/llvm_bindings.{ LlvmDiagnosticLevel, LlvmToolchainPaths, default_llvm_toolchain_paths }
 use vitte/compiler/driver/exit_status.{ DriverExitStatus }
 use vitte/compiler/source/span.{ Span }
+use vitte/compiler/frontend/ast/item.{ ast_module_empty }
 use vitte/compiler/frontend/ast/node.{ ast_span_empty }
 use vitte/compiler/infrastructure/session/files.{ cache_source, normalize_path, offset_lookup, source_manager_empty, source_manager_file_id }
+use vitte/stdlib/io/fileops.{ append_file, delete_file, read_file, write_file }
 
 pick DriverDiagnosticLevel {
     Note,
@@ -1045,6 +1047,13 @@ proc parse_source(source_path: string, source_text: string) -> FrontendOutput {
     give frontend_run(source_path, source_text);
 }
 
+proc module_input_source(input: DriverModuleInput) -> string {
+    if input.source_text != "" {
+        give input.source_text;
+    }
+    give read_file(input.source_path);
+}
+
 proc driver_module_input(source_path: string, source_text: string) -> DriverModuleInput {
     give DriverModuleInput {
         source_path: source_path,
@@ -1100,7 +1109,22 @@ proc imported_symbols_for_summary(summary: SemaModuleSummary, summaries: [SemaMo
                 )];
             }
             if dependency.import_all or dependency.alias == "" {
-                set imported = imported + imported_symbols_from_summary(dependency_summary);
+                let exported_symbols: [SemaSymbol] = imported_symbols_from_summary(dependency_summary);
+                let j: u64 = 0;
+                while j < len(exported_symbols) {
+                    let selected: bool = len(dependency.names) == 0;
+                    let k: u64 = 0;
+                    while k < len(dependency.names) {
+                        if dependency.names[k] == exported_symbols[j].name {
+                            set selected = true;
+                        }
+                        set k = k + 1;
+                    }
+                    if selected {
+                        set imported = imported + [exported_symbols[j]];
+                    }
+                    set j = j + 1;
+                }
             }
         }
         set i = i + 1;
@@ -1281,6 +1305,90 @@ proc missing_module_diagnostics(frontend: FrontendOutput, hir: HirUnit, summary:
     give diagnostics;
 }
 
+proc module_path_seen(paths: [string], module_path: string) -> bool {
+    let i: u64 = 0;
+    while i < len(paths) {
+        if paths[i] == module_path {
+            give true;
+        }
+        set i = i + 1;
+    }
+    give false;
+}
+
+proc module_path_chain(paths: [string]) -> string {
+    let out: string = "";
+    let i: u64 = 0;
+    while i < len(paths) {
+        if out != "" {
+            set out = out + " -> ";
+        }
+        set out = out + paths[i];
+        set i = i + 1;
+    }
+    give out;
+}
+
+proc module_cycle_search(current_path: string, target_path: string, summaries: [SemaModuleSummary], path: [string]) -> string {
+    if current_path == target_path {
+        give module_path_chain(path + [target_path]);
+    }
+    if module_path_seen(path, current_path) {
+        give "";
+    }
+    let current_index: int = module_summary_index(summaries, current_path);
+    if current_index < 0 {
+        give "";
+    }
+    let next_path: [string] = path + [current_path];
+    let current: SemaModuleSummary = summaries[current_index as u64];
+    let i: u64 = 0;
+    while i < len(current.imports) {
+        let found: string = module_cycle_search(current.imports[i].module_path, target_path, summaries, next_path);
+        if found != "" {
+            give found;
+        }
+        set i = i + 1;
+    }
+    give "";
+}
+
+proc module_cycle_diagnostics(frontend: FrontendOutput, hir: HirUnit, summary: SemaModuleSummary, summaries: [SemaModuleSummary]) -> [AnalysisDiagnostic] {
+    let diagnostics: [AnalysisDiagnostic] = [];
+    let emitted: [string] = [];
+    let manager = cache_source(source_manager_empty(), frontend.source_path, frontend.source_text, true);
+    let file_id: u64 = source_manager_file_id(manager, frontend.source_path);
+    let i: u64 = 0;
+    while i < len(summary.imports) {
+        let import0: SemaModuleImport = summary.imports[i];
+        let chain: string = module_cycle_search(import0.module_path, summary.module_path, summaries, [summary.module_path]);
+        if chain != "" and not module_path_seen(emitted, chain) {
+            set emitted = emitted + [chain];
+            let span: Span = module_import_span(hir, import0.module_path);
+            let length: u64 = ast_span_length(span.start_column, span.end_column);
+            let span_start: u64 = offset_lookup(manager, file_id, span.start_line, span.start_column);
+            set diagnostics = diagnostics + [analysis_diagnostic_with_span(
+                "module_resolution",
+                "MOD_E_IMPORT_CYCLE",
+                "error",
+                "import cycle detected: " + chain,
+                ["cycle: " + chain],
+                "break the cycle by moving shared declarations into a lower-level module",
+                span.start_line,
+                span.start_column,
+                length,
+                true,
+                frontend.source_path,
+                file_id,
+                span_start,
+                span_start + length
+            )];
+        }
+        set i = i + 1;
+    }
+    give diagnostics;
+}
+
 proc unused_import_diagnostics(frontend: FrontendOutput, hir: HirUnit, resolved_hir: HirUnit, summary: SemaModuleSummary, summaries: [SemaModuleSummary], imported: [SemaSymbol]) -> [AnalysisDiagnostic] {
     let diagnostics: [AnalysisDiagnostic] = [];
     let manager = cache_source(source_manager_empty(), frontend.source_path, frontend.source_text, true);
@@ -1317,20 +1425,62 @@ proc unused_import_diagnostics(frontend: FrontendOutput, hir: HirUnit, resolved_
     give diagnostics;
 }
 
-proc analyze_source_set(inputs: [DriverModuleInput]) -> DriverModuleSetArtifacts {
-    let frontends: [FrontendOutput] = [];
-    let hirs: [HirUnit] = [];
+proc compact_frontend_output(frontend: FrontendOutput) -> FrontendOutput {
+    give FrontendOutput {
+        source_path: frontend.source_path,
+        source_text: "",
+        token_count: frontend.token_count,
+        grammar_version: frontend.grammar_version,
+        ast_root: ast_module_empty(),
+        toplevel_count: frontend.toplevel_count,
+        stmt_count: frontend.stmt_count,
+        expr_count: frontend.expr_count,
+        type_count: frontend.type_count,
+        pattern_count: frontend.pattern_count,
+        diagnostics: [],
+        diagnostics_total: frontend.diagnostics_total,
+        diagnostics_capped: frontend.diagnostics_capped,
+        recovery_used: frontend.recovery_used,
+        macro_trace: "",
+        statistics: FrontendStatistics {
+            source_bytes: 0,
+            source_lines: 0,
+            token_count: frontend.statistics.token_count,
+            diagnostics_total: frontend.statistics.diagnostics_total,
+            diagnostics_capped: frontend.statistics.diagnostics_capped,
+            recovery_used: frontend.statistics.recovery_used
+        },
+        macros: FrontendMacroState { expanded: frontend.macros.expanded, trace: "" },
+        valid: frontend.valid
+    };
+}
+
+proc compact_analysis_output(source_path: string, typed_hir: HirUnit, valid: bool) -> AnalysisOutput {
+    give AnalysisOutput {
+        source_path: source_path,
+        ast_root: ast_module_empty(),
+        resolved_hir: invalid_hir_unit(source_path),
+        typed_hir: invalid_hir_unit(source_path),
+        sema_ok: valid,
+        typeck_ok: valid,
+        borrowck_ok: valid,
+        const_eval_ok: valid,
+        lint_ok: valid,
+        diagnostics: [],
+        valid: valid
+    };
+}
+
+proc analyze_source_set_with_mode(inputs: [DriverModuleInput], compact: bool) -> DriverModuleSetArtifacts {
     let summaries: [SemaModuleSummary] = [];
     let valid: bool = true;
     let i: u64 = 0;
     while i < len(inputs) {
         let input: DriverModuleInput = inputs[i];
-        let frontend: FrontendOutput = parse_source(input.source_path, input.source_text);
+        let frontend: FrontendOutput = parse_source(input.source_path, module_input_source(input));
         let hir1: HirUnit = lower_ast_to_hir(frontend);
         let module_index: u64 = i + 1;
         let module_seed: u64 = module_index * 1000000;
-        set frontends = frontends + [frontend];
-        set hirs = hirs + [hir1];
         set summaries = summaries + [summarize_module_hir(hir1, module_seed)];
         set valid = valid and frontend.valid and hir1.valid;
         set i = i + 1;
@@ -1339,15 +1489,20 @@ proc analyze_source_set(inputs: [DriverModuleInput]) -> DriverModuleSetArtifacts
     let modules: [DriverModuleArtifact] = [];
     i = 0;
     while i < len(inputs) {
+        let input: DriverModuleInput = inputs[i];
+        // Rebuild one frontend/HIR pair at a time so the first pass retains only compact summaries.
+        let frontend: FrontendOutput = parse_source(input.source_path, module_input_source(input));
+        let hir1: HirUnit = lower_ast_to_hir(frontend);
         let summary: SemaModuleSummary = summaries[i];
         let imported: [SemaSymbol] = imported_symbols_for_summary(summary, summaries);
-        let sema_result: SemaResult = run_sema_hir_with_imports(hirs[i], imported);
+        let sema_result: SemaResult = run_sema_hir_with_imports(hir1, imported);
         let typeck_result: TypeckResult = run_production_typeck_hir(sema_result.hir);
         let mir0: MirUnit = lower_hir_to_mir(typeck_result.hir);
         let mir1: MirUnit = validate_mir(mir0);
-        let analysis: AnalysisOutput = analysis_run_prechecked(frontends[i], sema_result, typeck_result, mir1);
-        let module_diagnostics: [AnalysisDiagnostic] = missing_module_diagnostics(frontends[i], hirs[i], summary, summaries);
-        let unused_diagnostics: [AnalysisDiagnostic] = unused_import_diagnostics(frontends[i], hirs[i], sema_result.hir, summary, summaries, imported);
+        let analysis: AnalysisOutput = analysis_run_prechecked(frontend, sema_result, typeck_result, mir1);
+        let module_diagnostics: [AnalysisDiagnostic] = missing_module_diagnostics(frontend, hir1, summary, summaries);
+        let cycle_diagnostics: [AnalysisDiagnostic] = module_cycle_diagnostics(frontend, hir1, summary, summaries);
+        let unused_diagnostics: [AnalysisDiagnostic] = unused_import_diagnostics(frontend, hir1, sema_result.hir, summary, summaries, imported);
         if len(unused_diagnostics) > 0 {
             set analysis.diagnostics = analysis.diagnostics + unused_diagnostics;
         }
@@ -1356,17 +1511,22 @@ proc analyze_source_set(inputs: [DriverModuleInput]) -> DriverModuleSetArtifacts
             set analysis.sema_ok = false;
             set analysis.valid = false;
         }
+        if len(cycle_diagnostics) > 0 {
+            set analysis.diagnostics = analysis.diagnostics + cycle_diagnostics;
+            set analysis.sema_ok = false;
+            set analysis.valid = false;
+        }
         let artifact: DriverModuleArtifact = DriverModuleArtifact {
-            source_path: inputs[i].source_path,
+            source_path: input.source_path,
             module_path: summary.module_path,
-            frontend: frontends[i],
-            hir: hirs[i],
-            resolved_hir: sema_result.hir,
+            frontend: if compact { compact_frontend_output(frontend) } else { frontend },
+            hir: if compact { invalid_hir_unit(input.source_path) } else { hir1 },
+            resolved_hir: if compact { invalid_hir_unit(input.source_path) } else { sema_result.hir },
             typed_hir: typeck_result.hir,
             mir: mir1,
-            analysis: analysis,
+            analysis: if compact { compact_analysis_output(input.source_path, typeck_result.hir, analysis.valid) } else { analysis },
             imports: module_import_names(summary),
-            valid: frontends[i].valid and hirs[i].valid and sema_result.valid and typeck_result.valid and mir1.valid and analysis.valid
+            valid: frontend.valid and hir1.valid and sema_result.valid and typeck_result.valid and mir1.valid and analysis.valid
         };
         set modules = modules + [artifact];
         set valid = valid and artifact.valid;
@@ -1379,12 +1539,59 @@ proc analyze_source_set(inputs: [DriverModuleInput]) -> DriverModuleSetArtifacts
     };
 }
 
+proc analyze_source_set(inputs: [DriverModuleInput]) -> DriverModuleSetArtifacts {
+    give analyze_source_set_with_mode(inputs, false);
+}
+
 proc exported_names(summary: SemaModuleSummary) -> [string] {
-    give [];
+    let names: [string] = [];
+    let i: u64 = 0;
+    while i < len(summary.exports) {
+        let exported: SemaModuleExportSymbol = summary.exports[i];
+        if exported.valid and exported.name != "" {
+            set names = names + [exported.name];
+        }
+        set i = i + 1;
+    }
+    give names;
 }
 
 proc imported_external_symbol_names(summary: SemaModuleSummary, summaries: [SemaModuleSummary]) -> [string] {
-    give [];
+    let names: [string] = [];
+    let i: u64 = 0;
+    while i < len(summary.imports) {
+        let dependency_index: int = module_summary_index(summaries, summary.imports[i].module_path);
+        if dependency_index >= 0 {
+            let dependency: SemaModuleSummary = summaries[dependency_index as u64];
+            let j: u64 = 0;
+            while j < len(dependency.exports) {
+                let exported: SemaModuleExportSymbol = dependency.exports[j];
+                let qualified: string = dependency.module_path + "::" + exported.name;
+                let selected: bool = len(summary.imports[i].names) == 0;
+                let name_index: u64 = 0;
+                while name_index < len(summary.imports[i].names) {
+                    if summary.imports[i].names[name_index] == exported.name {
+                        set selected = true;
+                    }
+                    set name_index = name_index + 1;
+                }
+                let seen: bool = false;
+                let k: u64 = 0;
+                while k < len(names) {
+                    if names[k] == qualified {
+                        set seen = true;
+                    }
+                    set k = k + 1;
+                }
+                if exported.valid and selected and not seen {
+                    set names = names + [qualified];
+                }
+                set j = j + 1;
+            }
+        }
+        set i = i + 1;
+    }
+    give names;
 }
 
 proc module_kind_for_backend(artifact: DriverModuleArtifact) -> IrModuleKind {
@@ -1420,13 +1627,18 @@ proc lower_module_set_to_ir(artifacts: DriverModuleSetArtifacts, config: DriverC
     i = 0;
     while i < len(artifacts.modules) {
         let summary: SemaModuleSummary = summaries[i];
+        let module_name: string = summary.module_path;
+        if module_name == "" {
+            set module_name = artifacts.modules[i].source_path;
+        }
         let module0: IrModule = lower_mir_as_ir_module(
             i + 1,
-            summary.module_path,
+            module_name,
             artifacts.modules[i].source_path,
             module_kind_for_backend(artifacts.modules[i]),
             target,
             artifacts.modules[i].mir,
+            artifacts.modules[i].typed_hir.module.items,
             exported_names(summary),
             module_import_names(summary),
             imported_external_symbol_names(summary, summaries)
@@ -1444,10 +1656,180 @@ proc lower_module_set_to_ir(artifacts: DriverModuleSetArtifacts, config: DriverC
     }
 
     if entry_id == 0 {
-        set entry_id = built.modules[0].functions[0].id;
+        let module_index: u64 = 0;
+        while module_index < len(built.modules) and entry_id == 0 {
+            let function_index: u64 = 0;
+            while function_index < len(built.modules[module_index].functions) and entry_id == 0 {
+                let candidate: IrFunction = built.modules[module_index].functions[function_index];
+                if candidate.valid {
+                    set entry_id = candidate.id;
+                }
+                set function_index = function_index + 1;
+            }
+            set module_index = module_index + 1;
+        }
+    }
+    if entry_id == 0 {
+        give unit_with_state(built, IrUnitState::Invalid);
     }
     let unit1: IrUnit = unit_set_entry(built, entry_id);
     give verify_unit(unit_with_state(unit1, IrUnitState.Lowered));
+}
+
+proc llvm_module_fragment(assembly: string, first: bool) -> string {
+    if first {
+        give assembly;
+    }
+    let aggregate_marker: string = "%VitteAggregate = type { i64, i8* }\n";
+    let marker_index: int = find(assembly, aggregate_marker);
+    if marker_index < 0 {
+        give assembly;
+    }
+    give slice(assembly, (marker_index as u64) + len(aggregate_marker), len(assembly));
+}
+
+proc streaming_codegen_empty(config: DriverCompileConfig) -> CodegenResult {
+    give CodegenResult {
+        target: config.backend_name,
+        assembly: "",
+        object_text: "",
+        object_format: "llvm-object",
+        profile_name: config.profile_name,
+        section_count: 0,
+        diagnostic_count: 0,
+        native_toolchain_ready: false,
+        native_toolchain_summary: "",
+        instruction_selected: false,
+        registers_allocated: false,
+        object_ready: false,
+        errors: [],
+        diagnostics: [],
+        valid: false
+    };
+}
+
+form StreamingModuleResult {
+    assembly: string
+    has_entry: bool
+    valid: bool
+}
+
+proc streaming_module_summary(input: DriverModuleInput, module_index: u64) -> SemaModuleSummary {
+    let frontend: FrontendOutput = parse_source(input.source_path, module_input_source(input));
+    let hir1: HirUnit = lower_ast_to_hir(frontend);
+    give summarize_module_hir(hir1, module_index * 1000000);
+}
+
+proc compile_streaming_module(input: DriverModuleInput, module_index: u64, summary: SemaModuleSummary, summaries: [SemaModuleSummary], target: IrTarget, config: DriverCompileConfig) -> StreamingModuleResult {
+    let frontend: FrontendOutput = parse_source(input.source_path, module_input_source(input));
+    let hir1: HirUnit = lower_ast_to_hir(frontend);
+    let imported: [SemaSymbol] = imported_symbols_for_summary(summary, summaries);
+    let sema_result: SemaResult = run_sema_hir_with_imports(hir1, imported);
+    let typeck_result: TypeckResult = run_production_typeck_hir(sema_result.hir);
+    let mir1: MirUnit = validate_mir(lower_hir_to_mir(typeck_result.hir));
+    let analysis: AnalysisOutput = analysis_run_prechecked(frontend, sema_result, typeck_result, mir1);
+    let module_valid: bool = frontend.valid and hir1.valid and sema_result.valid and typeck_result.valid and mir1.valid and analysis.valid;
+    if not module_valid {
+        give StreamingModuleResult { assembly: "", has_entry: false, valid: false };
+    }
+    let module0: IrModule = lower_mir_as_ir_module(
+        module_index,
+        if summary.module_path != "" { summary.module_path } else { input.source_path },
+        input.source_path,
+        IrModuleKind.Library,
+        target,
+        mir1,
+        typeck_result.hir.module.items,
+        [],
+        module_import_names(summary),
+        []
+    );
+    let single_unit0: IrUnit = unit_add_module(unit_with_source_path(unit_empty(target), input.source_path), module0);
+    let candidate_entry: u64 = if len(module0.functions) > 0 { module0.functions[0].id } else { 0 };
+    let single_unit: IrUnit = verify_unit(unit_set_entry(unit_with_state(single_unit0, IrUnitState::Lowered), candidate_entry));
+    if not unit_is_valid(single_unit) {
+        give StreamingModuleResult { assembly: "", has_entry: false, valid: false };
+    }
+    let codegen0: CodegenResult = run_codegen_llvm_with_profile(single_unit, config.profile_name, config.packaging, config.deterministic, config.debug_enabled, config.prefer_native_toolchain, config.llvm_toolchain);
+    if not codegen0.valid {
+        give StreamingModuleResult { assembly: "", has_entry: false, valid: false };
+    }
+    let has_entry: bool = false;
+    let function_index: u64 = 0;
+    while function_index < len(module0.functions) {
+        if module0.functions[function_index].name == "main" {
+            set has_entry = true;
+        }
+        set function_index = function_index + 1;
+    }
+    give StreamingModuleResult { assembly: codegen0.assembly, has_entry: has_entry, valid: true };
+}
+
+proc compile_source_set_streaming(inputs: [DriverModuleInput], config: DriverCompileConfig) -> DriverBackendModuleSetResult {
+    let target: IrTarget = target_from_name(config.target_name);
+    let summaries: [SemaModuleSummary] = [];
+    let summary_valid: bool = target.valid;
+    let i: u64 = 0;
+    while i < len(inputs) {
+        set summaries = summaries + [streaming_module_summary(inputs[i], i + 1)];
+        set i = i + 1;
+    }
+    let empty_unit: IrUnit = unit_with_state(unit_empty(target), IrUnitState::Invalid);
+    if not summary_valid {
+        give DriverBackendModuleSetResult {
+            analysis: DriverModuleSetArtifacts { modules: [], valid: false },
+            config: config,
+            ir_unit: empty_unit,
+            codegen: streaming_codegen_empty(config),
+            artifact: artifact_create(1, "module-set-streaming-invalid", link_target_from_name(config.target_name)),
+            entry_symbol: "",
+            message: "streaming module-set summary failed",
+            diagnostics: [],
+            valid: false
+        };
+    }
+    let assembly_path: string = "target/bootstrap-real/streaming-module-set.ll";
+    let prepared: bool = delete_file(assembly_path) or write_file(assembly_path, "");
+    let first_module: bool = true;
+    let all_valid: bool = prepared;
+    let entry_symbol: string = "";
+    i = 0;
+    while i < len(inputs) {
+        let module_result: StreamingModuleResult = compile_streaming_module(inputs[i], i + 1, summaries[i], summaries, target, config);
+        if module_result.valid {
+            let fragment: string = llvm_module_fragment(module_result.assembly, first_module);
+            let written: bool = if first_module {
+                write_file(assembly_path, fragment)
+            } else {
+                append_file(assembly_path, "\n" + fragment)
+            };
+            if not written {
+                set all_valid = false;
+            }
+            set first_module = false;
+            if module_result.has_entry and entry_symbol == "" {
+                set entry_symbol = "main";
+            }
+        } else {
+            set all_valid = false;
+        }
+        set i = i + 1;
+    }
+    let assembled: string = read_file(assembly_path);
+    let codegen: CodegenResult = streaming_codegen_empty(config);
+    set codegen.assembly = assembled;
+    set codegen.valid = all_valid and assembled != "";
+    give DriverBackendModuleSetResult {
+        analysis: DriverModuleSetArtifacts { modules: [], valid: all_valid },
+        config: config,
+        ir_unit: empty_unit,
+        codegen: codegen,
+        artifact: artifact_create(1, "module-set-streaming", link_target_from_name(config.target_name)),
+        entry_symbol: entry_symbol,
+        message: if codegen.valid { "streaming module-set compilation completed" } else { "streaming module-set code generation failed" },
+        diagnostics: [],
+        valid: codegen.valid and entry_symbol != ""
+    };
 }
 
 proc compile_source_set_with_config(inputs: [DriverModuleInput], config: DriverCompileConfig) -> DriverBackendModuleSetResult {
@@ -1481,7 +1863,10 @@ proc compile_source_set_with_config(inputs: [DriverModuleInput], config: DriverC
         };
     }
     let support_error: string = config_support_message(config);
-    let analyzed: DriverModuleSetArtifacts = analyze_source_set(inputs);
+    if len(inputs) > 32 and config.backend_name == "llvm" {
+        give compile_source_set_streaming(inputs, config);
+    }
+    let analyzed: DriverModuleSetArtifacts = analyze_source_set_with_mode(inputs, false);
     let ir0: IrUnit = lower_module_set_to_ir(analyzed, config);
     let codegen: CodegenResult = if support_error == "" and unit_is_valid(ir0) {
         if config.backend_name == "llvm" or config.backend_name == "llvm-ir" {

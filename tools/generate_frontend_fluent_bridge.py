@@ -7,6 +7,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "src" / "vitte" / "compiler" / "infrastructure" / "diagnostics" / "fluent_catalog.vit"
+OUT_DIR = OUT.parent
 CORE_CODES = ROOT / "tests" / "diag_snapshots" / "core_diagnostic_codes.txt"
 sys.path.insert(0, str(ROOT / "tools"))
 from diagnostics_locales import SUPPORTED_DIAGNOSTIC_LOCALES, supported_locale_codes
@@ -289,22 +290,106 @@ def render() -> str:
     return "\n".join(lines)
 
 
+def render_split() -> dict[Path, str]:
+    generated = render().splitlines()
+    locale_codes = supported_locale_codes()
+    block_starts = {
+        locale: next(
+            index
+            for index, line in enumerate(generated)
+            if line.startswith(f"proc fluent_catalog_fields_{symbol_for_locale(locale)}(")
+        )
+        for locale in locale_codes
+    }
+    dispatcher_start = next(
+        index
+        for index, line in enumerate(generated)
+        if line.startswith("proc fluent_catalog_fields(locale:")
+    )
+    first_locale_start = min(block_starts.values())
+    main_lines = generated[:first_locale_start] + generated[dispatcher_start:]
+    import_lines = [
+        f"use vitte/compiler/infrastructure/diagnostics/fluent_catalog_{symbol_for_locale(locale)}.{{ fluent_catalog_fields_{symbol_for_locale(locale)} }}"
+        for locale in locale_codes
+    ]
+    export_index = main_lines.index("export *") + 1
+    main_lines[export_index:export_index] = ["", *import_lines]
+
+    outputs: dict[Path, str] = {
+        OUT: "\n".join(main_lines).rstrip() + "\n"
+    }
+    for locale in locale_codes:
+        start = block_starts[locale]
+        following = [index for index in block_starts.values() if index > start]
+        end = min(following + [dispatcher_start])
+        suffix = symbol_for_locale(locale)
+        locale_lines = [
+            f"space vitte/compiler/infrastructure/diagnostics/fluent_catalog_{suffix}",
+            "",
+            "export *",
+            "",
+            "form FluentDiagnosticFields {",
+            "    message: string",
+            "    primary_label: string",
+            "    secondary_label: string",
+            "    cause: string",
+            "    help: string",
+            "    fix_it: string",
+            "    corrected_example: string",
+            "    note: string",
+            "    lsp_code_action_title: string",
+            "    valid: bool",
+            "}",
+            "",
+            "proc fluent_diagnostic_fields(message: string, primary_label: string, secondary_label: string, cause: string, help: string, fix_it: string, corrected_example: string, note: string, lsp_code_action_title: string) -> FluentDiagnosticFields {",
+            "    give FluentDiagnosticFields {",
+            "        message: message,",
+            "        primary_label: primary_label,",
+            "        secondary_label: secondary_label,",
+            "        cause: cause,",
+            "        help: help,",
+            "        fix_it: fix_it,",
+            "        corrected_example: corrected_example,",
+            "        note: note,",
+            "        lsp_code_action_title: lsp_code_action_title,",
+            "        valid: message != \"\" and primary_label != \"\" and cause != \"\" and help != \"\"",
+            "    };",
+            "}",
+            "",
+            "proc fluent_diagnostic_fields_empty() -> FluentDiagnosticFields {",
+            "    give fluent_diagnostic_fields(\"\", \"\", \"\", \"\", \"\", \"\", \"\", \"\", \"\");",
+            "}",
+            "",
+            *generated[start:end],
+        ]
+        outputs[OUT_DIR / f"fluent_catalog_{suffix}.vit"] = "\n".join(locale_lines).rstrip() + "\n"
+    return outputs
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate the Vitte Fluent diagnostic catalog")
     parser.add_argument("--check", action="store_true", help="fail when the generated catalog is stale")
     args = parser.parse_args()
-    generated = render()
+    generated = render_split()
     if args.check:
-        if not OUT.is_file() or OUT.read_text(encoding="utf-8") != generated:
-            print(
-                f"[frontend-fluent][error] stale generated catalog: {OUT.relative_to(ROOT)}",
-                file=sys.stderr,
-            )
+        failures = [
+            path.relative_to(ROOT).as_posix()
+            for path, text in generated.items()
+            if not path.is_file() or path.read_text(encoding="utf-8") != text
+        ]
+        actual_locale_files = set(OUT_DIR.glob("fluent_catalog_*.vit"))
+        stale_locale_files = actual_locale_files - set(generated)
+        failures.extend(path.relative_to(ROOT).as_posix() for path in sorted(stale_locale_files))
+        if failures:
+            print("[frontend-fluent][error] stale generated catalog files:", file=sys.stderr)
+            for failure in failures:
+                print(f"  - {failure}", file=sys.stderr)
             return 1
-        print(f"[frontend-fluent] check ok {OUT.relative_to(ROOT)}")
+        print(f"[frontend-fluent] check ok files={len(generated)}")
         return 0
-    OUT.write_text(generated, encoding="utf-8")
-    print(f"[frontend-fluent] wrote {OUT.relative_to(ROOT)}")
+    for path, text in generated.items():
+        path.write_text(text, encoding="utf-8")
+    print(f"[frontend-fluent] wrote files={len(generated)}")
     return 0
 
 

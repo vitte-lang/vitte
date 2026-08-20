@@ -9,6 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 EN_FTL = ROOT / "locales" / "en" / "diagnostics.ftl"
 CATALOG = ROOT / "src/vitte/compiler/infrastructure/diagnostics/fluent_catalog.vit"
+CATALOG_SOURCES = (CATALOG, *sorted(CATALOG.parent.glob("fluent_catalog_*.vit")))
 
 REQUIRED_CODES: dict[str, str] = {
     "DRIVER_E_MISSING_COMMAND": "missing compiler command",
@@ -75,7 +76,7 @@ def parse_ftl(path: Path) -> dict[str, str]:
 def main() -> int:
     failures: list[str] = []
     en = parse_ftl(EN_FTL)
-    catalog = CATALOG.read_text(encoding="utf-8")
+    catalog = "\n".join(path.read_text(encoding="utf-8") for path in CATALOG_SOURCES)
 
     for code, expected in REQUIRED_CODES.items():
         actual = en.get(code)

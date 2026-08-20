@@ -15,6 +15,7 @@ LSP_RENDERER = ROOT / "src/vitte/compiler/diagnostics/lsp.vit"
 DRIVER = ROOT / "src/vitte/compiler/driver/compiler.vit"
 TYPED_CATALOG = ROOT / "src/vitte/compiler/diagnostics/catalog.vit"
 CATALOG = ROOT / "src/vitte/compiler/infrastructure/diagnostics/fluent_catalog.vit"
+CATALOG_SOURCES = (CATALOG, *sorted(CATALOG.parent.glob("fluent_catalog_*.vit")))
 EN = ROOT / "locales/en/diagnostics.ftl"
 FR = ROOT / "locales/fr/diagnostics.ftl"
 EN_EXPLAIN = ROOT / "locales/en/diagnostics_explain.ftl"
@@ -69,7 +70,7 @@ def main() -> int:
     lsp_renderer = LSP_RENDERER.read_text(encoding="utf-8")
     driver = DRIVER.read_text(encoding="utf-8")
     typed_catalog = TYPED_CATALOG.read_text(encoding="utf-8")
-    catalog = CATALOG.read_text(encoding="utf-8")
+    catalog = "\n".join(path.read_text(encoding="utf-8") for path in CATALOG_SOURCES)
     en = parse_ftl(EN)
     fr = parse_ftl(FR)
     en_explain = parse_ftl(EN_EXPLAIN)
