@@ -14,6 +14,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 BOOTSTRAP = ROOT / "target" / "bootstrap-c17" / "vitte-bootstrap"
 SOURCE = ROOT / "tests" / "maximal_graph" / "maximal_graph.vit"
+CONSTANTS_SOURCE = ROOT / "tests" / "maximal_graph" / "constants_complex.vit"
 REPORT = ROOT / "target" / "reports" / "maximal_graph_stability.json"
 OUTPUT_DIR = ROOT / "target" / "reports" / "maximal_graph"
 
@@ -45,6 +46,27 @@ def main() -> int:
     checks["source_checks"] = check.returncode == 0
     if check.returncode != 0:
         failures.append("maximal graph source check failed: " + check.stderr.strip())
+
+    constants_check = run([str(BOOTSTRAP), "check", str(CONSTANTS_SOURCE)], env=env)
+    checks["constants_complex_check"] = constants_check.returncode == 0
+    if constants_check.returncode != 0:
+        failures.append("constants and complex functions check failed: " + constants_check.stderr.strip())
+
+    constants_output = OUTPUT_DIR / "constants_complex"
+    constants_build = run(
+        [str(BOOTSTRAP), "build", str(CONSTANTS_SOURCE), "-o", str(constants_output)],
+        env=env,
+    )
+    checks["constants_complex_build"] = constants_build.returncode == 0 and constants_output.is_file()
+    if not checks["constants_complex_build"]:
+        failures.append("constants and complex functions build failed: " + constants_build.stderr.strip())
+    if constants_output.is_file():
+        constants_run = run([str(constants_output)], env=env)
+        checks["constants_complex_execution"] = constants_run.returncode == 0
+        if constants_run.returncode != 0:
+            failures.append(f"constants and complex functions exited with {constants_run.returncode}")
+    else:
+        checks["constants_complex_execution"] = False
 
     first = OUTPUT_DIR / "maximal_graph_first"
     second = OUTPUT_DIR / "maximal_graph_second"
