@@ -8,6 +8,7 @@ use vitte/compiler/diagnostics/diagnostic.{
     DiagnosticReport,
     DiagnosticSeverity,
     DiagnosticSeverity as SemaSeverity,
+    severity_name,
     DiagnosticPhase,
     DiagnosticApplicability,
     DiagnosticSuggestionKind,
@@ -29,7 +30,8 @@ use vitte/compiler/diagnostics/diagnostic.{
     secondary_label,
     add_unique_diagnostic,
     merge_diagnostics,
-    diagnostic_report
+    diagnostic_report,
+    span_range
 }
 
 use vitte/compiler/diagnostics/catalog.{
@@ -94,21 +96,7 @@ proc sema_span_empty() -> SourceSpan {
 }
 
 proc ast_span_to_source_span(span: Span) -> SourceSpan {
-    let length: u64 = 1;
-
-    if span.end_line == span.start_line and span.end_column > span.start_column {
-        set length = span.end_column - span.start_column;
-    }
-
-    give SourceSpan {
-        file: span.file,
-        start_line: span.start_line,
-        start_column: span.start_column,
-        end_line: span.end_line,
-        end_column: span.end_column,
-        length: length,
-        valid: span.start_line > 0 and span.start_column > 0
-    };
+    give span_range(span.file, span.start_line, span.start_column, span.end_line, span.end_column);
 }
 
 proc sema_phase_name(phase: SemaPhase) -> string {
@@ -185,20 +173,8 @@ proc sema_kind_name(kind: SemaDiagnosticKind) -> string {
     give "unknown";
 }
 
-proc sema_severity_name(severity: SemaSeverity) -> string {
-    if severity == SemaSeverity.Help {
-        give "help";
-    }
-    if severity == SemaSeverity.Note {
-        give "note";
-    }
-    if severity == SemaSeverity.Warning {
-        give "warning";
-    }
-    if severity == SemaSeverity.Fatal {
-        give "fatal";
-    }
-    give "error";
+proc sema_severity_name(severity: DiagnosticSeverity) -> string {
+    give severity_name(severity);
 }
 
 proc sema_resolution_failure_name(kind: SemaResolutionFailureKind) -> string {

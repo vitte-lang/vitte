@@ -75,6 +75,68 @@ proc first_clause_index(text: string) -> int {
   give end_index;
 }
 
+proc normalize_module_path_text(text: string) -> string {
+  let trimmed: string = trim(text);
+  let out: string = "";
+  let i: u64 = 0;
+  while i < len(trimmed) {
+    let ch: string = slice(trimmed, i, i + 1);
+    if ch == "." and i + 1 < len(trimmed) {
+      set out = out + "/";
+    } elif ch != " " and ch != "\t" {
+      set out = out + ch;
+    }
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc import_selection_source_name(text: string) -> string {
+  let trimmed: string = trim(text);
+  let alias_index: int = find(trimmed, " as ");
+  if alias_index >= 0 {
+    give trim(slice(trimmed, 0, alias_index));
+  }
+  give trimmed;
+}
+
+proc import_selection_local_name(text: string) -> string {
+  let trimmed: string = trim(text);
+  let alias_index: int = find(trimmed, " as ");
+  if alias_index >= 0 {
+    let alias: string = trim(slice(trimmed, alias_index + 4, len(trimmed)));
+    if alias != "" {
+      give alias;
+    }
+  }
+  give import_selection_source_name(trimmed);
+}
+
+proc import_selects_name(import0: SemaModuleImport, exported_name: string) -> bool {
+  if import0.import_all and len(import0.names) == 0 {
+    give true;
+  }
+  let i: u64 = 0;
+  while i < len(import0.names) {
+    if import_selection_source_name(import0.names[i]) == exported_name {
+      give true;
+    }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc import_local_name_for(import0: SemaModuleImport, exported_name: string) -> string {
+  let i: u64 = 0;
+  while i < len(import0.names) {
+    if import_selection_source_name(import0.names[i]) == exported_name {
+      give import_selection_local_name(import0.names[i]);
+    }
+    set i = i + 1;
+  }
+  give exported_name;
+}
+
 proc module_import_from_use(text: string) -> SemaModuleImport {
   let trimmed: string = trim(text);
   if trimmed == "" {
@@ -89,19 +151,24 @@ proc module_import_from_use(text: string) -> SemaModuleImport {
 
   let end_index: int = first_clause_index(trimmed);
   let alias_index: int = find(trimmed, " as ");
+  let alias_brace_index: int = find(trimmed, "{");
   let alias: string = "";
-  if alias_index >= 0 {
+  if alias_index >= 0 and (alias_brace_index < 0 or alias_index < alias_brace_index) {
     let alias_end: int = len(trimmed);
-    let brace_index: int = find(trimmed, "{");
-    if brace_index >= 0 and brace_index > alias_index {
-      set alias_end = brace_index;
+    if alias_brace_index >= 0 and alias_brace_index > alias_index {
+      set alias_end = alias_brace_index;
     }
     set alias = trim(slice(trimmed, alias_index + 4, alias_end));
   }
 
-  let module_path: string = trim(slice(trimmed, 0, end_index));
+  let raw_module_path: string = normalize_module_path_text(slice(trimmed, 0, end_index));
+  let module_path: string = if ends_with(raw_module_path, ".") {
+    slice(raw_module_path, 0, len(raw_module_path) - 1)
+  } else {
+    raw_module_path
+  };
   let names: [string] = [];
-  let import_all: bool = alias == "";
+  let import_all: bool = false;
   let brace_index: int = find(trimmed, "{");
   if brace_index >= 0 {
     let close_index: int = find(slice(trimmed, brace_index, len(trimmed)), "}");
@@ -110,18 +177,27 @@ proc module_import_from_use(text: string) -> SemaModuleImport {
       set body_end = brace_index + close_index;
     }
     let body: string = trim(slice(trimmed, brace_index + 1, body_end));
-    let entries: [string] = split(body, ",");
+    let current: string = "";
     let i: u64 = 0;
-    while i < len(entries) {
-      let name: string = trim(entries[i]);
-      if name == "*" {
-        set import_all = true;
-      } elif name != "" {
-        set names = names + [name];
+    while i <= len(body) {
+      let at_end: bool = i == len(body);
+      let ch: string = if at_end { "," } else { slice(body, i, i + 1) };
+      if ch == "," {
+        let name: string = trim(current);
+        if name == "*" {
+          set import_all = true;
+        } elif name != "" {
+          set names = names + [name];
+        }
+        set current = "";
+      } else {
+        set current = current + ch;
       }
       set i = i + 1;
     }
   } elif find(trimmed, "*") >= 0 {
+    set import_all = true;
+  } elif alias == "" {
     set import_all = true;
   }
   give SemaModuleImport {
@@ -177,7 +253,7 @@ proc summarize_module_hir(hir: HirUnit, module_id_base: u64) -> SemaModuleSummar
     set i = i + 1;
   }
 
-  i = 0;
+  set i = 0;
   while i < len(hir.module.items) {
     let item: HirItem = hir.module.items[i];
     if item_exported(export_all, item) {
