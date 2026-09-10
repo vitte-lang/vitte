@@ -94,6 +94,16 @@ proc type_binding_env_clear_after(env: [TypeBinding], start: u64) -> [TypeBindin
   give out;
 }
 
+proc type_binding_env_empty_slots(count: u64) -> [TypeBinding] {
+  let out: [TypeBinding] = [];
+  let i: u64 = 0;
+  while i < count {
+    set out = out + [type_binding("", "")];
+    set i = i + 1;
+  }
+  give out;
+}
+
 proc legacy_implicit_mutability_marker() -> string {
   give "@vitte-bootstrap-legacy-implicit-mutability";
 }
@@ -974,11 +984,10 @@ proc check_stmt_tree(diagnostics: [Diagnostic], env: [TypeBinding], stmts: [HirS
   while j < len(stmts) {
     let stmt: HirStmt = stmts[j];
     let typed_expr: HirExpr = annotate_expr(current_env, stmt.expr);
-    let result: ExprTypeResult = if bootstrap_legacy {
-      expr_result(typed_expr.inferred_type, [], typed_expr.inferred_type != "unknown")
-    } else {
-      infer_expr_type(current_env, stmt.expr)
-    };
+    let result: ExprTypeResult = expr_result(typed_expr.inferred_type, [], typed_expr.inferred_type != "unknown");
+    if not bootstrap_legacy {
+      set result = infer_expr_type(current_env, stmt.expr);
+    }
     set out = out + result.diagnostics;
     if stmt.annotation_text != "" {
       set out = validate_declared_type(out, current_env, stmt.annotation_text, "local declaration `" + stmt.name + "`", stmt.span);
@@ -1067,14 +1076,18 @@ proc check_stmt_tree(diagnostics: [Diagnostic], env: [TypeBinding], stmts: [HirS
   };
 }
 
-proc check_module(diagnostics: [Diagnostic], env: [TypeBinding], hir: HirUnit) -> TypeckResult {
+proc check_module_range(diagnostics: [Diagnostic], env: [TypeBinding], hir: HirUnit, item_start: u64, item_end: u64) -> TypeckResult {
   let out: [Diagnostic] = diagnostics;
   let items: [HirItem] = hir.module.items;
   let module_env: [TypeBinding] = type_binding_env_merge(type_binding_env_merge(env, builtin_type_bindings()), nominal_type_bindings(hir.module.items));
   let module_binding_count: u64 = len(module_env);
   let bootstrap_legacy: bool = env_has(module_env, legacy_implicit_mutability_marker());
-  let i: u64 = 0;
-  while i < len(hir.module.items) {
+  // Local bindings used to grow the full module environment once per `let`,
+  // retaining every previous array until the module rewind. Reserve reusable
+  // invalid slots once and fill them in place during each item walk.
+  let reusable_local_slots: [TypeBinding] = type_binding_env_empty_slots(256);
+  let i: u64 = item_start;
+  while i < len(hir.module.items) and i < item_end {
     set module_env = type_binding_env_clear_after(module_env, module_binding_count);
     let item: HirItem = hir.module.items[i];
     let typeck_item_progress_written: bool = write_file(
@@ -1115,7 +1128,7 @@ proc check_module(diagnostics: [Diagnostic], env: [TypeBinding], hir: HirUnit) -
       }
     }
 
-    let item_env: [TypeBinding] = module_env;
+    let item_env: [TypeBinding] = module_env + reusable_local_slots;
     set item_env = type_binding_env_add_reuse(item_env, generic_param_type_bindings(item.generic_params));
     set item_env = type_binding_env_add_reuse(item_env, member_env(item.params, ""));
     let stmt_result: TypeckStmtWalk = check_stmt_tree([], item_env, item.stmts, item.annotation_text, item.name);
@@ -1151,4 +1164,8 @@ proc check_module(diagnostics: [Diagnostic], env: [TypeBinding], hir: HirUnit) -
       valid: hir.valid
   };
   give typeck_result(typed_hir, out);
+}
+
+proc check_module(diagnostics: [Diagnostic], env: [TypeBinding], hir: HirUnit) -> TypeckResult {
+  give check_module_range(diagnostics, env, hir, 0, len(hir.module.items));
 }
