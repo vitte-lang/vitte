@@ -186,7 +186,7 @@ proc pseudo_symbol_table(unit: IrUnit) -> string {
         while j < len(module0.functions) {
             let fn0 = module0.functions[j];
 
-            let block_count: string = len(fn0.blocks) as string;
+            let block_count: string = to_string(len(fn0.blocks));
             let line: string = pseudo_qualified_symbol(module0.name, fn0.name) + " " + pseudo_kv("linkage", pseudo_linkage_text(fn0.linkage)) + " " + pseudo_kv("blocks", block_count) + " " + pseudo_kv("entry", pseudo_bool_text(fn0.is_entry));
 
             set built = pseudo_append_line(built, line);
@@ -196,7 +196,7 @@ proc pseudo_symbol_table(unit: IrUnit) -> string {
         set j = 0 as u64;
         while j < len(module0.nominal_types) {
             let nominal = module0.nominal_types[j];
-            let line: string = pseudo_qualified_symbol(module0.name, nominal.name) + " " + pseudo_kv("kind", nominal.kind) + " " + pseudo_kv("members", nominal.member_count as string) + " " + pseudo_kv("exported", pseudo_bool_text(nominal.exported));
+            let line: string = pseudo_qualified_symbol(module0.name, nominal.name) + " " + pseudo_kv("kind", nominal.kind) + " " + pseudo_kv("members", to_string(nominal.member_count)) + " " + pseudo_kv("exported", pseudo_bool_text(nominal.exported));
             if len(nominal.member_names) > 0 {
                 set line = line + " " + pseudo_kv("member_names", join(nominal.member_names, ","));
             }
@@ -257,9 +257,9 @@ proc pseudo_metadata_table(unit: IrUnit) -> string {
                 + " "
                 + pseudo_kv("target", nominal.target_type)
                 + " "
-                + pseudo_kv("generics", nominal.generic_count as string)
+                + pseudo_kv("generics", to_string(nominal.generic_count))
                 + " "
-                + pseudo_kv("members", nominal.member_count as string)
+                + pseudo_kv("members", to_string(nominal.member_count))
                 + " "
                 + pseudo_kv("member_names", join(nominal.member_names, ","))
                 + " "
@@ -299,9 +299,9 @@ proc pseudo_debug_section(unit: IrUnit) -> string {
     set built = pseudo_append_line(built, pseudo_kv("target", pseudo_target_name(unit)));
     set built = pseudo_append_line(built, pseudo_kv("arch", unit.target.triple.arch));
     set built = pseudo_append_line(built, pseudo_kv("os", unit.target.triple.os));
-    let pointer_width: string = unit.target.pointer_width as string;
-    let module_count: string = len(unit.modules) as string;
-    let entry_function_id: string = unit.entry_function_id as string;
+    let pointer_width: string = to_string(unit.target.pointer_width);
+    let module_count: string = to_string(len(unit.modules));
+    let entry_function_id: string = to_string(unit.entry_function_id);
     set built = pseudo_append_line(built, pseudo_kv("pointer_width", pointer_width));
     set built = pseudo_append_line(built, pseudo_kv("module_count", module_count));
     set built = pseudo_append_line(built, pseudo_kv("entry_symbol", entry_symbol));
@@ -313,7 +313,7 @@ proc pseudo_debug_section(unit: IrUnit) -> string {
 
 proc pseudo_metadata_section(unit: IrUnit, config: PseudoObjectConfig) -> string {
     let built: string = "";
-    let section_count: string = pseudo_object_section_count(config) as string;
+    let section_count: string = to_string(pseudo_object_section_count(config));
 
     set built = pseudo_append_line(built, pseudo_kv("producer", "vittec"));
     set built = pseudo_append_line(built, pseudo_kv("object_format", pseudo_object_format_text(config.format)));
@@ -373,8 +373,8 @@ proc pseudo_emit_section(text: string, kind: PseudoSectionKind, body: string) ->
 
 proc build_pseudo_object_text_with_config(unit: IrUnit, assembly: string, config: PseudoObjectConfig) -> string {
     let built: string = "";
-    let module_count: string = len(unit.modules) as string;
-    let section_count: string = pseudo_object_section_count(config) as string;
+    let module_count: string = to_string(len(unit.modules));
+    let section_count: string = to_string(pseudo_object_section_count(config));
 
     set built = pseudo_append_line(built, "vitte-object-model");
     set built = pseudo_append_line(built, pseudo_kv("format", pseudo_object_format_text(config.format)));
