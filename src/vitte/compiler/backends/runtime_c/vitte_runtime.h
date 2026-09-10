@@ -41,6 +41,23 @@ void vitte_slice_string_release(VitteSliceString value);
 void vitte_owned_slice_string_release(VitteSliceString value);
 VitteString vitte_string_concat(VitteString a, VitteString b);
 VitteString vitte_i32_to_string(int32_t v);
+const char* vitte_llvm_string_concat(const char* a, const char* b);
+int32_t vitte_llvm_string_compare(const char* a, const char* b);
+const char* vitte_llvm_i64_to_string(int64_t value);
+uint64_t vitte_llvm_string_len(const char* value);
+const char* vitte_llvm_string_slice(const char* value, uint64_t start, uint64_t end);
+int64_t vitte_llvm_string_find(const char* value, const char* needle);
+const char* vitte_llvm_string_trim(const char* value);
+int32_t vitte_llvm_string_starts_with(const char* value, const char* prefix);
+int32_t vitte_llvm_string_ends_with(const char* value, const char* suffix);
+void vitte_llvm_print(const char* value);
+void vitte_llvm_println(const char* value);
+void vitte_llvm_eprint(const char* value);
+void vitte_llvm_eprintln(const char* value);
+void vitte_llvm_panic(const char* value);
+void vitte_llvm_assert(int32_t condition);
+void* vitte_llvm_array_alloc(uint64_t count, uint64_t element_size);
+void* vitte_llvm_array_at(void* data, uint64_t count, uint64_t index, uint64_t element_size);
 void vitte_set_args(int argc, const char **argv);
 VitteSliceString cli_args(void);
 int32_t vitte_host_runtime_available(void);
@@ -62,5 +79,7 @@ int32_t vitte_host_emit_assembly_object(VitteString assembly_text, VitteString a
 int32_t vitte_host_verify_native_object(VitteString object_path, VitteString target_triple, VitteString expected_symbol, int32_t require_relocations, int32_t require_debug);
 int32_t vitte_host_link_executable(VitteString linker_path, VitteString target_triple, VitteString sysroot_path, VitteString object_path, VitteString runtime_source_path, VitteString runtime_include_path, VitteString executable_path);
 int32_t vitte_host_run_executable(VitteString executable_path);
+uint64_t vitte_host_memory_checkpoint(void);
+int32_t vitte_host_memory_rewind(uint64_t checkpoint);
 
 #endif

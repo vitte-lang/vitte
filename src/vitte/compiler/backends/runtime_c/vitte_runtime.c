@@ -1,4 +1,7 @@
 #define _POSIX_C_SOURCE 200809L
+#if defined(__APPLE__) && !defined(_DARWIN_C_SOURCE)
+#define _DARWIN_C_SOURCE
+#endif
 
 #include "vitte_runtime.h"
 
@@ -13,6 +16,321 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+
+#if defined(__APPLE__)
+#include <malloc/malloc.h>
+#elif defined(__GLIBC__)
+#include <malloc.h>
+#endif
+
+typedef struct {
+  void* pointer;
+  uint64_t generation;
+} VitteRuntimeAllocation;
+
+typedef struct {
+  max_align_t alignment;
+  uint64_t generation;
+  size_t index;
+} VitteRuntimeAllocationHeader;
+
+static VitteRuntimeAllocation* vitte_runtime_allocations = NULL;
+static size_t vitte_runtime_allocation_count = 0;
+static size_t vitte_runtime_allocation_capacity = 0;
+static uint64_t vitte_runtime_allocation_generation = 0;
+
+static void vitte_runtime_allocation_track(void* pointer, VitteRuntimeAllocationHeader* header) {
+  VitteRuntimeAllocation* grown;
+  size_t capacity;
+  if (pointer == NULL) {
+    return;
+  }
+  if (vitte_runtime_allocation_count == vitte_runtime_allocation_capacity) {
+    capacity = vitte_runtime_allocation_capacity == 0 ? 4096 : vitte_runtime_allocation_capacity * 2;
+    grown = (VitteRuntimeAllocation*)realloc(
+      vitte_runtime_allocations,
+      capacity * sizeof(VitteRuntimeAllocation)
+    );
+    if (grown == NULL) {
+      abort();
+    }
+    vitte_runtime_allocations = grown;
+    vitte_runtime_allocation_capacity = capacity;
+  }
+  header->index = vitte_runtime_allocation_count;
+  vitte_runtime_allocations[vitte_runtime_allocation_count].pointer = pointer;
+  vitte_runtime_allocations[vitte_runtime_allocation_count].generation = header->generation;
+  vitte_runtime_allocation_count += 1;
+}
+
+static void* vitte_runtime_tracked_malloc(size_t size) {
+  VitteRuntimeAllocationHeader* header = (VitteRuntimeAllocationHeader*)malloc(
+    sizeof(VitteRuntimeAllocationHeader) + size
+  );
+  void* pointer;
+  if (header == NULL) {
+    return NULL;
+  }
+  header->generation = ++vitte_runtime_allocation_generation;
+  pointer = (void*)(header + 1);
+  vitte_runtime_allocation_track(pointer, header);
+  return pointer;
+}
+
+static void* vitte_runtime_tracked_calloc(size_t count, size_t size) {
+  size_t bytes;
+  void* pointer;
+  if (size != 0 && count > SIZE_MAX / size) {
+    return NULL;
+  }
+  bytes = count * size;
+  pointer = vitte_runtime_tracked_malloc(bytes);
+  if (pointer != NULL) {
+    memset(pointer, 0, bytes);
+  }
+  return pointer;
+}
+
+static void* vitte_runtime_tracked_realloc(void* pointer, size_t size) {
+  VitteRuntimeAllocationHeader* header;
+  size_t index;
+  void* grown;
+  if (pointer == NULL) {
+    return vitte_runtime_tracked_malloc(size);
+  }
+  header = ((VitteRuntimeAllocationHeader*)pointer) - 1;
+  index = header->index;
+  header = (VitteRuntimeAllocationHeader*)realloc(
+    header,
+    sizeof(VitteRuntimeAllocationHeader) + size
+  );
+  if (header == NULL) {
+    return NULL;
+  }
+  grown = (void*)(header + 1);
+  vitte_runtime_allocations[index].pointer = grown;
+  return grown;
+}
+
+static void vitte_runtime_tracked_free(void* pointer) {
+  VitteRuntimeAllocationHeader* header;
+  size_t index;
+  if (pointer == NULL) {
+    return;
+  }
+  header = ((VitteRuntimeAllocationHeader*)pointer) - 1;
+  index = header->index;
+  vitte_runtime_allocation_count -= 1;
+  if (index < vitte_runtime_allocation_count) {
+    vitte_runtime_allocations[index] = vitte_runtime_allocations[vitte_runtime_allocation_count];
+    (((VitteRuntimeAllocationHeader*)vitte_runtime_allocations[index].pointer) - 1)->index = (size_t)index;
+  }
+  free(header);
+}
+
+static void vitte_runtime_release_free_pages(void) {
+#if defined(__APPLE__)
+  malloc_zone_pressure_relief(NULL, 0);
+#elif defined(__GLIBC__)
+  malloc_trim(0);
+#endif
+}
+
+#define malloc vitte_runtime_tracked_malloc
+#define calloc vitte_runtime_tracked_calloc
+#define realloc vitte_runtime_tracked_realloc
+#define free vitte_runtime_tracked_free
+
+/* Array payloads escape their producing function. Keep them in the existing
+ * checkpoint arena, not in LLVM allocas, and retain their concrete ABI layout. */
+void* vitte_llvm_array_alloc(uint64_t count, uint64_t element_size) {
+  void* data;
+  if (count == 0) {
+    return NULL;
+  }
+  if (element_size == 0 || element_size > SIZE_MAX ||
+      count > (SIZE_MAX - sizeof(VitteRuntimeAllocationHeader)) / element_size) {
+    fputs("vitte: array allocation overflow\n", stderr);
+    abort();
+  }
+  data = calloc((size_t)count, (size_t)element_size);
+  if (data == NULL) {
+    fputs("vitte: array allocation failed\n", stderr);
+    abort();
+  }
+  return data;
+}
+
+void* vitte_llvm_array_at(void* data, uint64_t count, uint64_t index, uint64_t element_size) {
+  if (index >= count || data == NULL || element_size == 0 ||
+      element_size > SIZE_MAX || count > SIZE_MAX / element_size) {
+    fputs("vitte: array index out of bounds\n", stderr);
+    abort();
+  }
+  return (unsigned char*)data + (size_t)(index * element_size);
+}
+
+const char* vitte_llvm_string_concat(const char* a, const char* b) {
+  size_t a_length;
+  size_t b_length;
+  char* out;
+  if (a == NULL) {
+    a = "";
+  }
+  if (b == NULL) {
+    b = "";
+  }
+  a_length = strlen(a);
+  b_length = strlen(b);
+  if (a_length > SIZE_MAX - b_length - 1) {
+    return "";
+  }
+  out = (char*)malloc(a_length + b_length + 1);
+  if (out == NULL) {
+    return "";
+  }
+  memcpy(out, a, a_length);
+  memcpy(out + a_length, b, b_length + 1);
+  return out;
+}
+
+int32_t vitte_llvm_string_compare(const char* a, const char* b) {
+  if (a == NULL) {
+    a = "";
+  }
+  if (b == NULL) {
+    b = "";
+  }
+  return (int32_t)strcmp(a, b);
+}
+
+const char* vitte_llvm_i64_to_string(int64_t value) {
+  char buffer[64];
+  int written = snprintf(buffer, sizeof(buffer), "%lld", (long long)value);
+  char* out;
+  if (written < 0) {
+    return "";
+  }
+  out = (char*)malloc((size_t)written + 1);
+  if (out == NULL) {
+    return "";
+  }
+  memcpy(out, buffer, (size_t)written + 1);
+  return out;
+}
+
+uint64_t vitte_llvm_string_len(const char* value) {
+  return value == NULL ? 0 : (uint64_t)strlen(value);
+}
+
+const char* vitte_llvm_string_slice(const char* value, uint64_t start, uint64_t end) {
+  size_t length;
+  size_t slice_length;
+  char* out;
+  if (value == NULL) {
+    value = "";
+  }
+  length = strlen(value);
+  if (start > length) {
+    start = (uint64_t)length;
+  }
+  if (end > length) {
+    end = (uint64_t)length;
+  }
+  if (end < start) {
+    end = start;
+  }
+  slice_length = (size_t)(end - start);
+  out = (char*)malloc(slice_length + 1);
+  if (out == NULL) {
+    return "";
+  }
+  memcpy(out, value + start, slice_length);
+  out[slice_length] = '\0';
+  return out;
+}
+
+int64_t vitte_llvm_string_find(const char* value, const char* needle) {
+  const char* match;
+  if (value == NULL) {
+    value = "";
+  }
+  if (needle == NULL) {
+    needle = "";
+  }
+  match = strstr(value, needle);
+  return match == NULL ? -1 : (int64_t)(match - value);
+}
+
+const char* vitte_llvm_string_trim(const char* value) {
+  const char* start;
+  const char* end;
+  if (value == NULL) {
+    value = "";
+  }
+  start = value;
+  while (*start == ' ' || *start == '\t' || *start == '\n' || *start == '\r' || *start == '\f' || *start == '\v') {
+    start += 1;
+  }
+  end = start + strlen(start);
+  while (end > start && (end[-1] == ' ' || end[-1] == '\t' || end[-1] == '\n' || end[-1] == '\r' || end[-1] == '\f' || end[-1] == '\v')) {
+    end -= 1;
+  }
+  return vitte_llvm_string_slice(start, 0, (uint64_t)(end - start));
+}
+
+int32_t vitte_llvm_string_starts_with(const char* value, const char* prefix) {
+  size_t prefix_length;
+  if (value == NULL) {
+    value = "";
+  }
+  if (prefix == NULL) {
+    prefix = "";
+  }
+  prefix_length = strlen(prefix);
+  return strncmp(value, prefix, prefix_length) == 0;
+}
+
+int32_t vitte_llvm_string_ends_with(const char* value, const char* suffix) {
+  size_t value_length;
+  size_t suffix_length;
+  if (value == NULL) {
+    value = "";
+  }
+  if (suffix == NULL) {
+    suffix = "";
+  }
+  value_length = strlen(value);
+  suffix_length = strlen(suffix);
+  return suffix_length <= value_length && strcmp(value + value_length - suffix_length, suffix) == 0;
+}
+
+void vitte_llvm_print(const char* value) {
+  fputs(value == NULL ? "" : value, stdout);
+}
+
+void vitte_llvm_println(const char* value) {
+  puts(value == NULL ? "" : value);
+}
+
+void vitte_llvm_eprint(const char* value) {
+  fputs(value == NULL ? "" : value, stderr);
+}
+
+void vitte_llvm_eprintln(const char* value) {
+  fprintf(stderr, "%s\n", value == NULL ? "" : value);
+}
+
+void vitte_llvm_panic(const char* value) {
+  vitte_llvm_eprintln(value);
+  abort();
+}
+
+void vitte_llvm_assert(int32_t condition) {
+  if (!condition) {
+    abort();
+  }
+}
 
 static int32_t vitte_panic_active = 0;
 static int32_t vitte_panic_triggered = 0;
@@ -261,6 +579,26 @@ VitteSliceString cli_args(void) {
 
 int32_t vitte_host_runtime_available(void) {
   return 1;
+}
+
+uint64_t vitte_host_memory_checkpoint(void) {
+  return vitte_runtime_allocation_generation;
+}
+
+int32_t vitte_host_memory_rewind(uint64_t checkpoint) {
+  size_t i = vitte_runtime_allocation_count;
+  while (i > 0) {
+    i -= 1;
+    if (vitte_runtime_allocations[i].generation > checkpoint) {
+      void* pointer = vitte_runtime_allocations[i].pointer;
+      vitte_runtime_tracked_free(pointer);
+      if (i < vitte_runtime_allocation_count) {
+        i += 1;
+      }
+    }
+  }
+  vitte_runtime_release_free_pages();
+  return 0;
 }
 
 VitteString vitte_host_read_file(VitteString path) {
