@@ -8,6 +8,11 @@
 
 #include "naming.h"
 
+static bool vitte_c17_ir_value_is_used(
+    const vitte_ir_function_t *function,
+    const vitte_ir_value_t *value
+);
+
 static void vitte_c17_module_set_error(
     vitte_c17_module_t *module,
     vitte_status_t status,
@@ -651,6 +656,7 @@ static vitte_status_t vitte_c17_emit_ir_builtin_call(
 static vitte_status_t vitte_c17_emit_ir_call(
     vitte_c17_module_t *module,
     vitte_c17_writer_t *writer,
+    const vitte_ir_function_t *function,
     const vitte_ir_instruction_t *instruction
 ) {
     const vitte_ir_value_t *callee;
@@ -666,7 +672,11 @@ static vitte_status_t vitte_c17_emit_ir_call(
 
     callee = instruction->operands[0];
     builtin = callee != NULL && callee->kind == VITTE_IR_VALUE_FUNCTION_REF && callee->as.function == NULL && vitte_c17_ir_builtin_supported(callee->name);
-    assign_result = instruction->result != NULL && instruction->result->type != NULL && instruction->result->type->kind != VITTE_IR_TYPE_VOID;
+    assign_result =
+    instruction->result != NULL &&
+    instruction->result->type != NULL &&
+    instruction->result->type->kind != VITTE_IR_TYPE_VOID &&
+    vitte_c17_ir_value_is_used(function, instruction->result);
 
     if (builtin && strcmp(callee->name, "len") == 0) {
         if (assign_result) {
@@ -998,7 +1008,12 @@ static vitte_status_t vitte_c17_emit_ir_instruction(
             if (status != VITTE_STATUS_OK) return status;
             return vitte_c17_emit_statement_line_end(writer);
         case VITTE_IR_OP_CALL:
-            return vitte_c17_emit_ir_call(module, writer, instruction);
+            return vitte_c17_emit_ir_call(
+                module,
+                writer,
+                function,
+                instruction
+            );
         case VITTE_IR_OP_AGGREGATE_NEW:
             status = vitte_c17_emit_ir_value_ref(module, writer, instruction->result);
             if (status == VITTE_STATUS_OK) status = vitte_c17_write_string(writer, " = vitte_aggregate_new()");
@@ -1174,7 +1189,9 @@ static bool vitte_c17_ir_value_is_used(
              instruction = instruction->next) {
 
             for (i = 0; i < instruction->operand_count; ++i) {
-                if (instruction->operands[i] == value) {
+                if (instruction->operands[i] == value ||
+                    (instruction->operands[i] != NULL && value->id != 0u &&
+                     instruction->operands[i]->id == value->id)) {
                     return true;
                 }
             }
@@ -1202,7 +1219,9 @@ static vitte_status_t vitte_c17_emit_ir_function_declarations(
     for (block = function->first_block; block != NULL; block = block->next) {
         const vitte_ir_instruction_t *instruction;
         for (instruction = block->first; instruction != NULL; instruction = instruction->next) {
-            if (vitte_c17_ir_instruction_needs_declaration(instruction)) {
+            if (vitte_c17_ir_instruction_needs_declaration(instruction) &&
+            (instruction->opcode != VITTE_IR_OP_CALL ||
+                vitte_c17_ir_value_is_used(function, instruction->result))) {
                 vitte_status_t status = vitte_c17_emit_ir_type(module, writer, instruction->result->type);
                 if (status != VITTE_STATUS_OK) {
                     return status;
