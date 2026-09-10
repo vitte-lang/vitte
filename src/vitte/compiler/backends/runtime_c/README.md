@@ -43,6 +43,23 @@ allocated slice whose string elements are borrowed; release only its array with
 `vitte_host_list_directory` returns an owned slice with owned string elements.
 Its result is sorted lexically for deterministic builds.
 
+### LLVM array payloads
+
+The LLVM backend's `%VitteAggregate` array descriptor is `{ i64 length, i8* data }`;
+it is not interchangeable with the C slice ABI above. Its data is a contiguous
+array of concrete LLVM element values, including the target's structure padding.
+`vitte_llvm_array_alloc(count, element_size)` allocates a zero-initialized payload
+in the checkpoint-tracked runtime arena, so a returned array never points into
+its producing function's stack. Empty arrays have a null data pointer.
+`vitte_llvm_array_at` checks the index and size arithmetic before returning an
+element address. Invalid accesses or allocation overflows abort with a diagnostic.
+
+Payloads remain alive until their runtime checkpoint is rewound or the process
+exits. Callers must not rewind past the creation of arrays they still retain.
+These helpers do not implement tuple layout, array concatenation, or element
+destructors. The bounded LLVM-array and arena regressions are run with
+`python3 tools/bootstrap_real/test_streaming_codegen.py` from the repository root.
+
 ## Filesystem Guarantees
 
 - Invalid pointer/length pairs, oversized values, and embedded NUL paths fail
