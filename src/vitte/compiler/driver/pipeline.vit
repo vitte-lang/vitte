@@ -3,7 +3,8 @@ space vitte/compiler/driver
 export *
 
 use vitte/compiler/driver/commands.{ DriverCommand, command_from_text }
-use vitte/compiler/driver/compile.{ DriverAnalysisArtifacts, DriverBackendModuleSetResult, DriverCompileConfig, DriverCompileResult, DriverDiagnostic, DriverDiagnosticLevel, DriverModuleInput, DriverModuleSetArtifacts, analyze_source, check_source_with_config, compile_source_set_with_config, compile_source_with_config, default_compile_config, dump_ast_json, dump_diagnostics_json, dump_diagnostics_lsp, dump_hir_json, dump_mir_json }
+use vitte/compiler/driver/compile.{ DriverAnalysisArtifacts, DriverBackendModuleSetResult, DriverCompileConfig, DriverCompileResult, DriverModuleInput, DriverModuleSetArtifacts, analyze_source, check_source_with_config, compile_source_set_with_config, compile_source_with_config, default_compile_config, dump_ast_json, dump_diagnostics_json, dump_diagnostics_lsp, dump_hir_json, dump_mir_json }
+use vitte/compiler/driver/diagnostics.{ DriverDiagnostic, DriverDiagnosticLevel }
 use vitte/compiler/backend/ir/ir.{ ir_validation_reason, unit_is_valid }
 use vitte/compiler/middle/mir/validate.{ mir_validation_reason }
 use vitte/compiler/driver/exit_status.{ exit_code }
@@ -119,13 +120,13 @@ proc json_escape(text: string) -> string {
         let ch_text: string = slice(text, i, i + 1);
         if ch_text == "\\" {
             set escaped = escaped + "\\\\";
-        } else if ch_text == "\"" {
+        } elif ch_text == "\"" {
             set escaped = escaped + "\\\"";
-        } else if ch_text == "\n" {
+        } elif ch_text == "\n" {
             set escaped = escaped + "\\n";
-        } else if ch_text == "\r" {
+        } elif ch_text == "\r" {
             set escaped = escaped + "\\r";
-        } else if ch_text == "\t" {
+        } elif ch_text == "\t" {
             set escaped = escaped + "\\t";
         } else {
             set escaped = escaped + ch_text;
@@ -323,15 +324,12 @@ proc run_and_report(command_name: string, source_path: string, source_text: stri
 
 proc run_and_report_with_config(command_name: string, source_path: string, source_text: string, config: DriverCompileConfig) -> CompileReport {
     let command: DriverCommand = command_from_text(command_name);
-    let driver_result: DriverCompileResult;
-    let exit: u64;
-
-    if command == DriverCommand.Check {
-        set driver_result = check_source_with_config(source_path, source_text, config);
+    let driver_result: DriverCompileResult = if command == DriverCommand.Check {
+        check_source_with_config(source_path, source_text, config)
     } else {
-        set driver_result = compile_source_with_config(source_path, source_text, config);
-    }
-    set exit = exit_code(driver_result.status);
+        compile_source_with_config(source_path, source_text, config)
+    };
+    let exit: u64 = exit_code(driver_result.status);
     let ok: bool = exit == 0;
     let failure_summary: PipelineFailureSummary = compile_report_failure_summary(command, source_path, source_text, driver_result, config);
 
@@ -430,13 +428,11 @@ proc main_driver(command_name: string, source_path: string, source_text: string)
 
 proc main_driver_with_config(command_name: string, source_path: string, source_text: string, config: DriverCompileConfig) -> CliRunResult {
     let command: DriverCommand = command_from_text(command_name);
-    let result: DriverCompileResult;
-
-    if command == DriverCommand.Check {
-        set result = check_source_with_config(source_path, source_text, config);
+    let result: DriverCompileResult = if command == DriverCommand.Check {
+        check_source_with_config(source_path, source_text, config)
     } else {
-        set result = compile_source_with_config(source_path, source_text, config);
-    }
+        compile_source_with_config(source_path, source_text, config)
+    };
 
     give CliRunResult {
         code: exit_code(result.status),
