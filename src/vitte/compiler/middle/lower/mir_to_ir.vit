@@ -166,6 +166,31 @@ proc ir_function_is_external_from_hir(items: [HirItem], function_name: string) -
     give false;
 }
 
+proc ir_function_is_imported_from_hir(items: [HirItem], function_name: string) -> bool {
+    let i: u64 = 0;
+    while i < len(items) {
+        if items[i].kind == HirItemKind.Proc and items[i].name == function_name {
+            give items[i].visibility == "imported";
+        }
+        set i = i + 1;
+    }
+    give false;
+}
+
+proc ir_function_symbol_name_from_hir(items: [HirItem], function_name: string) -> string {
+    let i: u64 = 0;
+    while i < len(items) {
+        if items[i].kind == HirItemKind.Proc and items[i].name == function_name {
+            if items[i].visibility == "imported" and items[i].namespace != "" {
+                give items[i].namespace;
+            }
+            give function_name;
+        }
+        set i = i + 1;
+    }
+    give function_name;
+}
+
 proc hir_const_literal_text(items: [HirItem], name: string) -> string {
     let i: u64 = 0;
     while i < len(items) {
@@ -441,7 +466,8 @@ proc borrow_instruction_for_call_arg(statement: MirStatement, arg_index: u64, ar
 }
 
 proc return_rvalue_requires_materialization(rvalue: MirRvalue) -> bool {
-    give rvalue.kind != MirRvalueKind.Use and rvalue.kind != MirRvalueKind.Copy and rvalue.kind != MirRvalueKind.Move;
+    give rvalue.operator == "[]" or rvalue.operator == "."
+        or (rvalue.kind != MirRvalueKind.Use and rvalue.kind != MirRvalueKind.Copy and rvalue.kind != MirRvalueKind.Move);
 }
 
 proc materialized_return_instruction(statement: MirStatement, functions: [MirFunction], fn0: MirFunction, typed_hir_items: [HirItem]) -> IrInstruction {
@@ -529,13 +555,15 @@ proc lower_mir_block(block: MirBlock, fn0: MirFunction, functions: [MirFunction]
 
 proc lower_mir_function(module_name: string, fn0: MirFunction, functions: [MirFunction], typed_hir_items: [HirItem], exported_names: [string]) -> IrFunction {
     let external: bool = ir_function_is_external_from_hir(typed_hir_items, fn0.name);
+    let imported: bool = ir_function_is_imported_from_hir(typed_hir_items, fn0.name);
+    let symbol_name: string = ir_function_symbol_name_from_hir(typed_hir_items, fn0.name);
     let lowered: IrFunction = function_with_abi(function_ref_create(
         fn0.id,
-        fn0.name,
+        symbol_name,
         module_name,
-        if external { IrLinkage.External } else { ir_linkage_for_exports(fn0.name, exported_names) },
-        if external { IrVisibility.Public } else { ir_visibility_for_exports(fn0.name, exported_names) },
-        fn0.name == "main" and not external,
+        if imported { IrLinkage.Imported } elif external { IrLinkage.External } else { ir_linkage_for_exports(symbol_name, exported_names) },
+        if external { IrVisibility.Public } else { ir_visibility_for_exports(symbol_name, exported_names) },
+        fn0.name == "main" and not external and not imported,
         span_empty()
     ), ir_function_abi_from_hir(typed_hir_items, fn0.name));
     let params: [IrFunctionParam] = [];
@@ -772,7 +800,7 @@ proc nominal_member_param_flags(item: HirItem, which: string) -> [string] {
 proc nominal_type_from_hir_item(item: HirItem) -> IrNominalType {
     let underlying_type: string = if item.kind == HirItemKind.Bits or item.kind == HirItemKind.Flags { item.annotation_text } else { "" };
     let target_type: string = if item.kind == HirItemKind.Impl { item.target_type_text } else { "" };
-    give nominal_type_create(
+    let nominal: IrNominalType = nominal_type_create(
         item.name,
         nominal_kind_name(item.kind),
         item.abi,
@@ -793,6 +821,8 @@ proc nominal_type_from_hir_item(item: HirItem) -> IrNominalType {
         nominal_member_param_flags(item, "variadic"),
         item.exported
     );
+    set nominal.source_path = item.span.file;
+    give nominal;
 }
 
 proc lower_mir_as_ir_module(module_id: u64, module_name: string, source_path: string, kind: IrModuleKind, target: IrTarget, mir: MirUnit, typed_hir_items: [HirItem], exported_names: [string], imported_names: [string], external_symbol_names: [string]) -> IrModule {
