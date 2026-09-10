@@ -5,7 +5,6 @@ import argparse
 import hashlib
 import json
 import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -13,6 +12,8 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "tools/bootstrap_real"))
+import stage0_trust
 MANIFEST = ROOT / "toolchain/bootstrap/stages-manifest.json"
 REPORT_JSON = ROOT / "target/reports/toolchain_stages.json"
 REPORT_MD = ROOT / "target/reports/toolchain_stages.md"
@@ -181,26 +182,18 @@ def generate_manifest() -> dict[str, Any]:
 
 
 def verify_signature(stage: dict[str, Any], errors: list[str]) -> None:
-    openssl = shutil.which("openssl")
-    if not openssl:
-        errors.append("openssl is required to verify signed_stage0")
+    try:
+        host_os, host_arch = stage0_trust.host_tuple()
+        trust = stage0_trust.verify_manifest(
+            ROOT / "toolchain/bootstrap/stage0-manifest.json", host_os, host_arch
+        )
+    except stage0_trust.TrustError as exc:
+        errors.append(f"signed_stage0 trust verification failed: {exc}")
         return
-    signature = ROOT / str(stage.get("signature", ""))
-    public_key = ROOT / str(stage.get("public_key", ""))
-    artifact = ROOT / str(stage.get("path", ""))
-    if not signature.is_file() or not public_key.is_file() or not artifact.is_file():
-        errors.append("signed_stage0 signature inputs are missing")
-        return
-    completed = subprocess.run(
-        [openssl, "dgst", "-sha256", "-verify", str(public_key), "-signature", str(signature), str(artifact)],
-        cwd=ROOT,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        check=False,
-    )
-    if completed.returncode != 0 or "Verified OK" not in completed.stdout:
-        errors.append(f"signed_stage0 signature verification failed: {completed.stdout.strip()}")
+    if stage.get("path") != trust["artifact"]:
+        errors.append("signed_stage0 path differs from the anchored trust manifest")
+    if stage.get("sha256") != trust["sha256"]:
+        errors.append("signed_stage0 hash differs from the anchored trust manifest")
 
 
 def validate_manifest(manifest: dict[str, Any]) -> tuple[list[str], dict[str, Any]]:

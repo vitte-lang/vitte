@@ -7,7 +7,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-STAGES = ("stage0", "stage1", "stage2")
+CONTRACT_STAGES = ("stage0", "stage1", "stage2")
+STAGES = (*CONTRACT_STAGES, "release")
 MODULES = {
     "stage0": ("main", "stage0", "stage0_context", "stage0_diagnostics", "stage0_driver", "stage0_manifest", "stage0_result", "stage0_signature", "stage0_statistics", "stage0_target", "stage0_trust", "stage0_validation"),
     "stage1": ("main", "stage1", "stage1_context", "stage1_diagnostics", "stage1_driver", "stage1_options", "stage1_pipeline", "stage1_profile", "stage1_result", "stage1_session", "stage1_statistics", "stage1_target", "stage1_validation"),
@@ -32,11 +33,18 @@ STAGE_META = {
         "policy": "verified-predecessor, release-parity, deterministic-build",
         "capabilities": ["pipeline", "session", "target", "validation", "release-parity"],
     },
+    "release": {
+        "role": "release compiler emitted by the verified stage2 compiler",
+        "predecessor": "stage2",
+        "policy": "verified-predecessor, release-parity, deterministic-build",
+        "capabilities": ["compiler", "native-output", "release-parity", "deterministic-build", "installation"],
+    },
 }
 ARTIFACTS = {
     "stage0": "toolchain/bootstrap/stage0/macos-arm64/vitte",
     "stage1": "target/stage1/vitte",
     "stage2": "target/stage2/vitte",
+    "release": "target/release/vitte",
 }
 
 
@@ -81,7 +89,7 @@ def artifact_row(stage: str) -> dict[str, object]:
     path = ROOT / rel
     data = path.read_bytes() if path.is_file() else b""
     meta = STAGE_META[stage]
-    return {
+    row = {
         "stage": stage,
         "schema": f"vitte.toolchain.{stage}.manifest.v1",
         "role": meta["role"],
@@ -90,20 +98,24 @@ def artifact_row(stage: str) -> dict[str, object]:
         "capabilities": meta["capabilities"],
         "artifact": rel,
         "materialized_by": "committed signed artifact" if stage == "stage0" else "make bootstrap-all",
-        "source_contract_root": f"toolchain/{stage}/src",
-        "auxiliary_contracts": [
-            f"toolchain/{stage}/config/{stage}-policy.json",
-            f"toolchain/{stage}/tests/{stage}_contracts.vit",
-        ],
-        "contract_modules": list(MODULES[stage]),
         "exists": path.is_file(),
         "size": len(data),
         "sha256": hashlib.sha256(data).hexdigest() if data else "",
     }
+    if stage in CONTRACT_STAGES:
+        row.update({
+            "source_contract_root": f"toolchain/{stage}/src",
+            "auxiliary_contracts": [
+                f"toolchain/{stage}/config/{stage}-policy.json",
+                f"toolchain/{stage}/tests/{stage}_contracts.vit",
+            ],
+            "contract_modules": list(MODULES[stage]),
+        })
+    return row
 
 
 def main() -> int:
-    for stage in STAGES:
+    for stage in CONTRACT_STAGES:
         source = ROOT / f"toolchain/{stage}/src"
         source.mkdir(parents=True, exist_ok=True)
         readme = source / "README.md"
@@ -129,7 +141,9 @@ def main() -> int:
             f"# {stage.capitalize()} reports\n\nGenerated validation reports for {stage}; the canonical report is under `target/reports`.\n",
             encoding="utf-8",
         )
+    for stage in STAGES:
         manifest = ROOT / f"toolchain/{stage}/{stage}-manifest.json"
+        manifest.parent.mkdir(parents=True, exist_ok=True)
         manifest.write_text(json.dumps(artifact_row(stage), indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return 0
 

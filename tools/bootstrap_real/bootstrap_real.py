@@ -13,11 +13,14 @@ import sys
 import time
 from pathlib import Path
 
+from resource_guard import run_guarded
+
 
 ROOT = Path(__file__).resolve().parents[2]
 ENTRYPOINT = ROOT / "src/vitte/compiler/main.vit"
 OUT_DIR = ROOT / "target/bootstrap-real"
 DEFAULT_OUT = OUT_DIR / "vitte"
+SOURCE_BOOTSTRAP = ROOT / "target/bootstrap-c17/vitte-bootstrap"
 QUARANTINE_DIR = OUT_DIR / "quarantine"
 STAGE1_OUT = ROOT / "target/stage1/vitte"
 STAGE2_OUT = ROOT / "target/stage2/vitte"
@@ -241,21 +244,9 @@ def build_from_stage0(stage0: Path, out: Path) -> list[dict[str, object]]:
     env["VITTE_ROOT"] = str(ROOT)
     env["VITTE_C17_GENERIC_COMPILER"] = "1"
     command = bootstrap_build_command(stage0, out)
-    completed = subprocess.run(
-        command,
-        cwd=ROOT,
-        env=env,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-    )
-    return [
-        {
-            "command": [command[0], *command[1:-1], rel(out)],
-            "exit_code": completed.returncode,
-            "output": completed.stdout[-6000:],
-        }
-    ]
+    result = run_guarded(command, cwd=ROOT, env=env)
+    result["command"] = [command[0], *command[1:-1], rel(out)]
+    return [result]
 
 
 def build_with_command(out: Path, command: list[str]) -> list[dict[str, object]]:
@@ -266,21 +257,9 @@ def build_with_command(out: Path, command: list[str]) -> list[dict[str, object]]
     env.pop("VITTE_BOOTSTRAP_ALLOW_FULL_COMPILER_BRIDGE", None)
     env["VITTE_ROOT"] = str(ROOT)
     env["VITTE_C17_GENERIC_COMPILER"] = "1"
-    completed = subprocess.run(
-        command,
-        cwd=ROOT,
-        env=env,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-    )
-    return [
-        {
-            "command": [command[0], *command[1:-1], rel(out)],
-            "exit_code": completed.returncode,
-            "output": completed.stdout[-6000:],
-        }
-    ]
+    result = run_guarded(command, cwd=ROOT, env=env)
+    result["command"] = [command[0], *command[1:-1], rel(out)]
+    return [result]
 
 
 def bootstrap_build_command(stage0: Path, out: Path) -> list[str]:
@@ -494,12 +473,12 @@ def run(args: argparse.Namespace) -> int:
         errors.extend(validate_stage_output_path(args.out, "stage1", STAGE1_OUT))
         if not errors:
             quarantined_artifacts = quarantine_bootstrap_output(args.out)
-        bootstrap_errors, stage0_commands = validate_candidate(DEFAULT_OUT)
-        errors.extend(bootstrap_errors)
+        if not SOURCE_BOOTSTRAP.is_file() or not os.access(SOURCE_BOOTSTRAP, os.X_OK):
+            errors.append(f"missing source bootstrap compiler: {rel(SOURCE_BOOTSTRAP)}")
         if not errors:
-            build_commands = build_with_command(args.out, stage1_build_command(DEFAULT_OUT, args.out))
+            build_commands = build_with_command(args.out, stage1_build_command(SOURCE_BOOTSTRAP, args.out))
             if build_commands and build_commands[0]["exit_code"] != 0:
-                errors.append(f"bootstrap compiler failed to build stage1 from {rel(ENTRYPOINT)}")
+                errors.append(f"C17 source bootstrap failed to build stage1 from {rel(ENTRYPOINT)}")
             candidate = args.out
     elif args.stage2:
         errors.extend(validate_stage_output_path(args.out, "stage2", STAGE2_OUT))
@@ -569,7 +548,7 @@ def main(argv: list[str]) -> int:
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--install-stage0", type=Path, help="validate and install a real Vitte compiler as the trusted stage0")
     mode.add_argument("--stage0", type=Path, help="existing compiler used to build src/vitte/compiler/main.vit")
-    mode.add_argument("--stage1", action="store_true", help="build and verify target/stage1/vitte from target/bootstrap-real/vitte")
+    mode.add_argument("--stage1", action="store_true", help="build and verify target/stage1/vitte from target/bootstrap-c17/vitte-bootstrap")
     mode.add_argument("--stage2", action="store_true", help="build and verify target/stage2/vitte from target/stage1/vitte")
     mode.add_argument("--release", action="store_true", help="build and verify target/release/vitte from target/stage2/vitte")
     mode.add_argument("--verify-chain", action="store_true", help="verify target/stage1/vitte, target/stage2/vitte, and target/release/vitte")

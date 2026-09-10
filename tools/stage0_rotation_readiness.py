@@ -77,8 +77,8 @@ def main() -> int:
     output_changed = sensitivity_evidence.get("output_changed") is True
     baseline = sensitivity_evidence.get("baseline", {})
     baseline_sha = baseline.get("sha256") if isinstance(baseline, dict) else None
-    if module_count != 971:
-        failures.append(f"source-sensitivity report does not cover 971 compiler modules: {module_count}")
+    if module_count != 990:
+        failures.append(f"source-sensitivity report does not cover 990 compiler modules: {module_count}")
     if source_sha != current_source_sha:
         failures.append("source-sensitivity report does not match the current compiler source tree")
     if not output_changed:

@@ -10,6 +10,7 @@ OUT = ROOT / "src" / "vitte" / "compiler" / "infrastructure" / "diagnostics" / "
 OUT_DIR = OUT.parent
 CORE_CODES = ROOT / "tests" / "diag_snapshots" / "core_diagnostic_codes.txt"
 RUNTIME_LOCALES = ("en", "fr", "es")
+CATALOG_CHUNK_SIZE = 128
 sys.path.insert(0, str(ROOT / "tools"))
 from diagnostics_locales import SUPPORTED_DIAGNOSTIC_LOCALES, supported_locale_codes
 from diagnostic_catalog_data import public_diagnostic_codes
@@ -103,8 +104,8 @@ def render() -> str:
         "    valid: bool",
         "}",
         "",
-        'const FLUENT_CATALOG_GENERATOR: string = "tools/generate_frontend_fluent_bridge.py";',
-        'const FLUENT_DEFAULT_LOCALE: string = "en";',
+        'const FLUENT_CATALOG_GENERATOR: string = "tools/generate_frontend_fluent_bridge.py"',
+        'const FLUENT_DEFAULT_LOCALE: string = "en"',
         "",
         "proc fluent_catalog_entry(locale: string, code: string, message: string) -> FluentCatalogEntry {",
         "    give FluentCatalogEntry {",
@@ -185,15 +186,33 @@ def render() -> str:
     for locale in supported_locale_codes():
         fn_suffix = symbol_for_locale(locale)
         lines.append(f"proc fluent_catalog_fields_{fn_suffix}(code: string) -> FluentDiagnosticFields {{")
-        for code in codes:
-            message = locale_maps[locale].get(code, "")
-            lines.append(f'    if code == "{code}" {{')
-            lines.append(f'        give fluent_compact_fields("{vitte_escape(message)}");')
+        chunk_count = (len(codes) + CATALOG_CHUNK_SIZE - 1) // CATALOG_CHUNK_SIZE
+        for chunk_index in range(chunk_count):
+            lines.append(
+                f"    let chunk_{chunk_index}: FluentDiagnosticFields = "
+                f"fluent_catalog_fields_{fn_suffix}_chunk_{chunk_index}(code);"
+            )
+            lines.append(f"    if chunk_{chunk_index}.valid {{")
+            lines.append(f"        give chunk_{chunk_index};")
             lines.append("    }")
             lines.append("")
         lines.append("    give fluent_diagnostic_fields_empty();")
         lines.append("}")
         lines.append("")
+        for chunk_index, start in enumerate(range(0, len(codes), CATALOG_CHUNK_SIZE)):
+            lines.append(
+                f"proc fluent_catalog_fields_{fn_suffix}_chunk_{chunk_index}(code: string) "
+                "-> FluentDiagnosticFields {"
+            )
+            for code in codes[start:start + CATALOG_CHUNK_SIZE]:
+                message = locale_maps[locale].get(code, "")
+                lines.append(f'    if code == "{code}" {{')
+                lines.append(f'        give fluent_compact_fields("{vitte_escape(message)}");')
+                lines.append("    }")
+                lines.append("")
+            lines.append("    give fluent_diagnostic_fields_empty();")
+            lines.append("}")
+            lines.append("")
     lines.extend([
         "proc fluent_catalog_fields(locale: string, code: string) -> FluentDiagnosticFields {",
         "    let normalized: string = fluent_catalog_normalize_locale(locale);",

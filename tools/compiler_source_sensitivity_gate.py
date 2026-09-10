@@ -73,8 +73,8 @@ def main() -> int:
         failures.append("missing C17 bootstrap compiler; run make bootstrap-c17")
 
     module_count = sum(1 for _ in (ROOT / "src/vitte/compiler").rglob("*.vit"))
-    if module_count != 971:
-        failures.append(f"compiler source closure changed: expected 971 .vit modules, found {module_count}")
+    if module_count != 990:
+        failures.append(f"compiler source closure changed: expected 990 .vit modules, found {module_count}")
 
     evidence: dict[str, Any] = {
         "compiler_module_count": module_count,

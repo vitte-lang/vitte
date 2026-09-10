@@ -57,7 +57,7 @@ fi
 
 rm -f "$OUT_BIN"
 
-if ! VITTE_C17_GENERIC_COMPILER=1 VITTE_ROOT="$ROOT_DIR" VITTE_COMPILER="$BOOTSTRAP_COMPILER" "$BOOTSTRAP_COMPILER" build "$SRC" -o "$OUT_BIN" > "$BUILD_LOG" 2>&1; then
+if ! VITTE_C17_GENERIC_COMPILER=1 VITTE_ROOT="$ROOT_DIR" VITTE_COMPILER="$BOOTSTRAP_COMPILER" python3 "$ROOT_DIR/tools/bootstrap_real/resource_guard.py" --report "$REPORT_DIR/stage1_build_resources.json" -- "$BOOTSTRAP_COMPILER" build "$SRC" -o "$OUT_BIN" > "$BUILD_LOG" 2>&1; then
     cat "$BUILD_LOG" >&2
     fail "$BOOTSTRAP_COMPILER build src/vitte/compiler/main.vit -o target/stage1/vitte failed"
 fi

@@ -17,6 +17,7 @@ REPORT = ROOT / "target" / "reports" / "runtime_abi_contract.json"
 TYPE_MAP = {
     "bool": "int32_t",
     "int": "int32_t",
+    "u64": "uint64_t",
     "string": "VitteString",
     "[string]": "VitteSliceString",
 }

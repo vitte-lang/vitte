@@ -6,11 +6,11 @@ import hashlib
 import json
 import os
 import shutil
-import subprocess
 import sys
 from pathlib import Path
 
 from bootstrap_real import prepare_compiler_module_manifest
+from resource_guard import run_guarded
 from stage0_trust import DEFAULT_MANIFEST, ROOT, TrustError, host_tuple, load_manifest, select_entry, verify_entry
 
 
@@ -40,11 +40,7 @@ def sha256(path: Path) -> str:
 
 
 def run(command: list[str], env: dict[str, str]) -> dict[str, object]:
-    completed = subprocess.run(
-        command, cwd=ROOT, env=env, text=True,
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, check=False,
-    )
-    return {"command": command, "exit_code": completed.returncode, "output": completed.stdout[-12000:]}
+    return run_guarded(command, cwd=ROOT, env=env)
 
 
 def native_without_copy_markers(path: Path) -> list[str]:
@@ -60,13 +56,18 @@ def native_without_copy_markers(path: Path) -> list[str]:
     return errors
 
 
-def install_verified_trust_artifact(source: Path) -> None:
+def install_verified_trust_artifact(source: Path, expected_sha256: str) -> None:
     TRUSTED_STAGE0.parent.mkdir(parents=True, exist_ok=True)
     temporary = TRUSTED_STAGE0.with_suffix(".installing")
     temporary.unlink(missing_ok=True)
     try:
         shutil.copy2(source, temporary)
         temporary.chmod(temporary.stat().st_mode | 0o755)
+        installed_sha256 = sha256(temporary)
+        if installed_sha256 != expected_sha256:
+            raise OSError(
+                f"verified stage0 changed during installation: expected {expected_sha256}, got {installed_sha256}"
+            )
         temporary.replace(TRUSTED_STAGE0)
     except OSError:
         temporary.unlink(missing_ok=True)
@@ -122,7 +123,7 @@ def main(argv: list[str] | None = None) -> int:
         trust = verify_entry(entry, os_name)
         payload["trust"] = trust
         artifact = ROOT / str(trust["artifact"])
-        install_verified_trust_artifact(artifact)
+        install_verified_trust_artifact(artifact, str(trust["sha256"]))
         payload["trusted_stage0"] = {
             "path": TRUSTED_STAGE0.relative_to(ROOT).as_posix(),
             "sha256": sha256(TRUSTED_STAGE0),

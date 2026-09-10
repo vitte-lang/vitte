@@ -24,9 +24,11 @@ def openssl(*args: str) -> None:
 
 
 def main() -> int:
-    fixture_root = stage0_trust.ROOT / "target/bootstrap-real/stage0-trust-test"
-    fixture_root.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(dir=fixture_root) as raw:
+    fixture_root = Path(tempfile.mkdtemp(prefix="vitte-stage0-trust-")).resolve()
+    original_root = stage0_trust.ROOT
+    stage0_trust.ROOT = fixture_root
+    try:
+        raw = fixture_root
         work = Path(raw)
         private_key = work / "private.pem"
         public_key = work / "public.pem"
@@ -44,16 +46,21 @@ def main() -> int:
             "artifacts": [{
                 "os": "linux", "arch": "x86_64", "artifact": relative(artifact),
                 "sha256": hashlib.sha256(artifact.read_bytes()).hexdigest(),
-                "signature": relative(signature), "public_key": relative(public_key), "format": "ELF",
+                "signature": relative(signature),
+                "signature_sha256": hashlib.sha256(signature.read_bytes()).hexdigest(),
+                "public_key": relative(public_key),
+                "public_key_sha256": hashlib.sha256(public_key.read_bytes()).hexdigest(),
+                "format": "ELF",
             }],
         }
+        trusted_keys = {("linux", "x86_64"): payload["artifacts"][0]["public_key_sha256"]}
         manifest.write_text(json.dumps(payload), encoding="utf-8")
-        verified = stage0_trust.verify_manifest(manifest, "linux", "x86_64")
+        verified = stage0_trust.verify_manifest(manifest, "linux", "x86_64", trusted_keys)
         require(verified["signature_verified"] is True, "valid detached signature must pass")
 
         artifact.write_bytes(artifact.read_bytes() + b"tampered")
         try:
-            stage0_trust.verify_manifest(manifest, "linux", "x86_64")
+            stage0_trust.verify_manifest(manifest, "linux", "x86_64", trusted_keys)
         except stage0_trust.TrustError as exc:
             require("SHA-256 mismatch" in str(exc), "tampering must fail at the pinned digest")
         else:
@@ -62,13 +69,41 @@ def main() -> int:
         payload["artifacts"][0]["sha256"] = hashlib.sha256(artifact.read_bytes()).hexdigest()
         manifest.write_text(json.dumps(payload), encoding="utf-8")
         try:
-            stage0_trust.verify_manifest(manifest, "linux", "x86_64")
+            stage0_trust.verify_manifest(manifest, "linux", "x86_64", trusted_keys)
         except stage0_trust.TrustError as exc:
             require("signature verification failed" in str(exc), "digest rewrite must not bypass signature")
         else:
             raise AssertionError("stage0 with forged digest unexpectedly passed")
-    print("[stage0-trust-test] ok")
-    return 0
+
+        replacement_private_key = work / "replacement-private.pem"
+        replacement_public_key = work / "replacement-public.pem"
+        replacement_signature = work / "replacement.sig"
+        replacement_artifact = work / "replacement-vitte"
+        replacement_artifact.write_bytes(b"\x7fELF\x02\x01\x01\x00replacement-stage0")
+        openssl("genpkey", "-algorithm", "RSA", "-pkeyopt", "rsa_keygen_bits:2048", "-out", str(replacement_private_key))
+        openssl("pkey", "-in", str(replacement_private_key), "-pubout", "-out", str(replacement_public_key))
+        openssl("dgst", "-sha256", "-sign", str(replacement_private_key), "-out", str(replacement_signature), str(replacement_artifact))
+        entry = payload["artifacts"][0]
+        entry.update({
+            "artifact": relative(replacement_artifact),
+            "sha256": hashlib.sha256(replacement_artifact.read_bytes()).hexdigest(),
+            "signature": relative(replacement_signature),
+            "signature_sha256": hashlib.sha256(replacement_signature.read_bytes()).hexdigest(),
+            "public_key": relative(replacement_public_key),
+            "public_key_sha256": hashlib.sha256(replacement_public_key.read_bytes()).hexdigest(),
+        })
+        manifest.write_text(json.dumps(payload), encoding="utf-8")
+        try:
+            stage0_trust.verify_manifest(manifest, "linux", "x86_64", trusted_keys)
+        except stage0_trust.TrustError as exc:
+            require("untrusted stage0 public key" in str(exc), "key substitution must fail at the pinned trust anchor")
+        else:
+            raise AssertionError("stage0 signed by a substituted key unexpectedly passed")
+        print("[stage0-trust-test] ok")
+        return 0
+    finally:
+        stage0_trust.ROOT = original_root
+        shutil.rmtree(fixture_root, ignore_errors=True)
 
 
 if __name__ == "__main__":

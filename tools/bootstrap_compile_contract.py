@@ -4,7 +4,6 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -12,6 +11,8 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "tools/bootstrap_real"))
+import stage0_trust
 COMPILER_ROOT = ROOT / "src/vitte/compiler"
 COMPILER_ENTRY = COMPILER_ROOT / "main.vit"
 STAGE0_MANIFEST = ROOT / "toolchain/bootstrap/stage0-manifest.json"
@@ -20,8 +21,8 @@ BOOTSTRAP_REAL = ROOT / "tools/bootstrap_real/bootstrap_real.py"
 REPORT_JSON = ROOT / "target/reports/bootstrap_compile_contract.json"
 REPORT_MD = ROOT / "target/reports/bootstrap_compile_contract.md"
 
-EXPECTED_COMPILER_MODULES = 971
-EXPECTED_STAGE0_SCHEMA = "vitte.bootstrap.stage0.trust.v1"
+EXPECTED_COMPILER_MODULES = 990
+EXPECTED_STAGE0_SCHEMA = "vitte.bootstrap.stage0.trust.v2"
 EXPECTED_STAGES_SCHEMA = "vitte.toolchain.bootstrap.stages.v2"
 EXPECTED_CHAIN = [
     "signed_stage0",
@@ -107,25 +108,6 @@ def load_json(path: Path, errors: list[str]) -> dict[str, Any]:
     return data
 
 
-def verify_signature(artifact: Path, signature: Path, public_key: Path, errors: list[str]) -> bool:
-    openssl = shutil.which("openssl")
-    if not openssl:
-        errors.append("openssl is required to verify signed stage0 artifacts")
-        return False
-    completed = subprocess.run(
-        [openssl, "dgst", "-sha256", "-verify", str(public_key), "-signature", str(signature), str(artifact)],
-        cwd=ROOT,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        check=False,
-    )
-    if completed.returncode != 0 or "Verified OK" not in completed.stdout:
-        errors.append(f"stage0 signature verification failed for {rel(artifact)}: {completed.stdout.strip()}")
-        return False
-    return True
-
-
 def compiler_sources() -> list[Path]:
     return sorted(path for path in COMPILER_ROOT.rglob("*.vit") if path.is_file())
 
@@ -196,7 +178,11 @@ def check_stage0_manifest(errors: list[str]) -> dict[str, Any]:
             if path and not path.is_file():
                 errors.append(f"missing stage0 {label}: {rel(path)}")
         if artifact and signature and public_key and artifact.is_file() and signature.is_file() and public_key.is_file():
-            row["signature_verified"] = verify_signature(artifact, signature, public_key, errors)
+            try:
+                stage0_trust.verify_entry(entry, os_name)
+                row["signature_verified"] = True
+            except (KeyError, stage0_trust.TrustError) as exc:
+                errors.append(f"stage0 trust verification failed for {rel(artifact)}: {exc}")
         rows.append(row)
     return {"manifest": rel(STAGE0_MANIFEST), "artifacts": rows}
 
