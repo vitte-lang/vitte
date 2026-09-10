@@ -6,11 +6,10 @@ use vitte/compiler/frontend/pipeline.{ FrontendOutput }
 use vitte/compiler/frontend/ast/item.{ AstModule, ast_module_empty }
 use vitte/compiler/analysis/report.{ AnalysisDiagnostic, analysis_diagnostic, analysis_diagnostic_with_span, ast_span_length, sort_analysis_diagnostics }
 use vitte/compiler/infrastructure/session/files.{ SourceManager, source_manager_empty, cache_source, source_manager_file_id, offset_lookup }
-use vitte/compiler/diagnostics/diagnostic.{ Diagnostic }
+use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, severity_name }
 use vitte/compiler/analysis/const_eval/evaluator.{ ConstEvalRunResult, run_const_eval_ast }
 use vitte/compiler/analysis/const_eval/errors.{ ConstEvalDiagnostic, ConstEvalSeverity }
 use vitte/compiler/analysis/sema/resolver.{ SemaResult, run_sema_hir }
-use vitte/compiler/analysis/sema/errors.{ sema_severity_name }
 use vitte/compiler/analysis/lint/report.{ LintDiagnostic, LintResult }
 use vitte/compiler/analysis/lint/engine.{ run_lint_hir }
 use vitte/compiler/analysis/lint/levels.{ lint_severity_name }
@@ -68,12 +67,26 @@ proc make_analysis_diag_with_source(frontend: FrontendOutput, phase: string, cod
   );
 }
 
+proc canonical_analysis_diagnostic(frontend: FrontendOutput, phase: string, diagnostic: Diagnostic) -> AnalysisDiagnostic {
+  let labels: [string] = [];
+  let i: u64 = 0;
+  while i < len(diagnostic.labels) {
+    set labels = labels + [diagnostic.labels[i].message];
+    set i = i + 1;
+  }
+  let suggestion: string = diagnostic.probable_fix;
+  if suggestion == "" and len(diagnostic.suggestions) > 0 {
+    set suggestion = diagnostic.suggestions[0].message;
+  }
+  give make_analysis_diag_with_source(frontend, phase, diagnostic.code, severity_name(diagnostic.severity), diagnostic.message, labels, suggestion, diagnostic.span.start_line, diagnostic.span.start_column, ast_span_length(diagnostic.span.start_column, diagnostic.span.end_column), diagnostic.fatal);
+}
+
 proc collect_sema_diagnostics(frontend: FrontendOutput, checked: SemaResult) -> [AnalysisDiagnostic] {
   let output: [AnalysisDiagnostic] = [];
   let i: u64 = 0;
   while i < len(checked.diagnostics) {
     let diagnostic = checked.diagnostics[i];
-    let out_diag: AnalysisDiagnostic = make_analysis_diag_with_source(frontend, "sema", diagnostic.code, diagnostic.severity as string, diagnostic.message, diagnostic.labels, diagnostic.suggestion, diagnostic.span.start_line, diagnostic.span.start_column, ast_span_length(diagnostic.span.start_column, diagnostic.span.end_column), diagnostic.fatal);
+    let out_diag: AnalysisDiagnostic = canonical_analysis_diagnostic(frontend, "sema", diagnostic);
     set output = output + [out_diag];
     set i = i + 1;
   }
@@ -89,7 +102,7 @@ proc collect_typeck_diagnostics(frontend: FrontendOutput, checked: TypeckResult)
   let i: u64 = 0;
   while i < len(checked.diagnostics) {
     let diagnostic: Diagnostic = checked.diagnostics[i];
-    let out_diag: AnalysisDiagnostic = make_analysis_diag_with_source(frontend, "typeck", diagnostic.code, "error", diagnostic.message, diagnostic.labels, diagnostic.suggestion, diagnostic.span.start_line, diagnostic.span.start_column, ast_span_length(diagnostic.span.start_column, diagnostic.span.end_column), diagnostic.fatal);
+    let out_diag: AnalysisDiagnostic = canonical_analysis_diagnostic(frontend, "typeck", diagnostic);
     set output = output + [out_diag];
     set i = i + 1;
   }
