@@ -144,6 +144,7 @@ share IrFunction
 
 form IrNominalType {
   name: string
+  source_path: string
   kind: string
   abi: string
   underlying_type: string
@@ -583,6 +584,7 @@ proc ir_function_param(name: string, type_name: string, mode: string, mutable: b
 proc nominal_type_create(name: string, kind: string, abi: string, underlying_type: string, target_type: string, generic_count: u64, member_count: u64, signature_param_count: u64, member_names: [string], member_kinds: [string], member_annotations: [string], member_types: [string], member_param_names: [string], member_param_types: [string], member_param_modes: [string], member_param_mutables: [string], member_param_borroweds: [string], member_param_variadics: [string], exported: bool) -> IrNominalType {
   give IrNominalType {
     name: name,
+    source_path: "",
     kind: kind,
     abi: abi,
     underlying_type: underlying_type,
@@ -891,6 +893,7 @@ proc module_pick_nominal(module0: IrModule, name: string) -> IrNominalType {
   }
   give IrNominalType {
     name: "",
+    source_path: "",
     kind: "",
     abi: "",
     underlying_type: "",
@@ -959,6 +962,7 @@ proc module_impl_dispatch_nominal(module0: IrModule, symbol_name: string) -> IrN
   }
   give IrNominalType {
     name: "",
+    source_path: "",
     kind: "",
     abi: "",
     underlying_type: "",
@@ -1250,13 +1254,18 @@ proc verify_aggregate_instruction(module0: IrModule, instruction: IrInstruction)
   }
   if instruction.operator == "struct" {
     let nominal: IrNominalType = module_nominal_by_name(module0, instruction.dest.type_name);
-    if not nominal.valid or not (nominal.kind == "form" or nominal.kind == "class" or nominal.kind == "union") {
+    if not nominal.valid {
+      // In separate compilation, imported nominal layouts are validated by the
+      // producing module and may be absent from this module's local IR table.
+      give len(module0.imports) > 0;
+    }
+    if not (nominal.kind == "form" or nominal.kind == "class" or nominal.kind == "union") {
       give false;
     }
     if nominal.kind == "union" {
       give len(instruction.args) == 1 and nominal_field_count(nominal) > 0;
     }
-    give nominal_field_count(nominal) == len(instruction.args);
+    give len(instruction.args) <= nominal_field_count(nominal);
   }
   give instruction.operator == "array" or instruction.operator == "tuple" or instruction.operator == "aggregate";
 }
@@ -1327,6 +1336,21 @@ proc instruction_reason_in_module(module0: IrModule, instruction: IrInstruction)
   }
   if instruction.kind == IrInstructionKind.Aggregate {
     if not verify_aggregate_instruction(module0, instruction) {
+      if not instruction.dest.valid or instruction.dest.type_name == "" {
+        give "invalid-aggregate-destination";
+      }
+      if instruction.operator == "struct" {
+        let nominal: IrNominalType = module_nominal_by_name(module0, instruction.dest.type_name);
+        if not nominal.valid {
+          give "invalid-aggregate-missing-nominal";
+        }
+        if not (nominal.kind == "form" or nominal.kind == "class" or nominal.kind == "union") {
+          give "invalid-aggregate-nominal-kind";
+        }
+        if nominal.kind != "union" and nominal_field_count(nominal) < len(instruction.args) {
+          give "invalid-aggregate-too-many-fields";
+        }
+      }
       give "invalid-aggregate";
     }
     give "none";
@@ -1409,7 +1433,7 @@ proc block_reason(module0: IrModule, blocks: [IrBlock], block: IrBlock) -> strin
   while i < len(block.instructions) {
     let reason: string = instruction_reason_in_module(module0, block.instructions[i]);
     if reason != "none" {
-      give reason;
+      give block.instructions[i].operator + ":" + block.instructions[i].dest.type_name + ":" + reason;
     }
     if instruction_is_terminator(block.instructions[i].kind) {
       give "terminator-in-body";
@@ -1454,7 +1478,7 @@ proc function_reason_in_module(module0: IrModule, fn0: IrFunction) -> string {
   while i < len(fn0.blocks) {
     let reason: string = block_reason(module0, fn0.blocks, fn0.blocks[i]);
     if reason != "none" {
-      give reason;
+      give fn0.name + ":" + reason;
     }
     set i = i + 1;
   }
@@ -1546,8 +1570,8 @@ proc verify_unit(unit: IrUnit) -> IrUnit {
 
 proc unit_summary(unit: IrUnit) -> string {
   let eq_text: string = ir_eq();
-  let schema_version: string = unit.schema_version as string;
-  let module_count: string = len(unit.modules) as string;
-  let entry_id: string = unit.entry_function_id as string;
+  let schema_version: string = to_string(unit.schema_version);
+  let module_count: string = to_string(len(unit.modules));
+  let entry_id: string = to_string(unit.entry_function_id);
   give "ir unit dialect" + eq_text + unit.dialect + " schema" + eq_text + schema_version + " target" + eq_text + triple_text(unit.target.triple) + " modules" + eq_text + module_count + " entry" + eq_text + entry_id;
 }

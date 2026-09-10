@@ -199,15 +199,15 @@ proc verified_unit_density(unit: IrUnit) -> f64 {
 proc verified_unit_summary(unit: IrUnit) -> string {
   let verified: IrUnit = verify_unit(unit);
   let eq_text: string = verify_eq();
-  let valid: string = verified.valid as string;
-  let modules: string = verify_and_count_modules(unit) as string;
-  let functions: string = verify_and_count_functions(unit) as string;
-  let blocks: string = verify_and_count_blocks(unit) as string;
-  let instructions: string = verify_and_count_instructions(unit) as string;
-  let density: string = verified_unit_density(unit) as string;
-  let verified_modules: string = verify_all_modules(unit) as string;
-  let verified_functions: string = verify_all_functions(unit) as string;
-  let verified_blocks: string = verify_all_blocks(unit) as string;
+  let valid: string = if verified.valid { "true" } else { "false" };
+  let modules: string = to_string(verify_and_count_modules(unit));
+  let functions: string = to_string(verify_and_count_functions(unit));
+  let blocks: string = to_string(verify_and_count_blocks(unit));
+  let instructions: string = to_string(verify_and_count_instructions(unit));
+  let density: string = to_string(verified_unit_density(unit) as int);
+  let verified_modules: string = if verify_all_modules(unit) { "true" } else { "false" };
+  let verified_functions: string = if verify_all_functions(unit) { "true" } else { "false" };
+  let verified_blocks: string = if verify_all_blocks(unit) { "true" } else { "false" };
   give "valid" + eq_text + valid + " modules" + eq_text + modules + " functions" + eq_text + functions + " blocks" + eq_text + blocks + " instructions" + eq_text + instructions + " density" + eq_text + density + " verified-modules" + eq_text + verified_modules + " verified-functions" + eq_text + verified_functions + " verified-blocks" + eq_text + verified_blocks;
 }
 

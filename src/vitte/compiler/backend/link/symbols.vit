@@ -16,6 +16,10 @@ proc symbols_eq() -> string {
     give slice("a=b", 1, 2);
 }
 
+proc symbol_bool_text(value: bool) -> string {
+    give if value { "true" } else { "false" };
+}
+
 proc add_entry_symbol(artifact: LinkArtifact, name: string) -> LinkArtifact {
     give add_entry_symbol_with_section(artifact, name, ".text");
 }
@@ -91,11 +95,11 @@ proc symbol_alignment_valid(symbol: LinkSymbol) -> bool {
 
 proc symbol_summary(symbol: LinkSymbol) -> string {
     let eq_text: string = symbols_eq();
-    let size: string = symbol.size as string;
-    let alignment: string = symbol.alignment as string;
-    let exported: string = symbol.exported as string;
-    let external: string = symbol.external as string;
-    let entry: string = symbol.entry as string;
+    let size: string = to_string(symbol.size);
+    let alignment: string = to_string(symbol.alignment);
+    let exported: string = symbol_bool_text(symbol.exported);
+    let external: string = symbol_bool_text(symbol.external);
+    let entry: string = symbol_bool_text(symbol.entry);
     give "name" + eq_text + symbol.name + " section" + eq_text + symbol.section + " size" + eq_text + size + " align" + eq_text + alignment + " exported" + eq_text + exported + " external" + eq_text + external + " entry" + eq_text + entry;
 }
 

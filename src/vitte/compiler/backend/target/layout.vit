@@ -354,7 +354,7 @@ proc data_layout_for_triple(triple: TargetTriple) -> string {
     give "E-m:e-p:32:32-i8:8:16-i16:16:32-i32:32-n8:16:32-S16";
   }
   let layout: TargetLayout = target_layout_for(triple);
-  let pointer_bits: string = (layout.pointer_size * 8) as string;
+  let pointer_bits: string = to_string(layout.pointer_size * 8);
   give (if layout.endian == "little" { "e" } else { "E" }) + "-p:" + pointer_bits + ":" + pointer_bits + "-i64:64";
 }
 
@@ -373,7 +373,11 @@ proc pointer_width_for_arch(arch: string) -> u64 {
 
 proc layout_selftest(triple: TargetTriple) -> bool {
   let layout: TargetLayout = target_layout_for(triple);
-  let aggregate: AggregateLayout = aggregate_size([4, 8, 1], [4, 8, 1], false);
+  let aggregate: AggregateLayout = aggregate_size(
+    [4 as u64, 8 as u64, 1 as u64],
+    [4 as u64, 8 as u64, 1 as u64],
+    false
+  );
   let character: TypeLayout = type_layout_for_name(layout, "char");
   give layout.valid
     and aggregate.valid

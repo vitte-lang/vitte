@@ -82,17 +82,17 @@ proc make_virtual_location(kind: VirtualLocationKind, index: u64, name: string, 
 }
 
 proc make_stack_slot(index: u64) -> VirtualLocation {
-    let index_text: string = index as string;
+    let index_text: string = to_string(index);
     give make_virtual_location(VirtualLocationKind.StackSlot, index, "stack_" + index_text, "[stack-slot:" + index_text + "]");
 }
 
 proc make_spill_slot(index: u64) -> VirtualLocation {
-    let index_text: string = index as string;
+    let index_text: string = to_string(index);
     give make_virtual_location(VirtualLocationKind.SpillSlot, index, "spill_" + index_text, "[spill-slot:" + index_text + "]");
 }
 
 proc make_argument_slot(index: u64) -> VirtualLocation {
-    let index_text: string = index as string;
+    let index_text: string = to_string(index);
     give make_virtual_location(VirtualLocationKind.ArgumentSlot, index, "arg_" + index_text, "[arg-slot:" + index_text + "]");
 }
 
@@ -163,17 +163,17 @@ proc annotation_for_location(config: VirtualAllocationConfig, location: VirtualL
     }
 
     if location.kind == VirtualLocationKind.StackSlot {
-        let index_text: string = location.index as string;
+        let index_text: string = to_string(location.index);
         give "[" + config.stack_slot_prefix + "-slot:" + index_text + "]";
     }
 
     if location.kind == VirtualLocationKind.SpillSlot {
-        let index_text: string = location.index as string;
+        let index_text: string = to_string(location.index);
         give "[" + config.spill_slot_prefix + "-slot:" + index_text + "]";
     }
 
     if location.kind == VirtualLocationKind.ArgumentSlot {
-        let index_text: string = location.index as string;
+        let index_text: string = to_string(location.index);
         give "[" + config.argument_slot_prefix + "-slot:" + index_text + "]";
     }
 
@@ -181,7 +181,7 @@ proc annotation_for_location(config: VirtualAllocationConfig, location: VirtualL
         give "[" + config.return_slot_name + "-slot]";
     }
 
-    let index_text: string = location.index as string;
+    let index_text: string = to_string(location.index);
     give "[" + virtual_location_kind_text(location.kind) + ":" + index_text + "]";
 }
 
@@ -232,7 +232,7 @@ proc allocate_virtual_line(config: VirtualAllocationConfig, line: string, slot_i
         give line;
     }
 
-    let slot_text: string = slot_index as string;
+    let slot_text: string = to_string(slot_index);
     let location = make_virtual_location(kind, slot_index, virtual_location_kind_text(kind) + "_" + slot_text, "");
     let annotation = annotation_for_location(config, location);
 
