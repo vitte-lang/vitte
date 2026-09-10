@@ -29,7 +29,8 @@ use vitte/compiler/diagnostics/diagnostic.{
     add_unique_diagnostic,
     merge_diagnostics,
     diagnostic_report,
-    severity_name
+    severity_name,
+    span_create as diagnostic_span_create
 }
 
 use vitte/compiler/diagnostics/catalog.{
@@ -85,21 +86,7 @@ form BorrowDiagnosticResult {
 }
 
 proc span_create(file: string, line: u64, column: u64, length: u64) -> SourceSpan {
-    let normalized_length: u64 = length;
-
-    if normalized_length == 0 {
-        set normalized_length = 1 as u64;
-    }
-
-    give SourceSpan {
-        file: file,
-        start_line: line,
-        start_column: column,
-        end_line: line,
-        end_column: column + normalized_length,
-        length: normalized_length,
-        valid: file != "" and line > 0 and column > 0
-    };
+    give diagnostic_span_create(file, line, column, length);
 }
 
 proc span_empty() -> SourceSpan {

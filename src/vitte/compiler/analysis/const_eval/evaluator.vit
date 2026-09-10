@@ -1175,6 +1175,8 @@ proc run_const_decls_ast(source_path: string, decls: [ConstDeclAst], procs: [Con
   let diagnostics: [ConstEvalDiagnostic] = [];
   let pending: [ConstDeclAst] = decls;
   let progress: bool = true;
+  let no_stack: [string] = [];
+  let initial_depth: u64 = len(no_stack);
 
   while progress and len(pending) > 0 {
     set progress = false;
@@ -1188,7 +1190,7 @@ proc run_const_decls_ast(source_path: string, decls: [ConstDeclAst], procs: [Con
         set i = i + 1;
         continue;
       }
-      let evaluated: ConstEvalResult = eval_const_ast_expr_with_procs(env, source_path, decl.expr, procs, [], 0);
+      let evaluated: ConstEvalResult = eval_const_ast_expr_with_procs(env, source_path, decl.expr, procs, no_stack, initial_depth);
       if evaluated.valid and const_value_fits_target(evaluated.value, decl.target_type) {
         set env = env_set(env, decl.name, evaluated.value);
         set resolved = resolved + [ConstBinding { name: decl.name, value: evaluated.value, valid: true }];
@@ -1229,9 +1231,11 @@ proc run_const_decls_ast(source_path: string, decls: [ConstDeclAst], procs: [Con
 
 proc run_static_asserts_ast(source_path: string, asserts: [StaticAssertDeclAst], procs: [ConstProcAst], env: ConstEnv, diagnostics: [ConstEvalDiagnostic]) -> ConstEvalRunResult {
   let output: [ConstEvalDiagnostic] = diagnostics;
+  let no_stack: [string] = [];
+  let initial_depth: u64 = len(no_stack);
   let i: u64 = 0;
   while i < len(asserts) {
-    let evaluated: ConstEvalResult = eval_const_ast_expr_with_procs(env, source_path, asserts[i].expr, procs, [], 0);
+    let evaluated: ConstEvalResult = eval_const_ast_expr_with_procs(env, source_path, asserts[i].expr, procs, no_stack, initial_depth);
     if not evaluated.valid {
       set output = output + evaluated.diagnostics;
     } elif evaluated.value.kind != ConstValueKind.Bool {

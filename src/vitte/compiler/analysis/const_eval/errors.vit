@@ -49,7 +49,7 @@ proc span_create(file: string, line: u64, column: u64, length: u64) -> ConstEval
 }
 
 proc span_empty() -> ConstEvalSpan {
-  give span_create("compiler/analysis/const_eval", 0, 0, 0);
+  give span_create("compiler/analysis/const_eval", 0 as u64, 0 as u64, 0 as u64);
 }
 
 proc error_code(kind: ConstEvalErrorKind) -> string {
@@ -101,13 +101,13 @@ proc diagnostic_create(kind: ConstEvalErrorKind, file: string, line: u64, messag
     message: message,
     labels: labels,
     suggestion: suggestion,
-    span: span_create(file, line, 1, 1),
+    span: span_create(file, line, 1 as u64, 1 as u64),
     fatal: fatal
   };
 }
 
 proc diagnostics_has_fatal(diagnostics: [ConstEvalDiagnostic]) -> bool {
-  let i: u64 = 0;
+  let mut i: u64 = 0;
   while i < len(diagnostics) {
     if diagnostics[i].fatal {
       give true;
@@ -118,7 +118,7 @@ proc diagnostics_has_fatal(diagnostics: [ConstEvalDiagnostic]) -> bool {
 }
 
 proc diagnostics_has_code(diagnostics: [ConstEvalDiagnostic], code: string) -> bool {
-  let i: u64 = 0;
+  let mut i: u64 = 0;
   while i < len(diagnostics) {
     if diagnostics[i].code == code {
       give true;
