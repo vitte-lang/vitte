@@ -165,6 +165,11 @@ smoke: verify $(BIN)
 	@"$(OUT_DIR)/assignment_ok"; status=$$?; test "$$status" -eq 2
 	@"$(BIN)" build "$(ROOT_DIR)/bootstrap/tests/aggregate_runtime.vit" -o "$(OUT_DIR)/aggregate_runtime"
 	@"$(OUT_DIR)/aggregate_runtime"
+	@"$(BIN)" build "$(ROOT_DIR)/bootstrap/tests/string_intrinsics_runtime.vit" -o "$(OUT_DIR)/string_intrinsics_runtime"
+	@"$(OUT_DIR)/string_intrinsics_runtime"
+	@mkdir -p "$(ROOT_DIR)/target/bootstrap-c17"
+	@cd "$(ROOT_DIR)" && "$(abspath $(BIN))" build bootstrap/tests/lazy_expressions_runtime.vit -o "$(abspath $(OUT_DIR))/lazy_expressions_runtime"
+	@cd "$(ROOT_DIR)" && "$(abspath $(OUT_DIR))/lazy_expressions_runtime"
 
 corpus: verify $(BIN)
 	@mkdir -p "$(OUT_DIR)/corpus"
