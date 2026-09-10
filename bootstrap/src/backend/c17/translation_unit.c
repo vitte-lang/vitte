@@ -190,11 +190,15 @@ vitte_status_t vitte_c17_translation_unit_emit_prelude(
         if (status != VITTE_STATUS_OK) return status;
         status = vitte_c17_write_newline(writer);
         if (status != VITTE_STATUS_OK) return status;
+        status = vitte_c17_write_string(writer, "static void vitte_memory_compact_tracking(void) { size_t desired; vitte_memory_allocation *smaller; if (vitte_memory_allocation_count > SIZE_MAX / 2u) return; desired = vitte_memory_allocation_count < 4096u ? 4096u : vitte_memory_allocation_count * 2u; if (desired >= vitte_memory_allocation_capacity || desired > SIZE_MAX / sizeof(vitte_memory_allocation)) return; smaller = (vitte_memory_allocation *)realloc(vitte_memory_allocations, desired * sizeof(vitte_memory_allocation)); if (smaller != NULL) { vitte_memory_allocations = smaller; vitte_memory_allocation_capacity = desired; } }");
+        if (status != VITTE_STATUS_OK) return status;
+        status = vitte_c17_write_newline(writer);
+        if (status != VITTE_STATUS_OK) return status;
         status = vitte_c17_write_string(writer, "static uint64_t vitte_c17_host_memory_checkpoint(void) { return vitte_memory_generation; }");
         if (status != VITTE_STATUS_OK) return status;
         status = vitte_c17_write_newline(writer);
         if (status != VITTE_STATUS_OK) return status;
-        status = vitte_c17_write_string(writer, "static int vitte_c17_host_memory_rewind(uint64_t checkpoint) { size_t i = vitte_memory_allocation_count; while (i > 0u) { i--; if (vitte_memory_allocations[i].generation > checkpoint) { vitte_memory_header *header = ((vitte_memory_header *)vitte_memory_allocations[i].pointer) - 1; free(header); vitte_memory_allocation_count--; if (i < vitte_memory_allocation_count) { vitte_memory_allocations[i] = vitte_memory_allocations[vitte_memory_allocation_count]; (((vitte_memory_header *)vitte_memory_allocations[i].pointer) - 1)->index = i; i++; } } } vitte_memory_release_free_pages(); return 0; }");
+        status = vitte_c17_write_string(writer, "static int vitte_c17_host_memory_rewind(uint64_t checkpoint) { size_t i = vitte_memory_allocation_count; while (i > 0u) { i--; if (vitte_memory_allocations[i].generation > checkpoint) { vitte_memory_header *header = ((vitte_memory_header *)vitte_memory_allocations[i].pointer) - 1; free(header); vitte_memory_allocation_count--; if (i < vitte_memory_allocation_count) { vitte_memory_allocations[i] = vitte_memory_allocations[vitte_memory_allocation_count]; (((vitte_memory_header *)vitte_memory_allocations[i].pointer) - 1)->index = i; i++; } } } vitte_memory_compact_tracking(); vitte_memory_release_free_pages(); return 0; }");
         if (status != VITTE_STATUS_OK) return status;
         status = vitte_c17_write_newline(writer);
         if (status != VITTE_STATUS_OK) return status;
