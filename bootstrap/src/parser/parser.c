@@ -2998,7 +2998,7 @@ vitte_status_t vitte_parser_parse_module(vitte_parser_t *parser, vitte_parser_re
         while (status == VITTE_STATUS_OK &&
             parser->current.kind != VITTE_TOKEN_EOF &&
             parser->current.kind != VITTE_TOKEN_ERROR) {
-            vitte_ast_decl_t *decl;
+            vitte_ast_decl_t *decl = NULL;
             vitte_ast_span_t import_span;
             bool have_import_span = false;
 
@@ -3081,7 +3081,7 @@ vitte_status_t vitte_parser_parse_module(vitte_parser_t *parser, vitte_parser_re
             }
             if (have_import_span) {
                 module_node->span = vitte_parser_span_merge(&module_node->span, &import_span);
-            } else {
+            } else if (decl != NULL) {
                 module_node->span = vitte_parser_span_merge(&module_node->span, &decl->span);
             }
         }

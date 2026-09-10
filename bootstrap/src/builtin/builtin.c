@@ -32,6 +32,9 @@ static const vitte_builtin_function_t VITTE_BUILTIN_FUNCTIONS[] = {
     {"assert", VITTE_BUILTIN_TYPE_VOID, VITTE_BUILTIN_TYPE_BOOL, 1u, 1u, false, false, false},
     {"len", VITTE_BUILTIN_TYPE_USIZE, VITTE_BUILTIN_TYPE_STRING, 1u, 1u, false, true, false},
     {"slice", VITTE_BUILTIN_TYPE_STRING, VITTE_BUILTIN_TYPE_STRING, 3u, 3u, false, false, false},
+    {"trim", VITTE_BUILTIN_TYPE_STRING, VITTE_BUILTIN_TYPE_STRING, 1u, 1u, false, false, false},
+    {"starts_with", VITTE_BUILTIN_TYPE_BOOL, VITTE_BUILTIN_TYPE_STRING, 2u, 2u, false, false, false},
+    {"ends_with", VITTE_BUILTIN_TYPE_BOOL, VITTE_BUILTIN_TYPE_STRING, 2u, 2u, false, false, false},
     {"to_string", VITTE_BUILTIN_TYPE_STRING, VITTE_BUILTIN_TYPE_INT, 1u, 1u, false, true, false},
     {"type_name", VITTE_BUILTIN_TYPE_STRING, VITTE_BUILTIN_TYPE_ERROR, 1u, 1u, false, true, false}
 };

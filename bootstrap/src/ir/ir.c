@@ -1523,6 +1523,86 @@ static const char *vitte_ir_qualified_name(vitte_ir_lowering_t *lowering, const 
     return name;
 }
 
+/* A select of already-lowered operands is eager. Keep both evaluation and
+ * conversion inside their branches, including nested conditional expressions.
+ * A NULL arm reuses the condition for short-circuit boolean operators. */
+static vitte_ir_value_t *vitte_ir_lower_choice(
+    vitte_ir_lowering_t *lowering,
+    const vitte_hir_node_t *node,
+    const vitte_hir_node_t *condition_node,
+    const vitte_hir_node_t *then_node,
+    const vitte_hir_node_t *else_node,
+    size_t depth
+) {
+    vitte_ir_function_t *function = lowering->builder.function;
+    vitte_ir_value_t *condition = vitte_ir_lower_expr(lowering, condition_node, depth + 1u);
+    vitte_ir_value_t *local;
+    vitte_ir_value_t *then_value;
+    vitte_ir_value_t *else_value;
+    vitte_ir_type_t *branch_type;
+    vitte_ir_block_t *then_block;
+    vitte_ir_block_t *else_block;
+    vitte_ir_block_t *merge_block;
+    vitte_ir_block_t *then_end;
+    vitte_ir_block_t *else_end;
+    if (function == NULL || condition == NULL) return NULL;
+    condition = vitte_ir_coerce_value(lowering, condition, vitte_ir_make_type(lowering->ir, VITTE_IR_TYPE_BOOL), condition_node);
+    local = vitte_ir_emit_local(&lowering->builder, "choice", vitte_ir_make_type(lowering->ir, VITTE_IR_TYPE_UNKNOWN), node);
+    then_block = vitte_ir_make_block(&lowering->builder, "choice.then", then_node);
+    else_block = vitte_ir_make_block(&lowering->builder, "choice.else", else_node);
+    merge_block = vitte_ir_make_block(&lowering->builder, "choice.end", node);
+    if (condition == NULL || local == NULL || then_block == NULL || else_block == NULL || merge_block == NULL ||
+        !vitte_ir_function_add_block(function, then_block) ||
+        !vitte_ir_function_add_block(function, else_block) ||
+        !vitte_ir_function_add_block(function, merge_block) ||
+        vitte_ir_emit_cond_branch(&lowering->builder, condition, then_block, else_block, node) == NULL) return NULL;
+
+    vitte_ir_builder_position_at_end(&lowering->builder, function, then_block);
+    if (!vitte_ir_scope_push(lowering)) return NULL;
+    then_value = then_node != NULL ? vitte_ir_lower_expr(lowering, then_node, depth + 1u) : condition;
+    vitte_ir_scope_pop(lowering);
+    then_end = lowering->builder.block;
+    vitte_ir_builder_position_at_end(&lowering->builder, function, else_block);
+    if (!vitte_ir_scope_push(lowering)) return NULL;
+    else_value = else_node != NULL ? vitte_ir_lower_expr(lowering, else_node, depth + 1u) : condition;
+    vitte_ir_scope_pop(lowering);
+    else_end = lowering->builder.block;
+    if (then_value == NULL || else_value == NULL) return NULL;
+    if (then_node == NULL || else_node == NULL) {
+        branch_type = condition->type;
+    } else if (then_value->type != NULL && then_value->type->kind == VITTE_IR_TYPE_STRING_PTR) {
+        branch_type = then_value->type;
+    } else if (else_value->type != NULL && else_value->type->kind == VITTE_IR_TYPE_STRING_PTR) {
+        branch_type = else_value->type;
+    } else if (then_value->type != NULL && then_value->type->kind == VITTE_IR_TYPE_AGGREGATE_PTR) {
+        branch_type = then_value->type;
+    } else if (else_value->type != NULL && else_value->type->kind == VITTE_IR_TYPE_AGGREGATE_PTR) {
+        branch_type = else_value->type;
+    } else if (vitte_ir_type_is_numeric_value_type(then_value->type)) {
+        branch_type = then_value->type;
+    } else if (vitte_ir_type_is_numeric_value_type(else_value->type)) {
+        branch_type = else_value->type;
+    } else if (then_value->type != NULL && then_value->type->kind == VITTE_IR_TYPE_BOOL) {
+        branch_type = then_value->type;
+    } else if (else_value->type != NULL && else_value->type->kind == VITTE_IR_TYPE_BOOL) {
+        branch_type = else_value->type;
+    } else {
+        branch_type = vitte_ir_make_type(lowering->ir, VITTE_IR_TYPE_I32);
+    }
+    local->type = branch_type;
+    local->definition->type = branch_type;
+    vitte_ir_builder_position_at_end(&lowering->builder, function, then_end);
+    then_value = vitte_ir_coerce_value(lowering, then_value, branch_type, then_node != NULL ? then_node : node);
+    if (then_value == NULL || vitte_ir_emit_store(&lowering->builder, local, then_value, node) == NULL ||
+        vitte_ir_emit_branch(&lowering->builder, merge_block, node) == NULL) return NULL;
+    vitte_ir_builder_position_at_end(&lowering->builder, function, else_end);
+    else_value = vitte_ir_coerce_value(lowering, else_value, branch_type, else_node != NULL ? else_node : node);
+    if (else_value == NULL || vitte_ir_emit_store(&lowering->builder, local, else_value, node) == NULL ||
+        vitte_ir_emit_branch(&lowering->builder, merge_block, node) == NULL) return NULL;
+    vitte_ir_builder_position_at_end(&lowering->builder, function, merge_block);
+    return vitte_ir_emit_load(&lowering->builder, local, node);
+}
+
 static vitte_ir_value_t *vitte_ir_lower_expr(vitte_ir_lowering_t *lowering, const vitte_hir_node_t *node, size_t depth) {
     if (!vitte_ir_depth_ok(lowering, depth) || node == NULL) {
         vitte_ir_lowering_set_error(lowering, VITTE_STATUS_ERROR_INVALID_ARGUMENT, "VITTE_IR_E_EXPR", "missing HIR expression", NULL);
@@ -1656,6 +1736,12 @@ static vitte_ir_value_t *vitte_ir_lower_expr(vitte_ir_lowering_t *lowering, cons
             return vitte_ir_emit_aggregate_read(&lowering->builder, VITTE_IR_OP_FIELD_GET, base, NULL, node->as.member_expr.member, field_type, node);
         }
         case VITTE_HIR_BINARY_EXPR: {
+            if (strcmp(node->as.binary_expr.operator_text, "&&") == 0) {
+                return vitte_ir_lower_choice(lowering, node, node->as.binary_expr.left, node->as.binary_expr.right, NULL, depth);
+            }
+            if (strcmp(node->as.binary_expr.operator_text, "||") == 0) {
+                return vitte_ir_lower_choice(lowering, node, node->as.binary_expr.left, NULL, node->as.binary_expr.right, depth);
+            }
             vitte_ir_value_t *left = vitte_ir_lower_expr(lowering, node->as.binary_expr.left, depth + 1u);
             vitte_ir_value_t *right = vitte_ir_lower_expr(lowering, node->as.binary_expr.right, depth + 1u);
             vitte_ir_value_t *result;
@@ -1700,37 +1786,8 @@ static vitte_ir_value_t *vitte_ir_lower_expr(vitte_ir_lowering_t *lowering, cons
             }
             return result;
         }
-        case VITTE_HIR_IF_EXPR: {
-            vitte_ir_value_t *condition = vitte_ir_lower_expr(lowering, node->as.if_expr.condition, depth + 1u);
-            vitte_ir_value_t *then_value = vitte_ir_lower_expr(lowering, node->as.if_expr.then_value, depth + 1u);
-            vitte_ir_value_t *else_value = vitte_ir_lower_expr(lowering, node->as.if_expr.else_value, depth + 1u);
-            vitte_ir_type_t *branch_type;
-            if (condition == NULL || then_value == NULL || else_value == NULL) return NULL;
-            condition = vitte_ir_coerce_value(lowering, condition, vitte_ir_make_type(lowering->ir, VITTE_IR_TYPE_BOOL), node->as.if_expr.condition);
-            if (then_value->type != NULL && then_value->type->kind == VITTE_IR_TYPE_STRING_PTR) {
-                branch_type = then_value->type;
-            } else if (else_value->type != NULL && else_value->type->kind == VITTE_IR_TYPE_STRING_PTR) {
-                branch_type = else_value->type;
-            } else if (then_value->type != NULL && then_value->type->kind == VITTE_IR_TYPE_AGGREGATE_PTR) {
-                branch_type = then_value->type;
-            } else if (else_value->type != NULL && else_value->type->kind == VITTE_IR_TYPE_AGGREGATE_PTR) {
-                branch_type = else_value->type;
-            } else if (vitte_ir_type_is_numeric_value_type(then_value->type)) {
-                branch_type = then_value->type;
-            } else if (vitte_ir_type_is_numeric_value_type(else_value->type)) {
-                branch_type = else_value->type;
-            } else if (then_value->type != NULL && then_value->type->kind == VITTE_IR_TYPE_BOOL) {
-                branch_type = then_value->type;
-            } else if (else_value->type != NULL && else_value->type->kind == VITTE_IR_TYPE_BOOL) {
-                branch_type = else_value->type;
-            } else {
-                branch_type = vitte_ir_make_type(lowering->ir, VITTE_IR_TYPE_I32);
-            }
-            then_value = vitte_ir_coerce_value(lowering, then_value, branch_type, node->as.if_expr.then_value);
-            else_value = vitte_ir_coerce_value(lowering, else_value, branch_type, node->as.if_expr.else_value);
-            if (condition == NULL || then_value == NULL || else_value == NULL) return NULL;
-            return vitte_ir_emit_select(&lowering->builder, condition, then_value, else_value, node);
-        }
+        case VITTE_HIR_IF_EXPR:
+            return vitte_ir_lower_choice(lowering, node, node->as.if_expr.condition, node->as.if_expr.then_value, node->as.if_expr.else_value, depth);
         case VITTE_HIR_BLOCK_EXPR: {
             const vitte_hir_node_t *statement;
             for (statement = node->as.block_expr.statements.first; statement != NULL; statement = statement->next) {
@@ -1921,7 +1978,7 @@ static vitte_status_t vitte_ir_lower_expr_discard(vitte_ir_lowering_t *lowering,
                 if (vitte_ir_lower_expr_discard(lowering, node->as.binary_expr.right, depth + 1u) != VITTE_STATUS_OK) {
                     return lowering->last_error.status;
                 }
-                if (!rhs_block->terminated && vitte_ir_emit_branch(&lowering->builder, merge_block, node) == NULL) {
+                if (!lowering->builder.block->terminated && vitte_ir_emit_branch(&lowering->builder, merge_block, node) == NULL) {
                     return VITTE_STATUS_ERROR_INVALID_STATE;
                 }
 

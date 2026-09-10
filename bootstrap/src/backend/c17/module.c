@@ -196,6 +196,8 @@ static const char *vitte_c17_host_intrinsic_helper(const vitte_ir_function_t *fu
     if (strcmp(name, "vitte_host_verify_native_object") == 0) return "vitte_c17_host_verify_native_object";
     if (strcmp(name, "vitte_host_link_executable") == 0) return "vitte_c17_host_link_executable";
     if (strcmp(name, "vitte_host_run_executable") == 0) return "vitte_c17_host_run_executable";
+    if (strcmp(name, "vitte_host_memory_checkpoint") == 0) return "vitte_c17_host_memory_checkpoint";
+    if (strcmp(name, "vitte_host_memory_rewind") == 0) return "vitte_c17_host_memory_rewind";
     return NULL;
 }
 
@@ -412,6 +414,9 @@ static bool vitte_c17_ir_builtin_supported(const char *name) {
         strcmp(name, "len") == 0 ||
         strcmp(name, "slice") == 0 ||
         strcmp(name, "find") == 0 ||
+        strcmp(name, "trim") == 0 ||
+        strcmp(name, "starts_with") == 0 ||
+        strcmp(name, "ends_with") == 0 ||
         strcmp(name, "to_string") == 0 ||
         strcmp(name, "to_string_int") == 0 ||
         strcmp(name, "to_string_i64") == 0 ||
@@ -554,6 +559,42 @@ static vitte_status_t vitte_c17_emit_ir_builtin_call(
         } else {
             status = vitte_c17_write_string(writer, "0");
         }
+        if (status != VITTE_STATUS_OK) return status;
+        return vitte_c17_emit_statement_line_end(writer);
+    }
+    if (strcmp(name, "trim") == 0) {
+        if (instruction->result == NULL || argument == NULL || argument->type == NULL ||
+            argument->type->kind != VITTE_IR_TYPE_STRING_PTR) {
+            return vitte_c17_emit_statement_line_end(writer);
+        }
+        status = vitte_c17_emit_ir_value_ref(module, writer, instruction->result);
+        if (status != VITTE_STATUS_OK) return status;
+        status = vitte_c17_write_string(writer, " = vitte_string_trim(");
+        if (status != VITTE_STATUS_OK) return status;
+        status = vitte_c17_emit_ir_value_ref(module, writer, argument);
+        if (status != VITTE_STATUS_OK) return status;
+        status = vitte_c17_write_char(writer, ')');
+        if (status != VITTE_STATUS_OK) return status;
+        return vitte_c17_emit_statement_line_end(writer);
+    }
+    if (strcmp(name, "starts_with") == 0 || strcmp(name, "ends_with") == 0) {
+        if (instruction->result == NULL || instruction->operand_count < 3u ||
+            instruction->operands[1] == NULL || instruction->operands[2] == NULL ||
+            instruction->operands[1]->type == NULL ||
+            instruction->operands[1]->type->kind != VITTE_IR_TYPE_STRING_PTR) {
+            return vitte_c17_emit_statement_line_end(writer);
+        }
+        status = vitte_c17_emit_ir_value_ref(module, writer, instruction->result);
+        if (status != VITTE_STATUS_OK) return status;
+        status = vitte_c17_write_string(writer, strcmp(name, "starts_with") == 0 ? " = vitte_string_starts_with(" : " = vitte_string_ends_with(");
+        if (status != VITTE_STATUS_OK) return status;
+        status = vitte_c17_emit_ir_value_ref(module, writer, instruction->operands[1]);
+        if (status != VITTE_STATUS_OK) return status;
+        status = vitte_c17_write_string(writer, ", ");
+        if (status != VITTE_STATUS_OK) return status;
+        status = vitte_c17_emit_ir_value_ref(module, writer, instruction->operands[2]);
+        if (status != VITTE_STATUS_OK) return status;
+        status = vitte_c17_write_char(writer, ')');
         if (status != VITTE_STATUS_OK) return status;
         return vitte_c17_emit_statement_line_end(writer);
     }
