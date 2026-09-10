@@ -109,7 +109,14 @@ proc validate_expr(expr: HirExpr) -> [SemanticDiagnostic] {
   }
 
   if not expr_has_struct_shape(expr) {
-    set diagnostics = diagnostics + [validation_error("HIRV0007", "struct expression missing constructor shape")]
+    set diagnostics = diagnostics + [semantic_diagnostic(
+      "HIRV0007",
+      SemanticSeverity.Error,
+      "struct expression missing constructor shape",
+      expr.span,
+      expr.name,
+      expr.text
+    )]
   }
 
   if expr.kind != HirExprKind.Call and len(expr.generic_arguments) > 0 {
@@ -268,6 +275,7 @@ proc validate_member(member: HirNominalMember) -> [SemanticDiagnostic] {
 proc validate_item(item: HirItem) -> [SemanticDiagnostic] {
   let diagnostics: [SemanticDiagnostic] = []
   let effective_member_count: u64 = if len(item.members) > 0 { len(item.members) } else { len(item.stmts) }
+  let imported_signature: bool = item.kind == HirItemKind.Proc and item.visibility == "imported"
 
   if not item.valid {
     set diagnostics = diagnostics + [validation_error("HIRV0200", "invalid hir item")]
@@ -281,7 +289,7 @@ proc validate_item(item: HirItem) -> [SemanticDiagnostic] {
     set diagnostics = diagnostics + [validation_error("HIRV0202", "hir item missing name")]
   }
 
-  if item.kind == HirItemKind.Proc and len(item.stmts) == 0 {
+  if item.kind == HirItemKind.Proc and len(item.stmts) == 0 and not imported_signature {
     set diagnostics = diagnostics + [validation_error("HIRV0203", "procedure item missing body")]
   }
 
