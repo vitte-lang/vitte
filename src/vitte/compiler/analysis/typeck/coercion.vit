@@ -65,6 +65,19 @@ proc normalize_type_name(ty: string) -> string {
     give out;
 }
 
+proc compact_collection_type_text(ty: string) -> string {
+    let out: string = "";
+    let i: u64 = 0;
+    while i < len(ty) {
+        let ch: string = slice(ty, i, i + 1);
+        if ch != " " and ch != "\t" and ch != "\n" and ch != "\r" {
+            set out = out + ch;
+        }
+        set i = i + 1;
+    }
+    give out;
+}
+
 proc type_deref_target(ty: string) -> string {
     let value: string = normalize_type_name(ty);
 
@@ -225,6 +238,14 @@ proc coerce_type(expected: string, actual: string) -> TypeCoercionResult {
 
     if e == a {
         give coercion_result(e, a, TypeCompatibility.Exact, true, false, "types are identical");
+    }
+    if starts_with(e, "[") and starts_with(a, "[")
+        and compact_collection_type_text(e) == compact_collection_type_text(a) {
+        give coercion_result(e, a, TypeCompatibility.Exact, true, false, "collection types differ only by insignificant whitespace");
+    }
+    if starts_with(e, "[") and starts_with(a, "[")
+        and (compact_collection_type_text(e) == "[opaque]" or compact_collection_type_text(a) == "[opaque]") {
+        give coercion_result(e, a, TypeCompatibility.Opaque, true, false, "opaque collection element defers compatibility");
     }
     if type_is_opaque(e) or type_is_opaque(a) {
         give coercion_result(e, a, TypeCompatibility.Opaque, true, false, "opaque type defers compatibility");

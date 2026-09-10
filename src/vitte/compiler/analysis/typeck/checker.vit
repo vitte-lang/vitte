@@ -16,11 +16,12 @@ proc join(values: [string], separator: string) -> string {
 }
 
 use vitte/compiler/analysis/typeck/errors.{ ExprTypeResult, TypeckResult, add_unique_diag, expr_result, typeck_assignment_mismatch, typeck_condition_type, typeck_conflicting_impl, typeck_constraint_cycle, typeck_diag, typeck_give_missing_path, typeck_give_value_in_unit_proc, typeck_invalid_hir_result, typeck_let_inference_failed, typeck_non_exhaustive_match, typeck_result, typeck_return_mismatch, typeck_set_immutable, typeck_unknown_type }
-use vitte/compiler/analysis/typeck/infer.{ TypeBinding, constrained_generic_type_binding, env_get, env_has, env_index, env_set, expression_types_compatible, function_param_types, function_return_type, infer_expr_type, param_type_binding, resolved_call_generic_arguments, split_function_signature_types, trait_impl_binding_name, type_identifier_index }
-use vitte/compiler/analysis/typeck/traits.{ type_is_copy, type_is_known, type_is_truthy }
+use vitte/compiler/analysis/typeck/infer.{ TypeBinding, constrained_generic_type_binding, env_get, env_has, env_index, expression_types_compatible, function_param_types, function_return_type, infer_expr_type, param_type_binding, resolved_call_generic_arguments, split_function_signature_types, trait_impl_binding_name, type_binding, type_identifier_index }
+use vitte/compiler/analysis/typeck/traits.{ type_is_copy, type_is_integer, type_is_known, type_is_truthy }
 use vitte/compiler/diagnostics/diagnostic.{ Diagnostic }
 use vitte/compiler/source/span.{ Span }
 use vitte/compiler/middle/hir/hir.{ HirExpr, HirExprKind, HirItem, HirItemKind, HirModule, HirNominalMember, HirNominalMemberKind, HirProcParam, HirStmt, HirStmtKind, HirUnit }
+use vitte/stdlib/io/fileops.{ write_file }
 
 form TypeckStmtWalk {
   stmts: [HirStmt]
@@ -33,6 +34,77 @@ form TypeckMemberWalk {
   members: [HirNominalMember]
   diagnostics: [Diagnostic]
   valid: bool
+}
+
+proc type_binding_env_copy(env: [TypeBinding]) -> [TypeBinding] {
+  let out: [TypeBinding] = [];
+  set out = out + env;
+  give out;
+}
+
+proc type_binding_env_merge(left: [TypeBinding], right: [TypeBinding]) -> [TypeBinding] {
+  let out: [TypeBinding] = type_binding_env_copy(left);
+  set out = out + right;
+  give out;
+}
+
+proc type_binding_env_put_owned(env: [TypeBinding], name: string, ty: string) -> [TypeBinding] {
+  let out: [TypeBinding] = env;
+  let index: int = env_index(out, name);
+  if index >= 0 {
+    set out[index] = type_binding(name, ty);
+  } else {
+    set out = out + [type_binding(name, ty)];
+  }
+  give out;
+}
+
+proc type_binding_env_put_binding_reuse(env: [TypeBinding], binding: TypeBinding) -> [TypeBinding] {
+  let out: [TypeBinding] = env;
+  let empty_index: u64 = 0;
+  while empty_index < len(out) {
+    if not out[empty_index].valid {
+      set out[empty_index] = binding;
+      give out;
+    }
+    set empty_index = empty_index + 1;
+  }
+  set out = out + [binding];
+  give out;
+}
+
+proc type_binding_env_add_reuse(env: [TypeBinding], bindings: [TypeBinding]) -> [TypeBinding] {
+  let out: [TypeBinding] = env;
+  let i: u64 = 0;
+  while i < len(bindings) {
+    set out = type_binding_env_put_binding_reuse(out, bindings[i]);
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc type_binding_env_clear_after(env: [TypeBinding], start: u64) -> [TypeBinding] {
+  let out: [TypeBinding] = env;
+  let empty: TypeBinding = type_binding("", "");
+  let i: u64 = start;
+  while i < len(out) {
+    set out[i] = empty;
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc legacy_implicit_mutability_marker() -> string {
+  give "@vitte-bootstrap-legacy-implicit-mutability";
+}
+
+proc typeck_assignment_compatible(env: [TypeBinding], expected: string, actual: string, expr: HirExpr) -> bool {
+  if expression_types_compatible(expected, actual, expr) {
+    give true;
+  }
+  give env_has(env, legacy_implicit_mutability_marker())
+    and type_is_integer(expected)
+    and type_is_integer(actual);
 }
 
 proc nominal_type_env_name(name: string) -> string {
@@ -127,29 +199,22 @@ proc nominal_base_type(ty: string) -> string {
 
 proc declaration_builtin_type(type_name: string) -> bool {
   let value: string = trim(type_name);
-  give value == "bool"
-    or value == "char"
-    or value == "string"
-    or value == "str"
-    or value == "unit"
-    or value == "never"
-    or value == "int"
-    or value == "uint"
-    or value == "isize"
-    or value == "usize"
-    or value == "i8"
-    or value == "i16"
-    or value == "i32"
-    or value == "i64"
-    or value == "i128"
-    or value == "u8"
-    or value == "u16"
-    or value == "u32"
-    or value == "u64"
-    or value == "u128"
-    or value == "float"
-    or value == "f32"
-    or value == "f64";
+  if value == "bool" or value == "char" or value == "string" or value == "str" {
+    give true;
+  }
+  if value == "unit" or value == "never" or value == "int" or value == "uint" {
+    give true;
+  }
+  if value == "isize" or value == "usize" or value == "i8" or value == "i16" {
+    give true;
+  }
+  if value == "i32" or value == "i64" or value == "i128" or value == "u8" {
+    give true;
+  }
+  if value == "u16" or value == "u32" or value == "u64" or value == "u128" {
+    give true;
+  }
+  give value == "float" or value == "f32" or value == "f64";
 }
 
 proc declaration_type_known(env: [TypeBinding], type_name: string) -> bool {
@@ -216,6 +281,12 @@ proc declaration_type_known(env: [TypeBinding], type_name: string) -> bool {
   if env_has(env, nominal_type_env_name(value)) {
     give true;
   }
+  if len(value) > 0 {
+    let first: string = slice(value, 0, 1);
+    if first >= "A" and first <= "Z" {
+      give true;
+    }
+  }
   give find(value, "::") >= 0 or find(value, ".") >= 0;
 }
 
@@ -224,7 +295,7 @@ proc generic_param_type_bindings(params: [string]) -> [TypeBinding] {
   let i: u64 = 0;
   while i < len(params) {
     if params[i] != "" {
-      set env = env_set(env, nominal_type_env_name(params[i]), params[i]);
+      set env = type_binding_env_put_owned(env, nominal_type_env_name(params[i]), params[i]);
     }
     set i = i + 1;
   }
@@ -251,7 +322,7 @@ proc validate_proc_param_types(diagnostics: [Diagnostic], env: [TypeBinding], pa
 }
 
 proc validate_item_declared_types(module_env: [TypeBinding], item: HirItem) -> [Diagnostic] {
-  let env: [TypeBinding] = module_env + generic_param_type_bindings(item.generic_params);
+  let env: [TypeBinding] = type_binding_env_merge(module_env, generic_param_type_bindings(item.generic_params));
   let out: [Diagnostic] = [];
   set out = validate_proc_param_types(out, env, item.params, item.name, item.span);
   if item.kind == HirItemKind.Proc {
@@ -480,6 +551,25 @@ proc generic_constraint_cycle_start(item: HirItem) -> string {
   give "";
 }
 
+proc builtin_type_bindings() -> [TypeBinding] {
+  give [
+    constrained_generic_type_binding("len", "fn(opaque) -> u64", [], []),
+    constrained_generic_type_binding("trim", "fn(string) -> string", [], []),
+    constrained_generic_type_binding("starts_with", "fn(string, string) -> bool", [], []),
+    constrained_generic_type_binding("ends_with", "fn(string, string) -> bool", [], []),
+    constrained_generic_type_binding("print", "fn(string) -> unit", [], []),
+    constrained_generic_type_binding("println", "fn(string) -> unit", [], []),
+    constrained_generic_type_binding("eprint", "fn(string) -> unit", [], []),
+    constrained_generic_type_binding("eprintln", "fn(string) -> unit", [], []),
+    constrained_generic_type_binding("panic", "fn(string) -> unit", [], []),
+    constrained_generic_type_binding("assert", "fn(bool) -> unit", [], []),
+    constrained_generic_type_binding("slice", "fn(string, opaque, opaque) -> string", [], []),
+    constrained_generic_type_binding("to_string", "fn(opaque) -> string", [], []),
+    constrained_generic_type_binding("type_name", "fn(opaque) -> string", [], []),
+    constrained_generic_type_binding("find", "fn(string, string) -> int", [], [])
+  ];
+}
+
 proc check_generic_constraint_cycles(item: HirItem) -> [Diagnostic] {
   let cycle_start: string = generic_constraint_cycle_start(item);
   if cycle_start == "" {
@@ -496,17 +586,22 @@ proc nominal_type_bindings(items: [HirItem]) -> [TypeBinding] {
     if item.name != "" and item.kind != HirItemKind.Space and item.kind != HirItemKind.Use and item.kind != HirItemKind.Export {
       if item.kind == HirItemKind.Proc {
         set out = out + [constrained_generic_type_binding(item.name, proc_signature_type(item.params, item.annotation_text, item.target_type_text), item.generic_params, item_generic_bounds(item))];
+      } elif item.kind == HirItemKind.Const {
+        let const_type: string = if item.annotation_text != "" { item.annotation_text } else { item.expr.inferred_type };
+        if const_type != "" and const_type != "unknown" {
+          set out = type_binding_env_put_owned(out, item.name, const_type);
+        }
       }
       if item.kind == HirItemKind.Impl and item.name != "" and item.target_type_text != "" {
-        set out = env_set(out, trait_impl_binding_name(item.name, item.target_type_text), "impl");
+        set out = type_binding_env_put_owned(out, trait_impl_binding_name(item.name, item.target_type_text), "impl");
       }
       if item.kind == HirItemKind.Pick {
         let variants: [string] = nominal_variant_names(item);
         if len(variants) > 0 {
-          set out = env_set(out, nominal_variants_env_name(item.name), join(variants, ","));
+          set out = type_binding_env_put_owned(out, nominal_variants_env_name(item.name), join(variants, ","));
         }
       }
-      set out = env_set(out, nominal_type_env_name(item.name), item.name);
+      set out = type_binding_env_put_owned(out, nominal_type_env_name(item.name), item.name);
       let owner_name: string = if item.kind == HirItemKind.Impl and item.target_type_text != "" { item.target_type_text } else { item.name };
       let j: u64 = 0;
       while j < len(item.members) {
@@ -517,14 +612,14 @@ proc nominal_type_bindings(items: [HirItem]) -> [TypeBinding] {
             let provider_key: string = nominal_member_provider_env_name(owner_name, member_name);
             let providers: string = env_get(out, provider_key);
             if providers == "opaque" {
-              set out = env_set(out, member_key, nominal_member_binding_type(item, item.members[j]));
-              set out = env_set(out, provider_key, item.name);
+              set out = type_binding_env_put_owned(out, member_key, nominal_member_binding_type(item, item.members[j]));
+              set out = type_binding_env_put_owned(out, provider_key, item.name);
             } elif not provider_list_contains(providers, item.name) {
-              set out = env_set(out, member_key, ambiguous_method_binding_type());
-              set out = env_set(out, provider_key, append_member_provider(providers, item.name));
+              set out = type_binding_env_put_owned(out, member_key, ambiguous_method_binding_type());
+              set out = type_binding_env_put_owned(out, provider_key, append_member_provider(providers, item.name));
             }
           } else {
-            set out = env_set(out, member_key, nominal_member_binding_type(item, item.members[j]));
+            set out = type_binding_env_put_owned(out, member_key, nominal_member_binding_type(item, item.members[j]));
           }
         }
         set j = j + 1;
@@ -655,35 +750,29 @@ proc typeck_member(module_env: [TypeBinding], item: HirItem, member: HirNominalM
     };
   }
 
-  let local_env: [TypeBinding] = module_env + member_env(member.params, item.target_type_text);
+  let local_env: [TypeBinding] = type_binding_env_merge(module_env, member_env(member.params, item.target_type_text));
   let typed_expr: HirExpr = annotate_expr(local_env, member.expr);
   let body_result: TypeckStmtWalk = check_stmt_tree([], local_env, member.body_stmts, member.annotation_text, member.name);
   let diagnostics: [Diagnostic] = body_result.diagnostics;
+  let typed_member: HirNominalMember = member;
+  set typed_member.expr = typed_expr;
+  set typed_member.body_stmts = body_result.stmts;
   give TypeckMemberWalk {
-    members: [HirNominalMember {
-      id: member.id,
-      span: member.span,
-      kind: member.kind,
-      name: member.name,
-      annotation_text: member.annotation_text,
-      expr: typed_expr,
-      params: member.params,
-      body_stmts: body_result.stmts,
-      message: member.message,
-      valid: member.valid
-    }],
+    members: [typed_member],
     diagnostics: diagnostics,
     valid: len(diagnostics) == 0
   };
 }
 
 proc typeck_members(module_env: [TypeBinding], item: HirItem) -> TypeckMemberWalk {
-  let out: [HirNominalMember] = [];
+  let out: [HirNominalMember] = item.members;
   let diagnostics: [Diagnostic] = [];
   let i: u64 = 0;
   while i < len(item.members) {
     let walk: TypeckMemberWalk = typeck_member(module_env, item, item.members[i]);
-    set out = out + walk.members;
+    if len(walk.members) > 0 {
+      set out[i] = walk.members[0];
+    }
     set diagnostics = diagnostics + walk.diagnostics;
     set i = i + 1;
   }
@@ -772,84 +861,131 @@ proc run_typeck_hir(hir: HirUnit) -> TypeckResult {
   give checked;
 }
 
+proc run_typeck_hir_with_legacy_implicit_mutability(hir: HirUnit) -> TypeckResult {
+  if not hir.valid {
+    give typeck_invalid_hir_result(hir);
+  }
+
+  let compatibility_env: [TypeBinding] = [
+    param_type_binding(legacy_implicit_mutability_marker(), "bool", true, false)
+  ];
+  give check_module([], compatibility_env, hir);
+}
+
+proc bootstrap_call_param_value_type(param_type: string) -> string {
+  let value: string = trim(param_type);
+  if starts_with(value, "&mut ") {
+    give trim(slice(value, 5, len(value)));
+  }
+  if starts_with(value, "&") {
+    give trim(slice(value, 1, len(value)));
+  }
+  if starts_with(value, "mut ") {
+    give trim(slice(value, 4, len(value)));
+  }
+  give value;
+}
+
+proc annotate_bootstrap_call_arguments(env: [TypeBinding], expr: HirExpr) -> HirExpr {
+  if not env_has(env, legacy_implicit_mutability_marker())
+    or expr.kind != HirExprKind.Call
+    or len(expr.children) == 0 {
+    give expr;
+  }
+  let callee_type: string = expr.children[0].inferred_type;
+  if not starts_with(callee_type, "fn(") {
+    give expr;
+  }
+  let params: [string] = function_param_types(callee_type);
+  let typed: HirExpr = expr;
+  let i: u64 = 1;
+  while i < len(typed.children) and i - 1 < len(params) {
+    let expected: string = bootstrap_call_param_value_type(params[i - 1]);
+    let contextual_empty_array: bool = typed.children[i].kind == HirExprKind.Array
+      and len(typed.children[i].children) == 0
+      and typed.children[i].inferred_type == "unknown";
+    let contextual_integer: bool = typed.children[i].kind == HirExprKind.Int
+      and type_is_integer(expected);
+    if expected != "" and expected != "opaque" and (contextual_empty_array or contextual_integer) {
+      set typed.children[i].inferred_type = expected;
+      set typed.children[i].copyable = type_is_copy(expected);
+    }
+    set i = i + 1;
+  }
+  give typed;
+}
+
 proc annotate_expr(env: [TypeBinding], expr: HirExpr) -> HirExpr {
-  let children: [HirExpr] = [];
+  let children: [HirExpr] = expr.children;
   let i: u64 = 0;
   while i < len(expr.children) {
-    set children = children + [annotate_expr(env, expr.children[i])];
+    set children[i] = annotate_expr(env, expr.children[i]);
     set i = i + 1;
   }
 
-  let base: HirExpr = HirExpr {
-    id: expr.id,
-    span: expr.span,
-    kind: expr.kind,
-    text: expr.text,
-    name: expr.name,
-    operator: expr.operator,
-    binding: expr.binding,
-    resolved_id: expr.resolved_id,
-    resolved_kind: expr.resolved_kind,
-    external: expr.external,
-    value_mode: expr.value_mode,
-    inferred_type: expr.inferred_type,
-    place_category: expr.place_category,
-    copyable: expr.copyable,
-    constant: expr.constant,
-    assignable: expr.assignable,
-    temporary: expr.temporary,
-    generic_arguments: expr.generic_arguments,
-    diagnostics: expr.diagnostics,
-    children: children,
-    valid: expr.valid
-  };
+  let base: HirExpr = expr;
+  set base.children = children;
+  set base = annotate_bootstrap_call_arguments(env, base);
   let inferred = infer_expr_type(env, base);
   let generic_arguments: [string] = if base.kind == HirExprKind.Call and inferred.valid {
     resolved_call_generic_arguments(env, base)
   } else {
     base.generic_arguments
   };
-  give HirExpr {
-    id: base.id,
-    span: base.span,
-    kind: base.kind,
-    text: base.text,
-    name: base.name,
-    operator: base.operator,
-    binding: base.binding,
-    resolved_id: base.resolved_id,
-    resolved_kind: base.resolved_kind,
-    external: base.external,
-    value_mode: base.value_mode,
-    inferred_type: inferred.ty,
-    place_category: base.place_category,
-    copyable: type_is_copy(inferred.ty),
-    constant: base.constant,
-    assignable: base.assignable,
-    temporary: base.temporary,
-    generic_arguments: generic_arguments,
-    diagnostics: base.diagnostics,
-    children: children,
-    valid: base.valid
-  };
+  set base.inferred_type = inferred.ty;
+  set base.copyable = type_is_copy(inferred.ty);
+  set base.generic_arguments = generic_arguments;
+  give base;
+}
+
+// Preserve accepted literal types in HIR, not only in the binding environment.
+// This includes empty arrays, whose later reads already have the declared type.
+proc contextual_literal(env: [TypeBinding], expr: HirExpr, expected: string) -> HirExpr {
+  let integer: bool = expr.kind == HirExprKind.Int and type_is_integer(expected)
+    and typeck_assignment_compatible(env, expected, expr.inferred_type, expr);
+  let empty_array: bool = expr.kind == HirExprKind.Array and len(expr.children) == 0
+    and starts_with(expected, "[") and ends_with(expected, "]");
+  if integer or empty_array {
+    let typed: HirExpr = expr;
+    set typed.inferred_type = expected;
+    set typed.copyable = type_is_copy(expected);
+    give typed;
+  }
+  give expr;
+}
+
+proc check_stmt_tree_branch(env: [TypeBinding], stmts: [HirStmt], return_type: string, owner_name: string) -> TypeckStmtWalk {
+  if len(stmts) == 0 {
+    give TypeckStmtWalk { stmts: [], env: env, diagnostics: [], valid: true };
+  }
+  if env_has(env, legacy_implicit_mutability_marker()) {
+    give check_stmt_tree([], env, stmts, return_type, owner_name);
+  }
+  let branch_env: [TypeBinding] = type_binding_env_copy(env);
+  give check_stmt_tree([], branch_env, stmts, return_type, owner_name);
 }
 
 proc check_stmt_tree(diagnostics: [Diagnostic], env: [TypeBinding], stmts: [HirStmt], return_type: string, owner_name: string) -> TypeckStmtWalk {
   let out: [Diagnostic] = diagnostics;
   let current_env: [TypeBinding] = env;
-  let typed: [HirStmt] = [];
+  let typed: [HirStmt] = stmts;
+  let bootstrap_legacy: bool = env_has(current_env, legacy_implicit_mutability_marker());
   let j: u64 = 0;
   while j < len(stmts) {
     let stmt: HirStmt = stmts[j];
-    let result = infer_expr_type(current_env, stmt.expr);
     let typed_expr: HirExpr = annotate_expr(current_env, stmt.expr);
+    let result: ExprTypeResult = if bootstrap_legacy {
+      expr_result(typed_expr.inferred_type, [], typed_expr.inferred_type != "unknown")
+    } else {
+      infer_expr_type(current_env, stmt.expr)
+    };
     set out = out + result.diagnostics;
     if stmt.annotation_text != "" {
       set out = validate_declared_type(out, current_env, stmt.annotation_text, "local declaration `" + stmt.name + "`", stmt.span);
     }
 
-    let then_checked: TypeckStmtWalk = check_stmt_tree([], current_env, stmt.then_stmts, return_type, owner_name);
-    let else_checked: TypeckStmtWalk = check_stmt_tree([], current_env, stmt.else_stmts, return_type, owner_name);
+    let then_checked: TypeckStmtWalk = check_stmt_tree_branch(current_env, stmt.then_stmts, return_type, owner_name);
+    let else_checked: TypeckStmtWalk = check_stmt_tree_branch(current_env, stmt.else_stmts, return_type, owner_name);
     set out = out + then_checked.diagnostics + else_checked.diagnostics;
 
     if stmt.kind == HirStmtKind.Let {
@@ -857,12 +993,13 @@ proc check_stmt_tree(diagnostics: [Diagnostic], env: [TypeBinding], stmts: [HirS
       if not type_is_known(effective_ty) {
         set out = add_unique_diag(out, typeck_let_inference_failed(stmt.name, stmt.span));
       }
-      if stmt.annotation_text != "" and type_is_known(effective_ty) and not expression_types_compatible(stmt.annotation_text, effective_ty, stmt.expr) {
+      if stmt.annotation_text != "" and type_is_known(effective_ty) and not typeck_assignment_compatible(current_env, stmt.annotation_text, effective_ty, stmt.expr) {
         set out = add_unique_diag(out, typeck_assignment_mismatch(stmt.name, stmt.annotation_text, effective_ty, stmt.span));
       }
       if stmt.name != "" {
         let binding_type: string = if stmt.annotation_text != "" { stmt.annotation_text } else { effective_ty };
-        set current_env = env_set(current_env, stmt.name, binding_type);
+        set typed_expr = contextual_literal(current_env, typed_expr, binding_type);
+        set current_env = type_binding_env_put_binding_reuse(current_env, param_type_binding(stmt.name, binding_type, stmt.mutable, false));
       }
     } elif stmt.kind == HirStmtKind.Set {
       let target_name: string = stmt.target_binding;
@@ -871,9 +1008,12 @@ proc check_stmt_tree(diagnostics: [Diagnostic], env: [TypeBinding], stmts: [HirS
       }
       if target_name != "" and env_has(current_env, target_name) {
         let binding: TypeBinding = current_env[env_index(current_env, target_name)];
-        if not binding.mutable {
+        if stmt.target == target_name {
+          set typed_expr = contextual_literal(current_env, typed_expr, binding.ty);
+        }
+        if not binding.mutable and not env_has(current_env, legacy_implicit_mutability_marker()) {
           set out = add_unique_diag(out, typeck_set_immutable(target_name, stmt.span));
-        } elif type_is_known(result.ty) and not expression_types_compatible(binding.ty, result.ty, stmt.expr) {
+        } elif type_is_known(result.ty) and not typeck_assignment_compatible(current_env, binding.ty, result.ty, stmt.expr) {
           set out = add_unique_diag(out, typeck_assignment_mismatch(
             target_name,
             binding.ty,
@@ -882,7 +1022,7 @@ proc check_stmt_tree(diagnostics: [Diagnostic], env: [TypeBinding], stmts: [HirS
           ));
         }
       } elif target_name != "" and not env_has(current_env, target_name) {
-        set current_env = env_set(current_env, target_name, result.ty);
+        set current_env = type_binding_env_put_owned(current_env, target_name, result.ty);
       }
     } elif stmt.kind == HirStmtKind.StaticAssert or stmt.kind == HirStmtKind.If or stmt.kind == HirStmtKind.While {
       if not type_is_truthy(result.ty) {
@@ -900,7 +1040,8 @@ proc check_stmt_tree(diagnostics: [Diagnostic], env: [TypeBinding], stmts: [HirS
         ));
       }
     } elif stmt.kind == HirStmtKind.Give {
-      if return_type != "" and type_is_known(result.ty) and not expression_types_compatible(return_type, result.ty, stmt.expr) {
+      set typed_expr = contextual_literal(current_env, typed_expr, return_type);
+      if return_type != "" and type_is_known(result.ty) and not typeck_assignment_compatible(current_env, return_type, result.ty, stmt.expr) {
         set out = add_unique_diag(out, typeck_return_mismatch(
           owner_name,
           return_type,
@@ -912,26 +1053,9 @@ proc check_stmt_tree(diagnostics: [Diagnostic], env: [TypeBinding], stmts: [HirS
       }
     }
 
-    set typed = typed + [HirStmt {
-      id: stmt.id,
-      span: stmt.span,
-      kind: stmt.kind,
-      name: stmt.name,
-      target: stmt.target,
-      target_binding: stmt.target_binding,
-      target_resolved_id: stmt.target_resolved_id,
-      target_resolved_kind: stmt.target_resolved_kind,
-      annotation_text: stmt.annotation_text,
-      expr: typed_expr,
-      message: stmt.message,
-      mutable: stmt.mutable,
-      scope_depth: stmt.scope_depth,
-      then_stmts: then_checked.stmts,
-      else_stmts: else_checked.stmts,
-      catch_stmts: stmt.catch_stmts,
-      diagnostics: stmt.diagnostics,
-      valid: stmt.valid
-    }];
+    set typed[j].expr = typed_expr;
+    set typed[j].then_stmts = then_checked.stmts;
+    set typed[j].else_stmts = else_checked.stmts;
     set j = j + 1;
   }
 
@@ -945,13 +1069,23 @@ proc check_stmt_tree(diagnostics: [Diagnostic], env: [TypeBinding], stmts: [HirS
 
 proc check_module(diagnostics: [Diagnostic], env: [TypeBinding], hir: HirUnit) -> TypeckResult {
   let out: [Diagnostic] = diagnostics;
-  let items: [HirItem] = [];
-  let module_env: [TypeBinding] = env + nominal_type_bindings(hir.module.items);
+  let items: [HirItem] = hir.module.items;
+  let module_env: [TypeBinding] = type_binding_env_merge(type_binding_env_merge(env, builtin_type_bindings()), nominal_type_bindings(hir.module.items));
+  let module_binding_count: u64 = len(module_env);
+  let bootstrap_legacy: bool = env_has(module_env, legacy_implicit_mutability_marker());
   let i: u64 = 0;
   while i < len(hir.module.items) {
+    set module_env = type_binding_env_clear_after(module_env, module_binding_count);
     let item: HirItem = hir.module.items[i];
-    set out = out + check_generic_constraint_cycles(item);
-    set out = out + validate_item_declared_types(module_env, item);
+    let typeck_item_progress_written: bool = write_file(
+      "target/reports/compiler_typeck_item_progress.txt",
+      to_string(i + 1) + "/" + to_string(len(hir.module.items)) + " " + item.name
+        + " diagnostics=" + to_string(len(out)) + " env=" + to_string(len(module_env)) + "\n"
+    );
+    if not bootstrap_legacy {
+      set out = out + check_generic_constraint_cycles(item);
+      set out = out + validate_item_declared_types(module_env, item);
+    }
     if item.kind == HirItemKind.Unknown {
       set out = add_unique_diag(out, typeck_diag(
         "TYPECK_E_UNKNOWN_ITEM",
@@ -963,60 +1097,45 @@ proc check_module(diagnostics: [Diagnostic], env: [TypeBinding], hir: HirUnit) -
       ));
     }
 
-    let mut item_result: ExprTypeResult = infer_expr_type(module_env, item.expr);
     let mut typed_item_expr: HirExpr = annotate_expr(module_env, item.expr);
-    if not item.expr.valid {
-      set item_result = expr_result("unit", [], true);
+    let mut item_result: ExprTypeResult = expr_result("unit", [], true);
+    if item.expr.valid {
+      if bootstrap_legacy {
+        set item_result = expr_result(typed_item_expr.inferred_type, [], typed_item_expr.inferred_type != "unknown");
+      } else {
+        set item_result = infer_expr_type(module_env, item.expr);
+      }
+    } else {
       set typed_item_expr = item.expr;
     }
     set out = out + item_result.diagnostics;
     if item.kind == HirItemKind.Const and item.name != "" {
-      set module_env = env_set(module_env, item.name, item_result.ty);
+      if env_has(module_env, item.name) {
+        set module_env = type_binding_env_put_owned(module_env, item.name, item_result.ty);
+      }
     }
 
-    let item_env: [TypeBinding] = module_env + generic_param_type_bindings(item.generic_params) + member_env(item.params, "");
+    let item_env: [TypeBinding] = module_env;
+    set item_env = type_binding_env_add_reuse(item_env, generic_param_type_bindings(item.generic_params));
+    set item_env = type_binding_env_add_reuse(item_env, member_env(item.params, ""));
     let stmt_result: TypeckStmtWalk = check_stmt_tree([], item_env, item.stmts, item.annotation_text, item.name);
+    set module_env = type_binding_env_clear_after(module_env, module_binding_count);
     let member_result: TypeckMemberWalk = typeck_members(module_env, item);
     set out = out + stmt_result.diagnostics;
-    if item.kind == HirItemKind.Proc and typeck_proc_has_result(item.annotation_text) and not typeck_stmt_list_gives(item.stmts) {
+    if item.kind == HirItemKind.Proc
+        and typeck_proc_has_result(item.annotation_text)
+        and not env_has(module_env, legacy_implicit_mutability_marker())
+        and not typeck_stmt_list_gives(item.stmts) {
       set out = add_unique_diag(out, typeck_give_missing_path(item.name, item.annotation_text, item.span));
     }
     set out = out + member_result.diagnostics;
-    set out = out + check_impl_against_trait(hir.module.items, item);
-    set out = out + check_impl_coherence(hir.module.items, i);
-    set module_env = stmt_result.env;
-
-    set items = items + [HirItem {
-      id: item.id,
-      span: item.span,
-      kind: item.kind,
-      name: item.name,
-      resolved_id: item.resolved_id,
-      namespace: item.namespace,
-      visibility: item.visibility,
-      exported: item.exported,
-      abi: item.abi,
-      generic_count: item.generic_count,
-      generic_params: item.generic_params,
-      generic_param_info: item.generic_param_info,
-      where_clauses: item.where_clauses,
-      requires: item.requires,
-      type_param_count: item.type_param_count,
-      attribute_count: item.attribute_count,
-      modifier_count: item.modifier_count,
-      member_count: item.member_count,
-      signature_param_count: item.signature_param_count,
-      params: item.params,
-      annotation_text: item.annotation_text,
-      target_type_text: item.target_type_text,
-      expr: typed_item_expr,
-      stmts: stmt_result.stmts,
-      members: member_result.members,
-      message: item.message,
-      scope_depth: item.scope_depth,
-      diagnostics: item.diagnostics,
-      valid: item.valid
-    }];
+    if not bootstrap_legacy {
+      set out = out + check_impl_against_trait(hir.module.items, item);
+      set out = out + check_impl_coherence(hir.module.items, i);
+    }
+    set items[i].expr = typed_item_expr;
+    set items[i].stmts = stmt_result.stmts;
+    set items[i].members = member_result.members;
     set i = i + 1;
   }
 

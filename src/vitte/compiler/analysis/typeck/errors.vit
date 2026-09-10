@@ -27,7 +27,8 @@ use vitte/compiler/diagnostics/diagnostic.{
     secondary_label,
     add_unique_diagnostic,
     merge_diagnostics,
-    diagnostic_report
+    diagnostic_report,
+    span_range
 }
 
 use vitte/compiler/diagnostics/catalog.{
@@ -92,21 +93,7 @@ proc typeck_type_blocks_followup(ty: string) -> bool {
 }
 
 proc ast_span_to_source_span(span: Span) -> SourceSpan {
-    let length: u64 = 1;
-
-    if span.end_line == span.start_line and span.end_column > span.start_column {
-        set length = span.end_column - span.start_column;
-    }
-
-    give SourceSpan {
-        file: span.file,
-        start_line: span.start_line,
-        start_column: span.start_column,
-        end_line: span.end_line,
-        end_column: span.end_column,
-        length: length,
-        valid: span.start_line > 0 and span.start_column > 0
-    };
+    give span_range(span.file, span.start_line, span.start_column, span.end_line, span.end_column);
 }
 
 proc typeck_message(code: string, fallback: string) -> string {
@@ -330,7 +317,13 @@ proc attach_typeck_labels_and_help(diagnostic: Diagnostic, labels: [string], sug
 
 proc typeck_diag(code: string, message: string, labels: [string], suggestion: string, span: Span, fatal: bool) -> Diagnostic {
     let source_span: SourceSpan = ast_span_to_source_span(span);
-    let severity: DiagnosticSeverity = if fatal { DiagnosticSeverity.Fatal } else { DiagnosticSeverity.Error };
+    let severity: DiagnosticSeverity = if fatal {
+        DiagnosticSeverity.Fatal
+    } elif starts_with(code, "TYPECK_W_") {
+        DiagnosticSeverity.Warning
+    } else {
+        DiagnosticSeverity.Error
+    };
     let public_code: string = typeck_public_code(code);
     let resolved_message: string = typeck_message(public_code, message);
     let resolved_help: string = typeck_help(public_code, suggestion);
@@ -574,7 +567,7 @@ proc typeck_invalid_call(callee: string, span: Span) -> Diagnostic {
 }
 
 proc typeck_argument_mismatch(callee: string, position: u64, expected: string, found: string, span: Span) -> Diagnostic {
-    let position_text: string = position as string;
+    let position_text: string = to_string(position);
     let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_ARGUMENT_MISMATCH", "argument " + position_text + " of `" + callee + "` expects `" + expected + "` but receives `" + found + "`", [callee, expected, found], "convert the value or modify the callee signature", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.InvalidCall);
     let diag1: Diagnostic = diagnostic_with_rule(diag0, "proc argument compatibility");
     let diag2: Diagnostic = diagnostic_with_explanation(diag1, "Expected type `" + expected + "` because parameter " + position_text + " of `" + callee + "` is declared that way; obtained type `" + found + "` from this argument expression. Convert the value or modify the signature.");
@@ -586,8 +579,8 @@ proc typeck_argument_mismatch(callee: string, position: u64, expected: string, f
 }
 
 proc typeck_invalid_call_arity(callee: string, expected_params: string, expected_arity: u64, found_arity: u64, span: Span) -> Diagnostic {
-    let expected_text: string = expected_arity as string;
-    let found_text: string = found_arity as string;
+    let expected_text: string = to_string(expected_arity);
+    let found_text: string = to_string(found_arity);
     let diag0: Diagnostic = typed_typeck_diag("TYPECK_E_CALL_ARITY", "wrong number of call arguments", [callee, expected_text, found_text], "pass the expected number of arguments or change the callee signature", span, DiagnosticSeverity.Error, DiagnosticPhase.Typeck, TypeckErrorKind.InvalidCall);
     let diag1: Diagnostic = diagnostic_with_rule(diag0, "proc call arity");
     let diag2: Diagnostic = diagnostic_with_explanation(diag1, "`" + callee + "` expects " + expected_text + " argument(s), but this call provides " + found_text);
@@ -712,8 +705,8 @@ proc result_summary(result: TypeckResult) -> string {
         give "typeck ok";
     }
 
-    let error_count: string = result.report.error_count as string;
-    let fatal_count: string = result.report.fatal_count as string;
+    let error_count: string = to_string(result.report.error_count);
+    let fatal_count: string = to_string(result.report.fatal_count);
     give "typeck failed: " + error_count + " error(s), " + fatal_count + " fatal(s)";
 }
 
