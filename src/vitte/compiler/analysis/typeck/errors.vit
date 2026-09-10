@@ -336,13 +336,12 @@ proc typed_typeck_diag(code: string, message: string, labels: [string], suggesti
     let public_code: string = typeck_public_code(code);
     let resolved_message: string = typeck_message(public_code, message);
     let resolved_help: string = typeck_help(public_code, suggestion);
-    let diag: Diagnostic = if severity == DiagnosticSeverity.Fatal {
-        diagnostic_fatal(public_code, phase, resolved_message, source_span)
+    let diag: Diagnostic = diagnostic_error(public_code, phase, resolved_message, source_span);
+    if severity == DiagnosticSeverity.Fatal {
+        set diag = diagnostic_fatal(public_code, phase, resolved_message, source_span);
     } elif severity == DiagnosticSeverity.Warning {
-        diagnostic_warning(public_code, phase, resolved_message, source_span)
-    } else {
-        diagnostic_error(public_code, phase, resolved_message, source_span)
-    };
+        set diag = diagnostic_warning(public_code, phase, resolved_message, source_span);
+    }
     set diag = attach_typeck_context(diag, public_code, kind);
     give attach_typeck_labels_and_help(diag, labels, resolved_help, source_span);
 }
