@@ -1,0 +1,62 @@
+space bootstrap/llvm_integer_width_runtime;
+
+use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
+use vitte/compiler/middle/hir/hir.{ HirUnit }
+use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
+use vitte/compiler/analysis/typeck/api.{ run_bootstrap_typeck_hir, run_production_typeck_hir }
+use vitte/compiler/analysis/typeck/errors.{ TypeckResult }
+use vitte/compiler/middle/lower/hir_to_mir.{ lower_hir_to_mir }
+use vitte/compiler/middle/mir/mir.{ MirUnit }
+use vitte/compiler/middle/mir/validate.{ validate_mir }
+use vitte/compiler/middle/lower/mir_to_ir.{ lower_mir_as_ir_module }
+use vitte/compiler/backend/ir/ir.{ IrModule, IrModuleKind, IrUnit, IrUnitState, target_native_x86_64_linux, unit_add_module, unit_empty, unit_set_entry, unit_with_state, verify_unit, unit_is_valid }
+use vitte/compiler/backends/llvm_bindings.{ LlvmBindingResult, emit_llvm_ir_from_ir, emit_llvm_ir_from_ir_streamed }
+use vitte/stdlib/io/fileops.{ write_file }
+
+proc emit_probe(source: string, output: string, bootstrap: bool, expect_valid: bool) -> int {
+    let frontend: FrontendOutput = frontend_run("integer_width.vit", source);
+    let hir: HirUnit = lower_ast_to_hir(frontend);
+    let typed: TypeckResult = if bootstrap { run_bootstrap_typeck_hir(hir) } else { run_production_typeck_hir(hir) };
+    if not frontend.valid or not typed.valid { give 10; }
+    let mir: MirUnit = validate_mir(lower_hir_to_mir(typed.hir));
+    if not mir.valid { give 11; }
+    let module0: IrModule = lower_mir_as_ir_module(1, "integer_width", "integer_width.vit", IrModuleKind.Binary, target_native_x86_64_linux(), mir, typed.hir.module.items, [], [], []);
+    let unit0: IrUnit = unit_add_module(unit_empty(target_native_x86_64_linux()), module0);
+    let unit1: IrUnit = verify_unit(unit_set_entry(unit_with_state(unit0, IrUnitState.Lowered), module0.functions[0].id));
+    if not unit_is_valid(unit1) { give 12; }
+    let emitted: LlvmBindingResult = emit_llvm_ir_from_ir(unit1);
+    if not expect_valid {
+        if emitted.valid { give 15; }
+        let streamed: LlvmBindingResult = emit_llvm_ir_from_ir_streamed(unit1, output);
+        if streamed.valid or streamed.ir_text != "" { give 16; }
+        give 0;
+    }
+    if not emitted.valid { give 13; }
+    if not write_file(output, emitted.ir_text) { give 14; }
+    give 0;
+}
+
+proc main() -> int {
+    let source: string = "proc counter() -> u64 { let mut i: u64 = 0; while i < 5 { set i = i + 1; } give i; }\n"
+        + "proc wide() -> u64 { let value: u64 = 4294967296; give value; }\n"
+        + "proc reset() -> u64 { let mut i: u64 = 5; set i = 0; give i; }\n"
+        + "proc narrow() -> u8 { let mut i: u8 = 0; while i < 5 { set i = i + 1; } give i; }\n"
+        + "proc branch(flag: bool) -> u64 { let mut value: u64 = 0; if flag { set value = 4294967296; } else { set value = 7; } give value; }\n"
+        + "proc within(value: int) -> bool { give value >= -128 and value <= 127; }\n"
+        + "proc negate(value: i64) -> i64 { give -value; }\n"
+        + "proc invert(flag: bool) -> bool { give not flag; }\n"
+        + "proc mixed_add(small: i8, big: i64) -> i64 { give small + big; }\n"
+        + "proc mixed_less(small: i32, big: i64) -> bool { give small < big; }\n"
+        + "proc mixed_unsigned(value: u64, amount: u8) -> u64 { give value + amount; }\n"
+        + "proc small_bound(value: u8) -> bool { give value < 256; }\n"
+        + "proc shadow(flag: bool) -> int { let mut value: int = 7; if flag { let mut value: bool = false; set value = true; if value { give 3; } } else { let value: u64 = 4294967296; if value != 4294967296 { give 4; } } set value = value + 1; give value; }\n"
+        + "proc main() -> int { if counter() != 5 { give 1; } if wide() != 4294967296 { give 2; } if reset() != 0 { give 3; } if narrow() != 5 { give 4; } if branch(true) != 4294967296 { give 5; } if branch(false) != 7 { give 6; }\n"
+        + "if within(0 as int) == false { give 7; } if within(-128 as int) == false { give 8; } if within(127 as int) == false { give 9; } if within(-129 as int) { give 10; } if within(128 as int) { give 11; }\n"
+        + "if negate(7 as i64) != -7 { give 12; } if invert(true) { give 13; } if invert(false) == false { give 14; }\n"
+        + "if mixed_add(-7 as i8, 20 as i64) != 13 { give 15; } if mixed_less(-5 as i32, 2 as i64) == false { give 16; } if mixed_unsigned(3 as u64, 4 as u8) != 7 { give 17; } if small_bound(255 as u8) == false { give 18; } if shadow(true) != 3 { give 19; } if shadow(false) != 8 { give 20; } give 0; }\n";
+    let bootstrap_result: int = emit_probe(source, "target/bootstrap-c17/llvm_integer_width.ll", true, true);
+    if bootstrap_result != 0 { give bootstrap_result; }
+    let production_result: int = emit_probe(source, "target/bootstrap-c17/llvm_integer_width_production.ll", false, true);
+    if production_result != 0 { give production_result; }
+    give emit_probe("form Box { value: int } proc main() -> string { let box: Box = Box { value: 1 }; give box as string; }", "target/bootstrap-c17/llvm_rejected.ll", true, false);
+}

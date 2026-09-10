@@ -1,0 +1,42 @@
+space bootstrap/llvm_pick_codegen_runtime;
+
+use vitte/compiler/backend/ir/ir.{ IrInstruction, IrInstructionKind, IrModule, IrNominalType, IrValue, instruction_create, value_place }
+use vitte/compiler/backends/llvm_bindings.{ contains, emit_llvm_nominal_type, join_lines, llvm_binary_lines, llvm_invalid_module, llvm_invalid_nominal, llvm_member_access_lines }
+use vitte/compiler/source/span.{ span_empty }
+use vitte/stdlib/io/fileops.{ write_file }
+
+proc main() -> int {
+    if contains("i64", "*") or not contains("i8*", "*") { give 1; }
+    let nominal: IrNominalType = llvm_invalid_nominal();
+    set nominal.name = "Choice";
+    set nominal.kind = "pick";
+    set nominal.member_names = ["First", "Second"];
+    set nominal.member_kinds = ["variant", "variant"];
+    set nominal.member_count = 2;
+    set nominal.valid = true;
+    let module0: IrModule = llvm_invalid_module();
+    set module0.nominal_types = [nominal];
+    let owner: IrValue = value_place(1, "Choice", "Choice", "Choice");
+    let first: IrValue = value_place(2, "first", "first", "Choice");
+    let second: IrValue = value_place(3, "second", "second", "Choice");
+    let field_first: IrValue = value_place(4, "First", "First", "Choice");
+    let field_second: IrValue = value_place(5, "Second", "Second", "Choice");
+    let ctor_first: IrInstruction = instruction_create(1, IrInstructionKind.Assign, "Choice.First", ".", first, [owner, field_first], span_empty());
+    let ctor_second: IrInstruction = instruction_create(2, IrInstructionKind.Assign, "Choice.Second", ".", second, [owner, field_second], span_empty());
+    let same: IrInstruction = instruction_create(3, IrInstructionKind.Binary, "", "==", value_place(6, "same", "same", "bool"), [first, first], span_empty());
+    let different: IrInstruction = instruction_create(4, IrInstructionKind.Binary, "", "!=", value_place(7, "different", "different", "bool"), [first, second], span_empty());
+    let equal: IrInstruction = instruction_create(5, IrInstructionKind.Binary, "", "==", value_place(8, "equal", "equal", "bool"), [first, second], span_empty());
+    let lines: [string] = emit_llvm_nominal_type(module0, nominal) + ["define i32 @main() {", "entry:"];
+    set lines = lines + llvm_member_access_lines(module0, ctor_first) + llvm_member_access_lines(module0, ctor_second);
+    set lines = lines + llvm_binary_lines(module0, same) + llvm_binary_lines(module0, different) + llvm_binary_lines(module0, equal);
+    set lines = lines + [
+        "  %a = and i1 %same, %different",
+        "  %b = xor i1 %equal, true",
+        "  %ok = and i1 %a, %b",
+        "  %exit = select i1 %ok, i32 0, i32 1",
+        "  ret i32 %exit",
+        "}"
+    ];
+    if not write_file("target/bootstrap-c17/llvm_pick_codegen.ll", join_lines(lines)) { give 2; }
+    give 0;
+}

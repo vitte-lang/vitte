@@ -1,0 +1,44 @@
+space bootstrap/streaming_summary_runtime
+
+use vitte/compiler/driver/compile.{ DriverModuleInput, driver_module_input, source_lines, streaming_module_summary, streaming_source_has_owned_codegen_items, streaming_required_interface_names, streaming_name_in_list }
+use vitte/compiler/analysis/sema/modules.{ SemaModuleImport, SemaModuleSummary, module_import_from_use }
+use vitte/compiler/middle/hir/hir.{ HirUnit }
+use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
+use vitte/compiler/analysis/pipeline.{ canonical_analysis_diagnostic }
+use vitte/compiler/analysis/report.{ AnalysisDiagnostic }
+use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
+use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, DiagnosticPhase, DiagnosticSeverity, diagnostic_create, diagnostic_with_label, secondary_label, span_create }
+
+proc main() -> int {
+    let source: string = "space probe\nexport *\nuse provider.{\n Value, create as make\n}\nproc main() -> int { give 0; }\n";
+    let lines: [string] = source_lines(source);
+    if len(lines) != 7 { give 1; }
+    if lines[0] != "space probe" or lines[6] != "" { give 2; }
+    let input: DriverModuleInput = driver_module_input("src/probe.vit", source);
+    let summary: SemaModuleSummary = streaming_module_summary(input, 1);
+    if not summary.valid or len(summary.imports) != 1 { give 3; }
+    if len(summary.imports[0].names) != 2 { give 4; }
+    if len(summary.exports) != 1 or summary.exports[0].name != "main" { give 5; }
+    if not streaming_source_has_owned_codegen_items(source) { give 6; }
+    if streaming_source_has_owned_codegen_items("space facade\nexport *\nuse provider\n") { give 7; }
+    let frontend: FrontendOutput = frontend_run("probe.vit", "space probe\nproc main() -> int { give 0; }\n");
+    let diagnostic: Diagnostic = diagnostic_create("PROBE001", DiagnosticPhase.Sema, DiagnosticSeverity.Warning, "probe warning", span_create("probe.vit", 1, 1, 1));
+    set diagnostic = diagnostic_with_label(diagnostic, secondary_label("related declaration", span_create("probe.vit", 2, 1, 1)));
+    set diagnostic.probable_fix = "rename the declaration";
+    let converted: AnalysisDiagnostic = canonical_analysis_diagnostic(frontend, "sema", diagnostic);
+    if converted.severity != "warning" or converted.suggestion != "rename the declaration" {
+        println("severity=" + converted.severity + " suggestion=" + converted.suggestion);
+        give 8;
+    }
+    if len(converted.labels) != len(diagnostic.labels) { give 9; }
+    if converted.labels[len(converted.labels) - 1] != "related declaration" { give 10; }
+    let provider: FrontendOutput = frontend_run("provider.vit", "space provider\nform SourceSpan { offset: u64 }\nform Entry { id: u64 }\nform Manager { entries: [Entry] }\nproc get(manager: Manager) -> u64 { give 0; }\n");
+    let provider_hir: HirUnit = lower_ast_to_hir(provider);
+    let imported: SemaModuleImport = module_import_from_use("provider.{ get }");
+    let required: [string] = streaming_required_interface_names(imported, provider_hir.module.items);
+    if not streaming_name_in_list(required, "Manager") or not streaming_name_in_list(required, "Entry") { give 11; }
+    if streaming_name_in_list(required, "SourceSpan") { give 12; }
+    let dotted: SemaModuleImport = module_import_from_use("vitte/compiler/analysis/sema.modules.{ SemaModuleImport }");
+    if dotted.module_path != "vitte/compiler/analysis/sema/modules" { give 13; }
+    give 0;
+}

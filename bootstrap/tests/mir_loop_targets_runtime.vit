@@ -1,0 +1,23 @@
+space bootstrap/mir_loop_targets_runtime;
+
+use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
+use vitte/compiler/middle/hir/hir.{ HirUnit }
+use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
+use vitte/compiler/middle/lower/hir_to_mir.{ lower_hir_to_mir_templates }
+use vitte/compiler/middle/mir/mir.{ MirUnit }
+use vitte/compiler/middle/mir/validate.{ validate_mir }
+
+proc lower_valid(source: string) -> bool {
+    let frontend: FrontendOutput = frontend_run("loop_probe.vit", source);
+    let hir: HirUnit = lower_ast_to_hir(frontend);
+    let mir: MirUnit = lower_hir_to_mir_templates(hir);
+    give validate_mir(mir).valid;
+}
+
+proc main() -> int {
+    if lower_valid("proc main() -> int { break; give 0; }\n") { give 1; }
+    if lower_valid("proc main() -> int { continue; give 0; }\n") { give 2; }
+    if not lower_valid("proc main() -> int { while true { break; } give 0; }\n") { give 3; }
+    if not lower_valid("proc main() -> int { while true { continue; } give 0; }\n") { give 4; }
+    give 0;
+}

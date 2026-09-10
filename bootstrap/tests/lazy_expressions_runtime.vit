@@ -1,0 +1,51 @@
+space bootstrap/lazy_expressions_runtime;
+
+intrinsic vitte_host_write_file(path: string, content: string) -> int;
+intrinsic vitte_host_append_file(path: string, content: string) -> int;
+intrinsic vitte_host_read_file(path: string) -> string;
+
+proc record(path: string, label: string, value: bool) -> bool {
+    let status: int = vitte_host_append_file(path, label);
+    give value;
+}
+
+proc main() -> int {
+    let path: string = "target/bootstrap-c17/lazy-expressions-trace.txt";
+    let prepared: int = vitte_host_write_file(path, "");
+    let a: bool = false and record(path, "bad-and", true);
+    let b: bool = true or record(path, "bad-or", false);
+    let c: bool = true and record(path, "and;", true);
+    let d: bool = false or record(path, "or;", true);
+    let e: bool = if record(path, "condition;", false) {
+        record(path, "bad-then", true)
+    } else {
+        if true { record(path, "else;", true) } else { record(path, "bad-nested", false) }
+    };
+    if a or not b or not c or not d or not e {
+        give 1;
+    }
+    true and (false or record(path, "discard;", true));
+    false and record(path, "bad-discard", true);
+    if vitte_host_read_file(path) != "and;or;condition;else;discard;" {
+        give 2;
+    }
+    // The streaming assembler must truncate once, then append each fragment once.
+    let i: int = 0;
+    while i < 3 {
+        let status: int = if i == 0 {
+            vitte_host_write_file(path, "module\n")
+        } else {
+            vitte_host_append_file(path, "module\n")
+        };
+        if status != 0 { give 3; }
+        set i = i + 1;
+    }
+    if vitte_host_read_file(path) != "module\nmodule\nmodule\n" {
+        give 4;
+    }
+    let value: string = if false { "bad" } elif true { "selected" } else { "bad" };
+    if value != "selected" { give 5; }
+    let scoped: int = if false { let local: int = 2; local } else { let local: int = 7; local };
+    if scoped != 7 { give 6; }
+    give 0;
+}

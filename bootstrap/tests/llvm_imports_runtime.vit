@@ -1,0 +1,118 @@
+space bootstrap/llvm_imports_runtime;
+
+use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
+use vitte/compiler/middle/hir/hir.{ HirItem, HirItemKind, HirUnit }
+use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
+use vitte/compiler/driver/module_interfaces.{ ModuleInterfaceText, module_interface_text, lower_module_interface_hir, typecheck_with_interfaces, hir_with_interfaces }
+use vitte/compiler/analysis/typeck/errors.{ TypeckResult }
+use vitte/compiler/middle/lower/hir_to_mir.{ lower_hir_to_mir }
+use vitte/compiler/middle/mir/mir.{ MirUnit }
+use vitte/compiler/middle/mir/validate.{ validate_mir }
+use vitte/compiler/middle/lower/mir_to_ir.{ lower_mir_as_ir_module }
+use vitte/compiler/backend/ir/ir.{ IrModule, IrModuleKind, IrUnit, IrUnitState, target_native_x86_64_linux, unit_add_module, unit_empty, unit_set_entry, unit_with_state, verify_unit, unit_is_valid }
+use vitte/compiler/backends/llvm_bindings.{ LlvmBindingResult, emit_llvm_ir_from_ir, emit_llvm_ir_from_ir_streamed }
+use vitte/stdlib/io/fileops.{ read_file, write_file }
+
+proc emit_probe(path: string, source: string, interfaces: [HirItem], output: string, bootstrap: bool, streamed: bool) -> int {
+    let frontend: FrontendOutput = frontend_run(path, source);
+    let hir: HirUnit = lower_ast_to_hir(frontend);
+    let typed: TypeckResult = typecheck_with_interfaces(hir, interfaces, bootstrap);
+    if not frontend.valid or not typed.valid {
+        let i: u64 = 0;
+        while i < len(typed.diagnostics) { println(typed.diagnostics[i].message); set i = i + 1; }
+        give 10;
+    }
+    let extended: HirUnit = hir_with_interfaces(typed.hir, interfaces);
+    let mir: MirUnit = validate_mir(lower_hir_to_mir(extended));
+    if not mir.valid { give 11; }
+    let module0: IrModule = lower_mir_as_ir_module(1, path, path, IrModuleKind.Binary, target_native_x86_64_linux(), mir, extended.module.items, [], [], []);
+    let unit0: IrUnit = unit_add_module(unit_empty(target_native_x86_64_linux()), module0);
+    let unit1: IrUnit = verify_unit(unit_set_entry(unit_with_state(unit0, IrUnitState.Lowered), module0.functions[0].id));
+    if not unit_is_valid(unit1) { give 12; }
+    let emitted: LlvmBindingResult = if streamed { emit_llvm_ir_from_ir_streamed(unit1, output) } else { emit_llvm_ir_from_ir(unit1) };
+    if not emitted.valid { give 13; }
+    if not write_file(output, emitted.ir_text) { give 14; }
+    give 0;
+}
+
+proc alias_imported_proc(items: [HirItem], source_name: string, local_name: string) -> [HirItem] {
+    let out: [HirItem] = [];
+    let i: u64 = 0;
+    while i < len(items) {
+        let item: HirItem = items[i];
+        if item.kind == HirItemKind.Proc and item.name == source_name {
+            set out = out + [HirItem {
+                id: item.id,
+                span: item.span,
+                kind: item.kind,
+                name: local_name,
+                resolved_id: item.resolved_id,
+                namespace: source_name,
+                visibility: item.visibility,
+                exported: item.exported,
+                abi: item.abi,
+                generic_count: item.generic_count,
+                generic_params: item.generic_params,
+                generic_param_info: item.generic_param_info,
+                where_clauses: item.where_clauses,
+                requires: item.requires,
+                type_param_count: item.type_param_count,
+                attribute_count: item.attribute_count,
+                modifier_count: item.modifier_count,
+                member_count: item.member_count,
+                signature_param_count: item.signature_param_count,
+                params: item.params,
+                annotation_text: item.annotation_text,
+                target_type_text: item.target_type_text,
+                expr: item.expr,
+                stmts: item.stmts,
+                members: item.members,
+                message: item.message,
+                scope_depth: item.scope_depth,
+                diagnostics: item.diagnostics,
+                valid: item.valid
+            }];
+        } else {
+            set out = out + [item];
+        }
+        set i = i + 1;
+    }
+    give out;
+}
+
+proc main() -> int {
+    let provider: string = "space provider\nexport *\npick Kind { Number, Other }\nform Value { kind: Kind count: u64 }\n"
+        + "proc create(count: u64) -> Value { let braces: string = \"} proc hidden() {\"; give Value { kind: Kind.Number, count: count }; }\n"
+        + "proc count(value: Value) -> u64 { give value.count; }\n";
+    let compact: ModuleInterfaceText = module_interface_text("provider.vit", provider);
+    if not compact.valid or find(compact.text, "hidden") >= 0 or find(compact.text, "give value.count") >= 0 { give 1; }
+    let interface_frontend: FrontendOutput = frontend_run("provider.vit", compact.text);
+    if not interface_frontend.valid {
+        println(compact.text);
+        let d: u64 = 0;
+        while d < len(interface_frontend.diagnostics) { println(interface_frontend.diagnostics[d].message); set d = d + 1; }
+        give 2;
+    }
+    let interface_hir: HirUnit = lower_module_interface_hir(interface_frontend);
+    if not interface_hir.valid { give 3; }
+    let caller: string = "space caller\nuse provider.{ Value, Kind, create, count }\nproc main() -> int { let value: Value = create(41 as u64); if value.kind != Kind.Number { give 1; } if count(value) != 41 { give 2; } give 0; }\n";
+    let result: int = emit_probe("provider.vit", provider, [], "target/bootstrap-c17/llvm_imports_provider.ll", true, false);
+    if result != 0 { give result; }
+    set result = emit_probe("caller.vit", caller, interface_hir.module.items, "target/bootstrap-c17/llvm_imports_caller.ll", true, false);
+    if result != 0 { give result; }
+    set result = emit_probe("caller.vit", caller, interface_hir.module.items, "target/bootstrap-c17/llvm_imports_production.ll", false, false);
+    if result != 0 { give result; }
+    set result = emit_probe("caller.vit", caller, interface_hir.module.items, "target/bootstrap-c17/llvm_imports_streamed.ll", true, true);
+    if result != 0 { give result; }
+    let caller_alias: string = "space caller_alias\nuse provider.{ Value, Kind, create as make, count }\nproc main() -> int { let value: Value = make(41 as u64); if value.kind != Kind.Number { give 1; } if count(value) != 41 { give 2; } give 0; }\n";
+    let aliased_interfaces: [HirItem] = alias_imported_proc(interface_hir.module.items, "create", "make");
+    set result = emit_probe("caller_alias.vit", caller_alias, aliased_interfaces, "target/bootstrap-c17/llvm_imports_alias.ll", true, false);
+    if result != 0 { give result; }
+    let alias_ir: string = read_file("target/bootstrap-c17/llvm_imports_alias.ll");
+    if find(alias_ir, "@make(") >= 0 { give 20; }
+    if find(alias_ir, "@create(") < 0 { give 21; }
+    let conditional: string = "space conditional\nuse provider.{ Value, Kind, create, count }\nproc main() -> int { let value: Value = if false { bad() } elif true { create(41 as u64) } else { bad() }; if count(value) != 41 { give 1; } give 0; }\nproc bad() -> Value { assert(false); give create(0 as u64); }\n";
+    set result = emit_probe("conditional.vit", conditional, interface_hir.module.items, "target/bootstrap-c17/llvm_imports_conditional.ll", true, false);
+    if result != 0 { give result; }
+    give 0;
+}

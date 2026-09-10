@@ -1,0 +1,58 @@
+space bootstrap/llvm_array_runtime;
+
+use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
+use vitte/compiler/middle/hir/hir.{ HirUnit }
+use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
+use vitte/compiler/analysis/typeck/api.{ run_bootstrap_typeck_hir, run_production_typeck_hir }
+use vitte/compiler/analysis/typeck/errors.{ TypeckResult }
+use vitte/compiler/middle/lower/hir_to_mir.{ lower_hir_to_mir }
+use vitte/compiler/middle/mir/mir.{ MirUnit }
+use vitte/compiler/middle/mir/validate.{ validate_mir }
+use vitte/compiler/middle/lower/mir_to_ir.{ lower_mir_as_ir_module }
+use vitte/compiler/backend/ir/ir.{ IrModule, IrModuleKind, IrUnit, IrUnitState, target_native_x86_64_linux, unit_add_module, unit_empty, unit_set_entry, unit_with_state, verify_unit, unit_is_valid }
+use vitte/compiler/backends/llvm_bindings.{ LlvmBindingResult, emit_llvm_ir_from_ir }
+use vitte/stdlib/io/fileops.{ write_file }
+
+proc emit_probe(source: string, output: string, bootstrap: bool) -> int {
+    let frontend: FrontendOutput = frontend_run("array.vit", source);
+    let hir: HirUnit = lower_ast_to_hir(frontend);
+    let typed: TypeckResult = if bootstrap { run_bootstrap_typeck_hir(hir) } else { run_production_typeck_hir(hir) };
+    if not frontend.valid or not typed.valid {
+        let i: u64 = 0;
+        while i < len(typed.diagnostics) { println(typed.diagnostics[i].message); set i = i + 1; }
+        give 10;
+    }
+    let mir: MirUnit = validate_mir(lower_hir_to_mir(typed.hir));
+    if not mir.valid { give 11; }
+    let module0: IrModule = lower_mir_as_ir_module(1, "array", "array.vit", IrModuleKind.Binary, target_native_x86_64_linux(), mir, typed.hir.module.items, [], [], []);
+    let unit0: IrUnit = unit_add_module(unit_empty(target_native_x86_64_linux()), module0);
+    let unit1: IrUnit = verify_unit(unit_set_entry(unit_with_state(unit0, IrUnitState.Lowered), module0.functions[0].id));
+    if not unit_is_valid(unit1) { give 12; }
+    let emitted: LlvmBindingResult = emit_llvm_ir_from_ir(unit1);
+    if not emitted.valid { give 13; }
+    if not write_file(output, emitted.ir_text) { give 14; }
+    give 0;
+}
+
+proc main() -> int {
+    let source: string = "form Detail { code: u64 weight: u64 }\n"
+        + "form Diagnostic { detail: Detail fatal: bool }\n"
+        + "proc has_fatal(diagnostics: [Diagnostic]) -> bool { let mut i: u64 = 0; while i < len(diagnostics) { if diagnostics[i].fatal { give true; } set i = i + 1; } give false; }\n"
+        + "proc make() -> [Diagnostic] { let code: u64 = 4294967296; give [Diagnostic { detail: Detail { code: 7 as u64, weight: 9 as u64 }, fatal: false }, Diagnostic { detail: Detail { code: code, weight: 11 as u64 }, fatal: true }]; }\n"
+        + "proc empty() -> [Diagnostic] { let diagnostics: [Diagnostic] = []; give diagnostics; }\n"
+        + "proc read_code(diagnostics: [Diagnostic], index: u64) -> u64 { give diagnostics[index].detail.code; }\n"
+        + "proc main() -> int { let diagnostics: [Diagnostic] = make(); let other: [Diagnostic] = make(); if has_fatal(diagnostics) == false { give 1; } if diagnostics[0].detail.code != 7 { give 2; } if diagnostics[1].detail.code != 4294967296 { give 3; } if other[1].detail.weight != 11 { give 4; }\n"
+        + "if len(empty()) != 0 { give 5; } if has_fatal(empty()) { give 6; }\n"
+        + "let small: [u8] = [7 as u8, 255 as u8]; if small[1] != 255 { give 7; }\n"
+        + "let nested: [[u16]] = [[3 as u16, 4 as u16], [5 as u16, 6 as u16]]; if nested[1][0] != 5 { give 8; }\n"
+        + "let flags: [bool] = [false, true]; if flags[0] { give 9; } if flags[1] == false { give 10; }\n"
+        + "let labels: [string] = [\"first\", \"second\"]; if labels[1] != \"second\" { give 11; }\n"
+        + "let fractions: [f64] = [1.5, 2.5]; if fractions[1] != 2.5 { give 12; } if read_code(diagnostics, 1 as u64) != 4294967296 { give 13; } give 0; }\n";
+    let bootstrap_result: int = emit_probe(source, "target/bootstrap-c17/llvm_array.ll", true);
+    if bootstrap_result != 0 { give bootstrap_result; }
+    let production_result: int = emit_probe(source, "target/bootstrap-c17/llvm_array_production.ll", false);
+    if production_result != 0 { give production_result; }
+    let oob_result: int = emit_probe("proc main() -> int { let items: [i32] = [1, 2]; give items[2]; }", "target/bootstrap-c17/llvm_array_oob.ll", true);
+    if oob_result != 0 { give oob_result; }
+    give emit_probe("proc main() -> int { let items: [i32] = [1, 2]; let index: i32 = 0 - 1; give items[index]; }", "target/bootstrap-c17/llvm_array_negative.ll", true);
+}
