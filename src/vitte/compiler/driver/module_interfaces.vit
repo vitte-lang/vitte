@@ -1,0 +1,106 @@
+space vitte/compiler/driver/module_interfaces
+
+export *
+
+use vitte/compiler/frontend/lexer/scanner.{ ScanResult, scan_tokens_from_file }
+use vitte/compiler/frontend/lexer/token.{ TokenKind }
+use vitte/compiler/frontend/parse/parser.{ find_matching }
+use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
+use vitte/compiler/middle/hir/hir.{ HirItem, HirItemKind, HirUnit }
+use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir, lower_ast_to_hir_unvalidated }
+use vitte/compiler/middle/hir/validate.{ validate_hir }
+use vitte/compiler/analysis/typeck/checker.{ check_module, join, legacy_implicit_mutability_marker, nominal_type_bindings }
+use vitte/compiler/analysis/typeck/infer.{ TypeBinding, param_type_binding }
+use vitte/compiler/analysis/typeck/errors.{ TypeckResult }
+
+form ModuleInterfaceText {
+  text: string
+  valid: bool
+}
+
+// Token offsets preserve strings, comments and multiline declarations exactly.
+// Do not parse procedure bodies merely to discover an imported signature.
+proc module_interface_text(source_path: string, source: string) -> ModuleInterfaceText {
+  let scanned: ScanResult = scan_tokens_from_file(source_path, source);
+  if not scanned.valid { give ModuleInterfaceText { text: "", valid: false }; }
+  let pieces: [string] = [];
+  let copied: u64 = 0;
+  let i: u64 = 0;
+  while i < len(scanned.tokens) {
+    if scanned.tokens[i].kind == TokenKind.Keyword and scanned.tokens[i].lexeme == "proc" {
+      let cursor: u64 = i + 1;
+      let parens: u64 = 0;
+      let brackets: u64 = 0;
+      while cursor < len(scanned.tokens) {
+        let token: string = scanned.tokens[cursor].lexeme;
+        if parens == 0 and brackets == 0 and (token == "{" or token == ";") { break; }
+        if token == "(" { set parens = parens + 1; }
+        elif token == ")" and parens > 0 { set parens = parens - 1; }
+        elif token == "[" { set brackets = brackets + 1; }
+        elif token == "]" and brackets > 0 { set brackets = brackets - 1; }
+        set cursor = cursor + 1;
+      }
+      if cursor < len(scanned.tokens) and scanned.tokens[cursor].lexeme == "{" {
+        let close: int = find_matching(scanned.tokens, cursor, "{", "}");
+        if close < 0 { give ModuleInterfaceText { text: "", valid: false }; }
+        set pieces = pieces + [slice(source, copied, scanned.tokens[cursor].offset + 1), "}"];
+        set copied = scanned.tokens[close as u64].offset + 1;
+        set i = close as u64 + 1;
+        continue;
+      }
+    }
+    set i = i + 1;
+  }
+  set pieces = pieces + [slice(source, copied, len(source))];
+  give ModuleInterfaceText { text: join(pieces, ""), valid: true };
+}
+
+proc interface_has_name(items: [HirItem], name: string) -> bool {
+  let i: u64 = 0;
+  while i < len(items) {
+    if items[i].name == name { give true; }
+    set i = i + 1;
+  }
+  give false;
+}
+
+proc lower_module_interface_hir(frontend: FrontendOutput) -> HirUnit {
+  let hir0: HirUnit = lower_ast_to_hir_unvalidated(frontend);
+  let items: [HirItem] = hir0.module.items;
+  let i: u64 = 0;
+  while i < len(items) {
+    if items[i].kind == HirItemKind.Proc {
+      set items[i].visibility = "imported";
+    }
+    set i = i + 1;
+  }
+  let hir1: HirUnit = hir0;
+  set hir1.module.items = items;
+  give validate_hir(hir1);
+}
+
+proc typecheck_with_interfaces(hir: HirUnit, interfaces: [HirItem], bootstrap: bool) -> TypeckResult {
+  let bindings: [TypeBinding] = nominal_type_bindings(interfaces);
+  if bootstrap {
+    set bindings = bindings + [param_type_binding(legacy_implicit_mutability_marker(), "bool", true, false)];
+  }
+  give check_module([], bindings, hir);
+}
+
+proc hir_with_interfaces(hir: HirUnit, interfaces: [HirItem]) -> HirUnit {
+  let items: [HirItem] = hir.module.items;
+  let i: u64 = 0;
+  while i < len(interfaces) {
+    if not interface_has_name(items, interfaces[i].name) {
+      let item: HirItem = interfaces[i];
+      set item.id = 900000000 + i;
+      set item.visibility = "imported";
+      set items = items + [item];
+    }
+    set i = i + 1;
+  }
+  let extended: HirUnit = hir;
+  set extended.module.items = items;
+  set extended.item_count = len(items);
+  give extended;
+}

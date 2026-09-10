@@ -2384,7 +2384,11 @@ proc run_compiler_module_set(compiler: Compiler) -> CompilerResult {
     let set_result: DriverBackendModuleSetResult = compile_source_set_with_config(inputs0, config0);
     if not set_result.valid {
         set compiler = set_stage(compiler, CompilerStage::Codegen);
-        give fail(compiler, driver.DriverExitStatus::PipelineFailure, "module graph build stopped: " + set_result.message);
+        let message0: string = "module graph build stopped: " + set_result.message;
+        set compiler.diagnostics = compiler.diagnostics + [compiler_driver_diagnostic(
+            "error", "DRIVER_E_PIPELINE_FAILURE", compiler.input.path, 1 as u64, 1 as u64, message0
+        )];
+        give fail(compiler, driver.DriverExitStatus::PipelineFailure, message0);
     }
 
     let object_path: string = compiler.options.output_path + ".o";
@@ -2395,13 +2399,21 @@ proc run_compiler_module_set(compiler: Compiler) -> CompilerResult {
     );
     if not object0.valid {
         set compiler = set_stage(compiler, CompilerStage::Object);
-        give fail(compiler, driver.DriverExitStatus::ObjectEmissionFailure, "module graph object emission failed: " + object0.message);
+        let message0: string = "module graph object emission failed: " + object0.message;
+        set compiler.diagnostics = compiler.diagnostics + [compiler_driver_diagnostic(
+            "error", "DRIVER_E_PIPELINE_FAILURE", compiler.input.path, 1 as u64, 1 as u64, message0
+        )];
+        give fail(compiler, driver.DriverExitStatus::ObjectEmissionFailure, message0);
     }
 
     let executable0: NativeBridgeResult = link_native_executable(object_path, compiler.options.output_path);
     if not executable0.valid {
         set compiler = set_stage(compiler, CompilerStage::Link);
-        give fail(compiler, driver.DriverExitStatus::LinkFailure, "module graph link failed: " + executable0.message);
+        let message0: string = "module graph link failed: " + executable0.message;
+        set compiler.diagnostics = compiler.diagnostics + [compiler_driver_diagnostic(
+            "error", "DRIVER_E_PIPELINE_FAILURE", compiler.input.path, 1 as u64, 1 as u64, message0
+        )];
+        give fail(compiler, driver.DriverExitStatus::LinkFailure, message0);
     }
 
     set compiler.state.frontend_ok = true;
