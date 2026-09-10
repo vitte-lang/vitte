@@ -1153,7 +1153,36 @@ static vitte_status_t vitte_c17_emit_ir_instruction(
             return VITTE_STATUS_ERROR_BACKEND;
     }
 }
+static bool vitte_c17_ir_value_is_used(
+    const vitte_ir_function_t *function,
+    const vitte_ir_value_t *value
+) {
+    const vitte_ir_block_t *block;
+    const vitte_ir_instruction_t *instruction;
+    size_t i;
 
+    if (function == NULL || value == NULL) {
+        return false;
+    }
+
+    for (block = function->first_block;
+         block != NULL;
+         block = block->next) {
+
+        for (instruction = block->first;
+             instruction != NULL;
+             instruction = instruction->next) {
+
+            for (i = 0; i < instruction->operand_count; ++i) {
+                if (instruction->operands[i] == value) {
+                    return true;
+                }
+            }
+        }
+    }
+
+    return false;
+}
 static bool vitte_c17_ir_instruction_needs_declaration(const vitte_ir_instruction_t *instruction) {
     return instruction != NULL &&
         instruction->opcode != VITTE_IR_OP_CONST_INT &&
