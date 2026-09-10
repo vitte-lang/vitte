@@ -31,6 +31,46 @@ proc place_valid(place: MirPlace) -> bool {
   give place.valid and place.local != "";
 }
 
+proc mir_integer_type(type_name: string) -> bool {
+  give type_name == "int"
+    or type_name == "i8"
+    or type_name == "i16"
+    or type_name == "i32"
+    or type_name == "i64"
+    or type_name == "u8"
+    or type_name == "u16"
+    or type_name == "u32"
+    or type_name == "u64"
+    or type_name == "usize";
+}
+
+proc mir_compact_collection_type(type_name: string) -> string {
+  let out: string = "";
+  let i: u64 = 0;
+  while i < len(type_name) {
+    let ch: string = slice(type_name, i, i + 1);
+    if ch != " " and ch != "\t" and ch != "\n" and ch != "\r" {
+      set out = out + ch;
+    }
+    set i = i + 1;
+  }
+  give out;
+}
+
+proc call_operand_type_matches(operand: MirOperand, expected_type: string) -> bool {
+  give expected_type == ""
+    or expected_type == "opaque"
+    or operand.ty == "opaque"
+    or operand.ty == expected_type
+    or (operand.ty == "unknown"
+      and starts_with(trim(expected_type), "[")
+      and (trim(operand.text) == "[]" or trim(operand.text) == "[ ]"))
+    or (starts_with(trim(expected_type), "[")
+      and starts_with(trim(operand.ty), "[")
+      and mir_compact_collection_type(expected_type) == mir_compact_collection_type(operand.ty))
+    or (operand.constant and mir_integer_type(expected_type) and mir_integer_type(operand.ty));
+}
+
 proc operand_valid(operand: MirOperand) -> bool {
   if not operand.valid {
     give false;
@@ -308,7 +348,7 @@ proc call_target_fn(functions: [MirFunction], rvalue: MirRvalue) -> MirFunction 
 
 proc call_operand_matches_param(operand: MirOperand, param: MirFunctionParam, target: MirFunction, generic_arguments: [string]) -> bool {
   let expected_type: string = mir_substitute_type(param.type_name, target.generic_params, generic_arguments);
-  if expected_type != "" and operand.ty != expected_type {
+  if not call_operand_type_matches(operand, expected_type) {
     give false;
   }
   if param.borrowed and (operand.constant or not operand.place.valid or operand.place.local == "") {
@@ -416,7 +456,7 @@ proc call_rvalue_reason(functions: [MirFunction], rvalue: MirRvalue) -> string {
           give "invalid-method-dispatch-borrow-arg";
         }
         let expected_type: string = mir_substitute_type(target.params[i].type_name, target.generic_params, rvalue.generic_arguments);
-        if expected_type != "" and rvalue.operands[start + i].ty != expected_type {
+        if not call_operand_type_matches(rvalue.operands[start + i], expected_type) {
           give "invalid-method-dispatch-param-type";
         }
         set i = i + 1;
@@ -440,8 +480,8 @@ proc call_rvalue_reason(functions: [MirFunction], rvalue: MirRvalue) -> string {
           give "invalid-regular-call-borrow-arg";
         }
         let expected_type: string = mir_substitute_type(target.params[i].type_name, target.generic_params, rvalue.generic_arguments);
-        if expected_type != "" and rvalue.operands[start + i].ty != expected_type {
-          give "invalid-regular-call-param-type";
+        if not call_operand_type_matches(rvalue.operands[start + i], expected_type) {
+          give "invalid-regular-call-param-type:" + target_name + ":expected=" + expected_type + ":actual=" + rvalue.operands[start + i].ty;
         }
         set i = i + 1;
       }
@@ -588,7 +628,12 @@ proc function_reason(functions: [MirFunction], fn0: MirFunction) -> string {
     while j < len(fn0.blocks[i].statements) {
       let reason: string = statement_reason(functions, fn0.blocks[i], j);
       if reason != "none" {
-        give reason;
+        give reason
+          + ":block=" + (fn0.blocks[i].id as string)
+          + ":statement=" + (j as string)
+          + ":id=" + (fn0.blocks[i].statements[j].id as string)
+          + ":place=" + fn0.blocks[i].statements[j].place.local
+          + ":rvalue=" + fn0.blocks[i].statements[j].rvalue.text;
       }
       set j = j + 1;
     }
@@ -608,7 +653,7 @@ proc mir_validation_reason(mir: MirUnit) -> string {
   while i < len(mir.module.functions) {
     let reason: string = function_reason(mir.module.functions, mir.module.functions[i]);
     if reason != "none" {
-      give reason;
+      give mir.module.functions[i].name + ":" + reason;
     }
     set i = i + 1;
   }
