@@ -5,18 +5,18 @@ export *
 use vitte/compiler/frontend/pipeline.{ FrontendDiagnostic, FrontendMacroState, FrontendOutput, FrontendStatistics, frontend_run }
 use vitte/compiler/analysis/pipeline.{ AnalysisOutput, analysis_run_prechecked }
 use vitte/compiler/analysis/report.{ AnalysisDiagnostic, analysis_diagnostic_with_span, analysis_diagnostics_as_report, ast_span_length }
-use vitte/compiler/analysis/sema/modules.{ SemaModuleExportSymbol, SemaModuleImport, SemaModuleSummary, module_import_from_use, imported_symbols_from_summary, summarize_module_hir }
-use vitte/compiler/analysis/sema/resolver.{ SemaResult, run_sema_hir, run_sema_hir_with_imports }
+use vitte/compiler/analysis/sema/modules.{ SemaModuleExportSymbol, SemaModuleImport, SemaModuleSummary, module_import_from_use, import_local_name_for, import_selection_local_name, import_selects_name, imported_symbols_from_summary, summarize_module_hir }
+use vitte/compiler/analysis/sema/resolver.{ SemaResult, run_bootstrap_sema_hir_with_imports, run_sema_hir, run_sema_hir_with_imports }
 use vitte/compiler/analysis/sema/errors.{ sema_nearby_symbol }
 use vitte/compiler/analysis/sema/scopes.{ SemaSymbol, SemaSymbolKind, SemaSymbolState, SemaVisibility, sema_symbol_full }
-use vitte/compiler/analysis/typeck/api.{ run_production_typeck_hir }
+use vitte/compiler/analysis/typeck/api.{ run_bootstrap_typeck_hir, run_production_typeck_hir }
 use vitte/compiler/analysis/typeck/errors.{ TypeckResult }
 use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, DiagnosticPhase, DiagnosticReport, DiagnosticRenderConfig, DiagnosticSeverity, DiagnosticStyle, SourceSpan, default_render_config, diagnostic_from_surface, diagnostic_report, diagnostic_report_empty, diagnostic_report_merge, phase_name, render_report, span_range }
 use vitte/compiler/diagnostics/json.{ json_array, json_escape, json_key_value, json_object, json_quote, json_report, json_report_envelope, json_report_envelope_with_canonical_context }
 use vitte/compiler/infrastructure/incremental/dep_graph.{ IncrementalGraph, build_analysis_graph }
-use vitte/compiler/middle/hir/hir.{ HirExpr, HirItem, HirItemKind, HirStmt, HirUnit, hir_module_empty }
+use vitte/compiler/middle/hir/hir.{ HirExpr, HirItem, HirItemKind, HirStmt, HirUnit, SemanticDiagnostic, hir_module_empty }
 use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
-use vitte/compiler/middle/lower/hir_to_mir.{ lower_hir_to_mir }
+use vitte/compiler/middle/lower/hir_to_mir.{ lower_hir_to_mir, lower_hir_to_mir_range }
 use vitte/compiler/middle/lower/mir_to_ir.{ lower_mir_as_ir_module }
 use vitte/compiler/middle/mir/mir.{ MirFunction, MirUnit, mir_module_empty }
 use vitte/compiler/middle/mir/validate.{ mir_validation_reason, validate_mir }
@@ -26,27 +26,18 @@ use vitte/compiler/backend/link/artifact.{ LinkArtifact, LinkArtifactKind, artif
 use vitte/compiler/backend/link/linker.{ link_ir_unit_with_kind }
 use vitte/compiler/backend/native_bridge.{ NativeBridgeResult, emit_native_object_from_assembly, emit_native_object_from_llvm_ir, link_native_executable, native_bridge_command_result }
 use vitte/compiler/backend/pipeline.{ BackendPipelineResult, compile_to_valid_ir_with_profile_and_packaging }
-use vitte/compiler/backends/llvm_bindings.{ LlvmDiagnosticLevel, LlvmToolchainPaths, default_llvm_toolchain_paths }
+use vitte/compiler/backends/llvm_bindings.{ LlvmBindingResult, LlvmDiagnosticLevel, LlvmToolchainPaths, default_llvm_toolchain_paths, emit_llvm_ir_fragment_from_ir_streamed, emit_llvm_ir_from_ir, emit_llvm_ir_from_ir_streamed }
+use vitte/compiler/driver/diagnostics.{ DriverDiagnosticLevel, DriverDiagnostic }
 use vitte/compiler/driver/exit_status.{ DriverExitStatus }
 use vitte/compiler/source/span.{ Span }
 use vitte/compiler/frontend/ast/item.{ ast_module_empty }
 use vitte/compiler/frontend/ast/node.{ ast_span_empty }
 use vitte/compiler/infrastructure/session/files.{ cache_source, normalize_path, offset_lookup, source_manager_empty, source_manager_file_id }
 use vitte/stdlib/io/fileops.{ append_file, delete_file, read_file, write_file }
+use vitte/stdlib/io/host_runtime.{ host_memory_checkpoint, host_memory_rewind }
+use vitte/compiler/driver/module_interfaces.{ ModuleInterfaceText, module_interface_text, lower_module_interface_hir, typecheck_with_interfaces, hir_with_interfaces, interface_has_name }
 
-pick DriverDiagnosticLevel {
-    Note,
-    Warning,
-    Error,
-}
 
-form DriverDiagnostic {
-    level: DriverDiagnosticLevel
-    stage: string
-    code: string
-    message: string
-    valid: bool
-}
 
 form DriverCompileResult {
     status: DriverExitStatus
@@ -450,7 +441,7 @@ proc codegen_diagnostics(codegen: CodegenResult) -> [DriverDiagnostic] {
     let i: u64 = 0;
     while i < len(codegen.diagnostics) {
         let diag0 = codegen.diagnostics[i];
-        let level = if diag0.level == LlvmDiagnosticLevel.Error {
+        let level: DriverDiagnosticLevel = if diag0.level == LlvmDiagnosticLevel.Error {
             DriverDiagnosticLevel.Error
         } elif diag0.level == LlvmDiagnosticLevel.Warning {
             DriverDiagnosticLevel.Warning
@@ -460,7 +451,7 @@ proc codegen_diagnostics(codegen: CodegenResult) -> [DriverDiagnostic] {
         set built = built + [driver_diagnostic(level, diag0.stage, diag0.code, diag0.message)];
         set i = i + 1;
     }
-    i = 0;
+    set i = 0;
     while i < len(codegen.errors) {
         set built = built + [driver_diagnostic(DriverDiagnosticLevel.Error, "codegen", "BACKEND_E_CODEGEN_FAILED", codegen.errors[i])];
         set i = i + 1;
@@ -581,9 +572,10 @@ proc ir_unit_requires_native_relocations(unit: IrUnit) -> bool {
             let block_index: u64 = 0;
             while block_index < len(function0.blocks) {
                 let block0 = function0.blocks[block_index];
+                let insts = block0.instructions;
                 let instruction_index: u64 = 0;
-                while instruction_index < len(block0.instructions) {
-                    let instruction = block0.instructions[instruction_index];
+                while instruction_index < len(insts) {
+                    let instruction = insts[instruction_index];
                     if instruction.kind == IrInstructionKind.Call and ir_module_symbol_is_external(module0, instruction.text) {
                         give true;
                     }
@@ -860,16 +852,16 @@ form InputGuardResult {
     message: string
 }
 
-const LIMIT_FILE_SIZE_MAX_BYTES: u64 = 8 * 1024 * 1024;
-const LIMIT_TOKEN_SIZE_MAX_BYTES: u64 = 64 * 1024;
-const LIMIT_AST_DEPTH_MAX: u64 = 512;
-const LIMIT_EXPR_DEPTH_MAX: u64 = 256;
-const LIMIT_IMPORT_DEPTH_MAX: u64 = 32;
-const LIMIT_MODULE_COUNT_MAX: u64 = 1024;
-const LIMIT_DIAGNOSTICS_MAX: u64 = 2048;
-const LIMIT_SYMBOL_COUNT_MAX: u64 = 200000;
-const LIMIT_PARSER_RECURSION_MAX: u64 = 256;
-const LIMIT_MACRO_EXPANSION_MAX: u64 = 4096;
+const LIMIT_FILE_SIZE_MAX_BYTES: u64 = 8388608
+const LIMIT_TOKEN_SIZE_MAX_BYTES: u64 = 65536
+const LIMIT_AST_DEPTH_MAX: u64 = 512
+const LIMIT_EXPR_DEPTH_MAX: u64 = 256
+const LIMIT_IMPORT_DEPTH_MAX: u64 = 32
+const LIMIT_MODULE_COUNT_MAX: u64 = 1024
+const LIMIT_DIAGNOSTICS_MAX: u64 = 2048
+const LIMIT_SYMBOL_COUNT_MAX: u64 = 200000
+const LIMIT_PARSER_RECURSION_MAX: u64 = 256
+const LIMIT_MACRO_EXPANSION_MAX: u64 = 4096
 
 proc str_contains(text: string, needle: string) -> bool {
     if needle == "" {
@@ -944,8 +936,23 @@ proc count_occurrences(text: string, needle: string) -> u64 {
     give n;
 }
 
+proc source_lines(source: string) -> [string] {
+    let lines: [string] = [];
+    let start: u64 = 0;
+    let end: u64 = 0;
+    while end < len(source) {
+        if slice(source, end, end + 1) == "\n" {
+            set lines = lines + [slice(source, start, end)];
+            set start = end + 1;
+        }
+        set end = end + 1;
+    }
+    set lines = lines + [slice(source, start, end)];
+    give lines;
+}
+
 proc max_import_path_depth(source_text: string) -> u64 {
-    let lines = split(source_text, "\n");
+    let lines: [string] = source_lines(source_text);
     let max_depth: u64 = 0;
     let i: u64 = 0;
     while i < len(lines) {
@@ -1116,16 +1123,22 @@ proc imported_symbols_for_summary(summary: SemaModuleSummary, summaries: [SemaMo
                 let exported_symbols: [SemaSymbol] = imported_symbols_from_summary(dependency_summary);
                 let j: u64 = 0;
                 while j < len(exported_symbols) {
-                    let selected: bool = len(dependency.names) == 0;
-                    let k: u64 = 0;
-                    while k < len(dependency.names) {
-                        if dependency.names[k] == exported_symbols[j].name {
-                            set selected = true;
-                        }
-                        set k = k + 1;
-                    }
+                    let selected: bool = import_selects_name(dependency, exported_symbols[j].name);
                     if selected {
-                        set imported = imported + [exported_symbols[j]];
+                        set imported = imported + [sema_symbol_full(
+                            exported_symbols[j].id,
+                            import_local_name_for(dependency, exported_symbols[j].name),
+                            exported_symbols[j].qualified_name,
+                            exported_symbols[j].kind,
+                            exported_symbols[j].state,
+                            exported_symbols[j].scope_depth,
+                            exported_symbols[j].mutable,
+                            exported_symbols[j].visibility_kind,
+                            exported_symbols[j].module_path,
+                            exported_symbols[j].ty,
+                            exported_symbols[j].line,
+                            exported_symbols[j].column
+                        )];
                     }
                     set j = j + 1;
                 }
@@ -1212,7 +1225,7 @@ proc stmt_uses_import_module(stmt: HirStmt, imported: [SemaSymbol], module_path:
         set i = i + 1;
     }
 
-    i = 0;
+    set i = 0;
     while i < len(stmt.else_stmts) {
         if stmt_uses_import_module(stmt.else_stmts[i], imported, module_path) {
             give true;
@@ -1236,7 +1249,7 @@ proc item_uses_import_module(item: HirItem, imported: [SemaSymbol], module_path:
         set i = i + 1;
     }
 
-    i = 0;
+    set i = 0;
     while i < len(item.members) {
         if expr_uses_import_module(item.members[i].expr, imported, module_path) {
             give true;
@@ -1365,7 +1378,8 @@ proc module_cycle_diagnostics(frontend: FrontendOutput, hir: HirUnit, summary: S
     let i: u64 = 0;
     while i < len(summary.imports) {
         let import0: SemaModuleImport = summary.imports[i];
-        let chain: string = module_cycle_search(import0.module_path, summary.module_path, summaries, [summary.module_path]);
+        let initial_path: [string] = [summary.module_path];
+        let chain: string = module_cycle_search(import0.module_path, summary.module_path, summaries, initial_path);
         if chain != "" and not module_path_seen(emitted, chain) {
             set emitted = emitted + [chain];
             let span: Span = module_import_span(hir, import0.module_path);
@@ -1491,7 +1505,7 @@ proc analyze_source_set_with_mode(inputs: [DriverModuleInput], compact: bool) ->
     }
 
     let modules: [DriverModuleArtifact] = [];
-    i = 0;
+    set i = 0;
     while i < len(inputs) {
         let input: DriverModuleInput = inputs[i];
         // Rebuild one frontend/HIR pair at a time so the first pass retains only compact summaries.
@@ -1628,7 +1642,7 @@ proc lower_module_set_to_ir(artifacts: DriverModuleSetArtifacts, config: DriverC
 
     let built: IrUnit = unit0;
     let entry_id: u64 = 0;
-    i = 0;
+    set i = 0;
     while i < len(artifacts.modules) {
         let summary: SemaModuleSummary = summaries[i];
         let module_name: string = summary.module_path;
@@ -1715,48 +1729,791 @@ proc streaming_codegen_empty(config: DriverCompileConfig) -> CodegenResult {
 form StreamingModuleResult {
     assembly: string
     has_entry: bool
+    message: string
     valid: bool
 }
 
-proc streaming_module_summary(input: DriverModuleInput, module_index: u64) -> SemaModuleSummary {
-    let frontend: FrontendOutput = parse_source(input.source_path, module_input_source(input));
-    let hir1: HirUnit = lower_ast_to_hir(frontend);
-    give summarize_module_hir(hir1, module_index * 1000000);
+proc streaming_text_starts_with(text: string, prefix: string) -> bool {
+    give len(text) >= len(prefix) and slice(text, 0, len(prefix)) == prefix;
 }
 
-proc compile_streaming_module(input: DriverModuleInput, module_index: u64, summary: SemaModuleSummary, summaries: [SemaModuleSummary], target: IrTarget, config: DriverCompileConfig) -> StreamingModuleResult {
-    let frontend: FrontendOutput = parse_source(input.source_path, module_input_source(input));
-    let hir1: HirUnit = lower_ast_to_hir(frontend);
-    let imported: [SemaSymbol] = imported_symbols_for_summary(summary, summaries);
-    let sema_result: SemaResult = run_sema_hir_with_imports(hir1, imported);
-    let typeck_result: TypeckResult = run_production_typeck_hir(sema_result.hir);
-    let mir1: MirUnit = validate_mir(lower_hir_to_mir(typeck_result.hir));
-    let analysis: AnalysisOutput = analysis_run_prechecked(frontend, sema_result, typeck_result, mir1);
-    let module_valid: bool = frontend.valid and hir1.valid and sema_result.valid and typeck_result.valid and mir1.valid and analysis.valid;
-    if not module_valid {
-        give StreamingModuleResult { assembly: "", has_entry: false, valid: false };
+proc streaming_text_contains_char(text: string, needle: string) -> bool {
+    let i: u64 = 0;
+    while i < len(text) {
+        if slice(text, i, i + 1) == needle {
+            give true;
+        }
+        set i = i + 1;
     }
+    give false;
+}
+
+proc streaming_trim_statement(text: string) -> string {
+    let value: string = trim(text);
+    if len(value) > 0 and slice(value, len(value) - 1, len(value)) == ";" {
+        give trim(slice(value, 0, len(value) - 1));
+    }
+    give value;
+}
+
+proc streaming_declaration_name(line: string) -> string {
+    let prefixes: [string] = [
+        "proc ", "form ", "pick ", "class ", "union ", "type ", "const ",
+        "trait ", "intrinsic ", "public proc ", "public form ", "public pick ",
+        "export proc ", "export form ", "export pick "
+    ];
+    let rest: string = "";
+    let i: u64 = 0;
+    while i < len(prefixes) and rest == "" {
+        if streaming_text_starts_with(line, prefixes[i]) {
+            set rest = slice(line, len(prefixes[i]), len(line));
+        }
+        set i = i + 1;
+    }
+    if rest == "" {
+        give "";
+    }
+    let end_index: u64 = 0;
+    while end_index < len(rest) {
+        let ch: string = slice(rest, end_index, end_index + 1);
+        if ch == " " or ch == "\t" or ch == "(" or ch == "<" or ch == ":" or ch == "{" or ch == ";" {
+            give slice(rest, 0, end_index);
+        }
+        set end_index = end_index + 1;
+    }
+    give rest;
+}
+
+proc streaming_module_path_from_source_path(source_path: string) -> string {
+    let path: string = source_path;
+    if streaming_text_starts_with(path, "src/") {
+        set path = slice(path, 4, len(path));
+    }
+    if len(path) >= 4 and slice(path, len(path) - 4, len(path)) == ".vit" {
+        give slice(path, 0, len(path) - 4);
+    }
+    if len(path) >= 5 and slice(path, len(path) - 5, len(path)) == ".vitl" {
+        give slice(path, 0, len(path) - 5);
+    }
+    give path;
+}
+
+proc streaming_name_in_list(names: [string], name: string) -> bool {
+    let i: u64 = 0;
+    while i < len(names) {
+        if names[i] == name {
+            give true;
+        }
+        set i = i + 1;
+    }
+    give false;
+}
+
+proc streaming_module_summary(input: DriverModuleInput, module_index: u64) -> SemaModuleSummary {
+    let source: string = module_input_source(input);
+    let lines: [string] = source_lines(source);
+    let module_path: string = "";
+    let imports: [SemaModuleImport] = [];
+    let declaration_names: [string] = [];
+    let shared_names: [string] = [];
+    let export_all: bool = false;
+    let i: u64 = 0;
+    while i < len(lines) {
+        let line: string = trim(lines[i]);
+        if streaming_text_starts_with(line, "space ") and module_path == "" {
+            set module_path = streaming_trim_statement(slice(line, 6, len(line)));
+        } elif streaming_text_starts_with(line, "use ") {
+            let import_text: string = streaming_trim_statement(slice(line, 4, len(line)));
+            if streaming_text_contains_char(import_text, "{") and not streaming_text_contains_char(import_text, "}") {
+                let import_end: u64 = i + 1;
+                while import_end < len(lines) and not streaming_text_contains_char(import_text, "}") {
+                    set import_text = import_text + " " + streaming_trim_statement(lines[import_end]);
+                    set import_end = import_end + 1;
+                }
+                set i = import_end - 1;
+            }
+            let imported: SemaModuleImport = module_import_from_use(import_text);
+            if imported.valid {
+                set imports = imports + [imported];
+            }
+        } elif line == "export *" or line == "export *;" {
+            set export_all = true;
+        } elif streaming_text_starts_with(line, "share ") {
+            let shared_name: string = streaming_trim_statement(slice(line, 6, len(line)));
+            if shared_name != "" and not streaming_name_in_list(shared_names, shared_name) {
+                set shared_names = shared_names + [shared_name];
+            }
+        } else {
+            let declaration_name: string = streaming_declaration_name(line);
+            if declaration_name != "" and not streaming_name_in_list(declaration_names, declaration_name) {
+                set declaration_names = declaration_names + [declaration_name];
+            }
+        }
+        set i = i + 1;
+    }
+    let exports: [SemaModuleExportSymbol] = [];
+    set i = 0;
+    while i < len(declaration_names) {
+        if export_all or streaming_name_in_list(shared_names, declaration_names[i]) {
+            set exports = exports + [SemaModuleExportSymbol {
+                id: module_index * 1000000 + i + 1,
+                name: declaration_names[i],
+                visibility: "public",
+                valid: true
+            }];
+        }
+        set i = i + 1;
+    }
+    give SemaModuleSummary {
+        source_path: input.source_path,
+        module_path: streaming_module_path_from_source_path(input.source_path),
+        imports: imports,
+        exports: exports,
+        valid: module_path != ""
+    };
+}
+
+proc streaming_input_index(inputs: [DriverModuleInput], module_path: string) -> int {
+    let vit_path: string = "src/" + module_path + ".vit";
+    let vitl_path: string = "src/" + module_path + ".vitl";
+    let i: u64 = 0;
+    while i < len(inputs) {
+        if inputs[i].source_path == vit_path or inputs[i].source_path == vitl_path
+            or inputs[i].source_path == "src/" + module_path + "/mod.vit" {
+            give i as int;
+        }
+        set i = i + 1;
+    }
+    give -1;
+}
+
+form StreamingInterfaces {
+    items: [HirItem]
+    message: string
+    valid: bool
+}
+
+proc streaming_path_seen(paths: [string], path: string) -> bool {
+    let i: u64 = 0;
+    while i < len(paths) {
+        if paths[i] == path {
+            give true;
+        }
+        set i = i + 1;
+    }
+    give false;
+}
+
+proc streaming_type_mentions(text: string, name: string) -> bool {
+    let identifier: string = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_";
+    let i: u64 = 0;
+    while name != "" and i + len(name) <= len(text) {
+        if slice(text, i, i + len(name)) == name {
+            let left: bool = i == 0 or not streaming_text_contains_char(identifier, slice(text, i - 1, i));
+            let right: bool = i + len(name) == len(text) or not streaming_text_contains_char(identifier, slice(text, i + len(name), i + len(name) + 1));
+            if left and right { give true; }
+        }
+        set i = i + 1;
+    }
+    give false;
+}
+
+proc streaming_interface_type_text(item: HirItem) -> string {
+    let text: string = item.annotation_text + " " + item.target_type_text;
+    let i: u64 = 0;
+    while i < len(item.params) {
+        set text = text + " " + item.params[i].annotation_text;
+        set i = i + 1;
+    }
+    set i = 0;
+    while i < len(item.members) {
+        set text = text + " " + item.members[i].annotation_text;
+        let j: u64 = 0;
+        while j < len(item.members[i].params) {
+            set text = text + " " + item.members[i].params[j].annotation_text;
+            set j = j + 1;
+        }
+        set i = i + 1;
+    }
+    give text;
+}
+
+proc streaming_required_interface_names(imported: SemaModuleImport, items: [HirItem]) -> [string] {
+    let names: [string] = [];
+    let i: u64 = 0;
+    while i < len(items) {
+        if items[i].name != "" and import_selects_name(imported, items[i].name) {
+            set names = names + [items[i].name];
+        }
+        set i = i + 1;
+    }
+    set i = 0;
+    while i < len(names) {
+        let j: u64 = 0;
+        while j < len(items) {
+            if items[j].name == names[i] {
+                let types: string = streaming_interface_type_text(items[j]);
+                let k: u64 = 0;
+                while k < len(items) {
+                    if items[k].name != "" and not streaming_name_in_list(names, items[k].name)
+                        and streaming_type_mentions(types, items[k].name) {
+                        set names = names + [items[k].name];
+                    }
+                    set k = k + 1;
+                }
+            }
+            set j = j + 1;
+        }
+        set i = i + 1;
+    }
+    give names;
+}
+
+proc streaming_import_selection_key(imported: SemaModuleImport) -> string {
+    let key: string = imported.module_path + if imported.import_all { "{*" } else { "{" };
+    let i: u64 = 0;
+    while i < len(imported.names) {
+        set key = key + "," + imported.names[i];
+        set i = i + 1;
+    }
+    give key + "}";
+}
+
+proc streaming_dependency_interfaces(summary: SemaModuleSummary, inputs: [DriverModuleInput], local_items: [HirItem]) -> StreamingInterfaces {
+    let items: [HirItem] = [];
+    let pending: [SemaModuleImport] = [];
+    let queued: [string] = [];
+    let direct_index: u64 = 0;
+    while direct_index < len(summary.imports) {
+        set pending = pending + [summary.imports[direct_index]];
+        set queued = queued + [streaming_import_selection_key(summary.imports[direct_index])];
+        set direct_index = direct_index + 1;
+    }
+    let seen_modules: [string] = [];
+    let i: u64 = 0;
+    while i < len(pending) and i < LIMIT_MODULE_COUNT_MAX {
+        let imported: SemaModuleImport = pending[i];
+        let direct_import: bool = i < len(summary.imports);
+        let selection_key: string = streaming_import_selection_key(imported);
+        if streaming_path_seen(seen_modules, selection_key) {
+            set i = i + 1;
+            continue;
+        }
+        set seen_modules = seen_modules + [selection_key];
+        let input_index: int = streaming_input_index(inputs, imported.module_path);
+        if input_index >= 0 {
+            let path: string = inputs[input_index as u64].source_path;
+            let checkpoint: u64 = host_memory_checkpoint();
+            let compact: ModuleInterfaceText = module_interface_text(path, module_input_source(inputs[input_index as u64]));
+            let saved: bool = compact.valid and write_file("target/bootstrap-real/streaming-interface.vit", compact.text);
+            let rewound: int = host_memory_rewind(checkpoint);
+            if not saved or rewound != 0 {
+                give StreamingInterfaces { items: [], message: "interface-source:" + path, valid: false };
+            }
+            let frontend: FrontendOutput = parse_source(path, read_file("target/bootstrap-real/streaming-interface.vit"));
+            if not frontend.valid {
+                give StreamingInterfaces { items: [], message: "interface-frontend:" + path, valid: false };
+            }
+            let interface_hir: HirUnit = lower_module_interface_hir(frontend);
+            if not interface_hir.valid {
+                give StreamingInterfaces { items: [], message: "interface-hir:" + path, valid: false };
+            }
+            let child_summary: SemaModuleSummary = summarize_module_hir(interface_hir, 0 as u64);
+            let required_names: [string] = streaming_required_interface_names(imported, interface_hir.module.items);
+            let required_types: string = "";
+            let required_index: u64 = 0;
+            while required_index < len(interface_hir.module.items) {
+                if streaming_name_in_list(required_names, interface_hir.module.items[required_index].name) {
+                    set required_types = required_types + " " + streaming_interface_type_text(interface_hir.module.items[required_index]);
+                }
+                set required_index = required_index + 1;
+            }
+            let child_index: u64 = 0;
+            while child_index < len(child_summary.imports) {
+                let child: SemaModuleImport = child_summary.imports[child_index];
+                let child_names: [string] = [];
+                let name_index: u64 = 0;
+                while name_index < len(child.names) {
+                    if streaming_type_mentions(required_types, import_selection_local_name(child.names[name_index])) {
+                        set child_names = child_names + [child.names[name_index]];
+                    }
+                    set name_index = name_index + 1;
+                }
+                let needed: SemaModuleImport = SemaModuleImport {
+                    module_path: child.module_path, alias: child.alias, names: child_names,
+                    import_all: child.import_all, valid: child.valid
+                };
+                let child_key: string = streaming_import_selection_key(needed);
+                if (needed.import_all or len(needed.names) > 0) and not streaming_path_seen(queued, child_key) {
+                    if len(pending) >= LIMIT_MODULE_COUNT_MAX {
+                        give StreamingInterfaces { items: [], message: "interface-dependency-limit", valid: false };
+                    }
+                    set pending = pending + [needed];
+                    set queued = queued + [child_key];
+                }
+                set child_index = child_index + 1;
+            }
+            let j: u64 = 0;
+            while j < len(interface_hir.module.items) {
+                let item: HirItem = interface_hir.module.items[j];
+                let nominal: bool = item.kind == HirItemKind.Form or item.kind == HirItemKind.Pick
+                    or item.kind == HirItemKind.Class or item.kind == HirItemKind.Union
+                    or item.kind == HirItemKind.Bits or item.kind == HirItemKind.Flags;
+                let selected: bool = import_selects_name(imported, item.name);
+                let selected_nominal: bool = nominal and streaming_name_in_list(required_names, item.name);
+                let selected_name: string = if direct_import and selected and (item.kind == HirItemKind.Proc or item.kind == HirItemKind.Const) {
+                    import_local_name_for(imported, item.name)
+                } else {
+                    item.name
+                };
+                if item.name != "" and (selected_nominal or (direct_import and selected and (item.kind == HirItemKind.Proc or item.kind == HirItemKind.Const)))
+                    and not interface_has_name(local_items, selected_name) {
+                    let selected_item: HirItem = HirItem {
+                        id: item.id,
+                        span: item.span,
+                        kind: item.kind,
+                        name: selected_name,
+                        resolved_id: item.resolved_id,
+                        namespace: item.namespace,
+                        visibility: item.visibility,
+                        exported: item.exported,
+                        abi: item.abi,
+                        generic_count: item.generic_count,
+                        generic_params: item.generic_params,
+                        generic_param_info: item.generic_param_info,
+                        where_clauses: item.where_clauses,
+                        requires: item.requires,
+                        type_param_count: item.type_param_count,
+                        attribute_count: item.attribute_count,
+                        modifier_count: item.modifier_count,
+                        member_count: item.member_count,
+                        signature_param_count: item.signature_param_count,
+                        params: item.params,
+                        annotation_text: item.annotation_text,
+                        target_type_text: item.target_type_text,
+                        expr: item.expr,
+                        stmts: item.stmts,
+                        members: item.members,
+                        message: item.message,
+                        scope_depth: item.scope_depth,
+                        diagnostics: item.diagnostics,
+                        valid: item.valid
+                    };
+                    if direct_import and selected and (item.kind == HirItemKind.Proc or item.kind == HirItemKind.Const) {
+                        if selected_name != item.name {
+                            set selected_item.namespace = item.name;
+                        }
+                    }
+                    if not interface_has_name(items, selected_item.name) { set items = items + [selected_item]; }
+                }
+                set j = j + 1;
+            }
+        }
+        set i = i + 1;
+    }
+    give StreamingInterfaces { items: items, message: "", valid: true };
+}
+
+proc streaming_dependency_summaries(summary: SemaModuleSummary, inputs: [DriverModuleInput]) -> [SemaModuleSummary] {
+    let summaries: [SemaModuleSummary] = [];
+    let i: u64 = 0;
+    while i < len(summary.imports) {
+        let input_index: int = streaming_input_index(inputs, summary.imports[i].module_path);
+        if input_index >= 0 {
+            set summaries = summaries + [streaming_module_summary(inputs[input_index as u64], input_index as u64 + 1)];
+        }
+        set i = i + 1;
+    }
+    give summaries;
+}
+
+proc streaming_hir_item_names(items: [HirItem]) -> string {
+    let names: string = "";
+    let i: u64 = 0;
+    while i < len(items) {
+        if items[i].name != "" {
+            if names != "" {
+                set names = names + ",";
+            }
+            set names = names + items[i].name;
+        }
+        set i = i + 1;
+    }
+    give names;
+}
+
+proc streaming_import_paths(summary: SemaModuleSummary) -> string {
+    let paths: string = "";
+    let i: u64 = 0;
+    while i < len(summary.imports) {
+        if paths != "" {
+            set paths = paths + ",";
+        }
+        set paths = paths + summary.imports[i].module_path;
+        set i = i + 1;
+    }
+    give paths;
+}
+
+proc streaming_import_names(summary: SemaModuleSummary) -> string {
+    let out: string = "";
+    let i: u64 = 0;
+    while i < len(summary.imports) {
+        if out != "" {
+            set out = out + ";";
+        }
+        set out = out + summary.imports[i].module_path + "{";
+        let j: u64 = 0;
+        while j < len(summary.imports[i].names) {
+            if j > 0 {
+                set out = out + ",";
+            }
+            set out = out + summary.imports[i].names[j];
+            set j = j + 1;
+        }
+        set out = out + "}";
+        set i = i + 1;
+    }
+    give out;
+}
+
+proc streaming_interface_item_names(items: [HirItem]) -> string {
+    let out: string = "";
+    let i: u64 = 0;
+    while i < len(items) and i < 80 {
+        if out != "" {
+            set out = out + ",";
+        }
+        set out = out + items[i].name;
+        if items[i].namespace != "" and items[i].namespace != items[i].name {
+            set out = out + "=>" + items[i].namespace;
+        }
+        set i = i + 1;
+    }
+    give out;
+}
+
+proc hir_has_owned_codegen_items(items: [HirItem]) -> bool {
+    let i: u64 = 0;
+    while i < len(items) {
+        if items[i].kind == HirItemKind.Proc {
+            give true;
+        }
+        if items[i].kind == HirItemKind.Impl and len(items[i].members) > 0 {
+            give true;
+        }
+        set i = i + 1;
+    }
+    give false;
+}
+
+proc streaming_source_has_owned_codegen_items(source: string) -> bool {
+    let lines: [string] = source_lines(source);
+    let prefixes: [string] = [
+        "proc ", "public proc ", "export proc ", "internal proc ", "private proc ",
+        "impl "
+    ];
+    let i: u64 = 0;
+    while i < len(lines) {
+        let line: string = trim(lines[i]);
+        let j: u64 = 0;
+        while j < len(prefixes) {
+            if streaming_text_starts_with(line, prefixes[j]) {
+                give true;
+            }
+            set j = j + 1;
+        }
+        set i = i + 1;
+    }
+    give false;
+}
+
+proc streaming_summary_paths(summaries: [SemaModuleSummary]) -> string {
+    let paths: string = "";
+    let i: u64 = 0;
+    while i < len(summaries) and i < 12 {
+        if paths != "" {
+            set paths = paths + ",";
+        }
+        set paths = paths + summaries[i].module_path;
+        set i = i + 1;
+    }
+    give paths;
+}
+
+proc streaming_hir_chunking_safe(hir: HirUnit) -> bool {
+    if len(hir.module.items) <= 128 {
+        give false;
+    }
+    let i: u64 = 0;
+    while i < len(hir.module.items) {
+        if hir.module.items[i].kind == HirItemKind.Impl or len(hir.module.items[i].generic_params) > 0 {
+            give false;
+        }
+        set i = i + 1;
+    }
+    give true;
+}
+
+proc compile_streaming_hir_chunks(input: DriverModuleInput, module_index: u64, summary: SemaModuleSummary, target: IrTarget, typed_hir: HirUnit) -> StreamingModuleResult {
+    let module_output_path: string = "target/bootstrap-real/streaming-current-module.ll";
+    let chunk_output_path: string = "target/bootstrap-real/streaming-current-chunk.ll";
+    let prepared: bool = delete_file(module_output_path) or write_file(module_output_path, "");
+    if not prepared {
+        give StreamingModuleResult { assembly: "", has_entry: false, message: "chunked-mir-output", valid: false };
+    }
+
+    let chunk_size: u64 = 8;
+    // Interfaces are appended for type/ABI lookup, but have no owned bodies.
+    // Do not emit a trailing chunk containing only imported signatures.
+    let owned_item_end: u64 = len(typed_hir.module.items);
+    while owned_item_end > 0 and typed_hir.module.items[owned_item_end - 1].visibility == "imported" {
+        set owned_item_end = owned_item_end - 1;
+    }
+    let chunk_start: u64 = 0;
+    let first_chunk: bool = true;
+    let has_entry: bool = false;
+    while chunk_start < owned_item_end {
+        let chunk_end: u64 = if chunk_start + chunk_size < owned_item_end {
+            chunk_start + chunk_size
+        } else {
+            owned_item_end
+        };
+        let chunk_checkpoint: u64 = host_memory_checkpoint();
+        let phase_chunk_mir_written: bool = write_file(
+            "target/reports/compiler_module_phase.txt",
+            input.source_path + " mir-chunk " + to_string(chunk_start + 1) + "-" + to_string(chunk_end) + "\n"
+        );
+        let lowered_mir: MirUnit = lower_hir_to_mir_range(typed_hir, chunk_start, chunk_end);
+        if len(lowered_mir.module.functions) > 0 {
+            let mir_reason: string = mir_validation_reason(lowered_mir);
+            let mir1: MirUnit = validate_mir(lowered_mir);
+            if not mir1.valid {
+                give StreamingModuleResult { assembly: "", has_entry: false, message: "mir:" + mir_reason, valid: false };
+            }
+
+            let module0: IrModule = lower_mir_as_ir_module(
+                module_index,
+                if summary.module_path != "" { summary.module_path } else { input.source_path },
+                input.source_path,
+                IrModuleKind.Library,
+                target,
+                mir1,
+                typed_hir.module.items,
+                [],
+                module_import_names(summary),
+                []
+            );
+            let single_unit0: IrUnit = unit_add_module(unit_with_source_path(unit_empty(target), input.source_path), module0);
+            let candidate_entry: u64 = module0.functions[0].id;
+            let candidate_unit: IrUnit = unit_set_entry(unit_with_state(single_unit0, IrUnitState::Lowered), candidate_entry);
+            let single_unit_reason: string = ir_validation_reason(candidate_unit);
+            let single_unit: IrUnit = verify_unit(candidate_unit);
+            if not unit_is_valid(single_unit) {
+                give StreamingModuleResult { assembly: "", has_entry: false, message: "ir-verification:" + single_unit_reason, valid: false };
+            }
+
+            let phase_chunk_ir_written: bool = write_file(
+                "target/reports/compiler_module_phase.txt",
+                input.source_path + " ir-chunk " + to_string(chunk_start + 1) + "-" + to_string(chunk_end) + "\n"
+            );
+            let emitted_ir: LlvmBindingResult = emit_llvm_ir_fragment_from_ir_streamed(
+                single_unit,
+                chunk_output_path,
+                first_chunk,
+                first_chunk
+            );
+            if not emitted_ir.valid {
+                give StreamingModuleResult { assembly: "", has_entry: false, message: "llvm-codegen-chunk:" + trim(read_file("target/reports/compiler_llvm_failure.txt")), valid: false };
+            }
+            let written: bool = if first_chunk {
+                write_file(module_output_path, emitted_ir.ir_text)
+            } else {
+                append_file(module_output_path, "\n" + emitted_ir.ir_text)
+            };
+            if not written {
+                give StreamingModuleResult { assembly: "", has_entry: false, message: "chunked-module-write", valid: false };
+            }
+            let function_index: u64 = 0;
+            while function_index < len(module0.functions) {
+                if module0.functions[function_index].name == "main" {
+                    set has_entry = true;
+                }
+                set function_index = function_index + 1;
+            }
+            set first_chunk = false;
+        }
+        let chunk_rewind_status: int = host_memory_rewind(chunk_checkpoint);
+        if chunk_rewind_status != 0 {
+            give StreamingModuleResult { assembly: "", has_entry: false, message: "chunk-memory-rewind", valid: false };
+        }
+        set chunk_start = chunk_end;
+    }
+
+    let assembly: string = if not first_chunk { read_file(module_output_path) } else { "" };
+    give StreamingModuleResult {
+        assembly: assembly,
+        has_entry: has_entry,
+        message: if assembly != "" { "" } else { "chunked-module-empty" },
+        valid: assembly != ""
+    };
+}
+
+proc compile_streaming_module(input: DriverModuleInput, module_index: u64, summary: SemaModuleSummary, summaries: [SemaModuleSummary], target: IrTarget, config: DriverCompileConfig, inputs: [DriverModuleInput]) -> StreamingModuleResult {
+    let phase_parse_started: bool = write_file("target/reports/compiler_module_phase.txt", input.source_path + " frontend-start\n");
+    let frontend: FrontendOutput = parse_source(input.source_path, module_input_source(input));
+    let phase_frontend_written: bool = write_file("target/reports/compiler_module_phase.txt", input.source_path + " frontend\n");
+    let hir1: HirUnit = lower_ast_to_hir(frontend);
+    let phase_hir_written: bool = write_file("target/reports/compiler_module_phase.txt", input.source_path + " hir\n");
+    let hir_summary: SemaModuleSummary = summarize_module_hir(hir1, module_index * 1000000);
+    let summary_imports: [SemaModuleImport] = if len(summary.imports) > 0 { summary.imports } else { hir_summary.imports };
+    let resolved_summary: SemaModuleSummary = SemaModuleSummary {
+        source_path: hir_summary.source_path,
+        module_path: if hir_summary.module_path != "" { hir_summary.module_path } else { summary.module_path },
+        imports: summary_imports,
+        exports: hir_summary.exports,
+        valid: hir_summary.valid and (summary.valid or len(summary_imports) > 0)
+    };
+    let phase_summary_written: bool = write_file("target/reports/compiler_module_phase.txt", input.source_path + " summary\n");
+    let dependency_summaries: [SemaModuleSummary] = if len(summaries) > 0 or len(resolved_summary.imports) == 0 {
+        summaries
+    } else {
+        streaming_dependency_summaries(resolved_summary, inputs)
+    };
+    let imported: [SemaSymbol] = imported_symbols_for_summary(resolved_summary, dependency_summaries);
+    let phase_imports_written: bool = write_file("target/reports/compiler_module_phase.txt", input.source_path + " imports\n");
+    let sema_result: SemaResult = run_bootstrap_sema_hir_with_imports(hir1, imported);
+    let phase_sema_written: bool = write_file("target/reports/compiler_module_phase.txt", input.source_path + " sema\n");
+    let interfaces: StreamingInterfaces = streaming_dependency_interfaces(resolved_summary, inputs, hir1.module.items);
+    if not interfaces.valid {
+        give StreamingModuleResult { assembly: "", has_entry: false, message: interfaces.message, valid: false };
+    }
+    let interfaces_report_written: bool = write_file(
+        "target/reports/compiler_streaming_interfaces.txt",
+        input.source_path + " imports=" + streaming_import_paths(resolved_summary)
+            + " names=" + streaming_import_names(resolved_summary)
+            + " summaries=" + streaming_summary_paths(dependency_summaries)
+            + " interfaces=" + streaming_interface_item_names(interfaces.items) + "\n"
+    );
+    let typeck_result: TypeckResult = typecheck_with_interfaces(sema_result.hir, interfaces.items, true);
+    set typeck_result.hir = hir_with_interfaces(typeck_result.hir, interfaces.items);
+    let phase_typeck_written: bool = write_file("target/reports/compiler_module_phase.txt", input.source_path + " typeck\n");
+    if frontend.valid and hir1.valid and sema_result.valid and typeck_result.valid and not streaming_source_has_owned_codegen_items(module_input_source(input)) {
+        give StreamingModuleResult { assembly: "", has_entry: false, message: "", valid: true };
+    }
+    if frontend.valid and hir1.valid and sema_result.valid and typeck_result.valid and streaming_hir_chunking_safe(typeck_result.hir) {
+        give compile_streaming_hir_chunks(input, module_index, resolved_summary, target, typeck_result.hir);
+    }
+    let lowered_mir: MirUnit = lower_hir_to_mir(typeck_result.hir);
+    let mir_reason: string = mir_validation_reason(lowered_mir);
+    let mir1: MirUnit = validate_mir(lowered_mir);
+    let phase_mir_written: bool = write_file("target/reports/compiler_module_phase.txt", input.source_path + " mir\n");
+    let module_valid: bool = frontend.valid and hir1.valid and sema_result.valid and typeck_result.valid and mir1.valid;
+    if not module_valid {
+        let phase: string = if not frontend.valid {
+            if len(frontend.diagnostics) > 0 {
+                let frontend_diagnostic0: FrontendDiagnostic = frontend.diagnostics[0];
+                "frontend:" + frontend_diagnostic0.code + ":" + frontend_diagnostic0.message
+                    + ":span=" + frontend_diagnostic0.file + ":" + to_string(frontend_diagnostic0.line) + ":" + to_string(frontend_diagnostic0.column)
+            } else {
+                "frontend"
+            }
+        } elif not hir1.valid {
+            if len(hir1.module.diagnostics) > 0 {
+                let hir_diagnostics: [SemanticDiagnostic] = hir1.module.diagnostics;
+                let hir_diagnostic: SemanticDiagnostic = hir_diagnostics[0];
+                let hir_span: string = if hir_diagnostic.span.valid {
+                    ":span=" + hir_diagnostic.span.file + ":" + to_string(hir_diagnostic.span.start_line) + ":" + to_string(hir_diagnostic.span.start_column)
+                } else {
+                    ""
+                };
+                "hir:" + hir_diagnostic.code + ":" + hir_diagnostic.message + hir_span + ":subject=" + hir_diagnostic.subject + ":detail=" + hir_diagnostic.detail
+            } else {
+                "hir"
+            }
+        } elif not sema_result.valid {
+            if len(sema_result.diagnostics) > 0 {
+                let sema_diagnostic: Diagnostic = sema_result.diagnostics[0];
+                let sema_span: string = if sema_diagnostic.span.valid {
+                    ":span=" + sema_diagnostic.span.file + ":" + to_string(sema_diagnostic.span.start_line) + ":" + to_string(sema_diagnostic.span.start_column)
+                } else {
+                    ""
+                };
+                "sema:" + sema_diagnostic.code + ":" + sema_diagnostic.message + sema_span
+            } else {
+                "sema"
+            }
+        } elif not typeck_result.valid {
+            if len(typeck_result.diagnostics) > 0 {
+                let typeck_diagnostics: [Diagnostic] = typeck_result.diagnostics;
+                let typeck_diagnostic: Diagnostic = typeck_diagnostics[0];
+                let typeck_diagnostic_index: u64 = 0;
+                let typeck_error_selected: bool = false;
+                while typeck_diagnostic_index < len(typeck_diagnostics) and not typeck_error_selected {
+                    if typeck_diagnostics[typeck_diagnostic_index].severity == DiagnosticSeverity.Error
+                        or typeck_diagnostics[typeck_diagnostic_index].severity == DiagnosticSeverity.Fatal {
+                        set typeck_diagnostic = typeck_diagnostics[typeck_diagnostic_index];
+                        set typeck_error_selected = true;
+                    }
+                    set typeck_diagnostic_index = typeck_diagnostic_index + 1;
+                }
+                let typeck_subject: string = if typeck_diagnostic.subject_type != "" {
+                    ":subject=" + typeck_diagnostic.subject_type
+                } else {
+                    ""
+                };
+                let typeck_label: string = if len(typeck_diagnostic.labels) > 0 {
+                    ":label=" + typeck_diagnostic.labels[0].message
+                } else {
+                    ""
+                };
+                let typeck_cause: string = if len(typeck_diagnostic.cause_chain) > 0 {
+                    ":cause=" + typeck_diagnostic.cause_chain[0]
+                } else {
+                    ""
+                };
+                let typeck_span: string = if typeck_diagnostic.span.valid {
+                    ":span=" + typeck_diagnostic.span.file + ":" + to_string(typeck_diagnostic.span.start_line) + ":" + to_string(typeck_diagnostic.span.start_column)
+                } else {
+                    ""
+                };
+                "typeck:" + typeck_diagnostic.code + ":" + typeck_diagnostic.message + typeck_subject + typeck_label + typeck_cause + typeck_span
+            } else {
+                "typeck"
+            }
+        } elif not mir1.valid {
+            "mir:" + mir_reason
+        } else {
+            "analysis"
+        };
+        give StreamingModuleResult { assembly: "", has_entry: false, message: phase, valid: false };
+    }
+    let lowering_items: [HirItem] = typeck_result.hir.module.items;
     let module0: IrModule = lower_mir_as_ir_module(
         module_index,
-        if summary.module_path != "" { summary.module_path } else { input.source_path },
+        if resolved_summary.module_path != "" { resolved_summary.module_path } else { input.source_path },
         input.source_path,
         IrModuleKind.Library,
         target,
         mir1,
-        typeck_result.hir.module.items,
+        lowering_items,
         [],
-        module_import_names(summary),
+        module_import_names(resolved_summary),
         []
     );
     let single_unit0: IrUnit = unit_add_module(unit_with_source_path(unit_empty(target), input.source_path), module0);
     let candidate_entry: u64 = if len(module0.functions) > 0 { module0.functions[0].id } else { 0 };
-    let single_unit: IrUnit = verify_unit(unit_set_entry(unit_with_state(single_unit0, IrUnitState::Lowered), candidate_entry));
+    let candidate_unit: IrUnit = unit_set_entry(unit_with_state(single_unit0, IrUnitState::Lowered), candidate_entry);
+    let single_unit_reason: string = ir_validation_reason(candidate_unit);
+    let single_unit: IrUnit = verify_unit(candidate_unit);
+    let phase_ir_written: bool = write_file("target/reports/compiler_module_phase.txt", input.source_path + " ir\n");
     if not unit_is_valid(single_unit) {
-        give StreamingModuleResult { assembly: "", has_entry: false, valid: false };
+        give StreamingModuleResult { assembly: "", has_entry: false, message: "ir-verification:" + single_unit_reason + ":imports=" + streaming_import_paths(resolved_summary) + ":summaries=" + streaming_summary_paths(dependency_summaries) + ":items=" + streaming_hir_item_names(lowering_items), valid: false };
     }
-    let codegen0: CodegenResult = run_codegen_llvm_with_profile(single_unit, config.profile_name, config.packaging, config.deterministic, config.debug_enabled, config.prefer_native_toolchain, config.llvm_toolchain);
-    if not codegen0.valid {
-        give StreamingModuleResult { assembly: "", has_entry: false, valid: false };
+    let emitted_ir: LlvmBindingResult = emit_llvm_ir_from_ir_streamed(single_unit, "target/bootstrap-real/streaming-current-module.ll");
+    let phase_codegen_written: bool = write_file("target/reports/compiler_module_phase.txt", input.source_path + " codegen\n");
+    if not emitted_ir.valid {
+        give StreamingModuleResult { assembly: "", has_entry: false, message: "llvm-codegen:" + trim(read_file("target/reports/compiler_llvm_failure.txt")), valid: false };
     }
     let has_entry: bool = false;
     let function_index: u64 = 0;
@@ -1766,20 +2523,16 @@ proc compile_streaming_module(input: DriverModuleInput, module_index: u64, summa
         }
         set function_index = function_index + 1;
     }
-    give StreamingModuleResult { assembly: codegen0.assembly, has_entry: has_entry, valid: true };
+    give StreamingModuleResult { assembly: emitted_ir.ir_text, has_entry: has_entry, message: "", valid: true };
 }
 
 proc compile_source_set_streaming(inputs: [DriverModuleInput], config: DriverCompileConfig) -> DriverBackendModuleSetResult {
+    let failure_report_cleared: bool = write_file("target/reports/compiler_module_set_failure.txt", "");
+    let llvm_failure_report_cleared: bool = write_file("target/reports/compiler_llvm_failure.txt", "");
     let target: IrTarget = target_from_name(config.target_name);
-    let summaries: [SemaModuleSummary] = [];
-    let summary_valid: bool = target.valid;
     let i: u64 = 0;
-    while i < len(inputs) {
-        set summaries = summaries + [streaming_module_summary(inputs[i], i + 1)];
-        set i = i + 1;
-    }
     let empty_unit: IrUnit = unit_with_state(unit_empty(target), IrUnitState::Invalid);
-    if not summary_valid {
+    if not target.valid {
         give DriverBackendModuleSetResult {
             analysis: DriverModuleSetArtifacts { modules: [], valid: false },
             config: config,
@@ -1797,10 +2550,20 @@ proc compile_source_set_streaming(inputs: [DriverModuleInput], config: DriverCom
     let first_module: bool = true;
     let all_valid: bool = prepared;
     let entry_symbol: string = "";
-    i = 0;
-    while i < len(inputs) {
-        let module_result: StreamingModuleResult = compile_streaming_module(inputs[i], i + 1, summaries[i], summaries, target, config);
-        if module_result.valid {
+    let first_failure: string = "";
+    set i = 0;
+    while i < len(inputs) and all_valid {
+        let progress_written: bool = write_file(
+            "target/reports/compiler_module_set_progress.txt",
+            to_string(i + 1) + "/" + to_string(len(inputs)) + " " + inputs[i].source_path + "\n"
+        );
+        let memory_checkpoint: u64 = host_memory_checkpoint();
+        let phase_summary_started: bool = write_file("target/reports/compiler_module_phase.txt", inputs[i].source_path + " source-summary-start\n");
+        let summary: SemaModuleSummary = streaming_module_summary(inputs[i], i + 1);
+        let phase_dependencies_started: bool = write_file("target/reports/compiler_module_phase.txt", inputs[i].source_path + " dependency-summaries-start\n");
+        let summaries: [SemaModuleSummary] = streaming_dependency_summaries(summary, inputs);
+        let module_result: StreamingModuleResult = compile_streaming_module(inputs[i], i + 1, summary, summaries, target, config, inputs);
+        if module_result.valid and module_result.assembly != "" {
             let fragment: string = llvm_module_fragment(module_result.assembly, first_module);
             let written: bool = if first_module {
                 write_file(assembly_path, fragment)
@@ -1809,15 +2572,33 @@ proc compile_source_set_streaming(inputs: [DriverModuleInput], config: DriverCom
             };
             if not written {
                 set all_valid = false;
+                set first_failure = inputs[i].source_path + " (assembly-write)";
             }
             set first_module = false;
             if module_result.has_entry and entry_symbol == "" {
                 set entry_symbol = "main";
             }
+        } elif module_result.valid {
+            // Facade modules can contain only imports/reexports; they are valid but emit no owned code.
         } else {
             set all_valid = false;
+            if first_failure == "" {
+                set first_failure = inputs[i].source_path + " (" + module_result.message + ")";
+            }
+        }
+        if module_result.valid {
+            let memory_rewind_status: int = host_memory_rewind(memory_checkpoint);
+            if memory_rewind_status != 0 {
+                set all_valid = false;
+            }
         }
         set i = i + 1;
+    }
+    if first_failure != "" {
+        let failure_report_written: bool = write_file(
+            "target/reports/compiler_module_set_failure.txt",
+            first_failure + "\n"
+        );
     }
     let assembled: string = read_file(assembly_path);
     let codegen: CodegenResult = streaming_codegen_empty(config);
@@ -1830,7 +2611,11 @@ proc compile_source_set_streaming(inputs: [DriverModuleInput], config: DriverCom
         codegen: codegen,
         artifact: artifact_create(1, "module-set-streaming", link_target_from_name(config.target_name)),
         entry_symbol: entry_symbol,
-        message: if codegen.valid { "streaming module-set compilation completed" } else { "streaming module-set code generation failed" },
+        message: if codegen.valid {
+            "streaming module-set compilation completed"
+        } else {
+            "streaming module-set code generation failed at " + first_failure
+        },
         diagnostics: [],
         valid: codegen.valid and entry_symbol != ""
     };
