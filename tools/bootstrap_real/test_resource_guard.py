@@ -95,6 +95,15 @@ class ResourceGuardTests(unittest.TestCase):
         state = subprocess.run(["ps", "-o", "stat=", "-p", str(child)], capture_output=True, text=True)
         self.assertTrue(not state.stdout.strip() or state.stdout.strip().startswith("Z"))
 
+    def test_brief_soft_limit_burst_is_tolerated(self):
+        source = "import time; x = bytearray(16 * 1024 * 1024); time.sleep(0.2); del x"
+        with patch.object(guard, "RSS_BURST_GRACE_SECONDS", 1.0), \
+             patch.object(guard, "RSS_HARD_HEADROOM_MIN_KIB", 100_000):
+            result = self.run_child(source, rss_limit_kib=20_000, timeout_seconds=3)
+        self.assertEqual(result["exit_code"], 0)
+        self.assertEqual(result["resource_guard"]["reason"], "")
+        self.assertGreater(result["resource_guard"]["peak_group_rss_kib"], 20_000)
+
     def test_outer_timeout_stops_nested_session(self):
         source = "import subprocess, sys; p = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(10)'], start_new_session=True); print(p.pid, flush=True); p.wait()"
         result = self.run_child(source, timeout_seconds=0.5)

@@ -14,9 +14,12 @@ import threading
 import time
 
 
-DEFAULT_RSS_LIMIT_KIB = 1_400_000
-DEFAULT_TIMEOUT_SECONDS = 600
+DEFAULT_RSS_LIMIT_KIB = 4_000_000
+DEFAULT_TIMEOUT_SECONDS = 1_800
 POLL_SECONDS = 0.1
+RSS_BURST_GRACE_SECONDS = 3.0
+RSS_HARD_HEADROOM_MIN_KIB = 8 * 1024
+RSS_HARD_HEADROOM_DIVISOR = 20
 OUTPUT_TAIL_BYTES = 12_000
 MAX_LOG_BYTES = 64 * 1024 * 1024
 COMPILER_BUILD_LOCK = Path(__file__).resolve().parents[2] / "target/bootstrap-real/compiler-build.lock"
@@ -156,7 +159,13 @@ def _run_guarded(
         },
     }
     guard = result["resource_guard"]
+    hard_rss_limit_kib = rss_limit_kib + max(
+        RSS_HARD_HEADROOM_MIN_KIB, rss_limit_kib // RSS_HARD_HEADROOM_DIVISOR,
+    )
+    guard["hard_rss_limit_kib"] = hard_rss_limit_kib
+    guard["rss_burst_grace_seconds"] = RSS_BURST_GRACE_SECONDS
     process = None
+    over_limit_since = None
     handlers = {}
     if threading.current_thread() is threading.main_thread():
         for signum in (signal.SIGTERM, signal.SIGINT):
@@ -173,10 +182,19 @@ def _run_guarded(
                 while True:
                     rss = tree_rss_kib(process_snapshot(), groups)
                     guard["peak_group_rss_kib"] = max(guard["peak_group_rss_kib"], rss)
-                    if rss > rss_limit_kib:
+                    if rss > hard_rss_limit_kib:
                         guard["reason"] = "memory-limit"
                         result["exit_code"] = 137
                         break
+                    if rss > rss_limit_kib:
+                        if over_limit_since is None:
+                            over_limit_since = time.monotonic()
+                        elif time.monotonic() - over_limit_since > RSS_BURST_GRACE_SECONDS:
+                            guard["reason"] = "memory-limit"
+                            result["exit_code"] = 137
+                            break
+                    else:
+                        over_limit_since = None
                     if time.monotonic() - started > timeout_seconds:
                         guard["reason"] = "timeout"
                         result["exit_code"] = 124

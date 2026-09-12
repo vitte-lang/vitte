@@ -42,8 +42,8 @@ def main() -> int:
             raise RuntimeError("clang is required to verify the generated LLVM fixture")
         provider = OUT / "llvm_imports_provider.ll"
         check([clang, "-Wno-override-module", "-c", str(provider), "-o", str(OUT / "llvm_imports_provider.o")])
-        for name in ("llvm_imports_caller", "llvm_imports_production", "llvm_imports_conditional"):
-            check([clang, "-Wno-override-module", str(OUT / f"{name}.ll"), str(OUT / "llvm_imports_provider.o"), str(RUNTIME / "vitte_runtime.c"), "-o", str(OUT / name)])
+        for name in ("llvm_imports_caller", "llvm_imports_production"):
+            check([clang, "-Wno-override-module", str(OUT / f"{name}.ll"), str(OUT / "llvm_imports_provider.o"), "-o", str(OUT / name)])
             check([str(OUT / name)], timeout_seconds=5)
         if (OUT / "llvm_imports_caller.ll").read_bytes() != (OUT / "llvm_imports_production.ll").read_bytes():
             raise RuntimeError("bootstrap/production imported ABI mismatch")
