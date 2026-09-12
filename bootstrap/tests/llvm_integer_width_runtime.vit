@@ -48,12 +48,16 @@ proc main() -> int {
         + "proc mixed_add(small: i8, big: i64) -> i64 { give small + big; }\n"
         + "proc mixed_less(small: i32, big: i64) -> bool { give small < big; }\n"
         + "proc mixed_unsigned(value: u64, amount: u8) -> u64 { give value + amount; }\n"
+        + "proc signed_float(value: i32) -> f64 { give value as f64; }\n"
+        + "proc unsigned_float(value: u64) -> f64 { give value as f64; }\n"
+        + "proc float_integer(value: f64) -> i32 { give value as i32; }\n"
         + "proc small_bound(value: u8) -> bool { give value < 256; }\n"
         + "proc shadow(flag: bool) -> int { let mut value: int = 7; if flag { let mut value: bool = false; set value = true; if value { give 3; } } else { let value: u64 = 4294967296; if value != 4294967296 { give 4; } } set value = value + 1; give value; }\n"
         + "proc main() -> int { if counter() != 5 { give 1; } if wide() != 4294967296 { give 2; } if reset() != 0 { give 3; } if narrow() != 5 { give 4; } if branch(true) != 4294967296 { give 5; } if branch(false) != 7 { give 6; }\n"
         + "if within(0 as int) == false { give 7; } if within(-128 as int) == false { give 8; } if within(127 as int) == false { give 9; } if within(-129 as int) { give 10; } if within(128 as int) { give 11; }\n"
         + "if negate(7 as i64) != -7 { give 12; } if invert(true) { give 13; } if invert(false) == false { give 14; }\n"
-        + "if mixed_add(-7 as i8, 20 as i64) != 13 { give 15; } if mixed_less(-5 as i32, 2 as i64) == false { give 16; } if mixed_unsigned(3 as u64, 4 as u8) != 7 { give 17; } if small_bound(255 as u8) == false { give 18; } if shadow(true) != 3 { give 19; } if shadow(false) != 8 { give 20; } give 0; }\n";
+        + "if mixed_add(-7 as i8, 20 as i64) != 13 { give 15; } if mixed_less(-5 as i32, 2 as i64) == false { give 16; } if mixed_unsigned(3 as u64, 4 as u8) != 7 { give 17; } if small_bound(255 as u8) == false { give 18; } if shadow(true) != 3 { give 19; } if shadow(false) != 8 { give 20; }\n"
+        + "if signed_float(-3 as i32) != -3.0 { give 21; } if unsigned_float(4 as u64) != 4.0 { give 22; } if float_integer(5.75) != 5 { give 23; } give 0; }\n";
     let bootstrap_result: int = emit_probe(source, "target/bootstrap-c17/llvm_integer_width.ll", true, true);
     if bootstrap_result != 0 { give bootstrap_result; }
     let production_result: int = emit_probe(source, "target/bootstrap-c17/llvm_integer_width_production.ll", false, true);
