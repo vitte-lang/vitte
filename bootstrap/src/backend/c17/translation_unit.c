@@ -158,6 +158,35 @@ vitte_status_t vitte_c17_translation_unit_emit_prelude(
         if (status != VITTE_STATUS_OK) {
             return status;
         }
+
+        status = vitte_c17_write_string(writer, "#if defined(__GNUC__) || defined(__clang__)");
+        if (status != VITTE_STATUS_OK) return status;
+        status = vitte_c17_write_newline(writer);
+        if (status != VITTE_STATUS_OK) return status;
+
+        status = vitte_c17_write_string(writer, "#define VITTE_C17_UNUSED __attribute__((unused))");
+        if (status != VITTE_STATUS_OK) return status;
+        status = vitte_c17_write_newline(writer);
+        if (status != VITTE_STATUS_OK) return status;
+
+        status = vitte_c17_write_string(writer, "#else");
+        if (status != VITTE_STATUS_OK) return status;
+        status = vitte_c17_write_newline(writer);
+        if (status != VITTE_STATUS_OK) return status;
+
+        status = vitte_c17_write_string(writer, "#define VITTE_C17_UNUSED");
+        if (status != VITTE_STATUS_OK) return status;
+        status = vitte_c17_write_newline(writer);
+        if (status != VITTE_STATUS_OK) return status;
+
+        status = vitte_c17_write_string(writer, "#endif");
+        if (status != VITTE_STATUS_OK) return status;
+        status = vitte_c17_write_newline(writer);
+        if (status != VITTE_STATUS_OK) return status;
+
+        status = vitte_c17_write_newline(writer);
+        if (status != VITTE_STATUS_OK) return status;
+
         status = vitte_c17_write_string(writer, "typedef struct vitte_memory_header { max_align_t alignment; uint64_t generation; size_t index; } vitte_memory_header; typedef struct vitte_memory_allocation { void *pointer; uint64_t generation; } vitte_memory_allocation;");
         if (status != VITTE_STATUS_OK) return status;
         status = vitte_c17_write_newline(writer);
@@ -395,15 +424,15 @@ vitte_status_t vitte_c17_translation_unit_emit_prelude(
         if (status != VITTE_STATUS_OK) return status;
         status = vitte_c17_write_newline(writer);
         if (status != VITTE_STATUS_OK) return status;
-        status = vitte_c17_write_string(writer, "static void vitte_aggregate_set_index_int(vitte_aggregate *value, size_t index, int64_t item) { if (value == NULL) return; vitte_aggregate_reserve_items(value, index + 1u); if (value->count <= index) value->count = index + 1u; value->items[index].kind = VITTE_VALUE_INT; value->items[index].integer = item; }");
+        status = vitte_c17_write_string(writer, "static VITTE_C17_UNUSED void vitte_aggregate_set_index_int(vitte_aggregate *value, size_t index, int64_t item) { if (value == NULL) return; vitte_aggregate_reserve_items(value, index + 1u); if (value->count <= index) value->count = index + 1u; value->items[index].kind = VITTE_VALUE_INT; value->items[index].integer = item; }");
         if (status != VITTE_STATUS_OK) return status;
         status = vitte_c17_write_newline(writer);
         if (status != VITTE_STATUS_OK) return status;
-        status = vitte_c17_write_string(writer, "static void vitte_aggregate_set_index_string(vitte_aggregate *value, size_t index, const char *item) { if (value == NULL) return; vitte_aggregate_reserve_items(value, index + 1u); if (value->count <= index) value->count = index + 1u; value->items[index].kind = VITTE_VALUE_STRING; value->items[index].string = item != NULL ? item : \"\"; }");
+        status = vitte_c17_write_string(writer, "static VITTE_C17_UNUSED void vitte_aggregate_set_index_string(vitte_aggregate *value, size_t index, const char *item) { if (value == NULL) return; vitte_aggregate_reserve_items(value, index + 1u); if (value->count <= index) value->count = index + 1u; value->items[index].kind = VITTE_VALUE_STRING; value->items[index].string = item != NULL ? item : \"\"; }");
         if (status != VITTE_STATUS_OK) return status;
         status = vitte_c17_write_newline(writer);
         if (status != VITTE_STATUS_OK) return status;
-        status = vitte_c17_write_string(writer, "static void vitte_aggregate_set_index_aggregate(vitte_aggregate *value, size_t index, vitte_aggregate *item) { if (value == NULL) return; vitte_aggregate_reserve_items(value, index + 1u); if (value->count <= index) value->count = index + 1u; value->items[index].kind = VITTE_VALUE_AGGREGATE; value->items[index].aggregate = item; }");
+        status = vitte_c17_write_string(writer, "static VITTE_C17_UNUSED void vitte_aggregate_set_index_aggregate(vitte_aggregate *value, size_t index, vitte_aggregate *item) { if (value == NULL) return; vitte_aggregate_reserve_items(value, index + 1u); if (value->count <= index) value->count = index + 1u; value->items[index].kind = VITTE_VALUE_AGGREGATE; value->items[index].aggregate = item; }");
         if (status != VITTE_STATUS_OK) return status;
         status = vitte_c17_write_newline(writer);
         if (status != VITTE_STATUS_OK) return status;
