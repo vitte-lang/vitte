@@ -54,7 +54,6 @@ proc emit_internal_log(text: string) {
     emit_diagnostic_output(text);
 }
 
-use vitte/compiler/driver
 use vitte/compiler/driver/compile.{ DriverBackendModuleSetResult, DriverCompileConfig, DriverCompileResult, DriverNativeBackendResult, check_source_with_config, compile_source_set_with_config, compile_source_with_config, default_compile_config, diagnostics_quality_score, driver_module_input, dump_ast_json, dump_diagnostics_json, dump_hir_json, dump_mir_json, emit_native_backend_object_with_config, link_native_backend_executable_with_config, empty_compile_result }
 use vitte/compiler/driver/metrics.{ CompilerMetricsReport, compile_metrics_report, compile_metrics_report_from_module_set, metrics_report_json }
 use vitte/compiler/driver/health_dashboard.{ HealthDashboard, health_dashboard_from_metrics, health_dashboard_json }
@@ -105,7 +104,7 @@ use vitte/compiler/backend/target/config.{ TargetConfig, target_config_from_name
 use vitte/compiler/infrastructure/session/stdlib.{ resolve_stdlib, verify_stdlib_versions }
 use vitte/compiler/driver/cli
 use vitte/compiler/driver/mod
-use vitte/compiler/driver/exit_status.{ exit_code }
+use vitte/compiler/driver/exit_status.{ DriverExitStatus, exit_code }
 use vitte/stdlib/io/fileops.{ file_exists, is_directory, is_file, list_directory, read_file }
 use vitte/stdlib/core.{ env_get, option_unwrap_or }
 use vitte/compiler/frontend/macros/errors
@@ -201,7 +200,7 @@ form CompilerState {
 }
 
 form CompilerResult {
-    status: driver.DriverExitStatus
+    status: DriverExitStatus
     code: u64
     message: string
     stage: CompilerStage
@@ -258,7 +257,7 @@ form CompilerCliRequest {
     error_format: string
     color: string
     valid: bool
-    status: driver.DriverExitStatus
+    status: DriverExitStatus
     diagnostic_code: string
     message: string
 }
@@ -314,7 +313,7 @@ proc initial_state() -> CompilerState {
     };
 }
 
-proc cli_exit_code(status: driver.DriverExitStatus) -> int {
+proc cli_exit_code(status: DriverExitStatus) -> int {
     give (exit_code(status) as int);
 }
 
@@ -363,13 +362,13 @@ proc empty_cli_request() -> CompilerCliRequest {
         error_format: "terminal",
         color: "auto",
         valid: false,
-        status: driver.DriverExitStatus::InvalidArguments,
+        status: DriverExitStatus::InvalidArguments,
         diagnostic_code: "E_CLI_MISSING_ARG",
         message: "missing compiler command"
     };
 }
 
-proc cli_request_failure(request: CompilerCliRequest, status: driver.DriverExitStatus, code: string, message: string) -> CompilerCliRequest {
+proc cli_request_failure(request: CompilerCliRequest, status: DriverExitStatus, code: string, message: string) -> CompilerCliRequest {
     set request.valid = false;
     set request.status = status;
     set request.diagnostic_code = code;
@@ -444,7 +443,7 @@ proc cli_is_input_flag(text: string) -> bool {
     give text == "--src" or text == "--input";
 }
 
-proc cli_has_option_value(args: list[string], index: u64) -> bool {
+proc cli_has_option_value(args: [string], index: u64) -> bool {
     give index + 1 < len(args) and args[index + 1] != "" and not starts_with_text(args[index + 1], "-");
 }
 
@@ -547,7 +546,7 @@ proc cli_is_known_flag(text: string) -> bool {
         or text == "--json";
 }
 
-proc cli_prescan_diagnostic_context(args: list[string], request: CompilerCliRequest) -> CompilerCliRequest {
+proc cli_prescan_diagnostic_context(args: [string], request: CompilerCliRequest) -> CompilerCliRequest {
     let i: u64 = 0;
     while i < len(args) {
         let arg: string = args[i];
@@ -692,7 +691,8 @@ proc resolve_cli_input_source_text(input_path: string) -> string {
     if resolved_path == "" {
         give "";
     }
-    give read_file(resolved_path);
+    let source: string = read_file(resolved_path);
+    give source;
 }
 
 proc discover_project_vit_files_recursive(project_path: string, depth: u64) -> [string] {
@@ -763,13 +763,13 @@ proc auto_project_manifest_text(project_path: string) -> string {
     give manifest;
 }
 
-proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
+proc parse_cli_request(args: [string]) -> CompilerCliRequest {
     let request: CompilerCliRequest = cli_prescan_diagnostic_context(args, empty_cli_request());
 
     if len(args) == 0 {
         set request.command = "help";
         set request.valid = true;
-        set request.status = driver.DriverExitStatus::Ok;
+        set request.status = DriverExitStatus::Ok;
         set request.message = "usage: vitte <command> [options] [file]";
         give request;
     }
@@ -777,19 +777,19 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
     set request.command = cli_command_from_text(args[0]);
 
     if request.command == "" {
-        give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_UNKNOWN_COMMAND", "unknown compiler command: " + args[0]);
+        give cli_request_failure(request, DriverExitStatus::InvalidArguments, "E_CLI_UNKNOWN_COMMAND", "unknown compiler command: " + args[0]);
     }
 
     if request.command == "help" {
         set request.valid = true;
-        set request.status = driver.DriverExitStatus::Ok;
+        set request.status = DriverExitStatus::Ok;
         set request.message = "usage: vitte <command> [options] [file]";
         give request;
     }
 
     if request.command == "version" {
         set request.valid = true;
-        set request.status = driver.DriverExitStatus::Ok;
+        set request.status = DriverExitStatus::Ok;
         give request;
     }
 
@@ -811,25 +811,25 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
             } elif request.input_path == "" {
                 set request.input_path = arg;
             } else {
-                give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_INVALID_ARGUMENT", "unexpected positional argument: " + arg);
+                give cli_request_failure(request, DriverExitStatus::InvalidArguments, "E_CLI_INVALID_ARGUMENT", "unexpected positional argument: " + arg);
             }
             set i = i + 1;
         } elif cli_is_output_flag(arg) {
             if not cli_has_option_value(args, i) {
-                give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
+                give cli_request_failure(request, DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
             }
             set request.output_path = args[i + 1];
             set request.output_explicit = true;
             set i = i + 2;
         } elif cli_is_source_flag(arg) {
             if not cli_has_option_value(args, i) {
-                give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
+                give cli_request_failure(request, DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
             }
             set request.source_text = args[i + 1];
             set i = i + 2;
         } elif cli_is_input_flag(arg) {
             if not cli_has_option_value(args, i) {
-                give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
+                give cli_request_failure(request, DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
             }
             set request.input_path = args[i + 1];
             set i = i + 2;
@@ -839,27 +839,27 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
         } elif starts_with_text(arg, "--counterfactual-level=") {
             let counterfactual_value: string = slice(arg, len("--counterfactual-level="), len(arg));
             if counterfactual_value == "" {
-                give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after --counterfactual-level");
+                give cli_request_failure(request, DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after --counterfactual-level");
             }
             set request.counterfactual_level = cli_normalize_counterfactual_level(counterfactual_value);
             if request.counterfactual_level == "" {
-                give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_INVALID_ARGUMENT", "unsupported --counterfactual-level value: " + counterfactual_value);
+                give cli_request_failure(request, DriverExitStatus::InvalidArguments, "E_CLI_INVALID_ARGUMENT", "unsupported --counterfactual-level value: " + counterfactual_value);
             }
             set i = i + 1;
         } elif starts_with_text(arg, "--lang=") {
             set request.lang = slice(arg, len("--lang="), len(arg));
             if request.lang == "" {
-                give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after --lang");
+                give cli_request_failure(request, DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after --lang");
             }
             set i = i + 1;
         } elif starts_with_text(arg, "--format=") {
             let format_value: string = slice(arg, len("--format="), len(arg));
             if format_value == "" {
-                give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after --format");
+                give cli_request_failure(request, DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after --format");
             }
             let normalized_format: string = cli_normalize_error_format(format_value);
             if normalized_format == "" {
-                give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_INVALID_ARGUMENT", "unsupported --format value: " + format_value);
+                give cli_request_failure(request, DriverExitStatus::InvalidArguments, "E_CLI_INVALID_ARGUMENT", "unsupported --format value: " + format_value);
             }
             set request.error_format = normalized_format;
             set request.format = normalized_format;
@@ -867,11 +867,11 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
         } elif starts_with_text(arg, "--error-format=") {
             let format_value: string = slice(arg, len("--error-format="), len(arg));
             if format_value == "" {
-                give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after --error-format");
+                give cli_request_failure(request, DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after --error-format");
             }
             let normalized_format: string = cli_normalize_error_format(format_value);
             if normalized_format == "" {
-                give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_INVALID_ARGUMENT", "unsupported --error-format value: " + format_value);
+                give cli_request_failure(request, DriverExitStatus::InvalidArguments, "E_CLI_INVALID_ARGUMENT", "unsupported --error-format value: " + format_value);
             }
             set request.error_format = normalized_format;
             if normalized_format == "json" or normalized_format == "lsp" {
@@ -881,23 +881,23 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
         } elif starts_with_text(arg, "--target=") {
             set request.target = slice(arg, len("--target="), len(arg));
             if request.target == "" {
-                give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after --target");
+                give cli_request_failure(request, DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after --target");
             }
             set i = i + 1;
         } elif starts_with_text(arg, "--profile=") {
             set request.profile = slice(arg, len("--profile="), len(arg));
             if request.profile == "" {
-                give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after --profile");
+                give cli_request_failure(request, DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after --profile");
             }
             set i = i + 1;
         } elif starts_with_text(arg, "--color=") {
             let color_value: string = slice(arg, len("--color="), len(arg));
             if color_value == "" {
-                give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after --color");
+                give cli_request_failure(request, DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after --color");
             }
             set request.color = cli_normalize_color(color_value);
             if request.color == "" {
-                give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_INVALID_ARGUMENT", "unsupported --color value: " + color_value);
+                give cli_request_failure(request, DriverExitStatus::InvalidArguments, "E_CLI_INVALID_ARGUMENT", "unsupported --color value: " + color_value);
             }
             set i = i + 1;
         } elif cli_is_known_flag(arg) {
@@ -939,40 +939,40 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
                 set i = i + 1;
             } elif arg == "--fix-plan" {
                 if not cli_has_option_value(args, i) {
-                    give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
+                    give cli_request_failure(request, DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
                 }
                 set request.fix_plan_format = args[i + 1];
                 set i = i + 2;
             } elif arg == "--max-fix-hypotheses" {
                 if not cli_has_option_value(args, i) {
-                    give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
+                    give cli_request_failure(request, DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
                 }
                 set request.max_fix_hypotheses = args[i + 1] as u64;
                 set i = i + 2;
             } elif arg == "--counterfactual-level" {
                 if not cli_has_option_value(args, i) {
-                    give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
+                    give cli_request_failure(request, DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
                 }
                 set request.counterfactual_level = cli_normalize_counterfactual_level(args[i + 1]);
                 if request.counterfactual_level == "" {
-                    give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_INVALID_ARGUMENT", "unsupported --counterfactual-level value: " + args[i + 1]);
+                    give cli_request_failure(request, DriverExitStatus::InvalidArguments, "E_CLI_INVALID_ARGUMENT", "unsupported --counterfactual-level value: " + args[i + 1]);
                 }
                 set i = i + 2;
             } elif arg == "--allow" {
                 if not cli_has_option_value(args, i) {
-                    give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
+                    give cli_request_failure(request, DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
                 }
                 set request.allow_codes = request.allow_codes + [args[i + 1]];
                 set i = i + 2;
             } elif arg == "--warn" {
                 if not cli_has_option_value(args, i) {
-                    give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
+                    give cli_request_failure(request, DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
                 }
                 set request.warn_codes = request.warn_codes + [args[i + 1]];
                 set i = i + 2;
             } elif arg == "--deny" {
                 if not cli_has_option_value(args, i) {
-                    give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
+                    give cli_request_failure(request, DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
                 }
                 set request.deny_codes = request.deny_codes + [args[i + 1]];
                 set i = i + 2;
@@ -981,70 +981,70 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
                 set i = i + 1;
             } elif arg == "--fail-under" {
                 if not cli_has_option_value(args, i) {
-                    give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
+                    give cli_request_failure(request, DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
                 }
                 set request.fail_under = args[i + 1] as u64;
                 set i = i + 2;
             } elif arg == "--max-errors" {
                 if not cli_has_option_value(args, i) {
-                    give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
+                    give cli_request_failure(request, DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
                 }
                 set request.max_errors = args[i + 1] as u64;
                 set i = i + 2;
             } elif arg == "--diagnostic-width" {
                 if not cli_has_option_value(args, i) {
-                    give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
+                    give cli_request_failure(request, DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
                 }
                 set request.diagnostic_width = args[i + 1] as u64;
                 set i = i + 2;
             } elif arg == "--stdlib-path" {
                 if not cli_has_option_value(args, i) {
-                    give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
+                    give cli_request_failure(request, DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
                 }
                 set request.stdlib_path = args[i + 1];
                 set i = i + 2;
             } elif arg == "--stdlib-version" {
                 if not cli_has_option_value(args, i) {
-                    give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
+                    give cli_request_failure(request, DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
                 }
                 set request.stdlib_version = args[i + 1];
                 set i = i + 2;
             } elif arg == "--target" {
                 if not cli_has_option_value(args, i) {
-                    give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
+                    give cli_request_failure(request, DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
                 }
                 set request.target = args[i + 1];
                 set i = i + 2;
             } elif arg == "--profile" {
                 if not cli_has_option_value(args, i) {
-                    give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
+                    give cli_request_failure(request, DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
                 }
                 set request.profile = args[i + 1];
                 set i = i + 2;
             } elif arg == "--lang" {
                 if not cli_has_option_value(args, i) {
-                    give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
+                    give cli_request_failure(request, DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
                 }
                 set request.lang = args[i + 1];
                 set i = i + 2;
             } elif arg == "--format" {
                 if not cli_has_option_value(args, i) {
-                    give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
+                    give cli_request_failure(request, DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
                 }
                 let normalized_format: string = cli_normalize_error_format(args[i + 1]);
                 if normalized_format == "" {
-                    give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_INVALID_ARGUMENT", "unsupported --format value: " + args[i + 1]);
+                    give cli_request_failure(request, DriverExitStatus::InvalidArguments, "E_CLI_INVALID_ARGUMENT", "unsupported --format value: " + args[i + 1]);
                 }
                 set request.error_format = normalized_format;
                 set request.format = normalized_format;
                 set i = i + 2;
             } elif arg == "--error-format" {
                 if not cli_has_option_value(args, i) {
-                    give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
+                    give cli_request_failure(request, DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
                 }
                 let normalized_format: string = cli_normalize_error_format(args[i + 1]);
                 if normalized_format == "" {
-                    give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_INVALID_ARGUMENT", "unsupported --error-format value: " + args[i + 1]);
+                    give cli_request_failure(request, DriverExitStatus::InvalidArguments, "E_CLI_INVALID_ARGUMENT", "unsupported --error-format value: " + args[i + 1]);
                 }
                 set request.error_format = normalized_format;
                 if normalized_format == "json" or normalized_format == "lsp" {
@@ -1061,25 +1061,25 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
                 set i = i + 1;
             } elif arg == "--no-native" {
                 if native_requested {
-                    give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_INVALID_ARGUMENT", "--native and --no-native cannot be used together");
+                    give cli_request_failure(request, DriverExitStatus::InvalidArguments, "E_CLI_INVALID_ARGUMENT", "--native and --no-native cannot be used together");
                 }
                 set no_native_requested = true;
                 set request.no_native = true;
                 set i = i + 1;
             } elif arg == "--native" {
                 if no_native_requested {
-                    give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_INVALID_ARGUMENT", "--native and --no-native cannot be used together");
+                    give cli_request_failure(request, DriverExitStatus::InvalidArguments, "E_CLI_INVALID_ARGUMENT", "--native and --no-native cannot be used together");
                 }
                 set native_requested = true;
                 set request.no_native = false;
                 set i = i + 1;
             } elif arg == "--color" {
                 if not cli_has_option_value(args, i) {
-                    give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
+                    give cli_request_failure(request, DriverExitStatus::InvalidArguments, "E_CLI_MISSING_ARG", "missing value after " + arg);
                 }
                 set request.color = cli_normalize_color(args[i + 1]);
                 if request.color == "" {
-                    give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_INVALID_ARGUMENT", "unsupported --color value: " + args[i + 1]);
+                    give cli_request_failure(request, DriverExitStatus::InvalidArguments, "E_CLI_INVALID_ARGUMENT", "unsupported --color value: " + args[i + 1]);
                 }
                 set i = i + 2;
             } elif arg == "--json" {
@@ -1090,7 +1090,7 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
                 set i = i + 1;
             }
         } elif starts_with_text(arg, "-") {
-            give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_UNKNOWN_OPTION", "unknown compiler option: " + arg);
+            give cli_request_failure(request, DriverExitStatus::InvalidArguments, "E_CLI_UNKNOWN_OPTION", "unknown compiler option: " + arg);
         } else {
             if request.command == "metrics" and request.subcommand == "" {
                 set request.subcommand = arg;
@@ -1099,7 +1099,7 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
             } elif request.input_path == "" {
                 set request.input_path = arg;
             } else {
-                give cli_request_failure(request, driver.DriverExitStatus::InvalidArguments, "E_CLI_INVALID_ARGUMENT", "unexpected positional argument: " + arg);
+                give cli_request_failure(request, DriverExitStatus::InvalidArguments, "E_CLI_INVALID_ARGUMENT", "unexpected positional argument: " + arg);
             }
             set i = i + 1;
         }
@@ -1117,32 +1117,32 @@ proc parse_cli_request(args: list[string]) -> CompilerCliRequest {
         if request.command == "build" or request.command == "check" or request.command == "run" or request.command == "dump-tokens" or request.command == "dump-ast" or request.command == "dump-hir" or request.command == "dump-mir" {
             set request.input_path = ".";
         } else {
-            set request.status = driver.DriverExitStatus::MissingInput;
+            set request.status = DriverExitStatus::MissingInput;
             set request.message = "missing input file or --source text";
             give request;
         }
     }
 
     if request.command == "explain" and not cli_explain_command_contract(request.command, request.input_path) {
-        set request.status = driver.DriverExitStatus::MissingInput;
+        set request.status = DriverExitStatus::MissingInput;
         set request.message = "usage: vitte explain CODE";
         give request;
     }
 
     if request.command == "fix" and request.input_path == "" and request.source_text == "" {
-        set request.status = driver.DriverExitStatus::MissingInput;
+        set request.status = DriverExitStatus::MissingInput;
         set request.message = "usage: vitte fix --dry-run FILE";
         give request;
     }
 
     if request.command == "reduce" and request.input_path == "" and request.source_text == "" {
-        set request.status = driver.DriverExitStatus::MissingInput;
+        set request.status = DriverExitStatus::MissingInput;
         set request.message = "usage: vitte reduce --diagnostic CODE FILE";
         give request;
     }
 
     set request.valid = true;
-    set request.status = driver.DriverExitStatus::Ok;
+    set request.status = DriverExitStatus::Ok;
     set request.message = "compiler request parsed";
 
     give request;
@@ -1184,16 +1184,16 @@ proc cli_request_source_path(request: CompilerCliRequest) -> string {
     give "inline.vit";
 }
 
-proc build_pipeline_trace_text(command: string, status: driver.DriverExitStatus) -> string {
+proc build_pipeline_trace_text(command: string, status: DriverExitStatus) -> string {
     let phases: [CompilerPhase] = default_pipeline_phases();
     let out: string = "";
     let i: u64 = 0;
     let max_i: u64 = if command == "build" { len(phases) } else { 11 };
-    if status != driver.DriverExitStatus::Ok {
+    if status != DriverExitStatus::Ok {
         set max_i = 3 as u64;
     }
     while i < max_i {
-        let kind: PhaseResultKind = if status == driver.DriverExitStatus::Ok or i + 1 < max_i { PhaseResultKind.Success } else { PhaseResultKind.FatalError };
+        let kind: PhaseResultKind = if status == DriverExitStatus::Ok or i + 1 < max_i { PhaseResultKind.Success } else { PhaseResultKind.FatalError };
         let msg: string = if kind == PhaseResultKind.FatalError { "failed" } else { "" };
         let execution: PipelineExecution = run(phases[i], kind, msg, 1);
         let line: string = render_trace_line(execution.trace[0]);
@@ -1204,18 +1204,18 @@ proc build_pipeline_trace_text(command: string, status: driver.DriverExitStatus)
         }
         set i = i + 1;
     }
-    if status != driver.DriverExitStatus::Ok {
+    if status != DriverExitStatus::Ok {
         set out = out + "\nBuild FAILED.";
     }
     give out;
 }
 
-proc build_pipeline_timings_text(command: string, status: driver.DriverExitStatus) -> string {
+proc build_pipeline_timings_text(command: string, status: DriverExitStatus) -> string {
     let phases: [CompilerPhase] = default_pipeline_phases();
     let timings: [PhaseTiming] = [];
     let i: u64 = 0;
     let max_i: u64 = if command == "build" { len(phases) } else { 11 };
-    if status != driver.DriverExitStatus::Ok {
+    if status != DriverExitStatus::Ok {
         set max_i = 3 as u64;
     }
     while i < max_i {
@@ -1256,9 +1256,9 @@ proc token_kind_text(kind: TokenKind) -> string {
 }
 
 proc render_token(token0: Token) -> string {
-    let line_text: string = token0.line as string;
-    let column_text: string = token0.column as string;
-    let offset_text: string = token0.offset as string;
+    let line_text: string = to_string(token0.line);
+    let column_text: string = to_string(token0.column);
+    let offset_text: string = to_string(token0.offset);
     let rendered: string = token_kind_text(token0.kind) + " lexeme " + token0.lexeme;
     set rendered = rendered + " line " + line_text;
     set rendered = rendered + " column " + column_text;
@@ -1568,12 +1568,12 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
     if request.command == "help" {
         let msg: string = request.message + "\n";
         emit_cli_help(msg);
-        give cli_exit_code(driver.DriverExitStatus::Ok);
+        give cli_exit_code(DriverExitStatus::Ok);
     }
 
     if request.command == "version" {
         emit_cli_help(version_text() + "\n");
-        give cli_exit_code(driver.DriverExitStatus::Ok);
+        give cli_exit_code(DriverExitStatus::Ok);
     }
 
     if request.command == "pkg" {
@@ -1586,18 +1586,18 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
             emit_cli_help(msg1);
             emit_cli_help(msg2);
             emit_cli_help(msg3);
-            give cli_exit_code(driver.DriverExitStatus::Ok);
+            give cli_exit_code(DriverExitStatus::Ok);
         }
         let cli_span: SourceSpan = span_create("<cli>", 1 as u64, 1 as u64, 1 as u64);
         let diagnostic0: Diagnostic = compiler_diagnostic_cli_error("E_CLI_UNKNOWN_COMMAND", "unknown pkg subcommand: " + request.subcommand, cli_span);
         print_user_diagnostic(request, diagnostic0);
-        give cli_exit_code(driver.DriverExitStatus::UnsupportedFeature);
+        give cli_exit_code(DriverExitStatus::UnsupportedFeature);
     }
 
     if request.command == "explain" {
         let explanation: string = diagnostic_explain_text_lang(request.input_path, request.lang) + "\n";
         emit_cli_help(explanation);
-        give cli_exit_code(driver.DriverExitStatus::Ok);
+        give cli_exit_code(DriverExitStatus::Ok);
     }
 
     let source_path: string = cli_request_source_path(request);
@@ -1606,13 +1606,13 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
         let io_span: SourceSpan = span_create(source_path, 1 as u64, 1 as u64, 1 as u64);
         let diagnostic0: Diagnostic = compiler_diagnostic_io_error("E_IO_FILE_NOT_FOUND", "E_IO_FILE_NOT_FOUND", io_span);
         print_user_diagnostic(request, diagnostic0);
-        give cli_exit_code(driver.DriverExitStatus::IoFailure);
+        give cli_exit_code(DriverExitStatus::IoFailure);
     }
     if request.command != "metrics" and request.command != "health" and not virtual_source and not is_file(source_path) {
         let io_span: SourceSpan = span_create(source_path, 1 as u64, 1 as u64, 1 as u64);
         let diagnostic0: Diagnostic = compiler_diagnostic_io_error("E_IO_FILE_UNREADABLE", "E_IO_FILE_UNREADABLE", io_span);
         print_user_diagnostic(request, diagnostic0);
-        give cli_exit_code(driver.DriverExitStatus::IoFailure);
+        give cli_exit_code(DriverExitStatus::IoFailure);
     }
     let source_text: string = cli_request_source_text(request);
 
@@ -1622,29 +1622,29 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
             let fix_span: SourceSpan = span_create(source_path, 1 as u64, 1 as u64, 1 as u64);
             let diagnostic0: Diagnostic = compiler_diagnostic_cli_error("E_CLI_INVALID_ARGUMENT", "fix --apply refused: patch application engine is not enabled yet; run fix --dry-run first", fix_span);
             print_user_diagnostic(request, diagnostic0);
-            give cli_exit_code(driver.DriverExitStatus::UnsupportedFeature);
+            give cli_exit_code(DriverExitStatus::UnsupportedFeature);
         }
         let msg_fix: string = if request.fix_plan_format == "json" { "fix plan json: inspect FixPlan entries in diagnostics envelope\n" } elif request.fix_preview { "fix preview: virtual diff only; source files are unchanged\n" } elif request.fix_why { "fix why: ranked by verified counterfactual improvement and residual risk\n" } else { "fix dry-run: inspect FixPlan entries in diagnostics envelope\n" };
         let report_json_text: string = report_json + "\n";
         emit_cli_success(msg_fix);
         emit_serialized_output(report_json_text);
-        give cli_exit_code(driver.DriverExitStatus::Ok);
+        give cli_exit_code(DriverExitStatus::Ok);
     }
 
     if request.command == "reduce" {
         let reduce_span: SourceSpan = span_create(source_path, 1 as u64, 1 as u64, 1 as u64);
         let diagnostic0: Diagnostic = compiler_diagnostic_cli_error("E_CLI_INVALID_ARGUMENT", "auto-reduction engine is not enabled", reduce_span);
         print_user_diagnostic(request, diagnostic0);
-        give cli_exit_code(driver.DriverExitStatus::UnsupportedFeature);
+        give cli_exit_code(DriverExitStatus::UnsupportedFeature);
     }
 
     let config: DriverCompileConfig = cli_compile_config(request);
-    let result: DriverCompileResult = empty_compile_result(driver.DriverExitStatus::Ok, "", false, config);
+    let result: DriverCompileResult = empty_compile_result(DriverExitStatus::Ok, "", false, config);
     if not config.valid {
         let config_span: SourceSpan = span_create("<cli>", 1 as u64, 1 as u64, 1 as u64);
         let diagnostic0: Diagnostic = compiler_diagnostic_cli_error("DRIVER_E_INVALID_CONFIGURATION", "DRIVER_E_INVALID_CONFIGURATION", config_span);
         print_user_diagnostic(request, diagnostic0);
-        give cli_exit_code(driver.DriverExitStatus::InvalidConfiguration);
+        give cli_exit_code(DriverExitStatus::InvalidConfiguration);
     }
 
     if request.command == "check" and request.diagnostic_quality {
@@ -1652,7 +1652,7 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
             let quality_span: SourceSpan = span_create("<cli>", 1 as u64, 1 as u64, 1 as u64);
             let diagnostic0: Diagnostic = compiler_diagnostic_cli_error("E_CLI_INVALID_ARGUMENT", "--fail-under must be between 0 and 100", quality_span);
             print_user_diagnostic(request, diagnostic0);
-            give cli_exit_code(driver.DriverExitStatus::InvalidArguments);
+            give cli_exit_code(DriverExitStatus::InvalidArguments);
         }
         let report_json: string = dump_diagnostics_json(source_path, source_text) + "\n";
         emit_serialized_output(report_json);
@@ -1662,7 +1662,7 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
                 give 1;
             }
         }
-        give cli_exit_code(driver.DriverExitStatus::Ok);
+        give cli_exit_code(DriverExitStatus::Ok);
     }
 
     if request.command == "check" {
@@ -1679,7 +1679,7 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
             let contract_span: SourceSpan = span_create(source_path, 1 as u64, 1 as u64, 1 as u64);
             let diagnostic0: Diagnostic = compiler_diagnostic_error(CompilerDiagnosticStage.Cli, "DRIVER_E_INVALID_CONFIGURATION", "check command must run diagnostics without final generation", contract_span);
             print_user_diagnostic(request, diagnostic0);
-            give cli_exit_code(driver.DriverExitStatus::PipelineFailure);
+            give cli_exit_code(DriverExitStatus::PipelineFailure);
         }
         if request.trace_pipeline and not cli_uses_serialized_diagnostics(request) {
             print_phase_results(r0, "check");
@@ -1689,7 +1689,7 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
             let msg: string = "\n";
             emit_internal_log(msg);
         }
-        if r0.status != driver.DriverExitStatus::Ok {
+        if r0.status != DriverExitStatus::Ok {
             print_result_diagnostics(r0, request);
             give r0.code as int;
         }
@@ -1714,32 +1714,32 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
             let output_required_span: SourceSpan = span_create("<cli>", 1 as u64, 1 as u64, 1 as u64);
             let diagnostic0: Diagnostic = compiler_diagnostic_cli_error("E_CLI_MISSING_ARG", "build requires an explicit output path with -o", output_required_span);
             print_user_diagnostic(request, diagnostic0);
-            give cli_exit_code(driver.DriverExitStatus::InvalidArguments);
+            give cli_exit_code(DriverExitStatus::InvalidArguments);
         }
         if is_directory(request.output_path) {
             let output_span: SourceSpan = span_create(request.output_path, 1 as u64, 1 as u64, 1 as u64);
             let diagnostic0: Diagnostic = compiler_diagnostic_io_error("E_IO_OUTPUT_UNWRITABLE", "E_IO_OUTPUT_UNWRITABLE", output_span);
             print_user_diagnostic(request, diagnostic0);
-            give cli_exit_code(driver.DriverExitStatus::FilesystemFailure);
+            give cli_exit_code(DriverExitStatus::FilesystemFailure);
         }
         let output_dir: string = cli_output_dir(request.output_path);
         if not is_directory(output_dir) {
             let output_span: SourceSpan = span_create(request.output_path, 1 as u64, 1 as u64, 1 as u64);
             let diagnostic0: Diagnostic = compiler_diagnostic_io_error("E_IO_DIRECTORY_NOT_FOUND", "E_IO_DIRECTORY_NOT_FOUND", output_span);
             print_user_diagnostic(request, diagnostic0);
-            give cli_exit_code(driver.DriverExitStatus::FilesystemFailure);
+            give cli_exit_code(DriverExitStatus::FilesystemFailure);
         }
         if source_path != "" and files.normalize_path(source_path) == files.normalize_path(request.output_path) {
             let output_span: SourceSpan = span_create(request.output_path, 1 as u64, 1 as u64, 1 as u64);
             let diagnostic0: Diagnostic = compiler_diagnostic_io_error("E_IO_OVERWRITE_FORBIDDEN", "E_IO_OVERWRITE_FORBIDDEN", output_span);
             print_user_diagnostic(request, diagnostic0);
-            give cli_exit_code(driver.DriverExitStatus::FilesystemFailure);
+            give cli_exit_code(DriverExitStatus::FilesystemFailure);
         }
         if source_path != "" and is_file(request.output_path) and read_file(request.output_path) == source_text {
             let output_span: SourceSpan = span_create(request.output_path, 1 as u64, 1 as u64, 1 as u64);
             let diagnostic0: Diagnostic = compiler_diagnostic_io_error("E_IO_OVERWRITE_FORBIDDEN", "E_IO_OVERWRITE_FORBIDDEN", output_span);
             print_user_diagnostic(request, diagnostic0);
-            give cli_exit_code(driver.DriverExitStatus::FilesystemFailure);
+            give cli_exit_code(DriverExitStatus::FilesystemFailure);
         }
         let validate_opts: CompilerOptions = cli_compiler_options(request, CompilerMode::Check, request.output_path);
         let parity_contract_ok: bool = cli_check_build_diagnostic_parity_contract(CompilerMode::Check, validate_opts.mode);
@@ -1749,9 +1749,9 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
             let contract_span: SourceSpan = span_create(source_path, 1 as u64, 1 as u64, 1 as u64);
             let diagnostic0: Diagnostic = compiler_diagnostic_error(CompilerDiagnosticStage.Cli, "DRIVER_E_INVALID_CONFIGURATION", "build diagnostic validation must use the same check mode as vitte check", contract_span);
             print_user_diagnostic(request, diagnostic0);
-            give cli_exit_code(driver.DriverExitStatus::PipelineFailure);
+            give cli_exit_code(DriverExitStatus::PipelineFailure);
         }
-        if validation_result.status != driver.DriverExitStatus::Ok {
+        if validation_result.status != DriverExitStatus::Ok {
             if request.trace_pipeline and not cli_uses_serialized_diagnostics(request) {
                 print_phase_results(validation_result, "check");
             }
@@ -1776,7 +1776,7 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
                 output_span
             );
             print_user_diagnostic(request, diagnostic0);
-            give cli_exit_code(driver.DriverExitStatus::FilesystemFailure);
+            give cli_exit_code(DriverExitStatus::FilesystemFailure);
         }
 
         let opts: CompilerOptions = cli_compiler_options(request, CompilerMode::Build, request.output_path);
@@ -1784,7 +1784,7 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
         let r0: CompilerResult = run_compiler(compiler0);
         if request.trace_pipeline and not cli_uses_serialized_diagnostics(request) {
             print_phase_results(r0, "build");
-            if r0.status == driver.DriverExitStatus::Ok {
+            if r0.status == DriverExitStatus::Ok {
                 let msg: string = "Build OK.\n";
                 emit_internal_log(msg);
             } else {
@@ -1797,7 +1797,7 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
             let msg: string = "\n";
             emit_internal_log(msg);
         }
-        if r0.status != driver.DriverExitStatus::Ok {
+        if r0.status != DriverExitStatus::Ok {
             print_result_diagnostics(r0, request);
             give r0.code as int;
         }
@@ -1805,7 +1805,7 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
             let output_span: SourceSpan = span_create(request.output_path, 1 as u64, 1 as u64, 1 as u64);
             let diagnostic0: Diagnostic = compiler_diagnostic_linker_error("LINK_E_OUTPUT_NOT_MATERIALIZED", "linker did not materialize executable: " + request.output_path, output_span);
             print_user_diagnostic(request, diagnostic0);
-            give cli_exit_code(driver.DriverExitStatus::FilesystemFailure);
+            give cli_exit_code(DriverExitStatus::FilesystemFailure);
         }
         if request.format == "json" or request.format == "lsp" {
             let empty_report: DiagnosticReport = diagnostic_report([]);
@@ -1831,7 +1831,7 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
             let msg: string = "\n";
             emit_internal_log(msg);
         }
-        if r0.status != driver.DriverExitStatus::Ok {
+        if r0.status != DriverExitStatus::Ok {
             print_result_diagnostics(r0, request);
             give r0.code as int;
         }
@@ -1839,7 +1839,7 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
             let output_span: SourceSpan = span_create(temp_output, 1 as u64, 1 as u64, 1 as u64);
             let diagnostic0: Diagnostic = compiler_diagnostic_linker_error("LINK_E_OUTPUT_NOT_MATERIALIZED", "run failed: temporary executable was not materialized: " + temp_output, output_span);
             print_user_diagnostic(request, diagnostic0);
-            give cli_exit_code(driver.DriverExitStatus::FilesystemFailure);
+            give cli_exit_code(DriverExitStatus::FilesystemFailure);
         }
         if request.format == "json" or request.format == "lsp" {
             let empty_report: DiagnosticReport = diagnostic_report([]);
@@ -1853,7 +1853,7 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
         let scanned: ScanResult = scan_tokens_from_file(source_path, source_text);
         if not scanned.valid {
             print_frontend_diagnostics_list(frontend_run(source_path, source_text).diagnostics, request);
-            give cli_exit_code(driver.DriverExitStatus::LexFailure);
+            give cli_exit_code(DriverExitStatus::LexFailure);
         }
         let i: u64 = 0;
         while i < len(scanned.tokens) {
@@ -1868,7 +1868,7 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
         let frontend_out: FrontendOutput = frontend_run(source_path, source_text);
         if not frontend_out.valid {
             print_frontend_diagnostics_list(frontend_out.diagnostics, request);
-            give cli_exit_code(driver.DriverExitStatus::FrontendFailure);
+            give cli_exit_code(DriverExitStatus::FrontendFailure);
         }
         let msg: string = dump_ast_json(source_path, source_text) + "\n";
         emit_serialized_output(msg);
@@ -1877,7 +1877,7 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
 
     if request.command == "dump-hir" {
         set result = check_source_with_config(source_path, source_text, config);
-        if result.status != driver.DriverExitStatus::Ok {
+        if result.status != DriverExitStatus::Ok {
             let compiler0: Compiler = compiler_from_input(source_path, source_text, virtual_source, cli_compiler_options(request, CompilerMode::Check, request.output_path));
             let r0: CompilerResult = run_compiler(compiler0);
             print_result_diagnostics(r0, request);
@@ -1890,7 +1890,7 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
 
     if request.command == "dump-mir" {
         set result = check_source_with_config(source_path, source_text, config);
-        if result.status != driver.DriverExitStatus::Ok {
+        if result.status != DriverExitStatus::Ok {
             let compiler0: Compiler = compiler_from_input(source_path, source_text, virtual_source, cli_compiler_options(request, CompilerMode::Check, request.output_path));
             let r0: CompilerResult = run_compiler(compiler0);
             print_result_diagnostics(r0, request);
@@ -1909,7 +1909,7 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
                 let metrics_span: SourceSpan = span_create(request.input_path, 1 as u64, 1 as u64, 1 as u64);
                 let diagnostic0: Diagnostic = compiler_diagnostic_io_error("E_IO_FILE_UNREADABLE", "E_IO_FILE_UNREADABLE", metrics_span);
                 print_user_diagnostic(request, diagnostic0);
-                give cli_exit_code(driver.DriverExitStatus::UnsupportedFeature);
+                give cli_exit_code(DriverExitStatus::UnsupportedFeature);
             }
             let manifest: cli.CompileSetManifest = cli.parse_compile_set_manifest(project_manifest);
             let set_result: DriverBackendModuleSetResult = compile_source_set_with_config(manifest.inputs, config);
@@ -1917,9 +1917,9 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
             let msg: string = metrics_report_json(set_metrics) + "\n";
             emit_serialized_output(msg);
             if set_result.valid {
-                give cli_exit_code(driver.DriverExitStatus::Ok);
+                give cli_exit_code(DriverExitStatus::Ok);
             }
-            give cli_exit_code(driver.DriverExitStatus::PipelineFailure);
+            give cli_exit_code(DriverExitStatus::PipelineFailure);
         }
         if request.subcommand == "check" {
             set result = check_source_with_config(source_path, source_text, config);
@@ -1938,34 +1938,34 @@ proc run_cli_request(request: CompilerCliRequest) -> int {
         let dashboard: HealthDashboard = health_dashboard_from_metrics(metrics0);
         let msg: string = health_dashboard_json(dashboard) + "\n";
         emit_serialized_output(msg);
-        give cli_exit_code(driver.DriverExitStatus::Ok);
+        give cli_exit_code(DriverExitStatus::Ok);
     }
 
     if request.command == "test" {
         let opts: CompilerOptions = cli_compiler_options(request, CompilerMode::Check, request.output_path);
         let compiler0: Compiler = compiler_from_input(source_path, source_text, virtual_source, opts);
         let r0: CompilerResult = run_compiler(compiler0);
-        if r0.status != driver.DriverExitStatus::Ok {
+        if r0.status != DriverExitStatus::Ok {
             print_result_diagnostics(r0, request);
             give r0.code as int;
         }
         let test_span: SourceSpan = span_create(source_path, 1 as u64, 1 as u64, 1 as u64);
         let diagnostic0: Diagnostic = compiler_diagnostic_cli_error("E_CLI_INVALID_ARGUMENT", "test execution is not enabled for this target", test_span);
         print_user_diagnostic(request, diagnostic0);
-        give cli_exit_code(driver.DriverExitStatus::UnsupportedFeature);
+        give cli_exit_code(DriverExitStatus::UnsupportedFeature);
     }
 
     let fallback_span: SourceSpan = span_create("<cli>", 1 as u64, 1 as u64, 1 as u64);
     let fallback: Diagnostic = compiler_diagnostic_cli_error("E_CLI_INVALID_ARGUMENT", "invalid compiler command request", fallback_span);
     print_user_diagnostic(request, fallback);
-    give cli_exit_code(driver.DriverExitStatus::InvalidArguments);
+    give cli_exit_code(DriverExitStatus::InvalidArguments);
 }
 
-proc run_cli_main(args: list[string]) -> int {
+proc run_cli_main(args: [string]) -> int {
     give run_cli_main_with_ice_boundary(args);
 }
 
-proc run_cli_main_with_ice_boundary(args: list[string]) -> int {
+proc run_cli_main_with_ice_boundary(args: [string]) -> int {
     let request: CompilerCliRequest = parse_cli_request(args);
     give run_cli_request(request);
 }
@@ -2225,13 +2225,13 @@ proc stop_reached_in_run(compiler: Compiler) -> bool {
         and compiler.state.stage == compiler.options.stop_after;
 }
 
-proc fail(compiler: Compiler, status: driver.DriverExitStatus, message: string) -> CompilerResult {
+proc fail(compiler: Compiler, status: DriverExitStatus, message: string) -> CompilerResult {
     set compiler.state.ok = false;
     set compiler.logger = logger.error(compiler.logger, message);
 
     give CompilerResult {
         status: status,
-        code: driver.exit_code(status),
+        code: exit_code(status),
         message: message,
         stage: compiler.state.stage,
         output: compiler.output,
@@ -2244,7 +2244,7 @@ proc fail(compiler: Compiler, status: driver.DriverExitStatus, message: string) 
 proc success(compiler: Compiler, message: string) -> CompilerResult {
     set compiler.logger = logger.info(compiler.logger, message);
     give CompilerResult {
-        status: driver.DriverExitStatus::Ok,
+        status: DriverExitStatus::Ok,
         code: 0,
         message: message,
         stage: compiler.state.stage,
@@ -2388,7 +2388,7 @@ proc run_compiler_module_set(compiler: Compiler) -> CompilerResult {
         set compiler.diagnostics = compiler.diagnostics + [compiler_driver_diagnostic(
             "error", "DRIVER_E_PIPELINE_FAILURE", compiler.input.path, 1 as u64, 1 as u64, message0
         )];
-        give fail(compiler, driver.DriverExitStatus::PipelineFailure, message0);
+        give fail(compiler, DriverExitStatus::PipelineFailure, message0);
     }
 
     let object_path: string = compiler.options.output_path + ".o";
@@ -2403,7 +2403,7 @@ proc run_compiler_module_set(compiler: Compiler) -> CompilerResult {
         set compiler.diagnostics = compiler.diagnostics + [compiler_driver_diagnostic(
             "error", "DRIVER_E_PIPELINE_FAILURE", compiler.input.path, 1 as u64, 1 as u64, message0
         )];
-        give fail(compiler, driver.DriverExitStatus::ObjectEmissionFailure, message0);
+        give fail(compiler, DriverExitStatus::ObjectEmissionFailure, message0);
     }
 
     let executable0: NativeBridgeResult = link_native_executable(object_path, compiler.options.output_path);
@@ -2413,7 +2413,7 @@ proc run_compiler_module_set(compiler: Compiler) -> CompilerResult {
         set compiler.diagnostics = compiler.diagnostics + [compiler_driver_diagnostic(
             "error", "DRIVER_E_PIPELINE_FAILURE", compiler.input.path, 1 as u64, 1 as u64, message0
         )];
-        give fail(compiler, driver.DriverExitStatus::LinkFailure, message0);
+        give fail(compiler, DriverExitStatus::LinkFailure, message0);
     }
 
     set compiler.state.frontend_ok = true;
@@ -2432,7 +2432,7 @@ proc run_compiler_module_set_check(compiler: Compiler) -> CompilerResult {
     let inputs0: [DriverModuleInput] = compiler_module_set_inputs(compiler.input.path);
     if not compiler_module_set_inputs_ready(inputs0) {
         set compiler = set_stage(compiler, CompilerStage::Configure);
-        give fail(compiler, driver.DriverExitStatus::PipelineFailure, "compiler module graph manifest check failed");
+        give fail(compiler, DriverExitStatus::PipelineFailure, "compiler module graph manifest check failed");
     }
 
     set compiler.state.frontend_ok = true;
@@ -2587,7 +2587,7 @@ proc validate_compiler_links(compiler: Compiler) -> Compiler {
         set compiler.state.ok = false;
     } else {
         set compiler.options.target = target0.target_triple;
-        let ptr_text: string = target0.pointer_size as string;
+        let ptr_text: string = to_string(target0.pointer_size);
         let debug_msg: string = "target_config name " + target0.name;
         set debug_msg = debug_msg + " ptr " + ptr_text;
         set debug_msg = debug_msg + " endian " + target0.endianness;
@@ -2618,7 +2618,8 @@ proc compiler_source_text(compiler: Compiler) -> string {
         give compiler.input.source;
     }
     if compiler.input.path != "" {
-        give read_file(compiler.input.path);
+        let source: string = read_file(compiler.input.path);
+        give source;
     }
     give "";
 }
@@ -2681,7 +2682,7 @@ proc structured_message_value(message: string, label: string) -> string {
 }
 
 proc compiler_result_pipeline_failed_at(result: CompilerResult) -> string {
-    if result.status == driver.DriverExitStatus::Ok {
+    if result.status == DriverExitStatus::Ok {
         give "none";
     }
     let structured_stage: string = structured_message_value(result.message, "stage");
@@ -2692,7 +2693,7 @@ proc compiler_result_pipeline_failed_at(result: CompilerResult) -> string {
 }
 
 proc compiler_result_pipeline_failure_reason(result: CompilerResult) -> string {
-    if result.status == driver.DriverExitStatus::Ok {
+    if result.status == DriverExitStatus::Ok {
         give "none";
     }
     let structured_reason: string = structured_message_value(result.message, "reason");
@@ -2703,7 +2704,7 @@ proc compiler_result_pipeline_failure_reason(result: CompilerResult) -> string {
 }
 
 proc compiler_result_json(command: string, result: CompilerResult) -> string {
-    let status_text: string = if result.status == driver.DriverExitStatus::Ok { "ok" } else { "error" };
+    let status_text: string = if result.status == DriverExitStatus::Ok { "ok" } else { "error" };
     let pipeline_failed_at0: string = compiler_result_pipeline_failed_at(result);
     let pipeline_failure_reason0: string = compiler_result_pipeline_failure_reason(result);
     let validation_reason0: string = if pipeline_failed_at0 == "mir_validate" or pipeline_failed_at0 == "ir_validate" {
@@ -2717,14 +2718,14 @@ proc compiler_result_json(command: string, result: CompilerResult) -> string {
         + "\"assembly_path\":\"" + json_escape(result.output.assembly_path) + "\","
         + "\"ir_path\":\"" + json_escape(result.output.ir_path) + "\","
         + "\"report_path\":\"" + json_escape(result.output.report_path) + "\","
-        + "\"program_exit_code\":" + (result.output.program_exit_code as string)
+        + "\"program_exit_code\":" + to_string(result.output.program_exit_code)
         + "}";
     give "{"
         + "\"schema\":\"vitte.compiler.cli\","
         + "\"schema_version\":\"1.0.0\","
         + "\"command\":\"" + json_escape(command) + "\","
         + "\"status\":\"" + status_text + "\","
-        + "\"exit_code\":" + (result.code as string) + ","
+        + "\"exit_code\":" + to_string(result.code) + ","
         + "\"message\":\"" + json_escape(result.message) + "\","
         + "\"stage\":\"" + json_escape(stage_name(result.stage)) + "\","
         + "\"pipeline_failed_at\":\"" + json_escape(pipeline_failed_at0) + "\","
@@ -3492,68 +3493,68 @@ proc run_executable(compiler: Compiler) -> Compiler {
     give compiler;
 }
 
-proc status_for_stage(stage: CompilerStage) -> driver.DriverExitStatus {
+proc status_for_stage(stage: CompilerStage) -> DriverExitStatus {
     if stage == CompilerStage::LoadInput {
-        give driver.DriverExitStatus::InvalidInput;
+        give DriverExitStatus::InvalidInput;
     }
 
     if stage == CompilerStage::Lex {
-        give driver.DriverExitStatus::LexFailure;
+        give DriverExitStatus::LexFailure;
     }
 
     if stage == CompilerStage::Parse {
-        give driver.DriverExitStatus::ParseFailure;
+        give DriverExitStatus::ParseFailure;
     }
 
     if stage == CompilerStage::Ast {
-        give driver.DriverExitStatus::AstFailure;
+        give DriverExitStatus::AstFailure;
     }
 
     if stage == CompilerStage::Hir {
-        give driver.DriverExitStatus::HirFailure;
+        give DriverExitStatus::HirFailure;
     }
 
     if stage == CompilerStage::Resolve {
-        give driver.DriverExitStatus::ResolveFailure;
+        give DriverExitStatus::ResolveFailure;
     }
 
     if stage == CompilerStage::Typeck {
-        give driver.DriverExitStatus::TypeFailure;
+        give DriverExitStatus::TypeFailure;
     }
 
     if stage == CompilerStage::Borrowck {
-        give driver.DriverExitStatus::BorrowckFailure;
+        give DriverExitStatus::BorrowckFailure;
     }
 
     if stage == CompilerStage::Mir {
-        give driver.DriverExitStatus::MirBuildFailure;
+        give DriverExitStatus::MirBuildFailure;
     }
 
     if stage == CompilerStage::MirValidate {
-        give driver.DriverExitStatus::MirValidationFailure;
+        give DriverExitStatus::MirValidationFailure;
     }
 
     if stage == CompilerStage::Ir {
-        give driver.DriverExitStatus::IrLoweringFailure;
+        give DriverExitStatus::IrLoweringFailure;
     }
 
     if stage == CompilerStage::IrValidate {
-        give driver.DriverExitStatus::IrValidationFailure;
+        give DriverExitStatus::IrValidationFailure;
     }
 
     if stage == CompilerStage::Codegen {
-        give driver.DriverExitStatus::CodegenFailure;
+        give DriverExitStatus::CodegenFailure;
     }
 
     if stage == CompilerStage::Object {
-        give driver.DriverExitStatus::ObjectEmissionFailure;
+        give DriverExitStatus::ObjectEmissionFailure;
     }
 
     if stage == CompilerStage::Link {
-        give driver.DriverExitStatus::LinkFailure;
+        give DriverExitStatus::LinkFailure;
     }
 
-    give driver.DriverExitStatus::InternalError;
+    give DriverExitStatus::InternalError;
 }
 
 proc finalize_compiler(compiler: Compiler) -> CompilerResult {

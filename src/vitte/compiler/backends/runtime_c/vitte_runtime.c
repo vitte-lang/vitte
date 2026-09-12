@@ -136,6 +136,29 @@ static void vitte_runtime_release_free_pages(void) {
 #endif
 }
 
+static void vitte_runtime_compact_tracking(void) {
+  size_t desired;
+  VitteRuntimeAllocation* smaller;
+  if (vitte_runtime_allocation_count > SIZE_MAX / 2) {
+    return;
+  }
+  desired = vitte_runtime_allocation_count < 4096
+    ? 4096
+    : vitte_runtime_allocation_count * 2;
+  if (desired >= vitte_runtime_allocation_capacity ||
+      desired > SIZE_MAX / sizeof(VitteRuntimeAllocation)) {
+    return;
+  }
+  smaller = (VitteRuntimeAllocation*)realloc(
+    vitte_runtime_allocations,
+    desired * sizeof(VitteRuntimeAllocation)
+  );
+  if (smaller != NULL) {
+    vitte_runtime_allocations = smaller;
+    vitte_runtime_allocation_capacity = desired;
+  }
+}
+
 #define malloc vitte_runtime_tracked_malloc
 #define calloc vitte_runtime_tracked_calloc
 #define realloc vitte_runtime_tracked_realloc
@@ -597,6 +620,7 @@ int32_t vitte_host_memory_rewind(uint64_t checkpoint) {
       }
     }
   }
+  vitte_runtime_compact_tracking();
   vitte_runtime_release_free_pages();
   return 0;
 }

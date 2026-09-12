@@ -355,7 +355,11 @@ proc data_layout_for_triple(triple: TargetTriple) -> string {
   }
   let layout: TargetLayout = target_layout_for(triple);
   let pointer_bits: string = to_string(layout.pointer_size * 8);
-  give (if layout.endian == "little" { "e" } else { "E" }) + "-p:" + pointer_bits + ":" + pointer_bits + "-i64:64";
+  let endian_prefix: string = "E";
+  if layout.endian == "little" {
+    set endian_prefix = "e";
+  }
+  give endian_prefix + "-p:" + pointer_bits + ":" + pointer_bits + "-i64:64";
 }
 
 proc pointer_width_for_arch(arch: string) -> u64 {

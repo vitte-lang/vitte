@@ -128,7 +128,10 @@ proc ir_abi_symbol_part(text: string) -> string {
         set out = out + if valid { ch } else { "_" };
         set i = i + 1;
     }
-    give if out != "" { out } else { "unknown" };
+    if out != "" {
+        give out;
+    }
+    give "unknown";
 }
 
 proc ir_impl_method_name(item: HirItem, member: HirNominalMember) -> string {
@@ -671,11 +674,17 @@ proc member_signature_text(params: [HirProcParam], return_type: string, drop_sel
 
 proc nominal_member_type(item: HirItem, member: HirNominalMember) -> string {
     if member.kind == HirNominalMemberKind.Field {
-        give if member.annotation_text != "" { member.annotation_text } else { "opaque" };
+        if member.annotation_text != "" {
+            give member.annotation_text;
+        }
+        give "opaque";
     }
     if member.kind == HirNominalMemberKind.Variant {
         if item.kind == HirItemKind.Bits or item.kind == HirItemKind.Flags {
-            give if item.annotation_text != "" { item.annotation_text } else { item.name };
+            if item.annotation_text != "" {
+                give item.annotation_text;
+            }
+            give item.name;
         }
         if member.annotation_text != "" {
             give "fn(" + member.annotation_text + ") -> " + item.name;

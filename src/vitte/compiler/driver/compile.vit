@@ -35,7 +35,7 @@ use vitte/compiler/frontend/ast/node.{ ast_span_empty }
 use vitte/compiler/infrastructure/session/files.{ cache_source, normalize_path, offset_lookup, source_manager_empty, source_manager_file_id }
 use vitte/stdlib/io/fileops.{ append_file, delete_file, read_file, write_file }
 use vitte/stdlib/io/host_runtime.{ host_memory_checkpoint, host_memory_rewind }
-use vitte/compiler/driver/module_interfaces.{ ModuleInterfaceText, module_interface_text, lower_module_interface_hir, typecheck_with_interfaces, hir_with_interfaces, interface_has_name }
+use vitte/compiler/driver/module_interfaces.{ ModuleInterfaceText, module_interface_text, module_interface_text_for_names, lower_module_interface_hir, typecheck_with_interfaces, typecheck_with_interfaces_range, hir_with_interfaces, interface_has_name }
 
 
 
@@ -1062,7 +1062,8 @@ proc module_input_source(input: DriverModuleInput) -> string {
     if input.source_text != "" {
         give input.source_text;
     }
-    give read_file(input.source_path);
+    let source: string = read_file(input.source_path);
+    give source;
 }
 
 proc driver_module_input(source_path: string, source_text: string) -> DriverModuleInput {
@@ -2004,7 +2005,12 @@ proc streaming_dependency_interfaces(summary: SemaModuleSummary, inputs: [Driver
         if input_index >= 0 {
             let path: string = inputs[input_index as u64].source_path;
             let checkpoint: u64 = host_memory_checkpoint();
-            let compact: ModuleInterfaceText = module_interface_text(path, module_input_source(inputs[input_index as u64]));
+            let compact: ModuleInterfaceText = module_interface_text_for_names(
+                path,
+                module_input_source(inputs[input_index as u64]),
+                imported.names,
+                imported.import_all
+            );
             let saved: bool = compact.valid and write_file("target/bootstrap-real/streaming-interface.vit", compact.text);
             let rewound: int = host_memory_rewind(checkpoint);
             if not saved or rewound != 0 {
@@ -2359,6 +2365,101 @@ proc compile_streaming_hir_chunks(input: DriverModuleInput, module_index: u64, s
     };
 }
 
+proc compile_streaming_typeck_chunks(input: DriverModuleInput, module_index: u64, summary: SemaModuleSummary, target: IrTarget, hir: HirUnit, interfaces: [HirItem]) -> StreamingModuleResult {
+    let module_output_path: string = "target/bootstrap-real/streaming-current-module.ll";
+    let chunk_output_path: string = "target/bootstrap-real/streaming-current-chunk.ll";
+    let prepared: bool = delete_file(module_output_path) or write_file(module_output_path, "");
+    if not prepared {
+        give StreamingModuleResult { assembly: "", has_entry: false, message: "chunked-typeck-output", valid: false };
+    }
+
+    let chunk_size: u64 = 8;
+    let chunk_start: u64 = 0;
+    let first_chunk: bool = true;
+    let has_entry: bool = false;
+    while chunk_start < len(hir.module.items) {
+        let chunk_end: u64 = if chunk_start + chunk_size < len(hir.module.items) {
+            chunk_start + chunk_size
+        } else {
+            len(hir.module.items)
+        };
+        let chunk_checkpoint: u64 = host_memory_checkpoint();
+        let phase_chunk_typeck_written: bool = write_file(
+            "target/reports/compiler_module_phase.txt",
+            input.source_path + " typeck-chunk " + to_string(chunk_start + 1) + "-" + to_string(chunk_end) + "\n"
+        );
+        let typeck_result: TypeckResult = typecheck_with_interfaces_range(hir, interfaces, chunk_start, chunk_end, true);
+        if not typeck_result.valid {
+            give StreamingModuleResult { assembly: "", has_entry: false, message: "typeck-chunk", valid: false };
+        }
+        let typed_hir: HirUnit = hir_with_interfaces(typeck_result.hir, interfaces);
+        let lowered_mir: MirUnit = lower_hir_to_mir_range(typed_hir, chunk_start, chunk_end);
+        if len(lowered_mir.module.functions) > 0 {
+            let mir_reason: string = mir_validation_reason(lowered_mir);
+            let mir1: MirUnit = validate_mir(lowered_mir);
+            if not mir1.valid {
+                give StreamingModuleResult { assembly: "", has_entry: false, message: "mir:" + mir_reason, valid: false };
+            }
+            let module0: IrModule = lower_mir_as_ir_module(
+                module_index,
+                if summary.module_path != "" { summary.module_path } else { input.source_path },
+                input.source_path,
+                IrModuleKind.Library,
+                target,
+                mir1,
+                typed_hir.module.items,
+                [],
+                module_import_names(summary),
+                []
+            );
+            let single_unit0: IrUnit = unit_add_module(unit_with_source_path(unit_empty(target), input.source_path), module0);
+            let candidate_unit: IrUnit = unit_set_entry(unit_with_state(single_unit0, IrUnitState::Lowered), module0.functions[0].id);
+            let single_unit_reason: string = ir_validation_reason(candidate_unit);
+            let single_unit: IrUnit = verify_unit(candidate_unit);
+            if not unit_is_valid(single_unit) {
+                give StreamingModuleResult { assembly: "", has_entry: false, message: "ir-verification:" + single_unit_reason, valid: false };
+            }
+            let phase_chunk_ir_written: bool = write_file(
+                "target/reports/compiler_module_phase.txt",
+                input.source_path + " ir-chunk " + to_string(chunk_start + 1) + "-" + to_string(chunk_end) + "\n"
+            );
+            let emitted_ir: LlvmBindingResult = emit_llvm_ir_fragment_from_ir_streamed(single_unit, chunk_output_path, first_chunk, first_chunk);
+            if not emitted_ir.valid {
+                give StreamingModuleResult { assembly: "", has_entry: false, message: "llvm-codegen-chunk:" + trim(read_file("target/reports/compiler_llvm_failure.txt")), valid: false };
+            }
+            let written: bool = if first_chunk {
+                write_file(module_output_path, emitted_ir.ir_text)
+            } else {
+                append_file(module_output_path, "\n" + emitted_ir.ir_text)
+            };
+            if not written {
+                give StreamingModuleResult { assembly: "", has_entry: false, message: "chunked-typeck-write", valid: false };
+            }
+            let function_index: u64 = 0;
+            while function_index < len(module0.functions) {
+                if module0.functions[function_index].name == "main" { set has_entry = true; }
+                set function_index = function_index + 1;
+            }
+            set first_chunk = false;
+        }
+        let chunk_rewind_status: int = host_memory_rewind(chunk_checkpoint);
+        if chunk_rewind_status != 0 {
+            give StreamingModuleResult { assembly: "", has_entry: false, message: "typeck-chunk-memory-rewind", valid: false };
+        }
+        set chunk_start = chunk_end;
+    }
+    let assembly: string = "";
+    if not first_chunk {
+        set assembly = read_file(module_output_path);
+    }
+    give StreamingModuleResult {
+        assembly: assembly,
+        has_entry: has_entry,
+        message: if assembly != "" { "" } else { "chunked-typeck-empty" },
+        valid: assembly != ""
+    };
+}
+
 proc compile_streaming_module(input: DriverModuleInput, module_index: u64, summary: SemaModuleSummary, summaries: [SemaModuleSummary], target: IrTarget, config: DriverCompileConfig, inputs: [DriverModuleInput]) -> StreamingModuleResult {
     let phase_parse_started: bool = write_file("target/reports/compiler_module_phase.txt", input.source_path + " frontend-start\n");
     let frontend: FrontendOutput = parse_source(input.source_path, module_input_source(input));
@@ -2375,6 +2476,12 @@ proc compile_streaming_module(input: DriverModuleInput, module_index: u64, summa
         valid: hir_summary.valid and (summary.valid or len(summary_imports) > 0)
     };
     let phase_summary_written: bool = write_file("target/reports/compiler_module_phase.txt", input.source_path + " summary\n");
+    // A pure import/re-export facade owns no symbols that can reach the linked
+    // module. The preceding compiler check validates it globally; avoid
+    // materializing and typechecking all transitive interfaces a second time.
+    if frontend.valid and hir1.valid and resolved_summary.valid and not streaming_source_has_owned_codegen_items(module_input_source(input)) {
+        give StreamingModuleResult { assembly: "", has_entry: false, message: "", valid: true };
+    }
     let dependency_summaries: [SemaModuleSummary] = if len(summaries) > 0 or len(resolved_summary.imports) == 0 {
         summaries
     } else {
@@ -2398,9 +2505,6 @@ proc compile_streaming_module(input: DriverModuleInput, module_index: u64, summa
     let typeck_result: TypeckResult = typecheck_with_interfaces(sema_result.hir, interfaces.items, true);
     set typeck_result.hir = hir_with_interfaces(typeck_result.hir, interfaces.items);
     let phase_typeck_written: bool = write_file("target/reports/compiler_module_phase.txt", input.source_path + " typeck\n");
-    if frontend.valid and hir1.valid and sema_result.valid and typeck_result.valid and not streaming_source_has_owned_codegen_items(module_input_source(input)) {
-        give StreamingModuleResult { assembly: "", has_entry: false, message: "", valid: true };
-    }
     if frontend.valid and hir1.valid and sema_result.valid and typeck_result.valid and streaming_hir_chunking_safe(typeck_result.hir) {
         give compile_streaming_hir_chunks(input, module_index, resolved_summary, target, typeck_result.hir);
     }

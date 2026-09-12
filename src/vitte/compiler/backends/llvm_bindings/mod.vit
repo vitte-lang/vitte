@@ -328,7 +328,8 @@ proc llvm_sanitize_type_name(name: string) -> string {
     set out = out + if valid { ch } else { "_" };
     set i = i + 1;
   }
-  give if out != "" { out } else { "anonymous" };
+  if out != "" { give out; }
+  give "anonymous";
 }
 
 proc llvm_module_nominal(module0: IrModule, name: string) -> IrNominalType {
@@ -811,14 +812,24 @@ proc llvm_function_return_type(module0: IrModule, function_name: string, fallbac
 }
 
 proc llvm_binary_opcode(operator: string, ty: string) -> string {
-  if operator == "-" { give if ty == "float" or ty == "double" { "fsub" } else { "sub" }; }
-  if operator == "*" { give if ty == "float" or ty == "double" { "fmul" } else { "mul" }; }
-  if operator == "/" { give if ty == "float" or ty == "double" { "fdiv" } else { "sdiv" }; }
+  if operator == "-" {
+    if ty == "float" or ty == "double" { give "fsub"; }
+    give "sub";
+  }
+  if operator == "*" {
+    if ty == "float" or ty == "double" { give "fmul"; }
+    give "mul";
+  }
+  if operator == "/" {
+    if ty == "float" or ty == "double" { give "fdiv"; }
+    give "sdiv";
+  }
   if operator == "%" { give "srem"; }
   if operator == "&" { give "and"; }
   if operator == "|" { give "or"; }
   if operator == "^" { give "xor"; }
-  give if ty == "float" or ty == "double" { "fadd" } else { "add" };
+  if ty == "float" or ty == "double" { give "fadd"; }
+  give "add";
 }
 
 proc llvm_comparison_predicate(operator: string, floating: bool, unsigned_value: bool) -> string {
@@ -832,10 +843,20 @@ proc llvm_comparison_predicate(operator: string, floating: bool, unsigned_value:
   }
   if operator == "==" { give "eq"; }
   if operator == "!=" { give "ne"; }
-  if operator == "<" { give if unsigned_value { "ult" } else { "slt" }; }
-  if operator == "<=" { give if unsigned_value { "ule" } else { "sle" }; }
-  if operator == ">" { give if unsigned_value { "ugt" } else { "sgt" }; }
-  give if unsigned_value { "uge" } else { "sge" };
+  if operator == "<" {
+    if unsigned_value { give "ult"; }
+    give "slt";
+  }
+  if operator == "<=" {
+    if unsigned_value { give "ule"; }
+    give "sle";
+  }
+  if operator == ">" {
+    if unsigned_value { give "ugt"; }
+    give "sgt";
+  }
+  if unsigned_value { give "uge"; }
+  give "sge";
 }
 
 proc llvm_binary_lines(module0: IrModule, instruction: IrInstruction) -> [string] {
@@ -1242,6 +1263,14 @@ proc llvm_cast_lines(module0: IrModule, instruction: IrInstruction) -> [string] 
   }
   let source_width: u64 = llvm_integer_width(source_ty);
   let target_width: u64 = llvm_integer_width(target_ty);
+  if source_width > 0 and (target_ty == "float" or target_ty == "double") {
+    let opcode: string = if starts_with(source.type_name, "u") or source_ty == "i1" { "uitofp" } else { "sitofp" };
+    give ["  " + result_name + " = " + opcode + " " + source_ty + " " + source_value + " to " + target_ty];
+  }
+  if (source_ty == "float" or source_ty == "double") and target_width > 0 {
+    let opcode: string = if starts_with(instruction.dest.type_name, "u") or target_ty == "i1" { "fptoui" } else { "fptosi" };
+    give ["  " + result_name + " = " + opcode + " " + source_ty + " " + source_value + " to " + target_ty];
+  }
   if source_width > 0 and target_width > 0 {
     if source_width < target_width {
       let extend_opcode: string = if starts_with(source.type_name, "u") or source_ty == "i1" { "zext" } else { "sext" };

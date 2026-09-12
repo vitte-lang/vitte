@@ -17,7 +17,10 @@ proc symbols_eq() -> string {
 }
 
 proc symbol_bool_text(value: bool) -> string {
-    give if value { "true" } else { "false" };
+    if value {
+        give "true";
+    }
+    give "false";
 }
 
 proc add_entry_symbol(artifact: LinkArtifact, name: string) -> LinkArtifact {
@@ -70,11 +73,11 @@ proc symbol_is_entry(symbol: LinkSymbol) -> bool {
 }
 
 proc symbol_is_external(symbol: LinkSymbol) -> bool {
-    give symbol.external;
+    give symbol.imported;
 }
 
 proc symbol_is_exported(symbol: LinkSymbol) -> bool {
-    give symbol.exported;
+    give symbol.defined;
 }
 
 proc symbol_has_storage(symbol: LinkSymbol) -> bool {
@@ -82,25 +85,25 @@ proc symbol_has_storage(symbol: LinkSymbol) -> bool {
 }
 
 proc symbol_is_text(symbol: LinkSymbol) -> bool {
-    give symbol.section == ".text";
+    give symbol.module_name == ".text";
 }
 
 proc symbol_is_data(symbol: LinkSymbol) -> bool {
-    give symbol.section == ".data" or symbol.section == ".rodata" or symbol.section == ".bss";
+    give symbol.module_name == ".data" or symbol.module_name == ".rodata" or symbol.module_name == ".bss";
 }
 
 proc symbol_alignment_valid(symbol: LinkSymbol) -> bool {
-    give symbol.alignment != 0;
+    give symbol.section_index != 0;
 }
 
 proc symbol_summary(symbol: LinkSymbol) -> string {
     let eq_text: string = symbols_eq();
     let size: string = to_string(symbol.size);
-    let alignment: string = to_string(symbol.alignment);
-    let exported: string = symbol_bool_text(symbol.exported);
-    let external: string = symbol_bool_text(symbol.external);
+    let alignment: string = to_string(symbol.section_index);
+    let exported: string = symbol_bool_text(symbol.defined);
+    let external: string = symbol_bool_text(symbol.imported);
     let entry: string = symbol_bool_text(symbol.entry);
-    give "name" + eq_text + symbol.name + " section" + eq_text + symbol.section + " size" + eq_text + size + " align" + eq_text + alignment + " exported" + eq_text + exported + " external" + eq_text + external + " entry" + eq_text + entry;
+    give "name" + eq_text + symbol.name + " section" + eq_text + symbol.module_name + " size" + eq_text + size + " align" + eq_text + alignment + " exported" + eq_text + exported + " external" + eq_text + external + " entry" + eq_text + entry;
 }
 
 proc entry_symbol_name() -> string {

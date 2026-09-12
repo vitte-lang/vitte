@@ -9,7 +9,7 @@ use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
 use vitte/compiler/middle/hir/hir.{ HirItem, HirItemKind, HirUnit }
 use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir, lower_ast_to_hir_unvalidated }
 use vitte/compiler/middle/hir/validate.{ validate_hir }
-use vitte/compiler/analysis/typeck/checker.{ check_module, join, legacy_implicit_mutability_marker, nominal_type_bindings }
+use vitte/compiler/analysis/typeck/checker.{ check_module, check_module_range, join, legacy_implicit_mutability_marker, nominal_type_bindings }
 use vitte/compiler/analysis/typeck/infer.{ TypeBinding, param_type_binding }
 use vitte/compiler/analysis/typeck/errors.{ TypeckResult }
 
@@ -18,9 +18,20 @@ form ModuleInterfaceText {
   valid: bool
 }
 
+proc interface_proc_selected(names: [string], name: string, include_all: bool) -> bool {
+  if include_all { give true; }
+  let i: u64 = 0;
+  while i < len(names) {
+    let selected: string = trim(names[i]);
+    if selected == name or starts_with(selected, name + " as ") { give true; }
+    set i = i + 1;
+  }
+  give false;
+}
+
 // Token offsets preserve strings, comments and multiline declarations exactly.
 // Do not parse procedure bodies merely to discover an imported signature.
-proc module_interface_text(source_path: string, source: string) -> ModuleInterfaceText {
+proc module_interface_text_for_names(source_path: string, source: string, names: [string], include_all_procs: bool) -> ModuleInterfaceText {
   let scanned: ScanResult = scan_tokens_from_file(source_path, source);
   if not scanned.valid { give ModuleInterfaceText { text: "", valid: false }; }
   let pieces: [string] = [];
@@ -28,6 +39,8 @@ proc module_interface_text(source_path: string, source: string) -> ModuleInterfa
   let i: u64 = 0;
   while i < len(scanned.tokens) {
     if scanned.tokens[i].kind == TokenKind.Keyword and scanned.tokens[i].lexeme == "proc" {
+      let proc_name: string = if i + 1 < len(scanned.tokens) { scanned.tokens[i + 1].lexeme } else { "" };
+      let selected: bool = interface_proc_selected(names, proc_name, include_all_procs);
       let cursor: u64 = i + 1;
       let parens: u64 = 0;
       let brackets: u64 = 0;
@@ -43,9 +56,18 @@ proc module_interface_text(source_path: string, source: string) -> ModuleInterfa
       if cursor < len(scanned.tokens) and scanned.tokens[cursor].lexeme == "{" {
         let close: int = find_matching(scanned.tokens, cursor, "{", "}");
         if close < 0 { give ModuleInterfaceText { text: "", valid: false }; }
-        set pieces = pieces + [slice(source, copied, scanned.tokens[cursor].offset + 1), "}"];
+        if selected {
+          set pieces = pieces + [slice(source, copied, scanned.tokens[cursor].offset + 1), "}"];
+        } else {
+          set pieces = pieces + [slice(source, copied, scanned.tokens[i].offset)];
+        }
         set copied = scanned.tokens[close as u64].offset + 1;
         set i = close as u64 + 1;
+        continue;
+      } elif cursor < len(scanned.tokens) and scanned.tokens[cursor].lexeme == ";" and not selected {
+        set pieces = pieces + [slice(source, copied, scanned.tokens[i].offset)];
+        set copied = scanned.tokens[cursor].offset + 1;
+        set i = cursor + 1;
         continue;
       }
     }
@@ -53,6 +75,10 @@ proc module_interface_text(source_path: string, source: string) -> ModuleInterfa
   }
   set pieces = pieces + [slice(source, copied, len(source))];
   give ModuleInterfaceText { text: join(pieces, ""), valid: true };
+}
+
+proc module_interface_text(source_path: string, source: string) -> ModuleInterfaceText {
+  give module_interface_text_for_names(source_path, source, [], true);
 }
 
 proc interface_has_name(items: [HirItem], name: string) -> bool {
@@ -85,6 +111,14 @@ proc typecheck_with_interfaces(hir: HirUnit, interfaces: [HirItem], bootstrap: b
     set bindings = bindings + [param_type_binding(legacy_implicit_mutability_marker(), "bool", true, false)];
   }
   give check_module([], bindings, hir);
+}
+
+proc typecheck_with_interfaces_range(hir: HirUnit, interfaces: [HirItem], item_start: u64, item_end: u64, bootstrap: bool) -> TypeckResult {
+  let bindings: [TypeBinding] = nominal_type_bindings(interfaces);
+  if bootstrap {
+    set bindings = bindings + [param_type_binding(legacy_implicit_mutability_marker(), "bool", true, false)];
+  }
+  give check_module_range([], bindings, hir, item_start, item_end);
 }
 
 proc hir_with_interfaces(hir: HirUnit, interfaces: [HirItem]) -> HirUnit {

@@ -181,7 +181,7 @@ proc module_type_layout_depth(module0: IrModule, target_layout: TargetLayout, ty
           }
           set j = j + 1;
         }
-        let aggregate: AggregateLayout = aggregate_size([4, payload_size], [4, payload_alignment], false);
+        let aggregate: AggregateLayout = aggregate_size([4 as u64, payload_size], [4 as u64, payload_alignment], false);
         give type_layout(type_name, aggregate.size, aggregate.alignment, false, false, false, true);
       }
       give type_layout(type_name, target_layout.pointer_size, target_layout.pointer_alignment, false, false, false, true);
@@ -562,7 +562,7 @@ proc select_variant_constructor_lines(module0: IrModule, target_layout: TargetLa
   } else {
     type_layout(payload_name, target_layout.pointer_size, target_layout.pointer_alignment, true, false, false, false)
   };
-  let aggregate: AggregateLayout = aggregate_size([4, payload_layout.size], [4, payload_layout.alignment], false);
+  let aggregate: AggregateLayout = aggregate_size([4 as u64, payload_layout.size], [4 as u64, payload_layout.alignment], false);
   let lines: [string] = select_nominal_call_metadata(module0, instruction)
     + ["  movl $" + to_string(member_index) + ", " + frame_slot_part_address(destination, aggregate.field_offsets[0])];
   if payload_layout.size == 0 or instruction.call_arg_start >= len(instruction.args) {
