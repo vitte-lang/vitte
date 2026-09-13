@@ -21,7 +21,7 @@ use vitte/compiler/middle/lower/mir_to_ir.{ lower_mir_as_ir_module }
 use vitte/compiler/middle/mir/mir.{ MirFunction, MirUnit, mir_module_empty }
 use vitte/compiler/middle/mir/validate.{ mir_validation_reason, validate_mir }
 use vitte/compiler/backend/codegen.{ CodegenResult, run_codegen_llvm_with_profile, run_codegen_x86_64_with_profile }
-use vitte/compiler/backend/ir/ir.{ IrFunction, IrInstructionKind, IrModule, IrModuleKind, IrTarget, IrUnit, IrUnitState, function_name_by_id, ir_validation_reason, target_from_name, unit_add_module, unit_empty, unit_is_valid, unit_set_entry, unit_with_source_path, unit_with_state, verify_unit }
+use vitte/compiler/backend/ir/ir.{ IrFunction, IrInstructionKind, IrLinkage, IrModule, IrModuleKind, IrTarget, IrUnit, IrUnitState, function_name_by_id, ir_validation_reason, target_from_name, unit_add_module, unit_empty, unit_is_valid, unit_set_entry, unit_with_source_path, unit_with_state, verify_unit }
 use vitte/compiler/backend/link/artifact.{ LinkArtifact, LinkArtifactKind, artifact_create, artifact_is_valid, link_target_from_name }
 use vitte/compiler/backend/link/linker.{ link_ir_unit_with_kind }
 use vitte/compiler/backend/native_bridge.{ NativeBridgeResult, emit_native_object_from_assembly, emit_native_object_from_llvm_ir, link_native_executable, native_bridge_command_result }
@@ -1877,10 +1877,16 @@ proc streaming_module_summary(input: DriverModuleInput, module_index: u64) -> Se
 proc streaming_input_index(inputs: [DriverModuleInput], module_path: string) -> int {
     let vit_path: string = "src/" + module_path + ".vit";
     let vitl_path: string = "src/" + module_path + ".vitl";
+    let module_suffix: string = "/" + vit_path;
+    let module_l_suffix: string = "/" + vitl_path;
+    let module_mod_suffix: string = "/src/" + module_path + "/mod.vit";
     let i: u64 = 0;
     while i < len(inputs) {
         if inputs[i].source_path == vit_path or inputs[i].source_path == vitl_path
-            or inputs[i].source_path == "src/" + module_path + "/mod.vit" {
+            or inputs[i].source_path == "src/" + module_path + "/mod.vit"
+            or ends_with(inputs[i].source_path, module_suffix)
+            or ends_with(inputs[i].source_path, module_l_suffix)
+            or ends_with(inputs[i].source_path, module_mod_suffix) {
             give i as int;
         }
         set i = i + 1;
@@ -2310,6 +2316,16 @@ proc compile_streaming_hir_chunks(input: DriverModuleInput, module_index: u64, s
                 module_import_names(summary),
                 []
             );
+            // A typecheck range can contain declarations without executable
+            // MIR. Do not pass that empty range to LLVM fragment emission.
+            if len(module0.functions) == 0 or not streaming_ir_module_has_owned_functions(module0) {
+                let empty_module_rewind_status: int = host_memory_rewind(chunk_checkpoint);
+                if empty_module_rewind_status != 0 {
+                    give StreamingModuleResult { assembly: "", has_entry: false, message: "typeck-empty-chunk-memory-rewind", valid: false };
+                }
+                set chunk_start = chunk_end;
+                continue;
+            }
             let single_unit0: IrUnit = unit_add_module(unit_with_source_path(unit_empty(target), input.source_path), module0);
             let candidate_entry: u64 = module0.functions[0].id;
             let candidate_unit: IrUnit = unit_set_entry(unit_with_state(single_unit0, IrUnitState::Lowered), candidate_entry);
@@ -2365,6 +2381,17 @@ proc compile_streaming_hir_chunks(input: DriverModuleInput, module_index: u64, s
     };
 }
 
+proc streaming_ir_module_has_owned_functions(module0: IrModule) -> bool {
+    let i: u64 = 0;
+    while i < len(module0.functions) {
+        if module0.functions[i].linkage != IrLinkage.Imported {
+            give true;
+        }
+        set i = i + 1;
+    }
+    give false;
+}
+
 proc compile_streaming_typeck_chunks(input: DriverModuleInput, module_index: u64, summary: SemaModuleSummary, target: IrTarget, hir: HirUnit, interfaces: [HirItem]) -> StreamingModuleResult {
     let module_output_path: string = "target/bootstrap-real/streaming-current-module.ll";
     let chunk_output_path: string = "target/bootstrap-real/streaming-current-chunk.ll";
@@ -2412,6 +2439,16 @@ proc compile_streaming_typeck_chunks(input: DriverModuleInput, module_index: u64
                 module_import_names(summary),
                 []
             );
+            // Typecheck ranges can contain imported signatures without an
+            // owned function. Keep those metadata-only ranges out of LLVM.
+            if len(module0.functions) == 0 or not streaming_ir_module_has_owned_functions(module0) {
+                let empty_module_rewind_status: int = host_memory_rewind(chunk_checkpoint);
+                if empty_module_rewind_status != 0 {
+                    give StreamingModuleResult { assembly: "", has_entry: false, message: "typeck-empty-chunk-memory-rewind", valid: false };
+                }
+                set chunk_start = chunk_end;
+                continue;
+            }
             let single_unit0: IrUnit = unit_add_module(unit_with_source_path(unit_empty(target), input.source_path), module0);
             let candidate_unit: IrUnit = unit_set_entry(unit_with_state(single_unit0, IrUnitState::Lowered), module0.functions[0].id);
             let single_unit_reason: string = ir_validation_reason(candidate_unit);
@@ -2452,12 +2489,12 @@ proc compile_streaming_typeck_chunks(input: DriverModuleInput, module_index: u64
     if not first_chunk {
         set assembly = read_file(module_output_path);
     }
-    give StreamingModuleResult {
+  give StreamingModuleResult {
         assembly: assembly,
         has_entry: has_entry,
         message: if assembly != "" { "" } else { "chunked-typeck-empty" },
         valid: assembly != ""
-    };
+  };
 }
 
 proc compile_streaming_module(input: DriverModuleInput, module_index: u64, summary: SemaModuleSummary, summaries: [SemaModuleSummary], target: IrTarget, config: DriverCompileConfig, inputs: [DriverModuleInput]) -> StreamingModuleResult {
@@ -2502,6 +2539,13 @@ proc compile_streaming_module(input: DriverModuleInput, module_index: u64, summa
             + " summaries=" + streaming_summary_paths(dependency_summaries)
             + " interfaces=" + streaming_interface_item_names(interfaces.items) + "\n"
     );
+    // The compiler driver module is the known self-host memory hotspot. Keep
+    // its typecheck and lowering bounded while preserving the regular path for
+    // all other modules.
+    let chunk_typeck_candidate: bool = ends_with(input.source_path, "src/vitte/compiler/driver/compiler.vit");
+    if frontend.valid and hir1.valid and sema_result.valid and chunk_typeck_candidate {
+        give compile_streaming_typeck_chunks(input, module_index, resolved_summary, target, hir1, interfaces.items);
+    }
     let typeck_result: TypeckResult = typecheck_with_interfaces(sema_result.hir, interfaces.items, true);
     set typeck_result.hir = hir_with_interfaces(typeck_result.hir, interfaces.items);
     let phase_typeck_written: bool = write_file("target/reports/compiler_module_phase.txt", input.source_path + " typeck\n");
@@ -2630,6 +2674,55 @@ proc compile_streaming_module(input: DriverModuleInput, module_index: u64, summa
     give StreamingModuleResult { assembly: emitted_ir.ir_text, has_entry: has_entry, message: "", valid: true };
 }
 
+proc streaming_dependencies_emitted(summary: SemaModuleSummary, inputs: [DriverModuleInput], emitted_paths: [string]) -> bool {
+    let i: u64 = 0;
+    while i < len(summary.imports) {
+        let dependency_index: int = streaming_input_index(inputs, summary.imports[i].module_path);
+        if dependency_index >= 0 and not streaming_path_seen(emitted_paths, inputs[dependency_index as u64].source_path) {
+            give false;
+        }
+        set i = i + 1;
+    }
+    give true;
+}
+
+proc streaming_topological_inputs(inputs: [DriverModuleInput]) -> [DriverModuleInput] {
+    let summaries: [SemaModuleSummary] = [];
+    let i: u64 = 0;
+    while i < len(inputs) {
+        set summaries = summaries + [streaming_module_summary(inputs[i], i + 1)];
+        set i = i + 1;
+    }
+    let emitted_paths: [string] = [];
+    let ordered: [DriverModuleInput] = [];
+    while len(ordered) < len(inputs) {
+        let candidate: int = -1;
+        set i = 0;
+        while i < len(inputs) and candidate < 0 {
+            if not streaming_path_seen(emitted_paths, inputs[i].source_path)
+                and streaming_dependencies_emitted(summaries[i], inputs, emitted_paths) {
+                set candidate = i as int;
+            }
+            set i = i + 1;
+        }
+        if candidate < 0 {
+            set i = 0;
+            while i < len(inputs) and candidate < 0 {
+                if not streaming_path_seen(emitted_paths, inputs[i].source_path) {
+                    set candidate = i as int;
+                }
+                set i = i + 1;
+            }
+        }
+        if candidate < 0 {
+            break;
+        }
+        set emitted_paths = emitted_paths + [inputs[candidate as u64].source_path];
+        set ordered = ordered + [inputs[candidate as u64]];
+    }
+    give ordered;
+}
+
 proc compile_source_set_streaming(inputs: [DriverModuleInput], config: DriverCompileConfig) -> DriverBackendModuleSetResult {
     let failure_report_cleared: bool = write_file("target/reports/compiler_module_set_failure.txt", "");
     let llvm_failure_report_cleared: bool = write_file("target/reports/compiler_llvm_failure.txt", "");
@@ -2649,6 +2742,7 @@ proc compile_source_set_streaming(inputs: [DriverModuleInput], config: DriverCom
             valid: false
         };
     }
+    let ordered_inputs: [DriverModuleInput] = streaming_topological_inputs(inputs);
     let assembly_path: string = "target/bootstrap-real/streaming-module-set.ll";
     let prepared: bool = delete_file(assembly_path) or write_file(assembly_path, "");
     let first_module: bool = true;
@@ -2656,17 +2750,17 @@ proc compile_source_set_streaming(inputs: [DriverModuleInput], config: DriverCom
     let entry_symbol: string = "";
     let first_failure: string = "";
     set i = 0;
-    while i < len(inputs) and all_valid {
+    while i < len(ordered_inputs) and all_valid {
         let progress_written: bool = write_file(
             "target/reports/compiler_module_set_progress.txt",
-            to_string(i + 1) + "/" + to_string(len(inputs)) + " " + inputs[i].source_path + "\n"
+            to_string(i + 1) + "/" + to_string(len(ordered_inputs)) + " " + ordered_inputs[i].source_path + "\n"
         );
         let memory_checkpoint: u64 = host_memory_checkpoint();
-        let phase_summary_started: bool = write_file("target/reports/compiler_module_phase.txt", inputs[i].source_path + " source-summary-start\n");
-        let summary: SemaModuleSummary = streaming_module_summary(inputs[i], i + 1);
-        let phase_dependencies_started: bool = write_file("target/reports/compiler_module_phase.txt", inputs[i].source_path + " dependency-summaries-start\n");
-        let summaries: [SemaModuleSummary] = streaming_dependency_summaries(summary, inputs);
-        let module_result: StreamingModuleResult = compile_streaming_module(inputs[i], i + 1, summary, summaries, target, config, inputs);
+        let phase_summary_started: bool = write_file("target/reports/compiler_module_phase.txt", ordered_inputs[i].source_path + " source-summary-start\n");
+        let summary: SemaModuleSummary = streaming_module_summary(ordered_inputs[i], i + 1);
+        let phase_dependencies_started: bool = write_file("target/reports/compiler_module_phase.txt", ordered_inputs[i].source_path + " dependency-summaries-start\n");
+        let summaries: [SemaModuleSummary] = streaming_dependency_summaries(summary, ordered_inputs);
+        let module_result: StreamingModuleResult = compile_streaming_module(ordered_inputs[i], i + 1, summary, summaries, target, config, ordered_inputs);
         if module_result.valid and module_result.assembly != "" {
             let fragment: string = llvm_module_fragment(module_result.assembly, first_module);
             let written: bool = if first_module {
@@ -2676,7 +2770,7 @@ proc compile_source_set_streaming(inputs: [DriverModuleInput], config: DriverCom
             };
             if not written {
                 set all_valid = false;
-                set first_failure = inputs[i].source_path + " (assembly-write)";
+                set first_failure = ordered_inputs[i].source_path + " (assembly-write)";
             }
             set first_module = false;
             if module_result.has_entry and entry_symbol == "" {
@@ -2687,7 +2781,7 @@ proc compile_source_set_streaming(inputs: [DriverModuleInput], config: DriverCom
         } else {
             set all_valid = false;
             if first_failure == "" {
-                set first_failure = inputs[i].source_path + " (" + module_result.message + ")";
+                set first_failure = ordered_inputs[i].source_path + " (" + module_result.message + ")";
             }
         }
         if module_result.valid {
