@@ -15,6 +15,37 @@ pick LiteralKind {
   Unknown,
 }
 
+proc literal_kind_text(kind: LiteralKind) -> string {
+  if kind == LiteralKind.Integer {
+    give "integer";
+  }
+  if kind == LiteralKind.Float {
+    give "float";
+  }
+  if kind == LiteralKind.String {
+    give "string";
+  }
+  if kind == LiteralKind.RawString {
+    give "raw-string";
+  }
+  if kind == LiteralKind.Char {
+    give "char";
+  }
+  if kind == LiteralKind.Bool {
+    give "bool";
+  }
+  if kind == LiteralKind.Null {
+    give "null";
+  }
+  if kind == LiteralKind.Identifier {
+    give "identifier";
+  }
+  if kind == LiteralKind.Keyword {
+    give "keyword";
+  }
+  give "unknown";
+}
+
 form LiteralValidation {
   valid: bool
   kind: LiteralKind
@@ -692,7 +723,7 @@ proc validate_identifier_lexeme(lexeme: string) -> LiteralValidation {
 
 proc literal_summary(validation: LiteralValidation) -> string {
   let valid_text: string = validation.valid as string;
-  let kind_text: string = validation.kind as string;
+  let kind_text: string = literal_kind_text(validation.kind);
   let radix_text: string = validation.radix as string;
   let digits_text: string = validation.digit_count as string;
   give "valid "
