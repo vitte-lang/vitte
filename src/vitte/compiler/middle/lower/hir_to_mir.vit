@@ -612,11 +612,17 @@ proc mir_rvalue_from_expr(expr: HirExpr, items: [HirItem]) -> MirRvalue {
     set kind = MirRvalueKind.Tuple;
   }
 
-  let operands: [MirOperand] = if kind == MirRvalueKind.Call { mir_call_operands(expr, items) } else { [] };
+  let operands: [MirOperand] = [];
+  if kind == MirRvalueKind.Call {
+    set operands = mir_call_operands(expr, items);
+  }
   if expr.kind == HirExprKind.Member and len(expr.children) > 0 {
     set operands = [mir_operand_from_expr_with_items(expr.children[0], items), mir_member_name_operand(expr)];
   }
-  let i: u64 = if kind == MirRvalueKind.Struct and len(expr.children) > 0 { 1 } else { 0 };
+  let i: u64 = 0;
+  if kind == MirRvalueKind.Struct and len(expr.children) > 0 {
+    set i = 1;
+  }
   while kind != MirRvalueKind.Call and expr.kind != HirExprKind.Member and i < len(expr.children) {
     set operands = operands + [mir_operand_from_expr_with_items(expr.children[i], items)];
     set i = i + 1;
