@@ -1287,7 +1287,9 @@ proc llvm_cast_lines(module0: IrModule, instruction: IrInstruction) -> [string] 
   if contains(source_ty, "*") and contains(target_ty, "*") {
     give ["  " + result_name + " = bitcast " + source_ty + " " + source_value + " to " + target_ty];
   }
-  give llvm_invalid_lines("cast from " + source_ty + " to " + target_ty);
+  give llvm_invalid_lines("cast from " + source_ty + " to " + target_ty
+    + " source=" + source.type_name + " target=" + instruction.dest.type_name
+    + " source-name=" + source.name + " dest-name=" + instruction.dest.name);
 }
 
 proc llvm_builtin_call_supported(symbol: string) -> bool {
@@ -1586,12 +1588,15 @@ proc llvm_function_symbol(fn0: IrFunction) -> string {
 }
 
 proc llvm_local_index(locals: [IrValue], value: IrValue) -> int {
-  if value.constant != "" or value.name == "" or value.place != value.name {
+  if value.constant != "" or value.name == "" or value.place == "" {
     give -1;
   }
   let i: u64 = 0;
   while i < len(locals) {
-    if locals[i].name == value.name { give i as int; }
+    if locals[i].name == value.name
+      and (value.place == value.name or starts_with(value.place, value.name + ".")) {
+      give i as int;
+    }
     set i = i + 1;
   }
   give -1;
@@ -1599,10 +1604,27 @@ proc llvm_local_index(locals: [IrValue], value: IrValue) -> int {
 
 proc llvm_instruction_defines_local(instruction: IrInstruction) -> bool {
   give instruction.dest.valid and instruction.dest.name != ""
-    and instruction.dest.place == instruction.dest.name
+    and (instruction.dest.place == instruction.dest.name
+      or starts_with(instruction.dest.place, instruction.dest.name + "."))
     and (instruction.kind == IrInstructionKind.Assign or instruction.kind == IrInstructionKind.Binary
       or instruction.kind == IrInstructionKind.Call or instruction.kind == IrInstructionKind.Aggregate
       or instruction.kind == IrInstructionKind.Discriminant);
+}
+
+proc llvm_local_field_index(module0: IrModule, local: IrValue, value: IrValue) -> int {
+  if value.name != local.name or value.place == local.name {
+    give -1;
+  }
+  let prefix: string = local.name + ".";
+  if not starts_with(value.place, prefix) {
+    give -1;
+  }
+  let field_name: string = slice(value.place, len(prefix), len(value.place));
+  let nominal: IrNominalType = llvm_module_nominal(module0, local.type_name);
+  if not nominal.valid or contains(field_name, ".") {
+    give -1;
+  }
+  give llvm_nominal_member_index(nominal, field_name, "field");
 }
 
 // Canonical IR places are mutable, not LLVM SSA registers. Spill only names
@@ -1669,6 +1691,88 @@ proc llvm_instruction_with_values(instruction: IrInstruction, dest: IrValue, arg
   };
 }
 
+proc llvm_string_namespace_value(value: IrValue, module_id: u64) -> IrValue {
+  if value.type_name == "string" and llvm_is_string_literal(value.constant) {
+    set value.id = module_id * 1000000000 + value.id;
+  }
+  give value;
+}
+
+proc llvm_string_namespace_instruction(instruction: IrInstruction, module_id: u64) -> IrInstruction {
+  let args: [IrValue] = [];
+  let i: u64 = 0;
+  while i < len(instruction.args) {
+    set args = args + [llvm_string_namespace_value(instruction.args[i], module_id)];
+    set i = i + 1;
+  }
+  give llvm_instruction_with_values(
+    instruction,
+    llvm_string_namespace_value(instruction.dest, module_id),
+    args
+  );
+}
+
+proc llvm_string_namespace_block(block: IrBlock, module_id: u64) -> IrBlock {
+  let instructions: [IrInstruction] = [];
+  let i: u64 = 0;
+  while i < len(block.instructions) {
+    set instructions = instructions + [llvm_string_namespace_instruction(block.instructions[i], module_id)];
+    set i = i + 1;
+  }
+  give IrBlock {
+    id: block.id,
+    label: block.label,
+    instructions: instructions,
+    terminator: llvm_string_namespace_instruction(block.terminator, module_id),
+    valid: block.valid
+  };
+}
+
+proc llvm_string_namespace_function(fn0: IrFunction, module_id: u64) -> IrFunction {
+  let blocks: [IrBlock] = [];
+  let i: u64 = 0;
+  while i < len(fn0.blocks) {
+    set blocks = blocks + [llvm_string_namespace_block(fn0.blocks[i], module_id)];
+    set i = i + 1;
+  }
+  give IrFunction {
+    id: fn0.id,
+    name: fn0.name,
+    module_name: fn0.module_name,
+    linkage: fn0.linkage,
+    visibility: fn0.visibility,
+    is_entry: fn0.is_entry,
+    abi: fn0.abi,
+    span: fn0.span,
+    params: fn0.params,
+    return_type: fn0.return_type,
+    blocks: blocks,
+    valid: fn0.valid
+  };
+}
+
+proc llvm_string_namespace_module(source_module: IrModule) -> IrModule {
+  let functions: [IrFunction] = [];
+  let i: u64 = 0;
+  while i < len(source_module.functions) {
+    set functions = functions + [llvm_string_namespace_function(source_module.functions[i], source_module.id)];
+    set i = i + 1;
+  }
+  give IrModule {
+    id: source_module.id,
+    name: source_module.name,
+    source_path: source_module.source_path,
+    kind: source_module.kind,
+    target: source_module.target,
+    functions: functions,
+    nominal_types: source_module.nominal_types,
+    imports: source_module.imports,
+    external_symbols: source_module.external_symbols,
+    exports: source_module.exports,
+    valid: source_module.valid
+  };
+}
+
 form LlvmLocalOperands {
   args: [IrValue]
   lines: [string]
@@ -1683,6 +1787,21 @@ proc llvm_load_local_operands(module0: IrModule, instruction: IrInstruction, loc
     let index: int = llvm_local_index(locals, arg);
     if index < 0 {
       set args = args + [arg];
+    } elif arg.place != arg.name {
+      let field_index: int = llvm_local_field_index(module0, locals[index as u64], arg);
+      if field_index < 0 {
+        set args = args + [arg];
+        set i = i + 1;
+        continue;
+      }
+      let aggregate_ty: string = llvm_type_for_name(module0, locals[index as u64].type_name, false);
+      let aggregate_name: string = prefix + ".aggregate." + string(i);
+      let name: string = prefix + ".load." + string(i);
+      set lines = lines + [
+        "  %" + aggregate_name + " = load " + aggregate_ty + ", " + aggregate_ty + "* %" + llvm_local_slot(index as u64),
+        "  %" + name + " = extractvalue " + aggregate_ty + " %" + aggregate_name + ", " + string(field_index)
+      ];
+      set args = args + [value_place(arg.id, name, name, arg.type_name)];
     } elif arg.kind == IrValueKind.Reference {
       let slot: string = llvm_local_slot(index as u64);
       set args = args + [IrValue {
@@ -1729,13 +1848,25 @@ proc emit_llvm_block_with_locals(module0: IrModule, fn0: IrFunction, block: IrBl
     let rewritten: IrInstruction = llvm_instruction_with_values(instruction, dest, operands.args);
     set lines = lines + operands.lines + emit_llvm_instruction_in_function(module0, fn0, rewritten);
     if index >= 0 and llvm_instruction_defines_local(instruction) {
+      let field_index: int = llvm_local_field_index(module0, locals[index as u64], instruction.dest);
       let ty: string = llvm_type_for_name(module0, locals[index as u64].type_name, false);
-      let stored: IrValue = dest;
-      if ty != llvm_type_for_name(module0, dest.type_name, false) {
-        set stored = value_place(dest.id, prefix + ".store", prefix + ".store", locals[index as u64].type_name);
-        set lines = lines + llvm_cast_lines(module0, instruction_create(instruction.id, IrInstructionKind.Assign, "", "as", stored, [dest], instruction.span));
+      if field_index >= 0 {
+        let aggregate_name: string = prefix + ".aggregate.store";
+        let updated_name: string = prefix + ".updated";
+        set lines = lines + [
+          "  %" + aggregate_name + " = load " + ty + ", " + ty + "* %" + llvm_local_slot(index as u64),
+          "  %" + updated_name + " = insertvalue " + ty + " %" + aggregate_name + ", "
+            + llvm_type_for_name(module0, dest.type_name, false) + " " + llvm_value_text(dest) + ", " + string(field_index),
+          "  store " + ty + " %" + updated_name + ", " + ty + "* %" + llvm_local_slot(index as u64)
+        ];
+      } else {
+        let stored: IrValue = dest;
+        if ty != llvm_type_for_name(module0, dest.type_name, false) {
+          set stored = value_place(dest.id, prefix + ".store", prefix + ".store", locals[index as u64].type_name);
+          set lines = lines + llvm_cast_lines(module0, instruction_create(instruction.id, IrInstructionKind.Assign, "", "as", stored, [dest], instruction.span));
+        }
+        set lines = lines + ["  store " + ty + " " + llvm_value_text(stored) + ", " + ty + "* %" + llvm_local_slot(index as u64)];
       }
-      set lines = lines + ["  store " + ty + " " + llvm_value_text(stored) + ", " + ty + "* %" + llvm_local_slot(index as u64)];
     }
     set i = i + 1;
   }
@@ -1876,7 +2007,8 @@ proc emit_llvm_module_prelude(module0: IrModule) -> [string] {
   give lines + emit_llvm_module_nominals(module0);
 }
 
-proc emit_llvm_module(module0: IrModule) -> [string] {
+proc emit_llvm_module(source_module: IrModule) -> [string] {
+  let module0: IrModule = llvm_string_namespace_module(source_module);
   let lines: [string] = emit_llvm_module_prelude(module0);
   let i: u64 = 0;
   let entry_index: u64 = len(module0.functions);
@@ -2052,7 +2184,9 @@ proc emit_llvm_ir_from_ir(unit: IrUnit) -> LlvmBindingResult {
 }
 
 proc emit_llvm_ir_fragment_from_ir_streamed(unit: IrUnit, output_path: string, include_header: bool, include_nominals: bool) -> LlvmBindingResult {
-  if not unit_is_valid(unit) or not write_file(output_path, if include_header { "; LLVM IR generated from canonical Vitte IR\n\n" } else { "" }) {
+  let initial_written: bool = write_file(output_path, if include_header { "; LLVM IR generated from canonical Vitte IR\n\n" } else { "" });
+  if not unit_is_valid(unit) or not initial_written {
+    let failure_written: bool = write_file("target/reports/compiler_llvm_failure.txt", output_path + ":initial-write");
     give LlvmBindingResult {
       target: "llvm-ir",
       ir_text: "",
@@ -2066,14 +2200,19 @@ proc emit_llvm_ir_fragment_from_ir_streamed(unit: IrUnit, output_path: string, i
   let all_written: bool = true;
   let i: u64 = 0;
   while i < len(unit.modules) and all_written {
-    let module0: IrModule = unit.modules[i];
+    let module0: IrModule = llvm_string_namespace_module(unit.modules[i]);
     if include_header {
       let header_checkpoint: u64 = host_memory_checkpoint();
       let header_text: string = join_lines(emit_llvm_module_header(module0));
-      set all_written = append_file(output_path, header_text + "\n");
+      let header_written: bool = append_file(output_path, header_text + "\n");
+      set all_written = header_written;
+      if not header_written {
+        let failure_written: bool = write_file("target/reports/compiler_llvm_failure.txt", output_path + ":header-write");
+      }
       let header_rewind_status: int = host_memory_rewind(header_checkpoint);
       if header_rewind_status != 0 {
         set all_written = false;
+        let failure_written: bool = write_file("target/reports/compiler_llvm_failure.txt", output_path + ":header-rewind");
       }
     }
 
@@ -2082,10 +2221,15 @@ proc emit_llvm_ir_fragment_from_ir_streamed(unit: IrUnit, output_path: string, i
     while string_index < len(string_values.values) and all_written {
       let string_checkpoint: u64 = host_memory_checkpoint();
       let string_line: string = llvm_string_global_line(string_values.values[string_index]);
-      set all_written = append_file(output_path, string_line + "\n");
+      let string_written: bool = append_file(output_path, string_line + "\n");
+      set all_written = string_written;
+      if not string_written {
+        let failure_written: bool = write_file("target/reports/compiler_llvm_failure.txt", output_path + ":string-write");
+      }
       let string_rewind_status: int = host_memory_rewind(string_checkpoint);
       if string_rewind_status != 0 {
         set all_written = false;
+        let failure_written: bool = write_file("target/reports/compiler_llvm_failure.txt", output_path + ":string-rewind");
       }
       set string_index = string_index + 1;
     }
@@ -2093,10 +2237,15 @@ proc emit_llvm_ir_fragment_from_ir_streamed(unit: IrUnit, output_path: string, i
     if include_nominals {
       let nominal_checkpoint: u64 = host_memory_checkpoint();
       let nominal_text: string = join_lines(emit_llvm_owned_nominals(module0));
-      set all_written = all_written and append_file(output_path, nominal_text + "\n");
+      let nominal_written: bool = append_file(output_path, nominal_text + "\n");
+      set all_written = all_written and nominal_written;
+      if not nominal_written {
+        let failure_written: bool = write_file("target/reports/compiler_llvm_failure.txt", output_path + ":nominal-write");
+      }
       let nominal_rewind_status: int = host_memory_rewind(nominal_checkpoint);
       if nominal_rewind_status != 0 {
         set all_written = false;
+        let failure_written: bool = write_file("target/reports/compiler_llvm_failure.txt", output_path + ":nominal-rewind");
       }
     }
 
@@ -2126,11 +2275,22 @@ proc emit_llvm_ir_fragment_from_ir_streamed(unit: IrUnit, output_path: string, i
         set all_written = false;
       } else {
         let function_text: string = join_lines(function_lines);
-        set all_written = append_file(output_path, function_text + "\n");
+        let function_shape_report: bool = write_file(
+          "target/reports/compiler_llvm_failure.txt",
+          output_path + ":function-shape:" + module0.functions[j].name
+            + ":lines=" + to_string(len(function_lines))
+            + ":bytes=" + to_string(len(function_text))
+        );
+        let function_written: bool = append_file(output_path, function_text + "\n");
+        set all_written = function_written;
+        if not function_written {
+          let failure_written: bool = write_file("target/reports/compiler_llvm_failure.txt", output_path + ":function-write:" + module0.functions[j].name);
+        }
       }
       let function_rewind_status: int = host_memory_rewind(function_checkpoint);
       if function_rewind_status != 0 {
         set all_written = false;
+        let failure_written: bool = write_file("target/reports/compiler_llvm_failure.txt", output_path + ":function-rewind:" + module0.functions[j].name);
       }
       set function_count = function_count + 1;
       set j = j + 1;
@@ -2139,16 +2299,27 @@ proc emit_llvm_ir_fragment_from_ir_streamed(unit: IrUnit, output_path: string, i
     if entry_index < len(module0.functions) and all_written {
       let wrapper_checkpoint: u64 = host_memory_checkpoint();
       let wrapper_text: string = join_lines(emit_llvm_c_main_wrapper(module0, module0.functions[entry_index]));
-      set all_written = append_file(output_path, wrapper_text + "\n");
+      let wrapper_written: bool = append_file(output_path, wrapper_text + "\n");
+      set all_written = wrapper_written;
+      if not wrapper_written {
+        let failure_written: bool = write_file("target/reports/compiler_llvm_failure.txt", output_path + ":wrapper-write");
+      }
       let wrapper_rewind_status: int = host_memory_rewind(wrapper_checkpoint);
       if wrapper_rewind_status != 0 {
         set all_written = false;
+        let failure_written: bool = write_file("target/reports/compiler_llvm_failure.txt", output_path + ":wrapper-rewind");
       }
     }
     set i = i + 1;
   }
 
   let ir_text: string = if all_written { read_file(output_path) } else { "" };
+  if all_written and ir_text == "" {
+    let failure_written: bool = write_file(
+      "target/reports/compiler_llvm_failure.txt",
+      output_path + ":read-empty:functions=" + to_string(function_count)
+    );
+  }
   give LlvmBindingResult {
     target: "llvm-ir",
     ir_text: ir_text,
