@@ -3437,11 +3437,11 @@ proc parse_surface_nominal_member_node(keyword: string, source_name: string, tok
     let split_at: int = if colon >= 0 { colon } else { equal };
     let name_end: u64 = if split_at >= 0 { split_at as u64 } else { end };
     set name = token_text(tokens, start, name_end);
-    set expr = if split_at >= 0 and split_at as u64 + 1 < end {
-      parse_ast_expr_from_tokens(source_name, tokens, split_at as u64 + 1, end)
+    if split_at >= 0 and split_at as u64 + 1 < end {
+      set expr = parse_ast_expr_from_tokens(source_name, tokens, split_at as u64 + 1, end);
     } else {
-      placeholder_member_expr(name, member_span, range_id(1, start, end))
-    };
+      set expr = placeholder_member_expr(name, member_span, range_id(1, start, end));
+    }
   } elif keyword == "pick" {
     let open: int = find_top_level_token(tokens, start, end, "(");
     let name_end: u64 = if open >= 0 { open as u64 } else { end };
