@@ -1,0 +1,490 @@
+// GENERATED FILE - DO NOT EDIT
+// grammar_version: 2
+// source: src/vitte/grammar/vitte.pest
+// tool: docs/book/grammar/scripts/sync_grammar.py v2
+
+//! Vitte language grammar — normative Pest PEG.
+//!
+//! This grammar mirrors `vitte.ebnf` and uses the official Pest grammar
+//! syntax. Whitespace and comments are explicit because Vitte has productions
+//! that require a separator (`ws1`) and documentation comments are syntax.
+
+program = { SOI ~ ws ~ (toplevel ~ ws)* ~ EOI }
+
+toplevel = _{
+    inner_attribute
+  | space_decl
+  | use_decl
+  | export_decl
+  | share_decl
+  | const_decl
+  | static_decl
+  | global_decl
+  | region_decl
+  | type_alias_decl
+  | opaque_type_decl
+  | extern_type_decl
+  | form_decl
+  | class_decl
+  | union_decl
+  | bits_decl
+  | pick_decl
+  | flags_decl
+  | trait_decl
+  | impl_decl
+  | extern_block
+  | proc_decl
+  | intrinsic_decl
+  | compiler_decl
+  | query_decl
+  | pass_decl
+  | backend_decl
+  | diagnostic_decl
+  | macro_decl
+  | comptime_decl
+  | static_assert_decl
+  | test_decl
+  | bench_decl
+  | entry_decl
+}
+
+space_decl = { "space" ~ ws1 ~ module_path }
+
+use_decl = { "use" ~ ws1 ~ package_path ~ (use_group | use_glob)? ~ (ws1 ~ "as" ~ ws1 ~ ident)? }
+use_glob = { "." ~ "*" }
+use_group = { "." ~ "{" ~ ws ~ ("*" | import_items ~ (ws ~ "," ~ ws ~ "*")?) ~ ws ~ "}" }
+import_items = { import_item ~ (ws ~ "," ~ ws ~ import_item)* ~ (ws ~ ",")? }
+import_item = { ident ~ (ws1 ~ "as" ~ ws1 ~ ident)? }
+
+export_decl = { "export" ~ ws1 ~ ("*" | ident_list | "{" ~ ws ~ ident_list ~ ws ~ "}") }
+share_decl = { "share" ~ ws1 ~ ident_list }
+
+const_decl = { (attr_prefix ~ ws)* ~ "const" ~ ws1 ~ ident ~ (ws ~ ":" ~ ws ~ type_expr)? ~ ws ~ "=" ~ ws ~ expr }
+static_decl = { (attr_prefix ~ ws)* ~ "static" ~ ws1 ~ ident ~ (ws ~ ":" ~ ws ~ type_expr)? ~ ws ~ "=" ~ ws ~ expr }
+global_decl = { (attr_prefix ~ ws)* ~ "global" ~ ws1 ~ ident ~ (ws ~ ":" ~ ws ~ type_expr)? ~ ws ~ "=" ~ ws ~ expr }
+region_decl = { (attr_prefix ~ ws)* ~ "region" ~ ws1 ~ ident ~ (ws ~ ":" ~ ws ~ region_kind)? ~ (ws ~ region_capabilities)? ~ ws ~ meta_tail }
+region_kind = { "stack" | "heap" | "arena" | "static" | "mmio" | "dma" | ident }
+region_capabilities = { "(" ~ ws ~ ident_list? ~ ws ~ ")" }
+
+type_alias_decl = { (attr_prefix ~ ws)* ~ "type" ~ ws1 ~ ident ~ generic_params? ~ ws ~ "=" ~ ws ~ type_expr }
+opaque_type_decl = { (attr_prefix ~ ws)* ~ "opaque" ~ ws1 ~ "type" ~ ws1 ~ ident ~ generic_params? ~ (ws ~ "=" ~ ws ~ type_expr)? }
+extern_type_decl = { (attr_prefix ~ ws)* ~ "extern" ~ ws1 ~ "type" ~ ws1 ~ ident ~ generic_params? ~ (ws ~ ";")? }
+
+form_decl = { (attr_prefix ~ ws)* ~ "form" ~ ws1 ~ ident ~ generic_params? ~ (ws ~ where_clause)? ~ ws ~ "{" ~ ws ~ form_items? ~ ws ~ "}" }
+
+// Compatibility-only declarations. The frontend accepts these to emit a
+// migration diagnostic; new Vitte source uses `form` and `pick`.
+class_decl = { (attr_prefix ~ ws)* ~ "class" ~ ws1 ~ ident ~ generic_params? ~ (ws ~ where_clause)? ~ ws ~ "{" ~ ws ~ class_items? ~ ws ~ "}" }
+union_decl = { (attr_prefix ~ ws)* ~ "union" ~ ws1 ~ ident ~ generic_params? ~ (ws ~ where_clause)? ~ ws ~ "{" ~ ws ~ field_list? ~ ws ~ "}" }
+
+form_items = { form_item ~ (ws ~ ","? ~ ws ~ form_item)* ~ (ws ~ ",")? }
+form_item = _{ field_item | const_decl | type_alias_decl | proc_decl }
+class_items = { class_item ~ (ws ~ ","? ~ ws ~ class_item)* ~ (ws ~ ",")? }
+class_item = _{ field_item | const_decl | type_alias_decl | proc_decl }
+field_list = { field_item ~ (ws ~ "," ~ ws ~ field_item)* ~ (ws ~ ",")? }
+field_item = { (attr_prefix ~ ws)* ~ (visibility ~ ws1)? ~ ident ~ ws ~ ":" ~ ws ~ type_expr ~ (ws ~ "=" ~ ws ~ expr)? }
+
+bits_decl = { (attr_prefix ~ ws)* ~ "bits" ~ ws1 ~ ident ~ (ws ~ ":" ~ ws ~ type_expr)? ~ ws ~ "{" ~ ws ~ bitfield_list? ~ ws ~ "}" }
+bitfield_list = { bitfield_item ~ (ws ~ "," ~ ws ~ bitfield_item)* ~ (ws ~ ",")? }
+bitfield_item = { ident ~ ws ~ ":" ~ ws ~ expr ~ ws ~ ".." ~ ws ~ expr }
+
+pick_decl = { (attr_prefix ~ ws)* ~ "pick" ~ ws1 ~ ident ~ generic_params? ~ (ws ~ ":" ~ ws ~ type_expr)? ~ (ws ~ where_clause)? ~ ws ~ "{" ~ ws ~ case_list? ~ ws ~ "}" }
+case_list = { case_item ~ (ws ~ "," ~ ws ~ case_item)* ~ (ws ~ ",")? }
+case_item = { ("case" ~ ws1)? ~ ident ~ ("(" ~ ws ~ case_payload? ~ ws ~ ")")? ~ (ws ~ "=" ~ ws ~ expr)? }
+case_payload = { case_field ~ (ws ~ "," ~ ws ~ case_field)* ~ (ws ~ ",")? }
+case_field = { (ident ~ ws ~ ":" ~ ws ~ type_expr) | type_expr }
+
+flags_decl = { (attr_prefix ~ ws)* ~ "flags" ~ ws1 ~ ident ~ (ws ~ ":" ~ ws ~ type_expr)? ~ ws ~ "{" ~ ws ~ flag_list? ~ ws ~ "}" }
+flag_list = { flag_item ~ (ws ~ "," ~ ws ~ flag_item)* ~ (ws ~ ",")? }
+flag_item = { ident ~ (ws ~ "=" ~ ws ~ expr)? }
+
+trait_decl = { (attr_prefix ~ ws)* ~ ("unsafe" ~ ws1)? ~ "trait" ~ ws1 ~ ident ~ generic_params? ~ (ws ~ where_clause)? ~ ws ~ "{" ~ ws ~ (trait_item ~ ws)* ~ "}" }
+trait_item = _{ proc_signature | const_decl | associated_type_decl }
+associated_type_decl = { "type" ~ ws1 ~ ident ~ (ws ~ ":" ~ ws ~ trait_bound)? ~ (ws ~ "=" ~ ws ~ type_expr)? }
+
+impl_decl = { (attr_prefix ~ ws)* ~ ("unsafe" ~ ws1)? ~ "impl" ~ ws1 ~ impl_head ~ (ws ~ where_clause)? ~ ws ~ "{" ~ ws ~ (impl_item ~ ws)* ~ "}" }
+impl_head = { type_expr ~ (ws1 ~ "for" ~ ws1 ~ type_expr)? }
+impl_item = _{ const_decl | type_alias_decl | associated_type_decl | proc_decl }
+
+proc_signature = {
+  (attr_prefix ~ ws)* ~ "proc" ~ ws1 ~ ident ~ generic_params?
+  ~ "(" ~ ws ~ param_list? ~ ws ~ ")"
+  ~ (ws ~ "->" ~ ws ~ type_expr)?
+  ~ ws ~ (proc_suffix ~ ws)* ~ ";"
+}
+
+proc_decl = {
+  (attr_prefix ~ ws)* ~ (visibility ~ ws1)? ~ proc_modifier*
+  ~ (extern_clause ~ ws1)? ~ "proc" ~ ws1 ~ proc_name ~ generic_params?
+  ~ "(" ~ ws ~ param_list? ~ ws ~ ")"
+  ~ (ws ~ "->" ~ ws ~ type_expr)?
+  ~ ws ~ (proc_suffix ~ ws)* ~ (block | ";")
+}
+
+proc_name = { ident | "operator" ~ ws ~ operator_symbol }
+operator_symbol = { "==" | "!=" | "<=" | ">=" | "[]" | "()" | "+" | "-" | "*" | "/" | "%" | "<" | ">" }
+proc_modifier = _{
+    "async" ~ ws1
+  | "unsafe" ~ ws1
+  | "const" ~ ws1
+  | "inline" ~ ws1
+  | "noinline" ~ ws1
+  | "naked" ~ ws1
+  | "interrupt" ~ ws1
+}
+proc_suffix = _{ effects_clause | requires_clause | where_clause | "noexcept" }
+
+extern_block = { (attr_prefix ~ ws)* ~ "extern" ~ ws1 ~ extern_abi ~ ws ~ "{" ~ ws ~ (extern_item ~ ws)* ~ "}" }
+extern_item = _{ extern_proc_decl | extern_type_decl | const_decl }
+extern_proc_decl = {
+  (attr_prefix ~ ws)* ~ "proc" ~ ws1 ~ ident ~ generic_params?
+  ~ "(" ~ ws ~ param_list? ~ ws ~ ")"
+  ~ (ws ~ "->" ~ ws ~ type_expr)?
+  ~ ws ~ (proc_suffix ~ ws)* ~ ";"
+}
+extern_clause = { "extern" ~ ws1 ~ extern_abi }
+extern_abi = { callconv | string_lit }
+callconv = { "sysv64" | "win64" | "interrupt" | "naked" | "C" }
+
+intrinsic_decl = {
+  (attr_prefix ~ ws)* ~ "intrinsic" ~ ws1 ~ ident ~ generic_params?
+  ~ "(" ~ ws ~ param_list? ~ ws ~ ")"
+  ~ (ws ~ "->" ~ ws ~ type_expr)? ~ ws ~ ";"
+}
+
+macro_decl = { (attr_prefix ~ ws)* ~ "macro" ~ ws1 ~ ident ~ ("(" ~ ws ~ macro_param_list? ~ ws ~ ")")? ~ ws ~ meta_tail }
+macro_param_list = { macro_param ~ (ws ~ "," ~ ws ~ macro_param)* ~ (ws ~ ",")? }
+macro_param = { ident ~ (ws ~ ":" ~ ws ~ macro_kind)? }
+macro_kind = { "expr" | "stmt" | "type" | "ident" | "block" | "item" }
+
+static_assert_decl = { "static_assert" ~ ws ~ "(" ~ ws ~ expr ~ (ws ~ "," ~ ws ~ expr)? ~ ws ~ ")" }
+test_decl = { (attr_prefix ~ ws)* ~ "test" ~ ws1 ~ string_lit ~ ws ~ block }
+bench_decl = { (attr_prefix ~ ws)* ~ "bench" ~ ws1 ~ string_lit ~ ws ~ block }
+entry_decl = { (attr_prefix ~ ws)* ~ "entry" ~ ws1 ~ ident_or_string ~ (ws ~ meta_args)? ~ ws ~ meta_tail }
+comptime_decl = { (attr_prefix ~ ws)* ~ "comptime" ~ ws ~ block }
+
+visibility = { "pub" ~ (ws ~ "(" ~ ws ~ visibility_scope ~ ws ~ ")")? | "priv" }
+visibility_scope = { "package" | "module" | "super" }
+
+generic_params = { "[" ~ ws ~ generic_param_list? ~ ws ~ "]" }
+generic_param_list = { generic_param ~ (ws ~ "," ~ ws ~ generic_param)* ~ (ws ~ ",")? }
+generic_param = {
+    ident ~ (ws ~ ":" ~ ws ~ trait_bound)? ~ (ws ~ "=" ~ ws ~ type_expr)?
+  | "const" ~ ws1 ~ ident ~ ws ~ ":" ~ ws ~ type_expr
+  | "comptime" ~ ws1 ~ ident ~ ws ~ ":" ~ ws ~ type_expr
+}
+
+where_clause = { "where" ~ ws1 ~ where_bounds }
+where_bounds = { where_bound ~ (ws ~ "," ~ ws ~ where_bound)* ~ (ws ~ ",")? }
+where_bound = {
+    type_expr ~ ws ~ ":" ~ ws ~ trait_bound
+  | type_expr ~ ws ~ "==" ~ ws ~ type_expr
+  | expr ~ ws ~ rel_op ~ ws ~ expr
+}
+trait_bound = { type_expr ~ (ws ~ "+" ~ ws ~ type_expr)* }
+
+param_list = { param ~ (ws ~ "," ~ ws ~ param)* ~ (ws ~ ",")? }
+param = _{ self_param | variadic_param | normal_param }
+self_param = { ("&" ~ ws)? ~ ("mut" ~ ws1)? ~ "self" }
+normal_param = { (param_mode ~ ws1)? ~ pattern ~ (ws ~ ":" ~ ws ~ type_expr)? ~ (ws ~ "=" ~ ws ~ expr)? }
+variadic_param = { "..." | ident ~ ws ~ ":" ~ ws ~ "..." ~ type_expr }
+param_mode = { "mut" | "owned" | "borrow" | "move" }
+
+effects_clause = { "effects" ~ ws ~ "(" ~ ws ~ ident_list? ~ ws ~ ")" }
+requires_clause = { "requires" ~ ws ~ "(" ~ ws ~ capability_list? ~ ws ~ ")" }
+capability_list = { capability ~ (ws ~ "," ~ ws ~ capability)* ~ (ws ~ ",")? }
+capability = { ident ~ ("." ~ ident)* }
+
+module_path = { relative? ~ package_parts }
+package_path = { relative? ~ package_parts }
+relative = { "."+ }
+package_parts = { ident ~ (("::" | "/" | ".") ~ ident)* }
+ident_list = { ident ~ (ws ~ "," ~ ws ~ ident)* ~ (ws ~ ",")? }
+
+query_decl = { (attr_prefix ~ ws)* ~ "query" ~ ws1 ~ ident ~ "(" ~ ws ~ param_list? ~ ws ~ ")" ~ ws ~ "->" ~ ws ~ type_expr ~ ws ~ query_body }
+query_body = { block | ";" }
+
+compiler_decl = { (attr_prefix ~ ws)* ~ "compiler" ~ ws1 ~ ident_or_string ~ (ws ~ meta_args)? ~ ws ~ meta_tail }
+pass_decl = { (attr_prefix ~ ws)* ~ "pass" ~ ws1 ~ ident_or_string ~ (ws ~ meta_args)? ~ ws ~ meta_tail }
+backend_decl = { (attr_prefix ~ ws)* ~ "backend" ~ ws1 ~ ident_or_string ~ (ws ~ meta_args)? ~ ws ~ meta_tail }
+diagnostic_decl = { (attr_prefix ~ ws)* ~ "diagnostic" ~ ws1 ~ ident_or_string ~ (ws ~ meta_args)? ~ ws ~ meta_tail }
+ident_or_string = { ident | string_lit }
+meta_args = { "(" ~ ws ~ meta_arg_list? ~ ws ~ ")" }
+meta_arg_list = { meta_arg ~ (ws ~ "," ~ ws ~ meta_arg)* ~ (ws ~ ",")? }
+meta_arg = { ident_or_string }
+meta_tail = { block | ";" }
+
+attr_prefix = _{ outer_attribute | doc_comment | docstring }
+inner_attribute = { "#![" ~ attr_path ~ ("(" ~ ws ~ attr_arg_list? ~ ws ~ ")")? ~ "]" }
+outer_attribute = { "#[" ~ attr_path ~ ("(" ~ ws ~ attr_arg_list? ~ ws ~ ")")? ~ "]" }
+doc_comment = @{ "///" ~ (!newline ~ ANY)* }
+docstring = { raw_string_lit }
+attr_path = { ident ~ ("." ~ ident)* }
+attr_arg_list = { attr_arg ~ (ws ~ "," ~ ws ~ attr_arg)* ~ (ws ~ ",")? }
+attr_arg = { ident ~ (ws ~ "=" ~ ws ~ literal)? | string_lit | int_lit | bool_lit }
+
+block = { "{" ~ ws ~ (stmt ~ ws)* ~ "}" }
+stmt = _{
+    local_const_stmt ~ stmt_end
+  | let_stmt ~ stmt_end
+  | set_stmt ~ stmt_end
+  | give_stmt ~ stmt_end
+  | try_stmt ~ stmt_end
+  | defer_stmt
+  | asm_stmt ~ stmt_end
+  | unsafe_stmt
+  | emit_stmt ~ stmt_end
+  | assert_stmt ~ stmt_end
+  | panic_stmt ~ stmt_end
+  | unreachable_stmt ~ stmt_end
+  | if_stmt
+  | while_stmt
+  | loop_stmt
+  | for_stmt
+  | break_stmt ~ stmt_end
+  | continue_stmt ~ stmt_end
+  | select_stmt
+  | match_stmt
+  | when_match_stmt
+  | with_stmt
+  | critical_stmt
+  | expr_stmt ~ stmt_end
+}
+stmt_end = { ws ~ ";" }
+local_const_stmt = { "const" ~ ws1 ~ ident ~ (ws ~ ":" ~ ws ~ type_expr)? ~ ws ~ "=" ~ ws ~ expr }
+let_stmt = { "let" ~ ws1 ~ ("mut" ~ ws1)? ~ pattern ~ (ws ~ ":" ~ ws ~ type_expr)? ~ ws ~ "=" ~ ws ~ expr }
+set_stmt = { "set" ~ ws1 ~ assign_target ~ ws ~ assign_op ~ ws ~ expr }
+assign_target = { unary_expr }
+give_stmt = { "give" ~ (ws1 ~ expr)? }
+try_stmt = { "try" ~ ws1 ~ expr }
+defer_stmt = { "defer" ~ ws ~ block }
+asm_stmt = { "asm" ~ ws ~ "(" ~ ws ~ asm_arg_list? ~ ws ~ ")" }
+asm_arg_list = { asm_arg ~ (ws ~ "," ~ ws ~ asm_arg)* ~ (ws ~ ",")? }
+asm_arg = { string_lit | ident ~ ws ~ "(" ~ ws ~ arg_list? ~ ws ~ ")" | ident ~ ws ~ ":" ~ ws ~ expr }
+unsafe_stmt = { "unsafe" ~ ws ~ block }
+emit_stmt = { "emit" ~ ws1 ~ expr }
+assert_stmt = { "assert" ~ ws1 ~ expr ~ (ws ~ "," ~ ws ~ expr)? }
+panic_stmt = { "panic" ~ ws1 ~ expr }
+unreachable_stmt = { "unreachable" }
+
+if_stmt = { "if" ~ ws1 ~ expr ~ ws ~ block ~ (ws ~ "elif" ~ ws1 ~ expr ~ ws ~ block)* ~ (ws ~ "else" ~ ws ~ block)? }
+while_stmt = { "while" ~ ws1 ~ expr ~ ws ~ block }
+loop_stmt = { "loop" ~ ws ~ block }
+for_stmt = { "for" ~ ws1 ~ pattern ~ ws1 ~ "in" ~ ws1 ~ expr ~ ws ~ block }
+break_stmt = { "break" ~ (ws1 ~ expr)? }
+continue_stmt = { "continue" }
+
+select_stmt = { "select" ~ ws1 ~ expr ~ ws ~ "{" ~ ws ~ ("when" ~ ws1 ~ pattern ~ ws ~ block ~ ws)* ~ ("else" ~ ws ~ block)? ~ ws ~ "}" }
+match_stmt = { "match" ~ ws1 ~ expr ~ ws ~ "{" ~ ws ~ ("case" ~ ws1 ~ pattern ~ (ws1 ~ "if" ~ ws1 ~ expr)? ~ ws ~ match_arm_body ~ ws)* ~ (ws ~ "else" ~ ws ~ match_arm_body)? ~ ws ~ "}" }
+match_arm_body = { block | "=>" ~ ws ~ expr ~ ws ~ ";" }
+when_match_stmt = { "when" ~ ws1 ~ expr ~ ws1 ~ "is" ~ ws1 ~ pattern ~ ws ~ block }
+with_stmt = { "with" ~ ws1 ~ expr ~ (ws1 ~ "as" ~ ws1 ~ pattern)? ~ ws ~ block }
+critical_stmt = { "critical" ~ ws ~ block }
+expr_stmt = { expr }
+
+expr = { assign_expr }
+assign_expr = { ternary_expr ~ (ws ~ assign_op ~ ws ~ assign_expr)? }
+assign_op = { "<<=" | ">>=" | "+=" | "-=" | "*=" | "/=" | "%=" | "&=" | "|=" | "^=" | "=" }
+ternary_expr = { coalesce_expr ~ (ws ~ "?" ~ ws ~ expr ~ ws ~ ":" ~ ws ~ expr)? }
+coalesce_expr = { range_expr ~ (ws ~ "??" ~ ws ~ range_expr)* }
+range_expr = { or_expr ~ (ws ~ ("..=" | "..") ~ ws ~ or_expr)? }
+or_expr = { and_expr ~ (ws ~ ("||" | "or" ~ !ident_continue) ~ ws ~ and_expr)* }
+and_expr = { bit_or_expr ~ (ws ~ ("&&" | "and" ~ !ident_continue) ~ ws ~ bit_or_expr)* }
+bit_or_expr = { bit_xor_expr ~ (ws ~ "|" ~ ws ~ bit_xor_expr)* }
+bit_xor_expr = { bit_and_expr ~ (ws ~ "^" ~ ws ~ bit_and_expr)* }
+bit_and_expr = { eq_expr ~ (ws ~ "&" ~ ws ~ eq_expr)* }
+eq_expr = { rel_expr ~ (ws ~ ("==" | "!=") ~ ws ~ rel_expr)* }
+rel_expr = { shift_expr ~ (ws ~ rel_op ~ ws ~ shift_expr)* }
+rel_op = { "<=" | ">=" | "<" | ">" | "not" ~ ws1 ~ "in" | "in" }
+shift_expr = { add_expr ~ (ws ~ ("<<" | ">>") ~ ws ~ add_expr)* }
+add_expr = { mul_expr ~ (ws ~ ("+" | "-") ~ ws ~ mul_expr)* }
+mul_expr = { cast_expr ~ (ws ~ ("*" | "/" | "%") ~ ws ~ cast_expr)* }
+cast_expr = { unary_expr ~ (ws ~ cast_tail)* }
+cast_tail = { "as" ~ ws1 ~ type_expr | "is" ~ ws1 ~ ("not" ~ ws1)? ~ pattern }
+unary_expr = { (("not" ~ !ident_continue) | "-" | "~" | "*" | "&" | ("move" ~ !ident_continue) | ("await" ~ !ident_continue)) ~ ws ~ unary_expr | postfix_expr }
+postfix_expr = { primary ~ (call_suffix | member_suffix | index_suffix | try_suffix | await_suffix)* }
+call_suffix = { "(" ~ ws ~ arg_list? ~ ws ~ ")" }
+member_suffix = { "." ~ ident }
+index_suffix = { "[" ~ ws ~ index_expr ~ ws ~ "]" }
+try_suffix = { "?" }
+await_suffix = { "." ~ "await" }
+index_expr = { slice_expr | expr }
+slice_expr = { expr? ~ ":" ~ expr? ~ (":" ~ expr)? }
+
+primary = _{
+    literal
+  | builtin_expr
+  | bytes_lit
+  | resource_lit
+  | if_expr
+  | proc_expr
+  | match_expr
+  | lambda_expr
+  | unsafe_expr
+  | map_lit
+  | set_lit
+  | list_lit
+  | tuple_lit
+  | struct_lit
+  | path_expr
+  | block
+  | "(" ~ ws ~ expr ~ ws ~ ")"
+}
+path_expr = { ident ~ (("::" | ".") ~ ident)* }
+arg_list = { arg ~ (ws ~ "," ~ ws ~ arg)* ~ (ws ~ ",")? }
+arg = { ident ~ ws ~ ":" ~ ws ~ expr | expr }
+tuple_lit = { "(" ~ ws ~ expr ~ ws ~ "," ~ ws ~ expr ~ (ws ~ "," ~ ws ~ expr)* ~ (ws ~ ",")? ~ ws ~ ")" }
+set_lit = { "set" ~ ws ~ "{" ~ ws ~ arg_list? ~ ws ~ "}" }
+map_lit = { "map" ~ ws ~ "{" ~ ws ~ map_items? ~ ws ~ "}" }
+map_items = { map_item ~ (ws ~ "," ~ ws ~ map_item)* ~ (ws ~ ",")? }
+map_item = { expr ~ ws ~ ":" ~ ws ~ expr }
+bytes_lit = @{ "b" ~ normal_string_lit }
+resource_lit = { "resource" ~ ws ~ "{" ~ ws ~ resource_items? ~ ws ~ "}" }
+resource_items = { resource_item ~ (ws ~ "," ~ ws ~ resource_item)* ~ (ws ~ ",")? }
+resource_item = { ident ~ ws ~ ":" ~ ws ~ expr }
+struct_lit = { type_path ~ ws ~ "{" ~ ws ~ field_init_list? ~ ws ~ "}" }
+type_path = { ident ~ (("::" | ".") ~ ident)* }
+field_init_list = { field_init ~ (ws ~ "," ~ ws ~ field_init)* ~ (ws ~ ",")? }
+field_init = { ident ~ (ws ~ ":" ~ ws ~ expr)? | ".." ~ expr }
+if_expr = { "if" ~ ws1 ~ expr ~ ws ~ block ~ (ws ~ "elif" ~ ws1 ~ expr ~ ws ~ block)* ~ (ws ~ "else" ~ ws ~ block)? }
+proc_expr = { (attr_prefix ~ ws)* ~ proc_modifier* ~ "proc" ~ ws ~ "(" ~ ws ~ param_list? ~ ws ~ ")" ~ (ws ~ "->" ~ ws ~ type_expr)? ~ ws ~ (proc_suffix ~ ws)* ~ block }
+match_expr = { "match" ~ ws1 ~ expr ~ ws ~ "{" ~ ws ~ ("case" ~ ws1 ~ pattern ~ (ws1 ~ "if" ~ ws1 ~ expr)? ~ ws ~ match_arm_body ~ ws)* ~ (ws ~ "else" ~ ws ~ match_arm_body)? ~ ws ~ "}" }
+lambda_expr = { "|" ~ ws ~ param_list? ~ ws ~ "|" ~ ws ~ (block | expr) }
+unsafe_expr = { "unsafe" ~ ws ~ block }
+
+builtin_expr = _{ sizeof_expr | alignof_expr | offsetof_expr | typeof_expr | nameof_expr }
+sizeof_expr = { "sizeof" ~ ws ~ "(" ~ ws ~ (type_expr | expr) ~ ws ~ ")" }
+alignof_expr = { "alignof" ~ ws ~ "(" ~ ws ~ type_expr ~ ws ~ ")" }
+offsetof_expr = { "offsetof" ~ ws ~ "(" ~ ws ~ type_expr ~ ws ~ "," ~ ws ~ ident ~ ws ~ ")" }
+typeof_expr = { "typeof" ~ ws ~ "(" ~ ws ~ expr ~ ws ~ ")" }
+nameof_expr = { "nameof" ~ ws ~ "(" ~ ws ~ path_expr ~ ws ~ ")" }
+
+pattern = { pattern_or }
+pattern_or = { pattern_atom ~ (ws ~ "|" ~ ws ~ pattern_atom)* }
+pattern_atom = _{
+    "_"
+  | literal
+  | "mut" ~ ws1 ~ pattern_bind
+  | "ref" ~ ws1 ~ pattern_bind
+  | pattern_struct
+  | pattern_tuple
+  | pattern_list
+  | pattern_range
+  | pattern_ctor
+  | pattern_bind
+}
+pattern_bind = { ident }
+pattern_ctor = { pattern_head ~ ("(" ~ ws ~ pattern_args? ~ ws ~ ")")? }
+pattern_head = { ident ~ (("::" | ".") ~ ident)* }
+pattern_args = { pattern ~ (ws ~ "," ~ ws ~ pattern)* ~ (ws ~ ",")? }
+pattern_struct = { pattern_head ~ ws ~ "{" ~ ws ~ pattern_fields? ~ ws ~ "}" }
+pattern_fields = { pattern_field ~ (ws ~ "," ~ ws ~ pattern_field)* ~ (ws ~ ",")? }
+pattern_field = { ".." | ident ~ (ws ~ ":" ~ ws ~ pattern)? }
+pattern_tuple = { "(" ~ ws ~ pattern ~ ws ~ "," ~ ws ~ pattern ~ (ws ~ "," ~ ws ~ pattern)* ~ (ws ~ ",")? ~ ws ~ ")" }
+pattern_list = { "[" ~ ws ~ pattern_args? ~ ws ~ "]" }
+pattern_range = { literal ~ ws ~ ("..=" | "..") ~ ws ~ literal }
+
+type_expr = { type_union }
+type_union = { type_prefix ~ (ws ~ "|" ~ ws ~ type_prefix)* }
+type_prefix = { type_qualifier* ~ type_atom }
+type_qualifier = { (type_qual | addr_space) ~ ws1 }
+type_qual = { "const" | "volatile" | "atomic" | "mut" | "owned" | "borrow" }
+addr_space = { "user" | "kernel" | "phys" | "mmio" | "dma" }
+type_atom = _{ reference_type | pointer_type | optional_type | fixed_array_type | slice_type | tuple_type | proc_type | dyn_type | impl_trait_type | type_primary }
+reference_type = { "&" ~ ws ~ (lifetime ~ ws)? ~ ("mut" ~ ws1)? ~ type_expr }
+pointer_type = { "*" ~ ws ~ (("const" | "mut" | "volatile" | addr_space) ~ ws1)? ~ type_expr }
+optional_type = { "?" ~ ws ~ type_expr }
+fixed_array_type = { "[" ~ ws ~ type_expr ~ ws ~ ";" ~ ws ~ expr ~ ws ~ "]" }
+slice_type = { "[" ~ ws ~ type_expr ~ ws ~ "]" }
+tuple_type = { "(" ~ ws ~ type_expr ~ ws ~ "," ~ ws ~ type_expr ~ (ws ~ "," ~ ws ~ type_expr)* ~ (ws ~ ",")? ~ ws ~ ")" }
+proc_type = { "proc" ~ ws ~ "(" ~ ws ~ type_list? ~ ws ~ ")" ~ (ws ~ "->" ~ ws ~ type_expr)? }
+type_list = { type_param ~ (ws ~ "," ~ ws ~ type_param)* ~ (ws ~ ",")? }
+type_param = { ident ~ ws ~ ":" ~ ws ~ type_expr | type_expr }
+dyn_type = { "dyn" ~ ws1 ~ trait_bound }
+impl_trait_type = { "impl" ~ ws1 ~ trait_bound }
+type_primary = { primitive_type | "Self" | type_path ~ ("[" ~ ws ~ type_list? ~ ws ~ "]")? }
+lifetime = @{ "'" ~ ident }
+
+primitive_type = {
+    "void" | "never" | "unit" | "bool" | "char" | "rune" | "str" | "string" | "bytes" | "cstr" | "int"
+  | "i128" | "i64" | "i32" | "i16" | "i8"
+  | "u128" | "u64" | "u32" | "u16" | "u8"
+  | "usize" | "isize" | "intptr" | "uintptr"
+  | "f128" | "f64" | "f32" | "f16"
+  | "c_char" | "c_int" | "c_uint" | "c_long" | "c_ulong" | "c_void"
+  | "TokenId" | "NodeId" | "DefId" | "HirId" | "MirId" | "TypeId" | "SymbolId" | "ScopeId" | "BlockId" | "ValueId" | "InstrId"
+}
+
+reserved_keyword = {
+    "space" | "use" | "export" | "share" | "const" | "static" | "global" | "region"
+  | "type" | "opaque" | "extern" | "form" | "pick" | "trait" | "impl" | "proc" | "intrinsic"
+  | "compiler" | "query" | "pass" | "backend" | "diagnostic" | "macro" | "comptime" | "static_assert"
+  | "test" | "bench" | "entry" | "pub" | "priv" | "unsafe" | "async" | "inline" | "noinline"
+  | "naked" | "interrupt" | "where" | "effects" | "requires" | "operator" | "noexcept"
+  | "as" | "for" | "at" | "let" | "set" | "give" | "try" | "defer" | "asm" | "emit" | "assert"
+  | "panic" | "unreachable" | "if" | "elif" | "else" | "while" | "loop" | "in" | "break" | "continue"
+  | "select" | "when" | "match" | "case" | "with" | "critical" | "mut" | "owned" | "borrow" | "move"
+  | "await" | "not" | "and" | "or" | "is" | "self" | "ref" | "dyn" | "true" | "false" | "null"
+  | "sizeof" | "alignof" | "offsetof" | "typeof" | "nameof" | "map" | "resource" | "volatile"
+  | "atomic" | "user" | "kernel" | "phys" | "mmio" | "dma"
+  | "class" | "union" | "bits" | "flags"
+}
+
+literal = _{ float_lit | int_lit | bool_lit | null_lit | char_lit | string_lit | list_lit }
+list_lit = { "[" ~ ws ~ (list_comp | arg_list)? ~ ws ~ "]" }
+list_comp = { expr ~ ws1 ~ "for" ~ ws1 ~ pattern ~ ws1 ~ "in" ~ ws1 ~ expr ~ (ws1 ~ "if" ~ ws1 ~ expr)? }
+bool_lit = { "true" | "false" }
+null_lit = { "null" }
+
+int_lit = @{ sign? ~ (hex_int | bin_int | oct_int | dec_int) ~ suffix? }
+float_lit = @{ sign? ~ digit ~ (digit | "_")* ~ "." ~ digit ~ (digit | "_")* ~ exponent? ~ suffix? }
+sign = { "-" }
+hex_int = { "0x" ~ hex_digit ~ (hex_digit | "_")* }
+bin_int = { "0b" ~ bin_digit ~ (bin_digit | "_")* }
+oct_int = { "0o" ~ oct_digit ~ (oct_digit | "_")* }
+dec_int = { digit ~ (digit | "_")* }
+exponent = { ("e" | "E") ~ ("+" | "-")? ~ digit ~ (digit | "_")* }
+
+char_lit = @{ "'" ~ char_char ~ "'" }
+char_char = { escape_seq | !("'" | newline) ~ ANY }
+string_lit = _{ raw_string_lit | normal_string_lit }
+normal_string_lit = @{ "\"" ~ string_char* ~ "\"" }
+string_char = { escape_seq | !("\"" | newline) ~ ANY }
+escape_seq = {
+    "\\n" | "\\r" | "\\t" | "\\0" | "\\\"" | "\\'" | "\\\\"
+  | "\\x" ~ hex_digit ~ hex_digit
+  | "\\u{" ~ hex_digit+ ~ "}"
+}
+raw_string_lit = @{ triple_string_lit | raw_quote_string_lit }
+triple_string_lit = { "\"\"\"" ~ (!"\"\"\"" ~ ANY)* ~ "\"\"\"" }
+raw_quote_string_lit = { "r\"" ~ (!"\"" ~ ANY)* ~ "\"" }
+raw_string_char = { !"\"\"\"" ~ ANY }
+
+line_comment = @{ hash_line_comment | slash_line_comment }
+hash_line_comment = { "#" ~ !("[" | "![") ~ (!newline ~ ANY)* }
+slash_line_comment = { "//" ~ !"/" ~ (!newline ~ ANY)* }
+block_comment = @{ "/*" ~ (!"*/" ~ ANY)* ~ "*/" }
+zone_comment = @{ "<<<" ~ (!">>>" ~ ANY)* ~ ">>>" }
+
+ident = @{ (ASCII_ALPHA | "_") ~ ident_continue* }
+ident_continue = _{ ASCII_ALPHANUMERIC | "_" }
+suffix = @{ ASCII_ALPHA ~ ASCII_ALPHANUMERIC* }
+digit = _{ '0'..'9' }
+bin_digit = _{ '0'..'1' }
+oct_digit = _{ '0'..'7' }
+hex_digit = _{ digit | 'a'..'f' | 'A'..'F' }
+newline = _{ "\r\n" | "\n" | "\r" }
+space = _{ " " | "\t" }
+ws = _{ (space | newline | line_comment | block_comment | zone_comment)* }
+ws1 = _{ (space | newline | line_comment | block_comment | zone_comment)+ }
+
+// EBNF-name aliases retained for one-to-one rule inventory checks.
+WS = _{ ws }
+WS1 = _{ ws1 }
+NEWLINE = _{ newline }
+LETTER = _{ ASCII_ALPHA }
+DIGIT = _{ digit }
+BINDIGIT = _{ bin_digit }
+OCTDIGIT = _{ oct_digit }
+HEXDIGIT = _{ hex_digit }
+EOF = { EOI }

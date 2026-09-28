@@ -1,0 +1,185 @@
+# Compiler Architecture (Current Reality)
+
+This document describes what the current seed compiler actually does.
+
+## Overview
+
+The current compiler architecture is organized around a deterministic driver, a
+frontend and analysis pipeline, a checked HIR-to-MIR-to-IR lowering path, and
+several backend entrypoints. The goal of this page is not to describe an
+idealized future compiler, but to document the contract that contributors can
+rely on in the current repository state.
+
+| Area | Current contract |
+| --- | --- |
+| Entry point | `src/vitte/compiler/main.vit` |
+| Driver | explicit command surface with stable modes |
+| Frontend | registry, module graph, symbols, visibility, type DB |
+| Analysis | HIR validate, sema, typeck, const-eval and lint; borrowck collector is currently a stub |
+| Lowering | HIR -> MIR, MIR verify, passes -> IR verify |
+| Backend | LLVM and x86_64 after the shared ABI boundary; strict C17 bootstrap is a separate seed route |
+| Diagnostics | cataloged codes, text or JSON output |
+
+- Front door: `src/vitte/compiler/main.vit`, routed through
+  `src/vitte/compiler/driver/compiler.vit`.
+- Modes: `check`, `build`, `run`, `test`, `dump-*`, `self-check`.
+- Core frontend/middle pipeline:
+  `source -> lexer -> parser -> AST validation -> AST->HIR -> HIR validation ->`
+  `sema -> typeck -> HIR->MIR -> MIR verify -> passes -> MIR->IR -> IR verify`.
+- The analysis aggregator includes const-eval and lint. Its borrowck diagnostic
+  collector currently returns an empty list, although borrow-checking routines
+  and direct tests exist.
+- The canonical backend pipeline selects LLVM for `llvm`/`llvm-ir`, otherwise
+  x86_64. The C backend has its own pipeline and is not the canonical dispatch.
+- The bootstrap C path remains strict C17: its driver invokes the host compiler
+  with `-std=c17 -Wall -Wextra -Werror -pedantic`; contract work must not weaken that
+  boundary or introduce a second bootstrap implementation.
+- Diagnostics: cataloged codes only, JSON or text.
+
+## Responsibilities
+
+This page owns the high-level architecture map:
+
+- where the driver begins and ends,
+- which phases are part of the enforced seed reality,
+- which foundation tracks are already wired into the pipeline,
+- which supporting specs should be consulted for narrower subsystems.
+
+## Invariants
+
+- The documented entry remains `src/vitte/compiler/main.vit`.
+- The checked pipeline order must stay deterministic.
+- Driver and diagnostics contracts stay explicit rather than hidden behind
+  fallback behavior.
+- `infrastructure/contracts.vit` is the dependency-light contract model;
+  `infrastructure/contract_diagnostics.vit` adapts violations to canonical
+  diagnostics without making the IR representation depend on diagnostic
+  rendering or localization.
+- The contract kernel distinguishes preconditions, postconditions and stable
+  invariants. Validation policy is explicit: `OFF` skips checks, `BASIC` keeps
+  critical checks, and `FULL` additionally admits structural and exhaustive
+  checks. Result limits bound retained diagnostics without allowing a
+  suppressed error or fatal violation to become a successful result.
+- `infrastructure/pipeline_contract.vit` is the executable architecture map.
+  It binds every phase to an artifact boundary, an implementation file and an
+  implementation symbol for LLVM, x86_64 and strict C17 bootstrap routes.
+- Frontend, analysis, HIR, MIR, MIR passes, IR, ABI, backend, object and link
+  boundaries all expose contract results. Invalid state cannot advance to the
+  next phase. `verify_unit_contract` leaves failed IR invalid and prevents
+  backend code generation.
+- LLVM and x86_64 must share the same 15-step source-to-ABI prefix and diverge
+  only at `AbiToBackend`. The strict C17 bootstrap lowers HIR directly to its
+  bootstrap IR and must remain free of fabricated MIR stages.
+- Narrow subsystem specs may evolve, but they must not silently contradict this
+  architecture page.
+
+## Data Flow
+
+The real compiler flow currently looks like this:
+
+1. CLI entry selects a driver mode.
+2. Registry and module graph determine the project surface.
+3. Frontend analysis builds symbols, visibility, and type database state.
+4. HIR validation and semantic checks confirm structural correctness.
+5. Type checking and existing analysis checks report semantic errors; the
+   borrowck collector in the main aggregator is not yet wired to its checker.
+6. HIR lowers to MIR, MIR is verified, passes run, and MIR lowers to verified IR.
+7. ABI validation gates backend entry. LLVM emits LLVM IR; the native x86_64
+   backend emits assembly. Each route materializes an object, links the release,
+   then validates the release candidate.
+8. The strict bootstrap C17 route is separate: AST semantics/typeck -> HIR ->
+   bootstrap IR/ABI -> C17 translation unit -> fused host compile/link ->
+   verified stage1. It has no MIR stage. The self-hosted C backend under
+   `src/vitte/compiler/backend/c` remains a distinct, preserved feature.
+
+## Bootstrap
+
+Bootstrap is part of the architecture contract because the compiler is audited
+through a reproducible signed stage0 trust root and explicit compiler
+generations, not just through source organization.
+
+- [Bootstrap overview](../bootstrap/overview.md)
+- [Bootstrap seed](../bootstrap/stage0.md)
+- [Bootstrap generations](../bootstrap/stages.md)
+- [Bootstrap reproducibility](../bootstrap/reproducibility.md)
+- [Bootstrap self-host checks](../bootstrap/self_host.md)
+- [Bootstrap troubleshooting](../bootstrap/troubleshooting.md)
+- [Bootstrap seed contract](../bootstrap_seed.md)
+- [Bootstrap native IR contract](../bootstrap_native_ir.html)
+
+The active chain is recorded by `toolchain/bootstrap/stage0-manifest.json` and
+`toolchain/bootstrap/stages-manifest.json`. The supported verification sequence
+is `make bootstrap-all`, `make bootstrap-verify`, and
+`make bootstrap-max-gate`; the native contract is enforced by
+`make bootstrap-native-contract`.
+
+## Driver
+
+The driver is intentionally visible in the architecture because it defines the
+user-facing command boundary and CI audit surface.
+
+- [Compiler driver alignment](../COMPILER_DRIVER_MIGRATION.md)
+- [Build and release surface](../MAKE_TARGETS.md)
+
+## Foundation Status (170-173)
+
+- `170 MACRO EXPANSION PIPELINE`
+  - Frontend pipeline includes macro expansion with trace and diagnostics.
+  - Macro diagnostics are mapped to frontend spans (`line`, `column`, `width`).
+  - Recursion safety foundation is enforced via expansion limit diagnostics.
+  - Detailed spec:
+    - [macro_expansion_pipeline.md](macro_expansion_pipeline.md)
+- `171 ASYNC FOUNDATION`
+  - HIR lowering tags async/await usage at item level.
+  - Baseline async misuse diagnostic is emitted for `await` outside async procedures.
+  - Detailed spec:
+    - [async_foundation.md](async_foundation.md)
+- `172 COROUTINE LOWERING`
+  - MIR lowering introduces suspension/resume control-flow blocks when await-like expressions are present.
+  - This provides a first state-machine skeleton for future generator lowering.
+  - Detailed spec:
+    - [coroutine_lowering.md](coroutine_lowering.md)
+- `173 CONCURRENCY MEMORY MODEL`
+  - Foundation spec documented in:
+    - [concurrency_memory_model.md](concurrency_memory_model.md)
+
+Roadmap links (161-200):
+- [FR pro roadmap](../roadmap_161_200_pro.md)
+- [Quarterly execution plan](../roadmap_161_200_quarterly.md)
+- [EN pro roadmap](../roadmap_161_200_pro_en.md)
+
+## Examples
+
+Un développeur qui souhaite vérifier un module utilise la commande `check` du compilateur :
+```sh
+./bin/vitte check src/app.vit
+```
+Ce mode exécute les étapes principales du frontend et du pipeline de validation sans produire d'objet exécutable.
+- `check` lance la résolution de module, la validation HIR, la vérification sémantique et le borrow check.
+- L'étape backend est ignorée sauf pour les diagnostics qui nécessitent l'abaissement.
+
+## Reference Map
+
+Compiler subsystem references:
+
+- [Pipeline](pipeline.md)
+- [Type system](type-system.md)
+- [Borrow checking](borrowck.md)
+- [MIR](mir.md)
+- [Diagnostics](diagnostics.md)
+- [Diagnostics migration](diagnostics_migration.md)
+- [Backend](backend.md)
+- [Standard library contracts](stdlib.md)
+- [Sanitizers](sanitizers.md)
+- [Security limits](security_limits.md)
+- [Stress and stability](stress_and_stability.md)
+- [Advanced optimization passes](advanced_optimization_passes.md)
+- [Parallel borrow analysis](parallel_borrow_analysis.md)
+- [LLVM backend experimental notes](llvm_backend_experimental.md)
+- [Native ASM backend](native_asm_backend.md)
+- [Migration and editions](migration_and_editions.md)
+- [Compiler power roadmap](COMPILER_POWER_ROADMAP.md)
+- [Macro expansion pipeline](macro_expansion_pipeline.md)
+- [Async foundation](async_foundation.md)
+- [Coroutine lowering](coroutine_lowering.md)
+- [Concurrency memory model](concurrency_memory_model.md)
