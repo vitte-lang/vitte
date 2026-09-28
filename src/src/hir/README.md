@@ -1,0 +1,114 @@
+# compiler/src/hir
+
+HIR is the high-level intermediate representation used by the compiler
+compiler after AST construction and before lower-level IR or backend emission.
+
+## Contract
+
+- HIR nodes are allocated from `vitte_arena_t`.
+- No direct `malloc` or `free` is used by this layer.
+- Errors use `compiler/src/api/error.h`.
+- The layer has no dependency on `runtime/*`.
+- Node ids are stable, non-zero, and monotonic inside one `vitte_hir_t`.
+- Lists store `first`, `last`, and `count`.
+- Nodes are stable after construction except list `next` links.
+- Validation and traversal are deterministic and depth-limited.
+- Symbol-bearing HIR nodes keep both the public source name and the lowered
+  internal name when the AST has one.
+- `name` is always the effective name consumed by IR lowering. If
+  `lowered_name` is present, `name` must match it exactly.
+
+## Node Kinds
+
+The compiler HIR currently models:
+
+- module
+- function
+- const declaration
+- block
+- return statement
+- let statement
+- expression statement
+- if statement
+- integer literal
+- string literal
+- variable
+- binary expression
+- call expression
+- type name
+- error node
+
+## Symbol Names
+
+For functions, constants, and variables:
+
+- `source_name` stores the public Vitte spelling when it is available from AST.
+- `lowered_name` stores the unique internal symbol name introduced by import
+  flattening or backend pre-lowering.
+- `name` stores the effective resolved name used by downstream lowering.
+
+HIR validation rejects a symbol whose `lowered_name` is present but differs from
+`name`. This prevents later IR/C17 lowering from falling back to ambiguous source
+names for imported or rewritten symbols.
+
+## Ownership
+
+`vitte_hir_init` borrows an external arena. `vitte_hir_init_owned` creates and
+owns an arena internally. `vitte_hir_destroy` releases only the owned arena case.
+
+AST source pointers are optional backreferences. HIR does not own AST nodes.
+
+## Builders
+
+`vitte_hir_builder_t` provides constructors for all node kinds and helpers for:
+
+- adding declarations to a module
+- adding functions to a module
+- adding const declarations to a module
+- adding statements to a block
+- adding arguments to a call
+
+Builders return `NULL` on invalid input, arena failure, invalid kind, or id
+overflow. The owning `vitte_hir_t` records the last error.
+
+## Lowering
+
+`vitte_hir_lower_ast` lowers the current compiler AST model:
+
+- AST module to HIR module
+- proc declaration to function
+- const declaration to const declaration
+- block statement to block
+- `give` statement to return
+- let statement to let
+- expression statement to expression statement
+- if statement to if
+- integer and string literals
+- identifier to variable
+- binary expression
+- call expression
+- type name
+- error node
+
+## Validation
+
+`vitte_hir_validate` checks:
+
+- initialized HIR
+- root module exists
+- valid node kind and non-zero id
+- coherent list counts
+- lowered symbol names match the effective HIR name
+- const declaration name/value
+- function name/body
+- block statement lists
+- binary operands
+- call callee
+- type names
+- maximum recursion depth
+
+## Traversal And Debug
+
+`vitte_hir_visit` performs pre-order traversal. A callback returning `false`
+stops traversal at that node. `vitte_hir_dump` writes a compact tree to `FILE *`
+without depending on the printer module.

@@ -1,0 +1,118 @@
+space compiler/streaming_summary_runtime
+
+use vitte/compiler/driver/compile.{ DriverModuleInput, driver_module_input, source_lines, streaming_module_summary, streaming_source_has_owned_codegen_items, streaming_required_interface_names, streaming_required_child_names, streaming_name_in_list, streaming_selfhost_memory_order, streaming_requires_chunked_typeck, streaming_clone_typeck_hir, streaming_preserve_nominal_hir_items }
+use vitte/compiler/analysis/sema/modules.{ SemaModuleExportSymbol, SemaModuleImport, SemaModuleSummary, module_import_from_use }
+use vitte/compiler/middle/hir/hir.{ HirItem, HirItemKind, HirUnit }
+use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
+use vitte/compiler/analysis/typeck/checker.{ module_type_bindings, nominal_type_bindings }
+use vitte/compiler/analysis/typeck/errors.{ TypeckResult }
+use vitte/compiler/analysis/typeck/infer.{ TypeBinding, env_get }
+use vitte/compiler/driver/module_interfaces.{ typecheck_module_bindings, typecheck_with_bindings_range }
+use vitte/compiler/analysis/pipeline.{ canonical_analysis_diagnostic }
+use vitte/compiler/analysis/report.{ AnalysisDiagnostic }
+use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
+use vitte/compiler/diagnostics/diagnostic.{ Diagnostic, DiagnosticPhase, DiagnosticSeverity, diagnostic_create, diagnostic_with_label, secondary_label, span_create }
+
+proc main() -> int {
+    let source: string = "space probe\nexport *\nuse provider.{\n Value, create as make\n}\nproc main() -> int { give 0; }\n";
+    let lines: [string] = source_lines(source);
+    if len(lines) != 7 { give 1; }
+    if lines[0] != "space probe" or lines[6] != "" { give 2; }
+    let input: DriverModuleInput = driver_module_input("src/probe.vit", source);
+    let summary: SemaModuleSummary = streaming_module_summary(input, 1);
+    if not summary.valid or len(summary.imports) != 1 { give 3; }
+    if len(summary.imports[0].names) != 2 { give 4; }
+    if len(summary.exports) != 1 or summary.exports[0].name != "main" { give 5; }
+    if not streaming_source_has_owned_codegen_items(source) { give 6; }
+    if streaming_source_has_owned_codegen_items("space facade\nexport *\nuse provider\n") { give 7; }
+    let frontend: FrontendOutput = frontend_run("probe.vit", "space probe\nproc main() -> int { give 0; }\n");
+    let diagnostic: Diagnostic = diagnostic_create("PROBE001", DiagnosticPhase.Sema, DiagnosticSeverity.Warning, "probe warning", span_create("probe.vit", 1, 1, 1));
+    set diagnostic = diagnostic_with_label(diagnostic, secondary_label("related declaration", span_create("probe.vit", 2, 1, 1)));
+    set diagnostic.probable_fix = "rename the declaration";
+    let converted: AnalysisDiagnostic = canonical_analysis_diagnostic(frontend, "sema", diagnostic);
+    if converted.severity != "warning" or converted.suggestion != "rename the declaration" {
+        println("severity=" + converted.severity + " suggestion=" + converted.suggestion);
+        give 8;
+    }
+    if len(converted.labels) != len(diagnostic.labels) { give 9; }
+    if converted.labels[len(converted.labels) - 1] != "related declaration" { give 10; }
+    let provider: FrontendOutput = frontend_run("provider.vit", "space provider\nform SourceSpan { offset: u64 }\nform Entry { id: u64 }\nform Manager { entries: [Entry] }\nproc get(manager: Manager) -> u64 { give 0; }\n");
+    let provider_hir: HirUnit = lower_ast_to_hir(provider);
+    let imported: SemaModuleImport = module_import_from_use("provider.{ get }");
+    let required: [string] = streaming_required_interface_names(imported, provider_hir.module.items);
+    if not streaming_name_in_list(required, "Manager") or not streaming_name_in_list(required, "Entry") { give 11; }
+    if streaming_name_in_list(required, "SourceSpan") { give 12; }
+    let child_summary: SemaModuleSummary = SemaModuleSummary {
+        source_path: "provider.vit",
+        module_path: "provider",
+        imports: [],
+        exports: [
+            SemaModuleExportSymbol { id: 1, name: "BoundaryState", visibility: "public", valid: true },
+            SemaModuleExportSymbol { id: 2, name: "UnusedType", visibility: "public", valid: true }
+        ],
+        valid: true
+    };
+    let wildcard: SemaModuleImport = module_import_from_use("provider");
+    let wildcard_types: [string] = streaming_required_child_names(wildcard, child_summary, "BoundaryState");
+    if len(wildcard_types) != 1 or wildcard_types[0] != "BoundaryState" { give 18; }
+    let unrelated_types: [string] = streaming_required_child_names(wildcard, child_summary, "");
+    if len(unrelated_types) != 0 { give 19; }
+    let alias_module: SemaModuleImport = module_import_from_use("provider as p");
+    let alias_types: [string] = streaming_required_child_names(alias_module, child_summary, "p::BoundaryState");
+    if len(alias_types) != 1 or alias_types[0] != "BoundaryState" { give 20; }
+    let explicit_alias: SemaModuleImport = module_import_from_use("provider.{ BoundaryState as State, UnusedType }");
+    let selected_types: [string] = streaming_required_child_names(explicit_alias, child_summary, "State");
+    if len(selected_types) != 1 or selected_types[0] != "BoundaryState as State" { give 21; }
+    let dotted: SemaModuleImport = module_import_from_use("vitte/compiler/analysis/sema.modules.{ SemaModuleImport }");
+    if dotted.module_path != "vitte/compiler/analysis/sema/modules" { give 13; }
+    let boundary: DriverModuleInput = driver_module_input("src/vitte/compiler/infrastructure/session/panic_boundary.vit", "space vitte/compiler/infrastructure/session/panic_boundary\n");
+    let hotspot: DriverModuleInput = driver_module_input("src/vitte/compiler/driver/compiler.vit", "space vitte/compiler/driver/compiler\n");
+    let entry: DriverModuleInput = driver_module_input("src/vitte/compiler/main.vit", "space vitte/compiler/main\n");
+    let memory_order: [DriverModuleInput] = streaming_selfhost_memory_order([boundary, hotspot, entry]);
+    if len(memory_order) != 3 or memory_order[0].source_path != boundary.source_path or memory_order[1].source_path != entry.source_path or memory_order[2].source_path != hotspot.source_path { give 14; }
+    if not streaming_requires_chunked_typeck(hotspot.source_path) { give 22; }
+    if not streaming_requires_chunked_typeck("src/vitte/compiler/driver/compile.vit") { give 29; }
+    if not streaming_requires_chunked_typeck("src/vitte/compiler/diagnostics/diagnostic.vit") { give 23; }
+    if not streaming_requires_chunked_typeck("src/vitte/compiler/frontend/parse/parser.vit") { give 27; }
+    if streaming_requires_chunked_typeck("src/vitte/compiler/infrastructure/diagnostics/fluent_catalog_en.vit") { give 24; }
+    let nominal_source: string = "space nominal_probe\nform StableNominal { left: u64 right: u64 }\nproc make() -> StableNominal { give StableNominal { left: 1, right: 2 }; }\n";
+    let nominal_hir: HirUnit = lower_ast_to_hir(frontend_run("nominal_probe.vit", nominal_source));
+    let nominal_index: u64 = 0;
+    while nominal_index < len(nominal_hir.module.items) and nominal_hir.module.items[nominal_index].kind != HirItemKind.Form {
+        set nominal_index = nominal_index + 1;
+    }
+    if nominal_index >= len(nominal_hir.module.items) { give 25; }
+    let cloned_hir: HirUnit = streaming_clone_typeck_hir(nominal_hir);
+    let damaged_items: [HirItem] = cloned_hir.module.items;
+    let damaged_index: u64 = 0;
+    while damaged_index < len(damaged_items) {
+        let damaged_item: HirItem = damaged_items[damaged_index];
+        if damaged_index == nominal_index {
+            set damaged_item.members = [];
+            set damaged_item.member_count = 0;
+        }
+        set damaged_index = damaged_index + 1;
+    }
+    let preserved_items: [HirItem] = streaming_preserve_nominal_hir_items(nominal_hir.module.items, damaged_items);
+    if len(preserved_items[nominal_index].members) != 2
+        or preserved_items[nominal_index].members[0].name != "left"
+        or preserved_items[nominal_index].members[1].name != "right" { give 26; }
+    if len(nominal_hir.module.items[nominal_index].members) != 2 { give 28; }
+    let batch_source: string = "space batch_probe\nconst BATCH_TEXT: string = \"ok\"\n";
+    let batch_index: u64 = 0;
+    while batch_index < 80 {
+        set batch_source = batch_source + "proc batch_proc_" + to_string(batch_index) + "() -> int { give 0; }\n";
+        set batch_index = batch_index + 1;
+    }
+    let batch_frontend: FrontendOutput = frontend_run("batch_probe.vit", batch_source);
+    let batch_hir: HirUnit = lower_ast_to_hir(batch_frontend);
+    let nominal_bindings: [TypeBinding] = nominal_type_bindings(batch_hir.module.items);
+    if env_get(nominal_bindings, "BATCH_TEXT") != "string" { give 15; }
+    let complete_bindings: [TypeBinding] = module_type_bindings([], batch_hir);
+    if env_get(complete_bindings, "BATCH_TEXT") != "string" { give 16; }
+    let reusable_bindings: [TypeBinding] = typecheck_module_bindings(batch_hir, [], true);
+    let first_range: TypeckResult = typecheck_with_bindings_range(batch_hir, reusable_bindings, 0, 8);
+    let second_range: TypeckResult = typecheck_with_bindings_range(batch_hir, reusable_bindings, 8, 16);
+    if not first_range.valid or not second_range.valid or env_get(reusable_bindings, "BATCH_TEXT") != "string" { give 17; }
+    give 0;
+}

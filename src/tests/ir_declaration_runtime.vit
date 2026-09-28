@@ -1,0 +1,21 @@
+space compiler/ir_declaration_runtime
+
+use vitte/compiler/backend/ir.{ IrLinkage, IrModuleKind, IrVisibility, block_create, function_add_block, function_ref_create, ir_validation_reason, module_add_function, module_create, span_empty, target_native_x86_64_linux, unit_add_module, unit_empty, unit_is_valid, unit_set_entry, unit_with_source_path, verify_unit }
+
+proc main() -> int {
+    let target = target_native_x86_64_linux();
+    let entry = function_add_block(
+        function_ref_create(1, "main", "manual", IrLinkage.Exported, IrVisibility.Public, true, span_empty()),
+        block_create(1, "bb1")
+    );
+    let imported = function_ref_create(2, "dependency", "dependency.vit", IrLinkage.Imported, IrVisibility.Public, false, span_empty());
+    let module0 = module_add_function(
+        module_add_function(module_create(1, "manual", "declaration.vit", IrModuleKind.Binary, target), entry),
+        imported
+    );
+    let unit0 = unit_set_entry(unit_add_module(unit_with_source_path(unit_empty(target), "declaration.vit"), module0), 1);
+    if ir_validation_reason(unit0) != "none" or not unit_is_valid(verify_unit(unit0)) {
+        give 1;
+    }
+    give 0;
+}

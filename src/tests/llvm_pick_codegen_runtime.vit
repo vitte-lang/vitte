@@ -1,0 +1,72 @@
+space compiler/llvm_pick_codegen_runtime;
+
+use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
+use vitte/compiler/middle/hir/hir.{ HirUnit }
+use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
+use vitte/compiler/analysis/typeck/api.{ run_compiler_typeck_hir }
+use vitte/compiler/analysis/typeck/errors.{ TypeckResult }
+use vitte/compiler/middle/lower/hir_to_mir.{ lower_hir_to_mir }
+use vitte/compiler/middle/mir/mir.{ MirUnit }
+use vitte/compiler/middle/mir/validate.{ validate_mir }
+use vitte/compiler/middle/lower/mir_to_ir.{ lower_mir_as_ir_module }
+use vitte/compiler/backend/ir/ir.{ IrInstruction, IrInstructionKind, IrModule, IrModuleKind, IrNominalType, IrUnit, IrUnitState, IrValue, instruction_create, target_native_x86_64_linux, unit_add_module, unit_empty, unit_is_valid, unit_set_entry, unit_with_state, value_place, verify_unit }
+use vitte/compiler/backends/llvm_bindings.{ LlvmBindingResult, contains, emit_llvm_ir_from_ir, emit_llvm_nominal_type, join_lines, llvm_binary_lines, llvm_invalid_module, llvm_invalid_nominal, llvm_member_access_lines }
+use vitte/compiler/source/span.{ span_empty }
+use vitte/stdlib/io/fileops.{ write_file }
+
+proc emit_qualified_pick_probe() -> int {
+    let source: string = "pick Style { Compact, Pretty, Debug }\n"
+        + "form Config { style: Style }\n"
+        + "proc default_config() -> Config { give Config { style: Style::Pretty }; }\n"
+        + "proc main() -> int { let config: Config = default_config(); if config.style != Style::Pretty { give 1; } give 0; }\n";
+    let frontend: FrontendOutput = frontend_run("qualified_pick.vit", source);
+    let hir: HirUnit = lower_ast_to_hir(frontend);
+    let typed: TypeckResult = run_compiler_typeck_hir(hir);
+    if not frontend.valid or not typed.valid { give 30; }
+    let mir: MirUnit = validate_mir(lower_hir_to_mir(typed.hir));
+    if not mir.valid { give 31; }
+    let module0: IrModule = lower_mir_as_ir_module(1, "qualified_pick", "qualified_pick.vit", IrModuleKind.Binary, target_native_x86_64_linux(), mir, typed.hir.module.items, [], [], []);
+    let unit0: IrUnit = unit_add_module(unit_empty(target_native_x86_64_linux()), module0);
+    let unit1: IrUnit = verify_unit(unit_set_entry(unit_with_state(unit0, IrUnitState.Lowered), module0.functions[0].id));
+    if not unit_is_valid(unit1) { give 32; }
+    let emitted: LlvmBindingResult = emit_llvm_ir_from_ir(unit1);
+    if not write_file("target/vitte/llvm_pick_qualified.ll", emitted.ir_text) { give 34; }
+    if not emitted.valid or contains(emitted.ir_text, "freeze %Style %Style") { give 33; }
+    give 0;
+}
+
+proc main() -> int {
+    if contains("i64", "*") or not contains("i8*", "*") { give 1; }
+    let nominal: IrNominalType = llvm_invalid_nominal();
+    set nominal.name = "Choice";
+    set nominal.kind = "pick";
+    set nominal.member_names = ["First", "Second"];
+    set nominal.member_kinds = ["variant", "variant"];
+    set nominal.member_count = 2;
+    set nominal.valid = true;
+    let module0: IrModule = llvm_invalid_module();
+    set module0.nominal_types = [nominal];
+    let owner: IrValue = value_place(1, "Choice", "Choice", "Choice");
+    let first: IrValue = value_place(2, "first", "first", "Choice");
+    let second: IrValue = value_place(3, "second", "second", "Choice");
+    let field_first: IrValue = value_place(4, "First", "First", "Choice");
+    let field_second: IrValue = value_place(5, "Second", "Second", "Choice");
+    let ctor_first: IrInstruction = instruction_create(1, IrInstructionKind.Assign, "Choice.First", ".", first, [owner, field_first], span_empty());
+    let ctor_second: IrInstruction = instruction_create(2, IrInstructionKind.Assign, "Choice.Second", ".", second, [owner, field_second], span_empty());
+    let same: IrInstruction = instruction_create(3, IrInstructionKind.Binary, "", "==", value_place(6, "same", "same", "bool"), [first, first], span_empty());
+    let different: IrInstruction = instruction_create(4, IrInstructionKind.Binary, "", "!=", value_place(7, "different", "different", "bool"), [first, second], span_empty());
+    let equal: IrInstruction = instruction_create(5, IrInstructionKind.Binary, "", "==", value_place(8, "equal", "equal", "bool"), [first, second], span_empty());
+    let lines: [string] = emit_llvm_nominal_type(module0, nominal) + ["define i32 @main() {", "entry:"];
+    set lines = lines + llvm_member_access_lines(module0, ctor_first) + llvm_member_access_lines(module0, ctor_second);
+    set lines = lines + llvm_binary_lines(module0, same) + llvm_binary_lines(module0, different) + llvm_binary_lines(module0, equal);
+    set lines = lines + [
+        "  %a = and i1 %same, %different",
+        "  %b = xor i1 %equal, true",
+        "  %ok = and i1 %a, %b",
+        "  %exit = select i1 %ok, i32 0, i32 1",
+        "  ret i32 %exit",
+        "}"
+    ];
+    if not write_file("target/vitte/llvm_pick_codegen.ll", join_lines(lines)) { give 2; }
+    give emit_qualified_pick_probe();
+}
