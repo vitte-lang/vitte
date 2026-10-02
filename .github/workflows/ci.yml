@@ -132,11 +132,10 @@ jobs:
               raise SystemExit("Bench findFiles marker not found exactly once")
           test_text = test_text.replace(find_files_marker, find_files_replacement, 1)
 
-          restore_marker = "    } finally {\n      commandsAny.executeCommand = originalExecuteCommand;\n"
+          restore_marker = "      if (fs.existsSync(benchConfigPath)) {\n"
           restore_replacement = (
-              "    } finally {\n"
               "      workspaceAny.findFiles = originalFindFiles;\n"
-              "      commandsAny.executeCommand = originalExecuteCommand;\n"
+              "      if (fs.existsSync(benchConfigPath)) {\n"
           )
           if test_text.count(restore_marker) != 1:
               raise SystemExit("Bench findFiles restore marker not found exactly once")
