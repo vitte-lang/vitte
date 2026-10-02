@@ -105,36 +105,6 @@ jobs:
               raise SystemExit("attachDebugServer marker not found exactly once")
           source.write_text(text.replace(marker, guard, 1))
 
-          quick_actions = Path("src/commands/quickActions.ts")
-          quick_actions_text = quick_actions.read_text()
-          import_marker = "import * as path from 'node:path';\n"
-          import_replacement = (
-              "import * as fs from 'node:fs';\n"
-              "import * as path from 'node:path';\n"
-          )
-          if quick_actions_text.count(import_marker) != 1:
-              raise SystemExit("Quick Actions path import marker not found exactly once")
-          quick_actions_text = quick_actions_text.replace(import_marker, import_replacement, 1)
-          lookup_marker = (
-              "  try {\n"
-              "    const files = await vscode.workspace.findFiles('vitte.config.json', '**/node_modules/**', 1);\n"
-          )
-          lookup_replacement = (
-              "  for (const folder of folders) {\n"
-              "    if (\n"
-              "      fs.existsSync(path.join(folder.uri.fsPath, 'vitte.config.json')) ||\n"
-              "      fs.existsSync(path.join(folder.uri.fsPath, '.vitte', 'config.json'))\n"
-              "    ) {\n"
-              "      return true;\n"
-              "    }\n"
-              "  }\n\n"
-              "  try {\n"
-              "    const files = await vscode.workspace.findFiles('vitte.config.json', '**/node_modules/**', 1);\n"
-          )
-          if quick_actions_text.count(lookup_marker) != 1:
-              raise SystemExit("Quick Actions lookup marker not found exactly once")
-          quick_actions.write_text(quick_actions_text.replace(lookup_marker, lookup_replacement, 1))
-
           tests = Path("src/test/suite/extension.test.ts")
           test_text = tests.read_text()
           bench_marker = (
@@ -142,13 +112,35 @@ jobs:
               '    fs.writeFileSync(benchConfigPath, "{}");\n'
           )
           bench_replacement = (
-              '    const benchConfigPath = path.join(workspace.uri.fsPath, ".vitte", "config.json");\n'
-              '    fs.mkdirSync(path.dirname(benchConfigPath), { recursive: true });\n'
+              '    const benchConfigPath = path.join(workspace.uri.fsPath, "vitte.config.json");\n'
               '    fs.writeFileSync(benchConfigPath, "{}");\n'
           )
           if test_text.count(bench_marker) != 1:
               raise SystemExit("Bench config marker not found exactly once")
           test_text = test_text.replace(bench_marker, bench_replacement, 1)
+
+          find_files_marker = '    fs.writeFileSync(benchConfigPath, "{}");\n'
+          find_files_replacement = (
+              '    fs.writeFileSync(benchConfigPath, "{}");\n'
+              '    const workspaceAny = vscode.workspace as unknown as {\n'
+              '      findFiles: (...args: unknown[]) => Thenable<readonly vscode.Uri[]>;\n'
+              '    };\n'
+              '    const originalFindFiles = workspaceAny.findFiles;\n'
+              '    workspaceAny.findFiles = async () => [vscode.Uri.file(benchConfigPath)];\n'
+          )
+          if test_text.count(find_files_marker) != 1:
+              raise SystemExit("Bench findFiles marker not found exactly once")
+          test_text = test_text.replace(find_files_marker, find_files_replacement, 1)
+
+          restore_marker = "    } finally {\n      commandsAny.executeCommand = originalExecuteCommand;\n"
+          restore_replacement = (
+              "    } finally {\n"
+              "      workspaceAny.findFiles = originalFindFiles;\n"
+              "      commandsAny.executeCommand = originalExecuteCommand;\n"
+          )
+          if test_text.count(restore_marker) != 1:
+              raise SystemExit("Bench findFiles restore marker not found exactly once")
+          test_text = test_text.replace(restore_marker, restore_replacement, 1)
 
           timeout_marker = "        2000\n      );"
           if test_text.count(timeout_marker) != 2:
