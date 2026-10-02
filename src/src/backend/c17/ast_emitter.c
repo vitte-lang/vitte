@@ -1,3 +1,9 @@
+#if defined(__APPLE__) || defined(__unix__)
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#endif
+#endif
+
 #include "ast_emitter.h"
 
 #include <stdbool.h>
