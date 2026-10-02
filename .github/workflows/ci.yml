@@ -13,8 +13,37 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  complete:
-    name: Complete build and test suite
+  compiler-runtime:
+    name: Compiler and runtime
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install compiler dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y \
+            build-essential
+
+      - name: Build compiler
+        run: make -j2
+
+      - name: Run compiler test suite
+        run: make test
+
+      - name: Run runtime tests
+        run: make test-runtime
+
+  extension-dap:
+    name: Extension and native DAP
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -36,12 +65,7 @@ jobs:
           cache: npm
           cache-dependency-path: vscode/VitteLangVsCode-main/package-lock.json
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
-
-      - name: Install native and VS Code test dependencies
+      - name: Install extension and DAP dependencies
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y \
@@ -55,14 +79,8 @@ jobs:
         working-directory: vscode/VitteLangVsCode-main
         run: npm ci
 
-      - name: Build compiler
+      - name: Build compiler for native DAP
         run: make -j2
-
-      - name: Run compiler test suite
-        run: make test
-
-      - name: Run runtime tests
-        run: make test-runtime
 
       - name: Run extension and native DAP tests
         working-directory: vscode/VitteLangVsCode-main
