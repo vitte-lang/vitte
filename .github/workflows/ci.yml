@@ -31,10 +31,27 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y \
-            build-essential
+            build-essential \
+            gdb
 
       - name: Build compiler
         run: make -j2
+
+      - name: Diagnose Linux native fixture
+        run: |
+          set +e
+          build/bin/vitte compile src/tests/grammar_alignment/let_mut_ok.vit \
+            -o build/ci-native
+          compile_exit=$?
+          printf 'compiler_exit=%s\n' "$compile_exit"
+          if test "$compile_exit" -eq 0; then
+            gdb -q -batch \
+              -ex run \
+              -ex bt \
+              --args build/ci-native
+            printf 'native_exit=%s\n' "$?"
+          fi
+          exit 0
 
       - name: Run compiler test suite
         run: make test
