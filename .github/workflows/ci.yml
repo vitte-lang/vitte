@@ -56,14 +56,21 @@ jobs:
         with:
           repository: vitte-lang/VitteLangVsCode
           ref: main
-          path: vscode/VitteLangVsCode-main
+          path: vscode/VitteLangVsCode
+
+      - name: Check out Vitte source tree for extension imports
+        uses: actions/checkout@v4
+        with:
+          repository: vitte-lang/vitte_archive
+          ref: 53ebaa0c203d7301062f943f38115704c9b4f14b
+          path: vscode/src/vitte
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: vscode/VitteLangVsCode-main/package-lock.json
+          cache-dependency-path: vscode/VitteLangVsCode/package-lock.json
 
       - name: Install extension and DAP dependencies
         run: |
@@ -76,12 +83,16 @@ jobs:
             xvfb
 
       - name: Install extension dependencies
-        working-directory: vscode/VitteLangVsCode-main
+        working-directory: vscode/VitteLangVsCode
         run: npm ci
+
+      - name: Generate extension imports from Vitte source tree
+        working-directory: vscode/VitteLangVsCode
+        run: npm run generate:imports
 
       - name: Build compiler for native DAP
         run: make -j2
 
       - name: Run extension and native DAP tests
-        working-directory: vscode/VitteLangVsCode-main
+        working-directory: vscode/VitteLangVsCode
         run: xvfb-run --auto-servernum --server-args='-screen 0 1280x1024x24' npm test
