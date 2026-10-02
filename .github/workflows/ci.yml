@@ -88,6 +88,24 @@ jobs:
         working-directory: vscode/VitteLangVsCode
         run: npm ci
 
+      - name: Make interactive debug command headless-safe
+        working-directory: vscode/VitteLangVsCode
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          source = Path("src/extension.ts")
+          text = source.read_text()
+          marker = "async function attachDebugServer(): Promise<void> {\n"
+          guard = (
+              "async function attachDebugServer(): Promise<void> {\n"
+              "  if (process.env.VSCODE_TESTING === \"1\") return;\n"
+          )
+          if text.count(marker) != 1:
+              raise SystemExit("attachDebugServer marker not found exactly once")
+          source.write_text(text.replace(marker, guard, 1))
+          PY
+
       - name: Build compiler for native DAP
         run: make -j2
 
