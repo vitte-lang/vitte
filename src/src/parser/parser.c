@@ -2140,6 +2140,10 @@ vitte_parser_parse_binary_precedence(
         vitte_ast_node_t *node;
         const vitte_ast_node_t *left_node;
         const vitte_ast_node_t *right_node;
+        vitte_token_kind_t operator_kind;
+        size_t operator_token_index;
+        vitte_parser_span_t left_span;
+        vitte_parser_span_t right_span;
 
         operator_token = vitte_parser_current(parser);
 
@@ -2183,18 +2187,33 @@ vitte_parser_parse_binary_precedence(
                 parser,
                 right);
 
+        /*
+         * Adding a node can grow parser->nodes with realloc(), which
+         * invalidates left_node and right_node.  Copy all data needed after
+         * the append before creating the binary node.
+         */
+        operator_kind = operator_token->kind;
+        operator_token_index =
+            (size_t)(operator_token - parser->tokens);
+        left_span =
+            left_node != NULL
+                ? left_node->span
+                : vitte_parser_span_from_token(
+                      operator_token);
+        right_span =
+            right_node != NULL
+                ? right_node->span
+                : left_span;
+
         binary =
             vitte_parser_add_node(
                 parser,
                 vitte_parser_binary_right_associative(
-                    operator_token->kind) &&
+                    operator_kind) &&
                     precedence == 1
                     ? VITTE_AST_NODE_ASSIGN_EXPR
                     : VITTE_AST_NODE_BINARY_EXPR,
-                left_node != NULL
-                    ? left_node->span
-                    : vitte_parser_span_from_token(
-                          operator_token));
+                left_span);
 
         if (binary == VITTE_AST_INVALID_ID) {
             return binary;
@@ -2207,18 +2226,15 @@ vitte_parser_parse_binary_precedence(
 
         if (node != NULL) {
             node->operator_kind =
-                operator_token->kind;
+                operator_kind;
 
             node->token_index =
-                (size_t)(operator_token -
-                         parser->tokens);
+                operator_token_index;
 
-            if (right_node != NULL) {
-                node->span =
-                    vitte_parser_span_join(
-                        node->span,
-                        right_node->span);
-            }
+            node->span =
+                vitte_parser_span_join(
+                    node->span,
+                    right_span);
         }
 
         if (!vitte_parser_node_append_child(
