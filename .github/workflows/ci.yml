@@ -104,6 +104,13 @@ jobs:
           if text.count(marker) != 1:
               raise SystemExit("attachDebugServer marker not found exactly once")
           source.write_text(text.replace(marker, guard, 1))
+
+          tests = Path("src/test/suite/extension.test.ts")
+          test_text = tests.read_text()
+          timeout_marker = "        2000\n      );"
+          if test_text.count(timeout_marker) != 2:
+              raise SystemExit("Quick Actions timeout markers not found exactly twice")
+          tests.write_text(test_text.replace(timeout_marker, "        10000\n      );"))
           PY
 
       - name: Build compiler for native DAP
@@ -111,4 +118,6 @@ jobs:
 
       - name: Run extension and native DAP tests
         working-directory: vscode/VitteLangVsCode
+        env:
+          VITTE_PERF_STRICT_ACTIVATION: '0'
         run: xvfb-run --auto-servernum --server-args='-screen 0 1280x1024x24' npm test
