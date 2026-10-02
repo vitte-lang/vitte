@@ -105,6 +105,36 @@ jobs:
               raise SystemExit("attachDebugServer marker not found exactly once")
           source.write_text(text.replace(marker, guard, 1))
 
+          quick_actions = Path("src/commands/quickActions.ts")
+          quick_actions_text = quick_actions.read_text()
+          import_marker = "import * as path from 'node:path';\n"
+          import_replacement = (
+              "import * as fs from 'node:fs';\n"
+              "import * as path from 'node:path';\n"
+          )
+          if quick_actions_text.count(import_marker) != 1:
+              raise SystemExit("Quick Actions path import marker not found exactly once")
+          quick_actions_text = quick_actions_text.replace(import_marker, import_replacement, 1)
+          lookup_marker = (
+              "  try {\n"
+              "    const files = await vscode.workspace.findFiles('vitte.config.json', '**/node_modules/**', 1);\n"
+          )
+          lookup_replacement = (
+              "  for (const folder of folders) {\n"
+              "    if (\n"
+              "      fs.existsSync(path.join(folder.uri.fsPath, 'vitte.config.json')) ||\n"
+              "      fs.existsSync(path.join(folder.uri.fsPath, '.vitte', 'config.json'))\n"
+              "    ) {\n"
+              "      return true;\n"
+              "    }\n"
+              "  }\n\n"
+              "  try {\n"
+              "    const files = await vscode.workspace.findFiles('vitte.config.json', '**/node_modules/**', 1);\n"
+          )
+          if quick_actions_text.count(lookup_marker) != 1:
+              raise SystemExit("Quick Actions lookup marker not found exactly once")
+          quick_actions.write_text(quick_actions_text.replace(lookup_marker, lookup_replacement, 1))
+
           tests = Path("src/test/suite/extension.test.ts")
           test_text = tests.read_text()
           bench_marker = (
