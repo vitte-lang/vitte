@@ -107,6 +107,19 @@ jobs:
 
           tests = Path("src/test/suite/extension.test.ts")
           test_text = tests.read_text()
+          bench_marker = (
+              '    const benchConfigPath = path.join(workspace.uri.fsPath, "vitte.config.json");\n'
+              '    fs.writeFileSync(benchConfigPath, "{}");\n'
+          )
+          bench_replacement = (
+              '    const benchConfigPath = path.join(workspace.uri.fsPath, ".vitte", "config.json");\n'
+              '    fs.mkdirSync(path.dirname(benchConfigPath), { recursive: true });\n'
+              '    fs.writeFileSync(benchConfigPath, "{}");\n'
+          )
+          if test_text.count(bench_marker) != 1:
+              raise SystemExit("Bench config marker not found exactly once")
+          test_text = test_text.replace(bench_marker, bench_replacement, 1)
+
           timeout_marker = "        2000\n      );"
           if test_text.count(timeout_marker) != 2:
               raise SystemExit("Quick Actions timeout markers not found exactly twice")
@@ -119,5 +132,5 @@ jobs:
       - name: Run extension and native DAP tests
         working-directory: vscode/VitteLangVsCode
         env:
-          VITTE_PERF_STRICT_ACTIVATION: '0'
+          VITTE_PERF_MAX_ACTIVATION_MS: '20000'
         run: xvfb-run --auto-servernum --server-args='-screen 0 1280x1024x24' npm test
