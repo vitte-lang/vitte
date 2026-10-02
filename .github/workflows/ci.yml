@@ -40,8 +40,13 @@ jobs:
       - name: Diagnose Linux native fixture
         run: |
           set +e
-          build/bin/vitte compile src/tests/grammar_alignment/let_mut_ok.vit \
-            -o build/ci-native
+          gdb -q -batch \
+            -ex 'set pagination off' \
+            -ex run \
+            -ex 'bt full' \
+            --args build/bin/vitte \
+              compile src/tests/grammar_alignment/let_mut_ok.vit \
+              -o build/ci-native
           compile_exit=$?
           printf 'compiler_exit=%s\n' "$compile_exit"
           if test "$compile_exit" -eq 0; then
