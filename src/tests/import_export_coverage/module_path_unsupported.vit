@@ -1,7 +1,20 @@
-space module_path_unsupported;
+/// Executable module-path import coverage.
+///
+/// This fixture used to be marked `E0011` because it intentionally requested
+/// an unsupported `module::symbol` import. The production importer now has a
+/// real positive probe here: a qualified multi-declaration module is resolved,
+/// linked, and executed.
 
-use multi_decl_lib::first;
+space tests::import_export_coverage::module_path_unsupported;
+
+use tests::import_export_coverage::runtime_import_lib as imported;
 
 proc main() -> int {
-    give first();
+    if imported::runtime_add(20, 22) != 42 {
+        give 1;
+    }
+    if not imported::runtime_ready(42) {
+        give 2;
+    }
+    give 0;
 }

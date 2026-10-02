@@ -1,9 +1,662 @@
-space demo/lib_alias;
+/// Export-form fixture for direct alias tests.
+///
+/// This module deliberately exposes declarations under aliases while retaining
+/// distinct internal names.
+///
+/// Coverage:
+/// - constant aliases;
+/// - form aliases;
+/// - pick aliases;
+/// - procedure aliases;
+/// - predicate aliases;
+/// - constructor aliases;
+/// - consumer aliases;
+/// - reference parameters;
+/// - aliases over declarations that depend on other local declarations;
+/// - several aliases from the same declaration category;
+/// - preservation of original declarations inside the defining module.
 
-export { sum as plus, answer };
+space tests::export_forms::lib_alias;
 
-proc sum() -> int {
-    give 7;
+const INTERNAL_ZERO: i64 = 0;
+const INTERNAL_ONE: i64 = 1;
+const INTERNAL_TWO: i64 = 2;
+const INTERNAL_TEN: i64 = 10;
+const INTERNAL_TWENTY: i64 = 20;
+const INTERNAL_TWENTY_TWO: i64 = 22;
+const INTERNAL_ANSWER: i64 = 42;
+const INTERNAL_LIMIT: u64 = 100;
+const INTERNAL_MINIMUM: i64 = 0;
+const INTERNAL_MAXIMUM: i64 = 100;
+const INTERNAL_ENABLED: bool = true;
+const INTERNAL_DISABLED: bool = false;
+
+form InternalPoint {
+    x: i64,
+    y: i64,
 }
 
-const answer: int = 5;
+form InternalRange {
+    minimum: i64,
+    maximum: i64,
+}
+
+form InternalRecord {
+    id: u64,
+    value: i64,
+    enabled: bool,
+}
+
+form InternalPair {
+    first: i64,
+    second: i64,
+}
+
+form InternalCounter {
+    value: i64,
+}
+
+form InternalNested {
+    point: InternalPoint,
+    range: InternalRange,
+}
+
+form InternalEnvelope {
+    record: InternalRecord,
+    pair: InternalPair,
+}
+
+pick InternalState {
+    Idle,
+    Ready,
+    Running,
+    Finished,
+}
+
+pick InternalResultKind {
+    Success,
+    Failure,
+}
+
+pick InternalDirection {
+    Left,
+    Right,
+}
+
+proc internal_identity(
+    value: i64
+) -> i64 {
+    give value;
+}
+
+proc internal_add(
+    left: i64,
+    right: i64
+) -> i64 {
+    give left + right;
+}
+
+proc internal_subtract(
+    left: i64,
+    right: i64
+) -> i64 {
+    give left - right;
+}
+
+proc internal_multiply(
+    left: i64,
+    right: i64
+) -> i64 {
+    give left * right;
+}
+
+proc internal_increment(
+    value: i64
+) -> i64 {
+    give value + INTERNAL_ONE;
+}
+
+proc internal_answer() -> i64 {
+    give INTERNAL_ANSWER;
+}
+
+proc internal_is_zero(
+    value: i64
+) -> bool {
+    give value == INTERNAL_ZERO;
+}
+
+proc internal_is_positive(
+    value: i64
+) -> bool {
+    give value > INTERNAL_ZERO;
+}
+
+proc internal_is_non_negative(
+    value: i64
+) -> bool {
+    give value >= INTERNAL_ZERO;
+}
+
+proc internal_is_answer(
+    value: i64
+) -> bool {
+    give value == INTERNAL_ANSWER;
+}
+
+proc internal_within_limit(
+    value: i64
+) -> bool {
+    give value >= INTERNAL_ZERO &&
+         value <= INTERNAL_LIMIT;
+}
+
+proc internal_make_point(
+    x: i64,
+    y: i64
+) -> InternalPoint {
+    give InternalPoint {
+        x: x,
+        y: y,
+    };
+}
+
+proc internal_make_range(
+    minimum: i64,
+    maximum: i64
+) -> InternalRange {
+    give InternalRange {
+        minimum: minimum,
+        maximum: maximum,
+    };
+}
+
+proc internal_make_record(
+    id: u64,
+    value: i64,
+    enabled: bool
+) -> InternalRecord {
+    give InternalRecord {
+        id: id,
+        value: value,
+        enabled: enabled,
+    };
+}
+
+proc internal_make_pair(
+    first: i64,
+    second: i64
+) -> InternalPair {
+    give InternalPair {
+        first: first,
+        second: second,
+    };
+}
+
+proc internal_make_counter(
+    value: i64
+) -> InternalCounter {
+    give InternalCounter {
+        value: value,
+    };
+}
+
+proc internal_make_nested(
+    point: InternalPoint,
+    range: InternalRange
+) -> InternalNested {
+    give InternalNested {
+        point: point,
+        range: range,
+    };
+}
+
+proc internal_make_envelope(
+    record: InternalRecord,
+    pair: InternalPair
+) -> InternalEnvelope {
+    give InternalEnvelope {
+        record: record,
+        pair: pair,
+    };
+}
+
+proc internal_point_sum(
+    point: &InternalPoint
+) -> i64 {
+    give point.x +
+         point.y;
+}
+
+proc internal_point_x(
+    point: &InternalPoint
+) -> i64 {
+    give point.x;
+}
+
+proc internal_point_y(
+    point: &InternalPoint
+) -> i64 {
+    give point.y;
+}
+
+proc internal_range_width(
+    range: &InternalRange
+) -> i64 {
+    give range.maximum -
+         range.minimum;
+}
+
+proc internal_range_valid(
+    range: &InternalRange
+) -> bool {
+    give range.minimum <=
+         range.maximum;
+}
+
+proc internal_range_contains(
+    range: &InternalRange,
+    value: i64
+) -> bool {
+    give value >= range.minimum &&
+         value <= range.maximum;
+}
+
+proc internal_record_value(
+    record: &InternalRecord
+) -> i64 {
+    give record.value;
+}
+
+proc internal_record_id(
+    record: &InternalRecord
+) -> u64 {
+    give record.id;
+}
+
+proc internal_record_enabled(
+    record: &InternalRecord
+) -> bool {
+    give record.enabled;
+}
+
+proc internal_pair_sum(
+    pair: &InternalPair
+) -> i64 {
+    give pair.first +
+         pair.second;
+}
+
+proc internal_counter_value(
+    counter: &InternalCounter
+) -> i64 {
+    give counter.value;
+}
+
+proc internal_nested_value(
+    nested: &InternalNested
+) -> i64 {
+    give internal_point_sum(
+               &nested.point) +
+         internal_range_width(
+               &nested.range);
+}
+
+proc internal_envelope_value(
+    envelope: &InternalEnvelope
+) -> i64 {
+    give internal_record_value(
+               &envelope.record) +
+         internal_pair_sum(
+               &envelope.pair);
+}
+
+proc internal_default_state() -> InternalState {
+    give InternalState.Idle;
+}
+
+proc internal_ready_state() -> InternalState {
+    give InternalState.Ready;
+}
+
+proc internal_running_state() -> InternalState {
+    give InternalState.Running;
+}
+
+proc internal_finished_state() -> InternalState {
+    give InternalState.Finished;
+}
+
+proc internal_success_kind() -> InternalResultKind {
+    give InternalResultKind.Success;
+}
+
+proc internal_failure_kind() -> InternalResultKind {
+    give InternalResultKind.Failure;
+}
+
+proc internal_left_direction() -> InternalDirection {
+    give InternalDirection.Left;
+}
+
+proc internal_right_direction() -> InternalDirection {
+    give InternalDirection.Right;
+}
+
+proc internal_compose_answer() -> i64 {
+    give internal_add(
+        INTERNAL_TWENTY,
+        INTERNAL_TWENTY_TWO);
+}
+
+proc internal_make_answer_point() -> InternalPoint {
+    give internal_make_point(
+        INTERNAL_TWENTY,
+        INTERNAL_TWENTY_TWO);
+}
+
+proc internal_make_answer_range() -> InternalRange {
+    give internal_make_range(
+        INTERNAL_ZERO,
+        INTERNAL_ANSWER);
+}
+
+proc internal_make_answer_record() -> InternalRecord {
+    give internal_make_record(
+        INTERNAL_ANSWER,
+        INTERNAL_ANSWER,
+        INTERNAL_ENABLED);
+}
+
+proc internal_make_answer_pair() -> InternalPair {
+    give internal_make_pair(
+        INTERNAL_TWENTY,
+        INTERNAL_TWENTY_TWO);
+}
+
+proc internal_make_answer_nested() -> InternalNested {
+    let point: InternalPoint =
+        internal_make_point(
+            INTERNAL_TEN,
+            INTERNAL_TEN);
+
+    let range: InternalRange =
+        internal_make_range(
+            INTERNAL_ZERO,
+            INTERNAL_TWENTY_TWO);
+
+    give internal_make_nested(
+        point,
+        range);
+}
+
+proc internal_make_answer_envelope() -> InternalEnvelope {
+    let record: InternalRecord =
+        internal_make_record(
+            INTERNAL_ANSWER,
+            INTERNAL_TWENTY,
+            INTERNAL_ENABLED);
+
+    let pair: InternalPair =
+        internal_make_pair(
+            INTERNAL_TEN,
+            INTERNAL_TWELVE());
+
+    give internal_make_envelope(
+        record,
+        pair);
+}
+
+proc INTERNAL_TWELVE() -> i64 {
+    give 12;
+}
+
+/// Constant aliases.
+export INTERNAL_ZERO as ZERO;
+export INTERNAL_ONE as ONE;
+export INTERNAL_TWO as TWO;
+export INTERNAL_TEN as TEN;
+export INTERNAL_TWENTY as TWENTY;
+export INTERNAL_TWENTY_TWO as TWENTY_TWO;
+export INTERNAL_ANSWER as ANSWER;
+export INTERNAL_LIMIT as LIMIT;
+export INTERNAL_MINIMUM as MINIMUM;
+export INTERNAL_MAXIMUM as MAXIMUM;
+export INTERNAL_ENABLED as ENABLED;
+export INTERNAL_DISABLED as DISABLED;
+
+/// Form aliases.
+export InternalPoint as Point;
+export InternalRange as Range;
+export InternalRecord as Record;
+export InternalPair as Pair;
+export InternalCounter as Counter;
+export InternalNested as Nested;
+export InternalEnvelope as Envelope;
+
+/// Pick aliases.
+export InternalState as State;
+export InternalResultKind as ResultKind;
+export InternalDirection as Direction;
+
+/// Arithmetic and scalar procedure aliases.
+export internal_identity as identity;
+export internal_add as add;
+export internal_subtract as subtract;
+export internal_multiply as multiply;
+export internal_increment as increment;
+export internal_answer as answer;
+
+/// Predicate aliases.
+export internal_is_zero as is_zero;
+export internal_is_positive as is_positive;
+export internal_is_non_negative as is_non_negative;
+export internal_is_answer as is_answer;
+export internal_within_limit as within_limit;
+
+/// Constructor aliases.
+export internal_make_point as make_point;
+export internal_make_range as make_range;
+export internal_make_record as make_record;
+export internal_make_pair as make_pair;
+export internal_make_counter as make_counter;
+export internal_make_nested as make_nested;
+export internal_make_envelope as make_envelope;
+
+/// Consumer aliases.
+export internal_point_sum as point_sum;
+export internal_point_x as point_x;
+export internal_point_y as point_y;
+export internal_range_width as range_width;
+export internal_range_valid as range_valid;
+export internal_range_contains as range_contains;
+export internal_record_value as record_value;
+export internal_record_id as record_id;
+export internal_record_enabled as record_enabled;
+export internal_pair_sum as pair_sum;
+export internal_counter_value as counter_value;
+export internal_nested_value as nested_value;
+export internal_envelope_value as envelope_value;
+
+/// Pick-producing procedure aliases.
+export internal_default_state as default_state;
+export internal_ready_state as ready_state;
+export internal_running_state as running_state;
+export internal_finished_state as finished_state;
+export internal_success_kind as success_kind;
+export internal_failure_kind as failure_kind;
+export internal_left_direction as left_direction;
+export internal_right_direction as right_direction;
+
+/// Higher-level aliases.
+export internal_compose_answer as compose_answer;
+export internal_make_answer_point as make_answer_point;
+export internal_make_answer_range as make_answer_range;
+export internal_make_answer_record as make_answer_record;
+export internal_make_answer_pair as make_answer_pair;
+export internal_make_answer_nested as make_answer_nested;
+export internal_make_answer_envelope as make_answer_envelope;
+
+/// Internal consistency checks.
+///
+/// These deliberately use original declaration names. Export alias creation
+/// must not remove or rename the declaration inside its defining module.
+
+proc verify_original_constants() -> bool {
+    give INTERNAL_ZERO == 0 &&
+         INTERNAL_ONE == 1 &&
+         INTERNAL_TWO == 2 &&
+         INTERNAL_TEN == 10 &&
+         INTERNAL_TWENTY == 20 &&
+         INTERNAL_TWENTY_TWO == 22 &&
+         INTERNAL_ANSWER == 42 &&
+         INTERNAL_LIMIT == 100 &&
+         INTERNAL_MINIMUM == 0 &&
+         INTERNAL_MAXIMUM == 100 &&
+         INTERNAL_ENABLED &&
+         !INTERNAL_DISABLED;
+}
+
+proc verify_original_arithmetic() -> bool {
+    give internal_identity(
+               INTERNAL_ANSWER) == 42 &&
+         internal_add(
+               INTERNAL_TWENTY,
+               INTERNAL_TWENTY_TWO) == 42 &&
+         internal_subtract(
+               100,
+               58) == 42 &&
+         internal_multiply(
+               6,
+               7) == 42;
+}
+
+proc verify_original_predicates() -> bool {
+    give internal_is_zero(
+               INTERNAL_ZERO) &&
+         internal_is_positive(
+               INTERNAL_ANSWER) &&
+         internal_is_non_negative(
+               INTERNAL_ZERO) &&
+         internal_is_answer(
+               INTERNAL_ANSWER) &&
+         internal_within_limit(
+               INTERNAL_ANSWER);
+}
+
+proc verify_original_point() -> bool {
+    let point: InternalPoint =
+        internal_make_point(
+            INTERNAL_TWENTY,
+            INTERNAL_TWENTY_TWO);
+
+    give internal_point_x(&point) == 20 &&
+         internal_point_y(&point) == 22 &&
+         internal_point_sum(&point) == 42;
+}
+
+proc verify_original_range() -> bool {
+    let range: InternalRange =
+        internal_make_range(
+            INTERNAL_ZERO,
+            INTERNAL_ANSWER);
+
+    give internal_range_valid(&range) &&
+         internal_range_width(&range) == 42 &&
+         internal_range_contains(
+             &range,
+             INTERNAL_ANSWER);
+}
+
+proc verify_original_record() -> bool {
+    let record: InternalRecord =
+        internal_make_record(
+            INTERNAL_ANSWER,
+            INTERNAL_ANSWER,
+            INTERNAL_ENABLED);
+
+    give internal_record_id(&record) ==
+             INTERNAL_ANSWER &&
+         internal_record_value(&record) ==
+             INTERNAL_ANSWER &&
+         internal_record_enabled(&record);
+}
+
+proc verify_original_pair() -> bool {
+    let pair: InternalPair =
+        internal_make_pair(
+            INTERNAL_TWENTY,
+            INTERNAL_TWENTY_TWO);
+
+    give internal_pair_sum(&pair) ==
+         INTERNAL_ANSWER;
+}
+
+proc verify_original_nested() -> bool {
+    let nested: InternalNested =
+        internal_make_answer_nested();
+
+    give internal_nested_value(&nested) ==
+         INTERNAL_ANSWER;
+}
+
+proc verify_original_envelope() -> bool {
+    let envelope: InternalEnvelope =
+        internal_make_answer_envelope();
+
+    give internal_envelope_value(&envelope) ==
+         INTERNAL_ANSWER;
+}
+
+proc verify_original_picks() -> bool {
+    give internal_default_state() ==
+             InternalState.Idle &&
+         internal_ready_state() ==
+             InternalState.Ready &&
+         internal_running_state() ==
+             InternalState.Running &&
+         internal_finished_state() ==
+             InternalState.Finished &&
+         internal_success_kind() ==
+             InternalResultKind.Success &&
+         internal_failure_kind() ==
+             InternalResultKind.Failure &&
+         internal_left_direction() ==
+             InternalDirection.Left &&
+         internal_right_direction() ==
+             InternalDirection.Right;
+}
+
+proc verify_composed_declarations() -> bool {
+    let point: InternalPoint =
+        internal_make_answer_point();
+
+    let range: InternalRange =
+        internal_make_answer_range();
+
+    let record: InternalRecord =
+        internal_make_answer_record();
+
+    let pair: InternalPair =
+        internal_make_answer_pair();
+
+    give internal_compose_answer() == 42 &&
+         internal_point_sum(&point) == 42 &&
+         internal_range_width(&range) == 42 &&
+         internal_record_value(&record) == 42 &&
+         internal_pair_sum(&pair) == 42;
+}
+
+proc verify_all_original_declarations() -> bool {
+    give verify_original_constants() &&
+         verify_original_arithmetic() &&
+         verify_original_predicates() &&
+         verify_original_point() &&
+         verify_original_range() &&
+         verify_original_record() &&
+         verify_original_pair() &&
+         verify_original_nested() &&
+         verify_original_envelope() &&
+         verify_original_picks() &&
+         verify_composed_declarations();
+}

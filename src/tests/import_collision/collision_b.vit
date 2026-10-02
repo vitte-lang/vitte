@@ -1,5 +1,938 @@
-space collision_b;
+/// Import-collision fixture B.
+///
+/// This module deliberately exports many declarations with the same public
+/// names as `collision_a.vit`, while giving them different values and
+/// behavior.
+///
+/// Purpose:
+/// - verify that qualified imports keep module namespaces independent;
+/// - verify that importing both modules does not merge declarations;
+/// - verify deterministic collision diagnostics for unqualified/glob imports;
+/// - exercise collisions across value, type, variant and procedure names;
+/// - make accidental resolution to module A or B observable at runtime;
+/// - verify that collisions do not corrupt symbol identity.
+///
+/// This module is valid by itself.
+///
+/// Important distinguishing properties:
+/// - SOURCE_ID is 2;
+/// - VALUE is 22;
+/// - ANSWER_PART is 22;
+/// - points produced here normally sum to 22;
+/// - records created here carry source identifier 2.
+///
+/// Combined with `collision_a`, the two `ANSWER_PART` values produce 42.
 
-export proc dup() -> int {
-    give 2;
+space tests::import_collision::collision_b;
+
+export const SOURCE_ID: i64 = 2;
+export const VALUE: i64 = 22;
+export const ANSWER_PART: i64 = 22;
+export const COMMON_LIMIT: i64 = 100;
+
+export const ZERO: i64 = 0;
+export const ONE: i64 = 1;
+export const TWO: i64 = 2;
+export const TEN: i64 = 10;
+export const ELEVEN: i64 = 11;
+export const TWENTY_TWO: i64 = 22;
+export const ANSWER: i64 = 42;
+
+export const ENABLED: bool = true;
+export const DISABLED: bool = false;
+
+/// Same exported type name as collision A.
+///
+/// The field layout is intentionally compatible enough for comparable tests,
+/// but this remains a distinct nominal type belonging to this module.
+
+export form Point {
+    x: i64,
+    y: i64,
+}
+
+/// Same exported type name as collision A.
+
+export form Record {
+    value: i64,
+    source: i64,
+}
+
+/// Same exported type name as collision A.
+
+export form Wrapper {
+    point: Point,
+    record: Record,
+}
+
+/// Additional exported aggregate used for deeper qualified-resolution tests.
+
+export form Range {
+    minimum: i64,
+    maximum: i64,
+}
+
+/// Additional aggregate containing types whose names also collide with module A.
+
+export form Pair {
+    first: i64,
+    second: i64,
+}
+
+/// Nested aggregate.
+///
+/// This helps detect accidental cross-module type resolution when several
+/// identically named types are in scope.
+
+export form Nested {
+    point: Point,
+    range: Range,
+    record: Record,
+}
+
+/// Same exported pick name as collision A.
+
+export pick State {
+    Ready,
+    Running,
+    Finished,
+}
+
+/// Same exported pick name as collision A.
+
+export pick ResultKind {
+    Success,
+    Failure,
+}
+
+/// Additional pick used to make variant ownership observable.
+
+export pick Direction {
+    Left,
+    Right,
+}
+
+/// Same exported procedure name as collision A.
+
+export proc identity(
+    value: i64
+) -> i64 {
+    give value;
+}
+
+/// Same exported procedure name as collision A.
+///
+/// Its result differs from module A because VALUE differs.
+
+export proc common_value() -> i64 {
+    give VALUE;
+}
+
+/// Same exported procedure name as collision A.
+
+export proc answer_part() -> i64 {
+    give ANSWER_PART;
+}
+
+/// Same exported procedure name as collision A.
+
+export proc source_id() -> i64 {
+    give SOURCE_ID;
+}
+
+/// Same exported procedure name as collision A.
+
+export proc add(
+    left: i64,
+    right: i64
+) -> i64 {
+    give left + right;
+}
+
+/// Additional arithmetic helpers.
+
+export proc subtract(
+    left: i64,
+    right: i64
+) -> i64 {
+    give left - right;
+}
+
+export proc multiply(
+    left: i64,
+    right: i64
+) -> i64 {
+    give left * right;
+}
+
+export proc increment(
+    value: i64
+) -> i64 {
+    give value + ONE;
+}
+
+export proc decrement(
+    value: i64
+) -> i64 {
+    give value - ONE;
+}
+
+export proc is_zero(
+    value: i64
+) -> bool {
+    give value == ZERO;
+}
+
+export proc is_positive(
+    value: i64
+) -> bool {
+    give value > ZERO;
+}
+
+export proc is_source_b(
+    value: i64
+) -> bool {
+    give value == SOURCE_ID;
+}
+
+export proc is_value_b(
+    value: i64
+) -> bool {
+    give value == VALUE;
+}
+
+/// Same exported constructor name as collision A.
+
+export proc make_point(
+    x: i64,
+    y: i64
+) -> Point {
+    give Point {
+        x: x,
+        y: y,
+    };
+}
+
+/// Same exported factory name as collision A.
+///
+/// Unlike module A's default point, this one sums to 22.
+
+export proc make_default_point() -> Point {
+    give make_point(
+        ELEVEN,
+        ELEVEN);
+}
+
+/// Same exported consumer name as collision A.
+
+export proc point_sum(
+    point: &Point
+) -> i64 {
+    give point.x +
+         point.y;
+}
+
+export proc point_x(
+    point: &Point
+) -> i64 {
+    give point.x;
+}
+
+export proc point_y(
+    point: &Point
+) -> i64 {
+    give point.y;
+}
+
+export proc point_equal(
+    left: &Point,
+    right: &Point
+) -> bool {
+    give left.x == right.x &&
+         left.y == right.y;
+}
+
+export proc point_translate(
+    point: &Point,
+    dx: i64,
+    dy: i64
+) -> Point {
+    give Point {
+        x: point.x + dx,
+        y: point.y + dy,
+    };
+}
+
+export proc point_scale(
+    point: &Point,
+    factor: i64
+) -> Point {
+    give Point {
+        x: point.x * factor,
+        y: point.y * factor,
+    };
+}
+
+/// Same exported record factory name as collision A.
+///
+/// Records from this module always carry SOURCE_ID == 2.
+
+export proc make_record(
+    value: i64
+) -> Record {
+    give Record {
+        value: value,
+        source: SOURCE_ID,
+    };
+}
+
+/// Same exported record consumer names as collision A.
+
+export proc record_value(
+    record: &Record
+) -> i64 {
+    give record.value;
+}
+
+export proc record_source(
+    record: &Record
+) -> i64 {
+    give record.source;
+}
+
+export proc record_belongs_here(
+    record: &Record
+) -> bool {
+    give record.source ==
+         SOURCE_ID;
+}
+
+/// Same exported wrapper factory name as collision A.
+
+export proc make_wrapper(
+    point: Point,
+    record: Record
+) -> Wrapper {
+    give Wrapper {
+        point: point,
+        record: record,
+    };
+}
+
+/// Same exported wrapper consumer name as collision A.
+
+export proc wrapper_value(
+    wrapper: &Wrapper
+) -> i64 {
+    give point_sum(
+               &wrapper.point) +
+         record_value(
+               &wrapper.record);
+}
+
+export proc wrapper_source(
+    wrapper: &Wrapper
+) -> i64 {
+    give record_source(
+        &wrapper.record);
+}
+
+/// Range helpers.
+
+export proc make_range(
+    minimum_value: i64,
+    maximum_value: i64
+) -> Range {
+    give Range {
+        minimum: minimum_value,
+        maximum: maximum_value,
+    };
+}
+
+export proc make_default_range() -> Range {
+    give make_range(
+        ZERO,
+        VALUE);
+}
+
+export proc range_minimum(
+    range: &Range
+) -> i64 {
+    give range.minimum;
+}
+
+export proc range_maximum(
+    range: &Range
+) -> i64 {
+    give range.maximum;
+}
+
+export proc range_width(
+    range: &Range
+) -> i64 {
+    give range.maximum -
+         range.minimum;
+}
+
+export proc range_valid(
+    range: &Range
+) -> bool {
+    give range.minimum <=
+         range.maximum;
+}
+
+export proc range_contains(
+    range: &Range,
+    value: i64
+) -> bool {
+    give value >= range.minimum &&
+         value <= range.maximum;
+}
+
+/// Pair helpers.
+
+export proc make_pair(
+    first: i64,
+    second: i64
+) -> Pair {
+    give Pair {
+        first: first,
+        second: second,
+    };
+}
+
+export proc make_default_pair() -> Pair {
+    give make_pair(
+        TEN,
+        12);
+}
+
+export proc pair_sum(
+    pair: &Pair
+) -> i64 {
+    give pair.first +
+         pair.second;
+}
+
+/// Nested aggregate helpers.
+
+export proc make_nested(
+    point: Point,
+    range: Range,
+    record: Record
+) -> Nested {
+    give Nested {
+        point: point,
+        range: range,
+        record: record,
+    };
+}
+
+export proc make_default_nested() -> Nested {
+    let point: Point =
+        make_default_point();
+
+    let range: Range =
+        make_default_range();
+
+    let record: Record =
+        make_record(
+            VALUE);
+
+    give make_nested(
+        point,
+        range,
+        record);
+}
+
+export proc nested_point_value(
+    nested: &Nested
+) -> i64 {
+    give point_sum(
+        &nested.point);
+}
+
+export proc nested_range_value(
+    nested: &Nested
+) -> i64 {
+    give range_width(
+        &nested.range);
+}
+
+export proc nested_record_value(
+    nested: &Nested
+) -> i64 {
+    give record_value(
+        &nested.record);
+}
+
+export proc nested_source(
+    nested: &Nested
+) -> i64 {
+    give record_source(
+        &nested.record);
+}
+
+/// The same exported pick-producing procedure names as collision A.
+
+export proc default_state() -> State {
+    give State.Ready;
+}
+
+export proc running_state() -> State {
+    give State.Running;
+}
+
+export proc finished_state() -> State {
+    give State.Finished;
+}
+
+export proc success_kind() -> ResultKind {
+    give ResultKind.Success;
+}
+
+export proc failure_kind() -> ResultKind {
+    give ResultKind.Failure;
+}
+
+export proc left_direction() -> Direction {
+    give Direction.Left;
+}
+
+export proc right_direction() -> Direction {
+    give Direction.Right;
+}
+
+/// Procedures combining several colliding declaration categories.
+
+export proc point_value() -> i64 {
+    let point: Point =
+        make_default_point();
+
+    give point_sum(&point);
+}
+
+export proc record_default_value() -> i64 {
+    let record: Record =
+        make_record(
+            VALUE);
+
+    give record_value(&record);
+}
+
+export proc record_default_source() -> i64 {
+    let record: Record =
+        make_record(
+            VALUE);
+
+    give record_source(&record);
+}
+
+export proc wrapper_default_value() -> i64 {
+    let point: Point =
+        make_default_point();
+
+    let record: Record =
+        make_record(
+            VALUE);
+
+    let wrapper: Wrapper =
+        make_wrapper(
+            point,
+            record);
+
+    give wrapper_value(&wrapper);
+}
+
+export proc composed_value() -> i64 {
+    give add(
+        identity(TEN),
+        identity(12));
+}
+
+export proc nested_call_value() -> i64 {
+    give identity(
+        add(
+            identity(TEN),
+            identity(12)));
+}
+
+export proc arithmetic_pipeline(
+    value: i64
+) -> i64 {
+    let first: i64 =
+        add(
+            value,
+            TEN);
+
+    let second: i64 =
+        multiply(
+            first,
+            TWO);
+
+    give subtract(
+        second,
+        TWENTY_TWO);
+}
+
+/// Mutable-state coverage.
+
+export proc accumulate_value() -> i64 {
+    let mut index: i64 =
+        ZERO;
+
+    let mut result: i64 =
+        ZERO;
+
+    while index < TWO {
+        set result =
+            add(
+                result,
+                ELEVEN);
+
+        set index =
+            increment(index);
+    }
+
+    give result;
+}
+
+/// Conditional coverage.
+
+export proc conditional_value(
+    enabled: bool
+) -> i64 {
+    if enabled {
+        give VALUE;
+    }
+
+    give ZERO;
+}
+
+export proc normalize_to_value(
+    value: i64
+) -> i64 {
+    if value == VALUE {
+        give value;
+    }
+
+    if value < VALUE {
+        give add(
+            value,
+            subtract(
+                VALUE,
+                value));
+    }
+
+    give subtract(
+        value,
+        subtract(
+            value,
+            VALUE));
+}
+
+/// Type/reference coverage.
+
+export proc forward_point(
+    point: &Point
+) -> i64 {
+    give point_sum(point);
+}
+
+export proc forward_record(
+    record: &Record
+) -> i64 {
+    give record_value(record);
+}
+
+export proc forward_wrapper(
+    wrapper: &Wrapper
+) -> i64 {
+    give wrapper_value(wrapper);
+}
+
+export proc forward_range(
+    range: &Range
+) -> i64 {
+    give range_width(range);
+}
+
+export proc forward_pair(
+    pair: &Pair
+) -> i64 {
+    give pair_sum(pair);
+}
+
+/// Identity checks that make accidental cross-module symbol binding visible.
+
+export proc validate_point(
+    point: &Point
+) -> bool {
+    give point_sum(point) ==
+         VALUE;
+}
+
+export proc validate_record(
+    record: &Record
+) -> bool {
+    give record_value(record) ==
+             VALUE &&
+         record_source(record) ==
+             SOURCE_ID;
+}
+
+export proc validate_wrapper(
+    wrapper: &Wrapper
+) -> bool {
+    give wrapper_source(wrapper) ==
+         SOURCE_ID;
+}
+
+export proc validate_range(
+    range: &Range
+) -> bool {
+    give range_valid(range) &&
+         range_width(range) ==
+             VALUE;
+}
+
+export proc validate_pair(
+    pair: &Pair
+) -> bool {
+    give pair_sum(pair) ==
+         VALUE;
+}
+
+export proc validate_nested(
+    nested: &Nested
+) -> bool {
+    give nested_point_value(nested) ==
+             VALUE &&
+         nested_range_value(nested) ==
+             VALUE &&
+         nested_record_value(nested) ==
+             VALUE &&
+         nested_source(nested) ==
+             SOURCE_ID;
+}
+
+/// Cross-category test.
+///
+/// This deliberately performs lookups for constants, forms and procedures
+/// with names that may also exist in collision A.
+
+export proc cross_category_test() -> bool {
+    let point: Point =
+        make_point(
+            TEN,
+            12);
+
+    let record: Record =
+        make_record(
+            VALUE);
+
+    let wrapper: Wrapper =
+        make_wrapper(
+            point,
+            record);
+
+    let range: Range =
+        make_range(
+            ZERO,
+            VALUE);
+
+    let pair: Pair =
+        make_pair(
+            TEN,
+            12);
+
+    give SOURCE_ID == 2 &&
+         VALUE == 22 &&
+         point_sum(&point) == 22 &&
+         record_value(&record) == 22 &&
+         record_source(&record) == 2 &&
+         wrapper_value(&wrapper) == 44 &&
+         wrapper_source(&wrapper) == 2 &&
+         range_width(&range) == 22 &&
+         pair_sum(&pair) == 22;
+}
+
+/// Repeated lookup test.
+///
+/// Repeated references must resolve to the same declaration every time.
+
+export proc repeated_lookup_test() -> bool {
+    give VALUE == 22 &&
+         VALUE == 22 &&
+         VALUE == 22 &&
+         SOURCE_ID == 2 &&
+         SOURCE_ID == 2 &&
+         identity(VALUE) == 22 &&
+         identity(VALUE) == 22 &&
+         common_value() == 22 &&
+         common_value() == 22;
+}
+
+/// Complete self-test.
+///
+/// This is intentionally extensive so a qualified-import test can call one
+/// procedure and still exercise a large portion of this module's symbol
+/// surface.
+
+export proc library_self_test() -> bool {
+    let point: Point =
+        make_default_point();
+
+    let translated: Point =
+        point_translate(
+            &point,
+            ONE,
+            -ONE);
+
+    let scaled_source: Point =
+        make_point(
+            5,
+            6);
+
+    let scaled: Point =
+        point_scale(
+            &scaled_source,
+            TWO);
+
+    let record: Record =
+        make_record(
+            ANSWER_PART);
+
+    let wrapper: Wrapper =
+        make_wrapper(
+            point,
+            record);
+
+    let range: Range =
+        make_default_range();
+
+    let pair: Pair =
+        make_default_pair();
+
+    let nested: Nested =
+        make_default_nested();
+
+    let state: State =
+        default_state();
+
+    let running: State =
+        running_state();
+
+    let finished: State =
+        finished_state();
+
+    let success: ResultKind =
+        success_kind();
+
+    let failure: ResultKind =
+        failure_kind();
+
+    let left: Direction =
+        left_direction();
+
+    let right: Direction =
+        right_direction();
+
+    give SOURCE_ID == 2 &&
+         VALUE == 22 &&
+         ANSWER_PART == 22 &&
+         COMMON_LIMIT == 100 &&
+         ZERO == 0 &&
+         ONE == 1 &&
+         TWO == 2 &&
+         TEN == 10 &&
+         ELEVEN == 11 &&
+         TWENTY_TWO == 22 &&
+         ANSWER == 42 &&
+         ENABLED &&
+         !DISABLED &&
+
+         identity(VALUE) == 22 &&
+         common_value() == 22 &&
+         answer_part() == 22 &&
+         source_id() == 2 &&
+
+         add(10, 12) == 22 &&
+         subtract(42, 20) == 22 &&
+         multiply(11, 2) == 22 &&
+         increment(21) == 22 &&
+         decrement(23) == 22 &&
+
+         is_zero(0) &&
+         is_positive(VALUE) &&
+         is_source_b(SOURCE_ID) &&
+         is_value_b(VALUE) &&
+
+         point_sum(&point) == 22 &&
+         point_x(&point) == 11 &&
+         point_y(&point) == 11 &&
+         point_equal(&point, &point) &&
+         point_sum(&translated) == 22 &&
+         point_sum(&scaled) == 22 &&
+
+         record_value(&record) == 22 &&
+         record_source(&record) == 2 &&
+         record_belongs_here(&record) &&
+
+         wrapper_value(&wrapper) == 44 &&
+         wrapper_source(&wrapper) == 2 &&
+
+         range_minimum(&range) == 0 &&
+         range_maximum(&range) == 22 &&
+         range_width(&range) == 22 &&
+         range_valid(&range) &&
+         range_contains(&range, 0) &&
+         range_contains(&range, 11) &&
+         range_contains(&range, 22) &&
+         !range_contains(&range, 23) &&
+
+         pair_sum(&pair) == 22 &&
+
+         nested_point_value(&nested) == 22 &&
+         nested_range_value(&nested) == 22 &&
+         nested_record_value(&nested) == 22 &&
+         nested_source(&nested) == 2 &&
+
+         state == State.Ready &&
+         running == State.Running &&
+         finished == State.Finished &&
+         success == ResultKind.Success &&
+         failure == ResultKind.Failure &&
+         left == Direction.Left &&
+         right == Direction.Right &&
+
+         point_value() == 22 &&
+         record_default_value() == 22 &&
+         record_default_source() == 2 &&
+         wrapper_default_value() == 44 &&
+         composed_value() == 22 &&
+         nested_call_value() == 22 &&
+         arithmetic_pipeline(11) == 20 &&
+         accumulate_value() == 22 &&
+         conditional_value(true) == 22 &&
+         conditional_value(false) == 0 &&
+         normalize_to_value(0) == 22 &&
+         normalize_to_value(22) == 22 &&
+         normalize_to_value(100) == 22 &&
+
+         forward_point(&point) == 22 &&
+         forward_record(&record) == 22 &&
+         forward_wrapper(&wrapper) == 44 &&
+         forward_range(&range) == 22 &&
+         forward_pair(&pair) == 22 &&
+
+         validate_point(&point) &&
+         validate_record(&record) &&
+         validate_wrapper(&wrapper) &&
+         validate_range(&range) &&
+         validate_pair(&pair) &&
+         validate_nested(&nested) &&
+
+         cross_category_test() &&
+         repeated_lookup_test();
 }

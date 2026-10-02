@@ -1,3 +1,253 @@
-space contract_lib;
+/// Import visibility contract library.
+///
+/// This module exercises contract-related declarations across module
+/// boundaries. It deliberately exposes several forms of contract-bearing
+/// procedures so import resolution, name resolution, semantic analysis,
+/// contract checking, generic resolution and visibility can be tested.
+///
+/// The declarations cover:
+/// - simple preconditions;
+/// - multiple preconditions;
+/// - postconditions;
+/// - precondition/postcondition combinations;
+/// - value and reference parameters;
+/// - forms used by contracts;
+/// - generic procedures;
+/// - nested calls between contracted procedures;
+/// - boolean predicates intended for imported callers;
+/// - boundary values and arithmetic relations.
 
-export const value: int = 7;
+space tests::import_visibility::contract_lib;
+
+const MIN_IDENTIFIER: u64 = 1;
+const MAX_IDENTIFIER: u64 = 1000000;
+const DEFAULT_LIMIT: u64 = 128;
+
+form ContractRecord {
+    id: u64,
+    value: i64,
+    enabled: bool,
+}
+
+form ContractRange {
+    minimum: i64,
+    maximum: i64,
+}
+
+form ContractResult {
+    value: i64,
+    valid: bool,
+}
+
+proc valid_identifier(id: u64) -> bool {
+    give id >= MIN_IDENTIFIER && id <= MAX_IDENTIFIER;
+}
+
+proc valid_limit(limit: u64) -> bool {
+    give limit > 0 && limit <= DEFAULT_LIMIT;
+}
+
+proc valid_range(range: &ContractRange) -> bool {
+    give range.minimum <= range.maximum;
+}
+
+proc value_in_range(
+    value: i64,
+    range: &ContractRange
+) -> bool {
+    give value >= range.minimum &&
+         value <= range.maximum;
+}
+
+proc positive(value: i64) -> bool {
+    give value > 0;
+}
+
+proc non_negative(value: i64) -> bool {
+    give value >= 0;
+}
+
+proc checked_identity(value: i64) -> i64
+    requires non_negative(value);
+    ensures result == value;
+{
+    give value;
+}
+
+proc checked_increment(value: i64) -> i64
+    requires value >= 0;
+    ensures result > value;
+{
+    give value + 1;
+}
+
+proc checked_add(
+    left: i64,
+    right: i64
+) -> i64
+    requires left >= 0;
+    requires right >= 0;
+    ensures result >= left;
+    ensures result >= right;
+{
+    give left + right;
+}
+
+proc checked_subtract(
+    left: i64,
+    right: i64
+) -> i64
+    requires left >= right;
+    ensures result >= 0;
+{
+    give left - right;
+}
+
+proc checked_multiply(
+    left: i64,
+    right: i64
+) -> i64
+    requires left >= 0;
+    requires right >= 0;
+    ensures result >= 0;
+{
+    give left * right;
+}
+
+proc checked_clamp(
+    value: i64,
+    range: &ContractRange
+) -> i64
+    requires valid_range(range);
+    ensures result >= range.minimum;
+    ensures result <= range.maximum;
+{
+    if value < range.minimum {
+        give range.minimum;
+    }
+
+    if value > range.maximum {
+        give range.maximum;
+    }
+
+    give value;
+}
+
+proc checked_record(
+    id: u64,
+    value: i64
+) -> ContractRecord
+    requires valid_identifier(id);
+    requires non_negative(value);
+    ensures result.id == id;
+    ensures result.value == value;
+    ensures result.enabled;
+{
+    give ContractRecord {
+        id: id,
+        value: value,
+        enabled: true,
+    };
+}
+
+proc checked_record_value(
+    record: &ContractRecord
+) -> i64
+    requires valid_identifier(record.id);
+    requires record.enabled;
+    ensures result == record.value;
+{
+    give record.value;
+}
+
+proc checked_result(
+    value: i64
+) -> ContractResult
+    requires non_negative(value);
+    ensures result.value == value;
+    ensures result.valid;
+{
+    give ContractResult {
+        value: value,
+        valid: true,
+    };
+}
+
+proc checked_chain(
+    value: i64
+) -> i64
+    requires non_negative(value);
+    ensures result >= value;
+{
+    let first: i64 = checked_identity(value);
+    let second: i64 = checked_increment(first);
+
+    give checked_add(second, 1);
+}
+
+proc checked_bounded_add(
+    left: i64,
+    right: i64,
+    range: &ContractRange
+) -> i64
+    requires non_negative(left);
+    requires non_negative(right);
+    requires valid_range(range);
+    ensures result >= range.minimum;
+    ensures result <= range.maximum;
+{
+    let value: i64 = checked_add(left, right);
+
+    give checked_clamp(value, range);
+}
+
+proc checked_select(
+    condition: bool,
+    first: i64,
+    second: i64
+) -> i64
+    requires non_negative(first);
+    requires non_negative(second);
+    ensures result == first || result == second;
+{
+    if condition {
+        give first;
+    }
+
+    give second;
+}
+
+proc checked_limit(
+    value: u64,
+    limit: u64
+) -> u64
+    requires valid_limit(limit);
+    ensures result <= limit;
+{
+    if value > limit {
+        give limit;
+    }
+
+    give value;
+}
+
+proc contract_library_self_test() -> bool {
+    let range: ContractRange = ContractRange {
+        minimum: 0,
+        maximum: 100,
+    };
+
+    let record: ContractRecord =
+        checked_record(42, 10);
+
+    let value: i64 =
+        checked_bounded_add(
+            record.value,
+            20,
+            &range);
+
+    give valid_identifier(record.id) &&
+         valid_range(&range) &&
+         value_in_range(value, &range) &&
+         value == 30;
+}

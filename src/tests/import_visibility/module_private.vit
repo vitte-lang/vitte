@@ -1,7 +1,516 @@
-space demo/module_private;
+/// Module-qualified private visibility test.
+///
+/// Negative test for explicit module qualification.
+///
+/// Importing a module gives access to its exported interface, not to its
+/// private implementation. Writing `lib::symbol` must therefore perform the
+/// same visibility checks as every other import mechanism.
+///
+/// Expected result:
+/// - `lib` resolves successfully;
+/// - the import itself is valid;
+/// - exported members of `lib` remain resolvable;
+/// - private constants are rejected through qualification;
+/// - private forms are rejected in type positions;
+/// - private constructors are rejected;
+/// - private procedures are rejected;
+/// - private predicates are rejected;
+/// - private declarations with names similar to exported declarations remain
+///   inaccessible;
+/// - repeated qualified lookup does not bypass visibility;
+/// - diagnostics distinguish an inaccessible symbol from an unknown module;
+/// - compilation fails during import/name/visibility resolution;
+/// - code generation and execution are not required.
+///
+/// This file deliberately contains several independent visibility violations.
+/// A compiler may report all of them or stop according to its diagnostic
+/// policy, but none may resolve successfully.
 
-use lib;
+space tests::import_visibility::module_private;
 
+use tests::import_visibility::lib;
+
+/// --------------------------------------------------------------------------
+/// Control case
+/// --------------------------------------------------------------------------
+
+/// The module itself must resolve.
+///
+/// This exported declaration is intentionally referenced alongside private
+/// declarations. If this lookup fails, the test is not exercising the intended
+/// private-member visibility boundary.
+proc control_public_access() -> i64 {
+    give lib::PUBLIC_ANSWER;
+}
+
+/// --------------------------------------------------------------------------
+/// Private constants
+/// --------------------------------------------------------------------------
+
+proc access_private_zero() -> i64 {
+    give lib::PRIVATE_ZERO;
+}
+
+proc access_private_one() -> i64 {
+    give lib::PRIVATE_ONE;
+}
+
+proc access_private_answer() -> i64 {
+    give lib::PRIVATE_ANSWER;
+}
+
+proc access_private_limit() -> u64 {
+    give lib::PRIVATE_LIMIT;
+}
+
+proc access_private_offset() -> i64 {
+    give lib::PRIVATE_OFFSET;
+}
+
+proc access_private_min_identifier() -> u64 {
+    give lib::PRIVATE_MIN_ID;
+}
+
+proc access_private_max_identifier() -> u64 {
+    give lib::PRIVATE_MAX_ID;
+}
+
+/// Repeated lookup must remain inaccessible and deterministic.
+proc repeated_private_constant() -> i64 {
+    let first: i64 =
+        lib::PRIVATE_ANSWER;
+
+    let second: i64 =
+        lib::PRIVATE_ANSWER;
+
+    let third: i64 =
+        lib::PRIVATE_ANSWER;
+
+    give first + second + third;
+}
+
+/// --------------------------------------------------------------------------
+/// Private forms in type positions
+/// --------------------------------------------------------------------------
+
+proc accept_private_point(
+    point: &lib::PrivatePoint
+) -> i64 {
+    give point.x + point.y;
+}
+
+proc accept_private_range(
+    range: &lib::PrivateRange
+) -> bool {
+    give range.minimum <= range.maximum;
+}
+
+proc accept_private_record(
+    record: &lib::PrivateRecord
+) -> i64 {
+    give record.value;
+}
+
+proc accept_private_pair(
+    pair: &lib::PrivatePair
+) -> i64 {
+    give pair.first + pair.second;
+}
+
+/// --------------------------------------------------------------------------
+/// Private constructors
+/// --------------------------------------------------------------------------
+
+proc construct_private_point() -> i64 {
+    let point: lib::PrivatePoint =
+        lib::PrivatePoint {
+            x: 20,
+            y: 22,
+        };
+
+    give point.x + point.y;
+}
+
+proc construct_private_range() -> i64 {
+    let range: lib::PrivateRange =
+        lib::PrivateRange {
+            minimum: 0,
+            maximum: 42,
+        };
+
+    give range.maximum;
+}
+
+proc construct_private_record() -> i64 {
+    let record: lib::PrivateRecord =
+        lib::PrivateRecord {
+            id: 42,
+            value: 42,
+            enabled: true,
+        };
+
+    give record.value;
+}
+
+proc construct_private_pair() -> i64 {
+    let pair: lib::PrivatePair =
+        lib::PrivatePair {
+            first: 20,
+            second: 22,
+        };
+
+    give pair.first + pair.second;
+}
+
+/// --------------------------------------------------------------------------
+/// Private procedures
+/// --------------------------------------------------------------------------
+
+proc call_private_identity() -> i64 {
+    give lib::private_identity(42);
+}
+
+proc call_private_add() -> i64 {
+    give lib::private_add(20, 22);
+}
+
+proc call_private_subtract() -> i64 {
+    give lib::private_subtract(100, 58);
+}
+
+proc call_private_multiply() -> i64 {
+    give lib::private_multiply(6, 7);
+}
+
+proc call_private_only_proc() -> i64 {
+    give lib::private_only_proc();
+}
+
+proc call_private_only_predicate() -> bool {
+    give lib::private_only_predicate();
+}
+
+/// --------------------------------------------------------------------------
+/// Private predicates
+/// --------------------------------------------------------------------------
+
+proc call_private_identifier_predicate() -> bool {
+    give lib::private_valid_identifier(42);
+}
+
+proc call_private_range_predicate() -> bool {
+    let range: lib::PrivateRange =
+        lib::PrivateRange {
+            minimum: 0,
+            maximum: 100,
+        };
+
+    give lib::private_valid_range(&range);
+}
+
+/// --------------------------------------------------------------------------
+/// Private factories
+/// --------------------------------------------------------------------------
+
+proc call_private_point_factory() -> i64 {
+    let point: lib::PrivatePoint =
+        lib::private_make_point(
+            20,
+            22);
+
+    give point.x + point.y;
+}
+
+proc call_private_record_factory() -> i64 {
+    let record: lib::PrivateRecord =
+        lib::private_make_record(
+            42,
+            42);
+
+    give record.value;
+}
+
+proc call_private_record_provider() -> i64 {
+    let record: lib::PrivateRecord =
+        lib::private_only_record();
+
+    give record.value;
+}
+
+proc call_private_range_provider() -> i64 {
+    let range: lib::PrivateRange =
+        lib::private_only_range();
+
+    give range.maximum;
+}
+
+/// --------------------------------------------------------------------------
+/// Similar-name regression cases
+/// --------------------------------------------------------------------------
+
+/// `visible_symbol` is exported while `visible_symbol_private` is private.
+///
+/// Prefix similarity must not affect visibility lookup.
+proc access_similar_private_procedure() -> i64 {
+    give lib::visible_symbol_private();
+}
+
+/// `VISIBLE_VALUE` is exported while `VISIBLE_VALUE_PRIVATE` is private.
+proc access_similar_private_constant() -> i64 {
+    give lib::VISIBLE_VALUE_PRIVATE;
+}
+
+/// `VisibleForm` is exported while `VisibleFormPrivate` is private.
+proc construct_similar_private_form() -> i64 {
+    let value: lib::VisibleFormPrivate =
+        lib::VisibleFormPrivate {
+            value: 42,
+        };
+
+    give value.value;
+}
+
+/// --------------------------------------------------------------------------
+/// Mixed public/private qualification
+/// --------------------------------------------------------------------------
+
+/// The public lookup must succeed while the private lookup in the same
+/// expression must still fail.
+proc mixed_constant_visibility() -> i64 {
+    let visible: i64 =
+        lib::PUBLIC_ANSWER;
+
+    let hidden: i64 =
+        lib::PRIVATE_ANSWER;
+
+    give visible + hidden;
+}
+
+/// A public form does not make a private form accessible.
+proc mixed_type_visibility() -> i64 {
+    let visible: lib::PublicPoint =
+        lib::PublicPoint {
+            x: 20,
+            y: 22,
+        };
+
+    let hidden: lib::PrivatePoint =
+        lib::PrivatePoint {
+            x: 20,
+            y: 22,
+        };
+
+    give visible.x +
+         hidden.y;
+}
+
+/// Public procedures may internally use private implementation details, but
+/// the caller may not access those details directly.
+proc compare_public_and_private_calls() -> bool {
+    let public_value: i64 =
+        lib::public_identity(42);
+
+    let private_value: i64 =
+        lib::private_identity(42);
+
+    give public_value == private_value;
+}
+
+/// --------------------------------------------------------------------------
+/// Control-flow visibility
+/// --------------------------------------------------------------------------
+
+/// Visibility rules must not depend on the expression being reachable.
+///
+/// Even a reference in a branch whose condition is false must be resolved and
+/// rejected normally.
+proc private_access_in_branch() -> i64 {
+    if false {
+        give lib::PRIVATE_ANSWER;
+    }
+
+    give lib::PUBLIC_ANSWER;
+}
+
+/// Private declarations remain private inside nested blocks.
+proc private_access_nested() -> i64 {
+    let visible: i64 =
+        lib::PUBLIC_ANSWER;
+
+    if visible == 42 {
+        let hidden: i64 =
+            lib::PRIVATE_ANSWER;
+
+        give hidden;
+    }
+
+    give visible;
+}
+
+/// --------------------------------------------------------------------------
+/// Expression-tree visibility
+/// --------------------------------------------------------------------------
+
+proc private_access_expression_tree() -> i64 {
+    give lib::private_add(
+        lib::private_identity(20),
+        lib::private_identity(22));
+}
+
+/// Qualification at every level must still perform visibility checking.
+proc mixed_expression_tree() -> i64 {
+    give lib::public_add(
+        lib::PUBLIC_ANSWER,
+        lib::PRIVATE_OFFSET);
+}
+
+/// --------------------------------------------------------------------------
+/// Entry point
+/// --------------------------------------------------------------------------
+
+/// This entry point intentionally references all negative cases so future
+/// reachability-based implementations cannot accidentally omit them.
+///
+/// Compilation is expected to fail before execution.
 proc main() -> int {
-    give lib::hidden();
+    let control: i64 =
+        control_public_access();
+
+    let zero: i64 =
+        access_private_zero();
+
+    let one: i64 =
+        access_private_one();
+
+    let answer: i64 =
+        access_private_answer();
+
+    let limit: u64 =
+        access_private_limit();
+
+    let offset: i64 =
+        access_private_offset();
+
+    let minimum: u64 =
+        access_private_min_identifier();
+
+    let maximum: u64 =
+        access_private_max_identifier();
+
+    let repeated: i64 =
+        repeated_private_constant();
+
+    let point: i64 =
+        construct_private_point();
+
+    let range: i64 =
+        construct_private_range();
+
+    let record: i64 =
+        construct_private_record();
+
+    let pair: i64 =
+        construct_private_pair();
+
+    let identity: i64 =
+        call_private_identity();
+
+    let sum: i64 =
+        call_private_add();
+
+    let difference: i64 =
+        call_private_subtract();
+
+    let product: i64 =
+        call_private_multiply();
+
+    let only_value: i64 =
+        call_private_only_proc();
+
+    let predicate: bool =
+        call_private_only_predicate();
+
+    let identifier_valid: bool =
+        call_private_identifier_predicate();
+
+    let range_valid: bool =
+        call_private_range_predicate();
+
+    let factory_point: i64 =
+        call_private_point_factory();
+
+    let factory_record: i64 =
+        call_private_record_factory();
+
+    let provided_record: i64 =
+        call_private_record_provider();
+
+    let provided_range: i64 =
+        call_private_range_provider();
+
+    let similar_proc: i64 =
+        access_similar_private_procedure();
+
+    let similar_constant: i64 =
+        access_similar_private_constant();
+
+    let similar_form: i64 =
+        construct_similar_private_form();
+
+    let mixed_constant: i64 =
+        mixed_constant_visibility();
+
+    let mixed_type: i64 =
+        mixed_type_visibility();
+
+    let branch: i64 =
+        private_access_in_branch();
+
+    let nested: i64 =
+        private_access_nested();
+
+    let expression: i64 =
+        private_access_expression_tree();
+
+    let mixed_expression: i64 =
+        mixed_expression_tree();
+
+    if predicate &&
+       identifier_valid &&
+       range_valid &&
+       control == 42 &&
+       zero == 0 &&
+       one == 1 &&
+       answer == 42 &&
+       limit > 0 &&
+       offset == 10 &&
+       minimum > 0 &&
+       maximum >= minimum &&
+       repeated > 0 &&
+       point == 42 &&
+       range == 42 &&
+       record == 42 &&
+       pair == 42 &&
+       identity == 42 &&
+       sum == 42 &&
+       difference == 42 &&
+       product == 42 &&
+       only_value == 42 &&
+       factory_point == 42 &&
+       factory_record == 42 &&
+       provided_record == 42 &&
+       provided_range == 42 &&
+       similar_proc == 84 &&
+       similar_constant == 84 &&
+       similar_form == 42 &&
+       mixed_constant > 0 &&
+       mixed_type == 42 &&
+       branch == 42 &&
+       nested == 42 &&
+       expression == 42 &&
+       mixed_expression > 0 {
+        give 0;
+    }
+
+    give 1;
 }

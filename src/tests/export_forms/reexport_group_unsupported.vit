@@ -1,9 +1,49 @@
-space demo/reexport_group_unsupported;
+/// Negative export-form test.
+///
+/// Grouped re-export is intentionally unsupported.
+///
+/// This fixture verifies that the frontend rejects a grouped re-export form
+/// rather than silently accepting it, partially importing it, interpreting it
+/// as a direct export, or producing unrelated downstream diagnostics.
+///
+/// Expected result:
+/// - source loading succeeds;
+/// - lexical analysis succeeds;
+/// - parsing reaches the export declaration;
+/// - the grouped re-export form is rejected;
+/// - compilation fails;
+/// - no grouped members are exported;
+/// - no partial re-export is committed;
+/// - the diagnostic is attached to this export declaration;
+/// - the diagnostic explains that grouped re-export is unsupported.
+///
+/// The imported module itself is valid. Therefore a failure in this file
+/// should specifically exercise grouped re-export handling.
 
-use coverage_explicit_lib;
+space tests::export_forms::reexport_group_unsupported;
 
-export lib_alias::{plus};
+use tests::export_forms::lib_star;
 
-proc main() -> int {
-    give 0;
-}
+/// Intentional unsupported syntax.
+///
+/// Individual module members exist:
+/// - `lib_star::ZERO`
+/// - `lib_star::ONE`
+/// - `lib_star::ANSWER`
+/// - `lib_star::Point`
+/// - `lib_star::Range`
+/// - `lib_star::identity`
+/// - `lib_star::add`
+///
+/// The unsupported operation is exporting several of those imported members
+/// through one grouped re-export declaration.
+
+export lib_star::{
+    ZERO,
+    ONE,
+    ANSWER,
+    Point,
+    Range,
+    identity,
+    add,
+};

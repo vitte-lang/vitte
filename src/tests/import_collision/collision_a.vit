@@ -1,5 +1,173 @@
-space collision_a;
+/// Import-collision fixture A.
+///
+/// Provides exported declarations whose names intentionally overlap with
+/// `collision_b.vit`. Consumers can use this module to verify that qualified
+/// imports remain distinct and that direct/glob imports diagnose collisions
+/// deterministically.
+///
+/// The declarations deliberately span several namespaces/categories:
+/// - constants;
+/// - forms;
+/// - picks;
+/// - procedures.
+///
+/// This file itself is valid and must compile without diagnostics.
 
-export proc dup() -> int {
-    give 1;
+space tests::import_collision::collision_a;
+
+export const SOURCE_ID: i64 = 1;
+export const VALUE: i64 = 20;
+export const ANSWER_PART: i64 = 20;
+export const COMMON_LIMIT: i64 = 100;
+
+export form Point {
+    x: i64,
+    y: i64,
+}
+
+export form Record {
+    value: i64,
+    source: i64,
+}
+
+export form Wrapper {
+    point: Point,
+    record: Record,
+}
+
+export pick State {
+    Ready,
+    Running,
+    Finished,
+}
+
+export pick ResultKind {
+    Success,
+    Failure,
+}
+
+export proc identity(
+    value: i64
+) -> i64 {
+    give value;
+}
+
+export proc common_value() -> i64 {
+    give VALUE;
+}
+
+export proc answer_part() -> i64 {
+    give ANSWER_PART;
+}
+
+export proc source_id() -> i64 {
+    give SOURCE_ID;
+}
+
+export proc add(
+    left: i64,
+    right: i64
+) -> i64 {
+    give left + right;
+}
+
+export proc make_point(
+    x: i64,
+    y: i64
+) -> Point {
+    give Point {
+        x: x,
+        y: y,
+    };
+}
+
+export proc make_default_point() -> Point {
+    give make_point(
+        10,
+        10);
+}
+
+export proc point_sum(
+    point: &Point
+) -> i64 {
+    give point.x +
+         point.y;
+}
+
+export proc make_record(
+    value: i64
+) -> Record {
+    give Record {
+        value: value,
+        source: SOURCE_ID,
+    };
+}
+
+export proc record_value(
+    record: &Record
+) -> i64 {
+    give record.value;
+}
+
+export proc record_source(
+    record: &Record
+) -> i64 {
+    give record.source;
+}
+
+export proc make_wrapper(
+    point: Point,
+    record: Record
+) -> Wrapper {
+    give Wrapper {
+        point: point,
+        record: record,
+    };
+}
+
+export proc wrapper_value(
+    wrapper: &Wrapper
+) -> i64 {
+    give point_sum(
+               &wrapper.point) +
+         record_value(
+               &wrapper.record);
+}
+
+export proc default_state() -> State {
+    give State.Ready;
+}
+
+export proc success_kind() -> ResultKind {
+    give ResultKind.Success;
+}
+
+export proc library_self_test() -> bool {
+    let point: Point =
+        make_default_point();
+
+    let record: Record =
+        make_record(
+            ANSWER_PART);
+
+    let wrapper: Wrapper =
+        make_wrapper(
+            point,
+            record);
+
+    give SOURCE_ID == 1 &&
+         VALUE == 20 &&
+         ANSWER_PART == 20 &&
+         COMMON_LIMIT == 100 &&
+         identity(VALUE) == 20 &&
+         common_value() == 20 &&
+         answer_part() == 20 &&
+         source_id() == 1 &&
+         add(10, 10) == 20 &&
+         point_sum(&point) == 20 &&
+         record_value(&record) == 20 &&
+         record_source(&record) == 1 &&
+         wrapper_value(&wrapper) == 40 &&
+         default_state() == State.Ready &&
+         success_kind() == ResultKind.Success;
 }

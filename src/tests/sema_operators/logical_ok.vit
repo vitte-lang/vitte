@@ -1,8 +1,1995 @@
-space sema_operators_logical_ok;
+/// Semantic operator coverage — logical operators.
+///
+/// Positive exhaustive fixture for boolean logical semantics.
+///
+/// Coverage:
+/// - unary logical negation `!`;
+/// - binary logical AND `&&`;
+/// - binary logical OR `||`;
+/// - every boolean truth-table combination;
+/// - precedence between `!`, `&&`, and `||`;
+/// - explicit grouping;
+/// - logical expressions in variable initializers;
+/// - logical expressions in assignments;
+/// - logical expressions in procedure arguments;
+/// - logical expressions in return expressions;
+/// - logical expressions in `if`;
+/// - logical expressions in `while`;
+/// - nested lexical scopes;
+/// - parameters and local variables;
+/// - procedure-call operands;
+/// - comparison operands producing `bool`;
+/// - equality operands producing `bool`;
+/// - arithmetic comparisons feeding logical operators;
+/// - deeply nested logical expressions;
+/// - repeated operands;
+/// - mutation combined with logical expressions;
+/// - short-circuit-compatible expressions;
+/// - boolean identity laws;
+/// - De Morgan laws;
+/// - distributive laws;
+/// - absorption laws;
+/// - associativity;
+/// - commutativity;
+/// - double negation;
+/// - implication/equivalence constructions;
+/// - large mixed expressions.
+///
+/// Every operand of `!`, `&&`, and `||` has type `bool`.
+///
+/// Expected result:
+/// - lexing succeeds;
+/// - parsing succeeds;
+/// - name resolution succeeds;
+/// - semantic analysis succeeds;
+/// - `!bool` has type `bool`;
+/// - `bool && bool` has type `bool`;
+/// - `bool || bool` has type `bool`;
+/// - operator precedence is preserved;
+/// - compilation succeeds;
+/// - execution returns 0.
+
+space tests::sema_operators::logical_ok;
+
+const TRUE_VALUE: bool = true;
+const FALSE_VALUE: bool = false;
+
+const ZERO: i64 = 0;
+const ONE: i64 = 1;
+const TWO: i64 = 2;
+const TEN: i64 = 10;
+const TWENTY: i64 = 20;
+const TWENTY_TWO: i64 = 22;
+const FORTY_TWO: i64 = 42;
+const ONE_HUNDRED: i64 = 100;
+
+proc identity_bool(
+    value: bool
+) -> bool {
+    give value;
+}
+
+proc logical_not(
+    value: bool
+) -> bool {
+    give !value;
+}
+
+proc logical_and(
+    left: bool,
+    right: bool
+) -> bool {
+    give left && right;
+}
+
+proc logical_or(
+    left: bool,
+    right: bool
+) -> bool {
+    give left || right;
+}
+
+proc logical_nand(
+    left: bool,
+    right: bool
+) -> bool {
+    give !(left && right);
+}
+
+proc logical_nor(
+    left: bool,
+    right: bool
+) -> bool {
+    give !(left || right);
+}
+
+proc logical_xor(
+    left: bool,
+    right: bool
+) -> bool {
+    give (left || right) &&
+         !(left && right);
+}
+
+proc logical_xnor(
+    left: bool,
+    right: bool
+) -> bool {
+    give (left && right) ||
+         (!left && !right);
+}
+
+proc logical_implies(
+    left: bool,
+    right: bool
+) -> bool {
+    give !left || right;
+}
+
+proc logical_equivalent(
+    left: bool,
+    right: bool
+) -> bool {
+    give (left && right) ||
+         (!left && !right);
+}
+
+proc always_true() -> bool {
+    give true;
+}
+
+proc always_false() -> bool {
+    give false;
+}
+
+proc is_zero(
+    value: i64
+) -> bool {
+    give value == ZERO;
+}
+
+proc is_positive(
+    value: i64
+) -> bool {
+    give value > ZERO;
+}
+
+proc is_negative(
+    value: i64
+) -> bool {
+    give value < ZERO;
+}
+
+proc is_answer(
+    value: i64
+) -> bool {
+    give value == FORTY_TWO;
+}
+
+proc less_than(
+    left: i64,
+    right: i64
+) -> bool {
+    give left < right;
+}
+
+proc less_equal(
+    left: i64,
+    right: i64
+) -> bool {
+    give left <= right;
+}
+
+proc greater_than(
+    left: i64,
+    right: i64
+) -> bool {
+    give left > right;
+}
+
+proc greater_equal(
+    left: i64,
+    right: i64
+) -> bool {
+    give left >= right;
+}
+
+proc equal_i64(
+    left: i64,
+    right: i64
+) -> bool {
+    give left == right;
+}
+
+proc not_equal_i64(
+    left: i64,
+    right: i64
+) -> bool {
+    give left != right;
+}
+
+proc between_inclusive(
+    value: i64,
+    minimum: i64,
+    maximum: i64
+) -> bool {
+    give value >= minimum &&
+         value <= maximum;
+}
+
+proc between_exclusive(
+    value: i64,
+    minimum: i64,
+    maximum: i64
+) -> bool {
+    give value > minimum &&
+         value < maximum;
+}
+
+proc outside_range(
+    value: i64,
+    minimum: i64,
+    maximum: i64
+) -> bool {
+    give value < minimum ||
+         value > maximum;
+}
+
+proc test_boolean_constants() -> bool {
+    give TRUE_VALUE &&
+         !FALSE_VALUE;
+}
+
+proc test_literal_not() -> bool {
+    give !false &&
+         !!true &&
+         !!!false &&
+         !!!!true;
+}
+
+proc test_variable_not() -> bool {
+    let yes: bool = true;
+    let no: bool = false;
+
+    give !no &&
+         !!yes &&
+         !!!no &&
+         !!!!yes;
+}
+
+proc test_not_truth_table() -> bool {
+    give !false &&
+         !(!true);
+}
+
+proc test_and_truth_table() -> bool {
+    let tt: bool =
+        true && true;
+
+    let tf: bool =
+        true && false;
+
+    let ft: bool =
+        false && true;
+
+    let ff: bool =
+        false && false;
+
+    give tt &&
+         !tf &&
+         !ft &&
+         !ff;
+}
+
+proc test_or_truth_table() -> bool {
+    let tt: bool =
+        true || true;
+
+    let tf: bool =
+        true || false;
+
+    let ft: bool =
+        false || true;
+
+    let ff: bool =
+        false || false;
+
+    give tt &&
+         tf &&
+         ft &&
+         !ff;
+}
+
+proc test_nand_truth_table() -> bool {
+    give !logical_nand(true, true) &&
+         logical_nand(true, false) &&
+         logical_nand(false, true) &&
+         logical_nand(false, false);
+}
+
+proc test_nor_truth_table() -> bool {
+    give !logical_nor(true, true) &&
+         !logical_nor(true, false) &&
+         !logical_nor(false, true) &&
+         logical_nor(false, false);
+}
+
+proc test_xor_truth_table() -> bool {
+    give !logical_xor(false, false) &&
+         logical_xor(false, true) &&
+         logical_xor(true, false) &&
+         !logical_xor(true, true);
+}
+
+proc test_xnor_truth_table() -> bool {
+    give logical_xnor(false, false) &&
+         !logical_xnor(false, true) &&
+         !logical_xnor(true, false) &&
+         logical_xnor(true, true);
+}
+
+proc test_implication_truth_table() -> bool {
+    give logical_implies(false, false) &&
+         logical_implies(false, true) &&
+         !logical_implies(true, false) &&
+         logical_implies(true, true);
+}
+
+proc test_equivalence_truth_table() -> bool {
+    give logical_equivalent(false, false) &&
+         !logical_equivalent(false, true) &&
+         !logical_equivalent(true, false) &&
+         logical_equivalent(true, true);
+}
+
+proc test_and_variables(
+    left: bool,
+    right: bool
+) -> bool {
+    let result: bool =
+        left && right;
+
+    give result ==
+         logical_and(left, right);
+}
+
+proc test_or_variables(
+    left: bool,
+    right: bool
+) -> bool {
+    let result: bool =
+        left || right;
+
+    give result ==
+         logical_or(left, right);
+}
+
+proc test_parameter_negation(
+    value: bool
+) -> bool {
+    give logical_not(value) ==
+         !value;
+}
+
+proc test_precedence_not_and() -> bool {
+    let first: bool =
+        !false && true;
+
+    let second: bool =
+        !(false && true);
+
+    let third: bool =
+        !true && false;
+
+    let fourth: bool =
+        !(true && false);
+
+    give first &&
+         second &&
+         !third &&
+         fourth;
+}
+
+proc test_precedence_not_or() -> bool {
+    let first: bool =
+        !false || false;
+
+    let second: bool =
+        !(false || false);
+
+    let third: bool =
+        !true || false;
+
+    let fourth: bool =
+        !(true || false);
+
+    give first &&
+         second &&
+         !third &&
+         !fourth;
+}
+
+proc test_precedence_and_or() -> bool {
+    let first: bool =
+        true || false && false;
+
+    let second: bool =
+        (true || false) && false;
+
+    let third: bool =
+        false && false || true;
+
+    let fourth: bool =
+        false && (false || true);
+
+    give first &&
+         !second &&
+         third &&
+         !fourth;
+}
+
+proc test_precedence_full() -> bool {
+    let value: bool =
+        !false &&
+        false ||
+        true &&
+        !false;
+
+    give value;
+}
+
+proc test_grouping() -> bool {
+    let a: bool =
+        (true || false) &&
+        (true || false);
+
+    let b: bool =
+        !(true && false);
+
+    let c: bool =
+        !(false || false);
+
+    let d: bool =
+        (true && true) ||
+        (false && false);
+
+    give a &&
+         b &&
+         c &&
+         d;
+}
+
+proc test_double_negation(
+    value: bool
+) -> bool {
+    give !!value == value;
+}
+
+proc test_triple_negation(
+    value: bool
+) -> bool {
+    give !!!value == !value;
+}
+
+proc test_and_identity(
+    value: bool
+) -> bool {
+    give (value && true) == value &&
+         (true && value) == value;
+}
+
+proc test_or_identity(
+    value: bool
+) -> bool {
+    give (value || false) == value &&
+         (false || value) == value;
+}
+
+proc test_and_annihilator(
+    value: bool
+) -> bool {
+    give !(value && false) &&
+         !(false && value);
+}
+
+proc test_or_annihilator(
+    value: bool
+) -> bool {
+    give (value || true) &&
+         (true || value);
+}
+
+proc test_idempotence(
+    value: bool
+) -> bool {
+    give (value && value) == value &&
+         (value || value) == value;
+}
+
+proc test_complement(
+    value: bool
+) -> bool {
+    give !(value && !value) &&
+         (value || !value);
+}
+
+proc test_and_commutative(
+    left: bool,
+    right: bool
+) -> bool {
+    give (left && right) ==
+         (right && left);
+}
+
+proc test_or_commutative(
+    left: bool,
+    right: bool
+) -> bool {
+    give (left || right) ==
+         (right || left);
+}
+
+proc test_and_associative(
+    a: bool,
+    b: bool,
+    c: bool
+) -> bool {
+    give ((a && b) && c) ==
+         (a && (b && c));
+}
+
+proc test_or_associative(
+    a: bool,
+    b: bool,
+    c: bool
+) -> bool {
+    give ((a || b) || c) ==
+         (a || (b || c));
+}
+
+proc test_and_distributes_over_or(
+    a: bool,
+    b: bool,
+    c: bool
+) -> bool {
+    give (a && (b || c)) ==
+         ((a && b) || (a && c));
+}
+
+proc test_or_distributes_over_and(
+    a: bool,
+    b: bool,
+    c: bool
+) -> bool {
+    give (a || (b && c)) ==
+         ((a || b) && (a || c));
+}
+
+proc test_and_absorption(
+    a: bool,
+    b: bool
+) -> bool {
+    give (a && (a || b)) == a;
+}
+
+proc test_or_absorption(
+    a: bool,
+    b: bool
+) -> bool {
+    give (a || (a && b)) == a;
+}
+
+proc test_de_morgan_and(
+    a: bool,
+    b: bool
+) -> bool {
+    give !(a && b) ==
+         (!a || !b);
+}
+
+proc test_de_morgan_or(
+    a: bool,
+    b: bool
+) -> bool {
+    give !(a || b) ==
+         (!a && !b);
+}
+
+proc test_comparison_and() -> bool {
+    give FORTY_TWO > ZERO &&
+         FORTY_TWO < ONE_HUNDRED;
+}
+
+proc test_comparison_or() -> bool {
+    give FORTY_TWO < ZERO ||
+         FORTY_TWO == FORTY_TWO;
+}
+
+proc test_comparison_negation() -> bool {
+    give !(FORTY_TWO < ZERO) &&
+         !(FORTY_TWO > ONE_HUNDRED) &&
+         !(FORTY_TWO != FORTY_TWO);
+}
+
+proc test_mixed_comparisons() -> bool {
+    give TWENTY < TWENTY_TWO &&
+         TWENTY_TWO <= FORTY_TWO &&
+         FORTY_TWO >= TWENTY_TWO &&
+         FORTY_TWO > TWENTY &&
+         TWENTY != TWENTY_TWO &&
+         FORTY_TWO == FORTY_TWO;
+}
+
+proc test_arithmetic_comparison_logical() -> bool {
+    give (TWENTY + TWENTY_TWO == FORTY_TWO) &&
+         (FORTY_TWO - TWENTY == TWENTY_TWO) &&
+         (TWENTY * TWO == 40) &&
+         (FORTY_TWO + 58 == ONE_HUNDRED);
+}
+
+proc test_call_operands() -> bool {
+    give always_true() &&
+         !always_false() &&
+         identity_bool(true) &&
+         !identity_bool(false);
+}
+
+proc test_nested_call_operands() -> bool {
+    give logical_and(
+               logical_or(
+                   false,
+                   true),
+               logical_not(false)) &&
+         logical_or(
+             logical_and(
+                 true,
+                 true),
+             logical_and(
+                 false,
+                 true));
+}
+
+proc test_predicate_operands() -> bool {
+    give is_answer(FORTY_TWO) &&
+         is_positive(FORTY_TWO) &&
+         !is_negative(FORTY_TWO) &&
+         !is_zero(FORTY_TWO) &&
+         is_zero(ZERO);
+}
+
+proc test_range_predicates() -> bool {
+    give between_inclusive(
+               FORTY_TWO,
+               ZERO,
+               ONE_HUNDRED) &&
+         between_exclusive(
+             FORTY_TWO,
+             ZERO,
+             ONE_HUNDRED) &&
+         !outside_range(
+             FORTY_TWO,
+             ZERO,
+             ONE_HUNDRED) &&
+         outside_range(
+             -1,
+             ZERO,
+             ONE_HUNDRED) &&
+         outside_range(
+             101,
+             ZERO,
+             ONE_HUNDRED);
+}
+
+proc test_relational_helpers() -> bool {
+    give less_than(
+               TWENTY,
+               TWENTY_TWO) &&
+         less_equal(
+             TWENTY,
+             TWENTY) &&
+         greater_than(
+             TWENTY_TWO,
+             TWENTY) &&
+         greater_equal(
+             TWENTY_TWO,
+             TWENTY_TWO) &&
+         equal_i64(
+             FORTY_TWO,
+             FORTY_TWO) &&
+         not_equal_i64(
+             TWENTY,
+             TWENTY_TWO);
+}
+
+proc return_logical_expression(
+    left: bool,
+    right: bool,
+    fallback: bool
+) -> bool {
+    give left && right ||
+         fallback;
+}
+
+proc test_return_expression() -> bool {
+    give return_logical_expression(
+               true,
+               true,
+               false) &&
+         return_logical_expression(
+             false,
+             true,
+             true) &&
+         !return_logical_expression(
+             false,
+             true,
+             false);
+}
+
+proc accept_bool(
+    value: bool
+) -> bool {
+    give value;
+}
+
+proc test_logical_as_argument() -> bool {
+    give accept_bool(
+               true && true) &&
+         accept_bool(
+             true || false) &&
+         accept_bool(
+             !false) &&
+         accept_bool(
+             (TWENTY < TWENTY_TWO) &&
+             (FORTY_TWO == FORTY_TWO));
+}
+
+proc test_logical_initializer() -> bool {
+    let first: bool =
+        true && true;
+
+    let second: bool =
+        false || true;
+
+    let third: bool =
+        !false;
+
+    let fourth: bool =
+        first &&
+        second &&
+        third;
+
+    give fourth;
+}
+
+proc test_logical_assignment() -> bool {
+    let mut value: bool =
+        false;
+
+    set value =
+        true && true;
+
+    if !value {
+        give false;
+    }
+
+    set value =
+        value && false;
+
+    if value {
+        give false;
+    }
+
+    set value =
+        value || true;
+
+    give value;
+}
+
+proc test_negated_assignment() -> bool {
+    let mut value: bool =
+        false;
+
+    set value =
+        !value;
+
+    if !value {
+        give false;
+    }
+
+    set value =
+        !value;
+
+    give !value;
+}
+
+proc test_if_condition() -> bool {
+    let left: bool = true;
+    let right: bool = true;
+
+    if left && right {
+        give true;
+    }
+
+    give false;
+}
+
+proc test_if_or_condition() -> bool {
+    let left: bool = false;
+    let right: bool = true;
+
+    if left || right {
+        give true;
+    }
+
+    give false;
+}
+
+proc test_if_negated_condition() -> bool {
+    let value: bool = false;
+
+    if !value {
+        give true;
+    }
+
+    give false;
+}
+
+proc test_if_complex_condition() -> bool {
+    let value: i64 = FORTY_TWO;
+
+    if value > ZERO &&
+       value <= ONE_HUNDRED &&
+       value != ZERO {
+        give true;
+    }
+
+    give false;
+}
+
+proc test_nested_if() -> bool {
+    let a: bool = true;
+    let b: bool = true;
+    let c: bool = false;
+
+    if a && b {
+        if !c {
+            if a || c {
+                give true;
+            }
+        }
+    }
+
+    give false;
+}
+
+proc test_if_else_style_flow(
+    value: bool
+) -> bool {
+    if value {
+        give true;
+    }
+
+    if !value {
+        give true;
+    }
+
+    give false;
+}
+
+proc test_while_condition() -> bool {
+    let mut index: i64 = ZERO;
+    let mut valid: bool = true;
+
+    while index < FORTY_TWO &&
+          valid {
+        set index =
+            index + ONE;
+
+        set valid =
+            index <= FORTY_TWO;
+    }
+
+    give index == FORTY_TWO &&
+         valid;
+}
+
+proc test_while_negated_condition() -> bool {
+    let mut done: bool = false;
+    let mut value: i64 = ZERO;
+
+    while !done {
+        set value =
+            value + ONE;
+
+        if value == FORTY_TWO {
+            set done = true;
+        }
+    }
+
+    give done &&
+         value == FORTY_TWO;
+}
+
+proc test_while_or_condition() -> bool {
+    let mut left: bool = true;
+    let mut right: bool = false;
+    let mut count: i64 = ZERO;
+
+    while left || right {
+        set count =
+            count + ONE;
+
+        if count == ONE {
+            set left = false;
+            set right = true;
+        }
+
+        if count == TWO {
+            set right = false;
+        }
+    }
+
+    give count == TWO &&
+         !left &&
+         !right;
+}
+
+proc test_nested_scope() -> bool {
+    let outer: bool = true;
+    let mut result: bool = false;
+
+    {
+        let middle: bool = true;
+
+        {
+            let inner: bool = false;
+
+            set result =
+                outer &&
+                middle &&
+                !inner;
+        }
+    }
+
+    give result;
+}
+
+proc test_parameter_scope(
+    a: bool,
+    b: bool,
+    c: bool
+) -> bool {
+    let first: bool =
+        a && b;
+
+    let second: bool =
+        !c;
+
+    give first &&
+         second;
+}
+
+proc test_repeated_operand_lookup() -> bool {
+    let value: bool = true;
+
+    give value &&
+         value &&
+         value &&
+         value &&
+         value;
+}
+
+proc test_alternating_operand_lookup() -> bool {
+    let yes: bool = true;
+    let no: bool = false;
+
+    give yes &&
+         !no &&
+         yes &&
+         !no &&
+         yes &&
+         !no;
+}
+
+proc test_short_circuit_shape_and() -> bool {
+    give false &&
+         (FORTY_TWO < ZERO) ==
+             false;
+}
+
+proc test_short_circuit_shape_or() -> bool {
+    give true ||
+         (FORTY_TWO < ZERO);
+}
+
+proc test_false_and_expression() -> bool {
+    let result: bool =
+        false &&
+        is_answer(FORTY_TWO);
+
+    give !result;
+}
+
+proc test_true_or_expression() -> bool {
+    let result: bool =
+        true ||
+        is_zero(FORTY_TWO);
+
+    give result;
+}
+
+proc test_chain_and() -> bool {
+    give true &&
+         true &&
+         true &&
+         true &&
+         true &&
+         true &&
+         true &&
+         true;
+}
+
+proc test_chain_or() -> bool {
+    give false ||
+         false ||
+         false ||
+         false ||
+         false ||
+         false ||
+         false ||
+         true;
+}
+
+proc test_chain_mixed() -> bool {
+    give true &&
+         true ||
+         false &&
+         false ||
+         !false &&
+         true;
+}
+
+proc test_deep_negation() -> bool {
+    give !!!!!!!!true;
+}
+
+proc test_deep_grouping() -> bool {
+    give (((true &&
+             (true || false)) &&
+            (!false || false)) &&
+           ((true && true) ||
+            (false && false)));
+}
+
+proc test_deep_mixed_expression() -> bool {
+    let a: bool = true;
+    let b: bool = false;
+    let c: bool = true;
+    let d: bool = false;
+
+    give
+        (
+            (a && !b) ||
+            (!a && b)
+        ) &&
+        (
+            (c || d) &&
+            !(d && !c)
+        ) &&
+        (
+            (a && c) ||
+            (b && d)
+        );
+}
+
+proc test_comparison_expression_tree() -> bool {
+    let a: i64 = TEN;
+    let b: i64 = TWENTY;
+    let c: i64 = TWENTY_TWO;
+    let d: i64 = FORTY_TWO;
+
+    give
+        (a < b && b < d) &&
+        (c > b && c <= d) &&
+        (d >= c && d != ZERO) &&
+        !(a > d || b > d);
+}
+
+proc test_boolean_equality() -> bool {
+    let a: bool = true;
+    let b: bool = false;
+
+    give (a == true) &&
+         (b == false) &&
+         (a != b) &&
+         ((a && !b) == true) &&
+         ((a || b) == true);
+}
+
+proc test_boolean_expression_equality() -> bool {
+    give (true && true) ==
+             (false || true) &&
+         (!false) ==
+             (true || false) &&
+         (true && false) ==
+             (false && true);
+}
+
+proc test_all_binary_combinations() -> bool {
+    let a: bool = false;
+    let b: bool = true;
+
+    give
+        !(a && a) &&
+        !(a && b) &&
+        !(b && a) &&
+        (b && b) &&
+
+        !(a || a) &&
+        (a || b) &&
+        (b || a) &&
+        (b || b);
+}
+
+proc test_all_negated_binary_combinations() -> bool {
+    let a: bool = false;
+    let b: bool = true;
+
+    give
+        !a &&
+        !(!b) &&
+        !(a && b) &&
+        !(b && a) &&
+        !(!a && !b) &&
+        (!a || b) &&
+        (b || !b);
+}
+
+proc test_demorgan_all_combinations() -> bool {
+    give
+        test_de_morgan_and(false, false) &&
+        test_de_morgan_and(false, true) &&
+        test_de_morgan_and(true, false) &&
+        test_de_morgan_and(true, true) &&
+
+        test_de_morgan_or(false, false) &&
+        test_de_morgan_or(false, true) &&
+        test_de_morgan_or(true, false) &&
+        test_de_morgan_or(true, true);
+}
+
+proc test_commutativity_all_combinations() -> bool {
+    give
+        test_and_commutative(false, false) &&
+        test_and_commutative(false, true) &&
+        test_and_commutative(true, false) &&
+        test_and_commutative(true, true) &&
+
+        test_or_commutative(false, false) &&
+        test_or_commutative(false, true) &&
+        test_or_commutative(true, false) &&
+        test_or_commutative(true, true);
+}
+
+proc test_identity_all_combinations() -> bool {
+    give
+        test_and_identity(false) &&
+        test_and_identity(true) &&
+        test_or_identity(false) &&
+        test_or_identity(true) &&
+        test_and_annihilator(false) &&
+        test_and_annihilator(true) &&
+        test_or_annihilator(false) &&
+        test_or_annihilator(true) &&
+        test_idempotence(false) &&
+        test_idempotence(true) &&
+        test_complement(false) &&
+        test_complement(true);
+}
+
+proc test_associativity_samples() -> bool {
+    give
+        test_and_associative(
+            false,
+            false,
+            false) &&
+        test_and_associative(
+            true,
+            true,
+            true) &&
+        test_and_associative(
+            true,
+            false,
+            true) &&
+        test_and_associative(
+            false,
+            true,
+            true) &&
+
+        test_or_associative(
+            false,
+            false,
+            false) &&
+        test_or_associative(
+            true,
+            true,
+            true) &&
+        test_or_associative(
+            true,
+            false,
+            true) &&
+        test_or_associative(
+            false,
+            true,
+            true);
+}
+
+proc test_distributivity_samples() -> bool {
+    give
+        test_and_distributes_over_or(
+            false,
+            false,
+            false) &&
+        test_and_distributes_over_or(
+            true,
+            false,
+            true) &&
+        test_and_distributes_over_or(
+            true,
+            true,
+            false) &&
+        test_and_distributes_over_or(
+            true,
+            true,
+            true) &&
+
+        test_or_distributes_over_and(
+            false,
+            false,
+            false) &&
+        test_or_distributes_over_and(
+            true,
+            false,
+            true) &&
+        test_or_distributes_over_and(
+            false,
+            true,
+            true) &&
+        test_or_distributes_over_and(
+            true,
+            true,
+            true);
+}
+
+proc test_absorption_samples() -> bool {
+    give
+        test_and_absorption(
+            false,
+            false) &&
+        test_and_absorption(
+            false,
+            true) &&
+        test_and_absorption(
+            true,
+            false) &&
+        test_and_absorption(
+            true,
+            true) &&
+
+        test_or_absorption(
+            false,
+            false) &&
+        test_or_absorption(
+            false,
+            true) &&
+        test_or_absorption(
+            true,
+            false) &&
+        test_or_absorption(
+            true,
+            true);
+}
+
+proc test_local_shadowing() -> bool {
+    let value: bool = true;
+    let mut result: bool = false;
+
+    {
+        let value: bool = false;
+
+        set result =
+            !value;
+    }
+
+    give value &&
+         result;
+}
+
+proc test_parameter_shadowing(
+    value: bool
+) -> bool {
+    let mut result: bool =
+        value;
+
+    {
+        let value: bool =
+            false;
+
+        set result =
+            result &&
+            !value;
+    }
+
+    give result;
+}
+
+proc test_mutation_pipeline() -> bool {
+    let mut a: bool = false;
+    let mut b: bool = true;
+    let mut c: bool = false;
+
+    set a =
+        !a;
+
+    set c =
+        a && b;
+
+    set b =
+        !b;
+
+    give a &&
+         !b &&
+         c;
+}
+
+proc test_boolean_accumulator() -> bool {
+    let mut index: i64 = ZERO;
+    let mut valid: bool = true;
+
+    while index < FORTY_TWO &&
+          valid {
+        set valid =
+            valid &&
+            index >= ZERO &&
+            index < FORTY_TWO;
+
+        set index =
+            index + ONE;
+    }
+
+    give valid &&
+         index == FORTY_TWO;
+}
+
+proc test_nested_boolean_accumulator() -> bool {
+    let mut index: i64 = ZERO;
+    let mut valid: bool = true;
+
+    while index < TEN &&
+          valid {
+        let even_or_odd_is_valid: bool =
+            index >= ZERO &&
+            index < TEN;
+
+        set valid =
+            valid &&
+            even_or_odd_is_valid;
+
+        set index =
+            index + ONE;
+    }
+
+    give valid &&
+         index == TEN;
+}
+
+proc test_call_chain(
+    a: bool,
+    b: bool,
+    c: bool
+) -> bool {
+    give logical_and(
+        logical_or(
+            a,
+            b),
+        logical_not(c));
+}
+
+proc test_call_chain_cases() -> bool {
+    give
+        test_call_chain(
+            true,
+            false,
+            false) &&
+        test_call_chain(
+            false,
+            true,
+            false) &&
+        !test_call_chain(
+            false,
+            false,
+            false) &&
+        !test_call_chain(
+            true,
+            true,
+            true);
+}
+
+proc test_implication_identity(
+    a: bool,
+    b: bool
+) -> bool {
+    give logical_implies(a, b) ==
+         (!a || b);
+}
+
+proc test_implication_cases() -> bool {
+    give
+        test_implication_identity(
+            false,
+            false) &&
+        test_implication_identity(
+            false,
+            true) &&
+        test_implication_identity(
+            true,
+            false) &&
+        test_implication_identity(
+            true,
+            true);
+}
+
+proc test_equivalence_identity(
+    a: bool,
+    b: bool
+) -> bool {
+    give logical_equivalent(a, b) ==
+         !logical_xor(a, b);
+}
+
+proc test_equivalence_cases() -> bool {
+    give
+        test_equivalence_identity(
+            false,
+            false) &&
+        test_equivalence_identity(
+            false,
+            true) &&
+        test_equivalence_identity(
+            true,
+            false) &&
+        test_equivalence_identity(
+            true,
+            true);
+}
+
+proc test_complex_parameter_expression(
+    a: bool,
+    b: bool,
+    c: bool,
+    d: bool
+) -> bool {
+    give
+        ((a || b) && (!c || d)) ||
+        ((!a && c) && (b || !d));
+}
+
+proc test_complex_parameter_cases() -> bool {
+    give
+        test_complex_parameter_expression(
+            true,
+            false,
+            false,
+            false) &&
+        test_complex_parameter_expression(
+            false,
+            true,
+            false,
+            false) &&
+        !test_complex_parameter_expression(
+            false,
+            false,
+            false,
+            false);
+}
+
+proc test_comparison_call_pipeline() -> bool {
+    let first: bool =
+        less_than(
+            TWENTY,
+            TWENTY_TWO);
+
+    let second: bool =
+        equal_i64(
+            TWENTY + TWENTY_TWO,
+            FORTY_TWO);
+
+    let third: bool =
+        greater_equal(
+            FORTY_TWO,
+            TWENTY_TWO);
+
+    give logical_and(
+        first,
+        logical_and(
+            second,
+            third));
+}
+
+proc test_logical_result_reuse() -> bool {
+    let first: bool =
+        true && true;
+
+    let second: bool =
+        first || false;
+
+    let third: bool =
+        !second;
+
+    let fourth: bool =
+        !third && first;
+
+    give first &&
+         second &&
+         !third &&
+         fourth;
+}
+
+proc test_nested_initializer_tree() -> bool {
+    let value: bool =
+        (
+            (
+                true &&
+                !false
+            ) ||
+            (
+                false &&
+                true
+            )
+        ) &&
+        (
+            !(
+                false ||
+                false
+            )
+        );
+
+    give value;
+}
+
+proc test_large_expression() -> bool {
+    let a: bool = true;
+    let b: bool = false;
+    let c: bool = true;
+    let d: bool = false;
+    let e: bool = true;
+    let f: bool = false;
+
+    give
+        (a && !b) &&
+        (c || d) &&
+        (!f && e) &&
+        ((a && c) || (b && d)) &&
+        (!(b || d)) &&
+        ((a || b) && (c || d)) &&
+        ((e && a) || f) &&
+        !((b && c) || (d && e));
+}
+
+proc integrated_logical_test() -> bool {
+    let a: bool =
+        is_answer(FORTY_TWO);
+
+    let b: bool =
+        between_inclusive(
+            FORTY_TWO,
+            ZERO,
+            ONE_HUNDRED);
+
+    let c: bool =
+        outside_range(
+            FORTY_TWO,
+            ZERO,
+            ONE_HUNDRED);
+
+    let d: bool =
+        less_than(
+            TWENTY,
+            TWENTY_TWO);
+
+    let e: bool =
+        equal_i64(
+            TWENTY + TWENTY_TWO,
+            FORTY_TWO);
+
+    give
+        a &&
+        b &&
+        !c &&
+        d &&
+        e &&
+        logical_and(a, b) &&
+        logical_or(c, d) &&
+        logical_not(c) &&
+        logical_implies(a, b) &&
+        logical_equivalent(d, e);
+}
 
 proc main() -> int {
-    if true and not false or false {
-        give 0;
+    if !test_boolean_constants() {
+        give 1;
     }
-    give 1;
+
+    if !test_literal_not() {
+        give 2;
+    }
+
+    if !test_variable_not() {
+        give 3;
+    }
+
+    if !test_not_truth_table() {
+        give 4;
+    }
+
+    if !test_and_truth_table() {
+        give 5;
+    }
+
+    if !test_or_truth_table() {
+        give 6;
+    }
+
+    if !test_nand_truth_table() {
+        give 7;
+    }
+
+    if !test_nor_truth_table() {
+        give 8;
+    }
+
+    if !test_xor_truth_table() {
+        give 9;
+    }
+
+    if !test_xnor_truth_table() {
+        give 10;
+    }
+
+    if !test_implication_truth_table() {
+        give 11;
+    }
+
+    if !test_equivalence_truth_table() {
+        give 12;
+    }
+
+    if !test_and_variables(
+        true,
+        true) {
+        give 13;
+    }
+
+    if !test_and_variables(
+        true,
+        false) {
+        give 14;
+    }
+
+    if !test_or_variables(
+        false,
+        true) {
+        give 15;
+    }
+
+    if !test_or_variables(
+        false,
+        false) {
+        give 16;
+    }
+
+    if !test_parameter_negation(true) {
+        give 17;
+    }
+
+    if !test_parameter_negation(false) {
+        give 18;
+    }
+
+    if !test_precedence_not_and() {
+        give 19;
+    }
+
+    if !test_precedence_not_or() {
+        give 20;
+    }
+
+    if !test_precedence_and_or() {
+        give 21;
+    }
+
+    if !test_precedence_full() {
+        give 22;
+    }
+
+    if !test_grouping() {
+        give 23;
+    }
+
+    if !test_double_negation(true) {
+        give 24;
+    }
+
+    if !test_double_negation(false) {
+        give 25;
+    }
+
+    if !test_triple_negation(true) {
+        give 26;
+    }
+
+    if !test_triple_negation(false) {
+        give 27;
+    }
+
+    if !test_identity_all_combinations() {
+        give 28;
+    }
+
+    if !test_commutativity_all_combinations() {
+        give 29;
+    }
+
+    if !test_associativity_samples() {
+        give 30;
+    }
+
+    if !test_distributivity_samples() {
+        give 31;
+    }
+
+    if !test_absorption_samples() {
+        give 32;
+    }
+
+    if !test_demorgan_all_combinations() {
+        give 33;
+    }
+
+    if !test_comparison_and() {
+        give 34;
+    }
+
+    if !test_comparison_or() {
+        give 35;
+    }
+
+    if !test_comparison_negation() {
+        give 36;
+    }
+
+    if !test_mixed_comparisons() {
+        give 37;
+    }
+
+    if !test_arithmetic_comparison_logical() {
+        give 38;
+    }
+
+    if !test_call_operands() {
+        give 39;
+    }
+
+    if !test_nested_call_operands() {
+        give 40;
+    }
+
+    if !test_predicate_operands() {
+        give 41;
+    }
+
+    if !test_range_predicates() {
+        give 42;
+    }
+
+    if !test_relational_helpers() {
+        give 43;
+    }
+
+    if !test_return_expression() {
+        give 44;
+    }
+
+    if !test_logical_as_argument() {
+        give 45;
+    }
+
+    if !test_logical_initializer() {
+        give 46;
+    }
+
+    if !test_logical_assignment() {
+        give 47;
+    }
+
+    if !test_negated_assignment() {
+        give 48;
+    }
+
+    if !test_if_condition() {
+        give 49;
+    }
+
+    if !test_if_or_condition() {
+        give 50;
+    }
+
+    if !test_if_negated_condition() {
+        give 51;
+    }
+
+    if !test_if_complex_condition() {
+        give 52;
+    }
+
+    if !test_nested_if() {
+        give 53;
+    }
+
+    if !test_if_else_style_flow(true) {
+        give 54;
+    }
+
+    if !test_if_else_style_flow(false) {
+        give 55;
+    }
+
+    if !test_while_condition() {
+        give 56;
+    }
+
+    if !test_while_negated_condition() {
+        give 57;
+    }
+
+    if !test_while_or_condition() {
+        give 58;
+    }
+
+    if !test_nested_scope() {
+        give 59;
+    }
+
+    if !test_parameter_scope(
+        true,
+        true,
+        false) {
+        give 60;
+    }
+
+    if !test_repeated_operand_lookup() {
+        give 61;
+    }
+
+    if !test_alternating_operand_lookup() {
+        give 62;
+    }
+
+    if test_short_circuit_shape_and() {
+        give 63;
+    }
+
+    if !test_short_circuit_shape_or() {
+        give 64;
+    }
+
+    if !test_false_and_expression() {
+        give 65;
+    }
+
+    if !test_true_or_expression() {
+        give 66;
+    }
+
+    if !test_chain_and() {
+        give 67;
+    }
+
+    if !test_chain_or() {
+        give 68;
+    }
+
+    if !test_chain_mixed() {
+        give 69;
+    }
+
+    if !test_deep_negation() {
+        give 70;
+    }
+
+    if !test_deep_grouping() {
+        give 71;
+    }
+
+    if !test_deep_mixed_expression() {
+        give 72;
+    }
+
+    if !test_comparison_expression_tree() {
+        give 73;
+    }
+
+    if !test_boolean_equality() {
+        give 74;
+    }
+
+    if !test_boolean_expression_equality() {
+        give 75;
+    }
+
+    if !test_all_binary_combinations() {
+        give 76;
+    }
+
+    if !test_all_negated_binary_combinations() {
+        give 77;
+    }
+
+    if !test_local_shadowing() {
+        give 78;
+    }
+
+    if !test_parameter_shadowing(true) {
+        give 79;
+    }
+
+    if !test_mutation_pipeline() {
+        give 80;
+    }
+
+    if !test_boolean_accumulator() {
+        give 81;
+    }
+
+    if !test_nested_boolean_accumulator() {
+        give 82;
+    }
+
+    if !test_call_chain_cases() {
+        give 83;
+    }
+
+    if !test_implication_cases() {
+        give 84;
+    }
+
+    if !test_equivalence_cases() {
+        give 85;
+    }
+
+    if !test_complex_parameter_cases() {
+        give 86;
+    }
+
+    if !test_comparison_call_pipeline() {
+        give 87;
+    }
+
+    if !test_logical_result_reuse() {
+        give 88;
+    }
+
+    if !test_nested_initializer_tree() {
+        give 89;
+    }
+
+    if !test_large_expression() {
+        give 90;
+    }
+
+    if !integrated_logical_test() {
+        give 91;
+    }
+
+    give 0;
 }

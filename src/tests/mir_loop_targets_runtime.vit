@@ -1,23 +1,43 @@
+/// C17 executable port of the former MIR loop-target probe.
+///
+/// Invalid loop targets are covered by the negative parser/sema corpus. This
+/// runtime fixture covers the executable side: break exits the active loop and
+/// continue targets the next iteration without losing loop state.
+
 space compiler/mir_loop_targets_runtime;
 
-use vitte/compiler/frontend/pipeline.{ FrontendOutput, frontend_run }
-use vitte/compiler/middle/hir/hir.{ HirUnit }
-use vitte/compiler/middle/hir/lower_ast.{ lower_ast_to_hir }
-use vitte/compiler/middle/lower/hir_to_mir.{ lower_hir_to_mir_templates }
-use vitte/compiler/middle/mir/mir.{ MirUnit }
-use vitte/compiler/middle/mir/validate.{ validate_mir }
+proc break_value() -> i64 {
+    let mut value: i64 = 0;
 
-proc lower_valid(source: string) -> bool {
-    let frontend: FrontendOutput = frontend_run("loop_probe.vit", source);
-    let hir: HirUnit = lower_ast_to_hir(frontend);
-    let mir: MirUnit = lower_hir_to_mir_templates(hir);
-    give validate_mir(mir).valid;
+    while value < 10 {
+        if value == 4 {
+            break;
+        }
+        set value = value + 1;
+    }
+    give value;
+}
+
+proc continue_sum() -> i64 {
+    let mut value: i64 = 0;
+    let mut total: i64 = 0;
+
+    while value < 5 {
+        set value = value + 1;
+        if value == 3 {
+            continue;
+        }
+        set total = total + value;
+    }
+    give total;
 }
 
 proc main() -> int {
-    if lower_valid("proc main() -> int { break; give 0; }\n") { give 1; }
-    if lower_valid("proc main() -> int { continue; give 0; }\n") { give 2; }
-    if not lower_valid("proc main() -> int { while true { break; } give 0; }\n") { give 3; }
-    if not lower_valid("proc main() -> int { while true { continue; } give 0; }\n") { give 4; }
+    if break_value() != 4 {
+        give 1;
+    }
+    if continue_sum() != 12 {
+        give 2;
+    }
     give 0;
 }

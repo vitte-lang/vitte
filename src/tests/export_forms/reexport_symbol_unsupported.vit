@@ -1,9 +1,54 @@
-space demo/reexport_symbol_unsupported;
+/// Negative export-form test.
+///
+/// Re-exporting an individual symbol from an imported module is intentionally
+/// unsupported.
+///
+/// This fixture isolates symbol re-export from:
+/// - ordinary module import;
+/// - qualified symbol access;
+/// - direct export of local declarations;
+/// - local export aliases;
+/// - module alias re-export;
+/// - grouped re-export;
+/// - star re-export.
+///
+/// Expected result:
+/// - source loading succeeds;
+/// - `lib_star` resolves successfully;
+/// - qualified access to `lib_star::ANSWER` is valid;
+/// - the frontend reaches the export declaration;
+/// - imported-symbol re-export is rejected;
+/// - compilation fails;
+/// - `ANSWER` is not re-exported from this module;
+/// - no synthetic local declaration is created;
+/// - no partial export state is committed;
+/// - the diagnostic points at the unsupported export declaration.
 
-use lib_alias::{plus};
+space tests::export_forms::reexport_symbol_unsupported;
 
-export plus;
+use tests::export_forms::lib_star;
 
-proc main() -> int {
-    give 0;
+/// Control.
+///
+/// Ordinary qualified use of an exported symbol from the imported module must
+/// remain valid. Therefore the failure in this fixture is specifically caused
+/// by the re-export declaration below.
+
+proc control() -> i64 {
+    give lib_star::ANSWER;
 }
+
+/// Additional control using an imported procedure.
+
+proc control_call() -> i64 {
+    give lib_star::identity(
+        lib_star::ANSWER);
+}
+
+/// Intentional unsupported form.
+///
+/// `ANSWER` belongs to `lib_star`. The current export surface permits exports
+/// of declarations owned by the current module, but does not permit forwarding
+/// an imported declaration as a new export.
+
+export lib_star::ANSWER;

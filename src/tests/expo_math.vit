@@ -1,0 +1,946 @@
+space tests::expo_math;
+
+/*
+ * Exponentiation tests for Vitte.
+ *
+ * Covered:
+ *   - iterative exponentiation
+ *   - exponentiation by squaring
+ *   - signed bases
+ *   - unsigned bases
+ *   - floating-point bases
+ *   - zero exponent
+ *   - powers of zero
+ *   - powers of one
+ *   - negative bases
+ *   - algebraic identities
+ *   - comparison between algorithms
+ *   - powers of two
+ *   - powers of ten
+ *   - larger exponents
+ */
+
+/* ========================================================================= */
+/* Basic integer exponentiation                                               */
+/* ========================================================================= */
+
+proc pow_i64_linear(base: i64, exponent: i64) -> i64
+requires exponent >= 0;
+{
+    let mut result: i64 = 1;
+    let mut index: i64 = 0;
+
+    while index < exponent {
+        result = result * base;
+        index = index + 1;
+    }
+
+    return result;
+}
+
+/* ========================================================================= */
+/* Fast signed integer exponentiation                                         */
+/* ========================================================================= */
+
+proc pow_i64(base: i64, exponent: i64) -> i64
+requires exponent >= 0;
+{
+    let mut result: i64 = 1;
+    let mut factor: i64 = base;
+    let mut power: i64 = exponent;
+
+    while power > 0 {
+        if power % 2 == 1 {
+            result = result * factor;
+        }
+
+        power = power / 2;
+
+        if power > 0 {
+            factor = factor * factor;
+        }
+    }
+
+    return result;
+}
+
+/* ========================================================================= */
+/* Unsigned integer exponentiation                                            */
+/* ========================================================================= */
+
+proc pow_u64(base: u64, exponent: u64) -> u64 {
+    let mut result: u64 = 1;
+    let mut factor: u64 = base;
+    let mut power: u64 = exponent;
+
+    while power > 0 {
+        if power % 2 == 1 {
+            result = result * factor;
+        }
+
+        power = power / 2;
+
+        if power > 0 {
+            factor = factor * factor;
+        }
+    }
+
+    return result;
+}
+
+/* ========================================================================= */
+/* Floating-point exponentiation                                              */
+/* ========================================================================= */
+
+proc pow_f64_positive(base: f64, exponent: u64) -> f64 {
+    let mut result: f64 = 1.0;
+    let mut factor: f64 = base;
+    let mut power: u64 = exponent;
+
+    while power > 0 {
+        if power % 2 == 1 {
+            result = result * factor;
+        }
+
+        power = power / 2;
+
+        if power > 0 {
+            factor = factor * factor;
+        }
+    }
+
+    return result;
+}
+
+/* ========================================================================= */
+/* Signed floating-point exponent                                             */
+/* ========================================================================= */
+
+proc pow_f64(base: f64, exponent: i64) -> f64 {
+    if exponent == 0 {
+        return 1.0;
+    }
+
+    if exponent > 0 {
+        let mut result: f64 = 1.0;
+        let mut factor: f64 = base;
+        let mut power: i64 = exponent;
+
+        while power > 0 {
+            if power % 2 == 1 {
+                result = result * factor;
+            }
+
+            power = power / 2;
+
+            if power > 0 {
+                factor = factor * factor;
+            }
+        }
+
+        return result;
+    }
+
+    let mut result: f64 = 1.0;
+    let mut factor: f64 = base;
+    let mut power: i64 = -exponent;
+
+    while power > 0 {
+        if power % 2 == 1 {
+            result = result * factor;
+        }
+
+        power = power / 2;
+
+        if power > 0 {
+            factor = factor * factor;
+        }
+    }
+
+    return 1.0 / result;
+}
+
+/* ========================================================================= */
+/* Recursive exponentiation                                                   */
+/* ========================================================================= */
+
+proc pow_i64_recursive(base: i64, exponent: i64) -> i64
+requires exponent >= 0;
+{
+    if exponent == 0 {
+        return 1;
+    }
+
+    if exponent == 1 {
+        return base;
+    }
+
+    let half: i64 =
+        pow_i64_recursive(
+            base,
+            exponent / 2
+        );
+
+    if exponent % 2 == 0 {
+        return half * half;
+    }
+
+    return half * half * base;
+}
+
+/* ========================================================================= */
+/* Specialized powers                                                        */
+/* ========================================================================= */
+
+proc square_i64(value: i64) -> i64 {
+    return value * value;
+}
+
+proc cube_i64(value: i64) -> i64 {
+    return value * value * value;
+}
+
+proc fourth_i64(value: i64) -> i64 {
+    let square: i64 = value * value;
+
+    return square * square;
+}
+
+proc square_f64(value: f64) -> f64 {
+    return value * value;
+}
+
+proc cube_f64(value: f64) -> f64 {
+    return value * value * value;
+}
+
+/* ========================================================================= */
+/* Powers of two                                                              */
+/* ========================================================================= */
+
+proc power_of_two(exponent: u64) -> u64 {
+    return pow_u64(2, exponent);
+}
+
+/* ========================================================================= */
+/* Powers of ten                                                              */
+/* ========================================================================= */
+
+proc power_of_ten(exponent: u64) -> u64 {
+    return pow_u64(10, exponent);
+}
+
+/* ========================================================================= */
+/* Exponentiation identities                                                  */
+/* ========================================================================= */
+
+proc pow_product_identity(
+    base: i64,
+    left: i64,
+    right: i64
+) -> bool
+requires left >= 0;
+requires right >= 0;
+{
+    let lhs: i64 =
+        pow_i64(
+            base,
+            left + right
+        );
+
+    let rhs: i64 =
+        pow_i64(base, left) *
+        pow_i64(base, right);
+
+    return lhs == rhs;
+}
+
+proc pow_power_identity(
+    base: i64,
+    left: i64,
+    right: i64
+) -> bool
+requires left >= 0;
+requires right >= 0;
+{
+    let lhs: i64 =
+        pow_i64(
+            pow_i64(base, left),
+            right
+        );
+
+    let rhs: i64 =
+        pow_i64(
+            base,
+            left * right
+        );
+
+    return lhs == rhs;
+}
+
+/* ========================================================================= */
+/* Reference table                                                            */
+/* ========================================================================= */
+
+proc expected_power_of_two(exponent: i64) -> i64 {
+    match exponent {
+        0 => 1,
+        1 => 2,
+        2 => 4,
+        3 => 8,
+        4 => 16,
+        5 => 32,
+        6 => 64,
+        7 => 128,
+        8 => 256,
+        9 => 512,
+        10 => 1024,
+        11 => 2048,
+        12 => 4096,
+        13 => 8192,
+        14 => 16384,
+        15 => 32768,
+        16 => 65536,
+        17 => 131072,
+        18 => 262144,
+        19 => 524288,
+        20 => 1048576,
+        21 => 2097152,
+        22 => 4194304,
+        23 => 8388608,
+        24 => 16777216,
+        25 => 33554432,
+        26 => 67108864,
+        27 => 134217728,
+        28 => 268435456,
+        29 => 536870912,
+        30 => 1073741824,
+        31 => 2147483648,
+        32 => 4294967296,
+        33 => 8589934592,
+        34 => 17179869184,
+        35 => 34359738368,
+        36 => 68719476736,
+        37 => 137438953472,
+        38 => 274877906944,
+        39 => 549755813888,
+        40 => 1099511627776,
+        41 => 2199023255552,
+        42 => 4398046511104,
+        43 => 8796093022208,
+        44 => 17592186044416,
+        45 => 35184372088832,
+        46 => 70368744177664,
+        47 => 140737488355328,
+        48 => 281474976710656,
+        49 => 562949953421312,
+        50 => 1125899906842624,
+        51 => 2251799813685248,
+        52 => 4503599627370496,
+        53 => 9007199254740992,
+        54 => 18014398509481984,
+        55 => 36028797018963968,
+        56 => 72057594037927936,
+        57 => 144115188075855872,
+        58 => 288230376151711744,
+        59 => 576460752303423488,
+        60 => 1152921504606846976
+    }
+
+    return 0;
+}
+
+/* ========================================================================= */
+/* Zero exponent                                                              */
+/* ========================================================================= */
+
+test "expo zero exponent i64" {
+    assert(pow_i64(0, 0) == 1);
+    assert(pow_i64(1, 0) == 1);
+    assert(pow_i64(2, 0) == 1);
+    assert(pow_i64(10, 0) == 1);
+    assert(pow_i64(-1, 0) == 1);
+    assert(pow_i64(-2, 0) == 1);
+    assert(pow_i64(-100, 0) == 1);
+}
+
+test "expo zero exponent u64" {
+    assert(pow_u64(0, 0) == 1);
+    assert(pow_u64(1, 0) == 1);
+    assert(pow_u64(2, 0) == 1);
+    assert(pow_u64(100, 0) == 1);
+}
+
+test "expo zero exponent f64" {
+    assert(pow_f64(0.0, 0) == 1.0);
+    assert(pow_f64(1.0, 0) == 1.0);
+    assert(pow_f64(2.0, 0) == 1.0);
+    assert(pow_f64(-2.0, 0) == 1.0);
+}
+
+/* ========================================================================= */
+/* Zero base                                                                  */
+/* ========================================================================= */
+
+test "expo zero base" {
+    assert(pow_i64(0, 1) == 0);
+    assert(pow_i64(0, 2) == 0);
+    assert(pow_i64(0, 10) == 0);
+    assert(pow_i64(0, 100) == 0);
+
+    assert(pow_u64(0, 1) == 0);
+    assert(pow_u64(0, 2) == 0);
+    assert(pow_u64(0, 10) == 0);
+
+    assert(pow_f64(0.0, 1) == 0.0);
+    assert(pow_f64(0.0, 10) == 0.0);
+}
+
+/* ========================================================================= */
+/* Base one                                                                   */
+/* ========================================================================= */
+
+test "expo base one" {
+    assert(pow_i64(1, 1) == 1);
+    assert(pow_i64(1, 10) == 1);
+    assert(pow_i64(1, 100) == 1);
+    assert(pow_i64(1, 1000) == 1);
+
+    assert(pow_u64(1, 1000) == 1);
+
+    assert(pow_f64(1.0, 1000) == 1.0);
+    assert(pow_f64(1.0, -1000) == 1.0);
+}
+
+/* ========================================================================= */
+/* Base minus one                                                             */
+/* ========================================================================= */
+
+test "expo base minus one" {
+    assert(pow_i64(-1, 1) == -1);
+    assert(pow_i64(-1, 2) == 1);
+    assert(pow_i64(-1, 3) == -1);
+    assert(pow_i64(-1, 4) == 1);
+    assert(pow_i64(-1, 99) == -1);
+    assert(pow_i64(-1, 100) == 1);
+}
+
+/* ========================================================================= */
+/* Powers of two                                                              */
+/* ========================================================================= */
+
+test "expo powers of two small" {
+    assert(pow_i64(2, 1) == 2);
+    assert(pow_i64(2, 2) == 4);
+    assert(pow_i64(2, 3) == 8);
+    assert(pow_i64(2, 4) == 16);
+    assert(pow_i64(2, 5) == 32);
+    assert(pow_i64(2, 6) == 64);
+    assert(pow_i64(2, 7) == 128);
+    assert(pow_i64(2, 8) == 256);
+    assert(pow_i64(2, 9) == 512);
+    assert(pow_i64(2, 10) == 1024);
+}
+
+test "expo powers of two medium" {
+    assert(pow_i64(2, 11) == 2048);
+    assert(pow_i64(2, 12) == 4096);
+    assert(pow_i64(2, 16) == 65536);
+    assert(pow_i64(2, 20) == 1048576);
+    assert(pow_i64(2, 24) == 16777216);
+    assert(pow_i64(2, 30) == 1073741824);
+}
+
+test "expo powers of two large" {
+    assert(
+        pow_i64(2, 32) ==
+        4294967296
+    );
+
+    assert(
+        pow_i64(2, 40) ==
+        1099511627776
+    );
+
+    assert(
+        pow_i64(2, 50) ==
+        1125899906842624
+    );
+
+    assert(
+        pow_i64(2, 60) ==
+        1152921504606846976
+    );
+}
+
+/* ========================================================================= */
+/* Powers of three                                                            */
+/* ========================================================================= */
+
+test "expo powers of three" {
+    assert(pow_i64(3, 1) == 3);
+    assert(pow_i64(3, 2) == 9);
+    assert(pow_i64(3, 3) == 27);
+    assert(pow_i64(3, 4) == 81);
+    assert(pow_i64(3, 5) == 243);
+    assert(pow_i64(3, 6) == 729);
+    assert(pow_i64(3, 7) == 2187);
+    assert(pow_i64(3, 8) == 6561);
+    assert(pow_i64(3, 9) == 19683);
+    assert(pow_i64(3, 10) == 59049);
+}
+
+/* ========================================================================= */
+/* Powers of five                                                             */
+/* ========================================================================= */
+
+test "expo powers of five" {
+    assert(pow_i64(5, 1) == 5);
+    assert(pow_i64(5, 2) == 25);
+    assert(pow_i64(5, 3) == 125);
+    assert(pow_i64(5, 4) == 625);
+    assert(pow_i64(5, 5) == 3125);
+    assert(pow_i64(5, 6) == 15625);
+    assert(pow_i64(5, 7) == 78125);
+    assert(pow_i64(5, 8) == 390625);
+    assert(pow_i64(5, 9) == 1953125);
+    assert(pow_i64(5, 10) == 9765625);
+}
+
+/* ========================================================================= */
+/* Powers of ten                                                              */
+/* ========================================================================= */
+
+test "expo powers of ten" {
+    assert(pow_i64(10, 0) == 1);
+    assert(pow_i64(10, 1) == 10);
+    assert(pow_i64(10, 2) == 100);
+    assert(pow_i64(10, 3) == 1000);
+    assert(pow_i64(10, 4) == 10000);
+    assert(pow_i64(10, 5) == 100000);
+    assert(pow_i64(10, 6) == 1000000);
+    assert(pow_i64(10, 7) == 10000000);
+    assert(pow_i64(10, 8) == 100000000);
+    assert(pow_i64(10, 9) == 1000000000);
+    assert(pow_i64(10, 10) == 10000000000);
+    assert(pow_i64(10, 12) == 1000000000000);
+    assert(pow_i64(10, 15) == 1000000000000000);
+    assert(pow_i64(10, 18) == 1000000000000000000);
+}
+
+/* ========================================================================= */
+/* Negative bases                                                             */
+/* ========================================================================= */
+
+test "expo negative base even exponent" {
+    assert(pow_i64(-2, 2) == 4);
+    assert(pow_i64(-2, 4) == 16);
+    assert(pow_i64(-2, 6) == 64);
+    assert(pow_i64(-2, 8) == 256);
+    assert(pow_i64(-3, 2) == 9);
+    assert(pow_i64(-3, 4) == 81);
+    assert(pow_i64(-5, 4) == 625);
+}
+
+test "expo negative base odd exponent" {
+    assert(pow_i64(-2, 1) == -2);
+    assert(pow_i64(-2, 3) == -8);
+    assert(pow_i64(-2, 5) == -32);
+    assert(pow_i64(-2, 7) == -128);
+    assert(pow_i64(-3, 3) == -27);
+    assert(pow_i64(-3, 5) == -243);
+    assert(pow_i64(-5, 3) == -125);
+}
+
+/* ========================================================================= */
+/* Specialized functions                                                      */
+/* ========================================================================= */
+
+test "expo square" {
+    assert(square_i64(0) == 0);
+    assert(square_i64(1) == 1);
+    assert(square_i64(2) == 4);
+    assert(square_i64(10) == 100);
+    assert(square_i64(-2) == 4);
+    assert(square_i64(-10) == 100);
+    assert(square_i64(1000) == 1000000);
+}
+
+test "expo cube" {
+    assert(cube_i64(0) == 0);
+    assert(cube_i64(1) == 1);
+    assert(cube_i64(2) == 8);
+    assert(cube_i64(3) == 27);
+    assert(cube_i64(10) == 1000);
+    assert(cube_i64(-2) == -8);
+    assert(cube_i64(-10) == -1000);
+}
+
+test "expo fourth" {
+    assert(fourth_i64(0) == 0);
+    assert(fourth_i64(1) == 1);
+    assert(fourth_i64(2) == 16);
+    assert(fourth_i64(3) == 81);
+    assert(fourth_i64(10) == 10000);
+    assert(fourth_i64(-2) == 16);
+}
+
+/* ========================================================================= */
+/* Linear vs fast                                                             */
+/* ========================================================================= */
+
+test "expo linear equals fast" {
+    let mut base: i64 = -8;
+
+    while base <= 8 {
+        let mut exponent: i64 = 0;
+
+        while exponent <= 10 {
+            assert(
+                pow_i64_linear(
+                    base,
+                    exponent
+                ) ==
+                pow_i64(
+                    base,
+                    exponent
+                )
+            );
+
+            exponent = exponent + 1;
+        }
+
+        base = base + 1;
+    }
+}
+
+/* ========================================================================= */
+/* Recursive vs iterative                                                     */
+/* ========================================================================= */
+
+test "expo recursive equals iterative" {
+    let mut base: i64 = -8;
+
+    while base <= 8 {
+        let mut exponent: i64 = 0;
+
+        while exponent <= 10 {
+            assert(
+                pow_i64_recursive(
+                    base,
+                    exponent
+                ) ==
+                pow_i64(
+                    base,
+                    exponent
+                )
+            );
+
+            exponent = exponent + 1;
+        }
+
+        base = base + 1;
+    }
+}
+
+/* ========================================================================= */
+/* Reference table validation                                                 */
+/* ========================================================================= */
+
+test "expo reference powers of two" {
+    let mut exponent: i64 = 0;
+
+    while exponent <= 60 {
+        assert(
+            pow_i64(
+                2,
+                exponent
+            ) ==
+            expected_power_of_two(
+                exponent
+            )
+        );
+
+        exponent = exponent + 1;
+    }
+}
+
+/* ========================================================================= */
+/* Algebraic identities                                                       */
+/* ========================================================================= */
+
+test "expo additive exponent identity" {
+    assert(
+        pow_product_identity(
+            2,
+            3,
+            4
+        )
+    );
+
+    assert(
+        pow_product_identity(
+            3,
+            2,
+            5
+        )
+    );
+
+    assert(
+        pow_product_identity(
+            -2,
+            3,
+            4
+        )
+    );
+
+    assert(
+        pow_product_identity(
+            10,
+            2,
+            3
+        )
+    );
+}
+
+test "expo power of power identity" {
+    assert(
+        pow_power_identity(
+            2,
+            3,
+            4
+        )
+    );
+
+    assert(
+        pow_power_identity(
+            3,
+            2,
+            3
+        )
+    );
+
+    assert(
+        pow_power_identity(
+            -2,
+            2,
+            3
+        )
+    );
+}
+
+/* ========================================================================= */
+/* Floating point                                                             */
+/* ========================================================================= */
+
+test "expo f64 positive exponent" {
+    assert(pow_f64(2.0, 1) == 2.0);
+    assert(pow_f64(2.0, 2) == 4.0);
+    assert(pow_f64(2.0, 3) == 8.0);
+    assert(pow_f64(2.0, 8) == 256.0);
+    assert(pow_f64(3.0, 3) == 27.0);
+    assert(pow_f64(10.0, 6) == 1000000.0);
+}
+
+test "expo f64 fractional base" {
+    assert(pow_f64(0.5, 1) == 0.5);
+    assert(pow_f64(0.5, 2) == 0.25);
+    assert(pow_f64(0.5, 3) == 0.125);
+
+    assert(pow_f64(1.5, 2) == 2.25);
+    assert(pow_f64(2.5, 2) == 6.25);
+}
+
+test "expo f64 negative base" {
+    assert(pow_f64(-2.0, 1) == -2.0);
+    assert(pow_f64(-2.0, 2) == 4.0);
+    assert(pow_f64(-2.0, 3) == -8.0);
+    assert(pow_f64(-2.0, 4) == 16.0);
+}
+
+test "expo f64 negative exponent" {
+    assert(pow_f64(2.0, -1) == 0.5);
+    assert(pow_f64(2.0, -2) == 0.25);
+    assert(pow_f64(2.0, -3) == 0.125);
+
+    assert(pow_f64(4.0, -1) == 0.25);
+    assert(pow_f64(10.0, -1) == 0.1);
+}
+
+test "expo f64 specialized" {
+    assert(square_f64(2.0) == 4.0);
+    assert(square_f64(-2.0) == 4.0);
+
+    assert(cube_f64(2.0) == 8.0);
+    assert(cube_f64(-2.0) == -8.0);
+}
+
+/* ========================================================================= */
+/* Unsigned                                                                   */
+/* ========================================================================= */
+
+test "expo u64 powers" {
+    assert(pow_u64(2, 0) == 1);
+    assert(pow_u64(2, 1) == 2);
+    assert(pow_u64(2, 8) == 256);
+    assert(pow_u64(2, 16) == 65536);
+    assert(pow_u64(2, 32) == 4294967296);
+    assert(pow_u64(2, 63) == 0x8000000000000000);
+}
+
+test "expo power of two helper" {
+    assert(power_of_two(0) == 1);
+    assert(power_of_two(1) == 2);
+    assert(power_of_two(8) == 256);
+    assert(power_of_two(16) == 65536);
+    assert(power_of_two(32) == 4294967296);
+}
+
+test "expo power of ten helper" {
+    assert(power_of_ten(0) == 1);
+    assert(power_of_ten(1) == 10);
+    assert(power_of_ten(2) == 100);
+    assert(power_of_ten(6) == 1000000);
+    assert(power_of_ten(12) == 1000000000000);
+}
+
+/* ========================================================================= */
+/* Repeated validation                                                        */
+/* ========================================================================= */
+
+test "expo repeated powers" {
+    let mut iteration: i64 = 0;
+
+    while iteration < 100 {
+        assert(pow_i64(2, 10) == 1024);
+        assert(pow_i64(3, 8) == 6561);
+        assert(pow_i64(5, 6) == 15625);
+        assert(pow_i64(10, 6) == 1000000);
+
+        iteration = iteration + 1;
+    }
+}
+
+/* ========================================================================= */
+/* Range validation                                                           */
+/* ========================================================================= */
+
+test "expo many small powers" {
+    let mut base: i64 = 0;
+
+    while base <= 10 {
+        assert(pow_i64(base, 0) == 1);
+        assert(pow_i64(base, 1) == base);
+        assert(pow_i64(base, 2) == base * base);
+        assert(
+            pow_i64(base, 3) ==
+            base * base * base
+        );
+
+        base = base + 1;
+    }
+}
+
+/* ========================================================================= */
+/* Odd/even behavior                                                          */
+/* ========================================================================= */
+
+test "expo negative parity" {
+    let mut exponent: i64 = 1;
+
+    while exponent <= 15 {
+        let result: i64 =
+            pow_i64(
+                -2,
+                exponent
+            );
+
+        if exponent % 2 == 0 {
+            assert(result > 0);
+        } else {
+            assert(result < 0);
+        }
+
+        exponent = exponent + 1;
+    }
+}
+
+/* ========================================================================= */
+/* Fundamental identities                                                     */
+/* ========================================================================= */
+
+test "expo identity exponent zero" {
+    let mut base: i64 = -100;
+
+    while base <= 100 {
+        assert(
+            pow_i64(base, 0) == 1
+        );
+
+        base = base + 1;
+    }
+}
+
+test "expo identity exponent one" {
+    let mut base: i64 = -100;
+
+    while base <= 100 {
+        assert(
+            pow_i64(base, 1) == base
+        );
+
+        base = base + 1;
+    }
+}
+
+test "expo identity exponent two" {
+    let mut base: i64 = -100;
+
+    while base <= 100 {
+        assert(
+            pow_i64(base, 2) ==
+            base * base
+        );
+
+        base = base + 1;
+    }
+}
+
+/* ========================================================================= */
+/* Algorithm consistency                                                      */
+/* ========================================================================= */
+
+test "expo all implementations consistent" {
+    let mut base: i64 = -5;
+
+    while base <= 5 {
+        let mut exponent: i64 = 0;
+
+        while exponent <= 12 {
+            let linear: i64 =
+                pow_i64_linear(
+                    base,
+                    exponent
+                );
+
+            let fast: i64 =
+                pow_i64(
+                    base,
+                    exponent
+                );
+
+            let recursive: i64 =
+                pow_i64_recursive(
+                    base,
+                    exponent
+                );
+
+            assert(linear == fast);
+            assert(fast == recursive);
+
+            exponent = exponent + 1;
+        }
+
+        base = base + 1;
+    }
+}

@@ -1,0 +1,39 @@
+/// Native DWARF debugger fixture.
+///
+/// Keep all values alive at the breakpoint so LLDB can expose their lexical
+/// scope, nominal type and nested expression members.
+
+space tests::debug::dwarf_values;
+
+form Point {
+    x: i64,
+    y: i64,
+}
+
+form Snapshot {
+    point: Point,
+    label: string,
+    ratio: f64,
+}
+
+proc nested_total(snapshot: &Snapshot, extra: i64) -> i64 {
+    give snapshot.point.x + snapshot.point.y + extra;
+}
+
+proc main() -> int {
+    let point: Point = Point {
+        x: 20,
+        y: 22,
+    };
+    let snapshot: Snapshot = Snapshot {
+        point: point,
+        label: "dwarf",
+        ratio: 1.5,
+    };
+    let extra: i64 = 1;
+    let total: i64 = nested_total(&snapshot, extra);
+    if total == 43 {
+        give 0;
+    }
+    give 1;
+}

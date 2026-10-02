@@ -1,0 +1,31 @@
+/// Semantic call-resolution negative test.
+///
+/// A signed integer variable is passed to a procedure requiring `u64`.
+///
+/// Expected result:
+/// - parsing succeeds;
+/// - the callee resolves successfully;
+/// - the local variable resolves successfully;
+/// - semantic analysis determines that `value` has type `i64`;
+/// - parameter `value` of `accept_u64` requires `u64`;
+/// - no implicit signed-to-unsigned conversion is performed;
+/// - compilation fails during semantic/type checking;
+/// - the diagnostic points to the argument `value`;
+/// - the diagnostic reports expected `u64` and found `i64`;
+/// - the diagnostic may additionally point to the parameter declaration.
+
+space tests::sema_calls::signed_variable_to_u64_mismatch;
+
+proc accept_u64(
+    value: u64
+) -> u64 {
+    give value;
+}
+
+proc main() -> int {
+    let value: i64 = 42;
+
+    accept_u64(value);
+
+    give 0;
+}

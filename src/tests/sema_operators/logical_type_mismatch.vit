@@ -1,8 +1,1010 @@
-space sema_operators_logical_type_mismatch;
+/// Semantic operator coverage — logical type mismatches.
+///
+/// Negative fixture for logical operators.
+///
+/// This file intentionally contains invalid expressions.
+///
+/// Contract:
+/// - parsing must succeed;
+/// - name resolution must succeed;
+/// - semantic analysis must reject every marked logical expression;
+/// - `!` accepts only `bool`;
+/// - `&&` accepts `bool` on both sides;
+/// - `||` accepts `bool` on both sides;
+/// - integers are not implicitly converted to `bool`;
+/// - unsigned integers are not implicitly converted to `bool`;
+/// - floating-point values are not implicitly converted to `bool`;
+/// - characters are not implicitly converted to `bool`;
+/// - strings are not implicitly converted to `bool`;
+/// - aggregate values are not implicitly converted to `bool`;
+/// - enum/pick values are not implicitly converted to `bool`;
+/// - references are not implicitly converted to `bool`;
+/// - pointer-like values are not accepted merely because they are non-null;
+/// - nested logical expressions must diagnose the precise invalid operand;
+/// - valid comparison/equality expressions still produce `bool`;
+/// - diagnostics should identify the logical operator involved;
+/// - diagnostics should identify expected `bool`;
+/// - diagnostics should identify the actual operand type;
+/// - diagnostics should underline the offending operand rather than the
+///   complete surrounding expression when a precise span is available.
+///
+/// This is a compile-fail semantic test. It must never execute successfully.
+
+space tests::sema_operators::logical_type_mismatch;
+
+form Point {
+    x: i64,
+    y: i64,
+}
+
+form Record {
+    value: i64,
+    enabled: bool,
+}
+
+pick State {
+    Idle,
+    Ready,
+    Running,
+}
+
+proc bool_identity(
+    value: bool
+) -> bool {
+    give value;
+}
+
+proc signed_identity(
+    value: i64
+) -> i64 {
+    give value;
+}
+
+proc unsigned_identity(
+    value: u64
+) -> u64 {
+    give value;
+}
+
+proc float_identity(
+    value: f64
+) -> f64 {
+    give value;
+}
+
+proc make_point(
+    x: i64,
+    y: i64
+) -> Point {
+    give Point {
+        x: x,
+        y: y,
+    };
+}
+
+proc make_record(
+    value: i64,
+    enabled: bool
+) -> Record {
+    give Record {
+        value: value,
+        enabled: enabled,
+    };
+}
+
+proc valid_bool_source() -> bool {
+    give true;
+}
+
+proc valid_comparison_source(
+    value: i64
+) -> bool {
+    give value == 42;
+}
+
+/// Unary `!` with a signed integer literal.
+///
+/// Expected semantic error:
+/// expected operand of type `bool`, found integer.
+
+proc mismatch_not_signed_literal() -> bool {
+    give !42;
+}
+
+/// Unary `!` with a signed integer variable.
+///
+/// Expected semantic error:
+/// expected `bool`, found `i64`.
+
+proc mismatch_not_signed_variable() -> bool {
+    let value: i64 = 42;
+
+    give !value;
+}
+
+/// Unary `!` with an unsigned integer variable.
+///
+/// Expected semantic error:
+/// expected `bool`, found `u64`.
+
+proc mismatch_not_unsigned_variable() -> bool {
+    let value: u64 = 42;
+
+    give !value;
+}
+
+/// Unary `!` with a floating-point variable.
+///
+/// Expected semantic error:
+/// expected `bool`, found `f64`.
+
+proc mismatch_not_float_variable() -> bool {
+    let value: f64 = 42.0;
+
+    give !value;
+}
+
+/// Unary `!` with a character.
+///
+/// Expected semantic error:
+/// expected `bool`, found character type.
+
+proc mismatch_not_character() -> bool {
+    let value: char = 'x';
+
+    give !value;
+}
+
+/// Unary `!` with a string.
+///
+/// Expected semantic error:
+/// string values must not participate in implicit truthiness.
+
+proc mismatch_not_string() -> bool {
+    let value: string = "vitte";
+
+    give !value;
+}
+
+/// Unary `!` with an aggregate value.
+///
+/// Expected semantic error:
+/// expected `bool`, found `Point`.
+
+proc mismatch_not_form_value() -> bool {
+    let point: Point =
+        make_point(
+            20,
+            22);
+
+    give !point;
+}
+
+/// Unary `!` with an aggregate reference.
+///
+/// Expected semantic error:
+/// references do not implicitly convert to `bool`.
+
+proc mismatch_not_form_reference() -> bool {
+    let point: Point =
+        make_point(
+            20,
+            22);
+
+    let reference: &Point =
+        &point;
+
+    give !reference;
+}
+
+/// Unary `!` with a pick value.
+///
+/// Expected semantic error:
+/// expected `bool`, found `State`.
+
+proc mismatch_not_pick() -> bool {
+    let state: State =
+        State.Ready;
+
+    give !state;
+}
+
+/// Unary `!` applied to the result of a procedure returning `i64`.
+
+proc mismatch_not_signed_call() -> bool {
+    give !signed_identity(42);
+}
+
+/// Unary `!` applied to the result of a procedure returning `u64`.
+
+proc mismatch_not_unsigned_call() -> bool {
+    give !unsigned_identity(42);
+}
+
+/// Unary `!` applied to the result of a procedure returning `f64`.
+
+proc mismatch_not_float_call() -> bool {
+    give !float_identity(42.0);
+}
+
+/// `&&` with invalid left operand.
+///
+/// Expected semantic error:
+/// left operand must be `bool`, found `i64`.
+
+proc mismatch_and_signed_left() -> bool {
+    let value: i64 = 42;
+
+    give value && true;
+}
+
+/// `&&` with invalid right operand.
+///
+/// Expected semantic error:
+/// right operand must be `bool`, found `i64`.
+
+proc mismatch_and_signed_right() -> bool {
+    let value: i64 = 42;
+
+    give true && value;
+}
+
+/// `&&` with both operands invalid.
+///
+/// A compiler may emit one primary diagnostic followed by another diagnostic
+/// for the second operand, but it must not accept the expression.
+
+proc mismatch_and_signed_both() -> bool {
+    let left: i64 = 20;
+    let right: i64 = 22;
+
+    give left && right;
+}
+
+/// `&&` with unsigned left operand.
+
+proc mismatch_and_unsigned_left() -> bool {
+    let value: u64 = 42;
+
+    give value && true;
+}
+
+/// `&&` with unsigned right operand.
+
+proc mismatch_and_unsigned_right() -> bool {
+    let value: u64 = 42;
+
+    give true && value;
+}
+
+/// `&&` with floating-point left operand.
+
+proc mismatch_and_float_left() -> bool {
+    let value: f64 = 42.0;
+
+    give value && true;
+}
+
+/// `&&` with floating-point right operand.
+
+proc mismatch_and_float_right() -> bool {
+    let value: f64 = 42.0;
+
+    give true && value;
+}
+
+/// `&&` with character operand.
+
+proc mismatch_and_character() -> bool {
+    let value: char = 'x';
+
+    give true && value;
+}
+
+/// `&&` with string operand.
+
+proc mismatch_and_string() -> bool {
+    let value: string = "vitte";
+
+    give value && true;
+}
+
+/// `&&` with aggregate operand.
+
+proc mismatch_and_form() -> bool {
+    let point: Point =
+        make_point(
+            20,
+            22);
+
+    give true && point;
+}
+
+/// `&&` with aggregate reference.
+
+proc mismatch_and_reference() -> bool {
+    let point: Point =
+        make_point(
+            20,
+            22);
+
+    give &point && true;
+}
+
+/// `&&` with pick operand.
+
+proc mismatch_and_pick() -> bool {
+    let state: State =
+        State.Ready;
+
+    give state && true;
+}
+
+/// `||` with invalid signed left operand.
+
+proc mismatch_or_signed_left() -> bool {
+    let value: i64 = 42;
+
+    give value || false;
+}
+
+/// `||` with invalid signed right operand.
+
+proc mismatch_or_signed_right() -> bool {
+    let value: i64 = 42;
+
+    give false || value;
+}
+
+/// `||` with both operands invalid.
+
+proc mismatch_or_signed_both() -> bool {
+    let left: i64 = 20;
+    let right: i64 = 22;
+
+    give left || right;
+}
+
+/// `||` with unsigned left operand.
+
+proc mismatch_or_unsigned_left() -> bool {
+    let value: u64 = 42;
+
+    give value || false;
+}
+
+/// `||` with unsigned right operand.
+
+proc mismatch_or_unsigned_right() -> bool {
+    let value: u64 = 42;
+
+    give false || value;
+}
+
+/// `||` with floating-point operand.
+
+proc mismatch_or_float_left() -> bool {
+    let value: f64 = 42.0;
+
+    give value || false;
+}
+
+proc mismatch_or_float_right() -> bool {
+    let value: f64 = 42.0;
+
+    give false || value;
+}
+
+/// `||` with character operand.
+
+proc mismatch_or_character() -> bool {
+    let value: char = 'x';
+
+    give value || false;
+}
+
+/// `||` with string operand.
+
+proc mismatch_or_string() -> bool {
+    let value: string = "vitte";
+
+    give false || value;
+}
+
+/// `||` with aggregate operand.
+
+proc mismatch_or_form() -> bool {
+    let point: Point =
+        make_point(
+            20,
+            22);
+
+    give point || false;
+}
+
+/// `||` with aggregate reference.
+
+proc mismatch_or_reference() -> bool {
+    let point: Point =
+        make_point(
+            20,
+            22);
+
+    give false || &point;
+}
+
+/// `||` with pick operand.
+
+proc mismatch_or_pick() -> bool {
+    let state: State =
+        State.Running;
+
+    give state || false;
+}
+
+/// Invalid operand hidden behind a valid logical left-hand side.
+///
+/// The diagnostic should identify `value`, not incorrectly report `true`.
+
+proc mismatch_nested_and_right() -> bool {
+    let value: i64 = 42;
+
+    give true &&
+         (true && value);
+}
+
+/// Invalid operand hidden in the left branch of a nested expression.
+
+proc mismatch_nested_and_left() -> bool {
+    let value: i64 = 42;
+
+    give (value && true) &&
+         true;
+}
+
+/// Invalid operand inside nested `||`.
+
+proc mismatch_nested_or_right() -> bool {
+    let value: i64 = 42;
+
+    give false ||
+         (false || value);
+}
+
+/// Invalid operand inside a mixed logical expression.
+
+proc mismatch_mixed_and_or() -> bool {
+    let value: i64 = 42;
+
+    give true &&
+         false ||
+         value;
+}
+
+/// Invalid left operand in a mixed expression.
+
+proc mismatch_mixed_left() -> bool {
+    let value: i64 = 42;
+
+    give value &&
+         true ||
+         false;
+}
+
+/// Invalid operand under logical negation nested inside `&&`.
+
+proc mismatch_nested_not() -> bool {
+    let value: i64 = 42;
+
+    give true &&
+         !value;
+}
+
+/// Multiple unary logical operators do not make a non-boolean operand valid.
+
+proc mismatch_double_not_signed() -> bool {
+    let value: i64 = 42;
+
+    give !!value;
+}
+
+/// Deep unary nesting still reaches an invalid non-boolean operand.
+
+proc mismatch_deep_not_signed() -> bool {
+    let value: i64 = 42;
+
+    give !!!!!value;
+}
+
+/// Parentheses do not alter the operand type.
+
+proc mismatch_parenthesized_signed() -> bool {
+    let value: i64 = 42;
+
+    give !(value);
+}
+
+/// Deep parentheses do not create truthiness.
+
+proc mismatch_deep_parenthesized_signed() -> bool {
+    let value: i64 = 42;
+
+    give !((((value))));
+}
+
+/// A valid comparison on the left does not permit an invalid right operand.
+
+proc mismatch_comparison_and_integer() -> bool {
+    let value: i64 = 42;
+
+    give (value == 42) &&
+         value;
+}
+
+/// A valid comparison on the right does not permit an invalid left operand.
+
+proc mismatch_integer_and_comparison() -> bool {
+    let value: i64 = 42;
+
+    give value &&
+         (value == 42);
+}
+
+/// Same rule for `||`.
+
+proc mismatch_comparison_or_integer() -> bool {
+    let value: i64 = 42;
+
+    give (value == 42) ||
+         value;
+}
+
+proc mismatch_integer_or_comparison() -> bool {
+    let value: i64 = 42;
+
+    give value ||
+         (value == 42);
+}
+
+/// Arithmetic expressions remain numeric and cannot be logical operands.
+
+proc mismatch_arithmetic_and() -> bool {
+    let left: i64 = 20;
+    let right: i64 = 22;
+
+    give (left + right) &&
+         true;
+}
+
+proc mismatch_arithmetic_or() -> bool {
+    let left: i64 = 20;
+    let right: i64 = 22;
+
+    give false ||
+         (left + right);
+}
+
+proc mismatch_arithmetic_not() -> bool {
+    let left: i64 = 20;
+    let right: i64 = 22;
+
+    give !(left + right);
+}
+
+/// A procedure call returning an integer remains numeric.
+
+proc mismatch_call_and() -> bool {
+    give signed_identity(42) &&
+         true;
+}
+
+proc mismatch_call_or() -> bool {
+    give false ||
+         signed_identity(42);
+}
+
+/// Nested numeric calls must not be coerced to boolean.
+
+proc mismatch_nested_numeric_call() -> bool {
+    give bool_identity(true) &&
+         signed_identity(
+             signed_identity(42));
+}
+
+/// Form member access can produce either valid or invalid logical operands.
+///
+/// `record.enabled` is valid, while `record.value` is not.
+
+proc mismatch_form_member_and() -> bool {
+    let record: Record =
+        make_record(
+            42,
+            true);
+
+    give record.enabled &&
+         record.value;
+}
+
+proc mismatch_form_member_or() -> bool {
+    let record: Record =
+        make_record(
+            42,
+            false);
+
+    give record.value ||
+         record.enabled;
+}
+
+proc mismatch_form_member_not() -> bool {
+    let record: Record =
+        make_record(
+            42,
+            true);
+
+    give !record.value;
+}
+
+/// Assignment does not change the semantic requirements of logical operators.
+
+proc mismatch_initializer() -> bool {
+    let number: i64 = 42;
+
+    let invalid: bool =
+        true && number;
+
+    give invalid;
+}
+
+proc mismatch_assignment() -> bool {
+    let number: i64 = 42;
+    let mut value: bool = false;
+
+    set value =
+        number || value;
+
+    give value;
+}
+
+/// Procedure arguments preserve the invalid logical expression's type-checking
+/// requirements before call checking completes.
+
+proc mismatch_as_call_argument() -> bool {
+    let number: i64 = 42;
+
+    give bool_identity(
+        true && number);
+}
+
+/// Nested calls do not hide the invalid operand.
+
+proc mismatch_nested_call_argument() -> bool {
+    let number: i64 = 42;
+
+    give bool_identity(
+        bool_identity(true) &&
+        number);
+}
+
+/// `if` requires a boolean condition independently of logical operator
+/// checking. Here the logical operator itself is also invalid.
+
+proc mismatch_if_and_condition() -> bool {
+    let number: i64 = 42;
+
+    if true && number {
+        give true;
+    }
+
+    give false;
+}
+
+proc mismatch_if_or_condition() -> bool {
+    let number: i64 = 42;
+
+    if false || number {
+        give true;
+    }
+
+    give false;
+}
+
+proc mismatch_if_not_condition() -> bool {
+    let number: i64 = 42;
+
+    if !number {
+        give true;
+    }
+
+    give false;
+}
+
+/// `while` coverage.
+
+proc mismatch_while_and_condition() -> bool {
+    let number: i64 = 42;
+    let mut running: bool = true;
+
+    while running && number {
+        set running = false;
+    }
+
+    give !running;
+}
+
+proc mismatch_while_or_condition() -> bool {
+    let number: i64 = 42;
+    let mut running: bool = false;
+
+    while running || number {
+        set running = false;
+    }
+
+    give !running;
+}
+
+proc mismatch_while_not_condition() -> bool {
+    let number: i64 = 42;
+
+    while !number {
+        give false;
+    }
+
+    give true;
+}
+
+/// Parameter-based mismatch ensures diagnostics point to the use site while
+/// retaining the parameter declaration as useful secondary context.
+
+proc mismatch_parameter_not(
+    value: i64
+) -> bool {
+    give !value;
+}
+
+proc mismatch_parameter_and_left(
+    value: i64
+) -> bool {
+    give value && true;
+}
+
+proc mismatch_parameter_and_right(
+    value: i64
+) -> bool {
+    give true && value;
+}
+
+proc mismatch_parameter_or_left(
+    value: i64
+) -> bool {
+    give value || false;
+}
+
+proc mismatch_parameter_or_right(
+    value: i64
+) -> bool {
+    give false || value;
+}
+
+/// Unsigned parameter coverage.
+
+proc mismatch_unsigned_parameter(
+    value: u64
+) -> bool {
+    give true && value;
+}
+
+/// Floating-point parameter coverage.
+
+proc mismatch_float_parameter(
+    value: f64
+) -> bool {
+    give value || false;
+}
+
+/// Character parameter coverage.
+
+proc mismatch_char_parameter(
+    value: char
+) -> bool {
+    give !value;
+}
+
+/// String parameter coverage.
+
+proc mismatch_string_parameter(
+    value: string
+) -> bool {
+    give value && true;
+}
+
+/// Aggregate value parameter coverage.
+
+proc mismatch_form_parameter(
+    point: Point
+) -> bool {
+    give point || false;
+}
+
+/// Aggregate reference parameter coverage.
+
+proc mismatch_reference_parameter(
+    point: &Point
+) -> bool {
+    give true && point;
+}
+
+/// Pick parameter coverage.
+
+proc mismatch_pick_parameter(
+    state: State
+) -> bool {
+    give !state;
+}
+
+/// Local shadowing must not confuse the diagnostic type.
+///
+/// The outer `value` is `bool`.
+/// The inner `value` is `i64`.
+/// The invalid expression must resolve to the inner declaration.
+
+proc mismatch_shadowed_local() -> bool {
+    let value: bool = true;
+
+    {
+        let value: i64 = 42;
+
+        if value && true {
+            give false;
+        }
+    }
+
+    give value;
+}
+
+/// Nested scope lookup must preserve the non-boolean type.
+
+proc mismatch_nested_scope() -> bool {
+    let number: i64 = 42;
+
+    {
+        {
+            {
+                give true &&
+                     number;
+            }
+        }
+    }
+}
+
+/// Repeated use of one invalid symbol.
+///
+/// Implementations may deduplicate equivalent diagnostics according to the
+/// diagnostic policy, but none of these expressions is semantically valid.
+
+proc mismatch_repeated_symbol() -> bool {
+    let number: i64 = 42;
+
+    let first: bool =
+        true && number;
+
+    let second: bool =
+        number || false;
+
+    let third: bool =
+        !number;
+
+    give first ||
+         second ||
+         third;
+}
+
+/// Several distinct invalid operand types in one procedure.
+///
+/// The semantic analyzer should recover after each error sufficiently to
+/// continue diagnosing later expressions.
+
+proc mismatch_recovery_multiple_types() -> bool {
+    let signed_value: i64 = 42;
+    let unsigned_value: u64 = 42;
+    let float_value: f64 = 42.0;
+    let character_value: char = 'x';
+    let string_value: string = "vitte";
+
+    let first: bool =
+        signed_value && true;
+
+    let second: bool =
+        false || unsigned_value;
+
+    let third: bool =
+        !float_value;
+
+    let fourth: bool =
+        true && character_value;
+
+    let fifth: bool =
+        string_value || false;
+
+    give first ||
+         second ||
+         third ||
+         fourth ||
+         fifth;
+}
+
+/// Valid controls below are deliberately mixed into this negative fixture.
+///
+/// These expressions must not themselves produce logical-operator type
+/// diagnostics. They help detect semantic recovery bugs where an earlier
+/// mismatch corrupts the type of later expressions.
+
+proc valid_control_literals() -> bool {
+    give true &&
+         !false &&
+         (true || false);
+}
+
+proc valid_control_variables() -> bool {
+    let left: bool = true;
+    let right: bool = false;
+
+    give left &&
+         !right &&
+         (left || right);
+}
+
+proc valid_control_comparisons() -> bool {
+    let value: i64 = 42;
+
+    give value == 42 &&
+         value > 0 &&
+         value < 100;
+}
+
+proc valid_control_calls() -> bool {
+    give valid_bool_source() &&
+         valid_comparison_source(42) &&
+         bool_identity(true);
+}
+
+proc valid_control_record_member() -> bool {
+    let record: Record =
+        make_record(
+            42,
+            true);
+
+    give record.enabled &&
+         !false;
+}
+
+/// Final intentional mismatch.
+///
+/// Keeping a simple mismatch near the end of the file is useful for checking
+/// that semantic analysis continues after earlier failures.
+
+proc final_mismatch() -> bool {
+    let value: i64 = 42;
+
+    give true &&
+         value;
+}
 
 proc main() -> int {
-    if "ready" and true {
+    /// The program is intentionally semantically invalid.
+    ///
+    /// These valid references keep control declarations reachable while the
+    /// compile-fail assertions above exercise logical operand diagnostics.
+
+    let controls: bool =
+        valid_control_literals() &&
+        valid_control_variables() &&
+        valid_control_comparisons() &&
+        valid_control_calls() &&
+        valid_control_record_member();
+
+    if controls {
         give 0;
     }
+
     give 1;
 }

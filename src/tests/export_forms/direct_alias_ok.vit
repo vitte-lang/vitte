@@ -1,7 +1,966 @@
-space demo/direct_alias_ok;
+/// Direct export-alias positive test.
+///
+/// Verifies that a declaration can be exported directly under another name
+/// and that consumers observe the exported alias rather than requiring access
+/// to the declaration's original local name.
+///
+/// Coverage:
+/// - direct alias of constants;
+/// - direct alias of forms;
+/// - direct alias of procedures;
+/// - several aliases from one module;
+/// - aliases used in type positions;
+/// - aliases used in expression positions;
+/// - aliases used for construction;
+/// - aliases used in procedure calls;
+/// - aliases used through references;
+/// - aliases used repeatedly;
+/// - aliases composed with ordinary local declarations;
+/// - alias resolution inside blocks and control flow;
+/// - alias resolution through nested expressions;
+/// - preservation of the aliased declaration's type.
+///
+/// Expected result:
+/// - parsing succeeds;
+/// - export alias resolution succeeds;
+/// - semantic analysis succeeds;
+/// - no duplicate or ambiguous declaration is created;
+/// - compilation succeeds.
 
-use lib_alias::{plus, answer};
+space tests::export_forms::direct_alias_ok;
 
+const INTERNAL_ZERO: i64 = 0;
+const INTERNAL_ONE: i64 = 1;
+const INTERNAL_ANSWER: i64 = 42;
+const INTERNAL_LIMIT: u64 = 100;
+const INTERNAL_ENABLED: bool = true;
+
+form InternalPoint {
+    x: i64,
+    y: i64,
+}
+
+form InternalRange {
+    minimum: i64,
+    maximum: i64,
+}
+
+form InternalRecord {
+    id: u64,
+    value: i64,
+    enabled: bool,
+}
+
+form InternalPair {
+    first: i64,
+    second: i64,
+}
+
+proc internal_identity(value: i64) -> i64 {
+    give value;
+}
+
+proc internal_add(
+    left: i64,
+    right: i64
+) -> i64 {
+    give left + right;
+}
+
+proc internal_subtract(
+    left: i64,
+    right: i64
+) -> i64 {
+    give left - right;
+}
+
+proc internal_multiply(
+    left: i64,
+    right: i64
+) -> i64 {
+    give left * right;
+}
+
+proc internal_is_answer(value: i64) -> bool {
+    give value == INTERNAL_ANSWER;
+}
+
+proc internal_make_point(
+    x: i64,
+    y: i64
+) -> InternalPoint {
+    give InternalPoint {
+        x: x,
+        y: y,
+    };
+}
+
+proc internal_make_range(
+    minimum: i64,
+    maximum: i64
+) -> InternalRange {
+    give InternalRange {
+        minimum: minimum,
+        maximum: maximum,
+    };
+}
+
+proc internal_make_record(
+    id: u64,
+    value: i64,
+    enabled: bool
+) -> InternalRecord {
+    give InternalRecord {
+        id: id,
+        value: value,
+        enabled: enabled,
+    };
+}
+
+proc internal_make_pair(
+    first: i64,
+    second: i64
+) -> InternalPair {
+    give InternalPair {
+        first: first,
+        second: second,
+    };
+}
+
+proc internal_point_sum(
+    point: &InternalPoint
+) -> i64 {
+    give point.x + point.y;
+}
+
+proc internal_range_width(
+    range: &InternalRange
+) -> i64 {
+    give range.maximum - range.minimum;
+}
+
+proc internal_record_value(
+    record: &InternalRecord
+) -> i64 {
+    give record.value;
+}
+
+proc internal_pair_sum(
+    pair: &InternalPair
+) -> i64 {
+    give pair.first + pair.second;
+}
+
+/// Direct constant aliases.
+export INTERNAL_ZERO as ZERO;
+export INTERNAL_ONE as ONE;
+export INTERNAL_ANSWER as ANSWER;
+export INTERNAL_LIMIT as LIMIT;
+export INTERNAL_ENABLED as ENABLED;
+
+/// Direct type aliases through export declarations.
+export InternalPoint as Point;
+export InternalRange as Range;
+export InternalRecord as Record;
+export InternalPair as Pair;
+
+/// Direct procedure aliases.
+export internal_identity as identity;
+export internal_add as add;
+export internal_subtract as subtract;
+export internal_multiply as multiply;
+export internal_is_answer as is_answer;
+
+export internal_make_point as make_point;
+export internal_make_range as make_range;
+export internal_make_record as make_record;
+export internal_make_pair as make_pair;
+
+export internal_point_sum as point_sum;
+export internal_range_width as range_width;
+export internal_record_value as record_value;
+export internal_pair_sum as pair_sum;
+
+/// Verify the original local constant remains usable inside its defining
+/// module after an export alias is introduced.
+proc test_original_constant() -> bool {
+    give INTERNAL_ANSWER == 42;
+}
+
+/// Verify several original declarations remain visible locally.
+proc test_original_constants() -> bool {
+    give INTERNAL_ZERO == 0 &&
+         INTERNAL_ONE == 1 &&
+         INTERNAL_ANSWER == 42 &&
+         INTERNAL_LIMIT == 100 &&
+         INTERNAL_ENABLED;
+}
+
+/// Verify aliases do not alter the underlying declaration values.
+proc test_constant_alias_contract() -> bool {
+    give ZERO == INTERNAL_ZERO &&
+         ONE == INTERNAL_ONE &&
+         ANSWER == INTERNAL_ANSWER &&
+         LIMIT == INTERNAL_LIMIT &&
+         ENABLED == INTERNAL_ENABLED;
+}
+
+/// Alias in an ordinary expression.
+proc test_alias_expression() -> i64 {
+    give ANSWER;
+}
+
+/// Several aliases in one expression.
+proc test_multiple_alias_expression() -> i64 {
+    give ZERO +
+         ONE +
+         ANSWER -
+         ONE;
+}
+
+/// Alias used in arithmetic.
+proc test_alias_arithmetic() -> i64 {
+    let value: i64 =
+        ANSWER + ZERO;
+
+    give value;
+}
+
+/// Alias used in comparison.
+proc test_alias_comparison() -> bool {
+    give ANSWER == 42 &&
+         LIMIT >= 42 &&
+         ENABLED;
+}
+
+/// Procedure alias with one argument.
+proc test_identity_alias() -> i64 {
+    give identity(ANSWER);
+}
+
+/// Procedure alias with two arguments.
+proc test_add_alias() -> i64 {
+    give add(20, 22);
+}
+
+proc test_subtract_alias() -> i64 {
+    give subtract(100, 58);
+}
+
+proc test_multiply_alias() -> i64 {
+    give multiply(6, 7);
+}
+
+/// Alias used as an argument to another aliased procedure.
+proc test_nested_alias_call() -> i64 {
+    give identity(
+        add(
+            identity(20),
+            identity(22)));
+}
+
+/// Deep nested alias resolution.
+proc test_deep_alias_call() -> i64 {
+    give identity(
+        identity(
+            identity(
+                add(
+                    identity(20),
+                    identity(22)))));
+}
+
+/// Several aliased procedures in the same expression tree.
+proc test_mixed_alias_calls() -> i64 {
+    let first: i64 =
+        add(10, 10);
+
+    let second: i64 =
+        subtract(50, 28);
+
+    give add(first, second);
+}
+
+/// Predicate alias.
+proc test_predicate_alias() -> bool {
+    give is_answer(42) &&
+         is_answer(ANSWER);
+}
+
+/// Aliased form used in a type position.
+proc test_point_type_alias() -> i64 {
+    let point: Point =
+        Point {
+            x: 20,
+            y: 22,
+        };
+
+    give point.x + point.y;
+}
+
+/// Aliased form constructed through an aliased factory.
+proc test_point_factory_alias() -> i64 {
+    let point: Point =
+        make_point(20, 22);
+
+    give point.x + point.y;
+}
+
+/// Aliased type passed by reference to an aliased procedure.
+proc test_point_reference_alias() -> i64 {
+    let point: Point =
+        make_point(20, 22);
+
+    give point_sum(&point);
+}
+
+/// Several values of an aliased form.
+proc test_multiple_points() -> i64 {
+    let first: Point =
+        make_point(5, 5);
+
+    let second: Point =
+        make_point(10, 22);
+
+    give point_sum(&first) +
+         point_sum(&second);
+}
+
+/// Range type alias.
+proc test_range_type_alias() -> i64 {
+    let range: Range =
+        Range {
+            minimum: 0,
+            maximum: 42,
+        };
+
+    give range.maximum -
+         range.minimum;
+}
+
+/// Range factory alias.
+proc test_range_factory_alias() -> i64 {
+    let range: Range =
+        make_range(10, 52);
+
+    give range_width(&range);
+}
+
+/// Record alias.
+proc test_record_type_alias() -> i64 {
+    let record: Record =
+        Record {
+            id: 42,
+            value: 42,
+            enabled: true,
+        };
+
+    give record.value;
+}
+
+/// Record factory and consumer aliases.
+proc test_record_factory_alias() -> i64 {
+    let record: Record =
+        make_record(
+            42,
+            ANSWER,
+            ENABLED);
+
+    give record_value(&record);
+}
+
+/// Pair alias.
+proc test_pair_type_alias() -> i64 {
+    let pair: Pair =
+        Pair {
+            first: 20,
+            second: 22,
+        };
+
+    give pair.first +
+         pair.second;
+}
+
+/// Pair factory and consumer aliases.
+proc test_pair_factory_alias() -> i64 {
+    let pair: Pair =
+        make_pair(20, 22);
+
+    give pair_sum(&pair);
+}
+
+/// Alias used as a procedure parameter type.
+proc consume_point(
+    point: &Point
+) -> i64 {
+    give point_sum(point);
+}
+
+/// Alias used as a return type.
+proc produce_point(
+    x: i64,
+    y: i64
+) -> Point {
+    give make_point(x, y);
+}
+
+/// Aliased type crosses a local procedure boundary.
+proc test_alias_across_local_boundary() -> i64 {
+    let point: Point =
+        produce_point(20, 22);
+
+    give consume_point(&point);
+}
+
+/// Several aliased types in one signature.
+proc consume_record_and_pair(
+    record: &Record,
+    pair: &Pair
+) -> i64 {
+    give record_value(record) +
+         pair_sum(pair);
+}
+
+proc test_multiple_alias_types() -> i64 {
+    let record: Record =
+        make_record(
+            42,
+            20,
+            true);
+
+    let pair: Pair =
+        make_pair(
+            10,
+            12);
+
+    give consume_record_and_pair(
+        &record,
+        &pair);
+}
+
+/// Aliased declaration inside a nested block.
+proc test_alias_nested_block() -> i64 {
+    let mut result: i64 = 0;
+
+    {
+        let point: Point =
+            make_point(20, 22);
+
+        set result =
+            point_sum(&point);
+    }
+
+    give result;
+}
+
+/// Aliases inside nested blocks.
+proc test_alias_deep_block() -> i64 {
+    let mut result: i64 = 0;
+
+    {
+        let left: i64 =
+            identity(20);
+
+        {
+            let right: i64 =
+                identity(22);
+
+            {
+                set result =
+                    add(left, right);
+            }
+        }
+    }
+
+    give result;
+}
+
+/// Aliased declarations inside an if branch.
+proc test_alias_condition() -> i64 {
+    if is_answer(ANSWER) {
+        give identity(ANSWER);
+    }
+
+    give 0;
+}
+
+/// Aliases in both conditional branches.
+proc test_alias_condition_branches(
+    condition: bool
+) -> i64 {
+    if condition {
+        give add(20, 22);
+    } else {
+        give subtract(100, 58);
+    }
+}
+
+/// Aliases inside a loop.
+proc test_alias_loop() -> i64 {
+    let mut index: i64 = ZERO;
+    let mut result: i64 = ZERO;
+
+    while index < 6 {
+        set result =
+            add(result, 7);
+
+        set index =
+            add(index, ONE);
+    }
+
+    give result;
+}
+
+/// Repeated alias lookup.
+proc test_repeated_constant_alias() -> bool {
+    give ANSWER == 42 &&
+         ANSWER == 42 &&
+         ANSWER == 42 &&
+         ANSWER == 42 &&
+         ANSWER == 42;
+}
+
+/// Repeated procedure alias lookup.
+proc test_repeated_proc_alias() -> bool {
+    give identity(42) == 42 &&
+         identity(42) == 42 &&
+         identity(42) == 42 &&
+         identity(42) == 42;
+}
+
+/// Repeated type alias lookup.
+proc test_repeated_type_alias() -> i64 {
+    let first: Point =
+        make_point(10, 10);
+
+    let second: Point =
+        make_point(11, 11);
+
+    let third: Point =
+        make_point(0, 0);
+
+    give point_sum(&first) +
+         point_sum(&second) +
+         point_sum(&third);
+}
+
+/// Local names similar to aliases must not disturb alias resolution.
+proc test_similar_local_names() -> i64 {
+    let ANSWER_local: i64 = 20;
+    let identity_local: i64 = 22;
+
+    give add(
+        ANSWER_local,
+        identity_local);
+}
+
+/// Local variables can contain values returned through aliases.
+proc test_alias_result_binding() -> i64 {
+    let first: i64 =
+        identity(10);
+
+    let second: i64 =
+        identity(20);
+
+    let third: i64 =
+        identity(12);
+
+    give add(
+        add(first, second),
+        third);
+}
+
+/// Mutable local initialized through an alias.
+proc test_alias_mutable_binding() -> i64 {
+    let mut value: i64 =
+        identity(20);
+
+    set value =
+        add(value, 22);
+
+    give value;
+}
+
+/// Alias used after mutation.
+proc test_alias_after_mutation() -> i64 {
+    let mut value: i64 = 0;
+
+    set value = ANSWER;
+
+    give identity(value);
+}
+
+/// Alias expression mixed with ordinary local arithmetic.
+proc test_alias_local_composition() -> i64 {
+    let left: i64 = 20;
+    let right: i64 = 22;
+
+    give identity(
+        add(
+            left,
+            right));
+}
+
+/// Alias constants used to construct an aliased form.
+proc test_alias_constant_in_form() -> i64 {
+    let point: Point =
+        Point {
+            x: ANSWER,
+            y: ZERO,
+        };
+
+    give point_sum(&point);
+}
+
+/// Aliased procedures used to construct fields.
+proc test_alias_calls_in_form() -> i64 {
+    let point: Point =
+        Point {
+            x: identity(20),
+            y: identity(22),
+        };
+
+    give point_sum(&point);
+}
+
+/// Aliased factory nested in ordinary local computation.
+proc test_factory_composition() -> i64 {
+    let point: Point =
+        make_point(
+            add(5, 15),
+            subtract(50, 28));
+
+    give point_sum(&point);
+}
+
+/// Multiple alias categories combined.
+proc test_cross_category_aliases() -> bool {
+    let point: Point =
+        make_point(
+            identity(20),
+            identity(22));
+
+    let range: Range =
+        make_range(
+            ZERO,
+            ANSWER);
+
+    let record: Record =
+        make_record(
+            LIMIT,
+            point_sum(&point),
+            ENABLED);
+
+    let pair: Pair =
+        make_pair(
+            range.minimum,
+            range.maximum);
+
+    give point_sum(&point) == ANSWER &&
+         range_width(&range) == ANSWER &&
+         record_value(&record) == ANSWER &&
+         pair_sum(&pair) == ANSWER;
+}
+
+/// Verify original names and aliases denote equivalent behavior inside the
+/// defining module.
+proc test_original_and_alias_equivalence() -> bool {
+    let original_point: InternalPoint =
+        internal_make_point(20, 22);
+
+    let alias_point: Point =
+        make_point(20, 22);
+
+    give internal_identity(INTERNAL_ANSWER) ==
+             identity(ANSWER) &&
+         internal_add(20, 22) ==
+             add(20, 22) &&
+         internal_point_sum(&original_point) ==
+             point_sum(&alias_point);
+}
+
+/// Stress alias lookup in one expression.
+proc test_alias_expression_stress() -> i64 {
+    give add(
+        identity(
+            add(
+                ZERO,
+                identity(10))),
+        identity(
+            add(
+                identity(20),
+                subtract(
+                    ANSWER,
+                    30))));
+}
+
+/// Stress type alias resolution.
+proc test_type_alias_stress() -> bool {
+    let first: Point =
+        make_point(10, 10);
+
+    let second: Point =
+        make_point(11, 11);
+
+    let range: Range =
+        make_range(
+            point_sum(&first),
+            point_sum(&first) +
+                point_sum(&second));
+
+    let record: Record =
+        make_record(
+            LIMIT,
+            range_width(&range),
+            ENABLED);
+
+    give point_sum(&first) == 20 &&
+         point_sum(&second) == 22 &&
+         range_width(&range) == 22 &&
+         record_value(&record) == 22;
+}
+
+/// Integrated direct-alias scenario.
+proc test_integrated_aliases() -> bool {
+    let left: i64 =
+        identity(20);
+
+    let right: i64 =
+        identity(22);
+
+    let point: Point =
+        make_point(
+            left,
+            right);
+
+    let range: Range =
+        make_range(
+            ZERO,
+            point_sum(&point));
+
+    let record: Record =
+        make_record(
+            LIMIT,
+            range_width(&range),
+            ENABLED);
+
+    let pair: Pair =
+        make_pair(
+            point.x,
+            point.y);
+
+    let mut result: i64 =
+        ZERO;
+
+    if is_answer(
+        record_value(&record)) {
+        set result =
+            pair_sum(&pair);
+    }
+
+    give result == ANSWER &&
+         point_sum(&point) == ANSWER &&
+         range_width(&range) == ANSWER &&
+         record_value(&record) == ANSWER &&
+         pair_sum(&pair) == ANSWER;
+}
+
+/// Complete positive regression entry point.
 proc main() -> int {
-    give plus() + answer;
+    if !test_original_constant() {
+        give 1;
+    }
+
+    if !test_original_constants() {
+        give 2;
+    }
+
+    if !test_constant_alias_contract() {
+        give 3;
+    }
+
+    if test_alias_expression() != 42 {
+        give 4;
+    }
+
+    if test_multiple_alias_expression() != 42 {
+        give 5;
+    }
+
+    if test_alias_arithmetic() != 42 {
+        give 6;
+    }
+
+    if !test_alias_comparison() {
+        give 7;
+    }
+
+    if test_identity_alias() != 42 {
+        give 8;
+    }
+
+    if test_add_alias() != 42 {
+        give 9;
+    }
+
+    if test_subtract_alias() != 42 {
+        give 10;
+    }
+
+    if test_multiply_alias() != 42 {
+        give 11;
+    }
+
+    if test_nested_alias_call() != 42 {
+        give 12;
+    }
+
+    if test_deep_alias_call() != 42 {
+        give 13;
+    }
+
+    if test_mixed_alias_calls() != 42 {
+        give 14;
+    }
+
+    if !test_predicate_alias() {
+        give 15;
+    }
+
+    if test_point_type_alias() != 42 {
+        give 16;
+    }
+
+    if test_point_factory_alias() != 42 {
+        give 17;
+    }
+
+    if test_point_reference_alias() != 42 {
+        give 18;
+    }
+
+    if test_multiple_points() != 42 {
+        give 19;
+    }
+
+    if test_range_type_alias() != 42 {
+        give 20;
+    }
+
+    if test_range_factory_alias() != 42 {
+        give 21;
+    }
+
+    if test_record_type_alias() != 42 {
+        give 22;
+    }
+
+    if test_record_factory_alias() != 42 {
+        give 23;
+    }
+
+    if test_pair_type_alias() != 42 {
+        give 24;
+    }
+
+    if test_pair_factory_alias() != 42 {
+        give 25;
+    }
+
+    if test_alias_across_local_boundary() != 42 {
+        give 26;
+    }
+
+    if test_multiple_alias_types() != 42 {
+        give 27;
+    }
+
+    if test_alias_nested_block() != 42 {
+        give 28;
+    }
+
+    if test_alias_deep_block() != 42 {
+        give 29;
+    }
+
+    if test_alias_condition() != 42 {
+        give 30;
+    }
+
+    if test_alias_condition_branches(true) != 42 {
+        give 31;
+    }
+
+    if test_alias_condition_branches(false) != 42 {
+        give 32;
+    }
+
+    if test_alias_loop() != 42 {
+        give 33;
+    }
+
+    if !test_repeated_constant_alias() {
+        give 34;
+    }
+
+    if !test_repeated_proc_alias() {
+        give 35;
+    }
+
+    if test_repeated_type_alias() != 42 {
+        give 36;
+    }
+
+    if test_similar_local_names() != 42 {
+        give 37;
+    }
+
+    if test_alias_result_binding() != 42 {
+        give 38;
+    }
+
+    if test_alias_mutable_binding() != 42 {
+        give 39;
+    }
+
+    if test_alias_after_mutation() != 42 {
+        give 40;
+    }
+
+    if test_alias_local_composition() != 42 {
+        give 41;
+    }
+
+    if test_alias_constant_in_form() != 42 {
+        give 42;
+    }
+
+    if test_alias_calls_in_form() != 42 {
+        give 43;
+    }
+
+    if test_factory_composition() != 42 {
+        give 44;
+    }
+
+    if !test_cross_category_aliases() {
+        give 45;
+    }
+
+    if !test_original_and_alias_equivalence() {
+        give 46;
+    }
+
+    if test_alias_expression_stress() != 42 {
+        give 47;
+    }
+
+    if !test_type_alias_stress() {
+        give 48;
+    }
+
+    if !test_integrated_aliases() {
+        give 49;
+    }
+
+    give 0;
 }

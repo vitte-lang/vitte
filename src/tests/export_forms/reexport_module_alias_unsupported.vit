@@ -1,9 +1,38 @@
-space demo/reexport_module_alias_unsupported;
+/// Negative export-form test.
+///
+/// Re-exporting an imported module under another module alias is intentionally
+/// unsupported.
+///
+/// This fixture isolates module-alias re-export from ordinary import,
+/// direct export, declaration aliasing, and star export behavior.
+///
+/// Expected result:
+/// - source loading succeeds;
+/// - `lib_star` resolves as an imported module;
+/// - the frontend reaches the export declaration;
+/// - module-alias re-export is rejected;
+/// - compilation fails;
+/// - no module named `star` is created or exported;
+/// - declarations from `lib_star` are not implicitly copied into this module;
+/// - the diagnostic points at the unsupported export declaration;
+/// - no partial export state is committed.
 
-use lib_alias;
+space tests::export_forms::reexport_module_alias_unsupported;
 
-export lib_alias as explicit_lib;
+use tests::export_forms::lib_star;
 
-proc main() -> int {
-    give 0;
+/// Control.
+///
+/// Ordinary qualified access to the imported module is valid. This keeps the
+/// failure focused on the re-export form below rather than import resolution.
+
+proc control() -> i64 {
+    give lib_star::ANSWER;
 }
+
+/// Intentional unsupported form.
+///
+/// `lib_star` is a module namespace, not a declaration that may be re-exported
+/// under a new module alias.
+
+export lib_star as star;

@@ -1,7 +1,1157 @@
-space demo/direct_star_ok;
+/// Direct star-export positive test.
+///
+/// Verifies the direct wildcard export form.
+///
+/// Coverage:
+/// - direct `export ...*`;
+/// - exported constants;
+/// - exported forms;
+/// - exported procedures;
+/// - exported predicates;
+/// - constructors;
+/// - references;
+/// - multiple declarations;
+/// - repeated resolution;
+/// - nested expressions;
+/// - control flow;
+/// - mutation;
+/// - type positions;
+/// - expression positions;
+/// - local use after star export;
+/// - declaration identity preservation.
+///
+/// Expected result:
+/// - lexing succeeds;
+/// - parsing succeeds;
+/// - wildcard export resolves;
+/// - all eligible declarations are exported;
+/// - types remain usable in type positions;
+/// - values remain usable in expression positions;
+/// - procedures remain callable;
+/// - semantic analysis succeeds;
+/// - compilation succeeds.
 
-use lib_star::{visible, answer};
+space tests::export_forms::direct_star_ok;
+
+const ZERO: i64 = 0;
+    const ONE: i64 = 1;
+    const ANSWER: i64 = 42;
+    const LIMIT: u64 = 100;
+    const ENABLED: bool = true;
+
+    form Point {
+        x: i64,
+        y: i64,
+    }
+
+    form Range {
+        minimum: i64,
+        maximum: i64,
+    }
+
+    form Record {
+        id: u64,
+        value: i64,
+        enabled: bool,
+    }
+
+    form Pair {
+        first: i64,
+        second: i64,
+    }
+
+    form Nested {
+        point: Point,
+        range: Range,
+    }
+
+    pick State {
+        Idle,
+        Ready,
+        Running,
+        Finished,
+    }
+
+    pick ResultKind {
+        Success,
+        Failure,
+    }
+
+    proc identity(value: i64) -> i64 {
+        give value;
+    }
+
+    proc add(
+        left: i64,
+        right: i64
+    ) -> i64 {
+        give left + right;
+    }
+
+    proc subtract(
+        left: i64,
+        right: i64
+    ) -> i64 {
+        give left - right;
+    }
+
+    proc multiply(
+        left: i64,
+        right: i64
+    ) -> i64 {
+        give left * right;
+    }
+
+    proc is_zero(value: i64) -> bool {
+        give value == ZERO;
+    }
+
+    proc is_positive(value: i64) -> bool {
+        give value > ZERO;
+    }
+
+    proc is_answer(value: i64) -> bool {
+        give value == ANSWER;
+    }
+
+    proc make_point(
+        x: i64,
+        y: i64
+    ) -> Point {
+        give Point {
+            x: x,
+            y: y,
+        };
+    }
+
+    proc make_range(
+        minimum: i64,
+        maximum: i64
+    ) -> Range {
+        give Range {
+            minimum: minimum,
+            maximum: maximum,
+        };
+    }
+
+    proc make_record(
+        id: u64,
+        value: i64,
+        enabled: bool
+    ) -> Record {
+        give Record {
+            id: id,
+            value: value,
+            enabled: enabled,
+        };
+    }
+
+    proc make_pair(
+        first: i64,
+        second: i64
+    ) -> Pair {
+        give Pair {
+            first: first,
+            second: second,
+        };
+    }
+
+    proc make_nested(
+        point: Point,
+        range: Range
+    ) -> Nested {
+        give Nested {
+            point: point,
+            range: range,
+        };
+    }
+
+    proc point_sum(
+        point: &Point
+    ) -> i64 {
+        give point.x + point.y;
+    }
+
+    proc range_width(
+        range: &Range
+    ) -> i64 {
+        give range.maximum -
+             range.minimum;
+    }
+
+    proc range_valid(
+        range: &Range
+    ) -> bool {
+        give range.minimum <=
+             range.maximum;
+    }
+
+    proc range_contains(
+        range: &Range,
+        value: i64
+    ) -> bool {
+        give value >= range.minimum &&
+             value <= range.maximum;
+    }
+
+    proc record_value(
+        record: &Record
+    ) -> i64 {
+        give record.value;
+    }
+
+    proc record_enabled(
+        record: &Record
+    ) -> bool {
+        give record.enabled;
+    }
+
+    proc pair_sum(
+        pair: &Pair
+    ) -> i64 {
+        give pair.first +
+             pair.second;
+    }
+
+    proc nested_value(
+        nested: &Nested
+    ) -> i64 {
+        give point_sum(&nested.point) +
+             range_width(&nested.range);
+    }
+
+    proc default_state() -> State {
+        give State.Idle;
+    }
+
+    proc running_state() -> State {
+        give State.Running;
+    }
+
+    proc success_kind() -> ResultKind {
+        give ResultKind.Success;
+}
+
+/// Export every eligible declaration in this module.
+export *;
+
+proc test_constants() -> bool {
+    give ZERO == 0 &&
+         ONE == 1 &&
+         ANSWER == 42 &&
+         LIMIT == 100 &&
+         ENABLED;
+}
+
+proc test_constant_arithmetic() -> i64 {
+    give ANSWER +
+         ZERO +
+         ONE -
+         ONE;
+}
+
+proc test_identity() -> i64 {
+    give identity(ANSWER);
+}
+
+proc test_add() -> i64 {
+    give add(20, 22);
+}
+
+proc test_subtract() -> i64 {
+    give subtract(100, 58);
+}
+
+proc test_multiply() -> i64 {
+    give multiply(6, 7);
+}
+
+proc test_predicates() -> bool {
+    give is_zero(ZERO) &&
+         is_positive(ANSWER) &&
+         is_answer(ANSWER);
+}
+
+proc test_nested_calls() -> i64 {
+    give identity(
+        add(
+            identity(20),
+            identity(22)));
+}
+
+proc test_deep_calls() -> i64 {
+    give identity(
+        identity(
+            identity(
+                add(
+                    identity(20),
+                    identity(22)))));
+}
+
+proc test_mixed_calls() -> i64 {
+    let first: i64 =
+        add(10, 10);
+
+    let second: i64 =
+        subtract(50, 28);
+
+    give add(
+        first,
+        second);
+}
+
+proc test_point_literal() -> i64 {
+    let point: Point =
+        Point {
+            x: 20,
+            y: 22,
+        };
+
+    give point.x +
+         point.y;
+}
+
+proc test_point_factory() -> i64 {
+    let point: Point =
+        make_point(
+            20,
+            22);
+
+    give point.x +
+         point.y;
+}
+
+proc test_point_consumer() -> i64 {
+    let point: Point =
+        make_point(
+            20,
+            22);
+
+    give point_sum(&point);
+}
+
+proc test_multiple_points() -> i64 {
+    let first: Point =
+        make_point(
+            5,
+            5);
+
+    let second: Point =
+        make_point(
+            10,
+            22);
+
+    give point_sum(&first) +
+         point_sum(&second);
+}
+
+proc test_range_literal() -> i64 {
+    let range: Range =
+        Range {
+            minimum: 0,
+            maximum: 42,
+        };
+
+    give range.maximum -
+         range.minimum;
+}
+
+proc test_range_factory() -> i64 {
+    let range: Range =
+        make_range(
+            10,
+            52);
+
+    give range_width(&range);
+}
+
+proc test_range_predicates() -> bool {
+    let range: Range =
+        make_range(
+            0,
+            100);
+
+    give range_valid(&range) &&
+         range_contains(&range, 0) &&
+         range_contains(&range, 42) &&
+         range_contains(&range, 100) &&
+         !range_contains(&range, 101);
+}
+
+proc test_record_literal() -> i64 {
+    let record: Record =
+        Record {
+            id: 42,
+            value: 42,
+            enabled: true,
+        };
+
+    give record.value;
+}
+
+proc test_record_factory() -> i64 {
+    let record: Record =
+        make_record(
+            42,
+            42,
+            true);
+
+    give record_value(&record);
+}
+
+proc test_record_predicate() -> bool {
+    let record: Record =
+        make_record(
+            LIMIT,
+            ANSWER,
+            ENABLED);
+
+    give record_value(&record) == ANSWER &&
+         record_enabled(&record);
+}
+
+proc test_pair_literal() -> i64 {
+    let pair: Pair =
+        Pair {
+            first: 20,
+            second: 22,
+        };
+
+    give pair.first +
+         pair.second;
+}
+
+proc test_pair_factory() -> i64 {
+    let pair: Pair =
+        make_pair(
+            20,
+            22);
+
+    give pair_sum(&pair);
+}
+
+proc test_nested_literal() -> i64 {
+    let point: Point =
+        make_point(
+            10,
+            10);
+
+    let range: Range =
+        make_range(
+            0,
+            22);
+
+    let nested: Nested =
+        Nested {
+            point: point,
+            range: range,
+        };
+
+    give nested_value(&nested);
+}
+
+proc test_nested_factory() -> i64 {
+    let point: Point =
+        make_point(
+            10,
+            10);
+
+    let range: Range =
+        make_range(
+            0,
+            22);
+
+    let nested: Nested =
+        make_nested(
+            point,
+            range);
+
+    give nested_value(&nested);
+}
+
+proc consume_point(
+    point: &Point
+) -> i64 {
+    give point_sum(point);
+}
+
+proc produce_point(
+    x: i64,
+    y: i64
+) -> Point {
+    give make_point(
+        x,
+        y);
+}
+
+proc test_type_in_parameter() -> i64 {
+    let point: Point =
+        make_point(
+            20,
+            22);
+
+    give consume_point(&point);
+}
+
+proc test_type_in_return() -> i64 {
+    let point: Point =
+        produce_point(
+            20,
+            22);
+
+    give point_sum(&point);
+}
+
+proc consume_range(
+    range: &Range
+) -> i64 {
+    give range_width(range);
+}
+
+proc produce_range(
+    minimum: i64,
+    maximum: i64
+) -> Range {
+    give make_range(
+        minimum,
+        maximum);
+}
+
+proc test_multiple_exported_types() -> i64 {
+    let point: Point =
+        produce_point(
+            10,
+            10);
+
+    let range: Range =
+        produce_range(
+            0,
+            22);
+
+    give consume_point(&point) +
+         consume_range(&range);
+}
+
+proc test_reference_parameters() -> i64 {
+    let point: Point =
+        make_point(
+            20,
+            22);
+
+    let range: Range =
+        make_range(
+            0,
+            42);
+
+    let record: Record =
+        make_record(
+            42,
+            42,
+            true);
+
+    let pair: Pair =
+        make_pair(
+            20,
+            22);
+
+    give point_sum(&point) +
+         range_width(&range) +
+         record_value(&record) +
+         pair_sum(&pair);
+}
+
+proc test_constant_in_constructor() -> i64 {
+    let point: Point =
+        Point {
+            x: ANSWER,
+            y: ZERO,
+        };
+
+    give point_sum(&point);
+}
+
+proc test_calls_in_constructor() -> i64 {
+    let point: Point =
+        Point {
+            x: identity(20),
+            y: identity(22),
+        };
+
+    give point_sum(&point);
+}
+
+proc test_factory_composition() -> i64 {
+    let point: Point =
+        make_point(
+            add(10, 10),
+            subtract(50, 28));
+
+    give point_sum(&point);
+}
+
+proc test_nested_block() -> i64 {
+    let mut result: i64 =
+        ZERO;
+
+    {
+        let point: Point =
+            make_point(
+                20,
+                22);
+
+        set result =
+            point_sum(&point);
+    }
+
+    give result;
+}
+
+proc test_deep_block() -> i64 {
+    let mut result: i64 =
+        ZERO;
+
+    {
+        let left: i64 =
+            identity(20);
+
+        {
+            let right: i64 =
+                identity(22);
+
+            {
+                set result =
+                    add(
+                        left,
+                        right);
+            }
+        }
+    }
+
+    give result;
+}
+
+proc test_if() -> i64 {
+    if is_answer(ANSWER) {
+        give identity(ANSWER);
+    }
+
+    give ZERO;
+}
+
+proc test_if_else(
+    condition: bool
+) -> i64 {
+    if condition {
+        give add(
+            20,
+            22);
+    } else {
+        give subtract(
+            100,
+            58);
+    }
+}
+
+proc test_loop() -> i64 {
+    let mut index: i64 =
+        ZERO;
+
+    let mut result: i64 =
+        ZERO;
+
+    while index < 6 {
+        set result =
+            add(
+                result,
+                7);
+
+        set index =
+            add(
+                index,
+                ONE);
+    }
+
+    give result;
+}
+
+proc test_nested_control_flow() -> i64 {
+    let mut index: i64 =
+        ZERO;
+
+    let mut result: i64 =
+        ZERO;
+
+    while index < 3 {
+        if index == ZERO {
+            set result =
+                add(
+                    result,
+                    10);
+        } else {
+            if index == ONE {
+                set result =
+                    add(
+                        result,
+                        20);
+            } else {
+                set result =
+                    add(
+                        result,
+                        12);
+            }
+        }
+
+        set index =
+            add(
+                index,
+                ONE);
+    }
+
+    give result;
+}
+
+proc test_mutable_value() -> i64 {
+    let mut value: i64 =
+        ZERO;
+
+    set value =
+        ANSWER;
+
+    give identity(value);
+}
+
+proc test_mutable_call_chain() -> i64 {
+    let mut value: i64 =
+        identity(20);
+
+    set value =
+        add(
+            value,
+            22);
+
+    give identity(value);
+}
+
+proc test_repeated_constant_lookup() -> bool {
+    give ANSWER == 42 &&
+         ANSWER == 42 &&
+         ANSWER == 42 &&
+         ANSWER == 42 &&
+         ANSWER == 42;
+}
+
+proc test_repeated_proc_lookup() -> bool {
+    give identity(42) == 42 &&
+         identity(42) == 42 &&
+         identity(42) == 42 &&
+         identity(42) == 42 &&
+         identity(42) == 42;
+}
+
+proc test_repeated_type_lookup() -> i64 {
+    let first: Point =
+        make_point(
+            10,
+            10);
+
+    let second: Point =
+        make_point(
+            11,
+            11);
+
+    let third: Point =
+        make_point(
+            ZERO,
+            ZERO);
+
+    give point_sum(&first) +
+         point_sum(&second) +
+         point_sum(&third);
+}
+
+proc test_local_binding_from_export() -> i64 {
+    let first: i64 =
+        identity(10);
+
+    let second: i64 =
+        identity(20);
+
+    let third: i64 =
+        identity(12);
+
+    give add(
+        add(
+            first,
+            second),
+        third);
+}
+
+proc test_expression_tree() -> i64 {
+    give add(
+        identity(
+            add(
+                ZERO,
+                identity(10))),
+        identity(
+            add(
+                identity(20),
+                subtract(
+                    ANSWER,
+                    30))));
+}
+
+proc test_type_tree() -> bool {
+    let first: Point =
+        make_point(
+            10,
+            10);
+
+    let second: Point =
+        make_point(
+            11,
+            11);
+
+    let range: Range =
+        make_range(
+            point_sum(&first),
+            add(
+                point_sum(&first),
+                point_sum(&second)));
+
+    let record: Record =
+        make_record(
+            LIMIT,
+            range_width(&range),
+            ENABLED);
+
+    give point_sum(&first) == 20 &&
+         point_sum(&second) == 22 &&
+         range_width(&range) == 22 &&
+         record_value(&record) == 22;
+}
+
+proc test_cross_category() -> bool {
+    let point: Point =
+        make_point(
+            identity(20),
+            identity(22));
+
+    let range: Range =
+        make_range(
+            ZERO,
+            ANSWER);
+
+    let record: Record =
+        make_record(
+            LIMIT,
+            point_sum(&point),
+            ENABLED);
+
+    let pair: Pair =
+        make_pair(
+            range.minimum,
+            range.maximum);
+
+    give point_sum(&point) == ANSWER &&
+         range_width(&range) == ANSWER &&
+         record_value(&record) == ANSWER &&
+         pair_sum(&pair) == ANSWER;
+}
+
+proc test_default_state() -> bool {
+    let state: State =
+        default_state();
+
+    give state == State.Idle;
+}
+
+proc test_running_state() -> bool {
+    let state: State =
+        running_state();
+
+    give state == State.Running;
+}
+
+proc test_result_kind() -> bool {
+    let kind: ResultKind =
+        success_kind();
+
+    give kind == ResultKind.Success;
+}
+
+proc test_pick_repeated_resolution() -> bool {
+    let first: State =
+        default_state();
+
+    let second: State =
+        running_state();
+
+    let result: ResultKind =
+        success_kind();
+
+    give first == State.Idle &&
+         second == State.Running &&
+         result == ResultKind.Success;
+}
+
+proc test_integrated_star_export() -> bool {
+    let left: i64 =
+        identity(20);
+
+    let right: i64 =
+        identity(22);
+
+    let point: Point =
+        make_point(
+            left,
+            right);
+
+    let range: Range =
+        make_range(
+            ZERO,
+            point_sum(&point));
+
+    let record: Record =
+        make_record(
+            LIMIT,
+            range_width(&range),
+            ENABLED);
+
+    let pair: Pair =
+        make_pair(
+            point.x,
+            point.y);
+
+    let nested: Nested =
+        make_nested(
+            point,
+            range);
+
+    let mut result: i64 =
+        ZERO;
+
+    if is_answer(
+        record_value(&record)) {
+        set result =
+            pair_sum(&pair);
+    }
+
+    give result == ANSWER &&
+         point_sum(&point) == ANSWER &&
+         range_width(&range) == ANSWER &&
+         record_value(&record) == ANSWER &&
+         pair_sum(&pair) == ANSWER &&
+         nested_value(&nested) == 84;
+}
 
 proc main() -> int {
-    give visible() + answer;
+    if !test_constants() {
+        give 1;
+    }
+
+    if test_constant_arithmetic() != 42 {
+        give 2;
+    }
+
+    if test_identity() != 42 {
+        give 3;
+    }
+
+    if test_add() != 42 {
+        give 4;
+    }
+
+    if test_subtract() != 42 {
+        give 5;
+    }
+
+    if test_multiply() != 42 {
+        give 6;
+    }
+
+    if !test_predicates() {
+        give 7;
+    }
+
+    if test_nested_calls() != 42 {
+        give 8;
+    }
+
+    if test_deep_calls() != 42 {
+        give 9;
+    }
+
+    if test_mixed_calls() != 42 {
+        give 10;
+    }
+
+    if test_point_literal() != 42 {
+        give 11;
+    }
+
+    if test_point_factory() != 42 {
+        give 12;
+    }
+
+    if test_point_consumer() != 42 {
+        give 13;
+    }
+
+    if test_multiple_points() != 42 {
+        give 14;
+    }
+
+    if test_range_literal() != 42 {
+        give 15;
+    }
+
+    if test_range_factory() != 42 {
+        give 16;
+    }
+
+    if !test_range_predicates() {
+        give 17;
+    }
+
+    if test_record_literal() != 42 {
+        give 18;
+    }
+
+    if test_record_factory() != 42 {
+        give 19;
+    }
+
+    if !test_record_predicate() {
+        give 20;
+    }
+
+    if test_pair_literal() != 42 {
+        give 21;
+    }
+
+    if test_pair_factory() != 42 {
+        give 22;
+    }
+
+    if test_nested_literal() != 42 {
+        give 23;
+    }
+
+    if test_nested_factory() != 42 {
+        give 24;
+    }
+
+    if test_type_in_parameter() != 42 {
+        give 25;
+    }
+
+    if test_type_in_return() != 42 {
+        give 26;
+    }
+
+    if test_multiple_exported_types() != 42 {
+        give 27;
+    }
+
+    if test_reference_parameters() != 168 {
+        give 28;
+    }
+
+    if test_constant_in_constructor() != 42 {
+        give 29;
+    }
+
+    if test_calls_in_constructor() != 42 {
+        give 30;
+    }
+
+    if test_factory_composition() != 42 {
+        give 31;
+    }
+
+    if test_nested_block() != 42 {
+        give 32;
+    }
+
+    if test_deep_block() != 42 {
+        give 33;
+    }
+
+    if test_if() != 42 {
+        give 34;
+    }
+
+    if test_if_else(true) != 42 {
+        give 35;
+    }
+
+    if test_if_else(false) != 42 {
+        give 36;
+    }
+
+    if test_loop() != 42 {
+        give 37;
+    }
+
+    if test_nested_control_flow() != 42 {
+        give 38;
+    }
+
+    if test_mutable_value() != 42 {
+        give 39;
+    }
+
+    if test_mutable_call_chain() != 42 {
+        give 40;
+    }
+
+    if !test_repeated_constant_lookup() {
+        give 41;
+    }
+
+    if !test_repeated_proc_lookup() {
+        give 42;
+    }
+
+    if test_repeated_type_lookup() != 42 {
+        give 43;
+    }
+
+    if test_local_binding_from_export() != 42 {
+        give 44;
+    }
+
+    if test_expression_tree() != 42 {
+        give 45;
+    }
+
+    if !test_type_tree() {
+        give 46;
+    }
+
+    if !test_cross_category() {
+        give 47;
+    }
+
+    if !test_default_state() {
+        give 48;
+    }
+
+    if !test_running_state() {
+        give 49;
+    }
+
+    if !test_result_kind() {
+        give 50;
+    }
+
+    if !test_pick_repeated_resolution() {
+        give 51;
+    }
+
+    if !test_integrated_star_export() {
+        give 52;
+    }
+
+    give 0;
 }

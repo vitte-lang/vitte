@@ -1,7 +1,848 @@
-space demo/module_alias_ok;
+/// Module alias-export positive test.
+///
+/// Verifies importing the alias fixture as a module and resolving declarations
+/// through the module qualifier.
+///
+/// The source module exposes internal declarations under exported aliases.
+/// Consumers must resolve the exported alias names and preserve their types.
 
-use lib_alias;
+space tests::export_forms::module_alias_ok;
+
+use tests::export_forms::lib_alias;
+
+proc test_constant_aliases() -> bool {
+    give lib_alias::ZERO == 0 &&
+         lib_alias::ONE == 1 &&
+         lib_alias::TWO == 2 &&
+         lib_alias::TEN == 10 &&
+         lib_alias::TWENTY == 20 &&
+         lib_alias::TWENTY_TWO == 22 &&
+         lib_alias::ANSWER == 42 &&
+         lib_alias::LIMIT == 100 &&
+         lib_alias::MINIMUM == 0 &&
+         lib_alias::MAXIMUM == 100 &&
+         lib_alias::ENABLED &&
+         !lib_alias::DISABLED;
+}
+
+proc test_constant_expression() -> i64 {
+    give lib_alias::ANSWER;
+}
+
+proc test_constant_arithmetic() -> i64 {
+    give lib_alias::TWENTY +
+         lib_alias::TWENTY_TWO;
+}
+
+proc test_identity() -> i64 {
+    give lib_alias::identity(
+        lib_alias::ANSWER);
+}
+
+proc test_add() -> i64 {
+    give lib_alias::add(
+        20,
+        22);
+}
+
+proc test_subtract() -> i64 {
+    give lib_alias::subtract(
+        100,
+        58);
+}
+
+proc test_multiply() -> i64 {
+    give lib_alias::multiply(
+        6,
+        7);
+}
+
+proc test_increment() -> i64 {
+    give lib_alias::increment(41);
+}
+
+proc test_answer() -> i64 {
+    give lib_alias::answer();
+}
+
+proc test_predicates() -> bool {
+    give lib_alias::is_zero(
+               lib_alias::ZERO) &&
+         lib_alias::is_positive(
+               lib_alias::ANSWER) &&
+         lib_alias::is_non_negative(
+               lib_alias::ZERO) &&
+         lib_alias::is_answer(
+               lib_alias::ANSWER) &&
+         lib_alias::within_limit(
+               lib_alias::ANSWER);
+}
+
+proc test_nested_calls() -> i64 {
+    give lib_alias::identity(
+        lib_alias::add(
+            lib_alias::identity(20),
+            lib_alias::identity(22)));
+}
+
+proc test_deep_calls() -> i64 {
+    give lib_alias::identity(
+        lib_alias::identity(
+            lib_alias::identity(
+                lib_alias::add(
+                    lib_alias::identity(20),
+                    lib_alias::identity(22)))));
+}
+
+proc test_mixed_calls() -> i64 {
+    let first: i64 =
+        lib_alias::add(
+            10,
+            10);
+
+    let second: i64 =
+        lib_alias::subtract(
+            50,
+            28);
+
+    give lib_alias::add(
+        first,
+        second);
+}
+
+proc test_point_literal() -> i64 {
+    let point: lib_alias::Point =
+        lib_alias::Point {
+            x: 20,
+            y: 22,
+        };
+
+    give point.x +
+         point.y;
+}
+
+proc test_point_factory() -> i64 {
+    let point: lib_alias::Point =
+        lib_alias::make_point(
+            20,
+            22);
+
+    give point.x +
+         point.y;
+}
+
+proc test_point_consumers() -> bool {
+    let point: lib_alias::Point =
+        lib_alias::make_point(
+            20,
+            22);
+
+    give lib_alias::point_x(&point) == 20 &&
+         lib_alias::point_y(&point) == 22 &&
+         lib_alias::point_sum(&point) == 42;
+}
+
+proc test_multiple_points() -> i64 {
+    let first: lib_alias::Point =
+        lib_alias::make_point(
+            5,
+            5);
+
+    let second: lib_alias::Point =
+        lib_alias::make_point(
+            10,
+            22);
+
+    give lib_alias::point_sum(&first) +
+         lib_alias::point_sum(&second);
+}
+
+proc test_range_literal() -> i64 {
+    let range: lib_alias::Range =
+        lib_alias::Range {
+            minimum: 0,
+            maximum: 42,
+        };
+
+    give range.maximum -
+         range.minimum;
+}
+
+proc test_range_factory() -> i64 {
+    let range: lib_alias::Range =
+        lib_alias::make_range(
+            10,
+            52);
+
+    give lib_alias::range_width(&range);
+}
+
+proc test_range_operations() -> bool {
+    let range: lib_alias::Range =
+        lib_alias::make_range(
+            0,
+            100);
+
+    give lib_alias::range_valid(&range) &&
+         lib_alias::range_width(&range) == 100 &&
+         lib_alias::range_contains(&range, 0) &&
+         lib_alias::range_contains(&range, 42) &&
+         lib_alias::range_contains(&range, 100) &&
+         !lib_alias::range_contains(&range, 101);
+}
+
+proc test_record_literal() -> i64 {
+    let record: lib_alias::Record =
+        lib_alias::Record {
+            id: 42,
+            value: 42,
+            enabled: true,
+        };
+
+    give record.value;
+}
+
+proc test_record_factory() -> i64 {
+    let record: lib_alias::Record =
+        lib_alias::make_record(
+            42,
+            42,
+            true);
+
+    give lib_alias::record_value(&record);
+}
+
+proc test_record_consumers() -> bool {
+    let record: lib_alias::Record =
+        lib_alias::make_record(
+            42,
+            42,
+            true);
+
+    give lib_alias::record_id(&record) == 42 &&
+         lib_alias::record_value(&record) == 42 &&
+         lib_alias::record_enabled(&record);
+}
+
+proc test_pair_literal() -> i64 {
+    let pair: lib_alias::Pair =
+        lib_alias::Pair {
+            first: 20,
+            second: 22,
+        };
+
+    give pair.first +
+         pair.second;
+}
+
+proc test_pair_factory() -> i64 {
+    let pair: lib_alias::Pair =
+        lib_alias::make_pair(
+            20,
+            22);
+
+    give lib_alias::pair_sum(&pair);
+}
+
+proc test_counter() -> i64 {
+    let counter: lib_alias::Counter =
+        lib_alias::make_counter(
+            lib_alias::ANSWER);
+
+    give lib_alias::counter_value(&counter);
+}
+
+proc test_nested() -> i64 {
+    let point: lib_alias::Point =
+        lib_alias::make_point(
+            10,
+            10);
+
+    let range: lib_alias::Range =
+        lib_alias::make_range(
+            0,
+            22);
+
+    let nested: lib_alias::Nested =
+        lib_alias::make_nested(
+            point,
+            range);
+
+    give lib_alias::nested_value(&nested);
+}
+
+proc test_envelope() -> i64 {
+    let record: lib_alias::Record =
+        lib_alias::make_record(
+            42,
+            20,
+            true);
+
+    let pair: lib_alias::Pair =
+        lib_alias::make_pair(
+            10,
+            12);
+
+    let envelope: lib_alias::Envelope =
+        lib_alias::make_envelope(
+            record,
+            pair);
+
+    give lib_alias::envelope_value(
+        &envelope);
+}
+
+proc consume_point(
+    point: &lib_alias::Point
+) -> i64 {
+    give lib_alias::point_sum(point);
+}
+
+proc produce_point(
+    x: i64,
+    y: i64
+) -> lib_alias::Point {
+    give lib_alias::make_point(
+        x,
+        y);
+}
+
+proc test_alias_type_parameter() -> i64 {
+    let point: lib_alias::Point =
+        lib_alias::make_point(
+            20,
+            22);
+
+    give consume_point(&point);
+}
+
+proc test_alias_type_return() -> i64 {
+    let point: lib_alias::Point =
+        produce_point(
+            20,
+            22);
+
+    give lib_alias::point_sum(&point);
+}
+
+proc consume_range(
+    range: &lib_alias::Range
+) -> i64 {
+    give lib_alias::range_width(range);
+}
+
+proc produce_range(
+    minimum: i64,
+    maximum: i64
+) -> lib_alias::Range {
+    give lib_alias::make_range(
+        minimum,
+        maximum);
+}
+
+proc test_multiple_alias_types() -> i64 {
+    let point: lib_alias::Point =
+        produce_point(
+            10,
+            10);
+
+    let range: lib_alias::Range =
+        produce_range(
+            0,
+            22);
+
+    give consume_point(&point) +
+         consume_range(&range);
+}
+
+proc test_reference_parameters() -> i64 {
+    let point: lib_alias::Point =
+        lib_alias::make_point(
+            20,
+            22);
+
+    let range: lib_alias::Range =
+        lib_alias::make_range(
+            0,
+            42);
+
+    let record: lib_alias::Record =
+        lib_alias::make_record(
+            42,
+            42,
+            true);
+
+    let pair: lib_alias::Pair =
+        lib_alias::make_pair(
+            20,
+            22);
+
+    give lib_alias::point_sum(&point) +
+         lib_alias::range_width(&range) +
+         lib_alias::record_value(&record) +
+         lib_alias::pair_sum(&pair);
+}
+
+proc test_alias_constant_in_form() -> i64 {
+    let point: lib_alias::Point =
+        lib_alias::Point {
+            x: lib_alias::ANSWER,
+            y: lib_alias::ZERO,
+        };
+
+    give lib_alias::point_sum(&point);
+}
+
+proc test_alias_calls_in_form() -> i64 {
+    let point: lib_alias::Point =
+        lib_alias::Point {
+            x: lib_alias::identity(20),
+            y: lib_alias::identity(22),
+        };
+
+    give lib_alias::point_sum(&point);
+}
+
+proc test_factory_composition() -> i64 {
+    let point: lib_alias::Point =
+        lib_alias::make_point(
+            lib_alias::add(10, 10),
+            lib_alias::subtract(50, 28));
+
+    give lib_alias::point_sum(&point);
+}
+
+proc test_nested_block() -> i64 {
+    let mut result: i64 =
+        lib_alias::ZERO;
+
+    {
+        let point: lib_alias::Point =
+            lib_alias::make_point(
+                20,
+                22);
+
+        set result =
+            lib_alias::point_sum(&point);
+    }
+
+    give result;
+}
+
+proc test_deep_block() -> i64 {
+    let mut result: i64 =
+        lib_alias::ZERO;
+
+    {
+        let left: i64 =
+            lib_alias::identity(20);
+
+        {
+            let right: i64 =
+                lib_alias::identity(22);
+
+            {
+                set result =
+                    lib_alias::add(
+                        left,
+                        right);
+            }
+        }
+    }
+
+    give result;
+}
+
+proc test_if() -> i64 {
+    if lib_alias::is_answer(
+        lib_alias::ANSWER) {
+        give lib_alias::identity(
+            lib_alias::ANSWER);
+    }
+
+    give lib_alias::ZERO;
+}
+
+proc test_if_else(
+    condition: bool
+) -> i64 {
+    if condition {
+        give lib_alias::add(
+            20,
+            22);
+    } else {
+        give lib_alias::subtract(
+            100,
+            58);
+    }
+}
+
+proc test_loop() -> i64 {
+    let mut index: i64 =
+        lib_alias::ZERO;
+
+    let mut result: i64 =
+        lib_alias::ZERO;
+
+    while index < 6 {
+        set result =
+            lib_alias::add(
+                result,
+                7);
+
+        set index =
+            lib_alias::increment(index);
+    }
+
+    give result;
+}
+
+proc test_mutable_value() -> i64 {
+    let mut value: i64 =
+        lib_alias::ZERO;
+
+    set value =
+        lib_alias::ANSWER;
+
+    give lib_alias::identity(value);
+}
+
+proc test_mutable_call_chain() -> i64 {
+    let mut value: i64 =
+        lib_alias::identity(20);
+
+    set value =
+        lib_alias::add(
+            value,
+            22);
+
+    give lib_alias::identity(value);
+}
+
+proc test_repeated_constant_resolution() -> bool {
+    give lib_alias::ANSWER == 42 &&
+         lib_alias::ANSWER == 42 &&
+         lib_alias::ANSWER == 42 &&
+         lib_alias::ANSWER == 42 &&
+         lib_alias::ANSWER == 42;
+}
+
+proc test_repeated_proc_resolution() -> bool {
+    give lib_alias::identity(42) == 42 &&
+         lib_alias::identity(42) == 42 &&
+         lib_alias::identity(42) == 42 &&
+         lib_alias::identity(42) == 42 &&
+         lib_alias::identity(42) == 42;
+}
+
+proc test_repeated_type_resolution() -> i64 {
+    let first: lib_alias::Point =
+        lib_alias::make_point(
+            10,
+            10);
+
+    let second: lib_alias::Point =
+        lib_alias::make_point(
+            11,
+            11);
+
+    let third: lib_alias::Point =
+        lib_alias::make_point(
+            0,
+            0);
+
+    give lib_alias::point_sum(&first) +
+         lib_alias::point_sum(&second) +
+         lib_alias::point_sum(&third);
+}
+
+proc test_local_bindings() -> i64 {
+    let first: i64 =
+        lib_alias::identity(10);
+
+    let second: i64 =
+        lib_alias::identity(20);
+
+    let third: i64 =
+        lib_alias::identity(12);
+
+    give lib_alias::add(
+        lib_alias::add(
+            first,
+            second),
+        third);
+}
+
+proc test_expression_tree() -> i64 {
+    give lib_alias::add(
+        lib_alias::identity(
+            lib_alias::add(
+                lib_alias::ZERO,
+                lib_alias::identity(10))),
+        lib_alias::identity(
+            lib_alias::add(
+                lib_alias::identity(20),
+                lib_alias::subtract(
+                    lib_alias::ANSWER,
+                    30))));
+}
+
+proc test_compose_answer() -> i64 {
+    give lib_alias::compose_answer();
+}
+
+proc test_answer_point() -> i64 {
+    let point: lib_alias::Point =
+        lib_alias::make_answer_point();
+
+    give lib_alias::point_sum(&point);
+}
+
+proc test_answer_range() -> i64 {
+    let range: lib_alias::Range =
+        lib_alias::make_answer_range();
+
+    give lib_alias::range_width(&range);
+}
+
+proc test_answer_record() -> i64 {
+    let record: lib_alias::Record =
+        lib_alias::make_answer_record();
+
+    give lib_alias::record_value(&record);
+}
+
+proc test_answer_pair() -> i64 {
+    let pair: lib_alias::Pair =
+        lib_alias::make_answer_pair();
+
+    give lib_alias::pair_sum(&pair);
+}
+
+proc test_answer_nested() -> i64 {
+    let nested: lib_alias::Nested =
+        lib_alias::make_answer_nested();
+
+    give lib_alias::nested_value(&nested);
+}
+
+proc test_answer_envelope() -> i64 {
+    let envelope: lib_alias::Envelope =
+        lib_alias::make_answer_envelope();
+
+    give lib_alias::envelope_value(&envelope);
+}
+
+proc test_default_state() -> bool {
+    let state: lib_alias::State =
+        lib_alias::default_state();
+
+    give state ==
+         lib_alias::State.Idle;
+}
+
+proc test_ready_state() -> bool {
+    let state: lib_alias::State =
+        lib_alias::ready_state();
+
+    give state ==
+         lib_alias::State.Ready;
+}
+
+proc test_running_state() -> bool {
+    let state: lib_alias::State =
+        lib_alias::running_state();
+
+    give state ==
+         lib_alias::State.Running;
+}
+
+proc test_finished_state() -> bool {
+    let state: lib_alias::State =
+        lib_alias::finished_state();
+
+    give state ==
+         lib_alias::State.Finished;
+}
+
+proc test_result_kinds() -> bool {
+    let success: lib_alias::ResultKind =
+        lib_alias::success_kind();
+
+    let failure: lib_alias::ResultKind =
+        lib_alias::failure_kind();
+
+    give success ==
+             lib_alias::ResultKind.Success &&
+         failure ==
+             lib_alias::ResultKind.Failure;
+}
+
+proc test_directions() -> bool {
+    let left: lib_alias::Direction =
+        lib_alias::left_direction();
+
+    let right: lib_alias::Direction =
+        lib_alias::right_direction();
+
+    give left ==
+             lib_alias::Direction.Left &&
+         right ==
+             lib_alias::Direction.Right;
+}
+
+proc test_cross_category() -> bool {
+    let point: lib_alias::Point =
+        lib_alias::make_point(
+            lib_alias::identity(20),
+            lib_alias::identity(22));
+
+    let range: lib_alias::Range =
+        lib_alias::make_range(
+            lib_alias::ZERO,
+            lib_alias::ANSWER);
+
+    let record: lib_alias::Record =
+        lib_alias::make_record(
+            lib_alias::LIMIT,
+            lib_alias::point_sum(&point),
+            lib_alias::ENABLED);
+
+    let pair: lib_alias::Pair =
+        lib_alias::make_pair(
+            range.minimum,
+            range.maximum);
+
+    give lib_alias::point_sum(&point) ==
+             lib_alias::ANSWER &&
+         lib_alias::range_width(&range) ==
+             lib_alias::ANSWER &&
+         lib_alias::record_value(&record) ==
+             lib_alias::ANSWER &&
+         lib_alias::pair_sum(&pair) ==
+             lib_alias::ANSWER;
+}
+
+proc test_integrated_module_alias() -> bool {
+    let left: i64 =
+        lib_alias::identity(20);
+
+    let right: i64 =
+        lib_alias::identity(22);
+
+    let point: lib_alias::Point =
+        lib_alias::make_point(
+            left,
+            right);
+
+    let range: lib_alias::Range =
+        lib_alias::make_range(
+            lib_alias::ZERO,
+            lib_alias::point_sum(&point));
+
+    let record: lib_alias::Record =
+        lib_alias::make_record(
+            lib_alias::LIMIT,
+            lib_alias::range_width(&range),
+            lib_alias::ENABLED);
+
+    let pair: lib_alias::Pair =
+        lib_alias::make_pair(
+            point.x,
+            point.y);
+
+    let nested: lib_alias::Nested =
+        lib_alias::make_nested(
+            point,
+            range);
+
+    let mut result: i64 =
+        lib_alias::ZERO;
+
+    if lib_alias::is_answer(
+        lib_alias::record_value(&record)) {
+        set result =
+            lib_alias::pair_sum(&pair);
+    }
+
+    give result ==
+             lib_alias::ANSWER &&
+         lib_alias::point_sum(&point) ==
+             lib_alias::ANSWER &&
+         lib_alias::range_width(&range) ==
+             lib_alias::ANSWER &&
+         lib_alias::record_value(&record) ==
+             lib_alias::ANSWER &&
+         lib_alias::pair_sum(&pair) ==
+             lib_alias::ANSWER &&
+         lib_alias::nested_value(&nested) ==
+             84;
+}
 
 proc main() -> int {
-    give lib_alias::plus() + lib_alias::answer;
+    if !test_constant_aliases() { give 1; }
+    if test_constant_expression() != 42 { give 2; }
+    if test_constant_arithmetic() != 42 { give 3; }
+    if test_identity() != 42 { give 4; }
+    if test_add() != 42 { give 5; }
+    if test_subtract() != 42 { give 6; }
+    if test_multiply() != 42 { give 7; }
+    if test_increment() != 42 { give 8; }
+    if test_answer() != 42 { give 9; }
+    if !test_predicates() { give 10; }
+    if test_nested_calls() != 42 { give 11; }
+    if test_deep_calls() != 42 { give 12; }
+    if test_mixed_calls() != 42 { give 13; }
+    if test_point_literal() != 42 { give 14; }
+    if test_point_factory() != 42 { give 15; }
+    if !test_point_consumers() { give 16; }
+    if test_multiple_points() != 42 { give 17; }
+    if test_range_literal() != 42 { give 18; }
+    if test_range_factory() != 42 { give 19; }
+    if !test_range_operations() { give 20; }
+    if test_record_literal() != 42 { give 21; }
+    if test_record_factory() != 42 { give 22; }
+    if !test_record_consumers() { give 23; }
+    if test_pair_literal() != 42 { give 24; }
+    if test_pair_factory() != 42 { give 25; }
+    if test_counter() != 42 { give 26; }
+    if test_nested() != 42 { give 27; }
+    if test_envelope() != 42 { give 28; }
+    if test_alias_type_parameter() != 42 { give 29; }
+    if test_alias_type_return() != 42 { give 30; }
+    if test_multiple_alias_types() != 42 { give 31; }
+    if test_reference_parameters() != 168 { give 32; }
+    if test_alias_constant_in_form() != 42 { give 33; }
+    if test_alias_calls_in_form() != 42 { give 34; }
+    if test_factory_composition() != 42 { give 35; }
+    if test_nested_block() != 42 { give 36; }
+    if test_deep_block() != 42 { give 37; }
+    if test_if() != 42 { give 38; }
+    if test_if_else(true) != 42 { give 39; }
+    if test_if_else(false) != 42 { give 40; }
+    if test_loop() != 42 { give 41; }
+    if test_mutable_value() != 42 { give 42; }
+    if test_mutable_call_chain() != 42 { give 43; }
+    if !test_repeated_constant_resolution() { give 44; }
+    if !test_repeated_proc_resolution() { give 45; }
+    if test_repeated_type_resolution() != 42 { give 46; }
+    if test_local_bindings() != 42 { give 47; }
+    if test_expression_tree() != 42 { give 48; }
+    if test_compose_answer() != 42 { give 49; }
+    if test_answer_point() != 42 { give 50; }
+    if test_answer_range() != 42 { give 51; }
+    if test_answer_record() != 42 { give 52; }
+    if test_answer_pair() != 42 { give 53; }
+    if test_answer_nested() != 42 { give 54; }
+    if test_answer_envelope() != 42 { give 55; }
+    if !test_default_state() { give 56; }
+    if !test_ready_state() { give 57; }
+    if !test_running_state() { give 58; }
+    if !test_finished_state() { give 59; }
+    if !test_result_kinds() { give 60; }
+    if !test_directions() { give 61; }
+    if !test_cross_category() { give 62; }
+    if !test_integrated_module_alias() { give 63; }
+
+    give 0;
 }

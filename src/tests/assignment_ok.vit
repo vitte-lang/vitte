@@ -1,7 +1,1887 @@
-space assignment_ok
+/// Assignment semantics and runtime coverage.
+///
+/// Comprehensive positive fixture for mutable local assignment.
+///
+/// Coverage:
+/// - mutable local declarations;
+/// - direct assignment;
+/// - assignment from literals;
+/// - assignment from constants;
+/// - assignment from variables;
+/// - assignment from procedure calls;
+/// - assignment from arithmetic expressions;
+/// - assignment from comparison expressions;
+/// - assignment from logical expressions;
+/// - repeated assignment;
+/// - assignment inside nested scopes;
+/// - assignment inside conditionals;
+/// - assignment inside loops;
+/// - assignment to boolean locals;
+/// - assignment to signed integers;
+/// - assignment to unsigned integers;
+/// - assignment to floating-point values;
+/// - aggregate replacement;
+/// - aggregate values returned by procedures;
+/// - aggregate transformation pipelines;
+/// - shadowing without corrupting the outer mutable binding;
+/// - assignments using the previous value of the target;
+/// - compound assignment operators;
+/// - evaluation of right-hand expressions before replacement;
+/// - long mutation chains;
+/// - multiple independent mutable locals.
+///
+/// Expected result:
+/// - lexing succeeds;
+/// - parsing succeeds;
+/// - name resolution succeeds;
+/// - semantic assignment checks succeed;
+/// - lowering preserves mutation semantics;
+/// - runtime checks all succeed;
+/// - `main` returns 0.
+
+space tests::assignment_ok;
+
+const ZERO: i64 = 0;
+const ONE: i64 = 1;
+const TWO: i64 = 2;
+const THREE: i64 = 3;
+const FOUR: i64 = 4;
+const FIVE: i64 = 5;
+const SIX: i64 = 6;
+const SEVEN: i64 = 7;
+const TEN: i64 = 10;
+const TWENTY: i64 = 20;
+const TWENTY_ONE: i64 = 21;
+const TWENTY_TWO: i64 = 22;
+const FORTY: i64 = 40;
+const FORTY_ONE: i64 = 41;
+const FORTY_TWO: i64 = 42;
+const ONE_HUNDRED: i64 = 100;
+
+form Point {
+    x: i64,
+    y: i64,
+}
+
+form Pair {
+    first: i64,
+    second: i64,
+}
+
+form Record {
+    value: i64,
+    enabled: bool,
+}
+
+form Nested {
+    point: Point,
+    pair: Pair,
+    record: Record,
+}
+
+proc identity(
+    value: i64
+) -> i64 {
+    give value;
+}
+
+proc add(
+    left: i64,
+    right: i64
+) -> i64 {
+    give left + right;
+}
+
+proc subtract(
+    left: i64,
+    right: i64
+) -> i64 {
+    give left - right;
+}
+
+proc multiply(
+    left: i64,
+    right: i64
+) -> i64 {
+    give left * right;
+}
+
+proc increment(
+    value: i64
+) -> i64 {
+    give value + ONE;
+}
+
+proc decrement(
+    value: i64
+) -> i64 {
+    give value - ONE;
+}
+
+proc is_answer(
+    value: i64
+) -> bool {
+    give value == FORTY_TWO;
+}
+
+proc make_point(
+    x: i64,
+    y: i64
+) -> Point {
+    give Point {
+        x: x,
+        y: y,
+    };
+}
+
+proc make_zero_point() -> Point {
+    give Point {
+        x: ZERO,
+        y: ZERO,
+    };
+}
+
+proc make_answer_point() -> Point {
+    give Point {
+        x: TWENTY,
+        y: TWENTY_TWO,
+    };
+}
+
+proc point_sum(
+    point: &Point
+) -> i64 {
+    give point.x +
+         point.y;
+}
+
+proc point_equal(
+    left: &Point,
+    right: &Point
+) -> bool {
+    give left.x == right.x &&
+         left.y == right.y;
+}
+
+proc point_translate(
+    point: &Point,
+    dx: i64,
+    dy: i64
+) -> Point {
+    give Point {
+        x: point.x + dx,
+        y: point.y + dy,
+    };
+}
+
+proc point_swap(
+    point: &Point
+) -> Point {
+    give Point {
+        x: point.y,
+        y: point.x,
+    };
+}
+
+proc make_pair(
+    first: i64,
+    second: i64
+) -> Pair {
+    give Pair {
+        first: first,
+        second: second,
+    };
+}
+
+proc make_answer_pair() -> Pair {
+    give Pair {
+        first: TWENTY,
+        second: TWENTY_TWO,
+    };
+}
+
+proc pair_sum(
+    pair: &Pair
+) -> i64 {
+    give pair.first +
+         pair.second;
+}
+
+proc make_record(
+    value: i64,
+    enabled: bool
+) -> Record {
+    give Record {
+        value: value,
+        enabled: enabled,
+    };
+}
+
+proc make_answer_record() -> Record {
+    give Record {
+        value: FORTY_TWO,
+        enabled: true,
+    };
+}
+
+proc record_valid(
+    record: &Record
+) -> bool {
+    give record.value == FORTY_TWO &&
+         record.enabled;
+}
+
+proc make_nested(
+    point: Point,
+    pair: Pair,
+    record: Record
+) -> Nested {
+    give Nested {
+        point: point,
+        pair: pair,
+        record: record,
+    };
+}
+
+proc make_answer_nested() -> Nested {
+    let point: Point =
+        make_answer_point();
+
+    let pair: Pair =
+        make_answer_pair();
+
+    let record: Record =
+        make_answer_record();
+
+    give make_nested(
+        point,
+        pair,
+        record);
+}
+
+proc nested_valid(
+    nested: &Nested
+) -> bool {
+    give point_sum(&nested.point) == FORTY_TWO &&
+         pair_sum(&nested.pair) == FORTY_TWO &&
+         record_valid(&nested.record);
+}
+
+proc test_direct_assignment() -> bool {
+    let mut value: i64 = ZERO;
+
+    set value = FORTY_TWO;
+
+    give value == FORTY_TWO;
+}
+
+proc test_assignment_literal() -> bool {
+    let mut value: i64 = ZERO;
+
+    set value = 42;
+
+    give value == FORTY_TWO;
+}
+
+proc test_assignment_constant() -> bool {
+    let mut value: i64 = ZERO;
+
+    set value = FORTY_TWO;
+
+    give value == FORTY_TWO;
+}
+
+proc test_assignment_variable() -> bool {
+    let source: i64 =
+        FORTY_TWO;
+
+    let mut destination: i64 =
+        ZERO;
+
+    set destination =
+        source;
+
+    give destination == FORTY_TWO &&
+         source == FORTY_TWO;
+}
+
+proc test_assignment_call() -> bool {
+    let mut value: i64 =
+        ZERO;
+
+    set value =
+        identity(
+            FORTY_TWO);
+
+    give value == FORTY_TWO;
+}
+
+proc test_assignment_nested_call() -> bool {
+    let mut value: i64 =
+        ZERO;
+
+    set value =
+        identity(
+            add(
+                TWENTY,
+                TWENTY_TWO));
+
+    give value == FORTY_TWO;
+}
+
+proc test_assignment_arithmetic() -> bool {
+    let mut value: i64 =
+        ZERO;
+
+    set value =
+        TWENTY +
+        TWENTY_TWO;
+
+    give value == FORTY_TWO;
+}
+
+proc test_assignment_previous_value() -> bool {
+    let mut value: i64 =
+        FORTY_ONE;
+
+    set value =
+        value + ONE;
+
+    give value == FORTY_TWO;
+}
+
+proc test_assignment_previous_value_call() -> bool {
+    let mut value: i64 =
+        FORTY_ONE;
+
+    set value =
+        increment(value);
+
+    give value == FORTY_TWO;
+}
+
+proc test_repeated_assignment() -> bool {
+    let mut value: i64 =
+        ZERO;
+
+    set value = TEN;
+    set value = TWENTY;
+    set value = TWENTY_ONE;
+    set value = FORTY_ONE;
+    set value = FORTY_TWO;
+
+    give value == FORTY_TWO;
+}
+
+proc test_increment_chain() -> bool {
+    let mut value: i64 =
+        FORTY;
+
+    set value =
+        increment(value);
+
+    set value =
+        increment(value);
+
+    give value == FORTY_TWO;
+}
+
+proc test_decrement_chain() -> bool {
+    let mut value: i64 =
+        44;
+
+    set value =
+        decrement(value);
+
+    set value =
+        decrement(value);
+
+    give value == FORTY_TWO;
+}
+
+proc test_add_assignment() -> bool {
+    let mut value: i64 =
+        TWENTY;
+
+    set value +=
+        TWENTY_TWO;
+
+    give value == FORTY_TWO;
+}
+
+proc test_sub_assignment() -> bool {
+    let mut value: i64 =
+        64;
+
+    set value -=
+        TWENTY_TWO;
+
+    give value == FORTY_TWO;
+}
+
+proc test_mul_assignment() -> bool {
+    let mut value: i64 =
+        SEVEN;
+
+    set value *=
+        SIX;
+
+    give value == FORTY_TWO;
+}
+
+proc test_div_assignment() -> bool {
+    let mut value: i64 =
+        84;
+
+    set value /=
+        TWO;
+
+    give value == FORTY_TWO;
+}
+
+proc test_mod_assignment() -> bool {
+    let mut value: i64 =
+        142;
+
+    set value %=
+        ONE_HUNDRED;
+
+    give value == FORTY_TWO;
+}
+
+proc test_compound_assignment_chain() -> bool {
+    let mut value: i64 =
+        TEN;
+
+    set value += TEN;
+    set value += TWENTY_TWO;
+    set value *= TWO;
+    set value /= TWO;
+    set value -= ZERO;
+
+    give value == FORTY_TWO;
+}
+
+proc test_multiple_mutable_locals() -> bool {
+    let mut left: i64 =
+        ZERO;
+
+    let mut right: i64 =
+        ZERO;
+
+    set left =
+        TWENTY;
+
+    set right =
+        TWENTY_TWO;
+
+    give left + right ==
+         FORTY_TWO;
+}
+
+proc test_independent_mutation() -> bool {
+    let mut first: i64 =
+        TEN;
+
+    let mut second: i64 =
+        TWENTY;
+
+    let mut third: i64 =
+        12;
+
+    set first =
+        first + TEN;
+
+    set second =
+        second + TWO;
+
+    set third =
+        ZERO;
+
+    give first == TWENTY &&
+         second == TWENTY_TWO &&
+         third == ZERO &&
+         first + second ==
+             FORTY_TWO;
+}
+
+proc test_swap_scalars() -> bool {
+    let mut left: i64 =
+        TWENTY;
+
+    let mut right: i64 =
+        TWENTY_TWO;
+
+    let temporary: i64 =
+        left;
+
+    set left =
+        right;
+
+    set right =
+        temporary;
+
+    give left == TWENTY_TWO &&
+         right == TWENTY &&
+         left + right ==
+             FORTY_TWO;
+}
+
+proc test_assignment_in_if() -> bool {
+    let mut value: i64 =
+        ZERO;
+
+    if true {
+        set value =
+            FORTY_TWO;
+    }
+
+    give value == FORTY_TWO;
+}
+
+proc test_assignment_in_false_branch_shape() -> bool {
+    let mut value: i64 =
+        FORTY_TWO;
+
+    if false {
+        set value =
+            ZERO;
+    }
+
+    give value == FORTY_TWO;
+}
+
+proc test_conditional_assignment(
+    condition: bool
+) -> i64 {
+    let mut value: i64 =
+        ZERO;
+
+    if condition {
+        set value =
+            FORTY_TWO;
+    }
+
+    give value;
+}
+
+proc test_nested_if_assignment() -> bool {
+    let mut value: i64 =
+        ZERO;
+
+    if true {
+        if TWENTY < TWENTY_TWO {
+            if FORTY_TWO == 42 {
+                set value =
+                    FORTY_TWO;
+            }
+        }
+    }
+
+    give value == FORTY_TWO;
+}
+
+proc test_assignment_in_nested_scope() -> bool {
+    let mut value: i64 =
+        ZERO;
+
+    {
+        set value =
+            TWENTY;
+
+        {
+            set value =
+                value +
+                TWENTY_TWO;
+        }
+    }
+
+    give value == FORTY_TWO;
+}
+
+proc test_deep_nested_assignment() -> bool {
+    let mut value: i64 =
+        ZERO;
+
+    {
+        {
+            {
+                {
+                    set value =
+                        FORTY_TWO;
+                }
+            }
+        }
+    }
+
+    give value == FORTY_TWO;
+}
+
+proc test_shadowing_preserves_outer() -> bool {
+    let mut value: i64 =
+        FORTY_TWO;
+
+    {
+        let value: i64 =
+            ZERO;
+
+        if value != ZERO {
+            give false;
+        }
+    }
+
+    give value == FORTY_TWO;
+}
+
+proc test_mutable_shadowing() -> bool {
+    let mut value: i64 =
+        TWENTY;
+
+    {
+        let mut value: i64 =
+            ZERO;
+
+        set value =
+            ONE;
+
+        if value != ONE {
+            give false;
+        }
+    }
+
+    set value +=
+        TWENTY_TWO;
+
+    give value == FORTY_TWO;
+}
+
+proc test_loop_assignment() -> bool {
+    let mut value: i64 =
+        ZERO;
+
+    while value < FORTY_TWO {
+        set value =
+            value + ONE;
+    }
+
+    give value == FORTY_TWO;
+}
+
+proc test_loop_compound_assignment() -> bool {
+    let mut value: i64 =
+        ZERO;
+
+    while value < FORTY_TWO {
+        set value +=
+            ONE;
+    }
+
+    give value == FORTY_TWO;
+}
+
+proc test_loop_two_mutations() -> bool {
+    let mut index: i64 =
+        ZERO;
+
+    let mut total: i64 =
+        ZERO;
+
+    while index < TWO {
+        set total +=
+            TWENTY_ONE;
+
+        set index +=
+            ONE;
+    }
+
+    give index == TWO &&
+         total == FORTY_TWO;
+}
+
+proc test_loop_call_assignment() -> bool {
+    let mut index: i64 =
+        FORTY;
+
+    while index < FORTY_TWO {
+        set index =
+            increment(index);
+    }
+
+    give index == FORTY_TWO;
+}
+
+proc test_loop_nested_scope_assignment() -> bool {
+    let mut index: i64 =
+        ZERO;
+
+    let mut total: i64 =
+        ZERO;
+
+    while index < TWO {
+        {
+            let amount: i64 =
+                TWENTY_ONE;
+
+            set total =
+                total +
+                amount;
+        }
+
+        set index =
+            index + ONE;
+    }
+
+    give total == FORTY_TWO;
+}
+
+proc test_boolean_assignment() -> bool {
+    let mut value: bool =
+        false;
+
+    set value =
+        true;
+
+    give value;
+}
+
+proc test_boolean_not_assignment() -> bool {
+    let mut value: bool =
+        false;
+
+    set value =
+        !value;
+
+    give value;
+}
+
+proc test_boolean_expression_assignment() -> bool {
+    let mut value: bool =
+        false;
+
+    set value =
+        TWENTY < TWENTY_TWO &&
+        FORTY_TWO == 42;
+
+    give value;
+}
+
+proc test_boolean_repeated_assignment() -> bool {
+    let mut value: bool =
+        false;
+
+    set value = true;
+    set value = false;
+    set value = true;
+
+    give value;
+}
+
+proc test_boolean_toggle() -> bool {
+    let mut value: bool =
+        false;
+
+    set value =
+        !value;
+
+    set value =
+        !value;
+
+    set value =
+        !value;
+
+    give value;
+}
+
+proc test_boolean_loop_assignment() -> bool {
+    let mut running: bool =
+        true;
+
+    let mut value: i64 =
+        ZERO;
+
+    while running {
+        set value =
+            value + ONE;
+
+        if value == FORTY_TWO {
+            set running =
+                false;
+        }
+    }
+
+    give !running &&
+         value == FORTY_TWO;
+}
+
+proc test_unsigned_assignment() -> bool {
+    let mut value: u64 =
+        0;
+
+    set value =
+        42;
+
+    give value == 42;
+}
+
+proc test_unsigned_compound_assignment() -> bool {
+    let mut value: u64 =
+        20;
+
+    set value +=
+        22;
+
+    give value == 42;
+}
+
+proc test_float_assignment() -> bool {
+    let mut value: f64 =
+        0.0;
+
+    set value =
+        42.0;
+
+    give value == 42.0;
+}
+
+proc test_float_arithmetic_assignment() -> bool {
+    let mut value: f64 =
+        20.0;
+
+    set value =
+        value + 22.0;
+
+    give value == 42.0;
+}
+
+proc test_float_compound_assignment() -> bool {
+    let mut value: f64 =
+        21.0;
+
+    set value *=
+        2.0;
+
+    give value == 42.0;
+}
+
+proc test_point_assignment() -> bool {
+    let mut point: Point =
+        make_zero_point();
+
+    set point =
+        make_answer_point();
+
+    give point_sum(
+        &point) == FORTY_TWO;
+}
+
+proc test_point_assignment_variable() -> bool {
+    let replacement: Point =
+        make_answer_point();
+
+    let mut point: Point =
+        make_zero_point();
+
+    set point =
+        replacement;
+
+    give point_equal(
+        &point,
+        &replacement);
+}
+
+proc test_point_repeated_assignment() -> bool {
+    let mut point: Point =
+        make_zero_point();
+
+    set point =
+        make_point(
+            TEN,
+            TEN);
+
+    set point =
+        make_point(
+            TWENTY,
+            TWENTY_TWO);
+
+    give point_sum(
+        &point) == FORTY_TWO;
+}
+
+proc test_point_transform_assignment() -> bool {
+    let mut point: Point =
+        make_point(
+            TEN,
+            TEN);
+
+    let transformed: Point =
+        point_translate(
+            &point,
+            TEN,
+            12);
+
+    set point =
+        transformed;
+
+    give point.x == TWENTY &&
+         point.y == TWENTY_TWO &&
+         point_sum(&point) == FORTY_TWO;
+}
+
+proc test_point_swap_assignment() -> bool {
+    let mut point: Point =
+        make_answer_point();
+
+    let swapped: Point =
+        point_swap(
+            &point);
+
+    set point =
+        swapped;
+
+    give point.x == TWENTY_TWO &&
+         point.y == TWENTY &&
+         point_sum(&point) == FORTY_TWO;
+}
+
+proc test_pair_assignment() -> bool {
+    let mut pair: Pair =
+        make_pair(
+            ZERO,
+            ZERO);
+
+    set pair =
+        make_answer_pair();
+
+    give pair_sum(
+        &pair) == FORTY_TWO;
+}
+
+proc test_record_assignment() -> bool {
+    let mut record: Record =
+        make_record(
+            ZERO,
+            false);
+
+    set record =
+        make_answer_record();
+
+    give record_valid(
+        &record);
+}
+
+proc test_nested_assignment() -> bool {
+    let mut nested: Nested =
+        make_nested(
+            make_zero_point(),
+            make_pair(ZERO, ZERO),
+            make_record(ZERO, false));
+
+    set nested =
+        make_answer_nested();
+
+    give nested_valid(
+        &nested);
+}
+
+proc test_aggregate_assignment_chain() -> bool {
+    let mut point: Point =
+        make_zero_point();
+
+    let first: Point =
+        make_point(
+            TEN,
+            TEN);
+
+    let second: Point =
+        point_translate(
+            &first,
+            TEN,
+            12);
+
+    set point =
+        first;
+
+    if point_sum(&point) != TWENTY {
+        give false;
+    }
+
+    set point =
+        second;
+
+    give point_sum(&point) == FORTY_TWO;
+}
+
+proc test_aggregate_assignment_in_loop() -> bool {
+    let mut point: Point =
+        make_zero_point();
+
+    let mut index: i64 =
+        ZERO;
+
+    while index < TWO {
+        let next: Point =
+            point_translate(
+                &point,
+                TEN,
+                11);
+
+        set point =
+            next;
+
+        set index +=
+            ONE;
+    }
+
+    give point.x == TWENTY &&
+         point.y == TWENTY_TWO &&
+         point_sum(&point) == FORTY_TWO;
+}
+
+proc test_pair_assignment_in_loop() -> bool {
+    let mut pair: Pair =
+        make_pair(
+            ZERO,
+            ZERO);
+
+    let mut index: i64 =
+        ZERO;
+
+    while index < TWO {
+        let next: Pair =
+            make_pair(
+                pair.first + TEN,
+                pair.second + 11);
+
+        set pair =
+            next;
+
+        set index =
+            index + ONE;
+    }
+
+    give pair.first == TWENTY &&
+         pair.second == TWENTY_TWO &&
+         pair_sum(&pair) == FORTY_TWO;
+}
+
+proc test_assignment_from_aggregate_fields() -> bool {
+    let point: Point =
+        make_answer_point();
+
+    let mut left: i64 =
+        ZERO;
+
+    let mut right: i64 =
+        ZERO;
+
+    set left =
+        point.x;
+
+    set right =
+        point.y;
+
+    give left == TWENTY &&
+         right == TWENTY_TWO &&
+         left + right ==
+             FORTY_TWO;
+}
+
+proc test_assignment_from_nested_fields() -> bool {
+    let nested: Nested =
+        make_answer_nested();
+
+    let mut value: i64 =
+        ZERO;
+
+    set value =
+        nested.record.value;
+
+    give value == FORTY_TWO;
+}
+
+proc test_assignment_from_reference_field() -> bool {
+    let point: Point =
+        make_answer_point();
+
+    let reference: &Point =
+        &point;
+
+    let mut value: i64 =
+        ZERO;
+
+    set value =
+        reference.x +
+        reference.y;
+
+    give value == FORTY_TWO;
+}
+
+proc test_assignment_from_comparison() -> bool {
+    let mut value: bool =
+        false;
+
+    set value =
+        FORTY_TWO > ZERO;
+
+    give value;
+}
+
+proc test_assignment_from_equality() -> bool {
+    let mut value: bool =
+        false;
+
+    set value =
+        TWENTY + TWENTY_TWO ==
+        FORTY_TWO;
+
+    give value;
+}
+
+proc test_assignment_from_logical_expression() -> bool {
+    let mut value: bool =
+        false;
+
+    set value =
+        (TWENTY < TWENTY_TWO) &&
+        (FORTY_TWO == FORTY_TWO) &&
+        !(ZERO == ONE);
+
+    give value;
+}
+
+proc test_assignment_dependency_order() -> bool {
+    let mut first: i64 =
+        TWENTY;
+
+    let mut second: i64 =
+        TWENTY_TWO;
+
+    set first =
+        first + second;
+
+    set second =
+        first - second;
+
+    give first == FORTY_TWO &&
+         second == TWENTY;
+}
+
+proc test_rhs_uses_old_target_value() -> bool {
+    let mut value: i64 =
+        TWENTY;
+
+    set value =
+        value +
+        TWENTY_TWO;
+
+    give value == FORTY_TWO;
+}
+
+proc test_rhs_nested_old_target_value() -> bool {
+    let mut value: i64 =
+        TWENTY;
+
+    set value =
+        add(
+            identity(value),
+            TWENTY_TWO);
+
+    give value == FORTY_TWO;
+}
+
+proc test_long_assignment_chain() -> bool {
+    let mut value: i64 =
+        ZERO;
+
+    set value += ONE;
+    set value += TWO;
+    set value += THREE;
+    set value += FOUR;
+    set value += FIVE;
+    set value += SIX;
+    set value += SEVEN;
+    set value += TEN;
+    set value += FOUR;
+
+    give value == FORTY_TWO;
+}
+
+proc test_reset_assignment_chain() -> bool {
+    let mut value: i64 =
+        ZERO;
+
+    set value =
+        ONE_HUNDRED;
+
+    set value =
+        ZERO;
+
+    set value =
+        FORTY_TWO;
+
+    give value == FORTY_TWO;
+}
+
+proc test_nested_mutation_pipeline() -> bool {
+    let mut first: i64 =
+        ZERO;
+
+    let mut second: i64 =
+        ZERO;
+
+    {
+        set first =
+            TWENTY;
+
+        {
+            set second =
+                TWENTY_TWO;
+
+            {
+                set first =
+                    identity(first);
+
+                set second =
+                    identity(second);
+            }
+        }
+    }
+
+    give first + second ==
+         FORTY_TWO;
+}
+
+proc test_assignment_after_loop() -> bool {
+    let mut index: i64 =
+        ZERO;
+
+    let mut result: i64 =
+        ZERO;
+
+    while index < TWO {
+        set result +=
+            TEN;
+
+        set index +=
+            ONE;
+    }
+
+    set result +=
+        TWENTY_TWO;
+
+    give result == FORTY_TWO;
+}
+
+proc test_assignment_before_loop() -> bool {
+    let mut value: i64 =
+        ZERO;
+
+    set value =
+        FORTY;
+
+    while value < FORTY_TWO {
+        set value +=
+            ONE;
+    }
+
+    give value == FORTY_TWO;
+}
+
+proc test_assignment_across_condition_and_loop() -> bool {
+    let mut value: i64 =
+        ZERO;
+
+    if true {
+        set value =
+            TWENTY;
+    }
+
+    while value < FORTY_TWO {
+        set value +=
+            ONE;
+    }
+
+    give value == FORTY_TWO;
+}
+
+proc test_boolean_and_scalar_mutation() -> bool {
+    let mut value: i64 =
+        ZERO;
+
+    let mut running: bool =
+        true;
+
+    while running {
+        set value +=
+            ONE;
+
+        set running =
+            value < FORTY_TWO;
+    }
+
+    give value == FORTY_TWO &&
+         !running;
+}
+
+proc test_mutation_from_parameters(
+    initial: i64,
+    amount: i64
+) -> bool {
+    let mut value: i64 =
+        initial;
+
+    set value +=
+        amount;
+
+    give value == FORTY_TWO;
+}
+
+proc test_mutation_from_boolean_parameter(
+    initial: bool
+) -> bool {
+    let mut value: bool =
+        initial;
+
+    set value =
+        !value;
+
+    give value != initial;
+}
+
+proc test_mutation_with_local_copy(
+    initial: i64
+) -> bool {
+    let source: i64 =
+        initial;
+
+    let mut value: i64 =
+        ZERO;
+
+    set value =
+        source;
+
+    give value == source;
+}
+
+proc test_mutation_with_call_result(
+    left: i64,
+    right: i64
+) -> bool {
+    let mut value: i64 =
+        ZERO;
+
+    set value =
+        add(
+            left,
+            right);
+
+    give value == FORTY_TWO;
+}
+
+proc test_assignment_expression_complexity() -> bool {
+    let mut value: i64 =
+        ZERO;
+
+    set value =
+        multiply(
+            add(
+                TEN,
+                ONE),
+            FOUR) -
+        TWO;
+
+    give value == FORTY_TWO;
+}
+
+proc test_boolean_assignment_complexity() -> bool {
+    let mut value: bool =
+        false;
+
+    set value =
+        (
+            TWENTY < TWENTY_TWO &&
+            FORTY_TWO > ZERO
+        ) &&
+        (
+            FORTY_TWO == 42 ||
+            ZERO == ONE
+        ) &&
+        !(
+            ONE_HUNDRED < FORTY_TWO
+        );
+
+    give value;
+}
+
+proc test_repeated_same_value_assignment() -> bool {
+    let mut value: i64 =
+        FORTY_TWO;
+
+    set value = FORTY_TWO;
+    set value = FORTY_TWO;
+    set value = FORTY_TWO;
+    set value = FORTY_TWO;
+
+    give value == FORTY_TWO;
+}
+
+proc test_zero_assignment() -> bool {
+    let mut value: i64 =
+        FORTY_TWO;
+
+    set value =
+        ZERO;
+
+    give value == ZERO;
+}
+
+proc test_negative_assignment() -> bool {
+    let mut value: i64 =
+        ZERO;
+
+    set value =
+        -FORTY_TWO;
+
+    give value == -FORTY_TWO;
+}
+
+proc test_negative_to_positive_assignment() -> bool {
+    let mut value: i64 =
+        -FORTY_TWO;
+
+    set value =
+        FORTY_TWO;
+
+    give value == FORTY_TWO;
+}
+
+proc test_assignment_boundary_values() -> bool {
+    let mut value: i64 =
+        -ONE_HUNDRED;
+
+    if value != -ONE_HUNDRED {
+        give false;
+    }
+
+    set value =
+        ONE_HUNDRED;
+
+    if value != ONE_HUNDRED {
+        give false;
+    }
+
+    set value =
+        FORTY_TWO;
+
+    give value == FORTY_TWO;
+}
+
+proc test_integrated_assignment_pipeline() -> bool {
+    let mut left: i64 =
+        ZERO;
+
+    let mut right: i64 =
+        ZERO;
+
+    let mut valid: bool =
+        false;
+
+    let mut point: Point =
+        make_zero_point();
+
+    let mut pair: Pair =
+        make_pair(
+            ZERO,
+            ZERO);
+
+    let mut record: Record =
+        make_record(
+            ZERO,
+            false);
+
+    set left =
+        TWENTY;
+
+    set right =
+        TWENTY_TWO;
+
+    set valid =
+        left + right ==
+        FORTY_TWO;
+
+    if !valid {
+        give false;
+    }
+
+    set point =
+        make_point(
+            left,
+            right);
+
+    set pair =
+        make_pair(
+            left,
+            right);
+
+    set record =
+        make_record(
+            point_sum(&point),
+            true);
+
+    give left == TWENTY &&
+         right == TWENTY_TWO &&
+         valid &&
+         point_sum(&point) == FORTY_TWO &&
+         pair_sum(&pair) == FORTY_TWO &&
+         record_valid(&record);
+}
 
 proc main() -> int {
-  let mut value: int = 1;
-  set value = value + 1;
-  give value;
+    if !test_direct_assignment() {
+        give 1;
+    }
+
+    if !test_assignment_literal() {
+        give 2;
+    }
+
+    if !test_assignment_constant() {
+        give 3;
+    }
+
+    if !test_assignment_variable() {
+        give 4;
+    }
+
+    if !test_assignment_call() {
+        give 5;
+    }
+
+    if !test_assignment_nested_call() {
+        give 6;
+    }
+
+    if !test_assignment_arithmetic() {
+        give 7;
+    }
+
+    if !test_assignment_previous_value() {
+        give 8;
+    }
+
+    if !test_assignment_previous_value_call() {
+        give 9;
+    }
+
+    if !test_repeated_assignment() {
+        give 10;
+    }
+
+    if !test_increment_chain() {
+        give 11;
+    }
+
+    if !test_decrement_chain() {
+        give 12;
+    }
+
+    if !test_add_assignment() {
+        give 13;
+    }
+
+    if !test_sub_assignment() {
+        give 14;
+    }
+
+    if !test_mul_assignment() {
+        give 15;
+    }
+
+    if !test_div_assignment() {
+        give 16;
+    }
+
+    if !test_mod_assignment() {
+        give 17;
+    }
+
+    if !test_compound_assignment_chain() {
+        give 18;
+    }
+
+    if !test_multiple_mutable_locals() {
+        give 19;
+    }
+
+    if !test_independent_mutation() {
+        give 20;
+    }
+
+    if !test_swap_scalars() {
+        give 21;
+    }
+
+    if !test_assignment_in_if() {
+        give 22;
+    }
+
+    if !test_assignment_in_false_branch_shape() {
+        give 23;
+    }
+
+    if test_conditional_assignment(true) != FORTY_TWO {
+        give 24;
+    }
+
+    if test_conditional_assignment(false) != ZERO {
+        give 25;
+    }
+
+    if !test_nested_if_assignment() {
+        give 26;
+    }
+
+    if !test_assignment_in_nested_scope() {
+        give 27;
+    }
+
+    if !test_deep_nested_assignment() {
+        give 28;
+    }
+
+    if !test_shadowing_preserves_outer() {
+        give 29;
+    }
+
+    if !test_mutable_shadowing() {
+        give 30;
+    }
+
+    if !test_loop_assignment() {
+        give 31;
+    }
+
+    if !test_loop_compound_assignment() {
+        give 32;
+    }
+
+    if !test_loop_two_mutations() {
+        give 33;
+    }
+
+    if !test_loop_call_assignment() {
+        give 34;
+    }
+
+    if !test_loop_nested_scope_assignment() {
+        give 35;
+    }
+
+    if !test_boolean_assignment() {
+        give 36;
+    }
+
+    if !test_boolean_not_assignment() {
+        give 37;
+    }
+
+    if !test_boolean_expression_assignment() {
+        give 38;
+    }
+
+    if !test_boolean_repeated_assignment() {
+        give 39;
+    }
+
+    if !test_boolean_toggle() {
+        give 40;
+    }
+
+    if !test_boolean_loop_assignment() {
+        give 41;
+    }
+
+    if !test_unsigned_assignment() {
+        give 42;
+    }
+
+    if !test_unsigned_compound_assignment() {
+        give 43;
+    }
+
+    if !test_float_assignment() {
+        give 44;
+    }
+
+    if !test_float_arithmetic_assignment() {
+        give 45;
+    }
+
+    if !test_float_compound_assignment() {
+        give 46;
+    }
+
+    if !test_point_assignment() {
+        give 47;
+    }
+
+    if !test_point_assignment_variable() {
+        give 48;
+    }
+
+    if !test_point_repeated_assignment() {
+        give 49;
+    }
+
+    if !test_point_transform_assignment() {
+        give 50;
+    }
+
+    if !test_point_swap_assignment() {
+        give 51;
+    }
+
+    if !test_pair_assignment() {
+        give 52;
+    }
+
+    if !test_record_assignment() {
+        give 53;
+    }
+
+    if !test_nested_assignment() {
+        give 54;
+    }
+
+    if !test_aggregate_assignment_chain() {
+        give 55;
+    }
+
+    if !test_aggregate_assignment_in_loop() {
+        give 56;
+    }
+
+    if !test_pair_assignment_in_loop() {
+        give 57;
+    }
+
+    if !test_assignment_from_aggregate_fields() {
+        give 58;
+    }
+
+    if !test_assignment_from_nested_fields() {
+        give 59;
+    }
+
+    if !test_assignment_from_reference_field() {
+        give 60;
+    }
+
+    if !test_assignment_from_comparison() {
+        give 61;
+    }
+
+    if !test_assignment_from_equality() {
+        give 62;
+    }
+
+    if !test_assignment_from_logical_expression() {
+        give 63;
+    }
+
+    if !test_assignment_dependency_order() {
+        give 64;
+    }
+
+    if !test_rhs_uses_old_target_value() {
+        give 65;
+    }
+
+    if !test_rhs_nested_old_target_value() {
+        give 66;
+    }
+
+    if !test_long_assignment_chain() {
+        give 67;
+    }
+
+    if !test_reset_assignment_chain() {
+        give 68;
+    }
+
+    if !test_nested_mutation_pipeline() {
+        give 69;
+    }
+
+    if !test_assignment_after_loop() {
+        give 70;
+    }
+
+    if !test_assignment_before_loop() {
+        give 71;
+    }
+
+    if !test_assignment_across_condition_and_loop() {
+        give 72;
+    }
+
+    if !test_boolean_and_scalar_mutation() {
+        give 73;
+    }
+
+    if !test_mutation_from_parameters(
+        TWENTY,
+        TWENTY_TWO) {
+        give 74;
+    }
+
+    if !test_mutation_from_boolean_parameter(
+        false) {
+        give 75;
+    }
+
+    if !test_mutation_with_local_copy(
+        FORTY_TWO) {
+        give 76;
+    }
+
+    if !test_mutation_with_call_result(
+        TWENTY,
+        TWENTY_TWO) {
+        give 77;
+    }
+
+    if !test_assignment_expression_complexity() {
+        give 78;
+    }
+
+    if !test_boolean_assignment_complexity() {
+        give 79;
+    }
+
+    if !test_repeated_same_value_assignment() {
+        give 80;
+    }
+
+    if !test_zero_assignment() {
+        give 81;
+    }
+
+    if !test_negative_assignment() {
+        give 82;
+    }
+
+    if !test_negative_to_positive_assignment() {
+        give 83;
+    }
+
+    if !test_assignment_boundary_values() {
+        give 84;
+    }
+
+    if !test_integrated_assignment_pipeline() {
+        give 85;
+    }
+
+    give 0;
 }

@@ -1,7 +1,166 @@
-space demo/glob_private;
+///
+/// Verifies that a glob import never exposes declarations that are private to
+/// the imported module.
+///
+/// Expected result:
+/// - module resolution succeeds;
+/// - the glob import itself is valid;
+/// - private constants are not injected;
+/// - private forms and constructors are not injected;
+/// - private procedures and predicates are not injected;
+/// - contract-bearing private procedures remain private;
+/// - compilation fails during import/name/visibility resolution;
+/// - no private declaration becomes visible because `*` was used.
 
-use lib::*;
+space tests::import_visibility::glob_private;
+
+use tests::import_visibility::contract_lib::*;
+
+proc access_private_constant() -> u64 {
+    give MIN_IDENTIFIER;
+}
+
+proc access_another_private_constant() -> u64 {
+    give DEFAULT_LIMIT;
+}
+
+proc accept_private_form(
+    value: &ContractRange
+) -> bool {
+    give value.minimum <= value.maximum;
+}
+
+proc construct_private_range() -> i64 {
+    let range: ContractRange =
+        ContractRange {
+            minimum: 0,
+            maximum: 100,
+        };
+
+    give range.maximum;
+}
+
+proc construct_private_record() -> u64 {
+    let record: ContractRecord =
+        ContractRecord {
+            id: 42,
+            value: 100,
+            enabled: true,
+        };
+
+    give record.id;
+}
+
+proc construct_private_result() -> i64 {
+    let result: ContractResult =
+        ContractResult {
+            value: 42,
+            valid: true,
+        };
+
+    give result.value;
+}
+
+proc call_private_predicate() -> bool {
+    give valid_identifier(42);
+}
+
+proc call_private_range_predicates() -> bool {
+    let range: ContractRange =
+        ContractRange {
+            minimum: 0,
+            maximum: 100,
+        };
+
+    give valid_range(&range) &&
+         value_in_range(42, &range);
+}
+
+proc call_private_contract_proc() -> i64 {
+    give checked_add(20, 22);
+}
+
+proc call_private_chain() -> i64 {
+    give checked_chain(40);
+}
+
+proc obtain_private_record() -> i64 {
+    let record: ContractRecord =
+        checked_record(42, 100);
+
+    give record.value;
+}
+
+proc reference_private_form() -> i64 {
+    let range: ContractRange =
+        ContractRange {
+            minimum: 10,
+            maximum: 50,
+        };
+
+    let reference: &ContractRange =
+        &range;
+
+    give reference.maximum;
+}
+
+proc repeated_private_symbol() -> u64 {
+    let first: u64 = DEFAULT_LIMIT;
+    let second: u64 = DEFAULT_LIMIT;
+    let third: u64 = DEFAULT_LIMIT;
+
+    give first + second + third;
+}
+
+proc mixed_private_access() -> bool {
+    let range: ContractRange =
+        ContractRange {
+            minimum: 0,
+            maximum: 100,
+        };
+
+    let record: ContractRecord =
+        ContractRecord {
+            id: MIN_IDENTIFIER,
+            value: 42,
+            enabled: true,
+        };
+
+    give valid_identifier(record.id) &&
+         valid_range(&range) &&
+         value_in_range(record.value, &range);
+}
 
 proc main() -> int {
-    give hidden();
+    let minimum: u64 = access_private_constant();
+    let limit: u64 = access_another_private_constant();
+    let maximum: i64 = construct_private_range();
+    let identifier: u64 = construct_private_record();
+    let result_value: i64 = construct_private_result();
+    let predicate: bool = call_private_predicate();
+    let predicates: bool = call_private_range_predicates();
+    let arithmetic: i64 = call_private_contract_proc();
+    let chained: i64 = call_private_chain();
+    let record_value: i64 = obtain_private_record();
+    let referenced: i64 = reference_private_form();
+    let repeated: u64 = repeated_private_symbol();
+    let mixed: bool = mixed_private_access();
+
+    if predicate &&
+       predicates &&
+       mixed &&
+       minimum > 0 &&
+       limit > 0 &&
+       maximum == 100 &&
+       identifier == 42 &&
+       result_value == 42 &&
+       arithmetic == 42 &&
+       chained == 42 &&
+       record_value == 100 &&
+       referenced == 50 &&
+       repeated > 0 {
+        give 0;
+    }
+
+    give 1;
 }

@@ -1,9 +1,608 @@
-space sema_calls_local_param_ok;
+/// Semantic call-resolution test — local parameters.
+///
+/// Positive fixture covering procedure calls whose arguments originate from
+/// local parameters and local variables.
+///
+/// Expected result:
+/// - parameter symbols resolve in the current procedure scope;
+/// - parameters can be forwarded to other procedures;
+/// - parameter types participate correctly in call checking;
+/// - references to parameters preserve pointee type information;
+/// - local variables derived from parameters remain callable arguments;
+/// - nested calls preserve argument and return types;
+/// - compilation succeeds;
+/// - execution returns 0.
 
-proc add_one(value: int) -> int {
+space tests::sema_calls::local_param_ok;
+
+form Point {
+    x: i64,
+    y: i64,
+}
+
+form Pair {
+    first: i64,
+    second: i64,
+}
+
+proc identity(
+    value: i64
+) -> i64 {
+    give value;
+}
+
+proc add(
+    left: i64,
+    right: i64
+) -> i64 {
+    give left + right;
+}
+
+proc subtract(
+    left: i64,
+    right: i64
+) -> i64 {
+    give left - right;
+}
+
+proc multiply(
+    left: i64,
+    right: i64
+) -> i64 {
+    give left * right;
+}
+
+proc increment(
+    value: i64
+) -> i64 {
     give value + 1;
 }
 
-export proc main() -> int {
-    give add_one(41);
+proc is_answer(
+    value: i64
+) -> bool {
+    give value == 42;
+}
+
+proc make_point(
+    x: i64,
+    y: i64
+) -> Point {
+    give Point {
+        x: x,
+        y: y,
+    };
+}
+
+proc point_sum(
+    point: &Point
+) -> i64 {
+    give point.x +
+         point.y;
+}
+
+proc make_pair(
+    first: i64,
+    second: i64
+) -> Pair {
+    give Pair {
+        first: first,
+        second: second,
+    };
+}
+
+proc pair_sum(
+    pair: &Pair
+) -> i64 {
+    give pair.first +
+         pair.second;
+}
+
+/// Forward one scalar parameter directly.
+
+proc forward_scalar(
+    value: i64
+) -> i64 {
+    give identity(value);
+}
+
+/// Forward two scalar parameters.
+
+proc forward_two(
+    left: i64,
+    right: i64
+) -> i64 {
+    give add(
+        left,
+        right);
+}
+
+/// Forward a parameter through several calls.
+
+proc nested_scalar(
+    value: i64
+) -> i64 {
+    give identity(
+        identity(
+            identity(value)));
+}
+
+/// Use a parameter as one argument while the other argument is constant.
+
+proc add_to_twenty_two(
+    value: i64
+) -> i64 {
+    give add(
+        value,
+        22);
+}
+
+/// Use the same parameter more than once.
+
+proc duplicate_parameter(
+    value: i64
+) -> i64 {
+    give add(
+        value,
+        value);
+}
+
+/// Forward parameters in reverse order.
+
+proc reverse_subtract(
+    left: i64,
+    right: i64
+) -> i64 {
+    give subtract(
+        right,
+        left);
+}
+
+/// Parameter flows through a local variable before becoming a call argument.
+
+proc through_local(
+    value: i64
+) -> i64 {
+    let local: i64 =
+        value;
+
+    give identity(local);
+}
+
+/// Two parameters flow through independent locals.
+
+proc through_two_locals(
+    left: i64,
+    right: i64
+) -> i64 {
+    let local_left: i64 =
+        left;
+
+    let local_right: i64 =
+        right;
+
+    give add(
+        local_left,
+        local_right);
+}
+
+/// Result of one parameterized call becomes an argument to another.
+
+proc call_result_as_argument(
+    left: i64,
+    right: i64
+) -> i64 {
+    give identity(
+        add(
+            left,
+            right));
+}
+
+/// Multiple nested calls with parameters.
+
+proc arithmetic_pipeline(
+    left: i64,
+    right: i64
+) -> i64 {
+    let sum: i64 =
+        add(
+            left,
+            right);
+
+    let doubled: i64 =
+        multiply(
+            sum,
+            2);
+
+    give subtract(
+        doubled,
+        sum);
+}
+
+/// Parameter used as an argument from inside a conditional.
+
+proc conditional_forward(
+    value: i64,
+    enabled: bool
+) -> i64 {
+    if enabled {
+        give identity(value);
+    }
+
+    give 0;
+}
+
+/// Parameter is mutated locally and then passed to another procedure.
+
+proc mutable_parameter_copy(
+    value: i64
+) -> i64 {
+    let mut local: i64 =
+        value;
+
+    set local =
+        increment(local);
+
+    give identity(local);
+}
+
+/// Form parameters are forwarded by reference.
+
+proc forward_point(
+    point: &Point
+) -> i64 {
+    give point_sum(point);
+}
+
+/// Form value parameter becomes a reference argument.
+
+proc point_value_parameter(
+    point: Point
+) -> i64 {
+    give point_sum(
+        &point);
+}
+
+/// Scalar parameters construct a form that is then consumed by another call.
+
+proc construct_point_from_parameters(
+    x: i64,
+    y: i64
+) -> i64 {
+    let point: Point =
+        make_point(
+            x,
+            y);
+
+    give point_sum(
+        &point);
+}
+
+/// Parameters are forwarded through a second aggregate type.
+
+proc construct_pair_from_parameters(
+    first: i64,
+    second: i64
+) -> i64 {
+    let pair: Pair =
+        make_pair(
+            first,
+            second);
+
+    give pair_sum(
+        &pair);
+}
+
+/// A referenced parameter is forwarded through multiple procedures.
+
+proc point_reference_pipeline(
+    point: &Point
+) -> i64 {
+    give identity(
+        forward_point(point));
+}
+
+/// Parameters with the same type remain distinct symbols.
+
+proc independent_parameters(
+    first: i64,
+    second: i64,
+    third: i64
+) -> i64 {
+    let first_result: i64 =
+        identity(first);
+
+    let second_result: i64 =
+        identity(second);
+
+    let third_result: i64 =
+        identity(third);
+
+    give add(
+        add(
+            first_result,
+            second_result),
+        third_result);
+}
+
+/// Parameter lookup remains correct in nested lexical scopes.
+
+proc nested_scope_parameter(
+    value: i64
+) -> i64 {
+    let mut result: i64 = 0;
+
+    {
+        let copy: i64 =
+            identity(value);
+
+        {
+            set result =
+                identity(copy);
+        }
+    }
+
+    give result;
+}
+
+/// Local shadowing must not corrupt parameter bindings outside the inner block.
+
+proc parameter_shadowing(
+    value: i64
+) -> i64 {
+    let mut result: i64 =
+        identity(value);
+
+    {
+        let value: i64 = 100;
+
+        set result =
+            subtract(
+                value,
+                58);
+    }
+
+    give identity(result);
+}
+
+/// Parameter used repeatedly should resolve to the same declaration.
+
+proc repeated_parameter_lookup(
+    value: i64
+) -> bool {
+    give identity(value) == value &&
+         identity(value) == value &&
+         identity(value) == value &&
+         add(value, 0) == value &&
+         subtract(value, 0) == value;
+}
+
+/// Several parameters are alternated repeatedly.
+
+proc alternating_parameter_lookup(
+    left: i64,
+    right: i64
+) -> bool {
+    give identity(left) == left &&
+         identity(right) == right &&
+         identity(left) == left &&
+         identity(right) == right &&
+         add(left, right) == 42;
+}
+
+/// Boolean parameter passed to control flow while scalar parameters feed calls.
+
+proc select_parameter(
+    left: i64,
+    right: i64,
+    choose_left: bool
+) -> i64 {
+    if choose_left {
+        give identity(left);
+    }
+
+    give identity(right);
+}
+
+/// Recursive calls exercise parameter binding in a fresh invocation scope.
+
+proc sum_to(
+    value: i64
+) -> i64 {
+    if value <= 0 {
+        give 0;
+    }
+
+    give add(
+        value,
+        sum_to(
+            value - 1));
+}
+
+/// Parameters cross several local procedure boundaries.
+
+proc stage_three(
+    value: i64
+) -> i64 {
+    give identity(value);
+}
+
+proc stage_two(
+    value: i64
+) -> i64 {
+    give stage_three(
+        value);
+}
+
+proc stage_one(
+    value: i64
+) -> i64 {
+    give stage_two(
+        value);
+}
+
+proc integrated_parameter_test(
+    left: i64,
+    right: i64
+) -> bool {
+    let point: Point =
+        make_point(
+            left,
+            right);
+
+    let pair: Pair =
+        make_pair(
+            left,
+            right);
+
+    let sum: i64 =
+        add(
+            left,
+            right);
+
+    give sum == 42 &&
+         identity(sum) == 42 &&
+         forward_scalar(sum) == 42 &&
+         forward_two(left, right) == 42 &&
+         nested_scalar(sum) == 42 &&
+         through_local(sum) == 42 &&
+         through_two_locals(left, right) == 42 &&
+         call_result_as_argument(left, right) == 42 &&
+         arithmetic_pipeline(left, right) == 42 &&
+         point_sum(&point) == 42 &&
+         forward_point(&point) == 42 &&
+         point_value_parameter(point) == 42 &&
+         pair_sum(&pair) == 42 &&
+         repeated_parameter_lookup(sum) &&
+         alternating_parameter_lookup(left, right);
+}
+
+proc main() -> int {
+    if forward_scalar(42) != 42 {
+        give 1;
+    }
+
+    if forward_two(20, 22) != 42 {
+        give 2;
+    }
+
+    if nested_scalar(42) != 42 {
+        give 3;
+    }
+
+    if add_to_twenty_two(20) != 42 {
+        give 4;
+    }
+
+    if duplicate_parameter(21) != 42 {
+        give 5;
+    }
+
+    if reverse_subtract(58, 100) != 42 {
+        give 6;
+    }
+
+    if through_local(42) != 42 {
+        give 7;
+    }
+
+    if through_two_locals(20, 22) != 42 {
+        give 8;
+    }
+
+    if call_result_as_argument(20, 22) != 42 {
+        give 9;
+    }
+
+    if arithmetic_pipeline(20, 22) != 42 {
+        give 10;
+    }
+
+    if conditional_forward(42, true) != 42 {
+        give 11;
+    }
+
+    if conditional_forward(42, false) != 0 {
+        give 12;
+    }
+
+    if mutable_parameter_copy(41) != 42 {
+        give 13;
+    }
+
+    let point: Point =
+        make_point(
+            20,
+            22);
+
+    if forward_point(&point) != 42 {
+        give 14;
+    }
+
+    if point_value_parameter(point) != 42 {
+        give 15;
+    }
+
+    if construct_point_from_parameters(20, 22) != 42 {
+        give 16;
+    }
+
+    if construct_pair_from_parameters(20, 22) != 42 {
+        give 17;
+    }
+
+    if point_reference_pipeline(&point) != 42 {
+        give 18;
+    }
+
+    if independent_parameters(10, 12, 20) != 42 {
+        give 19;
+    }
+
+    if nested_scope_parameter(42) != 42 {
+        give 20;
+    }
+
+    if parameter_shadowing(42) != 42 {
+        give 21;
+    }
+
+    if !repeated_parameter_lookup(42) {
+        give 22;
+    }
+
+    if !alternating_parameter_lookup(20, 22) {
+        give 23;
+    }
+
+    if select_parameter(20, 22, true) != 20 {
+        give 24;
+    }
+
+    if select_parameter(20, 22, false) != 22 {
+        give 25;
+    }
+
+    if sum_to(6) != 21 {
+        give 26;
+    }
+
+    if stage_one(42) != 42 {
+        give 27;
+    }
+
+    if !is_answer(
+        forward_two(
+            20,
+            22)) {
+        give 28;
+    }
+
+    if !integrated_parameter_test(
+        20,
+        22) {
+        give 29;
+    }
+
+    give 0;
 }

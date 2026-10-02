@@ -1,7 +1,750 @@
-space coverage_chain_main;
+/// Import/export coverage — chained module resolution.
+///
+/// This positive fixture verifies that declarations remain correctly resolved
+/// through a multi-module import chain.
+///
+/// The test is intentionally self-contained at the consumer level:
+/// every external declaration is accessed through its owning module namespace,
+/// preventing unrelated glob-import ambiguity from contaminating the result.
+///
+/// Expected result:
+/// - all imported modules resolve;
+/// - transitive module loading succeeds;
+/// - exported constants preserve declaration identity;
+/// - exported forms preserve nominal type identity;
+/// - exported procedures remain callable;
+/// - references to imported forms remain valid;
+/// - repeated qualified lookup is deterministic;
+/// - nested expressions using several modules succeed;
+/// - compilation succeeds;
+/// - execution returns 0.
 
-use coverage_chain_mid::{total, extra as offset};
+space tests::import_export_coverage::coverage_chain_main;
+
+use tests::import_collision::collision_a;
+use tests::import_collision::collision_b;
+use tests::import_collision::local_lib;
+
+proc test_module_constants() -> bool {
+    give collision_a::SOURCE_ID == 1 &&
+         collision_b::SOURCE_ID == 2 &&
+         local_lib::SOURCE_ID == 7 &&
+         collision_a::VALUE == 20 &&
+         collision_b::VALUE == 22 &&
+         local_lib::VALUE == 42;
+}
+
+proc test_answer_chain() -> bool {
+    give collision_a::ANSWER_PART +
+             collision_b::ANSWER_PART ==
+             local_lib::VALUE &&
+         local_lib::VALUE == 42;
+}
+
+proc test_procedure_chain() -> bool {
+    let left: i64 =
+        collision_a::common_value();
+
+    let right: i64 =
+        collision_b::common_value();
+
+    let answer: i64 =
+        local_lib::add(
+            left,
+            right);
+
+    give left == 20 &&
+         right == 22 &&
+         answer == 42;
+}
+
+proc test_nested_calls() -> i64 {
+    give local_lib::identity(
+        collision_a::add(
+            collision_a::identity(
+                collision_a::VALUE),
+            collision_b::identity(
+                collision_b::VALUE)));
+}
+
+proc test_module_source_identity() -> bool {
+    give collision_a::source_id() == 1 &&
+         collision_b::source_id() == 2 &&
+         local_lib::source_id() == 7;
+}
+
+proc test_point_chain() -> bool {
+    let point_a: collision_a::Point =
+        collision_a::make_default_point();
+
+    let point_b: collision_b::Point =
+        collision_b::make_default_point();
+
+    let point_local: local_lib::Point =
+        local_lib::make_default_point();
+
+    give collision_a::point_sum(
+               &point_a) == 20 &&
+         collision_b::point_sum(
+               &point_b) == 22 &&
+         local_lib::point_sum(
+               &point_local) == 42;
+}
+
+proc test_point_combination() -> bool {
+    let point_a: collision_a::Point =
+        collision_a::make_default_point();
+
+    let point_b: collision_b::Point =
+        collision_b::make_default_point();
+
+    let left: i64 =
+        collision_a::point_sum(
+            &point_a);
+
+    let right: i64 =
+        collision_b::point_sum(
+            &point_b);
+
+    let point: local_lib::Point =
+        local_lib::make_point(
+            left,
+            right);
+
+    give local_lib::point_sum(
+        &point) == 42;
+}
+
+proc test_point_parameter_chain(
+    point_a: &collision_a::Point,
+    point_b: &collision_b::Point,
+    point_local: &local_lib::Point
+) -> bool {
+    give collision_a::point_sum(
+               point_a) == 20 &&
+         collision_b::point_sum(
+               point_b) == 22 &&
+         local_lib::point_sum(
+               point_local) == 42;
+}
+
+proc test_point_parameter_setup() -> bool {
+    let point_a: collision_a::Point =
+        collision_a::make_default_point();
+
+    let point_b: collision_b::Point =
+        collision_b::make_default_point();
+
+    let point_local: local_lib::Point =
+        local_lib::make_default_point();
+
+    give test_point_parameter_chain(
+        &point_a,
+        &point_b,
+        &point_local);
+}
+
+proc produce_point_a() -> collision_a::Point {
+    give collision_a::make_default_point();
+}
+
+proc produce_point_b() -> collision_b::Point {
+    give collision_b::make_default_point();
+}
+
+proc produce_point_local() -> local_lib::Point {
+    give local_lib::make_default_point();
+}
+
+proc test_point_return_types() -> bool {
+    let point_a: collision_a::Point =
+        produce_point_a();
+
+    let point_b: collision_b::Point =
+        produce_point_b();
+
+    let point_local: local_lib::Point =
+        produce_point_local();
+
+    give collision_a::point_sum(
+               &point_a) == 20 &&
+         collision_b::point_sum(
+               &point_b) == 22 &&
+         local_lib::point_sum(
+               &point_local) == 42;
+}
+
+proc test_record_chain() -> bool {
+    let record_a: collision_a::Record =
+        collision_a::make_record(
+            collision_a::VALUE);
+
+    let record_b: collision_b::Record =
+        collision_b::make_record(
+            collision_b::VALUE);
+
+    let record_local: local_lib::Record =
+        local_lib::make_record(
+            local_lib::VALUE);
+
+    give collision_a::record_value(
+               &record_a) == 20 &&
+         collision_a::record_source(
+               &record_a) == 1 &&
+
+         collision_b::record_value(
+               &record_b) == 22 &&
+         collision_b::record_source(
+               &record_b) == 2 &&
+
+         local_lib::record_value(
+               &record_local) == 42 &&
+         local_lib::record_source(
+               &record_local) == 7;
+}
+
+proc test_record_value_chain() -> bool {
+    let record_a: collision_a::Record =
+        collision_a::make_record(
+            collision_a::VALUE);
+
+    let record_b: collision_b::Record =
+        collision_b::make_record(
+            collision_b::VALUE);
+
+    let combined: i64 =
+        collision_a::record_value(
+            &record_a) +
+        collision_b::record_value(
+            &record_b);
+
+    let record_local: local_lib::Record =
+        local_lib::make_record(
+            combined);
+
+    give local_lib::record_value(
+               &record_local) == 42 &&
+         local_lib::record_source(
+               &record_local) == 7;
+}
+
+proc test_wrapper_chain() -> bool {
+    let point_a: collision_a::Point =
+        collision_a::make_default_point();
+
+    let record_a: collision_a::Record =
+        collision_a::make_record(
+            collision_a::VALUE);
+
+    let wrapper_a: collision_a::Wrapper =
+        collision_a::make_wrapper(
+            point_a,
+            record_a);
+
+    let point_b: collision_b::Point =
+        collision_b::make_default_point();
+
+    let record_b: collision_b::Record =
+        collision_b::make_record(
+            collision_b::VALUE);
+
+    let wrapper_b: collision_b::Wrapper =
+        collision_b::make_wrapper(
+            point_b,
+            record_b);
+
+    let wrapper_local: local_lib::Wrapper =
+        local_lib::make_default_wrapper();
+
+    give collision_a::wrapper_value(
+               &wrapper_a) == 40 &&
+         collision_b::wrapper_value(
+               &wrapper_b) == 44 &&
+         local_lib::wrapper_value(
+               &wrapper_local) == 84;
+}
+
+proc test_local_range_chain() -> bool {
+    let range: local_lib::Range =
+        local_lib::make_default_range();
+
+    give local_lib::range_width(
+               &range) == 42 &&
+         local_lib::range_valid(
+               &range) &&
+         local_lib::range_contains(
+             &range,
+             0) &&
+         local_lib::range_contains(
+             &range,
+             21) &&
+         local_lib::range_contains(
+             &range,
+             42);
+}
+
+proc test_b_range_chain() -> bool {
+    let range: collision_b::Range =
+        collision_b::make_default_range();
+
+    give collision_b::range_width(
+               &range) == 22 &&
+         collision_b::range_valid(
+               &range) &&
+         collision_b::range_contains(
+             &range,
+             11);
+}
+
+proc test_pair_chain() -> bool {
+    let pair_b: collision_b::Pair =
+        collision_b::make_default_pair();
+
+    let pair_local: local_lib::Pair =
+        local_lib::make_default_pair();
+
+    give collision_b::pair_sum(
+               &pair_b) == 22 &&
+         local_lib::pair_sum(
+               &pair_local) == 42;
+}
+
+proc test_nested_chain() -> bool {
+    let nested_b: collision_b::Nested =
+        collision_b::make_default_nested();
+
+    let nested_local: local_lib::Nested =
+        local_lib::make_default_nested();
+
+    give collision_b::nested_point_value(
+               &nested_b) == 22 &&
+         collision_b::nested_range_value(
+               &nested_b) == 22 &&
+         collision_b::nested_record_value(
+               &nested_b) == 22 &&
+         collision_b::nested_source(
+               &nested_b) == 2 &&
+
+         local_lib::nested_point_sum(
+               &nested_local) == 42 &&
+         local_lib::nested_range_width(
+               &nested_local) == 42 &&
+         local_lib::nested_record_value(
+               &nested_local) == 42 &&
+         local_lib::nested_pair_sum(
+               &nested_local) == 42 &&
+         local_lib::nested_source(
+               &nested_local) == 7;
+}
+
+proc test_state_chain() -> bool {
+    let state_a: collision_a::State =
+        collision_a::default_state();
+
+    let state_b: collision_b::State =
+        collision_b::default_state();
+
+    let state_local: local_lib::State =
+        local_lib::default_state();
+
+    give state_a ==
+             collision_a::State.Ready &&
+         state_b ==
+             collision_b::State.Ready &&
+         state_local ==
+             local_lib::State.Idle;
+}
+
+proc test_extended_state_chain() -> bool {
+    let running_b: collision_b::State =
+        collision_b::running_state();
+
+    let finished_b: collision_b::State =
+        collision_b::finished_state();
+
+    let ready_local: local_lib::State =
+        local_lib::ready_state();
+
+    let running_local: local_lib::State =
+        local_lib::running_state();
+
+    let finished_local: local_lib::State =
+        local_lib::finished_state();
+
+    give running_b ==
+             collision_b::State.Running &&
+         finished_b ==
+             collision_b::State.Finished &&
+         ready_local ==
+             local_lib::State.Ready &&
+         running_local ==
+             local_lib::State.Running &&
+         finished_local ==
+             local_lib::State.Finished;
+}
+
+proc test_result_kind_chain() -> bool {
+    let result_a: collision_a::ResultKind =
+        collision_a::success_kind();
+
+    let success_b: collision_b::ResultKind =
+        collision_b::success_kind();
+
+    let failure_b: collision_b::ResultKind =
+        collision_b::failure_kind();
+
+    let success_local: local_lib::ResultKind =
+        local_lib::success_kind();
+
+    let failure_local: local_lib::ResultKind =
+        local_lib::failure_kind();
+
+    give result_a ==
+             collision_a::ResultKind.Success &&
+         success_b ==
+             collision_b::ResultKind.Success &&
+         failure_b ==
+             collision_b::ResultKind.Failure &&
+         success_local ==
+             local_lib::ResultKind.Success &&
+         failure_local ==
+             local_lib::ResultKind.Failure;
+}
+
+proc test_direction_chain() -> bool {
+    let left_b: collision_b::Direction =
+        collision_b::left_direction();
+
+    let right_b: collision_b::Direction =
+        collision_b::right_direction();
+
+    let left_local: local_lib::Direction =
+        local_lib::left_direction();
+
+    let right_local: local_lib::Direction =
+        local_lib::right_direction();
+
+    give left_b ==
+             collision_b::Direction.Left &&
+         right_b ==
+             collision_b::Direction.Right &&
+         left_local ==
+             local_lib::Direction.Left &&
+         right_local ==
+             local_lib::Direction.Right;
+}
+
+proc test_repeated_lookup() -> bool {
+    give collision_a::VALUE == 20 &&
+         collision_b::VALUE == 22 &&
+         local_lib::VALUE == 42 &&
+
+         collision_a::VALUE == 20 &&
+         collision_b::VALUE == 22 &&
+         local_lib::VALUE == 42 &&
+
+         collision_a::VALUE == 20 &&
+         collision_b::VALUE == 22 &&
+         local_lib::VALUE == 42;
+}
+
+proc test_repeated_procedure_lookup() -> bool {
+    give collision_a::identity(20) == 20 &&
+         collision_b::identity(22) == 22 &&
+         local_lib::identity(42) == 42 &&
+
+         collision_a::identity(20) == 20 &&
+         collision_b::identity(22) == 22 &&
+         local_lib::identity(42) == 42;
+}
+
+proc test_alternating_lookup() -> bool {
+    give collision_a::SOURCE_ID == 1 &&
+         local_lib::SOURCE_ID == 7 &&
+         collision_b::SOURCE_ID == 2 &&
+         collision_a::SOURCE_ID == 1 &&
+         collision_b::SOURCE_ID == 2 &&
+         local_lib::SOURCE_ID == 7;
+}
+
+proc test_nested_scope() -> bool {
+    let mut result: i64 = 0;
+
+    {
+        let left: i64 =
+            collision_a::VALUE;
+
+        {
+            let right: i64 =
+                collision_b::VALUE;
+
+            {
+                set result =
+                    local_lib::add(
+                        left,
+                        right);
+            }
+        }
+    }
+
+    give result == 42;
+}
+
+proc test_control_flow(
+    selector: i64
+) -> i64 {
+    if selector == 1 {
+        give collision_a::VALUE;
+    }
+
+    if selector == 2 {
+        give collision_b::VALUE;
+    }
+
+    give local_lib::VALUE;
+}
+
+proc test_mutation() -> bool {
+    let mut value: i64 =
+        collision_a::VALUE;
+
+    set value =
+        value +
+        collision_b::VALUE;
+
+    give value == local_lib::VALUE &&
+         collision_a::VALUE == 20 &&
+         collision_b::VALUE == 22 &&
+         local_lib::VALUE == 42;
+}
+
+proc test_cross_module_pipeline() -> i64 {
+    let first: i64 =
+        collision_a::identity(
+            collision_a::VALUE);
+
+    let second: i64 =
+        collision_b::identity(
+            collision_b::VALUE);
+
+    let combined: i64 =
+        local_lib::add(
+            first,
+            second);
+
+    give local_lib::identity(
+        combined);
+}
+
+proc test_b_internal_pipeline() -> bool {
+    give collision_b::point_value() == 22 &&
+         collision_b::record_default_value() == 22 &&
+         collision_b::record_default_source() == 2 &&
+         collision_b::wrapper_default_value() == 44 &&
+         collision_b::composed_value() == 22 &&
+         collision_b::nested_call_value() == 22 &&
+         collision_b::accumulate_value() == 22 &&
+         collision_b::conditional_value(true) == 22 &&
+         collision_b::conditional_value(false) == 0 &&
+         collision_b::normalize_to_value(0) == 22 &&
+         collision_b::normalize_to_value(22) == 22 &&
+         collision_b::normalize_to_value(100) == 22;
+}
+
+proc test_local_internal_pipeline() -> bool {
+    give local_lib::composed_value() == 42 &&
+         local_lib::nested_call_value() == 42 &&
+         local_lib::arithmetic_pipeline(21) == 42 &&
+         local_lib::normalize_to_module_value(0) == 42 &&
+         local_lib::normalize_to_module_value(42) == 42 &&
+         local_lib::normalize_to_module_value(100) == 42 &&
+         local_lib::conditional_value(true) == 42 &&
+         local_lib::conditional_value(false) == 0 &&
+         local_lib::accumulate_value() == 42;
+}
+
+proc test_validation_chain() -> bool {
+    let point_b: collision_b::Point =
+        collision_b::make_default_point();
+
+    let record_b: collision_b::Record =
+        collision_b::make_record(
+            collision_b::VALUE);
+
+    let range_b: collision_b::Range =
+        collision_b::make_default_range();
+
+    let pair_b: collision_b::Pair =
+        collision_b::make_default_pair();
+
+    let nested_b: collision_b::Nested =
+        collision_b::make_default_nested();
+
+    let point_local: local_lib::Point =
+        local_lib::make_default_point();
+
+    let range_local: local_lib::Range =
+        local_lib::make_default_range();
+
+    let record_local: local_lib::Record =
+        local_lib::make_record(
+            local_lib::VALUE);
+
+    let pair_local: local_lib::Pair =
+        local_lib::make_default_pair();
+
+    let nested_local: local_lib::Nested =
+        local_lib::make_default_nested();
+
+    give collision_b::validate_point(
+               &point_b) &&
+         collision_b::validate_record(
+               &record_b) &&
+         collision_b::validate_range(
+               &range_b) &&
+         collision_b::validate_pair(
+               &pair_b) &&
+         collision_b::validate_nested(
+               &nested_b) &&
+
+         local_lib::validate_point(
+               &point_local) &&
+         local_lib::validate_range(
+               &range_local) &&
+         local_lib::validate_record(
+               &record_local) &&
+         local_lib::validate_pair(
+               &pair_local) &&
+         local_lib::validate_nested(
+               &nested_local);
+}
+
+proc test_module_self_tests() -> bool {
+    give collision_a::library_self_test() &&
+         collision_b::library_self_test() &&
+         local_lib::library_self_test();
+}
+
+proc test_integrated_chain() -> bool {
+    let point_a: collision_a::Point =
+        collision_a::make_default_point();
+
+    let point_b: collision_b::Point =
+        collision_b::make_default_point();
+
+    let value_a: i64 =
+        collision_a::point_sum(
+            &point_a);
+
+    let value_b: i64 =
+        collision_b::point_sum(
+            &point_b);
+
+    let point_local: local_lib::Point =
+        local_lib::make_point(
+            value_a,
+            value_b);
+
+    let range_local: local_lib::Range =
+        local_lib::make_range(
+            0,
+            local_lib::point_sum(
+                &point_local));
+
+    let record_local: local_lib::Record =
+        local_lib::make_record(
+            local_lib::range_width(
+                &range_local));
+
+    let pair_local: local_lib::Pair =
+        local_lib::make_pair(
+            value_a,
+            value_b);
+
+    let nested_local: local_lib::Nested =
+        local_lib::make_nested(
+            point_local,
+            range_local,
+            record_local,
+            pair_local);
+
+    give value_a == 20 &&
+         value_b == 22 &&
+
+         local_lib::point_sum(
+             &point_local) == 42 &&
+
+         local_lib::range_width(
+             &range_local) == 42 &&
+
+         local_lib::record_value(
+             &record_local) == 42 &&
+
+         local_lib::record_source(
+             &record_local) == 7 &&
+
+         local_lib::pair_sum(
+             &pair_local) == 42 &&
+
+         local_lib::nested_point_sum(
+             &nested_local) == 42 &&
+
+         local_lib::nested_range_width(
+             &nested_local) == 42 &&
+
+         local_lib::nested_record_value(
+             &nested_local) == 42 &&
+
+         local_lib::nested_pair_sum(
+             &nested_local) == 42 &&
+
+         local_lib::nested_source(
+             &nested_local) == 7;
+}
 
 proc main() -> int {
-    give total() + offset;
+    if !test_module_constants() { give 1; }
+    if !test_answer_chain() { give 2; }
+    if !test_procedure_chain() { give 3; }
+    if test_nested_calls() != 42 { give 4; }
+    if !test_module_source_identity() { give 5; }
+
+    if !test_point_chain() { give 6; }
+    if !test_point_combination() { give 7; }
+    if !test_point_parameter_setup() { give 8; }
+    if !test_point_return_types() { give 9; }
+
+    if !test_record_chain() { give 10; }
+    if !test_record_value_chain() { give 11; }
+    if !test_wrapper_chain() { give 12; }
+
+    if !test_local_range_chain() { give 13; }
+    if !test_b_range_chain() { give 14; }
+    if !test_pair_chain() { give 15; }
+    if !test_nested_chain() { give 16; }
+
+    if !test_state_chain() { give 17; }
+    if !test_extended_state_chain() { give 18; }
+    if !test_result_kind_chain() { give 19; }
+    if !test_direction_chain() { give 20; }
+
+    if !test_repeated_lookup() { give 21; }
+    if !test_repeated_procedure_lookup() { give 22; }
+    if !test_alternating_lookup() { give 23; }
+    if !test_nested_scope() { give 24; }
+
+    if test_control_flow(1) != 20 { give 25; }
+    if test_control_flow(2) != 22 { give 26; }
+    if test_control_flow(3) != 42 { give 27; }
+
+    if !test_mutation() { give 28; }
+    if test_cross_module_pipeline() != 42 { give 29; }
+
+    if !test_b_internal_pipeline() { give 30; }
+    if !test_local_internal_pipeline() { give 31; }
+    if !test_validation_chain() { give 32; }
+    if !test_module_self_tests() { give 33; }
+    if !test_integrated_chain() { give 34; }
+
+    give 0;
 }

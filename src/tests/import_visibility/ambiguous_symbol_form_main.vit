@@ -1,7 +1,62 @@
-space demo/ambiguous_symbol_form_main;
+/// Vitte compiler test.
+///
+/// Negative import-visibility test:
+/// two imported modules expose the same form name.
+///
+/// Expected result:
+/// - compilation must fail during import/name resolution;
+/// - `Packet` must be reported as ambiguous;
+/// - both candidate declarations must be reported;
+/// - the diagnostic should suggest explicit qualification;
+/// - the compiler must not silently select either candidate;
+/// - the compiler must not crash or continue with an arbitrary symbol.
 
-use contract_lib::value;
+space tests::import_visibility::ambiguous_symbol_form_main;
+
+use tests::import_visibility::ambiguous_symbol_form_left::*;
+use tests::import_visibility::ambiguous_symbol_form_right::*;
+
+proc inspect(value: Packet) -> i32 {
+    let identifier: u64 = value.id;
+    let enabled: bool = value.enabled;
+
+    if enabled {
+        give identifier as i32;
+    }
+
+    give 0;
+}
+
+proc build() -> Packet {
+    let packet: Packet = Packet {
+        id: 42,
+        enabled: true,
+    };
+
+    give packet;
+}
+
+proc consume(value: Packet) -> u64 {
+    give value.id;
+}
+
+proc compare(left: Packet, right: Packet) -> bool {
+    give left.id == right.id;
+}
 
 proc main() -> int {
-    give value;
+    let first: Packet = Packet {
+        id: 1,
+        enabled: true,
+    };
+
+    let second: Packet = build();
+
+    let result: u64 = consume(first);
+
+    if compare(first, second) {
+        give inspect(second);
+    }
+
+    give result as i32;
 }

@@ -1,7 +1,117 @@
-space demo/direct_private;
+/// Import visibility negative test.
+///
+/// Verifies that a direct module import does not grant access to declarations
+/// that are private to the imported module.
+///
+/// Expected result:
+/// - the module itself is found and imported successfully;
+/// - module qualification is recognized;
+/// - private declarations remain inaccessible;
+/// - private constants cannot be read;
+/// - private forms cannot be named as external types;
+/// - private forms cannot be constructed externally;
+/// - private procedures cannot be called;
+/// - diagnostics identify the inaccessible declaration;
+/// - diagnostics distinguish "private" from "unknown symbol";
+/// - compilation fails during visibility/name resolution;
+/// - no backend phase should be required to diagnose these errors.
 
-use lib::{hidden};
+space tests::import_visibility::direct_private;
 
+use tests::import_visibility::contract_lib;
+
+/// Attempts to access a private imported constant.
+///
+/// The module exists and is directly imported, therefore this must be
+/// diagnosed as a visibility violation rather than an unresolved module.
+proc access_private_constant() -> u64 {
+    give contract_lib::MIN_IDENTIFIER;
+}
+
+/// Attempts to use a private imported form in a type position.
+///
+/// Name resolution should find ContractRange in contract_lib and then reject
+/// the access because the declaration is not visible from this module.
+proc accept_private_form(
+    value: &contract_lib::ContractRange
+) -> bool {
+    give value.minimum <= value.maximum;
+}
+
+/// Attempts to construct a private imported form.
+proc construct_private_form() -> i64 {
+    let range: contract_lib::ContractRange =
+        contract_lib::ContractRange {
+            minimum: 0,
+            maximum: 100,
+        };
+
+    give range.maximum;
+}
+
+/// Attempts to call a private imported predicate.
+proc call_private_predicate() -> bool {
+    give contract_lib::valid_identifier(42);
+}
+
+/// Contract metadata must not make a private procedure externally visible.
+proc call_private_contract_proc() -> i64 {
+    give contract_lib::checked_add(20, 22);
+}
+
+/// References and member access must not bypass module visibility.
+proc inspect_private_form() -> i64 {
+    let range: contract_lib::ContractRange =
+        contract_lib::ContractRange {
+            minimum: 10,
+            maximum: 50,
+        };
+
+    let reference: &contract_lib::ContractRange =
+        &range;
+
+    give reference.maximum;
+}
+
+/// Repeated private access also exercises diagnostic handling.
+proc repeated_private_access() -> u64 {
+    let first: u64 =
+        contract_lib::DEFAULT_LIMIT;
+
+    let second: u64 =
+        contract_lib::DEFAULT_LIMIT;
+
+    give first + second;
+}
+
+/// Compilation is expected to fail before execution.
 proc main() -> int {
-    give hidden();
+    let identifier: u64 =
+        access_private_constant();
+
+    let predicate: bool =
+        call_private_predicate();
+
+    let arithmetic: i64 =
+        call_private_contract_proc();
+
+    let maximum: i64 =
+        construct_private_form();
+
+    let referenced: i64 =
+        inspect_private_form();
+
+    let repeated: u64 =
+        repeated_private_access();
+
+    if predicate &&
+       identifier > 0 &&
+       arithmetic == 42 &&
+       maximum == 100 &&
+       referenced == 50 &&
+       repeated > 0 {
+        give 0;
+    }
+
+    give 1;
 }

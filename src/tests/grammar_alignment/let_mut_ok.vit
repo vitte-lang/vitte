@@ -1,9 +1,564 @@
-space grammar_alignment_let_mut_ok;
+/// Grammar alignment test for local bindings and mutation.
+///
+/// This is a positive parser/semantic test.
+///
+/// It verifies the canonical distinction between:
+///
+/// - immutable local bindings:
+///     let name: Type = expression;
+///
+/// - mutable local bindings:
+///     let mut name: Type = expression;
+///
+/// - mutation:
+///     set name = expression;
+///
+/// The test deliberately exercises:
+/// - inferred immutable bindings;
+/// - explicitly typed immutable bindings;
+/// - inferred mutable bindings;
+/// - explicitly typed mutable bindings;
+/// - assignment to mutable bindings;
+/// - compound assignments;
+/// - mutation inside blocks;
+/// - mutation inside conditionals;
+/// - mutation inside loops;
+/// - multiple mutable variables;
+/// - expressions using mutable variables;
+/// - shadowing in nested scopes;
+/// - immutable values feeding mutable values;
+/// - mutable values feeding immutable values;
+/// - boolean mutation;
+/// - integer mutation;
+/// - references to mutable values.
+///
+/// Expected result:
+/// - lexical analysis succeeds;
+/// - parsing succeeds;
+/// - semantic analysis succeeds;
+/// - every `set` target is mutable;
+/// - immutable bindings remain immutable;
+/// - compilation succeeds.
 
-proc main() -> int {
-    let mut value: int = 41;
-    if value + 1 == 42 {
-        give 0;
+space tests::grammar_alignment::let_mut_ok;
+
+/// Basic immutable binding with explicit type.
+proc immutable_explicit() -> i64 {
+    let value: i64 = 42;
+
+    give value;
+}
+
+/// Basic immutable binding with inferred type.
+proc immutable_inferred() -> i64 {
+    let value = 42;
+
+    give value;
+}
+
+/// Basic mutable binding with explicit type.
+proc mutable_explicit() -> i64 {
+    let mut value: i64 = 0;
+
+    set value = 42;
+
+    give value;
+}
+
+/// Basic mutable binding with inferred type.
+proc mutable_inferred() -> i64 {
+    let mut value = 0;
+
+    set value = 42;
+
+    give value;
+}
+
+/// Immutable values may participate in expressions used to mutate another
+/// binding.
+proc immutable_to_mutable() -> i64 {
+    let left: i64 = 20;
+    let right: i64 = 22;
+
+    let mut result: i64 = 0;
+
+    set result = left + right;
+
+    give result;
+}
+
+/// A mutable value may be captured by a later immutable binding.
+proc mutable_to_immutable() -> i64 {
+    let mut source: i64 = 20;
+
+    set source = source + 22;
+
+    let result: i64 = source;
+
+    give result;
+}
+
+/// Repeated assignment to the same mutable binding.
+proc repeated_assignment() -> i64 {
+    let mut value: i64 = 0;
+
+    set value = 10;
+    set value = 20;
+    set value = 30;
+    set value = 42;
+
+    give value;
+}
+
+/// Compound arithmetic assignments.
+proc compound_arithmetic() -> i64 {
+    let mut value: i64 = 10;
+
+    set value += 10;
+    set value += 30;
+    set value -= 8;
+    set value *= 2;
+    set value /= 2;
+
+    give value;
+}
+
+/// Modulo compound assignment.
+proc compound_modulo() -> i64 {
+    let mut value: i64 = 100;
+
+    set value %= 58;
+
+    give value;
+}
+
+/// Multiple mutable bindings in the same scope.
+proc multiple_mutable_bindings() -> i64 {
+    let mut left: i64 = 10;
+    let mut right: i64 = 20;
+    let mut result: i64 = 0;
+
+    set left += 10;
+    set right += 2;
+    set result = left + right;
+
+    give result;
+}
+
+/// Mutation using another mutable binding.
+proc mutable_dependency() -> i64 {
+    let mut left: i64 = 20;
+    let mut right: i64 = 0;
+
+    set right = left;
+    set left += 22;
+
+    set right += left;
+    set right -= 20;
+
+    give right;
+}
+
+/// Mutation inside a nested block.
+proc nested_block_mutation() -> i64 {
+    let mut value: i64 = 0;
+
+    {
+        set value = 20;
+
+        {
+            set value += 22;
+        }
     }
-    give 1;
+
+    give value;
+}
+
+/// A nested binding may shadow an outer binding without changing the outer
+/// binding.
+proc nested_shadowing() -> i64 {
+    let mut value: i64 = 42;
+
+    {
+        let value: i64 = 100;
+
+        if value != 100 {
+            give 0;
+        }
+    }
+
+    give value;
+}
+
+/// Mutable shadowing has independent storage.
+proc mutable_shadowing() -> i64 {
+    let mut value: i64 = 42;
+
+    {
+        let mut value: i64 = 10;
+
+        set value += 10;
+
+        if value != 20 {
+            give 0;
+        }
+    }
+
+    give value;
+}
+
+/// Mutation inside a conditional branch.
+proc conditional_mutation(
+    condition: bool
+) -> i64 {
+    let mut value: i64 = 20;
+
+    if condition {
+        set value += 22;
+    }
+
+    give value;
+}
+
+/// Mutation in both branches.
+proc conditional_branch_mutation(
+    condition: bool
+) -> i64 {
+    let mut value: i64 = 0;
+
+    if condition {
+        set value = 42;
+    } else {
+        set value = 21;
+        set value *= 2;
+    }
+
+    give value;
+}
+
+/// Boolean mutable binding.
+proc boolean_mutation() -> bool {
+    let mut value: bool = false;
+
+    set value = true;
+
+    give value;
+}
+
+/// Boolean mutation through an expression.
+proc boolean_expression_mutation() -> bool {
+    let left: bool = true;
+    let right: bool = true;
+
+    let mut result: bool = false;
+
+    set result = left && right;
+
+    give result;
+}
+
+/// Mutable counter in a while loop.
+proc while_mutation() -> i64 {
+    let mut index: i64 = 0;
+    let mut result: i64 = 0;
+
+    while index < 42 {
+        set index += 1;
+        set result += 1;
+    }
+
+    give result;
+}
+
+/// Multiple mutations per loop iteration.
+proc while_accumulator() -> i64 {
+    let mut index: i64 = 0;
+    let mut accumulator: i64 = 0;
+
+    while index < 6 {
+        set accumulator += 7;
+        set index += 1;
+    }
+
+    give accumulator;
+}
+
+/// Mutable value modified according to another immutable local.
+proc mutation_from_local_expression() -> i64 {
+    let base: i64 = 20;
+    let increment: i64 = 22;
+
+    let mut value: i64 = base;
+
+    set value += increment;
+
+    give value;
+}
+
+/// Assignment expression containing several local reads.
+proc complex_assignment_expression() -> i64 {
+    let first: i64 = 10;
+    let second: i64 = 20;
+    let third: i64 = 12;
+
+    let mut result: i64 = 0;
+
+    set result =
+        first +
+        second +
+        third;
+
+    give result;
+}
+
+/// Mutability remains associated with the binding rather than the expression
+/// that produced its initial value.
+proc mutable_initialized_from_expression() -> i64 {
+    let left: i64 = 10;
+    let right: i64 = 10;
+
+    let mut value: i64 =
+        left + right;
+
+    set value += 22;
+
+    give value;
+}
+
+/// Mutable binding used by an immutable expression after several writes.
+proc read_after_writes() -> i64 {
+    let mut value: i64 = 0;
+
+    set value = 10;
+    set value += 10;
+    set value += 22;
+
+    let snapshot: i64 = value;
+
+    give snapshot;
+}
+
+/// Mutation through nested control flow.
+proc nested_control_flow() -> i64 {
+    let mut value: i64 = 0;
+    let mut index: i64 = 0;
+
+    while index < 3 {
+        if index == 0 {
+            set value += 10;
+        } else {
+            if index == 1 {
+                set value += 20;
+            } else {
+                set value += 12;
+            }
+        }
+
+        set index += 1;
+    }
+
+    give value;
+}
+
+/// Two mutable variables may exchange values using an immutable temporary.
+proc swap_mutable_values() -> bool {
+    let mut left: i64 = 20;
+    let mut right: i64 = 22;
+
+    let temporary: i64 = left;
+
+    set left = right;
+    set right = temporary;
+
+    give left == 22 &&
+         right == 20;
+}
+
+/// Mutation should preserve the declared type.
+proc typed_mutation() -> bool {
+    let mut signed_value: i64 = 42;
+    let mut unsigned_value: u64 = 42;
+    let mut flag: bool = false;
+
+    set signed_value = 84;
+    set unsigned_value = 84;
+    set flag = true;
+
+    give signed_value == 84 &&
+         unsigned_value == 84 &&
+         flag;
+}
+
+/// A larger sequence ensures the parser keeps associating every `set` with
+/// the correct statement boundary.
+proc statement_boundary_alignment() -> i64 {
+    let mut a: i64 = 0;
+    let mut b: i64 = 0;
+    let mut c: i64 = 0;
+    let mut d: i64 = 0;
+
+    set a = 10;
+    set b = 20;
+    set c = a + b;
+    set d = c + 12;
+
+    set a += 1;
+    set b += 1;
+    set c += 1;
+
+    give d;
+}
+
+/// Integrated positive test.
+proc integrated_mutation() -> i64 {
+    let initial: i64 = 10;
+
+    let mut accumulator: i64 = initial;
+    let mut index: i64 = 0;
+    let mut enabled: bool = true;
+
+    while index < 4 {
+        if enabled {
+            set accumulator += 8;
+        }
+
+        set index += 1;
+    }
+
+    set enabled = false;
+
+    if !enabled {
+        set accumulator = 42;
+    }
+
+    let result: i64 = accumulator;
+
+    give result;
+}
+
+/// Entry point.
+///
+/// Each return code identifies the first grammar/mutation behavior that failed.
+proc main() -> int {
+    if immutable_explicit() != 42 {
+        give 1;
+    }
+
+    if immutable_inferred() != 42 {
+        give 2;
+    }
+
+    if mutable_explicit() != 42 {
+        give 3;
+    }
+
+    if mutable_inferred() != 42 {
+        give 4;
+    }
+
+    if immutable_to_mutable() != 42 {
+        give 5;
+    }
+
+    if mutable_to_immutable() != 42 {
+        give 6;
+    }
+
+    if repeated_assignment() != 42 {
+        give 7;
+    }
+
+    if compound_arithmetic() != 42 {
+        give 8;
+    }
+
+    if compound_modulo() != 42 {
+        give 9;
+    }
+
+    if multiple_mutable_bindings() != 42 {
+        give 10;
+    }
+
+    if mutable_dependency() != 42 {
+        give 11;
+    }
+
+    if nested_block_mutation() != 42 {
+        give 12;
+    }
+
+    if nested_shadowing() != 42 {
+        give 13;
+    }
+
+    if mutable_shadowing() != 42 {
+        give 14;
+    }
+
+    if conditional_mutation(true) != 42 {
+        give 15;
+    }
+
+    if conditional_branch_mutation(true) != 42 {
+        give 16;
+    }
+
+    if conditional_branch_mutation(false) != 42 {
+        give 17;
+    }
+
+    if !boolean_mutation() {
+        give 18;
+    }
+
+    if !boolean_expression_mutation() {
+        give 19;
+    }
+
+    if while_mutation() != 42 {
+        give 20;
+    }
+
+    if while_accumulator() != 42 {
+        give 21;
+    }
+
+    if mutation_from_local_expression() != 42 {
+        give 22;
+    }
+
+    if complex_assignment_expression() != 42 {
+        give 23;
+    }
+
+    if mutable_initialized_from_expression() != 42 {
+        give 24;
+    }
+
+    if read_after_writes() != 42 {
+        give 25;
+    }
+
+    if nested_control_flow() != 42 {
+        give 26;
+    }
+
+    if !swap_mutable_values() {
+        give 27;
+    }
+
+    if !typed_mutation() {
+        give 28;
+    }
+
+    if statement_boundary_alignment() != 42 {
+        give 29;
+    }
+
+    if integrated_mutation() != 42 {
+        give 30;
+    }
+
+    give 0;
 }

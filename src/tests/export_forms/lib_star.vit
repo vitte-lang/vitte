@@ -1,9 +1,986 @@
-space demo/lib_star;
+/// Star-export fixture.
+///
+/// This module provides a broad public surface intended to be re-exported
+/// through wildcard export forms.
+///
+/// Coverage:
+/// - primitive constants;
+/// - forms;
+/// - nested forms;
+/// - picks;
+/// - scalar procedures;
+/// - predicates;
+/// - constructors;
+/// - consumers;
+/// - reference parameters;
+/// - procedures returning exported forms;
+/// - procedures returning exported picks;
+/// - declarations depending on other exported declarations;
+/// - mutable local state;
+/// - control flow;
+/// - composed operations.
+///
+/// Consumers of this module should be able to expose its exported surface
+/// through a star export without changing declaration identity or type.
 
-export *;
+space tests::export_forms::lib_star;
 
-proc visible() -> int {
-    give 10;
+export const ZERO: i64 = 0;
+export const ONE: i64 = 1;
+export const TWO: i64 = 2;
+export const TEN: i64 = 10;
+export const TWELVE: i64 = 12;
+export const TWENTY: i64 = 20;
+export const TWENTY_TWO: i64 = 22;
+export const ANSWER: i64 = 42;
+export const LIMIT: u64 = 100;
+export const MINIMUM: i64 = 0;
+export const MAXIMUM: i64 = 100;
+export const ENABLED: bool = true;
+export const DISABLED: bool = false;
+
+export form Point {
+    x: i64,
+    y: i64,
 }
 
-const answer: int = 32;
+export form Range {
+    minimum: i64,
+    maximum: i64,
+}
+
+export form Record {
+    id: u64,
+    value: i64,
+    enabled: bool,
+}
+
+export form Pair {
+    first: i64,
+    second: i64,
+}
+
+export form Counter {
+    value: i64,
+}
+
+export form Rectangle {
+    minimum: Point,
+    maximum: Point,
+}
+
+export form Nested {
+    point: Point,
+    range: Range,
+}
+
+export form Envelope {
+    record: Record,
+    pair: Pair,
+}
+
+export form StateRecord {
+    value: i64,
+    enabled: bool,
+}
+
+export pick State {
+    Idle,
+    Ready,
+    Running,
+    Finished,
+}
+
+export pick ResultKind {
+    Success,
+    Failure,
+}
+
+export pick Direction {
+    Left,
+    Right,
+}
+
+export pick Ordering {
+    Less,
+    Equal,
+    Greater,
+}
+
+export proc identity(
+    value: i64
+) -> i64 {
+    give value;
+}
+
+export proc add(
+    left: i64,
+    right: i64
+) -> i64 {
+    give left + right;
+}
+
+export proc subtract(
+    left: i64,
+    right: i64
+) -> i64 {
+    give left - right;
+}
+
+export proc multiply(
+    left: i64,
+    right: i64
+) -> i64 {
+    give left * right;
+}
+
+export proc divide(
+    left: i64,
+    right: i64
+) -> i64 {
+    give left / right;
+}
+
+export proc modulo(
+    left: i64,
+    right: i64
+) -> i64 {
+    give left % right;
+}
+
+export proc increment(
+    value: i64
+) -> i64 {
+    give value + ONE;
+}
+
+export proc decrement(
+    value: i64
+) -> i64 {
+    give value - ONE;
+}
+
+export proc answer() -> i64 {
+    give ANSWER;
+}
+
+export proc zero() -> i64 {
+    give ZERO;
+}
+
+export proc is_zero(
+    value: i64
+) -> bool {
+    give value == ZERO;
+}
+
+export proc is_positive(
+    value: i64
+) -> bool {
+    give value > ZERO;
+}
+
+export proc is_negative(
+    value: i64
+) -> bool {
+    give value < ZERO;
+}
+
+export proc is_non_negative(
+    value: i64
+) -> bool {
+    give value >= ZERO;
+}
+
+export proc is_answer(
+    value: i64
+) -> bool {
+    give value == ANSWER;
+}
+
+export proc within_limit(
+    value: i64
+) -> bool {
+    give value >= ZERO &&
+         value <= LIMIT;
+}
+
+export proc between(
+    value: i64,
+    minimum: i64,
+    maximum: i64
+) -> bool {
+    give value >= minimum &&
+         value <= maximum;
+}
+
+export proc maximum(
+    left: i64,
+    right: i64
+) -> i64 {
+    if left >= right {
+        give left;
+    }
+
+    give right;
+}
+
+export proc minimum(
+    left: i64,
+    right: i64
+) -> i64 {
+    if left <= right {
+        give left;
+    }
+
+    give right;
+}
+
+export proc clamp(
+    value: i64,
+    minimum_value: i64,
+    maximum_value: i64
+) -> i64 {
+    if value < minimum_value {
+        give minimum_value;
+    }
+
+    if value > maximum_value {
+        give maximum_value;
+    }
+
+    give value;
+}
+
+export proc absolute(
+    value: i64
+) -> i64 {
+    if value < ZERO {
+        give -value;
+    }
+
+    give value;
+}
+
+export proc make_point(
+    x: i64,
+    y: i64
+) -> Point {
+    give Point {
+        x: x,
+        y: y,
+    };
+}
+
+export proc make_origin() -> Point {
+    give Point {
+        x: ZERO,
+        y: ZERO,
+    };
+}
+
+export proc make_answer_point() -> Point {
+    give Point {
+        x: TWENTY,
+        y: TWENTY_TWO,
+    };
+}
+
+export proc point_x(
+    point: &Point
+) -> i64 {
+    give point.x;
+}
+
+export proc point_y(
+    point: &Point
+) -> i64 {
+    give point.y;
+}
+
+export proc point_sum(
+    point: &Point
+) -> i64 {
+    give point.x +
+         point.y;
+}
+
+export proc point_equal(
+    left: &Point,
+    right: &Point
+) -> bool {
+    give left.x == right.x &&
+         left.y == right.y;
+}
+
+export proc point_translate(
+    point: &Point,
+    dx: i64,
+    dy: i64
+) -> Point {
+    give Point {
+        x: point.x + dx,
+        y: point.y + dy,
+    };
+}
+
+export proc point_scale(
+    point: &Point,
+    factor: i64
+) -> Point {
+    give Point {
+        x: point.x * factor,
+        y: point.y * factor,
+    };
+}
+
+export proc make_range(
+    minimum_value: i64,
+    maximum_value: i64
+) -> Range {
+    give Range {
+        minimum: minimum_value,
+        maximum: maximum_value,
+    };
+}
+
+export proc make_answer_range() -> Range {
+    give Range {
+        minimum: ZERO,
+        maximum: ANSWER,
+    };
+}
+
+export proc range_minimum(
+    range: &Range
+) -> i64 {
+    give range.minimum;
+}
+
+export proc range_maximum(
+    range: &Range
+) -> i64 {
+    give range.maximum;
+}
+
+export proc range_width(
+    range: &Range
+) -> i64 {
+    give range.maximum -
+         range.minimum;
+}
+
+export proc range_valid(
+    range: &Range
+) -> bool {
+    give range.minimum <=
+         range.maximum;
+}
+
+export proc range_contains(
+    range: &Range,
+    value: i64
+) -> bool {
+    give value >= range.minimum &&
+         value <= range.maximum;
+}
+
+export proc range_clamp(
+    range: &Range,
+    value: i64
+) -> i64 {
+    if value < range.minimum {
+        give range.minimum;
+    }
+
+    if value > range.maximum {
+        give range.maximum;
+    }
+
+    give value;
+}
+
+export proc make_record(
+    id: u64,
+    value: i64,
+    enabled: bool
+) -> Record {
+    give Record {
+        id: id,
+        value: value,
+        enabled: enabled,
+    };
+}
+
+export proc make_answer_record() -> Record {
+    give Record {
+        id: ANSWER,
+        value: ANSWER,
+        enabled: ENABLED,
+    };
+}
+
+export proc record_id(
+    record: &Record
+) -> u64 {
+    give record.id;
+}
+
+export proc record_value(
+    record: &Record
+) -> i64 {
+    give record.value;
+}
+
+export proc record_enabled(
+    record: &Record
+) -> bool {
+    give record.enabled;
+}
+
+export proc record_valid(
+    record: &Record
+) -> bool {
+    give record.enabled &&
+         record.value >= ZERO;
+}
+
+export proc make_pair(
+    first: i64,
+    second: i64
+) -> Pair {
+    give Pair {
+        first: first,
+        second: second,
+    };
+}
+
+export proc make_answer_pair() -> Pair {
+    give Pair {
+        first: TWENTY,
+        second: TWENTY_TWO,
+    };
+}
+
+export proc pair_first(
+    pair: &Pair
+) -> i64 {
+    give pair.first;
+}
+
+export proc pair_second(
+    pair: &Pair
+) -> i64 {
+    give pair.second;
+}
+
+export proc pair_sum(
+    pair: &Pair
+) -> i64 {
+    give pair.first +
+         pair.second;
+}
+
+export proc pair_equal(
+    left: &Pair,
+    right: &Pair
+) -> bool {
+    give left.first == right.first &&
+         left.second == right.second;
+}
+
+export proc make_counter(
+    value: i64
+) -> Counter {
+    give Counter {
+        value: value,
+    };
+}
+
+export proc counter_value(
+    counter: &Counter
+) -> i64 {
+    give counter.value;
+}
+
+export proc counter_incremented(
+    counter: &Counter
+) -> Counter {
+    give Counter {
+        value: counter.value + ONE,
+    };
+}
+
+export proc make_rectangle(
+    minimum_point: Point,
+    maximum_point: Point
+) -> Rectangle {
+    give Rectangle {
+        minimum: minimum_point,
+        maximum: maximum_point,
+    };
+}
+
+export proc rectangle_width(
+    rectangle: &Rectangle
+) -> i64 {
+    give rectangle.maximum.x -
+         rectangle.minimum.x;
+}
+
+export proc rectangle_height(
+    rectangle: &Rectangle
+) -> i64 {
+    give rectangle.maximum.y -
+         rectangle.minimum.y;
+}
+
+export proc rectangle_area(
+    rectangle: &Rectangle
+) -> i64 {
+    give rectangle_width(rectangle) *
+         rectangle_height(rectangle);
+}
+
+export proc make_nested(
+    point: Point,
+    range: Range
+) -> Nested {
+    give Nested {
+        point: point,
+        range: range,
+    };
+}
+
+export proc make_answer_nested() -> Nested {
+    let point: Point =
+        make_point(
+            TEN,
+            TEN);
+
+    let range: Range =
+        make_range(
+            ZERO,
+            TWENTY_TWO);
+
+    give make_nested(
+        point,
+        range);
+}
+
+export proc nested_point_sum(
+    nested: &Nested
+) -> i64 {
+    give point_sum(
+        &nested.point);
+}
+
+export proc nested_range_width(
+    nested: &Nested
+) -> i64 {
+    give range_width(
+        &nested.range);
+}
+
+export proc nested_value(
+    nested: &Nested
+) -> i64 {
+    give nested_point_sum(nested) +
+         nested_range_width(nested);
+}
+
+export proc make_envelope(
+    record: Record,
+    pair: Pair
+) -> Envelope {
+    give Envelope {
+        record: record,
+        pair: pair,
+    };
+}
+
+export proc make_answer_envelope() -> Envelope {
+    let record: Record =
+        make_record(
+            ANSWER,
+            TWENTY,
+            ENABLED);
+
+    let pair: Pair =
+        make_pair(
+            TEN,
+            TWELVE);
+
+    give make_envelope(
+        record,
+        pair);
+}
+
+export proc envelope_record_value(
+    envelope: &Envelope
+) -> i64 {
+    give record_value(
+        &envelope.record);
+}
+
+export proc envelope_pair_sum(
+    envelope: &Envelope
+) -> i64 {
+    give pair_sum(
+        &envelope.pair);
+}
+
+export proc envelope_value(
+    envelope: &Envelope
+) -> i64 {
+    give envelope_record_value(envelope) +
+         envelope_pair_sum(envelope);
+}
+
+export proc make_state_record(
+    value: i64,
+    enabled: bool
+) -> StateRecord {
+    give StateRecord {
+        value: value,
+        enabled: enabled,
+    };
+}
+
+export proc state_record_valid(
+    record: &StateRecord
+) -> bool {
+    give record.enabled &&
+         record.value >= ZERO;
+}
+
+export proc state_record_value(
+    record: &StateRecord
+) -> i64 {
+    give record.value;
+}
+
+export proc default_state() -> State {
+    give State.Idle;
+}
+
+export proc ready_state() -> State {
+    give State.Ready;
+}
+
+export proc running_state() -> State {
+    give State.Running;
+}
+
+export proc finished_state() -> State {
+    give State.Finished;
+}
+
+export proc success_kind() -> ResultKind {
+    give ResultKind.Success;
+}
+
+export proc failure_kind() -> ResultKind {
+    give ResultKind.Failure;
+}
+
+export proc left_direction() -> Direction {
+    give Direction.Left;
+}
+
+export proc right_direction() -> Direction {
+    give Direction.Right;
+}
+
+export proc compare(
+    left: i64,
+    right: i64
+) -> Ordering {
+    if left < right {
+        give Ordering.Less;
+    }
+
+    if left > right {
+        give Ordering.Greater;
+    }
+
+    give Ordering.Equal;
+}
+
+export proc compose_answer() -> i64 {
+    give add(
+        TWENTY,
+        TWENTY_TWO);
+}
+
+export proc compose_answer_nested() -> i64 {
+    give identity(
+        add(
+            identity(TWENTY),
+            identity(TWENTY_TWO)));
+}
+
+export proc sum_point_and_range(
+    point: &Point,
+    range: &Range
+) -> i64 {
+    give point_sum(point) +
+         range_width(range);
+}
+
+export proc sum_record_and_pair(
+    record: &Record,
+    pair: &Pair
+) -> i64 {
+    give record_value(record) +
+         pair_sum(pair);
+}
+
+export proc make_composed_answer() -> i64 {
+    let point: Point =
+        make_point(
+            TEN,
+            TEN);
+
+    let range: Range =
+        make_range(
+            ZERO,
+            TWENTY_TWO);
+
+    give sum_point_and_range(
+        &point,
+        &range);
+}
+
+export proc repeated_answer() -> bool {
+    give answer() == ANSWER &&
+         identity(ANSWER) == ANSWER &&
+         add(TWENTY, TWENTY_TWO) == ANSWER &&
+         subtract(100, 58) == ANSWER &&
+         multiply(6, 7) == ANSWER;
+}
+
+export proc arithmetic_pipeline(
+    value: i64
+) -> i64 {
+    let first: i64 =
+        add(
+            value,
+            TEN);
+
+    let second: i64 =
+        multiply(
+            first,
+            TWO);
+
+    let third: i64 =
+        subtract(
+            second,
+            TWENTY);
+
+    give third;
+}
+
+export proc bounded_add(
+    left: i64,
+    right: i64
+) -> i64 {
+    let value: i64 =
+        add(
+            left,
+            right);
+
+    give clamp(
+        value,
+        MINIMUM,
+        MAXIMUM);
+}
+
+export proc accumulate_to_answer() -> i64 {
+    let mut value: i64 =
+        ZERO;
+
+    let mut index: i64 =
+        ZERO;
+
+    while index < 6 {
+        set value =
+            add(
+                value,
+                7);
+
+        set index =
+            increment(index);
+    }
+
+    give value;
+}
+
+export proc conditional_answer(
+    enabled: bool
+) -> i64 {
+    if enabled {
+        give ANSWER;
+    }
+
+    give ZERO;
+}
+
+export proc nested_conditional_answer(
+    value: i64
+) -> i64 {
+    if value == ANSWER {
+        give ANSWER;
+    }
+
+    if value > ANSWER {
+        give subtract(
+            value,
+            subtract(
+                value,
+                ANSWER));
+    }
+
+    give add(
+        value,
+        subtract(
+            ANSWER,
+            value));
+}
+
+export proc validate_answer_point(
+    point: &Point
+) -> bool {
+    give point_sum(point) ==
+         ANSWER;
+}
+
+export proc validate_answer_range(
+    range: &Range
+) -> bool {
+    give range_valid(range) &&
+         range_width(range) ==
+             ANSWER;
+}
+
+export proc validate_answer_record(
+    record: &Record
+) -> bool {
+    give record_enabled(record) &&
+         record_value(record) ==
+             ANSWER;
+}
+
+export proc validate_answer_pair(
+    pair: &Pair
+) -> bool {
+    give pair_sum(pair) ==
+         ANSWER;
+}
+
+export proc validate_answer_nested(
+    nested: &Nested
+) -> bool {
+    give nested_value(nested) ==
+         ANSWER;
+}
+
+export proc validate_answer_envelope(
+    envelope: &Envelope
+) -> bool {
+    give envelope_value(envelope) ==
+         ANSWER;
+}
+
+export proc library_self_test() -> bool {
+    let point: Point =
+        make_answer_point();
+
+    let range: Range =
+        make_answer_range();
+
+    let record: Record =
+        make_answer_record();
+
+    let pair: Pair =
+        make_answer_pair();
+
+    let nested: Nested =
+        make_answer_nested();
+
+    let envelope: Envelope =
+        make_answer_envelope();
+
+    let counter: Counter =
+        make_counter(
+            ANSWER);
+
+    let state_record: StateRecord =
+        make_state_record(
+            ANSWER,
+            ENABLED);
+
+    give ZERO == 0 &&
+         ONE == 1 &&
+         TWO == 2 &&
+         TEN == 10 &&
+         TWELVE == 12 &&
+         TWENTY == 20 &&
+         TWENTY_TWO == 22 &&
+         ANSWER == 42 &&
+         LIMIT == 100 &&
+         MINIMUM == 0 &&
+         MAXIMUM == 100 &&
+         ENABLED &&
+         !DISABLED &&
+         identity(ANSWER) == 42 &&
+         add(TWENTY, TWENTY_TWO) == 42 &&
+         subtract(100, 58) == 42 &&
+         multiply(6, 7) == 42 &&
+         divide(84, 2) == 42 &&
+         modulo(100, 58) == 42 &&
+         increment(41) == 42 &&
+         decrement(43) == 42 &&
+         is_zero(ZERO) &&
+         is_positive(ANSWER) &&
+         is_negative(-ONE) &&
+         is_non_negative(ZERO) &&
+         is_answer(ANSWER) &&
+         within_limit(ANSWER) &&
+         between(ANSWER, ZERO, LIMIT) &&
+         maximum(TWENTY, TWENTY_TWO) == 22 &&
+         minimum(TWENTY, TWENTY_TWO) == 20 &&
+         clamp(ANSWER, ZERO, LIMIT) == 42 &&
+         absolute(-ANSWER) == 42 &&
+         validate_answer_point(&point) &&
+         validate_answer_range(&range) &&
+         validate_answer_record(&record) &&
+         validate_answer_pair(&pair) &&
+         validate_answer_nested(&nested) &&
+         validate_answer_envelope(&envelope) &&
+         counter_value(&counter) == 42 &&
+         state_record_valid(&state_record) &&
+         state_record_value(&state_record) == 42 &&
+         default_state() == State.Idle &&
+         ready_state() == State.Ready &&
+         running_state() == State.Running &&
+         finished_state() == State.Finished &&
+         success_kind() == ResultKind.Success &&
+         failure_kind() == ResultKind.Failure &&
+         left_direction() == Direction.Left &&
+         right_direction() == Direction.Right &&
+         compare(20, 22) == Ordering.Less &&
+         compare(42, 42) == Ordering.Equal &&
+         compare(22, 20) == Ordering.Greater &&
+         compose_answer() == 42 &&
+         compose_answer_nested() == 42 &&
+         make_composed_answer() == 42 &&
+         repeated_answer() &&
+         arithmetic_pipeline(21) == 42 &&
+         bounded_add(20, 22) == 42 &&
+         accumulate_to_answer() == 42 &&
+         conditional_answer(true) == 42 &&
+         nested_conditional_answer(10) == 42 &&
+         nested_conditional_answer(42) == 42 &&
+         nested_conditional_answer(100) == 42;
+}

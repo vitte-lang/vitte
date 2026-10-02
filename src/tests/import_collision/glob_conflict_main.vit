@@ -1,8 +1,357 @@
-space demo/glob_conflict_main;
+/// Negative import-collision test.
+///
+/// This fixture imports two modules through glob imports. Both modules export
+/// declarations with overlapping names.
+///
+/// Expected result:
+/// - both modules resolve successfully;
+/// - both glob imports are individually valid;
+/// - non-conflicting declarations may enter the local import scope;
+/// - overlapping declarations produce deterministic collision diagnostics;
+/// - compilation fails;
+/// - the compiler does not silently choose the first import;
+/// - the compiler does not silently choose the last import;
+/// - declaration identity is preserved;
+/// - diagnostics identify both candidate modules/declarations;
+/// - diagnostics identify the conflicting local name;
+/// - no arbitrary winner is installed in the local scope.
+///
+/// `collision_a` and `collision_b` deliberately overlap on names including:
+/// - SOURCE_ID
+/// - VALUE
+/// - ANSWER_PART
+/// - COMMON_LIMIT
+/// - Point
+/// - Record
+/// - Wrapper
+/// - State
+/// - ResultKind
+/// - identity
+/// - common_value
+/// - answer_part
+/// - source_id
+/// - add
+/// - make_point
+/// - make_default_point
+/// - point_sum
+/// - make_record
+/// - record_value
+/// - record_source
+/// - make_wrapper
+/// - wrapper_value
+/// - default_state
+/// - success_kind
+/// - library_self_test
 
-use collision_a::*;
-use collision_b::*;
+space tests::import_collision::glob_conflict_main;
+
+use tests::import_collision::collision_a::*;
+use tests::import_collision::collision_b::*;
+
+/// Intentional ambiguous value lookup.
+///
+/// `VALUE` is exported by both imported modules.
+///
+/// collision_a.VALUE == 20
+/// collision_b.VALUE == 22
+///
+/// The compiler must diagnose the ambiguity instead of selecting one.
+
+proc conflict_value() -> i64 {
+    give VALUE;
+}
+
+/// Intentional ambiguous constant lookup.
+
+proc conflict_source_id() -> i64 {
+    give SOURCE_ID;
+}
+
+/// Intentional ambiguous constant lookup.
+
+proc conflict_answer_part() -> i64 {
+    give ANSWER_PART;
+}
+
+/// Intentional ambiguous constant lookup.
+
+proc conflict_common_limit() -> i64 {
+    give COMMON_LIMIT;
+}
+
+/// Intentional ambiguous procedure lookup.
+///
+/// Both modules export `identity`.
+
+proc conflict_identity() -> i64 {
+    give identity(42);
+}
+
+/// Intentional ambiguous procedure lookup.
+
+proc conflict_common_value() -> i64 {
+    give common_value();
+}
+
+/// Intentional ambiguous procedure lookup.
+
+proc conflict_answer_part_proc() -> i64 {
+    give answer_part();
+}
+
+/// Intentional ambiguous procedure lookup.
+
+proc conflict_source_id_proc() -> i64 {
+    give source_id();
+}
+
+/// Intentional ambiguous procedure lookup.
+
+proc conflict_add() -> i64 {
+    give add(
+        20,
+        22);
+}
+
+/// Intentional ambiguous type lookup.
+///
+/// Both modules export a nominal type named `Point`.
+
+proc conflict_point_type() -> i64 {
+    let point: Point =
+        make_point(
+            20,
+            22);
+
+    give point_sum(&point);
+}
+
+/// Intentional ambiguous constructor/type lookup.
+
+proc conflict_point_literal() -> i64 {
+    let point: Point =
+        Point {
+            x: 20,
+            y: 22,
+        };
+
+    give point.x +
+         point.y;
+}
+
+/// Intentional ambiguous factory lookup.
+
+proc conflict_default_point() -> i64 {
+    let point: Point =
+        make_default_point();
+
+    give point_sum(&point);
+}
+
+/// Intentional ambiguous `Record` type and procedure lookups.
+
+proc conflict_record() -> i64 {
+    let record: Record =
+        make_record(
+            42);
+
+    give record_value(&record);
+}
+
+/// Intentional ambiguous record-source lookup.
+
+proc conflict_record_source() -> i64 {
+    let record: Record =
+        make_record(
+            42);
+
+    give record_source(&record);
+}
+
+/// Intentional ambiguous `Wrapper` type and associated procedure lookups.
+
+proc conflict_wrapper() -> i64 {
+    let point: Point =
+        make_point(
+            20,
+            22);
+
+    let record: Record =
+        make_record(
+            42);
+
+    let wrapper: Wrapper =
+        make_wrapper(
+            point,
+            record);
+
+    give wrapper_value(&wrapper);
+}
+
+/// Intentional ambiguous pick type lookup.
+
+proc conflict_state() -> State {
+    give default_state();
+}
+
+/// Intentional ambiguous pick type lookup.
+
+proc conflict_result_kind() -> ResultKind {
+    give success_kind();
+}
+
+/// Repeated ambiguous lookup.
+///
+/// Repeated references must not cause the compiler to alternate between
+/// candidates or install an arbitrary winner after the first diagnostic.
+
+proc conflict_repeated_value() -> i64 {
+    give VALUE +
+         VALUE +
+         VALUE;
+}
+
+/// Ambiguity inside a nested block.
+
+proc conflict_nested_scope() -> i64 {
+    let mut result: i64 = 0;
+
+    {
+        let value: i64 =
+            VALUE;
+
+        set result =
+            identity(value);
+    }
+
+    give result;
+}
+
+/// Ambiguity inside control flow.
+
+proc conflict_control_flow(
+    condition: bool
+) -> i64 {
+    if condition {
+        give VALUE;
+    }
+
+    give common_value();
+}
+
+/// Ambiguity through several declaration categories in one procedure.
+
+proc conflict_cross_category() -> i64 {
+    let point: Point =
+        make_point(
+            VALUE,
+            ANSWER_PART);
+
+    let record: Record =
+        make_record(
+            common_value());
+
+    let wrapper: Wrapper =
+        make_wrapper(
+            point,
+            record);
+
+    give wrapper_value(
+        &wrapper);
+}
+
+/// Ambiguous self-test symbol.
+///
+/// Both imported modules export `library_self_test`.
+
+proc conflict_library_self_test() -> bool {
+    give library_self_test();
+}
+
+/// Entry point intentionally depends on ambiguous imports.
+///
+/// This file is a negative test and must never produce a runnable program.
 
 proc main() -> int {
-    give dup();
+    if conflict_value() == 42 {
+        give 1;
+    }
+
+    if conflict_source_id() == 0 {
+        give 2;
+    }
+
+    if conflict_answer_part() == 42 {
+        give 3;
+    }
+
+    if conflict_common_limit() == 100 {
+        give 4;
+    }
+
+    if conflict_identity() == 42 {
+        give 5;
+    }
+
+    if conflict_common_value() == 42 {
+        give 6;
+    }
+
+    if conflict_answer_part_proc() == 42 {
+        give 7;
+    }
+
+    if conflict_source_id_proc() == 0 {
+        give 8;
+    }
+
+    if conflict_add() == 42 {
+        give 9;
+    }
+
+    if conflict_point_type() == 42 {
+        give 10;
+    }
+
+    if conflict_point_literal() == 42 {
+        give 11;
+    }
+
+    if conflict_default_point() == 42 {
+        give 12;
+    }
+
+    if conflict_record() == 42 {
+        give 13;
+    }
+
+    if conflict_record_source() == 0 {
+        give 14;
+    }
+
+    if conflict_wrapper() == 42 {
+        give 15;
+    }
+
+    if conflict_repeated_value() == 42 {
+        give 16;
+    }
+
+    if conflict_nested_scope() == 42 {
+        give 17;
+    }
+
+    if conflict_control_flow(true) == 42 {
+        give 18;
+    }
+
+    if conflict_cross_category() == 42 {
+        give 19;
+    }
+
+    if conflict_library_self_test() {
+        give 20;
+    }
+
+    give 0;
 }

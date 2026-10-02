@@ -1,8 +1,871 @@
-space demo/symbol_alias_main;
+/// Symbol-alias import collision test.
+///
+/// `collision_a` and `collision_b` export many declarations with identical
+/// names. This positive fixture imports selected declarations under explicit
+/// local aliases so both modules can be consumed without ambiguity.
+///
+/// Coverage:
+/// - constant aliases;
+/// - form/type aliases;
+/// - procedure aliases;
+/// - constructor aliases;
+/// - consumer aliases;
+/// - same original name imported twice under distinct aliases;
+/// - alias use in parameter and return types;
+/// - references to aliased types;
+/// - repeated alias lookup;
+/// - alternating aliases;
+/// - nested scopes;
+/// - control flow;
+/// - mutation;
+/// - aggregate composition.
+///
+/// Expected result:
+/// - both modules resolve;
+/// - aliases are installed as distinct local bindings;
+/// - original colliding names do not interfere with each other;
+/// - aliased nominal types preserve their source-module identity;
+/// - compilation succeeds;
+/// - execution returns 0.
 
-use collision_a::{dup as left_dup};
-use collision_b::{dup as right_dup};
+space tests::import_collision::symbol_alias_main;
+
+use tests::import_collision::collision_a::{
+    SOURCE_ID as SOURCE_A,
+    VALUE as VALUE_A,
+    ANSWER_PART as ANSWER_PART_A,
+    COMMON_LIMIT as LIMIT_A,
+
+    Point as PointA,
+    Record as RecordA,
+    Wrapper as WrapperA,
+    State as StateA,
+    ResultKind as ResultKindA,
+
+    identity as identity_a,
+    common_value as common_value_a,
+    answer_part as answer_part_a,
+    source_id as source_id_a,
+    add as add_a,
+
+    make_point as make_point_a,
+    make_default_point as make_default_point_a,
+    point_sum as point_sum_a,
+
+    make_record as make_record_a,
+    record_value as record_value_a,
+    record_source as record_source_a,
+
+    make_wrapper as make_wrapper_a,
+    wrapper_value as wrapper_value_a,
+
+    default_state as default_state_a,
+    success_kind as success_kind_a,
+
+    library_self_test as library_self_test_a,
+};
+
+use tests::import_collision::collision_b::{
+    SOURCE_ID as SOURCE_B,
+    VALUE as VALUE_B,
+    ANSWER_PART as ANSWER_PART_B,
+    COMMON_LIMIT as LIMIT_B,
+
+    ZERO as ZERO_B,
+    ONE as ONE_B,
+    TWO as TWO_B,
+    TEN as TEN_B,
+    ELEVEN as ELEVEN_B,
+    TWENTY_TWO as TWENTY_TWO_B,
+    ANSWER as ANSWER_B,
+
+    Point as PointB,
+    Record as RecordB,
+    Wrapper as WrapperB,
+    Range as RangeB,
+    Pair as PairB,
+    Nested as NestedB,
+
+    State as StateB,
+    ResultKind as ResultKindB,
+    Direction as DirectionB,
+
+    identity as identity_b,
+    common_value as common_value_b,
+    answer_part as answer_part_b,
+    source_id as source_id_b,
+    add as add_b,
+    subtract as subtract_b,
+    multiply as multiply_b,
+    increment as increment_b,
+    decrement as decrement_b,
+
+    is_zero as is_zero_b,
+    is_positive as is_positive_b,
+    is_source_b as is_source_b_value,
+    is_value_b as is_value_b_value,
+
+    make_point as make_point_b,
+    make_default_point as make_default_point_b,
+    point_sum as point_sum_b,
+    point_x as point_x_b,
+    point_y as point_y_b,
+    point_equal as point_equal_b,
+    point_translate as point_translate_b,
+    point_scale as point_scale_b,
+
+    make_record as make_record_b,
+    record_value as record_value_b,
+    record_source as record_source_b,
+    record_belongs_here as record_belongs_here_b,
+
+    make_wrapper as make_wrapper_b,
+    wrapper_value as wrapper_value_b,
+    wrapper_source as wrapper_source_b,
+
+    make_range as make_range_b,
+    make_default_range as make_default_range_b,
+    range_minimum as range_minimum_b,
+    range_maximum as range_maximum_b,
+    range_width as range_width_b,
+    range_valid as range_valid_b,
+    range_contains as range_contains_b,
+
+    make_pair as make_pair_b,
+    make_default_pair as make_default_pair_b,
+    pair_sum as pair_sum_b,
+
+    make_nested as make_nested_b,
+    make_default_nested as make_default_nested_b,
+    nested_point_value as nested_point_value_b,
+    nested_range_value as nested_range_value_b,
+    nested_record_value as nested_record_value_b,
+    nested_source as nested_source_b,
+
+    default_state as default_state_b,
+    running_state as running_state_b,
+    finished_state as finished_state_b,
+    success_kind as success_kind_b,
+    failure_kind as failure_kind_b,
+    left_direction as left_direction_b,
+    right_direction as right_direction_b,
+
+    point_value as point_value_b,
+    record_default_value as record_default_value_b,
+    record_default_source as record_default_source_b,
+    wrapper_default_value as wrapper_default_value_b,
+    composed_value as composed_value_b,
+    nested_call_value as nested_call_value_b,
+    arithmetic_pipeline as arithmetic_pipeline_b,
+    accumulate_value as accumulate_value_b,
+    conditional_value as conditional_value_b,
+    normalize_to_value as normalize_to_value_b,
+
+    forward_point as forward_point_b,
+    forward_record as forward_record_b,
+    forward_wrapper as forward_wrapper_b,
+    forward_range as forward_range_b,
+    forward_pair as forward_pair_b,
+
+    validate_point as validate_point_b,
+    validate_record as validate_record_b,
+    validate_wrapper as validate_wrapper_b,
+    validate_range as validate_range_b,
+    validate_pair as validate_pair_b,
+    validate_nested as validate_nested_b,
+
+    cross_category_test as cross_category_test_b,
+    repeated_lookup_test as repeated_lookup_test_b,
+    library_self_test as library_self_test_b,
+};
+
+proc test_constant_aliases() -> bool {
+    give SOURCE_A == 1 &&
+         SOURCE_B == 2 &&
+         VALUE_A == 20 &&
+         VALUE_B == 22 &&
+         ANSWER_PART_A == 20 &&
+         ANSWER_PART_B == 22 &&
+         LIMIT_A == 100 &&
+         LIMIT_B == 100;
+}
+
+proc test_b_constant_aliases() -> bool {
+    give ZERO_B == 0 &&
+         ONE_B == 1 &&
+         TWO_B == 2 &&
+         TEN_B == 10 &&
+         ELEVEN_B == 11 &&
+         TWENTY_TWO_B == 22 &&
+         ANSWER_B == 42;
+}
+
+proc test_combined_alias_values() -> bool {
+    give VALUE_A + VALUE_B == 42 &&
+         ANSWER_PART_A + ANSWER_PART_B == 42;
+}
+
+proc test_source_aliases() -> bool {
+    give source_id_a() == 1 &&
+         source_id_b() == 2;
+}
+
+proc test_common_value_aliases() -> bool {
+    give common_value_a() == 20 &&
+         common_value_b() == 22 &&
+         common_value_a() +
+             common_value_b() ==
+             42;
+}
+
+proc test_answer_part_aliases() -> bool {
+    give answer_part_a() == 20 &&
+         answer_part_b() == 22 &&
+         answer_part_a() +
+             answer_part_b() ==
+             42;
+}
+
+proc test_identity_aliases() -> bool {
+    give identity_a(20) == 20 &&
+         identity_b(22) == 22 &&
+         identity_a(VALUE_A) == VALUE_A &&
+         identity_b(VALUE_B) == VALUE_B;
+}
+
+proc test_add_aliases() -> bool {
+    give add_a(10, 10) == 20 &&
+         add_b(10, 12) == 22 &&
+         add_a(VALUE_A, VALUE_B) == 42 &&
+         add_b(VALUE_A, VALUE_B) == 42;
+}
+
+proc test_b_arithmetic_aliases() -> bool {
+    give subtract_b(42, 20) == 22 &&
+         multiply_b(11, 2) == 22 &&
+         increment_b(21) == 22 &&
+         decrement_b(23) == 22;
+}
+
+proc test_b_predicate_aliases() -> bool {
+    give is_zero_b(0) &&
+         is_positive_b(22) &&
+         is_source_b_value(2) &&
+         is_value_b_value(22);
+}
+
+proc test_nested_alias_calls() -> i64 {
+    give identity_b(
+        add_a(
+            identity_a(VALUE_A),
+            identity_b(VALUE_B)));
+}
+
+proc test_point_a() -> bool {
+    let point: PointA =
+        make_default_point_a();
+
+    give point.x == 10 &&
+         point.y == 10 &&
+         point_sum_a(&point) == 20;
+}
+
+proc test_point_b() -> bool {
+    let point: PointB =
+        make_default_point_b();
+
+    give point_x_b(&point) == 11 &&
+         point_y_b(&point) == 11 &&
+         point_sum_b(&point) == 22;
+}
+
+proc test_parallel_point_aliases() -> bool {
+    let point_a: PointA =
+        make_point_a(
+            10,
+            10);
+
+    let point_b: PointB =
+        make_point_b(
+            11,
+            11);
+
+    give point_sum_a(&point_a) == 20 &&
+         point_sum_b(&point_b) == 22 &&
+         point_sum_a(&point_a) +
+             point_sum_b(&point_b) ==
+             42;
+}
+
+proc consume_point_a(
+    point: &PointA
+) -> i64 {
+    give point_sum_a(point);
+}
+
+proc consume_point_b(
+    point: &PointB
+) -> i64 {
+    give point_sum_b(point);
+}
+
+proc produce_point_a() -> PointA {
+    give make_default_point_a();
+}
+
+proc produce_point_b() -> PointB {
+    give make_default_point_b();
+}
+
+proc test_point_alias_type_identity() -> bool {
+    let point_a: PointA =
+        produce_point_a();
+
+    let point_b: PointB =
+        produce_point_b();
+
+    give consume_point_a(&point_a) == 20 &&
+         consume_point_b(&point_b) == 22;
+}
+
+proc test_point_b_operations() -> bool {
+    let point: PointB =
+        make_default_point_b();
+
+    let translated: PointB =
+        point_translate_b(
+            &point,
+            1,
+            -1);
+
+    let scale_source: PointB =
+        make_point_b(
+            5,
+            6);
+
+    let scaled: PointB =
+        point_scale_b(
+            &scale_source,
+            2);
+
+    give point_equal_b(
+               &point,
+               &point) &&
+         point_sum_b(
+               &translated) == 22 &&
+         point_sum_b(
+               &scaled) == 22;
+}
+
+proc test_record_a() -> bool {
+    let record: RecordA =
+        make_record_a(
+            VALUE_A);
+
+    give record_value_a(&record) == 20 &&
+         record_source_a(&record) == 1;
+}
+
+proc test_record_b() -> bool {
+    let record: RecordB =
+        make_record_b(
+            VALUE_B);
+
+    give record_value_b(&record) == 22 &&
+         record_source_b(&record) == 2 &&
+         record_belongs_here_b(&record);
+}
+
+proc test_parallel_record_aliases() -> bool {
+    let record_a: RecordA =
+        make_record_a(
+            VALUE_A);
+
+    let record_b: RecordB =
+        make_record_b(
+            VALUE_B);
+
+    give record_value_a(&record_a) == 20 &&
+         record_source_a(&record_a) == 1 &&
+         record_value_b(&record_b) == 22 &&
+         record_source_b(&record_b) == 2;
+}
+
+proc test_wrapper_a() -> bool {
+    let point: PointA =
+        make_default_point_a();
+
+    let record: RecordA =
+        make_record_a(
+            VALUE_A);
+
+    let wrapper: WrapperA =
+        make_wrapper_a(
+            point,
+            record);
+
+    give wrapper_value_a(&wrapper) == 40;
+}
+
+proc test_wrapper_b() -> bool {
+    let point: PointB =
+        make_default_point_b();
+
+    let record: RecordB =
+        make_record_b(
+            VALUE_B);
+
+    let wrapper: WrapperB =
+        make_wrapper_b(
+            point,
+            record);
+
+    give wrapper_value_b(&wrapper) == 44 &&
+         wrapper_source_b(&wrapper) == 2;
+}
+
+proc test_range_b() -> bool {
+    let range: RangeB =
+        make_default_range_b();
+
+    give range_minimum_b(&range) == 0 &&
+         range_maximum_b(&range) == 22 &&
+         range_width_b(&range) == 22 &&
+         range_valid_b(&range) &&
+         range_contains_b(&range, 0) &&
+         range_contains_b(&range, 11) &&
+         range_contains_b(&range, 22) &&
+         !range_contains_b(&range, 23);
+}
+
+proc test_pair_b() -> bool {
+    let pair: PairB =
+        make_default_pair_b();
+
+    give pair_sum_b(&pair) == 22;
+}
+
+proc test_nested_b() -> bool {
+    let nested: NestedB =
+        make_default_nested_b();
+
+    give nested_point_value_b(&nested) == 22 &&
+         nested_range_value_b(&nested) == 22 &&
+         nested_record_value_b(&nested) == 22 &&
+         nested_source_b(&nested) == 2 &&
+         validate_nested_b(&nested);
+}
+
+proc test_states() -> bool {
+    let state_a: StateA =
+        default_state_a();
+
+    let state_b: StateB =
+        default_state_b();
+
+    let running_b: StateB =
+        running_state_b();
+
+    let finished_b: StateB =
+        finished_state_b();
+
+    give state_a == StateA.Ready &&
+         state_b == StateB.Ready &&
+         running_b == StateB.Running &&
+         finished_b == StateB.Finished;
+}
+
+proc test_result_kinds() -> bool {
+    let success_a: ResultKindA =
+        success_kind_a();
+
+    let success_b: ResultKindB =
+        success_kind_b();
+
+    let failure_b: ResultKindB =
+        failure_kind_b();
+
+    give success_a ==
+             ResultKindA.Success &&
+         success_b ==
+             ResultKindB.Success &&
+         failure_b ==
+             ResultKindB.Failure;
+}
+
+proc test_directions_b() -> bool {
+    let left: DirectionB =
+        left_direction_b();
+
+    let right: DirectionB =
+        right_direction_b();
+
+    give left == DirectionB.Left &&
+         right == DirectionB.Right;
+}
+
+proc test_repeated_constant_alias_lookup() -> bool {
+    give VALUE_A == 20 &&
+         VALUE_B == 22 &&
+         VALUE_A == 20 &&
+         VALUE_B == 22 &&
+         VALUE_A == 20 &&
+         VALUE_B == 22;
+}
+
+proc test_repeated_proc_alias_lookup() -> bool {
+    give identity_a(20) == 20 &&
+         identity_b(22) == 22 &&
+         identity_a(20) == 20 &&
+         identity_b(22) == 22 &&
+         common_value_a() == 20 &&
+         common_value_b() == 22;
+}
+
+proc test_alternating_type_alias_lookup() -> bool {
+    let first_a: PointA =
+        make_default_point_a();
+
+    let first_b: PointB =
+        make_default_point_b();
+
+    let second_a: PointA =
+        make_point_a(
+            5,
+            15);
+
+    let second_b: PointB =
+        make_point_b(
+            10,
+            12);
+
+    give point_sum_a(&first_a) == 20 &&
+         point_sum_b(&first_b) == 22 &&
+         point_sum_a(&second_a) == 20 &&
+         point_sum_b(&second_b) == 22;
+}
+
+proc test_nested_scope() -> bool {
+    let mut result: i64 = 0;
+
+    {
+        let left: i64 =
+            VALUE_A;
+
+        {
+            let right: i64 =
+                VALUE_B;
+
+            set result =
+                add_a(
+                    left,
+                    right);
+        }
+    }
+
+    give result == 42;
+}
+
+proc test_local_shadowing() -> bool {
+    let VALUE_A: i64 = 100;
+
+    give VALUE_A == 100 &&
+         VALUE_B == 22;
+}
+
+proc test_deep_local_shadowing() -> bool {
+    let mut result: i64 =
+        VALUE_A;
+
+    {
+        let VALUE_A: i64 = 100;
+
+        set result =
+            VALUE_A;
+
+        {
+            let VALUE_A: i64 = 42;
+
+            set result =
+                VALUE_A;
+        }
+    }
+
+    give result == 42;
+}
+
+proc test_control_flow(
+    choose_a: bool
+) -> i64 {
+    if choose_a {
+        give VALUE_A;
+    }
+
+    give VALUE_B;
+}
+
+proc test_mutation() -> bool {
+    let mut result: i64 =
+        VALUE_A;
+
+    set result =
+        add_a(
+            result,
+            VALUE_B);
+
+    give result == 42 &&
+         VALUE_A == 20 &&
+         VALUE_B == 22;
+}
+
+proc test_b_composed_helpers() -> bool {
+    give point_value_b() == 22 &&
+         record_default_value_b() == 22 &&
+         record_default_source_b() == 2 &&
+         wrapper_default_value_b() == 44 &&
+         composed_value_b() == 22 &&
+         nested_call_value_b() == 22 &&
+         accumulate_value_b() == 22 &&
+         conditional_value_b(true) == 22 &&
+         conditional_value_b(false) == 0 &&
+         normalize_to_value_b(0) == 22 &&
+         normalize_to_value_b(22) == 22 &&
+         normalize_to_value_b(100) == 22;
+}
+
+proc test_b_forwarding() -> bool {
+    let point: PointB =
+        make_default_point_b();
+
+    let record: RecordB =
+        make_record_b(
+            VALUE_B);
+
+    let wrapper: WrapperB =
+        make_wrapper_b(
+            point,
+            record);
+
+    let range: RangeB =
+        make_default_range_b();
+
+    let pair: PairB =
+        make_default_pair_b();
+
+    give forward_point_b(&point) == 22 &&
+         forward_record_b(&record) == 22 &&
+         forward_wrapper_b(&wrapper) == 44 &&
+         forward_range_b(&range) == 22 &&
+         forward_pair_b(&pair) == 22;
+}
+
+proc test_b_validation() -> bool {
+    let point: PointB =
+        make_default_point_b();
+
+    let record: RecordB =
+        make_record_b(
+            VALUE_B);
+
+    let wrapper: WrapperB =
+        make_wrapper_b(
+            point,
+            record);
+
+    let range: RangeB =
+        make_default_range_b();
+
+    let pair: PairB =
+        make_default_pair_b();
+
+    let nested: NestedB =
+        make_default_nested_b();
+
+    give validate_point_b(&point) &&
+         validate_record_b(&record) &&
+         validate_wrapper_b(&wrapper) &&
+         validate_range_b(&range) &&
+         validate_pair_b(&pair) &&
+         validate_nested_b(&nested);
+}
+
+proc test_cross_module_alias_expression() -> bool {
+    let left: i64 =
+        common_value_a();
+
+    let right: i64 =
+        common_value_b();
+
+    give add_a(left, right) == 42 &&
+         add_b(left, right) == 42;
+}
+
+proc test_cross_module_alias_aggregates() -> bool {
+    let point_a: PointA =
+        make_default_point_a();
+
+    let point_b: PointB =
+        make_default_point_b();
+
+    let record_a: RecordA =
+        make_record_a(
+            point_sum_a(&point_a));
+
+    let record_b: RecordB =
+        make_record_b(
+            point_sum_b(&point_b));
+
+    give record_value_a(&record_a) == 20 &&
+         record_value_b(&record_b) == 22 &&
+         record_value_a(&record_a) +
+             record_value_b(&record_b) ==
+             42 &&
+         record_source_a(&record_a) == 1 &&
+         record_source_b(&record_b) == 2;
+}
+
+proc test_imported_self_tests() -> bool {
+    give library_self_test_a() &&
+         library_self_test_b();
+}
+
+proc test_b_internal_resolution() -> bool {
+    give cross_category_test_b() &&
+         repeated_lookup_test_b() &&
+         library_self_test_b();
+}
+
+proc test_integrated_symbol_aliases() -> bool {
+    let point_a: PointA =
+        make_default_point_a();
+
+    let point_b: PointB =
+        make_default_point_b();
+
+    let record_a: RecordA =
+        make_record_a(
+            VALUE_A);
+
+    let record_b: RecordB =
+        make_record_b(
+            VALUE_B);
+
+    let wrapper_a: WrapperA =
+        make_wrapper_a(
+            point_a,
+            record_a);
+
+    let wrapper_b: WrapperB =
+        make_wrapper_b(
+            point_b,
+            record_b);
+
+    let state_a: StateA =
+        default_state_a();
+
+    let state_b: StateB =
+        default_state_b();
+
+    let result_a: ResultKindA =
+        success_kind_a();
+
+    let result_b: ResultKindB =
+        success_kind_b();
+
+    let direction_b: DirectionB =
+        right_direction_b();
+
+    let mut answer: i64 =
+        ZERO_B;
+
+    set answer =
+        answer_part_a() +
+        answer_part_b();
+
+    give answer == 42 &&
+         SOURCE_A == 1 &&
+         SOURCE_B == 2 &&
+         VALUE_A == 20 &&
+         VALUE_B == 22 &&
+
+         point_sum_a(&point_a) == 20 &&
+         point_sum_b(&point_b) == 22 &&
+
+         record_value_a(&record_a) == 20 &&
+         record_value_b(&record_b) == 22 &&
+
+         record_source_a(&record_a) == 1 &&
+         record_source_b(&record_b) == 2 &&
+
+         wrapper_value_a(&wrapper_a) == 40 &&
+         wrapper_value_b(&wrapper_b) == 44 &&
+
+         state_a == StateA.Ready &&
+         state_b == StateB.Ready &&
+
+         result_a == ResultKindA.Success &&
+         result_b == ResultKindB.Success &&
+
+         direction_b == DirectionB.Right;
+}
 
 proc main() -> int {
-    give left_dup() + right_dup();
+    if !test_constant_aliases() { give 1; }
+    if !test_b_constant_aliases() { give 2; }
+    if !test_combined_alias_values() { give 3; }
+    if !test_source_aliases() { give 4; }
+    if !test_common_value_aliases() { give 5; }
+    if !test_answer_part_aliases() { give 6; }
+    if !test_identity_aliases() { give 7; }
+    if !test_add_aliases() { give 8; }
+    if !test_b_arithmetic_aliases() { give 9; }
+    if !test_b_predicate_aliases() { give 10; }
+
+    if test_nested_alias_calls() != 42 { give 11; }
+
+    if !test_point_a() { give 12; }
+    if !test_point_b() { give 13; }
+    if !test_parallel_point_aliases() { give 14; }
+    if !test_point_alias_type_identity() { give 15; }
+    if !test_point_b_operations() { give 16; }
+
+    if !test_record_a() { give 17; }
+    if !test_record_b() { give 18; }
+    if !test_parallel_record_aliases() { give 19; }
+
+    if !test_wrapper_a() { give 20; }
+    if !test_wrapper_b() { give 21; }
+
+    if !test_range_b() { give 22; }
+    if !test_pair_b() { give 23; }
+    if !test_nested_b() { give 24; }
+
+    if !test_states() { give 25; }
+    if !test_result_kinds() { give 26; }
+    if !test_directions_b() { give 27; }
+
+    if !test_repeated_constant_alias_lookup() { give 28; }
+    if !test_repeated_proc_alias_lookup() { give 29; }
+    if !test_alternating_type_alias_lookup() { give 30; }
+
+    if !test_nested_scope() { give 31; }
+    if !test_local_shadowing() { give 32; }
+    if !test_deep_local_shadowing() { give 33; }
+
+    if test_control_flow(true) != 20 { give 34; }
+    if test_control_flow(false) != 22 { give 35; }
+
+    if !test_mutation() { give 36; }
+    if !test_b_composed_helpers() { give 37; }
+    if !test_b_forwarding() { give 38; }
+    if !test_b_validation() { give 39; }
+
+    if !test_cross_module_alias_expression() { give 40; }
+    if !test_cross_module_alias_aggregates() { give 41; }
+
+    if !test_imported_self_tests() { give 42; }
+    if !test_b_internal_resolution() { give 43; }
+    if !test_integrated_symbol_aliases() { give 44; }
+
+    give 0;
 }

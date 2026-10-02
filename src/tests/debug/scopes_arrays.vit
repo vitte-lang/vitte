@@ -1,0 +1,57 @@
+/// Native DAP fixture for lexical shadowing, lifetimes, arrays, and pointers.
+
+space tests::debug::scopes_arrays;
+
+form Point {
+    x: i64,
+    y: i64,
+}
+
+form Container {
+    points: [2]Point,
+    marker: i64,
+}
+
+proc inspect(
+    container: &Container,
+    point: &Point,
+    index: i64
+) -> i64 {
+    let local: i64 = 5;
+    let value: i64 = container.points[index].x + point.x + local;
+    if value == 45 {
+        give value;
+    }
+    give 0;
+}
+
+proc main() -> int {
+    let points: [2]Point = [
+        Point { x: 1, y: 2 },
+        Point { x: 20, y: 22 },
+    ];
+    let container: Container = Container {
+        points: [
+            Point { x: 1, y: 2 },
+            Point { x: 20, y: 22 },
+        ],
+        marker: 99,
+    };
+    let point: &Point = &points[1];
+    let value: i64 = 10;
+
+    {
+        let value: i64 = 20;
+        let inner: i64 = 21;
+        let total: i64 = inspect(&container, point, 1);
+        if total != 45 or inner != 21 or value != 20 {
+            give 1;
+        }
+    }
+
+    let after: i64 = value + 1;
+    if after != 11 {
+        give 2;
+    }
+    give 0;
+}

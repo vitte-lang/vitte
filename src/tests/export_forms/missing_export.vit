@@ -1,7 +1,84 @@
-space demo/missing_export;
+/// Negative export-resolution test.
+///
+/// This file deliberately exports declarations that do not exist.
+///
+/// Expected result:
+/// - lexing succeeds;
+/// - parsing succeeds;
+/// - export resolution fails;
+/// - diagnostics identify the missing exported symbol;
+/// - the diagnostic points at the export declaration;
+/// - failure occurs during export/name resolution rather than parsing;
+/// - no missing declaration is synthesized;
+/// - compilation must fail.
 
-export missing;
+space tests::export_forms::missing_export;
 
-proc main() -> int {
-    give 0;
+/// Valid declarations used as controls.
+
+const EXISTING_VALUE: i64 = 42;
+
+form ExistingPoint {
+    x: i64,
+    y: i64,
 }
+
+pick ExistingState {
+    Ready,
+    Finished,
+}
+
+proc existing_identity(
+    value: i64
+) -> i64 {
+    give value;
+}
+
+proc existing_add(
+    left: i64,
+    right: i64
+) -> i64 {
+    give left + right;
+}
+
+proc existing_make_point(
+    x: i64,
+    y: i64
+) -> ExistingPoint {
+    give ExistingPoint {
+        x: x,
+        y: y,
+    };
+}
+
+proc existing_point_sum(
+    point: &ExistingPoint
+) -> i64 {
+    give point.x + point.y;
+}
+
+/// Control exports.
+///
+/// These declarations exist and must resolve normally. They ensure that the
+/// export mechanism itself is active before the intentionally invalid export.
+
+export EXISTING_VALUE as VALUE;
+export ExistingPoint as Point;
+export ExistingState as State;
+export existing_identity as identity;
+export existing_add as add;
+export existing_make_point as make_point;
+export existing_point_sum as point_sum;
+
+/// Intentional error.
+///
+/// `MISSING_VALUE` has no declaration in this module.
+///
+/// The frontend must report an unresolved export target rather than:
+/// - creating a declaration;
+/// - treating the alias as a declaration;
+/// - silently ignoring the export;
+/// - resolving it to `EXISTING_VALUE`;
+/// - reporting a parser error.
+
+export MISSING_VALUE as MissingValue;

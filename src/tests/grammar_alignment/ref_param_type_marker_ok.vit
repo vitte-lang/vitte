@@ -1,32 +1,551 @@
-space compiler/tests/grammar_alignment/ref_param_type_marker_ok
+/// Grammar alignment test for reference parameter type markers.
+///
+/// Positive test for `&Type` in procedure parameter declarations.
+///
+/// This verifies that `&` is interpreted correctly in two distinct contexts:
+///
+/// - parameter type marker:
+///     value: &Type
+///
+/// - reference expression:
+///     &value
+///
+/// Expected result:
+/// - lexing succeeds;
+/// - parsing succeeds;
+/// - `&Type` forms a reference type;
+/// - `&value` forms a reference expression;
+/// - reference parameters accept references of the expected type;
+/// - reference parameters can be forwarded to other procedures;
+/// - several reference parameters can coexist;
+/// - primitive and user-defined types work as referenced types;
+/// - semantic analysis succeeds;
+/// - compilation succeeds.
 
-proc read_value(value: ref int) -> int {
-    give value
+space tests::grammar_alignment::ref_param_type_marker_ok;
+
+form Point {
+    x: i64,
+    y: i64,
 }
 
-proc write_value(value: ref mut int) -> int {
-    give value
+form Pair {
+    left: i64,
+    right: i64,
 }
 
-proc pick_value(value: int) -> int {
-    pick value {
-        _ {
-            give 0
+form Record {
+    id: u64,
+    value: i64,
+    enabled: bool,
+}
+
+/// Basic reference parameter.
+proc read_i64(
+    value: &i64
+) -> i64 {
+    give value;
+}
+
+/// Reference to an unsigned integer.
+proc read_u64(
+    value: &u64
+) -> u64 {
+    give value;
+}
+
+/// Reference to a boolean.
+proc read_bool(
+    value: &bool
+) -> bool {
+    give value;
+}
+
+/// Multiple reference parameters of the same type.
+proc add_refs(
+    left: &i64,
+    right: &i64
+) -> i64 {
+    give left + right;
+}
+
+/// Multiple reference parameters with different primitive types.
+proc validate_values(
+    id: &u64,
+    value: &i64,
+    enabled: &bool
+) -> bool {
+    give id == 42 &&
+         value == 42 &&
+         enabled;
+}
+
+/// Reference parameter to a user-defined form.
+proc point_sum(
+    point: &Point
+) -> i64 {
+    give point.x + point.y;
+}
+
+/// Multiple references to user-defined forms.
+proc pair_sum(
+    first: &Pair,
+    second: &Pair
+) -> i64 {
+    give first.left +
+         first.right +
+         second.left +
+         second.right;
+}
+
+/// Reference parameter with several field reads.
+proc validate_record(
+    record: &Record
+) -> bool {
+    give record.id == 42 &&
+         record.value == 42 &&
+         record.enabled;
+}
+
+/// Forward a reference parameter directly.
+///
+/// No second `&` is needed because `value` already has reference type.
+proc forward_i64(
+    value: &i64
+) -> i64 {
+    give read_i64(value);
+}
+
+/// Forward through several procedures.
+proc forward_i64_level_two(
+    value: &i64
+) -> i64 {
+    give forward_i64(value);
+}
+
+proc forward_i64_level_three(
+    value: &i64
+) -> i64 {
+    give forward_i64_level_two(value);
+}
+
+/// Forward several references.
+proc forward_add(
+    left: &i64,
+    right: &i64
+) -> i64 {
+    give add_refs(left, right);
+}
+
+/// Reference parameter used in an expression.
+proc reference_expression(
+    value: &i64
+) -> i64 {
+    give value + 1;
+}
+
+/// Reference parameter used repeatedly.
+proc repeated_reference_read(
+    value: &i64
+) -> i64 {
+    give value +
+         value +
+         value;
+}
+
+/// Reference parameter inside a conditional.
+proc reference_in_condition(
+    value: &i64
+) -> bool {
+    if value == 42 {
+        give true;
+    }
+
+    give false;
+}
+
+/// Boolean reference inside control flow.
+proc boolean_reference_condition(
+    enabled: &bool
+) -> i64 {
+    if enabled {
+        give 42;
+    }
+
+    give 0;
+}
+
+/// Reference to a form forwarded to another procedure.
+proc forward_point(
+    point: &Point
+) -> i64 {
+    give point_sum(point);
+}
+
+/// Reference to a record forwarded to another procedure.
+proc forward_record(
+    record: &Record
+) -> bool {
+    give validate_record(record);
+}
+
+/// Mix value and reference parameters.
+proc add_value_and_reference(
+    left: i64,
+    right: &i64
+) -> i64 {
+    give left + right;
+}
+
+/// Reference parameter after a value parameter.
+proc mixed_parameter_order_a(
+    prefix: i64,
+    value: &i64,
+    suffix: i64
+) -> i64 {
+    give prefix + value + suffix;
+}
+
+/// Reference parameter before value parameters.
+proc mixed_parameter_order_b(
+    value: &i64,
+    left: i64,
+    right: i64
+) -> i64 {
+    give value + left + right;
+}
+
+/// Several alternating value/reference parameters.
+proc alternating_parameters(
+    a: i64,
+    b: &i64,
+    c: i64,
+    d: &i64
+) -> i64 {
+    give a + b + c + d;
+}
+
+/// Local immutable value passed by reference.
+proc local_immutable_reference() -> i64 {
+    let value: i64 = 42;
+
+    give read_i64(&value);
+}
+
+/// Local mutable value passed by reference.
+proc local_mutable_reference() -> i64 {
+    let mut value: i64 = 20;
+
+    set value += 22;
+
+    give read_i64(&value);
+}
+
+/// Two locals passed by reference.
+proc two_local_references() -> i64 {
+    let left: i64 = 20;
+    let right: i64 = 22;
+
+    give add_refs(
+        &left,
+        &right);
+}
+
+/// References created from expression-local bindings.
+proc computed_local_references() -> i64 {
+    let left: i64 = 10 + 10;
+    let right: i64 = 11 + 11;
+
+    give add_refs(
+        &left,
+        &right);
+}
+
+/// User-defined form passed by reference.
+proc local_point_reference() -> i64 {
+    let point: Point =
+        Point {
+            x: 20,
+            y: 22,
+        };
+
+    give point_sum(&point);
+}
+
+/// Mutable form passed by reference after field-independent initialization.
+proc local_mutable_point_reference() -> i64 {
+    let mut point: Point =
+        Point {
+            x: 10,
+            y: 22,
+        };
+
+    set point.x = 20;
+
+    give point_sum(&point);
+}
+
+/// Several forms passed by reference.
+proc multiple_form_references() -> i64 {
+    let first: Pair =
+        Pair {
+            left: 10,
+            right: 10,
+        };
+
+    let second: Pair =
+        Pair {
+            left: 11,
+            right: 11,
+        };
+
+    give pair_sum(
+        &first,
+        &second);
+}
+
+/// Record reference with heterogeneous fields.
+proc local_record_reference() -> bool {
+    let record: Record =
+        Record {
+            id: 42,
+            value: 42,
+            enabled: true,
+        };
+
+    give validate_record(&record);
+}
+
+/// Mixed primitive references.
+proc mixed_primitive_references() -> bool {
+    let id: u64 = 42;
+    let value: i64 = 42;
+    let enabled: bool = true;
+
+    give validate_values(
+        &id,
+        &value,
+        &enabled);
+}
+
+/// Reference forwarding must preserve the reference type.
+proc deep_forwarding() -> i64 {
+    let value: i64 = 42;
+
+    give forward_i64_level_three(
+        &value);
+}
+
+/// Reference parameters in nested calls.
+proc nested_reference_calls() -> i64 {
+    let left: i64 = 20;
+    let right: i64 = 22;
+
+    let sum: i64 =
+        forward_add(
+            &left,
+            &right);
+
+    give read_i64(&sum);
+}
+
+/// Value and reference parameters in the same call.
+proc mixed_value_reference_call() -> i64 {
+    let right: i64 = 22;
+
+    give add_value_and_reference(
+        20,
+        &right);
+}
+
+/// Reference marker parsing with parameters in the middle of a parameter list.
+proc mixed_parameter_positions() -> bool {
+    let first: i64 = 20;
+    let second: i64 = 12;
+
+    let a: i64 =
+        mixed_parameter_order_a(
+            10,
+            &first,
+            12);
+
+    let b: i64 =
+        mixed_parameter_order_b(
+            &first,
+            10,
+            12);
+
+    let c: i64 =
+        alternating_parameters(
+            5,
+            &first,
+            5,
+            &second);
+
+    give a == 42 &&
+         b == 42 &&
+         c == 42;
+}
+
+/// Reference used repeatedly across several calls.
+proc repeated_calls() -> bool {
+    let value: i64 = 42;
+
+    let first: i64 =
+        read_i64(&value);
+
+    let second: i64 =
+        forward_i64(&value);
+
+    let third: i64 =
+        forward_i64_level_two(&value);
+
+    give first == 42 &&
+         second == 42 &&
+         third == 42;
+}
+
+/// Reference parameter used inside nested control flow.
+proc reference_nested_control_flow(
+    value: &i64,
+    enabled: &bool
+) -> i64 {
+    if enabled {
+        if value == 42 {
+            give value;
         }
     }
-    give 0
+
+    give 0;
 }
 
-proc call_ref() -> int {
-    let value: int = 1
-    give read_value(ref value)
+/// Integrated reference-type test.
+proc integrated_reference_test() -> bool {
+    let number: i64 = 42;
+    let id: u64 = 42;
+    let enabled: bool = true;
+
+    let point: Point =
+        Point {
+            x: 20,
+            y: 22,
+        };
+
+    let record: Record =
+        Record {
+            id: id,
+            value: number,
+            enabled: enabled,
+        };
+
+    give read_i64(&number) == 42 &&
+         read_u64(&id) == 42 &&
+         read_bool(&enabled) &&
+         point_sum(&point) == 42 &&
+         validate_record(&record) &&
+         reference_in_condition(&number) &&
+         boolean_reference_condition(&enabled) == 42 &&
+         reference_nested_control_flow(
+             &number,
+             &enabled) == 42;
 }
 
-proc set_typed() -> int {
-    set value: int = 1
-    give value
-}
-
+/// Entry point.
+///
+/// Every return code identifies the first reference-parameter behavior that
+/// failed.
 proc main() -> int {
-    give 0
+    let value: i64 = 42;
+    let unsigned_value: u64 = 42;
+    let enabled: bool = true;
+
+    if read_i64(&value) != 42 {
+        give 1;
+    }
+
+    if read_u64(&unsigned_value) != 42 {
+        give 2;
+    }
+
+    if !read_bool(&enabled) {
+        give 3;
+    }
+
+    if local_immutable_reference() != 42 {
+        give 4;
+    }
+
+    if local_mutable_reference() != 42 {
+        give 5;
+    }
+
+    if two_local_references() != 42 {
+        give 6;
+    }
+
+    if computed_local_references() != 42 {
+        give 7;
+    }
+
+    if local_point_reference() != 42 {
+        give 8;
+    }
+
+    if local_mutable_point_reference() != 42 {
+        give 9;
+    }
+
+    if multiple_form_references() != 42 {
+        give 10;
+    }
+
+    if !local_record_reference() {
+        give 11;
+    }
+
+    if !mixed_primitive_references() {
+        give 12;
+    }
+
+    if deep_forwarding() != 42 {
+        give 13;
+    }
+
+    if nested_reference_calls() != 42 {
+        give 14;
+    }
+
+    if mixed_value_reference_call() != 42 {
+        give 15;
+    }
+
+    if !mixed_parameter_positions() {
+        give 16;
+    }
+
+    if !repeated_calls() {
+        give 17;
+    }
+
+    if !reference_in_condition(&value) {
+        give 18;
+    }
+
+    if boolean_reference_condition(&enabled) != 42 {
+        give 19;
+    }
+
+    if reference_expression(&value) != 43 {
+        give 20;
+    }
+
+    if repeated_reference_read(&value) != 126 {
+        give 21;
+    }
+
+    if !integrated_reference_test() {
+        give 22;
+    }
+
+    give 0;
 }

@@ -1,11 +1,840 @@
-space demo/local_main;
+/// Local-vs-import collision test.
+///
+/// `local_lib` exports declarations whose names are deliberately redeclared
+/// locally in this module.
+///
+/// This fixture verifies the collision policy between:
+/// - local declarations;
+/// - glob-imported declarations;
+/// - constants;
+/// - forms;
+/// - picks;
+/// - procedures.
+///
+/// Expected behavior:
+/// - `local_lib` resolves successfully;
+/// - the glob import succeeds as an import operation;
+/// - local declarations retain their local identity;
+/// - imported declarations with the same names do not silently replace locals;
+/// - lookup is deterministic;
+/// - no declaration is accidentally merged with its imported counterpart;
+/// - qualified access through `local_lib` remains available;
+/// - local and qualified imported declarations can coexist.
+///
+/// Local declarations intentionally use observably different values:
+/// - local SOURCE_ID == 99;
+/// - imported local_lib::SOURCE_ID == 7;
+/// - local VALUE == 1000;
+/// - imported local_lib::VALUE == 42.
 
-use local_lib;
+space tests::import_collision::local_main;
 
-proc visible() -> int {
-    give 1;
+use tests::import_collision::local_lib;
+use tests::import_collision::local_lib::*;
+
+const SOURCE_ID: i64 = 99;
+const VALUE: i64 = 1000;
+const MODULE_VALUE: i64 = 2000;
+const LOCAL_ZERO: i64 = 0;
+const LOCAL_ONE: i64 = 1;
+
+form Point {
+    x: i64,
+    y: i64,
+}
+
+form Record {
+    value: i64,
+    source: i64,
+}
+
+form Wrapper {
+    point: Point,
+    record: Record,
+}
+
+pick State {
+    Local,
+    Imported,
+}
+
+pick ResultKind {
+    LocalSuccess,
+    LocalFailure,
+}
+
+proc identity(
+    value: i64
+) -> i64 {
+    give value + LOCAL_ONE;
+}
+
+proc source_id() -> i64 {
+    give SOURCE_ID;
+}
+
+proc common_value() -> i64 {
+    give VALUE;
+}
+
+proc module_value() -> i64 {
+    give MODULE_VALUE;
+}
+
+proc add(
+    left: i64,
+    right: i64
+) -> i64 {
+    give left + right + LOCAL_ONE;
+}
+
+proc make_point(
+    x: i64,
+    y: i64
+) -> Point {
+    give Point {
+        x: x,
+        y: y,
+    };
+}
+
+proc make_default_point() -> Point {
+    give make_point(
+        40,
+        60);
+}
+
+proc point_sum(
+    point: &Point
+) -> i64 {
+    give point.x +
+         point.y;
+}
+
+proc make_record(
+    value: i64
+) -> Record {
+    give Record {
+        value: value,
+        source: SOURCE_ID,
+    };
+}
+
+proc record_value(
+    record: &Record
+) -> i64 {
+    give record.value;
+}
+
+proc record_source(
+    record: &Record
+) -> i64 {
+    give record.source;
+}
+
+proc make_wrapper(
+    point: Point,
+    record: Record
+) -> Wrapper {
+    give Wrapper {
+        point: point,
+        record: record,
+    };
+}
+
+proc wrapper_value(
+    wrapper: &Wrapper
+) -> i64 {
+    give point_sum(
+               &wrapper.point) +
+         record_value(
+               &wrapper.record);
+}
+
+proc default_state() -> State {
+    give State.Local;
+}
+
+proc success_kind() -> ResultKind {
+    give ResultKind.LocalSuccess;
+}
+
+/// Verify that an unqualified constant resolves to the local declaration.
+
+proc test_local_constant_value() -> bool {
+    give VALUE == 1000;
+}
+
+/// Verify that the imported declaration remains reachable through the module.
+
+proc test_imported_constant_value() -> bool {
+    give local_lib::VALUE == 42;
+}
+
+proc test_local_source_id() -> bool {
+    give SOURCE_ID == 99 &&
+         source_id() == 99;
+}
+
+proc test_imported_source_id() -> bool {
+    give local_lib::SOURCE_ID == 7 &&
+         local_lib::source_id() == 7;
+}
+
+proc test_local_module_value() -> bool {
+    give MODULE_VALUE == 2000 &&
+         module_value() == 2000;
+}
+
+proc test_imported_module_value() -> bool {
+    give local_lib::MODULE_VALUE == 42 &&
+         local_lib::module_value() == 42;
+}
+
+/// Local `identity` differs intentionally from the imported implementation.
+
+proc test_local_identity() -> bool {
+    give identity(41) == 42;
+}
+
+proc test_imported_identity() -> bool {
+    give local_lib::identity(42) == 42;
+}
+
+/// Local `add` deliberately adds one extra unit.
+
+proc test_local_add() -> bool {
+    give add(20, 21) == 42;
+}
+
+proc test_imported_add() -> bool {
+    give local_lib::add(20, 22) == 42;
+}
+
+/// Type collision.
+///
+/// `Point` and `local_lib::Point` must remain distinct nominal declarations.
+
+proc test_local_point() -> bool {
+    let point: Point =
+        make_default_point();
+
+    give point.x == 40 &&
+         point.y == 60 &&
+         point_sum(&point) == 100;
+}
+
+proc test_imported_point() -> bool {
+    let point: local_lib::Point =
+        local_lib::make_default_point();
+
+    give local_lib::point_x(&point) == 20 &&
+         local_lib::point_y(&point) == 22 &&
+         local_lib::point_sum(&point) == 42;
+}
+
+/// Both type names appear in the same procedure.
+///
+/// This exercises symbol identity directly and helps catch accidental type
+/// merging after glob import.
+
+proc test_parallel_point_types() -> bool {
+    let local_point: Point =
+        make_point(
+            40,
+            60);
+
+    let imported_point: local_lib::Point =
+        local_lib::make_point(
+            20,
+            22);
+
+    give point_sum(&local_point) == 100 &&
+         local_lib::point_sum(
+             &imported_point) == 42;
+}
+
+proc consume_local_point(
+    point: &Point
+) -> i64 {
+    give point_sum(point);
+}
+
+proc consume_imported_point(
+    point: &local_lib::Point
+) -> i64 {
+    give local_lib::point_sum(point);
+}
+
+proc produce_local_point() -> Point {
+    give make_default_point();
+}
+
+proc produce_imported_point() -> local_lib::Point {
+    give local_lib::make_default_point();
+}
+
+proc test_point_parameter_identity() -> bool {
+    let local_point: Point =
+        produce_local_point();
+
+    let imported_point: local_lib::Point =
+        produce_imported_point();
+
+    give consume_local_point(
+               &local_point) == 100 &&
+         consume_imported_point(
+               &imported_point) == 42;
+}
+
+/// Record collision.
+
+proc test_local_record() -> bool {
+    let record: Record =
+        make_record(
+            1000);
+
+    give record_value(&record) == 1000 &&
+         record_source(&record) == 99;
+}
+
+proc test_imported_record() -> bool {
+    let record: local_lib::Record =
+        local_lib::make_record(
+            42);
+
+    give local_lib::record_value(
+               &record) == 42 &&
+         local_lib::record_source(
+               &record) == 7 &&
+         local_lib::record_enabled(
+               &record);
+}
+
+proc test_parallel_record_types() -> bool {
+    let local_record: Record =
+        make_record(
+            1000);
+
+    let imported_record: local_lib::Record =
+        local_lib::make_record(
+            42);
+
+    give record_value(
+               &local_record) == 1000 &&
+         record_source(
+               &local_record) == 99 &&
+         local_lib::record_value(
+               &imported_record) == 42 &&
+         local_lib::record_source(
+               &imported_record) == 7;
+}
+
+/// Wrapper collision.
+
+proc test_local_wrapper() -> bool {
+    let point: Point =
+        make_default_point();
+
+    let record: Record =
+        make_record(
+            1000);
+
+    let wrapper: Wrapper =
+        make_wrapper(
+            point,
+            record);
+
+    give wrapper_value(&wrapper) == 1100;
+}
+
+proc test_imported_wrapper() -> bool {
+    let wrapper: local_lib::Wrapper =
+        local_lib::make_default_wrapper();
+
+    give local_lib::wrapper_point_sum(
+               &wrapper) == 42 &&
+         local_lib::wrapper_record_value(
+               &wrapper) == 42 &&
+         local_lib::wrapper_source(
+               &wrapper) == 7 &&
+         local_lib::wrapper_value(
+               &wrapper) == 84;
+}
+
+/// Pick collision.
+///
+/// The local and imported `State` declarations must remain distinct.
+
+proc test_local_state() -> bool {
+    let state: State =
+        default_state();
+
+    give state == State.Local;
+}
+
+proc test_imported_state() -> bool {
+    let state: local_lib::State =
+        local_lib::default_state();
+
+    give state ==
+         local_lib::State.Idle;
+}
+
+proc test_imported_state_variants() -> bool {
+    let idle: local_lib::State =
+        local_lib::default_state();
+
+    let ready: local_lib::State =
+        local_lib::ready_state();
+
+    let running: local_lib::State =
+        local_lib::running_state();
+
+    let finished: local_lib::State =
+        local_lib::finished_state();
+
+    give idle ==
+             local_lib::State.Idle &&
+         ready ==
+             local_lib::State.Ready &&
+         running ==
+             local_lib::State.Running &&
+         finished ==
+             local_lib::State.Finished;
+}
+
+proc test_local_result_kind() -> bool {
+    let result: ResultKind =
+        success_kind();
+
+    give result ==
+         ResultKind.LocalSuccess;
+}
+
+proc test_imported_result_kind() -> bool {
+    let success: local_lib::ResultKind =
+        local_lib::success_kind();
+
+    let failure: local_lib::ResultKind =
+        local_lib::failure_kind();
+
+    give success ==
+             local_lib::ResultKind.Success &&
+         failure ==
+             local_lib::ResultKind.Failure;
+}
+
+/// Non-colliding imported declarations remain directly usable.
+///
+/// `Range` is intentionally not declared locally.
+
+proc test_non_conflicting_range() -> bool {
+    let range: Range =
+        make_default_range();
+
+    give range_width(&range) == 42 &&
+         range_valid(&range) &&
+         range_contains(&range, 21);
+}
+
+/// The same non-conflicting declaration through explicit qualification.
+
+proc test_qualified_range() -> bool {
+    let range: local_lib::Range =
+        local_lib::make_default_range();
+
+    give local_lib::range_width(
+               &range) == 42 &&
+         local_lib::range_valid(
+               &range);
+}
+
+/// `Pair` is also non-conflicting locally.
+
+proc test_non_conflicting_pair() -> bool {
+    let pair: Pair =
+        make_default_pair();
+
+    give pair_sum(&pair) == 42;
+}
+
+proc test_qualified_pair() -> bool {
+    let pair: local_lib::Pair =
+        local_lib::make_default_pair();
+
+    give local_lib::pair_sum(
+        &pair) == 42;
+}
+
+/// `Nested` exists only in the imported module.
+
+proc test_non_conflicting_nested() -> bool {
+    let nested: Nested =
+        make_default_nested();
+
+    give nested_point_sum(&nested) == 42 &&
+         nested_range_width(&nested) == 42 &&
+         nested_record_value(&nested) == 42 &&
+         nested_pair_sum(&nested) == 42 &&
+         nested_source(&nested) == 7;
+}
+
+proc test_qualified_nested() -> bool {
+    let nested: local_lib::Nested =
+        local_lib::make_default_nested();
+
+    give local_lib::validate_nested(
+        &nested);
+}
+
+/// `Direction` exists only in the imported module.
+
+proc test_non_conflicting_direction() -> bool {
+    let left: Direction =
+        left_direction();
+
+    let right: Direction =
+        right_direction();
+
+    give left == Direction.Left &&
+         right == Direction.Right;
+}
+
+proc test_qualified_direction() -> bool {
+    let left: local_lib::Direction =
+        local_lib::left_direction();
+
+    let right: local_lib::Direction =
+        local_lib::right_direction();
+
+    give left ==
+             local_lib::Direction.Left &&
+         right ==
+             local_lib::Direction.Right;
+}
+
+/// Local shadowing inside a procedure.
+///
+/// The local variable must shadow the module-level local constant `VALUE`,
+/// which itself shadows/collides with the glob-imported `local_lib::VALUE`.
+
+proc test_nested_value_shadowing() -> bool {
+    let VALUE: i64 = 123;
+
+    give VALUE == 123 &&
+         local_lib::VALUE == 42;
+}
+
+/// Nested lexical scope shadowing.
+
+proc test_deep_shadowing() -> bool {
+    let mut result: i64 = VALUE;
+
+    {
+        let VALUE: i64 = 100;
+
+        set result = VALUE;
+
+        {
+            let VALUE: i64 = 42;
+
+            set result = VALUE;
+        }
+    }
+
+    give result == 42 &&
+         local_lib::VALUE == 42;
+}
+
+/// Local declarations must continue resolving consistently after many
+/// qualified imported lookups.
+
+proc test_repeated_local_resolution() -> bool {
+    give VALUE == 1000 &&
+         VALUE == 1000 &&
+         SOURCE_ID == 99 &&
+         SOURCE_ID == 99 &&
+         identity(41) == 42 &&
+         identity(41) == 42 &&
+         common_value() == 1000 &&
+         common_value() == 1000;
+}
+
+proc test_repeated_imported_resolution() -> bool {
+    give local_lib::VALUE == 42 &&
+         local_lib::VALUE == 42 &&
+         local_lib::SOURCE_ID == 7 &&
+         local_lib::SOURCE_ID == 7 &&
+         local_lib::identity(42) == 42 &&
+         local_lib::identity(42) == 42 &&
+         local_lib::common_value() == 42 &&
+         local_lib::common_value() == 42;
+}
+
+/// Alternating local/imported lookup catches caches keyed only by the final
+/// identifier rather than by declaration owner/module.
+
+proc test_alternating_resolution() -> bool {
+    give VALUE == 1000 &&
+         local_lib::VALUE == 42 &&
+         VALUE == 1000 &&
+         local_lib::VALUE == 42 &&
+         source_id() == 99 &&
+         local_lib::source_id() == 7 &&
+         source_id() == 99 &&
+         local_lib::source_id() == 7;
+}
+
+/// Mixed expression using both declarations with the same source-level name.
+
+proc test_mixed_values() -> bool {
+    let local_value: i64 =
+        VALUE;
+
+    let imported_value: i64 =
+        local_lib::VALUE;
+
+    give local_value == 1000 &&
+         imported_value == 42 &&
+         local_value - imported_value == 958;
+}
+
+/// Local and imported procedures with identical names are invoked in one
+/// expression tree.
+
+proc test_mixed_calls() -> bool {
+    let local_result: i64 =
+        identity(41);
+
+    let imported_result: i64 =
+        local_lib::identity(42);
+
+    give local_result == 42 &&
+         imported_result == 42;
+}
+
+/// Verify local mutation remains unrelated to imported immutable declarations.
+
+proc test_mutation() -> bool {
+    let mut value: i64 = 0;
+
+    set value =
+        local_lib::VALUE;
+
+    set value =
+        identity(value - 1);
+
+    give value == 42 &&
+         VALUE == 1000 &&
+         local_lib::VALUE == 42;
+}
+
+/// Control flow mixing local and imported symbols.
+
+proc test_control_flow(
+    use_imported: bool
+) -> i64 {
+    if use_imported {
+        give local_lib::VALUE;
+    }
+
+    give identity(41);
+}
+
+/// Imported functionality that internally resolves its own declarations must
+/// not accidentally bind to declarations in this consumer.
+
+proc test_imported_internal_resolution() -> bool {
+    give local_lib::composed_value() == 42 &&
+         local_lib::nested_call_value() == 42 &&
+         local_lib::arithmetic_pipeline(21) == 42 &&
+         local_lib::normalize_to_module_value(0) == 42 &&
+         local_lib::normalize_to_module_value(42) == 42 &&
+         local_lib::normalize_to_module_value(100) == 42 &&
+         local_lib::conditional_value(true) == 42 &&
+         local_lib::conditional_value(false) == 0 &&
+         local_lib::accumulate_value() == 42;
+}
+
+/// Imported aggregate validation must retain imported nominal type identity.
+
+proc test_imported_validation() -> bool {
+    let point: local_lib::Point =
+        local_lib::make_default_point();
+
+    let range: local_lib::Range =
+        local_lib::make_default_range();
+
+    let record: local_lib::Record =
+        local_lib::make_record(
+            local_lib::VALUE);
+
+    let pair: local_lib::Pair =
+        local_lib::make_default_pair();
+
+    let wrapper: local_lib::Wrapper =
+        local_lib::make_default_wrapper();
+
+    let nested: local_lib::Nested =
+        local_lib::make_default_nested();
+
+    give local_lib::validate_point(&point) &&
+         local_lib::validate_range(&range) &&
+         local_lib::validate_record(&record) &&
+         local_lib::validate_pair(&pair) &&
+         local_lib::validate_wrapper(&wrapper) &&
+         local_lib::validate_nested(&nested);
+}
+
+/// Comprehensive mixed local/imported test.
+
+proc test_integrated_collision_resolution() -> bool {
+    let local_point: Point =
+        make_default_point();
+
+    let imported_point: local_lib::Point =
+        local_lib::make_default_point();
+
+    let local_record: Record =
+        make_record(
+            VALUE);
+
+    let imported_record: local_lib::Record =
+        local_lib::make_record(
+            local_lib::VALUE);
+
+    let local_wrapper: Wrapper =
+        make_wrapper(
+            local_point,
+            local_record);
+
+    let imported_wrapper: local_lib::Wrapper =
+        local_lib::make_wrapper(
+            imported_point,
+            imported_record);
+
+    let local_state: State =
+        default_state();
+
+    let imported_state: local_lib::State =
+        local_lib::default_state();
+
+    let local_result: ResultKind =
+        success_kind();
+
+    let imported_result: local_lib::ResultKind =
+        local_lib::success_kind();
+
+    give VALUE == 1000 &&
+         local_lib::VALUE == 42 &&
+
+         SOURCE_ID == 99 &&
+         local_lib::SOURCE_ID == 7 &&
+
+         identity(41) == 42 &&
+         local_lib::identity(42) == 42 &&
+
+         point_sum(&local_point) == 100 &&
+         local_lib::point_sum(
+             &imported_point) == 42 &&
+
+         record_value(&local_record) == 1000 &&
+         record_source(&local_record) == 99 &&
+
+         local_lib::record_value(
+             &imported_record) == 42 &&
+         local_lib::record_source(
+             &imported_record) == 7 &&
+
+         wrapper_value(
+             &local_wrapper) == 1100 &&
+
+         local_lib::wrapper_value(
+             &imported_wrapper) == 84 &&
+
+         local_state ==
+             State.Local &&
+
+         imported_state ==
+             local_lib::State.Idle &&
+
+         local_result ==
+             ResultKind.LocalSuccess &&
+
+         imported_result ==
+             local_lib::ResultKind.Success;
 }
 
 proc main() -> int {
-    give visible() + local_lib::visible();
+    if !test_local_constant_value() { give 1; }
+    if !test_imported_constant_value() { give 2; }
+
+    if !test_local_source_id() { give 3; }
+    if !test_imported_source_id() { give 4; }
+
+    if !test_local_module_value() { give 5; }
+    if !test_imported_module_value() { give 6; }
+
+    if !test_local_identity() { give 7; }
+    if !test_imported_identity() { give 8; }
+
+    if !test_local_add() { give 9; }
+    if !test_imported_add() { give 10; }
+
+    if !test_local_point() { give 11; }
+    if !test_imported_point() { give 12; }
+    if !test_parallel_point_types() { give 13; }
+    if !test_point_parameter_identity() { give 14; }
+
+    if !test_local_record() { give 15; }
+    if !test_imported_record() { give 16; }
+    if !test_parallel_record_types() { give 17; }
+
+    if !test_local_wrapper() { give 18; }
+    if !test_imported_wrapper() { give 19; }
+
+    if !test_local_state() { give 20; }
+    if !test_imported_state() { give 21; }
+    if !test_imported_state_variants() { give 22; }
+
+    if !test_local_result_kind() { give 23; }
+    if !test_imported_result_kind() { give 24; }
+
+    if !test_non_conflicting_range() { give 25; }
+    if !test_qualified_range() { give 26; }
+
+    if !test_non_conflicting_pair() { give 27; }
+    if !test_qualified_pair() { give 28; }
+
+    if !test_non_conflicting_nested() { give 29; }
+    if !test_qualified_nested() { give 30; }
+
+    if !test_non_conflicting_direction() { give 31; }
+    if !test_qualified_direction() { give 32; }
+
+    if !test_nested_value_shadowing() { give 33; }
+    if !test_deep_shadowing() { give 34; }
+
+    if !test_repeated_local_resolution() { give 35; }
+    if !test_repeated_imported_resolution() { give 36; }
+    if !test_alternating_resolution() { give 37; }
+
+    if !test_mixed_values() { give 38; }
+    if !test_mixed_calls() { give 39; }
+    if !test_mutation() { give 40; }
+
+    if test_control_flow(true) != 42 { give 41; }
+    if test_control_flow(false) != 42 { give 42; }
+
+    if !test_imported_internal_resolution() { give 43; }
+    if !test_imported_validation() { give 44; }
+
+    if !local_lib::repeated_lookup_test() { give 45; }
+    if !local_lib::cross_category_test() { give 46; }
+    if !local_lib::library_self_test() { give 47; }
+
+    if !test_integrated_collision_resolution() { give 48; }
+
+    give 0;
 }

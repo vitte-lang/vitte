@@ -1,7 +1,376 @@
-space demo/module_ok;
+/// Module-qualified import visibility test.
+///
+/// Positive test for importing `lib` as a module and accessing its visible
+/// declarations through explicit module qualification.
+///
+/// This test intentionally avoids glob imports. Every external declaration is
+/// referenced through `lib::*`, ensuring that module lookup and member
+/// resolution are exercised independently from glob symbol injection.
+///
+/// Expected result:
+/// - `lib` resolves as an imported module;
+/// - visible constants resolve through `lib`;
+/// - visible forms resolve in type positions;
+/// - visible form constructors resolve through `lib`;
+/// - visible procedures resolve through `lib`;
+/// - values of imported types can cross procedure boundaries;
+/// - references to imported forms remain valid;
+/// - member access works after qualified construction;
+/// - repeated qualified lookup is deterministic;
+/// - local declarations do not interfere with module members;
+/// - semantic analysis completes without visibility diagnostics;
+/// - compilation succeeds.
 
-use lib;
+space tests::import_visibility::module_ok;
 
+use tests::import_visibility::lib as lib;
+
+/// Verify qualified access to exported constants.
+proc test_constants() -> bool {
+    let minimum: u64 = lib::PUBLIC_MIN_ID;
+    let maximum: u64 = lib::PUBLIC_MAX_ID;
+    let default_value: u64 = lib::PUBLIC_LIMIT;
+
+    give minimum <= default_value &&
+         default_value <= maximum;
+}
+
+/// Verify that an imported form can be referenced as a type and constructed
+/// through its module-qualified name.
+proc test_record_construction() -> bool {
+    let record: lib::PublicRecord =
+        lib::PublicRecord {
+            id: 42,
+            value: 100,
+            enabled: true,
+        };
+
+    give record.id == 42 &&
+         record.value == 100 &&
+         record.enabled;
+}
+
+/// Verify an imported form in a procedure parameter.
+proc inspect_record(
+    record: &lib::PublicRecord
+) -> bool {
+    give record.enabled &&
+         record.id > 0;
+}
+
+/// Verify imported types crossing local procedure boundaries.
+proc test_record_reference() -> bool {
+    let record: lib::PublicRecord =
+        lib::PublicRecord {
+            id: 7,
+            value: 42,
+            enabled: true,
+        };
+
+    give inspect_record(&record);
+}
+
+/// Verify construction of another imported aggregate.
+proc test_range() -> bool {
+    let range: lib::PublicRange =
+        lib::PublicRange {
+            minimum: 10,
+            maximum: 100,
+        };
+
+    give range.minimum == 10 &&
+         range.maximum == 100;
+}
+
+/// Verify ordinary qualified procedure calls.
+proc test_predicates() -> bool {
+    give lib::public_valid_identifier(0) &&
+         lib::public_valid_identifier(42) &&
+         lib::public_valid_identifier(100);
+}
+
+/// Verify a qualified procedure returning a scalar.
+proc test_identity() -> bool {
+    let value: i64 =
+        lib::public_identity(42);
+
+    give value == 42;
+}
+
+/// Verify several calls to the same imported procedure.
+proc test_repeated_call() -> bool {
+    let first: i64 =
+        lib::public_identity(10);
+
+    let second: i64 =
+        lib::public_identity(20);
+
+    let third: i64 =
+        lib::public_identity(12);
+
+    give first + second + third == 42;
+}
+
+/// Verify qualified arithmetic helpers.
+proc test_arithmetic() -> bool {
+    let sum: i64 =
+        lib::public_add(20, 22);
+
+    let difference: i64 =
+        lib::public_subtract(100, 58);
+
+    let product: i64 =
+        lib::public_multiply(6, 7);
+
+    give sum == 42 &&
+         difference == 42 &&
+         product == 42;
+}
+
+/// Verify a procedure returning an imported form.
+proc test_factory() -> bool {
+    let record: lib::PublicRecord =
+        lib::public_make_record(
+            42,
+            100,
+            true);
+
+    give record.id == 42 &&
+         record.value == 100 &&
+         record.enabled;
+}
+
+/// Verify that an imported procedure can accept an imported form.
+proc test_record_consumer() -> bool {
+    let record: lib::PublicRecord =
+        lib::public_make_record(
+            10,
+            42,
+            true);
+
+    let value: i64 =
+        lib::public_record_value(&record);
+
+    give value == 42;
+}
+
+/// Verify qualified range helpers.
+proc test_range_helpers() -> bool {
+    let range: lib::PublicRange =
+        lib::PublicRange {
+            minimum: 0,
+            maximum: 100,
+        };
+
+    give lib::public_valid_range(&range) &&
+         lib::public_value_in_range(0, &range) &&
+         lib::public_value_in_range(42, &range) &&
+         lib::public_value_in_range(100, &range);
+}
+
+/// Verify imported type + imported function + local binding composition.
+proc test_composition() -> bool {
+    let range: lib::PublicRange =
+        lib::PublicRange {
+            minimum: 0,
+            maximum: 100,
+        };
+
+    let record: lib::PublicRecord =
+        lib::public_make_record(
+            100,
+            lib::public_add(20, 22),
+            true);
+
+    give lib::public_value_in_range(
+             record.value,
+             &range) &&
+         lib::public_record_value(&record) == 42;
+}
+
+/// Verify that local names do not shadow module-qualified members.
+proc test_local_shadowing() -> bool {
+    let identity: i64 = 10;
+    let add: i64 = 20;
+    let PublicRecord: i64 = 12;
+
+    let imported: i64 =
+        lib::public_identity(
+            lib::public_add(identity, PublicRecord));
+
+    give add == 20 &&
+         imported == 22;
+}
+
+/// Verify repeated lookup of the module itself.
+///
+/// Each expression forces another qualified lookup and should resolve to the
+/// same imported module and declaration set.
+proc test_repeated_module_resolution() -> bool {
+    give lib::public_identity(1) == 1 &&
+         lib::public_identity(2) == 2 &&
+         lib::public_identity(3) == 3 &&
+         lib::public_identity(4) == 4 &&
+         lib::public_identity(5) == 5;
+}
+
+/// Verify an imported form returned by one imported function and consumed by
+/// another imported function.
+proc test_round_trip() -> bool {
+    let source: lib::PublicRecord =
+        lib::public_make_record(
+            77,
+            42,
+            true);
+
+    let value: i64 =
+        lib::public_record_value(&source);
+
+    let destination: lib::PublicRecord =
+        lib::public_make_record(
+            source.id,
+            value,
+            source.enabled);
+
+    give destination.id == source.id &&
+         destination.value == source.value &&
+         destination.enabled == source.enabled;
+}
+
+/// Verify imported declarations inside control flow.
+proc test_control_flow() -> bool {
+    let value: i64 =
+        lib::public_identity(42);
+
+    if lib::public_valid_identifier(42) {
+        give lib::public_add(value, 0) == 42;
+    }
+
+    give false;
+}
+
+/// Verify several qualified declarations in one expression tree.
+proc test_expression_resolution() -> bool {
+    give lib::public_add(
+               lib::public_identity(10),
+               lib::public_add(
+                   lib::public_identity(20),
+                   lib::public_identity(12))) == 42;
+}
+
+/// Verify the complete module-qualified path through several operations.
+proc test_integrated_path() -> bool {
+    let range: lib::PublicRange =
+        lib::PublicRange {
+            minimum: 0,
+            maximum: 100,
+        };
+
+    let computed: i64 =
+        lib::public_add(
+            lib::public_identity(20),
+            lib::public_identity(22));
+
+    let record: lib::PublicRecord =
+        lib::public_make_record(
+            42,
+            computed,
+            true);
+
+    if !lib::public_valid_range(&range) {
+        give false;
+    }
+
+    if !lib::public_value_in_range(
+        record.value,
+        &range) {
+        give false;
+    }
+
+    if lib::public_record_value(&record) != 42 {
+        give false;
+    }
+
+    give record.id == 42 &&
+         record.enabled;
+}
+
+/// Positive test entry point.
+///
+/// Every non-zero result identifies the first module-import behavior that
+/// failed at runtime.
 proc main() -> int {
-    give lib::visible() + lib::answer;
+    if !test_constants() {
+        give 1;
+    }
+
+    if !test_record_construction() {
+        give 2;
+    }
+
+    if !test_record_reference() {
+        give 3;
+    }
+
+    if !test_range() {
+        give 4;
+    }
+
+    if !test_predicates() {
+        give 5;
+    }
+
+    if !test_identity() {
+        give 6;
+    }
+
+    if !test_repeated_call() {
+        give 7;
+    }
+
+    if !test_arithmetic() {
+        give 8;
+    }
+
+    if !test_factory() {
+        give 9;
+    }
+
+    if !test_record_consumer() {
+        give 10;
+    }
+
+    if !test_range_helpers() {
+        give 11;
+    }
+
+    if !test_composition() {
+        give 12;
+    }
+
+    if !test_local_shadowing() {
+        give 13;
+    }
+
+    if !test_repeated_module_resolution() {
+        give 14;
+    }
+
+    if !test_round_trip() {
+        give 15;
+    }
+
+    if !test_control_flow() {
+        give 16;
+    }
+
+    if !test_expression_resolution() {
+        give 17;
+    }
+
+    if !test_integrated_path() {
+        give 18;
+    }
+
+    give 0;
 }

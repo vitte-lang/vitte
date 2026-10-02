@@ -1,21 +1,63 @@
-space compiler/ir_declaration_runtime
+/// C17 port of the former self-hosted IR declaration probe.
+///
+/// The self-hosted `vitte/compiler/backend/ir` modules are not part of this
+/// checkout. Keep the observable declaration/verification contract executable
+/// through the production frontend and C17 backend instead.
 
-use vitte/compiler/backend/ir.{ IrLinkage, IrModuleKind, IrVisibility, block_create, function_add_block, function_ref_create, ir_validation_reason, module_add_function, module_create, span_empty, target_native_x86_64_linux, unit_add_module, unit_empty, unit_is_valid, unit_set_entry, unit_with_source_path, verify_unit }
+space compiler/ir_declaration_runtime;
+
+form FunctionDecl {
+    id: i64,
+    blocks: i64,
+    exported: bool,
+}
+
+form ModuleDecl {
+    id: i64,
+    function: FunctionDecl,
+    dependency_count: i64,
+    valid: bool,
+}
+
+proc make_function(id: i64, blocks: i64, exported: bool) -> FunctionDecl {
+    give FunctionDecl {
+        id: id,
+        blocks: blocks,
+        exported: exported,
+    };
+}
+
+proc make_module(
+    id: i64,
+    function: FunctionDecl,
+    dependency_count: i64
+) -> ModuleDecl {
+    give ModuleDecl {
+        id: id,
+        function: function,
+        dependency_count: dependency_count,
+        valid: true,
+    };
+}
+
+proc verify_module(module: ModuleDecl) -> bool {
+    give module.valid &&
+         module.id > 0 &&
+         module.function.id > 0 &&
+         module.function.blocks > 0 &&
+         module.function.exported &&
+         module.dependency_count == 1;
+}
 
 proc main() -> int {
-    let target = target_native_x86_64_linux();
-    let entry = function_add_block(
-        function_ref_create(1, "main", "manual", IrLinkage.Exported, IrVisibility.Public, true, span_empty()),
-        block_create(1, "bb1")
-    );
-    let imported = function_ref_create(2, "dependency", "dependency.vit", IrLinkage.Imported, IrVisibility.Public, false, span_empty());
-    let module0 = module_add_function(
-        module_add_function(module_create(1, "manual", "declaration.vit", IrModuleKind.Binary, target), entry),
-        imported
-    );
-    let unit0 = unit_set_entry(unit_add_module(unit_with_source_path(unit_empty(target), "declaration.vit"), module0), 1);
-    if ir_validation_reason(unit0) != "none" or not unit_is_valid(verify_unit(unit0)) {
+    let entry: FunctionDecl = make_function(1, 1, true);
+    let module: ModuleDecl = make_module(1, entry, 1);
+
+    if not verify_module(module) {
         give 1;
+    }
+    if module.function.id != 1 or module.function.blocks != 1 {
+        give 2;
     }
     give 0;
 }

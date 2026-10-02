@@ -1,14 +1,1316 @@
-space frontend/expr_stmt_ok;
+/// Frontend expression-statement positive test.
+///
+/// Exercises valid expressions used as standalone statements.
+///
+/// Target grammar:
+///
+///     expr_stmt ::= expression ";"
+///
+/// Every expression statement in this file is intentionally valid.
+/// Its resulting value may be discarded.
 
-proc side() -> int {
-    give 7;
+space tests::frontend_expr_stmt::expr_stmt_ok;
+
+form Point {
+    x: i64,
+    y: i64,
+}
+
+form Record {
+    id: u64,
+    value: i64,
+    enabled: bool,
+}
+
+proc identity(value: i64) -> i64 {
+    give value;
+}
+
+proc add(left: i64, right: i64) -> i64 {
+    give left + right;
+}
+
+proc subtract(left: i64, right: i64) -> i64 {
+    give left - right;
+}
+
+proc multiply(left: i64, right: i64) -> i64 {
+    give left * right;
+}
+
+proc consume(value: i64) -> i64 {
+    give value;
+}
+
+proc consume_two(left: i64, right: i64) -> i64 {
+    give left + right;
+}
+
+proc consume_three(
+    first: i64,
+    second: i64,
+    third: i64
+) -> i64 {
+    give first + second + third;
+}
+
+proc make_point(x: i64, y: i64) -> Point {
+    give Point {
+        x: x,
+        y: y,
+    };
+}
+
+proc make_record(
+    id: u64,
+    value: i64,
+    enabled: bool
+) -> Record {
+    give Record {
+        id: id,
+        value: value,
+        enabled: enabled,
+    };
+}
+
+proc test_integer_literal() -> i64 {
+    0;
+    1;
+    42;
+    100;
+    1000;
+
+    give 42;
+}
+
+proc test_boolean_literal() -> i64 {
+    true;
+    false;
+    true;
+
+    give 42;
+}
+
+proc test_string_literal() -> i64 {
+    "";
+    "vitte";
+    "expression statement";
+    "hello world";
+
+    give 42;
+}
+
+proc test_parenthesized() -> i64 {
+    (42);
+    ((42));
+    (((42)));
+
+    give 42;
+}
+
+proc test_local_read() -> i64 {
+    let value: i64 = 42;
+
+    value;
+    value;
+    value;
+
+    give value;
+}
+
+proc test_multiple_local_reads() -> i64 {
+    let first: i64 = 10;
+    let second: i64 = 20;
+    let third: i64 = 12;
+
+    first;
+    second;
+    third;
+
+    give first + second + third;
+}
+
+proc test_unary_plus() -> i64 {
+    let value: i64 = 42;
+
+    +value;
+    +(value);
+    +42;
+
+    give value;
+}
+
+proc test_unary_minus() -> i64 {
+    let value: i64 = 42;
+
+    -value;
+    -(value);
+    -42;
+
+    give value;
+}
+
+proc test_logical_not() -> i64 {
+    let enabled: bool = true;
+
+    !enabled;
+    !true;
+    !false;
+    !!enabled;
+
+    give 42;
+}
+
+proc test_bitwise_not() -> i64 {
+    let value: i64 = 42;
+
+    ~value;
+    ~0;
+    ~42;
+
+    give value;
+}
+
+proc test_addition() -> i64 {
+    let left: i64 = 20;
+    let right: i64 = 22;
+
+    left + right;
+    20 + 22;
+    left + 22;
+    20 + right;
+
+    give left + right;
+}
+
+proc test_subtraction() -> i64 {
+    let left: i64 = 100;
+    let right: i64 = 58;
+
+    left - right;
+    100 - 58;
+
+    give left - right;
+}
+
+proc test_multiplication() -> i64 {
+    let left: i64 = 6;
+    let right: i64 = 7;
+
+    left * right;
+    6 * 7;
+
+    give left * right;
+}
+
+proc test_division() -> i64 {
+    let value: i64 = 84;
+
+    value / 2;
+    84 / 2;
+
+    give value / 2;
+}
+
+proc test_modulo() -> i64 {
+    let value: i64 = 100;
+
+    value % 58;
+    100 % 58;
+
+    give value % 58;
+}
+
+proc test_arithmetic_chain() -> i64 {
+    let a: i64 = 10;
+    let b: i64 = 20;
+    let c: i64 = 12;
+
+    a + b + c;
+    a + b * c;
+    (a + b) * c;
+    a * b + c;
+    a - b + c;
+    a + b - c;
+    a * b / c;
+    a % b + c;
+
+    give a + b + c;
+}
+
+proc test_precedence() -> i64 {
+    1 + 2 * 3;
+    (1 + 2) * 3;
+    10 - 2 * 3;
+    (10 - 2) * 3;
+    20 / 2 + 32;
+    20 / (2 + 3);
+
+    give 42;
+}
+
+proc test_equality() -> i64 {
+    let value: i64 = 42;
+
+    value == 42;
+    value != 0;
+    42 == 42;
+    42 != 41;
+
+    give value;
+}
+
+proc test_relational() -> i64 {
+    let value: i64 = 42;
+
+    value < 100;
+    value <= 42;
+    value > 0;
+    value >= 42;
+
+    1 < 2;
+    2 <= 2;
+    3 > 2;
+    3 >= 3;
+
+    give value;
+}
+
+proc test_logical_and() -> i64 {
+    let left: bool = true;
+    let right: bool = false;
+
+    left && right;
+    left && true;
+    false && right;
+    true && true;
+
+    give 42;
+}
+
+proc test_logical_or() -> i64 {
+    let left: bool = true;
+    let right: bool = false;
+
+    left || right;
+    left || false;
+    false || right;
+    false || false;
+
+    give 42;
+}
+
+proc test_logical_chain() -> i64 {
+    let a: bool = true;
+    let b: bool = false;
+    let c: bool = true;
+
+    a && b || c;
+    a && (b || c);
+    (a && b) || c;
+    a || b && c;
+    !a || b;
+    !(a || b);
+
+    give 42;
+}
+
+proc test_bitwise_and() -> i64 {
+    let left: i64 = 42;
+    let right: i64 = 15;
+
+    left & right;
+    42 & 15;
+
+    give 42;
+}
+
+proc test_bitwise_or() -> i64 {
+    let left: i64 = 42;
+    let right: i64 = 15;
+
+    left | right;
+    42 | 15;
+
+    give 42;
+}
+
+proc test_bitwise_xor() -> i64 {
+    let left: i64 = 42;
+    let right: i64 = 15;
+
+    left ^ right;
+    42 ^ 15;
+
+    give 42;
+}
+
+proc test_bitwise_chain() -> i64 {
+    let a: i64 = 1;
+    let b: i64 = 2;
+    let c: i64 = 4;
+
+    a | b | c;
+    a ^ b ^ c;
+    a & b & c;
+    (a | b) & c;
+    a | (b & c);
+
+    give 42;
+}
+
+proc test_shift() -> i64 {
+    let value: i64 = 1;
+
+    value << 1;
+    value << 2;
+    value << 4;
+
+    8 >> 1;
+    16 >> 2;
+    32 >> 3;
+
+    give 42;
+}
+
+proc test_mixed_expression() -> i64 {
+    let a: i64 = 10;
+    let b: i64 = 20;
+    let c: i64 = 12;
+
+    a + b == 30;
+    a + b + c == 42;
+    a < b && b > c;
+    (a + b) > c;
+    !(a == b);
+    (a | b) != 0;
+
+    give a + b + c;
+}
+
+proc test_simple_call() -> i64 {
+    identity(42);
+    identity(0);
+    identity(100);
+
+    give identity(42);
+}
+
+proc test_call_two_arguments() -> i64 {
+    add(20, 22);
+    subtract(100, 58);
+    multiply(6, 7);
+
+    give add(20, 22);
+}
+
+proc test_call_three_arguments() -> i64 {
+    consume_three(10, 20, 12);
+    consume_three(1, 2, 3);
+    consume_three(0, 0, 0);
+
+    give consume_three(10, 20, 12);
+}
+
+proc test_nested_calls() -> i64 {
+    identity(identity(42));
+
+    add(
+        identity(20),
+        identity(22));
+
+    identity(
+        add(
+            identity(20),
+            identity(22)));
+
+    consume(
+        consume(
+            consume(42)));
+
+    give identity(
+        add(
+            identity(20),
+            identity(22)));
+}
+
+proc test_call_expression_arguments() -> i64 {
+    add(10 + 10, 11 + 11);
+    subtract(50 + 50, 29 + 29);
+    multiply(2 + 4, 3 + 4);
+
+    give add(10 + 10, 11 + 11);
+}
+
+proc test_call_local_arguments() -> i64 {
+    let left: i64 = 20;
+    let right: i64 = 22;
+
+    add(left, right);
+    consume_two(left, right);
+    identity(left + right);
+
+    give add(left, right);
+}
+
+proc test_call_chain_complexity() -> i64 {
+    add(
+        add(5, 5),
+        add(10, 22));
+
+    subtract(
+        add(50, 50),
+        add(29, 29));
+
+    multiply(
+        add(2, 4),
+        add(3, 4));
+
+    give add(
+        add(5, 5),
+        add(10, 22));
+}
+
+proc test_struct_literal() -> i64 {
+    Point {
+        x: 20,
+        y: 22,
+    };
+
+    Point {
+        x: 0,
+        y: 0,
+    };
+
+    give 42;
+}
+
+proc test_struct_literal_expressions() -> i64 {
+    let left: i64 = 20;
+    let right: i64 = 22;
+
+    Point {
+        x: left,
+        y: right,
+    };
+
+    Point {
+        x: left + right,
+        y: 0,
+    };
+
+    give left + right;
+}
+
+proc test_factory_call_statement() -> i64 {
+    make_point(20, 22);
+    make_point(0, 0);
+    make_point(100, 200);
+
+    give 42;
+}
+
+proc test_record_literal() -> i64 {
+    Record {
+        id: 42,
+        value: 42,
+        enabled: true,
+    };
+
+    Record {
+        id: 0,
+        value: 0,
+        enabled: false,
+    };
+
+    give 42;
+}
+
+proc test_record_factory_statement() -> i64 {
+    make_record(42, 42, true);
+    make_record(0, 0, false);
+    make_record(100, 200, true);
+
+    give 42;
+}
+
+proc test_field_access() -> i64 {
+    let point: Point =
+        Point {
+            x: 20,
+            y: 22,
+        };
+
+    point.x;
+    point.y;
+
+    give point.x + point.y;
+}
+
+proc test_record_field_access() -> i64 {
+    let record: Record =
+        Record {
+            id: 42,
+            value: 42,
+            enabled: true,
+        };
+
+    record.id;
+    record.value;
+    record.enabled;
+
+    give record.value;
+}
+
+proc test_parenthesized_field_access() -> i64 {
+    let point: Point =
+        Point {
+            x: 20,
+            y: 22,
+        };
+
+    (point).x;
+    (point).y;
+
+    give point.x + point.y;
+}
+
+proc test_reference_expression() -> i64 {
+    let value: i64 = 42;
+
+    &value;
+    (&value);
+
+    give value;
+}
+
+proc read_reference(value: &i64) -> i64 {
+    give value;
+}
+
+proc test_reference_call_statement() -> i64 {
+    let value: i64 = 42;
+
+    read_reference(&value);
+    read_reference(&value);
+    read_reference(&value);
+
+    give read_reference(&value);
+}
+
+proc test_expression_statements() -> i64 {
+    let signed: i64 = 42;
+    let unsigned: u64 = 42;
+
+    identity(signed);
+    identity(unsigned);
+    identity(42);
+    identity(42);
+
+    give signed;
+}
+
+proc test_nested_group_expression() -> i64 {
+    let value: i64 = 42;
+
+    (value);
+    ((value));
+    identity(((value)));
+
+    give value;
+}
+
+proc test_expression_statement_before_declaration() -> i64 {
+    identity(1);
+
+    let value: i64 = 42;
+
+    give value;
+}
+
+proc test_expression_statement_after_declaration() -> i64 {
+    let value: i64 = 42;
+
+    identity(value);
+
+    give value;
+}
+
+proc test_expression_between_declarations() -> i64 {
+    let left: i64 = 20;
+
+    identity(left);
+
+    let right: i64 = 22;
+
+    identity(right);
+
+    give left + right;
+}
+
+proc test_many_sequential_statements() -> i64 {
+    identity(1);
+    identity(2);
+    identity(3);
+    identity(4);
+    identity(5);
+    identity(6);
+    identity(7);
+    identity(8);
+    identity(9);
+    identity(10);
+
+    identity(11);
+    identity(12);
+    identity(13);
+    identity(14);
+    identity(15);
+    identity(16);
+    identity(17);
+    identity(18);
+    identity(19);
+    identity(20);
+
+    give 42;
+}
+
+proc test_nested_block() -> i64 {
+    {
+        identity(1);
+        identity(2);
+
+        {
+            identity(3);
+            identity(4);
+
+            {
+                identity(5);
+                identity(6);
+            }
+
+            identity(7);
+        }
+
+        identity(8);
+    }
+
+    give 42;
+}
+
+proc test_if_branch() -> i64 {
+    if true {
+        identity(1);
+        add(20, 22);
+        42;
+    }
+
+    give 42;
+}
+
+proc test_if_else_branches() -> i64 {
+    if true {
+        identity(10);
+        identity(20);
+    } else {
+        identity(30);
+        identity(40);
+    }
+
+    give 42;
+}
+
+proc test_nested_if() -> i64 {
+    if true {
+        identity(1);
+
+        if true {
+            identity(2);
+
+            if true {
+                identity(3);
+            }
+
+            identity(4);
+        }
+
+        identity(5);
+    }
+
+    give 42;
+}
+
+proc test_while_body() -> i64 {
+    let mut index: i64 = 0;
+
+    while index < 3 {
+        identity(index);
+        index + 1;
+        index < 10;
+
+        set index += 1;
+    }
+
+    give 42;
+}
+
+proc test_loop_with_calls() -> i64 {
+    let mut index: i64 = 0;
+
+    while index < 5 {
+        identity(index);
+        add(index, 1);
+        multiply(index, 2);
+
+        set index += 1;
+    }
+
+    give 42;
+}
+
+proc test_nested_loop() -> i64 {
+    let mut outer: i64 = 0;
+
+    while outer < 2 {
+        identity(outer);
+
+        let mut inner: i64 = 0;
+
+        while inner < 2 {
+            identity(inner);
+            add(outer, inner);
+
+            set inner += 1;
+        }
+
+        set outer += 1;
+    }
+
+    give 42;
+}
+
+proc test_expression_after_mutation() -> i64 {
+    let mut value: i64 = 20;
+
+    value;
+
+    set value += 22;
+
+    value;
+    identity(value);
+    value == 42;
+
+    give value;
+}
+
+proc test_expression_before_mutation() -> i64 {
+    let mut value: i64 = 20;
+
+    value + 22;
+    identity(value);
+
+    set value = 42;
+
+    give value;
+}
+
+proc test_boolean_expression_statements() -> i64 {
+    let a: bool = true;
+    let b: bool = false;
+
+    a;
+    b;
+    !a;
+    !b;
+    a && b;
+    a || b;
+    a == b;
+    a != b;
+
+    give 42;
+}
+
+proc test_comparison_expression_statements() -> i64 {
+    let left: i64 = 20;
+    let right: i64 = 22;
+
+    left < right;
+    left <= right;
+    left > right;
+    left >= right;
+    left == right;
+    left != right;
+
+    give left + right;
+}
+
+proc test_complex_parentheses() -> i64 {
+    let a: i64 = 10;
+    let b: i64 = 20;
+    let c: i64 = 12;
+
+    (((a)));
+    (((a + b)));
+    (((a + b + c)));
+    ((a + b) + c);
+    (a + (b + c));
+    ((a + b) == 30);
+    (((a + b + c) == 42));
+
+    give a + b + c;
+}
+
+proc test_expression_precedence_stress() -> i64 {
+    let a: i64 = 2;
+    let b: i64 = 3;
+    let c: i64 = 4;
+    let d: i64 = 5;
+
+    a + b * c - d;
+    a * b + c * d;
+    a + b + c + d;
+    a * b * c * d;
+    a < b && c < d;
+    a == b || c != d;
+    (a + b) * (c + d);
+    ((a + b) * c) + d;
+
+    give 42;
+}
+
+proc test_call_precedence() -> i64 {
+    identity(20) + identity(22);
+    identity(6) * identity(7);
+    add(10, 10) + add(11, 11);
+    add(identity(20), identity(22)) == 42;
+
+    give 42;
+}
+
+proc test_field_expression_composition() -> i64 {
+    let point: Point =
+        Point {
+            x: 20,
+            y: 22,
+        };
+
+    point.x + point.y;
+    point.x == 20;
+    point.y == 22;
+    point.x < point.y;
+    identity(point.x);
+    add(point.x, point.y);
+
+    give point.x + point.y;
+}
+
+proc test_record_expression_composition() -> i64 {
+    let record: Record =
+        Record {
+            id: 42,
+            value: 42,
+            enabled: true,
+        };
+
+    record.id == 42;
+    record.value == 42;
+    record.enabled == true;
+    record.enabled && true;
+    identity(record.value);
+
+    give record.value;
+}
+
+proc test_reference_expression_composition() -> i64 {
+    let first: i64 = 20;
+    let second: i64 = 22;
+
+    read_reference(&first);
+    read_reference(&second);
+    add(
+        read_reference(&first),
+        read_reference(&second));
+
+    give add(
+        read_reference(&first),
+        read_reference(&second));
+}
+
+proc test_discarded_call_results() -> i64 {
+    consume(1);
+    consume(2);
+    consume(3);
+
+    consume_two(10, 20);
+    consume_two(20, 22);
+
+    consume_three(10, 20, 12);
+
+    give 42;
+}
+
+proc test_discarded_constructor_results() -> i64 {
+    make_point(1, 2);
+    make_point(20, 22);
+
+    make_record(1, 10, true);
+    make_record(42, 42, true);
+
+    give 42;
+}
+
+proc test_mixed_statement_sequence() -> i64 {
+    let first: i64 = 20;
+
+    first;
+    identity(first);
+    first + 1;
+    first == 20;
+
+    let second: i64 = 22;
+
+    second;
+    identity(second);
+    first + second;
+    add(first, second);
+    first < second;
+
+    let point: Point =
+        Point {
+            x: first,
+            y: second,
+        };
+
+    point;
+    point.x;
+    point.y;
+    point.x + point.y;
+    add(point.x, point.y);
+
+    give first + second;
+}
+
+proc test_mutable_mixed_sequence() -> i64 {
+    let mut value: i64 = 0;
+
+    value;
+    identity(value);
+
+    set value = 10;
+
+    value;
+    value + 10;
+
+    set value += 10;
+
+    value;
+    identity(value);
+
+    set value += 22;
+
+    value;
+    value == 42;
+    identity(value);
+
+    give value;
+}
+
+proc test_deep_call_tree() -> i64 {
+    identity(
+        identity(
+            identity(
+                identity(
+                    identity(42)))));
+
+    add(
+        identity(
+            add(
+                identity(5),
+                identity(5))),
+        identity(
+            add(
+                identity(10),
+                identity(22))));
+
+    give 42;
+}
+
+proc test_deep_expression_tree() -> i64 {
+    let a: i64 = 1;
+    let b: i64 = 2;
+    let c: i64 = 3;
+    let d: i64 = 4;
+
+    (((a + b) * (c + d)) - ((a * c) + (b * d)));
+    ((((a + b) + c) + d));
+    ((a < b) && (c < d));
+    ((a == b) || (c != d));
+
+    give 42;
+}
+
+proc test_statement_boundary() -> i64 {
+    1;
+    2;
+    3;
+
+    identity(4);
+    identity(5);
+
+    6 + 7;
+    8 * 9;
+
+    true;
+    false;
+
+    let value: i64 = 42;
+
+    value;
+    value == 42;
+
+    give value;
+}
+
+proc test_nested_statement_boundary() -> i64 {
+    {
+        1;
+        identity(2);
+
+        {
+            3;
+            identity(4);
+
+            {
+                5;
+                identity(6);
+            }
+
+            7;
+        }
+
+        8;
+    }
+
+    give 42;
+}
+
+proc test_control_flow_statement_boundary() -> i64 {
+    let mut index: i64 = 0;
+
+    identity(index);
+
+    while index < 3 {
+        index;
+        identity(index);
+
+        if index == 1 {
+            42;
+            identity(42);
+        } else {
+            0;
+            identity(0);
+        }
+
+        index + 1;
+
+        set index += 1;
+
+        index;
+    }
+
+    identity(index);
+
+    give 42;
+}
+
+proc test_large_sequence() -> i64 {
+    identity(1);
+    1 + 1;
+    1 == 1;
+
+    identity(2);
+    2 + 2;
+    2 == 2;
+
+    identity(3);
+    3 + 3;
+    3 == 3;
+
+    identity(4);
+    4 + 4;
+    4 == 4;
+
+    identity(5);
+    5 + 5;
+    5 == 5;
+
+    identity(6);
+    6 + 6;
+    6 == 6;
+
+    identity(7);
+    7 + 7;
+    7 == 7;
+
+    identity(8);
+    8 + 8;
+    8 == 8;
+
+    identity(9);
+    9 + 9;
+    9 == 9;
+
+    identity(10);
+    10 + 10;
+    10 == 10;
+
+    give 42;
+}
+
+proc test_integrated_expression_statements() -> i64 {
+    let left: i64 = 20;
+    let right: i64 = 22;
+
+    left;
+    right;
+
+    left + right;
+    left < right;
+    left != right;
+
+    identity(left);
+    identity(right);
+    add(left, right);
+
+    let point: Point =
+        Point {
+            x: left,
+            y: right,
+        };
+
+    point;
+    point.x;
+    point.y;
+    point.x + point.y;
+
+    make_point(left, right);
+
+    {
+        identity(point.x);
+        identity(point.y);
+        add(point.x, point.y);
+
+        if point.x < point.y {
+            point.x;
+            point.y;
+            point.x + point.y;
+            identity(42);
+        }
+    }
+
+    let mut accumulator: i64 = 0;
+    let mut index: i64 = 0;
+
+    while index < 3 {
+        accumulator;
+        index;
+        accumulator + index;
+
+        identity(index);
+        add(accumulator, index);
+
+        set accumulator += 14;
+        set index += 1;
+
+        accumulator;
+        index;
+    }
+
+    accumulator;
+    accumulator == 42;
+
+    give accumulator;
 }
 
 proc main() -> int {
-    1 + 2;
-    if true {
-        side();
-    }
-    println("expr-stmt-ok");
+    if test_integer_literal() != 42 { give 1; }
+    if test_boolean_literal() != 42 { give 2; }
+    if test_string_literal() != 42 { give 3; }
+    if test_parenthesized() != 42 { give 4; }
+    if test_local_read() != 42 { give 5; }
+    if test_multiple_local_reads() != 42 { give 6; }
+    if test_unary_plus() != 42 { give 7; }
+    if test_unary_minus() != 42 { give 8; }
+    if test_logical_not() != 42 { give 9; }
+    if test_bitwise_not() != 42 { give 10; }
+    if test_addition() != 42 { give 11; }
+    if test_subtraction() != 42 { give 12; }
+    if test_multiplication() != 42 { give 13; }
+    if test_division() != 42 { give 14; }
+    if test_modulo() != 42 { give 15; }
+    if test_arithmetic_chain() != 42 { give 16; }
+    if test_precedence() != 42 { give 17; }
+    if test_equality() != 42 { give 18; }
+    if test_relational() != 42 { give 19; }
+    if test_logical_and() != 42 { give 20; }
+    if test_logical_or() != 42 { give 21; }
+    if test_logical_chain() != 42 { give 22; }
+    if test_bitwise_and() != 42 { give 23; }
+    if test_bitwise_or() != 42 { give 24; }
+    if test_bitwise_xor() != 42 { give 25; }
+    if test_bitwise_chain() != 42 { give 26; }
+    if test_shift() != 42 { give 27; }
+    if test_mixed_expression() != 42 { give 28; }
+    if test_simple_call() != 42 { give 29; }
+    if test_call_two_arguments() != 42 { give 30; }
+    if test_call_three_arguments() != 42 { give 31; }
+    if test_nested_calls() != 42 { give 32; }
+    if test_call_expression_arguments() != 42 { give 33; }
+    if test_call_local_arguments() != 42 { give 34; }
+    if test_call_chain_complexity() != 42 { give 35; }
+    if test_struct_literal() != 42 { give 36; }
+    if test_struct_literal_expressions() != 42 { give 37; }
+    if test_factory_call_statement() != 42 { give 38; }
+    if test_record_literal() != 42 { give 39; }
+    if test_record_factory_statement() != 42 { give 40; }
+    if test_field_access() != 42 { give 41; }
+    if test_record_field_access() != 42 { give 42; }
+    if test_parenthesized_field_access() != 42 { give 43; }
+    if test_reference_expression() != 42 { give 44; }
+    if test_reference_call_statement() != 42 { give 45; }
+    if test_cast_expression() != 42 { give 46; }
+    if test_nested_cast_expression() != 42 { give 47; }
+    if test_expression_statement_before_declaration() != 42 { give 48; }
+    if test_expression_statement_after_declaration() != 42 { give 49; }
+    if test_expression_between_declarations() != 42 { give 50; }
+    if test_many_sequential_statements() != 42 { give 51; }
+    if test_nested_block() != 42 { give 52; }
+    if test_if_branch() != 42 { give 53; }
+    if test_if_else_branches() != 42 { give 54; }
+    if test_nested_if() != 42 { give 55; }
+    if test_while_body() != 42 { give 56; }
+    if test_loop_with_calls() != 42 { give 57; }
+    if test_nested_loop() != 42 { give 58; }
+    if test_expression_after_mutation() != 42 { give 59; }
+    if test_expression_before_mutation() != 42 { give 60; }
+    if test_boolean_expression_statements() != 42 { give 61; }
+    if test_comparison_expression_statements() != 42 { give 62; }
+    if test_complex_parentheses() != 42 { give 63; }
+    if test_expression_precedence_stress() != 42 { give 64; }
+    if test_call_precedence() != 42 { give 65; }
+    if test_field_expression_composition() != 42 { give 66; }
+    if test_record_expression_composition() != 42 { give 67; }
+    if test_reference_expression_composition() != 42 { give 68; }
+    if test_discarded_call_results() != 42 { give 69; }
+    if test_discarded_constructor_results() != 42 { give 70; }
+    if test_mixed_statement_sequence() != 42 { give 71; }
+    if test_mutable_mixed_sequence() != 42 { give 72; }
+    if test_deep_call_tree() != 42 { give 73; }
+    if test_deep_expression_tree() != 42 { give 74; }
+    if test_statement_boundary() != 42 { give 75; }
+    if test_nested_statement_boundary() != 42 { give 76; }
+    if test_control_flow_statement_boundary() != 42 { give 77; }
+    if test_large_sequence() != 42 { give 78; }
+    if test_integrated_expression_statements() != 42 { give 79; }
+
     give 0;
 }

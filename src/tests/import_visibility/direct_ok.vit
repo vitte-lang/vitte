@@ -1,7 +1,319 @@
-space demo/direct_ok;
+/// Import visibility test.
+///
+/// Positive test for direct imports.
+///
+/// This file verifies that symbols made available through a direct module
+/// import are correctly resolved by the importer.
+///
+/// Expected result:
+/// - module resolution succeeds;
+/// - directly imported constants resolve;
+/// - directly imported forms resolve;
+/// - directly imported procedures resolve;
+/// - imported symbols work in type positions and expressions;
+/// - imported forms can be constructed and accessed;
+/// - imported procedures may call other declarations from their own module;
+/// - semantic analysis succeeds without visibility diagnostics.
 
-use lib::{visible, answer};
+space tests::import_visibility::direct_ok;
+
+use tests::import_visibility::contract_lib;
+
+proc test_constants() -> bool {
+    let minimum: u64 =
+        contract_lib::MIN_IDENTIFIER;
+
+    let maximum: u64 =
+        contract_lib::MAX_IDENTIFIER;
+
+    let limit: u64 =
+        contract_lib::DEFAULT_LIMIT;
+
+    give minimum == 1 &&
+         maximum == 1000000 &&
+         limit == 128;
+}
+
+proc test_predicates() -> bool {
+    let identifier_valid: bool =
+        contract_lib::valid_identifier(42);
+
+    let limit_valid: bool =
+        contract_lib::valid_limit(64);
+
+    let positive_value: bool =
+        contract_lib::positive(10);
+
+    let non_negative_value: bool =
+        contract_lib::non_negative(0);
+
+    give identifier_valid &&
+         limit_valid &&
+         positive_value &&
+         non_negative_value;
+}
+
+proc test_range() -> bool {
+    let range: contract_lib::ContractRange =
+        contract_lib::ContractRange {
+            minimum: 0,
+            maximum: 100,
+        };
+
+    give contract_lib::valid_range(&range) &&
+         contract_lib::value_in_range(0, &range) &&
+         contract_lib::value_in_range(50, &range) &&
+         contract_lib::value_in_range(100, &range);
+}
+
+proc test_record() -> bool {
+    let record: contract_lib::ContractRecord =
+        contract_lib::checked_record(
+            42,
+            100);
+
+    let value: i64 =
+        contract_lib::checked_record_value(
+            &record);
+
+    give record.id == 42 &&
+         record.value == 100 &&
+         record.enabled &&
+         value == 100;
+}
+
+proc test_result() -> bool {
+    let result: contract_lib::ContractResult =
+        contract_lib::checked_result(75);
+
+    give result.value == 75 &&
+         result.valid;
+}
+
+proc test_identity() -> bool {
+    let value: i64 =
+        contract_lib::checked_identity(42);
+
+    give value == 42;
+}
+
+proc test_increment() -> bool {
+    let value: i64 =
+        contract_lib::checked_increment(41);
+
+    give value == 42;
+}
+
+proc test_add() -> bool {
+    let value: i64 =
+        contract_lib::checked_add(
+            20,
+            22);
+
+    give value == 42;
+}
+
+proc test_subtract() -> bool {
+    let value: i64 =
+        contract_lib::checked_subtract(
+            100,
+            58);
+
+    give value == 42;
+}
+
+proc test_multiply() -> bool {
+    let value: i64 =
+        contract_lib::checked_multiply(
+            6,
+            7);
+
+    give value == 42;
+}
+
+proc test_clamp() -> bool {
+    let range: contract_lib::ContractRange =
+        contract_lib::ContractRange {
+            minimum: 10,
+            maximum: 100,
+        };
+
+    let below: i64 =
+        contract_lib::checked_clamp(
+            0,
+            &range);
+
+    let inside: i64 =
+        contract_lib::checked_clamp(
+            42,
+            &range);
+
+    let above: i64 =
+        contract_lib::checked_clamp(
+            200,
+            &range);
+
+    give below == 10 &&
+         inside == 42 &&
+         above == 100;
+}
+
+proc test_chain() -> bool {
+    let value: i64 =
+        contract_lib::checked_chain(40);
+
+    give value == 42;
+}
+
+proc test_bounded_add() -> bool {
+    let range: contract_lib::ContractRange =
+        contract_lib::ContractRange {
+            minimum: 0,
+            maximum: 100,
+        };
+
+    let inside: i64 =
+        contract_lib::checked_bounded_add(
+            20,
+            22,
+            &range);
+
+    let clamped: i64 =
+        contract_lib::checked_bounded_add(
+            80,
+            80,
+            &range);
+
+    give inside == 42 &&
+         clamped == 100;
+}
+
+proc test_select() -> bool {
+    let first: i64 =
+        contract_lib::checked_select(
+            true,
+            10,
+            20);
+
+    let second: i64 =
+        contract_lib::checked_select(
+            false,
+            10,
+            20);
+
+    give first == 10 &&
+         second == 20;
+}
+
+proc test_limit() -> bool {
+    let inside: u64 =
+        contract_lib::checked_limit(
+            42,
+            100);
+
+    let limited: u64 =
+        contract_lib::checked_limit(
+            200,
+            100);
+
+    give inside == 42 &&
+         limited == 100;
+}
+
+proc test_direct_import_reuse() -> bool {
+    let range: contract_lib::ContractRange =
+        contract_lib::ContractRange {
+            minimum: 0,
+            maximum: 1000,
+        };
+
+    let record: contract_lib::ContractRecord =
+        contract_lib::checked_record(
+            100,
+            40);
+
+    let original: i64 =
+        contract_lib::checked_record_value(
+            &record);
+
+    let transformed: i64 =
+        contract_lib::checked_bounded_add(
+            original,
+            2,
+            &range);
+
+    let result: contract_lib::ContractResult =
+        contract_lib::checked_result(
+            transformed);
+
+    give result.valid &&
+         result.value == 42;
+}
 
 proc main() -> int {
-    give visible() + answer;
+    if !test_constants() {
+        give 1;
+    }
+
+    if !test_predicates() {
+        give 2;
+    }
+
+    if !test_range() {
+        give 3;
+    }
+
+    if !test_record() {
+        give 4;
+    }
+
+    if !test_result() {
+        give 5;
+    }
+
+    if !test_identity() {
+        give 6;
+    }
+
+    if !test_increment() {
+        give 7;
+    }
+
+    if !test_add() {
+        give 8;
+    }
+
+    if !test_subtract() {
+        give 9;
+    }
+
+    if !test_multiply() {
+        give 10;
+    }
+
+    if !test_clamp() {
+        give 11;
+    }
+
+    if !test_chain() {
+        give 12;
+    }
+
+    if !test_bounded_add() {
+        give 13;
+    }
+
+    if !test_select() {
+        give 14;
+    }
+
+    if !test_limit() {
+        give 15;
+    }
+
+    if !test_direct_import_reuse() {
+        give 16;
+    }
+
+    give 0;
 }

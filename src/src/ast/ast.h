@@ -1,367 +1,1423 @@
-#ifndef VITTE_AST_H
-#define VITTE_AST_H
+#ifndef VITTE_SRC_AST_AST_H
+#define VITTE_SRC_AST_AST_H
+
+/*
+ * Vitte Compiler
+ * src/ast/ast.h
+ *
+ * Core Abstract Syntax Tree.
+ *
+ * Design:
+ *
+ *     - arena-backed lifetime
+ *     - stable monotonically increasing node IDs
+ *     - explicit source spans
+ *     - parent/child topology
+ *     - declaration / statement / expression / type / pattern families
+ *     - semantic attachments
+ *     - extensible attributes
+ *     - deterministic traversal
+ *     - deep validation
+ *     - no individual node destruction
+ *
+ * Ownership:
+ *
+ *     Every node belongs to exactly one vitte_ast_t.
+ *
+ *     Node memory is owned by the arena associated with the AST.
+ *
+ *     Individual AST nodes are never free()'d.
+ *
+ *     Resetting/destroying the underlying arena invalidates node storage.
+ */
 
 #include <stdbool.h>
 #include <stddef.h>
-#include <stdio.h>
 #include <stdint.h>
-
-#include "../api/error.h"
-#include "../arena/arena.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-typedef enum vitte_ast_node_kind {
-    VITTE_AST_NODE_ERROR = 0,
-    VITTE_AST_NODE_MODULE,
-    VITTE_AST_NODE_IMPORT_DECL,
-    VITTE_AST_NODE_EXPORT_DECL,
-    VITTE_AST_NODE_PROC_DECL,
-    VITTE_AST_NODE_PARAM_DECL,
-    VITTE_AST_NODE_CONST_DECL,
-    VITTE_AST_NODE_PICK_DECL,
-    VITTE_AST_NODE_PICK_VARIANT,
-    VITTE_AST_NODE_FORM_DECL,
-    VITTE_AST_NODE_FORM_FIELD,
-    VITTE_AST_NODE_BLOCK_STMT,
-    VITTE_AST_NODE_GIVE_STMT,
-    VITTE_AST_NODE_LET_STMT,
-    VITTE_AST_NODE_ASSIGN_STMT,
-    VITTE_AST_NODE_EXPR_STMT,
-    VITTE_AST_NODE_IF_STMT,
-    VITTE_AST_NODE_WHILE_STMT,
-    VITTE_AST_NODE_BREAK_STMT,
-    VITTE_AST_NODE_CONTINUE_STMT,
-    VITTE_AST_NODE_FOR_STMT,
-    VITTE_AST_NODE_INTEGER_LITERAL,
-    VITTE_AST_NODE_STRING_LITERAL,
-    VITTE_AST_NODE_IDENTIFIER,
-    VITTE_AST_NODE_BINARY_EXPR,
-    VITTE_AST_NODE_CALL_EXPR,
-    VITTE_AST_NODE_LIST_EXPR,
-    VITTE_AST_NODE_RECORD_EXPR,
-    VITTE_AST_NODE_RECORD_FIELD,
-    VITTE_AST_NODE_CAST_EXPR,
-    VITTE_AST_NODE_INDEX_EXPR,
-    VITTE_AST_NODE_IF_EXPR,
-    VITTE_AST_NODE_MEMBER_EXPR,
-    VITTE_AST_NODE_BLOCK_EXPR,
-    VITTE_AST_NODE_TYPE_NAME,
-    VITTE_AST_NODE_COUNT
-} vitte_ast_node_kind_t;
+/* ========================================================================= */
+/* Configuration                                                             */
+/* ========================================================================= */
 
-typedef enum vitte_ast_import_kind {
-    VITTE_AST_IMPORT_MODULE = 0,
-    VITTE_AST_IMPORT_SYMBOL,
-    VITTE_AST_IMPORT_GLOB
-} vitte_ast_import_kind_t;
+#ifndef VITTE_AST_INITIAL_CHILD_CAPACITY
+#define VITTE_AST_INITIAL_CHILD_CAPACITY ((size_t)4u)
+#endif
 
+#ifndef VITTE_AST_INITIAL_ATTRIBUTE_CAPACITY
+#define VITTE_AST_INITIAL_ATTRIBUTE_CAPACITY ((size_t)2u)
+#endif
+
+#ifndef VITTE_AST_MAX_DEPTH
+#define VITTE_AST_MAX_DEPTH ((size_t)65536u)
+#endif
+
+/* ========================================================================= */
+/* Forward declarations                                                      */
+/* ========================================================================= */
+
+typedef struct vitte_arena_context
+    vitte_arena_context_t;
+
+typedef struct vitte_ast
+    vitte_ast_t;
+
+typedef struct vitte_ast_node
+    vitte_ast_node_t;
+
+typedef struct vitte_ast_attribute
+    vitte_ast_attribute_t;
+
+typedef struct vitte_ast_stats
+    vitte_ast_stats_t;
+
+/* ========================================================================= */
+/* Source span                                                               */
+/* ========================================================================= */
+
+/*
+ * Half-open byte interval:
+ *
+ *     [begin, end)
+ *
+ * file_id is intentionally independent from any source-manager pointer.
+ */
 typedef struct vitte_ast_span {
+    uint32_t file_id;
+
+    size_t begin;
+    size_t end;
+
+    /* Rich diagnostic coordinates; optional for AST-only clients. */
+    uint64_t source_id;
     const char *source_name;
     size_t start_offset;
     size_t end_offset;
-    uint32_t start_line;
-    uint32_t start_column;
-    uint32_t end_line;
-    uint32_t end_column;
+    unsigned start_line;
+    unsigned start_column;
+    unsigned end_line;
+    unsigned end_column;
     bool valid;
 } vitte_ast_span_t;
 
-typedef struct vitte_ast_node vitte_ast_node_t;
-typedef vitte_ast_node_t vitte_ast_module_t;
-typedef vitte_ast_node_t vitte_ast_decl_t;
-typedef vitte_ast_node_t vitte_ast_stmt_t;
-typedef vitte_ast_node_t vitte_ast_expr_t;
-typedef vitte_ast_node_t vitte_ast_type_ref_t;
+/* ========================================================================= */
+/* Node kinds                                                                */
+/* ========================================================================= */
 
-typedef struct vitte_ast_list {
-    vitte_ast_node_t *first;
-    vitte_ast_node_t *last;
-    size_t count;
-} vitte_ast_list_t;
+typedef enum vitte_ast_kind {
+    VITTE_AST_INVALID = 0,
 
-struct vitte_ast_node {
-    vitte_ast_node_kind_t kind;
+    /* --------------------------------------------------------------------- */
+    /* Root                                                                  */
+    /* --------------------------------------------------------------------- */
+
+    VITTE_AST_MODULE,
+
+    /* --------------------------------------------------------------------- */
+    /* Declarations                                                          */
+    /* --------------------------------------------------------------------- */
+
+    VITTE_AST_SPACE_DECL,
+    VITTE_AST_USE_DECL,
+
+    VITTE_AST_CONST_DECL,
+    VITTE_AST_STATIC_DECL,
+
+    VITTE_AST_TYPE_DECL,
+    VITTE_AST_OPAQUE_DECL,
+    VITTE_AST_FORM_DECL,
+    VITTE_AST_PICK_DECL,
+
+    VITTE_AST_TRAIT_DECL,
+    VITTE_AST_IMPL_DECL,
+
+    VITTE_AST_PROC_DECL,
+    VITTE_AST_EXTERN_DECL,
+
+    VITTE_AST_MACRO_DECL,
+    VITTE_AST_TEST_DECL,
+
+    /* --------------------------------------------------------------------- */
+    /* Declaration components                                                */
+    /* --------------------------------------------------------------------- */
+
+    VITTE_AST_GENERIC_PARAM,
+    VITTE_AST_WHERE_CLAUSE,
+    VITTE_AST_PARAMETER,
+    VITTE_AST_FIELD,
+    VITTE_AST_VARIANT,
+    VITTE_AST_ATTRIBUTE,
+
+    /* --------------------------------------------------------------------- */
+    /* Statements                                                            */
+    /* --------------------------------------------------------------------- */
+
+    VITTE_AST_BLOCK_STMT,
+
+    VITTE_AST_LET_STMT,
+    VITTE_AST_EXPR_STMT,
+
+    VITTE_AST_RETURN_STMT,
+    VITTE_AST_DEFER_STMT,
+
+    VITTE_AST_IF_STMT,
+    VITTE_AST_WHILE_STMT,
+    VITTE_AST_LOOP_STMT,
+    VITTE_AST_FOR_STMT,
+
+    VITTE_AST_BREAK_STMT,
+    VITTE_AST_CONTINUE_STMT,
+
+    VITTE_AST_MATCH_STMT,
+
+    VITTE_AST_UNSAFE_STMT,
+    VITTE_AST_ASM_STMT,
+
+    VITTE_AST_ASSERT_STMT,
+
+    /* --------------------------------------------------------------------- */
+    /* Expressions                                                           */
+    /* --------------------------------------------------------------------- */
+
+    VITTE_AST_NAME_EXPR,
+
+    VITTE_AST_INTEGER_EXPR,
+    VITTE_AST_FLOAT_EXPR,
+    VITTE_AST_STRING_EXPR,
+    VITTE_AST_CHAR_EXPR,
+    VITTE_AST_BOOL_EXPR,
+    VITTE_AST_NULL_EXPR,
+
+    VITTE_AST_ARRAY_EXPR,
+    VITTE_AST_TUPLE_EXPR,
+    VITTE_AST_MAP_EXPR,
+
+    VITTE_AST_UNARY_EXPR,
+    VITTE_AST_BINARY_EXPR,
+    VITTE_AST_ASSIGN_EXPR,
+
+    VITTE_AST_CALL_EXPR,
+    VITTE_AST_INDEX_EXPR,
+    VITTE_AST_MEMBER_EXPR,
+
+    VITTE_AST_CAST_EXPR,
+    VITTE_AST_RANGE_EXPR,
+
+    VITTE_AST_MATCH_EXPR,
+
+    VITTE_AST_AWAIT_EXPR,
+
+    VITTE_AST_MOVE_EXPR,
+    VITTE_AST_REF_EXPR,
+
+    VITTE_AST_SIZEOF_EXPR,
+    VITTE_AST_ALIGNOF_EXPR,
+    VITTE_AST_OFFSETOF_EXPR,
+    VITTE_AST_TYPEOF_EXPR,
+
+    /* --------------------------------------------------------------------- */
+    /* Types                                                                 */
+    /* --------------------------------------------------------------------- */
+
+    VITTE_AST_NAMED_TYPE,
+
+    VITTE_AST_POINTER_TYPE,
+    VITTE_AST_REFERENCE_TYPE,
+
+    VITTE_AST_ARRAY_TYPE,
+    VITTE_AST_SLICE_TYPE,
+
+    VITTE_AST_TUPLE_TYPE,
+    VITTE_AST_FUNCTION_TYPE,
+
+    VITTE_AST_DYN_TYPE,
+    VITTE_AST_INFER_TYPE,
+
+    /* --------------------------------------------------------------------- */
+    /* Patterns                                                              */
+    /* --------------------------------------------------------------------- */
+
+    VITTE_AST_WILDCARD_PATTERN,
+    VITTE_AST_BINDING_PATTERN,
+    VITTE_AST_LITERAL_PATTERN,
+
+    VITTE_AST_TUPLE_PATTERN,
+
+    VITTE_AST_FORM_PATTERN,
+    VITTE_AST_PICK_PATTERN,
+
+    VITTE_AST_RANGE_PATTERN,
+    VITTE_AST_OR_PATTERN,
+
+    /* --------------------------------------------------------------------- */
+    /* Match                                                                 */
+    /* --------------------------------------------------------------------- */
+
+    VITTE_AST_MATCH_ARM,
+
+    /* --------------------------------------------------------------------- */
+    /* Sentinel                                                              */
+    /* --------------------------------------------------------------------- */
+
+    VITTE_AST_KIND_COUNT
+} vitte_ast_kind_t;
+
+/* ========================================================================= */
+/* Unary operators                                                           */
+/* ========================================================================= */
+
+typedef enum vitte_ast_unary_operator {
+    VITTE_AST_UNARY_INVALID = 0,
+
+    VITTE_AST_UNARY_PLUS,
+    VITTE_AST_UNARY_MINUS,
+
+    VITTE_AST_UNARY_NOT,
+
+    VITTE_AST_UNARY_BIT_NOT,
+
+    VITTE_AST_UNARY_DEREF,
+    VITTE_AST_UNARY_REF,
+
+    VITTE_AST_UNARY_COUNT
+} vitte_ast_unary_operator_t;
+
+/* ========================================================================= */
+/* Binary operators                                                          */
+/* ========================================================================= */
+
+typedef enum vitte_ast_binary_operator {
+    VITTE_AST_BINARY_INVALID = 0,
+
+    /* Arithmetic */
+    VITTE_AST_BINARY_ADD,
+    VITTE_AST_BINARY_SUB,
+    VITTE_AST_BINARY_MUL,
+    VITTE_AST_BINARY_DIV,
+    VITTE_AST_BINARY_MOD,
+
+    /* Bitwise */
+    VITTE_AST_BINARY_BIT_AND,
+    VITTE_AST_BINARY_BIT_OR,
+    VITTE_AST_BINARY_BIT_XOR,
+    VITTE_AST_BINARY_SHL,
+    VITTE_AST_BINARY_SHR,
+
+    /* Comparison */
+    VITTE_AST_BINARY_EQ,
+    VITTE_AST_BINARY_NE,
+
+    VITTE_AST_BINARY_LT,
+    VITTE_AST_BINARY_LE,
+    VITTE_AST_BINARY_GT,
+    VITTE_AST_BINARY_GE,
+
+    /* Logical */
+    VITTE_AST_BINARY_AND,
+    VITTE_AST_BINARY_OR,
+
+    VITTE_AST_BINARY_COUNT
+} vitte_ast_binary_operator_t;
+
+/* ========================================================================= */
+/* Flags                                                                     */
+/* ========================================================================= */
+
+typedef uint64_t vitte_ast_flags_t;
+
+#define VITTE_AST_FLAG_NONE \
+    UINT64_C(0)
+
+#define VITTE_AST_FLAG_INVALID \
+    (UINT64_C(1) << 0)
+
+#define VITTE_AST_FLAG_PUBLIC \
+    (UINT64_C(1) << 1)
+
+#define VITTE_AST_FLAG_MUTABLE \
+    (UINT64_C(1) << 2)
+
+#define VITTE_AST_FLAG_ASYNC \
+    (UINT64_C(1) << 3)
+
+#define VITTE_AST_FLAG_UNSAFE \
+    (UINT64_C(1) << 4)
+
+#define VITTE_AST_FLAG_CONST \
+    (UINT64_C(1) << 5)
+
+#define VITTE_AST_FLAG_EXTERN \
+    (UINT64_C(1) << 6)
+
+#define VITTE_AST_FLAG_INLINE \
+    (UINT64_C(1) << 7)
+
+#define VITTE_AST_FLAG_NOINLINE \
+    (UINT64_C(1) << 8)
+
+#define VITTE_AST_FLAG_VARIADIC \
+    (UINT64_C(1) << 9)
+
+#define VITTE_AST_FLAG_STATIC \
+    (UINT64_C(1) << 10)
+
+#define VITTE_AST_FLAG_MOVE \
+    (UINT64_C(1) << 11)
+
+#define VITTE_AST_FLAG_REFERENCE \
+    (UINT64_C(1) << 12)
+
+#define VITTE_AST_FLAG_SYNTHETIC \
+    (UINT64_C(1) << 13)
+
+#define VITTE_AST_FLAG_IMPLICIT \
+    (UINT64_C(1) << 14)
+
+#define VITTE_AST_FLAG_GENERATED \
+    (UINT64_C(1) << 15)
+
+#define VITTE_AST_FLAG_RESOLVED \
+    (UINT64_C(1) << 16)
+
+#define VITTE_AST_FLAG_TYPED \
+    (UINT64_C(1) << 17)
+
+#define VITTE_AST_FLAG_LOWERED \
+    (UINT64_C(1) << 18)
+
+/* ========================================================================= */
+/* Attribute                                                                 */
+/* ========================================================================= */
+
+struct vitte_ast_attribute {
+    const char *name;
+    size_t name_length;
+
+    const char *value;
+    size_t value_length;
+
     vitte_ast_span_t span;
-    vitte_ast_node_t *next;
-
-    union {
-        struct {
-            const char *name;
-            vitte_ast_list_t imports;
-            vitte_ast_list_t exports;
-            vitte_ast_list_t declarations;
-            bool export_all;
-        } module;
-
-        struct {
-            const char *path;
-            const char *alias;
-            bool relative;
-            vitte_ast_import_kind_t import_kind;
-        } import_decl;
-
-        struct {
-            const char *local_name;
-            const char *export_name;
-        } export_decl;
-
-        struct {
-            const char *name;
-            bool exported;
-            const char *lowered_name;
-            vitte_ast_list_t parameters;
-            vitte_ast_list_t requires_clauses;
-            vitte_ast_list_t ensures_clauses;
-            vitte_ast_type_ref_t *return_type;
-            vitte_ast_stmt_t *body;
-        } proc_decl;
-
-        struct {
-            const char *name;
-            vitte_ast_type_ref_t *type;
-            bool mutable_value;
-            bool by_ref;
-        } param_decl;
-
-        struct {
-            const char *name;
-            bool exported;
-            const char *lowered_name;
-            vitte_ast_type_ref_t *type;
-            vitte_ast_expr_t *value;
-        } const_decl;
-
-        struct {
-            const char *name;
-            bool exported;
-            vitte_ast_list_t variants;
-        } pick_decl;
-
-        struct {
-            const char *name;
-        } pick_variant;
-
-        struct {
-            const char *name;
-            bool exported;
-            vitte_ast_list_t fields;
-        } form_decl;
-
-        struct {
-            const char *name;
-            vitte_ast_type_ref_t *type;
-        } form_field;
-
-        struct {
-            vitte_ast_list_t statements;
-        } block_stmt;
-
-        struct {
-            vitte_ast_expr_t *value;
-        } give_stmt;
-
-        struct {
-            const char *name;
-            vitte_ast_type_ref_t *type;
-            vitte_ast_expr_t *value;
-            bool mutable_value;
-        } let_stmt;
-
-        struct {
-            vitte_ast_expr_t *target;
-            vitte_ast_expr_t *value;
-        } assign_stmt;
-
-        struct {
-            vitte_ast_expr_t *value;
-        } expr_stmt;
-
-        struct {
-            vitte_ast_expr_t *condition;
-            vitte_ast_stmt_t *then_branch;
-            vitte_ast_stmt_t *else_branch;
-        } if_stmt;
-
-        struct { vitte_ast_expr_t *condition; vitte_ast_stmt_t *body; } while_stmt;
-        struct { const char *name; vitte_ast_expr_t *iterable; vitte_ast_stmt_t *body; } for_stmt;
-
-        struct {
-            int64_t value;
-        } integer_literal;
-
-        struct {
-            const char *value;
-        } string_literal;
-
-        struct {
-            const char *name;
-            const char *lowered_name;
-        } identifier;
-
-        struct {
-            const char *operator_text;
-            vitte_ast_expr_t *left;
-            vitte_ast_expr_t *right;
-        } binary_expr;
-
-        struct {
-            vitte_ast_expr_t *callee;
-            vitte_ast_list_t arguments;
-        } call_expr;
-
-        struct {
-            vitte_ast_list_t elements;
-        } list_expr;
-
-        struct {
-            const char *type_name;
-            vitte_ast_list_t fields;
-        } record_expr;
-
-        struct {
-            const char *name;
-            vitte_ast_expr_t *value;
-        } record_field;
-
-        struct { vitte_ast_expr_t *value; vitte_ast_type_ref_t *type; } cast_expr;
-        struct { vitte_ast_expr_t *base; vitte_ast_expr_t *index; } index_expr;
-        struct { vitte_ast_expr_t *condition; vitte_ast_expr_t *then_value; vitte_ast_expr_t *else_value; } if_expr;
-        struct { vitte_ast_expr_t *base; const char *member; } member_expr;
-        struct { vitte_ast_list_t statements; vitte_ast_expr_t *value; } block_expr;
-
-        struct {
-            const char *name;
-        } type_name;
-
-        struct {
-            const char *message;
-        } error_node;
-    } as;
 };
 
-typedef struct vitte_ast {
-    bool initialized;
-    bool owns_arena;
-    vitte_arena_t *arena;
-    vitte_arena_t owned_arena;
-    vitte_ast_module_t *root;
+/* ========================================================================= */
+/* Node payloads                                                             */
+/* ========================================================================= */
+
+typedef struct vitte_ast_integer_data {
+    uint64_t value;
+    bool negative;
+} vitte_ast_integer_data_t;
+
+typedef struct vitte_ast_float_data {
+    double value;
+} vitte_ast_float_data_t;
+
+typedef struct vitte_ast_string_data {
+    const char *value;
+    size_t length;
+} vitte_ast_string_data_t;
+
+typedef struct vitte_ast_boolean_data {
+    bool value;
+} vitte_ast_boolean_data_t;
+
+typedef struct vitte_ast_unary_data {
+    vitte_ast_unary_operator_t op;
+} vitte_ast_unary_data_t;
+
+typedef struct vitte_ast_binary_data {
+    vitte_ast_binary_operator_t op;
+} vitte_ast_binary_data_t;
+
+/*
+ * Generic payload union.
+ *
+ * Child topology is stored separately from payload data.
+ *
+ * This intentionally keeps semantic/type-system structures outside the AST
+ * core. semantic points to phase-owned semantic metadata.
+ */
+typedef union vitte_ast_node_data {
+    vitte_ast_integer_data_t integer;
+    vitte_ast_float_data_t floating;
+    vitte_ast_string_data_t string;
+    vitte_ast_boolean_data_t boolean;
+
+    vitte_ast_unary_data_t unary;
+    vitte_ast_binary_data_t binary;
+
+    uint64_t raw_u64[4];
+    void *raw_pointer[4];
+} vitte_ast_node_data_t;
+
+/* ========================================================================= */
+/* AST node                                                                  */
+/* ========================================================================= */
+
+struct vitte_ast_node {
+    /*
+     * Runtime integrity cookie.
+     */
+    uint64_t magic;
+
+    /*
+     * Owning AST.
+     */
+    vitte_ast_t *owner;
+
+    /*
+     * Stable AST-local node identifier.
+     *
+     * Zero is invalid.
+     */
+    uint64_t id;
+
+    /*
+     * AST generation in which this node was created.
+     */
+    uint64_t generation;
+
+    /*
+     * Syntactic category.
+     */
+    vitte_ast_kind_t kind;
+
+    /*
+     * Original source range.
+     */
+    vitte_ast_span_t span;
+
+    /*
+     * Tree topology.
+     */
+    vitte_ast_node_t *parent;
+
+    vitte_ast_node_t **children;
+
+    size_t child_count;
+    size_t child_capacity;
+
+    /*
+     * Source attributes.
+     */
+    vitte_ast_attribute_t *attributes;
+
+    size_t attribute_count;
+    size_t attribute_capacity;
+
+    /*
+     * Generic node properties.
+     */
+    vitte_ast_flags_t flags;
+
+    /*
+     * Optional node name.
+     *
+     * Stored as arena-owned NUL-terminated memory.
+     *
+     * name_length excludes the terminator.
+     */
+    const char *name;
+    size_t name_length;
+
+    /*
+     * Syntactic payload.
+     */
+    vitte_ast_node_data_t data;
+
+    /*
+     * Optional semantic-phase attachment.
+     *
+     * The AST does not own this object.
+     */
+    void *semantic;
+};
+
+/* ========================================================================= */
+/* AST                                                                       */
+/* ========================================================================= */
+
+struct vitte_ast {
+    uint64_t magic;
+
+    /*
+     * Non-owning arena context.
+     *
+     * AST allocations are made through this context.
+     */
+    vitte_arena_context_t *arena;
+
+    /*
+     * Root node.
+     *
+     * Usually VITTE_AST_MODULE.
+     */
+    vitte_ast_node_t *root;
+
+    /*
+     * Next stable node identifier.
+     */
+    uint64_t next_node_id;
+
+    /*
+     * Current number of nodes allocated in this AST generation.
+     */
     size_t node_count;
-    vitte_error_t last_error;
-} vitte_ast_t;
 
-typedef struct vitte_ast_builder {
-    vitte_ast_t *ast;
-} vitte_ast_builder_t;
+    /*
+     * Lifetime high-water node count.
+     */
+    size_t peak_node_count;
 
-typedef bool (*vitte_ast_visit_fn)(
+    /*
+     * Logical AST generation.
+     *
+     * Zero is reserved.
+     */
+    uint64_t generation;
+
+    /*
+     * Parser/AST error accounting.
+     */
+    size_t error_count;
+};
+
+/* ========================================================================= */
+/* Traversal                                                                 */
+/* ========================================================================= */
+
+typedef enum vitte_ast_visit_phase {
+    VITTE_AST_VISIT_ENTER = 0,
+    VITTE_AST_VISIT_LEAVE = 1
+} vitte_ast_visit_phase_t;
+
+/*
+ * Return false to stop traversal.
+ */
+typedef bool
+(*vitte_ast_visit_fn)(
     vitte_ast_node_t *node,
-    void *user
-);
-typedef bool (*vitte_ast_export_visit_fn)(
-    const vitte_ast_decl_t *decl,
-    const char *public_name,
-    void *user
-);
+    vitte_ast_visit_phase_t phase,
+    size_t depth,
+    void *user_data);
 
-void vitte_ast_span_init(vitte_ast_span_t *span);
-bool vitte_ast_span_is_valid(const vitte_ast_span_t *span);
-bool vitte_ast_span_merge(
-    const vitte_ast_span_t *left,
-    const vitte_ast_span_t *right,
-    vitte_ast_span_t *out
-);
+/* ========================================================================= */
+/* Statistics                                                                */
+/* ========================================================================= */
 
-void vitte_ast_list_init(vitte_ast_list_t *list);
-bool vitte_ast_list_append(vitte_ast_list_t *list, vitte_ast_node_t *node);
+struct vitte_ast_stats {
+    /*
+     * AST accounting.
+     */
+    size_t node_count;
+    size_t peak_node_count;
 
-vitte_status_t vitte_ast_init(vitte_ast_t *ast, vitte_arena_t *arena);
-vitte_status_t vitte_ast_init_owned(vitte_ast_t *ast, const vitte_arena_config_t *config);
-void vitte_ast_destroy(vitte_ast_t *ast);
-bool vitte_ast_is_initialized(const vitte_ast_t *ast);
+    /*
+     * Nodes reachable from root.
+     */
+    size_t reachable_nodes;
 
-vitte_ast_node_t *vitte_ast_alloc_node(
+    /*
+     * Maximum root-relative depth.
+     *
+     * Root depth is zero.
+     */
+    size_t maximum_depth;
+
+    /*
+     * Number of parent -> child edges.
+     */
+    size_t child_edges;
+
+    /*
+     * Number of source attributes.
+     */
+    size_t attribute_count;
+
+    /*
+     * Node-family counts.
+     */
+    size_t declaration_count;
+    size_t statement_count;
+    size_t expression_count;
+    size_t type_count;
+    size_t pattern_count;
+
+    /*
+     * Nodes carrying VITTE_AST_FLAG_INVALID.
+     */
+    size_t invalid_node_count;
+
+    uint64_t generation;
+
+    size_t error_count;
+};
+
+/* ========================================================================= */
+/* Lifecycle                                                                 */
+/* ========================================================================= */
+
+bool
+vitte_ast_init(
     vitte_ast_t *ast,
-    vitte_ast_node_kind_t kind,
-    vitte_ast_span_t span
-);
+    vitte_arena_context_t *arena);
 
-const vitte_error_t *vitte_ast_last_error(const vitte_ast_t *ast);
-void vitte_ast_clear_error(vitte_ast_t *ast);
-const char *vitte_ast_node_kind_name(vitte_ast_node_kind_t kind);
-bool vitte_ast_node_kind_is_valid(vitte_ast_node_kind_t kind);
-const char *vitte_ast_node_label(const vitte_ast_node_t *node);
-const char *vitte_ast_decl_name(const vitte_ast_decl_t *decl);
-const vitte_ast_decl_t *vitte_ast_module_find_decl(const vitte_ast_module_t *module, const char *name);
-const vitte_ast_decl_t *vitte_ast_export_decl_target(const vitte_ast_module_t *module, const vitte_ast_decl_t *export_decl);
-bool vitte_ast_module_decl_is_exported(const vitte_ast_module_t *module, const vitte_ast_decl_t *decl);
-const vitte_ast_decl_t *vitte_ast_module_find_exported_decl(const vitte_ast_module_t *module, const char *export_name);
-size_t vitte_ast_module_visit_exports(const vitte_ast_module_t *module, vitte_ast_export_visit_fn callback, void *user);
-void vitte_ast_dump(const vitte_ast_node_t *node, FILE *stream, size_t max_depth);
+/*
+ * Destroy AST metadata.
+ *
+ * Does not destroy the external arena.
+ */
+void
+vitte_ast_destroy(
+    vitte_ast_t *ast);
 
-void vitte_ast_builder_init(vitte_ast_builder_t *builder, vitte_ast_t *ast);
-vitte_ast_module_t *vitte_ast_make_module(vitte_ast_builder_t *builder, const char *name, vitte_ast_span_t span);
-vitte_ast_decl_t *vitte_ast_make_import_decl(
-    vitte_ast_builder_t *builder,
-    const char *path,
-    const char *alias,
-    bool relative,
-    vitte_ast_import_kind_t import_kind,
-    vitte_ast_span_t span
-);
-vitte_ast_decl_t *vitte_ast_make_export_decl(
-    vitte_ast_builder_t *builder,
-    const char *local_name,
-    const char *export_name,
-    vitte_ast_span_t span
-);
-vitte_ast_decl_t *vitte_ast_make_proc_decl(vitte_ast_builder_t *builder, const char *name, bool exported, vitte_ast_type_ref_t *return_type, vitte_ast_stmt_t *body, vitte_ast_span_t span);
-vitte_ast_node_t *vitte_ast_make_param_decl(vitte_ast_builder_t *builder, const char *name, vitte_ast_type_ref_t *type, bool mutable_value, bool by_ref, vitte_ast_span_t span);
-vitte_ast_decl_t *vitte_ast_make_const_decl(vitte_ast_builder_t *builder, const char *name, bool exported, vitte_ast_type_ref_t *type, vitte_ast_expr_t *value, vitte_ast_span_t span);
-vitte_ast_decl_t *vitte_ast_make_pick_decl(vitte_ast_builder_t *builder, const char *name, bool exported, vitte_ast_span_t span);
-vitte_ast_node_t *vitte_ast_make_pick_variant(vitte_ast_builder_t *builder, const char *name, vitte_ast_span_t span);
-vitte_ast_decl_t *vitte_ast_make_form_decl(vitte_ast_builder_t *builder, const char *name, bool exported, vitte_ast_span_t span);
-vitte_ast_node_t *vitte_ast_make_form_field(vitte_ast_builder_t *builder, const char *name, vitte_ast_type_ref_t *type, vitte_ast_span_t span);
-vitte_ast_stmt_t *vitte_ast_make_block_stmt(vitte_ast_builder_t *builder, vitte_ast_span_t span);
-vitte_ast_stmt_t *vitte_ast_make_give_stmt(vitte_ast_builder_t *builder, vitte_ast_expr_t *value, vitte_ast_span_t span);
-vitte_ast_stmt_t *vitte_ast_make_let_stmt(vitte_ast_builder_t *builder, const char *name, vitte_ast_type_ref_t *type, vitte_ast_expr_t *value, bool mutable_value, vitte_ast_span_t span);
-vitte_ast_stmt_t *vitte_ast_make_assign_stmt(vitte_ast_builder_t *builder, vitte_ast_expr_t *target, vitte_ast_expr_t *value, vitte_ast_span_t span);
-vitte_ast_stmt_t *vitte_ast_make_expr_stmt(vitte_ast_builder_t *builder, vitte_ast_expr_t *value, vitte_ast_span_t span);
-vitte_ast_stmt_t *vitte_ast_make_if_stmt(vitte_ast_builder_t *builder, vitte_ast_expr_t *condition, vitte_ast_stmt_t *then_branch, vitte_ast_stmt_t *else_branch, vitte_ast_span_t span);
-vitte_ast_expr_t *vitte_ast_make_integer_literal(vitte_ast_builder_t *builder, int64_t value, vitte_ast_span_t span);
-vitte_ast_expr_t *vitte_ast_make_string_literal(vitte_ast_builder_t *builder, const char *value, vitte_ast_span_t span);
-vitte_ast_expr_t *vitte_ast_make_identifier(vitte_ast_builder_t *builder, const char *name, vitte_ast_span_t span);
-vitte_ast_expr_t *vitte_ast_make_binary_expr(vitte_ast_builder_t *builder, const char *operator_text, vitte_ast_expr_t *left, vitte_ast_expr_t *right, vitte_ast_span_t span);
-vitte_ast_expr_t *vitte_ast_make_call_expr(vitte_ast_builder_t *builder, vitte_ast_expr_t *callee, vitte_ast_span_t span);
-vitte_ast_expr_t *vitte_ast_make_list_expr(vitte_ast_builder_t *builder, vitte_ast_span_t span);
-vitte_ast_expr_t *vitte_ast_make_record_expr(vitte_ast_builder_t *builder, const char *type_name, vitte_ast_span_t span);
-vitte_ast_node_t *vitte_ast_make_record_field(vitte_ast_builder_t *builder, const char *name, vitte_ast_expr_t *value, vitte_ast_span_t span);
-vitte_ast_expr_t *vitte_ast_make_cast_expr(vitte_ast_builder_t *builder, vitte_ast_expr_t *value, vitte_ast_type_ref_t *type, vitte_ast_span_t span);
-vitte_ast_expr_t *vitte_ast_make_index_expr(vitte_ast_builder_t *builder, vitte_ast_expr_t *base, vitte_ast_expr_t *index, vitte_ast_span_t span);
-vitte_ast_expr_t *vitte_ast_make_if_expr(vitte_ast_builder_t *builder, vitte_ast_expr_t *condition, vitte_ast_expr_t *then_value, vitte_ast_expr_t *else_value, vitte_ast_span_t span);
-vitte_ast_expr_t *vitte_ast_make_member_expr(vitte_ast_builder_t *builder, vitte_ast_expr_t *base, const char *member, vitte_ast_span_t span);
-vitte_ast_expr_t *vitte_ast_make_block_expr(vitte_ast_builder_t *builder, vitte_ast_list_t statements, vitte_ast_expr_t *value, vitte_ast_span_t span);
-vitte_ast_stmt_t *vitte_ast_make_while_stmt(vitte_ast_builder_t *builder, vitte_ast_expr_t *condition, vitte_ast_stmt_t *body, vitte_ast_span_t span);
-vitte_ast_stmt_t *vitte_ast_make_loop_control_stmt(vitte_ast_builder_t *builder, bool continue_loop, vitte_ast_span_t span);
-vitte_ast_stmt_t *vitte_ast_make_for_stmt(vitte_ast_builder_t *builder, const char *name, vitte_ast_expr_t *iterable, vitte_ast_stmt_t *body, vitte_ast_span_t span);
-vitte_ast_type_ref_t *vitte_ast_make_type_name(vitte_ast_builder_t *builder, const char *name, vitte_ast_span_t span);
-vitte_ast_node_t *vitte_ast_make_error(vitte_ast_builder_t *builder, const char *message, vitte_ast_span_t span);
+/*
+ * Start a new logical AST generation.
+ *
+ * Important:
+ *
+ * This function does not reset the external arena itself.
+ *
+ * The owner of the arena controls its physical reset policy.
+ */
+void
+vitte_ast_reset(
+    vitte_ast_t *ast);
 
-bool vitte_ast_module_add_decl(vitte_ast_module_t *module, vitte_ast_decl_t *decl);
-bool vitte_ast_module_add_import(vitte_ast_module_t *module, vitte_ast_decl_t *import_decl);
-bool vitte_ast_module_add_export(vitte_ast_module_t *module, vitte_ast_decl_t *export_decl);
-void vitte_ast_module_set_export_all(vitte_ast_module_t *module, bool enabled);
-bool vitte_ast_proc_add_param(vitte_ast_decl_t *proc, vitte_ast_node_t *param);
-bool vitte_ast_block_add_stmt(vitte_ast_stmt_t *block, vitte_ast_stmt_t *stmt);
-bool vitte_ast_call_add_arg(vitte_ast_expr_t *call, vitte_ast_expr_t *argument);
+/* ========================================================================= */
+/* Validity                                                                  */
+/* ========================================================================= */
 
-vitte_status_t vitte_ast_validate(vitte_ast_t *ast);
-size_t vitte_ast_visit(vitte_ast_node_t *node, vitte_ast_visit_fn callback, void *user, size_t max_depth);
+bool
+vitte_ast_is_valid(
+    const vitte_ast_t *ast);
 
-#ifdef __cplusplus
+bool
+vitte_ast_node_is_valid(
+    const vitte_ast_node_t *node);
+
+/* ========================================================================= */
+/* Kind classification                                                       */
+/* ========================================================================= */
+
+bool
+vitte_ast_kind_is_declaration(
+    vitte_ast_kind_t kind);
+
+bool
+vitte_ast_kind_is_statement(
+    vitte_ast_kind_t kind);
+
+bool
+vitte_ast_kind_is_expression(
+    vitte_ast_kind_t kind);
+
+bool
+vitte_ast_kind_is_type(
+    vitte_ast_kind_t kind);
+
+bool
+vitte_ast_kind_is_pattern(
+    vitte_ast_kind_t kind);
+
+/* ========================================================================= */
+/* Names                                                                     */
+/* ========================================================================= */
+
+const char *
+vitte_ast_kind_name(
+    vitte_ast_kind_t kind);
+
+const char *
+vitte_ast_unary_operator_name(
+    vitte_ast_unary_operator_t op);
+
+const char *
+vitte_ast_binary_operator_name(
+    vitte_ast_binary_operator_t op);
+
+/* ========================================================================= */
+/* Source spans                                                              */
+/* ========================================================================= */
+
+vitte_ast_span_t
+vitte_ast_span_make(
+    uint32_t file_id,
+    size_t begin,
+    size_t end);
+
+bool
+vitte_ast_span_is_valid(
+    vitte_ast_span_t span);
+
+size_t
+vitte_ast_span_length(
+    vitte_ast_span_t span);
+
+vitte_ast_span_t
+vitte_ast_span_join(
+    vitte_ast_span_t left,
+    vitte_ast_span_t right);
+
+/* ========================================================================= */
+/* Node creation                                                             */
+/* ========================================================================= */
+
+vitte_ast_node_t *
+vitte_ast_node_create(
+    vitte_ast_t *ast,
+    vitte_ast_kind_t kind,
+    vitte_ast_span_t span);
+
+vitte_ast_node_t *
+vitte_ast_node_create_named(
+    vitte_ast_t *ast,
+    vitte_ast_kind_t kind,
+    vitte_ast_span_t span,
+    const char *name,
+    size_t name_length);
+
+/* ========================================================================= */
+/* Tree construction                                                         */
+/* ========================================================================= */
+
+bool
+vitte_ast_node_add_child(
+    vitte_ast_node_t *parent,
+    vitte_ast_node_t *child);
+
+bool
+vitte_ast_node_insert_child(
+    vitte_ast_node_t *parent,
+    size_t index,
+    vitte_ast_node_t *child);
+
+bool
+vitte_ast_node_replace_child(
+    vitte_ast_node_t *parent,
+    size_t index,
+    vitte_ast_node_t *replacement);
+
+vitte_ast_node_t *
+vitte_ast_node_detach_child(
+    vitte_ast_node_t *parent,
+    size_t index);
+
+/* ========================================================================= */
+/* Child access                                                              */
+/* ========================================================================= */
+
+vitte_ast_node_t *
+vitte_ast_node_child(
+    vitte_ast_node_t *node,
+    size_t index);
+
+const vitte_ast_node_t *
+vitte_ast_node_child_const(
+    const vitte_ast_node_t *node,
+    size_t index);
+
+size_t
+vitte_ast_node_child_count(
+    const vitte_ast_node_t *node);
+
+/* ========================================================================= */
+/* Root                                                                      */
+/* ========================================================================= */
+
+bool
+vitte_ast_set_root(
+    vitte_ast_t *ast,
+    vitte_ast_node_t *root);
+
+vitte_ast_node_t *
+vitte_ast_root(
+    vitte_ast_t *ast);
+
+const vitte_ast_node_t *
+vitte_ast_root_const(
+    const vitte_ast_t *ast);
+
+/* ========================================================================= */
+/* Attributes                                                                */
+/* ========================================================================= */
+
+bool
+vitte_ast_node_add_attribute(
+    vitte_ast_node_t *node,
+    const char *name,
+    size_t name_length,
+    const char *value,
+    size_t value_length,
+    vitte_ast_span_t span);
+
+const vitte_ast_attribute_t *
+vitte_ast_node_attribute(
+    const vitte_ast_node_t *node,
+    size_t index);
+
+const vitte_ast_attribute_t *
+vitte_ast_node_find_attribute(
+    const vitte_ast_node_t *node,
+    const char *name,
+    size_t name_length);
+
+/* ========================================================================= */
+/* Flags                                                                     */
+/* ========================================================================= */
+
+void
+vitte_ast_node_set_flag(
+    vitte_ast_node_t *node,
+    vitte_ast_flags_t flag);
+
+void
+vitte_ast_node_clear_flag(
+    vitte_ast_node_t *node,
+    vitte_ast_flags_t flag);
+
+bool
+vitte_ast_node_has_flag(
+    const vitte_ast_node_t *node,
+    vitte_ast_flags_t flag);
+
+/* ========================================================================= */
+/* Basic node accessors                                                      */
+/* ========================================================================= */
+
+uint64_t
+vitte_ast_node_id(
+    const vitte_ast_node_t *node);
+
+vitte_ast_kind_t
+vitte_ast_node_kind(
+    const vitte_ast_node_t *node);
+
+vitte_ast_span_t
+vitte_ast_node_span(
+    const vitte_ast_node_t *node);
+
+vitte_ast_node_t *
+vitte_ast_node_parent(
+    vitte_ast_node_t *node);
+
+const vitte_ast_node_t *
+vitte_ast_node_parent_const(
+    const vitte_ast_node_t *node);
+
+const char *
+vitte_ast_node_name(
+    const vitte_ast_node_t *node);
+
+size_t
+vitte_ast_node_name_length(
+    const vitte_ast_node_t *node);
+
+/* ========================================================================= */
+/* Semantic attachment                                                       */
+/* ========================================================================= */
+
+void
+vitte_ast_node_set_semantic(
+    vitte_ast_node_t *node,
+    void *semantic);
+
+void *
+vitte_ast_node_semantic(
+    vitte_ast_node_t *node);
+
+const void *
+vitte_ast_node_semantic_const(
+    const vitte_ast_node_t *node);
+
+/* ========================================================================= */
+/* Literal payload                                                           */
+/* ========================================================================= */
+
+void
+vitte_ast_node_set_integer(
+    vitte_ast_node_t *node,
+    uint64_t value,
+    bool negative);
+
+void
+vitte_ast_node_set_float(
+    vitte_ast_node_t *node,
+    double value);
+
+bool
+vitte_ast_node_set_string(
+    vitte_ast_node_t *node,
+    const char *value,
+    size_t length);
+
+void
+vitte_ast_node_set_bool(
+    vitte_ast_node_t *node,
+    bool value);
+
+/* ========================================================================= */
+/* Operator payload                                                          */
+/* ========================================================================= */
+
+void
+vitte_ast_node_set_unary_operator(
+    vitte_ast_node_t *node,
+    vitte_ast_unary_operator_t op);
+
+void
+vitte_ast_node_set_binary_operator(
+    vitte_ast_node_t *node,
+    vitte_ast_binary_operator_t op);
+
+/* ========================================================================= */
+/* Search                                                                    */
+/* ========================================================================= */
+
+vitte_ast_node_t *
+vitte_ast_find_id(
+    vitte_ast_t *ast,
+    uint64_t id);
+
+/* ========================================================================= */
+/* Traversal                                                                 */
+/* ========================================================================= */
+
+/*
+ * Deterministic depth-first traversal.
+ *
+ * Each node receives:
+ *
+ *     ENTER
+ *     recursively visit children
+ *     LEAVE
+ *
+ * Returning false from the visitor aborts traversal.
+ */
+bool
+vitte_ast_visit(
+    vitte_ast_t *ast,
+    vitte_ast_visit_fn visitor,
+    void *user_data);
+
+/* ========================================================================= */
+/* Ancestor utilities                                                        */
+/* ========================================================================= */
+
+bool
+vitte_ast_node_is_ancestor_of(
+    const vitte_ast_node_t *ancestor,
+    const vitte_ast_node_t *node);
+
+size_t
+vitte_ast_node_depth(
+    const vitte_ast_node_t *node);
+
+/* ========================================================================= */
+/* Statistics                                                                */
+/* ========================================================================= */
+
+vitte_ast_stats_t
+vitte_ast_stats(
+    const vitte_ast_t *ast);
+
+/* ========================================================================= */
+/* Error accounting                                                          */
+/* ========================================================================= */
+
+void
+vitte_ast_record_error(
+    vitte_ast_t *ast);
+
+size_t
+vitte_ast_error_count(
+    const vitte_ast_t *ast);
+
+/* ========================================================================= */
+/* AST accessors                                                             */
+/* ========================================================================= */
+
+size_t
+vitte_ast_node_count(
+    const vitte_ast_t *ast);
+
+size_t
+vitte_ast_peak_node_count(
+    const vitte_ast_t *ast);
+
+uint64_t
+vitte_ast_generation(
+    const vitte_ast_t *ast);
+
+vitte_arena_context_t *
+vitte_ast_arena(
+    vitte_ast_t *ast);
+
+const vitte_arena_context_t *
+vitte_ast_arena_const(
+    const vitte_ast_t *ast);
+
+/* ========================================================================= */
+/* Deep validation                                                          */
+/* ========================================================================= */
+
+/*
+ * Validate complete rooted AST.
+ *
+ * Checks include:
+ *
+ *     AST magic
+ *     arena validity
+ *     generation
+ *     root validity
+ *     root parent == NULL
+ *     node ownership
+ *     node generation
+ *     source spans
+ *     node IDs
+ *     child count/capacity
+ *     attribute count/capacity
+ *     parent relationships
+ *     duplicate children
+ *     name consistency
+ *     attribute consistency
+ *     maximum traversal depth
+ *     reachable node count == AST node count
+ *
+ * Detached construction nodes therefore make validation fail until attached.
+ */
+bool
+vitte_ast_validate(
+    const vitte_ast_t *ast);
+
+/* ========================================================================= */
+/* Inline kind helpers                                                       */
+/* ========================================================================= */
+
+static inline bool
+vitte_ast_node_is_declaration(
+    const vitte_ast_node_t *node)
+{
+    return
+        vitte_ast_node_is_valid(node) &&
+        vitte_ast_kind_is_declaration(
+            node->kind);
 }
+
+static inline bool
+vitte_ast_node_is_statement(
+    const vitte_ast_node_t *node)
+{
+    return
+        vitte_ast_node_is_valid(node) &&
+        vitte_ast_kind_is_statement(
+            node->kind);
+}
+
+static inline bool
+vitte_ast_node_is_expression(
+    const vitte_ast_node_t *node)
+{
+    return
+        vitte_ast_node_is_valid(node) &&
+        vitte_ast_kind_is_expression(
+            node->kind);
+}
+
+static inline bool
+vitte_ast_node_is_type(
+    const vitte_ast_node_t *node)
+{
+    return
+        vitte_ast_node_is_valid(node) &&
+        vitte_ast_kind_is_type(
+            node->kind);
+}
+
+static inline bool
+vitte_ast_node_is_pattern(
+    const vitte_ast_node_t *node)
+{
+    return
+        vitte_ast_node_is_valid(node) &&
+        vitte_ast_kind_is_pattern(
+            node->kind);
+}
+
+/* ========================================================================= */
+/* Inline topology helpers                                                   */
+/* ========================================================================= */
+
+static inline bool
+vitte_ast_node_is_root(
+    const vitte_ast_node_t *node)
+{
+    return
+        vitte_ast_node_is_valid(node) &&
+        node->parent == NULL &&
+        node->owner->root == node;
+}
+
+static inline bool
+vitte_ast_node_is_leaf(
+    const vitte_ast_node_t *node)
+{
+    return
+        vitte_ast_node_is_valid(node) &&
+        node->child_count == 0u;
+}
+
+static inline bool
+vitte_ast_node_has_children(
+    const vitte_ast_node_t *node)
+{
+    return
+        vitte_ast_node_is_valid(node) &&
+        node->child_count != 0u;
+}
+
+static inline bool
+vitte_ast_node_has_parent(
+    const vitte_ast_node_t *node)
+{
+    return
+        vitte_ast_node_is_valid(node) &&
+        node->parent != NULL;
+}
+
+static inline vitte_ast_node_t *
+vitte_ast_node_first_child(
+    vitte_ast_node_t *node)
+{
+    if (!vitte_ast_node_is_valid(node) ||
+        node->child_count == 0u) {
+        return NULL;
+    }
+
+    return node->children[0];
+}
+
+static inline const vitte_ast_node_t *
+vitte_ast_node_first_child_const(
+    const vitte_ast_node_t *node)
+{
+    if (!vitte_ast_node_is_valid(node) ||
+        node->child_count == 0u) {
+        return NULL;
+    }
+
+    return node->children[0];
+}
+
+static inline vitte_ast_node_t *
+vitte_ast_node_last_child(
+    vitte_ast_node_t *node)
+{
+    if (!vitte_ast_node_is_valid(node) ||
+        node->child_count == 0u) {
+        return NULL;
+    }
+
+    return
+        node->children[
+            node->child_count - 1u];
+}
+
+static inline const vitte_ast_node_t *
+vitte_ast_node_last_child_const(
+    const vitte_ast_node_t *node)
+{
+    if (!vitte_ast_node_is_valid(node) ||
+        node->child_count == 0u) {
+        return NULL;
+    }
+
+    return
+        node->children[
+            node->child_count - 1u];
+}
+
+/* ========================================================================= */
+/* Inline name helpers                                                       */
+/* ========================================================================= */
+
+static inline bool
+vitte_ast_node_has_name(
+    const vitte_ast_node_t *node)
+{
+    return
+        vitte_ast_node_is_valid(node) &&
+        node->name != NULL;
+}
+
+static inline bool
+vitte_ast_node_name_equals(
+    const vitte_ast_node_t *node,
+    const char *name,
+    size_t length)
+{
+    size_t index;
+
+    if (!vitte_ast_node_is_valid(node) ||
+        node->name == NULL ||
+        name == NULL ||
+        node->name_length != length) {
+        return false;
+    }
+
+    for (index = 0u;
+         index < length;
+         ++index) {
+        if (node->name[index] !=
+            name[index]) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/* ========================================================================= */
+/* Inline attribute helpers                                                  */
+/* ========================================================================= */
+
+static inline size_t
+vitte_ast_node_attribute_count(
+    const vitte_ast_node_t *node)
+{
+    if (!vitte_ast_node_is_valid(node)) {
+        return 0u;
+    }
+
+    return node->attribute_count;
+}
+
+static inline bool
+vitte_ast_node_has_attributes(
+    const vitte_ast_node_t *node)
+{
+    return
+        vitte_ast_node_attribute_count(node) !=
+        0u;
+}
+
+/* ========================================================================= */
+/* Inline AST helpers                                                        */
+/* ========================================================================= */
+
+static inline bool
+vitte_ast_is_empty(
+    const vitte_ast_t *ast)
+{
+    return
+        vitte_ast_is_valid(ast) &&
+        ast->node_count == 0u;
+}
+
+static inline bool
+vitte_ast_has_root(
+    const vitte_ast_t *ast)
+{
+    return
+        vitte_ast_is_valid(ast) &&
+        ast->root != NULL;
+}
+
+static inline bool
+vitte_ast_has_errors(
+    const vitte_ast_t *ast)
+{
+    return
+        vitte_ast_error_count(ast) != 0u;
+}
+
+/* ========================================================================= */
+/* Typed creation conveniences                                               */
+/* ========================================================================= */
+
+#define VITTE_AST_NEW(ast, kind, span) \
+    vitte_ast_node_create( \
+        (ast), \
+        (kind), \
+        (span))
+
+#define VITTE_AST_NEW_NAMED( \
+    ast, \
+    kind, \
+    span, \
+    name, \
+    length) \
+    vitte_ast_node_create_named( \
+        (ast), \
+        (kind), \
+        (span), \
+        (name), \
+        (length))
+
+#define VITTE_AST_ADD(parent, child) \
+    vitte_ast_node_add_child( \
+        (parent), \
+        (child))
+
+/* ========================================================================= */
+/* Compile-time invariants                                                   */
+/* ========================================================================= */
+
+#if defined(__STDC_VERSION__) && \
+    __STDC_VERSION__ >= 201112L
+
+_Static_assert(
+    sizeof(uint64_t) == 8u,
+    "Vitte AST requires 64-bit uint64_t");
+
+_Static_assert(
+    sizeof(uint32_t) == 4u,
+    "Vitte AST requires 32-bit uint32_t");
+
+_Static_assert(
+    VITTE_AST_INVALID == 0,
+    "invalid AST kind must remain zero");
+
+_Static_assert(
+    VITTE_AST_UNARY_INVALID == 0,
+    "invalid unary operator must remain zero");
+
+_Static_assert(
+    VITTE_AST_BINARY_INVALID == 0,
+    "invalid binary operator must remain zero");
+
+_Static_assert(
+    VITTE_AST_VISIT_ENTER == 0,
+    "AST enter traversal phase must remain zero");
+
+_Static_assert(
+    VITTE_AST_INITIAL_CHILD_CAPACITY != 0u,
+    "AST initial child capacity must not be zero");
+
+_Static_assert(
+    VITTE_AST_INITIAL_ATTRIBUTE_CAPACITY != 0u,
+    "AST initial attribute capacity must not be zero");
+
+_Static_assert(
+    VITTE_AST_MAX_DEPTH != 0u,
+    "AST maximum depth must not be zero");
+
+_Static_assert(
+    (VITTE_AST_FLAG_INVALID &
+     VITTE_AST_FLAG_PUBLIC) == 0u,
+    "AST flags must use distinct bits");
+
 #endif
 
-#endif /* VITTE_AST_H */
+/* ========================================================================= */
+/* C++                                                                       */
+/* ========================================================================= */
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
+
+#endif /* VITTE_SRC_AST_AST_H */

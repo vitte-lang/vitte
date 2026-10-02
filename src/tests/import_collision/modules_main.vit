@@ -1,8 +1,776 @@
-space demo/modules_main;
+/// Qualified-module import collision test.
+///
+/// `collision_a` and `collision_b` intentionally export many declarations with
+/// identical names. This positive fixture imports both modules without glob
+/// expansion and verifies that qualified lookup keeps both namespaces fully
+/// independent.
+///
+/// Observable identities:
+/// - collision_a::SOURCE_ID == 1
+/// - collision_a::VALUE == 20
+/// - collision_a::ANSWER_PART == 20
+/// - collision_b::SOURCE_ID == 2
+/// - collision_b::VALUE == 22
+/// - collision_b::ANSWER_PART == 22
+/// - both ANSWER_PART values together produce 42.
+///
+/// Expected result:
+/// - both modules resolve;
+/// - no import collision is diagnosed;
+/// - same-named constants remain distinct;
+/// - same-named forms remain distinct nominal types;
+/// - same-named picks remain distinct;
+/// - same-named procedures resolve through their owning module;
+/// - repeated and alternating qualified lookup is deterministic;
+/// - compilation succeeds;
+/// - execution returns 0.
 
-use collision_a;
-use collision_b;
+space tests::import_collision::modules_main;
+
+use tests::import_collision::collision_a;
+use tests::import_collision::collision_b;
+
+proc test_module_identity() -> bool {
+    give collision_a::SOURCE_ID == 1 &&
+         collision_b::SOURCE_ID == 2 &&
+         collision_a::source_id() == 1 &&
+         collision_b::source_id() == 2;
+}
+
+proc test_values() -> bool {
+    give collision_a::VALUE == 20 &&
+         collision_b::VALUE == 22 &&
+         collision_a::ANSWER_PART == 20 &&
+         collision_b::ANSWER_PART == 22 &&
+         collision_a::COMMON_LIMIT == 100 &&
+         collision_b::COMMON_LIMIT == 100;
+}
+
+proc test_combined_answer() -> bool {
+    give collision_a::ANSWER_PART +
+             collision_b::ANSWER_PART ==
+         42;
+}
+
+proc test_common_value() -> bool {
+    give collision_a::common_value() == 20 &&
+         collision_b::common_value() == 22 &&
+         collision_a::common_value() +
+             collision_b::common_value() ==
+             42;
+}
+
+proc test_answer_part() -> bool {
+    give collision_a::answer_part() == 20 &&
+         collision_b::answer_part() == 22 &&
+         collision_a::answer_part() +
+             collision_b::answer_part() ==
+             42;
+}
+
+proc test_identity() -> bool {
+    give collision_a::identity(20) == 20 &&
+         collision_b::identity(22) == 22 &&
+         collision_a::identity(
+             collision_a::VALUE) == 20 &&
+         collision_b::identity(
+             collision_b::VALUE) == 22;
+}
+
+proc test_add() -> bool {
+    give collision_a::add(
+               10,
+               10) == 20 &&
+         collision_b::add(
+               10,
+               12) == 22 &&
+         collision_a::add(
+               collision_a::VALUE,
+               collision_b::VALUE) == 42 &&
+         collision_b::add(
+               collision_a::VALUE,
+               collision_b::VALUE) == 42;
+}
+
+proc test_cross_module_expression() -> i64 {
+    let left: i64 =
+        collision_a::common_value();
+
+    let right: i64 =
+        collision_b::common_value();
+
+    give collision_a::add(
+        left,
+        right);
+}
+
+proc test_nested_cross_module_calls() -> i64 {
+    give collision_b::identity(
+        collision_a::add(
+            collision_a::identity(
+                collision_a::VALUE),
+            collision_b::identity(
+                collision_b::VALUE)));
+}
+
+proc test_point_a() -> bool {
+    let point: collision_a::Point =
+        collision_a::make_default_point();
+
+    give point.x == 10 &&
+         point.y == 10 &&
+         collision_a::point_sum(
+             &point) == 20;
+}
+
+proc test_point_b() -> bool {
+    let point: collision_b::Point =
+        collision_b::make_default_point();
+
+    give point.x == 11 &&
+         point.y == 11 &&
+         collision_b::point_sum(
+             &point) == 22;
+}
+
+proc test_parallel_point_types() -> bool {
+    let point_a: collision_a::Point =
+        collision_a::make_point(
+            10,
+            10);
+
+    let point_b: collision_b::Point =
+        collision_b::make_point(
+            11,
+            11);
+
+    give collision_a::point_sum(
+               &point_a) == 20 &&
+         collision_b::point_sum(
+               &point_b) == 22 &&
+         collision_a::point_sum(
+               &point_a) +
+             collision_b::point_sum(
+                 &point_b) ==
+             42;
+}
+
+proc consume_point_a(
+    point: &collision_a::Point
+) -> i64 {
+    give collision_a::point_sum(point);
+}
+
+proc consume_point_b(
+    point: &collision_b::Point
+) -> i64 {
+    give collision_b::point_sum(point);
+}
+
+proc produce_point_a() -> collision_a::Point {
+    give collision_a::make_default_point();
+}
+
+proc produce_point_b() -> collision_b::Point {
+    give collision_b::make_default_point();
+}
+
+proc test_point_type_identity() -> bool {
+    let point_a: collision_a::Point =
+        produce_point_a();
+
+    let point_b: collision_b::Point =
+        produce_point_b();
+
+    give consume_point_a(
+               &point_a) == 20 &&
+         consume_point_b(
+               &point_b) == 22;
+}
+
+proc test_record_a() -> bool {
+    let record: collision_a::Record =
+        collision_a::make_record(
+            collision_a::VALUE);
+
+    give collision_a::record_value(
+               &record) == 20 &&
+         collision_a::record_source(
+               &record) == 1;
+}
+
+proc test_record_b() -> bool {
+    let record: collision_b::Record =
+        collision_b::make_record(
+            collision_b::VALUE);
+
+    give collision_b::record_value(
+               &record) == 22 &&
+         collision_b::record_source(
+               &record) == 2 &&
+         collision_b::record_belongs_here(
+             &record);
+}
+
+proc test_parallel_record_types() -> bool {
+    let record_a: collision_a::Record =
+        collision_a::make_record(
+            collision_a::VALUE);
+
+    let record_b: collision_b::Record =
+        collision_b::make_record(
+            collision_b::VALUE);
+
+    give collision_a::record_value(
+               &record_a) == 20 &&
+         collision_a::record_source(
+               &record_a) == 1 &&
+         collision_b::record_value(
+               &record_b) == 22 &&
+         collision_b::record_source(
+               &record_b) == 2;
+}
+
+proc test_wrapper_a() -> bool {
+    let point: collision_a::Point =
+        collision_a::make_default_point();
+
+    let record: collision_a::Record =
+        collision_a::make_record(
+            collision_a::VALUE);
+
+    let wrapper: collision_a::Wrapper =
+        collision_a::make_wrapper(
+            point,
+            record);
+
+    give collision_a::wrapper_value(
+        &wrapper) == 40;
+}
+
+proc test_wrapper_b() -> bool {
+    let point: collision_b::Point =
+        collision_b::make_default_point();
+
+    let record: collision_b::Record =
+        collision_b::make_record(
+            collision_b::VALUE);
+
+    let wrapper: collision_b::Wrapper =
+        collision_b::make_wrapper(
+            point,
+            record);
+
+    give collision_b::wrapper_value(
+               &wrapper) == 44 &&
+         collision_b::wrapper_source(
+               &wrapper) == 2;
+}
+
+proc test_states() -> bool {
+    let state_a: collision_a::State =
+        collision_a::default_state();
+
+    let state_b: collision_b::State =
+        collision_b::default_state();
+
+    give state_a ==
+             collision_a::State.Ready &&
+         state_b ==
+             collision_b::State.Ready;
+}
+
+proc test_state_b_variants() -> bool {
+    let running: collision_b::State =
+        collision_b::running_state();
+
+    let finished: collision_b::State =
+        collision_b::finished_state();
+
+    give running ==
+             collision_b::State.Running &&
+         finished ==
+             collision_b::State.Finished;
+}
+
+proc test_result_kinds() -> bool {
+    let success_a: collision_a::ResultKind =
+        collision_a::success_kind();
+
+    let success_b: collision_b::ResultKind =
+        collision_b::success_kind();
+
+    let failure_b: collision_b::ResultKind =
+        collision_b::failure_kind();
+
+    give success_a ==
+             collision_a::ResultKind.Success &&
+         success_b ==
+             collision_b::ResultKind.Success &&
+         failure_b ==
+             collision_b::ResultKind.Failure;
+}
+
+proc test_b_only_range() -> bool {
+    let range: collision_b::Range =
+        collision_b::make_default_range();
+
+    give collision_b::range_minimum(
+               &range) == 0 &&
+         collision_b::range_maximum(
+               &range) == 22 &&
+         collision_b::range_width(
+               &range) == 22 &&
+         collision_b::range_valid(
+               &range) &&
+         collision_b::range_contains(
+             &range,
+             11);
+}
+
+proc test_b_only_pair() -> bool {
+    let pair: collision_b::Pair =
+        collision_b::make_default_pair();
+
+    give collision_b::pair_sum(
+        &pair) == 22;
+}
+
+proc test_b_only_nested() -> bool {
+    let nested: collision_b::Nested =
+        collision_b::make_default_nested();
+
+    give collision_b::nested_point_value(
+               &nested) == 22 &&
+         collision_b::nested_range_value(
+               &nested) == 22 &&
+         collision_b::nested_record_value(
+               &nested) == 22 &&
+         collision_b::nested_source(
+               &nested) == 2 &&
+         collision_b::validate_nested(
+             &nested);
+}
+
+proc test_b_only_direction() -> bool {
+    let left: collision_b::Direction =
+        collision_b::left_direction();
+
+    let right: collision_b::Direction =
+        collision_b::right_direction();
+
+    give left ==
+             collision_b::Direction.Left &&
+         right ==
+             collision_b::Direction.Right;
+}
+
+proc test_repeated_constant_lookup() -> bool {
+    give collision_a::VALUE == 20 &&
+         collision_a::VALUE == 20 &&
+         collision_a::VALUE == 20 &&
+         collision_b::VALUE == 22 &&
+         collision_b::VALUE == 22 &&
+         collision_b::VALUE == 22;
+}
+
+proc test_alternating_constant_lookup() -> bool {
+    give collision_a::VALUE == 20 &&
+         collision_b::VALUE == 22 &&
+         collision_a::VALUE == 20 &&
+         collision_b::VALUE == 22 &&
+         collision_a::SOURCE_ID == 1 &&
+         collision_b::SOURCE_ID == 2 &&
+         collision_a::SOURCE_ID == 1 &&
+         collision_b::SOURCE_ID == 2;
+}
+
+proc test_repeated_proc_lookup() -> bool {
+    give collision_a::identity(20) == 20 &&
+         collision_b::identity(22) == 22 &&
+         collision_a::identity(20) == 20 &&
+         collision_b::identity(22) == 22 &&
+         collision_a::common_value() == 20 &&
+         collision_b::common_value() == 22;
+}
+
+proc test_alternating_type_lookup() -> bool {
+    let first_a: collision_a::Point =
+        collision_a::make_default_point();
+
+    let first_b: collision_b::Point =
+        collision_b::make_default_point();
+
+    let second_a: collision_a::Point =
+        collision_a::make_point(
+            5,
+            15);
+
+    let second_b: collision_b::Point =
+        collision_b::make_point(
+            10,
+            12);
+
+    give collision_a::point_sum(
+               &first_a) == 20 &&
+         collision_b::point_sum(
+               &first_b) == 22 &&
+         collision_a::point_sum(
+               &second_a) == 20 &&
+         collision_b::point_sum(
+               &second_b) == 22;
+}
+
+proc test_nested_scope() -> bool {
+    let mut result: i64 = 0;
+
+    {
+        let value_a: i64 =
+            collision_a::VALUE;
+
+        let value_b: i64 =
+            collision_b::VALUE;
+
+        {
+            set result =
+                collision_a::add(
+                    value_a,
+                    value_b);
+        }
+    }
+
+    give result == 42;
+}
+
+proc test_control_flow(
+    choose_a: bool
+) -> i64 {
+    if choose_a {
+        give collision_a::VALUE;
+    }
+
+    give collision_b::VALUE;
+}
+
+proc test_mutation() -> bool {
+    let mut value: i64 =
+        collision_a::VALUE;
+
+    set value =
+        collision_a::add(
+            value,
+            collision_b::VALUE);
+
+    give value == 42 &&
+         collision_a::VALUE == 20 &&
+         collision_b::VALUE == 22;
+}
+
+proc test_b_arithmetic_helpers() -> bool {
+    give collision_b::subtract(
+               42,
+               20) == 22 &&
+         collision_b::multiply(
+               11,
+               2) == 22 &&
+         collision_b::increment(
+               21) == 22 &&
+         collision_b::decrement(
+               23) == 22 &&
+         collision_b::is_zero(0) &&
+         collision_b::is_positive(22) &&
+         collision_b::is_source_b(2) &&
+         collision_b::is_value_b(22);
+}
+
+proc test_b_point_operations() -> bool {
+    let point: collision_b::Point =
+        collision_b::make_default_point();
+
+    let translated: collision_b::Point =
+        collision_b::point_translate(
+            &point,
+            1,
+            -1);
+
+    let source: collision_b::Point =
+        collision_b::make_point(
+            5,
+            6);
+
+    let scaled: collision_b::Point =
+        collision_b::point_scale(
+            &source,
+            2);
+
+    give collision_b::point_equal(
+               &point,
+               &point) &&
+         collision_b::point_sum(
+               &translated) == 22 &&
+         collision_b::point_sum(
+               &scaled) == 22;
+}
+
+proc test_b_composition() -> bool {
+    give collision_b::point_value() == 22 &&
+         collision_b::record_default_value() == 22 &&
+         collision_b::record_default_source() == 2 &&
+         collision_b::wrapper_default_value() == 44 &&
+         collision_b::composed_value() == 22 &&
+         collision_b::nested_call_value() == 22 &&
+         collision_b::accumulate_value() == 22 &&
+         collision_b::conditional_value(true) == 22 &&
+         collision_b::conditional_value(false) == 0 &&
+         collision_b::normalize_to_value(0) == 22 &&
+         collision_b::normalize_to_value(22) == 22 &&
+         collision_b::normalize_to_value(100) == 22;
+}
+
+proc test_forwarding() -> bool {
+    let point_a: collision_a::Point =
+        collision_a::make_default_point();
+
+    let point_b: collision_b::Point =
+        collision_b::make_default_point();
+
+    let record_a: collision_a::Record =
+        collision_a::make_record(
+            collision_a::VALUE);
+
+    let record_b: collision_b::Record =
+        collision_b::make_record(
+            collision_b::VALUE);
+
+    let range_b: collision_b::Range =
+        collision_b::make_default_range();
+
+    let pair_b: collision_b::Pair =
+        collision_b::make_default_pair();
+
+    give collision_a::point_sum(
+               &point_a) == 20 &&
+         collision_a::record_value(
+               &record_a) == 20 &&
+         collision_b::forward_point(
+               &point_b) == 22 &&
+         collision_b::forward_record(
+               &record_b) == 22 &&
+         collision_b::forward_range(
+               &range_b) == 22 &&
+         collision_b::forward_pair(
+               &pair_b) == 22;
+}
+
+proc test_validation() -> bool {
+    let point_b: collision_b::Point =
+        collision_b::make_default_point();
+
+    let record_b: collision_b::Record =
+        collision_b::make_record(
+            collision_b::VALUE);
+
+    let range_b: collision_b::Range =
+        collision_b::make_default_range();
+
+    let pair_b: collision_b::Pair =
+        collision_b::make_default_pair();
+
+    let wrapper_b: collision_b::Wrapper =
+        collision_b::make_wrapper(
+            point_b,
+            record_b);
+
+    let nested_b: collision_b::Nested =
+        collision_b::make_default_nested();
+
+    give collision_b::validate_point(
+               &point_b) &&
+         collision_b::validate_record(
+               &record_b) &&
+         collision_b::validate_range(
+               &range_b) &&
+         collision_b::validate_pair(
+               &pair_b) &&
+         collision_b::validate_wrapper(
+               &wrapper_b) &&
+         collision_b::validate_nested(
+               &nested_b);
+}
+
+proc test_library_self_tests() -> bool {
+    give collision_a::library_self_test() &&
+         collision_b::library_self_test();
+}
+
+proc test_cross_module_aggregate_composition() -> bool {
+    let point_a: collision_a::Point =
+        collision_a::make_default_point();
+
+    let point_b: collision_b::Point =
+        collision_b::make_default_point();
+
+    let value_a: i64 =
+        collision_a::point_sum(
+            &point_a);
+
+    let value_b: i64 =
+        collision_b::point_sum(
+            &point_b);
+
+    let record_a: collision_a::Record =
+        collision_a::make_record(
+            value_a);
+
+    let record_b: collision_b::Record =
+        collision_b::make_record(
+            value_b);
+
+    give collision_a::record_value(
+               &record_a) == 20 &&
+         collision_b::record_value(
+               &record_b) == 22 &&
+         collision_a::record_value(
+               &record_a) +
+             collision_b::record_value(
+                 &record_b) ==
+             42;
+}
+
+proc test_integrated_modules() -> bool {
+    let point_a: collision_a::Point =
+        collision_a::make_default_point();
+
+    let point_b: collision_b::Point =
+        collision_b::make_default_point();
+
+    let record_a: collision_a::Record =
+        collision_a::make_record(
+            collision_a::VALUE);
+
+    let record_b: collision_b::Record =
+        collision_b::make_record(
+            collision_b::VALUE);
+
+    let wrapper_a: collision_a::Wrapper =
+        collision_a::make_wrapper(
+            point_a,
+            record_a);
+
+    let wrapper_b: collision_b::Wrapper =
+        collision_b::make_wrapper(
+            point_b,
+            record_b);
+
+    let state_a: collision_a::State =
+        collision_a::default_state();
+
+    let state_b: collision_b::State =
+        collision_b::default_state();
+
+    let result_a: collision_a::ResultKind =
+        collision_a::success_kind();
+
+    let result_b: collision_b::ResultKind =
+        collision_b::success_kind();
+
+    let mut answer: i64 = 0;
+
+    set answer =
+        collision_a::answer_part() +
+        collision_b::answer_part();
+
+    give answer == 42 &&
+
+         collision_a::SOURCE_ID == 1 &&
+         collision_b::SOURCE_ID == 2 &&
+
+         collision_a::VALUE == 20 &&
+         collision_b::VALUE == 22 &&
+
+         collision_a::point_sum(
+             &point_a) == 20 &&
+         collision_b::point_sum(
+             &point_b) == 22 &&
+
+         collision_a::record_value(
+             &record_a) == 20 &&
+         collision_b::record_value(
+             &record_b) == 22 &&
+
+         collision_a::record_source(
+             &record_a) == 1 &&
+         collision_b::record_source(
+             &record_b) == 2 &&
+
+         collision_a::wrapper_value(
+             &wrapper_a) == 40 &&
+         collision_b::wrapper_value(
+             &wrapper_b) == 44 &&
+
+         state_a ==
+             collision_a::State.Ready &&
+         state_b ==
+             collision_b::State.Ready &&
+
+         result_a ==
+             collision_a::ResultKind.Success &&
+         result_b ==
+             collision_b::ResultKind.Success;
+}
 
 proc main() -> int {
-    give collision_a::dup() + collision_b::dup();
+    if !test_module_identity() { give 1; }
+    if !test_values() { give 2; }
+    if !test_combined_answer() { give 3; }
+    if !test_common_value() { give 4; }
+    if !test_answer_part() { give 5; }
+    if !test_identity() { give 6; }
+    if !test_add() { give 7; }
+
+    if test_cross_module_expression() != 42 { give 8; }
+    if test_nested_cross_module_calls() != 42 { give 9; }
+
+    if !test_point_a() { give 10; }
+    if !test_point_b() { give 11; }
+    if !test_parallel_point_types() { give 12; }
+    if !test_point_type_identity() { give 13; }
+
+    if !test_record_a() { give 14; }
+    if !test_record_b() { give 15; }
+    if !test_parallel_record_types() { give 16; }
+
+    if !test_wrapper_a() { give 17; }
+    if !test_wrapper_b() { give 18; }
+
+    if !test_states() { give 19; }
+    if !test_state_b_variants() { give 20; }
+    if !test_result_kinds() { give 21; }
+
+    if !test_b_only_range() { give 22; }
+    if !test_b_only_pair() { give 23; }
+    if !test_b_only_nested() { give 24; }
+    if !test_b_only_direction() { give 25; }
+
+    if !test_repeated_constant_lookup() { give 26; }
+    if !test_alternating_constant_lookup() { give 27; }
+    if !test_repeated_proc_lookup() { give 28; }
+    if !test_alternating_type_lookup() { give 29; }
+
+    if !test_nested_scope() { give 30; }
+
+    if test_control_flow(true) != 20 { give 31; }
+    if test_control_flow(false) != 22 { give 32; }
+
+    if !test_mutation() { give 33; }
+    if !test_b_arithmetic_helpers() { give 34; }
+    if !test_b_point_operations() { give 35; }
+    if !test_b_composition() { give 36; }
+    if !test_forwarding() { give 37; }
+    if !test_validation() { give 38; }
+    if !test_library_self_tests() { give 39; }
+    if !test_cross_module_aggregate_composition() { give 40; }
+    if !test_integrated_modules() { give 41; }
+
+    give 0;
 }

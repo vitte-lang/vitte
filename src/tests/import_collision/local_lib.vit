@@ -1,5 +1,808 @@
-space local_lib;
+/// Local-declaration collision fixture.
+///
+/// This module provides a broad exported surface for tests where an importing
+/// module also declares local symbols with the same names.
+///
+/// The module itself is valid. Collisions are expected only in consumers that
+/// import these declarations into a scope already containing matching local
+/// declarations.
+///
+/// Observable module identity:
+/// - SOURCE_ID == 7
+/// - VALUE == 42
+/// - MODULE_VALUE == 42
+/// - records carry source == 7
 
-export proc visible() -> int {
-    give 7;
+space tests::import_collision::local_lib;
+
+export const SOURCE_ID: i64 = 7;
+export const VALUE: i64 = 42;
+export const MODULE_VALUE: i64 = 42;
+export const ZERO: i64 = 0;
+export const ONE: i64 = 1;
+export const TWO: i64 = 2;
+export const TEN: i64 = 10;
+export const TWENTY: i64 = 20;
+export const TWENTY_TWO: i64 = 22;
+export const LIMIT: i64 = 100;
+export const ENABLED: bool = true;
+export const DISABLED: bool = false;
+
+export form Point {
+    x: i64,
+    y: i64,
+}
+
+export form Range {
+    minimum: i64,
+    maximum: i64,
+}
+
+export form Record {
+    value: i64,
+    source: i64,
+    enabled: bool,
+}
+
+export form Pair {
+    first: i64,
+    second: i64,
+}
+
+export form Wrapper {
+    point: Point,
+    record: Record,
+}
+
+export form Nested {
+    point: Point,
+    range: Range,
+    record: Record,
+    pair: Pair,
+}
+
+export pick State {
+    Idle,
+    Ready,
+    Running,
+    Finished,
+}
+
+export pick ResultKind {
+    Success,
+    Failure,
+}
+
+export pick Direction {
+    Left,
+    Right,
+}
+
+export proc identity(
+    value: i64
+) -> i64 {
+    give value;
+}
+
+export proc source_id() -> i64 {
+    give SOURCE_ID;
+}
+
+export proc common_value() -> i64 {
+    give VALUE;
+}
+
+export proc module_value() -> i64 {
+    give MODULE_VALUE;
+}
+
+export proc add(
+    left: i64,
+    right: i64
+) -> i64 {
+    give left + right;
+}
+
+export proc subtract(
+    left: i64,
+    right: i64
+) -> i64 {
+    give left - right;
+}
+
+export proc multiply(
+    left: i64,
+    right: i64
+) -> i64 {
+    give left * right;
+}
+
+export proc increment(
+    value: i64
+) -> i64 {
+    give value + ONE;
+}
+
+export proc decrement(
+    value: i64
+) -> i64 {
+    give value - ONE;
+}
+
+export proc is_zero(
+    value: i64
+) -> bool {
+    give value == ZERO;
+}
+
+export proc is_positive(
+    value: i64
+) -> bool {
+    give value > ZERO;
+}
+
+export proc is_module_value(
+    value: i64
+) -> bool {
+    give value == MODULE_VALUE;
+}
+
+export proc within_limit(
+    value: i64
+) -> bool {
+    give value >= ZERO &&
+         value <= LIMIT;
+}
+
+export proc make_point(
+    x: i64,
+    y: i64
+) -> Point {
+    give Point {
+        x: x,
+        y: y,
+    };
+}
+
+export proc make_default_point() -> Point {
+    give make_point(
+        TWENTY,
+        TWENTY_TWO);
+}
+
+export proc point_x(
+    point: &Point
+) -> i64 {
+    give point.x;
+}
+
+export proc point_y(
+    point: &Point
+) -> i64 {
+    give point.y;
+}
+
+export proc point_sum(
+    point: &Point
+) -> i64 {
+    give point.x +
+         point.y;
+}
+
+export proc point_equal(
+    left: &Point,
+    right: &Point
+) -> bool {
+    give left.x == right.x &&
+         left.y == right.y;
+}
+
+export proc make_range(
+    minimum_value: i64,
+    maximum_value: i64
+) -> Range {
+    give Range {
+        minimum: minimum_value,
+        maximum: maximum_value,
+    };
+}
+
+export proc make_default_range() -> Range {
+    give make_range(
+        ZERO,
+        VALUE);
+}
+
+export proc range_width(
+    range: &Range
+) -> i64 {
+    give range.maximum -
+         range.minimum;
+}
+
+export proc range_valid(
+    range: &Range
+) -> bool {
+    give range.minimum <=
+         range.maximum;
+}
+
+export proc range_contains(
+    range: &Range,
+    value: i64
+) -> bool {
+    give value >= range.minimum &&
+         value <= range.maximum;
+}
+
+export proc make_record(
+    value: i64
+) -> Record {
+    give Record {
+        value: value,
+        source: SOURCE_ID,
+        enabled: ENABLED,
+    };
+}
+
+export proc record_value(
+    record: &Record
+) -> i64 {
+    give record.value;
+}
+
+export proc record_source(
+    record: &Record
+) -> i64 {
+    give record.source;
+}
+
+export proc record_enabled(
+    record: &Record
+) -> bool {
+    give record.enabled;
+}
+
+export proc record_belongs_here(
+    record: &Record
+) -> bool {
+    give record.source == SOURCE_ID;
+}
+
+export proc make_pair(
+    first: i64,
+    second: i64
+) -> Pair {
+    give Pair {
+        first: first,
+        second: second,
+    };
+}
+
+export proc make_default_pair() -> Pair {
+    give make_pair(
+        TWENTY,
+        TWENTY_TWO);
+}
+
+export proc pair_sum(
+    pair: &Pair
+) -> i64 {
+    give pair.first +
+         pair.second;
+}
+
+export proc make_wrapper(
+    point: Point,
+    record: Record
+) -> Wrapper {
+    give Wrapper {
+        point: point,
+        record: record,
+    };
+}
+
+export proc make_default_wrapper() -> Wrapper {
+    let point: Point =
+        make_default_point();
+
+    let record: Record =
+        make_record(
+            VALUE);
+
+    give make_wrapper(
+        point,
+        record);
+}
+
+export proc wrapper_point_sum(
+    wrapper: &Wrapper
+) -> i64 {
+    give point_sum(
+        &wrapper.point);
+}
+
+export proc wrapper_record_value(
+    wrapper: &Wrapper
+) -> i64 {
+    give record_value(
+        &wrapper.record);
+}
+
+export proc wrapper_source(
+    wrapper: &Wrapper
+) -> i64 {
+    give record_source(
+        &wrapper.record);
+}
+
+export proc wrapper_value(
+    wrapper: &Wrapper
+) -> i64 {
+    give wrapper_point_sum(wrapper) +
+         wrapper_record_value(wrapper);
+}
+
+export proc make_nested(
+    point: Point,
+    range: Range,
+    record: Record,
+    pair: Pair
+) -> Nested {
+    give Nested {
+        point: point,
+        range: range,
+        record: record,
+        pair: pair,
+    };
+}
+
+export proc make_default_nested() -> Nested {
+    let point: Point =
+        make_default_point();
+
+    let range: Range =
+        make_default_range();
+
+    let record: Record =
+        make_record(
+            VALUE);
+
+    let pair: Pair =
+        make_default_pair();
+
+    give make_nested(
+        point,
+        range,
+        record,
+        pair);
+}
+
+export proc nested_point_sum(
+    nested: &Nested
+) -> i64 {
+    give point_sum(
+        &nested.point);
+}
+
+export proc nested_range_width(
+    nested: &Nested
+) -> i64 {
+    give range_width(
+        &nested.range);
+}
+
+export proc nested_record_value(
+    nested: &Nested
+) -> i64 {
+    give record_value(
+        &nested.record);
+}
+
+export proc nested_pair_sum(
+    nested: &Nested
+) -> i64 {
+    give pair_sum(
+        &nested.pair);
+}
+
+export proc nested_source(
+    nested: &Nested
+) -> i64 {
+    give record_source(
+        &nested.record);
+}
+
+export proc default_state() -> State {
+    give State.Idle;
+}
+
+export proc ready_state() -> State {
+    give State.Ready;
+}
+
+export proc running_state() -> State {
+    give State.Running;
+}
+
+export proc finished_state() -> State {
+    give State.Finished;
+}
+
+export proc success_kind() -> ResultKind {
+    give ResultKind.Success;
+}
+
+export proc failure_kind() -> ResultKind {
+    give ResultKind.Failure;
+}
+
+export proc left_direction() -> Direction {
+    give Direction.Left;
+}
+
+export proc right_direction() -> Direction {
+    give Direction.Right;
+}
+
+export proc composed_value() -> i64 {
+    give add(
+        TWENTY,
+        TWENTY_TWO);
+}
+
+export proc nested_call_value() -> i64 {
+    give identity(
+        add(
+            identity(TWENTY),
+            identity(TWENTY_TWO)));
+}
+
+export proc arithmetic_pipeline(
+    value: i64
+) -> i64 {
+    let first: i64 =
+        add(
+            value,
+            TEN);
+
+    let second: i64 =
+        multiply(
+            first,
+            TWO);
+
+    give subtract(
+        second,
+        TWENTY);
+}
+
+export proc normalize_to_module_value(
+    value: i64
+) -> i64 {
+    if value == MODULE_VALUE {
+        give value;
+    }
+
+    if value < MODULE_VALUE {
+        give add(
+            value,
+            subtract(
+                MODULE_VALUE,
+                value));
+    }
+
+    give subtract(
+        value,
+        subtract(
+            value,
+            MODULE_VALUE));
+}
+
+export proc conditional_value(
+    enabled: bool
+) -> i64 {
+    if enabled {
+        give MODULE_VALUE;
+    }
+
+    give ZERO;
+}
+
+export proc accumulate_value() -> i64 {
+    let mut index: i64 =
+        ZERO;
+
+    let mut result: i64 =
+        ZERO;
+
+    while index < 6 {
+        set result =
+            add(
+                result,
+                7);
+
+        set index =
+            increment(index);
+    }
+
+    give result;
+}
+
+export proc forward_point(
+    point: &Point
+) -> i64 {
+    give point_sum(point);
+}
+
+export proc forward_range(
+    range: &Range
+) -> i64 {
+    give range_width(range);
+}
+
+export proc forward_record(
+    record: &Record
+) -> i64 {
+    give record_value(record);
+}
+
+export proc forward_pair(
+    pair: &Pair
+) -> i64 {
+    give pair_sum(pair);
+}
+
+export proc forward_wrapper(
+    wrapper: &Wrapper
+) -> i64 {
+    give wrapper_value(wrapper);
+}
+
+export proc forward_nested(
+    nested: &Nested
+) -> i64 {
+    give nested_point_sum(nested);
+}
+
+export proc validate_point(
+    point: &Point
+) -> bool {
+    give point_sum(point) ==
+         MODULE_VALUE;
+}
+
+export proc validate_range(
+    range: &Range
+) -> bool {
+    give range_valid(range) &&
+         range_width(range) ==
+             MODULE_VALUE;
+}
+
+export proc validate_record(
+    record: &Record
+) -> bool {
+    give record_value(record) ==
+             MODULE_VALUE &&
+         record_source(record) ==
+             SOURCE_ID &&
+         record_enabled(record);
+}
+
+export proc validate_pair(
+    pair: &Pair
+) -> bool {
+    give pair_sum(pair) ==
+         MODULE_VALUE;
+}
+
+export proc validate_wrapper(
+    wrapper: &Wrapper
+) -> bool {
+    give wrapper_point_sum(wrapper) ==
+             MODULE_VALUE &&
+         wrapper_record_value(wrapper) ==
+             MODULE_VALUE &&
+         wrapper_source(wrapper) ==
+             SOURCE_ID;
+}
+
+export proc validate_nested(
+    nested: &Nested
+) -> bool {
+    give nested_point_sum(nested) ==
+             MODULE_VALUE &&
+         nested_range_width(nested) ==
+             MODULE_VALUE &&
+         nested_record_value(nested) ==
+             MODULE_VALUE &&
+         nested_pair_sum(nested) ==
+             MODULE_VALUE &&
+         nested_source(nested) ==
+             SOURCE_ID;
+}
+
+export proc repeated_lookup_test() -> bool {
+    give VALUE == 42 &&
+         VALUE == 42 &&
+         VALUE == 42 &&
+         MODULE_VALUE == 42 &&
+         MODULE_VALUE == 42 &&
+         SOURCE_ID == 7 &&
+         SOURCE_ID == 7 &&
+         identity(VALUE) == 42 &&
+         identity(VALUE) == 42 &&
+         common_value() == 42 &&
+         common_value() == 42;
+}
+
+export proc cross_category_test() -> bool {
+    let point: Point =
+        make_default_point();
+
+    let range: Range =
+        make_default_range();
+
+    let record: Record =
+        make_record(
+            VALUE);
+
+    let pair: Pair =
+        make_default_pair();
+
+    let wrapper: Wrapper =
+        make_wrapper(
+            point,
+            record);
+
+    give point_sum(&point) == 42 &&
+         range_width(&range) == 42 &&
+         record_value(&record) == 42 &&
+         record_source(&record) == 7 &&
+         pair_sum(&pair) == 42 &&
+         wrapper_point_sum(&wrapper) == 42 &&
+         wrapper_record_value(&wrapper) == 42 &&
+         wrapper_source(&wrapper) == 7;
+}
+
+export proc library_self_test() -> bool {
+    let point: Point =
+        make_default_point();
+
+    let range: Range =
+        make_default_range();
+
+    let record: Record =
+        make_record(
+            VALUE);
+
+    let pair: Pair =
+        make_default_pair();
+
+    let wrapper: Wrapper =
+        make_wrapper(
+            point,
+            record);
+
+    let nested: Nested =
+        make_default_nested();
+
+    let state: State =
+        default_state();
+
+    let ready: State =
+        ready_state();
+
+    let running: State =
+        running_state();
+
+    let finished: State =
+        finished_state();
+
+    let success: ResultKind =
+        success_kind();
+
+    let failure: ResultKind =
+        failure_kind();
+
+    let left: Direction =
+        left_direction();
+
+    let right: Direction =
+        right_direction();
+
+    give SOURCE_ID == 7 &&
+         VALUE == 42 &&
+         MODULE_VALUE == 42 &&
+         ZERO == 0 &&
+         ONE == 1 &&
+         TWO == 2 &&
+         TEN == 10 &&
+         TWENTY == 20 &&
+         TWENTY_TWO == 22 &&
+         LIMIT == 100 &&
+         ENABLED &&
+         !DISABLED &&
+
+         identity(VALUE) == 42 &&
+         source_id() == 7 &&
+         common_value() == 42 &&
+         module_value() == 42 &&
+
+         add(20, 22) == 42 &&
+         subtract(100, 58) == 42 &&
+         multiply(6, 7) == 42 &&
+         increment(41) == 42 &&
+         decrement(43) == 42 &&
+
+         is_zero(0) &&
+         is_positive(42) &&
+         is_module_value(42) &&
+         within_limit(42) &&
+
+         point_x(&point) == 20 &&
+         point_y(&point) == 22 &&
+         point_sum(&point) == 42 &&
+         point_equal(&point, &point) &&
+
+         range_width(&range) == 42 &&
+         range_valid(&range) &&
+         range_contains(&range, 0) &&
+         range_contains(&range, 21) &&
+         range_contains(&range, 42) &&
+         !range_contains(&range, 43) &&
+
+         record_value(&record) == 42 &&
+         record_source(&record) == 7 &&
+         record_enabled(&record) &&
+         record_belongs_here(&record) &&
+
+         pair_sum(&pair) == 42 &&
+
+         wrapper_point_sum(&wrapper) == 42 &&
+         wrapper_record_value(&wrapper) == 42 &&
+         wrapper_source(&wrapper) == 7 &&
+         wrapper_value(&wrapper) == 84 &&
+
+         nested_point_sum(&nested) == 42 &&
+         nested_range_width(&nested) == 42 &&
+         nested_record_value(&nested) == 42 &&
+         nested_pair_sum(&nested) == 42 &&
+         nested_source(&nested) == 7 &&
+
+         state == State.Idle &&
+         ready == State.Ready &&
+         running == State.Running &&
+         finished == State.Finished &&
+         success == ResultKind.Success &&
+         failure == ResultKind.Failure &&
+         left == Direction.Left &&
+         right == Direction.Right &&
+
+         composed_value() == 42 &&
+         nested_call_value() == 42 &&
+         arithmetic_pipeline(21) == 42 &&
+         normalize_to_module_value(0) == 42 &&
+         normalize_to_module_value(42) == 42 &&
+         normalize_to_module_value(100) == 42 &&
+         conditional_value(true) == 42 &&
+         conditional_value(false) == 0 &&
+         accumulate_value() == 42 &&
+
+         forward_point(&point) == 42 &&
+         forward_range(&range) == 42 &&
+         forward_record(&record) == 42 &&
+         forward_pair(&pair) == 42 &&
+         forward_wrapper(&wrapper) == 84 &&
+         forward_nested(&nested) == 42 &&
+
+         validate_point(&point) &&
+         validate_range(&range) &&
+         validate_record(&record) &&
+         validate_pair(&pair) &&
+         validate_wrapper(&wrapper) &&
+         validate_nested(&nested) &&
+
+         repeated_lookup_test() &&
+         cross_category_test();
 }

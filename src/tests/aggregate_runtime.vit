@@ -1,20 +1,3037 @@
-form AggregateProbe {
-    label: string,
-    count: int
+/// Aggregate runtime coverage.
+///
+/// Comprehensive positive runtime fixture for aggregate values.
+///
+/// This test exercises:
+/// - form construction;
+/// - scalar fields;
+/// - boolean fields;
+/// - nested forms;
+/// - aggregate parameters;
+/// - aggregate return values;
+/// - references to aggregates;
+/// - field reads through references;
+/// - aggregate copies;
+/// - local aggregate variables;
+/// - aggregate values produced by calls;
+/// - aggregate values consumed by calls;
+/// - nested field access;
+/// - nested aggregate construction;
+/// - repeated aggregate construction;
+/// - conditional aggregate selection;
+/// - aggregate transformation pipelines;
+/// - independent aggregate instances;
+/// - aggregate values inside loops;
+/// - aggregate values across nested scopes;
+/// - aggregate equality implemented field-by-field;
+/// - deep aggregate traversal;
+/// - runtime preservation of field values;
+/// - runtime preservation of nominal aggregate types.
+///
+/// Expected result:
+/// - lexing succeeds;
+/// - parsing succeeds;
+/// - semantic analysis succeeds;
+/// - lowering succeeds;
+/// - generated code preserves aggregate values;
+/// - runtime checks all succeed;
+/// - `main` returns 0.
+
+space tests::aggregate_runtime;
+
+const ZERO: i64 = 0;
+const ONE: i64 = 1;
+const TWO: i64 = 2;
+const THREE: i64 = 3;
+const FOUR: i64 = 4;
+const FIVE: i64 = 5;
+const SIX: i64 = 6;
+const SEVEN: i64 = 7;
+const TEN: i64 = 10;
+const TWENTY: i64 = 20;
+const TWENTY_ONE: i64 = 21;
+const TWENTY_TWO: i64 = 22;
+const FORTY: i64 = 40;
+const FORTY_ONE: i64 = 41;
+const FORTY_TWO: i64 = 42;
+const FIFTY: i64 = 50;
+const ONE_HUNDRED: i64 = 100;
+
+form Point {
+    x: i64,
+    y: i64,
+}
+
+form Range {
+    minimum: i64,
+    maximum: i64,
+}
+
+form Pair {
+    first: i64,
+    second: i64,
+}
+
+form Triple {
+    first: i64,
+    second: i64,
+    third: i64,
+}
+
+form Counter {
+    value: i64,
+}
+
+form FlaggedValue {
+    value: i64,
+    enabled: bool,
+}
+
+form Record {
+    id: i64,
+    value: i64,
+    enabled: bool,
+}
+
+form Rectangle {
+    minimum: Point,
+    maximum: Point,
+}
+
+form Segment {
+    start: Point,
+    finish: Point,
+}
+
+form PointPair {
+    first: Point,
+    second: Point,
+}
+
+form RangePair {
+    first: Range,
+    second: Range,
+}
+
+form RecordPair {
+    first: Record,
+    second: Record,
+}
+
+form Nested {
+    point: Point,
+    range: Range,
+    record: Record,
+    pair: Pair,
+}
+
+form Envelope {
+    nested: Nested,
+    marker: i64,
+}
+
+form DeepEnvelope {
+    envelope: Envelope,
+    fallback: Point,
+}
+
+form AggregateState {
+    counter: Counter,
+    current: Point,
+    bounds: Range,
+    enabled: bool,
+}
+
+form AggregateBundle {
+    point: Point,
+    rectangle: Rectangle,
+    segment: Segment,
+    record: Record,
+    state: AggregateState,
+}
+
+proc add(
+    left: i64,
+    right: i64
+) -> i64 {
+    give left + right;
+}
+
+proc subtract(
+    left: i64,
+    right: i64
+) -> i64 {
+    give left - right;
+}
+
+proc multiply(
+    left: i64,
+    right: i64
+) -> i64 {
+    give left * right;
+}
+
+proc identity(
+    value: i64
+) -> i64 {
+    give value;
+}
+
+proc make_point(
+    x: i64,
+    y: i64
+) -> Point {
+    give Point {
+        x: x,
+        y: y,
+    };
+}
+
+proc make_zero_point() -> Point {
+    give Point {
+        x: ZERO,
+        y: ZERO,
+    };
+}
+
+proc make_answer_point() -> Point {
+    give Point {
+        x: TWENTY,
+        y: TWENTY_TWO,
+    };
+}
+
+proc make_equal_point(
+    value: i64
+) -> Point {
+    give Point {
+        x: value,
+        y: value,
+    };
+}
+
+proc point_x(
+    point: &Point
+) -> i64 {
+    give point.x;
+}
+
+proc point_y(
+    point: &Point
+) -> i64 {
+    give point.y;
+}
+
+proc point_sum(
+    point: &Point
+) -> i64 {
+    give point.x +
+         point.y;
+}
+
+proc point_difference(
+    point: &Point
+) -> i64 {
+    give point.y -
+         point.x;
+}
+
+proc point_product(
+    point: &Point
+) -> i64 {
+    give point.x *
+         point.y;
+}
+
+proc point_is_zero(
+    point: &Point
+) -> bool {
+    give point.x == ZERO &&
+         point.y == ZERO;
+}
+
+proc point_is_answer(
+    point: &Point
+) -> bool {
+    give point_sum(point) ==
+         FORTY_TWO;
+}
+
+proc point_equal(
+    left: &Point,
+    right: &Point
+) -> bool {
+    give left.x == right.x &&
+         left.y == right.y;
+}
+
+proc point_translate(
+    point: &Point,
+    dx: i64,
+    dy: i64
+) -> Point {
+    give Point {
+        x: point.x + dx,
+        y: point.y + dy,
+    };
+}
+
+proc point_scale(
+    point: &Point,
+    factor: i64
+) -> Point {
+    give Point {
+        x: point.x * factor,
+        y: point.y * factor,
+    };
+}
+
+proc point_swap(
+    point: &Point
+) -> Point {
+    give Point {
+        x: point.y,
+        y: point.x,
+    };
+}
+
+proc point_copy(
+    point: &Point
+) -> Point {
+    give Point {
+        x: point.x,
+        y: point.y,
+    };
+}
+
+proc point_add(
+    left: &Point,
+    right: &Point
+) -> Point {
+    give Point {
+        x: left.x + right.x,
+        y: left.y + right.y,
+    };
+}
+
+proc point_subtract(
+    left: &Point,
+    right: &Point
+) -> Point {
+    give Point {
+        x: left.x - right.x,
+        y: left.y - right.y,
+    };
+}
+
+proc make_range(
+    minimum_value: i64,
+    maximum_value: i64
+) -> Range {
+    give Range {
+        minimum: minimum_value,
+        maximum: maximum_value,
+    };
+}
+
+proc make_answer_range() -> Range {
+    give Range {
+        minimum: ZERO,
+        maximum: FORTY_TWO,
+    };
+}
+
+proc range_minimum(
+    range: &Range
+) -> i64 {
+    give range.minimum;
+}
+
+proc range_maximum(
+    range: &Range
+) -> i64 {
+    give range.maximum;
+}
+
+proc range_width(
+    range: &Range
+) -> i64 {
+    give range.maximum -
+         range.minimum;
+}
+
+proc range_valid(
+    range: &Range
+) -> bool {
+    give range.minimum <=
+         range.maximum;
+}
+
+proc range_contains(
+    range: &Range,
+    value: i64
+) -> bool {
+    give value >= range.minimum &&
+         value <= range.maximum;
+}
+
+proc range_equal(
+    left: &Range,
+    right: &Range
+) -> bool {
+    give left.minimum == right.minimum &&
+         left.maximum == right.maximum;
+}
+
+proc range_translate(
+    range: &Range,
+    offset: i64
+) -> Range {
+    give Range {
+        minimum: range.minimum + offset,
+        maximum: range.maximum + offset,
+    };
+}
+
+proc range_copy(
+    range: &Range
+) -> Range {
+    give Range {
+        minimum: range.minimum,
+        maximum: range.maximum,
+    };
+}
+
+proc make_pair(
+    first: i64,
+    second: i64
+) -> Pair {
+    give Pair {
+        first: first,
+        second: second,
+    };
+}
+
+proc make_answer_pair() -> Pair {
+    give Pair {
+        first: TWENTY,
+        second: TWENTY_TWO,
+    };
+}
+
+proc pair_first(
+    pair: &Pair
+) -> i64 {
+    give pair.first;
+}
+
+proc pair_second(
+    pair: &Pair
+) -> i64 {
+    give pair.second;
+}
+
+proc pair_sum(
+    pair: &Pair
+) -> i64 {
+    give pair.first +
+         pair.second;
+}
+
+proc pair_equal(
+    left: &Pair,
+    right: &Pair
+) -> bool {
+    give left.first == right.first &&
+         left.second == right.second;
+}
+
+proc pair_swap(
+    pair: &Pair
+) -> Pair {
+    give Pair {
+        first: pair.second,
+        second: pair.first,
+    };
+}
+
+proc make_triple(
+    first: i64,
+    second: i64,
+    third: i64
+) -> Triple {
+    give Triple {
+        first: first,
+        second: second,
+        third: third,
+    };
+}
+
+proc triple_sum(
+    triple: &Triple
+) -> i64 {
+    give triple.first +
+         triple.second +
+         triple.third;
+}
+
+proc make_counter(
+    value: i64
+) -> Counter {
+    give Counter {
+        value: value,
+    };
+}
+
+proc counter_value(
+    counter: &Counter
+) -> i64 {
+    give counter.value;
+}
+
+proc counter_increment(
+    counter: &Counter
+) -> Counter {
+    give Counter {
+        value: counter.value + ONE,
+    };
+}
+
+proc counter_add(
+    counter: &Counter,
+    amount: i64
+) -> Counter {
+    give Counter {
+        value: counter.value + amount,
+    };
+}
+
+proc make_flagged_value(
+    value: i64,
+    enabled: bool
+) -> FlaggedValue {
+    give FlaggedValue {
+        value: value,
+        enabled: enabled,
+    };
+}
+
+proc flagged_value(
+    value: &FlaggedValue
+) -> i64 {
+    give value.value;
+}
+
+proc flagged_enabled(
+    value: &FlaggedValue
+) -> bool {
+    give value.enabled;
+}
+
+proc make_record(
+    id: i64,
+    value: i64,
+    enabled: bool
+) -> Record {
+    give Record {
+        id: id,
+        value: value,
+        enabled: enabled,
+    };
+}
+
+proc make_answer_record() -> Record {
+    give Record {
+        id: SEVEN,
+        value: FORTY_TWO,
+        enabled: true,
+    };
+}
+
+proc record_id(
+    record: &Record
+) -> i64 {
+    give record.id;
+}
+
+proc record_value(
+    record: &Record
+) -> i64 {
+    give record.value;
+}
+
+proc record_enabled(
+    record: &Record
+) -> bool {
+    give record.enabled;
+}
+
+proc record_valid(
+    record: &Record
+) -> bool {
+    give record.id >= ZERO &&
+         record.enabled;
+}
+
+proc record_copy(
+    record: &Record
+) -> Record {
+    give Record {
+        id: record.id,
+        value: record.value,
+        enabled: record.enabled,
+    };
+}
+
+proc record_with_value(
+    record: &Record,
+    value: i64
+) -> Record {
+    give Record {
+        id: record.id,
+        value: value,
+        enabled: record.enabled,
+    };
+}
+
+proc record_toggle(
+    record: &Record
+) -> Record {
+    give Record {
+        id: record.id,
+        value: record.value,
+        enabled: !record.enabled,
+    };
+}
+
+proc make_rectangle(
+    minimum: Point,
+    maximum: Point
+) -> Rectangle {
+    give Rectangle {
+        minimum: minimum,
+        maximum: maximum,
+    };
+}
+
+proc make_answer_rectangle() -> Rectangle {
+    let minimum: Point =
+        make_zero_point();
+
+    let maximum: Point =
+        make_answer_point();
+
+    give make_rectangle(
+        minimum,
+        maximum);
+}
+
+proc rectangle_width(
+    rectangle: &Rectangle
+) -> i64 {
+    give rectangle.maximum.x -
+         rectangle.minimum.x;
+}
+
+proc rectangle_height(
+    rectangle: &Rectangle
+) -> i64 {
+    give rectangle.maximum.y -
+         rectangle.minimum.y;
+}
+
+proc rectangle_perimeter_half(
+    rectangle: &Rectangle
+) -> i64 {
+    give rectangle_width(rectangle) +
+         rectangle_height(rectangle);
+}
+
+proc rectangle_valid(
+    rectangle: &Rectangle
+) -> bool {
+    give rectangle.minimum.x <=
+             rectangle.maximum.x &&
+         rectangle.minimum.y <=
+             rectangle.maximum.y;
+}
+
+proc rectangle_minimum_sum(
+    rectangle: &Rectangle
+) -> i64 {
+    give point_sum(
+        &rectangle.minimum);
+}
+
+proc rectangle_maximum_sum(
+    rectangle: &Rectangle
+) -> i64 {
+    give point_sum(
+        &rectangle.maximum);
+}
+
+proc make_segment(
+    start: Point,
+    finish: Point
+) -> Segment {
+    give Segment {
+        start: start,
+        finish: finish,
+    };
+}
+
+proc make_answer_segment() -> Segment {
+    let start: Point =
+        make_zero_point();
+
+    let finish: Point =
+        make_answer_point();
+
+    give make_segment(
+        start,
+        finish);
+}
+
+proc segment_start_sum(
+    segment: &Segment
+) -> i64 {
+    give point_sum(
+        &segment.start);
+}
+
+proc segment_finish_sum(
+    segment: &Segment
+) -> i64 {
+    give point_sum(
+        &segment.finish);
+}
+
+proc segment_delta_sum(
+    segment: &Segment
+) -> i64 {
+    give
+        (segment.finish.x - segment.start.x) +
+        (segment.finish.y - segment.start.y);
+}
+
+proc make_point_pair(
+    first: Point,
+    second: Point
+) -> PointPair {
+    give PointPair {
+        first: first,
+        second: second,
+    };
+}
+
+proc point_pair_sum(
+    pair: &PointPair
+) -> i64 {
+    give point_sum(
+               &pair.first) +
+         point_sum(
+               &pair.second);
+}
+
+proc point_pair_first_sum(
+    pair: &PointPair
+) -> i64 {
+    give point_sum(
+        &pair.first);
+}
+
+proc point_pair_second_sum(
+    pair: &PointPair
+) -> i64 {
+    give point_sum(
+        &pair.second);
+}
+
+proc make_range_pair(
+    first: Range,
+    second: Range
+) -> RangePair {
+    give RangePair {
+        first: first,
+        second: second,
+    };
+}
+
+proc range_pair_width(
+    pair: &RangePair
+) -> i64 {
+    give range_width(
+               &pair.first) +
+         range_width(
+               &pair.second);
+}
+
+proc make_record_pair(
+    first: Record,
+    second: Record
+) -> RecordPair {
+    give RecordPair {
+        first: first,
+        second: second,
+    };
+}
+
+proc record_pair_value(
+    pair: &RecordPair
+) -> i64 {
+    give pair.first.value +
+         pair.second.value;
+}
+
+proc record_pair_enabled(
+    pair: &RecordPair
+) -> bool {
+    give pair.first.enabled &&
+         pair.second.enabled;
+}
+
+proc make_nested(
+    point: Point,
+    range: Range,
+    record: Record,
+    pair: Pair
+) -> Nested {
+    give Nested {
+        point: point,
+        range: range,
+        record: record,
+        pair: pair,
+    };
+}
+
+proc make_answer_nested() -> Nested {
+    let point: Point =
+        make_answer_point();
+
+    let range: Range =
+        make_answer_range();
+
+    let record: Record =
+        make_answer_record();
+
+    let pair: Pair =
+        make_answer_pair();
+
+    give make_nested(
+        point,
+        range,
+        record,
+        pair);
+}
+
+proc nested_point_sum(
+    nested: &Nested
+) -> i64 {
+    give point_sum(
+        &nested.point);
+}
+
+proc nested_range_width(
+    nested: &Nested
+) -> i64 {
+    give range_width(
+        &nested.range);
+}
+
+proc nested_record_value(
+    nested: &Nested
+) -> i64 {
+    give record_value(
+        &nested.record);
+}
+
+proc nested_pair_sum(
+    nested: &Nested
+) -> i64 {
+    give pair_sum(
+        &nested.pair);
+}
+
+proc nested_total(
+    nested: &Nested
+) -> i64 {
+    give nested_point_sum(nested) +
+         nested_range_width(nested) +
+         nested_record_value(nested) +
+         nested_pair_sum(nested);
+}
+
+proc nested_valid(
+    nested: &Nested
+) -> bool {
+    give point_is_answer(
+               &nested.point) &&
+         range_valid(
+               &nested.range) &&
+         range_width(
+               &nested.range) == FORTY_TWO &&
+         record_valid(
+               &nested.record) &&
+         record_value(
+               &nested.record) == FORTY_TWO &&
+         pair_sum(
+               &nested.pair) == FORTY_TWO;
+}
+
+proc nested_copy(
+    nested: &Nested
+) -> Nested {
+    give Nested {
+        point: nested.point,
+        range: nested.range,
+        record: nested.record,
+        pair: nested.pair,
+    };
+}
+
+proc make_envelope(
+    nested: Nested,
+    marker: i64
+) -> Envelope {
+    give Envelope {
+        nested: nested,
+        marker: marker,
+    };
+}
+
+proc make_answer_envelope() -> Envelope {
+    let nested: Nested =
+        make_answer_nested();
+
+    give make_envelope(
+        nested,
+        FORTY_TWO);
+}
+
+proc envelope_marker(
+    envelope: &Envelope
+) -> i64 {
+    give envelope.marker;
+}
+
+proc envelope_point_sum(
+    envelope: &Envelope
+) -> i64 {
+    give point_sum(
+        &envelope.nested.point);
+}
+
+proc envelope_range_width(
+    envelope: &Envelope
+) -> i64 {
+    give range_width(
+        &envelope.nested.range);
+}
+
+proc envelope_record_value(
+    envelope: &Envelope
+) -> i64 {
+    give record_value(
+        &envelope.nested.record);
+}
+
+proc envelope_pair_sum(
+    envelope: &Envelope
+) -> i64 {
+    give pair_sum(
+        &envelope.nested.pair);
+}
+
+proc envelope_valid(
+    envelope: &Envelope
+) -> bool {
+    give envelope.marker == FORTY_TWO &&
+         nested_valid(
+             &envelope.nested);
+}
+
+proc make_deep_envelope(
+    envelope: Envelope,
+    fallback: Point
+) -> DeepEnvelope {
+    give DeepEnvelope {
+        envelope: envelope,
+        fallback: fallback,
+    };
+}
+
+proc make_answer_deep_envelope() -> DeepEnvelope {
+    let envelope: Envelope =
+        make_answer_envelope();
+
+    let fallback: Point =
+        make_answer_point();
+
+    give make_deep_envelope(
+        envelope,
+        fallback);
+}
+
+proc deep_envelope_marker(
+    value: &DeepEnvelope
+) -> i64 {
+    give value.envelope.marker;
+}
+
+proc deep_envelope_nested_point_sum(
+    value: &DeepEnvelope
+) -> i64 {
+    give point_sum(
+        &value.envelope.nested.point);
+}
+
+proc deep_envelope_fallback_sum(
+    value: &DeepEnvelope
+) -> i64 {
+    give point_sum(
+        &value.fallback);
+}
+
+proc deep_envelope_valid(
+    value: &DeepEnvelope
+) -> bool {
+    give envelope_valid(
+               &value.envelope) &&
+         point_is_answer(
+               &value.fallback);
+}
+
+proc make_state(
+    counter: Counter,
+    current: Point,
+    bounds: Range,
+    enabled: bool
+) -> AggregateState {
+    give AggregateState {
+        counter: counter,
+        current: current,
+        bounds: bounds,
+        enabled: enabled,
+    };
+}
+
+proc make_answer_state() -> AggregateState {
+    let counter: Counter =
+        make_counter(FORTY_TWO);
+
+    let point: Point =
+        make_answer_point();
+
+    let range: Range =
+        make_answer_range();
+
+    give make_state(
+        counter,
+        point,
+        range,
+        true);
+}
+
+proc state_counter(
+    state: &AggregateState
+) -> i64 {
+    give counter_value(
+        &state.counter);
+}
+
+proc state_point_sum(
+    state: &AggregateState
+) -> i64 {
+    give point_sum(
+        &state.current);
+}
+
+proc state_range_width(
+    state: &AggregateState
+) -> i64 {
+    give range_width(
+        &state.bounds);
+}
+
+proc state_enabled(
+    state: &AggregateState
+) -> bool {
+    give state.enabled;
+}
+
+proc state_valid(
+    state: &AggregateState
+) -> bool {
+    give state_counter(state) == FORTY_TWO &&
+         state_point_sum(state) == FORTY_TWO &&
+         state_range_width(state) == FORTY_TWO &&
+         state_enabled(state);
+}
+
+proc make_bundle(
+    point: Point,
+    rectangle: Rectangle,
+    segment: Segment,
+    record: Record,
+    state: AggregateState
+) -> AggregateBundle {
+    give AggregateBundle {
+        point: point,
+        rectangle: rectangle,
+        segment: segment,
+        record: record,
+        state: state,
+    };
+}
+
+proc make_answer_bundle() -> AggregateBundle {
+    let point: Point =
+        make_answer_point();
+
+    let rectangle: Rectangle =
+        make_answer_rectangle();
+
+    let segment: Segment =
+        make_answer_segment();
+
+    let record: Record =
+        make_answer_record();
+
+    let state: AggregateState =
+        make_answer_state();
+
+    give make_bundle(
+        point,
+        rectangle,
+        segment,
+        record,
+        state);
+}
+
+proc bundle_point_sum(
+    bundle: &AggregateBundle
+) -> i64 {
+    give point_sum(
+        &bundle.point);
+}
+
+proc bundle_rectangle_sum(
+    bundle: &AggregateBundle
+) -> i64 {
+    give rectangle_perimeter_half(
+        &bundle.rectangle);
+}
+
+proc bundle_segment_sum(
+    bundle: &AggregateBundle
+) -> i64 {
+    give segment_finish_sum(
+        &bundle.segment);
+}
+
+proc bundle_record_value(
+    bundle: &AggregateBundle
+) -> i64 {
+    give record_value(
+        &bundle.record);
+}
+
+proc bundle_state_value(
+    bundle: &AggregateBundle
+) -> i64 {
+    give state_counter(
+        &bundle.state);
+}
+
+proc bundle_valid(
+    bundle: &AggregateBundle
+) -> bool {
+    give bundle_point_sum(bundle) == FORTY_TWO &&
+         bundle_rectangle_sum(bundle) == FORTY_TWO &&
+         bundle_segment_sum(bundle) == FORTY_TWO &&
+         bundle_record_value(bundle) == FORTY_TWO &&
+         bundle_state_value(bundle) == FORTY_TWO &&
+         state_valid(
+             &bundle.state);
+}
+
+proc choose_point(
+    choose_answer: bool
+) -> Point {
+    if choose_answer {
+        give make_answer_point();
+    }
+
+    give make_zero_point();
+}
+
+proc choose_range(
+    choose_answer: bool
+) -> Range {
+    if choose_answer {
+        give make_answer_range();
+    }
+
+    give make_range(
+        ZERO,
+        ZERO);
+}
+
+proc choose_record(
+    choose_answer: bool
+) -> Record {
+    if choose_answer {
+        give make_answer_record();
+    }
+
+    give make_record(
+        ZERO,
+        ZERO,
+        false);
+}
+
+proc forward_point(
+    point: Point
+) -> Point {
+    give point;
+}
+
+proc forward_range(
+    range: Range
+) -> Range {
+    give range;
+}
+
+proc forward_record(
+    record: Record
+) -> Record {
+    give record;
+}
+
+proc forward_nested(
+    nested: Nested
+) -> Nested {
+    give nested;
+}
+
+proc point_pipeline() -> Point {
+    let initial: Point =
+        make_point(
+            TEN,
+            ELEVEN_VALUE());
+
+    let translated: Point =
+        point_translate(
+            &initial,
+            TEN,
+            ONE);
+
+    give translated;
+}
+
+proc ELEVEN_VALUE() -> i64 {
+    give 11;
+}
+
+proc test_basic_point() -> bool {
+    let point: Point =
+        Point {
+            x: TWENTY,
+            y: TWENTY_TWO,
+        };
+
+    give point.x == TWENTY &&
+         point.y == TWENTY_TWO &&
+         point_sum(&point) == FORTY_TWO;
+}
+
+proc test_point_factory() -> bool {
+    let point: Point =
+        make_point(
+            TWENTY,
+            TWENTY_TWO);
+
+    give point_x(&point) == TWENTY &&
+         point_y(&point) == TWENTY_TWO &&
+         point_sum(&point) == FORTY_TWO;
+}
+
+proc test_point_return_value() -> bool {
+    let point: Point =
+        make_answer_point();
+
+    give point_is_answer(
+        &point);
+}
+
+proc test_point_copy() -> bool {
+    let original: Point =
+        make_answer_point();
+
+    let copy: Point =
+        original;
+
+    give point_equal(
+               &original,
+               &copy) &&
+         point_sum(
+               &copy) == FORTY_TWO;
+}
+
+proc test_point_explicit_copy() -> bool {
+    let original: Point =
+        make_answer_point();
+
+    let copy: Point =
+        point_copy(
+            &original);
+
+    give point_equal(
+        &original,
+        &copy);
+}
+
+proc test_point_independent_instances() -> bool {
+    let first: Point =
+        make_point(
+            TWENTY,
+            TWENTY_TWO);
+
+    let second: Point =
+        make_point(
+            ONE,
+            TWO);
+
+    give point_sum(&first) == FORTY_TWO &&
+         point_sum(&second) == THREE &&
+         first.x == TWENTY &&
+         second.x == ONE;
+}
+
+proc test_point_translate() -> bool {
+    let point: Point =
+        make_point(
+            TEN,
+            TWENTY);
+
+    let translated: Point =
+        point_translate(
+            &point,
+            TEN,
+            TWO);
+
+    give translated.x == TWENTY &&
+         translated.y == TWENTY_TWO &&
+         point_sum(
+             &translated) == FORTY_TWO &&
+         point.x == TEN &&
+         point.y == TWENTY;
+}
+
+proc test_point_scale() -> bool {
+    let point: Point =
+        make_point(
+            THREE,
+            FOUR);
+
+    let scaled: Point =
+        point_scale(
+            &point,
+            SIX);
+
+    give scaled.x == 18 &&
+         scaled.y == 24 &&
+         point_sum(
+             &scaled) == FORTY_TWO;
+}
+
+proc test_point_swap() -> bool {
+    let point: Point =
+        make_answer_point();
+
+    let swapped: Point =
+        point_swap(
+            &point);
+
+    give swapped.x == TWENTY_TWO &&
+         swapped.y == TWENTY &&
+         point_sum(
+             &swapped) == FORTY_TWO;
+}
+
+proc test_point_addition() -> bool {
+    let first: Point =
+        make_point(
+            TEN,
+            TEN);
+
+    let second: Point =
+        make_point(
+            TEN,
+            12);
+
+    let result: Point =
+        point_add(
+            &first,
+            &second);
+
+    give result.x == TWENTY &&
+         result.y == TWENTY_TWO &&
+         point_sum(
+             &result) == FORTY_TWO;
+}
+
+proc test_point_subtraction() -> bool {
+    let first: Point =
+        make_point(
+            30,
+            32);
+
+    let second: Point =
+        make_point(
+            TEN,
+            TEN);
+
+    let result: Point =
+        point_subtract(
+            &first,
+            &second);
+
+    give result.x == TWENTY &&
+         result.y == TWENTY_TWO &&
+         point_sum(
+             &result) == FORTY_TWO;
+}
+
+proc test_range_runtime() -> bool {
+    let range: Range =
+        make_answer_range();
+
+    give range_minimum(&range) == ZERO &&
+         range_maximum(&range) == FORTY_TWO &&
+         range_width(&range) == FORTY_TWO &&
+         range_valid(&range) &&
+         range_contains(&range, ZERO) &&
+         range_contains(&range, TWENTY_ONE) &&
+         range_contains(&range, FORTY_TWO) &&
+         !range_contains(&range, -ONE) &&
+         !range_contains(&range, 43);
+}
+
+proc test_range_copy() -> bool {
+    let original: Range =
+        make_answer_range();
+
+    let copy: Range =
+        range_copy(
+            &original);
+
+    give range_equal(
+               &original,
+               &copy) &&
+         range_width(
+               &copy) == FORTY_TWO;
+}
+
+proc test_range_translate() -> bool {
+    let original: Range =
+        make_range(
+            ZERO,
+            FORTY_TWO);
+
+    let translated: Range =
+        range_translate(
+            &original,
+            TEN);
+
+    give translated.minimum == TEN &&
+         translated.maximum == 52 &&
+         range_width(
+             &translated) == FORTY_TWO &&
+         range_width(
+             &original) == FORTY_TWO;
+}
+
+proc test_pair_runtime() -> bool {
+    let pair: Pair =
+        make_answer_pair();
+
+    give pair_first(&pair) == TWENTY &&
+         pair_second(&pair) == TWENTY_TWO &&
+         pair_sum(&pair) == FORTY_TWO;
+}
+
+proc test_pair_swap() -> bool {
+    let pair: Pair =
+        make_answer_pair();
+
+    let swapped: Pair =
+        pair_swap(
+            &pair);
+
+    give swapped.first == TWENTY_TWO &&
+         swapped.second == TWENTY &&
+         pair_sum(
+             &swapped) == FORTY_TWO;
+}
+
+proc test_triple_runtime() -> bool {
+    let triple: Triple =
+        make_triple(
+            TEN,
+            TEN,
+            TWENTY_TWO);
+
+    give triple.first == TEN &&
+         triple.second == TEN &&
+         triple.third == TWENTY_TWO &&
+         triple_sum(&triple) == FORTY_TWO;
+}
+
+proc test_counter_runtime() -> bool {
+    let first: Counter =
+        make_counter(
+            FORTY);
+
+    let second: Counter =
+        counter_increment(
+            &first);
+
+    let third: Counter =
+        counter_increment(
+            &second);
+
+    give counter_value(&first) == FORTY &&
+         counter_value(&second) == FORTY_ONE &&
+         counter_value(&third) == FORTY_TWO;
+}
+
+proc test_counter_add() -> bool {
+    let first: Counter =
+        make_counter(
+            TWENTY);
+
+    let second: Counter =
+        counter_add(
+            &first,
+            TWENTY_TWO);
+
+    give counter_value(
+        &second) == FORTY_TWO;
+}
+
+proc test_flagged_value_runtime() -> bool {
+    let enabled: FlaggedValue =
+        make_flagged_value(
+            FORTY_TWO,
+            true);
+
+    let disabled: FlaggedValue =
+        make_flagged_value(
+            ZERO,
+            false);
+
+    give flagged_value(&enabled) == FORTY_TWO &&
+         flagged_enabled(&enabled) &&
+         flagged_value(&disabled) == ZERO &&
+         !flagged_enabled(&disabled);
+}
+
+proc test_record_runtime() -> bool {
+    let record: Record =
+        make_answer_record();
+
+    give record_id(&record) == SEVEN &&
+         record_value(&record) == FORTY_TWO &&
+         record_enabled(&record) &&
+         record_valid(&record);
+}
+
+proc test_record_copy() -> bool {
+    let original: Record =
+        make_answer_record();
+
+    let copy: Record =
+        record_copy(
+            &original);
+
+    give copy.id == original.id &&
+         copy.value == original.value &&
+         copy.enabled == original.enabled;
+}
+
+proc test_record_transform() -> bool {
+    let original: Record =
+        make_record(
+            SEVEN,
+            TWENTY,
+            true);
+
+    let transformed: Record =
+        record_with_value(
+            &original,
+            FORTY_TWO);
+
+    give original.value == TWENTY &&
+         transformed.value == FORTY_TWO &&
+         transformed.id == SEVEN &&
+         transformed.enabled;
+}
+
+proc test_record_toggle() -> bool {
+    let original: Record =
+        make_answer_record();
+
+    let toggled: Record =
+        record_toggle(
+            &original);
+
+    give original.enabled &&
+         !toggled.enabled &&
+         original.value == toggled.value &&
+         original.id == toggled.id;
+}
+
+proc test_rectangle_runtime() -> bool {
+    let minimum: Point =
+        make_zero_point();
+
+    let maximum: Point =
+        make_answer_point();
+
+    let rectangle: Rectangle =
+        make_rectangle(
+            minimum,
+            maximum);
+
+    give rectangle_valid(&rectangle) &&
+         rectangle_width(&rectangle) == TWENTY &&
+         rectangle_height(&rectangle) == TWENTY_TWO &&
+         rectangle_perimeter_half(&rectangle) == FORTY_TWO &&
+         rectangle_minimum_sum(&rectangle) == ZERO &&
+         rectangle_maximum_sum(&rectangle) == FORTY_TWO;
+}
+
+proc test_nested_field_access() -> bool {
+    let rectangle: Rectangle =
+        make_answer_rectangle();
+
+    give rectangle.minimum.x == ZERO &&
+         rectangle.minimum.y == ZERO &&
+         rectangle.maximum.x == TWENTY &&
+         rectangle.maximum.y == TWENTY_TWO;
+}
+
+proc test_segment_runtime() -> bool {
+    let segment: Segment =
+        make_answer_segment();
+
+    give segment_start_sum(&segment) == ZERO &&
+         segment_finish_sum(&segment) == FORTY_TWO &&
+         segment_delta_sum(&segment) == FORTY_TWO;
+}
+
+proc test_point_pair_runtime() -> bool {
+    let first: Point =
+        make_point(
+            TEN,
+            TEN);
+
+    let second: Point =
+        make_point(
+            TEN,
+            12);
+
+    let pair: PointPair =
+        make_point_pair(
+            first,
+            second);
+
+    give point_pair_first_sum(&pair) == TWENTY &&
+         point_pair_second_sum(&pair) == TWENTY_TWO &&
+         point_pair_sum(&pair) == FORTY_TWO;
+}
+
+proc test_range_pair_runtime() -> bool {
+    let first: Range =
+        make_range(
+            ZERO,
+            TWENTY);
+
+    let second: Range =
+        make_range(
+            ZERO,
+            TWENTY_TWO);
+
+    let pair: RangePair =
+        make_range_pair(
+            first,
+            second);
+
+    give range_pair_width(
+        &pair) == FORTY_TWO;
+}
+
+proc test_record_pair_runtime() -> bool {
+    let first: Record =
+        make_record(
+            ONE,
+            TWENTY,
+            true);
+
+    let second: Record =
+        make_record(
+            TWO,
+            TWENTY_TWO,
+            true);
+
+    let pair: RecordPair =
+        make_record_pair(
+            first,
+            second);
+
+    give record_pair_value(&pair) == FORTY_TWO &&
+         record_pair_enabled(&pair);
+}
+
+proc test_nested_runtime() -> bool {
+    let nested: Nested =
+        make_answer_nested();
+
+    give nested_point_sum(&nested) == FORTY_TWO &&
+         nested_range_width(&nested) == FORTY_TWO &&
+         nested_record_value(&nested) == FORTY_TWO &&
+         nested_pair_sum(&nested) == FORTY_TWO &&
+         nested_total(&nested) == 168 &&
+         nested_valid(&nested);
+}
+
+proc test_nested_copy() -> bool {
+    let original: Nested =
+        make_answer_nested();
+
+    let copy: Nested =
+        nested_copy(
+            &original);
+
+    give nested_valid(&original) &&
+         nested_valid(&copy) &&
+         nested_total(&original) ==
+             nested_total(&copy);
+}
+
+proc test_deep_nested_field_access() -> bool {
+    let nested: Nested =
+        make_answer_nested();
+
+    give nested.point.x == TWENTY &&
+         nested.point.y == TWENTY_TWO &&
+         nested.range.minimum == ZERO &&
+         nested.range.maximum == FORTY_TWO &&
+         nested.record.id == SEVEN &&
+         nested.record.value == FORTY_TWO &&
+         nested.record.enabled &&
+         nested.pair.first == TWENTY &&
+         nested.pair.second == TWENTY_TWO;
+}
+
+proc test_envelope_runtime() -> bool {
+    let envelope: Envelope =
+        make_answer_envelope();
+
+    give envelope_marker(&envelope) == FORTY_TWO &&
+         envelope_point_sum(&envelope) == FORTY_TWO &&
+         envelope_range_width(&envelope) == FORTY_TWO &&
+         envelope_record_value(&envelope) == FORTY_TWO &&
+         envelope_pair_sum(&envelope) == FORTY_TWO &&
+         envelope_valid(&envelope);
+}
+
+proc test_deep_envelope_runtime() -> bool {
+    let value: DeepEnvelope =
+        make_answer_deep_envelope();
+
+    give deep_envelope_marker(&value) == FORTY_TWO &&
+         deep_envelope_nested_point_sum(&value) == FORTY_TWO &&
+         deep_envelope_fallback_sum(&value) == FORTY_TWO &&
+         deep_envelope_valid(&value);
+}
+
+proc test_very_deep_field_access() -> bool {
+    let value: DeepEnvelope =
+        make_answer_deep_envelope();
+
+    give value.envelope.marker == FORTY_TWO &&
+         value.envelope.nested.point.x == TWENTY &&
+         value.envelope.nested.point.y == TWENTY_TWO &&
+         value.envelope.nested.range.maximum == FORTY_TWO &&
+         value.envelope.nested.record.value == FORTY_TWO &&
+         value.envelope.nested.pair.first == TWENTY &&
+         value.envelope.nested.pair.second == TWENTY_TWO &&
+         value.fallback.x == TWENTY &&
+         value.fallback.y == TWENTY_TWO;
+}
+
+proc test_state_runtime() -> bool {
+    let state: AggregateState =
+        make_answer_state();
+
+    give state_counter(&state) == FORTY_TWO &&
+         state_point_sum(&state) == FORTY_TWO &&
+         state_range_width(&state) == FORTY_TWO &&
+         state_enabled(&state) &&
+         state_valid(&state);
+}
+
+proc test_bundle_runtime() -> bool {
+    let bundle: AggregateBundle =
+        make_answer_bundle();
+
+    give bundle_point_sum(&bundle) == FORTY_TWO &&
+         bundle_rectangle_sum(&bundle) == FORTY_TWO &&
+         bundle_segment_sum(&bundle) == FORTY_TWO &&
+         bundle_record_value(&bundle) == FORTY_TWO &&
+         bundle_state_value(&bundle) == FORTY_TWO &&
+         bundle_valid(&bundle);
+}
+
+proc test_bundle_deep_access() -> bool {
+    let bundle: AggregateBundle =
+        make_answer_bundle();
+
+    give bundle.point.x == TWENTY &&
+         bundle.point.y == TWENTY_TWO &&
+         bundle.rectangle.minimum.x == ZERO &&
+         bundle.rectangle.maximum.x == TWENTY &&
+         bundle.rectangle.maximum.y == TWENTY_TWO &&
+         bundle.segment.start.x == ZERO &&
+         bundle.segment.finish.x == TWENTY &&
+         bundle.segment.finish.y == TWENTY_TWO &&
+         bundle.record.value == FORTY_TWO &&
+         bundle.state.counter.value == FORTY_TWO &&
+         bundle.state.current.x == TWENTY &&
+         bundle.state.current.y == TWENTY_TWO &&
+         bundle.state.bounds.maximum == FORTY_TWO &&
+         bundle.state.enabled;
+}
+
+proc test_conditional_aggregate_return() -> bool {
+    let answer: Point =
+        choose_point(true);
+
+    let zero: Point =
+        choose_point(false);
+
+    give point_sum(&answer) == FORTY_TWO &&
+         point_is_zero(&zero);
+}
+
+proc test_conditional_range_return() -> bool {
+    let answer: Range =
+        choose_range(true);
+
+    let zero: Range =
+        choose_range(false);
+
+    give range_width(&answer) == FORTY_TWO &&
+         range_width(&zero) == ZERO;
+}
+
+proc test_conditional_record_return() -> bool {
+    let answer: Record =
+        choose_record(true);
+
+    let zero: Record =
+        choose_record(false);
+
+    give record_value(&answer) == FORTY_TWO &&
+         record_enabled(&answer) &&
+         record_value(&zero) == ZERO &&
+         !record_enabled(&zero);
+}
+
+proc test_forward_aggregate_values() -> bool {
+    let point: Point =
+        forward_point(
+            make_answer_point());
+
+    let range: Range =
+        forward_range(
+            make_answer_range());
+
+    let record: Record =
+        forward_record(
+            make_answer_record());
+
+    let nested: Nested =
+        forward_nested(
+            make_answer_nested());
+
+    give point_sum(&point) == FORTY_TWO &&
+         range_width(&range) == FORTY_TWO &&
+         record_value(&record) == FORTY_TWO &&
+         nested_valid(&nested);
+}
+
+proc test_call_result_aggregate() -> bool {
+    let point: Point =
+        point_copy(
+            &make_answer_point());
+
+    give point_sum(
+        &point) == FORTY_TWO;
+}
+
+proc test_nested_constructor_arguments() -> bool {
+    let rectangle: Rectangle =
+        make_rectangle(
+            make_zero_point(),
+            make_answer_point());
+
+    give rectangle_perimeter_half(
+        &rectangle) == FORTY_TWO;
+}
+
+proc test_aggregate_in_nested_scope() -> bool {
+    let mut result: i64 = ZERO;
+
+    {
+        let point: Point =
+            make_answer_point();
+
+        {
+            let range: Range =
+                make_answer_range();
+
+            {
+                let pair: Pair =
+                    make_answer_pair();
+
+                if point_sum(&point) == FORTY_TWO &&
+                   range_width(&range) == FORTY_TWO &&
+                   pair_sum(&pair) == FORTY_TWO {
+                    set result =
+                        FORTY_TWO;
+                }
+            }
+        }
+    }
+
+    give result == FORTY_TWO;
+}
+
+proc test_aggregate_shadowing() -> bool {
+    let point: Point =
+        make_answer_point();
+
+    let mut result: i64 =
+        point_sum(
+            &point);
+
+    {
+        let point: Point =
+            make_zero_point();
+
+        if point_sum(&point) == ZERO {
+            set result =
+                result + ZERO;
+        }
+    }
+
+    give point_sum(&point) == FORTY_TWO &&
+         result == FORTY_TWO;
+}
+
+proc test_repeated_construction() -> bool {
+    let first: Point =
+        make_answer_point();
+
+    let second: Point =
+        make_answer_point();
+
+    let third: Point =
+        make_answer_point();
+
+    let fourth: Point =
+        make_answer_point();
+
+    give point_sum(&first) == FORTY_TWO &&
+         point_sum(&second) == FORTY_TWO &&
+         point_sum(&third) == FORTY_TWO &&
+         point_sum(&fourth) == FORTY_TWO &&
+         point_equal(&first, &second) &&
+         point_equal(&second, &third) &&
+         point_equal(&third, &fourth);
+}
+
+proc test_repeated_nested_construction() -> bool {
+    let first: Nested =
+        make_answer_nested();
+
+    let second: Nested =
+        make_answer_nested();
+
+    let third: Nested =
+        make_answer_nested();
+
+    give nested_valid(&first) &&
+         nested_valid(&second) &&
+         nested_valid(&third) &&
+         nested_total(&first) == 168 &&
+         nested_total(&second) == 168 &&
+         nested_total(&third) == 168;
+}
+
+proc test_aggregate_loop() -> bool {
+    let mut index: i64 = ZERO;
+    let mut total: i64 = ZERO;
+
+    while index < TWO {
+        let point: Point =
+            make_point(
+                TEN,
+                11);
+
+        set total =
+            total +
+            point_sum(&point);
+
+        set index =
+            index + ONE;
+    }
+
+    give index == TWO &&
+         total == FORTY_TWO;
+}
+
+proc test_aggregate_loop_transform() -> bool {
+    let mut index: i64 = ZERO;
+    let mut point: Point =
+        make_zero_point();
+
+    while index < TWO {
+        let next: Point =
+            point_translate(
+                &point,
+                TEN,
+                11);
+
+        set point =
+            next;
+
+        set index =
+            index + ONE;
+    }
+
+    give point.x == TWENTY &&
+         point.y == TWENTY_TWO &&
+         point_sum(&point) == FORTY_TWO;
+}
+
+proc test_counter_loop() -> bool {
+    let mut index: i64 = ZERO;
+    let mut counter: Counter =
+        make_counter(
+            FORTY);
+
+    while index < TWO {
+        let next: Counter =
+            counter_increment(
+                &counter);
+
+        set counter =
+            next;
+
+        set index =
+            index + ONE;
+    }
+
+    give counter_value(
+        &counter) == FORTY_TWO;
+}
+
+proc test_aggregate_mutable_replacement() -> bool {
+    let mut point: Point =
+        make_zero_point();
+
+    let replacement: Point =
+        make_answer_point();
+
+    set point =
+        replacement;
+
+    give point_sum(
+        &point) == FORTY_TWO;
+}
+
+proc test_nested_mutable_replacement() -> bool {
+    let mut nested: Nested =
+        make_nested(
+            make_zero_point(),
+            make_range(ZERO, ZERO),
+            make_record(ZERO, ZERO, false),
+            make_pair(ZERO, ZERO));
+
+    let replacement: Nested =
+        make_answer_nested();
+
+    set nested =
+        replacement;
+
+    give nested_valid(
+        &nested);
+}
+
+proc test_aggregate_parameter(
+    point: Point,
+    range: Range,
+    record: Record,
+    pair: Pair
+) -> bool {
+    give point_sum(&point) == FORTY_TWO &&
+         range_width(&range) == FORTY_TWO &&
+         record_value(&record) == FORTY_TWO &&
+         pair_sum(&pair) == FORTY_TWO;
+}
+
+proc test_aggregate_reference_parameter(
+    point: &Point,
+    range: &Range,
+    record: &Record,
+    pair: &Pair
+) -> bool {
+    give point_sum(point) == FORTY_TWO &&
+         range_width(range) == FORTY_TWO &&
+         record_value(record) == FORTY_TWO &&
+         pair_sum(pair) == FORTY_TWO;
+}
+
+proc test_parameter_setup() -> bool {
+    let point: Point =
+        make_answer_point();
+
+    let range: Range =
+        make_answer_range();
+
+    let record: Record =
+        make_answer_record();
+
+    let pair: Pair =
+        make_answer_pair();
+
+    give test_aggregate_parameter(
+               point,
+               range,
+               record,
+               pair) &&
+         test_aggregate_reference_parameter(
+               &point,
+               &range,
+               &record,
+               &pair);
+}
+
+proc test_form_boolean_fields() -> bool {
+    let enabled: Record =
+        make_record(
+            ONE,
+            FORTY_TWO,
+            true);
+
+    let disabled: Record =
+        make_record(
+            TWO,
+            FORTY_TWO,
+            false);
+
+    give enabled.enabled &&
+         !disabled.enabled &&
+         enabled.value == disabled.value;
+}
+
+proc test_zero_aggregate_values() -> bool {
+    let point: Point =
+        make_zero_point();
+
+    let range: Range =
+        make_range(
+            ZERO,
+            ZERO);
+
+    let pair: Pair =
+        make_pair(
+            ZERO,
+            ZERO);
+
+    let counter: Counter =
+        make_counter(
+            ZERO);
+
+    give point_is_zero(&point) &&
+         range_width(&range) == ZERO &&
+         pair_sum(&pair) == ZERO &&
+         counter_value(&counter) == ZERO;
+}
+
+proc test_negative_fields() -> bool {
+    let point: Point =
+        make_point(
+            -TWENTY,
+            62);
+
+    let range: Range =
+        make_range(
+            -TWENTY_ONE,
+            TWENTY_ONE);
+
+    give point_sum(&point) == FORTY_TWO &&
+         range_width(&range) == FORTY_TWO &&
+         range_contains(&range, ZERO);
+}
+
+proc test_large_fields() -> bool {
+    let point: Point =
+        make_point(
+            ONE_HUNDRED,
+            -58);
+
+    give point_sum(
+        &point) == FORTY_TWO;
+}
+
+proc test_field_expression_construction() -> bool {
+    let left: i64 =
+        TWENTY;
+
+    let right: i64 =
+        TWENTY_TWO;
+
+    let point: Point =
+        Point {
+            x: identity(left),
+            y: add(right, ZERO),
+        };
+
+    give point_sum(
+        &point) == FORTY_TWO;
+}
+
+proc test_nested_expression_construction() -> bool {
+    let nested: Nested =
+        Nested {
+            point: Point {
+                x: TWENTY,
+                y: TWENTY_TWO,
+            },
+            range: Range {
+                minimum: ZERO,
+                maximum: FORTY_TWO,
+            },
+            record: Record {
+                id: SEVEN,
+                value: FORTY_TWO,
+                enabled: true,
+            },
+            pair: Pair {
+                first: TWENTY,
+                second: TWENTY_TWO,
+            },
+        };
+
+    give nested_valid(
+        &nested);
+}
+
+proc test_deep_expression_construction() -> bool {
+    let value: Envelope =
+        Envelope {
+            nested: Nested {
+                point: Point {
+                    x: TWENTY,
+                    y: TWENTY_TWO,
+                },
+                range: Range {
+                    minimum: ZERO,
+                    maximum: FORTY_TWO,
+                },
+                record: Record {
+                    id: SEVEN,
+                    value: FORTY_TWO,
+                    enabled: true,
+                },
+                pair: Pair {
+                    first: TWENTY,
+                    second: TWENTY_TWO,
+                },
+            },
+            marker: FORTY_TWO,
+        };
+
+    give envelope_valid(
+        &value);
+}
+
+proc test_reference_field_access() -> bool {
+    let point: Point =
+        make_answer_point();
+
+    let reference: &Point =
+        &point;
+
+    give reference.x == TWENTY &&
+         reference.y == TWENTY_TWO &&
+         point_sum(reference) == FORTY_TWO;
+}
+
+proc test_nested_reference_field_access() -> bool {
+    let nested: Nested =
+        make_answer_nested();
+
+    let reference: &Nested =
+        &nested;
+
+    give reference.point.x == TWENTY &&
+         reference.point.y == TWENTY_TWO &&
+         reference.range.maximum == FORTY_TWO &&
+         reference.record.value == FORTY_TWO &&
+         reference.pair.first == TWENTY &&
+         reference.pair.second == TWENTY_TWO;
+}
+
+proc test_reference_forwarding(
+    point: &Point
+) -> i64 {
+    give point_sum(
+        point);
+}
+
+proc test_reference_forwarding_setup() -> bool {
+    let point: Point =
+        make_answer_point();
+
+    give test_reference_forwarding(
+        &point) == FORTY_TWO;
+}
+
+proc test_aggregate_call_chain() -> bool {
+    let first: Point =
+        make_answer_point();
+
+    let second: Point =
+        forward_point(
+            first);
+
+    let third: Point =
+        point_copy(
+            &second);
+
+    let fourth: Point =
+        point_swap(
+            &third);
+
+    give point_sum(&first) == FORTY_TWO &&
+         point_sum(&second) == FORTY_TWO &&
+         point_sum(&third) == FORTY_TWO &&
+         point_sum(&fourth) == FORTY_TWO;
+}
+
+proc test_nested_call_chain() -> bool {
+    let first: Nested =
+        make_answer_nested();
+
+    let second: Nested =
+        forward_nested(
+            first);
+
+    let third: Nested =
+        nested_copy(
+            &second);
+
+    give nested_valid(&first) &&
+         nested_valid(&second) &&
+         nested_valid(&third);
+}
+
+proc test_aggregate_control_flow(
+    choose_first: bool
+) -> bool {
+    let first: Point =
+        make_answer_point();
+
+    let second: Point =
+        make_zero_point();
+
+    if choose_first {
+        give point_sum(
+            &first) == FORTY_TWO;
+    }
+
+    give point_sum(
+        &second) == ZERO;
+}
+
+proc test_nested_control_flow() -> bool {
+    let nested: Nested =
+        make_answer_nested();
+
+    if nested.record.enabled &&
+       nested.range.minimum == ZERO {
+        if nested.point.x == TWENTY &&
+           nested.point.y == TWENTY_TWO {
+            if nested.pair.first +
+               nested.pair.second == FORTY_TWO {
+                give true;
+            }
+        }
+    }
+
+    give false;
+}
+
+proc test_aggregate_runtime_pipeline() -> bool {
+    let base: Point =
+        make_point(
+            TEN,
+            TEN);
+
+    let translated: Point =
+        point_translate(
+            &base,
+            TEN,
+            12);
+
+    let copied: Point =
+        point_copy(
+            &translated);
+
+    let swapped: Point =
+        point_swap(
+            &copied);
+
+    let range: Range =
+        make_range(
+            ZERO,
+            point_sum(
+                &swapped));
+
+    let record: Record =
+        make_record(
+            SEVEN,
+            range_width(
+                &range),
+            true);
+
+    let pair: Pair =
+        make_pair(
+            swapped.y,
+            swapped.x);
+
+    let nested: Nested =
+        make_nested(
+            swapped,
+            range,
+            record,
+            pair);
+
+    give point_sum(&base) == TWENTY &&
+         point_sum(&translated) == FORTY_TWO &&
+         point_sum(&copied) == FORTY_TWO &&
+         point_sum(&swapped) == FORTY_TWO &&
+         range_width(&range) == FORTY_TWO &&
+         record_value(&record) == FORTY_TWO &&
+         pair_sum(&pair) == FORTY_TWO &&
+         nested_valid(&nested);
+}
+
+proc test_independent_nested_values() -> bool {
+    let answer: Nested =
+        make_answer_nested();
+
+    let zero: Nested =
+        make_nested(
+            make_zero_point(),
+            make_range(ZERO, ZERO),
+            make_record(ZERO, ZERO, false),
+            make_pair(ZERO, ZERO));
+
+    give nested_point_sum(&answer) == FORTY_TWO &&
+         nested_point_sum(&zero) == ZERO &&
+         nested_record_value(&answer) == FORTY_TWO &&
+         nested_record_value(&zero) == ZERO &&
+         answer.record.enabled &&
+         !zero.record.enabled;
+}
+
+proc test_field_values_survive_calls() -> bool {
+    let point: Point =
+        make_point(
+            TWENTY,
+            TWENTY_TWO);
+
+    let before_x: i64 =
+        point.x;
+
+    let before_y: i64 =
+        point.y;
+
+    let sum: i64 =
+        point_sum(
+            &point);
+
+    let product: i64 =
+        point_product(
+            &point);
+
+    give before_x == TWENTY &&
+         before_y == TWENTY_TWO &&
+         sum == FORTY_TWO &&
+         product == 440 &&
+         point.x == TWENTY &&
+         point.y == TWENTY_TWO;
+}
+
+proc test_multiple_references() -> bool {
+    let point: Point =
+        make_answer_point();
+
+    let first: &Point =
+        &point;
+
+    let second: &Point =
+        &point;
+
+    give first.x == second.x &&
+         first.y == second.y &&
+         point_sum(first) == FORTY_TWO &&
+         point_sum(second) == FORTY_TWO;
+}
+
+proc test_aggregate_values_in_expressions() -> bool {
+    let first: Point =
+        make_point(
+            TEN,
+            TEN);
+
+    let second: Point =
+        make_point(
+            TEN,
+            12);
+
+    give point_sum(&first) +
+         point_sum(&second) ==
+         FORTY_TWO;
+}
+
+proc test_nested_values_in_expressions() -> bool {
+    let nested: Nested =
+        make_answer_nested();
+
+    give nested.point.x +
+         nested.point.y ==
+             FORTY_TWO &&
+         nested.range.maximum -
+         nested.range.minimum ==
+             FORTY_TWO &&
+         nested.record.value ==
+             FORTY_TWO &&
+         nested.pair.first +
+         nested.pair.second ==
+             FORTY_TWO;
+}
+
+proc test_aggregate_boolean_expression() -> bool {
+    let point: Point =
+        make_answer_point();
+
+    let range: Range =
+        make_answer_range();
+
+    let record: Record =
+        make_answer_record();
+
+    give point.x == TWENTY &&
+         point.y == TWENTY_TWO &&
+         range.minimum == ZERO &&
+         range.maximum == FORTY_TWO &&
+         record.value == FORTY_TWO &&
+         record.enabled;
+}
+
+proc test_constructor_from_call_results() -> bool {
+    let point: Point =
+        make_point(
+            identity(TWENTY),
+            add(TWENTY, TWO));
+
+    let pair: Pair =
+        make_pair(
+            point_x(&point),
+            point_y(&point));
+
+    give point_sum(&point) == FORTY_TWO &&
+         pair_sum(&pair) == FORTY_TWO;
+}
+
+proc test_constructor_from_aggregate_fields() -> bool {
+    let source: Point =
+        make_answer_point();
+
+    let pair: Pair =
+        make_pair(
+            source.x,
+            source.y);
+
+    let target: Point =
+        make_point(
+            pair.first,
+            pair.second);
+
+    give point_equal(
+        &source,
+        &target);
+}
+
+proc test_cross_aggregate_pipeline() -> bool {
+    let point: Point =
+        make_answer_point();
+
+    let range: Range =
+        make_range(
+            ZERO,
+            point_sum(&point));
+
+    let record: Record =
+        make_record(
+            SEVEN,
+            range_width(&range),
+            true);
+
+    let pair: Pair =
+        make_pair(
+            point.x,
+            point.y);
+
+    give point_sum(&point) == FORTY_TWO &&
+         range_width(&range) == FORTY_TWO &&
+         record_value(&record) == FORTY_TWO &&
+         pair_sum(&pair) == FORTY_TWO;
+}
+
+proc test_full_nested_pipeline() -> bool {
+    let point: Point =
+        make_answer_point();
+
+    let range: Range =
+        make_answer_range();
+
+    let record: Record =
+        make_answer_record();
+
+    let pair: Pair =
+        make_answer_pair();
+
+    let nested: Nested =
+        make_nested(
+            point,
+            range,
+            record,
+            pair);
+
+    let envelope: Envelope =
+        make_envelope(
+            nested,
+            FORTY_TWO);
+
+    let deep: DeepEnvelope =
+        make_deep_envelope(
+            envelope,
+            point);
+
+    give nested_valid(&nested) &&
+         envelope_valid(&envelope) &&
+         deep_envelope_valid(&deep) &&
+         deep.envelope.nested.point.x == TWENTY &&
+         deep.envelope.nested.point.y == TWENTY_TWO &&
+         deep.envelope.nested.range.maximum == FORTY_TWO &&
+         deep.envelope.nested.record.value == FORTY_TWO &&
+         deep.envelope.nested.pair.first == TWENTY &&
+         deep.envelope.nested.pair.second == TWENTY_TWO &&
+         deep.envelope.marker == FORTY_TWO &&
+         deep.fallback.x == TWENTY &&
+         deep.fallback.y == TWENTY_TWO;
+}
+
+proc test_all_answer_aggregates() -> bool {
+    let point: Point =
+        make_answer_point();
+
+    let range: Range =
+        make_answer_range();
+
+    let pair: Pair =
+        make_answer_pair();
+
+    let record: Record =
+        make_answer_record();
+
+    let rectangle: Rectangle =
+        make_answer_rectangle();
+
+    let segment: Segment =
+        make_answer_segment();
+
+    let nested: Nested =
+        make_answer_nested();
+
+    let envelope: Envelope =
+        make_answer_envelope();
+
+    let deep: DeepEnvelope =
+        make_answer_deep_envelope();
+
+    let state: AggregateState =
+        make_answer_state();
+
+    let bundle: AggregateBundle =
+        make_answer_bundle();
+
+    give point_sum(&point) == FORTY_TWO &&
+         range_width(&range) == FORTY_TWO &&
+         pair_sum(&pair) == FORTY_TWO &&
+         record_value(&record) == FORTY_TWO &&
+         rectangle_perimeter_half(&rectangle) == FORTY_TWO &&
+         segment_finish_sum(&segment) == FORTY_TWO &&
+         nested_valid(&nested) &&
+         envelope_valid(&envelope) &&
+         deep_envelope_valid(&deep) &&
+         state_valid(&state) &&
+         bundle_valid(&bundle);
 }
 
 proc main() -> int {
-    let values: list[string] = ["alpha", "beta"];
-    let probe: AggregateProbe = AggregateProbe {
-        label: values[0],
-        count: 2
-    };
-
-    set values[1] = "gamma";
-    set probe.count = 3;
-
-    if probe.label == "alpha" and values[1] == "gamma" and probe.count == 3 {
-        give 0;
+    if !test_basic_point() {
+        give 1;
     }
-    give 1;
+
+    if !test_point_factory() {
+        give 2;
+    }
+
+    if !test_point_return_value() {
+        give 3;
+    }
+
+    if !test_point_copy() {
+        give 4;
+    }
+
+    if !test_point_explicit_copy() {
+        give 5;
+    }
+
+    if !test_point_independent_instances() {
+        give 6;
+    }
+
+    if !test_point_translate() {
+        give 7;
+    }
+
+    if !test_point_scale() {
+        give 8;
+    }
+
+    if !test_point_swap() {
+        give 9;
+    }
+
+    if !test_point_addition() {
+        give 10;
+    }
+
+    if !test_point_subtraction() {
+        give 11;
+    }
+
+    if !test_range_runtime() {
+        give 12;
+    }
+
+    if !test_range_copy() {
+        give 13;
+    }
+
+    if !test_range_translate() {
+        give 14;
+    }
+
+    if !test_pair_runtime() {
+        give 15;
+    }
+
+    if !test_pair_swap() {
+        give 16;
+    }
+
+    if !test_triple_runtime() {
+        give 17;
+    }
+
+    if !test_counter_runtime() {
+        give 18;
+    }
+
+    if !test_counter_add() {
+        give 19;
+    }
+
+    if !test_flagged_value_runtime() {
+        give 20;
+    }
+
+    if !test_record_runtime() {
+        give 21;
+    }
+
+    if !test_record_copy() {
+        give 22;
+    }
+
+    if !test_record_transform() {
+        give 23;
+    }
+
+    if !test_record_toggle() {
+        give 24;
+    }
+
+    if !test_rectangle_runtime() {
+        give 25;
+    }
+
+    if !test_nested_field_access() {
+        give 26;
+    }
+
+    if !test_segment_runtime() {
+        give 27;
+    }
+
+    if !test_point_pair_runtime() {
+        give 28;
+    }
+
+    if !test_range_pair_runtime() {
+        give 29;
+    }
+
+    if !test_record_pair_runtime() {
+        give 30;
+    }
+
+    if !test_nested_runtime() {
+        give 31;
+    }
+
+    if !test_nested_copy() {
+        give 32;
+    }
+
+    if !test_deep_nested_field_access() {
+        give 33;
+    }
+
+    if !test_envelope_runtime() {
+        give 34;
+    }
+
+    if !test_deep_envelope_runtime() {
+        give 35;
+    }
+
+    if !test_very_deep_field_access() {
+        give 36;
+    }
+
+    if !test_state_runtime() {
+        give 37;
+    }
+
+    if !test_bundle_runtime() {
+        give 38;
+    }
+
+    if !test_bundle_deep_access() {
+        give 39;
+    }
+
+    if !test_conditional_aggregate_return() {
+        give 40;
+    }
+
+    if !test_conditional_range_return() {
+        give 41;
+    }
+
+    if !test_conditional_record_return() {
+        give 42;
+    }
+
+    if !test_forward_aggregate_values() {
+        give 43;
+    }
+
+    if !test_nested_constructor_arguments() {
+        give 44;
+    }
+
+    if !test_aggregate_in_nested_scope() {
+        give 45;
+    }
+
+    if !test_aggregate_shadowing() {
+        give 46;
+    }
+
+    if !test_repeated_construction() {
+        give 47;
+    }
+
+    if !test_repeated_nested_construction() {
+        give 48;
+    }
+
+    if !test_aggregate_loop() {
+        give 49;
+    }
+
+    if !test_aggregate_loop_transform() {
+        give 50;
+    }
+
+    if !test_counter_loop() {
+        give 51;
+    }
+
+    if !test_aggregate_mutable_replacement() {
+        give 52;
+    }
+
+    if !test_nested_mutable_replacement() {
+        give 53;
+    }
+
+    if !test_parameter_setup() {
+        give 54;
+    }
+
+    if !test_form_boolean_fields() {
+        give 55;
+    }
+
+    if !test_zero_aggregate_values() {
+        give 56;
+    }
+
+    if !test_negative_fields() {
+        give 57;
+    }
+
+    if !test_large_fields() {
+        give 58;
+    }
+
+    if !test_field_expression_construction() {
+        give 59;
+    }
+
+    if !test_nested_expression_construction() {
+        give 60;
+    }
+
+    if !test_deep_expression_construction() {
+        give 61;
+    }
+
+    if !test_reference_field_access() {
+        give 62;
+    }
+
+    if !test_nested_reference_field_access() {
+        give 63;
+    }
+
+    if !test_reference_forwarding_setup() {
+        give 64;
+    }
+
+    if !test_aggregate_call_chain() {
+        give 65;
+    }
+
+    if !test_nested_call_chain() {
+        give 66;
+    }
+
+    if !test_aggregate_control_flow(true) {
+        give 67;
+    }
+
+    if !test_aggregate_control_flow(false) {
+        give 68;
+    }
+
+    if !test_nested_control_flow() {
+        give 69;
+    }
+
+    if !test_aggregate_runtime_pipeline() {
+        give 70;
+    }
+
+    if !test_independent_nested_values() {
+        give 71;
+    }
+
+    if !test_field_values_survive_calls() {
+        give 72;
+    }
+
+    if !test_multiple_references() {
+        give 73;
+    }
+
+    if !test_aggregate_values_in_expressions() {
+        give 74;
+    }
+
+    if !test_nested_values_in_expressions() {
+        give 75;
+    }
+
+    if !test_aggregate_boolean_expression() {
+        give 76;
+    }
+
+    if !test_constructor_from_call_results() {
+        give 77;
+    }
+
+    if !test_constructor_from_aggregate_fields() {
+        give 78;
+    }
+
+    if !test_cross_aggregate_pipeline() {
+        give 79;
+    }
+
+    if !test_full_nested_pipeline() {
+        give 80;
+    }
+
+    if !test_all_answer_aggregates() {
+        give 81;
+    }
+
+    give 0;
 }

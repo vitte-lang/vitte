@@ -1,9 +1,827 @@
-space coverage_chain_mid;
+/// Import/export coverage — middle module of the chain.
+///
+/// This module sits between `coverage_chain_source` and
+/// `coverage_chain_main`.
+///
+/// Its purpose is to verify that a module can:
+/// - import another module;
+/// - consume its exported declarations;
+/// - expose new declarations derived from imported declarations;
+/// - preserve nominal type ownership;
+/// - use imported constants and procedures internally;
+/// - expose wrapper forms without leaking implementation details;
+/// - preserve symbol identity through a multi-module dependency chain.
+///
+/// This module does not rely on unsupported imported-symbol re-export forms.
+/// Everything exported here is declared locally.
 
-use coverage_chain_source::{number as base, bias};
+space tests::import_export_coverage::coverage_chain_mid;
 
-export proc total() -> int {
-    give base() + bias;
+use tests::import_export_coverage::coverage_chain_source;
+
+export const MID_SOURCE_ID: i64 = 20;
+export const MID_ZERO: i64 = 0;
+export const MID_ONE: i64 = 1;
+export const MID_TWO: i64 = 2;
+
+export const MID_VALUE: i64 =
+    coverage_chain_source.SOURCE_VALUE;
+
+export const MID_ANSWER: i64 =
+    coverage_chain_source.SOURCE_ANSWER;
+
+export const MID_LIMIT: i64 =
+    coverage_chain_source.SOURCE_LIMIT;
+
+export const MID_ENABLED: bool = true;
+
+export form MidPoint {
+    x: i64,
+    y: i64,
 }
 
-export const extra: int = 2;
+export form MidRecord {
+    value: i64,
+    source_value: i64,
+    mid_source: i64,
+}
+
+export form MidPair {
+    first: i64,
+    second: i64,
+}
+
+export form MidRange {
+    minimum: i64,
+    maximum: i64,
+}
+
+export form MidSummary {
+    point: MidPoint,
+    record: MidRecord,
+    pair: MidPair,
+    range: MidRange,
+}
+
+export form SourceSnapshot {
+    value: i64,
+    answer: i64,
+    source_id: i64,
+}
+
+export pick MidState {
+    Idle,
+    Ready,
+    Running,
+    Finished,
+}
+
+export pick MidResult {
+    Success,
+    Failure,
+}
+
+export proc mid_source_id() -> i64 {
+    give MID_SOURCE_ID;
+}
+
+export proc mid_value() -> i64 {
+    give MID_VALUE;
+}
+
+export proc mid_answer() -> i64 {
+    give MID_ANSWER;
+}
+
+export proc mid_limit() -> i64 {
+    give MID_LIMIT;
+}
+
+export proc source_value() -> i64 {
+    give coverage_chain_source.SOURCE_VALUE;
+}
+
+export proc source_answer() -> i64 {
+    give coverage_chain_source.SOURCE_ANSWER;
+}
+
+export proc source_id() -> i64 {
+    give coverage_chain_source.SOURCE_ID;
+}
+
+export proc source_limit() -> i64 {
+    give coverage_chain_source.SOURCE_LIMIT;
+}
+
+export proc identity(
+    value: i64
+) -> i64 {
+    give value;
+}
+
+export proc add(
+    left: i64,
+    right: i64
+) -> i64 {
+    give left + right;
+}
+
+export proc subtract(
+    left: i64,
+    right: i64
+) -> i64 {
+    give left - right;
+}
+
+export proc multiply(
+    left: i64,
+    right: i64
+) -> i64 {
+    give left * right;
+}
+
+export proc increment(
+    value: i64
+) -> i64 {
+    give value + MID_ONE;
+}
+
+export proc decrement(
+    value: i64
+) -> i64 {
+    give value - MID_ONE;
+}
+
+export proc source_identity(
+    value: i64
+) -> i64 {
+    give coverage_chain_source.identity(
+        value);
+}
+
+export proc source_add(
+    left: i64,
+    right: i64
+) -> i64 {
+    give coverage_chain_source.add(
+        left,
+        right);
+}
+
+export proc source_composed_value() -> i64 {
+    give coverage_chain_source.identity(
+        coverage_chain_source.SOURCE_VALUE);
+}
+
+export proc make_point(
+    x: i64,
+    y: i64
+) -> MidPoint {
+    give MidPoint {
+        x: x,
+        y: y,
+    };
+}
+
+export proc make_default_point() -> MidPoint {
+    give make_point(
+        20,
+        22);
+}
+
+export proc point_x(
+    point: &MidPoint
+) -> i64 {
+    give point.x;
+}
+
+export proc point_y(
+    point: &MidPoint
+) -> i64 {
+    give point.y;
+}
+
+export proc point_sum(
+    point: &MidPoint
+) -> i64 {
+    give point.x +
+         point.y;
+}
+
+export proc point_equal(
+    left: &MidPoint,
+    right: &MidPoint
+) -> bool {
+    give left.x == right.x &&
+         left.y == right.y;
+}
+
+export proc make_record(
+    value: i64
+) -> MidRecord {
+    give MidRecord {
+        value: value,
+        source_value: coverage_chain_source.SOURCE_VALUE,
+        mid_source: MID_SOURCE_ID,
+    };
+}
+
+export proc make_default_record() -> MidRecord {
+    give make_record(
+        MID_ANSWER);
+}
+
+export proc record_value(
+    record: &MidRecord
+) -> i64 {
+    give record.value;
+}
+
+export proc record_source_value(
+    record: &MidRecord
+) -> i64 {
+    give record.source_value;
+}
+
+export proc record_mid_source(
+    record: &MidRecord
+) -> i64 {
+    give record.mid_source;
+}
+
+export proc record_valid(
+    record: &MidRecord
+) -> bool {
+    give record.source_value ==
+             coverage_chain_source.SOURCE_VALUE &&
+         record.mid_source ==
+             MID_SOURCE_ID;
+}
+
+export proc make_pair(
+    first: i64,
+    second: i64
+) -> MidPair {
+    give MidPair {
+        first: first,
+        second: second,
+    };
+}
+
+export proc make_default_pair() -> MidPair {
+    give make_pair(
+        20,
+        22);
+}
+
+export proc pair_sum(
+    pair: &MidPair
+) -> i64 {
+    give pair.first +
+         pair.second;
+}
+
+export proc make_range(
+    minimum_value: i64,
+    maximum_value: i64
+) -> MidRange {
+    give MidRange {
+        minimum: minimum_value,
+        maximum: maximum_value,
+    };
+}
+
+export proc make_default_range() -> MidRange {
+    give make_range(
+        MID_ZERO,
+        MID_ANSWER);
+}
+
+export proc range_minimum(
+    range: &MidRange
+) -> i64 {
+    give range.minimum;
+}
+
+export proc range_maximum(
+    range: &MidRange
+) -> i64 {
+    give range.maximum;
+}
+
+export proc range_width(
+    range: &MidRange
+) -> i64 {
+    give range.maximum -
+         range.minimum;
+}
+
+export proc range_valid(
+    range: &MidRange
+) -> bool {
+    give range.minimum <=
+         range.maximum;
+}
+
+export proc range_contains(
+    range: &MidRange,
+    value: i64
+) -> bool {
+    give value >= range.minimum &&
+         value <= range.maximum;
+}
+
+export proc make_summary(
+    point: MidPoint,
+    record: MidRecord,
+    pair: MidPair,
+    range: MidRange
+) -> MidSummary {
+    give MidSummary {
+        point: point,
+        record: record,
+        pair: pair,
+        range: range,
+    };
+}
+
+export proc make_default_summary() -> MidSummary {
+    let point: MidPoint =
+        make_default_point();
+
+    let record: MidRecord =
+        make_default_record();
+
+    let pair: MidPair =
+        make_default_pair();
+
+    let range: MidRange =
+        make_default_range();
+
+    give make_summary(
+        point,
+        record,
+        pair,
+        range);
+}
+
+export proc summary_point_sum(
+    summary: &MidSummary
+) -> i64 {
+    give point_sum(
+        &summary.point);
+}
+
+export proc summary_record_value(
+    summary: &MidSummary
+) -> i64 {
+    give record_value(
+        &summary.record);
+}
+
+export proc summary_pair_sum(
+    summary: &MidSummary
+) -> i64 {
+    give pair_sum(
+        &summary.pair);
+}
+
+export proc summary_range_width(
+    summary: &MidSummary
+) -> i64 {
+    give range_width(
+        &summary.range);
+}
+
+export proc summary_mid_source(
+    summary: &MidSummary
+) -> i64 {
+    give record_mid_source(
+        &summary.record);
+}
+
+export proc make_source_snapshot() -> SourceSnapshot {
+    give SourceSnapshot {
+        value: coverage_chain_source.SOURCE_VALUE,
+        answer: coverage_chain_source.SOURCE_ANSWER,
+        source_id: coverage_chain_source.SOURCE_ID,
+    };
+}
+
+export proc snapshot_value(
+    snapshot: &SourceSnapshot
+) -> i64 {
+    give snapshot.value;
+}
+
+export proc snapshot_answer(
+    snapshot: &SourceSnapshot
+) -> i64 {
+    give snapshot.answer;
+}
+
+export proc snapshot_source_id(
+    snapshot: &SourceSnapshot
+) -> i64 {
+    give snapshot.source_id;
+}
+
+export proc snapshot_valid(
+    snapshot: &SourceSnapshot
+) -> bool {
+    give snapshot.value ==
+             coverage_chain_source.SOURCE_VALUE &&
+         snapshot.answer ==
+             coverage_chain_source.SOURCE_ANSWER &&
+         snapshot.source_id ==
+             coverage_chain_source.SOURCE_ID;
+}
+
+export proc default_state() -> MidState {
+    give MidState.Idle;
+}
+
+export proc ready_state() -> MidState {
+    give MidState.Ready;
+}
+
+export proc running_state() -> MidState {
+    give MidState.Running;
+}
+
+export proc finished_state() -> MidState {
+    give MidState.Finished;
+}
+
+export proc success_result() -> MidResult {
+    give MidResult.Success;
+}
+
+export proc failure_result() -> MidResult {
+    give MidResult.Failure;
+}
+
+export proc conditional_value(
+    enabled: bool
+) -> i64 {
+    if enabled {
+        give MID_ANSWER;
+    }
+
+    give MID_ZERO;
+}
+
+export proc normalize_to_answer(
+    value: i64
+) -> i64 {
+    if value == MID_ANSWER {
+        give value;
+    }
+
+    if value < MID_ANSWER {
+        give add(
+            value,
+            subtract(
+                MID_ANSWER,
+                value));
+    }
+
+    give subtract(
+        value,
+        subtract(
+            value,
+            MID_ANSWER));
+}
+
+export proc accumulate_answer() -> i64 {
+    let mut index: i64 =
+        MID_ZERO;
+
+    let mut result: i64 =
+        MID_ZERO;
+
+    while index < MID_TWO {
+        set result =
+            add(
+                result,
+                21);
+
+        set index =
+            increment(index);
+    }
+
+    give result;
+}
+
+export proc source_pipeline() -> i64 {
+    let first: i64 =
+        coverage_chain_source.identity(
+            coverage_chain_source.SOURCE_VALUE);
+
+    let second: i64 =
+        coverage_chain_source.add(
+            first,
+            subtract(
+                MID_ANSWER,
+                first));
+
+    give identity(second);
+}
+
+export proc mixed_pipeline() -> i64 {
+    let source_value_result: i64 =
+        coverage_chain_source.SOURCE_VALUE;
+
+    let remaining: i64 =
+        subtract(
+            MID_ANSWER,
+            source_value_result);
+
+    give coverage_chain_source.add(
+        source_value_result,
+        remaining);
+}
+
+export proc forward_point(
+    point: &MidPoint
+) -> i64 {
+    give point_sum(point);
+}
+
+export proc forward_record(
+    record: &MidRecord
+) -> i64 {
+    give record_value(record);
+}
+
+export proc forward_pair(
+    pair: &MidPair
+) -> i64 {
+    give pair_sum(pair);
+}
+
+export proc forward_range(
+    range: &MidRange
+) -> i64 {
+    give range_width(range);
+}
+
+export proc forward_summary(
+    summary: &MidSummary
+) -> i64 {
+    give summary_point_sum(summary);
+}
+
+export proc validate_point(
+    point: &MidPoint
+) -> bool {
+    give point_sum(point) ==
+         MID_ANSWER;
+}
+
+export proc validate_record(
+    record: &MidRecord
+) -> bool {
+    give record_value(record) ==
+             MID_ANSWER &&
+         record_source_value(record) ==
+             coverage_chain_source.SOURCE_VALUE &&
+         record_mid_source(record) ==
+             MID_SOURCE_ID;
+}
+
+export proc validate_pair(
+    pair: &MidPair
+) -> bool {
+    give pair_sum(pair) ==
+         MID_ANSWER;
+}
+
+export proc validate_range(
+    range: &MidRange
+) -> bool {
+    give range_valid(range) &&
+         range_width(range) ==
+             MID_ANSWER;
+}
+
+export proc validate_summary(
+    summary: &MidSummary
+) -> bool {
+    give summary_point_sum(summary) ==
+             MID_ANSWER &&
+         summary_record_value(summary) ==
+             MID_ANSWER &&
+         summary_pair_sum(summary) ==
+             MID_ANSWER &&
+         summary_range_width(summary) ==
+             MID_ANSWER &&
+         summary_mid_source(summary) ==
+             MID_SOURCE_ID;
+}
+
+export proc repeated_source_lookup() -> bool {
+    give coverage_chain_source.SOURCE_VALUE ==
+             coverage_chain_source.SOURCE_VALUE &&
+         coverage_chain_source.SOURCE_VALUE ==
+             MID_VALUE &&
+         coverage_chain_source.SOURCE_ANSWER ==
+             MID_ANSWER &&
+         coverage_chain_source.SOURCE_LIMIT ==
+             MID_LIMIT;
+}
+
+export proc repeated_local_lookup() -> bool {
+    give MID_VALUE == MID_VALUE &&
+         MID_VALUE ==
+             coverage_chain_source.SOURCE_VALUE &&
+         MID_ANSWER == MID_ANSWER &&
+         MID_SOURCE_ID == MID_SOURCE_ID &&
+         identity(MID_ANSWER) ==
+             MID_ANSWER;
+}
+
+export proc aggregate_self_test() -> bool {
+    let point: MidPoint =
+        make_default_point();
+
+    let record: MidRecord =
+        make_default_record();
+
+    let pair: MidPair =
+        make_default_pair();
+
+    let range: MidRange =
+        make_default_range();
+
+    let summary: MidSummary =
+        make_summary(
+            point,
+            record,
+            pair,
+            range);
+
+    let snapshot: SourceSnapshot =
+        make_source_snapshot();
+
+    give validate_point(&point) &&
+         validate_record(&record) &&
+         validate_pair(&pair) &&
+         validate_range(&range) &&
+         validate_summary(&summary) &&
+         snapshot_valid(&snapshot);
+}
+
+export proc source_dependency_self_test() -> bool {
+    give source_value() ==
+             coverage_chain_source.SOURCE_VALUE &&
+         source_answer() ==
+             coverage_chain_source.SOURCE_ANSWER &&
+         source_id() ==
+             coverage_chain_source.SOURCE_ID &&
+         source_limit() ==
+             coverage_chain_source.SOURCE_LIMIT &&
+         source_identity(
+             coverage_chain_source.SOURCE_VALUE) ==
+             coverage_chain_source.SOURCE_VALUE &&
+         source_add(
+             20,
+             22) ==
+             42 &&
+         source_composed_value() ==
+             coverage_chain_source.SOURCE_VALUE;
+}
+
+export proc library_self_test() -> bool {
+    let point: MidPoint =
+        make_default_point();
+
+    let record: MidRecord =
+        make_default_record();
+
+    let pair: MidPair =
+        make_default_pair();
+
+    let range: MidRange =
+        make_default_range();
+
+    let summary: MidSummary =
+        make_default_summary();
+
+    let snapshot: SourceSnapshot =
+        make_source_snapshot();
+
+    let idle: MidState =
+        default_state();
+
+    let ready: MidState =
+        ready_state();
+
+    let running: MidState =
+        running_state();
+
+    let finished: MidState =
+        finished_state();
+
+    let success: MidResult =
+        success_result();
+
+    let failure: MidResult =
+        failure_result();
+
+    give MID_SOURCE_ID == 20 &&
+         MID_ZERO == 0 &&
+         MID_ONE == 1 &&
+         MID_TWO == 2 &&
+         MID_VALUE ==
+             coverage_chain_source.SOURCE_VALUE &&
+         MID_ANSWER ==
+             coverage_chain_source.SOURCE_ANSWER &&
+         MID_LIMIT ==
+             coverage_chain_source.SOURCE_LIMIT &&
+         MID_ENABLED &&
+
+         mid_source_id() == 20 &&
+         mid_value() == MID_VALUE &&
+         mid_answer() == MID_ANSWER &&
+         mid_limit() == MID_LIMIT &&
+
+         identity(42) == 42 &&
+         add(20, 22) == 42 &&
+         subtract(100, 58) == 42 &&
+         multiply(6, 7) == 42 &&
+         increment(41) == 42 &&
+         decrement(43) == 42 &&
+
+         point_x(&point) == 20 &&
+         point_y(&point) == 22 &&
+         point_sum(&point) == 42 &&
+         point_equal(
+             &point,
+             &point) &&
+
+         record_value(&record) == 42 &&
+         record_source_value(&record) ==
+             coverage_chain_source.SOURCE_VALUE &&
+         record_mid_source(&record) ==
+             MID_SOURCE_ID &&
+         record_valid(&record) &&
+
+         pair_sum(&pair) == 42 &&
+
+         range_minimum(&range) == 0 &&
+         range_maximum(&range) == 42 &&
+         range_width(&range) == 42 &&
+         range_valid(&range) &&
+         range_contains(&range, 0) &&
+         range_contains(&range, 21) &&
+         range_contains(&range, 42) &&
+         !range_contains(&range, 43) &&
+
+         summary_point_sum(&summary) == 42 &&
+         summary_record_value(&summary) == 42 &&
+         summary_pair_sum(&summary) == 42 &&
+         summary_range_width(&summary) == 42 &&
+         summary_mid_source(&summary) == 20 &&
+
+         snapshot_value(&snapshot) ==
+             coverage_chain_source.SOURCE_VALUE &&
+         snapshot_answer(&snapshot) ==
+             coverage_chain_source.SOURCE_ANSWER &&
+         snapshot_source_id(&snapshot) ==
+             coverage_chain_source.SOURCE_ID &&
+         snapshot_valid(&snapshot) &&
+
+         idle == MidState.Idle &&
+         ready == MidState.Ready &&
+         running == MidState.Running &&
+         finished == MidState.Finished &&
+         success == MidResult.Success &&
+         failure == MidResult.Failure &&
+
+         conditional_value(true) == 42 &&
+         conditional_value(false) == 0 &&
+         normalize_to_answer(0) == 42 &&
+         normalize_to_answer(42) == 42 &&
+         normalize_to_answer(100) == 42 &&
+         accumulate_answer() == 42 &&
+         source_pipeline() == 42 &&
+         mixed_pipeline() == 42 &&
+
+         forward_point(&point) == 42 &&
+         forward_record(&record) == 42 &&
+         forward_pair(&pair) == 42 &&
+         forward_range(&range) == 42 &&
+         forward_summary(&summary) == 42 &&
+
+         validate_point(&point) &&
+         validate_record(&record) &&
+         validate_pair(&pair) &&
+         validate_range(&range) &&
+         validate_summary(&summary) &&
+
+         repeated_source_lookup() &&
+         repeated_local_lookup() &&
+         aggregate_self_test() &&
+         source_dependency_self_test();
+}
