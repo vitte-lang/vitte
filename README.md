@@ -1,5 +1,7 @@
 # Compilateur Vitte
 
+[![Vitte CI](https://github.com/vitte-lang/vitte/actions/workflows/ci.yml/badge.svg)](https://github.com/vitte-lang/vitte/actions/workflows/ci.yml)
+
 Ce dépôt contient le compilateur officiel de Vitte, écrit en C17. Son pipeline
 est conservé en place :
 
