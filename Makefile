@@ -965,6 +965,28 @@ MACOS_ARM64_BIN    := $(MACOS_ARM64_DIR)/vitte
 MACOS_X86_64_BIN   := $(MACOS_X86_64_DIR)/vitte
 MACOS_UNIVERSAL_BIN := $(MACOS_UNIVERSAL_DIR)/vitte
 
+# Historical Mac OS X 10.4 / iMac 2006 profile.  The compiler and SDK are
+# intentionally overridable because modern Xcode installations no longer ship
+# an i386-capable toolchain or the 10.4 SDK.
+MACOS2006_DIR := target/macos2006-i386
+MACOS2006_BIN := $(MACOS2006_DIR)/vitte
+MACOS2006_CC ?= gcc-4.0
+MACOS2006_SDK ?= MacOSX10.4u.sdk
+MACOS2006_DEPLOYMENT_TARGET ?= 10.4
+
+ifneq ($(strip $(VITTE_MACOS_LEGACY_CC)),)
+MACOS2006_CC := $(VITTE_MACOS_LEGACY_CC)
+endif
+ifneq ($(strip $(VITTE_MACOS_LEGACY_SDK)),)
+MACOS2006_SDK := $(VITTE_MACOS_LEGACY_SDK)
+endif
+ifneq ($(strip $(MACOSX_DEPLOYMENT_TARGET)),)
+MACOS2006_DEPLOYMENT_TARGET := $(MACOSX_DEPLOYMENT_TARGET)
+endif
+ifneq ($(strip $(VITTE_MACOS_LEGACY_OUT)),)
+MACOS2006_BIN := $(VITTE_MACOS_LEGACY_OUT)
+endif
+
 MACOS_COMMON_FLAGS := \
 	$(CPPFLAGS) \
 	$(CFLAGS_COMMON) \
@@ -1014,6 +1036,22 @@ macos-universal-bin: macos-arm64-bin macos-x86_64-bin
 	@printf 'Binary: '
 	@file $(MACOS_UNIVERSAL_BIN)
 	@printf 'Built: %s\n' "$(MACOS_UNIVERSAL_BIN)"
+
+.PHONY: macos2006-i386-bin
+macos2006-i386-bin:
+	@printf 'Building Vitte for Mac OS X 2006 i386...\n'
+	@mkdir -p $(dir $(MACOS2006_BIN))
+	$(MACOS2006_CC) \
+		$(MACOS_COMMON_FLAGS) \
+		-arch i386 \
+		-isysroot $(MACOS2006_SDK) \
+		-mmacosx-version-min=$(MACOS2006_DEPLOYMENT_TARGET) \
+		$(SOURCES) \
+		$(LDLIBS) \
+		-o $(MACOS2006_BIN)
+	@printf 'Architectures: '
+	@lipo -archs $(MACOS2006_BIN)
+	@printf 'Built: %s\n' "$(MACOS2006_BIN)"
 
 .PHONY: macos-verify
 macos-verify: macos-arm64-bin
