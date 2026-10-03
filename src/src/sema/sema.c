@@ -4800,6 +4800,34 @@ vitte_sema_analyze_expression(
 /* Declaration registration                                                  */
 /* ========================================================================= */
 
+static bool
+vitte_sema_scope_is_space_descendant(
+    const vitte_sema_t *context,
+    vitte_scope_id_t scope_id)
+{
+    while (context != NULL &&
+           scope_id != VITTE_SCOPE_INVALID_SCOPE_ID) {
+        const vitte_scope_entry_t *scope;
+
+        scope =
+            vitte_scope_get_scope(
+                &context->scopes,
+                scope_id);
+        if (scope == NULL) {
+            return false;
+        }
+        if (scope->kind == VITTE_SCOPE_KIND_SPACE) {
+            return true;
+        }
+        if (scope->parent_id == scope_id) {
+            break;
+        }
+        scope_id = scope->parent_id;
+    }
+
+    return false;
+}
+
 static vitte_symbol_id_t
 vitte_sema_register_declaration(
     vitte_sema_t *context,
@@ -4913,7 +4941,10 @@ vitte_sema_register_declaration(
      * declarations with broader/module visibility where the collision is
      * materially harder to spot.
      */
-    if (vitte_sema_symbol_kind_for_node(node->kind) !=
+    if (!vitte_sema_scope_is_space_descendant(
+            context,
+            scope_id) &&
+        vitte_sema_symbol_kind_for_node(node->kind) !=
             VITTE_SYMBOL_KIND_LOCAL &&
         vitte_sema_symbol_kind_for_node(node->kind) !=
             VITTE_SYMBOL_KIND_FIELD &&
