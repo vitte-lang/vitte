@@ -706,6 +706,86 @@ vitte_main_expand_module(
     const char *namespace_name);
 
 static bool
+vitte_main_append_namespace_open(
+    vitte_main_module_set_t *modules,
+    const char *namespace_name,
+    size_t *namespace_depth)
+{
+    const char *segment;
+    size_t depth;
+
+    if (modules == NULL ||
+        namespace_name == NULL ||
+        namespace_depth == NULL) {
+        return false;
+    }
+
+    segment = namespace_name;
+    depth = 0u;
+    while (*segment != '\0') {
+        const char *separator;
+        size_t segment_length;
+
+        separator = strstr(segment, "::");
+        segment_length = separator != NULL
+            ? (size_t)(separator - segment)
+            : strlen(segment);
+        if (segment_length == 0u ||
+            !vitte_main_buffer_append(
+                &modules->source,
+                &modules->source_length,
+                &modules->source_capacity,
+                (const unsigned char *)"export space ",
+                13u) ||
+            !vitte_main_buffer_append(
+                &modules->source,
+                &modules->source_length,
+                &modules->source_capacity,
+                (const unsigned char *)segment,
+                segment_length) ||
+            !vitte_main_buffer_append(
+                &modules->source,
+                &modules->source_length,
+                &modules->source_capacity,
+                (const unsigned char *)" {\n",
+                3u)) {
+            return false;
+        }
+
+        ++depth;
+        if (separator == NULL) {
+            break;
+        }
+        segment = separator + 2u;
+        if (*segment == '\0') {
+            return false;
+        }
+    }
+
+    *namespace_depth = depth;
+    return depth != 0u;
+}
+
+static bool
+vitte_main_append_namespace_close(
+    vitte_main_module_set_t *modules,
+    size_t namespace_depth)
+{
+    while (namespace_depth != 0u) {
+        if (!vitte_main_buffer_append(
+                &modules->source,
+                &modules->source_length,
+                &modules->source_capacity,
+                (const unsigned char *)"}\n",
+                2u)) {
+            return false;
+        }
+        --namespace_depth;
+    }
+    return true;
+}
+
+static bool
 vitte_main_expand_module(
     vitte_main_module_set_t *modules,
     const char *path,
@@ -714,6 +794,7 @@ vitte_main_expand_module(
 {
     vitte_main_file_t file;
     size_t offset;
+    size_t namespace_depth;
 
     if (modules == NULL || path == NULL ||
         depth > VITTE_MAIN_MODULE_DEPTH_MAX) {
@@ -727,6 +808,7 @@ vitte_main_expand_module(
     }
 
     memset(&file, 0, sizeof(file));
+    namespace_depth = 0u;
     if (!vitte_main_read_file(path, &file)) {
         vitte_main_error_argument("cannot load imported module", path);
         return false;
@@ -775,14 +857,9 @@ vitte_main_expand_module(
         {
             char requested[VITTE_MAIN_MODULE_PATH_MAX];
             char imported_path[VITTE_MAIN_MODULE_PATH_MAX];
-            char alias[VITTE_MAIN_MODULE_PATH_MAX];
-            const char *child_namespace;
             size_t name_start;
             size_t name_end;
-            size_t alias_start;
-            size_t alias_end;
             size_t name_length;
-            bool has_group;
 
             name_start = directive_start + 4u;
             while (name_start < directive_end &&
@@ -813,51 +890,6 @@ vitte_main_expand_module(
 
             memcpy(requested, file.data + name_start, name_length);
             requested[name_length] = '\0';
-            has_group = memchr(
-                file.data + name_end,
-                '{',
-                directive_end - name_end) != NULL;
-
-            alias_start = name_end;
-            while (alias_start < directive_end &&
-                   isspace(file.data[alias_start])) {
-                ++alias_start;
-            }
-            alias[0] = '\0';
-            if (!has_group &&
-                directive_end - alias_start >= 2u &&
-                file.data[alias_start] == 'a' &&
-                file.data[alias_start + 1u] == 's') {
-                alias_start += 2u;
-                while (alias_start < directive_end &&
-                       isspace(file.data[alias_start])) {
-                    ++alias_start;
-                }
-                alias_end = alias_start;
-                while (alias_end < directive_end &&
-                       !isspace(file.data[alias_end]) &&
-                       file.data[alias_end] != ';') {
-                    ++alias_end;
-                }
-                if (alias_end == alias_start ||
-                    alias_end - alias_start >= sizeof(alias)) {
-                    free(file.data);
-                    vitte_main_error_argument(
-                        "invalid module alias in",
-                        path);
-                    return false;
-                }
-                memcpy(
-                    alias,
-                    file.data + alias_start,
-                    alias_end - alias_start);
-                alias[alias_end - alias_start] = '\0';
-            }
-
-            child_namespace =
-                alias[0] != '\0'
-                    ? alias
-                    : requested;
 
             if (!vitte_main_module_resolve_path(
                     path,
@@ -874,7 +906,7 @@ vitte_main_expand_module(
                     modules,
                     imported_path,
                     depth + 1u,
-                    child_namespace)) {
+                    requested)) {
                 free(file.data);
                 return false;
             }
@@ -890,24 +922,10 @@ vitte_main_expand_module(
     }
 
     if (namespace_name != NULL) {
-        if (!vitte_main_buffer_append(
-                &modules->source,
-                &modules->source_length,
-                &modules->source_capacity,
-                (const unsigned char *)"space ",
-                6u) ||
-            !vitte_main_buffer_append(
-                &modules->source,
-                &modules->source_length,
-                &modules->source_capacity,
-                (const unsigned char *)namespace_name,
-                strlen(namespace_name)) ||
-            !vitte_main_buffer_append(
-                &modules->source,
-                &modules->source_length,
-                &modules->source_capacity,
-                (const unsigned char *)" {\n",
-                3u)) {
+        if (!vitte_main_append_namespace_open(
+                modules,
+                namespace_name,
+                &namespace_depth)) {
             free(file.data);
             return false;
         }
@@ -1062,12 +1080,9 @@ vitte_main_expand_module(
     }
 
     if (namespace_name != NULL &&
-        !vitte_main_buffer_append(
-            &modules->source,
-            &modules->source_length,
-            &modules->source_capacity,
-            (const unsigned char *)"}\n",
-            2u)) {
+        !vitte_main_append_namespace_close(
+            modules,
+            namespace_depth)) {
         free(file.data);
         return false;
     }
