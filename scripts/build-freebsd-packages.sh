@@ -366,6 +366,8 @@ verify_payload() {
   [ -x "$data_root/usr/local/bin/vitte" ] ||
     die "missing or non-executable Vitte command for FreeBSD $arch"
 
+  scripts_build_verify_modules "$data_root/usr/local/share/vitte"
+
   require_directory \
     "$data_root/usr/local/share/vitte/editors" \
     "archived editor integrations"
