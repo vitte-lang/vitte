@@ -117,6 +117,19 @@ The highest-value remaining gaps for real-language coverage are:
 4. non-procedure declarations from the real grammar
 5. loops and richer control-flow statement forms
 
+## Large-Source Stress Gate
+
+Run `make test-scale` from the repository root to exercise the current compiler
+on generated Vitte sources kept outside the repository. The gate checks that:
+
+- a source containing 48 MiB of comments is read, lexed, and parsed
+- a file with 10,000 procedures plus an exported `main` completes semantic
+  analysis via `compile --stop-after-sema`
+
+The compiler CLI currently reports that IR lowering and the C17 backend are
+unavailable, so this gate verifies frontend and semantic robustness rather
+than native executable generation.
+
 ## Notes
 
 - `partial` in semantic stages means the syntax is accepted, but compiler type
