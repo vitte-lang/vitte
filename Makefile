@@ -469,6 +469,20 @@ test-diagnostic-golden: $(TARGET_BIN)
 		>$(TMP_DIR)/diagnostic_type_mismatch.normalized && \
 	diff -u $(TEST_DIR)/golden/diagnostic_type_mismatch.stderr \
 		$(TMP_DIR)/diagnostic_type_mismatch.normalized
+	@set +e; \
+	$(TARGET_BIN) lex \
+		$(TEST_DIR)/diagnostic_lexer_invalid.vit \
+		--quiet --no-color \
+		>$(TMP_DIR)/diagnostic_lexer_invalid.stdout \
+		2>$(TMP_DIR)/diagnostic_lexer_invalid.stderr; \
+	status=$$?; \
+	set -e; \
+	test "$$status" -eq 1 && \
+	awk 'NF { last = NR } { lines[NR] = $$0 } END { for (i = 1; i <= last; i++) print lines[i] }' \
+		$(TMP_DIR)/diagnostic_lexer_invalid.stderr \
+		>$(TMP_DIR)/diagnostic_lexer_invalid.normalized && \
+	diff -u $(TEST_DIR)/golden/diagnostic_lexer_invalid.stderr \
+		$(TMP_DIR)/diagnostic_lexer_invalid.normalized
 
 # -----------------------------------------------------------------------------
 # Structured diagnostic formats
