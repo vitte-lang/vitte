@@ -347,6 +347,11 @@ vitte_c17_ast_emit_expression(
     const vitte_ast_node_t *node);
 
 static bool
+vitte_c17_ast_expression_is_character(
+    const vitte_c17_ast_emitter_t *emitter,
+    const vitte_ast_node_t *expression);
+
+static bool
 vitte_c17_ast_is_string_literal_expression(
     const vitte_c17_ast_emitter_t *emitter,
     const vitte_ast_node_t *node)
@@ -1160,9 +1165,12 @@ vitte_c17_ast_expression_is_string(
         return vitte_c17_ast_expression_is_string(
                    emitter,
                    vitte_c17_ast_child(emitter, expression, 0u)) &&
-               vitte_c17_ast_expression_is_string(
-                   emitter,
-                   vitte_c17_ast_child(emitter, expression, 1u));
+               (vitte_c17_ast_expression_is_string(
+                    emitter,
+                    vitte_c17_ast_child(emitter, expression, 1u)) ||
+                vitte_c17_ast_expression_is_character(
+                    emitter,
+                    vitte_c17_ast_child(emitter, expression, 1u)));
     }
     if (expression->kind == VITTE_AST_NODE_GROUP_EXPR) {
         return vitte_c17_ast_expression_is_string(
@@ -2241,6 +2249,26 @@ vitte_c17_ast_emit_expression(
             left = vitte_c17_ast_child(emitter, node, 0u);
             right = vitte_c17_ast_child(emitter, node, 1u);
             if (node->kind == VITTE_AST_NODE_BINARY_EXPR &&
+                (node->operator_kind == VITTE_TOKEN_EQUAL_EQUAL ||
+                 node->operator_kind == VITTE_TOKEN_BANG_EQUAL) &&
+                (vitte_c17_ast_expression_is_string(emitter, left) ||
+                 vitte_c17_ast_expression_is_string(emitter, right))) {
+                vitte_c17_ast_write(emitter, "(");
+                if (node->operator_kind == VITTE_TOKEN_BANG_EQUAL) {
+                    vitte_c17_ast_write(emitter, "(!");
+                }
+                vitte_c17_ast_write(emitter, "vitte_string_equal(");
+                vitte_c17_ast_emit_expression(emitter, left);
+                vitte_c17_ast_write(emitter, ", ");
+                vitte_c17_ast_emit_expression(emitter, right);
+                vitte_c17_ast_write(emitter, ")");
+                if (node->operator_kind == VITTE_TOKEN_BANG_EQUAL) {
+                    vitte_c17_ast_write(emitter, ")");
+                }
+                vitte_c17_ast_write(emitter, ")");
+                return;
+            }
+            if (node->kind == VITTE_AST_NODE_BINARY_EXPR &&
                 node->operator_kind == VITTE_TOKEN_PLUS &&
                 vitte_c17_ast_expression_is_string(emitter, left)) {
                 if (vitte_c17_ast_expression_is_character(
@@ -2634,21 +2662,14 @@ vitte_c17_ast_emit_condition(
         return;
     }
 
-    vitte_c17_ast_write(emitter, "(");
     if (node->kind == VITTE_AST_NODE_BINARY_EXPR ||
         node->kind == VITTE_AST_NODE_ASSIGN_EXPR) {
-        vitte_c17_ast_emit_expression(
-            emitter,
-            vitte_c17_ast_child(emitter, node, 0u));
-        vitte_c17_ast_write(emitter, " ");
-        vitte_c17_ast_emit_operator(emitter, node->operator_kind);
-        vitte_c17_ast_write(emitter, " ");
-        vitte_c17_ast_emit_expression(
-            emitter,
-            vitte_c17_ast_child(emitter, node, 1u));
-    } else {
         vitte_c17_ast_emit_expression(emitter, node);
+        return;
     }
+
+    vitte_c17_ast_write(emitter, "(");
+    vitte_c17_ast_emit_expression(emitter, node);
     vitte_c17_ast_write(emitter, ")");
 }
 
@@ -3970,6 +3991,12 @@ vitte_c17_emit_ast_with_options(
         "    result[left_length] = right;\n"
         "    result[left_length + 1u] = '\\0';\n"
         "    return result;\n"
+        "}\n"
+        "static bool vitte_string_equal(\n"
+        "    const char *left, const char *right) {\n"
+        "    if (left == right) { return true; }\n"
+        "    if (left == NULL || right == NULL) { return false; }\n"
+        "    return strcmp(left, right) == 0;\n"
         "}\n\n");
 
     if (emitter.debug_runtime) {
