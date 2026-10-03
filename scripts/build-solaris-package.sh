@@ -76,13 +76,13 @@ copy_tree() {
 verify_license() {
   license_file=$1
 
-  require_file "$license_file" "GNU GPLv3 license"
+  require_file "$license_file" "VitteFoundation Public License"
 
-  grep -F 'GNU GENERAL PUBLIC LICENSE' "$license_file" >/dev/null ||
-    die "invalid license: missing GNU GENERAL PUBLIC LICENSE title"
+  grep -F 'VITTEFOUNDATION PUBLIC LICENSE' "$license_file" >/dev/null ||
+    die "invalid license: missing VitteFoundation Public License title"
 
-  grep -F 'Version 3, 29 June 2007' "$license_file" >/dev/null ||
-    die "invalid license: expected GNU GPL version 3"
+  grep -F 'Version 1.0' "$license_file" >/dev/null ||
+    die "invalid license: expected VitteFoundation Public License version 1.0"
 }
 
 add_integrations() {
@@ -118,7 +118,7 @@ add_license_and_logo() {
     "$LOGO_FILE" \
     "$assets_destination/logo.png"
 
-  printf '[build-solaris-package] added GNU GPLv3 license: %s\n' \
+  printf '[build-solaris-package] added VitteFoundation Public License: %s\n' \
     "$license_destination/LICENSE"
 
   printf '[build-solaris-package] added Vitte logo: %s\n' \
@@ -186,7 +186,7 @@ ISTATES=S s 1 2 3
 RSTATES=S s 1 2 3
 MAXINST=1
 VITTE_PROCESSOR=$architecture
-DESC=Processor-specific Vitte compiler, runtime, standard library, documentation, editor integrations, shell completions, GPLv3 license, visual assets, and tools.
+DESC=Processor-specific Vitte compiler, runtime, standard library, documentation, editor integrations, shell completions, VitteFoundation Public License, visual assets, and tools.
 EOF
 }
 
@@ -311,7 +311,7 @@ verify_prototype() {
     die "prototype is missing shell completions"
 
   grep -F 'usr/local/share/licenses/vitte/LICENSE' "$prototype" >/dev/null ||
-    die "prototype is missing the GNU GPLv3 license"
+    die "prototype is missing the VitteFoundation license"
 
   grep -F 'usr/local/share/vitte/assets/logo.png' "$prototype" >/dev/null ||
     die "prototype is missing the Vitte logo"

@@ -10,6 +10,7 @@ OUT_DIR=${OUT_DIR:-$ROOT_DIR/pkgout}
 case "$OUT_DIR" in /*) ;; *) OUT_DIR=$ROOT_DIR/$OUT_DIR ;; esac
 ARCH=${ARCH:-all}
 STRICT_DMG=${STRICT_DMG:-0}
+DMG_PRESENTATION=${DMG_PRESENTATION:-1}
 SIGN=${SIGN:-0}
 NOTARIZE=${NOTARIZE:-0}
 MACOS_SIGN_IDENTITY=${MACOS_SIGN_IDENTITY:-}
@@ -23,6 +24,7 @@ MACOS2006_BINARY=${MACOS2006_BINARY:-$ROOT_DIR/target/macos2006-i386/vitte}
 MACOS2006_DEPLOYMENT_TARGET=${MACOS2006_DEPLOYMENT_TARGET:-10.4}
 MACOS2006_SDK=${MACOS2006_SDK:-MacOSX10.4u.sdk}
 MACOS2006_CC=${MACOS2006_CC:-gcc-4.0}
+
 scripts_build_maybe_help "usage: build-macos-installers.sh [--dry-run]"
 scripts_build_maybe_dry_run "would build macOS pkg artifacts version=$VERSION arch=$ARCH strict_dmg=$STRICT_DMG out=$OUT_DIR"
 
@@ -34,6 +36,11 @@ die() {
 log() {
   printf '[build-macos-installers] %s\n' "$*"
 }
+
+case "$DMG_PRESENTATION" in
+  0 | 1) ;;
+  *) die "DMG_PRESENTATION must be 0 or 1" ;;
+esac
 
 require() {
   command -v "$1" >/dev/null 2>&1 ||
@@ -528,6 +535,7 @@ build_toolchain_component() {
   install -m 0755 "$binary" "$command_dir/vittec"
 
   VERSION=$VERSION \
+    VITTE_BIN=$binary \
     "$ROOT_DIR/scripts/stage-installer-payload.sh" \
     "$payload_root" \
     macos \
@@ -557,15 +565,25 @@ create_dmg() {
   minimum_system=$5
 
   stage=$ROOT_DIR/target/macos-dmg-stage/$volume_name
+  rw_dmg=$ROOT_DIR/target/macos-dmg-stage/$volume_name-rw.dmg
+  mount_path=$ROOT_DIR/target/macos-dmg-stage/$volume_name-mount
 
   [ ! -d "$stage" ] || chmod -R u+w "$stage" 2>/dev/null || true
   rm -rf "$stage"
   rm -f "$dmg_file"
+  rm -f "$rw_dmg"
+  rm -rf "$mount_path"
 
-  mkdir -p "$stage"
+  mkdir -p "$stage/.background"
 
-  cp "$package_file" "$stage/"
+  cp "$package_file" "$stage/Install Vitte.pkg"
+  ln -s /Applications "$stage/Applications"
   install -m 0644 "$LOGO_FILE" "$stage/Vitte-logo.png"
+
+  # Finder stores the visual treatment in the image itself. A dark, quiet
+  # background keeps the installer package and the Applications shortcut
+  # readable while the logo provides the Vitte accent.
+  install -m 0644 "$LOGO_FILE" "$stage/.background/Vitte-logo.png"
 
   cat > "$stage/INSTALL.txt" <<EOF
 Vitte $VERSION for macOS
@@ -573,7 +591,10 @@ Vitte $VERSION for macOS
 Architecture: $architecture
 Minimum target system: $minimum_system
 
-Open $(basename "$package_file") to install Vitte.
+Open "Install Vitte.pkg" to install Vitte.
+
+Drag the package toward Applications if you want the standard macOS gesture;
+the package still installs the compiler into /usr/local when opened.
 
 Installed editor integrations:
 
@@ -601,7 +622,73 @@ Supported Vitte extensions:
     .vitl
 EOF
 
-  if ! hdiutil create \
+  if [ "$DMG_PRESENTATION" -eq 1 ] && command -v osascript >/dev/null 2>&1; then
+    hdiutil create \
+      -ov \
+      -format UDRW \
+      -fs HFS+ \
+      -volname "$volume_name" \
+      -srcfolder "$stage" \
+      "$rw_dmg" >/dev/null || {
+        rm -f "$rw_dmg"
+        if [ "$STRICT_DMG" -eq 1 ]; then
+          die "hdiutil failed while creating the writable macOS DMG: $rw_dmg"
+        fi
+        log "DMG presentation deferred: writable image could not be created"
+        return 0
+      }
+
+    mkdir -p "$mount_path"
+    hdiutil attach "$rw_dmg" \
+      -nobrowse \
+      -noautoopen \
+      -mountpoint "$mount_path" >/dev/null || {
+      rm -f "$rw_dmg"
+      rm -rf "$mount_path"
+      if [ "$STRICT_DMG" -eq 1 ]; then
+        die "hdiutil failed while mounting the writable macOS DMG: $rw_dmg"
+      fi
+      log "DMG presentation deferred: writable image could not be mounted"
+      return 0
+    }
+
+    if ! osascript >/dev/null <<EOF
+tell application "Finder"
+  open (POSIX file "$mount_path" as alias)
+  delay 1
+  set dmgWindow to front window
+  set current view of dmgWindow to icon view
+  set toolbar visible of dmgWindow to false
+  set statusbar visible of dmgWindow to false
+  set bounds of dmgWindow to {120, 120, 920, 650}
+  set viewOptions to the icon view options of dmgWindow
+  set icon size of viewOptions to 128
+  set text size of viewOptions to 13
+  set arrangement of viewOptions to not arranged
+  set background color of viewOptions to {9000, 11000, 16000}
+  set position of item "Install Vitte.pkg" of dmgWindow to {245, 275}
+  set position of item "Applications" of dmgWindow to {605, 275}
+  set position of item "Vitte-logo.png" of dmgWindow to {425, 505}
+  close dmgWindow
+end tell
+EOF
+    then
+      log "Finder presentation could not be applied; keeping the DMG contents intact"
+    fi
+
+    sync
+    hdiutil detach "$mount_path" -quiet || {
+      hdiutil detach "$mount_path" -force -quiet || true
+    }
+    rm -rf "$mount_path"
+
+    hdiutil convert "$rw_dmg" \
+      -ov \
+      -format UDZO \
+      -imagekey zlib-level=9 \
+      -o "$dmg_file" >/dev/null
+    rm -f "$rw_dmg"
+  elif ! hdiutil create \
       -ov \
       -format UDZO \
       -fs HFS+ \
@@ -664,6 +751,35 @@ verify_product_package() {
     grep -q . ||
     die "missing Vitte command in macOS $label package"
 
+  packaged_binary=$(find "$expanded" \
+    -path '*/Payload/usr/local/libexec/vitte/vitte' \
+    -type f \
+    -perm -111 \
+    -print \
+    -quit)
+  [ -n "$packaged_binary" ] ||
+    die "missing packaged Vitte payload in macOS $label package"
+
+  packaged_arches=$(lipo -archs "$packaged_binary")
+  case "$label" in
+    universal | universal2)
+      printf '%s\n' "$packaged_arches" |
+        tr ' ' '\n' |
+        grep -Fx arm64 >/dev/null ||
+        die "packaged Vitte payload is missing arm64 for macOS $label"
+      printf '%s\n' "$packaged_arches" |
+        tr ' ' '\n' |
+        grep -Fx x86_64 >/dev/null ||
+        die "packaged Vitte payload is missing x86_64 for macOS $label"
+      ;;
+    *)
+      printf '%s\n' "$packaged_arches" |
+        tr ' ' '\n' |
+        grep -Fx "$label" >/dev/null ||
+        die "packaged Vitte payload has the wrong architecture for macOS $label"
+      ;;
+  esac
+
   module_package=$(find "$expanded" \
     -path '*/Payload/usr/local/share/vitte/modules/*/package.toml' \
     -type f \
@@ -671,6 +787,14 @@ verify_product_package() {
     -quit)
   [ -n "$module_package" ] ||
     die "missing JSON module in macOS $label package"
+
+  installation_manifest=$(find "$expanded" \
+    -path '*/Payload/usr/local/share/vitte/INSTALLATION.json' \
+    -type f \
+    -print \
+    -quit)
+  [ -n "$installation_manifest" ] ||
+    die "missing installation manifest in macOS $label package"
 
   scripts_build_verify_modules \
     "$(dirname "$(dirname "$(dirname "$module_package")")")"

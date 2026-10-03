@@ -36,9 +36,15 @@ emit_rows() {
     printf 'linux %s deb\n' "$arch"
   done
   printf '%s\n' \
+    'macos arm64 pkg' \
     'macos arm64 dmg' \
     'macos x86_64 pkg' \
+    'macos x86_64 dmg' \
     'macos universal pkg' \
+    'macos universal dmg' \
+    'macos universal2 pkg' \
+    'macos universal2 dmg' \
+    'macos macos2006 pkg' \
     'macos macos2006 config' \
     'windows-xp i386 exe' \
     'windows-vista i386 exe' \

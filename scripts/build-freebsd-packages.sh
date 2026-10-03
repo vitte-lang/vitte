@@ -86,13 +86,13 @@ copy_tree() {
 verify_license_file() {
   license_file=$1
 
-  require_file "$license_file" "GNU GPLv3 license"
+  require_file "$license_file" "VitteFoundation Public License"
 
-  grep -F 'GNU GENERAL PUBLIC LICENSE' "$license_file" >/dev/null ||
-    die "invalid GNU GPL license file: missing license title"
+  grep -F 'VITTEFOUNDATION PUBLIC LICENSE' "$license_file" >/dev/null ||
+    die "invalid VitteFoundation license file: missing license title"
 
-  grep -F 'Version 3, 29 June 2007' "$license_file" >/dev/null ||
-    die "invalid GNU GPL license file: expected GPL version 3"
+  grep -F 'Version 1.0' "$license_file" >/dev/null ||
+    die "invalid VitteFoundation license file: expected version 1.0"
 }
 
 add_archived_integrations() {
@@ -284,7 +284,7 @@ add_license_and_logo() {
     "$LOGO_FILE" \
     "$assets_root/logo.png"
 
-  printf '[build-freebsd-packages] added GNU GPLv3 license\n'
+  printf '[build-freebsd-packages] added VitteFoundation Public License\n'
   printf '[build-freebsd-packages] added Vitte logo\n'
 }
 
@@ -470,15 +470,16 @@ manifest = {
     "flatsize": flat_size,
     "desc": (
         "Processor-specific Vitte compiler, runtime, standard library, "
-        "command-line tools, documentation, shell completions, GPLv3 "
-        "license and syntax highlighting for Vim, Emacs, Nano and Geany."
+        "command-line tools, documentation, shell completions, "
+        "VitteFoundation Public License and syntax highlighting for Vim, "
+        "Emacs, Nano and Geany."
     ),
     "categories": [
         "devel",
         "lang",
     ],
     "licenses": [
-        "GPLv3",
+        "VFPL-1.0",
     ],
     "annotations": {
         "vitte:editor-support": "vim,emacs,nano,geany",
@@ -586,7 +587,7 @@ verify_package() {
 
   grep -Eq '^(\./)?usr/local/share/licenses/vitte/LICENSE$' \
     "$package_listing" ||
-    die "missing GNU GPLv3 license in package"
+    die "missing VitteFoundation license in package"
 
   grep -Eq '^(\./)?usr/local/share/vitte/assets/logo\.png$' \
     "$package_listing" ||

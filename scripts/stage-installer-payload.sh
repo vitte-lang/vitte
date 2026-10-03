@@ -55,9 +55,38 @@ case "$LAYOUT" in
     ;;
 esac
 
-for directory in docs examples editors completions; do
+for directory in docs examples editors completions assets; do
   [ ! -d "$ROOT_DIR/$directory" ] || scripts_build_copy_tree "$ROOT_DIR/$directory" "$prefix/share/vitte/$directory"
 done
+
+# Keep the distributable Vitte toolchain extensible across every installer
+# family.  These trees are optional until the corresponding source surfaces
+# are populated, but when present they must travel with the compiler.
+if [ -d "$ROOT_DIR/include" ] &&
+   find "$ROOT_DIR/include" -type f ! -name '.DS_Store' -print -quit |
+   grep -q .
+then
+  scripts_build_copy_tree \
+    "$ROOT_DIR/include" \
+    "$prefix/share/vitte/include"
+fi
+
+if [ -d "$ROOT_DIR/src/runtime" ] &&
+   find "$ROOT_DIR/src/runtime" -type f ! -name '.DS_Store' -print -quit |
+   grep -q .
+then
+  scripts_build_require_file \
+    "$ROOT_DIR/src/runtime/package.toml" \
+    "Vitte runtime package metadata"
+  scripts_build_require_file \
+    "$ROOT_DIR/src/runtime/runtime.vit" \
+    "Vitte runtime source"
+  "$VITTE_BIN" check "$ROOT_DIR/src/runtime/runtime.vit"
+  scripts_build_copy_tree \
+    "$ROOT_DIR/src/runtime" \
+    "$prefix/share/vitte/runtime"
+fi
+
 scripts_build_install_modules "$ROOT_DIR" "$prefix/share/vitte"
 scripts_build_verify_modules "$prefix/share/vitte"
 for file in README.md LICENSE CHANGELOG.md VERSION; do
@@ -81,6 +110,12 @@ manifest = {
         path.parent.name
         for path in (output.parent / "modules").glob("*/package.toml")
     ),
+    "installed_components": {
+        "include": (output.parent / "include").is_dir(),
+        "runtime": (output.parent / "runtime").is_dir(),
+        "modules": (output.parent / "modules").is_dir(),
+        "stdlib": (output.parent / "stdlib").is_dir(),
+    },
 }
 output.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 PY

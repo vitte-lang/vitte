@@ -34,14 +34,15 @@ require_file() {
 }
 
 verify_sum() {
-  file=$1
+  checksum_target=$1
+  checksum_file=$checksum_target.sha256
 
-  require_file "$file"
-  require_file "$file.sha256"
+  require_file "$checksum_target"
+  require_file "$checksum_file"
 
   scripts_build_sha256_check \
-    "$file" \
-    "$file.sha256"
+    "$checksum_target" \
+    "$checksum_file"
 }
 
 verify_optional_sum() {

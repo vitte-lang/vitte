@@ -86,11 +86,10 @@ if [ "$CLEAN" -eq 1 ]; then
   esac
 
   if [ -d "$ROOT_DIR/target" ]; then
-    find "$ROOT_DIR/target" \
-      -maxdepth 1 \
-      -type d \
-      -name 'installer-*' \
-      -exec rm -rf {} +
+    for installer_stage in "$ROOT_DIR/target"/installer-*; do
+      [ -d "$installer_stage" ] || continue
+      rm -rf "$installer_stage"
+    done
   fi
 
   printf '%s\n' \
@@ -111,16 +110,17 @@ artifact_count() {
     return 0
   fi
 
-  find "$OUT_DIR" \
-    -maxdepth 1 \
-    -type f \
-    ! -name 'INSTALLERS.json' \
-    ! -name 'CHECKSUMS.txt' \
-    ! -name 'SIGNATURES.json' \
-    ! -name 'SBOM.spdx.json' \
-    ! -name 'SBOM.cyclonedx.json' \
-    | wc -l |
-    tr -d ' '
+  count=0
+  for artifact in "$OUT_DIR"/*; do
+    [ -f "$artifact" ] || continue
+    case "$(basename "$artifact")" in
+      INSTALLERS.json|CHECKSUMS.txt|SIGNATURES.json|SBOM.spdx.json|SBOM.cyclonedx.json)
+        continue
+        ;;
+    esac
+    count=$((count + 1))
+  done
+  printf '%s\n' "$count"
 }
 
 run() {

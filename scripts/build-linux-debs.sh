@@ -360,19 +360,25 @@ verify_payload() {
 }
 
 normalize_payload() {
-  data_root=$1
+  python3 - "$SOURCE_DATE_EPOCH" "$@" <<'PY'
+import os
+import sys
+from pathlib import Path
 
-  if find "$data_root" \
-    -exec touch -h -d "@$SOURCE_DATE_EPOCH" {} + \
-    2>/dev/null
-  then
-    return 0
-  fi
+timestamp = float(sys.argv[1])
 
-  timestamp=$(date -u -r "$SOURCE_DATE_EPOCH" '+%Y%m%d%H%M.%S')
+for raw_path in sys.argv[2:]:
+    path = Path(raw_path)
+    paths = [path]
+    if path.is_dir():
+        paths.extend(sorted(path.rglob("*")))
 
-  find "$data_root" \
-    -exec touch -h -t "$timestamp" {} +
+    for item in paths:
+        try:
+            os.utime(item, (timestamp, timestamp), follow_symlinks=False)
+        except FileNotFoundError:
+            pass
+PY
 }
 
 generate_md5sums() {
@@ -722,10 +728,7 @@ build_one() {
   write_maintainer_scripts \
     "$control_root"
 
-  find "$control_root" \
-    -exec touch -h -d "@$SOURCE_DATE_EPOCH" {} + \
-    2>/dev/null ||
-    true
+  normalize_payload "$control_root"
 
   printf '%s\n' '2.0' \
     > "$stage/debian-binary"
@@ -738,12 +741,10 @@ build_one() {
     "$stage/data.tar.gz" \
     "$data_root"
 
-  touch -d "@$SOURCE_DATE_EPOCH" \
+  normalize_payload \
     "$stage/debian-binary" \
     "$stage/control.tar.gz" \
-    "$stage/data.tar.gz" \
-    2>/dev/null ||
-    true
+    "$stage/data.tar.gz"
 
   (
     cd "$stage"

@@ -17,14 +17,14 @@ scripts_build_require() {
 }
 
 scripts_build_require_file() {
-  file=$1
+  required_file=$1
   description=${2:-file}
 
-  [ -f "$file" ] ||
-    scripts_build_die "$description not found: $file"
+  [ -f "$required_file" ] ||
+    scripts_build_die "$description not found: $required_file"
 
-  [ -s "$file" ] ||
-    scripts_build_die "$description is empty: $file"
+  [ -s "$required_file" ] ||
+    scripts_build_die "$description is empty: $required_file"
 }
 
 scripts_build_require_executable() {
@@ -572,18 +572,20 @@ scripts_build_install_modules() {
   source_root=$1
   share_root=$2
   modules_root=$source_root/modules
-  destination=$share_root/modules
+  destination=${3:-$share_root/modules}
 
   [ -d "$modules_root" ] ||
     scripts_build_die "modules directory not found: $modules_root"
 
-  find "$modules_root" \
-    -mindepth 1 \
-    -maxdepth 1 \
-    -type d \
-    -print \
-    -quit |
-    grep -q . ||
+  module_directory_found=0
+  for module in "$modules_root"/*; do
+    if [ -d "$module" ]; then
+      module_directory_found=1
+      break
+    fi
+  done
+
+  [ "$module_directory_found" -eq 1 ] ||
     scripts_build_die "modules directory is empty: $modules_root"
 
   mkdir -p "$destination"
@@ -622,7 +624,7 @@ scripts_build_install_modules() {
 
 scripts_build_verify_modules() {
   share_root=$1
-  modules_root=$share_root/modules
+  modules_root=${2:-$share_root/modules}
 
   [ -d "$modules_root" ] ||
     scripts_build_die "installed modules directory missing: $modules_root"
