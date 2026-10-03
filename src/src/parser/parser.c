@@ -1125,8 +1125,9 @@ vitte_parser_parse_identifier_node(
 }
 
 static vitte_ast_node_id_t
-vitte_parser_parse_path(
-    vitte_parser_t *parser)
+vitte_parser_parse_path_mode(
+    vitte_parser_t *parser,
+    bool allow_slash_separator)
 {
     size_t begin;
     vitte_ast_node_id_t path_id;
@@ -1168,7 +1169,8 @@ vitte_parser_parse_path(
             vitte_parser_peek(parser, 1u) != NULL &&
             vitte_parser_peek(parser, 1u)->kind ==
                 VITTE_TOKEN_IDENTIFIER) ||
-           (vitte_parser_check(
+           (allow_slash_separator &&
+            vitte_parser_check(
                 parser,
                 VITTE_TOKEN_SLASH) &&
             vitte_parser_peek(parser, 1u) != NULL &&
@@ -1203,6 +1205,13 @@ vitte_parser_parse_path(
     }
 
     return path_id;
+}
+
+static vitte_ast_node_id_t
+vitte_parser_parse_path(
+    vitte_parser_t *parser)
+{
+    return vitte_parser_parse_path_mode(parser, true);
 }
 
 /* ========================================================================= */
@@ -1394,17 +1403,17 @@ vitte_parser_parse_primary(
         return VITTE_AST_INVALID_ID;
     }
 
-    if (vitte_parser_literal_node_kind(
-            token->kind) !=
-        VITTE_AST_NODE_INVALID) {
-        return vitte_parser_parse_literal(parser);
-    }
-
     if (token->kind == VITTE_TOKEN_KW_NULL &&
         vitte_parser_check_next(
             parser,
             VITTE_TOKEN_LEFT_PAREN)) {
-        return vitte_parser_parse_path(parser);
+        return vitte_parser_parse_path_mode(parser, false);
+    }
+
+    if (vitte_parser_literal_node_kind(
+            token->kind) !=
+        VITTE_AST_NODE_INVALID) {
+        return vitte_parser_parse_literal(parser);
     }
 
     if (token->kind == VITTE_TOKEN_IDENTIFIER ||
@@ -1435,7 +1444,7 @@ vitte_parser_parse_primary(
             return id;
         }
 
-        return vitte_parser_parse_path(parser);
+        return vitte_parser_parse_path_mode(parser, false);
     }
 
     if (token->kind == VITTE_TOKEN_KW_IF) {

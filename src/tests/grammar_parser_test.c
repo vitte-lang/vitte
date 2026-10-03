@@ -171,6 +171,45 @@ check_precedence(void)
 }
 
 static int
+check_division_is_not_a_path_separator(void)
+{
+    static const char source[] =
+        "proc arithmetic() {\n"
+        "  left / right;\n"
+        "  left * right;\n"
+        "}\n";
+    vitte_lexer_t lexer;
+    vitte_parser_t parser;
+    int ok;
+
+    if (!parse_source(source, &lexer, &parser)) {
+        (void)fprintf(
+            stderr,
+            "[GRAMMAR] failed to initialize arithmetic parser test\n");
+        return 0;
+    }
+
+    ok = vitte_parser_run(&parser);
+    if (!ok ||
+        find_operator(
+            &parser,
+            vitte_parser_root(&parser),
+            VITTE_TOKEN_SLASH) == NULL ||
+        find_operator(
+            &parser,
+            vitte_parser_root(&parser),
+            VITTE_TOKEN_STAR) == NULL) {
+        (void)fprintf(
+            stderr,
+            "[GRAMMAR] division or multiplication parsed as a path\n");
+        ok = 0;
+    }
+
+    destroy_frontend(&lexer, &parser);
+    return ok;
+}
+
+static int
 check_syntax_surface(void)
 {
     static const char source[] =
@@ -296,6 +335,8 @@ check_keyword_named_procedure(void)
         "proc use_null_literal() { set value = null; }\n";
     vitte_lexer_t lexer;
     vitte_parser_t parser;
+    const vitte_ast_node_t *call;
+    const vitte_ast_node_t *callee;
     int ok;
 
     if (!parse_source(source, &lexer, &parser)) {
@@ -306,6 +347,15 @@ check_keyword_named_procedure(void)
     }
 
     ok = vitte_parser_run(&parser);
+    call = ok
+        ? find_kind(
+              &parser,
+              vitte_parser_root(&parser),
+              VITTE_AST_NODE_CALL_EXPR)
+        : NULL;
+    callee = call != NULL && call->child_count != 0u
+        ? vitte_parser_get_node(&parser, call->children[0])
+        : NULL;
     if (!ok) {
         const vitte_parser_diagnostic_t *diagnostic;
 
@@ -320,6 +370,12 @@ check_keyword_named_procedure(void)
                 diagnostic->span.line,
                 diagnostic->span.column);
         }
+    } else if (callee == NULL ||
+               callee->kind != VITTE_AST_NODE_PATH) {
+        (void)fprintf(
+            stderr,
+            "[GRAMMAR] null() was parsed as a null literal, not a procedure call\n");
+        ok = 0;
     }
 
     destroy_frontend(&lexer, &parser);
@@ -508,6 +564,9 @@ main(int argc, char **argv)
     int i;
 
     ok = check_precedence();
+    if (!check_division_is_not_a_path_separator()) {
+        ok = 0;
+    }
     if (!check_syntax_surface()) {
         ok = 0;
     }
