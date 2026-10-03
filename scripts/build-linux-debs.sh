@@ -316,6 +316,8 @@ verify_payload() {
   [ -x "$data_root/usr/local/bin/vittec" ] ||
     die "missing or non-executable vittec command for Linux $arch"
 
+  scripts_build_verify_modules "$data_root/usr/local/share/vitte"
+
   verify_directory_not_empty \
     "$data_root/usr/local/share/vitte/editors" \
     "archived editor integrations"
