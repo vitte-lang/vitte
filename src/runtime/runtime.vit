@@ -1,0 +1,46 @@
+/// Vitte runtime contract.
+///
+/// This source module is the stable, source-level runtime surface shipped
+/// with every Vitte installation. Compiler-generated runtime support may grow
+/// behind this contract without changing the installed package layout.
+
+space vitte::runtime;
+
+export const RUNTIME_API_MAJOR: i32 = 1;
+export const RUNTIME_API_MINOR: i32 = 0;
+
+export form RuntimeInfo {
+    name: string,
+    version: string,
+    api_major: i32,
+    api_minor: i32,
+    ready: bool,
+}
+
+export proc runtime_name() -> string {
+    give "vitte-runtime";
+}
+
+export proc runtime_version() -> string {
+    give "0.1.0";
+}
+
+export proc runtime_ready() -> bool {
+    give true;
+}
+
+export proc runtime_info() -> RuntimeInfo {
+    give RuntimeInfo {
+        name: runtime_name(),
+        version: runtime_version(),
+        api_major: RUNTIME_API_MAJOR,
+        api_minor: RUNTIME_API_MINOR,
+        ready: runtime_ready(),
+    };
+}
+
+export proc runtime_contract_valid() -> bool {
+    give RUNTIME_API_MAJOR == 1 &&
+        RUNTIME_API_MINOR == 0 &&
+        runtime_ready();
+}
