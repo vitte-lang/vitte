@@ -1,5 +1,10 @@
 # Vitte JSON module
 
+Pour la documentation complète et humanisée, consulter
+[DOCUMENTATION.md](DOCUMENTATION.md). Elle couvre l’installation, les imports,
+le modèle `JsonValue`, le lexer, le parser, l’encodeur, les diagnostics,
+l’Unicode, les nombres, la sécurité et les tests.
+
 `json` is a Vitte source package laid out under the `json` namespace. Module
 paths use `::`, as required by the Vitte grammar. For example:
 
@@ -62,9 +67,6 @@ test-roundtrip test-string-concat test-unicode` for the native integration
 suites. `test-vitte` stages installation and compiles/runs a consumer importing
 the installed error/position API. The root `make install` and Raspberry Pi
 installer both install the JSON source module through the module install target.
-
-`package.toml` records package identity and layout. The compiler does not yet
-consume this manifest or provide a general package manager.
 
 `package.toml` records package identity and layout. The compiler does not yet
 consume this manifest or provide a general package manager.
