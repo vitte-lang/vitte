@@ -706,10 +706,16 @@ test-imports: $(IMPORT_GRAPH_TEST_BIN)
 # -----------------------------------------------------------------------------
 
 SCALE_COMPILER ?= $(TARGET_BIN)
+SCALE_TIMEOUT ?= 180
+SCALE_SOURCE_MIB ?= 48
+SCALE_DECLARATIONS ?= 10000
 
 .PHONY: test-scale
 test-scale: $(SCALE_COMPILER)
 	VITTE_BIN="$(SCALE_COMPILER)" \
+		VITTE_SCALE_TIMEOUT="$(SCALE_TIMEOUT)" \
+		VITTE_SCALE_SOURCE_MIB="$(SCALE_SOURCE_MIB)" \
+		VITTE_SCALE_DECLARATIONS="$(SCALE_DECLARATIONS)" \
 		$(PYTHON) $(TEST_DIR)/compiler_scale_test.py
 
 # -----------------------------------------------------------------------------

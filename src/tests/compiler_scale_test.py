@@ -379,12 +379,14 @@ class CompilerScaleTests(unittest.TestCase):
 
             size = source.stat().st_size
 
+            minimum_size = declaration_count * 35
+
             self.assertGreater(
                 size,
-                350_000,
+                minimum_size,
                 (
                     "large declaration fixture is unexpectedly small: "
-                    f"{size} bytes"
+                    f"{size} bytes < {minimum_size} bytes"
                 ),
             )
 
