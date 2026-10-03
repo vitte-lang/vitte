@@ -15,18 +15,23 @@ Prérequis : un compilateur C17 et `make`.
 
 ```sh
 make
-./target/vitte/vitte --version
+./build/bin/vitte --version
 ```
 
-Le binaire produit prend en charge `check`, `emit-c`, `build` et `run`.
+Le binaire expose `check`, `compile`, `run`, `lex` et `parse`. `check` valide
+actuellement l'UTF-8, les tokens et la syntaxe. L'analyse sémantique est
+disponible dans le driver, notamment avec `compile --stop-after-sema`.
+`compile` et `run` complets restent bloqués par l'absence d'abaissement HIR/IR
+et de génération C17; ils échouent explicitement au lieu d'annoncer une
+compilation ou une exécution réussie.
 
 ```sh
-./target/vitte/vitte check examples/hello.vit
-./target/vitte/vitte run examples/hello.vit
+./build/bin/vitte check examples/hello.vit
+./build/bin/vitte compile examples/hello.vit
 ```
 
-Lancez la suite de régression complète avec `make test`. CMake est également
-pris en charge avec `cmake -S . -B build && cmake --build build`.
+Lancez la suite de régression avec `make test`. CMake est également pris en
+charge avec `cmake -S . -B build && cmake --build build`.
 
 La couverture actuelle du langage et ses limites connues sont répertoriées dans
 `src/docs/language_coverage.md`.
