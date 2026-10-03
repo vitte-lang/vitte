@@ -1,1 +1,2261 @@
-space json/parser/array;
+/// JSON array parser.
+///
+/// Strict recursive JSON array parsing.
+///
+/// Grammar:
+///
+///     array
+///         ::= "[" "]"
+///          |  "[" value { "," value } "]"
+///
+/// Responsibilities:
+/// - parse empty and non-empty arrays;
+/// - delegate element parsing to the JSON value parser;
+/// - preserve exact source spans;
+/// - reject missing values;
+/// - reject missing commas;
+/// - reject trailing commas;
+/// - reject unterminated arrays;
+/// - enforce configurable nesting and element limits;
+/// - provide precise diagnostics;
+/// - expose parsing statistics.
+///
+/// This module consumes the canonical token stream produced by
+/// `json.lexer.lexer`.
+///
+/// JSON arrays are ordered and may contain heterogeneous values.
+
+space json::parser::array;
+
+use json::error::position::*;
+use json::lexer::token::*;
+use json::core::value::{
+    JsonValueKind,
+    JsonValueError,
+    JsonValue,
+    JsonMember,
+    null_value,
+    boolean,
+    integer,
+    floating,
+    string,
+    array,
+    object,
+    member,
+    empty_array,
+    empty_object,
+    is_null,
+    is_bool,
+    is_integer,
+    is_float,
+    is_number,
+    is_string,
+    is_array,
+    is_object,
+    array_len,
+    array_get_ref,
+    object_len,
+    object_get_ref,
+    object_member_ref,
+    equals,
+    validate
+};
+
+const JSON_ARRAY_DEFAULT_MAX_ELEMENTS: usize = 1048576;
+const JSON_ARRAY_DEFAULT_MAX_DEPTH: usize = 512;
+
+pick JsonArrayParseError {
+    None,
+
+    UnexpectedEnd,
+
+    ExpectedLeftBracket,
+    ExpectedValue,
+    ExpectedCommaOrRightBracket,
+
+    TrailingComma,
+    UnterminatedArray,
+
+    TooManyElements,
+    DepthExceeded,
+
+    InvalidToken,
+    ValueError,
+
+    Internal,
+}
+
+form JsonArrayParseLimits {
+    max_elements: usize,
+
+    max_depth: usize,
+}
+
+form JsonArrayParseDiagnostic {
+    error: JsonArrayParseError,
+
+    message: string,
+
+    detail: string,
+
+    expected: string,
+
+    found: string,
+
+    span: JsonSpan,
+}
+
+form JsonParsedArray {
+    values: [JsonValue],
+
+    span: JsonSpan,
+
+    element_count: usize,
+}
+
+form JsonArrayParseResult {
+    ok: bool,
+
+    value: JsonParsedArray,
+
+    next: usize,
+
+    diagnostic: JsonArrayParseDiagnostic,
+}
+
+form JsonArrayParseStatistics {
+    element_count: usize,
+
+    scalar_count: usize,
+
+    array_count: usize,
+
+    object_count: usize,
+
+    null_count: usize,
+
+    boolean_count: usize,
+
+    integer_count: usize,
+
+    float_count: usize,
+
+    string_count: usize,
+
+    maximum_depth: usize,
+}
+
+/// -------------------------------------------------------------------------
+/// Value parser bridge
+///
+/// The recursive value parser is implemented by `json.parser.value`.
+/// Keeping this contract small prevents the array parser from duplicating
+/// scalar/object/value grammar.
+///
+/// `depth` is the depth of the value being parsed.
+/// -------------------------------------------------------------------------
+
+form JsonValueParseResult {
+    ok: bool,
+
+    value: JsonValue,
+
+    next: usize,
+
+    diagnostic_message: string,
+
+    diagnostic_span: JsonSpan,
+}
+
+proc parse_json_value(
+    tokens: [JsonToken],
+    index: usize,
+    depth: usize
+) -> JsonValueParseResult;
+
+/// -------------------------------------------------------------------------
+/// Limits
+/// -------------------------------------------------------------------------
+
+proc default_limits() -> JsonArrayParseLimits {
+    give JsonArrayParseLimits {
+        max_elements:
+            JSON_ARRAY_DEFAULT_MAX_ELEMENTS,
+
+        max_depth:
+            JSON_ARRAY_DEFAULT_MAX_DEPTH,
+    };
+}
+
+proc limits(
+    max_elements: usize,
+    max_depth: usize
+) -> JsonArrayParseLimits {
+    give JsonArrayParseLimits {
+        max_elements:
+            max_elements,
+
+        max_depth:
+            max_depth,
+    };
+}
+
+proc limits_valid(
+    value: &JsonArrayParseLimits
+) -> bool {
+    give value.max_elements > 0 &&
+         value.max_depth > 0;
+}
+
+/// -------------------------------------------------------------------------
+/// Empty values
+/// -------------------------------------------------------------------------
+
+proc empty_parsed_array() -> JsonParsedArray {
+    give JsonParsedArray {
+        values: [],
+
+        span: empty_span(),
+
+        element_count: 0,
+    };
+}
+
+proc no_diagnostic() -> JsonArrayParseDiagnostic {
+    give JsonArrayParseDiagnostic {
+        error:
+            JsonArrayParseError.None,
+
+        message: "",
+
+        detail: "",
+
+        expected: "",
+
+        found: "",
+
+        span: empty_span(),
+    };
+}
+
+proc empty_statistics() -> JsonArrayParseStatistics {
+    give JsonArrayParseStatistics {
+        element_count: 0,
+
+        scalar_count: 0,
+
+        array_count: 0,
+
+        object_count: 0,
+
+        null_count: 0,
+
+        boolean_count: 0,
+
+        integer_count: 0,
+
+        float_count: 0,
+
+        string_count: 0,
+
+        maximum_depth: 0,
+    };
+}
+
+/// -------------------------------------------------------------------------
+/// Diagnostics
+/// -------------------------------------------------------------------------
+
+proc diagnostic(
+    error: JsonArrayParseError,
+    message: string,
+    detail: string,
+    expected: string,
+    found: string,
+    location: JsonSpan
+) -> JsonArrayParseDiagnostic {
+    give JsonArrayParseDiagnostic {
+        error: error,
+
+        message: message,
+
+        detail: detail,
+
+        expected: expected,
+
+        found: found,
+
+        span: location,
+    };
+}
+
+proc error_name(
+    error: JsonArrayParseError
+) -> string {
+    if error ==
+       JsonArrayParseError.None {
+        give "none";
+    }
+
+    if error ==
+       JsonArrayParseError.UnexpectedEnd {
+        give "unexpected-end";
+    }
+
+    if error ==
+       JsonArrayParseError.ExpectedLeftBracket {
+        give "expected-left-bracket";
+    }
+
+    if error ==
+       JsonArrayParseError.ExpectedValue {
+        give "expected-value";
+    }
+
+    if error ==
+       JsonArrayParseError.ExpectedCommaOrRightBracket {
+        give "expected-comma-or-right-bracket";
+    }
+
+    if error ==
+       JsonArrayParseError.TrailingComma {
+        give "trailing-comma";
+    }
+
+    if error ==
+       JsonArrayParseError.UnterminatedArray {
+        give "unterminated-array";
+    }
+
+    if error ==
+       JsonArrayParseError.TooManyElements {
+        give "too-many-elements";
+    }
+
+    if error ==
+       JsonArrayParseError.DepthExceeded {
+        give "depth-exceeded";
+    }
+
+    if error ==
+       JsonArrayParseError.InvalidToken {
+        give "invalid-token";
+    }
+
+    if error ==
+       JsonArrayParseError.ValueError {
+        give "value-error";
+    }
+
+    give "internal";
+}
+
+/// -------------------------------------------------------------------------
+/// Result construction
+/// -------------------------------------------------------------------------
+
+proc success(
+    value: JsonParsedArray,
+    next: usize
+) -> JsonArrayParseResult {
+    give JsonArrayParseResult {
+        ok: true,
+
+        value: value,
+
+        next: next,
+
+        diagnostic:
+            no_diagnostic(),
+    };
+}
+
+proc failure(
+    next: usize,
+    error: JsonArrayParseError,
+    message: string,
+    detail: string,
+    expected: string,
+    found: string,
+    location: JsonSpan
+) -> JsonArrayParseResult {
+    give JsonArrayParseResult {
+        ok: false,
+
+        value:
+            empty_parsed_array(),
+
+        next: next,
+
+        diagnostic:
+            diagnostic(
+                error,
+                message,
+                detail,
+                expected,
+                found,
+                location),
+    };
+}
+
+/// -------------------------------------------------------------------------
+/// Token access
+/// -------------------------------------------------------------------------
+
+proc token_available(
+    tokens: [JsonToken],
+    index: usize
+) -> bool {
+    give index <
+         tokens.length;
+}
+
+proc token_or_invalid(
+    tokens: [JsonToken],
+    index: usize
+) -> JsonToken {
+    if index >=
+       tokens.length {
+        give invalid();
+    }
+
+    give tokens[index];
+}
+
+proc token_found_text(
+    value: &JsonToken
+) -> string {
+    if value.kind ==
+       JsonTokenKind.End {
+        give "end of input";
+    }
+
+    if value.kind ==
+       JsonTokenKind.Invalid {
+        give "invalid token";
+    }
+
+    if value.lexeme.length != 0 {
+        give value.lexeme;
+    }
+
+    give display_name(
+        value.kind);
+}
+
+proc end_span(
+    tokens: [JsonToken]
+) -> JsonSpan {
+    if tokens.length == 0 {
+        give empty_span();
+    }
+
+    give tokens[
+        tokens.length - 1].span;
+}
+
+/// -------------------------------------------------------------------------
+/// Grammar queries
+/// -------------------------------------------------------------------------
+
+proc starts_array(
+    tokens: [JsonToken],
+    index: usize
+) -> bool {
+    if !token_available(
+        tokens,
+        index) {
+        give false;
+    }
+
+    give tokens[index].kind ==
+         JsonTokenKind.LeftBracket;
+}
+
+proc closes_array(
+    tokens: [JsonToken],
+    index: usize
+) -> bool {
+    if !token_available(
+        tokens,
+        index) {
+        give false;
+    }
+
+    give tokens[index].kind ==
+         JsonTokenKind.RightBracket;
+}
+
+proc is_comma_at(
+    tokens: [JsonToken],
+    index: usize
+) -> bool {
+    if !token_available(
+        tokens,
+        index) {
+        give false;
+    }
+
+    give tokens[index].kind ==
+         JsonTokenKind.Comma;
+}
+
+proc begins_array_value(
+    tokens: [JsonToken],
+    index: usize
+) -> bool {
+    if !token_available(
+        tokens,
+        index) {
+        give false;
+    }
+
+    give begins_value_kind(
+        tokens[index].kind);
+}
+
+/// -------------------------------------------------------------------------
+/// Span helpers
+/// -------------------------------------------------------------------------
+
+proc array_span(
+    open: &JsonToken,
+    close: &JsonToken
+) -> JsonSpan {
+    give span(
+        open.span.start,
+        close.span.end);
+}
+
+proc missing_token_span(
+    tokens: [JsonToken],
+    index: usize
+) -> JsonSpan {
+    if index <
+       tokens.length {
+        give tokens[index].span;
+    }
+
+    give end_span(tokens);
+}
+
+/// -------------------------------------------------------------------------
+/// Parse array
+/// -------------------------------------------------------------------------
+
+proc parse_with_limits(
+    tokens: [JsonToken],
+    index: usize,
+    depth: usize,
+    parse_limits: JsonArrayParseLimits
+) -> JsonArrayParseResult {
+    if !limits_valid(
+        &parse_limits) {
+        give failure(
+            index,
+            JsonArrayParseError.Internal,
+            "invalid JSON array parser limits",
+            "maximum element count and maximum depth must be greater than zero",
+            "",
+            "",
+            missing_token_span(
+                tokens,
+                index));
+    }
+
+    if depth >
+       parse_limits.max_depth {
+        give failure(
+            index,
+            JsonArrayParseError.DepthExceeded,
+            "JSON array nesting depth exceeded",
+            "the configured maximum JSON nesting depth was exceeded",
+            "shallower JSON structure",
+            "",
+            missing_token_span(
+                tokens,
+                index));
+    }
+
+    if !token_available(
+        tokens,
+        index) {
+        give failure(
+            index,
+            JsonArrayParseError.UnexpectedEnd,
+            "unexpected end of JSON token stream",
+            "expected '[' to begin a JSON array",
+            "'['",
+            "end of input",
+            end_span(tokens));
+    }
+
+    let open: JsonToken =
+        tokens[index];
+
+    if open.kind !=
+       JsonTokenKind.LeftBracket {
+        give failure(
+            index,
+            JsonArrayParseError.ExpectedLeftBracket,
+            "expected JSON array",
+            "a JSON array must begin with '['",
+            "'['",
+            token_found_text(
+                &open),
+            open.span);
+    }
+
+    let mut cursor: usize =
+        index + 1;
+
+    let mut values: [JsonValue] =
+        [];
+
+    let mut element_count: usize =
+        0;
+
+    if !token_available(
+        tokens,
+        cursor) {
+        give failure(
+            cursor,
+            JsonArrayParseError.UnterminatedArray,
+            "unterminated JSON array",
+            "expected ']' after '['",
+            "']'",
+            "end of input",
+            open.span);
+    }
+
+    if tokens[cursor].kind ==
+       JsonTokenKind.RightBracket {
+        let close: JsonToken =
+            tokens[cursor];
+
+        give success(
+            JsonParsedArray {
+                values: values,
+
+                span:
+                    array_span(
+                        &open,
+                        &close),
+
+                element_count: 0,
+            },
+
+            cursor + 1);
+    }
+
+    if tokens[cursor].kind ==
+       JsonTokenKind.End {
+        give failure(
+            cursor,
+            JsonArrayParseError.UnterminatedArray,
+            "unterminated JSON array",
+            "expected a JSON value or ']' before the end of input",
+            "JSON value or ']'",
+            "end of input",
+            tokens[cursor].span);
+    }
+
+    while true {
+        if !token_available(
+            tokens,
+            cursor) {
+            give failure(
+                cursor,
+                JsonArrayParseError.UnterminatedArray,
+                "unterminated JSON array",
+                "expected a JSON value before the end of the token stream",
+                "JSON value",
+                "end of input",
+                end_span(tokens));
+        }
+
+        let current: JsonToken =
+            tokens[cursor];
+
+        if current.kind ==
+           JsonTokenKind.End {
+            give failure(
+                cursor,
+                JsonArrayParseError.UnterminatedArray,
+                "unterminated JSON array",
+                "expected ']' before the end of input",
+                "']'",
+                "end of input",
+                current.span);
+        }
+
+        if current.kind ==
+           JsonTokenKind.RightBracket {
+            give failure(
+                cursor,
+                JsonArrayParseError.ExpectedValue,
+                "expected JSON array element",
+                "an array element was expected at this position",
+                "JSON value",
+                "']'",
+                current.span);
+        }
+
+        if current.kind ==
+           JsonTokenKind.Comma {
+            give failure(
+                cursor,
+                JsonArrayParseError.ExpectedValue,
+                "expected JSON array element",
+                "a comma cannot appear where an array value is required",
+                "JSON value",
+                "','",
+                current.span);
+        }
+
+        if !begins_value_kind(
+            current.kind) {
+            give failure(
+                cursor,
+                JsonArrayParseError.ExpectedValue,
+                "expected JSON array element",
+                "the token cannot begin a JSON value",
+                "JSON value",
+                token_found_text(
+                    &current),
+                current.span);
+        }
+
+        if element_count >=
+           parse_limits.max_elements {
+            give failure(
+                cursor,
+                JsonArrayParseError.TooManyElements,
+                "JSON array contains too many elements",
+                "the configured maximum JSON array element count was exceeded",
+                "fewer array elements",
+                token_found_text(
+                    &current),
+                current.span);
+        }
+
+        let parsed:
+            JsonValueParseResult =
+                parse_json_value(
+                    tokens,
+                    cursor,
+                    depth + 1);
+
+        if !parsed.ok {
+            give failure(
+                cursor,
+                JsonArrayParseError.ValueError,
+                "invalid JSON array element",
+                parsed.diagnostic_message,
+                "valid JSON value",
+                token_found_text(
+                    &current),
+                parsed.diagnostic_span);
+        }
+
+        if parsed.next <=
+           cursor {
+            give failure(
+                cursor,
+                JsonArrayParseError.Internal,
+                "JSON value parser made no progress",
+                "the recursive JSON value parser must consume at least one token",
+                "",
+                token_found_text(
+                    &current),
+                current.span);
+        }
+
+        set values.push(
+            parsed.value);
+
+        set element_count += 1;
+
+        set cursor =
+            parsed.next;
+
+        if !token_available(
+            tokens,
+            cursor) {
+            give failure(
+                cursor,
+                JsonArrayParseError.UnterminatedArray,
+                "unterminated JSON array",
+                "expected ',' or ']' after the array element",
+                "',' or ']'",
+                "end of input",
+                end_span(tokens));
+        }
+
+        let separator: JsonToken =
+            tokens[cursor];
+
+        if separator.kind ==
+           JsonTokenKind.RightBracket {
+            give success(
+                JsonParsedArray {
+                    values: values,
+
+                    span:
+                        array_span(
+                            &open,
+                            &separator),
+
+                    element_count:
+                        element_count,
+                },
+
+                cursor + 1);
+        }
+
+        if separator.kind ==
+           JsonTokenKind.End {
+            give failure(
+                cursor,
+                JsonArrayParseError.UnterminatedArray,
+                "unterminated JSON array",
+                "expected ']' before the end of input",
+                "']'",
+                "end of input",
+                separator.span);
+        }
+
+        if separator.kind !=
+           JsonTokenKind.Comma {
+            give failure(
+                cursor,
+                JsonArrayParseError.ExpectedCommaOrRightBracket,
+                "expected ',' or ']' after JSON array element",
+                "array elements must be separated by commas",
+                "',' or ']'",
+                token_found_text(
+                    &separator),
+                separator.span);
+        }
+
+        let comma: JsonToken =
+            separator;
+
+        set cursor += 1;
+
+        if !token_available(
+            tokens,
+            cursor) {
+            give failure(
+                cursor,
+                JsonArrayParseError.UnterminatedArray,
+                "unterminated JSON array",
+                "expected a JSON value after ','",
+                "JSON value",
+                "end of input",
+                comma.span);
+        }
+
+        let next_token: JsonToken =
+            tokens[cursor];
+
+        if next_token.kind ==
+           JsonTokenKind.RightBracket {
+            give failure(
+                cursor,
+                JsonArrayParseError.TrailingComma,
+                "trailing comma in JSON array",
+                "JSON does not permit a comma immediately before ']'",
+                "JSON value",
+                "']'",
+                comma.span);
+        }
+
+        if next_token.kind ==
+           JsonTokenKind.End {
+            give failure(
+                cursor,
+                JsonArrayParseError.UnterminatedArray,
+                "unterminated JSON array",
+                "expected a JSON value after ',' before the end of input",
+                "JSON value",
+                "end of input",
+                next_token.span);
+        }
+    }
+
+    give failure(
+        cursor,
+        JsonArrayParseError.Internal,
+        "internal JSON array parser error",
+        "array parser reached an unreachable state",
+        "",
+        "",
+        missing_token_span(
+            tokens,
+            cursor));
+}
+
+proc parse(
+    tokens: [JsonToken],
+    index: usize,
+    depth: usize
+) -> JsonArrayParseResult {
+    give parse_with_limits(
+        tokens,
+        index,
+        depth,
+        default_limits());
+}
+
+proc parse_root(
+    tokens: [JsonToken],
+    index: usize
+) -> JsonArrayParseResult {
+    give parse(
+        tokens,
+        index,
+        0);
+}
+
+/// -------------------------------------------------------------------------
+/// Result queries
+/// -------------------------------------------------------------------------
+
+proc has_error(
+    result: &JsonArrayParseResult
+) -> bool {
+    give !result.ok;
+}
+
+proc consumed_tokens(
+    result: &JsonArrayParseResult,
+    start_index: usize
+) -> usize {
+    if result.next <
+       start_index {
+        give 0;
+    }
+
+    give result.next -
+         start_index;
+}
+
+proc is_empty(
+    result: &JsonArrayParseResult
+) -> bool {
+    give result.ok &&
+         result.value.element_count ==
+             0;
+}
+
+proc length(
+    result: &JsonArrayParseResult
+) -> usize {
+    if !result.ok {
+        give 0;
+    }
+
+    give result.value.element_count;
+}
+
+proc value_at(
+    result: &JsonArrayParseResult,
+    index: usize
+) -> JsonValue {
+    if !result.ok ||
+       index >=
+           result.value.element_count {
+        give null_value();
+    }
+
+    give result.value.values[index];
+}
+
+/// -------------------------------------------------------------------------
+/// Parsed-array validation
+/// -------------------------------------------------------------------------
+
+proc validate_parsed_array(
+    value: &JsonParsedArray
+) -> bool {
+    if !span_valid(
+        &value.span) {
+        give false;
+    }
+
+    if value.element_count !=
+       value.values.length {
+        give false;
+    }
+
+    let mut index: usize = 0;
+
+    while index <
+          value.element_count {
+        if !validate(
+            &value.values[index]) {
+            give false;
+        }
+
+        set index += 1;
+    }
+
+    give true;
+}
+
+proc validate_result(
+    result: &JsonArrayParseResult
+) -> bool {
+    if !result.ok {
+        give result.diagnostic.error !=
+             JsonArrayParseError.None;
+    }
+
+    if result.diagnostic.error !=
+       JsonArrayParseError.None {
+        give false;
+    }
+
+    give validate_parsed_array(
+        &result.value);
+}
+
+/// -------------------------------------------------------------------------
+/// Statistics
+/// -------------------------------------------------------------------------
+
+proc statistics(
+    value: &JsonParsedArray
+) -> JsonArrayParseStatistics {
+    let mut result:
+        JsonArrayParseStatistics =
+            empty_statistics();
+
+    set result.element_count =
+        value.element_count;
+
+    let mut index: usize = 0;
+
+    while index <
+          value.element_count {
+        let current: JsonValue =
+            value.values[index];
+
+        if current.kind ==
+           JsonValueKind.Null {
+            set result.scalar_count += 1;
+            set result.null_count += 1;
+        }
+
+        if current.kind ==
+           JsonValueKind.Bool {
+            set result.scalar_count += 1;
+            set result.boolean_count += 1;
+        }
+
+        if current.kind ==
+           JsonValueKind.Integer {
+            set result.scalar_count += 1;
+            set result.integer_count += 1;
+        }
+
+        if current.kind ==
+           JsonValueKind.Float {
+            set result.scalar_count += 1;
+            set result.float_count += 1;
+        }
+
+        if current.kind ==
+           JsonValueKind.String {
+            set result.scalar_count += 1;
+            set result.string_count += 1;
+        }
+
+        if current.kind ==
+           JsonValueKind.Array {
+            set result.array_count += 1;
+        }
+
+        if current.kind ==
+           JsonValueKind.Object {
+            set result.object_count += 1;
+        }
+
+        let current_depth: usize =
+            json.core.value.depth(
+                &current);
+
+        if current_depth >
+           result.maximum_depth {
+            set result.maximum_depth =
+                current_depth;
+        }
+
+        set index += 1;
+    }
+
+    give result;
+}
+
+/// -------------------------------------------------------------------------
+/// Structural queries
+/// -------------------------------------------------------------------------
+
+proc contains_null(
+    value: &JsonParsedArray
+) -> bool {
+    let mut index: usize = 0;
+
+    while index <
+          value.element_count {
+        if value.values[index].kind ==
+           JsonValueKind.Null {
+            give true;
+        }
+
+        set index += 1;
+    }
+
+    give false;
+}
+
+proc contains_boolean(
+    value: &JsonParsedArray
+) -> bool {
+    let mut index: usize = 0;
+
+    while index <
+          value.element_count {
+        if value.values[index].kind ==
+           JsonValueKind.Bool {
+            give true;
+        }
+
+        set index += 1;
+    }
+
+    give false;
+}
+
+proc contains_number(
+    value: &JsonParsedArray
+) -> bool {
+    let mut index: usize = 0;
+
+    while index <
+          value.element_count {
+        if value.values[index].kind ==
+               JsonValueKind.Integer ||
+           value.values[index].kind ==
+               JsonValueKind.Float {
+            give true;
+        }
+
+        set index += 1;
+    }
+
+    give false;
+}
+
+proc contains_string(
+    value: &JsonParsedArray
+) -> bool {
+    let mut index: usize = 0;
+
+    while index <
+          value.element_count {
+        if value.values[index].kind ==
+           JsonValueKind.String {
+            give true;
+        }
+
+        set index += 1;
+    }
+
+    give false;
+}
+
+proc contains_array(
+    value: &JsonParsedArray
+) -> bool {
+    let mut index: usize = 0;
+
+    while index <
+          value.element_count {
+        if value.values[index].kind ==
+           JsonValueKind.Array {
+            give true;
+        }
+
+        set index += 1;
+    }
+
+    give false;
+}
+
+proc contains_object(
+    value: &JsonParsedArray
+) -> bool {
+    let mut index: usize = 0;
+
+    while index <
+          value.element_count {
+        if value.values[index].kind ==
+           JsonValueKind.Object {
+            give true;
+        }
+
+        set index += 1;
+    }
+
+    give false;
+}
+
+/// -------------------------------------------------------------------------
+/// Homogeneity queries
+/// -------------------------------------------------------------------------
+
+proc all_null(
+    value: &JsonParsedArray
+) -> bool {
+    if value.element_count == 0 {
+        give false;
+    }
+
+    let mut index: usize = 0;
+
+    while index <
+          value.element_count {
+        if value.values[index].kind !=
+           JsonValueKind.Null {
+            give false;
+        }
+
+        set index += 1;
+    }
+
+    give true;
+}
+
+proc all_boolean(
+    value: &JsonParsedArray
+) -> bool {
+    if value.element_count == 0 {
+        give false;
+    }
+
+    let mut index: usize = 0;
+
+    while index <
+          value.element_count {
+        if value.values[index].kind !=
+           JsonValueKind.Bool {
+            give false;
+        }
+
+        set index += 1;
+    }
+
+    give true;
+}
+
+proc all_number(
+    value: &JsonParsedArray
+) -> bool {
+    if value.element_count == 0 {
+        give false;
+    }
+
+    let mut index: usize = 0;
+
+    while index <
+          value.element_count {
+        if value.values[index].kind !=
+               JsonValueKind.Integer &&
+           value.values[index].kind !=
+               JsonValueKind.Float {
+            give false;
+        }
+
+        set index += 1;
+    }
+
+    give true;
+}
+
+proc all_string(
+    value: &JsonParsedArray
+) -> bool {
+    if value.element_count == 0 {
+        give false;
+    }
+
+    let mut index: usize = 0;
+
+    while index <
+          value.element_count {
+        if value.values[index].kind !=
+           JsonValueKind.String {
+            give false;
+        }
+
+        set index += 1;
+    }
+
+    give true;
+}
+
+proc homogeneous(
+    value: &JsonParsedArray
+) -> bool {
+    if value.element_count <= 1 {
+        give true;
+    }
+
+    let kind: JsonValueKind =
+        value.values[0].kind;
+
+    let mut index: usize = 1;
+
+    while index <
+          value.element_count {
+        if value.values[index].kind !=
+           kind {
+            give false;
+        }
+
+        set index += 1;
+    }
+
+    give true;
+}
+
+/// -------------------------------------------------------------------------
+/// Search
+/// -------------------------------------------------------------------------
+
+proc first_kind(
+    value: &JsonParsedArray,
+    kind: JsonValueKind
+) -> usize {
+    let mut index: usize = 0;
+
+    while index <
+          value.element_count {
+        if value.values[index].kind ==
+           kind {
+            give index;
+        }
+
+        set index += 1;
+    }
+
+    give value.element_count;
+}
+
+proc count_kind(
+    value: &JsonParsedArray,
+    kind: JsonValueKind
+) -> usize {
+    let mut result: usize = 0;
+
+    let mut index: usize = 0;
+
+    while index <
+          value.element_count {
+        if value.values[index].kind ==
+           kind {
+            set result += 1;
+        }
+
+        set index += 1;
+    }
+
+    give result;
+}
+
+/// -------------------------------------------------------------------------
+/// Tests — token fixtures
+/// -------------------------------------------------------------------------
+
+proc test_span(
+    begin: usize,
+    end: usize
+) -> JsonSpan {
+    give span(
+        position(
+            begin,
+            0,
+            begin),
+
+        position(
+            end,
+            0,
+            end));
+}
+
+proc test_punctuation(
+    kind: JsonTokenKind,
+    text: string,
+    begin: usize,
+    end: usize
+) -> JsonToken {
+    give punctuation(
+        kind,
+        text,
+        test_span(
+            begin,
+            end));
+}
+
+proc test_number(
+    text: string,
+    begin: usize,
+    end: usize
+) -> JsonToken {
+    give number_token(
+        text,
+        test_span(
+            begin,
+            end));
+}
+
+proc test_string(
+    lexeme: string,
+    decoded: string,
+    begin: usize,
+    end: usize
+) -> JsonToken {
+    give string_token(
+        lexeme,
+        decoded,
+        test_span(
+            begin,
+            end));
+}
+
+proc test_literal(
+    kind: JsonTokenKind,
+    text: string,
+    begin: usize,
+    end: usize
+) -> JsonToken {
+    give literal(
+        kind,
+        text,
+        test_span(
+            begin,
+            end));
+}
+
+/// -------------------------------------------------------------------------
+/// Tests — empty arrays
+/// -------------------------------------------------------------------------
+
+test "json parser array empty" {
+    let tokens: [JsonToken] =
+        [
+            test_punctuation(
+                JsonTokenKind.LeftBracket,
+                "[",
+                0,
+                1),
+
+            test_punctuation(
+                JsonTokenKind.RightBracket,
+                "]",
+                1,
+                2),
+
+            end(
+                position(
+                    2,
+                    0,
+                    2)),
+        ];
+
+    let result:
+        JsonArrayParseResult =
+            parse_root(
+                tokens,
+                0);
+
+    assert result.ok;
+
+    assert result.next == 2;
+
+    assert result.value.element_count ==
+        0;
+
+    assert result.value.span.start.offset ==
+        0;
+
+    assert result.value.span.end.offset ==
+        2;
+
+    assert is_empty(
+        &result);
+
+    assert validate_result(
+        &result);
+}
+
+/// -------------------------------------------------------------------------
+/// Tests — one value
+/// -------------------------------------------------------------------------
+
+test "json parser array single null" {
+    let tokens: [JsonToken] =
+        [
+            test_punctuation(
+                JsonTokenKind.LeftBracket,
+                "[",
+                0,
+                1),
+
+            test_literal(
+                JsonTokenKind.Null,
+                "null",
+                1,
+                5),
+
+            test_punctuation(
+                JsonTokenKind.RightBracket,
+                "]",
+                5,
+                6),
+
+            end(
+                position(
+                    6,
+                    0,
+                    6)),
+        ];
+
+    let result:
+        JsonArrayParseResult =
+            parse_root(
+                tokens,
+                0);
+
+    assert result.ok;
+
+    assert result.value.element_count ==
+        1;
+
+    assert result.next == 3;
+}
+
+test "json parser array single string" {
+    let tokens: [JsonToken] =
+        [
+            test_punctuation(
+                JsonTokenKind.LeftBracket,
+                "[",
+                0,
+                1),
+
+            test_string(
+                "\"Vitte\"",
+                "Vitte",
+                1,
+                8),
+
+            test_punctuation(
+                JsonTokenKind.RightBracket,
+                "]",
+                8,
+                9),
+
+            end(
+                position(
+                    9,
+                    0,
+                    9)),
+        ];
+
+    let result:
+        JsonArrayParseResult =
+            parse_root(
+                tokens,
+                0);
+
+    assert result.ok;
+
+    assert result.value.element_count ==
+        1;
+
+    assert result.value.span.end.offset ==
+        9;
+}
+
+/// -------------------------------------------------------------------------
+/// Tests — scalar arrays
+/// -------------------------------------------------------------------------
+
+test "json parser array scalar sequence" {
+    let tokens: [JsonToken] =
+        [
+            test_punctuation(
+                JsonTokenKind.LeftBracket,
+                "[",
+                0,
+                1),
+
+            test_literal(
+                JsonTokenKind.Null,
+                "null",
+                1,
+                5),
+
+            test_punctuation(
+                JsonTokenKind.Comma,
+                ",",
+                5,
+                6),
+
+            test_literal(
+                JsonTokenKind.True,
+                "true",
+                6,
+                10),
+
+            test_punctuation(
+                JsonTokenKind.Comma,
+                ",",
+                10,
+                11),
+
+            test_literal(
+                JsonTokenKind.False,
+                "false",
+                11,
+                16),
+
+            test_punctuation(
+                JsonTokenKind.Comma,
+                ",",
+                16,
+                17),
+
+            test_number(
+                "42",
+                17,
+                19),
+
+            test_punctuation(
+                JsonTokenKind.Comma,
+                ",",
+                19,
+                20),
+
+            test_string(
+                "\"Vitte\"",
+                "Vitte",
+                20,
+                27),
+
+            test_punctuation(
+                JsonTokenKind.RightBracket,
+                "]",
+                27,
+                28),
+
+            end(
+                position(
+                    28,
+                    0,
+                    28)),
+        ];
+
+    let result:
+        JsonArrayParseResult =
+            parse_root(
+                tokens,
+                0);
+
+    assert result.ok;
+
+    assert result.value.element_count ==
+        5;
+
+    assert result.next == 11;
+
+    assert result.value.span.start.offset ==
+        0;
+
+    assert result.value.span.end.offset ==
+        28;
+}
+
+/// -------------------------------------------------------------------------
+/// Tests — parser offset
+/// -------------------------------------------------------------------------
+
+test "json parser array from token offset" {
+    let tokens: [JsonToken] =
+        [
+            test_literal(
+                JsonTokenKind.True,
+                "true",
+                0,
+                4),
+
+            test_punctuation(
+                JsonTokenKind.LeftBracket,
+                "[",
+                5,
+                6),
+
+            test_literal(
+                JsonTokenKind.Null,
+                "null",
+                6,
+                10),
+
+            test_punctuation(
+                JsonTokenKind.RightBracket,
+                "]",
+                10,
+                11),
+
+            end(
+                position(
+                    11,
+                    0,
+                    11)),
+        ];
+
+    let result:
+        JsonArrayParseResult =
+            parse_root(
+                tokens,
+                1);
+
+    assert result.ok;
+
+    assert result.next == 4;
+
+    assert result.value.element_count ==
+        1;
+
+    assert result.value.span.start.offset ==
+        5;
+}
+
+/// -------------------------------------------------------------------------
+/// Tests — wrong opening token
+/// -------------------------------------------------------------------------
+
+test "json parser array requires left bracket" {
+    let tokens: [JsonToken] =
+        [
+            test_literal(
+                JsonTokenKind.Null,
+                "null",
+                0,
+                4),
+
+            end(
+                position(
+                    4,
+                    0,
+                    4)),
+        ];
+
+    let result:
+        JsonArrayParseResult =
+            parse_root(
+                tokens,
+                0);
+
+    assert !result.ok;
+
+    assert result.diagnostic.error ==
+        JsonArrayParseError.ExpectedLeftBracket;
+}
+
+/// -------------------------------------------------------------------------
+/// Tests — unterminated arrays
+/// -------------------------------------------------------------------------
+
+test "json parser array unterminated empty" {
+    let tokens: [JsonToken] =
+        [
+            test_punctuation(
+                JsonTokenKind.LeftBracket,
+                "[",
+                0,
+                1),
+
+            end(
+                position(
+                    1,
+                    0,
+                    1)),
+        ];
+
+    let result:
+        JsonArrayParseResult =
+            parse_root(
+                tokens,
+                0);
+
+    assert !result.ok;
+
+    assert result.diagnostic.error ==
+        JsonArrayParseError.UnterminatedArray;
+}
+
+test "json parser array unterminated after value" {
+    let tokens: [JsonToken] =
+        [
+            test_punctuation(
+                JsonTokenKind.LeftBracket,
+                "[",
+                0,
+                1),
+
+            test_number(
+                "42",
+                1,
+                3),
+
+            end(
+                position(
+                    3,
+                    0,
+                    3)),
+        ];
+
+    let result:
+        JsonArrayParseResult =
+            parse_root(
+                tokens,
+                0);
+
+    assert !result.ok;
+
+    assert result.diagnostic.error ==
+        JsonArrayParseError.UnterminatedArray;
+}
+
+/// -------------------------------------------------------------------------
+/// Tests — commas
+/// -------------------------------------------------------------------------
+
+test "json parser array rejects leading comma" {
+    let tokens: [JsonToken] =
+        [
+            test_punctuation(
+                JsonTokenKind.LeftBracket,
+                "[",
+                0,
+                1),
+
+            test_punctuation(
+                JsonTokenKind.Comma,
+                ",",
+                1,
+                2),
+
+            test_number(
+                "1",
+                2,
+                3),
+
+            test_punctuation(
+                JsonTokenKind.RightBracket,
+                "]",
+                3,
+                4),
+
+            end(
+                position(
+                    4,
+                    0,
+                    4)),
+        ];
+
+    let result:
+        JsonArrayParseResult =
+            parse_root(
+                tokens,
+                0);
+
+    assert !result.ok;
+
+    assert result.diagnostic.error ==
+        JsonArrayParseError.ExpectedValue;
+}
+
+test "json parser array rejects trailing comma" {
+    let tokens: [JsonToken] =
+        [
+            test_punctuation(
+                JsonTokenKind.LeftBracket,
+                "[",
+                0,
+                1),
+
+            test_number(
+                "1",
+                1,
+                2),
+
+            test_punctuation(
+                JsonTokenKind.Comma,
+                ",",
+                2,
+                3),
+
+            test_punctuation(
+                JsonTokenKind.RightBracket,
+                "]",
+                3,
+                4),
+
+            end(
+                position(
+                    4,
+                    0,
+                    4)),
+        ];
+
+    let result:
+        JsonArrayParseResult =
+            parse_root(
+                tokens,
+                0);
+
+    assert !result.ok;
+
+    assert result.diagnostic.error ==
+        JsonArrayParseError.TrailingComma;
+}
+
+test "json parser array rejects duplicate comma" {
+    let tokens: [JsonToken] =
+        [
+            test_punctuation(
+                JsonTokenKind.LeftBracket,
+                "[",
+                0,
+                1),
+
+            test_number(
+                "1",
+                1,
+                2),
+
+            test_punctuation(
+                JsonTokenKind.Comma,
+                ",",
+                2,
+                3),
+
+            test_punctuation(
+                JsonTokenKind.Comma,
+                ",",
+                3,
+                4),
+
+            test_number(
+                "2",
+                4,
+                5),
+
+            test_punctuation(
+                JsonTokenKind.RightBracket,
+                "]",
+                5,
+                6),
+
+            end(
+                position(
+                    6,
+                    0,
+                    6)),
+        ];
+
+    let result:
+        JsonArrayParseResult =
+            parse_root(
+                tokens,
+                0);
+
+    assert !result.ok;
+
+    assert result.diagnostic.error ==
+        JsonArrayParseError.ExpectedValue;
+}
+
+test "json parser array requires comma" {
+    let tokens: [JsonToken] =
+        [
+            test_punctuation(
+                JsonTokenKind.LeftBracket,
+                "[",
+                0,
+                1),
+
+            test_number(
+                "1",
+                1,
+                2),
+
+            test_number(
+                "2",
+                3,
+                4),
+
+            test_punctuation(
+                JsonTokenKind.RightBracket,
+                "]",
+                4,
+                5),
+
+            end(
+                position(
+                    5,
+                    0,
+                    5)),
+        ];
+
+    let result:
+        JsonArrayParseResult =
+            parse_root(
+                tokens,
+                0);
+
+    assert !result.ok;
+
+    assert result.diagnostic.error ==
+        JsonArrayParseError.ExpectedCommaOrRightBracket;
+}
+
+/// -------------------------------------------------------------------------
+/// Tests — limits
+/// -------------------------------------------------------------------------
+
+test "json parser array element limit" {
+    let tokens: [JsonToken] =
+        [
+            test_punctuation(
+                JsonTokenKind.LeftBracket,
+                "[",
+                0,
+                1),
+
+            test_number(
+                "1",
+                1,
+                2),
+
+            test_punctuation(
+                JsonTokenKind.Comma,
+                ",",
+                2,
+                3),
+
+            test_number(
+                "2",
+                3,
+                4),
+
+            test_punctuation(
+                JsonTokenKind.RightBracket,
+                "]",
+                4,
+                5),
+
+            end(
+                position(
+                    5,
+                    0,
+                    5)),
+        ];
+
+    let parser_limits:
+        JsonArrayParseLimits =
+            limits(
+                1,
+                512);
+
+    let result:
+        JsonArrayParseResult =
+            parse_with_limits(
+                tokens,
+                0,
+                0,
+                parser_limits);
+
+    assert !result.ok;
+
+    assert result.diagnostic.error ==
+        JsonArrayParseError.TooManyElements;
+}
+
+test "json parser array depth limit" {
+    let tokens: [JsonToken] =
+        [
+            test_punctuation(
+                JsonTokenKind.LeftBracket,
+                "[",
+                0,
+                1),
+
+            test_punctuation(
+                JsonTokenKind.RightBracket,
+                "]",
+                1,
+                2),
+
+            end(
+                position(
+                    2,
+                    0,
+                    2)),
+        ];
+
+    let parser_limits:
+        JsonArrayParseLimits =
+            limits(
+                100,
+                2);
+
+    let result:
+        JsonArrayParseResult =
+            parse_with_limits(
+                tokens,
+                0,
+                3,
+                parser_limits);
+
+    assert !result.ok;
+
+    assert result.diagnostic.error ==
+        JsonArrayParseError.DepthExceeded;
+}
+
+/// -------------------------------------------------------------------------
+/// Tests — structural queries
+/// -------------------------------------------------------------------------
+
+test "json parser array empty structural queries" {
+    let value: JsonParsedArray =
+        empty_parsed_array();
+
+    assert !contains_null(
+        &value);
+
+    assert !contains_boolean(
+        &value);
+
+    assert !contains_number(
+        &value);
+
+    assert !contains_string(
+        &value);
+
+    assert !contains_array(
+        &value);
+
+    assert !contains_object(
+        &value);
+
+    assert !all_null(
+        &value);
+
+    assert !all_boolean(
+        &value);
+
+    assert !all_number(
+        &value);
+
+    assert !all_string(
+        &value);
+
+    assert homogeneous(
+        &value);
+}
+
+/// -------------------------------------------------------------------------
+/// Tests — diagnostics
+/// -------------------------------------------------------------------------
+
+test "json parser array error names" {
+    assert error_name(
+        JsonArrayParseError.None) ==
+            "none";
+
+    assert error_name(
+        JsonArrayParseError.ExpectedLeftBracket) ==
+            "expected-left-bracket";
+
+    assert error_name(
+        JsonArrayParseError.ExpectedValue) ==
+            "expected-value";
+
+    assert error_name(
+        JsonArrayParseError.TrailingComma) ==
+            "trailing-comma";
+
+    assert error_name(
+        JsonArrayParseError.UnterminatedArray) ==
+            "unterminated-array";
+
+    assert error_name(
+        JsonArrayParseError.TooManyElements) ==
+            "too-many-elements";
+
+    assert error_name(
+        JsonArrayParseError.DepthExceeded) ==
+            "depth-exceeded";
+}
+
+/// -------------------------------------------------------------------------
+/// Tests — span
+/// -------------------------------------------------------------------------
+
+test "json parser array preserves complete span" {
+    let tokens: [JsonToken] =
+        [
+            test_punctuation(
+                JsonTokenKind.LeftBracket,
+                "[",
+                10,
+                11),
+
+            test_punctuation(
+                JsonTokenKind.RightBracket,
+                "]",
+                11,
+                12),
+
+            end(
+                position(
+                    12,
+                    0,
+                    12)),
+        ];
+
+    let result:
+        JsonArrayParseResult =
+            parse_root(
+                tokens,
+                0);
+
+    assert result.ok;
+
+    assert result.value.span.start.offset ==
+        10;
+
+    assert result.value.span.end.offset ==
+        12;
+
+    assert span_length(
+        &result.value.span) ==
+            2;
+}

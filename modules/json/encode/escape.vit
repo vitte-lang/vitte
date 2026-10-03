@@ -1,1 +1,1333 @@
-space json/encode/escape;
+/// JSON string escaping.
+///
+/// Implements JSON string escaping independently from the encoder.
+///
+/// Responsibilities:
+/// - escape quotation marks;
+/// - escape reverse solidus;
+/// - optionally escape solidus;
+/// - escape JSON control characters;
+/// - encode remaining control characters as `\uXXXX`;
+/// - preserve ordinary Unicode characters;
+/// - produce complete quoted JSON strings;
+/// - expose validation and inspection helpers.
+///
+/// This module performs escaping only. It does not parse JSON strings and
+/// does not encode arbitrary JSON values.
+
+space json::encode::escape;
+
+const JSON_ESCAPE_CONTROL_LIMIT: u64 = 32;
+const JSON_ESCAPE_HEX_BASE: u64 = 16;
+const JSON_ESCAPE_HEX_MASK: u64 = 15;
+
+pick JsonEscapeError {
+    None,
+    InvalidCharacter,
+    InvalidUnicodeScalar,
+}
+
+form JsonEscapeOptions {
+    escape_slash: bool,
+    escape_non_ascii: bool,
+}
+
+form JsonEscapeResult {
+    ok: bool,
+    text: string,
+    error: JsonEscapeError,
+}
+
+form JsonEscapeStatistics {
+    input_characters: usize,
+    output_characters: usize,
+    escaped_characters: usize,
+    quote_escapes: usize,
+    backslash_escapes: usize,
+    slash_escapes: usize,
+    control_escapes: usize,
+    unicode_escapes: usize,
+}
+
+/// -------------------------------------------------------------------------
+/// Options
+/// -------------------------------------------------------------------------
+
+proc default_options() -> JsonEscapeOptions {
+    give JsonEscapeOptions {
+        escape_slash: false,
+        escape_non_ascii: false,
+    };
+}
+
+proc ascii_options() -> JsonEscapeOptions {
+    give JsonEscapeOptions {
+        escape_slash: false,
+        escape_non_ascii: true,
+    };
+}
+
+proc slash_options() -> JsonEscapeOptions {
+    give JsonEscapeOptions {
+        escape_slash: true,
+        escape_non_ascii: false,
+    };
+}
+
+proc strict_ascii_options() -> JsonEscapeOptions {
+    give JsonEscapeOptions {
+        escape_slash: true,
+        escape_non_ascii: true,
+    };
+}
+
+/// -------------------------------------------------------------------------
+/// Results
+/// -------------------------------------------------------------------------
+
+proc success(
+    text: string
+) -> JsonEscapeResult {
+    give JsonEscapeResult {
+        ok: true,
+        text: text,
+        error: JsonEscapeError.None,
+    };
+}
+
+proc failure(
+    error: JsonEscapeError
+) -> JsonEscapeResult {
+    give JsonEscapeResult {
+        ok: false,
+        text: "",
+        error: error,
+    };
+}
+
+proc error_name(
+    error: JsonEscapeError
+) -> string {
+    if error ==
+       JsonEscapeError.None {
+        give "none";
+    }
+
+    if error ==
+       JsonEscapeError.InvalidCharacter {
+        give "invalid character";
+    }
+
+    give "invalid Unicode scalar";
+}
+
+/// -------------------------------------------------------------------------
+/// Unicode scalar inspection
+/// -------------------------------------------------------------------------
+
+proc is_high_surrogate(
+    value: u64
+) -> bool {
+    give value >= 0xD800 &&
+         value <= 0xDBFF;
+}
+
+proc is_low_surrogate(
+    value: u64
+) -> bool {
+    give value >= 0xDC00 &&
+         value <= 0xDFFF;
+}
+
+proc is_surrogate(
+    value: u64
+) -> bool {
+    give value >= 0xD800 &&
+         value <= 0xDFFF;
+}
+
+proc is_valid_unicode_scalar(
+    value: u64
+) -> bool {
+    if value > 0x10FFFF {
+        give false;
+    }
+
+    if is_surrogate(value) {
+        give false;
+    }
+
+    give true;
+}
+
+proc is_ascii(
+    value: u64
+) -> bool {
+    give value <= 0x7F;
+}
+
+proc is_control(
+    value: u64
+) -> bool {
+    give value <
+         JSON_ESCAPE_CONTROL_LIMIT;
+}
+
+proc requires_json_escape(
+    value: char
+) -> bool {
+    if value == '"' {
+        give true;
+    }
+
+    if value == '\\' {
+        give true;
+    }
+
+    let code: u64 =
+        value as u64;
+
+    give is_control(code);
+}
+
+proc requires_escape_with_options(
+    value: char,
+    options: JsonEscapeOptions
+) -> bool {
+    if requires_json_escape(value) {
+        give true;
+    }
+
+    if value == '/' &&
+       options.escape_slash {
+        give true;
+    }
+
+    let code: u64 =
+        value as u64;
+
+    if options.escape_non_ascii &&
+       !is_ascii(code) {
+        give true;
+    }
+
+    give false;
+}
+
+/// -------------------------------------------------------------------------
+/// Hexadecimal conversion
+/// -------------------------------------------------------------------------
+
+proc hex_digit(
+    value: u64
+) -> string {
+    if value == 0 {
+        give "0";
+    }
+
+    if value == 1 {
+        give "1";
+    }
+
+    if value == 2 {
+        give "2";
+    }
+
+    if value == 3 {
+        give "3";
+    }
+
+    if value == 4 {
+        give "4";
+    }
+
+    if value == 5 {
+        give "5";
+    }
+
+    if value == 6 {
+        give "6";
+    }
+
+    if value == 7 {
+        give "7";
+    }
+
+    if value == 8 {
+        give "8";
+    }
+
+    if value == 9 {
+        give "9";
+    }
+
+    if value == 10 {
+        give "A";
+    }
+
+    if value == 11 {
+        give "B";
+    }
+
+    if value == 12 {
+        give "C";
+    }
+
+    if value == 13 {
+        give "D";
+    }
+
+    if value == 14 {
+        give "E";
+    }
+
+    give "F";
+}
+
+proc hex4(
+    value: u64
+) -> string {
+    let a: u64 =
+        (value >> 12) &
+        JSON_ESCAPE_HEX_MASK;
+
+    let b: u64 =
+        (value >> 8) &
+        JSON_ESCAPE_HEX_MASK;
+
+    let c: u64 =
+        (value >> 4) &
+        JSON_ESCAPE_HEX_MASK;
+
+    let d: u64 =
+        value &
+        JSON_ESCAPE_HEX_MASK;
+
+    give hex_digit(a) +
+         hex_digit(b) +
+         hex_digit(c) +
+         hex_digit(d);
+}
+
+proc unicode_escape_bmp(
+    value: u64
+) -> string {
+    give "\\u" +
+         hex4(value);
+}
+
+/// -------------------------------------------------------------------------
+/// Supplementary Unicode encoding
+///
+/// JSON uses UTF-16 surrogate pairs when a non-BMP scalar is explicitly
+/// represented with `\uXXXX` escapes.
+/// -------------------------------------------------------------------------
+
+proc high_surrogate_for(
+    value: u64
+) -> u64 {
+    let adjusted: u64 =
+        value - 0x10000;
+
+    give 0xD800 +
+         (adjusted >> 10);
+}
+
+proc low_surrogate_for(
+    value: u64
+) -> u64 {
+    let adjusted: u64 =
+        value - 0x10000;
+
+    give 0xDC00 +
+         (adjusted & 0x3FF);
+}
+
+proc unicode_escape_scalar(
+    value: u64
+) -> JsonEscapeResult {
+    if !is_valid_unicode_scalar(
+        value) {
+        give failure(
+            JsonEscapeError.InvalidUnicodeScalar);
+    }
+
+    if value <= 0xFFFF {
+        give success(
+            unicode_escape_bmp(
+                value));
+    }
+
+    let high: u64 =
+        high_surrogate_for(
+            value);
+
+    let low: u64 =
+        low_surrogate_for(
+            value);
+
+    give success(
+        unicode_escape_bmp(high) +
+        unicode_escape_bmp(low));
+}
+
+/// -------------------------------------------------------------------------
+/// Short JSON escapes
+/// -------------------------------------------------------------------------
+
+proc has_short_escape(
+    value: char
+) -> bool {
+    if value == '"' {
+        give true;
+    }
+
+    if value == '\\' {
+        give true;
+    }
+
+    if value == '\b' {
+        give true;
+    }
+
+    if value == '\f' {
+        give true;
+    }
+
+    if value == '\n' {
+        give true;
+    }
+
+    if value == '\r' {
+        give true;
+    }
+
+    if value == '\t' {
+        give true;
+    }
+
+    give false;
+}
+
+proc short_escape(
+    value: char
+) -> string {
+    if value == '"' {
+        give "\\\"";
+    }
+
+    if value == '\\' {
+        give "\\\\";
+    }
+
+    if value == '\b' {
+        give "\\b";
+    }
+
+    if value == '\f' {
+        give "\\f";
+    }
+
+    if value == '\n' {
+        give "\\n";
+    }
+
+    if value == '\r' {
+        give "\\r";
+    }
+
+    if value == '\t' {
+        give "\\t";
+    }
+
+    give "";
+}
+
+/// -------------------------------------------------------------------------
+/// Character escaping
+/// -------------------------------------------------------------------------
+
+proc escape_character_with_options(
+    value: char,
+    options: JsonEscapeOptions
+) -> JsonEscapeResult {
+    let code: u64 =
+        value as u64;
+
+    if !is_valid_unicode_scalar(
+        code) {
+        give failure(
+            JsonEscapeError.InvalidUnicodeScalar);
+    }
+
+    if has_short_escape(
+        value) {
+        give success(
+            short_escape(
+                value));
+    }
+
+    if value == '/' &&
+       options.escape_slash {
+        give success(
+            "\\/");
+    }
+
+    if is_control(code) {
+        give success(
+            unicode_escape_bmp(
+                code));
+    }
+
+    if options.escape_non_ascii &&
+       !is_ascii(code) {
+        give unicode_escape_scalar(
+            code);
+    }
+
+    give success(
+        "" + value);
+}
+
+proc escape_character(
+    value: char
+) -> JsonEscapeResult {
+    give escape_character_with_options(
+        value,
+        default_options());
+}
+
+/// -------------------------------------------------------------------------
+/// Raw string validation
+/// -------------------------------------------------------------------------
+
+proc validate_string(
+    value: string
+) -> bool {
+    let mut index: usize = 0;
+
+    while index <
+          value.length {
+        let code: u64 =
+            value[index] as u64;
+
+        if !is_valid_unicode_scalar(
+            code) {
+            give false;
+        }
+
+        set index += 1;
+    }
+
+    give true;
+}
+
+/// -------------------------------------------------------------------------
+/// String escaping
+///
+/// `escape` returns the escaped contents without surrounding quotation
+/// marks.
+///
+/// `quote` returns a complete JSON string literal.
+/// -------------------------------------------------------------------------
+
+proc escape_with_options(
+    value: string,
+    options: JsonEscapeOptions
+) -> JsonEscapeResult {
+    if !validate_string(
+        value) {
+        give failure(
+            JsonEscapeError.InvalidUnicodeScalar);
+    }
+
+    let mut output: string = "";
+
+    let mut index: usize = 0;
+
+    while index <
+          value.length {
+        let escaped:
+            JsonEscapeResult =
+                escape_character_with_options(
+                    value[index],
+                    options);
+
+        if !escaped.ok {
+            give escaped;
+        }
+
+        set output =
+            output +
+            escaped.text;
+
+        set index += 1;
+    }
+
+    give success(
+        output);
+}
+
+proc escape(
+    value: string
+) -> JsonEscapeResult {
+    give escape_with_options(
+        value,
+        default_options());
+}
+
+proc escape_ascii(
+    value: string
+) -> JsonEscapeResult {
+    give escape_with_options(
+        value,
+        ascii_options());
+}
+
+proc escape_slashes(
+    value: string
+) -> JsonEscapeResult {
+    give escape_with_options(
+        value,
+        slash_options());
+}
+
+proc escape_strict_ascii(
+    value: string
+) -> JsonEscapeResult {
+    give escape_with_options(
+        value,
+        strict_ascii_options());
+}
+
+/// -------------------------------------------------------------------------
+/// Quoted JSON strings
+/// -------------------------------------------------------------------------
+
+proc quote_with_options(
+    value: string,
+    options: JsonEscapeOptions
+) -> JsonEscapeResult {
+    let escaped:
+        JsonEscapeResult =
+            escape_with_options(
+                value,
+                options);
+
+    if !escaped.ok {
+        give escaped;
+    }
+
+    give success(
+        "\"" +
+        escaped.text +
+        "\"");
+}
+
+proc quote(
+    value: string
+) -> JsonEscapeResult {
+    give quote_with_options(
+        value,
+        default_options());
+}
+
+proc quote_ascii(
+    value: string
+) -> JsonEscapeResult {
+    give quote_with_options(
+        value,
+        ascii_options());
+}
+
+proc quote_slashes(
+    value: string
+) -> JsonEscapeResult {
+    give quote_with_options(
+        value,
+        slash_options());
+}
+
+proc quote_strict_ascii(
+    value: string
+) -> JsonEscapeResult {
+    give quote_with_options(
+        value,
+        strict_ascii_options());
+}
+
+/// -------------------------------------------------------------------------
+/// Escape inspection
+/// -------------------------------------------------------------------------
+
+proc escape_count_with_options(
+    value: string,
+    options: JsonEscapeOptions
+) -> usize {
+    let mut result: usize = 0;
+    let mut index: usize = 0;
+
+    while index <
+          value.length {
+        if requires_escape_with_options(
+            value[index],
+            options) {
+            set result += 1;
+        }
+
+        set index += 1;
+    }
+
+    give result;
+}
+
+proc escape_count(
+    value: string
+) -> usize {
+    give escape_count_with_options(
+        value,
+        default_options());
+}
+
+proc requires_escaping(
+    value: string
+) -> bool {
+    give escape_count(
+        value) != 0;
+}
+
+proc requires_escaping_with_options(
+    value: string,
+    options: JsonEscapeOptions
+) -> bool {
+    give escape_count_with_options(
+        value,
+        options) != 0;
+}
+
+/// -------------------------------------------------------------------------
+/// Escape statistics
+/// -------------------------------------------------------------------------
+
+proc statistics_with_options(
+    value: string,
+    options: JsonEscapeOptions
+) -> JsonEscapeStatistics {
+    let mut escaped_characters: usize = 0;
+    let mut quote_escapes: usize = 0;
+    let mut backslash_escapes: usize = 0;
+    let mut slash_escapes: usize = 0;
+    let mut control_escapes: usize = 0;
+    let mut unicode_escapes: usize = 0;
+
+    let mut index: usize = 0;
+
+    while index <
+          value.length {
+        let current: char =
+            value[index];
+
+        let code: u64 =
+            current as u64;
+
+        if current == '"' {
+            set escaped_characters += 1;
+            set quote_escapes += 1;
+        } else if current == '\\' {
+            set escaped_characters += 1;
+            set backslash_escapes += 1;
+        } else if current == '/' &&
+                       options.escape_slash {
+            set escaped_characters += 1;
+            set slash_escapes += 1;
+        } else if is_control(code) {
+            set escaped_characters += 1;
+            set control_escapes += 1;
+
+            if !has_short_escape(
+                current) {
+                set unicode_escapes += 1;
+            }
+        } else if options.escape_non_ascii &&
+                       !is_ascii(code) {
+            set escaped_characters += 1;
+            set unicode_escapes += 1;
+        }
+
+        set index += 1;
+    }
+
+    let encoded:
+        JsonEscapeResult =
+            escape_with_options(
+                value,
+                options);
+
+    let mut output_characters: usize = 0;
+
+    if encoded.ok {
+        set output_characters =
+            encoded.text.length;
+    }
+
+    give JsonEscapeStatistics {
+        input_characters:
+            value.length,
+
+        output_characters:
+            output_characters,
+
+        escaped_characters:
+            escaped_characters,
+
+        quote_escapes:
+            quote_escapes,
+
+        backslash_escapes:
+            backslash_escapes,
+
+        slash_escapes:
+            slash_escapes,
+
+        control_escapes:
+            control_escapes,
+
+        unicode_escapes:
+            unicode_escapes,
+    };
+}
+
+proc statistics(
+    value: string
+) -> JsonEscapeStatistics {
+    give statistics_with_options(
+        value,
+        default_options());
+}
+
+/// -------------------------------------------------------------------------
+/// Escape size estimation
+/// -------------------------------------------------------------------------
+
+proc escaped_length_with_options(
+    value: string,
+    options: JsonEscapeOptions
+) -> usize {
+    let result:
+        JsonEscapeResult =
+            escape_with_options(
+                value,
+                options);
+
+    if !result.ok {
+        give 0;
+    }
+
+    give result.text.length;
+}
+
+proc escaped_length(
+    value: string
+) -> usize {
+    give escaped_length_with_options(
+        value,
+        default_options());
+}
+
+proc quoted_length_with_options(
+    value: string,
+    options: JsonEscapeOptions
+) -> usize {
+    let length: usize =
+        escaped_length_with_options(
+            value,
+            options);
+
+    give length + 2;
+}
+
+proc quoted_length(
+    value: string
+) -> usize {
+    give quoted_length_with_options(
+        value,
+        default_options());
+}
+
+/// -------------------------------------------------------------------------
+/// Tests — hexadecimal conversion
+/// -------------------------------------------------------------------------
+
+test "json escape hexadecimal digits" {
+    assert hex_digit(0) == "0";
+    assert hex_digit(1) == "1";
+    assert hex_digit(9) == "9";
+    assert hex_digit(10) == "A";
+    assert hex_digit(11) == "B";
+    assert hex_digit(12) == "C";
+    assert hex_digit(13) == "D";
+    assert hex_digit(14) == "E";
+    assert hex_digit(15) == "F";
+}
+
+test "json escape four hexadecimal digits" {
+    assert hex4(0) ==
+        "0000";
+
+    assert hex4(10) ==
+        "000A";
+
+    assert hex4(31) ==
+        "001F";
+
+    assert hex4(255) ==
+        "00FF";
+
+    assert hex4(0x1234) ==
+        "1234";
+}
+
+/// -------------------------------------------------------------------------
+/// Tests — Unicode
+/// -------------------------------------------------------------------------
+
+test "json escape unicode scalar validation" {
+    assert is_valid_unicode_scalar(
+        0);
+
+    assert is_valid_unicode_scalar(
+        0x7F);
+
+    assert is_valid_unicode_scalar(
+        0xFFFF);
+
+    assert is_valid_unicode_scalar(
+        0x10000);
+
+    assert is_valid_unicode_scalar(
+        0x10FFFF);
+
+    assert !is_valid_unicode_scalar(
+        0xD800);
+
+    assert !is_valid_unicode_scalar(
+        0xDFFF);
+
+    assert !is_valid_unicode_scalar(
+        0x110000);
+}
+
+test "json escape bmp unicode" {
+    let result:
+        JsonEscapeResult =
+            unicode_escape_scalar(
+                0x00E9);
+
+    assert result.ok;
+
+    assert result.text ==
+        "\\u00E9";
+}
+
+test "json escape supplementary unicode" {
+    let result:
+        JsonEscapeResult =
+            unicode_escape_scalar(
+                0x1F600);
+
+    assert result.ok;
+
+    assert result.text ==
+        "\\uD83D\\uDE00";
+}
+
+test "json escape surrogate generation" {
+    assert high_surrogate_for(
+        0x1F600) ==
+            0xD83D;
+
+    assert low_surrogate_for(
+        0x1F600) ==
+            0xDE00;
+}
+
+/// -------------------------------------------------------------------------
+/// Tests — characters
+/// -------------------------------------------------------------------------
+
+test "json escape quotation mark" {
+    let result:
+        JsonEscapeResult =
+            escape_character('"');
+
+    assert result.ok;
+
+    assert result.text ==
+        "\\\"";
+}
+
+test "json escape backslash" {
+    let result:
+        JsonEscapeResult =
+            escape_character('\\');
+
+    assert result.ok;
+
+    assert result.text ==
+        "\\\\";
+}
+
+test "json escape newline" {
+    let result:
+        JsonEscapeResult =
+            escape_character('\n');
+
+    assert result.ok;
+
+    assert result.text ==
+        "\\n";
+}
+
+test "json escape carriage return" {
+    let result:
+        JsonEscapeResult =
+            escape_character('\r');
+
+    assert result.ok;
+
+    assert result.text ==
+        "\\r";
+}
+
+test "json escape tab" {
+    let result:
+        JsonEscapeResult =
+            escape_character('\t');
+
+    assert result.ok;
+
+    assert result.text ==
+        "\\t";
+}
+
+test "json escape backspace" {
+    let result:
+        JsonEscapeResult =
+            escape_character('\b');
+
+    assert result.ok;
+
+    assert result.text ==
+        "\\b";
+}
+
+test "json escape form feed" {
+    let result:
+        JsonEscapeResult =
+            escape_character('\f');
+
+    assert result.ok;
+
+    assert result.text ==
+        "\\f";
+}
+
+test "json escape ordinary character" {
+    let result:
+        JsonEscapeResult =
+            escape_character('V');
+
+    assert result.ok;
+
+    assert result.text ==
+        "V";
+}
+
+/// -------------------------------------------------------------------------
+/// Tests — strings
+/// -------------------------------------------------------------------------
+
+test "json escape empty string" {
+    let result:
+        JsonEscapeResult =
+            escape("");
+
+    assert result.ok;
+
+    assert result.text ==
+        "";
+}
+
+test "json escape ordinary string" {
+    let result:
+        JsonEscapeResult =
+            escape("Vitte");
+
+    assert result.ok;
+
+    assert result.text ==
+        "Vitte";
+}
+
+test "json escape quotation in string" {
+    let result:
+        JsonEscapeResult =
+            escape(
+                "Vitte \"JSON\"");
+
+    assert result.ok;
+
+    assert result.text ==
+        "Vitte \\\"JSON\\\"";
+}
+
+test "json escape backslash in string" {
+    let result:
+        JsonEscapeResult =
+            escape(
+                "a\\b");
+
+    assert result.ok;
+
+    assert result.text ==
+        "a\\\\b";
+}
+
+test "json escape newline in string" {
+    let result:
+        JsonEscapeResult =
+            escape(
+                "first\nsecond");
+
+    assert result.ok;
+
+    assert result.text ==
+        "first\\nsecond";
+}
+
+test "json escape multiple special characters" {
+    let result:
+        JsonEscapeResult =
+            escape(
+                "\"\\\n\r\t");
+
+    assert result.ok;
+
+    assert result.text ==
+        "\\\"\\\\\\n\\r\\t";
+}
+
+/// -------------------------------------------------------------------------
+/// Tests — quoting
+/// -------------------------------------------------------------------------
+
+test "json quote empty string" {
+    let result:
+        JsonEscapeResult =
+            quote("");
+
+    assert result.ok;
+
+    assert result.text ==
+        "\"\"";
+}
+
+test "json quote ordinary string" {
+    let result:
+        JsonEscapeResult =
+            quote("Vitte");
+
+    assert result.ok;
+
+    assert result.text ==
+        "\"Vitte\"";
+}
+
+test "json quote escaped string" {
+    let result:
+        JsonEscapeResult =
+            quote(
+                "Vitte \"JSON\"");
+
+    assert result.ok;
+
+    assert result.text ==
+        "\"Vitte \\\"JSON\\\"\"";
+}
+
+/// -------------------------------------------------------------------------
+/// Tests — slash escaping
+/// -------------------------------------------------------------------------
+
+test "json slash is not escaped by default" {
+    let result:
+        JsonEscapeResult =
+            escape(
+                "https://vitte.dev/");
+
+    assert result.ok;
+
+    assert result.text ==
+        "https://vitte.dev/";
+}
+
+test "json optional slash escaping" {
+    let result:
+        JsonEscapeResult =
+            escape_slashes(
+                "</script>");
+
+    assert result.ok;
+
+    assert result.text ==
+        "<\\/script>";
+}
+
+/// -------------------------------------------------------------------------
+/// Tests — ASCII mode
+/// -------------------------------------------------------------------------
+
+test "json ascii mode preserves ascii" {
+    let result:
+        JsonEscapeResult =
+            escape_ascii(
+                "Vitte JSON");
+
+    assert result.ok;
+
+    assert result.text ==
+        "Vitte JSON";
+}
+
+test "json ascii mode escapes bmp unicode" {
+    let result:
+        JsonEscapeResult =
+            escape_ascii(
+                "café");
+
+    assert result.ok;
+
+    assert result.text ==
+        "caf\\u00E9";
+}
+
+test "json ascii mode escapes supplementary unicode" {
+    let result:
+        JsonEscapeResult =
+            escape_ascii(
+                "😀");
+
+    assert result.ok;
+
+    assert result.text ==
+        "\\uD83D\\uDE00";
+}
+
+/// -------------------------------------------------------------------------
+/// Tests — inspection
+/// -------------------------------------------------------------------------
+
+test "json escape requirement" {
+    assert !requires_escaping(
+        "Vitte");
+
+    assert requires_escaping(
+        "Vitte\nJSON");
+
+    assert requires_escaping(
+        "\"Vitte\"");
+}
+
+test "json escape count" {
+    assert escape_count(
+        "Vitte") == 0;
+
+    assert escape_count(
+        "\"Vitte\"\n") == 3;
+}
+
+test "json escaped length" {
+    assert escaped_length(
+        "Vitte") == 5;
+
+    assert quoted_length(
+        "Vitte") == 7;
+}
+
+/// -------------------------------------------------------------------------
+/// Tests — statistics
+/// -------------------------------------------------------------------------
+
+test "json escape statistics ordinary string" {
+    let stats:
+        JsonEscapeStatistics =
+            statistics(
+                "Vitte");
+
+    assert stats.input_characters == 5;
+
+    assert stats.output_characters == 5;
+
+    assert stats.escaped_characters == 0;
+
+    assert stats.quote_escapes == 0;
+
+    assert stats.backslash_escapes == 0;
+
+    assert stats.control_escapes == 0;
+}
+
+test "json escape statistics escaped string" {
+    let stats:
+        JsonEscapeStatistics =
+            statistics(
+                "\"Vitte\"\n");
+
+    assert stats.input_characters == 8;
+
+    assert stats.escaped_characters == 3;
+
+    assert stats.quote_escapes == 2;
+
+    assert stats.control_escapes == 1;
+}
+
+/// -------------------------------------------------------------------------
+/// Tests — complete JSON key/value strings
+/// -------------------------------------------------------------------------
+
+test "json escape object key" {
+    let result:
+        JsonEscapeResult =
+            quote(
+                "project\"name");
+
+    assert result.ok;
+
+    assert result.text ==
+        "\"project\\\"name\"";
+}
+
+test "json escape complex string" {
+    let result:
+        JsonEscapeResult =
+            quote(
+                "Vitte\nJSON\t\"encoder\"\\test");
+
+    assert result.ok;
+
+    assert result.text ==
+        "\"Vitte\\nJSON\\t\\\"encoder\\\"\\\\test\"";
+}
+
+test "json escape strict ascii" {
+    let result:
+        JsonEscapeResult =
+            quote_strict_ascii(
+                "Vitte / café 😀");
+
+    assert result.ok;
+
+    assert result.text ==
+        "\"Vitte \\/ caf\\u00E9 \\uD83D\\uDE00\"";
+}

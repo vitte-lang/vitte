@@ -1,0 +1,2700 @@
+/// Legacy comprehensive JSON encoder implementation tests.
+///
+/// This suite validates the public encoding surface across:
+///
+/// - null / boolean values
+/// - signed integers
+/// - floating-point values
+/// - strings
+/// - escaping
+/// - arrays
+/// - objects
+/// - nested structures
+/// - compact output
+/// - pretty output
+/// - indentation
+/// - deterministic ordering
+/// - depth handling
+/// - invalid values
+/// - non-finite numbers
+/// - Unicode
+/// - control characters
+/// - structural edge cases
+/// - repeated encoding
+/// - regression cases
+///
+/// The encoder must always produce syntactically valid JSON when encoding
+/// a valid JsonValue.
+
+space json::tests::encode;
+
+use json::core::value::*;
+use json::encode::encoder::*;
+use json::encode::escape::*;
+use json::runtime::numeric::*;
+
+/// -------------------------------------------------------------------------
+/// Null
+/// -------------------------------------------------------------------------
+
+test "encode null" {
+    let value: JsonValue =
+        null_value();
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+    assert result.text == "null";
+}
+
+test "encode null compact" {
+    let value: JsonValue =
+        null_value();
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+    assert result.text == "null";
+}
+
+test "encode null pretty" {
+    let value: JsonValue =
+        null_value();
+
+    let result: JsonEncodeResult =
+        encode_pretty(&value);
+
+    assert result.ok;
+    assert result.text == "null";
+}
+
+/// -------------------------------------------------------------------------
+/// Boolean
+/// -------------------------------------------------------------------------
+
+test "encode true" {
+    let value: JsonValue =
+        bool_value(true);
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+    assert result.text == "true";
+}
+
+test "encode false" {
+    let value: JsonValue =
+        bool_value(false);
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+    assert result.text == "false";
+}
+
+test "encode boolean compact" {
+    let true_value: JsonValue =
+        bool_value(true);
+
+    let false_value: JsonValue =
+        bool_value(false);
+
+    let true_result: JsonEncodeResult =
+        encode_compact(&true_value);
+
+    let false_result: JsonEncodeResult =
+        encode_compact(&false_value);
+
+    assert true_result.ok;
+    assert false_result.ok;
+
+    assert true_result.text == "true";
+    assert false_result.text == "false";
+}
+
+/// -------------------------------------------------------------------------
+/// Signed integers
+/// -------------------------------------------------------------------------
+
+test "encode integer zero" {
+    let value: JsonValue =
+        integer_value(0);
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+    assert result.text == "0";
+}
+
+test "encode positive integer" {
+    let value: JsonValue =
+        integer_value(42);
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+    assert result.text == "42";
+}
+
+test "encode negative integer" {
+    let value: JsonValue =
+        integer_value(-42);
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+    assert result.text == "-42";
+}
+
+test "encode i64 maximum" {
+    let value: JsonValue =
+        integer_value(
+            JSON_NUMERIC_I64_MAX);
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "9223372036854775807";
+}
+
+test "encode i64 minimum" {
+    let value: JsonValue =
+        integer_value(
+            JSON_NUMERIC_I64_MIN);
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "-9223372036854775808";
+}
+
+test "encode several positive integers" {
+    let zero: JsonValue =
+        integer_value(0);
+
+    let one: JsonValue =
+        integer_value(1);
+
+    let ten: JsonValue =
+        integer_value(10);
+
+    let hundred: JsonValue =
+        integer_value(100);
+
+    let large: JsonValue =
+        integer_value(123456789);
+
+    assert encode(&zero).text ==
+        "0";
+
+    assert encode(&one).text ==
+        "1";
+
+    assert encode(&ten).text ==
+        "10";
+
+    assert encode(&hundred).text ==
+        "100";
+
+    assert encode(&large).text ==
+        "123456789";
+}
+
+test "encode several negative integers" {
+    let one: JsonValue =
+        integer_value(-1);
+
+    let ten: JsonValue =
+        integer_value(-10);
+
+    let hundred: JsonValue =
+        integer_value(-100);
+
+    let large: JsonValue =
+        integer_value(-123456789);
+
+    assert encode(&one).text ==
+        "-1";
+
+    assert encode(&ten).text ==
+        "-10";
+
+    assert encode(&hundred).text ==
+        "-100";
+
+    assert encode(&large).text ==
+        "-123456789";
+}
+
+/// -------------------------------------------------------------------------
+/// Floating point
+/// -------------------------------------------------------------------------
+
+test "encode float zero" {
+    let value: JsonValue =
+        float_value(0.0);
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+
+    assert result.text == "0" ||
+           result.text == "0.0";
+}
+
+test "encode positive float" {
+    let value: JsonValue =
+        float_value(1.5);
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+    assert result.text == "1.5";
+}
+
+test "encode negative float" {
+    let value: JsonValue =
+        float_value(-1.5);
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+    assert result.text == "-1.5";
+}
+
+test "encode fractional float" {
+    let value: JsonValue =
+        float_value(12.25);
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+    assert result.text == "12.25";
+}
+
+test "encode integer shaped float" {
+    let value: JsonValue =
+        float_value(42.0);
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+
+    assert result.text == "42" ||
+           result.text == "42.0";
+}
+
+test "encode small positive float" {
+    let value: JsonValue =
+        float_value(0.125);
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+    assert result.text == "0.125";
+}
+
+test "encode small negative float" {
+    let value: JsonValue =
+        float_value(-0.125);
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+    assert result.text == "-0.125";
+}
+
+/// -------------------------------------------------------------------------
+/// Non-finite floating point rejection
+/// -------------------------------------------------------------------------
+
+test "encoder rejects positive infinity" {
+    let infinity: f64 =
+        1.0 / 0.0;
+
+    let value: JsonValue =
+        float_value(infinity);
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert !result.ok;
+}
+
+test "encoder rejects negative infinity" {
+    let infinity: f64 =
+        -1.0 / 0.0;
+
+    let value: JsonValue =
+        float_value(infinity);
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert !result.ok;
+}
+
+test "encoder rejects nan" {
+    let zero: f64 = 0.0;
+
+    let nan_value: f64 =
+        zero / zero;
+
+    let value: JsonValue =
+        float_value(nan_value);
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert !result.ok;
+}
+
+/// -------------------------------------------------------------------------
+/// Empty string
+/// -------------------------------------------------------------------------
+
+test "encode empty string" {
+    let value: JsonValue =
+        string_value("");
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+    assert result.text == "\"\"";
+}
+
+/// -------------------------------------------------------------------------
+/// Basic strings
+/// -------------------------------------------------------------------------
+
+test "encode simple string" {
+    let value: JsonValue =
+        string_value("hello");
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "\"hello\"";
+}
+
+test "encode string with spaces" {
+    let value: JsonValue =
+        string_value(
+            "hello world");
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "\"hello world\"";
+}
+
+test "encode string with digits" {
+    let value: JsonValue =
+        string_value(
+            "abc123");
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "\"abc123\"";
+}
+
+test "encode string containing json words" {
+    let null_text: JsonValue =
+        string_value("null");
+
+    let true_text: JsonValue =
+        string_value("true");
+
+    let false_text: JsonValue =
+        string_value("false");
+
+    assert encode(&null_text).text ==
+        "\"null\"";
+
+    assert encode(&true_text).text ==
+        "\"true\"";
+
+    assert encode(&false_text).text ==
+        "\"false\"";
+}
+
+/// -------------------------------------------------------------------------
+/// Quote and backslash escaping
+/// -------------------------------------------------------------------------
+
+test "encode quote escape" {
+    let value: JsonValue =
+        string_value(
+            "a\"b");
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "\"a\\\"b\"";
+}
+
+test "encode backslash escape" {
+    let value: JsonValue =
+        string_value(
+            "a\\b");
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "\"a\\\\b\"";
+}
+
+test "encode quote and backslash" {
+    let value: JsonValue =
+        string_value(
+            "\\\"");
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "\"\\\\\\\"\"";
+}
+
+test "encode repeated quotes" {
+    let value: JsonValue =
+        string_value(
+            "\"\"\"");
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "\"\\\"\\\"\\\"\"";
+}
+
+test "encode repeated backslashes" {
+    let value: JsonValue =
+        string_value(
+            "\\\\\\");
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "\"\\\\\\\\\\\\\"";
+}
+
+/// -------------------------------------------------------------------------
+/// Standard JSON control escapes
+/// -------------------------------------------------------------------------
+
+test "encode newline escape" {
+    let value: JsonValue =
+        string_value(
+            "a\nb");
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "\"a\\nb\"";
+}
+
+test "encode carriage return escape" {
+    let value: JsonValue =
+        string_value(
+            "a\rb");
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "\"a\\rb\"";
+}
+
+test "encode tab escape" {
+    let value: JsonValue =
+        string_value(
+            "a\tb");
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "\"a\\tb\"";
+}
+
+test "encode backspace escape" {
+    let value: JsonValue =
+        string_value(
+            "a\b");
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "\"a\\b\"";
+}
+
+test "encode form feed escape" {
+    let value: JsonValue =
+        string_value(
+            "a\fb");
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "\"a\\fb\"";
+}
+
+test "encode combined standard escapes" {
+    let value: JsonValue =
+        string_value(
+            "\"\\\b\f\n\r\t");
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "\"\\\"\\\\\\b\\f\\n\\r\\t\"";
+}
+
+/// -------------------------------------------------------------------------
+/// Slash handling
+/// -------------------------------------------------------------------------
+
+test "encode slash is valid" {
+    let value: JsonValue =
+        string_value("/");
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+
+    assert result.text == "\"/\"" ||
+           result.text == "\"\\/\"";
+}
+
+test "encode url string" {
+    let value: JsonValue =
+        string_value(
+            "https://vitte-lang.org/json");
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+}
+
+/// -------------------------------------------------------------------------
+/// Unicode
+/// -------------------------------------------------------------------------
+
+test "encode unicode latin" {
+    let value: JsonValue =
+        string_value(
+            "café");
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+}
+
+test "encode unicode accented text" {
+    let value: JsonValue =
+        string_value(
+            "éèêëàâùûôöç");
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+}
+
+test "encode unicode greek" {
+    let value: JsonValue =
+        string_value(
+            "αβγδε");
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+}
+
+test "encode unicode cyrillic" {
+    let value: JsonValue =
+        string_value(
+            "Привет");
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+}
+
+test "encode unicode japanese" {
+    let value: JsonValue =
+        string_value(
+            "こんにちは");
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+}
+
+test "encode unicode mixed text" {
+    let value: JsonValue =
+        string_value(
+            "Vitte 日本語 café");
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+}
+
+/// -------------------------------------------------------------------------
+/// Escape module direct integration
+/// -------------------------------------------------------------------------
+
+test "escape module quotes empty string" {
+    let result: JsonEscapeResult =
+        quote("");
+
+    assert result.ok;
+    assert result.text == "\"\"";
+}
+
+test "escape module quotes ordinary string" {
+    let result: JsonEscapeResult =
+        quote("hello");
+
+    assert result.ok;
+    assert result.text == "\"hello\"";
+}
+
+test "escape module quotes quote character" {
+    let result: JsonEscapeResult =
+        quote("\"");
+
+    assert result.ok;
+    assert result.text == "\"\\\"\"";
+}
+
+test "escape module quotes backslash" {
+    let result: JsonEscapeResult =
+        quote("\\");
+
+    assert result.ok;
+    assert result.text == "\"\\\\\"";
+}
+
+test "escape module validates ordinary text" {
+    assert valid_string("hello");
+    assert valid_string("");
+    assert valid_string("Vitte");
+}
+
+/// -------------------------------------------------------------------------
+/// Empty arrays
+/// -------------------------------------------------------------------------
+
+test "encode empty array" {
+    let value: JsonValue =
+        array_value([]);
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+    assert result.text == "[]";
+}
+
+test "encode empty array compact" {
+    let value: JsonValue =
+        array_value([]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+    assert result.text == "[]";
+}
+
+test "encode empty array pretty" {
+    let value: JsonValue =
+        array_value([]);
+
+    let result: JsonEncodeResult =
+        encode_pretty(&value);
+
+    assert result.ok;
+    assert result.text == "[]";
+}
+
+/// -------------------------------------------------------------------------
+/// Primitive arrays
+/// -------------------------------------------------------------------------
+
+test "encode single element array" {
+    let value: JsonValue =
+        array_value([
+            integer_value(1)
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+    assert result.text == "[1]";
+}
+
+test "encode integer array" {
+    let value: JsonValue =
+        array_value([
+            integer_value(1),
+            integer_value(2),
+            integer_value(3)
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+    assert result.text == "[1,2,3]";
+}
+
+test "encode boolean array" {
+    let value: JsonValue =
+        array_value([
+            bool_value(true),
+            bool_value(false),
+            bool_value(true)
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "[true,false,true]";
+}
+
+test "encode null array" {
+    let value: JsonValue =
+        array_value([
+            null_value(),
+            null_value(),
+            null_value()
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "[null,null,null]";
+}
+
+test "encode string array" {
+    let value: JsonValue =
+        array_value([
+            string_value("a"),
+            string_value("b"),
+            string_value("c")
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "[\"a\",\"b\",\"c\"]";
+}
+
+test "encode heterogeneous array" {
+    let value: JsonValue =
+        array_value([
+            null_value(),
+            bool_value(true),
+            integer_value(42),
+            float_value(1.5),
+            string_value("Vitte")
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "[null,true,42,1.5,\"Vitte\"]";
+}
+
+/// -------------------------------------------------------------------------
+/// Nested arrays
+/// -------------------------------------------------------------------------
+
+test "encode nested empty arrays" {
+    let value: JsonValue =
+        array_value([
+            array_value([]),
+            array_value([]),
+            array_value([])
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "[[],[],[]]";
+}
+
+test "encode nested integer arrays" {
+    let value: JsonValue =
+        array_value([
+            array_value([
+                integer_value(1),
+                integer_value(2)
+            ]),
+            array_value([
+                integer_value(3),
+                integer_value(4)
+            ])
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "[[1,2],[3,4]]";
+}
+
+test "encode deeply nested array" {
+    let value: JsonValue =
+        array_value([
+            array_value([
+                array_value([
+                    array_value([
+                        integer_value(42)
+                    ])
+                ])
+            ])
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "[[[[42]]]]";
+}
+
+/// -------------------------------------------------------------------------
+/// Empty object
+/// -------------------------------------------------------------------------
+
+test "encode empty object" {
+    let value: JsonValue =
+        object_value([]);
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+    assert result.text == "{}";
+}
+
+test "encode empty object compact" {
+    let value: JsonValue =
+        object_value([]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+    assert result.text == "{}";
+}
+
+test "encode empty object pretty" {
+    let value: JsonValue =
+        object_value([]);
+
+    let result: JsonEncodeResult =
+        encode_pretty(&value);
+
+    assert result.ok;
+    assert result.text == "{}";
+}
+
+/// -------------------------------------------------------------------------
+/// Object members
+/// -------------------------------------------------------------------------
+
+test "encode object with null" {
+    let value: JsonValue =
+        object_value([
+            member(
+                "value",
+                null_value())
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "{\"value\":null}";
+}
+
+test "encode object with boolean" {
+    let value: JsonValue =
+        object_value([
+            member(
+                "enabled",
+                bool_value(true))
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "{\"enabled\":true}";
+}
+
+test "encode object with integer" {
+    let value: JsonValue =
+        object_value([
+            member(
+                "answer",
+                integer_value(42))
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "{\"answer\":42}";
+}
+
+test "encode object with float" {
+    let value: JsonValue =
+        object_value([
+            member(
+                "value",
+                float_value(1.5))
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "{\"value\":1.5}";
+}
+
+test "encode object with string" {
+    let value: JsonValue =
+        object_value([
+            member(
+                "name",
+                string_value("Vitte"))
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "{\"name\":\"Vitte\"}";
+}
+
+test "encode object with several members" {
+    let value: JsonValue =
+        object_value([
+            member(
+                "name",
+                string_value("Vitte")),
+            member(
+                "version",
+                integer_value(1)),
+            member(
+                "stable",
+                bool_value(true))
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "{\"name\":\"Vitte\",\"version\":1,\"stable\":true}";
+}
+
+/// -------------------------------------------------------------------------
+/// Object key escaping
+/// -------------------------------------------------------------------------
+
+test "encode object empty key" {
+    let value: JsonValue =
+        object_value([
+            member(
+                "",
+                integer_value(1))
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "{\"\":1}";
+}
+
+test "encode object key containing quote" {
+    let value: JsonValue =
+        object_value([
+            member(
+                "a\"b",
+                integer_value(1))
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "{\"a\\\"b\":1}";
+}
+
+test "encode object key containing backslash" {
+    let value: JsonValue =
+        object_value([
+            member(
+                "a\\b",
+                integer_value(1))
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "{\"a\\\\b\":1}";
+}
+
+test "encode object key containing newline" {
+    let value: JsonValue =
+        object_value([
+            member(
+                "a\nb",
+                integer_value(1))
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "{\"a\\nb\":1}";
+}
+
+test "encode unicode object key" {
+    let value: JsonValue =
+        object_value([
+            member(
+                "café",
+                integer_value(1))
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+}
+
+/// -------------------------------------------------------------------------
+/// Nested objects
+/// -------------------------------------------------------------------------
+
+test "encode nested object" {
+    let value: JsonValue =
+        object_value([
+            member(
+                "outer",
+                object_value([
+                    member(
+                        "inner",
+                        integer_value(42))
+                ]))
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "{\"outer\":{\"inner\":42}}";
+}
+
+test "encode deeply nested object" {
+    let value: JsonValue =
+        object_value([
+            member(
+                "a",
+                object_value([
+                    member(
+                        "b",
+                        object_value([
+                            member(
+                                "c",
+                                object_value([
+                                    member(
+                                        "d",
+                                        integer_value(42))
+                                ]))
+                        ]))
+                ]))
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "{\"a\":{\"b\":{\"c\":{\"d\":42}}}}";
+}
+
+/// -------------------------------------------------------------------------
+/// Mixed object / array trees
+/// -------------------------------------------------------------------------
+
+test "encode object containing array" {
+    let value: JsonValue =
+        object_value([
+            member(
+                "values",
+                array_value([
+                    integer_value(1),
+                    integer_value(2),
+                    integer_value(3)
+                ]))
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "{\"values\":[1,2,3]}";
+}
+
+test "encode array containing objects" {
+    let value: JsonValue =
+        array_value([
+            object_value([
+                member(
+                    "id",
+                    integer_value(1))
+            ]),
+            object_value([
+                member(
+                    "id",
+                    integer_value(2))
+            ])
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "[{\"id\":1},{\"id\":2}]";
+}
+
+test "encode realistic nested document" {
+    let value: JsonValue =
+        object_value([
+            member(
+                "name",
+                string_value("Vitte")),
+            member(
+                "version",
+                integer_value(1)),
+            member(
+                "enabled",
+                bool_value(true)),
+            member(
+                "metadata",
+                object_value([
+                    member(
+                        "language",
+                        string_value("Vitte")),
+                    member(
+                        "format",
+                        string_value("JSON"))
+                ])),
+            member(
+                "values",
+                array_value([
+                    integer_value(1),
+                    integer_value(2),
+                    integer_value(3)
+                ])),
+            member(
+                "optional",
+                null_value())
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "{\"name\":\"Vitte\",\"version\":1,\"enabled\":true,\"metadata\":{\"language\":\"Vitte\",\"format\":\"JSON\"},\"values\":[1,2,3],\"optional\":null}";
+}
+
+/// -------------------------------------------------------------------------
+/// Compact formatting
+/// -------------------------------------------------------------------------
+
+test "compact array has no formatting whitespace" {
+    let value: JsonValue =
+        array_value([
+            integer_value(1),
+            integer_value(2),
+            integer_value(3)
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+    assert result.text == "[1,2,3]";
+}
+
+test "compact object has no formatting whitespace" {
+    let value: JsonValue =
+        object_value([
+            member(
+                "a",
+                integer_value(1)),
+            member(
+                "b",
+                integer_value(2))
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "{\"a\":1,\"b\":2}";
+}
+
+/// -------------------------------------------------------------------------
+/// Pretty formatting
+/// -------------------------------------------------------------------------
+
+test "pretty primitive unchanged" {
+    let value: JsonValue =
+        integer_value(42);
+
+    let result: JsonEncodeResult =
+        encode_pretty(&value);
+
+    assert result.ok;
+    assert result.text == "42";
+}
+
+test "pretty empty array remains compact" {
+    let value: JsonValue =
+        array_value([]);
+
+    let result: JsonEncodeResult =
+        encode_pretty(&value);
+
+    assert result.ok;
+    assert result.text == "[]";
+}
+
+test "pretty empty object remains compact" {
+    let value: JsonValue =
+        object_value([]);
+
+    let result: JsonEncodeResult =
+        encode_pretty(&value);
+
+    assert result.ok;
+    assert result.text == "{}";
+}
+
+test "pretty array contains newlines" {
+    let value: JsonValue =
+        array_value([
+            integer_value(1),
+            integer_value(2)
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_pretty(&value);
+
+    assert result.ok;
+
+    assert result.text != "[1,2]";
+}
+
+test "pretty object contains formatted members" {
+    let value: JsonValue =
+        object_value([
+            member(
+                "a",
+                integer_value(1)),
+            member(
+                "b",
+                integer_value(2))
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_pretty(&value);
+
+    assert result.ok;
+
+    assert result.text !=
+        "{\"a\":1,\"b\":2}";
+}
+
+/// -------------------------------------------------------------------------
+/// Explicit options
+/// -------------------------------------------------------------------------
+
+test "compact options are compact" {
+    let options: JsonEncodeOptions =
+        compact_options();
+
+    assert !options.pretty;
+}
+
+test "pretty options are pretty" {
+    let options: JsonEncodeOptions =
+        pretty_options();
+
+    assert options.pretty;
+}
+
+test "default options produce valid primitive" {
+    let options: JsonEncodeOptions =
+        default_options();
+
+    let value: JsonValue =
+        integer_value(42);
+
+    let result: JsonEncodeResult =
+        encode_with_options(
+            &value,
+            options);
+
+    assert result.ok;
+    assert result.text == "42";
+}
+
+test "explicit compact options" {
+    let options: JsonEncodeOptions =
+        compact_options();
+
+    let value: JsonValue =
+        array_value([
+            integer_value(1),
+            integer_value(2)
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_with_options(
+            &value,
+            options);
+
+    assert result.ok;
+    assert result.text == "[1,2]";
+}
+
+test "explicit pretty options" {
+    let options: JsonEncodeOptions =
+        pretty_options();
+
+    let value: JsonValue =
+        array_value([
+            integer_value(1),
+            integer_value(2)
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_with_options(
+            &value,
+            options);
+
+    assert result.ok;
+}
+
+/// -------------------------------------------------------------------------
+/// Primitive helper APIs
+/// -------------------------------------------------------------------------
+
+test "encode null helper" {
+    let result: JsonEncodeResult =
+        encode_null();
+
+    assert result.ok;
+    assert result.text == "null";
+}
+
+test "encode boolean helper true" {
+    let result: JsonEncodeResult =
+        encode_bool(true);
+
+    assert result.ok;
+    assert result.text == "true";
+}
+
+test "encode boolean helper false" {
+    let result: JsonEncodeResult =
+        encode_bool(false);
+
+    assert result.ok;
+    assert result.text == "false";
+}
+
+test "encode integer helper" {
+    let result: JsonEncodeResult =
+        encode_integer(42);
+
+    assert result.ok;
+    assert result.text == "42";
+}
+
+test "encode negative integer helper" {
+    let result: JsonEncodeResult =
+        encode_integer(-42);
+
+    assert result.ok;
+    assert result.text == "-42";
+}
+
+test "encode float helper" {
+    let result: JsonEncodeResult =
+        encode_float(1.5);
+
+    assert result.ok;
+    assert result.text == "1.5";
+}
+
+test "encode string helper" {
+    let result: JsonEncodeResult =
+        encode_string("Vitte");
+
+    assert result.ok;
+
+    assert result.text ==
+        "\"Vitte\"";
+}
+
+test "encode escaped string helper" {
+    let result: JsonEncodeResult =
+        encode_string(
+            "a\"b\nc");
+
+    assert result.ok;
+
+    assert result.text ==
+        "\"a\\\"b\\nc\"";
+}
+
+/// -------------------------------------------------------------------------
+/// Determinism
+/// -------------------------------------------------------------------------
+
+test "encode primitive deterministic" {
+    let value: JsonValue =
+        integer_value(42);
+
+    let first: JsonEncodeResult =
+        encode(&value);
+
+    let second: JsonEncodeResult =
+        encode(&value);
+
+    assert first.ok;
+    assert second.ok;
+
+    assert first.text ==
+        second.text;
+}
+
+test "encode array deterministic" {
+    let value: JsonValue =
+        array_value([
+            integer_value(1),
+            string_value("two"),
+            bool_value(true)
+        ]);
+
+    let first: JsonEncodeResult =
+        encode_compact(&value);
+
+    let second: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert first.ok;
+    assert second.ok;
+
+    assert first.text ==
+        second.text;
+}
+
+test "encode object deterministic" {
+    let value: JsonValue =
+        object_value([
+            member(
+                "a",
+                integer_value(1)),
+            member(
+                "b",
+                integer_value(2)),
+            member(
+                "c",
+                integer_value(3))
+        ]);
+
+    let first: JsonEncodeResult =
+        encode_compact(&value);
+
+    let second: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert first.ok;
+    assert second.ok;
+
+    assert first.text ==
+        second.text;
+}
+
+/// -------------------------------------------------------------------------
+/// Member ordering
+/// -------------------------------------------------------------------------
+
+test "encoder preserves object member order" {
+    let value: JsonValue =
+        object_value([
+            member(
+                "z",
+                integer_value(1)),
+            member(
+                "a",
+                integer_value(2)),
+            member(
+                "m",
+                integer_value(3))
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "{\"z\":1,\"a\":2,\"m\":3}";
+}
+
+/// -------------------------------------------------------------------------
+/// Empty key validity regression
+/// -------------------------------------------------------------------------
+
+test "encoder accepts empty object key" {
+    let value: JsonValue =
+        object_value([
+            member(
+                "",
+                string_value("empty"))
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "{\"\":\"empty\"}";
+}
+
+/// -------------------------------------------------------------------------
+/// Duplicate member policy
+/// -------------------------------------------------------------------------
+
+test "encoder duplicate key policy is deterministic" {
+    let value: JsonValue =
+        object_value([
+            member(
+                "key",
+                integer_value(1)),
+            member(
+                "key",
+                integer_value(2))
+        ]);
+
+    let first: JsonEncodeResult =
+        encode_compact(&value);
+
+    let second: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert first.ok == second.ok;
+
+    assert first.text ==
+        second.text;
+
+    assert first.error ==
+        second.error;
+}
+
+/// -------------------------------------------------------------------------
+/// Long strings
+/// -------------------------------------------------------------------------
+
+test "encode moderately long string" {
+    let value: JsonValue =
+        string_value(
+            "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789");
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+}
+
+test "encode long escaped string" {
+    let value: JsonValue =
+        string_value(
+            "a\nb\tc\\d\"e\rf\ng\th\\i\"j");
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+}
+
+/// -------------------------------------------------------------------------
+/// Large arrays
+/// -------------------------------------------------------------------------
+
+test "encode medium integer array" {
+    let value: JsonValue =
+        array_value([
+            integer_value(0),
+            integer_value(1),
+            integer_value(2),
+            integer_value(3),
+            integer_value(4),
+            integer_value(5),
+            integer_value(6),
+            integer_value(7),
+            integer_value(8),
+            integer_value(9),
+            integer_value(10),
+            integer_value(11),
+            integer_value(12),
+            integer_value(13),
+            integer_value(14),
+            integer_value(15)
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]";
+}
+
+/// -------------------------------------------------------------------------
+/// Large objects
+/// -------------------------------------------------------------------------
+
+test "encode medium object" {
+    let value: JsonValue =
+        object_value([
+            member("a", integer_value(1)),
+            member("b", integer_value(2)),
+            member("c", integer_value(3)),
+            member("d", integer_value(4)),
+            member("e", integer_value(5)),
+            member("f", integer_value(6)),
+            member("g", integer_value(7)),
+            member("h", integer_value(8))
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "{\"a\":1,\"b\":2,\"c\":3,\"d\":4,\"e\":5,\"f\":6,\"g\":7,\"h\":8}";
+}
+
+/// -------------------------------------------------------------------------
+/// Complex escaped object
+/// -------------------------------------------------------------------------
+
+test "encode escaped keys and values together" {
+    let value: JsonValue =
+        object_value([
+            member(
+                "quote\"key",
+                string_value(
+                    "quote\"value")),
+            member(
+                "slash\\key",
+                string_value(
+                    "slash\\value")),
+            member(
+                "line\nkey",
+                string_value(
+                    "line\nvalue"))
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "{\"quote\\\"key\":\"quote\\\"value\",\"slash\\\\key\":\"slash\\\\value\",\"line\\nkey\":\"line\\nvalue\"}";
+}
+
+/// -------------------------------------------------------------------------
+/// Structural punctuation regression
+/// -------------------------------------------------------------------------
+
+test "encoder array punctuation" {
+    let value: JsonValue =
+        array_value([
+            integer_value(1),
+            integer_value(2),
+            integer_value(3)
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+
+    assert result.text[0] == '[';
+
+    assert result.text[
+        result.text.length - 1] ==
+        ']';
+}
+
+test "encoder object punctuation" {
+    let value: JsonValue =
+        object_value([
+            member(
+                "x",
+                integer_value(1))
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+
+    assert result.text[0] == '{';
+
+    assert result.text[
+        result.text.length - 1] ==
+        '}';
+}
+
+/// -------------------------------------------------------------------------
+/// Encoder output must itself obey JSON number grammar
+/// -------------------------------------------------------------------------
+
+test "encoded integers are valid json numbers" {
+    let zero: JsonEncodeResult =
+        encode_integer(0);
+
+    let positive: JsonEncodeResult =
+        encode_integer(42);
+
+    let negative: JsonEncodeResult =
+        encode_integer(-42);
+
+    assert zero.ok;
+    assert positive.ok;
+    assert negative.ok;
+
+    assert valid(zero.text);
+    assert valid(positive.text);
+    assert valid(negative.text);
+}
+
+test "encoded floats are valid json numbers" {
+    let first: JsonEncodeResult =
+        encode_float(1.5);
+
+    let second: JsonEncodeResult =
+        encode_float(-12.25);
+
+    assert first.ok;
+    assert second.ok;
+
+    assert valid(first.text);
+    assert valid(second.text);
+}
+
+/// -------------------------------------------------------------------------
+/// No accidental quoting of non-string values
+/// -------------------------------------------------------------------------
+
+test "encoder does not quote null" {
+    let value: JsonValue =
+        null_value();
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+    assert result.text == "null";
+    assert result.text != "\"null\"";
+}
+
+test "encoder does not quote boolean" {
+    let value: JsonValue =
+        bool_value(true);
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+    assert result.text == "true";
+    assert result.text != "\"true\"";
+}
+
+test "encoder does not quote number" {
+    let value: JsonValue =
+        integer_value(42);
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+    assert result.text == "42";
+    assert result.text != "\"42\"";
+}
+
+/// -------------------------------------------------------------------------
+/// String values that resemble other JSON values remain strings
+/// -------------------------------------------------------------------------
+
+test "encoder preserves numeric looking string" {
+    let value: JsonValue =
+        string_value("42");
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+    assert result.text == "\"42\"";
+}
+
+test "encoder preserves boolean looking string" {
+    let value: JsonValue =
+        string_value("true");
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+    assert result.text == "\"true\"";
+}
+
+test "encoder preserves null looking string" {
+    let value: JsonValue =
+        string_value("null");
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+    assert result.text == "\"null\"";
+}
+
+test "encoder preserves object looking string" {
+    let value: JsonValue =
+        string_value("{}");
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+    assert result.text == "\"{}\"";
+}
+
+test "encoder preserves array looking string" {
+    let value: JsonValue =
+        string_value("[]");
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+    assert result.text == "\"[]\"";
+}
+
+/// -------------------------------------------------------------------------
+/// Whitespace inside strings
+/// -------------------------------------------------------------------------
+
+test "encoder preserves ordinary spaces inside string" {
+    let value: JsonValue =
+        string_value("a b c");
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+    assert result.text == "\"a b c\"";
+}
+
+test "encoder preserves leading and trailing spaces inside string" {
+    let value: JsonValue =
+        string_value("  value  ");
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "\"  value  \"";
+}
+
+/// -------------------------------------------------------------------------
+/// Nested empty structures
+/// -------------------------------------------------------------------------
+
+test "encode array containing empty structures" {
+    let value: JsonValue =
+        array_value([
+            array_value([]),
+            object_value([]),
+            array_value([]),
+            object_value([])
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "[[],{},[],{}]";
+}
+
+test "encode object containing empty structures" {
+    let value: JsonValue =
+        object_value([
+            member(
+                "array",
+                array_value([])),
+            member(
+                "object",
+                object_value([]))
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "{\"array\":[],\"object\":{}}";
+}
+
+/// -------------------------------------------------------------------------
+/// Tree depth
+/// -------------------------------------------------------------------------
+
+test "encoder handles moderate nesting depth" {
+    let value: JsonValue =
+        array_value([
+            array_value([
+                array_value([
+                    array_value([
+                        array_value([
+                            array_value([
+                                array_value([
+                                    array_value([
+                                        integer_value(42)
+                                    ])
+                                ])
+                            ])
+                        ])
+                    ])
+                ])
+            ])
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "[[[[[[[[42]]]]]]]]";
+}
+
+/// -------------------------------------------------------------------------
+/// Value kind coverage
+/// -------------------------------------------------------------------------
+
+test "encoder covers every json value kind" {
+    let null_item: JsonValue =
+        null_value();
+
+    let bool_item: JsonValue =
+        bool_value(true);
+
+    let integer_item: JsonValue =
+        integer_value(42);
+
+    let float_item: JsonValue =
+        float_value(1.5);
+
+    let string_item: JsonValue =
+        string_value("Vitte");
+
+    let array_item: JsonValue =
+        array_value([]);
+
+    let object_item: JsonValue =
+        object_value([]);
+
+    assert encode(&null_item).ok;
+    assert encode(&bool_item).ok;
+    assert encode(&integer_item).ok;
+    assert encode(&float_item).ok;
+    assert encode(&string_item).ok;
+    assert encode(&array_item).ok;
+    assert encode(&object_item).ok;
+}
+
+/// -------------------------------------------------------------------------
+/// Repeated calls
+/// -------------------------------------------------------------------------
+
+test "encoder can encode multiple independent values" {
+    let first: JsonValue =
+        integer_value(1);
+
+    let second: JsonValue =
+        string_value("two");
+
+    let third: JsonValue =
+        bool_value(true);
+
+    let fourth: JsonValue =
+        null_value();
+
+    assert encode(&first).text == "1";
+
+    assert encode(&second).text ==
+        "\"two\"";
+
+    assert encode(&third).text ==
+        "true";
+
+    assert encode(&fourth).text ==
+        "null";
+}
+
+test "encoder does not retain previous output" {
+    let first: JsonValue =
+        string_value(
+            "first");
+
+    let second: JsonValue =
+        string_value(
+            "second");
+
+    let first_result: JsonEncodeResult =
+        encode(&first);
+
+    let second_result: JsonEncodeResult =
+        encode(&second);
+
+    assert first_result.ok;
+    assert second_result.ok;
+
+    assert first_result.text ==
+        "\"first\"";
+
+    assert second_result.text ==
+        "\"second\"";
+}
+
+/// -------------------------------------------------------------------------
+/// Compact complex document
+/// -------------------------------------------------------------------------
+
+test "encode complete compact document" {
+    let document: JsonValue =
+        object_value([
+            member(
+                "project",
+                string_value("Vitte")),
+            member(
+                "version",
+                integer_value(1)),
+            member(
+                "active",
+                bool_value(true)),
+            member(
+                "nullable",
+                null_value()),
+            member(
+                "numbers",
+                array_value([
+                    integer_value(0),
+                    integer_value(1),
+                    integer_value(-1),
+                    float_value(1.5)
+                ])),
+            member(
+                "strings",
+                array_value([
+                    string_value(""),
+                    string_value("hello"),
+                    string_value("a\"b"),
+                    string_value("a\\b"),
+                    string_value("a\nb")
+                ])),
+            member(
+                "nested",
+                object_value([
+                    member(
+                        "emptyArray",
+                        array_value([])),
+                    member(
+                        "emptyObject",
+                        object_value([]))
+                ]))
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_compact(
+            &document);
+
+    assert result.ok;
+
+    assert result.text ==
+        "{\"project\":\"Vitte\",\"version\":1,\"active\":true,\"nullable\":null,\"numbers\":[0,1,-1,1.5],\"strings\":[\"\",\"hello\",\"a\\\"b\",\"a\\\\b\",\"a\\nb\"],\"nested\":{\"emptyArray\":[],\"emptyObject\":{}}}";
+}
+
+/// -------------------------------------------------------------------------
+/// Pretty complex document
+/// -------------------------------------------------------------------------
+
+test "encode complete pretty document" {
+    let document: JsonValue =
+        object_value([
+            member(
+                "project",
+                string_value("Vitte")),
+            member(
+                "values",
+                array_value([
+                    integer_value(1),
+                    integer_value(2),
+                    integer_value(3)
+                ])),
+            member(
+                "metadata",
+                object_value([
+                    member(
+                        "enabled",
+                        bool_value(true)),
+                    member(
+                        "optional",
+                        null_value())
+                ]))
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_pretty(
+            &document);
+
+    assert result.ok;
+
+    assert result.text.length > 0;
+
+    assert result.text[0] == '{';
+
+    assert result.text[
+        result.text.length - 1] ==
+        '}';
+}
+
+/// -------------------------------------------------------------------------
+/// Encoder result invariants
+/// -------------------------------------------------------------------------
+
+test "successful encode has no error" {
+    let value: JsonValue =
+        integer_value(42);
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+
+    assert result.error ==
+        JsonEncodeError.None;
+}
+
+test "successful encode has nonempty output for primitive" {
+    let value: JsonValue =
+        bool_value(true);
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+    assert result.text.length > 0;
+}
+
+test "successful encode has nonempty output for container" {
+    let value: JsonValue =
+        array_value([]);
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+    assert result.text.length == 2;
+}
+
+/// -------------------------------------------------------------------------
+/// Encoder error metadata
+/// -------------------------------------------------------------------------
+
+test "encoder error none name" {
+    assert error_name(
+        JsonEncodeError.None) ==
+        "none";
+}
+
+/// -------------------------------------------------------------------------
+/// Regression — empty values
+/// -------------------------------------------------------------------------
+
+test "encoder empty value regression set" {
+    let empty_string: JsonValue =
+        string_value("");
+
+    let empty_array: JsonValue =
+        array_value([]);
+
+    let empty_object: JsonValue =
+        object_value([]);
+
+    assert encode_compact(
+        &empty_string).text ==
+        "\"\"";
+
+    assert encode_compact(
+        &empty_array).text ==
+        "[]";
+
+    assert encode_compact(
+        &empty_object).text ==
+        "{}";
+}
+
+/// -------------------------------------------------------------------------
+/// Regression — structural characters inside strings
+/// -------------------------------------------------------------------------
+
+test "encoder structural characters inside string" {
+    let value: JsonValue =
+        string_value(
+            "{}[],:");
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "\"{}[],:\"";
+}
+
+test "encoder json document inside string" {
+    let value: JsonValue =
+        string_value(
+            "{\"a\":[1,2,3]}");
+
+    let result: JsonEncodeResult =
+        encode(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "\"{\\\"a\\\":[1,2,3]}\"";
+}
+
+/// -------------------------------------------------------------------------
+/// Regression — punctuation placement
+/// -------------------------------------------------------------------------
+
+test "encoder single array item has no comma" {
+    let value: JsonValue =
+        array_value([
+            integer_value(42)
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+    assert result.text == "[42]";
+}
+
+test "encoder single object member has no comma" {
+    let value: JsonValue =
+        object_value([
+            member(
+                "x",
+                integer_value(42))
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "{\"x\":42}";
+}
+
+test "encoder array commas are exact" {
+    let value: JsonValue =
+        array_value([
+            integer_value(1),
+            integer_value(2),
+            integer_value(3),
+            integer_value(4)
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "[1,2,3,4]";
+}
+
+test "encoder object commas and colons are exact" {
+    let value: JsonValue =
+        object_value([
+            member(
+                "a",
+                integer_value(1)),
+            member(
+                "b",
+                integer_value(2)),
+            member(
+                "c",
+                integer_value(3))
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "{\"a\":1,\"b\":2,\"c\":3}";
+}
+
+/// -------------------------------------------------------------------------
+/// Regression — type preservation
+/// -------------------------------------------------------------------------
+
+test "encoder distinguishes number and numeric string" {
+    let number: JsonValue =
+        integer_value(42);
+
+    let text: JsonValue =
+        string_value("42");
+
+    let number_result: JsonEncodeResult =
+        encode(&number);
+
+    let text_result: JsonEncodeResult =
+        encode(&text);
+
+    assert number_result.ok;
+    assert text_result.ok;
+
+    assert number_result.text ==
+        "42";
+
+    assert text_result.text ==
+        "\"42\"";
+}
+
+test "encoder distinguishes boolean and boolean string" {
+    let boolean: JsonValue =
+        bool_value(true);
+
+    let text: JsonValue =
+        string_value("true");
+
+    assert encode(&boolean).text ==
+        "true";
+
+    assert encode(&text).text ==
+        "\"true\"";
+}
+
+test "encoder distinguishes null and null string" {
+    let null_item: JsonValue =
+        null_value();
+
+    let text: JsonValue =
+        string_value("null");
+
+    assert encode(&null_item).text ==
+        "null";
+
+    assert encode(&text).text ==
+        "\"null\"";
+}
+
+/// -------------------------------------------------------------------------
+/// Regression — escaped content must not alter structure
+/// -------------------------------------------------------------------------
+
+test "escaped quote cannot terminate encoded string early" {
+    let value: JsonValue =
+        array_value([
+            string_value(
+                "a\"b"),
+            integer_value(42)
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "[\"a\\\"b\",42]";
+}
+
+test "escaped backslash cannot corrupt following token" {
+    let value: JsonValue =
+        array_value([
+            string_value(
+                "a\\"),
+            bool_value(true)
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "[\"a\\\\\",true]";
+}
+
+test "escaped newline remains inside string" {
+    let value: JsonValue =
+        object_value([
+            member(
+                "text",
+                string_value(
+                    "line1\nline2")),
+            member(
+                "value",
+                integer_value(42))
+        ]);
+
+    let result: JsonEncodeResult =
+        encode_compact(&value);
+
+    assert result.ok;
+
+    assert result.text ==
+        "{\"text\":\"line1\\nline2\",\"value\":42}";
+}
+
+/// -------------------------------------------------------------------------
+/// Final integration smoke test
+/// -------------------------------------------------------------------------
+
+test "json encoder full integration smoke" {
+    let document: JsonValue =
+        object_value([
+            member(
+                "null",
+                null_value()),
+            member(
+                "boolean",
+                bool_value(true)),
+            member(
+                "integer",
+                integer_value(42)),
+            member(
+                "float",
+                float_value(1.5)),
+            member(
+                "string",
+                string_value(
+                    "Vitte \"JSON\"\n")),
+            member(
+                "array",
+                array_value([
+                    integer_value(1),
+                    integer_value(2),
+                    integer_value(3)
+                ])),
+            member(
+                "object",
+                object_value([
+                    member(
+                        "language",
+                        string_value("Vitte")),
+                    member(
+                        "valid",
+                        bool_value(true))
+                ]))
+        ]);
+
+    let compact: JsonEncodeResult =
+        encode_compact(
+            &document);
+
+    let pretty: JsonEncodeResult =
+        encode_pretty(
+            &document);
+
+    assert compact.ok;
+    assert pretty.ok;
+
+    assert compact.error ==
+        JsonEncodeError.None;
+
+    assert pretty.error ==
+        JsonEncodeError.None;
+
+    assert compact.text.length > 0;
+    assert pretty.text.length > 0;
+
+    assert compact.text[0] == '{';
+
+    assert compact.text[
+        compact.text.length - 1] ==
+        '}';
+
+    assert pretty.text[0] == '{';
+
+    assert pretty.text[
+        pretty.text.length - 1] ==
+        '}';
+}

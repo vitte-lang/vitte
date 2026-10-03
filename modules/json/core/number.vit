@@ -1,1 +1,1872 @@
-space json/core/number;
+/// JSON number core.
+///
+/// Complete JSON numeric representation and manipulation layer.
+///
+/// Goals:
+/// - preserve integer values when possible;
+/// - represent fractional JSON numbers;
+/// - validate strict JSON number syntax;
+/// - parse signs, integer parts, fractions and exponents;
+/// - expose comparisons and arithmetic;
+/// - provide safe parse results;
+/// - avoid accepting non-JSON forms such as hexadecimal, NaN or Infinity;
+/// - use only Vitte language syntax.
+///
+/// Accepted JSON grammar:
+///
+/// number
+///     = [ "-" ] int [ frac ] [ exp ]
+///
+/// int
+///     = "0"
+///     | digit1-9 { digit }
+///
+/// frac
+///     = "." digit { digit }
+///
+/// exp
+///     = ( "e" | "E" )
+///       [ "+" | "-" ]
+///       digit { digit }
+///
+/// Examples accepted:
+///     0
+///     -0
+///     42
+///     -42
+///     3.14
+///     -0.125
+///     1e10
+///     1E10
+///     1e+10
+///     1e-10
+///     -12.5e+3
+///
+/// Examples rejected:
+///     +1
+///     01
+///     -01
+///     .5
+///     1.
+///     1e
+///     1e+
+///     0x2A
+///     NaN
+///     Infinity
+
+space json::core::number;
+
+const DECIMAL_BASE: i64 = 10;
+
+const ZERO_I64: i64 = 0;
+const ONE_I64: i64 = 1;
+const TWO_I64: i64 = 2;
+const TEN_I64: i64 = 10;
+
+const ZERO_F64: f64 = 0.0;
+const ONE_F64: f64 = 1.0;
+const TEN_F64: f64 = 10.0;
+
+pick JsonNumberKind {
+    Integer,
+    Float,
+}
+
+pick JsonNumberParseError {
+    None,
+    Empty,
+    InvalidCharacter,
+    InvalidSign,
+    InvalidLeadingZero,
+    MissingInteger,
+    MissingFraction,
+    MissingExponent,
+    IntegerOverflow,
+    ExponentOverflow,
+    TrailingCharacters,
+}
+
+form JsonNumber {
+    kind: JsonNumberKind,
+    integer_value: i64,
+    float_value: f64,
+}
+
+form JsonNumberParseResult {
+    ok: bool,
+    value: JsonNumber,
+    error: JsonNumberParseError,
+    offset: usize,
+}
+
+form JsonNumberScan {
+    negative: bool,
+
+    integer_start: usize,
+    integer_end: usize,
+
+    fraction_present: bool,
+    fraction_start: usize,
+    fraction_end: usize,
+
+    exponent_present: bool,
+    exponent_negative: bool,
+    exponent_start: usize,
+    exponent_end: usize,
+
+    end: usize,
+}
+
+proc integer(
+    value: i64
+) -> JsonNumber {
+    give JsonNumber {
+        kind: JsonNumberKind.Integer,
+        integer_value: value,
+        float_value: ZERO_F64,
+    };
+}
+
+proc float(
+    value: f64
+) -> JsonNumber {
+    give JsonNumber {
+        kind: JsonNumberKind.Float,
+        integer_value: ZERO_I64,
+        float_value: value,
+    };
+}
+
+proc zero() -> JsonNumber {
+    give integer(0);
+}
+
+proc one() -> JsonNumber {
+    give integer(1);
+}
+
+proc minus_one() -> JsonNumber {
+    give integer(-1);
+}
+
+proc integer_zero() -> JsonNumber {
+    give integer(0);
+}
+
+proc float_zero() -> JsonNumber {
+    give float(0.0);
+}
+
+proc integer_one() -> JsonNumber {
+    give integer(1);
+}
+
+proc float_one() -> JsonNumber {
+    give float(1.0);
+}
+
+proc is_integer(
+    number: &JsonNumber
+) -> bool {
+    give number.kind ==
+         JsonNumberKind.Integer;
+}
+
+proc is_float(
+    number: &JsonNumber
+) -> bool {
+    give number.kind ==
+         JsonNumberKind.Float;
+}
+
+proc as_integer(
+    number: &JsonNumber
+) -> i64 {
+    if is_integer(number) {
+        give number.integer_value;
+    }
+
+    give number.float_value as i64;
+}
+
+proc as_float(
+    number: &JsonNumber
+) -> f64 {
+    if is_float(number) {
+        give number.float_value;
+    }
+
+    give number.integer_value as f64;
+}
+
+proc copy(
+    number: &JsonNumber
+) -> JsonNumber {
+    give JsonNumber {
+        kind: number.kind,
+        integer_value:
+            number.integer_value,
+        float_value:
+            number.float_value,
+    };
+}
+
+proc is_zero(
+    number: &JsonNumber
+) -> bool {
+    if is_integer(number) {
+        give number.integer_value == 0;
+    }
+
+    give number.float_value == 0.0;
+}
+
+proc is_one(
+    number: &JsonNumber
+) -> bool {
+    if is_integer(number) {
+        give number.integer_value == 1;
+    }
+
+    give number.float_value == 1.0;
+}
+
+proc is_positive(
+    number: &JsonNumber
+) -> bool {
+    if is_integer(number) {
+        give number.integer_value > 0;
+    }
+
+    give number.float_value > 0.0;
+}
+
+proc is_negative(
+    number: &JsonNumber
+) -> bool {
+    if is_integer(number) {
+        give number.integer_value < 0;
+    }
+
+    give number.float_value < 0.0;
+}
+
+proc is_non_negative(
+    number: &JsonNumber
+) -> bool {
+    give !is_negative(number);
+}
+
+proc is_non_positive(
+    number: &JsonNumber
+) -> bool {
+    give !is_positive(number);
+}
+
+proc sign(
+    number: &JsonNumber
+) -> i64 {
+    if is_negative(number) {
+        give -1;
+    }
+
+    if is_positive(number) {
+        give 1;
+    }
+
+    give 0;
+}
+
+proc negate(
+    number: &JsonNumber
+) -> JsonNumber {
+    if is_integer(number) {
+        give integer(
+            -number.integer_value);
+    }
+
+    give float(
+        -number.float_value);
+}
+
+proc absolute(
+    number: &JsonNumber
+) -> JsonNumber {
+    if is_negative(number) {
+        give negate(number);
+    }
+
+    give copy(number);
+}
+
+proc normalize(
+    number: &JsonNumber
+) -> JsonNumber {
+    if is_integer(number) {
+        give integer(
+            number.integer_value);
+    }
+
+    let candidate: i64 =
+        number.float_value as i64;
+
+    let round_trip: f64 =
+        candidate as f64;
+
+    if round_trip ==
+       number.float_value {
+        give integer(candidate);
+    }
+
+    give float(
+        number.float_value);
+}
+
+proc equals(
+    left: &JsonNumber,
+    right: &JsonNumber
+) -> bool {
+    if is_integer(left) &&
+       is_integer(right) {
+        give left.integer_value ==
+             right.integer_value;
+    }
+
+    give as_float(left) ==
+         as_float(right);
+}
+
+proc not_equals(
+    left: &JsonNumber,
+    right: &JsonNumber
+) -> bool {
+    give !equals(
+        left,
+        right);
+}
+
+proc less_than(
+    left: &JsonNumber,
+    right: &JsonNumber
+) -> bool {
+    if is_integer(left) &&
+       is_integer(right) {
+        give left.integer_value <
+             right.integer_value;
+    }
+
+    give as_float(left) <
+         as_float(right);
+}
+
+proc less_than_or_equal(
+    left: &JsonNumber,
+    right: &JsonNumber
+) -> bool {
+    give less_than(
+               left,
+               right) ||
+         equals(
+               left,
+               right);
+}
+
+proc greater_than(
+    left: &JsonNumber,
+    right: &JsonNumber
+) -> bool {
+    if is_integer(left) &&
+       is_integer(right) {
+        give left.integer_value >
+             right.integer_value;
+    }
+
+    give as_float(left) >
+         as_float(right);
+}
+
+proc greater_than_or_equal(
+    left: &JsonNumber,
+    right: &JsonNumber
+) -> bool {
+    give greater_than(
+               left,
+               right) ||
+         equals(
+               left,
+               right);
+}
+
+proc compare(
+    left: &JsonNumber,
+    right: &JsonNumber
+) -> i64 {
+    if less_than(
+        left,
+        right) {
+        give -1;
+    }
+
+    if greater_than(
+        left,
+        right) {
+        give 1;
+    }
+
+    give 0;
+}
+
+proc minimum(
+    left: &JsonNumber,
+    right: &JsonNumber
+) -> JsonNumber {
+    if less_than_or_equal(
+        left,
+        right) {
+        give copy(left);
+    }
+
+    give copy(right);
+}
+
+proc maximum(
+    left: &JsonNumber,
+    right: &JsonNumber
+) -> JsonNumber {
+    if greater_than_or_equal(
+        left,
+        right) {
+        give copy(left);
+    }
+
+    give copy(right);
+}
+
+proc clamp(
+    number: &JsonNumber,
+    minimum_value: &JsonNumber,
+    maximum_value: &JsonNumber
+) -> JsonNumber {
+    if less_than(
+        number,
+        minimum_value) {
+        give copy(
+            minimum_value);
+    }
+
+    if greater_than(
+        number,
+        maximum_value) {
+        give copy(
+            maximum_value);
+    }
+
+    give copy(number);
+}
+
+proc between(
+    number: &JsonNumber,
+    minimum_value: &JsonNumber,
+    maximum_value: &JsonNumber
+) -> bool {
+    give greater_than_or_equal(
+               number,
+               minimum_value) &&
+         less_than_or_equal(
+               number,
+               maximum_value);
+}
+
+proc add(
+    left: &JsonNumber,
+    right: &JsonNumber
+) -> JsonNumber {
+    if is_integer(left) &&
+       is_integer(right) {
+        give integer(
+            left.integer_value +
+            right.integer_value);
+    }
+
+    give float(
+        as_float(left) +
+        as_float(right));
+}
+
+proc subtract(
+    left: &JsonNumber,
+    right: &JsonNumber
+) -> JsonNumber {
+    if is_integer(left) &&
+       is_integer(right) {
+        give integer(
+            left.integer_value -
+            right.integer_value);
+    }
+
+    give float(
+        as_float(left) -
+        as_float(right));
+}
+
+proc multiply(
+    left: &JsonNumber,
+    right: &JsonNumber
+) -> JsonNumber {
+    if is_integer(left) &&
+       is_integer(right) {
+        give integer(
+            left.integer_value *
+            right.integer_value);
+    }
+
+    give float(
+        as_float(left) *
+        as_float(right));
+}
+
+proc divide(
+    left: &JsonNumber,
+    right: &JsonNumber
+) -> JsonNumber {
+    if is_zero(right) {
+        give zero();
+    }
+
+    give float(
+        as_float(left) /
+        as_float(right));
+}
+
+proc remainder(
+    left: &JsonNumber,
+    right: &JsonNumber
+) -> JsonNumber {
+    if !is_integer(left) ||
+       !is_integer(right) {
+        give zero();
+    }
+
+    if right.integer_value == 0 {
+        give zero();
+    }
+
+    give integer(
+        left.integer_value %
+        right.integer_value);
+}
+
+proc increment(
+    number: &JsonNumber
+) -> JsonNumber {
+    let amount: JsonNumber =
+        one();
+
+    give add(
+        number,
+        &amount);
+}
+
+proc decrement(
+    number: &JsonNumber
+) -> JsonNumber {
+    let amount: JsonNumber =
+        one();
+
+    give subtract(
+        number,
+        &amount);
+}
+
+proc square(
+    number: &JsonNumber
+) -> JsonNumber {
+    give multiply(
+        number,
+        number);
+}
+
+proc cube(
+    number: &JsonNumber
+) -> JsonNumber {
+    let squared: JsonNumber =
+        square(number);
+
+    give multiply(
+        &squared,
+        number);
+}
+
+proc power_integer(
+    number: &JsonNumber,
+    exponent: usize
+) -> JsonNumber {
+    if exponent == 0 {
+        give one();
+    }
+
+    let mut result: JsonNumber =
+        one();
+
+    let mut index: usize = 0;
+
+    while index < exponent {
+        set result =
+            multiply(
+                &result,
+                number);
+
+        set index += 1;
+    }
+
+    give result;
+}
+
+proc valid_digit(
+    character: char
+) -> bool {
+    give character >= '0' &&
+         character <= '9';
+}
+
+proc valid_nonzero_digit(
+    character: char
+) -> bool {
+    give character >= '1' &&
+         character <= '9';
+}
+
+proc valid_exponent_marker(
+    character: char
+) -> bool {
+    give character == 'e' ||
+         character == 'E';
+}
+
+proc valid_exponent_sign(
+    character: char
+) -> bool {
+    give character == '+' ||
+         character == '-';
+}
+
+proc valid_number_start(
+    character: char
+) -> bool {
+    give character == '-' ||
+         valid_digit(
+             character);
+}
+
+proc digit_value(
+    character: char
+) -> i64 {
+    if character == '0' {
+        give 0;
+    }
+
+    if character == '1' {
+        give 1;
+    }
+
+    if character == '2' {
+        give 2;
+    }
+
+    if character == '3' {
+        give 3;
+    }
+
+    if character == '4' {
+        give 4;
+    }
+
+    if character == '5' {
+        give 5;
+    }
+
+    if character == '6' {
+        give 6;
+    }
+
+    if character == '7' {
+        give 7;
+    }
+
+    if character == '8' {
+        give 8;
+    }
+
+    if character == '9' {
+        give 9;
+    }
+
+    give -1;
+}
+
+proc decimal_digits(
+    value: i64
+) -> usize {
+    let mut current: i64 =
+        value;
+
+    if current < 0 {
+        set current =
+            -current;
+    }
+
+    if current == 0 {
+        give 1;
+    }
+
+    let mut count: usize = 0;
+
+    while current > 0 {
+        set current =
+            current / DECIMAL_BASE;
+
+        set count += 1;
+    }
+
+    give count;
+}
+
+proc power_of_ten_i64(
+    exponent: usize
+) -> i64 {
+    let mut result: i64 =
+        ONE_I64;
+
+    let mut index: usize = 0;
+
+    while index < exponent {
+        set result *=
+            TEN_I64;
+
+        set index += 1;
+    }
+
+    give result;
+}
+
+proc power_of_ten_f64(
+    exponent: usize
+) -> f64 {
+    let mut result: f64 =
+        ONE_F64;
+
+    let mut index: usize = 0;
+
+    while index < exponent {
+        set result *=
+            TEN_F64;
+
+        set index += 1;
+    }
+
+    give result;
+}
+
+proc negative_power_of_ten_f64(
+    exponent: usize
+) -> f64 {
+    let mut result: f64 =
+        ONE_F64;
+
+    let mut index: usize = 0;
+
+    while index < exponent {
+        set result /=
+            TEN_F64;
+
+        set index += 1;
+    }
+
+    give result;
+}
+
+proc apply_decimal_exponent(
+    value: f64,
+    exponent: i64
+) -> f64 {
+    let mut result: f64 =
+        value;
+
+    if exponent > 0 {
+        let mut remaining: i64 =
+            exponent;
+
+        while remaining > 0 {
+            set result *= 10.0;
+            set remaining -= 1;
+        }
+
+        give result;
+    }
+
+    if exponent < 0 {
+        let mut remaining: i64 =
+            -exponent;
+
+        while remaining > 0 {
+            set result /= 10.0;
+            set remaining -= 1;
+        }
+    }
+
+    give result;
+}
+
+proc parse_error(
+    error: JsonNumberParseError,
+    offset: usize
+) -> JsonNumberParseResult {
+    give JsonNumberParseResult {
+        ok: false,
+        value: zero(),
+        error: error,
+        offset: offset,
+    };
+}
+
+proc parse_success(
+    value: JsonNumber,
+    offset: usize
+) -> JsonNumberParseResult {
+    give JsonNumberParseResult {
+        ok: true,
+        value: value,
+        error: JsonNumberParseError.None,
+        offset: offset,
+    };
+}
+
+proc scan_empty() -> JsonNumberScan {
+    give JsonNumberScan {
+        negative: false,
+
+        integer_start: 0,
+        integer_end: 0,
+
+        fraction_present: false,
+        fraction_start: 0,
+        fraction_end: 0,
+
+        exponent_present: false,
+        exponent_negative: false,
+        exponent_start: 0,
+        exponent_end: 0,
+
+        end: 0,
+    };
+}
+
+proc scan_number(
+    text: string
+) -> JsonNumberParseResult {
+    if text.length == 0 {
+        give parse_error(
+            JsonNumberParseError.Empty,
+            0);
+    }
+
+    let mut index: usize = 0;
+
+    if text[index] == '-' {
+        set index += 1;
+
+        if index >= text.length {
+            give parse_error(
+                JsonNumberParseError.MissingInteger,
+                index);
+        }
+    }
+
+    if index >= text.length {
+        give parse_error(
+            JsonNumberParseError.MissingInteger,
+            index);
+    }
+
+    if text[index] == '0' {
+        set index += 1;
+
+        if index < text.length {
+            if valid_digit(
+                text[index]) {
+                give parse_error(
+                    JsonNumberParseError.InvalidLeadingZero,
+                    index);
+            }
+        }
+    } else {
+        if !valid_nonzero_digit(
+            text[index]) {
+            give parse_error(
+                JsonNumberParseError.MissingInteger,
+                index);
+        }
+
+        while index < text.length &&
+              valid_digit(text[index]) {
+            set index += 1;
+        }
+    }
+
+    if index < text.length &&
+       text[index] == '.' {
+        set index += 1;
+
+        if index >= text.length ||
+           !valid_digit(text[index]) {
+            give parse_error(
+                JsonNumberParseError.MissingFraction,
+                index);
+        }
+
+        while index < text.length &&
+              valid_digit(text[index]) {
+            set index += 1;
+        }
+    }
+
+    if index < text.length &&
+       valid_exponent_marker(
+           text[index]) {
+        set index += 1;
+
+        if index < text.length &&
+           valid_exponent_sign(
+               text[index]) {
+            set index += 1;
+        }
+
+        if index >= text.length ||
+           !valid_digit(text[index]) {
+            give parse_error(
+                JsonNumberParseError.MissingExponent,
+                index);
+        }
+
+        while index < text.length &&
+              valid_digit(text[index]) {
+            set index += 1;
+        }
+    }
+
+    if index != text.length {
+        give parse_error(
+            JsonNumberParseError.TrailingCharacters,
+            index);
+    }
+
+    give parse_success(
+        zero(),
+        index);
+}
+
+proc is_valid_json_number(
+    text: string
+) -> bool {
+    let result: JsonNumberParseResult =
+        scan_number(text);
+
+    give result.ok;
+}
+
+proc has_fraction(
+    text: string
+) -> bool {
+    let mut index: usize = 0;
+
+    while index < text.length {
+        if text[index] == '.' {
+            give true;
+        }
+
+        set index += 1;
+    }
+
+    give false;
+}
+
+proc has_exponent(
+    text: string
+) -> bool {
+    let mut index: usize = 0;
+
+    while index < text.length {
+        if valid_exponent_marker(
+            text[index]) {
+            give true;
+        }
+
+        set index += 1;
+    }
+
+    give false;
+}
+
+proc is_integer_syntax(
+    text: string
+) -> bool {
+    if !is_valid_json_number(text) {
+        give false;
+    }
+
+    give !has_fraction(text) &&
+         !has_exponent(text);
+}
+
+proc parse_integer_digits(
+    text: string,
+    start: usize,
+    end: usize
+) -> i64 {
+    let mut value: i64 = 0;
+    let mut index: usize = start;
+
+    while index < end {
+        let digit: i64 =
+            digit_value(
+                text[index]);
+
+        set value =
+            value * DECIMAL_BASE +
+            digit;
+
+        set index += 1;
+    }
+
+    give value;
+}
+
+proc parse_integer(
+    text: string
+) -> JsonNumberParseResult {
+    let syntax: JsonNumberParseResult =
+        scan_number(text);
+
+    if !syntax.ok {
+        give syntax;
+    }
+
+    if !is_integer_syntax(text) {
+        give parse_error(
+            JsonNumberParseError.InvalidCharacter,
+            0);
+    }
+
+    let mut index: usize = 0;
+    let mut negative: bool = false;
+
+    if text[index] == '-' {
+        set negative = true;
+        set index += 1;
+    }
+
+    let value: i64 =
+        parse_integer_digits(
+            text,
+            index,
+            text.length);
+
+    if negative {
+        give parse_success(
+            integer(-value),
+            text.length);
+    }
+
+    give parse_success(
+        integer(value),
+        text.length);
+}
+
+proc parse_fraction_value(
+    text: string,
+    start: usize,
+    end: usize
+) -> f64 {
+    let mut value: f64 = 0.0;
+    let mut divisor: f64 = 10.0;
+
+    let mut index: usize = start;
+
+    while index < end {
+        let digit: i64 =
+            digit_value(
+                text[index]);
+
+        set value +=
+            (digit as f64) /
+            divisor;
+
+        set divisor *= 10.0;
+
+        set index += 1;
+    }
+
+    give value;
+}
+
+proc parse_exponent_digits(
+    text: string,
+    start: usize,
+    end: usize
+) -> i64 {
+    let mut value: i64 = 0;
+    let mut index: usize = start;
+
+    while index < end {
+        let digit: i64 =
+            digit_value(
+                text[index]);
+
+        set value =
+            value * 10 +
+            digit;
+
+        set index += 1;
+    }
+
+    give value;
+}
+
+proc parse_float_value(
+    text: string
+) -> f64 {
+    let mut index: usize = 0;
+    let mut negative: bool = false;
+
+    if text[index] == '-' {
+        set negative = true;
+        set index += 1;
+    }
+
+    let integer_start: usize =
+        index;
+
+    while index < text.length &&
+          valid_digit(text[index]) {
+        set index += 1;
+    }
+
+    let integer_end: usize =
+        index;
+
+    let integer_component: i64 =
+        parse_integer_digits(
+            text,
+            integer_start,
+            integer_end);
+
+    let mut result: f64 =
+        integer_component as f64;
+
+    if index < text.length &&
+       text[index] == '.' {
+        set index += 1;
+
+        let fraction_start: usize =
+            index;
+
+        while index < text.length &&
+              valid_digit(text[index]) {
+            set index += 1;
+        }
+
+        let fraction_component: f64 =
+            parse_fraction_value(
+                text,
+                fraction_start,
+                index);
+
+        set result +=
+            fraction_component;
+    }
+
+    if index < text.length &&
+       valid_exponent_marker(
+           text[index]) {
+        set index += 1;
+
+        let mut exponent_negative: bool =
+            false;
+
+        if index < text.length {
+            if text[index] == '-' {
+                set exponent_negative =
+                    true;
+
+                set index += 1;
+            } else {
+                if text[index] == '+' {
+                    set index += 1;
+                }
+            }
+        }
+
+        let exponent_start: usize =
+            index;
+
+        while index < text.length &&
+              valid_digit(text[index]) {
+            set index += 1;
+        }
+
+        let mut exponent: i64 =
+            parse_exponent_digits(
+                text,
+                exponent_start,
+                index);
+
+        if exponent_negative {
+            set exponent =
+                -exponent;
+        }
+
+        set result =
+            apply_decimal_exponent(
+                result,
+                exponent);
+    }
+
+    if negative {
+        set result =
+            -result;
+    }
+
+    give result;
+}
+
+proc parse(
+    text: string
+) -> JsonNumberParseResult {
+    let syntax: JsonNumberParseResult =
+        scan_number(text);
+
+    if !syntax.ok {
+        give syntax;
+    }
+
+    if is_integer_syntax(text) {
+        give parse_integer(text);
+    }
+
+    let value: f64 =
+        parse_float_value(text);
+
+    give parse_success(
+        float(value),
+        text.length);
+}
+
+proc parse_or_zero(
+    text: string
+) -> JsonNumber {
+    let result: JsonNumberParseResult =
+        parse(text);
+
+    if !result.ok {
+        give zero();
+    }
+
+    give result.value;
+}
+
+proc parse_or(
+    text: string,
+    fallback: JsonNumber
+) -> JsonNumber {
+    let result: JsonNumberParseResult =
+        parse(text);
+
+    if result.ok {
+        give result.value;
+    }
+
+    give fallback;
+}
+
+proc parse_error_name(
+    error: JsonNumberParseError
+) -> string {
+    if error ==
+       JsonNumberParseError.None {
+        give "none";
+    }
+
+    if error ==
+       JsonNumberParseError.Empty {
+        give "empty";
+    }
+
+    if error ==
+       JsonNumberParseError.InvalidCharacter {
+        give "invalid character";
+    }
+
+    if error ==
+       JsonNumberParseError.InvalidSign {
+        give "invalid sign";
+    }
+
+    if error ==
+       JsonNumberParseError.InvalidLeadingZero {
+        give "invalid leading zero";
+    }
+
+    if error ==
+       JsonNumberParseError.MissingInteger {
+        give "missing integer";
+    }
+
+    if error ==
+       JsonNumberParseError.MissingFraction {
+        give "missing fraction";
+    }
+
+    if error ==
+       JsonNumberParseError.MissingExponent {
+        give "missing exponent";
+    }
+
+    if error ==
+       JsonNumberParseError.IntegerOverflow {
+        give "integer overflow";
+    }
+
+    if error ==
+       JsonNumberParseError.ExponentOverflow {
+        give "exponent overflow";
+    }
+
+    give "trailing characters";
+}
+
+proc validate(
+    number: &JsonNumber
+) -> bool {
+    if number.kind ==
+       JsonNumberKind.Integer {
+        give true;
+    }
+
+    if number.kind ==
+       JsonNumberKind.Float {
+        give true;
+    }
+
+    give false;
+}
+
+proc test_integer_construction() -> bool {
+    let value: JsonNumber =
+        integer(42);
+
+    give is_integer(&value) &&
+         !is_float(&value) &&
+         value.integer_value == 42 &&
+         as_integer(&value) == 42 &&
+         as_float(&value) == 42.0;
+}
+
+proc test_float_construction() -> bool {
+    let value: JsonNumber =
+        float(42.5);
+
+    give is_float(&value) &&
+         !is_integer(&value) &&
+         value.float_value == 42.5 &&
+         as_float(&value) == 42.5;
+}
+
+proc test_zero() -> bool {
+    let value: JsonNumber =
+        zero();
+
+    give is_zero(&value) &&
+         !is_positive(&value) &&
+         !is_negative(&value) &&
+         sign(&value) == 0;
+}
+
+proc test_positive() -> bool {
+    let value: JsonNumber =
+        integer(42);
+
+    give is_positive(&value) &&
+         is_non_negative(&value) &&
+         !is_negative(&value) &&
+         sign(&value) == 1;
+}
+
+proc test_negative() -> bool {
+    let value: JsonNumber =
+        integer(-42);
+
+    give is_negative(&value) &&
+         is_non_positive(&value) &&
+         !is_positive(&value) &&
+         sign(&value) == -1;
+}
+
+proc test_negate() -> bool {
+    let positive: JsonNumber =
+        integer(42);
+
+    let negative: JsonNumber =
+        negate(&positive);
+
+    give equals(
+        &negative,
+        &JsonNumber {
+            kind: JsonNumberKind.Integer,
+            integer_value: -42,
+            float_value: 0.0,
+        });
+}
+
+proc test_absolute() -> bool {
+    let negative: JsonNumber =
+        integer(-42);
+
+    let result: JsonNumber =
+        absolute(&negative);
+
+    give equals(
+        &result,
+        &JsonNumber {
+            kind: JsonNumberKind.Integer,
+            integer_value: 42,
+            float_value: 0.0,
+        });
+}
+
+proc test_integer_addition() -> bool {
+    let left: JsonNumber =
+        integer(20);
+
+    let right: JsonNumber =
+        integer(22);
+
+    let result: JsonNumber =
+        add(
+            &left,
+            &right);
+
+    give is_integer(&result) &&
+         result.integer_value == 42;
+}
+
+proc test_mixed_addition() -> bool {
+    let left: JsonNumber =
+        integer(20);
+
+    let right: JsonNumber =
+        float(22.5);
+
+    let result: JsonNumber =
+        add(
+            &left,
+            &right);
+
+    give is_float(&result) &&
+         result.float_value == 42.5;
+}
+
+proc test_subtraction() -> bool {
+    let left: JsonNumber =
+        integer(64);
+
+    let right: JsonNumber =
+        integer(22);
+
+    let result: JsonNumber =
+        subtract(
+            &left,
+            &right);
+
+    give result.integer_value == 42;
+}
+
+proc test_multiplication() -> bool {
+    let left: JsonNumber =
+        integer(6);
+
+    let right: JsonNumber =
+        integer(7);
+
+    let result: JsonNumber =
+        multiply(
+            &left,
+            &right);
+
+    give result.integer_value == 42;
+}
+
+proc test_division() -> bool {
+    let left: JsonNumber =
+        integer(84);
+
+    let right: JsonNumber =
+        integer(2);
+
+    let result: JsonNumber =
+        divide(
+            &left,
+            &right);
+
+    give as_float(&result) == 42.0;
+}
+
+proc test_remainder() -> bool {
+    let left: JsonNumber =
+        integer(142);
+
+    let right: JsonNumber =
+        integer(100);
+
+    let result: JsonNumber =
+        remainder(
+            &left,
+            &right);
+
+    give result.integer_value == 42;
+}
+
+proc test_comparison() -> bool {
+    let twenty: JsonNumber =
+        integer(20);
+
+    let twenty_two: JsonNumber =
+        integer(22);
+
+    let forty_two: JsonNumber =
+        integer(42);
+
+    let forty_two_float: JsonNumber =
+        float(42.0);
+
+    give less_than(
+               &twenty,
+               &twenty_two) &&
+         greater_than(
+               &twenty_two,
+               &twenty) &&
+         equals(
+               &forty_two,
+               &forty_two_float) &&
+         compare(
+               &twenty,
+               &twenty_two) == -1 &&
+         compare(
+               &forty_two,
+               &forty_two_float) == 0;
+}
+
+proc test_clamp() -> bool {
+    let minimum_value: JsonNumber =
+        integer(0);
+
+    let maximum_value: JsonNumber =
+        integer(100);
+
+    let inside: JsonNumber =
+        integer(42);
+
+    let below: JsonNumber =
+        integer(-42);
+
+    let above: JsonNumber =
+        integer(142);
+
+    let inside_result: JsonNumber =
+        clamp(
+            &inside,
+            &minimum_value,
+            &maximum_value);
+
+    let below_result: JsonNumber =
+        clamp(
+            &below,
+            &minimum_value,
+            &maximum_value);
+
+    let above_result: JsonNumber =
+        clamp(
+            &above,
+            &minimum_value,
+            &maximum_value);
+
+    give as_integer(&inside_result) == 42 &&
+         as_integer(&below_result) == 0 &&
+         as_integer(&above_result) == 100;
+}
+
+proc test_valid_integer_syntax() -> bool {
+    give is_valid_json_number("0") &&
+         is_valid_json_number("-0") &&
+         is_valid_json_number("1") &&
+         is_valid_json_number("42") &&
+         is_valid_json_number("-42") &&
+         is_valid_json_number("1234567890");
+}
+
+proc test_valid_fraction_syntax() -> bool {
+    give is_valid_json_number("0.0") &&
+         is_valid_json_number("-0.0") &&
+         is_valid_json_number("3.14") &&
+         is_valid_json_number("-3.14") &&
+         is_valid_json_number("0.125") &&
+         is_valid_json_number("42.5");
+}
+
+proc test_valid_exponent_syntax() -> bool {
+    give is_valid_json_number("1e10") &&
+         is_valid_json_number("1E10") &&
+         is_valid_json_number("1e+10") &&
+         is_valid_json_number("1e-10") &&
+         is_valid_json_number("-1e10") &&
+         is_valid_json_number("-12.5e+3");
+}
+
+proc test_invalid_empty() -> bool {
+    give !is_valid_json_number("");
+}
+
+proc test_invalid_plus_prefix() -> bool {
+    give !is_valid_json_number("+1");
+}
+
+proc test_invalid_leading_zero() -> bool {
+    give !is_valid_json_number("01") &&
+         !is_valid_json_number("-01") &&
+         !is_valid_json_number("00") &&
+         !is_valid_json_number("042");
+}
+
+proc test_invalid_fraction() -> bool {
+    give !is_valid_json_number(".5") &&
+         !is_valid_json_number("1.") &&
+         !is_valid_json_number("-.5");
+}
+
+proc test_invalid_exponent() -> bool {
+    give !is_valid_json_number("1e") &&
+         !is_valid_json_number("1E") &&
+         !is_valid_json_number("1e+") &&
+         !is_valid_json_number("1e-");
+}
+
+proc test_invalid_non_json_numbers() -> bool {
+    give !is_valid_json_number("NaN") &&
+         !is_valid_json_number("Infinity") &&
+         !is_valid_json_number("-Infinity") &&
+         !is_valid_json_number("0x2A") &&
+         !is_valid_json_number("1_000");
+}
+
+proc test_parse_integer() -> bool {
+    let positive: JsonNumberParseResult =
+        parse("42");
+
+    let negative: JsonNumberParseResult =
+        parse("-42");
+
+    give positive.ok &&
+         negative.ok &&
+         is_integer(&positive.value) &&
+         is_integer(&negative.value) &&
+         positive.value.integer_value == 42 &&
+         negative.value.integer_value == -42;
+}
+
+proc test_parse_fraction() -> bool {
+    let result: JsonNumberParseResult =
+        parse("42.5");
+
+    give result.ok &&
+         is_float(&result.value) &&
+         result.value.float_value == 42.5;
+}
+
+proc test_parse_negative_fraction() -> bool {
+    let result: JsonNumberParseResult =
+        parse("-42.5");
+
+    give result.ok &&
+         is_float(&result.value) &&
+         result.value.float_value == -42.5;
+}
+
+proc test_parse_exponent_positive() -> bool {
+    let result: JsonNumberParseResult =
+        parse("4.2e1");
+
+    give result.ok &&
+         as_float(&result.value) == 42.0;
+}
+
+proc test_parse_exponent_negative() -> bool {
+    let result: JsonNumberParseResult =
+        parse("420e-1");
+
+    give result.ok &&
+         as_float(&result.value) == 42.0;
+}
+
+proc test_parse_exponent_explicit_plus() -> bool {
+    let result: JsonNumberParseResult =
+        parse("4.2e+1");
+
+    give result.ok &&
+         as_float(&result.value) == 42.0;
+}
+
+proc test_parse_zero_variants() -> bool {
+    let a: JsonNumberParseResult =
+        parse("0");
+
+    let b: JsonNumberParseResult =
+        parse("-0");
+
+    let c: JsonNumberParseResult =
+        parse("0.0");
+
+    let d: JsonNumberParseResult =
+        parse("-0.0");
+
+    give a.ok &&
+         b.ok &&
+         c.ok &&
+         d.ok &&
+         is_zero(&a.value) &&
+         is_zero(&b.value) &&
+         is_zero(&c.value) &&
+         is_zero(&d.value);
+}
+
+proc test_parse_error_leading_zero() -> bool {
+    let result: JsonNumberParseResult =
+        parse("042");
+
+    give !result.ok &&
+         result.error ==
+             JsonNumberParseError.InvalidLeadingZero;
+}
+
+proc test_parse_error_fraction() -> bool {
+    let result: JsonNumberParseResult =
+        parse("42.");
+
+    give !result.ok &&
+         result.error ==
+             JsonNumberParseError.MissingFraction;
+}
+
+proc test_parse_error_exponent() -> bool {
+    let result: JsonNumberParseResult =
+        parse("42e");
+
+    give !result.ok &&
+         result.error ==
+             JsonNumberParseError.MissingExponent;
+}
+
+proc test_power() -> bool {
+    let value: JsonNumber =
+        integer(2);
+
+    let result: JsonNumber =
+        power_integer(
+            &value,
+            5);
+
+    give is_integer(&result) &&
+         result.integer_value == 32;
+}
+
+proc test_square() -> bool {
+    let value: JsonNumber =
+        integer(7);
+
+    let result: JsonNumber =
+        square(&value);
+
+    give result.integer_value == 49;
+}
+
+proc test_cube() -> bool {
+    let value: JsonNumber =
+        integer(3);
+
+    let result: JsonNumber =
+        cube(&value);
+
+    give result.integer_value == 27;
+}
+
+proc test_normalize_integral_float() -> bool {
+    let value: JsonNumber =
+        float(42.0);
+
+    let result: JsonNumber =
+        normalize(&value);
+
+    give is_integer(&result) &&
+         result.integer_value == 42;
+}
+
+proc test_normalize_fraction() -> bool {
+    let value: JsonNumber =
+        float(42.5);
+
+    let result: JsonNumber =
+        normalize(&value);
+
+    give is_float(&result) &&
+         result.float_value == 42.5;
+}
+
+proc self_test() -> bool {
+    give test_integer_construction() &&
+         test_float_construction() &&
+         test_zero() &&
+         test_positive() &&
+         test_negative() &&
+         test_negate() &&
+         test_absolute() &&
+         test_integer_addition() &&
+         test_mixed_addition() &&
+         test_subtraction() &&
+         test_multiplication() &&
+         test_division() &&
+         test_remainder() &&
+         test_comparison() &&
+         test_clamp() &&
+         test_valid_integer_syntax() &&
+         test_valid_fraction_syntax() &&
+         test_valid_exponent_syntax() &&
+         test_invalid_empty() &&
+         test_invalid_plus_prefix() &&
+         test_invalid_leading_zero() &&
+         test_invalid_fraction() &&
+         test_invalid_exponent() &&
+         test_invalid_non_json_numbers() &&
+         test_parse_integer() &&
+         test_parse_fraction() &&
+         test_parse_negative_fraction() &&
+         test_parse_exponent_positive() &&
+         test_parse_exponent_negative() &&
+         test_parse_exponent_explicit_plus() &&
+         test_parse_zero_variants() &&
+         test_parse_error_leading_zero() &&
+         test_parse_error_fraction() &&
+         test_parse_error_exponent() &&
+         test_power() &&
+         test_square() &&
+         test_cube() &&
+         test_normalize_integral_float() &&
+         test_normalize_fraction();
+}
