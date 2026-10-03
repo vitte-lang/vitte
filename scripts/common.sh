@@ -567,6 +567,83 @@ scripts_build_copy_tree() {
     true
 }
 
+scripts_build_install_modules() {
+  source_root=$1
+  share_root=$2
+  modules_root=$source_root/modules
+  destination=$share_root/modules
+
+  [ -d "$modules_root" ] ||
+    scripts_build_die "modules directory not found: $modules_root"
+
+  find "$modules_root" \
+    -mindepth 1 \
+    -maxdepth 1 \
+    -type d \
+    -print \
+    -quit |
+    grep -q . ||
+    scripts_build_die "modules directory is empty: $modules_root"
+
+  mkdir -p "$destination"
+  scripts_build_copy_tree "$modules_root" "$destination"
+
+  module_count=0
+  for module in "$modules_root"/*; do
+    [ -d "$module" ] || continue
+
+    module_name=$(basename "$module")
+    [ -f "$module/package.toml" ] ||
+      scripts_build_die \
+        "module $module_name is missing package.toml: $module/package.toml"
+
+    find "$module" \
+      -type f \
+      -name '*.vit' \
+      -print \
+      -quit |
+      grep -q . ||
+      scripts_build_die "module $module_name contains no Vitte sources: $module"
+
+    [ -f "$destination/$module_name/package.toml" ] ||
+      scripts_build_die \
+        "module $module_name was not installed: $destination/$module_name/package.toml"
+
+    module_count=$((module_count + 1))
+  done
+
+  [ "$module_count" -gt 0 ] ||
+    scripts_build_die "no installable modules found in: $modules_root"
+
+  scripts_build_log \
+    "installed $module_count module(s) in $destination"
+}
+
+scripts_build_verify_modules() {
+  share_root=$1
+  modules_root=$share_root/modules
+
+  [ -d "$modules_root" ] ||
+    scripts_build_die "installed modules directory missing: $modules_root"
+
+  module_count=0
+  for package in "$modules_root"/*/package.toml; do
+    [ -f "$package" ] || continue
+    module_dir=$(dirname "$package")
+    find "$module_dir" \
+      -type f \
+      -name '*.vit' \
+      -print \
+      -quit |
+      grep -q . ||
+      scripts_build_die "installed module has no Vitte sources: $module_dir"
+    module_count=$((module_count + 1))
+  done
+
+  [ "$module_count" -gt 0 ] ||
+    scripts_build_die "installed modules directory is empty: $modules_root"
+}
+
 scripts_build_tar_gz() {
   output=$1
   base=$2

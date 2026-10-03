@@ -55,9 +55,11 @@ case "$LAYOUT" in
     ;;
 esac
 
-for directory in docs examples modules editors completions; do
+for directory in docs examples editors completions; do
   [ ! -d "$ROOT_DIR/$directory" ] || scripts_build_copy_tree "$ROOT_DIR/$directory" "$prefix/share/vitte/$directory"
 done
+scripts_build_install_modules "$ROOT_DIR" "$prefix/share/vitte"
+scripts_build_verify_modules "$prefix/share/vitte"
 for file in README.md LICENSE CHANGELOG.md VERSION; do
   [ ! -f "$ROOT_DIR/$file" ] || install -m 0644 "$ROOT_DIR/$file" "$prefix/share/vitte/$file"
 done
@@ -75,6 +77,10 @@ manifest = {
     "platform": sys.argv[3],
     "arch": sys.argv[4],
     "installed_commands": ["vitte", "vittec", "vitte-installer-doctor"],
+    "installed_modules": sorted(
+        path.parent.name
+        for path in (output.parent / "modules").glob("*/package.toml")
+    ),
 }
 output.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 PY
