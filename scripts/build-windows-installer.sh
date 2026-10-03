@@ -317,6 +317,7 @@ build_one() {
   mkdir -p "$payload/bin" "$payload/share/vitte" "$OUT_DIR"
 
   VERSION=$VERSION "$ROOT_DIR/scripts/stage-installer-payload.sh" "$payload" windows "$arch" windows
+  scripts_build_verify_modules "$payload/share/vitte"
   [ ! -f "$ROOT_DIR/LICENSE" ] || install -m 0644 "$ROOT_DIR/LICENSE" "$stage/LICENSE"
   [ ! -f "$ROOT_DIR/README.md" ] || install -m 0644 "$ROOT_DIR/README.md" "$stage/README.md"
   [ ! -f "$ROOT_DIR/assets/logo.png" ] || install -m 0644 "$ROOT_DIR/assets/logo.png" "$stage/logo.png"

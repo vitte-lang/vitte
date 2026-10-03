@@ -82,7 +82,7 @@ use json::core::value::{
     equals,
     depth,
     has_duplicate_keys,
-    validate
+    validate_json_value
 };
 
 const JSON_PARSER_DEFAULT_MAX_DEPTH: usize = 512;
@@ -1382,11 +1382,7 @@ proc parse_float_text(
         set index += 1;
     }
 
-    let mut fraction_part: f64 =
-        0.0;
-
-    let mut fraction_scale: f64 =
-        0.1;
+    let mut fraction_digits: i64 = 0;
 
     if index <
            text.length &&
@@ -1410,12 +1406,11 @@ proc parse_float_text(
                 give 0.0;
             }
 
-            set fraction_part +=
-                (digit as f64) *
-                fraction_scale;
+            set integer_part =
+                integer_part * 10.0 +
+                (digit as f64);
 
-            set fraction_scale *=
-                0.1;
+            set fraction_digits += 1;
 
             set index += 1;
         }
@@ -1468,9 +1463,10 @@ proc parse_float_text(
     }
 
     let mut result: f64 =
-        (integer_part +
-         fraction_part) *
-        power10(exponent);
+        integer_part *
+        power10(
+            exponent -
+            fraction_digits);
 
     if negative {
         set result =
@@ -3457,7 +3453,7 @@ proc validate_result(
             give false;
         }
 
-        if !validate(
+        if !validate_json_value(
             &result.value) {
             give false;
         }
