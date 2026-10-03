@@ -19,6 +19,7 @@ Common environment:
 - `VITTE_BIN`: chemin explicite du compilateur. Par défaut, les scripts utilisent le binaire C natif `build/bin/vitte`, construit avec `make`.
 - `STRICT_NATIVE`: when `1`, `verify-installers.sh` requires native Windows and Solaris packages, not only portable kits.
 - `STRICT_DMG`: when `1`, macOS installer builds fail if `hdiutil` cannot create the DMG. Release jobs should set this.
+- `DMG_PRESENTATION`: when `1` (default), macOS DMGs are staged as a polished Finder window with a dark Vitte layout, an `Install Vitte.pkg` item and an Applications shortcut. Set to `0` for a plain compressed DMG.
 - `FAMILY`: `linux`, `portable`, `freebsd`, `bsd`, `macos`, `solaris`, `windows`, or `all`.
 - `SIGN`: when `1`, sign macOS/Windows artifacts using platform-specific tools.
 - `NOTARIZE`: when `1`, submit signed macOS artifacts to Apple notary service.
@@ -30,6 +31,8 @@ Examples:
 - Portable tarball: `PLATFORM=linux ARCH=amd64 scripts/build-portable-tarball.sh`
 - BSD portable: `FAMILY=bsd BSD_FAMILY=openbsd ARCH=amd64 scripts/build-all-installers.sh`
 - macOS release: `FAMILY=macos STRICT_DMG=1 SIGN=1 NOTARIZE=1 scripts/build-all-installers.sh`
+- macOS preview DMG: `ARCH=arm64 STRICT_DMG=1 scripts/build-macos-installers.sh`
+- Mac OS X 2006 / iMac Intel i386 package: `ARCH=macos2006-i386 scripts/build-macos-installers.sh`
 - Solaris: `FAMILY=solaris ARCH=i386 scripts/build-all-installers.sh`
 - Windows retrocompatibility kits: `FAMILY=windows ARCH=all scripts/build-all-installers.sh`
 - Windows professional matrix: `pwsh scripts/build-windows.ps1 -Arch all -WindowsTargets "xp vista 7 8 8.1 10 11"`
