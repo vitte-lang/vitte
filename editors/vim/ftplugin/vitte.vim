@@ -144,7 +144,7 @@ setlocal include=^\s*use\s\+
 " ============================================================================
 
 " Useful for commands based on Vim's definition search.
-setlocal define=^\s*\%(proc\|form\|class\|union\|trait\|type\)\s\+
+setlocal define=^\s*\%(proc\|form\|pick\|trait\|type\|opaque\|intrinsic\|macro\|test\)\s\+
 
 " ============================================================================
 " Keyword program

@@ -11,7 +11,7 @@ let b:did_indent = 1
 
 setlocal indentexpr=GetVitteIndent()
 setlocal indentkeys=0{,0},0),0],:,!^F,o,O,e,
-      \=else,=when
+      \=else
 
 let b:undo_indent = "setlocal indentexpr< indentkeys<"
 
@@ -25,18 +25,14 @@ let b:undo_indent = "setlocal indentexpr< indentkeys<"
 " placed on the following line.
 
 let s:block_open_keywords =
-      \ '\v<(space|region|' .
-      \ 'form|class|union|bits|pick|flags|' .
-      \ 'trait|impl|' .
-      \ 'proc|intrinsic|macro|compiler|pass|backend|diagnostic|' .
-      \ 'entry|query|test|bench|' .
-      \ 'if|else|select|match|when|' .
-      \ 'while|loop|for|with|critical|unsafe|asm|defer)>'
+      \ '\v<(space|form|pick|trait|impl|' .
+      \ 'proc|macro|test|' .
+      \ 'if|else|match|while|loop|for|unsafe|defer)>'
 
 " Constructs aligned with their containing block rather than its body.
 
 let s:block_mid_keywords =
-      \ '\v^\s*(else|when)>'
+      \ '\v^\s*else>'
 
 " ============================================================================
 " Helpers
@@ -84,6 +80,10 @@ function! s:LineOpensBlock(line) abort
   " Support canonical constructs where the opening brace is placed on the
   " following line.
   if l:line =~# s:block_open_keywords
+    if l:line =~# ';\s*$'
+      return 0
+    endif
+
     " Avoid treating a complete one-line block as an opener.
     if l:line =~# '{.*}\s*$'
       return 0
@@ -103,8 +103,8 @@ function! s:LineContinues(line) abort
   let l:line = s:TrimLineComment(a:line)
 
   return l:line =~#
-        \ '\v(,|\[|\(|:|=|\+|-|\*|/|%|\.|->|=>|::|:=|' .
-        \ '&&|\|\||and|or|as|is)\s*$'
+        \ '\v(,|\[|\(|:|=|\+|-|\*|/|%|\.|->|=>|::|\?\?|' .
+        \ '<<|>>|&&|\|\||and|or)\s*$'
 endfunction
 
 " ============================================================================
@@ -197,9 +197,6 @@ function! GetVitteIndent() abort
   " } else {
   "
   " match value {
-  "   when pattern {
-  "     ...
-  "   }
   " }
   " --------------------------------------------------------------------------
 

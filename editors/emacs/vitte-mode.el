@@ -28,42 +28,31 @@
     st)
   "Syntax table for `vitte-mode'.")
 
-(defface vitte-diag-face
-  '((t :inherit font-lock-warning-face :weight bold))
-  "Face for VITTE diagnostics codes.")
-
 (defface vitte-alias-face
   '((t :inherit font-lock-variable-name-face :slant italic))
   "Face for *_pkg aliases.")
-
-(defface vitte-contract-face
-  '((t :inherit font-lock-preprocessor-face :weight bold))
-  "Face for ROLE-CONTRACT headers.")
 
 (defface vitte-property-face
   '((t :inherit font-lock-variable-name-face))
   "Face for property/member names.")
 
-(defconst vitte-keywords '("space" "module" "mod" "pull" "import" "use" "share" "export" "form" "struct" "class" "field" "pick" "enum" "union" "case" "trait" "interface" "impl" "type" "typedef" "const" "global" "static" "macro" "proc" "fn" "flow" "entry" "program" "prog" "scenario" "scn" "at" "asm" "unsafe" "async" "extern" "match" "let" "make" "set" "give" "emit" "if" "else" "otherwise" "select" "when" "is" "loop" "for" "each" "in" "from" "step" "while" "until" "break" "continue" "return" "ret" "defer" "do" "say" "not" "and" "or" "as" "all" "await"))
-(defconst vitte-decls '("proc" "fn" "form" "struct" "class" "pick" "enum" "union" "trait" "interface" "entry" "macro" "type" "typedef" "field" "case" "flow" "program" "prog" "scenario" "scn"))
-(defconst vitte-types '("bool" "string" "int" "char" "i8" "i16" "i32" "i64" "i128" "isize" "u8" "u16" "u32" "u64" "u128" "usize" "f32" "f64" "Float" "Str"))
-(defconst vitte-builtins '("true" "false" "null" "none"))
+(defconst vitte-keywords '("space" "use" "export" "const" "static" "type" "opaque" "form" "pick" "trait" "impl" "proc" "extern" "intrinsic" "macro" "test" "pub" "async" "unsafe" "comptime" "where" "requires" "ensures" "let" "mut" "set" "return" "give" "break" "continue" "defer" "assert" "if" "else" "while" "loop" "for" "in" "match" "asm" "ref" "move" "await" "not" "and" "or" "self" "as"))
+(defconst vitte-decls '("space" "use" "export" "const" "static" "type" "opaque" "form" "pick" "trait" "impl" "proc" "extern" "intrinsic" "macro" "test"))
+(defconst vitte-types '("void" "never" "unit" "bool" "char" "rune" "str" "string" "bytes" "cstr" "int" "i8" "i16" "i32" "i64" "i128" "isize" "u8" "u16" "u32" "u64" "u128" "usize" "intptr" "uintptr" "f16" "f32" "f64" "f128" "c_char" "c_int" "c_uint" "c_long" "c_ulong" "c_void"))
+(defconst vitte-builtins '("true" "false" "null"))
 
 (defvar vitte-font-lock-keywords
   `((,(regexp-opt vitte-keywords 'symbols) . font-lock-keyword-face)
     (,(regexp-opt vitte-types 'symbols) . font-lock-type-face)
     (,(regexp-opt vitte-builtins 'symbols) . font-lock-constant-face)
-    ("\\<\\(proc\\|fn\\|flow\\|macro\\|entry\\|scenario\\|scn\\)\\>\\s-+\\([A-Za-z_][A-Za-z0-9_]*\\)" 2 font-lock-function-name-face)
-    ("\\<\\(program\\|prog\\)\\>\\s-+\\([A-Za-z0-9_./:]+\\)" 2 font-lock-function-name-face)
-    ("\\<\\(form\\|struct\\|class\\|pick\\|enum\\|union\\|trait\\|interface\\|type\\|typedef\\)\\>\\s-+\\([A-Za-z_][A-Za-z0-9_]*\\)" 2 font-lock-type-face)
-    ("\\<\\(field\\|case\\)\\>\\s-+\\([A-Za-z_][A-Za-z0-9_]*\\)" 2 font-lock-variable-name-face)
-    ("\\<\\(space\\|module\\|mod\\|pull\\|import\\|share\\|at\\|use\\)\\>\\s-+\\([A-Za-z0-9_./:]+\\)" 2 font-lock-constant-face)
+    ("\\<\\(proc\\|intrinsic\\|macro\\|test\\)\\>\\s-+\\([A-Za-z_][A-Za-z0-9_]*\\)" 2 font-lock-function-name-face)
+    ("\\<\\(form\\|pick\\|trait\\|type\\|opaque\\)\\>\\s-+\\([A-Za-z_][A-Za-z0-9_]*\\)" 2 font-lock-type-face)
+    ("\\<\\(space\\|use\\)\\>\\s-+\\([A-Za-z0-9_/:]+\\)" 2 font-lock-constant-face)
     ("\\<export\\>\\s-+\\(\\*\\|[A-Za-z0-9_./:]+\\)" 1 font-lock-constant-face)
     ("\\<as\\>\\s-+\\([A-Za-z_][A-Za-z0-9_]*\\(?:_pkg\\)?\\)" 1 'vitte-alias-face)
-    ("\\<\\(let\\|make\\|keep\\|const\\|global\\|static\\)\\>\\s-+\\(?:mut\\s-+\\|move\\s-+\\|ref\\s-+\\)?\\([A-Za-z_][A-Za-z0-9_]*\\)" 2 font-lock-variable-name-face)
+    ("\\<\\(let\\|const\\|static\\)\\>\\s-+\\(?:mut\\s-+\\)?\\([A-Za-z_][A-Za-z0-9_]*\\)" 2 font-lock-variable-name-face)
     ("\\<set\\>\\s-+\\([A-Za-z_][A-Za-z0-9_]*\\)" 1 font-lock-variable-name-face)
-    ("\\<\\(for\\|each\\)\\>\\s-+\\([A-Za-z_][A-Za-z0-9_]*\\)\\s-+\\(in\\|from\\)\\>" 2 font-lock-variable-name-face)
-    ("\\<\\(case\\|when\\)\\>\\s-+\\([a-z_][A-Za-z0-9_]*\\)\\s-*\\(=>\\|{\\)" 2 font-lock-variable-name-face)
+    ("\\<for\\>\\s-+\\([A-Za-z_][A-Za-z0-9_]*\\)\\s-+in\\>" 1 font-lock-variable-name-face)
     ("[(,]\\s-*\\([A-Za-z_][A-Za-z0-9_]*\\)\\s-*[: ,)]" 1 font-lock-variable-name-face)
     ("\\<\\([A-Za-z_][A-Za-z0-9_]*\\(?:/[A-Za-z_][A-Za-z0-9_]*\\)?\\)\\s-*(" 1 font-lock-function-name-face)
     ("\\<\\([A-Za-z_][A-Za-z0-9_]*\\(?:\\.[A-Za-z_][A-Za-z0-9_]*\\)+\\)\\s-*(" 1 font-lock-function-name-face)
@@ -71,19 +60,16 @@
     ("\\.[[:space:]]*\\([A-Za-z_][A-Za-z0-9_]*\\)" 1 'vitte-property-face)
     ("'\\([^'\\\\]\\|\\\\.\\)'" . font-lock-string-face)
     ("\\<[A-Za-z_][A-Za-z0-9_]*_pkg\\>" . 'vitte-alias-face)
-    ("\\<VITTE-[A-Z]+[0-9]\\{4\\}\\>" . 'vitte-diag-face)
-    ("^\\s-*<<<\\s-+ROLE-CONTRACT" . 'vitte-contract-face)
-    ("\\<\\(diagnostics_[A-Za-z0-9_]*\\|quickfix_[A-Za-z0-9_]*\\|doctor_[A-Za-z0-9_]*\\)\\>" . font-lock-builtin-face)
-    ("\\<\\(TODO\|FIXME\|BUG\|HACK\|NOTE\|XXX\\)\\>" . font-lock-warning-face)
+    ("\\<\\(TODO\\|FIXME\\|BUG\\|HACK\\|NOTE\\|XXX\\)\\>" . font-lock-warning-face)
     ("\\<use\\>\\s-+\\([A-Za-z0-9_./:]+\\)" 1 font-lock-constant-face)
-    ("\\<\\(bool\\|string\\|int\\|char\\|i8\\|i16\\|i32\\|i64\\|i128\\|isize\\|u8\\|u16\\|u32\\|u64\\|u128\\|usize\\|f32\\|f64\\|Float\\|Str\\)\\>" . font-lock-type-face)
-    ("\\<\\(true\\|false\\|null\\|none\\)\\>" . font-lock-constant-face)))
+    ("\\<\\(void\\|never\\|unit\\|bool\\|char\\|rune\\|str\\|string\\|bytes\\|cstr\\|int\\|i8\\|i16\\|i32\\|i64\\|i128\\|isize\\|u8\\|u16\\|u32\\|u64\\|u128\\|usize\\|intptr\\|uintptr\\|f16\\|f32\\|f64\\|f128\\|c_char\\|c_int\\|c_uint\\|c_long\\|c_ulong\\|c_void\\)\\>" . font-lock-type-face)
+    ("\\<\\(true\\|false\\|null\\)\\>" . font-lock-constant-face)))
 
 (defvar vitte-imenu-generic-expression
-  '(("proc" "^\\s-*\\(?:proc\\|fn\\|flow\\|macro\\|scenario\\|scn\\)\\s-+\\([A-Za-z0-9_]+\\)" 1)
-    ("program" "^\\s-*\\(?:program\\|prog\\)\\s-+\\([A-Za-z0-9_./:]+\\)" 1)
-    ("type" "^\\s-*\\(?:form\\|struct\\|class\\|pick\\|enum\\|union\\|trait\\|interface\\|type\\|typedef\\)\\s-+\\([A-Za-z0-9_]+\\)" 1)
-    ("entry" "^\\s-*entry\\s-+\\([A-Za-z0-9_]+\\)" 1)))
+  '(("proc" "^\\s-*proc\\s-+\\([A-Za-z0-9_]+\\)" 1)
+    ("macro" "^\\s-*macro\\s-+\\([A-Za-z0-9_]+\\)" 1)
+    ("type" "^\\s-*\\(?:form\\|pick\\|trait\\|type\\|opaque\\)\\s-+\\([A-Za-z0-9_]+\\)" 1)
+    ("test" "^\\s-*test\\s-+\\([A-Za-z0-9_]+\\)" 1)))
 
 (defun vitte--completion-at-point ()
   (let ((bounds (bounds-of-thing-at-point 'symbol)))
@@ -122,7 +108,7 @@
     (setq-local indent-line-function #'vitte-indent-line)))
 
 ;;;###autoload
-(add-to-list 'auto-mode-alist '("\\.\(vit\|vitte\|vitl\)\\'" . vitte-mode))
+(add-to-list 'auto-mode-alist '("\\.\\(vit\\|vitte\\|vitl\\)\\'" . vitte-mode))
 
 (provide 'vitte-mode)
 ;;; vitte-mode.el ends here

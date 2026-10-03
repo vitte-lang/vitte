@@ -1,278 +1,87 @@
-; Tree-sitter highlight queries for Vitte
-; File: queries/vitte/highlights.scm
-
-; ============================================================
-; Comments
-; ============================================================
-
-(line_comment) @comment
+(comment) @comment
 (block_comment) @comment
-(contract_block) @comment.documentation
-
-((contract_block) @comment.documentation
-  (#match? @comment.documentation "^<<<\\s*ROLE-CONTRACT"))
-
-; ============================================================
-; Literals
-; ============================================================
 
 (string_literal) @string
-(raw_string_literal) @string.special
-(char_literal) @character
-(number_literal) @number
+(character_literal) @character
+(integer_literal) @number
 (float_literal) @number.float
-(boolean_literal) @boolean
-(null_literal) @constant.builtin
 
 [
   "true"
   "false"
 ] @boolean
-
-; ============================================================
-; Keywords
-; ============================================================
+"null" @constant.builtin
 
 [
-  "space"
-  "module"
-  "mod"
-  "pull"
-  "import"
-  "use"
-  "share"
-  "export"
-  "all"
+  "space" "use" "export"
 ] @keyword.import
 
 [
-  "const"
-  "global"
-  "static"
-  "let"
-  "make"
-  "set"
+  "const" "static" "let" "mut" "set"
 ] @keyword.storage
 
 [
-  "form"
-  "struct"
-  "class"
-  "trait"
-  "interface"
-  "pick"
-  "enum"
-  "union"
-  "case"
-  "macro"
-  "impl"
+  "form" "pick" "trait" "impl" "type" "opaque"
 ] @keyword.type
 
 [
-  "proc"
-  "fn"
-  "flow"
-  "entry"
-  "program"
-  "prog"
-  "scenario"
-  "scn"
-  "at"
+  "proc" "extern" "intrinsic" "macro" "test"
 ] @keyword.function
 
 [
-  "give"
-  "return"
-  "ret"
-  "emit"
-  "defer"
-] @keyword.return
+  "return" "give" "break" "continue" "defer"
+] @keyword.control
 
 [
-  "if"
-  "else"
-  "otherwise"
-  "select"
-  "when"
-  "match"
-] @keyword.conditional
+  "if" "else" "while" "loop" "for" "in" "match"
+] @keyword.control
 
 [
-  "loop"
-  "for"
-  "each"
-  "in"
-  "from"
-  "step"
-  "while"
-  "until"
-  "break"
-  "continue"
-] @keyword.repeat
+  "pub" "async" "unsafe" "comptime" "where" "requires" "ensures"
+] @keyword.modifier
 
 [
-  "unsafe"
-  "async"
-  "extern"
-] @keyword.directive
-
-[
-  "not"
-  "and"
-  "or"
-  "is"
-  "as"
-  "await"
+  "not" "and" "or" "await" "move" "ref" "as"
 ] @keyword.operator
 
 [
-  "do"
-  "say"
+  "asm" "assert" "self"
 ] @keyword
 
-; ============================================================
-; Builtin types
-; ============================================================
+(procedure_declaration "proc" (identifier) @function)
+(intrinsic_declaration "intrinsic" (identifier) @function)
+(macro_declaration "macro" (identifier) @function.macro)
+(test_declaration "test" (identifier) @function)
+(form_declaration "form" (identifier) @type)
+(pick_declaration "pick" (identifier) @type)
+(trait_declaration "trait" (identifier) @type)
+(type_declaration "type" (identifier) @type)
+(opaque_declaration "opaque" (identifier) @type)
 
-[
-  "bool"
-  "string"
-  "int"
-  "char"
-  "i8"
-  "i16"
-  "i32"
-  "i64"
-  "i128"
-  "isize"
-  "u8"
-  "u16"
-  "u32"
-  "u64"
-  "u128"
-  "usize"
-  "f32"
-  "f64"
-  "Float"
-  "Str"
-] @type.builtin
-
-; ============================================================
-; Declarations
-; ============================================================
-
-(proc_decl name: (identifier) @function)
-(proc_decl name: (api_identifier) @function.special)
-
-(entry_decl name: (identifier) @function)
-(entry_decl target: (scoped_identifier) @module)
-
-(form_decl name: (identifier) @type)
-(class_decl name: (identifier) @type)
-(trait_decl name: (identifier) @type)
-(pick_decl name: (identifier) @type)
-(enum_decl name: (identifier) @type)
-(union_decl name: (identifier) @type)
-
-(macro_decl name: (identifier) @function.macro)
-(flow_decl name: (identifier) @function)
-(class_decl name: (identifier) @type)
-(trait_decl name: (identifier) @type)
-(impl_decl target: (type_expression (identifier) @type))
-
-; ============================================================
-; Calls / constructors
-; ============================================================
-
-(call_expr
-  callee: (identifier) @function.call)
-
-(call_expr
-  callee: (api_identifier) @function.special)
-
-(call_expr
-  callee: (scoped_identifier) @function.call)
-
-(member_expr
-  property: (identifier) @property)
-
-; ============================================================
-; Modules / imports
-; ============================================================
-
-(space_decl path: (scoped_identifier) @module)
-(use_stmt path: (scoped_identifier) @module)
-(share_stmt path: (scoped_identifier) @module)
-
-(use_stmt alias: (identifier) @variable.special)
-(share_stmt path: (identifier) @variable.special)
-
-(scoped_identifier) @variable
-
-; ============================================================
-; Diagnostics / compiler API naming
-; ============================================================
-
-(diag_code) @diagnostic.error
-
-((identifier) @function.special
-  (#match? @function.special "^(diagnostics_|quickfix_|doctor_)[A-Za-z0-9_]*$"))
-
-((api_identifier) @function.special
-  (#match? @function.special "^(diagnostics_|quickfix_|doctor_)[A-Za-z0-9_]*$"))
-
-((string_literal) @diagnostic.error
-  (#match? @diagnostic.error "VITTE-[A-Z]+[0-9]{4}"))
-
-((identifier) @variable.special
-  (#match? @variable.special "_pkg$"))
-
-; ============================================================
-; Variables / parameters
-; ============================================================
-
-(parameter name: (identifier) @variable.parameter)
-(let_stmt name: (pattern (identifier) @variable))
-(set_stmt target: (identifier) @variable)
-(for_stmt (pattern (identifier) @variable))
-(match_arm (pattern (identifier) @variable))
-(const_decl name: (identifier) @constant)
-
+(parameter (identifier) @variable.parameter)
+(let_statement (identifier) @variable)
+(for_statement (identifier) @variable)
+(generic_parameter (identifier) @type)
+(field (identifier) @property)
+(variant (identifier) @constant)
+(path (identifier) @variable)
+(module_path) @module
 (identifier) @variable
 
-; ============================================================
-; Operators / punctuation
-; ============================================================
-
 [
-  "+"
-  "-"
-  "*"
-  "/"
-  "%"
-  "="
-  "=="
-  "!="
-  "<"
-  "<="
-  ">"
-  ">="
-  "=>"
-  "->"
-  "."
-  "::"
+  "+" "-" "*" "/" "%" "=" "+=" "-=" "*=" "/=" "%="
+  "&=" "|=" "^=" "<<=" ">>=" "??" "||" "&&" "|"
+  "^" "&" "==" "!=" "<" "<=" ">" ">=" "<<" ">>"
+  ".." "..=" "!" "~" "?" "->" "=>"
 ] @operator
 
 [
-  "("
-  ")"
-  "{"
-  "}"
-  "["
-  "]"
+  "(" ")" "{" "}" "[" "]"
 ] @punctuation.bracket
 
 [
-  ","
-  ":"
+  "," ":" ";" "." "::"
 ] @punctuation.delimiter
+
+((identifier) @type.builtin
+  (#match? @type.builtin "^(void|never|unit|bool|char|rune|str|string|bytes|cstr|int|i8|i16|i32|i64|i128|isize|u8|u16|u32|u64|u128|usize|intptr|uintptr|f16|f32|f64|f128|c_char|c_int|c_uint|c_long|c_ulong|c_void)$"))

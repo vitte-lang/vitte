@@ -3,14 +3,11 @@
 ;; High quality indentation engine for the Vitte language.
 ;; Supports:
 ;; - braces
-;; - legacy .end blocks
-;; - match/select/case
+;; - grammar-defined brace blocks
 ;; - multiline calls
 ;; - chained expressions
 ;; - continuation indentation
 ;; - comments
-;; - attributes
-;; - modern syntax variants
 
 (require 'cl-lib)
 
@@ -29,45 +26,8 @@
   :group 'vitte-indent)
 
 (defconst vitte--block-open-keywords
-  '("if"
-    "elif"
-    "else"
-    "otherwise"
-    "match"
-    "select"
-    "when"
-    "case"
-    "loop"
-    "while"
-    "until"
-    "for"
-    "each"
-    "proc"
-    "flow"
-    "entry"
-    "form"
-    "class"
-    "pick"
-    "trait"
-    "impl"
-    "enum"
-    "union"
-    "interface"
-    "unsafe"
-    "asm"
-    "try"
-    "catch"
-    "finally"))
-
-(defconst vitte--dedent-keywords
-  '("}"
-    ".end"
-    "case"
-    "otherwise"
-    "else"
-    "elif"
-    "catch"
-    "finally"))
+  '("space" "form" "pick" "trait" "impl" "proc" "macro" "test"
+    "if" "else" "match" "loop" "while" "for" "unsafe" "defer"))
 
 (defun vitte--trim-string (s)
   (replace-regexp-in-string
@@ -95,16 +55,9 @@
   (save-excursion
     (back-to-indentation)
     (or
-     (looking-at-p "#")
      (looking-at-p "//")
      (looking-at-p "/\\*")
-     (looking-at-p "\\*")
-     (looking-at-p "<<<"))))
-
-(defun vitte--attribute-line-p ()
-  (save-excursion
-    (back-to-indentation)
-    (looking-at-p "#\\[")))
+     (looking-at-p "\\*"))))
 
 (defun vitte--line-starts-with (re)
   (save-excursion
@@ -142,29 +95,30 @@
 (defun vitte--line-opens-block-p (line)
   (or
    (string-match-p "{[ \t]*$" line)
-   (string-match-p
-    (concat "\\_<"
-            (regexp-opt vitte--block-open-keywords t)
-            "\\_>")
-    line)))
+   (and
+    (not (string-match-p ";[ \t]*$" line))
+    (string-match-p
+     (concat "\\_<"
+             (regexp-opt vitte--block-open-keywords t)
+             "\\_>")
+     line))))
 
 (defun vitte--line-closes-block-p ()
   (save-excursion
     (back-to-indentation)
     (or
      (looking-at-p "}")
-     (looking-at-p "\\.end\\_>")
      (looking-at-p
       (concat "\\("
               (regexp-opt
-               '("case" "otherwise" "else" "elif" "catch" "finally"))
+               '("else"))
               "\\)\\_>")))))
 
 (defun vitte--continuation-line-p ()
   (let ((prev (vitte--previous-line-text)))
     (or
-     (string-match-p "[,\\[({:+\\-*/=<>&|!][ \t]*$" prev)
-     (string-match-p "\\_<\\(and\\|or\\|xor\\|as\\|is\\)\\_>[ \t]*$" prev)
+     (string-match-p "[,\\[(:+\\-*/=<>&|!][ \t]*$" prev)
+     (string-match-p "\\_<\\(and\\|or\\)\\_>[ \t]*$" prev)
      (string-match-p "\\.$" prev))))
 
 (defun vitte--inside-parens-depth ()
@@ -185,8 +139,6 @@
       (current-indentation))
      ((vitte--line-closes-block-p)
       (max 0 (- (vitte--previous-indentation) vitte-indent-offset)))
-     ((vitte--attribute-line-p)
-      (vitte--previous-indentation))
      ((vitte--continuation-line-p)
       (+ (vitte--previous-indentation) vitte-indent-continuation-offset))
      ((> (vitte--inside-parens-depth) 0)
@@ -232,18 +184,6 @@
       (forward-char -1)
       (vitte-indent-line)))
   (vitte-indent-line))
-
-(defun vitte-electric-end ()
-  "Insert .end and reindent."
-  (interactive)
-
-  (insert ".end")
-  (vitte-indent-line)
-
-  (save-excursion
-    (forward-line 1)
-    (unless (eobp)
-      (vitte-indent-line))))
 
 (defvar vitte-indent-mode-map
   (let ((map (make-sparse-keymap)))
