@@ -16,7 +16,7 @@ Common environment:
 - `OUT_DIR`: output directory for artifacts. Defaults to `pkgout`.
 - `ARCH`: target architecture or `all`, depending on the builder.
 - `STRICT_PROCESSOR`: when `1`, payload staging refuses host fallback binaries for mismatched architectures.
-- `VITTE_BIN`: chemin explicite du compilateur. Par défaut, les scripts utilisent le binaire C natif `target/vitte/vitte`, construit avec `make`.
+- `VITTE_BIN`: chemin explicite du compilateur. Par défaut, les scripts utilisent le binaire C natif `build/bin/vitte`, construit avec `make`.
 - `STRICT_NATIVE`: when `1`, `verify-installers.sh` requires native Windows and Solaris packages, not only portable kits.
 - `STRICT_DMG`: when `1`, macOS installer builds fail if `hdiutil` cannot create the DMG. Release jobs should set this.
 - `FAMILY`: `linux`, `portable`, `freebsd`, `bsd`, `macos`, `solaris`, `windows`, or `all`.
@@ -33,13 +33,24 @@ Examples:
 - Solaris: `FAMILY=solaris ARCH=i386 scripts/build-all-installers.sh`
 - Windows retrocompatibility kits: `FAMILY=windows ARCH=all scripts/build-all-installers.sh`
 - Windows professional matrix: `pwsh scripts/build-windows.ps1 -Arch all -WindowsTargets "xp vista 7 8 8.1 10 11"`
+- Windows wrapper inspection: `pwsh scripts/build-windows.ps1 -DryRun` (also `-ListTargets`, `-PrintEnv`, `-Help`). The wrapper accepts `-Arch`, `-Version`, `-OutDir`, `-PackageName`, `-WindowsTargets`, `-VitteBin`, `-Sign`, `-WindowsSignCert`, and `-StrictNative`, and converts Windows paths before invoking the POSIX builder.
+
+Raspberry Pi 1 source installation:
+
+- Use a 32-bit Raspberry Pi OS installation on the Pi 1 itself. The Pi 1 is ARMv6; a generic Debian `armhf` or ARMv7 binary must not be assumed to run on it. See [Raspberry Pi's architecture table](https://www.raspberrypi.com/news/raspberry-pi-os-64-bit/).
+- Install build prerequisites first: `sudo apt-get install build-essential python3`.
+- Run `scripts/install-raspberry-pi1.sh` from the source checkout. It builds natively with one job by default, installs the compiler and JSON source module via `make install`, then compiles and runs a smoke program. The default prefix is `/usr/local`; the script asks for `sudo` only for the installation step when required.
+- For a user-writable installation: `scripts/install-raspberry-pi1.sh --prefix "$HOME/.local"`. Add `$HOME/.local/bin` to `PATH` if needed.
+- Inspect without changing the system: `scripts/install-raspberry-pi1.sh --dry-run`. Use `--destdir /absolute/stage` to stage an installation; `--allow-non-pi` requires `--destdir`, is only for staged host testing, and does not cross-compile for ARMv6.
+- A Pi 1 has little memory; keep the default single build job unless the device has enough free memory or swap. Build failures are reported, not replaced by a possibly incompatible prebuilt binary.
 
 Runtime contract checks:
 
-- `make installer-runtime-contract-check` installs a staged package in a temporary root, opens clean `sh`/`bash`/`zsh`/`fish` shells when available, runs `vitte --version`, verifies absolute-path execution with no usable `PATH`, verifies a polluted old `PATH`, builds and executes a post-install smoke program, and checks the portable `.tar.gz` wrapper.
+- `VITTE_BIN=/absolute/path/to/vitte scripts/ci/real-install-smoke.sh` checks an installed Unix compiler, compiles a smoke program and executes it. The PowerShell equivalent is `pwsh scripts/ci/real-install-smoke.ps1 -VitteBin C:\path\to\vitte.exe`.
+- `OUT_DIR=pkgout scripts/verify-installers.sh` checks release artifacts and checksums. Run the real-install smoke script on each target system as a separate release gate; artifact inspection alone does not prove the installed binary runs there.
 - Installed Unix and portable payloads include `vitte-installer-doctor`; Windows payloads include `vitte-installer-doctor.cmd`. The doctor prints the resolved prefix, expected wrapper/payload/share paths, `VITTE_ROOT`, and the exact missing part when an installation is incomplete.
 - Windows `cmd.exe`/PowerShell and macOS Terminal coverage is represented by the real-platform smoke scripts and package shell-profile contract; release CI must execute those scripts on the real target systems.
-- Release gates must run `STRICT_REAL_INSTALLERS=1 RELEASE_INSTALLER_GATE=1 make installer-real-platforms-check`; a release is refused until every target has install + build + run evidence.
+- Do not publish an architecture-specific artifact without install + compile + run evidence from that target architecture.
 
 Exit codes:
 

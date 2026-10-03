@@ -374,7 +374,7 @@ Run Vitte directly from the extracted directory:
 
 Compile a Vitte source file:
 
-    ./bin/vitte build program.vit -o program
+    ./bin/vitte compile program.vit -o program
 
 Check a Vitte source file:
 
@@ -534,6 +534,9 @@ scripts_build_require wc
   die "payload staging script is missing or not executable: $PAYLOAD_SCRIPT"
 
 PLATFORM=$(normalize_platform "$PLATFORM")
+
+scripts_build_maybe_dry_run \
+  "would build portable tarballs version=$VERSION platform=$PLATFORM arch=$ARCH out=$OUT_DIR"
 
 if [ "$LIST_TARGETS" -eq 1 ]; then
   for platform in \

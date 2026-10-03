@@ -20,7 +20,7 @@ PLATFORM=${2:?missing platform}
 ARCH=${3:?missing architecture}
 LAYOUT=${4:-unix}
 VERSION=${VERSION:-$(scripts_build_package_version)}
-VITTE_BIN=${VITTE_BIN:-$ROOT_DIR/target/vitte/vitte}
+VITTE_BIN=${VITTE_BIN:-$ROOT_DIR/build/bin/vitte}
 
 if [ ! -x "$VITTE_BIN" ]; then
   make -C "$ROOT_DIR" all
@@ -61,6 +61,23 @@ done
 for file in README.md LICENSE CHANGELOG.md VERSION; do
   [ ! -f "$ROOT_DIR/$file" ] || install -m 0644 "$ROOT_DIR/$file" "$prefix/share/vitte/$file"
 done
+
+python3 - "$prefix/share/vitte/INSTALLATION.json" "$VERSION" "$PLATFORM" "$ARCH" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+output = Path(sys.argv[1])
+manifest = {
+    "schema": "org.vitte.installation.v1",
+    "name": "vitte",
+    "version": sys.argv[2],
+    "platform": sys.argv[3],
+    "arch": sys.argv[4],
+    "installed_commands": ["vitte", "vittec", "vitte-installer-doctor"],
+}
+output.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+PY
 
 printf '[stage-installer-payload] staged native C compiler platform=%s arch=%s dest=%s version=%s\n' \
   "$PLATFORM" "$ARCH" "$DEST" "$VERSION"

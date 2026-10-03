@@ -179,7 +179,7 @@ case "$FAMILY" in
   all | portable)
     run \
       portable \
-      'Portable tar.gz archives: amd64, i386, arm64, armv7, armv6, riscv64' \
+      'Portable tar.gz archives: amd64, i386, arm64, armv7, armv6 (Raspberry Pi 1), riscv64' \
       all \
       "$ROOT_DIR/scripts/build-portable-tarball.sh"
     ;;

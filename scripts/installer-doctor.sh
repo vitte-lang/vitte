@@ -84,9 +84,12 @@ if [ -x "$bindir/vitte" ]; then
     line "hint: run $bindir/vitte --help to inspect CLI startup"
   fi
 
-  smoke_dir=${TMPDIR:-/tmp}/vitte-installer-doctor-$$
-  rm -rf "$smoke_dir"
-  mkdir -p "$smoke_dir"
+  smoke_dir=$(mktemp -d "${TMPDIR:-/tmp}/vitte-installer-doctor.XXXXXX") || {
+    fail "cannot create a temporary smoke directory"
+    exit "$status"
+  }
+  cleanup_smoke() { rm -rf -- "$smoke_dir"; }
+  trap cleanup_smoke EXIT HUP INT TERM
   cat > "$smoke_dir/smoke.vit" <<'VITTE_INSTALLER_DOCTOR_SMOKE'
 proc main() -> int {
   give 0;
@@ -100,22 +103,25 @@ VITTE_INSTALLER_DOCTOR_SMOKE
     line "hint: cd $smoke_dir && $bindir/vitte check smoke.vit"
   fi
 
-  if (cd "$smoke_dir" && "$bindir/vitte" build smoke.vit -o smoke >/dev/null 2>&1); then
-    pass "vitte build smoke.vit -o smoke runs"
-    if [ -x "$smoke_dir/smoke" ]; then
-      if "$smoke_dir/smoke" >/dev/null 2>&1; then
-        pass "built smoke executable runs"
+  if (cd "$smoke_dir" && "$bindir/vitte" compile smoke.vit -o smoke >/dev/null 2>&1); then
+    pass "vitte compile smoke.vit -o smoke runs"
+    smoke_program=$smoke_dir/smoke
+    [ -x "$smoke_program" ] || smoke_program=$smoke_dir/smoke.exe
+    if [ -x "$smoke_program" ]; then
+      if "$smoke_program" >/dev/null 2>&1; then
+        pass "compiled smoke executable runs"
       else
-        fail "built smoke executable failed"
+        fail "compiled smoke executable failed"
       fi
     else
-      pass "built smoke executable not runnable on this host"
+      fail "compiler produced no smoke executable"
     fi
   else
-    fail "vitte build smoke.vit -o smoke failed"
-    line "hint: cd $smoke_dir && $bindir/vitte build smoke.vit -o smoke"
+    fail "vitte compile smoke.vit -o smoke failed"
+    line "hint: cd $smoke_dir && $bindir/vitte compile smoke.vit -o smoke"
   fi
-  rm -rf "$smoke_dir"
+  cleanup_smoke
+  trap - EXIT HUP INT TERM
 fi
 
 path_vitte=$(command -v vitte 2>/dev/null || true)

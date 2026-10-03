@@ -129,7 +129,7 @@ scripts_build_absolute_path() {
 
 scripts_build_verify_release_manifest() {
   root_dir=$(scripts_build_root_dir)
-  binary=${1:-$root_dir/target/vitte/vitte}
+  binary=${1:-$root_dir/build/bin/vitte}
 
   scripts_build_require_executable \
     "$binary" \
@@ -195,7 +195,6 @@ detect_vitte() {
     "${VITTE_BIN:-}" \
     "${vitte_root:+$vitte_root/bin/vitte}" \
     "${vitte_prefix:+$vitte_prefix/bin/vitte}" \
-    "$root_dir/target/vitte/vitte" \
     "$root_dir/build/bin/vitte" \
     "$root_dir/target/macos-arm64/vitte" \
     "$root_dir/target/macos-x86_64/vitte" \
@@ -256,14 +255,11 @@ verify_vitte() {
     scripts_build_die \
       "Vitte help check failed: $vitte --help"
 
-  smoke_base=${TMPDIR:-/tmp}
-  smoke_dir=$smoke_base/vitte-script-build-verify-$$
-
-  /bin/rm -rf "$smoke_dir"
-  /bin/mkdir -p "$smoke_dir"
+  smoke_dir=$(mktemp -d "${TMPDIR:-/tmp}/vitte-script-build-verify.XXXXXX") ||
+    scripts_build_die "cannot create a temporary smoke directory"
 
   cleanup_smoke() {
-    /bin/rm -rf "$smoke_dir"
+    /bin/rm -rf -- "$smoke_dir"
   }
 
   trap cleanup_smoke EXIT HUP INT TERM
@@ -283,16 +279,17 @@ verify_vitte() {
 
   (
     cd "$smoke_dir"
-    "$vitte" build main.vit -o main >/dev/null 2>&1
+    "$vitte" compile main.vit -o main >/dev/null 2>&1
   ) ||
     scripts_build_die \
-      "Vitte post-install build failed: $vitte build main.vit -o main"
+      "Vitte post-install compile failed: $vitte compile main.vit -o main"
 
-  if [ -x "$smoke_dir/main" ]; then
-    "$smoke_dir/main" >/dev/null 2>&1 ||
-      scripts_build_die \
-        "Vitte post-install executable failed: $smoke_dir/main"
-  fi
+  smoke_program=$smoke_dir/main
+  [ -x "$smoke_program" ] || smoke_program=$smoke_dir/main.exe
+  [ -x "$smoke_program" ] ||
+    scripts_build_die "Vitte post-install executable is missing: $smoke_dir/main"
+  "$smoke_program" >/dev/null 2>&1 ||
+    scripts_build_die "Vitte post-install executable failed: $smoke_program"
 
   cleanup_smoke
   trap - EXIT HUP INT TERM
