@@ -27,6 +27,8 @@ Required real or VM smoke targets:
 - Debian stable `amd64`
 - macOS Intel `x86_64`
 - macOS Apple Silicon `arm64`
+- macOS universal `arm64+x86_64`
+- macOS universal2 `arm64+x86_64`
 - Solaris `amd64`
 - Solaris `i386`
 
