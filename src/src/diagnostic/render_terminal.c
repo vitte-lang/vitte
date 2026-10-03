@@ -3420,6 +3420,7 @@ vitte_diagnostic_render_cli_batch(
     vitte_diagnostic_terminal_options_t options;
     vitte_status_t status;
     size_t index;
+    size_t previous_count;
     bool rendered;
 
     if (stream == NULL ||
@@ -3520,6 +3521,7 @@ vitte_diagnostic_render_cli_batch(
             span_pointer = &span;
         }
 
+        previous_count = bag.count;
         status = vitte_diagnostic_emit(
             &bag,
             severity,
@@ -3531,6 +3533,9 @@ vitte_diagnostic_render_cli_batch(
             span_pointer);
         if (status != VITTE_STATUS_OK) {
             goto cleanup;
+        }
+        if (bag.count == previous_count) {
+            continue;
         }
 
         diagnostic = vitte_diagnostic_at_mut(&bag, bag.count - 1u);
