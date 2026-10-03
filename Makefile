@@ -603,6 +603,45 @@ $(GRAMMAR_TEST_BIN): $(TEST_DIR)/grammar_parser_test.c $(LIB_OBJECTS)
 test-grammar: check-ebnf-frontend-sync $(GRAMMAR_TEST_BIN)
 	$(GRAMMAR_TEST_BIN) $(GRAMMAR_FIXTURES)
 
+# -----------------------------------------------------------------------------
+# Lexer token contract and frontend fuzzing
+# -----------------------------------------------------------------------------
+
+FRONTEND_TOKEN_TEST_BIN := $(BIN_DIR)/frontend_token_test
+FRONTEND_FUZZ_TEST_BIN := $(BIN_DIR)/frontend_fuzz_test
+
+$(FRONTEND_TOKEN_TEST_BIN): $(TEST_DIR)/frontend_token_test.c $(SRC_ROOT)/lexer/lexer.c
+	@mkdir -p $(BIN_DIR)
+	@printf '[TEST-CC] frontend_token_test\n'
+	$(CC) \
+		$(CPPFLAGS) \
+		$(CFLAGS) \
+		$(TEST_DIR)/frontend_token_test.c \
+		$(SRC_ROOT)/lexer/lexer.c \
+		$(LDFLAGS) \
+		$(LDLIBS) \
+		-o $@
+
+$(FRONTEND_FUZZ_TEST_BIN): $(TEST_DIR)/frontend_fuzz_test.c $(LIB_OBJECTS)
+	@mkdir -p $(BIN_DIR)
+	@printf '[TEST-CC] frontend_fuzz_test\n'
+	$(CC) \
+		$(CPPFLAGS) \
+		$(CFLAGS) \
+		$(TEST_DIR)/frontend_fuzz_test.c \
+		$(LIB_OBJECTS) \
+		$(LDFLAGS) \
+		$(LDLIBS) \
+		-o $@
+
+.PHONY: test-frontend-tokens
+test-frontend-tokens: $(FRONTEND_TOKEN_TEST_BIN)
+	$(FRONTEND_TOKEN_TEST_BIN)
+
+.PHONY: test-frontend-fuzz
+test-frontend-fuzz: $(FRONTEND_FUZZ_TEST_BIN)
+	$(FRONTEND_FUZZ_TEST_BIN)
+
 .PHONY: check-ebnf-frontend-sync
 check-ebnf-frontend-sync:
 	$(PYTHON) scripts/check-ebnf-frontend-sync.py
@@ -797,6 +836,8 @@ test: \
 	test-diagnostic-formats \
 	test-source-map \
 	test-grammar \
+	test-frontend-tokens \
+	test-frontend-fuzz \
 	test-sema \
 	test-imports \
 	test-scale \
@@ -816,6 +857,8 @@ test-sanitizers:
 		test-source \
 		test-diagnostic \
 		test-diagnostic-fuzz \
+		test-frontend-tokens \
+		test-frontend-fuzz \
 		test-diagnostic-golden
 	@printf '\nASan/UBSan tests completed successfully.\n'
 
