@@ -664,6 +664,17 @@ verify_product_package() {
     grep -q . ||
     die "missing Vitte command in macOS $label package"
 
+  module_package=$(find "$expanded" \
+    -path '*/Payload/usr/local/share/vitte/modules/*/package.toml' \
+    -type f \
+    -print \
+    -quit)
+  [ -n "$module_package" ] ||
+    die "missing JSON module in macOS $label package"
+
+  scripts_build_verify_modules \
+    "$(dirname "$(dirname "$(dirname "$module_package")")")"
+
   find "$expanded" \
     -path '*/Payload/usr/local/share/vim/vimfiles/syntax/vitte.vim' \
     -type f \
