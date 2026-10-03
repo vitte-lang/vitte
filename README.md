@@ -15,7 +15,7 @@ Prérequis : un compilateur C17 et `make`.
 
 ```sh
 make
-./build/bin/vitte --version
+vitte --version
 ```
 
 Le binaire expose `check`, `compile`, `run`, `lex` et `parse`. `check` valide
@@ -26,8 +26,8 @@ et de génération C17; ils échouent explicitement au lieu d'annoncer une
 compilation ou une exécution réussie.
 
 ```sh
-./build/bin/vitte check examples/hello.vit
-./build/bin/vitte compile examples/hello.vit
+vitte check examples/hello.vit
+vitte compile examples/hello.vit
 ```
 
 Lancez la suite de régression avec `make test`. CMake est également pris en
