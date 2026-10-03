@@ -35,13 +35,15 @@ const JSON_NUMERIC_MAX_FORMAT_FRACTION_DIGITS: usize = 17;
 
 const JSON_NUMERIC_DEFAULT_FORMAT_FRACTION_DIGITS: usize = 17;
 
-const JSON_NUMERIC_I64_MAX: i64 = 9223372036854775807;
+export const JSON_NUMERIC_I64_MAX: i64 = 9223372036854775807;
 
-const JSON_NUMERIC_I64_MIN: i64 =
+export const JSON_NUMERIC_I64_MIN: i64 =
     -9223372036854775807 - 1;
 
 const JSON_NUMERIC_U64_MAX: u64 =
-    18446744073709551615;
+    (9223372036854775807 as u64) *
+    2 +
+    1;
 
 export pick JsonNumericKind {
     Invalid,
@@ -923,11 +925,12 @@ export proc parse_i64(
 
     let positive_limit:
         u64 =
-            9223372036854775807;
+            JSON_NUMERIC_I64_MAX as u64;
 
     let negative_limit:
         u64 =
-            9223372036854775808;
+            (JSON_NUMERIC_I64_MAX as u64) +
+            1;
 
     let limit:
         u64 =
@@ -1188,6 +1191,8 @@ export proc parse_f64(
 
     let mut value: f64 = 0.0;
 
+    let mut fraction_digits: i64 = 0;
+
     let mut index: usize =
         scanned.integer_begin;
 
@@ -1206,8 +1211,6 @@ export proc parse_f64(
     }
 
     if scanned.has_fraction {
-        let mut scale: f64 = 0.1;
-
         set index =
             scanned.fraction_begin;
 
@@ -1215,23 +1218,27 @@ export proc parse_f64(
               scanned.fraction_end {
             let digit:
                 u64 =
-                    digit_value(
-                        source[index]);
+                digit_value(
+                    source[index]);
 
-            set value +=
-                (digit as f64) *
-                scale;
+            set value =
+                value * 10.0 +
+                (digit as f64);
 
-            set scale *= 0.1;
+            set fraction_digits += 1;
 
             set index += 1;
         }
     }
 
-    if exponent_result.value != 0 {
+    let effective_exponent: i64 =
+        exponent_result.value -
+        fraction_digits;
+
+    if effective_exponent != 0 {
         set value *=
             pow10(
-                exponent_result.value);
+                effective_exponent);
     }
 
     if scanned.negative {
@@ -1430,7 +1437,8 @@ proc abs_i64_magnitude(
 
     if value ==
        JSON_NUMERIC_I64_MIN {
-        give 9223372036854775808;
+        give (JSON_NUMERIC_I64_MAX as u64) +
+             1;
     }
 
     give (-value) as u64;
