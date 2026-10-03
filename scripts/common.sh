@@ -558,6 +558,7 @@ scripts_build_copy_tree() {
       -name '.DS_Store' \
       -o -name '._*' \
       -o -name '.vitte-cache' \
+      -o -name 'build' \
       -o -name '__pycache__' \
       -o -name 'node_modules' \
     \) \
