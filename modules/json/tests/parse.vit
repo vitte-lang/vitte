@@ -33,6 +33,8 @@ use json::parser::parser::{
     parse
 };
 use json::runtime::numeric::{
+    JSON_NUMERIC_I64_MAX,
+    JSON_NUMERIC_I64_MIN,
     valid
 };
 
@@ -2297,7 +2299,7 @@ test "parsed value depth primitive" {
     assert result.ok;
 
     assert json_core::depth(
-        &result.value) >= 1;
+        &result.value) == 0;
 }
 
 test "parsed value depth nested array" {
@@ -2307,7 +2309,7 @@ test "parsed value depth nested array" {
     assert result.ok;
 
     assert json_core::depth(
-        &result.value) >= 4;
+        &result.value) == 3;
 }
 
 test "parsed value count nested tree" {
@@ -2317,7 +2319,7 @@ test "parsed value count nested tree" {
 
     assert result.ok;
 
-    assert value_count(
+    assert json_core::total_value_count(
         &result.value) >= 4;
 }
 
