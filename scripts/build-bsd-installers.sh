@@ -91,6 +91,8 @@ verify_payload() {
   [ -d "$root/usr/local" ] ||
     die "usr/local missing from $family $release $arch payload"
 
+  scripts_build_verify_modules "$root/usr/local/share/vitte"
+
   [ -d "$root/usr/local/share/vitte/editors" ] ||
     die "editor integrations missing from $family $release $arch payload"
 
