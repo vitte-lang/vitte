@@ -1,0 +1,693 @@
+#ifndef VITTE_SRC_API_CONTEXT_H
+#define VITTE_SRC_API_CONTEXT_H
+
+/*
+ * Vitte Compiler
+ * src/api/context.h
+ *
+ * Central compiler context.
+ *
+ * The context owns reusable compiler infrastructure and all state associated
+ * with one active compilation generation.
+ *
+ * Responsibilities:
+ *
+ *   - compilation lifecycle
+ *   - source ownership
+ *   - source identity
+ *   - diagnostics
+ *   - generation tracking
+ *   - cancellation
+ *   - failure propagation
+ *   - statistics
+ *   - invariant validation
+ *
+ * The context deliberately does not expose lexer/parser/sema/backend
+ * implementation details to the public API layer.
+ */
+
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+#include "error.h"
+
+#include "../diagnostic/diagnostic.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* ========================================================================= */
+/* Configuration                                                             */
+/* ========================================================================= */
+
+#ifndef VITTE_SOURCE_ID_NONE
+#define VITTE_SOURCE_ID_NONE ((vitte_source_id_t)0u)
+#endif
+
+/* ========================================================================= */
+/* Source identifiers                                                        */
+/* ========================================================================= */
+
+/*
+ * Stable source identifier inside a compiler context.
+ *
+ * Zero is permanently reserved as the invalid/no-source value.
+ *
+ * IDs are not reused while the context remains alive.
+ */
+
+/* ========================================================================= */
+/* Context state                                                             */
+/* ========================================================================= */
+
+typedef enum vitte_context_state {
+    /*
+     * Storage exists but initialization has not completed.
+     */
+    VITTE_CONTEXT_STATE_UNINITIALIZED = 0,
+
+    /*
+     * Context is initialized and may begin a compilation.
+     */
+    VITTE_CONTEXT_STATE_READY = 1,
+
+    /*
+     * A compilation generation is currently active.
+     */
+    VITTE_CONTEXT_STATE_COMPILING = 2,
+
+    /*
+     * The previous/current compilation failed.
+     *
+     * A failed context may begin another compilation; begin_compilation()
+     * resets per-compilation state.
+     */
+    VITTE_CONTEXT_STATE_FAILED = 3,
+
+    /*
+     * Context has been destroyed.
+     *
+     * No operation except harmless validation queries is valid afterwards.
+     */
+    VITTE_CONTEXT_STATE_DESTROYED = 4
+} vitte_context_state_t;
+
+/* ========================================================================= */
+/* Source record                                                             */
+/* ========================================================================= */
+
+/*
+ * Owned source registered with a compilation generation.
+ *
+ * name:
+ *     Owned NUL-terminated logical source name.
+ *
+ * data:
+ *     Owned source buffer. Always NUL terminated for convenience even though
+ *     length remains authoritative and embedded NUL bytes are permitted.
+ *
+ * length:
+ *     Number of source bytes excluding the convenience terminator.
+ *
+ * id:
+ *     Unique source identifier.
+ *
+ * generation:
+ *     Compilation generation that owns this source.
+ *
+ * hash:
+ *     Deterministic non-cryptographic hash of source bytes.
+ */
+typedef struct vitte_context_source {
+    vitte_source_id_t id;
+
+    char *name;
+    char *data;
+
+    size_t length;
+
+    uint64_t generation;
+    uint64_t hash;
+} vitte_context_source_t;
+
+/* ========================================================================= */
+/* Compiler context                                                          */
+/* ========================================================================= */
+
+/*
+ * Central compiler context.
+ *
+ * This structure is internal to the compiler implementation. External users
+ * should normally interact through vitte_api_t rather than manipulating this
+ * structure directly.
+ *
+ * Fields are visible here because compiler subsystems need efficient direct
+ * access. They are not part of the stable public ABI.
+ */
+typedef struct vitte_context {
+    /*
+     * Runtime validation cookie.
+     */
+    uint64_t magic;
+
+    /*
+     * Current lifecycle state.
+     */
+    vitte_context_state_t state;
+
+    /*
+     * Monotonically increasing compilation generation.
+     *
+     * Generation zero is reserved.
+     */
+    uint64_t generation;
+
+    /*
+     * Next source identifier.
+     *
+     * Zero is reserved as VITTE_SOURCE_ID_NONE.
+     */
+    vitte_source_id_t next_source_id;
+
+    /*
+     * Owned source table.
+     */
+    vitte_context_source_t *sources;
+
+    size_t source_count;
+    size_t source_capacity;
+
+    /*
+     * Sum of source lengths currently registered.
+     */
+    size_t total_source_bytes;
+
+    /*
+     * Structured diagnostics emitted by compiler stages.
+     */
+    vitte_diagnostic_bag_t diagnostics;
+
+    /*
+     * Context-local error state.
+     *
+     * Rich source-level compiler errors belong in diagnostics. This field is
+     * intended primarily for API/infrastructure/internal failures.
+     */
+    vitte_error_t last_error;
+
+    /*
+     * Compilation statistics.
+     */
+    size_t compilation_count;
+    size_t successful_compilation_count;
+    size_t failed_compilation_count;
+
+    /*
+     * Cooperative cancellation flag.
+     *
+     * Long-running stages should periodically call
+     * vitte_context_check_cancel().
+     */
+    bool cancel_requested;
+} vitte_context_t;
+
+/* ========================================================================= */
+/* Lifecycle                                                                 */
+/* ========================================================================= */
+
+/*
+ * Initialize a context.
+ *
+ * The input storage does not need to be zero initialized.
+ *
+ * On success the context enters VITTE_CONTEXT_STATE_READY.
+ */
+vitte_status_t
+vitte_context_init(
+    vitte_context_t *context);
+
+/*
+ * Destroy all resources owned by a context.
+ *
+ * Passing NULL is allowed.
+ *
+ * A context must not be reused without another successful
+ * vitte_context_init().
+ */
+void
+vitte_context_destroy(
+    vitte_context_t *context);
+
+/*
+ * Reset reusable context state without destroying the context.
+ *
+ * Sources, diagnostics and error state are cleared.
+ *
+ * Lifetime statistics and generation numbering are retained.
+ *
+ * Reset is forbidden during an active compilation.
+ */
+vitte_status_t
+vitte_context_reset(
+    vitte_context_t *context);
+
+/* ========================================================================= */
+/* Compilation lifecycle                                                     */
+/* ========================================================================= */
+
+/*
+ * Begin a new compilation generation.
+ *
+ * Clears:
+ *
+ *   - previous sources
+ *   - previous diagnostics
+ *   - previous context error
+ *   - previous cancellation request
+ *
+ * Retains:
+ *
+ *   - reusable allocations
+ *   - generation history
+ *   - source-ID sequence
+ *   - lifetime statistics
+ */
+vitte_status_t
+vitte_context_begin_compilation(
+    vitte_context_t *context);
+
+/*
+ * Finalize the current compilation.
+ *
+ * The final state becomes READY on success or FAILED when errors,
+ * cancellation, or infrastructure failures occurred.
+ */
+vitte_status_t
+vitte_context_end_compilation(
+    vitte_context_t *context);
+
+/*
+ * Abort an active compilation with an infrastructure/compiler failure.
+ *
+ * Source-level user errors should normally be represented by diagnostics
+ * rather than this API.
+ */
+vitte_status_t
+vitte_context_abort_compilation(
+    vitte_context_t *context,
+    vitte_status_t status,
+    const char *code,
+    const char *message);
+
+/* ========================================================================= */
+/* State                                                                     */
+/* ========================================================================= */
+
+bool
+vitte_context_is_valid(
+    const vitte_context_t *context);
+
+bool
+vitte_context_is_compiling(
+    const vitte_context_t *context);
+
+bool
+vitte_context_has_failed(
+    const vitte_context_t *context);
+
+const char *
+vitte_context_state_name(
+    vitte_context_state_t state);
+
+/* ========================================================================= */
+/* Generation                                                                */
+/* ========================================================================= */
+
+/*
+ * Return the current/most-recent compilation generation.
+ *
+ * Zero indicates an invalid context or no valid generation.
+ */
+uint64_t
+vitte_context_generation(
+    const vitte_context_t *context);
+
+/* ========================================================================= */
+/* Source registration                                                       */
+/* ========================================================================= */
+
+/*
+ * Register a source in the active compilation.
+ *
+ * The context takes its own copy of name and source bytes. Caller storage may
+ * therefore be released immediately after this function returns.
+ *
+ * Source registration is only permitted while the context is compiling.
+ *
+ * out_source_id may be NULL.
+ */
+vitte_status_t
+vitte_context_add_source(
+    vitte_context_t *context,
+    const char *name,
+    const char *data,
+    size_t length,
+    vitte_source_id_t *out_source_id);
+
+/* ========================================================================= */
+/* Source lookup                                                             */
+/* ========================================================================= */
+
+/*
+ * Indexed source access.
+ *
+ * Returned pointers are borrowed from the context and remain valid until the
+ * source table is cleared, the context is reset, a new compilation begins, or
+ * the context is destroyed.
+ */
+const vitte_context_source_t *
+vitte_context_source_at(
+    const vitte_context_t *context,
+    size_t index);
+
+vitte_context_source_t *
+vitte_context_source_at_mut(
+    vitte_context_t *context,
+    size_t index);
+
+/*
+ * Find a source by stable source ID.
+ */
+const vitte_context_source_t *
+vitte_context_find_source(
+    const vitte_context_t *context,
+    vitte_source_id_t source_id);
+
+vitte_context_source_t *
+vitte_context_find_source_mut(
+    vitte_context_t *context,
+    vitte_source_id_t source_id);
+
+/*
+ * Find the first source matching a logical source name.
+ */
+const vitte_context_source_t *
+vitte_context_find_source_by_name(
+    const vitte_context_t *context,
+    const char *name);
+
+/* ========================================================================= */
+/* Source properties                                                         */
+/* ========================================================================= */
+
+size_t
+vitte_context_source_count(
+    const vitte_context_t *context);
+
+size_t
+vitte_context_total_source_bytes(
+    const vitte_context_t *context);
+
+const char *
+vitte_context_source_name(
+    const vitte_context_t *context,
+    vitte_source_id_t source_id);
+
+/*
+ * Return borrowed source bytes.
+ *
+ * out_length may be NULL.
+ *
+ * The returned buffer is NUL terminated for convenience, but callers must use
+ * out_length rather than strlen() when processing arbitrary source bytes.
+ */
+const char *
+vitte_context_source_data(
+    const vitte_context_t *context,
+    vitte_source_id_t source_id,
+    size_t *out_length);
+
+/*
+ * Return the deterministic source-content hash.
+ *
+ * Zero is returned for an invalid source/context.
+ */
+uint64_t
+vitte_context_source_hash(
+    const vitte_context_t *context,
+    vitte_source_id_t source_id);
+
+/* ========================================================================= */
+/* Diagnostics                                                               */
+/* ========================================================================= */
+
+/*
+ * Borrow the current diagnostic bag.
+ */
+const vitte_diagnostic_bag_t *
+vitte_context_diagnostics(
+    const vitte_context_t *context);
+
+/*
+ * Mutable diagnostic access for compiler stages.
+ */
+vitte_diagnostic_bag_t *
+vitte_context_diagnostics_mut(
+    vitte_context_t *context);
+
+/* ========================================================================= */
+/* Error state                                                               */
+/* ========================================================================= */
+
+/*
+ * Return context-local infrastructure/API error state.
+ *
+ * Rich source diagnostics are available separately through the diagnostic
+ * bag.
+ */
+const vitte_error_t *
+vitte_context_last_error(
+    const vitte_context_t *context);
+
+void
+vitte_context_clear_error(
+    vitte_context_t *context);
+
+/*
+ * Record an infrastructure/compiler failure without immediately changing the
+ * compilation lifecycle state.
+ */
+vitte_status_t
+vitte_context_set_failure(
+    vitte_context_t *context,
+    vitte_status_t status,
+    const char *code,
+    const char *message);
+
+/* ========================================================================= */
+/* Cancellation                                                              */
+/* ========================================================================= */
+
+/*
+ * Request cooperative cancellation.
+ *
+ * This function only sets the flag. Compiler stages are responsible for
+ * checking it at appropriate safe points.
+ */
+void
+vitte_context_request_cancel(
+    vitte_context_t *context);
+
+bool
+vitte_context_cancel_requested(
+    const vitte_context_t *context);
+
+/*
+ * Return VITTE_STATUS_OK when no cancellation has been requested.
+ *
+ * When cancellation is pending, records an appropriate context error and
+ * returns a non-success status.
+ */
+vitte_status_t
+vitte_context_check_cancel(
+    vitte_context_t *context);
+
+/* ========================================================================= */
+/* Statistics                                                                */
+/* ========================================================================= */
+
+size_t
+vitte_context_compilation_count(
+    const vitte_context_t *context);
+
+size_t
+vitte_context_successful_compilation_count(
+    const vitte_context_t *context);
+
+size_t
+vitte_context_failed_compilation_count(
+    const vitte_context_t *context);
+
+/* ========================================================================= */
+/* Memory management                                                         */
+/* ========================================================================= */
+
+/*
+ * Release spare source-table capacity.
+ *
+ * This operation is optional and is primarily useful for long-lived embedding
+ * processes after unusually large compilations.
+ *
+ * It is forbidden while compiling.
+ */
+vitte_status_t
+vitte_context_release_unused_memory(
+    vitte_context_t *context);
+
+/* ========================================================================= */
+/* Validation                                                                */
+/* ========================================================================= */
+
+/*
+ * Perform an expensive context invariant check.
+ *
+ * Intended for:
+ *
+ *   - unit tests
+ *   - fuzzing
+ *   - assertions
+ *   - sanitizer builds
+ *   - compiler self-checking
+ *
+ * Checks include:
+ *
+ *   - lifecycle state
+ *   - source table bounds
+ *   - source IDs
+ *   - source generations
+ *   - source hashes
+ *   - source terminators
+ *   - total byte accounting
+ *   - compilation counters
+ *   - source-ID uniqueness
+ */
+bool
+vitte_context_validate(
+    const vitte_context_t *context);
+
+/* ========================================================================= */
+/* Convenience helpers                                                       */
+/* ========================================================================= */
+
+static inline bool
+vitte_context_is_ready(
+    const vitte_context_t *context)
+{
+    return context != NULL &&
+           context->state ==
+               VITTE_CONTEXT_STATE_READY;
+}
+
+static inline bool
+vitte_context_has_sources(
+    const vitte_context_t *context)
+{
+    return vitte_context_source_count(context) != 0u;
+}
+
+static inline bool
+vitte_context_has_diagnostics(
+    const vitte_context_t *context)
+{
+    const vitte_diagnostic_bag_t *bag;
+
+    bag = vitte_context_diagnostics(context);
+
+    return bag != NULL &&
+           vitte_diagnostic_bag_count(bag) != 0u;
+}
+
+static inline bool
+vitte_context_has_errors(
+    const vitte_context_t *context)
+{
+    const vitte_diagnostic_bag_t *bag;
+
+    bag = vitte_context_diagnostics(context);
+
+    return bag != NULL &&
+           vitte_diagnostic_bag_error_count(bag) != 0u;
+}
+
+static inline bool
+vitte_context_has_warnings(
+    const vitte_context_t *context)
+{
+    const vitte_diagnostic_bag_t *bag;
+
+    bag = vitte_context_diagnostics(context);
+
+    return bag != NULL &&
+           vitte_diagnostic_bag_warning_count(bag) != 0u;
+}
+
+/* ========================================================================= */
+/* Source helpers                                                            */
+/* ========================================================================= */
+
+static inline bool
+vitte_source_id_is_valid(
+    vitte_source_id_t source_id)
+{
+    return source_id != VITTE_SOURCE_ID_NONE;
+}
+
+static inline bool
+vitte_context_source_is_empty(
+    const vitte_context_source_t *source)
+{
+    return source == NULL ||
+           source->length == 0u;
+}
+
+static inline bool
+vitte_context_source_belongs_to_generation(
+    const vitte_context_source_t *source,
+    uint64_t generation)
+{
+    return source != NULL &&
+           source->generation == generation;
+}
+
+/* ========================================================================= */
+/* Compile-time checks                                                       */
+/* ========================================================================= */
+
+#if defined(__STDC_VERSION__) && \
+    __STDC_VERSION__ >= 201112L
+
+_Static_assert(
+    sizeof(vitte_source_id_t) == sizeof(uint64_t),
+    "vitte_source_id_t must remain 64-bit");
+
+_Static_assert(
+    VITTE_SOURCE_ID_NONE == 0u,
+    "source ID zero must remain reserved");
+
+_Static_assert(
+    sizeof(size_t) >= sizeof(uint32_t),
+    "Vitte requires size_t to be at least 32-bit");
+
+#endif
+
+/* ========================================================================= */
+/* C++                                                                       */
+/* ========================================================================= */
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
+
+#endif /* VITTE_SRC_API_CONTEXT_H */

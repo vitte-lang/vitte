@@ -1,0 +1,1650 @@
+/*
+ * Vitte Compiler
+ * src/api/api.c
+ *
+ * Public compiler API implementation.
+ *
+ * This translation unit is the stable boundary between applications using
+ * Vitte as a library and the internal compiler pipeline.
+ *
+ * Responsibilities:
+ *
+ *   - API lifecycle
+ *   - compiler/context lifecycle
+ *   - option normalization
+ *   - source validation
+ *   - source/file compilation
+ *   - diagnostic propagation
+ *   - result ownership
+ *   - deterministic cleanup
+ *   - defensive argument checking
+ *   - translation of internal failures into public status codes
+ *
+ * The API layer must not contain parsing, semantic-analysis or backend logic.
+ * Those responsibilities belong to their respective compiler subsystems.
+ */
+
+#include "api.h"
+
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "context.h"
+#include "error.h"
+
+#include "../diagnostic/diagnostic.h"
+#include "../driver/driver.h"
+#include "../source/source.h"
+#include "version.h"
+
+/* ========================================================================= */
+/* Configuration                                                             */
+/* ========================================================================= */
+
+#ifndef VITTE_API_MAX_SOURCE_SIZE
+#define VITTE_API_MAX_SOURCE_SIZE ((size_t)1024u * 1024u * 1024u)
+#endif
+
+#ifndef VITTE_API_MAX_PATH_LENGTH
+#define VITTE_API_MAX_PATH_LENGTH ((size_t)32768u)
+#endif
+
+#ifndef VITTE_API_INITIAL_OUTPUT_CAPACITY
+#define VITTE_API_INITIAL_OUTPUT_CAPACITY ((size_t)4096u)
+#endif
+
+#ifndef VITTE_API_RESULT_MAGIC
+#define VITTE_API_RESULT_MAGIC UINT64_C(0x5649545445524553)
+#endif
+
+#ifndef VITTE_API_CONTEXT_MAGIC
+#define VITTE_API_CONTEXT_MAGIC UINT64_C(0x5649545445435458)
+#endif
+
+/* ========================================================================= */
+/* Internal utilities                                                        */
+/* ========================================================================= */
+
+static bool
+vitte_api_size_add_overflow(size_t a, size_t b, size_t *result)
+{
+    if (result == NULL) {
+        return true;
+    }
+
+    if (a > SIZE_MAX - b) {
+        return true;
+    }
+
+    *result = a + b;
+    return false;
+}
+
+static bool
+vitte_api_size_mul_overflow(size_t a, size_t b, size_t *result)
+{
+    if (result == NULL) {
+        return true;
+    }
+
+    if (a != 0u && b > SIZE_MAX / a) {
+        return true;
+    }
+
+    *result = a * b;
+    return false;
+}
+
+static size_t
+vitte_api_bounded_strlen(const char *text, size_t maximum)
+{
+    size_t length;
+
+    if (text == NULL) {
+        return 0u;
+    }
+
+    length = 0u;
+
+    while (length < maximum && text[length] != '\0') {
+        ++length;
+    }
+
+    return length;
+}
+
+static bool
+vitte_api_string_is_empty(const char *text)
+{
+    return text == NULL || text[0] == '\0';
+}
+
+static bool
+vitte_api_path_is_valid(const char *path)
+{
+    size_t length;
+
+    if (path == NULL || path[0] == '\0') {
+        return false;
+    }
+
+    length = vitte_api_bounded_strlen(path, VITTE_API_MAX_PATH_LENGTH);
+
+    if (length == 0u || length >= VITTE_API_MAX_PATH_LENGTH) {
+        return false;
+    }
+
+    return true;
+}
+
+static void *
+vitte_api_allocate(size_t size)
+{
+    if (size == 0u) {
+        size = 1u;
+    }
+
+    return malloc(size);
+}
+
+static void *
+vitte_api_allocate_zeroed(size_t count, size_t size)
+{
+    size_t total;
+
+    if (vitte_api_size_mul_overflow(count, size, &total)) {
+        return NULL;
+    }
+
+    if (total == 0u) {
+        total = 1u;
+    }
+
+    return calloc(1u, total);
+}
+
+static void
+vitte_api_deallocate(void *pointer)
+{
+    free(pointer);
+}
+
+static char *
+vitte_api_duplicate_string_n(const char *text, size_t length)
+{
+    char *copy;
+    size_t allocation_size;
+
+    if (text == NULL && length != 0u) {
+        return NULL;
+    }
+
+    if (vitte_api_size_add_overflow(length, 1u, &allocation_size)) {
+        return NULL;
+    }
+
+    copy = (char *)vitte_api_allocate(allocation_size);
+
+    if (copy == NULL) {
+        return NULL;
+    }
+
+    if (length != 0u) {
+        memcpy(copy, text, length);
+    }
+
+    copy[length] = '\0';
+
+    return copy;
+}
+
+static char *
+vitte_api_duplicate_string(const char *text)
+{
+    size_t length;
+
+    if (text == NULL) {
+        return NULL;
+    }
+
+    length = strlen(text);
+
+    return vitte_api_duplicate_string_n(text, length);
+}
+
+/* ========================================================================= */
+/* Internal byte buffer                                                      */
+/* ========================================================================= */
+
+typedef struct vitte_api_buffer {
+    unsigned char *data;
+    size_t length;
+    size_t capacity;
+} vitte_api_buffer_t;
+
+static void
+vitte_api_buffer_init(vitte_api_buffer_t *buffer)
+{
+    if (buffer == NULL) {
+        return;
+    }
+
+    buffer->data = NULL;
+    buffer->length = 0u;
+    buffer->capacity = 0u;
+}
+
+static void
+vitte_api_buffer_destroy(vitte_api_buffer_t *buffer)
+{
+    if (buffer == NULL) {
+        return;
+    }
+
+    vitte_api_deallocate(buffer->data);
+
+    buffer->data = NULL;
+    buffer->length = 0u;
+    buffer->capacity = 0u;
+}
+
+static bool
+vitte_api_buffer_reserve(vitte_api_buffer_t *buffer, size_t required)
+{
+    unsigned char *new_data;
+    size_t new_capacity;
+
+    if (buffer == NULL) {
+        return false;
+    }
+
+    if (required <= buffer->capacity) {
+        return true;
+    }
+
+    new_capacity = buffer->capacity;
+
+    if (new_capacity == 0u) {
+        new_capacity = VITTE_API_INITIAL_OUTPUT_CAPACITY;
+    }
+
+    while (new_capacity < required) {
+        size_t next;
+
+        if (new_capacity > SIZE_MAX / 2u) {
+            new_capacity = required;
+            break;
+        }
+
+        next = new_capacity * 2u;
+
+        if (next <= new_capacity) {
+            new_capacity = required;
+            break;
+        }
+
+        new_capacity = next;
+    }
+
+    if (new_capacity < required) {
+        return false;
+    }
+
+    new_data = (unsigned char *)realloc(buffer->data, new_capacity);
+
+    if (new_data == NULL) {
+        return false;
+    }
+
+    buffer->data = new_data;
+    buffer->capacity = new_capacity;
+
+    return true;
+}
+
+static bool
+vitte_api_buffer_append(
+    vitte_api_buffer_t *buffer,
+    const void *data,
+    size_t length)
+{
+    size_t required;
+
+    if (buffer == NULL) {
+        return false;
+    }
+
+    if (length == 0u) {
+        return true;
+    }
+
+    if (data == NULL) {
+        return false;
+    }
+
+    if (vitte_api_size_add_overflow(buffer->length, length, &required)) {
+        return false;
+    }
+
+    if (!vitte_api_buffer_reserve(buffer, required)) {
+        return false;
+    }
+
+    memcpy(buffer->data + buffer->length, data, length);
+    buffer->length = required;
+
+    return true;
+}
+
+static bool
+vitte_api_buffer_append_byte(
+    vitte_api_buffer_t *buffer,
+    unsigned char value)
+{
+    return vitte_api_buffer_append(buffer, &value, 1u);
+}
+
+static bool
+vitte_api_buffer_terminate(vitte_api_buffer_t *buffer)
+{
+    if (buffer == NULL) {
+        return false;
+    }
+
+    if (!vitte_api_buffer_reserve(buffer, buffer->length + 1u)) {
+        return false;
+    }
+
+    buffer->data[buffer->length] = 0u;
+
+    return true;
+}
+
+/* ========================================================================= */
+/* Public result                                                             */
+/* ========================================================================= */
+
+/*
+ * api.h may expose this structure directly or through an opaque declaration.
+ * The implementation intentionally keeps all ownership in one object.
+ */
+
+typedef struct vitte_api_result_internal {
+    uint64_t magic;
+
+    vitte_status_t status;
+
+    char *source_name;
+
+    unsigned char *output;
+    size_t output_size;
+
+    char *diagnostics;
+    size_t diagnostics_size;
+
+    size_t error_count;
+    size_t warning_count;
+    size_t note_count;
+
+    bool succeeded;
+} vitte_api_result_internal_t;
+
+/* ========================================================================= */
+/* API context                                                               */
+/* ========================================================================= */
+
+typedef enum vitte_api_state {
+    VITTE_API_STATE_UNINITIALIZED = 0,
+    VITTE_API_STATE_READY,
+    VITTE_API_STATE_COMPILING,
+    VITTE_API_STATE_FAILED,
+    VITTE_API_STATE_DESTROYED
+} vitte_api_state_t;
+
+typedef struct vitte_api_context_internal {
+    uint64_t magic;
+
+    vitte_api_state_t state;
+
+    vitte_context_t context;
+
+    size_t compilation_count;
+    size_t successful_compilation_count;
+    size_t failed_compilation_count;
+
+    vitte_error_t last_error;
+} vitte_api_context_internal_t;
+
+/* ========================================================================= */
+/* Internal error handling                                                   */
+/* ========================================================================= */
+
+static vitte_status_t
+vitte_api_fail(
+    vitte_api_context_internal_t *api,
+    vitte_status_t status,
+    const char *code,
+    const char *message)
+{
+    if (api != NULL) {
+        vitte_error_set(
+            &api->last_error,
+            status,
+            code,
+            message);
+    }
+
+    vitte_error_set_last(status, code, message);
+
+    return status;
+}
+
+static vitte_status_t
+vitte_api_invalid_argument(
+    vitte_api_context_internal_t *api,
+    const char *message)
+{
+    return vitte_api_fail(
+        api,
+        VITTE_STATUS_ERROR_INVALID_ARGUMENT,
+        "VITTE_API_INVALID_ARGUMENT",
+        message);
+}
+
+static vitte_status_t
+vitte_api_invalid_state(
+    vitte_api_context_internal_t *api,
+    const char *message)
+{
+    return vitte_api_fail(
+        api,
+        VITTE_STATUS_ERROR_INVALID_STATE,
+        "VITTE_API_INVALID_STATE",
+        message);
+}
+
+static vitte_status_t
+vitte_api_out_of_memory(
+    vitte_api_context_internal_t *api)
+{
+    return vitte_api_fail(
+        api,
+        VITTE_STATUS_ERROR_OUT_OF_MEMORY,
+        "VITTE_API_OUT_OF_MEMORY",
+        "out of memory");
+}
+
+static vitte_status_t
+vitte_api_io_error(
+    vitte_api_context_internal_t *api,
+    const char *message)
+{
+    return vitte_api_fail(
+        api,
+        VITTE_STATUS_ERROR_IO,
+        "VITTE_API_IO_ERROR",
+        message);
+}
+
+static vitte_status_t
+vitte_api_internal_error(
+    vitte_api_context_internal_t *api,
+    const char *message)
+{
+    return vitte_api_fail(
+        api,
+        VITTE_STATUS_ERROR_INTERNAL,
+        "VITTE_API_INTERNAL_ERROR",
+        message);
+}
+
+/* ========================================================================= */
+/* Context validation                                                        */
+/* ========================================================================= */
+
+static bool
+vitte_api_context_is_valid(
+    const vitte_api_context_internal_t *api)
+{
+    if (api == NULL) {
+        return false;
+    }
+
+    if (api->magic != VITTE_API_CONTEXT_MAGIC) {
+        return false;
+    }
+
+    if (api->state == VITTE_API_STATE_DESTROYED) {
+        return false;
+    }
+
+    return true;
+}
+
+static bool
+vitte_api_result_is_valid(
+    const vitte_api_result_internal_t *result)
+{
+    return result != NULL &&
+           result->magic == VITTE_API_RESULT_MAGIC;
+}
+
+/* ========================================================================= */
+/* Result lifecycle                                                          */
+/* ========================================================================= */
+
+static vitte_api_result_internal_t *
+vitte_api_result_create(void)
+{
+    vitte_api_result_internal_t *result;
+
+    result = (vitte_api_result_internal_t *)
+        vitte_api_allocate_zeroed(
+            1u,
+            sizeof(*result));
+
+    if (result == NULL) {
+        return NULL;
+    }
+
+    result->magic = VITTE_API_RESULT_MAGIC;
+    result->status = VITTE_STATUS_OK;
+    result->succeeded = false;
+
+    return result;
+}
+
+static void
+vitte_api_result_destroy_internal(
+    vitte_api_result_internal_t *result)
+{
+    if (!vitte_api_result_is_valid(result)) {
+        return;
+    }
+
+    result->magic = 0u;
+
+    vitte_api_deallocate(result->source_name);
+    vitte_api_deallocate(result->output);
+    vitte_api_deallocate(result->diagnostics);
+
+    result->source_name = NULL;
+    result->output = NULL;
+    result->diagnostics = NULL;
+
+    result->output_size = 0u;
+    result->diagnostics_size = 0u;
+
+    result->error_count = 0u;
+    result->warning_count = 0u;
+    result->note_count = 0u;
+
+    vitte_api_deallocate(result);
+}
+
+/* ========================================================================= */
+/* Source validation                                                         */
+/* ========================================================================= */
+
+static vitte_status_t
+vitte_api_validate_source(
+    vitte_api_context_internal_t *api,
+    const char *source_name,
+    const char *source,
+    size_t source_length)
+{
+    if (source == NULL && source_length != 0u) {
+        return vitte_api_invalid_argument(
+            api,
+            "source is NULL while source length is non-zero");
+    }
+
+    if (source_length > VITTE_API_MAX_SOURCE_SIZE) {
+        return vitte_api_invalid_argument(
+            api,
+            "source exceeds the maximum supported API source size");
+    }
+
+    if (source_name != NULL &&
+        !vitte_api_path_is_valid(source_name)) {
+        return vitte_api_invalid_argument(
+            api,
+            "invalid source name");
+    }
+
+    return VITTE_STATUS_OK;
+}
+
+/* ========================================================================= */
+/* File loading                                                              */
+/* ========================================================================= */
+
+static vitte_status_t
+vitte_api_read_file(
+    vitte_api_context_internal_t *api,
+    const char *path,
+    char **out_data,
+    size_t *out_size)
+{
+    FILE *file;
+    long file_size_long;
+    size_t file_size;
+    char *data;
+    size_t read_size;
+
+    if (out_data == NULL || out_size == NULL) {
+        return vitte_api_invalid_argument(
+            api,
+            "output file buffer arguments are NULL");
+    }
+
+    *out_data = NULL;
+    *out_size = 0u;
+
+    if (!vitte_api_path_is_valid(path)) {
+        return vitte_api_invalid_argument(
+            api,
+            "invalid input file path");
+    }
+
+    file = fopen(path, "rb");
+
+    if (file == NULL) {
+        return vitte_api_io_error(
+            api,
+            "unable to open input file");
+    }
+
+    if (fseek(file, 0L, SEEK_END) != 0) {
+        fclose(file);
+
+        return vitte_api_io_error(
+            api,
+            "unable to seek input file");
+    }
+
+    file_size_long = ftell(file);
+
+    if (file_size_long < 0L) {
+        fclose(file);
+
+        return vitte_api_io_error(
+            api,
+            "unable to determine input file size");
+    }
+
+    if ((uintmax_t)file_size_long >
+        (uintmax_t)VITTE_API_MAX_SOURCE_SIZE) {
+        fclose(file);
+
+        return vitte_api_invalid_argument(
+            api,
+            "input file exceeds maximum source size");
+    }
+
+    file_size = (size_t)file_size_long;
+
+    if (fseek(file, 0L, SEEK_SET) != 0) {
+        fclose(file);
+
+        return vitte_api_io_error(
+            api,
+            "unable to rewind input file");
+    }
+
+    data = (char *)vitte_api_allocate(file_size + 1u);
+
+    if (data == NULL) {
+        fclose(file);
+        return vitte_api_out_of_memory(api);
+    }
+
+    read_size = 0u;
+
+    if (file_size != 0u) {
+        read_size = fread(
+            data,
+            1u,
+            file_size,
+            file);
+
+        if (read_size != file_size) {
+            vitte_api_deallocate(data);
+            fclose(file);
+
+            return vitte_api_io_error(
+                api,
+                "unable to read complete input file");
+        }
+    }
+
+    data[file_size] = '\0';
+
+    if (fclose(file) != 0) {
+        vitte_api_deallocate(data);
+
+        return vitte_api_io_error(
+            api,
+            "unable to close input file");
+    }
+
+    *out_data = data;
+    *out_size = file_size;
+
+    return VITTE_STATUS_OK;
+}
+
+/* ========================================================================= */
+/* Diagnostic rendering                                                      */
+/* ========================================================================= */
+
+static vitte_status_t
+vitte_api_capture_diagnostics(
+    vitte_api_context_internal_t *api,
+    vitte_api_result_internal_t *result)
+{
+    vitte_api_buffer_t buffer;
+    const vitte_diagnostic_bag_t *bag;
+    size_t index;
+
+    if (api == NULL || result == NULL) {
+        return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+    }
+
+    vitte_api_buffer_init(&buffer);
+
+    bag = vitte_context_diagnostics(&api->context);
+
+    if (bag == NULL) {
+        return VITTE_STATUS_OK;
+    }
+
+    result->error_count =
+        vitte_diagnostic_error_count(bag);
+
+    result->warning_count =
+        vitte_diagnostic_warning_count(bag);
+
+    for (index = 0u;
+         index < vitte_diagnostic_bag_count(bag);
+         ++index) {
+        const vitte_diagnostic_t *diagnostic;
+        char rendered[8192];
+        size_t rendered_length;
+        vitte_status_t status;
+
+        diagnostic =
+            vitte_diagnostic_at(bag, index);
+
+        if (diagnostic == NULL) {
+            continue;
+        }
+
+
+        status = vitte_diagnostic_format_one(
+            diagnostic,
+            rendered,
+            sizeof(rendered));
+
+        if (status != VITTE_STATUS_OK) {
+            vitte_api_buffer_destroy(&buffer);
+
+            return vitte_api_internal_error(
+                api,
+                "failed to format compiler diagnostic");
+        }
+
+        rendered_length =
+            vitte_api_bounded_strlen(
+                rendered,
+                sizeof(rendered));
+
+        if (!vitte_api_buffer_append(
+                &buffer,
+                rendered,
+                rendered_length) ||
+            !vitte_api_buffer_append_byte(
+                &buffer,
+                (unsigned char)'\n')) {
+            vitte_api_buffer_destroy(&buffer);
+
+            return vitte_api_out_of_memory(api);
+        }
+    }
+
+    if (!vitte_api_buffer_terminate(&buffer)) {
+        vitte_api_buffer_destroy(&buffer);
+        return vitte_api_out_of_memory(api);
+    }
+
+    result->diagnostics = (char *)buffer.data;
+    result->diagnostics_size = buffer.length;
+
+    buffer.data = NULL;
+    buffer.length = 0u;
+    buffer.capacity = 0u;
+
+    return VITTE_STATUS_OK;
+}
+
+/* ========================================================================= */
+/* Compilation core                                                          */
+/* ========================================================================= */
+
+static vitte_status_t
+vitte_api_compile_internal(
+    vitte_api_context_internal_t *api,
+    const char *source_name,
+    const char *source,
+    size_t source_length,
+    vitte_api_result_internal_t **out_result)
+{
+    vitte_api_result_internal_t *result;
+    vitte_status_t status;
+
+    if (!vitte_api_context_is_valid(api)) {
+        return VITTE_STATUS_ERROR_INVALID_STATE;
+    }
+
+    if (out_result == NULL) {
+        return vitte_api_invalid_argument(
+            api,
+            "out_result is NULL");
+    }
+
+    *out_result = NULL;
+
+    status = vitte_api_validate_source(
+        api,
+        source_name,
+        source,
+        source_length);
+
+    if (status != VITTE_STATUS_OK) {
+        return status;
+    }
+
+    if (api->state == VITTE_API_STATE_COMPILING) {
+        return vitte_api_invalid_state(
+            api,
+            "compiler context is already compiling");
+    }
+
+    result = vitte_api_result_create();
+
+    if (result == NULL) {
+        return vitte_api_out_of_memory(api);
+    }
+
+    result->source_name =
+        vitte_api_duplicate_string(
+            source_name != NULL
+                ? source_name
+                : "<memory>");
+
+    if (result->source_name == NULL) {
+        vitte_api_result_destroy_internal(result);
+        return vitte_api_out_of_memory(api);
+    }
+
+    api->state = VITTE_API_STATE_COMPILING;
+    ++api->compilation_count;
+
+    vitte_error_reset(&api->last_error);
+    vitte_error_clear_last();
+
+    /*
+     * Reset per-compilation state while retaining reusable compiler
+     * infrastructure owned by vitte_context_t.
+     */
+    status = vitte_context_begin_compilation(
+        &api->context);
+
+    if (status != VITTE_STATUS_OK) {
+        api->state = VITTE_API_STATE_FAILED;
+        ++api->failed_compilation_count;
+
+        result->status = status;
+
+        (void)vitte_api_capture_diagnostics(
+            api,
+            result);
+
+        *out_result = result;
+
+        return status;
+    }
+
+    /*
+     * Source registration.
+     */
+    status = vitte_context_add_source(
+        &api->context,
+        result->source_name,
+        source,
+        source_length,
+        NULL);
+
+    if (status == VITTE_STATUS_OK) {
+        /*
+         * Execute the complete compiler pipeline.
+         *
+         * Expected driver stages:
+         *
+         *   source
+         *     -> lexer
+         *     -> parser
+         *     -> AST
+         *     -> name resolution
+         *     -> imports/modules
+         *     -> semantic analysis
+         *     -> type checking
+         *     -> contracts
+         *     -> HIR
+         *     -> IR
+         *     -> backend
+         */
+        status = vitte_driver_compile_context(
+            &api->context);
+    }
+
+    /*
+     * Always finalize the compilation context.
+     *
+     * This gives the diagnostic engine an opportunity to flush deferred
+     * diagnostics, resolve cascades and stabilize deterministic ordering.
+     */
+    {
+        vitte_status_t end_status;
+
+        end_status =
+            vitte_context_end_compilation(
+                &api->context);
+
+        if (status == VITTE_STATUS_OK &&
+            end_status != VITTE_STATUS_OK) {
+            status = end_status;
+        }
+    }
+
+    result->status = status;
+
+    {
+        vitte_status_t diagnostic_status;
+
+        diagnostic_status =
+            vitte_api_capture_diagnostics(
+                api,
+                result);
+
+        if (status == VITTE_STATUS_OK &&
+            diagnostic_status != VITTE_STATUS_OK) {
+            status = diagnostic_status;
+            result->status = status;
+        }
+    }
+
+    result->succeeded =
+        status == VITTE_STATUS_OK &&
+        result->error_count == 0u;
+
+    if (result->succeeded) {
+        api->state = VITTE_API_STATE_READY;
+        ++api->successful_compilation_count;
+    } else {
+        api->state = VITTE_API_STATE_FAILED;
+        ++api->failed_compilation_count;
+    }
+
+    *out_result = result;
+
+    return status;
+}
+
+/* ========================================================================= */
+/* Public lifecycle                                                          */
+/* ========================================================================= */
+
+vitte_status_t
+vitte_api_create(
+    vitte_api_t **out_api)
+{
+    vitte_api_context_internal_t *api;
+    vitte_status_t status;
+
+    if (out_api == NULL) {
+        vitte_error_set_last(
+            VITTE_STATUS_ERROR_INVALID_ARGUMENT,
+            "VITTE_API_INVALID_ARGUMENT",
+            "out_api is NULL");
+
+        return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+    }
+
+    *out_api = NULL;
+
+    api = (vitte_api_context_internal_t *)
+        vitte_api_allocate_zeroed(
+            1u,
+            sizeof(*api));
+
+    if (api == NULL) {
+        vitte_error_set_last(
+            VITTE_STATUS_ERROR_OUT_OF_MEMORY,
+            "VITTE_API_OUT_OF_MEMORY",
+            "unable to allocate compiler API context");
+
+        return VITTE_STATUS_ERROR_OUT_OF_MEMORY;
+    }
+
+    api->magic = VITTE_API_CONTEXT_MAGIC;
+    api->state = VITTE_API_STATE_UNINITIALIZED;
+
+    vitte_error_init(&api->last_error);
+
+    status = vitte_context_init(
+        &api->context);
+
+    if (status != VITTE_STATUS_OK) {
+        api->magic = 0u;
+        vitte_api_deallocate(api);
+
+        return status;
+    }
+
+    api->state = VITTE_API_STATE_READY;
+
+    *out_api = (vitte_api_t *)api;
+
+    return VITTE_STATUS_OK;
+}
+
+void
+vitte_api_destroy(
+    vitte_api_t *public_api)
+{
+    vitte_api_context_internal_t *api;
+
+    api = (vitte_api_context_internal_t *)
+        public_api;
+
+    if (!vitte_api_context_is_valid(api)) {
+        return;
+    }
+
+    if (api->state == VITTE_API_STATE_COMPILING) {
+        /*
+         * The synchronous public API should never normally reach this path.
+         * The check nevertheless prevents destruction of live compiler state.
+         */
+        return;
+    }
+
+    api->state = VITTE_API_STATE_DESTROYED;
+
+    vitte_context_destroy(
+        &api->context);
+
+    vitte_error_reset(
+        &api->last_error);
+
+    api->magic = 0u;
+
+    vitte_api_deallocate(api);
+}
+
+/* ========================================================================= */
+/* Public compilation                                                        */
+/* ========================================================================= */
+
+vitte_status_t
+vitte_api_compile_source(
+    vitte_api_t *public_api,
+    const char *source_name,
+    const char *source,
+    size_t source_length,
+    vitte_api_result_t **out_result)
+{
+    vitte_api_context_internal_t *api;
+    vitte_api_result_internal_t *result;
+    vitte_status_t status;
+
+    api = (vitte_api_context_internal_t *)
+        public_api;
+
+    result = NULL;
+
+    status = vitte_api_compile_internal(
+        api,
+        source_name,
+        source,
+        source_length,
+        &result);
+
+    if (out_result != NULL) {
+        *out_result =
+            (vitte_api_result_t *)result;
+    } else {
+        vitte_api_result_destroy_internal(result);
+    }
+
+    return status;
+}
+
+vitte_status_t
+vitte_api_compile_string(
+    vitte_api_t *api,
+    const char *source,
+    vitte_api_result_t **out_result)
+{
+    size_t length;
+
+    if (source == NULL) {
+        return vitte_api_compile_source(
+            api,
+            "<memory>",
+            NULL,
+            0u,
+            out_result);
+    }
+
+    length = strlen(source);
+
+    return vitte_api_compile_source(
+        api,
+        "<memory>",
+        source,
+        length,
+        out_result);
+}
+
+vitte_status_t
+vitte_api_compile_file(
+    vitte_api_t *public_api,
+    const char *path,
+    vitte_api_result_t **out_result)
+{
+    vitte_api_context_internal_t *api;
+    char *source;
+    size_t source_size;
+    vitte_status_t status;
+
+    api = (vitte_api_context_internal_t *)
+        public_api;
+
+    if (out_result != NULL) {
+        *out_result = NULL;
+    }
+
+    if (!vitte_api_context_is_valid(api)) {
+        return VITTE_STATUS_ERROR_INVALID_STATE;
+    }
+
+    source = NULL;
+    source_size = 0u;
+
+    status = vitte_api_read_file(
+        api,
+        path,
+        &source,
+        &source_size);
+
+    if (status != VITTE_STATUS_OK) {
+        return status;
+    }
+
+    status = vitte_api_compile_source(
+        public_api,
+        path,
+        source,
+        source_size,
+        out_result);
+
+    vitte_api_deallocate(source);
+
+    return status;
+}
+
+/* ========================================================================= */
+/* Result API                                                                */
+/* ========================================================================= */
+
+void
+vitte_api_result_destroy(
+    vitte_api_result_t *public_result)
+{
+    vitte_api_result_destroy_internal(
+        (vitte_api_result_internal_t *)
+            public_result);
+}
+
+vitte_status_t
+vitte_api_result_status(
+    const vitte_api_result_t *public_result)
+{
+    const vitte_api_result_internal_t *result;
+
+    result =
+        (const vitte_api_result_internal_t *)
+            public_result;
+
+    if (!vitte_api_result_is_valid(result)) {
+        return VITTE_STATUS_ERROR_INVALID_ARGUMENT;
+    }
+
+    return result->status;
+}
+
+bool
+vitte_api_result_succeeded(
+    const vitte_api_result_t *public_result)
+{
+    const vitte_api_result_internal_t *result;
+
+    result =
+        (const vitte_api_result_internal_t *)
+            public_result;
+
+    return vitte_api_result_is_valid(result) &&
+           result->succeeded;
+}
+
+const char *
+vitte_api_result_source_name(
+    const vitte_api_result_t *public_result)
+{
+    const vitte_api_result_internal_t *result;
+
+    result =
+        (const vitte_api_result_internal_t *)
+            public_result;
+
+    if (!vitte_api_result_is_valid(result)) {
+        return NULL;
+    }
+
+    return result->source_name;
+}
+
+const void *
+vitte_api_result_output(
+    const vitte_api_result_t *public_result,
+    size_t *out_size)
+{
+    const vitte_api_result_internal_t *result;
+
+    if (out_size != NULL) {
+        *out_size = 0u;
+    }
+
+    result =
+        (const vitte_api_result_internal_t *)
+            public_result;
+
+    if (!vitte_api_result_is_valid(result)) {
+        return NULL;
+    }
+
+    if (out_size != NULL) {
+        *out_size = result->output_size;
+    }
+
+    return result->output;
+}
+
+const char *
+vitte_api_result_diagnostics(
+    const vitte_api_result_t *public_result,
+    size_t *out_size)
+{
+    const vitte_api_result_internal_t *result;
+
+    if (out_size != NULL) {
+        *out_size = 0u;
+    }
+
+    result =
+        (const vitte_api_result_internal_t *)
+            public_result;
+
+    if (!vitte_api_result_is_valid(result)) {
+        return NULL;
+    }
+
+    if (out_size != NULL) {
+        *out_size = result->diagnostics_size;
+    }
+
+    return result->diagnostics;
+}
+
+size_t
+vitte_api_result_error_count(
+    const vitte_api_result_t *public_result)
+{
+    const vitte_api_result_internal_t *result;
+
+    result =
+        (const vitte_api_result_internal_t *)
+            public_result;
+
+    if (!vitte_api_result_is_valid(result)) {
+        return 0u;
+    }
+
+    return result->error_count;
+}
+
+size_t
+vitte_api_result_warning_count(
+    const vitte_api_result_t *public_result)
+{
+    const vitte_api_result_internal_t *result;
+
+    result =
+        (const vitte_api_result_internal_t *)
+            public_result;
+
+    if (!vitte_api_result_is_valid(result)) {
+        return 0u;
+    }
+
+    return result->warning_count;
+}
+
+size_t
+vitte_api_result_note_count(
+    const vitte_api_result_t *public_result)
+{
+    const vitte_api_result_internal_t *result;
+
+    result =
+        (const vitte_api_result_internal_t *)
+            public_result;
+
+    if (!vitte_api_result_is_valid(result)) {
+        return 0u;
+    }
+
+    return result->note_count;
+}
+
+/* ========================================================================= */
+/* API state                                                                 */
+/* ========================================================================= */
+
+bool
+vitte_api_is_valid(
+    const vitte_api_t *public_api)
+{
+    return vitte_api_context_is_valid(
+        (const vitte_api_context_internal_t *)
+            public_api);
+}
+
+bool
+vitte_api_is_compiling(
+    const vitte_api_t *public_api)
+{
+    const vitte_api_context_internal_t *api;
+
+    api =
+        (const vitte_api_context_internal_t *)
+            public_api;
+
+    return vitte_api_context_is_valid(api) &&
+           api->state == VITTE_API_STATE_COMPILING;
+}
+
+size_t
+vitte_api_compilation_count(
+    const vitte_api_t *public_api)
+{
+    const vitte_api_context_internal_t *api;
+
+    api =
+        (const vitte_api_context_internal_t *)
+            public_api;
+
+    if (!vitte_api_context_is_valid(api)) {
+        return 0u;
+    }
+
+    return api->compilation_count;
+}
+
+size_t
+vitte_api_successful_compilation_count(
+    const vitte_api_t *public_api)
+{
+    const vitte_api_context_internal_t *api;
+
+    api =
+        (const vitte_api_context_internal_t *)
+            public_api;
+
+    if (!vitte_api_context_is_valid(api)) {
+        return 0u;
+    }
+
+    return api->successful_compilation_count;
+}
+
+size_t
+vitte_api_failed_compilation_count(
+    const vitte_api_t *public_api)
+{
+    const vitte_api_context_internal_t *api;
+
+    api =
+        (const vitte_api_context_internal_t *)
+            public_api;
+
+    if (!vitte_api_context_is_valid(api)) {
+        return 0u;
+    }
+
+    return api->failed_compilation_count;
+}
+
+/* ========================================================================= */
+/* Error access                                                              */
+/* ========================================================================= */
+
+const vitte_error_t *
+vitte_api_last_error(
+    const vitte_api_t *public_api)
+{
+    const vitte_api_context_internal_t *api;
+
+    api =
+        (const vitte_api_context_internal_t *)
+            public_api;
+
+    if (!vitte_api_context_is_valid(api)) {
+        return vitte_error_last();
+    }
+
+    return &api->last_error;
+}
+
+void
+vitte_api_clear_error(
+    vitte_api_t *public_api)
+{
+    vitte_api_context_internal_t *api;
+
+    api =
+        (vitte_api_context_internal_t *)
+            public_api;
+
+    if (!vitte_api_context_is_valid(api)) {
+        return;
+    }
+
+    vitte_error_reset(
+        &api->last_error);
+
+    vitte_error_clear_last();
+}
+
+/* ========================================================================= */
+/* Version                                                                   */
+/* ========================================================================= */
+
+const char *
+vitte_api_version(void)
+{
+#ifdef VITTE_VERSION_STRING
+    return VITTE_VERSION_STRING;
+#else
+    return "unknown";
+#endif
+}
+
+/* ========================================================================= */
+/* ABI information                                                           */
+/* ========================================================================= */
+
+uint32_t
+vitte_api_version_major(void)
+{
+#ifdef VITTE_VERSION_MAJOR
+    return (uint32_t)VITTE_VERSION_MAJOR;
+#else
+    return 0u;
+#endif
+}
+
+uint32_t
+vitte_api_version_minor(void)
+{
+#ifdef VITTE_VERSION_MINOR
+    return (uint32_t)VITTE_VERSION_MINOR;
+#else
+    return 0u;
+#endif
+}
+
+uint32_t
+vitte_api_version_patch(void)
+{
+#ifdef VITTE_VERSION_PATCH
+    return (uint32_t)VITTE_VERSION_PATCH;
+#else
+    return 0u;
+#endif
+}
+
+/* ========================================================================= */
+/* Build information                                                         */
+/* ========================================================================= */
+
+const char *
+vitte_api_build_mode(void)
+{
+#if defined(NDEBUG)
+    return "release";
+#else
+    return "debug";
+#endif
+}
+
+const char *
+vitte_api_compiler(void)
+{
+#if defined(__clang__)
+    return "clang";
+#elif defined(__GNUC__)
+    return "gcc";
+#elif defined(_MSC_VER)
+    return "msvc";
+#else
+    return "unknown";
+#endif
+}
+
+const char *
+vitte_api_platform(void)
+{
+#if defined(__APPLE__) && defined(__MACH__)
+    return "darwin";
+#elif defined(__linux__)
+    return "linux";
+#elif defined(_WIN32)
+    return "windows";
+#elif defined(__FreeBSD__)
+    return "freebsd";
+#elif defined(__OpenBSD__)
+    return "openbsd";
+#elif defined(__NetBSD__)
+    return "netbsd";
+#else
+    return "unknown";
+#endif
+}
+
+const char *
+vitte_api_architecture(void)
+{
+#if defined(__aarch64__) || defined(_M_ARM64)
+    return "aarch64";
+#elif defined(__x86_64__) || defined(_M_X64)
+    return "x86_64";
+#elif defined(__i386__) || defined(_M_IX86)
+    return "x86";
+#elif defined(__arm__) || defined(_M_ARM)
+    return "arm";
+#elif defined(__riscv) && (__riscv_xlen == 64)
+    return "riscv64";
+#elif defined(__riscv) && (__riscv_xlen == 32)
+    return "riscv32";
+#else
+    return "unknown";
+#endif
+}
+
+/* ========================================================================= */
+/* Sanity checking                                                           */
+/* ========================================================================= */
+
+bool
+vitte_api_validate(
+    const vitte_api_t *public_api)
+{
+    const vitte_api_context_internal_t *api;
+
+    api =
+        (const vitte_api_context_internal_t *)
+            public_api;
+
+    if (!vitte_api_context_is_valid(api)) {
+        return false;
+    }
+
+    if (api->successful_compilation_count >
+        api->compilation_count) {
+        return false;
+    }
+
+    if (api->failed_compilation_count >
+        api->compilation_count) {
+        return false;
+    }
+
+    if (api->successful_compilation_count +
+            api->failed_compilation_count >
+        api->compilation_count) {
+        return false;
+    }
+
+    return true;
+}
+
+/* ========================================================================= */
+/* End                                                                       */
+/* ========================================================================= */
