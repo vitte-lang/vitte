@@ -10,6 +10,13 @@ set -Eeuo pipefail
 #   - Vitte file-extension mappings
 #   - Vitte snippets
 #
+# Options:
+#   --dry-run                 Print operations without modifying files.
+#   --uninstall               Remove Vitte integration.
+#   --no-backup               Disable backups of existing configuration.
+#   --wd=MODE                 Use file, project, or current as working directory.
+#   --help                    Show this help.
+#
 # Environment:
 #   GEANY_HOME               Override the Geany configuration directory.
 #   VITTE_GEANY_WD_MODE      file | project | current
@@ -37,6 +44,30 @@ BACKUP_ENABLED="${VITTE_GEANY_BACKUP:-1}"
 UNINSTALL_MODE="${VITTE_GEANY_UNINSTALL:-0}"
 
 TEMP_PATHS=()
+
+usage() {
+  sed -n '2,23p' "$0" | sed 's/^# \?//'
+}
+
+parse_args() {
+  local argument
+
+  for argument in "$@"; do
+    case "$argument" in
+      --dry-run) DRY_RUN=1 ;;
+      --uninstall) UNINSTALL_MODE=1 ;;
+      --no-backup) BACKUP_ENABLED=0 ;;
+      --wd=file|--wd=project|--wd=current)
+        export VITTE_GEANY_WD_MODE="${argument#--wd=}"
+        ;;
+      --help|-h)
+        usage
+        exit 0
+        ;;
+      *) die "unknown option: $argument (use --help)" ;;
+    esac
+  done
+}
 
 log() {
   printf '[geany] %s\n' "$*"
@@ -578,6 +609,7 @@ main() {
   local geany_home
   local installed_count=0
 
+  parse_args "$@"
   configure_working_directory
   validate_environment
 
