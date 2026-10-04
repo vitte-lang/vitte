@@ -8,12 +8,16 @@ SCRIPT_NAME=install-raspberry-pi1
 PREFIX=${PREFIX:-/usr/local}
 DESTDIR=${DESTDIR:-}
 PI1_JOBS=${PI1_JOBS:-1}
-dry_run=0
-allow_non_pi=0
+DRY_RUN=${DRY_RUN:-0}
+HELP=${HELP:-0}
+PRINT_ENV=${PRINT_ENV:-0}
+ALLOW_NON_PI=${ALLOW_NON_PI:-0}
+
+usage_text='usage: install-raspberry-pi1.sh [--prefix DIR] [--destdir DIR] [--jobs N] [--dry-run] [--print-env] [--allow-non-pi]'
 
 usage() {
   printf '%s\n' \
-    'usage: install-raspberry-pi1.sh [--prefix DIR] [--destdir DIR] [--jobs N] [--dry-run] [--allow-non-pi]' \
+    "$usage_text" \
     '' \
     'Build Vitte from this source tree on Raspberry Pi 1 (ARMv6, 32-bit) and install it.' \
     'Default: PREFIX=/usr/local, PI1_JOBS=1. Installation may request sudo.' \
@@ -24,14 +28,16 @@ usage() {
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --help | -h)
-      usage
-      exit 0
+      HELP=1
       ;;
     --dry-run)
-      dry_run=1
+      DRY_RUN=1
+      ;;
+    --print-env)
+      PRINT_ENV=1
       ;;
     --allow-non-pi)
-      allow_non_pi=1
+      ALLOW_NON_PI=1
       ;;
     --prefix | --destdir | --jobs)
       option=$1
@@ -43,12 +49,23 @@ while [ "$#" -gt 0 ]; do
         --jobs) PI1_JOBS=$1 ;;
       esac
       ;;
+    --)
+      shift
+      break
+      ;;
     *)
       scripts_build_die "unsupported option: $1"
       ;;
   esac
   shift
 done
+
+export DRY_RUN HELP PRINT_ENV ALLOW_NON_PI
+
+if [ "$HELP" -eq 1 ]; then
+  usage
+  exit 0
+fi
 
 case "$PREFIX" in
   /*) ;;
@@ -64,19 +81,36 @@ case "$PI1_JOBS" in
   '' | *[!0-9]*) scripts_build_die "--jobs must be a positive integer: $PI1_JOBS" ;;
 esac
 [ "$PI1_JOBS" -gt 0 ] || scripts_build_die '--jobs must be at least 1'
-if [ "$allow_non_pi" -eq 1 ] && [ -z "$DESTDIR" ] && [ "$dry_run" -eq 0 ]; then
+case "$DRY_RUN" in
+  0 | 1) ;;
+  *) scripts_build_die "DRY_RUN must be 0 or 1: $DRY_RUN" ;;
+esac
+case "$PRINT_ENV" in
+  0 | 1) ;;
+  *) scripts_build_die "PRINT_ENV must be 0 or 1: $PRINT_ENV" ;;
+esac
+case "$ALLOW_NON_PI" in
+  0 | 1) ;;
+  *) scripts_build_die "ALLOW_NON_PI must be 0 or 1: $ALLOW_NON_PI" ;;
+esac
+
+if [ "$ALLOW_NON_PI" -eq 1 ] && [ -z "$DESTDIR" ] && [ "$DRY_RUN" -eq 0 ]; then
   scripts_build_die '--allow-non-pi requires --destdir so a host test cannot install system-wide'
 fi
 
-if [ "$dry_run" -eq 1 ]; then
-  scripts_build_log "dry-run host=$(uname -s 2>/dev/null || printf unknown)/$(uname -m 2>/dev/null || printf unknown)"
-  scripts_build_log "would run make -C $ROOT_DIR -j$PI1_JOBS all"
-  scripts_build_log "would install with PREFIX=$PREFIX DESTDIR=${DESTDIR:-<none>}"
-  scripts_build_log 'would compile and run a post-install smoke program'
+if [ "$PRINT_ENV" -eq 1 ]; then
+  printf 'PREFIX=%s\n' "$PREFIX"
+  printf 'DESTDIR=%s\n' "$DESTDIR"
+  printf 'PI1_JOBS=%s\n' "$PI1_JOBS"
+  printf 'DRY_RUN=%s\n' "$DRY_RUN"
+  printf 'ALLOW_NON_PI=%s\n' "$ALLOW_NON_PI"
   exit 0
 fi
 
-if [ "$allow_non_pi" -eq 0 ]; then
+scripts_build_maybe_dry_run \
+  "would build native Raspberry Pi 1 Vitte with jobs=$PI1_JOBS, install prefix=$PREFIX, destdir=${DESTDIR:-<none>}"
+
+if [ "$ALLOW_NON_PI" -eq 0 ]; then
   [ "$(uname -s)" = Linux ] ||
     scripts_build_die 'Raspberry Pi 1 installation requires Linux; use --allow-non-pi only for a staged test'
   case "$(uname -m)" in
@@ -97,8 +131,7 @@ else
 fi
 
 for tool in make cc ar ranlib python3 install mktemp; do
-  command -v "$tool" >/dev/null 2>&1 ||
-    scripts_build_die "missing $tool; install build-essential and python3 first"
+  scripts_build_require "$tool"
 done
 
 scripts_build_log "building native Vitte with $PI1_JOBS job(s)"
@@ -119,6 +152,7 @@ fi
 
 installed_bin=$DESTDIR$PREFIX/bin/vitte
 scripts_build_require_executable "$installed_bin" 'installed Vitte compiler'
+scripts_build_verify_release_manifest "$installed_bin"
 
 smoke_dir=$(mktemp -d "${TMPDIR:-/tmp}/vitte-pi1-install.XXXXXX") ||
   scripts_build_die 'cannot create a temporary smoke directory'
