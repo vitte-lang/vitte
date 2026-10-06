@@ -1,6 +1,5 @@
 #!/bin/sh
 set -eu
-
 ROOT_DIR=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 SCRIPT_NAME=build-freebsd-packages
 . "$ROOT_DIR/scripts/common.sh"
@@ -11,125 +10,113 @@ case "$OUT_DIR" in /*) ;; *) OUT_DIR=$ROOT_DIR/$OUT_DIR ;; esac
 ARCH=${ARCH:-all}
 PACKAGE_NAME=${PACKAGE_NAME:-vitte}
 FREEBSD_MAJOR=${FREEBSD_MAJOR:-14}
-
 EDITORS_DIR=$ROOT_DIR/editors
 COMPLETIONS_DIR=$ROOT_DIR/completions
 LICENSE_FILE=$ROOT_DIR/LICENSE
 LOGO_FILE=$ROOT_DIR/assets/logo.png
-
 PAYLOAD_SCRIPT=$ROOT_DIR/scripts/stage-installer-payload.sh
 scripts_build_maybe_help "usage: build-freebsd-packages.sh [--dry-run]"
 scripts_build_maybe_dry_run "would build FreeBSD pkg artifacts version=$VERSION arch=$ARCH out=$OUT_DIR"
-
 die() {
   printf '[build-freebsd-packages][error] %s\n' "$*" >&2
   exit 1
+}
+select_gnu_make() {
+  if [ -n "${MAKE:-}" ]; then
+    case "$("$MAKE" --version 2>/dev/null | sed -n '1p')" in
+      *"GNU Make"*) export MAKE; return 0 ;;
+      *) die "MAKE=$MAKE is not GNU Make; Vitte's Makefile requires GNU Make" ;;
+    esac
+  fi
+  if command -v gmake >/dev/null 2>&1; then
+    MAKE=gmake
+  elif command -v make >/dev/null 2>&1 &&
+       make --version 2>/dev/null | grep -F 'GNU Make' >/dev/null; then
+    MAKE=make
+  else
+    die "GNU Make is required. On FreeBSD/GhostBSD run: sudo pkg install gmake"
+  fi
+  export MAKE
 }
 
 require() {
   command -v "$1" >/dev/null 2>&1 ||
     die "missing required tool: $1"
 }
-
 require_file() {
   file=$1
   description=$2
-
   [ -f "$file" ] ||
     die "$description not found: $file"
-
   [ -s "$file" ] ||
     die "$description is empty: $file"
 }
-
 require_directory() {
   directory=$1
   description=$2
-
   [ -d "$directory" ] ||
     die "$description directory not found: $directory"
-
   find "$directory" -type f -print -quit |
     grep -q . ||
     die "$description directory is empty: $directory"
 }
-
 find_first_file() {
   description=$1
   shift
-
   for candidate in "$@"; do
     if [ -f "$candidate" ] && [ -s "$candidate" ]; then
       printf '%s\n' "$candidate"
       return 0
     fi
   done
-
   die "$description not found; checked: $*"
 }
-
 copy_tree() {
   source_dir=$1
   destination_dir=$2
   description=$3
-
   require_directory "$source_dir" "$description"
-
   mkdir -p "$destination_dir"
   cp -R "$source_dir"/. "$destination_dir"/
-
   printf '[build-freebsd-packages] added %s: %s\n' \
     "$description" \
     "$destination_dir"
 }
-
 verify_license_file() {
   license_file=$1
-
   require_file "$license_file" "VitteFoundation Public License"
-
   grep -F 'VITTEFOUNDATION PUBLIC LICENSE' "$license_file" >/dev/null ||
     die "invalid VitteFoundation license file: missing license title"
-
   grep -F 'Version 1.0' "$license_file" >/dev/null ||
     die "invalid VitteFoundation license file: expected version 1.0"
 }
-
 add_archived_integrations() {
   data_root=$1
   share_root=$data_root/usr/local/share/vitte
-
   copy_tree \
     "$EDITORS_DIR" \
     "$share_root/editors" \
     "archived editor integrations"
-
   copy_tree \
     "$COMPLETIONS_DIR" \
     "$share_root/completions" \
     "shell completions"
 }
-
 install_vim_integration() {
   data_root=$1
-
   vim_syntax=$(find_first_file \
     "Vim Vitte syntax" \
     "$EDITORS_DIR/vim/syntax/vitte.vim" \
     "$EDITORS_DIR/vim/vitte.vim" \
     "$EDITORS_DIR/vitte.vim")
-
   vim_root=$data_root/usr/local/share/vim/vimfiles
-
   mkdir -p \
     "$vim_root/syntax" \
     "$vim_root/ftdetect" \
     "$vim_root/ftplugin"
-
   install -m 0644 \
     "$vim_syntax" \
     "$vim_root/syntax/vitte.vim"
-
   if [ -f "$EDITORS_DIR/vim/ftdetect/vitte.vim" ]; then
     install -m 0644 \
       "$EDITORS_DIR/vim/ftdetect/vitte.vim" \
@@ -145,7 +132,6 @@ augroup END
 EOF
     chmod 0644 "$vim_root/ftdetect/vitte.vim"
   fi
-
   if [ -f "$EDITORS_DIR/vim/ftplugin/vitte.vim" ]; then
     install -m 0644 \
       "$EDITORS_DIR/vim/ftplugin/vitte.vim" \
@@ -155,9 +141,7 @@ EOF
 if exists("b:did_ftplugin")
   finish
 endif
-
 let b:did_ftplugin = 1
-
 setlocal commentstring=//\ %s
 setlocal comments=s1:/*,mb:*,ex:*/,://
 setlocal expandtab
@@ -167,142 +151,102 @@ setlocal tabstop=4
 EOF
     chmod 0644 "$vim_root/ftplugin/vitte.vim"
   fi
-
   printf '[build-freebsd-packages] installed Vim syntax integration\n'
 }
-
 install_emacs_integration() {
   data_root=$1
-
   emacs_mode=$(find_first_file \
     "Emacs Vitte mode" \
     "$EDITORS_DIR/emacs/vitte-mode.el" \
     "$EDITORS_DIR/emacs/vitte.el" \
     "$EDITORS_DIR/vitte-mode.el")
-
   emacs_root=$data_root/usr/local/share/emacs/site-lisp
   startup_root=$data_root/usr/local/share/emacs/site-lisp/site-start.d
-
   mkdir -p \
     "$emacs_root" \
     "$startup_root"
-
   install -m 0644 \
     "$emacs_mode" \
     "$emacs_root/vitte-mode.el"
-
   cat > "$startup_root/vitte-init.el" <<'EOF'
 ;;; vitte-init.el --- system-wide Vitte mode registration
-
 (add-to-list 'load-path "/usr/local/share/emacs/site-lisp")
-
 (autoload 'vitte-mode
   "vitte-mode"
   "Major mode for the Vitte programming language."
   t)
-
-(add-to-list 'auto-mode-alist '("\\.vit\\'" . vitte-mode))
-(add-to-list 'auto-mode-alist '("\\.vitte\\'" . vitte-mode))
-(add-to-list 'auto-mode-alist '("\\.vitl\\'" . vitte-mode))
-
+(add-to-list 'auto-mode-alist '("\\\\.vit\\\\'" . vitte-mode))
+(add-to-list 'auto-mode-alist '("\\\\.vitte\\\\'" . vitte-mode))
+(add-to-list 'auto-mode-alist '("\\\\.vitl\\\\'" . vitte-mode))
 (provide 'vitte-system-init)
-
 ;;; vitte-init.el ends here
 EOF
-
   chmod 0644 "$startup_root/vitte-init.el"
-
   printf '[build-freebsd-packages] installed Emacs mode integration\n'
 }
-
 install_nano_integration() {
   data_root=$1
-
   nano_syntax=$(find_first_file \
     "Nano Vitte syntax" \
     "$EDITORS_DIR/nano/vitte.nanorc" \
     "$EDITORS_DIR/nano/vitte.nano" \
     "$EDITORS_DIR/vitte.nanorc")
-
   nano_root=$data_root/usr/local/share/nano
-
   mkdir -p "$nano_root"
-
   install -m 0644 \
     "$nano_syntax" \
     "$nano_root/vitte.nanorc"
-
   printf '[build-freebsd-packages] installed Nano syntax integration\n'
 }
-
 install_geany_integration() {
   data_root=$1
-
   geany_definition=$(find_first_file \
     "Geany Vitte filetype" \
     "$EDITORS_DIR/geany/filetypes.Vitte.conf" \
     "$EDITORS_DIR/geany/filetypes.vitte.conf" \
     "$EDITORS_DIR/geany/vitte.conf" \
     "$EDITORS_DIR/filetypes.Vitte.conf")
-
   geany_root=$data_root/usr/local/share/geany/filedefs
-
   mkdir -p "$geany_root"
-
   install -m 0644 \
     "$geany_definition" \
     "$geany_root/filetypes.Vitte.conf"
-
   printf '[build-freebsd-packages] installed Geany filetype integration\n'
 }
-
 install_editor_integrations() {
   data_root=$1
-
   add_archived_integrations "$data_root"
   install_vim_integration "$data_root"
   install_emacs_integration "$data_root"
   install_nano_integration "$data_root"
   install_geany_integration "$data_root"
 }
-
 add_license_and_logo() {
   data_root=$1
-
   license_root=$data_root/usr/local/share/licenses/$PACKAGE_NAME
   assets_root=$data_root/usr/local/share/vitte/assets
-
   mkdir -p \
     "$license_root" \
     "$assets_root"
-
   install -m 0644 \
     "$LICENSE_FILE" \
     "$license_root/LICENSE"
-
   install -m 0644 \
     "$LOGO_FILE" \
     "$assets_root/logo.png"
-
   printf '[build-freebsd-packages] added VitteFoundation Public License\n'
   printf '[build-freebsd-packages] added Vitte logo\n'
 }
-
 add_pkg_scripts() {
   metadata=$1
-
   cat > "$metadata/+POST_INSTALL" <<'EOF'
 #!/bin/sh
 set -eu
-
 ensure_nano_include() {
   nanorc=$1
   syntax_file=$2
-
   [ -f "$syntax_file" ] || return 0
-
-  include_line="include \"$syntax_file\""
-
+  include_line="include \\"$syntax_file\\""
   if [ -f "$nanorc" ]; then
     if ! grep -F "$include_line" "$nanorc" >/dev/null 2>&1; then
       printf '\n%s\n' "$include_line" >> "$nanorc"
@@ -312,113 +256,93 @@ ensure_nano_include() {
     printf '%s\n' "$include_line" > "$nanorc"
   fi
 }
-
 ensure_nano_include \
   /usr/local/etc/nanorc \
   /usr/local/share/nano/vitte.nanorc
-
 printf '%s\n' 'Vitte editor integrations installed:'
 printf '%s\n' '  Vim:   *.vit, *.vitte, *.vitl'
 printf '%s\n' '  Emacs: *.vit, *.vitte, *.vitl'
 printf '%s\n' '  Nano:  *.vit, *.vitte, *.vitl'
 printf '%s\n' '  Geany: filetypes.Vitte.conf'
-
 exit 0
 EOF
-
   chmod 0755 "$metadata/+POST_INSTALL"
-
   cat > "$metadata/+PRE_DEINSTALL" <<'EOF'
 #!/bin/sh
 set -eu
-
 exit 0
 EOF
-
   chmod 0755 "$metadata/+PRE_DEINSTALL"
-
   cat > "$metadata/+POST_DEINSTALL" <<'EOF'
 #!/bin/sh
 set -eu
-
 nanorc=/usr/local/etc/nanorc
 syntax_file=/usr/local/share/nano/vitte.nanorc
-include_line="include \"$syntax_file\""
-
+include_line="include \\"$syntax_file\\""
 if [ -f "$nanorc" ]; then
   temporary_file="${nanorc}.vitte-tmp.$$"
-
   grep -Fv "$include_line" "$nanorc" > "$temporary_file" || true
   cat "$temporary_file" > "$nanorc"
   rm -f "$temporary_file"
 fi
-
 exit 0
 EOF
-
   chmod 0755 "$metadata/+POST_DEINSTALL"
 }
-
 verify_payload() {
   data_root=$1
   arch=$2
-
   [ -x "$data_root/usr/local/bin/vitte" ] ||
     die "missing or non-executable Vitte command for FreeBSD $arch"
 
-  scripts_build_verify_modules "$data_root/usr/local/share/vitte"
+  [ -x "$data_root/usr/local/bin/vittec" ] ||
+    die "missing or non-executable vittec command for FreeBSD $arch"
 
+  [ -x "$data_root/usr/local/libexec/vitte/vitte" ] ||
+    die "missing or non-executable Vitte compiler payload for FreeBSD $arch"
+
+  [ -x "$data_root/usr/local/libexec/vitte/vittec" ] ||
+    die "missing or non-executable vittec compiler payload for FreeBSD $arch"
+  scripts_build_verify_modules "$data_root/usr/local/share/vitte"
   require_directory \
     "$data_root/usr/local/share/vitte/editors" \
     "archived editor integrations"
-
   require_directory \
     "$data_root/usr/local/share/vitte/completions" \
     "shell completions"
-
   require_file \
     "$data_root/usr/local/share/vim/vimfiles/syntax/vitte.vim" \
     "Vim Vitte syntax"
-
   require_file \
     "$data_root/usr/local/share/vim/vimfiles/ftdetect/vitte.vim" \
     "Vim Vitte filetype detection"
-
   require_file \
     "$data_root/usr/local/share/vim/vimfiles/ftplugin/vitte.vim" \
     "Vim Vitte filetype plugin"
-
   require_file \
     "$data_root/usr/local/share/emacs/site-lisp/vitte-mode.el" \
     "Emacs Vitte mode"
-
   require_file \
     "$data_root/usr/local/share/emacs/site-lisp/site-start.d/vitte-init.el" \
     "Emacs Vitte automatic loader"
-
   require_file \
     "$data_root/usr/local/share/nano/vitte.nanorc" \
     "Nano Vitte syntax"
-
   require_file \
     "$data_root/usr/local/share/geany/filedefs/filetypes.Vitte.conf" \
     "Geany Vitte filetype"
-
   verify_license_file \
     "$data_root/usr/local/share/licenses/$PACKAGE_NAME/LICENSE"
-
   require_file \
     "$data_root/usr/local/share/vitte/assets/logo.png" \
     "Vitte logo"
 }
-
 generate_manifest() {
   data_root=$1
   metadata=$2
   package_name=$3
   version=$4
   abi=$5
-
   python3 - \
     "$data_root" \
     "$metadata" \
@@ -429,34 +353,27 @@ import hashlib
 import json
 import sys
 from pathlib import Path
-
 data_root = Path(sys.argv[1])
 metadata = Path(sys.argv[2])
 name = sys.argv[3]
 version = sys.argv[4]
 abi = sys.argv[5]
-
 files: dict[str, str] = {}
 directories: set[str] = set()
 flat_size = 0
-
 for path in sorted(data_root.rglob("*")):
     relative = "/" + path.relative_to(data_root).as_posix()
-
     if path.is_dir():
         directories.add(relative)
         continue
-
     if path.is_symlink():
         target = path.readlink().as_posix()
         files[relative] = "-"
         flat_size += len(target.encode("utf-8"))
         continue
-
     digest = hashlib.sha256(path.read_bytes()).hexdigest()
     files[relative] = "1$" + digest
     flat_size += path.stat().st_size
-
 manifest = {
     "name": name,
     "version": version,
@@ -491,7 +408,6 @@ manifest = {
         for directory in sorted(directories)
     },
 }
-
 compact_manifest = (
     json.dumps(
         manifest,
@@ -501,7 +417,6 @@ compact_manifest = (
     )
     + "\n"
 )
-
 full_manifest = (
     json.dumps(
         manifest,
@@ -511,119 +426,88 @@ full_manifest = (
     )
     + "\n"
 )
-
 (metadata / "+COMPACT_MANIFEST").write_text(
     compact_manifest,
     encoding="utf-8",
 )
-
 (metadata / "+MANIFEST").write_text(
     full_manifest,
     encoding="utf-8",
 )
 PY
 }
-
 verify_package() {
   package_file=$1
-
   package_listing=$(mktemp)
-
   trap 'rm -f "$package_listing"' EXIT HUP INT TERM
-
   bsdtar -tf "$package_file" > "$package_listing"
-
   grep -Fx '+COMPACT_MANIFEST' "$package_listing" >/dev/null ||
     die "missing compact manifest in package"
-
   grep -Fx '+MANIFEST' "$package_listing" >/dev/null ||
     die "missing full manifest in package"
-
   grep -Fx '+POST_INSTALL' "$package_listing" >/dev/null ||
     die "missing post-install script in package"
-
   grep -Fx '+PRE_DEINSTALL' "$package_listing" >/dev/null ||
     die "missing pre-deinstall script in package"
-
   grep -Fx '+POST_DEINSTALL' "$package_listing" >/dev/null ||
     die "missing post-deinstall script in package"
-
-  grep -Eq '^(\./)?usr/local/bin/vitte$' "$package_listing" ||
+  grep -Eq '^(\\./)?usr/local/bin/vitte$' "$package_listing" ||
     die "missing Vitte command in package"
-
-  grep -Eq '^(\./)?usr/local/share/vitte/editors/' "$package_listing" ||
+  grep -Eq '^(\\./)?usr/local/share/vitte/editors/' "$package_listing" ||
     die "missing archived editor integrations in package"
-
-  grep -Eq '^(\./)?usr/local/share/vitte/completions/' "$package_listing" ||
+  grep -Eq '^(\\./)?usr/local/share/vitte/completions/' "$package_listing" ||
     die "missing shell completions in package"
-
-  grep -Eq '^(\./)?usr/local/share/vim/vimfiles/syntax/vitte\.vim$' \
+  grep -Eq '^(\\./)?usr/local/share/vim/vimfiles/syntax/vitte\\.vim$' \
     "$package_listing" ||
     die "missing Vim syntax in package"
-
-  grep -Eq '^(\./)?usr/local/share/vim/vimfiles/ftdetect/vitte\.vim$' \
+  grep -Eq '^(\\./)?usr/local/share/vim/vimfiles/ftdetect/vitte\\.vim$' \
     "$package_listing" ||
     die "missing Vim filetype detection in package"
-
-  grep -Eq '^(\./)?usr/local/share/vim/vimfiles/ftplugin/vitte\.vim$' \
+  grep -Eq '^(\\./)?usr/local/share/vim/vimfiles/ftplugin/vitte\\.vim$' \
     "$package_listing" ||
     die "missing Vim filetype plugin in package"
-
-  grep -Eq '^(\./)?usr/local/share/emacs/site-lisp/vitte-mode\.el$' \
+  grep -Eq '^(\\./)?usr/local/share/emacs/site-lisp/vitte-mode\\.el$' \
     "$package_listing" ||
     die "missing Emacs mode in package"
-
-  grep -Eq '^(\./)?usr/local/share/emacs/site-lisp/site-start\.d/vitte-init\.el$' \
+  grep -Eq '^(\\./)?usr/local/share/emacs/site-lisp/site-start\\.d/vitte-init\\.el$' \
     "$package_listing" ||
     die "missing Emacs automatic loader in package"
-
-  grep -Eq '^(\./)?usr/local/share/nano/vitte\.nanorc$' \
+  grep -Eq '^(\\./)?usr/local/share/nano/vitte\\.nanorc$' \
     "$package_listing" ||
     die "missing Nano syntax in package"
-
-  grep -Eq '^(\./)?usr/local/share/geany/filedefs/filetypes\.Vitte\.conf$' \
+  grep -Eq '^(\\./)?usr/local/share/geany/filedefs/filetypes\\.Vitte\\.conf$' \
     "$package_listing" ||
     die "missing Geany filetype in package"
-
-  grep -Eq '^(\./)?usr/local/share/licenses/vitte/LICENSE$' \
+  grep -Eq '^(\\./)?usr/local/share/licenses/vitte/LICENSE$' \
     "$package_listing" ||
     die "missing VitteFoundation license in package"
-
-  grep -Eq '^(\./)?usr/local/share/vitte/assets/logo\.png$' \
+  grep -Eq '^(\\./)?usr/local/share/vitte/assets/logo\\.png$' \
     "$package_listing" ||
     die "missing Vitte logo in package"
-
   bsdtar -xOf \
     "$package_file" \
     ./usr/local/share/vim/vimfiles/ftdetect/vitte.vim |
     grep -F '*.vit' >/dev/null ||
     die "Vim integration does not register .vit"
-
   bsdtar -xOf \
     "$package_file" \
     ./usr/local/share/emacs/site-lisp/site-start.d/vitte-init.el |
-    grep -F "\\.vit\\\\'" >/dev/null ||
+    grep -F "\\\\.vit\\\\\\\\'" >/dev/null ||
     die "Emacs integration does not register .vit"
-
   bsdtar -xOf \
     "$package_file" \
     ./usr/local/share/nano/vitte.nanorc |
     grep -E 'syntax[[:space:]]+"?[Vv]itte' >/dev/null ||
     die "Nano integration does not declare Vitte syntax"
-
   rm -f "$package_listing"
   trap - EXIT HUP INT TERM
 }
-
 write_checksum() {
   package_file=$1
-
   scripts_build_sha256_write "$package_file" "$package_file.sha256"
 }
-
 build_one() {
   arch=$1
-
   case "$arch" in
     amd64)
       freebsd_arch=amd64
@@ -656,45 +540,37 @@ build_one() {
       die "unsupported FreeBSD architecture: $arch"
       ;;
   esac
-
   abi=FreeBSD:$FREEBSD_MAJOR:$freebsd_arch
   stage=$ROOT_DIR/target/installer-freebsd-$arch
   metadata=$stage/metadata
   data_root=$stage/data
   package_file=$OUT_DIR/${PACKAGE_NAME}-${VERSION}-freebsd-${arch}.pkg
   checksum_file=$package_file.sha256
-
   printf '[build-freebsd-packages] building FreeBSD %s\n' "$arch"
   printf '[build-freebsd-packages] ABI: %s\n' "$abi"
-
   rm -rf "$stage"
   rm -f "$package_file" "$checksum_file"
-
   mkdir -p \
     "$metadata" \
     "$data_root" \
     "$OUT_DIR"
-
+  MAKE=$MAKE \
   VERSION=$VERSION \
     "$PAYLOAD_SCRIPT" \
     "$data_root" \
     freebsd \
     "$arch" \
     unix
-
   install_editor_integrations "$data_root"
   add_license_and_logo "$data_root"
   verify_payload "$data_root" "$arch"
-
   generate_manifest \
     "$data_root" \
     "$metadata" \
     "$PACKAGE_NAME" \
     "$VERSION" \
     "$abi"
-
   add_pkg_scripts "$metadata"
-
   COPYFILE_DISABLE=1 \
     bsdtar -cJf "$package_file" \
       -C "$metadata" \
@@ -705,28 +581,24 @@ build_one() {
       +POST_DEINSTALL \
       -C "$data_root" \
       .
-
   verify_package "$package_file"
   write_checksum "$package_file"
-
   package_size=$(wc -c < "$package_file" | tr -d ' ')
-
   printf '[build-freebsd-packages] wrote %s (%s bytes)\n' \
     "$package_file" \
     "$package_size"
-
   printf '[build-freebsd-packages] wrote %s\n' \
     "$checksum_file"
 }
+select_gnu_make
+require "$MAKE"
 
 [ -x "$PAYLOAD_SCRIPT" ] ||
   die "payload staging script is missing or not executable: $PAYLOAD_SCRIPT"
-
 require_directory "$EDITORS_DIR" "editor integrations"
 require_directory "$COMPLETIONS_DIR" "shell completions"
 verify_license_file "$LICENSE_FILE"
 require_file "$LOGO_FILE" "Vitte logo"
-
 for tool in \
   bsdtar \
   cat \
@@ -742,7 +614,6 @@ for tool in \
 do
   require "$tool"
 done
-
 case "$ARCH" in
   all)
     for arch in amd64 i386 arm64 armv7 armv6 riscv64 powerpc powerpc64 powerpc64le; do
@@ -780,7 +651,6 @@ case "$ARCH" in
     die "unsupported FreeBSD architecture: $ARCH"
     ;;
 esac
-
 printf '[build-freebsd-packages] complete version=%s arch=%s out=%s\n' \
   "$VERSION" \
   "$ARCH" \
