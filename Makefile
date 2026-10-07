@@ -174,11 +174,12 @@ MODE ?= debug
 LDFLAGS :=
 LDLIBS   :=
 
-# constant_fold and generated/runtime code may require libm on Unix.
+# constant_fold and generated/runtime code require the C math library on
+# Unix platforms where libm is linked separately.
 UNAME_S := $(shell uname -s 2>/dev/null || echo unknown)
 
-ifeq ($(UNAME_S),Linux)
-	LDLIBS += -lm
+ifneq ($(filter Linux FreeBSD OpenBSD NetBSD DragonFly,$(UNAME_S)),)
+LDLIBS += -lm
 endif
 
 ifeq ($(MODE),release)
@@ -203,13 +204,11 @@ all: $(TARGET_BIN)
 $(TARGET_BIN): $(OBJECTS)
 	@mkdir -p $(dir $@)
 	@printf '\n[LD] %s\n' "$@"
-	$(CC) $(LDFLAGS) $(OBJECTS) -o build/bin/vitte -lm
+	$(CC) \
 		$(OBJECTS) \
 		$(LDFLAGS) \
-		$(LDLIBS) \
-		-o $@
-	@printf '\nBuilt Vitte compiler:\n'
-	@printf '  %s\n\n' "$@"
+		-o $@ \
+		$(LDLIBS)
 
 # -----------------------------------------------------------------------------
 # Object compilation
