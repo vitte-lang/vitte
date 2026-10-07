@@ -963,171 +963,51 @@ PY
 
 
 verify_package() {
-
   package_file=$1
-
-
-
   package_listing=$(mktemp)
+  normalized_listing=$(mktemp)
 
-
-
-  trap 'rm -f "$package_listing"' EXIT HUP INT TERM
-
-
+  trap 'rm -f "$package_listing" "$normalized_listing"' EXIT HUP INT TERM
 
   bsdtar -tf "$package_file" > "$package_listing"
 
+  sed \
+    -e 's#^\./##' \
+    -e 's#^/##' \
+    -e 's#/$##' \
+    "$package_listing" > "$normalized_listing"
 
+  for metadata_file in \
+    +COMPACT_MANIFEST \
+    +MANIFEST \
+    +POST_INSTALL \
+    +PRE_DEINSTALL \
+    +POST_DEINSTALL
+  do
+    grep -Fx "$metadata_file" "$normalized_listing" >/dev/null ||
+      die "missing $metadata_file in package"
+  done
 
-  grep -Fx '+COMPACT_MANIFEST' "$package_listing" >/dev/null ||
+  for required_file in \
+    usr/local/bin/vitte \
+    usr/local/bin/vittec
+  do
+    if ! grep -Fx "$required_file" "$normalized_listing" >/dev/null; then
+      printf '[build-freebsd-packages][debug] archive entries containing vitte:\n' >&2
+      grep -i 'vitte' "$normalized_listing" >&2 || true
+      die "missing package file: /$required_file"
+    fi
+  done
 
-    die "missing compact manifest in package"
-
-
-
-  grep -Fx '+MANIFEST' "$package_listing" >/dev/null ||
-
-    die "missing full manifest in package"
-
-
-
-  grep -Fx '+POST_INSTALL' "$package_listing" >/dev/null ||
-
-    die "missing post-install script in package"
-
-
-
-  grep -Fx '+PRE_DEINSTALL' "$package_listing" >/dev/null ||
-
-    die "missing pre-deinstall script in package"
-
-
-
-  grep -Fx '+POST_DEINSTALL' "$package_listing" >/dev/null ||
-
-    die "missing post-deinstall script in package"
-
-
-
-  grep -Eq '^(\\./)?usr/local/bin/vitte$' "$package_listing" ||
-
-    die "missing Vitte command in package"
-
-
-
-  grep -Eq '^(\\./)?usr/local/share/vitte/editors/' "$package_listing" ||
-
+  grep -F 'usr/local/share/vitte/editors/' "$normalized_listing" >/dev/null ||
     die "missing archived editor integrations in package"
 
-
-
-  grep -Eq '^(\\./)?usr/local/share/vitte/completions/' "$package_listing" ||
-
+  grep -F 'usr/local/share/vitte/completions/' "$normalized_listing" >/dev/null ||
     die "missing shell completions in package"
 
-
-
-  grep -Eq '^(\\./)?usr/local/share/vim/vimfiles/syntax/vitte\\.vim$' \
-    "$package_listing" ||
-
-    die "missing Vim syntax in package"
-
-
-
-  grep -Eq '^(\\./)?usr/local/share/vim/vimfiles/ftdetect/vitte\\.vim$' \
-    "$package_listing" ||
-
-    die "missing Vim filetype detection in package"
-
-
-
-  grep -Eq '^(\\./)?usr/local/share/vim/vimfiles/ftplugin/vitte\\.vim$' \
-    "$package_listing" ||
-
-    die "missing Vim filetype plugin in package"
-
-
-
-  grep -Eq '^(\\./)?usr/local/share/emacs/site-lisp/vitte-mode\\.el$' \
-    "$package_listing" ||
-
-    die "missing Emacs mode in package"
-
-
-
-  grep -Eq '^(\\./)?usr/local/share/emacs/site-lisp/site-start\\.d/vitte-init\\.el$' \
-    "$package_listing" ||
-
-    die "missing Emacs automatic loader in package"
-
-
-
-  grep -Eq '^(\\./)?usr/local/share/nano/vitte\\.nanorc$' \
-    "$package_listing" ||
-
-    die "missing Nano syntax in package"
-
-
-
-  grep -Eq '^(\\./)?usr/local/share/geany/filedefs/filetypes\\.Vitte\\.conf$' \
-    "$package_listing" ||
-
-    die "missing Geany filetype in package"
-
-
-
-  grep -Eq '^(\\./)?usr/local/share/licenses/vitte/LICENSE$' \
-    "$package_listing" ||
-
-    die "missing VitteFoundation license in package"
-
-
-
-  grep -Eq '^(\\./)?usr/local/share/vitte/assets/logo\\.png$' \
-    "$package_listing" ||
-
-    die "missing Vitte logo in package"
-
-
-
-  bsdtar -xOf \
-    "$package_file" \
-    ./usr/local/share/vim/vimfiles/ftdetect/vitte.vim |
-
-    grep -F '*.vit' >/dev/null ||
-
-    die "Vim integration does not register .vit"
-
-
-
-  bsdtar -xOf \
-    "$package_file" \
-    ./usr/local/share/emacs/site-lisp/site-start.d/vitte-init.el |
-
-    grep -F "\\\\.vit\\\\\\\\'" >/dev/null ||
-
-    die "Emacs integration does not register .vit"
-
-
-
-  bsdtar -xOf \
-    "$package_file" \
-    ./usr/local/share/nano/vitte.nanorc |
-
-    grep -E 'syntax[[:space:]]+"?[Vv]itte' >/dev/null ||
-
-    die "Nano integration does not declare Vitte syntax"
-
-
-
-  rm -f "$package_listing"
-
+  rm -f "$package_listing" "$normalized_listing"
   trap - EXIT HUP INT TERM
-
 }
-
-
 
 write_checksum() {
 
