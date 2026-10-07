@@ -2,8 +2,6 @@
 
 set -eu
 
-
-
 ROOT_DIR=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 
 SCRIPT_NAME=build-freebsd-packages
