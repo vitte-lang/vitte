@@ -203,7 +203,7 @@ all: $(TARGET_BIN)
 $(TARGET_BIN): $(OBJECTS)
 	@mkdir -p $(dir $@)
 	@printf '\n[LD] %s\n' "$@"
-	$(CC) \
+	$(CC) $(LDFLAGS) $(OBJECTS) -o build/bin/vitte -lm
 		$(OBJECTS) \
 		$(LDFLAGS) \
 		$(LDLIBS) \
