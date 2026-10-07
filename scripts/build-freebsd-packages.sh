@@ -459,69 +459,54 @@ PY
 verify_package() {
   package_file=$1
   package_listing=$(mktemp)
-  trap 'rm -f "$package_listing"' EXIT HUP INT TERM
+  package_listing_normalized=$(mktemp)
+  trap 'rm -f "$package_listing" "$package_listing_normalized"' EXIT HUP INT TERM
+
   bsdtar -tf "$package_file" > "$package_listing"
-  grep -Fx '+COMPACT_MANIFEST' "$package_listing" >/dev/null ||
-    die "missing compact manifest in package"
-  grep -Fx '+MANIFEST' "$package_listing" >/dev/null ||
-    die "missing full manifest in package"
-  grep -Fx '+POST_INSTALL' "$package_listing" >/dev/null ||
-    die "missing post-install script in package"
-  grep -Fx '+PRE_DEINSTALL' "$package_listing" >/dev/null ||
-    die "missing pre-deinstall script in package"
-  grep -Fx '+POST_DEINSTALL' "$package_listing" >/dev/null ||
-    die "missing post-deinstall script in package"
-  grep -Eq '^(\\./)?usr/local/bin/vitte$' "$package_listing" ||
-    die "missing Vitte command in package"
-  grep -Eq '^(\\./)?usr/local/share/vitte/editors/' "$package_listing" ||
-    die "missing archived editor integrations in package"
-  grep -Eq '^(\\./)?usr/local/share/vitte/completions/' "$package_listing" ||
-    die "missing shell completions in package"
-  grep -Eq '^(\\./)?usr/local/share/vim/vimfiles/syntax/vitte\\.vim$' \
-    "$package_listing" ||
-    die "missing Vim syntax in package"
-  grep -Eq '^(\\./)?usr/local/share/vim/vimfiles/ftdetect/vitte\\.vim$' \
-    "$package_listing" ||
-    die "missing Vim filetype detection in package"
-  grep -Eq '^(\\./)?usr/local/share/vim/vimfiles/ftplugin/vitte\\.vim$' \
-    "$package_listing" ||
-    die "missing Vim filetype plugin in package"
-  grep -Eq '^(\\./)?usr/local/share/emacs/site-lisp/vitte-mode\\.el$' \
-    "$package_listing" ||
-    die "missing Emacs mode in package"
-  grep -Eq '^(\\./)?usr/local/share/emacs/site-lisp/site-start\\.d/vitte-init\\.el$' \
-    "$package_listing" ||
-    die "missing Emacs automatic loader in package"
-  grep -Eq '^(\\./)?usr/local/share/nano/vitte\\.nanorc$' \
-    "$package_listing" ||
-    die "missing Nano syntax in package"
-  grep -Eq '^(\\./)?usr/local/share/geany/filedefs/filetypes\\.Vitte\\.conf$' \
-    "$package_listing" ||
-    die "missing Geany filetype in package"
-  grep -Eq '^(\\./)?usr/local/share/licenses/vitte/LICENSE$' \
-    "$package_listing" ||
-    die "missing VitteFoundation license in package"
-  grep -Eq '^(\\./)?usr/local/share/vitte/assets/logo\\.png$' \
-    "$package_listing" ||
-    die "missing Vitte logo in package"
-  bsdtar -xOf \
-    "$package_file" \
-    ./usr/local/share/vim/vimfiles/ftdetect/vitte.vim |
-    grep -F '*.vit' >/dev/null ||
-    die "Vim integration does not register .vit"
-  bsdtar -xOf \
-    "$package_file" \
-    ./usr/local/share/emacs/site-lisp/site-start.d/vitte-init.el |
-    grep -F "\\\\.vit\\\\\\\\'" >/dev/null ||
-    die "Emacs integration does not register .vit"
-  bsdtar -xOf \
-    "$package_file" \
-    ./usr/local/share/nano/vitte.nanorc |
-    grep -E 'syntax[[:space:]]+"?[Vv]itte' >/dev/null ||
-    die "Nano integration does not declare Vitte syntax"
-  rm -f "$package_listing"
+  sed -e 's#^\./##' -e 's#^/##' -e 's#/$##' "$package_listing" > "$package_listing_normalized"
+
+  grep -Fx '+COMPACT_MANIFEST' "$package_listing_normalized" >/dev/null || die "missing compact manifest in package"
+  grep -Fx '+MANIFEST' "$package_listing_normalized" >/dev/null || die "missing full manifest in package"
+  grep -Fx '+POST_INSTALL' "$package_listing_normalized" >/dev/null || die "missing post-install script in package"
+  grep -Fx '+PRE_DEINSTALL' "$package_listing_normalized" >/dev/null || die "missing pre-deinstall script in package"
+  grep -Fx '+POST_DEINSTALL' "$package_listing_normalized" >/dev/null || die "missing post-deinstall script in package"
+  grep -Fx 'usr/local/bin/vitte' "$package_listing_normalized" >/dev/null || die "missing Vitte command in package"
+  grep -Fx 'usr/local/bin/vittec' "$package_listing_normalized" >/dev/null || die "missing vittec command in package"
+  grep -Fx 'usr/local/libexec/vitte/vitte' "$package_listing_normalized" >/dev/null || die "missing Vitte compiler payload in package"
+  grep -Fx 'usr/local/libexec/vitte/vittec' "$package_listing_normalized" >/dev/null || die "missing vittec compiler payload in package"
+  grep -F 'usr/local/share/vitte/editors/' "$package_listing_normalized" >/dev/null || die "missing archived editor integrations in package"
+  grep -F 'usr/local/share/vitte/completions/' "$package_listing_normalized" >/dev/null || die "missing shell completions in package"
+  grep -Fx 'usr/local/share/vim/vimfiles/syntax/vitte.vim' "$package_listing_normalized" >/dev/null || die "missing Vim syntax in package"
+  grep -Fx 'usr/local/share/vim/vimfiles/ftdetect/vitte.vim' "$package_listing_normalized" >/dev/null || die "missing Vim filetype detection in package"
+  grep -Fx 'usr/local/share/vim/vimfiles/ftplugin/vitte.vim' "$package_listing_normalized" >/dev/null || die "missing Vim filetype plugin in package"
+  grep -Fx 'usr/local/share/emacs/site-lisp/vitte-mode.el' "$package_listing_normalized" >/dev/null || die "missing Emacs mode in package"
+  grep -Fx 'usr/local/share/emacs/site-lisp/site-start.d/vitte-init.el' "$package_listing_normalized" >/dev/null || die "missing Emacs automatic loader in package"
+  grep -Fx 'usr/local/share/nano/vitte.nanorc' "$package_listing_normalized" >/dev/null || die "missing Nano syntax in package"
+  grep -Fx 'usr/local/share/geany/filedefs/filetypes.Vitte.conf' "$package_listing_normalized" >/dev/null || die "missing Geany filetype in package"
+  grep -Fx "usr/local/share/licenses/$PACKAGE_NAME/LICENSE" "$package_listing_normalized" >/dev/null || die "missing VitteFoundation license in package"
+  grep -Fx 'usr/local/share/vitte/assets/logo.png' "$package_listing_normalized" >/dev/null || die "missing Vitte logo in package"
+
+  archive_member() {
+    wanted=$1
+    sed -n -e "\#^\./${wanted}\$#p" -e "\#^/${wanted}\$#p" -e "\#^${wanted}\$#p" "$package_listing" | sed -n '1p'
+  }
+
+  member=$(archive_member 'usr/local/share/vim/vimfiles/ftdetect/vitte.vim')
+  [ -n "$member" ] || die "cannot locate Vim integration archive member"
+  bsdtar -xOf "$package_file" "$member" | grep -F '*.vit' >/dev/null || die "Vim integration does not register .vit"
+
+  member=$(archive_member 'usr/local/share/emacs/site-lisp/site-start.d/vitte-init.el')
+  [ -n "$member" ] || die "cannot locate Emacs integration archive member"
+  bsdtar -xOf "$package_file" "$member" | grep -F "\\.vit\\\\'" >/dev/null || die "Emacs integration does not register .vit"
+
+  member=$(archive_member 'usr/local/share/nano/vitte.nanorc')
+  [ -n "$member" ] || die "cannot locate Nano integration archive member"
+  bsdtar -xOf "$package_file" "$member" | grep -E 'syntax[[:space:]]+"?[Vv]itte' >/dev/null || die "Nano integration does not declare Vitte syntax"
+
+  rm -f "$package_listing" "$package_listing_normalized"
   trap - EXIT HUP INT TERM
 }
+
 write_checksum() {
   package_file=$1
   scripts_build_sha256_write "$package_file" "$package_file.sha256"
@@ -634,6 +619,7 @@ for tool in \
   mkdir \
   mktemp \
   python3 \
+  sed \
   wc
 do
   require "$tool"
