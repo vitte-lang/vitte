@@ -797,33 +797,23 @@ abi = sys.argv[5]
 
 
 files: dict[str, str] = {}
-
+directories: set[str] = set()
 
 flat_size = 0
 
 
 
 for path in sorted(data_root.rglob("*")):
-
     relative = "/" + path.relative_to(data_root).as_posix()
 
-
-
-    if path.is_dir():
-
-
+    if path.is_symlink():
+        target = path.readlink().as_posix()
+        files[relative] = "-"
+        flat_size += len(target.encode("utf-8"))
         continue
 
-
-
-    if path.is_symlink():
-
-        target = path.readlink().as_posix()
-
-        files[relative] = "-"
-
-        flat_size += len(target.encode("utf-8"))
-
+    if path.is_dir():
+        directories.add(relative)
         continue
 
 
@@ -893,7 +883,10 @@ manifest = {
     },
 
     "files": files,
-
+    "directories": {
+        directory: "y"
+        for directory in sorted(directories)
+    },
 }
 
 
@@ -1156,18 +1149,27 @@ build_one() {
 
 
 
-  COPYFILE_DISABLE=1 \
-    bsdtar -cJf "$package_file" \
-      -C "$metadata" \
-      +COMPACT_MANIFEST \
-      +MANIFEST \
-      +POST_INSTALL \
-      +PRE_DEINSTALL \
-      +POST_DEINSTALL \
-      -C "$data_root" \
-      .
+  # Build the FreeBSD package with pkg(8), using data_root as the
+  # filesystem root. This keeps archive paths and manifest paths consistent.
+  pkg create \
+    -r "$data_root" \
+    -m "$metadata" \
+    -o "$OUT_DIR"
 
+  # pkg(8) chooses its own output filename. Resolve it and rename it to the
+  # deterministic Vitte artifact name expected by this script.
+  created_package=$(find "$OUT_DIR" -maxdepth 1 -type f \
+    \( -name "${PACKAGE_NAME}-${VERSION}.pkg" \
+       -o -name "${PACKAGE_NAME}-${VERSION}.txz" \
+       -o -name "${PACKAGE_NAME}-${VERSION}.tzst" \) \
+    -print -quit)
 
+  [ -n "$created_package" ] ||
+    die "pkg create did not produce a package for $PACKAGE_NAME-$VERSION"
+
+  if [ "$created_package" != "$package_file" ]; then
+    mv -f "$created_package" "$package_file"
+  fi
 
   verify_package "$package_file"
 
@@ -1210,6 +1212,8 @@ require_file "$LOGO_FILE" "Vitte logo"
 
 for tool in \
   bsdtar \
+  pkg \
+  mv \
   cat \
   chmod \
   cp \
@@ -1302,6 +1306,13 @@ case "$ARCH" in
     ;;
 
 esac
+
+
+
+printf '[build-freebsd-packages] complete version=%s arch=%s out=%s\n' \
+  "$VERSION" \
+  "$ARCH" \
+  "$OUT_DIR"
 
 
 
