@@ -813,7 +813,6 @@ for path in sorted(data_root.rglob("*")):
 
     if path.is_dir():
 
-        directories.add(relative)
 
         continue
 
