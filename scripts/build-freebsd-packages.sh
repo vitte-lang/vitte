@@ -970,12 +970,11 @@ verify_package() {
     -e 's#/$##' \
     "$package_listing" > "$normalized_listing"
 
+  # pkg create embeds install/deinstall scripts in package metadata.
+  # Only the manifests are expected as archive entries here.
   for metadata_file in \
     +COMPACT_MANIFEST \
-    +MANIFEST \
-    +POST_INSTALL \
-    +PRE_DEINSTALL \
-    +POST_DEINSTALL
+    +MANIFEST
   do
     grep -Fx "$metadata_file" "$normalized_listing" >/dev/null ||
       die "missing $metadata_file in package"
