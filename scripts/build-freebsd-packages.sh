@@ -158,10 +158,8 @@ copy_tree() {
 
 
 
-  printf '[build-freebsd-packages] added %s: %s\n' \\
-
-    "$description" \\
-
+  printf '[build-freebsd-packages] added %s: %s\n' \
+    "$description" \
     "$destination_dir"
 
 }
@@ -200,22 +198,16 @@ add_archived_integrations() {
 
 
 
-  copy_tree \\
-
-    "$EDITORS_DIR" \\
-
-    "$share_root/editors" \\
-
+  copy_tree \
+    "$EDITORS_DIR" \
+    "$share_root/editors" \
     "archived editor integrations"
 
 
 
-  copy_tree \\
-
-    "$COMPLETIONS_DIR" \\
-
-    "$share_root/completions" \\
-
+  copy_tree \
+    "$COMPLETIONS_DIR" \
+    "$share_root/completions" \
     "shell completions"
 
 }
@@ -228,14 +220,10 @@ install_vim_integration() {
 
 
 
-  vim_syntax=$(find_first_file \\
-
-    "Vim Vitte syntax" \\
-
-    "$EDITORS_DIR/vim/syntax/vitte.vim" \\
-
-    "$EDITORS_DIR/vim/vitte.vim" \\
-
+  vim_syntax=$(find_first_file \
+    "Vim Vitte syntax" \
+    "$EDITORS_DIR/vim/syntax/vitte.vim" \
+    "$EDITORS_DIR/vim/vitte.vim" \
     "$EDITORS_DIR/vitte.vim")
 
 
@@ -244,30 +232,23 @@ install_vim_integration() {
 
 
 
-  mkdir -p \\
-
-    "$vim_root/syntax" \\
-
-    "$vim_root/ftdetect" \\
-
+  mkdir -p \
+    "$vim_root/syntax" \
+    "$vim_root/ftdetect" \
     "$vim_root/ftplugin"
 
 
 
-  install -m 0644 \\
-
-    "$vim_syntax" \\
-
+  install -m 0644 \
+    "$vim_syntax" \
     "$vim_root/syntax/vitte.vim"
 
 
 
   if [ -f "$EDITORS_DIR/vim/ftdetect/vitte.vim" ]; then
 
-    install -m 0644 \\
-
-      "$EDITORS_DIR/vim/ftdetect/vitte.vim" \\
-
+    install -m 0644 \
+      "$EDITORS_DIR/vim/ftdetect/vitte.vim" \
       "$vim_root/ftdetect/vitte.vim"
 
   else
@@ -296,10 +277,8 @@ EOF
 
   if [ -f "$EDITORS_DIR/vim/ftplugin/vitte.vim" ]; then
 
-    install -m 0644 \\
-
-      "$EDITORS_DIR/vim/ftplugin/vitte.vim" \\
-
+    install -m 0644 \
+      "$EDITORS_DIR/vim/ftplugin/vitte.vim" \
       "$vim_root/ftplugin/vitte.vim"
 
   else
@@ -350,14 +329,10 @@ install_emacs_integration() {
 
 
 
-  emacs_mode=$(find_first_file \\
-
-    "Emacs Vitte mode" \\
-
-    "$EDITORS_DIR/emacs/vitte-mode.el" \\
-
-    "$EDITORS_DIR/emacs/vitte.el" \\
-
+  emacs_mode=$(find_first_file \
+    "Emacs Vitte mode" \
+    "$EDITORS_DIR/emacs/vitte-mode.el" \
+    "$EDITORS_DIR/emacs/vitte.el" \
     "$EDITORS_DIR/vitte-mode.el")
 
 
@@ -368,18 +343,14 @@ install_emacs_integration() {
 
 
 
-  mkdir -p \\
-
-    "$emacs_root" \\
-
+  mkdir -p \
+    "$emacs_root" \
     "$startup_root"
 
 
 
-  install -m 0644 \\
-
-    "$emacs_mode" \\
-
+  install -m 0644 \
+    "$emacs_mode" \
     "$emacs_root/vitte-mode.el"
 
 
@@ -438,14 +409,10 @@ install_nano_integration() {
 
 
 
-  nano_syntax=$(find_first_file \\
-
-    "Nano Vitte syntax" \\
-
-    "$EDITORS_DIR/nano/vitte.nanorc" \\
-
-    "$EDITORS_DIR/nano/vitte.nano" \\
-
+  nano_syntax=$(find_first_file \
+    "Nano Vitte syntax" \
+    "$EDITORS_DIR/nano/vitte.nanorc" \
+    "$EDITORS_DIR/nano/vitte.nano" \
     "$EDITORS_DIR/vitte.nanorc")
 
 
@@ -458,10 +425,8 @@ install_nano_integration() {
 
 
 
-  install -m 0644 \\
-
-    "$nano_syntax" \\
-
+  install -m 0644 \
+    "$nano_syntax" \
     "$nano_root/vitte.nanorc"
 
 
@@ -478,16 +443,11 @@ install_geany_integration() {
 
 
 
-  geany_definition=$(find_first_file \\
-
-    "Geany Vitte filetype" \\
-
-    "$EDITORS_DIR/geany/filetypes.Vitte.conf" \\
-
-    "$EDITORS_DIR/geany/filetypes.vitte.conf" \\
-
-    "$EDITORS_DIR/geany/vitte.conf" \\
-
+  geany_definition=$(find_first_file \
+    "Geany Vitte filetype" \
+    "$EDITORS_DIR/geany/filetypes.Vitte.conf" \
+    "$EDITORS_DIR/geany/filetypes.vitte.conf" \
+    "$EDITORS_DIR/geany/vitte.conf" \
     "$EDITORS_DIR/filetypes.Vitte.conf")
 
 
@@ -500,10 +460,8 @@ install_geany_integration() {
 
 
 
-  install -m 0644 \\
-
-    "$geany_definition" \\
-
+  install -m 0644 \
+    "$geany_definition" \
     "$geany_root/filetypes.Vitte.conf"
 
 
@@ -546,26 +504,20 @@ add_license_and_logo() {
 
 
 
-  mkdir -p \\
-
-    "$license_root" \\
-
+  mkdir -p \
+    "$license_root" \
     "$assets_root"
 
 
 
-  install -m 0644 \\
-
-    "$LICENSE_FILE" \\
-
+  install -m 0644 \
+    "$LICENSE_FILE" \
     "$license_root/LICENSE"
 
 
 
-  install -m 0644 \\
-
-    "$LOGO_FILE" \\
-
+  install -m 0644 \
+    "$LOGO_FILE" \
     "$assets_root/logo.png"
 
 
@@ -628,10 +580,8 @@ ensure_nano_include() {
 
 
 
-ensure_nano_include \\
-
-  /usr/local/etc/nanorc \\
-
+ensure_nano_include \
+  /usr/local/etc/nanorc \
   /usr/local/share/nano/vitte.nanorc
 
 
@@ -738,88 +688,67 @@ verify_payload() {
 
 
 
-  require_directory \\
-
-    "$data_root/usr/local/share/vitte/editors" \\
-
+  require_directory \
+    "$data_root/usr/local/share/vitte/editors" \
     "archived editor integrations"
 
 
 
-  require_directory \\
-
-    "$data_root/usr/local/share/vitte/completions" \\
-
+  require_directory \
+    "$data_root/usr/local/share/vitte/completions" \
     "shell completions"
 
 
 
-  require_file \\
-
-    "$data_root/usr/local/share/vim/vimfiles/syntax/vitte.vim" \\
-
+  require_file \
+    "$data_root/usr/local/share/vim/vimfiles/syntax/vitte.vim" \
     "Vim Vitte syntax"
 
 
 
-  require_file \\
-
-    "$data_root/usr/local/share/vim/vimfiles/ftdetect/vitte.vim" \\
-
+  require_file \
+    "$data_root/usr/local/share/vim/vimfiles/ftdetect/vitte.vim" \
     "Vim Vitte filetype detection"
 
 
 
-  require_file \\
-
-    "$data_root/usr/local/share/vim/vimfiles/ftplugin/vitte.vim" \\
-
+  require_file \
+    "$data_root/usr/local/share/vim/vimfiles/ftplugin/vitte.vim" \
     "Vim Vitte filetype plugin"
 
 
 
-  require_file \\
-
-    "$data_root/usr/local/share/emacs/site-lisp/vitte-mode.el" \\
-
+  require_file \
+    "$data_root/usr/local/share/emacs/site-lisp/vitte-mode.el" \
     "Emacs Vitte mode"
 
 
 
-  require_file \\
-
-    "$data_root/usr/local/share/emacs/site-lisp/site-start.d/vitte-init.el" \\
-
+  require_file \
+    "$data_root/usr/local/share/emacs/site-lisp/site-start.d/vitte-init.el" \
     "Emacs Vitte automatic loader"
 
 
 
-  require_file \\
-
-    "$data_root/usr/local/share/nano/vitte.nanorc" \\
-
+  require_file \
+    "$data_root/usr/local/share/nano/vitte.nanorc" \
     "Nano Vitte syntax"
 
 
 
-  require_file \\
-
-    "$data_root/usr/local/share/geany/filedefs/filetypes.Vitte.conf" \\
-
+  require_file \
+    "$data_root/usr/local/share/geany/filedefs/filetypes.Vitte.conf" \
     "Geany Vitte filetype"
 
 
 
-  verify_license_file \\
-
+  verify_license_file \
     "$data_root/usr/local/share/licenses/$PACKAGE_NAME/LICENSE"
 
 
 
-  require_file \\
-
-    "$data_root/usr/local/share/vitte/assets/logo.png" \\
-
+  require_file \
+    "$data_root/usr/local/share/vitte/assets/logo.png" \
     "Vitte logo"
 
 }
@@ -840,16 +769,11 @@ generate_manifest() {
 
 
 
-  python3 - \\
-
-    "$data_root" \\
-
-    "$metadata" \\
-
-    "$package_name" \\
-
-    "$version" \\
-
+  python3 - \
+    "$data_root" \
+    "$metadata" \
+    "$package_name" \
+    "$version" \
     "$abi" <<'PY'
 
 import hashlib
@@ -1107,82 +1031,71 @@ verify_package() {
 
 
 
-  grep -Eq '^(\\./)?usr/local/share/vim/vimfiles/syntax/vitte\\.vim$' \\
-
+  grep -Eq '^(\\./)?usr/local/share/vim/vimfiles/syntax/vitte\\.vim$' \
     "$package_listing" ||
 
     die "missing Vim syntax in package"
 
 
 
-  grep -Eq '^(\\./)?usr/local/share/vim/vimfiles/ftdetect/vitte\\.vim$' \\
-
+  grep -Eq '^(\\./)?usr/local/share/vim/vimfiles/ftdetect/vitte\\.vim$' \
     "$package_listing" ||
 
     die "missing Vim filetype detection in package"
 
 
 
-  grep -Eq '^(\\./)?usr/local/share/vim/vimfiles/ftplugin/vitte\\.vim$' \\
-
+  grep -Eq '^(\\./)?usr/local/share/vim/vimfiles/ftplugin/vitte\\.vim$' \
     "$package_listing" ||
 
     die "missing Vim filetype plugin in package"
 
 
 
-  grep -Eq '^(\\./)?usr/local/share/emacs/site-lisp/vitte-mode\\.el$' \\
-
+  grep -Eq '^(\\./)?usr/local/share/emacs/site-lisp/vitte-mode\\.el$' \
     "$package_listing" ||
 
     die "missing Emacs mode in package"
 
 
 
-  grep -Eq '^(\\./)?usr/local/share/emacs/site-lisp/site-start\\.d/vitte-init\\.el$' \\
-
+  grep -Eq '^(\\./)?usr/local/share/emacs/site-lisp/site-start\\.d/vitte-init\\.el$' \
     "$package_listing" ||
 
     die "missing Emacs automatic loader in package"
 
 
 
-  grep -Eq '^(\\./)?usr/local/share/nano/vitte\\.nanorc$' \\
-
+  grep -Eq '^(\\./)?usr/local/share/nano/vitte\\.nanorc$' \
     "$package_listing" ||
 
     die "missing Nano syntax in package"
 
 
 
-  grep -Eq '^(\\./)?usr/local/share/geany/filedefs/filetypes\\.Vitte\\.conf$' \\
-
+  grep -Eq '^(\\./)?usr/local/share/geany/filedefs/filetypes\\.Vitte\\.conf$' \
     "$package_listing" ||
 
     die "missing Geany filetype in package"
 
 
 
-  grep -Eq '^(\\./)?usr/local/share/licenses/vitte/LICENSE$' \\
-
+  grep -Eq '^(\\./)?usr/local/share/licenses/vitte/LICENSE$' \
     "$package_listing" ||
 
     die "missing VitteFoundation license in package"
 
 
 
-  grep -Eq '^(\\./)?usr/local/share/vitte/assets/logo\\.png$' \\
-
+  grep -Eq '^(\\./)?usr/local/share/vitte/assets/logo\\.png$' \
     "$package_listing" ||
 
     die "missing Vitte logo in package"
 
 
 
-  bsdtar -xOf \\
-
-    "$package_file" \\
-
+  bsdtar -xOf \
+    "$package_file" \
     ./usr/local/share/vim/vimfiles/ftdetect/vitte.vim |
 
     grep -F '*.vit' >/dev/null ||
@@ -1191,10 +1104,8 @@ verify_package() {
 
 
 
-  bsdtar -xOf \\
-
-    "$package_file" \\
-
+  bsdtar -xOf \
+    "$package_file" \
     ./usr/local/share/emacs/site-lisp/site-start.d/vitte-init.el |
 
     grep -F "\\\\.vit\\\\\\\\'" >/dev/null ||
@@ -1203,10 +1114,8 @@ verify_package() {
 
 
 
-  bsdtar -xOf \\
-
-    "$package_file" \\
-
+  bsdtar -xOf \
+    "$package_file" \
     ./usr/local/share/nano/vitte.nanorc |
 
     grep -E 'syntax[[:space:]]+"?[Vv]itte' >/dev/null ||
@@ -1333,26 +1242,18 @@ build_one() {
 
 
 
-  mkdir -p \\
-
-    "$metadata" \\
-
-    "$data_root" \\
-
+  mkdir -p \
+    "$metadata" \
+    "$data_root" \
     "$OUT_DIR"
 
 
 
-  VERSION=$VERSION \\
-
-    "$PAYLOAD_SCRIPT" \\
-
-    "$data_root" \\
-
-    freebsd \\
-
-    "$arch" \\
-
+  VERSION=$VERSION \
+    "$PAYLOAD_SCRIPT" \
+    "$data_root" \
+    freebsd \
+    "$arch" \
     unix
 
 
@@ -1365,16 +1266,11 @@ build_one() {
 
 
 
-  generate_manifest \\
-
-    "$data_root" \\
-
-    "$metadata" \\
-
-    "$PACKAGE_NAME" \\
-
-    "$VERSION" \\
-
+  generate_manifest \
+    "$data_root" \
+    "$metadata" \
+    "$PACKAGE_NAME" \
+    "$VERSION" \
     "$abi"
 
 
@@ -1383,24 +1279,15 @@ build_one() {
 
 
 
-  COPYFILE_DISABLE=1 \\
-
-    bsdtar -cJf "$package_file" \\
-
-      -C "$metadata" \\
-
-      +COMPACT_MANIFEST \\
-
-      +MANIFEST \\
-
-      +POST_INSTALL \\
-
-      +PRE_DEINSTALL \\
-
-      +POST_DEINSTALL \\
-
-      -C "$data_root" \\
-
+  COPYFILE_DISABLE=1 \
+    bsdtar -cJf "$package_file" \
+      -C "$metadata" \
+      +COMPACT_MANIFEST \
+      +MANIFEST \
+      +POST_INSTALL \
+      +PRE_DEINSTALL \
+      +POST_DEINSTALL \
+      -C "$data_root" \
       .
 
 
@@ -1415,16 +1302,13 @@ build_one() {
 
 
 
-  printf '[build-freebsd-packages] wrote %s (%s bytes)\n' \\
-
-    "$package_file" \\
-
+  printf '[build-freebsd-packages] wrote %s (%s bytes)\n' \
+    "$package_file" \
     "$package_size"
 
 
 
-  printf '[build-freebsd-packages] wrote %s\n' \\
-
+  printf '[build-freebsd-packages] wrote %s\n' \
     "$checksum_file"
 
 }
@@ -1447,28 +1331,17 @@ require_file "$LOGO_FILE" "Vitte logo"
 
 
 
-for tool in \\
-
-  bsdtar \\
-
-  cat \\
-
-  chmod \\
-
-  cp \\
-
-  find \\
-
-  grep \\
-
-  install \\
-
-  mkdir \\
-
-  mktemp \\
-
-  python3 \\
-
+for tool in \
+  bsdtar \
+  cat \
+  chmod \
+  cp \
+  find \
+  grep \
+  install \
+  mkdir \
+  mktemp \
+  python3 \
   wc
 
 do
@@ -1555,10 +1428,7 @@ esac
 
 
 
-printf '[build-freebsd-packages] complete version=%s arch=%s out=%s\n' \\
-
-  "$VERSION" \\
-
-  "$ARCH" \\
-
+printf '[build-freebsd-packages] complete version=%s arch=%s out=%s\n' \
+  "$VERSION" \
+  "$ARCH" \
   "$OUT_DIR"
