@@ -7,7 +7,21 @@ scripts_build_parse_common_flags "$@"
 VERSION=${VERSION:-$(scripts_build_package_version)}
 OUT_DIR=${OUT_DIR:-$ROOT_DIR/pkgout}
 case "$OUT_DIR" in /*) ;; *) OUT_DIR=$ROOT_DIR/$OUT_DIR ;; esac
-ARCH=${ARCH:-all}
+if [ -z "${ARCH:-}" ]; then
+  machine_arch=$(uname -m)
+  case "$machine_arch" in
+    amd64 | x86_64) ARCH=amd64 ;;
+    arm64 | aarch64) ARCH=arm64 ;;
+    armv7 | armv7l) ARCH=armv7 ;;
+    armv6 | armv6l) ARCH=armv6 ;;
+    i386 | i486 | i586 | i686) ARCH=i386 ;;
+    riscv64) ARCH=riscv64 ;;
+    powerpc) ARCH=powerpc ;;
+    powerpc64) ARCH=powerpc64 ;;
+    powerpc64le) ARCH=powerpc64le ;;
+    *) printf "[build-freebsd-packages][error] unsupported machine architecture: %s\n" "$machine_arch" >&2; exit 1 ;;
+  esac
+fi
 PACKAGE_NAME=${PACKAGE_NAME:-vitte}
 FREEBSD_MAJOR=${FREEBSD_MAJOR:-14}
 EDITORS_DIR=$ROOT_DIR/editors
@@ -21,24 +35,30 @@ die() {
   printf '[build-freebsd-packages][error] %s\n' "$*" >&2
   exit 1
 }
+MAKE=${MAKE:-}
+
 select_gnu_make() {
-  if [ -n "${MAKE:-}" ]; then
-    case "$("$MAKE" --version 2>/dev/null | sed -n '1p')" in
-      *"GNU Make"*) export MAKE; return 0 ;;
-      *) die "MAKE=$MAKE is not GNU Make; Vitte's Makefile requires GNU Make" ;;
-    esac
+  if [ -z "$MAKE" ]; then
+    if command -v gmake >/dev/null 2>&1; then
+      MAKE=gmake
+    elif command -v make >/dev/null 2>&1 &&
+         make --version 2>/dev/null | grep -F 'GNU Make' >/dev/null; then
+      MAKE=make
+    else
+      die "GNU Make is required. On FreeBSD/GhostBSD: sudo pkg install gmake"
+    fi
   fi
-  if command -v gmake >/dev/null 2>&1; then
-    MAKE=gmake
-  elif command -v make >/dev/null 2>&1 &&
-       make --version 2>/dev/null | grep -F 'GNU Make' >/dev/null; then
-    MAKE=make
-  else
-    die "GNU Make is required. On FreeBSD/GhostBSD run: sudo pkg install gmake"
-  fi
+
+  command -v "$MAKE" >/dev/null 2>&1 ||
+    die "GNU Make command not found: $MAKE"
+
+  case "$("$MAKE" --version 2>/dev/null | sed -n '1p')" in
+    *"GNU Make"*) ;;
+    *) die "MAKE=$MAKE is not GNU Make; Vitte's Makefile requires GNU Make" ;;
+  esac
+
   export MAKE
 }
-
 require() {
   command -v "$1" >/dev/null 2>&1 ||
     die "missing required tool: $1"
@@ -554,7 +574,11 @@ build_one() {
     "$metadata" \
     "$data_root" \
     "$OUT_DIR"
+  printf '[build-freebsd-packages] GNU Make: %s\n' "$MAKE"
+  "$MAKE" --version | sed -n '1p'
+
   MAKE=$MAKE \
+  GMAKE=$MAKE \
   VERSION=$VERSION \
     "$PAYLOAD_SCRIPT" \
     "$data_root" \
