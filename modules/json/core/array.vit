@@ -95,7 +95,7 @@ form JsonArrayRange {
 }
 
 proc null_value() -> JsonArrayValue {
-    give JsonArrayValue {
+    return JsonArrayValue {
         kind: JsonArrayValueKind.Null,
 
         bool_value: false,
@@ -113,7 +113,7 @@ proc null_value() -> JsonArrayValue {
 proc bool_value(
     value: bool
 ) -> JsonArrayValue {
-    give JsonArrayValue {
+    return JsonArrayValue {
         kind: JsonArrayValueKind.Bool,
 
         bool_value: value,
@@ -131,7 +131,7 @@ proc bool_value(
 proc integer_value(
     value: i64
 ) -> JsonArrayValue {
-    give JsonArrayValue {
+    return JsonArrayValue {
         kind: JsonArrayValueKind.Integer,
 
         bool_value: false,
@@ -149,7 +149,7 @@ proc integer_value(
 proc float_value(
     value: f64
 ) -> JsonArrayValue {
-    give JsonArrayValue {
+    return JsonArrayValue {
         kind: JsonArrayValueKind.Float,
 
         bool_value: false,
@@ -167,7 +167,7 @@ proc float_value(
 proc string_value(
     value: string
 ) -> JsonArrayValue {
-    give JsonArrayValue {
+    return JsonArrayValue {
         kind: JsonArrayValueKind.String,
 
         bool_value: false,
@@ -185,7 +185,7 @@ proc string_value(
 proc array_value(
     value: &JsonArray
 ) -> JsonArrayValue {
-    give JsonArrayValue {
+    return JsonArrayValue {
         kind: JsonArrayValueKind.Array,
 
         bool_value: false,
@@ -201,7 +201,7 @@ proc array_value(
 }
 
 proc empty() -> JsonArray {
-    give JsonArray {
+    return JsonArray {
         values: [],
 
         length: 0,
@@ -221,7 +221,7 @@ proc with_capacity(
             MINIMUM_CAPACITY;
     }
 
-    give JsonArray {
+    return JsonArray {
         values: [],
 
         length: 0,
@@ -240,55 +240,55 @@ proc singleton(
 
     set result.length = 1;
 
-    give result;
+    return result;
 }
 
 proc len(
     array: &JsonArray
 ) -> usize {
-    give array.length;
+    return array.length;
 }
 
 proc capacity(
     array: &JsonArray
 ) -> usize {
-    give array.capacity;
+    return array.capacity;
 }
 
 proc is_empty(
     array: &JsonArray
 ) -> bool {
-    give array.length == 0;
+    return array.length == 0;
 }
 
 proc is_not_empty(
     array: &JsonArray
 ) -> bool {
-    give array.length != 0;
+    return array.length != 0;
 }
 
 proc is_valid_index(
     array: &JsonArray,
     index: usize
 ) -> bool {
-    give index < array.length;
+    return index < array.length;
 }
 
 proc is_valid_insert_index(
     array: &JsonArray,
     index: usize
 ) -> bool {
-    give index <= array.length;
+    return index <= array.length;
 }
 
 proc next_capacity(
     current: usize
 ) -> usize {
     if current < MINIMUM_CAPACITY {
-        give DEFAULT_CAPACITY;
+        return DEFAULT_CAPACITY;
     }
 
-    give current * 2;
+    return current * 2;
 }
 
 proc capacity_for(
@@ -308,7 +308,7 @@ proc capacity_for(
             next_capacity(result);
     }
 
-    give result;
+    return result;
 }
 
 proc reserve(
@@ -316,10 +316,10 @@ proc reserve(
     required: usize
 ) -> JsonArray {
     let mut result: JsonArray =
-        array;
+        clone(array);
 
     if required <= result.capacity {
-        give result;
+        return result;
     }
 
     set result.capacity =
@@ -327,14 +327,14 @@ proc reserve(
             result.capacity,
             required);
 
-    give result;
+    return result;
 }
 
 proc reserve_additional(
     array: &JsonArray,
     additional: usize
 ) -> JsonArray {
-    give reserve(
+    return reserve(
         array,
         array.length + additional);
 }
@@ -342,96 +342,96 @@ proc reserve_additional(
 proc value_is_null(
     value: &JsonArrayValue
 ) -> bool {
-    give value.kind ==
+    return value.kind ==
          JsonArrayValueKind.Null;
 }
 
 proc value_is_bool(
     value: &JsonArrayValue
 ) -> bool {
-    give value.kind ==
+    return value.kind ==
          JsonArrayValueKind.Bool;
 }
 
 proc value_is_integer(
     value: &JsonArrayValue
 ) -> bool {
-    give value.kind ==
+    return value.kind ==
          JsonArrayValueKind.Integer;
 }
 
 proc value_is_float(
     value: &JsonArrayValue
 ) -> bool {
-    give value.kind ==
+    return value.kind ==
          JsonArrayValueKind.Float;
 }
 
 proc value_is_number(
     value: &JsonArrayValue
 ) -> bool {
-    give value_is_integer(value) ||
+    return value_is_integer(value) ||
          value_is_float(value);
 }
 
 proc value_is_string(
     value: &JsonArrayValue
 ) -> bool {
-    give value.kind ==
+    return value.kind ==
          JsonArrayValueKind.String;
 }
 
 proc value_is_array(
     value: &JsonArrayValue
 ) -> bool {
-    give value.kind ==
+    return value.kind ==
          JsonArrayValueKind.Array;
 }
 
 proc value_as_bool(
     value: &JsonArrayValue
 ) -> bool {
-    give value.bool_value;
+    return value.bool_value;
 }
 
 proc value_as_integer(
     value: &JsonArrayValue
 ) -> i64 {
     if value_is_integer(value) {
-        give value.integer_value;
+        return value.integer_value;
     }
 
     if value_is_float(value) {
-        give value.float_value as i64;
+        return value.float_value as i64;
     }
 
-    give 0;
+    return 0;
 }
 
 proc value_as_float(
     value: &JsonArrayValue
 ) -> f64 {
     if value_is_float(value) {
-        give value.float_value;
+        return value.float_value;
     }
 
     if value_is_integer(value) {
-        give value.integer_value as f64;
+        return value.integer_value as f64;
     }
 
-    give 0.0;
+    return 0.0;
 }
 
 proc value_as_string(
     value: &JsonArrayValue
 ) -> string {
-    give value.string_value;
+    return value.string_value;
 }
 
 proc value_copy(
     value: &JsonArrayValue
 ) -> JsonArrayValue {
-    give JsonArrayValue {
+    return JsonArrayValue {
         kind: value.kind,
 
         bool_value:
@@ -458,41 +458,41 @@ proc value_equals(
     if left.kind != right.kind {
         if value_is_number(left) &&
            value_is_number(right) {
-            give value_as_float(left) ==
+            return value_as_float(left) ==
                  value_as_float(right);
         }
 
-        give false;
+        return false;
     }
 
     if value_is_null(left) {
-        give true;
+        return true;
     }
 
     if value_is_bool(left) {
-        give left.bool_value ==
+        return left.bool_value ==
              right.bool_value;
     }
 
     if value_is_integer(left) {
-        give left.integer_value ==
+        return left.integer_value ==
              right.integer_value;
     }
 
     if value_is_float(left) {
-        give left.float_value ==
+        return left.float_value ==
              right.float_value;
     }
 
     if value_is_string(left) {
-        give left.string_value ==
+        return left.string_value ==
              right.string_value;
     }
 
     if value_is_array(left) {
         if left.array_value.length !=
            right.array_value.length {
-            give false;
+            return false;
         }
 
         let mut index: usize = 0;
@@ -505,26 +505,26 @@ proc value_equals(
             let right_item: JsonArrayValue =
                 right.array_value[index];
 
-            if !value_equals(
+            if not value_equals(
                 &left_item,
                 &right_item) {
-                give false;
+                return false;
             }
 
             set index += 1;
         }
 
-        give true;
+        return true;
     }
 
-    give false;
+    return false;
 }
 
 proc value_not_equals(
     left: &JsonArrayValue,
     right: &JsonArrayValue
 ) -> bool {
-    give !value_equals(
+    return not value_equals(
         left,
         right);
 }
@@ -542,13 +542,13 @@ proc push(
 
     set result.length += 1;
 
-    give result;
+    return result;
 }
 
 proc push_null(
     array: &JsonArray
 ) -> JsonArray {
-    give push(
+    return push(
         array,
         null_value());
 }
@@ -557,7 +557,7 @@ proc push_bool(
     array: &JsonArray,
     value: bool
 ) -> JsonArray {
-    give push(
+    return push(
         array,
         bool_value(value));
 }
@@ -566,7 +566,7 @@ proc push_integer(
     array: &JsonArray,
     value: i64
 ) -> JsonArray {
-    give push(
+    return push(
         array,
         integer_value(value));
 }
@@ -575,7 +575,7 @@ proc push_float(
     array: &JsonArray,
     value: f64
 ) -> JsonArray {
-    give push(
+    return push(
         array,
         float_value(value));
 }
@@ -584,7 +584,7 @@ proc push_string(
     array: &JsonArray,
     value: string
 ) -> JsonArray {
-    give push(
+    return push(
         array,
         string_value(value));
 }
@@ -593,7 +593,7 @@ proc push_array(
     array: &JsonArray,
     value: &JsonArray
 ) -> JsonArray {
-    give push(
+    return push(
         array,
         array_value(value));
 }
@@ -624,13 +624,13 @@ proc prepend(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc prepend_null(
     array: &JsonArray
 ) -> JsonArray {
-    give prepend(
+    return prepend(
         array,
         null_value());
 }
@@ -639,7 +639,7 @@ proc prepend_bool(
     array: &JsonArray,
     value: bool
 ) -> JsonArray {
-    give prepend(
+    return prepend(
         array,
         bool_value(value));
 }
@@ -648,7 +648,7 @@ proc prepend_integer(
     array: &JsonArray,
     value: i64
 ) -> JsonArray {
-    give prepend(
+    return prepend(
         array,
         integer_value(value));
 }
@@ -657,7 +657,7 @@ proc prepend_float(
     array: &JsonArray,
     value: f64
 ) -> JsonArray {
-    give prepend(
+    return prepend(
         array,
         float_value(value));
 }
@@ -666,7 +666,7 @@ proc prepend_string(
     array: &JsonArray,
     value: string
 ) -> JsonArray {
-    give prepend(
+    return prepend(
         array,
         string_value(value));
 }
@@ -675,23 +675,23 @@ proc get(
     array: &JsonArray,
     index: usize
 ) -> JsonArrayValue {
-    if !is_valid_index(
+    if not is_valid_index(
         array,
         index) {
-        give null_value();
+        return null_value();
     }
 
-    give array.values[index];
+    return array.values[index];
 }
 
 proc get_result(
     array: &JsonArray,
     index: usize
 ) -> JsonArrayValueResult {
-    if !is_valid_index(
+    if not is_valid_index(
         array,
         index) {
-        give JsonArrayValueResult {
+        return JsonArrayValueResult {
             ok: false,
 
             value:
@@ -704,7 +704,7 @@ proc get_result(
         };
     }
 
-    give JsonArrayValueResult {
+    return JsonArrayValueResult {
         ok: true,
 
         value:
@@ -721,17 +721,17 @@ proc first(
     array: &JsonArray
 ) -> JsonArrayValue {
     if is_empty(array) {
-        give null_value();
+        return null_value();
     }
 
-    give array.values[0];
+    return array.values[0];
 }
 
 proc first_result(
     array: &JsonArray
 ) -> JsonArrayValueResult {
     if is_empty(array) {
-        give JsonArrayValueResult {
+        return JsonArrayValueResult {
             ok: false,
 
             value:
@@ -744,7 +744,7 @@ proc first_result(
         };
     }
 
-    give JsonArrayValueResult {
+    return JsonArrayValueResult {
         ok: true,
 
         value:
@@ -761,10 +761,10 @@ proc last(
     array: &JsonArray
 ) -> JsonArrayValue {
     if is_empty(array) {
-        give null_value();
+        return null_value();
     }
 
-    give array.values[
+    return array.values[
         array.length - 1
     ];
 }
@@ -773,7 +773,7 @@ proc last_result(
     array: &JsonArray
 ) -> JsonArrayValueResult {
     if is_empty(array) {
-        give JsonArrayValueResult {
+        return JsonArrayValueResult {
             ok: false,
 
             value:
@@ -789,7 +789,7 @@ proc last_result(
     let index: usize =
         array.length - 1;
 
-    give JsonArrayValueResult {
+    return JsonArrayValueResult {
         ok: true,
 
         value:
@@ -808,18 +808,18 @@ proc set_value(
     value: JsonArrayValue
 ) -> JsonArray {
     let mut result: JsonArray =
-        array;
+        clone(array);
 
-    if !is_valid_index(
+    if not is_valid_index(
         &result,
         index) {
-        give result;
+        return result;
     }
 
     set result.values[index] =
         value;
 
-    give result;
+    return result;
 }
 
 proc replace(
@@ -827,13 +827,13 @@ proc replace(
     index: usize,
     value: JsonArrayValue
 ) -> JsonArrayResult {
-    if !is_valid_index(
+    if not is_valid_index(
         array,
         index) {
-        give JsonArrayResult {
+        return JsonArrayResult {
             ok: false,
 
-            value: array,
+            value: clone(array),
 
             error:
                 JsonArrayError.IndexOutOfBounds,
@@ -848,7 +848,7 @@ proc replace(
             index,
             value);
 
-    give JsonArrayResult {
+    return JsonArrayResult {
         ok: true,
 
         value: result,
@@ -865,13 +865,13 @@ proc insert(
     index: usize,
     value: JsonArrayValue
 ) -> JsonArrayResult {
-    if !is_valid_insert_index(
+    if not is_valid_insert_index(
         array,
         index) {
-        give JsonArrayResult {
+        return JsonArrayResult {
             ok: false,
 
-            value: array,
+            value: clone(array),
 
             error:
                 JsonArrayError.IndexOutOfBounds,
@@ -911,7 +911,7 @@ proc insert(
         set current += 1;
     }
 
-    give JsonArrayResult {
+    return JsonArrayResult {
         ok: true,
 
         value: result,
@@ -927,7 +927,7 @@ proc insert_null(
     array: &JsonArray,
     index: usize
 ) -> JsonArrayResult {
-    give insert(
+    return insert(
         array,
         index,
         null_value());
@@ -938,7 +938,7 @@ proc insert_bool(
     index: usize,
     value: bool
 ) -> JsonArrayResult {
-    give insert(
+    return insert(
         array,
         index,
         bool_value(value));
@@ -949,7 +949,7 @@ proc insert_integer(
     index: usize,
     value: i64
 ) -> JsonArrayResult {
-    give insert(
+    return insert(
         array,
         index,
         integer_value(value));
@@ -960,7 +960,7 @@ proc insert_float(
     index: usize,
     value: f64
 ) -> JsonArrayResult {
-    give insert(
+    return insert(
         array,
         index,
         float_value(value));
@@ -971,7 +971,7 @@ proc insert_string(
     index: usize,
     value: string
 ) -> JsonArrayResult {
-    give insert(
+    return insert(
         array,
         index,
         string_value(value));
@@ -981,13 +981,13 @@ proc remove_at(
     array: &JsonArray,
     index: usize
 ) -> JsonArrayResult {
-    if !is_valid_index(
+    if not is_valid_index(
         array,
         index) {
-        give JsonArrayResult {
+        return JsonArrayResult {
             ok: false,
 
-            value: array,
+            value: clone(array),
 
             error:
                 JsonArrayError.IndexOutOfBounds,
@@ -1013,7 +1013,7 @@ proc remove_at(
         set current += 1;
     }
 
-    give JsonArrayResult {
+    return JsonArrayResult {
         ok: true,
 
         value: result,
@@ -1029,10 +1029,10 @@ proc pop(
     array: &JsonArray
 ) -> JsonArrayResult {
     if is_empty(array) {
-        give JsonArrayResult {
+        return JsonArrayResult {
             ok: false,
 
-            value: array,
+            value: clone(array),
 
             error:
                 JsonArrayError.Empty,
@@ -1041,7 +1041,7 @@ proc pop(
         };
     }
 
-    give remove_at(
+    return remove_at(
         array,
         array.length - 1);
 }
@@ -1050,10 +1050,10 @@ proc remove_first(
     array: &JsonArray
 ) -> JsonArrayResult {
     if is_empty(array) {
-        give JsonArrayResult {
+        return JsonArrayResult {
             ok: false,
 
-            value: array,
+            value: clone(array),
 
             error:
                 JsonArrayError.Empty,
@@ -1062,7 +1062,7 @@ proc remove_first(
         };
     }
 
-    give remove_at(
+    return remove_at(
         array,
         0);
 }
@@ -1070,7 +1070,7 @@ proc remove_first(
 proc clear(
     array: &JsonArray
 ) -> JsonArray {
-    give JsonArray {
+    return JsonArray {
         values: [],
 
         length: 0,
@@ -1080,7 +1080,7 @@ proc clear(
 }
 
 proc reset() -> JsonArray {
-    give empty();
+    return empty();
 }
 
 proc clone(
@@ -1102,7 +1102,7 @@ proc clone(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc append(
@@ -1126,14 +1126,14 @@ proc append(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc concat(
     left: &JsonArray,
     right: &JsonArray
 ) -> JsonArray {
-    give append(
+    return append(
         left,
         right);
 }
@@ -1156,7 +1156,7 @@ proc repeat(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc reverse(
@@ -1178,7 +1178,7 @@ proc reverse(
                 array.values[index]);
     }
 
-    give result;
+    return result;
 }
 
 proc range_valid(
@@ -1186,7 +1186,7 @@ proc range_valid(
     start: usize,
     end: usize
 ) -> bool {
-    give start <= end &&
+    return start <= end &&
          end <= array.length;
 }
 
@@ -1195,11 +1195,11 @@ proc slice(
     start: usize,
     end: usize
 ) -> JsonArrayResult {
-    if !range_valid(
+    if not range_valid(
         array,
         start,
         end) {
-        give JsonArrayResult {
+        return JsonArrayResult {
             ok: false,
 
             value:
@@ -1231,7 +1231,7 @@ proc slice(
         set index += 1;
     }
 
-    give JsonArrayResult {
+    return JsonArrayResult {
         ok: true,
 
         value: result,
@@ -1261,7 +1261,7 @@ proc take(
             0,
             actual);
 
-    give result.value;
+    return result.value;
 }
 
 proc drop(
@@ -1269,7 +1269,7 @@ proc drop(
     count: usize
 ) -> JsonArray {
     if count >= array.length {
-        give with_capacity(
+        return with_capacity(
             array.capacity);
     }
 
@@ -1279,7 +1279,7 @@ proc drop(
             count,
             array.length);
 
-    give result.value;
+    return result.value;
 }
 
 proc take_last(
@@ -1287,7 +1287,7 @@ proc take_last(
     count: usize
 ) -> JsonArray {
     if count >= array.length {
-        give clone(array);
+        return clone(array);
     }
 
     let start: usize =
@@ -1299,7 +1299,7 @@ proc take_last(
             start,
             array.length);
 
-    give result.value;
+    return result.value;
 }
 
 proc drop_last(
@@ -1307,7 +1307,7 @@ proc drop_last(
     count: usize
 ) -> JsonArray {
     if count >= array.length {
-        give with_capacity(
+        return with_capacity(
             array.capacity);
     }
 
@@ -1320,7 +1320,7 @@ proc drop_last(
             0,
             end);
 
-    give result.value;
+    return result.value;
 }
 
 proc contains(
@@ -1333,13 +1333,13 @@ proc contains(
         if value_equals(
             &array.values[index],
             value) {
-            give true;
+            return true;
         }
 
         set index += 1;
     }
 
-    give false;
+    return false;
 }
 
 proc index_of(
@@ -1352,7 +1352,7 @@ proc index_of(
         if value_equals(
             &array.values[index],
             value) {
-            give JsonArrayIndexResult {
+            return JsonArrayIndexResult {
                 found: true,
                 index: index,
             };
@@ -1361,7 +1361,7 @@ proc index_of(
         set index += 1;
     }
 
-    give JsonArrayIndexResult {
+    return JsonArrayIndexResult {
         found: false,
         index: 0,
     };
@@ -1380,14 +1380,14 @@ proc last_index_of(
         if value_equals(
             &array.values[index],
             value) {
-            give JsonArrayIndexResult {
+            return JsonArrayIndexResult {
                 found: true,
                 index: index,
             };
         }
     }
 
-    give JsonArrayIndexResult {
+    return JsonArrayIndexResult {
         found: false,
         index: 0,
     };
@@ -1410,7 +1410,7 @@ proc count(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc count_kind(
@@ -1429,7 +1429,7 @@ proc count_kind(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc contains_null(
@@ -1438,7 +1438,7 @@ proc contains_null(
     let value: JsonArrayValue =
         null_value();
 
-    give contains(
+    return contains(
         array,
         &value);
 }
@@ -1450,7 +1450,7 @@ proc contains_bool(
     let expected: JsonArrayValue =
         bool_value(value);
 
-    give contains(
+    return contains(
         array,
         &expected);
 }
@@ -1462,7 +1462,7 @@ proc contains_integer(
     let expected: JsonArrayValue =
         integer_value(value);
 
-    give contains(
+    return contains(
         array,
         &expected);
 }
@@ -1474,7 +1474,7 @@ proc contains_float(
     let expected: JsonArrayValue =
         float_value(value);
 
-    give contains(
+    return contains(
         array,
         &expected);
 }
@@ -1486,7 +1486,7 @@ proc contains_string(
     let expected: JsonArrayValue =
         string_value(value);
 
-    give contains(
+    return contains(
         array,
         &expected);
 }
@@ -1494,7 +1494,7 @@ proc contains_string(
 proc count_null(
     array: &JsonArray
 ) -> usize {
-    give count_kind(
+    return count_kind(
         array,
         JsonArrayValueKind.Null);
 }
@@ -1502,7 +1502,7 @@ proc count_null(
 proc count_bool(
     array: &JsonArray
 ) -> usize {
-    give count_kind(
+    return count_kind(
         array,
         JsonArrayValueKind.Bool);
 }
@@ -1510,7 +1510,7 @@ proc count_bool(
 proc count_integer(
     array: &JsonArray
 ) -> usize {
-    give count_kind(
+    return count_kind(
         array,
         JsonArrayValueKind.Integer);
 }
@@ -1518,7 +1518,7 @@ proc count_integer(
 proc count_float(
     array: &JsonArray
 ) -> usize {
-    give count_kind(
+    return count_kind(
         array,
         JsonArrayValueKind.Float);
 }
@@ -1526,14 +1526,14 @@ proc count_float(
 proc count_number(
     array: &JsonArray
 ) -> usize {
-    give count_integer(array) +
+    return count_integer(array) +
          count_float(array);
 }
 
 proc count_string(
     array: &JsonArray
 ) -> usize {
-    give count_kind(
+    return count_kind(
         array,
         JsonArrayValueKind.String);
 }
@@ -1541,7 +1541,7 @@ proc count_string(
 proc count_array(
     array: &JsonArray
 ) -> usize {
-    give count_kind(
+    return count_kind(
         array,
         JsonArrayValueKind.Array);
 }
@@ -1552,29 +1552,29 @@ proc equals(
 ) -> bool {
     if left.length !=
        right.length {
-        give false;
+        return false;
     }
 
     let mut index: usize = 0;
 
     while index < left.length {
-        if !value_equals(
+        if not value_equals(
             &left.values[index],
             &right.values[index]) {
-            give false;
+            return false;
         }
 
         set index += 1;
     }
 
-    give true;
+    return true;
 }
 
 proc not_equals(
     left: &JsonArray,
     right: &JsonArray
 ) -> bool {
-    give !equals(
+    return not equals(
         left,
         right);
 }
@@ -1585,22 +1585,22 @@ proc starts_with(
 ) -> bool {
     if prefix.length >
        array.length {
-        give false;
+        return false;
     }
 
     let mut index: usize = 0;
 
     while index < prefix.length {
-        if !value_equals(
+        if not value_equals(
             &array.values[index],
             &prefix.values[index]) {
-            give false;
+            return false;
         }
 
         set index += 1;
     }
 
-    give true;
+    return true;
 }
 
 proc ends_with(
@@ -1609,7 +1609,7 @@ proc ends_with(
 ) -> bool {
     if suffix.length >
        array.length {
-        give false;
+        return false;
     }
 
     let offset: usize =
@@ -1619,18 +1619,18 @@ proc ends_with(
     let mut index: usize = 0;
 
     while index < suffix.length {
-        if !value_equals(
+        if not value_equals(
             &array.values[
                 offset + index
             ],
             &suffix.values[index]) {
-            give false;
+            return false;
         }
 
         set index += 1;
     }
 
-    give true;
+    return true;
 }
 
 proc all_null(
@@ -1639,15 +1639,15 @@ proc all_null(
     let mut index: usize = 0;
 
     while index < array.length {
-        if !value_is_null(
+        if not value_is_null(
             &array.values[index]) {
-            give false;
+            return false;
         }
 
         set index += 1;
     }
 
-    give true;
+    return true;
 }
 
 proc all_bool(
@@ -1656,15 +1656,15 @@ proc all_bool(
     let mut index: usize = 0;
 
     while index < array.length {
-        if !value_is_bool(
+        if not value_is_bool(
             &array.values[index]) {
-            give false;
+            return false;
         }
 
         set index += 1;
     }
 
-    give true;
+    return true;
 }
 
 proc all_integer(
@@ -1673,15 +1673,15 @@ proc all_integer(
     let mut index: usize = 0;
 
     while index < array.length {
-        if !value_is_integer(
+        if not value_is_integer(
             &array.values[index]) {
-            give false;
+            return false;
         }
 
         set index += 1;
     }
 
-    give true;
+    return true;
 }
 
 proc all_number(
@@ -1690,15 +1690,15 @@ proc all_number(
     let mut index: usize = 0;
 
     while index < array.length {
-        if !value_is_number(
+        if not value_is_number(
             &array.values[index]) {
-            give false;
+            return false;
         }
 
         set index += 1;
     }
 
-    give true;
+    return true;
 }
 
 proc all_string(
@@ -1707,51 +1707,51 @@ proc all_string(
     let mut index: usize = 0;
 
     while index < array.length {
-        if !value_is_string(
+        if not value_is_string(
             &array.values[index]) {
-            give false;
+            return false;
         }
 
         set index += 1;
     }
 
-    give true;
+    return true;
 }
 
 proc any_null(
     array: &JsonArray
 ) -> bool {
-    give count_null(array) > 0;
+    return count_null(array) > 0;
 }
 
 proc any_bool(
     array: &JsonArray
 ) -> bool {
-    give count_bool(array) > 0;
+    return count_bool(array) > 0;
 }
 
 proc any_integer(
     array: &JsonArray
 ) -> bool {
-    give count_integer(array) > 0;
+    return count_integer(array) > 0;
 }
 
 proc any_number(
     array: &JsonArray
 ) -> bool {
-    give count_number(array) > 0;
+    return count_number(array) > 0;
 }
 
 proc any_string(
     array: &JsonArray
 ) -> bool {
-    give count_string(array) > 0;
+    return count_string(array) > 0;
 }
 
 proc any_array(
     array: &JsonArray
 ) -> bool {
-    give count_array(array) > 0;
+    return count_array(array) > 0;
 }
 
 proc compact_nulls(
@@ -1764,7 +1764,7 @@ proc compact_nulls(
     let mut index: usize = 0;
 
     while index < array.length {
-        if !value_is_null(
+        if not value_is_null(
             &array.values[index]) {
             set result =
                 push(
@@ -1775,7 +1775,7 @@ proc compact_nulls(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc only_nulls(
@@ -1799,7 +1799,7 @@ proc only_nulls(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc only_bools(
@@ -1823,7 +1823,7 @@ proc only_bools(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc only_integers(
@@ -1847,7 +1847,7 @@ proc only_integers(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc only_numbers(
@@ -1871,7 +1871,7 @@ proc only_numbers(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc only_strings(
@@ -1895,7 +1895,7 @@ proc only_strings(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc only_arrays(
@@ -1919,7 +1919,7 @@ proc only_arrays(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc integer_sum(
@@ -1939,7 +1939,7 @@ proc integer_sum(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc number_sum(
@@ -1966,7 +1966,7 @@ proc number_sum(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc integer_minimum(
@@ -1985,7 +1985,7 @@ proc integer_minimum(
                 array.values[index].
                     integer_value;
 
-            if !found ||
+            if not found ||
                value < minimum {
                 set found = true;
                 set minimum = value;
@@ -1996,8 +1996,8 @@ proc integer_minimum(
         set index += 1;
     }
 
-    if !found {
-        give JsonArrayValueResult {
+    if not found {
+        return JsonArrayValueResult {
             ok: false,
 
             value:
@@ -2010,7 +2010,7 @@ proc integer_minimum(
         };
     }
 
-    give JsonArrayValueResult {
+    return JsonArrayValueResult {
         ok: true,
 
         value:
@@ -2040,7 +2040,7 @@ proc integer_maximum(
                 array.values[index].
                     integer_value;
 
-            if !found ||
+            if not found ||
                value > maximum {
                 set found = true;
                 set maximum = value;
@@ -2051,8 +2051,8 @@ proc integer_maximum(
         set index += 1;
     }
 
-    if !found {
-        give JsonArrayValueResult {
+    if not found {
+        return JsonArrayValueResult {
             ok: false,
 
             value:
@@ -2065,7 +2065,7 @@ proc integer_maximum(
         };
     }
 
-    give JsonArrayValueResult {
+    return JsonArrayValueResult {
         ok: true,
 
         value:
@@ -2084,16 +2084,16 @@ proc swap(
     left: usize,
     right: usize
 ) -> JsonArrayResult {
-    if !is_valid_index(
+    if not is_valid_index(
            array,
            left) ||
-       !is_valid_index(
+       not is_valid_index(
            array,
            right) {
-        give JsonArrayResult {
+        return JsonArrayResult {
             ok: false,
 
-            value: array,
+            value: clone(array),
 
             error:
                 JsonArrayError.IndexOutOfBounds,
@@ -2103,7 +2103,7 @@ proc swap(
     }
 
     let mut result: JsonArray =
-        array;
+        clone(array);
 
     let temporary: JsonArrayValue =
         result.values[left];
@@ -2114,7 +2114,7 @@ proc swap(
     set result.values[right] =
         temporary;
 
-    give JsonArrayResult {
+    return JsonArrayResult {
         ok: true,
 
         value: result,
@@ -2130,7 +2130,7 @@ proc rotate_left(
     array: &JsonArray
 ) -> JsonArray {
     if array.length <= 1 {
-        give clone(array);
+        return clone(array);
     }
 
     let mut result: JsonArray =
@@ -2153,14 +2153,14 @@ proc rotate_left(
             &result,
             array.values[0]);
 
-    give result;
+    return result;
 }
 
 proc rotate_right(
     array: &JsonArray
 ) -> JsonArray {
     if array.length <= 1 {
-        give clone(array);
+        return clone(array);
     }
 
     let mut result: JsonArray =
@@ -2186,7 +2186,7 @@ proc rotate_right(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc unique(
@@ -2202,7 +2202,7 @@ proc unique(
         let value: JsonArrayValue =
             array.values[index];
 
-        if !contains(
+        if not contains(
             &result,
             &value) {
             set result =
@@ -2214,7 +2214,7 @@ proc unique(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc remove_value(
@@ -2229,7 +2229,7 @@ proc remove_value(
     let mut index: usize = 0;
 
     while index < array.length {
-        if !removed &&
+        if not removed &&
            value_equals(
                &array.values[index],
                value) {
@@ -2244,7 +2244,7 @@ proc remove_value(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc remove_all(
@@ -2258,7 +2258,7 @@ proc remove_all(
     let mut index: usize = 0;
 
     while index < array.length {
-        if !value_equals(
+        if not value_equals(
             &array.values[index],
             value) {
             set result =
@@ -2270,7 +2270,7 @@ proc remove_all(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc replace_all(
@@ -2295,17 +2295,17 @@ proc replace_all(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc nested_array(
     value: &JsonArrayValue
 ) -> JsonArray {
-    if !value_is_array(value) {
-        give empty();
+    if not value_is_array(value) {
+        return empty();
     }
 
-    give JsonArray {
+    return JsonArray {
         values:
             value.array_value,
 
@@ -2349,14 +2349,14 @@ proc flatten_one(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc value_depth(
     value: &JsonArrayValue
 ) -> usize {
-    if !value_is_array(value) {
-        give 0;
+    if not value_is_array(value) {
+        return 0;
     }
 
     let mut maximum: usize = 0;
@@ -2375,7 +2375,7 @@ proc value_depth(
         set index += 1;
     }
 
-    give maximum + 1;
+    return maximum + 1;
 }
 
 proc depth(
@@ -2400,7 +2400,7 @@ proc depth(
         set index += 1;
     }
 
-    give maximum;
+    return maximum;
 }
 
 proc scalar_count(
@@ -2427,7 +2427,7 @@ proc scalar_count(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc total_value_count(
@@ -2454,7 +2454,7 @@ proc total_value_count(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc validate_value(
@@ -2462,27 +2462,27 @@ proc validate_value(
 ) -> bool {
     if value.kind ==
        JsonArrayValueKind.Null {
-        give true;
+        return true;
     }
 
     if value.kind ==
        JsonArrayValueKind.Bool {
-        give true;
+        return true;
     }
 
     if value.kind ==
        JsonArrayValueKind.Integer {
-        give true;
+        return true;
     }
 
     if value.kind ==
        JsonArrayValueKind.Float {
-        give true;
+        return true;
     }
 
     if value.kind ==
        JsonArrayValueKind.String {
-        give true;
+        return true;
     }
 
     if value.kind ==
@@ -2491,18 +2491,18 @@ proc validate_value(
 
         while index <
               value.array_value.length {
-            if !validate_value(
+            if not validate_value(
                 &value.array_value[index]) {
-                give false;
+                return false;
             }
 
             set index += 1;
         }
 
-        give true;
+        return true;
     }
 
-    give false;
+    return false;
 }
 
 proc validate(
@@ -2510,31 +2510,31 @@ proc validate(
 ) -> bool {
     if array.capacity <
        MINIMUM_CAPACITY {
-        give false;
+        return false;
     }
 
     if array.length >
        array.capacity {
-        give false;
+        return false;
     }
 
     if array.values.length !=
        array.length {
-        give false;
+        return false;
     }
 
     let mut index: usize = 0;
 
     while index < array.length {
-        if !validate_value(
+        if not validate_value(
             &array.values[index]) {
-            give false;
+            return false;
         }
 
         set index += 1;
     }
 
-    give true;
+    return true;
 }
 
 proc error_name(
@@ -2542,32 +2542,32 @@ proc error_name(
 ) -> string {
     if error ==
        JsonArrayError.None {
-        give "none";
+        return "none";
     }
 
     if error ==
        JsonArrayError.IndexOutOfBounds {
-        give "index out of bounds";
+        return "index out of bounds";
     }
 
     if error ==
        JsonArrayError.Empty {
-        give "empty array";
+        return "empty array";
     }
 
     if error ==
        JsonArrayError.InvalidRange {
-        give "invalid range";
+        return "invalid range";
     }
 
-    give "capacity overflow";
+    return "capacity overflow";
 }
 
 proc test_empty() -> bool {
     let array: JsonArray =
         empty();
 
-    give is_empty(&array) &&
+    return is_empty(&array) &&
          len(&array) == 0 &&
          capacity(&array) >=
              MINIMUM_CAPACITY &&
@@ -2588,7 +2588,7 @@ proc test_push() -> bool {
             &array,
             22);
 
-    give array.length == 2 &&
+    return array.length == 2 &&
          value_as_integer(
              &array.values[0]) == 20 &&
          value_as_integer(
@@ -2622,7 +2622,7 @@ proc test_all_types() -> bool {
             &array,
             "Vitte");
 
-    give array.length == 5 &&
+    return array.length == 5 &&
          value_is_null(
              &array.values[0]) &&
          value_is_bool(
@@ -2655,7 +2655,7 @@ proc test_first_last() -> bool {
     let last_value: JsonArrayValue =
         last(&array);
 
-    give value_as_integer(
+    return value_as_integer(
                &first_value) == 20 &&
          value_as_integer(
                &last_value) == 22;
@@ -2681,7 +2681,7 @@ proc test_replace() -> bool {
             1,
             integer_value(22));
 
-    give result.ok &&
+    return result.ok &&
          value_as_integer(
              &result.value.values[1]) ==
              22;
@@ -2707,7 +2707,7 @@ proc test_insert() -> bool {
             1,
             21);
 
-    give result.ok &&
+    return result.ok &&
          result.value.length == 3 &&
          value_as_integer(
              &result.value.values[0]) == 20 &&
@@ -2741,7 +2741,7 @@ proc test_remove() -> bool {
             &array,
             1);
 
-    give result.ok &&
+    return result.ok &&
          result.value.length == 2 &&
          value_as_integer(
              &result.value.values[0]) == 20 &&
@@ -2771,7 +2771,7 @@ proc test_concat() -> bool {
             &left,
             &right);
 
-    give result.length == 2 &&
+    return result.length == 2 &&
          integer_sum(&result) == 42;
 }
 
@@ -2797,7 +2797,7 @@ proc test_reverse() -> bool {
     let result: JsonArray =
         reverse(&array);
 
-    give value_as_integer(
+    return value_as_integer(
                &result.values[0]) == 22 &&
          value_as_integer(
                &result.values[1]) == 21 &&
@@ -2835,7 +2835,7 @@ proc test_slice() -> bool {
             1,
             3);
 
-    give result.ok &&
+    return result.ok &&
          result.value.length == 2 &&
          integer_sum(
              &result.value) == 42;
@@ -2855,13 +2855,13 @@ proc test_contains() -> bool {
             &array,
             "Vitte");
 
-    give contains_integer(
+    return contains_integer(
                &array,
                42) &&
          contains_string(
                &array,
                "Vitte") &&
-         !contains_integer(
+         not contains_integer(
                &array,
                43);
 }
@@ -2893,7 +2893,7 @@ proc test_unique() -> bool {
     let result: JsonArray =
         unique(&array);
 
-    give result.length == 2 &&
+    return result.length == 2 &&
          integer_sum(&result) == 42;
 }
 
@@ -2924,7 +2924,7 @@ proc test_equality() -> bool {
             &right,
             22);
 
-    give equals(
+    return equals(
         &left,
         &right);
 }
@@ -2952,19 +2952,19 @@ proc test_nested_array() -> bool {
             &inner);
 
     if outer.length != 1 {
-        give false;
+        return false;
     }
 
-    if !value_is_array(
+    if not value_is_array(
         &outer.values[0]) {
-        give false;
+        return false;
     }
 
     let restored: JsonArray =
         nested_array(
             &outer.values[0]);
 
-    give restored.length == 2 &&
+    return restored.length == 2 &&
          integer_sum(
              &restored) == 42;
 }
@@ -3005,7 +3005,7 @@ proc test_flatten_one() -> bool {
         flatten_one(
             &outer);
 
-    give flat.length == 4 &&
+    return flat.length == 4 &&
          integer_sum(&flat) == 82;
 }
 
@@ -3037,7 +3037,7 @@ proc test_numeric_filters() -> bool {
         only_integers(
             &array);
 
-    give integers.length == 2 &&
+    return integers.length == 2 &&
          integer_sum(
              &integers) == 42;
 }
@@ -3074,7 +3074,7 @@ proc test_minimum_maximum() -> bool {
         integer_maximum(
             &array);
 
-    give minimum.ok &&
+    return minimum.ok &&
          maximum.ok &&
          minimum.value.integer_value ==
              -10 &&
@@ -3109,7 +3109,7 @@ proc test_rotation() -> bool {
         rotate_right(
             &array);
 
-    give left.values[0].integer_value == 21 &&
+    return left.values[0].integer_value == 21 &&
          left.values[1].integer_value == 22 &&
          left.values[2].integer_value == 20 &&
          right.values[0].integer_value == 22 &&
@@ -3149,7 +3149,7 @@ proc test_remove_all() -> bool {
             &array,
             &target);
 
-    give result.length == 2 &&
+    return result.length == 2 &&
          result.values[0].integer_value ==
              42 &&
          result.values[1].integer_value ==
@@ -3187,7 +3187,7 @@ proc test_replace_all() -> bool {
             &old_value,
             new_value);
 
-    give result.length == 3 &&
+    return result.length == 3 &&
          result.values[0].integer_value == 42 &&
          result.values[1].integer_value == 42 &&
          result.values[2].integer_value == 42;
@@ -3227,7 +3227,7 @@ proc test_take_drop() -> bool {
             &array,
             2);
 
-    give first_two.length == 2 &&
+    return first_two.length == 2 &&
          last_two.length == 2 &&
          integer_sum(
              &first_two) == 30 &&
@@ -3280,7 +3280,7 @@ proc test_starts_ends_with() -> bool {
             &suffix,
             22);
 
-    give starts_with(
+    return starts_with(
                &array,
                &prefix) &&
          ends_with(
@@ -3315,11 +3315,11 @@ proc test_validation() -> bool {
             &array,
             "Vitte");
 
-    give validate(&array);
+    return validate(&array);
 }
 
 proc self_test() -> bool {
-    give test_empty() &&
+    return test_empty() &&
          test_push() &&
          test_all_types() &&
          test_first_last() &&

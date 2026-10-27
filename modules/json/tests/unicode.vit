@@ -47,53 +47,53 @@ proc unicode_parses(source: string) -> bool {
     let result: JsonParseResult =
         parse(source);
 
-    give result.ok;
+    return result.ok;
 }
 
 proc unicode_rejects(source: string) -> bool {
     let result: JsonParseResult =
         parse(source);
 
-    give !result.ok;
+    return not result.ok;
 }
 
 proc unicode_lexes(source: string) -> bool {
     let result: JsonLexerResult =
         lex(source);
 
-    give result.ok;
+    return result.ok;
 }
 
 proc unicode_lex_rejects(source: string) -> bool {
     let result: JsonLexerResult =
         lex(source);
 
-    give !result.ok;
+    return not result.ok;
 }
 
 proc unicode_roundtrip(source: string) -> bool {
     let first: JsonParseResult =
         parse(source);
 
-    if !first.ok {
-        give false;
+    if not first.ok {
+        return false;
     }
 
     let encoded: JsonEncodeResult =
         encode(&first.value);
 
-    if !encoded.ok {
-        give false;
+    if not encoded.ok {
+        return false;
     }
 
     let second: JsonParseResult =
         parse(encoded.text);
 
-    if !second.ok {
-        give false;
+    if not second.ok {
+        return false;
     }
 
-    give json_core::equals(
+    return json_core::equals(
         &first.value,
         &second.value);
 }
@@ -102,32 +102,32 @@ proc unicode_stable(source: string) -> bool {
     let first: JsonParseResult =
         parse(source);
 
-    if !first.ok {
-        give false;
+    if not first.ok {
+        return false;
     }
 
     let encoded_first: JsonEncodeResult =
         encode(&first.value);
 
-    if !encoded_first.ok {
-        give false;
+    if not encoded_first.ok {
+        return false;
     }
 
     let second: JsonParseResult =
         parse(encoded_first.text);
 
-    if !second.ok {
-        give false;
+    if not second.ok {
+        return false;
     }
 
     let encoded_second: JsonEncodeResult =
         encode(&second.value);
 
-    if !encoded_second.ok {
-        give false;
+    if not encoded_second.ok {
+        return false;
     }
 
-    give encoded_first.text ==
+    return encoded_first.text ==
         encoded_second.text;
 }
 
@@ -2031,7 +2031,7 @@ test "unicode different strings are not equal" {
     assert first.ok;
     assert second.ok;
 
-    assert !json_core::equals(
+    assert not json_core::equals(
         &first.value,
         &second.value);
 }
@@ -2165,7 +2165,7 @@ test "invalid unicode parse does not poison later valid parse" {
         parse(
             "\"\\uD800\"");
 
-    assert !invalid_result.ok;
+    assert not invalid_result.ok;
 
     let valid_result: JsonParseResult =
         parse(
@@ -2189,7 +2189,7 @@ test "valid unicode parse does not hide later invalid parse" {
         parse(
             "\"\\uD800\"");
 
-    assert !invalid_result.ok;
+    assert not invalid_result.ok;
 }
 
 /// -------------------------------------------------------------------------

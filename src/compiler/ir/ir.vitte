@@ -2052,6 +2052,12 @@ proc ir_lower_type_is_float(context: *mut IRLowerContext, type_id: HIRTypeId) ->
     return value != null and ((*value).kind == HIRTypeKind.F32 or (*value).kind == HIRTypeKind.F64);
 }
 
+proc ir_lower_node_is_string(context: *mut IRLowerContext, node: *HIRNode) -> bool {
+    if node == null { return false; }
+    let value = ir_lower_type_entry(context, (*node).type_);
+    return value != null and (*value).kind == HIRTypeKind.String;
+}
+
 proc ir_lower_binary(op: HIRBinaryOperator, floating: bool) -> IROpcode {
     match op {
         case HIRBinaryOperator.Add => return if floating { IROpcode.Fadd } else { IROpcode.Add };
@@ -2307,6 +2313,15 @@ proc ir_lower_expr(context: *mut IRLowerContext, function: IRFunctionId, block: 
         case HIRNodeKind.Binary => {
             let left_node = ir_lower_node(context, (*node).payload[1]); let right_node = ir_lower_node(context, (*node).payload[2]);
             if left_node == null or right_node == null { return 0; }
+            if ((*node).payload[0] as HIRBinaryOperator) == HIRBinaryOperator.Add and
+               ir_lower_node_is_string(context, left_node) and
+               ir_lower_node_is_string(context, right_node) {
+                let left = ir_lower_expr(context, function, block, (*node).payload[1]);
+                let right = ir_lower_expr(context, function, block, (*node).payload[2]);
+                if left == 0 or right == 0 { return 0; }
+                let mut operands: [IRValueId; 2] = [left, right];
+                return ir_lower_emit_value(context, IROpcode.StringConcat, *block, type_id, &mut operands[0], 2, &(*node).span);
+            }
             let left_type_id = ir_lower_type(context, (*left_node).type_);
             let left_type = vitte_ir_get_type((*context).ir, left_type_id); if left_type == null { return 0; }
             let left = ir_lower_expr(context, function, block, (*node).payload[1]); if left == 0 { return 0; }

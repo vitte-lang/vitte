@@ -117,7 +117,7 @@ form JsonObjectIndexResult {
 }
 
 proc null_value() -> JsonObjectValue {
-    give JsonObjectValue {
+    return JsonObjectValue {
         kind:
             JsonObjectValueKind.Null,
 
@@ -144,7 +144,7 @@ proc null_value() -> JsonObjectValue {
 proc bool_value(
     value: bool
 ) -> JsonObjectValue {
-    give JsonObjectValue {
+    return JsonObjectValue {
         kind:
             JsonObjectValueKind.Bool,
 
@@ -171,7 +171,7 @@ proc bool_value(
 proc integer_value(
     value: i64
 ) -> JsonObjectValue {
-    give JsonObjectValue {
+    return JsonObjectValue {
         kind:
             JsonObjectValueKind.Integer,
 
@@ -198,7 +198,7 @@ proc integer_value(
 proc float_value(
     value: f64
 ) -> JsonObjectValue {
-    give JsonObjectValue {
+    return JsonObjectValue {
         kind:
             JsonObjectValueKind.Float,
 
@@ -225,7 +225,7 @@ proc float_value(
 proc string_value(
     value: string
 ) -> JsonObjectValue {
-    give JsonObjectValue {
+    return JsonObjectValue {
         kind:
             JsonObjectValueKind.String,
 
@@ -252,7 +252,7 @@ proc string_value(
 proc array_value(
     values: [JsonObjectValue]
 ) -> JsonObjectValue {
-    give JsonObjectValue {
+    return JsonObjectValue {
         kind:
             JsonObjectValueKind.Array,
 
@@ -279,7 +279,7 @@ proc array_value(
 proc object_value(
     object: &JsonObject
 ) -> JsonObjectValue {
-    give JsonObjectValue {
+    return JsonObjectValue {
         kind:
             JsonObjectValueKind.Object,
 
@@ -307,21 +307,21 @@ proc member(
     key: string,
     value: JsonObjectValue
 ) -> JsonObjectMember {
-    give JsonObjectMember {
+    return JsonObjectMember {
         key: key,
         value: value,
     };
 }
 
 proc empty_member() -> JsonObjectMember {
-    give JsonObjectMember {
+    return JsonObjectMember {
         key: "",
         value: null_value(),
     };
 }
 
 proc empty() -> JsonObject {
-    give JsonObject {
+    return JsonObject {
         members: [],
 
         length: 0,
@@ -343,7 +343,7 @@ proc with_capacity(
             MINIMUM_CAPACITY;
     }
 
-    give JsonObject {
+    return JsonObject {
         members: [],
 
         length: 0,
@@ -366,38 +366,38 @@ proc singleton(
 
     set result.length = 1;
 
-    give result;
+    return result;
 }
 
 proc len(
     object: &JsonObject
 ) -> usize {
-    give object.length;
+    return object.length;
 }
 
 proc capacity(
     object: &JsonObject
 ) -> usize {
-    give object.capacity;
+    return object.capacity;
 }
 
 proc is_empty(
     object: &JsonObject
 ) -> bool {
-    give object.length == 0;
+    return object.length == 0;
 }
 
 proc is_not_empty(
     object: &JsonObject
 ) -> bool {
-    give object.length != 0;
+    return object.length != 0;
 }
 
 proc is_valid_index(
     object: &JsonObject,
     index: usize
 ) -> bool {
-    give index <
+    return index <
          object.length;
 }
 
@@ -406,10 +406,10 @@ proc next_capacity(
 ) -> usize {
     if current <
        MINIMUM_CAPACITY {
-        give DEFAULT_CAPACITY;
+        return DEFAULT_CAPACITY;
     }
 
-    give current * 2;
+    return current * 2;
 }
 
 proc capacity_for(
@@ -431,7 +431,7 @@ proc capacity_for(
                 result);
     }
 
-    give result;
+    return result;
 }
 
 proc reserve(
@@ -439,11 +439,11 @@ proc reserve(
     required: usize
 ) -> JsonObject {
     let mut result: JsonObject =
-        object;
+        clone(object);
 
     if required <=
        result.capacity {
-        give result;
+        return result;
     }
 
     set result.capacity =
@@ -451,14 +451,14 @@ proc reserve(
             result.capacity,
             required);
 
-    give result;
+    return result;
 }
 
 proc reserve_additional(
     object: &JsonObject,
     additional: usize
 ) -> JsonObject {
-    give reserve(
+    return reserve(
         object,
         object.length +
         additional);
@@ -467,105 +467,105 @@ proc reserve_additional(
 proc value_is_null(
     value: &JsonObjectValue
 ) -> bool {
-    give value.kind ==
+    return value.kind ==
          JsonObjectValueKind.Null;
 }
 
 proc value_is_bool(
     value: &JsonObjectValue
 ) -> bool {
-    give value.kind ==
+    return value.kind ==
          JsonObjectValueKind.Bool;
 }
 
 proc value_is_integer(
     value: &JsonObjectValue
 ) -> bool {
-    give value.kind ==
+    return value.kind ==
          JsonObjectValueKind.Integer;
 }
 
 proc value_is_float(
     value: &JsonObjectValue
 ) -> bool {
-    give value.kind ==
+    return value.kind ==
          JsonObjectValueKind.Float;
 }
 
 proc value_is_number(
     value: &JsonObjectValue
 ) -> bool {
-    give value_is_integer(value) ||
+    return value_is_integer(value) ||
          value_is_float(value);
 }
 
 proc value_is_string(
     value: &JsonObjectValue
 ) -> bool {
-    give value.kind ==
+    return value.kind ==
          JsonObjectValueKind.String;
 }
 
 proc value_is_array(
     value: &JsonObjectValue
 ) -> bool {
-    give value.kind ==
+    return value.kind ==
          JsonObjectValueKind.Array;
 }
 
 proc value_is_object(
     value: &JsonObjectValue
 ) -> bool {
-    give value.kind ==
+    return value.kind ==
          JsonObjectValueKind.Object;
 }
 
 proc value_as_bool(
     value: &JsonObjectValue
 ) -> bool {
-    give value.bool_value;
+    return value.bool_value;
 }
 
 proc value_as_integer(
     value: &JsonObjectValue
 ) -> i64 {
     if value_is_integer(value) {
-        give value.integer_value;
+        return value.integer_value;
     }
 
     if value_is_float(value) {
-        give value.float_value
+        return value.float_value
             as i64;
     }
 
-    give 0;
+    return 0;
 }
 
 proc value_as_float(
     value: &JsonObjectValue
 ) -> f64 {
     if value_is_float(value) {
-        give value.float_value;
+        return value.float_value;
     }
 
     if value_is_integer(value) {
-        give value.integer_value
+        return value.integer_value
             as f64;
     }
 
-    give 0.0;
+    return 0.0;
 }
 
 proc value_as_string(
     value: &JsonObjectValue
 ) -> string {
-    give value.string_value;
+    return value.string_value;
 }
 
 proc value_copy(
     value: &JsonObjectValue
 ) -> JsonObjectValue {
-    give JsonObjectValue {
+    return JsonObjectValue {
         kind:
             value.kind,
 
@@ -592,7 +592,7 @@ proc value_copy(
 proc member_copy(
     value: &JsonObjectMember
 ) -> JsonObjectMember {
-    give JsonObjectMember {
+    return JsonObjectMember {
         key:
             value.key,
 
@@ -608,7 +608,7 @@ proc array_values_equal(
 ) -> bool {
     if left.length !=
        right.length {
-        give false;
+        return false;
     }
 
     let mut index: usize = 0;
@@ -621,16 +621,16 @@ proc array_values_equal(
         let right_value: JsonObjectValue =
             right[index];
 
-        if !value_equals(
+        if not value_equals(
             &left_value,
             &right_value) {
-            give false;
+            return false;
         }
 
         set index += 1;
     }
 
-    give true;
+    return true;
 }
 
 proc object_members_equal(
@@ -639,7 +639,7 @@ proc object_members_equal(
 ) -> bool {
     if left.length !=
        right.length {
-        give false;
+        return false;
     }
 
     let mut index: usize = 0;
@@ -654,19 +654,19 @@ proc object_members_equal(
 
         if left_member.key !=
            right_member.key {
-            give false;
+            return false;
         }
 
-        if !value_equals(
+        if not value_equals(
             &left_member.value,
             &right_member.value) {
-            give false;
+            return false;
         }
 
         set index += 1;
     }
 
-    give true;
+    return true;
 }
 
 proc value_equals(
@@ -677,57 +677,57 @@ proc value_equals(
        right.kind {
         if value_is_number(left) &&
            value_is_number(right) {
-            give value_as_float(left) ==
+            return value_as_float(left) ==
                  value_as_float(right);
         }
 
-        give false;
+        return false;
     }
 
     if value_is_null(left) {
-        give true;
+        return true;
     }
 
     if value_is_bool(left) {
-        give left.bool_value ==
+        return left.bool_value ==
              right.bool_value;
     }
 
     if value_is_integer(left) {
-        give left.integer_value ==
+        return left.integer_value ==
              right.integer_value;
     }
 
     if value_is_float(left) {
-        give left.float_value ==
+        return left.float_value ==
              right.float_value;
     }
 
     if value_is_string(left) {
-        give left.string_value ==
+        return left.string_value ==
              right.string_value;
     }
 
     if value_is_array(left) {
-        give array_values_equal(
+        return array_values_equal(
             left.array_value,
             right.array_value);
     }
 
     if value_is_object(left) {
-        give object_members_equal(
+        return object_members_equal(
             left.object_value,
             right.object_value);
     }
 
-    give false;
+    return false;
 }
 
 proc value_not_equals(
     left: &JsonObjectValue,
     right: &JsonObjectValue
 ) -> bool {
-    give !value_equals(
+    return not value_equals(
         left,
         right);
 }
@@ -743,7 +743,7 @@ proc index_of(
         if object.members[index].
                key ==
            key {
-            give JsonObjectIndexResult {
+            return JsonObjectIndexResult {
                 found: true,
                 index: index,
             };
@@ -752,7 +752,7 @@ proc index_of(
         set index += 1;
     }
 
-    give JsonObjectIndexResult {
+    return JsonObjectIndexResult {
         found: false,
         index: 0,
     };
@@ -771,14 +771,14 @@ proc last_index_of(
         if object.members[index].
                key ==
            key {
-            give JsonObjectIndexResult {
+            return JsonObjectIndexResult {
                 found: true,
                 index: index,
             };
         }
     }
 
-    give JsonObjectIndexResult {
+    return JsonObjectIndexResult {
         found: false,
         index: 0,
     };
@@ -793,14 +793,14 @@ proc has(
             object,
             key);
 
-    give result.found;
+    return result.found;
 }
 
 proc contains_key(
     object: &JsonObject,
     key: string
 ) -> bool {
-    give has(
+    return has(
         object,
         key);
 }
@@ -823,7 +823,7 @@ proc key_count(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc has_duplicate_keys(
@@ -837,13 +837,13 @@ proc has_duplicate_keys(
                object,
                object.members[index].
                    key) > 1 {
-            give true;
+            return true;
         }
 
         set index += 1;
     }
 
-    give false;
+    return false;
 }
 
 proc get(
@@ -855,11 +855,11 @@ proc get(
             object,
             key);
 
-    if !result.found {
-        give null_value();
+    if not result.found {
+        return null_value();
     }
 
-    give object.members[
+    return object.members[
         result.index
     ].value;
 }
@@ -873,8 +873,8 @@ proc get_result(
             object,
             key);
 
-    if !result.found {
-        give JsonObjectValueResult {
+    if not result.found {
+        return JsonObjectValueResult {
             ok: false,
 
             value:
@@ -887,7 +887,7 @@ proc get_result(
         };
     }
 
-    give JsonObjectValueResult {
+    return JsonObjectValueResult {
         ok: true,
 
         value:
@@ -907,10 +907,10 @@ proc get_at(
     object: &JsonObject,
     index: usize
 ) -> JsonObjectMemberResult {
-    if !is_valid_index(
+    if not is_valid_index(
         object,
         index) {
-        give JsonObjectMemberResult {
+        return JsonObjectMemberResult {
             ok: false,
 
             member:
@@ -923,7 +923,7 @@ proc get_at(
         };
     }
 
-    give JsonObjectMemberResult {
+    return JsonObjectMemberResult {
         ok: true,
 
         member:
@@ -940,7 +940,7 @@ proc first(
     object: &JsonObject
 ) -> JsonObjectMemberResult {
     if is_empty(object) {
-        give JsonObjectMemberResult {
+        return JsonObjectMemberResult {
             ok: false,
 
             member:
@@ -953,7 +953,7 @@ proc first(
         };
     }
 
-    give JsonObjectMemberResult {
+    return JsonObjectMemberResult {
         ok: true,
 
         member:
@@ -970,7 +970,7 @@ proc last(
     object: &JsonObject
 ) -> JsonObjectMemberResult {
     if is_empty(object) {
-        give JsonObjectMemberResult {
+        return JsonObjectMemberResult {
             ok: false,
 
             member:
@@ -986,7 +986,7 @@ proc last(
     let index: usize =
         object.length - 1;
 
-    give JsonObjectMemberResult {
+    return JsonObjectMemberResult {
         ok: true,
 
         member:
@@ -1008,7 +1008,7 @@ proc get_bool(
             object,
             key);
 
-    give value_as_bool(
+    return value_as_bool(
         &value);
 }
 
@@ -1021,7 +1021,7 @@ proc get_integer(
             object,
             key);
 
-    give value_as_integer(
+    return value_as_integer(
         &value);
 }
 
@@ -1034,7 +1034,7 @@ proc get_float(
             object,
             key);
 
-    give value_as_float(
+    return value_as_float(
         &value);
 }
 
@@ -1047,7 +1047,7 @@ proc get_string(
             object,
             key);
 
-    give value_as_string(
+    return value_as_string(
         &value);
 }
 
@@ -1065,7 +1065,7 @@ proc insert_member_unchecked(
 
     set result.length += 1;
 
-    give result;
+    return result;
 }
 
 proc insert(
@@ -1074,10 +1074,10 @@ proc insert(
     value: JsonObjectValue
 ) -> JsonObjectResult {
     if key.length == 0 {
-        give JsonObjectResult {
+        return JsonObjectResult {
             ok: false,
 
-            value: object,
+            value: clone(object),
 
             error:
                 JsonObjectError.EmptyKey,
@@ -1093,10 +1093,10 @@ proc insert(
                 key);
 
     if existing.found {
-        give JsonObjectResult {
+        return JsonObjectResult {
             ok: false,
 
-            value: object,
+            value: clone(object),
 
             error:
                 JsonObjectError.DuplicateKey,
@@ -1113,7 +1113,7 @@ proc insert(
                 key,
                 value));
 
-    give JsonObjectResult {
+    return JsonObjectResult {
         ok: true,
 
         value: result,
@@ -1130,7 +1130,7 @@ proc insert_null(
     object: &JsonObject,
     key: string
 ) -> JsonObjectResult {
-    give insert(
+    return insert(
         object,
         key,
         null_value());
@@ -1141,7 +1141,7 @@ proc insert_bool(
     key: string,
     value: bool
 ) -> JsonObjectResult {
-    give insert(
+    return insert(
         object,
         key,
         bool_value(value));
@@ -1152,7 +1152,7 @@ proc insert_integer(
     key: string,
     value: i64
 ) -> JsonObjectResult {
-    give insert(
+    return insert(
         object,
         key,
         integer_value(value));
@@ -1163,7 +1163,7 @@ proc insert_float(
     key: string,
     value: f64
 ) -> JsonObjectResult {
-    give insert(
+    return insert(
         object,
         key,
         float_value(value));
@@ -1174,7 +1174,7 @@ proc insert_string(
     key: string,
     value: string
 ) -> JsonObjectResult {
-    give insert(
+    return insert(
         object,
         key,
         string_value(value));
@@ -1185,7 +1185,7 @@ proc insert_array(
     key: string,
     value: [JsonObjectValue]
 ) -> JsonObjectResult {
-    give insert(
+    return insert(
         object,
         key,
         array_value(value));
@@ -1196,7 +1196,7 @@ proc insert_object(
     key: string,
     value: &JsonObject
 ) -> JsonObjectResult {
-    give insert(
+    return insert(
         object,
         key,
         object_value(value));
@@ -1215,20 +1215,20 @@ proc set_value(
 
     if existing.found {
         let mut result: JsonObject =
-            object;
+            clone(object);
 
         set result.members[
             existing.index
         ].value = value;
 
-        give result;
+        return result;
     }
 
     if key.length == 0 {
-        give object;
+        return clone(object);
     }
 
-    give insert_member_unchecked(
+    return insert_member_unchecked(
         object,
         member(
             key,
@@ -1239,7 +1239,7 @@ proc set_null(
     object: &JsonObject,
     key: string
 ) -> JsonObject {
-    give set_value(
+    return set_value(
         object,
         key,
         null_value());
@@ -1250,7 +1250,7 @@ proc set_bool(
     key: string,
     value: bool
 ) -> JsonObject {
-    give set_value(
+    return set_value(
         object,
         key,
         bool_value(value));
@@ -1261,7 +1261,7 @@ proc set_integer(
     key: string,
     value: i64
 ) -> JsonObject {
-    give set_value(
+    return set_value(
         object,
         key,
         integer_value(value));
@@ -1272,7 +1272,7 @@ proc set_float(
     key: string,
     value: f64
 ) -> JsonObject {
-    give set_value(
+    return set_value(
         object,
         key,
         float_value(value));
@@ -1283,7 +1283,7 @@ proc set_string(
     key: string,
     value: string
 ) -> JsonObject {
-    give set_value(
+    return set_value(
         object,
         key,
         string_value(value));
@@ -1294,7 +1294,7 @@ proc set_array(
     key: string,
     value: [JsonObjectValue]
 ) -> JsonObject {
-    give set_value(
+    return set_value(
         object,
         key,
         array_value(value));
@@ -1305,7 +1305,7 @@ proc set_object(
     key: string,
     value: &JsonObject
 ) -> JsonObject {
-    give set_value(
+    return set_value(
         object,
         key,
         object_value(value));
@@ -1322,11 +1322,11 @@ proc replace(
                 object,
                 key);
 
-    if !existing.found {
-        give JsonObjectResult {
+    if not existing.found {
+        return JsonObjectResult {
             ok: false,
 
-            value: object,
+            value: clone(object),
 
             error:
                 JsonObjectError.KeyNotFound,
@@ -1336,13 +1336,13 @@ proc replace(
     }
 
     let mut result: JsonObject =
-        object;
+        clone(object);
 
     set result.members[
         existing.index
     ].value = value;
 
-    give JsonObjectResult {
+    return JsonObjectResult {
         ok: true,
 
         value: result,
@@ -1361,10 +1361,10 @@ proc rename(
     new_key: string
 ) -> JsonObjectResult {
     if new_key.length == 0 {
-        give JsonObjectResult {
+        return JsonObjectResult {
             ok: false,
 
-            value: object,
+            value: clone(object),
 
             error:
                 JsonObjectError.EmptyKey,
@@ -1379,11 +1379,11 @@ proc rename(
                 object,
                 old_key);
 
-    if !old_index.found {
-        give JsonObjectResult {
+    if not old_index.found {
+        return JsonObjectResult {
             ok: false,
 
-            value: object,
+            value: clone(object),
 
             error:
                 JsonObjectError.KeyNotFound,
@@ -1400,10 +1400,10 @@ proc rename(
                     new_key);
 
         if new_index.found {
-            give JsonObjectResult {
+            return JsonObjectResult {
                 ok: false,
 
-                value: object,
+                value: clone(object),
 
                 error:
                     JsonObjectError.DuplicateKey,
@@ -1415,13 +1415,13 @@ proc rename(
     }
 
     let mut result: JsonObject =
-        object;
+        clone(object);
 
     set result.members[
         old_index.index
     ].key = new_key;
 
-    give JsonObjectResult {
+    return JsonObjectResult {
         ok: true,
 
         value: result,
@@ -1444,11 +1444,11 @@ proc remove(
                 object,
                 key);
 
-    if !existing.found {
-        give JsonObjectResult {
+    if not existing.found {
+        return JsonObjectResult {
             ok: false,
 
-            value: object,
+            value: clone(object),
 
             error:
                 JsonObjectError.KeyNotFound,
@@ -1479,7 +1479,7 @@ proc remove(
         set index += 1;
     }
 
-    give JsonObjectResult {
+    return JsonObjectResult {
         ok: true,
 
         value: result,
@@ -1496,13 +1496,13 @@ proc remove_at(
     object: &JsonObject,
     target: usize
 ) -> JsonObjectResult {
-    if !is_valid_index(
+    if not is_valid_index(
         object,
         target) {
-        give JsonObjectResult {
+        return JsonObjectResult {
             ok: false,
 
-            value: object,
+            value: clone(object),
 
             error:
                 JsonObjectError.IndexOutOfBounds,
@@ -1532,7 +1532,7 @@ proc remove_at(
         set index += 1;
     }
 
-    give JsonObjectResult {
+    return JsonObjectResult {
         ok: true,
 
         value: result,
@@ -1548,10 +1548,10 @@ proc remove_first(
     object: &JsonObject
 ) -> JsonObjectResult {
     if is_empty(object) {
-        give JsonObjectResult {
+        return JsonObjectResult {
             ok: false,
 
-            value: object,
+            value: clone(object),
 
             error:
                 JsonObjectError.Empty,
@@ -1560,7 +1560,7 @@ proc remove_first(
         };
     }
 
-    give remove_at(
+    return remove_at(
         object,
         0);
 }
@@ -1569,10 +1569,10 @@ proc remove_last(
     object: &JsonObject
 ) -> JsonObjectResult {
     if is_empty(object) {
-        give JsonObjectResult {
+        return JsonObjectResult {
             ok: false,
 
-            value: object,
+            value: clone(object),
 
             error:
                 JsonObjectError.Empty,
@@ -1581,7 +1581,7 @@ proc remove_last(
         };
     }
 
-    give remove_at(
+    return remove_at(
         object,
         object.length - 1);
 }
@@ -1589,7 +1589,7 @@ proc remove_last(
 proc clear(
     object: &JsonObject
 ) -> JsonObject {
-    give JsonObject {
+    return JsonObject {
         members: [],
 
         length: 0,
@@ -1600,7 +1600,7 @@ proc clear(
 }
 
 proc reset() -> JsonObject {
-    give empty();
+    return empty();
 }
 
 proc clone(
@@ -1625,7 +1625,7 @@ proc clone(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc keys(
@@ -1646,7 +1646,7 @@ proc keys(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc values(
@@ -1669,7 +1669,7 @@ proc values(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc members(
@@ -1692,7 +1692,7 @@ proc members(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc count_kind(
@@ -1714,13 +1714,13 @@ proc count_kind(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc count_null(
     object: &JsonObject
 ) -> usize {
-    give count_kind(
+    return count_kind(
         object,
         JsonObjectValueKind.Null);
 }
@@ -1728,7 +1728,7 @@ proc count_null(
 proc count_bool(
     object: &JsonObject
 ) -> usize {
-    give count_kind(
+    return count_kind(
         object,
         JsonObjectValueKind.Bool);
 }
@@ -1736,7 +1736,7 @@ proc count_bool(
 proc count_integer(
     object: &JsonObject
 ) -> usize {
-    give count_kind(
+    return count_kind(
         object,
         JsonObjectValueKind.Integer);
 }
@@ -1744,7 +1744,7 @@ proc count_integer(
 proc count_float(
     object: &JsonObject
 ) -> usize {
-    give count_kind(
+    return count_kind(
         object,
         JsonObjectValueKind.Float);
 }
@@ -1752,14 +1752,14 @@ proc count_float(
 proc count_number(
     object: &JsonObject
 ) -> usize {
-    give count_integer(object) +
+    return count_integer(object) +
          count_float(object);
 }
 
 proc count_string(
     object: &JsonObject
 ) -> usize {
-    give count_kind(
+    return count_kind(
         object,
         JsonObjectValueKind.String);
 }
@@ -1767,7 +1767,7 @@ proc count_string(
 proc count_array(
     object: &JsonObject
 ) -> usize {
-    give count_kind(
+    return count_kind(
         object,
         JsonObjectValueKind.Array);
 }
@@ -1775,7 +1775,7 @@ proc count_array(
 proc count_object(
     object: &JsonObject
 ) -> usize {
-    give count_kind(
+    return count_kind(
         object,
         JsonObjectValueKind.Object);
 }
@@ -1783,43 +1783,43 @@ proc count_object(
 proc contains_null(
     object: &JsonObject
 ) -> bool {
-    give count_null(object) > 0;
+    return count_null(object) > 0;
 }
 
 proc contains_bool(
     object: &JsonObject
 ) -> bool {
-    give count_bool(object) > 0;
+    return count_bool(object) > 0;
 }
 
 proc contains_integer(
     object: &JsonObject
 ) -> bool {
-    give count_integer(object) > 0;
+    return count_integer(object) > 0;
 }
 
 proc contains_number(
     object: &JsonObject
 ) -> bool {
-    give count_number(object) > 0;
+    return count_number(object) > 0;
 }
 
 proc contains_string(
     object: &JsonObject
 ) -> bool {
-    give count_string(object) > 0;
+    return count_string(object) > 0;
 }
 
 proc contains_array(
     object: &JsonObject
 ) -> bool {
-    give count_array(object) > 0;
+    return count_array(object) > 0;
 }
 
 proc contains_object(
     object: &JsonObject
 ) -> bool {
-    give count_object(object) > 0;
+    return count_object(object) > 0;
 }
 
 proc contains_value(
@@ -1835,13 +1835,13 @@ proc contains_value(
                 index
             ].value,
             value) {
-            give true;
+            return true;
         }
 
         set index += 1;
     }
 
-    give false;
+    return false;
 }
 
 proc value_count(
@@ -1864,7 +1864,7 @@ proc value_count(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc equals_ordered(
@@ -1873,7 +1873,7 @@ proc equals_ordered(
 ) -> bool {
     if left.length !=
        right.length {
-        give false;
+        return false;
     }
 
     let mut index: usize = 0;
@@ -1890,19 +1890,19 @@ proc equals_ordered(
 
         if left_member.key !=
            right_member.key {
-            give false;
+            return false;
         }
 
-        if !value_equals(
+        if not value_equals(
             &left_member.value,
             &right_member.value) {
-            give false;
+            return false;
         }
 
         set index += 1;
     }
 
-    give true;
+    return true;
 }
 
 proc equals(
@@ -1911,7 +1911,7 @@ proc equals(
 ) -> bool {
     if left.length !=
        right.length {
-        give false;
+        return false;
     }
 
     let mut index: usize = 0;
@@ -1928,29 +1928,29 @@ proc equals(
                     right,
                     current.key);
 
-        if !found.found {
-            give false;
+        if not found.found {
+            return false;
         }
 
-        if !value_equals(
+        if not value_equals(
             &current.value,
             &right.members[
                 found.index
             ].value) {
-            give false;
+            return false;
         }
 
         set index += 1;
     }
 
-    give true;
+    return true;
 }
 
 proc not_equals(
     left: &JsonObject,
     right: &JsonObject
 ) -> bool {
-    give !equals(
+    return not equals(
         left,
         right);
 }
@@ -1980,7 +1980,7 @@ proc merge(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc merge_preserve_left(
@@ -1998,7 +1998,7 @@ proc merge_preserve_left(
             JsonObjectMember =
                 right.members[index];
 
-        if !has(
+        if not has(
             &result,
             current.key) {
             set result =
@@ -2011,7 +2011,7 @@ proc merge_preserve_left(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc intersection(
@@ -2042,7 +2042,7 @@ proc intersection(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc difference(
@@ -2060,7 +2060,7 @@ proc difference(
             JsonObjectMember =
                 left.members[index];
 
-        if !has(
+        if not has(
             right,
             current.key) {
             set result =
@@ -2073,7 +2073,7 @@ proc difference(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc only_nulls(
@@ -2102,7 +2102,7 @@ proc only_nulls(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc only_bools(
@@ -2131,7 +2131,7 @@ proc only_bools(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc only_integers(
@@ -2160,7 +2160,7 @@ proc only_integers(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc only_numbers(
@@ -2189,7 +2189,7 @@ proc only_numbers(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc only_strings(
@@ -2218,7 +2218,7 @@ proc only_strings(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc only_arrays(
@@ -2247,7 +2247,7 @@ proc only_arrays(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc only_objects(
@@ -2276,7 +2276,7 @@ proc only_objects(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc compact_nulls(
@@ -2293,7 +2293,7 @@ proc compact_nulls(
             JsonObjectMember =
                 object.members[index];
 
-        if !value_is_null(
+        if not value_is_null(
             &current.value) {
             set result =
                 insert_member_unchecked(
@@ -2305,7 +2305,7 @@ proc compact_nulls(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc integer_sum(
@@ -2330,7 +2330,7 @@ proc integer_sum(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc number_sum(
@@ -2362,17 +2362,17 @@ proc number_sum(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc nested_object(
     value: &JsonObjectValue
 ) -> JsonObject {
-    if !value_is_object(value) {
-        give empty();
+    if not value_is_object(value) {
+        return empty();
     }
 
-    give JsonObject {
+    return JsonObject {
         members:
             value.object_value,
 
@@ -2413,7 +2413,7 @@ proc object_depth_from_members(
         set index += 1;
     }
 
-    give maximum;
+    return maximum;
 }
 
 proc array_depth_from_values(
@@ -2439,29 +2439,29 @@ proc array_depth_from_values(
         set index += 1;
     }
 
-    give maximum;
+    return maximum;
 }
 
 proc value_depth(
     value: &JsonObjectValue
 ) -> usize {
     if value_is_array(value) {
-        give array_depth_from_values(
+        return array_depth_from_values(
             value.array_value);
     }
 
     if value_is_object(value) {
-        give object_depth_from_members(
+        return object_depth_from_members(
             value.object_value);
     }
 
-    give 0;
+    return 0;
 }
 
 proc depth(
     object: &JsonObject
 ) -> usize {
-    give object_depth_from_members(
+    return object_depth_from_members(
         object.members);
 }
 
@@ -2496,7 +2496,7 @@ proc scalar_count_in_array(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc scalar_count_in_members(
@@ -2532,13 +2532,13 @@ proc scalar_count_in_members(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc scalar_count(
     object: &JsonObject
 ) -> usize {
-    give scalar_count_in_members(
+    return scalar_count_in_members(
         object.members);
 }
 
@@ -2573,7 +2573,7 @@ proc total_value_count_in_array(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc total_value_count_in_members(
@@ -2609,13 +2609,13 @@ proc total_value_count_in_members(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc total_value_count(
     object: &JsonObject
 ) -> usize {
-    give total_value_count_in_members(
+    return total_value_count_in_members(
         object.members);
 }
 
@@ -2626,15 +2626,15 @@ proc validate_array_values(
 
     while index <
           values_value.length {
-        if !validate_value(
+        if not validate_value(
             &values_value[index]) {
-            give false;
+            return false;
         }
 
         set index += 1;
     }
 
-    give true;
+    return true;
 }
 
 proc validate_object_members(
@@ -2647,14 +2647,14 @@ proc validate_object_members(
         if members_value[
                index
            ].key.length == 0 {
-            give false;
+            return false;
         }
 
-        if !validate_value(
+        if not validate_value(
             &members_value[
                 index
             ].value) {
-            give false;
+            return false;
         }
 
         let mut other: usize =
@@ -2668,7 +2668,7 @@ proc validate_object_members(
                members_value[
                    other
                ].key {
-                give false;
+                return false;
             }
 
             set other += 1;
@@ -2677,43 +2677,43 @@ proc validate_object_members(
         set index += 1;
     }
 
-    give true;
+    return true;
 }
 
 proc validate_value(
     value: &JsonObjectValue
 ) -> bool {
     if value_is_null(value) {
-        give true;
+        return true;
     }
 
     if value_is_bool(value) {
-        give true;
+        return true;
     }
 
     if value_is_integer(value) {
-        give true;
+        return true;
     }
 
     if value_is_float(value) {
-        give true;
+        return true;
     }
 
     if value_is_string(value) {
-        give true;
+        return true;
     }
 
     if value_is_array(value) {
-        give validate_array_values(
+        return validate_array_values(
             value.array_value);
     }
 
     if value_is_object(value) {
-        give validate_object_members(
+        return validate_object_members(
             value.object_value);
     }
 
-    give false;
+    return false;
 }
 
 proc validate(
@@ -2721,20 +2721,20 @@ proc validate(
 ) -> bool {
     if object.capacity <
        MINIMUM_CAPACITY {
-        give false;
+        return false;
     }
 
     if object.length >
        object.capacity {
-        give false;
+        return false;
     }
 
     if object.members.length !=
        object.length {
-        give false;
+        return false;
     }
 
-    give validate_object_members(
+    return validate_object_members(
         object.members);
 }
 
@@ -2743,52 +2743,52 @@ proc error_name(
 ) -> string {
     if error ==
        JsonObjectError.None {
-        give "none";
+        return "none";
     }
 
     if error ==
        JsonObjectError.KeyNotFound {
-        give "key not found";
+        return "key not found";
     }
 
     if error ==
        JsonObjectError.DuplicateKey {
-        give "duplicate key";
+        return "duplicate key";
     }
 
     if error ==
        JsonObjectError.EmptyKey {
-        give "empty key";
+        return "empty key";
     }
 
     if error ==
        JsonObjectError.IndexOutOfBounds {
-        give "index out of bounds";
+        return "index out of bounds";
     }
 
     if error ==
        JsonObjectError.Empty {
-        give "empty object";
+        return "empty object";
     }
 
     if error ==
        JsonObjectError.InvalidRange {
-        give "invalid range";
+        return "invalid range";
     }
 
     if error ==
        JsonObjectError.InvalidValue {
-        give "invalid value";
+        return "invalid value";
     }
 
-    give "capacity overflow";
+    return "capacity overflow";
 }
 
 proc test_empty() -> bool {
     let object: JsonObject =
         empty();
 
-    give is_empty(&object) &&
+    return is_empty(&object) &&
          len(&object) == 0 &&
          capacity(&object) >=
              MINIMUM_CAPACITY &&
@@ -2805,11 +2805,11 @@ proc test_insert_integer() -> bool {
             "answer",
             42);
 
-    if !result.ok {
-        give false;
+    if not result.ok {
+        return false;
     }
 
-    give result.value.length == 1 &&
+    return result.value.length == 1 &&
          has(
              &result.value,
              "answer") &&
@@ -2827,8 +2827,8 @@ proc test_insert_all_scalar_types() -> bool {
             &object,
             "null");
 
-    if !null_result.ok {
-        give false;
+    if not null_result.ok {
+        return false;
     }
 
     set object =
@@ -2840,8 +2840,8 @@ proc test_insert_all_scalar_types() -> bool {
             "bool",
             true);
 
-    if !bool_result.ok {
-        give false;
+    if not bool_result.ok {
+        return false;
     }
 
     set object =
@@ -2853,8 +2853,8 @@ proc test_insert_all_scalar_types() -> bool {
             "integer",
             42);
 
-    if !integer_result.ok {
-        give false;
+    if not integer_result.ok {
+        return false;
     }
 
     set object =
@@ -2866,8 +2866,8 @@ proc test_insert_all_scalar_types() -> bool {
             "float",
             42.5);
 
-    if !float_result.ok {
-        give false;
+    if not float_result.ok {
+        return false;
     }
 
     set object =
@@ -2879,14 +2879,14 @@ proc test_insert_all_scalar_types() -> bool {
             "string",
             "Vitte");
 
-    if !string_result.ok {
-        give false;
+    if not string_result.ok {
+        return false;
     }
 
     set object =
         string_result.value;
 
-    give object.length == 5 &&
+    return object.length == 5 &&
          count_null(&object) == 1 &&
          count_bool(&object) == 1 &&
          count_integer(&object) == 1 &&
@@ -2907,7 +2907,7 @@ proc test_duplicate_key() -> bool {
             "answer",
             43);
 
-    give !result.ok &&
+    return not result.ok &&
          result.error ==
              JsonObjectError.DuplicateKey &&
          get_integer(
@@ -2931,7 +2931,7 @@ proc test_set_replaces() -> bool {
             "answer",
             42);
 
-    give object.length == 1 &&
+    return object.length == 1 &&
          get_integer(
              &object,
              "answer") == 42;
@@ -2958,9 +2958,9 @@ proc test_remove() -> bool {
             &object,
             "first");
 
-    give result.ok &&
+    return result.ok &&
          result.value.length == 1 &&
-         !has(
+         not has(
              &result.value,
              "first") &&
          get_integer(
@@ -2981,8 +2981,8 @@ proc test_rename() -> bool {
             "old",
             "answer");
 
-    give result.ok &&
-         !has(
+    return result.ok &&
+         not has(
              &result.value,
              "old") &&
          has(
@@ -3015,7 +3015,7 @@ proc test_order_preserved() -> bool {
             "third",
             22);
 
-    give object.members[0].key ==
+    return object.members[0].key ==
              "first" &&
          object.members[1].key ==
              "second" &&
@@ -3059,7 +3059,7 @@ proc test_merge() -> bool {
             &left,
             &right);
 
-    give result.length == 3 &&
+    return result.length == 3 &&
          get_integer(
              &result,
              "first") == 20 &&
@@ -3101,7 +3101,7 @@ proc test_merge_preserve_left() -> bool {
             &left,
             &right);
 
-    give result.length == 2 &&
+    return result.length == 2 &&
          get_integer(
              &result,
              "answer") == 42 &&
@@ -3141,10 +3141,10 @@ proc test_equality_order_independent() -> bool {
             "a",
             20);
 
-    give equals(
+    return equals(
                &left,
                &right) &&
-         !equals_ordered(
+         not equals_ordered(
                &left,
                &right);
 }
@@ -3158,7 +3158,7 @@ proc test_numeric_equality() -> bool {
         JsonObjectValue =
             float_value(42.0);
 
-    give value_equals(
+    return value_equals(
         &integer_number,
         &float_number);
 }
@@ -3195,7 +3195,7 @@ proc test_filter() -> bool {
         only_integers(
             &object);
 
-    give integers.length == 2 &&
+    return integers.length == 2 &&
          integer_sum(
              &integers) == 42;
 }
@@ -3219,8 +3219,8 @@ proc test_compact_nulls() -> bool {
         compact_nulls(
             &object);
 
-    give result.length == 1 &&
-         !has(
+    return result.length == 1 &&
+         not has(
              &result,
              "remove") &&
          get_integer(
@@ -3259,16 +3259,16 @@ proc test_nested_object() -> bool {
                 &parent,
                 "child");
 
-    if !value_is_object(
+    if not value_is_object(
         &child_value) {
-        give false;
+        return false;
     }
 
     let restored: JsonObject =
         nested_object(
             &child_value);
 
-    give restored.length == 2 &&
+    return restored.length == 2 &&
          integer_sum(
              &restored) == 42;
 }
@@ -3298,7 +3298,7 @@ proc test_nested_array() -> bool {
             &object,
             "values");
 
-    give value_is_array(
+    return value_is_array(
                &value) &&
          value.array_value.length ==
              2 &&
@@ -3346,7 +3346,7 @@ proc test_intersection() -> bool {
             &left,
             &right);
 
-    give result.length == 1 &&
+    return result.length == 1 &&
          has(
              &result,
              "b") &&
@@ -3382,7 +3382,7 @@ proc test_difference() -> bool {
             &left,
             &right);
 
-    give result.length == 1 &&
+    return result.length == 1 &&
          has(
              &result,
              "b") &&
@@ -3417,7 +3417,7 @@ proc test_keys_values() -> bool {
             values(
                 &object);
 
-    give object_keys.length == 2 &&
+    return object_keys.length == 2 &&
          object_values.length == 2 &&
          object_keys[0] ==
              "first" &&
@@ -3457,7 +3457,7 @@ proc test_first_last() -> bool {
             last(
                 &object);
 
-    give first_result.ok &&
+    return first_result.ok &&
          last_result.ok &&
          first_result.member.key ==
              "first" &&
@@ -3489,7 +3489,7 @@ proc test_clone() -> bool {
         clone(
             &object);
 
-    give equals(
+    return equals(
                &object,
                &copied) &&
          equals_ordered(
@@ -3528,7 +3528,7 @@ proc test_scalar_count() -> bool {
             "enabled",
             true);
 
-    give scalar_count(
+    return scalar_count(
         &parent) == 3;
 }
 
@@ -3565,12 +3565,12 @@ proc test_validation() -> bool {
             "string",
             "Vitte");
 
-    give validate(
+    return validate(
         &object);
 }
 
 proc self_test() -> bool {
-    give test_empty() &&
+    return test_empty() &&
          test_insert_integer() &&
          test_insert_all_scalar_types() &&
          test_duplicate_key() &&

@@ -51,14 +51,14 @@ proc rejects(source: string) -> bool {
     let result: JsonParseResult =
         parse(source);
 
-    give !result.ok;
+    return not result.ok;
 }
 
 proc lex_rejects(source: string) -> bool {
     let result: JsonLexerResult =
         lex(source);
 
-    give !result.ok;
+    return not result.ok;
 }
 
 /// -------------------------------------------------------------------------
@@ -562,21 +562,21 @@ test "invalid inf" {
 /// -------------------------------------------------------------------------
 
 test "numeric runtime rejects malformed number forms" {
-    assert !valid("");
-    assert !valid("+1");
-    assert !valid("-");
-    assert !valid("01");
-    assert !valid("-01");
-    assert !valid(".1");
-    assert !valid("1.");
-    assert !valid("1e");
-    assert !valid("1e+");
-    assert !valid("1e-");
-    assert !valid("1e1e1");
-    assert !valid("0x10");
-    assert !valid("1_000");
-    assert !valid("NaN");
-    assert !valid("Infinity");
+    assert not valid("");
+    assert not valid("+1");
+    assert not valid("-");
+    assert not valid("01");
+    assert not valid("-01");
+    assert not valid(".1");
+    assert not valid("1.");
+    assert not valid("1e");
+    assert not valid("1e+");
+    assert not valid("1e-");
+    assert not valid("1e1e1");
+    assert not valid("0x10");
+    assert not valid("1_000");
+    assert not valid("NaN");
+    assert not valid("Infinity");
 }
 
 /// -------------------------------------------------------------------------
@@ -1175,8 +1175,8 @@ test "duplicate keys remain parser policy not syntax error" {
     assert result.ok ==
         second.ok;
 
-    assert result.diagnostic.error ==
-        second.diagnostic.error;
+    assert result.report.error ==
+        second.report.error;
 }
 
 /// -------------------------------------------------------------------------
@@ -1488,35 +1488,35 @@ test "parser rejects empty token stream source" {
     let result: JsonParseResult =
         parse("");
 
-    assert !result.ok;
+    assert not result.ok;
 }
 
 test "parser rejects empty array missing end delimiter" {
     let result: JsonParseResult =
         parse("[");
 
-    assert !result.ok;
+    assert not result.ok;
 }
 
 test "parser rejects empty object missing end delimiter" {
     let result: JsonParseResult =
         parse("{");
 
-    assert !result.ok;
+    assert not result.ok;
 }
 
 test "parser rejects unexpected comma at root" {
     let result: JsonParseResult =
         parse(",");
 
-    assert !result.ok;
+    assert not result.ok;
 }
 
 test "parser rejects unexpected colon at root" {
     let result: JsonParseResult =
         parse(":");
 
-    assert !result.ok;
+    assert not result.ok;
 }
 
 /// -------------------------------------------------------------------------
@@ -1530,11 +1530,11 @@ test "invalid result has deterministic first failure" {
     let second: JsonParseResult =
         parse("[1,,2]");
 
-    assert !first.ok;
-    assert !second.ok;
+    assert not first.ok;
+    assert not second.ok;
 
-    assert first.diagnostic.error ==
-        second.diagnostic.error;
+    assert first.report.error ==
+        second.report.error;
 }
 
 test "invalid lexer result has deterministic first failure" {
@@ -1544,8 +1544,8 @@ test "invalid lexer result has deterministic first failure" {
     let second: JsonLexerResult =
         lex("\"\\x\"");
 
-    assert !first.ok;
-    assert !second.ok;
+    assert not first.ok;
+    assert not second.ok;
 
     assert first.error.error ==
         second.error.error;
@@ -1568,22 +1568,22 @@ test "invalid parse is repeatable" {
     let third: JsonParseResult =
         parse(source);
 
-    assert !first.ok;
-    assert !second.ok;
-    assert !third.ok;
+    assert not first.ok;
+    assert not second.ok;
+    assert not third.ok;
 
-    assert first.diagnostic.error ==
-        second.diagnostic.error;
+    assert first.report.error ==
+        second.report.error;
 
-    assert second.diagnostic.error ==
-        third.diagnostic.error;
+    assert second.report.error ==
+        third.report.error;
 }
 
 test "invalid parse does not contaminate later valid parse" {
     let invalid_result: JsonParseResult =
         parse("[1,,2]");
 
-    assert !invalid_result.ok;
+    assert not invalid_result.ok;
 
     let valid_result: JsonParseResult =
         parse("[1,2]");
@@ -1600,7 +1600,7 @@ test "valid parse does not hide later invalid parse" {
     let invalid_result: JsonParseResult =
         parse("{\"a\":}");
 
-    assert !invalid_result.ok;
+    assert not invalid_result.ok;
 }
 
 /// -------------------------------------------------------------------------
@@ -2090,14 +2090,14 @@ test "invalid parse result remains failed" {
     let result: JsonParseResult =
         parse("[1,,2]");
 
-    assert !result.ok;
+    assert not result.ok;
 }
 
 test "invalid lex result remains failed" {
     let result: JsonLexerResult =
         lex("\"\\x\"");
 
-    assert !result.ok;
+    assert not result.ok;
 }
 
 test "different malformed documents all reject" {

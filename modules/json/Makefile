@@ -34,7 +34,7 @@ SHELL := /bin/sh
 # ----------------------------------------------------------------------------
 
 MODULE_NAME    := json
-MODULE_VERSION := 0.1.0
+MODULE_VERSION := 0.1.1
 
 ROOT_DIR := .
 BUILD_DIR := $(ROOT_DIR)/build
@@ -42,6 +42,7 @@ TMP_DIR   := $(BUILD_DIR)/tmp
 LOG_DIR   := $(BUILD_DIR)/logs
 INSTALL_TEST_ROOT := $(abspath ../../build/modules-json-installed-test)
 INSTALL_TEST_PREFIX := /opt/vitte
+INSTALL_TEST_MODULE_ROOT := $(INSTALL_TEST_ROOT)$(INSTALL_TEST_PREFIX)/share/vitte/modules
 
 # ----------------------------------------------------------------------------
 # Vitte compiler
@@ -78,8 +79,7 @@ CORE_SOURCES := \
 	core/value.vit
 
 ENCODE_SOURCES := \
-	encode/encoder.vit \
-	encode/escape.vit
+	encode/encoder.vit
 
 ERROR_SOURCES := \
 	error/error.vit \
@@ -91,10 +91,10 @@ LEXER_SOURCES := \
 	lexer/token.vit
 
 PARSER_SOURCES := \
-	parser/array.vit \
-	parser/object.vit \
-	parser/parser.vit \
-	parser/value.vit
+	parser/parser.vit
+
+# The unexported parser/array.vit, parser/object.vit, parser/value.vit, and
+# encode/escape.vit drafts are retained in the checkout but not shipped.
 
 RUNTIME_SOURCES := \
 	runtime/numeric.vit
@@ -387,11 +387,11 @@ test-vitte: check-compiler check-sources
 	@$(MKDIR) "$(INSTALL_TEST_ROOT)$(INSTALL_TEST_PREFIX)/bin"
 	@install -m 755 "$(VITTE)" \
 		"$(INSTALL_TEST_ROOT)$(INSTALL_TEST_PREFIX)/bin/vitte"
-	@cp tests/import_smoke.vit "$(INSTALL_TEST_ROOT)/consumer.vit"
+	@cp tests/import_smoke.vit "$(INSTALL_TEST_MODULE_ROOT)/consumer.vit"
 	@"$(INSTALL_TEST_ROOT)$(INSTALL_TEST_PREFIX)/bin/vitte" \
-		compile "$(INSTALL_TEST_ROOT)/consumer.vit" \
-		-o "$(INSTALL_TEST_ROOT)/consumer"
-	@"$(INSTALL_TEST_ROOT)/consumer"
+		compile "$(INSTALL_TEST_MODULE_ROOT)/consumer.vit" \
+		-o "$(INSTALL_TEST_MODULE_ROOT)/consumer"
+	@"$(INSTALL_TEST_MODULE_ROOT)/consumer"
 	$(call success,installed JSON parser and encoder consumer compiled and ran)
 
 # ----------------------------------------------------------------------------

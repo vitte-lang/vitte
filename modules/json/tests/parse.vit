@@ -28,9 +28,28 @@
 space json::tests::parse;
 
 use json::core::value as json_core;
+use json::lexer::lexer::{
+    JsonLexerError,
+    JsonLexerLimits,
+    JsonLexerResult,
+    default_lexer_limits,
+    lex_with_limits,
+    lexer_limits_valid,
+    new_lexer_limits
+};
 use json::parser::parser::{
+    JsonParserDuplicateKeyPolicy,
+    JsonParserError,
+    JsonParserLimits,
     JsonParseResult,
-    parse
+    default_parser_limits,
+    new_parser_limits,
+    parse,
+    parse_tokens_with_limits,
+    parse_strict_with_limits,
+    parse_with_limits,
+    parser_limits_valid,
+    strict_parser_limits
 };
 use json::runtime::numeric::{
     JSON_NUMERIC_I64_MAX,
@@ -46,7 +65,7 @@ proc parses(source: string) -> bool {
     let result: JsonParseResult =
         parse(source);
 
-    give result.ok;
+    return result.ok;
 }
 
 proc parsed(source: string) -> json_core::JsonValue {
@@ -55,7 +74,7 @@ proc parsed(source: string) -> json_core::JsonValue {
 
     assert result.ok;
 
-    give result.value;
+    return result.value;
 }
 
 /// -------------------------------------------------------------------------
@@ -113,7 +132,7 @@ test "parse false" {
 
     assert result.ok;
     assert json_core::is_bool(&result.value);
-    assert !json_core::bool_or(&result.value, true);
+    assert not json_core::bool_or(&result.value, true);
 }
 
 test "parse true with whitespace" {
@@ -131,7 +150,7 @@ test "parse false with whitespace" {
 
     assert result.ok;
     assert json_core::is_bool(&result.value);
-    assert !json_core::bool_or(&result.value, true);
+    assert not json_core::bool_or(&result.value, true);
 }
 
 /// -------------------------------------------------------------------------
@@ -834,7 +853,7 @@ test "parse boolean array" {
         json_core::array_get_ref(&result.value, 0),
         false);
 
-    assert !json_core::bool_or(
+    assert not json_core::bool_or(
         json_core::array_get_ref(&result.value, 1),
         true);
 
@@ -1694,7 +1713,7 @@ test "valid parse after invalid parse" {
     let invalid_result: JsonParseResult =
         parse("[1,,2]");
 
-    assert !invalid_result.ok;
+    assert not invalid_result.ok;
 
     let valid_result: JsonParseResult =
         parse("[1,2]");
@@ -2028,7 +2047,7 @@ test "parse realistic configuration document" {
             "enabled"),
         false);
 
-    assert !json_core::bool_or(
+    assert not json_core::bool_or(
         json_core::object_get_ref(
             &result.value,
             "debug"),
@@ -2039,22 +2058,22 @@ test "parse realistic configuration document" {
             &result.value,
             "output"));
 
-    let compiler: &json_core::JsonValue =
+    let compiler_info: &json_core::JsonValue =
         json_core::object_get_ref(
             &result.value,
             "compiler");
 
-    assert json_core::is_object(compiler);
+    assert json_core::is_object(compiler_info);
 
     assert json_core::string_or(
         json_core::object_get_ref(
-            compiler,
+            compiler_info,
             "backend"),
         "") == "c17";
 
     assert json_core::integer_or(
         json_core::object_get_ref(
-            compiler,
+            compiler_info,
             "optimization"),
         0) == 2;
 
@@ -2453,7 +2472,7 @@ test "json parser full integration smoke" {
             "true"),
         false);
 
-    assert !json_core::bool_or(
+    assert not json_core::bool_or(
         json_core::object_get_ref(
             &result.value,
             "false"),
@@ -2532,4 +2551,467 @@ test "json parser full integration smoke" {
             object,
             "active"),
         false);
+}
+
+/// -------------------------------------------------------------------------
+/// Configurable resource profiles
+/// -------------------------------------------------------------------------
+
+test "public JSON resource profiles can be created and validated" {
+    let lexer_limits: JsonLexerLimits =
+        new_lexer_limits(
+            100,
+            100,
+            100,
+            100);
+
+    let parser_limits: JsonParserLimits =
+        new_parser_limits(
+            16,
+            100,
+            100,
+            100,
+            100,
+            JsonParserDuplicateKeyPolicy.Allow);
+
+    assert lexer_limits_valid(
+        &lexer_limits);
+
+    assert parser_limits_valid(
+        &parser_limits);
+}
+
+test "default JSON resource profiles match their documented values" {
+    let lexer_limits: JsonLexerLimits =
+        default_lexer_limits();
+
+    let parser_limits: JsonParserLimits =
+        default_parser_limits();
+
+    let strict_limits: JsonParserLimits =
+        strict_parser_limits();
+
+    assert lexer_limits.max_tokens == 1048576;
+    assert lexer_limits.max_string_length == 16777216;
+    assert lexer_limits.max_number_length == 4096;
+    assert lexer_limits.max_source_length == 268435456;
+
+    assert parser_limits.max_depth == 512;
+    assert parser_limits.max_values == 1048576;
+    assert parser_limits.max_array_elements == 1048576;
+    assert parser_limits.max_object_members == 1048576;
+    assert parser_limits.max_key_length == 16777216;
+    assert parser_limits.duplicate_keys ==
+        JsonParserDuplicateKeyPolicy.Allow;
+    assert strict_limits.duplicate_keys ==
+        JsonParserDuplicateKeyPolicy.Reject;
+}
+
+test "custom lexer limits reject overlong source tokens strings and numbers" {
+    let token_limits: JsonLexerLimits =
+        new_lexer_limits(
+            1,
+            100,
+            100,
+            100);
+
+    let string_limits: JsonLexerLimits =
+        new_lexer_limits(
+            100,
+            1,
+            100,
+            100);
+
+    let number_limits: JsonLexerLimits =
+        new_lexer_limits(
+            100,
+            100,
+            1,
+            100);
+
+    let source_limits: JsonLexerLimits =
+        new_lexer_limits(
+            100,
+            100,
+            100,
+            3);
+
+    let token_boundary: JsonLexerResult =
+        lex_with_limits(
+            "null",
+            new_lexer_limits(
+                2,
+                100,
+                100,
+                100));
+
+    let string_boundary: JsonLexerResult =
+        lex_with_limits(
+            "\"ab\"",
+            new_lexer_limits(
+                100,
+                2,
+                100,
+                100));
+
+    let number_boundary: JsonLexerResult =
+        lex_with_limits(
+            "12",
+            new_lexer_limits(
+                100,
+                100,
+                2,
+                100));
+
+    let source_boundary: JsonLexerResult =
+        lex_with_limits(
+            "null",
+            new_lexer_limits(
+                100,
+                100,
+                100,
+                4));
+
+    let token_result: JsonLexerResult =
+        lex_with_limits(
+            "null",
+            token_limits);
+
+    let string_result: JsonLexerResult =
+        lex_with_limits(
+            "\"ab\"",
+            string_limits);
+
+    let number_result: JsonLexerResult =
+        lex_with_limits(
+            "12",
+            number_limits);
+
+    let source_result: JsonLexerResult =
+        lex_with_limits(
+            "null",
+            source_limits);
+
+    assert not token_result.ok;
+    assert token_result.error.error ==
+        JsonLexerError.TooManyTokens;
+
+    assert not string_result.ok;
+    assert string_result.error.error ==
+        JsonLexerError.StringTooLong;
+
+    assert not number_result.ok;
+    assert number_result.error.error ==
+        JsonLexerError.NumberTooLong;
+
+    assert not source_result.ok;
+    assert source_result.error.error ==
+        JsonLexerError.SourceTooLarge;
+
+    assert token_boundary.ok;
+    assert string_boundary.ok;
+    assert number_boundary.ok;
+    assert source_boundary.ok;
+}
+
+test "invalid lexer limits are rejected and reported" {
+    let lexer_limits: JsonLexerLimits =
+        new_lexer_limits(
+            0,
+            100,
+            100,
+            100);
+
+    assert not lexer_limits_valid(
+        &lexer_limits);
+
+    let result: JsonLexerResult =
+        lex_with_limits(
+            "null",
+            lexer_limits);
+
+    assert not result.ok;
+    assert result.error.error ==
+        JsonLexerError.Internal;
+}
+
+test "source parsing preserves lexical diagnostics explicitly" {
+    let lexer_limits: JsonLexerLimits =
+        new_lexer_limits(
+            0,
+            100,
+            100,
+            100);
+
+    let result: JsonParseResult =
+        parse_with_limits(
+            "null",
+            lexer_limits,
+            default_parser_limits());
+
+    assert not result.ok;
+    assert result.report.error ==
+        JsonParserError.InvalidTokenStream;
+    assert result.report.message ==
+        "invalid JSON lexer limits";
+    assert result.report.detail ==
+        "all JSON lexer limits must be greater than zero";
+}
+
+test "parser container key and nesting limits have exact boundaries" {
+    let lexer_limits: JsonLexerLimits =
+        default_lexer_limits();
+
+    let depth_limits: JsonParserLimits =
+        new_parser_limits(
+            1,
+            100,
+            100,
+            100,
+            100,
+            JsonParserDuplicateKeyPolicy.Allow);
+
+    let array_limits: JsonParserLimits =
+        new_parser_limits(
+            16,
+            100,
+            1,
+            100,
+            100,
+            JsonParserDuplicateKeyPolicy.Allow);
+
+    let object_limits: JsonParserLimits =
+        new_parser_limits(
+            16,
+            100,
+            100,
+            1,
+            100,
+            JsonParserDuplicateKeyPolicy.Allow);
+
+    let key_limits: JsonParserLimits =
+        new_parser_limits(
+            16,
+            100,
+            100,
+            100,
+            1,
+            JsonParserDuplicateKeyPolicy.Allow);
+
+    let at_depth: JsonParseResult =
+        parse_with_limits(
+            "[]",
+            lexer_limits,
+            depth_limits);
+
+    let at_array_limit: JsonParseResult =
+        parse_with_limits(
+            "[0]",
+            lexer_limits,
+            array_limits);
+
+    let at_object_limit: JsonParseResult =
+        parse_with_limits(
+            "{\"a\":0}",
+            lexer_limits,
+            object_limits);
+
+    let at_key_limit: JsonParseResult =
+        parse_with_limits(
+            "{\"a\":0}",
+            lexer_limits,
+            key_limits);
+
+    let over_depth: JsonParseResult =
+        parse_with_limits(
+            "[[0]]",
+            lexer_limits,
+            depth_limits);
+
+    let over_array: JsonParseResult =
+        parse_with_limits(
+            "[0,1]",
+            lexer_limits,
+            array_limits);
+
+    let over_object: JsonParseResult =
+        parse_with_limits(
+            "{\"a\":0,\"b\":1}",
+            lexer_limits,
+            object_limits);
+
+    let over_key: JsonParseResult =
+        parse_with_limits(
+            "{\"ab\":0}",
+            lexer_limits,
+            key_limits);
+
+    assert at_depth.ok;
+    assert at_array_limit.ok;
+    assert at_object_limit.ok;
+    assert at_key_limit.ok;
+
+    assert not over_depth.ok;
+    assert over_depth.report.error ==
+        JsonParserError.DepthExceeded;
+
+    assert not over_array.ok;
+    assert over_array.report.error ==
+        JsonParserError.TooManyArrayElements;
+
+    assert not over_object.ok;
+    assert over_object.report.error ==
+        JsonParserError.TooManyObjectMembers;
+
+    assert not over_key.ok;
+    assert over_key.report.error ==
+        JsonParserError.ObjectKeyTooLong;
+}
+
+test "token parser enforces its custom total value budget" {
+    let lexical: JsonLexerResult =
+        lex_with_limits(
+            "[1,2]",
+            default_lexer_limits());
+
+    let parser_limits: JsonParserLimits =
+        new_parser_limits(
+            16,
+            2,
+            100,
+            100,
+            100,
+            JsonParserDuplicateKeyPolicy.Allow);
+
+    assert lexical.ok;
+
+    let result: JsonParseResult =
+        parse_tokens_with_limits(
+            lexical.tokens,
+            parser_limits);
+
+    assert not result.ok;
+    assert result.report.error ==
+        JsonParserError.TooManyValues;
+    assert result.statistics.value_count == 3;
+}
+
+test "invalid parser profile is rejected before lexing source" {
+    let lexer_limits: JsonLexerLimits =
+        new_lexer_limits(
+            100,
+            100,
+            100,
+            1);
+
+    let parser_limits: JsonParserLimits =
+        new_parser_limits(
+            16,
+            0,
+            100,
+            100,
+            100,
+            JsonParserDuplicateKeyPolicy.Allow);
+
+    assert not parser_limits_valid(
+        &parser_limits);
+
+    let result: JsonParseResult =
+        parse_with_limits(
+            "null",
+            lexer_limits,
+            parser_limits);
+
+    assert not result.ok;
+    assert result.report.error ==
+        JsonParserError.Internal;
+    assert result.report.detail ==
+        "all parser limits must be greater than zero";
+}
+
+test "custom JSON value limit rejects before a document is built" {
+    let lexer_limits: JsonLexerLimits =
+        new_lexer_limits(
+            100,
+            100,
+            100,
+            100);
+
+    let parser_limits: JsonParserLimits =
+        new_parser_limits(
+            16,
+            2,
+            100,
+            100,
+            100,
+            JsonParserDuplicateKeyPolicy.Allow);
+
+    let at_limit: JsonParseResult =
+        parse_with_limits(
+            "[1]",
+            lexer_limits,
+            parser_limits);
+
+    assert at_limit.ok;
+    assert at_limit.statistics.value_count == 2;
+
+    let over_limit: JsonParseResult =
+        parse_with_limits(
+            "[1,2]",
+            lexer_limits,
+            parser_limits);
+
+    assert not over_limit.ok;
+    assert over_limit.report.error ==
+        JsonParserError.TooManyValues;
+    assert over_limit.statistics.value_count == 3;
+}
+
+test "strict parsing with custom limits rejects duplicate keys" {
+    let lexer_limits: JsonLexerLimits =
+        new_lexer_limits(
+            100,
+            100,
+            100,
+            100);
+
+    let parser_limits: JsonParserLimits =
+        new_parser_limits(
+            16,
+            100,
+            100,
+            100,
+            100,
+            JsonParserDuplicateKeyPolicy.Allow);
+
+    let reject_limits: JsonParserLimits =
+        new_parser_limits(
+            16,
+            100,
+            100,
+            100,
+            100,
+            JsonParserDuplicateKeyPolicy.Reject);
+
+    let result: JsonParseResult =
+        parse_strict_with_limits(
+            "{\"key\":1,\"key\":2}",
+            lexer_limits,
+            parser_limits);
+
+    let configured_result: JsonParseResult =
+        parse_with_limits(
+            "{\"key\":1,\"key\":2}",
+            lexer_limits,
+            reject_limits);
+
+    assert not result.ok;
+    assert result.report.error ==
+        JsonParserError.DuplicateObjectKey;
+    assert result.report.detail ==
+        "duplicate JSON object member name";
+
+    assert not configured_result.ok;
+    assert configured_result.report.error ==
+        JsonParserError.DuplicateObjectKey;
 }

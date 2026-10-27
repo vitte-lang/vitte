@@ -188,7 +188,7 @@ form JsonStatistics {
 /// -------------------------------------------------------------------------
 
 proc default_member() -> JsonMember {
-    give JsonMember {
+    return JsonMember {
         key: "",
 
         value: null(),
@@ -198,7 +198,7 @@ proc default_member() -> JsonMember {
 proc success(
     value: JsonValue
 ) -> JsonValueResult {
-    give JsonValueResult {
+    return JsonValueResult {
         ok: true,
 
         value: value,
@@ -210,7 +210,7 @@ proc success(
 proc failure(
     error: JsonValueError
 ) -> JsonValueResult {
-    give JsonValueResult {
+    return JsonValueResult {
         ok: false,
 
         value: null(),
@@ -222,7 +222,7 @@ proc failure(
 proc member_success(
     value: JsonMember
 ) -> JsonMemberResult {
-    give JsonMemberResult {
+    return JsonMemberResult {
         ok: true,
 
         value: value,
@@ -234,7 +234,7 @@ proc member_success(
 proc member_failure(
     error: JsonValueError
 ) -> JsonMemberResult {
-    give JsonMemberResult {
+    return JsonMemberResult {
         ok: false,
 
         value: default_member(),
@@ -248,7 +248,7 @@ proc member_failure(
 /// -------------------------------------------------------------------------
 
 export proc null() -> JsonValue {
-    give JsonValue {
+    return JsonValue {
         kind: JsonValueKind.Null,
 
         bool_value: false,
@@ -268,13 +268,13 @@ export proc null() -> JsonValue {
 }
 
 export proc null_value() -> JsonValue {
-    give null();
+    return null();
 }
 
 export proc boolean(
     value: bool
 ) -> JsonValue {
-    give JsonValue {
+    return JsonValue {
         kind: JsonValueKind.Bool,
 
         bool_value: value,
@@ -296,7 +296,7 @@ export proc boolean(
 export proc integer(
     value: i64
 ) -> JsonValue {
-    give JsonValue {
+    return JsonValue {
         kind: JsonValueKind.Integer,
 
         bool_value: false,
@@ -318,7 +318,7 @@ export proc integer(
 export proc floating(
     value: f64
 ) -> JsonValue {
-    give JsonValue {
+    return JsonValue {
         kind: JsonValueKind.Float,
 
         bool_value: false,
@@ -340,7 +340,7 @@ export proc floating(
 export proc string(
     value: string
 ) -> JsonValue {
-    give JsonValue {
+    return JsonValue {
         kind: JsonValueKind.String,
 
         bool_value: false,
@@ -362,7 +362,7 @@ export proc string(
 export proc array(
     values: [JsonValue]
 ) -> JsonValue {
-    give JsonValue {
+    return JsonValue {
         kind: JsonValueKind.Array,
 
         bool_value: false,
@@ -384,7 +384,7 @@ export proc array(
 export proc object(
     members: [JsonMember]
 ) -> JsonValue {
-    give JsonValue {
+    return JsonValue {
         kind: JsonValueKind.Object,
 
         bool_value: false,
@@ -407,7 +407,7 @@ export proc member(
     key: string,
     value: JsonValue
 ) -> JsonMember {
-    give JsonMember {
+    return JsonMember {
         key: key,
 
         value: value,
@@ -415,11 +415,11 @@ export proc member(
 }
 
 export proc empty_array() -> JsonValue {
-    give array([]);
+    return array([]);
 }
 
 export proc empty_object() -> JsonValue {
-    give object([]);
+    return object([]);
 }
 
 /// -------------------------------------------------------------------------
@@ -429,82 +429,82 @@ export proc empty_object() -> JsonValue {
 proc kind(
     value: &JsonValue
 ) -> JsonValueKind {
-    give value.kind;
+    return value.kind;
 }
 
 export proc is_null(
     value: &JsonValue
 ) -> bool {
-    give value.kind ==
+    return value.kind ==
          JsonValueKind.Null;
 }
 
 export proc is_bool(
     value: &JsonValue
 ) -> bool {
-    give value.kind ==
+    return value.kind ==
          JsonValueKind.Bool;
 }
 
 export proc is_integer(
     value: &JsonValue
 ) -> bool {
-    give value.kind ==
+    return value.kind ==
          JsonValueKind.Integer;
 }
 
 export proc is_float(
     value: &JsonValue
 ) -> bool {
-    give value.kind ==
+    return value.kind ==
          JsonValueKind.Float;
 }
 
 export proc is_number(
     value: &JsonValue
 ) -> bool {
-    give is_integer(value) ||
+    return is_integer(value) ||
          is_float(value);
 }
 
 export proc is_string(
     value: &JsonValue
 ) -> bool {
-    give value.kind ==
+    return value.kind ==
          JsonValueKind.String;
 }
 
 export proc is_array(
     value: &JsonValue
 ) -> bool {
-    give value.kind ==
+    return value.kind ==
          JsonValueKind.Array;
 }
 
 export proc is_object(
     value: &JsonValue
 ) -> bool {
-    give value.kind ==
+    return value.kind ==
          JsonValueKind.Object;
 }
 
 proc is_container(
     value: &JsonValue
 ) -> bool {
-    give is_array(value) ||
+    return is_array(value) ||
          is_object(value);
 }
 
 proc is_scalar(
     value: &JsonValue
 ) -> bool {
-    give !is_container(value);
+    return not is_container(value);
 }
 
 proc is_primitive(
     value: &JsonValue
 ) -> bool {
-    give is_null(value) ||
+    return is_null(value) ||
          is_bool(value) ||
          is_number(value) ||
          is_string(value);
@@ -519,41 +519,41 @@ proc kind_name(
 ) -> string {
     if value_kind ==
        JsonValueKind.Null {
-        give "null";
+        return "null";
     }
 
     if value_kind ==
        JsonValueKind.Bool {
-        give "boolean";
+        return "boolean";
     }
 
     if value_kind ==
        JsonValueKind.Integer {
-        give "integer";
+        return "integer";
     }
 
     if value_kind ==
        JsonValueKind.Float {
-        give "float";
+        return "float";
     }
 
     if value_kind ==
        JsonValueKind.String {
-        give "string";
+        return "string";
     }
 
     if value_kind ==
        JsonValueKind.Array {
-        give "array";
+        return "array";
     }
 
-    give "object";
+    return "object";
 }
 
 proc type_name(
     value: &JsonValue
 ) -> string {
-    give kind_name(
+    return kind_name(
         value.kind);
 }
 
@@ -562,60 +562,60 @@ proc error_name(
 ) -> string {
     if error ==
        JsonValueError.None {
-        give "none";
+        return "none";
     }
 
     if error ==
        JsonValueError.TypeMismatch {
-        give "type mismatch";
+        return "type mismatch";
     }
 
     if error ==
        JsonValueError.IndexOutOfBounds {
-        give "index out of bounds";
+        return "index out of bounds";
     }
 
     if error ==
        JsonValueError.KeyNotFound {
-        give "key not found";
+        return "key not found";
     }
 
     if error ==
        JsonValueError.DuplicateKey {
-        give "duplicate key";
+        return "duplicate key";
     }
 
     if error ==
        JsonValueError.EmptyKey {
-        give "empty key";
+        return "empty key";
     }
 
     if error ==
        JsonValueError.InvalidValue {
-        give "invalid value";
+        return "invalid value";
     }
 
     if error ==
        JsonValueError.InvalidNumber {
-        give "invalid number";
+        return "invalid number";
     }
 
     if error ==
        JsonValueError.InvalidConversion {
-        give "invalid conversion";
+        return "invalid conversion";
     }
 
     if error ==
        JsonValueError.Overflow {
-        give "overflow";
+        return "overflow";
     }
 
     if error ==
        JsonValueError.Underflow {
-        give "underflow";
+        return "underflow";
     }
 
-    give "maximum JSON depth exceeded";
+    return "maximum JSON depth exceeded";
 }
 
 /// -------------------------------------------------------------------------
@@ -625,8 +625,8 @@ proc error_name(
 proc as_bool(
     value: &JsonValue
 ) -> JsonBoolResult {
-    if !is_bool(value) {
-        give JsonBoolResult {
+    if not is_bool(value) {
+        return JsonBoolResult {
             ok: false,
 
             value: false,
@@ -636,7 +636,7 @@ proc as_bool(
         };
     }
 
-    give JsonBoolResult {
+    return JsonBoolResult {
         ok: true,
 
         value:
@@ -650,8 +650,8 @@ proc as_bool(
 proc as_integer(
     value: &JsonValue
 ) -> JsonIntegerResult {
-    if !is_integer(value) {
-        give JsonIntegerResult {
+    if not is_integer(value) {
+        return JsonIntegerResult {
             ok: false,
 
             value: 0,
@@ -661,7 +661,7 @@ proc as_integer(
         };
     }
 
-    give JsonIntegerResult {
+    return JsonIntegerResult {
         ok: true,
 
         value:
@@ -675,8 +675,8 @@ proc as_integer(
 proc as_float(
     value: &JsonValue
 ) -> JsonFloatResult {
-    if !is_float(value) {
-        give JsonFloatResult {
+    if not is_float(value) {
+        return JsonFloatResult {
             ok: false,
 
             value: 0.0,
@@ -686,7 +686,7 @@ proc as_float(
         };
     }
 
-    give JsonFloatResult {
+    return JsonFloatResult {
         ok: true,
 
         value:
@@ -701,7 +701,7 @@ proc as_number(
     value: &JsonValue
 ) -> JsonFloatResult {
     if is_integer(value) {
-        give JsonFloatResult {
+        return JsonFloatResult {
             ok: true,
 
             value:
@@ -714,7 +714,7 @@ proc as_number(
     }
 
     if is_float(value) {
-        give JsonFloatResult {
+        return JsonFloatResult {
             ok: true,
 
             value:
@@ -725,7 +725,7 @@ proc as_number(
         };
     }
 
-    give JsonFloatResult {
+    return JsonFloatResult {
         ok: false,
 
         value: 0.0,
@@ -738,8 +738,8 @@ proc as_number(
 proc as_string(
     value: &JsonValue
 ) -> JsonStringResult {
-    if !is_string(value) {
-        give JsonStringResult {
+    if not is_string(value) {
+        return JsonStringResult {
             ok: false,
 
             value: "",
@@ -749,7 +749,7 @@ proc as_string(
         };
     }
 
-    give JsonStringResult {
+    return JsonStringResult {
         ok: true,
 
         value:
@@ -769,10 +769,10 @@ export proc bool_or(
     fallback: bool
 ) -> bool {
     if is_bool(value) {
-        give value.bool_value;
+        return value.bool_value;
     }
 
-    give fallback;
+    return fallback;
 }
 
 export proc integer_or(
@@ -780,10 +780,10 @@ export proc integer_or(
     fallback: i64
 ) -> i64 {
     if is_integer(value) {
-        give value.integer_value;
+        return value.integer_value;
     }
 
-    give fallback;
+    return fallback;
 }
 
 export proc float_or(
@@ -791,10 +791,10 @@ export proc float_or(
     fallback: f64
 ) -> f64 {
     if is_float(value) {
-        give value.float_value;
+        return value.float_value;
     }
 
-    give fallback;
+    return fallback;
 }
 
 export proc number_or(
@@ -802,15 +802,15 @@ export proc number_or(
     fallback: f64
 ) -> f64 {
     if is_integer(value) {
-        give value.integer_value
+        return value.integer_value
             as f64;
     }
 
     if is_float(value) {
-        give value.float_value;
+        return value.float_value;
     }
 
-    give fallback;
+    return fallback;
 }
 
 export proc string_or(
@@ -818,10 +818,10 @@ export proc string_or(
     fallback: string
 ) -> string {
     if is_string(value) {
-        give value.string_value;
+        return value.string_value;
     }
 
-    give fallback;
+    return fallback;
 }
 
 /// -------------------------------------------------------------------------
@@ -832,70 +832,70 @@ proc is_zero(
     value: &JsonValue
 ) -> bool {
     if is_integer(value) {
-        give value.integer_value == 0;
+        return value.integer_value == 0;
     }
 
     if is_float(value) {
-        give value.float_value == 0.0;
+        return value.float_value == 0.0;
     }
 
-    give false;
+    return false;
 }
 
 proc is_positive(
     value: &JsonValue
 ) -> bool {
     if is_integer(value) {
-        give value.integer_value > 0;
+        return value.integer_value > 0;
     }
 
     if is_float(value) {
-        give value.float_value > 0.0;
+        return value.float_value > 0.0;
     }
 
-    give false;
+    return false;
 }
 
 proc is_negative(
     value: &JsonValue
 ) -> bool {
     if is_integer(value) {
-        give value.integer_value < 0;
+        return value.integer_value < 0;
     }
 
     if is_float(value) {
-        give value.float_value < 0.0;
+        return value.float_value < 0.0;
     }
 
-    give false;
+    return false;
 }
 
 proc is_nonnegative(
     value: &JsonValue
 ) -> bool {
     if is_integer(value) {
-        give value.integer_value >= 0;
+        return value.integer_value >= 0;
     }
 
     if is_float(value) {
-        give value.float_value >= 0.0;
+        return value.float_value >= 0.0;
     }
 
-    give false;
+    return false;
 }
 
 proc is_nonpositive(
     value: &JsonValue
 ) -> bool {
     if is_integer(value) {
-        give value.integer_value <= 0;
+        return value.integer_value <= 0;
     }
 
     if is_float(value) {
-        give value.float_value <= 0.0;
+        return value.float_value <= 0.0;
     }
 
-    give false;
+    return false;
 }
 
 /// -------------------------------------------------------------------------
@@ -906,30 +906,30 @@ proc number_equals(
     left: &JsonValue,
     right: &JsonValue
 ) -> bool {
-    if !is_number(left) ||
-       !is_number(right) {
-        give false;
+    if not is_number(left) ||
+       not is_number(right) {
+        return false;
     }
 
     if is_integer(left) &&
        is_integer(right) {
-        give left.integer_value ==
+        return left.integer_value ==
              right.integer_value;
     }
 
     if is_float(left) &&
        is_float(right) {
-        give left.float_value ==
+        return left.float_value ==
              right.float_value;
     }
 
     if is_integer(left) {
-        give left.integer_value
+        return left.integer_value
                    as f64 ==
              right.float_value;
     }
 
-    give left.float_value ==
+    return left.float_value ==
          right.integer_value
              as f64;
 }
@@ -938,15 +938,15 @@ proc compare_numbers(
     left: &JsonValue,
     right: &JsonValue
 ) -> JsonCompare {
-    if !is_number(left) ||
-       !is_number(right) {
-        give JsonCompare.Unordered;
+    if not is_number(left) ||
+       not is_number(right) {
+        return JsonCompare.Unordered;
     }
 
     if number_equals(
         left,
         right) {
-        give JsonCompare.Equal;
+        return JsonCompare.Equal;
     }
 
     let left_number: f64 =
@@ -961,15 +961,15 @@ proc compare_numbers(
 
     if left_number <
        right_number {
-        give JsonCompare.Less;
+        return JsonCompare.Less;
     }
 
     if left_number >
        right_number {
-        give JsonCompare.Greater;
+        return JsonCompare.Greater;
     }
 
-    give JsonCompare.Unordered;
+    return JsonCompare.Unordered;
 }
 
 /// -------------------------------------------------------------------------
@@ -979,24 +979,24 @@ proc compare_numbers(
 export proc array_len(
     value: &JsonValue
 ) -> usize {
-    if !is_array(value) {
-        give 0;
+    if not is_array(value) {
+        return 0;
     }
 
-    give value.array_value.length;
+    return value.array_value.length;
 }
 
 proc array_is_empty(
     value: &JsonValue
 ) -> bool {
-    give is_array(value) &&
+    return is_array(value) &&
          value.array_value.length == 0;
 }
 
 proc array_is_not_empty(
     value: &JsonValue
 ) -> bool {
-    give is_array(value) &&
+    return is_array(value) &&
          value.array_value.length != 0;
 }
 
@@ -1004,7 +1004,7 @@ proc array_valid_index(
     value: &JsonValue,
     index: usize
 ) -> bool {
-    give is_array(value) &&
+    return is_array(value) &&
          index <
              value.array_value.length;
 }
@@ -1013,18 +1013,18 @@ proc array_get(
     value: &JsonValue,
     index: usize
 ) -> JsonValueResult {
-    if !is_array(value) {
-        give failure(
+    if not is_array(value) {
+        return failure(
             JsonValueError.TypeMismatch);
     }
 
     if index >=
        value.array_value.length {
-        give failure(
+        return failure(
             JsonValueError.IndexOutOfBounds);
     }
 
-    give success(
+    return success(
         value.array_value[index]);
 }
 
@@ -1035,23 +1035,23 @@ export proc array_get_ref(
     assert is_array(value);
     assert index < value.array_value.length;
 
-    give &value.array_value[index];
+    return &value.array_value[index];
 }
 
 proc array_first(
     value: &JsonValue
 ) -> JsonValueResult {
-    if !is_array(value) {
-        give failure(
+    if not is_array(value) {
+        return failure(
             JsonValueError.TypeMismatch);
     }
 
     if value.array_value.length == 0 {
-        give failure(
+        return failure(
             JsonValueError.IndexOutOfBounds);
     }
 
-    give success(
+    return success(
         value.array_value[0]);
 }
 
@@ -1061,13 +1061,13 @@ proc array_last(
     let mut last: JsonValue = null();
     let mut index: usize = 0;
 
-    if !is_array(value) {
-        give failure(
+    if not is_array(value) {
+        return failure(
             JsonValueError.TypeMismatch);
     }
 
     if value.array_value.length == 0 {
-        give failure(
+        return failure(
             JsonValueError.IndexOutOfBounds);
     }
 
@@ -1078,7 +1078,7 @@ proc array_last(
         set index += 1;
     }
 
-    give success(last);
+    return success(last);
 }
 
 /// -------------------------------------------------------------------------
@@ -1088,24 +1088,24 @@ proc array_last(
 export proc object_len(
     value: &JsonValue
 ) -> usize {
-    if !is_object(value) {
-        give 0;
+    if not is_object(value) {
+        return 0;
     }
 
-    give value.object_value.length;
+    return value.object_value.length;
 }
 
 proc object_is_empty(
     value: &JsonValue
 ) -> bool {
-    give is_object(value) &&
+    return is_object(value) &&
          value.object_value.length == 0;
 }
 
 proc object_is_not_empty(
     value: &JsonValue
 ) -> bool {
-    give is_object(value) &&
+    return is_object(value) &&
          value.object_value.length != 0;
 }
 
@@ -1113,7 +1113,7 @@ proc object_valid_index(
     value: &JsonValue,
     index: usize
 ) -> bool {
-    give is_object(value) &&
+    return is_object(value) &&
          index <
              value.object_value.length;
 }
@@ -1128,7 +1128,7 @@ proc member_index(
           members.length {
         if members[index].key ==
            key {
-            give JsonIndexResult {
+            return JsonIndexResult {
                 found: true,
 
                 index: index,
@@ -1138,7 +1138,7 @@ proc member_index(
         set index += 1;
     }
 
-    give JsonIndexResult {
+    return JsonIndexResult {
         found: false,
 
         index: 0,
@@ -1157,7 +1157,7 @@ proc member_last_index(
 
         if members[index].key ==
            key {
-            give JsonIndexResult {
+            return JsonIndexResult {
                 found: true,
 
                 index: index,
@@ -1165,7 +1165,7 @@ proc member_last_index(
         }
     }
 
-    give JsonIndexResult {
+    return JsonIndexResult {
         found: false,
 
         index: 0,
@@ -1176,15 +1176,15 @@ proc object_index_of(
     value: &JsonValue,
     key: string
 ) -> JsonIndexResult {
-    if !is_object(value) {
-        give JsonIndexResult {
+    if not is_object(value) {
+        return JsonIndexResult {
             found: false,
 
             index: 0,
         };
     }
 
-    give member_index(
+    return member_index(
         value.object_value,
         key);
 }
@@ -1193,15 +1193,15 @@ proc object_last_index_of(
     value: &JsonValue,
     key: string
 ) -> JsonIndexResult {
-    if !is_object(value) {
-        give JsonIndexResult {
+    if not is_object(value) {
+        return JsonIndexResult {
             found: false,
 
             index: 0,
         };
     }
 
-    give member_last_index(
+    return member_last_index(
         value.object_value,
         key);
 }
@@ -1210,11 +1210,11 @@ proc object_has(
     value: &JsonValue,
     key: string
 ) -> bool {
-    if !is_object(value) {
-        give false;
+    if not is_object(value) {
+        return false;
     }
 
-    give member_index(
+    return member_index(
         value.object_value,
         key).found;
 }
@@ -1223,8 +1223,8 @@ proc object_key_count(
     value: &JsonValue,
     key: string
 ) -> usize {
-    if !is_object(value) {
-        give 0;
+    if not is_object(value) {
+        return 0;
     }
 
     let mut result: usize = 0;
@@ -1241,15 +1241,15 @@ proc object_key_count(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc object_get(
     value: &JsonValue,
     key: string
 ) -> JsonValueResult {
-    if !is_object(value) {
-        give failure(
+    if not is_object(value) {
+        return failure(
             JsonValueError.TypeMismatch);
     }
 
@@ -1258,12 +1258,12 @@ proc object_get(
             value.object_value,
             key);
 
-    if !found.found {
-        give failure(
+    if not found.found {
+        return failure(
             JsonValueError.KeyNotFound);
     }
 
-    give success(
+    return success(
         value.object_value[
             found.index
         ].value);
@@ -1282,7 +1282,7 @@ export proc object_get_ref(
 
     assert found.found;
 
-    give &value.object_value[
+    return &value.object_value[
         found.index
     ].value;
 }
@@ -1291,18 +1291,18 @@ proc object_get_at(
     value: &JsonValue,
     index: usize
 ) -> JsonMemberResult {
-    if !is_object(value) {
-        give member_failure(
+    if not is_object(value) {
+        return member_failure(
             JsonValueError.TypeMismatch);
     }
 
     if index >=
        value.object_value.length {
-        give member_failure(
+        return member_failure(
             JsonValueError.IndexOutOfBounds);
     }
 
-    give member_success(
+    return member_success(
         value.object_value[index]);
 }
 
@@ -1313,23 +1313,23 @@ export proc object_member_ref(
     assert is_object(value);
     assert index < value.object_value.length;
 
-    give &value.object_value[index];
+    return &value.object_value[index];
 }
 
 proc object_first(
     value: &JsonValue
 ) -> JsonMemberResult {
-    if !is_object(value) {
-        give member_failure(
+    if not is_object(value) {
+        return member_failure(
             JsonValueError.TypeMismatch);
     }
 
     if value.object_value.length == 0 {
-        give member_failure(
+        return member_failure(
             JsonValueError.IndexOutOfBounds);
     }
 
-    give member_success(
+    return member_success(
         value.object_value[0]);
 }
 
@@ -1339,13 +1339,13 @@ proc object_last(
     let mut last: JsonMember = default_member();
     let mut index: usize = 0;
 
-    if !is_object(value) {
-        give member_failure(
+    if not is_object(value) {
+        return member_failure(
             JsonValueError.TypeMismatch);
     }
 
     if value.object_value.length == 0 {
-        give member_failure(
+        return member_failure(
             JsonValueError.IndexOutOfBounds);
     }
 
@@ -1356,7 +1356,7 @@ proc object_last(
         set index += 1;
     }
 
-    give member_success(last);
+    return member_success(last);
 }
 
 /// -------------------------------------------------------------------------
@@ -1373,11 +1373,11 @@ proc object_get_bool(
             value,
             key);
 
-    if !result.ok {
-        give fallback;
+    if not result.ok {
+        return fallback;
     }
 
-    give bool_or(
+    return bool_or(
         &result.value,
         fallback);
 }
@@ -1392,11 +1392,11 @@ proc object_get_integer(
             value,
             key);
 
-    if !result.ok {
-        give fallback;
+    if not result.ok {
+        return fallback;
     }
 
-    give integer_or(
+    return integer_or(
         &result.value,
         fallback);
 }
@@ -1411,11 +1411,11 @@ proc object_get_float(
             value,
             key);
 
-    if !result.ok {
-        give fallback;
+    if not result.ok {
+        return fallback;
     }
 
-    give float_or(
+    return float_or(
         &result.value,
         fallback);
 }
@@ -1430,11 +1430,11 @@ proc object_get_number(
             value,
             key);
 
-    if !result.ok {
-        give fallback;
+    if not result.ok {
+        return fallback;
     }
 
-    give number_or(
+    return number_or(
         &result.value,
         fallback);
 }
@@ -1449,11 +1449,11 @@ proc object_get_string(
             value,
             key);
 
-    if !result.ok {
-        give fallback;
+    if not result.ok {
+        return fallback;
     }
 
-    give string_or(
+    return string_or(
         &result.value,
         fallback);
 }
@@ -1466,54 +1466,54 @@ proc size(
     value: &JsonValue
 ) -> usize {
     if is_string(value) {
-        give value.string_value.length;
+        return value.string_value.length;
     }
 
     if is_array(value) {
-        give value.array_value.length;
+        return value.array_value.length;
     }
 
     if is_object(value) {
-        give value.object_value.length;
+        return value.object_value.length;
     }
 
-    give 0;
+    return 0;
 }
 
 proc is_empty(
     value: &JsonValue
 ) -> bool {
     if is_string(value) {
-        give value.string_value.length == 0;
+        return value.string_value.length == 0;
     }
 
     if is_array(value) {
-        give value.array_value.length == 0;
+        return value.array_value.length == 0;
     }
 
     if is_object(value) {
-        give value.object_value.length == 0;
+        return value.object_value.length == 0;
     }
 
-    give false;
+    return false;
 }
 
 proc is_not_empty(
     value: &JsonValue
 ) -> bool {
     if is_string(value) {
-        give value.string_value.length != 0;
+        return value.string_value.length != 0;
     }
 
     if is_array(value) {
-        give value.array_value.length != 0;
+        return value.array_value.length != 0;
     }
 
     if is_object(value) {
-        give value.object_value.length != 0;
+        return value.object_value.length != 0;
     }
 
-    give false;
+    return false;
 }
 
 /// -------------------------------------------------------------------------
@@ -1523,7 +1523,7 @@ proc is_not_empty(
 proc copy_member(
     value: &JsonMember
 ) -> JsonMember {
-    give JsonMember {
+    return JsonMember {
         key: value.key,
 
         value:
@@ -1549,7 +1549,7 @@ proc copy_array(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc copy_object(
@@ -1569,43 +1569,43 @@ proc copy_object(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc copy(
     value: &JsonValue
 ) -> JsonValue {
     if is_null(value) {
-        give null();
+        return null();
     }
 
     if is_bool(value) {
-        give boolean(
+        return boolean(
             value.bool_value);
     }
 
     if is_integer(value) {
-        give integer(
+        return integer(
             value.integer_value);
     }
 
     if is_float(value) {
-        give floating(
+        return floating(
             value.float_value);
     }
 
     if is_string(value) {
-        give string(
+        return string(
             value.string_value);
     }
 
     if is_array(value) {
-        give array(
+        return array(
             copy_array(
                 value.array_value));
     }
 
-    give object(
+    return object(
         copy_object(
             value.object_value));
 }
@@ -1620,23 +1620,23 @@ proc arrays_equal(
 ) -> bool {
     if left.length !=
        right.length {
-        give false;
+        return false;
     }
 
     let mut index: usize = 0;
 
     while index <
           left.length {
-        if !equals(
+        if not equals(
             &left[index],
             &right[index]) {
-            give false;
+            return false;
         }
 
         set index += 1;
     }
 
-    give true;
+    return true;
 }
 
 proc objects_equal(
@@ -1645,7 +1645,7 @@ proc objects_equal(
 ) -> bool {
     if left.length !=
        right.length {
-        give false;
+        return false;
     }
 
     let mut index: usize = 0;
@@ -1657,22 +1657,22 @@ proc objects_equal(
                 right,
                 left[index].key);
 
-        if !found.found {
-            give false;
+        if not found.found {
+            return false;
         }
 
-        if !equals(
+        if not equals(
             &left[index].value,
             &right[
                 found.index
             ].value) {
-            give false;
+            return false;
         }
 
         set index += 1;
     }
 
-    give true;
+    return true;
 }
 
 proc objects_equal_ordered(
@@ -1681,7 +1681,7 @@ proc objects_equal_ordered(
 ) -> bool {
     if left.length !=
        right.length {
-        give false;
+        return false;
     }
 
     let mut index: usize = 0;
@@ -1690,19 +1690,19 @@ proc objects_equal_ordered(
           left.length {
         if left[index].key !=
            right[index].key {
-            give false;
+            return false;
         }
 
-        if !equals_ordered(
+        if not equals_ordered(
             &left[index].value,
             &right[index].value) {
-            give false;
+            return false;
         }
 
         set index += 1;
     }
 
-    give true;
+    return true;
 }
 
 export proc equals(
@@ -1711,47 +1711,47 @@ export proc equals(
 ) -> bool {
     if is_number(left) &&
        is_number(right) {
-        give number_equals(
+        return number_equals(
             left,
             right);
     }
 
     if left.kind !=
        right.kind {
-        give false;
+        return false;
     }
 
     if is_null(left) {
-        give true;
+        return true;
     }
 
     if is_bool(left) {
-        give left.bool_value ==
+        return left.bool_value ==
              right.bool_value;
     }
 
     if is_integer(left) {
-        give left.integer_value ==
+        return left.integer_value ==
              right.integer_value;
     }
 
     if is_float(left) {
-        give left.float_value ==
+        return left.float_value ==
              right.float_value;
     }
 
     if is_string(left) {
-        give left.string_value ==
+        return left.string_value ==
              right.string_value;
     }
 
     if is_array(left) {
-        give arrays_equal(
+        return arrays_equal(
             left.array_value,
             right.array_value);
     }
 
-    give objects_equal(
+    return objects_equal(
         left.object_value,
         right.object_value);
 }
@@ -1762,18 +1762,18 @@ proc equals_ordered(
 ) -> bool {
     if is_number(left) &&
        is_number(right) {
-        give number_equals(
+        return number_equals(
             left,
             right);
     }
 
     if left.kind !=
        right.kind {
-        give false;
+        return false;
     }
 
     if is_object(left) {
-        give objects_equal_ordered(
+        return objects_equal_ordered(
             left.object_value,
             right.object_value);
     }
@@ -1781,26 +1781,26 @@ proc equals_ordered(
     if is_array(left) {
         if left.array_value.length !=
            right.array_value.length {
-            give false;
+            return false;
         }
 
         let mut index: usize = 0;
 
         while index <
               left.array_value.length {
-            if !equals_ordered(
+            if not equals_ordered(
                 &left.array_value[index],
                 &right.array_value[index]) {
-                give false;
+                return false;
             }
 
             set index += 1;
         }
 
-        give true;
+        return true;
     }
 
-    give equals(
+    return equals(
         left,
         right);
 }
@@ -1809,7 +1809,7 @@ proc not_equals(
     left: &JsonValue,
     right: &JsonValue
 ) -> bool {
-    give !equals(
+    return not equals(
         left,
         right);
 }
@@ -1843,7 +1843,7 @@ proc depth_array(
         set index += 1;
     }
 
-    give maximum;
+    return maximum;
 }
 
 proc depth_object(
@@ -1871,7 +1871,7 @@ proc depth_object(
         set index += 1;
     }
 
-    give maximum;
+    return maximum;
 }
 
 proc depth_from(
@@ -1879,24 +1879,24 @@ proc depth_from(
     current: usize
 ) -> usize {
     if is_array(value) {
-        give depth_array(
+        return depth_array(
             value.array_value,
             current);
     }
 
     if is_object(value) {
-        give depth_object(
+        return depth_object(
             value.object_value,
             current);
     }
 
-    give current;
+    return current;
 }
 
 export proc depth(
     value: &JsonValue
 ) -> usize {
-    give depth_from(
+    return depth_from(
         value,
         0);
 }
@@ -1909,7 +1909,7 @@ proc scalar_count(
     value: &JsonValue
 ) -> usize {
     if is_scalar(value) {
-        give 1;
+        return 1;
     }
 
     let mut result: usize = 0;
@@ -1928,7 +1928,7 @@ proc scalar_count(
             set index += 1;
         }
 
-        give result;
+        return result;
     }
 
     let mut index: usize = 0;
@@ -1944,14 +1944,14 @@ proc scalar_count(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc container_count(
     value: &JsonValue
 ) -> usize {
-    if !is_container(value) {
-        give 0;
+    if not is_container(value) {
+        return 0;
     }
 
     let mut result: usize = 1;
@@ -1970,7 +1970,7 @@ proc container_count(
             set index += 1;
         }
 
-        give result;
+        return result;
     }
 
     let mut index: usize = 0;
@@ -1986,7 +1986,7 @@ proc container_count(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc descendant_count(
@@ -2009,7 +2009,7 @@ proc descendant_count(
             set index += 1;
         }
 
-        give result;
+        return result;
     }
 
     if is_object(value) {
@@ -2029,16 +2029,16 @@ proc descendant_count(
             set index += 1;
         }
 
-        give result;
+        return result;
     }
 
-    give 0;
+    return 0;
 }
 
 export proc total_value_count(
     value: &JsonValue
 ) -> usize {
-    give descendant_count(value) +
+    return descendant_count(value) +
          1;
 }
 
@@ -2071,7 +2071,7 @@ proc count_kind(
             set index += 1;
         }
 
-        give result;
+        return result;
     }
 
     if is_object(value) {
@@ -2090,13 +2090,13 @@ proc count_kind(
         }
     }
 
-    give result;
+    return result;
 }
 
 proc null_count(
     value: &JsonValue
 ) -> usize {
-    give count_kind(
+    return count_kind(
         value,
         JsonValueKind.Null);
 }
@@ -2104,7 +2104,7 @@ proc null_count(
 proc bool_count(
     value: &JsonValue
 ) -> usize {
-    give count_kind(
+    return count_kind(
         value,
         JsonValueKind.Bool);
 }
@@ -2112,7 +2112,7 @@ proc bool_count(
 proc integer_count(
     value: &JsonValue
 ) -> usize {
-    give count_kind(
+    return count_kind(
         value,
         JsonValueKind.Integer);
 }
@@ -2120,7 +2120,7 @@ proc integer_count(
 proc float_count(
     value: &JsonValue
 ) -> usize {
-    give count_kind(
+    return count_kind(
         value,
         JsonValueKind.Float);
 }
@@ -2128,14 +2128,14 @@ proc float_count(
 proc number_count(
     value: &JsonValue
 ) -> usize {
-    give integer_count(value) +
+    return integer_count(value) +
          float_count(value);
 }
 
 proc string_count(
     value: &JsonValue
 ) -> usize {
-    give count_kind(
+    return count_kind(
         value,
         JsonValueKind.String);
 }
@@ -2143,7 +2143,7 @@ proc string_count(
 proc array_count(
     value: &JsonValue
 ) -> usize {
-    give count_kind(
+    return count_kind(
         value,
         JsonValueKind.Array);
 }
@@ -2151,7 +2151,7 @@ proc array_count(
 proc object_count(
     value: &JsonValue
 ) -> usize {
-    give count_kind(
+    return count_kind(
         value,
         JsonValueKind.Object);
 }
@@ -2182,7 +2182,7 @@ proc array_element_count(
             set index += 1;
         }
 
-        give result;
+        return result;
     }
 
     if is_object(value) {
@@ -2200,7 +2200,7 @@ proc array_element_count(
         }
     }
 
-    give result;
+    return result;
 }
 
 proc object_member_count(
@@ -2225,7 +2225,7 @@ proc object_member_count(
             set index += 1;
         }
 
-        give result;
+        return result;
     }
 
     if is_array(value) {
@@ -2243,7 +2243,7 @@ proc object_member_count(
         }
     }
 
-    give result;
+    return result;
 }
 
 /// -------------------------------------------------------------------------
@@ -2264,7 +2264,7 @@ proc contains(
                     index
                 ],
                 target) {
-                give true;
+                return true;
             }
 
             if contains(
@@ -2272,13 +2272,13 @@ proc contains(
                     index
                 ],
                 target) {
-                give true;
+                return true;
             }
 
             set index += 1;
         }
 
-        give false;
+        return false;
     }
 
     if is_object(value) {
@@ -2291,7 +2291,7 @@ proc contains(
                     index
                 ].value,
                 target) {
-                give true;
+                return true;
             }
 
             if contains(
@@ -2299,21 +2299,21 @@ proc contains(
                     index
                 ].value,
                 target) {
-                give true;
+                return true;
             }
 
             set index += 1;
         }
     }
 
-    give false;
+    return false;
 }
 
 proc contains_or_self(
     value: &JsonValue,
     target: &JsonValue
 ) -> bool {
-    give equals(
+    return equals(
                value,
                target) ||
          contains(
@@ -2339,13 +2339,13 @@ proc contains_key(
                     index
                 ],
                 key) {
-                give true;
+                return true;
             }
 
             set index += 1;
         }
 
-        give false;
+        return false;
     }
 
     if is_object(value) {
@@ -2356,7 +2356,7 @@ proc contains_key(
             if value.object_value[
                    index
                ].key == key {
-                give true;
+                return true;
             }
 
             if contains_key(
@@ -2364,14 +2364,14 @@ proc contains_key(
                     index
                 ].value,
                 key) {
-                give true;
+                return true;
             }
 
             set index += 1;
         }
     }
 
-    give false;
+    return false;
 }
 
 proc count_key(
@@ -2395,7 +2395,7 @@ proc count_key(
             set index += 1;
         }
 
-        give result;
+        return result;
     }
 
     if is_object(value) {
@@ -2420,7 +2420,7 @@ proc count_key(
         }
     }
 
-    give result;
+    return result;
 }
 
 /// -------------------------------------------------------------------------
@@ -2441,7 +2441,7 @@ proc members_have_duplicate_keys(
               members.length {
             if members[left].key ==
                members[right].key {
-                give true;
+                return true;
             }
 
             set right += 1;
@@ -2450,7 +2450,7 @@ proc members_have_duplicate_keys(
         set left += 1;
     }
 
-    give false;
+    return false;
 }
 
 export proc has_duplicate_keys(
@@ -2465,19 +2465,19 @@ export proc has_duplicate_keys(
                 &value.array_value[
                     index
                 ]) {
-                give true;
+                return true;
             }
 
             set index += 1;
         }
 
-        give false;
+        return false;
     }
 
     if is_object(value) {
         if members_have_duplicate_keys(
             value.object_value) {
-            give true;
+            return true;
         }
 
         let mut index: usize = 0;
@@ -2488,14 +2488,14 @@ export proc has_duplicate_keys(
                 &value.object_value[
                     index
                 ].value) {
-                give true;
+                return true;
             }
 
             set index += 1;
         }
     }
 
-    give false;
+    return false;
 }
 
 /// -------------------------------------------------------------------------
@@ -2508,27 +2508,27 @@ proc validate_from(
 ) -> bool {
     if current_depth >
        JSON_MAX_DEPTH {
-        give false;
+        return false;
     }
 
     if is_null(value) {
-        give true;
+        return true;
     }
 
     if is_bool(value) {
-        give true;
+        return true;
     }
 
     if is_integer(value) {
-        give true;
+        return true;
     }
 
     if is_float(value) {
-        give true;
+        return true;
     }
 
     if is_string(value) {
-        give true;
+        return true;
     }
 
     if is_array(value) {
@@ -2536,51 +2536,51 @@ proc validate_from(
 
         while index <
               value.array_value.length {
-            if !validate_from(
+            if not validate_from(
                 &value.array_value[
                     index
                 ],
                 current_depth + 1) {
-                give false;
+                return false;
             }
 
             set index += 1;
         }
 
-        give true;
+        return true;
     }
 
     if is_object(value) {
         if members_have_duplicate_keys(
             value.object_value) {
-            give false;
+            return false;
         }
 
         let mut index: usize = 0;
 
         while index <
               value.object_value.length {
-            if !validate_from(
+            if not validate_from(
                 &value.object_value[
                     index
                 ].value,
                 current_depth + 1) {
-                give false;
+                return false;
             }
 
             set index += 1;
         }
 
-        give true;
+        return true;
     }
 
-    give false;
+    return false;
 }
 
 export proc validate(
     value: &JsonValue
 ) -> bool {
-    give validate_from(
+    return validate_from(
         value,
         0);
 }
@@ -2588,7 +2588,7 @@ export proc validate(
 export proc validate_json_value(
     value: &JsonValue
 ) -> bool {
-    give validate(value);
+    return validate(value);
 }
 
 /// -------------------------------------------------------------------------
@@ -2598,7 +2598,7 @@ export proc validate_json_value(
 proc statistics(
     value: &JsonValue
 ) -> JsonStatistics {
-    give JsonStatistics {
+    return JsonStatistics {
         total_values:
             total_value_count(value),
 
@@ -2651,40 +2651,40 @@ proc truthy(
     value: &JsonValue
 ) -> bool {
     if is_null(value) {
-        give false;
+        return false;
     }
 
     if is_bool(value) {
-        give value.bool_value;
+        return value.bool_value;
     }
 
     if is_integer(value) {
-        give value.integer_value != 0;
+        return value.integer_value != 0;
     }
 
     if is_float(value) {
-        give value.float_value != 0.0;
+        return value.float_value != 0.0;
     }
 
     if is_string(value) {
-        give value.string_value.length != 0;
+        return value.string_value.length != 0;
     }
 
     if is_array(value) {
-        give value.array_value.length != 0;
+        return value.array_value.length != 0;
     }
 
     if is_object(value) {
-        give value.object_value.length != 0;
+        return value.object_value.length != 0;
     }
 
-    give false;
+    return false;
 }
 
 proc falsy(
     value: &JsonValue
 ) -> bool {
-    give !truthy(value);
+    return not truthy(value);
 }
 
 /// -------------------------------------------------------------------------
@@ -2701,7 +2701,7 @@ test "json value constructs null" {
 
     assert is_primitive(&value);
 
-    assert !is_container(&value);
+    assert not is_container(&value);
 
     assert type_name(&value) ==
         "null";
@@ -2720,11 +2720,11 @@ test "json value constructs boolean" {
         &yes,
         false);
 
-    assert !bool_or(
+    assert not bool_or(
         &no,
         true);
 
-    assert !equals(
+    assert not equals(
         &yes,
         &no);
 }
@@ -2834,7 +2834,7 @@ test "json value rejects wrong bool access" {
         as_bool(
             &value);
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonValueError.TypeMismatch;
@@ -2908,7 +2908,7 @@ test "json value numeric inequality" {
     let right: JsonValue =
         floating(42.0);
 
-    assert !number_equals(
+    assert not number_equals(
         &left,
         &right);
 
@@ -3041,7 +3041,7 @@ test "json value array bounds" {
             &value,
             100);
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonValueError.IndexOutOfBounds;
@@ -3070,7 +3070,7 @@ test "json value array equality is ordered" {
         &left,
         &same);
 
-    assert !equals(
+    assert not equals(
         &left,
         &reversed);
 }
@@ -3106,7 +3106,7 @@ test "json value object lookup" {
         &value,
         "answer");
 
-    assert !object_has(
+    assert not object_has(
         &value,
         "missing");
 
@@ -3163,7 +3163,7 @@ test "json value object missing key" {
             &value,
             "missing");
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonValueError.KeyNotFound;
@@ -3196,7 +3196,7 @@ test "json value object equality ignores order" {
         &left,
         &right);
 
-    assert !equals_ordered(
+    assert not equals_ordered(
         &left,
         &right);
 }
@@ -3220,7 +3220,7 @@ test "json value detects duplicate object members" {
     assert has_duplicate_keys(
         &value);
 
-    assert !validate(
+    assert not validate(
         &value);
 }
 
@@ -3387,7 +3387,7 @@ test "json value recursive key search" {
         &value,
         "answer");
 
-    assert !contains_key(
+    assert not contains_key(
         &value,
         "missing");
 
@@ -3660,7 +3660,7 @@ test "json value validates complete tree" {
     assert validate(
         &document);
 
-    assert !has_duplicate_keys(
+    assert not has_duplicate_keys(
         &document);
 
     assert contains_key(

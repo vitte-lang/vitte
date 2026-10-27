@@ -91,7 +91,7 @@ const JSON_PARSER_DEFAULT_MAX_ARRAY_ELEMENTS: usize = 1048576;
 const JSON_PARSER_DEFAULT_MAX_OBJECT_MEMBERS: usize = 1048576;
 const JSON_PARSER_DEFAULT_MAX_KEY_LENGTH: usize = 16777216;
 
-pick JsonParserDuplicateKeyPolicy {
+export pick JsonParserDuplicateKeyPolicy {
     Allow,
     Reject,
     KeepFirst,
@@ -230,7 +230,7 @@ form JsonParserState {
 
     statistics: JsonParserStatistics,
 
-    diagnostic: JsonParserDiagnostic,
+    report: JsonParserDiagnostic,
 
     failed: bool,
 }
@@ -254,7 +254,7 @@ export form JsonParseResult {
 
     next: usize,
 
-    diagnostic: JsonParserDiagnostic,
+    report: JsonParserDiagnostic,
 
     statistics: JsonParserStatistics,
 }
@@ -264,7 +264,7 @@ export form JsonParseResult {
 /// -------------------------------------------------------------------------
 
 proc default_limits() -> JsonParserLimits {
-    give JsonParserLimits {
+    return JsonParserLimits {
         max_depth:
             JSON_PARSER_DEFAULT_MAX_DEPTH,
 
@@ -293,7 +293,7 @@ proc strict_limits() -> JsonParserLimits {
     set result.duplicate_keys =
         JsonParserDuplicateKeyPolicy.Reject;
 
-    give result;
+    return result;
 }
 
 proc limits(
@@ -304,7 +304,7 @@ proc limits(
     max_key_length: usize,
     duplicate_keys: JsonParserDuplicateKeyPolicy
 ) -> JsonParserLimits {
-    give JsonParserLimits {
+    return JsonParserLimits {
         max_depth: max_depth,
 
         max_values: max_values,
@@ -326,11 +326,49 @@ proc limits(
 proc limits_valid(
     value: &JsonParserLimits
 ) -> bool {
-    give value.max_depth > 0 &&
+    return value.max_depth > 0 &&
          value.max_values > 0 &&
          value.max_array_elements > 0 &&
          value.max_object_members > 0 &&
          value.max_key_length > 0;
+}
+
+/// Return the parser's default resource profile. Duplicate object keys are
+/// allowed, matching `parse` and `parse_tokens`.
+export proc default_parser_limits() -> JsonParserLimits {
+    return default_limits();
+}
+
+/// Return the default resource profile with duplicate keys rejected.
+export proc strict_parser_limits() -> JsonParserLimits {
+    return strict_limits();
+}
+
+/// Construct a custom parser resource profile.
+///
+/// Every numeric limit must be greater than zero. Parsing reports invalid
+/// profiles through `JsonParseResult.report`.
+export proc new_parser_limits(
+    max_depth: usize,
+    max_values: usize,
+    max_array_elements: usize,
+    max_object_members: usize,
+    max_key_length: usize,
+    duplicate_keys: JsonParserDuplicateKeyPolicy
+) -> JsonParserLimits {
+    return limits(
+        max_depth,
+        max_values,
+        max_array_elements,
+        max_object_members,
+        max_key_length,
+        duplicate_keys);
+}
+
+export proc parser_limits_valid(
+    value: &JsonParserLimits
+) -> bool {
+    return limits_valid(value);
 }
 
 /// -------------------------------------------------------------------------
@@ -338,7 +376,7 @@ proc limits_valid(
 /// -------------------------------------------------------------------------
 
 proc empty_statistics() -> JsonParserStatistics {
-    give JsonParserStatistics {
+    return JsonParserStatistics {
         token_count: 0,
 
         consumed_token_count: 0,
@@ -370,7 +408,7 @@ proc empty_statistics() -> JsonParserStatistics {
 }
 
 proc no_diagnostic() -> JsonParserDiagnostic {
-    give JsonParserDiagnostic {
+    return JsonParserDiagnostic {
         error:
             JsonParserError.None,
 
@@ -403,14 +441,14 @@ proc no_diagnostic() -> JsonParserDiagnostic {
 }
 
 proc empty_result() -> JsonParseResult {
-    give JsonParseResult {
+    return JsonParseResult {
         ok: false,
 
         value: null_value(),
 
         next: 0,
 
-        diagnostic:
+        report:
             no_diagnostic(),
 
         statistics:
@@ -427,140 +465,140 @@ proc error_name(
 ) -> string {
     if error ==
        JsonParserError.None {
-        give "none";
+        return "none";
     }
 
     if error ==
        JsonParserError.EmptyDocument {
-        give "empty-document";
+        return "empty-document";
     }
 
     if error ==
        JsonParserError.UnexpectedEnd {
-        give "unexpected-end";
+        return "unexpected-end";
     }
 
     if error ==
        JsonParserError.UnexpectedToken {
-        give "unexpected-token";
+        return "unexpected-token";
     }
 
     if error ==
        JsonParserError.TrailingToken {
-        give "trailing-token";
+        return "trailing-token";
     }
 
     if error ==
        JsonParserError.InvalidNull {
-        give "invalid-null";
+        return "invalid-null";
     }
 
     if error ==
        JsonParserError.InvalidBoolean {
-        give "invalid-boolean";
+        return "invalid-boolean";
     }
 
     if error ==
        JsonParserError.InvalidNumber {
-        give "invalid-number";
+        return "invalid-number";
     }
 
     if error ==
        JsonParserError.InvalidString {
-        give "invalid-string";
+        return "invalid-string";
     }
 
     if error ==
        JsonParserError.ExpectedValue {
-        give "expected-value";
+        return "expected-value";
     }
 
     if error ==
        JsonParserError.ExpectedArrayValue {
-        give "expected-array-value";
+        return "expected-array-value";
     }
 
     if error ==
        JsonParserError.ExpectedArrayCommaOrEnd {
-        give "expected-array-comma-or-end";
+        return "expected-array-comma-or-end";
     }
 
     if error ==
        JsonParserError.ArrayTrailingComma {
-        give "array-trailing-comma";
+        return "array-trailing-comma";
     }
 
     if error ==
        JsonParserError.UnterminatedArray {
-        give "unterminated-array";
+        return "unterminated-array";
     }
 
     if error ==
        JsonParserError.ExpectedObjectKey {
-        give "expected-object-key";
+        return "expected-object-key";
     }
 
     if error ==
        JsonParserError.ExpectedObjectColon {
-        give "expected-object-colon";
+        return "expected-object-colon";
     }
 
     if error ==
        JsonParserError.ExpectedObjectValue {
-        give "expected-object-value";
+        return "expected-object-value";
     }
 
     if error ==
        JsonParserError.ExpectedObjectCommaOrEnd {
-        give "expected-object-comma-or-end";
+        return "expected-object-comma-or-end";
     }
 
     if error ==
        JsonParserError.ObjectTrailingComma {
-        give "object-trailing-comma";
+        return "object-trailing-comma";
     }
 
     if error ==
        JsonParserError.UnterminatedObject {
-        give "unterminated-object";
+        return "unterminated-object";
     }
 
     if error ==
        JsonParserError.DuplicateObjectKey {
-        give "duplicate-object-key";
+        return "duplicate-object-key";
     }
 
     if error ==
        JsonParserError.TooManyValues {
-        give "too-many-values";
+        return "too-many-values";
     }
 
     if error ==
        JsonParserError.TooManyArrayElements {
-        give "too-many-array-elements";
+        return "too-many-array-elements";
     }
 
     if error ==
        JsonParserError.TooManyObjectMembers {
-        give "too-many-object-members";
+        return "too-many-object-members";
     }
 
     if error ==
        JsonParserError.ObjectKeyTooLong {
-        give "object-key-too-long";
+        return "object-key-too-long";
     }
 
     if error ==
        JsonParserError.DepthExceeded {
-        give "depth-exceeded";
+        return "depth-exceeded";
     }
 
     if error ==
        JsonParserError.InvalidTokenStream {
-        give "invalid-token-stream";
+        return "invalid-token-stream";
     }
 
-    give "internal";
+    return "internal";
 }
 
 proc error_code(
@@ -568,140 +606,140 @@ proc error_code(
 ) -> string {
     if error ==
        JsonParserError.None {
-        give "";
+        return "";
     }
 
     if error ==
        JsonParserError.EmptyDocument {
-        give "JSON-PARSE-001";
+        return "JSON-PARSE-001";
     }
 
     if error ==
        JsonParserError.UnexpectedEnd {
-        give "JSON-PARSE-002";
+        return "JSON-PARSE-002";
     }
 
     if error ==
        JsonParserError.UnexpectedToken {
-        give "JSON-PARSE-003";
+        return "JSON-PARSE-003";
     }
 
     if error ==
        JsonParserError.TrailingToken {
-        give "JSON-PARSE-004";
+        return "JSON-PARSE-004";
     }
 
     if error ==
        JsonParserError.InvalidNull {
-        give "JSON-PARSE-010";
+        return "JSON-PARSE-010";
     }
 
     if error ==
        JsonParserError.InvalidBoolean {
-        give "JSON-PARSE-011";
+        return "JSON-PARSE-011";
     }
 
     if error ==
        JsonParserError.InvalidNumber {
-        give "JSON-PARSE-012";
+        return "JSON-PARSE-012";
     }
 
     if error ==
        JsonParserError.InvalidString {
-        give "JSON-PARSE-013";
+        return "JSON-PARSE-013";
     }
 
     if error ==
        JsonParserError.ExpectedValue {
-        give "JSON-PARSE-020";
+        return "JSON-PARSE-020";
     }
 
     if error ==
        JsonParserError.ExpectedArrayValue {
-        give "JSON-PARSE-030";
+        return "JSON-PARSE-030";
     }
 
     if error ==
        JsonParserError.ExpectedArrayCommaOrEnd {
-        give "JSON-PARSE-031";
+        return "JSON-PARSE-031";
     }
 
     if error ==
        JsonParserError.ArrayTrailingComma {
-        give "JSON-PARSE-032";
+        return "JSON-PARSE-032";
     }
 
     if error ==
        JsonParserError.UnterminatedArray {
-        give "JSON-PARSE-033";
+        return "JSON-PARSE-033";
     }
 
     if error ==
        JsonParserError.ExpectedObjectKey {
-        give "JSON-PARSE-040";
+        return "JSON-PARSE-040";
     }
 
     if error ==
        JsonParserError.ExpectedObjectColon {
-        give "JSON-PARSE-041";
+        return "JSON-PARSE-041";
     }
 
     if error ==
        JsonParserError.ExpectedObjectValue {
-        give "JSON-PARSE-042";
+        return "JSON-PARSE-042";
     }
 
     if error ==
        JsonParserError.ExpectedObjectCommaOrEnd {
-        give "JSON-PARSE-043";
+        return "JSON-PARSE-043";
     }
 
     if error ==
        JsonParserError.ObjectTrailingComma {
-        give "JSON-PARSE-044";
+        return "JSON-PARSE-044";
     }
 
     if error ==
        JsonParserError.UnterminatedObject {
-        give "JSON-PARSE-045";
+        return "JSON-PARSE-045";
     }
 
     if error ==
        JsonParserError.DuplicateObjectKey {
-        give "JSON-PARSE-046";
+        return "JSON-PARSE-046";
     }
 
     if error ==
        JsonParserError.TooManyValues {
-        give "JSON-PARSE-050";
+        return "JSON-PARSE-050";
     }
 
     if error ==
        JsonParserError.TooManyArrayElements {
-        give "JSON-PARSE-051";
+        return "JSON-PARSE-051";
     }
 
     if error ==
        JsonParserError.TooManyObjectMembers {
-        give "JSON-PARSE-052";
+        return "JSON-PARSE-052";
     }
 
     if error ==
        JsonParserError.ObjectKeyTooLong {
-        give "JSON-PARSE-053";
+        return "JSON-PARSE-053";
     }
 
     if error ==
        JsonParserError.DepthExceeded {
-        give "JSON-PARSE-054";
+        return "JSON-PARSE-054";
     }
 
     if error ==
        JsonParserError.InvalidTokenStream {
-        give "JSON-PARSE-060";
+        return "JSON-PARSE-060";
     }
 
-    give "JSON-PARSE-999";
+    return "JSON-PARSE-999";
 }
 
 proc phase_name(
@@ -709,25 +747,25 @@ proc phase_name(
 ) -> string {
     if phase ==
        JsonParserPhase.None {
-        give "none";
+        return "none";
     }
 
     if phase ==
        JsonParserPhase.Document {
-        give "document";
+        return "document";
     }
 
     if phase ==
        JsonParserPhase.Value {
-        give "value";
+        return "value";
     }
 
     if phase ==
        JsonParserPhase.Array {
-        give "array";
+        return "array";
     }
 
-    give "object";
+    return "object";
 }
 
 /// Return a short explanation aimed at someone who is learning JSON.
@@ -737,59 +775,90 @@ proc suggestion_for(
     error: JsonParserError
 ) -> string {
     if error == JsonParserError.EmptyDocument {
-        give "Ajoutez une valeur JSON, par exemple {} ou []";
+        return "Ajoutez une valeur JSON, par exemple {} ou []";
     }
 
     if error == JsonParserError.ExpectedObjectColon {
-        give "Ajoutez : entre le nom de la propriété et sa valeur, par exemple \"nom\": \"Ada\"";
+        return "Ajoutez : entre le nom de la propriété et sa valeur, par exemple \"nom\": \"Ada\"";
     }
 
     if error == JsonParserError.ExpectedObjectKey {
-        give "Un objet JSON utilise des noms entre guillemets doubles, par exemple \"nom\"";
+        return "Un objet JSON utilise des noms entre guillemets doubles, par exemple \"nom\"";
     }
 
     if error == JsonParserError.ExpectedObjectValue {
-        give "Ajoutez une valeur après :, par exemple une chaîne, un nombre, true, false, null, un tableau ou un objet";
+        return "Ajoutez une valeur après :, par exemple une chaîne, un nombre, true, false, null, un tableau ou un objet";
     }
 
     if error == JsonParserError.ExpectedObjectCommaOrEnd {
-        give "Ajoutez une virgule entre deux propriétés ou } pour fermer l'objet";
+        return "Ajoutez une virgule entre deux propriétés ou } pour fermer l'objet";
     }
 
     if error == JsonParserError.ObjectTrailingComma {
-        give "Supprimez la virgule juste avant } : JSON n'autorise pas les virgules finales";
+        return "Supprimez la virgule juste avant } : JSON n'autorise pas les virgules finales";
     }
 
     if error == JsonParserError.ExpectedArrayCommaOrEnd {
-        give "Ajoutez une virgule entre deux éléments ou ] pour fermer le tableau";
+        return "Ajoutez une virgule entre deux éléments ou ] pour fermer le tableau";
     }
 
     if error == JsonParserError.ArrayTrailingComma {
-        give "Supprimez la virgule juste avant ] : JSON n'autorise pas les virgules finales";
+        return "Supprimez la virgule juste avant ] : JSON n'autorise pas les virgules finales";
     }
 
     if error == JsonParserError.UnterminatedArray {
-        give "Ajoutez ] pour fermer le tableau";
+        return "Ajoutez ] pour fermer le tableau";
     }
 
     if error == JsonParserError.UnterminatedObject {
-        give "Ajoutez } pour fermer l'objet";
+        return "Ajoutez } pour fermer l'objet";
     }
 
     if error == JsonParserError.DuplicateObjectKey {
-        give "Donnez un nom différent à chaque propriété ou activez une politique explicite de doublons";
+        return "Donnez un nom différent à chaque propriété ou activez une politique explicite de doublons";
     }
 
     if error == JsonParserError.TrailingToken {
-        give "Supprimez les caractères après la première valeur JSON : un document doit contenir une seule valeur";
+        return "Supprimez les caractères après la première valeur JSON : un document doit contenir une seule valeur";
     }
 
-    give "";
+    return "";
 }
 
 /// -------------------------------------------------------------------------
 /// Diagnostics
 /// -------------------------------------------------------------------------
+
+proc parse_failure_error(
+    detail: string
+) -> JsonParserError {
+    if detail ==
+       "maximum JSON nesting depth exceeded" {
+        return JsonParserError.DepthExceeded;
+    }
+
+    if detail ==
+       "maximum JSON array element count exceeded" {
+        return JsonParserError.TooManyArrayElements;
+    }
+
+    if detail ==
+       "maximum JSON object member count exceeded" {
+        return JsonParserError.TooManyObjectMembers;
+    }
+
+    if detail ==
+       "maximum JSON object key length exceeded" {
+        return JsonParserError.ObjectKeyTooLong;
+    }
+
+    if detail ==
+       "duplicate JSON object member name" {
+        return JsonParserError.DuplicateObjectKey;
+    }
+
+    return JsonParserError.ExpectedValue;
+}
 
 proc make_diagnostic(
     error: JsonParserError,
@@ -801,7 +870,7 @@ proc make_diagnostic(
     key: string,
     location: JsonSpan
 ) -> JsonParserDiagnostic {
-    give JsonParserDiagnostic {
+    return JsonParserDiagnostic {
         error: error,
 
         phase: phase,
@@ -843,7 +912,7 @@ proc make_related_diagnostic(
     location: JsonSpan,
     related: JsonSpan
 ) -> JsonParserDiagnostic {
-    give JsonParserDiagnostic {
+    return JsonParserDiagnostic {
         error: error,
 
         phase: phase,
@@ -888,7 +957,7 @@ proc state(
     set stats.token_count =
         tokens.length;
 
-    give JsonParserState {
+    return JsonParserState {
         tokens: tokens,
 
         cursor: 0,
@@ -900,7 +969,7 @@ proc state(
 
         statistics: stats,
 
-        diagnostic:
+        report:
             no_diagnostic(),
 
         failed: false,
@@ -910,7 +979,7 @@ proc state(
 proc default_state(
     tokens: [JsonToken]
 ) -> JsonParserState {
-    give state(
+    return state(
         tokens,
         default_limits());
 }
@@ -922,7 +991,7 @@ proc default_state(
 proc has_token(
     parser: &JsonParserState
 ) -> bool {
-    give parser.cursor <
+    return parser.cursor <
          parser.tokens.length;
 }
 
@@ -930,7 +999,7 @@ proc has_token_at(
     parser: &JsonParserState,
     index: usize
 ) -> bool {
-    give index <
+    return index <
          parser.tokens.length;
 }
 
@@ -939,10 +1008,10 @@ proc current(
 ) -> JsonToken {
     if parser.cursor >=
        parser.tokens.length {
-        give invalid();
+        return invalid();
     }
 
-    give parser.tokens[
+    return parser.tokens[
         parser.cursor];
 }
 
@@ -952,10 +1021,10 @@ proc token_at(
 ) -> JsonToken {
     if index >=
        parser.tokens.length {
-        give invalid();
+        return invalid();
     }
 
-    give parser.tokens[index];
+    return parser.tokens[index];
 }
 
 proc previous(
@@ -963,10 +1032,10 @@ proc previous(
 ) -> JsonToken {
     if parser.cursor == 0 ||
        parser.tokens.length == 0 {
-        give invalid();
+        return invalid();
     }
 
-    give parser.tokens[
+    return parser.tokens[
         parser.cursor - 1];
 }
 
@@ -974,13 +1043,13 @@ proc end_location(
     parser: &JsonParserState
 ) -> JsonSpan {
     if parser.tokens.length == 0 {
-        give empty_span();
+        return empty_span();
     }
 
     let last_index: usize =
         parser.tokens.length - 1;
 
-    give parser.tokens[last_index].span;
+    return parser.tokens[last_index].span;
 }
 
 proc found_text(
@@ -988,19 +1057,19 @@ proc found_text(
 ) -> string {
     if value.kind ==
        JsonTokenKind.End {
-        give "end of input";
+        return "end of input";
     }
 
     if value.kind ==
        JsonTokenKind.Invalid {
-        give "invalid token";
+        return "invalid token";
     }
 
     if value.lexeme.length != 0 {
-        give value.lexeme;
+        return value.lexeme;
     }
 
-    give display_name(
+    return display_name(
         value.kind);
 }
 
@@ -1009,10 +1078,10 @@ proc at_end(
 ) -> bool {
     if parser.cursor >=
        parser.tokens.length {
-        give true;
+        return true;
     }
 
-    give parser.tokens[
+    return parser.tokens[
         parser.cursor].kind ==
             JsonTokenKind.End;
 }
@@ -1023,10 +1092,10 @@ proc check(
 ) -> bool {
     if parser.cursor >=
        parser.tokens.length {
-        give false;
+        return false;
     }
 
-    give parser.tokens[
+    return parser.tokens[
         parser.cursor].kind ==
             kind;
 }
@@ -1046,7 +1115,7 @@ proc advance(
     set result.statistics.consumed_token_count =
         result.cursor;
 
-    give result;
+    return result;
 }
 
 /// -------------------------------------------------------------------------
@@ -1070,7 +1139,7 @@ proc fail(
 
     set result.failed = true;
 
-    set result.diagnostic =
+    set result.report =
         make_diagnostic(
             error,
             phase,
@@ -1081,7 +1150,7 @@ proc fail(
             key,
             location);
 
-    give result;
+    return result;
 }
 
 proc fail_related(
@@ -1102,7 +1171,7 @@ proc fail_related(
 
     set result.failed = true;
 
-    set result.diagnostic =
+    set result.report =
         make_related_diagnostic(
             error,
             phase,
@@ -1114,7 +1183,7 @@ proc fail_related(
             location,
             related);
 
-    give result;
+    return result;
 }
 
 /// -------------------------------------------------------------------------
@@ -1135,7 +1204,7 @@ proc account_depth(
             depth;
     }
 
-    give result;
+    return result;
 }
 
 proc account_value(
@@ -1188,7 +1257,7 @@ proc account_value(
         set result.statistics.object_count += 1;
     }
 
-    give result;
+    return result;
 }
 
 /// -------------------------------------------------------------------------
@@ -1208,66 +1277,66 @@ proc number_is_float(
         if value == '.' ||
            value == 'e' ||
            value == 'E' {
-            give true;
+            return true;
         }
 
         set index += 1;
     }
 
-    give false;
+    return false;
 }
 
 proc digit_value(
     value: char
 ) -> i64 {
     if value == '0' {
-        give 0;
+        return 0;
     }
 
     if value == '1' {
-        give 1;
+        return 1;
     }
 
     if value == '2' {
-        give 2;
+        return 2;
     }
 
     if value == '3' {
-        give 3;
+        return 3;
     }
 
     if value == '4' {
-        give 4;
+        return 4;
     }
 
     if value == '5' {
-        give 5;
+        return 5;
     }
 
     if value == '6' {
-        give 6;
+        return 6;
     }
 
     if value == '7' {
-        give 7;
+        return 7;
     }
 
     if value == '8' {
-        give 8;
+        return 8;
     }
 
     if value == '9' {
-        give 9;
+        return 9;
     }
 
-    give -1;
+    return -1;
 }
 
 proc parse_integer_text(
     text: string
 ) -> i64 {
     if text.length == 0 {
-        give 0;
+        return 0;
     }
 
     let mut index: usize = 0;
@@ -1289,7 +1358,7 @@ proc parse_integer_text(
                 text[index]);
 
         if digit < 0 {
-            give 0;
+            return 0;
         }
 
         set result =
@@ -1299,10 +1368,10 @@ proc parse_integer_text(
     }
 
     if negative {
-        give -result;
+        return -result;
     }
 
-    give result;
+    return result;
 }
 
 proc power10(
@@ -1311,7 +1380,7 @@ proc power10(
     let mut result: f64 = 1.0;
 
     if exponent == 0 {
-        give result;
+        return result;
     }
 
     if exponent > 0 {
@@ -1323,7 +1392,7 @@ proc power10(
             set index += 1;
         }
 
-        give result;
+        return result;
     }
 
     let mut index: i64 = 0;
@@ -1334,14 +1403,14 @@ proc power10(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc parse_float_text(
     text: string
 ) -> f64 {
     if text.length == 0 {
-        give 0.0;
+        return 0.0;
     }
 
     let mut index: usize = 0;
@@ -1372,7 +1441,7 @@ proc parse_float_text(
             digit_value(value);
 
         if digit < 0 {
-            give 0.0;
+            return 0.0;
         }
 
         set integer_part =
@@ -1403,7 +1472,7 @@ proc parse_float_text(
                 digit_value(value);
 
             if digit < 0 {
-                give 0.0;
+                return 0.0;
             }
 
             set integer_part =
@@ -1446,7 +1515,7 @@ proc parse_float_text(
                     text[index]);
 
             if digit < 0 {
-                give 0.0;
+                return 0.0;
             }
 
             set exponent =
@@ -1473,7 +1542,7 @@ proc parse_float_text(
             -result;
     }
 
-    give result;
+    return result;
 }
 
 /// -------------------------------------------------------------------------
@@ -1488,7 +1557,7 @@ proc parse_null_value(
 
     if token.kind !=
        JsonTokenKind.Null {
-        give JsonValueParseResult {
+        return JsonValueParseResult {
             ok: false,
 
             value: null_value(),
@@ -1503,7 +1572,7 @@ proc parse_null_value(
         };
     }
 
-    give JsonValueParseResult {
+    return JsonValueParseResult {
         ok: true,
 
         value: null_value(),
@@ -1526,7 +1595,7 @@ proc parse_boolean_value(
 
     if token.kind ==
        JsonTokenKind.True {
-        give JsonValueParseResult {
+        return JsonValueParseResult {
             ok: true,
 
             value:
@@ -1544,7 +1613,7 @@ proc parse_boolean_value(
 
     if token.kind ==
        JsonTokenKind.False {
-        give JsonValueParseResult {
+        return JsonValueParseResult {
             ok: true,
 
             value:
@@ -1560,7 +1629,7 @@ proc parse_boolean_value(
         };
     }
 
-    give JsonValueParseResult {
+    return JsonValueParseResult {
         ok: false,
 
         value: null_value(),
@@ -1583,7 +1652,7 @@ proc parse_number_value(
 
     if token.kind !=
        JsonTokenKind.Number {
-        give JsonValueParseResult {
+        return JsonValueParseResult {
             ok: false,
 
             value: null_value(),
@@ -1600,7 +1669,7 @@ proc parse_number_value(
 
     if number_is_float(
         token.value) {
-        give JsonValueParseResult {
+        return JsonValueParseResult {
             ok: true,
 
             value:
@@ -1618,7 +1687,7 @@ proc parse_number_value(
         };
     }
 
-    give JsonValueParseResult {
+    return JsonValueParseResult {
         ok: true,
 
         value:
@@ -1644,7 +1713,7 @@ proc parse_string_value(
 
     if token.kind !=
        JsonTokenKind.String {
-        give JsonValueParseResult {
+        return JsonValueParseResult {
             ok: false,
 
             value: null_value(),
@@ -1659,7 +1728,7 @@ proc parse_string_value(
         };
     }
 
-    give JsonValueParseResult {
+    return JsonValueParseResult {
         ok: true,
 
         value:
@@ -1692,7 +1761,7 @@ proc parse_array_value(
 
     if open.kind !=
        JsonTokenKind.LeftBracket {
-        give JsonValueParseResult {
+        return JsonValueParseResult {
             ok: false,
 
             value: null_value(),
@@ -1709,7 +1778,7 @@ proc parse_array_value(
 
     if depth >
        parser.limits.max_depth {
-        give JsonValueParseResult {
+        return JsonValueParseResult {
             ok: false,
 
             value: null_value(),
@@ -1736,7 +1805,7 @@ proc parse_array_value(
 
     if cursor >=
        parser.tokens.length {
-        give JsonValueParseResult {
+        return JsonValueParseResult {
             ok: false,
 
             value: null_value(),
@@ -1765,7 +1834,7 @@ proc parse_array_value(
                 open.span.start,
                 close.span.end);
 
-        give JsonValueParseResult {
+        return JsonValueParseResult {
             ok: true,
 
             value: result,
@@ -1782,7 +1851,7 @@ proc parse_array_value(
     while true {
         if cursor >=
            parser.tokens.length {
-            give JsonValueParseResult {
+            return JsonValueParseResult {
                 ok: false,
 
                 value: null_value(),
@@ -1803,7 +1872,7 @@ proc parse_array_value(
 
         if current_token.kind ==
            JsonTokenKind.End {
-            give JsonValueParseResult {
+            return JsonValueParseResult {
                 ok: false,
 
                 value: null_value(),
@@ -1820,7 +1889,7 @@ proc parse_array_value(
 
         if current_token.kind ==
            JsonTokenKind.RightBracket {
-            give JsonValueParseResult {
+            return JsonValueParseResult {
                 ok: false,
 
                 value: null_value(),
@@ -1837,7 +1906,7 @@ proc parse_array_value(
 
         if current_token.kind ==
            JsonTokenKind.Comma {
-            give JsonValueParseResult {
+            return JsonValueParseResult {
                 ok: false,
 
                 value: null_value(),
@@ -1854,7 +1923,7 @@ proc parse_array_value(
 
         if element_count >=
            parser.limits.max_array_elements {
-            give JsonValueParseResult {
+            return JsonValueParseResult {
                 ok: false,
 
                 value: null_value(),
@@ -1877,13 +1946,13 @@ proc parse_array_value(
                     depth,
                     parser.limits);
 
-        if !parsed.ok {
-            give parsed;
+        if not parsed.ok {
+            return parsed;
         }
 
         if parsed.next <=
            cursor {
-            give JsonValueParseResult {
+            return JsonValueParseResult {
                 ok: false,
 
                 value: null_value(),
@@ -1908,7 +1977,7 @@ proc parse_array_value(
 
         if cursor >=
            parser.tokens.length {
-            give JsonValueParseResult {
+            return JsonValueParseResult {
                 ok: false,
 
                 value: null_value(),
@@ -1938,7 +2007,7 @@ proc parse_array_value(
                     open.span.start,
                     separator.span.end);
 
-            give JsonValueParseResult {
+            return JsonValueParseResult {
                 ok: true,
 
                 value: result,
@@ -1954,7 +2023,7 @@ proc parse_array_value(
 
         if separator.kind ==
            JsonTokenKind.End {
-            give JsonValueParseResult {
+            return JsonValueParseResult {
                 ok: false,
 
                 value: null_value(),
@@ -1971,7 +2040,7 @@ proc parse_array_value(
 
         if separator.kind !=
            JsonTokenKind.Comma {
-            give JsonValueParseResult {
+            return JsonValueParseResult {
                 ok: false,
 
                 value: null_value(),
@@ -1990,7 +2059,7 @@ proc parse_array_value(
 
         if cursor >=
            parser.tokens.length {
-            give JsonValueParseResult {
+            return JsonValueParseResult {
                 ok: false,
 
                 value: null_value(),
@@ -2007,7 +2076,7 @@ proc parse_array_value(
 
         if parser.tokens[cursor].kind ==
            JsonTokenKind.RightBracket {
-            give JsonValueParseResult {
+            return JsonValueParseResult {
                 ok: false,
 
                 value: null_value(),
@@ -2024,7 +2093,7 @@ proc parse_array_value(
 
         if parser.tokens[cursor].kind ==
            JsonTokenKind.End {
-            give JsonValueParseResult {
+            return JsonValueParseResult {
                 ok: false,
 
                 value: null_value(),
@@ -2040,7 +2109,7 @@ proc parse_array_value(
         }
     }
 
-    give JsonValueParseResult {
+    return JsonValueParseResult {
         ok: false,
 
         value: null_value(),
@@ -2069,20 +2138,20 @@ proc object_find_key(
           members.length {
         if members[index].key ==
            key {
-            give index;
+            return index;
         }
 
         set index += 1;
     }
 
-    give members.length;
+    return members.length;
 }
 
 proc object_has_key(
     members: [JsonMember],
     key: string
 ) -> bool {
-    give object_find_key(
+    return object_find_key(
         members,
         key) <
             members.length;
@@ -2104,7 +2173,7 @@ proc parse_object_value(
 
     if open.kind !=
        JsonTokenKind.LeftBrace {
-        give JsonValueParseResult {
+        return JsonValueParseResult {
             ok: false,
 
             value: null_value(),
@@ -2121,7 +2190,7 @@ proc parse_object_value(
 
     if depth >
        parser.limits.max_depth {
-        give JsonValueParseResult {
+        return JsonValueParseResult {
             ok: false,
 
             value: null_value(),
@@ -2148,7 +2217,7 @@ proc parse_object_value(
 
     if cursor >=
        parser.tokens.length {
-        give JsonValueParseResult {
+        return JsonValueParseResult {
             ok: false,
 
             value: null_value(),
@@ -2177,7 +2246,7 @@ proc parse_object_value(
                 open.span.start,
                 close.span.end);
 
-        give JsonValueParseResult {
+        return JsonValueParseResult {
             ok: true,
 
             value: result,
@@ -2194,7 +2263,7 @@ proc parse_object_value(
     while true {
         if cursor >=
            parser.tokens.length {
-            give JsonValueParseResult {
+            return JsonValueParseResult {
                 ok: false,
 
                 value: null_value(),
@@ -2215,7 +2284,7 @@ proc parse_object_value(
 
         if key_token.kind ==
            JsonTokenKind.End {
-            give JsonValueParseResult {
+            return JsonValueParseResult {
                 ok: false,
 
                 value: null_value(),
@@ -2232,7 +2301,7 @@ proc parse_object_value(
 
         if key_token.kind ==
            JsonTokenKind.RightBrace {
-            give JsonValueParseResult {
+            return JsonValueParseResult {
                 ok: false,
 
                 value: null_value(),
@@ -2249,7 +2318,7 @@ proc parse_object_value(
 
         if key_token.kind ==
            JsonTokenKind.Comma {
-            give JsonValueParseResult {
+            return JsonValueParseResult {
                 ok: false,
 
                 value: null_value(),
@@ -2266,7 +2335,7 @@ proc parse_object_value(
 
         if key_token.kind !=
            JsonTokenKind.String {
-            give JsonValueParseResult {
+            return JsonValueParseResult {
                 ok: false,
 
                 value: null_value(),
@@ -2286,7 +2355,7 @@ proc parse_object_value(
 
         if key.length >
            parser.limits.max_key_length {
-            give JsonValueParseResult {
+            return JsonValueParseResult {
                 ok: false,
 
                 value: null_value(),
@@ -2303,7 +2372,7 @@ proc parse_object_value(
 
         if parsed_member_count >=
            parser.limits.max_object_members {
-            give JsonValueParseResult {
+            return JsonValueParseResult {
                 ok: false,
 
                 value: null_value(),
@@ -2331,7 +2400,7 @@ proc parse_object_value(
         if duplicate &&
            parser.limits.duplicate_keys ==
                JsonParserDuplicateKeyPolicy.Reject {
-            give JsonValueParseResult {
+            return JsonValueParseResult {
                 ok: false,
 
                 value: null_value(),
@@ -2350,7 +2419,7 @@ proc parse_object_value(
 
         if cursor >=
            parser.tokens.length {
-            give JsonValueParseResult {
+            return JsonValueParseResult {
                 ok: false,
 
                 value: null_value(),
@@ -2371,7 +2440,7 @@ proc parse_object_value(
 
         if colon.kind !=
            JsonTokenKind.Colon {
-            give JsonValueParseResult {
+            return JsonValueParseResult {
                 ok: false,
 
                 value: null_value(),
@@ -2390,7 +2459,7 @@ proc parse_object_value(
 
         if cursor >=
            parser.tokens.length {
-            give JsonValueParseResult {
+            return JsonValueParseResult {
                 ok: false,
 
                 value: null_value(),
@@ -2415,7 +2484,7 @@ proc parse_object_value(
                JsonTokenKind.Comma ||
            value_token.kind ==
                JsonTokenKind.RightBrace {
-            give JsonValueParseResult {
+            return JsonValueParseResult {
                 ok: false,
 
                 value: null_value(),
@@ -2438,13 +2507,13 @@ proc parse_object_value(
                     depth,
                     parser.limits);
 
-        if !parsed.ok {
-            give parsed;
+        if not parsed.ok {
+            return parsed;
         }
 
         if parsed.next <=
            cursor {
-            give JsonValueParseResult {
+            return JsonValueParseResult {
                 ok: false,
 
                 value: null_value(),
@@ -2468,7 +2537,7 @@ proc parse_object_value(
                         parsed.value,
                 };
 
-        if !duplicate {
+        if not duplicate {
             set members.push(
                 member);
         } else {
@@ -2493,7 +2562,7 @@ proc parse_object_value(
 
         if cursor >=
            parser.tokens.length {
-            give JsonValueParseResult {
+            return JsonValueParseResult {
                 ok: false,
 
                 value: null_value(),
@@ -2523,7 +2592,7 @@ proc parse_object_value(
                     open.span.start,
                     separator.span.end);
 
-            give JsonValueParseResult {
+            return JsonValueParseResult {
                 ok: true,
 
                 value: result,
@@ -2539,7 +2608,7 @@ proc parse_object_value(
 
         if separator.kind ==
            JsonTokenKind.End {
-            give JsonValueParseResult {
+            return JsonValueParseResult {
                 ok: false,
 
                 value: null_value(),
@@ -2556,7 +2625,7 @@ proc parse_object_value(
 
         if separator.kind !=
            JsonTokenKind.Comma {
-            give JsonValueParseResult {
+            return JsonValueParseResult {
                 ok: false,
 
                 value: null_value(),
@@ -2575,7 +2644,7 @@ proc parse_object_value(
 
         if cursor >=
            parser.tokens.length {
-            give JsonValueParseResult {
+            return JsonValueParseResult {
                 ok: false,
 
                 value: null_value(),
@@ -2592,7 +2661,7 @@ proc parse_object_value(
 
         if parser.tokens[cursor].kind ==
            JsonTokenKind.RightBrace {
-            give JsonValueParseResult {
+            return JsonValueParseResult {
                 ok: false,
 
                 value: null_value(),
@@ -2609,7 +2678,7 @@ proc parse_object_value(
 
         if parser.tokens[cursor].kind ==
            JsonTokenKind.End {
-            give JsonValueParseResult {
+            return JsonValueParseResult {
                 ok: false,
 
                 value: null_value(),
@@ -2625,7 +2694,7 @@ proc parse_object_value(
         }
     }
 
-    give JsonValueParseResult {
+    return JsonValueParseResult {
         ok: false,
 
         value: null_value(),
@@ -2652,7 +2721,7 @@ proc parse_json_value_with_limits(
 ) -> JsonValueParseResult {
     if index >=
        tokens.length {
-        give JsonValueParseResult {
+        return JsonValueParseResult {
             ok: false,
 
             value: null_value(),
@@ -2669,7 +2738,7 @@ proc parse_json_value_with_limits(
 
     if depth >
        parser_limits.max_depth {
-        give JsonValueParseResult {
+        return JsonValueParseResult {
             ok: false,
 
             value: null_value(),
@@ -2699,7 +2768,7 @@ proc parse_json_value_with_limits(
                 statistics:
                     empty_statistics(),
 
-                diagnostic:
+                report:
                     no_diagnostic(),
 
                 failed: false,
@@ -2711,7 +2780,7 @@ proc parse_json_value_with_limits(
 
     if token.kind ==
        JsonTokenKind.End {
-        give JsonValueParseResult {
+        return JsonValueParseResult {
             ok: false,
 
             value: null_value(),
@@ -2728,7 +2797,7 @@ proc parse_json_value_with_limits(
 
     if token.kind ==
        JsonTokenKind.Invalid {
-        give JsonValueParseResult {
+        return JsonValueParseResult {
             ok: false,
 
             value: null_value(),
@@ -2745,7 +2814,7 @@ proc parse_json_value_with_limits(
 
     if token.kind ==
        JsonTokenKind.Null {
-        give parse_null_value(
+        return parse_null_value(
             &parser);
     }
 
@@ -2753,37 +2822,37 @@ proc parse_json_value_with_limits(
            JsonTokenKind.True ||
        token.kind ==
            JsonTokenKind.False {
-        give parse_boolean_value(
+        return parse_boolean_value(
             &parser);
     }
 
     if token.kind ==
        JsonTokenKind.Number {
-        give parse_number_value(
+        return parse_number_value(
             &parser);
     }
 
     if token.kind ==
        JsonTokenKind.String {
-        give parse_string_value(
+        return parse_string_value(
             &parser);
     }
 
     if token.kind ==
        JsonTokenKind.LeftBracket {
-        give parse_array_value(
+        return parse_array_value(
             &parser,
             depth + 1);
     }
 
     if token.kind ==
        JsonTokenKind.LeftBrace {
-        give parse_object_value(
+        return parse_object_value(
             &parser,
             depth + 1);
     }
 
-    give JsonValueParseResult {
+    return JsonValueParseResult {
         ok: false,
 
         value: null_value(),
@@ -2803,7 +2872,7 @@ proc parse_json_value(
     index: usize,
     depth: usize
 ) -> JsonValueParseResult {
-    give parse_json_value_with_limits(
+    return parse_json_value_with_limits(
         tokens,
         index,
         depth,
@@ -2818,7 +2887,7 @@ proc token_stream_valid(
     tokens: [JsonToken]
 ) -> bool {
     if tokens.length == 0 {
-        give false;
+        return false;
     }
 
     let mut index: usize = 0;
@@ -2833,7 +2902,7 @@ proc token_stream_valid(
 
         if token.kind ==
            JsonTokenKind.Invalid {
-            give false;
+            return false;
         }
 
         if token.kind ==
@@ -2842,7 +2911,7 @@ proc token_stream_valid(
 
             if index + 1 !=
                tokens.length {
-                give false;
+                return false;
             }
         }
 
@@ -2850,14 +2919,91 @@ proc token_stream_valid(
             if token.span.start.offset <
                tokens[
                    index - 1].span.end.offset {
-                give false;
+                return false;
             }
         }
 
         set index += 1;
     }
 
-    give end_count == 1;
+    return end_count == 1;
+}
+
+proc is_document_value_token(
+    tokens: [JsonToken],
+    index: usize
+) -> bool {
+    if index >=
+       tokens.length {
+        return false;
+    }
+
+    let kind: JsonTokenKind =
+        tokens[index].kind;
+
+    if kind == JsonTokenKind.Null ||
+       kind == JsonTokenKind.True ||
+       kind == JsonTokenKind.False ||
+       kind == JsonTokenKind.Number ||
+       kind == JsonTokenKind.LeftBracket ||
+       kind == JsonTokenKind.LeftBrace {
+        return true;
+    }
+
+    if kind == JsonTokenKind.String {
+        if index + 1 < tokens.length &&
+           tokens[index + 1].kind ==
+               JsonTokenKind.Colon {
+            return false;
+        }
+
+        return true;
+    }
+
+    return false;
+}
+
+proc document_value_count(
+    tokens: [JsonToken]
+) -> usize {
+    let mut count: usize = 0;
+    let mut index: usize = 0;
+
+    while index < tokens.length {
+        if is_document_value_token(
+            tokens,
+            index) {
+            set count += 1;
+        }
+
+        set index += 1;
+    }
+
+    return count;
+}
+
+proc document_value_limit_span(
+    tokens: [JsonToken],
+    max_values: usize
+) -> JsonSpan {
+    let mut count: usize = 0;
+    let mut index: usize = 0;
+
+    while index < tokens.length {
+        if is_document_value_token(
+            tokens,
+            index) {
+            set count += 1;
+
+            if count > max_values {
+                return tokens[index].span;
+            }
+        }
+
+        set index += 1;
+    }
+
+    return empty_span();
 }
 
 /// -------------------------------------------------------------------------
@@ -2886,7 +3032,7 @@ proc collect_value_statistics(
         set result.scalar_count += 1;
         set result.null_count += 1;
 
-        give result;
+        return result;
     }
 
     if value.kind ==
@@ -2894,7 +3040,7 @@ proc collect_value_statistics(
         set result.scalar_count += 1;
         set result.boolean_count += 1;
 
-        give result;
+        return result;
     }
 
     if value.kind ==
@@ -2902,7 +3048,7 @@ proc collect_value_statistics(
         set result.scalar_count += 1;
         set result.integer_count += 1;
 
-        give result;
+        return result;
     }
 
     if value.kind ==
@@ -2910,7 +3056,7 @@ proc collect_value_statistics(
         set result.scalar_count += 1;
         set result.float_count += 1;
 
-        give result;
+        return result;
     }
 
     if value.kind ==
@@ -2918,7 +3064,7 @@ proc collect_value_statistics(
         set result.scalar_count += 1;
         set result.string_count += 1;
 
-        give result;
+        return result;
     }
 
     if value.kind ==
@@ -2941,7 +3087,7 @@ proc collect_value_statistics(
             set index += 1;
         }
 
-        give result;
+        return result;
     }
 
     if value.kind ==
@@ -2964,17 +3110,17 @@ proc collect_value_statistics(
             set index += 1;
         }
 
-        give result;
+        return result;
     }
 
-    give result;
+    return result;
 }
 
 /// -------------------------------------------------------------------------
 /// Complete document parser
 /// -------------------------------------------------------------------------
 
-proc parse_tokens_with_limits(
+export proc parse_tokens_with_limits(
     tokens: [JsonToken],
     parser_limits: JsonParserLimits
 ) -> JsonParseResult {
@@ -2985,16 +3131,16 @@ proc parse_tokens_with_limits(
     set statistics_value.token_count =
         tokens.length;
 
-    if !limits_valid(
+    if not limits_valid(
         &parser_limits) {
-        give JsonParseResult {
+        return JsonParseResult {
             ok: false,
 
             value: null_value(),
 
             next: 0,
 
-            diagnostic:
+            report:
                 make_diagnostic(
                     JsonParserError.Internal,
                     JsonParserPhase.Document,
@@ -3011,14 +3157,14 @@ proc parse_tokens_with_limits(
     }
 
     if tokens.length == 0 {
-        give JsonParseResult {
+        return JsonParseResult {
             ok: false,
 
             value: null_value(),
 
             next: 0,
 
-            diagnostic:
+            report:
                 make_diagnostic(
                     JsonParserError.EmptyDocument,
                     JsonParserPhase.Document,
@@ -3034,16 +3180,16 @@ proc parse_tokens_with_limits(
         };
     }
 
-    if !token_stream_valid(
+    if not token_stream_valid(
         tokens) {
-        give JsonParseResult {
+        return JsonParseResult {
             ok: false,
 
             value: null_value(),
 
             next: 0,
 
-            diagnostic:
+            report:
                 make_diagnostic(
                     JsonParserError.InvalidTokenStream,
                     JsonParserPhase.Document,
@@ -3061,14 +3207,14 @@ proc parse_tokens_with_limits(
 
     if tokens[0].kind ==
        JsonTokenKind.End {
-        give JsonParseResult {
+        return JsonParseResult {
             ok: false,
 
             value: null_value(),
 
             next: 0,
 
-            diagnostic:
+            report:
                 make_diagnostic(
                     JsonParserError.EmptyDocument,
                     JsonParserPhase.Document,
@@ -3084,6 +3230,38 @@ proc parse_tokens_with_limits(
         };
     }
 
+    let total_values: usize =
+        document_value_count(tokens);
+
+    if total_values > parser_limits.max_values {
+        set statistics_value.value_count =
+            total_values;
+
+        return JsonParseResult {
+            ok: false,
+
+            value: null_value(),
+
+            next: 0,
+
+            report:
+                make_diagnostic(
+                    JsonParserError.TooManyValues,
+                    JsonParserPhase.Document,
+                    "JSON document contains too many values",
+                    "the configured maximum total JSON value count was exceeded",
+                    "smaller JSON document",
+                    "",
+                    "",
+                    document_value_limit_span(
+                        tokens,
+                        parser_limits.max_values)),
+
+            statistics:
+                statistics_value,
+        };
+    }
+
     let parsed:
         JsonValueParseResult =
             parse_json_value_with_limits(
@@ -3092,8 +3270,8 @@ proc parse_tokens_with_limits(
                 0,
                 parser_limits);
 
-    if !parsed.ok {
-        give JsonParseResult {
+    if not parsed.ok {
+        return JsonParseResult {
             ok: false,
 
             value: null_value(),
@@ -3101,9 +3279,10 @@ proc parse_tokens_with_limits(
             next:
                 parsed.next,
 
-            diagnostic:
+            report:
                 make_diagnostic(
-                    JsonParserError.ExpectedValue,
+                    parse_failure_error(
+                        parsed.diagnostic_message),
                     JsonParserPhase.Value,
                     "failed to parse JSON value",
                     parsed.diagnostic_message,
@@ -3126,7 +3305,7 @@ proc parse_tokens_with_limits(
 
     if parsed.next >=
        tokens.length {
-        give JsonParseResult {
+        return JsonParseResult {
             ok: false,
 
             value: null_value(),
@@ -3134,7 +3313,7 @@ proc parse_tokens_with_limits(
             next:
                 parsed.next,
 
-            diagnostic:
+            report:
                 make_diagnostic(
                     JsonParserError.UnexpectedEnd,
                     JsonParserPhase.Document,
@@ -3156,7 +3335,7 @@ proc parse_tokens_with_limits(
 
     if trailing.kind !=
        JsonTokenKind.End {
-        give JsonParseResult {
+        return JsonParseResult {
             ok: false,
 
             value: null_value(),
@@ -3164,7 +3343,7 @@ proc parse_tokens_with_limits(
             next:
                 parsed.next,
 
-            diagnostic:
+            report:
                 make_diagnostic(
                     JsonParserError.TrailingToken,
                     JsonParserPhase.Document,
@@ -3192,7 +3371,7 @@ proc parse_tokens_with_limits(
 
     if statistics_value.value_count >
        parser_limits.max_values {
-        give JsonParseResult {
+        return JsonParseResult {
             ok: false,
 
             value: null_value(),
@@ -3200,7 +3379,7 @@ proc parse_tokens_with_limits(
             next:
                 parsed.next,
 
-            diagnostic:
+            report:
                 make_diagnostic(
                     JsonParserError.TooManyValues,
                     JsonParserPhase.Document,
@@ -3216,7 +3395,7 @@ proc parse_tokens_with_limits(
         };
     }
 
-    give JsonParseResult {
+    return JsonParseResult {
         ok: true,
 
         value:
@@ -3225,7 +3404,7 @@ proc parse_tokens_with_limits(
         next:
             parsed.next + 1,
 
-        diagnostic:
+        report:
             no_diagnostic(),
 
         statistics:
@@ -3236,7 +3415,7 @@ proc parse_tokens_with_limits(
 export proc parse_tokens(
     tokens: [JsonToken]
 ) -> JsonParseResult {
-    give parse_tokens_with_limits(
+    return parse_tokens_with_limits(
         tokens,
         default_limits());
 }
@@ -3244,79 +3423,116 @@ export proc parse_tokens(
 export proc parse_tokens_strict(
     tokens: [JsonToken]
 ) -> JsonParseResult {
-    give parse_tokens_with_limits(
+    return parse_tokens_with_limits(
         tokens,
         strict_limits());
+}
+
+/// Parse source text using explicit lexer and parser resource limits.
+///
+/// Parser duplicate-key behavior comes from `parser_limits.duplicate_keys`.
+export proc parse_with_limits(
+    source: string,
+    lexer_limits: JsonLexerLimits,
+    parser_limits: JsonParserLimits
+) -> JsonParseResult {
+    if not limits_valid(
+        &parser_limits) {
+        return JsonParseResult {
+            ok: false,
+
+            value: null_value(),
+
+            next: 0,
+
+            report:
+                make_diagnostic(
+                    JsonParserError.Internal,
+                    JsonParserPhase.Document,
+                    "invalid JSON parser limits",
+                    "all parser limits must be greater than zero",
+                    "",
+                    "",
+                    "",
+                    empty_span()),
+
+            statistics:
+                empty_statistics(),
+        };
+    }
+
+    let lexical: JsonLexerResult =
+        lex_with_limits(
+            source,
+            lexer_limits);
+
+    if not lexical.ok {
+        let mut result: JsonParseResult =
+            empty_result();
+
+        set result.report.error =
+            JsonParserError.InvalidTokenStream;
+
+        set result.report.phase =
+            JsonParserPhase.Document;
+
+        set result.report.message =
+            lexical.error.message;
+
+        set result.report.detail =
+            lexical.error.detail;
+
+        set result.report.suggestion =
+            lexical.error.suggestion;
+
+        set result.report.span =
+            lexical.error.span;
+
+        set result.statistics.token_count =
+            lexical.token_count;
+
+        return result;
+    }
+
+    return parse_tokens_with_limits(
+        lexical.tokens,
+        parser_limits);
+}
+
+/// Parse source text with custom limits and reject duplicate object keys.
+export proc parse_strict_with_limits(
+    source: string,
+    lexer_limits: JsonLexerLimits,
+    parser_limits: JsonParserLimits
+) -> JsonParseResult {
+    let mut strict: JsonParserLimits =
+        parser_limits;
+
+    set strict.duplicate_keys =
+        JsonParserDuplicateKeyPolicy.Reject;
+
+    return parse_with_limits(
+        source,
+        lexer_limits,
+        strict);
 }
 
 export proc parse(
     source: string
 ) -> JsonParseResult {
-    let lexical: JsonLexerResult =
-        lex(source);
-
-    if !lexical.ok {
-        let mut result: JsonParseResult =
-            empty_result();
-
-        set result.diagnostic.error =
-            JsonParserError.InvalidTokenStream;
-
-        set result.diagnostic.phase =
-            JsonParserPhase.Document;
-
-        set result.diagnostic.message =
-            lexical.error.message;
-
-        set result.diagnostic.detail =
-            lexical.error.detail;
-
-        set result.diagnostic.suggestion =
-            lexical.error.suggestion;
-
-        set result.diagnostic.span =
-            lexical.error.span;
-
-        give result;
-    }
-
-    give parse_tokens(
-        lexical.tokens);
+    return parse_with_limits(
+        source,
+        default_lexer_limits(),
+        default_parser_limits());
 }
 
 export proc parse_strict(
     source: string
 ) -> JsonParseResult {
-    let lexical: JsonLexerResult =
-        lex(source);
-
-    if !lexical.ok {
-        let mut result: JsonParseResult =
-            empty_result();
-
-        set result.diagnostic.error =
-            JsonParserError.InvalidTokenStream;
-
-        set result.diagnostic.phase =
-            JsonParserPhase.Document;
-
-        set result.diagnostic.message =
-            lexical.error.message;
-
-        set result.diagnostic.detail =
-            lexical.error.detail;
-
-        set result.diagnostic.suggestion =
-            lexical.error.suggestion;
-
-        set result.diagnostic.span =
-            lexical.error.span;
-
-        give result;
-    }
-
-    give parse_tokens_strict(
-        lexical.tokens);
+    return parse_strict_with_limits(
+        source,
+        default_lexer_limits(),
+        default_parser_limits());
 }
 
 /// -------------------------------------------------------------------------
@@ -3326,38 +3542,38 @@ export proc parse_strict(
 proc succeeded(
     result: &JsonParseResult
 ) -> bool {
-    give result.ok;
+    return result.ok;
 }
 
 proc failed(
     result: &JsonParseResult
 ) -> bool {
-    give !result.ok;
+    return not result.ok;
 }
 
 proc has_diagnostic(
     result: &JsonParseResult
 ) -> bool {
-    give result.diagnostic.error !=
+    return result.report.error !=
          JsonParserError.None;
 }
 
 proc consumed_tokens(
     result: &JsonParseResult
 ) -> usize {
-    give result.next;
+    return result.next;
 }
 
 proc root_kind(
     result: &JsonParseResult
 ) -> JsonValueKind {
-    give result.value.kind;
+    return result.value.kind;
 }
 
 proc root_is_null(
     result: &JsonParseResult
 ) -> bool {
-    give result.ok &&
+    return result.ok &&
          result.value.kind ==
              JsonValueKind.Null;
 }
@@ -3365,7 +3581,7 @@ proc root_is_null(
 proc root_is_boolean(
     result: &JsonParseResult
 ) -> bool {
-    give result.ok &&
+    return result.ok &&
          result.value.kind ==
              JsonValueKind.Bool;
 }
@@ -3373,7 +3589,7 @@ proc root_is_boolean(
 proc root_is_number(
     result: &JsonParseResult
 ) -> bool {
-    give result.ok &&
+    return result.ok &&
          (result.value.kind ==
               JsonValueKind.Integer ||
           result.value.kind ==
@@ -3383,7 +3599,7 @@ proc root_is_number(
 proc root_is_string(
     result: &JsonParseResult
 ) -> bool {
-    give result.ok &&
+    return result.ok &&
          result.value.kind ==
              JsonValueKind.String;
 }
@@ -3391,7 +3607,7 @@ proc root_is_string(
 proc root_is_array(
     result: &JsonParseResult
 ) -> bool {
-    give result.ok &&
+    return result.ok &&
          result.value.kind ==
              JsonValueKind.Array;
 }
@@ -3399,7 +3615,7 @@ proc root_is_array(
 proc root_is_object(
     result: &JsonParseResult
 ) -> bool {
-    give result.ok &&
+    return result.ok &&
          result.value.kind ==
              JsonValueKind.Object;
 }
@@ -3413,10 +3629,10 @@ proc diagnostic_valid(
 ) -> bool {
     if value.error ==
        JsonParserError.None {
-        give value.code.length == 0;
+        return value.code.length == 0;
     }
 
-    give value.code.length != 0 &&
+    return value.code.length != 0 &&
          value.message.length != 0 &&
          span_valid(
              &value.span);
@@ -3431,41 +3647,41 @@ proc statistics_valid(
        value.integer_count +
        value.float_count +
        value.string_count {
-        give false;
+        return false;
     }
 
     if value.value_count !=
        value.scalar_count +
        value.array_count +
        value.object_count {
-        give false;
+        return false;
     }
 
-    give true;
+    return true;
 }
 
 proc validate_result(
     result: &JsonParseResult
 ) -> bool {
     if result.ok {
-        if result.diagnostic.error !=
+        if result.report.error !=
            JsonParserError.None {
-            give false;
+            return false;
         }
 
-        if !validate_json_value(
+        if not validate_json_value(
             &result.value) {
-            give false;
+            return false;
         }
 
-        give statistics_valid(
+        return statistics_valid(
             &result.statistics);
     }
 
-    give result.diagnostic.error !=
+    return result.report.error !=
              JsonParserError.None &&
          diagnostic_valid(
-             &result.diagnostic);
+             &result.report);
 }
 
 /// -------------------------------------------------------------------------
@@ -3476,7 +3692,7 @@ proc test_span(
     begin: usize,
     end: usize
 ) -> JsonSpan {
-    give span(
+    return span(
         position(
             begin,
             0,
@@ -3494,7 +3710,7 @@ proc test_punctuation(
     begin: usize,
     end: usize
 ) -> JsonToken {
-    give punctuation(
+    return punctuation(
         kind,
         text_value,
         test_span(
@@ -3508,7 +3724,7 @@ proc test_literal(
     begin: usize,
     end: usize
 ) -> JsonToken {
-    give literal(
+    return literal(
         kind,
         text_value,
         test_span(
@@ -3521,7 +3737,7 @@ proc test_number(
     begin: usize,
     end: usize
 ) -> JsonToken {
-    give number_token(
+    return number_token(
         text_value,
         test_span(
             begin,
@@ -3534,7 +3750,7 @@ proc test_string(
     begin: usize,
     end: usize
 ) -> JsonToken {
-    give string_token(
+    return string_token(
         lexeme,
         decoded,
         test_span(
@@ -3634,7 +3850,7 @@ test "json parser false document" {
     assert root_is_boolean(
         &result);
 
-    assert !result.value.bool_value;
+    assert not result.value.bool_value;
 }
 
 test "json parser integer document" {
@@ -4190,9 +4406,9 @@ test "json parser rejects empty token stream" {
         JsonParseResult =
             parse_tokens(tokens);
 
-    assert !result.ok;
+    assert not result.ok;
 
-    assert result.diagnostic.error ==
+    assert result.report.error ==
         JsonParserError.EmptyDocument;
 }
 
@@ -4210,9 +4426,9 @@ test "json parser rejects end only document" {
         JsonParseResult =
             parse_tokens(tokens);
 
-    assert !result.ok;
+    assert not result.ok;
 
-    assert result.diagnostic.error ==
+    assert result.report.error ==
         JsonParserError.EmptyDocument;
 }
 
@@ -4240,9 +4456,9 @@ test "json parser rejects trailing value" {
         JsonParseResult =
             parse_tokens(tokens);
 
-    assert !result.ok;
+    assert not result.ok;
 
-    assert result.diagnostic.error ==
+    assert result.report.error ==
         JsonParserError.TrailingToken;
 }
 
@@ -4259,9 +4475,9 @@ test "json parser rejects invalid stream without end" {
         JsonParseResult =
             parse_tokens(tokens);
 
-    assert !result.ok;
+    assert not result.ok;
 
-    assert result.diagnostic.error ==
+    assert result.report.error ==
         JsonParserError.InvalidTokenStream;
 }
 
@@ -4281,9 +4497,9 @@ test "json parser rejects invalid token" {
         JsonParseResult =
             parse_tokens(tokens);
 
-    assert !result.ok;
+    assert not result.ok;
 
-    assert result.diagnostic.error ==
+    assert result.report.error ==
         JsonParserError.InvalidTokenStream;
 }
 
@@ -4328,9 +4544,9 @@ test "json parser rejects array trailing comma" {
         JsonParseResult =
             parse_tokens(tokens);
 
-    assert !result.ok;
+    assert not result.ok;
 
-    assert result.diagnostic.detail ==
+    assert result.report.detail ==
         "trailing comma in JSON array";
 }
 
@@ -4370,7 +4586,7 @@ test "json parser rejects missing array comma" {
         JsonParseResult =
             parse_tokens(tokens);
 
-    assert !result.ok;
+    assert not result.ok;
 }
 
 /// -------------------------------------------------------------------------
@@ -4419,7 +4635,7 @@ test "json parser rejects non string object key" {
         JsonParseResult =
             parse_tokens(tokens);
 
-    assert !result.ok;
+    assert not result.ok;
 }
 
 test "json parser rejects missing object colon" {
@@ -4459,7 +4675,7 @@ test "json parser rejects missing object colon" {
         JsonParseResult =
             parse_tokens(tokens);
 
-    assert !result.ok;
+    assert not result.ok;
 }
 
 test "json parser rejects object trailing comma" {
@@ -4511,9 +4727,9 @@ test "json parser rejects object trailing comma" {
         JsonParseResult =
             parse_tokens(tokens);
 
-    assert !result.ok;
+    assert not result.ok;
 
-    assert result.diagnostic.detail ==
+    assert result.report.detail ==
         "trailing comma in JSON object";
 }
 
@@ -4660,9 +4876,9 @@ test "json parser strict rejects duplicate object keys" {
             parse_tokens_strict(
                 tokens);
 
-    assert !result.ok;
+    assert not result.ok;
 
-    assert result.diagnostic.detail ==
+    assert result.report.detail ==
         "duplicate JSON object member name";
 }
 
@@ -4793,7 +5009,7 @@ test "json parser depth limit" {
                 tokens,
                 parser_limits);
 
-    assert !result.ok;
+    assert not result.ok;
 }
 
 test "json parser array element limit" {
@@ -4850,7 +5066,7 @@ test "json parser array element limit" {
                 tokens,
                 parser_limits);
 
-    assert !result.ok;
+    assert not result.ok;
 }
 
 test "json parser object member limit" {
@@ -4931,7 +5147,7 @@ test "json parser object member limit" {
                 tokens,
                 parser_limits);
 
-    assert !result.ok;
+    assert not result.ok;
 }
 
 /// -------------------------------------------------------------------------
@@ -5116,7 +5332,7 @@ test "json parser successful result validates" {
     assert validate_result(
         &result);
 
-    assert !has_diagnostic(
+    assert not has_diagnostic(
         &result);
 }
 
@@ -5134,7 +5350,7 @@ test "json parser failed result validates" {
         JsonParseResult =
             parse_tokens(tokens);
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert validate_result(
         &result);

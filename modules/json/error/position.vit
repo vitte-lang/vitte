@@ -44,7 +44,7 @@ export proc position(
     line: usize,
     column: usize
 ) -> JsonPosition {
-    give JsonPosition {
+    return JsonPosition {
         offset: offset,
 
         line: line,
@@ -54,20 +54,20 @@ export proc position(
 }
 
 export proc start() -> JsonPosition {
-    give position(
+    return position(
         0,
         0,
         0);
 }
 
 export proc origin() -> JsonPosition {
-    give start();
+    return start();
 }
 
 export proc at_offset(
     offset: usize
 ) -> JsonPosition {
-    give position(
+    return position(
         offset,
         0,
         offset);
@@ -80,13 +80,13 @@ export proc at_offset(
 export proc human_line(
     value: &JsonPosition
 ) -> usize {
-    give value.line + 1;
+    return value.line + 1;
 }
 
 export proc human_column(
     value: &JsonPosition
 ) -> usize {
-    give value.column + 1;
+    return value.column + 1;
 }
 
 /// -------------------------------------------------------------------------
@@ -96,7 +96,7 @@ export proc human_column(
 export proc advance_column(
     value: &JsonPosition
 ) -> JsonPosition {
-    give position(
+    return position(
         value.offset + 1,
         value.line,
         value.column + 1);
@@ -106,7 +106,7 @@ export proc advance_columns(
     value: &JsonPosition,
     count: usize
 ) -> JsonPosition {
-    give position(
+    return position(
         value.offset + count,
         value.line,
         value.column + count);
@@ -115,7 +115,7 @@ export proc advance_columns(
 export proc advance_line(
     value: &JsonPosition
 ) -> JsonPosition {
-    give position(
+    return position(
         value.offset + 1,
         value.line + 1,
         0);
@@ -125,7 +125,7 @@ export proc advance_newline_width(
     value: &JsonPosition,
     width: usize
 ) -> JsonPosition {
-    give position(
+    return position(
         value.offset + width,
         value.line + 1,
         0);
@@ -134,7 +134,7 @@ export proc advance_newline_width(
 export proc advance_lf(
     value: &JsonPosition
 ) -> JsonPosition {
-    give advance_newline_width(
+    return advance_newline_width(
         value,
         1);
 }
@@ -142,7 +142,7 @@ export proc advance_lf(
 export proc advance_cr(
     value: &JsonPosition
 ) -> JsonPosition {
-    give advance_newline_width(
+    return advance_newline_width(
         value,
         1);
 }
@@ -150,7 +150,7 @@ export proc advance_cr(
 export proc advance_crlf(
     value: &JsonPosition
 ) -> JsonPosition {
-    give advance_newline_width(
+    return advance_newline_width(
         value,
         2);
 }
@@ -159,7 +159,7 @@ export proc with_offset(
     value: &JsonPosition,
     offset: usize
 ) -> JsonPosition {
-    give position(
+    return position(
         offset,
         value.line,
         value.column);
@@ -169,7 +169,7 @@ export proc with_line(
     value: &JsonPosition,
     line: usize
 ) -> JsonPosition {
-    give position(
+    return position(
         value.offset,
         line,
         value.column);
@@ -179,7 +179,7 @@ export proc with_column(
     value: &JsonPosition,
     column: usize
 ) -> JsonPosition {
-    give position(
+    return position(
         value.offset,
         value.line,
         column);
@@ -194,16 +194,16 @@ export proc advance_character(
     character: char
 ) -> JsonPosition {
     if character == '\n' {
-        give advance_lf(
+        return advance_lf(
             value);
     }
 
     if character == '\r' {
-        give advance_cr(
+        return advance_cr(
             value);
     }
 
-    give advance_column(
+    return advance_column(
         value);
 }
 
@@ -270,7 +270,7 @@ export proc advance_text(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 export proc position_after(
@@ -279,7 +279,7 @@ export proc position_after(
     let beginning: JsonPosition =
         start();
 
-    give advance_text(
+    return advance_text(
         &beginning,
         text);
 }
@@ -292,7 +292,7 @@ export proc equal(
     left: &JsonPosition,
     right: &JsonPosition
 ) -> bool {
-    give left.offset ==
+    return left.offset ==
              right.offset &&
          left.line ==
              right.line &&
@@ -304,7 +304,7 @@ export proc same_offset(
     left: &JsonPosition,
     right: &JsonPosition
 ) -> bool {
-    give left.offset ==
+    return left.offset ==
          right.offset;
 }
 
@@ -312,7 +312,7 @@ export proc before(
     left: &JsonPosition,
     right: &JsonPosition
 ) -> bool {
-    give left.offset <
+    return left.offset <
          right.offset;
 }
 
@@ -320,7 +320,7 @@ export proc before_or_equal(
     left: &JsonPosition,
     right: &JsonPosition
 ) -> bool {
-    give left.offset <=
+    return left.offset <=
          right.offset;
 }
 
@@ -328,7 +328,7 @@ export proc after(
     left: &JsonPosition,
     right: &JsonPosition
 ) -> bool {
-    give left.offset >
+    return left.offset >
          right.offset;
 }
 
@@ -336,7 +336,7 @@ export proc after_or_equal(
     left: &JsonPosition,
     right: &JsonPosition
 ) -> bool {
-    give left.offset >=
+    return left.offset >=
          right.offset;
 }
 
@@ -346,15 +346,15 @@ export proc compare(
 ) -> i64 {
     if left.offset <
        right.offset {
-        give -1;
+        return -1;
     }
 
     if left.offset >
        right.offset {
-        give 1;
+        return 1;
     }
 
-    give 0;
+    return 0;
 }
 
 export proc minimum(
@@ -363,10 +363,10 @@ export proc minimum(
 ) -> JsonPosition {
     if left.offset <=
        right.offset {
-        give left;
+        return left;
     }
 
-    give right;
+    return right;
 }
 
 export proc maximum(
@@ -375,10 +375,10 @@ export proc maximum(
 ) -> JsonPosition {
     if left.offset >=
        right.offset {
-        give left;
+        return left;
     }
 
-    give right;
+    return right;
 }
 
 /// -------------------------------------------------------------------------
@@ -391,10 +391,10 @@ export proc distance(
 ) -> usize {
     if end_position.offset <
        start_position.offset {
-        give 0;
+        return 0;
     }
 
-    give end_position.offset -
+    return end_position.offset -
          start_position.offset;
 }
 
@@ -402,7 +402,7 @@ export proc same_line(
     left: &JsonPosition,
     right: &JsonPosition
 ) -> bool {
-    give left.line ==
+    return left.line ==
          right.line;
 }
 
@@ -412,11 +412,11 @@ export proc line_distance(
 ) -> usize {
     if left.line <=
        right.line {
-        give right.line -
+        return right.line -
              left.line;
     }
 
-    give left.line -
+    return left.line -
          right.line;
 }
 
@@ -427,14 +427,14 @@ export proc line_distance(
 export proc position_valid(
     value: &JsonPosition
 ) -> bool {
-    give true;
+    return true;
 }
 
 export proc consistent_with(
     value: &JsonPosition,
     source: string
 ) -> bool {
-    give value.offset <=
+    return value.offset <=
          source.length;
 }
 
@@ -446,7 +446,7 @@ export proc span(
     start_position: JsonPosition,
     end_position: JsonPosition
 ) -> JsonSpan {
-    give JsonSpan {
+    return JsonSpan {
         start: start_position,
 
         end: end_position,
@@ -456,7 +456,7 @@ export proc span(
 export proc point(
     value: JsonPosition
 ) -> JsonSpan {
-    give span(
+    return span(
         value,
         value);
 }
@@ -465,14 +465,14 @@ export proc empty_span() -> JsonSpan {
     let value: JsonPosition =
         start();
 
-    give point(
+    return point(
         value);
 }
 
 export proc span_from_start(
     end_position: JsonPosition
 ) -> JsonSpan {
-    give span(
+    return span(
         start(),
         end_position);
 }
@@ -488,7 +488,7 @@ export proc span_from_text(
             &first,
             text);
 
-    give span(
+    return span(
         first,
         last);
 }
@@ -502,7 +502,7 @@ export proc span_for_text(
             &start_position,
             text);
 
-    give span(
+    return span(
         start_position,
         end_position);
 }
@@ -514,21 +514,21 @@ export proc span_for_text(
 export proc span_valid(
     value: &JsonSpan
 ) -> bool {
-    give value.end.offset >=
+    return value.end.offset >=
          value.start.offset;
 }
 
 export proc span_empty(
     value: &JsonSpan
 ) -> bool {
-    give value.start.offset ==
+    return value.start.offset ==
          value.end.offset;
 }
 
 export proc span_length(
     value: &JsonSpan
 ) -> usize {
-    give distance(
+    return distance(
         &value.start,
         &value.end);
 }
@@ -536,25 +536,25 @@ export proc span_length(
 export proc span_single_line(
     value: &JsonSpan
 ) -> bool {
-    give value.start.line ==
+    return value.start.line ==
          value.end.line;
 }
 
 export proc span_multiline(
     value: &JsonSpan
 ) -> bool {
-    give value.start.line !=
+    return value.start.line !=
          value.end.line;
 }
 
 export proc span_line_count(
     value: &JsonSpan
 ) -> usize {
-    if !span_valid(value) {
-        give 0;
+    if not span_valid(value) {
+        return 0;
     }
 
-    give value.end.line -
+    return value.end.line -
          value.start.line +
          1;
 }
@@ -567,7 +567,7 @@ export proc spans_equal(
     left: &JsonSpan,
     right: &JsonSpan
 ) -> bool {
-    give equal(
+    return equal(
                &left.start,
                &right.start) &&
          equal(
@@ -579,7 +579,7 @@ export proc span_before(
     left: &JsonSpan,
     right: &JsonSpan
 ) -> bool {
-    give left.end.offset <=
+    return left.end.offset <=
          right.start.offset;
 }
 
@@ -587,7 +587,7 @@ export proc span_after(
     left: &JsonSpan,
     right: &JsonSpan
 ) -> bool {
-    give left.start.offset >=
+    return left.start.offset >=
          right.end.offset;
 }
 
@@ -595,7 +595,7 @@ export proc span_contains_position(
     value: &JsonSpan,
     position_value: &JsonPosition
 ) -> bool {
-    give position_value.offset >=
+    return position_value.offset >=
              value.start.offset &&
          position_value.offset <
              value.end.offset;
@@ -605,7 +605,7 @@ export proc span_contains_position_inclusive(
     value: &JsonSpan,
     position_value: &JsonPosition
 ) -> bool {
-    give position_value.offset >=
+    return position_value.offset >=
              value.start.offset &&
          position_value.offset <=
              value.end.offset;
@@ -615,7 +615,7 @@ export proc span_contains_span(
     outer: &JsonSpan,
     inner: &JsonSpan
 ) -> bool {
-    give inner.start.offset >=
+    return inner.start.offset >=
              outer.start.offset &&
          inner.end.offset <=
              outer.end.offset;
@@ -625,7 +625,7 @@ export proc spans_overlap(
     left: &JsonSpan,
     right: &JsonSpan
 ) -> bool {
-    give left.start.offset <
+    return left.start.offset <
              right.end.offset &&
          right.start.offset <
              left.end.offset;
@@ -635,7 +635,7 @@ export proc spans_touch(
     left: &JsonSpan,
     right: &JsonSpan
 ) -> bool {
-    give left.end.offset ==
+    return left.end.offset ==
              right.start.offset ||
          right.end.offset ==
              left.start.offset;
@@ -645,7 +645,7 @@ export proc spans_overlap_or_touch(
     left: &JsonSpan,
     right: &JsonSpan
 ) -> bool {
-    give spans_overlap(
+    return spans_overlap(
                left,
                right) ||
          spans_touch(
@@ -671,7 +671,7 @@ export proc merge_spans(
             &left.end,
             &right.end);
 
-    give span(
+    return span(
         first,
         last);
 }
@@ -682,14 +682,14 @@ export proc span_between(
 ) -> JsonSpan {
     if left.end.offset <=
        right.start.offset {
-        give span(
+        return span(
             left.end,
             right.start);
     }
 
     if right.end.offset <=
        left.start.offset {
-        give span(
+        return span(
             right.end,
             left.start);
     }
@@ -699,7 +699,7 @@ export proc span_between(
             &left.start,
             &right.start);
 
-    give point(
+    return point(
         overlap_start);
 }
 
@@ -711,21 +711,21 @@ export proc span_consistent_with(
     value: &JsonSpan,
     source: string
 ) -> bool {
-    if !span_valid(value) {
-        give false;
+    if not span_valid(value) {
+        return false;
     }
 
     if value.start.offset >
        source.length {
-        give false;
+        return false;
     }
 
     if value.end.offset >
        source.length {
-        give false;
+        return false;
     }
 
-    give true;
+    return true;
 }
 
 /// -------------------------------------------------------------------------
@@ -736,7 +736,7 @@ export proc located(
     source: string,
     value: JsonSpan
 ) -> JsonLocatedRange {
-    give JsonLocatedRange {
+    return JsonLocatedRange {
         source: source,
 
         span: value,
@@ -747,7 +747,7 @@ export proc located_point(
     source: string,
     value: JsonPosition
 ) -> JsonLocatedRange {
-    give located(
+    return located(
         source,
         point(value));
 }
@@ -756,7 +756,7 @@ export proc located_equal(
     left: &JsonLocatedRange,
     right: &JsonLocatedRange
 ) -> bool {
-    give left.source ==
+    return left.source ==
              right.source &&
          spans_equal(
              &left.span,
@@ -766,7 +766,7 @@ export proc located_equal(
 export proc located_valid(
     value: &JsonLocatedRange
 ) -> bool {
-    give span_valid(
+    return span_valid(
         &value.span);
 }
 
@@ -1008,7 +1008,7 @@ test "json position text span" {
     assert span_valid(
         &value);
 
-    assert !span_empty(
+    assert not span_empty(
         &value);
 
     assert span_length(
@@ -1066,7 +1066,7 @@ test "json position span contains position" {
         &value,
         &inside);
 
-    assert !span_contains_position(
+    assert not span_contains_position(
         &value,
         &outside);
 }
@@ -1156,7 +1156,7 @@ test "json position touching spans" {
                 0,
                 30));
 
-    assert !spans_overlap(
+    assert not spans_overlap(
         &left,
         &right);
 
@@ -1244,7 +1244,7 @@ test "json position rejects source overflow" {
                 0,
                 100));
 
-    assert !span_consistent_with(
+    assert not span_consistent_with(
         &value,
         source);
 }

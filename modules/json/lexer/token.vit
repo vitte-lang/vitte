@@ -54,7 +54,7 @@ proc token(
     value: string,
     location: JsonSpan
 ) -> JsonToken {
-    give JsonToken {
+    return JsonToken {
         kind: kind,
         lexeme: lexeme,
         value: value,
@@ -63,7 +63,7 @@ proc token(
 }
 
 export proc invalid() -> JsonToken {
-    give token(
+    return token(
         JsonTokenKind.Invalid,
         "",
         "",
@@ -73,7 +73,7 @@ export proc invalid() -> JsonToken {
 export proc end(
     location: JsonPosition
 ) -> JsonToken {
-    give token(
+    return token(
         JsonTokenKind.End,
         "",
         "",
@@ -85,7 +85,7 @@ export proc punctuation(
     lexeme: string,
     location: JsonSpan
 ) -> JsonToken {
-    give token(
+    return token(
         kind,
         lexeme,
         lexeme,
@@ -97,7 +97,7 @@ export proc literal(
     lexeme: string,
     location: JsonSpan
 ) -> JsonToken {
-    give token(
+    return token(
         kind,
         lexeme,
         lexeme,
@@ -109,7 +109,7 @@ export proc string_token(
     value: string,
     location: JsonSpan
 ) -> JsonToken {
-    give token(
+    return token(
         JsonTokenKind.String,
         lexeme,
         value,
@@ -120,7 +120,7 @@ export proc number_token(
     lexeme: string,
     location: JsonSpan
 ) -> JsonToken {
-    give token(
+    return token(
         JsonTokenKind.Number,
         lexeme,
         lexeme,
@@ -135,108 +135,108 @@ proc kind_name(
     kind: JsonTokenKind
 ) -> string {
     if kind == JsonTokenKind.Invalid {
-        give "invalid";
+        return "invalid";
     }
 
     if kind == JsonTokenKind.End {
-        give "end";
+        return "end";
     }
 
     if kind == JsonTokenKind.LeftBrace {
-        give "left-brace";
+        return "left-brace";
     }
 
     if kind == JsonTokenKind.RightBrace {
-        give "right-brace";
+        return "right-brace";
     }
 
     if kind == JsonTokenKind.LeftBracket {
-        give "left-bracket";
+        return "left-bracket";
     }
 
     if kind == JsonTokenKind.RightBracket {
-        give "right-bracket";
+        return "right-bracket";
     }
 
     if kind == JsonTokenKind.Colon {
-        give "colon";
+        return "colon";
     }
 
     if kind == JsonTokenKind.Comma {
-        give "comma";
+        return "comma";
     }
 
     if kind == JsonTokenKind.Null {
-        give "null";
+        return "null";
     }
 
     if kind == JsonTokenKind.True {
-        give "true";
+        return "true";
     }
 
     if kind == JsonTokenKind.False {
-        give "false";
+        return "false";
     }
 
     if kind == JsonTokenKind.Number {
-        give "number";
+        return "number";
     }
 
-    give "string";
+    return "string";
 }
 
 export proc display_name(
     kind: JsonTokenKind
 ) -> string {
     if kind == JsonTokenKind.LeftBrace {
-        give "'{'";
+        return "'{'";
     }
 
     if kind == JsonTokenKind.RightBrace {
-        give "'}'";
+        return "'}'";
     }
 
     if kind == JsonTokenKind.LeftBracket {
-        give "'['";
+        return "'['";
     }
 
     if kind == JsonTokenKind.RightBracket {
-        give "']'";
+        return "']'";
     }
 
     if kind == JsonTokenKind.Colon {
-        give "':'";
+        return "':'";
     }
 
     if kind == JsonTokenKind.Comma {
-        give "','";
+        return "','";
     }
 
     if kind == JsonTokenKind.Null {
-        give "'null'";
+        return "'null'";
     }
 
     if kind == JsonTokenKind.True {
-        give "'true'";
+        return "'true'";
     }
 
     if kind == JsonTokenKind.False {
-        give "'false'";
+        return "'false'";
     }
 
     if kind == JsonTokenKind.Number {
-        give "number";
+        return "number";
     }
 
     if kind == JsonTokenKind.String {
-        give "string";
+        return "string";
     }
 
     if kind == JsonTokenKind.End {
-        give "end of input";
+        return "end of input";
     }
 
-    give "invalid token";
+    return "invalid token";
 }
 
 /// -------------------------------------------------------------------------
@@ -246,21 +246,21 @@ export proc display_name(
 proc is_invalid(
     value: &JsonToken
 ) -> bool {
-    give value.kind ==
+    return value.kind ==
          JsonTokenKind.Invalid;
 }
 
 proc is_end(
     value: &JsonToken
 ) -> bool {
-    give value.kind ==
+    return value.kind ==
          JsonTokenKind.End;
 }
 
 proc is_punctuation_kind(
     kind: JsonTokenKind
 ) -> bool {
-    give kind == JsonTokenKind.LeftBrace ||
+    return kind == JsonTokenKind.LeftBrace ||
          kind == JsonTokenKind.RightBrace ||
          kind == JsonTokenKind.LeftBracket ||
          kind == JsonTokenKind.RightBracket ||
@@ -271,14 +271,14 @@ proc is_punctuation_kind(
 proc is_punctuation(
     value: &JsonToken
 ) -> bool {
-    give is_punctuation_kind(
+    return is_punctuation_kind(
         value.kind);
 }
 
 proc is_literal_kind(
     kind: JsonTokenKind
 ) -> bool {
-    give kind == JsonTokenKind.Null ||
+    return kind == JsonTokenKind.Null ||
          kind == JsonTokenKind.True ||
          kind == JsonTokenKind.False ||
          kind == JsonTokenKind.Number ||
@@ -288,27 +288,27 @@ proc is_literal_kind(
 proc is_literal(
     value: &JsonToken
 ) -> bool {
-    give is_literal_kind(
+    return is_literal_kind(
         value.kind);
 }
 
 proc is_scalar_kind(
     kind: JsonTokenKind
 ) -> bool {
-    give is_literal_kind(kind);
+    return is_literal_kind(kind);
 }
 
 proc is_scalar(
     value: &JsonToken
 ) -> bool {
-    give is_scalar_kind(
+    return is_scalar_kind(
         value.kind);
 }
 
-proc begins_value_kind(
+export proc begins_value_kind(
     kind: JsonTokenKind
 ) -> bool {
-    give is_literal_kind(kind) ||
+    return is_literal_kind(kind) ||
          kind == JsonTokenKind.LeftBrace ||
          kind == JsonTokenKind.LeftBracket;
 }
@@ -316,91 +316,91 @@ proc begins_value_kind(
 proc begins_value(
     value: &JsonToken
 ) -> bool {
-    give begins_value_kind(
+    return begins_value_kind(
         value.kind);
 }
 
 proc begins_container_kind(
     kind: JsonTokenKind
 ) -> bool {
-    give kind == JsonTokenKind.LeftBrace ||
+    return kind == JsonTokenKind.LeftBrace ||
          kind == JsonTokenKind.LeftBracket;
 }
 
 proc begins_container(
     value: &JsonToken
 ) -> bool {
-    give begins_container_kind(
+    return begins_container_kind(
         value.kind);
 }
 
 proc ends_container_kind(
     kind: JsonTokenKind
 ) -> bool {
-    give kind == JsonTokenKind.RightBrace ||
+    return kind == JsonTokenKind.RightBrace ||
          kind == JsonTokenKind.RightBracket;
 }
 
 proc ends_container(
     value: &JsonToken
 ) -> bool {
-    give ends_container_kind(
+    return ends_container_kind(
         value.kind);
 }
 
 proc is_object_boundary_kind(
     kind: JsonTokenKind
 ) -> bool {
-    give kind == JsonTokenKind.LeftBrace ||
+    return kind == JsonTokenKind.LeftBrace ||
          kind == JsonTokenKind.RightBrace;
 }
 
 proc is_array_boundary_kind(
     kind: JsonTokenKind
 ) -> bool {
-    give kind == JsonTokenKind.LeftBracket ||
+    return kind == JsonTokenKind.LeftBracket ||
          kind == JsonTokenKind.RightBracket;
 }
 
 proc is_separator_kind(
     kind: JsonTokenKind
 ) -> bool {
-    give kind == JsonTokenKind.Colon ||
+    return kind == JsonTokenKind.Colon ||
          kind == JsonTokenKind.Comma;
 }
 
 proc is_boolean_kind(
     kind: JsonTokenKind
 ) -> bool {
-    give kind == JsonTokenKind.True ||
+    return kind == JsonTokenKind.True ||
          kind == JsonTokenKind.False;
 }
 
 proc is_boolean(
     value: &JsonToken
 ) -> bool {
-    give is_boolean_kind(
+    return is_boolean_kind(
         value.kind);
 }
 
 proc is_null(
     value: &JsonToken
 ) -> bool {
-    give value.kind ==
+    return value.kind ==
          JsonTokenKind.Null;
 }
 
 proc is_number(
     value: &JsonToken
 ) -> bool {
-    give value.kind ==
+    return value.kind ==
          JsonTokenKind.Number;
 }
 
 proc is_string(
     value: &JsonToken
 ) -> bool {
-    give value.kind ==
+    return value.kind ==
          JsonTokenKind.String;
 }
 
@@ -412,13 +412,13 @@ proc is_kind(
     value: &JsonToken,
     kind: JsonTokenKind
 ) -> bool {
-    give value.kind == kind;
+    return value.kind == kind;
 }
 
 proc matches_any_value(
     value: &JsonToken
 ) -> bool {
-    give begins_value(value);
+    return begins_value(value);
 }
 
 /// -------------------------------------------------------------------------
@@ -429,60 +429,60 @@ proc punctuation_kind(
     value: char
 ) -> JsonTokenKind {
     if value == '{' {
-        give JsonTokenKind.LeftBrace;
+        return JsonTokenKind.LeftBrace;
     }
 
     if value == '}' {
-        give JsonTokenKind.RightBrace;
+        return JsonTokenKind.RightBrace;
     }
 
     if value == '[' {
-        give JsonTokenKind.LeftBracket;
+        return JsonTokenKind.LeftBracket;
     }
 
     if value == ']' {
-        give JsonTokenKind.RightBracket;
+        return JsonTokenKind.RightBracket;
     }
 
     if value == ':' {
-        give JsonTokenKind.Colon;
+        return JsonTokenKind.Colon;
     }
 
     if value == ',' {
-        give JsonTokenKind.Comma;
+        return JsonTokenKind.Comma;
     }
 
-    give JsonTokenKind.Invalid;
+    return JsonTokenKind.Invalid;
 }
 
 proc punctuation_text(
     kind: JsonTokenKind
 ) -> string {
     if kind == JsonTokenKind.LeftBrace {
-        give "{";
+        return "{";
     }
 
     if kind == JsonTokenKind.RightBrace {
-        give "}";
+        return "}";
     }
 
     if kind == JsonTokenKind.LeftBracket {
-        give "[";
+        return "[";
     }
 
     if kind == JsonTokenKind.RightBracket {
-        give "]";
+        return "]";
     }
 
     if kind == JsonTokenKind.Colon {
-        give ":";
+        return ":";
     }
 
     if kind == JsonTokenKind.Comma {
-        give ",";
+        return ",";
     }
 
-    give "";
+    return "";
 }
 
 /// -------------------------------------------------------------------------
@@ -499,56 +499,56 @@ proc text_equals(
     right: string
 ) -> bool {
     if left.length != right.length {
-        give false;
+        return false;
     }
 
     let mut index: usize = 0;
 
     while index < left.length {
         if left[index] != right[index] {
-            give false;
+            return false;
         }
 
         set index += 1;
     }
 
-    give true;
+    return true;
 }
 
 proc literal_kind(
     value: string
 ) -> JsonTokenKind {
     if text_equals(value, "null") {
-        give JsonTokenKind.Null;
+        return JsonTokenKind.Null;
     }
 
     if text_equals(value, "true") {
-        give JsonTokenKind.True;
+        return JsonTokenKind.True;
     }
 
     if text_equals(value, "false") {
-        give JsonTokenKind.False;
+        return JsonTokenKind.False;
     }
 
-    give JsonTokenKind.Invalid;
+    return JsonTokenKind.Invalid;
 }
 
 proc literal_text(
     kind: JsonTokenKind
 ) -> string {
     if kind == JsonTokenKind.Null {
-        give "null";
+        return "null";
     }
 
     if kind == JsonTokenKind.True {
-        give "true";
+        return "true";
     }
 
     if kind == JsonTokenKind.False {
-        give "false";
+        return "false";
     }
 
-    give "";
+    return "";
 }
 
 /// -------------------------------------------------------------------------
@@ -558,44 +558,44 @@ proc literal_text(
 proc decoded_value(
     value: &JsonToken
 ) -> string {
-    give value.value;
+    return value.value;
 }
 
 proc source_text(
     value: &JsonToken
 ) -> string {
-    give value.lexeme;
+    return value.lexeme;
 }
 
 proc length(
     value: &JsonToken
 ) -> usize {
-    give span_length(
+    return span_length(
         &value.span);
 }
 
 proc source_length(
     value: &JsonToken
 ) -> usize {
-    give value.lexeme.length;
+    return value.lexeme.length;
 }
 
 proc decoded_length(
     value: &JsonToken
 ) -> usize {
-    give value.value.length;
+    return value.value.length;
 }
 
 proc start_position(
     value: &JsonToken
 ) -> JsonPosition {
-    give value.span.start;
+    return value.span.start;
 }
 
 proc end_position(
     value: &JsonToken
 ) -> JsonPosition {
-    give value.span.end;
+    return value.span.end;
 }
 
 /// -------------------------------------------------------------------------
@@ -605,7 +605,7 @@ proc end_position(
 proc boolean_value(
     value: &JsonToken
 ) -> bool {
-    give value.kind ==
+    return value.kind ==
          JsonTokenKind.True;
 }
 
@@ -618,15 +618,15 @@ proc matching_close(
 ) -> JsonTokenKind {
     if kind ==
        JsonTokenKind.LeftBrace {
-        give JsonTokenKind.RightBrace;
+        return JsonTokenKind.RightBrace;
     }
 
     if kind ==
        JsonTokenKind.LeftBracket {
-        give JsonTokenKind.RightBracket;
+        return JsonTokenKind.RightBracket;
     }
 
-    give JsonTokenKind.Invalid;
+    return JsonTokenKind.Invalid;
 }
 
 proc matching_open(
@@ -634,22 +634,22 @@ proc matching_open(
 ) -> JsonTokenKind {
     if kind ==
        JsonTokenKind.RightBrace {
-        give JsonTokenKind.LeftBrace;
+        return JsonTokenKind.LeftBrace;
     }
 
     if kind ==
        JsonTokenKind.RightBracket {
-        give JsonTokenKind.LeftBracket;
+        return JsonTokenKind.LeftBracket;
     }
 
-    give JsonTokenKind.Invalid;
+    return JsonTokenKind.Invalid;
 }
 
 proc boundaries_match(
     open: JsonTokenKind,
     close: JsonTokenKind
 ) -> bool {
-    give matching_close(open) ==
+    return matching_close(open) ==
          close;
 }
 
@@ -660,37 +660,37 @@ proc boundaries_match(
 proc kind_valid(
     kind: JsonTokenKind
 ) -> bool {
-    give kind !=
+    return kind !=
          JsonTokenKind.Invalid;
 }
 
 proc validate(
     value: &JsonToken
 ) -> bool {
-    if !kind_valid(
+    if not kind_valid(
         value.kind) {
-        give false;
+        return false;
     }
 
-    if !span_valid(
+    if not span_valid(
         &value.span) {
-        give false;
+        return false;
     }
 
     if value.kind ==
        JsonTokenKind.End {
-        give value.lexeme.length == 0 &&
+        return value.lexeme.length == 0 &&
              value.value.length == 0 &&
              span_empty(
                  &value.span);
     }
 
     if value.lexeme.length == 0 {
-        give false;
+        return false;
     }
 
     if is_punctuation(value) {
-        give value.lexeme ==
+        return value.lexeme ==
                  punctuation_text(
                      value.kind) &&
              value.value ==
@@ -703,7 +703,7 @@ proc validate(
            JsonTokenKind.True ||
        value.kind ==
            JsonTokenKind.False {
-        give value.lexeme ==
+        return value.lexeme ==
                  literal_text(
                      value.kind) &&
              value.value ==
@@ -713,24 +713,24 @@ proc validate(
     if value.kind ==
        JsonTokenKind.String {
         if value.lexeme.length < 2 {
-            give false;
+            return false;
         }
 
         let last_index: usize =
             value.lexeme.length - 1;
 
-        give value.lexeme[0] == '"' &&
+        return value.lexeme[0] == '"' &&
              value.lexeme[last_index] ==
                      '"';
     }
 
     if value.kind ==
        JsonTokenKind.Number {
-        give value.value ==
+        return value.value ==
              value.lexeme;
     }
 
-    give true;
+    return true;
 }
 
 /// -------------------------------------------------------------------------
@@ -741,7 +741,7 @@ proc token_equal(
     left: &JsonToken,
     right: &JsonToken
 ) -> bool {
-    give left.kind ==
+    return left.kind ==
              right.kind &&
          left.lexeme ==
              right.lexeme &&
@@ -756,7 +756,7 @@ proc same_kind(
     left: &JsonToken,
     right: &JsonToken
 ) -> bool {
-    give left.kind ==
+    return left.kind ==
          right.kind;
 }
 
@@ -764,7 +764,7 @@ proc same_value(
     left: &JsonToken,
     right: &JsonToken
 ) -> bool {
-    give left.kind ==
+    return left.kind ==
              right.kind &&
          left.value ==
              right.value;
@@ -774,7 +774,7 @@ proc same_source(
     left: &JsonToken,
     right: &JsonToken
 ) -> bool {
-    give left.lexeme ==
+    return left.lexeme ==
              right.lexeme &&
          spans_equal(
              &left.span,
@@ -789,7 +789,7 @@ proc token_before(
     left: &JsonToken,
     right: &JsonToken
 ) -> bool {
-    give left.span.end.offset <=
+    return left.span.end.offset <=
          right.span.start.offset;
 }
 
@@ -797,7 +797,7 @@ proc token_after(
     left: &JsonToken,
     right: &JsonToken
 ) -> bool {
-    give left.span.start.offset >=
+    return left.span.start.offset >=
          right.span.end.offset;
 }
 
@@ -805,7 +805,7 @@ proc overlaps(
     left: &JsonToken,
     right: &JsonToken
 ) -> bool {
-    give spans_overlap(
+    return spans_overlap(
         &left.span,
         &right.span);
 }
@@ -818,10 +818,10 @@ proc sequence_starts_value(
     tokens: [JsonToken]
 ) -> bool {
     if tokens.length == 0 {
-        give false;
+        return false;
     }
 
-    give begins_value(
+    return begins_value(
         &tokens[0]);
 }
 
@@ -829,13 +829,13 @@ proc sequence_ends_input(
     tokens: [JsonToken]
 ) -> bool {
     if tokens.length == 0 {
-        give false;
+        return false;
     }
 
     let last_index: usize =
         tokens.length - 1;
 
-    give tokens[last_index].kind ==
+    return tokens[last_index].kind ==
             JsonTokenKind.End;
 }
 
@@ -857,7 +857,7 @@ proc count_kind(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc count_literals(
@@ -877,7 +877,7 @@ proc count_literals(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc count_punctuation(
@@ -897,42 +897,42 @@ proc count_punctuation(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc validate_sequence(
     tokens: [JsonToken]
 ) -> bool {
     if tokens.length == 0 {
-        give false;
+        return false;
     }
 
     let mut index: usize = 0;
 
     while index <
           tokens.length {
-        if !validate(
+        if not validate(
             &tokens[index]) {
-            give false;
+            return false;
         }
 
         if index > 0 &&
            tokens[index].span.start.offset <
            tokens[index - 1].span.end.offset {
-            give false;
+            return false;
         }
 
         if tokens[index].kind ==
                JsonTokenKind.End &&
            index + 1 !=
                tokens.length {
-            give false;
+            return false;
         }
 
         set index += 1;
     }
 
-    give sequence_ends_input(
+    return sequence_ends_input(
         tokens);
 }
 
@@ -950,7 +950,7 @@ test "json token invalid" {
     assert is_invalid(
         &value);
 
-    assert !validate(
+    assert not validate(
         &value);
 }
 
@@ -1115,7 +1115,7 @@ test "json token literal classification" {
     assert is_literal_kind(
         JsonTokenKind.String);
 
-    assert !is_literal_kind(
+    assert not is_literal_kind(
         JsonTokenKind.LeftBrace);
 }
 
@@ -1145,10 +1145,10 @@ test "json token value beginnings" {
     assert begins_value_kind(
         JsonTokenKind.LeftBracket);
 
-    assert !begins_value_kind(
+    assert not begins_value_kind(
         JsonTokenKind.Comma);
 
-    assert !begins_value_kind(
+    assert not begins_value_kind(
         JsonTokenKind.End);
 }
 
@@ -1185,11 +1185,11 @@ test "json token matching brackets" {
 }
 
 test "json token mismatched containers" {
-    assert !boundaries_match(
+    assert not boundaries_match(
         JsonTokenKind.LeftBrace,
         JsonTokenKind.RightBracket);
 
-    assert !boundaries_match(
+    assert not boundaries_match(
         JsonTokenKind.LeftBracket,
         JsonTokenKind.RightBrace);
 }
@@ -1337,7 +1337,7 @@ test "json token boolean values" {
     assert boolean_value(
         &true_value);
 
-    assert !boolean_value(
+    assert not boolean_value(
         &false_value);
 }
 
@@ -1428,7 +1428,7 @@ test "json token source ordering" {
         &right,
         &left);
 
-    assert !overlaps(
+    assert not overlaps(
         &left,
         &right);
 }

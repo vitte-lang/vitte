@@ -55,7 +55,7 @@ form JsonEncoder {
 /// -------------------------------------------------------------------------
 
 proc default_options() -> JsonEncodeOptions {
-    give JsonEncodeOptions {
+    return JsonEncodeOptions {
         pretty: false,
         indent: JSON_ENCODER_DEFAULT_INDENT,
         escape_slash: false,
@@ -63,7 +63,7 @@ proc default_options() -> JsonEncodeOptions {
 }
 
 proc compact_options() -> JsonEncodeOptions {
-    give JsonEncodeOptions {
+    return JsonEncodeOptions {
         pretty: false,
         indent: 0,
         escape_slash: false,
@@ -71,7 +71,7 @@ proc compact_options() -> JsonEncodeOptions {
 }
 
 proc pretty_options() -> JsonEncodeOptions {
-    give JsonEncodeOptions {
+    return JsonEncodeOptions {
         pretty: true,
         indent: JSON_ENCODER_DEFAULT_INDENT,
         escape_slash: false,
@@ -81,7 +81,7 @@ proc pretty_options() -> JsonEncodeOptions {
 proc pretty_options_with_indent(
     indent: usize
 ) -> JsonEncodeOptions {
-    give JsonEncodeOptions {
+    return JsonEncodeOptions {
         pretty: true,
         indent: indent,
         escape_slash: false,
@@ -95,7 +95,7 @@ proc pretty_options_with_indent(
 proc encode_success(
     text: string
 ) -> JsonEncodeResult {
-    give JsonEncodeResult {
+    return JsonEncodeResult {
         ok: true,
         text: text,
         error: JsonEncodeError.None,
@@ -105,7 +105,7 @@ proc encode_success(
 proc encode_failure(
     error: JsonEncodeError
 ) -> JsonEncodeResult {
-    give JsonEncodeResult {
+    return JsonEncodeResult {
         ok: false,
         text: "",
         error: error,
@@ -117,30 +117,30 @@ proc error_name(
 ) -> string {
     if error ==
        JsonEncodeError.None {
-        give "none";
+        return "none";
     }
 
     if error ==
        JsonEncodeError.InvalidValue {
-        give "invalid JSON value";
+        return "invalid JSON value";
     }
 
     if error ==
        JsonEncodeError.InvalidNumber {
-        give "invalid JSON number";
+        return "invalid JSON number";
     }
 
     if error ==
        JsonEncodeError.InvalidString {
-        give "invalid JSON string";
+        return "invalid JSON string";
     }
 
     if error ==
        JsonEncodeError.DuplicateKey {
-        give "duplicate object key";
+        return "duplicate object key";
     }
 
-    give "maximum JSON encoding depth exceeded";
+    return "maximum JSON encoding depth exceeded";
 }
 
 /// -------------------------------------------------------------------------
@@ -150,7 +150,7 @@ proc error_name(
 proc encoder(
     options: JsonEncodeOptions
 ) -> JsonEncoder {
-    give JsonEncoder {
+    return JsonEncoder {
         options: options,
         output: "",
         depth: 0,
@@ -166,12 +166,12 @@ proc encoder_fail(
     let mut result: JsonEncoder =
         *state;
 
-    if !result.failed {
+    if not result.failed {
         set result.failed = true;
         set result.error = error;
     }
 
-    give result;
+    return result;
 }
 
 proc append(
@@ -182,13 +182,13 @@ proc append(
         *state;
 
     if result.failed {
-        give result;
+        return result;
     }
 
     set result.output =
         result.output + text;
 
-    give result;
+    return result;
 }
 
 proc append_char(
@@ -199,13 +199,13 @@ proc append_char(
         *state;
 
     if result.failed {
-        give result;
+        return result;
     }
 
     set result.output =
         result.output + value;
 
-    give result;
+    return result;
 }
 
 /// -------------------------------------------------------------------------
@@ -215,11 +215,11 @@ proc append_char(
 proc append_newline(
     state: &JsonEncoder
 ) -> JsonEncoder {
-    if !state.options.pretty {
-        give state;
+    if not state.options.pretty {
+        return state;
     }
 
-    give append(
+    return append(
         state,
         "\n");
 }
@@ -242,18 +242,18 @@ proc append_spaces(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc append_indent_level(
     state: &JsonEncoder,
     level: usize
 ) -> JsonEncoder {
-    if !state.options.pretty {
-        give state;
+    if not state.options.pretty {
+        return state;
     }
 
-    give append_spaces(
+    return append_spaces(
         state,
         level *
         state.options.indent);
@@ -262,7 +262,7 @@ proc append_indent_level(
 proc append_current_indent(
     state: &JsonEncoder
 ) -> JsonEncoder {
-    give append_indent_level(
+    return append_indent_level(
         state,
         state.depth);
 }
@@ -271,12 +271,12 @@ proc append_separator_space(
     state: &JsonEncoder
 ) -> JsonEncoder {
     if state.options.pretty {
-        give append(
+        return append(
             state,
             " ");
     }
 
-    give state;
+    return state;
 }
 
 /// -------------------------------------------------------------------------
@@ -287,66 +287,66 @@ proc hex_digit(
     value: u64
 ) -> string {
     if value == 0 {
-        give "0";
+        return "0";
     }
 
     if value == 1 {
-        give "1";
+        return "1";
     }
 
     if value == 2 {
-        give "2";
+        return "2";
     }
 
     if value == 3 {
-        give "3";
+        return "3";
     }
 
     if value == 4 {
-        give "4";
+        return "4";
     }
 
     if value == 5 {
-        give "5";
+        return "5";
     }
 
     if value == 6 {
-        give "6";
+        return "6";
     }
 
     if value == 7 {
-        give "7";
+        return "7";
     }
 
     if value == 8 {
-        give "8";
+        return "8";
     }
 
     if value == 9 {
-        give "9";
+        return "9";
     }
 
     if value == 10 {
-        give "A";
+        return "A";
     }
 
     if value == 11 {
-        give "B";
+        return "B";
     }
 
     if value == 12 {
-        give "C";
+        return "C";
     }
 
     if value == 13 {
-        give "D";
+        return "D";
     }
 
     if value == 14 {
-        give "E";
+        return "E";
     }
 
-    give "F";
+    return "F";
 }
 
 proc unicode_escape(
@@ -364,7 +364,7 @@ proc unicode_escape(
     let d: u64 =
         value & 15;
 
-    give "\\u" +
+    return "\\u" +
          hex_digit(a) +
          hex_digit(b) +
          hex_digit(c) +
@@ -380,50 +380,50 @@ proc append_escaped_character(
     value: char
 ) -> JsonEncoder {
     if value == '"' {
-        give append(
+        return append(
             state,
             "\\\"");
     }
 
     if value == '\\' {
-        give append(
+        return append(
             state,
             "\\\\");
     }
 
     if value == '/' &&
        state.options.escape_slash {
-        give append(
+        return append(
             state,
             "\\/");
     }
 
     if value == '\b' {
-        give append(
+        return append(
             state,
             "\\b");
     }
 
     if value == '\f' {
-        give append(
+        return append(
             state,
             "\\f");
     }
 
     if value == '\n' {
-        give append(
+        return append(
             state,
             "\\n");
     }
 
     if value == '\r' {
-        give append(
+        return append(
             state,
             "\\r");
     }
 
     if value == '\t' {
-        give append(
+        return append(
             state,
             "\\t");
     }
@@ -432,12 +432,12 @@ proc append_escaped_character(
         value as u64;
 
     if code < 32 {
-        give append(
+        return append(
             state,
             unicode_escape(code));
     }
 
-    give append_char(
+    return append_char(
         state,
         value);
 }
@@ -461,13 +461,13 @@ proc append_escaped_string(
                 value[index]);
 
         if result.failed {
-            give result;
+            return result;
         }
 
         set index += 1;
     }
 
-    give append(
+    return append(
         &result,
         "\"");
 }
@@ -481,7 +481,7 @@ proc append_unsigned_integer_digits(
     value: u64
 ) -> JsonEncoder {
     if value < 10 {
-        give append(
+        return append(
             state,
             hex_digit(
                 value as u64));
@@ -492,7 +492,7 @@ proc append_unsigned_integer_digits(
             state,
             value / 10);
 
-    give append(
+    return append(
         &result,
         hex_digit(
             (value % 10)
@@ -504,13 +504,13 @@ proc append_integer(
     value: i64
 ) -> JsonEncoder {
     if value == 0 {
-        give append(
+        return append(
             state,
             "0");
     }
 
     if value > 0 {
-        give append_unsigned_integer_digits(
+        return append_unsigned_integer_digits(
             state,
             value as u64);
     }
@@ -524,7 +524,7 @@ proc append_integer(
         (-(value + 1)) as u64 +
         1;
 
-    give append_unsigned_integer_digits(
+    return append_unsigned_integer_digits(
         &result,
         magnitude);
 }
@@ -540,29 +540,29 @@ proc append_integer(
 proc float_is_nan(
     value: f64
 ) -> bool {
-    give value != value;
+    return value != value;
 }
 
 proc float_is_positive_infinity(
     value: f64
 ) -> bool {
-    give value >
+    return value >
          1.7976931348623157e308;
 }
 
 proc float_is_negative_infinity(
     value: f64
 ) -> bool {
-    give value <
+    return value <
          -1.7976931348623157e308;
 }
 
 proc float_is_finite(
     value: f64
 ) -> bool {
-    give !float_is_nan(value) &&
-         !float_is_positive_infinity(value) &&
-         !float_is_negative_infinity(value);
+    return not float_is_nan(value) &&
+         not float_is_positive_infinity(value) &&
+         not float_is_negative_infinity(value);
 }
 
 proc append_float_integer_part(
@@ -572,7 +572,7 @@ proc append_float_integer_part(
     let integer_part: i64 =
         value as i64;
 
-    give append_integer(
+    return append_integer(
         state,
         integer_part);
 }
@@ -580,7 +580,7 @@ proc append_float_integer_part(
 proc fractional_digit(
     value: f64
 ) -> i64 {
-    give value as i64;
+    return value as i64;
 }
 
 proc append_fractional_digits(
@@ -615,27 +615,27 @@ proc append_fractional_digits(
             (digit as f64);
 
         if current == 0.0 {
-            give result;
+            return result;
         }
 
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc append_simple_float(
     state: &JsonEncoder,
     value: f64
 ) -> JsonEncoder {
-    if !float_is_finite(value) {
-        give encoder_fail(
+    if not float_is_finite(value) {
+        return encoder_fail(
             state,
             JsonEncodeError.InvalidNumber);
     }
 
     if value == 0.0 {
-        give append(
+        return append(
             state,
             "0.0");
     }
@@ -658,7 +658,7 @@ proc append_simple_float(
 
     if positive >
        9223372036854775807.0 {
-        give encoder_fail(
+        return encoder_fail(
             &result,
             JsonEncodeError.InvalidNumber);
     }
@@ -681,7 +681,7 @@ proc append_simple_float(
                 &result,
                 ".0");
 
-        give result;
+        return result;
     }
 
     set result =
@@ -689,7 +689,7 @@ proc append_simple_float(
             &result,
             ".");
 
-    give append_fractional_digits(
+    return append_fractional_digits(
         &result,
         fraction,
         17);
@@ -702,7 +702,7 @@ proc append_simple_float(
 proc encode_null_into(
     state: &JsonEncoder
 ) -> JsonEncoder {
-    give append(
+    return append(
         state,
         "null");
 }
@@ -712,12 +712,12 @@ proc encode_bool_into(
     value: bool
 ) -> JsonEncoder {
     if value {
-        give append(
+        return append(
             state,
             "true");
     }
 
-    give append(
+    return append(
         state,
         "false");
 }
@@ -726,7 +726,7 @@ proc encode_integer_into(
     state: &JsonEncoder,
     value: i64
 ) -> JsonEncoder {
-    give append_integer(
+    return append_integer(
         state,
         value);
 }
@@ -735,7 +735,7 @@ proc encode_float_into(
     state: &JsonEncoder,
     value: f64
 ) -> JsonEncoder {
-    give append_simple_float(
+    return append_simple_float(
         state,
         value);
 }
@@ -744,7 +744,7 @@ proc encode_string_into(
     state: &JsonEncoder,
     value: string
 ) -> JsonEncoder {
-    give append_escaped_string(
+    return append_escaped_string(
         state,
         value);
 }
@@ -759,7 +759,7 @@ proc encode_array_into(
 ) -> JsonEncoder {
     if state.depth >=
        JSON_ENCODER_MAX_DEPTH {
-        give encoder_fail(
+        return encoder_fail(
             state,
             JsonEncodeError.DepthExceeded);
     }
@@ -770,7 +770,7 @@ proc encode_array_into(
             "[");
 
     if values.length == 0 {
-        give append(
+        return append(
             &result,
             "]");
     }
@@ -799,7 +799,7 @@ proc encode_array_into(
                 &values[index]);
 
         if result.failed {
-            give result;
+            return result;
         }
 
         if index + 1 <
@@ -831,7 +831,7 @@ proc encode_array_into(
                 &result);
     }
 
-    give append(
+    return append(
         &result,
         "]");
 }
@@ -854,7 +854,7 @@ proc object_has_duplicate_keys(
               members.length {
             if members[left].key ==
                members[right].key {
-                give true;
+                return true;
             }
 
             set right += 1;
@@ -863,7 +863,7 @@ proc object_has_duplicate_keys(
         set left += 1;
     }
 
-    give false;
+    return false;
 }
 
 proc encode_member_into(
@@ -876,7 +876,7 @@ proc encode_member_into(
             value.key);
 
     if result.failed {
-        give result;
+        return result;
     }
 
     set result =
@@ -888,7 +888,7 @@ proc encode_member_into(
         append_separator_space(
             &result);
 
-    give encode_value_into(
+    return encode_value_into(
         &result,
         &value.value);
 }
@@ -899,14 +899,14 @@ proc encode_object_into(
 ) -> JsonEncoder {
     if state.depth >=
        JSON_ENCODER_MAX_DEPTH {
-        give encoder_fail(
+        return encoder_fail(
             state,
             JsonEncodeError.DepthExceeded);
     }
 
     if object_has_duplicate_keys(
         members) {
-        give encoder_fail(
+        return encoder_fail(
             state,
             JsonEncodeError.DuplicateKey);
     }
@@ -917,7 +917,7 @@ proc encode_object_into(
             "{");
 
     if members.length == 0 {
-        give append(
+        return append(
             &result,
             "}");
     }
@@ -946,7 +946,7 @@ proc encode_object_into(
                 &members[index]);
 
         if result.failed {
-            give result;
+            return result;
         }
 
         if index + 1 <
@@ -978,7 +978,7 @@ proc encode_object_into(
                 &result);
     }
 
-    give append(
+    return append(
         &result,
         "}");
 }
@@ -992,51 +992,51 @@ proc encode_value_into(
     value: &JsonValue
 ) -> JsonEncoder {
     if state.failed {
-        give state;
+        return state;
     }
 
     if is_null(value) {
-        give encode_null_into(
+        return encode_null_into(
             state);
     }
 
     if is_bool(value) {
-        give encode_bool_into(
+        return encode_bool_into(
             state,
             value.bool_value);
     }
 
     if is_integer(value) {
-        give encode_integer_into(
+        return encode_integer_into(
             state,
             value.integer_value);
     }
 
     if is_float(value) {
-        give encode_float_into(
+        return encode_float_into(
             state,
             value.float_value);
     }
 
     if is_string(value) {
-        give encode_string_into(
+        return encode_string_into(
             state,
             value.string_value);
     }
 
     if is_array(value) {
-        give encode_array_into(
+        return encode_array_into(
             state,
             value.array_value);
     }
 
     if is_object(value) {
-        give encode_object_into(
+        return encode_object_into(
             state,
             value.object_value);
     }
 
-    give encoder_fail(
+    return encoder_fail(
         state,
         JsonEncodeError.InvalidValue);
 }
@@ -1049,19 +1049,19 @@ export proc encode_with_options(
     value: &JsonValue,
     options: JsonEncodeOptions
 ) -> JsonEncodeResult {
-    if !validate(value) {
+    if not validate(value) {
         if has_duplicate_keys(value) {
-            give encode_failure(
+            return encode_failure(
                 JsonEncodeError.DuplicateKey);
         }
 
-        give encode_failure(
+        return encode_failure(
             JsonEncodeError.InvalidValue);
     }
 
     if depth(value) >
        JSON_ENCODER_MAX_DEPTH {
-        give encode_failure(
+        return encode_failure(
             JsonEncodeError.DepthExceeded);
     }
 
@@ -1074,18 +1074,18 @@ export proc encode_with_options(
             value);
 
     if result.failed {
-        give encode_failure(
+        return encode_failure(
             result.error);
     }
 
-    give encode_success(
+    return encode_success(
         result.output);
 }
 
 export proc encode(
     value: &JsonValue
 ) -> JsonEncodeResult {
-    give encode_with_options(
+    return encode_with_options(
         value,
         compact_options());
 }
@@ -1093,7 +1093,7 @@ export proc encode(
 export proc encode_compact(
     value: &JsonValue
 ) -> JsonEncodeResult {
-    give encode_with_options(
+    return encode_with_options(
         value,
         compact_options());
 }
@@ -1101,7 +1101,7 @@ export proc encode_compact(
 export proc encode_pretty(
     value: &JsonValue
 ) -> JsonEncodeResult {
-    give encode_with_options(
+    return encode_with_options(
         value,
         pretty_options());
 }
@@ -1110,7 +1110,7 @@ export proc encode_pretty_with_indent(
     value: &JsonValue,
     indent: usize
 ) -> JsonEncodeResult {
-    give encode_with_options(
+    return encode_with_options(
         value,
         pretty_options_with_indent(
             indent));
@@ -1124,7 +1124,7 @@ export proc encode_null() -> JsonEncodeResult {
     let value: JsonValue =
         null();
 
-    give encode(
+    return encode(
         &value);
 }
 
@@ -1134,7 +1134,7 @@ export proc encode_bool(
     let json_value: JsonValue =
         boolean(value);
 
-    give encode(
+    return encode(
         &json_value);
 }
 
@@ -1144,7 +1144,7 @@ export proc encode_integer(
     let json_value: JsonValue =
         integer(value);
 
-    give encode(
+    return encode(
         &json_value);
 }
 
@@ -1154,7 +1154,7 @@ export proc encode_float(
     let json_value: JsonValue =
         floating(value);
 
-    give encode(
+    return encode(
         &json_value);
 }
 
@@ -1164,7 +1164,7 @@ export proc encode_string(
     let json_value: JsonValue =
         string(value);
 
-    give encode(
+    return encode(
         &json_value);
 }
 
@@ -1676,7 +1676,7 @@ test "json encoder rejects duplicate keys" {
         encode(
             &value);
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonEncodeError.DuplicateKey;

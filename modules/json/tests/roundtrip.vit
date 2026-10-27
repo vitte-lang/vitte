@@ -53,25 +53,25 @@ proc parses(source: string) -> bool {
     let result: JsonParseResult =
         parse(source);
 
-    give result.ok;
+    return result.ok;
 }
 
 proc roundtrip_value(value: &json_core::JsonValue) -> bool {
     let encoded: JsonEncodeResult =
         encode(value);
 
-    if !encoded.ok {
-        give false;
+    if not encoded.ok {
+        return false;
     }
 
     let decoded: JsonParseResult =
         parse(encoded.text);
 
-    if !decoded.ok {
-        give false;
+    if not decoded.ok {
+        return false;
     }
 
-    give json_core::equals(
+    return json_core::equals(
         value,
         &decoded.value);
 }
@@ -80,25 +80,25 @@ proc roundtrip_source(source: string) -> bool {
     let first: JsonParseResult =
         parse(source);
 
-    if !first.ok {
-        give false;
+    if not first.ok {
+        return false;
     }
 
     let encoded: JsonEncodeResult =
         encode(&first.value);
 
-    if !encoded.ok {
-        give false;
+    if not encoded.ok {
+        return false;
     }
 
     let second: JsonParseResult =
         parse(encoded.text);
 
-    if !second.ok {
-        give false;
+    if not second.ok {
+        return false;
     }
 
-    give json_core::equals(
+    return json_core::equals(
         &first.value,
         &second.value);
 }
@@ -107,39 +107,39 @@ proc roundtrip_source_twice(source: string) -> bool {
     let first: JsonParseResult =
         parse(source);
 
-    if !first.ok {
-        give false;
+    if not first.ok {
+        return false;
     }
 
     let encoded_first: JsonEncodeResult =
         encode(&first.value);
 
-    if !encoded_first.ok {
-        give false;
+    if not encoded_first.ok {
+        return false;
     }
 
     let second: JsonParseResult =
         parse(encoded_first.text);
 
-    if !second.ok {
-        give false;
+    if not second.ok {
+        return false;
     }
 
     let encoded_second: JsonEncodeResult =
         encode(&second.value);
 
-    if !encoded_second.ok {
-        give false;
+    if not encoded_second.ok {
+        return false;
     }
 
     let third: JsonParseResult =
         parse(encoded_second.text);
 
-    if !third.ok {
-        give false;
+    if not third.ok {
+        return false;
     }
 
-    give
+    return
         json_core::equals(
             &first.value,
             &second.value)
@@ -153,57 +153,57 @@ proc stable_source(source: string) -> bool {
     let parsed_value: JsonParseResult =
         parse(source);
 
-    if !parsed_value.ok {
-        give false;
+    if not parsed_value.ok {
+        return false;
     }
 
     let first: JsonEncodeResult =
         encode(&parsed_value.value);
 
-    if !first.ok {
-        give false;
+    if not first.ok {
+        return false;
     }
 
     let reparsed: JsonParseResult =
         parse(first.text);
 
-    if !reparsed.ok {
-        give false;
+    if not reparsed.ok {
+        return false;
     }
 
     let second: JsonEncodeResult =
         encode(&reparsed.value);
 
-    if !second.ok {
-        give false;
+    if not second.ok {
+        return false;
     }
 
-    give first.text == second.text;
+    return first.text == second.text;
 }
 
 proc pretty_roundtrip_source(source: string) -> bool {
     let first: JsonParseResult =
         parse(source);
 
-    if !first.ok {
-        give false;
+    if not first.ok {
+        return false;
     }
 
     let encoded: JsonEncodeResult =
         encode_pretty(&first.value);
 
-    if !encoded.ok {
-        give false;
+    if not encoded.ok {
+        return false;
     }
 
     let second: JsonParseResult =
         parse(encoded.text);
 
-    if !second.ok {
-        give false;
+    if not second.ok {
+        return false;
     }
 
-    give json_core::equals(
+    return json_core::equals(
         &first.value,
         &second.value);
 }

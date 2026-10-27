@@ -1071,19 +1071,11 @@ test-runtime: $(TARGET_BIN)
 		$(TARGET_BIN) run "$$file"; \
 	done
 
-# HIR/IR lowering and C17 backend contract smoke test.
-IR_BACKEND_TEST_BIN := $(BIN_DIR)/ir_backend_test
-
-$(IR_BACKEND_TEST_BIN): $(TEST_DIR)/ir_backend_test.c $(LIB_OBJECTS)
-	@mkdir -p $(BIN_DIR)
-	@printf '[TEST-CC] ir_backend_test\n'
-	$(CC) $(CPPFLAGS) $(CFLAGS) \
-		$(TEST_DIR)/ir_backend_test.c $(LIB_OBJECTS) \
-		$(LDFLAGS) $(LDLIBS) -o $@
-
+# HIR/IR lowering and C17 backend runtime smoke test. Keep the test on the
+# production Vitte path; the former standalone C harness is no longer tracked.
 .PHONY: test-ir-backend
-test-ir-backend: $(IR_BACKEND_TEST_BIN)
-	$(IR_BACKEND_TEST_BIN)
+test-ir-backend: $(TARGET_BIN)
+	$(TARGET_BIN) run $(TEST_DIR)/ir_declaration_runtime.vit
 
 .PHONY: test-mir-control-flow
 test-mir-control-flow: $(TARGET_BIN)

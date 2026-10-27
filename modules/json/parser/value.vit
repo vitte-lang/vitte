@@ -204,7 +204,7 @@ form JsonParsedValue {
 
     next: usize,
 
-    diagnostic:
+    report:
         JsonValueParserDiagnostic,
 
     statistics:
@@ -216,7 +216,7 @@ form JsonParsedValue {
 /// -------------------------------------------------------------------------
 
 proc default_limits() -> JsonValueParserLimits {
-    give JsonValueParserLimits {
+    return JsonValueParserLimits {
         max_depth:
             JSON_VALUE_DEFAULT_MAX_DEPTH,
 
@@ -245,7 +245,7 @@ proc strict_limits() -> JsonValueParserLimits {
     set result.duplicate_keys =
         JsonValueDuplicateKeyPolicy.Reject;
 
-    give result;
+    return result;
 }
 
 proc limits(
@@ -256,7 +256,7 @@ proc limits(
     max_key_length: usize,
     duplicate_keys: JsonValueDuplicateKeyPolicy
 ) -> JsonValueParserLimits {
-    give JsonValueParserLimits {
+    return JsonValueParserLimits {
         max_depth:
             max_depth,
 
@@ -280,7 +280,7 @@ proc limits(
 proc limits_valid(
     value: &JsonValueParserLimits
 ) -> bool {
-    give value.max_depth > 0 &&
+    return value.max_depth > 0 &&
          value.max_values > 0 &&
          value.max_array_elements > 0 &&
          value.max_object_members > 0 &&
@@ -292,7 +292,7 @@ proc limits_valid(
 /// -------------------------------------------------------------------------
 
 proc empty_statistics() -> JsonValueParserStatistics {
-    give JsonValueParserStatistics {
+    return JsonValueParserStatistics {
         consumed_tokens: 0,
 
         values: 0,
@@ -330,17 +330,17 @@ proc statistics_valid(
        value.integer_values +
        value.float_values +
        value.string_values {
-        give false;
+        return false;
     }
 
     if value.values !=
        value.scalar_values +
        value.array_values +
        value.object_values {
-        give false;
+        return false;
     }
 
-    give true;
+    return true;
 }
 
 proc account_depth(
@@ -359,7 +359,7 @@ proc account_depth(
             depth;
     }
 
-    give result;
+    return result;
 }
 
 proc account_null(
@@ -374,7 +374,7 @@ proc account_null(
     set result.scalar_values += 1;
     set result.null_values += 1;
 
-    give result;
+    return result;
 }
 
 proc account_boolean(
@@ -389,7 +389,7 @@ proc account_boolean(
     set result.scalar_values += 1;
     set result.boolean_values += 1;
 
-    give result;
+    return result;
 }
 
 proc account_integer(
@@ -404,7 +404,7 @@ proc account_integer(
     set result.scalar_values += 1;
     set result.integer_values += 1;
 
-    give result;
+    return result;
 }
 
 proc account_float(
@@ -419,7 +419,7 @@ proc account_float(
     set result.scalar_values += 1;
     set result.float_values += 1;
 
-    give result;
+    return result;
 }
 
 proc account_string(
@@ -434,7 +434,7 @@ proc account_string(
     set result.scalar_values += 1;
     set result.string_values += 1;
 
-    give result;
+    return result;
 }
 
 proc account_array(
@@ -453,7 +453,7 @@ proc account_array(
     set result.array_elements +=
         elements;
 
-    give result;
+    return result;
 }
 
 proc account_object(
@@ -472,7 +472,7 @@ proc account_object(
     set result.object_members +=
         members;
 
-    give result;
+    return result;
 }
 
 /// -------------------------------------------------------------------------
@@ -480,7 +480,7 @@ proc account_object(
 /// -------------------------------------------------------------------------
 
 proc no_diagnostic() -> JsonValueParserDiagnostic {
-    give JsonValueParserDiagnostic {
+    return JsonValueParserDiagnostic {
         error:
             JsonValueParserError.None,
 
@@ -515,135 +515,135 @@ proc error_code(
 ) -> string {
     if error ==
        JsonValueParserError.None {
-        give "";
+        return "";
     }
 
     if error ==
        JsonValueParserError.UnexpectedEnd {
-        give "JSON-VALUE-001";
+        return "JSON-VALUE-001";
     }
 
     if error ==
        JsonValueParserError.UnexpectedToken {
-        give "JSON-VALUE-002";
+        return "JSON-VALUE-002";
     }
 
     if error ==
        JsonValueParserError.InvalidToken {
-        give "JSON-VALUE-003";
+        return "JSON-VALUE-003";
     }
 
     if error ==
        JsonValueParserError.ExpectedValue {
-        give "JSON-VALUE-004";
+        return "JSON-VALUE-004";
     }
 
     if error ==
        JsonValueParserError.InvalidNull {
-        give "JSON-VALUE-010";
+        return "JSON-VALUE-010";
     }
 
     if error ==
        JsonValueParserError.InvalidBoolean {
-        give "JSON-VALUE-011";
+        return "JSON-VALUE-011";
     }
 
     if error ==
        JsonValueParserError.InvalidNumber {
-        give "JSON-VALUE-012";
+        return "JSON-VALUE-012";
     }
 
     if error ==
        JsonValueParserError.InvalidString {
-        give "JSON-VALUE-013";
+        return "JSON-VALUE-013";
     }
 
     if error ==
        JsonValueParserError.ExpectedArrayValue {
-        give "JSON-VALUE-020";
+        return "JSON-VALUE-020";
     }
 
     if error ==
        JsonValueParserError.ExpectedArraySeparator {
-        give "JSON-VALUE-021";
+        return "JSON-VALUE-021";
     }
 
     if error ==
        JsonValueParserError.ArrayTrailingComma {
-        give "JSON-VALUE-022";
+        return "JSON-VALUE-022";
     }
 
     if error ==
        JsonValueParserError.UnterminatedArray {
-        give "JSON-VALUE-023";
+        return "JSON-VALUE-023";
     }
 
     if error ==
        JsonValueParserError.ExpectedObjectKey {
-        give "JSON-VALUE-030";
+        return "JSON-VALUE-030";
     }
 
     if error ==
        JsonValueParserError.ExpectedObjectColon {
-        give "JSON-VALUE-031";
+        return "JSON-VALUE-031";
     }
 
     if error ==
        JsonValueParserError.ExpectedObjectValue {
-        give "JSON-VALUE-032";
+        return "JSON-VALUE-032";
     }
 
     if error ==
        JsonValueParserError.ExpectedObjectSeparator {
-        give "JSON-VALUE-033";
+        return "JSON-VALUE-033";
     }
 
     if error ==
        JsonValueParserError.ObjectTrailingComma {
-        give "JSON-VALUE-034";
+        return "JSON-VALUE-034";
     }
 
     if error ==
        JsonValueParserError.UnterminatedObject {
-        give "JSON-VALUE-035";
+        return "JSON-VALUE-035";
     }
 
     if error ==
        JsonValueParserError.DuplicateObjectKey {
-        give "JSON-VALUE-036";
+        return "JSON-VALUE-036";
     }
 
     if error ==
        JsonValueParserError.DepthExceeded {
-        give "JSON-VALUE-040";
+        return "JSON-VALUE-040";
     }
 
     if error ==
        JsonValueParserError.ValueLimitExceeded {
-        give "JSON-VALUE-041";
+        return "JSON-VALUE-041";
     }
 
     if error ==
        JsonValueParserError.ArrayElementLimitExceeded {
-        give "JSON-VALUE-042";
+        return "JSON-VALUE-042";
     }
 
     if error ==
        JsonValueParserError.ObjectMemberLimitExceeded {
-        give "JSON-VALUE-043";
+        return "JSON-VALUE-043";
     }
 
     if error ==
        JsonValueParserError.ObjectKeyLimitExceeded {
-        give "JSON-VALUE-044";
+        return "JSON-VALUE-044";
     }
 
     if error ==
        JsonValueParserError.NoProgress {
-        give "JSON-VALUE-050";
+        return "JSON-VALUE-050";
     }
 
-    give "JSON-VALUE-999";
+    return "JSON-VALUE-999";
 }
 
 proc error_name(
@@ -651,135 +651,135 @@ proc error_name(
 ) -> string {
     if error ==
        JsonValueParserError.None {
-        give "none";
+        return "none";
     }
 
     if error ==
        JsonValueParserError.UnexpectedEnd {
-        give "unexpected-end";
+        return "unexpected-end";
     }
 
     if error ==
        JsonValueParserError.UnexpectedToken {
-        give "unexpected-token";
+        return "unexpected-token";
     }
 
     if error ==
        JsonValueParserError.InvalidToken {
-        give "invalid-token";
+        return "invalid-token";
     }
 
     if error ==
        JsonValueParserError.ExpectedValue {
-        give "expected-value";
+        return "expected-value";
     }
 
     if error ==
        JsonValueParserError.InvalidNull {
-        give "invalid-null";
+        return "invalid-null";
     }
 
     if error ==
        JsonValueParserError.InvalidBoolean {
-        give "invalid-boolean";
+        return "invalid-boolean";
     }
 
     if error ==
        JsonValueParserError.InvalidNumber {
-        give "invalid-number";
+        return "invalid-number";
     }
 
     if error ==
        JsonValueParserError.InvalidString {
-        give "invalid-string";
+        return "invalid-string";
     }
 
     if error ==
        JsonValueParserError.ExpectedArrayValue {
-        give "expected-array-value";
+        return "expected-array-value";
     }
 
     if error ==
        JsonValueParserError.ExpectedArraySeparator {
-        give "expected-array-separator";
+        return "expected-array-separator";
     }
 
     if error ==
        JsonValueParserError.ArrayTrailingComma {
-        give "array-trailing-comma";
+        return "array-trailing-comma";
     }
 
     if error ==
        JsonValueParserError.UnterminatedArray {
-        give "unterminated-array";
+        return "unterminated-array";
     }
 
     if error ==
        JsonValueParserError.ExpectedObjectKey {
-        give "expected-object-key";
+        return "expected-object-key";
     }
 
     if error ==
        JsonValueParserError.ExpectedObjectColon {
-        give "expected-object-colon";
+        return "expected-object-colon";
     }
 
     if error ==
        JsonValueParserError.ExpectedObjectValue {
-        give "expected-object-value";
+        return "expected-object-value";
     }
 
     if error ==
        JsonValueParserError.ExpectedObjectSeparator {
-        give "expected-object-separator";
+        return "expected-object-separator";
     }
 
     if error ==
        JsonValueParserError.ObjectTrailingComma {
-        give "object-trailing-comma";
+        return "object-trailing-comma";
     }
 
     if error ==
        JsonValueParserError.UnterminatedObject {
-        give "unterminated-object";
+        return "unterminated-object";
     }
 
     if error ==
        JsonValueParserError.DuplicateObjectKey {
-        give "duplicate-object-key";
+        return "duplicate-object-key";
     }
 
     if error ==
        JsonValueParserError.DepthExceeded {
-        give "depth-exceeded";
+        return "depth-exceeded";
     }
 
     if error ==
        JsonValueParserError.ValueLimitExceeded {
-        give "value-limit-exceeded";
+        return "value-limit-exceeded";
     }
 
     if error ==
        JsonValueParserError.ArrayElementLimitExceeded {
-        give "array-element-limit-exceeded";
+        return "array-element-limit-exceeded";
     }
 
     if error ==
        JsonValueParserError.ObjectMemberLimitExceeded {
-        give "object-member-limit-exceeded";
+        return "object-member-limit-exceeded";
     }
 
     if error ==
        JsonValueParserError.ObjectKeyLimitExceeded {
-        give "object-key-limit-exceeded";
+        return "object-key-limit-exceeded";
     }
 
     if error ==
        JsonValueParserError.NoProgress {
-        give "no-progress";
+        return "no-progress";
     }
 
-    give "internal";
+    return "internal";
 }
 
 proc phase_name(
@@ -787,28 +787,28 @@ proc phase_name(
 ) -> string {
     if phase ==
        JsonValueParserPhase.None {
-        give "none";
+        return "none";
     }
 
     if phase ==
        JsonValueParserPhase.Value {
-        give "value";
+        return "value";
     }
 
     if phase ==
        JsonValueParserPhase.Scalar {
-        give "scalar";
+        return "scalar";
     }
 
     if phase ==
        JsonValueParserPhase.Array {
-        give "array";
+        return "array";
     }
 
-    give "object";
+    return "object";
 }
 
-proc diagnostic(
+proc report(
     error: JsonValueParserError,
     phase: JsonValueParserPhase,
     message: string,
@@ -818,7 +818,7 @@ proc diagnostic(
     key: string,
     location: JsonSpan
 ) -> JsonValueParserDiagnostic {
-    give JsonValueParserDiagnostic {
+    return JsonValueParserDiagnostic {
         error: error,
 
         phase: phase,
@@ -857,7 +857,7 @@ proc related_diagnostic(
     location: JsonSpan,
     related: JsonSpan
 ) -> JsonValueParserDiagnostic {
-    give JsonValueParserDiagnostic {
+    return JsonValueParserDiagnostic {
         error: error,
 
         phase: phase,
@@ -903,7 +903,7 @@ proc failure(
     statistics_value:
         JsonValueParserStatistics
 ) -> JsonParsedValue {
-    give JsonParsedValue {
+    return JsonParsedValue {
         ok: false,
 
         value: null_value(),
@@ -912,8 +912,8 @@ proc failure(
 
         next: next,
 
-        diagnostic:
-            diagnostic(
+        report:
+            report(
                 error,
                 phase,
                 message,
@@ -944,7 +944,7 @@ proc success(
             next - begin;
     }
 
-    give JsonParsedValue {
+    return JsonParsedValue {
         ok: true,
 
         value: value,
@@ -953,7 +953,7 @@ proc success(
 
         next: next,
 
-        diagnostic:
+        report:
             no_diagnostic(),
 
         statistics:
@@ -969,7 +969,7 @@ proc token_exists(
     context: &JsonValueParserContext,
     index: usize
 ) -> bool {
-    give index <
+    return index <
          context.tokens.length;
 }
 
@@ -979,10 +979,10 @@ proc token_at(
 ) -> JsonToken {
     if index >=
        context.tokens.length {
-        give invalid();
+        return invalid();
     }
 
-    give context.tokens[index];
+    return context.tokens[index];
 }
 
 proc token_found_string(
@@ -990,19 +990,19 @@ proc token_found_string(
 ) -> string {
     if token.kind ==
        JsonTokenKind.End {
-        give "end of input";
+        return "end of input";
     }
 
     if token.kind ==
        JsonTokenKind.Invalid {
-        give "invalid token";
+        return "invalid token";
     }
 
     if token.lexeme.length != 0 {
-        give token.lexeme;
+        return token.lexeme;
     }
 
-    give display_name(
+    return display_name(
         token.kind);
 }
 
@@ -1012,7 +1012,7 @@ proc location_at(
 ) -> JsonSpan {
     if index <
        context.tokens.length {
-        give context.tokens[index].span;
+        return context.tokens[index].span;
     }
 
     if context.tokens.length != 0 {
@@ -1021,12 +1021,12 @@ proc location_at(
                 context.tokens[
                     context.tokens.length - 1];
 
-        give span(
+        return span(
             last.span.end,
             last.span.end);
     }
 
-    give empty_span();
+    return empty_span();
 }
 
 /// -------------------------------------------------------------------------
@@ -1037,46 +1037,46 @@ proc decimal_digit_value(
     value: char
 ) -> i64 {
     if value == '0' {
-        give 0;
+        return 0;
     }
 
     if value == '1' {
-        give 1;
+        return 1;
     }
 
     if value == '2' {
-        give 2;
+        return 2;
     }
 
     if value == '3' {
-        give 3;
+        return 3;
     }
 
     if value == '4' {
-        give 4;
+        return 4;
     }
 
     if value == '5' {
-        give 5;
+        return 5;
     }
 
     if value == '6' {
-        give 6;
+        return 6;
     }
 
     if value == '7' {
-        give 7;
+        return 7;
     }
 
     if value == '8' {
-        give 8;
+        return 8;
     }
 
     if value == '9' {
-        give 9;
+        return 9;
     }
 
-    give -1;
+    return -1;
 }
 
 proc number_contains_fraction(
@@ -1087,13 +1087,13 @@ proc number_contains_fraction(
     while index <
           value.length {
         if value[index] == '.' {
-            give true;
+            return true;
         }
 
         set index += 1;
     }
 
-    give false;
+    return false;
 }
 
 proc number_contains_exponent(
@@ -1105,19 +1105,19 @@ proc number_contains_exponent(
           value.length {
         if value[index] == 'e' ||
            value[index] == 'E' {
-            give true;
+            return true;
         }
 
         set index += 1;
     }
 
-    give false;
+    return false;
 }
 
 proc number_is_floating(
     value: string
 ) -> bool {
-    give number_contains_fraction(
+    return number_contains_fraction(
              value) ||
          number_contains_exponent(
              value);
@@ -1127,7 +1127,7 @@ proc parse_integer(
     value: string
 ) -> i64 {
     if value.length == 0 {
-        give 0;
+        return 0;
     }
 
     let mut index: usize = 0;
@@ -1147,7 +1147,7 @@ proc parse_integer(
                 value[index]);
 
         if digit < 0 {
-            give 0;
+            return 0;
         }
 
         set result =
@@ -1157,10 +1157,10 @@ proc parse_integer(
     }
 
     if negative {
-        give -result;
+        return -result;
     }
 
-    give result;
+    return result;
 }
 
 proc decimal_power(
@@ -1177,7 +1177,7 @@ proc decimal_power(
             set index += 1;
         }
 
-        give result;
+        return result;
     }
 
     if exponent < 0 {
@@ -1190,14 +1190,14 @@ proc decimal_power(
         }
     }
 
-    give result;
+    return result;
 }
 
 proc parse_float(
     value: string
 ) -> f64 {
     if value.length == 0 {
-        give 0.0;
+        return 0.0;
     }
 
     let mut index: usize = 0;
@@ -1226,7 +1226,7 @@ proc parse_float(
                 character);
 
         if digit < 0 {
-            give 0.0;
+            return 0.0;
         }
 
         set whole =
@@ -1259,7 +1259,7 @@ proc parse_float(
                     character);
 
             if digit < 0 {
-                give 0.0;
+                return 0.0;
             }
 
             set fraction +=
@@ -1301,7 +1301,7 @@ proc parse_float(
                     value[index]);
 
             if digit < 0 {
-                give 0.0;
+                return 0.0;
             }
 
             set exponent =
@@ -1325,7 +1325,7 @@ proc parse_float(
         set result = -result;
     }
 
-    give result;
+    return result;
 }
 
 /// -------------------------------------------------------------------------
@@ -1342,20 +1342,20 @@ proc find_member(
           members.length {
         if members[index].key ==
            key {
-            give index;
+            return index;
         }
 
         set index += 1;
     }
 
-    give members.length;
+    return members.length;
 }
 
 proc contains_member(
     members: [JsonMember],
     key: string
 ) -> bool {
-    give find_member(
+    return find_member(
         members,
         key) <
             members.length;
@@ -1392,7 +1392,7 @@ proc parse_null_internal(
 
     if token.kind !=
        JsonTokenKind.Null {
-        give failure(
+        return failure(
             index,
             index,
             JsonValueParserError.InvalidNull,
@@ -1417,7 +1417,7 @@ proc parse_null_internal(
             stats,
             depth);
 
-    give success(
+    return success(
         index,
         index + 1,
         null_value(),
@@ -1451,7 +1451,7 @@ proc parse_boolean_internal(
               JsonTokenKind.False {
         set parsed_value = false;
     } else {
-        give failure(
+        return failure(
             index,
             index,
             JsonValueParserError.InvalidBoolean,
@@ -1476,7 +1476,7 @@ proc parse_boolean_internal(
             stats,
             depth);
 
-    give success(
+    return success(
         index,
         index + 1,
         boolean(
@@ -1503,7 +1503,7 @@ proc parse_number_internal(
 
     if token.kind !=
        JsonTokenKind.Number {
-        give failure(
+        return failure(
             index,
             index,
             JsonValueParserError.InvalidNumber,
@@ -1555,7 +1555,7 @@ proc parse_number_internal(
     set result.span =
         token.span;
 
-    give success(
+    return success(
         index,
         index + 1,
         result,
@@ -1581,7 +1581,7 @@ proc parse_string_internal(
 
     if token.kind !=
        JsonTokenKind.String {
-        give failure(
+        return failure(
             index,
             index,
             JsonValueParserError.InvalidString,
@@ -1614,7 +1614,7 @@ proc parse_string_internal(
     set result.span =
         token.span;
 
-    give success(
+    return success(
         index,
         index + 1,
         result,
@@ -1640,7 +1640,7 @@ proc parse_array_internal(
 
     if open.kind !=
        JsonTokenKind.LeftBracket {
-        give failure(
+        return failure(
             index,
             index,
             JsonValueParserError.UnexpectedToken,
@@ -1657,7 +1657,7 @@ proc parse_array_internal(
 
     if depth >
        context.limits.max_depth {
-        give failure(
+        return failure(
             index,
             index,
             JsonValueParserError.DepthExceeded,
@@ -1686,7 +1686,7 @@ proc parse_array_internal(
 
     if cursor >=
        context.tokens.length {
-        give failure(
+        return failure(
             index,
             cursor,
             JsonValueParserError.UnterminatedArray,
@@ -1720,7 +1720,7 @@ proc parse_array_internal(
                 stats,
                 0);
 
-        give success(
+        return success(
             index,
             cursor + 1,
             result,
@@ -1730,7 +1730,7 @@ proc parse_array_internal(
     while true {
         if cursor >=
            context.tokens.length {
-            give failure(
+            return failure(
                 index,
                 cursor,
                 JsonValueParserError.UnterminatedArray,
@@ -1750,7 +1750,7 @@ proc parse_array_internal(
 
         if current_token.kind ==
            JsonTokenKind.End {
-            give failure(
+            return failure(
                 index,
                 cursor,
                 JsonValueParserError.UnterminatedArray,
@@ -1766,7 +1766,7 @@ proc parse_array_internal(
 
         if current_token.kind ==
            JsonTokenKind.RightBracket {
-            give failure(
+            return failure(
                 index,
                 cursor,
                 JsonValueParserError.ExpectedArrayValue,
@@ -1782,7 +1782,7 @@ proc parse_array_internal(
 
         if current_token.kind ==
            JsonTokenKind.Comma {
-            give failure(
+            return failure(
                 index,
                 cursor,
                 JsonValueParserError.ExpectedArrayValue,
@@ -1798,7 +1798,7 @@ proc parse_array_internal(
 
         if elements.length >=
            context.limits.max_array_elements {
-            give failure(
+            return failure(
                 index,
                 cursor,
                 JsonValueParserError.ArrayElementLimitExceeded,
@@ -1821,13 +1821,13 @@ proc parse_array_internal(
                     depth + 1,
                     stats);
 
-        if !parsed.ok {
-            give parsed;
+        if not parsed.ok {
+            return parsed;
         }
 
         if parsed.next <=
            cursor {
-            give failure(
+            return failure(
                 index,
                 cursor,
                 JsonValueParserError.NoProgress,
@@ -1853,7 +1853,7 @@ proc parse_array_internal(
 
         if cursor >=
            context.tokens.length {
-            give failure(
+            return failure(
                 index,
                 cursor,
                 JsonValueParserError.UnterminatedArray,
@@ -1887,7 +1887,7 @@ proc parse_array_internal(
                     stats,
                     elements.length);
 
-            give success(
+            return success(
                 index,
                 cursor + 1,
                 result,
@@ -1896,7 +1896,7 @@ proc parse_array_internal(
 
         if separator.kind ==
            JsonTokenKind.End {
-            give failure(
+            return failure(
                 index,
                 cursor,
                 JsonValueParserError.UnterminatedArray,
@@ -1912,7 +1912,7 @@ proc parse_array_internal(
 
         if separator.kind !=
            JsonTokenKind.Comma {
-            give failure(
+            return failure(
                 index,
                 cursor,
                 JsonValueParserError.ExpectedArraySeparator,
@@ -1931,7 +1931,7 @@ proc parse_array_internal(
 
         if cursor >=
            context.tokens.length {
-            give failure(
+            return failure(
                 index,
                 cursor,
                 JsonValueParserError.UnterminatedArray,
@@ -1951,7 +1951,7 @@ proc parse_array_internal(
 
         if after_comma.kind ==
            JsonTokenKind.RightBracket {
-            give failure(
+            return failure(
                 index,
                 cursor,
                 JsonValueParserError.ArrayTrailingComma,
@@ -1967,7 +1967,7 @@ proc parse_array_internal(
 
         if after_comma.kind ==
            JsonTokenKind.End {
-            give failure(
+            return failure(
                 index,
                 cursor,
                 JsonValueParserError.UnterminatedArray,
@@ -1982,7 +1982,7 @@ proc parse_array_internal(
         }
     }
 
-    give failure(
+    return failure(
         index,
         cursor,
         JsonValueParserError.Internal,
@@ -2015,7 +2015,7 @@ proc parse_object_internal(
 
     if open.kind !=
        JsonTokenKind.LeftBrace {
-        give failure(
+        return failure(
             index,
             index,
             JsonValueParserError.UnexpectedToken,
@@ -2032,7 +2032,7 @@ proc parse_object_internal(
 
     if depth >
        context.limits.max_depth {
-        give failure(
+        return failure(
             index,
             index,
             JsonValueParserError.DepthExceeded,
@@ -2064,7 +2064,7 @@ proc parse_object_internal(
 
     if cursor >=
        context.tokens.length {
-        give failure(
+        return failure(
             index,
             cursor,
             JsonValueParserError.UnterminatedObject,
@@ -2098,7 +2098,7 @@ proc parse_object_internal(
                 stats,
                 0);
 
-        give success(
+        return success(
             index,
             cursor + 1,
             result,
@@ -2108,7 +2108,7 @@ proc parse_object_internal(
     while true {
         if cursor >=
            context.tokens.length {
-            give failure(
+            return failure(
                 index,
                 cursor,
                 JsonValueParserError.UnterminatedObject,
@@ -2128,7 +2128,7 @@ proc parse_object_internal(
 
         if key_token.kind ==
            JsonTokenKind.End {
-            give failure(
+            return failure(
                 index,
                 cursor,
                 JsonValueParserError.UnterminatedObject,
@@ -2144,7 +2144,7 @@ proc parse_object_internal(
 
         if key_token.kind ==
            JsonTokenKind.RightBrace {
-            give failure(
+            return failure(
                 index,
                 cursor,
                 JsonValueParserError.ExpectedObjectKey,
@@ -2160,7 +2160,7 @@ proc parse_object_internal(
 
         if key_token.kind ==
            JsonTokenKind.Comma {
-            give failure(
+            return failure(
                 index,
                 cursor,
                 JsonValueParserError.ExpectedObjectKey,
@@ -2176,7 +2176,7 @@ proc parse_object_internal(
 
         if key_token.kind !=
            JsonTokenKind.String {
-            give failure(
+            return failure(
                 index,
                 cursor,
                 JsonValueParserError.ExpectedObjectKey,
@@ -2196,7 +2196,7 @@ proc parse_object_internal(
 
         if key.length >
            context.limits.max_key_length {
-            give failure(
+            return failure(
                 index,
                 cursor,
                 JsonValueParserError.ObjectKeyLimitExceeded,
@@ -2212,7 +2212,7 @@ proc parse_object_internal(
 
         if parsed_member_count >=
            context.limits.max_object_members {
-            give failure(
+            return failure(
                 index,
                 cursor,
                 JsonValueParserError.ObjectMemberLimitExceeded,
@@ -2239,7 +2239,7 @@ proc parse_object_internal(
         if duplicate &&
            context.limits.duplicate_keys ==
                JsonValueDuplicateKeyPolicy.Reject {
-            give failure(
+            return failure(
                 index,
                 cursor,
                 JsonValueParserError.DuplicateObjectKey,
@@ -2257,7 +2257,7 @@ proc parse_object_internal(
 
         if cursor >=
            context.tokens.length {
-            give failure(
+            return failure(
                 index,
                 cursor,
                 JsonValueParserError.ExpectedObjectColon,
@@ -2277,7 +2277,7 @@ proc parse_object_internal(
 
         if colon.kind !=
            JsonTokenKind.Colon {
-            give failure(
+            return failure(
                 index,
                 cursor,
                 JsonValueParserError.ExpectedObjectColon,
@@ -2296,7 +2296,7 @@ proc parse_object_internal(
 
         if cursor >=
            context.tokens.length {
-            give failure(
+            return failure(
                 index,
                 cursor,
                 JsonValueParserError.ExpectedObjectValue,
@@ -2320,7 +2320,7 @@ proc parse_object_internal(
                JsonTokenKind.Comma ||
            value_token.kind ==
                JsonTokenKind.RightBrace {
-            give failure(
+            return failure(
                 index,
                 cursor,
                 JsonValueParserError.ExpectedObjectValue,
@@ -2343,13 +2343,13 @@ proc parse_object_internal(
                     depth + 1,
                     stats);
 
-        if !parsed.ok {
-            give parsed;
+        if not parsed.ok {
+            return parsed;
         }
 
         if parsed.next <=
            cursor {
-            give failure(
+            return failure(
                 index,
                 cursor,
                 JsonValueParserError.NoProgress,
@@ -2375,7 +2375,7 @@ proc parse_object_internal(
                         parsed.value,
                 };
 
-        if !duplicate {
+        if not duplicate {
             set members.push(
                 member);
         } else {
@@ -2400,7 +2400,7 @@ proc parse_object_internal(
 
         if cursor >=
            context.tokens.length {
-            give failure(
+            return failure(
                 index,
                 cursor,
                 JsonValueParserError.UnterminatedObject,
@@ -2434,7 +2434,7 @@ proc parse_object_internal(
                     stats,
                     parsed_member_count);
 
-            give success(
+            return success(
                 index,
                 cursor + 1,
                 result,
@@ -2443,7 +2443,7 @@ proc parse_object_internal(
 
         if separator.kind ==
            JsonTokenKind.End {
-            give failure(
+            return failure(
                 index,
                 cursor,
                 JsonValueParserError.UnterminatedObject,
@@ -2459,7 +2459,7 @@ proc parse_object_internal(
 
         if separator.kind !=
            JsonTokenKind.Comma {
-            give failure(
+            return failure(
                 index,
                 cursor,
                 JsonValueParserError.ExpectedObjectSeparator,
@@ -2478,7 +2478,7 @@ proc parse_object_internal(
 
         if cursor >=
            context.tokens.length {
-            give failure(
+            return failure(
                 index,
                 cursor,
                 JsonValueParserError.UnterminatedObject,
@@ -2498,7 +2498,7 @@ proc parse_object_internal(
 
         if after_comma.kind ==
            JsonTokenKind.RightBrace {
-            give failure(
+            return failure(
                 index,
                 cursor,
                 JsonValueParserError.ObjectTrailingComma,
@@ -2514,7 +2514,7 @@ proc parse_object_internal(
 
         if after_comma.kind ==
            JsonTokenKind.End {
-            give failure(
+            return failure(
                 index,
                 cursor,
                 JsonValueParserError.UnterminatedObject,
@@ -2529,7 +2529,7 @@ proc parse_object_internal(
         }
     }
 
-    give failure(
+    return failure(
         index,
         cursor,
         JsonValueParserError.Internal,
@@ -2556,7 +2556,7 @@ proc parse_value_internal(
 ) -> JsonParsedValue {
     if index >=
        context.tokens.length {
-        give failure(
+        return failure(
             index,
             index,
             JsonValueParserError.UnexpectedEnd,
@@ -2574,7 +2574,7 @@ proc parse_value_internal(
 
     if depth >
        context.limits.max_depth {
-        give failure(
+        return failure(
             index,
             index,
             JsonValueParserError.DepthExceeded,
@@ -2591,7 +2591,7 @@ proc parse_value_internal(
 
     if statistics_value.values >=
        context.limits.max_values {
-        give failure(
+        return failure(
             index,
             index,
             JsonValueParserError.ValueLimitExceeded,
@@ -2612,7 +2612,7 @@ proc parse_value_internal(
 
     if token.kind ==
        JsonTokenKind.Invalid {
-        give failure(
+        return failure(
             index,
             index,
             JsonValueParserError.InvalidToken,
@@ -2629,7 +2629,7 @@ proc parse_value_internal(
 
     if token.kind ==
        JsonTokenKind.End {
-        give failure(
+        return failure(
             index,
             index,
             JsonValueParserError.UnexpectedEnd,
@@ -2645,7 +2645,7 @@ proc parse_value_internal(
 
     if token.kind ==
        JsonTokenKind.Null {
-        give parse_null_internal(
+        return parse_null_internal(
             context,
             index,
             depth,
@@ -2656,7 +2656,7 @@ proc parse_value_internal(
            JsonTokenKind.True ||
        token.kind ==
            JsonTokenKind.False {
-        give parse_boolean_internal(
+        return parse_boolean_internal(
             context,
             index,
             depth,
@@ -2665,7 +2665,7 @@ proc parse_value_internal(
 
     if token.kind ==
        JsonTokenKind.Number {
-        give parse_number_internal(
+        return parse_number_internal(
             context,
             index,
             depth,
@@ -2674,7 +2674,7 @@ proc parse_value_internal(
 
     if token.kind ==
        JsonTokenKind.String {
-        give parse_string_internal(
+        return parse_string_internal(
             context,
             index,
             depth,
@@ -2683,7 +2683,7 @@ proc parse_value_internal(
 
     if token.kind ==
        JsonTokenKind.LeftBracket {
-        give parse_array_internal(
+        return parse_array_internal(
             context,
             index,
             depth,
@@ -2692,14 +2692,14 @@ proc parse_value_internal(
 
     if token.kind ==
        JsonTokenKind.LeftBrace {
-        give parse_object_internal(
+        return parse_object_internal(
             context,
             index,
             depth,
             statistics_value);
     }
 
-    give failure(
+    return failure(
         index,
         index,
         JsonValueParserError.ExpectedValue,
@@ -2724,9 +2724,9 @@ proc parse_with_limits(
     parser_limits:
         JsonValueParserLimits
 ) -> JsonParsedValue {
-    if !limits_valid(
+    if not limits_valid(
         &parser_limits) {
-        give failure(
+        return failure(
             index,
             index,
             JsonValueParserError.Internal,
@@ -2752,7 +2752,7 @@ proc parse_with_limits(
                     empty_statistics(),
             };
 
-    give parse_value_internal(
+    return parse_value_internal(
         &context,
         index,
         0,
@@ -2763,7 +2763,7 @@ proc parse(
     tokens: [JsonToken],
     index: usize
 ) -> JsonParsedValue {
-    give parse_with_limits(
+    return parse_with_limits(
         tokens,
         index,
         default_limits());
@@ -2773,7 +2773,7 @@ proc parse_strict(
     tokens: [JsonToken],
     index: usize
 ) -> JsonParsedValue {
-    give parse_with_limits(
+    return parse_with_limits(
         tokens,
         index,
         strict_limits());
@@ -2782,7 +2782,7 @@ proc parse_strict(
 proc parse_first(
     tokens: [JsonToken]
 ) -> JsonParsedValue {
-    give parse(
+    return parse(
         tokens,
         0);
 }
@@ -2790,7 +2790,7 @@ proc parse_first(
 proc parse_first_strict(
     tokens: [JsonToken]
 ) -> JsonParsedValue {
-    give parse_strict(
+    return parse_strict(
         tokens,
         0);
 }
@@ -2802,13 +2802,13 @@ proc parse_first_strict(
 proc succeeded(
     result: &JsonParsedValue
 ) -> bool {
-    give result.ok;
+    return result.ok;
 }
 
 proc failed(
     result: &JsonParsedValue
 ) -> bool {
-    give !result.ok;
+    return not result.ok;
 }
 
 proc consumed(
@@ -2816,24 +2816,24 @@ proc consumed(
 ) -> usize {
     if result.next <
        result.begin {
-        give 0;
+        return 0;
     }
 
-    give result.next -
+    return result.next -
          result.begin;
 }
 
 proc has_diagnostic(
     result: &JsonParsedValue
 ) -> bool {
-    give result.diagnostic.error !=
+    return result.report.error !=
          JsonValueParserError.None;
 }
 
 proc is_null(
     result: &JsonParsedValue
 ) -> bool {
-    give result.ok &&
+    return result.ok &&
          result.value.kind ==
              JsonValueKind.Null;
 }
@@ -2841,7 +2841,7 @@ proc is_null(
 proc is_boolean(
     result: &JsonParsedValue
 ) -> bool {
-    give result.ok &&
+    return result.ok &&
          result.value.kind ==
              JsonValueKind.Bool;
 }
@@ -2849,7 +2849,7 @@ proc is_boolean(
 proc is_integer(
     result: &JsonParsedValue
 ) -> bool {
-    give result.ok &&
+    return result.ok &&
          result.value.kind ==
              JsonValueKind.Integer;
 }
@@ -2857,7 +2857,7 @@ proc is_integer(
 proc is_float(
     result: &JsonParsedValue
 ) -> bool {
-    give result.ok &&
+    return result.ok &&
          result.value.kind ==
              JsonValueKind.Float;
 }
@@ -2865,14 +2865,14 @@ proc is_float(
 proc is_number(
     result: &JsonParsedValue
 ) -> bool {
-    give is_integer(result) ||
+    return is_integer(result) ||
          is_float(result);
 }
 
 proc is_string(
     result: &JsonParsedValue
 ) -> bool {
-    give result.ok &&
+    return result.ok &&
          result.value.kind ==
              JsonValueKind.String;
 }
@@ -2880,7 +2880,7 @@ proc is_string(
 proc is_array(
     result: &JsonParsedValue
 ) -> bool {
-    give result.ok &&
+    return result.ok &&
          result.value.kind ==
              JsonValueKind.Array;
 }
@@ -2888,7 +2888,7 @@ proc is_array(
 proc is_object(
     result: &JsonParsedValue
 ) -> bool {
-    give result.ok &&
+    return result.ok &&
          result.value.kind ==
              JsonValueKind.Object;
 }
@@ -2902,10 +2902,10 @@ proc diagnostic_valid(
 ) -> bool {
     if value.error ==
        JsonValueParserError.None {
-        give value.code.length == 0;
+        return value.code.length == 0;
     }
 
-    give value.code.length != 0 &&
+    return value.code.length != 0 &&
          value.message.length != 0 &&
          span_valid(
              &value.span);
@@ -2916,28 +2916,28 @@ proc result_valid(
 ) -> bool {
     if result.next <
        result.begin {
-        give false;
+        return false;
     }
 
     if result.ok {
-        if result.diagnostic.error !=
+        if result.report.error !=
            JsonValueParserError.None {
-            give false;
+            return false;
         }
 
-        if !statistics_valid(
+        if not statistics_valid(
             &result.statistics) {
-            give false;
+            return false;
         }
 
-        give validate(
+        return validate(
             &result.value);
     }
 
-    give result.diagnostic.error !=
+    return result.report.error !=
              JsonValueParserError.None &&
          diagnostic_valid(
-             &result.diagnostic);
+             &result.report);
 }
 
 /// -------------------------------------------------------------------------
@@ -2947,7 +2947,7 @@ proc result_valid(
 proc test_position(
     offset: usize
 ) -> JsonPosition {
-    give position(
+    return position(
         offset,
         0,
         offset);
@@ -2957,7 +2957,7 @@ proc test_span(
     begin: usize,
     end: usize
 ) -> JsonSpan {
-    give span(
+    return span(
         test_position(begin),
         test_position(end));
 }
@@ -2968,7 +2968,7 @@ proc test_punctuation(
     begin: usize,
     end: usize
 ) -> JsonToken {
-    give punctuation(
+    return punctuation(
         kind,
         source,
         test_span(
@@ -2982,7 +2982,7 @@ proc test_literal(
     begin: usize,
     end: usize
 ) -> JsonToken {
-    give literal(
+    return literal(
         kind,
         source,
         test_span(
@@ -2995,7 +2995,7 @@ proc test_number(
     begin: usize,
     end: usize
 ) -> JsonToken {
-    give number_token(
+    return number_token(
         source,
         test_span(
             begin,
@@ -3008,7 +3008,7 @@ proc test_string(
     begin: usize,
     end: usize
 ) -> JsonToken {
-    give string_token(
+    return string_token(
         source,
         decoded,
         test_span(
@@ -3085,7 +3085,7 @@ test "json value parses false" {
 
     assert result.ok;
     assert is_boolean(&result);
-    assert !result.value.bool_value;
+    assert not result.value.bool_value;
 }
 
 test "json value parses positive integer" {
@@ -3648,9 +3648,9 @@ test "json value rejects end token" {
         JsonParsedValue =
             parse(tokens, 0);
 
-    assert !result.ok;
+    assert not result.ok;
 
-    assert result.diagnostic.error ==
+    assert result.report.error ==
         JsonValueParserError.UnexpectedEnd;
 }
 
@@ -3664,9 +3664,9 @@ test "json value rejects invalid token" {
         JsonParsedValue =
             parse(tokens, 0);
 
-    assert !result.ok;
+    assert not result.ok;
 
-    assert result.diagnostic.error ==
+    assert result.report.error ==
         JsonValueParserError.InvalidToken;
 }
 
@@ -3687,9 +3687,9 @@ test "json value rejects colon as root" {
         JsonParsedValue =
             parse(tokens, 0);
 
-    assert !result.ok;
+    assert not result.ok;
 
-    assert result.diagnostic.error ==
+    assert result.report.error ==
         JsonValueParserError.ExpectedValue;
 }
 
@@ -3727,9 +3727,9 @@ test "json value rejects array trailing comma" {
         JsonParsedValue =
             parse(tokens, 0);
 
-    assert !result.ok;
+    assert not result.ok;
 
-    assert result.diagnostic.error ==
+    assert result.report.error ==
         JsonValueParserError.ArrayTrailingComma;
 }
 
@@ -3766,9 +3766,9 @@ test "json value rejects missing array comma" {
         JsonParsedValue =
             parse(tokens, 0);
 
-    assert !result.ok;
+    assert not result.ok;
 
-    assert result.diagnostic.error ==
+    assert result.report.error ==
         JsonValueParserError.ExpectedArraySeparator;
 }
 
@@ -3811,9 +3811,9 @@ test "json value rejects object non string key" {
         JsonParsedValue =
             parse(tokens, 0);
 
-    assert !result.ok;
+    assert not result.ok;
 
-    assert result.diagnostic.error ==
+    assert result.report.error ==
         JsonValueParserError.ExpectedObjectKey;
 }
 
@@ -3851,9 +3851,9 @@ test "json value rejects missing object colon" {
         JsonParsedValue =
             parse(tokens, 0);
 
-    assert !result.ok;
+    assert not result.ok;
 
-    assert result.diagnostic.error ==
+    assert result.report.error ==
         JsonValueParserError.ExpectedObjectColon;
 }
 
@@ -3892,9 +3892,9 @@ test "json value rejects missing object value" {
         JsonParsedValue =
             parse(tokens, 0);
 
-    assert !result.ok;
+    assert not result.ok;
 
-    assert result.diagnostic.error ==
+    assert result.report.error ==
         JsonValueParserError.ExpectedObjectValue;
 }
 
@@ -3944,9 +3944,9 @@ test "json value rejects object trailing comma" {
         JsonParsedValue =
             parse(tokens, 0);
 
-    assert !result.ok;
+    assert not result.ok;
 
-    assert result.diagnostic.error ==
+    assert result.report.error ==
         JsonValueParserError.ObjectTrailingComma;
 }
 
@@ -4088,9 +4088,9 @@ test "json value strict rejects duplicate keys" {
                 tokens,
                 0);
 
-    assert !result.ok;
+    assert not result.ok;
 
-    assert result.diagnostic.error ==
+    assert result.report.error ==
         JsonValueParserError.DuplicateObjectKey;
 }
 
@@ -4151,9 +4151,9 @@ test "json value enforces depth limit" {
                 0,
                 parser_limits);
 
-    assert !result.ok;
+    assert not result.ok;
 
-    assert result.diagnostic.error ==
+    assert result.report.error ==
         JsonValueParserError.DepthExceeded;
 }
 
@@ -4209,9 +4209,9 @@ test "json value enforces array element limit" {
                 0,
                 parser_limits);
 
-    assert !result.ok;
+    assert not result.ok;
 
-    assert result.diagnostic.error ==
+    assert result.report.error ==
         JsonValueParserError.ArrayElementLimitExceeded;
 }
 
@@ -4291,9 +4291,9 @@ test "json value enforces object member limit" {
                 0,
                 parser_limits);
 
-    assert !result.ok;
+    assert not result.ok;
 
-    assert result.diagnostic.error ==
+    assert result.report.error ==
         JsonValueParserError.ObjectMemberLimitExceeded;
 }
 
@@ -4418,7 +4418,7 @@ test "json value successful result validates" {
 
     assert result.ok;
     assert result_valid(&result);
-    assert !has_diagnostic(&result);
+    assert not has_diagnostic(&result);
 }
 
 test "json value failed result validates" {
@@ -4432,7 +4432,7 @@ test "json value failed result validates" {
         JsonParsedValue =
             parse(tokens, 0);
 
-    assert !result.ok;
+    assert not result.ok;
     assert result_valid(&result);
     assert has_diagnostic(&result);
 }

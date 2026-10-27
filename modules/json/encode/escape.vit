@@ -54,28 +54,28 @@ form JsonEscapeStatistics {
 /// -------------------------------------------------------------------------
 
 proc default_options() -> JsonEscapeOptions {
-    give JsonEscapeOptions {
+    return JsonEscapeOptions {
         escape_slash: false,
         escape_non_ascii: false,
     };
 }
 
 proc ascii_options() -> JsonEscapeOptions {
-    give JsonEscapeOptions {
+    return JsonEscapeOptions {
         escape_slash: false,
         escape_non_ascii: true,
     };
 }
 
 proc slash_options() -> JsonEscapeOptions {
-    give JsonEscapeOptions {
+    return JsonEscapeOptions {
         escape_slash: true,
         escape_non_ascii: false,
     };
 }
 
 proc strict_ascii_options() -> JsonEscapeOptions {
-    give JsonEscapeOptions {
+    return JsonEscapeOptions {
         escape_slash: true,
         escape_non_ascii: true,
     };
@@ -88,7 +88,7 @@ proc strict_ascii_options() -> JsonEscapeOptions {
 proc success(
     text: string
 ) -> JsonEscapeResult {
-    give JsonEscapeResult {
+    return JsonEscapeResult {
         ok: true,
         text: text,
         error: JsonEscapeError.None,
@@ -98,7 +98,7 @@ proc success(
 proc failure(
     error: JsonEscapeError
 ) -> JsonEscapeResult {
-    give JsonEscapeResult {
+    return JsonEscapeResult {
         ok: false,
         text: "",
         error: error,
@@ -110,15 +110,15 @@ proc error_name(
 ) -> string {
     if error ==
        JsonEscapeError.None {
-        give "none";
+        return "none";
     }
 
     if error ==
        JsonEscapeError.InvalidCharacter {
-        give "invalid character";
+        return "invalid character";
     }
 
-    give "invalid Unicode scalar";
+    return "invalid Unicode scalar";
 }
 
 /// -------------------------------------------------------------------------
@@ -128,21 +128,21 @@ proc error_name(
 proc is_high_surrogate(
     value: u64
 ) -> bool {
-    give value >= 0xD800 &&
+    return value >= 0xD800 &&
          value <= 0xDBFF;
 }
 
 proc is_low_surrogate(
     value: u64
 ) -> bool {
-    give value >= 0xDC00 &&
+    return value >= 0xDC00 &&
          value <= 0xDFFF;
 }
 
 proc is_surrogate(
     value: u64
 ) -> bool {
-    give value >= 0xD800 &&
+    return value >= 0xD800 &&
          value <= 0xDFFF;
 }
 
@@ -150,26 +150,26 @@ proc is_valid_unicode_scalar(
     value: u64
 ) -> bool {
     if value > 0x10FFFF {
-        give false;
+        return false;
     }
 
     if is_surrogate(value) {
-        give false;
+        return false;
     }
 
-    give true;
+    return true;
 }
 
 proc is_ascii(
     value: u64
 ) -> bool {
-    give value <= 0x7F;
+    return value <= 0x7F;
 }
 
 proc is_control(
     value: u64
 ) -> bool {
-    give value <
+    return value <
          JSON_ESCAPE_CONTROL_LIMIT;
 }
 
@@ -177,17 +177,17 @@ proc requires_json_escape(
     value: char
 ) -> bool {
     if value == '"' {
-        give true;
+        return true;
     }
 
     if value == '\\' {
-        give true;
+        return true;
     }
 
     let code: u64 =
         value as u64;
 
-    give is_control(code);
+    return is_control(code);
 }
 
 proc requires_escape_with_options(
@@ -195,23 +195,23 @@ proc requires_escape_with_options(
     options: JsonEscapeOptions
 ) -> bool {
     if requires_json_escape(value) {
-        give true;
+        return true;
     }
 
     if value == '/' &&
        options.escape_slash {
-        give true;
+        return true;
     }
 
     let code: u64 =
         value as u64;
 
     if options.escape_non_ascii &&
-       !is_ascii(code) {
-        give true;
+       not is_ascii(code) {
+        return true;
     }
 
-    give false;
+    return false;
 }
 
 /// -------------------------------------------------------------------------
@@ -222,66 +222,66 @@ proc hex_digit(
     value: u64
 ) -> string {
     if value == 0 {
-        give "0";
+        return "0";
     }
 
     if value == 1 {
-        give "1";
+        return "1";
     }
 
     if value == 2 {
-        give "2";
+        return "2";
     }
 
     if value == 3 {
-        give "3";
+        return "3";
     }
 
     if value == 4 {
-        give "4";
+        return "4";
     }
 
     if value == 5 {
-        give "5";
+        return "5";
     }
 
     if value == 6 {
-        give "6";
+        return "6";
     }
 
     if value == 7 {
-        give "7";
+        return "7";
     }
 
     if value == 8 {
-        give "8";
+        return "8";
     }
 
     if value == 9 {
-        give "9";
+        return "9";
     }
 
     if value == 10 {
-        give "A";
+        return "A";
     }
 
     if value == 11 {
-        give "B";
+        return "B";
     }
 
     if value == 12 {
-        give "C";
+        return "C";
     }
 
     if value == 13 {
-        give "D";
+        return "D";
     }
 
     if value == 14 {
-        give "E";
+        return "E";
     }
 
-    give "F";
+    return "F";
 }
 
 proc hex4(
@@ -303,7 +303,7 @@ proc hex4(
         value &
         JSON_ESCAPE_HEX_MASK;
 
-    give hex_digit(a) +
+    return hex_digit(a) +
          hex_digit(b) +
          hex_digit(c) +
          hex_digit(d);
@@ -312,7 +312,7 @@ proc hex4(
 proc unicode_escape_bmp(
     value: u64
 ) -> string {
-    give "\\u" +
+    return "\\u" +
          hex4(value);
 }
 
@@ -329,7 +329,7 @@ proc high_surrogate_for(
     let adjusted: u64 =
         value - 0x10000;
 
-    give 0xD800 +
+    return 0xD800 +
          (adjusted >> 10);
 }
 
@@ -339,21 +339,21 @@ proc low_surrogate_for(
     let adjusted: u64 =
         value - 0x10000;
 
-    give 0xDC00 +
+    return 0xDC00 +
          (adjusted & 0x3FF);
 }
 
 proc unicode_escape_scalar(
     value: u64
 ) -> JsonEscapeResult {
-    if !is_valid_unicode_scalar(
+    if not is_valid_unicode_scalar(
         value) {
-        give failure(
+        return failure(
             JsonEscapeError.InvalidUnicodeScalar);
     }
 
     if value <= 0xFFFF {
-        give success(
+        return success(
             unicode_escape_bmp(
                 value));
     }
@@ -366,7 +366,7 @@ proc unicode_escape_scalar(
         low_surrogate_for(
             value);
 
-    give success(
+    return success(
         unicode_escape_bmp(high) +
         unicode_escape_bmp(low));
 }
@@ -379,68 +379,68 @@ proc has_short_escape(
     value: char
 ) -> bool {
     if value == '"' {
-        give true;
+        return true;
     }
 
     if value == '\\' {
-        give true;
+        return true;
     }
 
     if value == '\b' {
-        give true;
+        return true;
     }
 
     if value == '\f' {
-        give true;
+        return true;
     }
 
     if value == '\n' {
-        give true;
+        return true;
     }
 
     if value == '\r' {
-        give true;
+        return true;
     }
 
     if value == '\t' {
-        give true;
+        return true;
     }
 
-    give false;
+    return false;
 }
 
 proc short_escape(
     value: char
 ) -> string {
     if value == '"' {
-        give "\\\"";
+        return "\\\"";
     }
 
     if value == '\\' {
-        give "\\\\";
+        return "\\\\";
     }
 
     if value == '\b' {
-        give "\\b";
+        return "\\b";
     }
 
     if value == '\f' {
-        give "\\f";
+        return "\\f";
     }
 
     if value == '\n' {
-        give "\\n";
+        return "\\n";
     }
 
     if value == '\r' {
-        give "\\r";
+        return "\\r";
     }
 
     if value == '\t' {
-        give "\\t";
+        return "\\t";
     }
 
-    give "";
+    return "";
 }
 
 /// -------------------------------------------------------------------------
@@ -454,45 +454,45 @@ proc escape_character_with_options(
     let code: u64 =
         value as u64;
 
-    if !is_valid_unicode_scalar(
+    if not is_valid_unicode_scalar(
         code) {
-        give failure(
+        return failure(
             JsonEscapeError.InvalidUnicodeScalar);
     }
 
     if has_short_escape(
         value) {
-        give success(
+        return success(
             short_escape(
                 value));
     }
 
     if value == '/' &&
        options.escape_slash {
-        give success(
+        return success(
             "\\/");
     }
 
     if is_control(code) {
-        give success(
+        return success(
             unicode_escape_bmp(
                 code));
     }
 
     if options.escape_non_ascii &&
-       !is_ascii(code) {
-        give unicode_escape_scalar(
+       not is_ascii(code) {
+        return unicode_escape_scalar(
             code);
     }
 
-    give success(
+    return success(
         "" + value);
 }
 
 proc escape_character(
     value: char
 ) -> JsonEscapeResult {
-    give escape_character_with_options(
+    return escape_character_with_options(
         value,
         default_options());
 }
@@ -511,15 +511,15 @@ proc validate_string(
         let code: u64 =
             value[index] as u64;
 
-        if !is_valid_unicode_scalar(
+        if not is_valid_unicode_scalar(
             code) {
-            give false;
+            return false;
         }
 
         set index += 1;
     }
 
-    give true;
+    return true;
 }
 
 /// -------------------------------------------------------------------------
@@ -535,9 +535,9 @@ proc escape_with_options(
     value: string,
     options: JsonEscapeOptions
 ) -> JsonEscapeResult {
-    if !validate_string(
+    if not validate_string(
         value) {
-        give failure(
+        return failure(
             JsonEscapeError.InvalidUnicodeScalar);
     }
 
@@ -553,8 +553,8 @@ proc escape_with_options(
                     value[index],
                     options);
 
-        if !escaped.ok {
-            give escaped;
+        if not escaped.ok {
+            return escaped;
         }
 
         set output =
@@ -564,14 +564,14 @@ proc escape_with_options(
         set index += 1;
     }
 
-    give success(
+    return success(
         output);
 }
 
 proc escape(
     value: string
 ) -> JsonEscapeResult {
-    give escape_with_options(
+    return escape_with_options(
         value,
         default_options());
 }
@@ -579,7 +579,7 @@ proc escape(
 proc escape_ascii(
     value: string
 ) -> JsonEscapeResult {
-    give escape_with_options(
+    return escape_with_options(
         value,
         ascii_options());
 }
@@ -587,7 +587,7 @@ proc escape_ascii(
 proc escape_slashes(
     value: string
 ) -> JsonEscapeResult {
-    give escape_with_options(
+    return escape_with_options(
         value,
         slash_options());
 }
@@ -595,7 +595,7 @@ proc escape_slashes(
 proc escape_strict_ascii(
     value: string
 ) -> JsonEscapeResult {
-    give escape_with_options(
+    return escape_with_options(
         value,
         strict_ascii_options());
 }
@@ -614,11 +614,11 @@ proc quote_with_options(
                 value,
                 options);
 
-    if !escaped.ok {
-        give escaped;
+    if not escaped.ok {
+        return escaped;
     }
 
-    give success(
+    return success(
         "\"" +
         escaped.text +
         "\"");
@@ -627,7 +627,7 @@ proc quote_with_options(
 proc quote(
     value: string
 ) -> JsonEscapeResult {
-    give quote_with_options(
+    return quote_with_options(
         value,
         default_options());
 }
@@ -635,7 +635,7 @@ proc quote(
 proc quote_ascii(
     value: string
 ) -> JsonEscapeResult {
-    give quote_with_options(
+    return quote_with_options(
         value,
         ascii_options());
 }
@@ -643,7 +643,7 @@ proc quote_ascii(
 proc quote_slashes(
     value: string
 ) -> JsonEscapeResult {
-    give quote_with_options(
+    return quote_with_options(
         value,
         slash_options());
 }
@@ -651,7 +651,7 @@ proc quote_slashes(
 proc quote_strict_ascii(
     value: string
 ) -> JsonEscapeResult {
-    give quote_with_options(
+    return quote_with_options(
         value,
         strict_ascii_options());
 }
@@ -678,13 +678,13 @@ proc escape_count_with_options(
         set index += 1;
     }
 
-    give result;
+    return result;
 }
 
 proc escape_count(
     value: string
 ) -> usize {
-    give escape_count_with_options(
+    return escape_count_with_options(
         value,
         default_options());
 }
@@ -692,7 +692,7 @@ proc escape_count(
 proc requires_escaping(
     value: string
 ) -> bool {
-    give escape_count(
+    return escape_count(
         value) != 0;
 }
 
@@ -700,7 +700,7 @@ proc requires_escaping_with_options(
     value: string,
     options: JsonEscapeOptions
 ) -> bool {
-    give escape_count_with_options(
+    return escape_count_with_options(
         value,
         options) != 0;
 }
@@ -744,12 +744,12 @@ proc statistics_with_options(
             set escaped_characters += 1;
             set control_escapes += 1;
 
-            if !has_short_escape(
+            if not has_short_escape(
                 current) {
                 set unicode_escapes += 1;
             }
         } else if options.escape_non_ascii &&
-                       !is_ascii(code) {
+                       not is_ascii(code) {
             set escaped_characters += 1;
             set unicode_escapes += 1;
         }
@@ -770,7 +770,7 @@ proc statistics_with_options(
             encoded.text.length;
     }
 
-    give JsonEscapeStatistics {
+    return JsonEscapeStatistics {
         input_characters:
             value.length,
 
@@ -800,7 +800,7 @@ proc statistics_with_options(
 proc statistics(
     value: string
 ) -> JsonEscapeStatistics {
-    give statistics_with_options(
+    return statistics_with_options(
         value,
         default_options());
 }
@@ -819,17 +819,17 @@ proc escaped_length_with_options(
                 value,
                 options);
 
-    if !result.ok {
-        give 0;
+    if not result.ok {
+        return 0;
     }
 
-    give result.text.length;
+    return result.text.length;
 }
 
 proc escaped_length(
     value: string
 ) -> usize {
-    give escaped_length_with_options(
+    return escaped_length_with_options(
         value,
         default_options());
 }
@@ -843,13 +843,13 @@ proc quoted_length_with_options(
             value,
             options);
 
-    give length + 2;
+    return length + 2;
 }
 
 proc quoted_length(
     value: string
 ) -> usize {
-    give quoted_length_with_options(
+    return quoted_length_with_options(
         value,
         default_options());
 }
@@ -907,13 +907,13 @@ test "json escape unicode scalar validation" {
     assert is_valid_unicode_scalar(
         0x10FFFF);
 
-    assert !is_valid_unicode_scalar(
+    assert not is_valid_unicode_scalar(
         0xD800);
 
-    assert !is_valid_unicode_scalar(
+    assert not is_valid_unicode_scalar(
         0xDFFF);
 
-    assert !is_valid_unicode_scalar(
+    assert not is_valid_unicode_scalar(
         0x110000);
 }
 
@@ -1228,7 +1228,7 @@ test "json ascii mode escapes supplementary unicode" {
 /// -------------------------------------------------------------------------
 
 test "json escape requirement" {
-    assert !requires_escaping(
+    assert not requires_escaping(
         "Vitte");
 
     assert requires_escaping(

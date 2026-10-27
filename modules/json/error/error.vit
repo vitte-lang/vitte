@@ -179,7 +179,7 @@ proc position(
     line: usize,
     column: usize
 ) -> JsonSourcePosition {
-    give JsonSourcePosition {
+    return JsonSourcePosition {
         offset: offset,
 
         line: line,
@@ -189,7 +189,7 @@ proc position(
 }
 
 proc start_position() -> JsonSourcePosition {
-    give position(
+    return position(
         0,
         0,
         0);
@@ -199,7 +199,7 @@ proc span(
     start: JsonSourcePosition,
     end: JsonSourcePosition
 ) -> JsonSourceSpan {
-    give JsonSourceSpan {
+    return JsonSourceSpan {
         start: start,
 
         end: end,
@@ -209,7 +209,7 @@ proc span(
 proc point_span(
     value: JsonSourcePosition
 ) -> JsonSourceSpan {
-    give span(
+    return span(
         value,
         value);
 }
@@ -218,7 +218,7 @@ proc empty_span() -> JsonSourceSpan {
     let value: JsonSourcePosition =
         start_position();
 
-    give point_span(
+    return point_span(
         value);
 }
 
@@ -229,13 +229,13 @@ proc empty_span() -> JsonSourceSpan {
 proc human_line(
     value: &JsonSourcePosition
 ) -> usize {
-    give value.line + 1;
+    return value.line + 1;
 }
 
 proc human_column(
     value: &JsonSourcePosition
 ) -> usize {
-    give value.column + 1;
+    return value.column + 1;
 }
 
 proc span_length(
@@ -243,17 +243,17 @@ proc span_length(
 ) -> usize {
     if value.end.offset <
        value.start.offset {
-        give 0;
+        return 0;
     }
 
-    give value.end.offset -
+    return value.end.offset -
          value.start.offset;
 }
 
 proc span_is_empty(
     value: &JsonSourceSpan
 ) -> bool {
-    give value.start.offset ==
+    return value.start.offset ==
          value.end.offset;
 }
 
@@ -261,7 +261,7 @@ proc position_before(
     left: &JsonSourcePosition,
     right: &JsonSourcePosition
 ) -> bool {
-    give left.offset <
+    return left.offset <
          right.offset;
 }
 
@@ -269,7 +269,7 @@ proc position_after(
     left: &JsonSourcePosition,
     right: &JsonSourcePosition
 ) -> bool {
-    give left.offset >
+    return left.offset >
          right.offset;
 }
 
@@ -277,7 +277,7 @@ proc position_equal(
     left: &JsonSourcePosition,
     right: &JsonSourcePosition
 ) -> bool {
-    give left.offset ==
+    return left.offset ==
          right.offset &&
          left.line ==
              right.line &&
@@ -288,7 +288,7 @@ proc position_equal(
 proc span_valid(
     value: &JsonSourceSpan
 ) -> bool {
-    give value.end.offset >=
+    return value.end.offset >=
          value.start.offset;
 }
 
@@ -297,7 +297,7 @@ proc span_valid(
 /// -------------------------------------------------------------------------
 
 proc none() -> JsonError {
-    give JsonError {
+    return JsonError {
         kind: JsonErrorKind.None,
 
         phase: JsonErrorPhase.None,
@@ -340,7 +340,7 @@ proc make(
     code: string,
     message: string
 ) -> JsonError {
-    give JsonError {
+    return JsonError {
         kind: kind,
 
         phase: phase,
@@ -393,19 +393,55 @@ proc make_at(
     set result.has_location =
         true;
 
-    give result;
+    return result;
 }
 
 /// -------------------------------------------------------------------------
 /// Error transformation
 /// -------------------------------------------------------------------------
 
+proc copy_error(
+    error: &JsonError
+) -> JsonError {
+    return JsonError {
+        kind: error.kind,
+
+        phase: error.phase,
+
+        severity: error.severity,
+
+        code: error.code,
+
+        message: error.message,
+
+        detail: error.detail,
+
+        expected: error.expected,
+
+        found: error.found,
+
+        source: error.source,
+
+        span: error.span,
+
+        has_location: error.has_location,
+
+        has_cause: error.has_cause,
+
+        cause_kind: error.cause_kind,
+
+        cause_code: error.cause_code,
+
+        cause_message: error.cause_message,
+    };
+}
+
 proc with_location(
     error: &JsonError,
     location: JsonSourceSpan
 ) -> JsonError {
     let mut result: JsonError =
-        error;
+        copy_error(error);
 
     set result.span =
         location;
@@ -413,14 +449,14 @@ proc with_location(
     set result.has_location =
         true;
 
-    give result;
+    return result;
 }
 
 proc without_location(
     error: &JsonError
 ) -> JsonError {
     let mut result: JsonError =
-        error;
+        copy_error(error);
 
     set result.span =
         empty_span();
@@ -428,7 +464,7 @@ proc without_location(
     set result.has_location =
         false;
 
-    give result;
+    return result;
 }
 
 proc with_source(
@@ -436,12 +472,12 @@ proc with_source(
     source: string
 ) -> JsonError {
     let mut result: JsonError =
-        error;
+        copy_error(error);
 
     set result.source =
         source;
 
-    give result;
+    return result;
 }
 
 proc with_detail(
@@ -449,12 +485,12 @@ proc with_detail(
     detail: string
 ) -> JsonError {
     let mut result: JsonError =
-        error;
+        copy_error(error);
 
     set result.detail =
         detail;
 
-    give result;
+    return result;
 }
 
 proc with_expected(
@@ -462,12 +498,12 @@ proc with_expected(
     expected: string
 ) -> JsonError {
     let mut result: JsonError =
-        error;
+        copy_error(error);
 
     set result.expected =
         expected;
 
-    give result;
+    return result;
 }
 
 proc with_found(
@@ -475,12 +511,12 @@ proc with_found(
     found: string
 ) -> JsonError {
     let mut result: JsonError =
-        error;
+        copy_error(error);
 
     set result.found =
         found;
 
-    give result;
+    return result;
 }
 
 proc with_expected_found(
@@ -489,7 +525,7 @@ proc with_expected_found(
     found: string
 ) -> JsonError {
     let mut result: JsonError =
-        error;
+        copy_error(error);
 
     set result.expected =
         expected;
@@ -497,7 +533,7 @@ proc with_expected_found(
     set result.found =
         found;
 
-    give result;
+    return result;
 }
 
 proc with_severity(
@@ -505,12 +541,12 @@ proc with_severity(
     severity: JsonErrorSeverity
 ) -> JsonError {
     let mut result: JsonError =
-        error;
+        copy_error(error);
 
     set result.severity =
         severity;
 
-    give result;
+    return result;
 }
 
 proc with_cause(
@@ -518,7 +554,7 @@ proc with_cause(
     cause: &JsonError
 ) -> JsonError {
     let mut result: JsonError =
-        error;
+        copy_error(error);
 
     set result.has_cause =
         cause.kind !=
@@ -533,7 +569,7 @@ proc with_cause(
     set result.cause_message =
         cause.message;
 
-    give result;
+    return result;
 }
 
 /// -------------------------------------------------------------------------
@@ -550,7 +586,7 @@ proc unexpected_character(
             "JSON1001",
             "unexpected character");
 
-    give with_found(
+    return with_found(
         &base,
         found);
 }
@@ -566,14 +602,14 @@ proc unexpected_token(
             "JSON2001",
             "unexpected token");
 
-    give with_expected_found(
+    return with_expected_found(
         &base,
         expected,
         found);
 }
 
 proc unexpected_end() -> JsonError {
-    give make(
+    return make(
         JsonErrorKind.UnexpectedEnd,
         JsonErrorPhase.Parser,
         "JSON2002",
@@ -590,13 +626,13 @@ proc invalid_literal(
             "JSON1002",
             "invalid JSON literal");
 
-    give with_found(
+    return with_found(
         &base,
         found);
 }
 
 proc invalid_null() -> JsonError {
-    give make(
+    return make(
         JsonErrorKind.InvalidNull,
         JsonErrorPhase.Lexer,
         "JSON1101",
@@ -604,7 +640,7 @@ proc invalid_null() -> JsonError {
 }
 
 proc invalid_boolean() -> JsonError {
-    give make(
+    return make(
         JsonErrorKind.InvalidBoolean,
         JsonErrorPhase.Lexer,
         "JSON1102",
@@ -612,7 +648,7 @@ proc invalid_boolean() -> JsonError {
 }
 
 proc invalid_number() -> JsonError {
-    give make(
+    return make(
         JsonErrorKind.InvalidNumber,
         JsonErrorPhase.Lexer,
         "JSON1200",
@@ -620,7 +656,7 @@ proc invalid_number() -> JsonError {
 }
 
 proc invalid_integer() -> JsonError {
-    give make(
+    return make(
         JsonErrorKind.InvalidInteger,
         JsonErrorPhase.Lexer,
         "JSON1201",
@@ -628,7 +664,7 @@ proc invalid_integer() -> JsonError {
 }
 
 proc invalid_float() -> JsonError {
-    give make(
+    return make(
         JsonErrorKind.InvalidFloat,
         JsonErrorPhase.Lexer,
         "JSON1202",
@@ -636,7 +672,7 @@ proc invalid_float() -> JsonError {
 }
 
 proc invalid_exponent() -> JsonError {
-    give make(
+    return make(
         JsonErrorKind.InvalidExponent,
         JsonErrorPhase.Lexer,
         "JSON1203",
@@ -644,7 +680,7 @@ proc invalid_exponent() -> JsonError {
 }
 
 proc number_overflow() -> JsonError {
-    give make(
+    return make(
         JsonErrorKind.Overflow,
         JsonErrorPhase.Decoder,
         "JSON1204",
@@ -652,7 +688,7 @@ proc number_overflow() -> JsonError {
 }
 
 proc number_underflow() -> JsonError {
-    give make(
+    return make(
         JsonErrorKind.Underflow,
         JsonErrorPhase.Decoder,
         "JSON1205",
@@ -660,7 +696,7 @@ proc number_underflow() -> JsonError {
 }
 
 proc invalid_string() -> JsonError {
-    give make(
+    return make(
         JsonErrorKind.InvalidString,
         JsonErrorPhase.Lexer,
         "JSON1300",
@@ -677,13 +713,13 @@ proc invalid_escape(
             "JSON1301",
             "invalid JSON escape sequence");
 
-    give with_found(
+    return with_found(
         &base,
         found);
 }
 
 proc invalid_unicode_escape() -> JsonError {
-    give make(
+    return make(
         JsonErrorKind.InvalidUnicodeEscape,
         JsonErrorPhase.Lexer,
         "JSON1302",
@@ -691,7 +727,7 @@ proc invalid_unicode_escape() -> JsonError {
 }
 
 proc invalid_unicode_scalar() -> JsonError {
-    give make(
+    return make(
         JsonErrorKind.InvalidUnicodeScalar,
         JsonErrorPhase.Decoder,
         "JSON1303",
@@ -699,7 +735,7 @@ proc invalid_unicode_scalar() -> JsonError {
 }
 
 proc invalid_surrogate() -> JsonError {
-    give make(
+    return make(
         JsonErrorKind.InvalidSurrogate,
         JsonErrorPhase.Decoder,
         "JSON1304",
@@ -707,7 +743,7 @@ proc invalid_surrogate() -> JsonError {
 }
 
 proc invalid_array() -> JsonError {
-    give make(
+    return make(
         JsonErrorKind.InvalidArray,
         JsonErrorPhase.Parser,
         "JSON2100",
@@ -715,7 +751,7 @@ proc invalid_array() -> JsonError {
 }
 
 proc invalid_object() -> JsonError {
-    give make(
+    return make(
         JsonErrorKind.InvalidObject,
         JsonErrorPhase.Parser,
         "JSON2200",
@@ -723,7 +759,7 @@ proc invalid_object() -> JsonError {
 }
 
 proc invalid_member() -> JsonError {
-    give make(
+    return make(
         JsonErrorKind.InvalidMember,
         JsonErrorPhase.Parser,
         "JSON2201",
@@ -738,7 +774,7 @@ proc missing_colon() -> JsonError {
             "JSON2202",
             "expected ':' after object key");
 
-    give with_expected(
+    return with_expected(
         &base,
         ":");
 }
@@ -751,13 +787,13 @@ proc missing_comma() -> JsonError {
             "JSON2203",
             "expected ',' between JSON values");
 
-    give with_expected(
+    return with_expected(
         &base,
         ",");
 }
 
 proc missing_value() -> JsonError {
-    give make(
+    return make(
         JsonErrorKind.MissingValue,
         JsonErrorPhase.Parser,
         "JSON2204",
@@ -765,7 +801,7 @@ proc missing_value() -> JsonError {
 }
 
 proc missing_key() -> JsonError {
-    give make(
+    return make(
         JsonErrorKind.MissingKey,
         JsonErrorPhase.Parser,
         "JSON2205",
@@ -773,7 +809,7 @@ proc missing_key() -> JsonError {
 }
 
 proc trailing_comma() -> JsonError {
-    give make(
+    return make(
         JsonErrorKind.TrailingComma,
         JsonErrorPhase.Parser,
         "JSON2206",
@@ -790,7 +826,7 @@ proc duplicate_key(
             "JSON3001",
             "duplicate JSON object key");
 
-    give with_found(
+    return with_found(
         &base,
         key);
 }
@@ -806,14 +842,14 @@ proc type_mismatch(
             "JSON3101",
             "JSON value has an unexpected type");
 
-    give with_expected_found(
+    return with_expected_found(
         &base,
         expected,
         found);
 }
 
 proc index_out_of_bounds() -> JsonError {
-    give make(
+    return make(
         JsonErrorKind.IndexOutOfBounds,
         JsonErrorPhase.Value,
         "JSON3102",
@@ -830,7 +866,7 @@ proc key_not_found(
             "JSON3103",
             "JSON object key was not found");
 
-    give with_found(
+    return with_found(
         &base,
         key);
 }
@@ -846,14 +882,14 @@ proc conversion_error(
             "JSON3104",
             "JSON value cannot be converted");
 
-    give with_expected_found(
+    return with_expected_found(
         &base,
         expected,
         found);
 }
 
 proc depth_exceeded() -> JsonError {
-    give make(
+    return make(
         JsonErrorKind.DepthExceeded,
         JsonErrorPhase.Parser,
         "JSON4001",
@@ -863,7 +899,7 @@ proc depth_exceeded() -> JsonError {
 proc encoding_error(
     message: string
 ) -> JsonError {
-    give make(
+    return make(
         JsonErrorKind.Encoding,
         JsonErrorPhase.Encoder,
         "JSON5001",
@@ -873,7 +909,7 @@ proc encoding_error(
 proc decoding_error(
     message: string
 ) -> JsonError {
-    give make(
+    return make(
         JsonErrorKind.Decoding,
         JsonErrorPhase.Decoder,
         "JSON5002",
@@ -883,7 +919,7 @@ proc decoding_error(
 proc validation_error(
     message: string
 ) -> JsonError {
-    give make(
+    return make(
         JsonErrorKind.Validation,
         JsonErrorPhase.Validator,
         "JSON5003",
@@ -900,7 +936,7 @@ proc internal_error(
             "JSON9000",
             message);
 
-    give with_severity(
+    return with_severity(
         &base,
         JsonErrorSeverity.Fatal);
 }
@@ -912,20 +948,20 @@ proc internal_error(
 proc is_none(
     error: &JsonError
 ) -> bool {
-    give error.kind ==
+    return error.kind ==
          JsonErrorKind.None;
 }
 
 proc is_error(
     error: &JsonError
 ) -> bool {
-    give !is_none(error);
+    return not is_none(error);
 }
 
 proc is_fatal(
     error: &JsonError
 ) -> bool {
-    give is_error(error) &&
+    return is_error(error) &&
          error.severity ==
              JsonErrorSeverity.Fatal;
 }
@@ -933,37 +969,37 @@ proc is_fatal(
 proc has_location(
     error: &JsonError
 ) -> bool {
-    give error.has_location;
+    return error.has_location;
 }
 
 proc has_source(
     error: &JsonError
 ) -> bool {
-    give error.source.length != 0;
+    return error.source.length != 0;
 }
 
 proc has_detail(
     error: &JsonError
 ) -> bool {
-    give error.detail.length != 0;
+    return error.detail.length != 0;
 }
 
 proc has_expected(
     error: &JsonError
 ) -> bool {
-    give error.expected.length != 0;
+    return error.expected.length != 0;
 }
 
 proc has_found(
     error: &JsonError
 ) -> bool {
-    give error.found.length != 0;
+    return error.found.length != 0;
 }
 
 proc has_cause(
     error: &JsonError
 ) -> bool {
-    give error.has_cause;
+    return error.has_cause;
 }
 
 /// -------------------------------------------------------------------------
@@ -973,49 +1009,49 @@ proc has_cause(
 proc is_lexical(
     error: &JsonError
 ) -> bool {
-    give error.phase ==
+    return error.phase ==
          JsonErrorPhase.Lexer;
 }
 
 proc is_syntax(
     error: &JsonError
 ) -> bool {
-    give error.phase ==
+    return error.phase ==
          JsonErrorPhase.Parser;
 }
 
 proc is_decode(
     error: &JsonError
 ) -> bool {
-    give error.phase ==
+    return error.phase ==
          JsonErrorPhase.Decoder;
 }
 
 proc is_encode(
     error: &JsonError
 ) -> bool {
-    give error.phase ==
+    return error.phase ==
          JsonErrorPhase.Encoder;
 }
 
 proc is_validation(
     error: &JsonError
 ) -> bool {
-    give error.phase ==
+    return error.phase ==
          JsonErrorPhase.Validator;
 }
 
 proc is_value_error(
     error: &JsonError
 ) -> bool {
-    give error.phase ==
+    return error.phase ==
          JsonErrorPhase.Value;
 }
 
 proc is_number_error(
     error: &JsonError
 ) -> bool {
-    give error.kind ==
+    return error.kind ==
              JsonErrorKind.InvalidNumber ||
          error.kind ==
              JsonErrorKind.InvalidInteger ||
@@ -1032,7 +1068,7 @@ proc is_number_error(
 proc is_string_error(
     error: &JsonError
 ) -> bool {
-    give error.kind ==
+    return error.kind ==
              JsonErrorKind.InvalidString ||
          error.kind ==
              JsonErrorKind.InvalidEscape ||
@@ -1047,7 +1083,7 @@ proc is_string_error(
 proc is_structure_error(
     error: &JsonError
 ) -> bool {
-    give error.kind ==
+    return error.kind ==
              JsonErrorKind.InvalidArray ||
          error.kind ==
              JsonErrorKind.InvalidObject ||
@@ -1074,35 +1110,35 @@ proc phase_name(
 ) -> string {
     if phase ==
        JsonErrorPhase.None {
-        give "none";
+        return "none";
     }
 
     if phase ==
        JsonErrorPhase.Lexer {
-        give "lexer";
+        return "lexer";
     }
 
     if phase ==
        JsonErrorPhase.Parser {
-        give "parser";
+        return "parser";
     }
 
     if phase ==
        JsonErrorPhase.Decoder {
-        give "decoder";
+        return "decoder";
     }
 
     if phase ==
        JsonErrorPhase.Encoder {
-        give "encoder";
+        return "encoder";
     }
 
     if phase ==
        JsonErrorPhase.Validator {
-        give "validator";
+        return "validator";
     }
 
-    give "value";
+    return "value";
 }
 
 proc severity_name(
@@ -1110,10 +1146,10 @@ proc severity_name(
 ) -> string {
     if severity ==
        JsonErrorSeverity.Fatal {
-        give "fatal";
+        return "fatal";
     }
 
-    give "error";
+    return "error";
 }
 
 /// -------------------------------------------------------------------------
@@ -1125,190 +1161,190 @@ proc kind_name(
 ) -> string {
     if kind ==
        JsonErrorKind.None {
-        give "none";
+        return "none";
     }
 
     if kind ==
        JsonErrorKind.Lexical {
-        give "lexical";
+        return "lexical";
     }
 
     if kind ==
        JsonErrorKind.Syntax {
-        give "syntax";
+        return "syntax";
     }
 
     if kind ==
        JsonErrorKind.UnexpectedToken {
-        give "unexpected-token";
+        return "unexpected-token";
     }
 
     if kind ==
        JsonErrorKind.UnexpectedCharacter {
-        give "unexpected-character";
+        return "unexpected-character";
     }
 
     if kind ==
        JsonErrorKind.UnexpectedEnd {
-        give "unexpected-end";
+        return "unexpected-end";
     }
 
     if kind ==
        JsonErrorKind.InvalidLiteral {
-        give "invalid-literal";
+        return "invalid-literal";
     }
 
     if kind ==
        JsonErrorKind.InvalidNull {
-        give "invalid-null";
+        return "invalid-null";
     }
 
     if kind ==
        JsonErrorKind.InvalidBoolean {
-        give "invalid-boolean";
+        return "invalid-boolean";
     }
 
     if kind ==
        JsonErrorKind.InvalidNumber {
-        give "invalid-number";
+        return "invalid-number";
     }
 
     if kind ==
        JsonErrorKind.InvalidInteger {
-        give "invalid-integer";
+        return "invalid-integer";
     }
 
     if kind ==
        JsonErrorKind.InvalidFloat {
-        give "invalid-float";
+        return "invalid-float";
     }
 
     if kind ==
        JsonErrorKind.InvalidExponent {
-        give "invalid-exponent";
+        return "invalid-exponent";
     }
 
     if kind ==
        JsonErrorKind.InvalidString {
-        give "invalid-string";
+        return "invalid-string";
     }
 
     if kind ==
        JsonErrorKind.InvalidEscape {
-        give "invalid-escape";
+        return "invalid-escape";
     }
 
     if kind ==
        JsonErrorKind.InvalidUnicodeEscape {
-        give "invalid-unicode-escape";
+        return "invalid-unicode-escape";
     }
 
     if kind ==
        JsonErrorKind.InvalidUnicodeScalar {
-        give "invalid-unicode-scalar";
+        return "invalid-unicode-scalar";
     }
 
     if kind ==
        JsonErrorKind.InvalidSurrogate {
-        give "invalid-surrogate";
+        return "invalid-surrogate";
     }
 
     if kind ==
        JsonErrorKind.InvalidArray {
-        give "invalid-array";
+        return "invalid-array";
     }
 
     if kind ==
        JsonErrorKind.InvalidObject {
-        give "invalid-object";
+        return "invalid-object";
     }
 
     if kind ==
        JsonErrorKind.InvalidMember {
-        give "invalid-member";
+        return "invalid-member";
     }
 
     if kind ==
        JsonErrorKind.MissingColon {
-        give "missing-colon";
+        return "missing-colon";
     }
 
     if kind ==
        JsonErrorKind.MissingComma {
-        give "missing-comma";
+        return "missing-comma";
     }
 
     if kind ==
        JsonErrorKind.MissingValue {
-        give "missing-value";
+        return "missing-value";
     }
 
     if kind ==
        JsonErrorKind.MissingKey {
-        give "missing-key";
+        return "missing-key";
     }
 
     if kind ==
        JsonErrorKind.TrailingComma {
-        give "trailing-comma";
+        return "trailing-comma";
     }
 
     if kind ==
        JsonErrorKind.DuplicateKey {
-        give "duplicate-key";
+        return "duplicate-key";
     }
 
     if kind ==
        JsonErrorKind.TypeMismatch {
-        give "type-mismatch";
+        return "type-mismatch";
     }
 
     if kind ==
        JsonErrorKind.IndexOutOfBounds {
-        give "index-out-of-bounds";
+        return "index-out-of-bounds";
     }
 
     if kind ==
        JsonErrorKind.KeyNotFound {
-        give "key-not-found";
+        return "key-not-found";
     }
 
     if kind ==
        JsonErrorKind.Conversion {
-        give "conversion";
+        return "conversion";
     }
 
     if kind ==
        JsonErrorKind.Overflow {
-        give "overflow";
+        return "overflow";
     }
 
     if kind ==
        JsonErrorKind.Underflow {
-        give "underflow";
+        return "underflow";
     }
 
     if kind ==
        JsonErrorKind.DepthExceeded {
-        give "depth-exceeded";
+        return "depth-exceeded";
     }
 
     if kind ==
        JsonErrorKind.Encoding {
-        give "encoding";
+        return "encoding";
     }
 
     if kind ==
        JsonErrorKind.Decoding {
-        give "decoding";
+        return "decoding";
     }
 
     if kind ==
        JsonErrorKind.Validation {
-        give "validation";
+        return "validation";
     }
 
-    give "internal";
+    return "internal";
 }
 
 /// -------------------------------------------------------------------------
@@ -1318,23 +1354,23 @@ proc kind_name(
 proc validate_position(
     value: &JsonSourcePosition
 ) -> bool {
-    give true;
+    return true;
 }
 
 proc validate_span(
     value: &JsonSourceSpan
 ) -> bool {
-    if !validate_position(
+    if not validate_position(
         &value.start) {
-        give false;
+        return false;
     }
 
-    if !validate_position(
+    if not validate_position(
         &value.end) {
-        give false;
+        return false;
     }
 
-    give span_valid(
+    return span_valid(
         value);
 }
 
@@ -1342,30 +1378,30 @@ proc validate_error(
     error: &JsonError
 ) -> bool {
     if is_none(error) {
-        give error.code.length != 0;
+        return error.code.length != 0;
     }
 
     if error.code.length == 0 {
-        give false;
+        return false;
     }
 
     if error.message.length == 0 {
-        give false;
+        return false;
     }
 
     if error.has_location &&
-       !validate_span(
+       not validate_span(
            &error.span) {
-        give false;
+        return false;
     }
 
     if error.has_cause &&
        error.cause_kind ==
            JsonErrorKind.None {
-        give false;
+        return false;
     }
 
-    give true;
+    return true;
 }
 
 /// -------------------------------------------------------------------------
@@ -1376,7 +1412,7 @@ proc positions_equal(
     left: &JsonSourcePosition,
     right: &JsonSourcePosition
 ) -> bool {
-    give position_equal(
+    return position_equal(
         left,
         right);
 }
@@ -1385,7 +1421,7 @@ proc spans_equal(
     left: &JsonSourceSpan,
     right: &JsonSourceSpan
 ) -> bool {
-    give positions_equal(
+    return positions_equal(
                &left.start,
                &right.start) &&
          positions_equal(
@@ -1399,84 +1435,84 @@ proc errors_equal(
 ) -> bool {
     if left.kind !=
        right.kind {
-        give false;
+        return false;
     }
 
     if left.phase !=
        right.phase {
-        give false;
+        return false;
     }
 
     if left.severity !=
        right.severity {
-        give false;
+        return false;
     }
 
     if left.code !=
        right.code {
-        give false;
+        return false;
     }
 
     if left.message !=
        right.message {
-        give false;
+        return false;
     }
 
     if left.detail !=
        right.detail {
-        give false;
+        return false;
     }
 
     if left.expected !=
        right.expected {
-        give false;
+        return false;
     }
 
     if left.found !=
        right.found {
-        give false;
+        return false;
     }
 
     if left.source !=
        right.source {
-        give false;
+        return false;
     }
 
     if left.has_location !=
        right.has_location {
-        give false;
+        return false;
     }
 
     if left.has_location &&
-       !spans_equal(
+       not spans_equal(
            &left.span,
            &right.span) {
-        give false;
+        return false;
     }
 
     if left.has_cause !=
        right.has_cause {
-        give false;
+        return false;
     }
 
     if left.has_cause {
         if left.cause_kind !=
            right.cause_kind {
-            give false;
+            return false;
         }
 
         if left.cause_code !=
            right.cause_code {
-            give false;
+            return false;
         }
 
         if left.cause_message !=
            right.cause_message {
-            give false;
+            return false;
         }
     }
 
-    give true;
+    return true;
 }
 
 /// -------------------------------------------------------------------------
@@ -1484,7 +1520,7 @@ proc errors_equal(
 /// -------------------------------------------------------------------------
 
 proc ok() -> JsonErrorResult {
-    give JsonErrorResult {
+    return JsonErrorResult {
         ok: true,
 
         error: none(),
@@ -1494,7 +1530,7 @@ proc ok() -> JsonErrorResult {
 proc fail(
     error: JsonError
 ) -> JsonErrorResult {
-    give JsonErrorResult {
+    return JsonErrorResult {
         ok: false,
 
         error: error,
@@ -1549,7 +1585,7 @@ test "json error source span" {
     assert span_length(
         &value) == 5;
 
-    assert !span_is_empty(
+    assert not span_is_empty(
         &value);
 }
 
@@ -1578,7 +1614,7 @@ test "json error none" {
     assert is_none(
         &error);
 
-    assert !is_error(
+    assert not is_error(
         &error);
 
     assert validate_error(
@@ -1931,7 +1967,7 @@ test "json errors inequality" {
     let right: JsonError =
         invalid_string();
 
-    assert !errors_equal(
+    assert not errors_equal(
         &left,
         &right);
 }
@@ -1955,7 +1991,7 @@ test "json error failed result" {
         fail(
             invalid_number());
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error.kind ==
         JsonErrorKind.InvalidNumber;

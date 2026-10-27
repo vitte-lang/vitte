@@ -118,7 +118,7 @@ VITTE_MODULE_PATH="$PWD/modules:$HOME/.local/share/vitte/modules" \
 
 ```toml
 name = "json"
-version = "0.1.0"
+version = "0.1.1"
 entry = "json.vit"
 module_root = "."
 module_path_syntax = "::"
@@ -195,20 +195,20 @@ use json::encode::encoder::{JsonEncodeResult, encode_pretty};
 proc convert(source: string) {
     let parsed: JsonParseResult = parse_strict(source);
 
-    if !parsed.ok {
-        // parsed.diagnostic contient l’erreur détaillée.
-        give;
+    if not parsed.ok {
+        // parsed.report contient l’erreur détaillée.
+        return;
     }
 
     let encoded: JsonEncodeResult = encode_pretty(&parsed.value);
 
-    if !encoded.ok {
+    if not encoded.ok {
         // La valeur doit être validée avant de devenir une sortie.
-        give;
+        return;
     }
 
     // encoded.text contient le document JSON formaté.
-    give;
+    return;
 }
 ```
 
@@ -406,14 +406,19 @@ Le parser principal se trouve dans `json::parser::parser`.
 ```text
 parse(source)
 parse_strict(source)
+parse_with_limits(source, lexer_limits, parser_limits)
+parse_strict_with_limits(source, lexer_limits, parser_limits)
 parse_tokens(tokens)
 parse_tokens_strict(tokens)
+parse_tokens_with_limits(tokens, parser_limits)
 ```
 
 `parse` effectue le lexing puis le parsing d’un document complet.
 `parse_strict` utilise la même grammaire et rejette les clés dupliquées.
 Les variantes `parse_tokens` servent lorsqu’une application possède déjà les
-tokens, par exemple après une phase d’inspection ou de cache.
+tokens, par exemple après une phase d’inspection ou de cache. Les variantes
+`*_with_limits` reçoivent des profils explicites de ressources ; `parse_strict`
+et `parse_strict_with_limits` refusent toujours les clés dupliquées.
 
 ### 6.2 Grammaire reconnue
 
@@ -450,7 +455,7 @@ export form JsonParseResult {
     ok: bool,
     value: JsonValue,
     next: usize,
-    diagnostic: JsonParserDiagnostic,
+    report: JsonParserDiagnostic,
     statistics: JsonParserStatistics,
 }
 ```
@@ -528,9 +533,9 @@ Exemple d’utilisation :
 use json::error::position::{human_line, human_column};
 
 let result: JsonParseResult = parse(source);
-if !result.ok {
-    let line: usize = human_line(&result.diagnostic.span.start);
-    let column: usize = human_column(&result.diagnostic.span.start);
+if not result.ok {
+    let line: usize = human_line(&result.report.span.start);
+    let column: usize = human_column(&result.report.span.start);
     // Afficher code, message, suggestion, line et column.
     _ = line;
     _ = column;
@@ -650,8 +655,13 @@ les fonctions de nommage et de comparaison.
 | longueur de la source | `268 435 456` |
 
 Les limites évitent qu’un document excessif ne consomme toutes les ressources
-de l’application. `JsonLexerLimits` permet de les réduire pour un protocole
-ou une configuration contrôlée.
+de l’application. `JsonLexerLimits` permet de les régler pour un protocole
+ou une configuration contrôlée. Utilisez `default_lexer_limits()` pour le
+profil livré ou construisez-en un avec `new_lexer_limits(...)`, puis appelez
+`lex_with_limits(source, profile)`. `lexer_limits_valid(profile)` permet de
+vérifier le profil avant de le passer au lexer. `max_tokens` inclut le token
+final `End`; la longueur des chaînes est contrôlée après décodage, celle des
+nombres sur leur lexème d’origine, et celle de la source avant le lexing.
 
 ---
 
@@ -907,28 +917,109 @@ Les constructeurs couvrent notamment `unexpected_character`, `unexpected_token`,
 
 ## 15. Limites et sécurité
 
+Cette section développe les recommandations générales du chapitre 15 du
+[PDF de l’issue #17](https://github.com/vitte-lang/vitte/issues/17). Cette
+édition de travail recommande de borner profondeur, jetons et membres, mais ne
+fixe ni noms d’API ni valeurs par défaut. Les signatures, comportements et
+plafonds ci-dessous correspondent à l’implémentation Vitte 0.1.1 et aux tests
+du module.
+
 Les limites par défaut du parser sont :
 
 | Limite | Valeur |
 |---|---:|
 | profondeur maximale | `512` |
 | valeurs totales | `1 048 576` |
-| éléments de tableaux | `1 048 576` |
-| membres d’objets | `1 048 576` |
+| éléments par tableau | `1 048 576` |
+| membres par objet | `1 048 576` |
 | longueur d’une clé | `16 777 216` |
 
-Le lexer ajoute ses limites de source, tokens, chaînes et nombres. Le type
-`JsonParserLimits` est exposé, mais les points d’entrée publics actuels
-(`parse`, `parse_strict`, `parse_tokens` et `parse_tokens_strict`) utilisent
-les limites par défaut ; le constructeur de limites et le parsing avec limites
-personnalisées ne sont pas exportés. Pour une entrée non fiable, borner aussi
-la taille des données à la frontière de l’application. Une API publique de
-configuration des limites demanderait un point d’entrée supplémentaire.
+`max_depth` compte les conteneurs imbriqués : une racine scalaire a une
+profondeur de zéro et un tableau ou objet racine compte pour un. Les limites de
+tableaux et d’objets s’appliquent séparément à chaque conteneur. `max_values`
+compte globalement chaque valeur scalaire et chaque tableau ou objet, sans
+compter les noms de membres. Le parser effectue ce décompte sur les tokens
+avant de construire l’arbre.
+
+Les dépassements ont des catégories de diagnostic dédiées : `TooManyValues`,
+`TooManyArrayElements`, `TooManyObjectMembers`, `ObjectKeyTooLong`,
+`DepthExceeded` et `DuplicateObjectKey`. Les plafonds de conteneurs sont
+inclusifs : un tableau avec exactement `max_array_elements` éléments et un
+objet avec exactement `max_object_members` membres restent acceptés.
+
+Le lexer ajoute des limites de taille de source, de nombre de tokens, de
+longueur des chaînes et de longueur des nombres. Les profils par défaut sont
+accessibles par `default_lexer_limits()` et `default_parser_limits()`; le
+constructeur `strict_parser_limits()` donne les limites du parser avec rejet
+des clés dupliquées. Pour une politique adaptée à une entrée non fiable, créez
+vos profils et passez-les à `parse_strict_with_limits` :
+
+```vitte
+use json::lexer::lexer::{
+    JsonLexerLimits,
+    new_lexer_limits,
+};
+use json::parser::parser::{
+    JsonParseResult,
+    JsonParserDuplicateKeyPolicy,
+    JsonParserLimits,
+    new_parser_limits,
+    parse_strict_with_limits,
+};
+
+let lexer_limits: JsonLexerLimits =
+    new_lexer_limits(
+        50000,
+        65536,
+        256,
+        1048576);
+
+let parser_limits: JsonParserLimits =
+    new_parser_limits(
+        64,
+        50000,
+        10000,
+        10000,
+        4096,
+        JsonParserDuplicateKeyPolicy.Reject);
+
+let result: JsonParseResult =
+    parse_strict_with_limits(
+        source,
+        lexer_limits,
+        parser_limits);
+```
+
+Les arguments du constructeur lexer sont, dans l’ordre, les plafonds de tokens,
+de longueur de chaîne, de longueur de nombre et de longueur de source. Ceux du
+parser sont la profondeur, le nombre total de valeurs, les éléments par
+tableau, les membres par objet, la longueur des clés et la politique de clés
+dupliquées. La longueur de clé est mesurée sur la chaîne décodée. `parse_with_limits`
+respecte la politique configurée ; la variante stricte la force à `Reject`.
+Tous les plafonds numériques doivent être
+supérieurs à zéro : les points d’entrée renvoient un résultat d’échec et un
+diagnostic si le profil est invalide. `parse_with_limits` valide le profil du
+parser avant de lancer le lexer. Le parser compte ensuite les valeurs depuis
+le flux de tokens avant de construire l’arbre ; `max_values` empêche donc la
+construction d’un arbre qui dépasse ce budget. Le lexer a déjà produit les
+tokens à ce stade, d’où l’intérêt de borner aussi sa source et son nombre de
+tokens.
+
+Si le lexer échoue pendant `parse` ou `parse_with_limits`, le résultat du
+parser conserve le message, le détail, la suggestion et l’emplacement du lexer,
+mais classe `report.error` comme `JsonParserError.InvalidTokenStream`. Appelez
+`lex` ou `lex_with_limits` directement pour obtenir la catégorie précise de
+`JsonLexerError`.
+
+La limite de source s’applique après que l’appelant a fourni la chaîne au
+module. Pour les fichiers ou les corps HTTP, bornez aussi la lecture à la
+frontière de l’application afin d’éviter d’allouer une entrée surdimensionnée
+avant le lexing.
 
 Recommandations pour des données non fiables :
 
-1. utiliser `parse_strict` ;
-2. réduire les limites au besoin ;
+1. utiliser `parse_strict` ou `parse_strict_with_limits` ;
+2. régler les plafonds selon la taille, la profondeur et le volume attendus ;
 3. vérifier `result.ok` ;
 4. vérifier les types et les plages métier ;
 5. valider avant l’encodage ;
@@ -945,12 +1036,12 @@ Recommandations pour des données non fiables :
 
 ```vitte
 let result: JsonParseResult = parse_strict(source);
-if !result.ok {
-    give;
+if not result.ok {
+    return;
 }
 
-if !is_object(&result.value) {
-    give;
+if not is_object(&result.value) {
+    return;
 }
 
 let host: string =
@@ -1066,10 +1157,14 @@ make -C modules/json verify
 | `tests/unicode.vit` | Unicode |
 | `runtime/test_numeric.vit` | runtime numérique |
 | `tests/import_smoke.vit` | import installé |
-| `encode/escape.vit` | échappement détaillé |
 | `core/array.vit` | opérations de tableau |
 | `core/object.vit` | opérations d’objet |
 | `core/number.vit` | nombres |
+
+Les anciens brouillons non exportés `parser/array.vit`, `parser/object.vit`,
+`parser/value.vit` et `encode/escape.vit` restent dans le dépôt mais ne sont
+pas installés. L’API maintenue du parser et de l’encodeur se trouve dans
+`parser/parser.vit` et `encode/encoder.vit`.
 
 Pour ajouter une fonction publique : choisir le bon espace, documenter le
 contrat, représenter explicitement les erreurs, tester le cas nominal et les
@@ -1084,8 +1179,17 @@ cas limites, puis lancer `make -C modules/json verify`.
 ```text
 json::parser::parser::parse
 json::parser::parser::parse_strict
+json::parser::parser::parse_with_limits
+json::parser::parser::parse_strict_with_limits
 json::parser::parser::parse_tokens
 json::parser::parser::parse_tokens_strict
+json::parser::parser::parse_tokens_with_limits
+json::parser::parser::default_parser_limits
+json::parser::parser::strict_parser_limits
+json::parser::parser::new_parser_limits
+json::parser::parser::parser_limits_valid
+json::parser::parser::JsonParserDuplicateKeyPolicy
+json::parser::parser::JsonParserLimits
 ```
 
 ### Valeurs
@@ -1130,6 +1234,11 @@ json::encode::encoder::encode_string
 
 ```text
 json::lexer::lexer::lex
+json::lexer::lexer::lex_with_limits
+json::lexer::lexer::default_lexer_limits
+json::lexer::lexer::new_lexer_limits
+json::lexer::lexer::lexer_limits_valid
+json::lexer::lexer::JsonLexerLimits
 json::lexer::token::JsonToken
 json::lexer::token::JsonTokenKind
 json::lexer::escape::decode_escape

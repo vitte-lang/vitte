@@ -31,12 +31,12 @@ test "numeric lexical zero" {
 
     assert result.ok;
     assert result.kind == JsonNumericKind.Integer;
-    assert !result.negative;
+    assert not result.negative;
     assert result.integer_digits == 1;
     assert result.fraction_digits == 0;
     assert result.exponent_digits == 0;
-    assert !result.has_fraction;
-    assert !result.has_exponent;
+    assert not result.has_fraction;
+    assert not result.has_exponent;
 }
 
 test "numeric lexical negative zero" {
@@ -203,7 +203,7 @@ test "numeric lexical exponent metadata" {
 test "numeric rejects empty input" {
     let result: JsonNumericScan = scan("");
 
-    assert !result.ok;
+    assert not result.ok;
     assert result.kind == JsonNumericKind.Invalid;
     assert result.error == JsonNumericError.Empty;
 }
@@ -211,7 +211,7 @@ test "numeric rejects empty input" {
 test "numeric rejects plus prefix" {
     let result: JsonNumericScan = scan("+1");
 
-    assert !result.ok;
+    assert not result.ok;
     assert result.error == JsonNumericError.LeadingPlus;
     assert result.error_index == 0;
 }
@@ -219,7 +219,7 @@ test "numeric rejects plus prefix" {
 test "numeric rejects minus only" {
     let result: JsonNumericScan = scan("-");
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.MissingIntegerDigits;
@@ -228,7 +228,7 @@ test "numeric rejects minus only" {
 test "numeric rejects plus only" {
     let result: JsonNumericScan = scan("+");
 
-    assert !result.ok;
+    assert not result.ok;
     assert result.error == JsonNumericError.LeadingPlus;
 }
 
@@ -248,23 +248,23 @@ test "numeric accepts canonical zero forms" {
 test "numeric rejects positive leading zero" {
     let result: JsonNumericScan = scan("01");
 
-    assert !result.ok;
+    assert not result.ok;
     assert result.error == JsonNumericError.LeadingZero;
 }
 
 test "numeric rejects negative leading zero" {
     let result: JsonNumericScan = scan("-01");
 
-    assert !result.ok;
+    assert not result.ok;
     assert result.error == JsonNumericError.LeadingZero;
 }
 
 test "numeric rejects multiple leading zeroes" {
-    assert !valid("00");
-    assert !valid("000");
-    assert !valid("0001");
-    assert !valid("-00");
-    assert !valid("-0001");
+    assert not valid("00");
+    assert not valid("000");
+    assert not valid("0001");
+    assert not valid("-00");
+    assert not valid("-0001");
 }
 
 test "numeric accepts zero followed by fraction" {
@@ -284,7 +284,7 @@ test "numeric accepts zero followed by exponent" {
 test "numeric rejects leading decimal point" {
     let result: JsonNumericScan = scan(".5");
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.MissingIntegerDigits;
@@ -293,7 +293,7 @@ test "numeric rejects leading decimal point" {
 test "numeric rejects negative leading decimal point" {
     let result: JsonNumericScan = scan("-.5");
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.MissingIntegerDigits;
@@ -302,7 +302,7 @@ test "numeric rejects negative leading decimal point" {
 test "numeric rejects trailing decimal point" {
     let result: JsonNumericScan = scan("1.");
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.MissingFractionDigits;
@@ -311,15 +311,15 @@ test "numeric rejects trailing decimal point" {
 test "numeric rejects fraction followed by exponent without fraction digit" {
     let result: JsonNumericScan = scan("1.e2");
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.MissingFractionDigits;
 }
 
 test "numeric rejects duplicate decimal point" {
-    assert !valid("1.2.3");
-    assert !valid("0..1");
+    assert not valid("1.2.3");
+    assert not valid("0..1");
 }
 
 /// -------------------------------------------------------------------------
@@ -329,7 +329,7 @@ test "numeric rejects duplicate decimal point" {
 test "numeric rejects exponent without digits" {
     let result: JsonNumericScan = scan("1e");
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.MissingExponentDigits;
@@ -338,7 +338,7 @@ test "numeric rejects exponent without digits" {
 test "numeric rejects uppercase exponent without digits" {
     let result: JsonNumericScan = scan("1E");
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.MissingExponentDigits;
@@ -347,7 +347,7 @@ test "numeric rejects uppercase exponent without digits" {
 test "numeric rejects exponent plus without digits" {
     let result: JsonNumericScan = scan("1e+");
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.MissingExponentDigits;
@@ -356,20 +356,20 @@ test "numeric rejects exponent plus without digits" {
 test "numeric rejects exponent minus without digits" {
     let result: JsonNumericScan = scan("1e-");
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.MissingExponentDigits;
 }
 
 test "numeric rejects duplicate exponent" {
-    assert !valid("1e1e1");
-    assert !valid("1E1E1");
-    assert !valid("1e1E1");
+    assert not valid("1e1e1");
+    assert not valid("1E1E1");
+    assert not valid("1e1E1");
 }
 
 test "numeric rejects exponent decimal" {
-    assert !valid("1e1.0");
+    assert not valid("1e1.0");
 }
 
 /// -------------------------------------------------------------------------
@@ -377,55 +377,55 @@ test "numeric rejects exponent decimal" {
 /// -------------------------------------------------------------------------
 
 test "numeric rejects whitespace" {
-    assert !valid(" 1");
-    assert !valid("1 ");
-    assert !valid(" 1 ");
+    assert not valid(" 1");
+    assert not valid("1 ");
+    assert not valid(" 1 ");
 }
 
 test "numeric rejects newline" {
-    assert !valid("1\n");
-    assert !valid("\n1");
+    assert not valid("1\n");
+    assert not valid("\n1");
 }
 
 test "numeric rejects alphabetic suffix" {
-    assert !valid("1x");
-    assert !valid("42abc");
+    assert not valid("1x");
+    assert not valid("42abc");
 }
 
 test "numeric rejects alphabetic prefix" {
-    assert !valid("x1");
-    assert !valid("abc42");
+    assert not valid("x1");
+    assert not valid("abc42");
 }
 
 test "numeric rejects separators" {
-    assert !valid("1_000");
-    assert !valid("1,000");
+    assert not valid("1_000");
+    assert not valid("1,000");
 }
 
 test "numeric rejects hexadecimal notation" {
-    assert !valid("0x10");
-    assert !valid("0X10");
+    assert not valid("0x10");
+    assert not valid("0X10");
 }
 
 test "numeric rejects binary notation" {
-    assert !valid("0b10");
-    assert !valid("0B10");
+    assert not valid("0b10");
+    assert not valid("0B10");
 }
 
 test "numeric rejects octal notation" {
-    assert !valid("0o10");
-    assert !valid("0O10");
+    assert not valid("0o10");
+    assert not valid("0O10");
 }
 
 test "numeric rejects nan text" {
-    assert !valid("NaN");
-    assert !valid("nan");
+    assert not valid("NaN");
+    assert not valid("nan");
 }
 
 test "numeric rejects infinity text" {
-    assert !valid("Infinity");
-    assert !valid("-Infinity");
-    assert !valid("inf");
+    assert not valid("Infinity");
+    assert not valid("-Infinity");
+    assert not valid("inf");
 }
 
 /// -------------------------------------------------------------------------
@@ -478,9 +478,9 @@ test "numeric integer literal predicate" {
     assert is_integer_literal("-1");
     assert is_integer_literal("123456");
 
-    assert !is_integer_literal("1.0");
-    assert !is_integer_literal("1e0");
-    assert !is_integer_literal("invalid");
+    assert not is_integer_literal("1.0");
+    assert not is_integer_literal("1e0");
+    assert not is_integer_literal("invalid");
 }
 
 test "numeric float literal predicate" {
@@ -488,8 +488,8 @@ test "numeric float literal predicate" {
     assert is_float_literal("1e0");
     assert is_float_literal("1.0e0");
 
-    assert !is_float_literal("1");
-    assert !is_float_literal("invalid");
+    assert not is_float_literal("1");
+    assert not is_float_literal("invalid");
 }
 
 /// -------------------------------------------------------------------------
@@ -502,9 +502,9 @@ test "numeric negative literal predicate" {
     assert is_negative_literal("-1.5");
     assert is_negative_literal("-1e10");
 
-    assert !is_negative_literal("0");
-    assert !is_negative_literal("1");
-    assert !is_negative_literal("invalid");
+    assert not is_negative_literal("0");
+    assert not is_negative_literal("1");
+    assert not is_negative_literal("invalid");
 }
 
 test "numeric fraction predicate" {
@@ -512,8 +512,8 @@ test "numeric fraction predicate" {
     assert has_fraction("-1.0");
     assert has_fraction("1.0e10");
 
-    assert !has_fraction("1");
-    assert !has_fraction("1e10");
+    assert not has_fraction("1");
+    assert not has_fraction("1e10");
 }
 
 test "numeric exponent predicate" {
@@ -521,8 +521,8 @@ test "numeric exponent predicate" {
     assert has_exponent("1E0");
     assert has_exponent("1.0e0");
 
-    assert !has_exponent("1");
-    assert !has_exponent("1.0");
+    assert not has_exponent("1");
+    assert not has_exponent("1.0");
 }
 
 test "numeric digit counts integer" {
@@ -576,11 +576,11 @@ test "numeric literal zero exponent" {
 }
 
 test "numeric literal nonzero" {
-    assert !literal_is_zero("1");
-    assert !literal_is_zero("-1");
-    assert !literal_is_zero("0.1");
-    assert !literal_is_zero("-0.1");
-    assert !literal_is_zero("1e-100");
+    assert not literal_is_zero("1");
+    assert not literal_is_zero("-1");
+    assert not literal_is_zero("0.1");
+    assert not literal_is_zero("-0.1");
+    assert not literal_is_zero("1e-100");
 }
 
 test "numeric negative zero predicate" {
@@ -589,9 +589,9 @@ test "numeric negative zero predicate" {
     assert literal_is_negative_zero("-0e100");
     assert literal_is_negative_zero("-0.000e-100");
 
-    assert !literal_is_negative_zero("0");
-    assert !literal_is_negative_zero("0.0");
-    assert !literal_is_negative_zero("-1");
+    assert not literal_is_negative_zero("0");
+    assert not literal_is_negative_zero("0.0");
+    assert not literal_is_negative_zero("-1");
 }
 
 /// -------------------------------------------------------------------------
@@ -651,7 +651,7 @@ test "numeric parse i64 overflow by one" {
     let result: JsonI64Result =
         parse_i64("9223372036854775808");
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.IntegerOverflow;
@@ -661,7 +661,7 @@ test "numeric parse i64 underflow by one" {
     let result: JsonI64Result =
         parse_i64("-9223372036854775809");
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.IntegerUnderflow;
@@ -671,7 +671,7 @@ test "numeric parse i64 rejects decimal" {
     let result: JsonI64Result =
         parse_i64("42.0");
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.InvalidInteger;
@@ -681,7 +681,7 @@ test "numeric parse i64 rejects exponent" {
     let result: JsonI64Result =
         parse_i64("42e0");
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.InvalidInteger;
@@ -691,7 +691,7 @@ test "numeric parse i64 propagates lexical error" {
     let result: JsonI64Result =
         parse_i64("01");
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.LeadingZero;
@@ -729,7 +729,7 @@ test "numeric parse u64 overflow" {
     let result: JsonU64Result =
         parse_u64("18446744073709551616");
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.UnsignedOverflow;
@@ -739,7 +739,7 @@ test "numeric parse u64 rejects negative" {
     let result: JsonU64Result =
         parse_u64("-1");
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.NegativeUnsigned;
@@ -749,7 +749,7 @@ test "numeric parse u64 rejects negative zero" {
     let result: JsonU64Result =
         parse_u64("-0");
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.NegativeUnsigned;
@@ -759,7 +759,7 @@ test "numeric parse u64 rejects float" {
     let result: JsonU64Result =
         parse_u64("1.0");
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.InvalidInteger;
@@ -861,7 +861,7 @@ test "numeric parse f64 propagates lexical error" {
     let result: JsonF64Result =
         parse_f64("1.");
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.MissingFractionDigits;
@@ -947,8 +947,8 @@ test "numeric finite ordinary floats" {
 test "numeric zero f64" {
     assert is_zero_f64(0.0);
 
-    assert !is_zero_f64(1.0);
-    assert !is_zero_f64(-1.0);
+    assert not is_zero_f64(1.0);
+    assert not is_zero_f64(-1.0);
 }
 
 test "numeric integer f64" {
@@ -957,8 +957,8 @@ test "numeric integer f64" {
     assert is_integer_f64(-1.0);
     assert is_integer_f64(42.0);
 
-    assert !is_integer_f64(0.5);
-    assert !is_integer_f64(42.5);
+    assert not is_integer_f64(0.5);
+    assert not is_integer_f64(42.5);
 }
 
 /// -------------------------------------------------------------------------
@@ -1019,7 +1019,7 @@ test "numeric checked add maximum overflow" {
             JSON_NUMERIC_I64_MAX,
             1);
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.IntegerOverflow;
@@ -1031,7 +1031,7 @@ test "numeric checked add minimum underflow" {
             JSON_NUMERIC_I64_MIN,
             -1);
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.IntegerUnderflow;
@@ -1063,7 +1063,7 @@ test "numeric checked subtract underflow" {
             JSON_NUMERIC_I64_MIN,
             1);
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.IntegerUnderflow;
@@ -1075,7 +1075,7 @@ test "numeric checked subtract overflow" {
             JSON_NUMERIC_I64_MAX,
             -1);
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.IntegerOverflow;
@@ -1129,7 +1129,7 @@ test "numeric checked multiply positive overflow" {
             JSON_NUMERIC_I64_MAX,
             2);
 
-    assert !result.ok;
+    assert not result.ok;
 }
 
 test "numeric checked multiply minimum by negative one" {
@@ -1138,7 +1138,7 @@ test "numeric checked multiply minimum by negative one" {
             JSON_NUMERIC_I64_MIN,
             -1);
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.IntegerOverflow;
@@ -1168,7 +1168,7 @@ test "numeric checked division zero denominator" {
     let result: JsonI64Result =
         checked_div_i64(42, 0);
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.DivisionByZero;
@@ -1180,7 +1180,7 @@ test "numeric checked division minimum overflow" {
             JSON_NUMERIC_I64_MIN,
             -1);
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.IntegerOverflow;
@@ -1198,7 +1198,7 @@ test "numeric checked remainder zero denominator" {
     let result: JsonI64Result =
         checked_rem_i64(42, 0);
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.RemainderByZero;
@@ -1247,7 +1247,7 @@ test "numeric checked negation minimum overflow" {
         checked_neg_i64(
             JSON_NUMERIC_I64_MIN);
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.IntegerOverflow;
@@ -1271,7 +1271,7 @@ test "numeric checked u64 addition overflow" {
             JSON_NUMERIC_U64_MAX,
             1);
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.UnsignedOverflow;
@@ -1301,7 +1301,7 @@ test "numeric checked u64 multiplication overflow" {
             JSON_NUMERIC_U64_MAX,
             2);
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.UnsignedOverflow;
@@ -1317,8 +1317,8 @@ test "numeric compare i64 less" {
 
     assert result.comparable;
     assert result.less;
-    assert !result.equal;
-    assert !result.greater;
+    assert not result.equal;
+    assert not result.greater;
 }
 
 test "numeric compare i64 equal" {
@@ -1326,9 +1326,9 @@ test "numeric compare i64 equal" {
         compare_i64(42, 42);
 
     assert result.comparable;
-    assert !result.less;
+    assert not result.less;
     assert result.equal;
-    assert !result.greater;
+    assert not result.greater;
 }
 
 test "numeric compare i64 greater" {
@@ -1336,8 +1336,8 @@ test "numeric compare i64 greater" {
         compare_i64(2, 1);
 
     assert result.comparable;
-    assert !result.less;
-    assert !result.equal;
+    assert not result.less;
+    assert not result.equal;
     assert result.greater;
 }
 
@@ -1480,16 +1480,16 @@ test "numeric decimal point detection" {
     assert contains_decimal_point("1.0");
     assert contains_decimal_point("-1.0");
 
-    assert !contains_decimal_point("1");
-    assert !contains_decimal_point("1e10");
+    assert not contains_decimal_point("1");
+    assert not contains_decimal_point("1e10");
 }
 
 test "numeric exponent marker detection" {
     assert contains_exponent_marker("1e10");
     assert contains_exponent_marker("1E10");
 
-    assert !contains_exponent_marker("1");
-    assert !contains_exponent_marker("1.0");
+    assert not contains_exponent_marker("1");
+    assert not contains_exponent_marker("1.0");
 }
 
 test "numeric trim decimal zeroes" {
@@ -1519,8 +1519,8 @@ test "numeric default format options" {
         JSON_NUMERIC_DEFAULT_FORMAT_FRACTION_DIGITS;
 
     assert options.trim_fraction_zeroes;
-    assert !options.preserve_negative_zero;
-    assert !options.force_decimal_point;
+    assert not options.preserve_negative_zero;
+    assert not options.force_decimal_point;
 }
 
 test "numeric fixed format options" {
@@ -1528,7 +1528,7 @@ test "numeric fixed format options" {
         fixed_format_options(4);
 
     assert options.fraction_digits == 4;
-    assert !options.trim_fraction_zeroes;
+    assert not options.trim_fraction_zeroes;
     assert options.force_decimal_point;
 }
 
@@ -1602,7 +1602,7 @@ test "numeric rejects excessive precision" {
             1.0,
             options);
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.InvalidPrecision;
@@ -1664,7 +1664,7 @@ test "numeric normalize rejects invalid number" {
     let result: JsonNumericFormatResult =
         normalize("01");
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.LeadingZero;
@@ -1681,10 +1681,10 @@ test "numeric fits i64 boundaries" {
     assert fits_i64(
         "-9223372036854775808");
 
-    assert !fits_i64(
+    assert not fits_i64(
         "9223372036854775808");
 
-    assert !fits_i64(
+    assert not fits_i64(
         "-9223372036854775809");
 }
 
@@ -1692,10 +1692,10 @@ test "numeric fits u64 boundaries" {
     assert fits_u64(
         "18446744073709551615");
 
-    assert !fits_u64(
+    assert not fits_u64(
         "18446744073709551616");
 
-    assert !fits_u64("-1");
+    assert not fits_u64("-1");
 }
 
 test "numeric fits f64 ordinary values" {
@@ -1749,7 +1749,7 @@ test "numeric f64 to i64 rejects fraction" {
     let result: JsonI64Result =
         f64_to_i64_checked(42.5);
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.InvalidInteger;
@@ -1798,16 +1798,16 @@ test "numeric recognizes every decimal digit" {
 }
 
 test "numeric rejects nondigits" {
-    assert !is_digit('a');
-    assert !is_digit('A');
-    assert !is_digit('-');
-    assert !is_digit('+');
-    assert !is_digit('.');
-    assert !is_digit(' ');
+    assert not is_digit('a');
+    assert not is_digit('A');
+    assert not is_digit('-');
+    assert not is_digit('+');
+    assert not is_digit('.');
+    assert not is_digit(' ');
 }
 
 test "numeric recognizes nonzero digits" {
-    assert !is_nonzero_digit('0');
+    assert not is_nonzero_digit('0');
 
     assert is_nonzero_digit('1');
     assert is_nonzero_digit('2');
@@ -1850,16 +1850,16 @@ test "numeric sign helpers" {
     assert is_sign('-');
     assert is_sign('+');
 
-    assert !is_sign('0');
-    assert !is_sign('.');
+    assert not is_sign('0');
+    assert not is_sign('.');
 }
 
 test "numeric exponent marker helpers" {
     assert is_exponent_marker('e');
     assert is_exponent_marker('E');
 
-    assert !is_exponent_marker('x');
-    assert !is_exponent_marker('0');
+    assert not is_exponent_marker('x');
+    assert not is_exponent_marker('0');
 }
 
 /// -------------------------------------------------------------------------
@@ -2016,8 +2016,8 @@ test "numeric scan deterministic invalid" {
     let second: JsonNumericScan =
         scan("01");
 
-    assert !first.ok;
-    assert !second.ok;
+    assert not first.ok;
+    assert not second.ok;
 
     assert first.error ==
         second.error;
@@ -2150,16 +2150,16 @@ test "numeric json regression leading zero" {
     assert valid("0.0");
     assert valid("0e1");
 
-    assert !valid("00");
-    assert !valid("01");
-    assert !valid("-01");
+    assert not valid("00");
+    assert not valid("01");
+    assert not valid("-01");
 }
 
 test "numeric json regression decimal requires digit" {
     assert valid("1.0");
 
-    assert !valid("1.");
-    assert !valid(".1");
+    assert not valid("1.");
+    assert not valid(".1");
 }
 
 test "numeric json regression exponent requires digit" {
@@ -2167,32 +2167,32 @@ test "numeric json regression exponent requires digit" {
     assert valid("1e+0");
     assert valid("1e-0");
 
-    assert !valid("1e");
-    assert !valid("1e+");
-    assert !valid("1e-");
+    assert not valid("1e");
+    assert not valid("1e+");
+    assert not valid("1e-");
 }
 
 test "numeric json regression no leading plus" {
     assert valid("1");
     assert valid("-1");
 
-    assert !valid("+1");
+    assert not valid("+1");
 }
 
 test "numeric json regression no non decimal syntax" {
-    assert !valid("0xFF");
-    assert !valid("0b1010");
-    assert !valid("0o77");
-    assert !valid("1_000");
+    assert not valid("0xFF");
+    assert not valid("0b1010");
+    assert not valid("0o77");
+    assert not valid("1_000");
 }
 
 test "numeric json regression whitespace belongs to lexer not number" {
-    assert !valid(" 1");
-    assert !valid("1 ");
-    assert !valid("\t1");
-    assert !valid("1\t");
-    assert !valid("\n1");
-    assert !valid("1\n");
+    assert not valid(" 1");
+    assert not valid("1 ");
+    assert not valid("\t1");
+    assert not valid("1\t");
+    assert not valid("\n1");
+    assert not valid("1\n");
 }
 
 /// -------------------------------------------------------------------------
@@ -2240,7 +2240,7 @@ test "numeric long integer conversion reports overflow" {
         parse_i64(
             "99999999999999999999999999999999999999999999999999");
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.IntegerOverflow;
@@ -2251,7 +2251,7 @@ test "numeric long unsigned conversion reports overflow" {
         parse_u64(
             "99999999999999999999999999999999999999999999999999");
 
-    assert !result.ok;
+    assert not result.ok;
 
     assert result.error ==
         JsonNumericError.UnsignedOverflow;
@@ -2276,7 +2276,7 @@ test "numeric i64 near positive boundary" {
 
     assert before.ok;
     assert exact.ok;
-    assert !after.ok;
+    assert not after.ok;
 
     assert before.value ==
         9223372036854775806;
@@ -2300,7 +2300,7 @@ test "numeric i64 near negative boundary" {
 
     assert before.ok;
     assert exact.ok;
-    assert !after.ok;
+    assert not after.ok;
 
     assert before.value ==
         -9223372036854775807;
@@ -2324,7 +2324,7 @@ test "numeric u64 near upper boundary" {
 
     assert before.ok;
     assert exact.ok;
-    assert !after.ok;
+    assert not after.ok;
 
     assert before.value ==
         18446744073709551614;
