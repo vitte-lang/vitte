@@ -1,0 +1,73 @@
+---
+title: Formes et choix
+permalink: /cours/07-formes-choix/
+chapter: 7
+duration: 35 minutes
+lead: Un bon modèle de données regroupe les valeurs qui vont ensemble et donne un nom à chaque état possible. En Vitte, les formes et les choix jouent ces rôles.
+takeaway: Une forme décrit des champs ; un choix nommé décrit plusieurs variantes exclusives.
+practice: Modélise un point 2D, puis ajoute une forme Rectangle constituée de deux points et vérifie ses coins.
+---
+<h2>Regrouper des champs avec <code>form</code></h2>
+<p>Une forme déclare un type composé. Elle rassemble plusieurs champs sous un seul nom :</p>
+<pre><code>form Point {
+    x: i64,
+    y: i64,
+}
+
+proc distance_manhattan(point: Point) -&gt; i64 {
+    return point.x + point.y;
+}</code></pre>
+<p>Le type <code>Point</code> évite de transporter séparément une coordonnée horizontale et une coordonnée verticale. Les noms des champs documentent leur rôle. Le corps peut y accéder avec la notation pointée, par exemple <code>point.x</code>.</p>
+<p>On construit une valeur de forme en donnant les champs par leur nom :</p>
+<pre><code>proc exemple() -&gt; i64 {
+    let point: Point = Point {
+        x: 12,
+        y: 8,
+    };
+    return distance_manhattan(point);
+}</code></pre>
+<p>Cette construction rend l’ordre des données sans importance pour le lecteur et évite les appels remplis de nombres sans étiquette. Pour une forme imbriquée, un champ peut lui-même recevoir une valeur construite d’un autre type.</p>
+
+<h2>Les formes gardent ensemble des données cohérentes</h2>
+<p>Imagine un rectangle défini par un coin minimum et un coin maximum. Deux champs de type <code>Point</code> expriment directement le modèle :</p>
+<pre><code>form Rectangle {
+    minimum: Point,
+    maximum: Point,
+}
+
+proc largeur(rectangle: Rectangle) -&gt; i64 {
+    return rectangle.maximum.x - rectangle.minimum.x;
+}</code></pre>
+<p>Quand plusieurs procédures reçoivent les mêmes groupes de paramètres, c’est souvent le signe qu’une forme pourrait donner un nom à ce groupe. Mais n’ajoute pas un nouveau type juste pour envelopper une valeur sans règle ni sens supplémentaire : un nom utile exprime une idée du domaine.</p>
+
+<h2>Représenter des états avec <code>pick</code></h2>
+<p>Une déclaration <code>pick</code> énumère des variantes possibles. Choisir entre ces variantes signifie qu’une valeur est dans un état parmi plusieurs :</p>
+<pre><code>pick Etat {
+    Nouveau,
+    EnCours,
+    Termine,
+}
+
+proc est_actif(etat: Etat) -&gt; bool {
+    return etat == Etat.EnCours;
+}</code></pre>
+<p>Une variante peut également porter des types dans ses parenthèses selon la grammaire, comme <code>Erreur(i64)</code>. Cette forme suggère qu’une variante peut contenir une information associée. Avant de baser un programme sur une variante porteuse de données, vérifie les constructions et les accès réellement pris en charge dans le compilateur utilisé.</p>
+<div class="callout verified-example"><strong>Exemple vérifié : champs de forme et charge utile de <code>pick</code></strong><p><a href="https://github.com/vitte-lang/vitte/blob/main/examples/tutorials/formes-choix.vit"><code>examples/tutorials/formes-choix.vit</code></a> additionne les champs d’un point et extrait le nombre porté par la variante <code>Ok</code>.</p><pre><code>build/bin/vitte run examples/tutorials/formes-choix.vit --quiet --no-color</code></pre><p>Résultat confirmé avec le frontend natif : code de sortie <code>0</code>.</p></div>
+
+<h2>Choisir entre une forme et un choix</h2>
+<p>Pose-toi la question suivante : est-ce que mon objet possède plusieurs propriétés en même temps, ou est-il dans un état parmi plusieurs ? Un compte a probablement un identifiant, un nom et un solde à la fois : c’est une bonne candidate pour une <code>form</code>. Une opération est soit en attente, soit réussie, soit échouée : c’est souvent un <code>pick</code>.</p>
+<p>Un état explicite empêche des combinaisons invalides. Trois booléens séparés peuvent produire huit combinaisons, dont beaucoup n’ont aucun sens ; trois variantes bien nommées décrivent directement les cas autorisés.</p>
+
+<h2>Immutabilité et mise à jour</h2>
+<p>Un champ lu à travers une valeur ne signifie pas automatiquement que toute la forme peut être modifiée. La variable locale qui contient la forme doit elle-même être mutable pour les affectations acceptées par le langage, et l’analyseur doit autoriser la cible de l’affectation. Garde des mises à jour explicites et utilise des procédures de transformation quand tu veux rendre un changement facile à vérifier.</p>
+<div class="callout"><strong>Construis des noms parlants</strong><p>Si un type se décrit facilement en une phrase avec ses champs, son nom clarifiera les signatures de toutes les procédures qui l’utilisent.</p></div>
+<section class="practice-block">
+  <h2>Atelier guidé : dessiner un modèle avant de coder</h2>
+  <ol>
+    <li>Sur papier, liste les informations d’un livre : titre, nombre de pages et disponibilité. Crée une <code>form Livre</code> avec des champs typés.</li>
+    <li>Écris une procédure qui reçoit <code>&amp;Livre</code> et décide si le livre est long. Elle ne doit pas modifier le livre.</li>
+    <li>Modélise un statut d’emprunt avec <code>pick</code> : disponible, prêté, en réparation. Écris une condition distincte pour chaque variante.</li>
+    <li>Imagine quelles combinaisons seraient possibles si tu utilisais trois booléens. Compare-les aux variantes du choix nommé.</li>
+  </ol>
+  <details><summary>Auto-évaluation</summary><p>La forme convient aux propriétés qui coexistent. Le choix convient aux états exclusifs. Si ton modèle permet une combinaison qui n’a pas de sens dans le domaine, rends cette combinaison impossible avec une variante nommée.</p></details>
+</section>

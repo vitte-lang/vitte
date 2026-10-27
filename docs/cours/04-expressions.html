@@ -1,0 +1,79 @@
+---
+title: Expressions et opérateurs
+permalink: /cours/04-expressions/
+chapter: 4
+duration: 35 minutes
+lead: Les expressions combinent des valeurs pour en produire d’autres. Savoir lire leur ordre de calcul est essentiel pour éviter les surprises et écrire des conditions limpides.
+takeaway: Les parenthèses rendent explicite le regroupement voulu ; une condition claire vaut mieux qu’une condition compacte.
+practice: Réécris trois calculs en ajoutant des parenthèses explicites, puis explique à voix haute l’ordre dans lequel ils sont évalués.
+---
+<h2>Une expression produit une valeur</h2>
+<p>Un littéral, un nom, un appel de procédure ou une opération peut former une expression. Dans <code>prix * quantite + frais</code>, les multiplications et additions produisent un résultat. Dans <code>score &gt;= minimum</code>, la comparaison produit un booléen. Cette idée aide à construire un programme : les expressions calculent des valeurs, puis les instructions décident quoi en faire.</p>
+<pre><code>proc prix_total(prix: i64, quantite: i64, livraison: i64) -&gt; i64 {
+    let sous_total: i64 = prix * quantite;
+    return sous_total + livraison;
+}</code></pre>
+
+<h2>Calculs et priorité</h2>
+<p>Pour les calculs courants, <code>*</code>, <code>/</code> et <code>%</code> se font avant <code>+</code> et <code>-</code>. Les parenthèses se font d’abord. Ainsi, <code>2 + 3 * 4</code> vaut 14, tandis que <code>(2 + 3) * 4</code> vaut 20. Les décalages, les opérations bit à bit, les comparaisons, les égalités et les opérateurs logiques ont eux aussi un ordre de priorité défini par la grammaire.</p>
+<p>Tu n’as pas besoin de mémoriser toute la table pour écrire du code lisible. Dans une expression de plus de deux opérations, ajoute des parenthèses quand elles expliquent ton intention, même si la priorité du langage suffirait.</p>
+<div class="callout verified-example"><strong>Exemple vérifié : priorité et parenthèses</strong><p><a href="https://github.com/vitte-lang/vitte/blob/main/examples/tutorials/expressions.vit"><code>examples/tutorials/expressions.vit</code></a> vérifie que <code>2 + 3 * 4</code> vaut 14 et que <code>(2 + 3) * 4</code> vaut 20.</p><pre><code>build/bin/vitte run examples/tutorials/expressions.vit --quiet --no-color</code></pre><p>Résultat confirmé : code de sortie <code>0</code> si les deux calculs donnent ces valeurs.</p></div>
+<table>
+  <thead><tr><th>Ordre, du moins prioritaire au plus prioritaire</th><th>Opérateurs</th></tr></thead>
+  <tbody>
+    <tr><td>Affectation</td><td><code>=</code>, <code>+=</code>, <code>-=</code>, <code>*=</code>, <code>/=</code>, <code>%=</code>, <code>&amp;=</code>, <code>|=</code>, <code>^=</code>, <code>&lt;&lt;=</code>, <code>&gt;&gt;=</code></td></tr>
+    <tr><td>Valeur de repli</td><td><code>??</code></td></tr>
+    <tr><td>OU logique</td><td><code>or</code>, <code>||</code></td></tr>
+    <tr><td>ET logique</td><td><code>and</code>, <code>&amp;&amp;</code></td></tr>
+    <tr><td>OU bit à bit</td><td><code>|</code></td></tr>
+    <tr><td>OU exclusif bit à bit</td><td><code>^</code></td></tr>
+    <tr><td>ET bit à bit</td><td><code>&amp;</code></td></tr>
+    <tr><td>Égalité</td><td><code>==</code>, <code>!=</code></td></tr>
+    <tr><td>Comparaison</td><td><code>&lt;</code>, <code>&lt;=</code>, <code>&gt;</code>, <code>&gt;=</code></td></tr>
+    <tr><td>Décalage</td><td><code>&lt;&lt;</code>, <code>&gt;&gt;</code></td></tr>
+    <tr><td>Addition et soustraction</td><td><code>+</code>, <code>-</code></td></tr>
+    <tr><td>Multiplication et division</td><td><code>*</code>, <code>/</code>, <code>%</code></td></tr>
+    <tr><td>Plage</td><td><code>..</code>, <code>..=</code></td></tr>
+    <tr><td>Unaire</td><td><code>+</code>, <code>-</code>, <code>!</code>, <code>~</code>, <code>*</code>, <code>&amp;</code>, <code>not</code>, <code>move</code>, <code>ref</code>, <code>await</code></td></tr>
+    <tr><td>Postfixe</td><td>Appel, indice, champ, <code>?</code></td></tr>
+  </tbody>
+</table>
+<p>La table résume les niveaux de la grammaire, du moins prioritaire au plus prioritaire. L’affectation et <code>??</code> s’associent vers la droite ; les autres familles listées se regroupent de gauche à droite selon la grammaire. <code>??</code> exprime une valeur de repli pour une donnée nullable. Comme les opérateurs avancés ne sont pas tous disponibles dans chaque étape du compilateur, vérifie-les sur les sources et l’outil de ta version.</p>
+
+<h2>Comparer puis combiner</h2>
+<p>Les opérateurs <code>==</code> et <code>!=</code> testent l’égalité ; <code>&lt;</code>, <code>&lt;=</code>, <code>&gt;</code> et <code>&gt;=</code> comparent un ordre. Ils donnent un <code>bool</code>. On combine les résultats avec <code>and</code> ou <code>&amp;&amp;</code>, et avec <code>or</code> ou <code>||</code>. <code>not</code> ou <code>!</code> inverse une condition.</p>
+<pre><code>proc admissible(age: i64, a_un_billet: bool) -&gt; bool {
+    return age &gt;= 18 and a_un_billet;
+}</code></pre>
+<p>En lecture, <code>and</code> signifie que les deux conditions sont requises ; <code>or</code> signifie qu’au moins l’une suffit. La grammaire et le compilateur définissent l’évaluation des opérateurs logiques. Quand l’ordre d’un effet de bord compte, évite de cacher un appel qui modifie l’état dans une condition composée.</p>
+
+<h2>Opérateurs binaires et affectations</h2>
+<p>Vitte prévoit également des opérateurs bit à bit (<code>&amp;</code>, <code>|</code>, <code>^</code>), des décalages (<code>&lt;&lt;</code>, <code>&gt;&gt;</code>) et des affectations composées dans la grammaire, comme <code>+=</code> ou <code>&lt;&lt;=</code>. Ils sont surtout utiles quand on travaille sur des masques de bits, des drapeaux ou des représentations bas niveau. Ce sont des opérateurs distincts des mots logiques <code>and</code> et <code>or</code>.</p>
+<p>Un opérateur reconnu par la grammaire peut ne pas être disponible dans chaque étape du compilateur. Pour le code ordinaire, commence avec l’arithmétique, les comparaisons et les booléens ; explore les opérations binaires seulement avec les exemples du dépôt et une vérification de l’outil.</p>
+
+<h2>Appels, accès et conversions</h2>
+<p>Après une expression, les parenthèses peuvent appeler une procédure, les crochets indexer un tableau, et le point lire un champ de forme. Les chemins qualifiés emploient <code>::</code>. La grammaire prévoit aussi le point d’interrogation postfixé pour certaines expressions optionnelles ainsi que <code>as Type</code> pour une conversion explicite.</p>
+<pre><code>proc lire_tableau() -&gt; i64 {
+    let valeurs: [3]i64 = [8, 13, 21];
+    return valeurs[1] + valeurs[2];
+}</code></pre>
+<p>Cette expression fait d’abord deux accès par indice, puis une addition. Si tu dois vérifier les bornes, découpe le calcul en variables nommées et consulte les opérations de la bibliothèque adaptées au type de données.</p>
+
+<h2>Une méthode simple pour déboguer un calcul</h2>
+<ol>
+  <li>Repère les parenthèses déjà présentes.</li>
+  <li>Note le type de chaque littéral, variable et appel.</li>
+  <li>Ajoute des parenthèses temporaires pour écrire l’ordre auquel tu t’attends.</li>
+  <li>Remplace les sous-expressions par des variables nommées si le calcul reste difficile à expliquer.</li>
+</ol>
+<div class="callout"><strong>Lisibilité d’abord</strong><p>Le meilleur calcul est celui dont une personne peut vérifier le sens sans faire une devinette sur la priorité des opérateurs.</p></div>
+<section class="practice-block">
+  <h2>Atelier guidé : lire une expression de gauche à droite</h2>
+  <ol>
+    <li>Pour <code>2 + 3 * 4</code>, ajoute les parenthèses correspondant à la priorité puis calcule le résultat.</li>
+    <li>Pour <code>(2 + 3) * 4</code>, recalcule et explique pourquoi le résultat diffère.</li>
+    <li>Écris une procédure qui renvoie vrai si un nombre est entre 10 et 20 inclus. Utilise une comparaison de chaque côté et combine-les avec <code>and</code>.</li>
+    <li>Réécris une condition avec <code>not</code> et une condition inverse, puis vérifie si les deux formulations disent la même chose.</li>
+  </ol>
+  <details><summary>Auto-évaluation</summary><p>Les deux calculs valent respectivement 14 et 20. La condition de plage est <code>valeur &gt;= 10 and valeur &lt;= 20</code>. Pour vérifier une négation, teste au moins un nombre à l’intérieur et un nombre de chaque côté.</p></details>
+</section>

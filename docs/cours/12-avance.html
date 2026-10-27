@@ -1,0 +1,52 @@
+---
+title: Interopérabilité et sujets avancés
+permalink: /cours/12-avance/
+chapter: 12
+duration: 45 minutes
+lead: Quand les programmes atteignent les limites du langage, ils peuvent appeler du code externe ou demander au compilateur des opérations particulières. Ces possibilités sont puissantes et exigent un contrat plus strict.
+takeaway: Une frontière bas niveau doit expliciter les types, les conventions et les invariants qui ne sont plus vérifiés automatiquement.
+practice: Lis une déclaration extern ou intrinsic dans le dépôt et note quelles garanties la plateforme doit fournir pour qu’elle soit sûre.
+---
+<div class="callout warning"><strong>Ces syntaxes ne sont pas des exemples exécutables confirmés</strong><p>Dans les suites et fixtures exécutées pour cette référence, aucun programme tutoriel avec <code>extern</code>, <code>intrinsic</code>, <code>defer</code>, <code>unsafe</code> ou <code>macro</code> n’a été confirmé en compilation et exécution. Les extraits ci-dessous montrent la forme décrite ; consulte <a href="{{ '/reference/support/' | relative_url }}">l’état du support</a> avant de les utiliser.</p></div>
+<h2>Déclarer une fonction externe</h2>
+<p>Un programme peut avoir besoin d’une procédure dont le corps est fourni par une bibliothèque ou une autre convention d’appel. La grammaire prévoit <code>extern</code>, suivi éventuellement du nom d’une bibliothèque, puis d’une signature sans corps :</p>
+<pre><code>extern "systeme" proc ecrire_code(code: i64) -&gt; void;</code></pre>
+<p>Cette ligne ne crée pas l’implémentation de <code>ecrire_code</code>. Elle promet qu’une fonction compatible sera disponible au moment de l’édition des liens. Les types, la convention d’appel, le nom du symbole et les règles de propriété mémoire doivent correspondre exactement à l’interface externe.</p>
+
+<h2>Intrinsics : opérations fournies par le compilateur</h2>
+<p>Une déclaration <code>intrinsic</code> nomme une opération dont le comportement est fourni par le compilateur ou le runtime :</p>
+<pre><code>intrinsic horloge_ticks() -&gt; u64;</code></pre>
+<p>À la différence d’une procédure ordinaire, il n’y a pas de corps Vitte à lire ici. L’implémentation doit venir de la plateforme. Les intrinsics servent notamment aux primitives bas niveau, à la mémoire, aux accès atomiques et à certaines opérations arithmétiques. Une déclaration seule ne garantit pas que chaque backend sait l’abaisser : consulte le contrat de la cible et l’état documenté du backend.</p>
+
+<h2>Modificateurs et contexte explicite</h2>
+<p>La grammaire du langage prévoit plusieurs modificateurs avant les déclarations : <code>pub</code>, <code>export</code>, <code>async</code>, <code>unsafe</code> et <code>comptime</code>. Ils précisent une visibilité ou une intention d’exécution. Leur présence dans la grammaire ne signifie pas que leur comportement complet est disponible pour chaque cible.</p>
+<p>La syntaxe prévoit aussi des blocs <code>unsafe</code>, l’instruction <code>asm(...);</code> ou <code>asm "...";</code>, l’opérateur <code>await</code> et le mot <code>move</code>. Ce sont des outils de frontières, de concurrence ou de contrôle de représentation. Il faut d’abord comprendre les règles de sécurité, d’ABI, de synchronisation ou de génération de code qu’ils supposent.</p>
+
+<h2>Reporter une action avec <code>defer</code></h2>
+<p>Une instruction <code>defer</code> reçoit une expression terminée par un point-virgule ou un bloc. Elle sert à associer une action à la sortie d’une portée, par exemple une opération de nettoyage après l’usage d’une ressource.</p>
+<pre><code>proc traiter() {
+    defer fermer_ressource();
+    utiliser_ressource();
+}</code></pre>
+<p>Le détail crucial est le moment où l’action différée s’exécute, notamment en cas de retour anticipé ou de sortie imbriquée. Vérifie cette règle dans l’implémentation et garde l’action de nettoyage proche de l’acquisition de la ressource. La grammaire accepte cette forme, mais son intégration n’est pas garantie dans tous les backends.</p>
+
+<h2>Macros : transformer du code</h2>
+<p>La grammaire réserve la déclaration <code>macro</code>. Une macro transforme ou construit du code d’une façon plus générale qu’un simple appel de procédure. La puissance d’une macro rend son expansion moins directe à lire, à diagnostiquer et à déboguer ; son interface mérite donc la même attention qu’une API publique.</p>
+<p>Avant d’introduire une macro, demande-toi si une procédure générique, une forme ou une fonction d’aide ne suffirait pas. Les macros sont un sujet avancé : consulte la spécification et les exemples correspondant précisément à la version du compilateur avant d’en dépendre.</p>
+
+<h2>Une règle pour les frontières</h2>
+<p>Une frontière externe peut contourner les vérifications habituelles. Écris la signature au plus près de l’implémentation, documente les types et conventions attendus, teste plusieurs plateformes et garde la partie non sûre aussi courte que possible. Si l’outil ne prend pas encore en charge l’opération demandée, un programme qui passe l’analyse syntaxique ne suffira pas à la rendre réelle.</p>
+<div class="callout warning"><strong>Les symboles spéciaux ne font pas le travail à ta place</strong><p><code>unsafe</code>, <code>extern</code> et <code>intrinsic</code> annoncent une responsabilité supplémentaire ; ils ne vérifient pas automatiquement l’ABI, les pointeurs ou la disponibilité d’une fonction sur ta machine.</p></div>
+
+<h2>Où vérifier les détails</h2>
+<p>La <a href="https://github.com/vitte-lang/vitte/blob/main/grammar/vitte.ebnf">grammaire canonique</a> décrit les formes syntaxiques. Pour savoir ce que le compilateur prend en charge aujourd’hui, commence par la page <a href="{{ '/reference/support/' | relative_url }}">État du support</a> : elle compare les documents du dépôt et signale leurs divergences. Les fichiers de <a href="https://github.com/vitte-lang/vitte/tree/main/modules/core"><code>modules/core</code></a> décrivent les contrats des bibliothèques fondamentales. Lis ces sources ensemble pour distinguer syntaxe, analyse et exécution réelle.</p>
+<section class="practice-block">
+  <h2>Atelier guidé : analyser une frontière</h2>
+  <ol>
+    <li>Choisis une déclaration <code>extern</code> ou <code>intrinsic</code> dans les tests ou modules du dépôt.</li>
+    <li>Fais une fiche avec le nom de l’opération, les types d’entrée, le type de retour et la responsabilité du runtime ou de la plateforme.</li>
+    <li>Si l’opération touche à la mémoire, liste les règles d’adresse, de taille, d’alignement et de durée de vie.</li>
+    <li>Regarde si le backend ciblé sait réellement fournir cette opération. Inscris une limite connue plutôt que de supposer que la déclaration suffit.</li>
+  </ol>
+  <details><summary>Auto-évaluation</summary><p>Une signature décrit l’interface, pas l’implémentation. Pour qu’une frontière externe fonctionne, il faut aussi un symbole compatible, une ABI cohérente et des invariants respectés par le code des deux côtés.</p></details>
+</section>

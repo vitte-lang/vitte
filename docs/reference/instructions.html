@@ -1,0 +1,65 @@
+---
+layout: reference
+title: Instructions et contrôle
+permalink: /reference/instructions/
+section: Langage
+lead: Les instructions déclarent des valeurs locales, modifient l’état, contrôlent le parcours et terminent parfois une procédure.
+source: grammar/vitte.ebnf
+support: "Les instructions courantes ont des preuves runtime ; les constructions sans fixture sont indiquées comme non prouvées."
+---
+<h2>Variables locales et affectation</h2>
+<pre><code>let reponse: i64 = 42;
+let mut compteur: i64 = 0;
+set compteur = compteur + 1;</code></pre>
+<p><code>let</code> peut préciser <code>mut</code>, un type, une valeur initiale, ou les deux. <code>set</code> introduit une expression d’affectation. Une liaison immuable ne doit pas être modifiée ; les règles exactes sont vérifiées lors de l’analyse sémantique.</p>
+
+<h2>Retour et fin de boucle</h2>
+<ul><li><code>return expression;</code> et <code>give expression;</code> renvoient une valeur ; les formes sans expression terminent une procédure sans résultat.</li><li><code>break;</code> sort de la boucle courante.</li><li><code>continue;</code> passe au prochain cycle de la boucle courante.</li></ul>
+
+<h2>Conditions et répétitions</h2>
+<pre><code>if pret {
+    traiter();
+} elif en_attente {
+    patienter();
+} else {
+    terminer();
+}
+
+while indice &lt; 4 {
+    set indice = indice + 1;
+}
+
+for valeur in 0..4 {
+    utiliser(valeur);
+}</code></pre>
+<p>La grammaire prévoit <code>if</code>/<code>elif</code>/<code>else</code>, <code>while</code>, <code>loop</code> et <code>for nom in expression</code>. Les exemples de bibliothèque parcourent des plages demi-ouvertes : <code>0..4</code> contient 0 à 3. Les types de séquences itérables disponibles restent dépendants de l’implémentation.</p>
+
+<h2>Match</h2>
+<pre><code>match etat {
+    Etat.Inactif =&gt; { afficher("arrêt"); },
+    Etat.Pret =&gt; { afficher("prêt"); },
+}</code></pre>
+<p>Les bras de la grammaire ont la forme <code>expression =&gt; bloc-ou-expression</code>, séparés par des virgules. La production formelle accepte des expressions de bras ; ne suppose pas la prise en charge de motifs plus riches sans confirmation dans l’analyseur et le compilateur.</p>
+
+<h2>Assertions, différé, unsafe et assembleur</h2>
+<ul>
+  <li><code>assert(expression);</code> vérifie une propriété à un point donné.</li>
+  <li><code>defer expression;</code> ou <code>defer { ... }</code> marque une action différée ; vérifie le moment d’exécution garanti par le compilateur ciblé.</li>
+  <li><code>unsafe { ... }</code> délimite un bloc qui exige des garanties manuelles.</li>
+  <li><code>asm(...);</code> et <code>asm "...";</code> sont les formes d’assembleur admises par la grammaire.</li>
+</ul>
+<div class="reference-callout"><strong>La grammaire ne prouve pas la sûreté</strong><p>Un bloc <code>unsafe</code>, une assertion ou une instruction reconnue ne garantit ni l’absence de dépassement ni le support par le backend.</p></div>
+
+<h2>Vérification par instruction</h2>
+<table><thead><tr><th>Instruction</th><th>EBNF</th><th>Analyseur</th><th>Compilation constatée</th></tr></thead><tbody>
+<tr><td><code>let</code>, <code>let mut</code>, <code>set</code></td><td>Décrites.</td><td>Acceptées ; test natif confirme aussi le rejet de <code>set</code> sans affectation.</td><td>Oui : liaisons, mutation locale, champs et index de tableau passent l’IR/C17 et l’exécution.</td></tr>
+<tr><td><code>return</code> / <code>give</code></td><td>Les deux formes sont décrites.</td><td><code>return</code> est utilisé dans toutes les suites ; fixture dédiée à <code>give</code> non relevée.</td><td><code>return</code> est largement compilé ; <code>give</code> non prouvé séparément.</td></tr>
+<tr><td><code>if</code> / <code>elif</code> / <code>else</code></td><td>Décrites.</td><td><code>if</code>/<code>else</code> sont testés ; la parité de <code>elif</code> n’a pas de cas runtime retenu.</td><td>Oui pour conditions et sélection de valeurs dans les fixtures runtime.</td></tr>
+<tr><td><code>while</code>, <code>break</code>, <code>continue</code></td><td>Décrites.</td><td>Acceptées dans les fixtures d’exécution.</td><td>Oui : boucles et cibles de sortie/continuation compilées et exécutées.</td></tr>
+<tr><td><code>loop</code></td><td>Décrite.</td><td>Pas de fixture ciblée dans les suites exécutées pour cette forme exacte.</td><td>Non prouvé.</td></tr>
+<tr><td><code>for nom in expression</code></td><td>Décrit.</td><td>La syntaxe atteint le diagnostic backend dans le cas d’un tableau.</td><td><code>for nom in tableau</code> est rejeté avec <code>VITTE_BACKEND_E_CODEGEN</code>. L’exécution d’une boucle <code>for</code> sur plage n’est pas prouvée par l’audit.</td></tr>
+<tr><td><code>match</code> simple et variantes à charge utile</td><td><code>match</code> et les bras simples sont décrits ; gardes/motifs sont des extensions par rapport à l’EBNF.</td><td>Acceptés dans les fixtures natives, y compris motifs de variantes et joker.</td><td>Oui : IR, C17 et exécution de choix simples et à charge utile.</td></tr>
+<tr><td><code>assert</code></td><td>Décrite.</td><td>Syntaxe listée ; pas de fixture isolée de cette instruction dans les tests runtime retenus.</td><td>Non prouvé comme instruction au backend dans cet audit.</td></tr>
+<tr><td><code>defer</code>, <code>unsafe</code>, <code>asm</code></td><td>Décrites.</td><td>Pas de fixture représentative identifiée pour chacun.</td><td>Non prouvé au backend et à l’exécution.</td></tr>
+</tbody></table>
+<p>Sources : <a href="https://github.com/vitte-lang/vitte/blob/main/grammar/vitte.ebnf">grammaire EBNF</a> · <a href="https://github.com/vitte-lang/vitte/blob/main/src/tests/native_frontend_subset_test.py">tests du frontend natif</a> · <a href="https://github.com/vitte-lang/vitte/blob/main/Makefile">liste des fixtures runtime</a> · <a href="{{ '/reference/support/' | relative_url }}">matrice générale</a>.</p>

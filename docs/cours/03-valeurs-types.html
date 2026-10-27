@@ -1,0 +1,69 @@
+---
+title: Valeurs, variables et types
+permalink: /cours/03-valeurs-types/
+chapter: 3
+duration: 40 minutes
+lead: Une valeur représente une donnée ; un type précise quelle sorte de donnée c’est et quelles opérations ont du sens dessus. Les variables donnent des noms à ces valeurs.
+takeaway: En Vitte, les variables sont immuables par défaut ; on demande explicitement le droit de modifier une liaison.
+practice: Écris un total en i64, ajoute une variable mutable, puis essaie volontairement de modifier une liaison sans mut pour lire le diagnostic.
+---
+<h2>Une variable est une liaison nommée</h2>
+<p>On déclare une variable locale avec <code>let</code>. Ici, le type est écrit après les deux-points :</p>
+<pre><code>proc calculer() -&gt; i64 {
+    let prix: i64 = 12;
+    let quantite: i64 = 3;
+    let total: i64 = prix * quantite;
+    return total;
+}</code></pre>
+<p>Le nom <code>total</code> désigne la valeur calculée par <code>prix * quantite</code>. L’annotation <code>: i64</code> précise qu’il s’agit d’un entier signé sur 64 bits. L’écrire explicitement est utile pendant l’apprentissage : tu vois quels types circulent et tu obtiens des diagnostics plus faciles à comprendre.</p>
+<p>Vitte sait aussi inférer certains types à partir de la valeur initiale dans les contextes pris en charge. En cours, garde les annotations dans les premiers exemples. Elles rendent l’intention visible et évitent de confondre « le compilateur peut le deviner » avec « la valeur n’a pas de type ».</p>
+
+<h2>Immuable par défaut, mutable sur demande</h2>
+<p>Une déclaration simple avec <code>let</code> ne peut pas être remplacée ensuite. Pour une valeur qu’on doit faire évoluer, écris <code>let mut</code> et utilise <code>set</code> pour l’affectation :</p>
+<pre><code>proc compteur() -&gt; i64 {
+    let mut nombre: i64 = 0;
+    set nombre = nombre + 1;
+    set nombre = nombre + 1;
+    return nombre;
+}</code></pre>
+<p>La différence est intentionnelle. Si une variable ne change pas, le lecteur peut suivre une seule valeur pendant toute la durée de son bloc. La mutabilité est une décision locale qu’on peut repérer dans le code. Si le compilateur signale qu’une variable est immuable, demande-toi d’abord si elle a vraiment besoin de changer ; ajoute <code>mut</code> uniquement si oui.</p>
+
+<div class="callout verified-example"><strong>Exemple vérifié : type, liaison mutable et affectation</strong><p><a href="https://github.com/vitte-lang/vitte/blob/main/examples/tutorials/valeurs.vit"><code>examples/tutorials/valeurs.vit</code></a> calcule <code>12 × 3 + 6</code>, puis renvoie 0 uniquement si le total vaut 42.</p><pre><code>build/bin/vitte run examples/tutorials/valeurs.vit --quiet --no-color</code></pre><p>Résultat confirmé : code de sortie <code>0</code>.</p></div>
+
+<h2>Les types courants</h2>
+<p>Les programmes du dépôt utilisent des entiers signés comme <code>i8</code>, <code>i32</code> et <code>i64</code>, des entiers non signés comme <code>u8</code> et <code>u64</code>, des flottants comme <code>f32</code> et <code>f64</code>, ainsi que <code>bool</code>, <code>char</code> et <code>string</code>. Le type <code>int</code> est aussi utilisé pour le code de sortie du programme d’exemple.</p>
+<p>Le choix du type décrit une contrainte réelle. Un âge ou une quantité ne sont pas des nombres arbitraires : leur plage et leur signe comptent. Une conversion explicite comme <code>valeur as u64</code> indique au lecteur qu’on change de représentation. Elle ne garantit pas à elle seule que la valeur convient à la nouvelle plage ; pour une conversion sensible, préfère une fonction de conversion vérifiée de la bibliothèque quand elle est utilisable.</p>
+<pre><code>proc main() -&gt; i64 {
+    let mut octets: [2]u8 = [7 as u8, 255 as u8];
+    set octets[0] = 9 as u8;
+
+    if octets[0] == 9 and octets[1] == 255 {
+        return 0;
+    }
+    return 1;
+}</code></pre>
+<div class="callout verified-example"><strong>Conversion vérifiée dans ce contexte</strong><p><a href="https://github.com/vitte-lang/vitte/blob/main/examples/tutorials/conversions.vit"><code>examples/tutorials/conversions.vit</code></a> vérifie un cast vers <code>u8</code> dans un tableau fixe, puis une écriture indexée.</p><pre><code>build/bin/vitte run examples/tutorials/conversions.vit --quiet --no-color</code></pre><p>Résultat confirmé : code de sortie <code>0</code>. Cela ne confirme pas automatiquement tous les sens et contextes de conversion.</p></div>
+
+<h2>Constantes, littéraux et tableaux</h2>
+<p>Une constante nommée au niveau du module utilise <code>const</code>. Elle convient à une valeur stable qu’on veut nommer et réutiliser. <code>static</code> est une autre déclaration de valeur globale dans la grammaire ; ne la choisis pas par habitude : vérifie le comportement attendu par le compilateur et la convention de ton projet.</p>
+<pre><code>const TAILLE: i64 = 3;
+const COULEURS: [3]i64 = [12, 24, 36];
+
+proc premier() -&gt; i64 {
+    return COULEURS[0];
+}</code></pre>
+<p><code>[3]i64</code> signifie un tableau de trois éléments de type <code>i64</code>. La longueur fait partie du type. Les tableaux sont pratiques quand le nombre d’éléments est connu ; les tranches et collections de la bibliothèque ont d’autres contrats et sont abordées plus loin.</p>
+
+<h2>Une habitude utile : suivre le type de chaque étape</h2>
+<p>Quand tu lis une expression, demande-toi : quel type a chaque opérande ? Quel type produit l’opération ? Est-ce que la procédure appelée attend le même type ? Par exemple, ajouter un <code>u8</code> à un <code>i64</code> peut nécessiter une conversion explicite. Cette discipline te protège des erreurs de largeur et des mélanges signe/non-signé.</p>
+<div class="callout"><strong>À retenir</strong><p>Un type n’est pas une décoration. Il définit une plage de valeurs et les opérations disponibles. Une conversion devrait correspondre à une décision que tu peux expliquer.</p></div>
+<section class="practice-block">
+  <h2>Atelier guidé : calculer une facture</h2>
+  <ol>
+    <li>Déclare <code>prix_unitaire</code> et <code>quantite</code> comme des <code>i64</code>, puis calcule un sous-total dans une troisième liaison.</li>
+    <li>Déclare une taxe entière et calcule un total. Écris les parenthèses nécessaires pour rendre la règle de calcul évidente.</li>
+    <li>Ajoute une variable mutable <code>visites</code>, augmente-la deux fois avec <code>set</code>, et renvoie sa valeur.</li>
+    <li>Provoque un diagnostic en affectant une liaison immuable. Lance une vérification sémantique disponible (le dépôt documente notamment <code>compile --stop-after-sema</code>), lis le message, puis décide si la bonne correction est d’ajouter <code>mut</code> ou de supprimer la modification inutile.</li>
+  </ol>
+  <details><summary>Auto-évaluation</summary><p>La liaison ne change pas quand tu calcules une nouvelle variable à partir d’elle. Elle change seulement quand tu réaffectes son nom avec <code>set</code>. Le mot <code>mut</code> appartient à la déclaration qui autorise cette réaffectation.</p></details>
+</section>

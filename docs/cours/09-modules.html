@@ -1,0 +1,57 @@
+---
+title: Modules, imports et exports
+permalink: /cours/09-modules/
+chapter: 9
+duration: 35 minutes
+lead: Un programme grandit en plusieurs fichiers. Les modules donnent une adresse logique à chaque fichier, tandis que les imports et exports définissent comment les morceaux se parlent.
+takeaway: Un nom qualifié dit d’où vient une déclaration ; une interface exportée indique ce qu’un autre module peut utiliser.
+practice: Sépare une procédure de calcul dans un module, exporte-la, puis importe le module depuis un fichier appelant.
+---
+<h2>Un module a un chemin</h2>
+<p>Une déclaration <code>space</code> donne au fichier un chemin de module. Le dépôt montre souvent le chemin correspondant à l’arborescence, avec des barres obliques, et les imports utilisent des segments séparés par <code>::</code>. Les deux graphies sont prévues par la grammaire pour les chemins.</p>
+<pre><code>space outils::calcul;
+
+export proc doubler(valeur: i64) -&gt; i64 {
+    return valeur * 2;
+}</code></pre>
+<p>Garde le chemin logique du module cohérent avec sa place dans le projet. Quand tu reçois une erreur « module introuvable », vérifie le chemin déclaré, le chemin d’import et la racine de recherche configurée par l’outil.</p>
+
+<h2>Importer un nom</h2>
+<p><code>use</code> rend une déclaration ou un module accessible au fichier courant. Le chemin complet garde la provenance visible. <code>as</code> donne un alias local plus court :</p>
+<pre><code>use outils::calcul as calcul;
+
+proc resultat() -&gt; i64 {
+    return calcul::doubler(21);
+}</code></pre>
+<p>La grammaire prévoit également des imports nommés par groupe, par exemple <code>use core::types::option::{Option, option_some};</code>, ainsi que les imports globaux. Un import ciblé est généralement plus facile à lire : on sait d’où vient chaque nom et on limite les collisions.</p>
+
+<h2>Exporter une interface publique</h2>
+<p>Une déclaration peut être rendue visible depuis un autre module avec un modificateur de visibilité, comme <code>export</code>. On peut exporter une procédure, une constante, une forme ou un choix. Le module conserve ainsi ses détails internes tout en publiant les points d’entrée nécessaires.</p>
+<pre><code>space outils::prix;
+
+const TAUX: i64 = 20;
+
+export proc avec_taxe(prix: i64) -&gt; i64 {
+    return prix + (prix * TAUX / 100);
+}</code></pre>
+<p>Le nom <code>TAUX</code> reste privé dans cet exemple, tandis que <code>avec_taxe</code> est exporté. Une interface publique stable permet de réorganiser les détails internes sans demander aux appelants de changer. La grammaire accepte aussi des listes d’exports et l’export d’un module entier ; les règles de réexport ne sont pas toutes prises en charge dans chaque profil de compilation.</p>
+
+<h2>Conflits de noms et visibilité</h2>
+<p>Deux modules peuvent publier le même nom. En conservant les noms qualifiés, on distingue <code>comptes::Point</code> de <code>dessin::Point</code>. Les imports globaux rendent les collisions plus probables et cachent la provenance d’un nom. Utilise des alias explicites si deux noms se ressemblent.</p>
+<p>Il faut aussi distinguer un module importé de ses membres visibles. Importer un module ne doit pas automatiquement donner accès à ses déclarations privées. Si un appel qualifié échoue, vérifie que le nom est bien exporté et qu’il n’y a pas de faute dans un segment du chemin.</p>
+
+<h2>Un exemple à deux fichiers</h2>
+<p>Dans <code>calcul.vit</code>, déclare un chemin de module et exporte une procédure <code>additionner</code>. Dans <code>main.vit</code>, importe le module sous un alias puis appelle cette procédure. Les deux fichiers confirmés se trouvent dans <code>examples/tutorials/modules/</code>.</p>
+<p>Le résolveur de modules cherche les sources selon ses chemins configurés et met en cache des résolutions. Pour un programme de production, documente la racine du projet et les conventions de modules au lieu de dépendre d’un chemin local implicite.</p>
+<div class="callout verified-example"><strong>Exemple vérifié : import, alias et appel qualifié</strong><p>Depuis la racine du dépôt, la variable <code>VITTE_MODULE_PATH=examples</code> ajoute le dossier qui contient les sources importées.</p><pre><code>VITTE_MODULE_PATH=examples build/bin/vitte run examples/tutorials/modules/main.vit --quiet --no-color</code></pre><p>Les sources sont <a href="https://github.com/vitte-lang/vitte/blob/main/examples/tutorials/modules/main.vit"><code>main.vit</code></a> et <a href="https://github.com/vitte-lang/vitte/blob/main/examples/tutorials/modules/calcul.vit"><code>calcul.vit</code></a>. Résultat confirmé : code de sortie <code>0</code>.</p></div>
+<div class="callout"><strong>Une interface est une promesse</strong><p>Avant d’exporter un nom, demande-toi si les autres modules ont vraiment besoin de le connaître. Moins l’interface publique expose de détails, plus le module peut évoluer sereinement.</p></div>
+<section class="practice-block">
+  <h2>Atelier guidé : deux fichiers, un contrat</h2>
+  <ol>
+    <li>Crée <code>calcul.vit</code> et déclare le module <code>exercice::calcul</code>. Exporte deux procédures : addition et multiplication.</li>
+    <li>Crée <code>main.vit</code> dans un module distinct et importe <code>exercice::calcul</code>.</li>
+    <li>Appelle les deux procédures via leur chemin qualifié et vérifie les résultats attendus avec des assertions ou un point de retour simple.</li>
+    <li>Rends une troisième procédure privée. Tente de l’appeler depuis <code>main</code>, lis le diagnostic, puis décide si elle doit réellement faire partie de l’interface.</li>
+  </ol>
+  <details><summary>Auto-évaluation</summary><p>Le module producteur déclare les opérations et leur visibilité ; le module appelant dépend uniquement des noms exportés. Le chemin qualifié montre la provenance et réduit l’ambiguïté quand deux modules utilisent le même nom.</p></details>
+</section>

@@ -1,0 +1,45 @@
+---
+layout: reference
+title: Intégrés et types primitifs
+permalink: /reference/integres/
+section: Compilateur
+lead: Le registre bootstrap documente les symboles intégrés que cette partie du compilateur sait reconnaître avant les couches complètes de types et de sémantique.
+source: src/bootstrap/builtin/README.md
+support: "Registre bootstrap, backend C17 et fixtures runtime comparés séparément ci-dessous."
+---
+<div class="reference-callout"><strong>Contexte du registre</strong><p>La liste ci-dessous est celle de <code>src/bootstrap/builtin/README.md</code>. Elle décrit le registre bootstrap, pas nécessairement chaque type que la grammaire, les fixtures ou un autre backend peuvent accepter.</p></div>
+
+<h2>Types intégrés listés</h2>
+<table><thead><tr><th>Famille</th><th>Types</th></tr></thead><tbody>
+<tr><td>Contrôle et diagnostic</td><td><code>void</code>, <code>never</code>, <code>error</code>, <code>bool</code></td></tr>
+<tr><td>Entiers</td><td><code>u8</code>, <code>u32</code>, <code>u64</code>, <code>usize</code>, <code>int</code>, <code>i64</code></td></tr>
+<tr><td>Flottants</td><td><code>f32</code>, <code>f64</code></td></tr>
+<tr><td>Texte</td><td><code>string</code></td></tr>
+</tbody></table>
+<p>Les modules et tests du dépôt utilisent également des types tels que <code>i8</code>, <code>i16</code>, <code>i32</code>, <code>u16</code>, <code>char</code> et d’autres. Ce décalage doit être vérifié contre la table builtin réellement compilée avant d’afficher une liste exhaustive.</p>
+
+<h2>Constantes et procédures</h2>
+<table><thead><tr><th>Nom</th><th>Signature</th><th>Rôle</th></tr></thead><tbody>
+<tr><td><code>true</code>, <code>false</code></td><td><code>bool</code></td><td>Littéraux booléens.</td></tr>
+<tr><td><code>print</code>, <code>println</code></td><td><code>(string) -&gt; void</code></td><td>Écriture de texte standard, avec ou sans saut de ligne.</td></tr>
+<tr><td><code>eprint</code>, <code>eprintln</code></td><td><code>(string) -&gt; void</code></td><td>Écriture sur le flux d’erreur, avec ou sans saut de ligne.</td></tr>
+<tr><td><code>panic</code></td><td><code>(string) -&gt; never</code></td><td>Arrêt anormal avec un message.</td></tr>
+<tr><td><code>assert</code></td><td><code>(bool) -&gt; void</code></td><td>Vérification d’une condition.</td></tr>
+<tr><td><code>len</code></td><td><code>(string) -&gt; usize</code></td><td>Longueur selon le contrat du builtin.</td></tr>
+<tr><td><code>to_string</code></td><td><code>(int) -&gt; string</code></td><td>Conversion d’un entier en texte.</td></tr>
+<tr><td><code>type_name</code></td><td><code>(error) -&gt; string</code></td><td>Nom de type associé au diagnostic intégré.</td></tr>
+</tbody></table>
+
+<h2>Opérateurs du registre</h2>
+<ul><li>Numériques : <code>+ - * / %</code>.</li><li>Entiers et bits : <code>&amp; | ^ &lt;&lt; &gt;&gt;</code>.</li><li>Comparaison : <code>== != &lt; &lt;= &gt; &gt;=</code>.</li><li>Logique : <code>and or</code>.</li><li>Unaires : <code>! + - ~</code>.</li></ul>
+<p>Le registre indique que les opérations numériques et binaires attendent actuellement des types d’opérandes correspondants. La table ne remplace ni les règles complètes de typage ni la priorité définie par la grammaire.</p>
+
+<h2>Vérification des intégrés</h2>
+<table><thead><tr><th>Intégré</th><th>Registre</th><th>Parseur / sémantique</th><th>Compilation constatée</th></tr></thead><tbody>
+<tr><td><code>true</code>, <code>false</code>, entiers, booléens, chaînes</td><td>Types/littéraux décrits.</td><td>Exercés par les fixtures natives et runtime.</td><td>Oui : types et littéraux passent par C17 et exécution.</td></tr>
+<tr><td><code>print</code>, <code>println</code>, <code>eprint</code>, <code>eprintln</code>, <code>panic</code>, <code>assert</code></td><td>Listés comme procédures intégrées.</td><td>Les appels sont des expressions d’appel ; le backend documente ce sous-ensemble de builtins.</td><td>Émission C17 documentée par le backend ; exécution ciblée de chaque appel non prouvée par les 11 fixtures runtime.</td></tr>
+<tr><td><code>len</code></td><td>Listé.</td><td>Accepté dans les tests chaîne.</td><td>Oui : compilé et exécuté avec <code>string_intrinsics_runtime.vit</code>.</td></tr>
+<tr><td><code>trim</code>, <code>starts_with</code>, <code>ends_with</code></td><td>Ne figurent pas dans la liste builtin bootstrap citée plus haut.</td><td>Le pipeline les route vers compatibilité.</td><td>Oui : <code>string_intrinsics_runtime.vit</code> compile et s’exécute via le chemin compatibilité.</td></tr>
+<tr><td><code>to_string</code>, <code>type_name</code></td><td>Listés dans le registre bootstrap.</td><td>Pas de fixture d’analyse dédiée retenue.</td><td>Non établis par les tests runtime audités ; ne pas inférer leur support C17 depuis leur seule présence dans le registre.</td></tr>
+</tbody></table>
+<p>Sources : <a href="https://github.com/vitte-lang/vitte/blob/main/src/bootstrap/builtin/README.md">registre builtin bootstrap</a> · <a href="https://github.com/vitte-lang/vitte/blob/main/src/bootstrap/backend/c17/README.md">builtins documentés par le backend C17</a> · <a href="https://github.com/vitte-lang/vitte/blob/main/src/tests/string_intrinsics_runtime.vit">fixture runtime de chaînes</a> · <a href="{{ '/reference/expressions/' | relative_url }}">priorité des expressions</a>.</p>

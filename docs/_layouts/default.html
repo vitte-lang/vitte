@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0c1313">
+    <meta name="description" content="{{ page.description | default: site.description | escape }}">
+    <title>{% if page.title %}{{ page.title | escape }} · {% endif %}{{ site.title | escape }}</title>
+    <link rel="icon" type="image/svg+xml" href="{{ '/favicon.svg' | relative_url }}">
+    <link rel="stylesheet" href="{{ '/assets/css/site.css' | relative_url }}">
+  </head>
+  <body>
+    <a class="skip-link" href="#contenu">Aller au contenu</a>
+    <header class="topbar">
+      <a class="brand" href="{{ '/' | relative_url }}" aria-label="Accueil de la documentation Vitte">
+        <span class="brand-mark" aria-hidden="true">v</span>
+        <span>vitte<span class="brand-dot">/</span><small>atelier du langage</small></span>
+      </a>
+      <nav class="topbar-nav" aria-label="Navigation principale">
+        <a href="{{ '/#parcours' | relative_url }}">Parcours</a>
+        <a href="{{ '/reference/' | relative_url }}">Référence</a>
+        <a href="{{ '/reference/support/' | relative_url }}">État du langage</a>
+        <a class="top-link" href="https://github.com/vitte-lang/vitte">Dépôt <span aria-hidden="true">↗</span></a>
+      </nav>
+    </header>
+
+    <div class="shell">
+      <aside class="sidebar" aria-label="Navigation de la documentation">
+        <div class="sidebar-heading">Dans cette documentation</div>
+        <a class="sidebar-home {% if page.url == '/' %}is-active{% endif %}" href="{{ '/' | relative_url }}">
+          <span class="nav-index">⌂</span><span>Vue d’ensemble</span>
+        </a>
+        <details class="sidebar-section" {% if page.url contains '/reference/' %}open{% endif %}>
+          <summary>Référence <span>{{ site.data.references.size }} fiches</span></summary>
+          <a class="sidebar-link {% if page.url == '/reference/' %}is-active{% endif %}" href="{{ '/reference/' | relative_url }}">
+            <span class="nav-index">R</span><span>Index de référence</span>
+          </a>
+          {% for reference in site.data.references %}
+            <a class="sidebar-link {% if page.url == reference.url %}is-active{% endif %}" href="{{ reference.url | relative_url }}">
+              <span class="nav-index">{{ forloop.index | prepend: '0' | slice: -2, 2 }}</span>
+              <span>{{ reference.title }}</span>
+            </a>
+          {% endfor %}
+        </details>
+        <details class="sidebar-section" {% if page.url contains '/cours/' %}open{% endif %}>
+          <summary>Parcours guidé <span>{{ site.data.lessons.size }} leçons</span></summary>
+          {% assign last_part = '' %}
+          {% for lesson in site.data.lessons %}
+            {% if lesson.part != last_part %}
+              <div class="nav-group">{{ lesson.part }}</div>
+              {% assign last_part = lesson.part %}
+            {% endif %}
+            <a class="sidebar-link {% if page.url == lesson.url %}is-active{% endif %}" href="{{ lesson.url | relative_url }}">
+              <span class="nav-index">{{ forloop.index | prepend: '0' | slice: -2, 2 }}</span>
+              <span>{{ lesson.title }}</span>
+            </a>
+          {% endfor %}
+        </details>
+        <div class="sidebar-note">
+          <span class="note-icon">✦</span>
+          <p>Avance à ton rythme. Lis, recopie le code, puis modifie-le pour voir ce qui change.</p>
+        </div>
+      </aside>
+
+      <main id="contenu" class="main-content">
+        {{ content }}
+      </main>
+    </div>
+    <footer class="site-footer">
+      <span>Documentation du langage Vitte · construite depuis les sources du dépôt.</span>
+      <a href="{{ '/' | relative_url }}">Retour à l’accueil ↑</a>
+    </footer>
+  </body>
+</html>

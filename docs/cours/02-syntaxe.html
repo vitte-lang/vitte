@@ -1,0 +1,63 @@
+---
+title: Lire un programme Vitte
+permalink: /cours/02-syntaxe/
+chapter: 2
+duration: 30 minutes
+lead: Apprenons à repérer les déclarations, les blocs et les signes de ponctuation qui structurent le code. Une fois ce squelette visible, les programmes cessent de ressembler à une suite de symboles.
+takeaway: Les mots-clés indiquent le rôle du code ; les accolades, parenthèses et points-virgules indiquent comment il s’organise.
+practice: Prends un fichier d’exemple et annote chaque accolade, chaque appel et chaque point-virgule avec son rôle.
+---
+<h2>Le fichier est une suite de déclarations</h2>
+<p>À la différence d’un script où chaque ligne est nécessairement une instruction immédiate, un fichier Vitte contient surtout des <strong>déclarations</strong> : module, import, constante, forme, procédure, et ainsi de suite. Une déclaration donne un nom ou une structure que d’autres parties du programme peuvent utiliser.</p>
+<pre><code>space tutorials::syntaxe;
+
+const REPONSE: i64 = 42;
+
+proc lire_reponse() -&gt; i64 {
+    return REPONSE;
+}
+
+proc main() -&gt; i64 {
+    return lire_reponse() - REPONSE;
+}</code></pre>
+<p>Dans cet exemple, le fichier déclare son module, une constante, puis une procédure. L’ordre permet au lecteur de découvrir d’abord le contexte et ensuite le comportement. Le compilateur analyse l’ensemble du fichier pour relier les noms à leurs déclarations.</p>
+<div class="callout verified-example"><strong>Exemple vérifié : chemin, constante et procédure</strong><p>Le fichier complet <a href="https://github.com/vitte-lang/vitte/blob/main/examples/tutorials/syntaxe.vit"><code>examples/tutorials/syntaxe.vit</code></a> appelle la procédure et vérifie que la constante vaut 42.</p><pre><code>build/bin/vitte run examples/tutorials/syntaxe.vit --quiet --no-color</code></pre><p>Résultat confirmé : code de sortie <code>0</code>.</p></div>
+
+<h2>La ponctuation a un rôle précis</h2>
+<ul>
+  <li>Les parenthèses <code>( )</code> encadrent les paramètres d’une procédure ou les arguments d’un appel.</li>
+  <li>Les accolades <code>{ }</code> délimitent un bloc, par exemple le corps d’une procédure ou d’une condition.</li>
+  <li>Les deux-points <code>:</code> séparent souvent un nom de son type : <code>REPONSE: i64</code>.</li>
+  <li>La flèche <code>-&gt;</code> introduit le type de retour d’une procédure.</li>
+  <li>Le point-virgule <code>;</code> termine plusieurs déclarations et instructions.</li>
+  <li><code>::</code> sépare des éléments dans un chemin de module ou un nom qualifié.</li>
+</ul>
+<p>Un bloc peut contenir plusieurs instructions. L’indentation ne remplace pas les accolades : elle sert aux personnes qui lisent le code. Garde une indentation régulière, car elle rend visibles les blocs imbriqués et les erreurs de fermeture.</p>
+
+<h2>Commentaires : écrire pour la prochaine lecture</h2>
+<p>Un commentaire explique une intention, une règle ou une subtilité qu’on ne peut pas déduire facilement du code. Vitte accepte les commentaires de ligne <code>//</code>, les commentaires de documentation <code>///</code> et les commentaires de bloc <code>/* ... */</code>. Les commentaires de bloc peuvent être imbriqués dans la grammaire du dépôt.</p>
+<pre><code>// La limite est exclusive pour simplifier le parcours.
+const LIMITE: i64 = 10;
+
+/// Renvoie le double d'une valeur.
+proc doubler(valeur: i64) -&gt; i64 {
+    return valeur * 2;
+}</code></pre>
+<p>Évite de commenter chaque ligne pour la paraphraser. Une bonne explication répond plutôt à « pourquoi cette limite ? », « quelle hypothèse faisons-nous ? » ou « que doit garantir cette procédure ? ».</p>
+
+<h2>Noms, majuscules et littéraux</h2>
+<p>Les identifiants commencent par une lettre ou un souligné, puis peuvent contenir des chiffres et d’autres caractères autorisés. Les noms sont sensibles à la casse : <code>score</code> et <code>Score</code> sont deux noms différents. Le dépôt emploie souvent <code>snake_case</code> pour les procédures et variables, et des majuscules pour les constantes et les types.</p>
+<p>Un littéral est une valeur écrite directement dans le code : <code>42</code>, <code>3.5</code>, <code>true</code>, <code>'v'</code>, <code>"salut"</code> ou <code>null</code>. Les entiers peuvent également être écrits en binaire (<code>0b1010</code>), en octal (<code>0o12</code>) ou en hexadécimal (<code>0xA</code>). Les caractères spéciaux dans une chaîne se notent avec une barre oblique inversée, par exemple <code>\n</code> pour un saut de ligne.</p>
+<div class="callout"><strong>Lis les signes comme des repères</strong><p>Quand tu bloques, repère d’abord l’endroit où une déclaration commence, puis le bloc qu’elle ouvre, et enfin les expressions qu’elle contient. Ce parcours de l’extérieur vers l’intérieur réduit beaucoup la confusion.</p></div>
+
+<h2>Un exercice de lecture</h2>
+<p>Dans le programme de départ, marque la déclaration de module, le nom et le type de retour de <code>main</code>, l’appel à <code>print</code> et le retour. Puis enlève une accolade ou un point-virgule et lance <code>vitte parse</code>. Le diagnostic te montrera quel morceau de ponctuation manquait et à quel endroit le parseur l’a remarqué.</p>
+<section class="practice-block">
+  <h2>Atelier guidé : annoter et réparer</h2>
+  <ol>
+    <li>Prends un fichier court de <code>examples/</code>. Pour chaque ligne, écris en marge « déclaration », « instruction », « expression » ou « commentaire ».</li>
+    <li>Ajoute un commentaire qui explique une intention, pas le texte déjà visible. Demande-toi si le commentaire restera vrai après une modification du code.</li>
+    <li>Fais trois erreurs séparées : guillemet non fermé, accolade manquante et point-virgule absent. Utilise <code>lex</code> puis <code>parse</code> pour voir à quelle étape chaque erreur devient visible.</li>
+  </ol>
+  <details><summary>Auto-évaluation</summary><p>Un lexer identifie les morceaux élémentaires du texte, comme les identifiants et les littéraux. Le parseur vérifie que ces morceaux s’assemblent dans une structure permise. Une erreur sur une chaîne non fermée apparaît donc très tôt ; une accolade oubliée se manifeste au niveau de la structure.</p></details>
+</section>

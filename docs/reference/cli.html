@@ -1,0 +1,40 @@
+---
+layout: reference
+title: CLI et diagnostics
+permalink: /reference/cli/
+section: Outils
+lead: La CLI expose les étapes du compilateur, les formats de diagnostic, la configuration du projet et des options de génération.
+source: README.md · src/bootstrap/cli/README.md · src/bootstrap/cli/command_spec.def
+support: "Les commandes sont présentes ; le pipeline natif ne couvre qu’un sous-ensemble, et certaines entrées passent par compatibilité."
+---
+<h2>Commandes principales</h2>
+<table><thead><tr><th>Commande</th><th>Usage</th><th>Indication dans le dépôt</th></tr></thead><tbody>
+<tr><td><code>vitte --version</code></td><td>Afficher la version.</td><td>Vérification rapide de l’installation.</td></tr>
+<tr><td><code>vitte lex fichier.vit</code></td><td>Afficher les tokens.</td><td>Explorer le découpage lexical.</td></tr>
+<tr><td><code>vitte parse fichier.vit</code></td><td>Analyser la syntaxe.</td><td>Vérifier la structure d’un fichier.</td></tr>
+<tr><td><code>vitte check fichier.vit</code></td><td>Vérifier le fichier.</td><td>Le frontend natif vérifie son sous-ensemble ; d’autres sources suivent la compatibilité. La suite native teste 9 cas valides et 18 erreurs attendues.</td></tr>
+<tr><td><code>vitte compile fichier.vit --stop-after-sema</code></td><td>Arrêter après l’analyse sémantique.</td><td>Commande vérifiée par <code>test-sema</code> sur procédures, imports et contrats.</td></tr>
+<tr><td><code>vitte compile fichier.vit</code></td><td>Compiler le programme.</td><td>HIR/IR/C17 natifs validés pour formes, tableaux, choix et opérations scalaires ; génériques et autres formes avancées restent limités.</td></tr>
+<tr><td><code>vitte run fichier.vit</code></td><td>Compiler et exécuter.</td><td>Onze fixtures runtime du Makefile compilent et s’exécutent ; cette liste n’est pas une couverture complète du langage.</td></tr>
+<tr><td><code>vitte explain E0501</code></td><td>Expliquer un code de diagnostic public.</td><td>Les codes publics incluent des préfixes <code>E</code>, <code>W</code>, <code>N</code> et <code>H</code>.</td></tr>
+</tbody></table>
+
+<h2>Construire depuis le dépôt</h2>
+<pre><code>make
+vitte --version
+vitte check examples/hello.vit</code></pre>
+<p>Le dépôt utilise un frontend natif pour un sous-ensemble et un chemin bootstrap/compatibilité pour certaines sources. Le README racine et <code>src/docs/language_coverage.md</code> ne reflètent pas tous le même état que les tests et le README du driver ; la matrice <a href="{{ '/reference/support/' | relative_url }}">État du support</a> indique les preuves à privilégier.</p>
+
+<h2>Options utiles du CLI documenté</h2>
+<ul>
+  <li><code>--diagnostic=terminal|json|sarif|lsp</code> choisit le format du diagnostic.</li>
+  <li><code>--stop-after-lexer</code>, <code>--stop-after-parser</code>, <code>--stop-after-sema</code> arrêtent le pipeline à une étape.</li>
+  <li><code>--emit-tokens</code>, <code>--emit-ast</code>, <code>--emit-hir</code>, <code>--emit-ir</code>, <code>--emit-c</code> demandent des sorties intermédiaires lorsque l’étape est disponible.</li>
+  <li><code>--target</code>, <code>--backend</code>, <code>--profile</code> et <code>-o</code> configurent cible, backend, profil et fichier de sortie.</li>
+  <li><code>--manifest-path</code>, <code>--project-root</code> et <code>VITTE_MODULE_PATH</code> aident à résoudre la configuration et les modules.</li>
+</ul>
+<p>La présence d’une option dans l’aide ne garantit pas que chaque construction soit acceptée ou puisse produire un exécutable. Les tests runtime vérifient des programmes précis ; consulte les matrices par construction avant de dépendre d’une fonctionnalité.</p>
+
+<h2>Lire un diagnostic</h2>
+<ol><li>Lis le code et le titre : ils identifient la classe du problème.</li><li>Vérifie la phase et l’emplacement dans la source.</li><li>Lis les notes et suggestions qui accompagnent le message.</li><li>Corrige d’abord l’erreur la plus proche de sa cause ; les erreurs suivantes peuvent en découler.</li></ol>
+<p><a href="https://github.com/vitte-lang/vitte/blob/main/src/bootstrap/cli/README.md">Documentation CLI détaillée</a> · <a href="https://github.com/vitte-lang/vitte/blob/main/README.md">README du dépôt</a>.</p>

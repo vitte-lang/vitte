@@ -1,0 +1,59 @@
+---
+layout: reference
+title: Grammaire et lexique
+permalink: /reference/syntaxe/
+section: Langage
+lead: Les règles lexicales disent comment lire les caractères ; la grammaire dit comment combiner les tokens en programmes.
+source: grammar/vitte.ebnf
+support: "EBNF et lexer synchronisés au niveau des tokens ; les productions ne garantissent ni parsing uniforme ni compilation."
+---
+<div class="reference-callout"><strong>Portée de cette page</strong><p><code>grammar/vitte.ebnf</code> est le fichier de syntaxe canonique et indique qu’il décrit une syntaxe acceptée par le parseur. Le contrôle automatisé synchronise les mots-clés, opérateurs et tokens ; il ne compare pas chaque production. Les fixtures valident une partie de la grammaire, et les autres frontends peuvent accepter des extensions absentes de l’EBNF. Consulte <a href="{{ '/reference/support/' | relative_url }}">l’état détaillé du support</a> avant de compter sur une forme.</p></div>
+
+<h2>Structure générale</h2>
+<p>Un fichier est une suite de déclarations suivie de la fin du fichier. Les déclarations les plus courantes sont un en-tête de module <code>space</code>, des imports, des constantes, des types et des procédures.</p>
+<pre><code>space exemple::calcul;
+
+const REPONSE: i64 = 42;
+
+proc additionner(gauche: i64, droite: i64) -&gt; i64 {
+    return gauche + droite;
+}</code></pre>
+
+<h2>Mots-clés</h2>
+<p>La grammaire réserve les mots suivants. Leur apparition comme noms d’identifiants ordinaires est donc limitée :</p>
+<div class="reference-token-list"><code>space</code><code>use</code><code>export</code><code>const</code><code>static</code><code>type</code><code>opaque</code><code>form</code><code>pick</code><code>trait</code><code>impl</code><code>proc</code><code>extern</code><code>intrinsic</code><code>macro</code><code>test</code><code>pub</code><code>async</code><code>unsafe</code><code>comptime</code><code>where</code><code>requires</code><code>ensures</code><code>let</code><code>mut</code><code>set</code><code>return</code><code>give</code><code>break</code><code>continue</code><code>defer</code><code>assert</code><code>if</code><code>elif</code><code>else</code><code>while</code><code>loop</code><code>for</code><code>in</code><code>match</code><code>asm</code><code>and</code><code>or</code><code>not</code><code>move</code><code>ref</code><code>await</code><code>self</code><code>true</code><code>false</code><code>null</code></div>
+<p>Cette liste est dérivée de <code>grammar/vitte.ebnf</code>. L’implémentation peut avoir d’autres mots contextuels ; la table lexicale du compilateur et la grammaire doivent rester alignées.</p>
+
+<h2>Identifiants et commentaires</h2>
+<p>Un identifiant commence par une lettre, un souligné ou un caractère Unicode non ASCII valide ; les chiffres sont permis après le premier caractère. Les espaces et caractères de contrôle ne font pas partie d’un identifiant. La casse compte : <code>score</code> et <code>Score</code> désignent deux noms différents.</p>
+<p>Les espaces blancs sont ignorés entre les tokens. Les commentaires de ligne commencent par <code>//</code> et les commentaires de bloc sont encadrés par <code>/*</code> et <code>*/</code>. La grammaire autorise l’imbrication des commentaires de bloc. Dans le dépôt, <code>///</code> sert de convention pour les commentaires de documentation.</p>
+
+<h2>Littéraux numériques</h2>
+<table><thead><tr><th>Forme</th><th>Exemple</th><th>Usage</th></tr></thead><tbody>
+<tr><td>Décimal</td><td><code>42</code>, <code>1_000</code></td><td>Entier en base 10 ; le souligné sépare les chiffres.</td></tr>
+<tr><td>Binaire</td><td><code>0b101010</code></td><td>Préfixe <code>0b</code> ou <code>0B</code>.</td></tr>
+<tr><td>Octal</td><td><code>0o52</code></td><td>Préfixe <code>0o</code> ou <code>0O</code>.</td></tr>
+<tr><td>Hexadécimal</td><td><code>0x2A</code></td><td>Préfixe <code>0x</code> ou <code>0X</code>.</td></tr>
+<tr><td>Flottant décimal</td><td><code>3.5</code>, <code>1e6</code></td><td>Fraction et/ou exposant décimal.</td></tr>
+<tr><td>Flottant hexadécimal</td><td><code>0x1.8p2</code></td><td>Mantisse hexadécimale et exposant en puissance de deux.</td></tr>
+</tbody></table>
+<p>Le type concret d’un littéral dépend du contexte et de l’analyse de types. Ne déduis pas sa largeur du seul nombre de chiffres ; annote le type ou utilise une conversion explicite lorsque l’API l’exige.</p>
+
+<h2>Chaînes, caractères et échappements</h2>
+<p>Une chaîne utilise des guillemets doubles et un caractère utilise des apostrophes. Les caractères de fin de ligne ne sont pas écrits littéralement dans ces tokens ; ils s’introduisent avec un échappement. Les échappements définis comprennent la barre oblique inversée, les guillemets, <code>\n</code>, <code>\r</code>, <code>\t</code>, <code>\0</code>, les caractères de contrôle ainsi que les formes hexadécimales <code>\xNN</code>, <code>\uNNNN</code> et <code>\UNNNNNNNN</code>.</p>
+<pre><code>let message: string = "ligne 1\nligne 2";
+let initiale: char = 'V';</code></pre>
+
+<h2>Notation EBNF utilisée</h2>
+<ul><li><code>::=</code> signifie « est défini par ».</li><li><code>|</code> sépare des choix.</li><li><code>[ ... ]</code> rend un élément facultatif.</li><li><code>{ ... }</code> indique une répétition, éventuellement vide.</li></ul>
+
+<h2>Ce que les tests confirment</h2>
+<table><thead><tr><th>Élément</th><th>Dans l’EBNF</th><th>Analyseur vérifié</th><th>Compilation / exécution</th></tr></thead><tbody>
+<tr><td>Mots-clés, opérateurs et tokens</td><td>Liste et opérateurs documentés.</td><td><code>check-ebnf-frontend-sync</code> vérifie leur présence dans le lexer et la couverture des tokens par le parseur.</td><td>Ce contrôle ne teste ni typage ni génération de code.</td></tr>
+<tr><td>Littéraux et expression de base</td><td>Décrits dans le fichier EBNF.</td><td>Fixture <code>expression_literals_parse.vit</code> validée par <code>test-grammar</code>.</td><td>Des entiers, booléens, chaînes et flottants apparaissent dans des programmes runtime ; tous les échappements lexicaux ne sont pas couverts par ces seuls tests.</td></tr>
+<tr><td><code>form</code>, <code>pick</code>, <code>let</code>, marqueurs de référence</td><td>Décrits.</td><td>Fixtures <code>form_parse</code>, <code>pick_parse</code>, <code>let_mut_ok</code> et <code>ref_param_type_marker_ok</code>.</td><td>Formes, tableaux et choix ont des tests backend/runtime ; la seule fixture de parsing ne prouve pas la compilation.</td></tr>
+<tr><td><code>as</code>, attributs et gardes de <code>match</code></td><td><code>as</code> et attributs absents ; gardes non exprimées par la règle EBNF des bras.</td><td>Le test de parité accepte un attribut ; le sous-ensemble natif accepte casts et gardes.</td><td>Les casts et plusieurs formes de <code>match</code> sont exécutés par les tests natifs.</td></tr>
+<tr><td>Nullable <code>?T</code>, <code>await</code>, <code>defer</code>, pointeurs</td><td><code>await</code>/<code>defer</code>/pointeurs décrits ; <code>?T</code> absent du type EBNF.</td><td>Pas de fixture ciblée passée pour chacun dans les suites auditées.</td><td>Non prouvé au backend/runtime.</td></tr>
+</tbody></table>
+<p>Fixtures et résultats détaillés : <a href="https://github.com/vitte-lang/vitte/tree/main/src/tests/grammar_alignment">alignement grammaire/parseur</a>, <a href="https://github.com/vitte-lang/vitte/blob/main/src/tests/native_frontend_subset_test.py">sous-ensemble natif</a> et <a href="{{ '/reference/support/' | relative_url }}">matrice de support</a>.</p>
+<p><a href="https://github.com/vitte-lang/vitte/blob/main/grammar/vitte.ebnf">Ouvrir le fichier complet de grammaire sur GitHub →</a></p>

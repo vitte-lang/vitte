@@ -1,0 +1,32 @@
+---
+layout: reference
+title: Bibliothèques core et JSON
+permalink: /reference/bibliotheques/
+section: Écosystème
+lead: Les bibliothèques du dépôt montrent les APIs Vitte disponibles en source et leurs contrats connus. Leur présence ne garantit pas encore leur compilation native complète.
+source: modules/core/README.md · modules/core/API.md · modules/json/DOCUMENTATION.md
+support: "Contrats source disponibles ; prise en charge native dépendante du compilateur et du backend."
+---
+<h2>Bibliothèque fondamentale <code>core</code></h2>
+<p><code>core</code> rassemble les primitives et algorithmes fondamentaux ; les conteneurs propriétaires et alloués appartiennent au paquet <code>alloc</code>. Le README organise les modules de <code>core</code> ainsi :</p>
+<table><thead><tr><th>Familles</th><th>Contenu</th></tr></thead><tbody>
+<tr><td><code>types</code>, <code>traits</code>, <code>marker</code>, <code>ops</code></td><td>Types fondamentaux, contrats, marqueurs et opérations.</td></tr>
+<tr><td><code>primitive</code>, <code>cmp</code>, <code>convert</code>, <code>num</code></td><td>Types primitifs, comparaisons, conversions et arithmétique.</td></tr>
+<tr><td><code>array</code>, <code>slice</code>, <code>iter</code>, <code>str</code></td><td>Algorithmes sur tableaux, tranches, itérateurs et texte empruntés.</td></tr>
+<tr><td><code>mem</code>, <code>ptr</code>, <code>intrinsics</code></td><td>Mémoire, pointeurs et opérations dépendantes du compilateur.</td></tr>
+<tr><td><code>fmt</code>, <code>hash</code>, <code>error</code>, <code>sync</code>, <code>cell</code></td><td>Formatage, hachage, erreurs, synchronisation et cellules.</td></tr>
+</tbody></table>
+<p>Exemple d’import direct :</p>
+<pre><code>use core::types::option::{Option, option_some, option_is_some};
+use core::slice::search::{slice_find_index};</code></pre>
+<p><a href="https://github.com/vitte-lang/vitte/blob/main/modules/core/API.md">Index des APIs exportées</a> · <a href="https://github.com/vitte-lang/vitte/blob/main/modules/core/README.md">Contrats et limites de core</a>.</p>
+<p>L’index API est généré depuis les déclarations exportées ; le README précise qu’il s’agit d’un contrat source, pas d’une garantie d’ABI stable. Il signale également des éléments génériques et des traits qui restent à relier au compilateur natif.</p>
+
+<h2>Module <code>json</code></h2>
+<p>Le module JSON propose une chaîne de traitement texte → tokens → valeurs → texte JSON. Sa documentation détaille les valeurs, les nombres, tableaux et objets, le lexer, le parser, les erreurs de position et l’encodeur.</p>
+<pre><code>use json::parser::parser::*;
+use json::encode::encoder::*;</code></pre>
+<p>Le paquet s’appuie sur un manifeste <code>package.toml</code> et peut être découvert via <code>VITTE_MODULE_PATH</code>. Consulte la <a href="https://github.com/vitte-lang/vitte/blob/main/modules/json/DOCUMENTATION.md">documentation complète de JSON</a>, le <a href="https://github.com/vitte-lang/vitte/tree/main/modules/json">répertoire du module</a> et ses exemples de tests.</p>
+
+<h2>Avant d’utiliser une API</h2>
+<ul><li>Vérifie le module et le chemin complet de l’import.</li><li>Lis le commentaire et le contrat de la procédure, surtout pour les erreurs et les buffers.</li><li>Regarde si elle utilise des intrinsics ou des formes génériques dont le backend dépend.</li><li>Compile un exemple minimal avec la version et la cible de ton projet.</li></ul>

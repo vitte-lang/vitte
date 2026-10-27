@@ -1,0 +1,44 @@
+---
+layout: reference
+title: Modules et visibilité
+permalink: /reference/modules/
+section: Organisation
+lead: Les modules donnent des chemins aux déclarations et définissent quels noms les autres parties du programme peuvent importer.
+source: grammar/vitte.ebnf · modules/core/README.md · modules/json/DOCUMENTATION.md
+support: "Un import qualifié est compilé et exécuté ; chaque variante d’import/export n’a pas la même preuve."
+---
+<h2>Nommer un module</h2>
+<pre><code>space outils::calcul;</code></pre>
+<p>La grammaire permet des segments séparés par <code>::</code> ou <code>/</code>. Le manifeste JSON documente <code>::</code> comme syntaxe de chemin de module. Garde les noms de fichier, le chemin logique <code>space</code>, les imports et le manifeste du paquet cohérents.</p>
+
+<h2>Importer</h2>
+<pre><code>use core::types::option::{Option, option_some};
+use outils::calcul as calcul;
+use outils::math::*;</code></pre>
+<p><code>use</code> prend un chemin, un alias, un groupe de noms ou un glob. Les alias donnent un nom local ; les imports globaux font entrer plusieurs symboles dans la portée et peuvent rendre leur provenance ambiguë. Préfère les imports explicites dans une API que d’autres personnes doivent relire.</p>
+
+<h2>Exporter</h2>
+<pre><code>export const REPONSE: i64 = 42;
+export proc calculer() -&gt; i64 { return REPONSE; }
+export { REPONSE, calculer };</code></pre>
+<p>La grammaire fournit des formes d’export de déclaration et des listes d’exports. Le compilateur a des limites sur certains réexports ; un nom accessible localement n’est pas nécessairement réexportable depuis un autre module.</p>
+
+<h2>Résolution et visibilité</h2>
+<p>Un nom qualifié comme <code>json::parser::parser</code> donne la provenance d’une déclaration. L’importeur recherche les modules dans des racines configurées. Le CLI documente notamment <code>VITTE_MODULE_PATH</code> pour ajouter des racines et <code>--manifest-path</code>/<code>--project-root</code> pour préciser le projet.</p>
+<p>La documentation de <code>core</code> indique que les imports doivent actuellement venir du chemin complet : <code>core::prelude</code> ne fournit pas une façade complète par réexport. Pour diagnostiquer un import, vérifie successivement le chemin logique, la racine de résolution, l’existence du fichier et l’export du symbole utilisé.</p>
+
+<h2>Organisation de paquet</h2>
+<p>Le paquet JSON fournit un exemple de manifeste <code>package.toml</code> avec nom, version, fichier d’entrée, racine du module et syntaxe de chemin. Consulte sa <a href="https://github.com/vitte-lang/vitte/blob/main/modules/json/DOCUMENTATION.md">documentation de paquet</a> pour l’installation et l’utilisation de <code>VITTE_MODULE_PATH</code>.</p>
+
+<h2>Vérification des constructions de module</h2>
+<table><thead><tr><th>Construction</th><th>EBNF</th><th>Analyseur et résolution</th><th>Compilation constatée</th></tr></thead><tbody>
+<tr><td><code>space chemin;</code></td><td>Décrite, avec segments <code>::</code> ou <code>/</code>.</td><td>Acceptée dans les fixtures de modules/parité.</td><td>Oui : des modules avec chemins déclarés sont compilés dans les suites runtime.</td></tr>
+<tr><td><code>use chemin</code> et appel qualifié</td><td>Décrits.</td><td>Import résolu par le test d’import natif/bootstrap.</td><td>Oui : <code>llvm_imports_runtime.vit</code> importe un module, appelle ses procédures et s’exécute.</td></tr>
+<tr><td>Alias <code>use chemin as nom</code></td><td>Décrit.</td><td>Accepté dans le fichier runtime d’import.</td><td>Oui : l’alias <code>imported</code> est utilisé pour des appels compilés et exécutés.</td></tr>
+<tr><td>Imports groupés et glob</td><td>Décrits dans la production <code>use</code>.</td><td>Les fixtures d’import couvrent plusieurs formes, mais chaque variante n’a pas été lancée comme programme runtime dans l’audit.</td><td>Non prouvé pour tous les groupes/globs ; consulter les fixtures d’import/visibilité.</td></tr>
+<tr><td><code>export</code> de déclaration</td><td>Décrit.</td><td>Exercé par les modules de test et l’analyse sémantique.</td><td>Des valeurs exportées sont importées dans les tests runtime ; toutes les déclarations ne sont pas couvertes.</td></tr>
+<tr><td>Réexport avec alias ou chemin</td><td>La grammaire décrit les formes d’export.</td><td>Le pipeline de CLI route les alias d’export vers la compatibilité ; le parseur bootstrap documente le rejet de certains réexports de module.</td><td>Non prouvé en exécution pour les réexports généraux.</td></tr>
+<tr><td>Imports qualifiés ambigus</td><td>La forme syntaxique de l’import existe.</td><td>La cible <code>import_collision/modules_main.vit</code> est explicitement ignorée dans <code>test-sema</code>, car la résolution sémantique des collisions qualifiées reste incomplète.</td><td>Non confirmé ; un nom importé en collision ne doit pas être considéré comme résolu de façon garantie.</td></tr>
+<tr><td>Racines de projet et manifeste</td><td>Hors grammaire du langage.</td><td>Options CLI documentées ; exemples dans les tests de projet/modules.</td><td>La résolution de module est exécutée par une fixture ; chaque combinaison de manifeste/racine n’est pas couverte.</td></tr>
+</tbody></table>
+<p>Cette table distingue une syntaxe acceptée d’un module effectivement résolu. Voir la <a href="{{ '/reference/support/' | relative_url }}">matrice globale du compilateur</a> et la <a href="{{ '/reference/cli/' | relative_url }}">fiche CLI</a>.</p>

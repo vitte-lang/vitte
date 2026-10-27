@@ -1,0 +1,94 @@
+---
+title: Décider et répéter
+permalink: /cours/06-controle/
+chapter: 6
+duration: 40 minutes
+lead: Les conditions choisissent un chemin ; les boucles répètent un travail. Ces outils transforment une suite d’instructions en un programme qui réagit aux données.
+takeaway: Toute répétition doit avoir une progression visible et une condition d’arrêt que tu peux expliquer.
+practice: Écris une boucle qui additionne les nombres de 1 à 5, puis trace les valeurs de l’indice et du total à chaque passage.
+---
+<h2>Choisir avec <code>if</code></h2>
+<p>Une condition <code>if</code> exécute un bloc si son expression booléenne est vraie. <code>else</code> donne le chemin alternatif ; <code>elif</code> ajoute un autre test dans la même décision.</p>
+<pre><code>proc categorie(age: i64) -&gt; i64 {
+    if age &lt; 0 {
+        return -1;
+    } elif age &lt; 18 {
+        return 0;
+    } else {
+        return 1;
+    }
+}</code></pre>
+<p>Lis les branches dans l’ordre. La première condition vraie choisit un chemin, donc place les tests spécifiques avant les cas plus généraux. Chaque branche ici renvoie aussitôt une valeur : on voit clairement qu’aucun cas ne doit se poursuivre vers les lignes suivantes.</p>
+
+<h2>Répéter avec <code>while</code></h2>
+<p>Une boucle <code>while</code> vérifie sa condition avant chaque passage. Son corps doit normalement faire évoluer une donnée qui rapproche le programme de l’arrêt.</p>
+<pre><code>proc somme_de_un_a_cinq() -&gt; i64 {
+    let mut indice: i64 = 1;
+    let mut total: i64 = 0;
+
+    while indice &lt;= 5 {
+        set total = total + indice;
+        set indice = indice + 1;
+    }
+
+    return total;
+}</code></pre>
+<p>On commence avec <code>indice = 1</code>. À chaque passage, on ajoute l’indice au total et on l’augmente. Après le passage où l’indice vaut 5, il devient 6 ; la condition <code>indice &lt;= 5</code> est alors fausse et la procédure renvoie 15. Sans l’incrément, le programme resterait dans la boucle indéfiniment.</p>
+<div class="callout verified-example"><strong>Exemple vérifié : <code>while</code>, <code>continue</code> et <code>break</code></strong><p><a href="https://github.com/vitte-lang/vitte/blob/main/examples/tutorials/controle.vit"><code>examples/tutorials/controle.vit</code></a> saute l’indice 3, s’arrête à 6 et vérifie que le total est 12.</p><pre><code>build/bin/vitte run examples/tutorials/controle.vit --quiet --no-color</code></pre><p>Résultat confirmé : code de sortie <code>0</code>.</p></div>
+
+<h2>Répétition ouverte et sortie anticipée</h2>
+<p>La grammaire prévoit aussi <code>loop { ... }</code>, une boucle sans condition placée en tête. Elle se termine généralement par <code>break;</code> lorsqu’un cas d’arrêt est atteint. <code>continue;</code> saute au début du prochain passage. Ces sauts peuvent être utiles, mais si plusieurs points quittent le corps, vérifie que le flot de contrôle reste facile à suivre.</p>
+<pre><code>proc chercher_valeur() -&gt; i64 {
+    let mut essai: i64 = 0;
+    loop {
+        if essai == 7 {
+            break;
+        }
+        set essai = essai + 1;
+    }
+    return essai;
+}</code></pre>
+
+<h2>Parcourir avec <code>for</code></h2>
+<p>La forme <code>for nom in expression { ... }</code> exprime un parcours. Selon les types d’itérables et la bibliothèque disponibles, l’expression peut être une plage ou une séquence. L’exemple suivant montre l’intention d’une plage d’indices ; vérifie la prise en charge de l’itération dans la version du compilateur que tu utilises.</p>
+<pre><code>proc additionner_cinq(valeurs: [5]i64) -&gt; i64 {
+    let mut total: i64 = 0;
+    for index in 0..5 {
+        set total = total + valeurs[index];
+    }
+    return total;
+}</code></pre>
+<p>La plage <code>0..5</code> contient les indices 0 à 4 : la borne finale est exclue. Cette convention est pratique pour parcourir un tableau de cinq éléments. Un parcours par plage est utile quand tu as besoin de l’indice ; si une collection fournit un itérateur et que ton code n’a pas besoin de position, l’itérateur peut exprimer l’intention plus directement.</p>
+<div class="callout warning"><strong>État de vérification de <code>for</code></strong><p>Les tests du dépôt n’ont pas confirmé l’exécution de la forme <code>for</code> sur plage. Le test ciblé d’un <code>for</code> sur tableau atteint puis échoue au backend. Pour un parcours exécutable avec le compilateur natif audité, utilise l’exemple <code>while</code> ci-dessus.</p></div>
+
+<h2>Choisir un cas avec <code>match</code></h2>
+<p><code>match</code> associe une expression à plusieurs bras. Dans la grammaire, chaque bras utilise <code>=&gt;</code> et se termine par une virgule. Avec une énumération déclarée par <code>pick</code>, cette forme rend les différents états visibles ensemble. La couverture d’exhaustivité dépend de l’analyseur et du compilateur ; traite chaque cas important explicitement.</p>
+<pre><code>pick Etat {
+    Inactif,
+    Pret,
+    Termine,
+}
+
+proc code_etat(etat: Etat) -&gt; i64 {
+    match etat {
+        Etat.Inactif =&gt; { return 0; },
+        Etat.Pret =&gt; { return 1; },
+        Etat.Termine =&gt; { return 2; },
+    }
+    return -1;
+}</code></pre>
+<p>Pour les erreurs de compilation liées à une branche, commence par vérifier le type de l’expression examinée, puis la syntaxe de chaque bras et ses séparateurs.</p>
+
+<h2>Trois questions pour une boucle sûre</h2>
+<ol><li>Quelle valeur change à chaque passage ?</li><li>Quelle condition finit par devenir fausse ou déclenche <code>break</code> ?</li><li>Que se passe-t-il aux limites : zéro élément, un seul élément, ou valeur maximale ?</li></ol>
+<div class="callout"><strong>Trace sur papier</strong><p>Pour une boucle nouvelle, écris quelques lignes avec l’indice, l’état et le total. Cette petite table révèle vite une borne décalée ou une mise à jour oubliée.</p></div>
+<section class="practice-block">
+  <h2>Atelier guidé : parcours, arrêt et limites</h2>
+  <ol>
+    <li>Trace la boucle de somme de 1 à 5. Fais une ligne avant la boucle, une par passage et une après sa sortie.</li>
+    <li>Change <code>indice &lt;= 5</code> en <code>indice &lt; 5</code>. Quel nombre manque-t-il ? Modifie ensuite l’initialisation et explique pourquoi les deux changements interagissent.</li>
+    <li>Écris une procédure qui parcourt un tableau de trois valeurs avec <code>for index in 0..3</code>. Vérifie que la dernière lecture est à l’indice 2.</li>
+    <li>Ajoute un cas à <code>match</code>. Vérifie ce qui se passe si tu oublies de traiter une variante dans la version du compilateur que tu utilises.</li>
+  </ol>
+  <details><summary>Auto-évaluation</summary><p>Une boucle sûre a un état qui progresse, une condition d’arrêt atteignable et des accès compatibles avec les bornes. Les plages Vitte des exemples de bibliothèque sont demi-ouvertes : <code>0..3</code> contient 0, 1 et 2.</p></details>
+</section>

@@ -1,0 +1,76 @@
+---
+layout: reference
+title: Déclarations
+permalink: /reference/declarations/
+section: Langage
+lead: Une déclaration donne un nom à un module, une valeur, un type, une opération ou un test.
+source: grammar/vitte.ebnf · tests et exemples du dépôt
+support: "Les formes ont des niveaux distincts : voir les preuves parseur, sémantique et backend ci-dessous."
+---
+<h2>En-tête de module et import</h2>
+<pre><code>space outils::calcul;
+use core::types::option::{Option, option_some};
+use outils::conversion as conversion;</code></pre>
+<p><code>space</code> accepte un chemin. <code>use</code> peut importer un module ou un chemin, définir un alias avec <code>as</code>, importer un groupe de noms entre accolades ou demander un glob avec <code>*</code>. Les noms qualifiés utilisent <code>::</code>. La résolution concrète dépend de la racine du projet et des chemins de modules configurés.</p>
+
+<h2>Valeurs et types nommés</h2>
+<pre><code>export const REPONSE: i64 = 42;
+static COMPTEUR: i64 = 0;
+type Identifiant = u64;
+opaque Jeton;</code></pre>
+<p><code>const</code> et <code>static</code> déclarent des valeurs de module initialisées par une expression. <code>type</code> donne un alias à un type ; <code>opaque</code> annonce un type dont la représentation n’est pas exposée. Les règles détaillées de visibilité et de mutabilité se vérifient dans les étapes sémantiques du compilateur.</p>
+
+<h2>Formes et choix</h2>
+<pre><code>form Point {
+    x: i64,
+    y: i64,
+}
+
+pick Etat {
+    Inactif,
+    Pret,
+    Erreur(i64),
+}</code></pre>
+<p>Une <code>form</code> contient des champs nommés. Un <code>pick</code> décrit des variantes, et la grammaire permet de placer des types entre parenthèses après une variante. Dans le langage courant, on emploie souvent les formes comme valeurs composées et les choix pour représenter des états exclusifs.</p>
+
+<h2>Procédures</h2>
+<pre><code>export proc ajouter_un(valeur: i64) -&gt; i64
+    requires valeur &lt; 100;
+    ensures result == valeur + 1;
+{
+    return valeur + 1;
+}</code></pre>
+<p>Une procédure peut déclarer des paramètres typés, un type de retour, des paramètres génériques, une clause <code>where</code> et plusieurs contrats <code>requires</code>/<code>ensures</code>. Le corps est un bloc. Les paramètres n’ont pas de valeur par défaut dans la grammaire actuelle.</p>
+
+<h2>Traits et implémentations</h2>
+<p>Un <code>trait</code> contient des déclarations liées à un contrat de comportement. Un <code>impl</code> regroupe les déclarations d’implémentation pour un type et éventuellement un trait. Les méthodes peuvent employer <code>&amp;self</code> ou <code>&amp;mut self</code> ; la bibliothèque <code>core</code> en fournit des signatures. La liaison effective des implémentations de traits et le dispatch générique ne sont pas complets dans le compilateur d’après la documentation de <code>core</code>.</p>
+<pre><code>export trait Display {
+    proc fmt(&amp;self, formatter: &amp;mut Formatter) -&gt; bool;
+}</code></pre>
+
+<h2>Frontières, macros et tests</h2>
+<ul>
+  <li><code>extern "bibliotheque" proc nom(...);</code> déclare une procédure dont le corps est fourni à l’extérieur.</li>
+  <li><code>intrinsic nom(...);</code> réserve l’implémentation au compilateur ou au runtime.</li>
+  <li><code>macro nom(...) { ... }</code> déclare une macro selon la grammaire.</li>
+  <li><code>test "nom" { ... }</code> déclare un bloc de test.</li>
+</ul>
+<p>Les modificateurs prévus avant une déclaration comprennent <code>pub</code>, <code>export</code>, <code>async</code>, <code>unsafe</code> et <code>comptime</code>. La syntaxe reconnue ne garantit pas que chaque modificateur soit pris en charge de bout en bout.</p>
+
+<h2>Vérification par construction</h2>
+<table><thead><tr><th>Construction</th><th>EBNF</th><th>Analyseur</th><th>Compilation constatée</th></tr></thead><tbody>
+<tr><td><code>space</code> / <code>use</code></td><td>Décrites.</td><td>Acceptées par les tests d’import/parité.</td><td>Import et appel qualifié compilés et exécutés dans <code>llvm_imports_runtime.vit</code>.</td></tr>
+<tr><td><code>export</code></td><td>Décrit, y compris les listes et glob.</td><td>Exercé dans les fixtures d’import/export.</td><td>Des imports/exports de modules sont exécutés ; l’alias d’export emprunte le frontend de compatibilité. Chaque forme de réexport n’est pas validée.</td></tr>
+<tr><td><code>const</code> / <code>static</code></td><td>Décrites.</td><td>Une constante importée est exercée ; aucune fixture ciblée relevée pour <code>static</code>.</td><td>Constantes utilisées par les tests d’import ; génération/exécution de <code>static</code> non prouvée ici.</td></tr>
+<tr><td><code>type</code> / <code>opaque</code></td><td>Décrites.</td><td>Pas de fixture ciblée retenue pour un alias de type ou une déclaration opaque.</td><td>Non établi par les tests de compilation et d’exécution audités.</td></tr>
+<tr><td><code>form</code> sans paramètre générique</td><td>Décrite.</td><td>Acceptée par fixtures grammaire, parité et frontend natif.</td><td>Champs scalaires, imbriqués et tableaux : IR natif, C17 et exécution vérifiés.</td></tr>
+<tr><td><code>form&lt;T&gt;</code></td><td>Décrite.</td><td>Le cas test atteint la génération C.</td><td>Rejetée au backend avec <code>VITTE_BACKEND_E_CODEGEN</code> dans le test ciblé.</td></tr>
+<tr><td><code>pick</code> et variantes à charge utile</td><td>Décrites.</td><td>Acceptées par fixtures grammaire, parité et frontend natif.</td><td>Variantes simples et charges utiles compilées et exécutées avec le backend natif.</td></tr>
+<tr><td><code>proc</code></td><td>Décrite, avec paramètres et retour.</td><td>Acceptée dans les cas de parité, séma et frontend natif.</td><td>Compilée et exécutée dans plusieurs fixtures.</td></tr>
+<tr><td><code>requires</code> / <code>ensures</code></td><td>Décrites.</td><td>Vérifiées par test sémantique.</td><td><code>contracts_ok.vit</code> passe par compatibilité, compile et s’exécute.</td></tr>
+<tr><td><code>trait</code> / <code>impl</code> / génériques / <code>where</code></td><td>Décrits.</td><td>Le README du parseur bootstrap les documente ; pas de fixture runtime ciblée dans cet audit.</td><td>Compilation de bout en bout non prouvée ; <code>core</code> signale des limites de liaison.</td></tr>
+<tr><td><code>extern</code> / <code>intrinsic</code> / <code>macro</code></td><td>Décrites.</td><td>Non vérifiées par une fixture ciblée retenue.</td><td>Non prouvées en génération et exécution.</td></tr>
+<tr><td><code>test</code></td><td>Décrite.</td><td>Une déclaration <code>test</code> est acceptée par le test d’émetteur de compatibilité.</td><td>L’émetteur C est testé ; la déclaration n’est pas exécutée comme un test Vitte.</td></tr>
+<tr><td>Attributs et modificateurs</td><td>Les modificateurs cités dans l’EBNF sont décrits ; les attributs en sont absents.</td><td>La parité accepte un attribut de procédure ; les modificateurs ne sont pas tous couverts.</td><td>Support du backend non établi pour l’ensemble.</td></tr>
+</tbody></table>
+<p>Voir <a href="{{ '/reference/support/' | relative_url }}">la matrice complète avec les fichiers de preuve et les commandes exécutées</a>. Source syntaxique : <a href="https://github.com/vitte-lang/vitte/blob/main/grammar/vitte.ebnf">grammaire EBNF</a>.</p>

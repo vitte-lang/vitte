@@ -1,0 +1,89 @@
+---
+title: Projet fil rouge et suite
+permalink: /cours/13-projet/
+chapter: 13
+duration: 50 minutes
+lead: Mettons ensemble les notions apprises en construisant un petit calculateur de panier. L’objectif est autant de choisir un bon modèle que d’écrire des lignes de code.
+takeaway: Un projet clair commence par un comportement vérifiable, un modèle de données simple et de petits changements validés souvent.
+practice: Implémente les étapes dans l’ordre, ajoute un test à chaque règle métier et note quelles fonctionnalités ton compilateur accepte réellement.
+---
+<h2>Le comportement à construire</h2>
+<p>Notre panier contient des lignes. Chaque ligne a un prix unitaire et une quantité. Le total correspond à la somme des sous-totaux. On va construire un calculateur qui donne un total et refuse les valeurs incohérentes. Cette version reste volontairement petite : aucun fichier, réseau ou affichage n’est nécessaire pour comprendre la logique.</p>
+
+<h2>Étape 1 : modéliser une ligne</h2>
+<p>Une ligne possède deux données à la fois. Une <code>form</code> est donc plus claire que deux nombres isolés transmis à toutes les procédures :</p>
+<pre><code>space cours::panier;
+
+form Ligne {
+    prix_unitaire: i64,
+    quantite: i64,
+}
+
+proc sous_total(ligne: &amp;Ligne) -&gt; i64 {
+    return ligne.prix_unitaire * ligne.quantite;
+}</code></pre>
+<p>Le nom <code>Ligne</code> représente une idée du domaine. La procédure <code>sous_total</code> reçoit une référence car elle a besoin de lire les champs sans transformer la ligne. La multiplication est au même endroit pour tous les appels ; si la règle change, on sait où la modifier.</p>
+
+<h2>Étape 2 : décrire la règle métier</h2>
+<p>Une quantité négative n’a pas de sens pour ce panier. Une première version peut retourner un code simple, mais un code numérique anonyme n’explique pas la nature de l’échec. À mesure que le programme grandit, représente les cas de réussite et d’erreur par un type nommé ou un <code>pick</code>.</p>
+<pre><code>pick ErreurPanier {
+    Aucune,
+    QuantiteNegative,
+    PrixNegatif,
+}
+
+proc ligne_valide(ligne: &amp;Ligne) -&gt; bool {
+    return ligne.prix_unitaire &gt;= 0 and
+           ligne.quantite &gt;= 0;
+}</code></pre>
+<p>On pourrait aussi imposer les conditions avec des clauses <code>requires</code>. Un contrat est approprié si un appel invalide indique une faute de programmation. Un résultat d’erreur explicite est plus adapté si l’entrée vient d’un utilisateur et que le programme doit continuer après l’avoir refusée.</p>
+
+<h2>Étape 3 : parcourir plusieurs lignes</h2>
+<p>Un panier simple peut être un tableau de taille fixe. Ce choix convient lorsque la capacité est connue, comme dans un petit exercice. Dans un programme réel où le nombre de lignes varie, choisis une collection dont les règles d’allocation sont effectivement disponibles dans la bibliothèque et le backend que tu utilises.</p>
+<pre><code>proc total_panier(lignes: &amp;[3]Ligne) -&gt; i64 {
+    let mut total: i64 = 0;
+    for index in 0..3 {
+        set total = total + sous_total(&amp;lignes[index]);
+    }
+    return total;
+}</code></pre>
+<p>On parcourt les indices de zéro à trois, sans inclure trois dans la plage. C’est cohérent avec les trois positions <code>0</code>, <code>1</code> et <code>2</code>. Si la taille change, le code ne devrait pas garder un <code>3</code> caché dans plusieurs endroits : introduis une constante ou une abstraction de collection adaptée.</p>
+<div class="callout warning"><strong>Le projet complet est un modèle pédagogique, pas encore une commande confirmée</strong><p>Le parcours utilise une boucle <code>for</code> sur plage et des déclarations <code>test</code>. Ces constructions n’ont pas de preuve d’exécution complète dans le backend audité. Pour lancer des versions confirmées des briques, essaie <a href="https://github.com/vitte-lang/vitte/blob/main/examples/tutorials/formes-choix.vit"><code>formes-choix.vit</code></a>, <a href="https://github.com/vitte-lang/vitte/blob/main/examples/tutorials/tableaux.vit"><code>tableaux.vit</code></a> et <a href="https://github.com/vitte-lang/vitte/blob/main/examples/tutorials/contrats.vit"><code>contrats.vit</code></a>.</p></div>
+
+<h2>Étape 4 : couvrir les cas par des tests</h2>
+<pre><code>test "ligne avec prix nul et quantité nulle" {
+    let ligne: Ligne = Ligne {
+        prix_unitaire: 0,
+        quantite: 0,
+    };
+    assert(sous_total(&amp;ligne) == 0);
+}
+
+test "sous-total de deux articles" {
+    let ligne: Ligne = Ligne {
+        prix_unitaire: 6,
+        quantite: 2,
+    };
+    assert(sous_total(&amp;ligne) == 12);
+}</code></pre>
+<p>Ces tests donnent un cas de frontière et un cas ordinaire. Ajoute ensuite un cas de plusieurs lignes, une quantité nulle et chaque erreur prévue. Les tests nommés servent aussi de documentation exécutable : quelqu’un qui découvre le module comprend les règles en parcourant les noms et les assertions.</p>
+
+<h2>Étape 5 : organiser le projet</h2>
+<p>Quand le fichier devient trop long, place le modèle dans un module, les règles de calcul dans un autre et le point d’entrée dans un troisième. Exporte seulement les types et procédures dont les autres modules ont besoin. Garde les tests près du comportement qu’ils protègent et note la version d’outil utilisée.</p>
+<p>Travaille par petites étapes : un modèle, une procédure, un test, puis le changement suivant. Après chaque étape, lance la commande de vérification disponible. Si tu bloques, réduis l’exemple au plus petit fichier qui reproduit le diagnostic et compare-le à une construction existante dans le dépôt.</p>
+
+<h2>Continuer après le cours</h2>
+<p>Choisis un petit projet qui t’intéresse : un convertisseur d’unités, un analyseur de texte, un carnet de scores ou un outil en ligne de commande. Écris d’abord deux phrases sur ses comportements ; transforme chaque phrase en procédure et en tests ; puis ajoute les fichiers et les modules nécessaires.</p>
+<p>Pour explorer une notion, pars de la <a href="https://github.com/vitte-lang/vitte/blob/main/grammar/vitte.ebnf">grammaire</a> et des <a href="https://github.com/vitte-lang/vitte/tree/main/src/tests">tests du dépôt</a> pour trouver des cas concrets. Consulte aussi les <a href="https://github.com/vitte-lang/vitte/tree/main/modules/core">bibliothèques core</a> et la page <a href="{{ '/reference/support/' | relative_url }}">État du support</a>, qui aide à distinguer ce qui est spécifié de ce qui fonctionne dans le compilateur. Tu sais maintenant lire les éléments essentiels du langage et poser les bonnes questions avant de dépendre d’une fonctionnalité.</p>
+<div class="callout"><strong>Tu peux reprendre le cours quand tu veux</strong><p>Si une leçon reste floue, réécris son exemple de mémoire, puis compare avec le cours. Expliquer une idée avec tes propres mots est souvent le meilleur test de compréhension.</p></div>
+<section class="practice-block">
+  <h2>Atelier final : faire une petite livraison</h2>
+  <ol>
+    <li>Écris une courte description du besoin : quelles données entrent, quel résultat doit sortir, et quelles entrées doivent être refusées ?</li>
+    <li>Implémente <code>Ligne</code>, <code>sous_total</code> et la validation. Vérifie chaque changement avant d’ajouter le suivant.</li>
+    <li>Ajoute des tests pour les cas normal, zéro et invalide. Si ton compilateur ne prend pas en charge une construction montrée dans le cours, remplace-la par une forme déjà utilisée par le dépôt et note cette décision.</li>
+    <li>Déplace modèle, calculs et point d’entrée dans des modules distincts. Réduis les exports au minimum utile.</li>
+    <li>Relis ton code comme une autre personne : peut-elle prédire le résultat, comprendre le traitement des erreurs et repérer les limites du programme ?</li>
+  </ol>
+  <details><summary>Comment savoir si ton projet est terminé ?</summary><p>Tu peux expliquer le modèle, lancer les vérifications disponibles, montrer les cas couverts par les tests et énumérer les limites connues. Un projet terminé n’est pas forcément grand : ses comportements et ses frontières sont clairs.</p></details>
+</section>

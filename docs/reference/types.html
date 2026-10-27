@@ -1,0 +1,65 @@
+---
+layout: reference
+title: Types
+permalink: /reference/types/
+section: Langage
+lead: Un type décrit les valeurs qu’une expression peut représenter et les opérations qui ont du sens dessus.
+source: grammar/vitte.ebnf · src/bootstrap/builtin/README.md · modules/core/README.md
+support: "Les tests runtime vérifient plusieurs types et conversions ; les types composés ou avancés restent séparés par niveau."
+---
+<h2>Types primitifs documentés dans le registre bootstrap</h2>
+<table><thead><tr><th>Famille</th><th>Noms listés</th><th>Notes</th></tr></thead><tbody>
+<tr><td>Contrôle</td><td><code>bool</code>, <code>void</code>, <code>never</code>, <code>error</code></td><td>Valeurs logiques, absence de résultat, absence normale de retour et valeur d’erreur.</td></tr>
+<tr><td>Entiers</td><td><code>u8</code>, <code>u32</code>, <code>u64</code>, <code>usize</code>, <code>int</code>, <code>i64</code></td><td>Le registre bootstrap n’énumère qu’un sous-ensemble ; les modules et fixtures emploient aussi des types plus larges.</td></tr>
+<tr><td>Flottants</td><td><code>f32</code>, <code>f64</code></td><td>Valeurs à virgule flottante.</td></tr>
+<tr><td>Texte</td><td><code>string</code></td><td>Chaîne dans les interfaces intégrées.</td></tr>
+</tbody></table>
+<p>Cette liste vient du registre décrit dans <code>src/bootstrap/builtin/README.md</code>. Elle n’est pas exhaustive : les tests compilés utilisent aussi plusieurs autres largeurs entières et <code>char</code>.</p>
+
+<h2>Types composés et qualifiés</h2>
+<pre><code>[4]i64          // tableau fixe de quatre entiers
+&amp;Point          // référence
+&amp;mut Point      // référence mutable
+*u8             // pointeur
+module::Point   // type qualifié</code></pre>
+<p>La grammaire décrit les références avec <code>&amp;T</code> ou <code>ref T</code>, éventuellement suivies de <code>mut</code> ; les pointeurs avec <code>*T</code> ; les tableaux avec <code>[expression]T</code> ; et les chemins de type avec des paramètres génériques entre chevrons ou crochets.</p>
+
+<h2>Génériques et alias</h2>
+<pre><code>type Option&lt;T&gt; = ?T;
+
+form Paire&lt;T&gt; {
+    premier: T,
+    second: T,
+}
+
+proc identite&lt;T&gt;(valeur: T) -&gt; T {
+    return valeur;
+}</code></pre>
+<p>Les paramètres génériques rendent un type ou une procédure réutilisable pour plusieurs types. La grammaire prévoit une contrainte après <code>:</code> et des clauses <code>where</code>. Les sources de <code>core</code> utilisent des types génériques, mais le test de compilation natif rejette explicitement une forme générique <code>Box&lt;T&gt;</code> au backend. Le code ci-dessus sert à illustrer la syntaxe visée ; il n’est pas une promesse de compilation.</p>
+
+<h2>Nullable : écart à résoudre entre les sources</h2>
+<p>Les sources de <code>modules/core</code> emploient le type nullable <code>?T</code> et représentent l’absence avec <code>null</code>. Toutefois, la production <code>type</code> de <code>grammar/vitte.ebnf</code> ne liste pas explicitement cette forme. Aucun des tests d’exécution audités ne prouve son acceptation et sa génération C17 ; l’exemple suivant illustre le code source de <code>core</code>, pas une forme garantie par l’EBNF ou le backend natif.</p>
+<pre><code>proc valeur_ou_zero(valeur: ?i64) -&gt; i64 {
+    if valeur != null {
+        return valeur;
+    }
+    return 0;
+}</code></pre>
+
+<h2>Conversions</h2>
+<p>Le mot de conversion <code>as</code> est accepté et compilé dans les tests natifs, notamment pour convertir des valeurs en <code>u8</code> et <code>f64</code>. Il n’apparaît pas dans la production d’expression de l’EBNF actuelle. Une conversion explicite annonce le changement de type ; elle ne prouve pas à elle seule que la valeur reste dans la plage de destination. La bibliothèque <code>core::convert</code> fournit des conversions vérifiées pour certains couples de types.</p>
+
+<h2>Vérification par famille de types</h2>
+<table><thead><tr><th>Construction</th><th>EBNF</th><th>Analyseur</th><th>Compilation constatée</th></tr></thead><tbody>
+<tr><td>Booléens, entiers signés/non signés, <code>string</code></td><td>Les types nommés passent par <code>path_type</code>.</td><td>Acceptés dans les fixtures natives et bootstrap.</td><td>Oui : booléens, largeurs entières et chaînes sont exercés dans les 11 fixtures runtime.</td></tr>
+<tr><td><code>f64</code> et conversions numériques</td><td>Les noms de type et cast sont des chemins syntaxiques ; <code>as</code> est absent de l’EBNF.</td><td><code>as</code> accepté dans une fixture runtime.</td><td>Oui : <code>llvm_integer_width_runtime.vit</code> compile puis exécute une conversion vers <code>f64</code>.</td></tr>
+<tr><td>Tableaux fixes, tableaux imbriqués, index</td><td>Décrits par <code>[expression]type</code>.</td><td>Acceptés ; erreurs de taille et de type également testées.</td><td>Oui : HIR/IR, C17 et exécution pour lectures, écritures et matrices.</td></tr>
+<tr><td>Références et champs de formes</td><td>Décrits par <code>&amp;T</code> et <code>ref T</code>.</td><td>Marqueurs de paramètre couverts par fixture ; formes et champs couverts dans le frontend natif.</td><td>Oui pour références à des formes et accès de champs dans <code>aggregate_runtime.vit</code>.</td></tr>
+<tr><td>Pointeurs <code>*T</code></td><td>Décrits.</td><td>Pas de fixture ciblée d’analyse retenue.</td><td>Non prouvé dans le runtime audité.</td></tr>
+<tr><td>Génériques et contraintes</td><td>Décrits par paramètres génériques et clauses <code>where</code>.</td><td>Le parseur bootstrap les documente ; les cas natifs testés ne valident pas un générique complet.</td><td>Forme générique explicitement rejetée au backend ; autres combinaisons non prouvées.</td></tr>
+<tr><td>Nullable <code>?T</code></td><td>Absent de la production EBNF <code>type</code>.</td><td>Utilisé dans les sources <code>core</code>, sans fixture ciblée de parseur dans les tests exécutés.</td><td>Non prouvé.</td></tr>
+<tr><td>Cast <code>valeur as T</code></td><td>Absent de l’EBNF.</td><td>Accepté par le frontend natif des tests.</td><td>Oui pour les casts vers <code>u8</code> et <code>f64</code> exercés en runtime.</td></tr>
+</tbody></table>
+<p>La <a href="{{ '/reference/support/' | relative_url }}">matrice générale du support</a> donne les commandes de vérification et distingue le frontend natif du chemin bootstrap.</p>
+<div class="reference-callout"><strong>Règle de consultation</strong><p>Utilise le type le plus étroit qui exprime réellement ton domaine, puis vérifie la disponibilité et les règles de conversion sur la cible de compilation utilisée.</p></div>
+<p>Sources : <a href="https://github.com/vitte-lang/vitte/blob/main/grammar/vitte.ebnf">grammaire EBNF</a> · <a href="https://github.com/vitte-lang/vitte/blob/main/src/bootstrap/builtin/README.md">registre des types intégrés</a> · <a href="https://github.com/vitte-lang/vitte/blob/main/modules/core/README.md">contrats de <code>core</code></a>.</p>

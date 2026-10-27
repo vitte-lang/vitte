@@ -1,0 +1,51 @@
+---
+title: Erreurs, tests et qualité
+permalink: /cours/11-qualite/
+chapter: 11
+duration: 35 minutes
+lead: Un programme fiable explique ses hypothèses, détecte les entrées invalides et vérifie les cas importants. Les diagnostics, contrats et tests sont des outils d’apprentissage autant que de qualité.
+takeaway: Une erreur est une situation à modéliser ; un test est une expérience qui rend une propriété vérifiable.
+practice: "Écris trois tests nommés : cas normal, limite basse, limite haute. Fais ensuite échouer volontairement l’un d’eux et lis le diagnostic."
+---
+<h2>Lire les diagnostics comme des indices</h2>
+<p>Un diagnostic pointe un problème observé par une étape du compilateur. Il peut concerner la syntaxe, un nom inconnu, un type incohérent, une visibilité invalide ou une contrainte. Lis-le dans cet ordre : le code et le titre, le fichier et la ligne, puis le fragment souligné et les notes associées.</p>
+<p>Corrige d’abord l’erreur la plus proche de la cause. Si l’analyseur n’a pas compris une déclaration, les erreurs suivantes peuvent être des conséquences. Évite de modifier cinq choses à la fois : tu ne sauras plus quelle correction a résolu le problème.</p>
+<div class="callout verified-example"><strong>Diagnostic vérifié : type d’opérande incorrect</strong><p><a href="https://github.com/vitte-lang/vitte/blob/main/examples/tutorials/erreur-type.vit"><code>examples/tutorials/erreur-type.vit</code></a> combine <code>and</code> avec un entier. Pour reproduire le diagnostic :</p><pre><code>build/bin/vitte check examples/tutorials/erreur-type.vit --quiet --no-color --diagnostic=json</code></pre><p>Résultat confirmé : code de sortie <code>1</code>, diagnostic <code>VITTE_TYPE_E_INVALID_OPERAND</code> (l’opérateur logique attend un booléen).</p></div>
+
+<h2>Assertions et contrats</h2>
+<p>Une assertion exprime une propriété qui doit être vraie à un point précis. La forme <code>assert(expression);</code> est utile dans un test ou pour vérifier un invariant établi par le programme. Ne l’utilise pas pour remplacer une validation d’entrée que l’utilisateur peut raisonnablement faire échouer ; une entrée invalide doit recevoir un traitement prévu.</p>
+<pre><code>proc verifier_taille(taille: i64) {
+    assert(taille &gt;= 0);
+}</code></pre>
+<p>Pour une procédure publique, les clauses <code>requires</code> et <code>ensures</code> décrivent des règles attachées à son interface. Elles sont particulièrement utiles quand un calcul a une précondition non évidente. Une assertion explique un état à un endroit ; un contrat décrit les attentes entre l’appelant et la procédure.</p>
+<div class="callout verified-example"><strong>Exemple vérifié : contrat exécuté</strong><p><a href="https://github.com/vitte-lang/vitte/blob/main/examples/tutorials/contrats.vit"><code>examples/tutorials/contrats.vit</code></a> double 21 et vérifie la postcondition décrite par le programme. Le CLI route cette construction vers le chemin bootstrap/compatibilité.</p><pre><code>build/bin/vitte run examples/tutorials/contrats.vit --quiet --no-color</code></pre><p>Résultat confirmé : code de sortie <code>0</code>.</p></div>
+
+<h2>Écrire un test qui raconte un cas</h2>
+<p>La grammaire prévoit des blocs <code>test</code>, nommés ou non. L’exemple suivant illustre leur forme, mais la suite du dépôt ne confirme pas qu’ils soient exécutés comme des tests Vitte : un cas vérifié montre seulement que l’émetteur de compatibilité accepte la déclaration.</p>
+<pre><code>test "addition des prix" {
+    assert(additionner(20, 22) == 42);
+}
+
+test "addition avec zéro" {
+    assert(additionner(9, 0) == 9);
+}</code></pre>
+<p>Le nom du test doit décrire le comportement qu’il vérifie, pas seulement le nom de la procédure testée. Un test nommé « addition avec zéro » indique l’hypothèse importante ; « test additionner » est beaucoup moins informatif.</p>
+
+<h2>Choisir les bons cas</h2>
+<p>Pour une procédure qui travaille sur une plage, teste une valeur ordinaire et les deux frontières. Pour une collection, pense aux tailles zéro, un et plusieurs. Pour un calcul entier, considère les valeurs négatives, zéro, les valeurs positives et les risques de dépassement. Pour une condition, couvre chaque branche au moins une fois.</p>
+<p>Un test prouve seulement qu’un exemple précis se comporte comme attendu. Plusieurs tests bien choisis rendent une régression moins probable, mais ne remplacent ni une spécification ni une revue des hypothèses. Les grands tests du dépôt documentent des contrats précis et sont de bons modèles pour nommer une suite de cas.</p>
+
+<h2>Représenter un échec comme une donnée</h2>
+<p>Quand une opération peut échouer normalement, représente cette possibilité dans son résultat au lieu de cacher l’échec derrière une valeur ambiguë. Un résultat peut porter un booléen de réussite, une valeur et une catégorie d’erreur ; un choix <code>pick</code> peut aussi nommer les issues possibles. La bibliothèque fondamentale fournit des formes de résultat concrètes, même si l’intégration de certains types génériques continue d’évoluer.</p>
+<p>Par exemple, un parseur devrait distinguer « l’entrée représente zéro » de « l’entrée est invalide ». Renvoyer simplement zéro pour les deux cas fait perdre de l’information à l’appelant.</p>
+<div class="callout"><strong>Teste le contrat, pas l’implémentation</strong><p>Un test utile décrit ce que le code doit garantir depuis l’extérieur. Il reste pertinent même si tu réécris le corps de la procédure.</p></div>
+<section class="practice-block">
+  <h2>Atelier guidé : transformer une règle en tests</h2>
+  <ol>
+    <li>Choisis une procédure qui calcule une somme ou un sous-total. Écris un test pour un cas ordinaire, puis un cas où l’une des entrées vaut zéro.</li>
+    <li>Repère ses bornes et écris un cas juste avant et juste après chaque borne. Le nom de chaque test doit annoncer ce cas.</li>
+    <li>Provoque une erreur de type et une erreur de syntaxe. Note la différence entre le diagnostic d’analyse et le diagnostic de vérification.</li>
+    <li>Pour une entrée invalide, décide si elle révèle une faute du programme ou une situation normale. Choisis ensuite un contrat ou une valeur d’erreur adaptée.</li>
+  </ol>
+  <details><summary>Auto-évaluation</summary><p>Un bon test exprime une attente observable, couvre une branche précise et échoue si le comportement change. Une assertion n’est pas une validation utilisateur : une entrée invalide prévisible doit avoir une réponse prévue par l’API.</p></details>
+</section>

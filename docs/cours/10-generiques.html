@@ -1,0 +1,53 @@
+---
+title: Génériques, traits et types nommés
+permalink: /cours/10-generiques/
+chapter: 10
+duration: 45 minutes
+lead: Les génériques permettent d’écrire une logique pour plusieurs types. Les alias donnent des noms à des concepts existants, et les traits décrivent des capacités communes.
+takeaway: Ajoute une abstraction quand elle élimine une duplication réelle sans rendre le contrat plus mystérieux.
+practice: Écris une procédure générique identité dans un fichier d’exercice, puis compare son intention à deux procédures spécialisées.
+---
+<h2>Nommer un type existant</h2>
+<p>Un alias introduit un nom parlant sans inventer une représentation différente. Par exemple :</p>
+<pre><code>type IdentifiantClient = u64;
+
+proc charger_client(id: IdentifiantClient) -&gt; bool {
+    return id &gt; 0;
+}</code></pre>
+<p><code>IdentifiantClient</code> met en évidence la signification de la valeur dans cette API. L’alias reste associé au type qu’il désigne ; il n’apporte pas automatiquement une validation ou une protection contre les conversions accidentelles. Si une nouvelle valeur doit respecter des invariants propres, modélise-la avec une forme ou un type opaque lorsque le compilateur prend en charge ce contrat.</p>
+<p>La forme <code>opaque Nom;</code> déclare un type dont la représentation interne n’est pas exposée à ses utilisateurs. Elle permet de protéger une abstraction et de contrôler les opérations qui construisent ou inspectent la valeur. L’usage concret d’un type opaque dépend des fonctions que son module publie.</p>
+
+<h2>Une procédure générique</h2>
+<p>Un paramètre générique est un nom de type valable à l’intérieur d’une déclaration. Une fonction identité peut renvoyer exactement le type qu’elle reçoit :</p>
+<pre><code>proc identite&lt;T&gt;(valeur: T) -&gt; T {
+    return valeur;
+}</code></pre>
+<p><code>T</code> n’est pas un type concret comme <code>i64</code>. C’est une variable de type : au moment de l’utilisation, le compilateur déduit ou vérifie quel type concret remplace <code>T</code>. Les génériques évitent d’écrire séparément la même procédure pour chaque type.</p>
+<p>Les déclarations de formes et d’alias peuvent elles aussi avoir des paramètres génériques. Les bibliothèques du dépôt utilisent une notation entre crochets pour des applications de types comme <code>Option[T]</code>, et une notation entre chevrons pour déclarer certains paramètres. Consulte la forme des modules locaux : le compilateur peut appliquer des conventions ou prendre en charge des sous-ensembles différents.</p>
+
+<h2>Contraindre un paramètre avec une capacité</h2>
+<p>Une procédure qui compare deux valeurs a besoin que leur type sache les comparer. Un trait sert à nommer ce type de capacité. La grammaire prévoit des déclarations de traits et des déclarations <code>impl</code> qui relient des types à des traits. Une clause <code>where</code> peut exprimer des contraintes de type associées à des génériques.</p>
+<p>Un exemple de forme de clause, à lire comme une contrainte, est <code>where T: Comparable</code>. Cela dit que la procédure attend un type <code>T</code> qui satisfait le contrat nommé <code>Comparable</code>. Les traits du module <code>core</code> montrent des signatures de méthodes, comme <code>Display</code> pour écrire une représentation dans un formateur.</p>
+<pre><code>trait Affichable {
+    proc ecrire(&amp;self, sortie: &amp;mut Tampon) -&gt; bool;
+}</code></pre>
+<p>Les méthodes de trait peuvent employer <code>&amp;self</code> pour recevoir une référence au récepteur. Ce style appartient au contrat de méthode. Avant d’implémenter un trait pour un type, examine la syntaxe utilisée par la version du compilateur et les modules fournis.</p>
+
+<h2>Les limites réelles de l’abstraction</h2>
+<p>La grammaire peut accepter une construction avant que toutes les étapes du compilateur puissent l’utiliser. La documentation de <code>modules/core</code> précise par exemple que l’intégration de génériques complexes et des implémentations de traits n’est pas encore complète dans le backend natif. Autrement dit, il existe une différence entre une forme reconnue, une forme comprise sémantiquement et une forme qui peut produire un exécutable.</p>
+<div class="callout warning"><strong>Générique : syntaxe présente, génération refusée</strong><p><a href="https://github.com/vitte-lang/vitte/blob/main/examples/tutorials/generiques-limites.vit"><code>examples/tutorials/generiques-limites.vit</code></a> sert de cas témoin négatif pour une forme générique.</p><pre><code>build/bin/vitte compile examples/tutorials/generiques-limites.vit --emit-c --quiet --no-color --diagnostic=json</code></pre><p>Résultat confirmé : code de sortie <code>1</code>, diagnostic <code>VITTE_BACKEND_E_CODEGEN</code>. La déclaration ne doit donc pas être présentée comme compilable.</p></div>
+<p>Pour apprendre un concept, observe les sources qui le déclarent ; pour planifier un projet, valide-le sur le compilateur effectivement installé. N’annonce pas une capacité à partir de la seule présence d’un fichier de bibliothèque.</p>
+
+<h2>Quand une abstraction est utile</h2>
+<p>Écris d’abord une version simple. Si tu vois plusieurs procédures presque identiques, repère ce qui change et ce qui reste identique. Un générique convient quand la même logique marche réellement avec plusieurs types. Un trait convient quand des types différents partagent une opération avec le même sens. Un alias convient quand un nom de domaine améliore la lecture.</p>
+<div class="callout"><strong>Attention au « générique pour plus tard »</strong><p>Ajouter plusieurs niveaux de types ou de traits avant d’avoir deux usages concrets rend l’API plus difficile à expliquer. Garde l’abstraction minimale qui supprime la duplication observée.</p></div>
+<section class="practice-block">
+  <h2>Atelier guidé : choisir le bon niveau d’abstraction</h2>
+  <ol>
+    <li>Écris deux procédures spécialisées qui font le même calcul sur des <code>i64</code> et des <code>u64</code>. Identifie ce qui est identique et ce qui diffère.</li>
+    <li>Lis <code>identite&lt;T&gt;</code> et explique pourquoi elle peut renvoyer la même valeur sans connaître toutes les opérations du type <code>T</code>.</li>
+    <li>Ouvre un trait de <code>modules/core/src/traits/</code>. Reformule en français la promesse de chaque méthode, puis regarde s’il existe une implémentation utilisable dans ce dépôt.</li>
+    <li>Décide si un nom de domaine devrait être un alias, une forme ou un type opaque. Justifie ton choix par la validation et l’accès aux données attendus.</li>
+  </ol>
+  <details><summary>Auto-évaluation</summary><p>Un générique est utile si une même logique fonctionne pour plusieurs types. Un trait est utile si ces types promettent le même comportement. Un alias améliore le nom sans créer de représentation distincte ; une forme ou un type opaque sert quand tu dois protéger une valeur et ses invariants.</p></details>
+</section>

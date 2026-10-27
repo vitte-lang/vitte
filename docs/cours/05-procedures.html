@@ -1,0 +1,64 @@
+---
+title: Procédures et contrats
+permalink: /cours/05-procedures/
+chapter: 5
+duration: 40 minutes
+lead: Une procédure donne un nom à une tâche bien délimitée. Elle reçoit des paramètres, calcule quelque chose et peut renvoyer un résultat que d’autres procédures réutilisent.
+takeaway: Une bonne procédure a une responsabilité lisible, des entrées explicites et un résultat dont le type est annoncé.
+practice: "Découpe un calcul de prix en trois procédures : calculer le sous-total, appliquer la remise et produire le prix final."
+---
+<h2>La forme générale d’une procédure</h2>
+<pre><code>proc additionner(gauche: i64, droite: i64) -&gt; i64 {
+    return gauche + droite;
+}</code></pre>
+<p><code>proc</code> introduit la déclaration. <code>additionner</code> est le nom de la procédure. Les noms dans les parenthèses sont des paramètres : ce sont les entrées que l’appelant fournit. Chaque paramètre a un type explicite. Après la flèche, <code>i64</code> annonce le type de retour. Le corps entre accolades effectue le travail et <code>return</code> renvoie la valeur calculée.</p>
+<p>On peut ensuite appeler cette procédure depuis une autre procédure :</p>
+<pre><code>proc total_du_panier() -&gt; i64 {
+    let sous_total: i64 = additionner(18, 24);
+    return sous_total;
+}</code></pre>
+<p>Les arguments <code>18</code> et <code>24</code> occupent les places des paramètres <code>gauche</code> et <code>droite</code>. Le nombre, l’ordre et le type des arguments doivent correspondre à la déclaration.</p>
+<div class="callout verified-example"><strong>Exemple vérifié : paramètres, appels et retour</strong><p><a href="https://github.com/vitte-lang/vitte/blob/main/examples/tutorials/procedures.vit"><code>examples/tutorials/procedures.vit</code></a> compose un sous-total puis ajoute la livraison ; le calcul attendu vaut 42.</p><pre><code>build/bin/vitte run examples/tutorials/procedures.vit --quiet --no-color</code></pre><p>Résultat confirmé : code de sortie <code>0</code>.</p></div>
+
+<h2>Décomposer plutôt que tout entasser</h2>
+<p>Une procédure devrait répondre à une question précise. Si une fonction de 80 lignes valide une entrée, calcule plusieurs valeurs, transforme un résultat et affiche un rapport, sépare ces responsabilités. Des procédures courtes rendent les tests plus ciblés et les noms racontent le déroulement.</p>
+<p>Les paramètres rendent les dépendances visibles. Une procédure qui a besoin d’un taux de remise devrait généralement le recevoir en paramètre plutôt que de dépendre d’une variable globale cachée. Le code d’appel devient alors une petite description de ce qui est calculé.</p>
+
+<h2>Retourner une valeur ou terminer sans valeur</h2>
+<p>Quand le type de retour est renseigné, chaque chemin normal doit produire une valeur compatible. Certaines procédures servent plutôt à effectuer une action, comme écrire un message. Selon les primitives et les conventions du module, elles peuvent avoir un type de retour sans valeur, souvent nommé <code>void</code>. Le point d’entrée d’exemple renvoie un entier comme statut de fin.</p>
+<p>Évite de mélanger plusieurs styles dans une même abstraction. Si une procédure calcule un prix, renvoie le prix ; si elle imprime un rapport, choisis un nom d’action et laisse son effet visible dans le nom ou la documentation.</p>
+
+<h2>Références en paramètre</h2>
+<p>Pour examiner une valeur composée sans la copier dans chaque appel, la grammaire permet un paramètre de référence comme <code>point: &amp;Point</code>. Le corps peut lire ses champs via <code>point.x</code>. C’est une manière de montrer que la procédure consulte une donnée existante. Les règles détaillées de mutabilité, d’alias et de durée de vie dépendent de l’implémentation disponible ; ne suppose pas un système d’emprunt plus riche que ce que le compilateur vérifie.</p>
+<pre><code>form Point {
+    x: i64,
+    y: i64,
+}
+
+proc somme(point: &amp;Point) -&gt; i64 {
+    return point.x + point.y;
+}</code></pre>
+
+<h2>Contrats : écrire les préconditions et postconditions</h2>
+<p>La grammaire de Vitte permet de placer des clauses <code>requires</code> et <code>ensures</code> avant le corps d’une procédure. Une précondition décrit ce que l’appelant doit garantir. Une postcondition décrit ce que la procédure promet après son retour. Dans une postcondition, le nom <code>result</code> désigne la valeur produite.</p>
+<pre><code>proc ajouter_un(valeur: i64) -&gt; i64
+    requires valeur &lt; 100;
+    ensures result == valeur + 1;
+{
+    return valeur + 1;
+}</code></pre>
+<p>Le contrat clarifie l’usage prévu et donne au compilateur des propriétés à analyser. Ici, la précondition empêche un dépassement vers la borne supérieure lors de l’ajout ; la postcondition décrit exactement le résultat promis. Une spécification doit refléter les limites du type et de l’opération. Les contrats peuvent produire des diagnostics ou des vérifications à l’exécution selon ce que le compilateur arrive à prouver.</p>
+
+<h2>Récursion et arrêt</h2>
+<p>Une procédure peut s’appeler elle-même. C’est la récursion. Une version récursive d’un calcul doit avoir un cas de base et un appel qui se rapproche de ce cas ; sans cela, elle ne termine pas. Pour un parcours prévisible et simple, une boucle est parfois plus facile à suivre. Choisis la forme qui rend la condition d’arrêt la plus évidente.</p>
+<div class="callout"><strong>Avant de créer une procédure</strong><p>Dis en une phrase ce qu’elle reçoit, ce qu’elle renvoie et ce qu’elle ne fait pas. Si la phrase contient plusieurs tâches indépendantes, cherche un découpage.</p></div>
+<section class="practice-block">
+  <h2>Atelier guidé : transformer une recette en procédures</h2>
+  <ol>
+    <li>Écris <code>sous_total(prix, quantite)</code>. Donne un nom et un type à chaque paramètre et retourne le produit.</li>
+    <li>Écris <code>ajouter_livraison(sous_total, livraison)</code> au lieu de recopier l’addition dans plusieurs endroits.</li>
+    <li>Écris <code>prix_final</code> qui appelle les deux procédures précédentes. Vérifie que les paramètres racontent les données transmises.</li>
+    <li>Ajoute un contrat à la procédure de livraison. Note une hypothèse que l’appelant doit garantir et une propriété attendue de la valeur renvoyée.</li>
+  </ol>
+  <details><summary>Auto-évaluation</summary><p>Une procédure est bien séparée si tu peux tester son calcul seul et si son nom décrit ce qu’elle renvoie. Le contrat ne remplace pas les paramètres : il formule une règle qui doit tenir pour ces paramètres et pour le résultat.</p></details>
+</section>
