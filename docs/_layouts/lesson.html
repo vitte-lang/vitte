@@ -2,11 +2,20 @@
 layout: default
 ---
 <article class="lesson">
+  {% assign current_index = nil %}
+  {% for item in site.data.lessons %}
+    {% if item.url == page.url %}{% assign current_index = forloop.index0 %}{% endif %}
+  {% endfor %}
+  {% assign current_number = current_index | plus: 1 %}
   <div class="eyebrow"><span class="eyebrow-line"></span> LEÇON {{ page.chapter }} <span class="eyebrow-sep">/</span> {{ page.duration }}</div>
   <header class="lesson-header">
     <h1>{{ page.title }}</h1>
     <p class="lesson-lead">{{ page.lead }}</p>
     <div class="lesson-meta"><span>À retenir</span><span class="meta-separator">·</span><span>{{ page.takeaway }}</span></div>
+    <div class="course-progress">
+      <div class="course-progress-label"><span>Progression du parcours</span><span>Chapitre {{ current_number }} sur {{ site.data.lessons.size }}</span></div>
+      <progress value="{{ current_number }}" max="{{ site.data.lessons.size }}" aria-label="Progression du parcours Vitte">Chapitre {{ current_number }} sur {{ site.data.lessons.size }}</progress>
+    </div>
   </header>
   <nav class="lesson-toc" aria-label="Sommaire de cette leçon" hidden>
     <strong>Dans cette leçon</strong>
@@ -15,10 +24,6 @@ layout: default
   <div class="lesson-body">
     {{ content }}
   </div>
-  {% assign current_index = nil %}
-  {% for item in site.data.lessons %}
-    {% if item.url == page.url %}{% assign current_index = forloop.index0 %}{% endif %}
-  {% endfor %}
   {% assign previous_index = current_index | minus: 1 %}
   {% assign next_index = current_index | plus: 1 %}
   <nav class="lesson-pager" aria-label="Navigation entre les leçons">
