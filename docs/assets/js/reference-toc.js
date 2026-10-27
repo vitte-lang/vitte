@@ -5,7 +5,7 @@
 
   const headings = Array.from(body.querySelectorAll('h2'));
   const list = nav.querySelector('ul');
-  if (headings.length < 3 || !list) return;
+  if (headings.length < 2 || !list) return;
 
   function slugify(value) {
     return value.toLocaleLowerCase('fr-FR')
