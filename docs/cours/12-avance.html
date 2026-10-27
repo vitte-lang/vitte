@@ -2,7 +2,7 @@
 title: Interopérabilité et sujets avancés
 permalink: /cours/12-avance/
 chapter: 12
-duration: 45 minutes
+duration: 65 minutes
 lead: Quand les programmes atteignent les limites du langage, ils peuvent appeler du code externe ou demander au compilateur des opérations particulières. Ces possibilités sont puissantes et exigent un contrat plus strict.
 takeaway: Une frontière bas niveau doit expliciter les types, les conventions et les invariants qui ne sont plus vérifiés automatiquement.
 practice: Lis une déclaration extern ou intrinsic dans le dépôt et note quelles garanties la plateforme doit fournir pour qu’elle soit sûre.
@@ -40,6 +40,31 @@ practice: Lis une déclaration extern ou intrinsic dans le dépôt et note quell
 
 <h2>Où vérifier les détails</h2>
 <p>La <a href="https://github.com/vitte-lang/vitte/blob/main/grammar/vitte.ebnf">grammaire canonique</a> décrit les formes syntaxiques. Pour savoir ce que le compilateur prend en charge aujourd’hui, commence par la page <a href="{{ '/reference/support/' | relative_url }}">État du support</a> : elle compare les documents du dépôt et signale leurs divergences. Les fichiers de <a href="https://github.com/vitte-lang/vitte/tree/main/modules/core"><code>modules/core</code></a> décrivent les contrats des bibliothèques fondamentales. Lis ces sources ensemble pour distinguer syntaxe, analyse et exécution réelle.</p>
+
+<h2>Évaluer une déclaration externe avant de l’écrire</h2>
+<p>Une déclaration externe est une frontière entre deux contrats. Le fichier Vitte décrit la signature que le code appelant croit pouvoir utiliser. La bibliothèque ou la plateforme fournit réellement le symbole. Avant d’écrire le wrapper, rassemble au minimum le nom du symbole, la convention d’appel, les types et leur représentation, la règle de propriété mémoire, l’alignement et le comportement des erreurs.</p>
+<p>Le mot <code>extern</code> ne traduit pas automatiquement une signature étrangère vers une signature Vitte. Une valeur de taille différente, un booléen représenté autrement ou un objet dont la durée de vie n’est pas contrôlée peuvent rendre l’appel incohérent. Une fonction d’adaptation mince est préférable à la propagation de types bas niveau dans tout le programme.</p>
+
+<h2>Réduire et documenter le code non sûr</h2>
+<p>Pour une opération qui demande <code>unsafe</code>, écris les obligations avant l’instruction : quelle adresse est valide, quelle longueur est accessible, qui peut écrire, combien de temps l’objet existe et quelle synchronisation est requise ? Ensuite, enferme cette opération dans la plus petite procédure possible et publie une interface sûre si l’appelant ordinaire n’a pas à manipuler directement le pointeur.</p>
+<p>Un commentaire utile dit pourquoi chaque obligation tient. « C’est unsafe mais le pointeur est valide » ne donne aucune preuve. Une description concrète pourrait identifier l’allocation qui fournit l’adresse, sa taille, son propriétaire et l’événement qui met fin à sa durée de vie. Même lorsque le langage laisse cette responsabilité au programme, la fiche rend l’hypothèse révisable.</p>
+
+<h2>Définir le nettoyage indépendamment de la syntaxe</h2>
+<p><code>defer</code> promet une action retardée à la sortie d’une portée, mais les cas importants sont les retours anticipés, les blocs imbriqués et les sorties de boucle. Avant de s’appuyer sur cette construction, écris la séquence attendue des événements pour chaque chemin. Vérifie ensuite que le comportement réel de la version du compilateur correspond à cette séquence.</p>
+<p>Si le comportement n’est pas confirmé, ne cache pas une libération de ressource derrière une syntaxe supposée. Garde l’acquisition et le nettoyage dans une forme que l’outil accepte et que les tests peuvent observer, jusqu’à ce que la règle de <code>defer</code> soit établie.</p>
+
+<h2>Pourquoi les macros demandent une discipline différente</h2>
+<p>Une macro ajoute une transformation avant ou pendant la compilation. Pour la concevoir, il faut préciser ce qu’elle accepte, ce qu’elle produit, comment les erreurs d’expansion sont signalées et où apparaissent les noms générés. Une macro qui raccourcit quelques caractères mais masque le type produit peut rendre les diagnostics plus difficiles que le code répété qu’elle remplace.</p>
+<p>La bonne progression est de commencer par une procédure, un type nommé ou une fonction de bibliothèque. N’envisage une macro que si la structure à générer est réellement répétitive et si l’expansion peut rester prévisible. La syntaxe <code>macro</code> est décrite, mais la compilation et l’exécution d’un exemple de macro ne sont pas confirmées dans l’audit de cette documentation.</p>
+
+<h2>Fiche de revue avant une frontière bas niveau</h2>
+<ol>
+  <li>Quelle construction Vitte est décrite et quel chemin de compilation la prend en charge ?</li>
+  <li>Quelle responsabilité appartient au programme appelant ?</li>
+  <li>Quelle garantie fournit la plateforme ou le runtime ?</li>
+  <li>Quels cas négatifs ou limites ont été exécutés ?</li>
+  <li>Quel diagnostic est attendu si la fonctionnalité n’est pas disponible ?</li>
+</ol>
 <section class="practice-block">
   <h2>Atelier guidé : analyser une frontière</h2>
   <ol>
@@ -48,5 +73,9 @@ practice: Lis une déclaration extern ou intrinsic dans le dépôt et note quell
     <li>Si l’opération touche à la mémoire, liste les règles d’adresse, de taille, d’alignement et de durée de vie.</li>
     <li>Regarde si le backend ciblé sait réellement fournir cette opération. Inscris une limite connue plutôt que de supposer que la déclaration suffit.</li>
   </ol>
-  <details><summary>Auto-évaluation</summary><p>Une signature décrit l’interface, pas l’implémentation. Pour qu’une frontière externe fonctionne, il faut aussi un symbole compatible, une ABI cohérente et des invariants respectés par le code des deux côtés.</p></details>
+  <details><summary>Corrigé détaillé de l’atelier</summary>
+    <p>La fiche doit nommer les types d’entrée et de sortie, le symbole effectivement fourni, la convention d’appel et les règles mémoire. Si le paramètre est un pointeur, ajoute la taille accessible, l’alignement, le propriétaire, la durée de vie et les règles de mutation. Une signature ne contient pas ces preuves implicitement.</p>
+    <p>Vérifie ensuite si le backend cible accepte la déclaration et sait générer un appel. Dans l’audit du site, aucune commande runtime n’établit un exemple complet pour <code>extern</code>, <code>intrinsic</code>, <code>defer</code>, <code>unsafe</code> ou <code>macro</code>. Le bon résultat de l’exercice peut donc être une fiche de conception accompagnée d’un statut « non confirmé », sans inventer une commande d’exécution.</p>
+    <p>Une frontière correctement conçue réduit le code qui dépend de l’ABI et expose aux autres modules une procédure avec des types et des erreurs compréhensibles.</p>
+  </details>
 </section>

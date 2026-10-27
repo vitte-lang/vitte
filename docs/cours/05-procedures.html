@@ -2,7 +2,7 @@
 title: Procédures et contrats
 permalink: /cours/05-procedures/
 chapter: 5
-duration: 40 minutes
+duration: 60 minutes
 lead: Une procédure donne un nom à une tâche bien délimitée. Elle reçoit des paramètres, calcule quelque chose et peut renvoyer un résultat que d’autres procédures réutilisent.
 takeaway: Une bonne procédure a une responsabilité lisible, des entrées explicites et un résultat dont le type est annoncé.
 practice: "Découpe un calcul de prix en trois procédures : calculer le sous-total, appliquer la remise et produire le prix final."
@@ -52,6 +52,31 @@ proc somme(point: &amp;Point) -&gt; i64 {
 <h2>Récursion et arrêt</h2>
 <p>Une procédure peut s’appeler elle-même. C’est la récursion. Une version récursive d’un calcul doit avoir un cas de base et un appel qui se rapproche de ce cas ; sans cela, elle ne termine pas. Pour un parcours prévisible et simple, une boucle est parfois plus facile à suivre. Choisis la forme qui rend la condition d’arrêt la plus évidente.</p>
 <div class="callout"><strong>Avant de créer une procédure</strong><p>Dis en une phrase ce qu’elle reçoit, ce qu’elle renvoie et ce qu’elle ne fait pas. Si la phrase contient plusieurs tâches indépendantes, cherche un découpage.</p></div>
+
+<h2>Concevoir une signature avant le corps</h2>
+<p>La signature est le premier contrat lisible d’une procédure. Écris-la avant les instructions et vérifie chacun de ses éléments :</p>
+<ul>
+  <li>Le nom répond-il à une question précise, comme <code>sous_total</code> ou <code>valider_ligne</code> ?</li>
+  <li>Les paramètres nomment-ils les entrées et indiquent-ils leur type ?</li>
+  <li>Le type de retour dit-il exactement quelle information le corps produit ?</li>
+  <li>La procédure a-t-elle besoin de données qu’elle ne reçoit pas explicitement ?</li>
+</ul>
+<p>Deux paramètres du même type peuvent être intervertis sans que le compilateur puisse comprendre l’intention métier. Des noms tels que <code>prix</code> et <code>quantite</code> aident donc autant le lecteur que le diagnostic. Si l’ordre est trop facile à inverser, une forme avec des champs nommés peut rendre l’appel plus explicite.</p>
+
+<h2>Suivre un appel et son retour</h2>
+<p>Dans l’exemple vérifié du panier, <code>main</code> appelle d’abord <code>sous_total(6, 6)</code>. La procédure renvoie 36. La procédure appelante transmet ensuite cette valeur à <code>avec_livraison(36, 6, 6)</code>, qui renvoie 42. La valeur ne saute pas directement de la première ligne au résultat : chaque appel possède ses paramètres, son corps et son retour.</p>
+<p>Cette lecture fournit une méthode de débogage. Note les arguments à l’entrée de la procédure, calcule les expressions locales dans l’ordre, puis note la valeur au <code>return</code>. Si le résultat final est faux, compare la première étape où ta trace diverge du résultat observé.</p>
+
+<h2>Valeur de retour et chemins de contrôle</h2>
+<p>Pour une procédure déclarée <code>-&gt; i64</code>, chaque chemin normal doit pouvoir produire un <code>i64</code>. Dans une condition, vérifie toutes les branches : une branche qui ne renvoie rien peut rendre le corps incomplet. Le retour anticipé est utile quand il clarifie un cas particulier, mais trop de sorties dispersées rendent la lecture du résultat plus difficile.</p>
+<p>Une procédure d’action n’a pas le même objectif qu’une procédure de calcul. Une procédure appelée <code>afficher_resume</code> annonce un effet ; une procédure appelée <code>calculer_total</code> annonce une valeur. Garder les noms et les types cohérents aide l’appelant à savoir s’il doit utiliser un résultat ou simplement appeler l’action.</p>
+
+<h2>Récursion : prouver le rapprochement du cas simple</h2>
+<p>Une procédure récursive se rappelle sur un problème plus petit. Pour calculer une somme jusqu’à <code>n</code>, l’idée mathématique est : la somme de 1 à 1 vaut 1 ; pour une valeur supérieure, la somme jusqu’à <code>n</code> est <code>n</code> plus la somme jusqu’à <code>n - 1</code>. Le cas simple empêche les appels de continuer sans fin, et chaque appel doit s’en rapprocher.</p>
+<p>Avant d’écrire une récursion, réponds à trois questions : quel est le cas d’arrêt ? Quelle mesure diminue ? Quel résultat chaque appel promet-il ? Vérifie également la profondeur maximale et le risque de dépassement numérique. Ces questions portent sur l’algorithme ; elles ne garantissent pas que chaque version du backend supporte le cas précis.</p>
+<p>Pour un calcul répétitif simple, une boucle <code>while</code> est souvent plus facile à tracer avec les constructions runtime confirmées. La récursion reste utile lorsque le problème est naturellement défini par des sous-problèmes, mais vérifie la compilation avant d’en faire le fondement d’un programme.</p>
+
+<div class="callout"><strong>Correction de l’appel en chaîne</strong><p><code>additionner(18, 24)</code> renvoie 42 ; <code>total_du_panier</code> lie cette valeur à <code>sous_total</code>, puis la renvoie. Le nom local ne crée pas une nouvelle opération : il donne un repère à la valeur calculée par l’appel.</p></div>
 <section class="practice-block">
   <h2>Atelier guidé : transformer une recette en procédures</h2>
   <ol>
@@ -60,5 +85,9 @@ proc somme(point: &amp;Point) -&gt; i64 {
     <li>Écris <code>prix_final</code> qui appelle les deux procédures précédentes. Vérifie que les paramètres racontent les données transmises.</li>
     <li>Ajoute un contrat à la procédure de livraison. Note une hypothèse que l’appelant doit garantir et une propriété attendue de la valeur renvoyée.</li>
   </ol>
-  <details><summary>Auto-évaluation</summary><p>Une procédure est bien séparée si tu peux tester son calcul seul et si son nom décrit ce qu’elle renvoie. Le contrat ne remplace pas les paramètres : il formule une règle qui doit tenir pour ces paramètres et pour le résultat.</p></details>
+  <details><summary>Corrigé détaillé de l’atelier</summary>
+    <p><code>sous_total(prix, quantite)</code> reçoit ses deux données et renvoie leur produit. Pour le cas 6 et 2, elle donne 12. <code>ajouter_livraison(sous_total, livraison)</code> reçoit ce résultat et le coût de livraison ; avec une livraison de 5, elle renvoie 17. <code>prix_final</code> compose les deux appels, sans recopier leurs formules.</p>
+    <p>Un contrat possible exige que le sous-total et la livraison soient non négatifs. Une postcondition pourrait préciser que le résultat est la somme de ces deux entrées. Il faut traiter les limites numériques : la non-négativité seule ne garantit pas qu’une addition ne dépasse jamais la plage du type.</p>
+    <p>La correction est bonne si chaque procédure peut être expliquée par une phrase et si ses entrées sont visibles dans la signature. Les exemples de contrats du dépôt passent par le chemin de compatibilité ; vérifie ce chemin avant de conclure que le même contrat s’exécute dans chaque frontend.</p>
+  </details>
 </section>

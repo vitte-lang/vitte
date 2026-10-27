@@ -2,7 +2,7 @@
 title: Tableaux, références et pointeurs
 permalink: /cours/08-memoire/
 chapter: 8
-duration: 45 minutes
+duration: 70 minutes
 lead: Les données occupent une place en mémoire. Pour manipuler une séquence ou laisser une procédure consulter un objet, Vitte fournit des tableaux, des références et des pointeurs.
 takeaway: Choisis la représentation la plus simple qui exprime le contrat attendu ; un pointeur brut demande une prudence particulière.
 practice: Parcours un tableau avec une plage d’indices et vérifie que ton code traite correctement le premier et le dernier élément.
@@ -50,6 +50,28 @@ proc modifier(premier: &amp;mut i64) {
 <h2>Penser aux frontières</h2>
 <p>Les bugs mémoire se cachent souvent sur les limites : tableau vide, indice égal à la longueur, référence conservée après la durée de vie de la valeur, ou pointeur converti vers un type plus étroit. Décris le contrat d’une procédure qui reçoit une zone mémoire : combien d’éléments sont accessibles, qui peut les modifier et qui garde la propriété de la zone ?</p>
 <div class="callout"><strong>Garde un invariant lisible</strong><p>Quand tu touches à la mémoire directement, écris les conditions requises près de l’opération. Une personne qui relit le code doit pouvoir vérifier la taille, la validité et l’alignement avant de suivre la déréférence.</p></div>
+
+<h2>La longueur d’un tableau appartient à son type</h2>
+<p>Avec <code>[3]i64</code>, la longueur est connue : le tableau contient exactement trois valeurs de type <code>i64</code>. Les indices valides sont 0, 1 et 2. L’indice 3 est déjà hors de la plage, même s’il ressemble à une position « après le dernier élément ».</p>
+<p>Pour parcourir les éléments avec un <code>while</code> confirmé, maintiens un indice mutable et teste-le avant l’accès :</p>
+<pre><code>let mut index: i64 = 0;
+while index &lt; 3 {
+    let valeur: i64 = notes[index];
+    set index = index + 1;
+}</code></pre>
+<p>Ce fragment illustre l’ordre indispensable : tester la borne, lire la case, puis faire progresser l’indice. Le parcours <code>for</code> sur tableau n’est pas confirmé au backend dans l’audit ; ne le substitue pas silencieusement à cette forme lorsque tu veux un exemple exécutable avec le frontend natif.</p>
+
+<h2>Choisir entre un tableau, une référence et un pointeur</h2>
+<p>Ces formes ne répondent pas à la même question. Un tableau fixe exprime une séquence dont la taille est connue. Une référence exprime un accès à une valeur existante sans écrire directement une adresse. Un pointeur brut donne accès à une adresse et demande que le programme établisse lui-même davantage de garanties.</p>
+<p>Pour chaque paramètre de données, précise qui garde la valeur, qui peut la lire, qui peut la modifier et combien de temps l’accès reste valide. Le type <code>&amp;T</code> et le type <code>&amp;mut T</code> signalent une différence de contrat d’accès, mais la présence de ces formes ne prouve pas à elle seule que le compilateur vérifie toutes les règles de durée de vie ou d’alias attendues.</p>
+
+<h2>Absence : garder la distinction avec une valeur normale</h2>
+<p>Une valeur nullable de forme <code>?T</code> peut représenter une donnée présente ou <code>null</code>. Si zéro est une valeur autorisée pour <code>T</code>, elle ne doit pas servir de code implicite pour l’absence : zéro et <code>null</code> expriment deux situations différentes.</p>
+<p>Une valeur de repli, telle que <code>age ?? 0</code>, simplifie le calcul seulement si zéro est réellement le comportement voulu lorsque l’âge manque. Si l’absence change la décision à prendre, conserve-la comme cas distinct et traite-la explicitement. La syntaxe nullable et les opérateurs associés ne sont pas tous prouvés en compilation/exécution dans le backend audité.</p>
+
+<h2>Contrat mental avant une lecture mémoire</h2>
+<p>Avant une lecture indexée, vérifie l’intervalle ; avant une écriture, vérifie également que le propriétaire autorise la modification ; avant une déréférence, vérifie la validité de l’adresse, l’alignement, la taille accessible et la durée de vie. Pour un tableau fixe, ces questions se ramènent principalement à la borne de l’indice. Pour un pointeur, elles deviennent des obligations explicites de la procédure qui le reçoit.</p>
+<div class="callout"><strong>Correction du parcours sûr</strong><p>Pour un tableau de longueur 3, commence à l’indice 0, continue tant que l’indice est strictement inférieur à 3 et n’accède qu’après le test. La progression doit augmenter l’indice exactement une fois par passage. Le dernier accès a lieu à l’indice 2.</p></div>
 <section class="practice-block">
   <h2>Atelier guidé : borner un accès</h2>
   <ol>
@@ -58,5 +80,9 @@ proc modifier(premier: &amp;mut i64) {
     <li>Donne un tableau à une procédure par référence en lecture. Explique qui garde la donnée et ce que la procédure est autorisée à faire.</li>
     <li>Pour un pointeur imaginaire vers le premier élément, écris les invariants à vérifier avant de le déréférencer. Ne tente pas d’utiliser une adresse arbitraire.</li>
   </ol>
-  <details><summary>Auto-évaluation</summary><p>Un accès sûr suppose que la valeur de l’indice reste dans la plage du tableau. Une référence exprime un accès aux données existantes ; un pointeur brut demande en plus de démontrer la validité de l’adresse, l’alignement, la taille et la durée de vie.</p></details>
+  <details><summary>Corrigé détaillé de l’atelier</summary>
+    <p>Pour un tableau de trois nombres, les indices valides sont 0, 1 et 2. L’accès au premier, au milieu et au dernier élément est donc respectivement <code>valeurs[0]</code>, <code>valeurs[1]</code> et <code>valeurs[2]</code>. Une boucle <code>while index &lt; 3</code> teste l’indice avant la lecture et l’incrémente une fois après le travail.</p>
+    <p>La version avec trois accès explicites est facile à lire pour une taille fixe ; la boucle évite de recopier les opérations quand la taille change. L’expression <code>for index in 0..3</code> peut exprimer l’intention, mais son exécution dans le backend natif n’est pas confirmée par l’audit du dépôt.</p>
+    <p>Une référence permet à une procédure d’accéder à une valeur existante selon le contrat de la référence. Un pointeur demande des garanties supplémentaires : adresse valide, alignement, zone assez grande, absence de conflit de mutation et durée de vie suffisante. Si tu ne peux pas expliquer chacune de ces conditions, reste sur le tableau ou la référence vérifiée.</p>
+  </details>
 </section>

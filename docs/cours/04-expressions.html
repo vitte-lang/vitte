@@ -2,7 +2,7 @@
 title: Expressions et opérateurs
 permalink: /cours/04-expressions/
 chapter: 4
-duration: 35 minutes
+duration: 55 minutes
 lead: Les expressions combinent des valeurs pour en produire d’autres. Savoir lire leur ordre de calcul est essentiel pour éviter les surprises et écrire des conditions limpides.
 takeaway: Les parenthèses rendent explicite le regroupement voulu ; une condition claire vaut mieux qu’une condition compacte.
 practice: Réécris trois calculs en ajoutant des parenthèses explicites, puis explique à voix haute l’ordre dans lequel ils sont évalués.
@@ -67,6 +67,32 @@ practice: Réécris trois calculs en ajoutant des parenthèses explicites, puis 
   <li>Remplace les sous-expressions par des variables nommées si le calcul reste difficile à expliquer.</li>
 </ol>
 <div class="callout"><strong>Lisibilité d’abord</strong><p>Le meilleur calcul est celui dont une personne peut vérifier le sens sans faire une devinette sur la priorité des opérateurs.</p></div>
+
+<h2>Dessiner l’ordre du calcul</h2>
+<p>Une expression se lit comme une structure imbriquée. Dans <code>2 + 3 * 4</code>, la multiplication forme d’abord une sous-expression, puis son résultat est ajouté à 2 :</p>
+<pre><code>        +
+       / \
+      2   *
+         / \
+        3   4</code></pre>
+<p>La structure correspond à <code>2 + (3 * 4)</code> et donne 14. Avec <code>(2 + 3) * 4</code>, les parenthèses forment la sous-expression gauche avant la multiplication et le résultat devient 20. Cette représentation en arbre est utile dès que les expressions mêlent calcul, comparaison et booléens.</p>
+
+<h2>Suivre le type de chaque nœud</h2>
+<p>Pour vérifier une expression, calcule son type en même temps que sa valeur. Pour <code>prix * quantite + livraison</code>, les deux opérandes de la multiplication doivent être compatibles ; la multiplication produit un type ; l’addition doit ensuite combiner ce résultat et <code>livraison</code>. Pour <code>age &gt;= 18 and a_un_billet</code>, la comparaison produit un booléen, puis <code>and</code> combine deux booléens.</p>
+<p>Si le compilateur signale un opérande invalide, marque les types de chaque feuille de l’expression, puis remonte vers le nœud fautif. La fixture <code>erreur-type.vit</code> montre précisément ce genre de faute : un entier est utilisé avec un opérateur logique qui attend des booléens.</p>
+
+<h2>Ne pas confondre opérateurs qui se ressemblent</h2>
+<p><code>and</code> et <code>&amp;</code> ne désignent pas la même opération : le premier exprime une combinaison logique ; le second appartient aux opérations bit à bit dans la grammaire. De même, <code>==</code> compare deux valeurs, alors que <code>=</code> apparaît comme opérateur d’affectation dans la syntaxe. Dans les exemples de mise à jour, l’affectation s’écrit avec <code>set</code>.</p>
+<p>Les formes d’affectation composée, les opérateurs de plage, les décalages et les casts sont décrits dans les documents, mais toutes leurs variantes ne sont pas confirmées à chaque étape du compilateur. Sépare donc deux questions : « comment se lit cet opérateur ? » et « ce cas précis est-il compilé par l’outil que j’utilise ? ».</p>
+
+<h2>Rendre un calcul vérifiable</h2>
+<p>Quand une expression devient difficile à expliquer, nomme ses étapes :</p>
+<pre><code>let sous_total: i64 = prix * quantite;
+let remise: i64 = sous_total * taux / 100;
+let prix_final: i64 = sous_total - remise;</code></pre>
+<p>Cette décomposition donne trois endroits où vérifier les types, les valeurs et les règles d’arrondi. Elle rend également un diagnostic plus local : tu peux voir si le problème vient du sous-total, du calcul de remise ou de la soustraction finale. Dans un calcul financier réel, définis explicitement l’unité et l’arrondi ; un type entier n’indique pas à lui seul si une valeur représente des euros, des centimes ou un pourcentage.</p>
+
+<div class="callout"><strong>Trace corrigée</strong><p><code>2 + 3 * 4</code> se regroupe en <code>2 + (3 * 4)</code>, soit <code>2 + 12 = 14</code>. <code>(2 + 3) * 4</code> se regroupe en <code>5 * 4 = 20</code>. Pour une condition entre 10 et 20 inclus, la forme attendue est <code>valeur &gt;= 10 and valeur &lt;= 20</code> ; teste les valeurs 9, 10, 20 et 21.</p></div>
 <section class="practice-block">
   <h2>Atelier guidé : lire une expression de gauche à droite</h2>
   <ol>
@@ -75,5 +101,9 @@ practice: Réécris trois calculs en ajoutant des parenthèses explicites, puis 
     <li>Écris une procédure qui renvoie vrai si un nombre est entre 10 et 20 inclus. Utilise une comparaison de chaque côté et combine-les avec <code>and</code>.</li>
     <li>Réécris une condition avec <code>not</code> et une condition inverse, puis vérifie si les deux formulations disent la même chose.</li>
   </ol>
-  <details><summary>Auto-évaluation</summary><p>Les deux calculs valent respectivement 14 et 20. La condition de plage est <code>valeur &gt;= 10 and valeur &lt;= 20</code>. Pour vérifier une négation, teste au moins un nombre à l’intérieur et un nombre de chaque côté.</p></details>
+  <details><summary>Corrigé pas à pas</summary>
+    <p>La priorité donne <code>2 + (3 * 4)</code> : 3 fois 4 vaut 12, puis 2 plus 12 vaut 14. Les parenthèses de <code>(2 + 3) * 4</code> donnent d’abord 5, puis 5 fois 4 vaut 20.</p>
+    <p>La condition de plage inclusive est <code>valeur &gt;= 10 and valeur &lt;= 20</code>. Les résultats sont : 9 est faux, 10 est vrai, 20 est vrai, 21 est faux. Le cas 10 vérifie la borne inférieure ; le cas 20 vérifie la borne supérieure.</p>
+    <p>La négation de « entre 10 et 20 inclus » est « inférieur à 10 ou supérieur à 20 ». Elle s’écrit conceptuellement <code>valeur &lt; 10 or valeur &gt; 20</code>. Vérifie les frontières : les valeurs 10 et 20 ne satisfont pas la négation.</p>
+  </details>
 </section>

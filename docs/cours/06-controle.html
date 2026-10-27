@@ -2,7 +2,7 @@
 title: Décider et répéter
 permalink: /cours/06-controle/
 chapter: 6
-duration: 40 minutes
+duration: 60 minutes
 lead: Les conditions choisissent un chemin ; les boucles répètent un travail. Ces outils transforment une suite d’instructions en un programme qui réagit aux données.
 takeaway: Toute répétition doit avoir une progression visible et une condition d’arrêt que tu peux expliquer.
 practice: Écris une boucle qui additionne les nombres de 1 à 5, puis trace les valeurs de l’indice et du total à chaque passage.
@@ -82,6 +82,28 @@ proc code_etat(etat: Etat) -&gt; i64 {
 <h2>Trois questions pour une boucle sûre</h2>
 <ol><li>Quelle valeur change à chaque passage ?</li><li>Quelle condition finit par devenir fausse ou déclenche <code>break</code> ?</li><li>Que se passe-t-il aux limites : zéro élément, un seul élément, ou valeur maximale ?</li></ol>
 <div class="callout"><strong>Trace sur papier</strong><p>Pour une boucle nouvelle, écris quelques lignes avec l’indice, l’état et le total. Cette petite table révèle vite une borne décalée ou une mise à jour oubliée.</p></div>
+
+<h2>Transformer une décision en table de cas</h2>
+<p>Avant d’écrire plusieurs <code>if</code>, liste les cas et leur résultat. Pour <code>categorie(age)</code>, la règle peut être formulée ainsi :</p>
+<table><thead><tr><th>Entrée</th><th>Première condition vraie</th><th>Résultat</th></tr></thead><tbody>
+<tr><td><code>age &lt; 0</code></td><td><code>age &lt; 0</code></td><td><code>-1</code></td></tr>
+<tr><td><code>0 &lt;= age &lt; 18</code></td><td><code>age &lt; 18</code></td><td><code>0</code></td></tr>
+<tr><td><code>age &gt;= 18</code></td><td><code>else</code></td><td><code>1</code></td></tr>
+</tbody></table>
+<p>Cette table montre pourquoi l’ordre des tests compte. Si <code>age &lt; 18</code> passait en premier, les âges négatifs recevraient le résultat de la deuxième catégorie. Un exercice de décision devrait toujours inclure une valeur juste avant et juste après chaque frontière.</p>
+
+<h2>Tracer une boucle avant de l’exécuter</h2>
+<p>Pour la boucle qui additionne de 1 à 5, l’état au début des passages est :</p>
+<table><thead><tr><th><code>indice</code></th><th><code>total</code> avant</th><th><code>total</code> après</th></tr></thead><tbody>
+<tr><td>1</td><td>0</td><td>1</td></tr><tr><td>2</td><td>1</td><td>3</td></tr><tr><td>3</td><td>3</td><td>6</td></tr><tr><td>4</td><td>6</td><td>10</td></tr><tr><td>5</td><td>10</td><td>15</td></tr>
+</tbody></table>
+<p>Après le dernier passage, l’indice devient 6 et <code>indice &lt;= 5</code> est faux. Si tu changes la condition en <code>indice &lt; 5</code> sans changer l’initialisation, la valeur 5 n’est plus ajoutée : le total devient 10. Une trace courte rend visible cet effet immédiatement.</p>
+
+<h2>Comprendre <code>break</code> et <code>continue</code> dans l’ordre</h2>
+<p>Dans <code>controle.vit</code>, l’indice progresse avant les deux décisions. À 3, <code>continue</code> saute le reste du corps et le total ne change pas. À 6, <code>break</code> quitte la boucle avant l’addition. L’ordre des lignes définit donc quels nombres participent au total. Déplacer l’incrément après un <code>continue</code> pourrait empêcher l’indice de progresser et créer une boucle sans fin.</p>
+<p>Un <code>match</code> est une autre manière d’exprimer des cas nommés. Il convient surtout lorsque la donnée représente une variante d’un type <code>pick</code>. N’utilise pas plusieurs comparaisons numériques lorsqu’un état nommé décrit mieux ce que le programme examine.</p>
+
+<div class="callout warning"><strong>Progression recommandée pour le compilateur actuel</strong><p>Apprends d’abord <code>if</code>, <code>while</code>, les mises à jour <code>set</code> et les tableaux fixes : ces éléments ont des exemples exécutés. Étudie <code>for</code> comme une syntaxe Vitte décrite, mais ne dépends pas de son exécution sans preuve correspondante dans la version utilisée.</p></div>
 <section class="practice-block">
   <h2>Atelier guidé : parcours, arrêt et limites</h2>
   <ol>
@@ -90,5 +112,9 @@ proc code_etat(etat: Etat) -&gt; i64 {
     <li>Écris une procédure qui parcourt un tableau de trois valeurs avec <code>for index in 0..3</code>. Vérifie que la dernière lecture est à l’indice 2.</li>
     <li>Ajoute un cas à <code>match</code>. Vérifie ce qui se passe si tu oublies de traiter une variante dans la version du compilateur que tu utilises.</li>
   </ol>
-  <details><summary>Auto-évaluation</summary><p>Une boucle sûre a un état qui progresse, une condition d’arrêt atteignable et des accès compatibles avec les bornes. Les plages Vitte des exemples de bibliothèque sont demi-ouvertes : <code>0..3</code> contient 0, 1 et 2.</p></details>
+  <details><summary>Corrigé détaillé de l’atelier</summary>
+    <p>La boucle de 1 à 5 produit les états suivants : départ <code>(indice,total)=(1,0)</code>, puis <code>(2,1)</code>, <code>(3,3)</code>, <code>(4,6)</code>, <code>(5,10)</code>, enfin <code>(6,15)</code>. La condition devient fausse à 6. En la remplaçant par <code>indice &lt; 5</code> sans autre changement, le dernier ajout disparaît et le total vaut 10.</p>
+    <p>Pour trois éléments, les indices valides sont 0, 1 et 2. La plage écrite <code>0..3</code> est demi-ouverte dans la grammaire et les exemples concernés, mais le backend natif audité ne confirme pas la boucle <code>for</code> sur plage ou tableau. Utilise cette partie comme exercice de lecture et vérifie l’exécution avant de la considérer comme du code runnable.</p>
+    <p>Dans le <code>match</code>, ajoute un bras pour chaque variante connue et vérifie la réaction du compilateur sur la version ciblée. L’exemple runtime de <code>pick</code> se trouve dans <code>formes-choix.vit</code>. Une boucle est maîtrisée lorsque tu peux expliquer à la fois le premier état, la progression, la dernière valeur traitée et l’état après la sortie.</p>
+  </details>
 </section>

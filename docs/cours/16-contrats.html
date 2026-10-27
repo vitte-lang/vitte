@@ -2,7 +2,7 @@
 title: Contrats et validation
 permalink: /cours/16-contrats/
 chapter: 16
-duration: 50 minutes
+duration: 65 minutes
 lead: Une procédure a des conditions d’entrée et promet un résultat. Apprenons à rendre ces engagements explicites, puis à choisir entre un contrat destiné aux appels incorrects et une erreur que le programme doit traiter.
 takeaway: Un contrat décrit les conditions d’utilisation d’une procédure ; une validation transforme une entrée incertaine en décision explicite.
 practice: Écris une précondition et une postcondition pour une procédure de calcul, puis identifie les entrées qui doivent plutôt produire un résultat d’erreur.
@@ -45,6 +45,23 @@ practice: Écris une précondition et une postcondition pour une procédure de c
 </ol>
 <p>La troisième affirmation ne découle pas de l’écriture de la première et de la deuxième. Elle demande une vérification adaptée au projet. Pour les petites fonctions, compare des cas simples ; pour des opérations plus délicates, ajoute des tests de frontière et vérifie les risques de dépassement numérique.</p>
 
+<h2>Séparer l’obligation de l’appelant de la promesse de la procédure</h2>
+<p>Un contrat a deux côtés. L’appelant doit respecter les conditions d’entrée. La procédure doit respecter sa postcondition si ces conditions sont satisfaites. Si tu ajoutes une condition qui dépend d’une donnée que l’appelant ne peut pas connaître, l’interface devient difficile à utiliser. Si ta postcondition affirme seulement une propriété déjà garantie par le type, elle n’ajoute peut-être rien.</p>
+<p>Pour <code>doubler</code>, l’appelant fournit une valeur non négative ; la procédure promet le double. Le corps pourrait être remplacé plus tard par une autre implémentation sans changer le contrat, tant que la propriété reste vraie et que les limites numériques sont respectées.</p>
+
+<h2>Contrats et limites numériques</h2>
+<p>Une formule mathématique exacte ne tient pas toujours pour toutes les valeurs d’un entier machine. Le produit <code>valeur * 2</code> peut dépasser la plage représentable. La précondition <code>valeur &gt;= 0</code> ne suffit donc pas à démontrer la postcondition pour toute valeur de type <code>i64</code> si la plage maximale n’est pas également prise en compte.</p>
+<p>Quand la borne dépend du type, vérifie la constante de limite fournie par la bibliothèque ou introduis une condition qui empêche le dépassement selon les opérations prises en charge. Ne suppose pas que l’arithmétique s’enroule, se sature ou lève une erreur sans preuve dans la documentation de la cible.</p>
+
+<h2>Validation contrôlée ou précondition ?</h2>
+<p>Imagine une quantité envoyée par un fichier de configuration. Si le fichier contient une quantité négative, le programme peut afficher une erreur compréhensible et demander une correction : la donnée doit être validée à la frontière. À l’inverse, si une procédure interne ne doit recevoir que des valeurs validées, un contrat peut signaler que l’un de ses appels viole la règle de conception.</p>
+<p>La validation transforme une donnée incertaine en un état reconnu. Un contrat décrit la relation entre les procédures qui se font confiance dans le programme. Mélanger les deux rend l’erreur difficile à traiter : une saisie incorrecte ne devrait pas provoquer une panne interne inexpliquée.</p>
+
+<h2>Progresser sans surestimer l’outil</h2>
+<p>Le dépôt confirme l’exécution de <code>contrats.vit</code> par son chemin de compatibilité, avec un appel valide. La preuve ne décrit pas toutes les réactions possibles lors d’une violation, ni ne garantit que chaque frontend traite les clauses de la même manière. Documente séparément le contrat souhaité et le comportement mesuré du compilateur.</p>
+<p>Pour renforcer cette preuve, ajoute au projet un cas valide près de la borne et un cas invalide contrôlé. Si la version de la CLI n’exécute pas la violation comme tu le souhaites, note le résultat et place la validation explicite dans le code d’appel.</p>
+
+<div class="callout"><strong>Vérification du cas de doublement</strong><p>Pour la valeur 21, la précondition est vraie et le résultat attendu vaut 42. Pour une valeur négative, le contrat ne décrit pas un appel autorisé. Pour une valeur proche de la limite de <code>i64</code>, le calcul peut dépasser la représentation : la règle doit tenir compte de cette frontière elle aussi.</p></div>
 <section class="practice-block">
   <h2>Atelier avancé : concevoir un prix remisé</h2>
   <ol>
@@ -53,5 +70,9 @@ practice: Écris une précondition et une postcondition pour une procédure de c
     <li>Décris une propriété de sortie vérifiable sans recopier le corps complet.</li>
     <li>Décide comment traiter un prix ou un taux reçu d’un utilisateur : précondition ou résultat d’erreur ? Justifie ta décision.</li>
   </ol>
-  <details><summary>Correction guidée</summary><p>Pour un appel interne, des préconditions peuvent exprimer <code>prix &gt;= 0</code> et <code>taux &gt;= 0 and taux &lt;= 100</code>. La postcondition peut relier le prix final au prix et au taux, avec une règle d’arrondi définie. Si les nombres viennent d’un utilisateur, valide-les avant le calcul et renvoie un état d’erreur explicite : la saisie incorrecte fait partie des situations prévues par le programme.</p></details>
+  <details><summary>Correction guidée</summary>
+    <p>Pour un appel interne, les conditions <code>prix &gt;= 0</code> et <code>taux &gt;= 0 and taux &lt;= 100</code> décrivent l’entrée autorisée. Une postcondition doit relier le prix final au prix et au taux, après avoir défini l’unité et l’arrondi.</p>
+    <p>Si ces valeurs viennent d’un utilisateur, valide-les avant de calculer et renvoie un état d’erreur explicite : une saisie incorrecte est une situation normale. Pour une procédure interne, un contrat peut documenter les hypothèses que les appelants doivent respecter.</p>
+    <p>Les limites numériques restent à examiner. Le contrat de plage du taux ne suffit pas si le produit intermédiaire dépasse le type entier. La fixture positive de <code>contrats.vit</code> confirme un cas d’exécution par compatibilité ; elle ne prouve pas le comportement de chaque violation ou frontend.</p>
+  </details>
 </section>

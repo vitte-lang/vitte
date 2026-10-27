@@ -2,7 +2,7 @@
 title: Boucles, tableaux et invariants
 permalink: /cours/14-invariants/
 chapter: 14
-duration: 55 minutes
+duration: 70 minutes
 lead: Passons de « la boucle semble fonctionner » à une explication vérifiable. Tu vas suivre l’état d’un calcul, établir ce qui reste vrai à chaque passage et contrôler les bornes d’un tableau.
 takeaway: Une boucle maîtrisée a un état, une règle qui le fait progresser, un invariant et une condition d’arrêt.
 practice: Trace une boucle Vitte sur papier et écris, avant de la coder, ce qui doit être vrai au début de chaque passage.
@@ -45,6 +45,30 @@ practice: Trace une boucle Vitte sur papier et écris, avant de la coder, ce qui
 
 <h2>Un algorithme, trois preuves</h2>
 <p>Avant d’ajouter un parcours dans un programme, prépare trois réponses : pourquoi le premier indice est valide, pourquoi chaque passage garde l’indice valide, et pourquoi le dernier passage s’arrête avant la borne interdite. Cette courte preuve fait partie de la conception du programme ; elle ne dépend pas d’un message du compilateur.</p>
+<h2>Étude guidée : chercher une valeur</h2>
+<p>La recherche séquentielle visite les indices dans l’ordre jusqu’à trouver la cible ou atteindre la longueur. Voici une version pédagogique pour trois éléments :</p>
+<pre><code>proc contient(valeurs: [3]i64, cible: i64) -&gt; bool {
+    let mut index: i64 = 0;
+    while index &lt; 3 {
+        if valeurs[index] == cible {
+            return true;
+        }
+        set index = index + 1;
+    }
+    return false;
+}</code></pre>
+<p>Avant chaque passage, l’invariant est : « aucun indice plus petit que <code>index</code> ne contient la cible ». Si la comparaison réussit, la procédure peut renvoyer vrai immédiatement. Sinon, augmenter l’indice étend la zone déjà examinée d’un élément. À la sortie, l’indice vaut 3 et tous les éléments ont été examinés : l’invariant permet de renvoyer faux.</p>
+<p>Cette combinaison complète est un exemple d’étude, pas une fixture du dépôt confirmée telle quelle. Les boucles, les tableaux et les comparaisons sont présents dans des exemples exécutés ; vérifie leur combinaison exacte avant de l’utiliser comme preuve de compilation.</p>
+
+<h2>Éviter les bornes cachées</h2>
+<p>Dans les exemples fixes, la longueur apparaît comme un nombre tel que 3. Si tu répètes ce nombre dans plusieurs conditions, déclarations et tailles, une modification peut laisser une borne oubliée. Une constante nommée peut rendre le lien visible lorsque la prise en charge de cette constante est confirmée. Avec une taille connue au type, écris au minimum un commentaire ou un contrat expliquant pourquoi la borne de la boucle correspond au nombre d’éléments.</p>
+<p>Les plages <code>0..3</code> sont demi-ouvertes dans les conventions documentées : elles incluent 0, 1 et 2. Mais l’opérateur de plage et <code>for</code> ne sont pas confirmés au runtime dans tous les cas. Pour l’exercice de preuve, le test explicite <code>index &lt; 3</code> rend les accès plus faciles à vérifier.</p>
+
+<h2>Étendre une trace à un cas vide</h2>
+<p>Un tableau fixe de longueur zéro n’est pas utilisé dans les fixtures de cette leçon, mais le raisonnement de boucle reste instructif : si la longueur vaut zéro, la condition de parcours est fausse avant le premier accès et la somme initialisée à zéro est renvoyée. Cette propriété s’appelle souvent le cas vide. Pour des collections réelles, vérifie que le type et le backend acceptent cette taille avant de compter dessus.</p>
+<p>Pour une recherche, le même cas vide doit renvoyer faux sans lire de mémoire. Un invariant bien formulé te permet de vérifier ce comportement sans inventer un indice spécial.</p>
+
+<div class="callout"><strong>Trace de recherche corrigée</strong><p>Pour <code>[4, 7, 2]</code> et la cible 7 : à l’indice 0, 4 n’est pas la cible ; à l’indice 1, 7 est trouvé et la procédure renvoie vrai. Pour la cible 9, les indices 0, 1 et 2 échouent ; l’indice devient 3, la boucle s’arrête et la procédure renvoie faux.</p></div>
 <section class="practice-block">
   <h2>Atelier avancé : rechercher une valeur</h2>
   <ol>
@@ -53,5 +77,9 @@ practice: Trace une boucle Vitte sur papier et écris, avant de la coder, ce qui
     <li>Adapte le raisonnement pour chercher la première occurrence de 7. Écris l’invariant en français avant d’introduire une condition de sortie anticipée.</li>
     <li>Compare ta trace à la fixture <code>controle.vit</code>. Explique pourquoi la valeur 3 ne participe pas au total et pourquoi l’indice 6 n’y participe pas non plus.</li>
   </ol>
-  <details><summary>Correction guidée</summary><p>La somme progresse ainsi : avant le premier passage, <code>(index, total) = (0, 0)</code> ; puis <code>(1, 4)</code>, <code>(2, 11)</code> et <code>(3, 13)</code>. La condition devient alors fausse. Pour la recherche, un invariant utile est : « aucune position strictement inférieure à <code>index</code> ne contient encore la valeur recherchée ».</p></details>
+  <details><summary>Correction détaillée</summary>
+    <p>Pour la somme de <code>[4, 7, 2]</code>, les états au début des passages sont <code>(0,0)</code>, <code>(1,4)</code> et <code>(2,11)</code>. Après le dernier ajout, l’état devient <code>(3,13)</code> ; <code>3 &lt; 3</code> est faux et aucun accès à l’indice 3 n’a lieu. Avec <code>index &lt;= 3</code>, le corps s’exécuterait une quatrième fois et l’accès sortirait du tableau.</p>
+    <p>Pour rechercher 7, l’invariant dit qu’aucune position plus petite que l’indice courant n’a encore contenu la cible. À l’indice 0 la valeur est 4 ; à l’indice 1, la comparaison réussit. Pour chercher 9, les trois éléments sont examinés, l’indice devient 3 et le résultat est faux.</p>
+    <p>Dans <code>controle.vit</code>, l’indice 3 passe par <code>continue</code>, tandis que l’indice 6 passe par <code>break</code> avant l’addition. Les valeurs ajoutées sont 1, 2, 4 et 5 : le total vaut 12.</p>
+  </details>
 </section>

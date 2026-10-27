@@ -2,7 +2,7 @@
 title: Erreurs, tests et qualité
 permalink: /cours/11-qualite/
 chapter: 11
-duration: 35 minutes
+duration: 55 minutes
 lead: Un programme fiable explique ses hypothèses, détecte les entrées invalides et vérifie les cas importants. Les diagnostics, contrats et tests sont des outils d’apprentissage autant que de qualité.
 takeaway: Une erreur est une situation à modéliser ; un test est une expérience qui rend une propriété vérifiable.
 practice: "Écris trois tests nommés : cas normal, limite basse, limite haute. Fais ensuite échouer volontairement l’un d’eux et lis le diagnostic."
@@ -39,6 +39,31 @@ test "addition avec zéro" {
 <p>Quand une opération peut échouer normalement, représente cette possibilité dans son résultat au lieu de cacher l’échec derrière une valeur ambiguë. Un résultat peut porter un booléen de réussite, une valeur et une catégorie d’erreur ; un choix <code>pick</code> peut aussi nommer les issues possibles. La bibliothèque fondamentale fournit des formes de résultat concrètes, même si l’intégration de certains types génériques continue d’évoluer.</p>
 <p>Par exemple, un parseur devrait distinguer « l’entrée représente zéro » de « l’entrée est invalide ». Renvoyer simplement zéro pour les deux cas fait perdre de l’information à l’appelant.</p>
 <div class="callout"><strong>Teste le contrat, pas l’implémentation</strong><p>Un test utile décrit ce que le code doit garantir depuis l’extérieur. Il reste pertinent même si tu réécris le corps de la procédure.</p></div>
+
+<h2>Construire une matrice de cas</h2>
+<p>Un ensemble de tests devient plus complet quand tu choisis ses cas de manière systématique. Pour une procédure qui reçoit deux nombres, examine leurs plages et leurs rôles avant d’écrire des valeurs arbitraires. Une petite matrice pour un prix et une quantité peut comporter :</p>
+<table><thead><tr><th>Famille</th><th>Exemple de question</th></tr></thead><tbody>
+<tr><td>Cas ordinaire</td><td>Deux valeurs positives donnent-elles le sous-total attendu ?</td></tr>
+<tr><td>Zéro</td><td>Un prix nul ou une quantité nulle donne-t-il zéro ?</td></tr>
+<tr><td>Limite autorisée</td><td>La plus grande valeur permise est-elle traitée correctement ?</td></tr>
+<tr><td>Entrée invalide</td><td>Une valeur négative est-elle refusée ou représentée comme erreur ?</td></tr>
+<tr><td>Interaction</td><td>Deux limites présentes en même temps déclenchent-elles un résultat défini ?</td></tr>
+</tbody></table>
+<p>Tu n’as pas besoin d’un test pour chaque nombre possible. Choisis des valeurs qui appartiennent à des catégories de comportement distinctes, puis ajoute des cas lorsqu’un défaut est découvert.</p>
+
+<h2>Séparer diagnostic, test et validation</h2>
+<p>Un diagnostic du compilateur répond à la question « cette source peut-elle être acceptée à cette étape ? ». Un test du programme répond à la question « pour cette entrée, le résultat observé respecte-t-il l’attente ? ». Une validation dans l’application répond à la question « cette entrée externe appartient-elle au domaine autorisé ? ».</p>
+<p>Ces trois protections se complètent mais ne se remplacent pas. Un programme peut compiler tout en calculant une mauvaise valeur. Un test peut passer pour un cas particulier alors qu’une autre frontière est incorrecte. Une assertion interne ne doit pas remplacer un message d’erreur pour une saisie utilisateur prévisible.</p>
+
+<h2>Réduire un défaut à une reproduction lisible</h2>
+<p>Quand un résultat surprend, conserve les entrées et la commande, puis supprime le code qui n’intervient pas dans le problème. Une bonne reproduction tient dans un fichier court et permet à quelqu’un d’autre de constater la même chose. Note le frontend, la phase et le diagnostic. Cette information évite d’attribuer à « Vitte » un comportement qui vient en réalité d’un backend particulier ou d’un chemin de compatibilité.</p>
+<p>Pour un diagnostic négatif attendu comme <code>VITTE_TYPE_E_INVALID_OPERAND</code>, le test réussi consiste justement à observer le code de sortie non nul et le code de diagnostic prévu. Dans un test positif, un code de sortie 0 ne suffit pas toujours : examine aussi la sortie ou une valeur contrôlée par le programme.</p>
+
+<h2>Quand un échec devient une valeur</h2>
+<p>Un échec d’entrée qui se produit normalement doit apparaître dans l’interface. Un choix <code>pick</code> peut nommer la réussite et différents échecs ; chaque variante peut porter les informations dont l’appelant a besoin. Cette modélisation facilite les tests, car chaque état a un nom et un résultat à vérifier.</p>
+<p>La forme générique de résultat présente dans les bibliothèques du projet n’est pas automatiquement disponible dans toutes les étapes de compilation. Tu peux raisonner sur le modèle, puis vérifier la forme concrète utilisable avec la matrice de support et les exemples runtime.</p>
+
+<div class="callout"><strong>Règle d’évaluation</strong><p>Un cas de test doit préciser une entrée, une action, une attente et une manière d’observer le résultat. Si l’une de ces quatre pièces manque, il est difficile de savoir ce qu’un échec signifie.</p></div>
 <section class="practice-block">
   <h2>Atelier guidé : transformer une règle en tests</h2>
   <ol>
@@ -47,5 +72,9 @@ test "addition avec zéro" {
     <li>Provoque une erreur de type et une erreur de syntaxe. Note la différence entre le diagnostic d’analyse et le diagnostic de vérification.</li>
     <li>Pour une entrée invalide, décide si elle révèle une faute du programme ou une situation normale. Choisis ensuite un contrat ou une valeur d’erreur adaptée.</li>
   </ol>
-  <details><summary>Auto-évaluation</summary><p>Un bon test exprime une attente observable, couvre une branche précise et échoue si le comportement change. Une assertion n’est pas une validation utilisateur : une entrée invalide prévisible doit avoir une réponse prévue par l’API.</p></details>
+  <details><summary>Corrigé détaillé de l’atelier</summary>
+    <p>Pour une addition, un cas ordinaire peut utiliser 6 et 2 et attendre 8 ; un cas avec zéro vérifie que l’autre opérande est conservé. Si la fonction interdit les valeurs négatives, teste la borne à zéro puis une valeur immédiatement en dessous. Nommer les tests selon ces cas permet de comprendre l’échec sans lire toute l’implémentation.</p>
+    <p>Une erreur de syntaxe est visible au parsing ; un mauvais opérande logique peut être syntaxiquement valide et être rejeté par l’analyse de types. La fixture <code>erreur-type.vit</code> confirme le code <code>VITTE_TYPE_E_INVALID_OPERAND</code> pour un entier utilisé avec <code>and</code>.</p>
+    <p>Une entrée utilisateur négative est une situation à traiter ; un appel interne qui viole une précondition peut révéler un défaut de programmation. Les blocs <code>test</code> sont décrits dans la grammaire, mais leur présence n’établit pas qu’un runner Vitte exécute ces tests. Suis les commandes et fixtures effectivement fournies par le dépôt.</p>
+  </details>
 </section>

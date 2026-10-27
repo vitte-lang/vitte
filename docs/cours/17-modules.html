@@ -2,7 +2,7 @@
 title: Concevoir des modules réutilisables
 permalink: /cours/17-modules/
 chapter: 17
-duration: 55 minutes
+duration: 60 minutes
 lead: Un programme Vitte en plusieurs fichiers a besoin de chemins cohérents et d’une interface claire. Cette leçon suit un appel entre deux modules, puis transforme cet exemple en méthode d’organisation.
 takeaway: Un module publie les noms dont les autres modules ont besoin ; les détails internes restent privés.
 practice: Sépare un calcul dans un module Vitte dédié et limite ses exports à l’interface réellement appelée.
@@ -51,6 +51,26 @@ proc main() -&gt; i64 {
 <p>Pour ajouter une opération, commence par écrire sa signature et son résultat attendu. Ajoute ensuite la procédure exportée dans <code>calcul.vit</code>, puis un appel qualifié dans <code>main.vit</code>. Vérifie les deux fichiers ensemble avant d’ajouter un troisième module. Cette progression permet d’attribuer plus facilement un diagnostic au chemin, à la visibilité, à la signature ou au corps.</p>
 <p>Quand un nom de module change, recherche ses imports et actualise le chemin dans les sources et la configuration. Un chemin importé fait partie de la structure du programme : garde-le cohérent plutôt que de corriger les appels un par un au hasard.</p>
 
+<h2>Une arborescence d’apprentissage</h2>
+<p>Pour un petit projet, commence par deux fichiers comme dans l’exemple vérifié :</p>
+<pre><code>examples/
+└── tutorials/
+    └── modules/
+        ├── main.vit
+        └── calcul.vit</code></pre>
+<p>Le module logique de chaque fichier correspond à son chemin d’import. Dans un projet plus grand, groupe les sources selon les responsabilités réelles : calcul, validation, modèles. Le nom de répertoire n’est pas une documentation suffisante ; le chemin <code>space</code> et les imports doivent rester cohérents avec l’organisation voulue par la CLI.</p>
+
+<h2>Déboguer par couche</h2>
+<p>Un import qui ne fonctionne pas peut échouer à plusieurs endroits. Si la source n’est pas trouvée, examine la racine de recherche et le chemin du module. Si la source est trouvée mais que le nom appelé est inconnu, vérifie le nom de la déclaration et son export. Si le nom est trouvé mais que l’appel échoue, compare le nombre, l’ordre et les types des arguments avec la signature.</p>
+<p>Modifie seulement une de ces couches à la fois. Le chemin <code>tutorials::modules::calcul</code>, l’alias local <code>calcul</code> et le nom exporté <code>additionner</code> ont trois rôles différents ; les corriger comme s’ils étaient un seul nom peut masquer la cause.</p>
+
+<h2>Réduire les dépendances visibles</h2>
+<p>Un module devient plus facile à réutiliser lorsqu’il dépend de peu d’autres modules et expose des opérations plutôt que des détails internes. Pour chaque import, demande-toi si la dépendance est nécessaire dans tout le fichier ou seulement dans une procédure. La grammaire autorise plusieurs formes d’import, mais les noms explicites rendent la provenance plus simple à vérifier.</p>
+<p>Quand deux modules doivent partager un même type, place-le dans le module qui en possède le sens ou dans un module de modèle explicitement choisi. Évite que les deux modules s’importent mutuellement uniquement pour contourner une frontière mal dessinée.</p>
+
+<h2>Préparer une revue de changement d’API</h2>
+<p>Avant de modifier une procédure exportée, dresse la liste de ses appelants. Vérifie la compatibilité de la signature, la visibilité des types qui y apparaissent et les tests qui décrivent son comportement. Si tu renommes un module, adapte aussi la racine de résolution si elle dépend de sa nouvelle place.</p>
+<div class="callout"><strong>Diagnostic corrigé</strong><p>Pour l’exemple officiel, la commande complète définit <code>VITTE_MODULE_PATH=examples</code>, lance <code>examples/tutorials/modules/main.vit</code> et utilise l’alias <code>calcul</code>. Un échec « module introuvable » conduit d’abord à vérifier la racine et le chemin ; un échec « déclaration privée » conduit à vérifier <code>export</code>.</p></div>
 <section class="practice-block">
   <h2>Atelier avancé : construire un petit module de calcul</h2>
   <ol>
@@ -59,5 +79,9 @@ proc main() -&gt; i64 {
     <li>Ajoute une procédure interne sans <code>export</code>. Décide si elle doit rester privée et explique son rôle.</li>
     <li>Quand le programme ne résout pas le module, vérifie séparément le chemin déclaré, le chemin importé et la racine fournie au compilateur.</li>
   </ol>
-  <details><summary>Correction guidée</summary><p>Le module producteur porte <code>space exercice::calcul;</code>, déclare ses opérations avec <code>export proc</code> et garde ses helpers privés. Le fichier appelant déclare son propre <code>space</code>, écrit <code>use exercice::calcul as calcul;</code>, puis appelle <code>calcul::nom(...)</code>. Le chemin de recherche doit inclure le dossier racine qui contient <code>exercice/</code>.</p></details>
+  <details><summary>Correction détaillée</summary>
+    <p>Le fichier producteur déclare <code>space exercice::calcul;</code> et exporte les deux procédures publiques. Le helper reste privé tant que le fichier principal n’en a pas besoin. Le point d’entrée déclare un chemin distinct et importe le module sous l’alias <code>calcul</code>.</p>
+    <p>Les appels utilisent <code>calcul::additionner(...)</code> et <code>calcul::multiplier(...)</code>. La racine de recherche doit contenir le dossier <code>exercice/</code>. Dans la fixture du dépôt, le même rôle est joué par <code>VITTE_MODULE_PATH=examples</code>.</p>
+    <p>Si le module est introuvable, corrige d’abord la racine ou le chemin. Si une déclaration est privée, décide si elle doit être exportée. Si le nom est résolu mais que l’appel échoue, compare sa signature. Chaque message correspond à une couche différente.</p>
+  </details>
 </section>

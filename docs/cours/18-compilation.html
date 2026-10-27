@@ -2,7 +2,7 @@
 title: Lire les limites du compilateur
 permalink: /cours/18-compilation/
 chapter: 18
-duration: 45 minutes
+duration: 60 minutes
 lead: Pour écrire du Vitte utilisable, il faut savoir où vérifier une construction : dans la grammaire, l’analyseur, le typage ou l’exécution. Cette dernière leçon t’apprend à suivre une fonctionnalité jusqu’à la preuve disponible.
 takeaway: Une forme écrite dans la grammaire ne garantit pas qu’elle compile ni qu’elle s’exécute dans chaque chemin du compilateur.
 practice: Choisis une forme Vitte, trouve sa règle, son diagnostic éventuel et un test qui prouve le niveau de prise en charge atteint.
@@ -54,7 +54,41 @@ build/bin/vitte run examples/tutorials/syntaxe.vit --quiet --no-color</code></pr
     <li>Écris une note en quatre lignes : syntaxe décrite, acceptation, compilation, exécution.</li>
     <li>Si la commande ou le résultat ne sont pas clairs, réduis le cas et compare-le à une fixture existante.</li>
   </ol>
-  <details><summary>Auto-évaluation</summary><p>Une bonne note ne conclut pas seulement « pris en charge » ou « non pris en charge ». Elle nomme le chemin testé et le niveau atteint. Par exemple : « syntaxe décrite ; test ciblé reçu par le backend ; génération rejetée ; exécution non établie ».</p></details>
+  <details><summary>Correction de l’enquête</summary>
+    <p>Pour <code>while</code>, les tests runtime du dépôt confirment une exécution de boucle avec la condition et le flot testés. Pour un <code>for</code> sur tableau, le test ciblé atteint le backend puis reçoit un diagnostic de génération ; l’exécution n’est donc pas établie. Pour une forme générique, l’exemple <code>Box&lt;T&gt;</code> produit également <code>VITTE_BACKEND_E_CODEGEN</code>.</p>
+    <p>Une note complète précise la règle décrite, le fichier de test, la commande exacte, le frontend ou le chemin de compatibilité, l’étape finale atteinte et le code de sortie. Elle ne généralise pas une fixture à tous les types ou toutes les cibles.</p>
+    <p>Si la preuve est insuffisante, la conclusion correcte est « non établi », accompagnée de la prochaine expérience minimale à mener. C’est une réponse exploitable : tu sais quoi tester avant de dépendre de la fonctionnalité.</p>
+  </details>
 </section>
 
+<h2>Tenir un carnet de vérification Vitte</h2>
+<p>Lorsqu’une construction importante entre dans ton projet, garde une fiche que tu peux relire après une mise à jour du compilateur :</p>
+<pre><code>Construction : import d'un module avec alias
+Version et commit : à renseigner
+Commande : VITTE_MODULE_PATH=examples build/bin/vitte run ...
+Analyse : réussie dans l'exemple ciblé
+Compilation : exécutable produit par le frontend natif
+Exécution : code de sortie 0
+Limite : preuve valable pour les deux modules de la fixture</code></pre>
+<p>La fiche nomme le périmètre de la preuve. Elle permet de distinguer une supposition, une règle de grammaire et une commande réellement exécutée. Lorsqu’un test échoue après une mise à jour, tu sais quelle étape comparer au résultat précédent.</p>
+
+<h2>Lire les diagnostics sans les confondre</h2>
+<p>Un code d’erreur peut indiquer la phase qui a refusé le programme. Une erreur lexer ou parser signale souvent qu’une forme n’a pas été reconnue. Une erreur de type signifie que le programme a dépassé ces étapes, mais que les valeurs ou opérations ne concordent pas. Un diagnostic backend peut apparaître après que la syntaxe et une partie de l’analyse ont réussi, lorsque le compilateur ne sait pas produire le code final.</p>
+<p>Dans tous les cas, conserve la commande et le fragment minimal. Ne corrige pas un rejet backend en réécrivant la ponctuation au hasard ; cherche une forme déjà compilée qui répond au même besoin ou reporte la dépendance.</p>
+
+<h2>Établir la source d’autorité</h2>
+<p>Pour le langage, commence par la grammaire canonique et la spécification. Pour une capacité d’un frontend, cherche son test de parité ou d’analyse. Pour une affirmation runtime, cherche le programme et la commande qui le lancent. Si plusieurs documents du dépôt se contredisent, note la divergence et privilégie le test ciblé le plus proche de la construction que tu veux utiliser.</p>
+<p>Une fixture négative est une preuve utile elle aussi : elle indique précisément une limite. Par exemple, le test d’une forme générique rejetée au backend permet d’enseigner la syntaxe et le modèle de type tout en avertissant que ce cas ne fournit pas un exécutable natif.</p>
+
+<h2>Faire une enquête reproductible</h2>
+<ol>
+  <li>Choisis une seule construction Vitte et note le comportement que tu veux obtenir.</li>
+  <li>Écris un fichier minimal, sans bibliothèque ou module non nécessaire.</li>
+  <li>Lance les étapes dans l’ordre : tokens, analyse syntaxique, vérification, compilation, exécution.</li>
+  <li>Garde la sortie de chaque étape et identifie la première qui échoue.</li>
+  <li>Compare avec un exemple positif ou négatif du dépôt et consigne la différence.</li>
+</ol>
+<p>Si la CLI n’expose pas une étape ou si une sortie est ambiguë, réduis encore le cas et consulte la documentation de la commande. Le but est de produire une observation que quelqu’un d’autre peut répéter, pas de confirmer l’idée que l’on avait avant l’essai.</p>
+
+<div class="callout"><strong>Réponse modèle à « cette fonctionnalité fonctionne-t-elle ? »</strong><p>« La grammaire la décrit ; le test ciblé passe l’analyse ; la compilation atteint le backend puis est rejetée avec <code>VITTE_BACKEND_E_CODEGEN</code> ; aucun runtime n’est donc établi pour ce cas. » Cette réponse est plus précise qu’un oui/non et t’aide à décider ce qui peut entrer dans ton programme.</p></div>
 <div class="callout"><strong>Tu as terminé le parcours approfondi</strong><p>Tu sais maintenant lire du code Vitte, raisonner sur ses valeurs et ses états, organiser ses modules et vérifier la prise en charge d’une forme avant de l’utiliser. Pour continuer, choisis une notion précise dans la <a href="{{ '/reference/' | relative_url }}">référence</a>, puis cherche une fixture correspondante dans le dépôt.</p></div>

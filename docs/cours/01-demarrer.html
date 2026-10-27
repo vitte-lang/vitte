@@ -2,7 +2,7 @@
 title: Bien démarrer
 permalink: /cours/01-demarrer/
 chapter: 1
-duration: 25 minutes
+duration: 45 minutes
 lead: Avant d’apprendre chaque mot du langage, faisons connaissance avec un programme complet, son fichier et les outils qui l’entourent.
 takeaway: Un programme Vitte se lit comme un ensemble de déclarations, organisé dans un espace de noms.
 practice: Depuis la racine du dépôt, construis le compilateur bootstrap et lance examples/hello.vit pour vérifier l’affichage et le code de sortie.
@@ -45,6 +45,34 @@ build/bin/vitte-bootstrap run examples/hello.vit --quiet --no-color</code></pre>
 <p>Crée un dossier pour tes exercices et garde un fichier par expérience. Avant de lancer une commande, essaie de prédire ce que le compilateur va accepter et ce que le programme devrait renvoyer. Cette prédiction te donne une question précise à vérifier.</p>
 <p>Quand tu rencontres une erreur, commence par lire le premier diagnostic, sa ligne et le nom de la construction concernée. Corrige une chose à la fois. Une erreur de syntaxe empêche parfois les vérifications suivantes ; il est donc normal qu’une modification fasse disparaître plusieurs messages d’un seul coup.</p>
 <p>La suite reprend le même exemple en observant la ponctuation, les commentaires et les blocs. Tu sauras ainsi lire les petits détails qui rendent un programme Vitte compréhensible à la machine.</p>
+
+<h2>Lire le programme comme une suite de décisions</h2>
+<p>Relis maintenant le fichier en posant une question à chaque ligne : « qu’est-ce que cette ligne apporte au reste du programme ? » <code>space</code> fixe le contexte du fichier. <code>proc main</code> déclare le point de départ. Le type <code>int</code> précise la forme de la réponse finale. L’appel à <code>print</code> produit l’affichage. Enfin, <code>return 0</code> termine cette exécution avec un code que le système peut interpréter.</p>
+<p>Il faut distinguer trois choses que l’on confond facilement au début :</p>
+<ul>
+  <li>Le <strong>texte source</strong> est ce que tu écris dans le fichier.</li>
+  <li>Le <strong>programme compilé</strong> est le résultat produit par l’outil pour une cible donnée.</li>
+  <li>Le <strong>résultat d’exécution</strong> est ce que le programme affiche et le code avec lequel il termine.</li>
+</ul>
+<p>Quand le fichier ne fonctionne pas, détermine d’abord à quelle étape le problème apparaît. Une accolade oubliée concerne la lecture de la syntaxe ; une commande inconnue concerne la compilation ou la bibliothèque ; un texte différent de celui attendu concerne le comportement une fois le programme lancé.</p>
+
+<h2>Suivre l’exemple du fichier jusqu’au résultat</h2>
+<p>Depuis la racine du dépôt, les commandes du cours sont :</p>
+<pre><code>make build/bin/vitte-bootstrap
+build/bin/vitte-bootstrap parse examples/hello.vit
+build/bin/vitte-bootstrap run examples/hello.vit --quiet --no-color</code></pre>
+<p>La première prépare l’outil bootstrap utilisé pour cet exemple. La deuxième demande seulement au parseur de reconnaître la structure. La troisième compile puis exécute le programme. Le résultat attendu est le texte <code>Hello from Vitte!</code> et le code de sortie <code>0</code>. Un code de sortie différent de zéro ne signifie pas nécessairement que la syntaxe est incorrecte : il signifie que le programme lancé a renvoyé une autre valeur.</p>
+<p>Le binaire natif <code>build/bin/vitte</code> est une autre voie de compilation. Pour cette leçon, ne remplace pas automatiquement le binaire indiqué par celui-ci : le dépôt audité rejette l’appel à <code>print</code> dans ce cas. La page sur le support explique les différences entre ces voies.</p>
+
+<h2>Ta première méthode de dépannage</h2>
+<ol>
+  <li>Vérifie que tu es à la racine du dépôt : le chemin <code>examples/hello.vit</code> doit exister depuis cet endroit.</li>
+  <li>Vérifie le nom du binaire, le sous-commande et le chemin du fichier.</li>
+  <li>Lis la première erreur complète, surtout le code, le fichier et la ligne.</li>
+  <li>Ne modifie qu’un élément, puis relance la même commande.</li>
+  <li>Quand le résultat est correct, note la commande exacte ; elle devient une preuve que tu peux reproduire.</li>
+</ol>
+<div class="callout"><strong>Point de contrôle</strong><p>Tu peux passer à la suite lorsque tu sais relancer l’exemple, expliquer la valeur de retour et distinguer un échec d’analyse d’un code de sortie non nul.</p></div>
 <section class="practice-block">
   <h2>Atelier guidé : ton premier fichier</h2>
   <ol>
@@ -53,5 +81,9 @@ build/bin/vitte-bootstrap run examples/hello.vit --quiet --no-color</code></pre>
     <li>Change le retour de <code>0</code> à <code>1</code>. Explique pourquoi l’outil peut accepter la syntaxe même si le code de sortie indique une erreur aux scripts qui lanceront ton programme.</li>
     <li>Retire une accolade, lance <code>build/bin/vitte-bootstrap parse examples/hello.vit</code>, puis restaure-la. Note le numéro de ligne indiqué par le diagnostic.</li>
   </ol>
-  <details><summary>Auto-évaluation</summary><p>Tu as compris la structure si tu peux expliquer ce que font <code>space</code>, <code>proc</code>, <code>()</code>, <code>-&gt; int</code>, les accolades, l’appel à <code>print</code> et <code>return</code> sans simplement réciter leur nom.</p></details>
+  <details><summary>Corrigé commenté et critères de réussite</summary>
+    <p><code>space examples/hello;</code> place le fichier dans un chemin de module. <code>proc main()</code> déclare le point d’entrée sans paramètres. <code>-&gt; int</code> annonce la valeur de fin ; les accolades délimitent son corps. <code>print</code> est un appel de procédure. <code>return 0</code> rend zéro au système.</p>
+    <p>Après avoir changé le texte, la sortie attendue suit la nouvelle chaîne. Après avoir changé le retour en 1, le programme peut encore être syntaxiquement valide, mais un outil ou un script qui interprète les codes de sortie voit une fin différente. Après avoir retiré une accolade, <code>parse</code> doit signaler une structure incomplète ou mal formée ; le numéro de ligne peut indiquer l’endroit où l’absence devient visible, pas toujours l’endroit où l’accolade a été supprimée.</p>
+    <p>Tu as réussi si tu peux refaire ces prédictions avant de lancer la commande et expliquer pourquoi cet exemple utilise <code>vitte-bootstrap</code>.</p>
+  </details>
 </section>

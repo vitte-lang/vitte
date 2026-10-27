@@ -2,7 +2,7 @@
 title: Formes et choix
 permalink: /cours/07-formes-choix/
 chapter: 7
-duration: 35 minutes
+duration: 55 minutes
 lead: Un bon modèle de données regroupe les valeurs qui vont ensemble et donne un nom à chaque état possible. En Vitte, les formes et les choix jouent ces rôles.
 takeaway: Une forme décrit des champs ; un choix nommé décrit plusieurs variantes exclusives.
 practice: Modélise un point 2D, puis ajoute une forme Rectangle constituée de deux points et vérifie ses coins.
@@ -61,6 +61,24 @@ proc est_actif(etat: Etat) -&gt; bool {
 <h2>Immutabilité et mise à jour</h2>
 <p>Un champ lu à travers une valeur ne signifie pas automatiquement que toute la forme peut être modifiée. La variable locale qui contient la forme doit elle-même être mutable pour les affectations acceptées par le langage, et l’analyseur doit autoriser la cible de l’affectation. Garde des mises à jour explicites et utilise des procédures de transformation quand tu veux rendre un changement facile à vérifier.</p>
 <div class="callout"><strong>Construis des noms parlants</strong><p>Si un type se décrit facilement en une phrase avec ses champs, son nom clarifiera les signatures de toutes les procédures qui l’utilisent.</p></div>
+
+<h2>Commencer par les valeurs que le programme doit représenter</h2>
+<p>Avant de déclarer un type, écris quelques valeurs concrètes de ton problème. Pour un point, il y a toujours une coordonnée <code>x</code> et une coordonnée <code>y</code> : les deux champs coexistent, donc une <code>form</code> convient. Pour un résultat, l’opération est réussie ou échouée : les cas sont exclusifs, donc un <code>pick</code> convient.</p>
+<p>Cette méthode évite deux erreurs fréquentes. Un sac de paramètres indépendants perd leur relation ; une forme contenant un champ pour chaque état possible produit beaucoup de champs inutiles. À l’inverse, une seule forme avec trois booléens autorise des combinaisons qui n’ont peut-être aucun sens. Le type doit refléter les états que le domaine autorise réellement.</p>
+
+<h2>Les champs n’imposent pas automatiquement leurs invariants</h2>
+<p>Une déclaration <code>form Rectangle { minimum: Point, maximum: Point }</code> garantit les deux emplacements et leurs types, mais elle ne dit pas que le point minimum se trouve effectivement avant le point maximum. Cette règle doit être contrôlée par une procédure de validation, une précondition ou une API qui construit la forme de manière contrôlée.</p>
+<p>Quand une forme a plusieurs champs dépendants, note son invariant en une phrase. Pour un rectangle : « pour chaque axe, la coordonnée minimum est inférieure ou égale à la coordonnée maximum ». Pour une ligne de panier : « le prix et la quantité sont non négatifs ». Ensuite, identifie tous les endroits qui peuvent construire ou modifier cette forme.</p>
+
+<h2>Suivre une variante dans un <code>match</code></h2>
+<p>Dans le cas vérifié <code>Resultat::Ok(42)</code>, la valeur est construite avec sa variante et sa charge utile. Le bras <code>Resultat::Ok(nombre)</code> récupère le nombre ; le bras <code>Resultat::Echec</code> traite le cas sans donnée associée. Le nom qualifié rappelle à quel type appartient la variante.</p>
+<p>Un bras par cas rend le traitement visible, même quand l’outil ne prouve pas l’exhaustivité de toutes les formes avancées. Conserve un retour de repli seulement s’il répond à une décision de conception explicite ; ne l’utilise pas pour cacher un état que tu aurais oublié. Vérifie la règle d’exhaustivité du compilateur ciblé avant de compter dessus.</p>
+
+<h2>Mettre à jour un objet sans cacher le changement</h2>
+<p>Quand un programme change un champ, demande-toi si l’objet entier doit évoluer en place ou si une procédure devrait produire une nouvelle valeur. Dans les cas confirmés par le frontend natif, les tableaux mutables utilisent <code>let mut</code> et <code>set</code>. La mutabilité des champs de forme et le passage par référence dépendent des règles de la construction et du chemin du compilateur ; ne transpose pas une règle d’un type à un autre sans vérification.</p>
+<p>Une opération nommée telle que <code>valider_livre</code> ou <code>changer_etat</code> rend souvent une règle métier plus claire qu’une série de modifications dispersées au travers des champs.</p>
+
+<div class="callout"><strong>Décision corrigée</strong><p>Un livre avec titre, pagination et auteur est une forme, car ses propriétés coexistent. Son état « disponible, prêté ou en réparation » est un choix, car une seule variante doit être active à la fois. Si l’état « prêté » nécessite une date de retour, place cette donnée dans la charge utile de cette variante plutôt que dans un champ qui resterait valable pour les autres états.</p></div>
 <section class="practice-block">
   <h2>Atelier guidé : dessiner un modèle avant de coder</h2>
   <ol>
@@ -69,5 +87,9 @@ proc est_actif(etat: Etat) -&gt; bool {
     <li>Modélise un statut d’emprunt avec <code>pick</code> : disponible, prêté, en réparation. Écris une condition distincte pour chaque variante.</li>
     <li>Imagine quelles combinaisons seraient possibles si tu utilisais trois booléens. Compare-les aux variantes du choix nommé.</li>
   </ol>
-  <details><summary>Auto-évaluation</summary><p>La forme convient aux propriétés qui coexistent. Le choix convient aux états exclusifs. Si ton modèle permet une combinaison qui n’a pas de sens dans le domaine, rends cette combinaison impossible avec une variante nommée.</p></details>
+  <details><summary>Corrigé détaillé de l’atelier</summary>
+    <p>Une forme <code>Livre</code> peut regrouper un titre, un nombre de pages et un indicateur d’état si ces propriétés s’appliquent à chaque livre. La procédure qui répond à « est-il long ? » lit les pages et renvoie un booléen ; elle ne doit pas modifier la valeur.</p>
+    <p>Les états « disponible », « prêté » et « en réparation » sont exclusifs ; un choix nommé évite que trois booléens autorisent simultanément plusieurs états. Si seul un prêt possède une date de retour, place cette donnée avec la variante correspondante quand la représentation est prise en charge, plutôt que de laisser un champ sans sens pour les autres cas.</p>
+    <p>Une déclaration <code>form</code> ne garantit pas que tous ses champs sont cohérents. Si une date de retour doit être postérieure à la date d’emprunt, écris cette règle et vérifie-la lors de la construction ou de la transition d’état.</p>
+  </details>
 </section>

@@ -2,7 +2,7 @@
 title: Génériques, traits et types nommés
 permalink: /cours/10-generiques/
 chapter: 10
-duration: 45 minutes
+duration: 60 minutes
 lead: Les génériques permettent d’écrire une logique pour plusieurs types. Les alias donnent des noms à des concepts existants, et les traits décrivent des capacités communes.
 takeaway: Ajoute une abstraction quand elle élimine une duplication réelle sans rendre le contrat plus mystérieux.
 practice: Écris une procédure générique identité dans un fichier d’exercice, puis compare son intention à deux procédures spécialisées.
@@ -41,6 +41,28 @@ proc charger_client(id: IdentifiantClient) -&gt; bool {
 <h2>Quand une abstraction est utile</h2>
 <p>Écris d’abord une version simple. Si tu vois plusieurs procédures presque identiques, repère ce qui change et ce qui reste identique. Un générique convient quand la même logique marche réellement avec plusieurs types. Un trait convient quand des types différents partagent une opération avec le même sens. Un alias convient quand un nom de domaine améliore la lecture.</p>
 <div class="callout"><strong>Attention au « générique pour plus tard »</strong><p>Ajouter plusieurs niveaux de types ou de traits avant d’avoir deux usages concrets rend l’API plus difficile à expliquer. Garde l’abstraction minimale qui supprime la duplication observée.</p></div>
+
+<h2>Comparer les quatre façons de nommer ou généraliser</h2>
+<table><thead><tr><th>Construction</th><th>Question à laquelle elle répond</th><th>Effet recherché</th></tr></thead><tbody>
+<tr><td><code>type Alias = T</code></td><td>Quel nom métier rend <code>T</code> plus clair ici ?</td><td>Donner un nom supplémentaire au type existant.</td></tr>
+<tr><td><code>form</code></td><td>Quelles données doivent rester ensemble ?</td><td>Décrire une valeur composée de champs.</td></tr>
+<tr><td><code>opaque</code></td><td>Qui doit connaître la représentation interne ?</td><td>Masquer la représentation et contrôler les opérations publiques.</td></tr>
+<tr><td>Générique</td><td>Quelle logique dépend d’un type sans dépendre d’un type concret ?</td><td>Exprimer une déclaration paramétrée par un type.</td></tr>
+<tr><td><code>trait</code></td><td>Quel comportement plusieurs types doivent-ils fournir ?</td><td>Nommer une capacité commune et son contrat.</td></tr>
+</tbody></table>
+<p>Ces idées peuvent se combiner, mais elles ne sont pas interchangeables. Un alias ne protège pas une valeur. Une forme ne devient pas générique parce qu’elle contient un champ typé. Un trait ne crée pas automatiquement un type commun ni une implémentation. Commence par la question de conception, puis choisis la construction minimale qui y répond.</p>
+
+<h2>Générique sans opération, contrainte avec opération</h2>
+<p>La procédure identité <code>identite&lt;T&gt;</code> reçoit puis renvoie une valeur de même type. Elle n’a pas besoin de connaître les opérations disponibles sur <code>T</code> : elle ne fait que transmettre la valeur. Une procédure qui calcule <code>a + b</code> a, elle, besoin d’une opération d’addition pour <code>T</code>. Le contrat générique doit exprimer cette capacité si la sémantique des traits est prise en charge par la version ciblée.</p>
+<p>Ce raisonnement aide à éviter les contraintes trop fortes. Si le corps n’a besoin que de comparer deux valeurs, ne demande pas en plus des capacités d’affichage ou de conversion. Chaque contrainte supplémentaire réduit le nombre de types qui peuvent satisfaire la procédure et rend l’interface plus lourde.</p>
+
+<h2>Pourquoi les limites de génération comptent</h2>
+<p>Une déclaration générique décrit une famille de cas. Pour produire le code final, le compilateur doit savoir comment résoudre le type concret et générer les opérations correspondantes. Dans l’état vérifié du backend natif, l’exemple de forme générique atteint la génération puis reçoit un diagnostic de codegen. Cela signifie que l’intention de l’API peut être expliquée, mais que le code ne doit pas être vendu comme un chemin exécutable dans cette configuration.</p>
+<p>Quand tu étudies une capacité encore en évolution, sépare l’exercice conceptuel de l’exercice d’implémentation. Tu peux dessiner l’interface, nommer les contraintes et étudier les sources de <code>core</code> ; avant de dépendre de l’abstraction dans ton application, reproduis un cas réduit avec le compilateur de ta version.</p>
+
+<h2>Un exercice de déduplication avant de généraliser</h2>
+<p>Écris d’abord deux procédures spécialisées en remplaçant seulement leur type. Compare les signatures et les corps. Si les corps diffèrent sur la règle métier, la duplication est peut-être légitime. Si seule une opération varie, demande si le langage et son backend peuvent exprimer un contrat commun. Si le nom du type concret est la seule difficulté, un alias suffit.</p>
+<div class="callout"><strong>Correction de la décision</strong><p>Pour une identité, le paramètre générique est conceptuellement suffisant parce que le corps ne réalise aucune opération propre au type. Pour une comparaison ou une addition, il faut une capacité correspondante. Dans le dépôt audité, ces formes restent à distinguer de la génération runtime, qui n’est pas confirmée pour le backend natif.</p></div>
 <section class="practice-block">
   <h2>Atelier guidé : choisir le bon niveau d’abstraction</h2>
   <ol>
@@ -49,5 +71,9 @@ proc charger_client(id: IdentifiantClient) -&gt; bool {
     <li>Ouvre un trait de <code>modules/core/src/traits/</code>. Reformule en français la promesse de chaque méthode, puis regarde s’il existe une implémentation utilisable dans ce dépôt.</li>
     <li>Décide si un nom de domaine devrait être un alias, une forme ou un type opaque. Justifie ton choix par la validation et l’accès aux données attendus.</li>
   </ol>
-  <details><summary>Auto-évaluation</summary><p>Un générique est utile si une même logique fonctionne pour plusieurs types. Un trait est utile si ces types promettent le même comportement. Un alias améliore le nom sans créer de représentation distincte ; une forme ou un type opaque sert quand tu dois protéger une valeur et ses invariants.</p></details>
+  <details><summary>Corrigé détaillé de l’atelier</summary>
+    <p>Si les deux procédures spécialisées ont exactement le même corps et ne dépendent pas d’une opération propre au type, l’identité générique exprime l’idée commune. Si le corps utilise une comparaison, il faut que le type promette cette capacité ; si les règles numériques diffèrent, deux procédures explicites peuvent être plus justes qu’une abstraction trompeuse.</p>
+    <p>Un alias change le nom visible, pas la représentation ni les invariants. Une forme donne une structure nommée. Un type opaque cherche à cacher sa représentation et à contrôler les opérations disponibles. Un générique paramètre une déclaration par un type. Un trait nomme une capacité partagée. Choisis selon le problème, pas selon le nombre de mots-clés que tu veux employer.</p>
+    <p>Pour l’état du compilateur actuel, distingue la syntaxe générique décrite de la génération native. Le cas <code>Box&lt;T&gt;</code> atteint le backend puis échoue avec <code>VITTE_BACKEND_E_CODEGEN</code> ; ne présente donc pas ce cas comme un programme exécutable.</p>
+  </details>
 </section>

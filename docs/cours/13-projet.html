@@ -2,7 +2,7 @@
 title: Projet fil rouge et suite
 permalink: /cours/13-projet/
 chapter: 13
-duration: 50 minutes
+duration: 90 minutes
 lead: Mettons ensemble les notions apprises en construisant un petit calculateur de panier. L’objectif est autant de choisir un bon modèle que d’écrire des lignes de code.
 takeaway: Un projet clair commence par un comportement vérifiable, un modèle de données simple et de petits changements validés souvent.
 practice: Implémente les étapes dans l’ordre, ajoute un test à chaque règle métier et note quelles fonctionnalités ton compilateur accepte réellement.
@@ -74,8 +74,36 @@ test "sous-total de deux articles" {
 
 <h2>Continuer après le cours</h2>
 <p>Choisis un petit projet qui t’intéresse : un convertisseur d’unités, un analyseur de texte, un carnet de scores ou un outil en ligne de commande. Écris d’abord deux phrases sur ses comportements ; transforme chaque phrase en procédure et en tests ; puis ajoute les fichiers et les modules nécessaires.</p>
-<p>Pour explorer une notion, pars de la <a href="https://github.com/vitte-lang/vitte/blob/main/grammar/vitte.ebnf">grammaire</a> et des <a href="https://github.com/vitte-lang/vitte/tree/main/src/tests">tests du dépôt</a> pour trouver des cas concrets. Consulte aussi les <a href="https://github.com/vitte-lang/vitte/tree/main/modules/core">bibliothèques core</a> et la page <a href="{{ '/reference/support/' | relative_url }}">État du support</a>, qui aide à distinguer ce qui est spécifié de ce qui fonctionne dans le compilateur. Tu sais maintenant lire les éléments essentiels du langage et poser les bonnes questions avant de dépendre d’une fonctionnalité.</p>
+<p>Pour explorer une notion, pars de la <a href="https://github.com/vitte-lang/vitte/blob/main/grammar/vitte.ebnf">grammaire</a> et des <a href="https://github.com/vitte-lang/vitte/tree/main/src/tests">tests du dépôt</a> pour trouver des cas concrets. Consulte aussi les <a href="https://github.com/vitte-lang/vitte/tree/main/modules/core">bibliothèques core</a> et la page <a href="{{ '/reference/support/' | relative_url }}">État du support</a>, qui aide à distinguer ce qui est spécifié de ce qui fonctionne dans le compilateur. Tu sais maintenant lire les éléments essentiels du langage et poser les bonnes questions avant de dépendre d’une fonctionnalité. Pour approfondir, poursuis avec <a href="{{ '/cours/14-invariants/' | relative_url }}">le second cycle</a>, qui développe la preuve des boucles, les modèles d’états, les contrats et les modules.</p>
 <div class="callout"><strong>Tu peux reprendre le cours quand tu veux</strong><p>Si une leçon reste floue, réécris son exemple de mémoire, puis compare avec le cours. Expliquer une idée avec tes propres mots est souvent le meilleur test de compréhension.</p></div>
+<h2>Spécifier le projet avant de coder</h2>
+<p>Un projet ne commence pas par une structure de données. Il commence par une phrase observable : « pour chaque ligne valide, le programme calcule le prix multiplié par la quantité, puis additionne les sous-totaux ». Ensuite, écris les règles qui ne sont pas encore décidées : une quantité nulle est-elle permise ? Un prix négatif est-il une erreur ? Les montants représentent-ils des unités ou des centimes ? La somme peut-elle dépasser le type choisi ?</p>
+<p>Transforme chaque phrase en une attente que tu peux vérifier. Pour une ligne de prix 6 et quantité 2, le sous-total vaut 12. Pour une ligne contenant zéro, le sous-total vaut zéro si cette entrée est autorisée. Pour une valeur négative, le programme doit rejeter l’entrée ou renvoyer un état d’erreur nommé. Cette liste empêche les règles métier de se cacher dans l’implémentation.</p>
+
+<h2>Plan de construction en petites étapes</h2>
+<ol>
+  <li><strong>Modèle.</strong> Déclare une ligne avec ses champs et écris une procédure qui lit ces champs.</li>
+  <li><strong>Règles locales.</strong> Calcule un sous-total pour une ligne, puis vérifie séparément chaque condition de validité.</li>
+  <li><strong>Accumulation.</strong> Ajoute plusieurs sous-totaux en gardant une progression d’indice et une borne explicites.</li>
+  <li><strong>Résultat.</strong> Décide si une entrée invalide constitue une faute d’appel ou une valeur d’erreur attendue.</li>
+  <li><strong>Organisation.</strong> Déplace les types et calculs dans des modules quand le découpage rend les rôles plus clairs.</li>
+</ol>
+<p>Après chaque étape, garde une version qui fonctionne avant d’ajouter une nouvelle idée. Si un cas réduit échoue, retire les éléments récents jusqu’à trouver la première construction qui fait apparaître le problème.</p>
+
+<h2>Préparer les vérifications et reconnaître leurs limites</h2>
+<p>La matrice du projet indique que des formes non génériques, des variantes <code>pick</code>, des tableaux fixes, des conditions et des boucles <code>while</code> sont exercés jusqu’à l’exécution dans des fixtures distinctes. Cette preuve ne signifie pas que leur combinaison dans le panier complet a déjà été exécutée. Le projet de cette leçon reste un exercice d’intégration : assemble les blocs progressivement et vérifie le cas exact avec la version installée.</p>
+<p>Le parcours actuel utilise une boucle <code>for</code> sur plage et des déclarations <code>test</code>. Le backend natif audité n’a pas confirmé l’exécution de ces deux éléments sous cette forme. Pour obtenir une version plus proche du sous-ensemble runtime vérifié, remplace le parcours par un <code>while</code> avec un indice, puis place les cas attendus dans des programmes qui renvoient un statut contrôlable. N’affirme pas que le résultat est exécuté tant qu’une commande réelle ne l’a pas établi.</p>
+
+<h2>Définir les critères de livraison</h2>
+<p>Le projet est prêt à être partagé lorsque quelqu’un peut comprendre ses entrées, ses résultats, les erreurs possibles et le modèle des données. Ajoute une fiche de vérification courte :</p>
+<ul>
+  <li>Chaque procédure a un nom, des paramètres et un type de retour compréhensibles.</li>
+  <li>Chaque règle métier a au moins un cas ordinaire et un cas de frontière.</li>
+  <li>Chaque accès au tableau est précédé d’un raisonnement sur ses bornes.</li>
+  <li>Chaque fonctionnalité dépendant du compilateur a une commande ou une mention explicite « non confirmée ».</li>
+  <li>Les exports se limitent aux noms dont un autre module a besoin.</li>
+</ul>
+<div class="callout"><strong>Correction du total</strong><p>Pour les lignes <code>(6, 2)</code>, <code>(4, 3)</code> et <code>(0, 5)</code>, les sous-totaux sont 12, 12 et 0 ; le total est 24. Si une quantité négative est interdite, ce cas doit être traité avant l’accumulation et ne doit pas devenir silencieusement un total négatif.</p></div>
 <section class="practice-block">
   <h2>Atelier final : faire une petite livraison</h2>
   <ol>
@@ -85,5 +113,9 @@ test "sous-total de deux articles" {
     <li>Déplace modèle, calculs et point d’entrée dans des modules distincts. Réduis les exports au minimum utile.</li>
     <li>Relis ton code comme une autre personne : peut-elle prédire le résultat, comprendre le traitement des erreurs et repérer les limites du programme ?</li>
   </ol>
-  <details><summary>Comment savoir si ton projet est terminé ?</summary><p>Tu peux expliquer le modèle, lancer les vérifications disponibles, montrer les cas couverts par les tests et énumérer les limites connues. Un projet terminé n’est pas forcément grand : ses comportements et ses frontières sont clairs.</p></details>
+  <details><summary>Corrigé et critères de livraison</summary>
+    <p>Avec les lignes <code>(6, 2)</code>, <code>(4, 3)</code> et <code>(0, 5)</code>, les produits valent 12, 12 et 0 ; leur somme vaut 24. Une entrée négative doit être refusée avant de contribuer au total si la règle métier l’interdit.</p>
+    <p>Un découpage raisonnable conserve <code>Ligne</code> et <code>sous_total</code> près des règles de panier ; le point d’entrée compose les appels. Les tests devraient nommer les cas ordinaires, les zéros, les limites et chaque état d’erreur. Tant que le runner de tests Vitte n’est pas établi pour la construction choisie, utilise les fixtures et commandes du dépôt comme preuve et ne présente pas le bloc <code>test</code> comme exécuté.</p>
+    <p>Le projet est livrable lorsque tu peux reconstruire le résultat attendu, montrer la commande réellement passée, expliquer les limites et indiquer quelles combinaisons de constructions ont été vérifiées ensemble.</p>
+  </details>
 </section>

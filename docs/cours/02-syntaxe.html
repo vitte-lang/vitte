@@ -2,7 +2,7 @@
 title: Lire un programme Vitte
 permalink: /cours/02-syntaxe/
 chapter: 2
-duration: 30 minutes
+duration: 50 minutes
 lead: Apprenons à repérer les déclarations, les blocs et les signes de ponctuation qui structurent le code. Une fois ce squelette visible, les programmes cessent de ressembler à une suite de symboles.
 takeaway: Les mots-clés indiquent le rôle du code ; les accolades, parenthèses et points-virgules indiquent comment il s’organise.
 practice: Prends un fichier d’exemple et annote chaque accolade, chaque appel et chaque point-virgule avec son rôle.
@@ -52,6 +52,26 @@ proc doubler(valeur: i64) -&gt; i64 {
 
 <h2>Un exercice de lecture</h2>
 <p>Dans le programme de départ, marque la déclaration de module, le nom et le type de retour de <code>main</code>, l’appel à <code>print</code> et le retour. Puis enlève une accolade ou un point-virgule et lance <code>vitte parse</code>. Le diagnostic te montrera quel morceau de ponctuation manquait et à quel endroit le parseur l’a remarqué.</p>
+
+<h2>Du texte aux structures : trois niveaux</h2>
+<p>Quand Vitte lit un fichier, le compilateur ne voit pas directement « une fonction qui calcule ». Il avance par niveaux. Le lexer identifie les tokens : mot-clé, identifiant, nombre, opérateur et ponctuation. Le parseur assemble ces tokens selon la grammaire pour reconnaître une déclaration, un bloc ou une expression. L’analyse sémantique relie ensuite des noms aux déclarations et vérifie des contraintes comme les types attendus.</p>
+<p>Ces niveaux expliquent pourquoi des erreurs ressemblantes demandent des corrections différentes :</p>
+<ul>
+  <li><code>proc somme( -&gt; i64 {</code> a une structure incomplète : le parseur ne peut pas reconnaître la liste de paramètres.</li>
+  <li><code>let resultat: i64 = nom_absent;</code> peut avoir une syntaxe correcte, mais l’analyse sémantique doit encore résoudre <code>nom_absent</code>.</li>
+  <li><code>let resultat: bool = 3;</code> peut être bien formé, mais le type de la valeur doit correspondre au type annoncé.</li>
+</ul>
+<p>Ces extraits montrent la nature des problèmes, pas une garantie que chaque voie de compilation émettra le même diagnostic. Enquête sur un seul problème à la fois avec <code>lex</code>, puis <code>parse</code>, puis <code>check</code>.</p>
+
+<h2>Construire l’arbre de lecture d’une déclaration</h2>
+<p>Dans <code>proc lire_reponse() -&gt; i64 { return REPONSE; }</code>, le bloc appartient à la procédure, le retour appartient au bloc, et <code>REPONSE</code> est l’expression de retour. L’accolade fermante termine d’abord le corps, pas le fichier entier. Pour lire un fichier long, commence par repérer les déclarations du niveau supérieur, puis entre dans une seule procédure à la fois.</p>
+<p>Le point-virgule termine ici l’instruction <code>return</code>. Il ne sert pas à séparer les arguments d’un appel, qui sont séparés par des virgules. Les accolades encadrent un bloc, tandis que les parenthèses encadrent les paramètres ou arguments. Quand le parseur signale une ponctuation manquante, vérifie la paire de signes qui correspond à la structure en cours avant d’ajouter un signe au hasard.</p>
+
+<h2>Repérer les noms et la portée</h2>
+<p>Une constante déclarée au niveau d’un module, comme <code>REPONSE</code>, peut être référencée par une procédure selon les règles de visibilité et de résolution du compilateur. Un paramètre tel que <code>valeur</code> est disponible dans le corps de sa procédure. Une liaison locale est définie à l’intérieur d’un bloc et son usage dépend de la portée que le langage attribue à ce bloc.</p>
+<p>Les noms sont sensibles à la casse : <code>REPONSE</code>, <code>Reponse</code> et <code>reponse</code> ne désignent pas le même identifiant. Si un nom n’est pas reconnu, compare attentivement sa graphie, son module, son import et sa visibilité. Le fait qu’un mot ressemble à un nom de type ne le rend pas automatiquement disponible.</p>
+
+<div class="callout"><strong>Mini-correction guidée</strong><p>Pour <code>return lire_reponse() - REPONSE;</code>, le point d’entrée appelle d’abord <code>lire_reponse</code>, récupère sa valeur, puis soustrait la constante. Comme <code>lire_reponse</code> renvoie la même constante, le résultat attendu est zéro. Le fichier d’exemple vérifie ce comportement en se terminant avec le code 0.</p></div>
 <section class="practice-block">
   <h2>Atelier guidé : annoter et réparer</h2>
   <ol>
@@ -59,5 +79,9 @@ proc doubler(valeur: i64) -&gt; i64 {
     <li>Ajoute un commentaire qui explique une intention, pas le texte déjà visible. Demande-toi si le commentaire restera vrai après une modification du code.</li>
     <li>Fais trois erreurs séparées : guillemet non fermé, accolade manquante et point-virgule absent. Utilise <code>lex</code> puis <code>parse</code> pour voir à quelle étape chaque erreur devient visible.</li>
   </ol>
-  <details><summary>Auto-évaluation</summary><p>Un lexer identifie les morceaux élémentaires du texte, comme les identifiants et les littéraux. Le parseur vérifie que ces morceaux s’assemblent dans une structure permise. Une erreur sur une chaîne non fermée apparaît donc très tôt ; une accolade oubliée se manifeste au niveau de la structure.</p></details>
+  <details><summary>Corrigé commenté et critères de réussite</summary>
+    <p>Dans l’exemple, <code>space</code>, <code>const</code>, <code>proc</code> et <code>return</code> sont des mots-clés ; <code>lire_reponse</code> et <code>REPONSE</code> sont des identifiants ; <code>::</code>, <code>()</code>, <code>-&gt;</code>, <code>{}</code> et <code>;</code> sont des signes de structure. Le lexer reconnaît ces unités. Le parseur vérifie que la constante et les deux procédures ont une forme permise. La sémantique doit ensuite relier le nom <code>REPONSE</code> et contrôler les types.</p>
+    <p>Une chaîne non fermée empêche le lexer de reconnaître correctement le littéral. Une accolade manquante apparaît plutôt lors de l’analyse de la structure. Une procédure qui mentionne un nom inexistant peut passer le parsing et échouer plus tard. Ce sont des exemples de phases ; le diagnostic exact dépend de la commande et du chemin de compilation utilisé.</p>
+    <p>Pour l’expression finale, <code>lire_reponse()</code> renvoie 42 et la soustraction donne 0. Une correction utile doit donc réparer la ponctuation tout en conservant ce résultat attendu.</p>
+  </details>
 </section>

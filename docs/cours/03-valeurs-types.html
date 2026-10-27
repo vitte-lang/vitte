@@ -2,7 +2,7 @@
 title: Valeurs, variables et types
 permalink: /cours/03-valeurs-types/
 chapter: 3
-duration: 40 minutes
+duration: 55 minutes
 lead: Une valeur représente une donnée ; un type précise quelle sorte de donnée c’est et quelles opérations ont du sens dessus. Les variables donnent des noms à ces valeurs.
 takeaway: En Vitte, les variables sont immuables par défaut ; on demande explicitement le droit de modifier une liaison.
 practice: Écris un total en i64, ajoute une variable mutable, puis essaie volontairement de modifier une liaison sans mut pour lire le diagnostic.
@@ -57,6 +57,32 @@ proc premier() -&gt; i64 {
 <h2>Une habitude utile : suivre le type de chaque étape</h2>
 <p>Quand tu lis une expression, demande-toi : quel type a chaque opérande ? Quel type produit l’opération ? Est-ce que la procédure appelée attend le même type ? Par exemple, ajouter un <code>u8</code> à un <code>i64</code> peut nécessiter une conversion explicite. Cette discipline te protège des erreurs de largeur et des mélanges signe/non-signé.</p>
 <div class="callout"><strong>À retenir</strong><p>Un type n’est pas une décoration. Il définit une plage de valeurs et les opérations disponibles. Une conversion devrait correspondre à une décision que tu peux expliquer.</p></div>
+
+<h2>Comprendre la différence entre valeur et liaison</h2>
+<p>Dans <code>let total: i64 = prix * quantite;</code>, <code>total</code> est le nom d’une liaison et <code>prix * quantite</code> produit une valeur. Si tu écris ensuite <code>let avec_tax: i64 = total + taxe;</code>, tu crées une autre liaison à partir de la valeur précédente. Rien n’a modifié <code>total</code>.</p>
+<p>Pour changer la valeur associée à un nom existant, Vitte rend la décision visible dans deux endroits : la déclaration porte <code>mut</code>, puis l’instruction de mise à jour porte <code>set</code>. Cette paire évite de confondre la création d’un calcul avec la modification d’un état.</p>
+<pre><code>proc compter() -&gt; i64 {
+    let initial: i64 = 2;
+    let double: i64 = initial * 2;
+    let mut cumul: i64 = double;
+    set cumul = cumul + 1;
+    return cumul;
+}</code></pre>
+<p>Le parcours est : <code>initial = 2</code>, <code>double = 4</code>, <code>cumul = 4</code>, puis <code>cumul = 5</code>. Les noms immuables gardent leur valeur ; seul <code>cumul</code> est réaffecté.</p>
+
+<h2>Choisir un type numérique avec méthode</h2>
+<p>Pour une quantité calculable, commence par identifier si elle peut être négative, si elle peut contenir une fraction et quelle précision ou plage le domaine exige. Un <code>i64</code> est un entier signé ; un <code>u64</code> est non signé ; <code>f64</code> représente une valeur à virgule flottante. Ne choisis pas un type uniquement parce qu’il semble « assez grand » : les conversions et les opérations doivent rester cohérentes entre les paramètres, les variables et le résultat.</p>
+<ul>
+  <li>Une comparaison telle que <code>quantite &gt;= 0</code> traduit une règle métier si les valeurs négatives n’ont aucun sens.</li>
+  <li>Une conversion <code>valeur as u8</code> demande une nouvelle représentation ; elle n’est pas à elle seule une validation de plage.</li>
+  <li>Une constante nommée donne un endroit unique à une limite fixe, mais il faut encore vérifier que sa valeur est correcte pour le calcul.</li>
+</ul>
+<p>Le comportement du dépassement arithmétique dépend du chemin de compilation et des vérifications effectuées. Ne compte pas sur un dépassement qui « devrait sûrement » s’enrouler : établis les bornes avec le compilateur, la bibliothèque et les tests réellement ciblés.</p>
+
+<h2>Comment lire un diagnostic de type</h2>
+<p>Lorsqu’un type est refusé, pars de la valeur la plus proche du diagnostic. Vérifie d’abord le type déclaré à gauche, ensuite le type de l’initialiseur ou de l’expression, puis les types des opérandes. Une conversion ne doit arriver qu’après que tu as choisi la représentation voulue.</p>
+<p>Par exemple, si une procédure attend un <code>i64</code> et reçoit un <code>u8</code>, demande-toi si la quantité est réellement toujours dans la plage signée attendue. Une conversion forcée peut satisfaire une signature sans satisfaire la règle métier. Dans les données venant de l’extérieur, préfère une conversion contrôlée et un cas d’erreur explicite lorsqu’ils sont disponibles.</p>
+
 <section class="practice-block">
   <h2>Atelier guidé : calculer une facture</h2>
   <ol>
@@ -65,5 +91,9 @@ proc premier() -&gt; i64 {
     <li>Ajoute une variable mutable <code>visites</code>, augmente-la deux fois avec <code>set</code>, et renvoie sa valeur.</li>
     <li>Provoque un diagnostic en affectant une liaison immuable. Lance une vérification sémantique disponible (le dépôt documente notamment <code>compile --stop-after-sema</code>), lis le message, puis décide si la bonne correction est d’ajouter <code>mut</code> ou de supprimer la modification inutile.</li>
   </ol>
-  <details><summary>Auto-évaluation</summary><p>La liaison ne change pas quand tu calcules une nouvelle variable à partir d’elle. Elle change seulement quand tu réaffectes son nom avec <code>set</code>. Le mot <code>mut</code> appartient à la déclaration qui autorise cette réaffectation.</p></details>
+  <details><summary>Corrigé détaillé de l’atelier</summary>
+    <p>Avec un prix unitaire de 12 et une quantité de 3, le sous-total vaut <code>12 * 3 = 36</code>. Si la taxe choisie pour l’exercice est une valeur fixe de 6, le total est <code>36 + 6 = 42</code>. Si tu calcules plutôt un pourcentage, précise l’unité, l’ordre des opérations et la règle d’arrondi avant d’écrire la formule.</p>
+    <p>La variable <code>visites</code> doit commencer avec <code>let mut visites: i64 = 0;</code>. Deux instructions <code>set visites = visites + 1;</code> laissent la valeur à 2. Une variable déclarée seulement avec <code>let</code> ne peut pas être réaffectée ; la correction consiste soit à ajouter <code>mut</code> si le changement est nécessaire, soit à calculer une nouvelle liaison si tu veux conserver l’ancienne valeur.</p>
+    <p>Une conversion comme <code>255 as u8</code> ne démontre pas à elle seule que toute valeur est dans la plage voulue. Les types et les conversions doivent exprimer une décision sur les données, pas servir à faire taire un diagnostic.</p>
+  </details>
 </section>

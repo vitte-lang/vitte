@@ -2,7 +2,7 @@
 title: Modéliser les données et les états
 permalink: /cours/15-modelisation/
 chapter: 15
-duration: 55 minutes
+duration: 70 minutes
 lead: Un bon type rend les états valides faciles à décrire et les états incohérents difficiles à construire. Dans cette leçon, tu vas choisir entre une forme et un choix, puis suivre une valeur de résultat jusque dans son traitement.
 takeaway: Utilise `form` pour des propriétés présentes ensemble et `pick` pour des variantes exclusives.
 practice: Remplace trois indicateurs booléens d’un état métier par un type Vitte qui ne permet que les états prévus.
@@ -55,6 +55,25 @@ proc valeur(resultat: Resultat) -&gt; i64 {
 </ol>
 <p>Quand tu hésites, écris deux ou trois valeurs concrètes que le type devrait pouvoir représenter. Puis cherche une combinaison qui serait invalide. Si elle peut être construite facilement, le modèle peut probablement être amélioré.</p>
 
+<h2>Modéliser une transition, pas seulement un état</h2>
+<p>Un choix décrit les états possibles ; les procédures décrivent les transitions permises entre eux. Pour une réservation, on peut définir une opération <code>confirmer</code> qui accepte l’état disponible et refuse un état déjà annulé. Le type seul ne précise pas quelles transitions sont permises : il faut les écrire dans la logique de l’application et les vérifier avec des exemples.</p>
+<p>Avant d’ajouter une procédure de transition, construis une table :</p>
+<table><thead><tr><th>État courant</th><th>Opération</th><th>Résultat attendu</th></tr></thead><tbody>
+<tr><td>Disponible</td><td>confirmer</td><td>Confirmée</td></tr>
+<tr><td>Confirmée</td><td>annuler</td><td>Annulée</td></tr>
+<tr><td>Annulée</td><td>confirmer</td><td>Refus ou résultat d’erreur</td></tr>
+</tbody></table>
+<p>Cette table évite de coder une branche qui n’a jamais été décidée. Si une transition invalide peut arriver normalement, représente son refus dans la sortie de la procédure. Si elle révèle une erreur de programmation, un contrat peut être plus adapté.</p>
+
+<h2>Placer une donnée dans la variante qui la justifie</h2>
+<p>Supposons que seule une annulation ait une raison. Si la raison est un champ de la forme, elle doit recevoir une valeur même quand la réservation est disponible ou confirmée. Un <code>pick</code> peut au contraire placer cette donnée dans la variante qui en a besoin. Les types avec charge utile existent dans le dépôt, comme <code>Resultat::Ok(i64)</code>.</p>
+<p>Évite de dupliquer la même information dans un champ et dans une variante. Deux sources de vérité peuvent diverger après une modification. Choisis l’endroit qui est naturellement propriétaire de la règle et adapte les procédures d’accès à ce modèle.</p>
+
+<h2>Vérifier la construction réelle d’un modèle</h2>
+<p>Le fichier <code>formes-choix.vit</code> fournit une preuve de construction d’une forme, de lecture de ses champs, de construction d’un <code>pick</code> avec charge utile et de récupération de cette charge dans <code>match</code>. Cette preuve est plus forte qu’une déclaration isolée dans la grammaire, mais elle reste limitée aux types et opérations exercés par ce programme.</p>
+<p>Pour une forme imbriquée, un champ mutable, une référence vers une variante ou une correspondance plus complexe, écris un petit fichier distinct. Ne déduis pas qu’une propriété avancée fonctionne parce qu’un exemple voisin fonctionne.</p>
+
+<div class="callout"><strong>Une règle de modèle à vérifier</strong><p>Si une réservation est confirmée, elle doit posséder son numéro de confirmation. Un modèle qui garde un numéro facultatif dans toutes les variantes nécessite une règle de validation. Un modèle qui place ce numéro uniquement dans la variante « confirmée » rend la relation plus explicite, sous réserve de vérifier que cette forme est prise en charge par la cible utilisée.</p></div>
 <section class="practice-block">
   <h2>Atelier avancé : état d’une réservation</h2>
   <ol>
@@ -63,5 +82,9 @@ proc valeur(resultat: Resultat) -&gt; i64 {
     <li>Ajoute une charge utile à l’annulation pour conserver la raison. Écris les bras d’un <code>match</code> qui traitent les trois variantes.</li>
     <li>Énumère une règle métier, par exemple « une réservation confirmée possède un numéro de confirmation ». Décide si cette règle appartient au modèle, à une validation ou à un contrat.</li>
   </ol>
-  <details><summary>Correction guidée</summary><p>Une forme <code>Reservation</code> convient au numéro et à la date puisqu’ils coexistent. Un <code>pick EtatReservation</code> convient aux trois situations exclusives ; la variante d’annulation peut porter une raison. Les données présentes uniquement dans une variante doivent rester dans sa charge utile. Les règles qui impliquent plusieurs champs doivent être vérifiées explicitement : la déclaration d’une forme ne les prouve pas automatiquement.</p></details>
+  <details><summary>Correction détaillée</summary>
+    <p>Le numéro et la date coexistent : ils appartiennent donc à une <code>form Reservation</code>. Les états « disponible », « confirmée » et « annulée » s’excluent : ils forment un <code>pick EtatReservation</code>. La raison ne concerne que l’annulation ; place-la avec cette variante si la syntaxe exacte est acceptée par la cible utilisée.</p>
+    <p>Les transitions autorisées peuvent être disponibles → confirmée, confirmée → annulée, et indisponible → refus. La dernière situation peut être un résultat d’erreur normal ou une précondition violée selon la provenance de l’appel.</p>
+    <p>La preuve du dépôt confirme un <code>pick</code> avec charge utile et un <code>match</code> dans une fixture précise. Elle ne confirme pas automatiquement chaque façon d’imbriquer des types ou des charges utiles.</p>
+  </details>
 </section>

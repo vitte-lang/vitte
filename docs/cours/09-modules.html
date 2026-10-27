@@ -2,7 +2,7 @@
 title: Modules, imports et exports
 permalink: /cours/09-modules/
 chapter: 9
-duration: 35 minutes
+duration: 55 minutes
 lead: Un programme grandit en plusieurs fichiers. Les modules donnent une adresse logique à chaque fichier, tandis que les imports et exports définissent comment les morceaux se parlent.
 takeaway: Un nom qualifié dit d’où vient une déclaration ; une interface exportée indique ce qu’un autre module peut utiliser.
 practice: Sépare une procédure de calcul dans un module, exporte-la, puis importe le module depuis un fichier appelant.
@@ -45,6 +45,28 @@ export proc avec_taxe(prix: i64) -&gt; i64 {
 <p>Le résolveur de modules cherche les sources selon ses chemins configurés et met en cache des résolutions. Pour un programme de production, documente la racine du projet et les conventions de modules au lieu de dépendre d’un chemin local implicite.</p>
 <div class="callout verified-example"><strong>Exemple vérifié : import, alias et appel qualifié</strong><p>Depuis la racine du dépôt, la variable <code>VITTE_MODULE_PATH=examples</code> ajoute le dossier qui contient les sources importées.</p><pre><code>VITTE_MODULE_PATH=examples build/bin/vitte run examples/tutorials/modules/main.vit --quiet --no-color</code></pre><p>Les sources sont <a href="https://github.com/vitte-lang/vitte/blob/main/examples/tutorials/modules/main.vit"><code>main.vit</code></a> et <a href="https://github.com/vitte-lang/vitte/blob/main/examples/tutorials/modules/calcul.vit"><code>calcul.vit</code></a>. Résultat confirmé : code de sortie <code>0</code>.</p></div>
 <div class="callout"><strong>Une interface est une promesse</strong><p>Avant d’exporter un nom, demande-toi si les autres modules ont vraiment besoin de le connaître. Moins l’interface publique expose de détails, plus le module peut évoluer sereinement.</p></div>
+
+<h2>Tracer la résolution d’un import</h2>
+<p>Pour comprendre un import, écris son chemin segment par segment. Dans <code>use tutorials::modules::calcul as calcul;</code>, le résolveur doit trouver le module <code>tutorials</code>, puis son enfant <code>modules</code>, puis la déclaration <code>calcul</code>. L’alias final <code>calcul</code> est le nom local à utiliser dans le fichier courant.</p>
+<p>Une erreur de chemin se diagnostique plus facilement si tu vérifies ces éléments séparément :</p>
+<ol>
+  <li>La racine fournie au programme contient-elle le premier segment du chemin ?</li>
+  <li>Le fichier source déclare-t-il le chemin logique attendu par son appelant ?</li>
+  <li>Le nom final correspond-il à une procédure, un type ou un module réellement déclaré ?</li>
+  <li>La déclaration est-elle exportée si elle est appelée depuis un autre module ?</li>
+  <li>L’appel utilise-t-il le nom qualifié exact, avec les segments et l’alias attendus ?</li>
+</ol>
+<p>La commande vérifiée de l’exemple donne une racine explicite avec <code>VITTE_MODULE_PATH=examples</code>. Si l’on omet cette racine, la source principale existe toujours mais le compilateur peut ne pas retrouver la source importée. Cela montre pourquoi un échec de résolution n’est pas nécessairement une erreur dans la procédure importée.</p>
+
+<h2>Découper les responsabilités d’un petit projet</h2>
+<p>Un bon découpage suit les raisons de changer le code. Le module de calcul possède les règles numériques. Un module de modèle peut posséder les types et leurs validations. Le point d’entrée choisit les opérations à appeler et gère les entrées ou sorties disponibles. Évite un fichier par procédure : trop de petits modules rendent les chemins plus difficiles à suivre sans apporter une frontière utile.</p>
+<p>Le sens des dépendances doit rester lisible. Un module de bas niveau ne devrait pas dépendre du point d’entrée ; le point d’entrée peut appeler les modules spécialisés. Lorsqu’un import forme un cycle ou que deux modules dépendent mutuellement de détails internes, cherche une interface plus stable ou un module commun qui porte les types partagés.</p>
+
+<h2>Stabiliser une interface publique</h2>
+<p>Une signature exportée devient une dépendance pour ses appelants. Renommer le module, changer les paramètres ou transformer un type public peut demander des corrections dans plusieurs fichiers. Avant une modification, recherche tous les imports concernés, puis actualise le producteur et les appelants ensemble.</p>
+<p>Expose une constante seulement si sa valeur fait partie du contrat. Si les appels doivent utiliser un comportement et non la valeur interne d’un réglage, exporte plutôt une procédure qui applique ce réglage. Cette séparation permet de changer le détail sans réécrire chaque appelant.</p>
+
+<div class="callout"><strong>Correction du parcours entre deux fichiers</strong><p>Le module <code>calcul</code> exporte <code>additionner</code> ; <code>main</code> importe le chemin sous le nom local <code>calcul</code> ; l’appel est <code>calcul::additionner(20, 22)</code>. Il faut aussi fournir la racine de recherche <code>examples</code>. Le code de sortie confirmé est 0.</p></div>
 <section class="practice-block">
   <h2>Atelier guidé : deux fichiers, un contrat</h2>
   <ol>
@@ -53,5 +75,9 @@ export proc avec_taxe(prix: i64) -&gt; i64 {
     <li>Appelle les deux procédures via leur chemin qualifié et vérifie les résultats attendus avec des assertions ou un point de retour simple.</li>
     <li>Rends une troisième procédure privée. Tente de l’appeler depuis <code>main</code>, lis le diagnostic, puis décide si elle doit réellement faire partie de l’interface.</li>
   </ol>
-  <details><summary>Auto-évaluation</summary><p>Le module producteur déclare les opérations et leur visibilité ; le module appelant dépend uniquement des noms exportés. Le chemin qualifié montre la provenance et réduit l’ambiguïté quand deux modules utilisent le même nom.</p></details>
+  <details><summary>Corrigé détaillé de l’atelier</summary>
+    <p>Le fichier producteur porte <code>space exercice::calcul;</code> et exporte les procédures. Le fichier principal déclare son propre chemin, importe <code>exercice::calcul</code> sous un alias et appelle les fonctions avec cet alias suivi de <code>::</code>. La racine de recherche doit contenir le répertoire <code>exercice</code>.</p>
+    <p>Une procédure sans <code>export</code> doit rester inaccessible depuis le module appelant. Si l’appel échoue sur cette procédure, le diagnostic correspond à la frontière de visibilité ; rendre toutes les déclarations publiques n’est pas une correction automatique. N’exporte le helper que si un autre module a réellement besoin de l’appeler.</p>
+    <p>Le cas de référence du dépôt utilise <code>VITTE_MODULE_PATH=examples</code>, importe le module calcul et s’exécute avec le frontend natif. La preuve s’applique à ce chemin et à ces signatures ; les imports groupés ou réexports peuvent suivre un autre niveau de support.</p>
+  </details>
 </section>
