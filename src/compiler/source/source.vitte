@@ -1,0 +1,783 @@
+/// Native Vitte source manager. The C bootstrap implementation is retained
+/// only as a behavioral reference until the bootstrap executable is retired.
+space compiler::source::source;
+
+use compiler::unicode::unicode::{UnicodeError, vitte_unicode_decode_utf8};
+
+const SOURCE_MAGIC: u64 = 0x5649545445535243;
+const SOURCE_DEAD_MAGIC: u64 = 0x4445414453524345;
+const SOURCE_DEFAULT_MAX_SOURCES: usize = 1048576;
+const SOURCE_DEFAULT_MAX_BYTES: usize = 1073741824;
+const SOURCE_ID_MAX: u64 = 4294967294;
+const SOURCE_FNV_OFFSET: u64 = 14695981039346656037;
+const SOURCE_FNV_PRIME: u64 = 1099511628211;
+const SOURCE_SIZE_MAX_VALUE: usize = 18446744073709551615;
+
+export pick SourceState {
+    Invalid,
+    Ready,
+    Failed,
+    Destroyed,
+    Count
+}
+
+export pick SourceError {
+    None,
+    InvalidContext,
+    InvalidArgument,
+    InvalidState,
+    OutOfMemory,
+    Overflow,
+    SourceLimit,
+    SourceTooLarge,
+    DuplicatePath,
+    InvalidUtf8,
+    InvalidSource,
+    InvalidSourceId,
+    InvalidOffset,
+    InvalidLine,
+    InvalidColumn,
+    InvalidSpan,
+    Validation,
+    Corruption,
+    Internal,
+    Count
+}
+
+export type SourceId = u64;
+
+export form SourceEntry {
+    id: SourceId,
+    name: string,
+    name_length: usize,
+    path: string,
+    path_length: usize,
+    data: string,
+    length: usize,
+    line_offsets: [usize],
+    line_count: usize
+}
+
+export form SourceStats {
+    allocations: u64,
+    allocation_failures: u64,
+    reallocations: u64,
+    sources_added: u64,
+    bytes_added: u64,
+    lines_indexed: u64,
+    resets: u64,
+    hash_runs: u64,
+    validation_runs: u64,
+    validation_failures: u64
+}
+
+export form SourceContext {
+    magic: u64,
+    state: SourceState,
+    last_error: SourceError,
+    sources: [SourceEntry],
+    source_count: usize,
+    source_capacity: usize,
+    max_sources: usize,
+    max_source_bytes: usize,
+    generation: u64,
+    stats: SourceStats
+}
+
+export form SourceLocation {
+    source_id: SourceId,
+    offset: usize,
+    line: usize,
+    column: usize,
+    valid: bool
+}
+
+export form SourceSlice {
+    data: string,
+    length: usize,
+    source_id: SourceId,
+    begin: usize,
+    end: usize,
+    valid: bool
+}
+
+export form SourceSpan {
+    source_id: SourceId,
+    begin: usize,
+    end: usize,
+    valid: bool
+}
+
+proc source_stats_increment(value: u64, amount: u64) -> u64 {
+    if value > 18446744073709551615 - amount {
+        return 18446744073709551615;
+    }
+    return value + amount;
+}
+
+proc source_context_valid(context: ?&SourceContext) -> bool {
+    if context == null  or  context.magic != SOURCE_MAGIC {
+        return false;
+    }
+    return context.state == SourceState.Ready  or
+           context.state == SourceState.Failed;
+}
+
+proc source_fail(context: ?&mut SourceContext, error: SourceError) -> bool {
+    if context != null {
+        let context_value = context?;
+        if context_value.magic != SOURCE_MAGIC { return false; }
+        set context_value.last_error = error;
+        if error != SourceError.None {
+            set context_value.state = SourceState.Failed;
+        }
+    }
+    return false;
+}
+
+proc source_ready(context: ?&mut SourceContext) -> bool {
+    if not source_context_valid(context) {
+        return false;
+    }
+    if context.state != SourceState.Ready {
+        return source_fail(context, SourceError.InvalidState);
+    }
+    return true;
+}
+
+proc source_empty_location() -> SourceLocation {
+    return SourceLocation { source_id: 0, offset: 0, line: 0, column: 0, valid: false };
+}
+
+proc source_empty_slice() -> SourceSlice {
+    return SourceSlice { data: "", length: 0, source_id: 0, begin: 0, end: 0, valid: false };
+}
+
+proc source_empty_span() -> SourceSpan {
+    return SourceSpan { source_id: 0, begin: 0, end: 0, valid: false };
+}
+
+proc source_decode(data: string, length: usize, offset: usize, codepoint: &mut u64, width: &mut usize) -> bool {
+    if offset >= length  or  length > data.length {
+        return false;
+    }
+    let decoded = vitte_unicode_decode_utf8(data, offset, length);
+    if decoded.error != UnicodeError.None  or  decoded.length == 0 {
+        return false;
+    }
+    set *codepoint = decoded.codepoint;
+    set *width = decoded.length;
+    return true;
+}
+
+proc source_validate_bytes(data: string, length: usize) -> bool {
+    if length > data.length {
+        return false;
+    }
+    let mut offset: usize = 0;
+    while offset < length {
+        let mut codepoint: u64 = 0;
+        let mut width: usize = 0;
+        if not source_decode(data, length, offset, &mut codepoint, &mut width) {
+            return false;
+        }
+        set offset += width;
+    }
+    return true;
+}
+
+proc source_build_line_offsets(data: string, length: usize) -> [usize] {
+    let mut line_count: usize = 1;
+    let mut offset: usize = 0;
+
+    while offset < length {
+        let byte: u64 = (data[offset] as u8) as u64;
+        if byte == 13 {
+            if offset + 1 < length  and  data[offset + 1] == '\n' { set offset += 2; }
+            else { set offset += 1; }
+            set line_count += 1;
+            continue;
+        }
+        if byte == 10 {
+            set offset += 1;
+            set line_count += 1;
+            continue;
+        }
+        let mut codepoint: u64 = 0;
+        let mut width: usize = 0;
+        if not source_decode(data, length, offset, &mut codepoint, &mut width) { return []; }
+        set offset += width;
+    }
+
+    let mut offsets: [usize] = [];
+    if not offsets.reserve(line_count) {
+        return [];
+    }
+    offsets.push(0 as usize);
+    set offset = 0;
+    while offset < length {
+        let byte: u64 = (data[offset] as u8) as u64;
+        if byte == 13 {
+            if offset + 1 < length  and  data[offset + 1] == '\n' {
+                set offset += 2;
+            } else {
+                set offset += 1;
+            }
+            if not offsets.push(offset) {
+                return [];
+            }
+            continue;
+        }
+        if byte == 10 {
+            set offset += 1;
+            if not offsets.push(offset) {
+                return [];
+            }
+            continue;
+        }
+        let mut codepoint: u64 = 0;
+        let mut width: usize = 0;
+        if not source_decode(data, length, offset, &mut codepoint, &mut width) {
+            return [];
+        }
+        set offset += width;
+    }
+    return offsets;
+}
+
+proc source_line_content_end(source: &SourceEntry, line_index: usize) -> usize {
+    if line_index >= source.line_count {
+        return 0;
+    }
+    let mut end: usize = source.length;
+    if line_index + 1 < source.line_count {
+        set end = source.line_offsets[line_index + 1];
+    }
+    if end > source.line_offsets[line_index] {
+        if source.data[end - 1] == '\n' {
+            set end -= 1;
+            if end > source.line_offsets[line_index]  and  source.data[end - 1] == '\r' {
+                set end -= 1;
+            }
+        } else if source.data[end - 1] == '\r' {
+            set end -= 1;
+        }
+    }
+    return end;
+}
+
+proc source_line_index_for_offset(source: &SourceEntry, offset: usize) -> usize {
+    let mut low: usize = 0;
+    let mut high: usize = source.line_count;
+    while low < high {
+        let middle: usize = low + (high - low) / 2;
+        if source.line_offsets[middle] <= offset {
+            set low = middle + 1;
+        } else {
+            set high = middle;
+        }
+    }
+    if low == 0 { return 0; }
+    return low - 1;
+}
+
+proc source_compute_column(source: &SourceEntry, line_start: usize, offset: usize, column: &mut usize) -> bool {
+    if line_start > offset  or  offset > source.length {
+        return false;
+    }
+    let mut cursor: usize = line_start;
+    let mut result: usize = 1;
+    while cursor < offset {
+        if source.data[cursor] == '\r'  or  source.data[cursor] == '\n' {
+            break;
+        }
+        let mut codepoint: u64 = 0;
+        let mut width: usize = 0;
+        if not source_decode(source.data, source.length, cursor, &mut codepoint, &mut width) {
+            return false;
+        }
+        if width > offset - cursor {
+            return false;
+        }
+        set cursor += width;
+        set result += 1;
+    }
+    if cursor != offset {
+        return false;
+    }
+    set *column = result;
+    return true;
+}
+
+proc source_hash_bytes(hash: u64, data: string, length: usize) -> u64 {
+    let mut result: u64 = hash;
+    let mut index: usize = 0;
+    while index < length {
+        set result ^= (data[index] as u8) as u64;
+        set result *= SOURCE_FNV_PRIME;
+        set index += 1;
+    }
+    return result;
+}
+
+proc source_hash_u64(hash: u64, value: u64) -> u64 {
+    let mut result: u64 = hash;
+    let mut shift: u32 = 0;
+    while shift < 64 {
+        set result ^= (value >> shift) & 0xff;
+        set result *= SOURCE_FNV_PRIME;
+        set shift += 8;
+    }
+    return result;
+}
+
+proc source_hash_size(hash: u64, value: usize) -> u64 {
+    return source_hash_u64(hash, value as u64);
+}
+
+export proc vitte_source_error_name(error: SourceError) -> string {
+    match error {
+        case SourceError.None => return "none";
+        case SourceError.InvalidContext => return "invalid-context";
+        case SourceError.InvalidArgument => return "invalid-argument";
+        case SourceError.InvalidState => return "invalid-state";
+        case SourceError.OutOfMemory => return "out-of-memory";
+        case SourceError.Overflow => return "overflow";
+        case SourceError.SourceLimit => return "source-limit";
+        case SourceError.SourceTooLarge => return "source-too-large";
+        case SourceError.DuplicatePath => return "duplicate-path";
+        case SourceError.InvalidUtf8 => return "invalid-utf8";
+        case SourceError.InvalidSource => return "invalid-source";
+        case SourceError.InvalidSourceId => return "invalid-source-id";
+        case SourceError.InvalidOffset => return "invalid-offset";
+        case SourceError.InvalidLine => return "invalid-line";
+        case SourceError.InvalidColumn => return "invalid-column";
+        case SourceError.InvalidSpan => return "invalid-span";
+        case SourceError.Validation => return "validation";
+        case SourceError.Corruption => return "corruption";
+        case SourceError.Internal => return "internal";
+        case SourceError.Count => return "count";
+    }
+}
+
+export proc vitte_source_state_name(state: SourceState) -> string {
+    match state {
+        case SourceState.Invalid => return "invalid";
+        case SourceState.Ready => return "ready";
+        case SourceState.Failed => return "failed";
+        case SourceState.Destroyed => return "destroyed";
+        case SourceState.Count => return "count";
+    }
+}
+
+export proc vitte_source_init(context: &mut SourceContext) -> bool {
+    set *context = SourceContext {
+        magic: SOURCE_MAGIC,
+        state: SourceState.Ready,
+        last_error: SourceError.None,
+        sources: [],
+        source_count: 0,
+        source_capacity: 0,
+        max_sources: SOURCE_DEFAULT_MAX_SOURCES,
+        max_source_bytes: SOURCE_DEFAULT_MAX_BYTES,
+        generation: 1,
+        stats: SourceStats {}
+    };
+    if not context.sources.reserve(8) {
+        set context.stats.allocation_failures = 1;
+        set context.state = SourceState.Failed;
+        set context.last_error = SourceError.OutOfMemory;
+        return false;
+    }
+    set context.stats.allocations = 1;
+    set context.source_capacity = 8;
+    return true;
+}
+
+export proc vitte_source_reset(context: &mut SourceContext) -> bool {
+    if not source_context_valid(context) {
+        return false;
+    }
+    if context.generation < 18446744073709551615 {
+        set context.generation += 1;
+    }
+    context.sources.clear();
+    set context.source_count = 0;
+    set context.state = SourceState.Ready;
+    set context.last_error = SourceError.None;
+    set context.stats.resets = source_stats_increment(context.stats.resets, 1);
+    return true;
+}
+
+export proc vitte_source_destroy(context: &mut SourceContext) {
+    if context.magic == SOURCE_DEAD_MAGIC  and  context.state == SourceState.Destroyed {
+        return;
+    }
+    set context.sources = [];
+    set context.source_count = 0;
+    set context.source_capacity = 0;
+    set context.magic = SOURCE_DEAD_MAGIC;
+    set context.state = SourceState.Destroyed;
+    set context.last_error = SourceError.None;
+    set context.max_sources = 0;
+    set context.max_source_bytes = 0;
+    set context.generation = 0;
+    set context.stats = SourceStats {};
+}
+
+export proc vitte_source_is_valid(context: ?&SourceContext) -> bool {
+    return source_context_valid(context);
+}
+
+export proc vitte_source_last_error(context: ?&SourceContext) -> SourceError {
+    if not source_context_valid(context) {
+        return SourceError.InvalidContext;
+    }
+    return context.last_error;
+}
+
+export proc vitte_source_generation(context: ?&SourceContext) -> u64 {
+    if not source_context_valid(context) {
+        return 0;
+    }
+    return context.generation;
+}
+
+export proc vitte_source_set_limits(context: &mut SourceContext, max_sources: usize, max_source_bytes: usize) -> bool {
+    if not source_ready(context) { return false; }
+    if max_sources == 0  or  max_source_bytes == 0  or  max_sources < context.source_count {
+        set context.last_error = SourceError.InvalidArgument;
+        return false;
+    }
+    set context.max_sources = max_sources;
+    set context.max_source_bytes = max_source_bytes;
+    set context.last_error = SourceError.None;
+    return true;
+}
+
+export proc vitte_source_add(context: &mut SourceContext, name: string, path: string, data: string, length: usize, out_source_id: ?&mut SourceId) -> bool {
+    if out_source_id != null { let output = out_source_id?; set *output = 0; }
+    if not source_ready(context) { return false; }
+    let input_data: string = data;
+    if length > input_data.length {
+        set context.last_error = SourceError.InvalidArgument;
+        return false;
+    }
+    if length > context.max_source_bytes {
+        return source_fail(context, SourceError.SourceTooLarge);
+    }
+    if context.source_count >= context.max_sources  or
+       context.source_count as u64 >= SOURCE_ID_MAX {
+        return source_fail(context, SourceError.SourceLimit);
+    }
+    let actual_name: string = name;
+    let actual_path: string = path;
+    if actual_path.length != 0 {
+        let mut index: usize = 0;
+        while index < context.source_count {
+            let existing = &context.sources[index];
+            if existing.path == actual_path {
+                set context.last_error = SourceError.DuplicatePath;
+                return false;
+            }
+            set index += 1;
+        }
+    }
+    let source_data: string = input_data.slice(0, length);
+    if not source_validate_bytes(source_data, length) {
+        set context.last_error = SourceError.InvalidUtf8;
+        return false;
+    }
+    let line_offsets = source_build_line_offsets(source_data, length);
+    if line_offsets.length == 0 {
+        set context.last_error = SourceError.OutOfMemory;
+        return false;
+    }
+    let required: usize = context.source_count + 1;
+    if required > context.source_capacity {
+        let mut capacity: usize = if context.source_capacity == 0 { 8 as usize } else { context.source_capacity };
+        while capacity < required {
+            if capacity > SOURCE_SIZE_MAX_VALUE / 2 {
+                return source_fail(context, SourceError.Overflow);
+            }
+            set capacity *= 2;
+        }
+        if not context.sources.reserve(capacity) {
+            context.stats.allocation_failures = source_stats_increment(context.stats.allocation_failures, 1);
+            return source_fail(context, SourceError.OutOfMemory);
+        }
+        if context.source_capacity != 0 {
+            set context.stats.reallocations = source_stats_increment(context.stats.reallocations, 1);
+        } else {
+            set context.stats.allocations = source_stats_increment(context.stats.allocations, 1);
+        }
+        set context.source_capacity = capacity;
+    }
+    let source_entry: SourceEntry = SourceEntry {
+        id: (context.source_count + 1) as u64,
+        name: string.from(actual_name),
+        name_length: actual_name.length,
+        path: string.from(actual_path),
+        path_length: actual_path.length,
+        data: source_data,
+        length: length,
+        line_count: line_offsets.length,
+        line_offsets: line_offsets
+    };
+    if not context.sources.push(source_entry) {
+        context.stats.allocation_failures = source_stats_increment(context.stats.allocation_failures, 1);
+        return source_fail(context, SourceError.OutOfMemory);
+    }
+    set context.source_count += 1;
+    set context.stats.sources_added = source_stats_increment(context.stats.sources_added, 1);
+    set context.stats.allocations = source_stats_increment(context.stats.allocations, 4);
+    set context.stats.bytes_added = source_stats_increment(context.stats.bytes_added, length as u64);
+    set context.stats.lines_indexed = source_stats_increment(context.stats.lines_indexed, source_entry.line_count as u64);
+    set context.last_error = SourceError.None;
+    if out_source_id != null { let output = out_source_id?; set *output = source_entry.id; }
+    return true;
+}
+
+proc source_cstr_length(data: string, maximum: usize) -> usize {
+    let mut length: usize = 0;
+    while length < data.length  and  data[length] != '\0' {
+        if length >= maximum {
+            if maximum == SOURCE_SIZE_MAX_VALUE { return maximum; }
+            return maximum + 1;
+        }
+        set length += 1;
+    }
+    return length;
+}
+
+export proc vitte_source_add_cstr(context: &mut SourceContext, name: string, path: string, data: string, out_source_id: ?&mut SourceId) -> bool {
+    if not source_ready(context) { return false; }
+    let length = source_cstr_length(data, context.max_source_bytes);
+    return vitte_source_add(context, name, path, data, length, out_source_id);
+}
+
+export proc vitte_source_get(context: ?&SourceContext, source_id: SourceId) -> ?&SourceEntry {
+    if not source_context_valid(context)  or  source_id == 0  or  source_id > SOURCE_ID_MAX {
+        return null;
+    }
+    let context_value = context?;
+    let index: usize = (source_id - 1) as usize;
+    if index >= context_value.source_count  or  index >= context_value.sources.length {
+        return null;
+    }
+    if context_value.sources[index].id != source_id {
+        return null;
+    }
+    return &context_value.sources[index];
+}
+
+export proc vitte_source_find_path(context: ?&SourceContext, path: string) -> ?&SourceEntry {
+    if not source_context_valid(context)  or  path.length == 0 { return null; }
+    let context_value = context?;
+    let mut index: usize = 0;
+    while index < context_value.source_count {
+        if context_value.sources[index].path == path { return &context_value.sources[index]; }
+        set index += 1;
+    }
+    return null;
+}
+
+export proc vitte_source_find_name(context: ?&SourceContext, name: string) -> ?&SourceEntry {
+    if not source_context_valid(context) { return null; }
+    let context_value = context?;
+    let mut index: usize = 0;
+    while index < context_value.source_count {
+        if context_value.sources[index].name == name { return &context_value.sources[index]; }
+        set index += 1;
+    }
+    return null;
+}
+
+export proc vitte_source_location_from_offset(context: ?&SourceContext, source_id: SourceId, offset: usize, location: ?&mut SourceLocation) -> bool {
+    if location == null { return false; }
+    let output = location?;
+    set *output = source_empty_location();
+    let source = vitte_source_get(context, source_id);
+    if source == null { return false; }
+    let source_entry = source?;
+    if offset > source_entry.length { return false; }
+    let line_index = source_line_index_for_offset(source_entry, offset);
+    if line_index >= source_entry.line_count { return false; }
+    let mut column: usize = 0;
+    if not source_compute_column(source_entry, source_entry.line_offsets[line_index], offset, &mut column) { return false; }
+    set *output = SourceLocation { source_id: source_id, offset: offset, line: line_index + 1, column: column, valid: true };
+    return true;
+}
+
+export proc vitte_source_offset_from_location(context: ?&SourceContext, source_id: SourceId, line: usize, column: usize, offset: ?&mut usize) -> bool {
+    if offset == null { return false; }
+    let output = offset?;
+    let source = vitte_source_get(context, source_id);
+    if source == null  or  line == 0  or  column == 0 { return false; }
+    let source_entry = source?;
+    let line_index: usize = line - 1;
+    if line_index >= source_entry.line_count { return false; }
+    let mut cursor: usize = source_entry.line_offsets[line_index];
+    let content_end = source_line_content_end(source_entry, line_index);
+    let mut current_column: usize = 1;
+    while current_column < column  and  cursor < content_end {
+        let mut codepoint: u64 = 0;
+        let mut width: usize = 0;
+        if not source_decode(source_entry.data, source_entry.length, cursor, &mut codepoint, &mut width) { return false; }
+        set cursor += width;
+        set current_column += 1;
+    }
+    if current_column != column { return false; }
+    set *output = cursor;
+    return true;
+}
+
+export proc vitte_source_get_line(context: ?&SourceContext, source_id: SourceId, line: usize, slice: ?&mut SourceSlice) -> bool {
+    if slice == null { return false; }
+    let output = slice?;
+    set *output = source_empty_slice();
+    let source = vitte_source_get(context, source_id);
+    if source == null  or  line == 0 { return false; }
+    let source_entry = source?;
+    if line > source_entry.line_count { return false; }
+    let line_index: usize = line - 1;
+    let begin: usize = source_entry.line_offsets[line_index];
+    let end: usize = source_line_content_end(source_entry, line_index);
+    set *output = SourceSlice { data: source_entry.data.slice(begin, end), length: end - begin, source_id: source_id, begin: begin, end: end, valid: true };
+    return true;
+}
+
+export proc vitte_source_slice(context: ?&SourceContext, source_id: SourceId, begin: usize, end: usize, slice: ?&mut SourceSlice) -> bool {
+    if slice == null { return false; }
+    let output = slice?;
+    set *output = source_empty_slice();
+    let source = vitte_source_get(context, source_id);
+    if source == null  or  begin > end { return false; }
+    let source_entry = source?;
+    if end > source_entry.length { return false; }
+    set *output = SourceSlice { data: source_entry.data.slice(begin, end), length: end - begin, source_id: source_id, begin: begin, end: end, valid: true };
+    return true;
+}
+
+export proc vitte_source_make_span(context: ?&SourceContext, source_id: SourceId, begin: usize, end: usize, span: ?&mut SourceSpan) -> bool {
+    if span == null { return false; }
+    let output = span?;
+    set *output = source_empty_span();
+    let source = vitte_source_get(context, source_id);
+    if source == null  or  begin > end { return false; }
+    let source_entry = source?;
+    if end > source_entry.length { return false; }
+    set *output = SourceSpan { source_id: source_id, begin: begin, end: end, valid: true };
+    return true;
+}
+
+export proc vitte_source_span_locations(context: ?&SourceContext, span: SourceSpan, begin_location: ?&mut SourceLocation, end_location: ?&mut SourceLocation) -> bool {
+    if not span.valid  or  begin_location == null  or  end_location == null { return false; }
+    let begin_output = begin_location?;
+    let end_output = end_location?;
+    if not vitte_source_location_from_offset(context, span.source_id, span.begin, begin_output) { return false; }
+    if not vitte_source_location_from_offset(context, span.source_id, span.end, end_output) {
+        set *begin_output = source_empty_location();
+        return false;
+    }
+    return true;
+}
+
+export proc vitte_source_span_slice(context: ?&SourceContext, span: SourceSpan, slice: ?&mut SourceSlice) -> bool {
+    if not span.valid { if slice != null { let output = slice?; set *output = source_empty_slice(); } return false; }
+    return vitte_source_slice(context, span.source_id, span.begin, span.end, slice);
+}
+
+export proc vitte_source_validate_utf8(context: ?&SourceContext, source_id: SourceId) -> bool {
+    let source = vitte_source_get(context, source_id);
+    if source == null { return false; }
+    return source_validate_bytes(source.data, source.length);
+}
+
+export proc vitte_source_codepoint_at(context: ?&SourceContext, source_id: SourceId, offset: usize, codepoint: ?&mut u64, width: ?&mut usize) -> bool {
+    if codepoint == null  or  width == null { return false; }
+    let codepoint_output = codepoint?;
+    let width_output = width?;
+    set *codepoint_output = 0 as u64;
+    set *width_output = 0 as usize;
+    let source = vitte_source_get(context, source_id);
+    if source == null { return false; }
+    let source_entry = source?;
+    return source_decode(source_entry.data, source_entry.length, offset, codepoint_output, width_output);
+}
+
+export proc vitte_source_validate(context: &mut SourceContext) -> bool {
+    if not source_context_valid(context) { return false; }
+    set context.stats.validation_runs = source_stats_increment(context.stats.validation_runs, 1);
+    let mut failure: bool = false;
+    if context.source_count > context.source_capacity  or
+       context.source_count > context.sources.length  or
+       context.source_count > context.max_sources {
+        set failure = true;
+    }
+    let mut index: usize = 0;
+    while index < context.source_count  and  not failure {
+        let source = &context.sources[index];
+        if source.id != (index + 1) as u64  or
+           source.name_length != source.name.length  or
+           source.path_length != source.path.length  or
+           source.length != source.data.length  or
+           source.length > context.max_source_bytes  or
+           source.line_count != source.line_offsets.length  or
+           source.line_count == 0  or  source.line_offsets[0] != 0  or
+           not source_validate_bytes(source.data, source.length) {
+            set failure = true;
+            break;
+        }
+        let mut line_index: usize = 0;
+        while line_index < source.line_count {
+            if source.line_offsets[line_index] > source.length  or
+               (line_index != 0  and  source.line_offsets[line_index] <= source.line_offsets[line_index - 1]) {
+                set failure = true;
+                break;
+            }
+            set line_index += 1;
+        }
+        let mut other: usize = index + 1;
+        while other < context.source_count  and  not failure {
+            if source.path_length != 0  and  source.path == context.sources[other].path {
+                set failure = true;
+            }
+            set other += 1;
+        }
+        set index += 1;
+    }
+    if failure {
+        set context.stats.validation_failures = source_stats_increment(context.stats.validation_failures, 1);
+        return source_fail(context, SourceError.Validation);
+    }
+    set context.last_error = SourceError.None;
+    return true;
+}
+
+export proc vitte_source_fingerprint(context: &mut SourceContext) -> u64 {
+    if not source_context_valid(context) { return 0; }
+    set context.stats.hash_runs = source_stats_increment(context.stats.hash_runs, 1);
+    let mut hash: u64 = source_hash_size(SOURCE_FNV_OFFSET, context.source_count);
+    let mut index: usize = 0;
+    while index < context.source_count {
+        let source = &context.sources[index];
+        set hash = source_hash_u64(hash, source.id);
+        set hash = source_hash_size(hash, source.name_length);
+        set hash = source_hash_bytes(hash, source.name, source.name_length);
+        set hash = source_hash_size(hash, source.path_length);
+        set hash = source_hash_bytes(hash, source.path, source.path_length);
+        set hash = source_hash_size(hash, source.length);
+        set hash = source_hash_bytes(hash, source.data, source.length);
+        set hash = source_hash_size(hash, source.line_count);
+        set index += 1;
+    }
+    return hash;
+}
+
+export proc vitte_source_stats(context: ?&SourceContext) -> SourceStats {
+    if not source_context_valid(context) { return SourceStats {}; }
+    return context.stats;
+}
+
+export proc vitte_source_translation_unit_anchor() {}

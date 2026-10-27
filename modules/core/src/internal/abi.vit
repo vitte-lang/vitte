@@ -1,0 +1,25 @@
+/// Modèles de conventions d'appel et de représentation ABI.
+space core::internal::abi;
+
+export pick CallingConvention { Native, C, System }
+export pick Endianness { Unknown, Little, Big }
+
+export form AbiDescriptor {
+    pointer_width: usize,
+    size_width: usize,
+    calling_convention: CallingConvention,
+    endianness: Endianness,
+}
+
+export proc native_abi() -> AbiDescriptor {
+    return AbiDescriptor {
+        pointer_width: sizeof(*const u8) * 8,
+        size_width: sizeof(usize) * 8,
+        calling_convention: CallingConvention.Native,
+        endianness: Endianness.Unknown,
+    };
+}
+
+export proc abi_is_valid(value: &AbiDescriptor) -> bool {
+    return value.pointer_width != 0 && value.size_width != 0;
+}

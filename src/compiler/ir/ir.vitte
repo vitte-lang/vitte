@@ -1,0 +1,3040 @@
+/// Vitte declarations ported from `src/bootstrap/ir/ir.h`.
+space compiler::ir::ir;
+
+use compiler::hir::hir::{
+    HIR,
+    HIRBinaryOperator,
+    HIRLiteralKind,
+    HIRMatchArm,
+    HIRNode,
+    HIRNodeId,
+    HIRNodeKind,
+    HIRScope,
+    HIRSpan,
+    HIRState,
+    HIRString,
+    HIRSymbol,
+    HIRSymbolId,
+    HIRSymbolKind,
+    HIRType,
+    HIRTypeId,
+    HIRTypeKind,
+    HIRUnaryOperator,
+    vitte_hir_get_node,
+    vitte_hir_get_scope,
+    vitte_hir_get_string,
+    vitte_hir_get_symbol,
+    vitte_hir_get_type,
+    vitte_hir_is_valid
+};
+use vitte::core::memory::{allocate, copy, deallocate, fill};
+
+const IR_MAGIC: u64 = 6217593481478099489;
+const IR_DEAD_MAGIC: u64 = 4919409929515835681;
+const IR_FNV_OFFSET: u64 = 14695981039346656037;
+const IR_FNV_PRIME: u64 = 1099511628211;
+const IR_U64_MAX: u64 = 18446744073709551615;
+const IR_INITIAL_CAPACITY: usize = 16;
+const IR_MAX_RECURSION_DEPTH: usize = 4096;
+
+export pick IRError {
+    None,
+    InvalidArgument,
+    InvalidContext,
+    InvalidState,
+    InvalidString,
+    InvalidType,
+    InvalidValue,
+    InvalidInstruction,
+    InvalidBlock,
+    InvalidFunction,
+    TypeMismatch,
+    Duplicate,
+    TerminatedBlock,
+    MissingTerminator,
+    InvalidCfg,
+    InvalidPhi,
+    Limit,
+    Overflow,
+    OutOfMemory,
+    Validation,
+    Corruption,
+    Unsupported,
+    Internal,
+    Count
+}
+
+export pick IRState {
+    Invalid,
+    Building,
+    Sealed,
+    Failed,
+    Destroyed,
+    Count
+}
+
+export pick IRTypeKind {
+    Invalid,
+    Void,
+    Bool,
+    I8,
+    I16,
+    I32,
+    I64,
+    U8,
+    U16,
+    U32,
+    U64,
+    F32,
+    F64,
+    Char,
+    Pointer,
+    Array,
+    Slice,
+    Function,
+    Struct,
+    Opaque,
+    Pick,
+    Count
+}
+
+export pick IRValueKind {
+    Invalid,
+    Undef,
+    Poison,
+    Null,
+    ConstantBool,
+    ConstantInteger,
+    ConstantFloat,
+    ConstantString,
+    Parameter,
+    Instruction,
+    Function,
+    Count
+}
+
+export pick IRLinkage {
+    Internal,
+    External,
+    Weak,
+    Private,
+    Count
+}
+
+export pick IRCallingConvention {
+    Default,
+    C,
+    Sysv64,
+    Win64,
+    Count
+}
+
+export pick IROpcode {
+    Invalid,
+    Nop,
+    Add,
+    Sub,
+    Mul,
+    Sdiv,
+    Udiv,
+    Srem,
+    Urem,
+    Fadd,
+    Fsub,
+    Fmul,
+    Fdiv,
+    Frem,
+    Neg,
+    Fneg,
+    And,
+    Or,
+    Xor,
+    Not,
+    Shl,
+    Lshr,
+    Ashr,
+    IcmpEq,
+    IcmpNe,
+    IcmpSlt,
+    IcmpSle,
+    IcmpSgt,
+    IcmpSge,
+    IcmpUlt,
+    IcmpUle,
+    IcmpUgt,
+    IcmpUge,
+    FcmpEq,
+    FcmpNe,
+    FcmpLt,
+    FcmpLe,
+    FcmpGt,
+    FcmpGe,
+    Trunc,
+    Zext,
+    Sext,
+    FpTrunc,
+    FpExt,
+    SiToFp,
+    UiToFp,
+    FpToSi,
+    FpToUi,
+    PtrToInt,
+    IntToPtr,
+    Bitcast,
+    Alloca,
+    Load,
+    Store,
+    Gep,
+    ArrayMake,
+    StructMake,
+    StructField,
+    StringConcat,
+    StringLength,
+    StringSlice,
+    SliceMake,
+    SliceData,
+    SliceLength,
+    Phi,
+    Select,
+    Call,
+    Br,
+    CondBr,
+    Switch,
+    Return,
+    Unreachable,
+    PickMake,
+    PickTag,
+    PickPayload,
+    Count
+}
+
+export form IRSpan {
+    file_id: u32,
+    begin: usize,
+    end: usize,
+    valid: bool
+}
+
+export form IRString {
+    id: IRStringId,
+    data: string,
+    length: usize,
+    hash: u64
+}
+
+export form IRTypeDesc {
+    kind: IRTypeKind,
+    element_type: IRTypeId,
+    array_length: usize,
+    parameter_types: *IRTypeId,
+    parameter_count: usize,
+    field_types: *IRTypeId,
+    field_count: usize,
+    return_type: IRTypeId,
+    is_variadic: bool,
+    name: IRStringId
+}
+
+export form IRType {
+    id: IRTypeId,
+    kind: IRTypeKind,
+    element_type: IRTypeId,
+    array_length: usize,
+    parameter_types: *mut IRTypeId,
+    parameter_count: usize,
+    field_types: *mut IRTypeId,
+    field_count: usize,
+    return_type: IRTypeId,
+    is_variadic: bool,
+    name: IRStringId
+}
+
+export form IRValueDesc {
+    kind: IRValueKind,
+    type_: IRTypeId,
+    name: IRStringId,
+    span: IRSpan,
+    integer_value: u64,
+    float_value: f64,
+    bool_value: bool,
+    string_value: IRStringId,
+    function: IRFunctionId,
+    instruction: IRInstructionId,
+    parameter_index: usize
+}
+
+export form IRValue {
+    id: IRValueId,
+    kind: IRValueKind,
+    type_: IRTypeId,
+    name: IRStringId,
+    span: IRSpan,
+    integer_value: u64,
+    float_value: f64,
+    bool_value: bool,
+    string_value: IRStringId,
+    function: IRFunctionId,
+    instruction: IRInstructionId,
+    parameter_index: usize,
+    use_count: u64
+}
+
+export form IRPhiIncoming {
+    block: IRBlockId,
+    value: IRValueId
+}
+
+export form IRInstructionDesc {
+    opcode: IROpcode,
+    block: IRBlockId,
+    result_type: IRTypeId,
+    result_name: IRStringId,
+    operands: *IRValueId,
+    operand_count: usize,
+    span: IRSpan
+}
+
+export form IRInstruction {
+    id: IRInstructionId,
+    opcode: IROpcode,
+    block: IRBlockId,
+    result: IRValueId,
+    result_type: IRTypeId,
+    operands: *mut IRValueId,
+    operand_count: usize,
+    operand_capacity: usize,
+    phi_incomings: *mut IRPhiIncoming,
+    phi_count: usize,
+    phi_capacity: usize,
+    target_true: IRBlockId,
+    target_false: IRBlockId,
+    span: IRSpan
+}
+
+export form IRBlock {
+    id: IRBlockId,
+    function: IRFunctionId,
+    name: IRStringId,
+    span: IRSpan,
+    instructions: *mut IRInstructionId,
+    instruction_count: usize,
+    instruction_capacity: usize,
+    predecessors: *mut IRBlockId,
+    predecessor_count: usize,
+    predecessor_capacity: usize,
+    successors: *mut IRBlockId,
+    successor_count: usize,
+    successor_capacity: usize,
+    terminated: bool,
+    terminator: IRInstructionId
+}
+
+export form IRFunctionDesc {
+    name: IRStringId,
+    type_: IRTypeId,
+    linkage: IRLinkage,
+    calling_convention: IRCallingConvention,
+    is_declaration: bool,
+    is_variadic: bool,
+    span: IRSpan
+}
+
+export form IRFunction {
+    id: IRFunctionId,
+    name: IRStringId,
+    type_: IRTypeId,
+    linkage: IRLinkage,
+    calling_convention: IRCallingConvention,
+    is_declaration: bool,
+    is_variadic: bool,
+    span: IRSpan,
+    parameters: *mut IRValueId,
+    parameter_count: usize,
+    parameter_capacity: usize,
+    blocks: *mut IRBlockId,
+    block_count: usize,
+    block_capacity: usize,
+    entry_block: IRBlockId
+}
+
+export form IRStats {
+    strings_interned: u64,
+    types_created: u64,
+    values_created: u64,
+    instructions_created: u64,
+    blocks_created: u64,
+    functions_created: u64,
+    cfg_edges: u64,
+    phi_incomings: u64,
+    validation_runs: u64,
+    validation_failures: u64,
+    hash_runs: u64,
+    allocations: u64,
+    reallocations: u64,
+    allocation_failures: u64
+}
+
+export form IRContext {
+    magic: u64,
+    state: IRState,
+    last_error: IRError,
+    strings: *mut IRString,
+    string_count: usize,
+    string_capacity: usize,
+    string_bytes: usize,
+    types: *mut IRType,
+    type_count: usize,
+    type_capacity: usize,
+    values: *mut IRValue,
+    value_count: usize,
+    value_capacity: usize,
+    instructions: *mut IRInstruction,
+    instruction_count: usize,
+    instruction_capacity: usize,
+    blocks: *mut IRBlock,
+    block_count: usize,
+    block_capacity: usize,
+    functions: *mut IRFunction,
+    function_count: usize,
+    function_capacity: usize,
+    max_types: usize,
+    max_values: usize,
+    max_instructions: usize,
+    max_blocks: usize,
+    max_functions: usize,
+    max_string_bytes: usize,
+    stats: IRStats,
+    generation: u64
+}
+
+form IRLowerSymbolValue {
+    symbol: HIRSymbolId,
+    value: IRValueId,
+    is_address: bool
+}
+
+form IRLowerFunction {
+    symbol: HIRSymbolId,
+    node: HIRNodeId,
+    function: IRFunctionId,
+    function_value: IRValueId,
+    return_type: IRTypeId
+}
+
+form IRLowerLoop {
+    break_target: IRBlockId,
+    continue_target: IRBlockId
+}
+
+form IRLowerContext {
+    ir: *mut IRContext,
+    hir: *const HIR,
+    types: *mut IRTypeId,
+    type_count: usize,
+    symbols: *mut IRLowerSymbolValue,
+    symbol_count: usize,
+    symbol_capacity: usize,
+    functions: *mut IRLowerFunction,
+    function_count: usize,
+    function_capacity: usize,
+    loops: *mut IRLowerLoop,
+    loop_count: usize,
+    loop_capacity: usize
+}
+
+export type IRId = u64;
+
+export type IRStringId = u64;
+
+export type IRTypeId = u64;
+
+export type IRValueId = u64;
+
+export type IRInstructionId = u64;
+
+export type IRBlockId = u64;
+
+export type IRFunctionId = u64;
+
+proc ir_add_stat(value: *mut u64, increment: u64) {
+    if value == null { return; }
+    if *value > IR_U64_MAX - increment { set *value = IR_U64_MAX; }
+    else { set *value += increment; }
+}
+
+proc ir_fail(context: *mut IRContext, error: IRError) -> bool {
+    if context != null and (*context).magic == IR_MAGIC {
+        set (*context).last_error = error;
+    }
+    return false;
+}
+
+proc ir_fail_id(context: *mut IRContext, error: IRError) -> u64 {
+    ir_fail(context, error);
+    return 0;
+}
+
+proc ir_size_add(left: usize, right: usize, result: *mut usize) -> bool {
+    if result == null or left > usize.MAX - right { return false; }
+    set *result = left + right;
+    return true;
+}
+
+proc ir_size_mul(left: usize, right: usize, result: *mut usize) -> bool {
+    if result == null or (right != 0 and left > usize.MAX / right) { return false; }
+    set *result = left * right;
+    return true;
+}
+
+proc ir_hash_byte(hash: u64, byte: u8) -> u64 {
+    return (hash ^ byte as u64) * IR_FNV_PRIME;
+}
+
+proc ir_hash_u64(hash: u64, value: u64) -> u64 {
+    let mut result = hash;
+    let mut index: usize = 0;
+    while index < 8 {
+        set result = ir_hash_byte(result, ((value >> ((index * 8) as u32)) & 255) as u8);
+        set index += 1;
+    }
+    return result;
+}
+
+proc ir_hash_bytes(data: *const u8, length: usize) -> u64 {
+    let mut result = ir_hash_u64(IR_FNV_OFFSET, length as u64);
+    if data == null and length != 0 { return result; }
+    let mut index: usize = 0;
+    while index < length {
+        set result = ir_hash_byte(result, data[index]);
+        set index += 1;
+    }
+    return result;
+}
+
+proc ir_reserve_array(
+    context: *mut IRContext,
+    memory: *mut u8,
+    capacity: *mut usize,
+    used_count: usize,
+    required: usize,
+    element_size: usize,
+    maximum: usize
+) -> *mut u8 {
+    let mut storage = memory;
+    if not ir_reserve(context, &mut storage, capacity, used_count, required, element_size, maximum) { return null; }
+    return storage;
+}
+
+proc ir_reserve(
+    context: *mut IRContext,
+    memory: *mut *mut u8,
+    capacity: *mut usize,
+    used_count: usize,
+    required: usize,
+    element_size: usize,
+    maximum: usize
+) -> bool {
+    if context == null or memory == null or capacity == null or element_size == 0 { return false; }
+    if required <= *capacity { return true; }
+    if required > maximum { return ir_fail(context, IRError.Limit); }
+    let mut next_capacity: usize = if *capacity == 0 { IR_INITIAL_CAPACITY } else { *capacity };
+    while next_capacity < required {
+        if next_capacity > usize.MAX / 2 { set next_capacity = required; break; }
+        let doubled = next_capacity * 2;
+        if doubled > maximum { set next_capacity = maximum; break; }
+        set next_capacity = doubled;
+    }
+    let mut allocation_size: usize = 0;
+    let mut used_size: usize = 0;
+    if next_capacity < required or not ir_size_mul(next_capacity, element_size, &mut allocation_size) or
+       not ir_size_mul(used_count, element_size, &mut used_size) {
+        return ir_fail(context, IRError.Overflow);
+    }
+    let replacement = allocate(allocation_size);
+    if replacement == null {
+        ir_add_stat(&mut (*context).stats.allocation_failures, 1);
+        return ir_fail(context, IRError.OutOfMemory);
+    }
+    if used_size != 0 and (*memory == null or not copy(replacement, (*memory) as *const u8, used_size)) {
+        deallocate(replacement);
+        return ir_fail(context, IRError.OutOfMemory);
+    }
+    if *memory == null { ir_add_stat(&mut (*context).stats.allocations, 1); }
+    else {
+        ir_add_stat(&mut (*context).stats.reallocations, 1);
+        deallocate(*memory);
+    }
+    set *memory = replacement;
+    set *capacity = next_capacity;
+    return true;
+}
+
+proc ir_id_exists(id: u64, count: usize) -> bool {
+    return id != 0 and id <= count as u64;
+}
+
+proc ir_is_integer(kind: IRTypeKind) -> bool {
+    return kind >= IRTypeKind.I8 and kind <= IRTypeKind.U64;
+}
+
+proc ir_is_float(kind: IRTypeKind) -> bool {
+    return kind == IRTypeKind.F32 or kind == IRTypeKind.F64;
+}
+
+proc ir_free_storage(context: *mut IRContext) {
+    if context == null { return; }
+    let mut index: usize = 0;
+    while index < (*context).string_count {
+        let data: string = (*context).strings[index].data;
+        deallocate(data.as_bytes().as_ptr() as *mut u8);
+        set index += 1;
+    }
+    set index = 0;
+    while index < (*context).type_count {
+        deallocate((*context).types[index].parameter_types as *mut u8);
+        deallocate((*context).types[index].field_types as *mut u8);
+        set index += 1;
+    }
+    set index = 0;
+    while index < (*context).instruction_count {
+        deallocate((*context).instructions[index].operands as *mut u8);
+        deallocate((*context).instructions[index].phi_incomings as *mut u8);
+        set index += 1;
+    }
+    set index = 0;
+    while index < (*context).block_count {
+        deallocate((*context).blocks[index].instructions as *mut u8);
+        deallocate((*context).blocks[index].predecessors as *mut u8);
+        deallocate((*context).blocks[index].successors as *mut u8);
+        set index += 1;
+    }
+    set index = 0;
+    while index < (*context).function_count {
+        deallocate((*context).functions[index].parameters as *mut u8);
+        deallocate((*context).functions[index].blocks as *mut u8);
+        set index += 1;
+    }
+    deallocate((*context).strings as *mut u8);
+    deallocate((*context).types as *mut u8);
+    deallocate((*context).values as *mut u8);
+    deallocate((*context).instructions as *mut u8);
+    deallocate((*context).blocks as *mut u8);
+    deallocate((*context).functions as *mut u8);
+}
+
+export proc vitte_ir_error_name(error: IRError) -> string {
+    match error {
+        case IRError.None => return "none";
+        case IRError.InvalidArgument => return "invalid_argument";
+        case IRError.InvalidContext => return "invalid_context";
+        case IRError.InvalidState => return "invalid_state";
+        case IRError.InvalidString => return "invalid_string";
+        case IRError.InvalidType => return "invalid_type";
+        case IRError.InvalidValue => return "invalid_value";
+        case IRError.InvalidInstruction => return "invalid_instruction";
+        case IRError.InvalidBlock => return "invalid_block";
+        case IRError.InvalidFunction => return "invalid_function";
+        case IRError.TypeMismatch => return "type_mismatch";
+        case IRError.Duplicate => return "duplicate";
+        case IRError.TerminatedBlock => return "terminated_block";
+        case IRError.MissingTerminator => return "missing_terminator";
+        case IRError.InvalidCfg => return "invalid_cfg";
+        case IRError.InvalidPhi => return "invalid_phi";
+        case IRError.Limit => return "limit";
+        case IRError.Overflow => return "overflow";
+        case IRError.OutOfMemory => return "out_of_memory";
+        case IRError.Validation => return "validation";
+        case IRError.Corruption => return "corruption";
+        case IRError.Unsupported => return "unsupported";
+        case IRError.Internal => return "internal";
+        case IRError.Count => return "count";
+    }
+    return "unknown";
+}
+
+export proc vitte_ir_state_name(state: IRState) -> string {
+    match state {
+        case IRState.Invalid => return "invalid";
+        case IRState.Building => return "building";
+        case IRState.Sealed => return "sealed";
+        case IRState.Failed => return "failed";
+        case IRState.Destroyed => return "destroyed";
+        case IRState.Count => return "count";
+    }
+    return "unknown";
+}
+
+export proc vitte_ir_type_kind_name(kind: IRTypeKind) -> string {
+    match kind {
+        case IRTypeKind.Invalid => return "invalid";
+        case IRTypeKind.Void => return "void";
+        case IRTypeKind.Bool => return "bool";
+        case IRTypeKind.I8 => return "i8";
+        case IRTypeKind.I16 => return "i16";
+        case IRTypeKind.I32 => return "i32";
+        case IRTypeKind.I64 => return "i64";
+        case IRTypeKind.U8 => return "u8";
+        case IRTypeKind.U16 => return "u16";
+        case IRTypeKind.U32 => return "u32";
+        case IRTypeKind.U64 => return "u64";
+        case IRTypeKind.F32 => return "f32";
+        case IRTypeKind.F64 => return "f64";
+        case IRTypeKind.Char => return "char";
+        case IRTypeKind.Pointer => return "pointer";
+        case IRTypeKind.Array => return "array";
+        case IRTypeKind.Slice => return "slice";
+        case IRTypeKind.Function => return "function";
+        case IRTypeKind.Struct => return "struct";
+        case IRTypeKind.Opaque => return "opaque";
+        case IRTypeKind.Pick => return "pick";
+        case IRTypeKind.Count => return "count";
+    }
+    return "unknown";
+}
+
+export proc vitte_ir_value_kind_name(kind: IRValueKind) -> string {
+    match kind {
+        case IRValueKind.Invalid => return "invalid";
+        case IRValueKind.Undef => return "undef";
+        case IRValueKind.Poison => return "poison";
+        case IRValueKind.Null => return "null";
+        case IRValueKind.ConstantBool => return "constant_bool";
+        case IRValueKind.ConstantInteger => return "constant_integer";
+        case IRValueKind.ConstantFloat => return "constant_float";
+        case IRValueKind.ConstantString => return "constant_string";
+        case IRValueKind.Parameter => return "parameter";
+        case IRValueKind.Instruction => return "instruction";
+        case IRValueKind.Function => return "function";
+        case IRValueKind.Count => return "count";
+    }
+    return "unknown";
+}
+
+export proc vitte_ir_opcode_name(opcode: IROpcode) -> string {
+    match opcode {
+        case IROpcode.Invalid => return "invalid";
+        case IROpcode.Nop => return "nop";
+        case IROpcode.Add => return "add";
+        case IROpcode.Sub => return "sub";
+        case IROpcode.Mul => return "mul";
+        case IROpcode.Sdiv => return "sdiv";
+        case IROpcode.Udiv => return "udiv";
+        case IROpcode.Srem => return "srem";
+        case IROpcode.Urem => return "urem";
+        case IROpcode.Fadd => return "fadd";
+        case IROpcode.Fsub => return "fsub";
+        case IROpcode.Fmul => return "fmul";
+        case IROpcode.Fdiv => return "fdiv";
+        case IROpcode.Frem => return "frem";
+        case IROpcode.Neg => return "neg";
+        case IROpcode.Fneg => return "fneg";
+        case IROpcode.And => return "and";
+        case IROpcode.Or => return "or";
+        case IROpcode.Xor => return "xor";
+        case IROpcode.Not => return "not";
+        case IROpcode.Shl => return "shl";
+        case IROpcode.Lshr => return "lshr";
+        case IROpcode.Ashr => return "ashr";
+        case IROpcode.IcmpEq => return "icmp_eq";
+        case IROpcode.IcmpNe => return "icmp_ne";
+        case IROpcode.IcmpSlt => return "icmp_slt";
+        case IROpcode.IcmpSle => return "icmp_sle";
+        case IROpcode.IcmpSgt => return "icmp_sgt";
+        case IROpcode.IcmpSge => return "icmp_sge";
+        case IROpcode.IcmpUlt => return "icmp_ult";
+        case IROpcode.IcmpUle => return "icmp_ule";
+        case IROpcode.IcmpUgt => return "icmp_ugt";
+        case IROpcode.IcmpUge => return "icmp_uge";
+        case IROpcode.FcmpEq => return "fcmp_eq";
+        case IROpcode.FcmpNe => return "fcmp_ne";
+        case IROpcode.FcmpLt => return "fcmp_lt";
+        case IROpcode.FcmpLe => return "fcmp_le";
+        case IROpcode.FcmpGt => return "fcmp_gt";
+        case IROpcode.FcmpGe => return "fcmp_ge";
+        case IROpcode.Trunc => return "trunc";
+        case IROpcode.Zext => return "zext";
+        case IROpcode.Sext => return "sext";
+        case IROpcode.FpTrunc => return "fp_trunc";
+        case IROpcode.FpExt => return "fp_ext";
+        case IROpcode.SiToFp => return "si_to_fp";
+        case IROpcode.UiToFp => return "ui_to_fp";
+        case IROpcode.FpToSi => return "fp_to_si";
+        case IROpcode.FpToUi => return "fp_to_ui";
+        case IROpcode.PtrToInt => return "ptr_to_int";
+        case IROpcode.IntToPtr => return "int_to_ptr";
+        case IROpcode.Bitcast => return "bitcast";
+        case IROpcode.Alloca => return "alloca";
+        case IROpcode.Load => return "load";
+        case IROpcode.Store => return "store";
+        case IROpcode.Gep => return "gep";
+        case IROpcode.ArrayMake => return "array_make";
+        case IROpcode.StructMake => return "struct_make";
+        case IROpcode.StructField => return "struct_field";
+        case IROpcode.PickMake => return "pick_make";
+        case IROpcode.PickTag => return "pick_tag";
+        case IROpcode.PickPayload => return "pick_payload";
+        case IROpcode.StringConcat => return "string_concat";
+        case IROpcode.StringLength => return "string_length";
+        case IROpcode.StringSlice => return "string_slice";
+        case IROpcode.SliceMake => return "slice_make";
+        case IROpcode.SliceData => return "slice_data";
+        case IROpcode.SliceLength => return "slice_length";
+        case IROpcode.Phi => return "phi";
+        case IROpcode.Select => return "select";
+        case IROpcode.Call => return "call";
+        case IROpcode.Br => return "br";
+        case IROpcode.CondBr => return "cond_br";
+        case IROpcode.Switch => return "switch";
+        case IROpcode.Return => return "return";
+        case IROpcode.Unreachable => return "unreachable";
+        case IROpcode.Count => return "count";
+    }
+    return "unknown";
+}
+
+export proc vitte_ir_init(context: *mut IRContext) -> bool {
+    if context == null { return false; }
+    set *context = IRContext {};
+    set (*context).magic = IR_MAGIC;
+    set (*context).state = IRState.Building;
+    set (*context).last_error = IRError.None;
+    set (*context).max_types = 1048576;
+    set (*context).max_values = 16777216;
+    set (*context).max_instructions = 16777216;
+    set (*context).max_blocks = 4194304;
+    set (*context).max_functions = 1048576;
+    set (*context).max_string_bytes = 268435456;
+    set (*context).generation = 1;
+    return true;
+}
+
+export proc vitte_ir_reset(context: *mut IRContext) -> bool {
+    if context == null or (*context).magic != IR_MAGIC { return false; }
+    let max_types = (*context).max_types;
+    let max_values = (*context).max_values;
+    let max_instructions = (*context).max_instructions;
+    let max_blocks = (*context).max_blocks;
+    let max_functions = (*context).max_functions;
+    let max_string_bytes = (*context).max_string_bytes;
+    let generation = (*context).generation;
+    ir_free_storage(context);
+    fill(context as *mut u8, 0, sizeof(IRContext));
+    set (*context).magic = IR_MAGIC;
+    set (*context).state = IRState.Building;
+    set (*context).last_error = IRError.None;
+    set (*context).max_types = max_types;
+    set (*context).max_values = max_values;
+    set (*context).max_instructions = max_instructions;
+    set (*context).max_blocks = max_blocks;
+    set (*context).max_functions = max_functions;
+    set (*context).max_string_bytes = max_string_bytes;
+    set (*context).generation = if generation == IR_U64_MAX { IR_U64_MAX } else { generation + 1 };
+    return true;
+}
+
+export proc vitte_ir_destroy(context: *mut IRContext) {
+    if context == null { return; }
+    if (*context).magic == IR_MAGIC { ir_free_storage(context); }
+    fill(context as *mut u8, 0, sizeof(IRContext));
+    set (*context).magic = IR_DEAD_MAGIC;
+    set (*context).state = IRState.Destroyed;
+}
+
+export proc vitte_ir_is_valid(context: *IRContext) -> bool {
+    if context == null { return false; }
+    if (*context).magic != IR_MAGIC { return false; }
+    if (*context).state <= IRState.Invalid or (*context).state >= IRState.Destroyed { return false; }
+    if (*context).type_count > (*context).type_capacity or
+       (*context).value_count > (*context).value_capacity or
+       (*context).instruction_count > (*context).instruction_capacity or
+       (*context).block_count > (*context).block_capacity or
+       (*context).function_count > (*context).function_capacity or
+       (*context).string_count > (*context).string_capacity { return false; }
+    if ((*context).type_count != 0 and (*context).types == null) or
+       ((*context).value_count != 0 and (*context).values == null) or
+       ((*context).instruction_count != 0 and (*context).instructions == null) or
+       ((*context).block_count != 0 and (*context).blocks == null) or
+       ((*context).function_count != 0 and (*context).functions == null) or
+       ((*context).string_count != 0 and (*context).strings == null) { return false; }
+    return true;
+}
+
+export proc vitte_ir_intern_string(context: *mut IRContext, data: *const u8, length: usize) -> IRStringId {
+    if not vitte_ir_is_valid(context) or (*context).state != IRState.Building {
+        return ir_fail_id(context, IRError.InvalidState);
+    }
+    let bytes = data;
+    if bytes == null and length != 0 { return ir_fail_id(context, IRError.InvalidArgument); }
+    let hash = ir_hash_bytes(bytes, length);
+    let mut index: usize = 0;
+    while index < (*context).string_count {
+        let existing = &(*context).strings[index];
+        if (*existing).hash == hash and (*existing).length == length {
+            let existing_data: string = (*existing).data;
+            let mut equal = true;
+            let mut offset: usize = 0;
+            while offset < length {
+                if existing_data.as_bytes()[offset] != bytes[offset] { set equal = false; break; }
+                set offset += 1;
+            }
+            if equal { return (*existing).id; }
+        }
+        set index += 1;
+    }
+    let mut required: usize = 0;
+    let mut new_bytes: usize = 0;
+    let mut allocation_size: usize = 0;
+    if not ir_size_add((*context).string_count, 1, &mut required) or
+       not ir_size_add((*context).string_bytes, length, &mut new_bytes) or
+       not ir_size_add(length, 1, &mut allocation_size) {
+        return ir_fail_id(context, IRError.Overflow);
+    }
+    if new_bytes > (*context).max_string_bytes { return ir_fail_id(context, IRError.Limit); }
+    let raw_strings = ir_reserve_array(context, (*context).strings as usize as *mut u8,
+        &mut (*context).string_capacity, (*context).string_count, required,
+        sizeof(IRString), (*context).max_values);
+    if raw_strings == null { return 0; }
+    set (*context).strings = raw_strings as usize as *mut IRString;
+    let storage = allocate(allocation_size);
+    if storage == null {
+        ir_add_stat(&mut (*context).stats.allocation_failures, 1);
+        return ir_fail_id(context, IRError.OutOfMemory);
+    }
+    if length != 0 and not copy(storage, bytes, length) { deallocate(storage); return ir_fail_id(context, IRError.InvalidArgument); }
+    set storage[length] = 0;
+    let result = &mut (*context).strings[(*context).string_count];
+    set (*result).id = (*context).string_count as u64 + 1;
+    set (*result).data = string.from_bytes(storage, length);
+    deallocate(storage);
+    set (*result).length = length;
+    set (*result).hash = hash;
+    set (*context).string_count = required;
+    set (*context).string_bytes = new_bytes;
+    ir_add_stat(&mut (*context).stats.allocations, 1);
+    ir_add_stat(&mut (*context).stats.strings_interned, 1);
+    set (*context).last_error = IRError.None;
+    return (*result).id;
+}
+
+export proc vitte_ir_get_string(context: *IRContext, id: IRStringId) -> *IRString {
+    if not vitte_ir_is_valid(context) or id == 0 or id > (*context).string_count as u64 { return null; }
+    return &(*context).strings[(id - 1) as usize];
+}
+
+export proc vitte_ir_intern_type(context: *mut IRContext, description: *IRTypeDesc) -> IRTypeId {
+    if not vitte_ir_is_valid(context) or (*context).state != IRState.Building { return ir_fail_id(context, IRError.InvalidState); }
+    if description == null or (*description).kind <= IRTypeKind.Invalid or (*description).kind >= IRTypeKind.Count {
+        return ir_fail_id(context, IRError.InvalidType);
+    }
+    if ((*description).element_type != 0 and vitte_ir_get_type(context, (*description).element_type) == null) or
+       ((*description).return_type != 0 and vitte_ir_get_type(context, (*description).return_type) == null) or
+       ((*description).name != 0 and vitte_ir_get_string(context, (*description).name) == null) or
+       ((*description).parameter_count != 0 and (*description).parameter_types == null) or
+       ((*description).field_count != 0 and (*description).field_types == null) {
+        return ir_fail_id(context, IRError.InvalidType);
+    }
+    let mut index: usize = 0;
+    while index < (*description).parameter_count {
+        if vitte_ir_get_type(context, (*description).parameter_types[index]) == null { return ir_fail_id(context, IRError.InvalidType); }
+        set index += 1;
+    }
+    set index = 0;
+    while index < (*description).field_count {
+        if vitte_ir_get_type(context, (*description).field_types[index]) == null { return ir_fail_id(context, IRError.InvalidType); }
+        set index += 1;
+    }
+    set index = 0;
+    while index < (*context).type_count {
+        let existing = &(*context).types[index];
+        let mut equal = (*existing).kind == (*description).kind and
+            (*existing).element_type == (*description).element_type and
+            (*existing).array_length == (*description).array_length and
+            (*existing).parameter_count == (*description).parameter_count and
+            (*existing).field_count == (*description).field_count and
+            (*existing).return_type == (*description).return_type and
+            (*existing).is_variadic == (*description).is_variadic and
+            (*existing).name == (*description).name;
+        let mut parameter_index: usize = 0;
+        while equal and parameter_index < (*existing).parameter_count {
+            if (*existing).parameter_types[parameter_index] != (*description).parameter_types[parameter_index] { set equal = false; }
+            set parameter_index += 1;
+        }
+        set parameter_index = 0;
+        while equal and parameter_index < (*existing).field_count {
+            if (*existing).field_types[parameter_index] != (*description).field_types[parameter_index] { set equal = false; }
+            set parameter_index += 1;
+        }
+        if equal { return (*existing).id; }
+        set index += 1;
+    }
+    if (*context).type_count >= (*context).max_types { return ir_fail_id(context, IRError.Limit); }
+    let mut required: usize = 0;
+    if not ir_size_add((*context).type_count, 1, &mut required) { return 0; }
+    let raw_types = ir_reserve_array(context, (*context).types as usize as *mut u8,
+        &mut (*context).type_capacity, (*context).type_count, required,
+        sizeof(IRType), (*context).max_types);
+    if raw_types == null { return 0; }
+    set (*context).types = raw_types as usize as *mut IRType;
+    let result = &mut (*context).types[(*context).type_count];
+    set *result = IRType {
+        id: required as u64,
+        kind: (*description).kind,
+        element_type: (*description).element_type,
+        array_length: (*description).array_length,
+        parameter_types: null,
+        parameter_count: (*description).parameter_count,
+        field_types: null,
+        field_count: (*description).field_count,
+        return_type: (*description).return_type,
+        is_variadic: (*description).is_variadic,
+        name: (*description).name
+    };
+    if (*description).parameter_count != 0 {
+        let mut bytes: usize = 0;
+        if not ir_size_mul((*description).parameter_count, sizeof(IRTypeId), &mut bytes) { return ir_fail_id(context, IRError.Overflow); }
+        let storage = allocate(bytes);
+        if storage == null { ir_add_stat(&mut (*context).stats.allocation_failures, 1); return ir_fail_id(context, IRError.OutOfMemory); }
+        if not copy(storage, (*description).parameter_types as *const u8, bytes) { deallocate(storage); return ir_fail_id(context, IRError.OutOfMemory); }
+        set (*result).parameter_types = storage as *mut IRTypeId;
+        ir_add_stat(&mut (*context).stats.allocations, 1);
+    }
+    if (*description).field_count != 0 {
+        let mut bytes: usize = 0;
+        if not ir_size_mul((*description).field_count, sizeof(IRTypeId), &mut bytes) { return ir_fail_id(context, IRError.Overflow); }
+        let storage = allocate(bytes);
+        if storage == null { ir_add_stat(&mut (*context).stats.allocation_failures, 1); return ir_fail_id(context, IRError.OutOfMemory); }
+        if not copy(storage, (*description).field_types as *const u8, bytes) { deallocate(storage); return ir_fail_id(context, IRError.OutOfMemory); }
+        set (*result).field_types = storage as *mut IRTypeId;
+        ir_add_stat(&mut (*context).stats.allocations, 1);
+    }
+    set (*context).type_count = required;
+    ir_add_stat(&mut (*context).stats.types_created, 1);
+    set (*context).last_error = IRError.None;
+    return (*result).id;
+}
+
+export proc vitte_ir_get_type(context: *IRContext, id: IRTypeId) -> *IRType {
+    if not vitte_ir_is_valid(context) or id == 0 or id > (*context).type_count as u64 { return null; }
+    return &(*context).types[(id - 1) as usize];
+}
+
+export proc vitte_ir_add_value(context: *mut IRContext, description: *IRValueDesc) -> IRValueId {
+    if not vitte_ir_is_valid(context) or (*context).state != IRState.Building { return ir_fail_id(context, IRError.InvalidState); }
+    if description == null or (*description).kind <= IRValueKind.Invalid or (*description).kind >= IRValueKind.Count or
+       vitte_ir_get_type(context, (*description).type_) == null { return ir_fail_id(context, IRError.InvalidValue); }
+    if ((*description).name != 0 and vitte_ir_get_string(context, (*description).name) == null) or
+       ((*description).kind == IRValueKind.ConstantString and vitte_ir_get_string(context, (*description).string_value) == null) or
+       ((*description).kind == IRValueKind.Parameter and vitte_ir_get_function(context, (*description).function) == null) or
+       ((*description).kind == IRValueKind.Instruction and vitte_ir_get_instruction(context, (*description).instruction) == null) {
+        return ir_fail_id(context, IRError.InvalidValue);
+    }
+    if (*context).value_count >= (*context).max_values { return ir_fail_id(context, IRError.Limit); }
+    let mut required: usize = 0;
+    if not ir_size_add((*context).value_count, 1, &mut required) { return 0; }
+    let raw_values = ir_reserve_array(context, (*context).values as usize as *mut u8,
+        &mut (*context).value_capacity, (*context).value_count, required,
+        sizeof(IRValue), (*context).max_values);
+    if raw_values == null { return 0; }
+    set (*context).values = raw_values as usize as *mut IRValue;
+    let result = &mut (*context).values[(*context).value_count];
+    set *result = IRValue {
+        id: required as u64,
+        kind: (*description).kind,
+        type_: (*description).type_,
+        name: (*description).name,
+        span: (*description).span,
+        integer_value: (*description).integer_value,
+        float_value: (*description).float_value,
+        bool_value: (*description).bool_value,
+        string_value: (*description).string_value,
+        function: (*description).function,
+        instruction: (*description).instruction,
+        parameter_index: (*description).parameter_index,
+        use_count: 0
+    };
+    set (*context).value_count = required;
+    ir_add_stat(&mut (*context).stats.values_created, 1);
+    set (*context).last_error = IRError.None;
+    return (*result).id;
+}
+
+export proc vitte_ir_const_bool(context: *mut IRContext, type_: IRTypeId, value: bool) -> IRValueId {
+    let mut description = IRValueDesc {}; set description.kind = IRValueKind.ConstantBool; set description.type_ = type_; set description.bool_value = value;
+    return vitte_ir_add_value(context, &description);
+}
+
+export proc vitte_ir_const_integer(context: *mut IRContext, type_: IRTypeId, value: u64) -> IRValueId {
+    let mut description = IRValueDesc {}; set description.kind = IRValueKind.ConstantInteger; set description.type_ = type_; set description.integer_value = value;
+    return vitte_ir_add_value(context, &description);
+}
+
+export proc vitte_ir_const_float(context: *mut IRContext, type_: IRTypeId, value: f64) -> IRValueId {
+    let mut description = IRValueDesc {}; set description.kind = IRValueKind.ConstantFloat; set description.type_ = type_; set description.float_value = value;
+    return vitte_ir_add_value(context, &description);
+}
+
+export proc vitte_ir_const_string(context: *mut IRContext, type_: IRTypeId, value: IRStringId) -> IRValueId {
+    let mut description = IRValueDesc {}; set description.kind = IRValueKind.ConstantString; set description.type_ = type_; set description.string_value = value;
+    return vitte_ir_add_value(context, &description);
+}
+
+export proc vitte_ir_null(context: *mut IRContext, type_: IRTypeId) -> IRValueId {
+    let mut description = IRValueDesc {}; set description.kind = IRValueKind.Null; set description.type_ = type_;
+    return vitte_ir_add_value(context, &description);
+}
+
+export proc vitte_ir_undef(context: *mut IRContext, type_: IRTypeId) -> IRValueId {
+    let mut description = IRValueDesc {}; set description.kind = IRValueKind.Undef; set description.type_ = type_;
+    return vitte_ir_add_value(context, &description);
+}
+
+export proc vitte_ir_poison(context: *mut IRContext, type_: IRTypeId) -> IRValueId {
+    let mut description = IRValueDesc {}; set description.kind = IRValueKind.Poison; set description.type_ = type_;
+    return vitte_ir_add_value(context, &description);
+}
+
+export proc vitte_ir_get_value(context: *IRContext, id: IRValueId) -> *IRValue {
+    if not vitte_ir_is_valid(context) or id == 0 or id > (*context).value_count as u64 { return null; }
+    return &(*context).values[(id - 1) as usize];
+}
+
+export proc vitte_ir_get_value_mut(context: *mut IRContext, id: IRValueId) -> *mut IRValue {
+    if not vitte_ir_is_valid(context) or (*context).state != IRState.Building or id == 0 or id > (*context).value_count as u64 { return null; }
+    return &mut (*context).values[(id - 1) as usize];
+}
+
+proc ir_append_id(context: *mut IRContext, items: *mut *mut u64, capacity: *mut usize, count: usize, value: u64, maximum: usize) -> bool {
+    let mut required: usize = 0;
+    if items == null or capacity == null or not ir_size_add(count, 1, &mut required) { return ir_fail(context, IRError.Overflow); }
+    let mut storage = (*items) as usize as *mut u8;
+    if not ir_reserve(context, &mut storage, capacity, count, required, sizeof(u64), maximum) { return false; }
+    set (*items) = storage as usize as *mut u64;
+    set (*items)[count] = value;
+    return true;
+}
+
+export proc vitte_ir_add_function(context: *mut IRContext, description: *IRFunctionDesc) -> IRFunctionId {
+    if not vitte_ir_is_valid(context) or (*context).state != IRState.Building { return ir_fail_id(context, IRError.InvalidState); }
+    if description == null or vitte_ir_get_string(context, (*description).name) == null or
+       vitte_ir_get_type(context, (*description).type_) == null or
+       (*description).linkage >= IRLinkage.Count or
+       (*description).calling_convention >= IRCallingConvention.Count {
+        return ir_fail_id(context, IRError.InvalidFunction);
+    }
+    if (*context).function_count >= (*context).max_functions { return ir_fail_id(context, IRError.Limit); }
+    let mut required: usize = 0;
+    if not ir_size_add((*context).function_count, 1, &mut required) { return 0; }
+    let raw_functions = ir_reserve_array(context, (*context).functions as usize as *mut u8,
+        &mut (*context).function_capacity, (*context).function_count, required,
+        sizeof(IRFunction), (*context).max_functions);
+    if raw_functions == null { return 0; }
+    set (*context).functions = raw_functions as usize as *mut IRFunction;
+    let result = &mut (*context).functions[(*context).function_count];
+    set *result = IRFunction {};
+    set (*result).id = required as u64; set (*result).name = (*description).name;
+    set (*result).type_ = (*description).type_; set (*result).linkage = (*description).linkage;
+    set (*result).calling_convention = (*description).calling_convention;
+    set (*result).is_declaration = (*description).is_declaration; set (*result).is_variadic = (*description).is_variadic;
+    set (*result).span = (*description).span;
+    set (*context).function_count = required;
+    ir_add_stat(&mut (*context).stats.functions_created, 1);
+    set (*context).last_error = IRError.None;
+    return (*result).id;
+}
+
+export proc vitte_ir_get_function(context: *IRContext, id: IRFunctionId) -> *IRFunction {
+    if not vitte_ir_is_valid(context) or id == 0 or id > (*context).function_count as u64 { return null; }
+    return &(*context).functions[(id - 1) as usize];
+}
+
+export proc vitte_ir_get_function_mut(context: *mut IRContext, id: IRFunctionId) -> *mut IRFunction {
+    if not vitte_ir_is_valid(context) or (*context).state != IRState.Building or
+       id == 0 or id > (*context).function_count as u64 { return null; }
+    return &mut (*context).functions[(id - 1) as usize];
+}
+
+export proc vitte_ir_add_parameter(context: *mut IRContext, function: IRFunctionId, type_: IRTypeId, name: IRStringId, span: IRSpan) -> IRValueId {
+    if not vitte_ir_is_valid(context) or (*context).state != IRState.Building { return ir_fail_id(context, IRError.InvalidState); }
+    let function_value = vitte_ir_get_function_mut(context, function);
+    let type_value = vitte_ir_get_type(context, type_);
+    if function_value == null or type_value == null { return ir_fail_id(context, IRError.InvalidArgument); }
+    if name != 0 and vitte_ir_get_string(context, name) == null { return ir_fail_id(context, IRError.InvalidString); }
+    let signature = vitte_ir_get_type(context, (*function_value).type_);
+    if signature == null or (*signature).kind != IRTypeKind.Function or
+       (*function_value).parameter_count >= (*signature).parameter_count or
+       (*signature).parameter_types[(*function_value).parameter_count] != type_ {
+        return ir_fail_id(context, IRError.TypeMismatch);
+    }
+    let mut description = IRValueDesc {};
+    set description.kind = IRValueKind.Parameter;
+    set description.type_ = type_;
+    set description.name = name;
+    set description.span = span;
+    set description.function = function;
+    set description.parameter_index = (*function_value).parameter_count;
+    let value_id = vitte_ir_add_value(context, &description);
+    if value_id == 0 { return 0; }
+    if not ir_append_id(context, &mut (*function_value).parameters,
+        &mut (*function_value).parameter_capacity, (*function_value).parameter_count, value_id, (*context).max_values) {
+        return 0;
+    }
+    set (*function_value).parameter_count += 1;
+    return value_id;
+}
+
+export proc vitte_ir_add_block(context: *mut IRContext, function: IRFunctionId, name: IRStringId, span: IRSpan) -> IRBlockId {
+    if not vitte_ir_is_valid(context) or (*context).state != IRState.Building { return ir_fail_id(context, IRError.InvalidState); }
+    let function_value = vitte_ir_get_function_mut(context, function);
+    if function_value == null { return ir_fail_id(context, IRError.InvalidFunction); }
+    if name != 0 and vitte_ir_get_string(context, name) == null { return ir_fail_id(context, IRError.InvalidString); }
+    if (*context).block_count >= (*context).max_blocks { return ir_fail_id(context, IRError.Limit); }
+    let mut required: usize = 0;
+    if not ir_size_add((*context).block_count, 1, &mut required) { return 0; }
+    let raw_blocks = ir_reserve_array(context, (*context).blocks as usize as *mut u8,
+        &mut (*context).block_capacity, (*context).block_count, required,
+        sizeof(IRBlock), (*context).max_blocks);
+    if raw_blocks == null { return 0; }
+    set (*context).blocks = raw_blocks as usize as *mut IRBlock;
+    let block = &mut (*context).blocks[(*context).block_count];
+    set *block = IRBlock {};
+    set (*block).id = required as u64; set (*block).function = function; set (*block).name = name; set (*block).span = span;
+    if not ir_append_id(context, &mut (*function_value).blocks,
+        &mut (*function_value).block_capacity, (*function_value).block_count, (*block).id, (*context).max_blocks) {
+        set *block = IRBlock {};
+        return 0;
+    }
+    set (*function_value).block_count += 1;
+    if (*function_value).entry_block == 0 { set (*function_value).entry_block = (*block).id; }
+    set (*context).block_count = required;
+    ir_add_stat(&mut (*context).stats.blocks_created, 1);
+    set (*context).last_error = IRError.None;
+    return (*block).id;
+}
+
+export proc vitte_ir_get_block(context: *IRContext, id: IRBlockId) -> *IRBlock {
+    if not vitte_ir_is_valid(context) or id == 0 or id > (*context).block_count as u64 { return null; }
+    return &(*context).blocks[(id - 1) as usize];
+}
+
+export proc vitte_ir_get_block_mut(context: *mut IRContext, id: IRBlockId) -> *mut IRBlock {
+    if not vitte_ir_is_valid(context) or (*context).state != IRState.Building or
+       id == 0 or id > (*context).block_count as u64 { return null; }
+    return &mut (*context).blocks[(id - 1) as usize];
+}
+
+export proc vitte_ir_add_cfg_edge(context: *mut IRContext, source: IRBlockId, target: IRBlockId) -> bool {
+    if not vitte_ir_is_valid(context) or (*context).state != IRState.Building { return ir_fail(context, IRError.InvalidState); }
+    let source_block = vitte_ir_get_block_mut(context, source);
+    let target_block = vitte_ir_get_block_mut(context, target);
+    if source_block == null or target_block == null { return ir_fail(context, IRError.InvalidBlock); }
+    if (*source_block).function != (*target_block).function { return ir_fail(context, IRError.InvalidCfg); }
+    let mut found = false;
+    let mut index: usize = 0;
+    while index < (*source_block).successor_count { if (*source_block).successors[index] == target { set found = true; break; } set index += 1; }
+    if not found {
+        if not ir_append_id(context, &mut (*source_block).successors,
+            &mut (*source_block).successor_capacity, (*source_block).successor_count, target, (*context).max_blocks) { return false; }
+        set (*source_block).successor_count += 1;
+    }
+    set found = false;
+    set index = 0;
+    while index < (*target_block).predecessor_count { if (*target_block).predecessors[index] == source { set found = true; break; } set index += 1; }
+    if not found {
+        if not ir_append_id(context, &mut (*target_block).predecessors,
+            &mut (*target_block).predecessor_capacity, (*target_block).predecessor_count, source, (*context).max_blocks) { return false; }
+        set (*target_block).predecessor_count += 1;
+    }
+    ir_add_stat(&mut (*context).stats.cfg_edges, 1);
+    return true;
+}
+
+export proc vitte_ir_add_instruction(context: *mut IRContext, description: *IRInstructionDesc) -> IRInstructionId {
+    if not vitte_ir_is_valid(context) or (*context).state != IRState.Building { return ir_fail_id(context, IRError.InvalidState); }
+    if description == null or (*description).opcode <= IROpcode.Invalid or (*description).opcode >= IROpcode.Count {
+        return ir_fail_id(context, IRError.InvalidInstruction);
+    }
+    let block = vitte_ir_get_block_mut(context, (*description).block);
+    if block == null { return ir_fail_id(context, IRError.InvalidBlock); }
+    if (*block).terminated { return ir_fail_id(context, IRError.TerminatedBlock); }
+    let produces = vitte_ir_opcode_produces_value((*description).opcode);
+    if produces and vitte_ir_get_type(context, (*description).result_type) == null { return ir_fail_id(context, IRError.InvalidType); }
+    if not produces and (*description).result_type != 0 { return ir_fail_id(context, IRError.InvalidInstruction); }
+    if (*description).operand_count != 0 and (*description).operands == null { return ir_fail_id(context, IRError.InvalidArgument); }
+    let mut operand_index: usize = 0;
+    while operand_index < (*description).operand_count {
+        if vitte_ir_get_value(context, (*description).operands[operand_index]) == null { return ir_fail_id(context, IRError.InvalidValue); }
+        set operand_index += 1;
+    }
+    if (*context).instruction_count >= (*context).max_instructions { return ir_fail_id(context, IRError.Limit); }
+    let mut required: usize = 0;
+    if not ir_size_add((*context).instruction_count, 1, &mut required) { return 0; }
+    let raw_instructions = ir_reserve_array(context, (*context).instructions as usize as *mut u8,
+        &mut (*context).instruction_capacity, (*context).instruction_count, required,
+        sizeof(IRInstruction), (*context).max_instructions);
+    if raw_instructions == null { return 0; }
+    set (*context).instructions = raw_instructions as usize as *mut IRInstruction;
+    let mut operands: *mut IRValueId = null;
+    if (*description).operand_count != 0 {
+        let mut bytes: usize = 0;
+        if not ir_size_mul((*description).operand_count, sizeof(IRValueId), &mut bytes) { return ir_fail_id(context, IRError.Overflow); }
+        set operands = allocate(bytes) as *mut IRValueId;
+        if operands == null { ir_add_stat(&mut (*context).stats.allocation_failures, 1); return ir_fail_id(context, IRError.OutOfMemory); }
+        if not copy(operands as *mut u8, (*description).operands as *const u8, bytes) { deallocate(operands as *mut u8); return ir_fail_id(context, IRError.OutOfMemory); }
+        ir_add_stat(&mut (*context).stats.allocations, 1);
+    }
+    if not ir_append_id(context, &mut (*block).instructions,
+        &mut (*block).instruction_capacity, (*block).instruction_count, required as u64, (*context).max_instructions) {
+        deallocate(operands as *mut u8);
+        return 0;
+    }
+    let instruction = &mut (*context).instructions[(*context).instruction_count];
+    set *instruction = IRInstruction {
+        id: required as u64,
+        opcode: (*description).opcode,
+        block: (*description).block,
+        result_type: (*description).result_type,
+        operands: operands,
+        operand_count: (*description).operand_count,
+        operand_capacity: (*description).operand_count,
+        span: (*description).span
+    };
+    set (*context).instruction_count = required;
+    set (*block).instruction_count += 1;
+    operand_index = 0;
+    while operand_index < (*instruction).operand_count {
+        let value = vitte_ir_get_value_mut(context, (*instruction).operands[operand_index]);
+        ir_add_stat(&mut (*value).use_count, 1);
+        set operand_index += 1;
+    }
+    if produces {
+        let mut value_description = IRValueDesc {};
+        set value_description.kind = IRValueKind.Instruction;
+        set value_description.type_ = (*description).result_type;
+        set value_description.name = (*description).result_name;
+        set value_description.span = (*description).span;
+        set value_description.instruction = (*instruction).id;
+        set (*instruction).result = vitte_ir_add_value(context, &value_description);
+        if (*instruction).result == 0 { return 0; }
+    }
+    if vitte_ir_opcode_is_terminator((*instruction).opcode) {
+        set (*block).terminated = true;
+        set (*block).terminator = (*instruction).id;
+    }
+    ir_add_stat(&mut (*context).stats.instructions_created, 1);
+    set (*context).last_error = IRError.None;
+    return (*instruction).id;
+}
+
+export proc vitte_ir_get_instruction(context: *IRContext, id: IRInstructionId) -> *IRInstruction {
+    if not vitte_ir_is_valid(context) or id == 0 or id > (*context).instruction_count as u64 { return null; }
+    return &(*context).instructions[(id - 1) as usize];
+}
+
+export proc vitte_ir_get_instruction_mut(context: *mut IRContext, id: IRInstructionId) -> *mut IRInstruction {
+    if not vitte_ir_is_valid(context) or (*context).state != IRState.Building or
+       id == 0 or id > (*context).instruction_count as u64 { return null; }
+    return &mut (*context).instructions[(id - 1) as usize];
+}
+
+export proc vitte_ir_instruction_result(context: *IRContext, id: IRInstructionId) -> IRValueId {
+    let instruction = vitte_ir_get_instruction(context, id);
+    if instruction == null { return 0; }
+    return (*instruction).result;
+}
+
+export proc vitte_ir_opcode_is_terminator(opcode: IROpcode) -> bool {
+    match opcode {
+        case IROpcode.Br => return true;
+        case IROpcode.CondBr => return true;
+        case IROpcode.Switch => return true;
+        case IROpcode.Return => return true;
+        case IROpcode.Unreachable => return true;
+    }
+    return false;
+}
+
+export proc vitte_ir_opcode_produces_value(opcode: IROpcode) -> bool {
+    match opcode {
+        case IROpcode.Invalid => return false;
+        case IROpcode.Nop => return false;
+        case IROpcode.Store => return false;
+        case IROpcode.Br => return false;
+        case IROpcode.CondBr => return false;
+        case IROpcode.Switch => return false;
+        case IROpcode.Return => return false;
+        case IROpcode.Unreachable => return false;
+        case IROpcode.Count => return false;
+    }
+    return true;
+}
+
+export proc vitte_ir_phi_add_incoming(context: *mut IRContext, instruction_id: IRInstructionId, block_id: IRBlockId, value_id: IRValueId) -> bool {
+    if not vitte_ir_is_valid(context) or (*context).state != IRState.Building { return ir_fail(context, IRError.InvalidState); }
+    let instruction = vitte_ir_get_instruction_mut(context, instruction_id);
+    let block = vitte_ir_get_block(context, block_id);
+    let value = vitte_ir_get_value_mut(context, value_id);
+    if instruction == null or block == null or value == null { return ir_fail(context, IRError.InvalidArgument); }
+    if (*instruction).opcode != IROpcode.Phi or (*instruction).result_type != (*value).type_ {
+        return ir_fail(context, IRError.InvalidPhi);
+    }
+    let mut index: usize = 0;
+    while index < (*instruction).phi_count {
+        if (*instruction).phi_incomings[index].block == block_id { return ir_fail(context, IRError.Duplicate); }
+        set index += 1;
+    }
+    let mut required: usize = 0;
+    if not ir_size_add((*instruction).phi_count, 1, &mut required) { return ir_fail(context, IRError.Overflow); }
+    let raw_phi = ir_reserve_array(context, (*instruction).phi_incomings as usize as *mut u8,
+        &mut (*instruction).phi_capacity, (*instruction).phi_count, required,
+        sizeof(IRPhiIncoming), (*context).max_instructions);
+    if raw_phi == null { return false; }
+    set (*instruction).phi_incomings = raw_phi as usize as *mut IRPhiIncoming;
+    set (*instruction).phi_incomings[(*instruction).phi_count] = IRPhiIncoming { block: block_id, value: value_id };
+    set (*instruction).phi_count = required;
+    ir_add_stat(&mut (*value).use_count, 1);
+    ir_add_stat(&mut (*context).stats.phi_incomings, 1);
+    return true;
+}
+
+export proc vitte_ir_build_unary(context: *mut IRContext, opcode: IROpcode, block: IRBlockId, result_type: IRTypeId, operand: IRValueId, span: IRSpan) -> IRInstructionId {
+    let mut operands: [IRValueId; 1] = [operand];
+    let mut description = IRInstructionDesc {};
+    set description.opcode = opcode; set description.block = block; set description.result_type = result_type;
+    set description.operands = &mut operands[0]; set description.operand_count = 1; set description.span = span;
+    return vitte_ir_add_instruction(context, &description);
+}
+
+export proc vitte_ir_build_binary(context: *mut IRContext, opcode: IROpcode, block: IRBlockId, result_type: IRTypeId, left: IRValueId, right: IRValueId, span: IRSpan) -> IRInstructionId {
+    let mut operands: [IRValueId; 2] = [left, right];
+    let mut description = IRInstructionDesc {};
+    set description.opcode = opcode; set description.block = block; set description.result_type = result_type;
+    set description.operands = &mut operands[0]; set description.operand_count = 2; set description.span = span;
+    return vitte_ir_add_instruction(context, &description);
+}
+
+export proc vitte_ir_build_br(context: *mut IRContext, block: IRBlockId, target: IRBlockId, span: IRSpan) -> IRInstructionId {
+    if vitte_ir_get_block(context, target) == null { return ir_fail_id(context, IRError.InvalidBlock); }
+    let mut description = IRInstructionDesc {}; set description.opcode = IROpcode.Br; set description.block = block; set description.span = span;
+    let id = vitte_ir_add_instruction(context, &description);
+    if id == 0 { return 0; }
+    let instruction = vitte_ir_get_instruction_mut(context, id);
+    set (*instruction).target_true = target;
+    if not vitte_ir_add_cfg_edge(context, block, target) { return 0; }
+    return id;
+}
+
+export proc vitte_ir_build_cond_br(context: *mut IRContext, block: IRBlockId, condition: IRValueId, true_target: IRBlockId, false_target: IRBlockId, span: IRSpan) -> IRInstructionId {
+    let mut operands: [IRValueId; 1] = [condition];
+    let mut description = IRInstructionDesc {};
+    set description.opcode = IROpcode.CondBr; set description.block = block; set description.operands = &mut operands[0];
+    set description.operand_count = 1; set description.span = span;
+    let id = vitte_ir_add_instruction(context, &description);
+    if id == 0 { return 0; }
+    let instruction = vitte_ir_get_instruction_mut(context, id);
+    set (*instruction).target_true = true_target; set (*instruction).target_false = false_target;
+    if not vitte_ir_add_cfg_edge(context, block, true_target) or not vitte_ir_add_cfg_edge(context, block, false_target) { return 0; }
+    return id;
+}
+
+export proc vitte_ir_build_return(context: *mut IRContext, block: IRBlockId, value: IRValueId, span: IRSpan) -> IRInstructionId {
+    let mut description = IRInstructionDesc {}; set description.opcode = IROpcode.Return; set description.block = block; set description.span = span;
+    let mut operand: IRValueId = value;
+    if value != 0 { set description.operands = &mut operand; set description.operand_count = 1; }
+    return vitte_ir_add_instruction(context, &description);
+}
+
+export proc vitte_ir_build_unreachable(context: *mut IRContext, block: IRBlockId, span: IRSpan) -> IRInstructionId {
+    let mut description = IRInstructionDesc {}; set description.opcode = IROpcode.Unreachable; set description.block = block; set description.span = span;
+    return vitte_ir_add_instruction(context, &description);
+}
+
+proc ir_validate_type(context: *mut IRContext, value: *IRType) -> bool {
+    if value == null or (*value).kind <= IRTypeKind.Invalid or (*value).kind >= IRTypeKind.Count { return ir_fail(context, IRError.InvalidType); }
+    if (*value).element_type != 0 and vitte_ir_get_type(context, (*value).element_type) == null { return ir_fail(context, IRError.InvalidType); }
+    if (*value).return_type != 0 and vitte_ir_get_type(context, (*value).return_type) == null { return ir_fail(context, IRError.InvalidType); }
+    if (*value).name != 0 and vitte_ir_get_string(context, (*value).name) == null { return ir_fail(context, IRError.InvalidString); }
+    if (*value).parameter_count > (*context).max_types or ((*value).parameter_count != 0 and (*value).parameter_types == null) or
+       (*value).field_count > (*context).max_types or ((*value).field_count != 0 and (*value).field_types == null) { return ir_fail(context, IRError.Corruption); }
+    let mut index: usize = 0;
+    while index < (*value).parameter_count { if vitte_ir_get_type(context, (*value).parameter_types[index]) == null { return ir_fail(context, IRError.InvalidType); } set index += 1; }
+    set index = 0;
+    while index < (*value).field_count { if vitte_ir_get_type(context, (*value).field_types[index]) == null { return ir_fail(context, IRError.InvalidType); } set index += 1; }
+    if ((*value).kind == IRTypeKind.Pointer or (*value).kind == IRTypeKind.Array or (*value).kind == IRTypeKind.Slice) and (*value).element_type == 0 { return ir_fail(context, IRError.InvalidType); }
+    if (*value).kind == IRTypeKind.Function and (*value).return_type == 0 { return ir_fail(context, IRError.InvalidType); }
+    return true;
+}
+
+proc ir_validate_value(context: *mut IRContext, value: *IRValue) -> bool {
+    if value == null or (*value).kind <= IRValueKind.Invalid or (*value).kind >= IRValueKind.Count or vitte_ir_get_type(context, (*value).type_) == null { return ir_fail(context, IRError.InvalidValue); }
+    if (*value).name != 0 and vitte_ir_get_string(context, (*value).name) == null { return ir_fail(context, IRError.InvalidString); }
+    let value_type = vitte_ir_get_type(context, (*value).type_);
+    if value_type == null { return ir_fail(context, IRError.InvalidType); }
+    if (*value).kind == IRValueKind.ConstantBool and (*value_type).kind != IRTypeKind.Bool { return ir_fail(context, IRError.TypeMismatch); }
+    if (*value).kind == IRValueKind.ConstantInteger and not ir_is_integer((*value_type).kind) { return ir_fail(context, IRError.TypeMismatch); }
+    if (*value).kind == IRValueKind.ConstantFloat and not ir_is_float((*value_type).kind) { return ir_fail(context, IRError.TypeMismatch); }
+    if (*value).kind == IRValueKind.ConstantString and vitte_ir_get_string(context, (*value).string_value) == null { return ir_fail(context, IRError.InvalidString); }
+    if (*value).kind == IRValueKind.Parameter and vitte_ir_get_function(context, (*value).function) == null { return ir_fail(context, IRError.InvalidFunction); }
+    if (*value).kind == IRValueKind.Instruction and vitte_ir_get_instruction(context, (*value).instruction) == null { return ir_fail(context, IRError.InvalidInstruction); }
+    if (*value).kind == IRValueKind.Function {
+        let function = vitte_ir_get_function(context, (*value).function);
+        if function == null or (*function).type_ != (*value).type_ { return ir_fail(context, IRError.InvalidFunction); }
+    }
+    return true;
+}
+
+proc ir_pick_payload_type_supported(kind: IRTypeKind) -> bool {
+    match kind {
+        case IRTypeKind.Bool | IRTypeKind.I8 | IRTypeKind.I16 | IRTypeKind.I32 | IRTypeKind.I64 |
+             IRTypeKind.U8 | IRTypeKind.U16 | IRTypeKind.U32 | IRTypeKind.U64 |
+             IRTypeKind.F32 | IRTypeKind.F64 | IRTypeKind.Char | IRTypeKind.Pointer => return true;
+        case _ => return false;
+    }
+}
+
+proc ir_validate_instruction(context: *mut IRContext, value: *IRInstruction) -> bool {
+    if value == null or (*value).opcode <= IROpcode.Invalid or (*value).opcode >= IROpcode.Count or vitte_ir_get_block(context, (*value).block) == null { return ir_fail(context, IRError.InvalidInstruction); }
+    if (*value).operand_count > (*value).operand_capacity or ((*value).operand_count != 0 and (*value).operands == null) { return ir_fail(context, IRError.Corruption); }
+    let mut index: usize = 0;
+    while index < (*value).operand_count { if vitte_ir_get_value(context, (*value).operands[index]) == null { return ir_fail(context, IRError.InvalidValue); } set index += 1; }
+    if vitte_ir_opcode_produces_value((*value).opcode) {
+        let result = vitte_ir_get_value(context, (*value).result);
+        if result == null or vitte_ir_get_type(context, (*value).result_type) == null or (*result).type_ != (*value).result_type or (*result).instruction != (*value).id { return ir_fail(context, IRError.InvalidValue); }
+    } elif (*value).result != 0 or (*value).result_type != 0 { return ir_fail(context, IRError.InvalidInstruction); }
+    let operands = (*value).operand_count;
+    match (*value).opcode {
+        case IROpcode.Nop => if operands != 0 { return ir_fail(context, IRError.InvalidInstruction); }
+        case IROpcode.StructMake => {
+            let aggregate = vitte_ir_get_type(context, (*value).result_type);
+            if aggregate == null or (*aggregate).kind != IRTypeKind.Struct or operands != (*aggregate).field_count { return ir_fail(context, IRError.TypeMismatch); }
+            let mut field_index: usize = 0;
+            while field_index < operands {
+                let field_value = vitte_ir_get_value(context, (*value).operands[field_index]);
+                if field_value == null or (*field_value).type_ != (*aggregate).field_types[field_index] { return ir_fail(context, IRError.TypeMismatch); }
+                set field_index += 1;
+            }
+        }
+        case IROpcode.StructField => {
+            if operands != 2 { return ir_fail(context, IRError.InvalidInstruction); }
+            let base = vitte_ir_get_value(context, (*value).operands[0]);
+            let base_type = if base == null { null } else { vitte_ir_get_type(context, (*base).type_) };
+            let aggregate_id = if base_type != null and (*base_type).kind == IRTypeKind.Pointer { (*base_type).element_type } else if base_type != null { (*base).type_ } else { 0 as IRTypeId };
+            let aggregate = vitte_ir_get_type(context, aggregate_id);
+            let field_index_value = vitte_ir_get_value(context, (*value).operands[1]);
+            let pointer = vitte_ir_get_type(context, (*value).result_type);
+            if aggregate == null or (*aggregate).kind != IRTypeKind.Struct or field_index_value == null or
+               (*field_index_value).kind != IRValueKind.ConstantInteger or (*field_index_value).integer_value >= (*aggregate).field_count or
+               pointer == null or (*pointer).kind != IRTypeKind.Pointer or
+               (*pointer).element_type != (*aggregate).field_types[(*field_index_value).integer_value as usize] { return ir_fail(context, IRError.TypeMismatch); }
+        }
+        case IROpcode.Neg | IROpcode.Fneg | IROpcode.Not | IROpcode.Trunc | IROpcode.Zext | IROpcode.Sext |
+             IROpcode.FpTrunc | IROpcode.FpExt | IROpcode.SiToFp | IROpcode.UiToFp | IROpcode.FpToSi |
+             IROpcode.FpToUi | IROpcode.PtrToInt | IROpcode.IntToPtr | IROpcode.Bitcast |
+             IROpcode.Load | IROpcode.StringLength | IROpcode.SliceData | IROpcode.SliceLength |
+             IROpcode.PickTag =>
+            if operands != 1 { return ir_fail(context, IRError.InvalidInstruction); }
+        case IROpcode.Add | IROpcode.Sub | IROpcode.Mul | IROpcode.Sdiv | IROpcode.Udiv | IROpcode.Srem | IROpcode.Urem |
+             IROpcode.Fadd | IROpcode.Fsub | IROpcode.Fmul | IROpcode.Fdiv | IROpcode.Frem | IROpcode.And | IROpcode.Or |
+             IROpcode.Xor | IROpcode.Shl | IROpcode.Lshr | IROpcode.Ashr | IROpcode.IcmpEq | IROpcode.IcmpNe |
+             IROpcode.IcmpSlt | IROpcode.IcmpSle | IROpcode.IcmpSgt | IROpcode.IcmpSge | IROpcode.IcmpUlt |
+             IROpcode.IcmpUle | IROpcode.IcmpUgt | IROpcode.IcmpUge | IROpcode.FcmpEq | IROpcode.FcmpNe |
+             IROpcode.FcmpLt | IROpcode.FcmpLe | IROpcode.FcmpGt | IROpcode.FcmpGe | IROpcode.Store |
+             IROpcode.Gep | IROpcode.ArrayMake | IROpcode.StringConcat | IROpcode.StringSlice | IROpcode.SliceMake | IROpcode.Select | IROpcode.PickPayload =>
+            if operands != 2 and (*value).opcode != IROpcode.Gep and (*value).opcode != IROpcode.ArrayMake and (*value).opcode != IROpcode.StringSlice and (*value).opcode != IROpcode.SliceMake and (*value).opcode != IROpcode.Select { return ir_fail(context, IRError.InvalidInstruction); }
+        case IROpcode.Call => if operands == 0 { return ir_fail(context, IRError.InvalidInstruction); }
+        case IROpcode.PickMake => if operands < 1 or operands > 17 { return ir_fail(context, IRError.InvalidInstruction); }
+        case IROpcode.Br => if operands != 0 or (*value).target_true == 0 { return ir_fail(context, IRError.InvalidInstruction); }
+        case IROpcode.CondBr => if operands != 1 or (*value).target_true == 0 or (*value).target_false == 0 { return ir_fail(context, IRError.InvalidInstruction); }
+        case IROpcode.Switch => if operands == 0 or (*value).target_true == 0 { return ir_fail(context, IRError.InvalidInstruction); }
+        case IROpcode.Return => if operands > 1 { return ir_fail(context, IRError.InvalidInstruction); }
+        case IROpcode.Unreachable => if operands != 0 { return ir_fail(context, IRError.InvalidInstruction); }
+        case IROpcode.Phi => {
+            if (*value).phi_count > (*value).phi_capacity or ((*value).phi_count != 0 and (*value).phi_incomings == null) { return ir_fail(context, IRError.InvalidPhi); }
+            let mut phi_index: usize = 0;
+            while phi_index < (*value).phi_count {
+                let incoming = &(*value).phi_incomings[phi_index];
+                if vitte_ir_get_block(context, (*incoming).block) == null or vitte_ir_get_value(context, (*incoming).value) == null or (*context).values[((*incoming).value - 1) as usize].type_ != (*value).result_type { return ir_fail(context, IRError.InvalidPhi); }
+                set phi_index += 1;
+            }
+        }
+        case _ => {}
+    }
+    if (*value).opcode == IROpcode.Br or (*value).opcode == IROpcode.CondBr or (*value).opcode == IROpcode.Switch {
+        if vitte_ir_get_block(context, (*value).target_true) == null or (*context).blocks[((*value).target_true - 1) as usize].function != (*context).blocks[((*value).block - 1) as usize].function { return ir_fail(context, IRError.InvalidCfg); }
+        if (*value).opcode == IROpcode.CondBr and (vitte_ir_get_block(context, (*value).target_false) == null or (*context).blocks[((*value).target_false - 1) as usize].function != (*context).blocks[((*value).block - 1) as usize].function) { return ir_fail(context, IRError.InvalidCfg); }
+    }
+    if (*value).opcode == IROpcode.Alloca {
+        let result_type = vitte_ir_get_type(context, (*value).result_type);
+        if result_type == null or (*result_type).kind != IRTypeKind.Pointer { return ir_fail(context, IRError.InvalidType); }
+    }
+    if (*value).opcode == IROpcode.Load {
+        let address = vitte_ir_get_value(context, (*value).operands[0]);
+        let address_type = if address == null { null } else { vitte_ir_get_type(context, (*address).type_) };
+        if address_type == null or (*address_type).kind != IRTypeKind.Pointer or (*address_type).element_type != (*value).result_type { return ir_fail(context, IRError.TypeMismatch); }
+    }
+    if (*value).opcode == IROpcode.Store {
+        let address = vitte_ir_get_value(context, (*value).operands[0]); let stored = vitte_ir_get_value(context, (*value).operands[1]);
+        let address_type = if address == null { null } else { vitte_ir_get_type(context, (*address).type_) };
+        if address_type == null or (*address_type).kind != IRTypeKind.Pointer or stored == null or (*address_type).element_type != (*stored).type_ { return ir_fail(context, IRError.TypeMismatch); }
+    }
+    if (*value).opcode == IROpcode.ArrayMake {
+        let array_type = vitte_ir_get_type(context, (*value).result_type);
+        if array_type == null or (*array_type).kind != IRTypeKind.Array or
+           (*array_type).array_length != operands {
+            return ir_fail(context, IRError.TypeMismatch);
+        }
+        let mut element_index: usize = 0;
+        while element_index < operands {
+            let element = vitte_ir_get_value(context, (*value).operands[element_index]);
+            if element == null or (*element).type_ != (*array_type).element_type {
+                return ir_fail(context, IRError.TypeMismatch);
+            }
+            set element_index += 1;
+        }
+    }
+    if (*value).opcode == IROpcode.PickMake {
+        let result_type = vitte_ir_get_type(context, (*value).result_type);
+        let tag = vitte_ir_get_value(context, (*value).operands[0]);
+        let tag_type = if tag == null { null } else { vitte_ir_get_type(context, (*tag).type_) };
+        if result_type == null or (*result_type).kind != IRTypeKind.Pick or
+           tag_type == null or not ir_is_integer((*tag_type).kind) {
+            return ir_fail(context, IRError.TypeMismatch);
+        }
+        let mut payload_index: usize = 1;
+        while payload_index < operands {
+            let payload = vitte_ir_get_value(context, (*value).operands[payload_index]);
+            let payload_type = if payload == null { null } else { vitte_ir_get_type(context, (*payload).type_) };
+            if payload_type == null or not ir_pick_payload_type_supported((*payload_type).kind) {
+                return ir_fail(context, IRError.TypeMismatch);
+            }
+            set payload_index += 1;
+        }
+    }
+    if (*value).opcode == IROpcode.PickTag or (*value).opcode == IROpcode.PickPayload {
+        let operand = vitte_ir_get_value(context, (*value).operands[0]);
+        let operand_type = if operand == null { null } else { vitte_ir_get_type(context, (*operand).type_) };
+        if operand_type == null or (*operand_type).kind != IRTypeKind.Pick { return ir_fail(context, IRError.TypeMismatch); }
+        if (*value).opcode == IROpcode.PickTag {
+            let result_type = vitte_ir_get_type(context, (*value).result_type);
+            if result_type == null or not ir_is_integer((*result_type).kind) { return ir_fail(context, IRError.TypeMismatch); }
+        } else {
+            let index_value = vitte_ir_get_value(context, (*value).operands[1]);
+            let index_type = if index_value == null { null } else { vitte_ir_get_type(context, (*index_value).type_) };
+            let result_type = vitte_ir_get_type(context, (*value).result_type);
+            if index_value == null or (*index_value).kind != IRValueKind.ConstantInteger or index_type == null or
+               not ir_is_integer((*index_type).kind) or (*index_value).integer_value >= 16 or result_type == null or
+               not ir_pick_payload_type_supported((*result_type).kind) {
+                return ir_fail(context, IRError.TypeMismatch);
+            }
+        }
+    }
+    if (*value).opcode == IROpcode.CondBr {
+        let condition = vitte_ir_get_value(context, (*value).operands[0]);
+        let condition_type = if condition == null { null } else { vitte_ir_get_type(context, (*condition).type_) };
+        if condition_type == null or (*condition_type).kind != IRTypeKind.Bool { return ir_fail(context, IRError.TypeMismatch); }
+    }
+    if (*value).opcode == IROpcode.Return {
+        let block = vitte_ir_get_block(context, (*value).block);
+        let function = if block == null { null } else { vitte_ir_get_function(context, (*block).function) };
+        let signature = if function == null { null } else { vitte_ir_get_type(context, (*function).type_) };
+        if signature == null { return ir_fail(context, IRError.InvalidFunction); }
+        if (*value).operand_count == 0 {
+            let result_type = vitte_ir_get_type(context, (*signature).return_type);
+            if result_type == null or (*result_type).kind != IRTypeKind.Void { return ir_fail(context, IRError.TypeMismatch); }
+        } else {
+            let returned = vitte_ir_get_value(context, (*value).operands[0]);
+            if returned == null or (*returned).type_ != (*signature).return_type { return ir_fail(context, IRError.TypeMismatch); }
+        }
+    }
+    if (*value).opcode == IROpcode.Call {
+        let callee = vitte_ir_get_value(context, (*value).operands[0]);
+        let callee_type = if callee == null { null } else { vitte_ir_get_type(context, (*callee).type_) };
+        if callee_type == null or (*callee_type).kind != IRTypeKind.Function or (*callee_type).return_type != (*value).result_type { return ir_fail(context, IRError.TypeMismatch); }
+        let arguments = (*value).operand_count - 1;
+        if arguments < (*callee_type).parameter_count or (not (*callee_type).is_variadic and arguments != (*callee_type).parameter_count) { return ir_fail(context, IRError.TypeMismatch); }
+        let mut argument_index: usize = 0;
+        while argument_index < (*callee_type).parameter_count {
+            let argument = vitte_ir_get_value(context, (*value).operands[argument_index + 1]);
+            if argument == null or (*argument).type_ != (*callee_type).parameter_types[argument_index] { return ir_fail(context, IRError.TypeMismatch); }
+            set argument_index += 1;
+        }
+    }
+    if (*value).opcode == IROpcode.Phi {
+        let parent = vitte_ir_get_block(context, (*value).block);
+        if parent == null or (*value).phi_count != (*parent).predecessor_count { return ir_fail(context, IRError.InvalidPhi); }
+        let mut incoming_index: usize = 0;
+        while incoming_index < (*value).phi_count {
+            let incoming = &(*value).phi_incomings[incoming_index];
+            let mut found = false; let mut pred: usize = 0;
+            while pred < (*parent).predecessor_count { if (*parent).predecessors[pred] == (*incoming).block { set found = true; break; } set pred += 1; }
+            if not found { return ir_fail(context, IRError.InvalidPhi); }
+            set incoming_index += 1;
+        }
+    }
+    return true;
+}
+
+proc ir_validate_block(context: *mut IRContext, value: *IRBlock) -> bool {
+    if value == null or vitte_ir_get_function(context, (*value).function) == null or (*value).instruction_count > (*value).instruction_capacity or
+       (*value).predecessor_count > (*value).predecessor_capacity or (*value).successor_count > (*value).successor_capacity { return ir_fail(context, IRError.InvalidBlock); }
+    let mut index: usize = 0;
+    while index < (*value).instruction_count {
+        let id = (*value).instructions[index];
+        let instruction = vitte_ir_get_instruction(context, id);
+        if instruction == null or (*instruction).block != (*value).id { return ir_fail(context, IRError.Corruption); }
+        let last = index + 1 == (*value).instruction_count;
+        if vitte_ir_opcode_is_terminator((*instruction).opcode) != last { return ir_fail(context, if last { IRError.MissingTerminator } else { IRError.TerminatedBlock }); }
+        set index += 1;
+    }
+    if (*value).terminated != ((*value).instruction_count != 0 and (*value).terminator == (*value).instructions[(*value).instruction_count - 1]) { return ir_fail(context, IRError.Corruption); }
+    set index = 0;
+    while index < (*value).successor_count {
+        let target = vitte_ir_get_block(context, (*value).successors[index]);
+        if target == null or (*target).function != (*value).function { return ir_fail(context, IRError.InvalidCfg); }
+        let mut found = false; let mut reverse: usize = 0;
+        while reverse < (*target).predecessor_count { if (*target).predecessors[reverse] == (*value).id { set found = true; break; } set reverse += 1; }
+        if not found { return ir_fail(context, IRError.InvalidCfg); }
+        set index += 1;
+    }
+    return true;
+}
+
+proc ir_validate_function(context: *mut IRContext, value: *IRFunction) -> bool {
+    if value == null or vitte_ir_get_string(context, (*value).name) == null or vitte_ir_get_type(context, (*value).type_) == null or
+       (*value).linkage >= IRLinkage.Count or (*value).calling_convention >= IRCallingConvention.Count or
+       (*value).parameter_count > (*value).parameter_capacity or (*value).block_count > (*value).block_capacity { return ir_fail(context, IRError.InvalidFunction); }
+    let signature = vitte_ir_get_type(context, (*value).type_);
+    if (*signature).kind != IRTypeKind.Function or (*signature).parameter_count != (*value).parameter_count or (*signature).is_variadic != (*value).is_variadic { return ir_fail(context, IRError.TypeMismatch); }
+    let mut index: usize = 0;
+    while index < (*value).parameter_count {
+        let parameter = vitte_ir_get_value(context, (*value).parameters[index]);
+        if parameter == null or (*parameter).kind != IRValueKind.Parameter or (*parameter).function != (*value).id or (*parameter).parameter_index != index or (*parameter).type_ != (*signature).parameter_types[index] { return ir_fail(context, IRError.InvalidValue); }
+        set index += 1;
+    }
+    if not (*value).is_declaration and ((*value).block_count == 0 or vitte_ir_get_block(context, (*value).entry_block) == null) { return ir_fail(context, IRError.InvalidFunction); }
+    set index = 0;
+    while index < (*value).block_count {
+        let block = vitte_ir_get_block(context, (*value).blocks[index]);
+        if block == null or (*block).function != (*value).id or (not (*value).is_declaration and not (*block).terminated) { return ir_fail(context, IRError.MissingTerminator); }
+        set index += 1;
+    }
+    return true;
+}
+
+export proc vitte_ir_validate(context: *mut IRContext) -> bool {
+    if not vitte_ir_is_valid(context) { return false; }
+    ir_add_stat(&mut (*context).stats.validation_runs, 1);
+    if (*context).string_count > (*context).string_capacity or (*context).type_count > (*context).type_capacity or
+       (*context).value_count > (*context).value_capacity or (*context).instruction_count > (*context).instruction_capacity or
+       (*context).block_count > (*context).block_capacity or (*context).function_count > (*context).function_capacity { return ir_fail(context, IRError.Corruption); }
+    let mut index: usize = 0;
+    while index < (*context).type_count { if (*context).types[index].id != index as u64 + 1 or not ir_validate_type(context, &mut (*context).types[index]) { ir_add_stat(&mut (*context).stats.validation_failures, 1); return false; } set index += 1; }
+    set index = 0;
+    while index < (*context).value_count { if (*context).values[index].id != index as u64 + 1 or not ir_validate_value(context, &mut (*context).values[index]) { ir_add_stat(&mut (*context).stats.validation_failures, 1); return false; } set index += 1; }
+    set index = 0;
+    while index < (*context).instruction_count { if (*context).instructions[index].id != index as u64 + 1 or not ir_validate_instruction(context, &mut (*context).instructions[index]) { ir_add_stat(&mut (*context).stats.validation_failures, 1); return false; } set index += 1; }
+    set index = 0;
+    while index < (*context).block_count { if (*context).blocks[index].id != index as u64 + 1 or not ir_validate_block(context, &mut (*context).blocks[index]) { ir_add_stat(&mut (*context).stats.validation_failures, 1); return false; } set index += 1; }
+    set index = 0;
+    while index < (*context).function_count { if (*context).functions[index].id != index as u64 + 1 or not ir_validate_function(context, &mut (*context).functions[index]) { ir_add_stat(&mut (*context).stats.validation_failures, 1); return false; } set index += 1; }
+    set (*context).last_error = IRError.None;
+    return true;
+}
+
+export proc vitte_ir_seal(context: *mut IRContext) -> bool {
+    if not vitte_ir_is_valid(context) or (*context).state != IRState.Building { return ir_fail(context, IRError.InvalidState); }
+    if not vitte_ir_validate(context) { set (*context).state = IRState.Failed; return false; }
+    set (*context).state = IRState.Sealed; set (*context).last_error = IRError.None;
+    return true;
+}
+
+export proc vitte_ir_fingerprint(context: *mut IRContext) -> u64 {
+    if not vitte_ir_is_valid(context) { return 0; }
+    let mut hash = IR_FNV_OFFSET;
+    hash = ir_hash_u64(hash, (*context).string_count as u64);
+    let mut index: usize = 0;
+    while index < (*context).string_count {
+        let value = &(*context).strings[index];
+        let data: string = (*value).data;
+        hash = ir_hash_u64(hash, (*value).length as u64);
+        let mut byte: usize = 0;
+        while byte < (*value).length { hash = ir_hash_byte(hash, data.as_bytes()[byte]); set byte += 1; }
+        set index += 1;
+    }
+    hash = ir_hash_u64(hash, (*context).type_count as u64); set index = 0;
+    while index < (*context).type_count {
+        let value = &(*context).types[index];
+        hash = ir_hash_u64(hash, (*value).kind as u64); hash = ir_hash_u64(hash, (*value).element_type);
+        hash = ir_hash_u64(hash, (*value).array_length as u64); hash = ir_hash_u64(hash, (*value).return_type);
+        hash = ir_hash_u64(hash, (*value).name); hash = ir_hash_u64(hash, if (*value).is_variadic { 1 as u64 } else { 0 as u64 });
+        let mut p: usize = 0; while p < (*value).parameter_count { hash = ir_hash_u64(hash, (*value).parameter_types[p]); set p += 1; }
+        hash = ir_hash_u64(hash, (*value).field_count as u64);
+        set p = 0; while p < (*value).field_count { hash = ir_hash_u64(hash, (*value).field_types[p]); set p += 1; }
+        set index += 1;
+    }
+    hash = ir_hash_u64(hash, (*context).value_count as u64); set index = 0;
+    while index < (*context).value_count {
+        let value = &(*context).values[index];
+        hash = ir_hash_u64(hash, (*value).kind as u64); hash = ir_hash_u64(hash, (*value).type_); hash = ir_hash_u64(hash, (*value).name);
+        hash = ir_hash_u64(hash, (*value).integer_value); hash = ir_hash_u64(hash, if (*value).bool_value { 1 as u64 } else { 0 as u64 });
+        hash = ir_hash_u64(hash, (*value).string_value); hash = ir_hash_u64(hash, (*value).function); hash = ir_hash_u64(hash, (*value).instruction);
+        let mut bits: u64 = 0; copy((&mut bits) as *mut u8, (&(*value).float_value) as *const u8, sizeof(f64)); hash = ir_hash_u64(hash, bits);
+        set index += 1;
+    }
+    hash = ir_hash_u64(hash, (*context).instruction_count as u64); set index = 0;
+    while index < (*context).instruction_count {
+        let value = &(*context).instructions[index];
+        hash = ir_hash_u64(hash, (*value).opcode as u64); hash = ir_hash_u64(hash, (*value).block); hash = ir_hash_u64(hash, (*value).result_type); hash = ir_hash_u64(hash, (*value).target_true); hash = ir_hash_u64(hash, (*value).target_false);
+        let mut operand: usize = 0; while operand < (*value).operand_count { hash = ir_hash_u64(hash, (*value).operands[operand]); set operand += 1; }
+        let mut phi: usize = 0; while phi < (*value).phi_count { hash = ir_hash_u64(hash, (*value).phi_incomings[phi].block); hash = ir_hash_u64(hash, (*value).phi_incomings[phi].value); set phi += 1; }
+        set index += 1;
+    }
+    hash = ir_hash_u64(hash, (*context).block_count as u64); set index = 0;
+    while index < (*context).block_count { let value = &(*context).blocks[index]; hash = ir_hash_u64(hash, (*value).function); hash = ir_hash_u64(hash, (*value).name); let mut edge: usize = 0; while edge < (*value).successor_count { hash = ir_hash_u64(hash, (*value).successors[edge]); set edge += 1; } set index += 1; }
+    hash = ir_hash_u64(hash, (*context).function_count as u64); set index = 0;
+    while index < (*context).function_count { let value = &(*context).functions[index]; hash = ir_hash_u64(hash, (*value).name); hash = ir_hash_u64(hash, (*value).type_); hash = ir_hash_u64(hash, (*value).linkage as u64); hash = ir_hash_u64(hash, (*value).calling_convention as u64); hash = ir_hash_u64(hash, if (*value).is_declaration { 1 as u64 } else { 0 as u64 }); set index += 1; }
+    ir_add_stat(&mut (*context).stats.hash_runs, 1);
+    return hash;
+}
+
+export proc vitte_ir_stats(context: *IRContext) -> IRStats {
+    if not vitte_ir_is_valid(context) { return IRStats {}; }
+    return (*context).stats;
+}
+
+export proc vitte_ir_set_limits(context: *mut IRContext, max_types: usize, max_values: usize, max_instructions: usize, max_blocks: usize, max_functions: usize, max_string_bytes: usize) -> bool {
+    if not vitte_ir_is_valid(context) or (*context).state != IRState.Building {
+        if context != null and (*context).magic == IR_MAGIC {
+            set (*context).last_error = IRError.InvalidState;
+        }
+        return false;
+    }
+    if max_types == 0 or max_values == 0 or max_instructions == 0 or
+       max_blocks == 0 or max_functions == 0 or max_string_bytes == 0 {
+        set (*context).last_error = IRError.InvalidArgument;
+        return false;
+    }
+    if max_types < (*context).type_count or max_values < (*context).value_count or
+       max_instructions < (*context).instruction_count or max_blocks < (*context).block_count or
+       max_functions < (*context).function_count or max_string_bytes < (*context).string_bytes {
+        set (*context).last_error = IRError.Limit;
+        return false;
+    }
+    set (*context).max_types = max_types;
+    set (*context).max_values = max_values;
+    set (*context).max_instructions = max_instructions;
+    set (*context).max_blocks = max_blocks;
+    set (*context).max_functions = max_functions;
+    set (*context).max_string_bytes = max_string_bytes;
+    set (*context).last_error = IRError.None;
+    return true;
+}
+
+proc ir_lower_hir_ptr(context: *mut IRLowerContext) -> *HIR {
+    if context == null or (*context).hir == null { return null; }
+    return (*context).hir as *HIR;
+}
+
+proc ir_lower_span(span: *const HIRSpan) -> IRSpan {
+    if span == null { return IRSpan {}; }
+    return IRSpan { file_id: (*span).file_id, begin: (*span).begin, end: (*span).end, valid: (*span).valid };
+}
+
+proc ir_lower_node(context: *mut IRLowerContext, id: HIRNodeId) -> *HIRNode {
+    return vitte_hir_get_node(ir_lower_hir_ptr(context), id);
+}
+
+proc ir_lower_string(context: *mut IRLowerContext, id: u64) -> *HIRString {
+    return vitte_hir_get_string(ir_lower_hir_ptr(context), id);
+}
+
+proc ir_lower_symbol(context: *mut IRLowerContext, id: HIRSymbolId) -> *HIRSymbol {
+    return vitte_hir_get_symbol(ir_lower_hir_ptr(context), id);
+}
+
+proc ir_lower_type_entry(context: *mut IRLowerContext, id: HIRTypeId) -> *HIRType {
+    return vitte_hir_get_type(ir_lower_hir_ptr(context), id);
+}
+
+proc ir_lower_intern_hir_string(context: *mut IRLowerContext, id: u64) -> IRStringId {
+    let source = ir_lower_string(context, id);
+    if source == null { return 0; }
+    let data: string = (*source).data;
+    return vitte_ir_intern_string((*context).ir, data.as_bytes().as_ptr() as *const u8, (*source).length);
+}
+
+proc ir_lower_primitive(context: *mut IRLowerContext, kind: IRTypeKind) -> IRTypeId {
+    let mut description = IRTypeDesc {}; set description.kind = kind;
+    return vitte_ir_intern_type((*context).ir, &description);
+}
+
+proc ir_lower_form_field_types(context: *mut IRLowerContext, form_symbol: HIRSymbolId, description: *mut IRTypeDesc) -> bool {
+    if context == null or description == null or (*context).hir == null { return false; }
+    let hir = (*context).hir;
+    let mut declaration_index: usize = 0;
+    while declaration_index < (*hir).node_count {
+        let declaration = &(*hir).nodes[declaration_index];
+        if (*declaration).kind == HIRNodeKind.FormDecl and (*declaration).payload[0] == form_symbol {
+            let field_count = (*declaration).payload[2] as usize;
+            if field_count == 0 { return true; }
+            let mut bytes: usize = 0;
+            if not ir_size_mul(field_count, sizeof(IRTypeId), &mut bytes) { return false; }
+            set (*description).field_types = allocate(bytes) as *mut IRTypeId;
+            if (*description).field_types == null { return ir_fail((*context).ir, IRError.OutOfMemory); }
+            set (*description).field_count = field_count;
+            let fields = (*declaration).payload[1] as usize as *const HIRNodeId;
+            if fields == null { deallocate((*description).field_types as *mut u8); set (*description).field_types = null; set (*description).field_count = 0; return false; }
+            let mut field_index: usize = 0;
+            while field_index < field_count {
+                let field = ir_lower_node(context, fields[field_index]);
+                if field == null or (*field).kind != HIRNodeKind.FieldDecl { deallocate((*description).field_types as *mut u8); set (*description).field_types = null; set (*description).field_count = 0; return false; }
+                let hir_field_type = vitte_hir_get_type(hir, (*field).payload[1]);
+                if hir_field_type != null and (*hir_field_type).kind == HIRTypeKind.Named and (*hir_field_type).symbol == form_symbol {
+                    deallocate((*description).field_types as *mut u8); set (*description).field_types = null; set (*description).field_count = 0; return false;
+                }
+                set (*description).field_types[field_index] = ir_lower_type(context, (*field).payload[1]);
+                if (*description).field_types[field_index] == 0 { deallocate((*description).field_types as *mut u8); set (*description).field_types = null; set (*description).field_count = 0; return false; }
+                set field_index += 1;
+            }
+            return true;
+        }
+        set declaration_index += 1;
+    }
+    return false;
+}
+
+proc ir_lower_type(context: *mut IRLowerContext, id: HIRTypeId) -> IRTypeId {
+    if context == null or id == 0 or id > (*context).type_count as u64 { return 0; }
+    let cache_index = (id - 1) as usize;
+    if (*context).types[cache_index] != 0 { return (*context).types[cache_index]; }
+    let source = ir_lower_type_entry(context, id);
+    if source == null { return 0; }
+    let mut description = IRTypeDesc {};
+    match (*source).kind {
+        case HIRTypeKind.Unit | HIRTypeKind.Never => set description.kind = IRTypeKind.Void;
+        case HIRTypeKind.Bool => set description.kind = IRTypeKind.Bool;
+        case HIRTypeKind.Char => set description.kind = IRTypeKind.Char;
+        case HIRTypeKind.I8 => set description.kind = IRTypeKind.I8;
+        case HIRTypeKind.I16 => set description.kind = IRTypeKind.I16;
+        case HIRTypeKind.I32 => set description.kind = IRTypeKind.I32;
+        case HIRTypeKind.I64 => set description.kind = IRTypeKind.I64;
+        case HIRTypeKind.U8 => set description.kind = IRTypeKind.U8;
+        case HIRTypeKind.U16 => set description.kind = IRTypeKind.U16;
+        case HIRTypeKind.U32 => set description.kind = IRTypeKind.U32;
+        case HIRTypeKind.U64 => set description.kind = IRTypeKind.U64;
+        case HIRTypeKind.F32 => set description.kind = IRTypeKind.F32;
+        case HIRTypeKind.F64 => set description.kind = IRTypeKind.F64;
+        case HIRTypeKind.String => {
+            let byte_type = ir_lower_primitive(context, IRTypeKind.U8);
+            if byte_type == 0 { return 0; }
+            set description.kind = IRTypeKind.Pointer; set description.element_type = byte_type;
+        }
+        case HIRTypeKind.Pointer | HIRTypeKind.Reference => {
+            set description.element_type = ir_lower_type(context, (*source).element_type);
+            if description.element_type == 0 { return 0; }
+            set description.kind = IRTypeKind.Pointer;
+        }
+        case HIRTypeKind.Array => {
+            set description.element_type = ir_lower_type(context, (*source).element_type);
+            if description.element_type == 0 { return 0; }
+            set description.kind = IRTypeKind.Array; set description.array_length = (*source).array_length;
+        }
+        case HIRTypeKind.Slice => {
+            set description.element_type = ir_lower_type(context, (*source).element_type);
+            if description.element_type == 0 { return 0; }
+            set description.kind = IRTypeKind.Slice;
+        }
+        case HIRTypeKind.Function => {
+            set description.kind = IRTypeKind.Function;
+            set description.return_type = ir_lower_type(context, (*source).return_type);
+            if description.return_type == 0 { return 0; }
+            set description.parameter_count = (*source).parameter_count;
+            set description.is_variadic = (*source).variadic;
+            if (*source).parameter_count != 0 {
+                let mut bytes: usize = 0;
+                if not ir_size_mul((*source).parameter_count, sizeof(IRTypeId), &mut bytes) { return ir_fail_id((*context).ir, IRError.Overflow); }
+                set description.parameter_types = allocate(bytes) as *mut IRTypeId;
+                if description.parameter_types == null { return ir_fail_id((*context).ir, IRError.OutOfMemory); }
+                let mut index: usize = 0;
+                while index < (*source).parameter_count {
+                    set description.parameter_types[index] = ir_lower_type(context, (*source).parameters[index]);
+                    if description.parameter_types[index] == 0 { deallocate(description.parameter_types as *mut u8); return 0; }
+                    set index += 1;
+                }
+            }
+        }
+        case HIRTypeKind.Named | HIRTypeKind.Tuple => {
+            set description.kind = IRTypeKind.Struct;
+            if (*source).symbol != 0 {
+                let symbol = ir_lower_symbol(context, (*source).symbol);
+                if symbol != null {
+                    set description.name = ir_lower_intern_hir_string(context, (*symbol).name);
+                    if (*symbol).kind == HIRSymbolKind.Pick { set description.kind = IRTypeKind.Pick; }
+                    elif (*symbol).kind == HIRSymbolKind.Form and not ir_lower_form_field_types(context, (*symbol).id, &mut description) {
+                        deallocate(description.field_types as *mut u8);
+                        return 0;
+                    }
+                }
+            }
+        }
+        case HIRTypeKind.GenericParameter | HIRTypeKind.DynTrait => {
+            set description.kind = IRTypeKind.Opaque;
+            if (*source).symbol != 0 {
+                let symbol = ir_lower_symbol(context, (*source).symbol);
+                if symbol != null { set description.name = ir_lower_intern_hir_string(context, (*symbol).name); }
+            }
+        }
+        case _ => set description.kind = IRTypeKind.Opaque;
+    }
+    let result = vitte_ir_intern_type((*context).ir, &description);
+    deallocate(description.parameter_types as *mut u8);
+    deallocate(description.field_types as *mut u8);
+    if result != 0 { set (*context).types[cache_index] = result; }
+    return result;
+}
+
+proc ir_lower_default_type(context: *mut IRLowerContext) -> IRTypeId {
+    let mut index: usize = 1;
+    while index <= (*context).type_count {
+        let source = ir_lower_type_entry(context, index as u64);
+        if source != null and (*source).kind == HIRTypeKind.I64 { return ir_lower_type(context, index as u64); }
+        set index += 1;
+    }
+    return 0;
+}
+
+proc ir_lower_find_value(context: *mut IRLowerContext, symbol: HIRSymbolId) -> *IRLowerSymbolValue {
+    let mut index = (*context).symbol_count;
+    while index != 0 {
+        set index -= 1;
+        if (*context).symbols[index].symbol == symbol { return &(*context).symbols[index]; }
+    }
+    return null;
+}
+
+proc ir_lower_bind_value(context: *mut IRLowerContext, symbol: HIRSymbolId, value: IRValueId, is_address: bool) -> bool {
+    if symbol == 0 or value == 0 { return ir_fail((*context).ir, IRError.InvalidValue); }
+    let mut required: usize = 0;
+    let hir = ir_lower_hir_ptr(context);
+    if not ir_size_add((*context).symbol_count, 1, &mut required) { return false; }
+    let raw_symbols = ir_reserve_array((*context).ir, (*context).symbols as usize as *mut u8,
+        &mut (*context).symbol_capacity, (*context).symbol_count, required,
+        sizeof(IRLowerSymbolValue), (*hir).max_symbols + (*hir).max_nodes + 16);
+    if raw_symbols == null { return false; }
+    set (*context).symbols = raw_symbols as usize as *mut IRLowerSymbolValue;
+    set (*context).symbols[(*context).symbol_count] = IRLowerSymbolValue { symbol: symbol, value: value, is_address: is_address };
+    set (*context).symbol_count = required;
+    return true;
+}
+
+proc ir_lower_member_is(context: *mut IRLowerContext, symbol_id: HIRSymbolId, name: string) -> bool {
+    let symbol = ir_lower_symbol(context, symbol_id);
+    let text = if symbol == null { null } else { ir_lower_string(context, (*symbol).name) };
+    if text == null or (*text).length != name.len() { return false; }
+    let text_data: string = (*text).data;
+    let left: *const u8 = text_data.as_bytes().as_ptr() as *const u8; let right: *const u8 = name as *const u8;
+    let mut index: usize = 0;
+    while index < name.len() { if left[index] != right[index] { return false; } set index += 1; }
+    return true;
+}
+
+proc ir_lower_node_list(node: *HIRNode, offset: usize) -> *const HIRNodeId {
+    if node == null or offset >= 6 { return null; }
+    return (*node).payload[offset] as usize as *const HIRNodeId;
+}
+
+proc ir_lower_list_count(node: *HIRNode, offset: usize) -> usize {
+    if node == null or offset + 1 >= 8 { return 0; }
+    return (*node).payload[offset + 1] as usize;
+}
+
+proc ir_lower_type_is_float(context: *mut IRLowerContext, type_id: HIRTypeId) -> bool {
+    let value = ir_lower_type_entry(context, type_id);
+    return value != null and ((*value).kind == HIRTypeKind.F32 or (*value).kind == HIRTypeKind.F64);
+}
+
+proc ir_lower_binary(op: HIRBinaryOperator, floating: bool) -> IROpcode {
+    match op {
+        case HIRBinaryOperator.Add => return if floating { IROpcode.Fadd } else { IROpcode.Add };
+        case HIRBinaryOperator.Subtract => return if floating { IROpcode.Fsub } else { IROpcode.Sub };
+        case HIRBinaryOperator.Multiply => return if floating { IROpcode.Fmul } else { IROpcode.Mul };
+        case HIRBinaryOperator.Divide => return if floating { IROpcode.Fdiv } else { IROpcode.Sdiv };
+        case HIRBinaryOperator.Remainder => return if floating { IROpcode.Frem } else { IROpcode.Srem };
+        case HIRBinaryOperator.BitAnd | HIRBinaryOperator.And => return IROpcode.And;
+        case HIRBinaryOperator.BitOr | HIRBinaryOperator.Or => return IROpcode.Or;
+        case HIRBinaryOperator.BitXor => return IROpcode.Xor;
+        case HIRBinaryOperator.ShiftLeft => return IROpcode.Shl;
+        case HIRBinaryOperator.ShiftRight => return IROpcode.Ashr;
+        case HIRBinaryOperator.Equal => return if floating { IROpcode.FcmpEq } else { IROpcode.IcmpEq };
+        case HIRBinaryOperator.NotEqual => return if floating { IROpcode.FcmpNe } else { IROpcode.IcmpNe };
+        case HIRBinaryOperator.Less => return if floating { IROpcode.FcmpLt } else { IROpcode.IcmpSlt };
+        case HIRBinaryOperator.LessEqual => return if floating { IROpcode.FcmpLe } else { IROpcode.IcmpSle };
+        case HIRBinaryOperator.Greater => return if floating { IROpcode.FcmpGt } else { IROpcode.IcmpSgt };
+        case HIRBinaryOperator.GreaterEqual => return if floating { IROpcode.FcmpGe } else { IROpcode.IcmpSge };
+        case _ => return IROpcode.Invalid;
+    }
+}
+
+proc ir_lower_float_literal(node: *HIRNode) -> f64 {
+    let mut value: f64 = 0.0;
+    copy((&mut value) as *mut u8, (&(*node).payload[1]) as *const u8, sizeof(f64));
+    return value;
+}
+
+
+proc ir_lower_emit(context: *mut IRLowerContext, opcode: IROpcode, block: IRBlockId, result_type: IRTypeId, operands: *IRValueId, operand_count: usize, span: *const HIRSpan) -> IRInstructionId {
+    let mut description = IRInstructionDesc {};
+    set description.opcode = opcode; set description.block = block; set description.result_type = result_type;
+    set description.operands = operands; set description.operand_count = operand_count;
+    set description.span = ir_lower_span(span);
+    return vitte_ir_add_instruction((*context).ir, &description);
+}
+
+proc ir_lower_emit_value(context: *mut IRLowerContext, opcode: IROpcode, block: IRBlockId, result_type: IRTypeId, operands: *IRValueId, operand_count: usize, span: *const HIRSpan) -> IRValueId {
+    let instruction = ir_lower_emit(context, opcode, block, result_type, operands, operand_count, span);
+    if instruction == 0 { return 0; }
+    return vitte_ir_instruction_result((*context).ir, instruction);
+}
+
+proc ir_lower_array_expr_as(context: *mut IRLowerContext, function: IRFunctionId, block: *mut IRBlockId, node: *HIRNode, expected: IRTypeId) -> IRValueId {
+    let expected_type = vitte_ir_get_type((*context).ir, expected);
+    if node == null or expected_type == null or (*node).kind != HIRNodeKind.Array or
+       (*expected_type).kind != IRTypeKind.Array { return 0; }
+    let count = ir_lower_list_count(node, 0);
+    if count != (*expected_type).array_length { return ir_fail_id((*context).ir, IRError.TypeMismatch); }
+    let mut bytes: usize = 0;
+    if not ir_size_mul(count, sizeof(IRValueId), &mut bytes) { return ir_fail_id((*context).ir, IRError.Overflow); }
+    let operands = if count == 0 { null } else { allocate(bytes) as *mut IRValueId };
+    if count != 0 and operands == null { return ir_fail_id((*context).ir, IRError.OutOfMemory); }
+    let elements = ir_lower_node_list(node, 0);
+    let mut index: usize = 0;
+    while index < count {
+        let value = ir_lower_expr_as(context, function, block, elements[index], (*expected_type).element_type);
+        if value == 0 { deallocate(operands as *mut u8); return 0; }
+        set operands[index] = value;
+        set index += 1;
+    }
+    let result = ir_lower_emit_value(context, IROpcode.ArrayMake, *block, expected, operands, count, &(*node).span);
+    deallocate(operands as *mut u8);
+    return result;
+}
+
+proc ir_lower_expr_as(context: *mut IRLowerContext, function: IRFunctionId, block: *mut IRBlockId, node_id: HIRNodeId, expected: IRTypeId) -> IRValueId {
+    let node = ir_lower_node(context, node_id);
+    let expected_type = vitte_ir_get_type((*context).ir, expected);
+    if node == null or expected_type == null { return 0; }
+    if (*node).kind == HIRNodeKind.Array {
+        return ir_lower_array_expr_as(context, function, block, node, expected);
+    }
+    if (*node).kind == HIRNodeKind.FormInit {
+        let aggregate = vitte_ir_get_type((*context).ir, expected);
+        if aggregate == null or (*aggregate).kind != IRTypeKind.Struct { return 0; }
+        let field_count = (*aggregate).field_count;
+        if ir_lower_list_count(node, 1) != field_count { return 0; }
+        let mut bytes: usize = 0;
+        if not ir_size_mul(field_count, sizeof(IRValueId), &mut bytes) { return ir_fail_id((*context).ir, IRError.Overflow); }
+        let fields = if field_count == 0 { null } else { allocate(bytes) as *mut IRValueId };
+        if field_count != 0 and fields == null { return ir_fail_id((*context).ir, IRError.OutOfMemory); }
+        let mut initialized: *mut bool = null;
+        if field_count != 0 {
+            set initialized = allocate(field_count * sizeof(bool)) as *mut bool;
+            if initialized == null { deallocate(fields as *mut u8); return ir_fail_id((*context).ir, IRError.OutOfMemory); }
+            fill(initialized as *mut u8, 0, field_count * sizeof(bool));
+        }
+        let source_fields = ir_lower_node_list(node, 1);
+        let mut source_index: usize = 0;
+        while source_index < field_count {
+            let field = ir_lower_node(context, source_fields[source_index]);
+            if field == null or (*field).kind != HIRNodeKind.FieldInit or (*field).payload[2] >= field_count as u64 {
+                deallocate(fields as *mut u8); deallocate(initialized as *mut u8); return 0;
+            }
+            let field_index = (*field).payload[2] as usize;
+            if initialized[field_index] { deallocate(fields as *mut u8); deallocate(initialized as *mut u8); return 0; }
+            let value = ir_lower_expr_as(context, function, block, (*field).payload[1], (*aggregate).field_types[field_index]);
+            if value == 0 { deallocate(fields as *mut u8); deallocate(initialized as *mut u8); return 0; }
+            set fields[field_index] = value;
+            set initialized[field_index] = true;
+            set source_index += 1;
+        }
+        let mut field_index: usize = 0;
+        while field_index < field_count {
+            if not initialized[field_index] { deallocate(fields as *mut u8); deallocate(initialized as *mut u8); return 0; }
+            set field_index += 1;
+        }
+        let result = ir_lower_emit_value(context, IROpcode.StructMake, *block, expected, fields, field_count, &(*node).span);
+        deallocate(fields as *mut u8); deallocate(initialized as *mut u8);
+        return result;
+    }
+    if (*node).kind == HIRNodeKind.Literal {
+        let kind = (*node).payload[0] as HIRLiteralKind;
+        if kind == HIRLiteralKind.Null and (*expected_type).kind == IRTypeKind.Pointer { return vitte_ir_null((*context).ir, expected); }
+        if (kind == HIRLiteralKind.SignedInteger or kind == HIRLiteralKind.UnsignedInteger or kind == HIRLiteralKind.Char) and ir_is_integer((*expected_type).kind) {
+            return vitte_ir_const_integer((*context).ir, expected, (*node).payload[1]);
+        }
+        if (kind == HIRLiteralKind.F32 or kind == HIRLiteralKind.F64) and ir_is_float((*expected_type).kind) {
+            return vitte_ir_const_float((*context).ir, expected, ir_lower_float_literal(node));
+        }
+    }
+    return ir_lower_expr(context, function, block, node_id);
+}
+
+proc ir_lower_lvalue(context: *mut IRLowerContext, function: IRFunctionId, block: *mut IRBlockId, node_id: HIRNodeId) -> IRValueId {
+    let node = ir_lower_node(context, node_id);
+    if node == null { return 0; }
+    if (*node).kind == HIRNodeKind.Symbol {
+        let mapped = ir_lower_find_value(context, (*node).payload[0]);
+        if mapped != null and (*mapped).is_address { return (*mapped).value; }
+        return 0;
+    }
+    if (*node).kind == HIRNodeKind.Deref { return ir_lower_expr(context, function, block, (*node).payload[0]); }
+    if (*node).kind == HIRNodeKind.Member {
+        if ir_lower_member_is(context, (*node).payload[1], "length") or ir_lower_member_is(context, (*node).payload[1], "len") { return 0; }
+        let object_node = ir_lower_node(context, (*node).payload[0]);
+        if object_node == null { return 0; }
+        let object = if (*object_node).kind == HIRNodeKind.Symbol or (*object_node).kind == HIRNodeKind.Member or
+                        (*object_node).kind == HIRNodeKind.Index or (*object_node).kind == HIRNodeKind.Deref
+            { ir_lower_lvalue(context, function, block, (*node).payload[0]) }
+            else { ir_lower_expr(context, function, block, (*node).payload[0]) };
+        if object == 0 { return 0; }
+        let field_type = ir_lower_type(context, (*node).type_);
+        let mut pointer_desc = IRTypeDesc {}; set pointer_desc.kind = IRTypeKind.Pointer; set pointer_desc.element_type = field_type;
+        let pointer_type = vitte_ir_intern_type((*context).ir, &pointer_desc);
+        let index_type = ir_lower_primitive(context, IRTypeKind.U64);
+        let index_value = if index_type == 0 { 0 as IRValueId } else { vitte_ir_const_integer((*context).ir, index_type, (*node).payload[2]) };
+        if field_type == 0 or pointer_type == 0 or index_value == 0 { return 0; }
+        let mut operands: [IRValueId; 2] = [object, index_value];
+        return ir_lower_emit_value(context, IROpcode.StructField, *block, pointer_type, &mut operands[0], 2, &(*node).span);
+    }
+    if (*node).kind != HIRNodeKind.Index { return 0; }
+    let object_node = ir_lower_node(context, (*node).payload[0]);
+    if object_node == null { return 0; }
+    let object = ir_lower_expr(context, function, block, (*node).payload[0]);
+    let index = ir_lower_expr(context, function, block, (*node).payload[1]);
+    if object == 0 or index == 0 { return 0; }
+    let object_value = vitte_ir_get_value((*context).ir, object);
+    let object_type = if object_value == null { null } else { vitte_ir_get_type((*context).ir, (*object_value).type_) };
+    if object_type == null { return 0; }
+    let mut base = object;
+    let mut element_type = (*object_type).element_type;
+    if (*object_type).kind == IRTypeKind.Slice {
+        let mut pointer = IRTypeDesc {}; set pointer.kind = IRTypeKind.Pointer; set pointer.element_type = element_type;
+        let pointer_type = vitte_ir_intern_type((*context).ir, &pointer); if pointer_type == 0 { return 0; }
+        base = ir_lower_emit_value(context, IROpcode.SliceData, *block, pointer_type, &mut base, 1, &(*node).span);
+        if base == 0 { return 0; }
+    } elif (*object_type).kind == IRTypeKind.Array {
+        // Fixed arrays use element pointers as their IR values and retain
+        // their extent as metadata, so indexing points at the element type.
+    } elif (*object_type).kind != IRTypeKind.Pointer { return 0; }
+    let mut address_desc = IRTypeDesc {}; set address_desc.kind = IRTypeKind.Pointer;
+    set address_desc.element_type = if (*object_type).kind == IRTypeKind.Pointer { (*object_type).element_type } else { element_type };
+    let address_type = vitte_ir_intern_type((*context).ir, &address_desc); if address_type == 0 { return 0; }
+    let mut operands: [IRValueId; 2] = [base, index];
+    return ir_lower_emit_value(context, IROpcode.Gep, *block, address_type, &mut operands[0], 2, &(*node).span);
+}
+
+proc ir_lower_expr(context: *mut IRLowerContext, function: IRFunctionId, block: *mut IRBlockId, node_id: HIRNodeId) -> IRValueId {
+    let node = ir_lower_node(context, node_id);
+    if node == null { return 0; }
+    let mut type_id = ir_lower_type(context, (*node).type_);
+    if type_id == 0 { set type_id = ir_lower_default_type(context); }
+    if type_id == 0 { return 0; }
+    match (*node).kind {
+        case HIRNodeKind.Literal => {
+            let kind = (*node).payload[0] as HIRLiteralKind;
+            match kind {
+                case HIRLiteralKind.Bool => return vitte_ir_const_bool((*context).ir, type_id, (*node).payload[1] != 0);
+                case HIRLiteralKind.SignedInteger | HIRLiteralKind.UnsignedInteger | HIRLiteralKind.Char => return vitte_ir_const_integer((*context).ir, type_id, (*node).payload[1]);
+                case HIRLiteralKind.F32 | HIRLiteralKind.F64 => return vitte_ir_const_float((*context).ir, type_id, ir_lower_float_literal(node));
+                case HIRLiteralKind.String => {
+                    let text = ir_lower_string(context, (*node).payload[1]); if text == null { return 0; }
+                    let text_data: string = (*text).data;
+                    let string_id = vitte_ir_intern_string((*context).ir, text_data.as_bytes().as_ptr() as *const u8, (*text).length);
+                    if string_id == 0 { return 0; }
+                    return vitte_ir_const_string((*context).ir, type_id, string_id);
+                }
+                case HIRLiteralKind.Null => return vitte_ir_null((*context).ir, type_id);
+                case _ => return 0;
+            }
+        }
+        case HIRNodeKind.Symbol => {
+            let mapped = ir_lower_find_value(context, (*node).payload[0]); if mapped == null { return 0; }
+            if not (*mapped).is_address { return (*mapped).value; }
+            let mut address = (*mapped).value;
+            return ir_lower_emit_value(context, IROpcode.Load, *block, type_id, &mut address, 1, &(*node).span);
+        }
+        case HIRNodeKind.Array => return ir_lower_array_expr_as(context, function, block, node, type_id);
+        case HIRNodeKind.FormInit => return ir_lower_expr_as(context, function, block, node_id, type_id);
+        case HIRNodeKind.IfExpr => return ir_lower_if_expr(context, function, block, node);
+        case HIRNodeKind.PickConstruct => {
+            let payload_count = ir_lower_list_count(node, 1);
+            let payloads = ir_lower_node_list(node, 1);
+            if payload_count > 16 or (payload_count != 0 and payloads == null) { return ir_fail_id((*context).ir, IRError.Unsupported); }
+            let tag_type = ir_lower_primitive(context, IRTypeKind.U64);
+            let tag = vitte_ir_const_integer((*context).ir, tag_type, (*node).payload[4]);
+            if tag_type == 0 or tag == 0 { return 0; }
+            let operand_count = payload_count + 1;
+            let mut operand_bytes: usize = 0;
+            if not ir_size_mul(operand_count, sizeof(IRValueId), &mut operand_bytes) { return ir_fail_id((*context).ir, IRError.Overflow); }
+            let operands = allocate(operand_bytes) as *mut IRValueId;
+            if operands == null { return ir_fail_id((*context).ir, IRError.OutOfMemory); }
+            set operands[0] = tag;
+            let mut payload_index: usize = 0;
+            while payload_index < payload_count {
+                let payload = ir_lower_expr(context, function, block, payloads[payload_index]);
+                if payload == 0 { deallocate(operands as *mut u8); return 0; }
+                set operands[payload_index + 1] = payload;
+                set payload_index += 1;
+            }
+            let result = ir_lower_emit_value(context, IROpcode.PickMake, *block, type_id, operands, operand_count, &(*node).span);
+            deallocate(operands as *mut u8);
+            return result;
+        }
+        case HIRNodeKind.Unary => {
+            let value = ir_lower_expr(context, function, block, (*node).payload[1]); if value == 0 { return 0; }
+            let op = (*node).payload[0] as HIRUnaryOperator;
+            if op == HIRUnaryOperator.Plus { return value; }
+            if op == HIRUnaryOperator.BitNot {
+                let mask = vitte_ir_const_integer((*context).ir, type_id, IR_U64_MAX); if mask == 0 { return 0; }
+                let mut operands: [IRValueId; 2] = [value, mask];
+                return ir_lower_emit_value(context, IROpcode.Xor, *block, type_id, &mut operands[0], 2, &(*node).span);
+            }
+            let source_type = ir_lower_type_entry(context, (*node).type_);
+            let opcode: IROpcode = if op == HIRUnaryOperator.Not { IROpcode.Not }
+                elif source_type != null and ((*source_type).kind == HIRTypeKind.F32 or (*source_type).kind == HIRTypeKind.F64) { IROpcode.Fneg }
+                else { IROpcode.Neg };
+            let mut operand = value;
+            return ir_lower_emit_value(context, opcode, *block, type_id, &mut operand, 1, &(*node).span);
+        }
+        case HIRNodeKind.Binary => {
+            let left_node = ir_lower_node(context, (*node).payload[1]); let right_node = ir_lower_node(context, (*node).payload[2]);
+            if left_node == null or right_node == null { return 0; }
+            let left_type_id = ir_lower_type(context, (*left_node).type_);
+            let left_type = vitte_ir_get_type((*context).ir, left_type_id); if left_type == null { return 0; }
+            let left = ir_lower_expr(context, function, block, (*node).payload[1]); if left == 0 { return 0; }
+            let right_is_literal = (*right_node).kind == HIRNodeKind.Literal and
+                (((*right_node).payload[0] as HIRLiteralKind) == HIRLiteralKind.SignedInteger or
+                 ((*right_node).payload[0] as HIRLiteralKind) == HIRLiteralKind.UnsignedInteger or
+                 ((*right_node).payload[0] as HIRLiteralKind) == HIRLiteralKind.F32 or
+                 ((*right_node).payload[0] as HIRLiteralKind) == HIRLiteralKind.F64);
+            let right = if right_is_literal { ir_lower_expr_as(context, function, block, (*node).payload[2], left_type_id) }
+                else { ir_lower_expr(context, function, block, (*node).payload[2]) };
+            if right == 0 { return 0; }
+            let opcode = ir_lower_binary((*node).payload[0] as HIRBinaryOperator, ir_is_float((*left_type).kind));
+            if opcode == IROpcode.Invalid { return 0; }
+            let right_value = vitte_ir_get_value((*context).ir, right);
+            let right_type = if right_value == null { null } else { vitte_ir_get_type((*context).ir, (*right_value).type_) };
+            if (opcode == IROpcode.IcmpEq or opcode == IROpcode.IcmpNe) and
+               (*left_type).kind == IRTypeKind.Pick and right_type != null and
+               (*right_type).kind == IRTypeKind.Pick {
+                let tag_type = ir_lower_primitive(context, IRTypeKind.U64);
+                let mut left_operand: [IRValueId; 1] = [left];
+                let mut right_operand: [IRValueId; 1] = [right];
+                let left_tag = ir_lower_emit_value(context, IROpcode.PickTag, *block, tag_type, &mut left_operand[0], 1, &(*node).span);
+                let right_tag = ir_lower_emit_value(context, IROpcode.PickTag, *block, tag_type, &mut right_operand[0], 1, &(*node).span);
+                if tag_type == 0 or left_tag == 0 or right_tag == 0 { return 0; }
+                let mut tag_operands: [IRValueId; 2] = [left_tag, right_tag];
+                return ir_lower_emit_value(context, opcode, *block, type_id, &mut tag_operands[0], 2, &(*node).span);
+            }
+            let mut operands: [IRValueId; 2] = [left, right];
+            return ir_lower_emit_value(context, opcode, *block, type_id, &mut operands[0], 2, &(*node).span);
+        }
+        case HIRNodeKind.Call => {
+            let callee_node = ir_lower_node(context, (*node).payload[0]);
+            if callee_node != null and (*callee_node).kind == HIRNodeKind.Member and ir_lower_member_is(context, (*callee_node).payload[1], "len") and ir_lower_list_count(node, 1) == 0 {
+                let receiver = ir_lower_expr(context, function, block, (*callee_node).payload[0]); if receiver == 0 { return 0; }
+                let receiver_node = ir_lower_node(context, (*callee_node).payload[0]);
+                let source_type = if receiver_node == null { null } else { ir_lower_type_entry(context, (*receiver_node).type_) };
+                let mut operand = receiver;
+                let opcode: IROpcode = if source_type != null and (*source_type).kind == HIRTypeKind.Slice { IROpcode.SliceLength } else { IROpcode.StringLength };
+                return ir_lower_emit_value(context, opcode, *block, type_id, &mut operand, 1, &(*node).span);
+            }
+            if callee_node != null and (*callee_node).kind == HIRNodeKind.Member and ir_lower_member_is(context, (*callee_node).payload[1], "slice") and ir_lower_list_count(node, 1) == 2 {
+                let args = ir_lower_node_list(node, 1);
+                let receiver = ir_lower_expr(context, function, block, (*callee_node).payload[0]);
+                let first = ir_lower_expr(context, function, block, args[0]); let second = ir_lower_expr(context, function, block, args[1]);
+                if receiver == 0 or first == 0 or second == 0 { return 0; }
+                let mut operands: [IRValueId; 3] = [receiver, first, second];
+                return ir_lower_emit_value(context, IROpcode.StringSlice, *block, type_id, &mut operands[0], 3, &(*node).span);
+            }
+            let callee = ir_lower_expr(context, function, block, (*node).payload[0]); if callee == 0 { return 0; }
+            let callee_value = vitte_ir_get_value((*context).ir, callee);
+            let signature = if callee_value == null { null } else { vitte_ir_get_type((*context).ir, (*callee_value).type_) };
+            let argument_count = ir_lower_list_count(node, 1); let mut count: usize = 0;
+            if not ir_size_add(argument_count, 1, &mut count) { return ir_fail_id((*context).ir, IRError.Overflow); }
+            let mut bytes: usize = 0; if not ir_size_mul(count, sizeof(IRValueId), &mut bytes) { return ir_fail_id((*context).ir, IRError.Overflow); }
+            let operands = allocate(bytes) as *mut IRValueId; if operands == null { return ir_fail_id((*context).ir, IRError.OutOfMemory); }
+            set operands[0] = callee; let arguments = ir_lower_node_list(node, 1); let mut index: usize = 0;
+            while index < argument_count {
+                let arg = if signature != null and (*signature).kind == IRTypeKind.Function and index < (*signature).parameter_count
+                    { ir_lower_expr_as(context, function, block, arguments[index], (*signature).parameter_types[index]) }
+                    else { ir_lower_expr(context, function, block, arguments[index]) };
+                if arg == 0 { deallocate(operands as *mut u8); return 0; }
+                set operands[index + 1] = arg; set index += 1;
+            }
+            let result = ir_lower_emit_value(context, IROpcode.Call, *block, type_id, operands, count, &(*node).span);
+            deallocate(operands as *mut u8); return result;
+        }
+        case HIRNodeKind.Member => {
+            if not ir_lower_member_is(context, (*node).payload[1], "length") and not ir_lower_member_is(context, (*node).payload[1], "len") {
+                let address = ir_lower_lvalue(context, function, block, node_id);
+                if address == 0 { return 0; }
+                let mut operand = address;
+                return ir_lower_emit_value(context, IROpcode.Load, *block, type_id, &mut operand, 1, &(*node).span);
+            }
+            let object_node = ir_lower_node(context, (*node).payload[0]); if object_node == null { return 0; }
+            let object = ir_lower_expr(context, function, block, (*node).payload[0]); if object == 0 { return 0; }
+            let object_type = ir_lower_type_entry(context, (*object_node).type_); let mut operand = object;
+            let opcode: IROpcode = if object_type != null and (*object_type).kind == HIRTypeKind.Slice { IROpcode.SliceLength } else { IROpcode.StringLength };
+            return ir_lower_emit_value(context, opcode, *block, type_id, &mut operand, 1, &(*node).span);
+        }
+        case HIRNodeKind.Index => {
+            let address = ir_lower_lvalue(context, function, block, node_id); if address == 0 { return 0; }
+            let mut operand = address;
+            return ir_lower_emit_value(context, IROpcode.Load, *block, type_id, &mut operand, 1, &(*node).span);
+        }
+        case HIRNodeKind.Deref => {
+            let address = ir_lower_expr(context, function, block, (*node).payload[0]); if address == 0 { return 0; }
+            let mut operand = address;
+            return ir_lower_emit_value(context, IROpcode.Load, *block, type_id, &mut operand, 1, &(*node).span);
+        }
+        case HIRNodeKind.Ref => return ir_lower_lvalue(context, function, block, (*node).payload[0]);
+        case HIRNodeKind.Cast => {
+            let source_node = ir_lower_node(context, (*node).payload[0]); if source_node == null { return 0; }
+            let value = ir_lower_expr(context, function, block, (*node).payload[0]); if value == 0 { return 0; }
+            let source_id = ir_lower_type(context, (*source_node).type_);
+            let source = vitte_ir_get_type((*context).ir, source_id); let target = vitte_ir_get_type((*context).ir, type_id);
+            if source == null or target == null { return 0; }
+            if source_id == type_id { return value; }
+            let opcode: IROpcode = if ir_is_integer((*source).kind) and ir_is_integer((*target).kind) {
+                if ((*source).kind as u32) > ((*target).kind as u32) { IROpcode.Trunc }
+                elif (*source).kind >= IRTypeKind.I8 and (*source).kind <= IRTypeKind.I64 { IROpcode.Sext }
+                else { IROpcode.Zext }
+            } elif ir_is_float((*source).kind) and ir_is_float((*target).kind) {
+                if (*source).kind == IRTypeKind.F64 { IROpcode.FpTrunc } else { IROpcode.FpExt }
+            } elif ir_is_integer((*source).kind) and ir_is_float((*target).kind) { IROpcode.SiToFp }
+            elif ir_is_float((*source).kind) and ir_is_integer((*target).kind) { IROpcode.FpToSi }
+            elif (*source).kind == IRTypeKind.Pointer and ir_is_integer((*target).kind) { IROpcode.PtrToInt }
+            elif ir_is_integer((*source).kind) and (*target).kind == IRTypeKind.Pointer { IROpcode.IntToPtr }
+            else { IROpcode.Bitcast };
+            let mut operand = value;
+            return ir_lower_emit_value(context, opcode, *block, type_id, &mut operand, 1, &(*node).span);
+        }
+        case HIRNodeKind.Sizeof | HIRNodeKind.Alignof => {
+            let queried_id = ir_lower_type(context, (*node).payload[0]);
+            let queried = vitte_ir_get_type((*context).ir, queried_id); if queried == null { return 0; }
+            let mut size: u64 = 8;
+            if (*queried).kind == IRTypeKind.Bool or (*queried).kind == IRTypeKind.I8 or (*queried).kind == IRTypeKind.U8 {
+                set size = 1;
+            } elif (*queried).kind == IRTypeKind.I16 or (*queried).kind == IRTypeKind.U16 {
+                set size = 2;
+            } elif (*queried).kind == IRTypeKind.I32 or (*queried).kind == IRTypeKind.U32 or
+                   (*queried).kind == IRTypeKind.F32 or (*queried).kind == IRTypeKind.Char {
+                set size = 4;
+            }
+            return vitte_ir_const_integer((*context).ir, type_id, size);
+        }
+        case _ => return 0;
+    }
+}
+
+proc ir_lower_new_block(context: *mut IRLowerContext, function: IRFunctionId, name: string) -> IRBlockId {
+    let name_id = vitte_ir_intern_string((*context).ir, name.as_ptr() as *const u8, name.len());
+    if name_id == 0 { return 0; }
+    return vitte_ir_add_block((*context).ir, function, name_id, IRSpan {});
+}
+
+proc ir_lower_push_loop(context: *mut IRLowerContext, break_target: IRBlockId, continue_target: IRBlockId) -> bool {
+    let mut required: usize = 0;
+    let hir = ir_lower_hir_ptr(context);
+    if not ir_size_add((*context).loop_count, 1, &mut required) { return false; }
+    let raw_loops = ir_reserve_array((*context).ir, (*context).loops as usize as *mut u8,
+        &mut (*context).loop_capacity, (*context).loop_count, required,
+        sizeof(IRLowerLoop), (*hir).max_nodes);
+    if raw_loops == null { return false; }
+    set (*context).loops = raw_loops as usize as *mut IRLowerLoop;
+    set (*context).loops[(*context).loop_count] = IRLowerLoop { break_target: break_target, continue_target: continue_target };
+    set (*context).loop_count = required;
+    return true;
+}
+
+proc ir_lower_return_type(context: *mut IRLowerContext, function: IRFunctionId) -> IRTypeId {
+    let mut index: usize = 0;
+    while index < (*context).function_count { if (*context).functions[index].function == function { return (*context).functions[index].return_type; } set index += 1; }
+    return 0;
+}
+
+proc ir_lower_block(context: *mut IRLowerContext, function: IRFunctionId, start: IRBlockId, node: *HIRNode, fallthrough: *mut IRBlockId) -> bool {
+    if node == null or (*node).kind != HIRNodeKind.Block or fallthrough == null { return ir_fail((*context).ir, IRError.InvalidBlock); }
+    let items = ir_lower_node_list(node, 0); let count = ir_lower_list_count(node, 0);
+    let mut current = start; let mut index: usize = 0;
+    while index < count {
+        if vitte_ir_get_block((*context).ir, current) == null { return ir_fail((*context).ir, IRError.InvalidBlock); }
+        if (*vitte_ir_get_block((*context).ir, current)).terminated { break; }
+        if not ir_lower_statement(context, function, current, items[index], &mut current) { return false; }
+        set index += 1;
+    }
+    let tail = (*node).payload[3] as HIRNodeId;
+    if tail != 0 and not (*vitte_ir_get_block((*context).ir, current)).terminated {
+        if ir_lower_expr(context, function, &mut current, tail) == 0 { return false; }
+    }
+    set *fallthrough = current;
+    return true;
+}
+
+proc ir_lower_if(context: *mut IRLowerContext, function: IRFunctionId, start: IRBlockId, node: *HIRNode, fallthrough: *mut IRBlockId) -> bool {
+    let mut condition_block = start;
+    let condition = ir_lower_expr(context, function, &mut condition_block, (*node).payload[0]);
+    if condition == 0 { return false; }
+    let then_block = ir_lower_new_block(context, function, "if.then");
+    let else_block = ir_lower_new_block(context, function, "if.else");
+    let merge_block = ir_lower_new_block(context, function, "if.merge");
+    if then_block == 0 or else_block == 0 or merge_block == 0 or
+       vitte_ir_build_cond_br((*context).ir, condition_block, condition, then_block, else_block, ir_lower_span(&(*node).span)) == 0 { return false; }
+    let then_node = ir_lower_node(context, (*node).payload[1]); let mut then_end = then_block;
+    if then_node == null or not ir_lower_statement(context, function, then_block, (*node).payload[1], &mut then_end) { return false; }
+    let then_end_block = vitte_ir_get_block((*context).ir, then_end);
+    if then_end_block != null and not (*then_end_block).terminated and vitte_ir_build_br((*context).ir, then_end, merge_block, ir_lower_span(&(*node).span)) == 0 { return false; }
+    let mut else_end = else_block;
+    if (*node).payload[2] == 0 {
+        if vitte_ir_build_br((*context).ir, else_block, merge_block, ir_lower_span(&(*node).span)) == 0 { return false; }
+    } else if not ir_lower_statement(context, function, else_block, (*node).payload[2], &mut else_end) { return false; }
+    let else_end_block = vitte_ir_get_block((*context).ir, else_end);
+    if else_end_block != null and not (*else_end_block).terminated and vitte_ir_build_br((*context).ir, else_end, merge_block, ir_lower_span(&(*node).span)) == 0 { return false; }
+    set *fallthrough = merge_block;
+    return true;
+}
+
+proc ir_lower_match(context: *mut IRLowerContext, function: IRFunctionId, start: IRBlockId, node: *HIRNode, fallthrough: *mut IRBlockId) -> bool {
+    if context == null { return false; }
+    if node == null or (*node).kind != HIRNodeKind.Match or fallthrough == null {
+        return ir_fail((*context).ir, IRError.InvalidInstruction);
+    }
+    let subject_node = ir_lower_node(context, (*node).payload[0]);
+    if subject_node == null { return ir_fail((*context).ir, IRError.InvalidValue); }
+    let subject_type = ir_lower_type(context, (*subject_node).type_);
+    let mut subject_block = start;
+    let subject = ir_lower_expr(context, function, &mut subject_block, (*node).payload[0]);
+    let bool_type = ir_lower_primitive(context, IRTypeKind.Bool);
+    if subject == 0 or subject_type == 0 or bool_type == 0 { return false; }
+
+    let count = (*node).payload[2] as usize;
+    let arms = (*node).payload[1] as *const HIRMatchArm;
+    if count == 0 or arms == null { return ir_fail((*context).ir, IRError.InvalidInstruction); }
+    let merge = ir_lower_new_block(context, function, "match.merge");
+    if merge == 0 { return false; }
+    let mut test_block = subject_block;
+    let mut index: usize = 0;
+    while index < count {
+        let arm = &arms[index];
+        let pattern = ir_lower_node(context, arm.pattern);
+        if pattern == null { return ir_fail((*context).ir, IRError.InvalidInstruction); }
+        let body_block = ir_lower_new_block(context, function, "match.arm");
+        let next_block = if index + 1 == count { merge } else { ir_lower_new_block(context, function, "match.next") };
+        if body_block == 0 or next_block == 0 { return false; }
+
+        if (*pattern).kind == HIRNodeKind.PatternWildcard {
+            if vitte_ir_build_br((*context).ir, test_block, body_block, ir_lower_span(&arm.span)) == 0 { return false; }
+        } elif (*pattern).kind == HIRNodeKind.PatternLiteral {
+            let literal_kind = (*pattern).payload[0] as HIRLiteralKind;
+            let case_value: IRValueId = if literal_kind == HIRLiteralKind.Bool {
+                if (*pattern).payload[1] != 0 { vitte_ir_const_bool((*context).ir, subject_type, true) }
+                else { vitte_ir_const_bool((*context).ir, subject_type, false) }
+            } elif literal_kind == HIRLiteralKind.SignedInteger or literal_kind == HIRLiteralKind.UnsignedInteger or literal_kind == HIRLiteralKind.Char {
+                vitte_ir_const_integer((*context).ir, subject_type, (*pattern).payload[1])
+            } else { 0 as IRValueId };
+            if case_value == 0 { return ir_fail((*context).ir, IRError.TypeMismatch); }
+            let mut compare_operands: [IRValueId; 2] = [subject, case_value];
+            let condition = ir_lower_emit_value(context, IROpcode.IcmpEq, test_block, bool_type, &mut compare_operands[0], 2, &(*pattern).span);
+            if condition == 0 or vitte_ir_build_cond_br((*context).ir, test_block, condition, body_block, next_block, ir_lower_span(&arm.span)) == 0 { return false; }
+        } elif (*pattern).kind == HIRNodeKind.PatternPick {
+            let tag_type = ir_lower_primitive(context, IRTypeKind.U64);
+            let mut subject_operand: [IRValueId; 1] = [subject];
+            let tag = ir_lower_emit_value(context, IROpcode.PickTag, test_block, tag_type, &mut subject_operand[0], 1, &(*pattern).span);
+            let case_value = vitte_ir_const_integer((*context).ir, tag_type, (*pattern).payload[4]);
+            if tag_type == 0 or tag == 0 or case_value == 0 { return false; }
+            let mut compare_operands: [IRValueId; 2] = [tag, case_value];
+            let condition = ir_lower_emit_value(context, IROpcode.IcmpEq, test_block, bool_type, &mut compare_operands[0], 2, &(*pattern).span);
+            if condition == 0 or vitte_ir_build_cond_br((*context).ir, test_block, condition, body_block, next_block, ir_lower_span(&arm.span)) == 0 { return false; }
+        } else {
+            return ir_fail((*context).ir, IRError.Unsupported);
+        }
+
+        let mut active_body = body_block;
+        if (*pattern).kind == HIRNodeKind.PatternPick {
+            let payload_count = ir_lower_list_count(pattern, 1);
+            let payload_patterns = ir_lower_node_list(pattern, 1);
+            if payload_count > 16 or (payload_count != 0 and payload_patterns == null) { return ir_fail((*context).ir, IRError.Unsupported); }
+            let mut payload_index: usize = 0;
+            while payload_index < payload_count {
+                let binding_pattern = ir_lower_node(context, payload_patterns[payload_index]);
+                if binding_pattern == null { return ir_fail((*context).ir, IRError.InvalidInstruction); }
+                if (*binding_pattern).kind == HIRNodeKind.PatternBinding {
+                    let binding_symbol = (*binding_pattern).payload[0] as HIRSymbolId;
+                    let binding_record = ir_lower_symbol(context, binding_symbol);
+                    let binding_type = if binding_record == null { 0 as IRTypeId } else { ir_lower_type(context, (*binding_record).type_) };
+                    let index_type = ir_lower_primitive(context, IRTypeKind.U64);
+                    let index_value = vitte_ir_const_integer((*context).ir, index_type, payload_index as u64);
+                    let mut payload_operands: [IRValueId; 2] = [subject, index_value];
+                    let payload_value = if index_type == 0 or index_value == 0 { 0 as IRValueId } else {
+                        ir_lower_emit_value(context, IROpcode.PickPayload, body_block, binding_type, &mut payload_operands[0], 2, &(*binding_pattern).span)
+                    };
+                    if payload_value == 0 or not ir_lower_bind_value(context, binding_symbol, payload_value, false) { return false; }
+                } elif (*binding_pattern).kind != HIRNodeKind.PatternWildcard {
+                    return ir_fail((*context).ir, IRError.Unsupported);
+                }
+                set payload_index += 1;
+            }
+        }
+        if arm.guard != 0 {
+            let guard_block = ir_lower_new_block(context, function, "match.guard");
+            if guard_block == 0 or vitte_ir_build_br((*context).ir, body_block, guard_block, ir_lower_span(&arm.span)) == 0 { return false; }
+            let mut guard_end = guard_block;
+            let guard = ir_lower_expr(context, function, &mut guard_end, arm.guard);
+            let guarded_body = ir_lower_new_block(context, function, "match.guarded");
+            if guard == 0 or guarded_body == 0 or
+               vitte_ir_build_cond_br((*context).ir, guard_end, guard, guarded_body, next_block, ir_lower_span(&arm.span)) == 0 { return false; }
+            set active_body = guarded_body;
+        }
+
+        let mut body_end = active_body;
+        if not ir_lower_statement(context, function, active_body, arm.body, &mut body_end) { return false; }
+        let body_end_node = vitte_ir_get_block((*context).ir, body_end);
+        if body_end_node != null and not (*body_end_node).terminated and
+           vitte_ir_build_br((*context).ir, body_end, merge, ir_lower_span(&arm.span)) == 0 { return false; }
+        set test_block = next_block;
+        set index += 1;
+    }
+    set *fallthrough = merge;
+    return true;
+}
+
+proc ir_lower_range_compare(type_id: IRTypeId, inclusive: bool, context: *mut IRLowerContext) -> IROpcode {
+    let type_ = vitte_ir_get_type((*context).ir, type_id);
+    if type_ == null { return IROpcode.Invalid; }
+    let is_unsigned = (*type_).kind == IRTypeKind.U8 or (*type_).kind == IRTypeKind.U16 or
+        (*type_).kind == IRTypeKind.U32 or (*type_).kind == IRTypeKind.U64;
+    if inclusive { return if is_unsigned { IROpcode.IcmpUle } else { IROpcode.IcmpSle }; }
+    return if is_unsigned { IROpcode.IcmpUlt } else { IROpcode.IcmpSlt };
+}
+
+proc ir_lower_if_expr(context: *mut IRLowerContext, function: IRFunctionId, block: *mut IRBlockId, node: *HIRNode) -> IRValueId {
+    if context == null or node == null or (*node).kind != HIRNodeKind.IfExpr { return 0; }
+    let result_type = ir_lower_type(context, (*node).type_);
+    if result_type == 0 { return ir_fail_id((*context).ir, IRError.InvalidType); }
+    let condition = ir_lower_expr(context, function, block, (*node).payload[0]);
+    if condition == 0 { return 0; }
+    let mut pointer_desc = IRTypeDesc {};
+    set pointer_desc.kind = IRTypeKind.Pointer;
+    set pointer_desc.element_type = result_type;
+    let pointer_type = vitte_ir_intern_type((*context).ir, &pointer_desc);
+    if pointer_type == 0 { return 0; }
+    let result_address = ir_lower_emit_value(context, IROpcode.Alloca, *block, pointer_type, null, 0, &(*node).span);
+    let then_block = ir_lower_new_block(context, function, "if.expr.then");
+    let else_block = ir_lower_new_block(context, function, "if.expr.else");
+    let merge_block = ir_lower_new_block(context, function, "if.expr.merge");
+    if result_address == 0 or then_block == 0 or else_block == 0 or merge_block == 0 or
+       vitte_ir_build_cond_br((*context).ir, *block, condition, then_block, else_block, ir_lower_span(&(*node).span)) == 0 {
+        return 0;
+    }
+    let mut then_end = then_block;
+    let then_value = ir_lower_expr_as(context, function, &mut then_end, (*node).payload[1], result_type);
+    let mut then_store: [IRValueId; 2] = [result_address, then_value];
+    if then_value == 0 or ir_lower_emit(context, IROpcode.Store, then_end, 0, &mut then_store[0], 2, &(*node).span) == 0 or
+       vitte_ir_build_br((*context).ir, then_end, merge_block, ir_lower_span(&(*node).span)) == 0 {
+        return 0;
+    }
+    let mut else_end = else_block;
+    let else_value = ir_lower_expr_as(context, function, &mut else_end, (*node).payload[2], result_type);
+    let mut else_store: [IRValueId; 2] = [result_address, else_value];
+    if else_value == 0 or ir_lower_emit(context, IROpcode.Store, else_end, 0, &mut else_store[0], 2, &(*node).span) == 0 or
+       vitte_ir_build_br((*context).ir, else_end, merge_block, ir_lower_span(&(*node).span)) == 0 {
+        return 0;
+    }
+    set *block = merge_block;
+    let mut result_pointer = result_address;
+    return ir_lower_emit_value(context, IROpcode.Load, *block, result_type, &mut result_pointer, 1, &(*node).span);
+}
+
+proc ir_lower_for_range(context: *mut IRLowerContext, function: IRFunctionId, start: IRBlockId, node: *HIRNode, fallthrough: *mut IRBlockId) -> bool {
+    if context == null { return false; }
+    if node == null or (*node).kind != HIRNodeKind.For or fallthrough == null { return ir_fail((*context).ir, IRError.InvalidInstruction); }
+    let pattern = ir_lower_node(context, (*node).payload[0]);
+    let range = ir_lower_node(context, (*node).payload[1]);
+    if pattern == null or range == null or (*range).kind != HIRNodeKind.Range {
+        return ir_fail((*context).ir, IRError.Unsupported);
+    }
+    let range_type = ir_lower_type(context, (*range).type_);
+    let range_type_record = vitte_ir_get_type((*context).ir, range_type);
+    if range_type == 0 or range_type_record == null or
+       ((*range_type_record).kind < IRTypeKind.I8 or (*range_type_record).kind > IRTypeKind.U64) {
+        return ir_fail((*context).ir, IRError.InvalidType);
+    }
+    let mut expression_block = start;
+    let lower = ir_lower_expr_as(context, function, &mut expression_block, (*range).payload[0], range_type);
+    let upper = ir_lower_expr_as(context, function, &mut expression_block, (*range).payload[1], range_type);
+    if lower == 0 or upper == 0 { return false; }
+    let mut counter_pointer_desc = IRTypeDesc {};
+    set counter_pointer_desc.kind = IRTypeKind.Pointer;
+    set counter_pointer_desc.element_type = range_type;
+    let counter_pointer_type = vitte_ir_intern_type((*context).ir, &counter_pointer_desc);
+    if counter_pointer_type == 0 { return false; }
+    let counter_address = ir_lower_emit_value(context, IROpcode.Alloca, expression_block, counter_pointer_type, null, 0, &(*node).span);
+    let mut counter_store: [IRValueId; 2] = [counter_address, lower];
+    if counter_address == 0 or ir_lower_emit(context, IROpcode.Store, expression_block, 0, &mut counter_store[0], 2, &(*node).span) == 0 {
+        return false;
+    }
+    let condition_block = ir_lower_new_block(context, function, "for.range.cond");
+    let body_block = ir_lower_new_block(context, function, "for.range.body");
+    let step_block = ir_lower_new_block(context, function, "for.range.step");
+    let increment_block = ir_lower_new_block(context, function, "for.range.increment");
+    let exit_block = ir_lower_new_block(context, function, "for.range.exit");
+    if condition_block == 0 or body_block == 0 or step_block == 0 or increment_block == 0 or exit_block == 0 or
+       vitte_ir_build_br((*context).ir, expression_block, condition_block, ir_lower_span(&(*node).span)) == 0 {
+        return false;
+    }
+    let mut condition_pointer = counter_address;
+    let current = ir_lower_emit_value(context, IROpcode.Load, condition_block, range_type, &mut condition_pointer, 1, &(*node).span);
+    let compare_opcode = ir_lower_range_compare(range_type, (*range).payload[2] != 0, context);
+    let bool_type = ir_lower_primitive(context, IRTypeKind.Bool);
+    let mut compare_operands: [IRValueId; 2] = [current, upper];
+    let condition = if current == 0 or compare_opcode == IROpcode.Invalid or bool_type == 0 { 0 as IRValueId } else {
+        ir_lower_emit_value(context, compare_opcode, condition_block, bool_type, &mut compare_operands[0], 2, &(*node).span)
+    };
+    if condition == 0 or vitte_ir_build_cond_br((*context).ir, condition_block, condition, body_block, exit_block, ir_lower_span(&(*node).span)) == 0 {
+        return false;
+    }
+
+    let saved_symbol_count = (*context).symbol_count;
+    if (*pattern).kind == HIRNodeKind.PatternBinding {
+        let binding_symbol = (*pattern).payload[0] as HIRSymbolId;
+        let binding = ir_lower_symbol(context, binding_symbol);
+        let binding_type = if binding == null { 0 as IRTypeId } else { ir_lower_type(context, (*binding).type_) };
+        if binding_type != range_type or not ir_lower_bind_value(context, binding_symbol, counter_address, true) {
+            return ir_fail((*context).ir, IRError.TypeMismatch);
+        }
+    } elif (*pattern).kind != HIRNodeKind.PatternWildcard {
+        return ir_fail((*context).ir, IRError.Unsupported);
+    }
+    if not ir_lower_push_loop(context, exit_block, step_block) { return false; }
+    let mut body_end = body_block;
+    let body_ok = ir_lower_statement(context, function, body_block, (*node).payload[2], &mut body_end);
+    set (*context).loop_count -= 1;
+    set (*context).symbol_count = saved_symbol_count;
+    if not body_ok { return false; }
+    let body_end_record = vitte_ir_get_block((*context).ir, body_end);
+    if body_end_record != null and not (*body_end_record).terminated and
+       vitte_ir_build_br((*context).ir, body_end, step_block, ir_lower_span(&(*node).span)) == 0 {
+        return false;
+    }
+
+    let mut step_pointer = counter_address;
+    let step_value = ir_lower_emit_value(context, IROpcode.Load, step_block, range_type, &mut step_pointer, 1, &(*node).span);
+    if (*range).payload[2] != 0 {
+        let mut end_compare_operands: [IRValueId; 2] = [step_value, upper];
+        let at_end = if step_value == 0 { 0 as IRValueId } else {
+            ir_lower_emit_value(context, IROpcode.IcmpEq, step_block, bool_type, &mut end_compare_operands[0], 2, &(*node).span)
+        };
+        if at_end == 0 or vitte_ir_build_cond_br((*context).ir, step_block, at_end, exit_block, increment_block, ir_lower_span(&(*node).span)) == 0 {
+            return false;
+        }
+    } elif vitte_ir_build_br((*context).ir, step_block, increment_block, ir_lower_span(&(*node).span)) == 0 {
+        return false;
+    }
+    let one = vitte_ir_const_integer((*context).ir, range_type, 1);
+    let mut increment_operands: [IRValueId; 2] = [step_value, one];
+    let increment = if step_value == 0 or one == 0 { 0 as IRValueId } else {
+        ir_lower_emit_value(context, IROpcode.Add, increment_block, range_type, &mut increment_operands[0], 2, &(*node).span)
+    };
+    let mut increment_store: [IRValueId; 2] = [counter_address, increment];
+    if increment == 0 or ir_lower_emit(context, IROpcode.Store, increment_block, 0, &mut increment_store[0], 2, &(*node).span) == 0 or
+       vitte_ir_build_br((*context).ir, increment_block, condition_block, ir_lower_span(&(*node).span)) == 0 {
+        return false;
+    }
+    set *fallthrough = exit_block;
+    return true;
+}
+
+proc ir_lower_statement(context: *mut IRLowerContext, function: IRFunctionId, block: IRBlockId, node_id: HIRNodeId, fallthrough: *mut IRBlockId) -> bool {
+    let node = ir_lower_node(context, node_id);
+    if node == null or fallthrough == null { return ir_fail((*context).ir, IRError.InvalidInstruction); }
+    set *fallthrough = block;
+    match (*node).kind {
+        case HIRNodeKind.Block => return ir_lower_block(context, function, block, node, fallthrough);
+        case HIRNodeKind.Let => {
+            let symbol_id = (*node).payload[0] as HIRSymbolId;
+            let symbol = ir_lower_symbol(context, symbol_id);
+            let initializer_id = (*node).payload[2] as HIRNodeId;
+            let type_hir = if (*node).payload[1] != 0 { (*node).payload[1] as HIRTypeId } elif symbol != null { (*symbol).type_ } else { 0 as HIRTypeId };
+            if type_hir == 0 and initializer_id == 0 { return ir_fail((*context).ir, IRError.InvalidType); }
+            let inferred = if type_hir == 0 { ir_lower_node(context, initializer_id) } else { null };
+            let value_hir_type = if type_hir != 0 { type_hir } elif inferred != null { (*inferred).type_ } else { 0 as HIRTypeId };
+            let value_type = ir_lower_type(context, value_hir_type); if value_type == 0 { return ir_fail((*context).ir, IRError.InvalidType); }
+            let mut pointer_desc = IRTypeDesc {}; set pointer_desc.kind = IRTypeKind.Pointer; set pointer_desc.element_type = value_type;
+            let pointer_type = vitte_ir_intern_type((*context).ir, &pointer_desc); if pointer_type == 0 { return false; }
+            let mut expression_block = block;
+            let address = ir_lower_emit_value(context, IROpcode.Alloca, expression_block, pointer_type, null, 0, &(*node).span); if address == 0 { return false; }
+            if symbol_id == 0 or not ir_lower_bind_value(context, symbol_id, address, true) { return false; }
+            let initial = if initializer_id == 0 { vitte_ir_undef((*context).ir, value_type) } else { ir_lower_expr_as(context, function, &mut expression_block, initializer_id, value_type) };
+            if initial == 0 { return false; }
+            let mut operands: [IRValueId; 2] = [address, initial];
+            if ir_lower_emit(context, IROpcode.Store, expression_block, 0, &mut operands[0], 2, &(*node).span) == 0 { return false; }
+            set *fallthrough = expression_block;
+            return true;
+        }
+        case HIRNodeKind.Assign => {
+            let mut expression_block = block;
+            let address = ir_lower_lvalue(context, function, &mut expression_block, (*node).payload[0]);
+            let target = ir_lower_node(context, (*node).payload[0]);
+            let target_type = if target == null { 0 as IRTypeId } else { ir_lower_type(context, (*target).type_) };
+            if address == 0 or target_type == 0 { return ir_fail((*context).ir, IRError.InvalidValue); }
+            let value = ir_lower_expr_as(context, function, &mut expression_block, (*node).payload[1], target_type); if value == 0 { return false; }
+            let mut operands: [IRValueId; 2] = [address, value];
+            let stored = ir_lower_emit(context, IROpcode.Store, expression_block, 0, &mut operands[0], 2, &(*node).span) != 0;
+            if stored { set *fallthrough = expression_block; }
+            return stored;
+        }
+        case HIRNodeKind.ExprStmt => {
+            let mut expression_block = block;
+            if ir_lower_expr(context, function, &mut expression_block, (*node).payload[0]) == 0 { return false; }
+            set *fallthrough = expression_block;
+            return true;
+        }
+        case HIRNodeKind.Return => {
+            let return_type = ir_lower_return_type(context, function);
+            if return_type == 0 { return ir_fail((*context).ir, IRError.InvalidFunction); }
+            let mut expression_block = block;
+            let value = if (*node).payload[0] == 0 { 0 as IRValueId } else { ir_lower_expr_as(context, function, &mut expression_block, (*node).payload[0], return_type) };
+            if (*node).payload[0] != 0 and value == 0 { return false; }
+            let returned = vitte_ir_build_return((*context).ir, expression_block, value, ir_lower_span(&(*node).span)) != 0;
+            if returned { set *fallthrough = expression_block; }
+            return returned;
+        }
+        case HIRNodeKind.If => return ir_lower_if(context, function, block, node, fallthrough);
+        case HIRNodeKind.For => return ir_lower_for_range(context, function, block, node, fallthrough);
+        case HIRNodeKind.Match => return ir_lower_match(context, function, block, node, fallthrough);
+        case HIRNodeKind.While => {
+            let condition_block = ir_lower_new_block(context, function, "while.cond");
+            let body_block = ir_lower_new_block(context, function, "while.body");
+            let exit_block = ir_lower_new_block(context, function, "while.exit");
+            if condition_block == 0 or body_block == 0 or exit_block == 0 or vitte_ir_build_br((*context).ir, block, condition_block, ir_lower_span(&(*node).span)) == 0 { return false; }
+            let mut condition_end = condition_block;
+            let condition = ir_lower_expr(context, function, &mut condition_end, (*node).payload[0]);
+            if condition == 0 or vitte_ir_build_cond_br((*context).ir, condition_end, condition, body_block, exit_block, ir_lower_span(&(*node).span)) == 0 or not ir_lower_push_loop(context, exit_block, condition_block) { return false; }
+            let mut body_end = body_block;
+            let body_ok = ir_lower_statement(context, function, body_block, (*node).payload[1], &mut body_end);
+            set (*context).loop_count -= 1;
+            if not body_ok { return false; }
+            let body_end_value = vitte_ir_get_block((*context).ir, body_end);
+            if body_end_value != null and not (*body_end_value).terminated and vitte_ir_build_br((*context).ir, body_end, condition_block, ir_lower_span(&(*node).span)) == 0 { return false; }
+            set *fallthrough = exit_block; return true;
+        }
+        case HIRNodeKind.Loop => {
+            let body_block = ir_lower_new_block(context, function, "loop.body");
+            let exit_block = ir_lower_new_block(context, function, "loop.exit");
+            if body_block == 0 or exit_block == 0 or vitte_ir_build_br((*context).ir, block, body_block, ir_lower_span(&(*node).span)) == 0 or not ir_lower_push_loop(context, exit_block, body_block) { return false; }
+            let mut body_end = body_block;
+            let body_ok = ir_lower_statement(context, function, body_block, (*node).payload[0], &mut body_end);
+            set (*context).loop_count -= 1;
+            if not body_ok { return false; }
+            let body_end_value = vitte_ir_get_block((*context).ir, body_end);
+            if body_end_value != null and not (*body_end_value).terminated and vitte_ir_build_br((*context).ir, body_end, body_block, ir_lower_span(&(*node).span)) == 0 { return false; }
+            set *fallthrough = exit_block; return true;
+        }
+        case HIRNodeKind.Break | HIRNodeKind.Continue => {
+            if (*context).loop_count == 0 { return ir_fail((*context).ir, IRError.InvalidCfg); }
+            let target = if (*node).kind == HIRNodeKind.Break { (*context).loops[(*context).loop_count - 1].break_target } else { (*context).loops[(*context).loop_count - 1].continue_target };
+            if (*node).kind == HIRNodeKind.Break and (*node).payload[0] != 0 { return ir_fail((*context).ir, IRError.Unsupported); }
+            return vitte_ir_build_br((*context).ir, block, target, ir_lower_span(&(*node).span)) != 0;
+        }
+        case HIRNodeKind.Unsafe => return ir_lower_statement(context, function, block, (*node).payload[0], fallthrough);
+        case HIRNodeKind.Literal | HIRNodeKind.Symbol | HIRNodeKind.Unary | HIRNodeKind.Binary |
+             HIRNodeKind.Call | HIRNodeKind.Member | HIRNodeKind.Index | HIRNodeKind.Cast |
+             HIRNodeKind.Tuple | HIRNodeKind.Array | HIRNodeKind.FormInit | HIRNodeKind.Ref |
+             HIRNodeKind.Deref | HIRNodeKind.Move | HIRNodeKind.Await | HIRNodeKind.Sizeof |
+             HIRNodeKind.Alignof | HIRNodeKind.Typeof | HIRNodeKind.Offsetof => {
+            let mut expression_block = block;
+            if ir_lower_expr(context, function, &mut expression_block, node_id) == 0 { return false; }
+            set *fallthrough = expression_block;
+            return true;
+        }
+        case _ => return ir_fail((*context).ir, IRError.Unsupported);
+    }
+}
+
+proc ir_lower_constant(context: *mut IRLowerContext, node_id: HIRNodeId) -> IRValueId {
+    let node = ir_lower_node(context, node_id);
+    if node == null or (*node).kind != HIRNodeKind.Literal { return 0; }
+    let mut type_id = ir_lower_type(context, (*node).type_);
+    if type_id == 0 { set type_id = ir_lower_default_type(context); }
+    if type_id == 0 { return 0; }
+    match (*node).payload[0] as HIRLiteralKind {
+        case HIRLiteralKind.Bool => return vitte_ir_const_bool((*context).ir, type_id, (*node).payload[1] != 0);
+        case HIRLiteralKind.SignedInteger | HIRLiteralKind.UnsignedInteger | HIRLiteralKind.Char => return vitte_ir_const_integer((*context).ir, type_id, (*node).payload[1]);
+        case HIRLiteralKind.F32 | HIRLiteralKind.F64 => return vitte_ir_const_float((*context).ir, type_id, ir_lower_float_literal(node));
+        case HIRLiteralKind.String => {
+            let text = ir_lower_string(context, (*node).payload[1]); if text == null { return 0; }
+            let text_data: string = (*text).data;
+            let string_id = vitte_ir_intern_string((*context).ir, text_data.as_bytes().as_ptr() as *const u8, (*text).length); if string_id == 0 { return 0; }
+            return vitte_ir_const_string((*context).ir, type_id, string_id);
+        }
+        case HIRLiteralKind.Null => return vitte_ir_null((*context).ir, type_id);
+        case _ => return 0;
+    }
+}
+
+proc ir_lower_cleanup(context: *mut IRLowerContext) {
+    if context == null { return; }
+    deallocate((*context).types as *mut u8); deallocate((*context).symbols as *mut u8);
+    deallocate((*context).functions as *mut u8); deallocate((*context).loops as *mut u8);
+    set (*context).types = null; set (*context).symbols = null; set (*context).functions = null; set (*context).loops = null;
+}
+
+export proc vitte_ir_lower_hir(ir: *mut IRContext, hir: *const HIR) -> bool {
+    if ir == null or hir == null or not vitte_ir_is_valid(ir) or (*ir).state != IRState.Building or
+       not vitte_hir_is_valid(hir as *HIR) or (*hir).state != HIRState.Validated or (*hir).roots.count == 0 or (*hir).roots.items == null {
+        return ir_fail(ir, IRError.InvalidArgument);
+    }
+    let module = vitte_hir_get_node(hir as *HIR, (*hir).roots.items[0]);
+    if module == null or (*module).kind != HIRNodeKind.Module { return ir_fail(ir, IRError.InvalidArgument); }
+    let mut context = IRLowerContext {}; set context.ir = ir; set context.hir = hir; set context.type_count = (*hir).type_count;
+    if context.type_count != 0 {
+        let mut bytes: usize = 0;
+        if not ir_size_mul(context.type_count, sizeof(IRTypeId), &mut bytes) { return ir_fail(ir, IRError.Overflow); }
+        set context.types = allocate(bytes) as *mut IRTypeId;
+        if context.types == null { return ir_fail(ir, IRError.OutOfMemory); }
+        fill(context.types as *mut u8, 0, bytes); ir_add_stat(&mut (*ir).stats.allocations, 1);
+    }
+    let items = ir_lower_node_list(module, 1); let item_count = ir_lower_list_count(module, 1);
+    let mut index: usize = 0; let mut procedure_count: usize = 0;
+    while index < item_count {
+        let item = ir_lower_node(&mut context, items[index]);
+        if item != null and ((*item).kind == HIRNodeKind.ProcDecl or (*item).kind == HIRNodeKind.ExternProcDecl) { set procedure_count += 1; }
+        set index += 1;
+    }
+    if procedure_count != 0 {
+        let mut bytes: usize = 0;
+        if not ir_size_mul(procedure_count, sizeof(IRLowerFunction), &mut bytes) { ir_lower_cleanup(&mut context); return ir_fail(ir, IRError.Overflow); }
+        set context.functions = allocate(bytes) as *mut IRLowerFunction;
+        if context.functions == null { ir_lower_cleanup(&mut context); return ir_fail(ir, IRError.OutOfMemory); }
+        fill(context.functions as *mut u8, 0, bytes); set context.function_capacity = procedure_count;
+        ir_add_stat(&mut (*ir).stats.allocations, 1);
+    }
+    // Bind module constants before procedure bodies.
+    index = 0;
+    while index < item_count {
+        let item = ir_lower_node(&mut context, items[index]);
+        if item != null and ((*item).kind == HIRNodeKind.ConstDecl or (*item).kind == HIRNodeKind.StaticDecl) {
+            let value = ir_lower_constant(&mut context, (*item).payload[1]);
+            if value == 0 or not ir_lower_bind_value(&mut context, (*item).payload[0], value, false) {
+                ir_lower_cleanup(&mut context); if (*ir).last_error == IRError.None { ir_fail(ir, IRError.Unsupported); }
+                set (*ir).state = IRState.Failed; return false;
+            }
+        }
+        set index += 1;
+    }
+    // Predeclare all procedures so calls can target later or recursive bodies.
+    index = 0;
+    while index < item_count {
+        let item = ir_lower_node(&mut context, items[index]);
+        if item == null or ((*item).kind != HIRNodeKind.ProcDecl and (*item).kind != HIRNodeKind.ExternProcDecl) { set index += 1; continue; }
+        let symbol = ir_lower_symbol(&mut context, (*item).payload[0]);
+        if symbol == null { ir_lower_cleanup(&mut context); return ir_fail(ir, IRError.InvalidFunction); }
+        let parameter_count = ir_lower_list_count(item, 1); let mut parameter_types: *mut IRTypeId = null;
+        if parameter_count != 0 {
+            let mut bytes: usize = 0;
+            if not ir_size_mul(parameter_count, sizeof(IRTypeId), &mut bytes) { ir_lower_cleanup(&mut context); return ir_fail(ir, IRError.Overflow); }
+            set parameter_types = allocate(bytes) as *mut IRTypeId;
+            if parameter_types == null { ir_lower_cleanup(&mut context); return ir_fail(ir, IRError.OutOfMemory); }
+        }
+        let params = ir_lower_node_list(item, 1); let mut parameter_index: usize = 0; let mut valid = true;
+        while parameter_index < parameter_count {
+            let parameter = ir_lower_node(&mut context, params[parameter_index]);
+            let param_symbol = if parameter == null { null } else { ir_lower_symbol(&mut context, (*parameter).payload[0]) };
+            if param_symbol == null { set valid = false; break; }
+            set parameter_types[parameter_index] = ir_lower_type(&mut context, (*param_symbol).type_);
+            if parameter_types[parameter_index] == 0 { set valid = false; break; }
+            set parameter_index += 1;
+        }
+        let return_type = ir_lower_type(&mut context, (*item).payload[4]);
+        if not valid or return_type == 0 { deallocate(parameter_types as *mut u8); ir_lower_cleanup(&mut context); return ir_fail(ir, IRError.InvalidType); }
+        let mut type_desc = IRTypeDesc {}; set type_desc.kind = IRTypeKind.Function; set type_desc.parameter_types = parameter_types;
+        set type_desc.parameter_count = parameter_count; set type_desc.return_type = return_type; set type_desc.is_variadic = ((*item).payload[7] & 65536) != 0;
+        let function_type = vitte_ir_intern_type(ir, &type_desc); deallocate(parameter_types as *mut u8);
+        if function_type == 0 { ir_lower_cleanup(&mut context); return false; }
+        let mut function_desc = IRFunctionDesc {};
+        set function_desc.name = ir_lower_intern_hir_string(&mut context, (*symbol).name);
+        set function_desc.type_ = function_type;
+        set function_desc.linkage = if (*item).kind == HIRNodeKind.ExternProcDecl { IRLinkage.External } else { IRLinkage.Internal };
+        set function_desc.calling_convention = if (*item).kind == HIRNodeKind.ExternProcDecl { IRCallingConvention.C } else { IRCallingConvention.Default };
+        set function_desc.is_declaration = (*item).kind == HIRNodeKind.ExternProcDecl or (*item).payload[5] == 0;
+        set function_desc.is_variadic = type_desc.is_variadic; set function_desc.span = ir_lower_span(&(*item).span);
+        let function_id = vitte_ir_add_function(ir, &function_desc);
+        if function_id == 0 { ir_lower_cleanup(&mut context); return false; }
+        let mut value_desc = IRValueDesc {}; set value_desc.kind = IRValueKind.Function; set value_desc.type_ = function_type; set value_desc.function = function_id;
+        let function_value = vitte_ir_add_value(ir, &value_desc);
+        if function_value == 0 { ir_lower_cleanup(&mut context); return false; }
+        set context.functions[context.function_count] = IRLowerFunction { symbol: (*item).payload[0], node: (*item).id, function: function_id, function_value: function_value, return_type: return_type };
+        set context.function_count += 1; set index += 1;
+    }
+    index = 0;
+    while index < context.function_count {
+        if not ir_lower_bind_value(&mut context, context.functions[index].symbol, context.functions[index].function_value, false) {
+            ir_lower_cleanup(&mut context); set (*ir).state = IRState.Failed; return false;
+        }
+        set index += 1;
+    }
+    // Add parameters, then lower each body into its entry block.
+    index = 0;
+    while index < context.function_count {
+        let lowered = &context.functions[index]; let procedure = ir_lower_node(&mut context, (*lowered).node);
+        let function = vitte_ir_get_function_mut(ir, (*lowered).function);
+        if procedure == null or function == null { ir_lower_cleanup(&mut context); return ir_fail(ir, IRError.InvalidFunction); }
+        let params = ir_lower_node_list(procedure, 1); let parameter_count = ir_lower_list_count(procedure, 1);
+        let mut entry_block: IRBlockId = 0;
+        if not (*function).is_declaration {
+            let name = vitte_ir_intern_string(ir, "entry".as_ptr() as *const u8, 5);
+            entry_block = vitte_ir_add_block(ir, (*lowered).function, name, ir_lower_span(&(*procedure).span));
+            if entry_block == 0 { ir_lower_cleanup(&mut context); return false; }
+        }
+        let mut parameter_index: usize = 0;
+        while parameter_index < parameter_count {
+            let parameter = ir_lower_node(&mut context, params[parameter_index]);
+            let symbol = if parameter == null { null } else { ir_lower_symbol(&mut context, (*parameter).payload[0]) };
+            if symbol == null { ir_lower_cleanup(&mut context); return ir_fail(ir, IRError.InvalidValue); }
+            let parameter_type = ir_lower_type(&mut context, (*symbol).type_);
+            let parameter_name = ir_lower_intern_hir_string(&mut context, (*symbol).name);
+            let parameter_value = vitte_ir_add_parameter(ir, (*lowered).function, parameter_type, parameter_name, ir_lower_span(&(*parameter).span));
+            if parameter_value == 0 { ir_lower_cleanup(&mut context); return false; }
+            if (*function).is_declaration {
+                if not ir_lower_bind_value(&mut context, (*symbol).id, parameter_value, false) { ir_lower_cleanup(&mut context); return false; }
+            } else {
+                let mut pointer_desc = IRTypeDesc {}; set pointer_desc.kind = IRTypeKind.Pointer; set pointer_desc.element_type = parameter_type;
+                let pointer_type = vitte_ir_intern_type(ir, &pointer_desc);
+                let address = ir_lower_emit_value(&mut context, IROpcode.Alloca, entry_block, pointer_type, null, 0, &(*parameter).span);
+                if address == 0 { ir_lower_cleanup(&mut context); return false; }
+                let mut operands: [IRValueId; 2] = [address, parameter_value];
+                if ir_lower_emit(&mut context, IROpcode.Store, entry_block, 0, &mut operands[0], 2, &(*parameter).span) == 0 or
+                   not ir_lower_bind_value(&mut context, (*symbol).id, address, true) { ir_lower_cleanup(&mut context); return false; }
+            }
+            set parameter_index += 1;
+        }
+        if not (*function).is_declaration {
+            let mut fallthrough = entry_block;
+            if not ir_lower_statement(&mut context, (*lowered).function, entry_block, (*procedure).payload[5], &mut fallthrough) {
+                ir_lower_cleanup(&mut context); if (*ir).last_error == IRError.None { ir_fail(ir, IRError.Unsupported); }
+                set (*ir).state = IRState.Failed; return false;
+            }
+            let end = vitte_ir_get_block(ir, fallthrough);
+            if end != null and not (*end).terminated {
+                let return_type = vitte_ir_get_type(ir, (*lowered).return_type);
+                let value = if return_type == null or (*return_type).kind == IRTypeKind.Void { 0 as IRValueId } else { vitte_ir_undef(ir, (*lowered).return_type) };
+                if value == 0 and return_type != null and (*return_type).kind != IRTypeKind.Void { ir_lower_cleanup(&mut context); return false; }
+                if vitte_ir_build_return(ir, fallthrough, value, IRSpan {}) == 0 { ir_lower_cleanup(&mut context); return false; }
+            }
+        }
+        set index += 1;
+    }
+    ir_lower_cleanup(&mut context);
+    return vitte_ir_seal(ir);
+}
+
+export proc vitte_ir_translation_unit_anchor() {}

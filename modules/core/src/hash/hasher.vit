@@ -1,0 +1,61 @@
+/// Hacheur incrémental FNV-1a.
+space core::hash::hasher;
+
+use core::hash::fnv::{FNV64_OFFSET_BASIS, FNV64_PRIME};
+use core::num::wrapping::{wrapping_u64_add, wrapping_u64_mul};
+
+export form Hasher {
+    state: u64,
+    length: u64,
+}
+
+export proc hasher_new() -> Hasher {
+    return Hasher { state: FNV64_OFFSET_BASIS, length: 0 };
+}
+
+export proc hasher_write_byte(hasher: &mut Hasher, value: u8) {
+    set hasher.state = wrapping_u64_mul(hasher.state ^ value as u64, FNV64_PRIME);
+    set hasher.length = wrapping_u64_add(hasher.length, 1);
+}
+
+export proc hasher_write_bytes(hasher: &mut Hasher, bytes: &[u8]) {
+    let mut index: usize = 0;
+    while index < bytes.len() {
+        let slice_index: i64 = index as i64;
+        hasher_write_byte(hasher, bytes[slice_index]);
+        set index = index + 1;
+    }
+}
+
+export proc hasher_write_u64(hasher: &mut Hasher, value: u64) {
+    let mut shift: u32 = 0;
+    while shift < 64 {
+        hasher_write_byte(hasher, ((value >> shift) & 255) as u8);
+        set shift = shift + 8;
+    }
+}
+
+export proc hasher_write_u32(hasher: &mut Hasher, value: u32) {
+    let mut shift: u32 = 0;
+    while shift < 32 {
+        hasher_write_byte(hasher, ((value >> shift) & 255) as u8);
+        set shift = shift + 8;
+    }
+}
+
+export proc hasher_write_u16(hasher: &mut Hasher, value: u16) {
+    hasher_write_byte(hasher, value as u8);
+    hasher_write_byte(hasher, (value >> 8) as u8);
+}
+
+export proc hasher_write_i64(hasher: &mut Hasher, value: i64) {
+    hasher_write_u64(hasher, value as u64);
+}
+
+export proc hasher_length(hasher: &Hasher) -> u64 {
+    return hasher.length;
+}
+
+export proc hasher_finish(hasher: &Hasher) -> u64 {
+    return hasher.state;
+}

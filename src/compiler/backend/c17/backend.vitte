@@ -1,0 +1,657 @@
+/// Native compiler-facing C17 backend implementation.
+space compiler::backend::c17::backend;
+
+use compiler::api::version::{
+    version_architecture,
+    version_platform,
+};
+
+export extern proc fwrite(data: *u8, element_size: usize, element_count: usize, stream: *mut u8) -> usize;
+
+const BACKEND_MAGIC: u64 = 0x5649545445433137;
+const BACKEND_DEAD_MAGIC: u64 = 0x4445414443313721;
+const BACKEND_INDENT: str = "                                                                ";
+
+pub pick BackendError { None, InvalidBackend, InvalidArgument, InvalidState, InvalidConfig, InvalidTarget, Output, OutputLimit, Overflow, OutOfMemory, Unsupported, Cancelled, TooManyErrors, Internal, Count }
+pub pick BackendState { Uninitialized, Ready, Generating, Finished, Failed, Cancelled, Destroyed, Count }
+pub pick Section { None, Banner, FeatureMacros, Includes, ForwardDeclarations, TypeDeclarations, GlobalDeclarations, RuntimeDeclarations, FunctionDeclarations, RuntimeDefinitions, GlobalDefinitions, FunctionDefinitions, Entry, Epilogue, Count }
+pub pick TargetEnvironment { Unknown, Linux, Darwin, Windows, FreeBSD, Count }
+pub pick TargetArchitecture { Unknown, X86, X86_64, ARM, AArch64, RISCV, Count }
+pub pick DiagnosticLevel { Note, Warning, Error, Count }
+
+pub form Target {
+    architecture: TargetArchitecture,
+    environment: TargetEnvironment,
+    pointer_bits: u32,
+    size_bits: u32,
+    char_bits: u32,
+    little_endian: bool,
+}
+pub form BackendConfig {
+    indent_width: usize, max_indent_depth: usize, max_output_bytes: usize, max_identifier_bytes: usize, max_errors: usize,
+    emit_banner: bool, emit_line_directives: bool, emit_source_map: bool, emit_comments: bool, emit_debug_comments: bool,
+    emit_static_assertions: bool, emit_runtime: bool, pretty: bool, deterministic: bool, strict_c17: bool, fail_fast: bool,
+    trigraph_safe_strings: bool, escape_non_ascii: bool,
+}
+pub form SourceLocation { file_id: u32, begin: usize, end: usize, valid: bool }
+pub form BackendStats {
+    output_bytes: usize, output_lines: usize, maximum_indent_depth: usize, section_count: usize,
+    type_count: usize, global_count: usize, function_count: usize, statement_count: usize, expression_count: usize,
+    source_map_entries: usize, error_count: usize, warning_count: usize, note_count: usize,
+}
+pub type WriteFn = proc (*u8, *const u8, usize) -> bool;
+pub type DiagnosticFn = proc (*u8, DiagnosticLevel, str, str, ?&SourceLocation) -> void;
+pub type SourceMapFn = proc (*u8, u32, usize, usize, usize, usize, usize) -> void;
+pub type EmitTranslationUnitFn = proc (&mut Backend, *const u8, *u8) -> bool;
+pub form Writer { write: ?WriteFn, user_data: *u8 }
+pub form Backend {
+    magic: u64, state: BackendState, last_error: BackendError, config: BackendConfig, target: Target,
+    writer: Writer, line: usize, column: usize, indent_depth: usize, at_line_start: bool,
+    current_section: Section, last_section: Section, source: SourceLocation,
+    diagnostic_handler: ?DiagnosticFn, diagnostic_user_data: *u8,
+    source_map: ?SourceMapFn, source_map_user_data: *u8,
+    cancelled: bool, stats: BackendStats,
+}
+
+proc backend_add_overflow(a: usize, b: usize) -> bool { return a > usize.MAX - b; }
+proc backend_sat_add(a: usize, b: usize) -> usize { if backend_add_overflow(a,b) { return usize.MAX; } return a+b; }
+proc backend_min(a: usize, b: usize) -> usize { if a < b { return a; } return b; }
+
+pub proc backend_error_name(error: BackendError) -> str {
+    match error {
+        case BackendError.None => "none", case BackendError.InvalidBackend => "invalid-backend",
+        case BackendError.InvalidArgument => "invalid-argument", case BackendError.InvalidState => "invalid-state",
+        case BackendError.InvalidConfig => "invalid-config", case BackendError.InvalidTarget => "invalid-target",
+        case BackendError.Output => "output", case BackendError.OutputLimit => "output-limit",
+        case BackendError.Overflow => "overflow", case BackendError.OutOfMemory => "out-of-memory",
+        case BackendError.Unsupported => "unsupported", case BackendError.Cancelled => "cancelled",
+        case BackendError.TooManyErrors => "too-many-errors", case BackendError.Internal => "internal",
+        case BackendError.Count => "count",
+    }
+}
+
+pub proc backend_state_name(state: BackendState) -> str {
+    match state { case BackendState.Uninitialized => "uninitialized", case BackendState.Ready => "ready", case BackendState.Generating => "generating", case BackendState.Finished => "finished", case BackendState.Failed => "failed", case BackendState.Cancelled => "cancelled", case BackendState.Destroyed => "destroyed", case BackendState.Count => "count" }
+}
+
+pub proc section_name(section: Section) -> str {
+    match section {
+        case Section.None => "none", case Section.Banner => "banner", case Section.FeatureMacros => "feature-macros",
+        case Section.Includes => "includes", case Section.ForwardDeclarations => "forward-declarations",
+        case Section.TypeDeclarations => "type-declarations", case Section.GlobalDeclarations => "global-declarations",
+        case Section.RuntimeDeclarations => "runtime-declarations", case Section.FunctionDeclarations => "function-declarations",
+        case Section.RuntimeDefinitions => "runtime-definitions", case Section.GlobalDefinitions => "global-definitions",
+        case Section.FunctionDefinitions => "function-definitions", case Section.Entry => "entry",
+        case Section.Epilogue => "epilogue", case Section.Count => "count",
+    }
+}
+
+pub proc target_make(pointer_bits: u32, size_bits: u32, char_bits: u32, little_endian: bool, environment: TargetEnvironment, architecture: TargetArchitecture) -> Target {
+    return Target { architecture: architecture, environment: environment, pointer_bits: pointer_bits, size_bits: size_bits, char_bits: char_bits, little_endian: little_endian };
+}
+pub proc target_default() -> Target {
+    let probe: u16 = 0x0102;
+    let bytes: *const u8 = (&probe) as *const u8;
+    let little_endian = bytes[0] == 2 and bytes[1] == 1;
+    let platform = version_platform();
+    let architecture_name = version_architecture();
+    let mut environment: TargetEnvironment = TargetEnvironment.Unknown;
+    let mut architecture: TargetArchitecture = TargetArchitecture.Unknown;
+
+    if platform == "windows" or platform == "win32" or platform == "win64" {
+        set environment = TargetEnvironment.Windows;
+    } elif platform == "darwin" or platform == "macos" or platform == "macosx" {
+        set environment = TargetEnvironment.Darwin;
+    } elif platform == "linux" {
+        set environment = TargetEnvironment.Linux;
+    } elif platform == "freebsd" {
+        set environment = TargetEnvironment.FreeBSD;
+    }
+
+    if architecture_name == "x86_64" or architecture_name == "amd64" or architecture_name == "x64" {
+        set architecture = TargetArchitecture.X86_64;
+    } elif architecture_name == "x86" or architecture_name == "i386" or architecture_name == "i486" or architecture_name == "i586" or architecture_name == "i686" {
+        set architecture = TargetArchitecture.X86;
+    } elif architecture_name == "arm" or architecture_name == "arm32" or architecture_name == "armv7l" {
+        set architecture = TargetArchitecture.ARM;
+    } elif architecture_name == "aarch64" or architecture_name == "arm64" {
+        set architecture = TargetArchitecture.AArch64;
+    } elif architecture_name == "riscv" or architecture_name == "riscv32" or architecture_name == "riscv64" {
+        set architecture = TargetArchitecture.RISCV;
+    }
+
+    return target_make((sizeof(*const u8)*8) as u32, (sizeof(usize)*8) as u32, 8, little_endian, environment, architecture);
+}
+pub proc target_validate(target: &Target) -> bool { return (target.pointer_bits == 16 or target.pointer_bits == 32 or target.pointer_bits == 64 or target.pointer_bits == 128) and target.size_bits != 0 and target.char_bits != 0; }
+pub proc backend_config_default() -> BackendConfig {
+    return BackendConfig { indent_width: 4, max_indent_depth: 4096, max_output_bytes: usize.MAX, max_identifier_bytes: 4096, max_errors: 100,
+        emit_banner: true, emit_line_directives: false, emit_source_map: true, emit_comments: true, emit_debug_comments: false,
+        emit_static_assertions: true, emit_runtime: true, pretty: true, deterministic: true, strict_c17: true, fail_fast: false,
+        trigraph_safe_strings: true, escape_non_ascii: false };
+}
+pub proc backend_config_validate(config: &BackendConfig) -> bool { return config.indent_width != 0 and config.max_indent_depth != 0 and config.max_identifier_bytes != 0 and config.max_errors != 0; }
+pub proc source_location_empty() -> SourceLocation { return SourceLocation { file_id: 0, begin: 0, end: 0, valid: false }; }
+pub proc backend_stats_empty() -> BackendStats { return BackendStats { output_bytes: 0, output_lines: 0, maximum_indent_depth: 0, section_count: 0, type_count: 0, global_count: 0, function_count: 0, statement_count: 0, expression_count: 0, source_map_entries: 0, error_count: 0, warning_count: 0, note_count: 0 }; }
+pub proc writer_make(write: ?WriteFn, user_data: *u8) -> Writer { return Writer { write: write, user_data: user_data }; }
+
+pub proc backend_is_valid(backend: &Backend) -> bool { return backend.magic == BACKEND_MAGIC and backend_config_validate(&backend.config) and target_validate(&backend.target) and backend.writer.write != null; }
+proc backend_fail(backend: &mut Backend, error: BackendError) -> bool { set backend.last_error = error; set backend.state = BackendState.Failed; return false; }
+
+pub proc backend_init(backend: &mut Backend, config: BackendConfig, target: Target, writer: Writer) -> bool {
+    if not backend_config_validate(&config) { return false; }
+    if not target_validate(&target) or writer.write == null { return false; }
+    set backend.magic = BACKEND_MAGIC; set backend.state = BackendState.Ready; set backend.last_error = BackendError.None;
+    set backend.config = config; set backend.target = target; set backend.writer = writer;
+    set backend.line = 1; set backend.column = 0; set backend.indent_depth = 0; set backend.at_line_start = true;
+    set backend.current_section = Section.None; set backend.last_section = Section.None; set backend.cancelled = false;
+    set backend.source = source_location_empty(); set backend.stats = backend_stats_empty();
+    set backend.diagnostic_handler = null; set backend.diagnostic_user_data = null; set backend.source_map = null; set backend.source_map_user_data = null;
+    return true;
+}
+
+proc backend_raw_write(backend: &mut Backend, bytes: &[u8]) -> bool {
+    if not backend_is_valid(backend) { return false; }
+    if backend.state != BackendState.Generating { return backend_fail(backend, BackendError.InvalidState); }
+    if backend.cancelled { set backend.state = BackendState.Cancelled; set backend.last_error = BackendError.Cancelled; return false; }
+    if bytes.len == 0 { return true; }
+    if backend_add_overflow(backend.stats.output_bytes, bytes.len) { return backend_fail(backend, BackendError.Overflow); }
+    if backend.stats.output_bytes + bytes.len > backend.config.max_output_bytes { return backend_fail(backend, BackendError.OutputLimit); }
+    let write = backend.writer.write?;
+    if not write(backend.writer.user_data, bytes.as_ptr(), bytes.len) { return backend_fail(backend, BackendError.Output); }
+    set backend.stats.output_bytes += bytes.len;
+    return true;
+}
+
+proc backend_emit_indent(backend: &mut Backend) -> bool {
+    if not backend.at_line_start { return true; }
+    if not backend.config.pretty { set backend.at_line_start = false; return true; }
+    if backend.indent_depth > backend.config.max_indent_depth { return backend_fail(backend, BackendError.InvalidState); }
+    if backend.config.indent_width != 0 and backend.indent_depth > usize.MAX / backend.config.indent_width { return backend_fail(backend, BackendError.Overflow); }
+    let mut spaces = backend.indent_depth * backend.config.indent_width;
+    while spaces != 0 {
+        let chunk = backend_min(spaces, BACKEND_INDENT.len());
+        if not backend_raw_write(backend, BACKEND_INDENT.slice(0, chunk).as_bytes()) { return false; }
+        set spaces -= chunk;
+    }
+    set backend.at_line_start = false; return true;
+}
+
+pub proc backend_write_n(backend: &mut Backend, bytes: &[u8]) -> bool {
+    if not backend_is_valid(backend) { return false; }
+    let mut i: usize = 0;
+    while i < bytes.len {
+        if backend.at_line_start and not backend_emit_indent(backend) { return false; }
+        let begin = i; while i < bytes.len and bytes[i] != 10 { set i += 1; }
+        let width = i - begin;
+        if width != 0 {
+            let mut line_text: string = "";
+            let mut cursor = begin;
+            while cursor < i { set line_text += string.from_byte(bytes[cursor]); set cursor += 1; }
+            if not backend_raw_write(backend, line_text.as_bytes()) { return false; }
+            set backend.column = backend_sat_add(backend.column, width);
+        }
+        if i < bytes.len and bytes[i] == 10 {
+            if not backend_raw_write(backend, "\n".as_bytes()) { return false; }
+            set backend.line = backend_sat_add(backend.line, 1); set backend.stats.output_lines = backend_sat_add(backend.stats.output_lines, 1);
+            set backend.column = 0; set backend.at_line_start = true; set i += 1;
+        }
+    }
+    return true;
+}
+pub proc backend_write(backend: &mut Backend, text: str) -> bool { return backend_write_n(backend, text.as_bytes()); }
+pub proc backend_write_char(backend: &mut Backend, character: u8) -> bool { let bytes: [u8; 1] = [character]; return backend_write_n(backend, &bytes); }
+pub proc backend_newline(backend: &mut Backend) -> bool { return backend_write(backend, "\n"); }
+pub proc backend_blank_line(backend: &mut Backend) -> bool { return backend_newline(backend) and backend_newline(backend); }
+
+proc backend_octal(byte: u8) -> string {
+    return string.from_byte(48 + ((byte >> 6) & 7)) + string.from_byte(48 + ((byte >> 3) & 7)) + string.from_byte(48 + (byte & 7));
+}
+pub proc backend_write_c_string(backend: &mut Backend, data: &[u8]) -> bool {
+    if not backend_write_char(backend, 34) { return false; }
+    let mut i: usize = 0; while i < data.len {
+        let byte = data[i];
+        match byte {
+            case 7 => { if not backend_write(backend, "\\a") { return false; } },
+            case 8 => { if not backend_write(backend, "\\b") { return false; } },
+            case 12 => { if not backend_write(backend, "\\f") { return false; } },
+            case 10 => { if not backend_write(backend, "\\n") { return false; } },
+            case 13 => { if not backend_write(backend, "\\r") { return false; } },
+            case 9 => { if not backend_write(backend, "\\t") { return false; } },
+            case 11 => { if not backend_write(backend, "\\v") { return false; } },
+            case 34 => { if not backend_write(backend, "\\\"") { return false; } },
+            case 92 => { if not backend_write(backend, "\\\\") { return false; } },
+            case _ => {
+                if byte >= 32 and byte <= 126 {
+                    if backend.config.trigraph_safe_strings and byte == 63 and i + 1 < data.len and data[i + 1] == 63 {
+                        if not backend_write(backend, "\\?") { return false; }
+                    } else if not backend_write_char(backend, byte) { return false; }
+                } else if not backend_write(backend, "\\") or not backend_write(backend, backend_octal(byte)) { return false; }
+            },
+        }
+        set i += 1;
+    }
+    return backend_write_char(backend, 34);
+}
+
+proc backend_identifier_start(byte: u8) -> bool { return (byte >= 65 and byte <= 90) or (byte >= 97 and byte <= 122) or byte == 95; }
+proc backend_identifier_continue(byte: u8) -> bool { return backend_identifier_start(byte) or (byte >= 48 and byte <= 57); }
+proc backend_keyword(word: str) -> bool {
+    match word { case "auto"|"break"|"case"|"char"|"const"|"continue"|"default"|"do"|"double"|"else"|"enum"|"extern"|"float"|"for"|"goto"|"if"|"inline"|"int"|"long"|"register"|"restrict"|"return"|"short"|"signed"|"sizeof"|"static"|"struct"|"switch"|"typedef"|"union"|"unsigned"|"void"|"volatile"|"while"|"_Alignas"|"_Alignof"|"_Atomic"|"_Bool"|"_Complex"|"_Generic"|"_Imaginary"|"_Noreturn"|"_Static_assert"|"_Thread_local" => true, case _ => false }
+}
+pub proc backend_write_identifier(backend: &mut Backend, identifier: str) -> bool {
+    if not backend_is_valid(backend) or identifier.len() == 0 or identifier.len() > backend.config.max_identifier_bytes {
+        return false;
+    }
+    if not backend_write(backend, "vitte_") { return false; }
+    if backend_keyword(identifier) and not backend_write(backend, "kw_") { return false; }
+
+    let digits = "0123456789ABCDEF".as_bytes();
+    let bytes = identifier.as_bytes();
+    let mut index: usize = 0;
+    while index < bytes.len() {
+        let byte = bytes[index];
+        let valid = if index == 0 { backend_identifier_start(byte) } else { backend_identifier_continue(byte) };
+        if valid {
+            if not backend_write_char(backend, byte) { return false; }
+        } else {
+            if not backend_write(backend, "_x") or
+               not backend_write_char(backend, digits[(byte >> 4) as usize]) or
+               not backend_write_char(backend, digits[(byte & 15) as usize]) {
+                return false;
+            }
+        }
+        set index += 1;
+    }
+    return true;
+}
+
+pub proc backend_indent(backend: &mut Backend) -> bool { if not backend_is_valid(backend) { return false; } if backend.indent_depth >= backend.config.max_indent_depth { return backend_fail(backend, BackendError.Overflow); } set backend.indent_depth += 1; set backend.stats.maximum_indent_depth = if backend.indent_depth > backend.stats.maximum_indent_depth { backend.indent_depth } else { backend.stats.maximum_indent_depth }; return true; }
+pub proc backend_dedent(backend: &mut Backend) -> bool { if not backend_is_valid(backend) { return false; } if backend.indent_depth == 0 { return backend_fail(backend, BackendError.InvalidState); } set backend.indent_depth -= 1; return true; }
+pub proc backend_open_block(backend: &mut Backend) -> bool { return backend_write(backend, "{") and backend_newline(backend) and backend_indent(backend); }
+pub proc backend_close_block(backend: &mut Backend, semicolon: bool) -> bool { if not backend_dedent(backend) or not backend_write(backend, "}") { return false; } if semicolon and not backend_write_char(backend, 59) { return false; } return true; }
+
+pub proc backend_set_source_location(backend: &mut Backend, file_id: u32, begin: usize, end: usize) { if backend_is_valid(backend) { set backend.source = SourceLocation { file_id: file_id, begin: begin, end: end, valid: begin <= end }; } }
+pub proc backend_clear_source_location(backend: &mut Backend) { if backend_is_valid(backend) { set backend.source = source_location_empty(); } }
+pub proc backend_mark_source(backend: &mut Backend) {
+    if not backend_is_valid(backend) or not backend.config.emit_source_map or backend.source_map == null or not backend.source.valid { return; }
+    let callback = backend.source_map?;
+    callback(backend.source_map_user_data, backend.source.file_id, backend.source.begin, backend.source.end, backend.line, backend.column, backend.stats.output_bytes);
+    set backend.stats.source_map_entries = backend_sat_add(backend.stats.source_map_entries, 1);
+}
+pub proc backend_set_diagnostic_handler(backend: &mut Backend, handler: ?DiagnosticFn, user_data: *u8) { if backend_is_valid(backend) { set backend.diagnostic_handler = handler; set backend.diagnostic_user_data = user_data; } }
+pub proc backend_set_source_map_handler(backend: &mut Backend, handler: ?SourceMapFn, user_data: *u8) { if backend_is_valid(backend) { set backend.source_map = handler; set backend.source_map_user_data = user_data; } }
+pub proc backend_report(backend: &mut Backend, level: DiagnosticLevel, code: str, message: str) {
+    if not backend_is_valid(backend) { return; }
+    match level {
+        case DiagnosticLevel.Error => set backend.stats.error_count = backend_sat_add(backend.stats.error_count, 1),
+        case DiagnosticLevel.Warning => set backend.stats.warning_count = backend_sat_add(backend.stats.warning_count, 1),
+        case DiagnosticLevel.Note|DiagnosticLevel.Count => set backend.stats.note_count = backend_sat_add(backend.stats.note_count, 1),
+    }
+    if backend.diagnostic_handler != null {
+        let callback = backend.diagnostic_handler?;
+        if backend.source.valid { callback(backend.diagnostic_user_data, level, code, message, &backend.source); }
+        else { callback(backend.diagnostic_user_data, level, code, message, null); }
+    }
+    if level == DiagnosticLevel.Error {
+        if backend.stats.error_count >= backend.config.max_errors { set backend.last_error = BackendError.TooManyErrors; set backend.state = BackendState.Failed; }
+        elif backend.config.fail_fast { set backend.last_error = BackendError.Internal; set backend.state = BackendState.Failed; }
+    }
+}
+pub proc backend_comment(backend: &mut Backend, text: str) -> bool {
+    if not backend_is_valid(backend) { return false; }
+    if not backend.config.emit_comments { return true; }
+    if not backend_write(backend, "// ") { return false; }
+    let bytes = text.as_bytes();
+    let mut index: usize = 0;
+    while index < bytes.len {
+        if bytes[index] == 13 {
+            set index += 1;
+        } elif bytes[index] == 10 {
+            if not backend_newline(backend) or not backend_write(backend, "// ") { return false; }
+            set index += 1;
+        } else {
+            if not backend_write_char(backend, bytes[index]) { return false; }
+            set index += 1;
+        }
+    }
+    return true;
+}
+
+proc backend_section_rank(section: Section) -> usize { return section as usize; }
+pub proc backend_begin_section(backend: &mut Backend, section: Section) -> bool {
+    if not backend_is_valid(backend) or section == Section.None or section == Section.Count { return false; }
+    if backend.state != BackendState.Generating { return backend_fail(backend, BackendError.InvalidState); }
+    if backend.current_section != Section.None or (backend.config.deterministic and backend.last_section != Section.None and backend_section_rank(section) <= backend_section_rank(backend.last_section)) { return backend_fail(backend, BackendError.InvalidState); }
+    set backend.current_section = section;
+    set backend.last_section = section;
+    set backend.stats.section_count = backend_sat_add(backend.stats.section_count, 1);
+    if backend.config.emit_debug_comments and
+       (not backend_write(backend, "/* --- Vitte C17 section: ") or not backend_write(backend, section_name(section)) or not backend_write(backend, " --- */\n")) { return false; }
+    return true;
+}
+pub proc backend_end_section(backend: &mut Backend) -> bool {
+    if not backend_is_valid(backend) { return false; }
+    if backend.current_section == Section.None { return backend_fail(backend, BackendError.InvalidState); }
+    set backend.current_section = Section.None;
+    return true;
+}
+pub proc backend_cancel(backend: &mut Backend) { if backend.magic == BACKEND_MAGIC { set backend.cancelled = true; } }
+pub proc backend_is_cancelled(backend: &Backend) -> bool { return backend.magic == BACKEND_MAGIC and backend.cancelled; }
+pub proc backend_begin(backend: &mut Backend) -> bool {
+    if not backend_is_valid(backend) { return false; }
+    if backend.state != BackendState.Ready { return backend_fail(backend, BackendError.InvalidState); }
+    set backend.stats = backend_stats_empty();
+    set backend.state = BackendState.Generating;
+    set backend.last_error = BackendError.None;
+    set backend.line = 1;
+    set backend.column = 0;
+    set backend.indent_depth = 0;
+    set backend.at_line_start = true;
+    set backend.current_section = Section.None;
+    set backend.last_section = Section.None;
+    set backend.cancelled = false;
+    set backend.source = source_location_empty();
+    if backend.config.emit_banner {
+        if not backend_begin_section(backend, Section.Banner) or
+           not backend_write(backend, "/*\n * Generated by the Vitte compiler.\n * Backend: ISO C17.\n * This file is generated; do not edit manually.\n */\n") or
+           not backend_end_section(backend) { return false; }
+    }
+    return true;
+}
+pub proc backend_finish(backend: &mut Backend) -> bool {
+    if not backend_is_valid(backend) or backend.state != BackendState.Generating { return false; }
+    if backend.current_section != Section.None or backend.indent_depth != 0 { return backend_fail(backend, BackendError.InvalidState); }
+    if backend.cancelled { set backend.state = BackendState.Cancelled; set backend.last_error = BackendError.Cancelled; return false; }
+    set backend.state = BackendState.Finished;
+    if not backend_validate(backend) { set backend.state = BackendState.Failed; set backend.last_error = BackendError.Internal; return false; }
+    return true;
+}
+pub proc backend_reset(backend: &mut Backend) -> bool {
+    if backend.magic != BACKEND_MAGIC or backend.state == BackendState.Generating { return false; }
+    set backend.state = BackendState.Ready;
+    set backend.last_error = BackendError.None;
+    set backend.line = 1;
+    set backend.column = 0;
+    set backend.indent_depth = 0;
+    set backend.at_line_start = true;
+    set backend.current_section = Section.None;
+    set backend.last_section = Section.None;
+    set backend.cancelled = false;
+    set backend.source = source_location_empty();
+    set backend.stats = backend_stats_empty();
+    return true;
+}
+pub proc backend_destroy(backend: &mut Backend) {
+    if backend.magic != BACKEND_MAGIC { return; }
+    set backend.writer.write = null;
+    set backend.writer.user_data = null;
+    set backend.diagnostic_handler = null;
+    set backend.diagnostic_user_data = null;
+    set backend.source_map = null;
+    set backend.source_map_user_data = null;
+    set backend.current_section = Section.None;
+    set backend.state = BackendState.Destroyed;
+    set backend.magic = BACKEND_DEAD_MAGIC;
+}
+pub proc backend_last_error(backend: &Backend) -> BackendError { if backend.magic != BACKEND_MAGIC { return BackendError.InvalidBackend; } return backend.last_error; }
+pub proc backend_clear_error(backend: &mut Backend) {
+    if not backend_is_valid(backend) { return; }
+    set backend.last_error = BackendError.None;
+    if backend.state == BackendState.Failed { set backend.state = BackendState.Ready; }
+}
+pub proc backend_state(backend: &Backend) -> BackendState { if backend.magic != BACKEND_MAGIC { return BackendState.Uninitialized; } return backend.state; }
+pub proc backend_current_section(backend: &Backend) -> Section { if not backend_is_valid(backend) { return Section.None; } return backend.current_section; }
+pub proc backend_line(backend: &Backend) -> usize { if not backend_is_valid(backend) { return 0; } return backend.line; }
+pub proc backend_column(backend: &Backend) -> usize { if not backend_is_valid(backend) { return 0; } return backend.column; }
+pub proc backend_output_offset(backend: &Backend) -> usize { if not backend_is_valid(backend) { return 0; } return backend.stats.output_bytes; }
+pub proc backend_stats(backend: &Backend) -> BackendStats { if not backend_is_valid(backend) { return backend_stats_empty(); } return backend.stats; }
+pub proc backend_record_type(backend: &mut Backend) { if backend_is_valid(backend) { set backend.stats.type_count = backend_sat_add(backend.stats.type_count,1); } }
+pub proc backend_record_global(backend: &mut Backend) { if backend_is_valid(backend) { set backend.stats.global_count = backend_sat_add(backend.stats.global_count,1); } }
+pub proc backend_record_function(backend: &mut Backend) { if backend_is_valid(backend) { set backend.stats.function_count = backend_sat_add(backend.stats.function_count,1); } }
+pub proc backend_record_statement(backend: &mut Backend) { if backend_is_valid(backend) { set backend.stats.statement_count = backend_sat_add(backend.stats.statement_count,1); } }
+pub proc backend_record_expression(backend: &mut Backend) { if backend_is_valid(backend) { set backend.stats.expression_count = backend_sat_add(backend.stats.expression_count,1); } }
+pub proc backend_validate(backend: &Backend) -> bool {
+    if not backend_is_valid(backend) or backend.line == 0 or
+       backend.indent_depth > backend.config.max_indent_depth or
+       backend.stats.maximum_indent_depth > backend.config.max_indent_depth or
+       backend.stats.output_bytes > backend.config.max_output_bytes or
+       backend.current_section as usize >= Section.Count as usize or
+       backend.last_section as usize >= Section.Count as usize or
+       (backend.source.valid and backend.source.begin > backend.source.end) {
+        return false;
+    }
+    if backend.state == BackendState.Finished and
+       (backend.current_section != Section.None or backend.indent_depth != 0) { return false; }
+    if backend.state == BackendState.Cancelled and backend.last_error != BackendError.Cancelled { return false; }
+    return true;
+}
+pub proc backend_generate(backend: &mut Backend, translation_unit: *const u8, emitter: ?EmitTranslationUnitFn, user_data: *u8) -> bool {
+    if not backend_is_valid(backend) or translation_unit == null or emitter == null { return false; }
+    if not backend_begin(backend) { return false; }
+    let emit = emitter?;
+    if not emit(backend, translation_unit, user_data) {
+        if backend.state == BackendState.Generating { return backend_fail(backend, BackendError.Internal); }
+        return false;
+    }
+    if backend.state != BackendState.Generating { return false; }
+    return backend_finish(backend);
+}
+
+export type C17Backend = Backend;
+export type C17BackendConfig = BackendConfig;
+export type C17BackendError = BackendError;
+export type C17BackendState = BackendState;
+export type C17BackendStats = BackendStats;
+export type C17BackendDiagnosticLevel = DiagnosticLevel;
+export type C17Section = Section;
+export type C17SourceLocation = SourceLocation;
+export type C17Target = Target;
+export type C17Architecture = TargetArchitecture;
+export type C17Environment = TargetEnvironment;
+export type C17Writer = Writer;
+export type C17WriteFn = WriteFn;
+export type C17DiagnosticFn = DiagnosticFn;
+export type C17SourceMapFn = SourceMapFn;
+export type C17EmitTranslationUnitFn = EmitTranslationUnitFn;
+
+export form C17MemoryWriter {
+    data: string,
+    length: usize,
+    capacity: usize,
+}
+
+export proc vitte_c17_backend_error_name(error: C17BackendError) -> string {
+    return backend_error_name(error);
+}
+
+export proc vitte_c17_backend_state_name(state: C17BackendState) -> string {
+    return backend_state_name(state);
+}
+
+export proc vitte_c17_section_name(section: C17Section) -> string {
+    return section_name(section);
+}
+
+export proc vitte_c17_backend_config_default() -> C17BackendConfig {
+    return backend_config_default();
+}
+
+export proc vitte_c17_backend_config_validate(config: ?&C17BackendConfig) -> bool {
+    if config == null { return false; }
+    return backend_config_validate(&*config?);
+}
+
+export proc vitte_c17_target_default() -> C17Target {
+    return target_default();
+}
+
+export proc vitte_c17_target_validate(target: ?&C17Target) -> bool {
+    if target == null { return false; }
+    return target_validate(&*target?);
+}
+
+export proc vitte_c17_writer_make(write: ?C17WriteFn, user_data: *u8) -> C17Writer {
+    return writer_make(write, user_data);
+}
+
+export proc vitte_c17_file_writer(user_data: *u8, data: *const u8, length: usize) -> bool {
+    if user_data == null or (data == null and length != 0) { return false; }
+    if length == 0 { return true; }
+    return fwrite(data as *mut u8, 1, length, user_data as *mut u8) == length;
+}
+
+export proc vitte_c17_writer_from_file(file: *mut u8) -> C17Writer {
+    return writer_make(vitte_c17_file_writer, file);
+}
+
+export proc vitte_c17_backend_init(
+    backend: &mut C17Backend,
+    config: ?&C17BackendConfig,
+    target: ?&C17Target,
+    writer: C17Writer
+) -> bool {
+    let mut effective_config: C17BackendConfig = backend_config_default();
+    let mut effective_target: C17Target = target_default();
+    if config != null { set effective_config = *config?; }
+    if target != null { set effective_target = *target?; }
+    return backend_init(backend, effective_config, effective_target, writer);
+}
+
+export proc vitte_c17_backend_begin(backend: &mut C17Backend) -> bool { return backend_begin(backend); }
+export proc vitte_c17_backend_finish(backend: &mut C17Backend) -> bool { return backend_finish(backend); }
+export proc vitte_c17_backend_reset(backend: &mut C17Backend) -> bool { return backend_reset(backend); }
+export proc vitte_c17_backend_destroy(backend: &mut C17Backend) { backend_destroy(backend); }
+export proc vitte_c17_backend_is_valid(backend: &C17Backend) -> bool { return backend_is_valid(backend); }
+export proc vitte_c17_backend_validate(backend: &C17Backend) -> bool { return backend_validate(backend); }
+export proc vitte_c17_backend_last_error(backend: &C17Backend) -> C17BackendError { return backend_last_error(backend); }
+export proc vitte_c17_backend_clear_error(backend: &mut C17Backend) { backend_clear_error(backend); }
+export proc vitte_c17_backend_state(backend: &C17Backend) -> C17BackendState { return backend_state(backend); }
+export proc vitte_c17_backend_current_section(backend: &C17Backend) -> C17Section { return backend_current_section(backend); }
+
+export proc vitte_c17_backend_set_diagnostic_handler(backend: &mut C17Backend, handler: ?C17DiagnosticFn, user_data: *u8) {
+    backend_set_diagnostic_handler(backend, handler, user_data);
+}
+
+export proc vitte_c17_backend_set_source_map_handler(backend: &mut C17Backend, handler: ?C17SourceMapFn, user_data: *u8) {
+    backend_set_source_map_handler(backend, handler, user_data);
+}
+
+export proc vitte_c17_backend_report(backend: &mut C17Backend, level: C17BackendDiagnosticLevel, code: string, message: string) {
+    backend_report(backend, level, code, message);
+}
+
+export proc vitte_c17_backend_set_source_location(backend: &mut C17Backend, file_id: u32, begin: usize, end: usize) {
+    backend_set_source_location(backend, file_id, begin, end);
+}
+
+export proc vitte_c17_backend_clear_source_location(backend: &mut C17Backend) { backend_clear_source_location(backend); }
+export proc vitte_c17_backend_mark_source(backend: &mut C17Backend) { backend_mark_source(backend); }
+export proc vitte_c17_backend_begin_section(backend: &mut C17Backend, section: C17Section) -> bool { return backend_begin_section(backend, section); }
+export proc vitte_c17_backend_end_section(backend: &mut C17Backend) -> bool { return backend_end_section(backend); }
+export proc vitte_c17_backend_write_n(backend: &mut C17Backend, text: string, length: usize) -> bool {
+    if length > text.len() { return false; }
+    return backend_write_n(backend, text.slice(0, length).as_bytes());
+}
+export proc vitte_c17_backend_write(backend: &mut C17Backend, text: string) -> bool { return backend_write(backend, text); }
+export proc vitte_c17_backend_write_char(backend: &mut C17Backend, character: char) -> bool { return backend_write_char(backend, character as u8); }
+export proc vitte_c17_backend_newline(backend: &mut C17Backend) -> bool { return backend_newline(backend); }
+export proc vitte_c17_backend_blank_line(backend: &mut C17Backend) -> bool { return backend_blank_line(backend); }
+
+export proc vitte_c17_backend_write_c_string(backend: &mut C17Backend, data: *const u8, length: usize) -> bool {
+    if not backend_is_valid(backend) { return false; }
+    if data == null and length != 0 { return false; }
+    let text = if length == 0 { "" } else { string.from_bytes(data, length) };
+    return backend_write_c_string(backend, text.as_bytes());
+}
+
+export proc vitte_c17_backend_write_identifier(backend: &mut C17Backend, identifier: string, length: usize) -> bool {
+    if length > identifier.len() { return false; }
+    return backend_write_identifier(backend, identifier.slice(0, length));
+}
+
+export proc vitte_c17_backend_indent(backend: &mut C17Backend) -> bool { return backend_indent(backend); }
+export proc vitte_c17_backend_dedent(backend: &mut C17Backend) -> bool { return backend_dedent(backend); }
+export proc vitte_c17_backend_open_block(backend: &mut C17Backend) -> bool { return backend_open_block(backend); }
+export proc vitte_c17_backend_close_block(backend: &mut C17Backend, semicolon: bool) -> bool { return backend_close_block(backend, semicolon); }
+export proc vitte_c17_backend_comment(backend: &mut C17Backend, text: string) -> bool { return backend_comment(backend, text); }
+export proc vitte_c17_backend_cancel(backend: &mut C17Backend) { backend_cancel(backend); }
+export proc vitte_c17_backend_is_cancelled(backend: &C17Backend) -> bool { return backend_is_cancelled(backend); }
+export proc vitte_c17_backend_line(backend: &C17Backend) -> usize { return backend_line(backend); }
+export proc vitte_c17_backend_column(backend: &C17Backend) -> usize { return backend_column(backend); }
+export proc vitte_c17_backend_output_offset(backend: &C17Backend) -> usize { return backend_output_offset(backend); }
+export proc vitte_c17_backend_stats(backend: &C17Backend) -> C17BackendStats { return backend_stats(backend); }
+export proc vitte_c17_backend_record_type(backend: &mut C17Backend) { backend_record_type(backend); }
+export proc vitte_c17_backend_record_global(backend: &mut C17Backend) { backend_record_global(backend); }
+export proc vitte_c17_backend_record_function(backend: &mut C17Backend) { backend_record_function(backend); }
+export proc vitte_c17_backend_record_statement(backend: &mut C17Backend) { backend_record_statement(backend); }
+export proc vitte_c17_backend_record_expression(backend: &mut C17Backend) { backend_record_expression(backend); }
+export proc vitte_c17_backend_generate(backend: &mut C17Backend, translation_unit: *const u8, emitter: ?C17EmitTranslationUnitFn, user_data: *u8) -> bool {
+    return backend_generate(backend, translation_unit, emitter, user_data);
+}
+
+export proc vitte_c17_backend_is_ready(backend: &C17Backend) -> bool { return backend.state == C17BackendState.Ready; }
+export proc vitte_c17_backend_is_generating(backend: &C17Backend) -> bool { return backend.state == C17BackendState.Generating; }
+export proc vitte_c17_backend_is_finished(backend: &C17Backend) -> bool { return backend.state == C17BackendState.Finished; }
+export proc vitte_c17_backend_has_failed(backend: &C17Backend) -> bool { return backend.state == C17BackendState.Failed; }
+export proc vitte_c17_backend_has_error(backend: &C17Backend) -> bool { return backend.last_error != C17BackendError.None; }
+export proc vitte_c17_backend_error_count(backend: &C17Backend) -> usize { return backend.stats.error_count; }
+export proc vitte_c17_backend_warning_count(backend: &C17Backend) -> usize { return backend.stats.warning_count; }
+export proc vitte_c17_backend_has_diagnostics(backend: &C17Backend) -> bool { return backend.stats.error_count != 0 or backend.stats.warning_count != 0 or backend.stats.note_count != 0; }
+export proc vitte_c17_backend_has_source_location(backend: &C17Backend) -> bool { return backend.source.valid; }
+export proc vitte_c17_writer_is_valid(writer: &C17Writer) -> bool { return writer.write != null; }
+
+export proc vitte_c17_memory_writer_init(writer: ?&mut C17MemoryWriter) {
+    if writer == null { return; }
+    let mutable_writer = writer?;
+    set mutable_writer.data = ""; set mutable_writer.length = 0; set mutable_writer.capacity = 0;
+}
+
+export proc vitte_c17_memory_writer_destroy(writer: ?&mut C17MemoryWriter) {
+    if writer == null { return; }
+    let mutable_writer = writer?;
+    set mutable_writer.data = ""; set mutable_writer.length = 0; set mutable_writer.capacity = 0;
+}
+
+export proc vitte_c17_memory_writer_write(user_data: *u8, data: *const u8, length: usize) -> bool {
+    if user_data == null or (data == null and length != 0) { return false; }
+    let writer = &mut *(user_data as *mut C17MemoryWriter);
+    if writer.length != writer.data.len() or
+       (writer.capacity == 0 and writer.length != 0) or
+       (writer.capacity != 0 and writer.capacity <= writer.length) { return false; }
+    if length == 0 { return true; }
+    if writer.length > usize.MAX - length { return false; }
+    let new_length = writer.length + length;
+    if new_length == usize.MAX { return false; }
+    let required = new_length + 1;
+    let text = string.from_bytes(data, length);
+    if writer.capacity < required {
+        let mut capacity = if writer.capacity == 0 { 256 as usize } else { writer.capacity };
+        while capacity < required {
+            if capacity > usize.MAX / 2 { set capacity = required; break; }
+            set capacity *= 2;
+        }
+        let mut replacement = string.with_capacity(capacity);
+        set replacement += writer.data;
+        set replacement += text;
+        set writer.data = replacement;
+        set writer.capacity = capacity;
+    } else {
+        set writer.data += text;
+    }
+    set writer.length = new_length;
+    return true;
+}
+
+export proc vitte_c17_memory_writer_data(writer: ?&C17MemoryWriter) -> string {
+    if writer == null { return ""; }
+    return writer?.data;
+}
+export proc vitte_c17_memory_writer_length(writer: ?&C17MemoryWriter) -> usize {
+    if writer == null { return 0; }
+    return writer?.length;
+}
+export proc vitte_c17_writer_from_memory(writer: ?&mut C17MemoryWriter) -> C17Writer {
+    if writer == null { return writer_make(vitte_c17_memory_writer_write, null); }
+    let memory_writer = &mut *writer?;
+    return writer_make(vitte_c17_memory_writer_write, memory_writer as *mut C17MemoryWriter as *u8);
+}

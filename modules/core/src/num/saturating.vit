@@ -1,0 +1,51 @@
+/// Addition et soustraction saturantes pour les entiers 64 bits.
+space core::num::saturating;
+
+use core::num::limits::{I64_MIN, I64_MAX, U64_MAX};
+use core::num::checked::{CheckedI64Result, CheckedU64Result, checked_i64_mul, checked_u64_mul};
+
+export proc saturating_u64_add(left: u64, right: u64) -> u64 {
+    if left > U64_MAX - right { return U64_MAX; }
+    return left + right;
+}
+
+export proc saturating_u64_sub(left: u64, right: u64) -> u64 {
+    if left < right { return 0; }
+    return left - right;
+}
+
+export proc saturating_i64_add(left: i64, right: i64) -> i64 {
+    if right > 0 && left > I64_MAX - right { return I64_MAX; }
+    if right < 0 && left < I64_MIN - right { return I64_MIN; }
+    return left + right;
+}
+
+export proc saturating_i64_sub(left: i64, right: i64) -> i64 {
+    if right < 0 && left > I64_MAX + right { return I64_MAX; }
+    if right > 0 && left < I64_MIN + right { return I64_MIN; }
+    return left - right;
+}
+
+export proc saturating_u64_mul(left: u64, right: u64) -> u64 {
+    let product: CheckedU64Result = checked_u64_mul(left, right);
+    if not product.success { return U64_MAX; }
+    return product.value;
+}
+
+export proc saturating_i64_mul(left: i64, right: i64) -> i64 {
+    let product: CheckedI64Result = checked_i64_mul(left, right);
+    if product.success { return product.value; }
+    if (left < 0) != (right < 0) { return I64_MIN; }
+    return I64_MAX;
+}
+
+export proc saturating_i64_neg(value: i64) -> i64 {
+    if value == I64_MIN { return I64_MAX; }
+    return -value;
+}
+
+export proc saturating_i64_abs(value: i64) -> i64 {
+    if value == I64_MIN { return I64_MAX; }
+    if value < 0 { return -value; }
+    return value;
+}

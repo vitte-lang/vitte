@@ -1,0 +1,243 @@
+/// Compact textual rendering of validated native IR for CLI inspection.
+space compiler::ir::dump;
+
+use compiler::ir::ir::{
+    IRBlock,
+    IRContext,
+    IRFunction,
+    IRInstruction,
+    IRType,
+    IRTypeKind,
+    IRValue,
+    IRValueId,
+    IRValueKind,
+    IROpcode,
+    vitte_ir_get_block,
+    vitte_ir_get_function,
+    vitte_ir_get_instruction,
+    vitte_ir_get_string,
+    vitte_ir_get_type,
+    vitte_ir_get_value,
+    vitte_ir_opcode_name,
+    vitte_ir_type_kind_name,
+};
+
+proc ir_dump_type(context: &IRContext, id: u64) -> string {
+    let type_ = vitte_ir_get_type(context as *mut IRContext, id);
+    if type_ == null { return "<invalid-type>"; }
+    let name = vitte_ir_type_kind_name(type_.kind);
+    if type_.kind == IRTypeKind.Pointer {
+        return ir_dump_type(context, type_.element_type) + "*";
+    }
+    if type_.kind == IRTypeKind.Array {
+        return "[" + type_.array_length.to_string() + "]" +
+            ir_dump_type(context, type_.element_type);
+    }
+    if type_.name != 0 {
+        let string_ = vitte_ir_get_string(context as *mut IRContext, type_.name);
+        if string_ != null and string_.length != 0 {
+            return string_.data.slice(0, string_.length);
+        }
+    }
+    return name;
+}
+
+proc ir_dump_u64(value: u64) -> string {
+    return (value as u64).to_string();
+}
+
+proc ir_dump_i64(value: i64) -> string {
+    if value < 0 { return "-" + ir_dump_u64((-value) as u64); }
+    return ir_dump_u64(value as u64);
+}
+
+proc ir_dump_f64(value: f64) -> string {
+    if value != value { return "nan"; }
+    if value > 1.7976931348623157e308 { return "inf"; }
+    if value < -1.7976931348623157e308 { return "-inf"; }
+    if value == 0.0 { return "0.0"; }
+    let negative = value < 0.0;
+    let mut normalized: f64 = if negative { -value } else { value };
+    let mut exponent: i64 = 0;
+    while normalized >= 10.0 {
+        set normalized = normalized / 10.0;
+        set exponent += 1;
+    }
+    while normalized < 1.0 {
+        set normalized = normalized * 10.0;
+        set exponent -= 1;
+    }
+    let mut significand: u64 = (normalized * 10000000000000000.0 + 0.5) as u64;
+    if significand >= 100000000000000000 {
+        set significand = significand / 10;
+        set exponent += 1;
+    }
+    let digits = ir_dump_u64(significand);
+    let bytes = digits.as_bytes();
+    let mut output: string = if negative { "-" } else { "" };
+    set output += string.from_byte(bytes[0]);
+    set output += ".";
+    let mut index: usize = 1;
+    while index < bytes.len() {
+        set output += string.from_byte(bytes[index]);
+        set index += 1;
+    }
+    return output + "e" + ir_dump_i64(exponent);
+}
+
+proc ir_dump_block_name(context: &IRContext, block_id: u64) -> string {
+    let block = vitte_ir_get_block(context as *mut IRContext, block_id);
+    if block == null { return "bb" + ir_dump_u64(block_id); }
+    let name = vitte_ir_get_string(context as *mut IRContext, block.name);
+    if name == null or name.length == 0 {
+        return "bb" + ir_dump_u64(block_id);
+    }
+    return name.data.slice(0, name.length);
+}
+
+proc ir_dump_value(context: &IRContext, id: IRValueId) -> string {
+    let value = vitte_ir_get_value(context as *mut IRContext, id);
+    if value == null { return "<invalid-value>"; }
+    match value.kind {
+        case IRValueKind.ConstantBool => {
+            return if value.bool_value { "true" } else { "false" };
+        }
+        case IRValueKind.ConstantInteger => {
+            return ir_dump_u64(value.integer_value);
+        }
+        case IRValueKind.ConstantFloat => {
+            return ir_dump_f64(value.float_value);
+        }
+        case IRValueKind.Null => return "null";
+        case IRValueKind.Undef => return "undef";
+        case IRValueKind.Poison => return "poison";
+        case IRValueKind.ConstantString => {
+            return "string#" + ir_dump_u64(value.string_value as u64);
+        }
+        case IRValueKind.Function => {
+            let function = vitte_ir_get_function(context as *mut IRContext, value.function);
+            if function == null { return "@function#" + ir_dump_u64(value.function as u64); }
+            let name = vitte_ir_get_string(context as *mut IRContext, function.name);
+            if name == null { return "@function#" + ir_dump_u64(value.function as u64); }
+            return "@" + name.data.slice(0, name.length);
+        }
+        case IRValueKind.Parameter => {
+            return "%arg" + value.parameter_index.to_string();
+        }
+        else => return "%v" + ir_dump_u64(id as u64);
+    }
+}
+
+proc ir_dump_instruction(context: &IRContext, instruction: &IRInstruction) -> string {
+    let mut output: string = "    ";
+    if instruction.result != 0 {
+        set output += "%v" + ir_dump_u64(instruction.result as u64) + " = ";
+    }
+    set output += vitte_ir_opcode_name(instruction.opcode);
+
+    if instruction.opcode == IROpcode.Br {
+        set output += " %" + ir_dump_block_name(context, instruction.target_true);
+    } else {
+        if instruction.opcode == IROpcode.CondBr {
+            set output += " " + ir_dump_value(context, instruction.operands[0]) +
+                ", %" + ir_dump_block_name(context, instruction.target_true) +
+                ", %" + ir_dump_block_name(context, instruction.target_false);
+        } else {
+            if instruction.opcode == IROpcode.Phi {
+                let mut index: usize = 0;
+                while index < instruction.phi_count {
+                    if index == 0 { set output += " "; } else { set output += ", "; }
+                    let incoming = instruction.phi_incomings[index];
+                    set output += "[" + ir_dump_value(context, incoming.value) +
+                        ", %" + ir_dump_block_name(context, incoming.block) + "]";
+                    set index += 1;
+                }
+            } else {
+                let mut index: usize = 0;
+                while index < instruction.operand_count {
+                    if index == 0 { set output += " "; } else { set output += ", "; }
+                    set output += ir_dump_value(context, instruction.operands[index]);
+                    set index += 1;
+                }
+            }
+        }
+    }
+
+    if instruction.result_type != 0 {
+        set output += " : " + ir_dump_type(context, instruction.result_type);
+    }
+    return output + "\n";
+}
+
+proc ir_dump_function(context: &IRContext, function: &IRFunction) -> string {
+    let name = vitte_ir_get_string(context as *mut IRContext, function.name);
+    let mut output: string = "  func @";
+    if name == null {
+        set output += "<unnamed>";
+    } else {
+        set output += name.data.slice(0, name.length);
+    }
+    set output += "(";
+    let mut index: usize = 0;
+    while index < function.parameter_count {
+        if index != 0 { set output += ", "; }
+        let parameter_id = function.parameters[index];
+        let parameter = vitte_ir_get_value(context as *mut IRContext, parameter_id);
+        set output += "%arg" + index.to_string();
+        if parameter != null {
+            set output += ": " + ir_dump_type(context, parameter.type_);
+        }
+        set index += 1;
+    }
+    let function_type = vitte_ir_get_type(context as *mut IRContext, function.type_);
+    let return_type: string = if function_type == null {
+        "<invalid-type>"
+    } else {
+        ir_dump_type(context, function_type.return_type)
+    };
+    set output += ") -> " + return_type;
+    if function.is_declaration {
+        return output + ";\n";
+    }
+    set output += " {\n";
+    set index = 0;
+    while index < function.block_count {
+        let block_id = function.blocks[index];
+        let block = vitte_ir_get_block(context as *mut IRContext, block_id);
+        if block == null { return output + "    <invalid-block>\n  }\n"; }
+        set output += "  %" + ir_dump_block_name(context, block_id) + ":\n";
+        let mut instruction_index: usize = 0;
+        while instruction_index < block.instruction_count {
+            let instruction = vitte_ir_get_instruction(
+                context as *mut IRContext,
+                block.instructions[instruction_index]
+            );
+            if instruction == null {
+                set output += "    <invalid-instruction>\n";
+            } else {
+                set output += ir_dump_instruction(context, &*instruction);
+            }
+            set instruction_index += 1;
+        }
+        set index += 1;
+    }
+    return output + "  }\n";
+}
+
+export proc vitte_ir_dump_text(context: &IRContext) -> string {
+    let mut output: string = "; native Vitte IR\nmodule {\n";
+    if context.functions == null and context.function_count != 0 {
+        return output + "  <invalid-function-storage>\n}\n";
+    }
+    let mut index: usize = 1;
+    while index <= context.function_count {
+        let function = vitte_ir_get_function(context as *mut IRContext, index as u64);
+        if function == null {
+            set output += "  <invalid-function #" + ir_dump_u64(index as u64) + ">\n";
+        } else {
+            set output += ir_dump_function(context, &*function);
+        }
+        set index += 1;
+    }
+    return output + "}\n";
+}

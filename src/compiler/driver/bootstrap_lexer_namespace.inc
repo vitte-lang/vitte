@@ -1,0 +1,19 @@
+/* Compile a namespaced copy for the transitional native frontend archive. */
+#define vitte_lexer_destroy vitte_bootstrap_lexer_destroy
+#define vitte_lexer_error_name vitte_bootstrap_lexer_error_name
+#define vitte_lexer_fingerprint vitte_bootstrap_lexer_fingerprint
+#define vitte_lexer_init vitte_bootstrap_lexer_init
+#define vitte_lexer_is_valid vitte_bootstrap_lexer_is_valid
+#define vitte_lexer_reset vitte_bootstrap_lexer_reset
+#define vitte_lexer_run vitte_bootstrap_lexer_run
+#define vitte_lexer_set_limits vitte_bootstrap_lexer_set_limits
+#define vitte_lexer_state_name vitte_bootstrap_lexer_state_name
+#define vitte_lexer_stats vitte_bootstrap_lexer_stats
+#define vitte_lexer_token_at vitte_bootstrap_lexer_token_at
+#define vitte_lexer_token_count vitte_bootstrap_lexer_token_count
+#define vitte_lexer_translation_unit_anchor vitte_bootstrap_lexer_translation_unit_anchor
+#define vitte_lexer_validate vitte_bootstrap_lexer_validate
+#define vitte_token_kind_name vitte_bootstrap_token_kind_name
+#define vitte_token_text_equal vitte_bootstrap_token_text_equal
+
+#include "lexer/lexer.c"

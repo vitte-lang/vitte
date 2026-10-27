@@ -1,0 +1,361 @@
+/// Native Vitte implementation of the bootstrap builtin registry contract.
+space compiler::builtin::builtin;
+
+const BUILTIN_FNV_OFFSET: u64 = 14695981039346656037;
+const BUILTIN_FNV_PRIME: u64 = 1099511628211;
+const BUILTIN_VARIADIC_ARITY: usize = usize.MAX;
+const BUILTIN_FLAG_PURE: u64 = 1;
+const BUILTIN_FLAG_CONST: u64 = 2;
+const BUILTIN_FLAG_UNSAFE: u64 = 4;
+const BUILTIN_FLAG_NORETURN: u64 = 8;
+const BUILTIN_FLAG_MEMORY_READ: u64 = 16;
+const BUILTIN_FLAG_MEMORY_WRITE: u64 = 32;
+const BUILTIN_FLAG_ATOMIC: u64 = 64;
+const BUILTIN_FLAG_TARGET_DEPENDENT: u64 = 128;
+const BUILTIN_FLAG_COMPTIME: u64 = 256;
+const BUILTIN_FLAG_LOWER_DIRECTLY: u64 = 512;
+const BUILTIN_FLAGS_PURE: u64 = BUILTIN_FLAG_PURE | BUILTIN_FLAG_CONST;
+const BUILTIN_FLAGS_QUERY: u64 = BUILTIN_FLAGS_PURE | BUILTIN_FLAG_COMPTIME | BUILTIN_FLAG_LOWER_DIRECTLY;
+const BUILTIN_FLAGS_TARGET_QUERY: u64 = BUILTIN_FLAGS_QUERY | BUILTIN_FLAG_TARGET_DEPENDENT;
+const BUILTIN_FLAGS_MEMORY_READ: u64 = BUILTIN_FLAG_MEMORY_READ | BUILTIN_FLAG_UNSAFE;
+const BUILTIN_FLAGS_MEMORY_WRITE: u64 = BUILTIN_FLAG_MEMORY_WRITE | BUILTIN_FLAG_UNSAFE;
+const BUILTIN_FLAGS_ATOMIC_READ: u64 = BUILTIN_FLAG_ATOMIC | BUILTIN_FLAG_MEMORY_READ | BUILTIN_FLAG_UNSAFE | BUILTIN_FLAG_LOWER_DIRECTLY;
+const BUILTIN_FLAGS_ATOMIC_WRITE: u64 = BUILTIN_FLAG_ATOMIC | BUILTIN_FLAG_MEMORY_WRITE | BUILTIN_FLAG_UNSAFE | BUILTIN_FLAG_LOWER_DIRECTLY;
+const BUILTIN_FLAGS_ATOMIC_RW: u64 = BUILTIN_FLAG_ATOMIC | BUILTIN_FLAG_MEMORY_READ | BUILTIN_FLAG_MEMORY_WRITE | BUILTIN_FLAG_UNSAFE | BUILTIN_FLAG_LOWER_DIRECTLY;
+
+export pick BuiltinCategory {
+    Invalid, Memory, Pointer, Type, Integer, Float, Bit, Atomic, Control, Debug, Compiler, Count
+}
+
+export pick BuiltinFlag {
+    None, Pure, Const, Unsafe, Noreturn, MemoryRead, MemoryWrite, Atomic,
+    TargetDependent, Comptime, LowerDirectly
+}
+
+export pick BuiltinId {
+    Invalid, Memcpy, Memmove, Memset, Memcmp, PtrOffset, PtrDiff, PtrIsNull,
+    Sizeof, Alignof, Offsetof, AddOverflow, SubOverflow, MulOverflow, Clz,
+    Ctz, Popcount, Bswap, Rotl, Rotr, Isnan, Isinf, Isfinite, AtomicLoad,
+    AtomicStore, AtomicExchange, AtomicCompareExchange, AtomicFetchAdd,
+    AtomicFetchSub, AtomicFence, Unreachable, Trap, Assume, DebugBreak,
+    CompilerVersion, TargetPointerBits, TargetEndian, Count
+}
+
+export form BuiltinDescriptor {
+    id: BuiltinId,
+    name: string,
+    description: string,
+    category: BuiltinCategory,
+    minimum_arity: usize,
+    maximum_arity: usize,
+    builtin_flags: u64
+}
+
+export form BuiltinStats {
+    builtin_count: usize,
+    pure_count: usize,
+    const_count: usize,
+    unsafe_count: usize,
+    noreturn_count: usize,
+    memory_read_count: usize,
+    memory_write_count: usize,
+    atomic_count: usize,
+    target_dependent_count: usize,
+    comptime_count: usize,
+    directly_lowered_count: usize,
+    registry_hash: u64
+}
+
+export type BuiltinVisitFn = proc(
+    descriptor: *const BuiltinDescriptor,
+    user_data: *mut u8
+) -> bool;
+
+const BUILTIN_REGISTRY: [BuiltinDescriptor] = [
+    BuiltinDescriptor { id: BuiltinId.Memcpy, name: "memcpy", description: "Copy a non-overlapping memory region.", category: BuiltinCategory.Memory, minimum_arity: 3, maximum_arity: 3, builtin_flags: BUILTIN_FLAGS_MEMORY_READ | BUILTIN_FLAG_MEMORY_WRITE },
+    BuiltinDescriptor { id: BuiltinId.Memmove, name: "memmove", description: "Copy a potentially overlapping memory region.", category: BuiltinCategory.Memory, minimum_arity: 3, maximum_arity: 3, builtin_flags: BUILTIN_FLAGS_MEMORY_READ | BUILTIN_FLAG_MEMORY_WRITE },
+    BuiltinDescriptor { id: BuiltinId.Memset, name: "memset", description: "Fill a memory region.", category: BuiltinCategory.Memory, minimum_arity: 3, maximum_arity: 3, builtin_flags: BUILTIN_FLAGS_MEMORY_WRITE },
+    BuiltinDescriptor { id: BuiltinId.Memcmp, name: "memcmp", description: "Compare two memory regions.", category: BuiltinCategory.Memory, minimum_arity: 3, maximum_arity: 3, builtin_flags: BUILTIN_FLAGS_MEMORY_READ },
+    BuiltinDescriptor { id: BuiltinId.PtrOffset, name: "ptr_offset", description: "Offset a pointer by an element displacement.", category: BuiltinCategory.Pointer, minimum_arity: 2, maximum_arity: 2, builtin_flags: BUILTIN_FLAG_UNSAFE | BUILTIN_FLAG_LOWER_DIRECTLY },
+    BuiltinDescriptor { id: BuiltinId.PtrDiff, name: "ptr_diff", description: "Compute the displacement between compatible pointers.", category: BuiltinCategory.Pointer, minimum_arity: 2, maximum_arity: 2, builtin_flags: BUILTIN_FLAG_UNSAFE | BUILTIN_FLAG_LOWER_DIRECTLY },
+    BuiltinDescriptor { id: BuiltinId.PtrIsNull, name: "ptr_is_null", description: "Test whether a pointer is null.", category: BuiltinCategory.Pointer, minimum_arity: 1, maximum_arity: 1, builtin_flags: BUILTIN_FLAGS_PURE | BUILTIN_FLAG_LOWER_DIRECTLY },
+    BuiltinDescriptor { id: BuiltinId.Sizeof, name: "sizeof", description: "Return the storage size of a type or value.", category: BuiltinCategory.Type, minimum_arity: 1, maximum_arity: 1, builtin_flags: BUILTIN_FLAGS_QUERY },
+    BuiltinDescriptor { id: BuiltinId.Alignof, name: "alignof", description: "Return the required alignment of a type.", category: BuiltinCategory.Type, minimum_arity: 1, maximum_arity: 1, builtin_flags: BUILTIN_FLAGS_QUERY },
+    BuiltinDescriptor { id: BuiltinId.Offsetof, name: "offsetof", description: "Return a field offset inside an aggregate type.", category: BuiltinCategory.Type, minimum_arity: 2, maximum_arity: 2, builtin_flags: BUILTIN_FLAGS_QUERY },
+    BuiltinDescriptor { id: BuiltinId.AddOverflow, name: "add_overflow", description: "Perform integer addition and report overflow.", category: BuiltinCategory.Integer, minimum_arity: 2, maximum_arity: 2, builtin_flags: BUILTIN_FLAGS_PURE | BUILTIN_FLAG_LOWER_DIRECTLY },
+    BuiltinDescriptor { id: BuiltinId.SubOverflow, name: "sub_overflow", description: "Perform integer subtraction and report overflow.", category: BuiltinCategory.Integer, minimum_arity: 2, maximum_arity: 2, builtin_flags: BUILTIN_FLAGS_PURE | BUILTIN_FLAG_LOWER_DIRECTLY },
+    BuiltinDescriptor { id: BuiltinId.MulOverflow, name: "mul_overflow", description: "Perform integer multiplication and report overflow.", category: BuiltinCategory.Integer, minimum_arity: 2, maximum_arity: 2, builtin_flags: BUILTIN_FLAGS_PURE | BUILTIN_FLAG_LOWER_DIRECTLY },
+    BuiltinDescriptor { id: BuiltinId.Clz, name: "clz", description: "Count leading zero bits.", category: BuiltinCategory.Bit, minimum_arity: 1, maximum_arity: 1, builtin_flags: BUILTIN_FLAGS_PURE | BUILTIN_FLAG_LOWER_DIRECTLY },
+    BuiltinDescriptor { id: BuiltinId.Ctz, name: "ctz", description: "Count trailing zero bits.", category: BuiltinCategory.Bit, minimum_arity: 1, maximum_arity: 1, builtin_flags: BUILTIN_FLAGS_PURE | BUILTIN_FLAG_LOWER_DIRECTLY },
+    BuiltinDescriptor { id: BuiltinId.Popcount, name: "popcount", description: "Count set bits.", category: BuiltinCategory.Bit, minimum_arity: 1, maximum_arity: 1, builtin_flags: BUILTIN_FLAGS_PURE | BUILTIN_FLAG_LOWER_DIRECTLY },
+    BuiltinDescriptor { id: BuiltinId.Bswap, name: "bswap", description: "Reverse byte order.", category: BuiltinCategory.Bit, minimum_arity: 1, maximum_arity: 1, builtin_flags: BUILTIN_FLAGS_PURE | BUILTIN_FLAG_LOWER_DIRECTLY },
+    BuiltinDescriptor { id: BuiltinId.Rotl, name: "rotl", description: "Rotate bits left.", category: BuiltinCategory.Bit, minimum_arity: 2, maximum_arity: 2, builtin_flags: BUILTIN_FLAGS_PURE | BUILTIN_FLAG_LOWER_DIRECTLY },
+    BuiltinDescriptor { id: BuiltinId.Rotr, name: "rotr", description: "Rotate bits right.", category: BuiltinCategory.Bit, minimum_arity: 2, maximum_arity: 2, builtin_flags: BUILTIN_FLAGS_PURE | BUILTIN_FLAG_LOWER_DIRECTLY },
+    BuiltinDescriptor { id: BuiltinId.Isnan, name: "isnan", description: "Test whether a floating-point value is NaN.", category: BuiltinCategory.Float, minimum_arity: 1, maximum_arity: 1, builtin_flags: BUILTIN_FLAGS_PURE },
+    BuiltinDescriptor { id: BuiltinId.Isinf, name: "isinf", description: "Test whether a floating-point value is infinite.", category: BuiltinCategory.Float, minimum_arity: 1, maximum_arity: 1, builtin_flags: BUILTIN_FLAGS_PURE },
+    BuiltinDescriptor { id: BuiltinId.Isfinite, name: "isfinite", description: "Test whether a floating-point value is finite.", category: BuiltinCategory.Float, minimum_arity: 1, maximum_arity: 1, builtin_flags: BUILTIN_FLAGS_PURE },
+    BuiltinDescriptor { id: BuiltinId.AtomicLoad, name: "atomic_load", description: "Atomically load a value.", category: BuiltinCategory.Atomic, minimum_arity: 2, maximum_arity: 2, builtin_flags: BUILTIN_FLAGS_ATOMIC_READ },
+    BuiltinDescriptor { id: BuiltinId.AtomicStore, name: "atomic_store", description: "Atomically store a value.", category: BuiltinCategory.Atomic, minimum_arity: 3, maximum_arity: 3, builtin_flags: BUILTIN_FLAGS_ATOMIC_WRITE },
+    BuiltinDescriptor { id: BuiltinId.AtomicExchange, name: "atomic_exchange", description: "Atomically replace a value.", category: BuiltinCategory.Atomic, minimum_arity: 3, maximum_arity: 3, builtin_flags: BUILTIN_FLAGS_ATOMIC_RW },
+    BuiltinDescriptor { id: BuiltinId.AtomicCompareExchange, name: "atomic_compare_exchange", description: "Atomically compare and conditionally exchange a value.", category: BuiltinCategory.Atomic, minimum_arity: 5, maximum_arity: 5, builtin_flags: BUILTIN_FLAGS_ATOMIC_RW },
+    BuiltinDescriptor { id: BuiltinId.AtomicFetchAdd, name: "atomic_fetch_add", description: "Atomically add and return the previous value.", category: BuiltinCategory.Atomic, minimum_arity: 3, maximum_arity: 3, builtin_flags: BUILTIN_FLAGS_ATOMIC_RW },
+    BuiltinDescriptor { id: BuiltinId.AtomicFetchSub, name: "atomic_fetch_sub", description: "Atomically subtract and return the previous value.", category: BuiltinCategory.Atomic, minimum_arity: 3, maximum_arity: 3, builtin_flags: BUILTIN_FLAGS_ATOMIC_RW },
+    BuiltinDescriptor { id: BuiltinId.AtomicFence, name: "atomic_fence", description: "Emit an atomic memory fence.", category: BuiltinCategory.Atomic, minimum_arity: 1, maximum_arity: 1, builtin_flags: BUILTIN_FLAG_ATOMIC | BUILTIN_FLAG_LOWER_DIRECTLY },
+    BuiltinDescriptor { id: BuiltinId.Unreachable, name: "unreachable", description: "Mark the current control-flow path unreachable.", category: BuiltinCategory.Control, minimum_arity: 0, maximum_arity: 0, builtin_flags: BUILTIN_FLAG_NORETURN | BUILTIN_FLAG_LOWER_DIRECTLY },
+    BuiltinDescriptor { id: BuiltinId.Trap, name: "trap", description: "Terminate execution through a compiler trap.", category: BuiltinCategory.Control, minimum_arity: 0, maximum_arity: 0, builtin_flags: BUILTIN_FLAG_NORETURN | BUILTIN_FLAG_LOWER_DIRECTLY },
+    BuiltinDescriptor { id: BuiltinId.Assume, name: "assume", description: "Tell the optimizer that a condition is true.", category: BuiltinCategory.Compiler, minimum_arity: 1, maximum_arity: 1, builtin_flags: BUILTIN_FLAG_LOWER_DIRECTLY },
+    BuiltinDescriptor { id: BuiltinId.DebugBreak, name: "debug_break", description: "Request a debugger breakpoint.", category: BuiltinCategory.Debug, minimum_arity: 0, maximum_arity: 0, builtin_flags: BUILTIN_FLAG_TARGET_DEPENDENT | BUILTIN_FLAG_LOWER_DIRECTLY },
+    BuiltinDescriptor { id: BuiltinId.CompilerVersion, name: "compiler_version", description: "Return compiler version information.", category: BuiltinCategory.Compiler, minimum_arity: 0, maximum_arity: 0, builtin_flags: BUILTIN_FLAGS_QUERY },
+    BuiltinDescriptor { id: BuiltinId.TargetPointerBits, name: "target_pointer_bits", description: "Return the target pointer width.", category: BuiltinCategory.Compiler, minimum_arity: 0, maximum_arity: 0, builtin_flags: BUILTIN_FLAGS_TARGET_QUERY },
+    BuiltinDescriptor { id: BuiltinId.TargetEndian, name: "target_endian", description: "Return the target byte order.", category: BuiltinCategory.Compiler, minimum_arity: 0, maximum_arity: 0, builtin_flags: BUILTIN_FLAGS_TARGET_QUERY },
+];
+
+proc builtin_flag_mask(flag: BuiltinFlag) -> u64 {
+    if flag == BuiltinFlag.None or (flag as u32) > (BuiltinFlag.LowerDirectly as u32) { return 0; }
+    return (1 as u64) << ((flag as u32) - 1);
+}
+
+proc builtin_descriptor_valid(descriptor: *const BuiltinDescriptor) -> bool {
+    if descriptor == null { return false; }
+    let value = *descriptor;
+    return value.id > BuiltinId.Invalid and value.id < BuiltinId.Count and
+        value.name.len() != 0 and value.description.len() != 0 and
+        value.category > BuiltinCategory.Invalid and value.category < BuiltinCategory.Count and
+        (value.maximum_arity == BUILTIN_VARIADIC_ARITY or value.minimum_arity <= value.maximum_arity) and
+        ((value.builtin_flags & BUILTIN_FLAG_CONST) == 0 or (value.builtin_flags & BUILTIN_FLAG_PURE) != 0) and
+        ((value.builtin_flags & BUILTIN_FLAG_ATOMIC) == 0 or value.category == BuiltinCategory.Atomic);
+}
+
+export proc vitte_builtin_category_name(category: BuiltinCategory) -> string {
+    match category {
+        case BuiltinCategory.Invalid => "invalid", case BuiltinCategory.Memory => "memory",
+        case BuiltinCategory.Pointer => "pointer", case BuiltinCategory.Type => "type",
+        case BuiltinCategory.Integer => "integer", case BuiltinCategory.Float => "float",
+        case BuiltinCategory.Bit => "bit", case BuiltinCategory.Atomic => "atomic",
+        case BuiltinCategory.Control => "control", case BuiltinCategory.Debug => "debug",
+        case BuiltinCategory.Compiler => "compiler", case BuiltinCategory.Count => "count",
+    }
+}
+
+export proc vitte_builtin_count() -> usize { return BUILTIN_REGISTRY.len(); }
+
+export proc vitte_builtin_at(index: usize) -> *const BuiltinDescriptor {
+    if index >= BUILTIN_REGISTRY.len() { return null; }
+    return &BUILTIN_REGISTRY[index];
+}
+
+export proc vitte_builtin_visit(visitor: BuiltinVisitFn, user_data: *mut u8) -> bool {
+    let mut index: usize = 0;
+    while index < BUILTIN_REGISTRY.len() {
+        if not visitor(vitte_builtin_at(index), user_data) { return false; }
+        set index += 1;
+    }
+    return true;
+}
+
+export proc vitte_builtin_find_by_id(id: BuiltinId) -> *const BuiltinDescriptor {
+    let mut index: usize = 0;
+    while index < BUILTIN_REGISTRY.len() {
+        if BUILTIN_REGISTRY[index].id == id { return &BUILTIN_REGISTRY[index]; }
+        set index += 1;
+    }
+    return null;
+}
+
+export proc vitte_builtin_find(name: string) -> *const BuiltinDescriptor {
+    if name.len() == 0 { return null; }
+    let mut index: usize = 0;
+    while index < BUILTIN_REGISTRY.len() {
+        if BUILTIN_REGISTRY[index].name == name { return &BUILTIN_REGISTRY[index]; }
+        set index += 1;
+    }
+    return null;
+}
+
+export proc vitte_builtin_exists(name: string) -> bool { return vitte_builtin_find(name) != null; }
+
+export proc vitte_builtin_id_name(id: BuiltinId) -> string {
+    if id == BuiltinId.Invalid { return "invalid"; }
+    if id == BuiltinId.Count { return "count"; }
+    let descriptor = vitte_builtin_find_by_id(id);
+    if descriptor == null { return "invalid"; }
+    return (*descriptor).name;
+}
+
+export proc vitte_builtin_has_flag(descriptor: *const BuiltinDescriptor, flag: BuiltinFlag) -> bool {
+    if descriptor == null { return false; }
+    let mask = builtin_flag_mask(flag);
+    return mask != 0 and ((*descriptor).builtin_flags & mask) != 0;
+}
+
+export proc vitte_builtin_accepts_arity(descriptor: *const BuiltinDescriptor, arity: usize) -> bool {
+    if descriptor == null { return false; }
+    let value = *descriptor;
+    return arity >= value.minimum_arity and
+        (value.maximum_arity == BUILTIN_VARIADIC_ARITY or arity <= value.maximum_arity);
+}
+
+export proc vitte_builtin_is_variadic(descriptor: *const BuiltinDescriptor) -> bool {
+    return descriptor != null and (*descriptor).maximum_arity == BUILTIN_VARIADIC_ARITY;
+}
+
+export proc vitte_builtin_is_pure(descriptor: *const BuiltinDescriptor) -> bool { return vitte_builtin_has_flag(descriptor, BuiltinFlag.Pure); }
+export proc vitte_builtin_is_const(descriptor: *const BuiltinDescriptor) -> bool { return vitte_builtin_has_flag(descriptor, BuiltinFlag.Const); }
+export proc vitte_builtin_is_unsafe(descriptor: *const BuiltinDescriptor) -> bool { return vitte_builtin_has_flag(descriptor, BuiltinFlag.Unsafe); }
+export proc vitte_builtin_is_noreturn(descriptor: *const BuiltinDescriptor) -> bool { return vitte_builtin_has_flag(descriptor, BuiltinFlag.Noreturn); }
+export proc vitte_builtin_reads_memory(descriptor: *const BuiltinDescriptor) -> bool { return vitte_builtin_has_flag(descriptor, BuiltinFlag.MemoryRead); }
+export proc vitte_builtin_writes_memory(descriptor: *const BuiltinDescriptor) -> bool { return vitte_builtin_has_flag(descriptor, BuiltinFlag.MemoryWrite); }
+export proc vitte_builtin_is_atomic(descriptor: *const BuiltinDescriptor) -> bool { return vitte_builtin_has_flag(descriptor, BuiltinFlag.Atomic); }
+
+export proc vitte_builtin_registry_validate() -> bool {
+    if BUILTIN_REGISTRY.len() != (BuiltinId.Count as usize) - 1 { return false; }
+    let mut left: usize = 0;
+    while left < BUILTIN_REGISTRY.len() {
+        let descriptor = &BUILTIN_REGISTRY[left];
+        if not builtin_descriptor_valid(descriptor) or (descriptor.id as usize) != left + 1 { return false; }
+        let mut right = left + 1;
+        while right < BUILTIN_REGISTRY.len() {
+            if BUILTIN_REGISTRY[left].id == BUILTIN_REGISTRY[right].id or
+               BUILTIN_REGISTRY[left].name == BUILTIN_REGISTRY[right].name { return false; }
+            set right += 1;
+        }
+        set left += 1;
+    }
+    return true;
+}
+
+proc builtin_hash_byte(hash: u64, byte: u8) -> u64 { return (hash ^ (byte as u64)).wrapping_mul(BUILTIN_FNV_PRIME); }
+
+proc builtin_hash_u64(hash: u64, value: u64) -> u64 {
+    let mut result = hash;
+    let mut shift: u32 = 0;
+    while shift < 64 { set result = builtin_hash_byte(result, ((value >> shift) & 255) as u8); set shift += 8; }
+    return result;
+}
+
+proc builtin_hash_string(hash: u64, value: string) -> u64 {
+    let mut result = hash;
+    let bytes = value.as_bytes();
+    let mut index: usize = 0;
+    while index < bytes.len() { set result = builtin_hash_byte(result, bytes[index]); set index += 1; }
+    return builtin_hash_byte(result, 0);
+}
+
+export proc vitte_builtin_registry_hash() -> u64 {
+    let mut hash = BUILTIN_FNV_OFFSET;
+    let mut index: usize = 0;
+    while index < BUILTIN_REGISTRY.len() {
+        let descriptor = BUILTIN_REGISTRY[index];
+        set hash = builtin_hash_u64(hash, descriptor.id as u64);
+        set hash = builtin_hash_string(hash, descriptor.name);
+        set hash = builtin_hash_string(hash, descriptor.description);
+        set hash = builtin_hash_u64(hash, descriptor.category as u64);
+        set hash = builtin_hash_u64(hash, descriptor.minimum_arity as u64);
+        set hash = builtin_hash_u64(hash, if descriptor.maximum_arity == BUILTIN_VARIADIC_ARITY { 18446744073709551615 as u64 } else { descriptor.maximum_arity as u64 });
+        set hash = builtin_hash_u64(hash, descriptor.builtin_flags);
+        set index += 1;
+    }
+    return hash;
+}
+
+export proc vitte_builtin_stats() -> BuiltinStats {
+    let mut stats = BuiltinStats { builtin_count: BUILTIN_REGISTRY.len(), pure_count: 0, const_count: 0, unsafe_count: 0, noreturn_count: 0, memory_read_count: 0, memory_write_count: 0, atomic_count: 0, target_dependent_count: 0, comptime_count: 0, directly_lowered_count: 0, registry_hash: 0 };
+    let mut index: usize = 0;
+    while index < BUILTIN_REGISTRY.len() {
+        let descriptor = &BUILTIN_REGISTRY[index];
+        if vitte_builtin_is_pure(descriptor) { set stats.pure_count += 1; }
+        if vitte_builtin_is_const(descriptor) { set stats.const_count += 1; }
+        if vitte_builtin_is_unsafe(descriptor) { set stats.unsafe_count += 1; }
+        if vitte_builtin_is_noreturn(descriptor) { set stats.noreturn_count += 1; }
+        if vitte_builtin_reads_memory(descriptor) { set stats.memory_read_count += 1; }
+        if vitte_builtin_writes_memory(descriptor) { set stats.memory_write_count += 1; }
+        if vitte_builtin_is_atomic(descriptor) { set stats.atomic_count += 1; }
+        if vitte_builtin_has_flag(descriptor, BuiltinFlag.TargetDependent) { set stats.target_dependent_count += 1; }
+        if vitte_builtin_has_flag(descriptor, BuiltinFlag.Comptime) { set stats.comptime_count += 1; }
+        if vitte_builtin_has_flag(descriptor, BuiltinFlag.LowerDirectly) { set stats.directly_lowered_count += 1; }
+        set index += 1;
+    }
+    set stats.registry_hash = vitte_builtin_registry_hash();
+    return stats;
+}
+
+export proc vitte_builtin_count_category(category: BuiltinCategory) -> usize {
+    if category <= BuiltinCategory.Invalid or category >= BuiltinCategory.Count { return 0; }
+    let mut count: usize = 0;
+    let mut index: usize = 0;
+    while index < BUILTIN_REGISTRY.len() { if BUILTIN_REGISTRY[index].category == category { set count += 1; } set index += 1; }
+    return count;
+}
+
+export proc vitte_builtin_count_flag(flag: BuiltinFlag) -> usize {
+    let mut count: usize = 0;
+    let mut index: usize = 0;
+    while index < BUILTIN_REGISTRY.len() { if vitte_builtin_has_flag(&BUILTIN_REGISTRY[index], flag) { set count += 1; } set index += 1; }
+    return count;
+}
+
+export proc vitte_builtin_id_is_valid(id: BuiltinId) -> bool {
+    return id > BuiltinId.Invalid and id < BuiltinId.Count;
+}
+
+export proc vitte_builtin_category_is_valid(category: BuiltinCategory) -> bool {
+    return category > BuiltinCategory.Invalid and category < BuiltinCategory.Count;
+}
+
+export proc vitte_builtin_is_memory_operation(descriptor: *const BuiltinDescriptor) -> bool {
+    return descriptor != null and (*descriptor).category == BuiltinCategory.Memory;
+}
+
+export proc vitte_builtin_is_pointer_operation(descriptor: *const BuiltinDescriptor) -> bool {
+    return descriptor != null and (*descriptor).category == BuiltinCategory.Pointer;
+}
+
+export proc vitte_builtin_is_type_operation(descriptor: *const BuiltinDescriptor) -> bool {
+    return descriptor != null and (*descriptor).category == BuiltinCategory.Type;
+}
+
+export proc vitte_builtin_is_integer_operation(descriptor: *const BuiltinDescriptor) -> bool {
+    return descriptor != null and (*descriptor).category == BuiltinCategory.Integer;
+}
+
+export proc vitte_builtin_is_float_operation(descriptor: *const BuiltinDescriptor) -> bool {
+    return descriptor != null and (*descriptor).category == BuiltinCategory.Float;
+}
+
+export proc vitte_builtin_is_bit_operation(descriptor: *const BuiltinDescriptor) -> bool {
+    return descriptor != null and (*descriptor).category == BuiltinCategory.Bit;
+}
+
+export proc vitte_builtin_is_control_operation(descriptor: *const BuiltinDescriptor) -> bool {
+    return descriptor != null and (*descriptor).category == BuiltinCategory.Control;
+}
+
+export proc vitte_builtin_is_compiler_operation(descriptor: *const BuiltinDescriptor) -> bool {
+    return descriptor != null and (*descriptor).category == BuiltinCategory.Compiler;
+}
+
+export proc vitte_builtin_is_target_dependent(descriptor: *const BuiltinDescriptor) -> bool {
+    return vitte_builtin_has_flag(descriptor, BuiltinFlag.TargetDependent);
+}
+
+export proc vitte_builtin_is_comptime(descriptor: *const BuiltinDescriptor) -> bool {
+    return vitte_builtin_has_flag(descriptor, BuiltinFlag.Comptime);
+}
+
+export proc vitte_builtin_lowers_directly(descriptor: *const BuiltinDescriptor) -> bool {
+    return vitte_builtin_has_flag(descriptor, BuiltinFlag.LowerDirectly);
+}
+
+export proc vitte_builtin_touches_memory(descriptor: *const BuiltinDescriptor) -> bool {
+    return vitte_builtin_reads_memory(descriptor) or vitte_builtin_writes_memory(descriptor);
+}
+
+export proc vitte_builtin_has_fixed_arity(descriptor: *const BuiltinDescriptor) -> bool {
+    return descriptor != null and (*descriptor).maximum_arity != BUILTIN_VARIADIC_ARITY and
+        (*descriptor).minimum_arity == (*descriptor).maximum_arity;
+}
+
+export proc vitte_builtin_fixed_arity(descriptor: *const BuiltinDescriptor) -> usize {
+    if not vitte_builtin_has_fixed_arity(descriptor) { return 0; }
+    return (*descriptor).minimum_arity;
+}

@@ -1,0 +1,19 @@
+/// Combinaison déterministe de valeurs de hachage 64 bits.
+space core::hash::combine;
+
+use core::num::wrapping::{wrapping_u64_add};
+
+export proc hash_combine(seed: u64, value: u64) -> u64 {
+    let mut mixed: u64 = wrapping_u64_add(value, 0x9E3779B97F4A7C15);
+    set mixed = wrapping_u64_add(mixed, seed << 6);
+    set mixed = wrapping_u64_add(mixed, seed >> 2);
+    return seed ^ mixed;
+}
+
+export proc hash_combine_pair(first: u64, second: u64) -> u64 {
+    return hash_combine(first, second);
+}
+
+export proc hash_combine3(first: u64, second: u64, third: u64) -> u64 {
+    return hash_combine(hash_combine(first, second), third);
+}

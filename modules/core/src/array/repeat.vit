@@ -1,0 +1,382 @@
+space core::array::repeat
+
+/// Remplit un tableau avec une valeur répétée.
+proc array_repeat_fill<T>(
+    array: &mut [T],
+    value: T
+) {
+    for i in 0..array.len() {
+        set array[i] = value;
+    }
+}
+
+/// Remplit les premières positions avec une valeur répétée.
+/// Retourne le nombre d'éléments écrits.
+proc array_repeat_n<T>(
+    array: &mut [T],
+    value: T,
+    count: usize
+) -> usize {
+    let mut limit: usize = count;
+
+    if limit > array.len() {
+        set limit = array.len();
+    }
+
+    for i in 0..limit {
+        set array[i] = value;
+    }
+
+    return limit;
+}
+
+/// Répète une valeur dans une plage [start, end).
+proc array_repeat_range<T>(
+    array: &mut [T],
+    start: usize,
+    end: usize,
+    value: T
+) -> usize {
+    let mut begin: usize = start;
+    let mut limit: usize = end;
+
+    if begin > array.len() {
+        set begin = array.len();
+    }
+
+    if limit > array.len() {
+        set limit = array.len();
+    }
+
+    if begin >= limit {
+        return 0;
+    }
+
+    for i in begin..limit {
+        set array[i] = value;
+    }
+
+    return limit - begin;
+}
+
+/// Répète un motif jusqu'à remplir la destination.
+proc array_repeat_pattern<T>(
+    destination: &mut [T],
+    pattern: &[T]
+) -> usize {
+    if pattern.len() == 0 {
+        return 0;
+    }
+
+    for i in 0..destination.len() {
+        let index: usize = i % pattern.len();
+        set destination[i] = pattern[index];
+    }
+
+    return destination.len();
+}
+
+/// Répète un motif un nombre déterminé de fois.
+/// Le résultat est limité à la capacité de destination.
+proc array_repeat_pattern_n<T>(
+    destination: &mut [T],
+    pattern: &[T],
+    repetitions: usize
+) -> usize {
+    if pattern.len() == 0 {
+        return 0;
+    }
+
+    let mut written: usize = 0;
+
+    for repetition in 0..repetitions {
+        for i in 0..pattern.len() {
+            if written >= destination.len() {
+                return written;
+            }
+
+            set destination[written] = pattern[i];
+            set written = written + 1;
+        }
+    }
+
+    return written;
+}
+
+/// Répète deux valeurs en alternance.
+proc array_repeat_alternating<T>(
+    array: &mut [T],
+    first: T,
+    second: T
+) {
+    for i in 0..array.len() {
+        if i % 2 == 0 {
+            set array[i] = first;
+        } else {
+            set array[i] = second;
+        }
+    }
+}
+
+/// Répète trois valeurs selon un cycle.
+proc array_repeat_three<T>(
+    array: &mut [T],
+    first: T,
+    second: T,
+    third: T
+) {
+    for i in 0..array.len() {
+        let position: usize = i % 3;
+
+        if position == 0 {
+            set array[i] = first;
+        } elif position == 1 {
+            set array[i] = second;
+        } else {
+            set array[i] = third;
+        }
+    }
+}
+
+/// Répète une valeur uniquement aux indices multiples d'un pas.
+proc array_repeat_step<T>(
+    array: &mut [T],
+    value: T,
+    step: usize
+) -> usize {
+    if step == 0 {
+        return 0;
+    }
+
+    let mut written: usize = 0;
+
+    for i in 0..array.len() {
+        if i % step == 0 {
+            set array[i] = value;
+            set written = written + 1;
+        }
+    }
+
+    return written;
+}
+
+/// Répète une valeur sur des blocs de taille fixe.
+/// Chaque bloc écrit est suivi d'un bloc ignoré.
+proc array_repeat_blocks<T>(
+    array: &mut [T],
+    value: T,
+    block_size: usize
+) -> usize {
+    if block_size == 0 {
+        return 0;
+    }
+
+    let mut written: usize = 0;
+    let mut position: usize = 0;
+    let mut fill: bool = true;
+
+    while position < array.len() {
+        let mut count: usize = 0;
+
+        while count < block_size && position < array.len() {
+            if fill {
+                set array[position] = value;
+                set written = written + 1;
+            }
+
+            set position = position + 1;
+            set count = count + 1;
+        }
+
+        set fill = not fill;
+    }
+
+    return written;
+}
+
+/// Répète une valeur tant qu'un prédicat l'autorise.
+proc array_repeat_while<T>(
+    array: &mut [T],
+    value: T,
+    predicate: proc(usize) -> bool
+) -> usize {
+    let mut written: usize = 0;
+
+    for i in 0..array.len() {
+        if not predicate(i) {
+            return written;
+        }
+
+        set array[i] = value;
+        set written = written + 1;
+    }
+
+    return written;
+}
+
+/// Génère des valeurs à partir d'une fonction.
+/// La fonction reçoit l'indice de destination.
+proc array_repeat_generate<T>(
+    array: &mut [T],
+    generator: proc(usize) -> T
+) {
+    for i in 0..array.len() {
+        set array[i] = generator(i);
+    }
+}
+
+/// Répète une valeur calculée à partir de l'indice
+/// dans un cycle de longueur déterminée.
+proc array_repeat_cycle<T>(
+    array: &mut [T],
+    cycle_length: usize,
+    generator: proc(usize) -> T
+) -> usize {
+    if cycle_length == 0 {
+        return 0;
+    }
+
+    for i in 0..array.len() {
+        let cycle_index: usize = i % cycle_length;
+        set array[i] = generator(cycle_index);
+    }
+
+    return array.len();
+}
+
+/// Répète une séquence de valeurs numériques.
+proc array_repeat_sequence(
+    array: &mut [i64],
+    start: i64,
+    step: i64,
+    cycle_length: usize
+) -> usize {
+    if cycle_length == 0 {
+        return 0;
+    }
+
+    for i in 0..array.len() {
+        let position: usize = i % cycle_length;
+        let offset: i64 = position as i64;
+
+        set array[i] = start + offset * step;
+    }
+
+    return array.len();
+}
+
+/// Répète chaque élément source plusieurs fois.
+proc array_repeat_each<T>(
+    source: &[T],
+    destination: &mut [T],
+    repetitions: usize
+) -> usize {
+    let mut written: usize = 0;
+
+    for i in 0..source.len() {
+        for repetition in 0..repetitions {
+            if written >= destination.len() {
+                return written;
+            }
+
+            set destination[written] = source[i];
+            set written = written + 1;
+        }
+    }
+
+    return written;
+}
+
+/// Répète un motif en ordre inverse.
+proc array_repeat_reverse_pattern<T>(
+    destination: &mut [T],
+    pattern: &[T]
+) -> usize {
+    if pattern.len() == 0 {
+        return 0;
+    }
+
+    for i in 0..destination.len() {
+        let position: usize = i % pattern.len();
+        let index: usize = pattern.len() - 1 - position;
+
+        set destination[i] = pattern[index];
+    }
+
+    return destination.len();
+}
+
+/// Répète un motif en alternant sens normal et inverse.
+proc array_repeat_ping_pong<T>(
+    destination: &mut [T],
+    pattern: &[T]
+) -> usize {
+    if pattern.len() == 0 {
+        return 0;
+    }
+
+    if pattern.len() == 1 {
+        return array_repeat_fill_count(destination, pattern[0]);
+    }
+
+    let period: usize = pattern.len() * 2 - 2;
+
+    for i in 0..destination.len() {
+        let position: usize = i % period;
+
+        if position < pattern.len() {
+            set destination[i] = pattern[position];
+        } else {
+            let index: usize = period - position;
+            set destination[i] = pattern[index];
+        }
+    }
+
+    return destination.len();
+}
+
+/// Remplit un tableau et retourne sa longueur.
+proc array_repeat_fill_count<T>(
+    array: &mut [T],
+    value: T
+) -> usize {
+    for i in 0..array.len() {
+        set array[i] = value;
+    }
+
+    return array.len();
+}
+
+/// Répète un motif uniquement sur une plage.
+proc array_repeat_pattern_range<T>(
+    destination: &mut [T],
+    pattern: &[T],
+    start: usize,
+    end: usize
+) -> usize {
+    if pattern.len() == 0 {
+        return 0;
+    }
+
+    let mut begin: usize = start;
+    let mut limit: usize = end;
+
+    if begin > destination.len() {
+        set begin = destination.len();
+    }
+
+    if limit > destination.len() {
+        set limit = destination.len();
+    }
+
+    if begin >= limit {
+        return 0;
+    }
+
+    for i in begin..limit {
+        let pattern_index: usize = (i - begin) % pattern.len();
+        set destination[i] = pattern[pattern_index];
+    }
+
+    return limit - begin;
+}

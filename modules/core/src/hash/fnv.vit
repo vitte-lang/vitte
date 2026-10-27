@@ -1,0 +1,22 @@
+/// Hachage FNV-1a 64 bits sans allocation.
+space core::hash::fnv;
+
+use core::num::wrapping::{wrapping_u64_mul};
+
+export const FNV64_OFFSET_BASIS: u64 = 14695981039346656037;
+export const FNV64_PRIME: u64 = 1099511628211;
+
+export proc fnv1a64(seed: u64, bytes: &[u8]) -> u64 {
+    let mut hash: u64 = seed;
+    let mut index: usize = 0;
+    while index < bytes.len() {
+        let slice_index: i64 = index as i64;
+        set hash = wrapping_u64_mul(hash ^ bytes[slice_index] as u64, FNV64_PRIME);
+        set index = index + 1;
+    }
+    return hash;
+}
+
+export proc fnv1a64_bytes(bytes: &[u8]) -> u64 {
+    return fnv1a64(FNV64_OFFSET_BASIS, bytes);
+}

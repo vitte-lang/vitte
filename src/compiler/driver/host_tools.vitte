@@ -1,0 +1,133 @@
+/// Host process boundary used by the native compiler driver.
+///
+/// The driver owns stage ordering and failure classification. The host only
+/// owns temporary files and process creation; no host workspace layout crosses
+/// the ABI boundary.
+space compiler::driver::host_tools;
+
+export pick DriverHostToolStage {
+    None,
+    Prepare,
+    CCompile,
+    Link,
+    Execute,
+    Count
+}
+
+export pick DriverHostToolStatus {
+    Success,
+    InvalidArgument,
+    IoFailure,
+    ProcessFailure,
+    UnsupportedHost,
+    OutOfMemory,
+    Count
+}
+
+export extern proc vitte_driver_host_toolchain_begin(
+    source: *const u8,
+    source_length: usize,
+    output_path: *const u8,
+    emit_object: bool,
+    run_program: bool,
+    debug_info: bool,
+    debug_runtime: bool,
+    workspace: *mut *mut u8
+) -> u32;
+
+export extern proc vitte_driver_host_toolchain_compile(
+    workspace: *mut u8
+) -> u32;
+
+export extern proc vitte_driver_host_toolchain_link(
+    workspace: *mut u8
+) -> u32;
+
+export extern proc vitte_driver_host_toolchain_execute(
+    workspace: *mut u8,
+    run_argc: i32,
+    run_argv: *mut *mut u8
+) -> u32;
+
+export extern proc vitte_driver_host_toolchain_destroy(
+    workspace: *mut u8
+);
+
+/// Drive the host toolchain for one generated C17 translation unit.
+/// Return values are DriverHostToolStatus; `failed_stage` identifies the
+/// operation that produced the failure. The output is scalar so compiler and
+/// bootstrap C record layouts are never shared.
+export proc vitte_driver_run_host_toolchain(
+    source: *const u8,
+    source_length: usize,
+    output_path: *const u8,
+    emit_object: bool,
+    run_program: bool,
+    debug_info: bool,
+    debug_runtime: bool,
+    run_argc: i32,
+    run_argv: *mut *mut u8,
+    failed_stage: *mut u32
+) -> u32 {
+    if failed_stage == null {
+        return DriverHostToolStatus.InvalidArgument as u32;
+    }
+    set *failed_stage = DriverHostToolStage.None as u32;
+    if source == null or (emit_object and run_program) or
+       (run_argc < 0) or (run_argc > 0 and run_argv == null) {
+        set *failed_stage = DriverHostToolStage.Prepare as u32;
+        return DriverHostToolStatus.InvalidArgument as u32;
+    }
+
+    let mut workspace: *mut u8 = null;
+    let status = vitte_driver_host_toolchain_begin(
+        source,
+        source_length,
+        output_path,
+        emit_object,
+        run_program,
+        debug_info,
+        debug_runtime,
+        &mut workspace
+    );
+    if status != DriverHostToolStatus.Success as u32 {
+        set *failed_stage = DriverHostToolStage.Prepare as u32;
+        return status;
+    }
+    if workspace == null {
+        set *failed_stage = DriverHostToolStage.Prepare as u32;
+        return DriverHostToolStatus.IoFailure as u32;
+    }
+
+    let compile_status = vitte_driver_host_toolchain_compile(workspace);
+    if compile_status != DriverHostToolStatus.Success as u32 {
+        set *failed_stage = DriverHostToolStage.CCompile as u32;
+        vitte_driver_host_toolchain_destroy(workspace);
+        return compile_status;
+    }
+
+    if not emit_object {
+        let link_status = vitte_driver_host_toolchain_link(workspace);
+        if link_status != DriverHostToolStatus.Success as u32 {
+            set *failed_stage = DriverHostToolStage.Link as u32;
+            vitte_driver_host_toolchain_destroy(workspace);
+            return link_status;
+        }
+    }
+
+    if run_program {
+        let execute_status = vitte_driver_host_toolchain_execute(
+            workspace,
+            run_argc,
+            run_argv
+        );
+        if execute_status != DriverHostToolStatus.Success as u32 {
+            set *failed_stage = DriverHostToolStage.Execute as u32;
+            vitte_driver_host_toolchain_destroy(workspace);
+            return execute_status;
+        }
+    }
+
+    vitte_driver_host_toolchain_destroy(workspace);
+    return DriverHostToolStatus.Success as u32;
+}

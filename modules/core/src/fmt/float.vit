@@ -1,0 +1,78 @@
+/// Formatage décimal fixe f64 à précision bornée, sans allocation.
+space core::fmt::float;
+
+use core::convert::format::{FormatResult, FormatError, format_failure, format_success, format_u64_decimal_length};
+use core::primitive::float::{f64_is_nan, f64_is_infinite};
+use core::convert::cast::{cast_f32_to_f64};
+
+export proc fmt_f64_fixed(value: f64, precision: usize, buffer: *u8, capacity: usize) -> FormatResult {
+    if precision > 6 { return format_failure(FormatError.InvalidArgument); }
+    if buffer == null { return format_failure(FormatError.NullBuffer); }
+    if f64_is_nan(value) || f64_is_infinite(value) { return format_failure(FormatError.InvalidArgument); }
+
+    let negative: bool = value < 0.0;
+    let absolute: f64 = if negative { -value } else { value };
+    // 2^64 is representable as f64 while U64_MAX is not. Reject that boundary
+    // before converting, otherwise the cast is outside the unsigned range.
+    if absolute >= 18446744073709551616.0 { return format_failure(FormatError.InvalidArgument); }
+
+    let mut integer: u64 = absolute as u64;
+    let mut scale: u64 = 1;
+    let mut scale_index: usize = 0;
+    while scale_index < precision {
+        set scale = scale * 10;
+        set scale_index = scale_index + 1;
+    }
+
+    let mut fraction: u64 = 0;
+    if precision == 0 {
+        if absolute - integer as f64 >= 0.5 {
+            if integer == 18446744073709551615 { return format_failure(FormatError.InvalidArgument); }
+            set integer = integer + 1;
+        }
+    } else {
+        // Round to nearest, with exact halfway cases rounded away from zero.
+        set fraction = ((absolute - integer as f64) * scale as f64 + 0.5) as u64;
+        if fraction >= scale {
+            if integer == 18446744073709551615 { return format_failure(FormatError.InvalidArgument); }
+            set integer = integer + 1;
+            set fraction = 0;
+        }
+    }
+
+    let integer_length: usize = format_u64_decimal_length(integer);
+    let sign_length: usize = if negative { 1 as usize } else { 0 as usize };
+    let fraction_length: usize = if precision == 0 {
+        0 as usize
+    } else {
+        precision + 1 as usize
+    };
+    let required: usize = sign_length + integer_length + fraction_length;
+    if capacity < required { return format_failure(FormatError.BufferTooSmall); }
+
+    let mut position: usize = sign_length + integer_length;
+    let mut current: u64 = integer;
+    while position > sign_length {
+        set position = position - 1;
+        set buffer[position] = ((current % 10) as u8 + 48) as u8;
+        set current = current / 10;
+    }
+    if negative { set buffer[0] = 45; }
+    if precision == 0 { return format_success(required); }
+
+    set buffer[sign_length + integer_length] = 46;
+    let mut divisor: u64 = scale / 10;
+    let mut index: usize = 0;
+    while index < precision {
+        let digit: u64 = (fraction / divisor) % 10;
+        let position: usize = sign_length + integer_length + 1 + index;
+        set buffer[position] = ((digit as u8) + 48) as u8;
+        if divisor > 1 { set divisor = divisor / 10; }
+        set index = index + 1;
+    }
+    return format_success(required);
+}
+
+export proc fmt_f32_fixed(value: f32, precision: usize, buffer: *u8, capacity: usize) -> FormatResult {
+    return fmt_f64_fixed(cast_f32_to_f64(value), precision, buffer, capacity);
+}

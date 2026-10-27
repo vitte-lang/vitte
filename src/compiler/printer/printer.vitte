@@ -1,0 +1,179 @@
+/// Vitte declarations ported from `src/src/printer/printer.h`.
+space compiler::printer::printer;
+
+use compiler::lexer::lexer::{Token, TokenKind};use compiler::parser::parser::{ASTNodeId, Parser, ParserDiagnostic, ParserSpan};
+export pick PrinterError {
+    None,
+    InvalidArgument,
+    InvalidContext,
+    InvalidState,
+    InvalidSink,
+    InvalidNode,
+    InvalidToken,
+    InvalidSource,
+    DepthLimit,
+    OutputLimit,
+    Overflow,
+    OutOfMemory,
+    Io,
+    Callback,
+    Format,
+    Validation,
+    Internal,
+    Count
+}
+
+export pick PrinterState {
+    Invalid,
+    Ready,
+    Printing,
+    Failed,
+    Destroyed,
+    Count
+}
+
+export pick PrinterMode {
+    Compact,
+    Pretty,
+    Tree,
+    Debug,
+    Count
+}
+
+export pick PrinterSinkKind {
+    Invalid,
+    File,
+    Buffer,
+    Callback,
+    Count
+}
+
+export form PrinterBuffer {
+    data: string,
+    length: usize,
+    capacity: usize
+}
+
+export form PrinterCallback {
+    write: PrinterWriteFn,
+    flush: PrinterFlushFn,
+    userdata: *u8
+}
+
+export form PrinterSink {
+    file: *u64,
+    buffer: PrinterBuffer,
+    callback: PrinterCallback
+}
+
+export form PrinterOptions {
+    show_node_ids: bool,
+    show_locations: bool,
+    show_spans: bool,
+    show_token_metadata: bool,
+    show_child_counts: bool,
+    escape_non_printable: bool,
+    tab_width: usize
+}
+
+export form PrinterStats {
+    bytes_written: u64,
+    lines_written: u64,
+    nodes_printed: u64,
+    tokens_printed: u64,
+    diagnostics_printed: u64,
+    source_spans_printed: u64,
+    max_depth: u64,
+    flushes: u64,
+    validation_runs: u64,
+    validation_failures: u64,
+    allocations: u64,
+    reallocations: u64,
+    allocation_failures: u64
+}
+
+export form Printer {
+    magic: u64,
+    state: PrinterState,
+    last_error: PrinterError,
+    mode: PrinterMode,
+    sink_kind: PrinterSinkKind,
+    sink: PrinterSink,
+    options: PrinterOptions,
+    indent_width: usize,
+    max_depth: usize,
+    max_output_bytes: usize,
+    depth: usize,
+    bytes_written: usize,
+    at_line_start: bool,
+    stats: PrinterStats,
+    generation: u64
+}
+
+export type PrinterWriteFn = **u8;
+
+export type PrinterFlushFn = **u8;
+
+export extern proc vitte_printer_error_name(error: PrinterError) -> string;
+
+export extern proc vitte_printer_state_name(state: PrinterState) -> string;
+
+export extern proc vitte_printer_mode_name(mode: PrinterMode) -> string;
+
+export extern proc vitte_printer_token_kind_name(kind: TokenKind) -> string;
+
+export extern proc vitte_printer_default_options() -> PrinterOptions;
+
+export extern proc vitte_printer_init_file(printer: *Printer, file: *u64) -> bool;
+
+export extern proc vitte_printer_init_buffer(printer: *Printer) -> bool;
+
+export extern proc vitte_printer_init_callback(printer: *Printer, write_callback: PrinterWriteFn, flush_callback: PrinterFlushFn, userdata: *u8) -> bool;
+
+export extern proc vitte_printer_reset(printer: *Printer) -> bool;
+
+export extern proc vitte_printer_destroy(printer: *Printer);
+
+export extern proc vitte_printer_is_valid(printer: *Printer) -> bool;
+
+export extern proc vitte_printer_last_error(printer: *Printer) -> PrinterError;
+
+export extern proc vitte_printer_generation(printer: *Printer) -> u64;
+
+export extern proc vitte_printer_set_options(printer: *Printer, options: *PrinterOptions) -> bool;
+
+export extern proc vitte_printer_set_mode(printer: *Printer, mode: PrinterMode) -> bool;
+
+export extern proc vitte_printer_set_limits(printer: *Printer, max_output_bytes: usize, max_depth: usize) -> bool;
+
+export extern proc vitte_printer_set_indent_width(printer: *Printer, indent_width: usize) -> bool;
+
+export extern proc vitte_printer_print_token(printer: *Printer, token: *Token) -> bool;
+
+export extern proc vitte_printer_print_tokens(printer: *Printer, tokens: *Token, token_count: usize) -> bool;
+
+export extern proc vitte_printer_print_ast_node(printer: *Printer, parser: *Parser, id: ASTNodeId) -> bool;
+
+export extern proc vitte_printer_print_ast(printer: *Printer, parser: *Parser) -> bool;
+
+export extern proc vitte_printer_print_source_span(printer: *Printer, source: string, source_length: usize, span: ParserSpan, label: string) -> bool;
+
+export extern proc vitte_printer_print_diagnostic(printer: *Printer, diagnostic_value: *ParserDiagnostic, source: string, source_length: usize) -> bool;
+
+export extern proc vitte_printer_print_diagnostics(printer: *Printer, parser: *Parser, source: string, source_length: usize) -> bool;
+
+export extern proc vitte_printer_print_parser_summary(printer: *Printer, parser: *Parser) -> bool;
+
+export extern proc vitte_printer_validate(printer: *Printer) -> bool;
+
+export extern proc vitte_printer_flush(printer: *Printer) -> bool;
+
+export extern proc vitte_printer_buffer_data(printer: *Printer) -> string;
+
+export extern proc vitte_printer_buffer_length(printer: *Printer) -> usize;
+
+export extern proc vitte_printer_take_buffer(printer: *Printer, length: *usize) -> string;
+
+export extern proc vitte_printer_stats(printer: *Printer) -> PrinterStats;
+
+export extern proc vitte_printer_translation_unit_anchor();

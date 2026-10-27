@@ -1,0 +1,678 @@
+/// Native Vitte implementation of the stable diagnostic registry.
+space compiler::diagnostic::registry;
+
+use compiler::api::error::{Status};
+use compiler::diagnostic::diagnostic::{Diagnostic, DiagnosticOrigin, DiagnosticSeverity};
+
+export const VITTE_DIAGNOSTIC_PUBLIC_CODE_LENGTH: usize = 5;
+export const VITTE_DIAGNOSTIC_ERROR_CODE_MIN: u32 = 0;
+export const VITTE_DIAGNOSTIC_ERROR_CODE_MAX: u32 = 1999;
+export const VITTE_DIAGNOSTIC_RANGE_WIDTH: u32 = 100;
+
+export pick DiagnosticRegistryRange {
+    Unknown,
+    Infrastructure,
+    Lexer,
+    Parser,
+    Module,
+    Name,
+    Type,
+    Call,
+    Contract,
+    Generic,
+    Backend,
+    Ir,
+    ControlFlow,
+    Memory,
+    Unsafe,
+    Ffi,
+    ConstEval,
+    Pattern,
+    Concurrency,
+    Macro,
+    Target,
+    Warning,
+    Note,
+    Help
+}
+
+export form DiagnosticRegistryEntry {
+    internal_code: string,
+    public_code: string,
+    default_severity: DiagnosticSeverity,
+    origin: DiagnosticOrigin,
+    category: string,
+    title: string,
+    explanation: string,
+    deprecated: bool
+}
+
+export form DiagnosticRegistryValidation {
+    valid: bool,
+    entry_count: usize,
+    invalid_entry_count: usize,
+    duplicate_internal_count: usize,
+    duplicate_public_count: usize,
+    first_invalid_index: usize
+}
+
+const DIAGNOSTIC_REGISTRY: [DiagnosticRegistryEntry] = [
+    DiagnosticRegistryEntry { internal_code: "VITTE_INFRA_E_FALLBACK", public_code: "E0000", default_severity: DiagnosticSeverity.Fatal, origin: DiagnosticOrigin.Internal, category: "compiler", title: "compiler failure", explanation: "The compiler failed without a more specific diagnostic.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_INFRA_E_INTERNAL", public_code: "E0001", default_severity: DiagnosticSeverity.Fatal, origin: DiagnosticOrigin.Internal, category: "compiler", title: "internal compiler error", explanation: "An internal compiler invariant or implementation assumption failed.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_INFRA_E_INVARIANT", public_code: "E0002", default_severity: DiagnosticSeverity.Fatal, origin: DiagnosticOrigin.Internal, category: "compiler", title: "compiler invariant violated", explanation: "A compiler data structure or phase invariant was violated.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_INFRA_E_IMPOSSIBLE", public_code: "E0003", default_severity: DiagnosticSeverity.Fatal, origin: DiagnosticOrigin.Internal, category: "compiler", title: "unreachable compiler state", explanation: "The compiler reached a state that should be impossible.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_INFRA_E_RESOURCE", public_code: "E0004", default_severity: DiagnosticSeverity.Fatal, origin: DiagnosticOrigin.Internal, category: "resource", title: "compiler resource failure", explanation: "A required compiler resource could not be allocated or acquired.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_INFRA_E_SOURCE_READ", public_code: "E0005", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Io, category: "source", title: "source file could not be read", explanation: "The compiler could not load the requested source file.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_INFRA_E_ENCODING", public_code: "E0006", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Lexer, category: "encoding", title: "invalid source encoding", explanation: "The source contains an invalid or unsupported text encoding sequence.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_INFRA_E_SOURCE_MAP", public_code: "E0007", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Internal, category: "source-map", title: "source mapping failure", explanation: "A generated diagnostic could not be mapped back to its Vitte source.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_INFRA_E_DIAGNOSTIC", public_code: "E0008", default_severity: DiagnosticSeverity.Fatal, origin: DiagnosticOrigin.Internal, category: "diagnostic", title: "diagnostic subsystem failure", explanation: "The compiler diagnostic subsystem encountered an internal failure.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_INFRA_E_LIMIT", public_code: "E0009", default_severity: DiagnosticSeverity.Fatal, origin: DiagnosticOrigin.Driver, category: "limit", title: "diagnostic limit reached", explanation: "Compilation stopped because the configured diagnostic limit was reached.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_INFRA_E_FORMAT", public_code: "E0010", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Internal, category: "format", title: "diagnostic formatting failure", explanation: "A diagnostic could not be formatted for the selected output format.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_INFRA_E_CONFIG", public_code: "E0011", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Driver, category: "configuration", title: "invalid compiler configuration", explanation: "The compiler configuration contains an invalid or incompatible option.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_INFRA_E_PHASE", public_code: "E0012", default_severity: DiagnosticSeverity.Fatal, origin: DiagnosticOrigin.Internal, category: "phase", title: "compiler phase failure", explanation: "A compiler phase terminated unexpectedly.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_INFRA_E_COMPONENT", public_code: "E0013", default_severity: DiagnosticSeverity.Fatal, origin: DiagnosticOrigin.Internal, category: "component", title: "compiler component failure", explanation: "A required compiler component failed or was unavailable.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_FRONTEND_E_SOURCE", public_code: "E0014", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Driver, category: "source", title: "native frontend rejected source", explanation: "The native frontend rejected the source, but this API call did not provide the detailed parser or semantic diagnostics.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_LEXER_E_INVALID_CHARACTER", public_code: "E0101", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Lexer, category: "lexer", title: "invalid character", explanation: "The source contains a character that is not valid in this lexical context.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_LEXER_E_UNTERMINATED_STRING", public_code: "E0102", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Lexer, category: "lexer", title: "unterminated string literal", explanation: "A string literal reaches the end of its permitted region without a closing delimiter.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_LEXER_E_INVALID_ESCAPE", public_code: "E0103", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Lexer, category: "lexer", title: "invalid escape sequence", explanation: "The string or character literal contains an invalid escape sequence.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_LEXER_E_INVALID_NUMBER", public_code: "E0104", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Lexer, category: "lexer", title: "invalid numeric literal", explanation: "The numeric literal does not conform to Vitte lexical rules.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_LEXER_E_NUMBER_OVERFLOW", public_code: "E0105", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Lexer, category: "lexer", title: "numeric literal overflow", explanation: "The numeric literal exceeds the range accepted by its lexical representation.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_LEXER_E_UNTERMINATED_COMMENT", public_code: "E0106", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Lexer, category: "lexer", title: "unterminated comment", explanation: "A block comment was opened but not terminated.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_LEXER_E_INVALID_IDENTIFIER", public_code: "E0107", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Lexer, category: "lexer", title: "invalid identifier", explanation: "The token cannot form a valid Vitte identifier.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_LEXER_E_INVALID_UNICODE", public_code: "E0108", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Lexer, category: "unicode", title: "invalid Unicode sequence", explanation: "The source contains malformed or unsupported Unicode data.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_PARSER_E_EXPECTED_TOKEN", public_code: "E0201", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Parser, category: "syntax", title: "expected token", explanation: "The parser expected a token required by the Vitte grammar.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_PARSER_E_UNEXPECTED_TOKEN", public_code: "E0202", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Parser, category: "syntax", title: "unexpected token", explanation: "The current token is not valid in this syntactic position.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_PARSER_E_EXPECTED_EXPRESSION", public_code: "E0203", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Parser, category: "syntax", title: "expected expression", explanation: "The grammar requires an expression at this location.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_PARSER_E_EXPECTED_DECLARATION", public_code: "E0204", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Parser, category: "syntax", title: "expected declaration", explanation: "The grammar requires a declaration at this location.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_PARSER_E_EXPECTED_TYPE", public_code: "E0205", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Parser, category: "syntax", title: "expected type", explanation: "The grammar requires a type expression at this location.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_PARSER_E_EXPECTED_PATTERN", public_code: "E0206", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Parser, category: "syntax", title: "expected pattern", explanation: "The grammar requires a pattern at this location.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_PARSER_E_UNCLOSED_DELIMITER", public_code: "E0207", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Parser, category: "syntax", title: "unclosed delimiter", explanation: "An opening delimiter has no corresponding closing delimiter.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_PARSER_E_MISMATCHED_DELIMITER", public_code: "E0208", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Parser, category: "syntax", title: "mismatched delimiter", explanation: "A closing delimiter does not match the corresponding opening delimiter.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_PARSER_E_INVALID_MODIFIER", public_code: "E0209", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Parser, category: "syntax", title: "invalid declaration modifier", explanation: "A declaration modifier is not permitted in this syntactic context.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_IMPORT_E_MODULE_NOT_FOUND", public_code: "E0301", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Import, category: "module", title: "module not found", explanation: "The requested module could not be resolved.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_IMPORT_E_PRIVATE_SYMBOL", public_code: "E0302", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Import, category: "module", title: "private symbol imported", explanation: "The requested symbol is not visible outside its defining module.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_IMPORT_E_CYCLE", public_code: "E0303", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Import, category: "module", title: "cyclic module dependency", explanation: "The module dependency graph contains a cycle that cannot be resolved.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_IMPORT_E_DUPLICATE", public_code: "E0304", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Import, category: "module", title: "duplicate import", explanation: "The same import is declared more than once in an incompatible way.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_IMPORT_E_PACKAGE_NOT_FOUND", public_code: "E0305", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Import, category: "package", title: "package not found", explanation: "The requested package could not be located.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_IMPORT_E_VERSION", public_code: "E0306", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Import, category: "package", title: "package version mismatch", explanation: "The resolved package version does not satisfy the requested constraint.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_IMPORT_E_INVALID_GRAPH", public_code: "E0307", default_severity: DiagnosticSeverity.Fatal, origin: DiagnosticOrigin.Import, category: "import", title: "invalid import graph", explanation: "The resolved import graph failed structural validation, indicating corrupt or inconsistent compiler state.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_RESOLVE_E_UNKNOWN_SYMBOL", public_code: "E0401", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.NameResolution, category: "name-resolution", title: "unknown symbol", explanation: "The referenced name cannot be resolved in the current scope.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_RESOLVE_E_REDECLARATION", public_code: "E0402", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.NameResolution, category: "name-resolution", title: "symbol redeclared", explanation: "A symbol conflicts with an existing declaration in the same namespace.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_RESOLVE_E_AMBIGUOUS_SYMBOL", public_code: "E0403", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.NameResolution, category: "name-resolution", title: "ambiguous symbol", explanation: "More than one visible declaration matches this name.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_RESOLVE_E_PRIVATE", public_code: "E0404", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.NameResolution, category: "visibility", title: "symbol is not visible", explanation: "The declaration exists but is not accessible from this context.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_RESOLVE_E_INVALID_SCOPE", public_code: "E0405", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.NameResolution, category: "scope", title: "invalid scope", explanation: "The referenced declaration is not valid in the current lexical or semantic scope.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_RESOLVE_E_DUPLICATE_BINDING", public_code: "E0406", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.NameResolution, category: "scope", title: "duplicate binding", explanation: "A pattern or declaration introduces the same binding more than once.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_TYPE_E_MISMATCH", public_code: "E0501", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "type", title: "type mismatch", explanation: "The actual type does not satisfy the expected type.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_TYPE_E_CANNOT_INFER", public_code: "E0502", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "type", title: "type cannot be inferred", explanation: "The available constraints are insufficient to determine a unique type.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_TYPE_E_INVALID_CAST", public_code: "E0503", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "type", title: "invalid cast", explanation: "The requested conversion is not permitted between these types.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_TYPE_E_NOT_CALLABLE", public_code: "E0504", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "type", title: "value is not callable", explanation: "The expression does not have a callable type.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_TYPE_E_NOT_INDEXABLE", public_code: "E0505", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "type", title: "value is not indexable", explanation: "The expression does not support indexing.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_TYPE_E_NO_MEMBER", public_code: "E0506", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "type", title: "member does not exist", explanation: "The requested field, property or member is not defined for this type.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_TYPE_E_CONSTRAINT", public_code: "E0507", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "type", title: "type constraint unsatisfied", explanation: "A type does not satisfy a required semantic constraint.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_TYPE_E_INCOMPLETE", public_code: "E0508", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "type", title: "incomplete type", explanation: "The operation requires a complete type definition.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_TYPE_E_RECURSIVE", public_code: "E0509", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "type", title: "invalid recursive type", explanation: "The type definition forms an unsupported recursive structure.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_TYPE_E_UNKNOWN_TYPE", public_code: "E0510", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "type", title: "unknown type", explanation: "The referenced type name cannot be resolved in the current scope.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_TYPE_E_NOT_A_TYPE", public_code: "E0511", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "type", title: "name is not a type", explanation: "The referenced name resolves to a value or procedure rather than a type.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_TYPE_E_INVALID_OPERAND", public_code: "E0512", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "type", title: "invalid operand type", explanation: "The operator does not support the type of this operand or operand pair.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_TYPE_E_NOT_ASSIGNABLE", public_code: "E0513", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "type", title: "value is not assignable", explanation: "The expression does not designate a writable location.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_TYPE_E_INVALID_INDEX", public_code: "E0514", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "type", title: "invalid index type", explanation: "The index expression is not an accepted index type for this value.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_TYPE_E_CONDITION_NOT_BOOL", public_code: "E0515", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "type", title: "condition is not boolean", explanation: "A control-flow condition must evaluate to a boolean value.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_CALL_E_ARITY", public_code: "E0601", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "call", title: "incorrect argument count", explanation: "The call supplies a different number of arguments than required.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_CALL_E_ARGUMENT_TYPE", public_code: "E0602", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "call", title: "invalid argument type", explanation: "An argument does not satisfy the corresponding parameter type.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_CALL_E_NO_CANDIDATE", public_code: "E0603", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "call", title: "no matching procedure", explanation: "No callable candidate satisfies the supplied arguments and constraints.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_CALL_E_AMBIGUOUS", public_code: "E0604", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "call", title: "ambiguous call", explanation: "More than one callable candidate matches this invocation.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_CALL_E_RETURN_TYPE", public_code: "E0605", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "procedure", title: "invalid return type", explanation: "A returned expression is incompatible with the procedure return type.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_CALL_E_MODIFIER", public_code: "E0606", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "procedure", title: "invalid procedure modifier", explanation: "The procedure cannot be used with this modifier or calling context.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_CALL_E_RETURN_OUTSIDE_PROC", public_code: "E0607", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "procedure", title: "return outside procedure", explanation: "A return statement is only valid inside a procedure body.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_CONTRACT_E_INVALID", public_code: "E0700", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Contract, category: "contract", title: "invalid contract", explanation: "The contract expression is invalid in its declaration context.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_CONTRACT_E_PRECONDITION", public_code: "E0701", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Contract, category: "contract", title: "precondition not satisfied", explanation: "A call does not satisfy a required precondition.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_CONTRACT_E_POSTCONDITION", public_code: "E0702", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Contract, category: "contract", title: "postcondition failed", explanation: "A procedure result cannot satisfy a declared postcondition.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_CONTRACT_E_INVARIANT", public_code: "E0703", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Contract, category: "contract", title: "invariant not satisfied", explanation: "A declared invariant cannot be established at the required program point.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_CONTRACT_E_REQUIRES", public_code: "E0704", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Contract, category: "contract", title: "invalid requires clause", explanation: "A requires clause is malformed or semantically invalid.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_CONTRACT_E_ENSURES", public_code: "E0705", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Contract, category: "contract", title: "invalid ensures clause", explanation: "An ensures clause is malformed or semantically invalid.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_CONTRACT_E_OLD_VALUE", public_code: "E0706", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Contract, category: "contract", title: "invalid old value", explanation: "A contract attempts to reference a previous value that is not available.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_CONTRACT_E_RESULT", public_code: "E0707", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Contract, category: "contract", title: "invalid result reference", explanation: "A contract references a result value where no result is available.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_CONTRACT_E_UNPROVABLE", public_code: "E0708", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Contract, category: "contract", title: "contract cannot be established", explanation: "The compiler cannot establish that the contract is satisfied.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_CONTRACT_E_CONTRADICTION", public_code: "E0709", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Contract, category: "contract", title: "contradictory contract", explanation: "The declared contract contains mutually incompatible requirements.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_CONTRACT_E_EFFECT", public_code: "E0710", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Contract, category: "contract", title: "invalid contract effect", explanation: "The contract performs or depends on an effect that is not allowed.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_CONTRACT_E_CALL", public_code: "E0711", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Contract, category: "contract", title: "invalid call in contract", explanation: "The contract invokes an operation that is not valid in contract evaluation.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_CONTRACT_E_OVERRIDE", public_code: "E0712", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Contract, category: "contract", title: "incompatible overridden contract", explanation: "An implementation weakens or strengthens a contract incompatibly.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_CONTRACT_E_RUNTIME", public_code: "E0713", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Runtime, category: "contract", title: "runtime contract violation", explanation: "A runtime contract check evaluated to false.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_CONTRACT_E_INTERNAL", public_code: "E0714", default_severity: DiagnosticSeverity.Fatal, origin: DiagnosticOrigin.Internal, category: "contract", title: "contract checker failure", explanation: "The compiler contract subsystem encountered an internal failure.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_GENERIC_E_BOUND", public_code: "E0801", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "generic", title: "generic bound not satisfied", explanation: "A generic argument does not satisfy a required bound.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_GENERIC_E_ARGUMENT_COUNT", public_code: "E0802", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "generic", title: "incorrect generic argument count", explanation: "The generic declaration requires a different number of arguments.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_TRAIT_E_NOT_IMPLEMENTED", public_code: "E0810", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "trait", title: "trait not implemented", explanation: "The type does not provide a required trait implementation.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_TRAIT_E_AMBIGUOUS_IMPL", public_code: "E0811", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "trait", title: "ambiguous implementation", explanation: "More than one implementation satisfies the requested trait relation.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_TRAIT_E_CONFLICTING_IMPL", public_code: "E0812", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "trait", title: "conflicting implementation", explanation: "Two implementations overlap in a way that violates coherence rules.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_BACKEND_E_INVALID_C", public_code: "E0901", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.C17Backend, category: "backend", title: "invalid generated C", explanation: "The backend generated a C17 construct that could not be accepted.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_BACKEND_E_CODEGEN", public_code: "E0902", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.C17Backend, category: "backend", title: "code generation failure", explanation: "The C17 backend could not lower a Vitte construct.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_BACKEND_E_UNSUPPORTED", public_code: "E0903", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.C17Backend, category: "backend", title: "unsupported backend construct", explanation: "The selected C17 backend does not support this lowered construct.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_BACKEND_E_EXTERNAL_COMPILER", public_code: "E0904", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.CCompiler, category: "backend", title: "external C compiler failure", explanation: "The generated C source was rejected by the external C compiler.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_BACKEND_E_SOURCE_MAP", public_code: "E0905", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.C17Backend, category: "source-map", title: "backend source mapping failure", explanation: "Generated C could not be mapped accurately to the originating Vitte source.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_BACKEND_E_OUTPUT", public_code: "E0906", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Io, category: "backend", title: "C17 output failure", explanation: "The C17 backend could not create, write, or close an output file.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_BACKEND_E_LINK", public_code: "E0907", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Linker, category: "linker", title: "native linking failure", explanation: "The generated object could not be linked into the requested executable.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_BACKEND_E_EXECUTION", public_code: "E0908", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Runtime, category: "runtime", title: "compiled program execution failure", explanation: "The generated program was compiled and linked, but exited unsuccessfully.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_BACKEND_E_CONFIG", public_code: "E0909", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.C17Backend, category: "backend", title: "invalid backend configuration", explanation: "The C17 backend configuration is invalid or incompatible with the selected code generation path.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_IR_E_INVALID", public_code: "E1001", default_severity: DiagnosticSeverity.Fatal, origin: DiagnosticOrigin.Ir, category: "ir", title: "invalid intermediate representation", explanation: "The compiler produced an invalid IR node or instruction.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_IR_E_LOWERING", public_code: "E1002", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Ir, category: "lowering", title: "lowering failure", explanation: "A higher-level compiler construct could not be lowered into IR.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_IR_E_VERIFY", public_code: "E1003", default_severity: DiagnosticSeverity.Fatal, origin: DiagnosticOrigin.Ir, category: "ir", title: "IR verification failed", explanation: "The intermediate representation violates an internal structural or semantic invariant.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_HIR_E_INVALID", public_code: "E1010", default_severity: DiagnosticSeverity.Fatal, origin: DiagnosticOrigin.Hir, category: "hir", title: "invalid high-level IR", explanation: "The compiler produced an invalid HIR construct.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_HIR_E_LOWERING", public_code: "E1011", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Hir, category: "lowering", title: "HIR lowering failure", explanation: "The compiler could not lower or validate a source construct in high-level IR.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_CONTROL_E_MISSING_RETURN", public_code: "E1101", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "control-flow", title: "missing return", explanation: "A procedure can reach its end without producing the required result.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_CONTROL_E_INVALID_BREAK", public_code: "E1102", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "control-flow", title: "invalid break", explanation: "A break statement is used outside a valid breakable construct.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_CONTROL_E_INVALID_CONTINUE", public_code: "E1103", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "control-flow", title: "invalid continue", explanation: "A continue statement is used outside a valid loop.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_CONTROL_E_UNREACHABLE", public_code: "E1104", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "control-flow", title: "unreachable operation", explanation: "A required operation cannot be reached through valid control flow.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_MEMORY_E_INVALID_ACCESS", public_code: "E1201", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "memory", title: "invalid memory access", explanation: "The operation attempts to access memory in an invalid way.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_MEMORY_E_NULL", public_code: "E1202", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "memory", title: "invalid null operation", explanation: "The operation is not valid for a null value.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_MEMORY_E_POINTER_TYPE", public_code: "E1203", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "memory", title: "invalid pointer type", explanation: "The pointer operation is incompatible with the referenced type.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_MEMORY_E_ALIGNMENT", public_code: "E1204", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "memory", title: "invalid alignment", explanation: "The requested memory operation violates alignment requirements.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_UNSAFE_E_REQUIRED", public_code: "E1301", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "unsafe", title: "unsafe context required", explanation: "This low-level operation requires an explicit unsafe context.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_UNSAFE_E_INVALID_ASM", public_code: "E1302", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "asm", title: "invalid assembly block", explanation: "The inline assembly construct is malformed or incompatible with the selected target.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_UNSAFE_E_INTRINSIC", public_code: "E1303", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "intrinsic", title: "invalid intrinsic use", explanation: "A compiler intrinsic is used with unsupported arguments or in an invalid context.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_FFI_E_ABI", public_code: "E1401", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "abi", title: "unsupported ABI", explanation: "The requested application binary interface is unsupported.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_FFI_E_TYPE", public_code: "E1402", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "ffi", title: "FFI-incompatible type", explanation: "A type cannot safely or correctly cross the selected foreign interface.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_FFI_E_VARIADIC", public_code: "E1403", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "ffi", title: "invalid variadic foreign call", explanation: "The foreign variadic call violates ABI or type requirements.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_FFI_E_LINK_NAME", public_code: "E1404", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "ffi", title: "invalid foreign symbol", explanation: "The foreign declaration has an invalid or conflicting link symbol.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_CONST_E_NOT_CONSTANT", public_code: "E1501", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.ConstantEval, category: "const-eval", title: "expression is not constant", explanation: "The expression cannot be evaluated in a constant context.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_CONST_E_OVERFLOW", public_code: "E1502", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.ConstantEval, category: "const-eval", title: "constant evaluation overflow", explanation: "A compile-time arithmetic operation exceeds its representable range.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_CONST_E_DIVIDE_BY_ZERO", public_code: "E1503", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.ConstantEval, category: "const-eval", title: "division by zero", explanation: "A constant expression attempts to divide by zero.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_CONST_E_CYCLE", public_code: "E1504", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.ConstantEval, category: "const-eval", title: "constant evaluation cycle", explanation: "Compile-time evaluation depends recursively on itself.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_CONST_E_LIMIT", public_code: "E1505", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.ConstantEval, category: "const-eval", title: "constant evaluation limit reached", explanation: "Compile-time evaluation exceeded a configured resource or recursion limit.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_PATTERN_E_NON_EXHAUSTIVE", public_code: "E1601", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "pattern", title: "non-exhaustive match", explanation: "The match expression does not cover all possible input values.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_PATTERN_E_UNREACHABLE", public_code: "E1602", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "pattern", title: "unreachable pattern", explanation: "A previous pattern already covers every value matched by this pattern.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_PATTERN_E_TYPE", public_code: "E1603", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "pattern", title: "pattern type mismatch", explanation: "The pattern cannot match a value of the scrutinee type.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_PATTERN_E_BINDING", public_code: "E1604", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "pattern", title: "inconsistent pattern binding", explanation: "Alternative patterns do not introduce compatible bindings.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_ASYNC_E_AWAIT_CONTEXT", public_code: "E1701", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "async", title: "invalid asynchronous context", explanation: "An asynchronous operation is used outside a compatible procedure or execution context.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_ASYNC_E_TASK_TYPE", public_code: "E1702", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "async", title: "invalid task type", explanation: "The operation requires a task-compatible value.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_CONCURRENCY_E_SEND", public_code: "E1710", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "concurrency", title: "value cannot cross execution context", explanation: "The value does not satisfy the requirements for transfer between concurrent execution contexts.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_CONCURRENCY_E_CRITICAL", public_code: "E1711", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.TypeCheck, category: "concurrency", title: "invalid critical section", explanation: "The operation violates restrictions imposed by a critical section.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_MACRO_E_EXPANSION", public_code: "E1801", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Parser, category: "macro", title: "macro expansion failed", explanation: "A macro could not be expanded into a valid Vitte construct.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_MACRO_E_RECURSION", public_code: "E1802", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Parser, category: "macro", title: "macro recursion limit reached", explanation: "Macro expansion exceeded the configured recursion limit.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_PASS_E_FAILED", public_code: "E1810", default_severity: DiagnosticSeverity.Fatal, origin: DiagnosticOrigin.Internal, category: "compiler-pass", title: "compiler pass failed", explanation: "A compiler transformation pass failed unexpectedly.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_PASS_E_VERIFY", public_code: "E1811", default_severity: DiagnosticSeverity.Fatal, origin: DiagnosticOrigin.Internal, category: "compiler-pass", title: "compiler pass verification failed", explanation: "A compiler pass produced an invalid representation.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_TARGET_E_UNSUPPORTED", public_code: "E1901", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Driver, category: "target", title: "unsupported target", explanation: "The requested compilation target is not supported.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_TARGET_E_ARCH", public_code: "E1902", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Driver, category: "target", title: "unsupported architecture", explanation: "The requested CPU architecture is not supported.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_TARGET_E_FEATURE", public_code: "E1903", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Driver, category: "target", title: "unsupported target feature", explanation: "The requested target feature is unavailable or incompatible.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_TARGET_E_POINTER_WIDTH", public_code: "E1904", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Driver, category: "target", title: "unsupported pointer width", explanation: "The selected target uses a pointer width unsupported by this compilation mode.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_TARGET_E_ENDIAN", public_code: "E1905", default_severity: DiagnosticSeverity.Error, origin: DiagnosticOrigin.Driver, category: "target", title: "unsupported byte order", explanation: "The selected target byte order is unsupported by this operation.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_WARNING_UNUSED_VARIABLE", public_code: "W0001", default_severity: DiagnosticSeverity.Warning, origin: DiagnosticOrigin.TypeCheck, category: "unused", title: "unused variable", explanation: "A local variable is declared but never used.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_WARNING_UNUSED_PARAMETER", public_code: "W0002", default_severity: DiagnosticSeverity.Warning, origin: DiagnosticOrigin.TypeCheck, category: "unused", title: "unused parameter", explanation: "A procedure parameter is never used.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_WARNING_UNUSED_IMPORT", public_code: "W0003", default_severity: DiagnosticSeverity.Warning, origin: DiagnosticOrigin.Import, category: "unused", title: "unused import", explanation: "An imported module or symbol is never referenced.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_WARNING_UNUSED_RESULT", public_code: "W0004", default_severity: DiagnosticSeverity.Warning, origin: DiagnosticOrigin.TypeCheck, category: "unused", title: "unused result", explanation: "The result of an operation is ignored even though it may be significant.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_WARNING_DEPRECATED", public_code: "W0010", default_severity: DiagnosticSeverity.Warning, origin: DiagnosticOrigin.TypeCheck, category: "deprecated", title: "deprecated construct", explanation: "The referenced construct is deprecated and may be removed in a future language version.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_WARNING_UNREACHABLE_CODE", public_code: "W0020", default_severity: DiagnosticSeverity.Warning, origin: DiagnosticOrigin.TypeCheck, category: "control-flow", title: "unreachable code", explanation: "This code cannot be reached through normal control flow.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_WARNING_SHADOWING", public_code: "W0030", default_severity: DiagnosticSeverity.Warning, origin: DiagnosticOrigin.NameResolution, category: "shadowing", title: "declaration shadows another declaration", explanation: "This declaration hides a visible declaration with the same name.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_WARNING_IMPLICIT_CONVERSION", public_code: "W0040", default_severity: DiagnosticSeverity.Warning, origin: DiagnosticOrigin.TypeCheck, category: "conversion", title: "implicit conversion", explanation: "An implicit conversion may change the value or representation.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_WARNING_TRUNCATION", public_code: "W0041", default_severity: DiagnosticSeverity.Warning, origin: DiagnosticOrigin.TypeCheck, category: "conversion", title: "possible truncation", explanation: "A conversion may discard significant bits or precision.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_WARNING_SIGN_CHANGE", public_code: "W0042", default_severity: DiagnosticSeverity.Warning, origin: DiagnosticOrigin.TypeCheck, category: "conversion", title: "signedness change", explanation: "A conversion changes signedness and may alter interpretation of the value.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_WARNING_REDUNDANT_CAST", public_code: "W0050", default_severity: DiagnosticSeverity.Warning, origin: DiagnosticOrigin.TypeCheck, category: "redundant", title: "redundant cast", explanation: "The explicit cast does not change the expression type.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_WARNING_REDUNDANT_CONDITION", public_code: "W0051", default_severity: DiagnosticSeverity.Warning, origin: DiagnosticOrigin.TypeCheck, category: "redundant", title: "redundant condition", explanation: "The condition is statically known or duplicates an existing condition.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_WARNING_SUSPICIOUS_COMPARISON", public_code: "W0060", default_severity: DiagnosticSeverity.Warning, origin: DiagnosticOrigin.TypeCheck, category: "suspicious", title: "suspicious comparison", explanation: "The comparison is valid but is likely to be unintended.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_WARNING_FFI_LAYOUT", public_code: "W0070", default_severity: DiagnosticSeverity.Warning, origin: DiagnosticOrigin.TypeCheck, category: "ffi", title: "unstable foreign layout", explanation: "The type layout may not be suitable for a stable foreign interface.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_WARNING_CONTRACT_RUNTIME", public_code: "W0080", default_severity: DiagnosticSeverity.Warning, origin: DiagnosticOrigin.TypeCheck, category: "contract", title: "contract requires runtime check", explanation: "The compiler cannot prove the contract statically and must preserve a runtime check.", deprecated: false },
+    DiagnosticRegistryEntry { internal_code: "VITTE_WARNING_INFRASTRUCTURE", public_code: "W0090", default_severity: DiagnosticSeverity.Warning, origin: DiagnosticOrigin.Driver, category: "compiler", title: "compiler infrastructure warning", explanation: "A non-fatal compiler or source I/O operation did not complete cleanly.", deprecated: false },
+];
+
+export type DiagnosticRegistryVisitor = proc(
+    registry_entry: *const DiagnosticRegistryEntry,
+    index: usize,
+    user_data: *mut u8
+) -> bool;
+
+const REGISTRY_FNV_OFFSET: u64 = 14695981039346656037;
+const REGISTRY_FNV_PRIME: u64 = 1099511628211;
+const REGISTRY_INDEX_NONE: usize = usize.MAX;
+
+proc registry_text_hash(hash: u64, text: string) -> u64 {
+    let mut result = hash;
+    let bytes: [u8] = text.bytes();
+    let mut index: usize = 0;
+    while index < bytes.len() {
+        set result = (result ^ (bytes[index] as u64)) * REGISTRY_FNV_PRIME;
+        set index += 1;
+    }
+    return (result ^ 0) * REGISTRY_FNV_PRIME;
+}
+
+proc registry_origin_is_valid(origin: DiagnosticOrigin) -> bool {
+    return origin >= DiagnosticOrigin.Unknown and origin <= DiagnosticOrigin.Internal;
+}
+
+proc registry_severity_is_valid(severity: DiagnosticSeverity) -> bool {
+    return severity >= DiagnosticSeverity.Note and severity <= DiagnosticSeverity.Fatal;
+}
+
+proc registry_parse_public_code(
+    public_code: string,
+    prefix: *mut i8,
+    number: *mut u32
+) -> bool {
+    let bytes: [u8] = public_code.bytes();
+    if bytes.len() != VITTE_DIAGNOSTIC_PUBLIC_CODE_LENGTH { return false; }
+    let first = bytes[0];
+    if first != ('E' as u8) and first != ('W' as u8) and
+       first != ('N' as u8) and first != ('H' as u8) { return false; }
+    let mut value: u32 = 0;
+    let mut index: usize = 1;
+    while index < bytes.len() {
+        let digit = bytes[index];
+        if digit < ('0' as u8) or digit > ('9' as u8) { return false; }
+        value = value * 10 + ((digit - ('0' as u8)) as u32);
+        set index += 1;
+    }
+    if prefix != null { set *prefix = first as i8; }
+    if number != null { set *number = value; }
+    return true;
+}
+
+proc registry_origin_matches_range(entry_value: *const DiagnosticRegistryEntry) -> bool {
+    if entry_value == null { return false; }
+    let range = vitte_diagnostic_registry_range((*entry_value).public_code);
+    if range == DiagnosticRegistryRange.Lexer { return (*entry_value).origin == DiagnosticOrigin.Lexer; }
+    if range == DiagnosticRegistryRange.Parser { return (*entry_value).origin == DiagnosticOrigin.Parser; }
+    if range == DiagnosticRegistryRange.Module { return (*entry_value).origin == DiagnosticOrigin.Import; }
+    if range == DiagnosticRegistryRange.Backend {
+        return (*entry_value).origin == DiagnosticOrigin.C17Backend or
+            (*entry_value).origin == DiagnosticOrigin.CCompiler or
+            (*entry_value).origin == DiagnosticOrigin.Io or
+            (*entry_value).origin == DiagnosticOrigin.Linker or
+            (*entry_value).origin == DiagnosticOrigin.Runtime;
+    }
+    if range == DiagnosticRegistryRange.Ir {
+        return (*entry_value).origin == DiagnosticOrigin.Ir or
+            (*entry_value).origin == DiagnosticOrigin.Hir;
+    }
+    return true;
+}
+
+export proc vitte_diagnostic_registry_count() -> usize {
+    return DIAGNOSTIC_REGISTRY.len();
+}
+
+export proc vitte_diagnostic_registry_at(index: usize) -> *const DiagnosticRegistryEntry {
+    if index >= DIAGNOSTIC_REGISTRY.len() { return null; }
+    return &DIAGNOSTIC_REGISTRY[index];
+}
+
+export proc vitte_diagnostic_registry_entries(count: *mut usize) -> *const DiagnosticRegistryEntry {
+    if count != null { set *count = DIAGNOSTIC_REGISTRY.len(); }
+    return &DIAGNOSTIC_REGISTRY[0];
+}
+
+export proc vitte_diagnostic_registry_find_internal(internal_code: string) -> *const DiagnosticRegistryEntry {
+    if internal_code.len() == 0 { return null; }
+    let mut index: usize = 0;
+    while index < DIAGNOSTIC_REGISTRY.len() {
+        if DIAGNOSTIC_REGISTRY[index].internal_code == internal_code {
+            return &DIAGNOSTIC_REGISTRY[index];
+        }
+        set index += 1;
+    }
+    return null;
+}
+
+export proc vitte_diagnostic_registry_find_public(public_code: string) -> *const DiagnosticRegistryEntry {
+    if public_code.len() == 0 { return null; }
+    let mut index: usize = 0;
+    while index < DIAGNOSTIC_REGISTRY.len() {
+        if DIAGNOSTIC_REGISTRY[index].public_code == public_code {
+            return &DIAGNOSTIC_REGISTRY[index];
+        }
+        set index += 1;
+    }
+    return null;
+}
+
+export proc vitte_diagnostic_registry_find(code: string) -> *const DiagnosticRegistryEntry {
+    let internal = vitte_diagnostic_registry_find_internal(code);
+    if internal != null { return internal; }
+    return vitte_diagnostic_registry_find_public(code);
+}
+
+export proc vitte_diagnostic_registry_contains(code: string) -> bool {
+    return vitte_diagnostic_registry_find(code) != null;
+}
+
+export proc vitte_diagnostic_registry_public_code_is_valid(public_code: string) -> bool {
+    return registry_parse_public_code(public_code, null, null);
+}
+
+export proc vitte_diagnostic_registry_public_number(public_code: string, number: *mut u32) -> bool {
+    return registry_parse_public_code(public_code, null, number);
+}
+
+export proc vitte_diagnostic_registry_public_prefix(public_code: string) -> i8 {
+    let mut prefix: i8 = 0;
+    if not registry_parse_public_code(public_code, &mut prefix, null) { return 0; }
+    return prefix;
+}
+
+export proc vitte_diagnostic_registry_range(public_code: string) -> DiagnosticRegistryRange {
+    let mut prefix: i8 = 0;
+    let mut number: u32 = 0;
+    if not registry_parse_public_code(public_code, &mut prefix, &mut number) {
+        return DiagnosticRegistryRange.Unknown;
+    }
+    if prefix == ('W' as i8) { return DiagnosticRegistryRange.Warning; }
+    if prefix == ('N' as i8) { return DiagnosticRegistryRange.Note; }
+    if prefix == ('H' as i8) { return DiagnosticRegistryRange.Help; }
+    if prefix != ('E' as i8) { return DiagnosticRegistryRange.Unknown; }
+    if number <= 99 { return DiagnosticRegistryRange.Infrastructure; }
+    if number <= 199 { return DiagnosticRegistryRange.Lexer; }
+    if number <= 299 { return DiagnosticRegistryRange.Parser; }
+    if number <= 399 { return DiagnosticRegistryRange.Module; }
+    if number <= 499 { return DiagnosticRegistryRange.Name; }
+    if number <= 599 { return DiagnosticRegistryRange.Type; }
+    if number <= 699 { return DiagnosticRegistryRange.Call; }
+    if number <= 799 { return DiagnosticRegistryRange.Contract; }
+    if number <= 899 { return DiagnosticRegistryRange.Generic; }
+    if number <= 999 { return DiagnosticRegistryRange.Backend; }
+    if number <= 1099 { return DiagnosticRegistryRange.Ir; }
+    if number <= 1199 { return DiagnosticRegistryRange.ControlFlow; }
+    if number <= 1299 { return DiagnosticRegistryRange.Memory; }
+    if number <= 1399 { return DiagnosticRegistryRange.Unsafe; }
+    if number <= 1499 { return DiagnosticRegistryRange.Ffi; }
+    if number <= 1599 { return DiagnosticRegistryRange.ConstEval; }
+    if number <= 1699 { return DiagnosticRegistryRange.Pattern; }
+    if number <= 1799 { return DiagnosticRegistryRange.Concurrency; }
+    if number <= 1899 { return DiagnosticRegistryRange.Macro; }
+    if number <= 1999 { return DiagnosticRegistryRange.Target; }
+    return DiagnosticRegistryRange.Unknown;
+}
+
+export proc vitte_diagnostic_registry_range_name(range: DiagnosticRegistryRange) -> string {
+    match range {
+        case DiagnosticRegistryRange.Unknown => "unknown";
+        case DiagnosticRegistryRange.Infrastructure => "infrastructure";
+        case DiagnosticRegistryRange.Lexer => "lexer";
+        case DiagnosticRegistryRange.Parser => "parser";
+        case DiagnosticRegistryRange.Module => "module";
+        case DiagnosticRegistryRange.Name => "name-resolution";
+        case DiagnosticRegistryRange.Type => "type";
+        case DiagnosticRegistryRange.Call => "call";
+        case DiagnosticRegistryRange.Contract => "contract";
+        case DiagnosticRegistryRange.Generic => "generic";
+        case DiagnosticRegistryRange.Backend => "backend";
+        case DiagnosticRegistryRange.Ir => "ir";
+        case DiagnosticRegistryRange.ControlFlow => "control-flow";
+        case DiagnosticRegistryRange.Memory => "memory";
+        case DiagnosticRegistryRange.Unsafe => "unsafe";
+        case DiagnosticRegistryRange.Ffi => "ffi";
+        case DiagnosticRegistryRange.ConstEval => "const-eval";
+        case DiagnosticRegistryRange.Pattern => "pattern";
+        case DiagnosticRegistryRange.Concurrency => "concurrency";
+        case DiagnosticRegistryRange.Macro => "macro";
+        case DiagnosticRegistryRange.Target => "target";
+        case DiagnosticRegistryRange.Warning => "warning";
+        case DiagnosticRegistryRange.Note => "note";
+        case DiagnosticRegistryRange.Help => "help"
+    }
+}
+
+export proc vitte_diagnostic_registry_range_is_valid(range: DiagnosticRegistryRange) -> bool {
+    return range > DiagnosticRegistryRange.Unknown and range <= DiagnosticRegistryRange.Help;
+}
+
+proc registry_range_boundary(range: DiagnosticRegistryRange, number: *mut u32, is_end: bool) -> bool {
+    if range <= DiagnosticRegistryRange.Unknown or range > DiagnosticRegistryRange.Target or number == null {
+        return false;
+    }
+    let begin = ((range as u32) - 1) * VITTE_DIAGNOSTIC_RANGE_WIDTH;
+    set *number = if is_end { begin + VITTE_DIAGNOSTIC_RANGE_WIDTH - 1 } else { begin };
+    return true;
+}
+
+export proc vitte_diagnostic_registry_range_begin(range: DiagnosticRegistryRange, number: *mut u32) -> bool {
+    return registry_range_boundary(range, number, false);
+}
+
+export proc vitte_diagnostic_registry_range_end(range: DiagnosticRegistryRange, number: *mut u32) -> bool {
+    return registry_range_boundary(range, number, true);
+}
+
+export proc vitte_diagnostic_registry_public_severity(
+    public_code: string,
+    severity: *mut DiagnosticSeverity
+) -> bool {
+    let prefix = vitte_diagnostic_registry_public_prefix(public_code);
+    if prefix == 0 { return false; }
+    if severity != null {
+        if prefix == ('E' as i8) { set *severity = DiagnosticSeverity.Error; }
+        elif prefix == ('W' as i8) { set *severity = DiagnosticSeverity.Warning; }
+        elif prefix == ('N' as i8) { set *severity = DiagnosticSeverity.Note; }
+        else { set *severity = DiagnosticSeverity.Help; }
+    }
+    return true;
+}
+
+export proc vitte_diagnostic_registry_count_severity(severity: DiagnosticSeverity) -> usize {
+    if not registry_severity_is_valid(severity) { return 0; }
+    let mut count: usize = 0;
+    let mut index: usize = 0;
+    while index < DIAGNOSTIC_REGISTRY.len() {
+        if DIAGNOSTIC_REGISTRY[index].default_severity == severity { set count += 1; }
+        set index += 1;
+    }
+    return count;
+}
+
+export proc vitte_diagnostic_registry_count_origin(origin: DiagnosticOrigin) -> usize {
+    if not registry_origin_is_valid(origin) { return 0; }
+    let mut count: usize = 0;
+    let mut index: usize = 0;
+    while index < DIAGNOSTIC_REGISTRY.len() {
+        if DIAGNOSTIC_REGISTRY[index].origin == origin { set count += 1; }
+        set index += 1;
+    }
+    return count;
+}
+
+export proc vitte_diagnostic_registry_count_category(category: string) -> usize {
+    if category.len() == 0 { return 0; }
+    let mut count: usize = 0;
+    let mut index: usize = 0;
+    while index < DIAGNOSTIC_REGISTRY.len() {
+        if DIAGNOSTIC_REGISTRY[index].category == category { set count += 1; }
+        set index += 1;
+    }
+    return count;
+}
+
+export proc vitte_diagnostic_registry_entry_is_valid(entry_value: *const DiagnosticRegistryEntry) -> bool {
+    if entry_value == null { return false; }
+    let registry_entry = *entry_value;
+    if registry_entry.internal_code.len() == 0 or registry_entry.category.len() == 0 or
+       registry_entry.title.len() == 0 or registry_entry.explanation.len() == 0 or
+       not registry_severity_is_valid(registry_entry.default_severity) or
+       not registry_origin_is_valid(registry_entry.origin) { return false; }
+    let mut prefix: i8 = 0;
+    if not registry_parse_public_code(registry_entry.public_code, &mut prefix, null) { return false; }
+    if prefix == ('E' as i8) and registry_entry.default_severity != DiagnosticSeverity.Error and
+       registry_entry.default_severity != DiagnosticSeverity.Fatal { return false; }
+    if prefix == ('W' as i8) and registry_entry.default_severity != DiagnosticSeverity.Warning { return false; }
+    if prefix == ('N' as i8) and registry_entry.default_severity != DiagnosticSeverity.Note { return false; }
+    if prefix == ('H' as i8) and registry_entry.default_severity != DiagnosticSeverity.Help { return false; }
+    return registry_origin_matches_range(entry_value);
+}
+
+export proc vitte_diagnostic_registry_validate(result: *mut DiagnosticRegistryValidation) -> Status {
+    let mut local = DiagnosticRegistryValidation {
+        valid: true,
+        entry_count: DIAGNOSTIC_REGISTRY.len(),
+        invalid_entry_count: 0,
+        duplicate_internal_count: 0,
+        duplicate_public_count: 0,
+        first_invalid_index: REGISTRY_INDEX_NONE
+    };
+    let mut index: usize = 0;
+    while index < DIAGNOSTIC_REGISTRY.len() {
+        let registry_entry = &DIAGNOSTIC_REGISTRY[index];
+        if not vitte_diagnostic_registry_entry_is_valid(registry_entry) {
+            set local.invalid_entry_count += 1;
+            if local.first_invalid_index == REGISTRY_INDEX_NONE { set local.first_invalid_index = index; }
+            set local.valid = false;
+        }
+        let mut other: usize = 0;
+        while other < index {
+            if DIAGNOSTIC_REGISTRY[other].internal_code == (*registry_entry).internal_code {
+                set local.duplicate_internal_count += 1;
+                set local.valid = false;
+                break;
+            }
+            set other += 1;
+        }
+        set other = 0;
+        while other < index {
+            if DIAGNOSTIC_REGISTRY[other].public_code == (*registry_entry).public_code {
+                set local.duplicate_public_count += 1;
+                set local.valid = false;
+                break;
+            }
+            set other += 1;
+        }
+        set index += 1;
+    }
+    if result != null { set *result = local; }
+    return if local.valid { Status.Ok } else { Status.ErrorInvalidState };
+}
+
+export proc vitte_diagnostic_registry_apply_entry(
+    diagnostic_value: *mut Diagnostic,
+    entry_value: *const DiagnosticRegistryEntry
+) -> Status {
+    if diagnostic_value == null or not vitte_diagnostic_registry_entry_is_valid(entry_value) {
+        return Status.ErrorInvalidArgument;
+    }
+    set (*diagnostic_value).code = (*entry_value).internal_code;
+    set (*diagnostic_value).short_code = (*entry_value).public_code;
+    set (*diagnostic_value).severity = (*entry_value).default_severity;
+    set (*diagnostic_value).origin = (*entry_value).origin;
+    set (*diagnostic_value).category = (*entry_value).category;
+    return Status.Ok;
+}
+
+export proc vitte_diagnostic_registry_apply(diagnostic_value: *mut Diagnostic) -> Status {
+    if diagnostic_value == null { return Status.ErrorInvalidArgument; }
+    let mut registry_entry = vitte_diagnostic_registry_find((*diagnostic_value).code);
+    if registry_entry == null { registry_entry = vitte_diagnostic_registry_find((*diagnostic_value).short_code); }
+    if registry_entry == null { return Status.ErrorInvalidArgument; }
+    return vitte_diagnostic_registry_apply_entry(diagnostic_value, registry_entry);
+}
+
+export proc vitte_diagnostic_registry_entry_fingerprint(entry_value: *const DiagnosticRegistryEntry) -> u64 {
+    if entry_value == null { return 0; }
+    let registry_entry = *entry_value;
+    let mut hash = REGISTRY_FNV_OFFSET;
+    set hash = registry_text_hash(hash, registry_entry.internal_code);
+    set hash = registry_text_hash(hash, registry_entry.public_code);
+    set hash = registry_text_hash(hash, registry_entry.category);
+    set hash = registry_text_hash(hash, registry_entry.title);
+    set hash = registry_text_hash(hash, registry_entry.explanation);
+    set hash = (hash ^ (registry_entry.default_severity as u64)) * REGISTRY_FNV_PRIME;
+    set hash = (hash ^ (registry_entry.origin as u64)) * REGISTRY_FNV_PRIME;
+    set hash = (hash ^ (if registry_entry.deprecated { 1 as u64 } else { 0 as u64 })) * REGISTRY_FNV_PRIME;
+    return hash;
+}
+
+export proc vitte_diagnostic_registry_fingerprint() -> u64 {
+    let mut hash = REGISTRY_FNV_OFFSET;
+    let mut index: usize = 0;
+    while index < DIAGNOSTIC_REGISTRY.len() {
+        let registry_entry = &DIAGNOSTIC_REGISTRY[index];
+        set hash = registry_text_hash(hash, (*registry_entry).internal_code);
+        set hash = registry_text_hash(hash, (*registry_entry).public_code);
+        set hash = registry_text_hash(hash, (*registry_entry).category);
+        set hash = registry_text_hash(hash, (*registry_entry).title);
+        set hash = registry_text_hash(hash, (*registry_entry).explanation);
+        set hash = (hash ^ ((*registry_entry).default_severity as u64)) * REGISTRY_FNV_PRIME;
+        set hash = (hash ^ ((*registry_entry).origin as u64)) * REGISTRY_FNV_PRIME;
+        set hash = (hash ^ (if (*registry_entry).deprecated { 1 as u64 } else { 0 as u64 })) * REGISTRY_FNV_PRIME;
+        set index += 1;
+    }
+    return hash;
+}
+
+export proc vitte_diagnostic_registry_visit(visitor: DiagnosticRegistryVisitor, user_data: *mut u8) -> usize {
+    let mut visited: usize = 0;
+    let mut index: usize = 0;
+    while index < DIAGNOSTIC_REGISTRY.len() {
+        set visited += 1;
+        if not visitor(&DIAGNOSTIC_REGISTRY[index], index, user_data) { return visited; }
+        set index += 1;
+    }
+    return visited;
+}
+
+/// Convenience classifiers matching the inline helpers in `registry.h`.
+export proc vitte_diagnostic_registry_is_error_code(public_code: string) -> bool {
+    return vitte_diagnostic_registry_public_prefix(public_code) == ('E' as i8);
+}
+
+export proc vitte_diagnostic_registry_is_warning_code(public_code: string) -> bool {
+    return vitte_diagnostic_registry_public_prefix(public_code) == ('W' as i8);
+}
+
+export proc vitte_diagnostic_registry_is_note_code(public_code: string) -> bool {
+    return vitte_diagnostic_registry_public_prefix(public_code) == ('N' as i8);
+}
+
+export proc vitte_diagnostic_registry_is_help_code(public_code: string) -> bool {
+    return vitte_diagnostic_registry_public_prefix(public_code) == ('H' as i8);
+}
+
+/// Look up the registry registry_entry for a diagnostic's current code.
+export proc vitte_diagnostic_registry_for_diagnostic(
+    diagnostic_value: *const Diagnostic
+) -> *const DiagnosticRegistryEntry {
+    if diagnostic_value == null {
+        return null;
+    }
+
+    if (*diagnostic_value).code != "" {
+        let registry_entry = vitte_diagnostic_registry_find((*diagnostic_value).code);
+        if registry_entry != null {
+            return registry_entry;
+        }
+    }
+
+    if (*diagnostic_value).short_code != "" {
+        return vitte_diagnostic_registry_find((*diagnostic_value).short_code);
+    }
+
+    return null;
+}
+
+/// Compatibility names used by the Vitte explanation layer.
+export proc diagnostic_registry_count() -> usize {
+    return vitte_diagnostic_registry_count();
+}
+
+export proc diagnostic_registry_at(index: usize) -> *const DiagnosticRegistryEntry {
+    return vitte_diagnostic_registry_at(index);
+}
+
+export proc diagnostic_registry_find(code: string) -> *const DiagnosticRegistryEntry {
+    return vitte_diagnostic_registry_find(code);
+}
+
+export proc diagnostic_registry_range(code: string) -> DiagnosticRegistryRange {
+    return vitte_diagnostic_registry_range(code);
+}
+
+export proc diagnostic_registry_range_name(range: DiagnosticRegistryRange) -> string {
+    return vitte_diagnostic_registry_range_name(range);
+}
+
+export proc diagnostic_registry_count_severity(severity: DiagnosticSeverity) -> usize {
+    return vitte_diagnostic_registry_count_severity(severity);
+}
+
+export proc diagnostic_registry_validate(
+    result: *mut DiagnosticRegistryValidation
+) -> Status {
+    return vitte_diagnostic_registry_validate(result);
+}
+
+export proc diagnostic_registry_fingerprint() -> u64 {
+    return vitte_diagnostic_registry_fingerprint();
+}

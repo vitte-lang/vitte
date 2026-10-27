@@ -1,0 +1,638 @@
+/// Native Vitte constant values and primitive constant queries.
+space compiler::constant_fold::constant;
+
+use vitte::core::memory::{copy};
+
+const VITTE_CONSTANT_API_VERSION_MAJOR: u32 = 1;
+const VITTE_CONSTANT_API_VERSION_MINOR: u32 = 0;
+const VITTE_CONSTANT_API_VERSION_PATCH: u32 = 0;
+const VITTE_CONSTANT_MAX_INTEGER_BITS: u32 = 64;
+const VITTE_CONSTANT_MAX_STRING_LENGTH: usize = 16777216;
+const VITTE_CONSTANT_FNV_OFFSET: u64 = 14695981039346656037;
+const VITTE_CONSTANT_FNV_PRIME: u64 = 1099511628211;
+
+export pick ConstantError {
+    None,
+    InvalidArgument,
+    InvalidValue,
+    InvalidType,
+    InvalidOperator,
+    TypeMismatch,
+    Overflow,
+    Underflow,
+    DivisionByZero,
+    RemainderByZero,
+    InvalidShift,
+    InvalidCast,
+    NonFinite,
+    StringTooLong,
+    Unsupported,
+    Count
+}
+
+export pick ConstantKind {
+    Invalid,
+    Bool,
+    I8,
+    I16,
+    I32,
+    I64,
+    U8,
+    U16,
+    U32,
+    U64,
+    F32,
+    F64,
+    Char,
+    String,
+    Null,
+    Poison,
+    Count
+}
+
+export pick ConstantUnaryOperator {
+    Invalid,
+    Plus,
+    Negate,
+    LogicalNot,
+    BitwiseNot,
+    Count
+}
+
+export pick ConstantBinaryOperator {
+    Invalid,
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    Remainder,
+    BitAnd,
+    BitOr,
+    BitXor,
+    ShiftLeft,
+    ShiftRight,
+    RotateLeft,
+    RotateRight,
+    LogicalAnd,
+    LogicalOr,
+    Equal,
+    NotEqual,
+    Less,
+    LessEqual,
+    Greater,
+    GreaterEqual,
+    Count
+}
+
+export pick ConstantFoldStatus {
+    Invalid,
+    Success,
+    NotConstant,
+    Error,
+    Count
+}
+
+export form ConstantString {
+    data: *const u8,
+    length: usize
+}
+
+export form Constant {
+    kind: ConstantKind,
+    // Two pointer-sized words match the C union's largest member,
+    // ConstantString. Scalar members occupy the start of this storage.
+    as_: [usize; 2]
+}
+
+export form ConstantResult {
+    status: ConstantFoldStatus,
+    error: ConstantError,
+    value: Constant
+}
+
+export form ConstantStats {
+    fold_attempts: u64,
+    fold_successes: u64,
+    fold_failures: u64,
+    unary_folds: u64,
+    binary_folds: u64,
+    integer_folds: u64,
+    floating_folds: u64,
+    boolean_folds: u64,
+    comparison_folds: u64,
+    bitwise_folds: u64,
+    overflow_errors: u64,
+    division_by_zero_errors: u64,
+    invalid_shift_errors: u64
+}
+
+export proc vitte_constant_error_name(error: ConstantError) -> string {
+    match error {
+        case ConstantError.None => return "none",
+        case ConstantError.InvalidArgument => return "invalid argument",
+        case ConstantError.InvalidValue => return "invalid value",
+        case ConstantError.InvalidType => return "invalid type",
+        case ConstantError.InvalidOperator => return "invalid operator",
+        case ConstantError.TypeMismatch => return "type mismatch",
+        case ConstantError.Overflow => return "overflow",
+        case ConstantError.Underflow => return "underflow",
+        case ConstantError.DivisionByZero => return "division by zero",
+        case ConstantError.RemainderByZero => return "remainder by zero",
+        case ConstantError.InvalidShift => return "invalid shift",
+        case ConstantError.InvalidCast => return "invalid cast",
+        case ConstantError.NonFinite => return "non-finite value",
+        case ConstantError.StringTooLong => return "string too long",
+        case ConstantError.Unsupported => return "unsupported",
+        case ConstantError.Count => return "count"
+    }
+    return "unknown";
+}
+
+export proc vitte_constant_kind_name(kind: ConstantKind) -> string {
+    match kind {
+        case ConstantKind.Invalid => return "invalid",
+        case ConstantKind.Bool => return "bool",
+        case ConstantKind.I8 => return "i8",
+        case ConstantKind.I16 => return "i16",
+        case ConstantKind.I32 => return "i32",
+        case ConstantKind.I64 => return "i64",
+        case ConstantKind.U8 => return "u8",
+        case ConstantKind.U16 => return "u16",
+        case ConstantKind.U32 => return "u32",
+        case ConstantKind.U64 => return "u64",
+        case ConstantKind.F32 => return "f32",
+        case ConstantKind.F64 => return "f64",
+        case ConstantKind.Char => return "char",
+        case ConstantKind.String => return "string",
+        case ConstantKind.Null => return "null",
+        case ConstantKind.Poison => return "poison",
+        case ConstantKind.Count => return "count"
+    }
+    return "unknown";
+}
+
+export proc vitte_constant_unary_operator_name(op: ConstantUnaryOperator) -> string {
+    match op {
+        case ConstantUnaryOperator.Invalid => return "invalid",
+        case ConstantUnaryOperator.Plus => return "plus",
+        case ConstantUnaryOperator.Negate => return "negate",
+        case ConstantUnaryOperator.LogicalNot => return "logical-not",
+        case ConstantUnaryOperator.BitwiseNot => return "bitwise-not",
+        case ConstantUnaryOperator.Count => return "count"
+    }
+    return "unknown";
+}
+
+export proc vitte_constant_binary_operator_name(op: ConstantBinaryOperator) -> string {
+    match op {
+        case ConstantBinaryOperator.Invalid => return "invalid",
+        case ConstantBinaryOperator.Add => return "add",
+        case ConstantBinaryOperator.Subtract => return "subtract",
+        case ConstantBinaryOperator.Multiply => return "multiply",
+        case ConstantBinaryOperator.Divide => return "divide",
+        case ConstantBinaryOperator.Remainder => return "remainder",
+        case ConstantBinaryOperator.BitAnd => return "bit-and",
+        case ConstantBinaryOperator.BitOr => return "bit-or",
+        case ConstantBinaryOperator.BitXor => return "bit-xor",
+        case ConstantBinaryOperator.ShiftLeft => return "shift-left",
+        case ConstantBinaryOperator.ShiftRight => return "shift-right",
+        case ConstantBinaryOperator.RotateLeft => return "rotate-left",
+        case ConstantBinaryOperator.RotateRight => return "rotate-right",
+        case ConstantBinaryOperator.LogicalAnd => return "logical-and",
+        case ConstantBinaryOperator.LogicalOr => return "logical-or",
+        case ConstantBinaryOperator.Equal => return "equal",
+        case ConstantBinaryOperator.NotEqual => return "not-equal",
+        case ConstantBinaryOperator.Less => return "less",
+        case ConstantBinaryOperator.LessEqual => return "less-equal",
+        case ConstantBinaryOperator.Greater => return "greater",
+        case ConstantBinaryOperator.GreaterEqual => return "greater-equal",
+        case ConstantBinaryOperator.Count => return "count"
+    }
+    return "unknown";
+}
+
+export proc vitte_constant_fold_status_name(status: ConstantFoldStatus) -> string {
+    match status {
+        case ConstantFoldStatus.Invalid => return "invalid",
+        case ConstantFoldStatus.Success => return "success",
+        case ConstantFoldStatus.NotConstant => return "not-constant",
+        case ConstantFoldStatus.Error => return "error",
+        case ConstantFoldStatus.Count => return "count"
+    }
+    return "unknown";
+}
+
+export proc vitte_constant_kind_is_valid(kind: ConstantKind) -> bool {
+    return kind > ConstantKind.Invalid and kind < ConstantKind.Count;
+}
+
+export proc vitte_constant_kind_is_integer_public(kind: ConstantKind) -> bool {
+    return kind == ConstantKind.I8 or kind == ConstantKind.I16 or kind == ConstantKind.I32 or kind == ConstantKind.I64 or
+        kind == ConstantKind.U8 or kind == ConstantKind.U16 or kind == ConstantKind.U32 or kind == ConstantKind.U64;
+}
+
+export proc vitte_constant_kind_is_signed_integer(kind: ConstantKind) -> bool {
+    return kind == ConstantKind.I8 or kind == ConstantKind.I16 or kind == ConstantKind.I32 or kind == ConstantKind.I64;
+}
+
+export proc vitte_constant_kind_is_unsigned_integer(kind: ConstantKind) -> bool {
+    return kind == ConstantKind.U8 or kind == ConstantKind.U16 or kind == ConstantKind.U32 or kind == ConstantKind.U64;
+}
+
+export proc vitte_constant_kind_is_floating(kind: ConstantKind) -> bool {
+    return kind == ConstantKind.F32 or kind == ConstantKind.F64;
+}
+
+export proc vitte_constant_kind_is_numeric(kind: ConstantKind) -> bool {
+    return vitte_constant_kind_is_integer_public(kind) or vitte_constant_kind_is_floating(kind);
+}
+
+export proc vitte_constant_is_valid(value: *const Constant) -> bool {
+    if value == null { return false; }
+    match (*value).kind {
+        case ConstantKind.Bool|ConstantKind.I8|ConstantKind.I16|ConstantKind.I32|ConstantKind.I64|
+             ConstantKind.U8|ConstantKind.U16|ConstantKind.U32|ConstantKind.U64|
+             ConstantKind.F32|ConstantKind.F64|ConstantKind.Char|ConstantKind.Null|ConstantKind.Poison => return true,
+        case ConstantKind.String => {
+            let length = (*value).as_[1] as usize;
+            let data = (*value).as_[0] as usize as *const u8;
+            return length <= VITTE_CONSTANT_MAX_STRING_LENGTH and (length == 0 or data != null);
+        },
+        case ConstantKind.Invalid|ConstantKind.Count => return false
+    }
+    return false;
+}
+
+export proc vitte_constant_is_integer(value: *const Constant) -> bool {
+    return value != null and vitte_constant_kind_is_integer_public((*value).kind);
+}
+
+export proc vitte_constant_is_signed_integer(value: *const Constant) -> bool {
+    return value != null and vitte_constant_kind_is_signed_integer((*value).kind);
+}
+
+export proc vitte_constant_is_unsigned_integer(value: *const Constant) -> bool {
+    return value != null and vitte_constant_kind_is_unsigned_integer((*value).kind);
+}
+
+export proc vitte_constant_is_float(value: *const Constant) -> bool {
+    return value != null and vitte_constant_kind_is_floating((*value).kind);
+}
+
+export proc vitte_constant_is_numeric(value: *const Constant) -> bool {
+    return value != null and vitte_constant_kind_is_numeric((*value).kind);
+}
+
+export proc vitte_constant_bit_width(kind: ConstantKind) -> u32 {
+    match kind {
+        case ConstantKind.I8|ConstantKind.U8 => return 8,
+        case ConstantKind.I16|ConstantKind.U16 => return 16,
+        case ConstantKind.I32|ConstantKind.U32|ConstantKind.F32|ConstantKind.Char => return 32,
+        case ConstantKind.I64|ConstantKind.U64|ConstantKind.F64 => return 64,
+        case _ => return 0
+    }
+}
+
+proc constant_read_u8(value: *const Constant) -> u8 {
+    let mut result: u8 = 0;
+    copy(&mut result as *mut u8, &(*value).as_[0] as *const u8, sizeof(u8));
+    return result;
+}
+
+proc constant_read_i8(value: *const Constant) -> i8 {
+    let mut result: i8 = 0;
+    copy(&mut result as *mut u8, &(*value).as_[0] as *const u8, sizeof(i8));
+    return result;
+}
+
+proc constant_read_u16(value: *const Constant) -> u16 {
+    let mut result: u16 = 0;
+    copy(&mut result as *mut u8, &(*value).as_[0] as *const u8, sizeof(u16));
+    return result;
+}
+
+proc constant_read_i16(value: *const Constant) -> i16 {
+    let mut result: i16 = 0;
+    copy(&mut result as *mut u8, &(*value).as_[0] as *const u8, sizeof(i16));
+    return result;
+}
+
+proc constant_read_u32(value: *const Constant) -> u32 {
+    let mut result: u32 = 0;
+    copy(&mut result as *mut u8, &(*value).as_[0] as *const u8, sizeof(u32));
+    return result;
+}
+
+proc constant_read_i32(value: *const Constant) -> i32 {
+    let mut result: i32 = 0;
+    copy(&mut result as *mut u8, &(*value).as_[0] as *const u8, sizeof(i32));
+    return result;
+}
+
+proc constant_read_u64(value: *const Constant) -> u64 {
+    let mut result: u64 = 0;
+    copy(&mut result as *mut u8, &(*value).as_[0] as *const u8, sizeof(u64));
+    return result;
+}
+
+proc constant_read_i64(value: *const Constant) -> i64 {
+    let mut result: i64 = 0;
+    copy(&mut result as *mut u8, &(*value).as_[0] as *const u8, sizeof(i64));
+    return result;
+}
+
+proc constant_read_f32(value: *const Constant) -> f32 {
+    let mut result: f32 = 0.0;
+    copy(&mut result as *mut u8, &(*value).as_[0] as *const u8, sizeof(f32));
+    return result;
+}
+
+proc constant_read_f64(value: *const Constant) -> f64 {
+    let mut result: f64 = 0.0;
+    copy(&mut result as *mut u8, &(*value).as_[0] as *const u8, sizeof(f64));
+    return result;
+}
+
+proc constant_read_string_data(value: *const Constant) -> *const u8 {
+    let mut result: *const u8 = null;
+    copy(&mut result as *mut u8, &(*value).as_[0] as *const u8, sizeof(*const u8));
+    return result;
+}
+
+proc constant_read_string_length(value: *const Constant) -> usize {
+    let mut result: usize = 0;
+    copy(&mut result as *mut u8, &(*value).as_[1] as *const u8, sizeof(usize));
+    return result;
+}
+
+export proc vitte_constant_is_zero(value: *const Constant) -> bool {
+    if value == null { return false; }
+    match (*value).kind {
+        case ConstantKind.Bool => return constant_read_u8(value) == 0,
+        case ConstantKind.I8 => return constant_read_i8(value) == 0,
+        case ConstantKind.I16 => return constant_read_i16(value) == 0,
+        case ConstantKind.I32 => return constant_read_i32(value) == 0,
+        case ConstantKind.I64 => return constant_read_i64(value) == 0,
+        case ConstantKind.U8 => return constant_read_u8(value) == 0,
+        case ConstantKind.U16 => return constant_read_u16(value) == 0,
+        case ConstantKind.U32 => return constant_read_u32(value) == 0,
+        case ConstantKind.U64 => return constant_read_u64(value) == 0,
+        case ConstantKind.F32 => return constant_read_f32(value) == 0.0,
+        case ConstantKind.F64 => return constant_read_f64(value) == 0.0,
+        case ConstantKind.Char => return constant_read_u32(value) == 0,
+        case ConstantKind.Null => return true,
+        case ConstantKind.Invalid|ConstantKind.String|ConstantKind.Poison|ConstantKind.Count => return false
+    }
+    return false;
+}
+
+export proc vitte_constant_is_one(value: *const Constant) -> bool {
+    if value == null { return false; }
+    match (*value).kind {
+        case ConstantKind.Bool => return constant_read_u8(value) != 0,
+        case ConstantKind.I8 => return constant_read_i8(value) == 1,
+        case ConstantKind.I16 => return constant_read_i16(value) == 1,
+        case ConstantKind.I32 => return constant_read_i32(value) == 1,
+        case ConstantKind.I64 => return constant_read_i64(value) == 1,
+        case ConstantKind.U8 => return constant_read_u8(value) == 1,
+        case ConstantKind.U16 => return constant_read_u16(value) == 1,
+        case ConstantKind.U32 => return constant_read_u32(value) == 1,
+        case ConstantKind.U64 => return constant_read_u64(value) == 1,
+        case ConstantKind.F32 => return constant_read_f32(value) == 1.0,
+        case ConstantKind.F64 => return constant_read_f64(value) == 1.0,
+        case ConstantKind.Invalid|ConstantKind.Char|ConstantKind.String|ConstantKind.Null|ConstantKind.Poison|ConstantKind.Count => return false
+    }
+    return false;
+}
+
+export proc vitte_constant_equal(left: *const Constant, right: *const Constant) -> bool {
+    if left == null or right == null or (*left).kind != (*right).kind { return false; }
+    match (*left).kind {
+        case ConstantKind.Bool => return constant_read_u8(left) == constant_read_u8(right),
+        case ConstantKind.I8 => return constant_read_i8(left) == constant_read_i8(right),
+        case ConstantKind.I16 => return constant_read_i16(left) == constant_read_i16(right),
+        case ConstantKind.I32 => return constant_read_i32(left) == constant_read_i32(right),
+        case ConstantKind.I64 => return constant_read_i64(left) == constant_read_i64(right),
+        case ConstantKind.U8 => return constant_read_u8(left) == constant_read_u8(right),
+        case ConstantKind.U16 => return constant_read_u16(left) == constant_read_u16(right),
+        case ConstantKind.U32 => return constant_read_u32(left) == constant_read_u32(right),
+        case ConstantKind.U64 => return constant_read_u64(left) == constant_read_u64(right),
+        case ConstantKind.F32 => return constant_read_f32(left) == constant_read_f32(right),
+        case ConstantKind.F64 => return constant_read_f64(left) == constant_read_f64(right),
+        case ConstantKind.Char => return constant_read_u32(left) == constant_read_u32(right),
+        case ConstantKind.String => {
+            let left_length = constant_read_string_length(left);
+            let right_length = constant_read_string_length(right);
+            if left_length != right_length { return false; }
+            if left_length == 0 { return true; }
+            let left_data = constant_read_string_data(left);
+            let right_data = constant_read_string_data(right);
+            if left_data == null or right_data == null { return false; }
+            let mut index: usize = 0;
+            while index < left_length {
+                if left_data[index] != right_data[index] { return false; }
+                set index += 1;
+            }
+            return true;
+        },
+        case ConstantKind.Null|ConstantKind.Poison => return true,
+        case ConstantKind.Invalid|ConstantKind.Count => return false
+    }
+    return false;
+}
+
+proc constant_hash_byte(hash: u64, byte: u8) -> u64 {
+    return (hash ^ (byte as u64)).wrapping_mul(VITTE_CONSTANT_FNV_PRIME);
+}
+
+proc constant_hash_u64(hash: u64, value: u64) -> u64 {
+    let mut result = hash;
+    let mut shift: u32 = 0;
+    while shift < 64 {
+        set result = constant_hash_byte(result, ((value >> shift) & 255) as u8);
+        set shift += 8;
+    }
+    return result;
+}
+
+export proc vitte_constant_hash(value: *const Constant) -> u64 {
+    if not vitte_constant_is_valid(value) { return 0; }
+    let mut hash = constant_hash_u64(VITTE_CONSTANT_FNV_OFFSET, (*value).kind as u64);
+    match (*value).kind {
+        case ConstantKind.Bool => return constant_hash_u64(hash, if constant_read_u8(value) != 0 { 1 } else { 0 }),
+        case ConstantKind.I8 => return constant_hash_u64(hash, (constant_read_i8(value) as i64) as u64),
+        case ConstantKind.I16 => return constant_hash_u64(hash, (constant_read_i16(value) as i64) as u64),
+        case ConstantKind.I32 => return constant_hash_u64(hash, (constant_read_i32(value) as i64) as u64),
+        case ConstantKind.I64 => return constant_hash_u64(hash, constant_read_i64(value) as u64),
+        case ConstantKind.U8 => return constant_hash_u64(hash, constant_read_u8(value) as u64),
+        case ConstantKind.U16 => return constant_hash_u64(hash, constant_read_u16(value) as u64),
+        case ConstantKind.U32 => return constant_hash_u64(hash, constant_read_u32(value) as u64),
+        case ConstantKind.U64 => return constant_hash_u64(hash, constant_read_u64(value)),
+        case ConstantKind.F32 => return constant_hash_u64(hash, constant_read_u32(value) as u64),
+        case ConstantKind.F64 => return constant_hash_u64(hash, constant_read_u64(value)),
+        case ConstantKind.Char => return constant_hash_u64(hash, constant_read_u32(value) as u64),
+        case ConstantKind.String => {
+            let length = constant_read_string_length(value);
+            let data = constant_read_string_data(value);
+            set hash = constant_hash_u64(hash, length as u64);
+            let mut index: usize = 0;
+            while index < length {
+                set hash = constant_hash_byte(hash, data[index]);
+                set index += 1;
+            }
+            return hash;
+        },
+        case ConstantKind.Null|ConstantKind.Poison => return hash,
+        case ConstantKind.Invalid|ConstantKind.Count => return 0
+    }
+    return 0;
+}
+
+export extern proc vitte_constant_fold_unary(op: ConstantUnaryOperator, operand: *const Constant) -> ConstantResult;
+
+export extern proc vitte_constant_fold_binary(op: ConstantBinaryOperator, left: *const Constant, right: *const Constant) -> ConstantResult;
+
+export extern proc vitte_constant_cast(value: *const Constant, destination: ConstantKind) -> ConstantResult;
+
+export extern proc vitte_constant_stats() -> ConstantStats;
+
+export extern proc vitte_constant_stats_reset();
+
+/// Kept for ABI compatibility with older bootstrap objects. The Vitte
+/// implementation no longer needs a C translation-unit anchor.
+export proc vitte_constant_translation_unit_anchor() {}
+
+proc constant_make_raw(kind: ConstantKind, low: usize, high: usize) -> Constant {
+    return Constant { kind: kind, as_: [low, high] };
+}
+
+proc constant_make_zeroed(kind: ConstantKind) -> Constant {
+    return constant_make_raw(kind, 0, 0);
+}
+
+export proc vitte_constant_result_succeeded(result: *const ConstantResult) -> bool {
+    return result != null and (*result).status == ConstantFoldStatus.Success and (*result).error == ConstantError.None;
+}
+
+export proc vitte_constant_result_failed(result: *const ConstantResult) -> bool {
+    return result != null and (*result).status == ConstantFoldStatus.Error;
+}
+
+export proc vitte_constant_result_is_not_constant(result: *const ConstantResult) -> bool {
+    return result != null and (*result).status == ConstantFoldStatus.NotConstant;
+}
+
+export proc vitte_constant_make_invalid() -> Constant {
+    return constant_make_raw(ConstantKind.Invalid, 0, 0);
+}
+
+export proc vitte_constant_make_poison() -> Constant {
+    return constant_make_raw(ConstantKind.Poison, 0, 0);
+}
+
+export proc vitte_constant_make_null() -> Constant {
+    return constant_make_raw(ConstantKind.Null, 0, 0);
+}
+
+export proc vitte_constant_make_bool(input: bool) -> Constant {
+    let mut value = constant_make_zeroed(ConstantKind.Bool);
+    copy(&mut value.as_[0] as *mut u8, &input as *const u8, sizeof(bool));
+    return value;
+}
+
+export proc vitte_constant_make_i8(input: i8) -> Constant {
+    let mut value = constant_make_zeroed(ConstantKind.I8);
+    copy(&mut value.as_[0] as *mut u8, &input as *const u8, sizeof(i8));
+    return value;
+}
+
+export proc vitte_constant_make_i16(input: i16) -> Constant {
+    let mut value = constant_make_zeroed(ConstantKind.I16);
+    copy(&mut value.as_[0] as *mut u8, &input as *const u8, sizeof(i16));
+    return value;
+}
+
+export proc vitte_constant_make_i32(input: i32) -> Constant {
+    let mut value = constant_make_zeroed(ConstantKind.I32);
+    copy(&mut value.as_[0] as *mut u8, &input as *const u8, sizeof(i32));
+    return value;
+}
+
+export proc vitte_constant_make_i64(input: i64) -> Constant {
+    let mut value = constant_make_zeroed(ConstantKind.I64);
+    copy(&mut value.as_[0] as *mut u8, &input as *const u8, sizeof(i64));
+    return value;
+}
+
+export proc vitte_constant_make_u8(input: u8) -> Constant {
+    let mut value = constant_make_zeroed(ConstantKind.U8);
+    copy(&mut value.as_[0] as *mut u8, &input as *const u8, sizeof(u8));
+    return value;
+}
+
+export proc vitte_constant_make_u16(input: u16) -> Constant {
+    let mut value = constant_make_zeroed(ConstantKind.U16);
+    copy(&mut value.as_[0] as *mut u8, &input as *const u8, sizeof(u16));
+    return value;
+}
+
+export proc vitte_constant_make_u32(input: u32) -> Constant {
+    let mut value = constant_make_zeroed(ConstantKind.U32);
+    copy(&mut value.as_[0] as *mut u8, &input as *const u8, sizeof(u32));
+    return value;
+}
+
+export proc vitte_constant_make_u64(input: u64) -> Constant {
+    let mut value = constant_make_zeroed(ConstantKind.U64);
+    copy(&mut value.as_[0] as *mut u8, &input as *const u8, sizeof(u64));
+    return value;
+}
+
+export proc vitte_constant_make_f32(input: f32) -> Constant {
+    let mut value = constant_make_zeroed(ConstantKind.F32);
+    copy(&mut value.as_[0] as *mut u8, &input as *const u8, sizeof(f32));
+    return value;
+}
+
+export proc vitte_constant_make_f64(input: f64) -> Constant {
+    let mut value = constant_make_zeroed(ConstantKind.F64);
+    copy(&mut value.as_[0] as *mut u8, &input as *const u8, sizeof(f64));
+    return value;
+}
+
+export proc vitte_constant_make_char(input: u32) -> Constant {
+    let mut value = constant_make_zeroed(ConstantKind.Char);
+    copy(&mut value.as_[0] as *mut u8, &input as *const u8, sizeof(u32));
+    return value;
+}
+
+export proc vitte_constant_make_string(data: *const u8, length: usize) -> Constant {
+    let mut value = constant_make_zeroed(ConstantKind.String);
+    copy(&mut value.as_[0] as *mut u8, &data as *const u8, sizeof(*const u8));
+    copy(&mut value.as_[1] as *mut u8, &length as *const u8, sizeof(usize));
+    return value;
+}
+
+export proc vitte_constant_make_success(value: Constant) -> ConstantResult {
+    return ConstantResult {
+        status: ConstantFoldStatus.Success,
+        error: ConstantError.None,
+        value: value
+    };
+}
+
+export proc vitte_constant_make_error(error: ConstantError) -> ConstantResult {
+    return ConstantResult {
+        status: ConstantFoldStatus.Error,
+        error: error,
+        value: vitte_constant_make_poison()
+    };
+}
+
+export proc vitte_constant_make_not_constant() -> ConstantResult {
+    return ConstantResult {
+        status: ConstantFoldStatus.NotConstant,
+        error: ConstantError.None,
+        value: vitte_constant_make_invalid()
+    };
+}

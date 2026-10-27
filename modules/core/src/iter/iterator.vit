@@ -1,0 +1,50 @@
+/// Itérateur emprunté sur une tranche, sans allocation.
+space core::iter::iterator;
+
+export form SliceIterator<T> {
+    source: &[T],
+    front: usize,
+    back: usize,
+}
+
+export proc slice_iterator<T>(source: &[T]) -> SliceIterator[T] {
+    return SliceIterator[T] {
+        source: source,
+        front: 0,
+        back: source.len(),
+    };
+}
+
+export proc iterator_is_empty<T>(iterator: &SliceIterator[T]) -> bool {
+    return iterator.front >= iterator.back;
+}
+
+export proc iterator_remaining<T>(iterator: &SliceIterator[T]) -> usize {
+    if iterator.front >= iterator.back { return 0; }
+    return iterator.back - iterator.front;
+}
+
+export proc iterator_next<T>(iterator: &mut SliceIterator[T]) -> ?T {
+    if iterator.front >= iterator.back { return null; }
+    let position: usize = iterator.front;
+    set iterator.front = iterator.front + 1;
+    return iterator.source[position];
+}
+
+export proc iterator_next_ref<T>(iterator: &mut SliceIterator[T]) -> ?&T {
+    if iterator.front >= iterator.back { return null; }
+    let position: usize = iterator.front;
+    set iterator.front = iterator.front + 1;
+    return &iterator.source[position];
+}
+
+export proc iterator_next_back<T>(iterator: &mut SliceIterator[T]) -> ?T {
+    if iterator.front >= iterator.back { return null; }
+    set iterator.back = iterator.back - 1;
+    return iterator.source[iterator.back];
+}
+
+export proc iterator_reset<T>(iterator: &mut SliceIterator[T]) {
+    set iterator.front = 0;
+    set iterator.back = iterator.source.len();
+}

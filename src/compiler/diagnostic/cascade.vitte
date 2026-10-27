@@ -1,0 +1,1848 @@
+/// Vitte Compiler
+/// src/diagnostic/cascade.vit
+///
+/// Diagnostic cascade engine.
+///
+/// This module is the Vitte-native equivalent of the former C cascade
+/// implementation.
+///
+/// Responsibilities:
+///
+/// - explicit causal relationships
+/// - conservative automatic cascade classification
+/// - primary/root diagnostic detection
+/// - cascade suppression
+/// - causal-root resolution
+/// - cycle protection
+/// - phase dependency analysis
+/// - source/span relationships
+/// - semantic relationship scoring
+/// - deterministic reclassification
+///
+/// Suppression never deletes a diagnostic.
+///
+/// Producers remain responsible for supplying the richest available
+/// structured information.
+
+space compiler::diagnostic::cascade;
+
+use compiler::diagnostic::diagnostic::{    Diagnostic,
+    DiagnosticBag,
+    DiagnosticOrigin,
+    DiagnosticSeverity,
+    bag_rebuild_counts,
+    diagnostic_bag_count
+};
+
+use compiler::api::error::{Status};
+use compiler::ast::ast::{    AstSpan,
+    ast_span_is_valid,
+};
+
+const DIAGNOSTIC_INDEX_NONE: usize = 18446744073709551615 as usize;
+
+const CASCADE_SCORE_MINIMUM: u64 = 70;
+
+const CASCADE_SCORE_SAME_SPAN: u64 = 120;
+const CASCADE_SCORE_CONTAINS: u64 = 70;
+const CASCADE_SCORE_OVERLAP: u64 = 60;
+
+const CASCADE_SCORE_SAME_SYMBOL: u64 = 80;
+const CASCADE_SCORE_TYPE_RELATION: u64 = 70;
+const CASCADE_SCORE_SAME_CONTEXT: u64 = 35;
+const CASCADE_SCORE_SAME_COMPILATION_CONTEXT: u64 = 25;
+const CASCADE_SCORE_SAME_CODE: u64 = 12;
+
+const CASCADE_SCORE_SAME_PHASE: u64 = 20;
+const CASCADE_SCORE_ADJACENT_PHASE: u64 = 14;
+const CASCADE_SCORE_LATER_PHASE: u64 = 6;
+
+const CASCADE_SCORE_NEAR_4: u64 = 10;
+const CASCADE_SCORE_NEAR_16: u64 = 6;
+const CASCADE_SCORE_NEAR_64: u64 = 3;
+
+const CASCADE_PENALTY_DIFFERENT_SOURCE: u64 = 200;
+const CASCADE_PENALTY_DIFFERENT_SYMBOL: u64 = 20;
+const CASCADE_PENALTY_UNRELATED_CONTEXT: u64 = 10;
+
+form CascadeCandidate {
+    parent_index: usize,
+    root_index: usize,
+
+    score: u64,
+
+    valid: bool,
+
+    same_source: bool,
+    strong_location: bool,
+    strong_semantic: bool,
+    same_symbol: bool,
+    same_context: bool,
+    type_relation: bool,
+}
+
+proc cascade_candidate_empty() -> CascadeCandidate {
+    return CascadeCandidate {
+        parent_index: DIAGNOSTIC_INDEX_NONE,
+        root_index: DIAGNOSTIC_INDEX_NONE,
+
+        score: 0,
+
+        valid: false,
+
+        same_source: false,
+        strong_location: false,
+        strong_semantic: false,
+        same_symbol: false,
+        same_context: false,
+        type_relation: false,
+    };
+}
+
+proc text_present(text: string) -> bool {
+    return text.length != 0;
+}
+
+proc text_equal(left: string, right: string) -> bool {
+    if not text_present(left) or
+       not text_present(right) {
+        return false;
+    }
+
+    return left == right;
+}
+
+proc diagnostic_is_error(
+    diagnostic_value: &Diagnostic,
+) -> bool {
+    return
+        diagnostic_value.severity == DiagnosticSeverity.Error or
+        diagnostic_value.severity == DiagnosticSeverity.Fatal;
+}
+
+proc index_valid(
+    bag: &DiagnosticBag,
+    index: usize,
+) -> bool {
+    return
+        index != DIAGNOSTIC_INDEX_NONE and
+        index < diagnostic_bag_count(bag);
+}
+
+proc saturating_add(
+    left: u64,
+    right: u64,
+) -> u64 {
+    if left > 18446744073709551615 as u64 - right {
+        return 18446744073709551615 as u64;
+    }
+
+    return left + right;
+}
+
+proc saturating_sub(
+    left: u64,
+    right: u64,
+) -> u64 {
+    if right >= left {
+        return 0;
+    }
+
+    return left - right;
+}
+
+/// -------------------------------------------------------------------------
+/// Phase ordering
+/// -------------------------------------------------------------------------
+
+proc phase_rank(
+    origin: DiagnosticOrigin,
+) -> u64 {
+    match origin {
+        DiagnosticOrigin.Io => {
+            return 10;
+        },
+
+        DiagnosticOrigin.Scanner => {
+            return 15;
+        },
+
+        DiagnosticOrigin.Lexer => {
+            return 20;
+        },
+
+        DiagnosticOrigin.Parser => {
+            return 30;
+        },
+
+        DiagnosticOrigin.Import => {
+            return 40;
+        },
+
+        DiagnosticOrigin.NameResolution => {
+            return 50;
+        },
+
+        DiagnosticOrigin.TypeCheck => {
+            return 60;
+        },
+
+        DiagnosticOrigin.Contract => {
+            return 63;
+        },
+
+        DiagnosticOrigin.ConstantEval => {
+            return 65;
+        },
+
+        DiagnosticOrigin.Hir => {
+            return 70;
+        },
+
+        DiagnosticOrigin.Ir => {
+            return 80;
+        },
+
+        DiagnosticOrigin.Codegen => {
+            return 85;
+        },
+
+        DiagnosticOrigin.C17Backend => {
+            return 90;
+        },
+
+        DiagnosticOrigin.CCompiler => {
+            return 100;
+        },
+
+        DiagnosticOrigin.Linker => {
+            return 110;
+        },
+
+        DiagnosticOrigin.Runtime => {
+            return 120;
+        },
+
+        DiagnosticOrigin.Driver => {
+            return 130;
+        },
+
+        DiagnosticOrigin.Internal => {
+            return 140;
+        },
+
+        DiagnosticOrigin.Unknown => {
+            return 0;
+        },
+    }
+}
+
+proc phase_is_same_or_later(
+    root: DiagnosticOrigin,
+    derived: DiagnosticOrigin,
+) -> bool {
+    let root_rank: u64 = phase_rank(root);
+    let derived_rank: u64 = phase_rank(derived);
+
+    if root_rank == 0 or
+       derived_rank == 0 {
+        return false;
+    }
+
+    return derived_rank >= root_rank;
+}
+
+proc phase_is_adjacent(
+    root: DiagnosticOrigin,
+    derived: DiagnosticOrigin,
+) -> bool {
+    let root_rank: u64 = phase_rank(root);
+    let derived_rank: u64 = phase_rank(derived);
+
+    if root_rank == 0 or
+       derived_rank == 0 or
+       derived_rank < root_rank {
+        return false;
+    }
+
+    return derived_rank - root_rank <= 15;
+}
+
+/// -------------------------------------------------------------------------
+/// Phase dependency
+/// -------------------------------------------------------------------------
+
+proc phase_dependency(
+    root: DiagnosticOrigin,
+    derived: DiagnosticOrigin,
+) -> bool {
+    if root == DiagnosticOrigin.Unknown or
+       derived == DiagnosticOrigin.Unknown {
+        return false;
+    }
+
+    if root == derived {
+        return true;
+    }
+
+    if root == DiagnosticOrigin.Internal or
+       root == DiagnosticOrigin.Driver or
+       root == DiagnosticOrigin.Runtime {
+        return false;
+    }
+
+    match root {
+        DiagnosticOrigin.Io => {
+            return
+                derived == DiagnosticOrigin.Lexer or
+                derived == DiagnosticOrigin.Parser or
+                derived == DiagnosticOrigin.Import;
+        },
+
+        DiagnosticOrigin.Scanner => {
+            return
+                derived == DiagnosticOrigin.Lexer or
+                derived == DiagnosticOrigin.Parser or
+                derived == DiagnosticOrigin.NameResolution or
+                derived == DiagnosticOrigin.TypeCheck or
+                derived == DiagnosticOrigin.ConstantEval or
+                derived == DiagnosticOrigin.Hir or
+                derived == DiagnosticOrigin.Ir or
+                derived == DiagnosticOrigin.Codegen or
+                derived == DiagnosticOrigin.C17Backend or
+                derived == DiagnosticOrigin.CCompiler;
+        },
+
+        DiagnosticOrigin.Lexer => {
+            return
+                derived == DiagnosticOrigin.Parser or
+                derived == DiagnosticOrigin.NameResolution or
+                derived == DiagnosticOrigin.TypeCheck or
+                derived == DiagnosticOrigin.ConstantEval or
+                derived == DiagnosticOrigin.Hir or
+                derived == DiagnosticOrigin.Ir or
+                derived == DiagnosticOrigin.C17Backend or
+                derived == DiagnosticOrigin.CCompiler;
+        },
+
+        DiagnosticOrigin.Parser => {
+            return
+                derived == DiagnosticOrigin.NameResolution or
+                derived == DiagnosticOrigin.TypeCheck or
+                derived == DiagnosticOrigin.Contract or
+                derived == DiagnosticOrigin.ConstantEval or
+                derived == DiagnosticOrigin.Hir or
+                derived == DiagnosticOrigin.Ir or
+                derived == DiagnosticOrigin.C17Backend or
+                derived == DiagnosticOrigin.CCompiler;
+        },
+
+        DiagnosticOrigin.Import => {
+            return
+                derived == DiagnosticOrigin.NameResolution or
+                derived == DiagnosticOrigin.TypeCheck or
+                derived == DiagnosticOrigin.Contract or
+                derived == DiagnosticOrigin.ConstantEval or
+                derived == DiagnosticOrigin.Hir or
+                derived == DiagnosticOrigin.Ir or
+                derived == DiagnosticOrigin.C17Backend or
+                derived == DiagnosticOrigin.CCompiler or
+                derived == DiagnosticOrigin.Linker;
+        },
+
+        DiagnosticOrigin.NameResolution => {
+            return
+                derived == DiagnosticOrigin.TypeCheck or
+                derived == DiagnosticOrigin.Contract or
+                derived == DiagnosticOrigin.ConstantEval or
+                derived == DiagnosticOrigin.Hir or
+                derived == DiagnosticOrigin.Ir or
+                derived == DiagnosticOrigin.C17Backend or
+                derived == DiagnosticOrigin.CCompiler;
+        },
+
+        DiagnosticOrigin.TypeCheck => {
+            return
+                derived == DiagnosticOrigin.Contract or
+                derived == DiagnosticOrigin.ConstantEval or
+                derived == DiagnosticOrigin.Hir or
+                derived == DiagnosticOrigin.Ir or
+                derived == DiagnosticOrigin.C17Backend or
+                derived == DiagnosticOrigin.CCompiler;
+        },
+
+        DiagnosticOrigin.Contract => {
+            return
+                derived == DiagnosticOrigin.ConstantEval or
+                derived == DiagnosticOrigin.Hir or
+                derived == DiagnosticOrigin.Ir or
+                derived == DiagnosticOrigin.C17Backend or
+                derived == DiagnosticOrigin.CCompiler;
+        },
+
+        DiagnosticOrigin.ConstantEval => {
+            return
+                derived == DiagnosticOrigin.Hir or
+                derived == DiagnosticOrigin.Ir or
+                derived == DiagnosticOrigin.C17Backend or
+                derived == DiagnosticOrigin.CCompiler;
+        },
+
+        DiagnosticOrigin.Hir => {
+            return
+                derived == DiagnosticOrigin.Ir or
+                derived == DiagnosticOrigin.C17Backend or
+                derived == DiagnosticOrigin.CCompiler;
+        },
+
+        DiagnosticOrigin.Ir => {
+            return
+                derived == DiagnosticOrigin.Codegen or
+                derived == DiagnosticOrigin.C17Backend or
+                derived == DiagnosticOrigin.CCompiler;
+        },
+
+        DiagnosticOrigin.Codegen => {
+            return
+                derived == DiagnosticOrigin.C17Backend or
+                derived == DiagnosticOrigin.CCompiler;
+        },
+
+        DiagnosticOrigin.C17Backend => {
+            return
+                derived == DiagnosticOrigin.CCompiler or
+                derived == DiagnosticOrigin.Linker;
+        },
+
+        DiagnosticOrigin.CCompiler => {
+            return derived == DiagnosticOrigin.Linker;
+        },
+
+        DiagnosticOrigin.Unknown => {
+            return false;
+        },
+
+        DiagnosticOrigin.Driver => {
+            return false;
+        },
+
+        DiagnosticOrigin.Runtime => {
+            return false;
+        },
+
+        DiagnosticOrigin.Internal => {
+            return false;
+        },
+    }
+}
+
+/// -------------------------------------------------------------------------
+/// Source identity
+/// -------------------------------------------------------------------------
+
+proc same_source(
+    left: &Diagnostic,
+    right: &Diagnostic,
+) -> bool {
+    if not left.has_span or
+       not right.has_span {
+        return false;
+    }
+
+    if left.source_id != 0 and
+       right.source_id != 0 {
+        return left.source_id == right.source_id;
+    }
+
+    return text_equal(
+        left.source_name,
+        right.source_name,
+    );
+}
+
+/// -------------------------------------------------------------------------
+/// Span relationships
+/// -------------------------------------------------------------------------
+
+proc same_span(
+    left: &Diagnostic,
+    right: &Diagnostic,
+) -> bool {
+    if not same_source(left, right) {
+        return false;
+    }
+
+    return
+        left.start_offset == right.start_offset and
+        left.end_offset == right.end_offset;
+}
+
+proc contains(
+    outer: &Diagnostic,
+    inner: &Diagnostic,
+) -> bool {
+    if not same_source(outer, inner) {
+        return false;
+    }
+
+    if inner.start_offset == inner.end_offset {
+        return
+            inner.start_offset >= outer.start_offset and
+            inner.start_offset <= outer.end_offset;
+    }
+
+    return
+        outer.start_offset <= inner.start_offset and
+        outer.end_offset >= inner.end_offset;
+}
+
+proc overlap(
+    left: &Diagnostic,
+    right: &Diagnostic,
+) -> bool {
+    if not same_source(left, right) {
+        return false;
+    }
+
+    let left_empty: bool =
+        left.start_offset == left.end_offset;
+
+    let right_empty: bool =
+        right.start_offset == right.end_offset;
+
+    if left_empty and right_empty {
+        return left.start_offset == right.start_offset;
+    }
+
+    if left_empty {
+        return
+            left.start_offset >= right.start_offset and
+            left.start_offset <= right.end_offset;
+    }
+
+    if right_empty {
+        return
+            right.start_offset >= left.start_offset and
+            right.start_offset <= left.end_offset;
+    }
+
+    return
+        left.start_offset < right.end_offset and
+        right.start_offset < left.end_offset;
+}
+
+proc distance(
+    left: &Diagnostic,
+    right: &Diagnostic,
+) -> usize {
+    if not same_source(left, right) {
+        return 18446744073709551615 as usize;
+    }
+
+    if overlap(left, right) {
+        return 0;
+    }
+
+    if left.end_offset <= right.start_offset {
+        return right.start_offset - left.end_offset;
+    }
+
+    if right.end_offset <= left.start_offset {
+        return left.start_offset - right.end_offset;
+    }
+
+    return 0;
+}
+
+/// -------------------------------------------------------------------------
+/// Semantic relationships
+/// -------------------------------------------------------------------------
+
+proc same_symbol(
+    left: &Diagnostic,
+    right: &Diagnostic,
+) -> bool {
+    return text_equal(
+        left.symbol,
+        right.symbol,
+    );
+}
+
+proc same_context(
+    left: &Diagnostic,
+    right: &Diagnostic,
+) -> bool {
+    return text_equal(
+        left.context,
+        right.context,
+    );
+}
+
+proc same_code(
+    left: &Diagnostic,
+    right: &Diagnostic,
+) -> bool {
+    if text_equal(
+        left.short_code,
+        right.short_code,
+    ) {
+        return true;
+    }
+
+    return text_equal(
+        left.code,
+        right.code,
+    );
+}
+
+proc same_compilation_context(
+    left: &Diagnostic,
+    right: &Diagnostic,
+) -> bool {
+    let mut any: bool = false;
+    let mut mismatch: bool = false;
+
+    if text_present(left.package) and
+       text_present(right.package) {
+        set any = true;
+
+        if not text_equal(
+            left.package,
+            right.package,
+        ) {
+            set mismatch = true;
+        }
+    }
+
+    if text_present(left.module) and
+       text_present(right.module) {
+        set any = true;
+
+        if not text_equal(
+            left.module,
+            right.module,
+        ) {
+            set mismatch = true;
+        }
+    }
+
+    if text_present(left.procedure) and
+       text_present(right.procedure) {
+        set any = true;
+
+        if not text_equal(
+            left.procedure,
+            right.procedure,
+        ) {
+            set mismatch = true;
+        }
+    }
+
+    return any and not mismatch;
+}
+
+proc type_relation(
+    candidate: &Diagnostic,
+    derived: &Diagnostic,
+) -> bool {
+    if text_equal(
+           candidate.expected_type,
+           derived.expected_type,
+       ) and
+       text_equal(
+           candidate.actual_type,
+           derived.actual_type,
+       ) {
+        return true;
+    }
+
+    if text_equal(
+        candidate.actual_type,
+        derived.actual_type,
+    ) {
+        return true;
+    }
+
+    if text_equal(
+        candidate.actual_type,
+        derived.expected_type,
+    ) {
+        return true;
+    }
+
+    if text_equal(
+        candidate.expected_type,
+        derived.expected_type,
+    ) {
+        return true;
+    }
+
+    return false;
+}
+
+/// -------------------------------------------------------------------------
+/// Root graph
+/// -------------------------------------------------------------------------
+
+proc resolve_root(
+    bag: &DiagnosticBag,
+    index: usize,
+) -> usize {
+    if not index_valid(bag, index) {
+        return DIAGNOSTIC_INDEX_NONE;
+    }
+
+    let mut current: usize = index;
+    let mut steps: usize = 0;
+
+    while steps <= diagnostic_bag_count(bag) {
+        if not index_valid(
+            bag,
+            current,
+        ) {
+            return DIAGNOSTIC_INDEX_NONE;
+        }
+
+        let diagnostic_value: &Diagnostic =
+            &bag.storage[current];
+
+        let root: usize =
+            diagnostic_value.root_diagnostic;
+
+        if root == DIAGNOSTIC_INDEX_NONE {
+            return current;
+        }
+
+        if root == current {
+            return current;
+        }
+
+        if root >= diagnostic_bag_count(bag) {
+            return DIAGNOSTIC_INDEX_NONE;
+        }
+
+        if root > current {
+            return DIAGNOSTIC_INDEX_NONE;
+        }
+
+        set current = root;
+        set steps = steps + 1;
+    }
+
+    return DIAGNOSTIC_INDEX_NONE;
+}
+
+proc would_cycle(
+    bag: &DiagnosticBag,
+    child_index: usize,
+    parent_index: usize,
+) -> bool {
+    if not index_valid(
+           bag,
+           child_index,
+       ) or
+       not index_valid(
+           bag,
+           parent_index,
+       ) {
+        return true;
+    }
+
+    if child_index == parent_index {
+        return true;
+    }
+
+    let mut current: usize =
+        parent_index;
+
+    let mut steps: usize = 0;
+
+    while steps <= diagnostic_bag_count(bag) {
+        if current == child_index {
+            return true;
+        }
+
+        if not index_valid(
+            bag,
+            current,
+        ) {
+            return true;
+        }
+
+        let diagnostic_value: &Diagnostic =
+            &bag.storage[current];
+
+        let parent: usize =
+            diagnostic_value.parent_diagnostic;
+
+        if parent == DIAGNOSTIC_INDEX_NONE {
+            return false;
+        }
+
+        if parent == current {
+            return true;
+        }
+
+        if parent >= diagnostic_bag_count(bag) {
+            return true;
+        }
+
+        set current = parent;
+        set steps = steps + 1;
+    }
+
+    return true;
+}
+
+/// -------------------------------------------------------------------------
+/// Explicit relationship validation
+/// -------------------------------------------------------------------------
+
+proc has_explicit_relation(
+    bag: &DiagnosticBag,
+    child_index: usize,
+) -> bool {
+    if not index_valid(
+        bag,
+        child_index,
+    ) {
+        return false;
+    }
+
+    let diagnostic_value: &Diagnostic =
+        &bag.storage[child_index];
+
+    let parent: usize =
+        diagnostic_value.parent_diagnostic;
+
+    let root: usize =
+        diagnostic_value.root_diagnostic;
+
+    if not diagnostic_value.is_cascade or
+       parent == DIAGNOSTIC_INDEX_NONE {
+        return false;
+    }
+
+    if parent >= child_index {
+        return false;
+    }
+
+    if not index_valid(
+        bag,
+        parent,
+    ) {
+        return false;
+    }
+
+    if root != DIAGNOSTIC_INDEX_NONE and
+       not index_valid(
+           bag,
+           root,
+       ) {
+        return false;
+    }
+
+    if would_cycle(
+        bag,
+        child_index,
+        parent,
+    ) {
+        return false;
+    }
+
+    return true;
+}
+
+/// -------------------------------------------------------------------------
+/// Scoring
+/// -------------------------------------------------------------------------
+
+proc cascade_score(
+    candidate: &Diagnostic,
+    derived: &Diagnostic,
+    metadata: &mut CascadeCandidate,
+) -> u64 {
+    set metadata.parent_index = DIAGNOSTIC_INDEX_NONE;
+    set metadata.root_index = DIAGNOSTIC_INDEX_NONE;
+    set metadata.score = 0;
+    set metadata.valid = false;
+    set metadata.same_source = false;
+    set metadata.strong_location = false;
+    set metadata.strong_semantic = false;
+    set metadata.same_symbol = false;
+    set metadata.same_context = false;
+    set metadata.type_relation = false;
+
+    if not diagnostic_is_error(candidate) or
+       not diagnostic_is_error(derived) {
+        return 0;
+    }
+
+    if not phase_is_same_or_later(
+        candidate.origin,
+        derived.origin,
+    ) {
+        return 0;
+    }
+
+    if not phase_dependency(
+        candidate.origin,
+        derived.origin,
+    ) {
+        return 0;
+    }
+
+    let same_source_value: bool =
+        same_source(
+            candidate,
+            derived,
+        );
+
+    let same_symbol_value: bool =
+        same_symbol(
+            candidate,
+            derived,
+        );
+
+    let same_context_value: bool =
+        same_context(
+            candidate,
+            derived,
+        );
+
+    let same_compilation_context_value: bool =
+        same_compilation_context(
+            candidate,
+            derived,
+        );
+
+    let type_relation_value: bool =
+        type_relation(
+            candidate,
+            derived,
+        );
+
+    let mut strong_location: bool =
+        false;
+
+    let mut strong_semantic: bool =
+        false;
+
+    let mut score: u64 = 0;
+
+    if same_source_value {
+        if same_span(
+            candidate,
+            derived,
+        ) {
+            set score =
+                saturating_add(
+                    score,
+                    CASCADE_SCORE_SAME_SPAN,
+                );
+
+            set strong_location = true;
+        } else if contains(
+                      candidate,
+                      derived,
+                  ) or
+                  contains(
+                      derived,
+                      candidate,
+                  ) {
+            set score =
+                saturating_add(
+                    score,
+                    CASCADE_SCORE_CONTAINS,
+                );
+
+            set strong_location = true;
+        } else if overlap(
+                      candidate,
+                      derived,
+                  ) {
+            set score =
+                saturating_add(
+                    score,
+                    CASCADE_SCORE_OVERLAP,
+                );
+
+            set strong_location = true;
+        }
+    }
+
+    if same_symbol_value {
+        set score =
+            saturating_add(
+                score,
+                CASCADE_SCORE_SAME_SYMBOL,
+            );
+
+        set strong_semantic = true;
+    }
+
+    if type_relation_value {
+        set score =
+            saturating_add(
+                score,
+                CASCADE_SCORE_TYPE_RELATION,
+            );
+
+        set strong_semantic = true;
+    }
+
+    if same_context_value {
+        set score =
+            saturating_add(
+                score,
+                CASCADE_SCORE_SAME_CONTEXT,
+            );
+
+        set strong_semantic = true;
+    }
+
+    if same_compilation_context_value {
+        set score =
+            saturating_add(
+                score,
+                CASCADE_SCORE_SAME_COMPILATION_CONTEXT,
+            );
+    }
+
+    if same_code(
+        candidate,
+        derived,
+    ) {
+        set score =
+            saturating_add(
+                score,
+                CASCADE_SCORE_SAME_CODE,
+            );
+    }
+
+    if candidate.origin == derived.origin {
+        set score =
+            saturating_add(
+                score,
+                CASCADE_SCORE_SAME_PHASE,
+            );
+    } else if phase_is_adjacent(
+                      candidate.origin,
+                      derived.origin,
+                  ) {
+        set score =
+            saturating_add(
+                score,
+                CASCADE_SCORE_ADJACENT_PHASE,
+            );
+    } else {
+        set score =
+            saturating_add(
+                score,
+                CASCADE_SCORE_LATER_PHASE,
+            );
+    }
+
+    if same_source_value and
+       not strong_location and
+       strong_semantic {
+        let span_distance: usize =
+            distance(
+                candidate,
+                derived,
+            );
+
+        if span_distance <= 4 {
+            set score =
+                saturating_add(
+                    score,
+                    CASCADE_SCORE_NEAR_4,
+                );
+        } else if span_distance <= 16 {
+            set score =
+                saturating_add(
+                    score,
+                    CASCADE_SCORE_NEAR_16,
+                );
+        } else if span_distance <= 64 {
+            set score =
+                saturating_add(
+                    score,
+                    CASCADE_SCORE_NEAR_64,
+                );
+        }
+    }
+
+    if candidate.has_span and
+       derived.has_span and
+       not same_source_value {
+        set score =
+            saturating_sub(
+                score,
+                CASCADE_PENALTY_DIFFERENT_SOURCE,
+            );
+    }
+
+    if text_present(candidate.symbol) and
+       text_present(derived.symbol) and
+       not same_symbol_value {
+        set score =
+            saturating_sub(
+                score,
+                CASCADE_PENALTY_DIFFERENT_SYMBOL,
+            );
+    }
+
+    if text_present(candidate.context) and
+       text_present(derived.context) and
+       not same_context_value {
+        set score =
+            saturating_sub(
+                score,
+                CASCADE_PENALTY_UNRELATED_CONTEXT,
+            );
+    }
+
+    if not strong_location and
+       not strong_semantic {
+        return 0;
+    }
+
+    set metadata.same_source =
+        same_source_value;
+
+    set metadata.strong_location =
+        strong_location;
+
+    set metadata.strong_semantic =
+        strong_semantic;
+
+    set metadata.same_symbol =
+        same_symbol_value;
+
+    set metadata.same_context =
+        same_context_value;
+
+    set metadata.type_relation =
+        type_relation_value;
+
+    return score;
+}
+
+/// -------------------------------------------------------------------------
+/// Candidate ordering
+/// -------------------------------------------------------------------------
+
+proc candidate_is_better(
+    candidate: &CascadeCandidate,
+    best: &CascadeCandidate,
+) -> bool {
+    if not candidate.valid {
+        return false;
+    }
+
+    if not best.valid {
+        return true;
+    }
+
+    if candidate.score != best.score {
+        return candidate.score > best.score;
+    }
+
+    if candidate.strong_semantic !=
+       best.strong_semantic {
+        return candidate.strong_semantic;
+    }
+
+    if candidate.same_symbol !=
+       best.same_symbol {
+        return candidate.same_symbol;
+    }
+
+    if candidate.type_relation !=
+       best.type_relation {
+        return candidate.type_relation;
+    }
+
+    if candidate.same_context !=
+       best.same_context {
+        return candidate.same_context;
+    }
+
+    if candidate.parent_index !=
+       best.parent_index {
+        return
+            candidate.parent_index >
+            best.parent_index;
+    }
+
+    return
+        candidate.root_index <
+        best.root_index;
+}
+
+proc find_best_parent(
+    bag: &DiagnosticBag,
+    derived_index: usize,
+) -> CascadeCandidate {
+    let mut best: CascadeCandidate =
+        cascade_candidate_empty();
+
+    if not index_valid(
+        bag,
+        derived_index,
+    ) {
+        return best;
+    }
+
+    let mut index: usize = 0;
+
+    while index < derived_index {
+        let candidate: &Diagnostic =
+            &bag.storage[index];
+
+        let derived: &Diagnostic =
+            &bag.storage[derived_index];
+
+        if diagnostic_is_error(candidate) {
+            let mut eligible: bool = true;
+
+            if candidate.is_suppressed and
+               not candidate.is_cascade {
+                set eligible = false;
+            }
+
+            if eligible and
+               candidate.is_cascade and
+               resolve_root(
+                   bag,
+                   index,
+               ) == DIAGNOSTIC_INDEX_NONE {
+                set eligible = false;
+            }
+
+            if eligible {
+                let mut current: CascadeCandidate =
+                    cascade_candidate_empty();
+
+                set current.score =
+                    cascade_score(
+                        candidate,
+                        derived,
+                        &mut current,
+                    );
+
+                if current.score >=
+                   CASCADE_SCORE_MINIMUM {
+                    set current.root_index =
+                        resolve_root(
+                            bag,
+                            index,
+                        );
+
+                    if current.root_index !=
+                           DIAGNOSTIC_INDEX_NONE and
+                       current.root_index <
+                           derived_index and
+                       not would_cycle(
+                           bag,
+                           derived_index,
+                           index,
+                       ) {
+                        set current.parent_index =
+                            index;
+
+                        set current.valid =
+                            true;
+
+                        if candidate_is_better(
+                            &current,
+                            &best,
+                        ) {
+                            set best = current;
+                        }
+                    }
+                }
+            }
+        }
+
+        set index = index + 1;
+    }
+
+    return best;
+}
+
+/// -------------------------------------------------------------------------
+/// State mutation
+/// -------------------------------------------------------------------------
+
+proc mark_primary(
+    diagnostic_value: &mut Diagnostic,
+    index: usize,
+) {
+    set diagnostic_value.parent_diagnostic =
+        DIAGNOSTIC_INDEX_NONE;
+
+    set diagnostic_value.root_diagnostic =
+        index;
+
+    set diagnostic_value.is_primary =
+        true;
+
+    set diagnostic_value.is_cascade =
+        false;
+}
+
+proc mark_derived(
+    diagnostic_value: &mut Diagnostic,
+    parent_index: usize,
+    root_index: usize,
+) {
+    set diagnostic_value.parent_diagnostic =
+        parent_index;
+
+    set diagnostic_value.root_diagnostic =
+        root_index;
+
+    set diagnostic_value.is_primary =
+        false;
+
+    set diagnostic_value.is_cascade =
+        true;
+}
+
+proc suppress(
+    bag: &mut DiagnosticBag,
+    diagnostic_index: usize,
+) {
+    if diagnostic_index >= diagnostic_bag_count(bag) {
+        return;
+    }
+
+    if bag.storage[diagnostic_index].is_suppressed {
+        return;
+    }
+
+    set bag.storage[diagnostic_index].is_suppressed =
+        true;
+
+    if bag.counts.suppressed_count != 18446744073709551615 as usize {
+        set bag.counts.suppressed_count =
+            bag.counts.suppressed_count + 1;
+    }
+}
+
+proc unsuppress(
+    bag: &mut DiagnosticBag,
+    diagnostic_index: usize,
+) {
+    if diagnostic_index >= diagnostic_bag_count(bag) {
+        return;
+    }
+
+    if not bag.storage[diagnostic_index].is_suppressed {
+        return;
+    }
+
+    set bag.storage[diagnostic_index].is_suppressed =
+        false;
+
+    if bag.counts.suppressed_count != 0 {
+        set bag.counts.suppressed_count =
+            bag.counts.suppressed_count - 1;
+    }
+}
+
+/// -------------------------------------------------------------------------
+/// Explicit causal API
+/// -------------------------------------------------------------------------
+
+export proc cascade_set_last_parent(
+    bag: &mut DiagnosticBag,
+    parent_index: usize,
+) -> Status {
+    if not bag.initialized or
+       diagnostic_bag_count(bag) == 0 {
+        return Status.ErrorInvalidState;
+    }
+
+    let child_index: usize =
+        diagnostic_bag_count(bag) - 1;
+
+    if parent_index >= child_index {
+        return Status.ErrorInvalidArgument;
+    }
+
+    if not index_valid(
+        bag,
+        parent_index,
+    ) {
+        return Status.ErrorInvalidArgument;
+    }
+
+    if would_cycle(
+        bag,
+        child_index,
+        parent_index,
+    ) {
+        return Status.ErrorInvalidArgument;
+    }
+
+    let root_index: usize =
+        resolve_root(
+            bag,
+            parent_index,
+        );
+
+    if root_index == DIAGNOSTIC_INDEX_NONE {
+        return Status.ErrorInvalidState;
+    }
+
+    if root_index >= child_index {
+        return Status.ErrorInvalidState;
+    }
+
+    let mut child = bag.storage[child_index];
+    mark_derived(
+        &mut child,
+        parent_index,
+        root_index,
+    );
+    set bag.storage[child_index] = child;
+    bag_rebuild_counts(bag);
+
+    return Status.Ok;
+}
+
+export proc cascade_mark_last(
+    bag: &mut DiagnosticBag,
+    root_index: usize,
+) -> Status {
+    if not bag.initialized or
+       diagnostic_bag_count(bag) == 0 {
+        return Status.ErrorInvalidState;
+    }
+
+    let child_index: usize =
+        diagnostic_bag_count(bag) - 1;
+
+    if root_index >= child_index {
+        return Status.ErrorInvalidArgument;
+    }
+
+    if not index_valid(
+        bag,
+        root_index,
+    ) {
+        return Status.ErrorInvalidArgument;
+    }
+
+    if would_cycle(
+        bag,
+        child_index,
+        root_index,
+    ) {
+        return Status.ErrorInvalidArgument;
+    }
+
+    let resolved_root: usize =
+        resolve_root(
+            bag,
+            root_index,
+        );
+
+    if resolved_root ==
+       DIAGNOSTIC_INDEX_NONE {
+        return Status.ErrorInvalidState;
+    }
+
+    let mut child = bag.storage[child_index];
+    mark_derived(
+        &mut child,
+        root_index,
+        resolved_root,
+    );
+    set bag.storage[child_index] = child;
+    bag_rebuild_counts(bag);
+
+    return Status.Ok;
+}
+
+export proc cascade_mark_last_suppressed(
+    bag: &mut DiagnosticBag,
+) -> Status {
+    if not bag.initialized or
+       diagnostic_bag_count(bag) == 0 {
+        return Status.ErrorInvalidState;
+    }
+
+    suppress(
+        bag,
+        diagnostic_bag_count(bag) - 1,
+    );
+
+    return Status.Ok;
+}
+
+/// -------------------------------------------------------------------------
+/// Pre-emission suppression
+/// -------------------------------------------------------------------------
+
+proc span_matches_diagnostic(
+    diagnostic_value: &Diagnostic,
+    span: &AstSpan,
+) -> bool {
+    if not diagnostic_value.has_span {
+        return false;
+    }
+
+    let mut same_source_value: bool =
+        false;
+
+    if diagnostic_value.source_id != 0 and
+       span.source_id != 0 {
+        set same_source_value =
+            diagnostic_value.source_id ==
+            span.source_id;
+    } else if text_present(
+                  diagnostic_value.source_name,
+              ) and
+              text_present(
+                  span.source_name,
+              ) {
+        set same_source_value =
+            diagnostic_value.source_name ==
+            span.source_name;
+    }
+
+    if not same_source_value {
+        return false;
+    }
+
+    let diagnostic_empty: bool =
+        diagnostic_value.start_offset ==
+        diagnostic_value.end_offset;
+
+    let span_empty: bool =
+        span.start_offset ==
+        span.end_offset;
+
+    if diagnostic_empty and
+       span_empty {
+        return
+            diagnostic_value.start_offset ==
+            span.start_offset;
+    }
+
+    if diagnostic_empty {
+        return
+            diagnostic_value.start_offset >=
+                span.start_offset and
+            diagnostic_value.start_offset <=
+                span.end_offset;
+    }
+
+    if span_empty {
+        return
+            span.start_offset >=
+                diagnostic_value.start_offset and
+            span.start_offset <=
+                diagnostic_value.end_offset;
+    }
+
+    return
+        diagnostic_value.start_offset <
+            span.end_offset and
+        span.start_offset <
+            diagnostic_value.end_offset;
+}
+
+export proc cascade_should_suppress(
+    bag: &DiagnosticBag,
+    phase: DiagnosticOrigin,
+    span: &AstSpan,
+) -> bool {
+    if not bag.initialized or
+       not ast_span_is_valid(span) or
+       phase == DiagnosticOrigin.Unknown {
+        return false;
+    }
+
+    let mut index: usize =
+        diagnostic_bag_count(bag);
+
+    while index != 0 {
+        set index = index - 1;
+
+        let root: &Diagnostic =
+            &bag.storage[index];
+
+        if diagnostic_is_error(root) and
+           not root.is_suppressed and
+           not root.is_cascade and
+           root.is_primary and
+           root.has_span and
+           phase_dependency(
+               root.origin,
+               phase,
+           ) and
+           phase_is_same_or_later(
+               root.origin,
+               phase,
+           ) and
+           span_matches_diagnostic(
+               root,
+               span,
+           ) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/// -------------------------------------------------------------------------
+/// Automatic classification
+/// -------------------------------------------------------------------------
+
+proc classify_one(
+    bag: &mut DiagnosticBag,
+    index: usize,
+    suppress_derived: bool,
+) -> Status {
+    if not index_valid(
+        bag,
+        index,
+    ) {
+        return Status.ErrorInvalidArgument;
+    }
+
+    if not diagnostic_is_error(
+        &bag.storage[index],
+    ) {
+        return Status.Ok;
+    }
+
+    if has_explicit_relation(
+        bag,
+        index,
+    ) {
+        if suppress_derived {
+            suppress(
+                bag,
+                index,
+            );
+        } else {
+            unsuppress(
+                bag,
+                index,
+            );
+        }
+
+        return Status.Ok;
+    }
+
+    let parent: CascadeCandidate =
+        find_best_parent(
+            bag,
+            index,
+        );
+
+    if not parent.valid {
+        let mut diagnostic_value = bag.storage[index];
+        mark_primary(
+            &mut diagnostic_value,
+            index,
+        );
+        set bag.storage[index] = diagnostic_value;
+
+        unsuppress(
+            bag,
+            index,
+        );
+
+        return Status.Ok;
+    }
+
+    let mut diagnostic_value = bag.storage[index];
+    mark_derived(
+        &mut diagnostic_value,
+        parent.parent_index,
+        parent.root_index,
+    );
+    set bag.storage[index] = diagnostic_value;
+
+    if suppress_derived {
+        suppress(
+            bag,
+            index,
+        );
+    } else {
+        unsuppress(
+            bag,
+            index,
+        );
+    }
+
+    return Status.Ok;
+}
+
+export proc cascade_classify_last(
+    bag: &mut DiagnosticBag,
+    suppress_derived: bool,
+) -> Status {
+    if not bag.initialized or
+       diagnostic_bag_count(bag) == 0 {
+        return Status.ErrorInvalidState;
+    }
+
+    let status = classify_one(
+        bag,
+        diagnostic_bag_count(bag) - 1,
+        suppress_derived,
+    );
+
+    if status == Status.Ok {
+        bag_rebuild_counts(bag);
+    }
+
+    return status;
+}
+
+export proc cascade_classify_all(
+    bag: &mut DiagnosticBag,
+    suppress_derived: bool,
+) -> Status {
+    if not bag.initialized {
+        return Status.ErrorInvalidState;
+    }
+
+    let mut index: usize = 0;
+
+    while index < diagnostic_bag_count(bag) {
+        let status: Status =
+            classify_one(
+                bag,
+                index,
+                suppress_derived,
+            );
+
+        if status != Status.Ok {
+            return status;
+        }
+
+        set index = index + 1;
+    }
+
+    bag_rebuild_counts(bag);
+
+    return Status.Ok;
+}
+
+/// -------------------------------------------------------------------------
+/// Root queries
+/// -------------------------------------------------------------------------
+
+export proc cascade_root_index(
+    bag: &DiagnosticBag,
+    diagnostic_index: usize,
+) -> usize {
+    return resolve_root(
+        bag,
+        diagnostic_index,
+    );
+}
+
+export proc cascade_is_child_of(
+    bag: &DiagnosticBag,
+    diagnostic_index: usize,
+    root_index: usize,
+) -> bool {
+    if not index_valid(
+           bag,
+           diagnostic_index,
+       ) or
+       not index_valid(
+           bag,
+           root_index,
+       ) or
+       diagnostic_index == root_index {
+        return false;
+    }
+
+    if not bag.storage[
+        diagnostic_index
+    ].is_cascade {
+        return false;
+    }
+
+    let resolved: usize =
+        resolve_root(
+            bag,
+            diagnostic_index,
+        );
+
+    return
+        resolved != DIAGNOSTIC_INDEX_NONE and
+        resolved == root_index;
+}
+
+/// -------------------------------------------------------------------------
+/// Statistics
+/// -------------------------------------------------------------------------
+
+export proc cascade_count(
+    bag: &DiagnosticBag,
+) -> usize {
+    if not bag.initialized {
+        return 0;
+    }
+
+    let mut index: usize = 0;
+    let mut count: usize = 0;
+
+    while index < diagnostic_bag_count(bag) {
+        let diagnostic_value: &Diagnostic =
+            &bag.storage[index];
+
+        if diagnostic_is_error(diagnostic_value) and
+           diagnostic_value.is_cascade {
+            if count != 18446744073709551615 as usize {
+                set count = count + 1;
+            }
+        }
+
+        set index = index + 1;
+    }
+
+    return count;
+}
+
+export proc cascade_primary_count(
+    bag: &DiagnosticBag,
+) -> usize {
+    if not bag.initialized {
+        return 0;
+    }
+
+    let mut index: usize = 0;
+    let mut count: usize = 0;
+
+    while index < diagnostic_bag_count(bag) {
+        let diagnostic_value: &Diagnostic =
+            &bag.storage[index];
+
+        if diagnostic_is_error(diagnostic_value) and
+           diagnostic_value.is_primary and
+           not diagnostic_value.is_cascade and
+           not diagnostic_value.is_suppressed {
+            if count != 18446744073709551615 as usize {
+                set count = count + 1;
+            }
+        }
+
+        set index = index + 1;
+    }
+
+    return count;
+}

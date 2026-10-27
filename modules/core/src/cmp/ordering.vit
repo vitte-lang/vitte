@@ -1,0 +1,575 @@
+// ============================================================================
+// Vitte Standard Library
+// Module: core::cmp::ordering
+// File: modules/core/src/cmp/ordering.vit
+//
+// Ordering and comparison primitives.
+//
+// Dependencies: none
+// Dynamic allocation: none
+//
+// Integer comparison:
+//   Total ordering.
+//
+// Floating-point comparison:
+//   Partial ordering.
+//   NaN produces Unordered.
+//
+// Comparison results:
+//   Less      : a < b
+//   Equal     : a == b
+//   Greater   : a > b
+//   Unordered : no ordering relation exists
+// ============================================================================
+
+space core::cmp::ordering;
+
+use core::types::ordering::{Ordering as CoreOrdering, PartialOrdering as CorePartialOrdering};
+
+export type Ordering = CoreOrdering;
+export type PartialOrdering = CorePartialOrdering;
+
+// ============================================================================
+// 1. ORDERING TYPES
+// ============================================================================
+
+// ============================================================================
+// 2. INTEGER COMPARISON
+// ============================================================================
+
+export proc compare_i8(a: i8, b: i8) -> Ordering {
+    if a < b {
+        return Ordering.Less;
+    }
+
+    if a > b {
+        return Ordering.Greater;
+    }
+
+    return Ordering.Equal;
+}
+
+export proc compare_i16(a: i16, b: i16) -> Ordering {
+    if a < b {
+        return Ordering.Less;
+    }
+
+    if a > b {
+        return Ordering.Greater;
+    }
+
+    return Ordering.Equal;
+}
+
+export proc compare_i32(a: i32, b: i32) -> Ordering {
+    if a < b {
+        return Ordering.Less;
+    }
+
+    if a > b {
+        return Ordering.Greater;
+    }
+
+    return Ordering.Equal;
+}
+
+export proc compare_i64(a: i64, b: i64) -> Ordering {
+    if a < b {
+        return Ordering.Less;
+    }
+
+    if a > b {
+        return Ordering.Greater;
+    }
+
+    return Ordering.Equal;
+}
+
+// ============================================================================
+// 3. UNSIGNED INTEGER COMPARISON
+// ============================================================================
+
+export proc compare_u8(a: u8, b: u8) -> Ordering {
+    if a < b {
+        return Ordering.Less;
+    }
+
+    if a > b {
+        return Ordering.Greater;
+    }
+
+    return Ordering.Equal;
+}
+
+export proc compare_u16(a: u16, b: u16) -> Ordering {
+    if a < b {
+        return Ordering.Less;
+    }
+
+    if a > b {
+        return Ordering.Greater;
+    }
+
+    return Ordering.Equal;
+}
+
+export proc compare_u32(a: u32, b: u32) -> Ordering {
+    if a < b {
+        return Ordering.Less;
+    }
+
+    if a > b {
+        return Ordering.Greater;
+    }
+
+    return Ordering.Equal;
+}
+
+export proc compare_u64(a: u64, b: u64) -> Ordering {
+    if a < b {
+        return Ordering.Less;
+    }
+
+    if a > b {
+        return Ordering.Greater;
+    }
+
+    return Ordering.Equal;
+}
+
+// ============================================================================
+// 4. FLOATING-POINT PARTIAL COMPARISON
+// ============================================================================
+
+export proc partial_compare_f32(a: f32, b: f32) -> PartialOrdering {
+    if a < b {
+        return PartialOrdering.Less;
+    }
+
+    if a > b {
+        return PartialOrdering.Greater;
+    }
+
+    if a == b {
+        return PartialOrdering.Equal;
+    }
+
+    return PartialOrdering.Unordered;
+}
+
+export proc partial_compare_f64(a: f64, b: f64) -> PartialOrdering {
+    if a < b {
+        return PartialOrdering.Less;
+    }
+
+    if a > b {
+        return PartialOrdering.Greater;
+    }
+
+    if a == b {
+        return PartialOrdering.Equal;
+    }
+
+    return PartialOrdering.Unordered;
+}
+
+// ============================================================================
+// 5. BOOLEAN COMPARISON
+//
+// false < true
+// ============================================================================
+
+export proc compare_bool(a: bool, b: bool) -> Ordering {
+    if a == b {
+        return Ordering.Equal;
+    }
+
+    if not a {
+        return Ordering.Less;
+    }
+
+    return Ordering.Greater;
+}
+
+// ============================================================================
+// 6. ORDERING PREDICATES
+// ============================================================================
+
+export proc ordering_is_less(ordering: Ordering) -> bool {
+    return ordering == Ordering.Less;
+}
+
+export proc ordering_is_equal(ordering: Ordering) -> bool {
+    return ordering == Ordering.Equal;
+}
+
+export proc ordering_is_greater(ordering: Ordering) -> bool {
+    return ordering == Ordering.Greater;
+}
+
+export proc ordering_is_less_or_equal(ordering: Ordering) -> bool {
+    return ordering == Ordering.Less
+        or ordering == Ordering.Equal;
+}
+
+export proc ordering_is_greater_or_equal(ordering: Ordering) -> bool {
+    return ordering == Ordering.Greater
+        or ordering == Ordering.Equal;
+}
+
+// ============================================================================
+// 7. PARTIAL ORDERING PREDICATES
+// ============================================================================
+
+export proc partial_is_less(ordering: PartialOrdering) -> bool {
+    return ordering == PartialOrdering.Less;
+}
+
+export proc partial_is_equal(ordering: PartialOrdering) -> bool {
+    return ordering == PartialOrdering.Equal;
+}
+
+export proc partial_is_greater(ordering: PartialOrdering) -> bool {
+    return ordering == PartialOrdering.Greater;
+}
+
+export proc partial_is_unordered(ordering: PartialOrdering) -> bool {
+    return ordering == PartialOrdering.Unordered;
+}
+
+export proc partial_is_ordered(ordering: PartialOrdering) -> bool {
+    return ordering != PartialOrdering.Unordered;
+}
+
+export proc partial_is_less_or_equal(ordering: PartialOrdering) -> bool {
+    return ordering == PartialOrdering.Less
+        or ordering == PartialOrdering.Equal;
+}
+
+export proc partial_is_greater_or_equal(ordering: PartialOrdering) -> bool {
+    return ordering == PartialOrdering.Greater
+        or ordering == PartialOrdering.Equal;
+}
+
+// ============================================================================
+// 8. REVERSE ORDERING
+// ============================================================================
+
+export proc ordering_reverse(ordering: Ordering) -> Ordering {
+    if ordering == Ordering.Less {
+        return Ordering.Greater;
+    }
+
+    if ordering == Ordering.Greater {
+        return Ordering.Less;
+    }
+
+    return Ordering.Equal;
+}
+
+export proc partial_ordering_reverse(
+    ordering: PartialOrdering
+) -> PartialOrdering {
+    if ordering == PartialOrdering.Less {
+        return PartialOrdering.Greater;
+    }
+
+    if ordering == PartialOrdering.Greater {
+        return PartialOrdering.Less;
+    }
+
+    if ordering == PartialOrdering.Equal {
+        return PartialOrdering.Equal;
+    }
+
+    return PartialOrdering.Unordered;
+}
+
+// ============================================================================
+// 9. ORDERING TO INTEGER
+//
+// Less    = -1
+// Equal   =  0
+// Greater =  1
+// ============================================================================
+
+export proc ordering_to_i32(ordering: Ordering) -> i32 {
+    if ordering == Ordering.Less {
+        return -1;
+    }
+
+    if ordering == Ordering.Greater {
+        return 1;
+    }
+
+    return 0;
+}
+
+export proc ordering_to_i64(ordering: Ordering) -> i64 {
+    if ordering == Ordering.Less {
+        return -1;
+    }
+
+    if ordering == Ordering.Greater {
+        return 1;
+    }
+
+    return 0;
+}
+
+// ============================================================================
+// 10. INTEGER TO ORDERING
+// ============================================================================
+
+export proc ordering_from_i32(value: i32) -> Ordering {
+    if value < 0 {
+        return Ordering.Less;
+    }
+
+    if value > 0 {
+        return Ordering.Greater;
+    }
+
+    return Ordering.Equal;
+}
+
+export proc ordering_from_i64(value: i64) -> Ordering {
+    if value < 0 {
+        return Ordering.Less;
+    }
+
+    if value > 0 {
+        return Ordering.Greater;
+    }
+
+    return Ordering.Equal;
+}
+
+// ============================================================================
+// 11. ORDERING TO PARTIAL ORDERING
+// ============================================================================
+
+export proc ordering_to_partial(
+    ordering: Ordering
+) -> PartialOrdering {
+    if ordering == Ordering.Less {
+        return PartialOrdering.Less;
+    }
+
+    if ordering == Ordering.Greater {
+        return PartialOrdering.Greater;
+    }
+
+    return PartialOrdering.Equal;
+}
+
+// ============================================================================
+// 12. COMPARISON HELPERS
+// ============================================================================
+
+export proc less_i32(a: i32, b: i32) -> bool {
+    return compare_i32(a, b) == Ordering.Less;
+}
+
+export proc less_i64(a: i64, b: i64) -> bool {
+    return compare_i64(a, b) == Ordering.Less;
+}
+
+export proc less_u32(a: u32, b: u32) -> bool {
+    return compare_u32(a, b) == Ordering.Less;
+}
+
+export proc less_u64(a: u64, b: u64) -> bool {
+    return compare_u64(a, b) == Ordering.Less;
+}
+
+export proc greater_i32(a: i32, b: i32) -> bool {
+    return compare_i32(a, b) == Ordering.Greater;
+}
+
+export proc greater_i64(a: i64, b: i64) -> bool {
+    return compare_i64(a, b) == Ordering.Greater;
+}
+
+export proc greater_u32(a: u32, b: u32) -> bool {
+    return compare_u32(a, b) == Ordering.Greater;
+}
+
+export proc greater_u64(a: u64, b: u64) -> bool {
+    return compare_u64(a, b) == Ordering.Greater;
+}
+
+// ============================================================================
+// 13. LEXICOGRAPHIC ORDERING
+//
+// Compare a first pair.
+// If equal, compare a second pair.
+// ============================================================================
+
+export proc compare_pair_i32(
+    a0: i32,
+    a1: i32,
+    b0: i32,
+    b1: i32
+) -> Ordering {
+    let first: Ordering = compare_i32(a0, b0);
+
+    if first != Ordering.Equal {
+        return first;
+    }
+
+    return compare_i32(a1, b1);
+}
+
+export proc compare_pair_i64(
+    a0: i64,
+    a1: i64,
+    b0: i64,
+    b1: i64
+) -> Ordering {
+    let first: Ordering = compare_i64(a0, b0);
+
+    if first != Ordering.Equal {
+        return first;
+    }
+
+    return compare_i64(a1, b1);
+}
+
+export proc compare_pair_u32(
+    a0: u32,
+    a1: u32,
+    b0: u32,
+    b1: u32
+) -> Ordering {
+    let first: Ordering = compare_u32(a0, b0);
+
+    if first != Ordering.Equal {
+        return first;
+    }
+
+    return compare_u32(a1, b1);
+}
+
+export proc compare_pair_u64(
+    a0: u64,
+    a1: u64,
+    b0: u64,
+    b1: u64
+) -> Ordering {
+    let first: Ordering = compare_u64(a0, b0);
+
+    if first != Ordering.Equal {
+        return first;
+    }
+
+    return compare_u64(a1, b1);
+}
+
+// ============================================================================
+// 14. THREE-COMPONENT LEXICOGRAPHIC ORDERING
+// ============================================================================
+
+export proc compare_triple_i32(
+    a0: i32,
+    a1: i32,
+    a2: i32,
+    b0: i32,
+    b1: i32,
+    b2: i32
+) -> Ordering {
+    let first: Ordering = compare_i32(a0, b0);
+
+    if first != Ordering.Equal {
+        return first;
+    }
+
+    let second: Ordering = compare_i32(a1, b1);
+
+    if second != Ordering.Equal {
+        return second;
+    }
+
+    return compare_i32(a2, b2);
+}
+
+export proc compare_triple_i64(
+    a0: i64,
+    a1: i64,
+    a2: i64,
+    b0: i64,
+    b1: i64,
+    b2: i64
+) -> Ordering {
+    let first: Ordering = compare_i64(a0, b0);
+
+    if first != Ordering.Equal {
+        return first;
+    }
+
+    let second: Ordering = compare_i64(a1, b1);
+
+    if second != Ordering.Equal {
+        return second;
+    }
+
+    return compare_i64(a2, b2);
+}
+
+// ============================================================================
+// 15. ORDERING CHAIN
+//
+// Useful for lexicographic comparisons.
+// ============================================================================
+
+export proc ordering_then(
+    first: Ordering,
+    second: Ordering
+) -> Ordering {
+    if first != Ordering.Equal {
+        return first;
+    }
+
+    return second;
+}
+
+export proc partial_ordering_then(
+    first: PartialOrdering,
+    second: PartialOrdering
+) -> PartialOrdering {
+    if first != PartialOrdering.Equal {
+        return first;
+    }
+
+    return second;
+}
+
+// ============================================================================
+// 16. ORDERING RELATIONSHIP
+// ============================================================================
+
+export proc ordering_is_opposite(
+    a: Ordering,
+    b: Ordering
+) -> bool {
+    if a == Ordering.Less {
+        return b == Ordering.Greater;
+    }
+
+    if a == Ordering.Greater {
+        return b == Ordering.Less;
+    }
+
+    return false;
+}
+
+export proc ordering_is_same(
+    a: Ordering,
+    b: Ordering
+) -> bool {
+    return a == b;
+}
+
+// ============================================================================
+// END OF MODULE
+// ============================================================================

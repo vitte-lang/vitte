@@ -1,0 +1,25 @@
+/// Itérateur UTF-8 qui signale les données mal formées.
+space core::str::iterator;
+
+use core::str::utf8::{Utf8DecodeResult, utf8_decode};
+
+export form Utf8Iterator {
+    source: &[u8],
+    offset: usize,
+    failed: bool,
+}
+
+export proc utf8_iterator(source: &[u8]) -> Utf8Iterator {
+    return Utf8Iterator { source: source, offset: 0, failed: false };
+}
+
+export proc utf8_iterator_next(iterator: &mut Utf8Iterator) -> ?u32 {
+    if iterator.failed || iterator.offset >= iterator.source.len() { return null; }
+    let decoded: Utf8DecodeResult = utf8_decode(iterator.source, iterator.offset);
+    if not decoded.success {
+        set iterator.failed = true;
+        return null;
+    }
+    set iterator.offset = iterator.offset + decoded.width;
+    return decoded.codepoint;
+}

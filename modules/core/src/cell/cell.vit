@@ -1,0 +1,154 @@
+space core::cell::cell
+
+/// Conteneur générique pour une valeur modifiable.
+///
+/// La mutabilité intérieure nécessite une prise en charge
+/// explicite par le compilateur Vitte.
+form Cell<T> {
+    value: T,
+}
+
+/// Construit une cellule contenant une valeur.
+proc cell_new<T>(value: T) -> Cell[T] {
+    return Cell[T] {
+        value: value,
+    };
+}
+
+/// Retourne une copie de la valeur.
+/// T doit posséder une sémantique de copie.
+proc cell_get<T>(cell: &Cell[T]) -> T {
+    return cell.value;
+}
+
+/// Remplace la valeur contenue dans la cellule.
+///
+/// Cette opération nécessite la mutabilité intérieure.
+proc cell_set<T>(
+    cell: &Cell[T],
+    value: T
+) {
+    set cell.value = value;
+}
+
+/// Remplace la valeur et retourne l'ancienne.
+///
+/// T doit être copiable.
+proc cell_replace<T>(
+    cell: &Cell[T],
+    value: T
+) -> T {
+    let previous: T = cell.value;
+
+    set cell.value = value;
+
+    return previous;
+}
+
+/// Échange les valeurs de deux cellules.
+///
+/// T doit être copiable.
+proc cell_swap<T>(
+    left: &Cell[T],
+    right: &Cell[T]
+) {
+    let temporary: T = left.value;
+
+    set left.value = right.value;
+    set right.value = temporary;
+}
+
+/// Applique une transformation à la valeur.
+proc cell_update<T>(
+    cell: &Cell[T],
+    transform: proc(T) -> T
+) {
+    let updated: T = transform(cell.value);
+
+    set cell.value = updated;
+}
+
+/// Compare deux cellules.
+proc cell_equal<T>(
+    left: &Cell[T],
+    right: &Cell[T]
+) -> bool {
+    return left.value == right.value;
+}
+
+/// Vérifie si la cellule contient une valeur donnée.
+proc cell_contains<T>(
+    cell: &Cell[T],
+    value: T
+) -> bool {
+    return cell.value == value;
+}
+
+/// Retourne une référence en lecture seule.
+proc cell_as_ref<T>(
+    cell: &Cell[T]
+) -> &T {
+    return &cell.value;
+}
+
+/// Retourne une référence mutable lorsque
+/// la cellule elle-même est mutable.
+proc cell_as_mut<T>(
+    cell: &mut Cell[T]
+) -> &mut T {
+    return &mut cell.value;
+}
+
+/// Consomme une cellule et retourne sa valeur.
+proc cell_into_inner<T>(
+    cell: Cell[T]
+) -> T {
+    return cell.value;
+}
+
+/// Copie la valeur d'une cellule dans une autre.
+proc cell_copy_from<T>(
+    destination: &Cell[T],
+    source: &Cell[T]
+) {
+    set destination.value = source.value;
+}
+
+/// Réinitialise une cellule avec une valeur.
+proc cell_reset<T>(
+    cell: &Cell[T],
+    value: T
+) {
+    set cell.value = value;
+}
+
+/// Modifie la cellule uniquement si une condition est vraie.
+proc cell_set_if<T>(
+    cell: &Cell[T],
+    condition: bool,
+    value: T
+) -> bool {
+    if condition {
+        set cell.value = value;
+        return true;
+    } else {
+        return false;
+    }
+}
+
+/// Applique une transformation conditionnelle.
+proc cell_update_if<T>(
+    cell: &Cell[T],
+    predicate: proc(&T) -> bool,
+    transform: proc(T) -> T
+) -> bool {
+    if predicate(&cell.value) {
+        let updated: T = transform(cell.value);
+
+        set cell.value = updated;
+
+        return true;
+    }
+
+    return false;
+}

@@ -1,0 +1,69 @@
+/// Arithmétique d'adresse en octets avec détection de débordement.
+space core::ptr::arithmetic;
+
+export proc ptr_add_bytes(pointer: *mut u8, offset: usize) -> *mut u8 {
+    if pointer == null || offset == 0 { return pointer; }
+    let address: usize = pointer as usize;
+    if offset > usize.MAX - address { return null; }
+    return (address + offset) as *mut u8;
+}
+
+export proc ptr_sub_bytes(pointer: *mut u8, offset: usize) -> *mut u8 {
+    if pointer == null || offset == 0 { return pointer; }
+    let address: usize = pointer as usize;
+    if offset > address { return null; }
+    return (address - offset) as *mut u8;
+}
+
+/// Décalage en éléments. Retourne null si le calcul d'adresse déborde.
+/// Ne vérifie pas que le résultat reste dans la même allocation.
+export proc ptr_add_elements<T>(pointer: *mut T, count: usize) -> *mut T {
+    if pointer == null || count == 0 { return pointer; }
+    let element_size: usize = sizeof(T);
+    if element_size == 0 { return pointer; }
+    if count > usize.MAX / element_size { return null; }
+    let byte_count: usize = count * element_size;
+    let address: usize = pointer as usize;
+    if byte_count > usize.MAX - address { return null; }
+    return (address + byte_count) as *mut T;
+}
+
+/// Décalage arrière en éléments. Retourne null si le calcul d'adresse déborde.
+/// Ne vérifie pas que le résultat reste dans la même allocation.
+export proc ptr_sub_elements<T>(pointer: *mut T, count: usize) -> *mut T {
+    if pointer == null || count == 0 { return pointer; }
+    let element_size: usize = sizeof(T);
+    if element_size == 0 { return pointer; }
+    if count > usize.MAX / element_size { return null; }
+    let byte_count: usize = count * element_size;
+    let address: usize = pointer as usize;
+    if byte_count > address { return null; }
+    return (address - byte_count) as *mut T;
+}
+
+/// Décalage signé en éléments sans déréférencement ni contrôle de l'allocation.
+export proc ptr_offset_elements<T>(pointer: *mut T, offset: isize) -> *mut T {
+    if pointer == null || offset == 0 { return pointer; }
+    let element_size: usize = sizeof(T);
+    if element_size == 0 { return pointer; }
+
+    let count: usize = if offset > 0 {
+        offset as usize
+    } else {
+        (-(offset + 1)) as usize + 1
+    };
+    if count > usize.MAX / element_size { return null; }
+    let byte_count: usize = count * element_size;
+    if offset > 0 {
+        return ptr_add_bytes(pointer as *mut u8, byte_count) as *mut T;
+    }
+    return ptr_sub_bytes(pointer as *mut u8, byte_count) as *mut T;
+}
+
+/// Vérifie l'alignement requis pour le type pointé.
+export proc ptr_is_aligned<T>(pointer: *const T) -> bool {
+    if pointer == null { return false; }
+    let alignment: usize = alignof(T);
+    if alignment == 0 { return false; }
+    return (pointer as usize) % alignment == 0;
+}

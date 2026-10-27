@@ -1,0 +1,57 @@
+/// Résultat d'une opération qui peut échouer.
+///
+/// Le champ `success` détermine quel champ optionnel est actif. Une valeur
+/// valide a exactement l'un des champs `value` et `error` renseigné. Les
+/// valeurs nullables ne peuvent pas être représentées comme un succès avec
+/// `Some(null)` dans cette représentation.
+space core::types::result;
+
+/// Résultat contenant soit une valeur `T`, soit une erreur `E`.
+///
+/// La représentation actuelle est un enregistrement à état explicite et
+/// emplacements nullables; elle n'extrait pas implicitement `T` ou `E`.
+export form Result<T, E> {
+    success: bool,
+    value: ?T,
+    error: ?E,
+}
+
+/// Indique si le résultat est une réussite.
+export proc result_is_ok<T, E>(result: &Result[T, E]) -> bool {
+    return result.success;
+}
+
+/// Indique si le résultat est un échec.
+export proc result_is_err<T, E>(result: &Result[T, E]) -> bool {
+    return result.success == false;
+}
+
+/// Retourne la valeur optionnelle portée par une réussite; `null` indique un
+/// échec ou une représentation invalide.
+export proc result_value<T, E>(result: &Result[T, E]) -> ?T {
+    if result.success == false {
+        return null;
+    }
+
+    return result.value;
+}
+
+/// Retourne l'erreur optionnelle portée par un échec; `null` indique un succès
+/// ou une représentation invalide.
+export proc result_error<T, E>(result: &Result[T, E]) -> ?E {
+    if result.success {
+        return null;
+    }
+
+    return result.error;
+}
+
+/// Vérifie l'invariant de représentation d'un résultat.
+export proc result_is_valid<T, E>(result: &Result[T, E]) -> bool {
+    if result.success {
+        return result.value != null && result.error == null;
+    }
+
+    return result.value == null && result.error != null;
+}
+
