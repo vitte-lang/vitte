@@ -20,7 +20,7 @@ fi
 
 cat > "$WORKDIR/smoke.vit" <<'VIT'
 proc main() -> int {
-  give 0;
+  return 0;
 }
 VIT
 

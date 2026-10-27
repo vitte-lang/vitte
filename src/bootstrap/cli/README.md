@@ -103,7 +103,8 @@ variables use uppercase `VITTE_<KEY>` names, with hyphens replaced by
 underscores (for example, `VITTE_MAX_ERRORS` and
 `VITTE_DIAGNOSTIC_FORMAT`). CLI values take precedence over earlier
 sources. Configuration is merged and validated once before the pipeline.
-`VITTE_MODULE_PATH` adds module search roots separated by `:`.
+`VITTE_MODULE_PATH` adds module search roots separated by the host path-list
+separator (`:` on Unix and `;` on Windows).
 
 ## Diagnostics
 

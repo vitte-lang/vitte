@@ -109,6 +109,7 @@ use compiler::parser::parser::{
     vitte_parser_get_node,
     vitte_parser_init,
     vitte_parser_node_token,
+    vitte_parser_fingerprint,
     vitte_parser_run_native,
     vitte_parser_diagnostic_at,
     vitte_parser_diagnostic_count
@@ -150,6 +151,7 @@ export pick NativePipelinePhase {
 export const NATIVE_FRONTEND_ACTION_COMPILE: u32 = 0;
 export const NATIVE_FRONTEND_ACTION_CHECK: u32 = 1;
 export const NATIVE_FRONTEND_ACTION_EMIT_IR: u32 = 2;
+export const NATIVE_FRONTEND_ACTION_EMIT_AST_FINGERPRINT: u32 = 3;
 
 /// Expose host-tool orchestration through the native pipeline entrypoint.
 /// The driver owns compile/link/run ordering; the CLI only supplies resolved
@@ -464,6 +466,12 @@ proc native_pipeline_c_string(value: string) -> *const char {
 proc native_pipeline_size_to_string(value: usize) -> string {
     if value < 10 { return string.from_byte((48 + value) as u8); }
     return native_pipeline_size_to_string(value / 10) +
+        string.from_byte((48 + (value % 10)) as u8);
+}
+
+proc native_pipeline_u64_to_string(value: u64) -> string {
+    if value < 10 { return string.from_byte((48 + value) as u8); }
+    return native_pipeline_u64_to_string(value / 10) +
         string.from_byte((48 + (value % 10)) as u8);
 }
 
@@ -1026,10 +1034,9 @@ proc native_pipeline_emit_c17(
     return output;
 }
 
-/// Generic or non-scalar forms and test declarations still need compatibility lowering.
-/// Range loops and value-producing if expressions have native HIR/IR lowering;
-/// other for iterables remain on the AST compatibility path. Keep this list
-/// aligned with the supported node shapes in the HIR and IR lowerers.
+/// Generic or unsupported form field types, test declarations, and non-range
+/// for loops still use compatibility lowering. Keep these predicates aligned
+/// with the shapes handled by the HIR and IR lowerers.
 proc native_pipeline_form_supported(parser: &Parser, node: &ASTNode) -> bool {
     if node.child_count == 0 or parser.nodes == null { return false; }
     let form_name_node = vitte_parser_get_node(parser, node.children[0]);
@@ -1040,37 +1047,93 @@ proc native_pipeline_form_supported(parser: &Parser, node: &ASTNode) -> bool {
         let part = vitte_parser_get_node(parser, node.children[index]);
         if part == null or part.kind == ASTNodeKind.GenericParam or part.kind == ASTNodeKind.WhereClause { return false; }
         if part.kind != ASTNodeKind.FieldDecl or part.child_count != 2 { return false; }
-        let type_node = vitte_parser_get_node(parser, part.children[1]);
-        if type_node == null or type_node.kind != ASTNodeKind.TypeExpr or type_node.child_count != 1 { return false; }
-        let named_node = vitte_parser_get_node(parser, type_node.children[0]);
-        if named_node == null or (named_node.kind != ASTNodeKind.Identifier and named_node.kind != ASTNodeKind.Path) or
-           (named_node.kind == ASTNodeKind.Path and named_node.child_count != 1) { return false; }
-        let named_token = vitte_parser_node_token(parser, named_node);
-        if named_token == null { return false; }
-        let builtin = named_token.lexeme == "i64" or named_token.lexeme == "u64" or
-            named_token.lexeme == "usize" or named_token.lexeme == "u32" or
-            named_token.lexeme == "u16" or named_token.lexeme == "u8" or
-            named_token.lexeme == "bool" or named_token.lexeme == "f64" or
-            named_token.lexeme == "double" or named_token.lexeme == "string" or
-            named_token.lexeme == "str" or named_token.lexeme == "int";
-        let mut declared_aggregate = false;
-        let mut declaration_index: usize = 0;
-        while declaration_index < parser.node_count {
-            let declaration = &parser.nodes[declaration_index];
-            if (declaration.kind == ASTNodeKind.FormDecl or declaration.kind == ASTNodeKind.PickDecl) and declaration.child_count != 0 {
-                let declaration_name = vitte_parser_get_node(parser, declaration.children[0]);
-                let declaration_token = if declaration_name == null { null } else { vitte_parser_node_token(parser, declaration_name) };
-                if declaration_token != null and declaration_token.length == named_token.length and declaration_token.lexeme == named_token.lexeme {
-                    set declared_aggregate = true;
-                    break;
-                }
-            }
-            set declaration_index += 1;
-        }
-        if not builtin and not declared_aggregate { return false; }
+        if not native_pipeline_form_field_type_supported(
+            parser,
+            part.children[1],
+            form_name_token
+        ) { return false; }
         set index += 1;
     }
     return true;
+}
+
+proc native_pipeline_form_named_type_supported(
+    parser: &Parser,
+    node: *const ASTNode,
+    owner_name: *const ParserToken
+) -> bool {
+    if node == null or owner_name == null or
+       (node.kind != ASTNodeKind.Identifier and node.kind != ASTNodeKind.Path) or
+       (node.kind == ASTNodeKind.Path and node.child_count != 1) { return false; }
+    let named_token = vitte_parser_node_token(parser, node);
+    if named_token == null { return false; }
+    let builtin = named_token.lexeme == "i64" or named_token.lexeme == "i32" or
+        named_token.lexeme == "u64" or named_token.lexeme == "usize" or
+        named_token.lexeme == "u32" or named_token.lexeme == "u16" or
+        named_token.lexeme == "u8" or named_token.lexeme == "bool" or
+        named_token.lexeme == "f64" or named_token.lexeme == "double" or
+        named_token.lexeme == "string" or named_token.lexeme == "str" or
+        named_token.lexeme == "int";
+    if builtin { return true; }
+    if named_token.length == (*owner_name).length and named_token.lexeme == (*owner_name).lexeme {
+        return false;
+    }
+
+    let mut declaration_index: usize = 0;
+    while declaration_index < parser.node_count {
+        let declaration = &parser.nodes[declaration_index];
+        if (declaration.kind == ASTNodeKind.FormDecl or declaration.kind == ASTNodeKind.PickDecl) and declaration.child_count != 0 {
+            let declaration_name = vitte_parser_get_node(parser, declaration.children[0]);
+            let declaration_token = if declaration_name == null { null } else { vitte_parser_node_token(parser, declaration_name) };
+            if declaration_token != null and declaration_token.length == named_token.length and declaration_token.lexeme == named_token.lexeme {
+                let mut part_index: usize = 1;
+                while part_index < declaration.child_count {
+                    let part = vitte_parser_get_node(parser, declaration.children[part_index]);
+                    if part == null or part.kind == ASTNodeKind.GenericParam or part.kind == ASTNodeKind.WhereClause {
+                        return false;
+                    }
+                    set part_index += 1;
+                }
+                return true;
+            }
+        }
+        set declaration_index += 1;
+    }
+    return false;
+}
+
+proc native_pipeline_form_field_type_supported(
+    parser: &Parser,
+    type_id: ASTNodeId,
+    owner_name: *const ParserToken
+) -> bool {
+    let node = vitte_parser_get_node(parser, type_id);
+    if node == null { return false; }
+    if node.kind == ASTNodeKind.TypeExpr {
+        return node.child_count == 1 and native_pipeline_form_field_type_supported(
+            parser,
+            node.children[0],
+            owner_name
+        );
+    }
+    if node.kind == ASTNodeKind.PointerType or node.kind == ASTNodeKind.ReferenceType {
+        return node.child_count == 1 and native_pipeline_form_field_type_supported(
+            parser,
+            node.children[0],
+            owner_name
+        );
+    }
+    if node.kind == ASTNodeKind.ArrayType {
+        if node.child_count != 2 { return false; }
+        let length = vitte_parser_get_node(parser, node.children[0]);
+        if length == null or length.kind != ASTNodeKind.IntegerLiteral { return false; }
+        return native_pipeline_form_field_type_supported(
+            parser,
+            node.children[1],
+            owner_name
+        );
+    }
+    return native_pipeline_form_named_type_supported(parser, node, owner_name);
 }
 
 proc native_pipeline_for_range_supported(parser: &Parser, node: &ASTNode) -> bool {
@@ -1171,36 +1234,8 @@ proc native_pipeline_make_tokens(lexer: &Lexer, file_id: u32) -> [ParserToken] {
     return parser_tokens;
 }
 
-proc native_pipeline_hash_u64(hash: u64, input: u64) -> u64 {
-    let mut value = hash;
-    let mut shift: u32 = 0;
-    while shift < 64 {
-        set value = (value ^ ((input >> shift) & 255)) * 1099511628211;
-        set shift += 8;
-    }
-    return value;
-}
-
-proc native_pipeline_parser_fingerprint(parser: &Parser) -> u64 {
-    let mut hash: u64 = 14695981039346656037;
-    hash = native_pipeline_hash_u64(hash, parser.node_count as u64);
-    let mut index: usize = 0;
-    while index < parser.node_count {
-        let node: &ASTNode = &parser.nodes[index];
-        hash = native_pipeline_hash_u64(hash, node.id);
-        hash = native_pipeline_hash_u64(hash, node.kind as u64);
-        hash = native_pipeline_hash_u64(hash, node.token_index as u64);
-        hash = native_pipeline_hash_u64(hash, node.span.begin as u64);
-        hash = native_pipeline_hash_u64(hash, node.span.end as u64);
-        hash = native_pipeline_hash_u64(hash, node.child_count as u64);
-        let mut child_index: usize = 0;
-        while child_index < node.child_count {
-            hash = native_pipeline_hash_u64(hash, node.children[child_index]);
-            set child_index += 1;
-        }
-        set index += 1;
-    }
-    return hash;
+proc native_pipeline_parser_fingerprint(parser: &mut Parser) -> u64 {
+    return vitte_parser_fingerprint(parser as *mut Parser);
 }
 
 proc native_pipeline_result(
@@ -1259,7 +1294,7 @@ proc native_pipeline_run_with_config(
     if generated_source_length != null { set *generated_source_length = 0; }
     if diagnostics != null { set *diagnostics = null; }
     if diagnostic_count != null { set *diagnostic_count = 0; }
-    if action > NATIVE_FRONTEND_ACTION_EMIT_IR {
+    if action > NATIVE_FRONTEND_ACTION_EMIT_AST_FINGERPRINT {
         return native_pipeline_result(Status.ErrorInvalidArgument, NativePipelinePhase.None, LexerError.InvalidArgument, 0, 0, false);
     }
     if config != null and not vitte_config_is_valid(config) {
@@ -1410,7 +1445,7 @@ proc native_pipeline_run_with_config(
     let parsed = vitte_parser_run_native(&mut parser);
     let parser_diagnostics = vitte_parser_diagnostic_count(&parser);
     let parser_error = parser.last_error as u32;
-    let parser_hash = native_pipeline_parser_fingerprint(&parser);
+    let parser_hash = native_pipeline_parser_fingerprint(&mut parser);
     if not parsed {
         let _ = native_pipeline_export_diagnostics(
             &parser,
@@ -1429,6 +1464,29 @@ proc native_pipeline_run_with_config(
         set result.parser_diagnostic_count = parser_diagnostics;
         set result.parser_fingerprint = parser_hash;
         set result.native_parser_attempted = true;
+        return result;
+    }
+
+    if action == NATIVE_FRONTEND_ACTION_EMIT_AST_FINGERPRINT {
+        let fingerprint_text: string = native_pipeline_u64_to_string(parser_hash);
+        let mut result = native_pipeline_result(
+            Status.Ok,
+            NativePipelinePhase.Parsed,
+            LexerError.None,
+            token_count,
+            lexer_hash,
+            true
+        );
+        set result.parser_error = parser_error;
+        set result.parser_diagnostic_count = parser_diagnostics;
+        set result.parser_fingerprint = parser_hash;
+        set result.native_parser_attempted = true;
+        set result.native_parser_succeeded = true;
+        set result.generated_source = fingerprint_text;
+        if generated_source != null { set *generated_source = fingerprint_text.as_ptr() as *mut u8; }
+        if generated_source_length != null { set *generated_source_length = fingerprint_text.length; }
+        vitte_parser_destroy(&mut parser);
+        vitte_lexer_destroy(&mut lexer);
         return result;
     }
 
@@ -1854,7 +1912,7 @@ export proc vitte_native_frontend_execute_with_diagnostics(
 ) -> u32 {
     if generated_source == null or generated_source_length == null or
        diagnostics == null or diagnostic_count == null { return 0; }
-    if action > NATIVE_FRONTEND_ACTION_EMIT_IR { return 0; }
+    if action > NATIVE_FRONTEND_ACTION_EMIT_AST_FINGERPRINT { return 0; }
     set *generated_source = null;
     set *generated_source_length = 0;
     set *diagnostics = null;

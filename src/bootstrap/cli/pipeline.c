@@ -1010,8 +1010,8 @@ vitte_main_source_has_if_block_local(
 }
 
 /* Keep language features without complete native lowering on the compatibility
- * pipeline. Fixed arrays of scalar values use the native HIR/IR path; arrays
- * combined with form declarations still need aggregate field lowering. */
+ * pipeline. Form fields, including fixed arrays, are selected by the native
+ * frontend's AST-aware HIR/IR support check. */
 static bool
 vitte_main_source_requires_compatibility_frontend(
     const unsigned char *source,
@@ -1025,8 +1025,6 @@ vitte_main_source_requires_compatibility_frontend(
            vitte_main_source_has_named_call(source, length, "starts_with") ||
            vitte_main_source_has_named_call(source, length, "ends_with") ||
            vitte_main_source_has_borrowed_call(source, length) ||
-           (vitte_main_source_has_word(source, length, "form") &&
-            memchr(source, '[', length) != NULL) ||
            vitte_main_source_has_if_block_local(source, length);
 }
 

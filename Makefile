@@ -51,6 +51,7 @@ TARGET  := vitte
 
 BUILD_HOST_OS := $(shell uname -s 2>/dev/null || echo unknown)
 EXE_SUFFIX ?= $(if $(filter MINGW% MSYS% CYGWIN%,$(BUILD_HOST_OS)),.exe,)
+PATH_LIST_SEPARATOR := $(if $(filter MINGW% MSYS% CYGWIN%,$(BUILD_HOST_OS)),;,:)
 
 CC ?= cc
 AR ?= ar
@@ -264,8 +265,10 @@ NATIVE_FRONTEND_LIBRARY := $(NATIVE_FRONTEND_DIR)/libvitte-native-frontend.a
 SELFHOST_DIR := $(BUILD)/selfhost
 SELFHOST_STAGE1_C := $(SELFHOST_DIR)/stage1-api.c
 SELFHOST_STAGE2_C := $(SELFHOST_DIR)/stage2-api.c
+SELFHOST_STAGE3_C := $(SELFHOST_DIR)/stage3-api.c
 SELFHOST_STAGE1_BUILD := $(SELFHOST_DIR)/stage1-build
 SELFHOST_STAGE2_BUILD := $(SELFHOST_DIR)/stage2-build
+SELFHOST_STAGE3_BUILD := $(SELFHOST_DIR)/stage3-build
 SELFHOST_STAGE1_BIN := $(SELFHOST_STAGE1_BUILD)/bin/$(TARGET)$(EXE_SUFFIX)
 SELFHOST_STAGE2_BIN := $(SELFHOST_STAGE2_BUILD)/bin/$(TARGET)$(EXE_SUFFIX)
 NATIVE_LINK_OBJECTS := \
@@ -279,7 +282,7 @@ native-frontend: $(NATIVE_FRONTEND_LIBRARY)
 $(NATIVE_FRONTEND_C): $(NATIVE_FRONTEND_COMPILER) $(NATIVE_FRONTEND_SOURCES) $(NATIVE_MODULE_SOURCES)
 	@mkdir -p $(NATIVE_FRONTEND_DIR)
 	@printf '[VITTE-C] %s\n' "$(NATIVE_FRONTEND_ENTRY)"
-	VITTE_MODULE_PATH="$(VITTE_MODULE_PATH):$(VITTE_ROOT)/compiler" $(NATIVE_FRONTEND_COMPILER) compile "$(NATIVE_FRONTEND_ENTRY)" --emit-c --quiet --no-color -o "$@"
+	VITTE_MODULE_PATH="$(VITTE_MODULE_PATH)$(PATH_LIST_SEPARATOR)$(VITTE_ROOT)" $(NATIVE_FRONTEND_COMPILER) compile "$(NATIVE_FRONTEND_ENTRY)" --emit-c --quiet --no-color -o "$@"
 
 $(NATIVE_FRONTEND_OBJECT): $(NATIVE_FRONTEND_C) $(BUILD_CONFIG_STAMP)
 	@printf '[CC] %s\n' "$<"
@@ -575,8 +578,19 @@ test-diagnostic-parity: $(TARGET_BIN)
 	$(PYTHON) $(TEST_DIR)/diagnostic_parity_test.py $(TARGET_BIN)
 
 .PHONY: test-native-bootstrap-parity
-test-native-bootstrap-parity: $(TARGET_BIN) $(BOOTSTRAP_TARGET_BIN)
-	$(PYTHON) $(TEST_DIR)/native_bootstrap_parity_test.py $(TARGET_BIN) $(BOOTSTRAP_TARGET_BIN)
+NATIVE_BOOTSTRAP_PARITY_TEST_BIN := $(BIN_DIR)/native_bootstrap_parity_test
+
+$(NATIVE_BOOTSTRAP_PARITY_TEST_BIN): $(TEST_DIR)/native_parser_parity_test.c $(NATIVE_LINK_OBJECTS) $(NATIVE_FRONTEND_LIBRARY)
+	@mkdir -p $(BIN_DIR)
+	@printf '[TEST-CC] native_parser_parity_test\n'
+	$(CC) $(CPPFLAGS) $(CFLAGS) -DVITTE_NATIVE_FRONTEND_LINKED \
+		$(TEST_DIR)/native_parser_parity_test.c \
+		$(filter-out $(MAIN_OBJECT),$(NATIVE_LINK_OBJECTS)) \
+		$(NATIVE_FRONTEND_LIBRARY) $(LDFLAGS) $(LDLIBS) -o $@
+
+test-native-bootstrap-parity: $(TARGET_BIN) $(BOOTSTRAP_TARGET_BIN) $(NATIVE_BOOTSTRAP_PARITY_TEST_BIN)
+	$(PYTHON) $(TEST_DIR)/native_bootstrap_parity_test.py \
+		$(TARGET_BIN) $(BOOTSTRAP_TARGET_BIN) $(NATIVE_BOOTSTRAP_PARITY_TEST_BIN)
 
 .PHONY: test-native-frontend-subset
 test-native-frontend-subset: $(TARGET_BIN)
@@ -1134,20 +1148,28 @@ compiler-gate: compiler-release-criteria
 	$(MAKE) test-sanitizers
 	@printf '\nFull local compiler gate passed.\n'
 
-# Rebuild the native frontend twice with the compiler being rebuilt, then
-# require stable generated C and smoke-check the final stage2 executable.
+# Rebuild the native frontend through stage3. Run the parser/AST, semantic,
+# grammar, and end-to-end frontend corpora at every stage, and require stable
+# generated C before advancing to the next compiler.
 .PHONY: compiler-selfhost-gate
 compiler-selfhost-gate: $(TARGET_BIN)
 	@mkdir -p "$(SELFHOST_DIR)"
+	@printf '\n[SELFHOST] stage0 frontend corpus and parity\n'
+	$(MAKE) test-grammar test-native-frontend-subset test-native-bootstrap-parity
 	@printf '\n[SELFHOST] stage0 generates the stage1 API\n'
-	VITTE_MODULE_PATH="$(VITTE_MODULE_PATH):$(VITTE_ROOT)/compiler" $(TARGET_BIN) \
+	VITTE_MODULE_PATH="$(VITTE_MODULE_PATH)$(PATH_LIST_SEPARATOR)$(VITTE_ROOT)" $(TARGET_BIN) \
 		compile "$(NATIVE_FRONTEND_ENTRY)" --emit-c --quiet --no-color \
 		-o "$(SELFHOST_STAGE1_C)"
 	$(MAKE) BUILD="$(SELFHOST_STAGE1_BUILD)" \
 		NATIVE_FRONTEND_COMPILER="$(abspath $(TARGET_BIN))" \
 		NATIVE_FRONTEND_C="$(abspath $(SELFHOST_STAGE1_C))" all
+	@printf '\n[SELFHOST] stage1 frontend corpus and parity\n'
+	$(MAKE) BUILD="$(SELFHOST_STAGE1_BUILD)" \
+		NATIVE_FRONTEND_COMPILER="$(abspath $(TARGET_BIN))" \
+		NATIVE_FRONTEND_C="$(abspath $(SELFHOST_STAGE1_C))" \
+		test-grammar test-native-frontend-subset test-native-bootstrap-parity
 	@printf '\n[SELFHOST] stage1 regenerates the stage2 API\n'
-	VITTE_MODULE_PATH="$(VITTE_MODULE_PATH):$(VITTE_ROOT)/compiler" $(SELFHOST_STAGE1_BIN) \
+	VITTE_MODULE_PATH="$(VITTE_MODULE_PATH)$(PATH_LIST_SEPARATOR)$(VITTE_ROOT)" $(SELFHOST_STAGE1_BIN) \
 		compile "$(NATIVE_FRONTEND_ENTRY)" --emit-c --quiet --no-color \
 		-o "$(SELFHOST_STAGE2_C)"
 	@cmp -s "$(SELFHOST_STAGE1_C)" "$(SELFHOST_STAGE2_C)" || \
@@ -1156,13 +1178,27 @@ compiler-selfhost-gate: $(TARGET_BIN)
 	$(MAKE) BUILD="$(SELFHOST_STAGE2_BUILD)" \
 		NATIVE_FRONTEND_COMPILER="$(abspath $(SELFHOST_STAGE1_BIN))" \
 		NATIVE_FRONTEND_C="$(abspath $(SELFHOST_STAGE2_C))" all
-	@printf '\n[SELFHOST] stage2 checks the compiler API\n'
-	VITTE_MODULE_PATH="$(VITTE_MODULE_PATH):$(VITTE_ROOT)/compiler" $(SELFHOST_STAGE2_BIN) \
-		check "$(NATIVE_FRONTEND_ENTRY)" --quiet
-	@printf '\n[SELFHOST] stage2 compiles a representative source\n'
-	$(SELFHOST_STAGE2_BIN) compile "$(TEST_DIR)/native_selfhost_smoke.vit" \
-		--emit-c --quiet --no-color -o "$(SELFHOST_DIR)/stage2-smoke.c"
-	@printf '\nNative compiler self-host gate passed.\n'
+	@printf '\n[SELFHOST] stage2 frontend corpus and parity\n'
+	$(MAKE) BUILD="$(SELFHOST_STAGE2_BUILD)" \
+		NATIVE_FRONTEND_COMPILER="$(abspath $(SELFHOST_STAGE1_BIN))" \
+		NATIVE_FRONTEND_C="$(abspath $(SELFHOST_STAGE2_C))" \
+		test-grammar test-native-frontend-subset test-native-bootstrap-parity
+	@printf '\n[SELFHOST] stage2 regenerates the stage3 API\n'
+	VITTE_MODULE_PATH="$(VITTE_MODULE_PATH)$(PATH_LIST_SEPARATOR)$(VITTE_ROOT)" $(SELFHOST_STAGE2_BIN) \
+		compile "$(NATIVE_FRONTEND_ENTRY)" --emit-c --quiet --no-color \
+		-o "$(SELFHOST_STAGE3_C)"
+	@cmp -s "$(SELFHOST_STAGE2_C)" "$(SELFHOST_STAGE3_C)" || \
+		{ printf 'stage2 API output differs from stage1 output\n'; exit 1; }
+	@printf '[SELFHOST] stage1 and stage2 API output match\n'
+	$(MAKE) BUILD="$(SELFHOST_STAGE3_BUILD)" \
+		NATIVE_FRONTEND_COMPILER="$(abspath $(SELFHOST_STAGE2_BIN))" \
+		NATIVE_FRONTEND_C="$(abspath $(SELFHOST_STAGE3_C))" all
+	@printf '\n[SELFHOST] stage3 frontend corpus and parity\n'
+	$(MAKE) BUILD="$(SELFHOST_STAGE3_BUILD)" \
+		NATIVE_FRONTEND_COMPILER="$(abspath $(SELFHOST_STAGE2_BIN))" \
+		NATIVE_FRONTEND_C="$(abspath $(SELFHOST_STAGE3_C))" \
+		test-grammar test-native-frontend-subset test-native-bootstrap-parity
+	@printf '\nNative compiler self-host gate passed through stage3.\n'
 
 # -----------------------------------------------------------------------------
 # Complete test suite

@@ -302,7 +302,7 @@ vitte_cli_render_help(FILE *stream)
         "Configuration precedence: defaults < project config < environment < CLI.\n"
         "Project files: vitte.toml, .vitte/config; explicit file: VITTE_CONFIG_FILE.\n"
         "Environment variables use VITTE_<KEY>, for example VITTE_MAX_ERRORS.\n"
-        "VITTE_MODULE_PATH adds colon-separated module search roots.\n\n"
+        "VITTE_MODULE_PATH adds module roots separated by the host path-list separator.\n\n"
         "Options:\n");
     (void)vitte_cli_option_specs(&option_count);
     for (index = 0u; index < option_count; ++index) {

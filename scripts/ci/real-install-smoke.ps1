@@ -1,11 +1,14 @@
 param(
   [string]$VitteBin = $(if ($env:VITTE_BIN) { $env:VITTE_BIN } else { "vitte" }),
+  [string]$CCompiler = $(if ($env:CC) { $env:CC } else { "gcc" }),
   [string]$WorkDir = $env:WORKDIR
 )
 
 $ErrorActionPreference = "Stop"
 $vitteCommand = Get-Command $VitteBin -ErrorAction Stop
 $VitteBin = $vitteCommand.Source
+$ccCommand = Get-Command $CCompiler -ErrorAction Stop
+$CCompiler = $ccCommand.Source
 $temporaryWorkDir = [string]::IsNullOrWhiteSpace($WorkDir)
 if ($temporaryWorkDir) {
   $WorkDir = Join-Path ([System.IO.Path]::GetTempPath()) ("vitte-real-install-smoke-" + [guid]::NewGuid().ToString("N"))
@@ -22,7 +25,7 @@ function Invoke-Vitte {
 
 $source = @"
 proc main() -> int {
-  give 0;
+  return 0;
 }
 "@
 $smoke = Join-Path $WorkDir "smoke.vit"
@@ -39,11 +42,15 @@ try {
   Invoke-Vitte -CommandArgs @("--version")
   Invoke-Vitte -CommandArgs @("--help")
   Invoke-Vitte -CommandArgs @("check", "smoke.vit")
-  Invoke-Vitte -CommandArgs @("compile", "smoke.vit", "-o", "smoke")
-  $smokeProgram = @(".\smoke.exe", ".\smoke") | Where-Object { Test-Path $_ } | Select-Object -First 1
-  if (-not $smokeProgram) {
-    throw "Vitte produced no executable in $WorkDir"
+  # Windows host-tool invocation is not available in the compiler shim yet.
+  # Exercise the installed compiler through C emission and the runner's GCC.
+  Invoke-Vitte -CommandArgs @("compile", "smoke.vit", "--emit-c", "-o", "smoke.c")
+  & $CCompiler -std=c17 smoke.c -o smoke.exe
+  if ($LASTEXITCODE -ne 0) {
+    throw "C compiler failed with exit code $LASTEXITCODE"
   }
+  $smokeProgram = ".\smoke.exe"
+  if (-not (Test-Path $smokeProgram)) { throw "Vitte smoke executable was not produced in $WorkDir" }
   & $smokeProgram
   if ($LASTEXITCODE -ne 0) { throw "Vitte smoke program failed with exit code $LASTEXITCODE" }
   Write-Host "[real-install-smoke] OK bin=$VitteBin workdir=$WorkDir"

@@ -63,6 +63,134 @@ jobs:
           ulimit -s unlimited
           make test-runtime
 
+      - name: Enforce release ownership and path witnesses
+        run: make compiler-release-criteria
+
+      - name: Check incremental invalidation and package target inventory
+        run: make test-build-invalidation test-packaging-matrix
+
+  native-package-install:
+    name: Native package install (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            runner: ubuntu-24.04
+          - os: macos
+            runner: macos-15
+          - os: windows
+            runner: windows-2025
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+
+    defaults:
+      run:
+        shell: ${{ matrix.os == 'windows' && 'msys2 {0}' || 'bash' }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        if: matrix.os != 'windows'
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+
+      - name: Set up Windows build tools
+        if: matrix.os == 'windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            make
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-python
+            mingw-w64-ucrt-x86_64-nsis
+            tar
+            gzip
+            git
+
+      - name: Install Linux package verification tools
+        if: matrix.os == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y build-essential libarchive-tools
+
+      - name: Install macOS package tools
+        if: matrix.os == 'macos'
+        run: xcode-select -p
+
+      - name: Build compiler
+        run: make MODE=release -j2
+
+      - name: Validate incremental invalidation and package matrix
+        env:
+          VITTE_BIN: ${{ matrix.os == 'windows' && 'build/bin/vitte.exe' || 'build/bin/vitte' }}
+        run: make test-build-invalidation test-packaging-matrix
+
+      - name: Build and verify Linux package
+        if: matrix.os == 'linux'
+        run: |
+          package_dir="$RUNNER_TEMP/vitte-packages"
+          version="$(tr -d ' \t\r\n' < VERSION)"
+          mkdir -p "$package_dir"
+          VERSION="$version" ARCH=amd64 OUT_DIR="$package_dir" \
+            VITTE_BIN="$PWD/build/bin/vitte" scripts/build-linux-debs.sh
+          VERSION="$version" OUT_DIR="$package_dir" scripts/verify-installers.sh
+          deb="$package_dir/vitte_${version}_amd64.deb"
+          python3 scripts/verify-package-manifest.py "$deb" "$version" linux amd64
+          sudo dpkg -i "$deb"
+          VITTE_BIN=/usr/local/bin/vitte scripts/ci/real-install-smoke.sh
+
+      - name: Build and verify macOS package
+        if: matrix.os == 'macos'
+        run: |
+          package_dir="$RUNNER_TEMP/vitte-packages"
+          version="$(tr -d ' \t\r\n' < VERSION)"
+          mkdir -p "$package_dir"
+          VERSION="$version" ARCH=arm64 STRICT_DMG=1 OUT_DIR="$package_dir" \
+            VITTE_BIN="$PWD/target/macos-arm64/vitte" scripts/build-macos-installers.sh
+          VERSION="$version" OUT_DIR="$package_dir" scripts/verify-installers.sh
+          package="$package_dir/vitte-$version-macos-arm64.pkg"
+          dmg="$package_dir/vitte-$version-macos-arm64.dmg"
+          python3 scripts/verify-package-manifest.py "$package" "$version" macos arm64 "Mac OS X 11.0"
+          python3 scripts/verify-package-manifest.py "$dmg" "$version" macos arm64 "Mac OS X 11.0"
+          sudo installer -pkg "$package" -target /
+          VITTE_BIN=/usr/local/bin/vitte scripts/ci/real-install-smoke.sh
+
+      - name: Build and verify Windows package
+        if: matrix.os == 'windows'
+        run: |
+          package_dir="$(cygpath -u "$RUNNER_TEMP")/vitte-packages"
+          version="$(tr -d ' \t\r\n' < VERSION)"
+          mkdir -p "$package_dir"
+          VERSION="$version" ARCH=amd64 WINDOWS_TARGETS=11 WINDOWS_MINIMUM_VERSION="Windows 11" STRICT_NATIVE=1 \
+            OUT_DIR="$package_dir" VITTE_BIN="$PWD/build/bin/vitte.exe" \
+            WINDOWS_VITTE_EXE="$PWD/build/bin/vitte.exe" \
+            scripts/build-windows-installer.sh
+          VERSION="$version" OUT_DIR="$package_dir" scripts/verify-installers.sh
+          python3 scripts/verify-package-manifest.py \
+            "$package_dir/vitte-$version-windows-amd64-nsis.tar.gz" "$version" windows amd64 "Windows 11"
+          python3 scripts/verify-package-manifest.py \
+            "$package_dir/vitte-$version-windows-amd64-installer.exe" "$version" windows amd64 "Windows 11"
+
+      - name: Install and smoke test Windows package
+        if: matrix.os == 'windows'
+        shell: pwsh
+        run: |
+          $version = (Get-Content VERSION -Raw).Trim()
+          $package = Join-Path $env:RUNNER_TEMP "vitte-packages/vitte-$version-windows-amd64-installer.exe"
+          $installDir = Join-Path $env:RUNNER_TEMP "vitte-installed"
+          New-Item -ItemType Directory -Force -Path $installDir | Out-Null
+          $process = Start-Process -FilePath $package -ArgumentList @('/S', "/D=$installDir") -Verb RunAs -Wait -PassThru
+          if ($process.ExitCode -ne 0) { throw "NSIS installer failed: $($process.ExitCode)" }
+          $env:VITTE_BIN = Join-Path $installDir 'bin/vitte.exe'
+          $env:CC = 'gcc'
+          ./scripts/ci/real-install-smoke.ps1 -VitteBin $env:VITTE_BIN -CCompiler $env:CC
+
   extension-dap:
     name: Extension and native DAP
     runs-on: ubuntu-24.04

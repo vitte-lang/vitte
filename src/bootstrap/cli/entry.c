@@ -1630,7 +1630,7 @@ vitte_main_module_resolve_path(
     }
     module_path[end] = '\0';
 
-    if (importer_path[0] == '/') {
+    if (vitte_filesystem_path_is_absolute(importer_path)) {
         written = snprintf(
             absolute_importer,
             sizeof(absolute_importer),
