@@ -2,8 +2,9 @@
 layout: default
 ---
 <article class="lesson">
+  {% assign lessons = site.pages | where_exp: 'item', 'item.chapter' | sort: 'chapter' %}
   {% assign current_index = nil %}
-  {% for item in site.data.lessons %}
+  {% for item in lessons %}
     {% if item.url == page.url %}{% assign current_index = forloop.index0 %}{% endif %}
   {% endfor %}
   {% assign current_number = current_index | plus: 1 %}
@@ -13,14 +14,11 @@ layout: default
     <p class="lesson-lead">{{ page.lead }}</p>
     <div class="lesson-meta"><span>À retenir</span><span class="meta-separator">·</span><span>{{ page.takeaway }}</span></div>
     <div class="course-progress">
-      <div class="course-progress-label"><span>Progression du parcours</span><span>Chapitre {{ current_number }} sur {{ site.data.lessons.size }}</span></div>
-      <progress value="{{ current_number }}" max="{{ site.data.lessons.size }}" aria-label="Progression du parcours Vitte">Chapitre {{ current_number }} sur {{ site.data.lessons.size }}</progress>
+      <div class="course-progress-label"><span>Progression du parcours</span><span>Chapitre {{ current_number }} sur {{ lessons.size }}</span></div>
+      <progress value="{{ current_number }}" max="{{ lessons.size }}" aria-label="Progression du parcours Vitte">Chapitre {{ current_number }} sur {{ lessons.size }}</progress>
     </div>
   </header>
-  <nav class="lesson-toc" aria-label="Sommaire de cette leçon" hidden>
-    <strong>Dans cette leçon</strong>
-    <ul></ul>
-  </nav>
+  {% include table-of-contents.html kind="lesson" label="Sommaire de cette leçon" title="Dans cette leçon" %}
   <div class="lesson-body">
     {{ content }}
   </div>
@@ -28,13 +26,12 @@ layout: default
   {% assign next_index = current_index | plus: 1 %}
   <nav class="lesson-pager" aria-label="Navigation entre les leçons">
     {% if current_index > 0 %}
-      {% assign previous_lesson = site.data.lessons[previous_index] %}
+      {% assign previous_lesson = lessons[previous_index] %}
       <a class="pager-card pager-previous" href="{{ previous_lesson.url | relative_url }}"><span>← Leçon précédente</span><strong>{{ previous_lesson.title }}</strong></a>
     {% else %}<span></span>{% endif %}
-    {% if next_index < site.data.lessons.size %}
-      {% assign next_lesson = site.data.lessons[next_index] %}
+    {% if next_index < lessons.size %}
+      {% assign next_lesson = lessons[next_index] %}
       <a class="pager-card pager-next" href="{{ next_lesson.url | relative_url }}"><span>Leçon suivante →</span><strong>{{ next_lesson.title }}</strong></a>
     {% endif %}
   </nav>
-  <script src="{{ '/assets/js/reference-toc.js' | relative_url }}" defer></script>
 </article>

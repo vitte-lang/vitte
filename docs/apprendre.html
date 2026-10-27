@@ -1,5 +1,4 @@
 ---
-layout: guide
 title: Apprendre Vitte
 permalink: /apprendre/
 section: Parcours guidé
@@ -16,18 +15,19 @@ description: Parcours d’apprentissage approfondi du langage Vitte, organisé e
 <p><a class="button" href="{{ '/cours/01-demarrer/' | relative_url }}">Ouvrir le chapitre 1 <span aria-hidden="true">→</span></a></p>
 
 <h2>Ordre des chapitres</h2>
-{% assign learning_parts = site.data.lessons | map: 'part' | uniq %}
+{% assign lessons = site.pages | where_exp: 'item', 'item.chapter' | sort: 'chapter' %}
+{% assign learning_parts = lessons | map: 'part' | uniq %}
 {% assign lesson_number = 0 %}
 <div class="learning-path">
   {% for part in learning_parts %}
     <section class="learning-part">
       <h3>{{ part }}</h3>
       <ol>
-        {% for lesson in site.data.lessons %}
+        {% for lesson in lessons %}
           {% if lesson.part == part %}
             {% assign lesson_number = lesson_number | plus: 1 %}
             <li>
-              <a href="{{ lesson.url | relative_url }}"><span class="learning-number">{{ lesson_number | prepend: '0' | slice: -2, 2 }}</span><strong>{{ lesson.title }}</strong><span class="learning-time">{{ lesson.time }}</span></a>
+              <a href="{{ lesson.url | relative_url }}"><span class="learning-number">{{ lesson_number | prepend: '0' | slice: -2, 2 }}</span><strong>{{ lesson.title }}</strong><span class="learning-time">{{ lesson.duration }}</span></a>
             </li>
           {% endif %}
         {% endfor %}

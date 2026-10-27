@@ -1,22 +1,21 @@
 ---
-layout: reference
 title: Référence Vitte
 permalink: /reference/
 section: Index
 lead: Une documentation de consultation pour retrouver rapidement une syntaxe, un type, une commande ou une limite du compilateur.
 description: Index de la référence du langage Vitte.
 ---
+{% assign references = site.pages | where_exp: 'item', 'item.reference_order' | sort: 'reference_order' %}
 <div class="reference-index">
   <label class="reference-search-label" for="reference-search">Rechercher dans les fiches de référence</label>
   <div class="reference-search-wrap"><span aria-hidden="true">⌕</span><input id="reference-search" type="search" placeholder="Ex. valeur de retour, collision, tableau fixe…" autocomplete="off"><kbd>/</kbd></div>
-  <p id="reference-search-status" class="reference-search-status" aria-live="polite">{{ site.data.references.size }} fiches · recherche dans les titres, résumés et contenus</p>
+  <p id="reference-search-status" class="reference-search-status" aria-live="polite">{{ references.size }} fiches · recherche dans les titres, résumés et contenus</p>
   <div class="reference-grid" id="reference-grid">
-    {% for reference in site.data.references %}
-      {% assign reference_page = site.pages | where: "url", reference.url | first %}
+    {% for reference in references %}
       <a class="reference-card" href="{{ reference.url | relative_url }}" data-search="{{ reference.title | downcase | escape }} {{ reference.summary | downcase | escape }} {{ reference.keywords | downcase | escape }}">
         <span class="reference-card-number">{{ forloop.index | prepend: '0' | slice: -2, 2 }}</span>
         <span class="reference-card-copy"><strong>{{ reference.title }}</strong><span>{{ reference.summary }}</span><small class="reference-card-hit" hidden></small><small>OUVRIR LA PAGE →</small></span>
-        <span class="reference-card-search-content" hidden>{{ reference_page.content | default: "" | replace: "</", " </" | strip_html | strip_newlines | escape }}</span>
+        <span class="reference-card-search-content" hidden>{{ reference.content | default: "" | replace: "</", " </" | strip_html | strip_newlines | escape }}</span>
       </a>
     {% endfor %}
   </div>

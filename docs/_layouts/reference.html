@@ -11,22 +11,19 @@ layout: default
     {% if page.source %}<div class="reference-source">Source de référence : <code>{{ page.source }}</code></div>{% endif %}
   </header>
   <p class="reference-evidence-note">Les fiches séparent la syntaxe <strong>décrite par la grammaire</strong>, les formes <strong>acceptées par l’analyseur</strong> et celles <strong>compilées ou exécutées</strong>. Les statuts <strong>Disponible</strong>, <strong>Expérimental</strong> et <strong>Non implémenté</strong> se rapportent au cas vérifié, pas à une promesse générale. La <a href="{{ '/reference/support/' | relative_url }}">matrice de support détaillée</a> donne les preuves par construction.</p>
-  <nav class="reference-toc" aria-label="Sommaire de cette page" hidden>
-    <strong>Sur cette page</strong>
-    <ul></ul>
-  </nav>
+  {% include table-of-contents.html kind="reference" label="Sommaire de cette page" title="Sur cette page" %}
   <div class="reference-body">{{ content }}</div>
   {% assign current_index = nil %}
-  {% for item in site.data.references %}
+  {% assign references = site.pages | where_exp: 'item', 'item.reference_order' | sort: 'reference_order' %}
+  {% for item in references %}
     {% if item.url == page.url %}{% assign current_index = forloop.index0 %}{% endif %}
   {% endfor %}
   {% if current_index != nil %}
     {% assign previous_index = current_index | minus: 1 %}
     {% assign next_index = current_index | plus: 1 %}
     <nav class="lesson-pager" aria-label="Navigation entre les pages de référence">
-      {% if current_index > 0 %}{% assign previous_reference = site.data.references[previous_index] %}<a class="pager-card pager-previous" href="{{ previous_reference.url | relative_url }}"><span>← Page précédente</span><strong>{{ previous_reference.title }}</strong></a>{% else %}<span></span>{% endif %}
-      {% if next_index < site.data.references.size %}{% assign next_reference = site.data.references[next_index] %}<a class="pager-card pager-next" href="{{ next_reference.url | relative_url }}"><span>Page suivante →</span><strong>{{ next_reference.title }}</strong></a>{% endif %}
+      {% if current_index > 0 %}{% assign previous_reference = references[previous_index] %}<a class="pager-card pager-previous" href="{{ previous_reference.url | relative_url }}"><span>← Page précédente</span><strong>{{ previous_reference.title }}</strong></a>{% else %}<span></span>{% endif %}
+      {% if next_index < references.size %}{% assign next_reference = references[next_index] %}<a class="pager-card pager-next" href="{{ next_reference.url | relative_url }}"><span>Page suivante →</span><strong>{{ next_reference.title }}</strong></a>{% endif %}
     </nav>
   {% endif %}
-  <script src="{{ '/assets/js/reference-toc.js' | relative_url }}" defer></script>
 </article>
