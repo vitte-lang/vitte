@@ -1,0 +1,20 @@
+/// Calculs d'alignement avec validation et contrôle du débordement.
+space core::mem::align;
+
+export proc mem_alignment_is_valid(alignment: usize) -> bool {
+    return alignment != 0 && (alignment & (alignment - 1)) == 0;
+}
+
+export proc mem_align_down(value: usize, alignment: usize) -> ?usize {
+    if not mem_alignment_is_valid(alignment) { return null; }
+    return value - (value % alignment);
+}
+
+export proc mem_align_up(value: usize, alignment: usize) -> ?usize {
+    if not mem_alignment_is_valid(alignment) { return null; }
+    let remainder: usize = value % alignment;
+    if remainder == 0 { return value; }
+    let padding: usize = alignment - remainder;
+    if value > usize.MAX - padding { return null; }
+    return value + padding;
+}

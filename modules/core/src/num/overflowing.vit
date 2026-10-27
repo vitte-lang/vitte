@@ -1,0 +1,55 @@
+/// Opérations modulaires accompagnées d'un indicateur de débordement.
+space core::num::overflowing;
+
+use core::num::limits::{U64_MAX};
+use core::num::checked::{CheckedI64Result, checked_i64_mul};
+use core::num::wrapping::{
+    wrapping_u64_add, wrapping_u64_sub, wrapping_u64_mul,
+    wrapping_i64_add, wrapping_i64_sub, wrapping_i64_mul
+};
+
+export form OverflowingU64 {
+    value: u64,
+    overflowed: bool,
+}
+
+export form OverflowingI64 {
+    value: i64,
+    overflowed: bool,
+}
+
+export proc overflowing_u64_add(left: u64, right: u64) -> OverflowingU64 {
+    let overflowed: bool = left > U64_MAX - right;
+    return OverflowingU64 { value: wrapping_u64_add(left, right), overflowed: overflowed };
+}
+
+export proc overflowing_u64_sub(left: u64, right: u64) -> OverflowingU64 {
+    return OverflowingU64 { value: wrapping_u64_sub(left, right), overflowed: left < right };
+}
+
+export proc overflowing_u64_mul(left: u64, right: u64) -> OverflowingU64 {
+    let overflowed: bool = right != 0 && left > U64_MAX / right;
+    return OverflowingU64 { value: wrapping_u64_mul(left, right), overflowed: overflowed };
+}
+
+export proc overflowing_i64_add(left: i64, right: i64) -> OverflowingI64 {
+    let value: i64 = wrapping_i64_add(left, right);
+    let overflowed: bool = (left >= 0 && right >= 0 && value < 0) ||
+                           (left < 0 && right < 0 && value >= 0);
+    return OverflowingI64 { value: value, overflowed: overflowed };
+}
+
+export proc overflowing_i64_sub(left: i64, right: i64) -> OverflowingI64 {
+    let value: i64 = wrapping_i64_sub(left, right);
+    let overflowed: bool = (left >= 0 && right < 0 && value < 0) ||
+                           (left < 0 && right >= 0 && value >= 0);
+    return OverflowingI64 { value: value, overflowed: overflowed };
+}
+
+export proc overflowing_i64_mul(left: i64, right: i64) -> OverflowingI64 {
+    let checked: CheckedI64Result = checked_i64_mul(left, right);
+    if checked.success {
+        return OverflowingI64 { value: checked.value, overflowed: false };
+    }
+    return OverflowingI64 { value: wrapping_i64_mul(left, right), overflowed: true };
+}

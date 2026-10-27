@@ -1,0 +1,59 @@
+/// Opérations de base sur les valeurs optionnelles natives `?T`.
+///
+/// `null` représente `None`; une valeur non nulle représente `Some(value)`.
+/// Cette représentation utilise directement le type nullable du langage.
+/// Elle ne peut donc pas distinguer `None` de `Some(null)` lorsque `T` est lui
+/// même nullable.
+space core::types::option;
+
+/// Alias nommé de la représentation nullable native.
+export type Option<T> = ?T;
+
+/// Construit une option vide.
+export proc option_none<T>() -> Option[T] {
+    return null;
+}
+
+/// Construit une option contenant `value`.
+export proc option_some<T>(value: T) -> Option[T] {
+    return value;
+}
+
+/// Indique si l'option contient une valeur.
+export proc option_is_some<T>(value: Option[T]) -> bool {
+    return value != null;
+}
+
+/// Indique si l'option est vide.
+export proc option_is_none<T>(value: Option[T]) -> bool {
+    return value == null;
+}
+
+/// Retourne l'option de gauche si elle contient une valeur, sinon celle de droite.
+export proc option_or<T>(value: Option[T], fallback: Option[T]) -> Option[T] {
+    if value != null {
+        return value;
+    }
+
+    return fallback;
+}
+
+/// Retourne l'option de gauche si elle contient une valeur, sinon calcule une option.
+export proc option_or_else<T>(
+    value: Option[T],
+    fallback: proc() -> Option[T]
+) -> Option[T] {
+    if value != null {
+        return value;
+    }
+
+    return fallback();
+}
+
+/// Remplace l'option mutable et retourne son ancienne valeur.
+export proc option_replace<T>(value: &mut Option[T], replacement: Option[T]) -> Option[T] {
+    let previous: Option[T] = *value;
+    set *value = replacement;
+    return previous;
+}
+

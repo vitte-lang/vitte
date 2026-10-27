@@ -1,0 +1,1891 @@
+/// Native front-end pipeline shared by the public API and command driver.
+/// Successful programs use validated HIR -> IR -> C17 emission by default;
+/// constructs without IR lowering retain the native AST C17 compatibility path.
+space compiler::driver::pipeline;
+
+use compiler::driver::host_tools::{
+    vitte_driver_run_host_toolchain
+};
+
+use compiler::api::error::{Status};
+use compiler::config::config::{
+    Config,
+    ConfigBackend,
+    ConfigOptimization,
+    ConfigResolved,
+    vitte_config_is_valid,
+    vitte_config_resolved_default
+};
+use compiler::codegen::codegen::{
+    Codegen,
+    CodegenError,
+    CodegenBackendInterface,
+    CodegenBackendKind,
+    CodegenSourceLocation,
+    CodegenUnit,
+    CodegenConfig,
+    CodegenOptimization,
+    CodegenBackendEmitUnitFn,
+    vitte_codegen_account_output,
+    vitte_codegen_add_unit,
+    vitte_codegen_config_default,
+    vitte_codegen_config_validate,
+    vitte_codegen_destroy,
+    vitte_codegen_generate,
+    vitte_codegen_init,
+    vitte_codegen_set_backend
+};
+use compiler::backend::c17::ast_emitter::{C17AstEmitResult, c17_emit_ast};
+use compiler::backend::c17::ir_emitter::{c17_emit_ir};
+use compiler::hir::hir::{
+    HIR,
+    HIRState,
+    HIRStats,
+    vitte_hir_destroy,
+    vitte_hir_error_name,
+    vitte_hir_fingerprint,
+    vitte_hir_init,
+    vitte_hir_is_valid,
+    vitte_hir_lower_ast,
+    vitte_hir_stats,
+    vitte_hir_validate
+};
+use compiler::ir::ir::{
+    IRContext,
+    IRState,
+    IRStats,
+    vitte_ir_destroy,
+    vitte_ir_error_name,
+    vitte_ir_fingerprint,
+    vitte_ir_init,
+    vitte_ir_is_valid,
+    vitte_ir_lower_hir,
+    vitte_ir_stats,
+    vitte_ir_validate
+};
+use compiler::ir::dump::{vitte_ir_dump_text};
+use vitte::core::memory::{allocate, copy, deallocate, fill};
+use compiler::scanner::scanner::{
+    Scanner,
+    ScannerPosition,
+    vitte_scanner_destroy,
+    vitte_scanner_init,
+    vitte_scanner_position_at,
+    vitte_scanner_set_strict_utf8
+};
+use compiler::diagnostic::cli_bridge::{
+    CliDiagnosticOrigin,
+    CliDiagnosticSeverity,
+    vitte_cli_diagnostic_transport_create,
+    vitte_cli_diagnostic_transport_set,
+    vitte_cli_diagnostic_transport_set_semantic,
+    vitte_cli_diagnostic_transport_destroy
+};
+use compiler::lexer::lexer::{
+    Lexer,
+    LexerError,
+    TokenKind,
+    vitte_lexer_destroy,
+    vitte_lexer_error_span,
+    vitte_lexer_fingerprint,
+    vitte_lexer_init,
+    vitte_lexer_last_error,
+    vitte_lexer_error_name,
+    vitte_lexer_run,
+    vitte_lexer_token_count,
+    vitte_lexer_validate,
+    vitte_token_kind_name
+};
+use compiler::parser::parser::{
+    ASTNode,
+    ASTNodeKind,
+    Parser,
+    ParserDiagnosticKind,
+    ParserError,
+    ASTNodeId,
+    ParserToken,
+    ParserTokenSpan,
+    vitte_parser_destroy,
+    vitte_parser_get_node,
+    vitte_parser_init,
+    vitte_parser_node_token,
+    vitte_parser_run_native,
+    vitte_parser_diagnostic_at,
+    vitte_parser_diagnostic_count
+};
+use compiler::sema::sema::{
+    Sema,
+    SemaTypeId,
+    SemaDiagnosticCode,
+    SemaDiagnosticKind,
+    SemaTypeContextKind,
+    SemaStats,
+    vitte_sema_destroy,
+    vitte_sema_init,
+    vitte_sema_run,
+    vitte_sema_validate,
+    vitte_sema_diagnostic_count,
+    vitte_sema_diagnostic_at,
+    vitte_sema_stats,
+    vitte_sema_last_error,
+    vitte_sema_type_kind_name
+};
+use compiler::scope::scope::{
+    Scope,
+    vitte_scope_get_symbol
+};
+
+export pick NativePipelinePhase {
+    None,
+    SourceRegistered,
+    Lexed,
+    Parsed,
+    Analyzed,
+    HirLowered,
+    IrLowered,
+    Generated,
+    Count
+}
+
+export const NATIVE_FRONTEND_ACTION_COMPILE: u32 = 0;
+export const NATIVE_FRONTEND_ACTION_CHECK: u32 = 1;
+export const NATIVE_FRONTEND_ACTION_EMIT_IR: u32 = 2;
+
+/// Expose host-tool orchestration through the native pipeline entrypoint.
+/// The driver owns compile/link/run ordering; the CLI only supplies resolved
+/// options and renders the returned stage failure.
+export proc vitte_native_driver_run_host_toolchain(
+    source: *const u8,
+    source_length: usize,
+    output_path: *const u8,
+    emit_object: bool,
+    run_program: bool,
+    debug_info: bool,
+    debug_runtime: bool,
+    run_argc: i32,
+    run_argv: *mut *mut u8,
+    failed_stage: *mut u32
+) -> u32 {
+    return vitte_driver_run_host_toolchain(
+        source,
+        source_length,
+        output_path,
+        emit_object,
+        run_program,
+        debug_info,
+        debug_runtime,
+        run_argc,
+        run_argv,
+        failed_stage
+    );
+}
+
+export form NativePipelineResult {
+    status: Status,
+    last_completed_phase: NativePipelinePhase,
+    generated_source: string,
+    lexer_error: LexerError,
+    parser_error: u32,
+    sema_error: u32,
+    hir_error: u32,
+    ir_error: u32,
+    codegen_error: u32,
+    token_count: usize,
+    parser_diagnostic_count: usize,
+    sema_diagnostic_count: usize,
+    sema_error_count: usize,
+    hir_node_count: usize,
+    ir_function_count: usize,
+    generated_source_bytes: usize,
+    lexer_fingerprint: u64,
+    parser_fingerprint: u64,
+    hir_fingerprint: u64,
+    ir_fingerprint: u64,
+    codegen_fingerprint: u64,
+    native_parser_attempted: bool,
+    native_parser_succeeded: bool,
+    native_ast_lowered: bool,
+    succeeded: bool
+}
+
+proc native_pipeline_parser_severity(kind: ParserDiagnosticKind) -> CliDiagnosticSeverity {
+    match kind {
+        case ParserDiagnosticKind.Note => return CliDiagnosticSeverity.Note;
+        case ParserDiagnosticKind.Help => return CliDiagnosticSeverity.Help;
+        case ParserDiagnosticKind.Warning => return CliDiagnosticSeverity.Warning;
+        case ParserDiagnosticKind.Error => return CliDiagnosticSeverity.Error;
+        else => return CliDiagnosticSeverity.Error;
+    }
+}
+
+proc native_pipeline_sema_severity(kind: SemaDiagnosticKind) -> CliDiagnosticSeverity {
+    match kind {
+        case SemaDiagnosticKind.Note => return CliDiagnosticSeverity.Note;
+        case SemaDiagnosticKind.Help => return CliDiagnosticSeverity.Help;
+        case SemaDiagnosticKind.Warning => return CliDiagnosticSeverity.Warning;
+        case SemaDiagnosticKind.Error => return CliDiagnosticSeverity.Error;
+        else => return CliDiagnosticSeverity.Error;
+    }
+}
+
+proc native_pipeline_parser_code(error: ParserError) -> string {
+    match error {
+        case ParserError.ExpectedToken => return "VITTE_PARSER_E_EXPECTED_TOKEN";
+        case ParserError.ExpectedIdentifier => return "VITTE_PARSER_E_EXPECTED_TOKEN";
+        case ParserError.ExpectedExpression => return "VITTE_PARSER_E_EXPECTED_EXPRESSION";
+        case ParserError.ExpectedType => return "VITTE_PARSER_E_EXPECTED_TYPE";
+        case ParserError.ExpectedDeclaration => return "VITTE_PARSER_E_EXPECTED_DECLARATION";
+        case ParserError.UnexpectedToken => return "VITTE_PARSER_E_UNEXPECTED_TOKEN";
+        case ParserError.ExpectedStatement => return "VITTE_PARSER_E_UNEXPECTED_TOKEN";
+        else => return "VITTE_INFRA_E_PHASE";
+    }
+}
+
+proc native_pipeline_sema_code(code: SemaDiagnosticCode) -> string {
+    match code {
+        case SemaDiagnosticCode.UnresolvedName => return "VITTE_RESOLVE_E_UNKNOWN_SYMBOL";
+        case SemaDiagnosticCode.PrivateSymbol => return "VITTE_RESOLVE_E_PRIVATE";
+        case SemaDiagnosticCode.DuplicateDeclaration => return "VITTE_RESOLVE_E_REDECLARATION";
+        case SemaDiagnosticCode.ShadowedDeclaration => return "VITTE_WARNING_SHADOWING";
+        case SemaDiagnosticCode.NotCallable => return "VITTE_TYPE_E_NOT_CALLABLE";
+        case SemaDiagnosticCode.InvalidArgumentCount => return "VITTE_CALL_E_ARITY";
+        case SemaDiagnosticCode.InvalidArgumentType => return "VITTE_CALL_E_ARGUMENT_TYPE";
+        case SemaDiagnosticCode.UnknownType => return "VITTE_TYPE_E_UNKNOWN_TYPE";
+        case SemaDiagnosticCode.NotAType => return "VITTE_TYPE_E_NOT_A_TYPE";
+        case SemaDiagnosticCode.InvalidUnaryOperand => return "VITTE_TYPE_E_INVALID_OPERAND";
+        case SemaDiagnosticCode.InvalidBinaryOperands => return "VITTE_TYPE_E_INVALID_OPERAND";
+        case SemaDiagnosticCode.NotAssignable => return "VITTE_TYPE_E_NOT_ASSIGNABLE";
+        case SemaDiagnosticCode.NotIndexable => return "VITTE_TYPE_E_NOT_INDEXABLE";
+        case SemaDiagnosticCode.InvalidIndexType => return "VITTE_TYPE_E_INVALID_INDEX";
+        case SemaDiagnosticCode.UnknownMember => return "VITTE_TYPE_E_NO_MEMBER";
+        case SemaDiagnosticCode.ConditionNotBool => return "VITTE_TYPE_E_CONDITION_NOT_BOOL";
+        case SemaDiagnosticCode.ReturnTypeMismatch => return "VITTE_CALL_E_RETURN_TYPE";
+        case SemaDiagnosticCode.ReturnOutsideProc => return "VITTE_CALL_E_RETURN_OUTSIDE_PROC";
+        case SemaDiagnosticCode.BreakOutsideLoop => return "VITTE_CONTROL_E_INVALID_BREAK";
+        case SemaDiagnosticCode.ContinueOutsideLoop => return "VITTE_CONTROL_E_INVALID_CONTINUE";
+        case SemaDiagnosticCode.UnreachableCode => return "VITTE_WARNING_UNREACHABLE_CODE";
+        case SemaDiagnosticCode.RecursionLimit => return "VITTE_INFRA_E_LIMIT";
+        case SemaDiagnosticCode.TypeMismatch => return "VITTE_TYPE_E_MISMATCH";
+        case SemaDiagnosticCode.InvalidType => return "VITTE_TYPE_E_MISMATCH";
+        case SemaDiagnosticCode.InvalidPatternBindings => return "VITTE_PATTERN_E_BINDING";
+        else => return "VITTE_INFRA_E_FALLBACK";
+    }
+}
+
+proc native_pipeline_codegen_code(error: string) -> string {
+    if error == "generated C17 source exceeds the configured output limit" {
+        return "VITTE_BACKEND_E_OUTPUT";
+    }
+    if error == "the native pipeline currently emits only the C17 backend" {
+        return "VITTE_BACKEND_E_UNSUPPORTED";
+    }
+    return "VITTE_BACKEND_E_CODEGEN";
+}
+
+proc native_pipeline_codegen_error(error: string) -> CodegenError {
+    if error == "generated C17 source exceeds the configured output limit" {
+        return CodegenError.OutputLimit;
+    }
+    if error == "the native pipeline currently emits only the C17 backend" {
+        return CodegenError.Unsupported;
+    }
+    return CodegenError.Backend;
+}
+
+proc native_pipeline_codegen_origin(error: string) -> CliDiagnosticOrigin {
+    if error == "generated C17 source exceeds the configured output limit" {
+        return CliDiagnosticOrigin.Io;
+    }
+    return CliDiagnosticOrigin.C17Backend;
+}
+
+form NativePipelineEmitResult {
+    success: bool,
+    source: string,
+    error: string,
+    diagnostic_code: *const char,
+    diagnostic_origin: CliDiagnosticOrigin,
+    codegen_error: CodegenError
+}
+
+proc native_pipeline_emit_failure(
+    error: string,
+    code: *const char,
+    origin: CliDiagnosticOrigin,
+    codegen_error: CodegenError
+) -> NativePipelineEmitResult {
+    return NativePipelineEmitResult {
+        success: false,
+        source: "",
+        error: error,
+        diagnostic_code: code,
+        diagnostic_origin: origin,
+        codegen_error: codegen_error
+    };
+}
+
+proc native_pipeline_export_cli_diagnostic(
+    batch: *mut u8,
+    count: usize,
+    index: usize,
+    diagnostic_id: u64,
+    code: *const char,
+    severity: CliDiagnosticSeverity,
+    origin: CliDiagnosticOrigin,
+    message: *const char,
+    details: *const char,
+    help: *const char,
+    has_span: bool,
+    file_id: u32,
+    source_id: u64,
+    source_name: *const char,
+    begin: usize,
+    end: usize,
+    source: str,
+    expected: *const char,
+    found: *const char
+) -> bool {
+    let mut start_line: usize = 0;
+    let mut start_column: usize = 0;
+    let mut end_line: usize = 0;
+    let mut end_column: usize = 0;
+    if has_span {
+        let mut scanner: Scanner;
+        if vitte_scanner_init(&mut scanner, source, source.length, file_id) {
+            let _ = vitte_scanner_set_strict_utf8(&mut scanner, false);
+            let mut start_position: ScannerPosition;
+            let mut end_position: ScannerPosition;
+            if vitte_scanner_position_at(&mut scanner, begin, &mut start_position) &&
+               vitte_scanner_position_at(&mut scanner, end, &mut end_position) {
+                set start_line = start_position.line - 1;
+                set start_column = start_position.column - 1;
+                set end_line = end_position.line - 1;
+                set end_column = end_position.column - 1;
+            }
+            vitte_scanner_destroy(&mut scanner);
+        }
+    }
+    return vitte_cli_diagnostic_transport_set(
+        batch,
+        count,
+        index,
+        diagnostic_id,
+        code,
+        severity as u32,
+        origin as u32,
+        message,
+        details,
+        help,
+        has_span,
+        file_id,
+        source_id,
+        source_name,
+        begin,
+        end,
+        start_line,
+        start_column,
+        end_line,
+        end_column,
+        expected,
+        found
+    );
+}
+
+proc native_pipeline_parser_message(error: ParserError) -> string {
+    match error {
+        case ParserError.ExpectedToken => return "expected token";
+        case ParserError.ExpectedIdentifier => return "expected identifier";
+        case ParserError.ExpectedExpression => return "expected expression";
+        case ParserError.ExpectedType => return "expected type";
+        case ParserError.ExpectedDeclaration => return "expected declaration";
+        case ParserError.ExpectedStatement => return "expected statement";
+        case ParserError.UnexpectedToken => return "unexpected token";
+        else => return "parser error";
+    }
+}
+
+proc native_pipeline_sema_message(code: SemaDiagnosticCode) -> string {
+    match code {
+        case SemaDiagnosticCode.UnresolvedName => return "unknown symbol";
+        case SemaDiagnosticCode.PrivateSymbol => return "this symbol is private";
+        case SemaDiagnosticCode.DuplicateDeclaration => return "duplicate declaration";
+        case SemaDiagnosticCode.ShadowedDeclaration => return "declaration shadows an existing name";
+        case SemaDiagnosticCode.NotCallable => return "this value is not callable";
+        case SemaDiagnosticCode.InvalidArgumentCount => return "invalid number of arguments";
+        case SemaDiagnosticCode.InvalidArgumentType => return "invalid argument type";
+        case SemaDiagnosticCode.UnknownType => return "unknown type";
+        case SemaDiagnosticCode.NotAType => return "this name does not refer to a type";
+        case SemaDiagnosticCode.InvalidUnaryOperand => return "invalid unary operand";
+        case SemaDiagnosticCode.InvalidBinaryOperands => return "invalid binary operands";
+        case SemaDiagnosticCode.NotAssignable => return "this expression is not assignable";
+        case SemaDiagnosticCode.NotIndexable => return "this value cannot be indexed";
+        case SemaDiagnosticCode.InvalidIndexType => return "invalid index type";
+        case SemaDiagnosticCode.UnknownMember => return "unknown member";
+        case SemaDiagnosticCode.ConditionNotBool => return "condition must be a boolean";
+        case SemaDiagnosticCode.ReturnTypeMismatch => return "returned value has an incompatible type";
+        case SemaDiagnosticCode.ReturnOutsideProc => return "return used outside a procedure";
+        case SemaDiagnosticCode.BreakOutsideLoop => return "break used outside a loop";
+        case SemaDiagnosticCode.ContinueOutsideLoop => return "continue used outside a loop";
+        case SemaDiagnosticCode.UnreachableCode => return "unreachable code";
+        case SemaDiagnosticCode.RecursionLimit => return "semantic analysis recursion limit reached";
+        case SemaDiagnosticCode.TypeMismatch => return "type mismatch";
+        case SemaDiagnosticCode.InvalidType => return "invalid type";
+        case SemaDiagnosticCode.InvalidPatternBindings => return "alternative patterns introduce incompatible bindings";
+        else => return "semantic analysis error";
+    }
+}
+
+proc native_pipeline_sema_type_name(sema: *const Sema, type_id: SemaTypeId) -> *const char {
+    if sema == null or type_id == 0 or type_id > (*sema).type_count as SemaTypeId {
+        return null;
+    }
+    return native_pipeline_c_string(vitte_sema_type_kind_name((*sema).types[(type_id - 1) as usize].kind));
+}
+
+proc native_pipeline_sema_has_type_context(code: SemaDiagnosticCode) -> bool {
+    return code == SemaDiagnosticCode.TypeMismatch or
+        code == SemaDiagnosticCode.InvalidArgumentType or
+        code == SemaDiagnosticCode.ReturnTypeMismatch or
+        code == SemaDiagnosticCode.InvalidUnaryOperand or
+        code == SemaDiagnosticCode.InvalidBinaryOperands;
+}
+
+proc native_pipeline_cstring(value: *const char) -> string {
+    if value == null { return ""; }
+    let mut length: usize = 0;
+    while value[length] != 0 { set length += 1; }
+    return string.from_bytes(value as *mut u8, length);
+}
+
+proc native_pipeline_c_string(value: string) -> *const char {
+    return value.as_ptr() as *const char;
+}
+
+proc native_pipeline_size_to_string(value: usize) -> string {
+    if value < 10 { return string.from_byte((48 + value) as u8); }
+    return native_pipeline_size_to_string(value / 10) +
+        string.from_byte((48 + (value % 10)) as u8);
+}
+
+/// Copy parser and semantic diagnostic fields through the scalar host adapter.
+/// C allocates and fills its own renderer records; no Vitte diagnostic layout
+/// crosses the ABI boundary.
+proc native_pipeline_export_diagnostics(
+    parser: *const Parser,
+    sema: *const Sema,
+    codegen_output: *const NativePipelineEmitResult,
+    file_id: u64,
+    source_name: *const char,
+    source: str,
+    output: *mut *mut u8,
+    output_count: *mut usize
+) -> bool {
+    if output != null { set *output = null; }
+    if output_count != null { set *output_count = 0; }
+    if output == null or output_count == null { return true; }
+
+    let mut parser_count: usize = 0 as usize;
+    if parser != null { set parser_count = vitte_parser_diagnostic_count(parser); }
+    let mut sema_count: usize = 0 as usize;
+    if sema != null { set sema_count = vitte_sema_diagnostic_count(sema); }
+    let codegen_count: usize = if codegen_output != null and not (*codegen_output).success { 1 as usize } else { 0 as usize };
+    if parser_count > 18446744073709551615 - sema_count { return false; }
+    let frontend_count = parser_count + sema_count;
+    if frontend_count > 18446744073709551615 - codegen_count { return false; }
+    let count = frontend_count + codegen_count;
+    if count == 0 { return true; }
+    if count > 16777216 { return false; }
+    let diagnostics = vitte_cli_diagnostic_transport_create(count);
+    if diagnostics == null { return false; }
+
+    let mut index: usize = 0;
+    while index < parser_count {
+        let source_diagnostic = vitte_parser_diagnostic_at(parser, index);
+        if source_diagnostic == null {
+            vitte_cli_diagnostic_transport_destroy(diagnostics);
+            return false;
+        }
+        let mut expected: *const char = null;
+        let mut found: *const char = null;
+        if (*source_diagnostic).expected != TokenKind.Invalid {
+            set expected = vitte_token_kind_name((*source_diagnostic).expected).as_ptr() as *const char;
+        }
+        if (*source_diagnostic).found != TokenKind.Invalid {
+            set found = vitte_token_kind_name((*source_diagnostic).found).as_ptr() as *const char;
+        }
+        let span = (*source_diagnostic).span;
+        if not native_pipeline_export_cli_diagnostic(
+            diagnostics,
+            count,
+            index,
+            (index + 1) as u64,
+            native_pipeline_c_string(native_pipeline_parser_code((*source_diagnostic).error)),
+            native_pipeline_parser_severity((*source_diagnostic).kind),
+            CliDiagnosticOrigin.Parser,
+            native_pipeline_c_string(native_pipeline_parser_message((*source_diagnostic).error)),
+            null,
+            null,
+            span.valid,
+            span.file_id,
+            file_id,
+            source_name,
+            span.begin,
+            span.end,
+            source,
+            expected,
+            found
+        ) {
+            vitte_cli_diagnostic_transport_destroy(diagnostics);
+            return false;
+        }
+        set index += 1;
+    }
+
+    let mut sema_index: usize = 0;
+    while sema_index < sema_count {
+        let source_diagnostic = vitte_sema_diagnostic_at(sema, sema_index);
+        if source_diagnostic == null {
+            vitte_cli_diagnostic_transport_destroy(diagnostics);
+            return false;
+        }
+        let span = (*source_diagnostic).span;
+        let mut expected_type: *const char = null;
+        let mut found_type: *const char = null;
+        let mut details: string = "";
+        if native_pipeline_sema_has_type_context((*source_diagnostic).code) {
+            set expected_type = native_pipeline_sema_type_name(
+                sema,
+                (*source_diagnostic).expected_type
+            );
+            set found_type = native_pipeline_sema_type_name(
+                sema,
+                (*source_diagnostic).found_type
+            );
+            if expected_type != null and found_type != null {
+                set details = "expected " + native_pipeline_cstring(expected_type) +
+                    ", found " + native_pipeline_cstring(found_type);
+            } elif expected_type != null {
+                set details = "expected " + native_pipeline_cstring(expected_type);
+            } elif found_type != null {
+                set details = "found " + native_pipeline_cstring(found_type);
+            }
+        }
+        let origin: CliDiagnosticOrigin = if (*source_diagnostic).code == SemaDiagnosticCode.UnresolvedName or
+            (*source_diagnostic).code == SemaDiagnosticCode.PrivateSymbol or
+            (*source_diagnostic).code == SemaDiagnosticCode.DuplicateDeclaration or
+            (*source_diagnostic).code == SemaDiagnosticCode.ShadowedDeclaration {
+            CliDiagnosticOrigin.NameResolution
+        } else {
+            CliDiagnosticOrigin.TypeCheck
+        };
+        let mut message = native_pipeline_sema_message((*source_diagnostic).code);
+        let mut unresolved_message: string = "";
+        if (*source_diagnostic).code == SemaDiagnosticCode.UnresolvedName and span.valid and
+           span.begin <= span.end and span.end <= source.length {
+            set unresolved_message = "unknown symbol `" + source.slice(span.begin, span.end);
+            set unresolved_message = unresolved_message + "`";
+            set message = unresolved_message;
+        }
+        if not native_pipeline_export_cli_diagnostic(
+            diagnostics,
+            count,
+            parser_count + sema_index,
+            (parser_count + sema_index + 1) as u64,
+            native_pipeline_c_string(native_pipeline_sema_code((*source_diagnostic).code)),
+            native_pipeline_sema_severity((*source_diagnostic).kind),
+            origin,
+            native_pipeline_c_string(message),
+            if details.len() == 0 { null } else { details.as_ptr() as *const char },
+            (&(*source_diagnostic).help[0]) as *const char,
+            span.valid,
+            span.file_id,
+            file_id,
+            source_name,
+            span.begin,
+            span.end,
+            source,
+            expected_type,
+            found_type
+        ) {
+            vitte_cli_diagnostic_transport_destroy(diagnostics);
+            return false;
+        }
+        let mut symbol: *const char = null;
+        let mut probable_cause: *const char = null;
+        let mut context_text: string = "";
+        let mut has_related = false;
+        let mut related_file_id: u32 = 0;
+        let mut related_source_id: u64 = 0;
+        let mut related_start_offset: usize = 0;
+        let mut related_end_offset: usize = 0;
+        let mut related_start_line: usize = 0;
+        let mut related_start_column: usize = 0;
+        let mut related_end_line: usize = 0;
+        let mut related_end_column: usize = 0;
+        let mut related_label: *const char = null;
+        if (*source_diagnostic).type_context == SemaTypeContextKind.Argument {
+            probable_cause = native_pipeline_c_string("the argument does not satisfy the parameter type");
+            let context_symbol = if (*source_diagnostic).context_symbol_id == 0 {
+                null
+            } else {
+                vitte_scope_get_symbol((&((*sema).scopes)) as *const Scope, (*source_diagnostic).context_symbol_id)
+            };
+            if context_symbol != null {
+                symbol = (*context_symbol).name as *const char;
+                let parameter_name = string.from_bytes((*context_symbol).name as *mut u8, (*context_symbol).name_length);
+                set context_text = "argument " + native_pipeline_size_to_string((*source_diagnostic).context_index) +
+                    " / parameter `" + parameter_name + "`";
+                let declaration_span = (*context_symbol).span;
+                if declaration_span.valid and declaration_span.end >= declaration_span.begin {
+                    let mut scanner: Scanner;
+                    if vitte_scanner_init(&mut scanner, source, source.length, declaration_span.file_id) {
+                        let _ = vitte_scanner_set_strict_utf8(&mut scanner, false);
+                        let mut related_start: ScannerPosition;
+                        let mut related_end: ScannerPosition;
+                        if vitte_scanner_position_at(&mut scanner, declaration_span.begin, &mut related_start) and
+                           vitte_scanner_position_at(&mut scanner, declaration_span.end, &mut related_end) {
+                            set has_related = true;
+                            set related_file_id = declaration_span.file_id;
+                            set related_source_id = file_id;
+                            set related_start_offset = declaration_span.begin;
+                            set related_end_offset = declaration_span.end;
+                            set related_start_line = related_start.line - 1;
+                            set related_start_column = related_start.column - 1;
+                            set related_end_line = related_end.line - 1;
+                            set related_end_column = related_end.column - 1;
+                            set related_label = native_pipeline_c_string("parameter declared here");
+                        }
+                        vitte_scanner_destroy(&mut scanner);
+                    }
+                }
+            }
+        } elif (*source_diagnostic).type_context == SemaTypeContextKind.Return {
+            probable_cause = native_pipeline_c_string("the returned value does not satisfy the declared return type");
+            set context_text = "return value / declared return type";
+        } elif (*source_diagnostic).type_context == SemaTypeContextKind.Assignment {
+            probable_cause = if (*source_diagnostic).code == SemaDiagnosticCode.NotAssignable {
+                native_pipeline_c_string("the assignment target is immutable or not assignable")
+            } else {
+                native_pipeline_c_string("the assigned value does not satisfy the target type")
+            };
+            set context_text = "assignment / mutable binding";
+            let assignment_symbol = if (*source_diagnostic).context_symbol_id == 0 {
+                null
+            } else {
+                vitte_scope_get_symbol(
+                    (&((*sema).scopes)) as *const Scope,
+                    (*source_diagnostic).context_symbol_id
+                )
+            };
+            if assignment_symbol != null {
+                set symbol = (*assignment_symbol).name as *const char;
+                let declaration_span = (*assignment_symbol).span;
+                if declaration_span.valid and declaration_span.end >= declaration_span.begin {
+                    let mut scanner: Scanner;
+                    if vitte_scanner_init(&mut scanner, source, source.length, declaration_span.file_id) {
+                        let _ = vitte_scanner_set_strict_utf8(&mut scanner, false);
+                        let mut related_start: ScannerPosition;
+                        let mut related_end: ScannerPosition;
+                        if vitte_scanner_position_at(&mut scanner, declaration_span.begin, &mut related_start) and
+                           vitte_scanner_position_at(&mut scanner, declaration_span.end, &mut related_end) {
+                            set has_related = true;
+                            set related_file_id = declaration_span.file_id;
+                            set related_source_id = file_id;
+                            set related_start_offset = declaration_span.begin;
+                            set related_end_offset = declaration_span.end;
+                            set related_start_line = related_start.line - 1;
+                            set related_start_column = related_start.column - 1;
+                            set related_end_line = related_end.line - 1;
+                            set related_end_column = related_end.column - 1;
+                            set related_label = native_pipeline_c_string("binding declared here; make it mutable");
+                        }
+                        vitte_scanner_destroy(&mut scanner);
+                    }
+                }
+            }
+        } elif (*source_diagnostic).type_context == SemaTypeContextKind.Field {
+            probable_cause = native_pipeline_c_string("the field value does not satisfy the declared field type");
+            let field_declaration = vitte_parser_get_node(
+                (*sema).parser,
+                (*source_diagnostic).context_index as ASTNodeId
+            );
+            if field_declaration != null {
+                if (*field_declaration).child_count != 0 and (*field_declaration).children != null {
+                    let field_name_node = vitte_parser_get_node(
+                        (*sema).parser,
+                        (*field_declaration).children[0]
+                    );
+                    let field_name_token = vitte_parser_node_token(
+                        (*sema).parser,
+                        field_name_node
+                    );
+                    if field_name_token != null {
+                        let field_name = string.from_bytes(
+                            (*field_name_token).lexeme,
+                            (*field_name_token).length
+                        );
+                        set symbol = (*field_name_token).lexeme.as_ptr() as *const char;
+                        set context_text = "field `" + field_name + "` / value";
+                    }
+                }
+                let declaration_span = (*field_declaration).span;
+                if declaration_span.valid and declaration_span.end >= declaration_span.begin {
+                    let mut scanner: Scanner;
+                    if vitte_scanner_init(&mut scanner, source, source.length, declaration_span.file_id) {
+                        let _ = vitte_scanner_set_strict_utf8(&mut scanner, false);
+                        let mut related_start: ScannerPosition;
+                        let mut related_end: ScannerPosition;
+                        if vitte_scanner_position_at(&mut scanner, declaration_span.begin, &mut related_start) and
+                           vitte_scanner_position_at(&mut scanner, declaration_span.end, &mut related_end) {
+                            set has_related = true;
+                            set related_file_id = declaration_span.file_id;
+                            set related_source_id = file_id;
+                            set related_start_offset = declaration_span.begin;
+                            set related_end_offset = declaration_span.end;
+                            set related_start_line = related_start.line - 1;
+                            set related_start_column = related_start.column - 1;
+                            set related_end_line = related_end.line - 1;
+                            set related_end_column = related_end.column - 1;
+                            set related_label = native_pipeline_c_string("field declared here");
+                        }
+                        vitte_scanner_destroy(&mut scanner);
+                    }
+                }
+            }
+        }
+        if not vitte_cli_diagnostic_transport_set_semantic(
+            diagnostics,
+            count,
+            parser_count + sema_index,
+            symbol,
+            probable_cause,
+            if context_text.len() == 0 { null } else { native_pipeline_c_string(context_text) },
+            has_related,
+            related_file_id,
+            related_source_id,
+            source_name,
+            related_start_offset,
+            related_end_offset,
+            related_start_line,
+            related_start_column,
+            related_end_line,
+            related_end_column,
+            related_label
+        ) {
+            vitte_cli_diagnostic_transport_destroy(diagnostics);
+            return false;
+        }
+        set sema_index += 1;
+    }
+
+    if codegen_count != 0 {
+        if not native_pipeline_export_cli_diagnostic(
+            diagnostics,
+            count,
+            frontend_count,
+            (frontend_count + 1) as u64,
+            (*codegen_output).diagnostic_code,
+            CliDiagnosticSeverity.Error,
+            (*codegen_output).diagnostic_origin,
+            if (*codegen_output).diagnostic_origin == CliDiagnosticOrigin.Hir {
+                native_pipeline_c_string("HIR lowering failed")
+            } elif (*codegen_output).diagnostic_origin == CliDiagnosticOrigin.Ir {
+                native_pipeline_c_string("IR lowering failed")
+            } else {
+                native_pipeline_c_string("C17 code generation failed")
+            },
+            native_pipeline_c_string((*codegen_output).error),
+            null,
+            false,
+            0,
+            file_id,
+            source_name,
+            0,
+            0,
+            source,
+            null,
+            null
+        ) {
+            vitte_cli_diagnostic_transport_destroy(diagnostics);
+            return false;
+        }
+    }
+
+    set *output = diagnostics;
+    set *output_count = count;
+    return true;
+}
+
+proc native_pipeline_lexer_code(error: LexerError) -> string {
+    match error {
+        case LexerError.InvalidUtf8 => return "VITTE_LEXER_E_INVALID_UNICODE";
+        case LexerError.InvalidNumber => return "VITTE_LEXER_E_INVALID_NUMBER";
+        case LexerError.InvalidEscape => return "VITTE_LEXER_E_INVALID_ESCAPE";
+        case LexerError.UnterminatedString => return "VITTE_LEXER_E_UNTERMINATED_STRING";
+        case LexerError.UnterminatedComment => return "VITTE_LEXER_E_UNTERMINATED_COMMENT";
+        case LexerError.InvalidCharacter => return "VITTE_LEXER_E_INVALID_CHARACTER";
+        case LexerError.InvalidToken => return "VITTE_LEXER_E_INVALID_CHARACTER";
+        case LexerError.CommentDepth => return "VITTE_INFRA_E_LIMIT";
+        case LexerError.TokenLimit => return "VITTE_INFRA_E_LIMIT";
+        case LexerError.SourceTooLarge => return "VITTE_INFRA_E_LIMIT";
+        case LexerError.Overflow => return "VITTE_INFRA_E_LIMIT";
+        case LexerError.OutOfMemory => return "VITTE_INFRA_E_RESOURCE";
+        else => return "VITTE_INFRA_E_PHASE";
+    }
+}
+
+proc native_pipeline_export_lexer_diagnostic(
+    lexer: ?&Lexer,
+    file_id: u64,
+    source_name: *const char,
+    source: str,
+    output: *mut *mut u8,
+    output_count: *mut usize
+) -> bool {
+    if output != null { set *output = null; }
+    if output_count != null { set *output_count = 0; }
+    if output == null or output_count == null or lexer == null { return true; }
+    let error = vitte_lexer_last_error(lexer);
+    let span = vitte_lexer_error_span(lexer);
+    if error == LexerError.None { return true; }
+    let mut details = vitte_lexer_error_name(error);
+    if span.valid and span.begin <= span.end and span.end <= source.length {
+        if error == LexerError.InvalidEscape {
+            set details = "invalid escape sequence `" + source.slice(span.begin, span.end);
+            set details += "`";
+        } elif error == LexerError.InvalidCharacter {
+            set details = "invalid character `" + source.slice(span.begin, span.end);
+            set details += "`";
+        }
+    }
+    let diag_value = vitte_cli_diagnostic_transport_create(1);
+    if diag_value == null { return false; }
+    if not native_pipeline_export_cli_diagnostic(
+        diag_value,
+        1,
+        0,
+        1,
+        native_pipeline_c_string(native_pipeline_lexer_code(error)),
+        CliDiagnosticSeverity.Error,
+        CliDiagnosticOrigin.Lexer,
+        native_pipeline_c_string("lexical analysis failed"),
+        native_pipeline_c_string(details),
+        null,
+        span.valid,
+        span.file_id as u32,
+        file_id,
+        source_name,
+        span.begin,
+        span.end,
+        source,
+        null,
+        null
+    ) {
+        vitte_cli_diagnostic_transport_destroy(diag_value);
+        return false;
+    }
+    set *output = diag_value;
+    set *output_count = 1;
+    return true;
+}
+
+form NativePipelineC17Backend {
+    output: NativePipelineEmitResult
+}
+
+form NativePipelineC17Input {
+    parser: *const Parser,
+    ir: *const IRContext,
+    ast_fallback: bool
+}
+
+export proc native_pipeline_emit_c17_unit(
+    codegen: *mut Codegen,
+    unit: *const CodegenUnit,
+    backend_data: *mut u8
+) -> bool {
+    if codegen == null or unit == null or backend_data == null or (*unit).input == null {
+        return false;
+    }
+    let input = (*unit).input as *const NativePipelineC17Input;
+    let backend = &mut *(backend_data as *mut NativePipelineC17Backend);
+    if input == null or ((*input).parser == null and (*input).ast_fallback) or
+       ((*input).ir == null and not (*input).ast_fallback) {
+        return false;
+    }
+
+    let mut emitted_success = false;
+    let mut emitted_source: string = "";
+    let mut emitted_error: string = "";
+    if (*input).ast_fallback {
+        let emitted: C17AstEmitResult = c17_emit_ast(&*((*input).parser));
+        set emitted_success = emitted.success;
+        set emitted_source = emitted.source;
+        set emitted_error = emitted.error;
+    } else {
+        let emitted = c17_emit_ir(&*((*input).ir));
+        set emitted_success = emitted.success;
+        set emitted_source = emitted.source;
+        set emitted_error = emitted.error;
+    }
+    if not emitted_success {
+        set backend.output = NativePipelineEmitResult {
+            success: false,
+            source: emitted_source,
+            error: emitted_error,
+            diagnostic_code: native_pipeline_c_string(native_pipeline_codegen_code(emitted_error)),
+            diagnostic_origin: native_pipeline_codegen_origin(emitted_error),
+            codegen_error: native_pipeline_codegen_error(emitted_error)
+        };
+        return false;
+    }
+    if not vitte_codegen_account_output(codegen, emitted_source.length) {
+        set backend.output = native_pipeline_emit_failure(
+            "generated C17 source exceeds the configured output limit",
+            native_pipeline_c_string("VITTE_BACKEND_E_OUTPUT"),
+            CliDiagnosticOrigin.Io,
+            CodegenError.OutputLimit
+        );
+        return false;
+    }
+    set backend.output = NativePipelineEmitResult {
+        success: true,
+        source: emitted_source,
+        error: "",
+        diagnostic_code: null,
+        diagnostic_origin: CliDiagnosticOrigin.Unknown,
+        codegen_error: CodegenError.None
+    };
+    return true;
+}
+
+proc native_pipeline_emit_c17(
+    parser: &Parser,
+    ir: ?&IRContext,
+    ast_fallback: bool,
+    config: &CodegenConfig
+) -> NativePipelineEmitResult {
+    if config.backend != CodegenBackendKind.C17 {
+        return native_pipeline_emit_failure(
+            "the native pipeline currently emits only the C17 backend",
+            native_pipeline_c_string("VITTE_BACKEND_E_UNSUPPORTED"),
+            CliDiagnosticOrigin.C17Backend,
+            CodegenError.Unsupported
+        );
+    }
+
+    let failed_output = native_pipeline_emit_failure(
+        "native code generation orchestration failed",
+        native_pipeline_c_string("VITTE_BACKEND_E_CODEGEN"),
+        CliDiagnosticOrigin.C17Backend,
+        CodegenError.Backend
+    );
+    let mut codegen: Codegen = Codegen {};
+    if not vitte_codegen_init(&mut codegen, config, null) {
+        return native_pipeline_emit_failure(
+            "native code generation initialization failed",
+            native_pipeline_c_string("VITTE_BACKEND_E_CONFIG"),
+            CliDiagnosticOrigin.C17Backend,
+            CodegenError.InvalidConfig
+        );
+    }
+
+    let mut backend = NativePipelineC17Backend { output: failed_output };
+    let input = NativePipelineC17Input {
+        parser: parser as *const Parser,
+        ir: if ir == null { null } else { ir? as *const IRContext },
+        ast_fallback: ast_fallback
+    };
+    let mut interface: CodegenBackendInterface = CodegenBackendInterface {};
+    set interface.emit_unit = native_pipeline_emit_c17_unit;
+    let unit = CodegenUnit {
+        id: 1,
+        name: native_pipeline_c_string("main"),
+        input: (&input) as *const NativePipelineC17Input as *const u8,
+        location: CodegenSourceLocation { file_id: 0, begin: 0, end: 0, valid: false }
+    };
+
+    let configured = vitte_codegen_set_backend(
+        &mut codegen,
+        &interface,
+        (&mut backend) as *mut NativePipelineC17Backend as *mut u8
+    ) and vitte_codegen_add_unit(&mut codegen, &unit);
+    let generated = configured and vitte_codegen_generate(&mut codegen);
+    let mut output = backend.output;
+    if not generated and output.success { set output = failed_output; }
+    if not generated and output.error == failed_output.error {
+        set output.error = "native code generation orchestration failed (error " +
+            (codegen.last_error as u32).to_string() + ")";
+        set output.codegen_error = if codegen.last_error == CodegenError.None {
+            CodegenError.Backend
+        } else {
+            codegen.last_error
+        };
+    }
+    vitte_codegen_destroy(&mut codegen);
+    return output;
+}
+
+/// Generic or non-scalar forms and test declarations still need compatibility lowering.
+/// Range loops and value-producing if expressions have native HIR/IR lowering;
+/// other for iterables remain on the AST compatibility path. Keep this list
+/// aligned with the supported node shapes in the HIR and IR lowerers.
+proc native_pipeline_form_supported(parser: &Parser, node: &ASTNode) -> bool {
+    if node.child_count == 0 or parser.nodes == null { return false; }
+    let form_name_node = vitte_parser_get_node(parser, node.children[0]);
+    let form_name_token = if form_name_node == null { null } else { vitte_parser_node_token(parser, form_name_node) };
+    if form_name_token == null { return false; }
+    let mut index: usize = 1;
+    while index < node.child_count {
+        let part = vitte_parser_get_node(parser, node.children[index]);
+        if part == null or part.kind == ASTNodeKind.GenericParam or part.kind == ASTNodeKind.WhereClause { return false; }
+        if part.kind != ASTNodeKind.FieldDecl or part.child_count != 2 { return false; }
+        let type_node = vitte_parser_get_node(parser, part.children[1]);
+        if type_node == null or type_node.kind != ASTNodeKind.TypeExpr or type_node.child_count != 1 { return false; }
+        let named_node = vitte_parser_get_node(parser, type_node.children[0]);
+        if named_node == null or (named_node.kind != ASTNodeKind.Identifier and named_node.kind != ASTNodeKind.Path) or
+           (named_node.kind == ASTNodeKind.Path and named_node.child_count != 1) { return false; }
+        let named_token = vitte_parser_node_token(parser, named_node);
+        if named_token == null { return false; }
+        let builtin = named_token.lexeme == "i64" or named_token.lexeme == "u64" or
+            named_token.lexeme == "usize" or named_token.lexeme == "u32" or
+            named_token.lexeme == "u16" or named_token.lexeme == "u8" or
+            named_token.lexeme == "bool" or named_token.lexeme == "f64" or
+            named_token.lexeme == "double" or named_token.lexeme == "string" or
+            named_token.lexeme == "str" or named_token.lexeme == "int";
+        let mut declared_aggregate = false;
+        let mut declaration_index: usize = 0;
+        while declaration_index < parser.node_count {
+            let declaration = &parser.nodes[declaration_index];
+            if (declaration.kind == ASTNodeKind.FormDecl or declaration.kind == ASTNodeKind.PickDecl) and declaration.child_count != 0 {
+                let declaration_name = vitte_parser_get_node(parser, declaration.children[0]);
+                let declaration_token = if declaration_name == null { null } else { vitte_parser_node_token(parser, declaration_name) };
+                if declaration_token != null and declaration_token.length == named_token.length and declaration_token.lexeme == named_token.lexeme {
+                    set declared_aggregate = true;
+                    break;
+                }
+            }
+            set declaration_index += 1;
+        }
+        if not builtin and not declared_aggregate { return false; }
+        set index += 1;
+    }
+    return true;
+}
+
+proc native_pipeline_for_range_supported(parser: &Parser, node: &ASTNode) -> bool {
+    if node.child_count != 3 or parser.nodes == null { return false; }
+    let iterable_id = node.children[1];
+    if iterable_id == 0 or iterable_id > parser.node_count as ASTNodeId { return false; }
+    let iterable_index = (iterable_id - 1) as usize;
+    let iterable = &parser.nodes[iterable_index];
+    return iterable.kind == ASTNodeKind.BinaryExpr and
+        (iterable.operator_kind == TokenKind.DotDot or iterable.operator_kind == TokenKind.DotDotEqual);
+}
+
+proc native_pipeline_requires_ast_codegen(parser: &Parser) -> bool {
+    if parser.nodes == null { return false; }
+    let mut index: usize = 0;
+    while index < parser.node_count {
+        let node = &parser.nodes[index];
+        if node.kind == ASTNodeKind.FormDecl and not native_pipeline_form_supported(parser, node) { return true; }
+        if node.kind == ASTNodeKind.TestDecl { return true; }
+        if node.kind == ASTNodeKind.ForStmt and not native_pipeline_for_range_supported(parser, node) { return true; }
+        set index += 1;
+    }
+    return false;
+}
+
+proc native_pipeline_codegen_config(config: *const ConfigResolved) -> CodegenConfig {
+    let mut codegen = vitte_codegen_config_default();
+    if config == null { return codegen; }
+
+    set codegen.max_errors = (*config).max_errors;
+    set codegen.max_output_bytes = (*config).max_output_bytes;
+    set codegen.deterministic = (*config).deterministic;
+    set codegen.emit_debug_info = (*config).emit_debug_info;
+    set codegen.emit_source_map = (*config).emit_source_map;
+    set codegen.emit_comments = (*config).emit_comments;
+    set codegen.runtime_checks = (*config).runtime_checks;
+    set codegen.bounds_checks = (*config).bounds_checks;
+    set codegen.null_checks = (*config).null_checks;
+    set codegen.overflow_checks = (*config).overflow_checks;
+
+    if (*config).backend == ConfigBackend.C17 {
+        set codegen.backend = CodegenBackendKind.C17;
+    } else if (*config).backend == ConfigBackend.Native {
+        set codegen.backend = CodegenBackendKind.Native;
+    } else if (*config).backend == ConfigBackend.Bytecode {
+        set codegen.backend = CodegenBackendKind.Bytecode;
+    }
+
+    if (*config).optimization == ConfigOptimization.None {
+        set codegen.optimization = CodegenOptimization.None;
+    } else if (*config).optimization == ConfigOptimization.Debug {
+        set codegen.optimization = CodegenOptimization.Debug;
+    } else if (*config).optimization == ConfigOptimization.Balanced {
+        set codegen.optimization = CodegenOptimization.Balanced;
+    } else if (*config).optimization == ConfigOptimization.Speed {
+        set codegen.optimization = CodegenOptimization.Speed;
+    } else if (*config).optimization == ConfigOptimization.Size {
+        set codegen.optimization = CodegenOptimization.Size;
+    } else if (*config).optimization == ConfigOptimization.Aggressive {
+        set codegen.optimization = CodegenOptimization.Aggressive;
+    }
+    return codegen;
+}
+
+proc native_pipeline_fingerprint(text: string) -> u64 {
+    let mut hash: u64 = 14695981039346656037;
+    let mut index: usize = 0;
+    while index < text.length {
+        set hash = (hash ^ (text[index] as u64)) * 1099511628211;
+        set index += 1;
+    }
+    return hash;
+}
+
+proc native_pipeline_make_tokens(lexer: &Lexer, file_id: u32) -> [ParserToken] {
+    let mut parser_tokens: [ParserToken] = [];
+    let mut index: usize = 0;
+    while index < lexer.token_count {
+        let token = lexer.tokens[index];
+        if not parser_tokens.push(ParserToken {
+            kind: token.kind,
+            span: ParserTokenSpan {
+                file_id: file_id,
+                begin: token.span.begin,
+                end: token.span.end,
+                valid: token.span.valid
+            },
+            line: token.line,
+            column: token.column,
+            lexeme: token.lexeme,
+            length: token.length
+        }) {
+            return parser_tokens;
+        }
+        set index = index + 1;
+    }
+
+    return parser_tokens;
+}
+
+proc native_pipeline_hash_u64(hash: u64, input: u64) -> u64 {
+    let mut value = hash;
+    let mut shift: u32 = 0;
+    while shift < 64 {
+        set value = (value ^ ((input >> shift) & 255)) * 1099511628211;
+        set shift += 8;
+    }
+    return value;
+}
+
+proc native_pipeline_parser_fingerprint(parser: &Parser) -> u64 {
+    let mut hash: u64 = 14695981039346656037;
+    hash = native_pipeline_hash_u64(hash, parser.node_count as u64);
+    let mut index: usize = 0;
+    while index < parser.node_count {
+        let node: &ASTNode = &parser.nodes[index];
+        hash = native_pipeline_hash_u64(hash, node.id);
+        hash = native_pipeline_hash_u64(hash, node.kind as u64);
+        hash = native_pipeline_hash_u64(hash, node.token_index as u64);
+        hash = native_pipeline_hash_u64(hash, node.span.begin as u64);
+        hash = native_pipeline_hash_u64(hash, node.span.end as u64);
+        hash = native_pipeline_hash_u64(hash, node.child_count as u64);
+        let mut child_index: usize = 0;
+        while child_index < node.child_count {
+            hash = native_pipeline_hash_u64(hash, node.children[child_index]);
+            set child_index += 1;
+        }
+        set index += 1;
+    }
+    return hash;
+}
+
+proc native_pipeline_result(
+    status: Status,
+    phase: NativePipelinePhase,
+    lexer_error: LexerError,
+    token_count: usize,
+    fingerprint: u64,
+    succeeded: bool
+) -> NativePipelineResult {
+    return NativePipelineResult {
+        status: status,
+        last_completed_phase: phase,
+        generated_source: "",
+        lexer_error: lexer_error,
+        parser_error: 0,
+        sema_error: 0,
+        hir_error: 0,
+        ir_error: 0,
+        codegen_error: 0,
+        token_count: token_count,
+        parser_diagnostic_count: 0,
+        sema_diagnostic_count: 0,
+        sema_error_count: 0,
+        hir_node_count: 0,
+        ir_function_count: 0,
+        generated_source_bytes: 0,
+        lexer_fingerprint: fingerprint,
+        parser_fingerprint: 0,
+        hir_fingerprint: 0,
+        ir_fingerprint: 0,
+        codegen_fingerprint: 0,
+        native_parser_attempted: false,
+        native_parser_succeeded: false,
+        native_ast_lowered: false,
+        succeeded: succeeded
+    };
+}
+
+/// Run the native lexer, parser, semantic analyzer, and C17 AST emitter.
+/// The input must already be registered by the API owner. Generated C is
+/// measured and optionally transferred to the API caller.
+proc native_pipeline_run_with_config(
+    source: ?str,
+    source_length: usize,
+    file_id: u64,
+    action: u32,
+    config: *const Config,
+    generated_source: *mut *mut u8,
+    generated_source_length: *mut usize,
+    diagnostic_source_name: *const char,
+    diagnostics: *mut *mut u8,
+    diagnostic_count: *mut usize
+) -> NativePipelineResult {
+    if generated_source != null { set *generated_source = null; }
+    if generated_source_length != null { set *generated_source_length = 0; }
+    if diagnostics != null { set *diagnostics = null; }
+    if diagnostic_count != null { set *diagnostic_count = 0; }
+    if action > NATIVE_FRONTEND_ACTION_EMIT_IR {
+        return native_pipeline_result(Status.ErrorInvalidArgument, NativePipelinePhase.None, LexerError.InvalidArgument, 0, 0, false);
+    }
+    if config != null and not vitte_config_is_valid(config) {
+        return native_pipeline_result(Status.ErrorInvalidArgument, NativePipelinePhase.None, LexerError.InvalidArgument, 0, 0, false);
+    }
+    let native_config: ConfigResolved = if config == null { vitte_config_resolved_default() } else { (*config).resolved };
+    let native_codegen_config = native_pipeline_codegen_config(&native_config);
+
+    if source == null and source_length != 0 {
+        return native_pipeline_result(
+            Status.ErrorInvalidArgument,
+            NativePipelinePhase.None,
+            LexerError.InvalidArgument,
+            0,
+            0,
+            false
+        );
+    }
+
+    let source_text: str = if source == null { "" } else { source? };
+    if source_length > source_text.length {
+        return native_pipeline_result(
+            Status.ErrorInvalidArgument,
+            NativePipelinePhase.SourceRegistered,
+            LexerError.InvalidArgument,
+            0,
+            0,
+            false
+        );
+    }
+
+    // The bootstrap parser stores source file IDs as uint32_t.
+    if file_id > 4294967295 {
+        return native_pipeline_result(
+            Status.ErrorInvalidArgument,
+            NativePipelinePhase.SourceRegistered,
+            LexerError.InvalidArgument,
+            0,
+            0,
+            false
+        );
+    }
+
+    let mut lexer: Lexer = Lexer {};
+    if not vitte_lexer_init(
+        &mut lexer,
+        source_text,
+        source_length,
+        file_id
+    ) {
+        let lexer_error: LexerError = vitte_lexer_last_error(&lexer);
+        let _ = native_pipeline_export_lexer_diagnostic(
+            &lexer,
+            file_id,
+            diagnostic_source_name,
+            source_text,
+            diagnostics,
+            diagnostic_count
+        );
+        vitte_lexer_destroy(&mut lexer);
+
+        let status: Status = if lexer_error == LexerError.OutOfMemory {
+            Status.ErrorOutOfMemory
+        } else {
+            Status.ErrorParse
+        };
+
+        return native_pipeline_result(
+            status,
+            NativePipelinePhase.SourceRegistered,
+            lexer_error,
+            0,
+            0,
+            false
+        );
+    }
+
+    if not vitte_lexer_run(&mut lexer) {
+        let lexer_error: LexerError = vitte_lexer_last_error(&lexer);
+        let token_count: usize = vitte_lexer_token_count(&lexer);
+        let _ = native_pipeline_export_lexer_diagnostic(
+            &lexer,
+            file_id,
+            diagnostic_source_name,
+            source_text,
+            diagnostics,
+            diagnostic_count
+        );
+        vitte_lexer_destroy(&mut lexer);
+
+        let status: Status = if lexer_error == LexerError.OutOfMemory {
+            Status.ErrorOutOfMemory
+        } else {
+            Status.ErrorParse
+        };
+
+        return native_pipeline_result(
+            status,
+            NativePipelinePhase.SourceRegistered,
+            lexer_error,
+            token_count,
+            0,
+            false
+        );
+    }
+
+    if not vitte_lexer_validate(&mut lexer) {
+        let lexer_error: LexerError = vitte_lexer_last_error(&lexer);
+        let token_count: usize = vitte_lexer_token_count(&lexer);
+        let _ = native_pipeline_export_lexer_diagnostic(
+            &lexer,
+            file_id,
+            diagnostic_source_name,
+            source_text,
+            diagnostics,
+            diagnostic_count
+        );
+        vitte_lexer_destroy(&mut lexer);
+
+        return native_pipeline_result(
+            Status.ErrorInternal,
+            NativePipelinePhase.SourceRegistered,
+            lexer_error,
+            token_count,
+            0,
+            false
+        );
+    }
+
+    let token_count: usize = vitte_lexer_token_count(&lexer);
+    let lexer_hash: u64 = vitte_lexer_fingerprint(&mut lexer);
+    let parser_tokens = native_pipeline_make_tokens(&lexer, file_id as u32);
+    if parser_tokens.len() != token_count {
+        vitte_lexer_destroy(&mut lexer);
+        return native_pipeline_result(Status.ErrorOutOfMemory, NativePipelinePhase.Lexed, LexerError.OutOfMemory, token_count, lexer_hash, false);
+    }
+    let mut parser: Parser = Parser {};
+    if not vitte_parser_init(&mut parser, parser_tokens.as_ptr(), parser_tokens.len()) {
+        let parser_error = parser.last_error as u32;
+        vitte_parser_destroy(&mut parser);
+        vitte_lexer_destroy(&mut lexer);
+        let mut result = native_pipeline_result(Status.ErrorParse, NativePipelinePhase.Lexed, LexerError.None, token_count, lexer_hash, false);
+        set result.parser_error = parser_error;
+        set result.native_parser_attempted = true;
+        return result;
+    }
+
+    let parsed = vitte_parser_run_native(&mut parser);
+    let parser_diagnostics = vitte_parser_diagnostic_count(&parser);
+    let parser_error = parser.last_error as u32;
+    let parser_hash = native_pipeline_parser_fingerprint(&parser);
+    if not parsed {
+        let _ = native_pipeline_export_diagnostics(
+            &parser,
+            null,
+            null,
+            file_id,
+            diagnostic_source_name,
+            source_text,
+            diagnostics,
+            diagnostic_count
+        );
+        vitte_parser_destroy(&mut parser);
+        vitte_lexer_destroy(&mut lexer);
+        let mut result = native_pipeline_result(Status.ErrorParse, NativePipelinePhase.Lexed, LexerError.None, token_count, lexer_hash, false);
+        set result.parser_error = parser_error;
+        set result.parser_diagnostic_count = parser_diagnostics;
+        set result.parser_fingerprint = parser_hash;
+        set result.native_parser_attempted = true;
+        return result;
+    }
+
+    let ast_fallback = native_pipeline_requires_ast_codegen(&parser);
+
+    let mut sema: Sema = Sema {};
+    if not vitte_sema_init(&mut sema, &parser) {
+        let sema_error = vitte_sema_last_error(&sema) as u32;
+        vitte_sema_destroy(&mut sema);
+        vitte_parser_destroy(&mut parser);
+        vitte_lexer_destroy(&mut lexer);
+        let mut result = native_pipeline_result(Status.ErrorInternal, NativePipelinePhase.Parsed, LexerError.None, token_count, lexer_hash, false);
+        set result.parser_error = parser_error;
+        set result.parser_diagnostic_count = parser_diagnostics;
+        set result.parser_fingerprint = parser_hash;
+        set result.sema_error = sema_error;
+        set result.native_parser_attempted = true;
+        set result.native_parser_succeeded = true;
+        set result.native_ast_lowered = true;
+        return result;
+    }
+
+    let analyzed = vitte_sema_run(&mut sema);
+    let sema_valid = vitte_sema_validate(&mut sema);
+    let mut sema_diagnostics = vitte_sema_diagnostic_count(&sema);
+    let sema_statistics: SemaStats = vitte_sema_stats(&sema);
+    let mut sema_errors = sema_statistics.errors as usize;
+    let sema_error = vitte_sema_last_error(&sema) as u32;
+    let sema_ast_fallback = action == NATIVE_FRONTEND_ACTION_COMPILE and ast_fallback and sema_errors != 0;
+    if sema_ast_fallback {
+        // The AST backend still covers aggregate and pattern programs whose
+        // semantic rules are not implemented in the native analyzer yet.
+        // Keep native diagnostics authoritative for checks and IR emission;
+        // for compile, let that backend validate the parsed program instead.
+        set sema_diagnostics = 0;
+        set sema_errors = 0;
+    }
+    if (not sema_valid or sema_errors != 0 or not analyzed) and not sema_ast_fallback {
+        let _ = native_pipeline_export_diagnostics(
+            &parser,
+            &sema,
+            null,
+            file_id,
+            diagnostic_source_name,
+            source_text,
+            diagnostics,
+            diagnostic_count
+        );
+        vitte_sema_destroy(&mut sema);
+        vitte_parser_destroy(&mut parser);
+        vitte_lexer_destroy(&mut lexer);
+        let mut result = native_pipeline_result(Status.ErrorParse, NativePipelinePhase.Parsed, LexerError.None, token_count, lexer_hash, false);
+        set result.parser_error = parser_error;
+        set result.sema_error = sema_error;
+        set result.parser_diagnostic_count = parser_diagnostics;
+        set result.sema_diagnostic_count = sema_diagnostics;
+        set result.sema_error_count = sema_errors;
+        set result.parser_fingerprint = parser_hash;
+        set result.native_parser_attempted = true;
+        set result.native_parser_succeeded = true;
+        set result.native_ast_lowered = true;
+        return result;
+    }
+
+    if action == NATIVE_FRONTEND_ACTION_CHECK {
+        if not native_pipeline_export_diagnostics(
+            &parser,
+            &sema,
+            null,
+            file_id,
+            diagnostic_source_name,
+            source_text,
+            diagnostics,
+            diagnostic_count
+        ) {
+            vitte_sema_destroy(&mut sema);
+            vitte_parser_destroy(&mut parser);
+            vitte_lexer_destroy(&mut lexer);
+            return native_pipeline_result(
+                Status.ErrorOutOfMemory,
+                NativePipelinePhase.Analyzed,
+                LexerError.OutOfMemory,
+                token_count,
+                lexer_hash,
+                false
+            );
+        }
+        vitte_sema_destroy(&mut sema);
+        vitte_parser_destroy(&mut parser);
+        vitte_lexer_destroy(&mut lexer);
+        let mut result = native_pipeline_result(
+            Status.Ok,
+            NativePipelinePhase.Analyzed,
+            LexerError.None,
+            token_count,
+            lexer_hash,
+            true
+        );
+        set result.parser_error = parser_error;
+        set result.parser_diagnostic_count = parser_diagnostics;
+        set result.sema_diagnostic_count = sema_diagnostics;
+        set result.parser_fingerprint = parser_hash;
+        set result.native_parser_attempted = true;
+        set result.native_parser_succeeded = true;
+        set result.native_ast_lowered = true;
+        return result;
+    }
+
+    if action == NATIVE_FRONTEND_ACTION_COMPILE and
+       not vitte_codegen_config_validate(&native_codegen_config) {
+        vitte_sema_destroy(&mut sema);
+        vitte_parser_destroy(&mut parser);
+        vitte_lexer_destroy(&mut lexer);
+        return native_pipeline_result(
+            Status.ErrorInternal,
+            NativePipelinePhase.Analyzed,
+            LexerError.Internal,
+            token_count,
+            lexer_hash,
+            false
+        );
+    }
+
+    let mut hir: HIR = HIR {};
+    let mut ir: IRContext = IRContext {};
+    let mut hir_initialized = false;
+    let mut ir_initialized = false;
+    let mut hir_error: u32 = 0;
+    let mut ir_error: u32 = 0;
+    let mut hir_node_count: usize = 0;
+    let mut ir_function_count: usize = 0;
+    let mut hir_hash: u64 = 0;
+    let mut ir_hash: u64 = 0;
+    let mut phase: NativePipelinePhase = NativePipelinePhase.Analyzed;
+    let mut output = native_pipeline_emit_failure(
+        "native HIR lowering could not start",
+        native_pipeline_c_string("VITTE_HIR_E_LOWERING"),
+        CliDiagnosticOrigin.Hir,
+        CodegenError.Backend
+    );
+    if vitte_hir_init(&mut hir) {
+        set hir_initialized = true;
+        if not vitte_hir_lower_ast(&mut hir, &parser) {
+            set hir_error = hir.last_error as u32;
+            if action == NATIVE_FRONTEND_ACTION_COMPILE and ast_fallback {
+                set output = native_pipeline_emit_c17(&parser, null, true, &native_codegen_config);
+            } else {
+                set output = native_pipeline_emit_failure(
+                    "native HIR lowering failed: " + vitte_hir_error_name(hir.last_error),
+                    native_pipeline_c_string("VITTE_HIR_E_LOWERING"),
+                    CliDiagnosticOrigin.Hir,
+                    CodegenError.Backend
+                );
+            }
+        } elif not vitte_hir_is_valid(&hir) or not vitte_hir_validate(&mut hir) or hir.state != HIRState.Validated {
+            set hir_error = hir.last_error as u32;
+            if action == NATIVE_FRONTEND_ACTION_COMPILE and ast_fallback {
+                set output = native_pipeline_emit_c17(&parser, null, true, &native_codegen_config);
+            } else {
+                set output = native_pipeline_emit_failure(
+                    "native HIR validation failed: " + vitte_hir_error_name(hir.last_error),
+                    native_pipeline_c_string("VITTE_HIR_E_LOWERING"),
+                    CliDiagnosticOrigin.Hir,
+                    CodegenError.Backend
+                );
+            }
+        } else {
+            let hir_statistics: HIRStats = vitte_hir_stats(&hir);
+            set hir_node_count = hir_statistics.nodes_created as usize;
+            set hir_hash = vitte_hir_fingerprint(&mut hir);
+            set phase = NativePipelinePhase.HirLowered;
+
+            if not vitte_ir_init(&mut ir) {
+                set ir_error = ir.last_error as u32;
+                set output = native_pipeline_emit_failure(
+                    "native IR initialization failed",
+                    native_pipeline_c_string("VITTE_IR_E_LOWERING"),
+                    CliDiagnosticOrigin.Ir,
+                    CodegenError.Backend
+                );
+            } else {
+                set ir_initialized = true;
+                if not vitte_ir_lower_hir(&mut ir, &hir) {
+                    set ir_error = ir.last_error as u32;
+                    if action == NATIVE_FRONTEND_ACTION_COMPILE and ast_fallback {
+                        set output = native_pipeline_emit_c17(&parser, null, true, &native_codegen_config);
+                    } else {
+                        set output = native_pipeline_emit_failure(
+                            "native IR lowering failed: " + vitte_ir_error_name(ir.last_error),
+                            native_pipeline_c_string("VITTE_IR_E_LOWERING"),
+                            CliDiagnosticOrigin.Ir,
+                            CodegenError.Backend
+                        );
+                    }
+                } elif not vitte_ir_is_valid(&ir) or not vitte_ir_validate(&mut ir) or ir.state != IRState.Sealed {
+                    set ir_error = ir.last_error as u32;
+                    if action == NATIVE_FRONTEND_ACTION_COMPILE and ast_fallback {
+                        set output = native_pipeline_emit_c17(&parser, null, true, &native_codegen_config);
+                    } else {
+                        set output = native_pipeline_emit_failure(
+                            "native IR validation failed: " + vitte_ir_error_name(ir.last_error),
+                            native_pipeline_c_string("VITTE_IR_E_LOWERING"),
+                            CliDiagnosticOrigin.Ir,
+                            CodegenError.Backend
+                        );
+                    }
+                } else {
+                    let ir_statistics: IRStats = vitte_ir_stats(&ir);
+                    set ir_function_count = ir_statistics.functions_created as usize;
+                    set ir_hash = vitte_ir_fingerprint(&mut ir);
+                    set phase = NativePipelinePhase.IrLowered;
+                    if action == NATIVE_FRONTEND_ACTION_EMIT_IR {
+                        set output = NativePipelineEmitResult {
+                            success: true,
+                            source: vitte_ir_dump_text(&ir),
+                            error: "",
+                            diagnostic_code: null,
+                            diagnostic_origin: CliDiagnosticOrigin.Unknown,
+                            codegen_error: CodegenError.None
+                        };
+                    } elif ast_fallback {
+                        set output = native_pipeline_emit_c17(&parser, null, true, &native_codegen_config);
+                    } else {
+                        set output = native_pipeline_emit_c17(
+                            &parser,
+                            &ir,
+                            false,
+                            &native_codegen_config
+                        );
+                    }
+                }
+            }
+        }
+    } else {
+        set hir_error = hir.last_error as u32;
+        set output = native_pipeline_emit_failure(
+            "native HIR initialization failed",
+            native_pipeline_c_string("VITTE_HIR_E_LOWERING"),
+            CliDiagnosticOrigin.Hir,
+            CodegenError.Backend
+        );
+    }
+
+    if not native_pipeline_export_diagnostics(
+        &parser,
+        if sema_ast_fallback { null } else { &sema },
+        &output,
+        file_id,
+        diagnostic_source_name,
+        source_text,
+        diagnostics,
+        diagnostic_count
+    ) {
+        if ir_initialized { vitte_ir_destroy(&mut ir); }
+        if hir_initialized { vitte_hir_destroy(&mut hir); }
+        vitte_sema_destroy(&mut sema);
+        vitte_parser_destroy(&mut parser);
+        vitte_lexer_destroy(&mut lexer);
+        return native_pipeline_result(Status.ErrorOutOfMemory, phase, LexerError.OutOfMemory, token_count, lexer_hash, false);
+    }
+    if ir_initialized { vitte_ir_destroy(&mut ir); }
+    if hir_initialized { vitte_hir_destroy(&mut hir); }
+    vitte_sema_destroy(&mut sema);
+    vitte_parser_destroy(&mut parser);
+    vitte_lexer_destroy(&mut lexer);
+    let mut result = native_pipeline_result(
+        if output.success { Status.Ok } else { Status.ErrorBackend },
+        if output.success { NativePipelinePhase.Generated } else { phase },
+        LexerError.None,
+        token_count,
+        lexer_hash,
+        output.success
+    );
+    set result.parser_error = parser_error;
+    set result.hir_error = hir_error;
+    set result.ir_error = ir_error;
+    set result.parser_diagnostic_count = parser_diagnostics;
+    set result.parser_fingerprint = parser_hash;
+    set result.hir_node_count = hir_node_count;
+    set result.ir_function_count = ir_function_count;
+    set result.hir_fingerprint = hir_hash;
+    set result.ir_fingerprint = ir_hash;
+    set result.generated_source_bytes = if output.success { output.source.length } else { 0 as usize };
+    set result.codegen_fingerprint = if output.success { native_pipeline_fingerprint(output.source) } else { 0 as u64 };
+    set result.codegen_error = output.codegen_error as u32;
+    if output.success {
+        set result.generated_source = output.source;
+        if generated_source != null { set *generated_source = output.source.as_ptr() as *mut u8; }
+        if generated_source_length != null { set *generated_source_length = output.source.length; }
+    }
+    set result.native_parser_attempted = true;
+    set result.native_parser_succeeded = true;
+    set result.native_ast_lowered = true;
+    return result;
+}
+
+export proc native_pipeline_run(
+    source: ?str,
+    source_length: usize,
+    file_id: u64
+) -> NativePipelineResult {
+    return native_pipeline_run_with_config(source, source_length, file_id, NATIVE_FRONTEND_ACTION_COMPILE, null, null, null, null, null, null);
+}
+
+/// Run the native driver before the CLI compatibility backend. Return 1 when
+/// the native path completed without frontend diagnostics, 2 when it
+/// completed with non-error diagnostics, and 0 when the caller should fall
+/// back to the diagnostic-preserving bootstrap path.
+export proc vitte_native_frontend_run(
+    source: ?str,
+    source_length: usize,
+    file_id: u64
+) -> u32 {
+    let result = native_pipeline_run_with_config(source, source_length, file_id, NATIVE_FRONTEND_ACTION_COMPILE, null, null, null, null, null, null);
+    if not result.succeeded { return 0; }
+    if result.parser_diagnostic_count != 0 or result.sema_diagnostic_count != 0 {
+        return 2;
+    }
+    return 1;
+}
+
+export proc vitte_native_frontend_run_with_config(
+    source: ?str,
+    source_length: usize,
+    file_id: u64,
+    config_bytes: *const u8
+) -> u32 {
+    let mut copied_config: Config = Config {};
+    let mut config: *const Config = null;
+    if config_bytes != null {
+        copy((&mut copied_config) as *mut u8, config_bytes, sizeof(Config));
+        set config = &copied_config;
+    }
+    let result = native_pipeline_run_with_config(source, source_length, file_id, NATIVE_FRONTEND_ACTION_COMPILE, config, null, null, null, null, null);
+    if not result.succeeded { return 0; }
+    if result.parser_diagnostic_count != 0 or result.sema_diagnostic_count != 0 {
+        return 2;
+    }
+    return 1;
+}
+
+/// Generate C17 source and transfer ownership of its buffer to the caller.
+/// The caller must release a non-null buffer with vitte_native_frontend_release_output.
+export proc vitte_native_frontend_generate_with_config(
+    source: ?str,
+    source_length: usize,
+    file_id: u64,
+    config_bytes: *const u8,
+    generated_source: *mut *mut u8,
+    generated_source_length: *mut usize
+) -> u32 {
+    if generated_source == null or generated_source_length == null { return 0; }
+    set *generated_source = null;
+    set *generated_source_length = 0;
+    let mut copied_config: Config = Config {};
+    let mut config: *const Config = null;
+    if config_bytes != null {
+        copy((&mut copied_config) as *mut u8, config_bytes, sizeof(Config));
+        set config = &copied_config;
+    }
+    let result = native_pipeline_run_with_config(
+        source,
+        source_length,
+        file_id,
+        NATIVE_FRONTEND_ACTION_COMPILE,
+        config,
+        generated_source,
+        generated_source_length,
+        null,
+        null,
+        null
+    );
+    if not result.succeeded { return 0; }
+    if result.parser_diagnostic_count != 0 or result.sema_diagnostic_count != 0 {
+        return 2;
+    }
+    return 1;
+}
+
+/// Generate C17 and return native frontend diagnostics through the dedicated
+/// CLI transport. Status values are 0=unavailable/internal failure,
+/// 1=success without diagnostics, 2=success with warnings/notes, and
+/// 3=source errors with diagnostics.
+export proc vitte_native_frontend_generate_with_diagnostics(
+    source: ?str,
+    source_length: usize,
+    file_id: u64,
+    source_name: *const char,
+    config_bytes: *const u8,
+    generated_source: *mut *mut u8,
+    generated_source_length: *mut usize,
+    diagnostics: *mut *mut u8,
+    diagnostic_count: *mut usize
+) -> u32 {
+    return vitte_native_frontend_execute_with_diagnostics(
+        NATIVE_FRONTEND_ACTION_COMPILE,
+        source,
+        source_length,
+        file_id,
+        source_name,
+        config_bytes,
+        generated_source,
+        generated_source_length,
+        diagnostics,
+        diagnostic_count
+    );
+}
+
+/// Run the shared native compiler pipeline for CLI compile, check or IR dump.
+/// The output buffer contains generated C17 for compile, no bytes for check,
+/// and a textual serialization of validated native IR for --emit-ir.
+export proc vitte_native_frontend_execute_with_diagnostics(
+    action: u32,
+    source: ?str,
+    source_length: usize,
+    file_id: u64,
+    source_name: *const char,
+    config_bytes: *const u8,
+    generated_source: *mut *mut u8,
+    generated_source_length: *mut usize,
+    diagnostics: *mut *mut u8,
+    diagnostic_count: *mut usize
+) -> u32 {
+    if generated_source == null or generated_source_length == null or
+       diagnostics == null or diagnostic_count == null { return 0; }
+    if action > NATIVE_FRONTEND_ACTION_EMIT_IR { return 0; }
+    set *generated_source = null;
+    set *generated_source_length = 0;
+    set *diagnostics = null;
+    set *diagnostic_count = 0;
+    let mut copied_config: Config = Config {};
+    let mut config: *const Config = null;
+    if config_bytes != null {
+        copy((&mut copied_config) as *mut u8, config_bytes, sizeof(Config));
+        set config = &copied_config;
+    }
+    let result = native_pipeline_run_with_config(
+        source,
+        source_length,
+        file_id,
+        action,
+        config,
+        generated_source,
+        generated_source_length,
+        source_name,
+        diagnostics,
+        diagnostic_count
+    );
+    if not result.succeeded {
+        if *diagnostic_count != 0 { return 3; }
+        return 0;
+    }
+    if *diagnostic_count != 0 { return 2; }
+    return 1;
+}
+
+export proc vitte_native_frontend_release_output(generated_source: *mut u8) {
+    if generated_source != null { deallocate(generated_source); }
+}
+

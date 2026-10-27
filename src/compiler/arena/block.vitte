@@ -1,0 +1,1468 @@
+///
+/// Vitte Compiler
+/// src/arena/block.vit
+///
+/// Low-level arena block implementation.
+///
+/// allocator.vit owns block-list policy and topology.
+/// This module validates only the immediate links of a block.
+///
+
+space compiler::arena::block;
+
+use vitte::core::memory::{allocate, deallocate, fill};
+use vitte::core::pointer::{uintptr};
+
+// ============================================================================
+// Configuration
+// ============================================================================
+
+const ARENA_BLOCK_MAGIC: u64 = 0x5649545445424C4B;
+const ARENA_BLOCK_DEAD_MAGIC: u64 = 0x44454144424C4F43;
+
+const ARENA_BLOCK_MIN_CAPACITY: usize = 1024;
+const ARENA_BLOCK_DEFAULT_CAPACITY: usize = 65536;
+
+const ARENA_BLOCK_POISON_ALLOC: bool = false;
+const ARENA_BLOCK_POISON_RESET: bool = false;
+const ARENA_BLOCK_POISON_DESTROY: bool = false;
+
+const ARENA_BLOCK_ALLOC_PATTERN: u8 = 0xCD;
+const ARENA_BLOCK_RESET_PATTERN: u8 = 0xDD;
+const ARENA_BLOCK_DESTROY_PATTERN: u8 = 0xDE;
+
+const SIZE_MAX_VALUE: usize = usize.MAX;
+const UINTPTR_MAX_VALUE: uintptr = usize.MAX as uintptr;
+
+// Keep the default payload alignment valid for machine-word data.
+const DEFAULT_ALIGNMENT: usize = alignof(usize);
+
+proc arena_block_configuration_valid() -> bool {
+    return ARENA_BLOCK_MIN_CAPACITY != 0 and
+           ARENA_BLOCK_DEFAULT_CAPACITY >= ARENA_BLOCK_MIN_CAPACITY and
+           DEFAULT_ALIGNMENT != 0;
+}
+
+// ============================================================================
+// Native Vitte memory interface
+// ============================================================================
+
+// ============================================================================
+// Block structure
+// ============================================================================
+
+///
+/// En C, le bloc est alloué en une seule région :
+///
+/// [header][padding éventuel][payload]
+///
+/// data désigne le début du payload, pas une seconde allocation.
+///
+
+form ArenaBlock {
+    magic: u64,
+
+    next: *mut ArenaBlock,
+    previous: *mut ArenaBlock,
+
+    capacity: usize,
+    used: usize,
+
+    generation: u64,
+    dedicated: bool,
+
+    allocation_count: usize,
+    requested_bytes: usize,
+    peak_used: usize,
+
+    data: *mut u8,
+}
+
+// ============================================================================
+// Block statistics
+// ============================================================================
+
+form ArenaBlockStats {
+    capacity: usize,
+    used: usize,
+    remaining: usize,
+
+    requested_bytes: usize,
+    allocation_count: usize,
+    peak_used: usize,
+
+    generation: u64,
+    dedicated: bool,
+
+    padding_bytes: usize,
+}
+
+proc arena_block_empty_stats() -> ArenaBlockStats {
+    return ArenaBlockStats {
+        capacity: 0,
+        used: 0,
+        remaining: 0,
+
+        requested_bytes: 0,
+        allocation_count: 0,
+        peak_used: 0,
+
+        generation: 0,
+        dedicated: false,
+
+        padding_bytes: 0,
+    };
+}
+
+// ============================================================================
+// Arithmetic
+// ============================================================================
+
+proc arena_block_add_overflow(
+    left: usize,
+    right: usize
+) -> bool {
+    return left > SIZE_MAX_VALUE - right;
+}
+
+proc arena_block_uintptr_add_overflow(
+    left: uintptr,
+    right: uintptr
+) -> bool {
+    return left > UINTPTR_MAX_VALUE - right;
+}
+
+proc arena_block_is_power_of_two(
+    value: usize
+) -> bool {
+    return value != 0  and 
+           (value & (value - 1)) == 0;
+}
+
+proc arena_block_normalize_alignment(
+    alignment: usize
+) -> usize {
+    if alignment == 0 {
+        return DEFAULT_ALIGNMENT;
+    }
+
+    return alignment;
+}
+
+proc arena_block_saturating_add(
+    left: usize,
+    right: usize
+) -> usize {
+    if arena_block_add_overflow(left, right) {
+        return SIZE_MAX_VALUE;
+    }
+
+    return left + right;
+}
+
+proc arena_block_saturating_increment(
+    value: usize
+) -> usize {
+    if value == SIZE_MAX_VALUE {
+        return SIZE_MAX_VALUE;
+    }
+
+    return value + 1;
+}
+
+// ============================================================================
+// Pointer helpers
+// ============================================================================
+
+///
+/// Ces opérations doivent être implémentées par le backend Vitte.
+///
+/// Elles ne doivent pas passer par des conversions flottantes
+/// ou des entiers de largeur insuffisante.
+///
+
+unsafe proc arena_block_address(
+    pointer: *const u8
+) -> uintptr {
+    return pointer as uintptr;
+}
+
+unsafe proc arena_block_pointer(
+    address: uintptr
+) -> *mut u8 {
+    return address as *mut u8;
+}
+
+unsafe proc arena_block_pointer_const(
+    address: uintptr
+) -> *const u8 {
+    return address as *const u8;
+}
+
+unsafe proc arena_block_data_address(
+    block: *const ArenaBlock
+) -> uintptr {
+    return (*block).data as uintptr;
+}
+
+// ============================================================================
+// Address alignment
+// ============================================================================
+
+proc arena_block_align_address(
+    address: uintptr,
+    alignment: usize,
+    aligned_output: &mut uintptr
+) -> bool {
+    if not arena_block_is_power_of_two(alignment) {
+        return false;
+    }
+
+    if alignment - 1 > UINTPTR_MAX_VALUE as usize {
+        return false;
+    }
+
+    let mask: uintptr =
+        (alignment - 1) as uintptr;
+
+    if arena_block_uintptr_add_overflow(
+        address,
+        mask
+    ) {
+        return false;
+    }
+
+    let aligned: uintptr =
+        (address + mask) & ~mask;
+
+    if aligned < address {
+        return false;
+    }
+
+    set *aligned_output = aligned;
+    return true;
+}
+
+// ============================================================================
+// Allocation position
+// ============================================================================
+
+form ArenaBlockAllocationPosition {
+    offset: usize,
+    end: usize,
+    address: uintptr,
+}
+
+unsafe proc arena_block_compute_allocation(
+    block: *const ArenaBlock,
+    size: usize,
+    alignment: usize,
+    position_output: &mut ArenaBlockAllocationPosition
+) -> bool {
+    if block == null {
+        return false;
+    }
+
+    let normalized_alignment: usize =
+        arena_block_normalize_alignment(alignment);
+
+    if not arena_block_is_power_of_two(
+        normalized_alignment
+    ) {
+        return false;
+    }
+
+    let mut physical_size: usize = size;
+    if size == 0 {
+        set physical_size = 1;
+    }
+
+    let base: uintptr =
+        arena_block_data_address(block);
+
+    let used: usize =
+        (*block).used;
+
+    if used > UINTPTR_MAX_VALUE as usize {
+        return false;
+    }
+
+    if arena_block_uintptr_add_overflow(
+        base,
+        used as uintptr
+    ) {
+        return false;
+    }
+
+    let current: uintptr =
+        base + used as uintptr;
+
+    let mut aligned: uintptr = 0;
+    if not arena_block_align_address(
+            current,
+            normalized_alignment,
+            &mut aligned
+        ) {
+        return false;
+    }
+
+    if aligned < base {
+        return false;
+    }
+
+    let difference: uintptr =
+        aligned - base;
+
+    if difference > SIZE_MAX_VALUE as uintptr {
+        return false;
+    }
+
+    let offset: usize =
+        difference as usize;
+
+    if offset > (*block).capacity {
+        return false;
+    }
+
+    if arena_block_add_overflow(
+        offset,
+        physical_size
+    ) {
+        return false;
+    }
+
+    let end: usize =
+        offset + physical_size;
+
+    if end > (*block).capacity {
+        return false;
+    }
+
+    set *position_output = ArenaBlockAllocationPosition {
+        offset: offset,
+        end: end,
+        address: aligned,
+    };
+    return true;
+}
+
+// ============================================================================
+// Overflow-safe ratio
+// ============================================================================
+
+///
+/// Computes floor(numerator * scale / denominator) without overflowing
+/// either multiplication. The quotient and remainder are accumulated one
+/// bit of `scale` at a time.
+///
+
+pub proc arena_block_scaled_ratio(
+    numerator: usize,
+    denominator: usize,
+    scale: u32
+) -> u32 {
+    if denominator == 0  or 
+       numerator == 0  or 
+       scale == 0 {
+        return 0;
+    }
+
+    if numerator >= denominator {
+        return scale;
+    }
+
+    let mut result: u32 = 0;
+    let mut remainder: usize = 0;
+    let mut bit: u32 = 0x80000000;
+
+    while bit != 0 {
+        let mut carry: u32 = 0;
+
+        if remainder >= denominator - remainder {
+            set remainder = remainder - (denominator - remainder);
+            set carry = 1;
+        } else {
+            set remainder = remainder + remainder;
+        }
+
+        set result = result * 2 + carry;
+
+        if (scale & bit) != 0 {
+            if remainder >= denominator - numerator {
+                set remainder = remainder - (denominator - numerator);
+                set result = result + 1;
+            } else {
+                set remainder = remainder + numerator;
+            }
+        }
+
+        set bit = bit >> 1;
+    }
+
+    if result > scale {
+        return scale;
+    }
+
+    return result;
+}
+
+// ============================================================================
+// Capacity normalization
+// ============================================================================
+
+proc arena_block_normalize_capacity(
+    capacity: usize
+) -> usize {
+    if capacity == 0 {
+        return ARENA_BLOCK_DEFAULT_CAPACITY;
+    }
+
+    if capacity < ARENA_BLOCK_MIN_CAPACITY {
+        return ARENA_BLOCK_MIN_CAPACITY;
+    }
+
+    return capacity;
+}
+
+proc arena_block_required_capacity(
+    size: usize,
+    alignment: usize,
+    capacity_output: &mut usize
+) -> bool {
+    let normalized_alignment: usize =
+        arena_block_normalize_alignment(alignment);
+
+    if not arena_block_is_power_of_two(
+        normalized_alignment
+    ) {
+        return false;
+    }
+
+    let mut physical_size: usize = size;
+    if size == 0 {
+        set physical_size = 1;
+    }
+
+    let padding: usize =
+        normalized_alignment - 1;
+
+    if arena_block_add_overflow(
+        physical_size,
+        padding
+    ) {
+        return false;
+    }
+
+    set *capacity_output = physical_size + padding;
+    return true;
+}
+
+// ============================================================================
+// Payload poisoning
+// ============================================================================
+
+unsafe proc arena_block_poison(
+    pointer: *mut u8,
+    size: usize,
+    pattern: u8
+) {
+    if pointer == null  or  size == 0 {
+        return;
+    }
+
+    fill(
+        pointer,
+        pattern,
+        size
+    );
+}
+
+// ============================================================================
+// Block creation
+// ============================================================================
+
+///
+/// Allocates the fixed header and payload in one heap allocation.
+///
+/// The payload offset must be rounded up to DEFAULT_ALIGNMENT.
+///
+
+unsafe proc arena_block_create(
+    capacity: usize,
+    generation: u64,
+    dedicated: bool
+) -> *mut ArenaBlock {
+    if not arena_block_configuration_valid() {
+        return null;
+    }
+
+    let normalized_capacity: usize =
+        arena_block_normalize_capacity(capacity);
+
+    if normalized_capacity == 0 {
+        return null;
+    }
+
+    if generation == 0 {
+        return null;
+    }
+
+    let header_size: usize =
+        sizeof(ArenaBlock);
+
+    let padding: usize =
+        DEFAULT_ALIGNMENT - 1;
+
+    if arena_block_add_overflow(
+        header_size,
+        padding
+    ) {
+        return null;
+    }
+
+    let header_with_padding: usize =
+        header_size + padding;
+
+    if arena_block_add_overflow(
+        header_with_padding,
+        normalized_capacity
+    ) {
+        return null;
+    }
+
+    let total_size: usize =
+        header_with_padding + normalized_capacity;
+
+    let storage: *mut u8 =
+        allocate(total_size);
+
+    if storage == null {
+        return null;
+    }
+
+    fill(
+        storage,
+        0,
+        header_size
+    );
+
+    let block: *mut ArenaBlock =
+        storage as *mut ArenaBlock;
+
+    let storage_address: uintptr =
+        storage as uintptr;
+
+    if arena_block_uintptr_add_overflow(
+        storage_address,
+        header_size as uintptr
+    ) {
+        deallocate(storage);
+        return null;
+    }
+
+    let payload_start: uintptr =
+        storage_address + header_size as uintptr;
+
+    let mut payload_address: uintptr = 0;
+    if not arena_block_align_address(
+            payload_start,
+            DEFAULT_ALIGNMENT,
+            &mut payload_address
+        ) {
+        deallocate(storage);
+        return null;
+    }
+
+    set (*block).magic =
+        ARENA_BLOCK_MAGIC;
+
+    set (*block).next = null;
+    set (*block).previous = null;
+
+    set (*block).capacity =
+        normalized_capacity;
+
+    set (*block).used = 0;
+
+    set (*block).generation =
+        generation;
+
+    set (*block).dedicated =
+        dedicated;
+
+    set (*block).allocation_count = 0;
+    set (*block).requested_bytes = 0;
+    set (*block).peak_used = 0;
+
+    set (*block).data =
+        arena_block_pointer(payload_address);
+
+    if ARENA_BLOCK_POISON_RESET {
+        arena_block_poison(
+            (*block).data,
+            normalized_capacity,
+            ARENA_BLOCK_RESET_PATTERN
+        );
+    }
+
+    if not arena_block_validate(block) {
+        set (*block).magic =
+            ARENA_BLOCK_DEAD_MAGIC;
+
+        deallocate(storage);
+
+        return null;
+    }
+
+    return block;
+}
+
+// ============================================================================
+// Block destruction
+// ============================================================================
+
+unsafe proc arena_block_destroy(
+    block: *mut ArenaBlock
+) {
+    if block == null {
+        return;
+    }
+
+    if (*block).magic != ARENA_BLOCK_MAGIC {
+        return;
+    }
+
+    if ARENA_BLOCK_POISON_DESTROY  and 
+       (*block).capacity != 0 {
+        arena_block_poison(
+            (*block).data,
+            (*block).capacity,
+            ARENA_BLOCK_DESTROY_PATTERN
+        );
+    }
+
+    set (*block).magic =
+        ARENA_BLOCK_DEAD_MAGIC;
+
+    set (*block).next = null;
+    set (*block).previous = null;
+
+    set (*block).capacity = 0;
+    set (*block).used = 0;
+
+    set (*block).generation = 0;
+    set (*block).dedicated = false;
+
+    set (*block).allocation_count = 0;
+    set (*block).requested_bytes = 0;
+    set (*block).peak_used = 0;
+
+    set (*block).data = null;
+
+    deallocate(block as *mut u8);
+}
+
+// ============================================================================
+// Aligned bump allocation
+// ============================================================================
+
+unsafe proc arena_block_alloc(
+    block: *mut ArenaBlock,
+    size: usize,
+    alignment: usize
+) -> *mut u8 {
+    if not arena_block_validate(block) {
+        return null;
+    }
+
+    let mut position: ArenaBlockAllocationPosition = ArenaBlockAllocationPosition {
+        offset: 0,
+        end: 0,
+        address: 0,
+    };
+    if not arena_block_compute_allocation(
+            block,
+            size,
+            alignment,
+            &mut position
+        ) {
+        return null;
+    }
+
+    let mut physical_size: usize = size;
+    if size == 0 {
+        set physical_size = 1;
+    }
+
+    // Commit only after all feasibility checks.
+    set (*block).used =
+        position.end;
+
+    set (*block).allocation_count =
+        arena_block_saturating_increment(
+            (*block).allocation_count
+        );
+
+    set (*block).requested_bytes =
+        arena_block_saturating_add(
+            (*block).requested_bytes,
+            size
+        );
+
+    if (*block).used > (*block).peak_used {
+        set (*block).peak_used =
+            (*block).used;
+    }
+
+    let memory: *mut u8 =
+        arena_block_pointer(position.address);
+
+    if ARENA_BLOCK_POISON_ALLOC {
+        arena_block_poison(
+            memory,
+            physical_size,
+            ARENA_BLOCK_ALLOC_PATTERN
+        );
+    }
+
+    return memory;
+}
+
+// ============================================================================
+// Allocation feasibility
+// ============================================================================
+
+unsafe proc arena_block_can_allocate(
+    block: *const ArenaBlock,
+    size: usize,
+    alignment: usize
+) -> bool {
+    if not arena_block_validate(block) {
+        return false;
+    }
+
+    let mut position: ArenaBlockAllocationPosition = ArenaBlockAllocationPosition {
+        offset: 0,
+        end: 0,
+        address: 0,
+    };
+    return arena_block_compute_allocation(
+        block,
+        size,
+        alignment,
+        &mut position
+    );
+}
+
+// ============================================================================
+// Reset
+// ============================================================================
+
+unsafe proc arena_block_reset(
+    block: *mut ArenaBlock,
+    generation: u64
+) {
+    if not arena_block_validate(block) {
+        return;
+    }
+
+    // A zero generation would invalidate the block.
+    if generation == 0 {
+        return;
+    }
+
+    if ARENA_BLOCK_POISON_RESET  and 
+       (*block).used != 0 {
+        arena_block_poison(
+            (*block).data,
+            (*block).used,
+            ARENA_BLOCK_RESET_PATTERN
+        );
+    }
+
+    set (*block).used = 0;
+
+    set (*block).generation =
+        generation;
+
+    set (*block).allocation_count = 0;
+    set (*block).requested_bytes = 0;
+
+    // peak_used deliberately survives reset.
+}
+
+// ============================================================================
+// Rewind
+// ============================================================================
+
+unsafe proc arena_block_rewind(
+    block: *mut ArenaBlock,
+    used: usize
+) -> bool {
+    if not arena_block_validate(block) {
+        return false;
+    }
+
+    if used > (*block).used {
+        return false;
+    }
+
+    let old_used: usize =
+        (*block).used;
+
+    if ARENA_BLOCK_POISON_RESET  and 
+       old_used > used {
+        let address: uintptr =
+            arena_block_data_address(block) +
+            used as uintptr;
+
+        arena_block_poison(
+            arena_block_pointer(address),
+            old_used - used,
+            ARENA_BLOCK_RESET_PATTERN
+        );
+    }
+
+    set (*block).used = used;
+
+    // Allocation statistics require a higher-level checkpoint.
+    // peak_used survives rewind.
+
+    return true;
+}
+
+// ============================================================================
+// Capacity queries
+// ============================================================================
+
+unsafe proc arena_block_capacity(
+    block: *const ArenaBlock
+) -> usize {
+    if not arena_block_validate(block) {
+        return 0;
+    }
+
+    return (*block).capacity;
+}
+
+unsafe proc arena_block_used(
+    block: *const ArenaBlock
+) -> usize {
+    if not arena_block_validate(block) {
+        return 0;
+    }
+
+    return (*block).used;
+}
+
+unsafe proc arena_block_remaining(
+    block: *const ArenaBlock
+) -> usize {
+    if not arena_block_validate(block) {
+        return 0;
+    }
+
+    return (*block).capacity - (*block).used;
+}
+
+unsafe proc arena_block_requested_bytes(
+    block: *const ArenaBlock
+) -> usize {
+    if not arena_block_validate(block) {
+        return 0;
+    }
+
+    return (*block).requested_bytes;
+}
+
+unsafe proc arena_block_allocation_count(
+    block: *const ArenaBlock
+) -> usize {
+    if not arena_block_validate(block) {
+        return 0;
+    }
+
+    return (*block).allocation_count;
+}
+
+unsafe proc arena_block_peak_used(
+    block: *const ArenaBlock
+) -> usize {
+    if not arena_block_validate(block) {
+        return 0;
+    }
+
+    return (*block).peak_used;
+}
+
+unsafe proc arena_block_generation(
+    block: *const ArenaBlock
+) -> u64 {
+    if not arena_block_validate(block) {
+        return 0;
+    }
+
+    return (*block).generation;
+}
+
+// ============================================================================
+// Classification
+// ============================================================================
+
+unsafe proc arena_block_is_dedicated(
+    block: *const ArenaBlock
+) -> bool {
+    if not arena_block_validate(block) {
+        return false;
+    }
+
+    return (*block).dedicated;
+}
+
+unsafe proc arena_block_is_empty(
+    block: *const ArenaBlock
+) -> bool {
+    if not arena_block_validate(block) {
+        return true;
+    }
+
+    return (*block).used == 0;
+}
+
+unsafe proc arena_block_is_full(
+    block: *const ArenaBlock
+) -> bool {
+    if not arena_block_validate(block) {
+        return false;
+    }
+
+    return (*block).used == (*block).capacity;
+}
+
+// ============================================================================
+// Ownership queries
+// ============================================================================
+
+unsafe proc arena_block_contains(
+    block: *const ArenaBlock,
+    pointer: *const u8
+) -> bool {
+    if not arena_block_validate(block)  or 
+       pointer == null {
+        return false;
+    }
+
+    let begin: uintptr =
+        arena_block_data_address(block);
+
+    let capacity: usize =
+        (*block).capacity;
+
+    if capacity > UINTPTR_MAX_VALUE as usize {
+        return false;
+    }
+
+    if arena_block_uintptr_add_overflow(
+        begin,
+        capacity as uintptr
+    ) {
+        return false;
+    }
+
+    let end: uintptr =
+        begin + capacity as uintptr;
+
+    let address: uintptr =
+        pointer as uintptr;
+
+    return address >= begin  and 
+           address < end;
+}
+
+unsafe proc arena_block_contains_live(
+    block: *const ArenaBlock,
+    pointer: *const u8
+) -> bool {
+    if not arena_block_validate(block)  or 
+       pointer == null {
+        return false;
+    }
+
+    if (*block).used == 0 {
+        return false;
+    }
+
+    let begin: uintptr =
+        arena_block_data_address(block);
+
+    let used: usize =
+        (*block).used;
+
+    if used > UINTPTR_MAX_VALUE as usize {
+        return false;
+    }
+
+    if arena_block_uintptr_add_overflow(
+        begin,
+        used as uintptr
+    ) {
+        return false;
+    }
+
+    let end: uintptr =
+        begin + used as uintptr;
+
+    let address: uintptr =
+        pointer as uintptr;
+
+    return address >= begin  and 
+           address < end;
+}
+
+// ============================================================================
+// Pointer to offset
+// ============================================================================
+
+unsafe proc arena_block_offset_of(
+    block: *const ArenaBlock,
+    pointer: *const u8,
+    offset_output: &mut usize
+) -> bool {
+    if not arena_block_contains(block, pointer) {
+        return false;
+    }
+
+    let address: uintptr =
+        pointer as uintptr;
+
+    let begin: uintptr =
+        arena_block_data_address(block);
+
+    if address < begin {
+        return false;
+    }
+
+    let difference: uintptr =
+        address - begin;
+
+    if difference > SIZE_MAX_VALUE as uintptr {
+        return false;
+    }
+
+    set *offset_output = difference as usize;
+    return true;
+}
+
+// ============================================================================
+// Offset to pointer
+// ============================================================================
+
+unsafe proc arena_block_pointer_at(
+    block: *mut ArenaBlock,
+    offset: usize
+) -> *mut u8 {
+    if not arena_block_validate(block) {
+        return null;
+    }
+
+    if offset >= (*block).capacity {
+        return null;
+    }
+
+    let begin: uintptr =
+        arena_block_data_address(block);
+
+    if arena_block_uintptr_add_overflow(
+        begin,
+        offset as uintptr
+    ) {
+        return null;
+    }
+
+    return arena_block_pointer(
+        begin + offset as uintptr
+    );
+}
+
+unsafe proc arena_block_pointer_at_const(
+    block: *const ArenaBlock,
+    offset: usize
+) -> *const u8 {
+    if not arena_block_validate(block) {
+        return null;
+    }
+
+    if offset >= (*block).capacity {
+        return null;
+    }
+
+    let begin: uintptr =
+        arena_block_data_address(block);
+
+    if arena_block_uintptr_add_overflow(
+        begin,
+        offset as uintptr
+    ) {
+        return null;
+    }
+
+    return arena_block_pointer_const(
+        begin + offset as uintptr
+    );
+}
+
+// ============================================================================
+// Statistics
+// ============================================================================
+
+unsafe proc arena_block_stats(
+    block: *const ArenaBlock
+) -> ArenaBlockStats {
+    let mut stats: ArenaBlockStats =
+        arena_block_empty_stats();
+
+    if not arena_block_validate(block) {
+        return stats;
+    }
+
+    set stats.capacity =
+        (*block).capacity;
+
+    set stats.used =
+        (*block).used;
+
+    set stats.remaining =
+        (*block).capacity - (*block).used;
+
+    set stats.requested_bytes =
+        (*block).requested_bytes;
+
+    set stats.allocation_count =
+        (*block).allocation_count;
+
+    set stats.peak_used =
+        (*block).peak_used;
+
+    set stats.generation =
+        (*block).generation;
+
+    set stats.dedicated =
+        (*block).dedicated;
+
+    if (*block).requested_bytes != SIZE_MAX_VALUE  and 
+       (*block).used >= (*block).requested_bytes {
+        set stats.padding_bytes =
+            (*block).used - (*block).requested_bytes;
+    } else {
+        set stats.padding_bytes = 0;
+    }
+
+    return stats;
+}
+
+// ============================================================================
+// Utilization
+// ============================================================================
+
+unsafe proc arena_block_utilization_basis_points(
+    block: *const ArenaBlock
+) -> u32 {
+    if not arena_block_validate(block) {
+        return 0;
+    }
+
+    if (*block).capacity == 0 {
+        return 0;
+    }
+
+    if (*block).used >= (*block).capacity {
+        return 10000;
+    }
+
+    return arena_block_scaled_ratio(
+        (*block).used,
+        (*block).capacity,
+        10000
+    );
+}
+
+// ============================================================================
+// Structural validation
+// ============================================================================
+
+unsafe proc arena_block_validate(
+    block: *const ArenaBlock
+) -> bool {
+    if block == null {
+        return false;
+    }
+
+    if (*block).magic != ARENA_BLOCK_MAGIC {
+        return false;
+    }
+
+    if (*block).capacity < ARENA_BLOCK_MIN_CAPACITY {
+        return false;
+    }
+
+    if (*block).used > (*block).capacity {
+        return false;
+    }
+
+    if (*block).peak_used > (*block).capacity {
+        return false;
+    }
+
+    if (*block).peak_used < (*block).used {
+        return false;
+    }
+
+    if (*block).requested_bytes != SIZE_MAX_VALUE  and 
+       (*block).requested_bytes > (*block).used {
+        return false;
+    }
+
+    if (*block).used == 0  and 
+       (*block).allocation_count != 0 {
+        return false;
+    }
+
+    if (*block).used != 0  and 
+       (*block).allocation_count == 0 {
+        return false;
+    }
+
+    let begin: uintptr =
+        arena_block_data_address(block);
+
+    let alignment: usize =
+        DEFAULT_ALIGNMENT;
+
+    if not arena_block_is_power_of_two(alignment) {
+        return false;
+    }
+
+    if (begin & ((alignment - 1) as uintptr)) != 0 {
+        return false;
+    }
+
+    if (*block).capacity > UINTPTR_MAX_VALUE as usize {
+        return false;
+    }
+
+    if arena_block_uintptr_add_overflow(
+        begin,
+        (*block).capacity as uintptr
+    ) {
+        return false;
+    }
+
+    let end: uintptr =
+        begin + (*block).capacity as uintptr;
+
+    if end <= begin {
+        return false;
+    }
+
+    // Immediate topology only.
+
+    if (*block).next == block  or 
+       (*block).previous == block {
+        return false;
+    }
+
+    if (*block).next != null {
+        let next: *mut ArenaBlock =
+            (*block).next;
+
+        if (*next).magic != ARENA_BLOCK_MAGIC {
+            return false;
+        }
+
+        if (*next).previous != block {
+            return false;
+        }
+    }
+
+    if (*block).previous != null {
+        let previous: *mut ArenaBlock =
+            (*block).previous;
+
+        if (*previous).magic != ARENA_BLOCK_MAGIC {
+            return false;
+        }
+
+        if (*previous).next != block {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+// ============================================================================
+// Convenience accessors
+// ============================================================================
+
+unsafe proc arena_block_data(
+    block: *mut ArenaBlock
+) -> *mut u8 {
+    if block == null {
+        return null;
+    }
+
+    return (*block).data;
+}
+
+unsafe proc arena_block_data_const(
+    block: *const ArenaBlock
+) -> *const u8 {
+    if block == null {
+        return null;
+    }
+
+    return (*block).data as *const u8;
+}
+
+unsafe proc arena_block_has_space(
+    block: *const ArenaBlock
+) -> bool {
+    return arena_block_remaining(block) != 0;
+}
+
+unsafe proc arena_block_padding_bytes(
+    block: *const ArenaBlock
+) -> usize {
+    let used = arena_block_used(block);
+    let requested = arena_block_requested_bytes(block);
+
+    if requested == SIZE_MAX_VALUE  or  used < requested {
+        return 0;
+    }
+
+    return used - requested;
+}
+
+unsafe proc arena_block_can_allocate_default(
+    block: *const ArenaBlock,
+    size: usize
+) -> bool {
+    return arena_block_can_allocate(block, size, 0);
+}
+
+unsafe proc arena_block_owns_live_pointer(
+    block: *const ArenaBlock,
+    pointer: *const u8
+) -> bool {
+    return arena_block_contains_live(block, pointer);
+}
+
+// ============================================================================
+// Immediate linked-list access
+// ============================================================================
+
+unsafe proc arena_block_next(
+    block: *mut ArenaBlock
+) -> *mut ArenaBlock {
+    if block == null {
+        return null;
+    }
+
+    return (*block).next;
+}
+
+unsafe proc arena_block_next_const(
+    block: *const ArenaBlock
+) -> *const ArenaBlock {
+    if block == null {
+        return null;
+    }
+
+    return (*block).next as *const ArenaBlock;
+}
+
+unsafe proc arena_block_previous(
+    block: *mut ArenaBlock
+) -> *mut ArenaBlock {
+    if block == null {
+        return null;
+    }
+
+    return (*block).previous;
+}
+
+unsafe proc arena_block_previous_const(
+    block: *const ArenaBlock
+) -> *const ArenaBlock {
+    if block == null {
+        return null;
+    }
+
+    return (*block).previous as *const ArenaBlock;
+}
+
+unsafe proc arena_block_set_next(
+    block: *mut ArenaBlock,
+    next: *mut ArenaBlock
+) {
+    if block != null {
+        set (*block).next = next;
+    }
+}
+
+unsafe proc arena_block_set_previous(
+    block: *mut ArenaBlock,
+    previous: *mut ArenaBlock
+) {
+    if block != null {
+        set (*block).previous = previous;
+    }
+}
+
+unsafe proc arena_block_link(
+    left: *mut ArenaBlock,
+    right: *mut ArenaBlock
+) {
+    if left != null {
+        set (*left).next = right;
+    }
+
+    if right != null {
+        set (*right).previous = left;
+    }
+}
+
+unsafe proc arena_block_clear_links(
+    block: *mut ArenaBlock
+) {
+    if block == null {
+        return;
+    }
+
+    set (*block).next = null;
+    set (*block).previous = null;
+}
+
+unsafe proc arena_block_belongs_to_generation(
+    block: *const ArenaBlock,
+    generation: u64
+) -> bool {
+    return arena_block_validate(block)  and
+           (*block).generation == generation;
+}
+
+unsafe proc arena_block_is_unused(
+    block: *const ArenaBlock
+) -> bool {
+    return arena_block_used(block) == 0;
+}
+
+unsafe proc arena_block_live_bytes(
+    block: *const ArenaBlock
+) -> usize {
+    return arena_block_used(block);
+}
+
+// ============================================================================
+// End
+// ============================================================================

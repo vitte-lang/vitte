@@ -1,0 +1,34 @@
+/// Positions de séparation calculées sans construire de nouvelles chaînes.
+space core::str::split;
+
+export form StrSplitPoint {
+    found: bool,
+    start: usize,
+    end: usize,
+}
+
+export proc str_split_once(value: str, separator: str) -> StrSplitPoint {
+    if separator.length == 0 {
+        return StrSplitPoint { found: true, start: 0, end: 0 };
+    }
+    if separator.length > value.length {
+        return StrSplitPoint { found: false, start: value.length, end: value.length };
+    }
+    let mut start: usize = 0;
+    while start <= value.length - separator.length {
+        if value.slice(start, start + separator.length) == separator {
+            return StrSplitPoint { found: true, start: start, end: start + separator.length };
+        }
+        set start = start + 1;
+    }
+    return StrSplitPoint { found: false, start: value.length, end: value.length };
+}
+
+export proc str_split_count(value: str, separator: char) -> usize {
+    if value.length == 0 { return 0; }
+    let mut count: usize = 1;
+    for index in 0..value.length {
+        if value[index] == separator { set count = count + 1; }
+    }
+    return count;
+}

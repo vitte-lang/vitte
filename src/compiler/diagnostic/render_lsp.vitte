@@ -1,0 +1,301 @@
+/// Vitte declarations ported from `src/bootstrap/diagnostic/render_lsp.h`.
+space compiler::diagnostic::render_lsp;
+
+use compiler::api::error::{Status};
+use compiler::source::source::{SourceContext, SourceEntry, SourceId, vitte_source_get, vitte_source_is_valid};
+use compiler::unicode::unicode::{UnicodeError, vitte_unicode_decode_utf8};
+use compiler::diagnostic::diagnostic::{Diagnostic, DiagnosticBag, DiagnosticSeverity};
+
+export const VITTE_DIAGNOSTIC_LSP_URI_CAPACITY: usize = 4096;
+
+export pick DiagnosticLSPPositionEncoding {
+    Utf8,
+    Utf16,
+    Utf32
+}
+
+export form DiagnosticLSPPosition {
+    line: usize,
+    character: usize,
+    valid: bool
+}
+
+export form DiagnosticLSPRange {
+    start: DiagnosticLSPPosition,
+    end: DiagnosticLSPPosition,
+    valid: bool
+}
+
+export type DiagnosticLSPPositionConverter = proc(
+    source_id: SourceId,
+    source_name: *const u8,
+    byte_offset: usize,
+    encoding: DiagnosticLSPPositionEncoding,
+    position: *mut DiagnosticLSPPosition,
+    user_data: *mut u8
+) -> bool;
+
+export type DiagnosticLSPUriConverter = proc(
+    source_id: SourceId,
+    source_name: *const u8,
+    buffer: *mut u8,
+    capacity: usize,
+    user_data: *mut u8
+) -> bool;
+
+export form DiagnosticLSPOptions {
+    pretty: bool,
+    trailing_newline: bool,
+    include_suppressed: bool,
+    include_related_information: bool,
+    include_data: bool,
+    include_labels_in_data: bool,
+    include_suggestions_in_data: bool,
+    include_causes_in_data: bool,
+    include_contract_in_data: bool,
+    include_cascade_in_data: bool,
+    source_name: *const u8,
+    position_encoding: DiagnosticLSPPositionEncoding,
+    position_converter: ?DiagnosticLSPPositionConverter,
+    position_user_data: *mut u8,
+    uri_converter: ?DiagnosticLSPUriConverter,
+    uri_user_data: *mut u8
+}
+
+export proc vitte_diagnostic_lsp_options_init(options: *mut DiagnosticLSPOptions) {
+    if options == null { return; }
+    set *options = DiagnosticLSPOptions {
+        pretty: false,
+        trailing_newline: true,
+        include_suppressed: false,
+        include_related_information: true,
+        include_data: true,
+        include_labels_in_data: true,
+        include_suggestions_in_data: true,
+        include_causes_in_data: true,
+        include_contract_in_data: true,
+        include_cascade_in_data: true,
+        source_name: "vitte".as_ptr(),
+        position_encoding: DiagnosticLSPPositionEncoding.Utf16,
+        position_converter: null,
+        position_user_data: null,
+        uri_converter: null,
+        uri_user_data: null
+    };
+}
+
+export proc vitte_diagnostic_lsp_position_encoding_name(encoding: DiagnosticLSPPositionEncoding) -> *const u8 {
+    match encoding {
+        case DiagnosticLSPPositionEncoding.Utf8 => return "utf-8".as_ptr(),
+        case DiagnosticLSPPositionEncoding.Utf16 => return "utf-16".as_ptr(),
+        case DiagnosticLSPPositionEncoding.Utf32 => return "utf-32".as_ptr(),
+        else => return "unknown".as_ptr()
+    }
+}
+
+// `user_data` for the native converter is a native SourceContext pointer.
+// The bootstrap C callback keeps the separate C-layout source-context ABI.
+proc lsp_raw_name_matches(name: *const u8, text: string) -> bool {
+    if name == null { return false; }
+    let bytes = text.bytes();
+    let mut index: usize = 0;
+    while index < bytes.len() {
+        if name[index] != bytes[index] { return false; }
+        set index += 1;
+    }
+    return name[index] == 0;
+}
+
+export proc vitte_diagnostic_lsp_source_position_converter(
+    source_id: SourceId,
+    source_name: *const u8,
+    byte_offset: usize,
+    encoding: DiagnosticLSPPositionEncoding,
+    position: *mut DiagnosticLSPPosition,
+    user_data: *mut u8
+) -> bool {
+    if position == null or user_data == null { return false; }
+    if encoding != DiagnosticLSPPositionEncoding.Utf8 and
+       encoding != DiagnosticLSPPositionEncoding.Utf16 and
+       encoding != DiagnosticLSPPositionEncoding.Utf32 { return false; }
+
+    set *position = DiagnosticLSPPosition { line: 0, character: 0, valid: false };
+    let sources: ?&SourceContext = &*(user_data as *const SourceContext);
+    if not vitte_source_is_valid(sources) { return false; }
+    let source_context = sources?;
+    let mut source: ?&SourceEntry = vitte_source_get(sources, source_id);
+
+    if source == null and source_name != null {
+        let mut index: usize = 0;
+        while index < source_context.sources.len() {
+            if lsp_raw_name_matches(source_name, source_context.sources[index].name) {
+                set source = &source_context.sources[index];
+                break;
+            }
+            set index += 1;
+        }
+        if source == null {
+            set index = 0;
+            while index < source_context.sources.len() {
+                if lsp_raw_name_matches(source_name, source_context.sources[index].path) {
+                    set source = &source_context.sources[index];
+                    break;
+                }
+                set index += 1;
+            }
+        }
+    }
+    if source == null { return false; }
+
+    let source_entry = source?;
+    if source_entry.line_count == 0 or
+       source_entry.line_count > source_entry.line_offsets.len() or
+       source_entry.length > source_entry.data.len() or
+       byte_offset > source_entry.length { return false; }
+
+    let mut line_index: usize = 0;
+    while line_index + 1 < source_entry.line_count and
+          source_entry.line_offsets[line_index + 1] <= byte_offset {
+        set line_index += 1;
+    }
+    let line_start = source_entry.line_offsets[line_index];
+    let line_end = if line_index + 1 < source_entry.line_count {
+        source_entry.line_offsets[line_index + 1]
+    } else { source_entry.length };
+    if line_start > line_end or line_end > source_entry.length { return false; }
+
+    let mut content_end = line_end;
+    if content_end > line_start and source_entry.data[content_end - 1] as u8 == 10 {
+        set content_end -= 1;
+        if content_end > line_start and source_entry.data[content_end - 1] as u8 == 13 {
+            set content_end -= 1;
+        }
+    } else if content_end > line_start and source_entry.data[content_end - 1] as u8 == 13 {
+        set content_end -= 1;
+    }
+
+    let target_offset = if byte_offset > content_end and byte_offset < line_end {
+        content_end
+    } else if byte_offset <= content_end {
+        byte_offset
+    } else { return false; };
+
+    let mut cursor = line_start;
+    let mut character: usize = 0;
+    while cursor < target_offset {
+        let decoded = vitte_unicode_decode_utf8(source_entry.data, cursor, source_entry.length);
+        if decoded.error != UnicodeError.None or decoded.length == 0 or
+           decoded.length > target_offset - cursor { return false; }
+
+        let units: usize = if encoding == DiagnosticLSPPositionEncoding.Utf8 {
+            decoded.length
+        } else if encoding == DiagnosticLSPPositionEncoding.Utf16 and decoded.codepoint > 0xffff {
+            2
+        } else { 1 };
+        if character > usize.MAX - units { return false; }
+        set character += units;
+        set cursor += decoded.length;
+    }
+
+    set *position = DiagnosticLSPPosition {
+        line: line_index,
+        character: character,
+        valid: true
+    };
+    return true;
+}
+
+export proc vitte_diagnostic_lsp_severity(severity: DiagnosticSeverity) -> i32 {
+    match severity {
+        case DiagnosticSeverity.Fatal => return 1,
+        case DiagnosticSeverity.Error => return 1,
+        case DiagnosticSeverity.Warning => return 2,
+        case DiagnosticSeverity.Note => return 3,
+        case DiagnosticSeverity.Help => return 4,
+        else => return 3
+    }
+}
+
+export extern proc vitte_diagnostic_render_lsp_one(
+    stream: *mut u8,
+    diagnostic_value: *const Diagnostic,
+    options: *const DiagnosticLSPOptions
+) -> Status;
+
+export extern proc vitte_diagnostic_render_lsp_array(
+    stream: *mut u8,
+    bag: *const DiagnosticBag,
+    source_name: *const u8,
+    options: *const DiagnosticLSPOptions
+) -> Status;
+
+export extern proc vitte_diagnostic_render_lsp_publish(
+    stream: *mut u8,
+    uri: *const u8,
+    source_name: *const u8,
+    bag: *const DiagnosticBag,
+    options: *const DiagnosticLSPOptions
+) -> Status;
+
+export extern proc vitte_diagnostic_render_lsp_notification(
+    stream: *mut u8,
+    uri: *const u8,
+    source_name: *const u8,
+    bag: *const DiagnosticBag,
+    options: *const DiagnosticLSPOptions
+) -> Status;
+
+export extern proc vitte_diagnostic_write_lsp(
+    stream: *mut u8,
+    diagnostic_value: *const Diagnostic,
+    options: *const DiagnosticLSPOptions
+) -> Status;
+
+export proc vitte_diagnostic_lsp_data_version() -> u32 { return 1; }
+
+export proc vitte_diagnostic_lsp_source_name() -> string { return "vitte"; }
+
+// These helpers mirror the static-inline convenience functions in render_lsp.h.
+export proc vitte_diagnostic_lsp_set_position_converter(
+    options: *mut DiagnosticLSPOptions,
+    converter: ?DiagnosticLSPPositionConverter,
+    user_data: *mut u8
+) -> void {
+    if options == null {
+        return;
+    }
+
+    set (*options).position_converter = converter;
+    set (*options).position_user_data = user_data;
+}
+
+export proc vitte_diagnostic_lsp_set_uri_converter(
+    options: *mut DiagnosticLSPOptions,
+    converter: ?DiagnosticLSPUriConverter,
+    user_data: *mut u8
+) -> void {
+    if options == null {
+        return;
+    }
+
+    set (*options).uri_converter = converter;
+    set (*options).uri_user_data = user_data;
+}
+
+export proc vitte_diagnostic_lsp_use_utf8(options: *mut DiagnosticLSPOptions) -> void {
+    if options != null {
+        set (*options).position_encoding = DiagnosticLSPPositionEncoding.Utf8;
+    }
+}
+
+export proc vitte_diagnostic_lsp_use_utf16(options: *mut DiagnosticLSPOptions) -> void {
+    if options != null {
+        set (*options).position_encoding = DiagnosticLSPPositionEncoding.Utf16;
+    }
+}
+
+export proc vitte_diagnostic_lsp_use_utf32(options: *mut DiagnosticLSPOptions) -> void {
+    if options != null {
+        set (*options).position_encoding = DiagnosticLSPPositionEncoding.Utf32;
+    }
+}

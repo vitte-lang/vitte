@@ -1,0 +1,218 @@
+/// Vitte declarations ported from `src/src/filesystem/filesystem.h`.
+space compiler::filesystem::filesystem;
+
+use vitte::core::memory::{deallocate};
+
+const FILESYSTEM_FNV_OFFSET: u64 = 14695981039346656037;
+const FILESYSTEM_FNV_PRIME: u64 = 1099511628211;
+
+export pick FilesystemError {
+    None,
+    InvalidArgument,
+    InvalidPath,
+    NotFound,
+    AlreadyExists,
+    NotFile,
+    NotDirectory,
+    DirectoryNotEmpty,
+    PermissionDenied,
+    ReadOnly,
+    Open,
+    Read,
+    Write,
+    Flush,
+    Close,
+    Stat,
+    Mkdir,
+    Remove,
+    Rename,
+    DirectoryRead,
+    CurrentDirectory,
+    Canonicalize,
+    TooLarge,
+    TooManyEntries,
+    PathTooLong,
+    Overflow,
+    OutOfMemory,
+    Interrupted,
+    Io,
+    Unsupported,
+    Count
+}
+
+export pick FilesystemKind {
+    Unknown,
+    Regular,
+    Directory,
+    Symlink,
+    Other,
+    Count
+}
+
+export form FilesystemMetadata {
+    kind: FilesystemKind,
+    size: u64,
+    modified_seconds: u64,
+    modified_nanoseconds: u64,
+    readable: bool,
+    writable: bool,
+    executable: bool
+}
+
+export form FilesystemBuffer {
+    data: *u8,
+    length: usize,
+    capacity: usize
+}
+
+export form FilesystemDirectoryEntry {
+    name: string,
+    kind: FilesystemKind
+}
+
+export form FilesystemDirectoryList {
+    entries: *FilesystemDirectoryEntry,
+    count: usize,
+    capacity: usize
+}
+
+export form FilesystemResult {
+    error: FilesystemError,
+    system_error: i64
+}
+
+export form FilesystemStats {
+    stat_calls: u64,
+    read_calls: u64,
+    write_calls: u64,
+    mkdir_calls: u64,
+    remove_calls: u64,
+    rename_calls: u64,
+    directory_list_calls: u64,
+    bytes_read: u64,
+    bytes_written: u64,
+    allocation_failures: u64,
+    io_failures: u64
+}
+
+export proc vitte_filesystem_error_name(error: FilesystemError) -> string {
+    match error {
+        case FilesystemError.None => return "none";
+        case FilesystemError.InvalidArgument => return "invalid-argument";
+        case FilesystemError.InvalidPath => return "invalid-path";
+        case FilesystemError.NotFound => return "not-found";
+        case FilesystemError.AlreadyExists => return "already-exists";
+        case FilesystemError.NotFile => return "not-file";
+        case FilesystemError.NotDirectory => return "not-directory";
+        case FilesystemError.DirectoryNotEmpty => return "directory-not-empty";
+        case FilesystemError.PermissionDenied => return "permission-denied";
+        case FilesystemError.ReadOnly => return "read-only";
+        case FilesystemError.Open => return "open";
+        case FilesystemError.Read => return "read";
+        case FilesystemError.Write => return "write";
+        case FilesystemError.Flush => return "flush";
+        case FilesystemError.Close => return "close";
+        case FilesystemError.Stat => return "stat";
+        case FilesystemError.Mkdir => return "mkdir";
+        case FilesystemError.Remove => return "remove";
+        case FilesystemError.Rename => return "rename";
+        case FilesystemError.DirectoryRead => return "directory-read";
+        case FilesystemError.CurrentDirectory => return "current-directory";
+        case FilesystemError.Canonicalize => return "canonicalize";
+        case FilesystemError.TooLarge => return "too-large";
+        case FilesystemError.TooManyEntries => return "too-many-entries";
+        case FilesystemError.PathTooLong => return "path-too-long";
+        case FilesystemError.Overflow => return "overflow";
+        case FilesystemError.OutOfMemory => return "out-of-memory";
+        case FilesystemError.Interrupted => return "interrupted";
+        case FilesystemError.Io => return "io";
+        case FilesystemError.Unsupported => return "unsupported";
+        case FilesystemError.Count => return "count"
+    }
+    return "unknown";
+}
+
+export proc vitte_filesystem_kind_name(kind: FilesystemKind) -> string {
+    match kind {
+        case FilesystemKind.Unknown => return "unknown";
+        case FilesystemKind.Regular => return "regular";
+        case FilesystemKind.Directory => return "directory";
+        case FilesystemKind.Symlink => return "symlink";
+        case FilesystemKind.Other => return "other";
+        case FilesystemKind.Count => return "count"
+    }
+    return "unknown";
+}
+
+export extern proc vitte_filesystem_stat(path: string, follow_symlink: bool, metadata: *FilesystemMetadata) -> FilesystemResult;
+
+export extern proc vitte_filesystem_exists(path: string) -> bool;
+
+export extern proc vitte_filesystem_is_file(path: string) -> bool;
+
+export extern proc vitte_filesystem_is_directory(path: string) -> bool;
+
+export extern proc vitte_filesystem_is_symlink(path: string) -> bool;
+
+export extern proc vitte_filesystem_read_file(path: string, max_bytes: usize, buffer: *FilesystemBuffer) -> FilesystemResult;
+
+export extern proc vitte_filesystem_write_file(path: string, data: *u8, length: usize) -> FilesystemResult;
+
+export extern proc vitte_filesystem_write_file_atomic(path: string, data: *u8, length: usize) -> FilesystemResult;
+
+export extern proc vitte_filesystem_create_directory(path: string) -> FilesystemResult;
+
+export extern proc vitte_filesystem_create_directories(path: string) -> FilesystemResult;
+
+export extern proc vitte_filesystem_remove_file(path: string) -> FilesystemResult;
+
+export extern proc vitte_filesystem_remove_directory(path: string) -> FilesystemResult;
+
+export extern proc vitte_filesystem_rename(source: string, destination: string) -> FilesystemResult;
+
+export extern proc vitte_filesystem_list_directory(path: string, max_entries: usize, list: *FilesystemDirectoryList) -> FilesystemResult;
+
+export extern proc vitte_filesystem_join(left: string, right: string, result: *string) -> FilesystemResult;
+
+export extern proc vitte_filesystem_normalize(path: string, result: *string) -> FilesystemResult;
+
+export extern proc vitte_filesystem_canonicalize(path: string, result: *string) -> FilesystemResult;
+
+export extern proc vitte_filesystem_current_directory(result: *string) -> FilesystemResult;
+
+proc filesystem_path_separator(byte: u8) -> bool {
+    return byte == 47 or byte == 92;
+}
+
+export proc vitte_filesystem_path_is_absolute(path: string) -> bool {
+    let bytes = path.as_bytes();
+    if bytes.len() == 0 { return false; }
+    if filesystem_path_separator(bytes[0]) { return true; }
+    if bytes.len() < 3 { return false; }
+    let drive = bytes[0];
+    let has_drive = (drive >= 65 and drive <= 90) or (drive >= 97 and drive <= 122);
+    return has_drive and bytes[1] == 58 and filesystem_path_separator(bytes[2]);
+}
+
+export proc vitte_filesystem_path_hash(path: string) -> u64 {
+    let bytes = path.as_bytes();
+    let mut hash = FILESYSTEM_FNV_OFFSET;
+    let mut index: usize = 0;
+    while index < bytes.len() {
+        set hash = (hash ^ (bytes[index] as u64)).wrapping_mul(FILESYSTEM_FNV_PRIME);
+        set index += 1;
+    }
+    return hash;
+}
+
+export proc vitte_filesystem_buffer_destroy(buffer: *mut FilesystemBuffer) {
+    if buffer == null { return; }
+    if (*buffer).data != null { deallocate((*buffer).data as *mut u8); }
+    set *buffer = FilesystemBuffer { data: null, length: 0, capacity: 0 };
+}
+
+export extern proc vitte_filesystem_directory_list_destroy(list: *FilesystemDirectoryList);
+
+export extern proc vitte_filesystem_stats() -> FilesystemStats;
+
+export extern proc vitte_filesystem_stats_reset();

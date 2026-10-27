@@ -1,0 +1,224 @@
+space core::cell::oncecell
+
+/// États possibles d'une cellule.
+pick OnceCellState {
+    Uninitialized,
+    Initializing,
+    Initialized,
+}
+
+/// Cellule générique initialisable une seule fois.
+///
+/// Cette implémentation utilise une référence mutable
+/// pour toutes les opérations modifiant son état.
+form OnceCell<T> {
+    state: OnceCellState,
+    value: ?T,
+}
+
+/// Construit une cellule vide.
+proc oncecell_new<T>() -> OnceCell[T] {
+    return OnceCell[T] {
+        state: OnceCellState.Uninitialized,
+        value: null,
+    };
+}
+
+/// Construit une cellule déjà initialisée.
+proc oncecell_from_value<T>(
+    value: T
+) -> OnceCell[T] {
+    return OnceCell[T] {
+        state: OnceCellState.Initialized,
+        value: value,
+    };
+}
+
+/// Vérifie si la cellule contient une valeur.
+proc oncecell_is_initialized<T>(
+    cell: &OnceCell[T]
+) -> bool {
+    return cell.state == OnceCellState.Initialized;
+}
+
+/// Vérifie si la cellule est vide.
+proc oncecell_is_empty<T>(
+    cell: &OnceCell[T]
+) -> bool {
+    return cell.state == OnceCellState.Uninitialized;
+}
+
+/// Vérifie si une initialisation est en cours.
+proc oncecell_is_initializing<T>(
+    cell: &OnceCell[T]
+) -> bool {
+    return cell.state == OnceCellState.Initializing;
+}
+
+/// Retourne l'état actuel.
+proc oncecell_state<T>(
+    cell: &OnceCell[T]
+) -> OnceCellState {
+    return cell.state;
+}
+
+/// Indique si la cellule accepte une initialisation.
+proc oncecell_can_set<T>(
+    cell: &OnceCell[T]
+) -> bool {
+    return cell.state == OnceCellState.Uninitialized;
+}
+
+/// Initialise la cellule avec une valeur.
+///
+/// Retourne false si elle est déjà initialisée
+/// ou si une initialisation est en cours.
+proc oncecell_set<T>(
+    cell: &mut OnceCell[T],
+    value: T
+) -> bool {
+    if cell.state != OnceCellState.Uninitialized {
+        return false;
+    }
+
+    set cell.value = value;
+    set cell.state = OnceCellState.Initialized;
+
+    return true;
+}
+
+/// Initialise la cellule avec une fonction.
+///
+/// L'initialiseur n'est exécuté que si nécessaire.
+proc oncecell_get_or_init<T>(
+    cell: &mut OnceCell[T],
+    initializer: proc() -> T
+) -> bool {
+    if cell.state == OnceCellState.Initialized {
+        return true;
+    } elif cell.state == OnceCellState.Initializing {
+        return false;
+    } else {
+        set cell.state = OnceCellState.Initializing;
+
+        let value: T = initializer();
+
+        set cell.value = value;
+        set cell.state = OnceCellState.Initialized;
+
+        return true;
+    }
+}
+
+/// Initialise la cellule avec une valeur de secours.
+///
+/// La valeur de secours n'est utilisée que si
+/// la cellule est encore vide.
+proc oncecell_get_or_set<T>(
+    cell: &mut OnceCell[T],
+    fallback: T
+) -> bool {
+    if cell.state == OnceCellState.Initialized {
+        return true;
+    }
+
+    return oncecell_set(cell, fallback);
+}
+
+/// Retourne une référence vers la valeur si elle existe.
+///
+/// Le mécanisme exact de déballage de ?T
+/// dépend de la sémantique Vitte.
+proc oncecell_get<T>(
+    cell: &OnceCell[T]
+) -> ?&T {
+    if cell.state != OnceCellState.Initialized {
+        return null;
+    }
+
+    return &cell.value;
+}
+
+/// Retourne une référence mutable vers la valeur.
+proc oncecell_get_mut<T>(
+    cell: &mut OnceCell[T]
+) -> ?&mut T {
+    if cell.state != OnceCellState.Initialized {
+        return null;
+    }
+
+    return &mut cell.value;
+}
+
+/// Vérifie si la valeur est égale à une valeur donnée.
+proc oncecell_contains<T>(
+    cell: &OnceCell[T],
+    expected: T
+) -> bool {
+    if cell.state != OnceCellState.Initialized {
+        return false;
+    }
+
+    return cell.value == expected;
+}
+
+/// Vérifie si deux cellules sont initialisées.
+proc oncecell_both_initialized<T, U>(
+    first: &OnceCell[T],
+    second: &OnceCell[U]
+) -> bool {
+    return oncecell_is_initialized(first)
+        && oncecell_is_initialized(second);
+}
+
+/// Vérifie si au moins une cellule est initialisée.
+proc oncecell_any_initialized<T, U>(
+    first: &OnceCell[T],
+    second: &OnceCell[U]
+) -> bool {
+    return oncecell_is_initialized(first)
+        || oncecell_is_initialized(second);
+}
+
+/// Exécute une fonction si la cellule est initialisée.
+proc oncecell_with<T>(
+    cell: &OnceCell[T],
+    callback: proc(&T)
+) -> bool {
+    if cell.state != OnceCellState.Initialized {
+        return false;
+    }
+
+    callback(&cell.value);
+
+    return true;
+}
+
+/// Exécute une fonction avec un accès mutable.
+proc oncecell_with_mut<T>(
+    cell: &mut OnceCell[T],
+    callback: proc(&mut T)
+) -> bool {
+    if cell.state != OnceCellState.Initialized {
+        return false;
+    }
+
+    callback(&mut cell.value);
+
+    return true;
+}
+
+/// Consomme la cellule et retourne sa valeur éventuelle.
+proc oncecell_into_inner<T>(
+    cell: OnceCell[T]
+) -> ?T {
+    return cell.value;
+}
+
+/// Retourne true si deux cellules sont dans le même état.
+proc oncecell_same_state<T, U>(
+    first: &OnceCell[T],
+    second: &OnceCell[U]
+) -> bool {
+    return first.state == second.state;
+}

@@ -1,0 +1,72 @@
+/// Arithmétique modulo la largeur des entiers primitifs.
+space core::num::wrapping;
+
+use core::num::limits::{U64_MAX};
+
+export proc wrapping_u64_add(left: u64, right: u64) -> u64 {
+    let gap: u64 = U64_MAX - right;
+    if left <= gap { return left + right; }
+    return (left - gap) - 1;
+}
+
+export proc wrapping_u64_sub(left: u64, right: u64) -> u64 {
+    if left >= right { return left - right; }
+    return (U64_MAX - (right - left)) + 1;
+}
+
+export proc wrapping_u64_mul(left: u64, right: u64) -> u64 {
+    let mut result: u64 = 0;
+    let mut factor: u64 = left;
+    let mut remaining: u64 = right;
+    while remaining != 0 {
+        if (remaining & 1) != 0 { set result = wrapping_u64_add(result, factor); }
+        set remaining = remaining >> 1;
+        if remaining != 0 { set factor = factor << 1; }
+    }
+    return result;
+}
+
+export proc wrapping_u8_add(left: u8, right: u8) -> u8 { return (left as u16 + right as u16) as u8; }
+export proc wrapping_u8_sub(left: u8, right: u8) -> u8 {
+    if left >= right { return left - right; }
+    return (255 - (right - left) + 1) as u8;
+}
+export proc wrapping_u8_mul(left: u8, right: u8) -> u8 { return (left as u16 * right as u16) as u8; }
+
+export proc wrapping_u16_add(left: u16, right: u16) -> u16 { return (left as u32 + right as u32) as u16; }
+export proc wrapping_u16_sub(left: u16, right: u16) -> u16 {
+    if left >= right { return left - right; }
+    return (65535 - (right - left) + 1) as u16;
+}
+export proc wrapping_u16_mul(left: u16, right: u16) -> u16 { return (left as u32 * right as u32) as u16; }
+
+export proc wrapping_u32_add(left: u32, right: u32) -> u32 { return (left as u64 + right as u64) as u32; }
+export proc wrapping_u32_sub(left: u32, right: u32) -> u32 {
+    if left >= right { return left - right; }
+    return (4294967295 - (right - left) + 1) as u32;
+}
+export proc wrapping_u32_mul(left: u32, right: u32) -> u32 { return (left as u64 * right as u64) as u32; }
+
+export proc wrapping_i64_add(left: i64, right: i64) -> i64 {
+    return wrapping_u64_add(left as u64, right as u64) as i64;
+}
+
+export proc wrapping_i64_sub(left: i64, right: i64) -> i64 {
+    return wrapping_u64_sub(left as u64, right as u64) as i64;
+}
+
+export proc wrapping_i64_mul(left: i64, right: i64) -> i64 {
+    return wrapping_u64_mul(left as u64, right as u64) as i64;
+}
+
+export proc wrapping_i8_add(left: i8, right: i8) -> i8 { return wrapping_u8_add(left as u8, right as u8) as i8; }
+export proc wrapping_i8_sub(left: i8, right: i8) -> i8 { return wrapping_u8_sub(left as u8, right as u8) as i8; }
+export proc wrapping_i8_mul(left: i8, right: i8) -> i8 { return wrapping_u8_mul(left as u8, right as u8) as i8; }
+
+export proc wrapping_i16_add(left: i16, right: i16) -> i16 { return wrapping_u16_add(left as u16, right as u16) as i16; }
+export proc wrapping_i16_sub(left: i16, right: i16) -> i16 { return wrapping_u16_sub(left as u16, right as u16) as i16; }
+export proc wrapping_i16_mul(left: i16, right: i16) -> i16 { return wrapping_u16_mul(left as u16, right as u16) as i16; }
+
+export proc wrapping_i32_add(left: i32, right: i32) -> i32 { return wrapping_u32_add(left as u32, right as u32) as i32; }
+export proc wrapping_i32_sub(left: i32, right: i32) -> i32 { return wrapping_u32_sub(left as u32, right as u32) as i32; }
+export proc wrapping_i32_mul(left: i32, right: i32) -> i32 { return wrapping_u32_mul(left as u32, right as u32) as i32; }

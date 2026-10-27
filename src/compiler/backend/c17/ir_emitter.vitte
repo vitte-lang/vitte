@@ -1,0 +1,847 @@
+/// C17 source emission for the compiler's validated SSA IR.
+space compiler::backend::c17::ir_emitter;
+
+use compiler::ir::ir::{
+    IRBlock, IRContext, IRFunction, IRInstruction, IRLinkage, IROpcode,
+    IRState, IRString, IRType, IRTypeKind, IRValue, IRValueKind,
+};
+
+export form C17IREmitOptions {
+    emit_banner: bool,
+    emit_debug_comments: bool,
+    emit_line_directives: bool,
+    emit_debug_info: bool,
+    emit_entry_wrapper: bool,
+    strict: bool,
+    source_path: ?string,
+}
+
+export form C17IRResult {
+    success: bool,
+    source: string,
+    error: string,
+}
+
+proc ir_string(context: &IRContext, id: u64) -> ?string {
+    if id == 0 or id > context.string_count as u64 { return null; }
+    return context.strings[id as usize - 1].data;
+}
+
+proc ir_type(context: &IRContext, id: u64) -> ?&IRType {
+    if id == 0 or id > context.type_count as u64 { return null; }
+    return &context.types[id as usize - 1];
+}
+
+proc ir_value(context: &IRContext, id: u64) -> ?&IRValue {
+    if id == 0 or id > context.value_count as u64 { return null; }
+    return &context.values[id as usize - 1];
+}
+
+proc ir_instruction(context: &IRContext, id: u64) -> ?&IRInstruction {
+    if id == 0 or id > context.instruction_count as u64 { return null; }
+    return &context.instructions[id as usize - 1];
+}
+
+proc ir_has_opcode(context: &IRContext, opcode: IROpcode) -> bool {
+    let mut index: usize = 0;
+    while index < context.instruction_count {
+        if context.instructions[index].opcode == opcode { return true; }
+        set index += 1;
+    }
+    return false;
+}
+
+proc ir_block(context: &IRContext, id: u64) -> ?&IRBlock {
+    if id == 0 or id > context.block_count as u64 { return null; }
+    return &context.blocks[id as usize - 1];
+}
+
+proc ir_function(context: &IRContext, id: u64) -> ?&IRFunction {
+    if id == 0 or id > context.function_count as u64 { return null; }
+    return &context.functions[id as usize - 1];
+}
+
+proc ir_u64(value: u64) -> string { return value.to_string(); }
+
+proc ir_i64(value: i64) -> string {
+    if value < 0 { return "-" + ir_u64((-value) as u64); }
+    return ir_u64(value as u64);
+}
+
+/// Emit a round-trip-sized decimal C literal without depending on host
+/// formatting or a libc call. Seventeen significant digits are sufficient for
+/// an IEEE-754 binary64 value; scientific notation also covers subnormals and
+/// values outside the integer range.
+proc ir_f64_literal(value: f64) -> string {
+    if value != value { return "NAN"; }
+    if value > 1.7976931348623157e308 { return "INFINITY"; }
+    if value < -1.7976931348623157e308 { return "(-INFINITY)"; }
+    if value == 0.0 { return "0.0"; }
+
+    let negative = value < 0.0;
+    let mut normalized: f64 = if negative { -value } else { value };
+    let mut exponent: i64 = 0;
+    while normalized >= 10.0 {
+        set normalized = normalized / 10.0;
+        set exponent += 1;
+    }
+    while normalized < 1.0 {
+        set normalized = normalized * 10.0;
+        set exponent -= 1;
+    }
+
+    let mut significand: u64 = (normalized * 10000000000000000.0 + 0.5) as u64;
+    if significand >= 100000000000000000 {
+        set significand = significand / 10;
+        set exponent += 1;
+    }
+    let digits = ir_u64(significand);
+    let bytes = digits.as_bytes();
+    let mut output: string = if negative { "-" } else { "" };
+    set output += string.from_byte(bytes[0]);
+    set output += ".";
+    let mut index: usize = 1;
+    while index < bytes.len() {
+        set output += string.from_byte(bytes[index]);
+        set index += 1;
+    }
+    set output += "e";
+    set output += ir_i64(exponent);
+    return output;
+}
+
+proc ir_hex_digit(value: u8) -> u8 {
+    if value < 10 { return (48 + value) as u8; }
+    return (55 + value) as u8;
+}
+
+proc ir_octal_byte(value: u8) -> string {
+    return string.from_byte(48 + ((value >> 6) & 7)) +
+        string.from_byte(48 + ((value >> 3) & 7)) +
+        string.from_byte(48 + (value & 7));
+}
+
+proc ir_c_name(source: string, prefix: string) -> string {
+    let mut result: string = prefix;
+    let bytes = source.as_bytes();
+    let mut index: usize = 0;
+    while index < bytes.len() {
+        let byte = bytes[index];
+        if (byte >= 65 and byte <= 90) or (byte >= 97 and byte <= 122) or
+           (byte >= 48 and byte <= 57 and index != 0) {
+            set result += string.from_byte(byte);
+        } elif byte == 95 {
+            // Escape underscores so a literal `_x2D` cannot collide with `-`.
+            set result += "_u";
+        } else {
+            set result += "_x";
+            set result += string.from_byte(ir_hex_digit((byte >> 4) as u8));
+            set result += string.from_byte(ir_hex_digit((byte & 15) as u8));
+        }
+        set index += 1;
+    }
+    return result;
+}
+
+proc ir_symbol(context: &IRContext, id: u64, prefix: string) -> ?string {
+    let name = ir_string(context, id);
+    if name == null { return null; }
+    return ir_c_name(name?, prefix);
+}
+
+proc ir_type_symbol(context: &IRContext, ty: &IRType, prefix: string) -> ?string {
+    let name = ir_string(context, ty.name);
+    if name == null { return prefix + "x_" + ir_u64(ty.id); }
+    let type_name = name?;
+    if type_name.len() == 0 { return prefix + "x_" + ir_u64(ty.id); }
+    return ir_c_name(type_name, prefix) + "_" + ir_u64(ty.id);
+}
+
+proc ir_string_literal(context: &IRContext, id: u64) -> ?string {
+    let value = ir_string(context, id);
+    if value == null { return null; }
+    let bytes = value?.as_bytes();
+    let mut output: string = "(uint8_t *)\"";
+    let mut index: usize = 0;
+    while index < bytes.len() {
+        let byte = bytes[index];
+        match byte {
+            case 7 => set output += "\\a"
+            case 8 => set output += "\\b"
+            case 12 => set output += "\\f"
+            case 10 => set output += "\\n"
+            case 13 => set output += "\\r"
+            case 9 => set output += "\\t"
+            case 11 => set output += "\\v"
+            case 34 => set output += "\\\""
+            case 92 => set output += "\\\\"
+            case _ => {
+                if byte < 32 or byte >= 127 {
+                    set output += "\\" + ir_octal_byte(byte);
+                } else {
+                    set output += string.from_byte(byte);
+                }
+            }
+        }
+        set index += 1;
+    }
+    set output += "\"";
+    return output;
+}
+
+proc ir_type_text(context: &IRContext, type_id: u64, depth: usize) -> ?string {
+    if depth > 32 { return null; }
+    let ty = ir_type(context, type_id);
+    if ty == null { return null; }
+    match ty?.kind {
+        case IRTypeKind.Void => return "void";
+        case IRTypeKind.Bool => return "_Bool";
+        case IRTypeKind.I8 => return "int8_t";
+        case IRTypeKind.I16 => return "int16_t";
+        case IRTypeKind.I32 => return "int32_t";
+        case IRTypeKind.I64 => return "int64_t";
+        case IRTypeKind.U8 => return "uint8_t";
+        case IRTypeKind.U16 => return "uint16_t";
+        case IRTypeKind.U32 => return "uint32_t";
+        case IRTypeKind.U64 => return "uint64_t";
+        case IRTypeKind.F32 => return "float";
+        case IRTypeKind.F64 => return "double";
+        case IRTypeKind.Char => return "uint32_t";
+        case IRTypeKind.Pointer => {
+            let element = ir_type_text(context, ty?.element_type, depth + 1);
+            if element == null { return null; }
+            return element? + " *";
+        }
+        case IRTypeKind.Array => {
+            let element = ir_type_text(context, ty?.element_type, depth + 1);
+            if element == null { return null; }
+            return element? + " *";
+        }
+        case IRTypeKind.Slice => {
+            let name = ir_type_symbol(context, ty?, "vitte_slice_");
+            if name == null { return null; }
+            return "struct " + name?;
+        }
+        case IRTypeKind.Struct | IRTypeKind.Opaque | IRTypeKind.Pick => {
+            let name = ir_type_symbol(context, ty?, "vitte_type_");
+            if name == null { return null; }
+            return "struct " + name?;
+        }
+        case IRTypeKind.Function => return "void *";
+        case IRTypeKind.Invalid | IRTypeKind.Count => return null;
+    }
+}
+
+proc ir_value_name(value: &IRValue) -> string {
+    if value.kind == IRValueKind.Parameter and value.name != 0 { return "vitte_arg_" + ir_u64(value.id); }
+    if value.kind == IRValueKind.Function { return "vitte_fn_" + ir_u64(value.function); }
+    return "vitte_v" + ir_u64(value.id);
+}
+
+proc ir_value_text(context: &IRContext, value_id: u64) -> ?string {
+    let value = ir_value(context, value_id);
+    if value == null { return null; }
+    match value?.kind {
+        case IRValueKind.ConstantBool => return if value?.bool_value { "1" } else { "0" };
+        case IRValueKind.ConstantInteger => return value?.integer_value.to_string();
+        case IRValueKind.ConstantFloat => return ir_f64_literal(value?.float_value);
+        case IRValueKind.ConstantString => return ir_string_literal(context, value?.string_value);
+        case IRValueKind.Null => return "NULL";
+        case IRValueKind.Undef | IRValueKind.Poison => return "0";
+        case IRValueKind.Parameter | IRValueKind.Instruction => return ir_value_name(value?);
+        case IRValueKind.Function => {
+            let function = ir_function(context, value?.function);
+            if function == null { return null; }
+            return ir_symbol(context, function?.name, "vitte_fn_");
+        }
+        case IRValueKind.Invalid | IRValueKind.Count => return null;
+    }
+}
+
+proc ir_binary_operator(opcode: IROpcode) -> string {
+    match opcode {
+        case IROpcode.Add | IROpcode.Fadd => return "+";
+        case IROpcode.Sub | IROpcode.Fsub => return "-";
+        case IROpcode.Mul | IROpcode.Fmul => return "*";
+        case IROpcode.Sdiv | IROpcode.Udiv | IROpcode.Fdiv => return "/";
+        case IROpcode.Srem | IROpcode.Urem => return "%";
+        case IROpcode.And => return "&";
+        case IROpcode.Or => return "|";
+        case IROpcode.Xor => return "^";
+        case IROpcode.Shl => return "<<";
+        case IROpcode.Lshr | IROpcode.Ashr => return ">>";
+        case IROpcode.IcmpEq | IROpcode.FcmpEq => return "==";
+        case IROpcode.IcmpNe | IROpcode.FcmpNe => return "!=";
+        case IROpcode.IcmpSlt | IROpcode.IcmpUlt | IROpcode.FcmpLt => return "<";
+        case IROpcode.IcmpSle | IROpcode.IcmpUle | IROpcode.FcmpLe => return "<=";
+        case IROpcode.IcmpSgt | IROpcode.IcmpUgt | IROpcode.FcmpGt => return ">";
+        case IROpcode.IcmpSge | IROpcode.IcmpUge | IROpcode.FcmpGe => return ">=";
+        case _ => return "";
+    }
+}
+
+proc ir_phi_incoming_text(
+    context: &IRContext,
+    instruction: &IRInstruction,
+    source_id: u64
+) -> ?string {
+    let mut incoming_index: usize = 0;
+    while incoming_index < instruction.phi_count {
+        let incoming = instruction.phi_incomings[incoming_index];
+        if incoming.block == source_id {
+            return ir_value_text(context, incoming.value);
+        }
+        set incoming_index += 1;
+    }
+    return null;
+}
+
+proc ir_phi_edge_text(context: &IRContext, target_id: u64, source_id: u64) -> ?string {
+    let target = ir_block(context, target_id);
+    if target == null { return null; }
+    let mut output: string = "";
+    let mut index: usize = 0;
+
+    while index < target?.instruction_count {
+        let instruction = ir_instruction(context, target?.instructions[index]);
+        if instruction == null { return null; }
+        if instruction?.opcode != IROpcode.Phi { break; }
+        set index += 1;
+    }
+    if index == 0 { return output; }
+
+    // PHI inputs are parallel copies, so snapshot every incoming value first.
+    set output += "        {\n";
+    index = 0;
+    while index < target?.instruction_count {
+        let instruction = ir_instruction(context, target?.instructions[index]);
+        if instruction == null { return null; }
+        if instruction?.opcode != IROpcode.Phi { break; }
+        let value = ir_phi_incoming_text(context, instruction?, source_id);
+        let type_name = ir_type_text(context, instruction?.result_type, 0);
+        if value == null or type_name == null or instruction?.result == 0 { return null; }
+        set output += "            " + type_name? + " vitte_phi_tmp_" +
+            ir_u64(instruction?.result) + " = " + value? + ";\n";
+        set index += 1;
+    }
+
+    index = 0;
+    while index < target?.instruction_count {
+        let instruction = ir_instruction(context, target?.instructions[index]);
+        if instruction == null { return null; }
+        if instruction?.opcode != IROpcode.Phi { break; }
+        if instruction?.result == 0 { return null; }
+        set output += "            vitte_v" + ir_u64(instruction?.result) +
+            " = vitte_phi_tmp_" + ir_u64(instruction?.result) + ";\n";
+        set index += 1;
+    }
+    set output += "        }\n";
+    return output;
+}
+
+proc ir_instruction_name(context: &IRContext, instruction: &IRInstruction) -> ?string {
+    if instruction.result == 0 { return ""; }
+    let result = ir_value(context, instruction.result);
+    if result == null { return null; }
+    return ir_value_name(result?);
+}
+
+proc ir_instruction_text(context: &IRContext, instruction: &IRInstruction) -> ?string {
+    let opcode = instruction.opcode;
+    if opcode == IROpcode.Nop { return ";"; }
+    if opcode == IROpcode.Br {
+        let assignments = ir_phi_edge_text(context, instruction.target_true, instruction.block);
+        if assignments == null { return null; }
+        return assignments? + "        goto vitte_block_" + ir_u64(instruction.target_true) + ";";
+    }
+    if opcode == IROpcode.CondBr {
+        if instruction.operand_count < 1 { return null; }
+        let condition = ir_value_text(context, instruction.operands[0]);
+        if condition == null { return null; }
+        let true_assignments = ir_phi_edge_text(context, instruction.target_true, instruction.block);
+        let false_assignments = ir_phi_edge_text(context, instruction.target_false, instruction.block);
+        if true_assignments == null or false_assignments == null { return null; }
+        return "if (" + condition? + ") {\n" + true_assignments? +
+            "        goto vitte_block_" + ir_u64(instruction.target_true) +
+            ";\n    } else {\n" + false_assignments? +
+            "        goto vitte_block_" + ir_u64(instruction.target_false) + ";\n    }";
+    }
+    if opcode == IROpcode.Return {
+        if instruction.operand_count == 0 { return "return;"; }
+        let value = ir_value_text(context, instruction.operands[0]);
+        if value == null { return null; }
+        return "return " + value? + ";";
+    }
+    if opcode == IROpcode.Unreachable { return "abort();"; }
+    if opcode == IROpcode.Store {
+        if instruction.operand_count < 2 { return null; }
+        let pointer = ir_value_text(context, instruction.operands[0]);
+        let value = ir_value_text(context, instruction.operands[1]);
+        if pointer == null or value == null { return null; }
+        return "* (" + pointer? + ") = " + value? + ";";
+    }
+    if opcode == IROpcode.Phi { return ""; }
+    if opcode == IROpcode.Switch { return null; }
+    let name = ir_instruction_name(context, instruction);
+    if name == null { return null; }
+    if opcode == IROpcode.Call {
+        if instruction.operand_count == 0 { return null; }
+        let callee_id = instruction.operands[0];
+        let callee_value = ir_value(context, callee_id);
+        if callee_value == null { return null; }
+        let mut callee: ?string = null;
+        if callee_value?.kind == IRValueKind.Function {
+            let function = ir_function(context, callee_value?.function);
+            if function != null { set callee = ir_symbol(context, function?.name, "vitte_fn_"); }
+        } else { set callee = ir_value_text(context, callee_id); }
+        if callee == null { return null; }
+        let result_type = ir_type(context, instruction.result_type);
+        let returns_void = result_type != null and result_type?.kind == IRTypeKind.Void;
+        let mut text: string = if returns_void { "" } else { name? + " = " };
+        set text += callee? + "(";
+        let mut index: usize = 1;
+        while index < instruction.operand_count { let argument = ir_value_text(context, instruction.operands[index]); if argument == null { return null; } if index != 1 { set text += ", "; } set text += argument?; set index += 1; }
+        set text += ");"; return text;
+    }
+    if opcode == IROpcode.Load {
+        if instruction.operand_count == 0 { return null; }
+        let pointer = ir_value_text(context, instruction.operands[0]); if pointer == null { return null; }
+        return name? + " = *(" + pointer? + ");";
+    }
+    if opcode == IROpcode.Alloca { return name? + " = &vitte_slot_" + ir_u64(instruction.result) + ";"; }
+    if opcode == IROpcode.Gep {
+        if instruction.operand_count < 2 { return null; }
+        let base = ir_value_text(context, instruction.operands[0]); let offset = ir_value_text(context, instruction.operands[1]);
+        if base == null or offset == null { return null; }
+        return name? + " = &(" + base? + ")[" + offset? + "];";
+    }
+    if opcode == IROpcode.ArrayMake {
+        let array_type = ir_type(context, instruction.result_type);
+        if array_type == null or array_type?.kind != IRTypeKind.Array or
+           array_type?.array_length != instruction.operand_count { return null; }
+        if instruction.operand_count == 0 { return name? + " = NULL;"; }
+        let mut text: string = "";
+        let mut index: usize = 0;
+        while index < instruction.operand_count {
+            let value = ir_value_text(context, instruction.operands[index]);
+            if value == null { return null; }
+            set text += "vitte_array_slot_" + ir_u64(instruction.result) + "[" + ir_u64(index as u64) + "] = " + value? + ";\n    ";
+            set index += 1;
+        }
+        set text += name? + " = vitte_array_slot_" + ir_u64(instruction.result) + ";";
+        return text;
+    }
+    if opcode == IROpcode.StructMake {
+        let aggregate = ir_type(context, instruction.result_type);
+        let type_name = ir_type_text(context, instruction.result_type, 0);
+        if aggregate == null or aggregate?.kind != IRTypeKind.Struct or aggregate?.field_count != instruction.operand_count or type_name == null { return null; }
+        let mut text: string = name? + " = (" + type_name? + "){ ";
+        let mut index: usize = 0;
+        while index < instruction.operand_count {
+            let value = ir_value_text(context, instruction.operands[index]);
+            if value == null { return null; }
+            if index != 0 { set text += ", "; }
+            set text += ".vitte_field_" + ir_u64(index as u64) + " = " + value?;
+            set index += 1;
+        }
+        set text += " };";
+        return text;
+    }
+    if opcode == IROpcode.StructField {
+        if instruction.operand_count != 2 { return null; }
+        let base = ir_value_text(context, instruction.operands[0]);
+        let index_value = ir_value(context, instruction.operands[1]);
+        let base_value = ir_value(context, instruction.operands[0]);
+        if base == null or index_value == null or base_value == null or index_value?.kind != IRValueKind.ConstantInteger { return null; }
+        let base_type = ir_type(context, base_value?.type_);
+        let aggregate_id = if base_type != null and base_type?.kind == IRTypeKind.Pointer { base_type?.element_type } else { base_value?.type_ };
+        let aggregate = ir_type(context, aggregate_id);
+        if aggregate == null or aggregate?.kind != IRTypeKind.Struct or index_value?.integer_value >= aggregate?.field_count { return null; }
+        let mut field: string = "vitte_field_";
+        set field += ir_u64(index_value?.integer_value);
+        if base_type != null and base_type?.kind == IRTypeKind.Pointer {
+            let mut text: string = name?;
+            set text += " = &((*";
+            set text += base?;
+            set text += ").";
+            set text += field;
+            set text += ");";
+            return text;
+        }
+        let mut text: string = name?;
+        set text += " = &(";
+        set text += base?;
+        set text += ".";
+        set text += field;
+        set text += ");";
+        return text;
+    }
+    if opcode == IROpcode.PickMake {
+        if instruction.operand_count < 1 or instruction.operand_count > 17 { return null; }
+        let type_name = ir_type_text(context, instruction.result_type, 0);
+        let tag = ir_value_text(context, instruction.operands[0]);
+        if type_name == null or tag == null { return null; }
+        let mut text: string = name? + " = (" + type_name? + "){0};\n    ";
+        set text += name? + ".tag = (uint64_t)(" + tag? + ");";
+        let mut payload_index: usize = 1;
+        while payload_index < instruction.operand_count {
+            let payload = ir_value_text(context, instruction.operands[payload_index]);
+            let payload_value = ir_value(context, instruction.operands[payload_index]);
+            if payload == null or payload_value == null { return null; }
+            let payload_type = ir_type_text(context, payload_value?.type_, 0);
+            if payload_type == null { return null; }
+            let byte_offset = (payload_index - 1) * 8;
+            set text += "\n    memcpy(&" + name? + ".payload[" + ir_u64(byte_offset as u64) + "], &(" + payload_type? + "){ " + payload? + " }, sizeof(" + payload_type? + "));";
+            set payload_index += 1;
+        }
+        return text;
+    }
+    if opcode == IROpcode.PickTag {
+        if instruction.operand_count != 1 { return null; }
+        let subject = ir_value_text(context, instruction.operands[0]);
+        if subject == null { return null; }
+        return name? + " = " + subject? + ".tag;";
+    }
+    if opcode == IROpcode.PickPayload {
+        if instruction.operand_count != 2 { return null; }
+        let subject = ir_value_text(context, instruction.operands[0]);
+        let payload_index_id = instruction.operands[1] as usize;
+        if subject == null or payload_index_id == 0 or payload_index_id > context.value_count { return null; }
+        let payload_index_value = context.values[payload_index_id - 1];
+        if payload_index_value.kind != IRValueKind.ConstantInteger or payload_index_value.integer_value >= 16 { return null; }
+        let byte_offset = payload_index_value.integer_value * 8;
+        return "memcpy(&" + name? + ", &" + subject? + ".payload[" + ir_u64(byte_offset as u64) + "], sizeof(" + name? + "));";
+    }
+    if opcode == IROpcode.StringLength {
+        if instruction.result == 0 or instruction.operand_count != 1 { return null; }
+        let value = ir_value_text(context, instruction.operands[0]);
+        if value == null { return null; }
+        return name? + " = (uint64_t)(" + value? + " == NULL ? 0u : strlen((const char *)" + value? + "));";
+    }
+    if opcode == IROpcode.StringConcat {
+        if instruction.result == 0 or instruction.operand_count != 2 { return null; }
+        let left = ir_value_text(context, instruction.operands[0]);
+        let right = ir_value_text(context, instruction.operands[1]);
+        if left == null or right == null { return null; }
+        return name? + " = vitte_ir_string_concat(" + left? + ", " + right? + ");";
+    }
+    if opcode == IROpcode.StringSlice {
+        if instruction.result == 0 or instruction.operand_count != 3 { return null; }
+        let value = ir_value_text(context, instruction.operands[0]);
+        let begin = ir_value_text(context, instruction.operands[1]);
+        let end = ir_value_text(context, instruction.operands[2]);
+        if value == null or begin == null or end == null { return null; }
+        return name? + " = vitte_ir_string_slice(" + value? + ", (uint64_t)" + begin? + ", (uint64_t)" + end? + ");";
+    }
+    if opcode == IROpcode.SliceMake {
+        if instruction.result == 0 or instruction.operand_count != 2 { return null; }
+        let slice_type = ir_type_text(context, instruction.result_type, 0);
+        let data = ir_value_text(context, instruction.operands[0]);
+        let length = ir_value_text(context, instruction.operands[1]);
+        if slice_type == null or data == null or length == null { return null; }
+        return name? + " = (" + slice_type? + "){ " + data? + ", (uint64_t)" + length? + " };";
+    }
+    if opcode == IROpcode.SliceData {
+        if instruction.result == 0 or instruction.operand_count != 1 { return null; }
+        let slice = ir_value_text(context, instruction.operands[0]);
+        if slice == null { return null; }
+        return name? + " = " + slice? + ".data;";
+    }
+    if opcode == IROpcode.SliceLength {
+        if instruction.result == 0 or instruction.operand_count != 1 { return null; }
+        let slice = ir_value_text(context, instruction.operands[0]);
+        if slice == null { return null; }
+        return name? + " = " + slice? + ".length;";
+    }
+    if opcode == IROpcode.Select {
+        if instruction.operand_count < 3 { return null; }
+        let condition = ir_value_text(context, instruction.operands[0]); let yes = ir_value_text(context, instruction.operands[1]); let no = ir_value_text(context, instruction.operands[2]);
+        if condition == null or yes == null or no == null { return null; }
+        return name? + " = (" + condition? + ") ? (" + yes? + ") : (" + no? + ");";
+    }
+    if opcode == IROpcode.Neg or opcode == IROpcode.Fneg or opcode == IROpcode.Not {
+        if instruction.operand_count == 0 { return null; }
+        let operand = ir_value_text(context, instruction.operands[0]); if operand == null { return null; }
+        let operator: string = if opcode == IROpcode.Not { "!" } else { "-" };
+        return name? + " = " + operator + "(" + operand? + ");";
+    }
+    if opcode == IROpcode.Frem {
+        if instruction.operand_count < 2 { return null; }
+        let left = ir_value_text(context, instruction.operands[0]);
+        let right = ir_value_text(context, instruction.operands[1]);
+        if left == null or right == null { return null; }
+        return name? + " = fmod(" + left? + ", " + right? + ");";
+    }
+    let operator = ir_binary_operator(opcode);
+    if operator.len() != 0 {
+        if instruction.operand_count < 2 { return null; }
+        let left = ir_value_text(context, instruction.operands[0]); let right = ir_value_text(context, instruction.operands[1]);
+        if left == null or right == null { return null; }
+        return name? + " = (" + left? + " " + operator + " " + right? + ");";
+    }
+    if opcode == IROpcode.Trunc or opcode == IROpcode.Zext or opcode == IROpcode.Sext or
+       opcode == IROpcode.FpTrunc or opcode == IROpcode.FpExt or opcode == IROpcode.SiToFp or
+       opcode == IROpcode.UiToFp or opcode == IROpcode.FpToSi or opcode == IROpcode.FpToUi or
+       opcode == IROpcode.PtrToInt or opcode == IROpcode.IntToPtr or opcode == IROpcode.Bitcast {
+        if instruction.operand_count == 0 { return null; }
+        let cast_type = ir_type_text(context, instruction.result_type, 0); let operand = ir_value_text(context, instruction.operands[0]);
+        if cast_type == null or operand == null { return null; }
+        return name? + " = (" + cast_type? + ")(" + operand? + ");";
+    }
+    return null;
+}
+
+proc ir_emit_function_name(context: &IRContext, function: &IRFunction) -> ?string {
+    return ir_symbol(context, function.name, "vitte_fn_");
+}
+
+proc ir_comment_safe(text: string) -> string {
+    let bytes = text.as_bytes();
+    let mut output: string = "";
+    let mut index: usize = 0;
+    while index < bytes.len() {
+        if bytes[index] == 42 and index + 1 < bytes.len() and bytes[index + 1] == 47 {
+            set output += "* /";
+            set index += 2;
+        } else {
+            set output += string.from_byte(bytes[index]);
+            set index += 1;
+        }
+    }
+    return output;
+}
+
+proc ir_emit_signature(context: &IRContext, function: &IRFunction) -> ?string {
+    let function_type = ir_type(context, function.type_);
+    if function_type == null or function_type?.kind != IRTypeKind.Function { return null; }
+    let result_type = ir_type_text(context, function_type?.return_type, 0);
+    let name = ir_emit_function_name(context, function);
+    if result_type == null or name == null { return null; }
+    let mut output: string = "";
+    if function.linkage == IRLinkage.Internal or function.linkage == IRLinkage.Private { set output += "static "; }
+    set output += result_type? + " " + name? + "(";
+    let mut index: usize = 0;
+    while index < function.parameter_count {
+        let value = ir_value(context, function.parameters[index]); if value == null { return null; }
+        let type_name = ir_type_text(context, value?.type_, 0); if type_name == null { return null; }
+        if index != 0 { set output += ", "; }
+        set output += type_name? + " " + ir_value_name(value?);
+        set index += 1;
+    }
+    if function.parameter_count == 0 { set output += "void"; }
+    set output += ")";
+    return output;
+}
+
+proc ir_emit_function(context: &IRContext, function: &IRFunction) -> ?string {
+    let signature = ir_emit_signature(context, function); if signature == null { return null; }
+    let mut output: string = signature?;
+    if function.is_declaration { set output += ";\n"; return output; }
+    set output += " {\n";
+    // Declare SSA values and stack slots before labels so values remain in
+    // scope across CFG edges and goto cannot skip declarations.
+    let mut declare_block: usize = 0;
+    while declare_block < function.block_count {
+        let block = ir_block(context, function.blocks[declare_block]);
+        if block == null { return null; }
+        let mut declare_instruction: usize = 0;
+        while declare_instruction < block?.instruction_count {
+            let instruction = ir_instruction(context, block?.instructions[declare_instruction]);
+            if instruction == null { return null; }
+            if instruction?.result != 0 {
+                let result_type = ir_type(context, instruction?.result_type);
+                if result_type == null { return null; }
+                if result_type?.kind != IRTypeKind.Void {
+                    let type_name = ir_type_text(context, instruction?.result_type, 0);
+                    if type_name == null { return null; }
+                    set output += "    " + type_name? + " vitte_v" + ir_u64(instruction?.result) + ";\n";
+                }
+                if instruction?.opcode == IROpcode.Alloca {
+                    let pointer_type = ir_type(context, instruction?.result_type);
+                    if pointer_type == null or pointer_type?.kind != IRTypeKind.Pointer { return null; }
+                    let element_type = ir_type_text(context, pointer_type?.element_type, 0);
+                    if element_type == null { return null; }
+                    set output += "    " + element_type? + " vitte_slot_" + ir_u64(instruction?.result) + " = {0};\n";
+                }
+                if instruction?.opcode == IROpcode.ArrayMake {
+                    let array_type = ir_type(context, instruction?.result_type);
+                    if array_type == null or array_type?.kind != IRTypeKind.Array or
+                       array_type?.array_length != instruction?.operand_count { return null; }
+                    if array_type?.array_length != 0 {
+                        let element_type = ir_type_text(context, array_type?.element_type, 0);
+                        if element_type == null { return null; }
+                        set output += "    " + element_type? + " vitte_array_slot_" + ir_u64(instruction?.result) + "[" + ir_u64(array_type?.array_length as u64) + "] = {0};\n";
+                    }
+                }
+            }
+            set declare_instruction += 1;
+        }
+        set declare_block += 1;
+    }
+    set output += "    goto vitte_block_" + ir_u64(function.entry_block) + ";\n";
+    let mut block_index: usize = 0;
+    while block_index < function.block_count {
+        let block = ir_block(context, function.blocks[block_index]); if block == null { return null; }
+        set output += "vitte_block_" + ir_u64(block?.id) + ": ;\n";
+        let mut instruction_index: usize = 0;
+        while instruction_index < block?.instruction_count {
+            let instruction = ir_instruction(context, block?.instructions[instruction_index]); if instruction == null { return null; }
+            let text = ir_instruction_text(context, instruction?); if text == null { return null; }
+            if text?.len() != 0 { set output += "    " + text? + "\n"; }
+            set instruction_index += 1;
+        }
+        set block_index += 1;
+    }
+    set output += "}\n";
+    return output;
+}
+
+proc ir_string_slice_helper() -> string {
+    let mut output: string = "static inline uint8_t *vitte_ir_string_slice(\n";
+    set output += "    const uint8_t *value, uint64_t begin, uint64_t end) {\n";
+    set output += "    size_t length;\n    size_t count;\n    char *copy;\n";
+    set output += "    if (value == NULL) { value = (const uint8_t *)\"\"; }\n";
+    set output += "    length = strlen((const char *)value);\n";
+    set output += "    if (begin > (uint64_t)length) { begin = (uint64_t)length; }\n";
+    set output += "    if (end > (uint64_t)length) { end = (uint64_t)length; }\n";
+    set output += "    if (end < begin) { end = begin; }\n";
+    set output += "    count = (size_t)(end - begin);\n";
+    set output += "    if (count == SIZE_MAX) { abort(); }\n";
+    set output += "    copy = (char *)malloc(count + 1u);\n";
+    set output += "    if (copy == NULL) { abort(); }\n";
+    set output += "    memcpy(copy, value + (size_t)begin, count);\n";
+    set output += "    copy[count] = '\\0';\n";
+    set output += "    return (uint8_t *)copy;\n}\n\n";
+    return output;
+}
+
+proc ir_string_concat_helper() -> string {
+    let mut output: string = "static inline uint8_t *vitte_ir_string_concat(\n";
+    set output += "    const uint8_t *left, const uint8_t *right) {\n";
+    set output += "    size_t left_length;\n    size_t right_length;\n    char *result;\n";
+    set output += "    if (left == NULL) { left = (const uint8_t *)\"\"; }\n";
+    set output += "    if (right == NULL) { right = (const uint8_t *)\"\"; }\n";
+    set output += "    left_length = strlen((const char *)left);\n";
+    set output += "    right_length = strlen((const char *)right);\n";
+    set output += "    if (right_length == SIZE_MAX ||\n";
+    set output += "        left_length > SIZE_MAX - right_length - 1u) { abort(); }\n";
+    set output += "    result = (char *)malloc(left_length + right_length + 1u);\n";
+    set output += "    if (result == NULL) { abort(); }\n";
+    set output += "    memcpy(result, left, left_length);\n";
+    set output += "    memcpy(result + left_length, right, right_length + 1u);\n";
+    set output += "    return (uint8_t *)result;\n}\n\n";
+    return output;
+}
+
+export proc c17_ir_emit_options_default() -> C17IREmitOptions {
+    return C17IREmitOptions { emit_banner: true, emit_debug_comments: false, emit_line_directives: false, emit_debug_info: false, emit_entry_wrapper: true, strict: true, source_path: null };
+}
+
+export proc c17_emit_ir_with_options(context: &IRContext, options: &C17IREmitOptions) -> C17IRResult {
+    if context.state != IRState.Sealed { return C17IRResult { success: false, source: "", error: "IR context is not sealed" }; }
+    let mut source: string = "";
+    if options.emit_banner { set source += "/* Generated by the native Vitte C17 backend. */\n"; }
+    if options.emit_debug_comments and options.source_path != null {
+        let comment_path = ir_comment_safe(options.source_path?);
+        set source += "/* source: " + comment_path + " */\n";
+    }
+    if options.emit_line_directives {
+        let path = if options.source_path != null { options.source_path? } else { "<vitte>" };
+        let mut escaped_path: string = "";
+        let path_bytes = path.as_bytes();
+        let mut path_index: usize = 0;
+        while path_index < path_bytes.len() {
+            let byte = path_bytes[path_index];
+            match byte {
+                case 92 => set escaped_path += "\\\\"
+                case 34 => set escaped_path += "\\\""
+                case 10 => set escaped_path += "\\n"
+                case 13 => set escaped_path += "\\r"
+                case _ => set escaped_path += string.from_byte(byte)
+            }
+            set path_index += 1;
+        }
+        set source += "#line 1 \"" + escaped_path + "\"\n";
+    }
+    set source += "#include <stdbool.h>\n#include <stddef.h>\n#include <stdint.h>\n#include <math.h>\n#include <stdlib.h>\n#include <string.h>\n\n";
+    if ir_has_opcode(context, IROpcode.StringSlice) { set source += ir_string_slice_helper(); }
+    if ir_has_opcode(context, IROpcode.StringConcat) { set source += ir_string_concat_helper(); }
+    let mut index: usize = 0;
+    while index < context.type_count {
+        let ty = &context.types[index];
+        if ty.kind == IRTypeKind.Struct or ty.kind == IRTypeKind.Opaque {
+            let name = ir_type_symbol(context, ty, "vitte_type_");
+            if name == null { return C17IRResult { success: false, source: "", error: "invalid named IR type" }; }
+            set source += "struct " + name? + " { ";
+            if ty.kind == IRTypeKind.Struct and ty.field_count != 0 {
+                let mut field_index: usize = 0;
+                while field_index < ty.field_count {
+                    let field_type = ir_type_text(context, ty.field_types[field_index], 0);
+                    if field_type == null { return C17IRResult { success: false, source: "", error: "invalid aggregate field type" }; }
+                    set source += field_type? + " vitte_field_" + ir_u64(field_index as u64) + "; ";
+                    set field_index += 1;
+                }
+            } else {
+                set source += "unsigned char _vitte_placeholder; ";
+            }
+            set source += "};\n";
+        }
+        if ty.kind == IRTypeKind.Pick {
+            let name = ir_type_symbol(context, ty, "vitte_type_");
+            if name == null { return C17IRResult { success: false, source: "", error: "invalid named pick IR type" }; }
+            set source += "struct " + name? + " { uint64_t tag; unsigned char payload[128]; };\n";
+        }
+        if ty.kind == IRTypeKind.Slice {
+            let name = ir_type_symbol(context, ty, "vitte_slice_");
+            let element = ir_type_text(context, ty.element_type, 0);
+            if name == null or element == null { return C17IRResult { success: false, source: "", error: "invalid slice IR type" }; }
+            set source += "struct " + name? + " { " + element? + " *data; uint64_t length; };\n";
+        }
+        set index += 1;
+    }
+    set source += "\n";
+    index = 0;
+    while index < context.function_count {
+        let function = &context.functions[index];
+        if function.is_declaration { let declaration = ir_emit_function(context, function); if declaration == null { return C17IRResult { success: false, source: "", error: "unsupported IR function declaration" }; } set source += declaration?; }
+        set index += 1;
+    }
+    set source += "\n";
+    index = 0;
+    while index < context.function_count {
+        let function = &context.functions[index];
+        if not function.is_declaration { let definition = ir_emit_function(context, function); if definition == null { return C17IRResult { success: false, source: "", error: "unsupported IR instruction or invalid function" }; } set source += definition?; }
+        set index += 1;
+    }
+    if options.emit_entry_wrapper {
+        index = 0;
+        while index < context.function_count {
+            let function = &context.functions[index];
+            let source_name = ir_string(context, function.name);
+            if source_name != null and source_name? == "main" {
+                let function_type = ir_type(context, function.type_);
+                if function_type == null or function_type?.kind != IRTypeKind.Function or function_type?.parameter_count != 0 {
+                    return C17IRResult { success: false, source: "", error: "entry function must have no parameters" };
+                }
+                let return_type = ir_type(context, function_type?.return_type);
+                let generated_name = ir_symbol(context, function.name, "vitte_fn_");
+                if return_type == null or generated_name == null or function.is_declaration {
+                    return C17IRResult { success: false, source: "", error: "entry function is not defined" };
+                }
+                if return_type?.kind == IRTypeKind.Void {
+                    set source += "int main(void) { " + generated_name? + "(); return 0; }\n";
+                } else {
+                    set source += "int main(void) { return (int)" + generated_name? + "(); }\n";
+                }
+                break;
+            }
+            set index += 1;
+        }
+    }
+    return C17IRResult { success: true, source: source, error: "" };
+}
+
+export proc c17_emit_ir(context: &IRContext) -> C17IRResult {
+    let options = c17_ir_emit_options_default();
+    return c17_emit_ir_with_options(context, &options);
+}

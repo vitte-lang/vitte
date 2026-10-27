@@ -1,0 +1,55 @@
+/// Représentation compacte et sans allocation d'une erreur.
+space core::error::error;
+
+use core::hash::hasher::{
+    Hasher,
+    hasher_new,
+    hasher_write_u32,
+    hasher_write_u64,
+    hasher_finish,
+};
+
+export form Error {
+    code: u32,
+    message: str,
+    location: usize,
+}
+
+export proc error_new(code: u32, message: str, location: usize) -> Error {
+    return Error { code: code, message: message, location: location };
+}
+
+export proc error_is_valid(error: &Error) -> bool {
+    return error.code != 0 || error.message.length != 0;
+}
+
+export proc error_has_message(error: &Error) -> bool {
+    return error.message.length != 0;
+}
+
+export proc error_code(error: &Error) -> u32 {
+    return error.code;
+}
+
+export proc error_location(error: &Error) -> usize {
+    return error.location;
+}
+
+export proc error_same_code(left: &Error, right: &Error) -> bool {
+    return left.code == right.code;
+}
+
+/// Empreinte déterministe des champs d'une erreur pour le cache et le dédoublonnage.
+export proc error_fingerprint(error: &Error) -> u64 {
+    let mut hasher: Hasher = hasher_new();
+    hasher_write_u32(&mut hasher, error.code);
+    hasher_write_u64(&mut hasher, error.location as u64);
+    hasher_write_u64(&mut hasher, error.message.length as u64);
+    let mut index: usize = 0;
+    while index < error.message.length {
+        let string_index: i64 = index as i64;
+        hasher_write_u32(&mut hasher, error.message[string_index] as u32);
+        set index = index + 1;
+    }
+    return hasher_finish(&hasher);
+}

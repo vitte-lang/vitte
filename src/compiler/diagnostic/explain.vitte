@@ -1,0 +1,2206 @@
+/// Vitte Compiler
+/// Diagnostic explanation, discovery and introspection subsystem.
+
+space compiler::diagnostic::explain;
+
+use compiler::diagnostic::diagnostic::{    DiagnosticSeverity,
+    DiagnosticOrigin,
+    severity_name,
+    origin_name
+};
+
+use compiler::api::error::{Status};
+use compiler::diagnostic::registry::{    DiagnosticRegistryEntry,
+    DiagnosticRegistryRange,
+    DiagnosticRegistryValidation,
+    diagnostic_registry_find,
+    diagnostic_registry_count,
+    diagnostic_registry_at,
+    diagnostic_registry_range,
+    diagnostic_registry_range_name,
+    diagnostic_registry_count_severity,
+    diagnostic_registry_validate,
+    diagnostic_registry_fingerprint,
+};
+
+use compiler::diagnostic::help::{    diagnostic_help_for_code,
+};
+
+const EXPLAIN_CODE_CAPACITY: usize = 128;
+const EXPLAIN_QUERY_CAPACITY: usize = 256;
+const EXPLAIN_FORMAT_CAPACITY: usize = 32;
+export const VITTE_DIAGNOSTIC_EXPLAIN_JSON_VERSION: u32 = 1;
+export const VITTE_DIAGNOSTIC_EXPLAIN_RELATED_LIMIT: usize = 8;
+const DIAGNOSTIC_INDEX_NONE: usize = 18446744073709551615 as usize;
+const EXPLAIN_DECIMAL_DIGITS: [string] = [
+    "0", "1", "2", "3", "4", "5", "6", "7", "8", "9"
+];
+
+export pick DiagnosticExplainFormat {
+    Text,
+    Markdown,
+    Json,
+}
+
+form ExplainMatch {
+    registry_entry: &DiagnosticRegistryEntry,
+    registry_index: usize,
+    score: usize,
+}
+
+export form DiagnosticRegistryReport {
+    status: Status,
+    text: string,
+}
+
+proc text_present(text: string) -> bool {
+    return text.length() != 0;
+}
+
+proc ascii_lower(character: u8) -> u8 {
+    if character >= 65 as u8 and character <= 90 as u8 {
+        return character + 32 as u8;
+    }
+
+    return character;
+}
+
+proc ascii_upper(character: u8) -> u8 {
+    if character >= 97 as u8 and character <= 122 as u8 {
+        return character - 32 as u8;
+    }
+
+    return character;
+}
+
+proc explain_string_compare(left: string, right: string) -> i64 {
+    let left_bytes: [u8] = left.bytes();
+    let right_bytes: [u8] = right.bytes();
+    let common_length =
+        if left_bytes.len() < right_bytes.len() {
+            left_bytes.len()
+        } else {
+            right_bytes.len()
+        };
+    let mut index: usize = 0;
+
+    while index < common_length {
+        if left_bytes[index] < right_bytes[index] {
+            return -1;
+        }
+
+        if left_bytes[index] > right_bytes[index] {
+            return 1;
+        }
+
+        set index += 1;
+    }
+
+    if left_bytes.len() < right_bytes.len() {
+        return -1;
+    }
+
+    if left_bytes.len() > right_bytes.len() {
+        return 1;
+    }
+
+    return 0;
+}
+
+proc explain_u64_to_string(value: u64) -> string {
+    if value < 10 {
+        return EXPLAIN_DECIMAL_DIGITS[value as i64];
+    }
+
+    return explain_u64_to_string(value / 10) +
+         EXPLAIN_DECIMAL_DIGITS[(value % 10) as i64];
+}
+
+proc ascii_equal_case_insensitive(
+    left: string,
+    right: string
+) -> bool {
+    let left_bytes: [u8] = left.bytes();
+    let right_bytes: [u8] = right.bytes();
+
+    if left_bytes.len() != right_bytes.len() {
+        return false;
+    }
+
+    let mut index: usize = 0;
+
+    while index < left_bytes.len() {
+        if ascii_lower(left_bytes[index]) !=
+           ascii_lower(right_bytes[index]) {
+            return false;
+        }
+
+        set index += 1;
+    }
+
+    return true;
+}
+
+proc ascii_contains_case_insensitive(
+    text: string,
+    needle: string
+) -> bool {
+    if needle.length() == 0 {
+        return true;
+    }
+
+    if needle.bytes().len() > text.bytes().len() {
+        return false;
+    }
+
+    let text_bytes: [u8] = text.bytes();
+    let needle_bytes: [u8] = needle.bytes();
+    let mut start: usize = 0;
+
+    while start + needle_bytes.len() <= text_bytes.len() {
+        let mut offset: usize = 0;
+        let mut matches: bool = true;
+
+        while offset < needle_bytes.len() {
+            if ascii_lower(text_bytes[start + offset]) !=
+               ascii_lower(needle_bytes[offset]) {
+                set matches = false;
+                break;
+            }
+
+            set offset += 1;
+        }
+
+        if matches {
+            return true;
+        }
+
+        set start += 1;
+    }
+
+    return false;
+}
+
+proc trim(input: string) -> string {
+    let mut begin: usize = 0;
+    let mut end: usize = input.length();
+
+    while begin < end  and  input[begin].is_space() {
+        set begin += 1;
+    }
+
+    while end > begin  and  input[end - 1].is_space() {
+        set end -= 1;
+    }
+
+    if begin == end {
+        return "";
+    }
+
+    return input.slice(begin, end);
+}
+
+proc is_public_code(text: string) -> bool {
+    if text.bytes().len() != 5 {
+        return false;
+    }
+
+    let bytes: [u8] = text.bytes();
+    let prefix: u8 = ascii_upper(bytes[0]);
+
+    if prefix != 69 as u8  and 
+       prefix != 87 as u8  and 
+       prefix != 78 as u8  and 
+       prefix != 72 as u8 {
+        return false;
+    }
+
+    let mut index: usize = 1;
+
+    while index < 5 {
+        if bytes[index] < 48 as u8  or  bytes[index] > 57 as u8 {
+            return false;
+        }
+
+        set index += 1;
+    }
+
+    return true;
+}
+
+proc normalize_code(input: string) -> string {
+    let normalized = trim(input);
+
+    if normalized == "" or
+       normalized.bytes().len() >= EXPLAIN_CODE_CAPACITY {
+        return "";
+    }
+
+    if is_public_code(normalized) {
+        return normalized.ascii_uppercase();
+    }
+
+    return normalized;
+}
+
+proc normalize_query(input: string) -> string {
+    let normalized = trim(input);
+
+    if normalized.bytes().len() >= EXPLAIN_QUERY_CAPACITY {
+        return "";
+    }
+
+    return normalized;
+}
+
+proc safe_text(text: string) -> string {
+    return text;
+}
+
+proc pad_right(text: string, width: usize) -> string {
+    let byte_length = text.bytes().len();
+
+    if byte_length >= width {
+        return text;
+    }
+
+    let mut output = text;
+    let mut padding: usize = byte_length;
+
+    while padding < width {
+        set output += " ";
+        set padding += 1;
+    }
+
+    return output;
+}
+
+proc safe_severity_name(
+    severity: DiagnosticSeverity
+) -> string {
+    let name = severity_name(severity);
+
+    if name == "" {
+        return "unknown";
+    }
+
+    return name;
+}
+
+proc safe_origin_name(
+    origin: DiagnosticOrigin
+) -> string {
+    let name = origin_name(origin);
+
+    if name == "" {
+        return "unknown";
+    }
+
+    return name;
+}
+
+proc safe_range_name(
+    range: DiagnosticRegistryRange
+) -> string {
+    let name = diagnostic_registry_range_name(range);
+
+    if name == "" {
+        return "unknown";
+    }
+
+    return name;
+}
+
+proc entry_usable(
+    registry_entry: *const DiagnosticRegistryEntry
+) -> bool {
+    if registry_entry == null {
+        return false;
+    }
+
+    return
+        text_present(registry_entry.public_code)  and 
+        text_present(registry_entry.internal_code)  and 
+        text_present(registry_entry.title)  and 
+        text_present(registry_entry.category)  and 
+        text_present(registry_entry.explanation);
+}
+
+proc diagnostic_explain_find_internal(
+    code: string
+) -> *const DiagnosticRegistryEntry {
+    let normalized = normalize_code(code);
+
+    if normalized == "" {
+        return null;
+    }
+
+    let mut registry_entry = diagnostic_registry_find(normalized);
+
+    if registry_entry != null {
+        return registry_entry;
+    }
+
+    let count = diagnostic_registry_count();
+    let mut index: usize = 0;
+
+    while index < count {
+        let candidate = diagnostic_registry_at(index);
+
+        if candidate != null {
+            if ascii_equal_case_insensitive(
+                    candidate.public_code,
+                    normalized
+                )  or 
+               ascii_equal_case_insensitive(
+                    candidate.internal_code,
+                    normalized
+                ) {
+                return candidate;
+            }
+        }
+
+        set index += 1;
+    }
+
+    return null;
+}
+
+export proc diagnostic_explain_find(
+    code: string
+) -> *const DiagnosticRegistryEntry {
+    let registry_entry = diagnostic_explain_find_internal(code);
+
+    if registry_entry == null {
+        return null;
+    }
+
+    return registry_entry;
+}
+
+export proc diagnostic_explain_exists(code: string) -> bool {
+    return diagnostic_explain_find_internal(code) != null;
+}
+
+proc same_range(
+    left: *const DiagnosticRegistryEntry,
+    right: *const DiagnosticRegistryEntry
+) -> bool {
+    if left == null  or  right == null {
+        return false;
+    }
+
+    let left_range =
+        diagnostic_registry_range(left.public_code);
+
+    let right_range =
+        diagnostic_registry_range(right.public_code);
+
+    return
+        left_range != DiagnosticRegistryRange.Unknown  and 
+        left_range == right_range;
+}
+
+proc same_category(
+    left: *const DiagnosticRegistryEntry,
+    right: *const DiagnosticRegistryEntry
+) -> bool {
+    if left == null  or  right == null {
+        return false;
+    }
+
+    if not text_present(left.category)  or 
+       not text_present(right.category) {
+        return false;
+    }
+
+    return ascii_equal_case_insensitive(
+        left.category,
+        right.category
+    );
+}
+
+proc same_origin(
+    left: *const DiagnosticRegistryEntry,
+    right: *const DiagnosticRegistryEntry
+) -> bool {
+    return
+        left != null  and 
+        right != null  and 
+        left.origin == right.origin;
+}
+
+proc related_contains(
+    related: &[&DiagnosticRegistryEntry],
+    registry_entry: &DiagnosticRegistryEntry
+) -> bool {
+    let mut index: usize = 0;
+
+    while index < related.length() {
+        if related[index] == registry_entry {
+            return true;
+        }
+
+        set index += 1;
+    }
+
+    return false;
+}
+
+proc related_score(
+    registry_entry: *const DiagnosticRegistryEntry,
+    candidate: *const DiagnosticRegistryEntry
+) -> usize {
+    if registry_entry == null  or 
+       candidate == null  or 
+       registry_entry == candidate {
+        return 0;
+    }
+
+    let mut score: usize = 0;
+
+    if same_range(registry_entry, candidate) {
+        set score += 100;
+    }
+
+    if same_category(registry_entry, candidate) {
+        set score += 80;
+    }
+
+    if same_origin(registry_entry, candidate) {
+        set score += 40;
+    }
+
+    if registry_entry.default_severity ==
+       candidate.default_severity {
+        set score += 10;
+    }
+
+    if ascii_contains_case_insensitive(
+            candidate.explanation,
+            registry_entry.category
+        ) {
+        set score += 5;
+    }
+
+    return score;
+}
+
+proc collect_related(
+    registry_entry: &DiagnosticRegistryEntry,
+    capacity: usize
+) -> [&DiagnosticRegistryEntry] {
+    let related: [&DiagnosticRegistryEntry] = [];
+    let count = diagnostic_registry_count();
+    let mut slot: usize = 0;
+
+    while slot < capacity {
+        let mut best: *const DiagnosticRegistryEntry = null;
+        let mut best_score: usize = 0;
+        let mut best_index: usize = DIAGNOSTIC_INDEX_NONE;
+
+        let mut index: usize = 0;
+
+        while index < count {
+            let candidate =
+                diagnostic_registry_at(index);
+
+            if candidate != null  and 
+               candidate.public_code != registry_entry.public_code  and 
+               not related_contains(
+                   &related,
+                   &*candidate
+               ) {
+                let mut score =
+                    related_score(registry_entry, candidate);
+
+                if score != 0 {
+                    let better =
+                        best == null  or 
+                        score > best_score  or 
+                        (
+                            score == best_score  and 
+                            explain_string_compare(
+                                candidate.public_code,
+                                best.public_code
+                            ) < 0
+                        )  or 
+                        (
+                            score == best_score  and 
+                            safe_text(candidate.public_code) ==
+                            safe_text(best.public_code)  and 
+                            index < best_index
+                        );
+
+                    if better {
+                        set best = candidate;
+                        set best_score = score;
+                        set best_index = index;
+                    }
+                }
+            }
+
+            set index += 1;
+        }
+
+        if best == null {
+            break;
+        }
+
+        related.append(&*best);
+        set slot += 1;
+    }
+
+    return related;
+}
+
+proc explain_guidance(
+    registry_entry: *const DiagnosticRegistryEntry
+) -> string {
+    if registry_entry == null  or 
+       not text_present(registry_entry.public_code) {
+        return "";
+    }
+
+    let guidance =
+        diagnostic_help_for_code(registry_entry.public_code);
+
+    if text_present(guidance) {
+        return guidance;
+    }
+
+    return "";
+}
+
+proc json_escape(text: string) -> string {
+    if text == "" {
+        return "\"\"";
+    }
+
+    let mut output = "\"";
+    let mut index: usize = 0;
+
+    while index < text.length() {
+        let character = text[index];
+        let segment = text.slice(index, index + 1);
+
+        if character == '"' {
+            set output += "\\\"";
+        } else if character == '\\' {
+            set output += "\\\\";
+        } else if character == '\b' {
+            set output += "\\b";
+        } else if character == '\f' {
+            set output += "\\f";
+        } else if character == '\n' {
+            set output += "\\n";
+        } else if character == '\r' {
+            set output += "\\r";
+        } else if character == '\t' {
+            set output += "\\t";
+        } else {
+            let bytes: [u8] = segment.bytes();
+
+            if bytes[0] < 32 as u8 {
+                set output += "\\u00";
+                set output += bytes[0].hex(2);
+            } else {
+                set output += segment;
+            }
+        }
+
+        set index += 1;
+    }
+
+    set output += "\"";
+
+    return output;
+}
+
+proc markdown_inline(text: string) -> string {
+    if text == "" {
+        return "-";
+    }
+
+    let mut output = "";
+    let mut index: usize = 0;
+
+    while index < text.length() {
+        let character = text[index];
+
+        if character == '|'  or 
+           character == '\\'  or 
+           character == '`' {
+            set output += "\\";
+        }
+
+        if character == '\n'  or 
+           character == '\r' {
+            set output += " ";
+        } else {
+            set output += text.slice(index, index + 1);
+        }
+
+        set index += 1;
+    }
+
+    return output;
+}
+
+proc render_text(
+    registry_entry: &DiagnosticRegistryEntry,
+    include_related: bool
+) -> string {
+    if not entry_usable(registry_entry) {
+        return "";
+    }
+
+    let range =
+        diagnostic_registry_range(registry_entry.public_code);
+
+    let guidance = explain_guidance(registry_entry);
+
+    let mut output = "";
+
+    set output += registry_entry.public_code;
+    set output += ": ";
+    set output += registry_entry.title;
+    set output += "\n\n";
+
+    set output += registry_entry.explanation;
+    set output += "\n\n";
+
+    set output +=
+        "Diagnostic information\n"
+        "----------------------\n";
+
+    set output += "Code:       ";
+    set output += registry_entry.public_code;
+    set output += "\n";
+
+    set output += "Internal:   ";
+    set output += registry_entry.internal_code;
+    set output += "\n";
+
+    set output += "Severity:   ";
+    set output +=
+        safe_severity_name(registry_entry.default_severity);
+    set output += "\n";
+
+    set output += "Phase:      ";
+    set output += safe_origin_name(registry_entry.origin);
+    set output += "\n";
+
+    set output += "Category:   ";
+    set output += registry_entry.category;
+    set output += "\n";
+
+    set output += "Range:      ";
+    set output += safe_range_name(range);
+    set output += "\n";
+
+    set output += "Deprecated: ";
+    set output +=
+        if registry_entry.deprecated { "yes" } else { "no" };
+    set output += "\n";
+
+    if guidance != "" {
+        set output +=
+            "\nGuidance\n"
+            "--------\n";
+
+        set output += guidance;
+        set output += "\n";
+    }
+
+    if include_related {
+        let related = collect_related(
+            registry_entry,
+            VITTE_DIAGNOSTIC_EXPLAIN_RELATED_LIMIT
+        );
+
+        if related.length() != 0 {
+            set output +=
+                "\nRelated diagnostics\n"
+                "-------------------\n";
+
+            let mut index: usize = 0;
+
+            while index < related.length() {
+                set output += "  ";
+                set output += pad_right(
+                    safe_text(related[index].public_code),
+                    5
+                );
+                set output += "  ";
+                set output += pad_right(
+                    safe_text(related[index].category),
+                    18
+                );
+                set output += "  ";
+                set output +=
+                    safe_text(related[index].title);
+                set output += "\n";
+
+                set index += 1;
+            }
+        }
+    }
+
+    return output;
+}
+
+proc render_markdown(
+    registry_entry: &DiagnosticRegistryEntry,
+    include_related: bool
+) -> string {
+    if not entry_usable(registry_entry) {
+        return "";
+    }
+
+    let range =
+        diagnostic_registry_range(registry_entry.public_code);
+
+    let guidance = explain_guidance(registry_entry);
+
+    let mut output = "# ";
+
+    set output += registry_entry.public_code;
+    set output += " — ";
+    set output += registry_entry.title;
+    set output += "\n\n";
+    set output += registry_entry.explanation;
+
+    set output +=
+        "\n\n"
+        "## Diagnostic information\n\n"
+        "| Field | Value |\n"
+        "| --- | --- |\n";
+
+    set output += "| Code | `";
+    set output += markdown_inline(registry_entry.public_code);
+    set output += "` |\n";
+
+    set output += "| Internal identifier | `";
+    set output += markdown_inline(registry_entry.internal_code);
+    set output += "` |\n";
+
+    set output += "| Severity | `";
+    set output += markdown_inline(
+        safe_severity_name(registry_entry.default_severity)
+    );
+    set output += "` |\n";
+
+    set output += "| Phase | `";
+    set output += markdown_inline(
+        safe_origin_name(registry_entry.origin)
+    );
+    set output += "` |\n";
+
+    set output += "| Category | `";
+    set output += markdown_inline(registry_entry.category);
+    set output += "` |\n";
+
+    set output += "| Range | `";
+    set output += markdown_inline(
+        safe_range_name(range)
+    );
+    set output += "` |\n";
+
+    set output += "| Deprecated | `";
+    set output +=
+        if registry_entry.deprecated { "yes" } else { "no" };
+    set output += "` |\n";
+
+    if guidance != "" {
+        set output += "\n## Guidance\n\n";
+        set output += guidance;
+        set output += "\n";
+    }
+
+    if include_related {
+        let related = collect_related(
+            registry_entry,
+            VITTE_DIAGNOSTIC_EXPLAIN_RELATED_LIMIT
+        );
+
+        if related.length() != 0 {
+            set output +=
+                "\n## Related diagnostics\n\n";
+
+            let mut index: usize = 0;
+
+            while index < related.length() {
+                set output += "- `";
+                set output +=
+                    safe_text(related[index].public_code);
+                set output += "` — ";
+                set output +=
+                    safe_text(related[index].title);
+                set output += "\n";
+
+                set index += 1;
+            }
+        }
+    }
+
+    return output;
+}
+
+proc render_json(
+    registry_entry: &DiagnosticRegistryEntry,
+    include_related: bool
+) -> string {
+    if not entry_usable(registry_entry) {
+        return "";
+    }
+
+    let range =
+        diagnostic_registry_range(registry_entry.public_code);
+
+    let guidance = explain_guidance(registry_entry);
+
+    let mut output = "{";
+
+    set output += "\"version\":";
+    set output += explain_u64_to_string(
+        VITTE_DIAGNOSTIC_EXPLAIN_JSON_VERSION as u64
+    );
+    set output += ",\"diagnostic\":{";
+
+    set output += "\"code\":";
+    set output += json_escape(registry_entry.public_code);
+
+    set output += ",\"internal\":";
+    set output += json_escape(registry_entry.internal_code);
+
+    set output += ",\"title\":";
+    set output += json_escape(registry_entry.title);
+
+    set output += ",\"explanation\":";
+    set output += json_escape(registry_entry.explanation);
+
+    set output += ",\"severity\":";
+    set output += json_escape(
+        safe_severity_name(registry_entry.default_severity)
+    );
+
+    set output += ",\"phase\":";
+    set output += json_escape(
+        safe_origin_name(registry_entry.origin)
+    );
+
+    set output += ",\"category\":";
+    set output += json_escape(registry_entry.category);
+
+    set output += ",\"range\":";
+    set output += json_escape(
+        safe_range_name(range)
+    );
+
+    set output += ",\"guidance\":";
+    set output +=
+        if guidance == "" {
+            "null"
+        } else {
+            json_escape(guidance)
+        };
+
+    set output += ",\"deprecated\":";
+    set output +=
+        if registry_entry.deprecated { "true" } else { "false" };
+
+    set output += ",\"related\":[";
+
+    if include_related {
+        let related = collect_related(
+            registry_entry,
+            VITTE_DIAGNOSTIC_EXPLAIN_RELATED_LIMIT
+        );
+
+        let mut index: usize = 0;
+
+        while index < related.length() {
+            if index != 0 {
+                set output += ",";
+            }
+
+            set output += "{";
+
+            set output += "\"code\":";
+            set output +=
+                json_escape(related[index].public_code);
+
+            set output += ",\"title\":";
+            set output +=
+                json_escape(related[index].title);
+
+            set output += ",\"category\":";
+            set output +=
+                json_escape(related[index].category);
+
+            set output += ",\"phase\":";
+            set output += json_escape(
+                safe_origin_name(
+                    related[index].origin
+                )
+            );
+
+            set output += "}";
+
+            set index += 1;
+        }
+    }
+
+    set output += "]}}";
+
+    return output;
+}
+
+export proc diagnostic_explain(
+    code: string,
+    format: DiagnosticExplainFormat,
+    include_related: bool
+) -> string {
+    let mut registry_entry = diagnostic_explain_find_internal(code);
+
+    if registry_entry == null {
+        return "";
+    }
+
+    match format {
+        DiagnosticExplainFormat.Text => {
+            return render_text(
+                &*registry_entry,
+                include_related
+            );
+        },
+
+        DiagnosticExplainFormat.Markdown => {
+            return render_markdown(
+                &*registry_entry,
+                include_related
+            );
+        },
+
+        DiagnosticExplainFormat.Json => {
+            return render_json(
+                &*registry_entry,
+                include_related
+            );
+        }
+    }
+}
+
+export proc diagnostic_explain_compact(
+    code: string
+) -> string {
+    let mut registry_entry = diagnostic_explain_find_internal(code);
+
+    if registry_entry == null {
+        return "";
+    }
+
+    let guidance = explain_guidance(registry_entry);
+    let mut output = "";
+
+    set output += safe_text(registry_entry.public_code);
+    set output += ": ";
+    set output += safe_text(registry_entry.title);
+    set output += "\n";
+
+    set output += safe_text(registry_entry.explanation);
+    set output += "\n";
+
+    if guidance != "" {
+        set output += "help: ";
+        set output += guidance;
+        set output += "\n";
+    }
+
+    return output;
+}
+
+proc entry_matches_category(
+    registry_entry: *const DiagnosticRegistryEntry,
+    category: string
+) -> bool {
+    if registry_entry == null {
+        return false;
+    }
+
+    if not text_present(category) {
+        return true;
+    }
+
+    return ascii_equal_case_insensitive(
+        registry_entry.category,
+        category
+    );
+}
+
+export proc diagnostic_explain_list(
+    category: string,
+    include_deprecated: bool
+) -> string {
+    let mut filter: string = "";
+
+    if text_present(category) {
+        let trimmed = trim(category);
+
+        if trimmed.bytes().len() >= EXPLAIN_QUERY_CAPACITY {
+            return "";
+        }
+
+        set filter = trimmed;
+    }
+
+    let mut output = "";
+    let count = diagnostic_registry_count();
+    let mut index: usize = 0;
+
+    while index < count {
+        let mut registry_entry = diagnostic_registry_at(index);
+
+        if registry_entry != null {
+            if (include_deprecated  or 
+                not registry_entry.deprecated)  and 
+               entry_matches_category(
+                   registry_entry,
+                   filter
+               ) {
+                set output += pad_right(
+                    safe_text(registry_entry.public_code),
+                    5
+                );
+                set output += "  ";
+
+                set output += pad_right(
+                    safe_text(registry_entry.category),
+                    18
+                );
+                set output += "  ";
+
+                set output += pad_right(
+                    safe_severity_name(
+                        registry_entry.default_severity
+                    ),
+                    16
+                );
+                set output += "  ";
+
+                set output += pad_right(
+                    safe_origin_name(registry_entry.origin),
+                    18
+                );
+                set output += "  ";
+
+                set output += safe_text(registry_entry.title);
+
+                if registry_entry.deprecated {
+                    set output += " [deprecated]";
+                }
+
+                set output += "\n";
+            }
+        }
+
+        set index += 1;
+    }
+
+    return output;
+}
+
+export proc diagnostic_explain_list_json(
+    category: string,
+    include_deprecated: bool
+) -> string {
+    let mut filter: string = "";
+
+    if text_present(category) {
+        let trimmed = trim(category);
+
+        if trimmed.bytes().len() >= EXPLAIN_QUERY_CAPACITY {
+            return "";
+        }
+
+        set filter = trimmed;
+
+    }
+
+    let mut output = "{";
+
+    set output += "\"version\":";
+    set output += explain_u64_to_string(
+        VITTE_DIAGNOSTIC_EXPLAIN_JSON_VERSION as u64
+    );
+
+    set output += ",\"category\":";
+    set output +=
+        if filter == "" {
+            "null"
+        } else {
+            json_escape(filter)
+        };
+
+    set output += ",\"diagnostics\":[";
+
+    let count = diagnostic_registry_count();
+    let mut emitted: usize = 0;
+    let mut index: usize = 0;
+
+    while index < count {
+        let mut registry_entry = diagnostic_registry_at(index);
+
+        if registry_entry != null  and 
+           (include_deprecated  or 
+            not registry_entry.deprecated)  and 
+           entry_matches_category(registry_entry, filter) {
+            let range =
+                diagnostic_registry_range(
+                    registry_entry.public_code
+                );
+
+            if emitted != 0 {
+                set output += ",";
+            }
+
+            set output += "{";
+
+            set output += "\"code\":";
+            set output += json_escape(registry_entry.public_code);
+
+            set output += ",\"internal\":";
+            set output += json_escape(registry_entry.internal_code);
+
+            set output += ",\"title\":";
+            set output += json_escape(registry_entry.title);
+
+            set output += ",\"category\":";
+            set output += json_escape(registry_entry.category);
+
+            set output += ",\"severity\":";
+            set output += json_escape(
+                safe_severity_name(
+                    registry_entry.default_severity
+                )
+            );
+
+            set output += ",\"phase\":";
+            set output += json_escape(
+                safe_origin_name(registry_entry.origin)
+            );
+
+            set output += ",\"range\":";
+            set output += json_escape(
+                safe_range_name(range)
+            );
+
+            set output += ",\"deprecated\":";
+            set output +=
+                if registry_entry.deprecated {
+                    "true"
+                } else {
+                    "false"
+                };
+
+            set output += "}";
+
+            set emitted += 1;
+        }
+
+        set index += 1;
+    }
+
+    set output += "]}";
+
+    return output;
+}
+
+proc query_score(
+    registry_entry: *const DiagnosticRegistryEntry,
+    query: string
+) -> usize {
+    if registry_entry == null  or 
+       not text_present(query) {
+        return 0;
+    }
+
+    let mut score: usize = 0;
+
+    if ascii_equal_case_insensitive(
+            registry_entry.public_code,
+            query
+        ) {
+        set score += 10000;
+    }
+
+    if ascii_equal_case_insensitive(
+            registry_entry.internal_code,
+            query
+        ) {
+        set score += 9000;
+    }
+
+    if ascii_equal_case_insensitive(
+            registry_entry.title,
+            query
+        ) {
+        set score += 8000;
+    }
+
+    if ascii_equal_case_insensitive(
+            registry_entry.category,
+            query
+        ) {
+        set score += 7000;
+    }
+
+    if ascii_contains_case_insensitive(
+            registry_entry.public_code,
+            query
+        ) {
+        set score += 1000;
+    }
+
+    if ascii_contains_case_insensitive(
+            registry_entry.internal_code,
+            query
+        ) {
+        set score += 900;
+    }
+
+    if ascii_contains_case_insensitive(
+            registry_entry.title,
+            query
+        ) {
+        set score += 800;
+    }
+
+    if ascii_contains_case_insensitive(
+            registry_entry.category,
+            query
+        ) {
+        set score += 700;
+    }
+
+    if ascii_contains_case_insensitive(
+            safe_origin_name(registry_entry.origin),
+            query
+        ) {
+        set score += 500;
+    }
+
+    if ascii_contains_case_insensitive(
+            safe_severity_name(
+                registry_entry.default_severity
+            ),
+            query
+        ) {
+        set score += 400;
+    }
+
+    if ascii_contains_case_insensitive(
+            registry_entry.explanation,
+            query
+        ) {
+        set score += 300;
+    }
+
+    let guidance = explain_guidance(registry_entry);
+
+    if guidance != ""  and 
+       ascii_contains_case_insensitive(
+           guidance,
+           query
+       ) {
+        set score += 200;
+    }
+
+    return score;
+}
+
+proc match_before(
+    left: &ExplainMatch,
+    right: &ExplainMatch
+) -> bool {
+    if left.score != right.score {
+        return left.score > right.score;
+    }
+
+    if left.registry_entry.public_code !=
+       right.registry_entry.public_code {
+        return explain_string_compare(
+            left.registry_entry.public_code,
+            right.registry_entry.public_code
+        ) < 0;
+    }
+
+    if left.registry_entry.internal_code !=
+       right.registry_entry.internal_code {
+        return explain_string_compare(
+            left.registry_entry.internal_code,
+            right.registry_entry.internal_code
+        ) < 0;
+    }
+
+    return left.registry_index <
+         right.registry_index;
+}
+
+proc collect_search_matches(
+    query: string
+) -> [ExplainMatch] {
+    let mut matches: [ExplainMatch] = [];
+    let registry_count =
+        diagnostic_registry_count();
+
+    let mut index: usize = 0;
+
+    while index < registry_count {
+        let mut registry_entry = diagnostic_registry_at(index);
+
+        if registry_entry != null {
+            let mut score =
+                query_score(registry_entry, query);
+
+            if score != 0 {
+                matches.append(
+                    ExplainMatch {
+                        registry_entry: &*registry_entry,
+                        registry_index: index,
+                        score: score,
+                    }
+                );
+            }
+        }
+
+        set index += 1;
+    }
+
+    matches.sort(match_before);
+
+    return matches;
+}
+
+export proc diagnostic_explain_search(
+    query: string,
+    limit: usize
+) -> string {
+    let normalized = normalize_query(query);
+
+    if normalized == "" {
+        return "";
+    }
+
+    let mut matches =
+        collect_search_matches(normalized);
+
+    let mut output = "";
+    let mut emitted: usize = 0;
+    let mut index: usize = 0;
+
+    while index < matches.length() {
+        if limit != 0  and 
+           emitted >= limit {
+            break;
+        }
+
+        let mut registry_entry = matches[index].registry_entry;
+
+        set output += pad_right(
+            safe_text(registry_entry.public_code),
+            5
+        );
+        set output += "  ";
+        set output += pad_right(
+            safe_text(registry_entry.category),
+            18
+        );
+        set output += "  ";
+
+        set output += pad_right(
+            safe_severity_name(
+                registry_entry.default_severity
+            ),
+            16
+        );
+        set output += "  ";
+
+        set output += pad_right(
+            safe_origin_name(registry_entry.origin),
+            18
+        );
+        set output += "  ";
+
+        set output += safe_text(registry_entry.title);
+        set output += "\n";
+
+        set emitted += 1;
+        set index += 1;
+    }
+
+    return output;
+}
+
+export proc diagnostic_explain_search_json(
+    query: string,
+    limit: usize
+) -> string {
+    let normalized = normalize_query(query);
+
+    if normalized == "" {
+        return "";
+    }
+
+    let mut matches =
+        collect_search_matches(normalized);
+
+    let mut output = "{";
+
+    set output += "\"version\":";
+    set output += explain_u64_to_string(
+        VITTE_DIAGNOSTIC_EXPLAIN_JSON_VERSION as u64
+    );
+
+    set output += ",\"query\":";
+    set output += json_escape(normalized);
+
+    set output += ",\"totalMatches\":";
+    set output += explain_u64_to_string(matches.length() as u64);
+
+    set output += ",\"results\":[";
+
+    let mut emitted: usize = 0;
+    let mut index: usize = 0;
+
+    while index < matches.length() {
+        if limit != 0  and 
+           emitted >= limit {
+            break;
+        }
+
+        let mut registry_entry = matches[index].registry_entry;
+
+        if emitted != 0 {
+            set output += ",";
+        }
+
+        set output += "{";
+
+        set output += "\"code\":";
+        set output += json_escape(registry_entry.public_code);
+
+        set output += ",\"internal\":";
+        set output += json_escape(registry_entry.internal_code);
+
+        set output += ",\"title\":";
+        set output += json_escape(registry_entry.title);
+
+        set output += ",\"category\":";
+        set output += json_escape(registry_entry.category);
+
+        set output += ",\"severity\":";
+        set output += json_escape(
+            safe_severity_name(
+                registry_entry.default_severity
+            )
+        );
+
+        set output += ",\"phase\":";
+        set output += json_escape(
+            safe_origin_name(registry_entry.origin)
+        );
+
+        set output += ",\"explanation\":";
+        set output += json_escape(
+            registry_entry.explanation
+        );
+
+        set output += ",\"score\":";
+        set output += explain_u64_to_string(
+            matches[index].score as u64
+        );
+
+        set output += "}";
+
+        set emitted += 1;
+        set index += 1;
+    }
+
+    set output += "]}";
+
+    return output;
+}
+
+export proc diagnostic_explain_categories() -> string {
+    let mut output = "";
+    let count = diagnostic_registry_count();
+    let mut index: usize = 0;
+
+    while index < count {
+        let mut registry_entry = diagnostic_registry_at(index);
+
+        if registry_entry != null  and 
+           text_present(registry_entry.category) {
+            let mut seen: bool = false;
+            let mut previous: usize = 0;
+
+            while previous < index {
+                let candidate =
+                    diagnostic_registry_at(previous);
+
+                if candidate != null  and 
+                   ascii_equal_case_insensitive(
+                       candidate.category,
+                       registry_entry.category
+                   ) {
+                    set seen = true;
+                    break;
+                }
+
+                set previous += 1;
+            }
+
+            if not seen {
+                set output += registry_entry.category;
+                set output += "\n";
+            }
+        }
+
+        set index += 1;
+    }
+
+    return output;
+}
+
+export proc diagnostic_explain_summary() -> string {
+    let total =
+        diagnostic_registry_count();
+
+    let errors =
+        diagnostic_registry_count_severity(
+            DiagnosticSeverity.Error
+        );
+
+    let fatals =
+        diagnostic_registry_count_severity(
+            DiagnosticSeverity.Fatal
+        );
+
+    let warnings =
+        diagnostic_registry_count_severity(
+            DiagnosticSeverity.Warning
+        );
+
+    let notes =
+        diagnostic_registry_count_severity(
+            DiagnosticSeverity.Note
+        );
+
+    let helps =
+        diagnostic_registry_count_severity(
+            DiagnosticSeverity.Help
+        );
+
+    let mut deprecated: usize = 0;
+    let mut index: usize = 0;
+
+    while index < total {
+        let mut registry_entry =
+            diagnostic_registry_at(index);
+
+        if registry_entry != null  and 
+           registry_entry.deprecated {
+            set deprecated += 1;
+        }
+
+        set index += 1;
+    }
+
+    let mut output =
+        "Vitte diagnostic registry\n\n";
+
+    set output += "Total:      ";
+    set output += explain_u64_to_string(total as u64);
+    set output += "\n";
+
+    set output += "Errors:     ";
+    set output += explain_u64_to_string(errors as u64);
+    set output += "\n";
+
+    set output += "Fatal:      ";
+    set output += explain_u64_to_string(fatals as u64);
+    set output += "\n";
+
+    set output += "Warnings:   ";
+    set output += explain_u64_to_string(warnings as u64);
+    set output += "\n";
+
+    set output += "Notes:      ";
+    set output += explain_u64_to_string(notes as u64);
+    set output += "\n";
+
+    set output += "Help:       ";
+    set output += explain_u64_to_string(helps as u64);
+    set output += "\n";
+
+    set output += "Deprecated: ";
+    set output += explain_u64_to_string(deprecated as u64);
+    set output += "\n";
+
+    set output += "Registry fingerprint: ";
+    set output +=
+        diagnostic_registry_fingerprint().hex(16);
+    set output += "\n";
+
+    return output;
+}
+
+proc edit_distance(
+    left: string,
+    right: string
+) -> usize {
+    let left_bytes: [u8] = left.bytes();
+    let right_bytes: [u8] = right.bytes();
+    let left_length = left_bytes.len();
+    let right_length = right_bytes.len();
+
+    if left_length >= EXPLAIN_CODE_CAPACITY  or 
+       right_length >= EXPLAIN_CODE_CAPACITY {
+        return 18446744073709551615 as usize;
+    }
+
+    let mut previous: [usize] = [];
+    let mut current: [usize] = [];
+
+    let mut column: usize = 0;
+
+    while column <= right_length {
+        previous.append(column);
+        current.append(0);
+        set column += 1;
+    }
+
+    let mut row: usize = 1;
+
+    while row <= left_length {
+        set current[0] = row;
+        set column = 1;
+
+        while column <= right_length {
+            let deletion =
+                previous[column] + 1;
+
+            let insertion =
+                current[column - 1] + 1;
+
+            let substitution =
+                previous[column - 1] +
+                if ascii_lower(left_bytes[row - 1]) ==
+                   ascii_lower(right_bytes[column - 1]) {
+                    0 as usize
+                } else {
+                    1 as usize
+                };
+
+            let mut minimum = deletion;
+
+            if insertion < minimum {
+                set minimum = insertion;
+            }
+
+            if substitution < minimum {
+                set minimum = substitution;
+            }
+
+            set current[column] = minimum;
+            set column += 1;
+        }
+
+        set column = 0;
+
+        while column <= right_length {
+            set previous[column] =
+                current[column];
+
+            set column += 1;
+        }
+
+        set row += 1;
+    }
+
+    let final_index: i64 = right_length as i64;
+    return previous[final_index];
+}
+
+proc better_suggestion(
+    candidate: *const DiagnosticRegistryEntry,
+    candidate_distance: usize,
+    candidate_index: usize,
+    best: *const DiagnosticRegistryEntry,
+    best_distance: usize,
+    best_index: usize
+) -> bool {
+    if candidate == null {
+        return false;
+    }
+
+    if best == null {
+        return true;
+    }
+
+    if candidate_distance != best_distance {
+        return candidate_distance <
+             best_distance;
+    }
+
+    if safe_text(candidate.public_code) !=
+       safe_text(best.public_code) {
+        return explain_string_compare(
+            candidate.public_code,
+            best.public_code
+        ) < 0;
+    }
+
+    return candidate_index < best_index;
+}
+
+proc diagnostic_explain_suggest_internal(
+    unknown_code: string
+) -> *const DiagnosticRegistryEntry {
+    let normalized =
+        normalize_code(unknown_code);
+
+    if normalized == "" {
+        return null;
+    }
+
+    let exact =
+        diagnostic_explain_find_internal(normalized);
+
+    if exact != null {
+        return exact;
+    }
+
+    let public_like =
+        is_public_code(normalized);
+
+    let mut best: *const DiagnosticRegistryEntry = null;
+    let mut best_distance: usize = 18446744073709551615 as usize;
+    let mut best_index: usize = 18446744073709551615 as usize;
+
+    let count =
+        diagnostic_registry_count();
+
+    let mut index: usize = 0;
+
+    while index < count {
+        let mut registry_entry =
+            diagnostic_registry_at(index);
+
+        if registry_entry != null {
+            let public_distance =
+                edit_distance(
+                    normalized,
+                    registry_entry.public_code
+                );
+
+            let internal_distance =
+                edit_distance(
+                    normalized,
+                    registry_entry.internal_code
+                );
+
+            let distance =
+                if public_like {
+                    public_distance
+                } else if public_distance <
+                          internal_distance {
+                    public_distance
+                } else {
+                    internal_distance
+                };
+
+            if better_suggestion(
+                    registry_entry,
+                    distance,
+                    index,
+                    best,
+                    best_distance,
+                    best_index
+                ) {
+                set best = registry_entry;
+                set best_distance = distance;
+                set best_index = index;
+            }
+        }
+
+        set index += 1;
+    }
+
+    if best == null  or 
+       best_distance == 18446744073709551615 as usize {
+        return null;
+    }
+
+    if public_like {
+        if best_distance <= 2 {
+            return best;
+        }
+
+        return null;
+    }
+
+    let length = normalized.bytes().len();
+    let mut threshold: usize;
+
+    if length <= 5 {
+        set threshold = 2;
+    } else if length <= 12 {
+        set threshold = 3;
+    } else {
+        set threshold = 4;
+    }
+
+    if best_distance > threshold {
+        return null;
+    }
+
+    return best;
+}
+
+export proc diagnostic_explain_suggest(
+    unknown_code: string
+) -> *const DiagnosticRegistryEntry {
+    let registry_entry =
+        diagnostic_explain_suggest_internal(unknown_code);
+
+    if registry_entry == null {
+        return null;
+    }
+
+    return registry_entry;
+}
+
+export proc diagnostic_explain_or_suggest(
+    code: string,
+    format: DiagnosticExplainFormat,
+    include_related: bool
+) -> string {
+    let mut registry_entry =
+        diagnostic_explain_find_internal(code);
+
+    if registry_entry != null {
+        let explanation =
+            diagnostic_explain(
+                registry_entry.public_code,
+                format,
+                include_related
+            );
+
+        return safe_text(explanation);
+    }
+
+    set registry_entry =
+        diagnostic_explain_suggest_internal(code);
+
+    match format {
+        DiagnosticExplainFormat.Json => {
+            let mut output =
+                "{"
+                + "\"error\":\"unknown diagnostic code\","
+                + "\"query\":";
+
+            set output += json_escape(code);
+            set output += ",\"suggestion\":";
+
+            if registry_entry != null {
+                set output += "{";
+
+                set output += "\"code\":";
+                set output +=
+                    json_escape(registry_entry.public_code);
+
+                set output += ",\"internal\":";
+                set output +=
+                    json_escape(registry_entry.internal_code);
+
+                set output += ",\"title\":";
+                set output +=
+                    json_escape(registry_entry.title);
+
+                set output += "}";
+            } else {
+                set output += "null";
+            }
+
+            set output += "}";
+
+            return output;
+        },
+
+        DiagnosticExplainFormat.Markdown => {
+            let mut output =
+                "# Unknown diagnostic code\n\n"
+                + "No registered Vitte diagnostic matches `";
+
+            set output += code;
+            set output += "`.\n";
+
+            if registry_entry != null {
+                set output +=
+                    "\nDid you mean `";
+
+                set output += registry_entry.public_code;
+                set output += "` — ";
+                set output += registry_entry.title;
+                set output += "?\n";
+            }
+
+            return output;
+        },
+
+        DiagnosticExplainFormat.Text => {
+            let mut output =
+                "unknown diagnostic code: ";
+
+            set output += code;
+            set output += "\n";
+
+            if registry_entry != null {
+                set output += "did you mean ";
+                set output += registry_entry.public_code;
+                set output += ": ";
+                set output += registry_entry.title;
+                set output += "?\n";
+            }
+
+            return output;
+        }
+    }
+}
+
+export proc diagnostic_explain_validate_registry()
+    -> DiagnosticRegistryReport {
+    let validation: DiagnosticRegistryValidation;
+
+    let status =
+        diagnostic_registry_validate(
+            &validation
+        );
+
+    let mut output = "diagnostic registry: ";
+
+    set output +=
+        if validation.valid {
+            "valid"
+        } else {
+            "invalid"
+        };
+
+    set output += "\nentries: ";
+    set output += explain_u64_to_string(
+        validation.entry_count as u64
+    );
+
+    set output += "\ninvalid entries: ";
+    set output += explain_u64_to_string(
+        validation.invalid_entry_count as u64
+    );
+
+    set output +=
+        "\nduplicate internal identifiers: ";
+
+    set output += explain_u64_to_string(
+        validation.duplicate_internal_count as u64
+    );
+
+    set output +=
+        "\nduplicate public codes: ";
+
+    set output += explain_u64_to_string(
+        validation.duplicate_public_count as u64
+    );
+
+    set output += "\n";
+
+    if not validation.valid  and 
+       validation.first_invalid_index !=
+       DIAGNOSTIC_INDEX_NONE {
+        set output +=
+            "first invalid entry: ";
+
+        set output += explain_u64_to_string(
+            validation.first_invalid_index as u64
+        );
+
+        set output += "\n";
+    }
+
+    set output +=
+        "registry fingerprint: ";
+
+    set output +=
+        diagnostic_registry_fingerprint().hex(16);
+
+    set output += "\n";
+
+    return DiagnosticRegistryReport {
+        status: status,
+        text: output,
+    };
+}
+
+export proc diagnostic_explain_format_name(
+    format: DiagnosticExplainFormat
+) -> string {
+    match format {
+        DiagnosticExplainFormat.Text => {
+            return "text";
+        },
+
+        DiagnosticExplainFormat.Markdown => {
+            return "markdown";
+        },
+
+        DiagnosticExplainFormat.Json => {
+            return "json";
+        }
+    }
+}
+
+export proc diagnostic_explain_parse_format(
+    text: string
+) -> ?DiagnosticExplainFormat {
+    let normalized = trim(text);
+
+    if normalized == "" or
+       normalized.bytes().len() >= EXPLAIN_FORMAT_CAPACITY {
+        return null;
+    }
+
+    if ascii_equal_case_insensitive(
+            normalized,
+            "text"
+        )  or 
+       ascii_equal_case_insensitive(
+            normalized,
+            "human"
+        )  or 
+       ascii_equal_case_insensitive(
+            normalized,
+            "plain"
+        ) {
+        return DiagnosticExplainFormat.Text;
+    }
+
+    if ascii_equal_case_insensitive(
+            normalized,
+            "markdown"
+        )  or 
+       ascii_equal_case_insensitive(
+            normalized,
+            "md"
+        ) {
+        return DiagnosticExplainFormat.Markdown;
+    }
+
+    if ascii_equal_case_insensitive(
+            normalized,
+            "json"
+        ) {
+        return DiagnosticExplainFormat.Json;
+    }
+
+    return null;
+}
+
+export proc diagnostic_explain_registry_fingerprint()
+    -> u64 {
+    return diagnostic_registry_fingerprint();
+}
+
+export proc diagnostic_explain_text(
+    code: string
+) -> string {
+    return diagnostic_explain(
+        code,
+        DiagnosticExplainFormat.Text,
+        true
+    );
+}
+
+export proc diagnostic_explain_markdown(
+    code: string
+) -> string {
+    return diagnostic_explain(
+        code,
+        DiagnosticExplainFormat.Markdown,
+        true
+    );
+}
+
+export proc diagnostic_explain_json(
+    code: string
+) -> string {
+    return diagnostic_explain(
+        code,
+        DiagnosticExplainFormat.Json,
+        true
+    );
+}
+
+export proc diagnostic_explain_text_only(
+    code: string
+) -> string {
+    return diagnostic_explain(
+        code,
+        DiagnosticExplainFormat.Text,
+        false
+    );
+}
+
+export proc diagnostic_explain_markdown_only(
+    code: string
+) -> string {
+    return diagnostic_explain(
+        code,
+        DiagnosticExplainFormat.Markdown,
+        false
+    );
+}
+
+export proc diagnostic_explain_json_only(
+    code: string
+) -> string {
+    return diagnostic_explain(
+        code,
+        DiagnosticExplainFormat.Json,
+        false
+    );
+}
+
+export proc diagnostic_cli_code_exists(
+    code: string
+) -> bool {
+    return diagnostic_explain_find_internal(code) != null;
+}
+
+export proc diagnostic_explain_cli(
+    code: string,
+    json: bool
+) -> string {
+    let format =
+        if json {
+            DiagnosticExplainFormat.Json
+        } else {
+            DiagnosticExplainFormat.Text
+        };
+
+    return diagnostic_explain(
+        code,
+        format,
+        false
+    );
+}

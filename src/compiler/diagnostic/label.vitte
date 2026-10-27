@@ -1,0 +1,559 @@
+/// Native label operations for structured diagnostics.
+space compiler::diagnostic::label;
+
+use compiler::api::error::{Status};
+use compiler::ast::ast::{AstSpan};
+use compiler::diagnostic::diagnostic::{
+    Diagnostic,
+    DiagnosticLabel,
+    DiagnosticLabelStyle,
+    hash_byte,
+    hash_u64,
+    span_valid
+};
+use vitte::core::memory::{cstring_length};
+
+export const VITTE_DIAGNOSTIC_LABEL_DISTANCE_INVALID: usize =
+    18446744073709551615 as usize;
+
+const LABEL_FNV_OFFSET: u64 = 14695981039346656037;
+const LABEL_MAX_COUNT: usize = 16;
+
+proc label_span_is_valid(span: *const AstSpan) -> bool {
+    return span != null and span_valid(&*span);
+}
+
+proc label_same_source_spans(left: &AstSpan, right: &AstSpan) -> bool {
+    if not span_valid(left) or not span_valid(right) {
+        return false;
+    }
+    if left.source_name != "" and right.source_name != "" {
+        return left.source_name == right.source_name;
+    }
+    return left.source_id == right.source_id;
+}
+
+proc label_same_source(left: *const DiagnosticLabel, right: *const DiagnosticLabel) -> bool {
+    return left != null and right != null and
+        label_same_source_spans(&(*left).span, &(*right).span);
+}
+
+proc label_span_is_empty(span: &AstSpan) -> bool {
+    return span.start_offset == span.end_offset;
+}
+
+proc label_span_contains(outer: &AstSpan, inner: &AstSpan) -> bool {
+    if not label_same_source_spans(outer, inner) { return false; }
+    if label_span_is_empty(inner) {
+        return inner.start_offset >= outer.start_offset and
+            inner.start_offset <= outer.end_offset;
+    }
+    return outer.start_offset <= inner.start_offset and
+        outer.end_offset >= inner.end_offset;
+}
+
+proc label_text_compare(left: string, right: string) -> i32 {
+    let left_bytes = left.as_bytes();
+    let right_bytes = right.as_bytes();
+    let common = if left_bytes.len() < right_bytes.len() { left_bytes.len() } else { right_bytes.len() };
+    let mut index: usize = 0;
+    while index < common {
+        if left_bytes[index] < right_bytes[index] { return -1; }
+        if left_bytes[index] > right_bytes[index] { return 1; }
+        set index += 1;
+    }
+    if left_bytes.len() < right_bytes.len() { return -1; }
+    if left_bytes.len() > right_bytes.len() { return 1; }
+    return 0;
+}
+
+proc label_style_rank(style: DiagnosticLabelStyle) -> usize {
+    if style == DiagnosticLabelStyle.Primary { return 0; }
+    if style == DiagnosticLabelStyle.Secondary { return 1; }
+    return 2;
+}
+
+proc label_hash_text(hash: u64, text: string) -> u64 {
+    let bytes = text.as_bytes();
+    let mut result = hash;
+    let mut index: usize = 0;
+    while index < bytes.len() {
+        set result = hash_byte(result, bytes[index]);
+        set index += 1;
+    }
+    return hash_byte(result, 0);
+}
+
+proc label_equal_semantics(left: &DiagnosticLabel, right: &DiagnosticLabel) -> bool {
+    return label_same_source_spans(&left.span, &right.span) and
+        left.span.start_offset == right.span.start_offset and
+        left.span.end_offset == right.span.end_offset and
+        left.message == right.message;
+}
+
+export proc vitte_diagnostic_label_style_is_valid(style: DiagnosticLabelStyle) -> bool {
+    return style == DiagnosticLabelStyle.Primary or style == DiagnosticLabelStyle.Secondary;
+}
+
+export proc vitte_diagnostic_label_style_name(style: DiagnosticLabelStyle) -> string {
+    if style == DiagnosticLabelStyle.Primary { return "primary"; }
+    if style == DiagnosticLabelStyle.Secondary { return "secondary"; }
+    return "unknown";
+}
+
+export proc vitte_diagnostic_label_init(label: *mut DiagnosticLabel) {
+    if label == null { return; }
+    set *label = DiagnosticLabel {
+        style: DiagnosticLabelStyle.Secondary,
+        span: AstSpan {},
+        message: ""
+    };
+}
+
+export proc vitte_diagnostic_label_set(
+    label: *mut DiagnosticLabel,
+    style: DiagnosticLabelStyle,
+    span: *const AstSpan,
+    message: *const u8
+) -> Status {
+    if label == null or not vitte_diagnostic_label_style_is_valid(style) or
+       not label_span_is_valid(span) {
+        return Status.ErrorInvalidArgument;
+    }
+    let text = if message == null { "" } else {
+        string.from_bytes(message as *mut u8, cstring_length(message))
+    };
+    set *label = DiagnosticLabel { style: style, span: *span, message: text };
+    return Status.Ok;
+}
+
+export proc vitte_diagnostic_label_is_valid(label: *const DiagnosticLabel) -> bool {
+    return label != null and
+        vitte_diagnostic_label_style_is_valid((*label).style) and
+        span_valid(&(*label).span);
+}
+
+export proc vitte_diagnostic_label_equal(
+    left: *const DiagnosticLabel,
+    right: *const DiagnosticLabel
+) -> bool {
+    if left == null or right == null { return left == right; }
+    return (*left).style == (*right).style and
+        vitte_diagnostic_label_same_span(left, right) and
+        (*left).message == (*right).message;
+}
+
+export proc vitte_diagnostic_label_same_span(
+    left: *const DiagnosticLabel,
+    right: *const DiagnosticLabel
+) -> bool {
+    return label_same_source(left, right) and
+        (*left).span.start_offset == (*right).span.start_offset and
+        (*left).span.end_offset == (*right).span.end_offset;
+}
+
+export proc vitte_diagnostic_label_contains(
+    outer: *const DiagnosticLabel,
+    inner: *const DiagnosticLabel
+) -> bool {
+    if outer == null or inner == null { return false; }
+    return label_span_contains(&(*outer).span, &(*inner).span);
+}
+
+export proc vitte_diagnostic_label_overlaps(
+    left: *const DiagnosticLabel,
+    right: *const DiagnosticLabel
+) -> bool {
+    if not label_same_source(left, right) { return false; }
+    let left_empty = label_span_is_empty(&(*left).span);
+    let right_empty = label_span_is_empty(&(*right).span);
+    if left_empty and right_empty {
+        return (*left).span.start_offset == (*right).span.start_offset;
+    }
+    if left_empty {
+        return (*left).span.start_offset >= (*right).span.start_offset and
+            (*left).span.start_offset <= (*right).span.end_offset;
+    }
+    if right_empty {
+        return (*right).span.start_offset >= (*left).span.start_offset and
+            (*right).span.start_offset <= (*left).span.end_offset;
+    }
+    return (*left).span.start_offset < (*right).span.end_offset and
+        (*right).span.start_offset < (*left).span.end_offset;
+}
+
+export proc vitte_diagnostic_label_distance(
+    left: *const DiagnosticLabel,
+    right: *const DiagnosticLabel
+) -> usize {
+    if not label_same_source(left, right) { return VITTE_DIAGNOSTIC_LABEL_DISTANCE_INVALID; }
+    if vitte_diagnostic_label_overlaps(left, right) { return 0; }
+    if (*left).span.end_offset <= (*right).span.start_offset {
+        return (*right).span.start_offset - (*left).span.end_offset;
+    }
+    if (*right).span.end_offset <= (*left).span.start_offset {
+        return (*left).span.start_offset - (*right).span.end_offset;
+    }
+    return 0;
+}
+
+export proc vitte_diagnostic_label_compare(
+    left: *const DiagnosticLabel,
+    right: *const DiagnosticLabel
+) -> i32 {
+    if left == null or right == null {
+        if left == right { return 0; }
+        return if left == null { -1 } else { 1 };
+    }
+    let left_rank = label_style_rank((*left).style);
+    let right_rank = label_style_rank((*right).style);
+    if left_rank < right_rank { return -1; }
+    if left_rank > right_rank { return 1; }
+    let left_named = (*left).span.source_name != "";
+    let right_named = (*right).span.source_name != "";
+    if left_named and right_named {
+        let source_order = label_text_compare((*left).span.source_name, (*right).span.source_name);
+        if source_order != 0 { return source_order; }
+    } elif left_named != right_named {
+        return if left_named { -1 } else { 1 };
+    }
+    if (*left).span.source_id < (*right).span.source_id { return -1; }
+    if (*left).span.source_id > (*right).span.source_id { return 1; }
+    if (*left).span.start_offset < (*right).span.start_offset { return -1; }
+    if (*left).span.start_offset > (*right).span.start_offset { return 1; }
+    if (*left).span.end_offset < (*right).span.end_offset { return -1; }
+    if (*left).span.end_offset > (*right).span.end_offset { return 1; }
+    return label_text_compare((*left).message, (*right).message);
+}
+
+export proc vitte_diagnostic_label_add(
+    diagnostic_value: *mut Diagnostic,
+    style: DiagnosticLabelStyle,
+    span: *const AstSpan,
+    message: *const u8
+) -> Status {
+    if diagnostic_value == null or not vitte_diagnostic_label_style_is_valid(style) or
+       not label_span_is_valid(span) {
+        return Status.ErrorInvalidArgument;
+    }
+    let mut candidate: DiagnosticLabel = DiagnosticLabel {
+        style: style,
+        span: *span,
+        message: if message == null { "" } else {
+            string.from_bytes(message as *mut u8, cstring_length(message))
+        }
+    };
+    let mut index: usize = 0;
+    while index < (*diagnostic_value).labels.len() {
+        let existing = &mut (*diagnostic_value).labels[index];
+        if vitte_diagnostic_label_equal(
+            existing as *const DiagnosticLabel,
+            &candidate as *const DiagnosticLabel
+        ) { return Status.Ok; }
+        if label_equal_semantics(existing, &candidate) {
+            if style == DiagnosticLabelStyle.Primary {
+                set existing.style = DiagnosticLabelStyle.Primary;
+            }
+            return Status.Ok;
+        }
+        set index += 1;
+    }
+    if (*diagnostic_value).labels.len() >= LABEL_MAX_COUNT { return Status.ErrorUnsupported; }
+    if not (*diagnostic_value).labels.push(candidate) { return Status.ErrorOutOfMemory; }
+    return Status.Ok;
+}
+
+export proc vitte_diagnostic_label_add_primary(
+    diagnostic_value: *mut Diagnostic,
+    span: *const AstSpan,
+    message: *const u8
+) -> Status {
+    return vitte_diagnostic_label_add(diagnostic_value, DiagnosticLabelStyle.Primary, span, message);
+}
+
+export proc vitte_diagnostic_label_add_secondary(
+    diagnostic_value: *mut Diagnostic,
+    span: *const AstSpan,
+    message: *const u8
+) -> Status {
+    return vitte_diagnostic_label_add(diagnostic_value, DiagnosticLabelStyle.Secondary, span, message);
+}
+
+export proc vitte_diagnostic_label_at(
+    diagnostic_value: *const Diagnostic,
+    index: usize
+) -> *const DiagnosticLabel {
+    if diagnostic_value == null or index >= (*diagnostic_value).labels.len() { return null; }
+    return &(*diagnostic_value).labels[index] as *const DiagnosticLabel;
+}
+
+export proc vitte_diagnostic_label_at_mut(
+    diagnostic_value: *mut Diagnostic,
+    index: usize
+) -> *mut DiagnosticLabel {
+    if diagnostic_value == null or index >= (*diagnostic_value).labels.len() { return null; }
+    return &(*diagnostic_value).labels[index] as *mut DiagnosticLabel;
+}
+
+export proc vitte_diagnostic_label_count_style(
+    diagnostic_value: *const Diagnostic,
+    style: DiagnosticLabelStyle
+) -> usize {
+    if diagnostic_value == null or not vitte_diagnostic_label_style_is_valid(style) { return 0; }
+    let mut count: usize = 0;
+    let mut index: usize = 0;
+    while index < (*diagnostic_value).labels.len() {
+        if (*diagnostic_value).labels[index].style == style { set count += 1; }
+        set index += 1;
+    }
+    return count;
+}
+
+export proc vitte_diagnostic_label_primary_count(diagnostic_value: *const Diagnostic) -> usize {
+    return vitte_diagnostic_label_count_style(diagnostic_value, DiagnosticLabelStyle.Primary);
+}
+
+export proc vitte_diagnostic_label_secondary_count(diagnostic_value: *const Diagnostic) -> usize {
+    return vitte_diagnostic_label_count_style(diagnostic_value, DiagnosticLabelStyle.Secondary);
+}
+
+export proc vitte_diagnostic_label_primary(diagnostic_value: *const Diagnostic) -> *const DiagnosticLabel {
+    if diagnostic_value == null { return null; }
+    let mut index: usize = 0;
+    while index < (*diagnostic_value).labels.len() {
+        if (*diagnostic_value).labels[index].style == DiagnosticLabelStyle.Primary {
+            return &(*diagnostic_value).labels[index] as *const DiagnosticLabel;
+        }
+        set index += 1;
+    }
+    return null;
+}
+
+export proc vitte_diagnostic_label_remove(diagnostic_value: *mut Diagnostic, index: usize) -> Status {
+    if diagnostic_value == null or index >= (*diagnostic_value).labels.len() { return Status.ErrorInvalidArgument; }
+    let mut retained: [DiagnosticLabel] = [];
+    let mut cursor: usize = 0;
+    while cursor < (*diagnostic_value).labels.len() {
+        if cursor != index { if not retained.push((*diagnostic_value).labels[cursor]) { return Status.ErrorOutOfMemory; } }
+        set cursor += 1;
+    }
+    set (*diagnostic_value).labels = retained;
+    return Status.Ok;
+}
+
+export proc vitte_diagnostic_label_clear(diagnostic_value: *mut Diagnostic) {
+    if diagnostic_value != null { set (*diagnostic_value).labels = []; }
+}
+
+export proc vitte_diagnostic_label_sort(diagnostic_value: *mut Diagnostic) {
+    if diagnostic_value == null { return; }
+    let mut index: usize = 1;
+    while index < (*diagnostic_value).labels.len() {
+        let key = (*diagnostic_value).labels[index];
+        let mut destination = index;
+        while destination > 0 {
+            let previous = (*diagnostic_value).labels[destination - 1];
+            if vitte_diagnostic_label_compare(&previous, &key) <= 0 { break; }
+            set (*diagnostic_value).labels[destination] = previous;
+            set destination -= 1;
+        }
+        set (*diagnostic_value).labels[destination] = key;
+        set index += 1;
+    }
+}
+
+export proc vitte_diagnostic_label_normalize(diagnostic_value: *mut Diagnostic) -> Status {
+    if diagnostic_value == null { return Status.ErrorInvalidArgument; }
+    if (*diagnostic_value).labels.len() > LABEL_MAX_COUNT { return Status.ErrorInvalidState; }
+    let mut normalized: [DiagnosticLabel] = [];
+    let mut index: usize = 0;
+    while index < (*diagnostic_value).labels.len() {
+        let candidate = (*diagnostic_value).labels[index];
+        if not vitte_diagnostic_label_is_valid(&candidate) { set index += 1; continue; }
+        let mut duplicate: usize = normalized.len();
+        let mut cursor: usize = 0;
+        while cursor < normalized.len() {
+            if label_equal_semantics(&normalized[cursor], &candidate) { set duplicate = cursor; break; }
+            set cursor += 1;
+        }
+        if duplicate < normalized.len() {
+            if candidate.style == DiagnosticLabelStyle.Primary {
+                set normalized[duplicate].style = DiagnosticLabelStyle.Primary;
+            }
+        } else if normalized.len() < LABEL_MAX_COUNT {
+            if not normalized.push(candidate) { return Status.ErrorOutOfMemory; }
+        }
+        set index += 1;
+    }
+    set (*diagnostic_value).labels = normalized;
+    vitte_diagnostic_label_sort(diagnostic_value);
+    return Status.Ok;
+}
+
+export proc vitte_diagnostic_label_promote(diagnostic_value: *mut Diagnostic, index: usize) -> Status {
+    if diagnostic_value == null or index >= (*diagnostic_value).labels.len() { return Status.ErrorInvalidArgument; }
+    set (*diagnostic_value).labels[index].style = DiagnosticLabelStyle.Primary;
+    return Status.Ok;
+}
+
+export proc vitte_diagnostic_label_demote(diagnostic_value: *mut Diagnostic, index: usize) -> Status {
+    if diagnostic_value == null or index >= (*diagnostic_value).labels.len() { return Status.ErrorInvalidArgument; }
+    set (*diagnostic_value).labels[index].style = DiagnosticLabelStyle.Secondary;
+    return Status.Ok;
+}
+
+export proc vitte_diagnostic_label_ensure_primary(diagnostic_value: *mut Diagnostic) -> Status {
+    if diagnostic_value == null { return Status.ErrorInvalidArgument; }
+    if (*diagnostic_value).labels.len() == 0 { return Status.Ok; }
+    if vitte_diagnostic_label_primary(diagnostic_value as *const Diagnostic) != null { return Status.Ok; }
+    vitte_diagnostic_label_sort(diagnostic_value);
+    set (*diagnostic_value).labels[0].style = DiagnosticLabelStyle.Primary;
+    return Status.Ok;
+}
+
+export proc vitte_diagnostic_label_enforce_single_primary(diagnostic_value: *mut Diagnostic) -> Status {
+    if diagnostic_value == null { return Status.ErrorInvalidArgument; }
+    vitte_diagnostic_label_sort(diagnostic_value);
+    let mut found_primary = false;
+    let mut index: usize = 0;
+    while index < (*diagnostic_value).labels.len() {
+        if (*diagnostic_value).labels[index].style == DiagnosticLabelStyle.Primary {
+            if found_primary { set (*diagnostic_value).labels[index].style = DiagnosticLabelStyle.Secondary; }
+            else { set found_primary = true; }
+        }
+        set index += 1;
+    }
+    if not found_primary and (*diagnostic_value).labels.len() != 0 {
+        set (*diagnostic_value).labels[0].style = DiagnosticLabelStyle.Primary;
+    }
+    vitte_diagnostic_label_sort(diagnostic_value);
+    return Status.Ok;
+}
+
+export proc vitte_diagnostic_label_find_covering(
+    diagnostic_value: *const Diagnostic,
+    span: *const AstSpan
+) -> *const DiagnosticLabel {
+    if diagnostic_value == null or not label_span_is_valid(span) { return null; }
+    let mut best: *const DiagnosticLabel = null;
+    let mut index: usize = 0;
+    while index < (*diagnostic_value).labels.len() {
+        let candidate = &(*diagnostic_value).labels[index] as *const DiagnosticLabel;
+        if label_span_contains(&(*candidate).span, &*span) {
+            if best == null or (*candidate).span.end_offset - (*candidate).span.start_offset <
+                (*best).span.end_offset - (*best).span.start_offset { set best = candidate; }
+        }
+        set index += 1;
+    }
+    return best;
+}
+
+export proc vitte_diagnostic_label_find_nearest(
+    diagnostic_value: *const Diagnostic,
+    span: *const AstSpan
+) -> *const DiagnosticLabel {
+    if diagnostic_value == null or not label_span_is_valid(span) { return null; }
+    let query = DiagnosticLabel { style: DiagnosticLabelStyle.Secondary, span: *span, message: "" };
+    let mut best: *const DiagnosticLabel = null;
+    let mut best_distance: usize = VITTE_DIAGNOSTIC_LABEL_DISTANCE_INVALID;
+    let mut index: usize = 0;
+    while index < (*diagnostic_value).labels.len() {
+        let candidate = &(*diagnostic_value).labels[index] as *const DiagnosticLabel;
+        let distance = vitte_diagnostic_label_distance(candidate, &query);
+        if distance < best_distance or
+           (distance == best_distance and best != null and
+            (*candidate).style == DiagnosticLabelStyle.Primary and
+            (*best).style != DiagnosticLabelStyle.Primary) {
+            set best = candidate;
+            set best_distance = distance;
+        }
+        set index += 1;
+    }
+    return best;
+}
+
+export proc vitte_diagnostic_label_source_count(diagnostic_value: *const Diagnostic) -> usize {
+    if diagnostic_value == null { return 0; }
+    let mut count: usize = 0;
+    let mut index: usize = 0;
+    while index < (*diagnostic_value).labels.len() {
+        let mut seen = false;
+        let mut previous: usize = 0;
+        while previous < index {
+            if label_same_source(
+                &(*diagnostic_value).labels[index] as *const DiagnosticLabel,
+                &(*diagnostic_value).labels[previous] as *const DiagnosticLabel
+            ) { set seen = true; break; }
+            set previous += 1;
+        }
+        if not seen { set count += 1; }
+        set index += 1;
+    }
+    return count;
+}
+
+export proc vitte_diagnostic_label_is_multisource(diagnostic_value: *const Diagnostic) -> bool {
+    return vitte_diagnostic_label_source_count(diagnostic_value) > 1;
+}
+
+export proc vitte_diagnostic_label_fingerprint(label: *const DiagnosticLabel) -> u64 {
+    if not vitte_diagnostic_label_is_valid(label) { return 0; }
+    let mut hash = hash_u64(LABEL_FNV_OFFSET, (*label).style as u64);
+    set hash = hash_u64(hash, (*label).span.source_id);
+    set hash = label_hash_text(hash, (*label).span.source_name);
+    set hash = hash_u64(hash, (*label).span.start_offset as u64);
+    set hash = hash_u64(hash, (*label).span.end_offset as u64);
+    return label_hash_text(hash, (*label).message);
+}
+
+export proc vitte_diagnostic_labels_fingerprint(diagnostic_value: *const Diagnostic) -> u64 {
+    if diagnostic_value == null { return 0; }
+    let mut hash = hash_u64(LABEL_FNV_OFFSET, (*diagnostic_value).labels.len() as u64);
+    let mut index: usize = 0;
+    while index < (*diagnostic_value).labels.len() {
+        let fingerprint = vitte_diagnostic_label_fingerprint(
+            &(*diagnostic_value).labels[index] as *const DiagnosticLabel
+        );
+        set hash = hash_u64(hash, fingerprint);
+        set index += 1;
+    }
+    return hash;
+}
+
+/// Stream output remains a host-I/O boundary; all label storage and operations
+/// above are implemented in Vitte.
+export extern proc vitte_diagnostic_label_dump(stream: *mut u8, label: *const DiagnosticLabel) -> Status;
+export extern proc vitte_diagnostic_labels_dump(stream: *mut u8, diagnostic_value: *const Diagnostic) -> Status;
+
+export proc vitte_diagnostic_label_count(diagnostic_value: *const Diagnostic) -> usize {
+    if diagnostic_value == null { return 0; }
+    return (*diagnostic_value).labels.len();
+}
+
+export proc vitte_diagnostic_has_labels(diagnostic_value: *const Diagnostic) -> bool {
+    return vitte_diagnostic_label_count(diagnostic_value) != 0;
+}
+
+export proc vitte_diagnostic_has_primary_label(diagnostic_value: *const Diagnostic) -> bool {
+    return vitte_diagnostic_label_primary(diagnostic_value) != null;
+}
+
+export proc vitte_diagnostic_has_secondary_label(diagnostic_value: *const Diagnostic) -> bool {
+    return vitte_diagnostic_label_secondary_count(diagnostic_value) != 0;
+}
+
+export proc vitte_diagnostic_labels_single_source(diagnostic_value: *const Diagnostic) -> bool {
+    return vitte_diagnostic_label_source_count(diagnostic_value) <= 1;
+}
+
+export proc vitte_diagnostic_has_single_label(diagnostic_value: *const Diagnostic) -> bool {
+    return vitte_diagnostic_label_count(diagnostic_value) == 1;
+}
+
+export proc vitte_diagnostic_has_single_primary_label(diagnostic_value: *const Diagnostic) -> bool {
+    return vitte_diagnostic_label_primary_count(diagnostic_value) == 1;
+}
+
+export proc vitte_diagnostic_has_multiple_primary_labels(diagnostic_value: *const Diagnostic) -> bool {
+    return vitte_diagnostic_label_primary_count(diagnostic_value) > 1;
+}

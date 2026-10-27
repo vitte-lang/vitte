@@ -1,0 +1,2283 @@
+/*
+ * Vitte Compiler
+ * src/arena/pool.vit
+ *
+ * Fixed-size object pool allocator.
+ *
+ * Native Vitte implementation.
+ *
+ * Properties:
+ *   - fixed-size slots
+ *   - paged allocation
+ *   - geometric growth
+ *   - allocation bitmap
+ *   - intrusive-style free chain using slot identifiers
+ *   - double-free detection
+ *   - foreign-object rejection
+ *   - overflow-safe arithmetic
+ *   - configurable limits
+ *   - deterministic reset
+ *   - optional trimming
+ *   - generation tracking
+ *   - cumulative statistics
+ *   - deep validation
+ */
+
+space compiler::arena::pool;
+
+const POOL_MAGIC: u64 = 0x5649545445504F4F;
+const POOL_DEAD_MAGIC: u64 = 0x44454144504F4F4C;
+
+const POOL_PAGE_MAGIC: u64 = 0x5649545445504147;
+const POOL_PAGE_DEAD_MAGIC: u64 = 0x4445414450414745;
+
+const POOL_DEFAULT_OBJECTS_PER_PAGE: usize = 64;
+const POOL_MIN_OBJECTS_PER_PAGE: usize = 8;
+const POOL_MAX_OBJECTS_PER_PAGE: usize = 65536;
+
+const POOL_GROWTH_FACTOR: usize = 2;
+
+const POOL_MAX_SIZE: usize = usize.MAX;
+const POOL_MAX_GENERATION: u64 = 18446744073709551615;
+
+const POOL_ALLOC_PATTERN: u8 = 0xCD;
+const POOL_FREE_PATTERN: u8 = 0xDD;
+const POOL_RESET_PATTERN: u8 = 0xDE;
+const POOL_DESTROY_PATTERN: u8 = 0xFD;
+
+const POOL_POISON_ALLOC: bool = false;
+const POOL_POISON_FREE: bool = false;
+const POOL_POISON_RESET: bool = false;
+const POOL_POISON_DESTROY: bool = false;
+
+/* ========================================================================= */
+/* Errors                                                                    */
+/* ========================================================================= */
+
+pub pick PoolError {
+    None,
+    InvalidPool,
+    InvalidArgument,
+    InvalidAlignment,
+    Overflow,
+    OutOfMemory,
+    LimitExceeded,
+    ForeignPointer,
+    MisalignedPointer,
+    DoubleFree,
+    Corruption,
+}
+
+pub proc pool_error_name(error: PoolError) -> str {
+    match error {
+        case PoolError.None => return "none";
+        case PoolError.InvalidPool => return "invalid-pool";
+        case PoolError.InvalidArgument => return "invalid-argument";
+        case PoolError.InvalidAlignment => return "invalid-alignment";
+        case PoolError.Overflow => return "overflow";
+        case PoolError.OutOfMemory => return "out-of-memory";
+        case PoolError.LimitExceeded => return "limit-exceeded";
+        case PoolError.ForeignPointer => return "foreign-pointer";
+        case PoolError.MisalignedPointer => return "misaligned-pointer";
+        case PoolError.DoubleFree => return "double-free";
+        case PoolError.Corruption => return "corruption";
+    }
+}
+
+/* ========================================================================= */
+/* Configuration                                                             */
+/* ========================================================================= */
+
+pub form PoolConfig {
+    objects_per_page: usize,
+    max_objects: usize,
+    max_reserved_bytes: usize,
+
+    geometric_growth: bool,
+    retain_empty_pages: bool,
+    zero_on_allocate: bool,
+}
+
+pub proc pool_config_default() -> PoolConfig {
+    return PoolConfig {
+        objects_per_page: POOL_DEFAULT_OBJECTS_PER_PAGE,
+        max_objects: POOL_MAX_SIZE,
+        max_reserved_bytes: POOL_MAX_SIZE,
+
+        geometric_growth: true,
+        retain_empty_pages: true,
+        zero_on_allocate: false,
+    };
+}
+
+pub proc pool_config_validate(config: &PoolConfig) -> bool {
+    if config.objects_per_page == 0 {
+        return false;
+    }
+
+    if config.objects_per_page > POOL_MAX_OBJECTS_PER_PAGE {
+        return false;
+    }
+
+    return true;
+}
+
+proc pool_config_normalize(config: PoolConfig) -> PoolConfig {
+    let mut result = config;
+
+    if result.objects_per_page == 0 {
+        set result.objects_per_page = POOL_DEFAULT_OBJECTS_PER_PAGE;
+    }
+
+    if result.max_objects == 0 {
+        set result.max_objects = POOL_MAX_SIZE;
+    }
+
+    if result.max_reserved_bytes == 0 {
+        set result.max_reserved_bytes = POOL_MAX_SIZE;
+    }
+
+    return result;
+}
+
+/* ========================================================================= */
+/* Slot identifiers                                                          */
+/* ========================================================================= */
+
+/*
+ * A slot is identified by its page and index.
+ *
+ * Unlike a raw pointer, this identifier does not expose
+ * interior addresses.
+ *
+ * Generation allows stale handles to be rejected after reset.
+ */
+
+pub form PoolHandle {
+    page_id: u64,
+    slot_index: usize,
+    generation: u64,
+}
+
+form PoolFreeNode {
+    page_id: u64,
+    slot_index: usize,
+}
+
+proc pool_free_node_equal(
+    left: PoolFreeNode,
+    right: PoolFreeNode
+) -> bool {
+    return left.page_id == right.page_id  and 
+           left.slot_index == right.slot_index;
+}
+
+/* ========================================================================= */
+/* Pages                                                                     */
+/* ========================================================================= */
+
+form PoolPage {
+    magic: u64,
+
+    id: u64,
+    generation: u64,
+
+    slot_count: usize,
+    live_count: usize,
+
+    bitmap_size: usize,
+    slots_offset: usize,
+    allocation_size: usize,
+
+    bitmap: [u8],
+    storage: [u8],
+}
+
+proc pool_page_empty() -> PoolPage {
+    return PoolPage {
+        magic: POOL_PAGE_DEAD_MAGIC,
+
+        id: 0,
+        generation: 0,
+
+        slot_count: 0,
+        live_count: 0,
+
+        bitmap_size: 0,
+        slots_offset: 0,
+        allocation_size: 0,
+
+        bitmap: [],
+        storage: [],
+    };
+}
+
+/* ========================================================================= */
+/* Pool                                                                      */
+/* ========================================================================= */
+
+pub form Pool {
+    magic: u64,
+
+    object_size: usize,
+    slot_size: usize,
+    alignment: usize,
+
+    config: PoolConfig,
+
+    pages: [PoolPage],
+    free_list: [PoolFreeNode],
+
+    next_page_id: u64,
+
+    page_count: usize,
+    peak_page_count: usize,
+
+    capacity: usize,
+
+    live_count: usize,
+    peak_live_count: usize,
+
+    free_count: usize,
+
+    reserved_bytes: usize,
+    peak_reserved_bytes: usize,
+
+    allocation_count: usize,
+    free_operation_count: usize,
+
+    generation: u64,
+
+    last_error: PoolError,
+}
+
+/* ========================================================================= */
+/* Statistics                                                                */
+/* ========================================================================= */
+
+pub form PoolStats {
+    object_size: usize,
+    slot_size: usize,
+    alignment: usize,
+
+    page_count: usize,
+    peak_page_count: usize,
+
+    capacity: usize,
+
+    live_count: usize,
+    peak_live_count: usize,
+
+    free_count: usize,
+
+    reserved_bytes: usize,
+    peak_reserved_bytes: usize,
+
+    allocation_count: usize,
+    free_operation_count: usize,
+
+    generation: u64,
+
+    max_objects: usize,
+    max_reserved_bytes: usize,
+}
+
+proc pool_stats_empty() -> PoolStats {
+    return PoolStats {
+        object_size: 0,
+        slot_size: 0,
+        alignment: 0,
+
+        page_count: 0,
+        peak_page_count: 0,
+
+        capacity: 0,
+
+        live_count: 0,
+        peak_live_count: 0,
+
+        free_count: 0,
+
+        reserved_bytes: 0,
+        peak_reserved_bytes: 0,
+
+        allocation_count: 0,
+        free_operation_count: 0,
+
+        generation: 0,
+
+        max_objects: 0,
+        max_reserved_bytes: 0,
+    };
+}
+
+/* ========================================================================= */
+/* Arithmetic                                                                */
+/* ========================================================================= */
+
+proc pool_add_checked(
+    left: usize,
+    right: usize
+) -> ?usize {
+    if left > POOL_MAX_SIZE - right {
+        return null;
+    }
+
+    return left + right;
+}
+
+proc pool_mul_checked(
+    left: usize,
+    right: usize
+) -> ?usize {
+    if left != 0  and  right > POOL_MAX_SIZE / left {
+        return null;
+    }
+
+    return left * right;
+}
+
+proc pool_is_power_of_two(value: usize) -> bool {
+    return value != 0  and 
+           (value & (value - 1)) == 0;
+}
+
+proc pool_align_up(
+    value: usize,
+    alignment: usize
+) -> ?usize {
+    if not pool_is_power_of_two(alignment) {
+        return null;
+    }
+
+    let mask = alignment - 1;
+    let temporary = pool_add_checked(value, mask);
+
+    if temporary == null {
+        return null;
+    }
+
+    return temporary? & ~mask;
+}
+
+proc pool_saturating_increment(value: usize) -> usize {
+    if value == POOL_MAX_SIZE {
+        return POOL_MAX_SIZE;
+    }
+
+    return value + 1;
+}
+
+proc pool_next_generation(generation: u64) -> u64 {
+    if generation == POOL_MAX_GENERATION {
+        return 1;
+    }
+
+    return generation + 1;
+}
+
+proc pool_next_page_id(id: u64) -> u64 {
+    if id == POOL_MAX_GENERATION {
+        return 1;
+    }
+
+    return id + 1;
+}
+
+/* ========================================================================= */
+/* Validity                                                                  */
+/* ========================================================================= */
+
+proc pool_magic_valid(pool: &Pool) -> bool {
+    return pool.magic == POOL_MAGIC;
+}
+
+proc pool_page_magic_valid(page: &PoolPage) -> bool {
+    return page.magic == POOL_PAGE_MAGIC;
+}
+
+pub proc pool_is_valid(pool: &Pool) -> bool {
+    return pool_magic_valid(pool);
+}
+
+/* ========================================================================= */
+/* Error handling                                                            */
+/* ========================================================================= */
+
+proc pool_set_error(
+    pool: &mut Pool,
+    error: PoolError
+) {
+    if not pool_magic_valid(pool) {
+        return;
+    }
+
+    set pool.last_error = error;
+}
+
+pub proc pool_last_error(pool: &Pool) -> PoolError {
+    if not pool_magic_valid(pool) {
+        return PoolError.InvalidPool;
+    }
+
+    return pool.last_error;
+}
+
+pub proc pool_clear_error(pool: &mut Pool) {
+    if not pool_magic_valid(pool) {
+        return;
+    }
+
+    set pool.last_error = PoolError.None;
+}
+
+/* ========================================================================= */
+/* Slot layout                                                               */
+/* ========================================================================= */
+
+proc pool_compute_slot_size(
+    object_size: usize,
+    alignment: usize
+) -> ?usize {
+    if object_size == 0 {
+        return null;
+    }
+
+    if not pool_is_power_of_two(alignment) {
+        return null;
+    }
+
+    /*
+     * Native representation stores free-list links separately.
+     *
+     * Nevertheless, retain pointer-sized minimum slots to preserve
+     * the original C allocator's size constraints.
+     */
+
+    let mut minimum = object_size;
+    let pointer_size = sizeof(usize);
+
+    if minimum < pointer_size {
+        set minimum = pointer_size;
+    }
+
+    return pool_align_up(minimum, alignment);
+}
+
+/* ========================================================================= */
+/* Bitmap                                                                    */
+/* ========================================================================= */
+
+proc pool_bitmap_size(slot_count: usize) -> ?usize {
+    if slot_count == 0 {
+        return null;
+    }
+
+    let temporary = pool_add_checked(slot_count, 7);
+
+    if temporary == null {
+        return null;
+    }
+
+    return temporary? / 8;
+}
+
+proc pool_bitmap_get(
+    page: &PoolPage,
+    index: usize
+) -> bool {
+    if index >= page.slot_count {
+        return false;
+    }
+
+    let byte_index = index >> 3;
+    let bit_index = index & 7;
+
+    let mask: u8 = ((1 as u8) << bit_index) as u8;
+
+    return (page.bitmap[byte_index] & mask) != 0;
+}
+
+proc pool_bitmap_set(
+    pool: &mut Pool,
+    page_index: i64,
+    index: usize
+) -> bool {
+    if page_index < 0  or
+       page_index as usize >= pool.pages.length  or
+       index >= pool.pages[page_index].slot_count {
+        return false;
+    }
+
+    let byte_index = index >> 3;
+    let bit_index = index & 7;
+
+    let mask: u8 = ((1 as u8) << bit_index) as u8;
+
+    set pool.pages[page_index].bitmap[byte_index] =
+        pool.pages[page_index].bitmap[byte_index] | mask;
+
+    return true;
+}
+
+proc pool_bitmap_clear(
+    pool: &mut Pool,
+    page_index: i64,
+    index: usize
+) -> bool {
+    if page_index < 0  or
+       page_index as usize >= pool.pages.length  or
+       index >= pool.pages[page_index].slot_count {
+        return false;
+    }
+
+    let byte_index = index >> 3;
+    let bit_index = index & 7;
+
+    let mask: u8 = ((1 as u8) << bit_index) as u8;
+
+    set pool.pages[page_index].bitmap[byte_index] =
+        pool.pages[page_index].bitmap[byte_index] & ~mask;
+
+    return true;
+}
+
+proc pool_bitmap_clear_all(pool: &mut Pool, page_index: i64) {
+    let mut index: usize = 0;
+
+    while index < pool.pages[page_index].bitmap_size {
+        set pool.pages[page_index].bitmap[index] = 0 as u8;
+        set index = index + 1;
+    }
+}
+
+proc pool_bitmap_count_live(page: &PoolPage) -> usize {
+    let mut index: usize = 0;
+    let mut count: usize = 0;
+
+    while index < page.slot_count {
+        if pool_bitmap_get(page, index) {
+            set count = count + 1;
+        }
+
+        set index = index + 1;
+    }
+
+    return count;
+}
+
+proc pool_bitmap_unused_bits_clear(page: &PoolPage) -> bool {
+    if page.bitmap_size == 0 {
+        return false;
+    }
+
+    let remainder = page.slot_count & 7;
+
+    if remainder == 0 {
+        return true;
+    }
+
+    let valid_mask: u8 =
+        (((1 as u8) << remainder) - 1) as u8;
+
+    let last = page.bitmap[page.bitmap_size - 1];
+
+    return (last & ~valid_mask) == 0;
+}
+
+/* ========================================================================= */
+/* Page layout                                                               */
+/* ========================================================================= */
+
+form PoolPageLayout {
+    bitmap_size: usize,
+    slots_offset: usize,
+    allocation_size: usize,
+}
+
+proc pool_compute_page_layout(
+    pool: &Pool,
+    slot_count: usize
+) -> ?PoolPageLayout {
+    if slot_count == 0 {
+        return null;
+    }
+
+    if slot_count > POOL_MAX_OBJECTS_PER_PAGE {
+        return null;
+    }
+
+    if pool.slot_size == 0 {
+        return null;
+    }
+
+    if not pool_is_power_of_two(pool.alignment) {
+        return null;
+    }
+
+    let bitmap = pool_bitmap_size(slot_count);
+
+    if bitmap == null {
+        return null;
+    }
+
+    let header_size = sizeof(PoolPage);
+
+    let unaligned_offset =
+        pool_add_checked(header_size, bitmap?);
+
+    if unaligned_offset == null {
+        return null;
+    }
+
+    let offset =
+        pool_align_up(unaligned_offset?, pool.alignment);
+
+    if offset == null {
+        return null;
+    }
+
+    let slots_bytes =
+        pool_mul_checked(slot_count, pool.slot_size);
+
+    if slots_bytes == null {
+        return null;
+    }
+
+    let total =
+        pool_add_checked(offset?, slots_bytes?);
+
+    if total == null {
+        return null;
+    }
+
+    return PoolPageLayout {
+        bitmap_size: bitmap?,
+        slots_offset: offset?,
+        allocation_size: total?,
+    };
+}
+
+/* ========================================================================= */
+/* Page validation                                                           */
+/* ========================================================================= */
+
+proc pool_page_layout_valid(
+    pool: &Pool,
+    page: &PoolPage
+) -> bool {
+    if not pool_magic_valid(pool) {
+        return false;
+    }
+
+    if not pool_page_magic_valid(page) {
+        return false;
+    }
+
+    if page.slot_count == 0 {
+        return false;
+    }
+
+    if page.slot_count > POOL_MAX_OBJECTS_PER_PAGE {
+        return false;
+    }
+
+    if page.live_count > page.slot_count {
+        return false;
+    }
+
+    if page.generation != pool.generation {
+        return false;
+    }
+
+    let layout =
+        pool_compute_page_layout(pool, page.slot_count);
+
+    if layout == null {
+        return false;
+    }
+
+    if page.bitmap_size != layout?.bitmap_size {
+        return false;
+    }
+
+    if page.slots_offset != layout?.slots_offset {
+        return false;
+    }
+
+    if page.allocation_size != layout?.allocation_size {
+        return false;
+    }
+
+    if page.bitmap.length != page.bitmap_size {
+        return false;
+    }
+
+    let expected_storage =
+        pool_mul_checked(page.slot_count, pool.slot_size);
+
+    if expected_storage == null {
+        return false;
+    }
+
+    if page.storage.length != expected_storage? {
+        return false;
+    }
+
+    if not pool_bitmap_unused_bits_clear(page) {
+        return false;
+    }
+
+    return true;
+}
+
+/* ========================================================================= */
+/* Page lookup                                                               */
+/* ========================================================================= */
+
+proc pool_find_page_index(
+    pool: &Pool,
+    page_id: u64
+) -> ?usize {
+    let mut index: usize = 0;
+
+    while index < pool.pages.length {
+        if pool.pages[index].id == page_id {
+            return index;
+        }
+
+        set index = index + 1;
+    }
+
+    return null;
+}
+
+proc pool_find_handle_page(
+    pool: &Pool,
+    handle: PoolHandle
+) -> ?usize {
+    let index = pool_find_page_index(pool, handle.page_id);
+
+    if index == null {
+        return null;
+    }
+
+    if handle.slot_index >= pool.pages[index?].slot_count {
+        return null;
+    }
+
+    return index;
+}
+
+/* ========================================================================= */
+/* Free-list                                                                 */
+/* ========================================================================= */
+
+proc pool_push_free(
+    pool: &mut Pool,
+    node: PoolFreeNode
+) {
+    pool.free_list.push(node);
+}
+
+proc pool_pop_free(pool: &mut Pool) -> ?PoolFreeNode {
+    if pool.free_list.length == 0 {
+        return null;
+    }
+
+    return pool.free_list.pop();
+}
+
+proc pool_free_node_valid(
+    pool: &Pool,
+    node: PoolFreeNode
+) -> bool {
+    let page_index =
+        pool_find_page_index(pool, node.page_id);
+
+    if page_index == null {
+        return false;
+    }
+
+    let page = &pool.pages[page_index?];
+
+    if node.slot_index >= page.slot_count {
+        return false;
+    }
+
+    return not pool_bitmap_get(page, node.slot_index);
+}
+
+proc pool_rebuild_free_list(pool: &mut Pool) -> bool {
+    if not pool_magic_valid(pool) {
+        return false;
+    }
+
+    pool.free_list.clear();
+
+    let mut page_index: i64 = pool.pages.length as i64;
+    let mut count: usize = 0;
+
+    while page_index != 0 {
+        set page_index = page_index - 1;
+
+        if not pool_page_layout_valid(
+            pool,
+            &pool.pages[page_index]
+        ) {
+            pool_set_error(pool, PoolError.Corruption);
+            return false;
+        }
+
+        let mut slot_index: i64 =
+            pool.pages[page_index].slot_count as i64;
+
+        while slot_index != 0 {
+            set slot_index = slot_index - 1;
+
+            if pool_bitmap_get(
+                &pool.pages[page_index],
+                slot_index as usize
+            ) {
+                continue;
+            }
+
+            let node = PoolFreeNode {
+                page_id: pool.pages[page_index].id,
+                slot_index: slot_index as usize,
+            };
+
+            pool_push_free(pool, node);
+
+            set count = count + 1;
+        }
+    }
+
+    set pool.free_count = count;
+
+    return true;
+}
+
+/* ========================================================================= */
+/* Page growth                                                               */
+/* ========================================================================= */
+
+proc pool_next_page_size(pool: &Pool) -> usize {
+    if not pool_magic_valid(pool) {
+        return 0;
+    }
+
+    if pool.config.max_objects != POOL_MAX_SIZE  and 
+       pool.capacity >= pool.config.max_objects {
+        return 0;
+    }
+
+    let mut result: usize = 0;
+
+    if pool.page_count == 0  or 
+       not pool.config.geometric_growth {
+        set result = pool.config.objects_per_page;
+    } else {
+        let last_page_index: i64 = pool.pages.length as i64 - 1;
+        let previous = pool.pages[last_page_index].slot_count;
+
+        if POOL_GROWTH_FACTOR <= 1 {
+            set result = previous;
+        } else {
+            let multiplied =
+                pool_mul_checked(previous, POOL_GROWTH_FACTOR);
+
+            if multiplied == null {
+                set result = POOL_MAX_OBJECTS_PER_PAGE;
+            } else {
+                set result = multiplied?;
+            }
+        }
+    }
+
+    if result < POOL_MIN_OBJECTS_PER_PAGE {
+        set result = POOL_MIN_OBJECTS_PER_PAGE;
+    }
+
+    if result > POOL_MAX_OBJECTS_PER_PAGE {
+        set result = POOL_MAX_OBJECTS_PER_PAGE;
+    }
+
+    if pool.config.max_objects != POOL_MAX_SIZE {
+        let remaining =
+            pool.config.max_objects - pool.capacity;
+
+        if result > remaining {
+            set result = remaining;
+        }
+    }
+
+    return result;
+}
+
+/* ========================================================================= */
+/* Page creation                                                             */
+/* ========================================================================= */
+
+proc pool_create_page(
+    pool: &mut Pool,
+    requested_slot_count: usize
+) -> bool {
+    if not pool_magic_valid(pool) {
+        return false;
+    }
+
+    if requested_slot_count == 0 {
+        pool_set_error(pool, PoolError.InvalidArgument);
+        return false;
+    }
+
+    let mut slot_count = requested_slot_count;
+
+    if slot_count > POOL_MAX_OBJECTS_PER_PAGE {
+        set slot_count = POOL_MAX_OBJECTS_PER_PAGE;
+    }
+
+    if pool.config.max_objects != POOL_MAX_SIZE {
+        if pool.capacity > pool.config.max_objects {
+            pool_set_error(pool, PoolError.Corruption);
+            return false;
+        }
+
+        let remaining =
+            pool.config.max_objects - pool.capacity;
+
+        if remaining == 0 {
+            pool_set_error(pool, PoolError.LimitExceeded);
+            return false;
+        }
+
+        if slot_count > remaining {
+            set slot_count = remaining;
+        }
+    }
+
+    let layout = pool_compute_page_layout(pool, slot_count);
+
+    if layout == null {
+        pool_set_error(pool, PoolError.Overflow);
+        return false;
+    }
+
+    let new_capacity =
+        pool_add_checked(pool.capacity, slot_count);
+
+    let new_reserved =
+        pool_add_checked(
+            pool.reserved_bytes,
+            layout?.allocation_size
+        );
+
+    let new_free_count =
+        pool_add_checked(pool.free_count, slot_count);
+
+    if new_capacity == null  or 
+       new_reserved == null  or 
+       new_free_count == null {
+        pool_set_error(pool, PoolError.Overflow);
+        return false;
+    }
+
+    if pool.page_count == POOL_MAX_SIZE {
+        pool_set_error(pool, PoolError.Overflow);
+        return false;
+    }
+
+    if pool.config.max_reserved_bytes != POOL_MAX_SIZE  and 
+       new_reserved? > pool.config.max_reserved_bytes {
+        pool_set_error(pool, PoolError.LimitExceeded);
+        return false;
+    }
+
+    let storage_size =
+        pool_mul_checked(slot_count, pool.slot_size);
+
+    if storage_size == null {
+        pool_set_error(pool, PoolError.Overflow);
+        return false;
+    }
+
+    /*
+     * Allocate and initialize temporary storage before publishing
+     * the new page.
+     *
+     * Collection allocation failures must be propagated by the
+     * concrete Vitte runtime.
+     */
+
+    let bitmap_size: usize = layout?.bitmap_size;
+    let storage_byte_count: usize = storage_size?;
+
+    let mut bitmap: [u8] = [];
+    let mut storage: [u8] = [];
+
+    let mut initialize_index: usize = 0;
+    while initialize_index < bitmap_size {
+        if not bitmap.push(0 as u8) {
+            pool_set_error(pool, PoolError.OutOfMemory);
+            return false;
+        }
+
+        set initialize_index += 1;
+    }
+
+    set initialize_index = 0;
+    while initialize_index < storage_byte_count {
+        if not storage.push(0 as u8) {
+            pool_set_error(pool, PoolError.OutOfMemory);
+            return false;
+        }
+
+        set initialize_index += 1;
+    }
+
+    if POOL_POISON_RESET {
+        let mut poison_index: usize = 0;
+
+        while poison_index < storage.length {
+            set storage[poison_index] = POOL_RESET_PATTERN;
+            set poison_index = poison_index + 1;
+        }
+    }
+
+    let page_id = pool.next_page_id;
+
+    let page = PoolPage {
+        magic: POOL_PAGE_MAGIC,
+
+        id: page_id,
+        generation: pool.generation,
+
+        slot_count: slot_count,
+        live_count: 0,
+
+        bitmap_size: layout?.bitmap_size,
+        slots_offset: layout?.slots_offset,
+        allocation_size: layout?.allocation_size,
+
+        bitmap: bitmap,
+        storage: storage,
+    };
+
+    /*
+     * Publish the page, then append its free slots.
+     *
+     * The last appended slot is popped first.
+     */
+
+    pool.pages.push(page);
+
+    let mut index = slot_count;
+
+    while index != 0 {
+        set index = index - 1;
+
+        pool_push_free(
+            pool,
+            PoolFreeNode {
+                page_id: page_id,
+                slot_index: index,
+            }
+        );
+    }
+
+    set pool.next_page_id =
+        pool_next_page_id(page_id);
+
+    set pool.page_count = pool.page_count + 1;
+    set pool.capacity = new_capacity?;
+    set pool.reserved_bytes = new_reserved?;
+    set pool.free_count = new_free_count?;
+
+    if pool.page_count > pool.peak_page_count {
+        set pool.peak_page_count = pool.page_count;
+    }
+
+    if pool.reserved_bytes > pool.peak_reserved_bytes {
+        set pool.peak_reserved_bytes = pool.reserved_bytes;
+    }
+
+    return true;
+}
+
+/* ========================================================================= */
+/* Initialization                                                            */
+/* ========================================================================= */
+
+pub proc pool_init(
+    object_size: usize,
+    alignment: usize,
+    config: PoolConfig
+) -> ?Pool {
+    if object_size == 0 {
+        return null;
+    }
+
+    let mut effective_alignment = alignment;
+
+    if effective_alignment == 0 {
+        set effective_alignment = alignof(usize);
+    }
+
+    if not pool_is_power_of_two(effective_alignment) {
+        return null;
+    }
+
+    /*
+     * The C implementation rejects over-aligned objects.
+     * This native version uses the platform's pointer alignment
+     * as its default supported alignment.
+     */
+
+    if effective_alignment > alignof(usize) {
+        return null;
+    }
+
+    let slot_size =
+        pool_compute_slot_size(
+            object_size,
+            effective_alignment
+        );
+
+    if slot_size == null {
+        return null;
+    }
+
+    let effective = pool_config_normalize(config);
+
+    if not pool_config_validate(&effective) {
+        return null;
+    }
+
+    return Pool {
+        magic: POOL_MAGIC,
+
+        object_size: object_size,
+        slot_size: slot_size?,
+        alignment: effective_alignment,
+
+        config: effective,
+
+        pages: [],
+        free_list: [],
+
+        next_page_id: 1,
+
+        page_count: 0,
+        peak_page_count: 0,
+
+        capacity: 0,
+
+        live_count: 0,
+        peak_live_count: 0,
+
+        free_count: 0,
+
+        reserved_bytes: 0,
+        peak_reserved_bytes: 0,
+
+        allocation_count: 0,
+        free_operation_count: 0,
+
+        generation: 1,
+
+        last_error: PoolError.None,
+    };
+}
+
+pub proc pool_init_default(
+    object_size: usize,
+    alignment: usize
+) -> ?Pool {
+    return pool_init(
+        object_size,
+        alignment,
+        pool_config_default()
+    );
+}
+
+/* ========================================================================= */
+/* Destruction                                                               */
+/* ========================================================================= */
+
+pub proc pool_destroy(pool: &mut Pool) {
+    if not pool_magic_valid(pool) {
+        return;
+    }
+
+    if POOL_POISON_DESTROY {
+        let mut page_index: usize = 0;
+
+        while page_index < pool.pages.length {
+            let mut index: usize = 0;
+
+            while index < pool.pages[page_index].storage.length {
+                set pool.pages[page_index].storage[index] =
+                    POOL_DESTROY_PATTERN;
+
+                set index = index + 1;
+            }
+
+            set page_index = page_index + 1;
+        }
+    }
+
+    pool.free_list.clear();
+    pool.pages.clear();
+
+    set pool.page_count = 0;
+    set pool.peak_page_count = 0;
+
+    set pool.capacity = 0;
+
+    set pool.live_count = 0;
+    set pool.peak_live_count = 0;
+
+    set pool.free_count = 0;
+
+    set pool.reserved_bytes = 0;
+    set pool.peak_reserved_bytes = 0;
+
+    set pool.allocation_count = 0;
+    set pool.free_operation_count = 0;
+
+    set pool.object_size = 0;
+    set pool.slot_size = 0;
+    set pool.alignment = 0;
+
+    set pool.generation = 0;
+    set pool.next_page_id = 0;
+
+    set pool.last_error = PoolError.InvalidPool;
+    set pool.magic = POOL_DEAD_MAGIC;
+}
+
+/* ========================================================================= */
+/* Reserve                                                                   */
+/* ========================================================================= */
+
+pub proc pool_reserve(
+    pool: &mut Pool,
+    minimum_capacity: usize
+) -> bool {
+    if not pool_magic_valid(pool) {
+        return false;
+    }
+
+    pool_clear_error(pool);
+
+    if minimum_capacity <= pool.capacity {
+        return true;
+    }
+
+    if pool.config.max_objects != POOL_MAX_SIZE  and 
+       minimum_capacity > pool.config.max_objects {
+        pool_set_error(pool, PoolError.LimitExceeded);
+        return false;
+    }
+
+    while pool.capacity < minimum_capacity {
+        let mut page_size = pool_next_page_size(pool);
+
+        if page_size == 0 {
+            pool_set_error(pool, PoolError.LimitExceeded);
+            return false;
+        }
+
+        let needed = minimum_capacity - pool.capacity;
+
+        if page_size > needed  and 
+           needed >= POOL_MIN_OBJECTS_PER_PAGE {
+            set page_size = needed;
+        }
+
+        if not pool_create_page(pool, page_size) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/* ========================================================================= */
+/* Storage operations                                                        */
+/* ========================================================================= */
+
+proc pool_fill_slot(
+    pool: &mut Pool,
+    page_index: usize,
+    slot_index: usize,
+    pattern: u8,
+    length: usize
+) -> bool {
+    if page_index >= pool.pages.length {
+        return false;
+    }
+
+    if slot_index >= pool.pages[page_index].slot_count {
+        return false;
+    }
+
+    if length > pool.slot_size {
+        return false;
+    }
+
+    let offset =
+        pool_mul_checked(slot_index, pool.slot_size);
+
+    if offset == null {
+        return false;
+    }
+
+    let mut index: usize = 0;
+
+    while index < length {
+        set pool.pages[page_index].storage[offset? + index] =
+            pattern;
+
+        set index = index + 1;
+    }
+
+    return true;
+}
+
+/* ========================================================================= */
+/* Allocation                                                                */
+/* ========================================================================= */
+
+pub proc pool_alloc(pool: &mut Pool) -> ?PoolHandle {
+    if not pool_magic_valid(pool) {
+        return null;
+    }
+
+    pool_clear_error(pool);
+
+    if pool.free_list.length == 0 {
+        if pool.free_count != 0 {
+            pool_set_error(pool, PoolError.Corruption);
+            return null;
+        }
+
+        let page_size = pool_next_page_size(pool);
+
+        if page_size == 0 {
+            pool_set_error(pool, PoolError.LimitExceeded);
+            return null;
+        }
+
+        if not pool_create_page(pool, page_size) {
+            return null;
+        }
+    }
+
+    if pool.free_count == 0  or 
+       pool.free_list.length == 0 {
+        pool_set_error(pool, PoolError.Corruption);
+        return null;
+    }
+
+    let last_free_index: i64 = pool.free_list.length as i64 - 1;
+    let node = pool.free_list[last_free_index];
+
+    let page_index =
+        pool_find_page_index(pool, node.page_id);
+
+    if page_index == null {
+        pool_set_error(pool, PoolError.Corruption);
+        return null;
+    }
+
+    if not pool_free_node_valid(pool, node) {
+        pool_set_error(pool, PoolError.Corruption);
+        return null;
+    }
+
+    if pool.pages[page_index?].live_count >=
+       pool.pages[page_index?].slot_count {
+        pool_set_error(pool, PoolError.Corruption);
+        return null;
+    }
+
+    if pool.live_count >= pool.capacity {
+        pool_set_error(pool, PoolError.Corruption);
+        return null;
+    }
+
+    let popped = pool_pop_free(pool);
+
+    if popped == null {
+        pool_set_error(pool, PoolError.Corruption);
+        return null;
+    }
+
+    if not pool_free_node_equal(popped?, node) {
+        pool_set_error(pool, PoolError.Corruption);
+        return null;
+    }
+
+    set pool.free_count = pool.free_count - 1;
+
+    if not pool_bitmap_set(pool, page_index? as i64, node.slot_index) {
+        pool_push_free(pool, node);
+
+        set pool.free_count = pool.free_count + 1;
+
+        pool_set_error(pool, PoolError.Corruption);
+        return null;
+    }
+
+    set pool.pages[page_index?].live_count =
+        pool.pages[page_index?].live_count + 1;
+
+    set pool.live_count = pool.live_count + 1;
+
+    if pool.live_count > pool.peak_live_count {
+        set pool.peak_live_count = pool.live_count;
+    }
+
+    set pool.allocation_count =
+        pool_saturating_increment(pool.allocation_count);
+
+    if pool.config.zero_on_allocate {
+        pool_fill_slot(
+            pool,
+            page_index?,
+            node.slot_index,
+            0,
+            pool.slot_size
+        );
+    } else if POOL_POISON_ALLOC {
+        pool_fill_slot(
+            pool,
+            page_index?,
+            node.slot_index,
+            POOL_ALLOC_PATTERN,
+            pool.slot_size
+        );
+    }
+
+    return PoolHandle {
+        page_id: node.page_id,
+        slot_index: node.slot_index,
+        generation: pool.generation,
+    };
+}
+
+pub proc pool_calloc(pool: &mut Pool) -> ?PoolHandle {
+    let handle = pool_alloc(pool);
+
+    if handle == null {
+        return null;
+    }
+
+    let page_index =
+        pool_find_handle_page(pool, handle?);
+
+    if page_index == null {
+        pool_set_error(pool, PoolError.Corruption);
+        return null;
+    }
+
+    pool_fill_slot(
+        pool,
+        page_index?,
+        handle?.slot_index,
+        0,
+        pool.object_size
+    );
+
+    return handle;
+}
+
+/* ========================================================================= */
+/* Free                                                                      */
+/* ========================================================================= */
+
+pub proc pool_free(
+    pool: &mut Pool,
+    handle: PoolHandle
+) -> bool {
+    if not pool_magic_valid(pool) {
+        return false;
+    }
+
+    pool_clear_error(pool);
+
+    let page_index =
+        pool_find_handle_page(pool, handle);
+
+    if page_index == null {
+        pool_set_error(pool, PoolError.ForeignPointer);
+        return false;
+    }
+
+    if handle.generation != pool.generation {
+        pool_set_error(pool, PoolError.ForeignPointer);
+        return false;
+    }
+
+    if not pool_bitmap_get(
+        &pool.pages[page_index?],
+        handle.slot_index
+    ) {
+        pool_set_error(pool, PoolError.DoubleFree);
+        return false;
+    }
+
+    if pool.pages[page_index?].live_count == 0  or 
+       pool.live_count == 0  or 
+       pool.free_count >= pool.capacity {
+        pool_set_error(pool, PoolError.Corruption);
+        return false;
+    }
+
+    if not pool_bitmap_clear(pool, page_index? as i64, handle.slot_index) {
+        pool_set_error(pool, PoolError.Corruption);
+        return false;
+    }
+
+    set pool.pages[page_index?].live_count =
+        pool.pages[page_index?].live_count - 1;
+
+    set pool.live_count = pool.live_count - 1;
+
+    if POOL_POISON_FREE {
+        pool_fill_slot(
+            pool,
+            page_index?,
+            handle.slot_index,
+            POOL_FREE_PATTERN,
+            pool.slot_size
+        );
+    }
+
+    pool_push_free(
+        pool,
+        PoolFreeNode {
+            page_id: handle.page_id,
+            slot_index: handle.slot_index,
+        }
+    );
+
+    set pool.free_count = pool.free_count + 1;
+
+    set pool.free_operation_count =
+        pool_saturating_increment(pool.free_operation_count);
+
+    return true;
+}
+
+/* ========================================================================= */
+/* Reset                                                                     */
+/* ========================================================================= */
+
+pub proc pool_reset(pool: &mut Pool) {
+    if not pool_magic_valid(pool) {
+        return;
+    }
+
+    pool_clear_error(pool);
+
+    let mut index: usize = 0;
+
+    /*
+     * Validate all pages before changing the generation.
+     */
+
+    while index < pool.pages.length {
+        if not pool_page_layout_valid(
+            pool,
+            &pool.pages[index]
+        ) {
+            pool_set_error(pool, PoolError.Corruption);
+            return;
+        }
+
+        set index = index + 1;
+    }
+
+    let generation =
+        pool_next_generation(pool.generation);
+
+    set pool.generation = generation;
+
+    set index = 0;
+
+    while index < pool.pages.length {
+        if POOL_POISON_RESET {
+            let mut byte_index: usize = 0;
+
+            while byte_index < pool.pages[index].storage.length {
+                set pool.pages[index].storage[byte_index] =
+                    POOL_RESET_PATTERN;
+
+                set byte_index = byte_index + 1;
+            }
+        }
+
+        pool_bitmap_clear_all(pool, index as i64);
+
+        set pool.pages[index].live_count = 0;
+        set pool.pages[index].generation = generation;
+
+        set index = index + 1;
+    }
+
+    set pool.live_count = 0;
+
+    if not pool_rebuild_free_list(pool) {
+        return;
+    }
+
+    if pool.free_count != pool.capacity {
+        pool_set_error(pool, PoolError.Corruption);
+        return;
+    }
+
+    pool_clear_error(pool);
+}
+
+/* ========================================================================= */
+/* Trim                                                                      */
+/* ========================================================================= */
+
+pub proc pool_trim(pool: &mut Pool) -> usize {
+    if not pool_magic_valid(pool) {
+        return 0;
+    }
+
+    pool_clear_error(pool);
+
+    /*
+     * Validate before removing pages.
+     */
+
+    let mut index: usize = 0;
+
+    while index < pool.pages.length {
+        if not pool_page_layout_valid(
+            pool,
+            &pool.pages[index]
+        ) {
+            pool_set_error(pool, PoolError.Corruption);
+            return 0;
+        }
+
+        set index = index + 1;
+    }
+
+    let mut retained_empty_id: u64 = 0;
+
+    if pool.config.retain_empty_pages {
+        set index = 0;
+
+        while index < pool.pages.length {
+            if pool.pages[index].live_count == 0 {
+                set retained_empty_id = pool.pages[index].id;
+                break;
+            }
+
+            set index = index + 1;
+        }
+    }
+
+    /*
+     * Remove all free-list references before deleting pages.
+     */
+
+    pool.free_list.clear();
+    set pool.free_count = 0;
+
+    let mut removed: usize = 0;
+    set index = 0;
+
+    while index < pool.pages.length {
+        let page = &pool.pages[index];
+
+        if page.live_count != 0  or 
+           page.id == retained_empty_id {
+            set index = index + 1;
+            continue;
+        }
+
+        let page_capacity = page.slot_count;
+        let page_reserved = page.allocation_size;
+
+        if pool.capacity < page_capacity  or 
+           pool.reserved_bytes < page_reserved  or 
+           pool.page_count == 0 {
+            pool_set_error(pool, PoolError.Corruption);
+            break;
+        }
+
+        /*
+         * remove_at shifts subsequent page entries.
+         * Page identifiers remain stable.
+         */
+
+        pool.pages.remove_at(index);
+
+        set pool.capacity = pool.capacity - page_capacity;
+        set pool.reserved_bytes =
+            pool.reserved_bytes - page_reserved;
+
+        set pool.page_count = pool.page_count - 1;
+        set removed = removed + 1;
+    }
+
+    if not pool_rebuild_free_list(pool) {
+        return removed;
+    }
+
+    if pool.live_count > pool.capacity {
+        pool_set_error(pool, PoolError.Corruption);
+        return removed;
+    }
+
+    if pool.free_count != pool.capacity - pool.live_count {
+        pool_set_error(pool, PoolError.Corruption);
+        return removed;
+    }
+
+    pool_clear_error(pool);
+
+    return removed;
+}
+
+pub proc pool_reset_and_trim(pool: &mut Pool) {
+    if not pool_magic_valid(pool) {
+        return;
+    }
+
+    pool_reset(pool);
+
+    if pool.last_error != PoolError.None {
+        return;
+    }
+
+    let retain = pool.config.retain_empty_pages;
+
+    set pool.config.retain_empty_pages = false;
+
+    pool_trim(pool);
+
+    set pool.config.retain_empty_pages = retain;
+}
+
+/* ========================================================================= */
+/* Ownership                                                                 */
+/* ========================================================================= */
+
+pub proc pool_contains(
+    pool: &Pool,
+    handle: PoolHandle
+) -> bool {
+    if not pool_magic_valid(pool) {
+        return false;
+    }
+
+    return pool_find_page_index(pool, handle.page_id) != null;
+}
+
+pub proc pool_contains_object(
+    pool: &Pool,
+    handle: PoolHandle
+) -> bool {
+    if not pool_magic_valid(pool) {
+        return false;
+    }
+
+    return pool_find_handle_page(pool, handle) != null;
+}
+
+pub proc pool_is_live(
+    pool: &Pool,
+    handle: PoolHandle
+) -> bool {
+    if not pool_magic_valid(pool) {
+        return false;
+    }
+
+    if handle.generation != pool.generation {
+        return false;
+    }
+
+    let page_index =
+        pool_find_handle_page(pool, handle);
+
+    if page_index == null {
+        return false;
+    }
+
+    return pool_bitmap_get(
+        &pool.pages[page_index?],
+        handle.slot_index
+    );
+}
+
+/* ========================================================================= */
+/* Accessors                                                                 */
+/* ========================================================================= */
+
+pub proc pool_object_size(pool: &Pool) -> usize {
+    if not pool_magic_valid(pool) {
+        return 0;
+    }
+
+    return pool.object_size;
+}
+
+pub proc pool_slot_size(pool: &Pool) -> usize {
+    if not pool_magic_valid(pool) {
+        return 0;
+    }
+
+    return pool.slot_size;
+}
+
+pub proc pool_alignment(pool: &Pool) -> usize {
+    if not pool_magic_valid(pool) {
+        return 0;
+    }
+
+    return pool.alignment;
+}
+
+pub proc pool_capacity(pool: &Pool) -> usize {
+    if not pool_magic_valid(pool) {
+        return 0;
+    }
+
+    return pool.capacity;
+}
+
+pub proc pool_live_count(pool: &Pool) -> usize {
+    if not pool_magic_valid(pool) {
+        return 0;
+    }
+
+    return pool.live_count;
+}
+
+pub proc pool_free_count(pool: &Pool) -> usize {
+    if not pool_magic_valid(pool) {
+        return 0;
+    }
+
+    return pool.free_count;
+}
+
+pub proc pool_page_count(pool: &Pool) -> usize {
+    if not pool_magic_valid(pool) {
+        return 0;
+    }
+
+    return pool.page_count;
+}
+
+pub proc pool_reserved_bytes(pool: &Pool) -> usize {
+    if not pool_magic_valid(pool) {
+        return 0;
+    }
+
+    return pool.reserved_bytes;
+}
+
+pub proc pool_generation(pool: &Pool) -> u64 {
+    if not pool_magic_valid(pool) {
+        return 0;
+    }
+
+    return pool.generation;
+}
+
+/* ========================================================================= */
+/* Statistics                                                                */
+/* ========================================================================= */
+
+pub proc pool_stats(pool: &Pool) -> PoolStats {
+    if not pool_magic_valid(pool) {
+        return pool_stats_empty();
+    }
+
+    return PoolStats {
+        object_size: pool.object_size,
+        slot_size: pool.slot_size,
+        alignment: pool.alignment,
+
+        page_count: pool.page_count,
+        peak_page_count: pool.peak_page_count,
+
+        capacity: pool.capacity,
+
+        live_count: pool.live_count,
+        peak_live_count: pool.peak_live_count,
+
+        free_count: pool.free_count,
+
+        reserved_bytes: pool.reserved_bytes,
+        peak_reserved_bytes: pool.peak_reserved_bytes,
+
+        allocation_count: pool.allocation_count,
+        free_operation_count: pool.free_operation_count,
+
+        generation: pool.generation,
+
+        max_objects: pool.config.max_objects,
+        max_reserved_bytes: pool.config.max_reserved_bytes,
+    };
+}
+
+/* ========================================================================= */
+/* Deep validation                                                          */
+/* ========================================================================= */
+
+pub proc pool_validate(pool: &Pool) -> bool {
+    if not pool_magic_valid(pool) {
+        return false;
+    }
+
+    if pool.object_size == 0  or 
+       pool.slot_size == 0  or 
+       pool.alignment == 0  or 
+       pool.generation == 0 {
+        return false;
+    }
+
+    if not pool_is_power_of_two(pool.alignment) {
+        return false;
+    }
+
+    if pool.alignment > alignof(usize) {
+        return false;
+    }
+
+    if pool.slot_size < pool.object_size {
+        return false;
+    }
+
+    if pool.slot_size < sizeof(usize) {
+        return false;
+    }
+
+    if pool.slot_size % pool.alignment != 0 {
+        return false;
+    }
+
+    if not pool_config_validate(&pool.config) {
+        return false;
+    }
+
+    if pool.page_count != pool.pages.length {
+        return false;
+    }
+
+    if pool.free_count != pool.free_list.length {
+        return false;
+    }
+
+    let mut calculated_capacity: usize = 0;
+    let mut calculated_live: usize = 0;
+    let mut calculated_reserved: usize = 0;
+
+    let mut page_index: usize = 0;
+
+    while page_index < pool.pages.length {
+        let page = &pool.pages[page_index];
+
+        if not pool_page_layout_valid(pool, page) {
+            return false;
+        }
+
+        if pool_bitmap_count_live(page) != page.live_count {
+            return false;
+        }
+
+        let new_capacity =
+            pool_add_checked(
+                calculated_capacity,
+                page.slot_count
+            );
+
+        let new_live =
+            pool_add_checked(
+                calculated_live,
+                page.live_count
+            );
+
+        let new_reserved =
+            pool_add_checked(
+                calculated_reserved,
+                page.allocation_size
+            );
+
+        if new_capacity == null  or 
+           new_live == null  or 
+           new_reserved == null {
+            return false;
+        }
+
+        set calculated_capacity = new_capacity?;
+        set calculated_live = new_live?;
+        set calculated_reserved = new_reserved?;
+
+        /*
+         * Page identifiers must be unique.
+         */
+
+        let mut other_index = page_index + 1;
+
+        while other_index < pool.pages.length {
+            if page.id == pool.pages[other_index].id {
+                return false;
+            }
+
+            set other_index = other_index + 1;
+        }
+
+        set page_index = page_index + 1;
+    }
+
+    if calculated_capacity != pool.capacity {
+        return false;
+    }
+
+    if calculated_live != pool.live_count {
+        return false;
+    }
+
+    if calculated_reserved != pool.reserved_bytes {
+        return false;
+    }
+
+    if pool.live_count > pool.capacity {
+        return false;
+    }
+
+    if pool.free_count > pool.capacity {
+        return false;
+    }
+
+    if pool.free_count != pool.capacity - pool.live_count {
+        return false;
+    }
+
+    if pool.peak_live_count < pool.live_count {
+        return false;
+    }
+
+    if pool.peak_page_count < pool.page_count {
+        return false;
+    }
+
+    if pool.peak_reserved_bytes < pool.reserved_bytes {
+        return false;
+    }
+
+    if pool.config.max_objects != POOL_MAX_SIZE  and 
+       pool.capacity > pool.config.max_objects {
+        return false;
+    }
+
+    if pool.config.max_reserved_bytes != POOL_MAX_SIZE  and 
+       pool.reserved_bytes > pool.config.max_reserved_bytes {
+        return false;
+    }
+
+    /*
+     * Every free-list entry must belong to a valid free slot.
+     */
+
+    let mut free_index: usize = 0;
+
+    while free_index < pool.free_list.length {
+        if not pool_free_node_valid(
+            pool,
+            pool.free_list[free_index]
+        ) {
+            return false;
+        }
+
+        set free_index = free_index + 1;
+    }
+
+    /*
+     * Exhaustive membership validation:
+     *
+     * - live slots occur zero times in the free-list
+     * - free slots occur exactly once
+     * - duplicated free entries are rejected
+     */
+
+    set page_index = 0;
+
+    while page_index < pool.pages.length {
+        let page = &pool.pages[page_index];
+
+        let mut slot_index: usize = 0;
+
+        while slot_index < page.slot_count {
+            let mut occurrences: usize = 0;
+
+            set free_index = 0;
+
+            while free_index < pool.free_list.length {
+                let node = pool.free_list[free_index];
+
+                if node.page_id == page.id  and 
+                   node.slot_index == slot_index {
+                    set occurrences = occurrences + 1;
+
+                    if occurrences > 1 {
+                        return false;
+                    }
+                }
+
+                set free_index = free_index + 1;
+            }
+
+            if pool_bitmap_get(page, slot_index) {
+                if occurrences != 0 {
+                    return false;
+                }
+            } else {
+                if occurrences != 1 {
+                    return false;
+                }
+            }
+
+            set slot_index = slot_index + 1;
+        }
+
+        set page_index = page_index + 1;
+    }
+
+    return true;
+}
+
+/* ========================================================================= */
+/* Convenience predicates and limits                                         */
+/* ========================================================================= */
+
+pub proc pool_is_empty(pool: &Pool) -> bool {
+    return pool_is_valid(pool)  and pool_live_count(pool) == 0;
+}
+
+pub proc pool_has_live_objects(pool: &Pool) -> bool {
+    return pool_is_valid(pool)  and pool_live_count(pool) != 0;
+}
+
+pub proc pool_has_free_objects(pool: &Pool) -> bool {
+    return pool_is_valid(pool)  and pool_free_count(pool) != 0;
+}
+
+pub proc pool_has_pages(pool: &Pool) -> bool {
+    return pool_is_valid(pool)  and pool_page_count(pool) != 0;
+}
+
+pub proc pool_has_error(pool: &Pool) -> bool {
+    return pool_is_valid(pool)  and pool_last_error(pool) != PoolError.None;
+}
+
+pub proc pool_out_of_memory(pool: &Pool) -> bool {
+    return pool_is_valid(pool)  and
+           pool_last_error(pool) == PoolError.OutOfMemory;
+}
+
+pub proc pool_limit_exceeded(pool: &Pool) -> bool {
+    return pool_is_valid(pool)  and
+           pool_last_error(pool) == PoolError.LimitExceeded;
+}
+
+pub proc pool_is_full(pool: &Pool) -> bool {
+    let capacity = pool_capacity(pool);
+    return capacity != 0  and pool_live_count(pool) == capacity;
+}
+
+pub proc pool_available_objects(pool: &Pool) -> usize {
+    return pool_free_count(pool);
+}
+
+pub proc pool_remaining_object_limit(pool: &Pool) -> usize {
+    if not pool_magic_valid(pool) {
+        return 0;
+    }
+
+    let maximum = pool.config.max_objects;
+    if maximum == POOL_MAX_SIZE {
+        return POOL_MAX_SIZE;
+    }
+
+    if pool.capacity >= maximum {
+        return 0;
+    }
+
+    return maximum - pool.capacity;
+}
+
+pub proc pool_remaining_reserved_limit(pool: &Pool) -> usize {
+    if not pool_magic_valid(pool) {
+        return 0;
+    }
+
+    let maximum = pool.config.max_reserved_bytes;
+    if maximum == POOL_MAX_SIZE {
+        return POOL_MAX_SIZE;
+    }
+
+    if pool.reserved_bytes >= maximum {
+        return 0;
+    }
+
+    return maximum - pool.reserved_bytes;
+}
+
+pub proc pool_utilization_basis_points(pool: &Pool) -> u32 {
+    let capacity = pool_capacity(pool);
+    if capacity == 0 {
+        return 0;
+    }
+
+    let live = pool_live_count(pool);
+    if live >= capacity {
+        return 10000;
+    }
+
+    // Long division to four decimal places, without forming live * 10.
+    // Each digit takes ten overflow-safe modular additions.
+    let mut remainder: usize = live;
+    let mut result: u32 = 0;
+    let mut digit_index: u32 = 0;
+
+    while digit_index < 4 {
+        let mut accumulated: usize = 0;
+        let mut digit: u32 = 0;
+        let mut addition: u32 = 0;
+
+        while addition < 10 {
+            if accumulated >= capacity - remainder {
+                set accumulated = accumulated - (capacity - remainder);
+                set digit = digit + 1;
+            } else {
+                set accumulated = accumulated + remainder;
+            }
+
+            set addition = addition + 1;
+        }
+
+        set result = result * 10 + digit;
+        set remainder = accumulated;
+        set digit_index = digit_index + 1;
+    }
+
+    return result;
+}
+
+/* ========================================================================= */
+/* End                                                                       */
+/* ========================================================================= */

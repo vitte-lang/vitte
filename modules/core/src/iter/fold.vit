@@ -1,0 +1,33 @@
+/// Réduction gauche d'une tranche avec un accumulateur explicite.
+space core::iter::fold;
+
+export form FoldStep<U> {
+    accumulator: U,
+    continue: bool,
+}
+
+export proc fold<T, U>(
+    source: &[T],
+    initial: U,
+    combine: proc(U, &T) -> U
+) -> U {
+    let mut accumulator: U = initial;
+    for index in 0..source.len() {
+        set accumulator = combine(accumulator, &source[index]);
+    }
+    return accumulator;
+}
+
+export proc fold_while<T, U>(
+    source: &[T],
+    initial: U,
+    combine: proc(U, &T) -> FoldStep[U]
+) -> U {
+    let mut accumulator: U = initial;
+    for index in 0..source.len() {
+        let step: FoldStep[U] = combine(accumulator, &source[index]);
+        set accumulator = step.accumulator;
+        if not step.continue { return accumulator; }
+    }
+    return accumulator;
+}

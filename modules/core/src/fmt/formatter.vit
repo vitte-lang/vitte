@@ -1,0 +1,139 @@
+/// Écrivain borné sur un tampon mutable fourni par l'appelant.
+space core::fmt::formatter;
+
+use core::fmt::arguments::{FormatArg, FormatArgKind};
+use core::convert::format::{
+    FormatError, FormatResult,
+    format_bool, format_char, format_i64, format_u64,
+};
+use core::ptr::arithmetic::{ptr_add_bytes};
+
+export pick FormatterError { None, NullBuffer, Full, InvalidCharacter, InvalidArgument }
+
+export form Formatter {
+    buffer: *mut u8,
+    capacity: usize,
+    length: usize,
+    error: FormatterError,
+}
+
+export proc formatter(buffer: *mut u8, capacity: usize) -> Formatter {
+    let mut error: FormatterError = FormatterError.None;
+    if capacity != 0 && buffer == null { set error = FormatterError.NullBuffer; }
+    return Formatter { buffer: buffer, capacity: capacity, length: 0, error: error };
+}
+
+export proc formatter_write_byte(value: &mut Formatter, byte: u8) -> bool {
+    if value.error != FormatterError.None { return false; }
+    if value.length >= value.capacity { set value.error = FormatterError.Full; return false; }
+    set value.buffer[value.length] = byte;
+    set value.length = value.length + 1;
+    return true;
+}
+
+export proc formatter_remaining_capacity(value: &Formatter) -> usize {
+    if value.length >= value.capacity { return 0; }
+    return value.capacity - value.length;
+}
+
+proc formatter_append_format_result(value: &mut Formatter, result: FormatResult) -> bool {
+    if not result.success {
+        if result.error == FormatError.NullBuffer {
+            set value.error = FormatterError.NullBuffer;
+        } else if result.error == FormatError.InvalidArgument {
+            set value.error = FormatterError.InvalidCharacter;
+        } else {
+            set value.error = FormatterError.Full;
+        }
+        return false;
+    }
+    set value.length = value.length + result.length;
+    return true;
+}
+
+export proc formatter_write_bytes(value: &mut Formatter, bytes: &[u8]) -> bool {
+    if value.error != FormatterError.None { return false; }
+    let mut index: usize = 0;
+    while index < bytes.len() {
+        let slice_index: i64 = index as i64;
+        if not formatter_write_byte(value, bytes[slice_index]) { return false; }
+        set index = index + 1;
+    }
+    return true;
+}
+
+export proc formatter_write_str(value: &mut Formatter, text: str) -> bool {
+    if value.error != FormatterError.None { return false; }
+    let mut index: usize = 0;
+    while index < text.length {
+        let string_index: i64 = index as i64;
+        if not formatter_write_char(value, text[string_index]) { return false; }
+        set index = index + 1;
+    }
+    return true;
+}
+
+export proc formatter_write_char(value: &mut Formatter, character: char) -> bool {
+    if value.error != FormatterError.None { return false; }
+    let remaining: usize = formatter_remaining_capacity(value);
+    if remaining == 0 { set value.error = FormatterError.Full; return false; }
+    let output: *u8 = ptr_add_bytes(value.buffer, value.length) as *u8;
+    let result: FormatResult = format_char(character, output, remaining);
+    return formatter_append_format_result(value, result);
+}
+
+export proc formatter_write_bool(value: &mut Formatter, flag: bool) -> bool {
+    if value.error != FormatterError.None { return false; }
+    let remaining: usize = formatter_remaining_capacity(value);
+    if remaining == 0 { set value.error = FormatterError.Full; return false; }
+    let output: *u8 = ptr_add_bytes(value.buffer, value.length) as *u8;
+    let result: FormatResult = format_bool(flag, output, remaining);
+    return formatter_append_format_result(value, result);
+}
+
+export proc formatter_write_u64(value: &mut Formatter, number: u64) -> bool {
+    if value.error != FormatterError.None { return false; }
+    let remaining: usize = formatter_remaining_capacity(value);
+    if remaining == 0 { set value.error = FormatterError.Full; return false; }
+    let output: *u8 = ptr_add_bytes(value.buffer, value.length) as *u8;
+    let result: FormatResult = format_u64(
+        number,
+        output,
+        remaining
+    );
+    return formatter_append_format_result(value, result);
+}
+
+export proc formatter_write_i64(value: &mut Formatter, number: i64) -> bool {
+    if value.error != FormatterError.None { return false; }
+    let remaining: usize = formatter_remaining_capacity(value);
+    if remaining == 0 { set value.error = FormatterError.Full; return false; }
+    let output: *u8 = ptr_add_bytes(value.buffer, value.length) as *u8;
+    let result: FormatResult = format_i64(
+        number,
+        output,
+        remaining
+    );
+    return formatter_append_format_result(value, result);
+}
+
+export proc formatter_write_arg(value: &mut Formatter, argument: &FormatArg) -> bool {
+    if value.error != FormatterError.None { return false; }
+    if argument.kind == FormatArgKind.Signed {
+        return formatter_write_i64(value, argument.signed_value);
+    }
+    if argument.kind == FormatArgKind.Unsigned {
+        return formatter_write_u64(value, argument.unsigned_value);
+    }
+    if argument.kind == FormatArgKind.Boolean {
+        return formatter_write_bool(value, argument.bool_value);
+    }
+    if argument.kind == FormatArgKind.Character {
+        return formatter_write_char(value, argument.char_value);
+    }
+    if argument.kind == FormatArgKind.String {
+        return formatter_write_str(value, argument.string_value);
+    }
+    set value.error = FormatterError.InvalidArgument;
+    return false;
+}

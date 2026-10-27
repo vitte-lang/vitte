@@ -1,0 +1,1655 @@
+/*
+ * Vitte Compiler
+ * src/backend/c17/naming.vit
+ *
+ * Canonical C17 symbol naming and mangling.
+ *
+ * Native Vitte implementation.
+ */
+
+space compiler::backend::c17::naming;
+
+/* ================================================================ */
+/* Constants                                                        */
+/* ================================================================ */
+
+const NAMING_MAGIC: u64 = 0x56495454454E414D;
+const NAMING_DEAD_MAGIC: u64 = 0x444541444E414D45;
+
+const NAMING_PREFIX: str = "vitte_";
+
+const NAMING_INITIAL_CAPACITY: usize = 64;
+const NAMING_MAX_IDENTIFIER_BYTES: usize = 4096;
+const NAMING_MAX_GENERATED_BYTES: usize = 65536;
+
+const FNV_OFFSET: u64 = 14695981039346656037;
+const FNV_PRIME: u64 = 1099511628211;
+
+const HEX_DIGITS: str = "0123456789ABCDEF";
+
+/* ================================================================ */
+/* Errors                                                           */
+/* ================================================================ */
+
+export pick NamingError {
+    None,
+    InvalidNaming,
+    InvalidArgument,
+    InvalidKind,
+    InvalidIdentifier,
+    TooLong,
+    Overflow,
+    OutOfMemory,
+    Collision,
+    Corruption,
+    Count,
+}
+
+pub proc naming_error_name(error: NamingError) -> str {
+    match error {
+        case NamingError.None => "none",
+        case NamingError.InvalidNaming => "invalid-naming",
+        case NamingError.InvalidArgument => "invalid-argument",
+        case NamingError.InvalidKind => "invalid-kind",
+        case NamingError.InvalidIdentifier => "invalid-identifier",
+        case NamingError.TooLong => "too-long",
+        case NamingError.Overflow => "overflow",
+        case NamingError.OutOfMemory => "out-of-memory",
+        case NamingError.Collision => "collision",
+        case NamingError.Corruption => "corruption",
+        case NamingError.Count => "count",
+    }
+}
+
+/* ================================================================ */
+/* Symbol kinds                                                     */
+/* ================================================================ */
+
+export pick NameKind {
+    Invalid,
+    Module,
+    Type,
+    Global,
+    Function,
+    Parameter,
+    Local,
+    Temporary,
+    Label,
+    Field,
+    Enumerator,
+    Runtime,
+    Internal,
+    Count,
+}
+
+const NAME_KIND_COUNT: usize = 13;
+
+pub proc name_kind_name(kind: NameKind) -> str {
+    match kind {
+        case NameKind.Invalid => "invalid",
+        case NameKind.Module => "module",
+        case NameKind.Type => "type",
+        case NameKind.Global => "global",
+        case NameKind.Function => "function",
+        case NameKind.Parameter => "parameter",
+        case NameKind.Local => "local",
+        case NameKind.Temporary => "temporary",
+        case NameKind.Label => "label",
+        case NameKind.Field => "field",
+        case NameKind.Enumerator => "enumerator",
+        case NameKind.Runtime => "runtime",
+        case NameKind.Internal => "internal",
+        case NameKind.Count => "count",
+    }
+}
+
+proc naming_kind_tag(kind: NameKind) -> str {
+    match kind {
+        case NameKind.Invalid => "",
+        case NameKind.Module => "m",
+        case NameKind.Type => "t",
+        case NameKind.Global => "g",
+        case NameKind.Function => "f",
+        case NameKind.Parameter => "p",
+        case NameKind.Local => "l",
+        case NameKind.Temporary => "tmp",
+        case NameKind.Label => "label",
+        case NameKind.Field => "field",
+        case NameKind.Enumerator => "enum",
+        case NameKind.Runtime => "rt",
+        case NameKind.Internal => "internal",
+        case NameKind.Count => "",
+    }
+}
+
+proc naming_kind_index(kind: NameKind) -> usize {
+    match kind {
+        case NameKind.Invalid => 0,
+        case NameKind.Module => 1,
+        case NameKind.Type => 2,
+        case NameKind.Global => 3,
+        case NameKind.Function => 4,
+        case NameKind.Parameter => 5,
+        case NameKind.Local => 6,
+        case NameKind.Temporary => 7,
+        case NameKind.Label => 8,
+        case NameKind.Field => 9,
+        case NameKind.Enumerator => 10,
+        case NameKind.Runtime => 11,
+        case NameKind.Internal => 12,
+        case NameKind.Count => NAME_KIND_COUNT,
+    }
+}
+
+/* ================================================================ */
+/* Configuration                                                    */
+/* ================================================================ */
+
+export form NamingConfig {
+    max_identifier_bytes: usize,
+    max_generated_bytes: usize,
+
+    include_kind_tag: bool,
+    include_module_id: bool,
+    include_source_id: bool,
+
+    append_hash: bool,
+    reject_collisions: bool,
+}
+
+pub proc naming_config_default() -> NamingConfig {
+    return NamingConfig {
+        max_identifier_bytes: NAMING_MAX_IDENTIFIER_BYTES,
+        max_generated_bytes: NAMING_MAX_GENERATED_BYTES,
+
+        include_kind_tag: true,
+        include_module_id: true,
+        include_source_id: true,
+
+        append_hash: true,
+        reject_collisions: true,
+    };
+}
+
+pub proc naming_config_validate(config: &NamingConfig) -> bool {
+    return
+        config.max_identifier_bytes > 0  and 
+        config.max_generated_bytes > 0;
+}
+
+/* ================================================================ */
+/* Registry entries                                                 */
+/* ================================================================ */
+
+export form NameEntry {
+    kind: NameKind,
+
+    module_id: u64,
+    source_id: u64,
+
+    source: string,
+    source_length: usize,
+
+    generated: string,
+    generated_length: usize,
+
+    hash: u64,
+}
+
+export form NamingStats {
+    entry_count: usize,
+    entry_capacity: usize,
+
+    generated_count: usize,
+    collision_count: usize,
+
+    source_bytes: usize,
+    generated_bytes: usize,
+
+    maximum_generated_length: usize,
+
+    by_kind: [usize; NAME_KIND_COUNT],
+}
+
+export form Naming {
+    magic: u64,
+
+    config: NamingConfig,
+
+    entries: [NameEntry],
+
+    entry_count: usize,
+    entry_capacity: usize,
+
+    next_temporary_id: u64,
+    next_label_id: u64,
+    next_internal_id: u64,
+
+    generated_count: usize,
+    collision_count: usize,
+
+    last_error: NamingError,
+}
+
+/* ================================================================ */
+/* Arithmetic                                                       */
+/* ================================================================ */
+
+proc naming_add_overflow(left: usize, right: usize) -> bool {
+    return left > usize.MAX - right;
+}
+
+proc naming_mul_overflow(left: usize, right: usize) -> bool {
+    return left != 0  and  right > usize.MAX / left;
+}
+
+proc naming_saturating_add(left: usize, right: usize) -> usize {
+    if naming_add_overflow(left, right) {
+        return usize.MAX;
+    }
+
+    return left + right;
+}
+
+/* ================================================================ */
+/* ASCII helpers                                                    */
+/* ================================================================ */
+
+proc is_ascii_lower(c: u8) -> bool {
+    return c >= 97  and  c <= 122;
+}
+
+proc is_ascii_upper(c: u8) -> bool {
+    return c >= 65  and  c <= 90;
+}
+
+proc is_ascii_alpha(c: u8) -> bool {
+    return is_ascii_lower(c)  or  is_ascii_upper(c);
+}
+
+proc is_ascii_digit(c: u8) -> bool {
+    return c >= 48  and  c <= 57;
+}
+
+proc is_identifier_start(c: u8) -> bool {
+    return is_ascii_alpha(c)  or  c == 95;
+}
+
+proc is_identifier_continue(c: u8) -> bool {
+    return is_identifier_start(c)  or  is_ascii_digit(c);
+}
+
+proc hex_digit(value: u8) -> u8 {
+    let digit: usize = (value & 15) as usize;
+    return HEX_DIGITS.as_bytes()[digit];
+}
+
+/* ================================================================ */
+/* Hashing: FNV-1a 64-bit                                           */
+/* ================================================================ */
+
+proc fnv_step(hash: u64, byte: u8) -> u64 {
+    return (hash ^ (byte as u64)).wrapping_mul(FNV_PRIME);
+}
+
+pub proc naming_hash_bytes(data: &[u8]) -> u64 {
+    let mut hash: u64 = FNV_OFFSET;
+    let mut index: usize = 0;
+
+    while index < data.len() {
+        set hash = fnv_step(hash, data[index]);
+        set index += 1;
+    }
+
+    return hash;
+}
+
+pub proc naming_hash_string(text: str) -> u64 {
+    return naming_hash_bytes(text.as_bytes());
+}
+
+proc hash_combine(hash: u64, data: &[u8]) -> u64 {
+    let mut result: u64 = hash;
+    let mut index: usize = 0;
+
+    while index < data.len() {
+        set result = fnv_step(result, data[index]);
+        set index += 1;
+    }
+
+    return result;
+}
+
+/*
+ * Explicit numeric serialization.
+ *
+ * The original C implementation hashes the in-memory bytes of:
+ *   - enum kind
+ *   - uint64 module_id
+ *   - uint64 source_id
+ *
+ * This implementation chooses a stable wire representation:
+ *   - kind: u32 little-endian
+ *   - ids:  u64 little-endian
+ */
+
+proc hash_u32_le(hash: u64, value: u32) -> u64 {
+    let mut result: u64 = hash;
+    let mut index: usize = 0;
+
+    while index < 4 {
+        let shift: u32 = (index as u32) * 8;
+        let byte: u8 = ((value >> shift) & 255) as u8;
+
+        set result = fnv_step(result, byte);
+        set index += 1;
+    }
+
+    return result;
+}
+
+proc hash_u64_le(hash: u64, value: u64) -> u64 {
+    let mut result: u64 = hash;
+    let mut index: usize = 0;
+
+    while index < 8 {
+        let shift: u32 = (index as u32) * 8;
+        let byte: u8 = ((value >> shift) & 255) as u8;
+
+        set result = fnv_step(result, byte);
+        set index += 1;
+    }
+
+    return result;
+}
+
+proc naming_symbol_hash(
+    kind: NameKind,
+    module_id: u64,
+    source_id: u64,
+    source: str,
+) -> u64 {
+    let mut hash: u64 = FNV_OFFSET;
+
+    set hash = hash_u32_le(
+        hash,
+        naming_kind_index(kind) as u32,
+    );
+
+    set hash = hash_u64_le(hash, module_id);
+    set hash = hash_u64_le(hash, source_id);
+
+    set hash = hash_combine(hash, source.as_bytes());
+
+    return hash;
+}
+
+/* ================================================================ */
+/* C17 keywords                                                     */
+/* ================================================================ */
+
+pub proc naming_is_keyword(identifier: str) -> bool {
+    if identifier.len() == 0 { return false; }
+    match identifier {
+        case "_Alignas" => true,
+        case "_Alignof" => true,
+        case "_Atomic" => true,
+        case "_Bool" => true,
+        case "_Complex" => true,
+        case "_Generic" => true,
+        case "_Imaginary" => true,
+        case "_Noreturn" => true,
+        case "_Static_assert" => true,
+        case "_Thread_local" => true,
+
+        case "auto" => true,
+        case "break" => true,
+        case "case" => true,
+        case "char" => true,
+        case "const" => true,
+        case "continue" => true,
+        case "default" => true,
+        case "do" => true,
+        case "double" => true,
+        case "else" => true,
+        case "enum" => true,
+        case "extern" => true,
+        case "float" => true,
+        case "for" => true,
+        case "goto" => true,
+        case "if" => true,
+        case "inline" => true,
+        case "int" => true,
+        case "long" => true,
+        case "register" => true,
+        case "restrict" => true,
+        case "return" => true,
+        case "short" => true,
+        case "signed" => true,
+        case "sizeof" => true,
+        case "static" => true,
+        case "struct" => true,
+        case "switch" => true,
+        case "typedef" => true,
+        case "union" => true,
+        case "unsigned" => true,
+        case "void" => true,
+        case "volatile" => true,
+        case "while" => true,
+
+        case _ => false,
+    }
+}
+
+/* ================================================================ */
+/* Identifier validation                                            */
+/* ================================================================ */
+
+pub proc naming_is_reserved_identifier(identifier: str) -> bool {
+    let bytes = identifier.as_bytes();
+
+    if bytes.len() == 0 {
+        return false;
+    }
+
+    /*
+     * Every leading underscore is rejected.
+     * This includes __ and _A ... _Z.
+     */
+    return bytes[0] == 95;
+}
+
+pub proc naming_is_c_identifier(identifier: str) -> bool {
+    let bytes = identifier.as_bytes();
+
+    if bytes.len() == 0 {
+        return false;
+    }
+
+    if not is_identifier_start(bytes[0]) {
+        return false;
+    }
+
+    let mut index: usize = 1;
+
+    while index < bytes.len() {
+        if not is_identifier_continue(bytes[index]) {
+            return false;
+        }
+
+        set index += 1;
+    }
+
+    return true;
+}
+
+pub proc naming_is_safe_c_identifier(identifier: str) -> bool {
+    return
+        naming_is_c_identifier(identifier)  and 
+        not naming_is_keyword(identifier)  and 
+        not naming_is_reserved_identifier(identifier);
+}
+
+/* ================================================================ */
+/* Byte encoding                                                    */
+/* ================================================================ */
+
+proc naming_encode_bytes(source: str) -> string {
+    let bytes = source.as_bytes();
+
+    let mut output: string = "";
+    let mut index: usize = 0;
+
+    while index < bytes.len() {
+        let byte: u8 = bytes[index];
+
+        if is_ascii_alpha(byte)  or  is_ascii_digit(byte) {
+            set output += string.from_byte(byte);
+        } elif byte == 95 {
+            set output += "_u";
+        } else {
+            set output += "_x";
+
+            set output += string.from_byte(
+                hex_digit((byte >> 4) as u8),
+            );
+
+            set output += string.from_byte(
+                hex_digit(byte),
+            );
+        }
+
+        set index += 1;
+    }
+
+    return output;
+}
+
+/* ================================================================ */
+/* Integer formatting                                               */
+/* ================================================================ */
+
+proc naming_u64_decimal(value: u64) -> string {
+    if value == 0 {
+        return "0";
+    }
+
+    let mut number: u64 = value;
+    let mut reversed: string = "";
+
+    while number != 0 {
+        let digit: u8 = (number % 10) as u8;
+
+        set reversed += string.from_byte(48 + digit);
+        set number /= 10;
+    }
+
+    let bytes = reversed.as_bytes();
+
+    let mut output: string = "";
+    let mut index: usize = bytes.len();
+
+    while index > 0 {
+        set index -= 1;
+        set output += string.from_byte(bytes[index]);
+    }
+
+    return output;
+}
+
+proc naming_hex64(value: u64) -> string {
+    let mut output: string = "";
+    let mut index: usize = 0;
+
+    while index < 16 {
+        let shift: u32 = ((15 - index) * 4) as u32;
+
+        let digit: u8 =
+            ((value >> shift) & 15) as u8;
+
+        set output += string.from_byte(hex_digit(digit));
+        set index += 1;
+    }
+
+    return output;
+}
+
+/* ================================================================ */
+/* Lifecycle                                                        */
+/* ================================================================ */
+
+pub proc naming_init(config: NamingConfig) -> Naming {
+    return Naming {
+        magic: NAMING_MAGIC,
+
+        config: config,
+
+        entries: [],
+
+        entry_count: 0,
+        entry_capacity: 0,
+
+        next_temporary_id: 1,
+        next_label_id: 1,
+        next_internal_id: 1,
+
+        generated_count: 0,
+        collision_count: 0,
+
+        last_error: NamingError.None,
+    };
+}
+
+pub proc naming_init_default() -> Naming {
+    return naming_init(naming_config_default());
+}
+
+pub proc naming_is_valid(naming: &Naming) -> bool {
+    if naming.magic != NAMING_MAGIC {
+        return false;
+    }
+
+    if naming.entry_count > naming.entry_capacity {
+        return false;
+    }
+
+    if naming.entry_count != naming.entries.len() or naming.entries.capacity() < naming.entry_count {
+        return false;
+    }
+
+    return true;
+}
+
+pub proc naming_destroy(naming: &mut Naming) {
+    if not naming_is_valid(naming) {
+        return;
+    }
+
+    set naming.entries = [];
+
+    set naming.entry_count = 0;
+    set naming.entry_capacity = 0;
+
+    set naming.magic = NAMING_DEAD_MAGIC;
+}
+
+pub proc naming_reset(naming: &mut Naming) {
+    if not naming_is_valid(naming) {
+        return;
+    }
+
+    naming.entries.clear();
+
+    set naming.entry_count = 0;
+
+    set naming.next_temporary_id = 1;
+    set naming.next_label_id = 1;
+    set naming.next_internal_id = 1;
+
+    set naming.generated_count = 0;
+    set naming.collision_count = 0;
+
+    set naming.last_error = NamingError.None;
+}
+
+/* ================================================================ */
+/* Error handling                                                   */
+/* ================================================================ */
+
+proc naming_fail(
+    naming: &mut Naming,
+    error: NamingError,
+) -> bool {
+    if naming.magic == NAMING_MAGIC {
+        set naming.last_error = error;
+    }
+
+    return false;
+}
+
+proc naming_reserve_entries(naming: &mut Naming, minimum: usize) -> bool {
+    if minimum <= naming.entry_capacity { return true; }
+    let mut capacity = if naming.entry_capacity == 0 { NAMING_INITIAL_CAPACITY } else { naming.entry_capacity };
+    while capacity < minimum {
+        if capacity > usize.MAX / 2 {
+            set capacity = minimum;
+            break;
+        }
+        set capacity *= 2;
+    }
+    if naming_mul_overflow(capacity, sizeof(NameEntry)) {
+        return naming_fail(naming, NamingError.Overflow);
+    }
+    if not naming.entries.reserve(capacity) {
+        return naming_fail(naming, NamingError.OutOfMemory);
+    }
+    set naming.entry_capacity = capacity;
+    return true;
+}
+
+pub proc naming_last_error(naming: &Naming) -> NamingError {
+    if not naming_is_valid(naming) {
+        return NamingError.InvalidNaming;
+    }
+
+    return naming.last_error;
+}
+
+pub proc naming_clear_error(naming: &mut Naming) {
+    if naming_is_valid(naming) {
+        set naming.last_error = NamingError.None;
+    }
+}
+
+/* ================================================================ */
+/* Registry lookup                                                  */
+/* ================================================================ */
+
+proc naming_find_generated_index(
+    naming: &Naming,
+    generated: str,
+) -> ?usize {
+    let mut index: usize = 0;
+
+    while index < naming.entry_count {
+        let name_entry = &naming.entries[index];
+
+        if name_entry.generated == generated {
+            return index;
+        }
+
+        set index += 1;
+    }
+
+    return null;
+}
+
+proc naming_find_source_index(
+    naming: &Naming,
+    kind: NameKind,
+    module_id: u64,
+    source_id: u64,
+    source: str,
+) -> ?usize {
+    let mut index: usize = 0;
+
+    while index < naming.entry_count {
+        let name_entry = &naming.entries[index];
+
+        if name_entry.kind == kind  and 
+           name_entry.module_id == module_id  and 
+           name_entry.source_id == source_id  and 
+           name_entry.source == source {
+            return index;
+        }
+
+        set index += 1;
+    }
+
+    return null;
+}
+
+pub proc naming_find_generated(
+    naming: &Naming,
+    generated: str,
+) -> ?&NameEntry {
+    if not naming_is_valid(naming) {
+        return null;
+    }
+
+    let index = naming_find_generated_index(
+        naming,
+        generated,
+    );
+
+    if index == null {
+        return null;
+    }
+
+    return &naming.entries[index?];
+}
+
+pub proc naming_find_source(
+    naming: &Naming,
+    kind: NameKind,
+    module_id: u64,
+    source_id: u64,
+    source: str,
+) -> ?&NameEntry {
+    if not naming_is_valid(naming) {
+        return null;
+    }
+
+    let index = naming_find_source_index(
+        naming,
+        kind,
+        module_id,
+        source_id,
+        source,
+    );
+
+    if index == null {
+        return null;
+    }
+
+    return &naming.entries[index?];
+}
+
+/* ================================================================ */
+/* Name generation                                                 */
+/* ================================================================ */
+
+proc naming_build_name(
+    naming: &mut Naming,
+    kind: NameKind,
+    module_id: u64,
+    source_id: u64,
+    source: str,
+) -> ?string {
+    if source.len() == 0 {
+        naming_fail(
+            naming,
+            NamingError.InvalidIdentifier,
+        );
+
+        return null;
+    }
+
+    if source.len() > naming.config.max_identifier_bytes {
+        naming_fail(naming, NamingError.TooLong);
+        return null;
+    }
+
+    let tag: str = naming_kind_tag(kind);
+
+    if tag.len() == 0 {
+        naming_fail(naming, NamingError.InvalidKind);
+        return null;
+    }
+
+    let mut generated: string = NAMING_PREFIX;
+
+    if naming.config.include_kind_tag {
+        set generated += tag;
+        set generated += "_";
+    }
+
+    if naming.config.include_module_id {
+        set generated += "m";
+        set generated += naming_u64_decimal(module_id);
+        set generated += "_";
+    }
+
+    set generated += naming_encode_bytes(source);
+
+    if naming.config.include_source_id {
+        set generated += "_s";
+        set generated += naming_u64_decimal(source_id);
+    }
+
+    if naming.config.append_hash {
+        let hash: u64 = naming_symbol_hash(
+            kind,
+            module_id,
+            source_id,
+            source,
+        );
+
+        set generated += "_h";
+        set generated += naming_hex64(hash);
+    }
+
+    if generated.len() > naming.config.max_generated_bytes  or 
+       generated.len() >= NAMING_MAX_GENERATED_BYTES {
+        naming_fail(naming, NamingError.TooLong);
+        return null;
+    }
+
+    if not naming_is_safe_c_identifier(generated) {
+        naming_fail(
+            naming,
+            NamingError.InvalidIdentifier,
+        );
+
+        return null;
+    }
+
+    return generated;
+}
+
+/* ================================================================ */
+/* Registry insertion                                               */
+/* ================================================================ */
+
+proc naming_register(
+    naming: &mut Naming,
+    kind: NameKind,
+    module_id: u64,
+    source_id: u64,
+    source: str,
+    generated: str,
+) -> ?&NameEntry {
+    let existing_source = naming_find_source_index(
+        naming,
+        kind,
+        module_id,
+        source_id,
+        source,
+    );
+
+    if existing_source != null {
+        return &naming.entries[existing_source?];
+    }
+
+    let existing_generated = naming_find_generated_index(
+        naming,
+        generated,
+    );
+
+    if existing_generated != null {
+        set naming.collision_count = naming_saturating_add(
+            naming.collision_count,
+            1,
+        );
+
+        set naming.last_error = NamingError.Collision;
+
+        if naming.config.reject_collisions {
+            return null;
+        }
+
+        /*
+         * Same behavior as the C implementation:
+         * return the existing symbol without inserting an alias.
+         */
+        return &naming.entries[existing_generated?];
+    }
+
+    if naming.entry_count == usize.MAX {
+        naming_fail(naming, NamingError.Overflow);
+        return null;
+    }
+
+    if not naming_reserve_entries(naming, naming.entry_count + 1) {
+        return null;
+    }
+
+    let name_entry = NameEntry {
+        kind: kind,
+
+        module_id: module_id,
+        source_id: source_id,
+
+        source: source.to_string(),
+        source_length: source.len(),
+
+        generated: generated.to_string(),
+        generated_length: generated.len(),
+
+        hash: naming_hash_string(generated),
+    };
+
+    if not naming.entries.push(name_entry) {
+        naming_fail(naming, NamingError.OutOfMemory);
+        return null;
+    }
+
+    set naming.entry_count += 1;
+
+    set naming.generated_count = naming_saturating_add(
+        naming.generated_count,
+        1,
+    );
+
+    set naming.last_error = NamingError.None;
+
+    return &naming.entries[naming.entry_count - 1];
+}
+
+/* ================================================================ */
+/* Public mangling                                                  */
+/* ================================================================ */
+
+pub proc naming_mangle(
+    naming: &mut Naming,
+    kind: NameKind,
+    module_id: u64,
+    source_id: u64,
+    source: str,
+) -> ?&NameEntry {
+    if not naming_is_valid(naming) {
+        return null;
+    }
+
+    if kind <= NameKind.Invalid or kind >= NameKind.Count {
+        naming_fail(naming, NamingError.InvalidKind);
+        return null;
+    }
+
+    if source.len() == 0 {
+        naming_fail(
+            naming,
+            NamingError.InvalidIdentifier,
+        );
+
+        return null;
+    }
+
+    let existing = naming_find_source_index(
+        naming,
+        kind,
+        module_id,
+        source_id,
+        source,
+    );
+
+    if existing != null {
+        set naming.last_error = NamingError.None;
+        return &naming.entries[existing?];
+    }
+
+    let generated = naming_build_name(
+        naming,
+        kind,
+        module_id,
+        source_id,
+        source,
+    );
+
+    if generated.len() == 0 {
+        return null;
+    }
+
+    return naming_register(
+        naming,
+        kind,
+        module_id,
+        source_id,
+        source,
+        generated?,
+    );
+}
+
+/* ================================================================ */
+/* Common symbol wrappers                                           */
+/* ================================================================ */
+
+pub proc naming_module(
+    naming: &mut Naming,
+    module_id: u64,
+    name: str,
+) -> ?&NameEntry {
+    return naming_mangle(
+        naming,
+        NameKind.Module,
+        module_id,
+        module_id,
+        name,
+    );
+}
+
+pub proc naming_type(
+    naming: &mut Naming,
+    module_id: u64,
+    source_id: u64,
+    name: str,
+) -> ?&NameEntry {
+    return naming_mangle(
+        naming,
+        NameKind.Type,
+        module_id,
+        source_id,
+        name,
+    );
+}
+
+pub proc naming_global(
+    naming: &mut Naming,
+    module_id: u64,
+    source_id: u64,
+    name: str,
+) -> ?&NameEntry {
+    return naming_mangle(
+        naming,
+        NameKind.Global,
+        module_id,
+        source_id,
+        name,
+    );
+}
+
+pub proc naming_function(
+    naming: &mut Naming,
+    module_id: u64,
+    source_id: u64,
+    name: str,
+) -> ?&NameEntry {
+    return naming_mangle(
+        naming,
+        NameKind.Function,
+        module_id,
+        source_id,
+        name,
+    );
+}
+
+pub proc naming_parameter(
+    naming: &mut Naming,
+    module_id: u64,
+    source_id: u64,
+    name: str,
+) -> ?&NameEntry {
+    return naming_mangle(
+        naming,
+        NameKind.Parameter,
+        module_id,
+        source_id,
+        name,
+    );
+}
+
+pub proc naming_local(
+    naming: &mut Naming,
+    module_id: u64,
+    source_id: u64,
+    name: str,
+) -> ?&NameEntry {
+    return naming_mangle(
+        naming,
+        NameKind.Local,
+        module_id,
+        source_id,
+        name,
+    );
+}
+
+pub proc naming_field(
+    naming: &mut Naming,
+    module_id: u64,
+    source_id: u64,
+    name: str,
+) -> ?&NameEntry {
+    return naming_mangle(
+        naming,
+        NameKind.Field,
+        module_id,
+        source_id,
+        name,
+    );
+}
+
+pub proc naming_enumerator(
+    naming: &mut Naming,
+    module_id: u64,
+    source_id: u64,
+    name: str,
+) -> ?&NameEntry {
+    return naming_mangle(
+        naming,
+        NameKind.Enumerator,
+        module_id,
+        source_id,
+        name,
+    );
+}
+
+pub proc naming_runtime(
+    naming: &mut Naming,
+    name: str,
+) -> ?&NameEntry {
+    return naming_mangle(
+        naming,
+        NameKind.Runtime,
+        0,
+        0,
+        name,
+    );
+}
+
+/* ================================================================ */
+/* Synthetic symbols                                                */
+/* ================================================================ */
+
+pub proc naming_temporary(
+    naming: &mut Naming,
+    module_id: u64,
+) -> ?&NameEntry {
+    if not naming_is_valid(naming) {
+        return null;
+    }
+
+    let id: u64 = naming.next_temporary_id;
+
+    if id == 18446744073709551615 {
+        naming_fail(naming, NamingError.Overflow);
+        return null;
+    }
+
+    set naming.next_temporary_id += 1;
+
+    return naming_mangle(
+        naming,
+        NameKind.Temporary,
+        module_id,
+        id,
+        "tmp",
+    );
+}
+
+pub proc naming_label(
+    naming: &mut Naming,
+    module_id: u64,
+) -> ?&NameEntry {
+    if not naming_is_valid(naming) {
+        return null;
+    }
+
+    let id: u64 = naming.next_label_id;
+
+    if id == 18446744073709551615 {
+        naming_fail(naming, NamingError.Overflow);
+        return null;
+    }
+
+    set naming.next_label_id += 1;
+
+    return naming_mangle(
+        naming,
+        NameKind.Label,
+        module_id,
+        id,
+        "label",
+    );
+}
+
+pub proc naming_internal(
+    naming: &mut Naming,
+    module_id: u64,
+    purpose: str,
+) -> ?&NameEntry {
+    if not naming_is_valid(naming) {
+        return null;
+    }
+
+    let mut effective_purpose: str = purpose;
+
+    if effective_purpose.len() == 0 {
+        set effective_purpose = "internal";
+    }
+
+    let id: u64 = naming.next_internal_id;
+
+    if id == 18446744073709551615 {
+        naming_fail(naming, NamingError.Overflow);
+        return null;
+    }
+
+    set naming.next_internal_id += 1;
+
+    return naming_mangle(
+        naming,
+        NameKind.Internal,
+        module_id,
+        id,
+        effective_purpose,
+    );
+}
+
+/* ================================================================ */
+/* Registry access                                                  */
+/* ================================================================ */
+
+pub proc naming_count(naming: &Naming) -> usize {
+    if not naming_is_valid(naming) {
+        return 0;
+    }
+
+    return naming.entry_count;
+}
+
+pub proc naming_at(
+    naming: &Naming,
+    index: usize,
+) -> ?&NameEntry {
+    if not naming_is_valid(naming) {
+        return null;
+    }
+
+    if index >= naming.entry_count {
+        return null;
+    }
+
+    return &naming.entries[index];
+}
+
+/* ================================================================ */
+/* Statistics                                                       */
+/* ================================================================ */
+
+pub proc naming_stats(naming: &Naming) -> NamingStats {
+    let mut stats = NamingStats {
+        entry_count: 0,
+        entry_capacity: 0,
+
+        generated_count: 0,
+        collision_count: 0,
+
+        source_bytes: 0,
+        generated_bytes: 0,
+
+        maximum_generated_length: 0,
+
+        by_kind: [0 as usize, 0 as usize, 0 as usize, 0 as usize, 0 as usize, 0 as usize, 0 as usize, 0 as usize, 0 as usize, 0 as usize, 0 as usize, 0 as usize, 0 as usize],
+    };
+
+    if not naming_is_valid(naming) {
+        return stats;
+    }
+
+    set stats.entry_count = naming.entry_count;
+    set stats.entry_capacity = naming.entry_capacity;
+
+    set stats.generated_count = naming.generated_count;
+    set stats.collision_count = naming.collision_count;
+
+    let mut index: usize = 0;
+
+    while index < naming.entry_count {
+        let name_entry = &naming.entries[index];
+
+        set stats.source_bytes = naming_saturating_add(
+            stats.source_bytes,
+            name_entry.source_length,
+        );
+
+        set stats.generated_bytes = naming_saturating_add(
+            stats.generated_bytes,
+            name_entry.generated_length,
+        );
+
+        if name_entry.generated_length >
+           stats.maximum_generated_length {
+            set stats.maximum_generated_length =
+                name_entry.generated_length;
+        }
+
+        let kind_index: usize =
+            naming_kind_index(name_entry.kind);
+
+        if kind_index > 0  and  kind_index < NAME_KIND_COUNT {
+            set stats.by_kind[kind_index] =
+                naming_saturating_add(
+                    stats.by_kind[kind_index],
+                    1,
+                );
+        }
+
+        set index += 1;
+    }
+
+    return stats;
+}
+
+/* ================================================================ */
+/* Deep validation                                                  */
+/* ================================================================ */
+
+pub proc naming_validate(naming: &Naming) -> bool {
+    if not naming_is_valid(naming) {
+        return false;
+    }
+
+    if not naming_config_validate(&naming.config) {
+        return false;
+    }
+
+    let mut index: usize = 0;
+
+    while index < naming.entry_count {
+        let name_entry = &naming.entries[index];
+
+        if name_entry.kind <= NameKind.Invalid or name_entry.kind >= NameKind.Count {
+            return false;
+        }
+
+        if
+           name_entry.source_length == 0  or 
+           name_entry.generated_length == 0 {
+            return false;
+        }
+
+        if name_entry.source_length != name_entry.source.len()  or 
+           name_entry.generated_length != name_entry.generated.len() {
+            return false;
+        }
+
+        if name_entry.source_length >
+           naming.config.max_identifier_bytes {
+            return false;
+        }
+
+        if name_entry.generated_length >
+           naming.config.max_generated_bytes {
+            return false;
+        }
+
+        if not naming_is_safe_c_identifier(name_entry.generated) {
+            return false;
+        }
+
+        if name_entry.hash != naming_hash_string(name_entry.generated) {
+            return false;
+        }
+
+        let mut other: usize = index + 1;
+
+        while other < naming.entry_count {
+            let candidate = &naming.entries[other];
+
+            /*
+             * Generated-name collision.
+             */
+            if name_entry.generated == candidate.generated {
+                return false;
+            }
+
+            /*
+             * Duplicate semantic key.
+             */
+            if name_entry.kind == candidate.kind  and 
+               name_entry.module_id == candidate.module_id  and 
+               name_entry.source_id == candidate.source_id  and 
+               name_entry.source == candidate.source {
+                return false;
+            }
+
+            set other += 1;
+        }
+
+        set index += 1;
+    }
+
+    return true;
+}
+
+/* ================================================================ */
+/* Bootstrap-compatible native API                                  */
+/* ================================================================ */
+
+pub proc vitte_c17_naming_error_name(error: NamingError) -> str { return naming_error_name(error); }
+pub proc vitte_c17_name_kind_name(kind: NameKind) -> str { return name_kind_name(kind); }
+pub proc vitte_c17_naming_config_default() -> NamingConfig { return naming_config_default(); }
+
+pub proc vitte_c17_naming_init(naming: ?&mut Naming, config: ?&NamingConfig) -> bool {
+    if naming == null { return false; }
+    let mut effective = naming_config_default();
+    if config != null {
+        set effective = *config?;
+        if not naming_config_validate(&effective) { return false; }
+    }
+    set *naming? = naming_init(effective);
+    return true;
+}
+
+pub proc vitte_c17_naming_reset(naming: ?&mut Naming) {
+    if naming != null { naming_reset(&mut *naming?); }
+}
+
+pub proc vitte_c17_naming_destroy(naming: ?&mut Naming) {
+    if naming != null { naming_destroy(&mut *naming?); }
+}
+
+pub proc vitte_c17_naming_is_valid(naming: ?&Naming) -> bool {
+    if naming == null { return false; }
+    return naming_is_valid(naming?);
+}
+
+pub proc vitte_c17_naming_validate(naming: ?&Naming) -> bool {
+    if naming == null { return false; }
+    return naming_validate(naming?);
+}
+
+pub proc vitte_c17_naming_is_c_identifier(identifier: string, length: usize) -> bool {
+    if length == 0 or length > identifier.len() { return false; }
+    return naming_is_c_identifier(identifier.slice(0, length));
+}
+
+pub proc vitte_c17_naming_is_keyword(identifier: string, length: usize) -> bool {
+    if length == 0 or length > identifier.len() { return false; }
+    return naming_is_keyword(identifier.slice(0, length));
+}
+
+pub proc vitte_c17_naming_is_reserved_identifier(identifier: string, length: usize) -> bool {
+    if length == 0 or length > identifier.len() { return false; }
+    return naming_is_reserved_identifier(identifier.slice(0, length));
+}
+
+pub proc vitte_c17_naming_is_safe_c_identifier(identifier: string, length: usize) -> bool {
+    if length == 0 or length > identifier.len() { return false; }
+    return naming_is_safe_c_identifier(identifier.slice(0, length));
+}
+
+pub proc vitte_c17_naming_hash_bytes(data: *const u8, length: usize) -> u64 {
+    if data == null { return FNV_OFFSET; }
+    let mut hash: u64 = FNV_OFFSET;
+    let mut index: usize = 0;
+    while index < length {
+        set hash = fnv_step(hash, data[index]);
+        set index += 1;
+    }
+    return hash;
+}
+
+pub proc vitte_c17_naming_hash_string(text: string, length: usize) -> u64 {
+    if length > text.len() { return FNV_OFFSET; }
+    return naming_hash_bytes(text.slice(0, length).as_bytes());
+}
+
+pub proc vitte_c17_naming_mangle(
+    naming: ?&mut Naming,
+    kind: NameKind,
+    module_id: u64,
+    source_id: u64,
+    source: string,
+    source_length: usize,
+) -> ?&NameEntry {
+    if naming == null { return null; }
+    let context = &mut *naming?;
+    if kind <= NameKind.Invalid or kind >= NameKind.Count {
+        return naming_mangle(context, kind, module_id, source_id, "");
+    }
+    if source_length == 0 {
+        return naming_mangle(context, kind, module_id, source_id, "");
+    }
+    if source_length > source.len() {
+        naming_fail(context, NamingError.InvalidArgument);
+        return null;
+    }
+    return naming_mangle(context, kind, module_id, source_id, source.slice(0, source_length));
+}
+
+pub proc vitte_c17_naming_module(naming: ?&mut Naming, module_id: u64, name: string, length: usize) -> ?&NameEntry {
+    return vitte_c17_naming_mangle(naming, NameKind.Module, module_id, module_id, name, length);
+}
+pub proc vitte_c17_naming_type(naming: ?&mut Naming, module_id: u64, source_id: u64, name: string, length: usize) -> ?&NameEntry {
+    return vitte_c17_naming_mangle(naming, NameKind.Type, module_id, source_id, name, length);
+}
+pub proc vitte_c17_naming_global(naming: ?&mut Naming, module_id: u64, source_id: u64, name: string, length: usize) -> ?&NameEntry {
+    return vitte_c17_naming_mangle(naming, NameKind.Global, module_id, source_id, name, length);
+}
+pub proc vitte_c17_naming_function(naming: ?&mut Naming, module_id: u64, source_id: u64, name: string, length: usize) -> ?&NameEntry {
+    return vitte_c17_naming_mangle(naming, NameKind.Function, module_id, source_id, name, length);
+}
+pub proc vitte_c17_naming_parameter(naming: ?&mut Naming, module_id: u64, source_id: u64, name: string, length: usize) -> ?&NameEntry {
+    return vitte_c17_naming_mangle(naming, NameKind.Parameter, module_id, source_id, name, length);
+}
+pub proc vitte_c17_naming_local(naming: ?&mut Naming, module_id: u64, source_id: u64, name: string, length: usize) -> ?&NameEntry {
+    return vitte_c17_naming_mangle(naming, NameKind.Local, module_id, source_id, name, length);
+}
+pub proc vitte_c17_naming_field(naming: ?&mut Naming, module_id: u64, source_id: u64, name: string, length: usize) -> ?&NameEntry {
+    return vitte_c17_naming_mangle(naming, NameKind.Field, module_id, source_id, name, length);
+}
+pub proc vitte_c17_naming_enumerator(naming: ?&mut Naming, module_id: u64, source_id: u64, name: string, length: usize) -> ?&NameEntry {
+    return vitte_c17_naming_mangle(naming, NameKind.Enumerator, module_id, source_id, name, length);
+}
+pub proc vitte_c17_naming_runtime(naming: ?&mut Naming, name: string, length: usize) -> ?&NameEntry {
+    return vitte_c17_naming_mangle(naming, NameKind.Runtime, 0, 0, name, length);
+}
+
+pub proc vitte_c17_naming_temporary(naming: ?&mut Naming, module_id: u64) -> ?&NameEntry {
+    if naming == null { return null; }
+    return naming_temporary(&mut *naming?, module_id);
+}
+pub proc vitte_c17_naming_label(naming: ?&mut Naming, module_id: u64) -> ?&NameEntry {
+    if naming == null { return null; }
+    return naming_label(&mut *naming?, module_id);
+}
+pub proc vitte_c17_naming_internal(naming: ?&mut Naming, module_id: u64, purpose: string, purpose_length: usize) -> ?&NameEntry {
+    if naming == null { return null; }
+    if purpose_length == 0 {
+        return naming_internal(&mut *naming?, module_id, "internal");
+    }
+    if purpose_length > purpose.len() {
+        naming_fail(&mut *naming?, NamingError.InvalidArgument);
+        return null;
+    }
+    return naming_internal(&mut *naming?, module_id, purpose.slice(0, purpose_length));
+}
+
+pub proc vitte_c17_naming_find_generated(naming: ?&Naming, generated: string, length: usize) -> ?&NameEntry {
+    if naming == null or length > generated.len() { return null; }
+    return naming_find_generated(naming?, generated.slice(0, length));
+}
+pub proc vitte_c17_naming_find_source(
+    naming: ?&Naming,
+    kind: NameKind,
+    module_id: u64,
+    source_id: u64,
+    source: string,
+    source_length: usize,
+) -> ?&NameEntry {
+    if naming == null or source_length > source.len() { return null; }
+    return naming_find_source(naming?, kind, module_id, source_id, source.slice(0, source_length));
+}
+
+pub proc vitte_c17_naming_count(naming: ?&Naming) -> usize {
+    if naming == null { return 0; }
+    return naming_count(naming?);
+}
+pub proc vitte_c17_naming_at(naming: ?&Naming, index: usize) -> ?&NameEntry {
+    if naming == null { return null; }
+    return naming_at(naming?, index);
+}
+pub proc vitte_c17_naming_last_error(naming: ?&Naming) -> NamingError {
+    if naming == null { return NamingError.InvalidNaming; }
+    return naming_last_error(naming?);
+}
+pub proc vitte_c17_naming_clear_error(naming: ?&mut Naming) {
+    if naming != null { naming_clear_error(&mut *naming?); }
+}
+pub proc vitte_c17_naming_stats(naming: ?&Naming) -> NamingStats {
+    if naming != null { return naming_stats(naming?); }
+    return NamingStats {
+        entry_count: 0, entry_capacity: 0, generated_count: 0, collision_count: 0,
+        source_bytes: 0, generated_bytes: 0, maximum_generated_length: 0,
+        by_kind: [0 as usize, 0 as usize, 0 as usize, 0 as usize, 0 as usize, 0 as usize, 0 as usize, 0 as usize, 0 as usize, 0 as usize, 0 as usize, 0 as usize, 0 as usize],
+    };
+}
+
+pub proc vitte_c17_name_entry_source(name_entry: ?&NameEntry) -> ?string {
+    if name_entry == null { return null; }
+    return name_entry?.source;
+}
+pub proc vitte_c17_name_entry_source_length(name_entry: ?&NameEntry) -> usize {
+    if name_entry == null { return 0; }
+    return name_entry?.source_length;
+}
+pub proc vitte_c17_name_entry_generated(name_entry: ?&NameEntry) -> ?string {
+    if name_entry == null { return null; }
+    return name_entry?.generated;
+}
+pub proc vitte_c17_name_entry_generated_length(name_entry: ?&NameEntry) -> usize {
+    if name_entry == null { return 0; }
+    return name_entry?.generated_length;
+}
+pub proc vitte_c17_name_entry_hash(name_entry: ?&NameEntry) -> u64 {
+    if name_entry == null { return 0; }
+    return name_entry?.hash;
+}
+
+pub proc vitte_c17_naming_has_error(naming: ?&Naming) -> bool {
+    if naming == null { return false; }
+    return naming?.last_error != NamingError.None;
+}
+pub proc vitte_c17_naming_is_empty(naming: ?&Naming) -> bool {
+    if naming == null { return true; }
+    return naming?.entry_count == 0;
+}
+pub proc vitte_c17_naming_collision_count(naming: ?&Naming) -> usize {
+    if naming == null { return 0; }
+    return naming?.collision_count;
+}
+
+/* ================================================================ */
+/* End                                                              */
+/* ================================================================ */

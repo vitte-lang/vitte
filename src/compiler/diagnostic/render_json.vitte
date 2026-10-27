@@ -1,0 +1,128 @@
+/// Vitte declarations ported from `src/bootstrap/diagnostic/render_json.h`.
+space compiler::diagnostic::render_json;
+
+use compiler::api::error::{Status};
+use compiler::diagnostic::diagnostic::{Diagnostic, DiagnosticBag};
+
+export form DiagnosticJSONOptions {
+    pretty: bool,
+    include_suppressed: bool,
+    include_suppressed_metadata: bool,
+    trailing_newline: bool
+}
+
+export proc vitte_diagnostic_json_schema_version() -> u32 { return 1; }
+
+export proc vitte_diagnostic_json_schema_name() -> string {
+    return "vitte-diagnostics";
+}
+
+export proc vitte_diagnostic_json_options_init(options: *mut DiagnosticJSONOptions) {
+    if options == null { return; }
+    set *options = DiagnosticJSONOptions {
+        pretty: false,
+        include_suppressed: false,
+        include_suppressed_metadata: true,
+        trailing_newline: true
+    };
+}
+
+export extern proc vitte_diagnostic_render_json_one(
+    stream: *mut u8,
+    diagnostic_value: *const Diagnostic
+) -> Status;
+
+export extern proc vitte_diagnostic_render_json_one_ex(
+    stream: *mut u8,
+    diagnostic_value: *const Diagnostic,
+    options: *const DiagnosticJSONOptions
+) -> Status;
+
+export extern proc vitte_diagnostic_render_json_bag(
+    stream: *mut u8,
+    bag: *const DiagnosticBag,
+    options: *const DiagnosticJSONOptions
+) -> Status;
+
+export extern proc vitte_diagnostic_render_json_lines(
+    stream: *mut u8,
+    bag: *const DiagnosticBag,
+    options: *const DiagnosticJSONOptions
+) -> Status;
+
+export extern proc vitte_diagnostic_write_json(
+    stream: *mut u8,
+    diagnostic_value: *const Diagnostic
+) -> Status;
+
+export extern proc vitte_diagnostic_write_json_bag(
+    stream: *mut u8,
+    bag: *const DiagnosticBag
+) -> Status;
+
+/// Render compact JSON without a trailing newline.
+export proc vitte_diagnostic_render_json_compact(
+    stream: *mut u8,
+    diagnostic_value: *const Diagnostic
+) -> Status {
+    let mut options: DiagnosticJSONOptions;
+    vitte_diagnostic_json_options_init(&mut options);
+    set options.pretty = false;
+    set options.trailing_newline = false;
+
+    return vitte_diagnostic_render_json_one_ex(
+        stream,
+        diagnostic_value,
+        &options
+    );
+}
+
+/// Render one diagnostic as pretty JSON.
+export proc vitte_diagnostic_render_json_pretty(
+    stream: *mut u8,
+    diagnostic_value: *const Diagnostic
+) -> Status {
+    let mut options: DiagnosticJSONOptions;
+    vitte_diagnostic_json_options_init(&mut options);
+    set options.pretty = true;
+
+    return vitte_diagnostic_render_json_one_ex(
+        stream,
+        diagnostic_value,
+        &options
+    );
+}
+
+/// Render a diagnostic bag as pretty JSON.
+export proc vitte_diagnostic_render_json_bag_pretty(
+    stream: *mut u8,
+    bag: *const DiagnosticBag
+) -> Status {
+    let mut options: DiagnosticJSONOptions;
+    vitte_diagnostic_json_options_init(&mut options);
+    set options.pretty = true;
+
+    return vitte_diagnostic_render_json_bag(
+        stream,
+        bag,
+        &options
+    );
+}
+
+/// Render a diagnostic bag with suppressed cascade diagnostics included.
+export proc vitte_diagnostic_render_json_bag_debug(
+    stream: *mut u8,
+    bag: *const DiagnosticBag
+) -> Status {
+    let mut options: DiagnosticJSONOptions;
+    vitte_diagnostic_json_options_init(&mut options);
+    set options.pretty = true;
+    set options.include_suppressed = true;
+    set options.include_suppressed_metadata = true;
+
+    return vitte_diagnostic_render_json_bag(
+        stream,
+        bag,
+        &options
+    );
+}

@@ -1,0 +1,30 @@
+/// Suppression des espaces ASCII au début et à la fin d'une chaîne.
+space core::str::trim;
+
+proc str_is_ascii_whitespace(value: char) -> bool {
+    return value == ' ' || (value >= '\t' && value <= '\r');
+}
+
+export proc str_trim_start(value: str) -> str {
+    let mut start: usize = 0;
+    while start < value.length && str_is_ascii_whitespace(value[start]) {
+        set start = start + 1;
+    }
+    return value.slice(start, value.length);
+}
+
+export proc str_trim_end(value: str) -> str {
+    let mut end: usize = value.length;
+    while end > 0 && str_is_ascii_whitespace(value[end - 1]) {
+        set end = end - 1;
+    }
+    return value.slice(0, end);
+}
+
+export proc str_trim(value: str) -> str {
+    let mut start: usize = 0;
+    let mut end: usize = value.length;
+    while start < end && str_is_ascii_whitespace(value[start]) { set start = start + 1; }
+    while end > start && str_is_ascii_whitespace(value[end - 1]) { set end = end - 1; }
+    return value.slice(start, end);
+}

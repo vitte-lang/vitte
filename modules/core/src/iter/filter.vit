@@ -1,0 +1,18 @@
+/// Filtrage en place dans un tampon fourni par l'appelant.
+space core::iter::filter;
+
+export proc filter_copy<T>(
+    source: &[T],
+    destination: &mut [T],
+    predicate: proc(&T) -> bool
+) -> usize {
+    let mut written: usize = 0;
+    for index in 0..source.len() {
+        if predicate(&source[index]) {
+            if written >= destination.len() { return written; }
+            set destination[written] = source[index];
+            set written = written + 1;
+        }
+    }
+    return written;
+}

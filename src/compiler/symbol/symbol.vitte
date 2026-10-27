@@ -1,0 +1,662 @@
+/// Vitte API mirror of `src/bootstrap/symbol/symbol.h`.
+space compiler::symbol::symbol;
+
+/// Native Vitte implementation of symbol storage, name interning and lookup.
+use vitte::core::memory::{allocate, copy, deallocate, fill, cstring_length};
+use vitte::core::pointer;
+export const SYMBOL_API_VERSION_MAJOR: u32 = 1;
+export const SYMBOL_API_VERSION_MINOR: u32 = 0;
+export const SYMBOL_API_VERSION_PATCH: u32 = 0;
+export const SYMBOL_API_VERSION: u32 = 10000;
+export const SYMBOL_MAGIC: u64 = 0x5649545453594d42;
+export const SYMBOL_DEAD_MAGIC: u64 = 0x4445414453594d42;
+export const SYMBOL_FNV_OFFSET: u64 = 14695981039346656037;
+export const SYMBOL_FNV_PRIME: u64 = 1099511628211;
+export const SYMBOL_DEFAULT_INITIAL_CAPACITY: usize = 128;
+export const SYMBOL_DEFAULT_INITIAL_BUCKET_CAPACITY: usize = 256;
+export const SYMBOL_DEFAULT_INITIAL_STRING_CAPACITY: usize = 4096;
+export const SYMBOL_DEFAULT_MAX_SYMBOLS: usize = 16777216;
+export const SYMBOL_DEFAULT_MAX_STRING_BYTES: usize = 1073741824;
+export const SYMBOL_INVALID_ID: u64 = 0;
+export const SYMBOL_INVALID_SCOPE_ID: u64 = 0;
+export const SYMBOL_INVALID_TYPE_ID: u64 = 0;
+
+use compiler::source::source::{SourceId};
+use compiler::parser::parser::{ASTNodeId};
+export pick SymbolError {
+    None,
+    InvalidArgument,
+    InvalidContext,
+    InvalidState,
+    InvalidSymbol,
+    InvalidSymbolId,
+    InvalidScope,
+    InvalidName,
+    InvalidNamespace,
+    InvalidKind,
+    DuplicateSymbol,
+    NotFound,
+    SymbolLimit,
+    StringLimit,
+    Overflow,
+    OutOfMemory,
+    Validation,
+    Corruption,
+    Internal,
+    Count
+}
+
+export pick SymbolState {
+    Invalid,
+    Ready,
+    Building,
+    Frozen,
+    Failed,
+    Destroyed,
+    Count
+}
+
+export pick SymbolNamespace {
+    Invalid,
+    Value,
+    Type,
+    Trait,
+    Macro,
+    Space,
+    Count
+}
+
+export pick SymbolKind {
+    Invalid,
+    Space,
+    Import,
+    Const,
+    Static,
+    Local,
+    Parameter,
+    Proc,
+    ExternProc,
+    Type,
+    Opaque,
+    Form,
+    Field,
+    Pick,
+    Variant,
+    Trait,
+    TraitItem,
+    Impl,
+    Macro,
+    GenericParameter,
+    Test,
+    Alias,
+    Count
+}
+
+export pick SymbolVisibility {
+    Invalid,
+    Private,
+    Public,
+    Count
+}
+
+export pick SymbolStorage {
+    Invalid,
+    None,
+    Local,
+    Parameter,
+    Static,
+    Global,
+    Extern,
+    Comptime,
+    Count
+}
+
+export const SYMBOL_FLAG_NONE: u64 = 0;
+export const SYMBOL_FLAG_PUBLIC: u64 = (1 as u64) << 0;
+export const SYMBOL_FLAG_MUTABLE: u64 = (1 as u64) << 1;
+export const SYMBOL_FLAG_EXTERN: u64 = (1 as u64) << 2;
+export const SYMBOL_FLAG_ASYNC: u64 = (1 as u64) << 3;
+export const SYMBOL_FLAG_UNSAFE: u64 = (1 as u64) << 4;
+export const SYMBOL_FLAG_COMPTIME: u64 = (1 as u64) << 5;
+export const SYMBOL_FLAG_DECLARED: u64 = (1 as u64) << 6;
+export const SYMBOL_FLAG_DEFINED: u64 = (1 as u64) << 7;
+export const SYMBOL_FLAG_REFERENCED: u64 = (1 as u64) << 8;
+export const SYMBOL_FLAG_USED: u64 = (1 as u64) << 9;
+export const SYMBOL_FLAG_IMPORTED: u64 = (1 as u64) << 10;
+export const SYMBOL_FLAG_BUILTIN: u64 = (1 as u64) << 11;
+export const SYMBOL_FLAG_GENERIC: u64 = (1 as u64) << 12;
+export const SYMBOL_FLAG_DEPRECATED: u64 = (1 as u64) << 13;
+export const SYMBOL_FLAG_SYNTHETIC: u64 = (1 as u64) << 14;
+export const SYMBOL_FLAG_SHADOWS: u64 = (1 as u64) << 15;
+export const SYMBOL_FLAG_ADDRESS_TAKEN: u64 = (1 as u64) << 16;
+export const SYMBOL_FLAG_CAPTURED: u64 = (1 as u64) << 17;
+export const SYMBOL_FLAG_READ: u64 = (1 as u64) << 18;
+export const SYMBOL_FLAG_WRITTEN: u64 = (1 as u64) << 19;
+
+export form SymbolLocation {
+    source_id: SourceId,
+    begin: usize,
+    end: usize,
+    line: usize,
+    column: usize,
+    valid: bool
+}
+
+export form SymbolName {
+    data: *const u8,
+    length: usize,
+    hash: u64
+}
+
+export form Symbol {
+    id: SymbolId,
+    kind: SymbolKind,
+    name_space: SymbolNamespace,
+    visibility: SymbolVisibility,
+    storage: SymbolStorage,
+    symbol_flags: SymbolFlags,
+    name: *const u8,
+    name_length: usize,
+    name_hash: u64,
+    scope_id: SymbolScopeId,
+    parent_symbol_id: SymbolId,
+    shadowed_symbol_id: SymbolId,
+    type_id: SymbolTypeId,
+    declaration_node_id: ASTNodeId,
+    location: SymbolLocation,
+    next_in_bucket: SymbolId,
+    reference_count: u64
+}
+
+export form SymbolDeclaration {
+    name: *const u8,
+    name_length: usize,
+    kind: SymbolKind,
+    name_space: SymbolNamespace,
+    visibility: SymbolVisibility,
+    storage: SymbolStorage,
+    symbol_flags: SymbolFlags,
+    scope_id: SymbolScopeId,
+    parent_symbol_id: SymbolId,
+    shadowed_symbol_id: SymbolId,
+    type_id: SymbolTypeId,
+    declaration_node_id: ASTNodeId,
+    location: SymbolLocation
+}
+
+export form SymbolLookupKey {
+    name: *const u8,
+    name_length: usize,
+    name_space: SymbolNamespace,
+    scope_id: SymbolScopeId
+}
+
+export form SymbolStats {
+    symbols_created: u64,
+    symbols_removed: u64,
+    lookups: u64,
+    lookup_hits: u64,
+    lookup_misses: u64,
+    duplicate_rejections: u64,
+    names_interned: u64,
+    intern_hits: u64,
+    string_bytes: u64,
+    references_recorded: u64,
+    table_rebuilds: u64,
+    collisions: u64,
+    maximum_chain_length: u64,
+    validation_runs: u64,
+    validation_failures: u64,
+    hash_runs: u64,
+    resets: u64,
+    freezes: u64,
+    failures: u64,
+    allocations: u64,
+    reallocations: u64,
+    allocation_failures: u64
+}
+
+export form SymbolContext {
+    magic: u64,
+    state: SymbolState,
+    last_error: SymbolError,
+    symbols: *Symbol,
+    symbol_count: usize,
+    symbol_capacity: usize,
+    buckets: *SymbolId,
+    bucket_count: usize,
+    strings: *mut u8,
+    string_size: usize,
+    string_capacity: usize,
+    max_symbols: usize,
+    max_string_bytes: usize,
+    stats: SymbolStats,
+    generation: u64
+}
+
+export type SymbolScopeId = u64;
+
+export type SymbolId = u64;
+
+export type SymbolTypeId = u64;
+
+export type SymbolFlags = u64;
+
+const SYMBOL_SIZE_MAX: usize = (0 as usize) - 1;
+const SYMBOL_U64_MAX: u64 = 18446744073709551615;
+
+proc symbol_sat_add(left: u64, right: u64) -> u64 {
+    if left > SYMBOL_U64_MAX - right { return SYMBOL_U64_MAX; }
+    return left + right;
+}
+proc symbol_set_error(context: *mut SymbolContext, error: SymbolError) {
+    if context != null {
+        set (*context).last_error = error;
+        if error != SymbolError.None { set (*context).stats.failures = symbol_sat_add((*context).stats.failures, 1); }
+    }
+}
+proc symbol_context_usable(context: *const SymbolContext) -> bool {
+    return context != null and (*context).magic == SYMBOL_MAGIC and (*context).state != SymbolState.Invalid and (*context).state != SymbolState.Destroyed;
+}
+proc symbol_grow_capacity(current: usize, required: usize, result: *mut usize) -> bool {
+    if result == null { return false; }
+    let mut capacity = current;
+    if capacity == 0 { set capacity = 16; }
+    while capacity < required {
+        if capacity > SYMBOL_SIZE_MAX / 2 { return false; }
+        set capacity *= 2;
+    }
+    set *result = capacity;
+    return true;
+}
+proc symbol_reserve_symbols(context: *mut SymbolContext, required: usize) -> bool {
+    if required <= (*context).symbol_capacity { return true; }
+    let mut capacity: usize = 0;
+    let mut bytes: usize = 0;
+    if not symbol_grow_capacity((*context).symbol_capacity, required, &mut capacity) or capacity > SYMBOL_SIZE_MAX / sizeof(Symbol) {
+        symbol_set_error(context, SymbolError.Overflow); return false;
+    }
+    set bytes = capacity * sizeof(Symbol);
+    let replacement = allocate(bytes);
+    if replacement == null { set (*context).stats.allocation_failures = symbol_sat_add((*context).stats.allocation_failures, 1); symbol_set_error(context, SymbolError.OutOfMemory); return false; }
+    fill(replacement, 0, bytes);
+    if (*context).symbols != null and (*context).symbol_count != 0 { copy(replacement, (*context).symbols as *const u8, (*context).symbol_count * sizeof(Symbol)); }
+    if (*context).symbols != null { set (*context).stats.reallocations = symbol_sat_add((*context).stats.reallocations, 1); } else { set (*context).stats.allocations = symbol_sat_add((*context).stats.allocations, 1); }
+    deallocate((*context).symbols as *mut u8);
+    set (*context).symbols = replacement as usize as *Symbol;
+    set (*context).symbol_capacity = capacity;
+    return true;
+}
+proc symbol_reserve_strings(context: *mut SymbolContext, required: usize) -> bool {
+    if required <= (*context).string_capacity { return true; }
+    if required > (*context).max_string_bytes { symbol_set_error(context, SymbolError.StringLimit); return false; }
+    let mut capacity: usize = 0;
+    if not symbol_grow_capacity((*context).string_capacity, required, &mut capacity) { symbol_set_error(context, SymbolError.Overflow); return false; }
+    if capacity > (*context).max_string_bytes { set capacity = (*context).max_string_bytes; }
+    if capacity < required { symbol_set_error(context, SymbolError.StringLimit); return false; }
+    let replacement = allocate(capacity);
+    if replacement == null { set (*context).stats.allocation_failures = symbol_sat_add((*context).stats.allocation_failures, 1); symbol_set_error(context, SymbolError.OutOfMemory); return false; }
+    fill(replacement, 0, capacity);
+    if (*context).strings != null and (*context).string_size != 0 { copy(replacement, (*context).strings as *const u8, (*context).string_size); }
+    let old_base = pointer.address((*context).strings as *const u8);
+    let mut index: usize = 0;
+    while index < (*context).symbol_count {
+        let item = (&((*context).symbols[index])) as *mut Symbol;
+        let old_address = pointer.address((*item).name);
+        let offset = old_address - old_base;
+        set (*item).name = pointer.add_bytes(replacement, offset) as *const u8;
+        set index += 1;
+    }
+    if (*context).strings != null { set (*context).stats.reallocations = symbol_sat_add((*context).stats.reallocations, 1); } else { set (*context).stats.allocations = symbol_sat_add((*context).stats.allocations, 1); }
+    deallocate((*context).strings);
+    set (*context).strings = replacement;
+    set (*context).string_capacity = capacity;
+    return true;
+}
+proc symbol_lookup_hash(name: *const u8, length: usize, name_space: SymbolNamespace, scope_id: SymbolScopeId) -> u64 {
+    let mut hash = vitte_symbol_hash_name(name, length) ^ (name_space as u64);
+    set hash *= SYMBOL_FNV_PRIME;
+    let mut index: usize = 0;
+    while index < sizeof(SymbolScopeId) {
+        set hash = (hash ^ ((scope_id >> ((index * 8) as u32)) & 255)) * SYMBOL_FNV_PRIME;
+        set index += 1;
+    }
+    return hash;
+}
+proc symbol_rebuild_buckets(context: *mut SymbolContext, bucket_count: usize) -> bool {
+    if bucket_count < 16 or bucket_count > SYMBOL_SIZE_MAX / sizeof(SymbolId) { symbol_set_error(context, SymbolError.Overflow); return false; }
+    let replacement = allocate(bucket_count * sizeof(SymbolId));
+    if replacement == null { set (*context).stats.allocation_failures = symbol_sat_add((*context).stats.allocation_failures, 1); symbol_set_error(context, SymbolError.OutOfMemory); return false; }
+    fill(replacement, 0, bucket_count * sizeof(SymbolId));
+    let mut index: usize = 0;
+    while index < (*context).symbol_count {
+        let item = (&((*context).symbols[index])) as *mut Symbol;
+        let bucket = (symbol_lookup_hash((*item).name, (*item).name_length, (*item).name_space, (*item).scope_id) % bucket_count as u64) as usize;
+        set (*item).next_in_bucket = (replacement as usize as *SymbolId)[bucket];
+        set (replacement as usize as *SymbolId)[bucket] = (*item).id;
+        set index += 1;
+    }
+    deallocate((*context).buckets as *mut u8);
+    set (*context).buckets = replacement as usize as *SymbolId;
+    set (*context).bucket_count = bucket_count;
+    set (*context).stats.table_rebuilds = symbol_sat_add((*context).stats.table_rebuilds, 1);
+    return true;
+}
+proc symbol_prepare_bucket(context: *mut SymbolContext) -> bool {
+    if (*context).bucket_count == 0 { return symbol_rebuild_buckets(context, SYMBOL_DEFAULT_INITIAL_BUCKET_CAPACITY); }
+    if (*context).symbol_count + 1 <= (*context).bucket_count * 3 / 4 { return true; }
+    if (*context).bucket_count > SYMBOL_SIZE_MAX / 2 { symbol_set_error(context, SymbolError.Overflow); return false; }
+    return symbol_rebuild_buckets(context, (*context).bucket_count * 2);
+}
+proc symbol_equal_bytes(left: *const u8, right: *const u8, length: usize) -> bool {
+    if left == null or right == null { return false; }
+    let mut index: usize = 0;
+    while index < length { if left[index] != right[index] { return false; } set index += 1; }
+    return true;
+}
+
+export proc vitte_symbol_error_name(error: SymbolError) -> string {
+    match error {
+        case SymbolError.None => return "none"; case SymbolError.InvalidArgument => return "invalid-argument";
+        case SymbolError.InvalidContext => return "invalid-context"; case SymbolError.InvalidState => return "invalid-state";
+        case SymbolError.InvalidSymbol => return "invalid-symbol"; case SymbolError.InvalidSymbolId => return "invalid-symbol-id";
+        case SymbolError.InvalidScope => return "invalid-scope"; case SymbolError.InvalidName => return "invalid-name";
+        case SymbolError.InvalidNamespace => return "invalid-namespace"; case SymbolError.InvalidKind => return "invalid-kind";
+        case SymbolError.DuplicateSymbol => return "duplicate-symbol"; case SymbolError.NotFound => return "not-found";
+        case SymbolError.SymbolLimit => return "symbol-limit"; case SymbolError.StringLimit => return "string-limit";
+        case SymbolError.Overflow => return "overflow"; case SymbolError.OutOfMemory => return "out-of-memory";
+        case SymbolError.Validation => return "validation"; case SymbolError.Corruption => return "corruption";
+        case SymbolError.Internal => return "internal"; case SymbolError.Count => return "count";
+    }
+}
+export proc vitte_symbol_state_name(state: SymbolState) -> string {
+    match state { case SymbolState.Invalid => return "invalid"; case SymbolState.Ready => return "ready"; case SymbolState.Building => return "building"; case SymbolState.Frozen => return "frozen"; case SymbolState.Failed => return "failed"; case SymbolState.Destroyed => return "destroyed"; case SymbolState.Count => return "count"; }
+}
+export proc vitte_symbol_kind_name(kind: SymbolKind) -> string {
+    match kind { case SymbolKind.Invalid => return "invalid"; case SymbolKind.Space => return "space"; case SymbolKind.Import => return "import"; case SymbolKind.Const => return "const"; case SymbolKind.Static => return "static"; case SymbolKind.Local => return "local"; case SymbolKind.Parameter => return "parameter"; case SymbolKind.Proc => return "proc"; case SymbolKind.ExternProc => return "extern-proc"; case SymbolKind.Type => return "type"; case SymbolKind.Opaque => return "opaque"; case SymbolKind.Form => return "form"; case SymbolKind.Field => return "field"; case SymbolKind.Pick => return "pick"; case SymbolKind.Variant => return "variant"; case SymbolKind.Trait => return "trait"; case SymbolKind.TraitItem => return "trait-item"; case SymbolKind.Impl => return "impl"; case SymbolKind.Macro => return "macro"; case SymbolKind.GenericParameter => return "generic-parameter"; case SymbolKind.Test => return "test"; case SymbolKind.Alias => return "alias"; case SymbolKind.Count => return "count"; }
+}
+export proc vitte_symbol_namespace_name(name_space: SymbolNamespace) -> string {
+    match name_space { case SymbolNamespace.Invalid => return "invalid"; case SymbolNamespace.Value => return "value"; case SymbolNamespace.Type => return "type"; case SymbolNamespace.Trait => return "trait"; case SymbolNamespace.Macro => return "macro"; case SymbolNamespace.Space => return "space"; case SymbolNamespace.Count => return "count"; }
+}
+export proc vitte_symbol_visibility_name(visibility: SymbolVisibility) -> string {
+    match visibility { case SymbolVisibility.Invalid => return "invalid"; case SymbolVisibility.Private => return "private"; case SymbolVisibility.Public => return "public"; case SymbolVisibility.Count => return "count"; }
+}
+export proc vitte_symbol_storage_name(storage: SymbolStorage) -> string {
+    match storage { case SymbolStorage.Invalid => return "invalid"; case SymbolStorage.None => return "none"; case SymbolStorage.Local => return "local"; case SymbolStorage.Parameter => return "parameter"; case SymbolStorage.Static => return "static"; case SymbolStorage.Global => return "global"; case SymbolStorage.Extern => return "extern"; case SymbolStorage.Comptime => return "comptime"; case SymbolStorage.Count => return "count"; }
+}
+
+export proc vitte_symbol_init(context: *mut SymbolContext) -> bool {
+    if context == null { return false; }
+    fill(context as *mut u8, 0, sizeof(SymbolContext));
+    set (*context).magic = SYMBOL_MAGIC; set (*context).state = SymbolState.Ready;
+    set (*context).max_symbols = SYMBOL_DEFAULT_MAX_SYMBOLS; set (*context).max_string_bytes = SYMBOL_DEFAULT_MAX_STRING_BYTES;
+    set (*context).generation = 1; set (*context).last_error = SymbolError.None; return true;
+}
+export proc vitte_symbol_reset(context: *mut SymbolContext) -> bool {
+    if not symbol_context_usable(context) { return false; }
+    let generation = (*context).generation;
+    set (*context).symbol_count = 0; set (*context).string_size = 0;
+    if (*context).buckets != null { fill((*context).buckets as *mut u8, 0, (*context).bucket_count * sizeof(SymbolId)); }
+    if (*context).strings != null { set (*context).strings[0] = 0; }
+    fill((&((*context).stats)) as *mut u8, 0, sizeof(SymbolStats));
+    set (*context).stats.resets = 1; set (*context).state = SymbolState.Ready;
+    set (*context).last_error = SymbolError.None; set (*context).generation = symbol_sat_add(generation, 1); return true;
+}
+export proc vitte_symbol_destroy(context: *mut SymbolContext) {
+    if context == null { return; }
+    if (*context).magic == SYMBOL_MAGIC { deallocate((*context).symbols as *mut u8); deallocate((*context).buckets as *mut u8); deallocate((*context).strings); }
+    fill(context as *mut u8, 0, sizeof(SymbolContext)); set (*context).magic = SYMBOL_DEAD_MAGIC; set (*context).state = SymbolState.Destroyed;
+}
+export proc vitte_symbol_is_valid(context: *const SymbolContext) -> bool { return symbol_context_usable(context); }
+export proc vitte_symbol_last_error(context: *const SymbolContext) -> SymbolError { if not symbol_context_usable(context) { return SymbolError.InvalidContext; } return (*context).last_error; }
+export proc vitte_symbol_generation(context: *const SymbolContext) -> u64 { if not symbol_context_usable(context) { return 0; } return (*context).generation; }
+export proc vitte_symbol_set_limits(context: *mut SymbolContext, max_symbols: usize, max_string_bytes: usize) -> bool {
+    if not symbol_context_usable(context) { return false; }
+    if (*context).symbol_count > max_symbols or (*context).string_size > max_string_bytes { symbol_set_error(context, SymbolError.InvalidArgument); return false; }
+    set (*context).max_symbols = max_symbols; set (*context).max_string_bytes = max_string_bytes; set (*context).last_error = SymbolError.None; return true;
+}
+export proc vitte_symbol_begin_build(context: *mut SymbolContext) -> bool {
+    if not symbol_context_usable(context) or ((*context).state != SymbolState.Ready and (*context).state != SymbolState.Building) { symbol_set_error(context, SymbolError.InvalidState); return false; }
+    set (*context).state = SymbolState.Building; set (*context).last_error = SymbolError.None; return true;
+}
+export proc vitte_symbol_freeze(context: *mut SymbolContext) -> bool {
+    if not symbol_context_usable(context) or (*context).state != SymbolState.Building { symbol_set_error(context, SymbolError.InvalidState); return false; }
+    set (*context).state = SymbolState.Frozen; set (*context).stats.freezes = symbol_sat_add((*context).stats.freezes, 1); set (*context).last_error = SymbolError.None; return true;
+}
+export proc vitte_symbol_get(context: *const SymbolContext, symbol_id: SymbolId) -> *const Symbol {
+    if not symbol_context_usable(context) or symbol_id == 0 or symbol_id > (*context).symbol_count as SymbolId { return null; }
+    return (&((*context).symbols[(symbol_id - 1) as usize])) as *const Symbol;
+}
+export proc vitte_symbol_get_mut(context: *mut SymbolContext, symbol_id: SymbolId) -> *mut Symbol {
+    if not symbol_context_usable(context) or (*context).state != SymbolState.Building or symbol_id == 0 or symbol_id > (*context).symbol_count as SymbolId { return null; }
+    return (&((*context).symbols[(symbol_id - 1) as usize])) as *mut Symbol;
+}
+export proc vitte_symbol_lookup(context: *const SymbolContext, name: *const u8, name_length: usize, name_space: SymbolNamespace, scope_id: SymbolScopeId) -> *const Symbol {
+    if not symbol_context_usable(context) or name == null or name_length == 0 or (*context).bucket_count == 0 { return null; }
+    let hash = symbol_lookup_hash(name, name_length, name_space, scope_id);
+    let bucket = (hash % (*context).bucket_count as u64) as usize;
+    let mut id = (*context).buckets[bucket]; let mut guard: usize = 0;
+    while id != 0 and guard < (*context).symbol_count {
+        let symbol = vitte_symbol_get(context, id); if symbol == null { return null; }
+        if (*symbol).name_hash == vitte_symbol_hash_name(name, name_length) and (*symbol).name_length == name_length and (*symbol).name_space == name_space and (*symbol).scope_id == scope_id and symbol_equal_bytes((*symbol).name, name, name_length) { return symbol; }
+        set id = (*symbol).next_in_bucket; set guard += 1;
+    }
+    return null;
+}
+export proc vitte_symbol_lookup_cstr(context: *const SymbolContext, name: *const u8, name_space: SymbolNamespace, scope_id: SymbolScopeId) -> *const Symbol {
+    if name == null { return null; } return vitte_symbol_lookup(context, name, cstring_length(name), name_space, scope_id);
+}
+export proc vitte_symbol_contains(context: *const SymbolContext, name: *const u8, name_length: usize, name_space: SymbolNamespace, scope_id: SymbolScopeId) -> bool {
+    return vitte_symbol_lookup(context, name, name_length, name_space, scope_id) != null;
+}
+export proc vitte_symbol_declare(context: *mut SymbolContext, declaration: *const SymbolDeclaration, out_symbol_id: *mut SymbolId) -> bool {
+    if out_symbol_id != null { set *out_symbol_id = 0; }
+    if not symbol_context_usable(context) or (*context).state != SymbolState.Building or declaration == null or (*declaration).name == null or (*declaration).name_length == 0 or
+       not vitte_symbol_kind_is_valid((*declaration).kind) or not vitte_symbol_namespace_is_valid((*declaration).name_space) or
+       not vitte_symbol_visibility_is_valid((*declaration).visibility) or not vitte_symbol_storage_is_valid((*declaration).storage) {
+        symbol_set_error(context, SymbolError.InvalidArgument); return false;
+    }
+    if (*context).symbol_count >= (*context).max_symbols { symbol_set_error(context, SymbolError.SymbolLimit); return false; }
+    if vitte_symbol_contains(context as *const SymbolContext, (*declaration).name, (*declaration).name_length, (*declaration).name_space, (*declaration).scope_id) {
+        set (*context).stats.duplicate_rejections = symbol_sat_add((*context).stats.duplicate_rejections, 1); symbol_set_error(context, SymbolError.DuplicateSymbol); return false;
+    }
+    if (*declaration).name_length >= SYMBOL_SIZE_MAX or (*context).string_size > SYMBOL_SIZE_MAX - (*declaration).name_length - 1 { symbol_set_error(context, SymbolError.Overflow); return false; }
+    let string_required = (*context).string_size + (*declaration).name_length + 1;
+    let required = (*context).symbol_count + 1;
+    if not symbol_prepare_bucket(context) or not symbol_reserve_symbols(context, required) or not symbol_reserve_strings(context, string_required) { return false; }
+    copy(pointer.add_bytes((*context).strings, (*context).string_size), (*declaration).name, (*declaration).name_length);
+    set (*context).strings[string_required - 1] = 0;
+    let id = required as SymbolId;
+    let item = (&((*context).symbols[required - 1])) as *mut Symbol;
+    fill(item as *mut u8, 0, sizeof(Symbol));
+    set (*item).id = id; set (*item).kind = (*declaration).kind; set (*item).name_space = (*declaration).name_space;
+    set (*item).visibility = (*declaration).visibility; set (*item).storage = (*declaration).storage; set (*item).symbol_flags = (*declaration).symbol_flags;
+    set (*item).name = pointer.add_bytes((*context).strings, (*context).string_size) as *const u8;
+    set (*item).name_length = (*declaration).name_length; set (*item).name_hash = vitte_symbol_hash_name((*item).name, (*item).name_length);
+    set (*item).scope_id = (*declaration).scope_id; set (*item).parent_symbol_id = (*declaration).parent_symbol_id;
+    set (*item).shadowed_symbol_id = (*declaration).shadowed_symbol_id; set (*item).type_id = (*declaration).type_id;
+    set (*item).declaration_node_id = (*declaration).declaration_node_id; set (*item).location = (*declaration).location;
+    let bucket = (symbol_lookup_hash((*item).name, (*item).name_length, (*item).name_space, (*item).scope_id) % (*context).bucket_count as u64) as usize;
+    set (*item).next_in_bucket = (*context).buckets[bucket]; set (*context).buckets[bucket] = id;
+    set (*context).symbol_count = required; set (*context).string_size = string_required;
+    set (*context).stats.symbols_created = symbol_sat_add((*context).stats.symbols_created, 1);
+    set (*context).stats.names_interned = symbol_sat_add((*context).stats.names_interned, 1);
+    set (*context).stats.string_bytes = symbol_sat_add((*context).stats.string_bytes, ((*declaration).name_length + 1) as u64);
+    set (*context).generation = symbol_sat_add((*context).generation, 1); set (*context).last_error = SymbolError.None;
+    if out_symbol_id != null { set *out_symbol_id = id; } return true;
+}
+export proc vitte_symbol_set_type(context: *mut SymbolContext, symbol_id: SymbolId, type_id: SymbolTypeId) -> bool {
+    let item = vitte_symbol_get_mut(context, symbol_id); if item == null { symbol_set_error(context, SymbolError.InvalidSymbolId); return false; }
+    set (*item).type_id = type_id; set (*context).last_error = SymbolError.None; return true;
+}
+export proc vitte_symbol_add_flags(context: *mut SymbolContext, symbol_id: SymbolId, added_flags: SymbolFlags) -> bool {
+    let item = vitte_symbol_get_mut(context, symbol_id); if item == null { symbol_set_error(context, SymbolError.InvalidSymbolId); return false; }
+    set (*item).symbol_flags = (*item).symbol_flags | added_flags; set (*context).last_error = SymbolError.None; return true;
+}
+export proc vitte_symbol_remove_flags(context: *mut SymbolContext, symbol_id: SymbolId, removed_flags: SymbolFlags) -> bool {
+    let item = vitte_symbol_get_mut(context, symbol_id); if item == null { symbol_set_error(context, SymbolError.InvalidSymbolId); return false; }
+    set (*item).symbol_flags = (*item).symbol_flags & ~removed_flags; set (*context).last_error = SymbolError.None; return true;
+}
+proc symbol_record_flag(context: *mut SymbolContext, symbol_id: SymbolId, flag: SymbolFlags) -> bool {
+    let item = vitte_symbol_get_mut(context, symbol_id); if item == null { symbol_set_error(context, SymbolError.InvalidSymbolId); return false; }
+    set (*item).symbol_flags = (*item).symbol_flags | flag; set (*item).reference_count = symbol_sat_add((*item).reference_count, 1);
+    set (*context).stats.references_recorded = symbol_sat_add((*context).stats.references_recorded, 1); set (*context).last_error = SymbolError.None; return true;
+}
+export proc vitte_symbol_record_reference(context: *mut SymbolContext, symbol_id: SymbolId) -> bool { return symbol_record_flag(context, symbol_id, SYMBOL_FLAG_REFERENCED); }
+export proc vitte_symbol_record_read(context: *mut SymbolContext, symbol_id: SymbolId) -> bool { return symbol_record_flag(context, symbol_id, SYMBOL_FLAG_READ | SYMBOL_FLAG_REFERENCED); }
+export proc vitte_symbol_record_write(context: *mut SymbolContext, symbol_id: SymbolId) -> bool { return symbol_record_flag(context, symbol_id, SYMBOL_FLAG_WRITTEN | SYMBOL_FLAG_REFERENCED); }
+export proc vitte_symbol_record_address_taken(context: *mut SymbolContext, symbol_id: SymbolId) -> bool { return symbol_record_flag(context, symbol_id, SYMBOL_FLAG_ADDRESS_TAKEN); }
+export proc vitte_symbol_hash_name(name: *const u8, length: usize) -> u64 {
+    if name == null { return 0; }
+    let mut hash = SYMBOL_FNV_OFFSET; let mut index: usize = 0;
+    while index < length { set hash = (hash ^ (name[index] as u64)) * SYMBOL_FNV_PRIME; set index += 1; }
+    return hash;
+}
+export proc vitte_symbol_validate(context: *mut SymbolContext) -> bool {
+    if not symbol_context_usable(context) { return false; }
+    set (*context).stats.validation_runs = symbol_sat_add((*context).stats.validation_runs, 1);
+    if (*context).symbol_count > (*context).symbol_capacity or (*context).string_size > (*context).string_capacity or ((*context).symbol_count != 0 and ((*context).symbols == null or (*context).buckets == null or (*context).strings == null)) { set (*context).stats.validation_failures = symbol_sat_add((*context).stats.validation_failures, 1); symbol_set_error(context, SymbolError.Validation); return false; }
+    let base = pointer.address((*context).strings as *const u8); let end = base + (*context).string_size;
+    let mut index: usize = 0;
+    while index < (*context).symbol_count {
+        let item = &((*context).symbols[index]);
+        let name_address = pointer.address(item.name);
+        if item.id != (index + 1) as SymbolId or item.name == null or item.name_length == 0 or name_address < base or name_address + item.name_length >= end or item.name[item.name_length] != 0 or item.name_hash != vitte_symbol_hash_name(item.name, item.name_length) {
+            set (*context).stats.validation_failures = symbol_sat_add((*context).stats.validation_failures, 1); symbol_set_error(context, SymbolError.Validation); return false;
+        }
+        set index += 1;
+    }
+    set (*context).last_error = SymbolError.None; return true;
+}
+export proc vitte_symbol_fingerprint(context: *mut SymbolContext) -> u64 {
+    if not symbol_context_usable(context) { return 0; }
+    set (*context).stats.hash_runs = symbol_sat_add((*context).stats.hash_runs, 1);
+    let mut hash = SYMBOL_FNV_OFFSET; let mut index: usize = 0;
+    while index < (*context).symbol_count {
+        let item = &((*context).symbols[index]); let mut name_index: usize = 0;
+        set hash = (hash ^ item.id) * SYMBOL_FNV_PRIME; set hash = (hash ^ (item.kind as u64)) * SYMBOL_FNV_PRIME;
+        set hash = (hash ^ (item.name_space as u64)) * SYMBOL_FNV_PRIME; set hash = (hash ^ item.scope_id) * SYMBOL_FNV_PRIME;
+        while name_index < item.name_length { set hash = (hash ^ (item.name[name_index] as u64)) * SYMBOL_FNV_PRIME; set name_index += 1; }
+        set index += 1;
+    }
+    return hash;
+}
+export proc vitte_symbol_stats(context: *const SymbolContext) -> SymbolStats {
+    if symbol_context_usable(context) { return (*context).stats; }
+    let mut stats: SymbolStats; fill((&mut stats) as *mut u8, 0, sizeof(SymbolStats)); return stats;
+}
+export proc vitte_symbol_translation_unit_anchor() {}
+
+/// C-header inline API, implemented in Vitte and kept allocation-free.
+export proc vitte_symbol_api_version_major() -> u32 { return SYMBOL_API_VERSION_MAJOR; }
+export proc vitte_symbol_api_version_minor() -> u32 { return SYMBOL_API_VERSION_MINOR; }
+export proc vitte_symbol_api_version_patch() -> u32 { return SYMBOL_API_VERSION_PATCH; }
+export proc vitte_symbol_api_version() -> u32 { return SYMBOL_API_VERSION; }
+
+export proc vitte_symbol_id_is_valid(id: SymbolId) -> bool { return id != SYMBOL_INVALID_ID; }
+export proc vitte_symbol_scope_id_is_valid(id: SymbolScopeId) -> bool { return id != SYMBOL_INVALID_SCOPE_ID; }
+export proc vitte_symbol_type_id_is_valid(id: SymbolTypeId) -> bool { return id != SYMBOL_INVALID_TYPE_ID; }
+export proc vitte_symbol_error_is_valid(error: SymbolError) -> bool { return error >= SymbolError.None and error < SymbolError.Count; }
+export proc vitte_symbol_state_is_valid(state: SymbolState) -> bool { return state > SymbolState.Invalid and state < SymbolState.Count; }
+export proc vitte_symbol_kind_is_valid(kind: SymbolKind) -> bool { return kind > SymbolKind.Invalid and kind < SymbolKind.Count; }
+export proc vitte_symbol_namespace_is_valid(name_space: SymbolNamespace) -> bool { return name_space > SymbolNamespace.Invalid and name_space < SymbolNamespace.Count; }
+export proc vitte_symbol_visibility_is_valid(visibility: SymbolVisibility) -> bool { return visibility > SymbolVisibility.Invalid and visibility < SymbolVisibility.Count; }
+export proc vitte_symbol_storage_is_valid(storage: SymbolStorage) -> bool { return storage > SymbolStorage.Invalid and storage < SymbolStorage.Count; }
+
+export proc vitte_symbol_is_ready(context: *const SymbolContext) -> bool {
+    return context != null and (*context).magic == SYMBOL_MAGIC and (*context).state == SymbolState.Ready;
+}
+export proc vitte_symbol_is_building(context: *const SymbolContext) -> bool {
+    return context != null and (*context).magic == SYMBOL_MAGIC and (*context).state == SymbolState.Building;
+}
+export proc vitte_symbol_is_frozen(context: *const SymbolContext) -> bool {
+    return context != null and (*context).magic == SYMBOL_MAGIC and (*context).state == SymbolState.Frozen;
+}
+export proc vitte_symbol_has_failed(context: *const SymbolContext) -> bool {
+    return context != null and (*context).magic == SYMBOL_MAGIC and (*context).state == SymbolState.Failed;
+}
+export proc vitte_symbol_is_destroyed(context: *const SymbolContext) -> bool {
+    return context != null and (*context).magic == SYMBOL_DEAD_MAGIC and (*context).state == SymbolState.Destroyed;
+}
+export proc vitte_symbol_count(context: *const SymbolContext) -> usize {
+    if context == null { return 0; }
+    return (*context).symbol_count;
+}
+export proc vitte_symbol_empty(context: *const SymbolContext) -> bool {
+    return context == null or (*context).symbol_count == 0;
+}
+
+export proc vitte_symbol_location_is_valid(location: SymbolLocation) -> bool {
+    return location.valid and location.source_id != 0 and location.begin <= location.end;
+}
+export proc vitte_symbol_location_length(location: SymbolLocation) -> usize {
+    if not location.valid or location.end < location.begin { return 0; }
+    return location.end - location.begin;
+}
+export proc vitte_symbol_location_is_empty(location: SymbolLocation) -> bool {
+    return vitte_symbol_location_length(location) == 0;
+}
+
+export proc vitte_symbol_entry_is_valid(symbol: *const Symbol) -> bool {
+    return symbol != null and (*symbol).id != 0 and
+           vitte_symbol_kind_is_valid((*symbol).kind) and
+           vitte_symbol_namespace_is_valid((*symbol).name_space) and
+           (*symbol).name != null;
+}
+export proc vitte_symbol_has_flag(symbol: *const Symbol, flag: SymbolFlags) -> bool {
+    return symbol != null and ((*symbol).symbol_flags & flag) != SYMBOL_FLAG_NONE;
+}
+export proc vitte_symbol_is_public(symbol: *const Symbol) -> bool {
+    return symbol != null and ((*symbol).visibility == SymbolVisibility.Public or vitte_symbol_has_flag(symbol, SYMBOL_FLAG_PUBLIC));
+}
+export proc vitte_symbol_is_mutable(symbol: *const Symbol) -> bool { return vitte_symbol_has_flag(symbol, SYMBOL_FLAG_MUTABLE); }
+export proc vitte_symbol_is_extern(symbol: *const Symbol) -> bool { return vitte_symbol_has_flag(symbol, SYMBOL_FLAG_EXTERN); }
+export proc vitte_symbol_is_async(symbol: *const Symbol) -> bool { return vitte_symbol_has_flag(symbol, SYMBOL_FLAG_ASYNC); }
+export proc vitte_symbol_is_unsafe(symbol: *const Symbol) -> bool { return vitte_symbol_has_flag(symbol, SYMBOL_FLAG_UNSAFE); }
+export proc vitte_symbol_is_comptime(symbol: *const Symbol) -> bool { return vitte_symbol_has_flag(symbol, SYMBOL_FLAG_COMPTIME); }
+export proc vitte_symbol_is_defined(symbol: *const Symbol) -> bool { return vitte_symbol_has_flag(symbol, SYMBOL_FLAG_DEFINED); }
+export proc vitte_symbol_is_referenced(symbol: *const Symbol) -> bool {
+    return symbol != null and ((*symbol).reference_count != 0 or vitte_symbol_has_flag(symbol, SYMBOL_FLAG_REFERENCED));
+}
+export proc vitte_symbol_is_builtin(symbol: *const Symbol) -> bool { return vitte_symbol_has_flag(symbol, SYMBOL_FLAG_BUILTIN); }
+export proc vitte_symbol_is_imported(symbol: *const Symbol) -> bool { return vitte_symbol_has_flag(symbol, SYMBOL_FLAG_IMPORTED); }
+export proc vitte_symbol_is_generic(symbol: *const Symbol) -> bool { return vitte_symbol_has_flag(symbol, SYMBOL_FLAG_GENERIC); }
+export proc vitte_symbol_is_deprecated(symbol: *const Symbol) -> bool { return vitte_symbol_has_flag(symbol, SYMBOL_FLAG_DEPRECATED); }
+export proc vitte_symbol_is_synthetic(symbol: *const Symbol) -> bool { return vitte_symbol_has_flag(symbol, SYMBOL_FLAG_SYNTHETIC); }
+export proc vitte_symbol_is_value(symbol: *const Symbol) -> bool { return symbol != null and (*symbol).name_space == SymbolNamespace.Value; }
+export proc vitte_symbol_is_type(symbol: *const Symbol) -> bool { return symbol != null and (*symbol).name_space == SymbolNamespace.Type; }
+export proc vitte_symbol_is_trait(symbol: *const Symbol) -> bool { return symbol != null and (*symbol).name_space == SymbolNamespace.Trait; }
+export proc vitte_symbol_is_macro(symbol: *const Symbol) -> bool { return symbol != null and (*symbol).name_space == SymbolNamespace.Macro; }
+export proc vitte_symbol_is_space(symbol: *const Symbol) -> bool { return symbol != null and (*symbol).name_space == SymbolNamespace.Space; }
+export proc vitte_symbol_is_callable(symbol: *const Symbol) -> bool {
+    return symbol != null and ((*symbol).kind == SymbolKind.Proc or (*symbol).kind == SymbolKind.ExternProc);
+}
+export proc vitte_symbol_is_variable(symbol: *const Symbol) -> bool {
+    return symbol != null and ((*symbol).kind == SymbolKind.Local or (*symbol).kind == SymbolKind.Parameter or (*symbol).kind == SymbolKind.Static);
+}
+export proc vitte_symbol_is_constant(symbol: *const Symbol) -> bool { return symbol != null and (*symbol).kind == SymbolKind.Const; }
+export proc vitte_symbol_is_type_declaration(symbol: *const Symbol) -> bool {
+    return symbol != null and ((*symbol).kind == SymbolKind.Type or (*symbol).kind == SymbolKind.Opaque or
+        (*symbol).kind == SymbolKind.Form or (*symbol).kind == SymbolKind.Pick);
+}
+export proc vitte_symbol_has_type(symbol: *const Symbol) -> bool { return symbol != null and (*symbol).type_id != SYMBOL_INVALID_TYPE_ID; }
+export proc vitte_symbol_has_parent(symbol: *const Symbol) -> bool { return symbol != null and (*symbol).parent_symbol_id != SYMBOL_INVALID_ID; }
+export proc vitte_symbol_shadows_other(symbol: *const Symbol) -> bool { return symbol != null and (*symbol).shadowed_symbol_id != SYMBOL_INVALID_ID; }
+
+export proc vitte_symbol_make_name(data: *const u8, length: usize) -> SymbolName {
+    let mut result = SymbolName { data: data, length: length, hash: 0 };
+    if data != null { set result.hash = vitte_symbol_hash_name(data, length); }
+    return result;
+}
+export proc vitte_symbol_name_is_valid(name: SymbolName) -> bool { return name.data != null and name.length != 0; }
+export proc vitte_symbol_name_equal(left: SymbolName, right: SymbolName) -> bool {
+    if left.length != right.length { return false; }
+    if left.length == 0 { return true; }
+    if left.data == null or right.data == null { return false; }
+    let mut index: usize = 0;
+    while index < left.length {
+        if left.data[index] != right.data[index] { return false; }
+        set index += 1;
+    }
+    return true;
+}

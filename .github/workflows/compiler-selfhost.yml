@@ -1,0 +1,31 @@
+name: Compiler self-host
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: compiler-selfhost-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compiler-selfhost:
+    name: Native compiler self-host
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Install compiler dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y build-essential
+
+      - name: Rebuild the compiler through two native stages
+        run: make MODE=release compiler-selfhost-gate

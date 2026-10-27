@@ -1,0 +1,774 @@
+// ============================================================================
+// Vitte Standard Library
+// Module: core::convert::format
+// File: modules/core/src/convert/format.vit
+//
+// Native formatting primitives.
+//
+// Properties:
+//   - No dynamic allocation
+//   - No libc dependency
+//   - Caller-owned output buffers
+//   - Explicit capacity checking
+//   - No implicit null terminator
+//
+// Output conventions:
+//   - length is the number of bytes written.
+//   - success indicates whether formatting completed.
+//   - A failed operation returns length = 0.
+//   - Buffers must contain at least capacity writable bytes.
+//
+// Note:
+//   Pointer indexing and integer casts must be checked against
+//   the current normative Vitte grammar.
+// ============================================================================
+
+space core::convert::format;
+
+// ============================================================================
+// 1. FORMAT RESULT
+// ============================================================================
+
+export pick FormatError {
+    None,
+    NullBuffer,
+    BufferTooSmall,
+    InvalidBase,
+    InvalidArgument,
+    Unsupported
+}
+
+export form FormatResult {
+    success: bool,
+    length: usize,
+    error: FormatError
+}
+
+// ============================================================================
+// 2. RESULT CONSTRUCTORS
+// ============================================================================
+
+export proc format_success(length: usize) -> FormatResult {
+    return FormatResult {
+        success: true,
+        length: length,
+        error: FormatError.None
+    };
+}
+
+export proc format_failure(error: FormatError) -> FormatResult {
+    return FormatResult {
+        success: false,
+        length: 0,
+        error: error
+    };
+}
+
+// ============================================================================
+// 3. DIGIT CONVERSION
+// ============================================================================
+
+export proc format_digit_lower(digit: u8) -> u8 {
+    if digit < 10 {
+        return (digit + 48) as u8;
+    }
+
+    if digit < 36 {
+        return (digit - 10 + 97) as u8;
+    }
+
+    return 63;
+}
+
+export proc format_digit_upper(digit: u8) -> u8 {
+    if digit < 10 {
+        return (digit + 48) as u8;
+    }
+
+    if digit < 36 {
+        return (digit - 10 + 65) as u8;
+    }
+
+    return 63;
+}
+
+// ============================================================================
+// 4. BUFFER VALIDATION
+// ============================================================================
+
+export proc format_buffer_valid(
+    buffer: *u8,
+    capacity: usize
+) -> bool {
+    if capacity == 0 {
+        return true;
+    }
+
+    return buffer != null;
+}
+
+// ============================================================================
+// 5. BUFFER OPERATIONS
+// ============================================================================
+
+export proc format_write_byte(
+    buffer: *u8,
+    capacity: usize,
+    index: usize,
+    byte: u8
+) -> bool {
+    if buffer == null {
+        return false;
+    }
+
+    if index >= capacity {
+        return false;
+    }
+
+    buffer[index] = byte;
+
+    return true;
+}
+
+// ============================================================================
+// 6. UNSIGNED DECIMAL LENGTH
+// ============================================================================
+
+export proc format_u64_decimal_length(value: u64) -> usize {
+    let mut current: u64 = value;
+    let mut length: usize = 1;
+
+    while current >= 10 {
+        set current = current / 10;
+        set length = length + 1;
+    }
+
+    return length;
+}
+
+// ============================================================================
+// 7. UNSIGNED DECIMAL FORMAT
+// ============================================================================
+
+export proc format_u64(
+    value: u64,
+    buffer: *u8,
+    capacity: usize
+) -> FormatResult {
+    if buffer == null {
+        return format_failure(FormatError.NullBuffer);
+    }
+
+    let required: usize = format_u64_decimal_length(value);
+
+    if capacity < required {
+        return format_failure(FormatError.BufferTooSmall);
+    }
+
+    let mut current: u64 = value;
+    let mut position: usize = required;
+
+    while position > 0 {
+        let digit: u8 = (current % 10) as u8;
+
+        set position = position - 1;
+
+        buffer[position] = (digit + 48) as u8;
+
+        set current = current / 10;
+    }
+
+    return format_success(required);
+}
+
+// ============================================================================
+// 8. SIGNED DECIMAL LENGTH
+// ============================================================================
+
+export proc format_i64_decimal_length(value: i64) -> usize {
+    if value >= 0 {
+        return format_u64_decimal_length(value as u64);
+    }
+
+    // Avoid negating the minimum signed integer.
+    let mut magnitude: u64 = (-(value + 1)) as u64;
+
+    set magnitude = magnitude + 1;
+
+    return format_u64_decimal_length(magnitude) + 1;
+}
+
+// ============================================================================
+// 9. SIGNED DECIMAL FORMAT
+// ============================================================================
+
+export proc format_i64(
+    value: i64,
+    buffer: *u8,
+    capacity: usize
+) -> FormatResult {
+    if buffer == null {
+        return format_failure(FormatError.NullBuffer);
+    }
+
+    if value >= 0 {
+        return format_u64(value as u64, buffer, capacity);
+    }
+
+    let required: usize = format_i64_decimal_length(value);
+
+    if capacity < required {
+        return format_failure(FormatError.BufferTooSmall);
+    }
+
+    buffer[0] = 45;
+
+    let mut magnitude: u64 = (-(value + 1)) as u64;
+
+    set magnitude = magnitude + 1;
+
+    let mut position: usize = required;
+
+    while position > 1 {
+        let digit: u8 = (magnitude % 10) as u8;
+
+        set position = position - 1;
+
+        buffer[position] = (digit + 48) as u8;
+
+        set magnitude = magnitude / 10;
+    }
+
+    return format_success(required);
+}
+
+// ============================================================================
+// 10. UNSIGNED INTEGER WRAPPERS
+// ============================================================================
+
+export proc format_u8(
+    value: u8,
+    buffer: *u8,
+    capacity: usize
+) -> FormatResult {
+    return format_u64(value as u64, buffer, capacity);
+}
+
+export proc format_u16(
+    value: u16,
+    buffer: *u8,
+    capacity: usize
+) -> FormatResult {
+    return format_u64(value as u64, buffer, capacity);
+}
+
+export proc format_u32(
+    value: u32,
+    buffer: *u8,
+    capacity: usize
+) -> FormatResult {
+    return format_u64(value as u64, buffer, capacity);
+}
+
+// ============================================================================
+// 11. SIGNED INTEGER WRAPPERS
+// ============================================================================
+
+export proc format_i8(
+    value: i8,
+    buffer: *u8,
+    capacity: usize
+) -> FormatResult {
+    return format_i64(value as i64, buffer, capacity);
+}
+
+export proc format_i16(
+    value: i16,
+    buffer: *u8,
+    capacity: usize
+) -> FormatResult {
+    return format_i64(value as i64, buffer, capacity);
+}
+
+export proc format_i32(
+    value: i32,
+    buffer: *u8,
+    capacity: usize
+) -> FormatResult {
+    return format_i64(value as i64, buffer, capacity);
+}
+
+// ============================================================================
+// 12. BOOLEAN FORMAT
+// ============================================================================
+
+export proc format_bool(
+    value: bool,
+    buffer: *u8,
+    capacity: usize
+) -> FormatResult {
+    if buffer == null {
+        return format_failure(FormatError.NullBuffer);
+    }
+
+    if value {
+        if capacity < 4 {
+            return format_failure(FormatError.BufferTooSmall);
+        }
+
+        buffer[0] = 116;
+        buffer[1] = 114;
+        buffer[2] = 117;
+        buffer[3] = 101;
+
+        return format_success(4);
+    }
+
+    if capacity < 5 {
+        return format_failure(FormatError.BufferTooSmall);
+    }
+
+    buffer[0] = 102;
+    buffer[1] = 97;
+    buffer[2] = 108;
+    buffer[3] = 115;
+    buffer[4] = 101;
+
+    return format_success(5);
+}
+
+// ============================================================================
+// 13. UNSIGNED BASE LENGTH
+// ============================================================================
+
+export proc format_u64_base_length(
+    value: u64,
+    base: u8
+) -> usize {
+    if base < 2 or base > 36 {
+        return 0;
+    }
+
+    let mut current: u64 = value;
+    let radix: u64 = base as u64;
+    let mut length: usize = 1;
+
+    while current >= radix {
+        set current = current / radix;
+        set length = length + 1;
+    }
+
+    return length;
+}
+
+// ============================================================================
+// 14. UNSIGNED BASE FORMAT
+// ============================================================================
+
+export proc format_u64_base(
+    value: u64,
+    base: u8,
+    uppercase: bool,
+    buffer: *u8,
+    capacity: usize
+) -> FormatResult {
+    if base < 2 or base > 36 {
+        return format_failure(FormatError.InvalidBase);
+    }
+
+    if buffer == null {
+        return format_failure(FormatError.NullBuffer);
+    }
+
+    let required: usize = format_u64_base_length(value, base);
+
+    if capacity < required {
+        return format_failure(FormatError.BufferTooSmall);
+    }
+
+    let mut current: u64 = value;
+    let radix: u64 = base as u64;
+    let mut position: usize = required;
+
+    while position > 0 {
+        let digit: u8 = (current % radix) as u8;
+
+        set position = position - 1;
+
+        if uppercase {
+            buffer[position] = format_digit_upper(digit);
+        } else {
+            buffer[position] = format_digit_lower(digit);
+        }
+
+        set current = current / radix;
+    }
+
+    return format_success(required);
+}
+
+// Signed radix formatting uses a separate magnitude so the minimum signed
+// value can be rendered without negating it directly.
+export proc format_i64_base(
+    value: i64,
+    base: u8,
+    uppercase: bool,
+    buffer: *u8,
+    capacity: usize
+) -> FormatResult {
+    if base < 2 or base > 36 {
+        return format_failure(FormatError.InvalidBase);
+    }
+    if buffer == null {
+        return format_failure(FormatError.NullBuffer);
+    }
+    if value >= 0 {
+        return format_u64_base(value as u64, base, uppercase, buffer, capacity);
+    }
+
+    let magnitude: u64 = ((-(value + 1)) as u64) + 1;
+    let digit_length: usize = format_u64_base_length(magnitude, base);
+    let required: usize = digit_length + 1;
+    if capacity < required {
+        return format_failure(FormatError.BufferTooSmall);
+    }
+
+    set buffer[0] = 45;
+    let radix: u64 = base as u64;
+    let mut current: u64 = magnitude;
+    let mut position: usize = required;
+    while position > 1 {
+        let digit: u8 = (current % radix) as u8;
+        set position = position - 1;
+        if uppercase {
+            set buffer[position] = format_digit_upper(digit);
+        } else {
+            set buffer[position] = format_digit_lower(digit);
+        }
+        set current = current / radix;
+    }
+    return format_success(required);
+}
+
+export proc format_i64_binary(value: i64, buffer: *u8, capacity: usize) -> FormatResult {
+    return format_i64_base(value, 2, false, buffer, capacity);
+}
+
+export proc format_i64_octal(value: i64, buffer: *u8, capacity: usize) -> FormatResult {
+    return format_i64_base(value, 8, false, buffer, capacity);
+}
+
+export proc format_i64_hex(value: i64, buffer: *u8, capacity: usize) -> FormatResult {
+    return format_i64_base(value, 16, false, buffer, capacity);
+}
+
+export proc format_i32_base(value: i32, base: u8, uppercase: bool, buffer: *u8, capacity: usize) -> FormatResult {
+    return format_i64_base(value as i64, base, uppercase, buffer, capacity);
+}
+
+export proc format_i16_base(value: i16, base: u8, uppercase: bool, buffer: *u8, capacity: usize) -> FormatResult {
+    return format_i64_base(value as i64, base, uppercase, buffer, capacity);
+}
+
+export proc format_i8_base(value: i8, base: u8, uppercase: bool, buffer: *u8, capacity: usize) -> FormatResult {
+    return format_i64_base(value as i64, base, uppercase, buffer, capacity);
+}
+
+export proc format_u32_base(value: u32, base: u8, uppercase: bool, buffer: *u8, capacity: usize) -> FormatResult {
+    return format_u64_base(value as u64, base, uppercase, buffer, capacity);
+}
+
+export proc format_u16_base(value: u16, base: u8, uppercase: bool, buffer: *u8, capacity: usize) -> FormatResult {
+    return format_u64_base(value as u64, base, uppercase, buffer, capacity);
+}
+
+export proc format_u8_base(value: u8, base: u8, uppercase: bool, buffer: *u8, capacity: usize) -> FormatResult {
+    return format_u64_base(value as u64, base, uppercase, buffer, capacity);
+}
+
+// ============================================================================
+// 15. HEXADECIMAL FORMAT
+// ============================================================================
+
+export proc format_hex_u64(
+    value: u64,
+    buffer: *u8,
+    capacity: usize
+) -> FormatResult {
+    return format_u64_base(value, 16, false, buffer, capacity);
+}
+
+export proc format_hex_upper_u64(
+    value: u64,
+    buffer: *u8,
+    capacity: usize
+) -> FormatResult {
+    return format_u64_base(value, 16, true, buffer, capacity);
+}
+
+export proc format_hex_u32(
+    value: u32,
+    buffer: *u8,
+    capacity: usize
+) -> FormatResult {
+    return format_hex_u64(value as u64, buffer, capacity);
+}
+
+export proc format_hex_u16(
+    value: u16,
+    buffer: *u8,
+    capacity: usize
+) -> FormatResult {
+    return format_hex_u64(value as u64, buffer, capacity);
+}
+
+export proc format_hex_u8(
+    value: u8,
+    buffer: *u8,
+    capacity: usize
+) -> FormatResult {
+    return format_hex_u64(value as u64, buffer, capacity);
+}
+
+// ============================================================================
+// 16. BINARY FORMAT
+// ============================================================================
+
+export proc format_binary_u64(
+    value: u64,
+    buffer: *u8,
+    capacity: usize
+) -> FormatResult {
+    return format_u64_base(value, 2, false, buffer, capacity);
+}
+
+export proc format_binary_u32(
+    value: u32,
+    buffer: *u8,
+    capacity: usize
+) -> FormatResult {
+    return format_binary_u64(value as u64, buffer, capacity);
+}
+
+export proc format_binary_u16(
+    value: u16,
+    buffer: *u8,
+    capacity: usize
+) -> FormatResult {
+    return format_binary_u64(value as u64, buffer, capacity);
+}
+
+export proc format_binary_u8(
+    value: u8,
+    buffer: *u8,
+    capacity: usize
+) -> FormatResult {
+    return format_binary_u64(value as u64, buffer, capacity);
+}
+
+// ============================================================================
+// 17. OCTAL FORMAT
+// ============================================================================
+
+export proc format_octal_u64(
+    value: u64,
+    buffer: *u8,
+    capacity: usize
+) -> FormatResult {
+    return format_u64_base(value, 8, false, buffer, capacity);
+}
+
+export proc format_octal_u32(
+    value: u32,
+    buffer: *u8,
+    capacity: usize
+) -> FormatResult {
+    return format_octal_u64(value as u64, buffer, capacity);
+}
+
+export proc format_octal_u16(value: u16, buffer: *u8, capacity: usize) -> FormatResult {
+    return format_octal_u64(value as u64, buffer, capacity);
+}
+
+export proc format_octal_u8(value: u8, buffer: *u8, capacity: usize) -> FormatResult {
+    return format_octal_u64(value as u64, buffer, capacity);
+}
+
+export proc format_hex_upper_u32(value: u32, buffer: *u8, capacity: usize) -> FormatResult {
+    return format_hex_upper_u64(value as u64, buffer, capacity);
+}
+
+export proc format_hex_upper_u16(value: u16, buffer: *u8, capacity: usize) -> FormatResult {
+    return format_hex_upper_u64(value as u64, buffer, capacity);
+}
+
+export proc format_hex_upper_u8(value: u8, buffer: *u8, capacity: usize) -> FormatResult {
+    return format_hex_upper_u64(value as u64, buffer, capacity);
+}
+
+// ============================================================================
+// 18. FIXED-WIDTH HEXADECIMAL FORMAT
+//
+// Writes exactly width hexadecimal digits.
+//
+// Preconditions:
+//   - width <= 16
+//   - value fits in the requested width
+//
+// No prefix is emitted.
+// ============================================================================
+
+export proc format_hex_fixed_u64(
+    value: u64,
+    width: usize,
+    uppercase: bool,
+    buffer: *u8,
+    capacity: usize
+) -> FormatResult {
+    if width > 16 {
+        return format_failure(FormatError.InvalidArgument);
+    }
+
+    if buffer == null {
+        return format_failure(FormatError.NullBuffer);
+    }
+
+    if capacity < width {
+        return format_failure(FormatError.BufferTooSmall);
+    }
+
+    let required: usize = format_u64_base_length(value, 16);
+
+    if required > width {
+        return format_failure(FormatError.InvalidArgument);
+    }
+
+    let mut current: u64 = value;
+    let mut position: usize = width;
+
+    while position > 0 {
+        let digit: u8 = (current % 16) as u8;
+
+        set position = position - 1;
+
+        if uppercase {
+            buffer[position] = format_digit_upper(digit);
+        } else {
+            buffer[position] = format_digit_lower(digit);
+        }
+
+        set current = current / 16;
+    }
+
+    return format_success(width);
+}
+
+// ============================================================================
+// 19. ASCII CHARACTER FORMAT
+// ============================================================================
+
+export proc format_ascii(
+    character: u8,
+    buffer: *u8,
+    capacity: usize
+) -> FormatResult {
+    if buffer == null {
+        return format_failure(FormatError.NullBuffer);
+    }
+
+    if capacity < 1 {
+        return format_failure(FormatError.BufferTooSmall);
+    }
+
+    if character > 127 {
+        return format_failure(FormatError.InvalidArgument);
+    }
+
+    buffer[0] = character;
+
+    return format_success(1);
+}
+
+export proc format_char(
+    character: char,
+    buffer: *u8,
+    capacity: usize
+) -> FormatResult {
+    if buffer == null {
+        return format_failure(FormatError.NullBuffer);
+    }
+
+    let codepoint: u32 = character as u32;
+    if codepoint > 1114111 || (codepoint >= 55296 && codepoint <= 57343) {
+        return format_failure(FormatError.InvalidArgument);
+    }
+
+    if codepoint <= 127 {
+        if capacity < 1 { return format_failure(FormatError.BufferTooSmall); }
+        set buffer[0] = codepoint as u8;
+        return format_success(1);
+    }
+    if codepoint <= 2047 {
+        if capacity < 2 { return format_failure(FormatError.BufferTooSmall); }
+        set buffer[0] = (192 | (codepoint >> 6)) as u8;
+        set buffer[1] = (128 | (codepoint & 63)) as u8;
+        return format_success(2);
+    }
+    if codepoint <= 65535 {
+        if capacity < 3 { return format_failure(FormatError.BufferTooSmall); }
+        set buffer[0] = (224 | (codepoint >> 12)) as u8;
+        set buffer[1] = (128 | ((codepoint >> 6) & 63)) as u8;
+        set buffer[2] = (128 | (codepoint & 63)) as u8;
+        return format_success(3);
+    }
+    if capacity < 4 { return format_failure(FormatError.BufferTooSmall); }
+    set buffer[0] = (240 | (codepoint >> 18)) as u8;
+    set buffer[1] = (128 | ((codepoint >> 12) & 63)) as u8;
+    set buffer[2] = (128 | ((codepoint >> 6) & 63)) as u8;
+    set buffer[3] = (128 | (codepoint & 63)) as u8;
+    return format_success(4);
+}
+
+export proc format_bytes(bytes: &[u8], buffer: *u8, capacity: usize) -> FormatResult {
+    if bytes.len() != 0 && buffer == null {
+        return format_failure(FormatError.NullBuffer);
+    }
+    if capacity < bytes.len() {
+        return format_failure(FormatError.BufferTooSmall);
+    }
+    let mut index: i64 = 0;
+    let length: i64 = bytes.len() as i64;
+    while index < length {
+        set buffer[index] = bytes[index];
+        set index = index + 1;
+    }
+    return format_success(bytes.len());
+}
+
+// ============================================================================
+// 20. FORMAT LENGTH HELPERS
+// ============================================================================
+
+export proc format_bool_length(value: bool) -> usize {
+    if value {
+        return 4;
+    }
+
+    return 5;
+}
+
+export proc format_hex_u64_length(value: u64) -> usize {
+    return format_u64_base_length(value, 16);
+}
+
+export proc format_binary_u64_length(value: u64) -> usize {
+    return format_u64_base_length(value, 2);
+}
+
+export proc format_octal_u64_length(value: u64) -> usize {
+    return format_u64_base_length(value, 8);
+}
+
+// ============================================================================
+// END OF MODULE
+// ============================================================================

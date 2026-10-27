@@ -1,0 +1,23 @@
+/// Tri par insertion stable sur une tranche mutable.
+space core::slice::sort;
+
+export proc slice_insertion_sort<T>(value: &mut [T], compare: proc(&T, &T) -> i8) {
+    if value.len() < 2 { return; }
+    for index in 1..value.len() {
+        let mut position: usize = index;
+        while position > 0 && compare(&value[position], &value[position - 1]) < 0 {
+            let temporary: T = value[position];
+            set value[position] = value[position - 1];
+            set value[position - 1] = temporary;
+            set position = position - 1;
+        }
+    }
+}
+
+export proc slice_is_sorted<T>(value: &[T], compare: proc(&T, &T) -> i8) -> bool {
+    if value.len() < 2 { return true; }
+    for index in 1..value.len() {
+        if compare(&value[index - 1], &value[index]) > 0 { return false; }
+    }
+    return true;
+}

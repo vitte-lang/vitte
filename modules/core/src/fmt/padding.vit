@@ -1,0 +1,31 @@
+/// Remplissage d'un champ de largeur fixe dans un tampon emprunté.
+space core::fmt::padding;
+
+export proc fmt_pad_left(buffer: *mut u8, capacity: usize, length: usize, width: usize, fill: u8) -> ?usize {
+    if length > capacity || width > capacity || width < length { return null; }
+    let padding: usize = width - length;
+    if padding == 0 { return length; }
+    if buffer == null { return null; }
+    let mut index: usize = length;
+    while index > 0 {
+        set index = index - 1;
+        set buffer[index + padding] = buffer[index];
+    }
+    set index = 0;
+    while index < padding {
+        set buffer[index] = fill;
+        set index = index + 1;
+    }
+    return width;
+}
+
+export proc fmt_pad_right(buffer: *mut u8, capacity: usize, length: usize, width: usize, fill: u8) -> ?usize {
+    if length > capacity || width < length { return null; }
+    if width > capacity || (width != 0 && buffer == null) { return null; }
+    let mut index: usize = length;
+    while index < width {
+        set buffer[index] = fill;
+        set index = index + 1;
+    }
+    return width;
+}

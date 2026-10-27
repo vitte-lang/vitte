@@ -1,0 +1,43 @@
+/// Ordres mémoire utilisés par les opérations atomiques.
+space core::sync::ordering;
+
+export pick AtomicOrdering { Relaxed, Acquire, Release, AcqRel, SeqCst }
+
+export proc atomic_ordering_is_valid(order: AtomicOrdering) -> bool {
+    return order == AtomicOrdering.Relaxed || order == AtomicOrdering.Acquire ||
+           order == AtomicOrdering.Release || order == AtomicOrdering.AcqRel ||
+           order == AtomicOrdering.SeqCst;
+}
+
+export proc atomic_failure_order_is_valid(order: AtomicOrdering) -> bool {
+    return order == AtomicOrdering.Relaxed || order == AtomicOrdering.Acquire ||
+           order == AtomicOrdering.SeqCst;
+}
+
+export proc atomic_load_order_is_valid(order: AtomicOrdering) -> bool {
+    return order == AtomicOrdering.Relaxed || order == AtomicOrdering.Acquire ||
+           order == AtomicOrdering.SeqCst;
+}
+
+export proc atomic_store_order_is_valid(order: AtomicOrdering) -> bool {
+    return order == AtomicOrdering.Relaxed || order == AtomicOrdering.Release ||
+           order == AtomicOrdering.SeqCst;
+}
+
+export proc atomic_compare_exchange_orders_are_valid(
+    success: AtomicOrdering,
+    failure: AtomicOrdering
+) -> bool {
+    if not atomic_failure_order_is_valid(failure) { return false; }
+    if success == AtomicOrdering.Relaxed || success == AtomicOrdering.Release {
+        return failure == AtomicOrdering.Relaxed;
+    }
+    if success == AtomicOrdering.Acquire || success == AtomicOrdering.AcqRel {
+        return failure == AtomicOrdering.Relaxed || failure == AtomicOrdering.Acquire;
+    }
+    if success == AtomicOrdering.SeqCst {
+        return failure == AtomicOrdering.Relaxed || failure == AtomicOrdering.Acquire ||
+               failure == AtomicOrdering.SeqCst;
+    }
+    return false;
+}

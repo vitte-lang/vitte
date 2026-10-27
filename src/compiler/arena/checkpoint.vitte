@@ -1,0 +1,1856 @@
+/*
+ * Vitte Compiler
+ * src/arena/checkpoint.vit
+ *
+ * Transactional checkpoints for compiler arenas.
+ *
+ * Native Vitte implementation.
+ */
+
+space compiler::arena::checkpoint;
+
+use compiler::arena::arena::{
+    ArenaCheckpoint,
+    ArenaContext,
+    ArenaMark,
+    arena_context_allocation_count,
+    arena_context_checkpoint,
+    arena_context_generation,
+    arena_context_is_valid,
+    arena_context_requested_bytes,
+    arena_context_reserved_bytes,
+    arena_context_rollback,
+    arena_context_used_bytes,
+};
+/* ========================================================================= */
+/* Configuration                                                             */
+/* ========================================================================= */
+
+const CHECKPOINT_MAGIC: u64 = 0x5649545445434850;
+const CHECKPOINT_DEAD_MAGIC: u64 = 0x4445414443484B50;
+
+const CHECKPOINT_MAX_DEPTH: usize = 1024;
+const U64_MAX: u64 = 18446744073709551615;
+
+proc checkpoint_configuration_valid() -> bool {
+    return CHECKPOINT_MAGIC != 0 and
+           CHECKPOINT_DEAD_MAGIC != 0 and
+           CHECKPOINT_MAGIC != CHECKPOINT_DEAD_MAGIC and
+           CHECKPOINT_MAX_DEPTH != 0;
+}
+
+/* ========================================================================= */
+/* States                                                                    */
+/* ========================================================================= */
+
+pub pick CheckpointState {
+    Empty,
+    Active,
+    Committed,
+    RolledBack,
+    Invalidated,
+}
+
+/* ========================================================================= */
+/* Errors                                                                    */
+/* ========================================================================= */
+
+pub pick CheckpointError {
+    None,
+    InvalidArgument,
+    InvalidArena,
+    InvalidCheckpoint,
+    InvalidState,
+    Stale,
+    ForeignArena,
+    GenerationMismatch,
+    DepthExceeded,
+    RollbackFailed,
+    Corruption,
+}
+
+/* ========================================================================= */
+/* Checkpoint                                                                */
+/* ========================================================================= */
+
+pub form Checkpoint {
+    magic: u64,
+
+    state: CheckpointState,
+    last_error: CheckpointError,
+
+    arena: ?&mut ArenaContext,
+    parent: ?&mut Checkpoint,
+
+    mark: ArenaMark,
+
+    generation: u64,
+
+    allocation_count: usize,
+    requested_bytes: usize,
+
+    used_bytes: usize,
+    reserved_bytes: usize,
+
+    sequence: u64,
+    depth: usize,
+}
+
+/* ========================================================================= */
+/* Statistics                                                                */
+/* ========================================================================= */
+
+pub form CheckpointStats {
+    state: CheckpointState,
+    last_error: CheckpointError,
+
+    sequence: u64,
+    generation: u64,
+    depth: usize,
+
+    captured_allocation_count: usize,
+    captured_requested_bytes: usize,
+    captured_used_bytes: usize,
+    captured_reserved_bytes: usize,
+
+    current_allocation_count: usize,
+    current_requested_bytes: usize,
+    current_used_bytes: usize,
+    current_reserved_bytes: usize,
+
+    allocation_delta: usize,
+    requested_delta: usize,
+    used_delta: usize,
+    reserved_delta: usize,
+
+    has_parent: bool,
+    stale: bool,
+}
+
+/* ========================================================================= */
+/* Sequence identifiers                                                      */
+/* ========================================================================= */
+
+static mut checkpoint_next_sequence: u64 = 1;
+
+proc checkpoint_allocate_sequence() -> u64 {
+    let mut result: u64 = checkpoint_next_sequence;
+
+    if result == 0 {
+        set result = 1;
+    }
+
+    if result == U64_MAX {
+        set checkpoint_next_sequence = 1;
+    } else {
+        set checkpoint_next_sequence = result + 1;
+
+        if checkpoint_next_sequence == 0 {
+            set checkpoint_next_sequence = 1;
+        }
+    }
+
+    return result;
+}
+
+/* ========================================================================= */
+/* Arithmetic                                                                */
+/* ========================================================================= */
+
+proc checkpoint_size_sub(
+    left: usize,
+    right: usize,
+) -> ?usize {
+    if left < right {
+        return null;
+    }
+
+    return left - right;
+}
+
+/* ========================================================================= */
+/* Constructors                                                              */
+/* ========================================================================= */
+
+proc checkpoint_empty_mark() -> ArenaMark {
+    return ArenaMark {
+        arena: null,
+        block: null,
+        used: 0,
+        used_bytes: 0,
+        generation: 0,
+        allocation_count: 0,
+        requested_bytes: 0,
+    };
+}
+
+pub proc checkpoint_new() -> Checkpoint {
+    return Checkpoint {
+        magic: CHECKPOINT_MAGIC,
+
+        state: CheckpointState.Empty,
+        last_error: CheckpointError.None,
+
+        arena: null,
+        parent: null,
+
+        mark: checkpoint_empty_mark(),
+
+        generation: 0,
+
+        allocation_count: 0,
+        requested_bytes: 0,
+
+        used_bytes: 0,
+        reserved_bytes: 0,
+
+        sequence: 0,
+        depth: 0,
+    };
+}
+
+pub proc checkpoint_stats_empty() -> CheckpointStats {
+    return CheckpointStats {
+        state: CheckpointState.Empty,
+        last_error: CheckpointError.None,
+
+        sequence: 0,
+        generation: 0,
+        depth: 0,
+
+        captured_allocation_count: 0,
+        captured_requested_bytes: 0,
+        captured_used_bytes: 0,
+        captured_reserved_bytes: 0,
+
+        current_allocation_count: 0,
+        current_requested_bytes: 0,
+        current_used_bytes: 0,
+        current_reserved_bytes: 0,
+
+        allocation_delta: 0,
+        requested_delta: 0,
+        used_delta: 0,
+        reserved_delta: 0,
+
+        has_parent: false,
+        stale: false,
+    };
+}
+
+/* ========================================================================= */
+/* Structural helpers                                                        */
+/* ========================================================================= */
+
+proc checkpoint_magic_valid(
+    checkpoint: &Checkpoint,
+) -> bool {
+    return checkpoint_configuration_valid() and
+           checkpoint.magic == CHECKPOINT_MAGIC;
+}
+
+proc checkpoint_state_valid(
+    state: CheckpointState,
+) -> bool {
+    match state {
+        case CheckpointState.Empty => return true;
+        case CheckpointState.Active => return true;
+        case CheckpointState.Committed => return true;
+        case CheckpointState.RolledBack => return true;
+        case CheckpointState.Invalidated => return true;
+    }
+}
+
+proc checkpoint_error_valid(
+    error: CheckpointError,
+) -> bool {
+    match error {
+        case CheckpointError.None => return true;
+        case CheckpointError.InvalidArgument => return true;
+        case CheckpointError.InvalidArena => return true;
+        case CheckpointError.InvalidCheckpoint => return true;
+        case CheckpointError.InvalidState => return true;
+        case CheckpointError.Stale => return true;
+        case CheckpointError.ForeignArena => return true;
+        case CheckpointError.GenerationMismatch => return true;
+        case CheckpointError.DepthExceeded => return true;
+        case CheckpointError.RollbackFailed => return true;
+        case CheckpointError.Corruption => return true;
+    }
+}
+
+proc checkpoint_set_error(
+    checkpoint: &mut Checkpoint,
+    error: CheckpointError,
+) {
+    if not checkpoint_magic_valid(checkpoint) {
+        return;
+    }
+
+    set checkpoint.last_error = error;
+}
+
+proc checkpoint_clear_transaction(
+    checkpoint: &mut Checkpoint,
+) {
+    set checkpoint.arena = null;
+    set checkpoint.parent = null;
+
+    set checkpoint.mark = checkpoint_empty_mark();
+
+    set checkpoint.generation = 0;
+
+    set checkpoint.allocation_count = 0;
+    set checkpoint.requested_bytes = 0;
+
+    set checkpoint.used_bytes = 0;
+    set checkpoint.reserved_bytes = 0;
+
+    set checkpoint.sequence = 0;
+    set checkpoint.depth = 0;
+}
+
+/* ========================================================================= */
+/* Parent-chain validation                                                   */
+/* ========================================================================= */
+
+proc checkpoint_parent_chain_acyclic(
+    checkpoint: &Checkpoint,
+) -> bool {
+    if not checkpoint_magic_valid(checkpoint) {
+        return false;
+    }
+
+    let mut slow: ?&Checkpoint = checkpoint;
+    let mut fast: ?&Checkpoint = checkpoint;
+
+    let mut guard: usize = 0;
+
+    loop {
+        if slow == null  or  fast == null {
+            return true;
+        }
+
+        if not checkpoint_magic_valid(slow?)  or 
+           not checkpoint_magic_valid(fast?) {
+            return false;
+        }
+
+        set slow = slow?.parent;
+        set fast = fast?.parent;
+
+        if fast == null {
+            return true;
+        }
+
+        if not checkpoint_magic_valid(fast?) {
+            return false;
+        }
+
+        set fast = fast?.parent;
+
+        if slow == null  or  fast == null {
+            return true;
+        }
+
+        if slow == fast {
+            return false;
+        }
+
+        set guard += 1;
+
+        if guard > CHECKPOINT_MAX_DEPTH {
+            return false;
+        }
+    }
+}
+
+/* ========================================================================= */
+/* Active snapshot validation                                                */
+/* ========================================================================= */
+
+proc checkpoint_active_snapshot_valid(
+    checkpoint: &Checkpoint,
+) -> bool {
+    if not checkpoint_magic_valid(checkpoint) {
+        return false;
+    }
+
+    if checkpoint.state != CheckpointState.Active {
+        return false;
+    }
+
+    if checkpoint.arena == null {
+        return false;
+    }
+
+    let arena = checkpoint.arena?;
+
+    if not arena_context_is_valid(arena) {
+        return false;
+    }
+
+    if checkpoint.generation == 0  or 
+       checkpoint.sequence == 0 {
+        return false;
+    }
+
+    if checkpoint.generation !=
+       arena_context_generation(arena) {
+        return false;
+    }
+
+    if checkpoint.allocation_count >
+       arena_context_allocation_count(arena) {
+        return false;
+    }
+
+    if checkpoint.requested_bytes >
+       arena_context_requested_bytes(arena) {
+        return false;
+    }
+
+    if checkpoint.used_bytes >
+       arena_context_used_bytes(arena) {
+        return false;
+    }
+
+    if checkpoint.reserved_bytes >
+       arena_context_reserved_bytes(arena) {
+        return false;
+    }
+
+    if checkpoint.depth > CHECKPOINT_MAX_DEPTH {
+        return false;
+    }
+
+    return true;
+}
+
+/* ========================================================================= */
+/* State names                                                               */
+/* ========================================================================= */
+
+pub proc checkpoint_state_name(
+    state: CheckpointState,
+) -> str {
+    match state {
+        case CheckpointState.Empty => return "empty";
+        case CheckpointState.Active => return "active";
+        case CheckpointState.Committed => return "committed";
+        case CheckpointState.RolledBack => return "rolled-back";
+        case CheckpointState.Invalidated => return "invalidated";
+    }
+}
+
+/* ========================================================================= */
+/* Error names                                                               */
+/* ========================================================================= */
+
+pub proc checkpoint_error_name(
+    error: CheckpointError,
+) -> str {
+    match error {
+        case CheckpointError.None => return "none";
+        case CheckpointError.InvalidArgument => return "invalid-argument";
+        case CheckpointError.InvalidArena => return "invalid-arena";
+        case CheckpointError.InvalidCheckpoint => return "invalid-checkpoint";
+        case CheckpointError.InvalidState => return "invalid-state";
+        case CheckpointError.Stale => return "stale";
+        case CheckpointError.ForeignArena => return "foreign-arena";
+        case CheckpointError.GenerationMismatch => return "generation-mismatch";
+        case CheckpointError.DepthExceeded => return "depth-exceeded";
+        case CheckpointError.RollbackFailed => return "rollback-failed";
+        case CheckpointError.Corruption => return "corruption";
+    }
+}
+
+/* ========================================================================= */
+/* Initialization                                                            */
+/* ========================================================================= */
+
+pub proc checkpoint_init(
+    checkpoint: &mut Checkpoint,
+) {
+    set *checkpoint = checkpoint_new();
+}
+
+/* ========================================================================= */
+/* Basic state queries                                                       */
+/* ========================================================================= */
+
+pub proc checkpoint_is_initialized(
+    checkpoint: &Checkpoint,
+) -> bool {
+    return checkpoint_magic_valid(checkpoint);
+}
+
+pub proc checkpoint_is_active(
+    checkpoint: &Checkpoint,
+) -> bool {
+    return checkpoint_magic_valid(checkpoint)  and 
+           checkpoint.state == CheckpointState.Active;
+}
+
+pub proc checkpoint_is_committed(
+    checkpoint: &Checkpoint,
+) -> bool {
+    return checkpoint_magic_valid(checkpoint)  and 
+           checkpoint.state == CheckpointState.Committed;
+}
+
+pub proc checkpoint_is_rolled_back(
+    checkpoint: &Checkpoint,
+) -> bool {
+    return checkpoint_magic_valid(checkpoint)  and 
+           checkpoint.state == CheckpointState.RolledBack;
+}
+
+pub proc checkpoint_is_invalidated(
+    checkpoint: &Checkpoint,
+) -> bool {
+    return checkpoint_magic_valid(checkpoint)  and 
+           checkpoint.state == CheckpointState.Invalidated;
+}
+
+/* ========================================================================= */
+/* Capture                                                                   */
+/* ========================================================================= */
+
+pub proc checkpoint_capture(
+    checkpoint: &mut Checkpoint,
+    arena: &mut ArenaContext,
+) -> bool {
+    if not checkpoint_magic_valid(checkpoint) {
+        checkpoint_init(checkpoint);
+    }
+
+    if checkpoint.state == CheckpointState.Active {
+        checkpoint_set_error(
+            checkpoint,
+            CheckpointError.InvalidState,
+        );
+
+        return false;
+    }
+
+    if not arena_context_is_valid(arena) {
+        checkpoint_set_error(
+            checkpoint,
+            CheckpointError.InvalidArena,
+        );
+
+        return false;
+    }
+
+    let snapshot: ArenaCheckpoint =
+        arena_context_checkpoint(arena);
+
+    if snapshot.generation == 0 {
+        checkpoint_set_error(
+            checkpoint,
+            CheckpointError.Corruption,
+        );
+
+        return false;
+    }
+
+    set checkpoint.state = CheckpointState.Active;
+    set checkpoint.last_error = CheckpointError.None;
+
+    set checkpoint.arena = arena;
+
+    set checkpoint.mark = snapshot.mark;
+    set checkpoint.generation = snapshot.generation;
+
+    set checkpoint.allocation_count =
+        snapshot.allocation_count;
+
+    set checkpoint.requested_bytes =
+        snapshot.requested_bytes;
+
+    set checkpoint.used_bytes =
+        arena_context_used_bytes(arena);
+
+    set checkpoint.reserved_bytes =
+        arena_context_reserved_bytes(arena);
+
+    set checkpoint.sequence =
+        checkpoint_allocate_sequence();
+
+    set checkpoint.depth = 0;
+    set checkpoint.parent = null;
+
+    if not checkpoint_active_snapshot_valid(checkpoint) {
+        checkpoint_clear_transaction(checkpoint);
+
+        set checkpoint.state =
+            CheckpointState.Invalidated;
+
+        set checkpoint.last_error =
+            CheckpointError.Corruption;
+
+        return false;
+    }
+
+    return true;
+}
+
+/* ========================================================================= */
+/* Nested capture                                                            */
+/* ========================================================================= */
+
+pub proc checkpoint_capture_nested(
+    checkpoint: &mut Checkpoint,
+    parent: &mut Checkpoint,
+) -> bool {
+    if not checkpoint_magic_valid(checkpoint) {
+        checkpoint_init(checkpoint);
+    }
+
+    if checkpoint == parent {
+        checkpoint_set_error(
+            checkpoint,
+            CheckpointError.InvalidArgument,
+        );
+
+        return false;
+    }
+
+    if checkpoint.state == CheckpointState.Active {
+        checkpoint_set_error(
+            checkpoint,
+            CheckpointError.InvalidState,
+        );
+
+        return false;
+    }
+
+    if not checkpoint_is_active(parent) {
+        checkpoint_set_error(
+            checkpoint,
+            CheckpointError.InvalidState,
+        );
+
+        return false;
+    }
+
+    if not checkpoint_active_snapshot_valid(parent)  or 
+       not checkpoint_parent_chain_acyclic(parent) {
+        checkpoint_set_error(
+            checkpoint,
+            CheckpointError.Stale,
+        );
+
+        return false;
+    }
+
+    if parent.depth >= CHECKPOINT_MAX_DEPTH {
+        checkpoint_set_error(
+            checkpoint,
+            CheckpointError.DepthExceeded,
+        );
+
+        return false;
+    }
+
+    if parent.arena == null {
+        checkpoint_set_error(
+            checkpoint,
+            CheckpointError.InvalidArena,
+        );
+
+        return false;
+    }
+
+    let arena = parent.arena?;
+
+    if not arena_context_is_valid(arena) {
+        checkpoint_set_error(
+            checkpoint,
+            CheckpointError.InvalidArena,
+        );
+
+        return false;
+    }
+
+    if parent.generation !=
+       arena_context_generation(arena) {
+        checkpoint_set_error(
+            checkpoint,
+            CheckpointError.GenerationMismatch,
+        );
+
+        return false;
+    }
+
+    if not checkpoint_capture(checkpoint, arena) {
+        return false;
+    }
+
+    set checkpoint.parent = parent;
+    set checkpoint.depth = parent.depth + 1;
+
+    if checkpoint.depth > CHECKPOINT_MAX_DEPTH  or 
+       not checkpoint_parent_chain_acyclic(checkpoint) {
+        checkpoint_clear_transaction(checkpoint);
+
+        set checkpoint.state =
+            CheckpointState.Invalidated;
+
+        set checkpoint.last_error =
+            CheckpointError.Corruption;
+
+        return false;
+    }
+
+    return true;
+}
+
+/* ========================================================================= */
+/* Staleness                                                                 */
+/* ========================================================================= */
+
+pub proc checkpoint_is_stale(
+    checkpoint: &Checkpoint,
+) -> bool {
+    if not checkpoint_is_active(checkpoint) {
+        return true;
+    }
+
+    if not checkpoint_active_snapshot_valid(checkpoint) {
+        return true;
+    }
+
+    if not checkpoint_parent_chain_acyclic(checkpoint) {
+        return true;
+    }
+
+    if checkpoint.parent != null {
+        let parent = checkpoint.parent?;
+
+        if not checkpoint_is_active(parent) {
+            return true;
+        }
+
+        if parent.arena != checkpoint.arena {
+            return true;
+        }
+
+        if parent.generation != checkpoint.generation {
+            return true;
+        }
+
+        if checkpoint.depth != parent.depth + 1 {
+            return true;
+        }
+    } else {
+        if checkpoint.depth != 0 {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/* ========================================================================= */
+/* Validation                                                                */
+/* ========================================================================= */
+
+pub proc checkpoint_validate(
+    checkpoint: &Checkpoint,
+) -> bool {
+    if not checkpoint_magic_valid(checkpoint) {
+        return false;
+    }
+
+    if not checkpoint_state_valid(checkpoint.state) {
+        return false;
+    }
+
+    if not checkpoint_error_valid(checkpoint.last_error) {
+        return false;
+    }
+
+    match checkpoint.state {
+        case CheckpointState.Empty => {
+            return checkpoint.arena == null  and 
+                   checkpoint.parent == null  and 
+                   checkpoint.generation == 0  and 
+                   checkpoint.sequence == 0  and 
+                   checkpoint.depth == 0  and 
+                   checkpoint.allocation_count == 0  and 
+                   checkpoint.requested_bytes == 0  and 
+                   checkpoint.used_bytes == 0  and 
+                   checkpoint.reserved_bytes == 0;
+        }
+
+        case CheckpointState.Committed => {
+            if checkpoint.sequence == 0  and 
+               checkpoint.arena != null {
+                return false;
+            }
+
+            return checkpoint.depth <= CHECKPOINT_MAX_DEPTH;
+        }
+
+        case CheckpointState.RolledBack => {
+            if checkpoint.sequence == 0  and 
+               checkpoint.arena != null {
+                return false;
+            }
+
+            return checkpoint.depth <= CHECKPOINT_MAX_DEPTH;
+        }
+
+        case CheckpointState.Invalidated => {
+            if checkpoint.sequence == 0  and 
+               checkpoint.arena != null {
+                return false;
+            }
+
+            return checkpoint.depth <= CHECKPOINT_MAX_DEPTH;
+        }
+
+        case CheckpointState.Active => {}
+    }
+
+    if not checkpoint_active_snapshot_valid(checkpoint) {
+        return false;
+    }
+
+    if not checkpoint_parent_chain_acyclic(checkpoint) {
+        return false;
+    }
+
+    if checkpoint.parent != null {
+        let parent = checkpoint.parent?;
+
+        if not checkpoint_is_active(parent) {
+            return false;
+        }
+
+        if parent.arena != checkpoint.arena {
+            return false;
+        }
+
+        if parent.generation != checkpoint.generation {
+            return false;
+        }
+
+        if checkpoint.depth != parent.depth + 1 {
+            return false;
+        }
+    } else if checkpoint.depth != 0 {
+        return false;
+    }
+
+    return true;
+}
+
+/* ========================================================================= */
+/* Rollback                                                                  */
+/* ========================================================================= */
+
+pub proc checkpoint_rollback(
+    checkpoint: &mut Checkpoint,
+) -> bool {
+    if not checkpoint_magic_valid(checkpoint) {
+        return false;
+    }
+
+    if checkpoint.state != CheckpointState.Active {
+        checkpoint_set_error(
+            checkpoint,
+            CheckpointError.InvalidState,
+        );
+
+        return false;
+    }
+
+    if checkpoint.arena == null {
+        checkpoint_set_error(
+            checkpoint,
+            CheckpointError.InvalidCheckpoint,
+        );
+
+        return false;
+    }
+
+    let arena = checkpoint.arena?;
+
+    if not arena_context_is_valid(arena) {
+        checkpoint_set_error(
+            checkpoint,
+            CheckpointError.InvalidArena,
+        );
+
+        return false;
+    }
+
+    if checkpoint.generation !=
+       arena_context_generation(arena) {
+        checkpoint_set_error(
+            checkpoint,
+            CheckpointError.GenerationMismatch,
+        );
+
+        return false;
+    }
+
+    if not checkpoint_parent_chain_acyclic(checkpoint) {
+        checkpoint_set_error(
+            checkpoint,
+            CheckpointError.Corruption,
+        );
+
+        return false;
+    }
+
+    if checkpoint.parent != null {
+        let parent = checkpoint.parent?;
+
+        if not checkpoint_is_active(parent) {
+            checkpoint_set_error(
+                checkpoint,
+                CheckpointError.Stale,
+            );
+
+            return false;
+        }
+
+        if parent.arena != checkpoint.arena {
+            checkpoint_set_error(
+                checkpoint,
+                CheckpointError.ForeignArena,
+            );
+
+            return false;
+        }
+
+        if parent.generation != checkpoint.generation {
+            checkpoint_set_error(
+                checkpoint,
+                CheckpointError.GenerationMismatch,
+            );
+
+            return false;
+        }
+    }
+
+    if checkpoint.allocation_count >
+           arena_context_allocation_count(arena)  or 
+       checkpoint.requested_bytes >
+           arena_context_requested_bytes(arena)  or 
+       checkpoint.used_bytes >
+           arena_context_used_bytes(arena) {
+        checkpoint_set_error(
+            checkpoint,
+            CheckpointError.Stale,
+        );
+
+        return false;
+    }
+
+    let snapshot = ArenaCheckpoint {
+        context: arena,
+
+        mark: checkpoint.mark,
+        generation: checkpoint.generation,
+
+        allocation_count: checkpoint.allocation_count,
+        requested_bytes: checkpoint.requested_bytes,
+    };
+
+    if not arena_context_rollback(arena, snapshot) {
+        checkpoint_set_error(
+            checkpoint,
+            CheckpointError.RollbackFailed,
+        );
+
+        return false;
+    }
+
+    if arena_context_generation(arena) !=
+           checkpoint.generation  or 
+       arena_context_allocation_count(arena) !=
+           checkpoint.allocation_count  or 
+       arena_context_requested_bytes(arena) !=
+           checkpoint.requested_bytes {
+        set checkpoint.state =
+            CheckpointState.Invalidated;
+
+        set checkpoint.last_error =
+            CheckpointError.Corruption;
+
+        return false;
+    }
+
+    set checkpoint.state =
+        CheckpointState.RolledBack;
+
+    set checkpoint.last_error =
+        CheckpointError.None;
+
+    return true;
+}
+
+/* ========================================================================= */
+/* Commit                                                                    */
+/* ========================================================================= */
+
+pub proc checkpoint_commit(
+    checkpoint: &mut Checkpoint,
+) -> bool {
+    if not checkpoint_magic_valid(checkpoint) {
+        return false;
+    }
+
+    if checkpoint.state != CheckpointState.Active {
+        checkpoint_set_error(
+            checkpoint,
+            CheckpointError.InvalidState,
+        );
+
+        return false;
+    }
+
+    if checkpoint.arena == null {
+        checkpoint_set_error(
+            checkpoint,
+            CheckpointError.InvalidArena,
+        );
+
+        return false;
+    }
+
+    let arena = checkpoint.arena?;
+
+    if not arena_context_is_valid(arena) {
+        checkpoint_set_error(
+            checkpoint,
+            CheckpointError.InvalidArena,
+        );
+
+        return false;
+    }
+
+    if checkpoint.generation !=
+       arena_context_generation(arena) {
+        checkpoint_set_error(
+            checkpoint,
+            CheckpointError.GenerationMismatch,
+        );
+
+        return false;
+    }
+
+    if not checkpoint_parent_chain_acyclic(checkpoint) {
+        checkpoint_set_error(
+            checkpoint,
+            CheckpointError.Corruption,
+        );
+
+        return false;
+    }
+
+    if checkpoint.parent != null {
+        let parent = checkpoint.parent?;
+
+        if not checkpoint_is_active(parent) {
+            checkpoint_set_error(
+                checkpoint,
+                CheckpointError.Stale,
+            );
+
+            return false;
+        }
+
+        if parent.arena != checkpoint.arena {
+            checkpoint_set_error(
+                checkpoint,
+                CheckpointError.ForeignArena,
+            );
+
+            return false;
+        }
+
+        if parent.generation != checkpoint.generation {
+            checkpoint_set_error(
+                checkpoint,
+                CheckpointError.GenerationMismatch,
+            );
+
+            return false;
+        }
+    }
+
+    /*
+     * Commit is purely logical.
+     * No allocator operation is performed.
+     */
+
+    set checkpoint.state =
+        CheckpointState.Committed;
+
+    set checkpoint.last_error =
+        CheckpointError.None;
+
+    return true;
+}
+
+/* ========================================================================= */
+/* Invalidation                                                              */
+/* ========================================================================= */
+
+pub proc checkpoint_invalidate(
+    checkpoint: &mut Checkpoint,
+) {
+    if not checkpoint_magic_valid(checkpoint) {
+        return;
+    }
+
+    set checkpoint.state =
+        CheckpointState.Invalidated;
+
+    set checkpoint.last_error =
+        CheckpointError.None;
+}
+
+/* ========================================================================= */
+/* Reset                                                                     */
+/* ========================================================================= */
+
+pub proc checkpoint_reset(
+    checkpoint: &mut Checkpoint,
+) {
+    checkpoint_init(checkpoint);
+}
+
+/* ========================================================================= */
+/* Destroy                                                                   */
+/* ========================================================================= */
+
+pub proc checkpoint_destroy(
+    checkpoint: &mut Checkpoint,
+) {
+    set *checkpoint = checkpoint_new();
+
+    set checkpoint.magic =
+        CHECKPOINT_DEAD_MAGIC;
+
+    set checkpoint.state =
+        CheckpointState.Invalidated;
+
+    set checkpoint.last_error =
+        CheckpointError.InvalidCheckpoint;
+}
+
+/* ========================================================================= */
+/* Error access                                                              */
+/* ========================================================================= */
+
+pub proc checkpoint_last_error(
+    checkpoint: &Checkpoint,
+) -> CheckpointError {
+    if not checkpoint_magic_valid(checkpoint) {
+        return CheckpointError.InvalidCheckpoint;
+    }
+
+    return checkpoint.last_error;
+}
+
+pub proc checkpoint_clear_error(
+    checkpoint: &mut Checkpoint,
+) {
+    if not checkpoint_magic_valid(checkpoint) {
+        return;
+    }
+
+    set checkpoint.last_error =
+        CheckpointError.None;
+}
+
+pub proc checkpoint_has_error(
+    checkpoint: &Checkpoint,
+) -> bool {
+    return checkpoint_last_error(checkpoint) !=
+           CheckpointError.None;
+}
+
+/* ========================================================================= */
+/* Arena and parent access                                                   */
+/* ========================================================================= */
+
+pub proc checkpoint_arena(
+    checkpoint: &Checkpoint,
+) -> ?&ArenaContext {
+    if not checkpoint_magic_valid(checkpoint) {
+        return null;
+    }
+
+    return checkpoint.arena;
+}
+
+pub proc checkpoint_arena_const(
+    checkpoint: &Checkpoint,
+) -> ?&ArenaContext {
+    return checkpoint_arena(checkpoint);
+}
+
+pub proc checkpoint_parent(
+    checkpoint: &Checkpoint,
+) -> ?&Checkpoint {
+    if not checkpoint_magic_valid(checkpoint) {
+        return null;
+    }
+
+    return checkpoint.parent;
+}
+
+pub proc checkpoint_parent_const(
+    checkpoint: &Checkpoint,
+) -> ?&Checkpoint {
+    return checkpoint_parent(checkpoint);
+}
+
+/* ========================================================================= */
+/* Metadata                                                                  */
+/* ========================================================================= */
+
+pub proc checkpoint_sequence(
+    checkpoint: &Checkpoint,
+) -> u64 {
+    if not checkpoint_magic_valid(checkpoint) {
+        return 0;
+    }
+
+    return checkpoint.sequence;
+}
+
+pub proc checkpoint_generation(
+    checkpoint: &Checkpoint,
+) -> u64 {
+    if not checkpoint_magic_valid(checkpoint) {
+        return 0;
+    }
+
+    return checkpoint.generation;
+}
+
+pub proc checkpoint_depth(
+    checkpoint: &Checkpoint,
+) -> usize {
+    if not checkpoint_magic_valid(checkpoint) {
+        return 0;
+    }
+
+    return checkpoint.depth;
+}
+
+/* ========================================================================= */
+/* Allocation deltas                                                         */
+/* ========================================================================= */
+
+pub proc checkpoint_allocation_delta(
+    checkpoint: &Checkpoint,
+) -> usize {
+    if not checkpoint_is_active(checkpoint)  or 
+       checkpoint.arena == null {
+        return 0;
+    }
+
+    let arena = checkpoint.arena?;
+
+    if not arena_context_is_valid(arena)  or 
+       checkpoint.generation !=
+           arena_context_generation(arena) {
+        return 0;
+    }
+
+    let current =
+        arena_context_allocation_count(arena);
+
+    if current < checkpoint.allocation_count {
+        return 0;
+    }
+
+    return current - checkpoint.allocation_count;
+}
+
+pub proc checkpoint_requested_delta(
+    checkpoint: &Checkpoint,
+) -> usize {
+    if not checkpoint_is_active(checkpoint)  or 
+       checkpoint.arena == null {
+        return 0;
+    }
+
+    let arena = checkpoint.arena?;
+
+    if not arena_context_is_valid(arena)  or 
+       checkpoint.generation !=
+           arena_context_generation(arena) {
+        return 0;
+    }
+
+    let current =
+        arena_context_requested_bytes(arena);
+
+    if current < checkpoint.requested_bytes {
+        return 0;
+    }
+
+    return current - checkpoint.requested_bytes;
+}
+
+pub proc checkpoint_used_delta(
+    checkpoint: &Checkpoint,
+) -> usize {
+    if not checkpoint_is_active(checkpoint)  or 
+       checkpoint.arena == null {
+        return 0;
+    }
+
+    let arena = checkpoint.arena?;
+
+    if not arena_context_is_valid(arena)  or 
+       checkpoint.generation !=
+           arena_context_generation(arena) {
+        return 0;
+    }
+
+    let current =
+        arena_context_used_bytes(arena);
+
+    if current < checkpoint.used_bytes {
+        return 0;
+    }
+
+    return current - checkpoint.used_bytes;
+}
+
+pub proc checkpoint_reserved_delta(
+    checkpoint: &Checkpoint,
+) -> usize {
+    if not checkpoint_is_active(checkpoint)  or 
+       checkpoint.arena == null {
+        return 0;
+    }
+
+    let arena = checkpoint.arena?;
+
+    if not arena_context_is_valid(arena)  or 
+       checkpoint.generation !=
+           arena_context_generation(arena) {
+        return 0;
+    }
+
+    let current =
+        arena_context_reserved_bytes(arena);
+
+    if current < checkpoint.reserved_bytes {
+        return 0;
+    }
+
+    return current - checkpoint.reserved_bytes;
+}
+
+/* ========================================================================= */
+/* Statistics                                                                */
+/* ========================================================================= */
+
+pub proc checkpoint_stats(
+    checkpoint: &Checkpoint,
+) -> CheckpointStats {
+    let mut stats = checkpoint_stats_empty();
+
+    if not checkpoint_magic_valid(checkpoint) {
+        return stats;
+    }
+
+    set stats.state = checkpoint.state;
+    set stats.last_error = checkpoint.last_error;
+
+    set stats.sequence = checkpoint.sequence;
+    set stats.generation = checkpoint.generation;
+    set stats.depth = checkpoint.depth;
+
+    set stats.captured_allocation_count =
+        checkpoint.allocation_count;
+
+    set stats.captured_requested_bytes =
+        checkpoint.requested_bytes;
+
+    set stats.captured_used_bytes =
+        checkpoint.used_bytes;
+
+    set stats.captured_reserved_bytes =
+        checkpoint.reserved_bytes;
+
+    set stats.has_parent =
+        checkpoint.parent != null;
+
+    let arena_current =
+        checkpoint.state == CheckpointState.Active  and 
+        checkpoint.arena != null  and 
+        arena_context_is_valid(checkpoint.arena?)  and 
+        checkpoint.generation ==
+            arena_context_generation(checkpoint.arena?);
+
+    if arena_current {
+        let arena = checkpoint.arena?;
+
+        set stats.current_allocation_count =
+            arena_context_allocation_count(arena);
+
+        set stats.current_requested_bytes =
+            arena_context_requested_bytes(arena);
+
+        set stats.current_used_bytes =
+            arena_context_used_bytes(arena);
+
+        set stats.current_reserved_bytes =
+            arena_context_reserved_bytes(arena);
+
+        set stats.allocation_delta =
+            checkpoint_allocation_delta(checkpoint);
+
+        set stats.requested_delta =
+            checkpoint_requested_delta(checkpoint);
+
+        set stats.used_delta =
+            checkpoint_used_delta(checkpoint);
+
+        set stats.reserved_delta =
+            checkpoint_reserved_delta(checkpoint);
+
+        set stats.stale =
+            checkpoint_is_stale(checkpoint);
+    } else {
+        set stats.current_allocation_count =
+            checkpoint.allocation_count;
+
+        set stats.current_requested_bytes =
+            checkpoint.requested_bytes;
+
+        set stats.current_used_bytes =
+            checkpoint.used_bytes;
+
+        set stats.current_reserved_bytes =
+            checkpoint.reserved_bytes;
+
+        set stats.stale =
+            checkpoint.state == CheckpointState.Active;
+    }
+
+    return stats;
+}
+
+/* ========================================================================= */
+/* Comparison                                                                */
+/* ========================================================================= */
+
+pub proc checkpoint_same_arena(
+    left: &Checkpoint,
+    right: &Checkpoint,
+) -> bool {
+    if not checkpoint_magic_valid(left)  or 
+       not checkpoint_magic_valid(right) {
+        return false;
+    }
+
+    if left.arena == null  or 
+       right.arena == null {
+        return false;
+    }
+
+    return left.arena == right.arena;
+}
+
+pub proc checkpoint_same_generation(
+    left: &Checkpoint,
+    right: &Checkpoint,
+) -> bool {
+    if not checkpoint_same_arena(left, right) {
+        return false;
+    }
+
+    if left.generation == 0  or 
+       right.generation == 0 {
+        return false;
+    }
+
+    return left.generation == right.generation;
+}
+
+pub proc checkpoint_precedes(
+    left: &Checkpoint,
+    right: &Checkpoint,
+) -> bool {
+    if not checkpoint_same_generation(left, right) {
+        return false;
+    }
+
+    if left == right {
+        return false;
+    }
+
+    if left.sequence == 0  or 
+       right.sequence == 0 {
+        return false;
+    }
+
+    return left.sequence < right.sequence;
+}
+
+/* ========================================================================= */
+/* Ancestor                                                                  */
+/* ========================================================================= */
+
+pub proc checkpoint_is_ancestor_of(
+    ancestor: &Checkpoint,
+    checkpoint: &Checkpoint,
+) -> bool {
+    if not checkpoint_magic_valid(ancestor)  or 
+       not checkpoint_magic_valid(checkpoint) {
+        return false;
+    }
+
+    if ancestor == checkpoint {
+        return false;
+    }
+
+    if ancestor.arena == null  or 
+       checkpoint.arena == null {
+        return false;
+    }
+
+    if ancestor.arena != checkpoint.arena  or 
+       ancestor.generation != checkpoint.generation {
+        return false;
+    }
+
+    let mut current: ?&Checkpoint =
+        checkpoint.parent;
+
+    let mut guard: usize = 0;
+
+    while current != null {
+        if current == ancestor {
+            return true;
+        }
+
+        if not checkpoint_magic_valid(current?) {
+            return false;
+        }
+
+        if current.arena != checkpoint.arena  or 
+           current.generation != checkpoint.generation {
+            return false;
+        }
+
+        set current = current?.parent;
+        set guard += 1;
+
+        if guard > CHECKPOINT_MAX_DEPTH {
+            return false;
+        }
+    }
+
+    return false;
+}
+
+/* ========================================================================= */
+/* Root                                                                      */
+/* ========================================================================= */
+
+pub proc checkpoint_root(
+    checkpoint: &Checkpoint,
+) -> ?&Checkpoint {
+    if not checkpoint_magic_valid(checkpoint)  or 
+       not checkpoint_parent_chain_acyclic(checkpoint) {
+        return null;
+    }
+
+    let mut current: &Checkpoint = checkpoint;
+
+    let mut expected_depth: usize =
+        checkpoint.depth;
+
+    let mut guard: usize = 0;
+
+    loop {
+        if current.depth != expected_depth {
+            return null;
+        }
+
+        if current.parent == null {
+            if current.depth == 0 {
+                return current;
+            }
+
+            return null;
+        }
+
+        if expected_depth == 0 {
+            return null;
+        }
+
+        let parent = current.parent?;
+
+        if not checkpoint_magic_valid(parent) {
+            return null;
+        }
+
+        if current.arena != parent.arena  or 
+           current.generation != parent.generation {
+            return null;
+        }
+
+        set expected_depth -= 1;
+        set current = parent;
+
+        set guard += 1;
+
+        if guard > CHECKPOINT_MAX_DEPTH {
+            return null;
+        }
+    }
+}
+
+pub proc checkpoint_root_const(
+    checkpoint: &Checkpoint,
+) -> ?&Checkpoint {
+    return checkpoint_root(checkpoint);
+}
+
+/* ========================================================================= */
+/* Convenience predicates                                                    */
+/* ========================================================================= */
+
+pub proc checkpoint_is_empty(
+    checkpoint: &Checkpoint,
+) -> bool {
+    return checkpoint_is_initialized(checkpoint)  and
+           checkpoint.state == CheckpointState.Empty;
+}
+
+pub proc checkpoint_is_resolved(
+    checkpoint: &Checkpoint,
+) -> bool {
+    if not checkpoint_is_initialized(checkpoint) {
+        return false;
+    }
+
+    return checkpoint.state == CheckpointState.Committed  or
+           checkpoint.state == CheckpointState.RolledBack  or
+           checkpoint.state == CheckpointState.Invalidated;
+}
+
+pub proc checkpoint_has_parent(
+    checkpoint: &Checkpoint,
+) -> bool {
+    return checkpoint_is_initialized(checkpoint)  and
+           checkpoint.parent != null;
+}
+
+pub proc checkpoint_is_root(
+    checkpoint: &Checkpoint,
+) -> bool {
+    return checkpoint_is_initialized(checkpoint)  and
+           checkpoint.parent == null  and checkpoint.depth == 0;
+}
+
+pub proc checkpoint_has_allocations_since_capture(
+    checkpoint: &Checkpoint,
+) -> bool {
+    return checkpoint_allocation_delta(checkpoint) != 0;
+}
+
+pub proc checkpoint_has_memory_since_capture(
+    checkpoint: &Checkpoint,
+) -> bool {
+    return checkpoint_requested_delta(checkpoint) != 0;
+}
+
+pub proc checkpoint_generation_matches(
+    checkpoint: &Checkpoint,
+) -> bool {
+    if not checkpoint_is_active(checkpoint)  or checkpoint.arena == null {
+        return false;
+    }
+
+    let arena = checkpoint.arena?;
+    if not arena_context_is_valid(arena) {
+        return false;
+    }
+
+    return checkpoint.generation != 0  and
+           checkpoint.generation == arena_context_generation(arena);
+}
+
+pub proc checkpoint_can_commit(
+    checkpoint: &Checkpoint,
+) -> bool {
+    return checkpoint_is_active(checkpoint)  and
+           not checkpoint_is_stale(checkpoint);
+}
+
+pub proc checkpoint_can_rollback(
+    checkpoint: &Checkpoint,
+) -> bool {
+    return checkpoint_is_active(checkpoint)  and
+           not checkpoint_is_stale(checkpoint);
+}
+
+/* ========================================================================= */
+/* Relationship validation                                                   */
+/* ========================================================================= */
+
+pub proc checkpoint_validate_chain(
+    checkpoint: &Checkpoint,
+) -> bool {
+    if not checkpoint_magic_valid(checkpoint) {
+        return false;
+    }
+
+    if not checkpoint_parent_chain_acyclic(checkpoint) {
+        return false;
+    }
+
+    let arena = checkpoint.arena;
+    let generation = checkpoint.generation;
+
+    let mut expected_depth: usize =
+        checkpoint.depth;
+
+    if expected_depth > CHECKPOINT_MAX_DEPTH {
+        return false;
+    }
+
+    let mut current: ?&Checkpoint = checkpoint;
+    let mut guard: usize = 0;
+
+    while current != null {
+        if not checkpoint_magic_valid(current?) {
+            return false;
+        }
+
+        if current.arena != arena  or 
+           current.generation != generation {
+            return false;
+        }
+
+        if current.depth != expected_depth {
+            return false;
+        }
+
+        if current.parent == null {
+            return current.depth == 0  and 
+                   expected_depth == 0;
+        }
+
+        if expected_depth == 0 {
+            return false;
+        }
+
+        let parent = current.parent?;
+
+        if not checkpoint_magic_valid(parent) {
+            return false;
+        }
+
+        if parent.arena != arena  or 
+           parent.generation != generation {
+            return false;
+        }
+
+        set expected_depth -= 1;
+        set current = parent;
+
+        set guard += 1;
+
+        if guard > CHECKPOINT_MAX_DEPTH {
+            return false;
+        }
+    }
+
+    return false;
+}
+
+/* ========================================================================= */
+/* Transaction helpers                                                       */
+/* ========================================================================= */
+
+pub proc checkpoint_finish(
+    checkpoint: &mut Checkpoint,
+    commit: bool,
+) -> bool {
+    if commit {
+        return checkpoint_commit(checkpoint);
+    }
+
+    return checkpoint_rollback(checkpoint);
+}
+
+pub proc checkpoint_begin(
+    checkpoint: &mut Checkpoint,
+    arena: &mut ArenaContext,
+) -> bool {
+    return checkpoint_capture(checkpoint, arena);
+}
+
+/* ========================================================================= */
+/* Snapshot access                                                           */
+/* ========================================================================= */
+
+pub proc checkpoint_captured_allocation_count(
+    checkpoint: &Checkpoint,
+) -> usize {
+    if not checkpoint_magic_valid(checkpoint) {
+        return 0;
+    }
+
+    return checkpoint.allocation_count;
+}
+
+pub proc checkpoint_captured_requested_bytes(
+    checkpoint: &Checkpoint,
+) -> usize {
+    if not checkpoint_magic_valid(checkpoint) {
+        return 0;
+    }
+
+    return checkpoint.requested_bytes;
+}
+
+pub proc checkpoint_captured_used_bytes(
+    checkpoint: &Checkpoint,
+) -> usize {
+    if not checkpoint_magic_valid(checkpoint) {
+        return 0;
+    }
+
+    return checkpoint.used_bytes;
+}
+
+pub proc checkpoint_captured_reserved_bytes(
+    checkpoint: &Checkpoint,
+) -> usize {
+    if not checkpoint_magic_valid(checkpoint) {
+        return 0;
+    }
+
+    return checkpoint.reserved_bytes;
+}
+
+
+/* ========================================================================= */
+/* Compile-time invariants                                                   */
+/* ========================================================================= */
+
+
+/* ========================================================================= */
+/* End                                                                       */
+/* ========================================================================= */

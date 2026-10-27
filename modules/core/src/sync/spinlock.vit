@@ -1,0 +1,56 @@
+/// Verrou tournant générique piloté par compare-and-exchange atomique.
+space core::sync::spinlock;
+
+use core::sync::ordering::{AtomicOrdering};
+use core::intrinsics::atomic::{atomic_load, atomic_compare_exchange};
+
+export form SpinLock<T> {
+    locked: u8,
+    value: T,
+}
+
+export proc spinlock<T>(value: T) -> SpinLock[T] {
+    return SpinLock { locked: 0, value: value };
+}
+
+export proc spinlock_try_lock<T>(lock: &mut SpinLock[T]) -> bool {
+    return atomic_compare_exchange(
+        &mut lock.locked,
+        0,
+        1,
+        AtomicOrdering.Acquire,
+        AtomicOrdering.Relaxed
+    );
+}
+
+export proc spinlock_lock<T>(lock: &mut SpinLock[T]) {
+    while not spinlock_try_lock(lock) { }
+}
+
+export proc spinlock_unlock<T>(lock: &mut SpinLock[T]) {
+    atomic_compare_exchange(
+        &mut lock.locked,
+        1,
+        0,
+        AtomicOrdering.Release,
+        AtomicOrdering.Relaxed
+    );
+}
+
+export proc spinlock_try_unlock<T>(lock: &mut SpinLock[T]) -> bool {
+    return atomic_compare_exchange(
+        &mut lock.locked,
+        1,
+        0,
+        AtomicOrdering.Release,
+        AtomicOrdering.Relaxed
+    );
+}
+
+export proc spinlock_is_locked<T>(lock: &SpinLock[T]) -> bool {
+    return atomic_load(&lock.locked, AtomicOrdering.Relaxed) != 0;
+}
+
+export proc spinlock_value_mut<T>(lock: &mut SpinLock[T]) -> &mut T {
+    return &mut lock.value;
+}

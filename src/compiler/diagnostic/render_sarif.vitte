@@ -1,0 +1,138 @@
+/// Vitte declarations ported from `src/bootstrap/diagnostic/render_sarif.h`.
+space compiler::diagnostic::render_sarif;
+
+use compiler::api::error::{Status};
+use compiler::source::source::{SourceId};
+use compiler::diagnostic::diagnostic::{Diagnostic, DiagnosticBag, DiagnosticSeverity};
+
+export const VITTE_DIAGNOSTIC_SARIF_URI_CAPACITY: usize = 4096;
+
+export type DiagnosticSARIFUriConverter = proc(
+    source_id: SourceId,
+    source_name: *const u8,
+    buffer: *mut u8,
+    capacity: usize,
+    user_data: *mut u8
+) -> bool;
+
+export form DiagnosticSARIFOptions {
+    pretty: bool,
+    trailing_newline: bool,
+    include_suppressed: bool,
+    include_rules: bool,
+    include_related_locations: bool,
+    include_fixes: bool,
+    include_properties: bool,
+    include_causes: bool,
+    include_contract: bool,
+    include_cascade: bool,
+    tool_name: *const u8,
+    tool_version: *const u8,
+    information_uri: *const u8,
+    uri_converter: ?DiagnosticSARIFUriConverter,
+    uri_user_data: *mut u8
+}
+
+export proc vitte_diagnostic_sarif_options_init(options: *mut DiagnosticSARIFOptions) {
+    if options == null { return; }
+    set *options = DiagnosticSARIFOptions {
+        pretty: true,
+        trailing_newline: true,
+        include_suppressed: false,
+        include_rules: true,
+        include_related_locations: true,
+        include_fixes: true,
+        include_properties: true,
+        include_causes: true,
+        include_contract: true,
+        include_cascade: true,
+        tool_name: "Vitte".as_ptr(),
+        tool_version: null,
+        information_uri: "https://vitte-lang.org".as_ptr(),
+        uri_converter: null,
+        uri_user_data: null
+    };
+}
+
+export proc vitte_diagnostic_sarif_level(severity: DiagnosticSeverity) -> *const u8 {
+    match severity {
+        case DiagnosticSeverity.Fatal => return "error".as_ptr(),
+        case DiagnosticSeverity.Error => return "error".as_ptr(),
+        case DiagnosticSeverity.Warning => return "warning".as_ptr(),
+        case DiagnosticSeverity.Note => return "note".as_ptr(),
+        case DiagnosticSeverity.Help => return "note".as_ptr(),
+        else => return "none".as_ptr()
+    }
+}
+
+export extern proc vitte_diagnostic_render_sarif(
+    stream: *mut u8,
+    bag: *const DiagnosticBag,
+    options: *const DiagnosticSARIFOptions
+) -> Status;
+
+export extern proc vitte_diagnostic_render_sarif_one(
+    stream: *mut u8,
+    diagnostic_value: *const Diagnostic,
+    options: *const DiagnosticSARIFOptions
+) -> Status;
+
+export extern proc vitte_diagnostic_write_sarif(
+    stream: *mut u8,
+    bag: *const DiagnosticBag
+) -> Status;
+
+export proc vitte_diagnostic_sarif_version() -> string { return "2.1.0"; }
+
+export proc vitte_diagnostic_sarif_schema() -> string {
+    return "https://json.schemastore.org/sarif-2.1.0.json";
+}
+
+export proc vitte_diagnostic_sarif_tool_name() -> string { return "Vitte"; }
+
+/// Mirror the inline callback setter from `render_sarif.h`.
+export proc vitte_diagnostic_sarif_set_uri_converter(
+    options: *mut DiagnosticSARIFOptions,
+    converter: ?DiagnosticSARIFUriConverter,
+    user_data: *mut u8
+) -> void {
+    if options == null {
+        return;
+    }
+
+    set (*options).uri_converter = converter;
+    set (*options).uri_user_data = user_data;
+}
+
+export proc vitte_diagnostic_sarif_set_tool_version(
+    options: *mut DiagnosticSARIFOptions,
+    version: *const u8
+) -> void {
+    if options == null {
+        return;
+    }
+
+    set (*options).tool_version = version;
+}
+
+export proc vitte_diagnostic_sarif_set_tool_name(
+    options: *mut DiagnosticSARIFOptions,
+    name: *const u8
+) -> void {
+    if options == null {
+        return;
+    }
+
+    set (*options).tool_name = name;
+}
+
+export proc vitte_diagnostic_sarif_set_information_uri(
+    options: *mut DiagnosticSARIFOptions,
+    uri: *const u8
+) -> void {
+    if options == null {
+        return;
+    }
+
+    set (*options).information_uri = uri;
+}

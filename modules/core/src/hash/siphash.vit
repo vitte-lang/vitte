@@ -1,0 +1,77 @@
+/// SipHash-2-4 sur une tranche d'octets.
+space core::hash::siphash;
+
+use core::num::wrapping::{wrapping_u64_add};
+
+form SipHashState {
+    v0: u64,
+    v1: u64,
+    v2: u64,
+    v3: u64,
+}
+
+proc siphash_rotate_left(value: u64, bits: u32) -> u64 {
+    return (value << bits) | (value >> (64 - bits));
+}
+
+proc siphash_round(state: &mut SipHashState) {
+    set state.v0 = wrapping_u64_add(state.v0, state.v1);
+    set state.v1 = siphash_rotate_left(state.v1, 13);
+    set state.v1 = state.v1 ^ state.v0;
+    set state.v0 = siphash_rotate_left(state.v0, 32);
+    set state.v2 = wrapping_u64_add(state.v2, state.v3);
+    set state.v3 = siphash_rotate_left(state.v3, 16);
+    set state.v3 = state.v3 ^ state.v2;
+    set state.v0 = wrapping_u64_add(state.v0, state.v3);
+    set state.v3 = siphash_rotate_left(state.v3, 21);
+    set state.v3 = state.v3 ^ state.v0;
+    set state.v2 = wrapping_u64_add(state.v2, state.v1);
+    set state.v1 = siphash_rotate_left(state.v1, 17);
+    set state.v1 = state.v1 ^ state.v2;
+    set state.v2 = siphash_rotate_left(state.v2, 32);
+}
+
+proc siphash_compress(state: &mut SipHashState, word: u64) {
+    set state.v3 = state.v3 ^ word;
+    siphash_round(state);
+    siphash_round(state);
+    set state.v0 = state.v0 ^ word;
+}
+
+export proc siphash24(bytes: &[u8], key0: u64, key1: u64) -> u64 {
+    let mut state: SipHashState = SipHashState {
+        v0: key0 ^ 0x736F6D6570736575,
+        v1: key1 ^ 0x646F72616E646F6D,
+        v2: key0 ^ 0x6C7967656E657261,
+        v3: key1 ^ 0x7465646279746573,
+    };
+
+    let mut offset: usize = 0;
+    while bytes.len() - offset >= 8 {
+        let mut word: u64 = 0;
+        let mut byte_index: usize = 0;
+        while byte_index < 8 {
+            let slice_index: i64 = (offset + byte_index) as i64;
+            word = word | ((bytes[slice_index] as u64) << (byte_index * 8));
+            set byte_index = byte_index + 1;
+        }
+        siphash_compress(&mut state, word);
+        set offset = offset + 8;
+    }
+
+    let mut tail: u64 = (bytes.len() as u64 & 255) << 56;
+    let mut tail_index: usize = 0;
+    while tail_index < bytes.len() - offset {
+        let slice_index: i64 = (offset + tail_index) as i64;
+        tail = tail | ((bytes[slice_index] as u64) << (tail_index * 8));
+        set tail_index = tail_index + 1;
+    }
+
+    siphash_compress(&mut state, tail);
+    set state.v2 = state.v2 ^ 255;
+    siphash_round(&mut state);
+    siphash_round(&mut state);
+    siphash_round(&mut state);
+    siphash_round(&mut state);
+    return state.v0 ^ state.v1 ^ state.v2 ^ state.v3;
+}

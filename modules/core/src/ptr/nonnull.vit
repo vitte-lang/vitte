@@ -1,0 +1,27 @@
+/// Enveloppes qui interdisent de construire un pointeur nul par leur API.
+space core::ptr::nonnull;
+
+export form NonNull<T> { pointer: *mut T }
+export form NonNullConst<T> { pointer: *const T }
+
+export proc nonnull<T>(pointer: *mut T) -> ?NonNull[T] {
+    if pointer == null { return null; }
+    return NonNull[T] { pointer: pointer };
+}
+
+export proc nonnull_const<T>(pointer: *const T) -> ?NonNullConst[T] {
+    if pointer == null { return null; }
+    return NonNullConst[T] { pointer: pointer };
+}
+
+export proc nonnull_as_ptr<T>(value: &NonNull[T]) -> *mut T { return value.pointer; }
+export proc nonnull_const_as_ptr<T>(value: &NonNullConst[T]) -> *const T { return value.pointer; }
+
+/// Vérifie l'invariant même si la forme a été construite directement.
+export proc nonnull_is_valid<T>(value: &NonNull[T]) -> bool {
+    return value.pointer != null;
+}
+
+export proc nonnull_const_is_valid<T>(value: &NonNullConst[T]) -> bool {
+    return value.pointer != null;
+}

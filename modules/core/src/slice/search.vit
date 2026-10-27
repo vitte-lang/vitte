@@ -1,0 +1,21 @@
+/// Recherche linéaire et comptage dans une tranche.
+space core::slice::search;
+
+export proc slice_find_index<T>(value: &[T], target: &T, equal: proc(&T, &T) -> bool) -> ?usize {
+    for index in 0..value.len() {
+        if equal(&value[index], target) { return index; }
+    }
+    return null;
+}
+
+export proc slice_contains<T>(value: &[T], target: &T, equal: proc(&T, &T) -> bool) -> bool {
+    return slice_find_index(value, target, equal) != null;
+}
+
+export proc slice_count<T>(value: &[T], target: &T, equal: proc(&T, &T) -> bool) -> usize {
+    let mut count: usize = 0;
+    for index in 0..value.len() {
+        if equal(&value[index], target) { set count = count + 1; }
+    }
+    return count;
+}

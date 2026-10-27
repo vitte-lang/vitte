@@ -1,0 +1,1785 @@
+///
+/// Vitte Compiler
+/// src/compiler/api/version.vitte
+///
+/// Canonical version and build-information subsystem.
+///
+/// This module remains dependency-light so version reporting remains
+/// available even when the compiler cannot initialize.
+///
+/// Host information describes the executable running Vitte. It does not
+/// describe the compilation target.
+///
+
+space compiler::api::version;
+
+
+/// =========================================================================
+/// Version configuration
+/// =========================================================================
+
+const VERSION_MAJOR: u32 = 0;
+const VERSION_MINOR: u32 = 1;
+const VERSION_PATCH: u32 = 1;
+
+const VERSION_PRERELEASE: str = "";
+const VERSION_BUILD_METADATA: str = "";
+
+const API_VERSION_MAJOR: u32 = 1;
+const API_VERSION_MINOR: u32 = 0;
+const API_VERSION_PATCH: u32 = 0;
+
+const ABI_VERSION_MAJOR: u32 = 1;
+const ABI_VERSION_MINOR: u32 = 0;
+const ABI_VERSION_PATCH: u32 = 0;
+
+const VERSION_GIT_COMMIT: str = "";
+const VERSION_GIT_BRANCH: str = "";
+const VERSION_GIT_DIRTY: bool = false;
+
+const VERSION_BUILD_DATE: str = "";
+const VERSION_BUILD_TIME: str = "";
+
+/// Host/build values belong to native Vitte build configuration. Unknown host
+/// identifiers remain explicit until the Vitte build driver supplies them.
+const VERSION_BUILD_MODE_VALUE: str = "unknown";
+const VERSION_HOST_COMPILER_VALUE: str = "unknown";
+const VERSION_HOST_COMPILER_VERSION_VALUE: str = "unknown";
+const VERSION_PLATFORM_VALUE: str = "unknown";
+const VERSION_ARCHITECTURE_VALUE: str = "unknown";
+const VERSION_C_STANDARD_VALUE: u32 = 2017;
+
+/// Capability defaults are native Vitte build configuration. A build can
+/// disable an item by changing its corresponding constant.
+const FEATURE_C17_BACKEND_ENABLED: bool = true;
+const FEATURE_DIAGNOSTICS_ENABLED: bool = true;
+const FEATURE_JSON_DIAGNOSTICS_ENABLED: bool = true;
+const FEATURE_SARIF_ENABLED: bool = true;
+const FEATURE_LSP_ENABLED: bool = true;
+const FEATURE_ASYNC_ENABLED: bool = true;
+const FEATURE_FFI_ENABLED: bool = true;
+const FEATURE_COMPTIME_ENABLED: bool = true;
+const FEATURE_CONTRACTS_ENABLED: bool = true;
+const FEATURE_MACROS_ENABLED: bool = true;
+const FEATURE_UNSAFE_ENABLED: bool = true;
+const FEATURE_TESTS_ENABLED: bool = true;
+
+const VERSION_PROJECT_NAME: str = "Vitte";
+const VERSION_COMPILER_NAME: str = "vitte";
+
+const VERSION_STRING_CAPACITY: usize = 256;
+const VERSION_FULL_CAPACITY: usize = 1024;
+
+const VERSION_FNV_OFFSET: u64 =
+    14695981039346656037;
+
+const VERSION_FNV_PRIME: u64 =
+    1099511628211;
+
+const VERSION_BUILD_ID_SCHEMA: u64 = 2;
+
+
+/// =========================================================================
+/// Endianness
+/// =========================================================================
+
+export pick Endianness {
+    Unknown,
+    Little,
+    Big,
+}
+
+export proc endianness_name(
+    endianness: Endianness
+) -> str {
+    match endianness {
+        case Endianness.Unknown => {
+            return "unknown";
+        }
+
+        case Endianness.Little => {
+            return "little";
+        }
+
+        case Endianness.Big => {
+            return "big";
+        }
+
+        else => {
+            return "unknown";
+        }
+    }
+}
+
+
+/// =========================================================================
+/// Compile-time capabilities
+/// =========================================================================
+
+export pick VersionFeature {
+    None,
+
+    C17Backend,
+    Diagnostics,
+    JsonDiagnostics,
+    Sarif,
+    Lsp,
+    Async,
+    Ffi,
+    Comptime,
+    Contracts,
+    Macros,
+    Unsafe,
+    Tests,
+
+    Count,
+}
+
+
+/// =========================================================================
+/// Build information
+/// =========================================================================
+
+export form VersionInfo {
+    version_major: u32,
+    version_minor: u32,
+    version_patch: u32,
+
+    api_major: u32,
+    api_minor: u32,
+    api_patch: u32,
+
+    abi_major: u32,
+    abi_minor: u32,
+    abi_patch: u32,
+
+    version: string,
+    prerelease: string,
+    build_metadata: string,
+
+    project_name: string,
+    compiler_name: string,
+
+    build_mode: string,
+
+    host_compiler: string,
+    host_compiler_version: string,
+
+    platform: string,
+    architecture: string,
+
+    pointer_bits: u32,
+    endianness: Endianness,
+
+    c_standard: u32,
+
+    git_commit: string,
+    git_branch: string,
+    git_dirty: bool,
+
+    build_date: string,
+    build_time: string,
+}
+
+
+/// =========================================================================
+/// Internal helpers
+/// =========================================================================
+
+proc nonempty(
+    text: str
+) -> bool {
+    return text.length != 0;
+}
+
+proc append(
+    destination: &mut string,
+    text: str,
+    maximum: usize
+) -> bool {
+    if text.length == 0 {
+        return true;
+    }
+
+    if destination.length >= maximum {
+        return false;
+    }
+
+    let available: usize =
+        maximum - destination.length;
+
+    if text.length > available {
+        set *destination =
+            destination +
+            text.slice(
+                0,
+                available
+            );
+
+        return false;
+    }
+
+    set *destination =
+        destination + text;
+
+    return true;
+}
+
+
+/// =========================================================================
+/// Semantic version validation
+/// =========================================================================
+
+proc identifier_character_valid(
+    character: char
+) -> bool {
+    if character >= '0'  and 
+       character <= '9' {
+        return true;
+    }
+
+    if character >= 'A'  and 
+       character <= 'Z' {
+        return true;
+    }
+
+    if character >= 'a'  and 
+       character <= 'z' {
+        return true;
+    }
+
+    return character == '-';
+}
+
+proc identifier_list_valid(
+    text: str,
+    enforce_numeric_leading_zero_rule: bool
+) -> bool {
+    if text.length == 0 {
+        return true;
+    }
+
+    let mut segment_start: usize = 0;
+    let mut cursor: usize = 0;
+
+    while cursor <= text.length {
+        let at_end: bool =
+            cursor == text.length;
+
+        let separator: bool =
+            not at_end  and 
+            text[cursor] == '.';
+
+        if at_end  or  separator {
+            let length: usize =
+                cursor - segment_start;
+
+            if length == 0 {
+                return false;
+            }
+
+            let mut numeric: bool = true;
+            let mut index: usize = 0;
+
+            while index < length {
+                let item: char =
+                    text[
+                        segment_start +
+                        index
+                    ] as char;
+
+                if not identifier_character_valid(
+                    item
+                ) {
+                    return false;
+                }
+
+                if item < '0'  or 
+                   item > '9' {
+                    set numeric = false;
+                }
+
+                set index =
+                    index + 1;
+            }
+
+            if enforce_numeric_leading_zero_rule  and 
+               numeric  and 
+               length > 1  and 
+               text[segment_start] == '0' {
+                return false;
+            }
+
+            if at_end {
+                break;
+            }
+
+            set segment_start =
+                cursor + 1;
+        } else {
+            if not identifier_character_valid(
+                text[cursor] as char
+            ) {
+                return false;
+            }
+        }
+
+        set cursor =
+            cursor + 1;
+    }
+
+    return true;
+}
+
+
+/// =========================================================================
+/// Version string
+/// =========================================================================
+
+export proc version_string() -> string {
+    let mut result: string =
+        VERSION_MAJOR.to_string() +
+        "." +
+        VERSION_MINOR.to_string() +
+        "." +
+        VERSION_PATCH.to_string();
+
+    if nonempty(
+        VERSION_PRERELEASE
+    ) {
+        set result =
+            result +
+            "-" +
+            VERSION_PRERELEASE;
+    }
+
+    if nonempty(
+        VERSION_BUILD_METADATA
+    ) {
+        set result =
+            result +
+            "+" +
+            VERSION_BUILD_METADATA;
+    }
+
+    return result;
+}
+
+
+/// =========================================================================
+/// Semantic version access
+/// =========================================================================
+
+export proc version_major() -> u32 {
+    return VERSION_MAJOR;
+}
+
+export proc version_minor() -> u32 {
+    return VERSION_MINOR;
+}
+
+export proc version_patch() -> u32 {
+    return VERSION_PATCH;
+}
+
+export proc version_prerelease() -> str {
+    return VERSION_PRERELEASE;
+}
+
+export proc version_build_metadata() -> str {
+    return VERSION_BUILD_METADATA;
+}
+
+
+/// =========================================================================
+/// API version
+/// =========================================================================
+
+export proc version_api_major() -> u32 {
+    return API_VERSION_MAJOR;
+}
+
+export proc version_api_minor() -> u32 {
+    return API_VERSION_MINOR;
+}
+
+export proc version_api_patch() -> u32 {
+    return API_VERSION_PATCH;
+}
+
+export proc version_api_string() -> string {
+    return
+        API_VERSION_MAJOR.to_string() +
+        "." +
+        API_VERSION_MINOR.to_string() +
+        "." +
+        API_VERSION_PATCH.to_string();
+}
+
+
+/// =========================================================================
+/// ABI version
+/// =========================================================================
+
+export proc version_abi_major() -> u32 {
+    return ABI_VERSION_MAJOR;
+}
+
+export proc version_abi_minor() -> u32 {
+    return ABI_VERSION_MINOR;
+}
+
+export proc version_abi_patch() -> u32 {
+    return ABI_VERSION_PATCH;
+}
+
+export proc version_abi_string() -> string {
+    return
+        ABI_VERSION_MAJOR.to_string() +
+        "." +
+        ABI_VERSION_MINOR.to_string() +
+        "." +
+        ABI_VERSION_PATCH.to_string();
+}
+
+
+/// =========================================================================
+/// Compatibility
+/// =========================================================================
+
+export proc version_api_compatible(
+    major: u32,
+    minor: u32
+) -> bool {
+    return
+        major == API_VERSION_MAJOR  and 
+        minor <= API_VERSION_MINOR;
+}
+
+export proc version_abi_compatible(
+    major: u32,
+    minor: u32
+) -> bool {
+    return
+        major == ABI_VERSION_MAJOR  and 
+        minor <= ABI_VERSION_MINOR;
+}
+
+
+/// =========================================================================
+/// Project/build identity
+/// =========================================================================
+
+export proc version_project_name() -> str {
+    return VERSION_PROJECT_NAME;
+}
+
+export proc version_compiler_name() -> str {
+    return VERSION_COMPILER_NAME;
+}
+
+
+/// =========================================================================
+/// Build mode
+/// =========================================================================
+
+export proc version_build_mode() -> str {
+    return VERSION_BUILD_MODE_VALUE;
+}
+
+
+/// =========================================================================
+/// Host compiler
+/// =========================================================================
+
+export proc version_host_compiler() -> str {
+    return VERSION_HOST_COMPILER_VALUE;
+}
+
+export proc version_host_compiler_version() -> str {
+    return VERSION_HOST_COMPILER_VERSION_VALUE;
+}
+
+
+/// =========================================================================
+/// Host platform
+/// =========================================================================
+
+export proc version_platform() -> str {
+    return VERSION_PLATFORM_VALUE;
+}
+
+
+/// =========================================================================
+/// Host architecture
+/// =========================================================================
+
+export proc version_architecture() -> str {
+    return VERSION_ARCHITECTURE_VALUE;
+}
+
+
+/// =========================================================================
+/// Pointer width
+/// =========================================================================
+
+export proc version_pointer_bits() -> u32 {
+    return (sizeof(usize) * 8) as u32;
+}
+
+
+/// =========================================================================
+/// Endianness
+/// =========================================================================
+
+export proc version_endianness() -> Endianness {
+    let probe: u16 = 0x0102;
+    let first_byte: *const u8 =
+        (&probe) as *const u8;
+
+    if first_byte[0] == 2  and
+       first_byte[1] == 1 {
+        return Endianness.Little;
+    }
+
+    if first_byte[0] == 1  and
+       first_byte[1] == 2 {
+        return Endianness.Big;
+    }
+
+    return Endianness.Unknown;
+}
+
+
+/// =========================================================================
+/// Host C standard
+/// =========================================================================
+
+export proc version_c_standard() -> u32 {
+    return VERSION_C_STANDARD_VALUE;
+}
+
+
+/// =========================================================================
+/// Git metadata
+/// =========================================================================
+
+export proc version_git_commit() -> str {
+    return VERSION_GIT_COMMIT;
+}
+
+export proc version_git_branch() -> str {
+    return VERSION_GIT_BRANCH;
+}
+
+export proc version_git_dirty() -> bool {
+    return VERSION_GIT_DIRTY;
+}
+
+
+/// =========================================================================
+/// Build timestamp
+/// =========================================================================
+
+export proc version_build_date() -> str {
+    return VERSION_BUILD_DATE;
+}
+
+export proc version_build_time() -> str {
+    return VERSION_BUILD_TIME;
+}
+
+
+/// =========================================================================
+/// Feature capabilities
+/// =========================================================================
+
+export proc version_has_feature(
+    feature: VersionFeature
+) -> bool {
+    match feature {
+        case VersionFeature.None => {
+            return false;
+        }
+
+        case VersionFeature.C17Backend => {
+            return FEATURE_C17_BACKEND_ENABLED;
+        }
+
+        case VersionFeature.Diagnostics => {
+            return FEATURE_DIAGNOSTICS_ENABLED;
+        }
+
+        case VersionFeature.JsonDiagnostics => {
+            return
+                version_has_feature(
+                    VersionFeature.Diagnostics
+                )  and
+                FEATURE_JSON_DIAGNOSTICS_ENABLED;
+        }
+
+        case VersionFeature.Sarif => {
+            return
+                version_has_feature(
+                    VersionFeature.Diagnostics
+                )  and
+                FEATURE_SARIF_ENABLED;
+        }
+
+        case VersionFeature.Lsp => {
+            return
+                version_has_feature(
+                    VersionFeature.Diagnostics
+                )  and
+                FEATURE_LSP_ENABLED;
+        }
+
+        case VersionFeature.Async => {
+            return FEATURE_ASYNC_ENABLED;
+        }
+
+        case VersionFeature.Ffi => {
+            return FEATURE_FFI_ENABLED;
+        }
+
+        case VersionFeature.Comptime => {
+            return FEATURE_COMPTIME_ENABLED;
+        }
+
+        case VersionFeature.Contracts => {
+            return FEATURE_CONTRACTS_ENABLED;
+        }
+
+        case VersionFeature.Macros => {
+            return FEATURE_MACROS_ENABLED;
+        }
+
+        case VersionFeature.Unsafe => {
+            return FEATURE_UNSAFE_ENABLED;
+        }
+
+        case VersionFeature.Tests => {
+            return FEATURE_TESTS_ENABLED;
+        }
+
+        case VersionFeature.Count => {
+            return false;
+        }
+
+        else => {
+            return false;
+        }
+    }
+}
+
+export proc version_feature_name(
+    feature: VersionFeature
+) -> str {
+    match feature {
+        case VersionFeature.None => {
+            return "none";
+        }
+
+        case VersionFeature.C17Backend => {
+            return "c17-backend";
+        }
+
+        case VersionFeature.Diagnostics => {
+            return "diagnostics";
+        }
+
+        case VersionFeature.JsonDiagnostics => {
+            return "json-diagnostics";
+        }
+
+        case VersionFeature.Sarif => {
+            return "sarif";
+        }
+
+        case VersionFeature.Lsp => {
+            return "lsp";
+        }
+
+        case VersionFeature.Async => {
+            return "async";
+        }
+
+        case VersionFeature.Ffi => {
+            return "ffi";
+        }
+
+        case VersionFeature.Comptime => {
+            return "comptime";
+        }
+
+        case VersionFeature.Contracts => {
+            return "contracts";
+        }
+
+        case VersionFeature.Macros => {
+            return "macros";
+        }
+
+        case VersionFeature.Unsafe => {
+            return "unsafe";
+        }
+
+        case VersionFeature.Tests => {
+            return "tests";
+        }
+
+        case VersionFeature.Count => {
+            return "invalid";
+        }
+
+        else => {
+            return "invalid";
+        }
+    }
+}
+
+
+/// =========================================================================
+/// Feature count
+/// =========================================================================
+
+export proc version_feature_count() -> usize {
+    let mut count: usize = 0;
+
+    if version_has_feature(
+        VersionFeature.C17Backend
+    ) {
+        set count = count + 1;
+    }
+
+    if version_has_feature(
+        VersionFeature.Diagnostics
+    ) {
+        set count = count + 1;
+    }
+
+    if version_has_feature(
+        VersionFeature.JsonDiagnostics
+    ) {
+        set count = count + 1;
+    }
+
+    if version_has_feature(
+        VersionFeature.Sarif
+    ) {
+        set count = count + 1;
+    }
+
+    if version_has_feature(
+        VersionFeature.Lsp
+    ) {
+        set count = count + 1;
+    }
+
+    if version_has_feature(
+        VersionFeature.Async
+    ) {
+        set count = count + 1;
+    }
+
+    if version_has_feature(
+        VersionFeature.Ffi
+    ) {
+        set count = count + 1;
+    }
+
+    if version_has_feature(
+        VersionFeature.Comptime
+    ) {
+        set count = count + 1;
+    }
+
+    if version_has_feature(
+        VersionFeature.Contracts
+    ) {
+        set count = count + 1;
+    }
+
+    if version_has_feature(
+        VersionFeature.Macros
+    ) {
+        set count = count + 1;
+    }
+
+    if version_has_feature(
+        VersionFeature.Unsafe
+    ) {
+        set count = count + 1;
+    }
+
+    if version_has_feature(
+        VersionFeature.Tests
+    ) {
+        set count = count + 1;
+    }
+
+    return count;
+}
+
+
+/// =========================================================================
+/// Version information
+/// =========================================================================
+
+export proc version_info() -> VersionInfo {
+    return VersionInfo {
+        version_major:
+            VERSION_MAJOR,
+
+        version_minor:
+            VERSION_MINOR,
+
+        version_patch:
+            VERSION_PATCH,
+
+        api_major:
+            API_VERSION_MAJOR,
+
+        api_minor:
+            API_VERSION_MINOR,
+
+        api_patch:
+            API_VERSION_PATCH,
+
+        abi_major:
+            ABI_VERSION_MAJOR,
+
+        abi_minor:
+            ABI_VERSION_MINOR,
+
+        abi_patch:
+            ABI_VERSION_PATCH,
+
+        version:
+            version_string(),
+
+        prerelease:
+            string.from(
+                VERSION_PRERELEASE
+            ),
+
+        build_metadata:
+            string.from(
+                VERSION_BUILD_METADATA
+            ),
+
+        project_name:
+            string.from(
+                VERSION_PROJECT_NAME
+            ),
+
+        compiler_name:
+            string.from(
+                VERSION_COMPILER_NAME
+            ),
+
+        build_mode:
+            string.from(
+                version_build_mode()
+            ),
+
+        host_compiler:
+            string.from(
+                version_host_compiler()
+            ),
+
+        host_compiler_version:
+            string.from(
+                version_host_compiler_version()
+            ),
+
+        platform:
+            string.from(
+                version_platform()
+            ),
+
+        architecture:
+            string.from(
+                version_architecture()
+            ),
+
+        pointer_bits:
+            version_pointer_bits(),
+
+        endianness:
+            version_endianness(),
+
+        c_standard:
+            version_c_standard(),
+
+        git_commit:
+            string.from(
+                VERSION_GIT_COMMIT
+            ),
+
+        git_branch:
+            string.from(
+                VERSION_GIT_BRANCH
+            ),
+
+        git_dirty:
+            VERSION_GIT_DIRTY,
+
+        build_date:
+            string.from(
+                VERSION_BUILD_DATE
+            ),
+
+        build_time:
+            string.from(
+                VERSION_BUILD_TIME
+            ),
+    };
+}
+
+
+/// =========================================================================
+/// Full version string
+/// =========================================================================
+
+export proc version_full_string() -> string {
+    let mut result: string = "";
+
+    append(
+        &mut result,
+        VERSION_COMPILER_NAME,
+        VERSION_FULL_CAPACITY
+    );
+
+    append(
+        &mut result,
+        " ",
+        VERSION_FULL_CAPACITY
+    );
+
+    append(
+        &mut result,
+        version_string(),
+        VERSION_FULL_CAPACITY
+    );
+
+    append(
+        &mut result,
+        " (",
+        VERSION_FULL_CAPACITY
+    );
+
+    append(
+        &mut result,
+        version_platform(),
+        VERSION_FULL_CAPACITY
+    );
+
+    append(
+        &mut result,
+        "/",
+        VERSION_FULL_CAPACITY
+    );
+
+    append(
+        &mut result,
+        version_architecture(),
+        VERSION_FULL_CAPACITY
+    );
+
+    append(
+        &mut result,
+        ", ",
+        VERSION_FULL_CAPACITY
+    );
+
+    append(
+        &mut result,
+        version_build_mode(),
+        VERSION_FULL_CAPACITY
+    );
+
+    append(
+        &mut result,
+        ", ",
+        VERSION_FULL_CAPACITY
+    );
+
+    append(
+        &mut result,
+        version_host_compiler(),
+        VERSION_FULL_CAPACITY
+    );
+
+    append(
+        &mut result,
+        " ",
+        VERSION_FULL_CAPACITY
+    );
+
+    append(
+        &mut result,
+        version_host_compiler_version(),
+        VERSION_FULL_CAPACITY
+    );
+
+    append(
+        &mut result,
+        ")",
+        VERSION_FULL_CAPACITY
+    );
+
+    if nonempty(
+        VERSION_GIT_COMMIT
+    ) {
+        append(
+            &mut result,
+            " git:",
+            VERSION_FULL_CAPACITY
+        );
+
+        append(
+            &mut result,
+            VERSION_GIT_COMMIT,
+            VERSION_FULL_CAPACITY
+        );
+
+        if VERSION_GIT_DIRTY {
+            append(
+                &mut result,
+                "-dirty",
+                VERSION_FULL_CAPACITY
+            );
+        }
+    }
+
+    return result;
+}
+
+
+/// =========================================================================
+/// Detailed formatting
+/// =========================================================================
+
+export proc version_format() -> string {
+    let mut result: string = "";
+
+    set result =
+        result +
+        VERSION_COMPILER_NAME +
+        " " +
+        version_string() +
+        "\n";
+
+    set result =
+        result +
+        "API: " +
+        version_api_string() +
+        "\n";
+
+    set result =
+        result +
+        "ABI: " +
+        version_abi_string() +
+        "\n";
+
+    set result =
+        result +
+        "build: " +
+        version_build_mode() +
+        "\n";
+
+    set result =
+        result +
+        "platform: " +
+        version_platform() +
+        "\n";
+
+    set result =
+        result +
+        "architecture: " +
+        version_architecture() +
+        "\n";
+
+    set result =
+        result +
+        "pointer-width: " +
+        version_pointer_bits().to_string() +
+        "\n";
+
+    set result =
+        result +
+        "endianness: " +
+        endianness_name(
+            version_endianness()
+        ) +
+        "\n";
+
+    set result =
+        result +
+        "host-compiler: " +
+        version_host_compiler() +
+        " " +
+        version_host_compiler_version() +
+        "\n";
+
+    set result =
+        result +
+        "C-standard: C" +
+        version_c_standard().to_string() +
+        "\n";
+
+    set result =
+        result +
+        "git-commit: ";
+
+    if nonempty(
+        VERSION_GIT_COMMIT
+    ) {
+        set result =
+            result +
+            VERSION_GIT_COMMIT;
+    } else {
+        set result =
+            result +
+            "unknown";
+    }
+
+    set result =
+        result +
+        "\n" +
+        "git-branch: ";
+
+    if nonempty(
+        VERSION_GIT_BRANCH
+    ) {
+        set result =
+            result +
+            VERSION_GIT_BRANCH;
+    } else {
+        set result =
+            result +
+            "unknown";
+    }
+
+    set result =
+        result +
+        "\n" +
+        "git-dirty: ";
+
+    if VERSION_GIT_DIRTY {
+        set result =
+            result +
+            "yes";
+    } else {
+        set result =
+            result +
+            "no";
+    }
+
+    set result =
+        result +
+        "\n" +
+        "build-date: " +
+        VERSION_BUILD_DATE +
+        "\n" +
+        "build-time: " +
+        VERSION_BUILD_TIME;
+
+    return result;
+}
+
+
+/// =========================================================================
+/// Deterministic hashing
+/// =========================================================================
+
+proc hash_byte(
+    hash: u64,
+    byte: u8
+) -> u64 {
+    let mut result: u64 =
+        hash ^ byte as u64;
+
+    set result =
+        result *
+        VERSION_FNV_PRIME;
+
+    return result;
+}
+
+proc hash_u64(
+    hash: u64,
+    value: u64
+) -> u64 {
+    let mut result: u64 =
+        hash;
+
+    let mut shift: u32 = 0;
+
+    while shift < 64 {
+        let byte: u8 =
+            (
+                (value >> shift) &
+                0xff
+            ) as u8;
+
+        set result =
+            hash_byte(
+                result,
+                byte
+            );
+
+        set shift =
+            shift + 8;
+    }
+
+    return result;
+}
+
+proc hash_string(
+    hash: u64,
+    text: str
+) -> u64 {
+    let mut result: u64 =
+        hash;
+    let text_length: usize =
+        text.length;
+
+    let mut index: usize = 0;
+
+    while index < text_length {
+        set result =
+            hash_byte(
+                result,
+                text[index] as u8
+            );
+
+        set index =
+            index + 1;
+    }
+
+    return hash_byte(
+        result,
+        0
+    );
+}
+
+
+/// =========================================================================
+/// Deterministic build identity
+/// =========================================================================
+
+export proc version_build_id() -> u64 {
+    let mut hash: u64 =
+        VERSION_FNV_OFFSET;
+
+    set hash =
+        hash_u64(
+            hash,
+            VERSION_BUILD_ID_SCHEMA
+        );
+
+    set hash =
+        hash_string(
+            hash,
+            VERSION_PROJECT_NAME
+        );
+
+    set hash =
+        hash_string(
+            hash,
+            VERSION_COMPILER_NAME
+        );
+
+    set hash =
+        hash_string(
+            hash,
+            version_string()
+        );
+
+    set hash =
+        hash_string(
+            hash,
+            version_api_string()
+        );
+
+    set hash =
+        hash_string(
+            hash,
+            version_abi_string()
+        );
+
+    set hash =
+        hash_string(
+            hash,
+            version_platform()
+        );
+
+    set hash =
+        hash_string(
+            hash,
+            version_architecture()
+        );
+
+    set hash =
+        hash_u64(
+            hash,
+            version_pointer_bits() as u64
+        );
+
+    set hash =
+        hash_u64(
+            hash,
+            version_endianness() as u64
+        );
+
+    set hash =
+        hash_u64(
+            hash,
+            version_c_standard() as u64
+        );
+
+    set hash =
+        hash_string(
+            hash,
+            version_build_mode()
+        );
+
+    set hash =
+        hash_string(
+            hash,
+            VERSION_GIT_COMMIT
+        );
+
+    if VERSION_GIT_DIRTY {
+        set hash =
+            hash_u64(
+                hash,
+                1
+            );
+    } else {
+        set hash =
+            hash_u64(
+                hash,
+                0
+            );
+    }
+
+    let mut feature: u64 = 1;
+
+    while feature <
+          VersionFeature.Count as u64 {
+        set hash =
+            hash_u64(
+                hash,
+                feature
+            );
+
+        if version_has_feature(
+            feature as VersionFeature
+        ) {
+            set hash =
+                hash_u64(
+                    hash,
+                    1
+                );
+        } else {
+            set hash =
+                hash_u64(
+                    hash,
+                    0
+                );
+        }
+
+        set feature =
+            feature + 1;
+    }
+
+    return hash;
+}
+
+
+/// =========================================================================
+/// Validation
+/// =========================================================================
+
+export proc version_validate() -> bool {
+    let info: VersionInfo =
+        version_info();
+
+    if info.version.length == 0 {
+        return false;
+    }
+
+    if info.project_name.length == 0 {
+        return false;
+    }
+
+    if info.compiler_name.length == 0 {
+        return false;
+    }
+
+    if info.build_mode.length == 0 {
+        return false;
+    }
+
+    if info.host_compiler.length == 0 {
+        return false;
+    }
+
+    if info.host_compiler_version.length == 0 {
+        return false;
+    }
+
+    if info.platform.length == 0 {
+        return false;
+    }
+
+    if info.architecture.length == 0 {
+        return false;
+    }
+
+    if info.pointer_bits == 0 {
+        return false;
+    }
+
+    if info.pointer_bits % 8 != 0 {
+        return false;
+    }
+
+    match info.endianness {
+        case Endianness.Unknown => {}
+        case Endianness.Little => {}
+        case Endianness.Big => {}
+
+        else => {
+            return false;
+        }
+    }
+
+    if info.c_standard != 1990  and 
+       info.c_standard != 1999  and 
+       info.c_standard != 2011  and 
+       info.c_standard != 2017  and 
+       info.c_standard != 2023 {
+        return false;
+    }
+
+    if not identifier_list_valid(
+        VERSION_PRERELEASE,
+        true
+    ) {
+        return false;
+    }
+
+    if not identifier_list_valid(
+        VERSION_BUILD_METADATA,
+        false
+    ) {
+        return false;
+    }
+
+    let mut expected_version: string =
+        VERSION_MAJOR.to_string() +
+        "." +
+        VERSION_MINOR.to_string() +
+        "." +
+        VERSION_PATCH.to_string();
+
+    if nonempty(
+        VERSION_PRERELEASE
+    ) {
+        set expected_version =
+            expected_version +
+            "-" +
+            VERSION_PRERELEASE;
+    }
+
+    if nonempty(
+        VERSION_BUILD_METADATA
+    ) {
+        set expected_version =
+            expected_version +
+            "+" +
+            VERSION_BUILD_METADATA;
+    }
+
+    if expected_version.length >
+       VERSION_STRING_CAPACITY {
+        return false;
+    }
+
+    if version_string() !=
+       expected_version {
+        return false;
+    }
+
+    if version_api_string() !=
+       (
+           API_VERSION_MAJOR.to_string() +
+           "." +
+           API_VERSION_MINOR.to_string() +
+           "." +
+           API_VERSION_PATCH.to_string()
+       ) {
+        return false;
+    }
+
+    if version_abi_string() !=
+       (
+           ABI_VERSION_MAJOR.to_string() +
+           "." +
+           ABI_VERSION_MINOR.to_string() +
+           "." +
+           ABI_VERSION_PATCH.to_string()
+       ) {
+        return false;
+    }
+
+    if not version_has_feature(
+        VersionFeature.Diagnostics
+    ) {
+        if version_has_feature(
+            VersionFeature.JsonDiagnostics
+        ) {
+            return false;
+        }
+
+        if version_has_feature(
+            VersionFeature.Sarif
+        ) {
+            return false;
+        }
+
+        if version_has_feature(
+            VersionFeature.Lsp
+        ) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+
+/// =========================================================================
+/// Convenience predicates
+/// =========================================================================
+
+export proc version_is_prerelease() -> bool {
+    return nonempty(
+        version_prerelease()
+    );
+}
+
+export proc version_has_build_metadata() -> bool {
+    return nonempty(
+        version_build_metadata()
+    );
+}
+
+export proc version_has_git_commit() -> bool {
+    return nonempty(
+        version_git_commit()
+    );
+}
+
+export proc version_has_git_branch() -> bool {
+    return nonempty(
+        version_git_branch()
+    );
+}
+
+export proc version_is_debug_build() -> bool {
+    return version_build_mode() == "debug";
+}
+
+export proc version_is_release_build() -> bool {
+    return version_build_mode() == "release";
+}
+
+
+/// =========================================================================
+/// Version comparison
+/// =========================================================================
+
+export proc version_compare_core(
+    major: u32,
+    minor: u32,
+    patch: u32
+) -> i32 {
+    if version_major() < major {
+        return -1;
+    }
+
+    if version_major() > major {
+        return 1;
+    }
+
+    if version_minor() < minor {
+        return -1;
+    }
+
+    if version_minor() > minor {
+        return 1;
+    }
+
+    if version_patch() < patch {
+        return -1;
+    }
+
+    if version_patch() > patch {
+        return 1;
+    }
+
+    return 0;
+}
+
+export proc version_at_least(
+    major: u32,
+    minor: u32,
+    patch: u32
+) -> bool {
+    return version_compare_core(
+        major,
+        minor,
+        patch
+    ) >= 0;
+}
+
+
+/// =========================================================================
+/// Feature predicates
+/// =========================================================================
+
+export proc version_has_diagnostics() -> bool {
+    return version_has_feature(
+        VersionFeature.Diagnostics
+    );
+}
+
+export proc version_has_c17_backend() -> bool {
+    return version_has_feature(
+        VersionFeature.C17Backend
+    );
+}
+
+export proc version_has_contracts() -> bool {
+    return version_has_feature(
+        VersionFeature.Contracts
+    );
+}
+
+export proc version_has_comptime() -> bool {
+    return version_has_feature(
+        VersionFeature.Comptime
+    );
+}
+
+
+/// =========================================================================
+/// Architectural contract
+/// =========================================================================
+
+///
+/// HOST VS TARGET
+///
+/// The following functions describe the Vitte executable itself:
+///
+///     version_platform()
+///     version_architecture()
+///     version_pointer_bits()
+///     version_endianness()
+///
+/// They do not describe:
+///
+///     --target
+///     generated C ABI
+///     target pointer width
+///     target byte order
+///     linker target
+///     execution environment
+///
+/// Target properties belong to the target/backend/driver subsystems.
+///
+
+
+///
+/// VERSION VS API VS ABI
+///
+/// Semantic version:
+///     user-visible Vitte compiler/toolchain release.
+///
+/// API version:
+///     compatibility of public programmatic interfaces.
+///
+/// ABI version:
+///     compatibility of binary-facing interfaces.
+///
+/// These versions are intentionally independent.
+///
+
+
+///
+/// BUILD IDENTITY
+///
+/// version_build_id() is deterministic.
+///
+/// Included:
+///
+///     project/compiler identity
+///     semantic version
+///     API version
+///     ABI version
+///     host platform
+///     host architecture
+///     pointer width
+///     endianness
+///     host C standard
+///     build mode
+///     Git commit
+///     dirty state
+///     enabled feature set
+///
+/// Excluded:
+///
+///     build date
+///     build time
+///
+/// This preserves deterministic build identity for reproducible builds.
+///
+
+
+///
+/// REPRODUCIBLE BUILDS
+///
+/// Production builds should inject deterministic values for:
+///
+///     VERSION_BUILD_DATE
+///     VERSION_BUILD_TIME
+///     VERSION_GIT_COMMIT
+///     VERSION_GIT_BRANCH
+///     VERSION_GIT_DIRTY
+///
+/// Build timestamps are metadata only and do not participate in build ID.
+///
+
+
+///
+/// DEPENDENCY POLICY
+///
+/// This module must remain independent from:
+///
+///     AST
+///     source manager
+///     diagnostic engine
+///     parser
+///     HIR
+///     IR
+///     backend implementation
+///     filesystem initialization
+///     allocator initialization
+///
+/// Version reporting must remain available when those systems fail.
+///

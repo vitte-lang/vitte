@@ -1,0 +1,376 @@
+/// Vitte declarations ported from `src/src/import/import.h`.
+space compiler::import::import;
+
+const IMPORT_MAGIC: u64 = 6217593481478098256;
+
+export pick ImportError {
+    None,
+    InvalidArgument,
+    InvalidContext,
+    InvalidState,
+    InvalidString,
+    InvalidModule,
+    InvalidEdge,
+    DuplicateModule,
+    DuplicateImport,
+    AliasConflict,
+    ModuleNotFound,
+    ImportNotFound,
+    SelfImport,
+    Cycle,
+    TooManyModules,
+    TooManyImports,
+    StringLimit,
+    Overflow,
+    OutOfMemory,
+    Validation,
+    Corruption,
+    Unsupported,
+    Internal,
+    Count
+}
+
+export pick ImportState {
+    Invalid,
+    Building,
+    Resolving,
+    Resolved,
+    Failed,
+    Destroyed,
+    Count
+}
+
+export pick ImportModuleState {
+    Invalid,
+    Registered,
+    Resolving,
+    Resolved,
+    Failed,
+    Count
+}
+
+export pick ImportEdgeState {
+    Invalid,
+    Unresolved,
+    Resolved,
+    Failed,
+    Count
+}
+
+export pick ImportVisibility {
+    Private,
+    Public,
+    Count
+}
+
+export form ImportSpan {
+    file_id: u32,
+    begin: usize,
+    end: usize,
+    line: usize,
+    column: usize,
+    end_line: usize,
+    end_column: usize,
+    valid: bool
+}
+
+export form ImportString {
+    id: ImportStringId,
+    data: string,
+    length: usize,
+    hash: u64
+}
+
+export form ImportModuleDesc {
+    name: ImportStringId,
+    path: ImportStringId,
+    source_id: ImportSourceId,
+    visibility: ImportVisibility,
+    is_root: bool,
+    is_external: bool
+}
+
+export form ImportDesc {
+    source_module: ImportModuleId,
+    module_name: ImportStringId,
+    alias: ImportStringId,
+    visibility: ImportVisibility,
+    span: ImportSpan
+}
+
+export form ImportEdge {
+    id: ImportEdgeId,
+    source_module: ImportModuleId,
+    target_module: ImportModuleId,
+    module_name: ImportStringId,
+    alias: ImportStringId,
+    visibility: ImportVisibility,
+    span: ImportSpan,
+    state: ImportEdgeState
+}
+
+export form ImportModule {
+    id: ImportModuleId,
+    name: ImportStringId,
+    path: ImportStringId,
+    source_id: ImportSourceId,
+    visibility: ImportVisibility,
+    state: ImportModuleState,
+    is_root: bool,
+    is_external: bool,
+    dependencies: *ImportModuleId,
+    dependency_count: usize,
+    dependency_capacity: usize,
+    dependents: *ImportModuleId,
+    dependent_count: usize,
+    dependent_capacity: usize,
+    imports: *ImportEdgeId,
+    import_count: usize,
+    import_capacity: usize
+}
+
+export form ImportStats {
+    modules_registered: u64,
+    imports_registered: u64,
+    strings_interned: u64,
+    string_bytes: u64,
+    imports_resolved: u64,
+    unresolved_imports: u64,
+    cycles_detected: u64,
+    resolution_runs: u64,
+    resolution_failures: u64,
+    validation_runs: u64,
+    validation_failures: u64,
+    hash_runs: u64,
+    allocations: u64,
+    reallocations: u64,
+    allocation_failures: u64
+}
+
+export form ImportContext {
+    magic: u64,
+    state: ImportState,
+    last_error: ImportError,
+    modules: *ImportModule,
+    module_count: usize,
+    module_capacity: usize,
+    edges: *ImportEdge,
+    edge_count: usize,
+    edge_capacity: usize,
+    strings: *ImportString,
+    string_count: usize,
+    string_capacity: usize,
+    string_bytes: usize,
+    topological_order: *ImportModuleId,
+    topological_count: usize,
+    topological_capacity: usize,
+    cycle_path: *ImportModuleId,
+    cycle_count: usize,
+    cycle_capacity: usize,
+    max_modules: usize,
+    max_imports: usize,
+    max_string_bytes: usize,
+    stats: ImportStats,
+    generation: u64
+}
+
+export type ImportId = u64;
+
+export type ImportStringId = u64;
+
+export type ImportModuleId = u64;
+
+export type ImportEdgeId = u64;
+
+export type ImportSourceId = u64;
+
+export proc vitte_import_error_name(error: ImportError) -> string {
+    match error {
+        case ImportError.None => return "none";
+        case ImportError.InvalidArgument => return "invalid_argument";
+        case ImportError.InvalidContext => return "invalid_context";
+        case ImportError.InvalidState => return "invalid_state";
+        case ImportError.InvalidString => return "invalid_string";
+        case ImportError.InvalidModule => return "invalid_module";
+        case ImportError.InvalidEdge => return "invalid_edge";
+        case ImportError.DuplicateModule => return "duplicate_module";
+        case ImportError.DuplicateImport => return "duplicate_import";
+        case ImportError.AliasConflict => return "alias_conflict";
+        case ImportError.ModuleNotFound => return "module_not_found";
+        case ImportError.ImportNotFound => return "import_not_found";
+        case ImportError.SelfImport => return "self_import";
+        case ImportError.Cycle => return "cycle";
+        case ImportError.TooManyModules => return "too_many_modules";
+        case ImportError.TooManyImports => return "too_many_imports";
+        case ImportError.StringLimit => return "string_limit";
+        case ImportError.Overflow => return "overflow";
+        case ImportError.OutOfMemory => return "out_of_memory";
+        case ImportError.Validation => return "validation";
+        case ImportError.Corruption => return "corruption";
+        case ImportError.Unsupported => return "unsupported";
+        case ImportError.Internal => return "internal";
+        case ImportError.Count => return "count";
+    }
+    return "unknown";
+}
+
+export proc vitte_import_state_name(state: ImportState) -> string {
+    match state {
+        case ImportState.Invalid => return "invalid";
+        case ImportState.Building => return "building";
+        case ImportState.Resolving => return "resolving";
+        case ImportState.Resolved => return "resolved";
+        case ImportState.Failed => return "failed";
+        case ImportState.Destroyed => return "destroyed";
+        case ImportState.Count => return "count";
+    }
+    return "unknown";
+}
+
+export proc vitte_import_module_state_name(state: ImportModuleState) -> string {
+    match state {
+        case ImportModuleState.Invalid => return "invalid";
+        case ImportModuleState.Registered => return "registered";
+        case ImportModuleState.Resolving => return "resolving";
+        case ImportModuleState.Resolved => return "resolved";
+        case ImportModuleState.Failed => return "failed";
+        case ImportModuleState.Count => return "count";
+    }
+    return "unknown";
+}
+
+export proc vitte_import_edge_state_name(state: ImportEdgeState) -> string {
+    match state {
+        case ImportEdgeState.Invalid => return "invalid";
+        case ImportEdgeState.Unresolved => return "unresolved";
+        case ImportEdgeState.Resolved => return "resolved";
+        case ImportEdgeState.Failed => return "failed";
+        case ImportEdgeState.Count => return "count";
+    }
+    return "unknown";
+}
+
+export extern proc vitte_import_init(context: *ImportContext) -> bool;
+
+export extern proc vitte_import_destroy(context: *ImportContext);
+
+export extern proc vitte_import_reset(context: *ImportContext) -> bool;
+
+export proc vitte_import_is_valid(context: *ImportContext) -> bool {
+    if context == null or (*context).magic != IMPORT_MAGIC { return false; }
+    if (*context).state <= ImportState.Invalid or (*context).state >= ImportState.Destroyed { return false; }
+    if (*context).module_count > (*context).module_capacity or
+       (*context).edge_count > (*context).edge_capacity or
+       (*context).string_count > (*context).string_capacity or
+       (*context).topological_count > (*context).topological_capacity or
+       (*context).cycle_count > (*context).cycle_capacity { return false; }
+    if ((*context).module_count != 0 and (*context).modules == null) or
+       ((*context).edge_count != 0 and (*context).edges == null) or
+       ((*context).string_count != 0 and (*context).strings == null) or
+       ((*context).topological_count != 0 and (*context).topological_order == null) or
+       ((*context).cycle_count != 0 and (*context).cycle_path == null) { return false; }
+    return true;
+}
+
+export extern proc vitte_import_intern_string(context: *ImportContext, data: string, length: usize) -> ImportStringId;
+
+export proc vitte_import_get_string(context: *ImportContext, id: ImportStringId) -> *ImportString {
+    if not vitte_import_is_valid(context) or id == 0 or id > (*context).string_count as u64 { return null; }
+    return &(*context).strings[(id - 1) as usize];
+}
+
+export extern proc vitte_import_add_module(context: *ImportContext, description: *ImportModuleDesc) -> ImportModuleId;
+
+export proc vitte_import_get_module(context: *ImportContext, id: ImportModuleId) -> *ImportModule {
+    if not vitte_import_is_valid(context) or id == 0 or id > (*context).module_count as u64 { return null; }
+    return &(*context).modules[(id - 1) as usize];
+}
+
+export proc vitte_import_get_module_mut(context: *ImportContext, id: ImportModuleId) -> *ImportModule {
+    if not vitte_import_is_valid(context) or (*context).state != ImportState.Building or
+       id == 0 or id > (*context).module_count as u64 { return null; }
+    return &(*context).modules[(id - 1) as usize];
+}
+
+export proc vitte_import_find_module_by_name(context: *ImportContext, name: ImportStringId) -> ImportModuleId {
+    if not vitte_import_is_valid(context) or name == 0 or name > (*context).string_count as u64 { return 0; }
+    let mut index: usize = 0;
+    while index < (*context).module_count {
+        if (*context).modules[index].name == name { return (*context).modules[index].id; }
+        set index += 1;
+    }
+    return 0;
+}
+
+export proc vitte_import_find_module_by_path(context: *ImportContext, path: ImportStringId) -> ImportModuleId {
+    if not vitte_import_is_valid(context) or path == 0 or path > (*context).string_count as u64 { return 0; }
+    let mut index: usize = 0;
+    while index < (*context).module_count {
+        if (*context).modules[index].path == path { return (*context).modules[index].id; }
+        set index += 1;
+    }
+    return 0;
+}
+
+export extern proc vitte_import_add(context: *ImportContext, description: *ImportDesc) -> ImportEdgeId;
+
+export proc vitte_import_get(context: *ImportContext, id: ImportEdgeId) -> *ImportEdge {
+    if not vitte_import_is_valid(context) or id == 0 or id > (*context).edge_count as u64 { return null; }
+    return &(*context).edges[(id - 1) as usize];
+}
+
+export extern proc vitte_import_resolve(context: *ImportContext) -> bool;
+
+export proc vitte_import_topological_count(context: *ImportContext) -> usize {
+    if not vitte_import_is_valid(context) { return 0; }
+    return (*context).topological_count;
+}
+
+export proc vitte_import_topological_at(context: *ImportContext, index: usize) -> ImportModuleId {
+    if not vitte_import_is_valid(context) or index >= (*context).topological_count or
+       (*context).topological_order == null { return 0; }
+    return (*context).topological_order[index];
+}
+
+export proc vitte_import_cycle_path_count(context: *ImportContext) -> usize {
+    if not vitte_import_is_valid(context) { return 0; }
+    return (*context).cycle_count;
+}
+
+export proc vitte_import_cycle_path_at(context: *ImportContext, index: usize) -> ImportModuleId {
+    if not vitte_import_is_valid(context) or index >= (*context).cycle_count or
+       (*context).cycle_path == null { return 0; }
+    return (*context).cycle_path[index];
+}
+
+export extern proc vitte_import_validate(context: *ImportContext) -> bool;
+
+export extern proc vitte_import_fingerprint(context: *ImportContext) -> u64;
+
+export proc vitte_import_stats(context: *ImportContext) -> ImportStats {
+    if not vitte_import_is_valid(context) { return ImportStats {}; }
+    return (*context).stats;
+}
+
+export proc vitte_import_set_limits(context: *ImportContext, max_modules: usize, max_imports: usize, max_string_bytes: usize) -> bool {
+    if not vitte_import_is_valid(context) or (*context).state != ImportState.Building {
+        if context != null and (*context).magic == IMPORT_MAGIC { set (*context).last_error = ImportError.InvalidState; }
+        return false;
+    }
+    if max_modules == 0 or max_imports == 0 or max_string_bytes == 0 {
+        set (*context).last_error = ImportError.InvalidArgument;
+        return false;
+    }
+    if max_modules < (*context).module_count or max_imports < (*context).edge_count or
+       max_string_bytes < (*context).string_bytes {
+        set (*context).last_error = ImportError.InvalidArgument;
+        return false;
+    }
+    set (*context).max_modules = max_modules;
+    set (*context).max_imports = max_imports;
+    set (*context).max_string_bytes = max_string_bytes;
+    set (*context).last_error = ImportError.None;
+    return true;
+}
+
+export extern proc vitte_import_translation_unit_anchor();
