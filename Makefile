@@ -51,6 +51,7 @@ TARGET  := vitte
 
 BUILD_HOST_OS := $(shell uname -s 2>/dev/null || echo unknown)
 EXE_SUFFIX ?= $(if $(filter MINGW% MSYS% CYGWIN%,$(BUILD_HOST_OS)),.exe,)
+PATH_LIST_SEPARATOR := $(if $(filter MINGW% MSYS% CYGWIN%,$(BUILD_HOST_OS)),;,:)
 
 CC ?= cc
 AR ?= ar
@@ -281,7 +282,7 @@ native-frontend: $(NATIVE_FRONTEND_LIBRARY)
 $(NATIVE_FRONTEND_C): $(NATIVE_FRONTEND_COMPILER) $(NATIVE_FRONTEND_SOURCES) $(NATIVE_MODULE_SOURCES)
 	@mkdir -p $(NATIVE_FRONTEND_DIR)
 	@printf '[VITTE-C] %s\n' "$(NATIVE_FRONTEND_ENTRY)"
-	VITTE_MODULE_PATH="$(VITTE_MODULE_PATH):$(VITTE_ROOT)/compiler" $(NATIVE_FRONTEND_COMPILER) compile "$(NATIVE_FRONTEND_ENTRY)" --emit-c --quiet --no-color -o "$@"
+	VITTE_MODULE_PATH="$(VITTE_MODULE_PATH)$(PATH_LIST_SEPARATOR)$(VITTE_ROOT)" $(NATIVE_FRONTEND_COMPILER) compile "$(NATIVE_FRONTEND_ENTRY)" --emit-c --quiet --no-color -o "$@"
 
 $(NATIVE_FRONTEND_OBJECT): $(NATIVE_FRONTEND_C) $(BUILD_CONFIG_STAMP)
 	@printf '[CC] %s\n' "$<"
@@ -1156,7 +1157,7 @@ compiler-selfhost-gate: $(TARGET_BIN)
 	@printf '\n[SELFHOST] stage0 frontend corpus and parity\n'
 	$(MAKE) test-grammar test-native-frontend-subset test-native-bootstrap-parity
 	@printf '\n[SELFHOST] stage0 generates the stage1 API\n'
-	VITTE_MODULE_PATH="$(VITTE_MODULE_PATH):$(VITTE_ROOT)/compiler" $(TARGET_BIN) \
+	VITTE_MODULE_PATH="$(VITTE_MODULE_PATH)$(PATH_LIST_SEPARATOR)$(VITTE_ROOT)" $(TARGET_BIN) \
 		compile "$(NATIVE_FRONTEND_ENTRY)" --emit-c --quiet --no-color \
 		-o "$(SELFHOST_STAGE1_C)"
 	$(MAKE) BUILD="$(SELFHOST_STAGE1_BUILD)" \
@@ -1168,7 +1169,7 @@ compiler-selfhost-gate: $(TARGET_BIN)
 		NATIVE_FRONTEND_C="$(abspath $(SELFHOST_STAGE1_C))" \
 		test-grammar test-native-frontend-subset test-native-bootstrap-parity
 	@printf '\n[SELFHOST] stage1 regenerates the stage2 API\n'
-	VITTE_MODULE_PATH="$(VITTE_MODULE_PATH):$(VITTE_ROOT)/compiler" $(SELFHOST_STAGE1_BIN) \
+	VITTE_MODULE_PATH="$(VITTE_MODULE_PATH)$(PATH_LIST_SEPARATOR)$(VITTE_ROOT)" $(SELFHOST_STAGE1_BIN) \
 		compile "$(NATIVE_FRONTEND_ENTRY)" --emit-c --quiet --no-color \
 		-o "$(SELFHOST_STAGE2_C)"
 	@cmp -s "$(SELFHOST_STAGE1_C)" "$(SELFHOST_STAGE2_C)" || \
@@ -1183,7 +1184,7 @@ compiler-selfhost-gate: $(TARGET_BIN)
 		NATIVE_FRONTEND_C="$(abspath $(SELFHOST_STAGE2_C))" \
 		test-grammar test-native-frontend-subset test-native-bootstrap-parity
 	@printf '\n[SELFHOST] stage2 regenerates the stage3 API\n'
-	VITTE_MODULE_PATH="$(VITTE_MODULE_PATH):$(VITTE_ROOT)/compiler" $(SELFHOST_STAGE2_BIN) \
+	VITTE_MODULE_PATH="$(VITTE_MODULE_PATH)$(PATH_LIST_SEPARATOR)$(VITTE_ROOT)" $(SELFHOST_STAGE2_BIN) \
 		compile "$(NATIVE_FRONTEND_ENTRY)" --emit-c --quiet --no-color \
 		-o "$(SELFHOST_STAGE3_C)"
 	@cmp -s "$(SELFHOST_STAGE2_C)" "$(SELFHOST_STAGE3_C)" || \

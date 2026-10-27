@@ -49,9 +49,9 @@ make install PREFIX=/usr/local DESTDIR="$PWD/modules/json/build/stage"
 ```
 
 An installed compiler searches the module directory beside its own `bin`
-directory. Additional module roots can be provided as a colon-separated
-`VITTE_MODULE_PATH`. This is useful for development or a compiler invoked via a
-custom wrapper.
+directory. Additional module roots can be provided through `VITTE_MODULE_PATH`,
+separated by the host path-list separator (`:` on Unix and `;` on Windows). This
+is useful for development or a compiler invoked via a custom wrapper.
 
 ## Current compiler compatibility
 

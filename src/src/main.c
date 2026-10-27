@@ -1425,7 +1425,7 @@ vitte_main_print_usage(
         "\n"
         "Module lookup:\n"
         "  Installed modules are searched beside the compiler installation.\n"
-        "  VITTE_MODULE_PATH adds colon-separated module search roots.\n"
+        "  VITTE_MODULE_PATH adds roots separated by the host path-list separator.\n"
         "\n"
         "Compilation:\n"
         "  'check' validates UTF-8 and syntax.\n"
